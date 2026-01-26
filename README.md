@@ -49,7 +49,7 @@ It's a personal operating system that handles the cognitive overhead of professi
 
 ### Step 2: Run the installer
 
-Open Cursor's built-in terminal (`Ctrl+`` ` or View → Terminal) and run:
+Open Cursor's terminal (View → Terminal) and run:
 
 ```bash
 ./install.sh
@@ -81,16 +81,30 @@ The wizard generates your personalized system in about 2 minutes.
 
 ---
 
+## The System That Improves Itself
+
+Here's what makes Dex different from other starter kits: **it keeps pace with Claude automatically.**
+
+Anthropic releases new capabilities constantly. Most people never notice — they're buried in changelogs nobody reads. Dex scrapes the [Claude Code changelog](https://github.com/anthropics/claude-code/blob/main/CHANGELOG.md) daily, understands how your system works, and connects the dots:
+
+> "This new feature could make your morning planning faster. Want me to implement it?"
+
+You don't track releases. You don't read documentation. You don't fall behind. The system evolves at the pace Claude evolves — and suggests its own upgrades based on how you actually use it.
+
+This is the compound engineering unlock: instead of your system decaying over time like traditional software, it gets better every week.
+
+---
+
 ## The Six Jobs It Does
 
 | Job | What It Solves |
 |-----|----------------|
-| **Start Each Day Focused** | One command generates your priorities. Heavy meeting day? Automatically adjusts. |
-| **Never Miss a Commitment** | Action items extracted automatically. Stale items get flagged. |
-| **Track Relationships** | Before any call: what you discussed last time, open items, what they care about. |
-| **Manage Tasks Reliably** | Duplicate detection. Priority limits enforced. Every task connects to strategic priorities. |
-| **Reflect & Improve** | Daily reviews, weekly synthesis. Mistakes become rules. |
-| **Keep Projects On Track** | Project health checks scan for stalls and blockers. |
+| **Start Each Day Focused** | One command gives you three priorities. Heavy meeting day? Drops to two. The system won't let you overcommit. |
+| **Never Miss a Commitment** | Promises made in meetings get extracted automatically. Three days old? Flagged. You can't forget. |
+| **Track Relationships** | Before any call: what you discussed last time, open items, what they care about. Never walk in cold. |
+| **Connected via MCP** | Calendar, meeting transcripts, analytics — your tools feed the AI automatically. |
+| **Compound Learning** | Day one: helpful but generic. Week two: knows your preferences. Month one: genuine thought partner. |
+| **Self-Improving System** | Tracks Claude's releases and suggests upgrades. Your system evolves at Claude's pace. |
 
 ---
 
