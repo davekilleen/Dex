@@ -112,6 +112,8 @@ This is the compound engineering unlock: instead of your system decaying over ti
 
 Invoke any skill by typing `/skill-name` in the Claude chat panel.
 
+**Tip:** Want to know how a skill works? Just ask Claude: *"Explain what /daily-plan does"* — it'll walk you through the details.
+
 ### Daily Workflow
 
 | Skill | What It Does |
@@ -144,7 +146,8 @@ Invoke any skill by typing `/skill-name` in the Claude chat panel.
 | `/reset` | Start fresh — restructure your Dex from scratch |
 | `/dex-improve` | Design partner for system improvements |
 | `/create-mcp` | Create custom integrations with external tools |
-| `/whats-new` | See recent Dex updates and improvements |
+| `/whats-new` | Check Claude Code releases and get suggested upgrades for your system |
+| `/prompt-improver` | Turn a basic prompt into a structured, effective one using Anthropic's best practices |
 
 ---
 

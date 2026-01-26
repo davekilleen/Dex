@@ -82,7 +82,13 @@ Ask: "What's your company size?"
 
 Ask: "What are your 2-3 main priorities right now? These will become your strategic pillars."
 
-## Step 5: Profile Research (Optional)
+## Step 5: Working Style
+
+Ask: "How would you describe your working style? For example: fast-paced and action-biased, methodical and detail-oriented, big-picture thinker, etc."
+
+This helps calibrate tone and pacing of responses.
+
+## Step 6: Profile Research (Optional)
 
 Ask: "Would you like me to research your public work to better understand your context?"
 
