@@ -1,0 +1,98 @@
+{
+  "hooks": {
+    "Setup": [
+      {
+        "matcher": "maintenance",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node .scripts/maintenance/daily-maintenance.cjs --verbose"
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ -f FIRST_RUN ] && echo '{\"hookSpecificOutput\":{\"hookEventName\":\"SessionStart\",\"additionalContext\":\"\\n\\n# 🚀 Welcome to Claudesidian!\\n\\n**This appears to be your first time using this vault.**\\n\\n## Quick Start\\n\\nRun the setup wizard:\\n\\n⬇\\n/init-bootstrap\\n⬆\\n\\n## What this will do:\\n\\n✅ Set up your personalized configuration\\n✅ Disconnect from the original repository\\n✅ Help you import any existing Obsidian vault\\n✅ Configure your preferred workflow\\n✅ Create your PARA folder structure\\n\\nThe setup wizard will guide you through everything!\\n\\n\"}}' || true"
+          },
+          {
+            "type": "command",
+            "command": "npm run check-updates --silent 2>/dev/null || true"
+          },
+          {
+            "type": "command",
+            "command": "git pull --quiet 2>/dev/null && echo '{\"hookSpecificOutput\":{\"hookEventName\":\"SessionStart\",\"additionalContext\":\"\\n✅ Synced with GitHub (pulled latest changes)\\n\"}}' || echo '{\"hookSpecificOutput\":{\"hookEventName\":\"SessionStart\",\"additionalContext\":\"\\n⚠️  Could not sync with GitHub (check your connection)\\n\"}}'"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Read",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node .claude/hooks/cross-deal-intelligence.cjs"
+          },
+          {
+            "type": "command",
+            "command": "node .claude/hooks/person-context-injector.cjs"
+          }
+        ]
+      },
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node .claude/hooks/task-context-injector.cjs"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node .claude/hooks/key-account-enricher.cjs"
+          }
+        ]
+      },
+      {
+        "matcher": ".*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".claude/hooks/rate-limit-detector.sh"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "afplay /System/Library/Sounds/Ping.aiff"
+          }
+        ]
+      }
+    ],
+    "Notification": [
+      {
+        "matcher": "permission_prompt|elicitation_dialog",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "afplay /System/Library/Sounds/Ping.aiff"
+          }
+        ]
+      }
+    ]
+  }
+}

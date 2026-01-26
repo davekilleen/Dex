@@ -1,0 +1,47 @@
+# Dex Integration Status
+# 
+# Tracks which external tools are configured and working.
+# Updated automatically when you run /daily-plan --setup
+# 
+# Set setup_complete to false to trigger the setup wizard again.
+
+setup_complete: false
+last_setup: null
+
+integrations:
+  # Calendar Integration
+  # Provides: Meeting schedule, attendee context, free time blocks
+  calendar:
+    enabled: false
+    type: null  # apple, google, or null
+    calendar_name: null  # e.g., "user@example.com"
+    mcp_configured: false
+    last_verified: null
+    
+  # Granola Integration  
+  # Provides: Meeting transcripts, action items from meetings
+  granola:
+    enabled: false
+    cache_path: "~/Library/Application Support/Granola/cache-v3.json"
+    mcp_configured: false
+    last_verified: null
+    
+  # Tasks Integration (built-in)
+  # Provides: Task priorities, focus suggestions
+  tasks:
+    enabled: true
+    type: dex  # built-in, always enabled
+    mcp_configured: true
+    
+  # Pendo Integration
+  # Provides: Product analytics, visitor/account metadata, feature adoption
+  pendo:
+    enabled: true
+    type: remote  # hosted MCP server with OAuth
+    region: eu  # us, us1, eu, jpn, au
+    mcp_configured: true
+    last_verified: null
+
+# Notes from setup
+# Added automatically during /daily-plan --setup
+notes: []

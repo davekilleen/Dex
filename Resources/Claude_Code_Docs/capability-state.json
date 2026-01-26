@@ -1,0 +1,12 @@
+{
+  "last_check": null,
+  "last_changelog_version": null,
+  "capabilities_seen": [
+    "hooks",
+    "sub-agents",
+    "skills",
+    "commands",
+    "mcp"
+  ],
+  "features_noted": []
+}

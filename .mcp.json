@@ -1,0 +1,34 @@
+{
+  "mcpServers": {
+    "task-mcp": {
+      "type": "stdio",
+      "command": "python",
+      "args": [
+        "/Users/dave/dex/core/mcp/task_server.py"
+      ],
+      "env": {
+        "VAULT_PATH": "/Users/dave/dex"
+      }
+    },
+    "calendar-mcp": {
+      "type": "stdio",
+      "command": "python",
+      "args": [
+        "/Users/dave/dex/core/mcp/calendar_server.py"
+      ],
+      "env": {
+        "VAULT_PATH": "/Users/dave/dex"
+      }
+    },
+    "granola-mcp": {
+      "type": "stdio",
+      "command": "python",
+      "args": [
+        "/Users/dave/dex/core/mcp/granola_server.py"
+      ],
+      "env": {
+        "VAULT_PATH": "/Users/dave/dex"
+      }
+    }
+  }
+}

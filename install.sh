@@ -1,0 +1,80 @@
+#!/bin/bash
+# Dex PKM - Installation Script
+# This script sets up your development environment
+
+set -e
+
+echo "🚀 Setting up Dex..."
+echo ""
+
+# Check Node.js
+if ! command -v node &> /dev/null; then
+    echo "❌ Node.js is not installed"
+    echo "   Please install Node.js 18+ from https://nodejs.org/"
+    exit 1
+fi
+
+NODE_VERSION=$(node -v | cut -d'v' -f2 | cut -d'.' -f1)
+if [ "$NODE_VERSION" -lt 18 ]; then
+    echo "❌ Node.js version must be 18 or higher (found v$NODE_VERSION)"
+    echo "   Please upgrade from https://nodejs.org/"
+    exit 1
+fi
+echo "✅ Node.js $(node -v)"
+
+# Check Python (for Task MCP)
+if command -v python3 &> /dev/null; then
+    echo "✅ Python $(python3 --version | cut -d' ' -f2)"
+else
+    echo "⚠️  Python 3 not found - Task MCP server won't work"
+    echo "   Install Python 3.8+ for full functionality"
+fi
+
+# Install Node dependencies
+echo ""
+echo "📦 Installing dependencies..."
+if command -v pnpm &> /dev/null; then
+    pnpm install
+elif command -v npm &> /dev/null; then
+    npm install
+else
+    echo "❌ Neither npm nor pnpm found"
+    exit 1
+fi
+
+# Create .env if it doesn't exist
+if [ ! -f .env ]; then
+    echo ""
+    echo "📝 Creating .env file from template..."
+    cp env.example .env
+    echo "   Edit .env to add your API keys (optional)"
+fi
+
+# Check for Granola (optional)
+echo ""
+if [ -f "$HOME/Library/Application Support/Granola/cache-v3.json" ]; then
+    echo "✅ Granola detected - meeting intelligence available"
+else
+    echo "ℹ️  Granola not detected - meeting intelligence won't work"
+    echo "   Install Granola from https://granola.ai for meeting transcription"
+fi
+
+# Install Python dependencies for MCP (optional)
+echo ""
+echo "📦 Checking Python dependencies for Task MCP..."
+if command -v pip3 &> /dev/null; then
+    pip3 install mcp pyyaml --quiet 2>/dev/null || echo "⚠️  Could not install Python deps - Task MCP may not work"
+fi
+
+# Success
+echo ""
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo "✅ Dex is ready!"
+echo ""
+echo "Next steps:"
+echo "  1. Open this folder in Cursor: cursor ."
+echo "  2. Start a chat and run: /init-bootstrap"
+echo "  3. Answer the setup questions (~5 minutes)"
+echo ""
+echo "Optional: Add API keys to .env for advanced features"
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"

@@ -1,0 +1,12 @@
+{
+  "name": "tasks",
+  "description": "Task management with pillar alignment and priority limits",
+  "server": {
+    "command": "python",
+    "args": ["core/mcp/task_server.py"],
+    "env": {
+      "VAULT_PATH": "${workspaceFolder}"
+    }
+  },
+  "notes": "Loads pillars from System/pillars.yaml. Provides task listing, deduplication, and priority checking."
+}

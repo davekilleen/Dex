@@ -1,0 +1,12 @@
+{
+  "name": "granola",
+  "description": "Meeting intelligence from Granola transcripts",
+  "server": {
+    "command": "python",
+    "args": ["core/mcp/granola_server.py"],
+    "env": {
+      "VAULT_PATH": "${workspaceFolder}"
+    }
+  },
+  "notes": "Reads from Granola's local cache. Requires Granola app installed."
+}

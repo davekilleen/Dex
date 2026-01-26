@@ -1,0 +1,65 @@
+# User Profile Configuration
+#
+# This file stores your identity and preferences for personalized AI interactions.
+# Edit the values below to configure Dex for your role.
+
+# Demo Mode
+# When true, commands read from System/Demo/ instead of real vault
+# Toggle with /demo on or /demo off
+demo_mode: false
+
+# Your name (used to identify you in meetings, filter yourself from participant lists)
+name: "Your Name"
+
+# Your role (used in meeting analysis prompts)
+role: "Product Manager"
+
+# Your company (optional, adds context to meeting analysis)
+company: ""
+
+# Meeting Processing Configuration
+# How Dex processes meetings from Granola
+meeting_processing:
+  # Mode: "manual" (run /process-meetings) or "automatic" (background sync)
+  mode: manual
+  
+  # API provider for automatic mode: gemini, anthropic, or openai
+  # Only used when mode is "automatic"
+  api_provider: gemini
+
+# Meeting Intelligence Configuration
+# Controls what gets extracted from your meetings
+meeting_intelligence:
+  # Extract customer pain points and challenges
+  extract_customer_intel: true
+  
+  # Extract competitive mentions and comparisons
+  extract_competitive_intel: true
+  
+  # Extract action items (always recommended)
+  extract_action_items: true
+  
+  # Extract decisions made (always recommended)
+  extract_decisions: true
+
+# Role-specific presets (for reference):
+#
+# Sales/Account Executive:
+#   extract_customer_intel: true
+#   extract_competitive_intel: true
+#   - Focus: Deal signals, objections, competitive threats
+#
+# Product Manager:
+#   extract_customer_intel: true
+#   extract_competitive_intel: true
+#   - Focus: Feature requests, user needs, market positioning
+#
+# Engineering:
+#   extract_customer_intel: false
+#   extract_competitive_intel: false
+#   - Focus: Technical decisions, blockers, dependencies
+#
+# General/Other:
+#   extract_customer_intel: false
+#   extract_competitive_intel: false
+#   - Focus: Decisions, action items, follow-ups only

@@ -1,0 +1,40 @@
+# Newsletter Senders Configuration
+#
+# Add email addresses of newsletters you want processed.
+# The Newsletter Intel pipeline will fetch, summarize, and extract insights.
+#
+# Run /init-bootstrap to configure these interactively, or edit manually.
+# Requires Gmail API setup - see .scripts/newsletter-intel/README.md
+
+senders:
+  # Example entries - replace with your own newsletter subscriptions
+  
+  - name: "Lenny's Newsletter"
+    email: "lenny@substack.com"
+    category: product
+    notes: "Product management deep dives"
+    
+  - name: "The Pragmatic Engineer"
+    email: "gergely@pragmaticengineer.com"
+    category: engineering
+    notes: "Engineering leadership and tech industry"
+    
+  - name: "Stratechery"
+    email: "ben@stratechery.com"
+    category: strategy
+    notes: "Tech strategy and business analysis"
+    
+  - name: "TLDR Newsletter"
+    email: "dan@tldrnewsletter.com"
+    category: tech
+    notes: "Daily tech news summary"
+
+# Categories help organize your digest
+# Common categories: product, tech, strategy, leadership, marketing, design, ai
+
+# Processing settings
+settings:
+  max_emails_per_day: 20      # Limit emails processed daily
+  lookback_days: 7            # How far back to check for new emails
+  summary_style: "concise"    # "concise" or "detailed"
+  extract_links: true         # Extract and categorize links from newsletters

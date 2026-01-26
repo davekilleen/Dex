@@ -1,0 +1,12 @@
+{
+  "name": "calendar",
+  "description": "Calendar integration for meeting prep and scheduling context",
+  "server": {
+    "command": "python",
+    "args": ["core/mcp/calendar_server.py"],
+    "env": {
+      "VAULT_PATH": "${workspaceFolder}"
+    }
+  },
+  "notes": "Reads from Apple Calendar. Works with any calendar synced to Calendar.app including Google accounts."
+}

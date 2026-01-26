@@ -1,0 +1,38 @@
+# Demo Pillars Configuration
+# Alex Chen, PM at TechCorp
+
+pillars:
+  - id: product_development
+    name: "Product Development"
+    description: "Building and launching products"
+    keywords:
+      - launch
+      - roadmap
+      - features
+      - sprint
+      - release
+      
+  - id: customer_research
+    name: "Customer Research"
+    description: "Understanding customer needs and feedback"
+    keywords:
+      - customer
+      - user
+      - feedback
+      - interview
+      - research
+      
+  - id: team_growth
+    name: "Team Growth"
+    description: "Building and developing the team"
+    keywords:
+      - hiring
+      - 1:1
+      - coaching
+      - team
+      - mentoring
+
+priority_limits:
+  P0: 3
+  P1: 5
+  P2: 10
