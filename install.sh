@@ -50,6 +50,15 @@ if [ ! -f .env ]; then
     echo "   Edit .env to add your API keys (optional)"
 fi
 
+# Create .mcp.json with current path
+if [ ! -f .mcp.json ]; then
+    echo ""
+    echo "📝 Creating .mcp.json with workspace path..."
+    CURRENT_PATH="$(pwd)"
+    sed "s|{{VAULT_PATH}}|$CURRENT_PATH|g" .mcp.json.example > .mcp.json
+    echo "   MCP servers configured for: $CURRENT_PATH"
+fi
+
 # Check for Granola (optional)
 echo ""
 if [ -f "$HOME/Library/Application Support/Granola/cache-v3.json" ]; then
@@ -73,7 +82,7 @@ echo "✅ Dex is ready!"
 echo ""
 echo "Next steps:"
 echo "  1. Open this folder in Cursor: cursor ."
-echo "  2. Start a chat and run: /init-bootstrap"
+echo "  2. Start a chat and run: /setup"
 echo "  3. Answer the setup questions (~5 minutes)"
 echo ""
 echo "Optional: Add API keys to .env for advanced features"

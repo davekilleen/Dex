@@ -4,30 +4,30 @@
       "type": "stdio",
       "command": "python",
       "args": [
-        "/Users/dave/dex/core/mcp/task_server.py"
+        "{{VAULT_PATH}}/core/mcp/task_server.py"
       ],
       "env": {
-        "VAULT_PATH": "/Users/dave/dex"
+        "VAULT_PATH": "{{VAULT_PATH}}"
       }
     },
     "calendar-mcp": {
       "type": "stdio",
       "command": "python",
       "args": [
-        "/Users/dave/dex/core/mcp/calendar_server.py"
+        "{{VAULT_PATH}}/core/mcp/calendar_server.py"
       ],
       "env": {
-        "VAULT_PATH": "/Users/dave/dex"
+        "VAULT_PATH": "{{VAULT_PATH}}"
       }
     },
     "granola-mcp": {
       "type": "stdio",
       "command": "python",
       "args": [
-        "/Users/dave/dex/core/mcp/granola_server.py"
+        "{{VAULT_PATH}}/core/mcp/granola_server.py"
       ],
       "env": {
-        "VAULT_PATH": "/Users/dave/dex"
+        "VAULT_PATH": "{{VAULT_PATH}}"
       }
     }
   }

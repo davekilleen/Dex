@@ -77,7 +77,7 @@ The wizard generates your personalized system in about 2 minutes.
 | **Meeting intelligence** | Process Granola transcripts into structured notes with action items |
 | **Person pages** | Relationship context that builds over time |
 | **Compound learning** | Captures your preferences and mistakes — every session improves the next |
-| **16 skills** | Daily planning, reviews, triage, meeting prep — invoke with `/skill-name` |
+| **17 commands** | Daily planning, reviews, triage, meeting prep — invoke with `/command-name` |
 
 ---
 
@@ -108,15 +108,15 @@ This is the compound engineering unlock: instead of your system decaying over ti
 
 ---
 
-## Skills
+## Commands
 
-Invoke any skill by typing `/skill-name` in the Claude chat panel.
+Invoke any command by typing `/command-name` in the Claude chat panel.
 
-**Tip:** Want to know how a skill works? Just ask Claude: *"Explain what /daily-plan does"* — it'll walk you through the details.
+**Tip:** Want to know how a command works? Just ask Claude: *"Explain what /daily-plan does"* — it'll walk you through the details.
 
 ### Daily Workflow
 
-| Skill | What It Does |
+| Command | What It Does |
 |---------|--------------|
 | `/daily-plan` | Morning planning — calendar, tasks, meeting context, today's priorities |
 | `/daily-review` | End of day — capture wins, lessons, set up tomorrow |
@@ -125,7 +125,7 @@ Invoke any skill by typing `/skill-name` in the Claude chat panel.
 
 ### Organization
 
-| Skill | What It Does |
+| Command | What It Does |
 |---------|--------------|
 | `/triage` | Process inbox — files and tasks with intelligent routing |
 | `/save-insight` | Capture learnings from completed work |
