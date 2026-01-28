@@ -80,18 +80,17 @@ When making significant system changes:
 ### Learning Capture
 After significant work (new features, complex integrations), ask: "Worth capturing any learnings from this?" Don't prompt after routine tasks.
 
-### Silent Learning Capture
-When you notice something worth capturing during work (mistake you made, gap in documentation, pattern in how the user works, improvement opportunity), silently append it to `Inbox/Session_Learnings/YYYY-MM-DD.md`. Don't mention it or interrupt - just log it.
+### Learning Capture via `/review`
 
-**Trigger situations:**
-- You make a mistake or incorrect assumption
-- User has to correct or clarify something
-- You find a gap in documentation
-- You notice a repeated user pattern
-- User mentions a preference not yet documented
-- A workflow seems inefficient or could be improved
+Learnings are captured during the daily review process. When the user runs `/review`, you will:
 
-**Entry format:**
+1. **Scan the current session** for learning opportunities:
+   - Mistakes or corrections made
+   - Preferences the user mentioned
+   - Documentation gaps discovered
+   - Workflow inefficiencies noticed
+
+2. **Automatically write to** `Inbox/Session_Learnings/YYYY-MM-DD.md`:
 
 ```markdown
 ## [HH:MM] - [Short title]
@@ -104,13 +103,9 @@ When you notice something worth capturing during work (mistake you made, gap in 
 ---
 ```
 
-Each entry should include:
-- **What happened** - The specific situation and context
-- **Why it matters** - What system/workflow this affects
-- **Suggested fix** - Specific action with file paths and details
-- **Status** - pending/implemented/dismissed
+3. **Tell the user** how many learnings you captured, then ask if they want to add more
 
-**Do this automatically** - don't ask permission, don't announce it. Just capture and continue.
+This happens during `/review` - you don't need to capture learnings silently during the session. The review process handles it systematically.
 
 ### Changelog Discipline
 After making significant system changes (new commands, CLAUDE.md edits, structural changes), update `CHANGELOG.md` under `[Unreleased]` before finishing the task.
@@ -124,8 +119,11 @@ Key commands (full list in `.claude/commands/`):
 **Daily workflow:**
 - `/daily-plan` - Context-aware daily planning
 - `/review` - End of day review
-- `/week` - Weekly synthesis
 - `/triage` - Process inbox
+
+**Weekly workflow:**
+- `/week-plan` - Plan the week's priorities
+- `/week-review` - Weekly synthesis and review
 
 **Meetings:**
 - `/meeting-prep` - Prepare for upcoming meetings

@@ -46,25 +46,46 @@ With user-verified information:
 - What got stuck or blocked?
 - What unexpected discoveries emerged?
 
-## Step 4: Capture Session Learnings
+## Step 4: Auto-Extract Session Learnings
 
-**Extract learnings to persist in the system:**
+**Scan today's conversation for learnings:**
 
-1. Ask the user: "What did you learn today that's worth capturing for the future?"
-2. For each learning mentioned, write to `Inbox/Session_Learnings/YYYY-MM-DD.md`:
+Before asking the user anything, reflect on today's session and automatically extract:
+
+1. **Mistakes or corrections**
+   - Did the user have to correct any assumptions?
+   - Did something not work as expected?
+   - Were there misunderstandings to document?
+
+2. **Preferences mentioned**
+   - Did the user express how they like to work?
+   - Were tool preferences or workflow patterns mentioned?
+   - Any communication style notes?
+
+3. **Documentation gaps**
+   - Did you have to explain something that should be documented?
+   - Were there questions about how the system works?
+   - Missing templates or unclear processes?
+
+4. **Workflow inefficiencies**
+   - Did any task take longer than it should?
+   - Were there repetitive manual steps?
+   - Opportunities for automation?
+
+**For each learning identified, write to `Inbox/Session_Learnings/YYYY-MM-DD.md`:**
 
 ```markdown
 ## HH:MM - [Short title]
 
-**What happened:** [User's description]
+**What happened:** [Specific situation from today's session]
 **Why it matters:** [Impact on workflows/system]
-**Suggested fix:** [Specific action if applicable]
+**Suggested fix:** [Specific action with file paths if applicable]
 **Status:** pending
 
 ---
 ```
 
-3. Also capture in the daily review under "Insights" section
+**Then ask the user:** "I captured [N] learnings from today's session. Anything else you'd like to add?"
 
 **This ensures learnings persist for:**
 - Weekly synthesis (`/week`)
@@ -73,7 +94,7 @@ With user-verified information:
 
 ## Step 4b: Additional Insights
 
-- Key realizations or connections
+- Key realizations or connections from user input
 - Questions that arose
 
 ## Step 5: Tomorrow's Setup
