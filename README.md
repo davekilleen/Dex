@@ -90,19 +90,23 @@ The wizard generates your personalized system in about 2 minutes.
 
 ---
 
-## Stay Current with Claude
+## The System That Improves Itself
 
-Anthropic releases new Claude Code capabilities constantly. Most people never notice — they're buried in changelogs nobody reads.
+Here's what makes Dex different from other starter kits: **it learns from how you work.**
 
-**Dex helps you keep up:**
+Every session, Dex captures context about your preferences, mistakes, and workflows into `Resources/Learnings/`:
 
-Run `/whats-new` anytime to check for new Claude Code features. Dex searches the latest updates, translates them into plain English, and suggests specific ways to improve your system:
+- **Mistake Patterns** — Logged mistakes become rules that prevent repetition
+- **Working Preferences** — Your communication style, tool preferences, meeting habits
+- **Session Learnings** — Silent capture of what works and what doesn't
 
-> "New feature: Async Hooks — could make your morning planning 3x faster. Want me to implement it?"
+**Day 1:** Helpful but generic.  
+**Week 2:** Knows your preferences, catches your common mistakes.  
+**Month 1:** Genuine thought partner that adapts to your style.
 
-You don't track releases. You don't read documentation. Just run the command occasionally — Dex does the research and connects the dots to your actual workflows.
+This is the compound engineering unlock: instead of your system decaying over time like traditional software, every session makes the next one better.
 
-This is the compound engineering unlock: instead of your system decaying over time like traditional software, it suggests its own improvements.
+**Bonus:** Run `/whats-new` to check for new Claude Code capabilities and get upgrade suggestions tailored to your workflows.
 
 ---
 
@@ -115,7 +119,7 @@ This is the compound engineering unlock: instead of your system decaying over ti
 | **Track Relationships** | Before any call: what you discussed last time, open items, what they care about. Never walk in cold. |
 | **Connected via MCP** | Calendar, meeting transcripts, analytics — your tools feed the AI automatically. |
 | **Compound Learning** | Day one: helpful but generic. Week two: knows your preferences. Month one: genuine thought partner. |
-| **Stay Current** | Run `/whats-new` to check Claude updates. Get upgrade suggestions based on new capabilities. |
+| **Self-Improving System** | Captures preferences and mistakes. Each session makes the next better. Run `/whats-new` for Claude updates. |
 
 ---
 
