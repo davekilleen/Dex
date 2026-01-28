@@ -46,10 +46,34 @@ With user-verified information:
 - What got stuck or blocked?
 - What unexpected discoveries emerged?
 
-## Step 4: Capture Insights
+## Step 4: Capture Session Learnings
 
-- Key learnings from today
-- New connections discovered
+**Extract learnings to persist in the system:**
+
+1. Ask the user: "What did you learn today that's worth capturing for the future?"
+2. For each learning mentioned, write to `Inbox/Session_Learnings/YYYY-MM-DD.md`:
+
+```markdown
+## HH:MM - [Short title]
+
+**What happened:** [User's description]
+**Why it matters:** [Impact on workflows/system]
+**Suggested fix:** [Specific action if applicable]
+**Status:** pending
+
+---
+```
+
+3. Also capture in the daily review under "Insights" section
+
+**This ensures learnings persist for:**
+- Weekly synthesis (`/week`)
+- System improvement reviews (`/whats-new`)
+- Future reference
+
+## Step 4b: Additional Insights
+
+- Key realizations or connections
 - Questions that arose
 
 ## Step 5: Tomorrow's Setup

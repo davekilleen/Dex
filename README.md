@@ -94,19 +94,28 @@ The wizard generates your personalized system in about 2 minutes.
 
 Here's what makes Dex different from other starter kits: **it learns from how you work.**
 
-Every session, Dex captures context about your preferences, mistakes, and workflows:
+### How Learning Works
 
-- **Session Learnings** (`Inbox/Session_Learnings/`) — Automatic daily capture: mistakes, patterns, improvements
-- **Mistake Patterns** (`Resources/Learnings/`) — Logged mistakes become rules that prevent repetition
-- **Working Preferences** (`Resources/Learnings/`) — Your communication style, tool preferences, meeting habits
+**In Cursor (recommended):**
+- Run `/review` at end of day → explicitly captures learnings
+- Learnings saved to `Inbox/Session_Learnings/YYYY-MM-DD.md`
+- Weekly synthesis (`/week`) turns learnings into improvements
+
+**In Claude Code desktop app (automatic):**
+- SessionEnd hook captures learnings automatically when you exit
+- Same learning files, zero manual work
+- Bonus automation for power users
+
+**Both environments:**
+- **Mistake Patterns** — Logged mistakes become rules that prevent repetition
+- **Working Preferences** — Your communication style, tool preferences, meeting habits
+- **System Improvements** — Run `/whats-new` to review learnings + new Claude capabilities
 
 **Day 1:** Helpful but generic.  
 **Week 2:** Knows your preferences, catches your common mistakes.  
 **Month 1:** Genuine thought partner that adapts to your style.
 
 This is the compound engineering unlock: instead of your system decaying over time like traditional software, every session makes the next one better.
-
-**Bonus:** Run `/whats-new` to check for new Claude Code capabilities and get upgrade suggestions tailored to your workflows.
 
 ---
 
@@ -134,7 +143,7 @@ Invoke any command by typing `/command-name` in the Claude chat panel.
 | Command | What It Does |
 |---------|--------------|
 | `/daily-plan` | Morning planning — calendar, tasks, meeting context, today's priorities |
-| `/daily-review` | End of day — capture wins, lessons, set up tomorrow |
+| `/review` | End of day — capture wins, lessons, learnings for system improvement |
 | `/journal` | Morning, evening, or weekly reflection prompts |
 | `/week` | Weekly synthesis — patterns, energy mapping, project progress |
 
@@ -240,13 +249,25 @@ You don't need to configure these — they work out of the box after running `/s
 
 ## What Runs Automatically
 
+### Learning Capture
+
+**How it works depends on your environment:**
+
+| Environment | Learning Capture Method | Setup Required |
+|-------------|------------------------|----------------|
+| **Cursor** (most users) | Run `/review` at end of day | None - works out of the box |
+| **Claude Code desktop** | Automatic via SessionEnd hook | None - included in `.claude/settings.json` |
+
+Both methods write to `Inbox/Session_Learnings/YYYY-MM-DD.md`. Weekly synthesis (`/week`) and system improvements (`/whats-new`) automatically pull from these files.
+
 ### Hooks (Claude Code only)
 
-Hooks fire automatically when certain events happen. They only work in Claude Code (terminal or desktop app with Claude Code enabled) — not in Cursor's agent mode.
+Hooks fire automatically when certain events happen. They only work in Claude Code (terminal or desktop app) — not in Cursor.
 
 | Hook | When It Fires | What It Does |
 |------|---------------|--------------|
 | **Session Start** | Every new session | Checks for updates, syncs with GitHub |
+| **Session End** | Session terminates | Captures learnings to Session_Learnings/ |
 | **Person Context** | Reading a person page | Injects related context (meetings, tasks, relationships) |
 | **Company Context** | Reading a company page | Pulls cross-deal intelligence |
 | **Key Account Enricher** | Creating/editing account pages | Auto-populates with relevant data |
