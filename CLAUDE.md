@@ -83,11 +83,34 @@ After significant work (new features, complex integrations), ask: "Worth capturi
 ### Silent Learning Capture
 When you notice something worth capturing during work (mistake you made, gap in documentation, pattern in how the user works, improvement opportunity), silently append it to `Inbox/Session_Learnings/YYYY-MM-DD.md`. Don't mention it or interrupt - just log it.
 
+**Trigger situations:**
+- You make a mistake or incorrect assumption
+- User has to correct or clarify something
+- You find a gap in documentation
+- You notice a repeated user pattern
+- User mentions a preference not yet documented
+- A workflow seems inefficient or could be improved
+
+**Entry format:**
+
+```markdown
+## [HH:MM] - [Short title]
+
+**What happened:** [Specific situation]  
+**Why it matters:** [Impact on system/workflow]  
+**Suggested fix:** [Specific action with file paths]  
+**Status:** pending
+
+---
+```
+
 Each entry should include:
 - **What happened** - The specific situation and context
 - **Why it matters** - What system/workflow this affects
 - **Suggested fix** - Specific action with file paths and details
 - **Status** - pending/implemented/dismissed
+
+**Do this automatically** - don't ask permission, don't announce it. Just capture and continue.
 
 ### Changelog Discipline
 After making significant system changes (new commands, CLAUDE.md edits, structural changes), update `CHANGELOG.md` under `[Unreleased]` before finishing the task.
@@ -114,6 +137,7 @@ Key commands (full list in `.claude/commands/`):
 **System:**
 - `/demo` - Toggle demo mode (see `.claude/reference/demo-mode.md`)
 - `/create-mcp` - Create new MCP integration
+- `/whats-new` - Review learnings + check Claude Code updates
 
 ---
 

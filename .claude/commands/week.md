@@ -45,13 +45,16 @@ People/**/*.md                        # Person pages updated
 ### 4. Learnings Captured
 
 ```
-Resources/Learnings/**/*.md           # New learnings from this week
+Resources/Learnings/**/*.md           # Explicit learnings from completed work
+Inbox/Session_Learnings/*.md          # Silent learnings captured during sessions
 ```
 
 **Extract:**
-- Patterns identified
+- Session learnings from this week (mistakes, patterns, improvements)
+- Patterns identified and documented
 - Preferences documented
 - Insights worth remembering
+- System improvement opportunities
 
 ---
 
@@ -146,11 +149,28 @@ Create `Inbox/Weekly_Synthesis_YYYY-MM-DD.md`:
 
 ## Learnings
 
-### This Week I Learned
-- [Insight or pattern noticed]
+### Session Learnings (Auto-Captured)
+> From `Inbox/Session_Learnings/` this week
+
+- [Learning from daily sessions]
+- [System improvements identified]
+- [Mistakes caught and corrected]
+
+### Explicit Learnings (Saved)
+> From `Resources/Learnings/` entries
+
+- [Insights from `/save-insight`]
+- [Patterns documented]
 
 ### Working Preferences Updated
-- [Any new preferences documented]
+- [Any new preferences documented in Working_Preferences.md]
+
+### Actionable Improvements
+> Based on learnings above, what should we change?
+
+- [ ] [Specific system improvement]
+- [ ] [Documentation update needed]
+- [ ] [Process refinement]
 
 ---
 

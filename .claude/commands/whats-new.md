@@ -1,23 +1,86 @@
-# What's New in Claude Code
+# What's New - System Improvement Review
 
-Check for new Claude Code capabilities and learn how they could improve your Dex system.
+Check for improvements to your Dex system from TWO sources:
+1. **Learnings from your usage** - Mistakes, patterns, opportunities captured during sessions
+2. **New Claude Code capabilities** - Features that could enhance your workflows
 
 ## Usage
 
 ```
-/whats-new              # Check for updates
-/whats-new --full       # Include capability deep-dives
+/whats-new              # Review learnings + check for Claude updates
+/whats-new --full       # Include detailed explanations
+/whats-new --learnings  # Only review session learnings
+/whats-new --claude     # Only check Claude Code updates
 ```
 
 ## Arguments
 
-$MODE: Optional. `--full` for detailed explanations of each feature.
+$MODE: Optional flags
+- `--full` - Detailed explanations of each feature
+- `--learnings` - Only review learnings (skip Claude check)
+- `--claude` - Only check Claude updates (skip learnings)
 
 ---
 
 ## Process
 
-### Step 1: Read Current State
+### Step 0: Review Session Learnings (Unless --claude flag)
+
+**Check for learnings to review:**
+
+1. Read files in `Inbox/Session_Learnings/` from last 30 days
+2. Read `Resources/Learnings/Mistake_Patterns.md` - check for new patterns
+3. Read `Resources/Learnings/Working_Preferences.md` - check for trends
+
+**Extract improvement opportunities:**
+- Recurring mistakes → suggest preventive measures
+- Gaps in documentation → suggest additions
+- Workflow inefficiencies → suggest automations
+- User patterns → suggest customizations
+
+**Present findings:**
+
+```
+🧠 LEARNINGS FROM YOUR USAGE
+
+Since last review: [X] session learnings captured
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+📊 PATTERNS IDENTIFIED
+
+1. [Pattern name]
+   Observed: [frequency] times
+   Impact: [what this affects]
+   Suggestion: [concrete improvement]
+   
+2. [Pattern name]
+   ...
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+💡 SUGGESTED IMPROVEMENTS
+
+Based on what you've learned, here's how to improve Dex:
+
+1. [Improvement name]
+   Problem: [What's not working smoothly]
+   Solution: [Specific change to make]
+   Files: [What to update]
+   Effort: Low/Medium/High
+   
+2. [Improvement name]
+   ...
+
+Want me to implement any of these? (Enter number)
+```
+
+**If no learnings:**
+Skip this section or show: "No session learnings captured yet. The system will learn as you use it."
+
+---
+
+### Step 1: Read Current State (Unless --learnings flag)
 
 Load `Resources/Claude_Code_Docs/capability-state.json`:
 
@@ -54,12 +117,12 @@ Identify what's new since `last_check`:
 3. How you could use it in Dex (concrete example)
 4. Effort to adopt (Low/Medium/High)
 
-### Step 4: Present Findings
+### Step 4: Present Claude Findings
 
-**If updates found:**
+**If Claude Code updates found:**
 
 ```
-📢 Claude Code Updates
+🆕 CLAUDE CODE UPDATES
 
 Last checked: [date] (X days ago)
 Current version: [version]
@@ -93,24 +156,47 @@ Want me to implement any of these? (Enter number)
 Or run `/dex-improve` to workshop custom ideas.
 ```
 
-**If no updates:**
+**If no Claude updates:**
 
 ```
-✅ You're up to date!
+✅ Claude Code is up to date!
 
 Last checked: Today
-Claude Code version: [version]
+Current version: [version]
 
 No new features since your last check.
+```
+
+---
+
+### Combined View (Default)
+
+When running without flags, show BOTH sections:
+
+```
+🔄 DEX SYSTEM IMPROVEMENT REVIEW
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-💡 DID YOU KNOW?
+🧠 FROM YOUR USAGE
+[Session learnings section]
 
-[Pick one underutilized feature from capability-state and explain it]
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-Example: "Hooks can automatically load context at session start. 
-You're not using any hooks yet — want me to set one up?"
+🆕 FROM CLAUDE CODE
+[Claude updates section]
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+💡 COMBINED IMPROVEMENTS
+
+Pulling together learnings + new capabilities:
+
+1. [Improvement combining both]
+   Uses: [Your pattern] + [New Claude feature]
+   Impact: [What this unlocks]
+   
+Want me to implement any of these? (Enter number or 'all')
 ```
 
 ### Step 5: Update State

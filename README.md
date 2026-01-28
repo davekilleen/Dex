@@ -94,11 +94,11 @@ The wizard generates your personalized system in about 2 minutes.
 
 Here's what makes Dex different from other starter kits: **it learns from how you work.**
 
-Every session, Dex captures context about your preferences, mistakes, and workflows into `Resources/Learnings/`:
+Every session, Dex captures context about your preferences, mistakes, and workflows:
 
-- **Mistake Patterns** — Logged mistakes become rules that prevent repetition
-- **Working Preferences** — Your communication style, tool preferences, meeting habits
-- **Session Learnings** — Silent capture of what works and what doesn't
+- **Session Learnings** (`Inbox/Session_Learnings/`) — Automatic daily capture: mistakes, patterns, improvements
+- **Mistake Patterns** (`Resources/Learnings/`) — Logged mistakes become rules that prevent repetition
+- **Working Preferences** (`Resources/Learnings/`) — Your communication style, tool preferences, meeting habits
 
 **Day 1:** Helpful but generic.  
 **Week 2:** Knows your preferences, catches your common mistakes.  
@@ -203,9 +203,10 @@ dex/
 │   └── Content/          # Things you create
 ├── Inbox/                # Capture zone
 │   ├── Meetings/         # Meeting notes
-│   └── Voice_Notes/      # Quick captures
+│   ├── Voice_Notes/      # Quick captures
+│   └── Session_Learnings/ # Auto-captured improvements (daily)
 ├── Resources/            # Reference material
-│   └── Learnings/        # Compound knowledge
+│   └── Learnings/        # Compound knowledge (curated)
 ├── People/               # Person pages
 │   ├── Internal/         # Colleagues
 │   └── External/         # Customers, partners
