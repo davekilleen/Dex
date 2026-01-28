@@ -55,14 +55,23 @@ Open Cursor's terminal (View → Terminal) and run:
 ./install.sh
 ```
 
-### Step 3: Run the setup wizard
+### Step 3: Explore with Demo Mode (Optional)
+
+Want to see Dex in action before adding your own data?
 
 1. Open the Claude chat panel: `Cmd+L` (Mac) or `Ctrl+L` (Windows/Linux)
-2. Type:
+2. Type: `/demo on`
+3. Try commands like `/daily-plan` or `/project-health` with sample data
+
+Skip to Step 4 when ready to set up your own system.
+
+### Step 4: Run the setup wizard
+
+1. In the Claude chat panel, type:
    ```
    /setup
    ```
-3. Answer the questions about your role, company size, and priorities
+2. Answer the questions about your role, company size, and priorities
 
 The wizard generates your personalized system in about 2 minutes.
 
@@ -81,17 +90,19 @@ The wizard generates your personalized system in about 2 minutes.
 
 ---
 
-## The System That Improves Itself
+## Stay Current with Claude
 
-Here's what makes Dex different from other starter kits: **it keeps pace with Claude automatically.**
+Anthropic releases new Claude Code capabilities constantly. Most people never notice — they're buried in changelogs nobody reads.
 
-Anthropic releases new capabilities constantly. Most people never notice — they're buried in changelogs nobody reads. Dex scrapes the [Claude Code changelog](https://github.com/anthropics/claude-code/blob/main/CHANGELOG.md) daily, understands how your system works, and connects the dots:
+**Dex helps you keep up:**
 
-> "This new feature could make your morning planning faster. Want me to implement it?"
+Run `/whats-new` anytime to check for new Claude Code features. Dex searches the latest updates, translates them into plain English, and suggests specific ways to improve your system:
 
-You don't track releases. You don't read documentation. You don't fall behind. The system evolves at the pace Claude evolves — and suggests its own upgrades based on how you actually use it.
+> "New feature: Async Hooks — could make your morning planning 3x faster. Want me to implement it?"
 
-This is the compound engineering unlock: instead of your system decaying over time like traditional software, it gets better every week.
+You don't track releases. You don't read documentation. Just run the command occasionally — Dex does the research and connects the dots to your actual workflows.
+
+This is the compound engineering unlock: instead of your system decaying over time like traditional software, it suggests its own improvements.
 
 ---
 
@@ -104,7 +115,7 @@ This is the compound engineering unlock: instead of your system decaying over ti
 | **Track Relationships** | Before any call: what you discussed last time, open items, what they care about. Never walk in cold. |
 | **Connected via MCP** | Calendar, meeting transcripts, analytics — your tools feed the AI automatically. |
 | **Compound Learning** | Day one: helpful but generic. Week two: knows your preferences. Month one: genuine thought partner. |
-| **Self-Improving System** | Tracks Claude's releases and suggests upgrades. Your system evolves at Claude's pace. |
+| **Stay Current** | Run `/whats-new` to check Claude updates. Get upgrade suggestions based on new capabilities. |
 
 ---
 
@@ -132,7 +143,7 @@ Invoke any command by typing `/command-name` in the Claude chat panel.
 
 ### Projects & Meetings
 
-| Skill | What It Does |
+| Command | What It Does |
 |---------|--------------|
 | `/project-health` | Review all projects for stalls and blockers |
 | `/meeting-prep` | Prepare for upcoming meetings with attendee context |
@@ -140,7 +151,7 @@ Invoke any command by typing `/command-name` in the Claude chat panel.
 
 ### System
 
-| Skill | What It Does |
+| Command | What It Does |
 |---------|--------------|
 | `/setup` | Initial setup or reconfigure |
 | `/reset` | Start fresh — restructure your Dex from scratch |
@@ -258,12 +269,16 @@ Don't use Granola? Dex works great without it.
 
 ## Optional API Keys
 
-Dex works with your Cursor subscription out of the box.
+**Dex works with your Cursor subscription out of the box.** All core features (daily planning, task management, meeting prep, triage) use Cursor's included Claude access.
+
+**API keys are only needed for:**
 
 | Feature | Key Required | Free Tier? | Get It |
 |---------|--------------|------------|--------|
 | `/prompt-improver` | Anthropic | No | [console.anthropic.com](https://console.anthropic.com) |
 | Automatic meeting sync | Gemini, Anthropic, or OpenAI | Gemini yes | [aistudio.google.com/apikey](https://aistudio.google.com/apikey) |
+
+*Note: Manual meeting processing via `/process-meetings` requires no API key.*
 
 Add keys to `.env` (copy from `env.example`).
 
