@@ -31,6 +31,18 @@ Changes happen immediately in your local system - there are no "releases" since 
 
 ---
 
+## [2026-01-29] - Folder Structure Cleanup
+
+### Fixed
+- **Duplicate folders removed**: Cleaned up `Inbox/` and `03-Resources/` duplicates left from refactoring
+  - Removed legacy `Inbox/` folder (superseded by `00-Inbox/`)
+  - Removed incorrect `03-Resources/` folder (conflicted with `03-Tasks/`, wrong PARA numbering)
+  - Standardized on full numeric prefix structure: `00-Inbox/`, `01-Quarter_Goals/`, `02-Week_Priorities/`, `03-Tasks/`, `04-Projects/`, `05-Areas/`, `06-Resources/`, `07-Archives/`, `System/`
+- **Documentation consistency**: Updated CLAUDE.md, onboarding flow, skills, and all system documentation to use `00-Inbox/` consistently
+- **Verified no data loss**: Confirmed `00-Inbox/` contained active content, `06-Resources/` had all necessary files before deletion
+
+---
+
 ## [2026-01-28] - Conversational Capture (Removed Inbox.md Pattern)
 
 ### Removed
