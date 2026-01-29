@@ -377,7 +377,7 @@ Dex uses the PARA method (Projects, Areas, Resources, Archives) for organization
 └── Reviews/              # Daily, weekly, and quarterly reviews
 
 # Inbox = capture zone (transient)
-Inbox/
+00-Inbox/
 ├── Meetings/             # Meeting notes
 └── Ideas/                # Quick thoughts
 

@@ -42,6 +42,13 @@ Reviewed final mobile app design polish and kicked off portal redesign discovery
 - [ ] Schedule 5 more customer interviews → Alex
 - [ ] Review wireframes when ready → Alex
 
+## Scattered Notes
+
+Quick thoughts from the meeting:
+- [ ] Check if we have mobile traffic data for current portal
+- [ ] Maya mentioned a new design system component - need to document
+- [ ] Follow up on the mobile-responsive question with Sarah
+
 ---
 
 *Created: 2026-01-22*

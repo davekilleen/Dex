@@ -28,8 +28,6 @@ Guides should be:
 
 ## Examples
 
-- **vault-conventions.md** - File naming, folder structure, frontmatter standards
-
 Future guides might include:
 - Task management patterns
 - Person page best practices

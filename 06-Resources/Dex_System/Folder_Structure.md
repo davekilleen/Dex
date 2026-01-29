@@ -51,7 +51,7 @@ Dex/
     └── Week_Priorities.md    # Current week's Top 3
 ```
 
-**Note:** The numbered folders (`01-`, `02-`, `03-`) appear after running the respective planning commands (`/quarter-plan`, `/week-plan`, `/triage`). Before then, you'll just see the PARA folders (04-07) plus Inbox/ and System/.
+**Note:** The numbered folders (`01-`, `02-`, `03-`) appear after running the respective planning commands (`/quarter-plan`, `/week-plan`, `/triage`). Before then, you'll just see the PARA folders (04-07) plus 00-Inbox/ and System/.
 
 ---
 
@@ -312,7 +312,7 @@ Tasks sync bidirectionally with person pages, company pages, and meeting notes v
 | **05-Areas/** | Ongoing responsibilities | Indefinite | Onboarding |
 | **06-Resources/** | Reference material | Indefinite | Onboarding |
 | **07-Archives/** | Historical record | Indefinite | Onboarding |
-| **Inbox/** | Quick captures | Days (until triaged) | Onboarding |
+| **00-Inbox/** | Quick captures | Days (until triaged) | Onboarding |
 | **System/** | Configuration | Indefinite | Onboarding |
 | **03-Tasks/** | Task backlog | Indefinite | First `/triage` or `/daily-plan` |
 | **01-Quarter_Goals/** | Quarterly goals | Per quarter | First `/quarter-plan` |

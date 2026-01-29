@@ -40,7 +40,7 @@ Ideas are automatically ranked on 5 dimensions:
   - **Category:** knowledge
   - **Captured:** 2026-01-28
   - **Why ranked here:** Pure system learning + proactive behavior. Analyzes session learnings to detect patterns, then proactively suggests improvements before you ask. System gets smarter over time, compounds knowledge.
-  - **Description:** Background process that analyzes `000-Inbox/Session_Learnings/` to identify recurring patterns (same mistakes, common workflows, repeated pain points). Builds a learning model that proactively surfaces relevant past learnings during relevant contexts. Example: If you're editing a command, it shows "Last time you worked on commands, you learned X."
+  - **Description:** Background process that analyzes `System/Session_Learnings/` to identify recurring patterns (same mistakes, common workflows, repeated pain points). Builds a learning model that proactively surfaces relevant past learnings during relevant contexts. Example: If you're editing a command, it shows "Last time you worked on commands, you learned X."
 
 ### ⚡ Medium Priority (Score: 60-84)
 

@@ -42,6 +42,11 @@ Weekly sync with Jordan on mobile app progress and team dynamics.
 
 Jordan mentioned feeling stretched thin. May need to discuss additional engineering resources after launch. Also flagged that two team members have PTO in February - need to factor into portal project planning.
 
+Quick action items that came up:
+- [ ] Send Jordan the beta user feedback summary
+- [ ] Ask HR about engineering headcount for Q2
+- [ ] Factor Feb PTO into portal timeline
+
 ---
 
 *Created: 2026-01-21*

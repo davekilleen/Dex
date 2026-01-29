@@ -202,8 +202,8 @@ Based on their answers:
    - `07-Archives/04-Projects/`
    - `07-Archives/Plans/`
    - `07-Archives/Reviews/`
-   - `Inbox/Meetings/`
-   - `Inbox/Ideas/`
+   - `00-Inbox/Meetings/`
+   - `00-Inbox/Ideas/`
    - Additional role-specific areas per `.claude/reference/role-areas-mapping.md`
 3. **Update CLAUDE.md** with their profile:
    - Name

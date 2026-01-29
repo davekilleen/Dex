@@ -9,15 +9,15 @@ Your task backlog organized by priority.
 
 ## P0 - Urgent (max 3)
 
-- [s] **Finalize mobile app launch timeline** — Engineering needs this by Wed #product_development
-- [ ] **Review competitor analysis** — BoardMeeting prep for next week #product_development
+- [s] **Finalize mobile app launch timeline** — Engineering needs this by Wed #product_development # Career: Stakeholder Management
+- [ ] **Review competitor analysis** — BoardMeeting prep for next week #product_development # Career: Strategic Thinking
 
 ## P1 - Important (max 5)
 
-- [ ] **Write PRD for customer portal** — Kickoff meeting scheduled for Friday #product_development
+- [ ] **Write PRD for customer portal** — Kickoff meeting scheduled for Friday #product_development # Career: Product Strategy
 - [ ] **Schedule user interviews for portal** — Need 5 customers lined up #customer_research
-- [s] **Draft job description for senior PM** — HR waiting on this #team_growth
-- [ ] **Prep quarterly roadmap presentation** — Leadership review in 2 weeks #product_development
+- [s] **Draft job description for senior PM** — HR waiting on this #team_growth # Career: Team Development
+- [ ] **Prep quarterly roadmap presentation** — Leadership review in 2 weeks #product_development # Career: Executive Communication
 
 ## P2 - Normal (max 10)
 

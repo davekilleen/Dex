@@ -816,8 +816,8 @@ Focus on architecture questions, not syntax nitpicks. I trust the team on detail
 ```markdown
 ## [14:32] - Folder structure confusion
 
-**What happened:** User expected `00-Inbox/` but docs said `Inbox/`
-**Why it matters:** Breaks onboarding flow if paths are wrong
+**What happened:** User expected `00-Inbox/` and docs now consistently use `00-Inbox/`
+**Why it matters:** Consistent paths prevent onboarding flow issues
 **Suggested fix:** Audit FOLDER_STRUCTURE.md and CLAUDE.md for consistency
 **Status:** pending
 ```

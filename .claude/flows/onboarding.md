@@ -165,7 +165,7 @@ This separates active work from reference material and keeps your capture zone l
    - `04-Projects/` — Time-bound initiatives
    - `05-Areas/People/Internal/` and `05-Areas/People/External/` — Person pages (universal)
    - `05-Areas/Companies/` — External organizations (universal for all roles)
-   - `Inbox/Meetings/`, `Inbox/Ideas/` — Capture zone
+   - `00-Inbox/Meetings/`, `00-Inbox/Ideas/` — Capture zone
    - `06-Resources/Learnings/`, `06-Resources/Templates/` — Reference material
    - `07-Archives/04-Projects/`, `07-Archives/Plans/`, `07-Archives/Reviews/` — Historical records
    - **Only if mapped:** Create role-specific area (e.g., `05-Areas/Accounts/` for Sales, `05-Areas/Team/` for CEO, `05-Areas/Content/` for Marketing)
@@ -247,7 +247,7 @@ Say: "You're all set, [Name]!
 
 **Your workspace:**
 - Strategic pillars: [list their pillars]
-- Folder structure: Active/, 00-Inbox/, 06-Resources/
+- Folder structure: 04-Projects/, 05-Areas/, 06-Resources/, 07-Archives/, 00-Inbox/, System/
 - [Any optional features they enabled]
 
 **Start here:**
