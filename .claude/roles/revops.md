@@ -77,43 +77,71 @@ You live in data, process, and cross-functional chaos. Sales wants pipeline visi
 - Tool administration — CRM setup, integrations, automation
 - Process design — Lead routing, handoff workflows, approval processes
 
-## Folder Structure
+## Folder Structure (PARA)
 
-*Created automatically during setup*
+*Dex uses PARA: Projects, Areas, Resources, Archives*
 
 ```
-Active/
-├── GTM_Operations/
-│   ├── Pipeline/
-│   ├── Territories/
-│   └── Forecasting/
-├── Compensation/
-│   ├── Plans/
-│   ├── Calculations/
-│   └── SPIFs/
-├── Systems/
+# State files at root
+03-Tasks/Tasks.md              # Task backlog tagged with pillars and goals
+02-Week_Priorities/Week_Priorities.md    # Top 3 priorities this week
+01-Quarter_Goals/Quarter_Goals.md      # Quarterly goals (optional)
+
+# Projects = time-bound initiatives
+04-Projects/
+├── Territory_Rebalance_Q1/ # Territory planning projects
+├── Comp_Plan_2026/    # Compensation plan rollouts
+├── CRM_Migration/     # System implementations
+├── Pipeline_Cleanup/  # Data cleanup initiatives
+└── Forecast_Model_Update/ # Forecasting improvements
+
+# Areas = ongoing responsibilities
+05-Areas/
+└── People/           # Key relationships
+    ├── Internal/     # Sales, marketing, finance, CS partners
+    └── External/     # Vendor partners, consultants
+
+# Resources = reference material
+06-Resources/
+├── Systems/          # System documentation
 │   └── [System_Name]/
 │       ├── Config.md
-│       └── Integrations.md
-├── Reporting/
-│   ├── Dashboards/
-│   └── Ad_Hoc/
-└── Relationships/
-    ├── Sales/
-    ├── Marketing/
-    ├── Finance/
-    └── CS/
+│       ├── Integrations.md
+│       └── Admin_Notes.md
+├── Playbooks/        # Process documentation
+│   ├── Pipeline_Management/
+│   ├── Territory_Rules/
+│   └── Comp_Calculations/
+├── Templates/        # Analysis templates, process docs
+└── Learnings/        # What works, retrospectives
 
-Inbox/
-├── Meetings/
-├── Requests/
-└── Ideas/
+# Archives = historical records
+07-Archives/
+├── 04-Projects/         # Past territory plans, old comp plans
+├── Plans/            # Daily/weekly plans
+└── Reviews/          # Daily/weekly/quarterly reviews
 
-Resources/
-├── Templates/
-├── Playbooks/
-└── Learnings/
+# Inbox = capture zone
+00-Inbox/
+├── Meetings/         # All meeting notes
+├── Requests/         # Ad-hoc analysis requests
+├── Ideas/            # Process improvements, automation ideas
 ```
+
+**Role-specific areas for RevOps/BizOps:**
+- None required - uses universal PARA structure
+
+**What goes where:**
+- **04-Projects/**: Territory planning, comp plans, system implementations (time-bound)
+- **05-Areas/People/**: Sales leaders, finance partners, marketing ops relationships
+- **06-Resources/Systems/**: CRM config, integration docs, system notes
+- **06-Resources/Playbooks/**: Process documentation, calculation methods
+- **06-Resources/**: Templates, dashboards, analysis frameworks
+
+**Why no additional areas:**
+- RevOps work is project-based (planning cycles, implementations, cleanups)
+- Systems are reference material (06-Resources/Systems/) not ongoing work
+- Processes documented in 06-Resources/Playbooks/
 
 ## Templates
 

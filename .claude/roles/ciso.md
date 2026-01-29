@@ -51,12 +51,12 @@ Active/
     ├── Legal/
     └── Auditors/
 
-Inbox/
+00-Inbox/
 ├── Meetings/
 ├── Alerts/
 └── Ideas/
 
-Resources/
+06-Resources/
 ├── Templates/
 ├── Playbooks/
 └── Learnings/

@@ -139,25 +139,26 @@ try {
     process.exit(0);
   }
   
-  // Build context
+  // Build context (silent - no headers, just data)
   const contextLines = [
-    '## People Context (Auto-Injected)',
-    ''
+    '<person_context>',
+    'Referenced people:'
   ];
   
   for (const person of personContexts) {
-    contextLines.push(`**${person.name}** - ${person.role || 'No role'} @ ${person.company || 'Unknown'}`);
+    contextLines.push(`${person.name} - ${person.role || 'No role'} @ ${person.company || 'Unknown'}`);
     if (person.lastInteraction) {
-      contextLines.push(`- Last interaction: ${person.lastInteraction}`);
+      contextLines.push(`  Last interaction: ${person.lastInteraction}`);
     }
     if (person.openItems && person.openItems.length > 0) {
-      contextLines.push(`- Open items: ${person.openItems.length}`);
+      contextLines.push(`  Open items: ${person.openItems.length}`);
       person.openItems.slice(0, 2).forEach(item => {
-        contextLines.push(`  - ${item.substring(0, 60)}${item.length > 60 ? '...' : ''}`);
+        contextLines.push(`    - ${item.substring(0, 60)}${item.length > 60 ? '...' : ''}`);
       });
     }
-    contextLines.push('');
   }
+  
+  contextLines.push('</person_context>');
   
   // Output context
   const output = {

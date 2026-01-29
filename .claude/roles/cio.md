@@ -47,12 +47,12 @@ Active/
     ├── Business_Units/
     └── Vendors/
 
-Inbox/
+00-Inbox/
 ├── Meetings/
 ├── Requests/
 └── Ideas/
 
-Resources/
+06-Resources/
 ├── Templates/
 ├── Frameworks/
 └── Learnings/

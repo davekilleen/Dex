@@ -46,9 +46,9 @@
 
 ## Related Tasks
 
-<!-- Synced from Tasks.md via task MCP -->
+<!-- Synced from 03-Tasks/Tasks.md via task MCP -->
 
-*Synced from Tasks.md — never*
+*Synced from 03-Tasks/Tasks.md — never*
 
 | Status | Task | Priority |
 |--------|------|----------|

@@ -71,41 +71,69 @@ You're juggling user research, design iterations, stakeholder feedback, and hand
 - Discovery — User research, competitive analysis, ideation
 - Stakeholder reviews — Design presentations, feedback incorporation
 
-## Folder Structure
+## Folder Structure (PARA)
 
-*Created automatically during setup*
+*Dex uses PARA: Projects, Areas, Resources, Archives*
 
 ```
-Active/
-├── Projects/
-│   └── [Project_Name]/
-│       ├── Brief.md
-│       ├── Research/
-│       ├── Iterations/
-│       └── Handoff.md
-├── Design_System/
+# State files at root
+03-Tasks/Tasks.md              # Task backlog tagged with pillars and goals
+02-Week_Priorities/Week_Priorities.md    # Top 3 priorities this week
+01-Quarter_Goals/Quarter_Goals.md      # Quarterly goals (optional)
+
+# Projects = time-bound design work
+04-Projects/
+├── [Feature_Design]/ # Feature design projects
+├── [Research_Study]/ # User research projects
+├── Design_System_Update/ # DS improvement projects
+└── Brand_Refresh/    # Brand update projects
+
+# Areas = ongoing responsibilities
+05-Areas/
+└── People/           # Key relationships
+    ├── Internal/     # Product, engineering, brand partners
+    └── External/     # Users, research participants
+
+# Resources = reference material
+06-Resources/
+├── Design_System/    # Design system documentation
 │   ├── Components/
 │   ├── Patterns/
 │   └── Guidelines/
-├── Research/
+├── Research/         # Research repository
 │   ├── User_Studies/
-│   ├── Competitive/
-│   └── Personas/
-└── Relationships/
-    ├── Product/
-    ├── Engineering/
-    └── Brand/
+│   ├── Personas/
+│   └── Competitive/
+├── Templates/        # Design brief, test plan templates
+├── Inspiration/      # Design inspiration, references
+└── Learnings/        # Design retrospectives, what works
 
-Inbox/
-├── Meetings/
-├── Feedback/
-└── Ideas/
+# Archives = historical records
+07-Archives/
+├── 04-Projects/         # Completed designs, past research
+├── Plans/            # Daily/weekly plans
+└── Reviews/          # Daily/weekly/quarterly reviews
 
-Resources/
-├── Templates/
-├── Inspiration/
-└── Learnings/
+# Inbox = capture zone
+00-Inbox/
+├── Meetings/         # All meeting notes
+├── Feedback/         # Design feedback to process
+├── Ideas/            # Design ideas, improvements
 ```
+
+**Role-specific areas for Design:**
+- None required - uses universal PARA structure
+
+**What goes where:**
+- **04-Projects/**: Feature designs, research studies, DS updates (time-bound)
+- **05-Areas/People/**: Product partners, engineering partners, design team
+- **06-Resources/Design_System/**: Design system docs (reference)
+- **06-Resources/Research/**: Research repository, personas, insights
+
+**Why no additional areas:**
+- Design work is project-based (features, research, DS improvements)
+- Design system is reference material (06-Resources/Design_System/)
+- Research is reference material (06-Resources/Research/)
 
 ## Templates
 

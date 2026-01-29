@@ -49,12 +49,12 @@ Active/
     ├── Experts/
     └── Referrers/
 
-Inbox/
+00-Inbox/
 ├── Meetings/
 ├── Opportunities/
 └── Ideas/
 
-Resources/
+06-Resources/
 ├── Templates/
 ├── Tools/
 └── Learnings/

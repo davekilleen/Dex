@@ -1,5 +1,21 @@
 # Customer Success
 
+## Communication Context
+
+**Default communication preferences:**
+- Formality: Professional casual
+- Directness: Balanced (context about relationships matters)
+- Detail level: Balanced (account context is critical)
+- Career level: Mid (adjust based on actual seniority)
+
+**Interaction style notes:**
+- Focus on account health, stakeholder relationships, and renewal risks
+- Balance empathy with action-orientation
+- Emphasize proactive risk mitigation and expansion opportunities
+- Highlight relationship dynamics and champion building
+
+---
+
 ## Why Dex?
 
 You're managing a portfolio of accounts, each with their own health signals, stakeholders, and renewal timelines. Context is scattered across calls, emails, and your CRM. Dex keeps your account intelligence organized, flags risks before they escalate, and ensures you never walk into a QBR unprepared.
@@ -70,41 +86,69 @@ You're managing a portfolio of accounts, each with their own health signals, sta
 - Onboarding — Implementation support, time-to-value
 - Advocacy programs — Reference cultivation, case study development
 
-## Folder Structure
+## Folder Structure (PARA)
 
-*Created automatically during setup*
+*Dex uses PARA: Projects, Areas, Resources, Archives*
 
 ```
-Active/
-├── Accounts/
-│   └── [Account_Name]/
-│       ├── Overview.md
-│       ├── Health.md
-│       ├── Stakeholders.md
-│       └── Success_Plan.md
-├── Portfolio/
-│   ├── At_Risk/
-│   ├── Healthy/
-│   └── Growth/
-├── Relationships/
-│   ├── Champions/
-│   ├── Sales/
-│   ├── Product/
-│   └── Support/
-└── Content/
-    ├── Playbooks/
-    └── Case_Studies/
+# State files at root
+03-Tasks/Tasks.md              # Task backlog tagged with pillars and goals
+02-Week_Priorities/Week_Priorities.md    # Top 3 priorities this week
+01-Quarter_Goals/Quarter_Goals.md      # Quarterly goals (optional)
 
-Inbox/
-├── Meetings/
-├── Escalations/
-└── Ideas/
+# Projects = time-bound initiatives
+04-Projects/
+├── [Account]_Onboarding/  # Customer onboarding projects
+├── [Account]_Renewal/      # Renewal campaigns
+├── [Account]_Expansion/    # Expansion initiatives
+└── [Escalation]/           # Customer escalations
 
-Resources/
-├── Templates/
-├── Best_Practices/
-└── Learnings/
+# Areas = ongoing responsibilities
+05-Areas/
+├── Accounts/         # Customer portfolio (ongoing relationships)
+│   └── [Account_Name].md  # Health, stakeholders, success plan
+└── People/           # Key relationships
+    ├── Internal/     # Sales, product, support partners
+    └── External/     # Customer champions, decision makers
+
+# Resources = reference material
+06-Resources/
+├── Playbooks/        # CS methodologies, QBR templates
+├── Best_Practices/   # What works, proven approaches
+├── Case_Studies/     # Customer success stories
+└── Learnings/        # Post-mortems, retrospectives
+
+# Archives = historical records
+07-Archives/
+├── 04-Projects/         # Completed onboardings, renewals, escalations
+├── Plans/            # Daily/weekly plans
+└── Reviews/          # Daily/weekly/quarterly reviews
+
+# Inbox = capture zone
+00-Inbox/
+├── Meetings/         # All customer calls and QBRs
+├── Escalations/      # Urgent issues to triage
+├── Ideas/            # Process improvements, program ideas
 ```
+
+**Role-specific areas for Customer Success:**
+- `05-Areas/Accounts/` - Customer portfolio tracking (ongoing health, stakeholders, plans)
+
+**Note on Companies vs Accounts:**
+- `05-Areas/Companies/` - Universal company tracking (contacts, meetings, notes)
+- `05-Areas/Accounts/` - Sales/CS-specific (includes ARR, health scores, deal tracking)
+- Many orgs use just Companies/, others use Accounts/ for strategic customers
+- Choose based on your needs during onboarding
+
+**What goes where:**
+- **04-Projects/**: Onboarding, renewals, expansions, escalations (time-bound initiatives)
+- **05-Areas/Accounts/**: Long-term customer relationships, health tracking, success plans
+- **05-Areas/People/**: Customer champions, internal partners (sales, product, support)
+- **06-Resources/**: Playbooks, best practices, case studies, QBR templates
+
+**Areas vs. Projects:**
+- **Account** (Area) = Ongoing relationship with Acme Corp, health tracking
+- **Project** = Renew Acme Corp by June 30, expand to 2 new teams
 
 ## Templates
 

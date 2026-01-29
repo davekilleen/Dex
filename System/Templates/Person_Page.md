@@ -6,7 +6,7 @@
 |-------|-------|
 | **Role** | {{Title}} |
 | **Company** | {{Company Name}} |
-| **Company Page** | Active/Relationships/Companies/{{Company_Name}}.md |
+| **Company Page** | 05-Areas/Companies/{{Company_Name}}.md |
 | **Email** | {{email@company.com}} |
 | **Phone** | {{Phone number}} |
 | **LinkedIn** | {{LinkedIn URL}} |
@@ -51,15 +51,15 @@
 
 | Date | Topic | Notes Link |
 |------|-------|------------|
-| {{Date}} | {{Topic}} | Inbox/Meetings/{{Date}}.md |
+| {{Date}} | {{Topic}} | 00-Inbox/Meetings/{{Date}}.md |
 
 ---
 
 ## Related
 
-- **Account:** Active/Relationships/{{Account Name}}.md
-- **Projects:** Active/Projects/{{Project 1}}.md, Active/Projects/{{Project 2}}.md
-- **Introduced by:** People/{{Person Name}}.md
+- **Company:** 05-Areas/Companies/{{Company Name}}.md
+- **Projects:** 04-Projects/{{Project 1}}.md, 04-Projects/{{Project 2}}.md
+- **Introduced by:** 05-Areas/People/{{Person Name}}.md
 
 ---
 

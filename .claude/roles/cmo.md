@@ -16,48 +16,69 @@
 - **Budget Management** - Marketing spend, ROI optimization
 - **Executive Reporting** - Board updates, metrics, attribution
 
-## Folder Structure
+## Folder Structure (PARA)
+
+*Dex uses PARA: Projects, Areas, Resources, Archives*
 
 ```
-Active/
-├── Strategy/
-│   ├── Brand_Strategy.md
-│   ├── GTM_Plan.md
-│   ├── Annual_Plan.md
-│   └── OKRs.md
-├── Campaigns/
-│   └── [Campaign_Name]/
-│       ├── Strategy.md
-│       ├── Results.md
-│       └── Learnings.md
-├── Brand/
-│   ├── Positioning.md
-│   ├── Messaging.md
-│   └── Guidelines/
-├── Market/
-│   ├── Research/
-│   ├── Competitive/
-│   └── Trends/
-├── Team/
-│   ├── Org.md
-│   ├── Hiring/
-│   └── Development/
-└── Relationships/
-    ├── Executive_Team/
-    ├── Sales/
-    ├── Product/
-    └── Agencies/
+# State files at root
+03-Tasks/Tasks.md              # Task backlog tagged with pillars and goals
+02-Week_Priorities/Week_Priorities.md    # Top 3 priorities this week
+01-Quarter_Goals/Quarter_Goals.md      # Quarterly goals (required for CMOs)
 
-Inbox/
-├── Meetings/
-├── Ideas/
-└── Requests/
+# Projects = time-bound marketing initiatives
+04-Projects/
+├── [Campaign_Name]/  # Major campaigns
+├── Brand_Refresh_2026/ # Brand initiatives
+├── Market_Research_[Topic]/ # Research projects
+├── Event_[Name]/     # Events and conferences
+└── Hiring_[Role]/    # Marketing leadership hires
 
-Resources/
-├── Templates/
-├── Playbooks/
-└── Learnings/
+# Areas = ongoing responsibilities
+05-Areas/
+├── Content/          # Content strategy and asset library
+│   ├── Blog/         # Blog strategy
+│   ├── Thought_Leadership/ # Executive content
+│   └── Social/       # Social media voice
+└── People/           # Key relationships
+    ├── Internal/     # Executive team, sales, product
+    └── External/     # Agencies, PR, media contacts
+
+# Resources = reference material
+06-Resources/
+├── Strategy/         # Brand strategy, GTM plans
+├── Brand/            # Brand guidelines, messaging, positioning
+├── Market/           # Market research, competitive analysis
+├── Templates/        # Campaign briefs, board update templates
+├── Playbooks/        # Marketing playbooks
+└── Learnings/        # Campaign post-mortems, what works
+
+# Archives = historical records
+07-Archives/
+├── 04-Projects/         # Completed campaigns, past events
+├── Plans/            # Daily/weekly plans
+└── Reviews/          # Daily/weekly/quarterly reviews
+
+# Inbox = capture zone
+00-Inbox/
+├── Meetings/         # All meeting notes
+├── Ideas/            # Campaign and content ideas
+├── Requests/         # Cross-functional requests
 ```
+
+**Role-specific areas for CMO:**
+- `05-Areas/Content/` - Content strategy, thought leadership, editorial calendar
+
+**What goes where:**
+- **04-Projects/**: Campaigns, brand refreshes, events, research (time-bound)
+- **05-Areas/Content/**: Ongoing content strategy, editorial calendar, thought leadership
+- **05-Areas/People/**: Executive team, sales/product partners, agency relationships
+- **06-Resources/Brand/**: Brand guidelines, messaging frameworks (reference)
+- **06-Resources/Strategy/**: Marketing strategy, GTM plans, frameworks
+
+**Areas vs. Projects:**
+- **Content strategy** (Area) = Ongoing editorial calendar, thought leadership program
+- **Campaign** (Project) = Q1 Product Launch campaign (Jan - Mar)
 
 ## Templates
 

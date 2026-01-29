@@ -21,7 +21,7 @@ Run `/process-meetings` whenever you want to pull in new meetings. Uses Claude d
 - Automatic pillar classification
 
 **Output:**
-- Meeting notes: `Inbox/Meetings/YYYY-MM-DD/meeting-slug.md`
+- Meeting notes: `00-Inbox/Meetings/YYYY-MM-DD/meeting-slug.md`
 - Person pages updated with meeting references
 
 ## Automatic Processing (Optional)

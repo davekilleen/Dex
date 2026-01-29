@@ -16,49 +16,69 @@
 - **Executive Reporting** - Board updates, product metrics, strategy
 - **Cross-functional Leadership** - Engineering, design, GTM alignment
 
-## Folder Structure
+## Folder Structure (PARA)
+
+*Dex uses PARA: Projects, Areas, Resources, Archives*
 
 ```
-Active/
-├── Strategy/
-│   ├── Product_Vision.md
-│   ├── Portfolio_Strategy.md
-│   ├── Annual_Plan.md
-│   └── OKRs.md
-├── Products/
+# State files at root
+03-Tasks/Tasks.md              # Task backlog tagged with pillars and goals
+02-Week_Priorities/Week_Priorities.md    # Top 3 priorities this week
+01-Quarter_Goals/Quarter_Goals.md      # Quarterly goals (required for CPOs)
+
+# Projects = time-bound product initiatives
+04-Projects/
+├── [Product_Launch]/ # Product launches
+├── Portfolio_Review_Q1/ # Portfolio planning cycles
+├── Customer_Research_[Topic]/ # Research projects
+├── Roadmap_Planning_2026/ # Annual roadmap planning
+└── Hiring_[Role]/    # PM leadership hires
+
+# Areas = ongoing responsibilities
+05-Areas/
+└── People/           # Key relationships
+    ├── Internal/     # Executive team, PM leadership, eng, design, GTM
+    └── External/     # Customer executives, advisory board
+
+# Resources = reference material
+06-Resources/
+├── Strategy/         # Product vision, portfolio strategy
+├── Products/         # Product documentation
 │   └── [Product_Name]/
 │       ├── Strategy.md
 │       ├── Roadmap.md
 │       └── Metrics.md
-├── Customer/
-│   ├── Research/
-│   ├── Feedback/
-│   └── Executive_Relationships/
-├── Team/
-│   ├── Org.md
-│   ├── Hiring/
-│   └── Development/
-├── Governance/
-│   ├── Reviews/
-│   ├── Decisions/
-│   └── Processes/
-└── Relationships/
-    ├── Executive_Team/
-    ├── PM_Leadership/
-    ├── Engineering/
-    ├── Design/
-    └── GTM/
+├── Customer/         # Research synthesis, feedback analysis
+├── Frameworks/       # Decision frameworks, prioritization
+├── Templates/        # Strategy doc, board update templates
+└── Learnings/        # Product retrospectives, lessons
 
-Inbox/
-├── Meetings/
-├── Ideas/
-└── Decisions/
+# Archives = historical records
+07-Archives/
+├── 04-Projects/         # Completed launches, past roadmap cycles
+├── Plans/            # Daily/weekly plans
+└── Reviews/          # Daily/weekly/quarterly reviews
 
-Resources/
-├── Templates/
-├── Frameworks/
-└── Learnings/
+# Inbox = capture zone
+00-Inbox/
+├── Meetings/         # All meeting notes
+├── Ideas/            # Product ideas, opportunities
+├── Decisions/        # Major product decisions to document
 ```
+
+**Role-specific areas for CPO:**
+- None required - uses universal PARA structure
+
+**What goes where:**
+- **04-Projects/**: Product launches, research studies, roadmap planning (time-bound)
+- **05-Areas/People/**: PM leadership, executive team, customer executives
+- **06-Resources/Products/**: Product strategies, roadmaps, metrics (reference docs)
+- **06-Resources/Strategy/**: Product vision, portfolio strategy, frameworks
+
+**Why no additional areas:**
+- Product work is naturally time-bound (launches, research, planning cycles)
+- Product docs are reference material (06-Resources/Products/)
+- Team management tracked in People/ (PM leadership relationships)
 
 ## Templates
 

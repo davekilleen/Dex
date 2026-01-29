@@ -61,33 +61,55 @@ You're constantly context-switching between customer calls, roadmap meetings, an
 - Competitive analysis
 - Metrics tracking and reporting
 
-## Folder Structure
+## Folder Structure (PARA)
 
-*Created automatically during setup*
+*Dex uses PARA: Projects, Areas, Resources, Archives*
 
 ```
-Active/
-├── Projects/
-│   ├── [Product_Initiative]/
-│   └── Roadmap/
-├── Relationships/
-│   ├── Engineering/
-│   ├── Design/
-│   └── Stakeholders/
-└── Content/
-    ├── PRDs/
-    └── Presentations/
+# State files at root
+03-Tasks/Tasks.md              # Task backlog tagged with pillars and goals
+02-Week_Priorities/Week_Priorities.md    # Top 3 priorities this week
+01-Quarter_Goals/Quarter_Goals.md      # Quarterly goals (optional)
 
-Inbox/
-├── Meetings/
-├── Customer_Feedback/
-└── Ideas/
+# Projects = time-bound product initiatives
+04-Projects/
+├── [Feature_Name]/   # Active features being built
+├── [Research_Study]/ # Time-bound research projects
+└── Roadmap_Planning/ # Roadmap cycles (if time-bound)
 
-Resources/
-├── Research/
-├── Competitors/
-└── Metrics/
+# Areas = ongoing responsibilities
+05-Areas/
+└── People/           # Stakeholders, eng partners, customers
+    ├── Internal/     # Engineering, design, business partners
+    └── External/     # Customers, users, partners
+
+# Resources = reference material
+06-Resources/
+├── Research/         # Customer research synthesis
+├── Competitors/      # Competitive analysis
+├── Metrics/          # Product metrics and dashboards
+└── Learnings/        # Post-mortems, retrospectives
+
+# Archives = historical records
+07-Archives/
+├── 04-Projects/         # Shipped features, completed research
+├── Plans/            # Daily/weekly plans
+└── Reviews/          # Daily/weekly/quarterly reviews
+
+# Inbox = capture zone
+00-Inbox/
+├── Meetings/         # All meeting notes
+├── Customer_Feedback/ # Quick customer captures
+└── Ideas/            # Product ideas and quick captures
 ```
+
+**Role-specific areas for Product Manager:**
+- None required - uses universal PARA structure
+
+**What goes where:**
+- **04-Projects/**: Feature development, research studies, roadmap planning cycles
+- **05-Areas/People/**: Engineering partners, design partners, stakeholders, key customers
+- **06-Resources/**: Customer research, competitive intel, product metrics, learnings
 
 ## Templates
 

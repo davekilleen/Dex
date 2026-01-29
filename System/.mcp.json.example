@@ -1,0 +1,64 @@
+{
+  "mcpServers": {
+    "work-mcp": {
+      "type": "stdio",
+      "command": "python",
+      "args": [
+        "{{VAULT_PATH}}/core/mcp/work_server.py"
+      ],
+      "env": {
+        "VAULT_PATH": "{{VAULT_PATH}}"
+      }
+    },
+    "calendar-mcp": {
+      "type": "stdio",
+      "command": "python",
+      "args": [
+        "{{VAULT_PATH}}/core/mcp/calendar_server.py"
+      ],
+      "env": {
+        "VAULT_PATH": "{{VAULT_PATH}}"
+      }
+    },
+    "granola-mcp": {
+      "type": "stdio",
+      "command": "python",
+      "args": [
+        "{{VAULT_PATH}}/core/mcp/granola_server.py"
+      ],
+      "env": {
+        "VAULT_PATH": "{{VAULT_PATH}}"
+      }
+    },
+    "career-mcp": {
+      "type": "stdio",
+      "command": "python",
+      "args": [
+        "{{VAULT_PATH}}/core/mcp/career_server.py"
+      ],
+      "env": {
+        "VAULT_PATH": "{{VAULT_PATH}}"
+      }
+    },
+    "dex-improvements-mcp": {
+      "type": "stdio",
+      "command": "python",
+      "args": [
+        "{{VAULT_PATH}}/core/mcp/dex_improvements_server.py"
+      ],
+      "env": {
+        "VAULT_PATH": "{{VAULT_PATH}}"
+      }
+    },
+    "resume-mcp": {
+      "type": "stdio",
+      "command": "python",
+      "args": [
+        "{{VAULT_PATH}}/core/mcp/resume_server.py"
+      ],
+      "env": {
+        "VAULT_PATH": "{{VAULT_PATH}}"
+      }
+    }
+  }
+}

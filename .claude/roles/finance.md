@@ -70,41 +70,61 @@ You're juggling close cycles, forecasts, board reports, and ad-hoc requests from
 - Business reviews — Financial performance, KPI tracking
 - Audit support — Documentation, testing, compliance
 
-## Folder Structure
+## Folder Structure (PARA)
 
-*Created automatically during setup*
+*Dex uses PARA: Projects, Areas, Resources, Archives*
 
 ```
-Active/
-├── Planning/
-│   ├── Annual_Budget/
-│   ├── Forecasts/
-│   └── Scenarios/
-├── Reporting/
-│   ├── Monthly/
-│   ├── Quarterly/
-│   └── Board/
-├── Close/
-│   └── [Period]/
-│       ├── Checklist.md
-│       └── Issues.md
-├── Business_Partnership/
-│   └── [Department]/
-└── Relationships/
-    ├── Leadership/
-    ├── Departments/
-    └── Auditors/
+# State files at root
+03-Tasks/Tasks.md              # Task backlog tagged with pillars and goals
+02-Week_Priorities/Week_Priorities.md    # Top 3 priorities this week
+01-Quarter_Goals/Quarter_Goals.md      # Quarterly goals (optional)
 
-Inbox/
-├── Meetings/
-├── Requests/
-└── Ideas/
+# Projects = time-bound initiatives
+04-Projects/
+├── [Period]_Close/   # Month-end/quarter-end close cycles
+├── Board_Prep_[Date]/ # Board meeting preparation
+├── Annual_Budget_2026/ # Budget planning cycles
+└── [Audit_Name]/     # Audits and compliance projects
 
-Resources/
-├── Templates/
-├── Policies/
-└── Learnings/
+# Areas = ongoing responsibilities
+05-Areas/
+└── People/           # Business partners and stakeholders
+    ├── Internal/     # Department heads, leadership, FP&A team
+    └── External/     # Auditors, bankers, board members
+
+# Resources = reference material
+06-Resources/
+├── Templates/        # Budget templates, variance analysis formats
+├── Policies/         # Financial policies and procedures
+├── Audit/            # Audit documentation and controls
+└── Learnings/        # Process improvements, post-mortems
+
+# Archives = historical records
+07-Archives/
+├── 04-Projects/         # Completed close cycles, past budgets, audits
+├── Plans/            # Daily/weekly plans
+└── Reviews/          # Daily/weekly/quarterly reviews
+
+# Inbox = capture zone
+00-Inbox/
+├── Meetings/         # All meeting notes
+├── Requests/         # Ad-hoc analysis requests
+├── Ideas/            # Process improvement ideas
 ```
+
+**Role-specific areas for Finance:**
+- None required - uses universal PARA structure
+
+**What goes where:**
+- **04-Projects/**: Close cycles, board prep, budget planning, audits (all time-bound)
+- **05-Areas/People/**: Business partners, leadership, auditors (track relationships and context)
+- **06-Resources/**: Templates, policies, audit docs, procedures
+
+**Why no additional areas:**
+- Finance work is naturally time-bound (close cycles, planning periods, audits)
+- Fits perfectly into 04-Projects/ without needing ongoing "areas"
+- Relationships tracked in People/
 
 ## Templates
 

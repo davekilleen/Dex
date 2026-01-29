@@ -46,12 +46,12 @@ Active/
     ├── Banks/
     └── Auditors/
 
-Inbox/
+00-Inbox/
 ├── Meetings/
 ├── Decisions/
 └── Ideas/
 
-Resources/
+06-Resources/
 ├── Templates/
 ├── Models/
 └── Learnings/

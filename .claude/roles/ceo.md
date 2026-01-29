@@ -1,5 +1,21 @@
 # CEO
 
+## Communication Context
+
+**Default communication preferences:**
+- Formality: Professional casual
+- Directness: Very direct (time is scarce)
+- Detail level: Concise (can always ask for more)
+- Career level: C-Suite
+
+**Interaction style notes:**
+- Lead with strategic implications and organizational outcomes
+- Focus on what matters for the company, not just the function
+- Minimal tactical detail unless explicitly requested
+- Challenge assumptions directly - CEOs appreciate pushback
+
+---
+
 ## Pillars
 
 1. **Vision & Strategy** - Company direction, market positioning, long-term planning
@@ -16,46 +32,65 @@
 - **External Representation** - Press, conferences, partnerships
 - **Culture & Values** - All-hands, recognition, communications
 
-## Folder Structure
+## Folder Structure (PARA)
+
+*Dex uses PARA: Projects, Areas, Resources, Archives*
 
 ```
-Active/
-├── Strategy/
-│   ├── Vision.md
-│   ├── Annual_Plan.md
-│   ├── OKRs.md
-│   └── Strategic_Initiatives/
-├── Board/
-│   ├── Meetings/
-│   ├── Materials/
-│   └── Governance/
-├── Executive_Team/
-│   └── [Exec_Name]/
-│       ├── 1on1s.md
-│       └── Goals.md
-├── Investors/
-│   ├── Updates/
-│   ├── Pipeline/
-│   └── Materials/
-├── Relationships/
-│   ├── Board/
-│   ├── Executives/
-│   ├── Key_Customers/
-│   └── Partners/
-└── Content/
-    ├── External_Comms/
-    └── Internal_Comms/
+# State files at root
+03-Tasks/Tasks.md              # Task backlog tagged with pillars and goals
+02-Week_Priorities/Week_Priorities.md    # Top 3 priorities this week
+01-Quarter_Goals/Quarter_Goals.md      # Quarterly goals (required for CEOs)
 
-Inbox/
-├── Meetings/
-├── Decisions/
-└── Ideas/
+# Projects = time-bound strategic initiatives
+04-Projects/
+├── Board_Meeting_[Date]/ # Board prep and materials
+├── Fundraise_Series_B/   # Fundraising campaigns
+├── Annual_Planning_2026/ # Strategic planning cycles
+├── [Strategic_Initiative]/ # Major company initiatives
+└── Hiring_[Role]/        # Executive searches
 
-Resources/
-├── Templates/
-├── Frameworks/
-└── Learnings/
+# Areas = ongoing responsibilities
+05-Areas/
+├── Team/             # Executive team management
+│   └── [Exec_Name].md # 1:1 threads, development plans, delegation
+└── People/           # Key relationships
+    ├── Internal/     # Leadership team, key employees
+    └── External/     # Board, investors, customers, partners
+
+# Resources = reference material
+06-Resources/
+├── Strategy/         # Vision docs, market analysis, frameworks
+├── Board/            # Board governance, historical materials
+├── Investors/        # Investor updates, cap table, materials
+├── Templates/        # Decision templates, all-hands formats
+└── Learnings/        # Strategic lessons, post-mortems
+
+# Archives = historical records
+07-Archives/
+├── 04-Projects/         # Completed initiatives, past board meetings
+├── Plans/            # Daily/weekly plans
+└── Reviews/          # Daily/weekly/quarterly reviews
+
+# Inbox = capture zone
+00-Inbox/
+├── Meetings/         # All meeting notes
+├── Decisions/        # Major decisions to document
+├── Ideas/            # Strategic ideas
 ```
+
+**Role-specific areas for CEO:**
+- `05-Areas/Team/` - Executive team management and 1:1 threads
+
+**What goes where:**
+- **04-Projects/**: Board meetings, fundraising, strategic planning, hiring (time-bound)
+- **05-Areas/Team/**: Executive 1:1s, development plans, delegation tracking (ongoing)
+- **05-Areas/People/**: Board members, investors, key customers, partners
+- **06-Resources/**: Strategy docs, board materials, investor updates, frameworks
+
+**Areas vs. Projects:**
+- **Team member** (Area) = Ongoing 1:1 thread with CTO, development plan
+- **Initiative** (Project) = Complete Series B fundraise by Q2
 
 ## Templates
 
@@ -95,7 +130,7 @@ Resources/
 - Full executive team
 - Mature board
 - Complex org management
-- **Folder adjustment:** Add `M&A/`, `Strategic_Projects/`
+- **Folder adjustment:** Add `M&A/`, `Strategic_04-Projects/`
 - **Key focus:** Strategic leadership, M&A, market expansion
 
 ### 10k+ (Large Enterprise)

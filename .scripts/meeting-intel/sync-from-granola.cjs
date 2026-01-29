@@ -301,7 +301,7 @@ Generate a structured analysis in this exact markdown format:
 ## Action Items
 
 ### For Me
-- [ ] [Specific task] - by [timeframe if mentioned] ^mt-${new Date().toISOString().split('T')[0]}-${generateBlockId()}
+- [ ] [Specific task] - by [timeframe if mentioned] ^task-${new Date().toISOString().split('T')[0].replace(/-/g, '')}-${generateTaskId()}
 
 ### For Others
 - [ ] @[Person]: [Specific task]
@@ -320,26 +320,27 @@ Be concise but thorough. Extract real insights, not generic summaries. If someth
 }
 
 // ============================================================================
-// GEMINI ANALYSIS
+// LLM ANALYSIS
 // ============================================================================
 
-async function analyzeWithGemini(meeting, profile, pillars) {
-  const { generateContentRaw, GEMINI_API_KEY } = require('../lib/gemini-client.cjs');
+async function analyzeWithLLM(meeting, profile, pillars) {
+  const { generateContent, isConfigured, getActiveProvider } = require('../lib/llm-client.cjs');
   
-  if (!GEMINI_API_KEY) {
-    throw new Error('GEMINI_API_KEY not found in environment');
+  if (!isConfigured()) {
+    throw new Error('No LLM API key found. Set ANTHROPIC_API_KEY, OPENAI_API_KEY, or GEMINI_API_KEY in .env');
   }
   
   const prompt = buildAnalysisPrompt(meeting, profile, pillars);
+  const provider = getActiveProvider();
   
   try {
-    const response = await generateContentRaw(prompt, {
-      maxOutputTokens: 3000,
-      thinkingLevel: 'LOW'
+    log(`Analyzing ${meeting.title} with ${provider}...`);
+    const response = await generateContent(prompt, {
+      maxOutputTokens: 3000
     });
     return response;
   } catch (err) {
-    log(`Gemini analysis failed for ${meeting.title}: ${err.message}`);
+    log(`LLM analysis failed for ${meeting.title}: ${err.message}`);
     throw err;
   }
 }
@@ -367,8 +368,14 @@ function buildMeetingContent(meeting) {
   return content;
 }
 
-function generateBlockId() {
-  return Math.random().toString(36).substring(2, 6);
+function generateTaskId() {
+  // Generate sequential 3-digit ID for the day
+  // In the automated script, we'll use a simple counter
+  const now = new Date();
+  const ms = now.getMilliseconds();
+  const seconds = now.getSeconds();
+  const num = ((seconds * 1000 + ms) % 999) + 1; // Ensures 1-999
+  return num.toString().padStart(3, '0');
 }
 
 // ============================================================================
@@ -426,8 +433,8 @@ processed: ${new Date().toISOString()}
 # ${meeting.title}
 
 **Date:** ${date} ${time}
-**Participants:** ${filteredParticipants.map(p => `People/External/${p.replace(/\s+/g, '_')}.md`).join(', ') || 'Unknown'}
-${meeting.company ? `**Company:** Active/Relationships/Companies/${meeting.company}.md` : ''}
+**Participants:** ${filteredParticipants.map(p => `05-Areas/People/External/${p.replace(/\s+/g, '_')}.md`).join(', ') || 'Unknown'}
+${meeting.company ? `**Company:** 05-Areas/Accounts/${meeting.company}.md` : ''}
 
 ---
 
@@ -462,7 +469,7 @@ ${meeting.transcript.slice(0, 5000)}${meeting.transcript.length > 5000 ? '\n\n[T
   
   return {
     filepath,
-    wikilink: `Inbox/Meetings/${date}/${slug}.md`
+    wikilink: `00-Inbox/Meetings/${date}/${slug}.md`
   };
 }
 
@@ -536,31 +543,9 @@ Meetings pending processing and recently processed.
 // ============================================================================
 
 function runPostProcessing() {
-  const today = new Date().toISOString().split('T')[0];
-  
-  // Update person pages
-  try {
-    log('Running person page updates...');
-    execSync(`node "${path.join(__dirname, 'update-person-pages.cjs')}"`, {
-      cwd: VAULT_ROOT,
-      encoding: 'utf-8',
-      timeout: 60000
-    });
-  } catch (err) {
-    log(`Person page update failed: ${err.message}`);
-  }
-  
-  // Generate daily synthesis
-  try {
-    log('Generating daily synthesis...');
-    execSync(`node "${path.join(__dirname, 'daily-synthesis.cjs')}" ${today}`, {
-      cwd: VAULT_ROOT,
-      encoding: 'utf-8',
-      timeout: 60000
-    });
-  } catch (err) {
-    log(`Daily synthesis failed: ${err.message}`);
-  }
+  // Post-processing has been removed - person page updates and synthesis
+  // are now handled via MCP tools during /process-meetings command
+  log('Post-processing skipped (handled by MCP tools)');
 }
 
 // ============================================================================
@@ -627,9 +612,9 @@ async function main() {
     log(`  Participants: ${meeting.participants.join(', ') || 'Unknown'}`);
     
     try {
-      // Analyze with Gemini
-      log('  Calling Gemini for analysis...');
-      const analysis = await analyzeWithGemini(meeting, profile, pillars);
+      // Analyze with LLM
+      log('  Calling LLM for analysis...');
+      const analysis = await analyzeWithLLM(meeting, profile, pillars);
       
       // Create meeting note
       log('  Creating meeting note...');

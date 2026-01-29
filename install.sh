@@ -22,11 +22,11 @@ if [ "$NODE_VERSION" -lt 18 ]; then
 fi
 echo "✅ Node.js $(node -v)"
 
-# Check Python (for Task MCP)
+# Check Python (for Work MCP)
 if command -v python3 &> /dev/null; then
     echo "✅ Python $(python3 --version | cut -d' ' -f2)"
 else
-    echo "⚠️  Python 3 not found - Task MCP server won't work"
+    echo "⚠️  Python 3 not found - Work MCP server won't work"
     echo "   Install Python 3.8+ for full functionality"
 fi
 
@@ -42,20 +42,15 @@ else
     exit 1
 fi
 
-# Create .env if it doesn't exist
-if [ ! -f .env ]; then
-    echo ""
-    echo "📝 Creating .env file from template..."
-    cp env.example .env
-    echo "   Edit .env to add your API keys (optional)"
-fi
+# Skip .env creation - it's created during /setup if needed
+# (Most users don't need API keys - everything works through Cursor)
 
 # Create .mcp.json with current path
 if [ ! -f .mcp.json ]; then
     echo ""
     echo "📝 Creating .mcp.json with workspace path..."
     CURRENT_PATH="$(pwd)"
-    sed "s|{{VAULT_PATH}}|$CURRENT_PATH|g" .mcp.json.example > .mcp.json
+    sed "s|{{VAULT_PATH}}|$CURRENT_PATH|g" System/.mcp.json.example > .mcp.json
     echo "   MCP servers configured for: $CURRENT_PATH"
 fi
 
@@ -70,9 +65,9 @@ fi
 
 # Install Python dependencies for MCP (optional)
 echo ""
-echo "📦 Checking Python dependencies for Task MCP..."
+echo "📦 Checking Python dependencies for Work MCP..."
 if command -v pip3 &> /dev/null; then
-    pip3 install mcp pyyaml --quiet 2>/dev/null || echo "⚠️  Could not install Python deps - Task MCP may not work"
+    pip3 install mcp pyyaml --quiet 2>/dev/null || echo "⚠️  Could not install Python deps - Work MCP may not work"
 fi
 
 # Success
@@ -84,6 +79,4 @@ echo "Next steps:"
 echo "  1. Open this folder in Cursor: cursor ."
 echo "  2. Start a chat and run: /setup"
 echo "  3. Answer the setup questions (~5 minutes)"
-echo ""
-echo "Optional: Add API keys to .env for advanced features"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"

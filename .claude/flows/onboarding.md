@@ -1,12 +1,14 @@
 # Dex Onboarding Flow
 
-Guide new users through setup in a friendly ~2 minute conversation.
+Guide new users through setup in a friendly ~5 minute conversation. Keep it simple, practical, and focused on getting them working quickly.
 
-## Step 1: Name
+## Step 1: Welcome
 
-Say: "Welcome to Dex! I'm your personal knowledge assistant. Let's get you set up."
+Say: "Welcome to Dex! I'm your personal knowledge assistant.
 
-"First, what's your name?"
+**What Dex does:** I help you organize your professional life—meetings, projects, people, ideas, and tasks—all in markdown files you own. Think of me as your executive assistant who never forgets context.
+
+Let's get you set up. First, what's your name?"
 
 ## Step 2: Role
 
@@ -78,83 +80,215 @@ Ask: "What's your company size?"
 4. 10,000+ people (large enterprise)
 ```
 
-## Step 4: Priorities
+## Step 3.5: Email Domain
 
-Ask: "What are your 2-3 main priorities right now? These will become your strategic pillars."
+Ask: "What's your company email domain? This helps me automatically:
+- Identify internal colleagues vs external contacts
+- Create company pages for external organizations you meet with"
 
-## Step 5: Working Style
+**Example format:**
+- "pendo.io" (without the @)
+- "acme.com"
+- Multiple domains: "acme.com, acme.io"
 
-Ask: "How would you describe your working style? For example: fast-paced and action-biased, methodical and detail-oriented, big-picture thinker, etc."
+**Store in** `System/user-profile.yaml` as `email_domain` field.
 
-This helps calibrate tone and pacing of responses.
+**If they're unsure or don't have one:** Set to empty string, system will default to External for all people.
 
-## Step 6: Profile Research (Optional)
+## Step 4: Strategic Pillars
 
-Ask: "Would you like me to research your public work to better understand your context?"
+Ask: "What are the 2-3 main themes of your role? These are your strategic pillars—not time-bound priorities, but the broader areas you focus on long-term."
 
-If yes: Search for info, confirm findings, save relevant context.
-If no: Skip to next step.
+**If they need examples, show ONLY role-relevant ones:**
+- **Product Manager:** Product strategy, Customer discovery, Engineering partnerships
+- **Sales/AE:** Pipeline generation, Customer relationships, Deal execution
+- **Customer Success:** Customer retention, Product adoption, Expansion opportunities
+- **Engineering:** System reliability, Technical excellence, Team growth
+- **Marketing:** Demand generation, Brand positioning, Content strategy
+- **CEO/Founder:** Revenue growth, Team development, Product vision
+- **For other roles:** Adapt based on their role - think about what they focus on day-to-day
+
+Say: "These pillars organize your work. Everything connects: pillars → quarterly goals → weekly priorities → daily tasks. You'll see how this works as you use the system."
+
+## Step 5: Communication Preferences
+
+Say: "Quick preferences check—how should I communicate with you?"
+
+Use the AskQuestion tool to present 3 questions:
+
+1. **Formality Level:**
+   - Formal (professional, structured)
+   - Professional but casual (friendly but business-focused) [recommended]
+   - Casual (relaxed, conversational)
+
+2. **Directness:**
+   - Very direct (bottom line up front, minimal context)
+   - Balanced (context + action) [recommended]
+   - Supportive (extra encouragement and explanation)
+
+3. **Your Career Level:**
+   - Early career (first 0-3 years in role)
+   - Mid-level (3-7 years, established in role)
+   - Senior (7+ years, deep expertise)
+   - Leadership (managing teams/functions)
+   - Executive / C-Suite
+
+Explain: "This helps me match my tone and language to what works for you. You can always change these later by editing `System/user-profile.yaml`."
+
+**After receiving responses:**
+1. Save to `System/user-profile.yaml` → `communication` section
+2. Map formality to: formal, professional_casual, casual
+3. Map directness to: very_direct, balanced, supportive
+4. Map career level to: junior, mid, senior, leadership, c_suite
+5. Set default coaching_style based on career level:
+   - Early career → encouraging
+   - Mid-level → collaborative
+   - Senior/Leadership/Executive → challenging
 
 ## Step 6: Generate Structure
 
-Based on their answers:
+Say: "Perfect! I'm creating your workspace now. Here's what you're getting:
+
+**Dex uses the PARA method:**
+- **04-Projects/** — Time-bound work with clear outcomes
+- **05-Areas/** — Ongoing responsibilities (People/, Career/, plus role-specific areas)
+- **06-Resources/** — Reference material (learnings, templates, system docs)
+- **07-Archives/** — Historical records (plans, reviews, completed projects)
+- **00-Inbox/** — Capture zone (meetings, ideas, notes)
+
+This separates active work from reference material and keeps your capture zone lightweight."
+
+**Then execute:**
 1. Read the appropriate role definition from `.claude/roles/[role].md`
-2. Adjust complexity based on company size
-3. Create the folder structure:
-   - `Active/Relationships/` — Key accounts and stakeholders
-   - `Active/Content/` — Thought leadership and docs
-   - `Inbox/Voice_Notes/` — Quick captures
-   - `Inbox/Ideas/` — Fleeting thoughts
-   - Additional role-specific folders from role definition
-4. Update CLAUDE.md:
+2. Read `.claude/reference/role-areas-mapping.md` to check if role needs additional areas
+3. Create the PARA folder structure:
+   - `04-Projects/` — Time-bound initiatives
+   - `05-Areas/People/Internal/` and `05-Areas/People/External/` — Person pages (universal)
+   - `05-Areas/Companies/` — External organizations (universal for all roles)
+   - `Inbox/Meetings/`, `Inbox/Ideas/` — Capture zone
+   - `06-Resources/Learnings/`, `06-Resources/Templates/` — Reference material
+   - `07-Archives/04-Projects/`, `07-Archives/Plans/`, `07-Archives/Reviews/` — Historical records
+   - **Only if mapped:** Create role-specific area (e.g., `05-Areas/Accounts/` for Sales, `05-Areas/Team/` for CEO, `05-Areas/Content/` for Marketing)
+4. Create state files at root:
+   - `03-Tasks/Tasks.md` — Task backlog (empty to start)
+   - `02-Week_Priorities/Week_Priorities.md` — Weekly priorities (empty to start)
+5. Update CLAUDE.md:
    - Update the **User Profile** section with their name, role, company size, and pillars
-   - Update the **Folder Structure** section to reflect the actual folders created (including role-specific folders)
-5. Update `System/pillars.yaml` with their strategic pillars
+   - Update the **Folder Structure (PARA)** section to reflect the actual areas created (add role-specific area to the list if created)
+6. Update `System/pillars.yaml` with their strategic pillars
+7. Update `System/user-profile.yaml`:
+   - Add name, role, company, company_size from Steps 1-3
+   - Add email_domain from Step 3.5
+   - Add communication preferences from Step 5
+   - Add role_group (based on mapping)
+   - Set meeting_intelligence flags based on role (e.g., customer_intel for PM, stakeholder_dynamics for Sales)
 
-## Step 7: Meeting Intelligence (Optional)
+**After creation, say:** "✓ Workspace created! You now have a structure tailored for [their role]."
 
-Ask: "Do you use Granola for meeting transcription?"
+## Step 7: Optional Features
+
+Say: "The core system is ready. A couple optional add-ons you can set up now or skip:
+
+- **Journaling** — Daily/weekly reflection prompts (2-3 min/day)
+- **Granola** — Automatic meeting processing (if you use it)
+- **Background Learning** — Automatic checks for new Claude features and pending learnings (macOS only)
+
+Want to set up any of these now, or skip and discover them later?"
+
+**Note:** Background learning checks run automatically during session start and `/daily-plan` even without this setup. This is just an optimization for faster execution.
+
+### Journaling Setup (if selected):
+
+Ask: "Which journaling prompts do you want?"
+- Morning (intention-setting)
+- Evening (reflection)
+- Weekly (patterns)
+- All three
+
+**Then:**
+1. Create `00-Inbox/Journals/` folder
+2. Update `System/user-profile.yaml` with selections
+3. Say: "✓ Journaling enabled. You'll see prompts in `/daily-plan` and `/review`"
+
+### Granola Setup (if selected):
+
+Ask: "How would you like to process meetings?"
+- **Manual** (recommended) — Run `/process-meetings` when you want. No API key needed.
+- **Automatic** — Background sync every 30 minutes. Requires API key (Gemini/Anthropic/OpenAI).
+
+**If manual:** Update `System/user-profile.yaml` with `meeting_processing: manual`
+
+**If automatic:**
+1. Ask which provider (Gemini has free tier)
+2. Get their API key
+3. Update `System/user-profile.yaml` and `.env`
+
+### Background Learning Setup (if selected, macOS only):
+
+Say: "This installs two background jobs that run automatically:
+- **Changelog monitor** - Checks for new Claude Code features every 6 hours
+- **Learning review** - Prompts you to review accumulated learnings daily at 5pm
+
+Without this, checks still run during session start and `/daily-plan` - this just makes them faster."
+
+Ask: "Install background automation?"
 
 **If yes:**
-1. Check if Granola cache exists at `~/Library/Application Support/Granola/cache-v3.json`
-2. Ask: "How would you like to process meetings?"
-   - **Manual** (recommended) — Run `/process-meetings` when you want. Uses Claude directly, no API key needed.
-   - **Automatic** — Background sync every 30 minutes. Requires an API key.
-3. If automatic: Ask which provider (Gemini free tier, Anthropic, or OpenAI)
-4. Configure `System/user-profile.yaml` with their choice
+1. Run: `bash .scripts/install-learning-automation.sh`
+2. Verify installation completed successfully
+3. Say: "✓ Background automation installed. Checks will run automatically."
 
-**If no:** Skip to next step.
+**If no:**
+Say: "No problem! Self-learning checks will still run inline during session start and `/daily-plan`. You can install later with `bash .scripts/install-learning-automation.sh`"
 
-## Step 8: API Keys (Optional)
+## Step 8: Completion
 
-Say: "Almost done! Dex works out of the box with your Cursor subscription — no API keys needed."
+Say: "You're all set, [Name]! 
 
-Present only if relevant:
+**Your workspace:**
+- Strategic pillars: [list their pillars]
+- Folder structure: Active/, 00-Inbox/, 06-Resources/
+- [Any optional features they enabled]
 
-| Feature | Requires | Free Tier | Get Key |
-|---------|----------|-----------|---------|
-| `/prompt-improver` | Anthropic API | No free tier | [console.anthropic.com](https://console.anthropic.com/settings/keys) |
-| Automatic Meeting Sync | Gemini/Anthropic/OpenAI | Gemini has free tier | [aistudio.google.com/apikey](https://aistudio.google.com/apikey) |
+**Start here:**
+- Run `/daily-plan` to plan your day
+- Run `/meeting-prep` before your next meeting (I'll ask who's attending)
+- Tell me about a meeting → I'll extract action items and update person pages
+- Run `/dex-level-up` to discover unused features and see role-specific skills for [their role]
 
-Note: Manual meeting processing via `/process-meetings` requires no API key.
+Want to continue with a few more optional features, or start using the system?"
 
-Ask: "Would you like to set up any API keys now? You can always add them later."
+---
 
-If yes:
-1. Ask which keys they want to configure
-2. Provide the signup URL from the table above
-3. Create `.env` from `env.example` with their keys
-4. Confirm setup is complete
+## Post-Onboarding (Optional)
 
-If no: Say "No problem! You can add keys anytime — just copy `env.example` to `.env` and add your keys."
+**If user wants to continue setup:**
 
-## Completion
+Say: "Want to set up quarterly goals? These are 3-5 specific outcomes over 3 months that advance your pillars."
 
-Say: "You're all set, [Name]! Here's what I created for you: [summary]. What would you like to work on first?"
+**If yes:**
+
+Ask: "What are your top 3-5 goals for this quarter? These should be specific outcomes that advance your pillars."
+
+**Then:**
+1. Create `01-Quarter_Goals/Quarter_Goals.md` with their goals
+2. Tag each goal to a pillar
+3. Say: "✓ Goals set! You can update these anytime with `/quarter-plan`"
+
+**If no:**
+Say: "No problem! You can set them up later with `/quarter-plan`."
+
+---
+
+## Final Completion
+
+After all chosen post-onboarding features are set up (or skipped):
+
+Say: "All done! You're ready to use Dex. What would you like to work on first?"
 
 ## For Existing Notes
 
-If user mentions they have existing notes, say: "Just copy them into the `Inbox/` folder and I'll help you organize them."
+If user mentions they have existing notes, say: "Just copy them into the `00-Inbox/` folder and I'll help you organize them."
 
 ## Viewing Your Notes
 

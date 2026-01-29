@@ -1,7 +1,6 @@
 # User Profile Configuration
 #
 # This file stores your identity and preferences for personalized AI interactions.
-# Edit the values below to configure Dex for your role.
 
 # Demo Mode
 # When true, commands read from System/Demo/ instead of real vault
@@ -9,13 +8,43 @@
 demo_mode: false
 
 # Your name (used to identify you in meetings, filter yourself from participant lists)
-name: "Your Name"
+name: ""
 
 # Your role (used in meeting analysis prompts)
-role: "Product Manager"
+role: ""
+
+# Role group (for command filtering and adaptation)
+# Options: product, sales, marketing, finance, engineering, customer_success, operations, leadership, design, support, advisory
+role_group: ""
 
 # Your company (optional, adds context to meeting analysis)
 company: ""
+
+# Company size tier
+company_size: ""  # options: startup (1-100), scaling (100-1000), enterprise (1000-10000), large_enterprise (10000+)
+
+# Your company email domain (used to identify internal vs external people)
+# Example: "pendo.io" (without @)
+# Multiple domains: "pendo.io, pendo.com"
+email_domain: ""
+
+# Communication Preferences
+# How the AI adapts its tone and language when working with you
+communication:
+  # Formality level
+  formality: "professional_casual"  # options: formal, professional_casual, casual
+  
+  # Directness preference
+  directness: "balanced"  # options: very_direct, balanced, supportive
+  
+  # Detail level in responses
+  detail_level: "concise"  # options: concise, balanced, comprehensive
+  
+  # Career/seniority context (for tone calibration)
+  career_level: "mid"  # options: junior, mid, senior, leadership, c_suite
+  
+  # Coaching style preference (for career coaching)
+  coaching_style: "collaborative"  # options: encouraging, collaborative, challenging
 
 # Meeting Processing Configuration
 # How Dex processes meetings from Granola
@@ -24,42 +53,60 @@ meeting_processing:
   mode: manual
   
   # API provider for automatic mode: gemini, anthropic, or openai
-  # Only used when mode is "automatic"
   api_provider: gemini
 
 # Meeting Intelligence Configuration
-# Controls what gets extracted from your meetings
+# Controls what gets extracted from your meetings (set during onboarding based on role)
 meeting_intelligence:
   # Extract customer pain points and challenges
-  extract_customer_intel: true
+  extract_customer_intel: false
   
   # Extract competitive mentions and comparisons
-  extract_competitive_intel: true
+  extract_competitive_intel: false
   
   # Extract action items (always recommended)
   extract_action_items: true
   
   # Extract decisions made (always recommended)
   extract_decisions: true
+  
+  # Extract stakeholder dynamics and relationships
+  extract_stakeholder_dynamics: false
+  
+  # Extract budget, authority, need, timeline (BANT for sales)
+  extract_budget_timeline: false
+  
+  # Extract technical decisions and architecture choices
+  extract_technical_decisions: false
 
-# Role-specific presets (for reference):
-#
-# Sales/Account Executive:
-#   extract_customer_intel: true
-#   extract_competitive_intel: true
-#   - Focus: Deal signals, objections, competitive threats
-#
-# Product Manager:
-#   extract_customer_intel: true
-#   extract_competitive_intel: true
-#   - Focus: Feature requests, user needs, market positioning
-#
-# Engineering:
-#   extract_customer_intel: false
-#   extract_competitive_intel: false
-#   - Focus: Technical decisions, blockers, dependencies
-#
-# General/Other:
-#   extract_customer_intel: false
-#   extract_competitive_intel: false
-#   - Focus: Decisions, action items, follow-ups only
+# Journaling Configuration
+# Controls which journal types are enabled
+journaling:
+  # Morning journal: intention-setting for the day
+  morning: false
+  
+  # Evening journal: reflection on the day
+  evening: false
+  
+  # Weekly journal: patterns and synthesis
+  weekly: false
+
+# Quarterly Planning Configuration
+# Controls whether you use quarterly goal setting
+quarterly_planning:
+  # Whether quarterly planning is enabled
+  enabled: false
+  
+  # Has user been asked about quarterly planning during onboarding?
+  prompted: false
+  
+  # Month when Q1 starts (1=Jan, 2=Feb, 4=Apr, etc)
+  # Common: 1 (calendar year), 2 (some fiscal years), 4 (many fiscal years)
+  q1_start_month: 1
+  
+  # Current quarter (auto-calculated by system)
+  current_quarter: "Q1 2026"
+  
+  # Current quarter dates (auto-calculated)
+  quarter_start_date: "2026-01-01"
+  quarter_end_date: "2026-03-31"

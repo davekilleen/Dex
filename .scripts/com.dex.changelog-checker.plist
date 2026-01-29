@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.dex.changelog-checker</string>
+    
+    <key>ProgramArguments</key>
+    <array>
+        <string>/usr/local/bin/node</string>
+        <string>/Users/dave/Dex/Dex/.scripts/check-anthropic-changelog.cjs</string>
+    </array>
+    
+    <key>StartInterval</key>
+    <integer>21600</integer> <!-- 6 hours in seconds -->
+    
+    <key>RunAtLoad</key>
+    <true/>
+    
+    <key>StandardOutPath</key>
+    <string>/Users/dave/Dex/Dex/.scripts/logs/changelog-checker-stdout.log</string>
+    
+    <key>StandardErrorPath</key>
+    <string>/Users/dave/Dex/Dex/.scripts/logs/changelog-checker-stderr.log</string>
+    
+    <key>WorkingDirectory</key>
+    <string>/Users/dave/Dex/Dex</string>
+    
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    </dict>
+</dict>
+</plist>

@@ -4,7 +4,7 @@
 
 **Type:** Design Review
 
-**Related:** Active/Projects/Mobile_App_Launch.md, Active/Projects/Customer_Portal_Redesign.md
+**Related:** 04-Projects/Mobile_App_Launch.md, 04-Projects/Customer_Portal_Redesign.md
 
 ---
 

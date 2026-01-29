@@ -26,7 +26,7 @@ Active/
 │       ├── Goals.md
 │       ├── Sessions/
 │       ├── Progress.md
-│       └── Resources/
+│       └── 06-Resources/
 ├── Programs/
 │   ├── Individual/
 │   ├── Group/
@@ -45,12 +45,12 @@ Active/
     ├── Colleagues/
     └── Supervisors/
 
-Inbox/
+00-Inbox/
 ├── Meetings/
 ├── Inquiries/
 └── Ideas/
 
-Resources/
+06-Resources/
 ├── Templates/
 ├── Tools/
 ├── Exercises/

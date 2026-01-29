@@ -66,41 +66,67 @@ Every deal has a dozen stakeholders, competing priorities, and details that matt
 - Competitive positioning — Battlecards, objection handling, differentiation
 - Forecast updates — Commit accuracy, deal progression, risk flags
 
-## Folder Structure
+## Folder Structure (PARA)
 
-*Created automatically during setup*
+*Dex uses PARA: Projects, Areas, Resources, Archives*
 
 ```
-Active/
-├── Pipeline/
-│   ├── Prospecting/
-│   ├── Discovery/
-│   ├── Evaluation/
-│   ├── Negotiation/
-│   └── Closed_Won/
-├── Accounts/
-│   └── [Account_Name]/
-│       ├── Overview.md
-│       ├── Stakeholders.md
-│       └── Deal_History.md
-├── Relationships/
-│   ├── Champions/
-│   ├── Partners/
-│   └── Internal/
-└── Content/
-    ├── Battlecards/
-    └── Case_Studies/
+# State files at root
+03-Tasks/Tasks.md              # Task backlog tagged with pillars and goals
+02-Week_Priorities/Week_Priorities.md    # Top 3 priorities this week
+01-Quarter_Goals/Quarter_Goals.md      # Quarterly goals (optional)
 
-Inbox/
-├── Meetings/
-├── Call_Notes/
-└── Ideas/
+# Projects = time-bound initiatives (deals, campaigns)
+04-Projects/
+├── [Deal_Name]/      # Active opportunities (time-bound)
+├── [Territory_Plan]/ # Territory planning cycles
+└── [Sales_Play]/     # Specific sales campaigns or plays
 
-Resources/
-├── Templates/
-├── Playbooks/
-└── Learnings/
+# Areas = ongoing responsibilities
+05-Areas/
+├── Accounts/         # Strategic customer accounts (ongoing)
+│   └── [Account_Name].md  # Account strategy, stakeholder map, history
+└── People/           # Key relationships
+    ├── Internal/     # Sales team, SEs, CS partners
+    └── External/     # Champions, decision makers, partners
+
+# Resources = reference material
+06-Resources/
+├── Playbooks/        # Sales methodologies, objection handling
+├── Battlecards/      # Competitive positioning
+├── Case_Studies/     # Customer stories
+└── Learnings/        # Deal post-mortems, what worked/didn't
+
+# Archives = historical records
+07-Archives/
+├── 04-Projects/         # Closed deals (won/lost), completed campaigns
+├── Plans/            # Daily/weekly plans
+└── Reviews/          # Daily/weekly/quarterly reviews
+
+# Inbox = capture zone
+00-Inbox/
+├── Meetings/         # All call and meeting notes
+├── Ideas/            # Sales ideas, approaches
 ```
+
+**Role-specific areas for Sales:**
+- `05-Areas/Accounts/` - Strategic account tracking (ongoing relationships)
+
+**Note on Companies vs Accounts:**
+- `05-Areas/Companies/` - Universal company tracking (contacts, meetings, notes)
+- `05-Areas/Accounts/` - Sales/CS-specific (includes ARR, health scores, deal tracking)
+- Many orgs use just Companies/, others use Accounts/ for strategic customers
+- Choose based on your needs during onboarding
+
+**What goes where:**
+- **04-Projects/**: Individual deals (time-bound opportunities), territory plans, sales plays
+- **05-Areas/Accounts/**: Long-term account strategies, stakeholder maps, relationship tracking
+- **05-Areas/People/**: Champions, decision makers, internal partners (SEs, CS team)
+- **06-Resources/**: Playbooks, battlecards, case studies, competitive intel
+
+**Areas vs. Projects:**
+- **Account** (Area) = Ongoing relationship with Acme Corp
+- **Deal** (Project) = Close $50k expansion by Q2 end
 
 ## Templates
 

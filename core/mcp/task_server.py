@@ -45,7 +45,7 @@ class DateTimeEncoder(json.JSONEncoder):
 
 # Configuration - Vault paths
 BASE_DIR = Path(os.environ.get('VAULT_PATH', Path.cwd()))
-TASKS_FILE = BASE_DIR / 'Tasks.md'
+TASKS_FILE = BASE_DIR / '03-Tasks/Tasks.md'
 WEEK_PRIORITIES_FILE = BASE_DIR / 'Inbox' / 'Week Priorities.md'
 GOALS_FILE = BASE_DIR / 'GOALS.md'
 INBOX_DIR = BASE_DIR / 'Inbox'
@@ -72,9 +72,9 @@ def is_demo_mode() -> bool:
         return False
 
 def get_tasks_file() -> Path:
-    """Get the appropriate Tasks.md file based on demo mode"""
+    """Get the appropriate 03-Tasks/Tasks.md file based on demo mode"""
     if is_demo_mode():
-        return DEMO_DIR / 'Tasks.md'
+        return DEMO_DIR / '03-Tasks/Tasks.md'
     return TASKS_FILE
 
 def get_pillars_file() -> Path:
@@ -268,6 +268,119 @@ def guess_priority(item: str) -> str:
     # Default
     return 'P2'
 
+def generate_task_id() -> str:
+    """Generate a unique task ID in format: task-YYYYMMDD-XXX"""
+    date_str = datetime.now().strftime('%Y%m%d')
+    
+    # Find existing task IDs for today to get next sequential number
+    existing_ids = []
+    for md_file in BASE_DIR.rglob('*.md'):
+        try:
+            content = md_file.read_text()
+            pattern = f'\\^task-{date_str}-(\\d{{3}})'
+            matches = re.findall(pattern, content)
+            existing_ids.extend([int(m) for m in matches])
+        except Exception:
+            continue
+    
+    # Get next available number
+    next_num = max(existing_ids, default=0) + 1
+    return f"task-{date_str}-{next_num:03d}"
+
+def extract_task_id(line: str) -> Optional[str]:
+    """Extract task ID from a line"""
+    match = re.search(r'\^(task-\d{8}-\d{3})', line)
+    return match.group(1) if match else None
+
+def find_task_by_id(task_id: str) -> List[Dict[str, Any]]:
+    """Find all instances of a task ID across all markdown files"""
+    instances = []
+    
+    for md_file in BASE_DIR.rglob('*.md'):
+        try:
+            content = md_file.read_text()
+            lines = content.split('\n')
+            
+            for i, line in enumerate(lines):
+                if f'^{task_id}' in line and ('- [ ]' in line or '- [x]' in line):
+                    # Extract task title
+                    title_match = re.match(r'-\s*\[[x ]\]\s*\*?\*?(.+?)\*?\*?\s*\^', line.strip())
+                    title = title_match.group(1).strip() if title_match else line.strip()
+                    
+                    instances.append({
+                        'file': str(md_file),
+                        'line_number': i + 1,
+                        'line_content': line,
+                        'title': title,
+                        'completed': '- [x]' in line
+                    })
+        except Exception as e:
+            logger.error(f"Error reading {md_file}: {e}")
+            continue
+    
+    return instances
+
+def update_task_status_everywhere(task_id: str, completed: bool) -> Dict[str, Any]:
+    """Update task status for all instances of a task ID across all files"""
+    instances = find_task_by_id(task_id)
+    
+    if not instances:
+        return {
+            'success': False,
+            'error': f'No task found with ID: {task_id}'
+        }
+    
+    updated_files = []
+    completion_timestamp = datetime.now().strftime('%Y-%m-%d %H:%M')
+    
+    for instance in instances:
+        try:
+            filepath = Path(instance['file'])
+            content = filepath.read_text()
+            lines = content.split('\n')
+            
+            line_idx = instance['line_number'] - 1
+            old_line = lines[line_idx]
+            
+            # Update checkbox and add/remove completion timestamp
+            if completed:
+                new_line = old_line.replace('- [ ]', '- [x]')
+                
+                # Add completion timestamp after task ID if not already present
+                # Remove any existing timestamp first
+                new_line = re.sub(r'\s*✅\s*\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}', '', new_line)
+                
+                # Find position after task ID to insert timestamp
+                task_id_match = re.search(r'\^' + re.escape(task_id), new_line)
+                if task_id_match:
+                    insert_pos = task_id_match.end()
+                    new_line = new_line[:insert_pos] + f' ✅ {completion_timestamp}' + new_line[insert_pos:]
+            else:
+                # Uncompleting: change checkbox and remove timestamp
+                new_line = old_line.replace('- [x]', '- [ ]')
+                new_line = re.sub(r'\s*✅\s*\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}', '', new_line)
+            
+            if new_line != old_line:
+                lines[line_idx] = new_line
+                filepath.write_text('\n'.join(lines))
+                updated_files.append({
+                    'file': str(filepath),
+                    'line': instance['line_number']
+                })
+        except Exception as e:
+            logger.error(f"Error updating {instance['file']}: {e}")
+            continue
+    
+    return {
+        'success': True,
+        'task_id': task_id,
+        'title': instances[0]['title'] if instances else '',
+        'status': 'completed' if completed else 'not_completed',
+        'completed_at': completion_timestamp if completed else None,
+        'updated_files': updated_files,
+        'instances_found': len(instances)
+    }
+
 def get_pillar_ids() -> List[str]:
     """Get list of valid pillar IDs"""
     return list(PILLARS.keys())
@@ -350,7 +463,7 @@ def extract_file_refs_from_task(task_line: str) -> List[str]:
     return list(set(refs))
 
 def find_tasks_for_page(page_path: str) -> List[Dict[str, Any]]:
-    """Find all tasks in Tasks.md that reference a given page"""
+    """Find all tasks in 03-Tasks/Tasks.md that reference a given page"""
     if not get_tasks_file().exists():
         return []
     
@@ -435,7 +548,7 @@ def update_related_tasks_section(page_path: str, tasks: List[Dict[str, Any]]) ->
     timestamp = datetime.now().strftime('%Y-%m-%d %H:%M')
     
     # Build the new Related Tasks section
-    section_content = f"## Related Tasks\n*Synced from Tasks.md — {timestamp}*\n\n"
+    section_content = f"## Related Tasks\n*Synced from 03-Tasks/Tasks.md — {timestamp}*\n\n"
     
     if tasks:
         section_content += "| Status | Task | Priority |\n"
@@ -470,7 +583,7 @@ def update_related_tasks_section(page_path: str, tasks: List[Dict[str, Any]]) ->
     return True
 
 def sync_task_refs_for_page(page_path: str) -> Dict[str, Any]:
-    """Sync Related Tasks section for a page by reading Tasks.md"""
+    """Sync Related Tasks section for a page by reading 03-Tasks/Tasks.md"""
     tasks = find_tasks_for_page(page_path)
     success = update_related_tasks_section(page_path, tasks)
     
@@ -696,8 +809,8 @@ def refresh_company_page(company_path: str) -> Dict[str, Any]:
     
     # Build Related Tasks section
     tasks_section = "## Related Tasks\n\n"
-    tasks_section += "<!-- Synced from Tasks.md via task MCP -->\n\n"
-    tasks_section += f"*Synced from Tasks.md — {timestamp}*\n\n"
+    tasks_section += "<!-- Synced from 03-Tasks/Tasks.md via task MCP -->\n\n"
+    tasks_section += f"*Synced from 03-Tasks/Tasks.md — {timestamp}*\n\n"
     if tasks:
         tasks_section += "| Status | Task | Priority |\n"
         tasks_section += "|--------|------|----------|\n"
@@ -828,7 +941,7 @@ def create_company_page(name: str, website: str = '', industry: str = '',
 
 ---
 
-## Active Projects
+## Projects
 
 <!-- Projects involving this company -->
 
@@ -847,9 +960,9 @@ def create_company_page(name: str, website: str = '', industry: str = '',
 
 ## Related Tasks
 
-<!-- Synced from Tasks.md via task MCP -->
+<!-- Synced from 03-Tasks/Tasks.md via task MCP -->
 
-*Synced from Tasks.md — never*
+*Synced from 03-Tasks/Tasks.md — never*
 
 | Status | Task | Priority |
 |--------|------|----------|
@@ -890,7 +1003,7 @@ def parse_tasks_file(filepath: Path) -> List[Dict[str, Any]]:
     lines = content.split('\n')
     
     current_section = None
-    task_id = 0
+    task_counter = 0
     
     for i, line in enumerate(lines):
         # Track section headers
@@ -900,22 +1013,27 @@ def parse_tasks_file(filepath: Path) -> List[Dict[str, Any]]:
         
         # Parse task lines
         if line.strip().startswith('- [ ]') or line.strip().startswith('- [x]'):
-            task_id += 1
+            task_counter += 1
             completed = line.strip().startswith('- [x]')
             
-            # Extract task title (remove the checkbox)
-            title_match = re.match(r'-\s*\[[x ]\]\s*\*?\*?(.+?)\*?\*?\s*$', line.strip())
+            # Extract task ID if present
+            task_id = extract_task_id(line)
+            
+            # Extract task title (remove the checkbox and task ID)
+            title_match = re.match(r'-\s*\[[x ]\]\s*\*?\*?(.+?)\*?\*?(?:\s*\^task-\d{8}-\d{3})?\s*$', line.strip())
             title = title_match.group(1).strip() if title_match else line.strip()[6:]
             
             # Clean title - remove file path references for display
             clean_title = re.sub(r'\s*\|\s*(?:People|Active)/[^\s]+', '', title)
             clean_title = re.sub(r'\s+\.md\b', '', clean_title)
+            clean_title = re.sub(r'\s*\^task-\d{8}-\d{3}\s*', '', clean_title)  # Remove task ID
             
             # Determine status
             status = 'd' if completed else 'n'
             
             tasks.append({
-                'id': f'task-{task_id}',
+                'id': task_id or f'temp-{task_counter}',
+                'task_id': task_id,  # The actual ^task-YYYYMMDD-XXX ID
                 'title': clean_title,
                 'raw_title': title,
                 'section': current_section,
@@ -930,10 +1048,10 @@ def parse_tasks_file(filepath: Path) -> List[Dict[str, Any]]:
     return tasks
 
 def get_all_tasks() -> List[Dict[str, Any]]:
-    """Get all tasks from Tasks.md and Week Priorities"""
+    """Get all tasks from 03-Tasks/Tasks.md and Week Priorities"""
     all_tasks = []
     
-    # Tasks.md
+    # 03-Tasks/Tasks.md
     if get_tasks_file().exists():
         tasks = parse_tasks_file(get_tasks_file())
         for t in tasks:
@@ -1020,7 +1138,7 @@ async def handle_list_tools() -> list[types.Tool]:
                     "pillar": {"type": "string", "enum": pillar_ids, "description": f"Which strategic pillar this supports ({pillar_description})"},
                     "priority": {"type": "string", "enum": ["P0", "P1", "P2", "P3"], "default": "P2"},
                     "context": {"type": "string", "description": "Additional context or sub-tasks"},
-                    "section": {"type": "string", "description": "Which section in Tasks.md to add to", "default": "Next Week"},
+                    "section": {"type": "string", "description": "Which section in 03-Tasks/Tasks.md to add to", "default": "Next Week"},
                     "account": {"type": "string", "description": "Path to account page to link"},
                     "people": {"type": "array", "items": {"type": "string"}, "description": "List of paths to people pages to link"}
                 },
@@ -1029,14 +1147,15 @@ async def handle_list_tools() -> list[types.Tool]:
         ),
         types.Tool(
             name="update_task_status",
-            description="Update task status (n=not started, s=started, b=blocked, d=done)",
+            description="Update task status everywhere it appears (03-Tasks/Tasks.md, meeting notes, person pages). Provide task_id for guaranteed sync across all locations, or task_title for search-based update.",
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "task_title": {"type": "string", "description": "Task title to search for"},
-                    "status": {"type": "string", "enum": ["n", "s", "b", "d"], "description": "New status"}
+                    "task_id": {"type": "string", "description": "Unique task ID (e.g., task-20260128-001) for precise multi-location sync"},
+                    "task_title": {"type": "string", "description": "Task title to search for (used if task_id not provided)"},
+                    "status": {"type": "string", "enum": ["n", "s", "b", "d"], "description": "New status (d=done)"}
                 },
-                "required": ["task_title", "status"]
+                "required": ["status"]
             }
         ),
         types.Tool(
@@ -1091,7 +1210,7 @@ async def handle_list_tools() -> list[types.Tool]:
         ),
         types.Tool(
             name="sync_task_refs",
-            description="Refresh the Related Tasks section on an account or people page by reading from Tasks.md",
+            description="Refresh the Related Tasks section on an account or people page by reading from 03-Tasks/Tasks.md",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -1227,6 +1346,9 @@ async def handle_call_tool(
                 "suggestion": f"You have too many {priority} tasks. Complete or deprioritize some before adding more."
             }, indent=2))]
         
+        # Generate unique task ID
+        task_id = generate_task_id()
+        
         # Build file references for account/people
         file_refs = []
         if account:
@@ -1235,18 +1357,19 @@ async def handle_call_tool(
         for person in people:
             file_refs.append(person if person.endswith('.md') else f"{person}.md")
         
-        # Create the task entry with plain file references
+        # Create the task entry with plain file references and task ID
         pillar_name = PILLARS[pillar]['name']
         task_line = f"- [ ] **{title}**"
         if file_refs:
             task_line += " | " + " ".join(file_refs)
+        task_line += f" ^{task_id}"
         
         task_entry = task_line
         if context:
             task_entry += f"\n\t- {context}"
         task_entry += f"\n\t- Pillar: {pillar_name} | Priority: {priority}"
         
-        # Add to Tasks.md under the appropriate section
+        # Add to 03-Tasks/Tasks.md under the appropriate section
         if get_tasks_file().exists():
             content = get_tasks_file().read_text()
         else:
@@ -1286,6 +1409,7 @@ async def handle_call_tool(
             "success": True,
             "task": {
                 "title": title,
+                "task_id": task_id,
                 "pillar": pillar_name,
                 "priority": priority,
                 "section": section,
@@ -1293,56 +1417,88 @@ async def handle_call_tool(
                 "people": people if people else None
             },
             "synced_pages": synced_pages,
-            "message": f"Task '{title}' created successfully under {section}"
+            "message": f"Task '{title}' created successfully under {section} with ID: {task_id}"
         }
         return [types.TextContent(type="text", text=json.dumps(result, indent=2, cls=DateTimeEncoder))]
     
     elif name == "update_task_status":
-        task_title = arguments['task_title']
+        task_id = arguments.get('task_id')
+        task_title = arguments.get('task_title')
         new_status = arguments['status']
+        completed = (new_status == 'd')
         
-        # Find the task
-        all_tasks = get_all_tasks()
-        matching = [t for t in all_tasks if task_title.lower() in t['title'].lower()]
+        # If task_id provided, use it directly
+        if task_id:
+            result = update_task_status_everywhere(task_id, completed)
+            if not result['success']:
+                return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
+            
+            # Also sync Related Tasks sections
+            synced_pages = propagate_task_status_to_refs(result['title'], completed)
+            result['related_tasks_synced'] = synced_pages
+            
+            return [types.TextContent(type="text", text=json.dumps(result, indent=2, cls=DateTimeEncoder))]
         
-        if not matching:
+        # If task_title provided, find the task and get its ID
+        elif task_title:
+            all_tasks = get_all_tasks()
+            matching = [t for t in all_tasks if task_title.lower() in t['title'].lower()]
+            
+            if not matching:
+                return [types.TextContent(type="text", text=json.dumps({
+                    "success": False,
+                    "error": f"No task found matching '{task_title}'"
+                }, indent=2))]
+            
+            task = matching[0]
+            
+            # If task has an ID, use the sync function
+            if task.get('task_id'):
+                result = update_task_status_everywhere(task['task_id'], completed)
+                
+                # Also sync Related Tasks sections
+                synced_pages = propagate_task_status_to_refs(task['title'], completed)
+                result['related_tasks_synced'] = synced_pages
+                
+                return [types.TextContent(type="text", text=json.dumps(result, indent=2, cls=DateTimeEncoder))]
+            
+            # Legacy support: task without ID, update only in source file
+            else:
+                filepath = Path(task['source_file'])
+                content = filepath.read_text()
+                lines = content.split('\n')
+                
+                line_idx = task['line_number'] - 1
+                old_line = lines[line_idx]
+                
+                # Update checkbox based on status
+                if new_status == 'd':
+                    new_line = old_line.replace('- [ ]', '- [x]')
+                else:
+                    new_line = old_line.replace('- [x]', '- [ ]')
+                
+                lines[line_idx] = new_line
+                filepath.write_text('\n'.join(lines))
+                
+                # Propagate status change to referenced pages
+                synced_pages = propagate_task_status_to_refs(task['title'], completed)
+                
+                status_name = STATUS_CODES.get(new_status, new_status)
+                result = {
+                    "success": True,
+                    "task": task['title'],
+                    "new_status": status_name,
+                    "source_file": task['source_file'],
+                    "synced_pages": synced_pages,
+                    "note": "Task has no ID - only updated in source file. Create new tasks with IDs for multi-location sync."
+                }
+                return [types.TextContent(type="text", text=json.dumps(result, indent=2, cls=DateTimeEncoder))]
+        
+        else:
             return [types.TextContent(type="text", text=json.dumps({
                 "success": False,
-                "error": f"No task found matching '{task_title}'"
+                "error": "Must provide either task_id or task_title"
             }, indent=2))]
-        
-        task = matching[0]
-        
-        # Update the file
-        filepath = Path(task['source_file'])
-        content = filepath.read_text()
-        lines = content.split('\n')
-        
-        line_idx = task['line_number'] - 1
-        old_line = lines[line_idx]
-        
-        # Update checkbox based on status
-        if new_status == 'd':
-            new_line = old_line.replace('- [ ]', '- [x]')
-        else:
-            new_line = old_line.replace('- [x]', '- [ ]')
-        
-        lines[line_idx] = new_line
-        filepath.write_text('\n'.join(lines))
-        
-        # Propagate status change to referenced pages
-        completed = (new_status == 'd')
-        synced_pages = propagate_task_status_to_refs(task['title'], completed)
-        
-        status_name = STATUS_CODES.get(new_status, new_status)
-        result = {
-            "success": True,
-            "task": task['title'],
-            "new_status": status_name,
-            "source_file": task['source_file'],
-            "synced_pages": synced_pages
-        }
-        return [types.TextContent(type="text", text=json.dumps(result, indent=2, cls=DateTimeEncoder))]
     
     elif name == "get_system_status":
         all_tasks = get_all_tasks()

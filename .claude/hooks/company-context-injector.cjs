@@ -10,8 +10,8 @@
  * - Status/context
  * 
  * Detection methods:
- * - File paths containing Active/Relationships/
- * - Company names matching files in relationships folder
+ * - File paths containing 05-Areas/Accounts/
+ * - Company names matching files in accounts folder
  * 
  * Triggered on Read tool
  */
@@ -29,49 +29,57 @@ try {
 const filePath = input.tool_input?.path || input.tool_input?.file_path || '';
 
 // Skip if no file path or if reading a company page itself (avoid recursion)
-if (!filePath || filePath.includes('/Active/Relationships/')) {
+if (!filePath || filePath.includes('/05-Areas/Companies/') || filePath.includes('/05-Areas/Accounts/')) {
   process.exit(0);
 }
 
 const VAULT_ROOT = process.env.CLAUDE_PROJECT_DIR || process.env.VAULT_PATH || process.cwd();
-const RELATIONSHIPS_DIR = path.join(VAULT_ROOT, 'Active', 'Relationships');
+// Primary location for company pages (new universal pattern)
+const COMPANIES_DIR = path.join(VAULT_ROOT, '02-Areas', 'Companies');
+// Legacy location for backwards compatibility
+const ACCOUNTS_DIR = path.join(VAULT_ROOT, '02-Areas', 'Accounts');
+
+// Helper function to recursively scan a directory for company files
+function scanDir(dirPath, index) {
+  try {
+    const entries = fs.readdirSync(dirPath, { withFileTypes: true });
+    
+    for (const entry of entries) {
+      const fullPath = path.join(dirPath, entry.name);
+      
+      if (entry.isDirectory()) {
+        scanDir(fullPath, index);
+      } else if (entry.name.endsWith('.md')) {
+        const fileName = entry.name.replace('.md', '');
+        // Create variations for matching
+        const normalizedName = fileName.toLowerCase();
+        const spacedName = fileName.replace(/_/g, ' ').toLowerCase();
+        const dashName = fileName.replace(/-/g, ' ').toLowerCase();
+        
+        index[normalizedName] = fullPath;
+        index[spacedName] = fullPath;
+        index[dashName] = fullPath;
+      }
+    }
+  } catch (e) {
+    // Skip directories we can't read
+  }
+}
 
 // Build an index of all company names to their files
 function buildCompanyIndex() {
   const index = {};
   
-  if (!fs.existsSync(RELATIONSHIPS_DIR)) {
-    return index;
+  // Scan new location first (Companies/)
+  if (fs.existsSync(COMPANIES_DIR)) {
+    scanDir(COMPANIES_DIR, index);
   }
   
-  // Recursively scan relationships directory
-  function scanDir(dirPath) {
-    try {
-      const entries = fs.readdirSync(dirPath, { withFileTypes: true });
-      
-      for (const entry of entries) {
-        const fullPath = path.join(dirPath, entry.name);
-        
-        if (entry.isDirectory()) {
-          scanDir(fullPath);
-        } else if (entry.name.endsWith('.md')) {
-          const fileName = entry.name.replace('.md', '');
-          // Create variations for matching
-          const normalizedName = fileName.toLowerCase();
-          const spacedName = fileName.replace(/_/g, ' ').toLowerCase();
-          const dashName = fileName.replace(/-/g, ' ').toLowerCase();
-          
-          index[normalizedName] = fullPath;
-          index[spacedName] = fullPath;
-          index[dashName] = fullPath;
-        }
-      }
-    } catch (e) {
-      // Skip directories we can't read
-    }
+  // Scan legacy location for backwards compatibility (Accounts/)
+  if (fs.existsSync(ACCOUNTS_DIR)) {
+    scanDir(ACCOUNTS_DIR, index);
   }
   
-  scanDir(RELATIONSHIPS_DIR);
   return index;
 }
 
@@ -97,8 +105,8 @@ try {
   // Find referenced companies in the content
   const foundCompanies = new Set();
   
-  // Method 1: File path references (Active/Relationships/.../Company.md)
-  const fileRefPattern = /Active\/Relationships\/[^\s]+\/([A-Za-z0-9_-]+)(?:\.md)?/g;
+  // Method 1: File path references (05-Areas/Companies/ or 05-Areas/Accounts/)
+  const fileRefPattern = /02-Areas\/(?:Companies|Accounts)\/[^\s]*?([A-Za-z0-9_-]+)(?:\.md)?/g;
   let match;
   while ((match = fileRefPattern.exec(content)) !== null) {
     const name = match[1].toLowerCase();
@@ -148,36 +156,36 @@ try {
     process.exit(0);
   }
   
-  // Build context
+  // Build context (silent - no headers, just data)
   const contextLines = [
-    '## Company Context (Auto-Injected)',
-    ''
+    '<company_context>',
+    'Referenced companies:'
   ];
   
   for (const company of companyContexts) {
-    contextLines.push(`**${company.name}**${company.status ? ` - ${company.status}` : ''}`);
+    contextLines.push(`${company.name}${company.status ? ` - ${company.status}` : ''}`);
     
     if (company.contacts && company.contacts.length > 0) {
-      contextLines.push(`- Key contacts: ${company.contacts.slice(0, 3).join(', ')}`);
+      contextLines.push(`  Key contacts: ${company.contacts.slice(0, 3).join(', ')}`);
     }
     
     if (company.lastMeeting) {
-      contextLines.push(`- Last meeting: ${company.lastMeeting}`);
+      contextLines.push(`  Last meeting: ${company.lastMeeting}`);
     }
     
     if (company.openTasks && company.openTasks.length > 0) {
-      contextLines.push(`- Open tasks: ${company.openTasks.length}`);
+      contextLines.push(`  Open tasks: ${company.openTasks.length}`);
       company.openTasks.slice(0, 2).forEach(task => {
-        contextLines.push(`  - ${task.substring(0, 60)}${task.length > 60 ? '...' : ''}`);
+        contextLines.push(`    - ${task.substring(0, 60)}${task.length > 60 ? '...' : ''}`);
       });
     }
     
     if (company.context) {
-      contextLines.push(`- Context: ${company.context.substring(0, 100)}${company.context.length > 100 ? '...' : ''}`);
+      contextLines.push(`  Context: ${company.context.substring(0, 100)}${company.context.length > 100 ? '...' : ''}`);
     }
-    
-    contextLines.push('');
   }
+  
+  contextLines.push('</company_context>');
   
   // Output context
   const output = {

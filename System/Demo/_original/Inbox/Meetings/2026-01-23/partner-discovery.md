@@ -4,7 +4,7 @@
 
 **Type:** External
 
-**Related:** Active/Projects/API_Partner_Program.md
+**Related:** 04-Projects/API_Partner_Program.md
 
 ---
 

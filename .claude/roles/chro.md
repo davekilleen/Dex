@@ -50,12 +50,12 @@ Active/
     ├── Board/
     └── Employees/
 
-Inbox/
+00-Inbox/
 ├── Meetings/
 ├── Issues/
 └── Ideas/
 
-Resources/
+06-Resources/
 ├── Templates/
 ├── Playbooks/
 └── Learnings/

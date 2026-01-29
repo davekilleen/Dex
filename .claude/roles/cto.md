@@ -16,48 +16,70 @@
 - **Security Oversight** - Security posture, compliance, incidents
 - **Executive Reporting** - Board updates, technical risk, investment
 
-## Folder Structure
+## Folder Structure (PARA)
+
+*Dex uses PARA: Projects, Areas, Resources, Archives*
 
 ```
-Active/
-├── Strategy/
-│   ├── Tech_Vision.md
-│   ├── Architecture_Roadmap.md
-│   ├── Annual_Plan.md
-│   └── OKRs.md
-├── Architecture/
+# State files at root
+03-Tasks/Tasks.md              # Task backlog tagged with pillars and goals
+02-Week_Priorities/Week_Priorities.md    # Top 3 priorities this week
+01-Quarter_Goals/Quarter_Goals.md      # Quarterly goals (required for CTOs)
+
+# Projects = time-bound strategic initiatives
+04-Projects/
+├── Migration_[System]/ # System migrations
+├── Security_Audit_2026/ # Security initiatives
+├── Hiring_[Role]/    # Executive/leadership hires
+├── Architecture_Redesign/ # Major architecture projects
+└── Innovation_POC/   # R&D proof of concepts
+
+# Areas = ongoing responsibilities
+05-Areas/
+├── Team/             # Engineering organization management
+│   └── [Leader_Name].md # 1:1 threads, development plans
+└── People/           # Key relationships
+    ├── Internal/     # Executive team, eng leadership, product
+    └── External/     # Vendors, technology partners
+
+# Resources = reference material
+06-Resources/
+├── Strategy/         # Tech vision, architecture roadmap
+├── Architecture/     # Systems, decisions (ADRs), standards
 │   ├── Systems/
 │   ├── Decisions/
 │   └── Standards/
-├── Engineering/
-│   ├── Org.md
-│   ├── Hiring/
-│   ├── Culture/
-│   └── Processes/
-├── Security/
-│   ├── Posture.md
-│   ├── Compliance/
-│   └── Incidents/
-├── Innovation/
-│   ├── R&D/
-│   ├── POCs/
-│   └── Emerging_Tech/
-└── Relationships/
-    ├── Executive_Team/
-    ├── Engineering_Leadership/
-    ├── Product/
-    └── Vendors/
+├── Security/         # Security posture, compliance docs
+├── Templates/        # ADR template, strategy doc templates
+├── Patterns/         # Engineering patterns, best practices
+└── Learnings/        # Post-mortems, retrospectives
 
-Inbox/
-├── Meetings/
-├── Decisions/
-└── Ideas/
+# Archives = historical records
+07-Archives/
+├── 04-Projects/         # Completed migrations, past initiatives
+├── Plans/            # Daily/weekly plans
+└── Reviews/          # Daily/weekly/quarterly reviews
 
-Resources/
-├── Templates/
-├── Patterns/
-└── Learnings/
+# Inbox = capture zone
+00-Inbox/
+├── Meetings/         # All meeting notes
+├── Decisions/        # Technical decisions to document
+├── Ideas/            # Innovation ideas, R&D
 ```
+
+**Role-specific areas for CTO:**
+- `05-Areas/Team/` - Engineering leadership team management
+
+**What goes where:**
+- **04-Projects/**: Migrations, security audits, hiring, architecture redesigns (time-bound)
+- **05-Areas/Team/**: Engineering leadership 1:1s, development plans, delegation
+- **05-Areas/People/**: Executive team, eng leaders, product partners, vendors
+- **06-Resources/Architecture/**: System docs, ADRs, standards (reference material)
+- **06-Resources/Strategy/**: Tech vision, roadmap, annual plans
+
+**Areas vs. Projects:**
+- **Team member** (Area) = Ongoing 1:1 with VP Engineering, development plan
+- **Initiative** (Project) = Complete microservices migration by Q2
 
 ## Templates
 

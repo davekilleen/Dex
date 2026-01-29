@@ -4,10 +4,10 @@ Dex includes a demo mode with pre-populated content so you can explore the syste
 
 ## Toggling Demo Mode
 
-- `/demo on` - Enable demo mode (uses sample data)
-- `/demo off` - Disable demo mode (use your real vault)
-- `/demo status` - Check current mode
-- `/demo reset` - Restore demo content to original state
+- `/dex-demo on` - Enable demo mode (uses sample data)
+- `/dex-demo off` - Disable demo mode (use your real vault)
+- `/dex-demo status` - Check current mode
+- `/dex-demo reset` - Restore demo content to original state
 
 ## What Demo Mode Provides
 

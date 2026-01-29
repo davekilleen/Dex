@@ -1,0 +1,82 @@
+# User Profile Configuration
+#
+# This file stores your identity, role context, and preferences for personalized AI interactions.
+
+# Demo Mode
+# When true, commands read from System/Demo/ instead of real vault
+# Toggle with /demo on or /demo off
+demo_mode: false
+
+# Basic Identity
+name: ""
+role: ""
+role_group: ""  # product, sales, marketing, finance, engineering, customer_success, operations, leadership, design
+company: ""
+company_size: ""  # startup (1-100), scaling (100-1k), enterprise (1k-10k), large_enterprise (10k+)
+
+# Role Intelligence
+# This section is populated during onboarding based on the role definition
+role_context:
+  focus_areas: []
+  
+  meeting_intelligence:
+    key_extractions: []
+    questions_to_surface: []
+  
+  project_types: []
+  
+  content_patterns: []
+
+# Working Style
+# Calibrates tone and pacing of responses
+working_style: ""
+
+# Communication Preferences
+# How the AI adapts its tone and language when working with you
+communication:
+  # Formality level
+  formality: "professional_casual"  # options: formal, professional_casual, casual
+  
+  # Directness preference
+  directness: "balanced"  # options: very_direct, balanced, supportive
+  
+  # Detail level in responses
+  detail_level: "concise"  # options: concise, balanced, comprehensive
+  
+  # Career/seniority context (for tone calibration)
+  career_level: ""  # options: junior, mid, senior, leadership, c_suite
+  
+  # Coaching style preference (for career coaching)
+  coaching_style: "challenging"  # options: encouraging, collaborative, challenging
+
+# Strategic Pillars
+# Defined during onboarding, sync'd with System/pillars.yaml
+pillars: []
+
+# Meeting Processing Configuration
+meeting_processing:
+  mode: "manual"  # manual (run /process-meetings) or automatic (background sync)
+  api_provider: ""  # gemini, anthropic, or openai (for automatic mode)
+
+# Meeting Intelligence Configuration
+# Role-specific settings for what gets extracted from meetings
+meeting_intelligence:
+  extract_customer_intel: false
+  extract_competitive_intel: false
+  extract_action_items: true
+  extract_decisions: true
+  extract_stakeholder_dynamics: false
+  extract_budget_timeline: false
+  extract_technical_decisions: false
+
+# Journaling Configuration
+# Controls which journal types are enabled
+journaling:
+  morning: false  # Morning journal: intention-setting for the day
+  evening: false  # Evening journal: reflection on the day
+  weekly: false   # Weekly journal: patterns and synthesis
+
+# Integration Configuration
+# Tracks which external integrations are enabled
+integrations:
+  pendo_mcp_enabled: false  # Pendo product analytics (OAuth via Cursor MCP)

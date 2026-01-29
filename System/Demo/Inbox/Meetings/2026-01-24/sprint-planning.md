@@ -4,7 +4,7 @@
 
 **Type:** Team
 
-**Related:** Active/Projects/Mobile_App_Launch.md
+**Related:** 04-Projects/Mobile_App_Launch.md
 
 ---
 

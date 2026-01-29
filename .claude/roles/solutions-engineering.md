@@ -73,41 +73,74 @@ You're the bridge between technical complexity and business value. Every deal ha
 - Implementation handoff — Documentation, training, support transition
 - Product feedback — Field insights, feature requests, competitive intel
 
-## Folder Structure
+## Folder Structure (PARA)
 
-*Created automatically during setup*
+*Dex uses PARA: Projects, Areas, Resources, Archives*
 
 ```
-Active/
-├── Opportunities/
-│   └── [Account_Name]/
-│       ├── Discovery.md
-│       ├── Technical_Requirements.md
-│       ├── Demo_Script.md
-│       └── POC_Plan.md
-├── Demos/
-│   ├── Standard/
-│   ├── Industry/
-│   └── Custom/
-├── Relationships/
-│   ├── Sales/
-│   ├── Product/
-│   ├── Engineering/
-│   └── Professional_Services/
-└── Content/
-    ├── Technical_Docs/
-    └── Best_Practices/
+# State files at root
+03-Tasks/Tasks.md              # Task backlog tagged with pillars and goals
+02-Week_Priorities/Week_Priorities.md    # Top 3 priorities this week
+01-Quarter_Goals/Quarter_Goals.md      # Quarterly goals (optional)
 
-Inbox/
-├── Meetings/
-├── RFPs/
-└── Ideas/
+# Projects = time-bound initiatives
+04-Projects/
+├── [Account]_POC/    # Proof of concept projects
+├── [Deal]_Technical/ # Technical deal support
+├── [Integration]/    # Custom integration builds
+└── [RFP_Response]/   # RFP/RFI responses
 
-Resources/
-├── Templates/
-├── Demo_Environments/
-└── Learnings/
+# Areas = ongoing responsibilities
+05-Areas/
+├── Accounts/         # Strategic account technical relationships
+│   └── [Account_Name].md  # Technical requirements, demo history
+└── People/           # Key relationships
+    ├── Internal/     # Sales, product, engineering, PS partners
+    └── External/     # Customer technical stakeholders
+
+# Resources = reference material
+06-Resources/
+├── Demos/            # Demo library and scripts
+│   ├── Standard/     # Standard demos
+│   ├── Industry/     # Industry-specific demos
+│   └── Custom/       # Custom demo builds
+├── Templates/        # Discovery, demo script, POC templates
+├── Technical_Docs/   # Architecture patterns, integration guides
+├── Demo_Environments/ # Demo environment configs
+└── Learnings/        # What works, post-mortems
+
+# Archives = historical records
+07-Archives/
+├── 04-Projects/         # Completed POCs, past deals
+├── Plans/            # Daily/weekly plans
+└── Reviews/          # Daily/weekly/quarterly reviews
+
+# Inbox = capture zone
+00-Inbox/
+├── Meetings/         # All customer and internal meetings
+├── RFPs/             # RFPs and RFIs to review
+├── Ideas/            # Demo ideas, technical solutions
 ```
+
+**Role-specific areas for Solutions Engineering:**
+- `05-Areas/Accounts/` - Strategic account technical relationships
+
+**Note on Companies vs Accounts:**
+- `05-Areas/Companies/` - Universal company tracking (contacts, meetings, notes)
+- `05-Areas/Accounts/` - Sales/CS-specific (includes ARR, health scores, deal tracking)
+- Many orgs use just Companies/, others use Accounts/ for strategic customers
+- Choose based on your needs during onboarding
+
+**What goes where:**
+- **04-Projects/**: POCs, deal support, custom integrations (time-bound)
+- **05-Areas/Accounts/**: Ongoing technical relationships, requirements, demo history
+- **05-Areas/People/**: Customer tech stakeholders, internal partners
+- **06-Resources/Demos/**: Demo library, scripts, environment configs
+- **06-Resources/**: Technical docs, integration guides, best practices
+
+**Areas vs. Projects:**
+- **Account** (Area) = Ongoing technical relationship with Acme Corp
+- **Project** = Run POC for Acme Corp integration (Jan 15 - Feb 28)
 
 ## Templates
 

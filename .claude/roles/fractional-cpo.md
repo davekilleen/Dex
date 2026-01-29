@@ -44,12 +44,12 @@ Active/
     ├── Community/
     └── Partners/
 
-Inbox/
+00-Inbox/
 ├── Meetings/
 ├── Opportunities/
 └── Ideas/
 
-Resources/
+06-Resources/
 ├── Templates/
 ├── Frameworks/
 └── Learnings/

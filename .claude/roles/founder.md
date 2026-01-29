@@ -45,12 +45,12 @@ Active/
     ├── Thought_Leadership/
     └── Public_Comms/
 
-Inbox/
+00-Inbox/
 ├── Meetings/
 ├── Ideas/
 └── Opportunities/
 
-Resources/
+06-Resources/
 ├── Templates/
 ├── Frameworks/
 └── Learnings/

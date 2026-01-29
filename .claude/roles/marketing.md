@@ -68,41 +68,66 @@ You're running campaigns, creating content, and proving ROI — all while coordi
 - Event coordination — Webinars, conferences, field marketing
 - Cross-functional alignment — Sales enablement, product launches
 
-## Folder Structure
+## Folder Structure (PARA)
 
-*Created automatically during setup*
+*Dex uses PARA: Projects, Areas, Resources, Archives*
 
 ```
-Active/
-├── Campaigns/
-│   └── [Campaign_Name]/
-│       ├── Brief.md
-│       ├── Assets/
-│       └── Results.md
-├── Content/
-│   ├── Blog/
-│   ├── Ebooks/
-│   ├── Webinars/
-│   └── Social/
-├── Brand/
-│   ├── Messaging.md
-│   ├── Style_Guide.md
-│   └── Assets/
-└── Relationships/
-    ├── Sales/
-    ├── Product/
-    └── Agencies/
+# State files at root
+03-Tasks/Tasks.md              # Task backlog tagged with pillars and goals
+02-Week_Priorities/Week_Priorities.md    # Top 3 priorities this week
+01-Quarter_Goals/Quarter_Goals.md      # Quarterly goals (optional)
 
-Inbox/
-├── Meetings/
-├── Ideas/
-└── Requests/
+# Projects = time-bound campaigns and initiatives
+04-Projects/
+├── [Campaign_Name]/  # Active campaigns (time-bound)
+├── [Product_Launch]/ # Launch projects
+├── [Event]/          # Webinars, conferences
+└── [Content_Series]/ # Time-bound content initiatives
 
-Resources/
-├── Templates/
-├── Analytics/
-└── Learnings/
+# Areas = ongoing responsibilities
+05-Areas/
+├── Content/          # Content strategy and asset library
+│   ├── Blog/         # Blog content and calendar
+│   ├── Ebooks/       # Lead gen assets
+│   ├── Webinars/     # Webinar recordings and materials
+│   └── Social/       # Social content and voice
+└── People/           # Key relationships
+    ├── Internal/     # Sales, product, design partners
+    └── External/     # Agencies, vendors, PR contacts
+
+# Resources = reference material
+06-Resources/
+├── Brand/            # Messaging, style guide, brand assets
+├── Templates/        # Campaign briefs, content templates
+├── Analytics/        # Performance dashboards, reports
+└── Learnings/        # Campaign post-mortems, what worked
+
+# Archives = historical records
+07-Archives/
+├── 04-Projects/         # Completed campaigns, past launches
+├── Plans/            # Daily/weekly plans
+└── Reviews/          # Daily/weekly/quarterly reviews
+
+# Inbox = capture zone
+00-Inbox/
+├── Meetings/         # All meeting notes
+├── Ideas/            # Campaign and content ideas
+├── Requests/         # Ad-hoc requests from teams
 ```
+
+**Role-specific areas for Marketing:**
+- `05-Areas/Content/` - Content strategy, asset library, editorial calendar
+
+**What goes where:**
+- **04-Projects/**: Campaigns, product launches, events (time-bound initiatives)
+- **05-Areas/Content/**: Ongoing content strategy, asset library, editorial calendar
+- **05-Areas/People/**: Sales partners, product partners, agencies
+- **06-Resources/**: Brand guidelines, templates, analytics, campaign learnings
+
+**Areas vs. Projects:**
+- **Content library** (Area) = Ongoing blog strategy, asset repository
+- **Campaign** (Project) = Q1 Product Launch campaign (Jan 15 - March 31)
 
 ## Templates
 

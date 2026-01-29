@@ -1,0 +1,32 @@
+{
+  "name": "dex-videos",
+  "version": "1.0.0",
+  "description": "Video generation for Dex - AI Chief of Staff",
+  "scripts": {
+    "dev": "remotion studio",
+    "build": "remotion bundle",
+    "upgrade": "remotion upgrade",
+    "lint": "eslint src && tsc",
+    "render": "remotion render DexIntro out/dex-intro.mp4",
+    "render:square": "remotion render DexIntro-Square out/dex-intro-square.mp4",
+    "render:vertical": "remotion render DexIntro-Vertical out/dex-intro-vertical.mp4",
+    "render:all": "npm run render && npm run render:square && npm run render:vertical"
+  },
+  "repository": {},
+  "license": "UNLICENSED",
+  "dependencies": {
+    "@remotion/cli": "^4.0.0",
+    "react": "19.2.3",
+    "react-dom": "19.2.3",
+    "remotion": "^4.0.0"
+  },
+  "devDependencies": {
+    "@remotion/eslint-config-flat": "^4.0.0",
+    "@types/react": "19.2.7",
+    "@types/web": "0.0.166",
+    "eslint": "9.19.0",
+    "prettier": "3.6.0",
+    "typescript": "5.9.3"
+  },
+  "private": true
+}

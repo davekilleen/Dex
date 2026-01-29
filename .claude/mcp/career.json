@@ -1,0 +1,12 @@
+{
+  "name": "career",
+  "description": "Career development MCP - evidence aggregation, ladder parsing, competency analysis, and progress tracking",
+  "server": {
+    "command": "python",
+    "args": ["core/mcp/career_server.py"],
+    "env": {
+      "VAULT_PATH": "${workspaceFolder}"
+    }
+  },
+  "notes": "Powers /career-coach with evidence scanning, career ladder parsing, competency coverage analysis, and growth velocity tracking. Works with 05-Areas/Career/ and 05-Areas/Career/Evidence/ directories."
+}

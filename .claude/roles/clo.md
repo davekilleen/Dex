@@ -53,12 +53,12 @@ Active/
     ├── Outside_Counsel/
     └── Regulators/
 
-Inbox/
+00-Inbox/
 ├── Meetings/
 ├── Matters/
 └── Ideas/
 
-Resources/
+06-Resources/
 ├── Templates/
 ├── Playbooks/
 └── Learnings/

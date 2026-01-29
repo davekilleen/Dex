@@ -19,28 +19,29 @@
 ## Folder Structure
 
 ```
-Active/                   # Current work
-├── Projects/             # Time-bound initiatives
-├── Relationships/        # Key accounts, partners, stakeholders
-└── Content/              # Thought leadership, docs you create
+04-Projects/              # Time-bound initiatives
 
-Inbox/                    # Capture zone
-├── Meetings/             # Meeting notes
-├── Voice_Notes/          # Quick captures (if used)
-├── Ideas/                # Fleeting thoughts
-└── Week Priorities.md    # This week's focus
+05-Areas/                 # Ongoing responsibilities
+├── People/               # Person pages
+│   ├── Internal/         # Colleagues (same email domain)
+│   └── External/         # Customers, partners (different email domain)
+├── Companies/            # External organizations (universal)
+└── Career/               # Career development (optional)
 
-Resources/                # Reference material
-├── Claude_Code_Docs/     # Cached Claude Code documentation
+06-Resources/             # Reference material
 └── Learnings/            # Compound knowledge (preferences, patterns)
 
-People/                   # Person pages
-├── Internal/             # Colleagues
-└── External/             # Customers, partners, contacts
+07-Archives/              # Historical records
+├── 04-Projects/          # Completed projects
+├── Plans/                # Daily and weekly plans
+└── Reviews/              # Daily, weekly, and quarterly reviews
+
+00-Inbox/                  # Capture zone
+├── Meetings/             # Meeting notes
+└── Ideas/                # Quick captures and fleeting thoughts
 
 System/                   # Configuration
 ├── Templates/            # Reusable note templates
-├── Skills/               # Reusable AI behaviors
 └── pillars.yaml          # Your strategic pillars config
 ```
 
@@ -76,7 +77,7 @@ Use plain file paths when referencing other notes:
 
 ```markdown
 See People/External/Sarah_Chen.md for context.
-Related: Active/Projects/Mobile_App_Launch.md
+Related: 04-Projects/Mobile_App_Launch.md
 ```
 
 This works across all markdown editors (VS Code, Cursor, Obsidian, etc.) without requiring special syntax.
@@ -91,6 +92,21 @@ For person pages, the hooks will automatically inject context when you reference
 - Verify destination folders exist
 - Update internal links after moves
 - Add YAML frontmatter when organizing
+
+---
+
+## Domain-Based People Routing
+
+Person pages are automatically routed based on email domain matching:
+
+- **Internal/** - Email matches company domain in `System/user-profile.yaml`
+- **External/** - Different email domain, or no email provided
+
+**Configure:** Set `email_domain` in `System/user-profile.yaml` (e.g., "acme.com")
+
+**Multiple domains:** Separate with commas (e.g., "acme.com, acme.io")
+
+**Manual override:** You can always move person pages manually if domain routing is incorrect.
 
 ---
 
@@ -116,8 +132,7 @@ Pillars are configured in `System/pillars.yaml` during setup.
 
 | Type | Location | Purpose |
 |------|----------|---------|
-| Slash commands | `.claude/commands/` | Executable commands |
-| Skills | `System/Skills/` | Reusable behavior prompts |
+| Skills | `.claude/skills/` | Executable skills following [Agent Skills standard](https://agentskills.io) |
 | Guides | `.claude/guides/` | Reference documentation for Claude |
 | Hooks | `.claude/hooks/` | Event-driven context injection |
 | Settings | `.claude/settings.json` | Project settings (committed) |
@@ -131,9 +146,10 @@ Dex includes these automatic context injectors:
 
 | Hook | Trigger | What it does |
 |------|---------|--------------|
+| `session-start.sh` | Session start | Injects learnings, preferences, urgent tasks, week priorities |
 | `person-context-injector.cjs` | Reading files with person references | Injects role, company, last interaction, open items |
 | `company-context-injector.cjs` | Reading files with company references | Injects contacts, recent meetings, open tasks |
-| `session-start.sh` | Session start | Injects learnings, preferences, urgent items |
+| `session-end.sh` | Session end | Captures session transcript |
 
 ---
 

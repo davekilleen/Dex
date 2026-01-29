@@ -4,7 +4,7 @@
 
 **Type:** Customer
 
-**Related:** Active/Projects/Mobile_App_Launch.md, Active/Relationships/Acme_Corp.md
+**Related:** 04-Projects/Mobile_App_Launch.md, 05-Areas/Accounts/Acme_Corp.md
 
 ---
 

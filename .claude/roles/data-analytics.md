@@ -73,42 +73,71 @@ You're fielding requests from every team, managing data quality, and trying to e
 - Data quality — Monitoring, alerts, remediation
 - Documentation — Data dictionaries, runbooks, best practices
 
-## Folder Structure
+## Folder Structure (PARA)
 
-*Created automatically during setup*
+*Dex uses PARA: Projects, Areas, Resources, Archives*
 
 ```
-Active/
-├── Projects/
-│   └── [Project_Name]/
-│       ├── Requirements.md
-│       ├── Analysis.md
-│       └── Deliverables/
-├── Dashboards/
+# State files at root
+03-Tasks/Tasks.md              # Task backlog tagged with pillars and goals
+02-Week_Priorities/Week_Priorities.md    # Top 3 priorities this week
+01-Quarter_Goals/Quarter_Goals.md      # Quarterly goals (optional)
+
+# Projects = time-bound analysis work
+04-Projects/
+├── [Analysis_Project]/ # Deep-dive analyses
+├── [Dashboard_Build]/ # Dashboard creation projects
+├── Data_Migration/   # Data model changes
+└── Quality_Initiative/ # Data quality projects
+
+# Areas = ongoing responsibilities
+05-Areas/
+└── People/           # Key relationships
+    ├── Internal/     # Business stakeholders, engineering, data team
+    └── External/     # Vendor partners, tool providers
+
+# Resources = reference material
+06-Resources/
+├── Dashboards/       # Dashboard specs and documentation
 │   └── [Dashboard_Name]/
 │       ├── Spec.md
 │       └── Documentation.md
-├── Data_Models/
+├── Data_Models/      # Data model documentation
 │   └── [Model_Name]/
-├── Governance/
-│   ├── Standards/
-│   ├── Quality/
-│   └── Access/
-└── Relationships/
-    ├── Business_Stakeholders/
-    ├── Engineering/
-    └── Data_Team/
+│       ├── Schema.md
+│       └── Lineage.md
+├── SQL_Library/      # Reusable queries
+├── Governance/       # Standards, quality procedures
+├── Templates/        # Analysis brief, dashboard spec templates
+└── Learnings/        # Analysis approaches, what worked
 
-Inbox/
-├── Meetings/
-├── Requests/
-└── Ideas/
+# Archives = historical records
+07-Archives/
+├── 04-Projects/         # Completed analyses, old dashboards
+├── Plans/            # Daily/weekly plans
+└── Reviews/          # Daily/weekly/quarterly reviews
 
-Resources/
-├── Templates/
-├── SQL_Library/
-└── Learnings/
+# Inbox = capture zone
+00-Inbox/
+├── Meetings/         # All meeting notes
+├── Requests/         # Ad-hoc analysis requests
+├── Ideas/            # Data improvements, automation ideas
 ```
+
+**Role-specific areas for Data/Analytics:**
+- None required - uses universal PARA structure
+
+**What goes where:**
+- **04-Projects/**: Analysis projects, dashboard builds, migrations (time-bound)
+- **05-Areas/People/**: Business stakeholders, engineering partners, data team
+- **06-Resources/Dashboards/**: Dashboard documentation (reference)
+- **06-Resources/Data_Models/**: Data model docs, schemas, lineage
+- **06-Resources/SQL_Library/**: Reusable queries, code snippets
+
+**Why no additional areas:**
+- Analytics work is project-based (analyses, dashboard builds, migrations)
+- Dashboards and models are reference material (06-Resources/)
+- Governance docs are reference (06-Resources/Governance/)
 
 ## Templates
 

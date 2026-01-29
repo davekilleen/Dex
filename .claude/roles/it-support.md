@@ -100,12 +100,12 @@ Active/
     ├── Vendors/
     └── Leadership/
 
-Inbox/
+00-Inbox/
 ├── Meetings/
 ├── Requests/
 └── Ideas/
 
-Resources/
+06-Resources/
 ├── Templates/
 ├── Knowledge_Base/
 └── Learnings/

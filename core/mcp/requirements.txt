@@ -1,3 +1,3 @@
-# Dex Task MCP Server Dependencies
+# Dex Work MCP Server Dependencies
 mcp>=1.0.0
 pyyaml>=6.0

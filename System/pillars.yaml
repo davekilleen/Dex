@@ -1,51 +1,55 @@
 # Strategic Pillars Configuration
 # 
-# Your pillars are the 2-4 main focus areas that all your work aligns to.
-# The Task MCP uses these to categorize tasks and check balance.
+# Pillars are your main focus areas — think of them as how you carve up your role thematically.
+# These are NOT time-bound (like quarterly goals). They represent ongoing areas of responsibility
+# that typically stay consistent for 6-12+ months, or until your role significantly changes.
 #
-# Run /setup to configure these interactively, or edit manually.
+# Examples: "Revenue Growth", "Product Quality", "Team Development", "Customer Success"
+#
+# Want to change your pillars? Just chat with Claude: "I need to reconfigure my strategic pillars"
+# — it'll help you update how your work ladders up to new focus areas.
+#
+# The Work MCP uses these to categorize tasks and check balance across your work.
 
 pillars:
-  - id: pillar_1
-    name: "Pillar 1"
-    description: "Description of your first pillar"
+  - id: q1_deals
+    name: "Q1 Deals"
+    description: "Close Q1 deals and hit revenue targets"
     keywords:
-      - keyword1
-      - keyword2
+      - deals
+      - sales
+      - revenue
+      - pipeline
+      - close
+      - Q1
+      - quota
       
-  - id: pillar_2
-    name: "Pillar 2"
-    description: "Description of your second pillar"
+  - id: mobile_launch
+    name: "Mobile Product Launch"
+    description: "Launch the new mobile product and take it to market"
     keywords:
-      - keyword1
-      - keyword2
+      - mobile
+      - launch
+      - GTM
+      - go-to-market
+      - app
+      - product
+      - release
 
-  - id: pillar_3
-    name: "Pillar 3"
-    description: "Description of your third pillar"
+  - id: series_d
+    name: "Series D Fundraising"
+    description: "Work with executive team to secure Series D funding"
     keywords:
-      - keyword1
-      - keyword2
+      - fundraising
+      - Series D
+      - investors
+      - funding
+      - pitch
+      - board
+      - capital
 
 # Priority limits (how many active tasks per priority level)
 priority_limits:
   P0: 3   # Critical/urgent - max 3 at a time
   P1: 5   # Important - max 5 at a time
   P2: 10  # Normal - suggested limit
-
-# Example pillars for reference:
-# 
-# Product Manager:
-#   - Product Development (roadmap, features, launches)
-#   - Customer Research (user interviews, feedback, analytics)
-#   - Team Leadership (1:1s, hiring, coaching)
-#
-# Consultant:
-#   - Client Delivery (active projects, deliverables)
-#   - Business Development (proposals, networking)
-#   - Professional Growth (learning, certifications)
-#
-# Engineer:
-#   - Technical Execution (coding, reviews, debugging)
-#   - System Design (architecture, documentation)
-#   - Team Collaboration (mentoring, process improvement)

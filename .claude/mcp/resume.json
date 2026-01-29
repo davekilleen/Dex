@@ -1,0 +1,12 @@
+{
+  "name": "resume",
+  "description": "Resume builder MCP - stateful resume building with validation, formatting, and career evidence integration",
+  "server": {
+    "command": "python",
+    "args": ["core/mcp/resume_server.py"],
+    "env": {
+      "VAULT_PATH": "${workspaceFolder}"
+    }
+  },
+  "notes": "Powers /resume-builder with session management, role extraction, achievement validation, and resume/LinkedIn generation. Integrates with Career Evidence for auto-population."
+}

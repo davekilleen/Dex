@@ -31,7 +31,7 @@ The person page is the aggregation point for relationship context. It contains:
 ### Step 3: Only Then Do Broader Searches
 If the person page doesn't exist or lacks the info, fall back to:
 - Vault-wide search for mentions
-- Search in `Inbox/Meetings/` for meeting notes
+- Search in `00-Inbox/Meetings/` for meeting notes
 
 ---
 

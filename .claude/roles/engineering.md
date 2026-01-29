@@ -1,5 +1,21 @@
 # Engineering
 
+## Communication Context
+
+**Default communication preferences:**
+- Formality: Professional casual
+- Directness: Very direct (get to the technical point)
+- Detail level: Balanced (technical precision when needed)
+- Career level: Mid (adjust based on actual seniority)
+
+**Interaction style notes:**
+- Technical, precise, no unnecessary prose
+- Focus on system design, trade-offs, and implementation details
+- Emphasize code quality, best practices, and technical excellence
+- Push on testing, observability, and reliability
+
+---
+
 ## Why Dex?
 
 You're balancing feature work, tech debt, incidents, and cross-team coordination. Context lives in Slack, Jira, docs, and your head. Dex keeps your technical decisions documented, tracks the systems you own, and surfaces context when you're debugging or planning.
@@ -65,40 +81,67 @@ Going with JWT + refresh tokens instead of session-based auth.
 - Documentation — Technical docs, runbooks, onboarding guides
 - Planning — Estimation, sprint planning, roadmap input
 
-## Folder Structure
+## Folder Structure (PARA)
 
-*Created automatically during setup*
+*Dex uses PARA: Projects, Areas, Resources, Archives*
 
 ```
-Active/
-├── Projects/
-│   └── [Project_Name]/
-│       ├── Design.md
-│       ├── Notes.md
-│       └── Decisions.md
-├── Systems/
+# State files at root
+03-Tasks/Tasks.md              # Task backlog tagged with pillars and goals
+02-Week_Priorities/Week_Priorities.md    # Top 3 priorities this week
+01-Quarter_Goals/Quarter_Goals.md      # Quarterly goals (optional)
+
+# Projects = time-bound engineering work
+04-Projects/
+├── [Feature_Name]/   # Feature development projects
+├── [Migration]/      # System migrations
+├── [Refactor]/       # Tech debt initiatives
+└── [Spike]/          # Technical investigations
+
+# Areas = ongoing responsibilities
+05-Areas/
+└── People/           # Key relationships
+    ├── Internal/     # Product, design, platform partners
+    └── External/     # Vendors, open source maintainers
+
+# Resources = reference material
+06-Resources/
+├── Systems/          # System docs, architecture, runbooks
 │   └── [System_Name]/
 │       ├── Architecture.md
 │       ├── Runbook.md
 │       └── Incidents/
-├── Relationships/
-│   ├── Product/
-│   ├── Design/
-│   └── Platform/
-└── Content/
-    ├── RFCs/
-    └── Tech_Talks/
+├── RFCs/             # Technical proposals and decisions
+├── Templates/        # RFC template, post-mortem template
+├── Patterns/         # Code patterns, best practices
+└── Learnings/        # Post-mortems, retrospectives
 
-Inbox/
-├── Meetings/
-├── Ideas/
-└── Bugs/
+# Archives = historical records
+07-Archives/
+├── 04-Projects/         # Completed features, migrations
+├── Plans/            # Daily/weekly plans
+└── Reviews/          # Daily/weekly/quarterly reviews
 
-Resources/
-├── Templates/
-├── Patterns/
-└── Learnings/
+# Inbox = capture zone
+00-Inbox/
+├── Meetings/         # All meeting notes
+├── Ideas/            # Technical ideas, improvements
+├── Bugs/             # Bug reports to triage
 ```
+
+**Role-specific areas for Engineering:**
+- None required - uses universal PARA structure
+
+**What goes where:**
+- **04-Projects/**: Feature work, migrations, refactors, spikes (time-bound development)
+- **05-Areas/People/**: Product partners, design partners, platform team relationships
+- **06-Resources/Systems/**: Architecture docs, runbooks, incident history (reference material)
+- **06-Resources/RFCs/**: Technical decisions, design docs
+
+**Why no additional areas:**
+- Systems are reference material (06-Resources/Systems/) not ongoing work
+- Engineering work is naturally project-based (features, migrations, refactors)
+- Relationships tracked in People/
 
 ## Templates
 

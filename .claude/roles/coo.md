@@ -16,41 +16,70 @@
 - **Strategic Projects** - Cross-functional initiatives, transformations
 - **Risk Management** - Operational risk, business continuity
 
-## Folder Structure
+## Folder Structure (PARA)
+
+*Dex uses PARA: Projects, Areas, Resources, Archives*
 
 ```
-Active/
-├── Operations/
-│   ├── Processes/
-│   ├── Metrics/
-│   └── Projects/
-├── Organization/
-│   ├── Structure.md
-│   ├── Hiring_Plan.md
-│   └── Team_Health/
-├── Vendors/
-│   └── [Vendor_Name]/
-│       ├── Contract.md
-│       └── Performance.md
-├── Strategy/
-│   ├── OKRs.md
-│   ├── Annual_Plan.md
-│   └── Initiatives/
-└── Relationships/
-    ├── Executive_Team/
-    ├── Department_Heads/
-    └── Key_Vendors/
+# State files at root
+03-Tasks/Tasks.md              # Task backlog tagged with pillars and goals
+02-Week_Priorities/Week_Priorities.md    # Top 3 priorities this week
+01-Quarter_Goals/Quarter_Goals.md      # Quarterly goals (required for COOs)
 
-Inbox/
-├── Meetings/
-├── Escalations/
-└── Ideas/
+# Projects = time-bound operational initiatives
+04-Projects/
+├── Process_Improvement_[Area]/ # Process redesigns
+├── Org_Redesign_2026/ # Organizational changes
+├── System_Implementation/ # New system rollouts
+├── Vendor_Evaluation/ # Vendor selections
+└── Strategic_Initiative/ # Cross-functional projects
 
-Resources/
-├── Templates/
-├── Playbooks/
-└── Learnings/
+# Areas = ongoing responsibilities
+05-Areas/
+├── Team/             # Cross-functional team management
+│   └── [Leader_Name].md # Department head 1:1s, alignment
+└── People/           # Key relationships
+    ├── Internal/     # Executive team, department heads
+    └── External/     # Key vendors, partners
+
+# Resources = reference material
+06-Resources/
+├── Playbooks/        # Process documentation
+│   └── [Process_Name]/
+│       ├── Workflow.md
+│       ├── Metrics.md
+│       └── Owner.md
+├── Strategy/         # OKRs, annual plans, operating model
+├── Vendors/          # Vendor contracts, performance docs
+├── Templates/        # Process design, project charter templates
+└── Learnings/        # Retrospectives, what works
+
+# Archives = historical records
+07-Archives/
+├── 04-Projects/         # Completed initiatives, past org changes
+├── Plans/            # Daily/weekly plans
+└── Reviews/          # Daily/weekly/quarterly reviews
+
+# Inbox = capture zone
+00-Inbox/
+├── Meetings/         # All meeting notes
+├── Escalations/      # Urgent issues to triage
+├── Ideas/            # Process improvements, efficiency ideas
 ```
+
+**Role-specific areas for COO:**
+- `05-Areas/Team/` - Department head and cross-functional team management
+
+**What goes where:**
+- **04-Projects/**: Process improvements, org changes, implementations (time-bound)
+- **05-Areas/Team/**: Department head 1:1s, cross-functional alignment
+- **05-Areas/People/**: Executive team, department heads, key vendors
+- **06-Resources/Playbooks/**: Process documentation, workflows, procedures
+- **06-Resources/Vendors/**: Vendor contracts, performance tracking
+
+**Areas vs. Projects:**
+- **Team member** (Area) = Ongoing 1:1 with VP Operations, alignment
+- **Initiative** (Project) = Complete CRM migration by Q3
 
 ## Templates
 

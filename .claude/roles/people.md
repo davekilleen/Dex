@@ -101,12 +101,12 @@ Active/
     ├── Managers/
     └── Employees/
 
-Inbox/
+00-Inbox/
 ├── Meetings/
 ├── Requests/
 └── Ideas/
 
-Resources/
+06-Resources/
 ├── Templates/
 ├── Playbooks/
 └── Learnings/

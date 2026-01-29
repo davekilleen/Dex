@@ -61,12 +61,12 @@ Active/
     ├── Market_Insights/
     └── Thought_Leadership/
 
-Inbox/
+00-Inbox/
 ├── Meetings/
 ├── Inbound_Deals/
 └── Ideas/
 
-Resources/
+06-Resources/
 ├── Templates/
 ├── Frameworks/
 └── Learnings/

@@ -74,42 +74,71 @@ You're the glue between product, engineering, and go-to-market. Releases, proces
 - Planning support — OKR tracking, roadmap maintenance, capacity planning
 - Stakeholder enablement — Training, documentation, self-service
 
-## Folder Structure
+## Folder Structure (PARA)
 
-*Created automatically during setup*
+*Dex uses PARA: Projects, Areas, Resources, Archives*
 
 ```
-Active/
-├── Releases/
-│   └── [Release_Name]/
-│       ├── Plan.md
-│       ├── Checklist.md
-│       └── Retro.md
-├── Processes/
-│   ├── Planning/
-│   ├── Development/
-│   └── Launch/
-├── Analytics/
-│   ├── Dashboards/
-│   ├── Reports/
-│   └── Data_Quality/
-├── Tools/
+# State files at root
+03-Tasks/Tasks.md              # Task backlog tagged with pillars and goals
+02-Week_Priorities/Week_Priorities.md    # Top 3 priorities this week
+01-Quarter_Goals/Quarter_Goals.md      # Quarterly goals (optional)
+
+# Projects = time-bound initiatives
+04-Projects/
+├── Release_v2_5/     # Release coordination projects
+├── Tool_Migration/   # Tool implementations
+├── Process_Improvement/ # Process redesigns
+└── Analytics_Cleanup/ # Data quality initiatives
+
+# Areas = ongoing responsibilities
+05-Areas/
+└── People/           # Key relationships
+    ├── Internal/     # Product, engineering, GTM partners
+    └── External/     # Vendor partners, tool providers
+
+# Resources = reference material
+06-Resources/
+├── Playbooks/        # Process documentation
+│   ├── Planning/     # Planning processes
+│   ├── Development/  # Development workflows
+│   └── Launch/       # Launch checklists
+├── Tools/            # Tool documentation
 │   └── [Tool_Name]/
-└── Relationships/
-    ├── Product/
-    ├── Engineering/
-    └── GTM/
+│       ├── Setup.md
+│       ├── Admin.md
+│       └── Integrations.md
+├── Analytics/        # Dashboard specs, data dictionaries
+├── Templates/        # Release plan, process doc templates
+└── Learnings/        # Retros, what works
 
-Inbox/
-├── Meetings/
-├── Requests/
-└── Ideas/
+# Archives = historical records
+07-Archives/
+├── 04-Projects/         # Past releases, completed migrations
+├── Plans/            # Daily/weekly plans
+└── Reviews/          # Daily/weekly/quarterly reviews
 
-Resources/
-├── Templates/
-├── Playbooks/
-└── Learnings/
+# Inbox = capture zone
+---Inbox/
+├── Meetings/         # All meeting notes
+├── Requests/         # Stakeholder requests
+├── Ideas/            # Process improvements, tool ideas
 ```
+
+**Role-specific areas for Product Operations:**
+- None required - uses universal PARA structure
+
+**What goes where:**
+- **04-Projects/**: Releases, tool migrations, process improvements (time-bound)
+- **05-Areas/People/**: Product managers, engineering partners, GTM stakeholders
+- **06-Resources/Playbooks/**: Process documentation, runbooks, checklists
+- **06-Resources/Tools/**: Tool configuration, admin guides, integrations
+- **06-Resources/Analytics/**: Dashboard specs, data dictionaries, reporting
+
+**Why no additional areas:**
+- Product ops work is project-based (releases, implementations, improvements)
+- Processes documented in 06-Resources/Playbooks/
+- Tools documented in 06-Resources/Tools/
 
 ## Templates
 
