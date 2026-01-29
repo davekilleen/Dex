@@ -152,31 +152,29 @@ Say: "Perfect! I'm creating your workspace now. Here's what you're getting:
 **Dex uses the PARA method:**
 - **04-Projects/** — Time-bound work with clear outcomes
 - **05-Areas/** — Ongoing responsibilities (People/, Career/, plus role-specific areas)
-- **06-Resources/** — Reference material (learnings, templates, system docs)
+- **06-Resources/** — Reference material (learnings, quarterly reviews, system docs)
 - **07-Archives/** — Historical records (plans, reviews, completed projects)
 - **00-Inbox/** — Capture zone (meetings, ideas, notes)
 
 This separates active work from reference material and keeps your capture zone lightweight."
 
 **Then execute:**
-1. Read the appropriate role definition from `.claude/roles/[role].md`
-2. Read `.claude/reference/role-areas-mapping.md` to check if role needs additional areas
-3. Create the PARA folder structure:
+1. Create the PARA folder structure:
    - `04-Projects/` — Time-bound initiatives
    - `05-Areas/People/Internal/` and `05-Areas/People/External/` — Person pages (universal)
    - `05-Areas/Companies/` — External organizations (universal for all roles)
    - `00-Inbox/Meetings/`, `00-Inbox/Ideas/` — Capture zone
-   - `06-Resources/Learnings/`, `06-Resources/Templates/` — Reference material
+   - `06-Resources/Learnings/`, `06-Resources/Quarterly_Reviews/` — Reference material
+   - `System/Templates/` — Note templates
    - `07-Archives/04-Projects/`, `07-Archives/Plans/`, `07-Archives/Reviews/` — Historical records
-   - **Only if mapped:** Create role-specific area (e.g., `05-Areas/Accounts/` for Sales, `05-Areas/Team/` for CEO, `05-Areas/Content/` for Marketing)
-4. Create state files at root:
+   - `01-Quarter_Goals/` — Quarterly goals (optional)
+2. Create state files at root:
    - `03-Tasks/Tasks.md` — Task backlog (empty to start)
    - `02-Week_Priorities/Week_Priorities.md` — Weekly priorities (empty to start)
-5. Update CLAUDE.md:
+3. Update CLAUDE.md:
    - Update the **User Profile** section with their name, role, company size, and pillars
-   - Update the **Folder Structure (PARA)** section to reflect the actual areas created (add role-specific area to the list if created)
-6. Update `System/pillars.yaml` with their strategic pillars
-7. Update `System/user-profile.yaml`:
+4. Update `System/pillars.yaml` with their strategic pillars
+5. Update `System/user-profile.yaml`:
    - Add name, role, company, company_size from Steps 1-3
    - Add email_domain from Step 3.5
    - Add communication preferences from Step 5

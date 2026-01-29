@@ -10,9 +10,14 @@ demo_mode: false
 # Basic Identity
 name: ""
 role: ""
-role_group: ""  # product, sales, marketing, finance, engineering, customer_success, operations, leadership, design
+role_group: ""  # product, sales, marketing, finance, engineering, customer_success, operations, leadership, design, support, advisory
 company: ""
-company_size: ""  # startup (1-100), scaling (100-1k), enterprise (1k-10k), large_enterprise (10k+)
+company_size: ""  # startup (1-100), scaling (100-1000), enterprise (1000-10000), large_enterprise (10000+)
+
+# Your company email domain (used to identify internal vs external people)
+# Example: "pendo.io" (without @)
+# Multiple domains: "pendo.io, pendo.com"
+email_domain: ""
 
 # Role Intelligence
 # This section is populated during onboarding based on the role definition
@@ -44,37 +49,79 @@ communication:
   detail_level: "concise"  # options: concise, balanced, comprehensive
   
   # Career/seniority context (for tone calibration)
-  career_level: ""  # options: junior, mid, senior, leadership, c_suite
+  career_level: "mid"  # options: junior, mid, senior, leadership, c_suite
   
   # Coaching style preference (for career coaching)
-  coaching_style: "challenging"  # options: encouraging, collaborative, challenging
+  coaching_style: "collaborative"  # options: encouraging, collaborative, challenging
 
 # Strategic Pillars
 # Defined during onboarding, sync'd with System/pillars.yaml
 pillars: []
 
 # Meeting Processing Configuration
+# How Dex processes meetings from Granola
 meeting_processing:
-  mode: "manual"  # manual (run /process-meetings) or automatic (background sync)
-  api_provider: ""  # gemini, anthropic, or openai (for automatic mode)
+  # Mode: "manual" (run /process-meetings) or "automatic" (background sync)
+  mode: manual
+  
+  # API provider for automatic mode: gemini, anthropic, or openai
+  api_provider: gemini
 
 # Meeting Intelligence Configuration
-# Role-specific settings for what gets extracted from meetings
+# Controls what gets extracted from your meetings (set during onboarding based on role)
 meeting_intelligence:
+  # Extract customer pain points and challenges
   extract_customer_intel: false
+  
+  # Extract competitive mentions and comparisons
   extract_competitive_intel: false
+  
+  # Extract action items (always recommended)
   extract_action_items: true
+  
+  # Extract decisions made (always recommended)
   extract_decisions: true
+  
+  # Extract stakeholder dynamics and relationships
   extract_stakeholder_dynamics: false
+  
+  # Extract budget, authority, need, timeline (BANT for sales)
   extract_budget_timeline: false
+  
+  # Extract technical decisions and architecture choices
   extract_technical_decisions: false
 
 # Journaling Configuration
 # Controls which journal types are enabled
 journaling:
-  morning: false  # Morning journal: intention-setting for the day
-  evening: false  # Evening journal: reflection on the day
-  weekly: false   # Weekly journal: patterns and synthesis
+  # Morning journal: intention-setting for the day
+  morning: false
+  
+  # Evening journal: reflection on the day
+  evening: false
+  
+  # Weekly journal: patterns and synthesis
+  weekly: false
+
+# Quarterly Planning Configuration
+# Controls whether you use quarterly goal setting
+quarterly_planning:
+  # Whether quarterly planning is enabled
+  enabled: false
+  
+  # Has user been asked about quarterly planning during onboarding?
+  prompted: false
+  
+  # Month when Q1 starts (1=Jan, 2=Feb, 4=Apr, etc)
+  # Common: 1 (calendar year), 2 (some fiscal years), 4 (many fiscal years)
+  q1_start_month: 1
+  
+  # Current quarter (auto-calculated by system)
+  current_quarter: "Q1 2026"
+  
+  # Current quarter dates (auto-calculated)
+  quarter_start_date: "2026-01-01"
+  quarter_end_date: "2026-03-31"
 
 # Integration Configuration
 # Tracks which external integrations are enabled

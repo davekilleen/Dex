@@ -1,4 +1,4 @@
-# /level-up Feature Test
+# /dex-level-up Feature Test
 
 **Purpose:** Practical test to verify data collection and recommendation logic works correctly.
 
@@ -54,7 +54,7 @@ grep "Daily planning" System/usage_log.md
 - [ ] Weekly review (/week-review)
 
 ## Tracking Metadata
-- **Last level-up prompt:** (not yet prompted)
+- **Last dex-level-up prompt:** (not yet prompted)
 - **First daily plan:** 2026-01-21
 ```
 
@@ -71,18 +71,18 @@ grep "Daily planning" System/usage_log.md
 1. Command generates daily plan normally
 2. At Step 3.5 (Level-Up Check):
    - Reads usage_log.md
-   - Sees `last_level_up_prompt: (not yet prompted)`
+   - Sees `last_dex_level_up_prompt: (not yet prompted)`
    - Counts unchecked features: 24 unchecked
    - Condition met: 7+ days AND 3+ unused features
 3. Adds to daily plan output:
    ```markdown
    ---
    
-   💡 **Tip:** You're using 1 of 25 Dex features. Run `/level-up` to see what you might be missing.
+   💡 **Tip:** You're using 1 of 25 Dex features. Run `/dex-level-up` to see what you might be missing.
    ```
 4. Updates usage log metadata:
    ```markdown
-   - **Last level-up prompt:** 2026-01-28
+   - **Last dex-level-up prompt:** 2026-01-28
    ```
 
 **Verification:**
@@ -91,13 +91,13 @@ grep "Daily planning" System/usage_log.md
 grep "💡 Tip" 00-Inbox/Daily_Plans/2026-01-28.md
 
 # Check metadata was updated
-grep "Last level-up prompt" System/usage_log.md
-# Expected: "- **Last level-up prompt:** 2026-01-28"
+grep "Last dex-level-up prompt" System/usage_log.md
+# Expected: "- **Last dex-level-up prompt:** 2026-01-28"
 ```
 
 ---
 
-## Test 3: User Runs /level-up
+## Test 3: User Runs /dex-level-up
 
 **Starting State:**
 
@@ -142,7 +142,7 @@ grep "Last level-up prompt" System/usage_log.md
 - [ ] Demo mode (/dex-demo)
 ```
 
-**Action:** User types `/level-up`
+**Action:** User types `/dex-level-up`
 
 **Expected Behavior:**
 
@@ -237,7 +237,7 @@ At end of `/review` command (Step 6):
 2. No announcement about tracking update
 3. User sees only the daily review output
 
-**Next Time User Runs `/level-up`:**
+**Next Time User Runs `/dex-level-up`:**
 
 System recognizes:
 - Daily planning: ✅
@@ -255,7 +255,7 @@ New recommendations:
 grep "Daily review" System/usage_log.md
 # Expected: "- [x] Daily review (/review)"
 
-# Next /level-up won't suggest daily review again
+# Next /dex-level-up won't suggest daily review again
 # (already checked)
 ```
 
@@ -268,7 +268,7 @@ grep "Daily review" System/usage_log.md
 `System/usage_log.md`:
 ```markdown
 ## Tracking Metadata
-- **Last level-up prompt:** 2026-01-28
+- **Last dex-level-up prompt:** 2026-01-28
 ```
 
 **Action:** User runs `/daily-plan` on 2026-01-29 (next day)
@@ -277,7 +277,7 @@ grep "Daily review" System/usage_log.md
 
 1. Command generates daily plan
 2. At Step 3.5 (Level-Up Check):
-   - Reads `last_level_up_prompt: 2026-01-28`
+   - Reads `last_dex_level_up_prompt: 2026-01-28`
    - Calculates: Only 1 day since last prompt
    - Condition NOT met: Need 7+ days
 3. No tip added to daily plan
@@ -287,7 +287,7 @@ grep "Daily review" System/usage_log.md
 
 1. User runs `/daily-plan`
 2. At Step 3.5:
-   - Reads `last_level_up_prompt: 2026-01-28`
+   - Reads `last_dex_level_up_prompt: 2026-01-28`
    - Calculates: 8 days since last prompt ✅
    - Checks unused features: Still 3+ unchecked ✅
 3. Adds tip to daily plan again
@@ -345,7 +345,7 @@ grep "Daily review" System/usage_log.md
 - [x] Demo mode (/dex-demo)
 ```
 
-**Action:** User runs `/level-up`
+**Action:** User runs `/dex-level-up`
 
 **Expected Behavior:**
 
@@ -453,5 +453,5 @@ Could build test suite, but manual testing is sufficient given:
 
 **Regression testing:**
 - When adding new commands, add checkbox to usage_log.md
-- Test `/level-up` still recommends correctly
+- Test `/dex-level-up` still recommends correctly
 - Verify smart trigger still works in daily-plan

@@ -24,6 +24,19 @@ If `04-Projects/` folder doesn't exist, this is a fresh setup. Read `.claude/flo
 
 ---
 
+## Reference Documentation
+
+For detailed information, see:
+- **Folder structure:** `06-Resources/Dex_System/Folder_Structure.md`
+- **Complete guide:** `06-Resources/Dex_System/Dex_System_Guide.md`
+- **Technical setup:** `06-Resources/Dex_System/Dex_Technical_Guide.md`
+- **Update guide:** `06-Resources/Dex_System/Updating_Dex.md`
+- **Skills catalog:** `.claude/skills/README.md` or run `/dex-level-up`
+
+Read these files when users ask about system details, features, or setup.
+
+---
+
 ## Core Behaviors
 
 ### Person Lookup (Important)
@@ -42,29 +55,11 @@ When significant context about people is shared (role changes, relationships, pr
 
 Adapt your tone and language based on user preferences in `System/user-profile.yaml` → `communication` section:
 
-**Formality Levels:**
-- **Formal:** Use complete sentences, avoid contractions, maintain professional distance
-- **Professional casual:** Default Dex style - direct, bullet points, friendly but focused
-- **Casual:** Relaxed language, contractions, conversational flow
+- **Formality:** Formal, professional casual (default), or casual
+- **Directness:** Very direct, balanced (default), or supportive
+- **Career level:** Adjust encouragement and strategic depth based on seniority
 
-**Directness Levels:**
-- **Very direct:** Lead with the answer/action, minimal context unless asked
-- **Balanced:** Brief context + action (default)
-- **Supportive:** More encouragement, explain reasoning, normalize challenges
-
-**Career Level Adaptation:**
-- **Junior (early career):** Encouraging, educational, normalize challenges, suggest mentorship
-- **Mid:** Collaborative, strategic, push on impact and ownership
-- **Senior:** Challenging, systems-thinking, strategic questions
-- **Leadership:** Focus on team development, delegation, organizational impact
-- **C-Suite (executive):** Strategic, high-level, focus on organizational outcomes
-
-**Apply consistently across:**
-- Daily planning and reviews
-- Project discussions
-- Career coaching (already implemented)
-- Meeting prep and processing
-- All command outputs
+Apply consistently across all interactions (planning, reviews, meetings, project discussions).
 
 ### Meeting Capture
 When the user shares meeting notes or says they had a meeting:
@@ -173,77 +168,14 @@ This happens during `/review` - you don't need to capture learnings silently dur
 
 ### Background Self-Learning Automation
 
-Dex continuously learns from usage and external sources through **automatic inline checks** - no installation required!
+Dex continuously learns from usage and external sources through automatic checks:
+- Monitors Anthropic changelog for new Claude features (every 6h)
+- Checks for Dex system updates from GitHub (every 7 days during `/daily-plan`)
+- Tracks pending learnings in `System/Session_Learnings/` (daily)
+- Surfaces alerts during session start and `/daily-plan`
+- Pattern recognition during weekly reviews
 
-**How it works:**
-
-The system runs self-learning checks automatically in two places:
-1. **Session start hook** - Runs when you start working with Dex
-2. **During `/daily-plan`** - Runs as part of daily planning
-
-These checks are **smart and throttled**:
-- Changelog check: Only runs if 6+ hours since last check
-- Learning review: Only runs once per day
-- Both run in background (non-blocking, <1 second)
-- Respect intervals even if triggered from multiple places
-
-**Anthropic Changelog Monitoring:**
-- Checks for new Claude Code features and capabilities (`.scripts/check-anthropic-changelog.cjs`)
-- Creates alert file `System/changelog-updates-pending.md` when updates detected
-- Updates `System/claude-code-state.json` with latest version and check date
-- Session start displays prompt: "🆕 New Claude Code features detected! Run `/dex-whats-new`"
-- Alert also surfaces in daily plan output
-
-**Learning Review Prompts:**
-- Counts pending learnings in `System/Session_Learnings/` from past 7 days (`.scripts/learning-review-prompt.sh`)
-- Creates reminder file `System/learning-review-pending.md` if 5+ pending learnings exist
-- Session start displays prompt: "📚 You have X pending learnings. Run `/dex-whats-new --learnings`"
-- Alert also surfaces in daily plan output
-
-**State Tracking:**
-- `System/claude-code-state.json` - Tracks last changelog check, Claude version seen, features discovered
-- `System/.last-learning-check` - Tracks last daily learning review
-- Enables incremental learning (only surfaces what's new since last check)
-
-**Pattern Recognition:**
-- Daily reviews prompt to categorize learnings → `Mistake_Patterns.md` or `Working_Preferences.md`
-- Weekly reviews detect recurring issues (2+ occurrences) and suggest pattern documentation
-- Session start hook surfaces active mistake patterns and preferences for context
-
----
-
-**Optional: Launch Agent Installation (Background Optimization)**
-
-For faster execution without inline checks, install Launch Agents:
-
-```bash
-# Install background automation (optional optimization)
-bash .scripts/install-learning-automation.sh
-
-# This runs checks in background every 6h (changelog) and daily at 5pm (learnings)
-# Reduces latency during session start and daily planning
-```
-
-**With Launch Agents:**
-- Checks run in background continuously
-- Alert files ready before you even start planning
-- Lower latency during session start
-
-**Without Launch Agents:**
-- Checks run inline during session start and `/daily-plan`
-- Still fast (<1 second) with interval throttling
-- System works perfectly fine, just slightly more latency
-
-**Uninstall:**
-```bash
-bash .scripts/install-learning-automation.sh --uninstall
-```
-
-**Manual testing:**
-```bash
-node .scripts/check-anthropic-changelog.cjs --force
-bash .scripts/learning-review-prompt.sh
-```
+**Setup details:** See `06-Resources/Dex_System/Dex_Technical_Guide.md` for installation and configuration.
 
 ### Changelog Discipline
 After making significant system changes (new commands, CLAUDE.md edits, structural changes), update `CHANGELOG.md` under `[Unreleased]` before finishing the task.
@@ -273,162 +205,47 @@ Track feature adoption in `System/usage_log.md` to power `/dex-level-up` recomme
 
 ## Skills
 
-Skills extend Dex capabilities and are invoked with `/skill-name`. All skills follow the [Agent Skills standard](https://agentskills.io) format at `.claude/skills/[skill-name]/SKILL.md`.
+Skills extend Dex capabilities and are invoked with `/skill-name`. Common skills include:
+- `/daily-plan`, `/daily-review` - Daily workflow
+- `/week-plan`, `/week-review` - Weekly workflow
+- `/quarter-plan`, `/quarter-review` - Quarterly planning
+- `/triage`, `/meeting-prep`, `/process-meetings` - Meetings and inbox
+- `/project-health`, `/product-brief` - Projects
+- `/career-coach`, `/resume-builder` - Career development
+- `/dex-level-up`, `/dex-backlog`, `/dex-improve` - System improvements
+- `/dex-update` - Update Dex automatically (shows what's new, updates if confirmed, no technical knowledge needed)
+- `/dex-rollback` - Undo last update if something went wrong
 
-**Note:** The old `.claude/commands/` folder has been deprecated. All commands have been migrated to skills with proper YAML frontmatter.
-
-**Daily workflow:**
-- `/daily-plan` - Context-aware daily planning (includes morning journal if enabled)
-- `/daily-review` - End of day review (includes evening journal if enabled)
-- `/triage` - Process inbox
-- `/journal` - Start or manage journaling
-
-**Weekly workflow:**
-- `/week-plan` - Plan the week's priorities
-- `/week-review` - Weekly synthesis and review
-
-**Quarterly workflow:**
-- `/quarter-plan` - Set 3-5 goals for the quarter
-- `/quarter-review` - Review quarter and capture learnings (includes weekly journal if enabled)
-
-**Meetings:**
-- `/meeting-prep` - Prepare for upcoming meetings
-- `/process-meetings` - Process Granola meetings
-
-**Projects:**
-- `/project-health` - Review project status
-- `/product-brief` - Extract product ideas through guided questions and generate PRD
-
-**Career Development:**
-- `/career-setup` - Initialize career development system (job description, ladder, reviews, goals)
-- `/career-coach` - Personal career coach with 4 modes: weekly reports, monthly reflections, self-reviews, promotion assessments
-- `/resume-builder` - Build resume and LinkedIn profile through guided interviews
-
-**System:**
-- `/dex-demo` - Toggle demo mode (see `.claude/reference/demo-mode.md`)
-- `/create-mcp` - Create new MCP integration
-- `/dex-whats-new` - Check for system improvements (learnings + Claude updates)
-
-**Dex System Improvements:**
-- `/dex-level-up` - Discover unused Dex features based on your usage patterns (also shows role-specific skills)
-- `/dex-backlog` - AI-powered ranking of Dex system improvement ideas
-- `/dex-improve` - Workshop an idea into implementation plan
-- `capture_idea` (MCP tool) - Quick capture improvement ideas from any context
-
-**Role-Specific Skills:**
-
-Additional skills tailored to specific roles (Product, Sales, Marketing, Finance, Engineering, Customer Success, Leadership, Operations, Design) are available but not installed by default. These are discoverable through `/dex-level-up` after onboarding.
-
-Examples include:
-- **Product:** `/roadmap`, `/customer-intel`, `/feature-decision`
-- **Sales:** `/deal-review`, `/pipeline-health`, `/account-plan`, `/call-prep`
-- **Customer Success:** `/health-score`, `/renewal-prep`, `/expansion-opportunities`
-
-Run `/dex-level-up` to see which skills are available for your role and choose which ones to install.
+**Complete catalog:** Run `/dex-level-up` or see `.claude/skills/README.md`
 
 ---
 
 ## Folder Structure (PARA)
 
-Dex uses the PARA method (Projects, Areas, Resources, Archives) for organization.
+Dex uses the PARA method: Projects (time-bound), Areas (ongoing), Resources (reference), Archives (historical).
 
-**Root contains:**
-- 4 PARA folders (Projects, Areas, Resources, Archives)
-- Inbox (capture zone) + System (configuration)
-- 3 active state files (01-Quarter_Goals/Quarter_Goals.md, 03-Tasks/Tasks.md, 02-Week_Priorities/Week_Priorities.md)
-- Project files (package.json, install.sh, etc.)
+**Key folders:**
+- `04-Projects/` - Active projects
+- `05-Areas/People/` - Person pages (Internal/ and External/)
+- `05-Areas/Companies/` - External organizations
+- `05-Areas/Career/` - Career development (optional, via `/career-setup`)
+- `06-Resources/` - Reference material
+- `07-Archives/` - Completed work
+- `00-Inbox/` - Capture zone (meetings, ideas)
+- `System/` - Configuration (pillars.yaml, user-profile.yaml)
+- `03-Tasks/Tasks.md` - Task backlog
+- `01-Quarter_Goals/Quarter_Goals.md` - Quarterly goals (optional)
+- `02-Week_Priorities/Week_Priorities.md` - Weekly priorities
 
-```
-# Active state files
-01-Quarter_Goals/Quarter_Goals.md          # Current quarter's 3-5 goals (if quarterly planning enabled)
-03-Tasks/Tasks.md                  # Task backlog with pillar tags and goal links
-02-Week_Priorities/Week_Priorities.md        # Current week's Top 3 priorities
+**Planning hierarchy:** Pillars → Quarter Goals → Week Priorities → Daily Plans → Tasks
 
-# Projects = time-bound work with clear outcomes
-04-Projects/                 # Active projects (time-bound initiatives)
-
-# Areas = ongoing responsibilities (no end date)
-05-Areas/
-├── People/               # Person pages for everyone you work with
-│   ├── Internal/         # Colleagues, teammates (same email domain)
-│   └── External/         # Customers, partners (different email domain)
-├── Companies/            # External organizations (universal)
-└── Career/               # Career development (created via /career-setup)
-    ├── Current_Role.md
-    ├── Career_Ladder.md
-    ├── Review_History.md
-    ├── Growth_Goals.md
-    └── Evidence/
-        ├── Achievements/
-        ├── Feedback/
-        └── Skills/
-# Additional role-specific areas added during onboarding (e.g., Accounts/, Team/, Content/)
-
-# Resources = reference material you consult
-06-Resources/
-├── Dex_System/           # System docs (JTBD, Guide, Integrations)
-├── Learnings/            # Compound knowledge
-└── Templates/            # Note templates
-
-# Archives = historical records
-07-Archives/
-├── 04-Projects/             # Completed projects
-├── Plans/                # Daily and weekly plans
-└── Reviews/              # Daily, weekly, and quarterly reviews
-
-# Inbox = capture zone (transient)
-00-Inbox/
-├── Meetings/             # Meeting notes
-└── Ideas/                # Quick thoughts
-
-# System = configuration
-System/
-├── Session_Learnings/    # System improvements discovered during sessions
-├── Templates/            # Note templates
-├── pillars.yaml          # Strategic pillars (your main focus areas)
-├── user-profile.yaml     # User preferences and settings
-└── Dex_Backlog.md        # Dex system improvement backlog (AI-ranked)
-```
-
-### Planning Hierarchy
-
-Everything connects from pillars → quarters → weeks → days:
-
-- **Strategic Pillars** (`System/pillars.yaml`) — Your ongoing focus areas, thematic to your role
-- **Quarter Goals** (`01-Quarter_Goals/Quarter_Goals.md`) — Time-bound outcomes (3 months) advancing pillars
-- **Week Priorities** (`02-Week_Priorities/Week_Priorities.md`) — Top 3 this week advancing quarterly goals
-- **Daily Plan** (`07-Archives/Plans/`) — Today's work supporting weekly priorities (auto-archived)
-- **Tasks** (`03-Tasks/Tasks.md`) — Backlog tagged with `#pillar [Q1-2] [Week-1]` connecting to goals
-
-Want to change your pillars or reconfigure how work ladders up? Just ask Claude.
+**Complete details:** See `06-Resources/Dex_System/Folder_Structure.md`
 
 ### Dex System Improvement Backlog
 
-System for capturing and prioritizing improvements to Dex itself:
+Use `capture_idea` MCP tool to capture Dex system improvements anytime. Ideas are AI-ranked and reviewed via `/dex-backlog`. Workshop ideas with `/dex-improve`.
 
-- **Capture** - Use `capture_idea` MCP tool anytime from any context
-- **Storage** - Ideas saved to `System/Dex_Backlog.md` with metadata
-- **Ranking** - AI scores ideas on 5 dimensions (see below)
-- **Review** - Run `/dex-backlog` to see ranked priorities
-- **Workshop** - Run `/dex-improve [idea]` to plan implementation
-
-**Automatic integration:**
-- Weekly planning checks for high-priority ideas
-- Quarterly reviews assess implementation progress
-- `/dex-level-up` mentions idea capture capability
-
-**Scoring dimensions:**
-- Impact (35%) - Daily workflow improvement
-- Alignment (20%) - Fits your usage patterns
-- Token Efficiency (20%) - Reduces context/token usage
-- Memory & Learning (15%) - Enhances persistence, self-learning, compounding knowledge
-- Proactivity (10%) - Enables proactive concierge behavior
-
-**Cursor Feasibility Gate:** Ideas must be implementable using Cursor's actual capabilities (file ops, MCP tools, commands). Ideas requiring edit tracking or internal hooks are rejected.
-
-*Effort intentionally excluded - with AI coding, implementation is cheap. Focus on value and feasibility.*
-
-Ideas ranked as High (85+), Medium (60-84), or Low (<60) priority. Mark as implemented when built.
+**Details:** See `06-Resources/Dex_System/Dex_Technical_Guide.md`
 
 ---
 

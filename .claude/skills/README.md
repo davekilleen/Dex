@@ -208,9 +208,12 @@ Built specifically for personal knowledge management and productivity workflows 
 - `/triage` - Organize inbox and extract tasks
 
 **System Management:**
+- `/prompt-improver` - Transform vague prompts via Anthropic Messages API
 - `/dex-level-up` - Discover unused features
 - `/dex-backlog` - AI-powered idea ranking
 - `/dex-improve` - Workshop improvement ideas
+- `/dex-update` - Update Dex automatically (shows what's new, updates if confirmed, no technical knowledge needed)
+- `/dex-rollback` - Undo last update if something went wrong
 - `/create-mcp` - Create MCP integrations
 
 ### Anthropic Skills (General-Purpose)
@@ -226,7 +229,6 @@ Provided by Anthropic for broad productivity tasks (prefixed with `anthropic-`):
 **Writing & Communication:**
 - `/anthropic-doc-coauthoring` - Structured workflow for co-authoring documentation
 - `/anthropic-internal-comms` - Internal communications (status reports, updates, FAQs)
-- `/anthropic-prompt-improver` - Improve prompts using Anthropic best practices
 
 **Design & Visual:**
 - `/anthropic-algorithmic-art` - Create algorithmic art using p5.js

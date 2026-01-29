@@ -114,34 +114,47 @@ Demo mode lets you explore Dex with pre-populated sample content without affecti
 
 | Command | Effect |
 |---------|--------|
-| `/dex-demo on` | Enable demo mode - uses sample data |
+| `/dex-demo on` | Enable demo mode and launch interactive demo selector |
 | `/dex-demo off` | Disable demo mode - use real vault |
+| `/dex-demo menu` | Show demo scenario menu (when demo mode is on) |
 | `/dex-demo status` | Check if demo mode is active |
 | `/dex-demo reset` | Restore demo content to original state |
 
+### Interactive Demo Selector
+
+When you run `/dex-demo on`, you'll see a menu of **12 validated demo scenarios** that showcase different aspects of Dex:
+
+**How it works:**
+1. Run `/dex-demo on` to see Alex Chen persona intro and scenario menu
+2. Enter a number (1-12) to launch that scenario
+3. Follow the guided walkthrough
+4. Return to menu anytime with `/dex-demo menu`
+
+**Scenario categories:**
+- **Daily Workflow (1-4):** Morning journal, daily planning, daily review, inbox triage
+- **People & Context (5-6):** Person lookup, company intelligence
+- **Planning & Review (7-9):** Weekly planning, weekly review, task management
+- **Career Development (10-11):** Career system, career coach
+- **System Evolution (12):** Learning & backlog
+
+See `.claude/reference/demo-scenarios.md` for detailed scenario descriptions.
+
 ### Demo Content
 
-Located in `System/Demo/`, the demo vault includes:
+Located in `System/Demo/`, includes:
 
-**Alex Chen** - A fictional PM at TechCorp
+**Demo Persona:** Alex Chen, Senior Product Manager (L4) at TechCorp, working toward L5 promotion
 
-**Projects:**
-- Mobile App Launch (main focus, in progress, some blockers)
-- Customer Portal Redesign (just kicked off)
-- API Partner Program (early exploration)
-
-**People:**
-- Jordan Lee (Engineering Lead, internal)
-- Maya Patel (Designer, internal)
-- Sarah Chen (Customer champion at Acme Corp)
-- Tom Wilson (Exec sponsor at Acme)
-- Lisa Park (Beta customer)
-
-**Pre-populated:**
-- Week of meeting notes
-- Tasks across P0-P3 priorities
-- Week Priorities
-- Sample daily plan and review
+**Sample content:**
+- 3 active projects in various stages (Mobile App Launch, Customer Portal Redesign, API Partner Program)
+- 5 person pages (Jordan Lee, Maya Patel, Sarah Chen, Tom Wilson, Lisa Park)
+- Company page for Acme Corp aggregating contacts, meetings, and tasks
+- Week of meeting notes (Jan 20-24, 2026) with scattered tasks for `/triage`
+- Full week of daily plans, weekly plan, journal entries
+- Pre-populated tasks across P0-P3 priorities with pillar tags
+- Career development system (role, ladder, reviews, goals, evidence)
+- Learning system examples (Working Preferences, Mistake Patterns, Session Learnings)
+- Dex Backlog with 10 ranked improvement ideas
 
 ### How Demo Mode Works
 
@@ -155,7 +168,7 @@ When `demo_mode: true` in `System/user-profile.yaml`:
 ### Use Cases
 
 1. **Onboarding** - Explore commands before adding your own data
-2. **Demoing** - Show colleagues how a PKM works
+2. **Demoing to colleagues** - Show the PKM system with realistic data
 3. **Testing** - Try new workflows without risk
 
 ---
@@ -337,7 +350,8 @@ Dex/
 │
 ├── 06-Resources/                # Reference material
 │   ├── Dex_System/           # This documentation
-│   └── Learnings/            # Compound knowledge
+│   ├── Learnings/            # Compound knowledge
+│   └── Quarterly_Reviews/    # Quarterly reflection and strategic reviews
 │
 ├── 07-Archives/                 # Historical records
 │   ├── 04-Projects/             # Completed projects
@@ -361,29 +375,16 @@ Dex/
 
 ## Templates
 
-22 templates in `System/Templates/` for common note types:
+4 templates in `System/Templates/` used by Dex automation:
 
 | Template | Use Case |
 |----------|----------|
-| `Daily_Note.md` | Daily plan structure |
-| `Morning_Journal.md` | Morning reflection prompts |
-| `Evening_Journal.md` | End-of-day reflection |
-| `Weekly_Journal.md` | Weekly reflection prompts |
-| `Weekly_Review.md` | Week synthesis structure |
-| `Meeting_Notes.md` | Meeting capture format |
-| `One_on_One.md` | 1:1 meeting structure |
-| `Person_Page.md` | Person page template |
-| `Company.md` | Company page template |
-| `Project.md` | Project tracking structure |
-| `Account_Overview.md` | Key account page |
-| `Decision_Log.md` | Decision documentation |
-| `Idea_Capture.md` | Idea development |
-| `Retrospective.md` | Team/project retro |
-| `Quarterly_Review.md` | Quarterly reflection |
-| `Deal_Memo.md` | Investment committee memo (VC/PE) |
-| `DD_Checklist.md` | Due diligence checklist (VC/PE) |
-| `Board_Prep.md` | Board meeting preparation |
-| `Portfolio_Company.md` | Portfolio company tracking (VC/PE) |
+| `Person_Page.md` | Person page structure |
+| `Company.md` | Company page template (used by `/process-meetings`) |
+| `Career_Evidence_Achievement.md` | Achievement capture (used by `/week-review`, `/resume-builder`) |
+| `Career_Evidence_Feedback.md` | Feedback tracking (career system) |
+
+These templates are automatically applied when Dex creates files through skills. You can modify them to match your preferences.
 
 ---
 
@@ -689,6 +690,7 @@ Skills are reusable AI workflows invoked with `/skill-name`. All skills follow t
 - `/resume-builder` — Build resume and LinkedIn through guided interview
 
 **System Management:**
+- `/prompt-improver` — Transform vague prompts into expert-level prompts via Anthropic Messages API
 - `/dex-level-up` — Discover unused features based on usage patterns
 - `/dex-backlog` — AI-powered ranking of improvement ideas
 - `/dex-improve` — Workshop an idea into implementation plan
@@ -710,7 +712,6 @@ Skills are reusable AI workflows invoked with `/skill-name`. All skills follow t
 **Writing & Communication:**
 - `/anthropic-doc-coauthoring` — Structured workflow for co-authoring docs
 - `/anthropic-internal-comms` — Internal communications (status reports, updates)
-- `/anthropic-prompt-improver` — Improve prompts using Anthropic best practices
 
 **Design & Visual:**
 - `/anthropic-algorithmic-art` — Create algorithmic art using p5.js
@@ -872,16 +873,6 @@ Dex includes six custom MCP servers in `core/mcp/`:
 | **Career** | `career_server.py` | Career development tracking, evidence aggregation, competency analysis |
 | **Resume** | `resume_server.py` | Resume building with sessions, metric validation, LinkedIn generation |
 | **Dex Improvements** | `dex_improvements_server.py` | Improvement idea capture, duplicate detection, backlog management |
-
-### Integration Status
-
-Configuration is tracked in `System/integration_status.yaml`. On first run of `/daily-plan`, you'll be guided through setup:
-
-1. **Calendar**: Which calendar to use for work meetings
-2. **Granola**: Whether you have Granola installed for meeting notes
-3. **Tasks**: Built-in, always enabled
-
-Run `/daily-plan --setup` to reconfigure integrations anytime.
 
 ### Calendar MCP Tools
 

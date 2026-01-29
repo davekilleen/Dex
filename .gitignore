@@ -21,3 +21,30 @@ node_modules/
 
 # Logs
 *.log
+
+# ============================================
+# User Customizations - Protected from Updates
+# ============================================
+
+# User configuration
+System/user-profile.yaml
+System/pillars.yaml
+System/.last-update-check
+
+# Custom extensions (user-created, never in upstream)
+CLAUDE-custom.md
+.claude/skills-custom/
+core/mcp-custom/
+core/mcp-premium/
+
+# User data folders (PARA structure)
+00-Inbox/
+01-Quarter_Goals/
+02-Week_Priorities/
+03-Tasks/
+04-Projects/
+05-Areas/
+07-Archives/
+
+# User customization notes
+System/my-customizations.md

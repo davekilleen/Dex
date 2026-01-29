@@ -1,32 +1,20 @@
 # Templates
 
-Note templates for consistent formatting.
-
-## What Goes Here
-
-Templates for common note types:
-- **Person pages** — Standard structure for tracking relationships
-- **Project pages** — Consistent project tracking format
-- **Meeting notes** — Meeting capture templates
-- **Career evidence** — Achievement and feedback templates
-
-## Usage
-
-When creating new notes of these types, Dex automatically applies the relevant template to ensure consistency.
-
-## Customization
-
-You can modify templates to match your preferences. Just edit the template file and Dex will use your version for new notes.
+Templates used by Dex automation for consistent structure.
 
 ## Available Templates
 
-Check this folder for current templates. Common ones include:
-- Person page structure
-- Project overview format
-- 1:1 meeting template
-- Career achievement capture
-- Feedback received format
+These templates are actively used by Dex skills:
 
-## Creating New Templates
+- **`Person_Page.md`** — Person page structure (used when creating person pages)
+- **`Company.md`** — Company page structure (used by `/process-meetings`)
+- **`Career_Evidence_Achievement.md`** — Achievement capture (used by `/week-review`, `/resume-builder`)
+- **`Career_Evidence_Feedback.md`** — Feedback tracking (used by career system)
 
-If you want to add a new template, just create a `.md` file here with your desired structure and let Dex know. It can integrate it into relevant workflows.
+## Usage
+
+Dex automatically uses these templates when creating new files through skills and automation. You can modify them to match your preferences.
+
+## Note on Manual File Creation
+
+If you're creating files manually (person pages, company pages, etc.), you can copy these templates as a starting point, but Dex will work fine with any structure you prefer.

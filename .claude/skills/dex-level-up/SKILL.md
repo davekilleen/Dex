@@ -394,19 +394,19 @@ After showing recommendations, also mention:
 
 ### In `/daily-plan`:
 
-If user hasn't run `/level-up` in 7+ days and has unused features, add a gentle nudge:
+If user hasn't run `/dex-level-up` in 7+ days and has unused features, add a gentle nudge:
 
 ```markdown
 ---
 
-💡 **Tip:** You're using {{X}} of {{Y}} Dex features. Run `/level-up` to see what you might be missing.
+💡 **Tip:** You're using {{X}} of {{Y}} Dex features. Run `/dex-level-up` to see what you might be missing.
 ```
 
 ### After Onboarding:
 
 At the end of `/setup`, mention:
 
-> "One more thing: run `/level-up` anytime to discover features you haven't tried yet. No FOMO — just helpful guidance on what's available."
+> "One more thing: run `/dex-level-up` anytime to discover features you haven't tried yet. No FOMO — just helpful guidance on what's available."
 
 ---
 

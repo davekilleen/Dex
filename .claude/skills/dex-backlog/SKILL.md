@@ -382,7 +382,7 @@ Your backlog is empty!
 Start capturing improvement ideas:
 - Use the `capture_idea` MCP tool anytime you think "I wish Dex did X"
 - Run `/dex-improve` to explore capability gaps
-- Run `/level-up` to discover unused features
+- Run `/dex-level-up` to discover unused features
 
 The backlog system will help you track and prioritize ideas systematically.
 ```
@@ -394,7 +394,7 @@ The backlog system will help you track and prioritize ideas systematically.
 Your system is working well. The backlog has ideas for later, but nothing critical right now.
 
 Consider:
-- Running `/level-up` to discover unused features
+- Running `/dex-level-up` to discover unused features
 - Capturing ideas as they come up
 - Reviewing backlog quarterly
 ```

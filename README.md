@@ -6,7 +6,7 @@ Clone this repo, run the setup wizard, tell it your role — and in 10 minutes y
 
 No coding required. Just [Cursor](https://cursor.com) and conversation.
 
-Companion to [Episode 8 of The Vibe PM Podcast](https://link-tbd) and the [full blog post](https://link-tbd).
+Companion to [Episode 8 of The Vibe PM Podcast](TODO-PODCAST-URL) and the [full blog post](TODO-BLOG-POST-URL).
 
 ---
 
@@ -34,7 +34,7 @@ The system teaches you as you go. Start shallow, go deep as you get curious. Two
 
 **For teams and organizations:** One person adopts Dex, sees the value, shares it with colleagues. Technical leaders can distribute the repo (everyone gets the same foundation, adapted to their role) or share demo mode (let people explore without committing their own data). Teams develop common language around what AI can reliably do. Your organization moves from AI demos to AI operations.
 
-**Want to share this?** Point colleagues to the [companion blog post](https://link-tbd) for the full story with more detail and color about how everything comes together. At the bottom of this README, there's a ready-to-use message you can copy and paste to share with your team - makes it easy to accelerate AI fluency adoption across your organization.
+**Want to share this?** Point colleagues to the [companion blog post](TODO-BLOG-POST-URL) for the full story with more detail and color about how everything comes together. At the bottom of this README, there's a ready-to-use message you can copy and paste to share with your team - makes it easy to accelerate AI fluency adoption across your organization.
 
 ---
 
@@ -175,6 +175,7 @@ There's also **Claude Code** - a more powerful option available via command line
 |--------------|--------------|
 | **Session start** | Loads Quarter Goals, Week Priorities, Strategic Pillars, Urgent Tasks automatically |
 | **Person context** | When Sarah is mentioned in a file, her person page context injects automatically |
+| **Company context** | When Acme Corp is referenced, company page details inject automatically |
 | **Mistake patterns** | Surfaces active patterns so Claude avoids repeating them |
 | **Learning reminders** | Prompts review when you have 5+ unreviewed learnings |
 
@@ -558,11 +559,61 @@ Comprehensive guides included in the repo:
 - [Dex_System_Guide.md](06-Resources/Dex_System/Dex_System_Guide.md) - Complete feature reference and workflows
 - [Dex_Jobs_to_Be_Done.md](06-Resources/Dex_System/Dex_Jobs_to_Be_Done.md) - Why each piece exists and how they connect
 - [Dex_Technical_Guide.md](06-Resources/Dex_System/Dex_Technical_Guide.md) - Technical deep dive for those who want it
-- [FOLDER_STRUCTURE.md](06-Resources/Dex_System/FOLDER_STRUCTURE.md) - PARA organization explained
+- [Folder_Structure.md](06-Resources/Dex_System/Folder_Structure.md) - PARA organization explained
+- [Updating_Dex.md](06-Resources/Dex_System/Updating_Dex.md) - How to safely update while preserving customizations
 
 Start with what you need. Go deeper if you're curious. No forced learning paths.
 
 These guides live in your vault after setup.
+
+---
+
+## Updating Dex
+
+**Get updates with one command - no technical knowledge needed.**
+
+### Automatic Notifications
+
+Dex checks for updates every 7 days during `/daily-plan`:
+
+```
+🎁 Dex v1.3.0 is available. Run /dex-update to see what's new and update.
+```
+
+### Update in One Command
+
+```
+/dex-update
+```
+
+**That's it.** Dex shows you what's new, you confirm, and then it handles everything:
+- ✓ Downloads latest version
+- ✓ Protects your data (never touches notes/tasks/projects)
+- ✓ Handles conflicts automatically
+- ✓ Creates safety backup
+- ✓ Shows progress at every step
+
+**Time:** 2-5 minutes  
+**Technical knowledge:** None  
+**Risk:** Zero - your data is always safe
+
+### If Something Goes Wrong
+
+```
+/dex-rollback
+```
+
+Instantly restores the previous version.
+
+### Your Data Is Protected
+
+Updates never touch:
+- Your notes, tasks, projects, people pages
+- Your configuration (pillars, user profile)
+- Your customizations
+- Your API keys
+
+**For detailed instructions:** See [Updating_Dex.md](06-Resources/Dex_System/Updating_Dex.md)
 
 ---
 
@@ -579,7 +630,7 @@ These guides live in your vault after setup.
 
 Found this useful? Share with colleagues:
 
-> I've been using an AI personal operating system for my work — handles task management, meeting prep, relationship tracking, and daily planning. Non-engineers can set it up in 10 minutes. Check out the Vibe PM Podcast Episode 8 and the GitHub repo: [link-tbd]
+> I've been using an AI personal operating system for my work — handles task management, meeting prep, relationship tracking, and daily planning. Non-engineers can set it up in 10 minutes. Check out the Vibe PM Podcast Episode 8 and the GitHub repo: https://github.com/davekilleen/dex
 
 ---
 

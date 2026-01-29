@@ -58,98 +58,33 @@ Before anything else, check if demo mode is active:
 
 ---
 
-## Step 0.5: Integration Check
+## Step 1: Check for Updates (Background)
 
-Before generating the plan, check if integrations are configured.
+Silently check if Dex has updates available:
 
-### Check Logic
+1. Call update checker MCP: `check_for_updates(force=False)`
+   - This respects the 7-day interval
+   - Won't check if checked recently
+   - Won't block if network issues
 
-1. Read `System/integration_status.yaml`
-2. If file missing OR `setup_complete: false`:
-   - Trigger guided setup (Step 0.5)
-3. Otherwise:
-   - Proceed to context gathering (Step 1)
+2. **If update available:**
+   - Store notification message for prepending to final output
+   - Format: "🎁 Dex v{version} is available. Run /dex-update to see what's new and update."
+   - Continue immediately (don't wait for user)
 
----
+3. **If no update or too recent:**
+   - Continue silently (don't mention)
+   - No user-facing output
 
-## Step 0.5: Guided Integration Setup (First Run Only)
+4. **If error (network, API limit):**
+   - Continue silently (don't mention)
+   - Will retry tomorrow
 
-> "Before I create your daily plan, let me check what tools you use. This helps me give you better context."
-
-### Question 1: Calendar
-
-> "Which calendar do you use?"
-> 1. Apple Calendar (includes synced Google Calendar accounts)
-> 2. Neither / I'll add it later
-
-**If Apple Calendar:**
-- Verify Calendar MCP is configured in Claude settings
-- Test with `calendar_list_calendars` tool
-- Ask: "Which calendar should I check for work meetings?" (list available calendars)
-- Save calendar name to integration_status.yaml
-
-**If Neither:**
-- Mark calendar integration as disabled
-- Plan will work without meeting context
-
-**Note:** If you use Google Calendar, sync it with Apple Calendar.app on macOS - the Calendar MCP reads from there.
-
-### Question 2: Meeting Notes
-
-> "Do you use Granola for meeting notes?"
-> 1. Yes, I have Granola installed
-> 2. No, I take manual meeting notes
-> 3. What's Granola?
-
-**If Granola:**
-- Check if Granola cache exists at `~/Library/Application Support/Granola/cache-v3.json`
-- If exists: Mark granola as enabled
-- If not: Provide guidance on installing Granola
-
-**If Manual:**
-- Note that meeting notes can be placed in `00-Inbox/Meetings/`
-- Mark granola as disabled
-
-### Question 3: Tasks
-
-> "Are you using Dex's built-in task system (03-Tasks/Tasks.md)?"
-> 1. Yes (recommended)
-> 2. No, I use an external tool
-
-**If Yes:**
-- Confirm Work MCP is working: `list_tasks`
-
-**If No:**
-- Ask what tool they use
-- Note for future integration possibility
-
-### Save Configuration
-
-After setup, create/update `System/integration_status.yaml`:
-
-```yaml
-setup_complete: true
-last_setup: YYYY-MM-DD
-
-integrations:
-  calendar:
-    enabled: true/false
-    type: apple  # or google, or none
-    calendar_name: "user@example.com"
-    mcp_configured: true/false
-    
-  granola:
-    enabled: true/false
-    cache_path: "~/Library/Application Support/Granola/cache-v3.json"
-    
-  tasks:
-    enabled: true
-    type: dex  # built-in
-```
+**Note:** This runs in background. Don't announce "Checking for updates..." or wait for user input. Just proceed with daily planning.
 
 ---
 
-## Step 1: Morning Journal Check (If Enabled)
+## Step 2: Morning Journal Check (If Enabled)
 
 Check if morning journaling is enabled:
 
@@ -166,7 +101,7 @@ Check if morning journaling is enabled:
 
 ---
 
-## Step 2: Monday Weekly Planning Gate
+## Step 3: Monday Weekly Planning Gate
 
 If today is Monday, check if the week is planned:
 
@@ -193,7 +128,7 @@ If today is Monday, check if the week is planned:
 
 ---
 
-## Step 3: Yesterday's Review Check (Soft Gate)
+## Step 4: Yesterday's Review Check (Soft Gate)
 
 Unlike a hard block, this is a gentle check:
 
@@ -208,9 +143,9 @@ Unlike a hard block, this is a gentle check:
 
 ## Step 3.5: Level-Up Check (Smart Trigger)
 
-Check if it's time to surface `/level-up`:
+Check if it's time to surface `/dex-level-up`:
 
-1. Read `System/usage_log.md` to check `last_level_up_prompt` date (stored at bottom of file)
+1. Read `System/usage_log.md` to check `last_dex_level_up_prompt` date (stored at bottom of file)
 2. **If 7+ days since last prompt OR field doesn't exist:**
    - Count unchecked features in usage log
    - **If 3+ unchecked features exist:**
@@ -218,9 +153,9 @@ Check if it's time to surface `/level-up`:
        ```markdown
        ---
        
-       💡 **Tip:** You're using {{X}} of {{Y}} Dex features. Run `/level-up` to see what you might be missing.
+       💡 **Tip:** You're using {{X}} of {{Y}} Dex features. Run `/dex-level-up` to see what you might be missing.
        ```
-     - Update `last_level_up_prompt: YYYY-MM-DD` in usage_log.md
+     - Update `last_dex_level_up_prompt: YYYY-MM-DD` in usage_log.md
 3. **Otherwise:** Skip this check
 
 ---
@@ -253,7 +188,7 @@ Run automated self-learning checks before gathering context. These are fast, thr
 
 ---
 
-## Step 4: Context Gathering
+## Step 5: Context Gathering
 
 Gather context from all available sources in parallel:
 
@@ -328,7 +263,7 @@ Check for pending alerts created by background automation:
 
 ---
 
-## Step 5: Synthesis
+## Step 6: Synthesis
 
 Combine all gathered context into recommendations:
 
@@ -358,7 +293,21 @@ Flag potential issues:
 
 ---
 
-## Step 6: Generate Daily Plan
+## Step 7: Generate Daily Plan
+
+**Before displaying the plan:**
+
+If update notification was captured in Step 1, prepend it to the output:
+
+```
+🎁 Dex v{version} is available. Run /dex-check-for-github-updates for details.
+
+---
+
+[Daily plan follows below]
+```
+
+**Then create the plan:**
 
 Create `07-Archives/Plans/YYYY-MM-DD.md`:
 
@@ -486,7 +435,7 @@ integrations_used: [calendar, tasks, people]
 
 ---
 
-## Step 7: Track Usage (Silent)
+## Step 8: Track Usage (Silent)
 
 After generating the daily plan, silently update usage tracking:
 

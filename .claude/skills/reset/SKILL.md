@@ -107,17 +107,16 @@ Ask: "Does this look right? Type 'yes' to proceed or suggest changes."
 
 ### Step 7: Execute Changes
 
-1. **Read the new role definition** from `.claude/roles/[role].md`
-2. **Create new folder structure** based on role + size variant
-3. **Move existing content** to appropriate new locations:
+1. **Create new folder structure** using standard PARA structure
+2. **Move existing content** to appropriate new locations:
    - Match by folder name where possible
    - Put ambiguous content in `00-Inbox/` for user to sort
    - Never delete user content
-4. **Update CLAUDE.md** User Profile section with:
+3. **Update CLAUDE.md** User Profile section with:
    - New role
    - New company size
    - New pillars
-5. **Copy relevant templates** from `.templates/` to `06-Resources/Templates/`
+4. **Update `System/user-profile.yaml`** with new role and preferences
 
 ### Step 8: Summary
 

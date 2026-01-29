@@ -30,7 +30,7 @@ Dex/
 ├── 06-Resources/                # Reference material
 │   ├── Dex_System/           # System documentation
 │   ├── Learnings/            # Compound knowledge
-│   └── Templates/            # Note templates
+│   └── Quarterly_Reviews/    # Quarterly reflection and strategic reviews
 ├── 07-Archives/                 # Historical records
 │   ├── Projects/             # Completed projects
 │   ├── Plans/                # Archived daily/weekly plans
@@ -92,16 +92,7 @@ Area = ongoing ("Customer success management")
 
 ### Role-Specific Areas
 
-Created during onboarding based on your role:
-
-| Role | Areas Created |
-|------|--------------|
-| Sales / Account Exec | `Accounts/` — Key accounts and deals |
-| Manager / Leadership | `Team/` — Direct reports and team development |
-| Marketing / Content | `Content/` — Thought leadership and published work |
-| Customer Success | `Customers/` — Customer health tracking |
-
-See `.claude/reference/role-areas-mapping.md` for complete list.
+Most users only need the universal areas (People and Companies). You can create additional areas as needed for your workflow.
 
 ### Career Area (Optional)
 
@@ -128,13 +119,15 @@ Project = has an end ("Onboard Acme Corp")
 
 ```
 06-Resources/
-├── Dex_System/      # Documentation about how Dex works
+├── Dex_System/           # Documentation about how Dex works
 │   ├── Dex_Jobs_to_Be_Done.md
 │   ├── Dex_System_Guide.md
 │   └── Folder_Structure.md (this file)
-├── Learnings/       # Compound knowledge (frameworks, lessons learned)
-└── Templates/       # Note templates for consistency
+├── Learnings/            # Compound knowledge (frameworks, lessons learned)
+└── Quarterly_Reviews/    # Quarterly reflection and strategic reviews
 ```
+
+**Note:** Templates are stored in `System/Templates/` for easy access during file creation.
 
 ### What belongs here?
 - Things you reference repeatedly
@@ -223,7 +216,7 @@ Aim to triage weekly. If something sits 30+ days:
 
 ```
 System/
-├── Templates/                # Note templates (22 templates)
+├── Templates/                # Note templates (5 core templates)
 ├── Session_Learnings/        # Auto-captured improvements during /review
 ├── pillars.yaml              # Strategic pillars (your main focus areas)
 ├── user-profile.yaml         # User preferences and settings

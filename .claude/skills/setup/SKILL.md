@@ -192,31 +192,34 @@ Update `System/user-profile.yaml` with their preferences.
 
 Based on their answers:
 
-1. **Read role definition** from `.claude/roles/[role].md` if it exists
-2. **Create folder structure** (silently, no terminal output needed):
+1. **Create folder structure** (silently, no terminal output needed):
    - `04-Projects/`
    - `05-Areas/People/Internal/`
    - `05-Areas/People/External/`
+   - `05-Areas/Companies/`
    - `06-Resources/Learnings/`
-   - `06-Resources/Templates/`
+   - `06-Resources/Quarterly_Reviews/`
+   - `System/Templates/`
    - `07-Archives/04-Projects/`
    - `07-Archives/Plans/`
    - `07-Archives/Reviews/`
    - `00-Inbox/Meetings/`
    - `00-Inbox/Ideas/`
-   - Additional role-specific areas per `.claude/reference/role-areas-mapping.md`
-3. **Update CLAUDE.md** with their profile:
+   - `01-Quarter_Goals/` (optional)
+   - `03-Tasks/`
+   - `02-Week_Priorities/`
+2. **Update CLAUDE.md** with their profile:
    - Name
    - Role
    - Company size
    - Pillars (their priorities)
-4. **Update `System/pillars.yaml`** with their strategic pillars
-5. **Update `System/user-profile.yaml`** with:
+3. **Update `System/pillars.yaml`** with their strategic pillars
+4. **Update `System/user-profile.yaml`** with:
    - Name
    - Role
    - Company (if provided)
    - Meeting intelligence preferences (based on role or their choices)
-6. **Save to `.claude/vault-config.json`**:
+5. **Save to `.claude/vault-config.json`**:
    ```json
    {
      "user": {

@@ -6,7 +6,7 @@ Reference material you consult but aren't actively working on.
 
 - **Learnings/** — Compound knowledge organized by topic
 - **Dex_System/** — Documentation about how Dex works
-- **Templates/** — Note templates for consistent formatting
+- **Quarterly_Reviews/** — Quarterly reflection and strategic reviews
 
 ## What Goes Here
 
@@ -20,9 +20,11 @@ Reference material that:
 
 - **Learnings** — Frameworks, mental models, lessons learned
 - **Documentation** — System guides, how-tos, process docs
-- **Templates** — Reusable structures for notes
+- **Quarterly Reviews** — Strategic reflections and quarterly retrospectives
 - **Research** — Industry research, competitive analysis
 - **Policies** — Company policies, guidelines
+
+**Note:** Templates are stored in `System/Templates/` for easy access during file creation.
 
 ## vs. Archives
 

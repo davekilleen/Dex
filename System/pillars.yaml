@@ -11,42 +11,15 @@
 #
 # The Work MCP uses these to categorize tasks and check balance across your work.
 
-pillars:
-  - id: q1_deals
-    name: "Q1 Deals"
-    description: "Close Q1 deals and hit revenue targets"
-    keywords:
-      - deals
-      - sales
-      - revenue
-      - pipeline
-      - close
-      - Q1
-      - quota
-      
-  - id: mobile_launch
-    name: "Mobile Product Launch"
-    description: "Launch the new mobile product and take it to market"
-    keywords:
-      - mobile
-      - launch
-      - GTM
-      - go-to-market
-      - app
-      - product
-      - release
-
-  - id: series_d
-    name: "Series D Fundraising"
-    description: "Work with executive team to secure Series D funding"
-    keywords:
-      - fundraising
-      - Series D
-      - investors
-      - funding
-      - pitch
-      - board
-      - capital
+pillars: []
+  # Will be populated during onboarding
+  # Example structure:
+  # - id: pillar_id
+  #   name: "Pillar Name"
+  #   description: "What this pillar represents"
+  #   keywords:
+  #     - keyword1
+  #     - keyword2
 
 # Priority limits (how many active tasks per priority level)
 priority_limits:

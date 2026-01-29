@@ -215,10 +215,6 @@ Later, when you implement it, call `mark_implemented(idea-042)` and it moves to 
 
 ---
 
-## Integration Status
-
-Track configured integrations in `System/integration_status.yaml`. The `/daily-plan` command checks this on first run and guides you through setup.
-
 ### Supported Integrations
 
 | Integration | MCP Server | Status |

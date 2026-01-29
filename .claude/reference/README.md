@@ -77,7 +77,6 @@ Reference docs should:
 - **mcp-servers.md** - MCP setup, troubleshooting, and integration patterns
 - **meeting-intel.md** - Meeting processing pipeline details
 - **demo-mode.md** - Demo mode implementation and usage
-- **role-system-summary.md** - Role-based configuration architecture
 
 ## Related
 

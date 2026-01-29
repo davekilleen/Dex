@@ -59,6 +59,16 @@
       "env": {
         "VAULT_PATH": "{{VAULT_PATH}}"
       }
+    },
+    "update-checker": {
+      "type": "stdio",
+      "command": "python",
+      "args": [
+        "{{VAULT_PATH}}/core/mcp/update_checker.py"
+      ],
+      "env": {
+        "VAULT_PATH": "{{VAULT_PATH}}"
+      }
     }
   }
 }

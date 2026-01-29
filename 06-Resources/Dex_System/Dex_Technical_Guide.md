@@ -826,6 +826,126 @@ Focus on architecture questions, not syntax nitpicks. I trust the team on detail
    - Move to appropriate file (`Mistake_Patterns.md`, `Working_Preferences.md`, or fix immediately)
    - Mark as resolved in session learnings
 
+### Background Automation Setup
+
+Dex runs self-learning checks automatically through two mechanisms:
+
+#### Inline Checks (Default - No Installation)
+
+The system runs checks automatically during:
+1. **Session start hook** (`.claude/hooks/session-start.sh`)
+2. **During `/daily-plan`** command
+
+**Smart throttling:**
+- Changelog check: Only runs if 6+ hours since last check
+- Learning review: Only runs once per day
+- Both run in background (non-blocking, <1 second)
+- Respect intervals even if triggered from multiple places
+
+**State tracking:**
+- `System/claude-code-state.json` - Tracks last changelog check, Claude version, features discovered
+- `System/.last-learning-check` - Tracks last daily learning review
+
+#### Optional: Launch Agent Installation (Background Optimization)
+
+For faster execution without inline checks, install macOS Launch Agents:
+
+```bash
+# Install background automation (optional optimization)
+bash .scripts/install-learning-automation.sh
+```
+
+**What it does:**
+- Runs changelog check every 6 hours in background
+- Runs learning review daily at 5pm
+- Creates alert files ready before session start
+- Reduces latency during session start and `/daily-plan`
+
+**With Launch Agents:**
+- Checks run continuously in background
+- Alert files ready before you even start planning
+- Lower latency during session start
+
+**Without Launch Agents:**
+- Checks run inline during session start and `/daily-plan`
+- Still fast (<1 second) with interval throttling
+- System works perfectly fine, just slightly more latency
+
+**Uninstall:**
+```bash
+bash .scripts/install-learning-automation.sh --uninstall
+```
+
+**Manual testing:**
+```bash
+node .scripts/check-anthropic-changelog.cjs --force
+bash .scripts/learning-review-prompt.sh
+```
+
+**Alert files created:**
+- `System/changelog-updates-pending.md` - When new Claude features detected
+- `System/learning-review-pending.md` - When 5+ pending learnings exist
+
+### Dex System Improvement Backlog
+
+**Purpose:** Systematically capture and prioritize improvements to Dex itself.
+
+#### Workflow
+
+1. **Capture** - Use `capture_idea` MCP tool from any context
+   ```
+   User: "This would be better if X"
+   Claude: [calls capture_idea tool with description]
+   ```
+
+2. **Storage** - Ideas saved to `System/Dex_Backlog.md` with metadata:
+   ```markdown
+   ## Idea: [Title]
+   **Status:** pending
+   **Priority:** [High/Medium/Low]
+   **Captured:** YYYY-MM-DD
+   **Description:** [What user said]
+   **Rationale:** [Why it matters]
+   ```
+
+3. **Ranking** - AI scores ideas on 5 dimensions (via `/dex-backlog`):
+   - **Impact (35%)** - Daily workflow improvement potential
+   - **Alignment (20%)** - Fits your usage patterns and needs
+   - **Token Efficiency (20%)** - Reduces context/token usage
+   - **Memory & Learning (15%)** - Enhances persistence, self-learning, compounding knowledge
+   - **Proactivity (10%)** - Enables proactive concierge behavior
+
+4. **Review** - Run `/dex-backlog` to see ranked priorities
+   - High: 85+ (implement soon)
+   - Medium: 60-84 (consider for next cycle)
+   - Low: <60 (backlog)
+
+5. **Workshop** - Run `/dex-improve [idea]` to plan implementation
+   - Analyzes feasibility
+   - Creates implementation plan
+   - Suggests file changes
+
+#### Cursor Feasibility Gate
+
+Ideas must be implementable using Cursor's actual capabilities:
+- ✅ File operations (read, write, search)
+- ✅ MCP tools and servers
+- ✅ Command/skill creation
+- ✅ Hook scripts
+- ❌ Edit tracking or change detection
+- ❌ Internal event listeners
+- ❌ Real-time UI modifications
+
+Ideas requiring unavailable capabilities are rejected with explanation.
+
+#### Automatic Integration
+
+- **Weekly planning** checks for high-priority ideas
+- **Quarterly reviews** assess implementation progress
+- `/dex-level-up` mentions idea capture capability
+
+**Note:** Effort is intentionally excluded from scoring. With AI coding, implementation is cheap. Focus on value and feasibility.
+
 ---
 
 ## Design Constraints
