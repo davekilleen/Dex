@@ -2,6 +2,18 @@
 
 Guide new users through setup in a friendly ~5 minute conversation. Keep it simple, practical, and focused on getting them working quickly.
 
+## Before Starting
+
+**CRITICAL:** Call `start_onboarding_session()` from onboarding-mcp to initialize or resume onboarding.
+
+- If a session exists, show progress and ask if they want to resume or start fresh
+- The MCP tracks completion and validates each step
+- Session state enables resume if interrupted
+
+**After each step (1-6):** Call `validate_and_save_step(step_number=X, step_data={...})` before proceeding. If validation fails, show the error and retry the step.
+
+---
+
 ## Step 1: Welcome
 
 Say: "Welcome to Dex! I'm your personal knowledge assistant.
@@ -9,6 +21,10 @@ Say: "Welcome to Dex! I'm your personal knowledge assistant.
 **What Dex does:** I help you organize your professional life—meetings, projects, people, ideas, and tasks—all in markdown files you own. Think of me as your executive assistant who never forgets context.
 
 Let's get you set up. First, what's your name?"
+
+**After receiving name:** Call `validate_and_save_step(step_number=1, step_data={"name": "..."})` to validate and save.
+
+---
 
 ## Step 2: Role
 
@@ -69,6 +85,10 @@ Type a number, or describe your role if it's not listed:
 
 Accept numbers, role names, or hybrid descriptions like "I'm mostly PM but do some engineering."
 
+**After receiving role:** Call `validate_and_save_step(step_number=2, step_data={"role_number": X})` or `{"role": "...", "role_group": "..."}` to validate and save.
+
+---
+
 ## Step 3: Company Size
 
 Ask: "What's your company size?"
@@ -80,7 +100,13 @@ Ask: "What's your company size?"
 4. 10,000+ people (large enterprise)
 ```
 
-## Step 3.5: Email Domain
+**After receiving company size:** Call `validate_and_save_step(step_number=3, step_data={"company": "...", "company_size": "..."})` to validate and save.
+
+---
+
+## Step 4: Email Domain (MANDATORY)
+
+**⚠️ DO NOT SKIP THIS STEP - Required for Internal/External person routing**
 
 Ask: "What's your company email domain? This helps me automatically:
 - Identify internal colleagues vs external contacts
@@ -95,11 +121,31 @@ Ask: "What's your company email domain? This helps me automatically:
 
 **If they're unsure or don't have one:** Set to empty string, system will default to External for all people.
 
-## Step 4: Strategic Pillars
+**After receiving email domain:** Call `validate_and_save_step(step_number=4, step_data={"email_domain": "..."})` to validate and save. The MCP enforces:
+- Non-empty value
+- No @ symbol
+- Valid domain format with dot
+- This step CANNOT be skipped
 
-Ask: "What are the 2-3 main themes of your role? These are your strategic pillars—not time-bound priorities, but the broader areas you focus on long-term."
+---
 
-**If they need examples, show ONLY role-relevant ones:**
+## Step 5: Strategic Pillars
+
+Ask: "What are the 2-3 long-term areas of focus for your role? Think broad themes, not specific goals.
+
+These are your **strategic pillars**—the ongoing areas you'll always focus on, regardless of what specific projects or goals you're working on. They're NOT time-bound.
+
+**Examples of what pillars ARE:**
+- 'Pipeline generation' (ongoing area)
+- 'Product strategy' (ongoing area)
+- 'Customer retention' (ongoing area)
+
+**Examples of what pillars are NOT:**
+- 'Close Q1 deals' (that's a quarterly goal)
+- 'Launch new feature' (that's a project)
+- 'Hit 150% quota' (that's a goal)"
+
+**If they need role-specific examples, show ONLY relevant ones:**
 - **Product Manager:** Product strategy, Customer discovery, Engineering partnerships
 - **Sales/AE:** Pipeline generation, Customer relationships, Deal execution
 - **Customer Success:** Customer retention, Product adoption, Expansion opportunities
@@ -108,9 +154,18 @@ Ask: "What are the 2-3 main themes of your role? These are your strategic pillar
 - **CEO/Founder:** Revenue growth, Team development, Product vision
 - **For other roles:** Adapt based on their role - think about what they focus on day-to-day
 
-Say: "These pillars organize your work. Everything connects: pillars → quarterly goals → weekly priorities → daily tasks. You'll see how this works as you use the system."
+Say: "These pillars organize everything you do. Here's how it flows:
+- **Pillars** (ongoing areas) → inform your **quarterly goals** (specific 3-month outcomes)
+- **Quarterly goals** → inform your **weekly priorities** (this week's focus)
+- **Weekly priorities** → inform your **daily work** (today's tasks)
 
-## Step 5: Communication Preferences
+You'll see this hierarchy in action as you use the system."
+
+**After receiving pillars:** Call `validate_and_save_step(step_number=5, step_data={"pillars": ["...", "..."]})` to validate and save. The MCP enforces 2-3 pillars (warns if outside range).
+
+---
+
+## Step 6: Communication Preferences
 
 Say: "Quick preferences check—how should I communicate with you?"
 
@@ -145,7 +200,48 @@ Explain: "This helps me match my tone and language to what works for you. You ca
    - Mid-level → collaborative
    - Senior/Leadership/Executive → challenging
 
-## Step 6: Generate Structure
+**After receiving preferences:** Call `validate_and_save_step(step_number=6, step_data={"communication": {...}, "obsidian_mode": true/false})` to validate and save.
+
+---
+
+## Step 6.5: Obsidian Integration (Optional)
+
+Say: "One more thing—do you use **Obsidian** to view your notes?
+
+**What is Obsidian?** It's a free markdown editor with a graph view that shows connections between notes. Think of it like a visual map of your knowledge.
+
+**Why it matters for Dex:**
+- **With Obsidian:** Your vault becomes a connected graph. Click any person, project, or meeting reference to navigate instantly.
+- **Without Obsidian:** You'll use Dex through Cursor or terminal, which works great but without clickable links.
+
+**Obsidian is completely optional** - Dex works perfectly either way. Some people love the graph visualization, others prefer terminal/Cursor. Both are first-class experiences.
+
+**New to Obsidian?** [Watch this beginner's guide](https://www.youtube.com/watch?v=gafuqdKwD_U) to see what it can do (5 min).
+
+**If you want to try it later:** You can always enable Obsidian mode with `/dex-obsidian-setup` and we'll convert your existing notes (takes 1-2 minutes even for large vaults).
+
+Do you use Obsidian, or want to try it?"
+
+**If YES:**
+1. Set `obsidian_mode: true` in session data
+2. Say: "Great! I'll format all references as wiki links for easy navigation."
+3. Optional: "Want me to generate an Obsidian config optimized for Dex? (Recommended settings, hotkeys, etc.)"
+
+**If NO:**
+1. Set `obsidian_mode: false` in session data
+2. Say: "No problem! Your notes will use plain text references. You can enable Obsidian mode anytime with `/dex-obsidian-setup`"
+
+**Important:** Include `obsidian_mode` field in Step 6 data when calling `validate_and_save_step`. It should be part of the same step_data dictionary.
+
+---
+
+## Step 7: Generate Structure
+
+**BEFORE PROCEEDING - MCP Validation:**
+1. Call `get_onboarding_status()` to verify all required steps (1-6) are completed
+2. If Step 4 (email_domain) missing, STOP and go back - the MCP will block finalization
+3. Call `verify_dependencies()` to check Python packages and Calendar.app
+4. Show any missing dependencies with installation instructions (if any)
 
 Say: "Perfect! I'm creating your workspace now. Here's what you're getting:
 
@@ -158,32 +254,25 @@ Say: "Perfect! I'm creating your workspace now. Here's what you're getting:
 
 This separates active work from reference material and keeps your capture zone lightweight."
 
-**Then execute:**
-1. Create the PARA folder structure:
-   - `04-Projects/` — Time-bound initiatives
-   - `05-Areas/People/Internal/` and `05-Areas/People/External/` — Person pages (universal)
-   - `05-Areas/Companies/` — External organizations (universal for all roles)
-   - `00-Inbox/Meetings/`, `00-Inbox/Ideas/` — Capture zone
-   - `06-Resources/Learnings/`, `06-Resources/Quarterly_Reviews/` — Reference material
-   - `System/Templates/` — Note templates
-   - `07-Archives/04-Projects/`, `07-Archives/Plans/`, `07-Archives/Reviews/` — Historical records
-   - `01-Quarter_Goals/` — Quarterly goals (optional)
-2. Create state files at root:
-   - `03-Tasks/Tasks.md` — Task backlog (empty to start)
-   - `02-Week_Priorities/Week_Priorities.md` — Weekly priorities (empty to start)
-3. Update CLAUDE.md:
-   - Update the **User Profile** section with their name, role, company size, and pillars
-4. Update `System/pillars.yaml` with their strategic pillars
-5. Update `System/user-profile.yaml`:
-   - Add name, role, company, company_size from Steps 1-3
-   - Add email_domain from Step 3.5
-   - Add communication preferences from Step 5
-   - Add role_group (based on mapping)
-   - Set meeting_intelligence flags based on role (e.g., customer_intel for PM, stakeholder_dynamics for Sales)
+**Then execute finalization:**
+
+Call `finalize_onboarding()` from onboarding-mcp. This single call handles:
+1. Pre-check: Verify all steps completed (especially Step 4!)
+2. Create PARA folder structure (04-Projects/, 05-Areas/, etc.)
+3. Create initial files (03-Tasks/Tasks.md, 02-Week_Priorities/Week_Priorities.md)
+4. Write System/user-profile.yaml from session data
+5. Write System/pillars.yaml from pillars
+6. Update CLAUDE.md User Profile section
+7. Setup System/.mcp.json (replace {{VAULT_PATH}} automatically)
+8. Delete session file on success
+
+The MCP returns a summary of what was created (folders, files, configs).
 
 **After creation, say:** "✓ Workspace created! You now have a structure tailored for [their role]."
 
-## Step 7: Optional Features
+Show the summary from the MCP response.
+
+## Step 8: Optional Features
 
 Say: "The core system is ready. A couple optional add-ons you can set up now or skip:
 
@@ -210,16 +299,28 @@ Ask: "Which journaling prompts do you want?"
 
 ### Granola Setup (if selected):
 
-Ask: "How would you like to process meetings?"
+Say: "Granola captures your meeting notes and transcripts. I can help you process them.
+
+**Processing modes:**
 - **Manual** (recommended) — Run `/process-meetings` when you want. No API key needed.
 - **Automatic** — Background sync every 30 minutes. Requires API key (Gemini/Anthropic/OpenAI).
 
-**If manual:** Update `System/user-profile.yaml` with `meeting_processing: manual`
+**What gets processed:**
+When you first connect Granola (or later via `/getting-started`), you'll choose:
+- How much history to backfill (people pages, meeting notes, todos)
+- Different time ranges for each type (e.g., all people, last 30 days notes, last 7 days todos)
+
+Want to set up manual or automatic processing?"
+
+**If manual:** 
+1. Update `System/user-profile.yaml` with `meeting_processing: manual`
+2. Say: "✓ Manual processing enabled. Run `/process-meetings` or `/getting-started` to process your Granola data."
 
 **If automatic:**
 1. Ask which provider (Gemini has free tier)
 2. Get their API key
 3. Update `System/user-profile.yaml` and `.env`
+4. Say: "✓ Automatic processing enabled. I'll sync every 30 minutes. You can still use `/getting-started` for historical data."
 
 ### Background Learning Setup (if selected, macOS only):
 
@@ -239,22 +340,58 @@ Ask: "Install background automation?"
 **If no:**
 Say: "No problem! Self-learning checks will still run inline during session start and `/daily-plan`. You can install later with `bash .scripts/install-learning-automation.sh`"
 
-## Step 8: Completion
+## Step 9: Completion & Phase 2 Bridge
 
-Say: "You're all set, [Name]! 
+Say: "✓ **Your workspace is ready, [Name]!**
 
-**Your workspace:**
+I've configured your system with:
 - Strategic pillars: [list their pillars]
-- Folder structure: 04-Projects/, 05-Areas/, 06-Resources/, 07-Archives/, 00-Inbox/, System/
+- Folder structure for PARA method
 - [Any optional features they enabled]
+- **All your integrations** (calendar, Granola, etc.)
 
-**Start here:**
-- Run `/daily-plan` to plan your day
-- Run `/meeting-prep` before your next meeting (I'll ask who's attending)
-- Tell me about a meeting → I'll extract action items and update person pages
-- Run `/dex-level-up` to discover unused features and see role-specific skills for [their role]
+**Here's what happens next:**
 
-Want to continue with a few more optional features, or start using the system?"
+I'm going to analyze your calendar and recent meetings to:
+• Create your weekly plan with actual meeting data
+• Build person pages for your frequent contacts  
+• Show you what's on your plate this week
+• Get you oriented with quick wins
+
+This takes about 2 minutes and shows you what Dex can really do.
+
+**Want me to run the getting started tour?** (Highly recommended)
+
+[If yes:] Great! Running `/getting-started` now...
+
+[Then actually invoke the /getting-started skill, which will have MCPs loaded]
+
+[If no:] No problem! You can run `/getting-started` anytime. For now, try `/daily-plan` to see your day."
+
+---
+
+## Step 10: Phase 2 - Getting Started (Optional but Recommended)
+
+**Trigger:** Either immediately after Step 9, OR at next session start if vault is < 7 days old.
+
+**Purpose:** Transform "I have a system, now what?" into immediate value and confidence. This is where the **dramatic reveal** happens - analyzing their calendar/Granola data and showing what Dex built automatically.
+
+**If yes (user wants to continue):** Run `/getting-started` skill (see `.claude/skills/getting-started/SKILL.md`)
+- The skill will check for `pre_analysis_deferred: true` flag in `.onboarding-complete`
+- If found, it will run the full calendar/Granola analysis NOW
+- This includes the dramatic reveal showing meetings, contacts, and auto-created artifacts
+- Much better UX than blocking during finalization
+
+**If no:** 
+"No problem! You can always run `/getting-started` later when you're ready.
+
+**Quick reference:**
+- `/daily-plan` - Start your day with context
+- `/meeting-prep [person]` - Prep for meetings
+- `/dex-level-up` - Discover features
+- `/getting-started` - Come back to this tour anytime (includes data analysis)
+
+What would you like to work on first?"
 
 ---
 

@@ -7,6 +7,11 @@ set -e
 echo "🚀 Setting up Dex..."
 echo ""
 
+# Silently fix git remote to avoid Claude Desktop confusion
+if git remote -v 2>/dev/null | grep -q "davekilleen/[Dd]ex"; then
+    git remote rename origin upstream 2>/dev/null || true
+fi
+
 # Check Node.js
 if ! command -v node &> /dev/null; then
     echo "❌ Node.js is not installed"

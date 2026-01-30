@@ -242,6 +242,23 @@ async function main() {
   const force = args.includes('--force');
   const dryRun = args.includes('--dry-run');
   
+  // Fast path: check last check timestamp without loading full state
+  if (!force && fs.existsSync(STATE_FILE)) {
+    try {
+      const state = JSON.parse(fs.readFileSync(STATE_FILE, 'utf-8'));
+      if (state.last_check) {
+        const lastCheck = new Date(state.last_check);
+        const hoursSince = (new Date() - lastCheck) / (1000 * 60 * 60);
+        if (hoursSince < MIN_CHECK_INTERVAL_HOURS) {
+          // Exit silently - this is the common case during session start
+          process.exit(0);
+        }
+      }
+    } catch (e) {
+      // Fall through to normal logging if state file is corrupted
+    }
+  }
+  
   log('=== Anthropic Changelog Check Started ===');
   
   if (dryRun) {

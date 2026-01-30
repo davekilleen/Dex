@@ -26,8 +26,8 @@ Collect information from multiple sources:
 
 ### Company/Account Files
 - Check 04-Projects/ for deal files related to this account
-- Check 05-Areas/Accounts/ for account page
-- Look for company files in 05-Areas/Accounts/
+- Check 05-Areas/Companies/ for company page
+- Look for company pages in 05-Areas/Companies/
 
 ### Person Pages
 - Search People/ for individuals at this company
@@ -333,7 +333,7 @@ Create structured account plan document:
 **Review date:** [When to revisit this plan]
 ```
 
-Save to: `05-Areas/Accounts/[Company-Name]_Account_Plan.md`
+Save to: `05-Areas/Companies/[Company-Name]_Account_Plan.md`
 
 ---
 

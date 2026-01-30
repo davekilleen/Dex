@@ -59,7 +59,9 @@ Each `.json` file in this folder connects one external system (Calendar, Granola
 - **calendar.json** - Apple Calendar integration (events, scheduling)
 - **career.json** - Career development (evidence aggregation, ladder parsing, competency analysis)
 - **granola.json** - Meeting transcription and processing
+- **onboarding.json** - Stateful onboarding with validation (session management, dependency checks, vault creation)
 - **resume.json** - Resume builder (stateful resume building, achievement validation, LinkedIn generation)
+- **update-checker.json** - GitHub update detection for `/dex-update` (changelog checking, version comparison)
 - **work.json** - Task management (create, update, complete tasks)
 
 ## Setup Process

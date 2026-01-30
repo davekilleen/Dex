@@ -18,9 +18,47 @@ Find and process all unprocessed meetings from Granola, extracting structured in
 
 ## Arguments
 
-- No arguments: Process all unprocessed meetings from the last 7 days
+- No arguments: Process all unprocessed meetings from the last 7 days (full processing)
 - `today`: Only process today's meetings
 - `"search term"`: Find and process a specific meeting by title/attendee
+- `--people-only`: Create/update person and company pages only, skip meeting notes and todos
+- `--no-todos`: Create meeting notes and update person pages, but don't extract todos
+- `--days-back=N`: Override default 7-day lookback (e.g., `--days-back=30` or `--days-back=365`)
+
+**Flag combinations:**
+- `/process-meetings --people-only --days-back=365` - Backfill all people/companies from history
+- `/process-meetings --no-todos --days-back=30` - Create notes from last month without overwhelming todos
+- `/process-meetings today --no-todos` - Process today's meetings for notes only
+
+**Parsing logic:**
+```python
+def parse_arguments(user_input: str) -> dict:
+    """Parse /process-meetings arguments"""
+    
+    flags = {
+        'people_only': '--people-only' in user_input,
+        'no_todos': '--no-todos' in user_input,
+        'days_back': 7,  # default
+        'mode': 'all'  # or 'today' or 'search'
+    }
+    
+    # Check for days_back override
+    import re
+    days_match = re.search(r'--days-back=(\d+)', user_input)
+    if days_match:
+        flags['days_back'] = int(days_match.group(1))
+    
+    # Check for special modes
+    if 'today' in user_input.lower():
+        flags['mode'] = 'today'
+    elif '"' in user_input or any(word not in ['--people-only', '--no-todos', '--days-back'] 
+                                   for word in user_input.split()):
+        # Has search term
+        flags['mode'] = 'search'
+        flags['search_term'] = extract_search_term(user_input)
+    
+    return flags
+```
 
 ## Process
 
@@ -44,19 +82,26 @@ If not available, say:
 
 ### Step 2: Get Meetings to Process
 
-**If no arguments (default):**
-```
-granola_get_recent_meetings(days_back=7, limit=50)
+Parse arguments first:
+```python
+flags = parse_arguments(user_input)
+days_back = flags['days_back']
+mode = flags['mode']
 ```
 
-**If "today":**
+**If mode == "all" (default):**
+```
+granola_get_recent_meetings(days_back=days_back, limit=1000)
+```
+
+**If mode == "today":**
 ```
 granola_get_today_meetings()
 ```
 
-**If search term provided:**
+**If mode == "search":**
 ```
-granola_search_meetings(query="search term", days_back=30)
+granola_search_meetings(query=flags['search_term'], days_back=days_back)
 ```
 
 ### Step 3: Filter to Unprocessed
@@ -88,9 +133,16 @@ For each unprocessed meeting:
    - Load `System/user-profile.yaml` for name, role, intelligence preferences
    - Load `System/pillars.yaml` for pillar classification
 
-3. **Analyze the meeting content:**
+3. **Analyze the meeting content (conditional based on flags):**
 
-   Generate structured analysis covering:
+   **If `--people-only` flag:**
+   - Skip meeting content analysis
+   - Skip to Step 6 (Create/update person pages)
+   - Skip meeting note creation (Step 5)
+   - Skip todo extraction
+   - Only update person and company pages
+
+   **Otherwise, generate structured analysis covering:**
 
    **Summary** (2-3 sentences)
    - What was the meeting about?
@@ -232,9 +284,14 @@ For each unprocessed meeting:
    *Processed by Dex Meeting Intelligence*
    ```
 
-5. **Create tasks in 03-Tasks/Tasks.md:**
+5. **Create tasks in 03-Tasks/Tasks.md (conditional):**
 
-   For each "For Me" action item extracted:
+   **If `--no-todos` flag is set:**
+   - Skip task creation entirely
+   - Meeting notes will show action items but they won't be added to 03-Tasks/Tasks.md
+   - Useful for backfilling meeting history without overwhelming task list
+
+   **Otherwise, for each "For Me" action item extracted:**
    - Generate a unique task ID using the format: `task-YYYYMMDD-XXX` (sequential number for the day)
    - Add the task ID to the action item in the meeting note
    - Use the Work MCP `create_task` tool to create the task in `03-Tasks/Tasks.md` with:
@@ -305,12 +362,13 @@ For each unprocessed meeting:
 
 ### Step 8: Summary Report
 
-After processing all meetings, provide a summary:
+After processing all meetings, provide a summary adapted to the processing mode:
 
+**Standard mode (full processing):**
 ```
 ## Meeting Processing Complete ✅
 
-**Processed:** X meetings
+**Processed:** X meetings (from last [days_back] days)
 **Skipped:** Y (already processed)
 
 ### Meetings Processed
@@ -332,13 +390,7 @@ After processing all meetings, provide a summary:
 - @Alice: [Task]
 - @Bob: [Task]
 
-### Companies Detected
-
-These external companies were referenced (pages created/updated):
-- **Acme Corp** (acme.com) - 3 attendees
-- **BigCo Inc** (bigco.com) - 1 attendee
-
-### People Routing
+### People & Companies
 
 **Internal colleagues (05-Areas/People/Internal/):**
 - Alice Smith (alice@pendo.io)
@@ -348,8 +400,75 @@ These external companies were referenced (pages created/updated):
 - Carol Chen (carol@acme.com) - Acme Corp
 - David Kim (david@bigco.com) - BigCo Inc
 
+**External companies (05-Areas/Companies/):**
+- Acme Corp (acme.com) - 3 attendees
+- BigCo Inc (bigco.com) - 1 attendee
+
 **Needs review (no email provided):**
 - Eve Martinez - Defaulted to External, please review
+```
+
+**People-only mode (`--people-only`):**
+```
+## People & Companies Update Complete ✅
+
+**Processed:** X meetings (from last [days_back] days)
+**Mode:** People and companies only (no meeting notes or todos created)
+
+### People Updated
+
+**Internal colleagues (05-Areas/People/Internal/):**
+• Created: [N] new pages
+• Updated: [M] existing pages
+• Total internal: [I] people
+
+**External contacts (05-Areas/People/External/):**
+• Created: [N] new pages
+• Updated: [M] existing pages
+• Total external: [E] people
+
+### Companies Updated
+
+**External companies (05-Areas/Companies/):**
+• Created: [N] new pages
+• Updated: [M] existing pages
+• Domains tracked: [list]
+
+**Next steps:**
+• Run `/process-meetings --no-todos --days-back=30` to backfill meeting notes
+• Or `/process-meetings` to process with full todos going forward
+```
+
+**No-todos mode (`--no-todos`):**
+```
+## Meeting Processing Complete ✅
+
+**Processed:** X meetings (from last [days_back] days)
+**Mode:** Notes and people (no todos created)
+
+### Meetings Processed
+
+| Meeting | Date | Participants | Notes |
+|---------|------|--------------|-------|
+| [Title] | Jan 22 | Alice, Bob | Created in 00-Inbox/Meetings/ |
+| [Title] | Jan 21 | Carol | Created in 00-Inbox/Meetings/ |
+
+### Action Items (documented but not tracked)
+
+Action items were documented in meeting notes but NOT added to 03-Tasks/Tasks.md:
+- Meeting 1: [X] action items identified
+- Meeting 2: [Y] action items identified
+
+**To track these tasks:** Review meeting notes and manually add relevant items
+
+### People & Companies
+
+[Standard people/companies summary]
+
+**Next steps:**
+• Review meeting notes in 00-Inbox/Meetings/
+• Manually add relevant action items to 03-Tasks/Tasks.md
+• Or run `/process-meetings` without flags to track todos going forward
 ```
 
 ## Error Handling
@@ -366,7 +485,7 @@ Log the error, continue with remaining meetings, report at end:
 
 ## Examples
 
-**Process everything:**
+**Process everything (default):**
 ```
 /process-meetings
 ```
@@ -383,3 +502,31 @@ Log the error, continue with remaining meetings, report at end:
 /process-meetings "Acme"
 ```
 > "Found 2 meetings matching 'Acme'. Processing..."
+
+**Backfill people and companies from all history:**
+```
+/process-meetings --people-only --days-back=365
+```
+> "Processing 342 meetings (people-only mode)..."
+> "Created 87 person pages, 23 company pages. No meeting notes or todos created."
+
+**Backfill meeting notes without overwhelming todos:**
+```
+/process-meetings --no-todos --days-back=30
+```
+> "Processing 45 meetings from last 30 days (no-todos mode)..."
+> "Created 45 meeting notes, updated person pages. Action items documented but not tracked."
+
+**Process last 90 days with full tracking:**
+```
+/process-meetings --days-back=90
+```
+> "Processing 67 meetings from last 90 days..."
+> "Created 67 meeting notes, extracted 89 todos, updated 34 person pages."
+
+**Today's meetings, notes only:**
+```
+/process-meetings today --no-todos
+```
+> "Processing today's 3 meetings (no-todos mode)..."
+> "Created 3 meeting notes. Action items documented in notes but not tracked."

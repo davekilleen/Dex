@@ -214,14 +214,16 @@ Configure limits in `System/pillars.yaml`.
 
 Every task requires pillar assignment. This enforces strategic alignment - random tasks without pillar connection prompt reflection on whether they belong.
 
+**Pillars are ongoing focus areas, not time-bound goals.** Think 'Product strategy' (ongoing) vs 'Launch mobile app' (goal).
+
 Configure your pillars during onboarding or edit `System/pillars.yaml`:
 
 ```yaml
 pillars:
   - id: pillar_1
-    name: "Your First Priority"
-    description: "What this pillar covers"
-    keywords: [keyword1, keyword2]
+    name: "Product Strategy"  # Ongoing area, not a goal
+    description: "Product vision, roadmap, discovery"
+    keywords: [product, roadmap, features, discovery]
 ```
 
 #### Deduplication
@@ -268,7 +270,7 @@ When you run `/triage`, it follows this sequence:
 |---------------|------------------|
 | `04-Projects/` | Project names, descriptions, status |
 | `05-Areas/People/External/` + `05-Areas/People/Internal/` | Names, roles, companies |
-| `05-Areas/Accounts/` | Account names, domains, contacts |
+| `05-Areas/Companies/` | Company names, domains, contacts |
 | `System/pillars.yaml` | Pillar names and keywords |
 
 **Step 3: Find Orphaned Items**
@@ -742,7 +744,7 @@ Company pages aggregate context about organizations you interact with.
 ### Location
 
 ```
-05-Areas/Accounts/
+05-Areas/Companies/
 ├── Acme_Corp.md
 ├── BigTech_Inc.md
 └── ...
@@ -769,7 +771,7 @@ Company pages aggregate context about organizations you interact with.
 Add the `Company Page` field to person pages:
 
 ```markdown
-| **Company Page** | 05-Areas/Accounts/Acme_Corp.md |
+| **Company Page** | 05-Areas/Companies/Acme_Corp.md |
 ```
 
 When you run `refresh_company`, all people with this field will appear in the company's Key Contacts section.
@@ -902,23 +904,92 @@ Dex processes meetings from Granola to extract structured insights, action items
 
 Run `/process-meetings` whenever you want to pull in new meetings. Uses Claude directly — no API key required.
 
+**Basic commands:**
+
 | Command | What It Does |
 |---------|--------------|
 | `/process-meetings` | Process all unprocessed meetings (last 7 days) |
 | `/process-meetings today` | Just today's meetings |
 | `/process-meetings "Acme"` | Find and process specific meeting |
 
+**Granular control flags:**
+
+| Flag | Purpose | Example |
+|------|---------|---------|
+| `--days-back=N` | Override default 7-day lookback | `--days-back=30` or `--days-back=365` |
+| `--people-only` | Create/update person and company pages only | `--people-only --days-back=365` |
+| `--no-todos` | Create notes and update people, skip todos | `--no-todos --days-back=30` |
+
+**Common workflows:**
+
+```bash
+# Backfill people and companies from all history
+/process-meetings --people-only --days-back=365
+
+# Backfill meeting notes from last month without overwhelming todos
+/process-meetings --no-todos --days-back=30
+
+# Process last 90 days with full tracking
+/process-meetings --days-back=90
+
+# Today's meetings, notes only
+/process-meetings today --no-todos
+```
+
 **What gets extracted:**
 - Summary (2-3 sentences)
 - Key discussion points
 - Decisions made
-- Action items (for you and others)
+- Action items (for you and others, conditionally based on flags)
 - Customer intelligence (pain points, feature requests, competitive mentions)
 - Pillar classification
 
 **Output:**
 - Meeting notes: `00-Inbox/Meetings/YYYY-MM-DD/meeting-slug.md`
-- Person pages updated with meeting references
+- Person pages updated with meeting references (Internal/ or External/ based on email domain)
+- Company pages created for external organizations
+- Action items added to `03-Tasks/Tasks.md` (unless `--no-todos` flag used)
+
+#### Historical Data Processing
+
+When you first connect Granola (via `/getting-started` or during onboarding), the system analyzes your meeting history:
+
+**Discovery phase (fast):**
+- Fetches last 6 months by default for quick initial analysis
+- Shows meeting count, date range, people, and companies
+- If more data exists beyond 6 months, offers to check full extent
+- Optional: Extend to up to 2 years if you have extensive history
+
+Then you get independent control over:
+
+**1. People & Company Pages** (Recommended: All history)
+- Builds context for relationships
+- Low overhead - just reference pages
+- Routes people to Internal/ or External/ based on email domain
+
+**2. Meeting Notes** (Recommended: Last 30 days)
+- Searchable record of discussions
+- Medium overhead - lots of reading material
+- Good for finding past decisions
+
+**3. Action Items / Todos** (Recommended: Last 7 days)
+- Actionable recent tasks
+- Can be overwhelming if too many
+- Old todos often outdated or already done
+
+**Processing strategies:**
+
+| Strategy | People/Companies | Meeting Notes | Todos |
+|----------|-----------------|---------------|-------|
+| Smart default | All history | Last 30 days | Last 7 days |
+| Recent only | 7 days | 7 days | 7 days |
+| Full history | All | All | All |
+| Custom | You choose | You choose | You choose |
+| Forward only | None | None | None |
+
+**Why different time ranges?**
+
+People and company pages are lightweight context that's always useful. Meeting notes help you recall past discussions. But todos from old meetings are often already done or outdated — keeping just the recent ones prevents overwhelm while giving you actionable work.
 
 #### Automatic Processing (Background Sync)
 

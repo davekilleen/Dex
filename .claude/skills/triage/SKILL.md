@@ -106,7 +106,7 @@ Organize standalone files in the `00-Inbox/` folder by suggesting where they bel
    | **Quarterly Goal match** | Content relates to current quarter's goals | Route to associated project, flag as strategic | +20 points |
    | **Project match** | File mentions project name, or filename contains project reference | Route to specific project file | +10 points if also matches priority |
    | **Person match** | File is about a specific person, contains their name prominently | Route to person page OR suggest linking | +10 points if person mentioned in priorities |
-   | **Company/Account match** | File mentions company name, or attendees from known domain | Route to company page OR relationship folder | Base confidence |
+   | **Company match** | File mentions company name, or attendees from known domain | Route to company page in 05-Areas/Companies/ | Base confidence |
    | **Pillar keyword match** | Content matches pillar keywords | Tag with pillar, suggest relevant category | Base confidence |
    | **No entity match** | None of the above | Fall back to category routing | Low confidence |
 
@@ -246,7 +246,7 @@ Quarterly Goals:
 === STRUCTURE DISCOVERED ===
 • 4 projects found in 04-Projects/
 • 12 people found in 05-Areas/People/
-• 3 companies found in 05-Areas/Accounts/
+• 3 companies found in 05-Areas/Companies/
 • 3 pillars configured
 
 === FILES (2) ===
@@ -310,7 +310,7 @@ Quarterly Goals:
 
 3. "Review competitor analysis for Acme deal"
    → 04-Projects/Acme_Deal.md (project match)
-   Links: 05-Areas/Accounts/Acme_Corp.md
+   Links: 05-Areas/Companies/Acme_Corp.md
 
 ⚠️ POTENTIAL DUPLICATE (1):
 4. "Contact Tom about implementation"

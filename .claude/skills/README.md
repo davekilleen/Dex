@@ -180,6 +180,9 @@ Dex includes two categories of skills:
 
 Built specifically for personal knowledge management and productivity workflows in Dex:
 
+**Getting Started:**
+- `/getting-started` - Interactive post-onboarding tour (adaptive to your setup)
+
 **Daily Workflow:**
 - `/daily-plan` - Context-aware daily planning
 - `/daily-review` - End of day review with learning capture
@@ -212,9 +215,12 @@ Built specifically for personal knowledge management and productivity workflows 
 - `/dex-level-up` - Discover unused features
 - `/dex-backlog` - AI-powered idea ranking
 - `/dex-improve` - Workshop improvement ideas
+- `/dex-whats-new` - Check for system improvements (learnings + Claude updates)
 - `/dex-update` - Update Dex automatically (shows what's new, updates if confirmed, no technical knowledge needed)
 - `/dex-rollback` - Undo last update if something went wrong
-- `/create-mcp` - Create MCP integrations
+- `/dex-obsidian-setup` - Enable Obsidian integration and migrate vault to wiki links
+- `/integrate-mcp` - Integrate existing MCP servers from Smithery.ai marketplace
+- `/create-mcp` - Create new MCP integrations
 
 ### Anthropic Skills (General-Purpose)
 

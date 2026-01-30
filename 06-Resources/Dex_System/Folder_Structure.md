@@ -240,7 +240,7 @@ Most users won't edit this directly—Dex manages it. But when you want to adjus
 If you enable quarterly and weekly planning, everything connects from pillars → quarters → weeks → days:
 
 1. **Strategic Pillars** (`System/pillars.yaml`)  
-   Your ongoing focus areas (configured during onboarding)
+   Your ongoing focus areas—NOT time-bound goals, but the broad themes you'll always focus on (configured during onboarding)
 
 2. **Quarter Goals** (`01-Quarter_Goals/Quarter_Goals.md`)  
    Time-bound outcomes (3 months) advancing pillars (via `/quarter-plan`)

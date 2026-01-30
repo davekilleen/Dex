@@ -158,7 +158,7 @@ User creates `System/my-customizations.md` documenting their changes. Helps reso
 
 **User experience:**
 ```
-🎁 Dex v1.3.0 is available. Run /dex-check-for-github-updates for details.
+🎁 Dex v1.3.0 is available. Run /dex-whats-new for details.
 
 ---
 
@@ -172,7 +172,7 @@ Here's your plan for today...
 
 ### Manual Checks
 
-**Command:** `/dex-check-for-github-updates`
+**Command:** `/dex-whats-new`
 
 **Shows:**
 - Current version vs latest version
@@ -279,7 +279,7 @@ This prevents future conflicts while preserving user customizations.
 
 **Step 1:** Get notified
 - During `/daily-plan`: "🎁 Dex v1.3.0 is available"
-- Or run: `/dex-check-for-github-updates`
+- Or run: `/dex-whats-new`
 
 **Step 2:** Save work
 ```bash
@@ -412,7 +412,7 @@ Track update-related problems:
 
 ### Metrics to Watch
 
-- How many users run `/dex-check-for-github-updates`
+- How many users run `/dex-whats-new`
 - Merge conflict rates (via GitHub Discussions)
 - Migration script success rates
 - Time between releases and user updates

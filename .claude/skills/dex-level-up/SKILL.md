@@ -27,7 +27,7 @@ Look for natural progressions and gaps:
 
 **Meeting Capture → Relationship Tracking:**
 - Processing meetings but no person pages? → Suggest person pages
-- Have person pages but not account tracking? → Suggest 05-Areas/Accounts/ (for Sales/CS roles)
+- Have person pages but not company pages? → Suggest processing meetings to auto-create company pages in 05-Areas/Companies/
 
 **Tasks → Projects:**
 - Managing tasks but no project pages? → Suggest project tracking

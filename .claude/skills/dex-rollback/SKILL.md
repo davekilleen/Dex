@@ -361,7 +361,7 @@ But easier: tell `/dex-rollback` which version you want, and it handles it.
 **To avoid needing rollback:**
 
 1. **Read release notes before updating**
-   - Run `/dex-check-for-github-updates` first
+   - Run `/dex-whats-new` first
    - Check for breaking changes warning
    - Understand what's changing
 
@@ -384,7 +384,7 @@ But easier: tell `/dex-rollback` which version you want, and it handles it.
 ## Related Commands
 
 - `/dex-update` - Update to latest version
-- `/dex-check-for-github-updates` - Check what's available
+- `/dex-whats-new` - Check what's available
 - `/setup` - Verify Dex configuration
 
 ---

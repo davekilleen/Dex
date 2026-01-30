@@ -29,7 +29,7 @@ Quarterly reviews help you:
 
 - Informs next quarter's planning (via `/quarter-plan`)
 - Surfaces learnings for 06-Resources/Learnings/
-- Tracks pillar balance over time (via `/pillar-balance`)
+- Tracks pillar balance over time (via Work MCP's `get_pillar_summary` tool)
 - Provides context for annual reviews
 
 ## Reflection Questions

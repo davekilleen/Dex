@@ -26,7 +26,36 @@ const yaml = require('js-yaml');
 // ============================================================================
 
 const VAULT_ROOT = path.resolve(__dirname, '../..');
-const GRANOLA_CACHE = path.join(os.homedir(), 'Library/Application Support/Granola/cache-v3.json');
+
+// Get Granola cache path for current OS
+function getGranolaCachePath() {
+  const homedir = os.homedir();
+  const platform = os.platform();
+  
+  if (platform === 'darwin') {
+    // macOS
+    return path.join(homedir, 'Library/Application Support/Granola/cache-v3.json');
+  } else if (platform === 'win32') {
+    // Windows - try AppData\Roaming first, then Local
+    const roaming = process.env.APPDATA || path.join(homedir, 'AppData/Roaming');
+    const local = process.env.LOCALAPPDATA || path.join(homedir, 'AppData/Local');
+    
+    for (const basePath of [roaming, local]) {
+      const cachePath = path.join(basePath, 'Granola/cache-v3.json');
+      if (fs.existsSync(cachePath)) {
+        return cachePath;
+      }
+    }
+    
+    // Default to Roaming if neither exists
+    return path.join(roaming, 'Granola/cache-v3.json');
+  } else {
+    // Linux or other
+    return path.join(homedir, '.config/Granola/cache-v3.json');
+  }
+}
+
+const GRANOLA_CACHE = getGranolaCachePath();
 const STATE_FILE = path.join(__dirname, 'processed-meetings.json');
 const MEETINGS_DIR = path.join(VAULT_ROOT, 'Inbox', 'Meetings');
 const QUEUE_FILE = path.join(MEETINGS_DIR, 'queue.md');
@@ -434,7 +463,7 @@ processed: ${new Date().toISOString()}
 
 **Date:** ${date} ${time}
 **Participants:** ${filteredParticipants.map(p => `05-Areas/People/External/${p.replace(/\s+/g, '_')}.md`).join(', ') || 'Unknown'}
-${meeting.company ? `**Company:** 05-Areas/Accounts/${meeting.company}.md` : ''}
+${meeting.company ? `**Company:** 05-Areas/Companies/${meeting.company}.md` : ''}
 
 ---
 

@@ -101,4 +101,4 @@ Flows typically include:
 ## Related
 
 - **Skills** (`.claude/skills/`) - Simple user commands
-- **Agents** (`.claude/agents/`) - Autonomous multi-step tasks
+- **Agents** - Autonomous multi-step tasks (invoked via Task tool)

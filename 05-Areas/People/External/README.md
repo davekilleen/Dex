@@ -20,11 +20,11 @@ For each person, track:
 - **Action items** — What you owe them / they owe you
 - **Notes** — Important context (preferences, pain points, goals)
 
-## Accounts vs. People
+## Companies vs. People
 
-If you're in sales or account management and have an `05-Areas/Accounts/` folder, use that for company-level tracking and this folder for individual contacts at those companies.
+Person pages in External/ represent individuals. When you process meetings with external people, company pages are automatically created in `05-Areas/Companies/` to aggregate all contacts, meetings, and tasks for that organization.
 
-For everyone else, person pages can represent both the individual and their company context.
+You can link person pages to their company page to see organization-level context.
 
 ## Usage
 
@@ -38,4 +38,4 @@ For everyone else, person pages can represent both the individual and their comp
 - Links to relevant projects (if they're a stakeholder)
 - Meeting notes auto-link here
 - Action items surface on their pages
-- Company pages (if using 05-Areas/Accounts/) reference key contacts
+- Company pages (in `05-Areas/Companies/`) automatically aggregate all contacts from the same organization

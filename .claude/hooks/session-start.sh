@@ -11,31 +11,40 @@ TASKS_FILE="$CLAUDE_DIR/03-Tasks/Tasks.md"
 LEARNINGS_DIR="$CLAUDE_DIR/06-Resources/Learnings"
 MISTAKES_FILE="$LEARNINGS_DIR/Mistake_Patterns.md"
 PREFERENCES_FILE="$LEARNINGS_DIR/Working_Preferences.md"
+ONBOARDING_MARKER="$CLAUDE_DIR/System/.onboarding-complete"
 
 echo "=== Dex Session Context ==="
 echo ""
 
+# Skip background checks during onboarding - nothing to check yet!
+if [[ ! -f "$ONBOARDING_MARKER" ]]; then
+    echo "⏩ Onboarding in progress - background checks disabled"
+    echo ""
+fi
+
 # SELF-LEARNING: Run background checks inline (fallback if Launch Agents not installed)
 # These are fast checks with interval throttling - only run when needed
+if [[ -f "$ONBOARDING_MARKER" ]]; then
 
-# Check for Claude Code updates (if 24+ hours since last check)
-if [[ -x "$CLAUDE_DIR/.scripts/check-anthropic-changelog.cjs" ]]; then
-    node "$CLAUDE_DIR/.scripts/check-anthropic-changelog.cjs" 2>/dev/null &
-fi
-
-# Check for pending learnings (if not checked today)
-if [[ -x "$CLAUDE_DIR/.scripts/learning-review-prompt.sh" ]]; then
-    LAST_LEARNING_CHECK="$CLAUDE_DIR/System/.last-learning-check"
-    TODAY=$(date +%Y-%m-%d)
-    
-    if [[ ! -f "$LAST_LEARNING_CHECK" ]] || [[ "$(cat "$LAST_LEARNING_CHECK")" != "$TODAY" ]]; then
-        bash "$CLAUDE_DIR/.scripts/learning-review-prompt.sh" 2>/dev/null &
-        echo "$TODAY" > "$LAST_LEARNING_CHECK"
+    # Check for Claude Code updates (if 24+ hours since last check)
+    if [[ -x "$CLAUDE_DIR/.scripts/check-anthropic-changelog.cjs" ]]; then
+        node "$CLAUDE_DIR/.scripts/check-anthropic-changelog.cjs" 2>/dev/null &
     fi
-fi
 
-# Wait briefly for checks to complete (but don't block session start)
-sleep 0.5
+    # Check for pending learnings (if not checked today)
+    if [[ -x "$CLAUDE_DIR/.scripts/learning-review-prompt.sh" ]]; then
+        LAST_LEARNING_CHECK="$CLAUDE_DIR/System/.last-learning-check"
+        TODAY=$(date +%Y-%m-%d)
+        
+        if [[ ! -f "$LAST_LEARNING_CHECK" ]] || [[ "$(cat "$LAST_LEARNING_CHECK")" != "$TODAY" ]]; then
+            bash "$CLAUDE_DIR/.scripts/learning-review-prompt.sh" 2>/dev/null &
+            echo "$TODAY" > "$LAST_LEARNING_CHECK"
+        fi
+    fi
+
+    # Wait briefly for checks to complete (but don't block session start)
+    sleep 0.1
+fi
 
 echo ""
 
@@ -153,6 +162,24 @@ if [[ -f "$LEARNING_PENDING" ]]; then
         echo "Run: /dex-whats-new --learnings"
         echo "---"
         echo ""
+    fi
+fi
+
+# 10. New Vault Welcome (if < 7 days old and Phase 2 not completed)
+ONBOARDING_MARKER="$CLAUDE_DIR/System/.onboarding-complete"
+if [[ -f "$ONBOARDING_MARKER" ]]; then
+    # Check if marker is less than 7 days old
+    AGE_CHECK=$(find "$ONBOARDING_MARKER" -mtime -7 2>/dev/null)
+    if [[ -n "$AGE_CHECK" ]]; then
+        # Check if phase2_completed is false
+        PHASE2_DONE=$(grep '"phase2_completed": true' "$ONBOARDING_MARKER" 2>/dev/null)
+        if [[ -z "$PHASE2_DONE" ]]; then
+            echo "--- 👋 Welcome! ---"
+            echo "You're probably wondering what to do next..."
+            echo "Try: /getting-started"
+            echo "---"
+            echo ""
+        fi
     fi
 fi
 

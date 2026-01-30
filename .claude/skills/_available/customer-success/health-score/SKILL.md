@@ -23,7 +23,7 @@ Monitor portfolio health, identify at-risk accounts, and prioritize proactive en
 
 ## Steps
 
-1. **Scan customer account pages** in 05-Areas/People/External/ and 05-Areas/Accounts/
+1. **Scan customer account pages** in 05-Areas/People/External/ and 05-Areas/Companies/
 2. **For each account, assess:**
    - Last contact date (flag if >30 days)
    - Open support issues

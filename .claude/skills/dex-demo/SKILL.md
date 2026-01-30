@@ -123,7 +123,7 @@ When user selects a scenario number (1-12):
    - For scenarios with commands to RUN: Execute those commands and provide guided walkthrough
    - For scenarios with files to SHOW: Read and display those files with talking points
    - For scenarios with both: Show files first, then run commands
-3. After scenario completes, offer: "Try another scenario? Type a number (1-12) or `/dex-demo menu` to see the full list."
+3. After scenario completes, display the full menu again with: "Try another scenario? Enter a number (1-12):"
 
 **Scenario execution guidelines:**
 

@@ -200,7 +200,7 @@ Result:
 - Task added to `05-Areas/People/Internal/John_Doe.md` → Related Tasks section
 - All atomic, all validated
 
-### Dex's 6 MCP Servers
+### Dex's 7 MCP Servers
 
 #### 1. **Work MCP** (`core/mcp/task_server.py`)
 
@@ -252,21 +252,37 @@ This ensures every task gets a unique, sortable ID that's stable across files.
 
 **How it's used:** The `/daily-plan` skill calls `calendar_list_events(start_date="2026-01-28")` to show today's meetings. Claude then cross-references meeting attendees with person pages to inject context.
 
-#### 3. **Granola MCP** (`user-granola`)
+#### 3. **Granola MCP** (`core/mcp/granola_server.py`)
 
 **Purpose:** Fetch meeting transcripts and notes from Granola.
 
 **What's Granola?** AI meeting assistant that records, transcribes, and summarizes meetings.
 
-**Key tool:**
-- `search_notes` - Query meetings by date/keyword
-- `export_note` - Get full transcript + summary
+**Architecture:** API-first with cache fallback (v2.0)
+- **Primary:** Uses Granola's unofficial API for complete historical data (91% success rate)
+- **Fallback:** Reads from local cache (`~/Library/Application Support/Granola/cache-v3.json`) if API fails
+- **Protection:** Response caching (5 min TTL), exponential backoff, graceful degradation
 
-**How it's used:** The `/process-meetings` skill calls `search_notes(since="2026-01-27")` to find recent meetings, then extracts:
+**Key tools:**
+- `granola_get_recent_meetings` - Get meetings within date range
+- `granola_get_meeting_details` - Get full details + transcript
+- `granola_search_meetings` - Search by title/attendee/content
+- `granola_check_available` - Verify API + cache availability
+
+**How it works:**
+1. Reads auth token from `~/Library/Application Support/Granola/supabase.json`
+2. Hits `https://api.granola.ai/v2/get-documents` with Bearer auth
+3. Converts ProseMirror JSON to Markdown
+4. Falls back to cache on rate limits (429), auth failures (401), or network errors
+5. Caches responses (5 min) to avoid rate limits
+
+**How it's used:** The `/process-meetings` skill calls `granola_get_recent_meetings(days_back=7)` to find recent meetings, then extracts:
 - Action items
 - Decisions made
 - People mentioned
 - Career development context (if it's a 1:1 with manager)
+
+**Why API-first?** Granola's cache doesn't retain full content for older meetings. API provides 9x more complete historical data than cache-only approach.
 
 #### 4. **Career MCP** (`core/mcp/career_server.py`)
 
@@ -304,6 +320,44 @@ This ensures every task gets a unique, sortable ID that's stable across files.
 - You can call `capture_idea("Add weekly goal rollover")` from any context
 - `/dex-backlog` ranks ideas by impact/alignment/token-efficiency
 - `/dex-improve [idea]` workshops an idea into implementation plan
+
+#### 7. **Onboarding MCP** (`core/mcp/onboarding_server.py`)
+
+**Purpose:** Stateful onboarding with validation, dependency checking, and vault creation.
+
+**Key features:**
+- Session state management with resume capability
+- Step-by-step validation enforcement (cannot skip required fields)
+- Email domain validation (Step 4) with format checking (no @, must have dot)
+- Dependency verification (Python packages, Calendar.app, Granola)
+- Automatic MCP configuration with VAULT_PATH substitution
+- PARA folder structure creation
+
+**Key tools:**
+- `start_onboarding_session()` - Initialize or resume from `System/.onboarding-session.json`
+- `validate_and_save_step(step_number, step_data)` - Validate and save each step (1-6)
+- `get_onboarding_status()` - Check completion status and missing steps
+- `verify_dependencies()` - Check Python packages and system requirements
+- `finalize_onboarding()` - Create vault structure, write configs, setup MCP
+
+**Why it matters:** Email domain (Step 4) is critical for Internal/External person routing. Without it, the system can't automatically route people to the correct folder or create company pages for external organizations. The MCP enforces this validation - you cannot skip Step 4 or finalize without a valid email domain.
+
+**Session state example:**
+```json
+{
+  "version": "1.0",
+  "completed_steps": [1, 2, 3, 4],
+  "current_step": 5,
+  "data": {
+    "name": "Jane Doe",
+    "role": "Product Manager",
+    "email_domain": "acme.com",
+    "pillars": []
+  }
+}
+```
+
+If interrupted, calling `start_onboarding_session()` resumes from the last completed step.
 
 ### MCP Development Pattern
 

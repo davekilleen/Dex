@@ -19,7 +19,7 @@ Everyone gets:
 During onboarding, additional areas are created based on your role:
 
 **For Sales/Account Management:**
-- `Accounts/` — Companies and deals you're managing
+- `Companies/` — External organizations and account tracking (universal folder for all users)
 
 **For Managers:**
 - `Team/` — Direct reports and team development

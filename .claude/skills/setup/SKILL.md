@@ -200,7 +200,7 @@ Based on their answers:
    - `06-Resources/Learnings/`
    - `06-Resources/Quarterly_Reviews/`
    - `System/Templates/`
-   - `07-Archives/04-Projects/`
+   - `07-Archives/Projects/`
    - `07-Archives/Plans/`
    - `07-Archives/Reviews/`
    - `00-Inbox/Meetings/`

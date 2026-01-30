@@ -25,7 +25,7 @@ Traditional note systems are passive filing cabinets. Dex is active:
 
 ### Your Strategic Pillars
 
-Everything in this system aligns to your strategic priorities. These are configured during onboarding and stored in `System/pillars.yaml`. Tasks without pillar connection prompt you to think about strategic alignment.
+Everything in this system aligns to your strategic priorities. Pillars are **ongoing focus areas**, not time-bound goals. Think 'Pipeline generation' (ongoing) vs 'Close Q1 deals' (goal). These are configured during onboarding and stored in `System/pillars.yaml`. Tasks without pillar connection prompt you to think about strategic alignment.
 
 ---
 
@@ -88,7 +88,7 @@ Each job represents something that needs to happen reliably. The system exists t
 
 **Example Flow**: Before a call with Sarah, Dex looks up `People/External/Sarah_Chen.md`. Shows: last conversation topics, what she cares about, any open action items involving her. After the meeting, her page updates with today's discussion points.
 
-For organization-level context, check company pages in `05-Areas/Accounts/` (for Sales/CS roles) or person pages in `05-Areas/People/External/`. Shows: all contacts at the company, every meeting with anyone there, all tasks related to the account. You never have to remember - the system remembers for you.
+For organization-level context, check company pages in `05-Areas/Companies/`. Shows: all contacts at the company, every meeting with anyone there, all tasks related to the account. You never have to remember - the system remembers for you.
 
 ---
 

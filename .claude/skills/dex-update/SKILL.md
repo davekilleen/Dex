@@ -8,7 +8,7 @@ description: Safely update Dex with one command (handles everything automaticall
 **For non-technical users:** Updates Dex to the latest version automatically. No command line knowledge needed - just run the command and follow the prompts.
 
 **When to use:**
-- After `/dex-check-for-github-updates` shows new version available
+- After `/dex-whats-new` shows new version available
 - When you want the latest features and bug fixes
 
 **What it handles:**
@@ -591,7 +591,7 @@ updates:
 
 ## Related Commands
 
-- `/dex-check-for-github-updates` - Check what's new without updating
+- `/dex-whats-new` - Check what's new without updating
 - `/dex-rollback` - Undo last update (if something went wrong)
 - `/dex-update-settings` - Configure update preferences
 
@@ -601,7 +601,7 @@ updates:
 
 **User sees in daily plan:**
 ```
-🎁 Dex v1.3.0 is available. Run /dex-check-for-github-updates for details.
+🎁 Dex v1.3.0 is available. Run /dex-whats-new for details.
 ```
 
 **User runs:**

@@ -300,7 +300,7 @@ Flag potential issues:
 If update notification was captured in Step 1, prepend it to the output:
 
 ```
-🎁 Dex v{version} is available. Run /dex-check-for-github-updates for details.
+🎁 Dex v{version} is available. Run /dex-whats-new for details.
 
 ---
 

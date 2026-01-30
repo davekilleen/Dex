@@ -69,6 +69,16 @@
       "env": {
         "VAULT_PATH": "{{VAULT_PATH}}"
       }
+    },
+    "onboarding-mcp": {
+      "type": "stdio",
+      "command": "python",
+      "args": [
+        "{{VAULT_PATH}}/core/mcp/onboarding_server.py"
+      ],
+      "env": {
+        "VAULT_PATH": "{{VAULT_PATH}}"
+      }
     }
   }
 }

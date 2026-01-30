@@ -2,7 +2,7 @@
 
 **A personal operating system powered by Claude.**
 
-Clone this repo, run the setup wizard, tell it your role — and in 10 minutes you have a working system tailored to how you work. Strategic work management, meeting intelligence, relationship tracking, daily planning. All configured for whether you're a CMO, a sales leader, a PM, or any of 31 roles.
+Clone this repo, run the installer, type `/setup` in Claude, tell it your role — and in 10 minutes you have a working system tailored to how you work. Strategic work management, meeting intelligence, relationship tracking, daily planning. All configured for whether you're a CMO, a sales leader, a PM, or any of 31 roles.
 
 No coding required. Just [Cursor](https://cursor.com) and conversation.
 
@@ -120,6 +120,8 @@ Copy and paste this command and press Enter:
 
 **When it's done:** You'll see your cursor blinking again, ready for the next command.
 
+⚠️ **IMPORTANT: You're not done yet. Do Step 3 now to configure your role - this is what makes Dex work.**
+
 ### Step 3: Tell Dex About Your Role
 
 In Cursor, look for a **chat panel** (usually on the right side of the screen). This is Claude - your AI assistant.
@@ -129,8 +131,9 @@ In Cursor, look for a **chat panel** (usually on the right side of the screen). 
 1. **Click inside the chat panel** where it says "Message Claude..." or similar
 2. **Type exactly this:** `/setup`
 3. **Press Enter** - This invokes the setup skill
-4. **Press Enter again** - Claude will now start asking questions
-5. **Answer each question naturally:**
+4. **Wait ~30 seconds** - First time setup needs to load everything (you'll see "Thinking..." while it works)
+5. **Press Enter again** - Claude will now start asking questions
+6. **Answer each question naturally:**
    - What's your role? (e.g., "CFO", "VP Sales", "Product Manager")
    - Company size?
    - What are your main focus areas?
@@ -322,7 +325,7 @@ Out of the box, working immediately:
 - **8 core capabilities** - Daily focus, relationship tracking, commitment management, career evidence, task sync that actually works, learning system, project health monitoring, system evolution (see jobs table above)
 - **Complete planning system** - Quarterly goals → weekly priorities → daily plans, all connected with rollup tracking
 - **25+ ready-to-use skills** - `/daily-plan`, `/meeting-prep`, `/career-coach`, `/week-review` and more - invoke with `/skill-name`
-- **Role-based setup** - 31 roles from CEO to IC, scaffolds appropriate folder structure and workflows
+- **Role-based setup** - 31 roles from CEO to IC, scaffolds appropriate folder structure and workflows. Onboarding MCP enforces validation (email domain required for Internal/External person routing) with session resume capability
 - **Meeting intelligence** - Process transcripts into structured notes with action items auto-synced. Works with Granola MCP (included), or paste transcripts from any source - system recognizes and processes them
 - **Task management with unique IDs** - Tasks sync everywhere automatically (meeting notes, person pages, project files). Deduplication prevents doubles. Priority limits stop overcommit.
 - **Career development coach** - Captures evidence automatically, prepares reviews, assesses promotion readiness
@@ -614,6 +617,37 @@ Updates never touch:
 - Your API keys
 
 **For detailed instructions:** See [Updating_Dex.md](06-Resources/Dex_System/Updating_Dex.md)
+
+---
+
+## Obsidian Integration (Optional)
+
+Dex works great with [Obsidian](https://obsidian.md) for visual graph navigation.
+
+**Why Obsidian?**
+- See your entire knowledge system as connected nodes
+- Click any reference to jump instantly between people, projects, meetings
+- Bidirectional task sync (check boxes in Obsidian → syncs everywhere)
+
+**Enable Obsidian mode:**
+
+```
+/dex-obsidian-setup
+```
+
+**What this does:**
+- Converts all references to clickable wiki links
+- Generates optimized Obsidian config (optional)
+- Enables bidirectional sync daemon (optional)
+
+**Time:** 1-2 minutes even for large vaults  
+**Safe:** Creates git backup before any changes
+
+**New to Obsidian?** Watch this [beginner's guide (5 min)](https://www.youtube.com/watch?v=gafuqdKwD_U).
+
+Obsidian is completely optional - Dex works perfectly in Cursor/terminal alone. Some users love the graph visualization for navigating their knowledge, others prefer the speed of terminal/Cursor. Both are first-class experiences.
+
+**Learn more:** See [Obsidian_Guide.md](06-Resources/Dex_System/Obsidian_Guide.md)
 
 ---
 

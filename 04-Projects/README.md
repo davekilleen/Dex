@@ -9,7 +9,7 @@ A project has:
 - **End date** — Defined completion point
 - **Active work** — You're currently working on it
 
-When a project is done, move it to `07-Archives/04-Projects/`.
+When a project is done, move it to `07-Archives/Projects/`.
 
 ## Examples
 

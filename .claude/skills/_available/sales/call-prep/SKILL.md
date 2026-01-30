@@ -24,8 +24,8 @@ Quickly gather all relevant context before a call - recent conversations, open a
 
 1. Search People/ directory for person page
 2. If company name provided, search for:
-   - Account page in 05-Areas/Accounts/
-   - Company-related person pages in 05-Areas/People/
+   - Company pages in 05-Areas/Companies/
+   - Related person pages in 05-Areas/People/
    - Deal files in 04-Projects/
 
 ---
@@ -407,7 +407,7 @@ When company name provided (not specific person):
 
 **Relevant files:**
 - 05-Areas/People/External/Sarah_Chen_Acme.md
-- 05-Areas/Accounts/Acme_Corp_Account_Plan.md
+- 05-Areas/Companies/Acme_Corp_Account_Plan.md
 - 00-Inbox/Meetings/2026-01-27_Acme_Contract_Review.md
 - 04-Projects/Acme_Engineering_Expansion_Opportunity.md
 

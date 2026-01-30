@@ -4,7 +4,7 @@ Historical records and completed work.
 
 ## Subfolders
 
-- **04-Projects/** — Completed or cancelled projects
+- **Projects/** — Completed or cancelled projects
 - **Plans/** — Daily and weekly plans (auto-archived)
 - **Reviews/** — Daily, weekly, and quarterly reviews (auto-archived)
 
@@ -27,7 +27,7 @@ Some files move here automatically:
 ## Manual Archiving
 
 When projects complete or areas go dormant:
-- Move project files from `04-Projects/` → `07-Archives/04-Projects/`
+- Move project files from `04-Projects/` → `07-Archives/Projects/`
 - Add completion date and outcome summary
 - Keep the same filename for easy searching
 

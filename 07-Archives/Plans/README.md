@@ -30,4 +30,4 @@ Keep indefinitely. Plans are lightweight and valuable for understanding your wor
 
 - Weekly reviews reference recent daily plans
 - Quarterly reviews aggregate weekly plans
-- `/pillar-balance` analyzes planned vs actual focus
+- Work MCP's `get_pillar_summary` tool analyzes task distribution across strategic pillars

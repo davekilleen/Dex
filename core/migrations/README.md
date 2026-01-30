@@ -23,7 +23,7 @@ This folder contains migration scripts for major version updates that require st
 
 **Step 1: Check release notes**
 ```
-/dex-check-for-github-updates
+/dex-whats-new
 ```
 
 If you see ⚠️ **BREAKING CHANGES**, read the release notes carefully.

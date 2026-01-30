@@ -4,7 +4,10 @@
 # These are NOT time-bound (like quarterly goals). They represent ongoing areas of responsibility
 # that typically stay consistent for 6-12+ months, or until your role significantly changes.
 #
-# Examples: "Revenue Growth", "Product Quality", "Team Development", "Customer Success"
+# PILLAR (ongoing):           GOAL (time-bound):
+# "Revenue Growth"      vs    "Hit 150% quota in Q1"
+# "Product Strategy"    vs    "Launch mobile app"
+# "Customer Retention"  vs    "Reduce churn to <2%"
 #
 # Want to change your pillars? Just chat with Claude: "I need to reconfigure my strategic pillars"
 # — it'll help you update how your work ladders up to new focus areas.

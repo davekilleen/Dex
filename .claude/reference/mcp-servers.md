@@ -23,7 +23,7 @@ Traditional approach: AI directly parses raw files/APIs every time (slow, incons
 
 ## Built-in MCP Servers
 
-Dex includes six custom MCP servers in `core/mcp/`:
+Dex includes eight custom MCP servers in `core/mcp/`:
 
 ### Work MCP (`work_server.py`)
 
@@ -215,6 +215,50 @@ Later, when you implement it, call `mark_implemented(idea-042)` and it moves to 
 
 ---
 
+### Onboarding MCP (`onboarding_server.py`)
+
+**What it does:**  
+Stateful onboarding system with validation enforcement. Manages new user setup with session state, step validation, and automatic vault creation.
+
+**Why it's an MCP:**  
+Onboarding requires bulletproof validation (email domain is mandatory), session persistence (resume if interrupted), and complex dependencies (Python packages, Calendar.app, Granola). An MCP enforces these requirements systematically vs. ad-hoc validation in prompts.
+
+**Power:**
+- **Session management** - Resume onboarding if interrupted without starting over
+- **Validation enforcement** - Cannot skip required fields (especially Step 4: email domain)
+- **Dependency checking** - Verifies Python packages and Calendar.app before finalization
+- **Automatic configuration** - Creates PARA folders and generates MCP configs with VAULT_PATH substitution
+- **Pre-analysis** - Analyzes calendar and Granola data during setup for dramatic reveal
+
+**Real-world example:**  
+New user runs onboarding → provides name, role, company size → **tries to skip email domain** → Onboarding MCP blocks progression: "Email domain is required for Internal/External person routing." → User provides domain → continues → finalization creates vault structure, configures MCPs, analyzes existing calendar/Granola data → reveals insights: "Found 47 meetings, 12 unique people, 3 external companies. Already created person pages for your top 3 contacts."
+
+**Tools:** `start_onboarding_session`, `validate_and_save_step`, `get_onboarding_status`, `verify_dependencies`, `finalize_onboarding`, `check_onboarding_complete`
+
+---
+
+### Update Checker MCP (`update_checker.py`)
+
+**What it does:**  
+GitHub update detection for `/dex-update` and `/dex-rollback`. Checks Dex repository for new releases, parses changelogs, and manages version comparison.
+
+**Why it's an MCP:**  
+Update checking requires structured version tracking, git operations, changelog parsing, and rollback state management. MCP provides consistent interface for update workflows vs. shell scripts with unpredictable outputs.
+
+**Power:**
+- **Version comparison** - Detects if updates are available from GitHub
+- **Changelog parsing** - Extracts release notes and breaking changes
+- **Safe updates** - One-command updates with automatic backups
+- **Rollback support** - Undo last update if something goes wrong
+- **Breaking change detection** - Flags releases requiring user action
+
+**Real-world example:**  
+User runs `/dex-update` → Update Checker MCP checks GitHub → finds v2.1.0 with new features → shows changelog with "Added Obsidian integration, improved onboarding" → user confirms → creates backup → pulls updates → installs dependencies → success message with "Run `/getting-started` to explore new features."
+
+**Tools:** `check_for_updates`, `get_changelog`, `perform_update`, `create_backup`, `rollback_update`
+
+---
+
 ### Supported Integrations
 
 | Integration | MCP Server | Status |
@@ -225,6 +269,8 @@ Later, when you implement it, call `mark_implemented(idea-042)` and it moves to 
 | Dex Improvements | `dex_improvements_server.py` | Built-in |
 | Career | `career_server.py` | Built-in |
 | Resume | `resume_server.py` | Built-in |
+| Onboarding | `onboarding_server.py` | Built-in |
+| Update Checker | `update_checker.py` | Built-in |
 | Pendo | Remote (hosted) | OAuth auth required |
 
 ### Setting Up Integrations
@@ -238,6 +284,8 @@ See `System/.mcp.json.example` for a complete config with all built-in servers:
 - `dex_improvements_server.py` - System improvement backlog
 - `career_server.py` - Career development tracking
 - `resume_server.py` - Resume building
+- `onboarding_server.py` - Stateful onboarding with validation
+- `update_checker.py` - GitHub update detection
 
 Example config:
 

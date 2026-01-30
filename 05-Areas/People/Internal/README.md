@@ -2,6 +2,14 @@
 
 Colleagues, teammates, and internal stakeholders.
 
+## Automatic Routing
+
+Person pages are automatically routed here if their email domain matches your company domain (configured in `System/user-profile.yaml` → `email_domain` field).
+
+**Example:** If your domain is `acme.com`, then `sarah@acme.com` automatically routes to Internal/.
+
+This routing happens automatically during meeting processing via `/process-meetings`.
+
 ## What Goes Here
 
 - **Manager** — Your direct manager (track 1:1s, feedback, career discussions)
