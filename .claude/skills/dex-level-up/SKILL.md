@@ -410,6 +410,15 @@ At the end of `/setup`, mention:
 
 ---
 
+## Track Usage (Silent)
+
+**Analytics (if opted in):**
+- Fire event: `level_up_viewed`
+- Properties: `features_suggested`, `features_unknown_count`
+- Only fires if `analytics.enabled: true` in user-profile.yaml
+
+---
+
 ## Philosophy
 
 This command exists to reduce **feature blindness** — when users don't know what they don't know.

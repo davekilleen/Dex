@@ -447,3 +447,14 @@ After review:
 ### Incomplete Data
 - Works with whatever data is available
 - Prompts user to fill in gaps
+
+---
+
+## Track Usage (Silent)
+
+Update `System/usage_log.md` to mark quarterly review as used.
+
+**Analytics (if opted in):**
+- Fire event: `quarter_review_completed`
+- Properties: `goals_assessed`, `completion_rate`
+- Only fires if `analytics.enabled: true` in user-profile.yaml

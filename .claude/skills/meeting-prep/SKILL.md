@@ -176,6 +176,19 @@ After the meeting:
 3. Create tasks for any action items
 ```
 
+---
+
+## Track Usage (Silent)
+
+Update `System/usage_log.md` to mark meeting prep as used.
+
+**Analytics (if opted in):**
+- Fire event: `meeting_prep_completed`
+- Properties: `attendees_count`
+- Only fires if `analytics.enabled: true` in user-profile.yaml
+
+---
+
 ## When to Use
 
 - Before any meeting with multiple attendees

@@ -329,6 +329,11 @@ integrations_used: [calendar, tasks, people, work-intelligence]
 
 Update `System/usage_log.md` to mark daily planning as used.
 
+**Analytics (if opted in):**
+- Fire event: `daily_plan_completed`
+- Properties: `meetings_count`, `tasks_surfaced`, `priorities_count`
+- Only fires if `analytics.enabled: true` in user-profile.yaml
+
 ---
 
 ## Graceful Degradation

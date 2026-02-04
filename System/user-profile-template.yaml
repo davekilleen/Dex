@@ -127,3 +127,10 @@ quarterly_planning:
 # Tracks which external integrations are enabled
 integrations:
   pendo_mcp_enabled: false  # Pendo product analytics (OAuth via Cursor MCP)
+
+# Analytics Configuration
+# Controls anonymous feature usage tracking to help Dave improve Dex
+# Only Dex built-in features are tracked, never content or what you do with features
+analytics:
+  # Master switch - set to true if you opted in to help improve Dex
+  enabled: false

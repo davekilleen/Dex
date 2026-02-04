@@ -319,7 +319,63 @@ ls "$HOME/Library/Application Support/Granola/cache-v3.json" 2>/dev/null
 
 **Why automatic:** Background sync is the default experience. Users shouldn't need to opt-in to basic functionality.
 
-## Step 8: Optional Features
+## Step 8: Analytics Consent
+
+**This is asked for ALL new users.**
+
+Say: "One quick question before we finish:
+
+Dave could use your help improving Dex. By sharing anonymous feature usage—things like 'ran /daily-plan' or 'created a task'—you help show what's working and what needs improvement.
+
+• **What's tracked:** Only Dex built-in features (not anything you customize or add)
+• **What Dave never sees:** What you DO with features—just that you used them
+• **Never sent:** Your content, names, notes, conversations, or anything personal
+• **Your control:** You can change this anytime in System/user-profile.yaml
+
+Help improve Dex?"
+
+Use the AskQuestion tool:
+```json
+{
+  "questions": [{
+    "id": "analytics_consent",
+    "prompt": "Help Dave improve Dex by sharing anonymous feature usage?",
+    "allow_multiple": false,
+    "options": [
+      {"id": "yes", "label": "Yes, happy to help"},
+      {"id": "no", "label": "No thanks"}
+    ]
+  }]
+}
+```
+
+**If YES:**
+1. Update `System/user-profile.yaml`:
+   ```yaml
+   analytics:
+     enabled: true
+   ```
+2. Update `System/usage_log.md`:
+   - `Consent asked: true`
+   - `Consent decision: opted-in`
+   - `Consent date: YYYY-MM-DD`
+3. Say: "Thanks! This really helps Dave make Dex better. 🙏"
+
+**If NO:**
+1. Update `System/user-profile.yaml`:
+   ```yaml
+   analytics:
+     enabled: false
+   ```
+2. Update `System/usage_log.md`:
+   - `Consent asked: true`
+   - `Consent decision: opted-out`
+   - `Consent date: YYYY-MM-DD`
+3. Say: "No problem! Dex works exactly the same either way."
+
+---
+
+## Step 9: Optional Features
 
 Say: "The core system is ready. A couple optional add-ons you can set up now or skip:
 
@@ -437,7 +493,7 @@ Ask: "Install background automation?"
 **If no:**
 Say: "No problem! Self-learning checks will still run inline during session start and `/daily-plan`. You can install later with `bash .scripts/install-learning-automation.sh`"
 
-## Step 9: Completion & Phase 2 Bridge
+## Step 10: Completion & Phase 2 Bridge
 
 Say: "✓ **Your workspace is ready, [Name]!**
 
@@ -467,9 +523,9 @@ This takes about 2 minutes and shows you what Dex can really do.
 
 ---
 
-## Step 10: Phase 2 - Getting Started (Optional but Recommended)
+## Step 11: Phase 2 - Getting Started (Optional but Recommended)
 
-**Trigger:** Either immediately after Step 9, OR at next session start if vault is < 7 days old.
+**Trigger:** Either immediately after Step 10, OR at next session start if vault is < 7 days old.
 
 **Purpose:** Transform "I have a system, now what?" into immediate value and confidence. This is where the **dramatic reveal** happens - analyzing their calendar/Granola data and showing what Dex built automatically.
 

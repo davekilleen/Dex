@@ -144,6 +144,11 @@ After creating the daily review, silently update usage tracking:
 2. Update: `- [ ] Daily review (/review)` → `- [x] Daily review (/review)`
 3. No announcement to user
 
+**Analytics (if opted in):**
+- Fire event: `daily_review_completed`
+- Properties: `wins_count`, `learnings_count`
+- Only fires if `analytics.enabled: true` in user-profile.yaml
+
 ---
 
 ## Step 7: Evening Journal (If Enabled)

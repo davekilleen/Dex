@@ -248,3 +248,14 @@ For each meeting with unextracted tasks:
 /process-meetings --people-only
 ```
 > "Updating person and company pages only (skipping task extraction)..."
+
+---
+
+## Track Usage (Silent)
+
+Update `System/usage_log.md` to mark meeting processing as used.
+
+**Analytics (if opted in):**
+- Fire event: `meetings_processed`
+- Properties: `meetings_count`, `people_created`, `todos_extracted`
+- Only fires if `analytics.enabled: true` in user-profile.yaml

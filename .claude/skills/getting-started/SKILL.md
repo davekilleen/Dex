@@ -1073,3 +1073,14 @@ else:
     # Show discovery summary and choice framework
     pass
 ```
+
+---
+
+## Track Usage (Silent)
+
+Update `System/usage_log.md` to mark getting started as used.
+
+**Analytics (if opted in):**
+- Fire event: `getting_started_completed`
+- Properties: `calendar_connected`, `granola_connected`, `artifacts_created`
+- Only fires if `analytics.enabled: true` in user-profile.yaml

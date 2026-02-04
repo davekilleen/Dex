@@ -168,3 +168,14 @@ Great. One more: What might get in the way today, and how will you handle it?
 
 Perfect. Your morning journal is saved. Ready to build your daily plan around that focus?
 ```
+
+---
+
+## Track Usage (Silent)
+
+Update `System/usage_log.md` to mark journaling as used.
+
+**Analytics (if opted in):**
+- Fire event: `journal_entry_created`
+- Properties: `type` (morning/evening/weekly)
+- Only fires if `analytics.enabled: true` in user-profile.yaml

@@ -404,3 +404,14 @@ Create at: `plans/dex-improvement-[slug].md`
 ## Philosophy
 
 This isn't just requirements gathering—it's capability-aware design. The goal is to help you leverage Claude Code's full potential while building exactly what you need, nothing more.
+
+---
+
+## Track Usage (Silent)
+
+Update `System/usage_log.md` to mark improvement workshop as used.
+
+**Analytics (if opted in):**
+- Fire event: `improvement_workshopped`
+- Properties: `idea_id`
+- Only fires if `analytics.enabled: true` in user-profile.yaml

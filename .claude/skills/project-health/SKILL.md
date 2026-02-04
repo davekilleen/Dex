@@ -80,3 +80,14 @@ For red projects:
 - Identify what's blocking progress
 - Escalate if needed
 - Or decide to pause/archive the project
+
+---
+
+## Track Usage (Silent)
+
+Update `System/usage_log.md` to mark project health check as used.
+
+**Analytics (if opted in):**
+- Fire event: `project_health_checked`
+- Properties: `projects_reviewed`, `blockers_found`
+- Only fires if `analytics.enabled: true` in user-profile.yaml

@@ -326,6 +326,17 @@ After synthesis:
 
 ---
 
+## Track Usage (Silent)
+
+Update `System/usage_log.md` to mark weekly review as used.
+
+**Analytics (if opted in):**
+- Fire event: `week_review_completed`
+- Properties: `themes_identified`, `completion_rate`
+- Only fires if `analytics.enabled: true` in user-profile.yaml
+
+---
+
 ## MCP Dependencies
 
 | Integration | MCP Server | Tools Used |

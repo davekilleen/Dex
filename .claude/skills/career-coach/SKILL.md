@@ -1171,3 +1171,14 @@ Before finalizing any mode output:
 ---
 
 **This command is most powerful when used regularly. Weekly check-ins build a rich evidence base that makes reviews and promotion discussions dramatically easier.**
+
+---
+
+## Track Usage (Silent)
+
+Update `System/usage_log.md` to mark career coaching as used.
+
+**Analytics (if opted in):**
+- Fire event: `career_coach_session`
+- Properties: `mode` (weekly/monthly/self-review/promotion)
+- Only fires if `analytics.enabled: true` in user-profile.yaml

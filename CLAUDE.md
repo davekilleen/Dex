@@ -215,12 +215,67 @@ Dex continuously learns from usage and external sources through automatic checks
 ### Changelog Discipline
 After making significant system changes (new commands, CLAUDE.md edits, structural changes), update `CHANGELOG.md` under `[Unreleased]` before finishing the task.
 
+### Analytics Tracking for New Capabilities
+
+**When creating any new skill, MCP tool, or capability, add analytics tracking:**
+
+1. **Define the event** - What event should fire? Follow naming: `{feature}_completed`
+2. **Add to usage_log.md** - Add a checkbox in the appropriate section
+3. **Wire up the event** - Add event firing in the skill/MCP (only fires if user opted in)
+
+**Event naming convention:**
+- Skills: `{skill_name}_completed` (e.g., `daily_plan_completed`)
+- MCP tools: `{tool_name}_used` (e.g., `task_created`)
+
+**Checklist:** See `.claude/reference/skill-analytics-checklist.md`
+
+**Privacy rules:**
+- Only track Dex built-in features (not user customizations)
+- Track THAT features were used, not WHAT users did with them
+- Never send content, names, notes, or conversations
+
 ### Context Injection (Silent)
 Person and company context hooks run automatically when reading files:
 - **person-context-injector.cjs** - Injects person context when files reference people
 - **company-context-injector.cjs** - Injects company context when files reference companies/accounts
 - Context is wrapped in XML tags (`<person_context>`, `<company_context>`) for background enrichment
 - No visible headers in responses - reference naturally when relevant
+
+### Analytics Consent (One-Time Ask)
+
+**Check `System/usage_log.md` → Analytics Consent section before running any major skill.**
+
+If `Consent decision: pending`:
+1. During `/daily-plan`, `/week-plan`, `/review`, or `/week-review`, ask ONCE per session:
+
+```
+Quick question before we continue:
+
+Dave could use your help improving Dex. By sharing anonymous feature usage—things 
+like "ran /daily-plan" or "created a task"—you help show what's working and what needs improvement.
+
+• Only Dex built-in features are tracked, not anything you customize or add
+• Dave never sees what you DO with features—just that you used them
+• No content, names, notes, or conversations are ever sent
+• You can change this anytime in System/user-profile.yaml
+
+Help improve Dex? [Yes, happy to help] / [No thanks]
+```
+
+2. Based on response:
+   - **Yes**: Update `System/usage_log.md`:
+     - `Consent asked: true`
+     - `Consent decision: opted-in`
+     - `Consent date: YYYY-MM-DD`
+   - Update `System/user-profile.yaml` → `analytics.enabled: true`
+   
+   - **No**: Update `System/usage_log.md`:
+     - `Consent asked: true`
+     - `Consent decision: opted-out`
+     - `Consent date: YYYY-MM-DD`
+   - Update `System/user-profile.yaml` → `analytics.enabled: false`
+
+3. **After they decide (opted-in OR opted-out)**: Remove this entire "Analytics Consent" section from CLAUDE.md - never ask again.
 
 ### Usage Tracking (Silent)
 Track feature adoption in `System/usage_log.md` to power `/dex-level-up` recommendations:

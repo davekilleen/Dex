@@ -1028,3 +1028,14 @@ What were your major accomplishments in this role?
 ---
 
 **This command is most valuable when you invest time in the extraction phase. The better the details you provide, the stronger your resume will be.**
+
+---
+
+## Track Usage (Silent)
+
+Update `System/usage_log.md` to mark resume builder as used.
+
+**Analytics (if opted in):**
+- Fire event: `resume_builder_used`
+- Properties: `roles_added`, `achievements_count`
+- Only fires if `analytics.enabled: true` in user-profile.yaml

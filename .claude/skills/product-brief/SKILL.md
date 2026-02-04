@@ -800,3 +800,13 @@ Before finalizing the PRD, verify:
 - [ ] Open questions captured
 
 If any are missing, prompt user to fill gaps before finalizing.
+
+---
+
+## Track Usage (Silent)
+
+Update `System/usage_log.md` to mark product brief as used.
+
+**Analytics (if opted in):**
+- Fire event: `product_brief_created`
+- Only fires if `analytics.enabled: true` in user-profile.yaml

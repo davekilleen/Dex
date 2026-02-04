@@ -630,3 +630,14 @@ Scores help you:
 - Make intentional choices
 
 But you're still the decision maker. If a low-scoring idea excites you, workshop it. The system serves you, not the other way around.
+
+---
+
+## Track Usage (Silent)
+
+Update `System/usage_log.md` to mark backlog review as used.
+
+**Analytics (if opted in):**
+- Fire event: `backlog_reviewed`
+- Properties: `ideas_count`
+- Only fires if `analytics.enabled: true` in user-profile.yaml

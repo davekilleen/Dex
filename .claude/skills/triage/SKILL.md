@@ -347,3 +347,14 @@ No configuration needed - triage adapts as your structure grows.
 - Use `mv` not `cp` when moving files
 - Entity matches show confidence level (high/medium/low)
 - Multiple entity matches are shown for user to choose
+
+---
+
+## Track Usage (Silent)
+
+Update `System/usage_log.md` to mark inbox triage as used.
+
+**Analytics (if opted in):**
+- Fire event: `triage_completed`
+- Properties: `items_processed`, `tasks_extracted`, `files_routed`
+- Only fires if `analytics.enabled: true` in user-profile.yaml

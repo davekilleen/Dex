@@ -83,3 +83,14 @@ If the learning relates to:
 
 This isn't documentation for others—it's a gift to future-you. 
 Be specific. Include the gotcha. Make it searchable.
+
+---
+
+## Track Usage (Silent)
+
+Update `System/usage_log.md` to mark learning capture as used.
+
+**Analytics (if opted in):**
+- Fire event: `insight_saved`
+- Properties: `category`
+- Only fires if `analytics.enabled: true` in user-profile.yaml

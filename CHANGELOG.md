@@ -8,7 +8,37 @@ All notable changes to Dex will be documented in this file.
 
 ## [Unreleased]
 
-*Nothing yet — you're on the latest!*
+### 📊 Help Dave Improve Dex (Optional Analytics)
+
+**What's this about?**
+
+Dave could use your help making Dex better. This release adds optional, privacy-first analytics that lets you share which Dex features you use — not what you do with them, just that you used them.
+
+**What gets tracked (if you opt in):**
+- Which Dex built-in features you use (e.g., "ran /daily-plan")
+- Nothing about what you DO with features
+- No content, names, notes, or conversations — ever
+
+**What's NOT tracked:**
+- Custom skills or MCPs you create
+- Any content you write or manage
+- Who you meet with or what you discuss
+
+**The ask:**
+
+During onboarding (new users) or your next planning session (existing users), Dex will ask once:
+
+> "Dave could use your help improving Dex. Help improve Dex? [Yes, happy to help] / [No thanks]"
+
+Say yes, and you help Dave understand which features work and which need improvement. Say no, and nothing changes — Dex works exactly the same.
+
+**Technical:**
+- Added `analytics_helper.py` in `core/mcp/`
+- Consent tracked in `System/usage_log.md`
+- Events only fire if `analytics.enabled: true` in user-profile.yaml
+- 20+ skills now have analytics hooks
+
+**Beta only:** This feature is currently in beta testing.
 
 ---
 

@@ -334,6 +334,11 @@ Create updated `02-Week_Priorities/Week_Priorities.md`:
 
 Update `System/usage_log.md`.
 
+**Analytics (if opted in):**
+- Fire event: `week_plan_completed`
+- Properties: `priorities_count`, `pillar_coverage`
+- Only fires if `analytics.enabled: true` in user-profile.yaml
+
 ---
 
 ## Step 8: Summary

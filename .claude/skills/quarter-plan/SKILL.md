@@ -404,3 +404,14 @@ Display summary:
 - Command prompts to enable
 - Can enable at any time
 - Doesn't affect weekly/daily planning
+
+---
+
+## Track Usage (Silent)
+
+Update `System/usage_log.md` to mark quarterly planning as used.
+
+**Analytics (if opted in):**
+- Fire event: `quarter_plan_completed`
+- Properties: `goals_count`, `pillars_covered`
+- Only fires if `analytics.enabled: true` in user-profile.yaml

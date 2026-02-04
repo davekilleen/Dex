@@ -650,3 +650,14 @@ Or manually edit the files — they're just Markdown.
 ---
 
 **This command sets the foundation. The real power comes from `/career-coach` and ongoing evidence capture.**
+
+---
+
+## Track Usage (Silent)
+
+Update `System/usage_log.md` to mark career setup as used.
+
+**Analytics (if opted in):**
+- Fire event: `career_system_initialized`
+- Properties: `ladder_uploaded`, `goals_set`
+- Only fires if `analytics.enabled: true` in user-profile.yaml
