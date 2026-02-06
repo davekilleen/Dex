@@ -14,15 +14,36 @@
 #
 # The Work MCP uses these to categorize tasks and check balance across your work.
 
-pillars: []
-  # Will be populated during onboarding
-  # Example structure:
-  # - id: pillar_id
-  #   name: "Pillar Name"
-  #   description: "What this pillar represents"
-  #   keywords:
-  #     - keyword1
-  #     - keyword2
+pillars:
+  - id: ai_deployment
+    name: "Deploy AI assistants"
+    description: "Rolling out AI-powered assistants across PrestaShop"
+    keywords:
+      - ai
+      - assistant
+      - automation
+      - llm
+      - claude
+
+  - id: delivery_process
+    name: "Streamline delivery process"
+    description: "Optimizing engineering delivery and release processes"
+    keywords:
+      - delivery
+      - release
+      - ci/cd
+      - deployment
+      - process
+
+  - id: shareholder_change
+    name: "Prepare for shareholder change"
+    description: "Technical and organizational readiness for ownership transition"
+    keywords:
+      - shareholder
+      - transition
+      - acquisition
+      - due diligence
+      - governance
 
 # Priority limits (how many active tasks per priority level)
 priority_limits:

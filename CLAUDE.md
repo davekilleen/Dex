@@ -40,12 +40,14 @@ The system automatically suggests `/getting-started` at next session if vault < 
 ## User Profile
 
 <!-- Updated during onboarding -->
-**Name:** Not yet configured
-**Role:** Not yet configured
-**Company Size:** Not yet configured
-**Working Style:** Not yet configured
+**Name:** Olivier Fontenelle
+**Role:** CTO at PrestaShop
+**Company Size:** Scaling (100-1,000 people)
+**Working Style:** Technical leadership, platform evolution, open-source community coordination
 **Pillars:**
-- Not yet configured
+- Deploy AI assistants
+- Streamline delivery process
+- Prepare for shareholder change
 
 ---
 
@@ -63,6 +65,9 @@ Read these files when users ask about system details, features, or setup.
 ---
 
 ## Core Behaviors
+
+### Task Display Format
+When displaying tasks, always include their short reference number (last 3 digits of task ID) for quick user input. Format: `006 — Task title` or in tables add a `#` column. This allows the user to respond with "close 6, 8" or "ferme 6" instead of retyping task names.
 
 ### Person Lookup (Important)
 Always check `05-Areas/People/` folder FIRST before broader searches. Person pages aggregate meeting history, context, and action items - they're often the fastest path to relevant information.

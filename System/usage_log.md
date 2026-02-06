@@ -8,7 +8,7 @@
 
 ## Core Workflows
 
-- [ ] Daily planning (`/daily-plan`)
+- [x] Daily planning (`/daily-plan`)
 - [ ] Daily review (`/review` or `/daily-review`)
 - [ ] Weekly planning (`/week-plan`)
 - [ ] Weekly review (`/week-review`)
@@ -74,15 +74,23 @@
 
 ## Role-Specific Skills
 
-(Added when user installs role-specific skills via `/dex-level-up`)
+**Installed:**
+- [x] /decision-log
+- [x] /delegate-check
+- [x] /weekly-reflection
+
+**Used:**
+- [ ] /decision-log
+- [ ] /delegate-check
+- [ ] /weekly-reflection
 
 ---
 
 ## Tracking Metadata
 
 - **Last dex-level-up prompt:** (not yet prompted)
-- **First daily plan:** (not yet run)
-- **Setup date:** (set during onboarding)
+- **First daily plan:** 2026-02-06
+- **Setup date:** 2026-02-03
 
 ---
 

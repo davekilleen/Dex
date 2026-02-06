@@ -8,43 +8,43 @@
 demo_mode: false
 
 # Your name (used to identify you in meetings, filter yourself from participant lists)
-name: ""
+name: "Olivier Fontenelle"
 
 # Your role (used in meeting analysis prompts)
-role: ""
+role: "CTO"
 
 # Role group (for command filtering and adaptation)
 # Options: product, sales, marketing, finance, engineering, customer_success, operations, leadership, design, support, advisory
-role_group: ""
+role_group: "leadership"
 
 # Your company (optional, adds context to meeting analysis)
-company: ""
+company: "PrestaShop"
 
 # Company size tier
-company_size: ""  # options: startup (1-100), scaling (100-1000), enterprise (1000-10000), large_enterprise (10000+)
+company_size: "scaling"  # options: startup (1-100), scaling (100-1000), enterprise (1000-10000), large_enterprise (10000+)
 
 # Your company email domain (used to identify internal vs external people)
 # Example: "pendo.io" (without @)
 # Multiple domains: "pendo.io, pendo.com"
-email_domain: ""
+email_domain: "prestashop.com"
 
 # Communication Preferences
 # How the AI adapts its tone and language when working with you
 communication:
   # Formality level
   formality: "professional_casual"  # options: formal, professional_casual, casual
-  
+
   # Directness preference
-  directness: "balanced"  # options: very_direct, balanced, supportive
-  
+  directness: "very_direct"  # options: very_direct, balanced, supportive
+
   # Detail level in responses
   detail_level: "concise"  # options: concise, balanced, comprehensive
-  
+
   # Career/seniority context (for tone calibration)
-  career_level: "mid"  # options: junior, mid, senior, leadership, c_suite
-  
+  career_level: "c_suite"  # options: junior, mid, senior, leadership, c_suite
+
   # Coaching style preference (for career coaching)
-  coaching_style: "collaborative"  # options: encouraging, collaborative, challenging
+  coaching_style: "challenging"  # options: encouraging, collaborative, challenging
 
 # Meeting Processing Configuration
 # How Dex processes meetings from Granola
@@ -60,24 +60,24 @@ meeting_processing:
 meeting_intelligence:
   # Extract customer pain points and challenges
   extract_customer_intel: false
-  
+
   # Extract competitive mentions and comparisons
   extract_competitive_intel: false
-  
+
   # Extract action items (always recommended)
   extract_action_items: true
-  
+
   # Extract decisions made (always recommended)
   extract_decisions: true
-  
+
   # Extract stakeholder dynamics and relationships
-  extract_stakeholder_dynamics: false
-  
+  extract_stakeholder_dynamics: true
+
   # Extract budget, authority, need, timeline (BANT for sales)
   extract_budget_timeline: false
-  
+
   # Extract technical decisions and architecture choices
-  extract_technical_decisions: false
+  extract_technical_decisions: true
 
 # Journaling Configuration
 # Controls which journal types are enabled

@@ -1,0 +1,15 @@
+{
+  "user": {
+    "name": "Olivier Fontenelle",
+    "role": "CTO",
+    "company": "PrestaShop",
+    "companySize": "scaling",
+    "pillars": [
+      "Deploy AI assistants",
+      "Streamline delivery process",
+      "Prepare for shareholder change"
+    ]
+  },
+  "createdAt": "2026-02-03",
+  "version": "1.0"
+}
