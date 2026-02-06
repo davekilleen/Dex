@@ -64,6 +64,16 @@ Read these files when users ask about system details, features, or setup.
 
 ---
 
+## User Extensions (Protected Block)
+
+Add any personal instructions between these markers. The `/dex-update` process preserves this block verbatim.
+
+## USER_EXTENSIONS_START
+<!-- Add your personal customizations here. -->
+## USER_EXTENSIONS_END
+
+---
+
 ## Core Behaviors
 
 ### Task Display Format
@@ -98,6 +108,41 @@ When the user shares meeting notes or says they had a meeting:
 3. Link to relevant projects
 4. Suggest follow-ups
 5. If meeting with manager and Career folder exists, extract career development context
+
+### Task Creation (Smart Pillar Inference)
+When the user requests task creation without specifying a pillar:
+- "Create a task to review Q1 numbers"
+- "Remind me to prep for Sarah's demo"
+- "Add task: write LinkedIn post about feature launch"
+
+**Your workflow:**
+1. **Analyze the request** against pillar keywords (from `System/pillars.yaml`)
+2. **Infer the most likely pillar** based on content:
+   - **Deal Support**: deal, sales, customer, demo, presentation, enablement, account, pipeline, prospect, opportunity
+   - **Thought Leadership**: podcast, conference, linkedin, content, blog, talk, speaking, brand, article, webinar
+   - **Product Feedback**: product, feedback, feature, roadmap, ux, research, insight, customer voice, beta
+3. **Propose with quick confirmation**:
+   ```
+   Creating "Review Q1 numbers" under Product Feedback pillar (looks like data gathering).
+   Sound right, or should it be Deal Support / Thought Leadership?
+   ```
+4. **Handle response**:
+   - User confirms (yes/sounds good/correct) → Create task with inferred pillar
+   - User specifies different pillar → Use their choice
+   - Unclear task → Ask which pillar makes most sense
+5. **Call Work MCP**: `work_mcp_create_task` with confirmed pillar
+
+**Inference examples:**
+- "Prep demo for Acme Corp" → **Deal Support** (customer + demo keywords)
+- "Write blog post about AI agents" → **Thought Leadership** (content + article keywords)
+- "Review beta feedback on search" → **Product Feedback** (feedback + beta keywords)
+- "Call prospect about pricing" → **Deal Support** (prospect keyword)
+
+**Key points:**
+- Always show your reasoning ("looks like X because Y")
+- Make correction easy - list alternatives in the confirmation
+- If genuinely ambiguous, ask rather than guess
+- Default to user's pillar choice if they override
 
 ### Task Completion (Natural Language)
 When the user says they completed a task (any phrasing):
@@ -210,12 +255,145 @@ Dex continuously learns from usage and external sources through automatic checks
 ### Changelog Discipline
 After making significant system changes (new commands, CLAUDE.md edits, structural changes), update `CHANGELOG.md` under `[Unreleased]` before finishing the task.
 
+### Analytics Tracking for New Capabilities
+
+**When creating any new skill, MCP tool, or capability, add analytics tracking:**
+
+1. **Define the event** - What event should fire? Follow naming: `{feature}_completed`
+2. **Add to usage_log.md** - Add a checkbox in the appropriate section
+3. **Wire up the event** - Add event firing in the skill/MCP (only fires if user opted in)
+
+**Event naming convention:**
+- Skills: `{skill_name}_completed` (e.g., `daily_plan_completed`)
+- MCP tools: `{tool_name}_used` (e.g., `task_created`)
+
+**Checklist:** See `.claude/reference/skill-analytics-checklist.md`
+
+**Privacy rules:**
+- Only track Dex built-in features (not user customizations)
+- Track THAT features were used, not WHAT users did with them
+- Never send content, names, notes, or conversations
+
 ### Context Injection (Silent)
 Person and company context hooks run automatically when reading files:
 - **person-context-injector.cjs** - Injects person context when files reference people
 - **company-context-injector.cjs** - Injects company context when files reference companies/accounts
 - Context is wrapped in XML tags (`<person_context>`, `<company_context>`) for background enrichment
 - No visible headers in responses - reference naturally when relevant
+
+### Analytics Consent (One-Time Ask)
+
+**Beta Feature:** Only applies if user has activated the analytics beta.
+
+**Before any major skill, check:**
+1. Call `check_beta_enabled(feature="analytics")` from Beta MCP
+2. If NOT enabled → skip analytics entirely (no prompt, no tracking)
+3. If enabled → check `System/usage_log.md` → Analytics Consent section
+
+**If analytics beta is enabled AND `Consent decision: pending`:**
+
+During `/daily-plan`, `/week-plan`, `/review`, or `/week-review`, ask ONCE per session:
+
+```
+Quick question before we continue:
+
+Dave could use your help improving Dex. By sharing anonymous feature usage—things 
+like "ran /daily-plan" or "created a task"—you help show what's working and what needs improvement.
+
+• Only Dex built-in features are tracked, not anything you customize or add
+• Dave never sees what you DO with features—just that you used them
+• No content, names, notes, or conversations are ever sent
+• To opt out later, just say "turn off Dex analytics" anytime
+
+Help improve Dex? [Yes, happy to help] / [No thanks]
+```
+
+2. Based on response:
+   - **Yes**: Update `System/usage_log.md`:
+     - `Consent asked: true`
+     - `Consent decision: opted-in`
+     - `Consent date: YYYY-MM-DD`
+   - Update `System/user-profile.yaml` → `analytics.enabled: true`
+   
+   - **No**: Update `System/usage_log.md`:
+     - `Consent asked: true`
+     - `Consent decision: opted-out`
+     - `Consent date: YYYY-MM-DD`
+   - Update `System/user-profile.yaml` → `analytics.enabled: false`
+
+3. **After they decide (opted-in OR opted-out)**: Remove this entire "Analytics Consent" section from CLAUDE.md - never ask again.
+
+### Analytics Opt-Out (Anytime)
+
+When user says anything like:
+- "Turn off Dex analytics"
+- "Opt out of analytics"
+- "Stop tracking"
+- "Disable analytics"
+
+**Your response:**
+1. Update `System/user-profile.yaml` → `analytics.enabled: false`
+2. Update `System/usage_log.md` → `Consent decision: opted-out`
+3. Say: "Done! Analytics is now off. No more usage data will be sent. You can turn it back on anytime by saying 'turn on Dex analytics'."
+
+When user says anything like:
+- "Turn on Dex analytics"
+- "Enable analytics"
+- "Opt back in to analytics"
+
+**Your response:**
+1. Update `System/user-profile.yaml` → `analytics.enabled: true`
+2. Update `System/usage_log.md` → `Consent decision: opted-in`
+3. Say: "Done! Analytics is back on. Thanks for helping improve Dex!"
+
+### ScreenPipe Consent (One-Time Ask)
+
+**Beta Feature:** Only applies if user has activated the screenpipe beta.
+
+**Before prompting, check:**
+1. Call `check_beta_enabled(feature="screenpipe")` from Beta MCP
+2. If NOT enabled → skip ScreenPipe entirely (no prompt, no scanning)
+3. If enabled → check `System/usage_log.md` → ScreenPipe Consent section
+
+**If screenpipe beta is enabled AND `Consent asked: false` AND user-profile.yaml `screenpipe.prompted: false`:**
+
+During `/daily-plan` or `/daily-review`, ask ONCE per vault:
+
+```
+**🔔 New Feature: Ambient Commitment Detection**
+
+Dex can now detect promises and asks from your screen activity — things like 
+"I'll send that over" in Slack or "Can you review this?" in email.
+
+**How it works:**
+- ScreenPipe records your screen locally (never sent anywhere)
+- Dex scans for commitment patterns during your daily review
+- You decide what becomes a task — nothing auto-created
+
+**Privacy-first:**
+- All data stays on your machine
+- Browsers, banking, social media blocked by default
+- Auto-deletes after 30 days
+- Disable anytime with `/screenpipe-setup disable`
+
+**Want to enable ScreenPipe features?** [Yes, set it up] / [Not now] / [Never ask again]
+```
+
+Based on response:
+- **Yes**: 
+  - Run `/screenpipe-setup` inline
+  - Update `System/user-profile.yaml` → `screenpipe.enabled: true`, `screenpipe.prompted: true`
+  - Update `System/usage_log.md` → ScreenPipe Consent: `opted-in`
+  
+- **Not now**: 
+  - Update `System/user-profile.yaml` → `screenpipe.prompted: true`
+  - Say: "No problem! Run `/screenpipe-setup` anytime if you change your mind."
+  - Ask again in 7 days (don't mark as permanent opt-out)
+  
+- **Never ask again**: 
+  - Update `System/user-profile.yaml` → `screenpipe.enabled: false`, `screenpipe.prompted: true`
+  - Update `System/usage_log.md` → ScreenPipe Consent: `opted-out`
+  - Remove this section from CLAUDE.md
 
 ### Usage Tracking (Silent)
 Track feature adoption in `System/usage_log.md` to power `/dex-level-up` recommendations:
@@ -242,6 +420,8 @@ Skills extend Dex capabilities and are invoked with `/skill-name`. Common skills
 - `/triage`, `/meeting-prep`, `/process-meetings` - Meetings and inbox
 - `/project-health`, `/product-brief` - Projects
 - `/career-coach`, `/resume-builder` - Career development
+- `/ai-setup`, `/ai-status` - Configure budget cloud models (80% cheaper) and offline mode
+- `/xray` - AI education: understand what just happened under the hood (context, MCPs, hooks)
 - `/dex-level-up`, `/dex-backlog`, `/dex-improve` - System improvements
 - `/dex-update` - Update Dex automatically (shows what's new, updates if confirmed, no technical knowledge needed)
 - `/dex-rollback` - Undo last update if something went wrong

@@ -1,278 +1,466 @@
 ---
 name: daily-review
-description: End of day review with learning capture. Integrates with evening journaling if enabled.
+description: End of day review with learning capture, daily plan completion tracking, and meeting follow-up surfacing.
 ---
 
-Conduct an end-of-day review to capture progress and set up tomorrow.
+## Purpose
+
+Conduct an end-of-day review to capture progress, track what you actually accomplished vs. planned, surface meeting follow-ups, and set up tomorrow.
 
 ## Tone Calibration
 
-Before executing this command, read `System/user-profile.yaml` → `communication` section and adapt:
-
-**Career Level Adaptations:**
-- **Junior:** Encouraging reflection, celebrate learning moments, normalize struggles
-- **Mid:** Focus on impact achieved, challenge to think strategically
-- **Senior/Leadership:** Push on organizational impact, team development, strategic thinking
-- **C-Suite:** High-level outcomes, strategic decisions, organizational influence
-
-**Directness:**
-- **Very direct:** Quick wins/learnings capture, minimal prompting
-- **Balanced:** Standard reflection questions (default)
-- **Supportive:** More detailed prompts, encourage reflection
-
-**Detail Level:**
-- **Concise:** Brief capture, top highlights
-- **Balanced:** Standard review format
-- **Comprehensive:** Deep reflection, patterns, insights
-
-See CLAUDE.md → "Communication Adaptation" for full guidelines.
+Read `System/user-profile.yaml` → `communication` section and adapt accordingly.
 
 ---
 
-## Step 0: File Discovery
+## Step 0: Demo Mode Check
 
-**Find files modified TODAY:**
+Check `System/user-profile.yaml` for `demo_mode`. If true, use demo paths.
+
+---
+
+## Step 1: File Discovery
+
+Find files modified TODAY:
 
 ```bash
-# Get today's date and find files modified today
 TODAY=$(date +%Y-%m-%d)
-find . -type f -name "*.md" -newermt "$TODAY 00:00:00" ! -newermt "$TODAY 23:59:59" 2>/dev/null | grep -v "node_modules" | xargs ls -lt 2>/dev/null
+find . -type f -name "*.md" -newermt "$TODAY 00:00:00" ! -newermt "$TODAY 23:59:59" 2>/dev/null
 ```
 
 **Critical rules:**
-1. **No truncation** — Do NOT use `head` limits on file discovery
-2. **Today only** — Use date-based filtering, NOT `-mtime 0` (which captures 24-hour rolling window)
-3. **Verify with user** — After listing files, ASK: "These are the files I found modified today. What did you actually work on?"
-4. **Don't infer** — File timestamps tell you what changed, not what matters. Wait for user confirmation.
+1. No truncation — list all modified files
+2. Today only — use date-based filtering
+3. Verify with user — "These are the files I found. What did you actually work on?"
 
-## Step 1: Gather Context
+---
 
-### Completed Tasks Today
-Check `03-Tasks/Tasks.md` for tasks completed today using completion timestamps:
-- Look for `✅ YYYY-MM-DD` matching today's date
-- These show what you actually finished (not just what you worked on)
-- Example: `- [x] **Review pricing proposal** ^task-20260127-003 ✅ 2026-01-28 09:15`
+## Step 2: Gather Context
 
-### Weekly Priorities
-Read `00-Inbox/Weekly_Plans.md` for:
+### From 03-Tasks/Tasks.md
+- Tasks completed today (look for `✅ YYYY-MM-DD` matching today)
+- Tasks started but not finished
+
+### From Weekly Priorities
+Read `02-Week_Priorities/Week_Priorities.md` for:
 - This week's strategic focus
-- Commitments and deadlines
-- Key people involved
+- How today's work connects to weekly priorities
 
-### Recent Meetings
-Check `00-Inbox/Meetings/` for any meeting notes from today.
+### From Recent Meetings
+Check `00-Inbox/Meetings/` for meeting notes from today.
 
-## Step 2: User Verification
+### From ScreenPipe (If Running)
 
-**Present findings to user:**
-> "Based on file timestamps, these notes were modified today: [list]
+**Check if ScreenPipe is available:**
+```bash
+curl -s http://localhost:3030/health | jq -r '.status' 2>/dev/null
+```
+
+If ScreenPipe is running, gather automatic activity context:
+
+1. **Time Audit** — Query app usage for today:
+   ```
+   Use: screenpipe_time_audit(start_time="YYYY-MM-DDT09:00:00", end_time="YYYY-MM-DDT18:00:00")
+   ```
+
+2. **Activity Summary** — Get narrative of what happened:
+   ```
+   Use: screenpipe_summarize(start_time="YYYY-MM-DDT09:00:00", end_time="YYYY-MM-DDT18:00:00")
+   ```
+
+3. **Surface to User:**
+   > "📺 **Screen Activity Summary** (auto-captured):
+   > 
+   > **Time breakdown:**
+   > - VS Code: 3.2 hours (41%)
+   > - Slack: 1.5 hours (19%)
+   > - Chrome: 2.1 hours (27%)
+   > - Zoom: 1.0 hour (13%)
+   > 
+   > **Activity narrative:**
+   > [Generated summary of the day]
+   > 
+   > **Context switches:** 34 (moderate)
+   > **Longest focus session:** 48 minutes
+   > 
+   > Does this match your sense of the day?"
+
+This provides ground truth for what actually happened vs. what was remembered.
+
+### Commitment Scan (If ScreenPipe Beta Activated & Enabled & Running)
+
+**First, check beta activation:**
+```
+Use: check_beta_enabled(feature="screenpipe")
+```
+
+If beta NOT activated, skip this section entirely.
+
+**Then check if user has opted in:**
+
+Read `System/user-profile.yaml` → `screenpipe.enabled`. If false, skip this section entirely.
+
+**If beta activated AND enabled**, scan for uncommitted asks and promises:
+
+```
+Use: scan_for_commitments(
+    start_time="YYYY-MM-DDT09:00:00",
+    end_time="YYYY-MM-DDT18:00:00",
+    apps=["Slack", "Gmail", "Teams", "Notion"]
+)
+```
+
+Then get pending items:
+```
+Use: get_uncommitted_items(include_dismissed=false)
+```
+
+**Surface to user if items found:**
+
+> "🔔 **Uncommitted Items Detected**
+>
+> ScreenPipe noticed these potential commitments today that don't have matching tasks:
+>
+> ### Inbound Asks
+>
+> **1. Sarah Chen** (Slack, 2:34 PM)
+> > "Can you review the pricing proposal by Friday?"
+>
+> 📎 Matches: **Q1 Pricing Project**
+> ⏰ Deadline: Friday
+>
+> → [Create task] [Already handled] [Ignore]
+>
+> ### Outbound Promises
+>
+> **2. You → Tom Baker** (Slack, 4:20 PM)
+> > "I'll send over the competitive analysis tomorrow"
+>
+> 📎 Matches: **Acme Deal**
+> ⏰ Deadline: Tomorrow
+>
+> → [Create task] [Already handled] [Ignore]
+>
+> *2 potential commitments detected. 0 have matching tasks.*"
+
+For each item the user wants to create as a task:
+```
+Use: process_commitment(commitment_id="comm-XXXXXX-XXX", action="create_task")
+Use: create_task(title="...", priority="P2", pillar="...", context="From Slack commitment")
+```
+
+For dismissals:
+```
+Use: process_commitment(commitment_id="comm-XXXXXX-XXX", action="dismiss")
+```
+
+---
+
+## Step 3: Daily Plan Completion Tracking (NEW)
+
+**Compare what you planned vs. what you did.**
+
+### 3.1 Find Today's Plan
+
+Look for `07-Archives/Plans/YYYY-MM-DD.md` (today's date).
+
+### 3.2 Extract Planned Focus
+
+From the "Today's Focus" section, extract the 3 items you planned to focus on.
+
+### 3.3 Track Completion
+
+For each planned focus item:
+- Check if it was completed (look in Tasks.md for completion timestamps)
+- Check if it was started but not finished
+- Check if it was blocked or deferred
+
+**Surface this:**
+
+> "📊 **Daily Plan Completion:**
 > 
-> What did you actually work on today that should be captured in the review?"
+> You planned 3 focus items this morning:
+> 
+> 1. ✅ **Prep for Acme meeting** — Complete
+> 2. 🔄 **Write pricing proposal** — In progress (about 60% done)
+> 3. ❌ **Reply to Mike** — Didn't get to it
+> 
+> **Completion rate today:** 1 of 3 (33%)
+> 
+> What happened with #3? Should it carry to tomorrow?"
 
-Wait for user response before proceeding.
+### 3.4 Track Over Time (Optional)
 
-## Step 3: Progress Assessment
+If tracking completion rates:
+- Update `System/metrics/daily-completion.md` with today's rate
+- Surface patterns: "Your average completion rate this week is 67%"
+
+---
+
+## Step 4: Meeting Follow-Up Surfacing (NEW)
+
+**For each meeting you had today, surface follow-ups.**
+
+### 4.1 Identify Today's Meetings
+
+From calendar or meeting notes, list meetings that happened today.
+
+### 4.2 For Each Meeting, Ask:
+
+```
+Use: get_meeting_context(meeting_title="...", attendees=[...])
+```
+
+Then prompt:
+
+> "📍 **You met with Sarah Chen today** (Acme Quarterly Review)
+> 
+> **Any follow-ups to capture?**
+> - Action items you committed to?
+> - Things they owe you?
+> - Decisions that need documentation?
+> 
+> (Type your follow-ups or 'none')"
+
+### 4.3 Create Follow-Up Tasks
+
+For any follow-ups mentioned:
+- Add to Tasks.md with appropriate priority
+- Link to the person page
+- Add due date if mentioned
+
+---
+
+## Step 5: Progress Assessment
 
 With user-verified information:
 - What was accomplished?
 - What progress was made against weekly priorities?
 - What got stuck or blocked?
-- What unexpected discoveries emerged?
-
-## Step 4: Auto-Extract Session Learnings
-
-**Scan today's conversation for learnings:**
-
-Before asking the user anything, reflect on today's session and automatically extract:
-
-1. **Mistakes or corrections**
-   - Did the user have to correct any assumptions?
-   - Did something not work as expected?
-   - Were there misunderstandings to document?
-
-2. **Preferences mentioned**
-   - Did the user express how they like to work?
-   - Were tool preferences or workflow patterns mentioned?
-   - Any communication style notes?
-
-3. **Documentation gaps**
-   - Did you have to explain something that should be documented?
-   - Were there questions about how the system works?
-   - Missing templates or unclear processes?
-
-4. **Workflow inefficiencies**
-   - Did any task take longer than it should?
-   - Were there repetitive manual steps?
-   - Opportunities for automation?
-
-**For each learning identified, write to `System/Session_Learnings/YYYY-MM-DD.md`:**
-
-```markdown
-## HH:MM - [Short title]
-
-**What happened:** [Specific situation from today's session]
-**Why it matters:** [Impact on workflows/system]
-**Suggested fix:** [Specific action with file paths if applicable]
-**Status:** pending
-
----
-```
-
-**Then ask the user:** "I captured [N] learnings from today's session. Anything else you'd like to add?"
-
-**This ensures learnings persist for:**
-- Weekly synthesis (`/week`)
-- System improvement reviews (`/dex-whats-new`)
-- Future reference
-
-## Step 4b: Categorize Learnings (If Applicable)
-
-After capturing session learnings, check if any should be elevated to pattern files:
-
-**Read today's session learnings and identify:**
-
-1. **Recurring mistakes** - Same issue happened 2+ times or was mentioned as recurring
-   - Prompt: "This looks like a recurring issue. Should I add it to `06-Resources/Learnings/Mistake_Patterns.md` under Active Patterns?"
-   - If yes, read the file and append under `## Active Patterns` section
-
-2. **Workflow preferences** - User expressed how they prefer to work
-   - Prompt: "I noticed you prefer [X approach/tool/style]. Should I add this to `06-Resources/Learnings/Working_Preferences.md`?"
-   - If yes, read the file and append under appropriate section (Communication, Task Management, etc.)
-
-**Format for Mistake_Patterns.md:**
-```markdown
-### [Pattern Name]
-- **Trigger**: [What causes it]
-- **Impact**: [What goes wrong]
-- **Mitigation**: [How to avoid it]
-- **Added**: YYYY-MM-DD
-```
-
-**Format for Working_Preferences.md:**
-```markdown
-### [Preference Title]
-- [Description of preference]
-- Added: YYYY-MM-DD
-```
-
-**Rules:**
-- Only prompt if the learning clearly fits one of these categories
-- Don't prompt for every learning - be selective
-- Get user confirmation before adding
-- If user says no, continue without adding
-
-## Step 4c: Additional Insights
-
-- Key realizations or connections from user input
-- Questions that arose
-
-## Step 5: Tomorrow's Setup
-
-- Top 3 priorities (aligned with weekly focus)
-- Open loops to close
-- Questions to explore
-
-## Step 6: Track Usage (Silent)
-
-After creating the daily review, silently update usage tracking:
-
-1. Read `System/usage_log.md`
-2. Update: `- [ ] Daily review (/review)` → `- [x] Daily review (/review)`
-3. No announcement to user
+- What unexpected things came up?
 
 ---
 
-## Step 7: Evening Journal (If Enabled)
+## Step 6: Week Progress Check (Midweek Context)
 
-Check if evening journaling is enabled:
+```
+Use: get_week_progress()
+```
 
-1. Read `System/user-profile.yaml`
-2. Check `journaling.evening` value
-3. **If `journaling.evening: true`:**
-   - Check if today's evening journal exists in `00-Inbox/Journals/YYYY/MM-Month/Evening/YYYY-MM-DD-evening.md`
-   - **If missing:**
-     - After creating the daily review, prompt: "Want to close the day with an evening reflection? (3 minutes)"
-     - If yes: Guide through evening journal (see `/journal` command)
-     - Pull in morning journal intention if it exists for reflection
-   - **If exists:** Note completion, skip prompt
-4. **If `journaling.evening: false`:** Skip journal prompt
+Show how today's work moved weekly priorities:
+
+> "**Week Progress Update:**
+> 
+> After today, you're at:
+> - Priority 1: ✅ Complete (finished today!)
+> - Priority 2: 🔄 60% (moved from 40%)
+> - Priority 3: ⚠️ Still not started
+> 
+> You have 2 days left. Tomorrow should focus on Priority 3."
+
+---
+
+## Step 7: Auto-Extract Session Learnings
+
+Scan today's conversation for learnings:
+
+1. **Mistakes or corrections** — Did something not work as expected?
+2. **Preferences mentioned** — Did you express how you like to work?
+3. **Documentation gaps** — Were there questions about how the system works?
+4. **Workflow inefficiencies** — Did any task take longer than it should?
+
+Write to `System/Session_Learnings/YYYY-MM-DD.md`.
+
+Then ask: "I captured [N] learnings from today's session. Anything else you'd like to add?"
+
+---
+
+## Step 8: Categorize Learnings (If Applicable)
+
+Check if any learnings should be elevated to pattern files:
+- **Recurring mistakes** → `06-Resources/Learnings/Mistake_Patterns.md`
+- **Workflow preferences** → `06-Resources/Learnings/Working_Preferences.md`
+
+Get user confirmation before adding.
+
+---
+
+## Step 9: Tomorrow's Setup
+
+Based on:
+- Incomplete items from today
+- Weekly priorities (especially lagging ones)
+- Commitments due tomorrow
+- Tomorrow's calendar shape
+
+Suggest 3 focus items for tomorrow:
+
+> "**Suggested focus for tomorrow (Thursday):**
+> 
+> 1. **Priority 3** — It's been untouched all week and you have 2 days left
+> 2. **Finish pricing proposal** — 40% left, should be quick to complete
+> 3. **Reply to Mike** — Carried from today
+> 
+> Tomorrow's shape: Moderate (4 meetings). You have a 2-hour block in the afternoon.
+> 
+> Does this feel right?"
+
+---
+
+## Step 10: Track Usage (Silent)
+
+Update `System/usage_log.md`.
+
+---
+
+## Step 11: Evening Journal (If Enabled)
+
+If `journaling.evening: true`, prompt for evening reflection.
+
+---
 
 ## Output Format
 
-Create daily note at `07-Archives/Reviews/Daily_Review_[YYYY-MM-DD].md`:
+Create `07-Archives/Reviews/Daily_Review_YYYY-MM-DD.md`:
 
 ```markdown
 ---
-
----
-
-## Demo Mode Check
-
-Before executing, check if demo mode is active:
-
-1. Read `System/user-profile.yaml` and check `demo_mode`
-2. **If `demo_mode: true`:**
-   - Display: "Demo Mode Active — Using sample data"
-   - Use `System/Demo/` paths instead of root paths
-   - Write any output to `System/Demo/` subdirectories
-3. **If `demo_mode: false`:** Use normal vault paths
-
-date: [YYYY-MM-DD]
+date: YYYY-MM-DD
 type: daily-review
+plan_completion_rate: X%
 ---
 
 # Daily Review — [Day], [Month] [DD], [YYYY]
 
-## Accomplished
+## 📊 Plan vs. Reality
+
+**Planned focus:**
+1. [x] [Planned item 1] — ✅ Complete
+2. [ ] [Planned item 2] — 🔄 In progress (X%)
+3. [ ] [Planned item 3] — ❌ Didn't start
+
+**Completion rate:** X of 3 (X%)
+
+**What happened:** [Brief explanation of deviations]
+
+---
+
+## ✅ Accomplished
 
 - ✓ [Completed item 1]
 - ✓ [Completed item 2]
 
-## Progress Made
+---
+
+## 🔄 Progress Made
 
 | Area | Movement |
 |------|----------|
-| **[Area 1]** | [What moved forward] |
-| **[Area 2]** | [What moved forward] |
+| [Priority 1] | [What moved forward] |
+| [Priority 2] | [What moved forward] |
 
-## Weekly Priorities Progress
+---
 
-> Reference: 00-Inbox/Weekly_Plans.md
+## 📊 Weekly Priorities Progress
 
-- **[Priority 1]:** [Status/progress]
-- **[Priority 2]:** [Status/progress]
+After today:
+- **Priority 1:** [Status/progress] — [emoji]
+- **Priority 2:** [Status/progress] — [emoji]
+- **Priority 3:** [Status/progress] — [emoji]
 
-## Insights
+**Days remaining this week:** [X]
+
+---
+
+## 📍 Meeting Follow-Ups
+
+### From [Meeting Name]
+- [ ] [Follow-up action] — due [date]
+- [ ] [Follow-up action]
+
+---
+
+## 📺 Screen Activity (Auto-Captured)
+
+**Time by App:**
+| App | Time | % |
+|-----|------|---|
+| [App 1] | Xh Xm | X% |
+| [App 2] | Xh Xm | X% |
+
+**Metrics:**
+- Context switches: [X]
+- Longest focus: [X] minutes
+- Deep work ratio: [X]%
+
+**Activity Summary:**
+[Narrative summary from ScreenPipe]
+
+---
+
+## 💡 Insights
 
 - [Key realization or connection]
 - [Important learning]
 
-## Blocked/Stuck
+---
+
+## 🚫 Blocked/Stuck
 
 | Item | Blocker | Status |
 |------|---------|--------|
 | [Item] | [What's blocking] | [Status] |
 
-## Discovered Questions
+---
+
+## ❓ Discovered Questions
 
 1. [New question that emerged]
 2. [Thing to research]
 
-## Tomorrow's Focus
+---
+
+## 📅 Tomorrow's Focus
+
+Based on weekly priorities and today's carryover:
 
 1. [Priority 1 — tied to weekly focus]
 2. [Priority 2]
 3. [Priority 3]
 
-## Open Loops
+**Tomorrow's shape:** [stacked/moderate/open]
+
+---
+
+## 🔄 Open Loops
 
 - [ ] [Thing to remember]
 - [ ] [Person to follow up with]
 - [ ] **Awaiting:** [What you're waiting on from others]
+
+---
+
+*Generated: [timestamp]*
+*Daily completion rate: X%*
+*Week progress: X/3 priorities on track*
 ```
 
-## Important Reminders
+---
 
-- **Verify, don't infer** — Always confirm with user what they worked on
-- **Weekly alignment** — Connect daily progress to weekly priorities
-- **Day of week** — Use system date metadata, verify before writing
+## MCP Dependencies
+
+| Integration | MCP Server | Tools Used |
+|-------------|------------|------------|
+| Work | dex-work-mcp | `list_tasks`, `get_week_progress`, `get_commitments_due`, `analyze_calendar_capacity` |
+| Calendar | dex-calendar-mcp | `calendar_get_today` |
+| Screen Activity | screenpipe-mcp | `screenpipe_time_audit`, `screenpipe_summarize`, `screenpipe_query` |
+
+### ScreenPipe Integration Notes
+
+ScreenPipe provides automatic activity capture. When available:
+- Pre-fills "what you actually did" with ground truth data
+- Surfaces time allocation across apps
+- Identifies communication overhead vs. deep work
+- Detects context-switching patterns
+
+If ScreenPipe is not running, skip the screen activity section gracefully.

@@ -45,10 +45,9 @@ Ready to proceed?"
 
 ## Step 3: Run Migration
 
-Call the migration script using Shell tool:
+Call the migration script using Shell tool (run from the vault root directory):
 
 ```bash
-cd /Users/dave/Dex/Dex
 python core/obsidian/migrate_to_wikilinks.py
 ```
 
@@ -80,10 +79,9 @@ These are stored in `.obsidian/` and only affect Obsidian (not Cursor/terminal).
 
 **If YES:**
 
-Run the config generator:
+Run the config generator (from vault root):
 
 ```bash
-cd /Users/dave/Dex/Dex
 python core/obsidian/generate_obsidian_config.py
 ```
 
@@ -103,10 +101,9 @@ Runs in background, zero maintenance."
 
 **If YES:**
 
-Run the daemon installer (note: this will be created in Phase 4):
+Run the daemon installer (from vault root):
 
 ```bash
-cd /Users/dave/Dex/Dex
 bash core/obsidian/install_sync_daemon.sh
 ```
 
@@ -119,7 +116,7 @@ Say: "No problem! You can enable it later by running `bash core/obsidian/install
 Say: "✅ Obsidian mode enabled!
 
 **Next steps:**
-1. Open Obsidian: File → Open Folder → `/Users/dave/Dex/Dex` (or your Dex path)
+1. Open Obsidian: File → Open Folder → select your Dex vault folder
 2. Check the graph view: Ctrl/Cmd + G
 3. Click any wiki link to navigate
 

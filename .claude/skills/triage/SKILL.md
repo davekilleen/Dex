@@ -347,3 +347,16 @@ No configuration needed - triage adapts as your structure grows.
 - Use `mv` not `cp` when moving files
 - Entity matches show confidence level (high/medium/low)
 - Multiple entity matches are shown for user to choose
+
+---
+
+## Track Usage (Silent)
+
+Update `System/usage_log.md` to mark inbox triage as used.
+
+**Analytics (Beta Feature):**
+1. Call `check_beta_enabled(feature="analytics")` - if false, skip
+2. If beta enabled AND consent given, fire event:
+- Fire event: `triage_completed`
+- Properties: `items_processed`, `tasks_extracted`, `files_routed`
+- Only fires if BOTH: analytics beta activated AND opted in

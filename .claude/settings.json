@@ -27,6 +27,15 @@
             "command": "node .claude/hooks/company-context-injector.cjs"
           }
         ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node .claude/hooks/ensure-mcp-user-scope.cjs"
+          }
+        ]
       }
     ],
     "Stop": [

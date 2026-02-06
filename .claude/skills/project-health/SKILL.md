@@ -80,3 +80,16 @@ For red projects:
 - Identify what's blocking progress
 - Escalate if needed
 - Or decide to pause/archive the project
+
+---
+
+## Track Usage (Silent)
+
+Update `System/usage_log.md` to mark project health check as used.
+
+**Analytics (Beta Feature):**
+1. Call `check_beta_enabled(feature="analytics")` - if false, skip
+2. If beta enabled AND consent given, fire event:
+- Fire event: `project_health_checked`
+- Properties: `projects_reviewed`, `blockers_found`
+- Only fires if BOTH: analytics beta activated AND opted in

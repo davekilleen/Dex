@@ -23,6 +23,10 @@ Your data is **completely separate** from the Dex application. Updates only touc
 
 It's like updating Microsoft Word. The app gets better, but your documents stay exactly as they are.
 
+**Your customizations are preserved too:**
+- **CLAUDE.md personal notes:** Anything between `USER_EXTENSIONS_START/END` is preserved during updates
+- **Custom MCP servers:** Name them with `user-` or `custom-` (e.g., `user-gmail`) so updates always keep them
+
 ---
 
 ## What You Need to Know First
@@ -640,6 +644,8 @@ These are protected. Updates won't touch them.
 If you edited a core file (like `.claude/skills/daily-plan/SKILL.md`), and an update also changes that file, Dex will:
 1. Detect the overlap
 2. Ask which version to keep
+   - If AskUserQuestion is available, Dex shows a guided choice
+   - If not, Dex shows a CLI prompt with the same options + tradeoffs
 3. Usually keep your version (your customizations)
 
 But **better practice:** Put your customizations in the `-custom` folders so they never conflict.

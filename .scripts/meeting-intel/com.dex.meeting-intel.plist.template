@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.dex.meeting-intel</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>__NODE_PATH__</string>
+        <string>__VAULT_PATH__/.scripts/meeting-intel/sync-from-granola.cjs</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>__VAULT_PATH__</string>
+
+    <!-- Run every 30 minutes -->
+    <key>StartInterval</key>
+    <integer>1800</integer>
+
+    <!-- Also run at load (when laptop wakes/logs in) -->
+    <key>RunAtLoad</key>
+    <true/>
+
+    <!-- Log output -->
+    <key>StandardOutPath</key>
+    <string>__VAULT_PATH__/.scripts/logs/meeting-intel.stdout.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>__VAULT_PATH__/.scripts/logs/meeting-intel.stderr.log</string>
+
+    <!-- Environment variables -->
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/usr/local/bin:/usr/bin:/bin:/opt/homebrew/bin</string>
+    </dict>
+
+    <!-- Only run when user is logged in -->
+    <key>LimitLoadToSessionType</key>
+    <string>Aqua</string>
+
+    <!-- Nice priority - don't hog resources -->
+    <key>Nice</key>
+    <integer>10</integer>
+
+    <!-- Timeout after 5 minutes -->
+    <key>TimeOut</key>
+    <integer>300</integer>
+
+    <!-- Throttle on failures -->
+    <key>ThrottleInterval</key>
+    <integer>300</integer>
+</dict>
+</plist>

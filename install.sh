@@ -181,23 +181,37 @@ if [ -n "$PIP_CMD" ]; then
     echo "   Upgrading pip..."
     $PYTHON_CMD -m pip install --upgrade pip --quiet 2>/dev/null || true
     
+    # Detect Apple Silicon and set appropriate pip flags
+    PIP_FLAGS=""
+    if [[ "$OSTYPE" == "darwin"* ]] && [[ $(uname -m) == "arm64" ]]; then
+        echo "   Detected Apple Silicon - ensuring native ARM64 packages..."
+        # Force reinstall without cache to get native ARM64 binaries
+        PIP_FLAGS="--force-reinstall --no-cache-dir"
+    fi
+    
     # Try standard install first
-    if $PIP_CMD install mcp pyyaml --quiet 2>/dev/null; then
-        echo "✅ Work MCP dependencies installed"
+    if $PIP_CMD install $PIP_FLAGS mcp pyyaml pyobjc-framework-EventKit --quiet 2>/dev/null; then
+        echo "✅ MCP dependencies installed (including fast EventKit calendar access)"
     else
         # Try with --user flag (works around permission issues)
         echo "   Trying with --user flag..."
-        if $PIP_CMD install --user mcp pyyaml --quiet 2>/dev/null; then
-            echo "✅ Work MCP dependencies installed (user mode)"
+        if $PIP_CMD install --user $PIP_FLAGS mcp pyyaml pyobjc-framework-EventKit --quiet 2>/dev/null; then
+            echo "✅ MCP dependencies installed (user mode)"
         else
             echo "❌ Could not install Python dependencies"
             echo ""
             echo "Work MCP is critical - it syncs tasks across all your files."
             echo "Without it, checking off a task in one place won't update others."
             echo ""
-            echo "Try manually (upgrade pip first):"
-            echo "  $PYTHON_CMD -m pip install --upgrade pip"
-            echo "  $PIP_CMD install --user mcp pyyaml"
+            if [[ "$OSTYPE" == "darwin"* ]] && [[ $(uname -m) == "arm64" ]]; then
+                echo "On Apple Silicon, sometimes pip installs Intel packages by mistake."
+                echo "Try manually with explicit architecture flags:"
+                echo "  arch -arm64 $PIP_CMD install --force-reinstall --no-cache-dir mcp pyyaml pyobjc-framework-EventKit"
+            else
+                echo "Try manually (upgrade pip first):"
+                echo "  $PYTHON_CMD -m pip install --upgrade pip"
+                echo "  $PIP_CMD install --user mcp pyyaml pyobjc-framework-EventKit"
+            fi
             echo ""
             read -p "Press Enter to continue setup (you can fix this later)..."
         fi
@@ -235,6 +249,76 @@ else
     WORK_MCP_STATUS="⚠️  Needs attention"
 fi
 
+# Cursor/Claude Code compatibility
+echo ""
+echo "🔄 Checking AI editor compatibility..."
+
+# Detect which editor is likely being used
+EDITOR_DETECTED=""
+CURSOR_VERSION=""
+
+if [ -d "$HOME/.cursor" ]; then
+    EDITOR_DETECTED="Cursor"
+    
+    # Try to detect Cursor version from the app bundle (macOS)
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+        CURSOR_PLIST="/Applications/Cursor.app/Contents/Info.plist"
+        if [ -f "$CURSOR_PLIST" ]; then
+            CURSOR_VERSION=$(/usr/libexec/PlistBuddy -c "Print CFBundleShortVersionString" "$CURSOR_PLIST" 2>/dev/null || echo "")
+        fi
+    fi
+fi
+
+# Skills in .claude/skills/ work natively in BOTH editors:
+# - Claude Code (Claude Desktop) - always
+# - Cursor 2.4+ - has .claude/skills/ compatibility built-in (Agent Skills standard)
+#
+# NO SYNC NEEDED - both editors read from the same location!
+
+if [ "$EDITOR_DETECTED" == "Cursor" ]; then
+    echo "   Detected Cursor installation"
+    
+    if [ -n "$CURSOR_VERSION" ]; then
+        echo "   Cursor version: $CURSOR_VERSION"
+        
+        # Extract major.minor version for comparison
+        CURSOR_MAJOR=$(echo "$CURSOR_VERSION" | cut -d'.' -f1)
+        CURSOR_MINOR=$(echo "$CURSOR_VERSION" | cut -d'.' -f2)
+        
+        # Check if version is 2.4 or higher
+        if [ "$CURSOR_MAJOR" -lt 2 ] || ([ "$CURSOR_MAJOR" -eq 2 ] && [ "$CURSOR_MINOR" -lt 4 ]); then
+            echo ""
+            echo "   ⚠️  WARNING: Cursor $CURSOR_VERSION detected (skills require 2.4+)"
+            echo ""
+            echo "   Dex skills won't work until you upgrade Cursor!"
+            echo "   Skills like /setup, /daily-plan, etc. require Cursor 2.4 or later."
+            echo ""
+            echo "   To upgrade: Cursor menu → Check for Updates"
+            echo "   Or download latest from: https://cursor.com"
+            echo ""
+            echo "   After upgrading, skills in .claude/skills/ will work automatically."
+            echo ""
+            read -p "Press Enter to continue (upgrade Cursor later)..."
+        else
+            echo ""
+            echo "   ✅ Cursor $CURSOR_VERSION supports skills natively"
+            echo "   Skills work in both Cursor AND Claude Code from .claude/skills/"
+        fi
+    else
+        echo ""
+        echo "   ℹ️  Could not detect Cursor version automatically."
+        echo "   Skills require Cursor 2.4+ to work."
+        echo ""
+        echo "   Check your version: Cursor menu → About Cursor"
+        echo "   If < 2.4, upgrade via: Cursor menu → Check for Updates"
+    fi
+    echo ""
+    echo "✅ Cursor compatibility check complete"
+else
+    echo "✅ Claude Code / Claude Desktop detected (or no editor found)"
+    echo "   Skills in .claude/skills/ will work natively"
+fi
+
 # Success
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
@@ -243,6 +327,7 @@ echo ""
 echo "Status:"
 echo "  • Node.js: ✅ Working"
 echo "  • Work MCP: $WORK_MCP_STATUS"
+echo "  • Editor: ${EDITOR_DETECTED:-Claude Code}"
 if [[ "$WORK_MCP_STATUS" == *"Needs"* ]]; then
     echo ""
     echo "⚠️  IMPORTANT: Work MCP enables task sync across all files."
@@ -251,7 +336,14 @@ if [[ "$WORK_MCP_STATUS" == *"Needs"* ]]; then
 fi
 echo ""
 echo "Next steps:"
-echo "  1. In Cursor chat, type: /setup"
-echo "  2. Answer the setup questions (~5 minutes)"
-echo "  3. Start using Dex!"
+if [ "$EDITOR_DETECTED" == "Cursor" ]; then
+    echo "  1. Make sure you're on Cursor 2.4+ for best experience"
+    echo "  2. In Cursor chat, type: /setup"
+    echo "  3. Answer the setup questions (~5 minutes)"
+    echo "  4. Start using Dex!"
+else
+    echo "  1. In chat, type: /setup"
+    echo "  2. Answer the setup questions (~5 minutes)"
+    echo "  3. Start using Dex!"
+fi
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"

@@ -25,7 +25,7 @@ description: AI-powered ranking of Dex system improvement ideas
 1. **Load context** - Read system state, usage patterns, learnings
 2. **Score ideas** - Calculate 5-dimension scores for each idea
 3. **Re-rank backlog** - Sort by weighted total score
-4. **Update file** - Write new rankings to `System/Dex_Ideas.md`
+4. **Update file** - Write new rankings to `System/Dex_Backlog.md`
 5. **Present top ideas** - Show top 5 with "Why now?" justification
 6. **Offer next steps** - Workshop, implement, or defer
 
@@ -630,3 +630,16 @@ Scores help you:
 - Make intentional choices
 
 But you're still the decision maker. If a low-scoring idea excites you, workshop it. The system serves you, not the other way around.
+
+---
+
+## Track Usage (Silent)
+
+Update `System/usage_log.md` to mark backlog review as used.
+
+**Analytics (Beta Feature):**
+1. Call `check_beta_enabled(feature="analytics")` - if false, skip
+2. If beta enabled AND consent given, fire event:
+- Fire event: `backlog_reviewed`
+- Properties: `ideas_count`
+- Only fires if BOTH: analytics beta activated AND opted in

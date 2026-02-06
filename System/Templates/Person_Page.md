@@ -55,6 +55,24 @@
 
 ---
 
+## Integration Context
+
+*This section is auto-populated when integrations are enabled.*
+
+### Slack
+<!-- Auto-updated with recent Slack mentions and conversations -->
+{{Recent Slack context with this person}}
+
+### Notion
+<!-- Auto-updated with shared Notion pages -->
+{{Notion pages shared or co-edited with this person}}
+
+### Email
+<!-- Auto-updated from Gmail integration -->
+{{Recent email threads and outstanding requests}}
+
+---
+
 ## Related
 
 - **Company:** 05-Areas/Companies/{{Company Name}}.md

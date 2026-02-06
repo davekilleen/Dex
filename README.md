@@ -787,6 +787,36 @@ Updates never touch:
 
 ---
 
+## AI Model Options (Optional)
+
+Dex works with Claude by default, but you can also use cheaper cloud models or offline local models.
+
+**Why configure alternatives?**
+- **Save money:** Budget cloud models cost 80-97% less for routine tasks
+- **Work offline:** Download a model to use on planes, trains, or without internet
+- **Privacy:** Local models keep your data on your computer
+
+**Configure your options:**
+
+```
+/ai-setup
+```
+
+**What this offers:**
+- **Budget Cloud** — Kimi K2.5, DeepSeek (~$5-10 upfront, then very cheap)
+- **Offline Mode** — Qwen 2.5 running locally (free forever, requires 8GB+ RAM)
+- **Smart Routing** — Automatically pick the best model per task
+
+**Check your configuration:**
+
+```
+/ai-status
+```
+
+**For detailed guide:** See [AI_Model_Options.md](06-Resources/Dex_System/AI_Model_Options.md)
+
+---
+
 ## Obsidian Integration (Optional)
 
 Dex works great with [Obsidian](https://obsidian.md) for visual graph navigation.

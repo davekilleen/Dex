@@ -144,6 +144,13 @@ After creating the daily review, silently update usage tracking:
 2. Update: `- [ ] Daily review (/review)` → `- [x] Daily review (/review)`
 3. No announcement to user
 
+**Analytics (Beta Feature):**
+1. Call `check_beta_enabled(feature="analytics")` - if false, skip
+2. If beta enabled AND consent given, fire event:
+- Fire event: `daily_review_completed`
+- Properties: `wins_count`, `learnings_count`
+- Only fires if BOTH: analytics beta activated AND opted in
+
 ---
 
 ## Step 7: Evening Journal (If Enabled)

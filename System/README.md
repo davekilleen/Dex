@@ -7,9 +7,8 @@ Configuration and system files for Dex.
 - **pillars.yaml** — Your strategic pillars (main focus areas)
 - **user-profile.yaml** — User preferences and settings (created during onboarding)
 - **user-profile-template.yaml** — Template for user profile structure
-- **Dex_Backlog.md** — AI-ranked improvement backlog for Dex itself
+- **Dex_Backlog.md** — AI-ranked improvement backlog (ideas from you + AI discoveries)
 - **usage_log.md** — Feature adoption tracking (used by `/dex-level-up`)
-- **Dex_Ideas.md** — Raw improvement ideas before ranking
 - **.mcp.json.example** — Example MCP server configuration
 - **.last-learning-check** — Timestamp for learning review prompts
 - **claude-code-state.json** — Tracks Anthropic changelog checks

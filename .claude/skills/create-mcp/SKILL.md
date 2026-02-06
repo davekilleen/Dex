@@ -647,4 +647,12 @@ After completion, verify:
 - [ ] System Guide updated with new capabilities
 - [ ] Setup instructions are clear and complete
 - [ ] Example queries provided for testing
+
+### Analytics (Required)
+
+- [ ] Events defined for key tools (e.g., `{tool}_used`)
+- [ ] Added checkbox to `System/usage_log.md` (Integrations section)
+- [ ] Privacy verified: only tracks that feature was used, not content
+
+See `.claude/reference/skill-analytics-checklist.md` for detailed guidance.
 - [ ] User knows how to configure Claude to use the server

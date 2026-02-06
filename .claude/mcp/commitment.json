@@ -1,0 +1,12 @@
+{
+  "name": "commitment-detection",
+  "description": "Detect uncommitted asks and promises from ScreenPipe screen activity, match to projects/people/goals",
+  "server": {
+    "command": "python",
+    "args": ["core/mcp/commitment_server.py"],
+    "env": {
+      "VAULT_PATH": "${workspaceFolder}"
+    }
+  },
+  "notes": "Scans ScreenPipe OCR data for commitment patterns (asks, promises, deadlines). Integrates with daily/weekly reviews to surface uncommitted items. Requires ScreenPipe running on localhost:3030."
+}

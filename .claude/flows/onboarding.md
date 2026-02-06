@@ -93,14 +93,24 @@ Accept numbers, role names, or hybrid descriptions like "I'm mostly PM but do so
 
 Ask: "What's your company size?"
 
-```
-1. 1-100 people (startup/small)
-2. 100-1,000 people (scaling)
-3. 1,000-10,000 people (enterprise)
-4. 10,000+ people (large enterprise)
+Use the AskQuestion tool:
+```json
+{
+  "questions": [{
+    "id": "company_size",
+    "prompt": "What's your company size?",
+    "allow_multiple": false,
+    "options": [
+      {"id": "startup", "label": "1-100 people (startup/small)"},
+      {"id": "scaling", "label": "100-1,000 people (scaling)"},
+      {"id": "enterprise", "label": "1,000-10,000 people (enterprise)"},
+      {"id": "large_enterprise", "label": "10,000+ people (large enterprise)"}
+    ]
+  }]
+}
 ```
 
-**After receiving company size:** Call `validate_and_save_step(step_number=3, step_data={"company": "...", "company_size": "..."})` to validate and save.
+**After receiving company size:** Call `validate_and_save_step(step_number=3, step_data={"company": "...", "company_size": "[selected id]"})` to validate and save. The `company_size` value should be the option id (startup, scaling, enterprise, or large_enterprise).
 
 ---
 
@@ -126,6 +136,75 @@ Ask: "What's your company email domain? This helps me automatically:
 - No @ symbol
 - Valid domain format with dot
 - This step CANNOT be skipped
+
+---
+
+## Step 4b: Calendar Optimization (Auto-detected)
+
+**This step is AUTOMATIC - no user input needed unless multiple calendars detected.**
+
+**Purpose:** Optimize calendar queries for performance (45s → 0.3s) by identifying the user's work calendar.
+
+**How to check calendar count:**
+
+Run this AppleScript to count calendars:
+```bash
+osascript -e 'tell application "Calendar" to return count of calendars'
+```
+
+**If 1-2 calendars:**
+- Skip this step silently
+- Store `calendar.calendar_count: 1` in user-profile.yaml
+- The system will query all calendars (fast enough with just 1-2)
+
+**If 3+ calendars:**
+
+Say: "I noticed you have [X] calendars connected to Apple Calendar. To keep things fast, I'll focus on your work calendar.
+
+**What's your work email address?** (e.g., dave@company.com)
+
+This helps me:
+- Query only your work calendar (much faster)
+- Skip personal calendars, holidays, etc."
+
+**After receiving work email:**
+
+1. Verify the calendar exists:
+```bash
+osascript -e 'tell application "Calendar" to return name of calendars' | grep -i "[work_email]"
+```
+
+2. If found, store in `System/user-profile.yaml`:
+```yaml
+work_email: "user@company.com"
+calendar:
+  work_calendar: "user@company.com"
+  calendar_count: [X]
+  lazy_load: true
+```
+
+3. Say: "✓ Found your work calendar. Calendar queries will be much faster now."
+
+**If calendar not found:**
+
+Say: "I couldn't find a calendar matching that email. Your calendars are:
+[list calendar names]
+
+Which one is your primary work calendar?"
+
+**If user doesn't want to specify:**
+
+Say: "No problem! I'll query all calendars. Note: This may take 15-45 seconds when you ask about your schedule."
+
+Store:
+```yaml
+calendar:
+  work_calendar: ""
+  calendar_count: [X]
+  lazy_load: true
+```
+
+**Note:** This step doesn't use validate_and_save_step() - it's handled inline. Move directly to Step 5.
 
 ---
 
@@ -169,7 +248,7 @@ You'll see this hierarchy in action as you use the system."
 
 Say: "Quick preferences check—how should I communicate with you?"
 
-Use the AskQuestion tool to present 3 questions:
+Use the AskUserQuestion tool to present 3 questions. If AskUserQuestion is not available, ask the same questions via CLI with numbered options and capture the selections:
 
 1. **Formality Level:**
    - Formal (professional, structured)
@@ -216,18 +295,30 @@ Say: "One more thing—do you use **Obsidian** to view your notes?
 
 **Obsidian is completely optional** - Dex works perfectly either way. Some people love the graph visualization, others prefer terminal/Cursor. Both are first-class experiences.
 
-**New to Obsidian?** [Watch this beginner's guide](https://www.youtube.com/watch?v=gafuqdKwD_U) to see what it can do (5 min).
+**New to Obsidian?** [Watch this beginner's guide](https://www.youtube.com/watch?v=gafuqdKwD_U) to see what it can do (5 min)."
 
-**If you want to try it later:** You can always enable Obsidian mode with `/dex-obsidian-setup` and we'll convert your existing notes (takes 1-2 minutes even for large vaults).
+Use the AskQuestion tool:
+```json
+{
+  "questions": [{
+    "id": "obsidian_mode",
+    "prompt": "Do you use Obsidian, or want to try it?",
+    "allow_multiple": false,
+    "options": [
+      {"id": "yes", "label": "Yes - I use Obsidian or want to try it"},
+      {"id": "no", "label": "No - I'll use Cursor/terminal"},
+      {"id": "later", "label": "Not sure - I'll decide later"}
+    ]
+  }]
+}
+```
 
-Do you use Obsidian, or want to try it?"
-
-**If YES:**
+**If YES (id: "yes"):**
 1. Set `obsidian_mode: true` in session data
 2. Say: "Great! I'll format all references as wiki links for easy navigation."
 3. Optional: "Want me to generate an Obsidian config optimized for Dex? (Recommended settings, hotkeys, etc.)"
 
-**If NO:**
+**If NO or LATER (id: "no" or "later"):**
 1. Set `obsidian_mode: false` in session data
 2. Say: "No problem! Your notes will use plain text references. You can enable Obsidian mode anytime with `/dex-obsidian-setup`"
 
@@ -323,7 +414,65 @@ Want to set up manual or automatic processing?"
 3. Update `System/user-profile.yaml` and `.env`
 4. Say: "✓ Automatic processing enabled. I'll sync every 30 minutes. You can still use `/getting-started` for historical data."
 
-### Pendo Setup (if selected):
+### Analytics Consent (Always Ask):
+
+**This is asked for ALL new users, not just those selecting Pendo.**
+
+Say: "One quick question before we finish:
+
+**Dave could use your help improving Dex.** By sharing anonymous feature usage—things like 'ran /daily-plan' or 'created a task'—you help show what's working and what needs improvement.
+
+• **What's tracked:** Only Dex built-in features (not anything you customize or add)
+• **What Dave never sees:** What you DO with features—just that you used them
+• **Never sent:** Your content, names, notes, conversations, or anything personal
+• **Your control:** You can change this anytime in System/user-profile.yaml
+
+**Help improve Dex?**"
+
+Use the AskQuestion tool:
+```json
+{
+  "questions": [{
+    "id": "analytics_consent",
+    "prompt": "Share anonymous usage data to help improve Dex?",
+    "allow_multiple": false,
+    "options": [
+      {"id": "yes", "label": "Yes, help improve Dex"},
+      {"id": "no", "label": "No thanks"}
+    ]
+  }]
+}
+```
+
+**If YES:**
+1. Update `System/user-profile.yaml`:
+   ```yaml
+   analytics:
+     enabled: true
+     anonymous: true
+   ```
+2. Update `System/usage_log.md`:
+   - `Consent asked: true`
+   - `Consent decision: opted-in`
+   - `Consent date: YYYY-MM-DD`
+3. Fire `analytics_consent_given` event (first event!)
+4. Say: "Thanks! This really helps Dave make Dex better. 🙏"
+
+**If NO:**
+1. Update `System/user-profile.yaml`:
+   ```yaml
+   analytics:
+     enabled: false
+   ```
+2. Update `System/usage_log.md`:
+   - `Consent asked: true`
+   - `Consent decision: opted-out`
+   - `Consent date: YYYY-MM-DD`
+3. Say: "No problem! Dex works exactly the same either way."
+
+---
+
+### Pendo MCP Setup (if selected - for Pendo customers):
 
 Ask: "Are you a Pendo customer? Pendo's MCP integration gives you:
 - Guide performance tracking (in-app messages, onboarding flows)
@@ -391,6 +540,33 @@ Ask: "Install background automation?"
 Say: "No problem! Self-learning checks will still run inline during session start and `/daily-plan`. You can install later with `bash .scripts/install-learning-automation.sh`"
 
 ## Step 9: Completion & Phase 2 Bridge
+
+### Cursor Version Check (If Cursor Detected)
+
+Before the completion message, check if user is using Cursor < 2.4:
+
+**Check:** Look for `~/.cursor` directory. If it exists, try to detect version from `/Applications/Cursor.app/Contents/Info.plist` (macOS).
+
+**If Cursor < 2.4 detected:**
+
+Say: "⚠️ **Important: Cursor Version Update Needed**
+
+I noticed you're using Cursor [version]. Dex skills (like `/daily-plan`, `/meeting-prep`, etc.) require **Cursor 2.4 or later**.
+
+**To update:**
+1. Cursor menu → Check for Updates, OR
+2. Download latest from [cursor.com](https://cursor.com)
+
+After updating, all Dex skills will work automatically. For now, you can continue setup, but skills won't appear in the `/` menu until you upgrade.
+
+[Continue with setup anyway] / [Pause and update Cursor first]"
+
+**If user continues:** Proceed with setup, skills will work after they update.
+**If user pauses:** Say "No problem! Update Cursor first, then come back and type `/setup` to resume."
+
+---
+
+### Completion Message
 
 Say: "✓ **Your workspace is ready, [Name]!**
 

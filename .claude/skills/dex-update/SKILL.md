@@ -14,7 +14,8 @@ description: Safely update Dex with one command (handles everything automaticall
 **What it handles:**
 - Downloads updates automatically
 - Protects your data (never touches your notes, tasks, projects)
-- Resolves conflicts automatically (keeps your customizations)
+- Preserves protected user blocks and user-owned MCP entries
+- Resolves conflicts with a guided choice (no manual merge editor)
 - Shows clear progress and confirmation
 
 **Time:** 2-5 minutes
@@ -275,36 +276,73 @@ Check which files have conflicts:
 git status | grep "both modified"
 ```
 
-**Automatic conflict resolution:**
+**Automatic conflict resolution (protected blocks + guided choices):**
 
-For each conflicting file:
+**Protected user blocks (preserved verbatim):**
+- `CLAUDE.md` contains a user block:
+  - `USER_EXTENSIONS_START` ... `USER_EXTENSIONS_END`
 
-1. **If file is in protected list** (user data):
-   - 00-Inbox/, 01-07/: Keep user version
-   - System/user-profile.yaml: Keep user version
-   - System/pillars.yaml: Keep user version
-   
-   Run: `git checkout --ours <file>`
+**Custom MCP servers (preserved by name):**
+- Any MCP server name starting with `custom-` is preserved
+- Example: `custom-gmail`, `custom-hubspot`
 
-2. **If file is in core list** (Dex updates):
-   - .claude/skills/*.md: Keep upstream version
-   - core/mcp/*.py: Keep upstream version
-   - .scripts/*.cjs: Keep upstream version
-   
-   Run: `git checkout --theirs <file>`
+**Custom skills (preserved by name):**
+- Any skill folder ending with `-custom` is preserved
+- Example: `meeting-prep-custom`, `daily-plan-custom`
 
-3. **If file is CLAUDE.md** (hybrid):
-   - Check if user has `CLAUDE-custom.md`
-   - If yes: Keep upstream version of CLAUDE.md
-   - If no: Keep user version, but suggest creating CLAUDE-custom.md
+**When conflicts occur:**
 
-4. **Mark as resolved:**
-   ```bash
-   git add <file>
-   ```
+1. **If file is user data** (00-07, System/user-profile.yaml, System/pillars.yaml):
+   - Keep user version
+   - Run: `git checkout --ours <file>`
+
+2. **If file contains protected user block** (CLAUDE.md):
+   - Take upstream version
+   - Re-insert preserved user block(s) verbatim
+   - Validate markers still present
+
+3. **If file is .mcp.json**:
+   - Preserve any MCP entries named `custom-*`
+   - Continue with Dex core updates for all other MCPs
+
+4. **If skill folder ends with `-custom`**:
+   - Preserve entirely, never modify
+   - These are user's personal skills
+
+5. **If file is core Dex** (skills, core MCP, scripts) **and user edited it**:
+   - Use AskUserQuestion to resolve, instead of a merge editor
+
+**AskUserQuestion flow (generic, parameterized):**
+```
+Title: Dex update conflict: {{item_name}}
+
+Your change:
+{{user_change_summary}}
+Enables: {{user_use_case_summary}}
+
+Dex update:
+{{dex_change_summary}}
+Enables: {{dex_use_case_summary}}
+
+Options:
+1) Keep my version (preserve my changes)
+2) Use Dex version (take upstream changes)
+3) Keep both (rename one)
+4) Let me tell you what to do (I'll write instructions)
+```
+
+**If AskUserQuestion is not available (non-Claude Code):**
+- Use a simple CLI prompt with the same 4 options.
+- Add one-line tradeoffs to each option (what you keep vs lose).
+- If user types an invalid choice, re-prompt once and default to "Use Dex version".
+
+**If user chooses "Keep both":**
+- MCP: `name` → `name-custom`
+- Skill folder: `name/` → `name-custom/`
 
 **After resolving all conflicts:**
 ```bash
+git add <file>
 git commit --no-edit
 ```
 
@@ -312,10 +350,10 @@ git commit --no-edit
 ```
 ✓ Updates applied successfully
 
-Handled conflicts automatically:
-• Kept your notes and customizations
+Handled conflicts:
+• Preserved your protected blocks
 • Updated core Dex features
-• Protected your data
+• Resolved overlapping changes with your choice
 
 [See what changed]
 ```
@@ -382,6 +420,32 @@ npm install
 pip3 install -r core/mcp/requirements.txt
 ```
 
+**C. Enable new background automations (Automatic)**
+
+Check for automation scripts that need installation. These run silently without prompting.
+
+**Meeting Sync (if Granola detected):**
+
+Check if Granola is installed:
+```bash
+ls "$HOME/Library/Application Support/Granola/cache-v3.json" 2>/dev/null
+```
+
+If Granola cache exists AND meeting automation not yet installed:
+```bash
+# Check if already installed
+launchctl list | grep com.dex.meeting-intel
+```
+
+If not installed:
+```bash
+cd .scripts/meeting-intel && ./install-automation.sh 2>/dev/null
+```
+
+Add to summary if installed: "✓ Enabled automatic meeting sync (runs every 30 min)"
+
+**Future automations:** This pattern extends to other background services. Check for the prerequisite (e.g., app installed, API key present), then run the installer silently.
+
 ---
 
 ### Step 8: Verification
@@ -398,7 +462,11 @@ pip3 install -r core/mcp/requirements.txt
    - `.claude/skills/daily-plan/SKILL.md`
 
 2. Check MCP configuration:
-   - `.mcp.json` exists
+   - `.mcp.json` exists and is valid JSON
+   - Custom MCP entries (`custom-*`) still present
+
+3. Check CLAUDE.md:
+   - `USER_EXTENSIONS_START/END` markers still present
 
 3. Try loading user profile:
    - Read `System/user-profile.yaml`
@@ -436,11 +504,17 @@ What's new:
 
 Your data:
 ✓ All notes preserved
-✓ All tasks preserved  
+✓ All tasks preserved
 ✓ All customizations preserved
 
 [View full changelog]
 [Start using new features]
+```
+
+**If new automations were enabled:**
+```
+🤖 New automations enabled:
+✓ Automatic meeting sync (runs every 30 min)
 ```
 
 **If there were conflicts:**
@@ -451,6 +525,59 @@ Your data:
 • Protected all your data folders
 
 [See detailed change list]
+```
+
+---
+
+### Step 9b: Check New Integrations (After Success)
+
+After successful update, check if new integration features are available:
+
+```python
+from core.integrations import get_post_update_integration_message, should_show_integration_prompt
+
+if should_show_integration_prompt():
+    msg = get_post_update_integration_message()
+    if msg:
+        print(msg)
+```
+
+**If integrations are available but not configured:**
+```
+---
+
+## 🔌 New: Productivity Integrations
+
+This update includes integrations for your favorite tools:
+
+- **Notion** — Search your workspace, pull docs into meeting prep
+- **Slack** — Search conversations, get context about people
+- **Google** — Gmail search, email context in person pages
+
+**Set up now?** These are optional but unlock powerful features like:
+- "What did Sarah say about the Q1 budget?" → Searches Slack
+- Meeting prep pulls relevant docs from Notion
+- Person pages show email/Slack history
+
+Run `/integrate-notion`, `/integrate-slack`, or `/integrate-google` to set up.
+```
+
+**If user has integrations that could be upgraded:**
+```
+---
+
+## 🔄 Integration Upgrade Available
+
+You have some integrations that could be upgraded to Dex recommended packages:
+
+### Notion
+- **Current:** custom-notion-mcp
+- **Recommended:** @notionhq/notion-mcp-server
+- **Benefits:** Official from Notion, Best maintained, Full API coverage
+
+**Options:**
+1. **Keep existing** — Your current setup works fine
+2. **Upgrade** — Run `/integrate-notion` to switch to recommended
 ```
 
 ---
@@ -546,7 +673,7 @@ If automatic updates don't work, you can update manually:
 1. **Download latest Dex:**
    https://github.com/davekilleen/dex/archive/refs/heads/main.zip
 
-2. **Copy your data:**
+2. **Copy your data and custom blocks:**
    From OLD Dex folder, copy these to NEW Dex folder:
    
    ✓ System/user-profile.yaml
@@ -559,6 +686,9 @@ If automatic updates don't work, you can update manually:
    ✓ 05-Areas/ (entire folder)
    ✓ 07-Archives/ (entire folder)
    ✓ .env (if it exists)
+   ✓ Your `USER_EXTENSIONS` block from `CLAUDE.md`
+   ✓ Any custom MCP entries named `custom-*` from `.mcp.json`
+   ✓ Any custom skills ending with `-custom`
 
 3. **DON'T copy:**
    ✗ .claude/skills/ (use new version)

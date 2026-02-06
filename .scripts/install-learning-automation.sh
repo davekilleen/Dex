@@ -61,13 +61,18 @@ fi
 echo "Installing Launch Agents..."
 echo ""
 
+# Get the vault root (parent of .scripts directory)
+VAULT_ROOT="$(dirname "$SCRIPT_DIR")"
+echo "Vault path: $VAULT_ROOT"
+echo ""
+
 # Create LaunchAgents directory if it doesn't exist
 mkdir -p "$LAUNCH_AGENTS_DIR"
 
-# Copy plist files
-cp "$SCRIPT_DIR/$CHANGELOG_PLIST" "$LAUNCH_AGENTS_DIR/"
-cp "$SCRIPT_DIR/$LEARNING_PLIST" "$LAUNCH_AGENTS_DIR/"
-echo -e "${GREEN}✓${NC} Copied plist files to $LAUNCH_AGENTS_DIR"
+# Copy plist files WITH path substitution
+sed "s|{{VAULT_PATH}}|$VAULT_ROOT|g" "$SCRIPT_DIR/$CHANGELOG_PLIST" > "$LAUNCH_AGENTS_DIR/$CHANGELOG_PLIST"
+sed "s|{{VAULT_PATH}}|$VAULT_ROOT|g" "$SCRIPT_DIR/$LEARNING_PLIST" > "$LAUNCH_AGENTS_DIR/$LEARNING_PLIST"
+echo -e "${GREEN}✓${NC} Installed plist files to $LAUNCH_AGENTS_DIR (with your vault path)"
 
 # Load changelog checker
 if launchctl list | grep -q "com.dex.changelog-checker"; then

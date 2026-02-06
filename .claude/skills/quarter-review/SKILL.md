@@ -447,3 +447,16 @@ After review:
 ### Incomplete Data
 - Works with whatever data is available
 - Prompts user to fill in gaps
+
+---
+
+## Track Usage (Silent)
+
+Update `System/usage_log.md` to mark quarterly review as used.
+
+**Analytics (Beta Feature):**
+1. Call `check_beta_enabled(feature="analytics")` - if false, skip
+2. If beta enabled AND consent given, fire event:
+- Fire event: `quarter_review_completed`
+- Properties: `goals_assessed`, `completion_rate`
+- Only fires if BOTH: analytics beta activated AND opted in

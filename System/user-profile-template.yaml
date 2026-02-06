@@ -127,3 +127,32 @@ quarterly_planning:
 # Tracks which external integrations are enabled
 integrations:
   pendo_mcp_enabled: false  # Pendo product analytics (OAuth via Cursor MCP)
+
+# Analytics Configuration
+# Controls anonymous feature usage tracking to help Dave improve Dex
+# Only Dex built-in features are tracked, never content or what you do with features
+analytics:
+  # Master switch - set to true if you opted in to help improve Dex
+  enabled: false
+
+# ScreenPipe Configuration
+# Enables ambient work intelligence - Dex learns what you're working on via screen OCR
+# All data stays local on your machine, never sent anywhere
+screenpipe:
+  # Master switch - set to true after opt-in to enable ScreenPipe features
+  enabled: false
+  
+  # Whether user has been asked about ScreenPipe
+  prompted: false
+  
+  # Features to enable when ScreenPipe is running
+  features:
+    # Detect uncommitted asks/promises from apps (Slack, Email, etc.)
+    commitment_detection: true
+    # Show time audit in daily review
+    time_audit: true
+    # Allow screen recall queries ("What was I doing at 2pm?")
+    screen_recall: true
+  
+  # Data retention in days (auto-delete old data)
+  retention_days: 30

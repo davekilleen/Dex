@@ -800,3 +800,15 @@ Before finalizing the PRD, verify:
 - [ ] Open questions captured
 
 If any are missing, prompt user to fill gaps before finalizing.
+
+---
+
+## Track Usage (Silent)
+
+Update `System/usage_log.md` to mark product brief as used.
+
+**Analytics (Beta Feature):**
+1. Call `check_beta_enabled(feature="analytics")` - if false, skip
+2. If beta enabled AND consent given, fire event:
+- Fire event: `product_brief_created`
+- Only fires if BOTH: analytics beta activated AND opted in

@@ -1,0 +1,113 @@
+# Beta Features Configuration
+#
+# Defines beta features available for early access activation.
+# Each feature requires a valid activation code to unlock.
+#
+# Code hashes are SHA-256 of "salt:code" for security.
+
+version: "1.0"
+last_updated: "2026-02-03"
+
+settings:
+  # Master switch for beta system
+  enabled: true
+
+  # What to do with invalid activation codes
+  # Options: "warn" (show message), "silent" (ignore), "log" (write to file)
+  invalid_code_behavior: "warn"
+
+  # Days before activation expires (0 = never)
+  default_expiration_days: 0
+
+features:
+  pi:
+    name: "Pi Integration"
+    description: "Self-extending AI capabilities via Pi coding agent. Enables Claude Code to delegate complex coding tasks to Pi for autonomous implementation."
+    version: "0.1.0"
+    status: "active"  # active, deprecated, sunset
+
+    # SHA-256 hash of "pi-beta-2026:PILAUNCH2026"
+    code_hash: "132c75e90486e363d667ed51ca8e4e4bbfe24a251765e5d00cea97df2bcf687c"
+    code_salt: "pi-beta-2026"
+
+    # Documentation and setup instructions
+    instructions_file: "System/Beta/pi/README.md"
+
+    # Feature capabilities unlocked
+    capabilities:
+      - "pi_delegate"      # Delegate tasks to Pi
+      - "pi_review"        # Review Pi's work
+      - "pi_bridge"        # MCP bridge communication
+
+    # Minimum Dex version required
+    min_dex_version: "1.0.0"
+
+    # Feature flags enabled when activated
+    feature_flags:
+      enable_pi_tools: true
+      enable_pi_mcp: true
+
+  analytics:
+    name: "Dex Analytics"
+    description: "Optional, privacy-first analytics to help Dave improve Dex. Only tracks which Dex features are used, never content or what you do with them."
+    version: "0.1.0"
+    status: "active"
+
+    # SHA-256 hash of "analytics-beta-2026:DEXANALYTICS2026"
+    code_hash: "ac431af12e2805764d7645e04ac23be614752e102a617a925ae836d6c86eff74"
+    code_salt: "analytics-beta-2026"
+
+    # Documentation
+    instructions_file: "System/Beta/analytics/README.md"
+
+    # What this enables
+    capabilities:
+      - "analytics_consent"     # One-time consent prompt
+      - "analytics_events"      # Event firing to Pendo
+      - "analytics_journey"     # Journey metadata tracking
+
+    min_dex_version: "1.2.0"
+
+    feature_flags:
+      enable_analytics_prompt: true
+      enable_pendo_tracking: true
+
+  screenpipe:
+    name: "ScreenPipe Integration"
+    description: "Ambient work intelligence - Dex learns what you're working on via screen OCR. Work apps only, all browsers and personal apps blocked. 30-day auto-delete."
+    version: "0.1.0"
+    status: "active"
+
+    # SHA-256 hash of "screenpipe-beta-2026:DEXSCREENPIPE2026"
+    code_hash: "082f043791d749d691491c57f64b10e2c2c81b041306fcbaecdc6becc259355c"
+    code_salt: "screenpipe-beta-2026"
+
+    # Documentation
+    instructions_file: ".claude/reference/beta-templates/screenpipe/README.md"
+
+    # What this enables
+    capabilities:
+      - "screenpipe_setup"       # Run /screenpipe-setup
+      - "screenpipe_query"       # Query screen history
+      - "screenpipe_time_audit"  # Time audit in daily review
+
+    min_dex_version: "1.3.0"
+
+    feature_flags:
+      enable_screenpipe_skill: true
+      enable_screen_recall: true
+      enable_time_audit: true
+
+# Template for adding new beta features:
+#
+#   feature_key:
+#     name: "Human Readable Name"
+#     description: "What this feature does"
+#     version: "0.1.0"
+#     status: "active"
+#     code_hash: "[SHA-256 of salt:code]"
+#     code_salt: "[unique salt]"
+#     instructions_file: "System/Beta/[feature]/README.md"
+#     capabilities: []
+#     min_dex_version: "1.0.0"
+#     feature_flags: {}

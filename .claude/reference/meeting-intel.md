@@ -2,47 +2,66 @@
 
 Process meetings from Granola to extract structured insights, action items, and update person pages.
 
-## Manual Processing (Recommended)
+## How It Works
 
-Run `/process-meetings` whenever you want to pull in new meetings. Uses Claude directly — **no API key needed**.
+Meetings sync **automatically in the background** every 30 minutes. No terminal commands shown during `/process-meetings`.
 
 ```
-/process-meetings           # Process all unprocessed meetings (last 7 days)
-/process-meetings today     # Just today's meetings
-/process-meetings "Acme"    # Find and process specific meeting
+Granola App → Background Sync (every 30 min) → Synced Files → /process-meetings → Person Pages, Tasks
 ```
 
-**What gets extracted:**
-- Summary (2-3 sentences)
-- Key discussion points with context
-- Decisions made
-- Action items (for you and others)
-- Customer intelligence (pain points, feature requests, competitive mentions)
-- Automatic pillar classification
-
-**Output:**
-- Meeting notes: `00-Inbox/Meetings/YYYY-MM-DD/meeting-slug.md`
-- Person pages updated with meeting references
-
-## Automatic Processing (Optional)
-
-For hands-off processing every 30 minutes, even when Cursor is closed:
-
-1. Choose API provider during onboarding (Gemini free tier, Anthropic, or OpenAI)
-2. Add API key to `.env`
-3. Run `./.scripts/meeting-intel/install-automation.sh`
-
-**Manual commands for automatic mode:**
+## Setup (One-Time, 30 Seconds)
 
 ```bash
-node .scripts/meeting-intel/sync-from-granola.cjs           # Process now
-node .scripts/meeting-intel/sync-from-granola.cjs --dry-run # Preview
-./.scripts/meeting-intel/install-automation.sh --status     # Check status
+cd .scripts/meeting-intel && ./install-automation.sh
 ```
+
+**Requirements:**
+- Granola app installed ([granola.ai](https://granola.ai))
+- An LLM API key in `.env` (GEMINI_API_KEY, ANTHROPIC_API_KEY, or OPENAI_API_KEY)
+
+**Check status:**
+```bash
+.scripts/meeting-intel/install-automation.sh --status
+```
+
+## Using /process-meetings
+
+After setup, `/process-meetings` reads synced files and updates your vault:
+
+```
+/process-meetings           # Process all synced meetings (last 7 days)
+/process-meetings today     # Just today's meetings
+/process-meetings "Acme"    # Find meetings by title/attendee
+/process-meetings --setup   # Install/check background automation
+```
+
+**Flags:**
+- `--people-only` — Only update person/company pages (skip tasks)
+- `--no-todos` — Create notes but don't extract tasks
+- `--days-back=N` — Override default 7-day lookback
+
+**What gets updated:**
+- Person pages (05-Areas/People/) — meeting references, last interaction dates
+- Company pages (05-Areas/Companies/) — key contacts, meeting history
+- Tasks (03-Tasks/Tasks.md) — action items extracted from meetings
+
+## What Gets Extracted
+
+The background sync uses your LLM API to extract:
+
+- **Summary** (2-3 sentences)
+- **Key discussion points** with context
+- **Decisions made**
+- **Action items** (for you and others, with task IDs for sync)
+- **Customer intelligence** (pain points, feature requests, competitive mentions)
+- **Pillar classification** based on your `System/pillars.yaml`
+
+**Output location:** `00-Inbox/Meetings/YYYY-MM-DD/meeting-slug.md`
 
 ## Configuration
 
-Meeting intelligence extraction is configured in `System/user-profile.yaml`:
+Meeting intelligence is configured in `System/user-profile.yaml`:
 
 ```yaml
 meeting_intelligence:
@@ -52,10 +71,43 @@ meeting_intelligence:
   extract_decisions: true         # Always recommended
 ```
 
-Meetings are automatically classified into your pillars from `System/pillars.yaml`.
+Internal vs external classification uses your `email_domain` setting.
+
+## Manual Sync (Optional)
+
+To force a sync outside the 30-min schedule:
+
+```bash
+node .scripts/meeting-intel/sync-from-granola.cjs           # Process now
+node .scripts/meeting-intel/sync-from-granola.cjs --dry-run # Preview
+node .scripts/meeting-intel/sync-from-granola.cjs --force   # Reprocess today
+```
+
+## Stopping Background Sync
+
+```bash
+.scripts/meeting-intel/install-automation.sh --stop
+```
 
 ## Logs
 
 - `.scripts/logs/meeting-intel.log` - Processing log
 - `.scripts/logs/meeting-intel.stdout.log` - Standard output
 - `.scripts/logs/meeting-intel.stderr.log` - Errors
+
+## Troubleshooting
+
+**No meetings showing up?**
+1. Make sure Granola is running during meetings
+2. Check if background sync is set up: `./install-automation.sh --status`
+3. Check logs for errors: `tail -50 .scripts/logs/meeting-intel.stderr.log`
+
+**Background sync not running?**
+```bash
+cd .scripts/meeting-intel && ./install-automation.sh
+```
+
+**Want to re-process meetings?**
+```bash
+node .scripts/meeting-intel/sync-from-granola.cjs --force
+```

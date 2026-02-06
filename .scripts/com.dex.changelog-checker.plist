@@ -8,7 +8,7 @@
     <key>ProgramArguments</key>
     <array>
         <string>/usr/local/bin/node</string>
-        <string>/Users/dave/Dex/Dex/.scripts/check-anthropic-changelog.cjs</string>
+        <string>{{VAULT_PATH}}/.scripts/check-anthropic-changelog.cjs</string>
     </array>
     
     <key>StartInterval</key>
@@ -18,13 +18,13 @@
     <true/>
     
     <key>StandardOutPath</key>
-    <string>/Users/dave/Dex/Dex/.scripts/logs/changelog-checker-stdout.log</string>
+    <string>{{VAULT_PATH}}/.scripts/logs/changelog-checker-stdout.log</string>
     
     <key>StandardErrorPath</key>
-    <string>/Users/dave/Dex/Dex/.scripts/logs/changelog-checker-stderr.log</string>
+    <string>{{VAULT_PATH}}/.scripts/logs/changelog-checker-stderr.log</string>
     
     <key>WorkingDirectory</key>
-    <string>/Users/dave/Dex/Dex</string>
+    <string>{{VAULT_PATH}}</string>
     
     <key>EnvironmentVariables</key>
     <dict>

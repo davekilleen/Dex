@@ -1,0 +1,13 @@
+{
+  "name": "dex-pi-extension",
+  "version": "1.0.0",
+  "description": "Dex for PI - Proactive, parallel, intelligent productivity system",
+  "type": "module",
+  "main": "index.ts",
+  "pi": {
+    "extensions": ["./index.ts"]
+  },
+  "keywords": ["pi-package", "dex", "productivity"],
+  "author": "Dave",
+  "license": "MIT"
+}

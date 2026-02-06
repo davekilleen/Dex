@@ -33,8 +33,13 @@ from mcp.server.models import InitializationOptions
 import mcp.server.stdio
 import mcp.types as types
 
-# Add parent directory to path for imports
-sys.path.insert(0, str(Path(__file__).parent.parent))
+# Set up logging first (before any imports that might use it)
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# Add grandparent directory to path for 'core.utils' imports
+# The script is at core/mcp/work_server.py, so we need to add the vault root
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 # Import reference formatter for Obsidian wiki link support
 try:
@@ -50,10 +55,6 @@ try:
 except ImportError:
     logger.warning("Reference formatter not available - wiki links disabled")
     HAS_REFERENCE_FORMATTER = False
-
-# Set up logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
 
 # Custom JSON encoder for handling date/datetime objects
 class DateTimeEncoder(json.JSONEncoder):
@@ -1687,6 +1688,636 @@ def migrate_weekly_priorities() -> Dict[str, Any]:
     }
 
 # ============================================================================
+# TASK EFFORT CLASSIFICATION
+# ============================================================================
+
+# Keywords for classifying task effort
+EFFORT_KEYWORDS = {
+    'deep_work': {
+        'keywords': ['write', 'draft', 'design', 'strategy', 'plan', 'create', 'build', 
+                     'develop', 'analyze', 'architect', 'spec', 'proposal', 'document',
+                     'framework', 'vision', 'roadmap', 'presentation', 'deck'],
+        'duration_range': (120, 240),  # 2-4 hours
+        'description': 'Requires sustained focus and creative thinking'
+    },
+    'medium': {
+        'keywords': ['review', 'prepare', 'research', 'organize', 'update', 'refine',
+                     'edit', 'revise', 'compile', 'summarize', 'meet', 'discuss',
+                     'prep', 'feedback', 'assess'],
+        'duration_range': (45, 120),  # 45 min - 2 hours
+        'description': 'Focused work but more structured'
+    },
+    'quick': {
+        'keywords': ['email', 'send', 'reply', 'schedule', 'check', 'confirm', 
+                     'follow up', 'ping', 'slack', 'message', 'book', 'approve',
+                     'forward', 'share', 'quick', 'brief'],
+        'duration_range': (10, 30),  # 10-30 min
+        'description': 'Short tasks that can fit in gaps'
+    }
+}
+
+def classify_task_effort(title: str, context: str = '') -> Dict[str, Any]:
+    """Classify a task's effort level based on keywords and patterns"""
+    text = f"{title} {context}".lower()
+    
+    scores = {'deep_work': 0, 'medium': 0, 'quick': 0}
+    
+    for effort_type, config in EFFORT_KEYWORDS.items():
+        for keyword in config['keywords']:
+            if keyword in text:
+                scores[effort_type] += 1
+    
+    # Default to medium if no strong signals
+    if max(scores.values()) == 0:
+        effort_type = 'medium'
+    else:
+        effort_type = max(scores, key=scores.get)
+    
+    config = EFFORT_KEYWORDS[effort_type]
+    
+    return {
+        'effort_type': effort_type,
+        'estimated_duration_min': config['duration_range'],
+        'description': config['description'],
+        'confidence': 'high' if max(scores.values()) >= 2 else 'medium' if max(scores.values()) == 1 else 'low'
+    }
+
+def classify_all_tasks_effort(tasks: List[Dict]) -> List[Dict]:
+    """Add effort classification to a list of tasks"""
+    for task in tasks:
+        effort = classify_task_effort(task.get('title', ''), task.get('context', ''))
+        task['effort'] = effort
+    return tasks
+
+
+# ============================================================================
+# WEEK PROGRESS TRACKING
+# ============================================================================
+
+def get_week_progress_data() -> Dict[str, Any]:
+    """Get comprehensive progress data for the current week"""
+    today = date.today()
+    week_start = today - timedelta(days=today.weekday())  # Monday
+    week_end = week_start + timedelta(days=6)  # Sunday
+    day_of_week = today.strftime('%A')
+    days_remaining = (week_end - today).days
+    days_elapsed = today.weekday()  # 0=Monday
+    
+    # Get weekly priorities
+    priorities_file = get_week_priorities_file()
+    priorities = parse_weekly_priorities(priorities_file) if priorities_file.exists() else []
+    
+    # Enrich priorities with task data
+    priorities_detail = []
+    for priority in priorities:
+        priority_data = {
+            'priority_id': priority.get('priority_id'),
+            'title': priority.get('title'),
+            'pillar': priority.get('pillar'),
+            'status': 'not_started',
+            'tasks_done': 0,
+            'tasks_total': 0,
+            'warning': None
+        }
+        
+        # Find linked tasks
+        if priority.get('priority_id'):
+            linked_tasks = find_linked_tasks(priority['priority_id'])
+            priority_data['tasks_total'] = len(linked_tasks)
+            priority_data['tasks_done'] = sum(1 for t in linked_tasks if t.get('completed'))
+            
+            if priority_data['tasks_total'] > 0:
+                if priority_data['tasks_done'] == priority_data['tasks_total']:
+                    priority_data['status'] = 'complete'
+                elif priority_data['tasks_done'] > 0:
+                    priority_data['status'] = 'in_progress'
+        
+        # Add warnings for priorities with no activity
+        if priority_data['status'] == 'not_started' and days_elapsed >= 2:
+            priority_data['warning'] = f"No activity yet - {days_remaining} days left this week"
+        
+        priorities_detail.append(priority_data)
+    
+    # Calculate completion stats
+    completed_priorities = sum(1 for p in priorities_detail if p['status'] == 'complete')
+    in_progress_priorities = sum(1 for p in priorities_detail if p['status'] == 'in_progress')
+    not_started_priorities = sum(1 for p in priorities_detail if p['status'] == 'not_started')
+    
+    # Get tasks completed this week
+    all_tasks = get_all_tasks()
+    tasks_completed_this_week = 0
+    for task in all_tasks:
+        if task.get('completed'):
+            # Check if completed this week by looking at the task line for timestamp
+            # This is a simplified check - would need completion timestamps
+            tasks_completed_this_week += 1  # Placeholder
+    
+    return {
+        'date': today.isoformat(),
+        'day_of_week': day_of_week,
+        'week_start': week_start.isoformat(),
+        'week_end': week_end.isoformat(),
+        'days_elapsed': days_elapsed,
+        'days_remaining': days_remaining,
+        'priorities': priorities_detail,
+        'summary': {
+            'total': len(priorities_detail),
+            'complete': completed_priorities,
+            'in_progress': in_progress_priorities,
+            'not_started': not_started_priorities
+        },
+        'tasks_completed_this_week': tasks_completed_this_week,
+        'warnings': [p['warning'] for p in priorities_detail if p.get('warning')]
+    }
+
+
+# ============================================================================
+# MEETING INTELLIGENCE
+# ============================================================================
+
+def find_project_for_meeting(attendees: List[str], meeting_title: str) -> Optional[Dict[str, Any]]:
+    """Find a related project based on meeting attendees or title"""
+    projects_dir = BASE_DIR / '04-Projects'
+    if not projects_dir.exists():
+        return None
+    
+    # Normalize attendees and title for matching
+    search_terms = [a.lower().replace(' ', '_') for a in attendees]
+    search_terms.append(meeting_title.lower())
+    
+    best_match = None
+    best_score = 0
+    
+    for project_file in projects_dir.glob('**/*.md'):
+        if project_file.name.startswith('.'):
+            continue
+            
+        try:
+            content = project_file.read_text()
+            content_lower = content.lower()
+            
+            score = 0
+            for term in search_terms:
+                if term in content_lower or term in project_file.stem.lower():
+                    score += 1
+            
+            if score > best_score:
+                best_score = score
+                
+                # Extract project status
+                status = 'Unknown'
+                if 'status:' in content_lower:
+                    status_match = re.search(r'status:\s*(.+?)(?:\n|$)', content_lower)
+                    if status_match:
+                        status = status_match.group(1).strip()
+                
+                best_match = {
+                    'path': str(project_file.relative_to(BASE_DIR)),
+                    'name': project_file.stem.replace('_', ' '),
+                    'status': status,
+                    'match_score': score
+                }
+        except Exception:
+            continue
+    
+    return best_match if best_score > 0 else None
+
+def find_company_for_attendees(attendees: List[str], domains: List[str] = None) -> Optional[Dict[str, Any]]:
+    """Find a company page based on attendees or email domains"""
+    if not COMPANIES_DIR.exists():
+        return None
+    
+    search_terms = []
+    for attendee in attendees:
+        search_terms.append(attendee.lower())
+        # Extract potential company name from email
+        if '@' in attendee:
+            domain = attendee.split('@')[1].split('.')[0]
+            search_terms.append(domain)
+    
+    if domains:
+        search_terms.extend([d.lower() for d in domains])
+    
+    for company_file in COMPANIES_DIR.glob('*.md'):
+        try:
+            content = company_file.read_text()
+            content_lower = content.lower()
+            company_name = company_file.stem.lower().replace('_', ' ')
+            
+            for term in search_terms:
+                if term in company_name or term in content_lower:
+                    # Extract company domains
+                    company_domains = get_company_domains(company_file)
+                    
+                    return {
+                        'path': str(company_file.relative_to(BASE_DIR)),
+                        'name': company_file.stem.replace('_', ' '),
+                        'domains': company_domains
+                    }
+        except Exception:
+            continue
+    
+    return None
+
+def get_meeting_context_data(meeting_title: str = None, attendees: List[str] = None) -> Dict[str, Any]:
+    """Get comprehensive context for a meeting based on attendees and title"""
+    result = {
+        'meeting_title': meeting_title,
+        'attendees': attendees or [],
+        'related_project': None,
+        'related_company': None,
+        'attendee_details': [],
+        'outstanding_tasks': [],
+        'recent_meetings': [],
+        'prep_suggestions': []
+    }
+    
+    if not attendees:
+        return result
+    
+    # Find related project
+    if meeting_title or attendees:
+        result['related_project'] = find_project_for_meeting(attendees, meeting_title or '')
+    
+    # Find related company
+    result['related_company'] = find_company_for_attendees(attendees)
+    
+    # Get attendee details from People directory
+    for attendee in attendees:
+        attendee_normalized = attendee.lower().replace(' ', '_')
+        
+        # Check both Internal and External directories
+        for subdir in ['External', 'Internal']:
+            people_subdir = get_people_dir() / subdir
+            if not people_subdir.exists():
+                continue
+            
+            for person_file in people_subdir.glob('*.md'):
+                if attendee_normalized in person_file.stem.lower():
+                    person_data = parse_person_page(person_file)
+                    result['attendee_details'].append(person_data)
+                    break
+    
+    # Find outstanding tasks related to attendees
+    tasks_file = get_tasks_file()
+    if tasks_file.exists():
+        content = tasks_file.read_text()
+        for attendee in attendees:
+            attendee_lower = attendee.lower()
+            for line in content.split('\n'):
+                if '- [ ]' in line and attendee_lower in line.lower():
+                    # Extract task title
+                    title_match = re.match(r'-\s*\[ \]\s*\*?\*?(.+?)\*?\*?(?:\s*\^|\s*$)', line.strip())
+                    if title_match:
+                        result['outstanding_tasks'].append({
+                            'title': title_match.group(1).strip(),
+                            'related_to': attendee
+                        })
+    
+    # Generate prep suggestions
+    if result['outstanding_tasks']:
+        result['prep_suggestions'].append(f"Review {len(result['outstanding_tasks'])} outstanding tasks with attendees")
+    
+    if result['related_project']:
+        result['prep_suggestions'].append(f"Check status of project: {result['related_project']['name']}")
+    
+    if result['related_company']:
+        result['prep_suggestions'].append(f"Review company page: {result['related_company']['name']}")
+    
+    return result
+
+
+# ============================================================================
+# COMMITMENT TRACKING
+# ============================================================================
+
+COMMITMENT_PATTERNS = [
+    r"i['']ll\s+(?:get back to|send|share|follow up|email|schedule|prepare|review|draft)\s+(.+?)(?:\s+by\s+(\w+))?",
+    r"will\s+(?:send|share|follow up|provide|deliver|complete)\s+(.+?)(?:\s+by\s+(\w+))?",
+    r"owe\s+(?:you|them|him|her)\s+(.+)",
+    r"need to\s+(?:send|share|get back|follow up)\s+(.+?)(?:\s+by\s+(\w+))?",
+    r"action\s*item[s]?:\s*(.+)",
+    r"follow.?up:\s*(.+)",
+]
+
+def extract_commitments_from_text(text: str, source: str = '', date_context: str = '') -> List[Dict[str, Any]]:
+    """Extract commitment patterns from text"""
+    commitments = []
+    text_lower = text.lower()
+    
+    for pattern in COMMITMENT_PATTERNS:
+        matches = re.finditer(pattern, text_lower)
+        for match in matches:
+            commitment_text = match.group(1).strip() if match.lastindex >= 1 else match.group(0)
+            due_date = match.group(2) if match.lastindex >= 2 else None
+            
+            commitments.append({
+                'commitment': commitment_text,
+                'due_date': due_date,
+                'source': source,
+                'date_context': date_context
+            })
+    
+    return commitments
+
+def get_commitments_due_data(date_range: str = 'today') -> Dict[str, Any]:
+    """Scan meeting notes and person pages for commitments due"""
+    today = date.today()
+    
+    result = {
+        'commitments_due_today': [],
+        'commitments_due_this_week': [],
+        'commitments_no_date': [],
+        'sources_scanned': []
+    }
+    
+    # Scan recent meeting notes
+    meetings_dir = get_meetings_dir()
+    if meetings_dir.exists():
+        # Look at meetings from last 14 days
+        for meeting_file in meetings_dir.glob('*.md'):
+            try:
+                # Extract date from filename (assuming YYYY-MM-DD prefix)
+                filename = meeting_file.stem
+                date_match = re.match(r'(\d{4}-\d{2}-\d{2})', filename)
+                if date_match:
+                    meeting_date_str = date_match.group(1)
+                    meeting_date = datetime.strptime(meeting_date_str, '%Y-%m-%d').date()
+                    
+                    # Only look at recent meetings
+                    if (today - meeting_date).days > 14:
+                        continue
+                
+                content = meeting_file.read_text()
+                commitments = extract_commitments_from_text(
+                    content, 
+                    source=str(meeting_file.relative_to(BASE_DIR)),
+                    date_context=meeting_date_str if date_match else ''
+                )
+                
+                for c in commitments:
+                    if c['due_date']:
+                        due_lower = c['due_date'].lower()
+                        if due_lower in ['today', today.strftime('%A').lower()]:
+                            result['commitments_due_today'].append(c)
+                        elif due_lower in ['tomorrow', 'this week', 'friday', 'thursday', 'wednesday', 'tuesday', 'monday']:
+                            result['commitments_due_this_week'].append(c)
+                        else:
+                            result['commitments_no_date'].append(c)
+                    else:
+                        result['commitments_no_date'].append(c)
+                
+                result['sources_scanned'].append(str(meeting_file.name))
+                
+            except Exception as e:
+                logger.error(f"Error scanning {meeting_file}: {e}")
+                continue
+    
+    # Scan person pages for "owe" or "follow up" mentions
+    for subdir in ['External', 'Internal']:
+        people_subdir = get_people_dir() / subdir
+        if not people_subdir.exists():
+            continue
+        
+        for person_file in people_subdir.glob('*.md'):
+            try:
+                content = person_file.read_text()
+                
+                # Look for "Open Items" or "Action Items" sections
+                open_items_match = re.search(r'(?:## Open Items|## Action Items|## Follow-?ups?)\n(.*?)(?:\n##|\Z)', content, re.DOTALL)
+                if open_items_match:
+                    section_content = open_items_match.group(1)
+                    # Extract uncompleted items
+                    for line in section_content.split('\n'):
+                        if '- [ ]' in line:
+                            item_text = re.sub(r'-\s*\[\s*\]\s*', '', line).strip()
+                            result['commitments_no_date'].append({
+                                'commitment': item_text,
+                                'due_date': None,
+                                'source': f"Person: {person_file.stem.replace('_', ' ')}",
+                                'to_person': person_file.stem.replace('_', ' ')
+                            })
+            except Exception:
+                continue
+    
+    return result
+
+
+# ============================================================================
+# CALENDAR CAPACITY ANALYSIS
+# ============================================================================
+
+def analyze_day_capacity(events: List[Dict], target_date: date) -> Dict[str, Any]:
+    """Analyze a single day's calendar capacity"""
+    day_name = target_date.strftime('%A')
+    
+    # Calculate total meeting time
+    total_meeting_minutes = 0
+    meeting_count = len(events)
+    
+    for event in events:
+        # Estimate duration from event data
+        duration = event.get('duration_minutes', 60)  # Default 1 hour
+        total_meeting_minutes += duration
+    
+    meeting_hours = round(total_meeting_minutes / 60, 1)
+    
+    # Classify day type
+    if meeting_count >= 6 or meeting_hours >= 5:
+        day_type = 'stacked'
+    elif meeting_count >= 3 or meeting_hours >= 2.5:
+        day_type = 'moderate'
+    else:
+        day_type = 'open'
+    
+    # Calculate free blocks (simplified - assumes 8am-6pm workday)
+    work_start = 8  # 8am
+    work_end = 18   # 6pm
+    total_work_minutes = (work_end - work_start) * 60
+    free_minutes = total_work_minutes - total_meeting_minutes
+    
+    # Estimate largest block (simplified)
+    if day_type == 'stacked':
+        largest_block = 30
+    elif day_type == 'moderate':
+        largest_block = 90
+    else:
+        largest_block = 180
+    
+    # Recommendations
+    if day_type == 'stacked':
+        recommendation = "Quick tasks only - too fragmented for deep work"
+    elif day_type == 'moderate':
+        recommendation = "Medium tasks, meeting prep, and some focused work"
+    else:
+        recommendation = "Great day for deep work - protect your focus time"
+    
+    return {
+        'date': target_date.isoformat(),
+        'day_name': day_name,
+        'meeting_count': meeting_count,
+        'meeting_hours': meeting_hours,
+        'day_type': day_type,
+        'free_minutes': max(0, free_minutes),
+        'largest_block_estimate': largest_block,
+        'recommendation': recommendation
+    }
+
+def get_calendar_capacity_data(days_ahead: int = 5) -> Dict[str, Any]:
+    """Analyze calendar capacity for upcoming days
+    
+    Note: This requires calendar data to be passed in or fetched.
+    The skill should call the calendar MCP first, then pass events to this.
+    For now, returns structure for manual population.
+    """
+    today = date.today()
+    
+    result = {
+        'analysis_date': today.isoformat(),
+        'days': [],
+        'week_summary': {
+            'stacked_days': 0,
+            'moderate_days': 0,
+            'open_days': 0,
+            'deep_work_opportunities': []
+        },
+        'note': 'Calendar events should be provided by calendar MCP for accurate analysis'
+    }
+    
+    # Generate structure for each day
+    for i in range(days_ahead):
+        target_date = today + timedelta(days=i)
+        if target_date.weekday() >= 5:  # Skip weekends
+            continue
+        
+        day_data = {
+            'date': target_date.isoformat(),
+            'day_name': target_date.strftime('%A'),
+            'events': [],  # To be populated with calendar data
+            'day_type': 'unknown',
+            'recommendation': 'Calendar data needed for analysis'
+        }
+        result['days'].append(day_data)
+    
+    return result
+
+
+# ============================================================================
+# SMART SCHEDULING SUGGESTIONS
+# ============================================================================
+
+def generate_scheduling_suggestions(
+    tasks: List[Dict],
+    calendar_capacity: Dict[str, Any]
+) -> Dict[str, Any]:
+    """Match tasks to available time slots based on effort classification"""
+    
+    suggestions = []
+    warnings = []
+    
+    # Classify tasks by effort
+    deep_work_tasks = []
+    medium_tasks = []
+    quick_tasks = []
+    
+    for task in tasks:
+        if task.get('completed'):
+            continue
+        
+        effort = classify_task_effort(task.get('title', ''))
+        task['effort'] = effort
+        
+        if effort['effort_type'] == 'deep_work':
+            deep_work_tasks.append(task)
+        elif effort['effort_type'] == 'medium':
+            medium_tasks.append(task)
+        else:
+            quick_tasks.append(task)
+    
+    # Find available slots from calendar capacity
+    days = calendar_capacity.get('days', [])
+    deep_work_slots = []
+    medium_slots = []
+    
+    for day in days:
+        day_type = day.get('day_type', 'unknown')
+        if day_type == 'open':
+            deep_work_slots.append({
+                'day': day['day_name'],
+                'date': day['date'],
+                'block_size': 'large (2-4 hours)'
+            })
+        elif day_type == 'moderate':
+            medium_slots.append({
+                'day': day['day_name'],
+                'date': day['date'],
+                'block_size': 'medium (1-2 hours)'
+            })
+    
+    # Generate suggestions for deep work tasks
+    for i, task in enumerate(deep_work_tasks):
+        if i < len(deep_work_slots):
+            slot = deep_work_slots[i]
+            suggestions.append({
+                'task': task.get('title'),
+                'task_id': task.get('task_id'),
+                'effort': 'deep_work',
+                'estimated_duration': '2-3 hours',
+                'suggested_slot': {
+                    'day': slot['day'],
+                    'date': slot['date'],
+                    'reason': f"{slot['day']} is your best day for deep work this week"
+                },
+                'action_prompt': f"Block time on {slot['day']} for this?"
+            })
+        else:
+            warnings.append(f"Deep work task '{task.get('title')}' has no suitable slot this week")
+    
+    # Generate suggestions for medium tasks
+    for i, task in enumerate(medium_tasks[:5]):  # Limit to 5
+        suggestions.append({
+            'task': task.get('title'),
+            'task_id': task.get('task_id'),
+            'effort': 'medium',
+            'estimated_duration': '1-2 hours',
+            'suggested_slot': {
+                'reason': 'Fit into 1-2 hour gaps between meetings'
+            },
+            'action_prompt': None
+        })
+    
+    # Quick tasks don't need scheduling
+    if quick_tasks:
+        suggestions.append({
+            'summary': f"{len(quick_tasks)} quick tasks",
+            'effort': 'quick',
+            'estimated_duration': '10-30 min each',
+            'suggested_slot': {
+                'reason': 'Batch these between meetings or at end of day'
+            },
+            'action_prompt': None
+        })
+    
+    # Check for capacity issues
+    if len(deep_work_tasks) > len(deep_work_slots):
+        warnings.append(f"You have {len(deep_work_tasks)} deep work tasks but only {len(deep_work_slots)} suitable slots this week")
+    
+    return {
+        'suggestions': suggestions,
+        'warnings': warnings,
+        'task_summary': {
+            'deep_work': len(deep_work_tasks),
+            'medium': len(medium_tasks),
+            'quick': len(quick_tasks)
+        },
+        'capacity_summary': {
+            'deep_work_slots': len(deep_work_slots),
+            'moderate_days': len(medium_slots)
+        }
+    }
+
+
+# ============================================================================
 # MCP SERVER
 # ============================================================================
 
@@ -1955,6 +2586,84 @@ async def handle_list_tools() -> list[types.Tool]:
             name="migrate_weekly_priorities",
             description="Add IDs to existing weekly priorities that don't have them (one-time migration)",
             inputSchema={"type": "object", "properties": {}}
+        ),
+        # ========== NEW PLANNING INTELLIGENCE TOOLS ==========
+        types.Tool(
+            name="get_week_progress",
+            description="Get midweek progress on weekly priorities. Shows which priorities are complete, in progress, or not started, with warnings for priorities that haven't been touched.",
+            inputSchema={"type": "object", "properties": {}}
+        ),
+        types.Tool(
+            name="get_meeting_context",
+            description="Get comprehensive context for an upcoming meeting: related project, company, attendee details, outstanding tasks with attendees, and prep suggestions.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "meeting_title": {"type": "string", "description": "Title of the meeting"},
+                    "attendees": {"type": "array", "items": {"type": "string"}, "description": "List of attendee names or emails"}
+                }
+            }
+        ),
+        types.Tool(
+            name="get_commitments_due",
+            description="Scan meeting notes and person pages for commitments and follow-ups that are due today or this week.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "date_range": {"type": "string", "enum": ["today", "this_week", "all"], "default": "today", "description": "Which commitments to return"}
+                }
+            }
+        ),
+        types.Tool(
+            name="classify_task_effort",
+            description="Classify a task's effort level (quick: 15-30min, medium: 1-2hrs, deep_work: 2-4hrs) based on keywords and patterns.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "title": {"type": "string", "description": "Task title"},
+                    "context": {"type": "string", "description": "Additional context about the task"}
+                },
+                "required": ["title"]
+            }
+        ),
+        types.Tool(
+            name="analyze_calendar_capacity",
+            description="Analyze calendar capacity for upcoming days. Identifies day types (stacked/moderate/open), estimates free blocks, and finds deep work opportunities. Pass calendar events for accurate analysis.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "days_ahead": {"type": "integer", "default": 5, "description": "Number of days to analyze"},
+                    "events": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "date": {"type": "string", "description": "Event date (YYYY-MM-DD)"},
+                                "title": {"type": "string"},
+                                "start_time": {"type": "string"},
+                                "end_time": {"type": "string"},
+                                "duration_minutes": {"type": "integer"}
+                            }
+                        },
+                        "description": "List of calendar events (from calendar MCP)"
+                    }
+                }
+            }
+        ),
+        types.Tool(
+            name="suggest_task_scheduling",
+            description="Match tasks to available time slots based on effort classification. Returns scheduling suggestions for deep work, medium, and quick tasks.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "include_all_tasks": {"type": "boolean", "default": False, "description": "Include all open tasks or just P0/P1"},
+                    "calendar_events": {
+                        "type": "array",
+                        "items": {"type": "object"},
+                        "description": "Calendar events for capacity analysis (from calendar MCP)"
+                    }
+                }
+            }
         )
     ]
 
@@ -2912,6 +3621,127 @@ async def handle_call_tool(
         result = migrate_weekly_priorities()
         return [types.TextContent(type="text", text=json.dumps(result, indent=2, cls=DateTimeEncoder))]
     
+    # ========== NEW PLANNING INTELLIGENCE HANDLERS ==========
+    
+    elif name == "get_week_progress":
+        result = get_week_progress_data()
+        return [types.TextContent(type="text", text=json.dumps(result, indent=2, cls=DateTimeEncoder))]
+    
+    elif name == "get_meeting_context":
+        meeting_title = arguments.get('meeting_title') if arguments else None
+        attendees = arguments.get('attendees', []) if arguments else []
+        
+        result = get_meeting_context_data(meeting_title, attendees)
+        return [types.TextContent(type="text", text=json.dumps(result, indent=2, cls=DateTimeEncoder))]
+    
+    elif name == "get_commitments_due":
+        date_range = arguments.get('date_range', 'today') if arguments else 'today'
+        
+        result = get_commitments_due_data(date_range)
+        return [types.TextContent(type="text", text=json.dumps(result, indent=2, cls=DateTimeEncoder))]
+    
+    elif name == "classify_task_effort":
+        title = arguments['title']
+        context = arguments.get('context', '') if arguments else ''
+        
+        result = classify_task_effort(title, context)
+        return [types.TextContent(type="text", text=json.dumps(result, indent=2, cls=DateTimeEncoder))]
+    
+    elif name == "analyze_calendar_capacity":
+        days_ahead = arguments.get('days_ahead', 5) if arguments else 5
+        events = arguments.get('events', []) if arguments else []
+        
+        # If events provided, analyze them; otherwise return structure for manual use
+        if events:
+            today = date.today()
+            days_data = []
+            
+            # Group events by date
+            events_by_date = {}
+            for event in events:
+                event_date = event.get('date', today.isoformat())
+                if event_date not in events_by_date:
+                    events_by_date[event_date] = []
+                events_by_date[event_date].append(event)
+            
+            # Analyze each day
+            for i in range(days_ahead):
+                target_date = today + timedelta(days=i)
+                if target_date.weekday() >= 5:  # Skip weekends
+                    continue
+                
+                date_str = target_date.isoformat()
+                day_events = events_by_date.get(date_str, [])
+                
+                day_analysis = analyze_day_capacity(day_events, target_date)
+                days_data.append(day_analysis)
+            
+            # Summarize
+            stacked_days = sum(1 for d in days_data if d['day_type'] == 'stacked')
+            moderate_days = sum(1 for d in days_data if d['day_type'] == 'moderate')
+            open_days = sum(1 for d in days_data if d['day_type'] == 'open')
+            
+            deep_work_opportunities = [
+                {'day': d['day_name'], 'date': d['date'], 'available_hours': round(d['largest_block_estimate'] / 60, 1)}
+                for d in days_data if d['day_type'] == 'open'
+            ]
+            
+            result = {
+                'analysis_date': today.isoformat(),
+                'days': days_data,
+                'week_summary': {
+                    'stacked_days': stacked_days,
+                    'moderate_days': moderate_days,
+                    'open_days': open_days,
+                    'deep_work_opportunities': deep_work_opportunities
+                }
+            }
+        else:
+            result = get_calendar_capacity_data(days_ahead)
+        
+        return [types.TextContent(type="text", text=json.dumps(result, indent=2, cls=DateTimeEncoder))]
+    
+    elif name == "suggest_task_scheduling":
+        include_all = arguments.get('include_all_tasks', False) if arguments else False
+        calendar_events = arguments.get('calendar_events', []) if arguments else []
+        
+        # Get tasks
+        all_tasks = get_all_tasks()
+        active_tasks = [t for t in all_tasks if not t.get('completed')]
+        
+        # Filter by priority if not including all
+        if not include_all:
+            active_tasks = [t for t in active_tasks if t.get('priority', 'P2') in ['P0', 'P1']]
+        
+        # Get calendar capacity (use events if provided, otherwise use basic structure)
+        if calendar_events:
+            today = date.today()
+            days_data = []
+            
+            events_by_date = {}
+            for event in calendar_events:
+                event_date = event.get('date', today.isoformat())
+                if event_date not in events_by_date:
+                    events_by_date[event_date] = []
+                events_by_date[event_date].append(event)
+            
+            for i in range(5):
+                target_date = today + timedelta(days=i)
+                if target_date.weekday() >= 5:
+                    continue
+                
+                date_str = target_date.isoformat()
+                day_events = events_by_date.get(date_str, [])
+                day_analysis = analyze_day_capacity(day_events, target_date)
+                days_data.append(day_analysis)
+            
+            calendar_capacity = {'days': days_data}
+        else:
+            calendar_capacity = get_calendar_capacity_data(5)
+        
+        result = generate_scheduling_suggestions(active_tasks, calendar_capacity)
+        return [types.TextContent(type="text", text=json.dumps(result, indent=2, cls=DateTimeEncoder))]
+    
     else:
         return [types.TextContent(type="text", text=f"Unknown tool: {name}")]
 
@@ -2928,7 +3758,7 @@ async def _main():
             write_stream,
             InitializationOptions(
                 server_name="dex-work-mcp",
-                server_version="2.0.0",
+                server_version="3.0.0",
                 capabilities=app.get_capabilities(
                     notification_options=NotificationOptions(),
                     experimental_capabilities={},

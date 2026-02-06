@@ -318,6 +318,26 @@ Run `/create-mcp` to create a new MCP server integration through a guided wizard
 3. Update CLAUDE.md and System Guide
 4. Provide setup instructions
 
+### Naming Your Custom MCP Servers (Important for Updates)
+
+When creating custom MCP servers, **use the `user-` or `custom-` prefix** in the server name:
+
+```json
+{
+  "mcpServers": {
+    "user-gmail": { ... },
+    "custom-notion": { ... },
+    "user-salesforce": { ... }
+  }
+}
+```
+
+**Why this matters:**
+
+When you run `/dex-update`, Dex preserves any MCP entries named `user-*` or `custom-*`. Your custom integrations will never be overwritten by updates.
+
+If you name an MCP server without this prefix (e.g., `gmail-mcp`) and a future Dex update adds a server with the same name, you'll be asked which version to keep. Using the prefix avoids this conflict entirely.
+
 ---
 
 ## Background Automation

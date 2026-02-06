@@ -210,7 +210,16 @@ Built specifically for personal knowledge management and productivity workflows 
 - `/product-brief` - Generate PRD from ideas
 - `/triage` - Organize inbox and extract tasks
 
+**AI Configuration:**
+- `/ai-setup` - Configure budget cloud models (80% cheaper) and offline mode
+- `/ai-status` - Check your AI configuration and credits
+
+**Ambient Intelligence (Beta):**
+- `/screenpipe-setup` - Enable screen capture for work context *(requires beta activation)*
+- `/screenpipe-disable` - Stop screen capture and optionally delete data
+
 **System Management:**
+- `/xray` - AI education: understand what just happened under the hood, learn how context, MCPs, hooks work
 - `/prompt-improver` - Transform vague prompts via Anthropic Messages API
 - `/dex-level-up` - Discover unused features
 - `/dex-backlog` - AI-powered idea ranking
@@ -220,6 +229,9 @@ Built specifically for personal knowledge management and productivity workflows 
 - `/dex-rollback` - Undo last update if something went wrong
 - `/dex-obsidian-setup` - Enable Obsidian integration and migrate vault to wiki links
 - `/integrate-mcp` - Integrate existing MCP servers from Smithery.ai marketplace
+- `/integrate-notion` - Connect Notion for workspace search and meeting context
+- `/integrate-slack` - Connect Slack for conversation search and people context
+- `/integrate-google` - Connect Google Workspace (Gmail, Calendar, Contacts)
 - `/create-mcp` - Create new MCP integrations
 
 ### Anthropic Skills (General-Purpose)

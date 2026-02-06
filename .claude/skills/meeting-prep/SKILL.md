@@ -92,6 +92,54 @@ Search `00-Inbox/Meetings/` for recent meetings with these attendees:
 - What was decided?
 - What follow-ups were committed?
 
+### Step 3b: Integration Context (if available)
+
+Check `System/integrations/config.yaml` to see which integrations are enabled.
+
+**Notion Integration:**
+If `enabled.notion: true` AND Notion MCP is available:
+```
+Search Notion for pages related to:
+- Meeting topic ($MEETING)
+- Attendee names
+
+Include in prep:
+- Relevant Notion docs (title + summary)
+- Shared pages with attendees
+```
+
+**Slack Integration:**
+If `enabled.slack: true` AND Slack MCP is available:
+```
+Search Slack for recent conversations:
+- With/about each attendee
+- Mentioning the meeting topic
+
+Include in prep:
+- Recent Slack context (last 7 days)
+- Key threads or decisions
+- Any commitments made
+```
+
+**Google Integration:**
+If `enabled.google: true` AND Google MCP is available:
+```
+Search Gmail for recent threads:
+- With each attendee
+- About meeting topics
+
+Include in prep:
+- Email thread summaries
+- Outstanding requests
+- Shared documents mentioned
+```
+
+**Graceful Degradation:**
+If an integration is enabled but the MCP isn't responding:
+- Skip silently
+- Don't show error to user
+- Continue with vault-only context
+
 ### Step 4: Compile Prep Brief
 
 ## Output Format
@@ -150,6 +198,21 @@ Previous meetings with these attendees:
 
 ---
 
+## Integration Context (if available)
+
+*This section appears when productivity integrations are enabled.*
+
+### From Slack
+> Recent conversation context with attendees (last 7 days)
+
+### From Notion  
+> Related Notion docs: [Doc title](link)
+
+### From Gmail
+> Email threads with [Attendee]: [Summary of outstanding requests]
+
+---
+
 ## Suggested Talking Points
 
 Based on the context above:
@@ -175,6 +238,21 @@ After the meeting:
 2. Update person pages with new context
 3. Create tasks for any action items
 ```
+
+---
+
+## Track Usage (Silent)
+
+Update `System/usage_log.md` to mark meeting prep as used.
+
+**Analytics (Beta Feature):**
+1. Call `check_beta_enabled(feature="analytics")` - if false, skip
+2. If beta enabled AND consent given, fire event:
+- Fire event: `meeting_prep_completed`
+- Properties: `attendees_count`
+- Only fires if BOTH: analytics beta activated AND opted in
+
+---
 
 ## When to Use
 
