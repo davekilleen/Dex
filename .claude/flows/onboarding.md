@@ -12,6 +12,18 @@ Guide new users through setup in a friendly ~5 minute conversation. Keep it simp
 
 **After each step (1-6):** Call `validate_and_save_step(step_number=X, step_data={...})` before proceeding. If validation fails, show the error and retry the step.
 
+### Interactive Questions (IMPORTANT)
+
+When this flow says to present a structured choice, you MUST use the correct tool for the user's environment:
+
+- **Cursor:** Call the `AskQuestion` tool. This renders clickable option buttons in the Cursor UI.
+- **Claude Code CLI:** Call the `AskUserQuestion` tool. Same purpose, different tool name.
+- **Neither available:** Fall back to presenting numbered text options and asking the user to type their choice.
+
+**How to detect:** Try `AskQuestion` first (works in Cursor). If it fails or isn't recognized, try `AskUserQuestion` (Claude Code). If neither works, use text fallback.
+
+**CRITICAL:** You must actually INVOKE the tool, not just show the JSON schema. The user should see clickable buttons, not raw JSON.
+
 ---
 
 ## Step 1: Welcome
@@ -93,7 +105,8 @@ Accept numbers, role names, or hybrid descriptions like "I'm mostly PM but do so
 
 Ask: "What's your company size?"
 
-Use the AskQuestion tool:
+**CALL the interactive question tool** (see "Interactive Questions" section above) with these parameters:
+
 ```json
 {
   "questions": [{
@@ -109,6 +122,8 @@ Use the AskQuestion tool:
   }]
 }
 ```
+
+**Text fallback** (if tool not available): Present the 4 options as a numbered list and ask the user to type 1-4.
 
 **After receiving company size:** Call `validate_and_save_step(step_number=3, step_data={"company": "...", "company_size": "[selected id]"})` to validate and save. The `company_size` value should be the option id (startup, scaling, enterprise, or large_enterprise).
 
@@ -248,7 +263,7 @@ You'll see this hierarchy in action as you use the system."
 
 Say: "Quick preferences check—how should I communicate with you?"
 
-Use the AskUserQuestion tool to present 3 questions. If AskUserQuestion is not available, ask the same questions via CLI with numbered options and capture the selections:
+**CALL the interactive question tool** (see "Interactive Questions" section above) to present these 3 questions. If the tool is not available, ask the same questions as numbered text options:
 
 1. **Formality Level:**
    - Formal (professional, structured)
@@ -297,7 +312,8 @@ Say: "One more thing—do you use **Obsidian** to view your notes?
 
 **New to Obsidian?** [Watch this beginner's guide](https://www.youtube.com/watch?v=gafuqdKwD_U) to see what it can do (5 min)."
 
-Use the AskQuestion tool:
+**CALL the interactive question tool** (see "Interactive Questions" section above) with these parameters:
+
 ```json
 {
   "questions": [{
@@ -312,6 +328,8 @@ Use the AskQuestion tool:
   }]
 }
 ```
+
+**Text fallback:** "Type 1 for Yes, 2 for No, 3 for Not sure"
 
 **If YES (id: "yes"):**
 1. Set `obsidian_mode: true` in session data
@@ -429,7 +447,8 @@ Say: "One quick question before we finish:
 
 **Help improve Dex?**"
 
-Use the AskQuestion tool:
+**CALL the interactive question tool** (see "Interactive Questions" section above) with these parameters:
+
 ```json
 {
   "questions": [{
@@ -443,6 +462,8 @@ Use the AskQuestion tool:
   }]
 }
 ```
+
+**Text fallback:** "Type Yes or No"
 
 **If YES:**
 1. Update `System/user-profile.yaml`:

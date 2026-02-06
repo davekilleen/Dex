@@ -310,9 +310,12 @@ git status | grep "both modified"
    - These are user's personal skills
 
 5. **If file is core Dex** (skills, core MCP, scripts) **and user edited it**:
-   - Use AskUserQuestion to resolve, instead of a merge editor
+   - Use the interactive question tool to resolve, instead of a merge editor
 
-**AskUserQuestion flow (generic, parameterized):**
+**Interactive conflict resolution flow (generic, parameterized):**
+
+Use `AskQuestion` (Cursor) or `AskUserQuestion` (Claude Code CLI) to present the conflict. If neither tool is available, use a numbered text prompt with the same options.
+
 ```
 Title: Dex update conflict: {{item_name}}
 
@@ -331,8 +334,8 @@ Options:
 4) Let me tell you what to do (I'll write instructions)
 ```
 
-**If AskUserQuestion is not available (non-Claude Code):**
-- Use a simple CLI prompt with the same 4 options.
+**Text fallback (if interactive tool not available):**
+- Present the same 4 options as numbered text.
 - Add one-line tradeoffs to each option (what you keep vs lose).
 - If user types an invalid choice, re-prompt once and default to "Use Dex version".
 

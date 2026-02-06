@@ -644,8 +644,8 @@ These are protected. Updates won't touch them.
 If you edited a core file (like `.claude/skills/daily-plan/SKILL.md`), and an update also changes that file, Dex will:
 1. Detect the overlap
 2. Ask which version to keep
-   - If AskUserQuestion is available, Dex shows a guided choice
-   - If not, Dex shows a CLI prompt with the same options + tradeoffs
+   - In Cursor or Claude Code, Dex shows a guided choice with clickable buttons
+   - If neither tool is available, Dex shows a text prompt with the same options + tradeoffs
 3. Usually keep your version (your customizations)
 
 But **better practice:** Put your customizations in the `-custom` folders so they never conflict.
