@@ -1,8 +1,13 @@
+---
+name: calendar-setup
+description: Grant Python calendar access for 30x faster calendar queries (30s → <1s)
+---
+
 # Calendar Setup - Enable Fast Queries
 
 **Purpose:** Grant Python calendar access for 30x faster calendar queries (30s → <1s)
 
-**When to run:** 
+**When to run:**
 - After initial Dex installation
 - If calendar queries feel slow
 - If you see "Calendar access denied" errors
@@ -28,7 +33,7 @@
    - Show clear instructions:
      ```
      To enable fast calendar queries:
-     
+
      1. Open System Settings (Command+Space, type "System Settings")
      2. Click "Privacy & Security" in the sidebar
      3. Click "Calendars"
@@ -36,7 +41,7 @@
      5. Enable the checkbox
      6. Run `/calendar-setup` again to verify
      ```
-   
+
 5. **If Restricted:**
    - Explain: "Calendar access is blocked by system policies (parental controls or enterprise MDM)"
    - Calendar queries will use AppleScript (slower but functional)
@@ -71,4 +76,3 @@
 **Still seeing slow queries after granting access:**
 - Restart your coding harness (Cursor/Claude Code/Pi) to reload MCP server
 - Verify permission: `python3 core/mcp/scripts/check_calendar_permission.py`
-
