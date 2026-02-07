@@ -15,13 +15,39 @@ Usage:
 
 import sys
 import json
+import threading
 from datetime import datetime, timedelta
 import EventKit
+
+
+def ensure_calendar_access(store):
+    """Request calendar access if needed; wait for user to grant. Required to see all calendars (e.g. Google)."""
+    status = EventKit.EKEventStore.authorizationStatusForEntityType_(EventKit.EKEntityTypeEvent)
+    # 3 = Authorized, 2 = Denied, 0 = NotDetermined, 1 = Restricted
+    if status == 3:
+        return True
+    if status == 2:
+        return False
+    # NotDetermined or Restricted: request access
+    done = threading.Event()
+    result = [None]
+
+    def completion(granted, error):
+        result[0] = granted
+        done.set()
+
+    store.requestAccessToEntityType_completion_(EventKit.EKEntityTypeEvent, completion)
+    # Wait up to 60s for user to respond to the system dialog
+    done.wait(timeout=60)
+    return result[0] is True
 
 
 def list_calendars():
     """List all available calendars."""
     store = EventKit.EKEventStore.alloc().init()
+    if not ensure_calendar_access(store):
+        print(json.dumps({"error": "Calendar access denied. Enable in System Settings → Privacy & Security → Calendars. See 06-Resources/Dex_System/Calendar_Setup.md for full setup."}))
+        sys.exit(1)
     calendars = store.calendarsForEntityType_(EventKit.EKEntityTypeEvent)
     
     result = []
@@ -106,12 +132,22 @@ def get_events(calendar_name: str, start_offset_days: int, end_offset_days: int,
         with_attendees: Include full attendee details
     """
     store = EventKit.EKEventStore.alloc().init()
-    
-    # Find the calendar
-    target_calendar = find_calendar(store, calendar_name)
-    if not target_calendar:
-        print(json.dumps({"error": f"Calendar not found: {calendar_name}"}))
+    if not ensure_calendar_access(store):
+        print(json.dumps({"error": "Calendar access denied. Enable in System Settings → Privacy & Security → Calendars. See 06-Resources/Dex_System/Calendar_Setup.md for full setup."}))
         sys.exit(1)
+    
+    # Resolve calendar(s)
+    if calendar_name.lower() == "all":
+        calendars = list(store.calendarsForEntityType_(EventKit.EKEntityTypeEvent))
+        if not calendars:
+            print(json.dumps({"error": "No calendars found."}))
+            sys.exit(1)
+    else:
+        target_calendar = find_calendar(store, calendar_name)
+        if not target_calendar:
+            print(json.dumps({"error": f"Calendar not found: {calendar_name}"}))
+            sys.exit(1)
+        calendars = [target_calendar]
     
     # Calculate date range
     today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
@@ -122,7 +158,7 @@ def get_events(calendar_name: str, start_offset_days: int, end_offset_days: int,
     predicate = store.predicateForEventsWithStartDate_endDate_calendars_(
         start_date,
         end_date,
-        [target_calendar]
+        calendars
     )
     
     # Fetch events
@@ -152,6 +188,9 @@ def search_events(calendar_name: str, query: str, days_back: int, days_forward: 
         days_forward: How many days forward to search
     """
     store = EventKit.EKEventStore.alloc().init()
+    if not ensure_calendar_access(store):
+        print(json.dumps({"error": "Calendar access denied. Enable in System Settings → Privacy & Security → Calendars. See 06-Resources/Dex_System/Calendar_Setup.md for full setup."}))
+        sys.exit(1)
     
     # Find the calendar
     target_calendar = find_calendar(store, calendar_name)
@@ -193,6 +232,9 @@ def get_next_event(calendar_name: str):
         calendar_name: Calendar name
     """
     store = EventKit.EKEventStore.alloc().init()
+    if not ensure_calendar_access(store):
+        print(json.dumps({"error": "Calendar access denied. Enable in System Settings → Privacy & Security → Calendars. See 06-Resources/Dex_System/Calendar_Setup.md for full setup."}))
+        sys.exit(1)
     
     # Find the calendar
     target_calendar = find_calendar(store, calendar_name)

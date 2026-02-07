@@ -2,3 +2,6 @@
 mcp>=1.0.0
 pyyaml>=6.0
 aiohttp>=3.9.0
+
+# Calendar MCP: EventKit for correct recurring events and fast queries (macOS only)
+pyobjc-framework-EventKit>=10.0; sys_platform == "darwin"
