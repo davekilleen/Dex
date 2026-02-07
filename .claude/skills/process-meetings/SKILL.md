@@ -57,6 +57,18 @@ If user runs `--setup`:
 cd .scripts/meeting-intel && ./install-automation.sh
 ```
 
+**After automation is installed, ask about transcript saving:**
+
+> "One more thing: Do you want to save full meeting transcripts as separate files?
+>
+> **Yes (recommended for searchability):** Full transcripts saved to `00-Inbox/Meetings/Transcripts/` as .md files with links back to meeting notes. Makes transcripts searchable in Obsidian.
+>
+> **No:** Transcripts still embedded (truncated) in meeting notes, but not saved separately."
+
+Based on response, update `System/user-profile.yaml`:
+- **Yes:** Set `meeting_processing.save_transcripts: true`
+- **No:** Set `meeting_processing.save_transcripts: false`
+
 ### Step 2: Find Synced Meetings
 
 Read the processed meetings state:

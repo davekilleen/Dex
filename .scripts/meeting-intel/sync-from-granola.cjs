@@ -58,6 +58,7 @@ function getGranolaCachePath() {
 const GRANOLA_CACHE = getGranolaCachePath();
 const STATE_FILE = path.join(__dirname, 'processed-meetings.json');
 const MEETINGS_DIR = path.join(VAULT_ROOT, 'Inbox', 'Meetings');
+const TRANSCRIPTS_DIR = path.join(MEETINGS_DIR, 'Transcripts');
 const QUEUE_FILE = path.join(MEETINGS_DIR, 'queue.md');
 const LOG_DIR = path.join(VAULT_ROOT, '.scripts', 'logs');
 const PILLARS_FILE = path.join(VAULT_ROOT, 'System', 'pillars.yaml');
@@ -113,6 +114,9 @@ function loadUserProfile() {
       extract_competitive_intel: true,
       extract_action_items: true,
       extract_decisions: true
+    },
+    meeting_processing: {
+      save_transcripts: false
     }
   };
   
@@ -422,29 +426,97 @@ function slugify(text) {
 function createMeetingNote(meeting, analysis, profile, pillars) {
   const date = meeting.createdAt.split('T')[0];
   const time = meeting.createdAt.split('T')[1]?.slice(0, 5) || '00:00';
-  
+
   const outputDir = path.join(MEETINGS_DIR, date);
   if (!fs.existsSync(outputDir)) {
     fs.mkdirSync(outputDir, { recursive: true });
   }
-  
+
   const slug = slugify(meeting.title);
   const filename = `${slug}.md`;
   const filepath = path.join(outputDir, filename);
-  
+
+  // Save transcript as separate file if enabled and transcript exists
+  let transcriptFilePath = null;
+  let transcriptWikilink = null;
+  const saveTranscripts = profile.meeting_processing?.save_transcripts;
+
+  if (saveTranscripts && meeting.transcript && meeting.transcript.length > 0) {
+    const transcriptDir = path.join(TRANSCRIPTS_DIR, date);
+    if (!fs.existsSync(transcriptDir)) {
+      fs.mkdirSync(transcriptDir, { recursive: true });
+    }
+
+    const transcriptFile = `${slug}.md`;
+    transcriptFilePath = path.join(transcriptDir, transcriptFile);
+    transcriptWikilink = `00-Inbox/Meetings/Transcripts/${date}/${slug}`;
+    const wordCount = meeting.transcript.split(/\s+/).length;
+
+    const transcriptContent = `---
+type: transcript
+granola_id: ${meeting.id}
+meeting_note: "[[00-Inbox/Meetings/${date}/${slug}]]"
+date: ${date}
+title: "${meeting.title.replace(/"/g, '\\"')}"
+word_count: ${wordCount}
+---
+
+# Transcript: ${meeting.title}
+
+**Date:** ${date}
+**Granola ID:** \`${meeting.id}\`
+**Meeting Note:** [[00-Inbox/Meetings/${date}/${slug}]]
+
+---
+
+${meeting.transcript}
+`;
+
+    fs.writeFileSync(transcriptFilePath, transcriptContent);
+    log(`Saved transcript: ${transcriptFilePath}`);
+  }
+
   // Extract pillar from analysis
   const pillarMatch = analysis.match(/## Pillar Assignment\n\n([^\n]+)/i);
   let pillar = pillarMatch ? pillarMatch[1].trim() : pillars[0];
   // Clean up pillar - remove brackets, quotes, etc.
   pillar = pillar.replace(/[\[\]"']/g, '').trim();
-  
+
   // Filter participants to exclude the owner
   const ownerName = profile.name || '';
-  const filteredParticipants = meeting.participants.filter(p => 
+  const filteredParticipants = meeting.participants.filter(p =>
     p.toLowerCase() !== ownerName.toLowerCase() &&
     !p.toLowerCase().includes(ownerName.toLowerCase().split(' ')[0])
   );
   
+  // Build transcript section for Raw Content
+  let transcriptSection = '';
+  if (meeting.transcript) {
+    const wordCount = meeting.transcript.split(/\s+/).length;
+    if (transcriptWikilink) {
+      // Link to separate transcript file
+      transcriptSection = `
+<details>
+<summary>Transcript (${wordCount} words)</summary>
+
+**Granola ID:** \`${meeting.id}\`
+[[${transcriptWikilink}|Full Transcript]]
+
+</details>
+`;
+    } else {
+      // Embed truncated transcript inline
+      transcriptSection = `
+<details>
+<summary>Transcript (${wordCount} words)</summary>
+
+${meeting.transcript.slice(0, 5000)}${meeting.transcript.length > 5000 ? '\n\n[Truncated...]' : ''}
+
+</details>
+`;
+    }
+  }
+
   const content = `---
 date: ${date}
 time: ${time}
@@ -455,7 +527,8 @@ participants: [${filteredParticipants.map(p => `"${p}"`).join(', ')}]
 company: "${meeting.company}"
 pillar: "${pillar}"
 duration: ${meeting.duration || 'unknown'}
-granola_id: ${meeting.id}
+granola_id: ${meeting.id}${transcriptFilePath ? `
+transcript_file: "${transcriptWikilink}.md"` : ''}
 processed: ${new Date().toISOString()}
 ---
 
@@ -479,26 +552,19 @@ ${analysis}
 ${meeting.notes || 'No notes captured'}
 
 </details>
-
-${meeting.transcript ? `
-<details>
-<summary>Transcript (${meeting.transcript.split(' ').length} words)</summary>
-
-${meeting.transcript.slice(0, 5000)}${meeting.transcript.length > 5000 ? '\n\n[Truncated...]' : ''}
-
-</details>
-` : ''}
-
+${transcriptSection}
 ---
 *Processed by Dex Meeting Intel (Gemini 3 Pro)*
 `;
 
   fs.writeFileSync(filepath, content);
   log(`Created meeting note: ${filepath}`);
-  
+
   return {
     filepath,
-    wikilink: `00-Inbox/Meetings/${date}/${slug}.md`
+    wikilink: `00-Inbox/Meetings/${date}/${slug}.md`,
+    transcriptPath: transcriptFilePath,
+    granolaId: meeting.id
   };
 }
 
@@ -653,7 +719,9 @@ async function main() {
       state.processedMeetings[meeting.id] = {
         title: meeting.title,
         processedAt: new Date().toISOString(),
-        filepath: result.filepath
+        filepath: result.filepath,
+        transcriptPath: result.transcriptPath || null,
+        granolaId: meeting.id
       };
       
       processedResults.push({
