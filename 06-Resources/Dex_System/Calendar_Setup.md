@@ -33,6 +33,7 @@ macOS only lets apps see your calendar if you allow it.
 1. Open **System Settings** (or **System Preferences** on older macOS).
 2. Go to **Privacy & Security** → **Calendars**.
 3. Find **Cursor** in the list and turn it **On**.
+4. Click **Cursor** and set access to **Full** (not "Add Only") so Dex can read your events.
 
 The first time Cursor tries to read your calendar, macOS may show a popup: **"Cursor would like to access your calendars"**. Click **Allow**.
 
@@ -44,7 +45,7 @@ The first time Cursor tries to read your calendar, macOS may show a popup: **"Cu
 
 | What you see | What to do |
 |--------------|------------|
-| **"Calendar access denied"** | Go to **System Settings** → **Privacy & Security** → **Calendars** and turn **Cursor** on. Then quit Cursor and open it again. |
+| **"Calendar access denied"** | Go to **System Settings** → **Privacy & Security** → **Calendars**, turn **Cursor** on, then click **Cursor** and set access to **Full** (not "Add Only"). Quit Cursor and open it again. |
 | **No meetings or wrong dates for recurring events** | Make sure you did both steps above. If you installed Dex without running the installer (e.g. you installed Python packages yourself), open Terminal and run: `pip3 install --user pyobjc-framework-EventKit`, then restart Cursor. |
 | **Calendar is empty or very slow** | Same as above: both setup steps, and if you didn't run the installer, run the `pip3 install` line above. |
 
@@ -59,6 +60,6 @@ If you have several calendars and want Dex to focus on one (e.g. your work calen
 ## Summary
 
 1. **Add Google to the Calendar app** — Calendar → Add Account → Google → sign in.
-2. **Allow Cursor to access Calendars** — System Settings → Privacy & Security → Calendars → Cursor On.
+2. **Allow Cursor to access Calendars** — System Settings → Privacy & Security → Calendars → Cursor On, then click Cursor and choose **Full** access (not "Add Only").
 
 After that, your Google Calendar meetings show up in Dex on the right days, including recurring events.

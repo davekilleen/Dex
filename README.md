@@ -175,7 +175,7 @@ If you use **Google Calendar**, you can have Dex show your real meetings when yo
 Open the **Calendar** app (the one that came with your Mac). In the menu bar, click **Calendar** → **Add Account…** → choose **Google** → sign in with your Google account. Your Google events will sync into Calendar. Dex reads from this app, so once Google is here, Dex sees your meetings.
 
 **Step 2 — Let Cursor use your calendar**  
-Open **System Settings** → **Privacy & Security** → **Calendars**. Turn **Cursor** on. If macOS pops up asking "Cursor would like to access your calendars", click **Allow**.
+Open **System Settings** → **Privacy & Security** → **Calendars**. Turn **Cursor** on, then click **Cursor** and choose **Full** access (not "Add Only") so Dex can read your events. If macOS pops up asking "Cursor would like to access your calendars", click **Allow**.
 
 That's it. The installer already set up the rest on Mac. Your meetings—including recurring ones like weekly 1:1s—will show on the correct days in Dex.
 
@@ -310,7 +310,7 @@ Check the MCP server output:
 If `/daily-plan` doesn't show your meetings, or your recurring meetings (e.g. weekly 1:1s) show on the wrong day or are missing:
 
 1. **Add Google to the Calendar app** — Open **Calendar** (Mac's built-in app) → **Calendar** → **Add Account…** → **Google** → sign in. Dex reads from this app.
-2. **Let Cursor see your calendar** — **System Settings** → **Privacy & Security** → **Calendars** → turn **Cursor** on. Restart Cursor after turning it on.
+2. **Let Cursor see your calendar** — **System Settings** → **Privacy & Security** → **Calendars** → turn **Cursor** on, then click **Cursor** and set access to **Full** (not "Add Only"). Restart Cursor after changing it.
 3. **If you skipped the installer or fixed Python yourself** — The installer normally sets up calendar support on Mac. If you didn't run it or installed packages by hand, in Terminal run: `pip3 install --user pyobjc-framework-EventKit`, then restart Cursor.
 
 See **[Calendar_Setup.md](06-Resources/Dex_System/Calendar_Setup.md)** for the full guide.
