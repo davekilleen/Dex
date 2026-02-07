@@ -63,7 +63,7 @@ def main():
         def completion_handler(granted, error):
             access_granted[0] = granted
         
-        store.requestAccessToEntityType_completion_(EventKit.EKEventStore, completion_handler)
+        store.requestAccessToEntityType_completion_(EventKit.EKEntityTypeEvent, completion_handler)
         
         # Wait for user response (max 30 seconds)
         for i in range(300):
