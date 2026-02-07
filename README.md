@@ -166,6 +166,24 @@ pip3 install --user mcp pyyaml
 
 Then restart Cursor.
 
+<details>
+<summary><strong>Use Google Calendar? Connect it so Dex shows your meetings (Mac)</strong></summary>
+
+If you use **Google Calendar**, you can have Dex show your real meetings when you run `/daily-plan` or ask "what's on my calendar today?" Two steps, one-time setup (Mac only):
+
+**Step 1 — Add Google to your Mac's Calendar app**  
+Open the **Calendar** app (the one that came with your Mac). In the menu bar, click **Calendar** → **Add Account…** → choose **Google** → sign in with your Google account. Your Google events will sync into Calendar. Dex reads from this app, so once Google is here, Dex sees your meetings.
+
+**Step 2 — Let Cursor use your calendar**  
+Open **System Settings** → **Privacy & Security** → **Calendars**. Turn **Cursor** on. If macOS pops up asking "Cursor would like to access your calendars", click **Allow**.
+
+That's it. The installer already set up the rest on Mac. Your meetings—including recurring ones like weekly 1:1s—will show on the correct days in Dex.
+
+**More detail and troubleshooting:** [Calendar_Setup.md](06-Resources/Dex_System/Calendar_Setup.md) (in your vault after setup).  
+**On Windows?** Calendar connection is supported on Mac via Apple Calendar. We don't have Windows instructions in this repo yet.
+
+</details>
+
 ⚠️ **IMPORTANT: Complete Step 3 now to configure your role - this is what makes Dex work.**
 
 <details>
@@ -284,6 +302,18 @@ Check the MCP server output:
 2. Click "Show Output"
 3. Look for the specific error message
 4. Common issues: missing Python packages, wrong file paths, Python version too old
+
+---
+
+### Mac: Calendar empty, wrong dates, or "Calendar access denied"
+
+If `/daily-plan` doesn't show your meetings, or your recurring meetings (e.g. weekly 1:1s) show on the wrong day or are missing:
+
+1. **Add Google to the Calendar app** — Open **Calendar** (Mac's built-in app) → **Calendar** → **Add Account…** → **Google** → sign in. Dex reads from this app.
+2. **Let Cursor see your calendar** — **System Settings** → **Privacy & Security** → **Calendars** → turn **Cursor** on. Restart Cursor after turning it on.
+3. **If you skipped the installer or fixed Python yourself** — The installer normally sets up calendar support on Mac. If you didn't run it or installed packages by hand, in Terminal run: `pip3 install --user pyobjc-framework-EventKit`, then restart Cursor.
+
+See **[Calendar_Setup.md](06-Resources/Dex_System/Calendar_Setup.md)** for the full guide.
 
 </details>
 
@@ -756,6 +786,7 @@ Comprehensive guides included in the repo:
 - [Dex_System_Guide.md](06-Resources/Dex_System/Dex_System_Guide.md) - Complete feature reference and workflows
 - [Dex_Jobs_to_Be_Done.md](06-Resources/Dex_System/Dex_Jobs_to_Be_Done.md) - Why each piece exists and how they connect
 - [Dex_Technical_Guide.md](06-Resources/Dex_System/Dex_Technical_Guide.md) - Technical deep dive for those who want it
+- [Calendar_Setup.md](06-Resources/Dex_System/Calendar_Setup.md) - Connect Google Calendar to Dex (Mac)
 - [Folder_Structure.md](06-Resources/Dex_System/Folder_Structure.md) - PARA organization explained
 - [Updating_Dex.md](06-Resources/Dex_System/Updating_Dex.md) - How to safely update while preserving customizations
 
