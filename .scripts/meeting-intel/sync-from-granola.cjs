@@ -57,7 +57,7 @@ function getGranolaCachePath() {
 
 const GRANOLA_CACHE = getGranolaCachePath();
 const STATE_FILE = path.join(__dirname, 'processed-meetings.json');
-const MEETINGS_DIR = path.join(VAULT_ROOT, 'Inbox', 'Meetings');
+const MEETINGS_DIR = path.join(VAULT_ROOT, '00-Inbox', 'Meetings');
 const QUEUE_FILE = path.join(MEETINGS_DIR, 'queue.md');
 const LOG_DIR = path.join(VAULT_ROOT, '.scripts', 'logs');
 const PILLARS_FILE = path.join(VAULT_ROOT, 'System', 'pillars.yaml');
