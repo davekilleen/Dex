@@ -104,7 +104,10 @@ class DateTimeEncoder(json.JSONEncoder):
         return super().default(obj)
 
 # Configuration - Vault paths
-BASE_DIR = Path(os.environ.get('VAULT_PATH', Path.cwd()))
+_vault_path = os.environ.get('VAULT_PATH')
+if not _vault_path:
+    logging.warning("VAULT_PATH not set — falling back to cwd(). Task ID generation may produce duplicates.")
+BASE_DIR = Path(_vault_path) if _vault_path else Path.cwd()
 TASKS_FILE = BASE_DIR / '03-Tasks/Tasks.md'
 WEEK_PRIORITIES_FILE = BASE_DIR / 'Inbox' / 'Week Priorities.md'
 QUARTER_GOALS_FILE = BASE_DIR / '01-Quarter_Goals/Quarter_Goals.md'
@@ -334,19 +337,31 @@ def generate_task_id() -> str:
 
     The XXX counter is globally unique across all dates to avoid
     duplicate short references (last 3 digits used for quick user input).
+
+    Only scans user content folders (not documentation or system examples)
+    to avoid counting example IDs from docs as real tasks.
     """
     date_str = _tz_now().strftime('%Y%m%d')
 
-    # Find ALL existing task IDs across all dates for globally unique counter
+    # Only scan folders that contain real task references (not docs/examples)
+    task_folders = [
+        '00-Inbox', '01-Quarter_Goals', '02-Week_Priorities',
+        '03-Tasks', '04-Projects', '05-Areas',
+    ]
+
     existing_ids = []
-    for md_file in BASE_DIR.rglob('*.md'):
-        try:
-            content = md_file.read_text()
-            pattern = r'\^task-\d{8}-(\d{3})'
-            matches = re.findall(pattern, content)
-            existing_ids.extend([int(m) for m in matches])
-        except Exception:
+    for folder_name in task_folders:
+        folder = BASE_DIR / folder_name
+        if not folder.exists():
             continue
+        for md_file in folder.rglob('*.md'):
+            try:
+                content = md_file.read_text()
+                pattern = r'\^task-\d{8}-(\d{3})'
+                matches = re.findall(pattern, content)
+                existing_ids.extend([int(m) for m in matches])
+            except Exception:
+                continue
 
     # Get next available number (globally unique)
     next_num = max(existing_ids, default=0) + 1
