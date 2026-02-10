@@ -290,21 +290,25 @@ def guess_priority(item: str) -> str:
     return 'P2'
 
 def generate_task_id() -> str:
-    """Generate a unique task ID in format: task-YYYYMMDD-XXX"""
+    """Generate a unique task ID in format: task-YYYYMMDD-XXX
+
+    The XXX counter is globally unique across all dates to avoid
+    duplicate short references (last 3 digits used for quick user input).
+    """
     date_str = datetime.now().strftime('%Y%m%d')
-    
-    # Find existing task IDs for today to get next sequential number
+
+    # Find ALL existing task IDs across all dates for globally unique counter
     existing_ids = []
     for md_file in BASE_DIR.rglob('*.md'):
         try:
             content = md_file.read_text()
-            pattern = f'\\^task-{date_str}-(\\d{{3}})'
+            pattern = r'\^task-\d{8}-(\d{3})'
             matches = re.findall(pattern, content)
             existing_ids.extend([int(m) for m in matches])
         except Exception:
             continue
-    
-    # Get next available number
+
+    # Get next available number (globally unique)
     next_num = max(existing_ids, default=0) + 1
     return f"task-{date_str}-{next_num:03d}"
 
