@@ -70,8 +70,9 @@ function cleanTaskTitle(title: string): string {
  */
 function generateTaskId(): string {
   const date = new Date().toISOString().slice(0, 10).replace(/-/g, "");
-  const random = Math.floor(Math.random() * 1000).toString().padStart(3, "0");
-  return `task-${date}-${random}`;
+  // Use timestamp-based counter to avoid collisions with existing IDs
+  const counter = (Date.now() % 900) + 100; // 100-999 range, unlikely to collide
+  return `task-${date}-${counter.toString().padStart(3, "0")}`;
 }
 
 /**
