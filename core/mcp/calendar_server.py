@@ -14,6 +14,13 @@ Tools:
 - calendar_delete_event: Delete an event
 - calendar_get_next_event: Get the next upcoming event
 - calendar_get_events_with_attendees: Get events with full attendee details
+- reminders_list_items: Get incomplete items from a Reminders list
+- reminders_complete_item: Mark a Reminder as complete
+- reminders_create_item: Create a new Reminder
+- reminders_ensure_lists: Create Dex Inbox/Today lists if missing
+- reminders_list_completed: Get recently completed Reminders for sync
+- reminders_find_and_complete: Find and complete a Reminder by title match
+- reminders_clear_completed: Remove completed Reminders from a list
 """
 
 import os
@@ -439,7 +446,117 @@ async def handle_list_tools() -> list[types.Tool]:
                 },
                 "required": []
             }
-        )
+        ),
+        # --- Apple Reminders tools ---
+        types.Tool(
+            name="reminders_list_items",
+            description="Get incomplete items from an Apple Reminders list. Use with 'Dex Inbox' to check for mobile-captured tasks.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "list_name": {
+                        "type": "string",
+                        "description": "Name of the Reminders list (default: 'Dex Inbox')"
+                    }
+                },
+                "required": []
+            }
+        ),
+        types.Tool(
+            name="reminders_complete_item",
+            description="Mark a Reminder as complete (e.g., after triaging into Dex tasks)",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "reminder_id": {
+                        "type": "string",
+                        "description": "The calendarItemIdentifier of the reminder to complete"
+                    }
+                },
+                "required": ["reminder_id"]
+            }
+        ),
+        types.Tool(
+            name="reminders_create_item",
+            description="Create a new Reminder in a specific list (e.g., push P0 tasks to 'Dex Today' for iOS notifications)",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "list_name": {
+                        "type": "string",
+                        "description": "Name of the Reminders list (default: 'Dex Today')"
+                    },
+                    "title": {
+                        "type": "string",
+                        "description": "Reminder title"
+                    },
+                    "notes": {
+                        "type": "string",
+                        "description": "Optional notes/description"
+                    },
+                    "due_date": {
+                        "type": "string",
+                        "description": "Optional due date in YYYY-MM-DD format"
+                    }
+                },
+                "required": ["title"]
+            }
+        ),
+        types.Tool(
+            name="reminders_ensure_lists",
+            description="Create 'Dex Inbox' and 'Dex Today' Reminders lists if they don't exist. Idempotent — safe to call every time.",
+            inputSchema={
+                "type": "object",
+                "properties": {},
+                "required": []
+            }
+        ),
+        types.Tool(
+            name="reminders_list_completed",
+            description="Get recently completed items from a Reminders list (last 2 days). Use with 'Dex Today' to detect tasks completed on phone for sync back to Dex.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "list_name": {
+                        "type": "string",
+                        "description": "Name of the Reminders list (default: 'Dex Today')"
+                    }
+                },
+                "required": []
+            }
+        ),
+        types.Tool(
+            name="reminders_find_and_complete",
+            description="Find a Reminder by title match and mark it complete. Use for Dex → Reminders sync when a task is done in Dex.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "list_name": {
+                        "type": "string",
+                        "description": "Name of the Reminders list (default: 'Dex Today')"
+                    },
+                    "title_query": {
+                        "type": "string",
+                        "description": "Title text to match against (fuzzy substring match)"
+                    }
+                },
+                "required": ["title_query"]
+            }
+        ),
+        types.Tool(
+            name="reminders_clear_completed",
+            description="Remove all completed Reminders from a list. Use to clean up 'Dex Today' at start of day.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "list_name": {
+                        "type": "string",
+                        "description": "Name of the Reminders list (default: 'Dex Today')"
+                    }
+                },
+                "required": []
+            }
+        ),
     ]
 
 
@@ -731,6 +848,96 @@ async def handle_call_tool(
         
         return [types.TextContent(type="text", text=json.dumps(result, indent=2, cls=DateTimeEncoder))]
     
+    # --- Apple Reminders handlers ---
+    elif name == "reminders_list_items":
+        list_name = arguments.get("list_name", "Dex Inbox")
+        success, output = run_shell_script("reminders_eventkit.py", "list_items", list_name)
+        if success:
+            try:
+                items = json.loads(output)
+                result = {"success": True, "list": list_name, "items": items, "count": len(items)}
+            except json.JSONDecodeError as e:
+                result = {"success": False, "error": f"JSON parse error: {e}"}
+        else:
+            result = {"success": False, "error": output}
+        return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
+
+    elif name == "reminders_complete_item":
+        reminder_id = arguments["reminder_id"]
+        success, output = run_shell_script("reminders_eventkit.py", "complete", reminder_id)
+        if success:
+            try:
+                result = json.loads(output)
+            except json.JSONDecodeError:
+                result = {"success": True, "message": output}
+        else:
+            result = {"success": False, "error": output}
+        return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
+
+    elif name == "reminders_create_item":
+        list_name = arguments.get("list_name", "Dex Today")
+        title = arguments["title"]
+        notes = arguments.get("notes", "")
+        due_date = arguments.get("due_date", "")
+        success, output = run_shell_script("reminders_eventkit.py", "create", list_name, title, notes, due_date)
+        if success:
+            try:
+                result = json.loads(output)
+            except json.JSONDecodeError:
+                result = {"success": True, "message": output}
+        else:
+            result = {"success": False, "error": output}
+        return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
+
+    elif name == "reminders_ensure_lists":
+        success, output = run_shell_script("reminders_eventkit.py", "ensure_lists")
+        if success:
+            try:
+                result = json.loads(output)
+            except json.JSONDecodeError:
+                result = {"success": True, "message": output}
+        else:
+            result = {"success": False, "error": output}
+        return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
+
+    elif name == "reminders_list_completed":
+        list_name = arguments.get("list_name", "Dex Today")
+        success, output = run_shell_script("reminders_eventkit.py", "list_completed", list_name)
+        if success:
+            try:
+                items = json.loads(output)
+                result = {"success": True, "list": list_name, "items": items, "count": len(items)}
+            except json.JSONDecodeError as e:
+                result = {"success": False, "error": f"JSON parse error: {e}"}
+        else:
+            result = {"success": False, "error": output}
+        return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
+
+    elif name == "reminders_find_and_complete":
+        list_name = arguments.get("list_name", "Dex Today")
+        title_query = arguments["title_query"]
+        success, output = run_shell_script("reminders_eventkit.py", "find_and_complete", list_name, title_query)
+        if success:
+            try:
+                result = json.loads(output)
+            except json.JSONDecodeError:
+                result = {"success": True, "message": output}
+        else:
+            result = {"success": False, "error": output}
+        return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
+
+    elif name == "reminders_clear_completed":
+        list_name = arguments.get("list_name", "Dex Today")
+        success, output = run_shell_script("reminders_eventkit.py", "clear_completed", list_name)
+        if success:
+            try:
+                result = json.loads(output)
+            except json.JSONDecodeError:
+                result = {"success": True, "message": output}
+        else:
+            result = {"success": False, "error": output}
+        return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
+
     else:
         return [types.TextContent(type="text", text=json.dumps({
             "error": f"Unknown tool: {name}"
