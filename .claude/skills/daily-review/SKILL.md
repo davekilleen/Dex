@@ -156,6 +156,38 @@ Use: process_commitment(commitment_id="comm-XXXXXX-XXX", action="dismiss")
 
 ---
 
+## Step 2.5: Reminders Completion Sync (Dex Today → Dex)
+
+Check if tasks were completed on phone since the morning plan:
+
+```
+Use: reminders_list_completed(list_name="Dex Today")
+```
+
+For each completed item:
+- Match to a Dex task by title
+- Update task status via Work MCP: `update_task_status(task_title="...", status="d")`
+- Surface what was synced:
+
+> "📱 **Synced from phone:**
+> - ✅ "Follow up with Hero Coders" — marked done in Dex"
+
+Also check for tasks completed in Dex today that still have active Reminders:
+
+```
+# For each task completed today in Dex, check if a matching Reminder exists
+Use: reminders_find_and_complete(list_name="Dex Today", title_query="task title")
+```
+
+Clean up completed items:
+```
+Use: reminders_clear_completed(list_name="Dex Today")
+```
+
+**If nothing to sync:** Skip silently.
+
+---
+
 ## Step 3: Daily Plan Completion Tracking (NEW)
 
 **Compare what you planned vs. what you did.**
@@ -453,6 +485,7 @@ Based on weekly priorities and today's carryover:
 |-------------|------------|------------|
 | Work | dex-work-mcp | `list_tasks`, `get_week_progress`, `get_commitments_due`, `analyze_calendar_capacity` |
 | Calendar | dex-calendar-mcp | `calendar_get_today` |
+| Reminders | dex-calendar-mcp | `reminders_list_completed`, `reminders_find_and_complete`, `reminders_clear_completed` |
 | Screen Activity | screenpipe-mcp | `screenpipe_time_audit`, `screenpipe_summarize`, `screenpipe_query` |
 
 ### ScreenPipe Integration Notes
