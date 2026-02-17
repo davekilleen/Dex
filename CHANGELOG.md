@@ -7,6 +7,14 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.9.1] - 2026-02-17
+
+### Automatic Update Notifications
+
+Previously, you had to remember to run `/dex-update` to check for new versions. Now Dex checks once a day automatically and lets you know if there's something new — a quiet one-liner at the end of your first chat, once per day. No nagging, no blocking. Run `/dex-update` when you're ready, or ignore it.
+
+---
+
 ## [1.9.0] - 2026-02-17
 
 ### 🔍 Optional: Smarter Search for Growing Vaults
@@ -51,6 +59,10 @@ This is powered by [QMD](https://github.com/tobi/qmd), an open-source local sear
 **If you don't enable it,** nothing changes — everything continues to work with keyword matching, just as it always has.
 
 Part of our philosophy with Dex is to stay on top of the best open-source tools so you don't have to. When something like QMD comes along that genuinely makes the experience better, we integrate it — you run one command and your existing workflows get smarter.
+
+**Smart setup, not generic indexing.** When you run `/enable-semantic-search`, Dex scans your vault and recommends purpose-built search collections based on what you've actually built — people pages, meeting notes, projects, goals. Each collection gets semantic context that tells the search engine what the content IS, dramatically improving result relevance. Generic tools dump everything into one index. Dex gives your search engine a mental model of your information architecture.
+
+As your vault grows, Dex notices. Created your first few company pages? Next time you run `/daily-plan`, it'll suggest: "You've got enough accounts for a dedicated collection now — want me to create one?" Your search setup evolves with your vault.
 
 **To enable:** `/enable-semantic-search` (one-time setup, ~5 minutes)
 
