@@ -7,13 +7,13 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
-## [1.15.0] — Dex Learns What's Working (2026-02-19)
+## [1.15.0] — Another Brain Upgrade (2026-02-19)
 
 Four updates that make Dex smarter about you and faster at finding what matters.
 
 **Skill Quality Signals.** After key workflows like daily plans, meeting prep, and reviews, Dex asks one optional question: "Quick rating, 1-5?" Your ratings accumulate over time. During weekly reviews, if a skill has been trending down, Dex surfaces it with context — "Your meeting prep averaged 2.8 this week, common note: missing context from last meeting." If everything's fine, you hear nothing. Ratings also feed into anonymous product analytics so Dave knows which skills to invest in.
 
-**Identity Snapshot.** A new `/identity-snapshot` command reads your goals, priorities, tasks, learnings, and ratings to build a living profile of how you actually work. Not self-reported traits — observed patterns. What pillar gets neglected under pressure. Which skills you rate highest. Where your blind spots are. It auto-updates during weekly reviews and Dex reads it when making prioritization suggestions.
+**Identity Snapshot.** Dex now automatically builds a living profile of how you actually work — your goals, priorities, task patterns, learnings, and skill ratings all feed into it. Not self-reported traits — observed patterns. What pillar gets neglected under pressure. Which skills you rate highest. Where your blind spots are. It refreshes during weekly reviews and Dex reads it when making prioritization suggestions. You can also run `/identity-snapshot` anytime to see it on demand.
 
 **Faster People Lookups.** Dex now keeps a lightweight directory of everyone you know. Instead of scanning dozens of files every time you mention someone, it reads one small index. Looking up "Paul" instantly returns the right person with their role, company, and context. The index stays fresh automatically — it rebuilds during your daily plan and self-heals if it goes stale.
 
