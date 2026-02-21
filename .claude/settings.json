@@ -43,7 +43,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "afplay /System/Library/Sounds/Ping.aiff"
+            "command": "pw-play /usr/share/sounds/freedesktop/stereo/complete.oga"
           }
         ]
       }
@@ -54,7 +54,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "afplay /System/Library/Sounds/Ping.aiff"
+            "command": "pw-play /usr/share/sounds/freedesktop/stereo/complete.oga"
           }
         ]
       }
