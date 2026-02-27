@@ -135,7 +135,7 @@ This lets Dex talk to Todoist using your API token.
 Use the API key to list projects as a connectivity test. Run a curl or use the MCP server:
 
 ```bash
-curl -s -H "Authorization: Bearer $API_KEY" https://api.todoist.com/rest/v2/projects
+curl -s -H "Authorization: Bearer $API_KEY" https://api.todoist.com/api/v1/projects
 ```
 
 **If projects load successfully:**
