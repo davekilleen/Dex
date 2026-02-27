@@ -1,49 +1,32 @@
 # Dex by Dave — Your AI Chief of Staff
 
-**A personal operating system powered by Claude.**
-
-Clone this repo, run the installer, type `/setup` in Claude, tell it your role — and in 10 minutes you have a working system tailored to how you work. Strategic work management, meeting intelligence, relationship tracking, daily planning. All configured for whether you're a CMO, a sales leader, a PM, or any of 31 roles.
-
-No coding required. Just [Cursor](https://cursor.com) and conversation.
+**A personal operating system powered by Claude.** Strategic work management, meeting intelligence, relationship tracking, daily planning — all configured for your specific role. No coding required.
 
 Companion to [Episode 8 of The Vibe PM Podcast](https://youtu.be/WaqgSvL-V10?si=b2Pfwf7I5rozWCo0) and the [full blog post](https://www.linkedin.com/pulse/your-ai-chief-staff-building-personal-operating-system-dave-killeen-yxnqe/).
 
 ---
 
-## Who This Is For
+## Setup Overview
 
-Non-engineers.
+**Total time:** ~10 minutes. Three steps: install tools → get the code → tell it your role.
 
-Product managers, marketers, sales leaders, designers, executives, HR leaders, consultants, coaches, analysts — anyone who wants the same leverage from AI that technical people have had access to.
+**Pick one of these to get started:**
 
-**You don't need to know how to code.** Just follow the setup and talk to your AI assistant.
+| Option | Cost | What It Is |
+|--------|------|------------|
+| **[Cursor](https://cursor.com)** | Free tier works, or $20/month for Pro | An app with a built-in AI assistant (Claude). No separate Claude account needed. |
+| **[Claude Code Desktop](https://claude.ai/download)** | Claude Pro $20/month | Anthropic's own app. Better experience — guaranteed self-learning hooks, automatic context loading. |
+| **Claude Code Terminal** | Claude Pro $20/month | Same as Desktop but runs in Terminal (Mac) or PowerShell (Windows). |
 
-**If you're an engineer:** Share this with your non-technical colleagues. Distribute Dex across your organization to accelerate AI fluency adoption. When teams build shared understanding of what AI can reliably do (not just chat interfaces, but actual operating systems), you compete far more effectively.
+> **You do NOT go to claude.ai and type commands.** You need one of the apps above. Cursor is the easiest starting point. Claude Code (Desktop or Terminal) gives you a better experience with self-learning hooks — setup instructions for those are [further down this page](#want-guaranteed-hooks-use-claude-code-cli-or-desktop-app).
 
----
-
-## Built to Teach: The AI Fluency Catalyst
-
-Most people in tech use AI as a chat interface - asking questions, getting answers, starting fresh every time. They've seen the demos but don't understand how to move beyond that. The gap between what's possible and what people actually use continues to widen.
-
-Dex addresses this by giving you a working system immediately. No learning curve, no setup burden.
-
-The system automates cognitive overhead - you reclaim hours in your day. Meeting prep happens automatically. Commitments don't slip. Context is always available before calls. The time you save compounds: less administrative work means more focus on strategic work and career-advancing goals.
-
-The system teaches you as you go. Start shallow, go deep as you get curious. Two weeks of daily practice and you're in flow. By month one, you don't just have a working system - you understand how to build systems.
-
-**For teams and organizations:** One person adopts Dex, sees the value, shares it with colleagues. Technical leaders can distribute the repo (everyone gets the same foundation, adapted to their role) or share demo mode (let people explore without committing their own data). Teams develop common language around what AI can reliably do. Your organization moves from AI demos to AI operations.
-
-**Want to share this?** Point colleagues to the [companion blog post](https://www.linkedin.com/pulse/your-ai-chief-staff-building-personal-operating-system-dave-killeen-yxnqe/) for the full story with more detail and color about how everything comes together. At the bottom of this README, there's a ready-to-use message you can copy and paste to share with your team - makes it easy to accelerate AI fluency adoption across your organization.
+**Not sure which?** Start with Cursor — it's free and gets you running in minutes. You can add or switch to Claude Code later.
 
 ---
 
 ## Getting Started
 
-<details>
-<summary><strong>Click to expand setup and installation guide</strong></summary>
-
-### What You'll Need
+### What You'll Need to Install (One-Time)
 
 1. **[Cursor](https://cursor.com/)** - Download and install (free account works fine)
 2. **[Git](https://git-scm.com)** - Required for setup and updates
@@ -490,7 +473,17 @@ claude
 
 **Which option?** Desktop app for visual interface. Command line for those comfortable in Terminal/PowerShell. Both give you the same guaranteed hooks capability.
 
-</details>
+---
+
+## Who This Is For
+
+Non-engineers. Product managers, marketers, sales leaders, designers, executives, HR leaders, consultants, coaches, analysts — anyone who wants the same leverage from AI that technical people have had access to.
+
+**You don't need to know how to code.** Just follow the setup above and talk to your AI assistant.
+
+**If you're an engineer:** Share this with your non-technical colleagues. Distribute Dex across your organization to accelerate AI fluency adoption.
+
+**Want to share this?** Point colleagues to the [companion blog post](https://www.linkedin.com/pulse/your-ai-chief-staff-building-personal-operating-system-dave-killeen-yxnqe/) for the full story. At the bottom of this README, there's a ready-to-use message you can copy and paste.
 
 ---
 
@@ -926,4 +919,4 @@ Commercial use is not allowed without a separate written commercial license from
 
 ---
 
-Run `/setup` to get started.
+**Ready to start?** Follow the [setup instructions above](#getting-started) — install Cursor, get the code, run `/setup` inside Cursor's chat panel.
