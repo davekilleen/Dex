@@ -62,8 +62,10 @@ System/Beta/
 
 # Beta hooks (copied from templates on activation)
 .claude/hooks/
-# But track the safety guard — it's a core feature, not a beta
+# But track core hooks — these ship with Dex
 !.claude/hooks/dex-safety-guard.sh
+!.claude/hooks/person-context-injector.cjs
+!.claude/hooks/company-context-injector.cjs
 
 # Beta skills (copied from templates on activation)
 .claude/skills/commitment-extractor/

@@ -33,6 +33,13 @@ if (!filePath || filePath.includes('/People/')) {
   process.exit(0);
 }
 
+// Skip binary/non-text files (images, PDFs, archives, etc.)
+const ext = path.extname(filePath).toLowerCase();
+const skipExts = ['.png', '.jpg', '.jpeg', '.gif', '.bmp', '.webp', '.ico', '.svg', '.pdf', '.zip', '.tar', '.gz', '.mp3', '.mp4', '.mov', '.wav', '.pptx', '.xlsx', '.docx'];
+if (skipExts.includes(ext)) {
+  process.exit(0);
+}
+
 const VAULT_ROOT = process.env.CLAUDE_PROJECT_DIR || process.env.VAULT_PATH || process.cwd();
 const PEOPLE_DIR = path.join(VAULT_ROOT, 'People');
 
