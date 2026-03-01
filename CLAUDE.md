@@ -470,6 +470,7 @@ Skills extend Dex capabilities and are invoked with `/skill-name`. Common skills
 - `/dex-rollback` - Undo last update if something went wrong
 - `/getting-started` - Interactive post-onboarding tour (adaptive to your setup)
 - `/integrate-mcp` - Connect tools from Smithery.ai marketplace
+- `/scrape` - Web scraping with stealth, anti-bot bypass, CSS selectors (no API key needed)
 - `/identity-snapshot` - Generate a living profile of your working patterns from Dex data
 
 **Complete catalog:** Run `/dex-level-up` or see `.claude/skills/README.md`
@@ -532,6 +533,30 @@ Person pages are automatically routed to Internal or External based on email dom
 - **External/** - Email domain doesn't match (customers, partners, vendors)
 
 Domain matching is configured during onboarding or can be updated manually in `System/user-profile.yaml` (`email_domain` field).
+
+---
+
+## Web Scraping (Scrapling)
+
+**MCP Server:** `scrapling` (runs via `scrapling mcp`)
+**No API key required.** Local, free, stealth-capable.
+
+**When a user asks to scrape/fetch/extract from a URL, prefer Scrapling MCP tools over WebFetch.**
+
+| Tool | When to Use |
+|------|-------------|
+| `scrapling_get` | Fast HTTP fetch, most sites |
+| `scrapling_fetch` | JS-rendered / SPA content (real browser) |
+| `scrapling_stealthy_fetch` | Cloudflare / anti-bot protected sites |
+| `scrapling_bulk_get` | Multiple URLs in parallel |
+
+**Always pass `css_selector` when possible** — extracts specific content before sending to AI, saving tokens.
+
+**Escalation path:** `get` → `fetch` → `stealthy_fetch` (auto-escalate on empty/blocked responses)
+
+**Setup:** `pip install "scrapling[ai]" && scrapling install`
+
+Full skill: `/scrape`
 
 ---
 

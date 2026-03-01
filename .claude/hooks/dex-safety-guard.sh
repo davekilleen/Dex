@@ -1,9 +1,20 @@
 #!/bin/bash
-# Dex Safety Guard — PreToolUse hook for Bash commands
-# Blocks destructive commands before execution.
+# Dex Safety Guard — PreToolUse hook
+# Guards both Bash commands AND MCP tool preferences.
 # Exit 0 = allow, Exit 2 = block
 
 INPUT=$(cat)
+
+# Extract tool name and command from input
+TOOL_NAME=$(echo "$INPUT" | python3 -c "
+import sys, json
+try:
+    data = json.loads(sys.stdin.read())
+    print(data.get('tool_name', ''))
+except:
+    print('')
+" 2>/dev/null)
+
 COMMAND=$(echo "$INPUT" | python3 -c "
 import sys, json
 try:
@@ -12,8 +23,21 @@ try:
 except:
     print('')
 " 2>/dev/null)
+TOOL_LOWER=$(echo "$TOOL_NAME" | tr '[:upper:]' '[:lower:]')
 
-# Nothing to check
+# === MCP TOOL PREFERENCE GUARDS ===
+# Scrapling is the default scraper. Block Firecrawl/WebFetch/Apify RAG browser.
+
+BLOCKED_SCRAPERS="firecrawl_scrape firecrawl_search firecrawl_crawl firecrawl_map firecrawl_extract firecrawl_batch_scrape firecrawl_deep_research firecrawl_generate_llmstxt webfetch rag-web-browser rag_web_browser"
+
+for scraper in $BLOCKED_SCRAPERS; do
+    if echo "$TOOL_LOWER" | grep -q "$scraper"; then
+        echo "WRONG SCRAPER: Scrapling is the configured default. Use scrapling get/fetch/stealthy_fetch instead of $TOOL_NAME."
+        exit 2
+    fi
+done
+
+# Nothing further to check for non-Bash tools
 if [ -z "$COMMAND" ]; then
     exit 0
 fi

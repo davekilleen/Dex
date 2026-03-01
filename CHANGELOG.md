@@ -7,6 +7,21 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.16.0] — 🕷️ Scrapling is your default web scraper (2026-03-01)
+
+When you share a URL with Dex — an article, a blog post, a page you want summarized — it now uses **Scrapling** every time. Scrapling is free, runs on your machine, and handles sites that block other tools (including Cloudflare-protected pages).
+
+**What this means for you:**
+- Share a URL, get the content. No API keys, no credits, no limits.
+- Sites that used to come back empty (anti-bot protection) now work out of the box.
+- Your data never leaves your machine — Scrapling fetches locally, not through a cloud service.
+
+**What changed under the hood:** Dex now has a safety guard that enforces Scrapling as the default. If the AI ever tries to use a different scraper, the guard catches it and redirects to Scrapling automatically. You don't need to do anything — it just works.
+
+**If you set up Dex before this update:** Run `/dex-update` and Scrapling will be added to your tools automatically. If it asks you to install it, just run: `pip install "scrapling[ai]" && scrapling install`
+
+---
+
 ## [1.15.0] — 🔌 The Integrations Release (2026-02-19)
 
 This is a big one. Dex now connects to 8 tools where your real work happens — and it goes both ways. Complete a task in Dex and it's done in Todoist. Get an email flagged in your morning plan because someone hasn't replied in 3 days. See your Jira sprint status right next to your weekly priorities.

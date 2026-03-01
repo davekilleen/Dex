@@ -8,6 +8,9 @@ anthropic-mcp>=0.1.0
 pyyaml>=6.0
 python-dateutil>=2.8.0
 
+# Web scraping (no API key required)
+scrapling[ai]>=0.4.1
+
 # Optional integrations (uncomment if needed)
 # google-auth>=2.16.0
 # google-auth-oauthlib>=1.0.0
