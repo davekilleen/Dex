@@ -1,5 +1,6 @@
 # Dex MCP Server Dependencies
-mcp>=1.0.0
+mcp>=1.0.0,<2.0.0
+python-dateutil>=2.8.0
 pyyaml>=6.0
 aiohttp>=3.9.0
 

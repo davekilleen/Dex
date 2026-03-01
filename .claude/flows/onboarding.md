@@ -158,9 +158,21 @@ osascript -e 'launch application "Calendar"' && sleep 1 && osascript -e 'tell ap
 ```
 
 **If the command fails** (Calendar not installed, permissions denied, etc.):
-- Skip this step silently
-- Say: "No worries — calendar optimization can be set up later. Moving on!"
-- Don't block onboarding over this
+
+First, check if it's a permissions issue (common on macOS with Cursor/Claude Desktop):
+
+Say: "Your calendar app is installed but your editor doesn't have permission to access it yet. This is a one-time macOS setup:
+
+1. Open **System Settings** → **Privacy & Security** → **Calendars**
+2. Find **Cursor** (or **Claude Desktop**) in the list and turn it **on**
+3. If it's not in the list yet, run this in your terminal inside Cursor: `osascript -e 'tell application \"Calendar\" to get name of calendars'` — macOS will prompt you to allow access
+4. After granting access, come back here and we'll continue
+
+**Can't do this right now?** No problem — calendar features will work once you grant permission later. Moving on!"
+
+- Do NOT skip silently — always explain the permission step
+- Don't block onboarding — let the user continue if they prefer to do it later
+- Store `calendar.permissions_pending: true` in user-profile.yaml if they skip
 
 **If 1-2 calendars:**
 - Skip this step silently
