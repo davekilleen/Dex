@@ -164,7 +164,7 @@ These are AI models from other companies that cost much less:
 |-------|-----------------|---------|----------|
 | **Kimi K2.5** | ~80% cheaper | ⭐⭐⭐⭐ Great | General tasks, thinking |
 | **DeepSeek V3** | ~95% cheaper | ⭐⭐⭐⭐ Great | Coding, analysis |
-| **Gemini Flash** | ~97% cheaper | ⭐⭐⭐ Good | Long documents |
+| **Gemini 2.5 Flash** | ~90% cheaper | ⭐⭐⭐⭐ Great | Long documents, reasoning |
 
 **My recommendation:** Start with **Kimi K2.5** — it's the closest to Claude in quality.
 
@@ -251,12 +251,12 @@ Generate `~/.pi/agent/models.json`:
           "cost": { "input": 0.14, "output": 0.28, "cacheRead": 0, "cacheWrite": 0 }
         },
         {
-          "id": "google/gemini-2.0-flash-exp:free",
-          "name": "Gemini Flash (Free tier)",
+          "id": "google/gemini-2.5-flash",
+          "name": "Gemini 2.5 Flash (Budget)",
           "input": ["text", "image"],
           "contextWindow": 1048576,
           "maxTokens": 8192,
-          "cost": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 }
+          "cost": { "input": 0.3, "output": 2.5, "cacheRead": 0, "cacheWrite": 0 }
         }
       ]
     }
@@ -272,7 +272,7 @@ Say:
 I've added three models you can switch to anytime:
 - **Kimi K2.5** — Best quality budget option
 - **DeepSeek V3** — Super cheap, great for coding
-- **Gemini Flash** — Google's free tier (with limits)
+- **Gemini 2.5 Flash** — Google's budget option, great for reasoning
 
 **How to use them:**
 
@@ -739,7 +739,7 @@ Want me to help you switch to a smaller model?
 
 Some alternatives:
 
-1. **Gemini Flash Free Tier** — Google offers free usage (with limits)
+1. **Gemini 2.5 Flash** — Google's budget model, very affordable
    I can set that up instead
 
 2. **Offline Only** — Skip budget cloud, just use local models

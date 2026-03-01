@@ -23,7 +23,7 @@ Dex can use different AI models depending on your needs:
 Other companies make AI models that cost much less than Claude:
 - **Kimi K2.5** (Moonshot AI) — 80% cheaper, similar quality
 - **DeepSeek V3** — 95% cheaper, great for coding
-- **Gemini Flash** (Google) — 97% cheaper, handles long documents
+- **Gemini 2.5 Flash** (Google) — 90% cheaper, handles long documents
 
 ### Why Use Them?
 
@@ -168,7 +168,7 @@ Run `/ai-status` to see:
 | Claude Sonnet | `claude-sonnet-4-20250514` |
 | Kimi K2.5 | `moonshotai/kimi-k2.5` |
 | DeepSeek V3 | `deepseek/deepseek-chat` |
-| Gemini Flash | `google/gemini-2.0-flash-exp:free` |
+| Gemini 2.5 Flash | `google/gemini-2.5-flash` |
 | Qwen (Offline) | `qwen2.5:14b` |
 
 ---
