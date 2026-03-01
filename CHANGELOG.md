@@ -7,6 +7,26 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.17.0] — Mobile Meeting Recordings Now Sync Automatically (2026-03-01)
+
+If you record meetings on your phone with Granola, those recordings now appear in Dex alongside your desktop meetings. No manual import, no extra steps — they just show up.
+
+This is powered by Granola's official integration, which means it's more reliable and officially supported. Dex will prompt you to sign in to Granola in your browser (takes about 10 seconds), and after that, mobile recordings sync automatically in the background.
+
+**What this means for you:**
+- Meetings recorded on your phone now appear in Dex alongside desktop recordings
+- One-time sign-in: Dex prompts you when it's time, and walks you through it
+- Everything keeps working while you set up — your existing meetings aren't affected
+
+**Behind the scenes:**
+- Background sync now uses Granola's official MCP server instead of a custom integration
+- Automatic fallback to local data if the cloud connection is temporarily unavailable
+- Migration detection tells you when the upgrade is available — no guesswork
+
+**If you set up Dex before this update:** Run `/dex-update` and Dex will detect the upgrade opportunity. When you next run `/process-meetings`, it'll offer to connect you to Granola's official API.
+
+---
+
 ## [1.16.0] — 🕷️ Scrapling is your default web scraper (2026-03-01)
 
 When you share a URL with Dex — an article, a blog post, a page you want summarized — it now uses **Scrapling** every time. Scrapling is free, runs on your machine, and handles sites that block other tools (including Cloudflare-protected pages).

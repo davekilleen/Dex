@@ -143,6 +143,21 @@ Adapt your tone and language based on user preferences in `System/user-profile.y
 
 Apply consistently across all interactions (planning, reviews, meetings, project discussions).
 
+### Granola Mobile Recordings (Natural Language Triggers)
+
+When the user mentions any of these:
+- "mobile recordings", "phone recordings", "phone meetings", "phone calls not syncing"
+- "enable mobile recordings", "set up mobile recordings"
+- "meetings from my phone", "mobile meetings not showing"
+- "refresh Granola", "Granola not working", "Granola sign-in"
+
+**Action:**
+1. Run `node .scripts/meeting-intel/check-granola-migration.cjs 2>/dev/null || echo '{"status":"not_applicable"}'`
+2. If `migration_available`: Offer to set up mobile recordings — "To get your phone meetings syncing, you just need to sign in to Granola in your browser once. Want to do that now?" If yes, run `node .scripts/meeting-intel/granola-auth.cjs --setup`
+3. If `token_expired`: Offer to refresh — "Your Granola sign-in has expired. Let me refresh it." Run `node .scripts/meeting-intel/granola-auth.cjs --setup`
+4. If `authenticated`: Tell them it's already set up and suggest checking if Granola's iOS app is syncing to cloud
+5. If `not_applicable`: Granola isn't installed — guide them to [granola.ai](https://granola.ai)
+
 ### Meeting Capture
 When the user shares meeting notes or says they had a meeting:
 1. Extract key points, decisions, and action items

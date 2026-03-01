@@ -48,6 +48,7 @@ Run these silently without user-facing output:
 3. **Search index refresh**: Run `qmd update && qmd embed` to refresh vault search index with any overnight changes (meetings processed, files edited, etc.). If `qmd` is not installed, skip silently.
 4. **People index refresh**: Call `build_people_index` from Work MCP. This keeps the People Directory current so person lookups throughout the day are fast. Takes <2 seconds.
 5. **Innovation synthesis** (silent): Call `synthesize_changelog()` and `synthesize_learnings()` from Improvements MCP. These run in background and populate the backlog — results are surfaced in Step 1.5 below.
+6. **Granola migration check** (silent): Run `node .scripts/meeting-intel/check-granola-migration.cjs 2>/dev/null || echo '{"status":"not_applicable"}'`. If status is `migration_available`, store this fact and append a brief note at the END of the daily plan output (after all other sections): *"Granola now syncs phone recordings too. Run `/process-meetings` to set it up."* If the script does not exist or returns any other status, skip silently. Never interrupt the planning flow for this check.
 
 ---
 

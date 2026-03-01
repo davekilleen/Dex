@@ -70,6 +70,13 @@ if [ "$1" = "--status" ]; then
     exit 0
 fi
 
+# Re-authenticate with Granola
+if [ "$1" = "--auth" ]; then
+    echo "Re-authenticating with Granola MCP..."
+    "$NODE_PATH" "$SCRIPT_DIR/granola-auth.cjs" --setup
+    exit $?
+fi
+
 # Stop and uninstall
 if [ "$1" = "--stop" ] || [ "$1" = "--uninstall" ]; then
     echo "Stopping and uninstalling..."
@@ -112,6 +119,28 @@ if [ -f "$GRANOLA_CACHE" ]; then
     echo -e "${GREEN}✓${NC} Granola cache found"
 else
     echo -e "${YELLOW}!${NC} Granola cache not found. Install Granola and record a meeting first."
+fi
+
+# Authenticate with Granola MCP
+GRANOLA_TOKENS="$HOME/.config/dex/granola-tokens.json"
+if [ -f "$GRANOLA_TOKENS" ]; then
+    echo -e "${GREEN}✓${NC} Granola MCP authentication found"
+else
+    echo ""
+    echo "Authenticating with Granola..."
+    echo "This will open your browser to sign in to Granola."
+    echo ""
+    read -p "Press Enter to continue (or Ctrl+C to skip)..."
+
+    if [ -n "$NODE_PATH" ]; then
+        "$NODE_PATH" "$SCRIPT_DIR/granola-auth.cjs" --setup
+        if [ $? -eq 0 ] && [ -f "$GRANOLA_TOKENS" ]; then
+            echo -e "${GREEN}✓${NC} Granola MCP authenticated"
+        else
+            echo -e "${YELLOW}!${NC} Granola auth skipped. Background sync will use local cache only."
+            echo "    Run: node .scripts/meeting-intel/granola-auth.cjs --setup"
+        fi
+    fi
 fi
 
 # Create logs directory
@@ -162,12 +191,17 @@ echo -e "${GREEN}Installation complete!${NC}"
 echo ""
 echo "What happens now:"
 echo "  • Meetings sync automatically every 30 minutes"
+echo "  • Syncs via Granola's official MCP (includes mobile recordings)"
 echo "  • Also syncs when you log in or wake your laptop"
 echo "  • /process-meetings now reads synced files (no terminal output)"
 echo ""
 echo "Commands:"
 echo "  ./install-automation.sh --status    Check if running"
 echo "  ./install-automation.sh --stop      Disable background sync"
+echo "  ./install-automation.sh --auth      Re-authenticate with Granola"
+echo ""
+echo "  node .scripts/meeting-intel/granola-auth.cjs --status   Check Granola auth"
+echo "  node .scripts/meeting-intel/granola-auth.cjs --setup    Re-authenticate"
 echo ""
 echo "Logs:"
 echo "  $LOG_DIR/meeting-intel.stdout.log"
