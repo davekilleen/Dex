@@ -360,4 +360,111 @@ function parsePillarFromAnalysis(analysis, pillars) {
   return null;
 }
 
-module.exports = { readGranolaCache, getNewMeetings, buildMeetingPrompt, processMeetingWithLLM, parsePillarFromAnalysis };
+/**
+ * Slugify title for filename
+ */
+function slugify(text) {
+  return text
+    .toLowerCase()
+    .replace(/[^a-z0-9\s-]/g, '')
+    .replace(/\s+/g, '-')
+    .replace(/-+/g, '-')
+    .substring(0, 60);
+}
+
+/**
+ * Create meeting note file
+ */
+function createMeetingNote(meeting, analysis, profile, pillar) {
+  // Fix #1: Guard against malformed createdAt (no 'T' separator)
+  const dateParts = meeting.createdAt.split('T');
+  const date = dateParts[0];
+  const time = dateParts[1] ? dateParts[1].substring(0, 5) : '00:00';
+  const slug = slugify(meeting.title);
+
+  const meetingDir = path.join(MEETINGS_DIR, date);
+  fs.mkdirSync(meetingDir, { recursive: true });
+
+  // Fix #5: Handle slug collisions by appending time
+  let filename = path.join(meetingDir, `${slug}.md`);
+  if (fs.existsSync(filename)) {
+    const timeSuffix = time.replace(':', '');
+    filename = path.join(meetingDir, `${slug}-${timeSuffix}.md`);
+  }
+
+  // Build frontmatter
+  const frontmatter = {
+    date,
+    time,
+    type: 'meeting-note',
+    source: 'granola',
+    title: meeting.title,
+    participants: meeting.participants,
+    company: meeting.company || '',
+    pillar: pillar ? pillar.name : 'unassigned',
+    duration: meeting.duration,
+    granola_id: meeting.id,
+    processed: new Date().toISOString()
+  };
+
+  // Fix #4: Use yaml.dump instead of hand-rolled serialization
+  const frontmatterYaml = yaml.dump(frontmatter, { lineWidth: -1, quotingType: '"', forceQuotes: false });
+
+  // Fix #3: Guard against empty/undefined profile name
+  const profileName = (profile?.name || '').toLowerCase();
+
+  // Build wiki-links to person pages
+  const participantLinks = meeting.participants
+    .filter(p => profileName && !p.toLowerCase().includes(profileName))
+    .map(p => `[[05-Areas/People/External/${p.replace(/\s+/g, '_').replace(/[^\w\-]/g, '')}.md|${p}]]`)
+    .join(', ');
+
+  // Fix #6: Sanitize company name consistently with person links
+  const sanitizeForLink = (name) => name.replace(/\s+/g, '_').replace(/[^\w\-]/g, '');
+
+  // Build content
+  // Fix #2: Guard against null getActiveProvider()
+  const provider = (getActiveProvider() || 'unknown').toUpperCase();
+  const content = `---
+${frontmatterYaml.trimEnd()}
+---
+
+# ${meeting.title}
+
+**Date:** ${date} ${time}
+**Participants:** ${participantLinks || 'None'}
+${meeting.company ? `**Company:** [[05-Areas/Companies/${sanitizeForLink(meeting.company)}.md|${meeting.company}]]` : ''}
+
+---
+
+${analysis}
+
+---
+
+## Raw Content
+
+<details>
+<summary>Original Notes</summary>
+
+${meeting.notes}
+
+</details>
+
+${meeting.transcript ? `<details>
+<summary>Transcript (${meeting.transcript.split(/\s+/).length} words)</summary>
+
+${meeting.transcript.slice(0, 5000)}${meeting.transcript.length > 5000 ? '\n\n[...truncated]' : ''}
+
+</details>` : ''}
+
+---
+
+*Processed by Dex Meeting Intel (${provider})*
+`;
+
+  fs.writeFileSync(filename, content);
+
+  return filename;
+}
+
+module.exports = { readGranolaCache, getNewMeetings, buildMeetingPrompt, processMeetingWithLLM, parsePillarFromAnalysis, slugify, createMeetingNote };
