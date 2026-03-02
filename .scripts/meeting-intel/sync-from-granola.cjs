@@ -222,7 +222,142 @@ function getNewMeetings(cache, state, options = {}) {
   return meetings.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
 }
 
-// Placeholder for rest of the script
-console.log('Cache reader functions loaded');
+/**
+ * Build LLM prompt for meeting analysis
+ */
+function buildMeetingPrompt(meeting, profile, pillars) {
+  const safeMeeting = {
+    title: meeting?.title || 'Untitled Meeting',
+    createdAt: meeting?.createdAt || new Date().toISOString(),
+    participants: meeting?.participants || [],
+    company: meeting?.company || null,
+    duration: meeting?.duration || null,
+    notes: meeting?.notes || '',
+    transcript: meeting?.transcript || ''
+  };
+  const safeProfile = {
+    name: profile?.name || 'Unknown',
+    role: profile?.role || 'team member',
+    company_size: profile?.company_size || 'mid-size'
+  };
+  const safePillars = Array.isArray(pillars) ? pillars : [];
 
-module.exports = { readGranolaCache, getNewMeetings };
+  const pillarList = safePillars.map(p => `- ${p.name || 'Unnamed'}: ${p.description || ''} (Keywords: ${(p.keywords || []).join(', ')})`).join('\n');
+
+  return `You are analyzing a meeting for ${safeProfile.name}, who is a ${safeProfile.role} at a ${safeProfile.company_size} company.
+
+## Meeting Context
+
+**Title:** ${safeMeeting.title}
+**Date:** ${safeMeeting.createdAt}
+**Participants:** ${safeMeeting.participants.join(', ')}
+${safeMeeting.company ? `**Company:** ${safeMeeting.company}` : ''}
+${safeMeeting.duration ? `**Duration:** ${safeMeeting.duration} minutes` : ''}
+
+## User's Strategic Pillars
+
+${pillarList}
+
+## Raw Content
+
+**Notes:**
+${safeMeeting.notes}
+
+${safeMeeting.transcript ? `**Transcript:**\n${safeMeeting.transcript.slice(0, 50000)}` : ''}
+
+---
+
+## Your Task
+
+Analyze this meeting and provide structured output in **exactly** this format:
+
+## Summary
+[2-3 sentence overview of what this meeting was about and key outcomes]
+
+## Key Discussion Points
+### [Topic 1]
+[What was discussed, decisions, context]
+### [Topic 2]
+[Continue as needed]
+
+## Decisions Made
+- [Decision 1]
+- [Decision 2]
+[Or "None identified" if no clear decisions]
+
+## Action Items
+### For Me
+- [ ] [Specific action item] - by [timeframe or "no deadline"]
+### For Others
+- [ ] @[Person Name]: [What they need to do]
+[Or "None identified" if no action items]
+
+## Meeting Intelligence
+**Pain Points:**
+- [What challenges or frustrations were expressed]
+[Or "None identified"]
+
+**Requests/Needs:**
+- [What they asked for or need from us]
+[Or "None identified"]
+
+**Competitive Mentions:**
+- [Any competitors mentioned and context]
+[Or "None identified"]
+
+## Pillar Assignment
+[Choose the MOST relevant pillar from the list above]
+Rationale: [One sentence explaining why this pillar fits best]
+
+---
+
+**Important:**
+- Be specific in action items (who, what, when)
+- Extract pain points even if implicit
+- Note any budget, timeline, or decision-making authority mentions
+- Use EXACTLY the format above - this will be parsed programmatically`;
+}
+
+/**
+ * Process meeting with LLM
+ */
+async function processMeetingWithLLM(meeting, profile, pillars) {
+  const prompt = buildMeetingPrompt(meeting, profile, pillars);
+
+  try {
+    const analysis = await generateContent(prompt, { maxOutputTokens: 8192 });
+    return analysis;
+  } catch (error) {
+    console.error(`❌ LLM analysis failed for meeting "${meeting.title}":`, error.message);
+    throw error;
+  }
+}
+
+/**
+ * Parse pillar from analysis
+ */
+function parsePillarFromAnalysis(analysis, pillars) {
+  const match = analysis.match(/## Pillar Assignment\s*\n+\s*(.+)/);
+  if (!match) return null;
+
+  // Strip markdown formatting (bold, headers) from captured value
+  const assignedPillar = match[1].trim().replace(/\*\*/g, '').replace(/^#+\s*/, '');
+
+  // Find matching pillar
+  for (const pillar of pillars) {
+    if (pillar.name.toLowerCase() === assignedPillar.toLowerCase()) {
+      return pillar;
+    }
+  }
+
+  // Fallback: find by keywords
+  for (const pillar of pillars) {
+    if (pillar.keywords.some(kw => assignedPillar.toLowerCase().includes(kw.toLowerCase()))) {
+      return pillar;
+    }
+  }
+
+  return null;
+}
+
+module.exports = { readGranolaCache, getNewMeetings, buildMeetingPrompt, processMeetingWithLLM, parsePillarFromAnalysis };
