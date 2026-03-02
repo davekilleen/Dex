@@ -63,17 +63,17 @@ function getGranolaCachePath() {
   const platform = os.platform();
 
   if (platform === 'darwin') {
-    return path.join(homedir, 'Library/Application Support/Granola/cache-v3.json');
+    return path.join(homedir, 'Library/Application Support/Granola/cache-v4.json');
   } else if (platform === 'win32') {
     const roaming = process.env.APPDATA || path.join(homedir, 'AppData/Roaming');
     const local = process.env.LOCALAPPDATA || path.join(homedir, 'AppData/Local');
     for (const basePath of [roaming, local]) {
-      const cachePath = path.join(basePath, 'Granola/cache-v3.json');
+      const cachePath = path.join(basePath, 'Granola/cache-v4.json');
       if (fs.existsSync(cachePath)) return cachePath;
     }
-    return path.join(roaming, 'Granola/cache-v3.json');
+    return path.join(roaming, 'Granola/cache-v4.json');
   } else {
-    return path.join(homedir, '.config/Granola/cache-v3.json');
+    return path.join(homedir, '.config/Granola/cache-v4.json');
   }
 }
 
@@ -103,16 +103,24 @@ function readGranolaCache() {
     throw new Error(`Granola cache is corrupted (outer JSON parse failed): ${err.message}`);
   }
 
-  if (!cacheWrapper.cache || typeof cacheWrapper.cache !== 'string') {
-    throw new Error('Granola cache has unexpected structure: missing or non-string "cache" field');
+  if (!cacheWrapper.cache) {
+    throw new Error('Granola cache has unexpected structure: missing "cache" field');
   }
 
   let cacheData;
-  try {
-    // Granola cache is double-JSON-encoded
-    cacheData = JSON.parse(cacheWrapper.cache);
-  } catch (err) {
-    throw new Error(`Granola cache is corrupted (inner JSON parse failed): ${err.message}`);
+  // Handle both v3 (string) and v4 (object) formats
+  if (typeof cacheWrapper.cache === 'string') {
+    // v3: double-JSON-encoded
+    try {
+      cacheData = JSON.parse(cacheWrapper.cache);
+    } catch (err) {
+      throw new Error(`Granola cache is corrupted (inner JSON parse failed): ${err.message}`);
+    }
+  } else if (typeof cacheWrapper.cache === 'object') {
+    // v4: already an object
+    cacheData = cacheWrapper.cache;
+  } else {
+    throw new Error(`Granola cache has unexpected type for "cache" field: ${typeof cacheWrapper.cache}`);
   }
 
   return {
