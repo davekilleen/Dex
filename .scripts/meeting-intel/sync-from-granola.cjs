@@ -467,4 +467,81 @@ ${meeting.transcript.slice(0, 5000)}${meeting.transcript.length > 5000 ? '\n\n[.
   return filename;
 }
 
-module.exports = { readGranolaCache, getNewMeetings, buildMeetingPrompt, processMeetingWithLLM, parsePillarFromAnalysis, slugify, createMeetingNote };
+/**
+ * Ensure person page exists and add meeting reference
+ */
+function ensurePersonPage(name, meetingRef, profile) {
+  if (!name || !profile || !profile.name) return null;
+
+  // Skip if person is the owner
+  if (name.toLowerCase().includes(profile.name.toLowerCase())) {
+    return null;
+  }
+
+  const filename = name.replace(/\s+/g, '_').replace(/[^\w\-]/g, '');
+  if (!filename) return null;
+
+  try {
+    const targetDir = PEOPLE_DIR_EXTERNAL;
+    fs.mkdirSync(targetDir, { recursive: true });
+
+    const filePath = path.join(targetDir, `${filename}.md`);
+
+    // Create if doesn't exist
+    if (!fs.existsSync(filePath)) {
+      const content = `# ${name}
+
+## Role / Company
+
+Unknown
+
+## Meetings
+
+`;
+      fs.writeFileSync(filePath, content);
+    }
+
+    // Add meeting reference
+    const existing = fs.readFileSync(filePath, 'utf-8');
+    const entry = `- ${meetingRef}`;
+
+    if (existing.includes(entry)) {
+      return filePath; // Already added
+    }
+
+    const marker = '## Meetings';
+    if (existing.includes(marker)) {
+      const updated = existing.replace(marker, `${marker}\n\n${entry}`);
+      fs.writeFileSync(filePath, updated);
+    } else {
+      fs.appendFileSync(filePath, `\n\n## Meetings\n\n${entry}\n`);
+    }
+
+    return filePath;
+  } catch (error) {
+    console.error(`Failed to update person page for "${name}":`, error.message);
+    return null;
+  }
+}
+
+/**
+ * Update person pages for all meeting participants
+ */
+function updatePersonPages(meeting, meetingFilePath, profile) {
+  const date = meeting.createdAt.split('T')[0];
+  const relativePath = path.relative(VAULT_ROOT, meetingFilePath);
+  const meetingRef = `${date} — [[${relativePath}|${meeting.title}]]`;
+
+  const updatedPages = [];
+
+  for (const person of meeting.participants) {
+    const filePath = ensurePersonPage(person, meetingRef, profile);
+    if (filePath) {
+      updatedPages.push(filePath);
+    }
+  }
+
+  return updatedPages;
+}
+
+module.exports = { readGranolaCache, getNewMeetings, buildMeetingPrompt, processMeetingWithLLM, parsePillarFromAnalysis, slugify, createMeetingNote, ensurePersonPage, updatePersonPages };
