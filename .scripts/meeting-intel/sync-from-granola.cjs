@@ -544,4 +544,99 @@ function updatePersonPages(meeting, meetingFilePath, profile) {
   return updatedPages;
 }
 
+/**
+ * Extract action items from analysis
+ */
+function extractActionItems(analysis) {
+  const actionItemsSection = analysis.match(/## Action Items([\s\S]*?)(?=\n##|$)/);
+  if (!actionItemsSection) return [];
+
+  const groups = [];
+  const lines = actionItemsSection[1].split('\n');
+  let currentGroup = null;
+
+  for (const line of lines) {
+    if (line.startsWith('###')) {
+      if (currentGroup) groups.push(currentGroup);
+      currentGroup = { heading: line.replace(/^###\s*/, '').trim(), items: [] };
+    } else if (currentGroup && line.trim().match(/^-\s*\[?\s*\]?\s*/)) {
+      const item = line.replace(/^-\s*\[?\s*\]?\s*/, '').trim();
+      if (item) currentGroup.items.push(item);
+    }
+  }
+
+  if (currentGroup) groups.push(currentGroup);
+  return groups;
+}
+
+/**
+ * Get personal action items (For Me section)
+ */
+function getPersonalActionItems(groups) {
+  const forMeGroup = groups.find(g => g.heading.toLowerCase().includes('for me'));
+  return forMeGroup ? forMeGroup.items : [];
+}
+
+/**
+ * Generate next task ID for today
+ */
+function getNextTaskId() {
+  const today = new Date().toISOString().split('T')[0].replace(/-/g, '');
+  const tasksContent = fs.existsSync(TASKS_FILE) ? fs.readFileSync(TASKS_FILE, 'utf-8') : '';
+
+  // Find all task IDs for today
+  const pattern = new RegExp(`\\^task-${today}-(\\d+)`, 'g');
+  const matches = [...tasksContent.matchAll(pattern)];
+
+  let maxNum = 0;
+  for (const match of matches) {
+    const num = parseInt(match[1], 10);
+    if (num > maxNum) maxNum = num;
+  }
+
+  return `^task-${today}-${String(maxNum + 1).padStart(3, '0')}`;
+}
+
+/**
+ * Add tasks for meeting
+ */
+function addTasksForMeeting(meeting, analysis, pillar) {
+  if (!fs.existsSync(TASKS_FILE)) {
+    console.warn(`⚠️  Tasks file not found: ${TASKS_FILE}`);
+    return 0;
+  }
+
+  const tasksContent = fs.readFileSync(TASKS_FILE, 'utf-8');
+
+  // Check if meeting already has tasks
+  if (tasksContent.includes(`#granola:${meeting.id}`)) {
+    console.log(`ℹ️  Meeting "${meeting.title}" already has tasks, skipping`);
+    return 0;
+  }
+
+  const groups = extractActionItems(analysis);
+  const items = getPersonalActionItems(groups);
+
+  if (items.length === 0) {
+    return 0;
+  }
+
+  const pillarSlug = pillar ? pillar.id : 'unassigned';
+  const taskLines = items.map(item => {
+    const taskId = getNextTaskId();
+    return `- [ ] ${item} ${taskId} #pillar:${pillarSlug} #lno:N #granola:${meeting.id}`;
+  });
+
+  // Insert under ## P2 - Normal
+  const marker = '## P2 - Normal';
+  if (tasksContent.includes(marker)) {
+    const updated = tasksContent.replace(marker, `${marker}\n\n${taskLines.join('\n')}`);
+    fs.writeFileSync(TASKS_FILE, updated);
+    return items.length;
+  } else {
+    console.warn(`⚠️  Could not find "${marker}" section in Tasks.md`);
+    return 0;
+  }
+}
+
 module.exports = { readGranolaCache, getNewMeetings, buildMeetingPrompt, processMeetingWithLLM, parsePillarFromAnalysis, slugify, createMeetingNote, ensurePersonPage, updatePersonPages };
