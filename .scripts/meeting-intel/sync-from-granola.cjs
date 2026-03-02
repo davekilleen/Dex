@@ -48,6 +48,13 @@ const NOTION_MEETINGS_DB_ID = process.env.NOTION_MEETINGS_DB_ID;
 const NOTION_TRIAGE_DB_ID = process.env.NOTION_TRIAGE_DB_ID;
 const NOTION_SOURCE_OF_TRUTH = (process.env.NOTION_SOURCE_OF_TRUTH || '').toLowerCase() === 'true';
 
+// Notion client (conditional)
+let notion = null;
+if (NOTION_API_TOKEN) {
+  const { Client } = require('@notionhq/client');
+  notion = new Client({ auth: NOTION_API_TOKEN });
+}
+
 /**
  * Get Granola cache path for current OS
  */
@@ -636,6 +643,129 @@ function addTasksForMeeting(meeting, analysis, pillar) {
   } else {
     console.warn(`⚠️  Could not find "${marker}" section in Tasks.md`);
     return 0;
+  }
+}
+
+/**
+ * Load Notion mapping file
+ */
+function loadNotionMapping() {
+  if (!fs.existsSync(NOTION_MAP_FILE)) {
+    return {};
+  }
+  try {
+    return JSON.parse(fs.readFileSync(NOTION_MAP_FILE, 'utf-8'));
+  } catch (e) {
+    console.warn('⚠️  Failed to load Notion mapping, starting fresh');
+    return {};
+  }
+}
+
+/**
+ * Save Notion mapping file
+ */
+function saveNotionMapping(mapping) {
+  fs.writeFileSync(NOTION_MAP_FILE, JSON.stringify(mapping, null, 2));
+}
+
+/**
+ * Convert markdown to Notion blocks
+ */
+function buildNotionBlocksFromMarkdown(markdown) {
+  const lines = markdown.split('\n');
+  const blocks = [];
+
+  for (const line of lines) {
+    if (line.startsWith('###')) {
+      blocks.push({
+        object: 'block',
+        type: 'heading_3',
+        heading_3: { rich_text: [{ type: 'text', text: { content: line.replace(/^###\s*/, '') } }] }
+      });
+    } else if (line.startsWith('##')) {
+      blocks.push({
+        object: 'block',
+        type: 'heading_2',
+        heading_2: { rich_text: [{ type: 'text', text: { content: line.replace(/^##\s*/, '') } }] }
+      });
+    } else if (line.trim()) {
+      blocks.push({
+        object: 'block',
+        type: 'paragraph',
+        paragraph: { rich_text: [{ type: 'text', text: { content: line } }] }
+      });
+    }
+
+    if (blocks.length >= 100) break; // Notion limit
+  }
+
+  return blocks;
+}
+
+/**
+ * Sync meeting to Notion
+ */
+async function syncMeetingToNotion(meeting, analysis, pillar, meetingFilePath) {
+  if (!notion || !NOTION_MEETINGS_DB_ID) {
+    return null;
+  }
+
+  try {
+    const mapping = loadNotionMapping();
+    let pageId = mapping[meeting.id]?.page_id;
+
+    // Check if page exists
+    if (pageId) {
+      try {
+        await notion.pages.retrieve({ page_id: pageId });
+      } catch (e) {
+        pageId = null; // Page doesn't exist anymore
+      }
+    }
+
+    const properties = {
+      title: { title: [{ text: { content: meeting.title } }] },
+      Date: { date: { start: meeting.createdAt.split('T')[0] } },
+      Participants: { multi_select: meeting.participants.map(p => ({ name: p })) },
+      Source: { select: { name: 'Granola' } },
+      'Granola ID': { rich_text: [{ text: { content: meeting.id } }] }
+    };
+
+    if (pillar) {
+      properties.Pillar = { select: { name: pillar.name } };
+    }
+
+    if (meeting.company) {
+      properties.Company = { rich_text: [{ text: { content: meeting.company } }] };
+    }
+
+    if (pageId) {
+      // Update existing page
+      await notion.pages.update({ page_id: pageId, properties });
+      console.log(`✅ Updated Notion page for "${meeting.title}"`);
+    } else {
+      // Create new page
+      const blocks = buildNotionBlocksFromMarkdown(analysis);
+      const response = await notion.pages.create({
+        parent: { database_id: NOTION_MEETINGS_DB_ID },
+        properties,
+        children: blocks
+      });
+      pageId = response.id;
+      console.log(`✅ Created Notion page for "${meeting.title}"`);
+    }
+
+    // Save mapping
+    mapping[meeting.id] = {
+      page_id: pageId,
+      url: `https://notion.so/${pageId.replace(/-/g, '')}`
+    };
+    saveNotionMapping(mapping);
+
+    return mapping[meeting.id].url;
+  } catch (error) {
+    console.error(`❌ Notion sync failed for "${meeting.title}":`, error.message);
+    return null;
   }
 }
 
