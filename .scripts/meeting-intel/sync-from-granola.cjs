@@ -769,4 +769,145 @@ async function syncMeetingToNotion(meeting, analysis, pillar, meetingFilePath) {
   }
 }
 
-module.exports = { readGranolaCache, getNewMeetings, buildMeetingPrompt, processMeetingWithLLM, parsePillarFromAnalysis, slugify, createMeetingNote, ensurePersonPage, updatePersonPages };
+/**
+ * Load processing state
+ */
+function loadState() {
+  if (!fs.existsSync(STATE_FILE)) {
+    return { processedMeetings: {}, lastSync: null };
+  }
+  try {
+    return JSON.parse(fs.readFileSync(STATE_FILE, 'utf-8'));
+  } catch (e) {
+    console.warn('⚠️  Failed to load state file, starting fresh');
+    return { processedMeetings: {}, lastSync: null };
+  }
+}
+
+/**
+ * Save processing state
+ */
+function saveState(state) {
+  fs.writeFileSync(STATE_FILE, JSON.stringify(state, null, 2));
+}
+
+/**
+ * Main processing function
+ */
+async function main() {
+  console.log('🚀 Starting Granola sync...');
+  console.log(`📊 LLM Provider: ${getActiveProvider().toUpperCase()}`);
+
+  // Validate LLM configuration
+  if (!isConfigured()) {
+    console.error('❌ No LLM API key configured');
+    console.error('Set ANTHROPIC_API_KEY, OPENAI_API_KEY, or GEMINI_API_KEY in .env');
+    process.exit(1);
+  }
+
+  // Parse command-line options
+  const args = process.argv.slice(2);
+  const options = {
+    forceToday: args.includes('--force'),
+    reprocess: args.includes('--reprocess'),
+    dryRun: args.includes('--dry-run'),
+    lookbackDays: LOOKBACK_DAYS
+  };
+
+  const daysBackArg = args.find(a => a.startsWith('--days-back='));
+  if (daysBackArg) {
+    options.lookbackDays = parseInt(daysBackArg.split('=')[1], 10);
+  }
+
+  // Load configuration
+  const profile = yaml.load(fs.readFileSync(PROFILE_FILE, 'utf-8'));
+  const pillarsData = yaml.load(fs.readFileSync(PILLARS_FILE, 'utf-8'));
+  const pillars = pillarsData.pillars || [];
+
+  // Read cache and filter meetings
+  const cache = readGranolaCache();
+  const state = loadState();
+  const meetings = getNewMeetings(cache, state, options);
+
+  console.log(`📋 Found ${meetings.length} meeting(s) to process`);
+
+  if (options.dryRun) {
+    for (const meeting of meetings) {
+      console.log(`  - ${meeting.title} (${meeting.createdAt.split('T')[0]})`);
+    }
+    console.log('ℹ️  Dry run complete (no processing done)');
+    return;
+  }
+
+  if (meetings.length === 0) {
+    console.log('ℹ️  No new meetings to process');
+    return;
+  }
+
+  // Process each meeting
+  let successCount = 0;
+  let errorCount = 0;
+
+  for (const meeting of meetings) {
+    try {
+      console.log(`\n📝 Processing: ${meeting.title}`);
+
+      // Generate LLM analysis
+      const analysis = await processMeetingWithLLM(meeting, profile, pillars);
+
+      // Parse pillar
+      const pillar = parsePillarFromAnalysis(analysis, pillars);
+      if (!pillar) {
+        console.warn(`⚠️  Could not assign pillar for "${meeting.title}"`);
+      }
+
+      // Create meeting note
+      const noteFilePath = createMeetingNote(meeting, analysis, profile, pillar);
+      console.log(`  ✅ Created note: ${path.relative(VAULT_ROOT, noteFilePath)}`);
+
+      // Update person pages
+      const personPages = updatePersonPages(meeting, noteFilePath, profile);
+      if (personPages.length > 0) {
+        console.log(`  ✅ Updated ${personPages.length} person page(s)`);
+      }
+
+      // Extract tasks
+      const taskCount = addTasksForMeeting(meeting, analysis, pillar);
+      if (taskCount > 0) {
+        console.log(`  ✅ Added ${taskCount} task(s) to Tasks.md`);
+      }
+
+      // Sync to Notion
+      const notionUrl = await syncMeetingToNotion(meeting, analysis, pillar, noteFilePath);
+
+      // Update state
+      state.processedMeetings[meeting.id] = {
+        title: meeting.title,
+        processedAt: new Date().toISOString(),
+        filepath: noteFilePath,
+        notionUrl
+      };
+
+      successCount++;
+    } catch (error) {
+      console.error(`❌ Failed to process "${meeting.title}":`, error.message);
+      errorCount++;
+    }
+  }
+
+  // Save state
+  state.lastSync = new Date().toISOString();
+  saveState(state);
+
+  console.log(`\n✅ Sync complete: ${successCount} processed, ${errorCount} errors`);
+}
+
+module.exports = { main, readGranolaCache, getNewMeetings };
+
+// Run if called directly
+if (require.main === module) {
+  main().catch(error => {
+    console.error('❌ Fatal error:', error);
+    process.exit(1);
+  });
+}
