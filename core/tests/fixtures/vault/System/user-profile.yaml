@@ -1,0 +1,10 @@
+name: Test User
+role: Engineer
+company: TestCo
+company_size: small
+email_domain: testco.com
+communication:
+  formality: professional casual
+  directness: balanced
+analytics:
+  enabled: false

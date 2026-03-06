@@ -136,7 +136,35 @@ This restores all Dex files to the state before update.
 
 ### Step 5: Cleanup
 
-**A. Remove dependencies from newer version**
+**A. Remove files added by the newer version (manifest-based)**
+
+If `System/.installed-files.manifest` exists for the **current** (newer) version,
+use it to detect files that were added by the update and should be removed:
+
+```bash
+# Save manifests before reset
+cp System/.installed-files.manifest /tmp/dex-new-manifest.txt 2>/dev/null || true
+```
+
+After `git reset --hard` in Step 4, compare:
+
+```bash
+if [ -f /tmp/dex-new-manifest.txt ] && [ -f System/.installed-files.manifest ]; then
+  # Files in new manifest but NOT in restored manifest = added by update
+  comm -23 \
+    <(awk '{print $NF}' /tmp/dex-new-manifest.txt | sort) \
+    <(awk '{print $NF}' System/.installed-files.manifest | sort) \
+  | while read -r f; do
+      [ -f "$f" ] && rm "$f" && echo "  Removed: $f"
+    done
+  echo "✓ Cleaned up files added by the update"
+else
+  echo "ℹ️  No manifest found — skipping file cleanup (safe to ignore)"
+fi
+rm -f /tmp/dex-new-manifest.txt
+```
+
+**B. Reinstall dependencies for the restored version**
 
 ```
 📦 Cleaning up...
@@ -150,7 +178,13 @@ pip3 install -r core/mcp/requirements.txt
 
 This ensures dependencies match the older version.
 
-**B. Remove migration markers (if exist)**
+**C. Regenerate manifest for the restored version**
+
+```bash
+bash scripts/generate-manifest.sh
+```
+
+**D. Remove migration markers (if exist)**
 
 ```bash
 rm -f .migration-v*-complete
