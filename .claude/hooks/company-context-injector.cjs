@@ -48,6 +48,11 @@ const COMPANIES_DIR = _paths.COMPANIES_DIR || path.join(VAULT_ROOT, '05-Areas', 
 const ACCOUNTS_DIR = path.join(_paths.AREAS_DIR || path.join(VAULT_ROOT, '05-Areas'), 'Accounts');
 
 // Helper function to recursively scan a directory for company files
+/**
+ * Recursively scan a directory for .md company files and add them to the index.
+ * @param {string} dirPath - Directory to scan
+ * @param {Record<string, string>} index - Mutable index to populate (lowercase name → absolute path)
+ */
 function scanDir(dirPath, index) {
   try {
     const entries = fs.readdirSync(dirPath, { withFileTypes: true });
@@ -212,6 +217,11 @@ try {
 
 /**
  * Parse a company page and extract key info
+ */
+/**
+ * Parse a company page and extract key info for context injection.
+ * @param {string} filePath - Absolute path to the company's markdown file
+ * @returns {{ name: string, status: string|null, contacts: string[], lastMeeting: string|null, openTasks: string[], context: string|null } | null}
  */
 function parseCompanyPage(filePath) {
   try {

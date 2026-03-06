@@ -95,7 +95,11 @@ for plist in "$AGENTS_DIR"/com.dex.*.plist "$AGENTS_DIR"/com.claudesidian.*.plis
             # Try to detect what the old vault path was
             OLD_VAULT=$(echo "$STALE_PATH" | sed "s|/.scripts/.*||;s|/.env||")
             if [ -n "$OLD_VAULT" ] && [ "$OLD_VAULT" != "$STALE_PATH" ]; then
-                sed -i '' "s|$OLD_VAULT|$VAULT_PATH|g" "$plist"
+                if [[ "$OSTYPE" == "darwin"* ]]; then
+                    sed -i '' "s|$OLD_VAULT|$VAULT_PATH|g" "$plist"
+                else
+                    sed -i "s|$OLD_VAULT|$VAULT_PATH|g" "$plist"
+                fi
                 # Reload the agent
                 launchctl unload "$plist" 2>/dev/null || true
                 launchctl load "$plist" 2>/dev/null || true

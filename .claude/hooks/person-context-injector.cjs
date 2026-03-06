@@ -46,6 +46,11 @@ const VAULT_ROOT = _paths.VAULT_ROOT || process.env.CLAUDE_PROJECT_DIR || proces
 const PEOPLE_DIR = _paths.PEOPLE_DIR || path.join(VAULT_ROOT, '05-Areas', 'People');
 
 // Build an index of all person names to their files
+/**
+ * Build a lookup index mapping normalised person names to their file paths.
+ * Scans Internal/, External/, and CPO_Network/ subdirectories.
+ * @returns {Record<string, string>} Map of lowercase name variants to absolute file paths
+ */
 function buildPersonIndex() {
   const index = {};
   const subdirs = ['Internal', 'External', 'CPO_Network'];
@@ -186,6 +191,11 @@ try {
 
 /**
  * Parse a person page and extract key info
+ */
+/**
+ * Parse a person page and extract key info for context injection.
+ * @param {string} filePath - Absolute path to the person's markdown file
+ * @returns {{ name: string, role: string|null, company: string|null, lastInteraction: string|null, openItems: string[] } | null}
  */
 function parsePersonPage(filePath) {
   try {

@@ -128,6 +128,13 @@ else
     exit 1
 fi
 
+# Check npx (required for MCP servers)
+if ! command -v npx &> /dev/null; then
+    echo "⚠️  npx not found (usually bundled with Node.js)"
+    echo "   Some MCP servers may not work without npx."
+    echo "   Try reinstalling Node.js from https://nodejs.org/"
+fi
+
 # Install Node dependencies
 echo ""
 echo "📦 Installing dependencies..."

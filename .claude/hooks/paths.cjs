@@ -10,6 +10,10 @@ const path = require('path');
 
 const VAULT_ROOT = process.env.CLAUDE_PROJECT_DIR || process.env.VAULT_PATH || process.cwd();
 
+/**
+ * Load vault path constants from core/paths.json, falling back to hardcoded PARA defaults.
+ * @returns {Record<string, string>} Object mapping path constant names to absolute directory/file paths
+ */
 function loadPaths() {
   // Try generated JSON first
   const jsonPath = path.join(VAULT_ROOT, 'core', 'paths.json');

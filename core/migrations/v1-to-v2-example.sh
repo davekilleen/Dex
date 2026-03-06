@@ -109,7 +109,7 @@ echo "  Updating markdown file references..."
 MD_UPDATED=0
 find . -type f -name "*.md" -not -path "./.git/*" | while read -r file; do
     if grep -q "03-Tasks" "$file"; then
-        sed -i '' 's/03-Tasks/03-Backlog/g' "$file"
+        if [[ "$OSTYPE" == "darwin"* ]]; then sed -i '' 's/03-Tasks/03-Backlog/g' "$file"; else sed -i 's/03-Tasks/03-Backlog/g' "$file"; fi
         MD_UPDATED=$((MD_UPDATED + 1))
     fi
 done
@@ -123,7 +123,7 @@ echo "  Updating YAML file references..."
 YAML_UPDATED=0
 find . -type f -name "*.yaml" -not -path "./.git/*" | while read -r file; do
     if grep -q "03-Tasks" "$file"; then
-        sed -i '' 's/03-Tasks/03-Backlog/g' "$file"
+        if [[ "$OSTYPE" == "darwin"* ]]; then sed -i '' 's/03-Tasks/03-Backlog/g' "$file"; else sed -i 's/03-Tasks/03-Backlog/g' "$file"; fi
         YAML_UPDATED=$((YAML_UPDATED + 1))
     fi
 done
@@ -136,7 +136,7 @@ echo "  ${GREEN}✓${NC} Updated $YAML_UPDATED YAML files"
 echo "  Updating skill references..."
 find .claude/skills -type f -name "*.md" | while read -r file; do
     if grep -q "03-Tasks" "$file"; then
-        sed -i '' 's/03-Tasks/03-Backlog/g' "$file"
+        if [[ "$OSTYPE" == "darwin"* ]]; then sed -i '' 's/03-Tasks/03-Backlog/g' "$file"; else sed -i 's/03-Tasks/03-Backlog/g' "$file"; fi
     fi
 done
 echo "$(date '+%Y-%m-%d %H:%M:%S') | v1-to-v2 | Updated skill files" >> "$LOG_FILE"
