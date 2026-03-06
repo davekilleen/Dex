@@ -28,3 +28,26 @@ jobs:
         run: bash scripts/verify-distribution.sh
       - name: Path consistency check
         run: bash scripts/check-path-consistency.sh
+
+  build-release:
+    needs: quality
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: macos-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - run: npm ci
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+      - name: Build release branch
+        run: bash scripts/build-release.sh
+      - name: Push release branch
+        run: git push origin release --force

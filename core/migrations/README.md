@@ -53,7 +53,7 @@ git diff
 **Step 5: Update Dex**
 ```bash
 git fetch upstream
-git merge upstream/main
+git merge upstream/release
 ```
 
 **Step 6: Test**
@@ -125,7 +125,7 @@ echo "================================================"
 echo ""
 echo "Next steps:"
 echo "1. Review changes: git status && git diff"
-echo "2. Update Dex: git fetch upstream && git merge upstream/main"
+echo "2. Update Dex: git fetch upstream && git merge upstream/release"
 echo "3. Test workflows: /daily-plan, person pages, tasks"
 echo ""
 ```
