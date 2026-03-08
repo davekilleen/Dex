@@ -40,14 +40,14 @@ required_checks=(
 )
 
 for section in "${required_sections[@]}"; do
-  if ! printf "%s\n" "$PR_BODY" | grep -Fq "$section"; then
+  if ! printf "%s\n" "$PR_BODY" | grep -Fq -- "$section"; then
     echo "Missing required section in PR body: $section"
     exit 1
   fi
 done
 
 for check in "${required_checks[@]}"; do
-  if ! printf "%s\n" "$PR_BODY" | grep -Fq "$check"; then
+  if ! printf "%s\n" "$PR_BODY" | grep -Fq -- "$check"; then
     echo "Required checklist item not completed: $check"
     exit 1
   fi
