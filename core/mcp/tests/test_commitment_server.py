@@ -5,6 +5,7 @@ Run with: pytest core/mcp/tests/test_commitment_server.py -v
 """
 
 import asyncio
+import importlib.util
 import os
 import sys
 from datetime import datetime, timedelta
@@ -352,8 +353,8 @@ Sarah"""
 
 # Integration test (requires ScreenPipe running)
 @pytest.mark.skipif(
-    os.environ.get("SKIP_INTEGRATION") == "1",
-    reason="Integration tests disabled"
+    os.environ.get("SKIP_INTEGRATION") == "1" or importlib.util.find_spec("aiohttp") is None,
+    reason="Integration tests disabled or aiohttp not installed"
 )
 class TestIntegration:
     """Integration tests requiring ScreenPipe."""
