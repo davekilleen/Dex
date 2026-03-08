@@ -11,8 +11,10 @@ Dex uses repository-enforced quality gates so unsafe changes cannot merge.
 ## Required Merge Gates
 - PR governance checklist complete.
 - Diff-aware test gate passes or approved exception label exists.
+- Path-contract usage gate passes for changed files.
 - Documentation drift gate passes or approved exception label exists.
 - Lint, test suites, and coverage thresholds pass.
+- Hook harness tests pass.
 
 Current coverage thresholds (ratchet baseline):
 - Total coverage >= 15%
@@ -31,3 +33,6 @@ These journeys are release-critical and cannot regress:
 - `docs-exception-approved`: allows source-only PRs without docs updates.
 
 Every exception must include rationale in PR body and reviewer approval.
+
+## Regression Rule
+- Bug-fix PRs must include a regression test or explicit reviewer-approved exception.

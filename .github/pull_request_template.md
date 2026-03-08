@@ -17,6 +17,7 @@
 
 ## Quality Gates
 - [ ] I added/updated tests or documented why no tests are needed.
+- [ ] I added a regression test for bug fixes, or this PR is not a bug fix.
 - [ ] I validated failure modes / edge cases.
 - [ ] I updated docs or confirmed no docs impact.
 - [ ] CI checks for lint + tests + coverage are expected to pass.

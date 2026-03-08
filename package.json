@@ -6,7 +6,8 @@
   "scripts": {
     "meeting-sync": "node .scripts/meeting-intel/sync-from-granola.cjs",
     "meeting-sync:dry-run": "node .scripts/meeting-intel/sync-from-granola.cjs --dry-run",
-    "meeting-sync:force": "node .scripts/meeting-intel/sync-from-granola.cjs --force"
+    "meeting-sync:force": "node .scripts/meeting-intel/sync-from-granola.cjs --force",
+    "test:hooks": "node --test .claude/hooks/tests/*.test.cjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.32.1",

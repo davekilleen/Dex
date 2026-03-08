@@ -23,13 +23,18 @@ jobs:
           pip install mcp pyyaml python-dateutil requests
       - run: npm ci
       - name: Ensure policy scripts are executable
-        run: chmod +x scripts/check-*.sh scripts/check-coverage-threshold.py
+        run: chmod +x scripts/check-*.sh scripts/check-coverage-threshold.py scripts/check-path-contract-usage.sh
+      - name: Hook harness tests
+        run: npm run test:hooks
       - name: PR governance check
         if: github.event_name == 'pull_request'
         run: bash scripts/check-pr-governance.sh
       - name: Diff-aware test gate
         if: github.event_name == 'pull_request'
         run: bash scripts/check-test-delta.sh
+      - name: Path-contract usage gate
+        if: github.event_name == 'pull_request'
+        run: bash scripts/check-path-contract-usage.sh
       - name: Documentation drift gate
         if: github.event_name == 'pull_request'
         run: bash scripts/check-doc-drift.sh

@@ -1,31 +1,29 @@
-"""MCP server smoke tests — verify each server imports and has a server object."""
+"""MCP server smoke tests — verify each server imports and exposes a server object."""
 
 import importlib
+from pathlib import Path
 
 import pytest
 
-# (module_path, attribute_name)
-SERVERS = [
-    ("core.mcp.work_server", "app"),
-    ("core.mcp.career_server", "app"),
-    ("core.mcp.resume_server", "app"),
-    ("core.mcp.calendar_server", "app"),
-    ("core.mcp.commitment_server", "server"),
-    ("core.mcp.onboarding_server", "app"),
-    ("core.mcp.demo_mode_server", "server"),
-    ("core.mcp.session_memory_server", "app"),
-    ("core.mcp.update_checker", "mcp"),
-]
+
+def _discover_server_modules() -> list[str]:
+    mcp_dir = Path(__file__).resolve().parents[1] / "mcp"
+    modules = [f"core.mcp.{path.stem}" for path in mcp_dir.glob("*_server.py")]
+    modules.append("core.mcp.update_checker")
+    return sorted(modules)
+
+
+SERVERS = _discover_server_modules()
 
 
 @pytest.mark.parametrize(
-    "module_path,attr_name",
+    "module_path",
     SERVERS,
-    ids=[m.rsplit(".", 1)[-1] for m, _ in SERVERS],
+    ids=[m.rsplit(".", 1)[-1] for m in SERVERS],
 )
-def test_server_imports_and_has_object(module_path: str, attr_name: str):
+def test_server_imports_and_has_object(module_path: str):
     """Each MCP server module should import without error and expose its server object."""
     mod = importlib.import_module(module_path)
-    assert hasattr(mod, attr_name), (
-        f"{module_path} imported OK but has no '{attr_name}' attribute"
+    assert any(hasattr(mod, attr) for attr in ("app", "server", "mcp")), (
+        f"{module_path} imported OK but has no server object (expected one of app/server/mcp)"
     )

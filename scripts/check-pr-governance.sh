@@ -35,6 +35,7 @@ required_checks=(
   "- [x] I self-reviewed for defects and edge cases."
   "- [x] I addressed review findings and re-ran checks."
   "- [x] I added/updated tests or documented why no tests are needed."
+  "- [x] I added a regression test for bug fixes, or this PR is not a bug fix."
   "- [x] I validated failure modes / edge cases."
   "- [x] I updated docs or confirmed no docs impact."
 )

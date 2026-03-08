@@ -7,7 +7,9 @@ Configure GitHub branch protection on `main` to require:
 `quality` includes:
 - PR governance enforcement
 - diff-aware test gate
+- path-contract usage gate (changed files)
 - docs drift gate
+- hook harness tests
 - linting
 - `core/tests` + `core/mcp/tests`
 - coverage thresholds

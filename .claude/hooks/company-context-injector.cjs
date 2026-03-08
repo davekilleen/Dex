@@ -18,26 +18,34 @@
 const fs = require('fs');
 const path = require('path');
 
+const DEBUG_SKIP = process.env.DEX_HOOK_DEBUG === '1';
+function skip(reason) {
+  if (DEBUG_SKIP) {
+    console.error(`[dex-hook-skip] ${reason}`);
+  }
+  process.exit(0);
+}
+
 // Read hook input from stdin
 let input;
 try {
   input = JSON.parse(fs.readFileSync(0, 'utf-8'));
 } catch (e) {
-  process.exit(0); // Invalid input, skip silently
+  skip('invalid-json-input');
 }
 
 const filePath = input.tool_input?.path || input.tool_input?.file_path || '';
 
 // Skip if no file path or if reading a company page itself (avoid recursion)
 if (!filePath || filePath.includes('/05-Areas/Companies/') || filePath.includes('/05-Areas/Accounts/')) {
-  process.exit(0);
+  skip('missing-file-path-or-recursive-company-file');
 }
 
 // Skip binary/non-text files (images, PDFs, archives, etc.)
 const ext = path.extname(filePath).toLowerCase();
 const skipExts = ['.png', '.jpg', '.jpeg', '.gif', '.bmp', '.webp', '.ico', '.svg', '.pdf', '.zip', '.tar', '.gz', '.mp3', '.mp4', '.mov', '.wav', '.pptx', '.xlsx', '.docx'];
 if (skipExts.includes(ext)) {
-  process.exit(0);
+  skip(`unsupported-extension:${ext}`);
 }
 
 const { loadPaths } = require('./paths.cjs');
@@ -101,7 +109,7 @@ try {
   const fullFilePath = filePath.startsWith('/') ? filePath : path.join(VAULT_ROOT, filePath);
   
   if (!fs.existsSync(fullFilePath)) {
-    process.exit(0);
+    skip(`target-file-not-found:${fullFilePath}`);
   }
   
   // Read the file to find company references
@@ -112,7 +120,7 @@ try {
   const companyNames = Object.keys(companyIndex);
   
   if (companyNames.length === 0) {
-    process.exit(0);
+    skip('no-company-pages-indexed');
   }
   
   // Find referenced companies in the content
@@ -151,7 +159,7 @@ try {
   
   // Only proceed if we found companies
   if (foundCompanies.size === 0) {
-    process.exit(0);
+    skip('no-company-references-found');
   }
   
   // Look up each company and build context
@@ -166,7 +174,7 @@ try {
   
   // Only inject if we found relevant company pages
   if (companyContexts.length === 0) {
-    process.exit(0);
+    skip('company-context-parse-empty');
   }
   
   // Build context (silent - no headers, just data)
@@ -211,8 +219,7 @@ try {
   console.log(JSON.stringify(output));
   
 } catch (e) {
-  // Silently fail - don't block the read operation
-  process.exit(0);
+  skip(`unexpected-error:${e.message}`);
 }
 
 /**

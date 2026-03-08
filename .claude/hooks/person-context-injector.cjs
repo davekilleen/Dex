@@ -18,26 +18,34 @@
 const fs = require('fs');
 const path = require('path');
 
+const DEBUG_SKIP = process.env.DEX_HOOK_DEBUG === '1';
+function skip(reason) {
+  if (DEBUG_SKIP) {
+    console.error(`[dex-hook-skip] ${reason}`);
+  }
+  process.exit(0);
+}
+
 // Read hook input from stdin
 let input;
 try {
   input = JSON.parse(fs.readFileSync(0, 'utf-8'));
 } catch (e) {
-  process.exit(0); // Invalid input, skip silently
+  skip('invalid-json-input');
 }
 
 const filePath = input.tool_input?.path || input.tool_input?.file_path || '';
 
 // Skip if no file path or if reading a Person page itself (avoid recursion)
 if (!filePath || filePath.includes('/People/')) {
-  process.exit(0);
+  skip('missing-file-path-or-recursive-person-file');
 }
 
 // Skip binary/non-text files (images, PDFs, archives, etc.)
 const ext = path.extname(filePath).toLowerCase();
 const skipExts = ['.png', '.jpg', '.jpeg', '.gif', '.bmp', '.webp', '.ico', '.svg', '.pdf', '.zip', '.tar', '.gz', '.mp3', '.mp4', '.mov', '.wav', '.pptx', '.xlsx', '.docx'];
 if (skipExts.includes(ext)) {
-  process.exit(0);
+  skip(`unsupported-extension:${ext}`);
 }
 
 const { loadPaths } = require('./paths.cjs');
@@ -86,7 +94,7 @@ try {
   const fullFilePath = filePath.startsWith('/') ? filePath : path.join(VAULT_ROOT, filePath);
   
   if (!fs.existsSync(fullFilePath)) {
-    process.exit(0);
+    skip(`target-file-not-found:${fullFilePath}`);
   }
   
   // Read the file to find person references
@@ -97,7 +105,7 @@ try {
   const personNames = Object.keys(personIndex);
   
   if (personNames.length === 0) {
-    process.exit(0);
+    skip('no-person-pages-indexed');
   }
   
   // Find referenced people in the content
@@ -135,7 +143,7 @@ try {
   
   // Only proceed if we found people
   if (foundPeople.size === 0) {
-    process.exit(0);
+    skip('no-person-references-found');
   }
   
   // Look up each person and build context
@@ -150,7 +158,7 @@ try {
   
   // Only inject if we found relevant person pages
   if (personContexts.length === 0) {
-    process.exit(0);
+    skip('person-context-parse-empty');
   }
   
   // Build context (silent - no headers, just data)
@@ -185,8 +193,7 @@ try {
   console.log(JSON.stringify(output));
   
 } catch (e) {
-  // Silently fail - don't block the read operation
-  process.exit(0);
+  skip(`unexpected-error:${e.message}`);
 }
 
 /**
