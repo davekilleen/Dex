@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import hashlib
 from datetime import datetime, timedelta
-from typing import Iterable
 
 from .db import transaction, utc_now
 

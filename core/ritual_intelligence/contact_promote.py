@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import os
-from pathlib import Path
 
 from core.paths import PEOPLE_DIR
 from core.utils.page_generators import generate_person_page

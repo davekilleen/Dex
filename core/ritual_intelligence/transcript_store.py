@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-
 from .meeting_intel_projection import ensure_meeting_intel_dirs
 
 

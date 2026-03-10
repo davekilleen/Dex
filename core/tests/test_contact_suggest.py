@@ -7,9 +7,9 @@ from pathlib import Path
 
 from core.paths import PEOPLE_DIR, RITUAL_INTELLIGENCE_DB_FILE, TRACKED_MEETINGS_DIR
 from core.ritual_intelligence.actions import confirm_ritual
+from core.ritual_intelligence.models import NormalizedAttendee, NormalizedCalendarEvent
 from core.ritual_intelligence.ritual_match import list_ritual_suggestions
 from core.ritual_intelligence.service import RitualIntelligenceService
-from core.ritual_intelligence.models import NormalizedAttendee, NormalizedCalendarEvent
 
 
 def _cleanup() -> None:
