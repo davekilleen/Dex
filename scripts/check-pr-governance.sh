@@ -25,9 +25,13 @@ fi
 required_sections=(
   "## Linked Issue"
   "## Test Plan"
-  "## Ralph Wiggum Loop"
   "## Risk & Rollback"
   "## Docs Impact"
+)
+
+# Optional: present in /ao-generated PRs only
+optional_sections=(
+  "## Ralph Wiggum Loop"
 )
 
 required_checks=(
