@@ -42,6 +42,11 @@ MEETINGS_DIR = INBOX_DIR / 'Meetings'
 IDEAS_DIR = INBOX_DIR / 'Ideas'
 DAILY_PLANS_DIR = INBOX_DIR / 'Daily_Plans'
 
+# --- Derived: Meetings ---
+TRACKED_MEETINGS_DIR = AREAS_DIR / 'Meetings'
+MEETING_DAILY_LOGS_DIR = TRACKED_MEETINGS_DIR / 'Daily_Log'
+LEGACY_MEETINGS_DIR = MEETINGS_DIR
+
 # --- Derived: Tasks & Goals ---
 TASKS_FILE = TASKS_DIR / 'Tasks.md'
 QUARTER_GOALS_FILE = QUARTER_GOALS_DIR / 'Quarter_Goals.md'
@@ -63,6 +68,7 @@ LEARNINGS_DIR = RESOURCES_DIR / 'Learnings'
 
 # --- System ---
 SYSTEM_DIR = VAULT_ROOT / 'System'
+DEX_RUNTIME_DIR = SYSTEM_DIR / '.dex'
 PILLARS_FILE = SYSTEM_DIR / 'pillars.yaml'
 USER_PROFILE_FILE = SYSTEM_DIR / 'user-profile.yaml'
 SKILL_RATINGS_FILE = SYSTEM_DIR / 'Skill_Ratings' / 'ratings.jsonl'
@@ -78,6 +84,7 @@ MCP_CONFIG_EXAMPLE = SYSTEM_DIR / '.mcp.json.example'
 MCP_CONFIG_TARGET = SYSTEM_DIR / '.mcp.json'
 COMMITMENT_QUEUE_FILE = SYSTEM_DIR / 'commitment_queue.json'
 OBSIDIAN_SYNC_LOG = SYSTEM_DIR / 'obsidian-sync.log'
+RITUAL_INTELLIGENCE_DB_FILE = DEX_RUNTIME_DIR / 'ritual-intelligence.db'
 
 
 def export_json(output_path: str | Path | None = None) -> dict:

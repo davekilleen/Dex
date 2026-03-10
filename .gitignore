@@ -173,6 +173,10 @@ demo-vault/
 !core/tests/fixtures/
 !core/tests/fixtures/vault/
 !core/tests/fixtures/vault/**
+!packages/dex-contracts/dist/
+!packages/dex-contracts/dist/*
+core/tests/fixtures/vault/System/.dex/*
+!core/tests/fixtures/vault/System/.dex/.gitkeep
 
 # Personal experiments
 playground/

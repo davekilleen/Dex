@@ -66,6 +66,15 @@ class TestDerivedPaths:
     def test_meetings_dir_parent_is_inbox(self):
         assert paths.MEETINGS_DIR.parent == paths.INBOX_DIR
 
+    def test_tracked_meetings_dir_parent_is_areas(self):
+        assert paths.TRACKED_MEETINGS_DIR.parent == paths.AREAS_DIR
+
+    def test_meeting_daily_logs_dir_parent_is_tracked_meetings(self):
+        assert paths.MEETING_DAILY_LOGS_DIR.parent == paths.TRACKED_MEETINGS_DIR
+
+    def test_legacy_meetings_dir_matches_meetings_dir(self):
+        assert paths.LEGACY_MEETINGS_DIR == paths.MEETINGS_DIR
+
     def test_ideas_dir_parent_is_inbox(self):
         assert paths.IDEAS_DIR.parent == paths.INBOX_DIR
 
@@ -80,6 +89,12 @@ class TestDerivedPaths:
 
     def test_system_dir_parent_is_vault_root(self):
         assert paths.SYSTEM_DIR.parent == paths.VAULT_ROOT
+
+    def test_dex_runtime_dir_parent_is_system_dir(self):
+        assert paths.DEX_RUNTIME_DIR.parent == paths.SYSTEM_DIR
+
+    def test_ritual_intelligence_db_parent_is_runtime_dir(self):
+        assert paths.RITUAL_INTELLIGENCE_DB_FILE.parent == paths.DEX_RUNTIME_DIR
 
 
 # ---------------------------------------------------------------------------

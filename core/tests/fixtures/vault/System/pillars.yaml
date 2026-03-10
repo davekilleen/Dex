@@ -1,5 +1,1 @@
-pillars:
-  - name: Engineering
-    keywords: [code, deploy, architecture, testing, CI]
-  - name: Documentation
-    keywords: [docs, readme, guide, reference]
+pillars: []
