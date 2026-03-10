@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import json
+import sys
 from types import SimpleNamespace
+
+sys.modules.setdefault("EventKit", SimpleNamespace())
 
 from core.mcp.scripts import calendar_eventkit
 
