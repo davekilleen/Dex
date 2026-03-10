@@ -20,6 +20,14 @@ from datetime import datetime, timedelta, timezone
 
 import EventKit
 
+from core.paths import RESOURCES_DIR, VAULT_ROOT
+
+CALENDAR_SETUP_DOC = RESOURCES_DIR / "Dex_System" / "Calendar_Setup.md"
+CALENDAR_ACCESS_DENIED = (
+    "Calendar access denied. Enable in System Settings → Privacy & Security → Calendars. "
+    f"See {CALENDAR_SETUP_DOC.relative_to(VAULT_ROOT)} for full setup."
+)
+
 
 def ensure_calendar_access(store):
     """Request calendar access if needed; wait for user to grant. Required to see all calendars (e.g. Google)."""
@@ -47,7 +55,7 @@ def list_calendars():
     """List all available calendars."""
     store = EventKit.EKEventStore.alloc().init()
     if not ensure_calendar_access(store):
-        print(json.dumps({"error": "Calendar access denied. Enable in System Settings → Privacy & Security → Calendars. See 06-Resources/Dex_System/Calendar_Setup.md for full setup."}))
+        print(json.dumps({"error": CALENDAR_ACCESS_DENIED}))
         sys.exit(1)
     calendars = store.calendarsForEntityType_(EventKit.EKEntityTypeEvent)
     
@@ -184,7 +192,7 @@ def get_events_data(calendar_name: str, start_offset_days: int, end_offset_days:
     """
     store = EventKit.EKEventStore.alloc().init()
     if not ensure_calendar_access(store):
-        print(json.dumps({"error": "Calendar access denied. Enable in System Settings → Privacy & Security → Calendars. See 06-Resources/Dex_System/Calendar_Setup.md for full setup."}))
+        print(json.dumps({"error": CALENDAR_ACCESS_DENIED}))
         sys.exit(1)
     
     # Resolve calendar(s)
@@ -245,7 +253,7 @@ def search_events(calendar_name: str, query: str, days_back: int, days_forward: 
     """
     store = EventKit.EKEventStore.alloc().init()
     if not ensure_calendar_access(store):
-        print(json.dumps({"error": "Calendar access denied. Enable in System Settings → Privacy & Security → Calendars. See 06-Resources/Dex_System/Calendar_Setup.md for full setup."}))
+        print(json.dumps({"error": CALENDAR_ACCESS_DENIED}))
         sys.exit(1)
     
     # Find the calendar
@@ -289,7 +297,7 @@ def get_next_event(calendar_name: str):
     """
     store = EventKit.EKEventStore.alloc().init()
     if not ensure_calendar_access(store):
-        print(json.dumps({"error": "Calendar access denied. Enable in System Settings → Privacy & Security → Calendars. See 06-Resources/Dex_System/Calendar_Setup.md for full setup."}))
+        print(json.dumps({"error": CALENDAR_ACCESS_DENIED}))
         sys.exit(1)
     
     # Find the calendar

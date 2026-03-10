@@ -8,7 +8,7 @@ from typing import Iterable
 
 import yaml
 
-from core.paths import USER_PROFILE_FILE
+from core.paths import LEGACY_MEETINGS_DIR, TRACKED_MEETINGS_DIR, USER_PROFILE_FILE
 
 from .models import NormalizedAttendee, NormalizedCalendarEvent
 
@@ -113,9 +113,9 @@ def load_calendar_events(
     return normalize_events(raw_events)
 
 
-def candidate_manual_note_roots(vault_root: Path) -> list[Path]:
+def candidate_manual_note_roots(_vault_root: Path) -> list[Path]:
     """Read-only note locations that may already contain useful meeting history."""
     return [
-        vault_root / "05-Areas" / "Meetings",
-        vault_root / "00-Inbox" / "Meetings",
+        TRACKED_MEETINGS_DIR,
+        LEGACY_MEETINGS_DIR,
     ]
