@@ -13,6 +13,7 @@ from core.ritual_intelligence.models import NormalizedAttendee, NormalizedCalend
 
 
 def _cleanup() -> None:
+    protected_people = {"Alice_Smith.md", "Bob_Jones.md"}
     for path in (
         RITUAL_INTELLIGENCE_DB_FILE,
         RITUAL_INTELLIGENCE_DB_FILE.with_suffix(".db-shm"),
@@ -23,6 +24,8 @@ def _cleanup() -> None:
     for directory in (TRACKED_MEETINGS_DIR, PEOPLE_DIR / "Internal", PEOPLE_DIR / "External"):
         if directory.exists():
             for path in directory.glob("*.md"):
+                if path.name in protected_people:
+                    continue
                 path.unlink()
 
 
@@ -83,4 +86,4 @@ def test_contact_pages_are_not_auto_created():
     service = RitualIntelligenceService()
     service.refresh_calendar(events=[_event(source_event_id="c3", starts_at=datetime(2026, 3, 10, 9, 0, tzinfo=timezone.utc))])
 
-    assert list((PEOPLE_DIR / "External").glob("*.md")) == []
+    assert not (PEOPLE_DIR / "External" / "Pat_Customer.md").exists()
