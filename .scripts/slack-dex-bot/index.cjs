@@ -28,6 +28,11 @@ const { generateContent, isConfigured } = require('../lib/llm-client.cjs');
 // Paths
 const PILLARS_FILE = path.join(VAULT_ROOT, 'System', 'pillars.yaml');
 const PROFILE_FILE = path.join(VAULT_ROOT, 'System', 'user-profile.yaml');
+const STATE_DIR = path.join(__dirname, 'state');
+
+// Reply classification
+const OK_SYNONYMS = new Set(['ok', 'ok!', 'ok.', 'yes', 'sure', 'sounds good', 'confirmed', 'lgtm']);
+const SKIP_SYNONYMS = new Set(['skip', 'skip it', 'nah', 'pass', 'no', 'not today']);
 
 // Env vars
 const SLACK_BOT_TOKEN = process.env.SLACK_BOT_TOKEN;
@@ -55,6 +60,85 @@ function log(msg) {
 function logError(msg) {
   const ts = new Date().toISOString();
   console.error(`[${ts}] ERROR: ${msg}`);
+}
+
+function todayStr() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+// ============================================================
+// State file helpers
+// ============================================================
+
+function readPendingCheckin() {
+  try {
+    const data = JSON.parse(fs.readFileSync(path.join(STATE_DIR, 'pending-checkin.json'), 'utf-8'));
+    if (data.date !== todayStr()) return null;
+    return data;
+  } catch { return null; }
+}
+
+function writePendingCheckin(ts, topThree) {
+  fs.writeFileSync(path.join(STATE_DIR, 'pending-checkin.json'), JSON.stringify({
+    date: todayStr(), ts, topThree
+  }, null, 2));
+}
+
+function clearPendingCheckin() {
+  try { fs.unlinkSync(path.join(STATE_DIR, 'pending-checkin.json')); } catch {}
+}
+
+function commitPriorities(items, source) {
+  fs.writeFileSync(path.join(STATE_DIR, 'confirmed-priorities.json'), JSON.stringify({
+    date: todayStr(), items, source
+  }, null, 2));
+  log(`Confirmed priorities written (${items.length} items, source: ${source})`);
+}
+
+function hasEodLock() {
+  const lockFile = path.join(STATE_DIR, `last-eod-${todayStr()}`);
+  return fs.existsSync(lockFile);
+}
+
+function writeEodLock() {
+  fs.writeFileSync(path.join(STATE_DIR, `last-eod-${todayStr()}`), todayStr());
+}
+
+function classifyReply(text) {
+  if (OK_SYNONYMS.has(text)) return 'confirm';
+  if (SKIP_SYNONYMS.has(text)) return 'skip';
+  if (/^\d+[\.\)]\s/.test(text)) return 'custom';
+  return 'unknown';
+}
+
+// ============================================================
+// Crash counter (protects against KeepAlive tight loops)
+// ============================================================
+
+function checkCrashCounter() {
+  const counterFile = path.join(STATE_DIR, 'crash-counter.json');
+  try {
+    const data = JSON.parse(fs.readFileSync(counterFile, 'utf-8'));
+    const elapsed = Date.now() - (data.lastCrash || 0);
+    if (elapsed < 60000) {
+      data.count = (data.count || 0) + 1;
+      if (data.count > 5) {
+        logError('Crash loop detected (>5 rapid restarts). Self-disabling. Fix credentials and restart manually.');
+        fs.writeFileSync(counterFile, JSON.stringify(data, null, 2));
+        process.exit(0);
+      }
+    } else {
+      data.count = 1;
+    }
+    data.lastCrash = Date.now();
+    fs.writeFileSync(counterFile, JSON.stringify(data, null, 2));
+  } catch {
+    fs.writeFileSync(counterFile, JSON.stringify({ count: 1, lastCrash: Date.now() }, null, 2));
+  }
+}
+
+function resetCrashCounter() {
+  try { fs.unlinkSync(path.join(STATE_DIR, 'crash-counter.json')); } catch {}
 }
 
 /**
@@ -138,7 +222,6 @@ function extractSelect(props, name) {
   return null;
 }
 
-
 function extractText(props, name) {
   const prop = props[name];
   if (prop && prop.type === 'rich_text' && prop.rich_text) {
@@ -196,15 +279,24 @@ Where "index" is the 1-based item number from the list above.`;
 
   try {
     const raw = await generateContent(prompt, { maxOutputTokens: 512 });
-    const jsonMatch = raw.match(/\[[\s\S]*\]/);
+    const jsonMatch = raw.match(/\[[\s\S]*?\]/);
     if (!jsonMatch) throw new Error('No JSON array in LLM response');
     const selections = JSON.parse(jsonMatch[0]);
 
-    return selections.slice(0, 3).map(sel => {
-      const item = items[sel.index - 1];
-      if (!item) return null;
-      return { title: item.title, reason: sel.reason, url: item.url };
+    const validated = selections.slice(0, 3).map(sel => {
+      const idx = Number(sel.index);
+      if (!Number.isInteger(idx) || idx < 1 || idx > items.length) return null;
+      return { title: items[idx - 1].title, reason: sel.reason || '', url: items[idx - 1].url };
     }).filter(Boolean);
+
+    while (validated.length < 3 && validated.length < items.length) {
+      const used = new Set(validated.map(v => v.title));
+      const next = items.find(it => !used.has(it.title));
+      if (!next) break;
+      validated.push({ title: next.title, reason: `${next.priority || 'Triage'} priority`, url: next.url });
+    }
+
+    return validated;
   } catch (e) {
     log(`LLM selection failed: ${e.message}. Falling back to priority sort.`);
     return items.slice(0, 3).map(item => ({
@@ -276,6 +368,20 @@ function buildEodBlocks(topThree, allItems) {
   return blocks;
 }
 
+function buildDegradedBlocks(errorType) {
+  return [
+    { type: 'header', text: { type: 'plain_text', text: '\uD83C\uDFAF End of Day Check-in', emoji: true } },
+    { type: 'section', text: { type: 'mrkdwn', text:
+      `Couldn\u2019t reach your triage board (${errorType}).\n\n` +
+      'Take 2 minutes \u2014 pick your top 3 for tomorrow and reply with a numbered list:'
+    } },
+    { type: 'section', text: { type: 'mrkdwn', text:
+      '```1. First priority\n2. Second priority\n3. Third priority```'
+    } },
+    { type: 'context', elements: [{ type: 'mrkdwn', text: 'Or reply `Skip` to skip today.' }] }
+  ];
+}
+
 /**
  * Send EOD check-in message to user's DM
  */
@@ -285,13 +391,40 @@ async function sendEodCheckin() {
 
   log('Starting EOD check-in...');
 
-  // 1. Load context
+  if (hasEodLock()) {
+    log('EOD already sent today (idempotency lock). Skipping.');
+    return;
+  }
+
   const pillars = loadPillars();
   const profile = loadProfile();
 
-  // 2. Fetch triage items
-  const items = await fetchTriageItems();
-  log(`Fetched ${items.length} triage items from Notion`);
+  let items;
+  let errorType = null;
+  try {
+    items = await fetchTriageItems();
+    log(`Fetched ${items.length} triage items from Notion`);
+  } catch (e) {
+    const msg = e.message || '';
+    if (msg.includes('401') || msg.includes('unauthorized')) errorType = 'auth expired';
+    else if (msg.includes('429') || msg.includes('rate')) errorType = 'rate limited';
+    else if (msg.includes('404')) errorType = 'database not found';
+    else errorType = 'network error';
+    logError(`Notion fetch failed (${errorType}): ${msg}`);
+  }
+
+  if (errorType) {
+    const blocks = buildDegradedBlocks(errorType);
+    const result = await slack.chat.postMessage({
+      channel: SLACK_USER_ID,
+      text: '\uD83C\uDFAF End of Day Check-in \u2014 Notion unavailable, pick your own 3',
+      blocks
+    });
+    writePendingCheckin(result.ts, []);
+    writeEodLock();
+    log(`Degraded EOD message sent: ts=${result.ts}`);
+    return result;
+  }
 
   if (items.length === 0) {
     log('No triage items found. Sending minimal message.');
@@ -299,14 +432,13 @@ async function sendEodCheckin() {
       channel: SLACK_USER_ID,
       text: '\uD83C\uDFAF End of Day Check-in: Your triage is empty! Nice work.',
     });
+    writeEodLock();
     return;
   }
 
-  // 3. Select top 3
   const topThree = await selectTopThree(items, pillars, profile);
   log(`Selected top 3: ${topThree.map(t => t.title).join(', ')}`);
 
-  // 4. Build and send message
   const blocks = buildEodBlocks(topThree, items);
   const result = await slack.chat.postMessage({
     channel: SLACK_USER_ID,
@@ -314,6 +446,8 @@ async function sendEodCheckin() {
     blocks
   });
 
+  writePendingCheckin(result.ts, topThree);
+  writeEodLock();
   log(`EOD message sent: ts=${result.ts}, channel=${result.channel}`);
   return result;
 }
@@ -358,6 +492,7 @@ if (isEodNow) {
 } else {
   // --- Socket Mode listener ---
   validateConfig(true);
+  checkCrashCounter();
 
   const { App } = require('@slack/bolt');
 
@@ -367,47 +502,56 @@ if (isEodNow) {
     socketMode: true
   });
 
-  // Global error handler
   app.error(async (error) => {
     logError(`Bolt error: ${error.message}`);
   });
 
-  /**
-   * Handle DM messages as potential EOD replies
-   */
   app.message(async ({ message, say }) => {
-    // Only handle DMs from the configured user
     if (message.channel_type !== 'im') return;
     if (message.user !== SLACK_USER_ID) return;
-    if (message.subtype) return; // Ignore bot messages, edits, etc.
+    if (message.subtype) return;
+
+    const pending = readPendingCheckin();
+    if (!pending) return;
 
     const text = (message.text || '').trim().toLowerCase();
+    const intent = classifyReply(text);
 
-    if (text === 'ok') {
-      log('User confirmed EOD suggestions');
-      await say('\u2705 Locked in! Tomorrow\'s Must Complete Today items are confirmed.');
-    } else if (text === 'skip') {
-      log('User skipped EOD check-in');
-      await say('\u23ED Skipped. No items locked in for tomorrow. You can always run your daily plan in the morning.');
-    } else if (/^\d+[\.\)]\s/.test(text)) {
-      // Parse numbered list (requires "1. " or "1) " format)
-      const lines = text.split('\n').filter(l => /^\d+[\.\)]\s/.test(l.trim()));
-      log(`User provided custom list: ${lines.length} items`);
-      const formatted = lines.map(l => l.replace(/^\d+[\.\)]\s*/, '').trim()).filter(Boolean);
-      if (formatted.length > 0) {
-        await say(
-          `\u2705 Custom list locked in:\n${formatted.map((item, i) => `*${i + 1}.* ${item}`).join('\n')}`
-        );
+    try {
+      if (intent === 'confirm') {
+        log('User confirmed EOD suggestions');
+        commitPriorities(pending.topThree, 'eod-confirm');
+        clearPendingCheckin();
+        await say('\u2705 Locked in! Tomorrow\'s Must Complete Today items are confirmed.');
+
+      } else if (intent === 'skip') {
+        log('User skipped EOD check-in');
+        clearPendingCheckin();
+        await say('\u23ED Skipped. No items locked in for tomorrow. You can always run your daily plan in the morning.');
+
+      } else if (intent === 'custom') {
+        const lines = text.split('\n').filter(l => /^\d+[\.\)]\s/.test(l.trim()));
+        const formatted = lines.map(l => l.replace(/^\d+[\.\)]\s*/, '').trim()).filter(Boolean);
+        if (formatted.length > 0) {
+          log(`User provided custom list: ${formatted.length} items`);
+          commitPriorities(formatted.map(t => ({ title: t })), 'eod-custom');
+          clearPendingCheckin();
+          await say(`\u2705 Custom list locked in:\n${formatted.map((item, i) => `*${i + 1}.* ${item}`).join('\n')}`);
+        } else {
+          await say('Hmm, I couldn\'t parse that list. Try numbering items like:\n1. First item\n2. Second item\n3. Third item');
+        }
+
       } else {
-        await say('Hmm, I couldn\'t parse that list. Try numbering items like:\n1. First item\n2. Second item\n3. Third item');
+        await say('I didn\'t catch that. Reply:\n\u2022 `OK` to confirm\n\u2022 `Skip` to skip\n\u2022 A numbered list (1. First item...)');
       }
+    } catch (e) {
+      logError(`Reply handler failed: ${e.message} (user sent: "${text.slice(0, 50)}")`);
     }
-    // Ignore other messages — don't respond to general chat
   });
 
-  // Start the app
   (async () => {
     await app.start();
+    resetCrashCounter();
     log('Dex Slack bot running in Socket Mode. Listening for EOD replies...');
   })();
 }
