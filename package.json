@@ -13,6 +13,7 @@
     "@google/generative-ai": "^0.21.0",
     "@notionhq/client": "^5.11.0",
     "@slack/bolt": "^4.6.0",
+    "@slack/web-api": "^7.14.1",
     "dotenv": "^16.4.0",
     "js-yaml": "^4.1.0",
     "openai": "^4.77.3"
