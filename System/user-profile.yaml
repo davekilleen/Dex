@@ -110,3 +110,25 @@ quarterly_planning:
   # Current quarter dates (auto-calculated)
   quarter_start_date: "2026-01-01"
   quarter_end_date: "2026-03-31"
+
+# AI Model Configuration
+ai_models:
+  budget_cloud:
+    enabled: true
+    provider: openrouter
+    primary_model: google/gemini-2.5-flash
+    configured_date: 2026-02-21
+  offline:
+    enabled: true
+    runner: ollama
+    model: llama3.3:latest
+    configured_date: 2026-02-21
+  smart_routing:
+    enabled: true
+    rules:
+      complex_tasks:
+        model: claude-sonnet
+      routine_tasks:
+        model: google/gemini-2.5-flash
+      offline:
+        model: llama3.3:latest
