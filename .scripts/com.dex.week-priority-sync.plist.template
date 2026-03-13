@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd" >
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.dex.week-priority-sync</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>__NODE_PATH__</string>
+    <string>__VAULT_PATH__/.scripts/notion-sync-week-priorities.cjs</string>
+  </array>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>VAULT_PATH</key>
+    <string>__VAULT_PATH__</string>
+  </dict>
+
+  <key>RunAtLoad</key>
+  <true/>
+
+  <key>StartInterval</key>
+  <integer>3600</integer>
+
+  <key>StandardOutPath</key>
+  <string>__VAULT_PATH__/.scripts/logs/week-priority-sync.stdout.log</string>
+  <key>StandardErrorPath</key>
+  <string>__VAULT_PATH__/.scripts/logs/week-priority-sync.stderr.log</string>
+</dict>
+</plist>
