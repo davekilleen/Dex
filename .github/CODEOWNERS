@@ -1,9 +1,0 @@
-# Default owner for repository changes.
-* @davekilleen
-
-# High-risk areas require explicit review ownership.
-.github/ @davekilleen
-core/mcp/ @davekilleen
-scripts/ @davekilleen
-System/PRDs/ @davekilleen
-docs/ @davekilleen
