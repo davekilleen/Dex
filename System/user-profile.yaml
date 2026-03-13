@@ -31,6 +31,11 @@ email_domain: "chapter2.group"
 # Calendar Backend
 calendar_backend: office365
 
+# Calendar selection
+calendar:
+  work_calendar: "Work"
+  office365_user: "tom.green@chapter2.group"
+
 # Timezone
 timezone: Europe/Berlin
 
@@ -116,3 +121,7 @@ quarterly_planning:
   # Current quarter dates (auto-calculated)
   quarter_start_date: "2026-01-01"
   quarter_end_date: "2026-03-31"
+
+# Analytics Configuration
+analytics:
+  enabled: true

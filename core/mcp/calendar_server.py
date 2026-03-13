@@ -108,9 +108,29 @@ def get_default_work_calendar() -> str:
     return "Work"  # Fallback default
 
 
+def get_calendar_backend() -> str:
+    """Get calendar backend from user profile."""
+    try:
+        if USER_PROFILE_PATH.exists():
+            with open(USER_PROFILE_PATH, 'r') as f:
+                profile = yaml.safe_load(f) or {}
+            backend = str(profile.get("calendar_backend", "apple")).strip().lower()
+            return backend or "apple"
+    except Exception as e:
+        logger.warning(f"Could not read calendar backend from profile: {e}")
+    return "apple"
+
+
 # Cache the default calendar (read once at startup)
 DEFAULT_WORK_CALENDAR = get_default_work_calendar()
+CALENDAR_BACKEND = get_calendar_backend()
 logger.info(f"Default work calendar: {DEFAULT_WORK_CALENDAR}")
+logger.info(f"Calendar backend: {CALENDAR_BACKEND}")
+
+
+def calendar_read_script() -> str:
+    """Return the read script for the active backend."""
+    return "calendar_office365.py" if CALENDAR_BACKEND == "office365" else "calendar_eventkit.py"
 
 
 # Custom JSON encoder for handling date/datetime objects
@@ -181,7 +201,10 @@ def run_shell_script(script_name: str, *args) -> tuple[bool, str]:
         try:
             # Build command with quoted args
             cmd_args = ' '.join(f'"{arg}"' for arg in args)
-            cmd = f'"{script_path}" {cmd_args} > "{out_path}" 2> "{err_path}"'
+            if str(script_path).endswith('.py'):
+                cmd = f'python3 "{script_path}" {cmd_args} > "{out_path}" 2> "{err_path}"'
+            else:
+                cmd = f'"{script_path}" {cmd_args} > "{out_path}" 2> "{err_path}"'
             exit_code = os.system(cmd)
             
             with open(out_path, 'r') as f:
@@ -617,7 +640,7 @@ async def _handle_call_tool_inner(
 
     if name == "calendar_list_calendars":
         # Use fast EventKit
-        success, output = run_shell_script("calendar_eventkit.py", "list")
+        success, output = run_shell_script(calendar_read_script(), "list")
         
         if success:
             try:
@@ -657,7 +680,7 @@ async def _handle_call_tool_inner(
         
         # Use fast EventKit Python script (replaces slow AppleScript)
         success, output = run_shell_script(
-            "calendar_eventkit.py",
+            calendar_read_script(),
             "events",
             calendar_name,
             str(start_offset),
@@ -671,12 +694,33 @@ async def _handle_call_tool_inner(
                 
                 # Filter out all-day events that span beyond the target date
                 # (they can pollute results when querying single days)
+                def _parse_event_start(value: str) -> Optional[datetime]:
+                    if not value:
+                        return None
+                    candidates = [
+                        value,
+                        value.replace(' +0000', '+00:00'),
+                        value.replace(' +0100', '+01:00'),
+                        value.replace(' +0200', '+02:00'),
+                    ]
+                    for candidate in candidates:
+                        try:
+                            return datetime.fromisoformat(candidate)
+                        except ValueError:
+                            pass
+                    for fmt in ("%Y-%m-%d %H:%M:%S %z", "%Y-%m-%dT%H:%M:%S%z"):
+                        try:
+                            return datetime.strptime(value, fmt)
+                        except ValueError:
+                            pass
+                    return None
+
                 filtered_events = []
                 for event in events:
                     if event.get('all_day'):
                         # Only include all-day events that start within our range
-                        event_start = datetime.fromisoformat(event['start'].replace(' +0000', ''))
-                        if start_dt <= event_start < end_dt:
+                        event_start = _parse_event_start(event.get('start', ''))
+                        if event_start and start_dt <= event_start.replace(tzinfo=None) < end_dt:
                             filtered_events.append(event)
                     else:
                         # Include all non-all-day events
@@ -756,7 +800,7 @@ async def _handle_call_tool_inner(
         
         # Use fast EventKit search
         success, output = run_shell_script(
-            "calendar_eventkit.py",
+            calendar_read_script(),
             "search",
             calendar_name,
             query,
@@ -819,7 +863,7 @@ async def _handle_call_tool_inner(
         calendar_name = arguments.get("calendar_name", DEFAULT_WORK_CALENDAR)
         
         # Use fast EventKit
-        success, output = run_shell_script("calendar_eventkit.py", "next", calendar_name)
+        success, output = run_shell_script(calendar_read_script(), "next", calendar_name)
         
         if success:
             try:
@@ -860,7 +904,7 @@ async def _handle_call_tool_inner(
         
         # Use fast EventKit with attendee details
         success, output = run_shell_script(
-            "calendar_eventkit.py",
+            calendar_read_script(),
             "attendees",
             calendar_name,
             str(start_offset),
