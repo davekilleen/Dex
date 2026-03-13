@@ -143,6 +143,26 @@ Adapt your tone and language based on user preferences in `System/user-profile.y
 
 Apply consistently across all interactions (planning, reviews, meetings, project discussions).
 
+### WhatsApp Integration (Filtered Access)
+
+When querying WhatsApp (messages, chats, contacts), **always filter by `System/whatsapp-channels.yaml`**:
+
+1. Read `System/whatsapp-channels.yaml` to get the channel config
+2. **Default queries** (daily plan, meeting prep, search) → only include `work` and `personal-include` categories
+3. **DMs/groups** not listed in the config follow `default_dm_scope` (default: `ignore` — excluded)
+4. Categories `personal`, `community`, `ignore` are excluded from default queries
+
+**Categories:**
+- `work` — included in all default queries
+- `personal-include` — personal contact but still included in Dex queries (e.g. friends who are also collaborators)
+- `personal` — excluded from default queries
+- `community` — excluded from default queries
+- `ignore` — never included
+
+**When the user asks about a specific person or group by name**, include it regardless of category — the filter only applies to broad/automatic queries.
+
+**To update categories:** Edit `System/whatsapp-channels.yaml` or ask "add [name] to work channels".
+
 ### Granola Mobile Recordings (Natural Language Triggers)
 
 When the user mentions any of these:

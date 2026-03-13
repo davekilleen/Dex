@@ -10,7 +10,7 @@
 
 - [x] Daily planning (`/daily-plan`)
 - [ ] Daily review (`/review` or `/daily-review`)
-- [ ] Weekly planning (`/week-plan`)
+- [x] Weekly planning (`/week-plan`)
 - [x] Weekly review (`/week-review`)
 - [ ] Quarterly planning (`/quarter-plan`)
 - [ ] Quarterly review (`/quarter-review`)
@@ -116,10 +116,10 @@
 
 Tracks whether user has been asked about anonymous feature usage tracking.
 
-- **Consent asked:** false
-- **Consent decision:** pending
-- **Consent date:** (not yet decided)
-- **Last prompted:** (not yet prompted)
+- **Consent asked:** true
+- **Consent decision:** opted-in
+- **Consent date:** 2026-03-13
+- **Last prompted:** 2026-03-13
 
 **Values:**
 - `Consent decision: pending` → Not yet decided (will be asked each session until they choose)

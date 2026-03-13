@@ -7,6 +7,33 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.18.0] — Direct Office 365 Calendar Support (2026-03-13)
+
+If your real schedule lives in Outlook/Microsoft 365 and is not synced into Apple Calendar, Dex can now read it directly through Microsoft Graph.
+
+Before this, `/daily-plan` and meeting workflows depended on Calendar.app as the source of truth. That meant users with Office 365 calendars outside Calendar.app saw empty schedules in Dex, even when Outlook was full.
+
+**What this means for you:**
+- Dex calendar tools now support a direct Office 365 backend when `calendar_backend: office365`
+- `/daily-plan` can pull live meetings from Microsoft Graph without iCal sync
+- Existing Apple Calendar users are unaffected; backend selection is automatic by profile
+
+**Behind the scenes:**
+- Added a new Graph-powered calendar script: `core/mcp/scripts/calendar_office365.py`
+- Updated `calendar_server.py` to route read operations (`list`, `events`, `search`, `next`, `attendees`) to the correct backend automatically
+- Added Python script execution support in MCP shell runner so backend scripts run consistently
+- Added delegated OAuth device-code helper to capture refresh tokens reliably (`core/mcp/scripts/office365_get_refresh_token.py`)
+
+**Also included in this release:**
+- Weekly plan Notion sync automation (`.scripts/notion-sync-week-priorities.cjs`)
+- Hourly LaunchAgent for week-plan sync (`com.dex.week-priority-sync`)
+- Integration config wiring for Notion week-plan publishing
+- Updated weekly planning output and archive flow for the upcoming week
+
+**Setup required:**
+- Configure Microsoft app credentials in `.env` (`MS_TENANT_ID`, `MS_CLIENT_ID`, `MS_CLIENT_SECRET`)
+- For delegated auth, add `MS_REFRESH_TOKEN`; for app-only auth, set `MS_USER_EMAIL` (or `calendar.office365_user` in profile)
+
 ## [1.17.0] — Mobile Meeting Recordings Now Sync Automatically (2026-03-01)
 
 If you record meetings on your phone with Granola, those recordings now appear in Dex alongside your desktop meetings. No manual import, no extra steps — they just show up.
