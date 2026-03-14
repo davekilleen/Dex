@@ -1,9 +1,0 @@
-enabled: true
-configured_at: "2026-03-13"
-features:
-  week_plan_sync: true
-week_plan:
-  database_id: "1e539ea62fb68043ab5ce5906f9fad7d"
-  database_name: "Docs"
-  sync_script: ".scripts/notion-sync-week-priorities.cjs"
-  launch_agent: "com.dex.week-priority-sync"

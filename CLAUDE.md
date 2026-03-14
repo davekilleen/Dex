@@ -207,6 +207,45 @@ When querying WhatsApp (messages, chats, contacts), **always filter by `System/w
 
 **To update categories:** Edit `System/whatsapp-channels.yaml` or ask "add [name] to work channels".
 
+### Calendar Backend Selection
+
+Dex supports two calendar backends configured via `System/user-profile.yaml` → `calendar_backend`:
+
+- **`apple`** (default) — Uses macOS Calendar.app via AppleScript. Zero setup if already using Apple Calendar.
+- **`office365`** — Uses Microsoft Graph API directly. Requires Azure AD app registration and OAuth tokens.
+
+**Office 365 setup:**
+1. User registers an Azure AD app with `Calendars.Read` permission
+2. Runs `python3 core/mcp/scripts/office365_get_refresh_token.py` for device-code auth
+3. Sets `MS_TENANT_ID`, `MS_CLIENT_ID`, `MS_CLIENT_SECRET`, `MS_REFRESH_TOKEN` in `.env`
+4. Sets `calendar_backend: office365` in `System/user-profile.yaml`
+
+**When user mentions Office 365, Outlook calendar, or Microsoft calendar**, guide them through this setup. If calendar errors mention "token" or "Graph API", check the O365 credentials first.
+
+### Notion Week Priority Sync
+
+When `/week-plan` generates `02-Week_Priorities/Week_Priorities.md`, it can automatically sync to a Notion database.
+
+**Setup:** Requires `NOTION_API_TOKEN` and `NOTION_WEEK_DB_ID` in `.env`. Config tracked in `System/integrations/notion.yaml`.
+
+**Auto-sync:** Install LaunchAgent with `bash .scripts/install-week-priority-sync.sh` — syncs every 30 minutes. Use `--status` to check, `--stop` to uninstall.
+
+**When user mentions "Notion sync", "week plan not in Notion", or "sync priorities"**, check if the LaunchAgent is running and credentials are set.
+
+### Slack Bot (Mobile CoS)
+
+A conversational Slack bot that provides Dex access via DM — day overviews, calendar, person lookup, task management, meeting prep, and vault search.
+
+**Capabilities:**
+- Two-pass LLM routing: classify intent → fetch data → generate response
+- SQLite conversation memory with context windowing
+- Proactive intelligence: EOD check-ins, morning briefs, stale priority alerts, meeting synthesis
+- Work MCP bridge for tasks and calendar
+
+**Setup:** Requires `SLACK_BOT_TOKEN`, `SLACK_APP_TOKEN`, `SLACK_USER_ID`, and `NOTION_TRIAGE_DS_ID` in `.env`. Run with `node .scripts/slack-dex-bot/index.cjs`.
+
+**When user mentions "Slack bot", "mobile Dex", "DM from phone", or "EOD check-in"**, reference this integration. If bot errors, check `.env` credentials and that Socket Mode is enabled in the Slack app.
+
 ### Granola Mobile Recordings (Natural Language Triggers)
 
 When the user mentions any of these:

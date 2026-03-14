@@ -111,7 +111,7 @@ class GraphCalendarClient:
                 "grant_type": "refresh_token",
                 "client_id": self.client_id,
                 "refresh_token": self.refresh_token,
-                "scope": "openid profile offline_access email User.Read Calendars.Read Calendars.ReadWrite",
+                "scope": "openid profile offline_access email User.Read Calendars.Read",
             }
             attempts = []
             # Confidential client flow

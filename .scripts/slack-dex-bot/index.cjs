@@ -40,7 +40,7 @@ const SLACK_APP_TOKEN = process.env.SLACK_APP_TOKEN;
 const SLACK_USER_ID = process.env.SLACK_USER_ID;
 const NOTION_API_TOKEN = process.env.NOTION_API_TOKEN;
 // Notion v5: dataSources.query needs the collection ID, not the database URL ID
-const NOTION_TRIAGE_DS_ID = process.env.NOTION_TRIAGE_DS_ID || '0bc99573-8ad4-4c94-a794-dd518848c646';
+const NOTION_TRIAGE_DS_ID = process.env.NOTION_TRIAGE_DS_ID || '';
 
 // Notion client
 let notion = null;
@@ -471,7 +471,7 @@ function validateConfig(needSocketMode) {
 
   if (missing.length > 0) {
     logError(`Missing env vars: ${missing.join(', ')}`);
-    log('Add them to /Users/tomgreen/Dex/.env');
+    log('Add them to your .env file in the Dex root directory');
     process.exit(1);
   }
 }

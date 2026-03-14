@@ -7,7 +7,7 @@
 
 const fs = require('fs');
 const path = require('path');
-const { execSync } = require('child_process');
+const { execSync, execFileSync } = require('child_process');
 const yaml = require('js-yaml');
 
 const VAULT_ROOT = path.resolve(__dirname, '../..');
@@ -208,10 +208,12 @@ function searchVault(query) {
   if (searchDirs.length === 0) return [];
 
   try {
-    const result = execSync(
-      `grep -ril "${query.replace(/"/g, '\\"')}" ${searchDirs.map(d => `"${d}"`).join(' ')} --include="*.md" 2>/dev/null | head -10`,
-      { encoding: 'utf8', timeout: 5000 }
-    ).trim();
+    // Use execFileSync to avoid shell injection — user input from Slack
+    // is passed as an array argument, not interpolated into a shell string
+    const grepArgs = ['-ril', '--include=*.md', query, ...searchDirs];
+    const result = execFileSync('grep', grepArgs, {
+      encoding: 'utf8', timeout: 5000, stdio: ['pipe', 'pipe', 'pipe']
+    }).trim();
 
     if (!result) return [];
 
