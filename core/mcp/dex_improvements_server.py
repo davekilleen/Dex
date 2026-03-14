@@ -11,21 +11,20 @@ Provides tools for capturing and managing Dex system improvement ideas with:
 - Idea enrichment with new evidence
 """
 
-import os
-import sys
 import json
 import logging
+import os
 import re
-import glob as glob_module
-from pathlib import Path
-from typing import Dict, List, Optional, Any, Tuple
-from datetime import datetime, date, timedelta
+import sys
+from datetime import date, datetime, timedelta
 from difflib import SequenceMatcher
+from pathlib import Path
+from typing import Any, Dict, List, Optional
 
-from mcp.server import Server, NotificationOptions
-from mcp.server.models import InitializationOptions
 import mcp.server.stdio
 import mcp.types as types
+from mcp.server import NotificationOptions, Server
+from mcp.server.models import InitializationOptions
 
 # QMD semantic search (optional - gracefully degrade if not available)
 try:
@@ -46,7 +45,8 @@ except ImportError:
 # Health system — error queue and health reporting
 try:
     sys.path.insert(0, str(Path(__file__).parent.parent.parent))
-    from core.utils.dex_logger import log_error as _log_health_error, mark_healthy as _mark_healthy
+    from core.utils.dex_logger import log_error as _log_health_error
+    from core.utils.dex_logger import mark_healthy as _mark_healthy
     _HAS_HEALTH = True
 except ImportError:
     _HAS_HEALTH = False
@@ -1064,7 +1064,7 @@ async def _handle_call_tool_inner(
                 "idea_id": idea_id,
                 "title": title,
                 "category": category,
-                "message": f"Idea captured successfully! Run `/dex-backlog` to see it ranked against other ideas.",
+                "message": "Idea captured successfully! Run `/dex-backlog` to see it ranked against other ideas.",
                 "next_steps": [
                     "Run `/dex-backlog` to see AI-powered ranking",
                     "Run `/dex-improve \"{title}\"` to workshop this idea",
@@ -1293,7 +1293,7 @@ async def _handle_call_tool_inner(
                     f"Claude Code {version_info} ({entry['date']}) shipped: {feature_text}. "
                     f"Evaluate how Dex could leverage this for user workflows."
                 )
-                source = f"Anthropic Changelog Synthesis"
+                source = "Anthropic Changelog Synthesis"
 
                 success = add_ai_idea_to_backlog(idea_id, title, description, category, source)
                 if success:
@@ -1450,7 +1450,7 @@ async def _main():
     """Async main entry point for the MCP server"""
     if _HAS_HEALTH:
         _mark_healthy("dex-improvements-mcp")
-    logger.info(f"Starting Dex Improvements MCP Server")
+    logger.info("Starting Dex Improvements MCP Server")
     logger.info(f"Vault path: {BASE_DIR}")
     logger.info(f"Backlog file: {BACKLOG_FILE}")
     

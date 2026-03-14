@@ -4,7 +4,6 @@ Reference formatting utilities for Dex
 Handles conditional wiki link formatting based on obsidian_mode
 """
 import os
-import re
 from pathlib import Path
 from typing import Optional
 

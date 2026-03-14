@@ -18,35 +18,49 @@
 const fs = require('fs');
 const path = require('path');
 
+const DEBUG_SKIP = process.env.DEX_HOOK_DEBUG === '1';
+function skip(reason) {
+  if (DEBUG_SKIP) {
+    console.error(`[dex-hook-skip] ${reason}`);
+  }
+  process.exit(0);
+}
+
 // Read hook input from stdin
 let input;
 try {
   input = JSON.parse(fs.readFileSync(0, 'utf-8'));
 } catch (e) {
-  process.exit(0); // Invalid input, skip silently
+  skip('invalid-json-input');
 }
 
 const filePath = input.tool_input?.path || input.tool_input?.file_path || '';
 
 // Skip if no file path or if reading a company page itself (avoid recursion)
 if (!filePath || filePath.includes('/05-Areas/Companies/') || filePath.includes('/05-Areas/Accounts/')) {
-  process.exit(0);
+  skip('missing-file-path-or-recursive-company-file');
 }
 
 // Skip binary/non-text files (images, PDFs, archives, etc.)
 const ext = path.extname(filePath).toLowerCase();
 const skipExts = ['.png', '.jpg', '.jpeg', '.gif', '.bmp', '.webp', '.ico', '.svg', '.pdf', '.zip', '.tar', '.gz', '.mp3', '.mp4', '.mov', '.wav', '.pptx', '.xlsx', '.docx'];
 if (skipExts.includes(ext)) {
-  process.exit(0);
+  skip(`unsupported-extension:${ext}`);
 }
 
-const VAULT_ROOT = process.env.CLAUDE_PROJECT_DIR || process.env.VAULT_PATH || process.cwd();
-// Primary location for company pages (new universal pattern)
-const COMPANIES_DIR = path.join(VAULT_ROOT, '02-Areas', 'Companies');
+const { loadPaths } = require('./paths.cjs');
+const _paths = loadPaths();
+const VAULT_ROOT = _paths.VAULT_ROOT || process.env.CLAUDE_PROJECT_DIR || process.env.VAULT_PATH || process.cwd();
+const COMPANIES_DIR = _paths.COMPANIES_DIR || path.join(VAULT_ROOT, '05-Areas', 'Companies');
 // Legacy location for backwards compatibility
-const ACCOUNTS_DIR = path.join(VAULT_ROOT, '02-Areas', 'Accounts');
+const ACCOUNTS_DIR = path.join(_paths.AREAS_DIR || path.join(VAULT_ROOT, '05-Areas'), 'Accounts');
 
 // Helper function to recursively scan a directory for company files
+/**
+ * Recursively scan a directory for .md company files and add them to the index.
+ * @param {string} dirPath - Directory to scan
+ * @param {Record<string, string>} index - Mutable index to populate (lowercase name → absolute path)
+ */
 function scanDir(dirPath, index) {
   try {
     const entries = fs.readdirSync(dirPath, { withFileTypes: true });
@@ -95,7 +109,7 @@ try {
   const fullFilePath = filePath.startsWith('/') ? filePath : path.join(VAULT_ROOT, filePath);
   
   if (!fs.existsSync(fullFilePath)) {
-    process.exit(0);
+    skip(`target-file-not-found:${fullFilePath}`);
   }
   
   // Read the file to find company references
@@ -106,14 +120,14 @@ try {
   const companyNames = Object.keys(companyIndex);
   
   if (companyNames.length === 0) {
-    process.exit(0);
+    skip('no-company-pages-indexed');
   }
   
   // Find referenced companies in the content
   const foundCompanies = new Set();
   
   // Method 1: File path references (05-Areas/Companies/ or 05-Areas/Accounts/)
-  const fileRefPattern = /02-Areas\/(?:Companies|Accounts)\/[^\s]*?([A-Za-z0-9_-]+)(?:\.md)?/g;
+  const fileRefPattern = /05-Areas\/(?:Companies|Accounts)\/[^\s]*?([A-Za-z0-9_-]+)(?:\.md)?/g;
   let match;
   while ((match = fileRefPattern.exec(content)) !== null) {
     const name = match[1].toLowerCase();
@@ -145,7 +159,7 @@ try {
   
   // Only proceed if we found companies
   if (foundCompanies.size === 0) {
-    process.exit(0);
+    skip('no-company-references-found');
   }
   
   // Look up each company and build context
@@ -160,7 +174,7 @@ try {
   
   // Only inject if we found relevant company pages
   if (companyContexts.length === 0) {
-    process.exit(0);
+    skip('company-context-parse-empty');
   }
   
   // Build context (silent - no headers, just data)
@@ -205,12 +219,16 @@ try {
   console.log(JSON.stringify(output));
   
 } catch (e) {
-  // Silently fail - don't block the read operation
-  process.exit(0);
+  skip(`unexpected-error:${e.message}`);
 }
 
 /**
  * Parse a company page and extract key info
+ */
+/**
+ * Parse a company page and extract key info for context injection.
+ * @param {string} filePath - Absolute path to the company's markdown file
+ * @returns {{ name: string, status: string|null, contacts: string[], lastMeeting: string|null, openTasks: string[], context: string|null } | null}
  */
 function parseCompanyPage(filePath) {
   try {

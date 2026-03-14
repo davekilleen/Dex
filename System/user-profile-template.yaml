@@ -65,8 +65,8 @@ pillars: []
 # Meeting Processing Configuration
 # How Dex processes meetings from Granola
 meeting_processing:
-  # Mode: "manual" (run /process-meetings) or "automatic" (background sync)
-  mode: manual
+  # Mode: "automatic" (notes appear in your vault within 30min) or "manual" (run /process-meetings)
+  mode: automatic
   
   # API provider for automatic mode: gemini, anthropic, or openai
   api_provider: gemini
@@ -136,8 +136,8 @@ integrations:
 # Controls anonymous feature usage tracking to help Dave improve Dex
 # Only Dex built-in features are tracked, never content or what you do with features
 analytics:
-  # Master switch - set to true if you opted in to help improve Dex
-  enabled: false
+  # Master switch - analytics on by default. Say "turn off Dex analytics" to opt out.
+  enabled: true
 
 # ScreenPipe Configuration
 # Enables ambient work intelligence - Dex learns what you're working on via screen OCR

@@ -8,7 +8,7 @@ Guides users through connecting Notion to Dex using the official MCP.
 import json
 import os
 from pathlib import Path
-from typing import Optional, Tuple
+from typing import Tuple
 
 PACKAGE = "@notionhq/notion-mcp-server"
 MCP_CONFIG_KEY = "notion"

@@ -14,13 +14,12 @@ Caches results in .logs/mcp-health.json — re-checks when config changes or > 2
 Target: < 500ms total.
 """
 
-import json
-import os
-import sys
 import hashlib
 import importlib.util
-from pathlib import Path
+import json
+import os
 from datetime import datetime, timedelta
+from pathlib import Path
 
 
 def get_vault_path() -> str:

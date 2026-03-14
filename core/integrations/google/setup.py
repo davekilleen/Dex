@@ -8,7 +8,6 @@ Uses mcp-google package with OAuth flow.
 
 import json
 import os
-import webbrowser
 from pathlib import Path
 from typing import Optional, Tuple
 

@@ -14,7 +14,7 @@ import { Type } from "@sinclair/typebox";
 import { StringEnum } from "@mariozechner/pi-ai";
 import { Text, Container } from "@mariozechner/pi-tui";
 
-const VAULT_PATH = process.env.VAULT_PATH || "/Users/dave/Claudesidian";
+const VAULT_PATH = process.env.VAULT_PATH || process.cwd();
 
 // ============================================================================
 // TYPES

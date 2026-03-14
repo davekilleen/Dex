@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dex/contracts/paths.schema.json",
+  "title": "Dex Vault Paths Contract",
+  "type": "object",
+  "required": [
+    "contract_version",
+    "source",
+    "vault_relative_paths"
+  ],
+  "properties": {
+    "contract_version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "source": {
+      "type": "string"
+    },
+    "vault_relative_paths": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": {
+        "type": "string"
+      }
+    }
+  },
+  "additionalProperties": false
+}

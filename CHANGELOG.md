@@ -7,32 +7,60 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
-## [1.18.0] — Direct Office 365 Calendar Support (2026-03-13)
+## [1.18.2] — Fix Background Meeting Sync Installation (2026-03-12)
 
-If your real schedule lives in Outlook/Microsoft 365 and is not synced into Apple Calendar, Dex can now read it directly through Microsoft Graph.
+`install-automation.sh` failed because it referenced two files that no longer exist: `granola-auth.cjs` (deprecated — Granola now stores credentials in `supabase.json` automatically) and `sync-from-granola-v2.cjs` (never shipped — v1 works fine).
 
-Before this, `/daily-plan` and meeting workflows depended on Calendar.app as the source of truth. That meant users with Office 365 calendars outside Calendar.app saw empty schedules in Dex, even when Outlook was full.
+**What changed:**
+
+* Plist template now points to `sync-from-granola.cjs` (the script that actually exists)
+* Install script checks for `supabase.json` instead of calling the removed `granola-auth.cjs`
+* No more interactive browser auth step — Granola handles credentials automatically
+* `--auth` flag now checks credential status instead of launching a dead script
+
+**What you need to do:** Run `./install-automation.sh` again — it should complete without errors now.
+
+---
+
+## [1.18.1] — Meeting Sync Now Works Reliably Again (2026-03-05)
+
+In v1.17.0, we switched background meeting sync to use Granola's official MCP server — thinking the "official" route would be more reliable. Turns out, the MCP server sends meeting data back in a format designed for AI to read in conversation, not for code to process in the background. The sync script expected structured data, got free-form text, couldn't make sense of it, and quietly fell back to old cached data. Meetings were going missing with no error message.
+
+We've switched to using Granola's direct API instead. It returns clean structured data, includes mobile recordings, and uses the same credentials Granola already stores on your machine — no separate sign-in needed.
 
 **What this means for you:**
-- Dex calendar tools now support a direct Office 365 backend when `calendar_backend: office365`
-- `/daily-plan` can pull live meetings from Microsoft Graph without iCal sync
-- Existing Apple Calendar users are unaffected; backend selection is automatic by profile
 
-**Behind the scenes:**
-- Added a new Graph-powered calendar script: `core/mcp/scripts/calendar_office365.py`
-- Updated `calendar_server.py` to route read operations (`list`, `events`, `search`, `next`, `attendees`) to the correct backend automatically
-- Added Python script execution support in MCP shell runner so backend scripts run consistently
-- Added delegated OAuth device-code helper to capture refresh tokens reliably (`core/mcp/scripts/office365_get_refresh_token.py`)
+* Meeting sync is reliable again — no more silent failures
+* Mobile recordings still sync (that wasn't the problem — the data source was)
+* One fewer thing to authenticate: no separate Granola MCP sign-in step
+* If you previously ran through the MCP OAuth setup, you don't need to do anything — the new approach uses your existing Granola sign-in automatically
 
-**Also included in this release:**
-- Weekly plan Notion sync automation (`.scripts/notion-sync-week-priorities.cjs`)
-- Hourly LaunchAgent for week-plan sync (`com.dex.week-priority-sync`)
-- Integration config wiring for Notion week-plan publishing
-- Updated weekly planning output and archive flow for the upcoming week
+**What changed under the hood:**
 
-**Setup required:**
-- Configure Microsoft app credentials in `.env` (`MS_TENANT_ID`, `MS_CLIENT_ID`, `MS_CLIENT_SECRET`)
-- For delegated auth, add `MS_REFRESH_TOKEN`; for app-only auth, set `MS_USER_EMAIL` (or `calendar.office365_user` in profile)
+* Background sync now uses Granola's direct API (`api.granola.ai`) instead of the MCP server
+* Removed `granola-mcp-client.cjs`, `granola-auth.cjs`, and `check-granola-migration.cjs` — no longer needed
+* Local cache remains as fallback for offline scenarios
+
+---
+
+## [1.18.0] — Intelligent Model Routing Metadata + Safer Skill Updates (2026-03-02)
+
+Dex skills now carry explicit model-routing metadata so cheap/fast models can be used for simple work while higher-tier models stay reserved for heavier thinking.
+
+**What this means for you:**
+- Many built-in skills now declare `model_hint` or `model_routing` in `SKILL.md`
+- Routing metadata is now standardized across the core skill catalog
+- Update flow now has a skill-aware conflict resolver for routing metadata
+
+**Conflict handling improvement:**
+- During `/dex-update`, conflicted skill files can now be auto-resolved by:
+  - keeping your local skill instructions/custom edits
+  - merging upstream routing metadata (`model_hint`, `model_routing`)
+  - skipping `*-custom` skills completely
+
+This reduces update friction for users who customize built-in skills while still letting new model-routing behavior land safely.
+
+---
 
 ## [1.17.0] — Mobile Meeting Recordings Now Sync Automatically (2026-03-01)
 

@@ -27,16 +27,33 @@ Welcome to the Dex Analytics beta! By activating this feature, you're helping Da
 
 1. **Consent prompt:** During your next planning session (`/daily-plan`, `/review`, etc.), you'll be asked once if you want to help improve Dex
 2. **Your choice:** Say yes to help, or no thanks — Dex works exactly the same either way
-3. **Event firing:** If you opt in, anonymous feature usage events are sent to Pendo
+3. **Event firing:** If you opt in, anonymous feature usage events are sent through your configured analytics transport
 
 ## Configuration
 
-Your analytics settings are stored in `System/user-profile.yaml`:
+User consent settings are stored in `System/user-profile.yaml`:
 
 ```yaml
 analytics:
   enabled: true  # or false if you declined
 ```
+
+Transport settings are configured via environment variables:
+
+```bash
+# Recommended: proxy mode (server-side relay holds Pendo key)
+DEX_ANALYTICS_MODE=proxy
+DEX_ANALYTICS_ENDPOINT=https://analytics.your-domain/track
+DEX_ANALYTICS_PROXY_TOKEN=optional-token
+
+# Direct mode (not recommended for OSS clients)
+DEX_ANALYTICS_MODE=direct
+PENDO_TRACK_SECRET=your-pendo-track-key
+```
+
+Security note:
+- Dex no longer bundles a default `PENDO_TRACK_SECRET` in source.
+- For public/open-source clients, use proxy mode so write keys stay server-side.
 
 Your consent status is tracked in `System/usage_log.md`:
 - `Consent asked: true/false`

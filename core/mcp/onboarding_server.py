@@ -13,52 +13,26 @@ Features:
 - PARA folder structure creation
 """
 
-import os
-import sys
 import json
 import logging
-import re
+import os
 import platform
+import re
 import subprocess
+import sys
+from datetime import date, datetime
 from pathlib import Path
-from typing import Dict, List, Optional, Any
-from datetime import datetime, date
+from typing import Any, Dict, List, Optional
 
 try:
     import yaml
 except ImportError:
     yaml = None
 
-from mcp.server import Server, NotificationOptions
-from mcp.server.models import InitializationOptions
 import mcp.server.stdio
 import mcp.types as types
-
-# Analytics helper (optional - gracefully degrade if not available)
-try:
-    from analytics_helper import fire_event as _fire_analytics_event
-    HAS_ANALYTICS = True
-except ImportError:
-    HAS_ANALYTICS = False
-    def _fire_analytics_event(event_name, properties=None):
-        return {'fired': False, 'reason': 'analytics_not_available'}
-
-# Health system — error queue and health reporting
-try:
-    sys.path.insert(0, str(Path(__file__).parent.parent.parent))
-    from core.utils.dex_logger import log_error as _log_health_error, mark_healthy as _mark_healthy
-    _HAS_HEALTH = True
-except ImportError:
-    _HAS_HEALTH = False
-
-# Timezone detection
-try:
-    from core.utils.timezone import detect_system_timezone
-    _HAS_TIMEZONE = True
-except ImportError:
-    _HAS_TIMEZONE = False
-    def detect_system_timezone():
-        return ""
+from mcp.server import NotificationOptions, Server
+from mcp.server.models import InitializationOptions
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -71,16 +45,23 @@ class DateTimeEncoder(json.JSONEncoder):
             return obj.isoformat()
         return super().default(obj)
 
-# Configuration - Vault paths
-BASE_DIR = Path(os.environ.get('VAULT_PATH', Path.cwd()))
-SESSION_FILE = BASE_DIR / 'System' / '.onboarding-session.json'
-MARKER_FILE = BASE_DIR / 'System' / '.onboarding-complete'
-USER_PROFILE_FILE = BASE_DIR / 'System' / 'user-profile.yaml'
-USER_PROFILE_TEMPLATE = BASE_DIR / 'System' / 'user-profile-template.yaml'
-PILLARS_FILE = BASE_DIR / 'System' / 'pillars.yaml'
-CLAUDE_MD = BASE_DIR / 'CLAUDE.md'
-MCP_CONFIG_EXAMPLE = BASE_DIR / 'System' / '.mcp.json.example'
-MCP_CONFIG_TARGET = BASE_DIR / 'System' / '.mcp.json'
+# Configuration - Vault paths (centralized in core.paths)
+_repo_root = str(Path(__file__).parent.parent.parent)
+if _repo_root not in sys.path:
+    sys.path.append(_repo_root)
+from core.paths import (
+    CLAUDE_MD,
+    MARKER_FILE,
+    MCP_CONFIG_EXAMPLE,
+    MCP_CONFIG_TARGET,
+    PILLARS_FILE,
+    SESSION_FILE,
+    USER_PROFILE_FILE,
+    USER_PROFILE_TEMPLATE,
+)
+from core.paths import (
+    VAULT_ROOT as BASE_DIR,
+)
 
 # Role definitions for validation
 ROLES = {
@@ -281,23 +262,39 @@ def check_calendar_app() -> Dict[str, Any]:
         }
 
 def check_granola() -> Dict[str, Any]:
-    """Check if Granola is installed"""
+    """Check if Granola is installed (auto-detects latest cache version)"""
+    import re as _re
+
+    def _find_latest(granola_dir):
+        candidates = sorted(
+            granola_dir.glob("cache-v*.json"),
+            key=lambda p: int(_re.search(r'v(\d+)', p.name).group(1))
+            if _re.search(r'v(\d+)', p.name) else 0,
+            reverse=True
+        )
+        for c in candidates:
+            if c.exists():
+                return c
+        return None
+
     # Check common Granola cache locations
     if platform.system() == 'Darwin':
-        cache_path = Path.home() / 'Library' / 'Application Support' / 'Granola' / 'cache-v3.json'
+        granola_dir = Path.home() / 'Library' / 'Application Support' / 'Granola'
     elif platform.system() == 'Windows':
         appdata = os.getenv('APPDATA') or os.getenv('LOCALAPPDATA')
         if appdata:
-            cache_path = Path(appdata) / 'Granola' / 'cache-v3.json'
+            granola_dir = Path(appdata) / 'Granola'
         else:
-            cache_path = None
+            granola_dir = None
     else:  # Linux
-        cache_path = Path.home() / '.config' / 'Granola' / 'cache-v3.json'
-    
-    if cache_path and cache_path.exists():
-        return {"installed": True, "cache_found": True, "path": str(cache_path)}
-    else:
-        return {"installed": False, "optional": True}
+        granola_dir = Path.home() / '.config' / 'Granola'
+
+    if granola_dir:
+        cache_path = _find_latest(granola_dir)
+        if cache_path:
+            return {"installed": True, "cache_found": True, "path": str(cache_path)}
+
+    return {"installed": False, "optional": True}
 
 def create_para_structure(base_path: Path) -> List[str]:
     """Create PARA folder structure"""
@@ -398,13 +395,6 @@ def create_user_profile(session_data: Dict) -> bool:
         
         # Update Obsidian mode (defaults to false)
         profile['obsidian_mode'] = data.get('obsidian_mode', False)
-        
-        # Auto-detect timezone if not already set
-        if not profile.get('timezone'):
-            detected_tz = detect_system_timezone()
-            if detected_tz:
-                profile['timezone'] = detected_tz
-                logger.info(f"Auto-detected timezone: {detected_tz}")
         
         # Update communication preferences
         comm = data.get('communication', {})
@@ -597,7 +587,7 @@ Based on your calendar and pillars, here are suggested priorities:
     for i, pillar in enumerate(pillars[:3], 1):
         content += f"{i}. **{pillar}**: [Define specific outcome for this week]\n"
     
-    content += f"\n## Meeting Overview\n\n"
+    content += "\n## Meeting Overview\n\n"
     content += f"You have **{len(events)} meetings** scheduled this week.\n\n"
     
     # Group by day
@@ -678,7 +668,8 @@ def create_person_page(contact: Dict, email_domain: str) -> bool:
         
         # Create appropriate folder
         folder = 'Internal' if is_internal else 'External'
-        people_dir = BASE_DIR / '05-Areas' / 'People' / folder
+        from core.paths import PEOPLE_DIR
+        people_dir = PEOPLE_DIR / folder
         people_dir.mkdir(parents=True, exist_ok=True)
         
         # Create person page
@@ -1345,10 +1336,6 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[types.Text
                     summary,
                     f"Onboarding complete! Created {len(folders)} folders, {len(summary['files_created'])} files"
                 )
-                try:
-                    _fire_analytics_event('onboarding_completed')
-                except Exception:
-                    pass
                 
             except Exception as e:
                 logger.error(f"Error during finalization: {e}")
@@ -1405,13 +1392,6 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[types.Text
             return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
     
     except Exception as e:
-        if _HAS_HEALTH:
-            _log_health_error(
-                source="onboarding-mcp",
-                message=str(e),
-                human_message=f"Onboarding step '{name}' failed",
-                context={"tool": name}
-            )
         logger.error(f"Error handling {name}: {e}")
         result = create_error_response(f"Internal error: {e}")
         return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
@@ -1422,8 +1402,6 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[types.Text
 
 async def _main():
     """Main entry point for the MCP server"""
-    if _HAS_HEALTH:
-        _mark_healthy("onboarding-mcp")
     async with mcp.server.stdio.stdio_server() as (read_stream, write_stream):
         await app.run(
             read_stream,

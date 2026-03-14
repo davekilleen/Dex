@@ -9,7 +9,8 @@ Used by onboarding and /dex-update to offer smart upgrade paths.
 import json
 import os
 from pathlib import Path
-from typing import Dict, List, Optional, TypedDict
+from typing import Optional, TypedDict
+
 
 class IntegrationStatus(TypedDict):
     installed: bool
@@ -193,7 +194,7 @@ def format_detection_report(result: DetectionResult) -> str:
         else:
             lines.append(f"### ❌ {service}")
             rec = RECOMMENDED.get(service.lower(), {})
-            lines.append(f"- **Not installed**")
+            lines.append("- **Not installed**")
             lines.append(f"- **Recommended:** {rec.get('package', 'N/A')}")
             lines.append(f"- **Benefits:** {', '.join(rec.get('benefits', []))}")
         

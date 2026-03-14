@@ -3,14 +3,13 @@
 Page generation utilities for Dex
 Creates person pages, meeting notes, and other content with proper reference formatting
 """
-from typing import Optional, List
 from datetime import datetime
+from typing import List, Optional
+
 from .reference_formatter import (
-    format_person_reference,
     format_company_reference,
+    format_person_reference,
     format_project_reference,
-    format_meeting_reference,
-    format_task_reference
 )
 
 

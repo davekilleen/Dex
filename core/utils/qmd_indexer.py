@@ -38,7 +38,6 @@ def _find_qmd() -> str | None:
         return path
 
     # Check common bun/npm global install locations
-    import os
     from pathlib import Path
     home = Path.home()
     candidates = [

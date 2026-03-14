@@ -14,12 +14,12 @@ Usage in skills:
     from analytics_helper import fire_event, check_consent, mark_feature_used
 """
 
+import hashlib
 import os
 import re
-import hashlib
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional, Dict, Any
+from typing import Any, Dict, Optional
 
 try:
     import requests
@@ -29,11 +29,9 @@ except ImportError:
 
 
 # Configuration
-PENDO_ENDPOINT = "https://app.pendo.io/data/track"
-
-# Bundled Pendo Track Event secret (write-only - can only send events, cannot read data)
-# This enables anonymous feature tracking for Dex users who opt in
-PENDO_TRACK_SECRET = "9b69df0b-ed13-4fed-925d-265243eef113"
+DEFAULT_PENDO_ENDPOINT = "https://app.pendo.io/data/track"
+ANALYTICS_MODE_DIRECT = "direct"
+ANALYTICS_MODE_PROXY = "proxy"
 
 
 def get_vault_path() -> Path:
@@ -43,14 +41,94 @@ def get_vault_path() -> Path:
 
 
 def get_pendo_secret() -> Optional[str]:
-    """Get Pendo Track Event shared secret."""
-    # Check environment variable first (allows override)
-    secret = os.environ.get('PENDO_TRACK_SECRET')
-    if secret:
-        return secret
-    
-    # Use bundled secret
-    return PENDO_TRACK_SECRET
+    """Get Pendo Track Event shared secret from environment."""
+    secret = os.environ.get('PENDO_TRACK_SECRET', '').strip()
+    return secret or None
+
+
+def get_analytics_mode() -> str:
+    """
+    Get analytics transport mode.
+
+    Modes:
+    - direct: client sends directly to Pendo (requires PENDO_TRACK_SECRET)
+    - proxy:  client sends to a relay endpoint (requires DEX_ANALYTICS_ENDPOINT)
+    """
+    mode = os.environ.get('DEX_ANALYTICS_MODE', ANALYTICS_MODE_DIRECT).strip().lower()
+    if mode in (ANALYTICS_MODE_DIRECT, ANALYTICS_MODE_PROXY):
+        return mode
+    return ANALYTICS_MODE_DIRECT
+
+
+def get_analytics_endpoint(mode: Optional[str] = None) -> str:
+    """Get analytics endpoint for current mode."""
+    resolved_mode = mode or get_analytics_mode()
+    endpoint = os.environ.get('DEX_ANALYTICS_ENDPOINT', '').strip()
+
+    if endpoint:
+        return endpoint
+    if resolved_mode == ANALYTICS_MODE_DIRECT:
+        return DEFAULT_PENDO_ENDPOINT
+    return ''
+
+
+def get_proxy_token() -> Optional[str]:
+    """Optional bearer token for analytics proxy."""
+    token = os.environ.get('DEX_ANALYTICS_PROXY_TOKEN', '').strip()
+    return token or None
+
+
+def get_analytics_transport() -> Dict[str, Any]:
+    """
+    Resolve analytics transport configuration.
+
+    Returns:
+        {
+            "configured": bool,
+            "mode": "direct" | "proxy",
+            "endpoint": str,
+            "headers": dict,
+            "reason": str (if not configured)
+        }
+    """
+    mode = get_analytics_mode()
+    endpoint = get_analytics_endpoint(mode)
+    headers = {'Content-Type': 'application/json'}
+
+    if not endpoint:
+        return {
+            'configured': False,
+            'mode': mode,
+            'endpoint': '',
+            'headers': headers,
+            'reason': 'no_analytics_endpoint',
+        }
+
+    if mode == ANALYTICS_MODE_DIRECT:
+        secret = get_pendo_secret()
+        if not secret:
+            return {
+                'configured': False,
+                'mode': mode,
+                'endpoint': endpoint,
+                'headers': headers,
+                'reason': 'no_pendo_secret',
+            }
+        headers['x-pendo-integration-key'] = secret
+    else:
+        # Proxy mode intentionally avoids shipping Pendo credentials in clients.
+        token = get_proxy_token()
+        if token:
+            headers['Authorization'] = f'Bearer {token}'
+        headers['x-dex-analytics-client'] = 'dex-core'
+
+    return {
+        'configured': True,
+        'mode': mode,
+        'endpoint': endpoint,
+        'headers': headers,
+        'reason': '',
+    }
 
 
 def load_usage_log() -> Dict[str, Any]:
@@ -280,9 +358,9 @@ def fire_event(event_name: str, properties: Dict[str, Any] = None) -> Dict[str, 
     if not HAS_REQUESTS:
         return {'fired': False, 'reason': 'requests_not_installed'}
     
-    secret = get_pendo_secret()
-    if not secret:
-        return {'fired': False, 'reason': 'no_pendo_secret'}
+    transport = get_analytics_transport()
+    if not transport.get('configured'):
+        return {'fired': False, 'reason': transport.get('reason', 'transport_not_configured')}
     
     visitor_info = get_visitor_info()
     journey = calculate_journey_metadata()
@@ -308,17 +386,21 @@ def fire_event(event_name: str, properties: Dict[str, Any] = None) -> Dict[str, 
         'properties': event_props
     }
     
-    headers = {
-        'Content-Type': 'application/json',
-        'x-pendo-integration-key': secret
-    }
-    
     try:
-        response = requests.post(PENDO_ENDPOINT, json=payload, headers=headers, timeout=10)
+        response = requests.post(
+            transport['endpoint'],
+            json=payload,
+            headers=transport['headers'],
+            timeout=10
+        )
         if response.status_code == 200:
-            return {'fired': True, 'event': event_name}
+            return {'fired': True, 'event': event_name, 'mode': transport['mode']}
         else:
-            return {'fired': False, 'error': f'HTTP {response.status_code}'}
+            return {
+                'fired': False,
+                'mode': transport['mode'],
+                'error': f'HTTP {response.status_code}'
+            }
     except Exception as e:
         return {'fired': False, 'error': str(e)}
 

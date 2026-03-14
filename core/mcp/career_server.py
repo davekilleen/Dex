@@ -12,18 +12,17 @@ Tools:
 - timeline_analysis: Track evidence trends and growth velocity over time
 """
 
-import os
-import sys
 import json
 import logging
+import re
+import sys
+from datetime import date, datetime, timedelta
 from pathlib import Path
-from typing import Dict, List, Optional, Any
-from datetime import datetime, date
 
-from mcp.server import Server, NotificationOptions
-from mcp.server.models import InitializationOptions
 import mcp.server.stdio
 import mcp.types as types
+from mcp.server import NotificationOptions, Server
+from mcp.server.models import InitializationOptions
 
 # QMD semantic search (optional - gracefully degrade if not available)
 try:
@@ -41,23 +40,28 @@ except ImportError:
     def _fire_analytics_event(event_name, properties=None):
         return {'fired': False, 'reason': 'analytics_not_available'}
 
+# Ensure sibling modules (career_parser) and repo root are importable
+_mcp_dir = str(Path(__file__).parent)
+if _mcp_dir not in sys.path:
+    sys.path.insert(0, _mcp_dir)
+
 # Import parsing utilities
 from career_parser import (
-    parse_evidence_file,
-    parse_ladder_file,
-    scan_evidence_directory,
     analyze_competency_coverage,
-    group_evidence_by_period,
     calculate_growth_velocity,
     find_stale_competencies,
-    parse_date_range,
     get_quarter_label,
+    group_evidence_by_period,
+    parse_date_range,
+    parse_ladder_file,
+    scan_evidence_directory,
 )
 
 # Health system — error queue and health reporting
 try:
     sys.path.insert(0, str(Path(__file__).parent.parent.parent))
-    from core.utils.dex_logger import log_error as _log_health_error, mark_healthy as _mark_healthy
+    from core.utils.dex_logger import log_error as _log_health_error
+    from core.utils.dex_logger import mark_healthy as _mark_healthy
     _HAS_HEALTH = True
 except ImportError:
     _HAS_HEALTH = False
@@ -73,10 +77,18 @@ class DateTimeEncoder(json.JSONEncoder):
             return obj.isoformat()
         return super().default(obj)
 
-# Configuration - Vault paths
-BASE_DIR = Path(os.environ.get('VAULT_PATH', Path.cwd()))
-CAREER_DIR = BASE_DIR / 'Active' / 'Career'
-EVIDENCE_DIR = BASE_DIR / 'Resources' / 'Career_Evidence'
+# Configuration - Vault paths (centralized in core.paths)
+_repo_root = str(Path(__file__).parent.parent.parent)
+if _repo_root not in sys.path:
+    sys.path.append(_repo_root)
+from core.paths import (
+    CAREER_DIR,
+    EVIDENCE_DIR,
+)
+from core.paths import (
+    VAULT_ROOT as BASE_DIR,
+)
+
 LADDER_FILE = CAREER_DIR / 'Career_Ladder.md'
 
 # Initialize the MCP server

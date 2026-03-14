@@ -9,6 +9,7 @@ both use EventKit.
 
 import sys
 import time
+
 try:
     import EventKit
 except ImportError:

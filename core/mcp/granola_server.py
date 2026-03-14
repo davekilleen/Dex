@@ -1,4 +1,9 @@
 #!/usr/bin/env python3
+# ============================================================================
+# DEPRECATED: Background sync now uses Granola's direct API (api.granola.ai)
+# via sync-from-granola.cjs. This file is kept for reference only.
+# See: .claude/reference/meeting-intel.md
+# ============================================================================
 """
 Granola Meeting Notes MCP Server for Dex
 
@@ -13,53 +18,60 @@ Tools:
 - granola_search_meetings: Search meetings by title or attendee
 """
 
-import os
 import json
 import logging
+import os
 import platform
 import re
-import requests
 import time
+from datetime import date, datetime, timedelta
 from pathlib import Path
-from datetime import datetime, date, timedelta
-from typing import Optional, Dict, List, Any
+from typing import Any, Dict, List, Optional
 
-from mcp.server import Server, NotificationOptions
-from mcp.server.models import InitializationOptions
 import mcp.server.stdio
 import mcp.types as types
+import requests
+from mcp.server import NotificationOptions, Server
+from mcp.server.models import InitializationOptions
 
-# Analytics helper (optional - gracefully degrade if not available)
-try:
-    from analytics_helper import fire_event as _fire_analytics_event
-    HAS_ANALYTICS = True
-except ImportError:
-    HAS_ANALYTICS = False
-    def _fire_analytics_event(event_name, properties=None):
-        return {'fired': False, 'reason': 'analytics_not_available'}
 
 # Granola paths (cross-platform)
+def _find_latest_cache(granola_dir):
+    """Find highest-versioned cache-v*.json in a directory."""
+    candidates = sorted(
+        granola_dir.glob("cache-v*.json"),
+        key=lambda p: int(re.search(r'v(\d+)', p.name).group(1))
+        if re.search(r'v(\d+)', p.name) else 0,
+        reverse=True
+    )
+    for c in candidates:
+        if c.exists():
+            return c
+    return None
+
 def get_granola_cache_path():
-    """Get Granola cache path for current OS"""
+    """Get Granola cache path for current OS (auto-detects latest cache version)"""
     system = platform.system()
     home = Path.home()
-    
+
     if system == "Darwin":  # macOS
-        return home / "Library" / "Application Support" / "Granola" / "cache-v3.json"
+        granola_dir = home / "Library" / "Application Support" / "Granola"
     elif system == "Windows":
         # Try AppData\Roaming first, then Local
         roaming = Path(os.environ.get('APPDATA', home / 'AppData' / 'Roaming'))
         local = Path(os.environ.get('LOCALAPPDATA', home / 'AppData' / 'Local'))
-        
+
         for base_path in [roaming, local]:
-            cache_path = base_path / "Granola" / "cache-v3.json"
-            if cache_path.exists():
-                return cache_path
-        
-        # Default to Roaming if neither exists
+            result = _find_latest_cache(base_path / "Granola")
+            if result:
+                return result
+
+        # Default fallback
         return roaming / "Granola" / "cache-v3.json"
     else:  # Linux or other
-        return home / ".config" / "Granola" / "cache-v3.json"
+        granola_dir = home / ".config" / "Granola"
+
+    return _find_latest_cache(granola_dir) or granola_dir / "cache-v3.json"
 
 def get_granola_creds_path():
     """Get Granola credentials path for current OS"""
@@ -86,15 +98,6 @@ GRANOLA_CREDS = get_granola_creds_path()
 
 # Vault paths
 VAULT_PATH = Path(os.environ.get('VAULT_PATH', Path.cwd()))
-
-# Health system — error queue and health reporting
-try:
-    import sys as _sys
-    _sys.path.insert(0, str(Path(__file__).parent.parent.parent))
-    from core.utils.dex_logger import log_error as _log_health_error, mark_healthy as _mark_healthy
-    _HAS_HEALTH = True
-except ImportError:
-    _HAS_HEALTH = False
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -187,11 +190,11 @@ def fetch_from_api(endpoint: str, data: Dict[str, Any], retries: int = 2) -> Opt
                 return result
             elif response.status_code == 429:
                 # Rate limited - don't retry, fall back to cache
-                logger.warning(f"API rate limited (429), falling back to cache")
+                logger.warning("API rate limited (429), falling back to cache")
                 return None
             elif response.status_code == 401:
                 # Auth failed - don't retry
-                logger.warning(f"API auth failed (401), token may be expired")
+                logger.warning("API auth failed (401), token may be expired")
                 return None
             else:
                 logger.warning(f"API returned {response.status_code}: {response.text[:200]}")
@@ -426,30 +429,12 @@ def extract_meeting_info_from_cache(doc: Dict[str, Any], transcripts: Dict[str, 
     created_at = doc.get('created_at', '')
     meeting_date = created_at.split('T')[0] if created_at else None
     
-    # Extract notes: try notes_markdown first, fall back to last_viewed_panel
-    notes = doc.get('notes_markdown', '')
-    if not notes:
-        panel = doc.get('last_viewed_panel')
-        if panel and isinstance(panel, dict):
-            panel_content = panel.get('content')
-            if panel_content and isinstance(panel_content, dict):
-                notes = convert_prosemirror_to_markdown(panel_content)
-        elif panel and isinstance(panel, str):
-            try:
-                parsed_panel = json.loads(panel)
-                if isinstance(parsed_panel, dict):
-                    panel_content = parsed_panel.get('content')
-                    if panel_content and isinstance(panel_content, dict):
-                        notes = convert_prosemirror_to_markdown(panel_content)
-            except (json.JSONDecodeError, TypeError):
-                pass
-    
     return {
         'id': meeting_id,
         'title': doc.get('title', 'Untitled Meeting'),
         'date': meeting_date,
         'created_at': created_at,
-        'notes': notes,
+        'notes': doc.get('notes_markdown', ''),
         'has_transcript': bool(transcript),
         'transcript_length': len(transcript) if transcript else 0,
         'participants': participants,
@@ -565,8 +550,8 @@ def get_meeting_by_id_from_cache(cache: Dict[str, Any], meeting_id: str) -> Opti
             for t in sorted(transcript_entries, key=lambda x: x.get('start_timestamp', ''))
         ).strip()
     
-    # Add action items if present in notes (uses notes from extract_meeting_info_from_cache which checks last_viewed_panel)
-    notes = info.get('notes', '')
+    # Add action items if present in notes
+    notes = doc.get('notes_markdown', '')
     action_items = []
     for line in notes.split('\n'):
         line = line.strip()
@@ -594,7 +579,7 @@ def get_meeting_details(meeting_id: str) -> Optional[Dict[str, Any]]:
     if api_response and 'docs' in api_response:
         for doc in api_response['docs']:
             if doc.get('id') == meeting_id:
-                logger.info(f"Found meeting in API data")
+                logger.info("Found meeting in API data")
                 info = convert_api_doc_to_meeting_info(doc)
                 
                 # Extract action items from notes
@@ -657,15 +642,9 @@ def search_meetings_in_cache(
             results.append(extract_meeting_info_from_cache(doc, cache['transcripts'], meeting_id))
             continue
         
-        # Search in notes (check notes_markdown and last_viewed_panel)
-        notes = doc.get('notes_markdown', '')
-        if not notes:
-            panel = doc.get('last_viewed_panel')
-            if panel and isinstance(panel, dict):
-                panel_content = panel.get('content')
-                if panel_content and isinstance(panel_content, dict):
-                    notes = convert_prosemirror_to_markdown(panel_content)
-        if query_lower in notes.lower():
+        # Search in notes
+        notes = doc.get('notes_markdown', '').lower()
+        if query_lower in notes:
             results.append(extract_meeting_info_from_cache(doc, cache['transcripts'], meeting_id))
             continue
         
@@ -872,34 +851,9 @@ async def handle_call_tool(
     name: str, arguments: dict | None
 ) -> list[types.TextContent | types.ImageContent | types.EmbeddedResource]:
     """Handle tool calls"""
-    try:
-        return await _handle_call_tool_inner(name, arguments)
-    except Exception as e:
-        if _HAS_HEALTH:
-            _tool_human_messages = {
-                "granola_check_available": "Granola availability check failed",
-                "granola_get_recent_meetings": "Recent meetings lookup failed",
-                "granola_get_meeting_details": "Meeting details lookup failed",
-                "granola_search_meetings": "Meeting search failed",
-                "granola_get_today_meetings": "Today's meetings lookup failed",
-                "granola_get_extent": "Granola data extent lookup failed",
-            }
-            _log_health_error(
-                source="granola-mcp",
-                message=str(e),
-                human_message=_tool_human_messages.get(name, f"Granola tool '{name}' failed"),
-                context={"tool": name},
-            )
-        raise
-
-
-async def _handle_call_tool_inner(
-    name: str, arguments: dict | None
-) -> list[types.TextContent | types.ImageContent | types.EmbeddedResource]:
-    """Inner tool handler — wrapped by handle_call_tool for health reporting."""
-
+    
     arguments = arguments or {}
-
+    
     if name == "granola_check_available":
         # Check API availability
         api_available = False
@@ -997,11 +951,6 @@ async def _handle_call_tool_inner(
             "data_source": meeting.get('source', 'unknown')
         }
         
-        try:
-            _fire_analytics_event('granola_meeting_viewed')
-        except Exception:
-            pass
-        
         return [types.TextContent(type="text", text=json.dumps(result, indent=2, cls=DateTimeEncoder))]
     
     elif name == "granola_search_meetings":
@@ -1025,11 +974,6 @@ async def _handle_call_tool_inner(
             "count": len(meetings),
             "data_source": meetings[0].get('source', 'unknown') if meetings else 'none'
         }
-        
-        try:
-            _fire_analytics_event('granola_meetings_searched')
-        except Exception:
-            pass
         
         return [types.TextContent(type="text", text=json.dumps(result, indent=2, cls=DateTimeEncoder))]
     
@@ -1166,8 +1110,6 @@ async def _handle_call_tool_inner(
 
 async def _main():
     """Async main entry point for the MCP server"""
-    if _HAS_HEALTH:
-        _mark_healthy("granola-mcp")
     logger.info("Starting Dex Granola MCP Server (API-first with cache fallback)")
     logger.info(f"API credentials: {GRANOLA_CREDS}")
     logger.info(f"Cache fallback: {GRANOLA_CACHE}")

@@ -12,19 +12,18 @@ Read-only access to:
 DB location: System/.dex-sessions.db (shared with dex-app via WAL mode)
 """
 
-import os
-import sys
 import json
 import logging
+import os
 import sqlite3
-from pathlib import Path
-from typing import Dict, List, Optional, Any
 from datetime import datetime, timedelta
+from pathlib import Path
+from typing import Dict, List, Optional
 
-from mcp.server import Server, NotificationOptions
-from mcp.server.models import InitializationOptions
 import mcp.server.stdio
 import mcp.types as types
+from mcp.server import NotificationOptions, Server
+from mcp.server.models import InitializationOptions
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)

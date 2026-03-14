@@ -7,13 +7,11 @@ for the Resume Builder MCP server.
 """
 
 import re
-from pathlib import Path
-from typing import Dict, List, Optional, Any, Tuple
-from datetime import datetime, date
-from dataclasses import dataclass, field, asdict
+from dataclasses import asdict, dataclass, field
+from datetime import date, datetime
 from enum import Enum
-import json
-
+from pathlib import Path
+from typing import Any, Dict, List, Optional
 
 # ============================================================================
 # DATA STRUCTURES
@@ -899,7 +897,7 @@ def find_relevant_evidence(
     Returns:
         List of relevant evidence file data
     """
-    from career_parser import scan_evidence_directory, parse_date_range
+    from career_parser import scan_evidence_directory
     
     if not evidence_dir.exists():
         return []

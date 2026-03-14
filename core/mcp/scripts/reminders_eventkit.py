@@ -14,10 +14,11 @@ Usage:
     reminders_eventkit.py ensure_lists
 """
 
-import sys
 import json
+import sys
 import time
-from datetime import datetime, timedelta
+from datetime import datetime
+
 import EventKit
 from Foundation import NSDate, NSRunLoop
 

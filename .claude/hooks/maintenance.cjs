@@ -14,12 +14,17 @@
 const fs = require('fs');
 const path = require('path');
 
-const vaultRoot = process.env.CLAUDE_PROJECT_DIR || path.resolve(__dirname, '../..');
+const { loadPaths } = require('./paths.cjs');
+const _paths = loadPaths();
+const vaultRoot = _paths.VAULT_ROOT || process.env.CLAUDE_PROJECT_DIR || path.resolve(__dirname, '../..');
 const now = Date.now();
 const DAY_MS = 86400000;
 const report = { staleFiles: [], brokenLinks: [], orphanedPages: [], staleMemory: [] };
 
-// === 1. Stale Inbox Files ===
+/**
+ * Find markdown files in 00-Inbox/ that haven't been modified in over 30 days.
+ * Populates report.staleFiles.
+ */
 function checkStaleInbox() {
   const inboxDir = path.join(vaultRoot, '00-Inbox');
   if (!fs.existsSync(inboxDir)) return;
@@ -49,7 +54,10 @@ function checkStaleInbox() {
   walkDir(inboxDir);
 }
 
-// === 2. Broken WikiLinks ===
+/**
+ * Scan PARA directories for [[WikiLinks]] whose targets don't exist.
+ * Samples up to 100 files for performance. Populates report.brokenLinks.
+ */
 function checkBrokenLinks() {
   const mdFiles = [];
   const collectMd = (dir, depth = 0) => {
@@ -104,7 +112,10 @@ function checkBrokenLinks() {
   }
 }
 
-// === 3. Orphaned Person Pages ===
+/**
+ * Find person pages not referenced in Tasks.md or recent meeting notes.
+ * Populates report.orphanedPages.
+ */
 function checkOrphanedPages() {
   const peopleDir = path.join(vaultRoot, '05-Areas/People');
   if (!fs.existsSync(peopleDir)) return;
@@ -162,7 +173,10 @@ function checkOrphanedPages() {
   }
 }
 
-// === 4. Agent Memory Cleanup ===
+/**
+ * Find agent memory files older than 90 days that can be cleaned up.
+ * Populates report.staleMemory.
+ */
 function checkStaleMemory() {
   const memoryDir = path.join(vaultRoot, '.claude/memory');
   if (!fs.existsSync(memoryDir)) return;

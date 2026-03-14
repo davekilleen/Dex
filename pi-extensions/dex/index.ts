@@ -31,7 +31,7 @@ const execAsync = promisify(exec);
 // CONFIGURATION
 // ============================================================================
 
-const VAULT_PATH = process.env.VAULT_PATH || "/Users/dave/Claudesidian";
+const VAULT_PATH = process.env.VAULT_PATH || process.cwd();
 const PEOPLE_PATH = path.join(VAULT_PATH, "05-Areas/People");
 const COMPANIES_PATH = path.join(VAULT_PATH, "05-Areas/Companies");
 const TASKS_PATH = path.join(VAULT_PATH, "03-Tasks/Tasks.md");

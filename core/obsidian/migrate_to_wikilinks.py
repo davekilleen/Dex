@@ -6,9 +6,9 @@ Zero AI tokens - pure regex pattern matching
 import os
 import re
 import sys
+from datetime import datetime
 from pathlib import Path
 from typing import List, Tuple
-from datetime import datetime
 
 try:
     from tqdm import tqdm
@@ -77,7 +77,7 @@ def convert_references_in_file(content: str, person_idx: dict,
         pattern = rf'(?<!\[\[)\b({re.escape(person_name)})\b(?!\]\])'
         matches = len(re.findall(pattern, content))
         if matches > 0:
-            content = re.sub(pattern, rf'[[\1]]', content)
+            content = re.sub(pattern, r'[[\1]]', content)
             changes += matches
     
     # Convert project references (04-Projects/Project_Name)
@@ -85,7 +85,7 @@ def convert_references_in_file(content: str, person_idx: dict,
         pattern = rf'(?<!\[\[)\b({re.escape(project_path)})\b(?!\]\])'
         matches = len(re.findall(pattern, content))
         if matches > 0:
-            content = re.sub(pattern, rf'[[\1]]', content)
+            content = re.sub(pattern, r'[[\1]]', content)
             changes += matches
     
     # Convert company references
@@ -93,7 +93,7 @@ def convert_references_in_file(content: str, person_idx: dict,
         pattern = rf'(?<!\[\[)\b({re.escape(company_name)})\b(?!\]\])'
         matches = len(re.findall(pattern, content))
         if matches > 0:
-            content = re.sub(pattern, rf'[[\1]]', content)
+            content = re.sub(pattern, r'[[\1]]', content)
             changes += matches
     
     # Convert task ID references (^task-YYYYMMDD-XXX)
@@ -180,7 +180,7 @@ def migrate_vault(dry_run: bool = False):
     print(f"  Total conversions: {total_changes}")
     
     if not dry_run:
-        print(f"\nBackup saved. To revert: git reset --hard HEAD~1")
+        print("\nBackup saved. To revert: git reset --hard HEAD~1")
         
         # macOS notification
         os.system(f'''

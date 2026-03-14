@@ -4,13 +4,15 @@ Tests for Commitment Detection MCP Server
 Run with: pytest core/mcp/tests/test_commitment_server.py -v
 """
 
-import pytest
-import json
+import asyncio
+import importlib.util
 import os
 import sys
-from pathlib import Path
 from datetime import datetime, timedelta
-from unittest.mock import patch, MagicMock, AsyncMock
+from pathlib import Path
+from unittest.mock import patch
+
+import pytest
 
 # Add parent to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -19,13 +21,10 @@ from commitment_server import (
     detect_commitment_type,
     extract_deadline,
     extract_person_name,
-    match_to_vault_context,
     generate_commitment_id,
     load_queue,
+    match_to_vault_context,
     save_queue,
-    INBOUND_PATTERNS,
-    OUTBOUND_PATTERNS,
-    DEADLINE_PATTERNS,
 )
 
 
@@ -354,21 +353,20 @@ Sarah"""
 
 # Integration test (requires ScreenPipe running)
 @pytest.mark.skipif(
-    os.environ.get("SKIP_INTEGRATION") == "1",
-    reason="Integration tests disabled"
+    os.environ.get("SKIP_INTEGRATION") == "1" or importlib.util.find_spec("aiohttp") is None,
+    reason="Integration tests disabled or aiohttp not installed"
 )
 class TestIntegration:
     """Integration tests requiring ScreenPipe."""
     
-    @pytest.mark.asyncio
-    async def test_screenpipe_query(self):
+    def test_screenpipe_query(self):
         """Test querying ScreenPipe."""
         from commitment_server import query_screenpipe
         
         end_time = datetime.now().isoformat()
         start_time = (datetime.now() - timedelta(hours=1)).isoformat()
         
-        results = await query_screenpipe(start_time, end_time)
+        results = asyncio.run(query_screenpipe(start_time, end_time))
         # Just verify we get a list back (may be empty)
         assert isinstance(results, list)
 
