@@ -102,6 +102,7 @@ build/
 eggs/
 .eggs/
 lib/
+!.scripts/lib/
 lib64/
 parts/
 sdist/
@@ -151,6 +152,25 @@ System/Dex_Backlog.md
 System/Demo/
 System/highlights.json
 System/Innovation_Research/
+
+# Slack bot runtime state (contains conversation history, PII)
+.scripts/slack-dex-bot/state/*.db
+.scripts/slack-dex-bot/state/*.db-shm
+.scripts/slack-dex-bot/state/*.db-wal
+.scripts/slack-dex-bot/state/pending-checkin.json
+.scripts/slack-dex-bot/state/confirmed-priorities.json
+.scripts/slack-dex-bot/state/crash-counter.json
+.scripts/slack-dex-bot/state/last-eod-*
+
+# WhatsApp channel config (contains phone numbers and PII)
+System/whatsapp-channels.yaml
+
+# Integration state and credentials
+System/integrations/notion.yaml
+System/.notion-week-sync-state.json
+
+# People index (generated, contains names)
+System/People_Index.json
 
 # Onboarding state
 System/.onboarding/state.json

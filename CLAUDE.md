@@ -187,6 +187,21 @@ Adapt your tone and language based on user preferences in `System/user-profile.y
 
 Apply consistently across all interactions (planning, reviews, meetings, project discussions).
 
+### Calendar Backend Selection
+
+Dex supports two calendar backends configured via `System/user-profile.yaml` → `calendar_backend`:
+
+- **`apple`** (default) — Uses macOS Calendar.app via AppleScript. Zero setup if already using Apple Calendar.
+- **`office365`** — Uses Microsoft Graph API directly. Requires Azure AD app registration and OAuth tokens.
+
+**Office 365 setup:**
+1. User registers an Azure AD app with `Calendars.Read` permission
+2. Runs `python3 core/mcp/scripts/office365_get_refresh_token.py` for device-code auth
+3. Sets `MS_TENANT_ID`, `MS_CLIENT_ID`, `MS_CLIENT_SECRET`, `MS_REFRESH_TOKEN` in `.env`
+4. Sets `calendar_backend: office365` in `System/user-profile.yaml`
+
+**When user mentions Office 365, Outlook calendar, or Microsoft calendar**, guide them through this setup. If calendar errors mention "token" or "Graph API", check the O365 credentials first.
+
 ### Granola Mobile Recordings (Natural Language Triggers)
 
 When the user mentions any of these:

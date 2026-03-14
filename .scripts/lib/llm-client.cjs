@@ -1,147 +1,185 @@
 #!/usr/bin/env node
 
 /**
- * Unified LLM Client
- * 
- * Supports Anthropic, OpenAI, and Google Gemini with automatic provider selection
- * based on available API keys.
- * 
- * Priority order: Anthropic > OpenAI > Gemini
+ * Multi-provider LLM client
+ * Supports Anthropic, OpenAI, and Google Gemini
  */
 
-require('dotenv').config();
+const https = require('https');
 
-const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
-const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+// API endpoints
+const ANTHROPIC_API = 'https://api.anthropic.com/v1/messages';
+const OPENAI_API = 'https://api.openai.com/v1/chat/completions';
+const GEMINI_API_BASE = 'https://generativelanguage.googleapis.com/v1beta/models';
 
-// Determine which provider to use
-function getAvailableProvider() {
-  if (ANTHROPIC_API_KEY) return 'anthropic';
-  if (OPENAI_API_KEY) return 'openai';
-  if (GEMINI_API_KEY) return 'gemini';
+// Load API keys from environment
+const ANTHROPIC_KEY = process.env.ANTHROPIC_API_KEY;
+const OPENAI_KEY = process.env.OPENAI_API_KEY;
+const GEMINI_KEY = process.env.GEMINI_API_KEY;
+
+// Model configuration
+const ANTHROPIC_MODEL = process.env.ANTHROPIC_MODEL || 'claude-sonnet-4-5-20250929';
+const OPENAI_MODEL = process.env.OPENAI_MODEL || 'gpt-4o';
+const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-2.0-flash-exp';
+
+/**
+ * Determine which provider is configured
+ * Priority order: Anthropic > Gemini > OpenAI
+ */
+function getActiveProvider() {
+  if (ANTHROPIC_KEY) return 'anthropic';
+  if (GEMINI_KEY) return 'gemini';
+  if (OPENAI_KEY) return 'openai';
   return null;
 }
 
-// ============================================================================
-// ANTHROPIC CLIENT
-// ============================================================================
-
-async function generateWithAnthropic(prompt, options = {}) {
-  const Anthropic = require('@anthropic-ai/sdk');
-  const anthropic = new Anthropic({ apiKey: ANTHROPIC_API_KEY });
-  
-  const message = await anthropic.messages.create({
-    model: options.model || 'claude-sonnet-4-6',
-    max_tokens: options.maxOutputTokens || 4096,
-    messages: [
-      {
-        role: 'user',
-        content: prompt
-      }
-    ]
-  });
-  
-  return message.content[0].text;
+/**
+ * Check if any LLM provider is configured
+ */
+function isConfigured() {
+  return getActiveProvider() !== null;
 }
-
-// ============================================================================
-// OPENAI CLIENT
-// ============================================================================
-
-async function generateWithOpenAI(prompt, options = {}) {
-  const OpenAI = require('openai');
-  const openai = new OpenAI({ apiKey: OPENAI_API_KEY });
-  
-  const completion = await openai.chat.completions.create({
-    model: options.model || 'gpt-4o',
-    max_tokens: options.maxOutputTokens || 4096,
-    messages: [
-      {
-        role: 'user',
-        content: prompt
-      }
-    ]
-  });
-  
-  return completion.choices[0].message.content;
-}
-
-// ============================================================================
-// GEMINI CLIENT
-// ============================================================================
-
-async function generateWithGemini(prompt, options = {}) {
-  const { GoogleGenerativeAI } = require('@google/generative-ai');
-  const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
-  
-  const model = genAI.getGenerativeModel({
-    model: options.model || 'gemini-2.0-flash-thinking-exp-1219',
-    generationConfig: {
-      maxOutputTokens: options.maxOutputTokens || 4096,
-      temperature: options.temperature || 1.0,
-    }
-  });
-  
-  const result = await model.generateContent(prompt);
-  return result.response.text();
-}
-
-// ============================================================================
-// UNIFIED INTERFACE
-// ============================================================================
 
 /**
- * Generate content using the first available LLM provider
- * 
- * @param {string} prompt - The prompt to send to the LLM
- * @param {object} options - Generation options
- * @param {string} options.model - Model to use (provider-specific)
- * @param {number} options.maxOutputTokens - Max tokens to generate
- * @param {number} options.temperature - Temperature (0-1)
- * @param {string} options.provider - Force a specific provider ('anthropic', 'openai', 'gemini')
- * @returns {Promise<string>} Generated text
+ * Make HTTPS request with 120-second timeout
+ */
+function httpsRequest(url, options, body) {
+  return new Promise((resolve, reject) => {
+    const urlObj = new URL(url);
+    const reqOptions = {
+      ...options,
+      hostname: urlObj.hostname,
+      path: urlObj.pathname + urlObj.search,
+      port: 443,
+      method: options.method || 'POST',
+      timeout: 120000
+    };
+
+    const req = https.request(reqOptions, (res) => {
+      let data = '';
+      res.on('data', chunk => data += chunk);
+      res.on('end', () => {
+        if (res.statusCode >= 200 && res.statusCode < 300) {
+          try {
+            resolve(JSON.parse(data));
+          } catch (e) {
+            resolve(data);
+          }
+        } else {
+          reject(new Error(`HTTP ${res.statusCode}: ${data}`));
+        }
+      });
+    });
+
+    req.on('timeout', () => {
+      req.destroy();
+      reject(new Error(`Request timed out after 120 seconds: ${url}`));
+    });
+    req.on('error', reject);
+    if (body) req.write(JSON.stringify(body));
+    req.end();
+  });
+}
+
+/**
+ * Call Anthropic API
+ */
+async function callAnthropic(prompt, options = {}) {
+  const { maxOutputTokens = 4096 } = options;
+
+  const body = {
+    model: ANTHROPIC_MODEL,
+    max_tokens: maxOutputTokens,
+    messages: [{ role: 'user', content: prompt }]
+  };
+
+  const response = await httpsRequest(ANTHROPIC_API, {
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': ANTHROPIC_KEY,
+      'anthropic-version': '2023-06-01'
+    }
+  }, body);
+
+  if (!response.content || !response.content[0] || !response.content[0].text) {
+    throw new Error('Unexpected Anthropic response: missing content[0].text');
+  }
+  return response.content[0].text;
+}
+
+/**
+ * Call OpenAI API
+ */
+async function callOpenAI(prompt, options = {}) {
+  const { maxOutputTokens = 4096 } = options;
+
+  const body = {
+    model: OPENAI_MODEL,
+    max_tokens: maxOutputTokens,
+    messages: [{ role: 'user', content: prompt }]
+  };
+
+  const response = await httpsRequest(OPENAI_API, {
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${OPENAI_KEY}`
+    }
+  }, body);
+
+  if (!response.choices || !response.choices[0] || !response.choices[0].message) {
+    throw new Error('Unexpected OpenAI response: missing choices[0].message.content');
+  }
+  return response.choices[0].message.content;
+}
+
+/**
+ * Call Google Gemini API
+ */
+async function callGemini(prompt, options = {}) {
+  const { maxOutputTokens = 4096 } = options;
+
+  // Gemini uses API key as a URL query parameter per Google's API design
+  const url = `${GEMINI_API_BASE}/${GEMINI_MODEL}:generateContent?key=${GEMINI_KEY}`;
+  const body = {
+    contents: [{ parts: [{ text: prompt }] }],
+    generationConfig: { maxOutputTokens }
+  };
+
+  const response = await httpsRequest(url, {
+    headers: { 'Content-Type': 'application/json' }
+  }, body);
+
+  if (!response.candidates || !response.candidates[0] || !response.candidates[0].content ||
+      !response.candidates[0].content.parts || !response.candidates[0].content.parts[0]) {
+    throw new Error('Unexpected Gemini response: missing candidates[0].content.parts[0].text');
+  }
+  return response.candidates[0].content.parts[0].text;
+}
+
+/**
+ * Generate content using configured provider
  */
 async function generateContent(prompt, options = {}) {
-  const provider = options.provider || getAvailableProvider();
-  
+  const provider = getActiveProvider();
+
   if (!provider) {
-    throw new Error(
-      'No LLM API key found. Set ANTHROPIC_API_KEY, OPENAI_API_KEY, or GEMINI_API_KEY in your .env file'
-    );
+    throw new Error('No LLM API key configured. Set ANTHROPIC_API_KEY, OPENAI_API_KEY, or GEMINI_API_KEY');
   }
-  
+
   switch (provider) {
     case 'anthropic':
-      return await generateWithAnthropic(prompt, options);
+      return callAnthropic(prompt, options);
     case 'openai':
-      return await generateWithOpenAI(prompt, options);
+      return callOpenAI(prompt, options);
     case 'gemini':
-      return await generateWithGemini(prompt, options);
+      return callGemini(prompt, options);
     default:
       throw new Error(`Unknown provider: ${provider}`);
   }
 }
 
-/**
- * Get the currently active provider
- */
-function getActiveProvider() {
-  return getAvailableProvider();
-}
-
-/**
- * Check if any API key is configured
- */
-function isConfigured() {
-  return getAvailableProvider() !== null;
-}
-
 module.exports = {
   generateContent,
-  getActiveProvider,
   isConfigured,
-  ANTHROPIC_API_KEY,
-  OPENAI_API_KEY,
-  GEMINI_API_KEY
+  getActiveProvider
 };

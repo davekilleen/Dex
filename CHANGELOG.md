@@ -7,6 +7,30 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.19.0] — Office 365 Calendar and Security Hardening (2026-03-14)
+
+### Office 365 Calendar Backend
+
+Previously, Dex required Apple Calendar.app for calendar access — if you used Outlook or Google via O365, you were out of luck.
+
+**What changed:**
+* Direct Microsoft Graph API integration via OAuth2
+* Set `calendar_backend: office365` in `System/user-profile.yaml` to switch
+* Supports both delegated (personal) and app-only (admin) token flows
+* Run `python3 core/mcp/scripts/office365_get_refresh_token.py` to authenticate
+
+### Security Hardening
+
+* Reduced OAuth scope from `Calendars.ReadWrite` to `Calendars.Read` (least privilege)
+* Added `.gitignore` rules for bot state files and integration credentials
+* Added `.env.example` documenting all required environment variables
+
+### Documentation
+
+* Expanded `CONTRIBUTING.md` with technical contributor guide — branching, commits, CI pipeline, security rules, and PR template walkthrough
+
+---
+
 ## [1.18.2] — Fix Background Meeting Sync Installation (2026-03-12)
 
 `install-automation.sh` failed because it referenced two files that no longer exist: `granola-auth.cjs` (deprecated — Granola now stores credentials in `supabase.json` automatically) and `sync-from-granola-v2.cjs` (never shipped — v1 works fine).
