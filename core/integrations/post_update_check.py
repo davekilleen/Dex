@@ -10,11 +10,9 @@ Runs after /dex-update to:
 Called by dex-update skill after successful update.
 """
 
-import json
-from pathlib import Path
-from typing import Dict, List, Tuple
+from typing import Tuple
 
-from .detect import detect_all_integrations, RECOMMENDED, format_detection_report
+from .detect import RECOMMENDED, detect_all_integrations, format_detection_report
 
 
 def check_new_integrations_available() -> Tuple[bool, str]:

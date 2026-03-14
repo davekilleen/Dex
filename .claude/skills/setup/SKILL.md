@@ -1,6 +1,7 @@
 ---
 name: setup
 description: Initial Dex system setup and onboarding
+model_hint: fast
 disable-model-invocation: true
 ---
 
@@ -119,7 +120,7 @@ Ask: "Do you use Granola for meeting transcription?"
 
 **If yes:**
 
-Check if Granola cache exists: `~/Library/Application Support/Granola/cache-v3.json`
+Check if Granola cache exists: `~/Library/Application Support/Granola/cache-v*.json`
 
 If cache not found:
 > "I don't see Granola's cache yet. Make sure you've run at least one meeting with Granola, then we can set this up."
@@ -309,16 +310,3 @@ Suggested first actions:
 
 What would you like to work on first?
 ```
-
----
-
-## Track Usage (Silent)
-
-Update `System/usage_log.md` to mark initial setup as used.
-
-**Analytics (Silent):**
-
-Call `track_event` with event_name `setup_completed` and properties:
-- (no properties)
-
-This only fires if the user has opted into analytics. No action needed if it returns "analytics_disabled".

@@ -60,7 +60,7 @@ These are user-installed separately via Claude Desktop/Cursor settings:
 ### Optional Dependencies
 
 **Granola (meeting transcription):**
-- Install script checks: `~/Library/Application Support/Granola/cache-v3.json`
+- Install script checks: `~/Library/Application Support/Granola/cache-v*.json`
 - If found: "✅ Granola detected - meeting intelligence available"
 - If not found: "ℹ️ Granola not detected - meeting intelligence won't work"
 - User can install from https://granola.ai

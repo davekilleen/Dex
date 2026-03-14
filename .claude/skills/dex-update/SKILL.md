@@ -255,7 +255,7 @@ If cancelled:
 
 Run:
 ```bash
-git merge upstream/main --no-edit
+git merge upstream/release --no-edit
 ```
 
 **B. Handle merge outcome**

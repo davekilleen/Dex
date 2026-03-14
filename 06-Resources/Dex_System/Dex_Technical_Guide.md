@@ -1,7 +1,7 @@
 # Dex Technical Guide
 
-**Version:** 1.11.0
-**Last Updated:** February 19, 2026
+**Version:** 1.0  
+**Last Updated:** January 28, 2026
 
 **Audience:** People who want to understand how Dex works under the hood - whether to customize it, contribute to it, or learn from its design patterns.
 
@@ -11,15 +11,16 @@
 
 1. [Architecture Philosophy](#architecture-philosophy)
 2. [The Agent Skills Standard](#the-agent-skills-standard)
-3. [Skill Capabilities](#skill-capabilities)
-4. [MCP Servers Deep Dive](#mcp-servers-deep-dive)
-5. [Context Management](#context-management)
-6. [Memory Architecture](#memory-architecture)
-7. [State Management & Syncing](#state-management--syncing)
-8. [Planning Architecture](#planning-architecture)
-9. [Integration Layer](#integration-layer)
-10. [Self-Learning System](#self-learning-system)
-11. [Design Constraints](#design-constraints)
+3. [MCP Servers Deep Dive](#mcp-servers-deep-dive)
+4. [Context Management](#context-management)
+5. [State Management & Syncing](#state-management--syncing)
+6. [Planning Architecture](#planning-architecture)
+7. [Integration Layer](#integration-layer)
+8. [Self-Learning System](#self-learning-system)
+9. [Design Constraints](#design-constraints)
+
+**Related Guides:**
+- [Cursor Compatibility](Cursor_Compatibility.md) - Working with both Cursor and Claude Code
 
 ---
 
@@ -155,183 +156,6 @@ Dex has 25 core skills, plus 27 role-specific skills (Product, Sales, Marketing,
 
 ---
 
-## Skill Capabilities
-
-Skills declare capabilities through YAML frontmatter. These go beyond basic metadata (name, description) to control how the skill runs, what memory it has, and what automation it triggers.
-
-### Context Fork
-
-**Problem:** Heavy skills like `/daily-plan` or `/week-review` load thousands of tokens of working data — calendar events, task lists, meeting notes, person context. All of that stays in the main conversation's context window. If you run `/daily-plan` at 9am and keep chatting until 5pm, those thousands of tokens are still there, making the conversation slower and the context window smaller.
-
-**Solution:** Skills declare `context: fork` in their frontmatter:
-
-```yaml
----
-name: daily-plan
-description: Generate context-aware daily plan
-context: fork
----
-```
-
-**What happens:**
-
-1. User invokes `/daily-plan`
-2. Claude spawns the skill in an **isolated context** (a "fork")
-3. The skill reads files, calls MCP tools, generates the plan
-4. Only the final result is returned to the main conversation
-5. All the working data (raw calendar JSON, full task lists, intermediate reasoning) is discarded
-
-**Effect:** The main conversation stays clean. You can run `/daily-plan`, `/week-review`, and `/process-meetings` in the same session without accumulating dead context.
-
-**Skills using `context: fork` (7 total):**
-
-| Skill | Why It Forks |
-|-------|-------------|
-| `/daily-plan` | Loads calendar, tasks, priorities, meetings, person context |
-| `/daily-review` | Reads session transcript, learnings, task completions |
-| `/week-plan` | Synthesizes quarter goals, tasks, last week's review |
-| `/week-review` | Scans full week of activity, meetings, task progress |
-| `/meeting-prep` | Loads attendee person pages, recent meetings, account context |
-| `/process-meetings` | Processes multiple Granola transcripts with full content |
-| `/career-coach` | Reads career evidence, ladder, goals, role descriptions |
-
-**When NOT to fork:** Quick skills like `/triage` or `/save-insight` that touch minimal context. The overhead of forking isn't worth it for lightweight operations.
-
-### Skill-Scoped Hooks
-
-**Problem:** Global hooks (like the person context injector) fire on every relevant tool call across the entire session. Some automation should only run during a specific skill — updating person pages during meeting processing, capturing evidence during career coaching.
-
-**Solution:** Skills declare their own hooks in frontmatter:
-
-```yaml
----
-name: process-meetings
-description: Process synced Granola meetings
-context: fork
-hooks:
-  PostToolUse:
-    - matcher: Write
-      type: command
-      command: "node .claude/hooks/post-meeting-person-update.cjs"
-  Stop:
-    - type: command
-      command: "node .claude/hooks/meeting-summary-generator.cjs"
----
-```
-
-**Two hook events are available:**
-
-- **PostToolUse** — Fires after a specific tool completes. The `matcher` field specifies which tool (e.g., `Write`). The hook receives tool context via `CLAUDE_HOOK_CONTEXT` environment variable.
-- **Stop** — Fires once when the skill finishes execution. Used for summary generation or cleanup.
-
-**Currently active skill-scoped hooks:**
-
-| Skill | Event | Hook | Purpose |
-|-------|-------|------|---------|
-| `/process-meetings` | PostToolUse (Write) | `post-meeting-person-update.cjs` | Updates person pages with meeting references |
-| `/process-meetings` | Stop | `meeting-summary-generator.cjs` | Placeholder for future meeting summaries |
-| `/career-coach` | PostToolUse (Write) | `career-evidence-capture.cjs` | Logs achievements to Evidence Log |
-| `/daily-plan` | Stop | `daily-plan-quick-ref.cjs` | Generates condensed quickref file |
-
-**How hook context works:**
-
-When a PostToolUse hook fires, it receives the tool's input via environment variable:
-
-```javascript
-const input = JSON.parse(process.env.CLAUDE_HOOK_CONTEXT || '{}');
-const filePath = input?.tool_input?.file_path || '';
-```
-
-The hook can then inspect what file was written and take action — extracting person mentions, detecting achievement markers, etc.
-
-**Why this matters:** Automation stays scoped to the right context. The person page updater only fires during meeting processing, not every time any file is written anywhere in the system.
-
-### Hook Files
-
-Dex ships with these hook scripts in `.claude/hooks/`:
-
-**Global hooks (always active):**
-
-| File | Trigger | What It Does |
-|------|---------|-------------|
-| `person-context-injector.cjs` | PostToolUse (Read) | Injects person page summaries when files mention people |
-| `company-context-injector.cjs` | PostToolUse (Read) | Injects company/account context when files mention organizations |
-| `session-start.sh` | Session start | Shows strategic hierarchy, urgent tasks, active patterns |
-| `ensure-mcp-user-scope.cjs` | PreToolUse | Validates MCP tool calls use correct vault scope |
-
-**Skill-scoped hooks (only active during their parent skill):**
-
-| File | Parent Skill | Trigger | What It Does |
-|------|-------------|---------|-------------|
-| `post-meeting-person-update.cjs` | `/process-meetings` | PostToolUse (Write) | Detects person mentions in meeting notes (WikiLinks and plain names), appends meeting reference to their person page under "Recent Meetings" section |
-| `meeting-summary-generator.cjs` | `/process-meetings` | Stop | Stub for future meeting summary generation |
-| `career-evidence-capture.cjs` | `/career-coach` | PostToolUse (Write) | Scans career files for achievement markers (percentages, dollar amounts, impact verbs), infers skill area, appends to `05-Areas/Career/Evidence_Log.md` |
-| `daily-plan-quick-ref.cjs` | `/daily-plan` | Stop | Reads the generated daily plan, extracts top focus items, key meetings, and time blocks into a condensed `YYYY-MM-DD-quickref.md` file |
-
-**Standalone utility:**
-
-| File | How to Run | What It Does |
-|------|-----------|-------------|
-| `maintenance.cjs` | `node .claude/hooks/maintenance.cjs` | Vault health checks: stale inbox files (>30 days), broken WikiLinks (samples 100 files), orphaned person pages (no references in tasks or meetings), stale agent memory files (>90 days) |
-
-### Fast Mode Hints
-
-**Problem:** Some skills make quick, low-stakes decisions — routing a file to the right folder, scanning inbox items. These don't need deep reasoning. Running them at full deliberation speed wastes time.
-
-**Solution:** Skills declare `model_hint: fast` in frontmatter:
-
-```yaml
----
-name: triage
-description: Strategically route orphaned files and extract scattered tasks
-model_hint: fast
----
-```
-
-**What it does:** Signals the AI client to use faster output settings for this skill. The same model runs, just optimized for speed over deep reasoning.
-
-**Currently used by:** `/triage` (file and task routing decisions)
-
-**When to use it:** Skills that process many items with simple decisions (route this file, classify this task, yes/no on inbox items). Not appropriate for skills that need synthesis or nuanced judgment (daily plan, career coaching, weekly review).
-
-### Agent Memory
-
-**Problem:** Background agents (like the ones powering morning intelligence briefings) scan your vault for attention items — stale deals, missed commitments, unlinked people. Without memory, they re-scan everything every time and report the same findings repeatedly.
-
-**Solution:** Agents declare `memory: project` in their frontmatter. Each agent writes a JSON memory file to `.claude/memory/`:
-
-```json
-{
-  "last_scan_date": "2026-02-19",
-  "flagged_items": [
-    { "id": "deal-acme", "first_flagged": "2026-02-15", "times_flagged": 3 }
-  ],
-  "resolved_items": [
-    { "id": "deal-globex", "resolved_date": "2026-02-18" }
-  ],
-  "escalations": [
-    { "id": "deal-acme", "reason": "Flagged 3 times with no action" }
-  ]
-}
-```
-
-**How it works:**
-
-1. Agent starts and checks its memory file in `.claude/memory/`
-2. Compares current scan results against previous findings
-3. Only surfaces **new items**, **escalations** (flagged multiple times), and **resolved items** (previously flagged, now handled)
-4. Writes updated memory back to the file
-
-**Effect:**
-
-- **First run:** Full scan, everything is new
-- **Second run:** Only new or changed items surface. Resolved items quietly drop off.
-- **Repeated flags:** Items flagged across multiple sessions get escalated — "I've flagged this three sessions running. Still no action."
-
-**Memory ownership:** Agent memory is scoped per-agent. The deal attention agent can't read the commitment tracker's memory, and vice versa. See `06-Resources/Dex_System/Memory_Ownership.md` for the full boundary diagram across all four memory layers.
-
----
-
 ## MCP Servers Deep Dive
 
 ### What Is MCP?
@@ -439,7 +263,7 @@ This ensures every task gets a unique, sortable ID that's stable across files.
 
 **Architecture:** API-first with cache fallback (v2.0)
 - **Primary:** Uses Granola's unofficial API for complete historical data (91% success rate)
-- **Fallback:** Reads from local cache (`~/Library/Application Support/Granola/cache-v3.json`) if API fails
+- **Fallback:** Reads from local cache (`~/Library/Application Support/Granola/cache-v*.json`, auto-detects latest) if API fails
 - **Protection:** Response caching (5 min TTL), exponential backoff, graceful degradation
 
 **Key tools:**
@@ -716,93 +540,6 @@ Skills aren't loaded until invoked:
 5. Skill is unloaded after command completes
 
 **Alternative (bad):** Load all 42 skills at session start = 84K tokens before chat begins.
-
----
-
-## Memory Architecture
-
-Dex has four distinct memory layers, each owning a different scope of information. They stack — they don't compete.
-
-### Layer 1: Claude Auto-Memory (Native)
-
-**Owns:** Preferences, style, communication patterns, formatting choices.
-
-**Examples:** "User prefers bullet points", "Use neutral mermaid theme", "Direct communication style."
-
-**How it works:** Automatically captured by Claude's built-in memory system. Persists across all sessions and AI clients. No Dex configuration needed.
-
-**Implication for Dex:** Don't duplicate. If Claude already remembers a formatting preference, Dex doesn't need to store it in a file.
-
-### Layer 2: Agent Memory (Per-Agent State)
-
-**Owns:** Operational state for individual agents across sessions.
-
-**Examples:** "Deal attention agent flagged Acme Corp 3 times", "Commitment tracker: pricing follow-up resolved."
-
-**How it works:** Each agent reads/writes its own JSON file in `.claude/memory/`. Declared via `memory: project` in frontmatter. Scoped strictly to that agent — one agent cannot read another's memory.
-
-**File format:**
-
-```
-.claude/memory/
-├── deal-attention.json
-├── commitment-tracker.json
-├── people-radar.json
-├── project-pulse.json
-├── focus-guardian.json
-└── pillar-balance.json
-```
-
-Each file contains:
-
-```json
-{
-  "last_scan_date": "2026-02-19",
-  "flagged_items": [],
-  "resolved_items": [],
-  "escalations": []
-}
-```
-
-**Why this matters:** Without agent memory, the deal attention agent scans your entire vault every session and reports the same stale deal every morning. With memory, it knows what it already told you, tracks resolution, and escalates items you're ignoring.
-
-### Layer 3: Dex Session Memory
-
-**Owns:** Operational decisions, commitments, work patterns, system learnings.
-
-**Examples:** "Agreed to deliver a deck by Friday", "Meeting-prep skill needs more account context."
-
-**How it works:** Captured at session end (during `/daily-review`), stored in `System/Session_Learnings/`. Consolidated during weekly reviews.
-
-### Layer 4: Vault Search (QMD)
-
-**Owns:** Semantic search across all vault content.
-
-**How it works:** If QMD (local semantic search) is configured, it indexes all markdown files and provides hybrid search (keyword + vector + LLM reranking). This is a read-only layer — it doesn't store new information, it makes existing information findable by meaning.
-
-### Boundary Diagram
-
-```
-┌───────────────────────────────────────────────┐
-│  Claude Auto-Memory (native)                  │
-│  Preferences, style, tone, formatting         │
-│  Scope: All sessions, all AI clients          │
-├───────────────────────────────────────────────┤
-│  Agent Memory (.claude/memory/*.json)         │
-│  Per-agent operational state                  │
-│  Scope: Per agent, across sessions            │
-├───────────────────────────────────────────────┤
-│  Session Memory (System/Session_Learnings/)   │
-│  Decisions, commitments, patterns             │
-│  Scope: Per session, consolidated weekly      │
-├───────────────────────────────────────────────┤
-│  Vault Search (QMD — optional)                │
-│  Semantic index across all vault content      │
-│  Scope: Read-only, full vault                 │
-└───────────────────────────────────────────────┘
-```
-
-**Full reference:** `06-Resources/Dex_System/Memory_Ownership.md`
 
 ---
 
@@ -1407,24 +1144,10 @@ Understanding these constraints explains why Dex is designed the way it is.
 
 ### Hooks
 
-**Global (always active):**
 - `.claude/hooks/person-context-injector.cjs` - Injects person context on file read
 - `.claude/hooks/company-context-injector.cjs` - Injects company context on file read
 - `.claude/hooks/session-start.sh` - Shows strategic context at session start
-- `.claude/hooks/ensure-mcp-user-scope.cjs` - Validates MCP tool calls use correct vault scope
-
-**Skill-scoped (active only during parent skill):**
-- `.claude/hooks/post-meeting-person-update.cjs` - Updates person pages during `/process-meetings`
-- `.claude/hooks/meeting-summary-generator.cjs` - Meeting summary stub (future)
-- `.claude/hooks/career-evidence-capture.cjs` - Logs achievements during `/career-coach`
-- `.claude/hooks/daily-plan-quick-ref.cjs` - Generates quickref after `/daily-plan`
-
-**Standalone utility:**
-- `.claude/hooks/maintenance.cjs` - Vault health checks (stale files, broken links, orphans)
-
-### Agent Memory
-
-- `.claude/memory/` - Per-agent state files (JSON)
+- `.claude/hooks/session-end.sh` - Cleanup/archiving on session end
 
 ### MCP Servers
 
@@ -1457,12 +1180,30 @@ Want to adapt Dex for your use case? Key customization points:
 3. **Skills:** Create role-specific skills in `.claude/skills/` (see `anthropic-skill-creator` skill)
 4. **MCP servers:** Add integrations for your tools (Notion, Linear, etc.) - see `.claude/reference/mcp-servers.md`
 
+### Pi Extension Development
+
+Building custom TUI components, widgets, or interactive UIs in Pi?
+
+**Read this FIRST:** `06-Resources/Dex_System/Pi_TUI_Reference.md`
+
+This reference contains:
+- Critical rules (line width truncation, component interface, theme usage)
+- Common patterns (selection dialogs, widgets, async operations)
+- Common mistakes (documented from real bugs)
+- API quick reference
+- Working code examples
+
+**Official Pi docs:** `/opt/homebrew/lib/node_modules/@mariozechner/pi-coding-agent/docs/tui.md`
+
+**Why this matters:** Pi TUI has strict rules. Skipping the reference leads to crashes and wasted debugging time.
+
 ### Best Practices
 
 - **Don't edit canonical files manually:** Use MCP tools to ensure syncing works
 - **Backup regularly:** `git commit` daily (or use `.claude/hooks/session-end.sh` to auto-commit)
 - **Test in demo mode:** Use `System/Demo/` to experiment without touching real data
 - **Document learnings:** Use `System/Session_Learnings/` to capture improvements
+- **Read Pi TUI Reference before TUI work:** See above - mandatory for extension development
 
 ---
 

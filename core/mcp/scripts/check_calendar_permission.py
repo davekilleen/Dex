@@ -8,6 +8,7 @@ access to Calendar.app for fast EventKit queries.
 
 import sys
 import time
+
 try:
     import EventKit
 except ImportError:

@@ -1,0 +1,29 @@
+# Dev-only files excluded from user distribution
+# Used by scripts/build-release.sh and .gitattributes export-ignore
+
+# CI / GitHub workflows
+.github/
+
+# Dev tooling configs
+pyproject.toml
+vitest.config.mjs
+.husky/
+
+# Test suites
+core/tests/
+.claude/hooks/__tests__/
+.scripts/meeting-intel/__tests__/
+
+# Dev scripts and docs
+CONTRIBUTING.md
+DISTRIBUTION_READY.md
+scripts/
+
+# TypeScript dev config
+pi-extensions/dex/tsconfig.json
+
+# Issue tracking (worktree artifacts)
+.ao-issue.md
+
+# This file itself
+.distignore

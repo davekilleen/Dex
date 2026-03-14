@@ -1,6 +1,7 @@
 ---
 name: process-meetings
 description: Process synced Granola meetings to update person pages, extract tasks, and organize meeting notes
+model_hint: balanced
 context: fork
 hooks:
   PostToolUse:
@@ -41,21 +42,9 @@ Meetings are synced automatically every 30 minutes by a background process. This
 - `--no-todos`: Create notes but don't extract tasks
 - `--setup`: Install/check background automation
 
-## Pre-flight: Granola Migration Check
+## Pre-flight: Granola Check
 
-Before processing meetings, check if the user can upgrade to mobile recording support. This check fails gracefully if the migration script does not exist yet (user has not updated).
-
-1. Run: `node .scripts/meeting-intel/check-granola-migration.cjs 2>/dev/null || echo '{"status":"not_applicable"}'`
-2. Parse the JSON output
-3. **If status is `migration_available`:**
-   - Say: "**New:** Granola now supports mobile recordings in Dex. To enable, you just need to sign in to Granola in your browser once (takes 10 seconds). Want to do that now?"
-   - If user says yes: Run `node .scripts/meeting-intel/granola-auth.cjs --setup` and wait for completion
-   - If user says no/not now: Say "No problem — your desktop meetings still sync normally. Whenever you want mobile recordings, just say 'enable mobile recordings' or run `/process-meetings` again." Then continue with existing processing.
-   - Only show this prompt once per session
-4. **If status is `token_expired`:**
-   - Say: "Your Granola sign-in has expired. Want to refresh it? (Your meetings still sync from the desktop app either way.)"
-   - If yes: Run `node .scripts/meeting-intel/granola-auth.cjs --setup`
-5. **If status is `authenticated` or `not_applicable`:** Continue silently
+Mobile recordings sync automatically as long as Granola is installed and the user is signed in to the desktop app. No separate authentication step needed.
 
 ---
 

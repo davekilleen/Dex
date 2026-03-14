@@ -1,0 +1,52 @@
+name: Nightly Quality
+
+on:
+  schedule:
+    - cron: "0 3 * * *"
+  workflow_dispatch:
+
+jobs:
+  nightly:
+    runs-on: ubuntu-latest
+    env:
+      VAULT_PATH: core/tests/fixtures/vault
+      SECURITY_STRICT_AUDIT: "0"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install dependencies
+        run: |
+          pip install pytest pytest-cov ruff
+          pip install mcp pyyaml python-dateutil requests
+          npm ci
+
+      - name: Ensure scripts are executable
+        run: |
+          chmod +x scripts/detect-flaky-tests.sh
+          chmod +x scripts/security-gate.sh
+          chmod +x scripts/benchmark_large_vault.py
+
+      - name: Hook tests
+        run: npm run test:hooks
+
+      - name: Flaky test detection
+        run: bash scripts/detect-flaky-tests.sh
+
+      - name: Large-vault performance benchmark
+        run: python scripts/benchmark_large_vault.py --files 4000 --budget-seconds 8.0
+
+      - name: Security gate
+        run: bash scripts/security-gate.sh
+
+      - name: Upload flaky reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nightly-quality-artifacts
+          path: .logs/flaky/

@@ -30,6 +30,11 @@ const REBUILD = process.argv.includes("--rebuild");
 // YAML frontmatter parser (simple regex — no dependencies)
 // ---------------------------------------------------------------------------
 
+/**
+ * Parse YAML frontmatter from markdown content.
+ * @param {string} content - Raw markdown file content
+ * @returns {Record<string, string | string[]>} Parsed key-value pairs
+ */
 function parseFrontmatter(content) {
   const match = content.match(/^---\n([\s\S]*?)\n---/);
   if (!match) return {};
@@ -225,6 +230,12 @@ function detectFollowUpDate(content, meetingDate) {
 // Parse a single meeting file into a cache entry
 // ---------------------------------------------------------------------------
 
+/**
+ * Parse a single meeting markdown file into a structured cache entry.
+ * @param {string} filePath - Absolute path to the meeting file
+ * @param {string} fileName - Just the filename (e.g. "2026-03-01 - Sync.md")
+ * @returns {{ date: string|null, title: string, source_file: string, attendees: string[], company: string|null, decisions: string[], action_items: string[], key_points: string[], sentiment: string, follow_up_date: string|null, cached_at: string }}
+ */
 function parseMeetingFile(filePath, fileName) {
   const content = fs.readFileSync(filePath, "utf-8");
   const fm = parseFrontmatter(content);

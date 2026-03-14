@@ -1,0 +1,23 @@
+{
+  "name": "@dex/contracts",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Shared Dex contracts for cross-repo path consistency",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./paths": "./dist/paths.contract.json",
+    "./schema": "./dist/paths.schema.json"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "python3 ../../scripts/generate-path-contracts.py"
+  }
+}

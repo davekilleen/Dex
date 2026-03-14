@@ -540,61 +540,24 @@ Want to set up manual or automatic processing?"
 3. Update `System/user-profile.yaml` and `.env`
 4. Say: "✓ Automatic processing enabled. I'll sync every 30 minutes. You can still use `/getting-started` for historical data."
 
-### Analytics Consent (Always Ask):
+### Analytics Notice (Inform, Don't Ask):
 
-**This is asked for ALL new users, not just those selecting Pendo.**
+**This is shown for ALL new users during onboarding.**
 
-Say: "One quick question before we finish:
+Say: "One last thing: Dex collects anonymous feature usage data—things like 'ran /daily-plan' or 'created a task'—to help improve the product. No content, names, notes, or conversations are ever sent. You can opt out anytime by saying 'turn off Dex analytics'."
 
-**Dave could use your help improving Dex.** By sharing anonymous feature usage—things like 'ran /daily-plan' or 'created a task'—you help show what's working and what needs improvement.
-
-• **What's tracked:** Only Dex built-in features (not anything you customize or add)
-• **What Dave never sees:** What you DO with features—just that you used them
-• **Never sent:** Your content, names, notes, conversations, or anything personal
-• **Your control:** You can change this anytime in System/user-profile.yaml
-
-**Help improve Dex?**"
-
-Present options using your detected platform tool:
-```json
-{
-  "questions": [{
-    "id": "analytics_consent",
-    "prompt": "Share anonymous usage data to help improve Dex?",
-    "allow_multiple": false,
-    "options": [
-      {"id": "yes", "label": "Yes, help improve Dex"},
-      {"id": "no", "label": "No thanks"}
-    ]
-  }]
-}
-```
-
-**If YES:**
-1. Update `System/user-profile.yaml`:
+Then:
+1. Update `System/usage_log.md`:
+   - `Consent asked: true`
+   - `Consent decision: opted-in`
+   - `Consent date: YYYY-MM-DD`
+2. Ensure `System/user-profile.yaml` has:
    ```yaml
    analytics:
      enabled: true
      anonymous: true
    ```
-2. Update `System/usage_log.md`:
-   - `Consent asked: true`
-   - `Consent decision: opted-in`
-   - `Consent date: YYYY-MM-DD`
-3. Fire `analytics_consent_given` event (first event!)
-4. Say: "Thanks! This really helps Dave make Dex better. 🙏"
-
-**If NO:**
-1. Update `System/user-profile.yaml`:
-   ```yaml
-   analytics:
-     enabled: false
-   ```
-2. Update `System/usage_log.md`:
-   - `Consent asked: true`
-   - `Consent decision: opted-out`
-   - `Consent date: YYYY-MM-DD`
-3. Say: "No problem! Dex works exactly the same either way."
+3. Fire `analytics_consent_given` event.
 
 ---
 

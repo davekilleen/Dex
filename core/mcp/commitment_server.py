@@ -14,18 +14,17 @@ Tools:
 
 import asyncio
 import json
+import logging
 import re
-import os
 import sys
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional
-import logging
 
-from mcp.server.models import InitializationOptions
-from mcp.server import NotificationOptions, Server
-from mcp.types import Resource, Tool, TextContent
 import mcp.server.stdio
+from mcp.server import NotificationOptions, Server
+from mcp.server.models import InitializationOptions
+from mcp.types import TextContent, Tool
 
 # QMD semantic search (optional - gracefully degrade if not available)
 try:
@@ -37,7 +36,8 @@ except ImportError:
 # Health system — error queue and health reporting
 try:
     sys.path.insert(0, str(Path(__file__).parent.parent.parent))
-    from core.utils.dex_logger import log_error as _log_health_error, mark_healthy as _mark_healthy
+    from core.utils.dex_logger import log_error as _log_health_error
+    from core.utils.dex_logger import mark_healthy as _mark_healthy
     _HAS_HEALTH = True
 except ImportError:
     _HAS_HEALTH = False
@@ -49,10 +49,23 @@ logger = logging.getLogger("commitment-detection")
 # Server instance
 server = Server("commitment-detection")
 
-# Get vault path from environment
-VAULT_PATH = os.environ.get("VAULT_PATH", os.path.expanduser("~/Claudesidian"))
-QUEUE_FILE = Path(VAULT_PATH) / "System" / "commitment_queue.json"
-USER_PROFILE = Path(VAULT_PATH) / "System" / "user-profile.yaml"
+# Vault paths (centralized in core.paths)
+_repo_root = str(Path(__file__).parent.parent.parent)
+if _repo_root not in sys.path:
+    sys.path.append(_repo_root)
+from core.paths import (
+    COMMITMENT_QUEUE_FILE as QUEUE_FILE,
+)
+from core.paths import (
+    PROJECTS_DIR,
+    VAULT_ROOT,
+)
+from core.paths import (
+    USER_PROFILE_FILE as USER_PROFILE,
+)
+from core.utils.file_ops import atomic_write_json, file_lock
+
+VAULT_PATH = str(VAULT_ROOT)
 
 # ============================================================================
 # CONFIGURATION HELPERS
@@ -182,8 +195,9 @@ def load_queue() -> dict:
 def save_queue(queue: dict):
     """Save commitment queue to file."""
     QUEUE_FILE.parent.mkdir(parents=True, exist_ok=True)
-    with open(QUEUE_FILE, 'w') as f:
-        json.dump(queue, f, indent=2)
+    lock_path = QUEUE_FILE.with_suffix(f"{QUEUE_FILE.suffix}.lock")
+    with file_lock(lock_path):
+        atomic_write_json(QUEUE_FILE, queue)
 
 def generate_commitment_id() -> str:
     """Generate unique commitment ID."""
@@ -273,7 +287,8 @@ def extract_person_name(text: str, app: str) -> Optional[str]:
 def list_people_pages() -> list[dict]:
     """List all person pages in the vault."""
     people = []
-    people_dir = Path(VAULT_PATH) / "05-Areas" / "People"
+    from core.paths import PEOPLE_DIR
+    people_dir = PEOPLE_DIR
     
     if people_dir.exists():
         for subdir in ["Internal", "External"]:
@@ -292,7 +307,8 @@ def list_people_pages() -> list[dict]:
 def list_projects() -> list[dict]:
     """List all projects in the vault."""
     projects = []
-    projects_dir = Path(VAULT_PATH) / "04-Projects"
+    from core.paths import PROJECTS_DIR
+    projects_dir = PROJECTS_DIR
     
     if projects_dir.exists():
         for f in projects_dir.glob("**/*.md"):
@@ -350,7 +366,7 @@ def match_to_vault_context(text: str, detected_person: Optional[str] = None) -> 
                 query=text,
                 limit=5,
                 min_score=0.3,
-                fallback_glob="04-Projects/**/*.md"
+                fallback_glob=f"{PROJECTS_DIR.name}/**/*.md"
             )
             for r in results:
                 filepath = r.get('filepath', '')

@@ -16,24 +16,24 @@ The PTY wrapper (launch.py) remains as a safety net for terminal output,
 but this MCP is the PRIMARY defense — filtering at the source.
 """
 
-import os
-import sys
 import json
 import logging
 import re
-from pathlib import Path
-from typing import Dict, List, Optional, Set
+import sys
 from datetime import datetime
+from pathlib import Path
+from typing import Set
 
-from mcp.server import Server, NotificationOptions
-from mcp.server.models import InitializationOptions
 import mcp.server.stdio
 import mcp.types as types
+from mcp.server import NotificationOptions, Server
+from mcp.server.models import InitializationOptions
 
 # Health system — error queue and health reporting
 try:
     sys.path.insert(0, str(Path(__file__).parent.parent.parent))
-    from core.utils.dex_logger import log_error as _log_health_error, mark_healthy as _mark_healthy
+    from core.utils.dex_logger import log_error as _log_health_error
+    from core.utils.dex_logger import mark_healthy as _mark_healthy
     _HAS_HEALTH = True
 except ImportError:
     _HAS_HEALTH = False
@@ -42,9 +42,12 @@ except ImportError:
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Configuration
-BASE_DIR = Path(os.environ.get('VAULT_PATH', Path.cwd()))
-STATE_FILE = BASE_DIR / 'System' / '.demo-mode-state.json'
+# Configuration (centralized in core.paths)
+_repo_root = str(Path(__file__).parent.parent.parent)
+if _repo_root not in sys.path:
+    sys.path.append(_repo_root)
+from core.paths import STATE_FILE
+from core.paths import VAULT_ROOT as BASE_DIR
 
 # Minimum character length for name parts (avoid false positives)
 MIN_TERM_LENGTH = 3
@@ -95,7 +98,8 @@ def save_state(state: dict):
 def scan_people() -> Set[str]:
     """Extract person names from People/ folder filenames."""
     terms = set()
-    people_dir = BASE_DIR / '05-Areas' / 'People'
+    from core.paths import PEOPLE_DIR as _people_dir
+    people_dir = _people_dir
     if not people_dir.exists():
         return terms
 
@@ -314,13 +318,13 @@ def scan_planning_and_career_files() -> Set[str]:
     files_to_scan = [
         BASE_DIR / '01-Quarter_Goals' / 'Quarter_Goals.md',
         BASE_DIR / '02-Week_Priorities' / 'Week_Priorities.md',
-        BASE_DIR / 'Active' / 'Career' / 'Growth_Goals.md',
-        BASE_DIR / 'Active' / 'Career' / 'Current_Role.md',
-        BASE_DIR / 'Active' / 'Career' / 'Career_Ladder.md',
+        BASE_DIR / '05-Areas' / 'Career' / 'Growth_Goals.md',
+        BASE_DIR / '05-Areas' / 'Career' / 'Current_Role.md',
+        BASE_DIR / '05-Areas' / 'Career' / 'Career_Ladder.md',
     ]
 
     evidence_dirs = [
-        BASE_DIR / 'Resources' / 'Career_Evidence',
+        BASE_DIR / '05-Areas' / 'Career' / 'Evidence',
         BASE_DIR / '05-Areas' / 'Career' / 'Evidence',
     ]
     for edir in evidence_dirs:

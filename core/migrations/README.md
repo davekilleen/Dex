@@ -35,7 +35,7 @@ cp -r ~/Documents/dex ~/Documents/dex-backup-$(date +%Y%m%d)
 
 **Step 3: Run the migration script**
 ```bash
-./core/migrations/v1-to-v2.sh
+python core/migrations/migrate_v1_to_v2.py --apply
 ```
 
 The script will:
@@ -53,7 +53,7 @@ git diff
 **Step 5: Update Dex**
 ```bash
 git fetch upstream
-git merge upstream/main
+git merge upstream/release
 ```
 
 **Step 6: Test**
@@ -125,7 +125,7 @@ echo "================================================"
 echo ""
 echo "Next steps:"
 echo "1. Review changes: git status && git diff"
-echo "2. Update Dex: git fetch upstream && git merge upstream/main"
+echo "2. Update Dex: git fetch upstream && git merge upstream/release"
 echo "3. Test workflows: /daily-plan, person pages, tasks"
 echo ""
 ```
@@ -175,7 +175,8 @@ This helps debug if something goes wrong.
 
 ## Example: Folder Rename Migration
 
-See `v1-to-v2-example.sh` for a complete example of a folder rename migration.
+Use `migrate_v1_to_v2.py` for an executable dry-run/apply/rollback migration flow.
+`v1-to-v2-example.sh` remains as a reference pattern.
 
 ---
 

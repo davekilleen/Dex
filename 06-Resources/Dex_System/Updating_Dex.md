@@ -693,7 +693,7 @@ If you're comfortable with command-line tools and want to see exactly what's cha
 ```bash
 cd ~/Documents/dex
 git fetch upstream
-git merge upstream/main
+git merge upstream/release
 ```
 
 Only use this if you understand Git. Everyone else should use `/dex-update`.

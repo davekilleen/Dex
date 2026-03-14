@@ -1,0 +1,43 @@
+name: Test User
+role: Engineer
+role_group: Product
+company: Dex
+company_size: 1-10
+email_domain: example.com
+work_email: test@example.com
+demo_mode: true
+communication:
+  formality: direct
+  directness: high
+  detail_level: medium
+  career_level: individual
+  coaching_style: pragmatic
+meeting_processing:
+  mode: local
+  api_provider: none
+meeting_intelligence:
+  extract_customer_intel: false
+  extract_competitive_intel: false
+  extract_action_items: false
+  extract_decisions: false
+  extract_stakeholder_dynamics: false
+  extract_budget_timeline: false
+beta:
+  activated: {}
+analytics:
+  enabled: false
+  anonymous: true
+  visitor_id: fixture
+  account_id: fixture
+screenpipe:
+  enabled: false
+  prompted: false
+  features:
+    commitment_detection: false
+    time_audit: false
+    screen_recall: false
+  retention_days: 7
+calendar:
+  work_calendar: primary
+  calendar_count: 1
+  lazy_load: true

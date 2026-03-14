@@ -23,31 +23,35 @@ Tools:
 - reminders_clear_completed: Remove completed Reminders from a list
 """
 
-import os
-import subprocess
 import json
 import logging
-import tempfile
+import os
 import re
-import yaml
+
+# Vault paths (centralized in core.paths)
+import sys
+import tempfile
+from datetime import date, datetime, timedelta
 from pathlib import Path
-from datetime import datetime, date, timedelta
 from typing import Optional
 
-from mcp.server import Server, NotificationOptions
-from mcp.server.models import InitializationOptions
 import mcp.server.stdio
 import mcp.types as types
+from mcp.server import NotificationOptions, Server
+from mcp.server.models import InitializationOptions
 
-# Vault paths
-VAULT_PATH = Path(os.environ.get('VAULT_PATH', Path.cwd()))
-PEOPLE_DIR = VAULT_PATH / "People"
+_repo_root = str(Path(__file__).parent.parent.parent)
+if _repo_root not in sys.path:
+    sys.path.append(_repo_root)
+from core.paths import PEOPLE_DIR
+from core.paths import VAULT_ROOT as VAULT_PATH
 
 # Health system — error queue and health reporting
 try:
     import sys as _sys
     _sys.path.insert(0, str(Path(__file__).parent.parent.parent))
-    from core.utils.dex_logger import log_error as _log_health_error, mark_healthy as _mark_healthy
+    from core.utils.dex_logger import log_error as _log_health_error
+    from core.utils.dex_logger import mark_healthy as _mark_healthy
     _HAS_HEALTH = True
 except ImportError:
     _HAS_HEALTH = False
@@ -56,7 +60,8 @@ except ImportError:
 try:
     import sys as _sys2
     _sys2.path.insert(0, str(Path(__file__).parent.parent.parent))
-    from core.utils.timezone import now as _tz_now, today as _tz_today
+    from core.utils.timezone import now as _tz_now
+    from core.utils.timezone import today as _tz_today
 except ImportError:
     def _tz_now():
         return datetime.now()

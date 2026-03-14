@@ -12,7 +12,7 @@ import { Container, type SelectItem, SelectList, Text, truncateToWidth } from "@
 import * as fs from "node:fs";
 import * as path from "node:path";
 
-const VAULT_PATH = process.env.VAULT_PATH || "/Users/dave/Claudesidian";
+const VAULT_PATH = process.env.VAULT_PATH || process.cwd();
 
 // ============================================================================
 // RITUAL STATE DETECTION
@@ -122,7 +122,7 @@ function getRitualStates(): RitualState[] {
   }
 
   // Daily Plan (for today)
-  const todayPlan = path.join(VAULT_PATH, `00-Inbox/Daily_Prep/Daily_Prep_${today}.md`);
+  const todayPlan = path.join(VAULT_PATH, `00-Inbox/Daily_Plans/${today}.md`);
   if (!checkFileExists(todayPlan)) {
     rituals.push({
       id: "daily-plan",

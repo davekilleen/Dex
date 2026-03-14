@@ -39,7 +39,7 @@ git remote add origin <their-repo>   # Optional: their backup
 
 ```bash
 git fetch upstream                   # Download updates
-git merge upstream/main              # Merge safely
+git merge upstream/release              # Merge safely
 ```
 
 **What happens:**
@@ -213,7 +213,7 @@ When major updates require structural changes (folder renames, schema updates), 
 ```bash
 ./core/migrations/v1-to-v2.sh    # Transforms user data
 git fetch upstream                # Then pull updates
-git merge upstream/main
+git merge upstream/release
 ```
 
 ### CHANGELOG Format for Breaking Changes
@@ -229,7 +229,7 @@ git merge upstream/main
 1. Back up your vault
 2. Run: ./core/migrations/v1-to-v2.sh
 3. Review changes: git diff
-4. Update Dex: git fetch upstream && git merge upstream/main
+4. Update Dex: git fetch upstream && git merge upstream/release
 
 **Why this change:** [Explanation]
 ```
@@ -244,7 +244,7 @@ Conflicts occur when both the user AND the main repo modified the same file.
 
 **Example:**
 ```bash
-$ git merge upstream/main
+$ git merge upstream/release
 CONFLICT (content): Merge conflict in CLAUDE.md
 ```
 
@@ -291,7 +291,7 @@ git commit -m "My changes before update"
 **Step 3:** Merge updates
 ```bash
 git fetch upstream
-git merge upstream/main
+git merge upstream/release
 ```
 
 **Step 4:** Reinstall dependencies (if needed)
@@ -326,7 +326,7 @@ git diff
 **Step 5:** Merge updates
 ```bash
 git fetch upstream
-git merge upstream/main
+git merge upstream/release
 ```
 
 **Step 6:** Test

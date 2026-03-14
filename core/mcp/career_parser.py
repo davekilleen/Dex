@@ -7,11 +7,10 @@ into structured data for the Career MCP server.
 """
 
 import re
-from pathlib import Path
-from typing import Dict, List, Optional, Any, Tuple
-from datetime import datetime, date
 from collections import defaultdict
-
+from datetime import date, datetime
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple
 
 # ============================================================================
 # DATE PARSING
@@ -712,7 +711,6 @@ def find_stale_competencies(evidence_files: List[Dict[str, Any]],
     Returns:
         List of staleness flags
     """
-    from datetime import timedelta
     today = date.today()
     
     # Track latest evidence date per competency

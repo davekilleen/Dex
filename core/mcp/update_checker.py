@@ -7,18 +7,19 @@ Writes a persistent .update-available file so Dex can remind users once
 per day across multiple chat sessions.
 """
 
+import json
 import os
 import sys
-import json
-import asyncio
-from datetime import datetime, date, timedelta
+from datetime import date, datetime
 from pathlib import Path
+
 from mcp.server.fastmcp import FastMCP
 
 # Health system — error queue and health reporting
 try:
     sys.path.insert(0, str(Path(__file__).parent.parent.parent))
-    from core.utils.dex_logger import log_error as _log_health_error, mark_healthy as _mark_healthy
+    from core.utils.dex_logger import log_error as _log_health_error
+    from core.utils.dex_logger import mark_healthy as _mark_healthy
     _HAS_HEALTH = True
 except ImportError:
     _HAS_HEALTH = False

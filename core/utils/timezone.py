@@ -6,7 +6,7 @@ configured timezone in user-profile.yaml, falling back to system local time.
 """
 
 import os
-from datetime import datetime, date, timezone, timedelta
+from datetime import date, datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 

@@ -1,0 +1,17 @@
+# Exclude dev-only files from git archive (ZIP downloads)
+# Mirrors .distignore — keep both in sync
+
+.github/               export-ignore
+pyproject.toml          export-ignore
+vitest.config.mjs       export-ignore
+.husky/                 export-ignore
+core/tests/             export-ignore
+.claude/hooks/__tests__/ export-ignore
+.scripts/meeting-intel/__tests__/ export-ignore
+CONTRIBUTING.md         export-ignore
+DISTRIBUTION_READY.md   export-ignore
+scripts/                export-ignore
+pi-extensions/dex/tsconfig.json export-ignore
+.ao-issue.md            export-ignore
+.distignore             export-ignore
+.gitattributes          export-ignore

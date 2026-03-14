@@ -14,14 +14,13 @@ Usage:
     mark_healthy("work-mcp")
 """
 
+import fcntl
 import json
 import os
 import time
-import fcntl
-from pathlib import Path
 from datetime import datetime
-from typing import Optional, Dict, Any
-
+from pathlib import Path
+from typing import Any, Dict, Optional
 
 # ---------------------------------------------------------------------------
 # Paths

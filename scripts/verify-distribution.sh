@@ -129,6 +129,56 @@ if [ -f ".mcp.json" ]; then
     fi
 fi
 
+# Check 11: No hardcoded /Users/ paths in tracked code files
+echo ""
+echo "✓ Checking for hardcoded /Users/ paths in code..."
+HARDCODED_PATHS=$(git ls-files -- '*.py' '*.ts' '*.cjs' '*.sh' | \
+    xargs grep -n '/Users/' 2>/dev/null | \
+    grep -v 'scripts/verify-distribution\.sh' | \
+    grep -v 'scripts/check-path-consistency\.sh' | \
+    grep -v '#.*/Users/' | \
+    grep -v '//.*/Users/' || true)
+if [ -n "$HARDCODED_PATHS" ]; then
+    echo "  ❌ ERROR: Hardcoded /Users/ paths found in code:"
+    echo "$HARDCODED_PATHS" | head -10 | sed 's/^/     /'
+    ERRORS=$((ERRORS + 1))
+else
+    echo "  ✅ No hardcoded /Users/ paths in code"
+fi
+
+# Check 12: package.json version matches CHANGELOG latest
+echo ""
+echo "✓ Checking package.json version matches CHANGELOG..."
+PKG_VERSION=$(grep '"version"' package.json | head -1 | sed 's/.*"version": *"\([^"]*\)".*/\1/')
+CHANGELOG_VERSION=$(grep -m1 '^\#\# \[' CHANGELOG.md | sed 's/.*\[\([0-9][0-9.]*\)\].*/\1/')
+if [ "$PKG_VERSION" != "$CHANGELOG_VERSION" ]; then
+    echo "  ⚠️  WARNING: package.json ($PKG_VERSION) != CHANGELOG ($CHANGELOG_VERSION)"
+    WARNINGS=$((WARNINGS + 1))
+else
+    echo "  ✅ Versions match: $PKG_VERSION"
+fi
+
+# Check 13: All MCP servers in .mcp.json.example exist as files
+echo ""
+echo "✓ Checking MCP server files exist..."
+MCP_MISSING=0
+if [ -f "System/.mcp.json.example" ]; then
+    for server_path in $(grep -o '{{VAULT_PATH}}/core/mcp/[^"]*' System/.mcp.json.example | sed 's|{{VAULT_PATH}}/||'); do
+        if [ ! -f "$server_path" ]; then
+            echo "  ❌ ERROR: MCP server missing: $server_path"
+            MCP_MISSING=$((MCP_MISSING + 1))
+        fi
+    done
+    if [ $MCP_MISSING -gt 0 ]; then
+        ERRORS=$((ERRORS + MCP_MISSING))
+    else
+        echo "  ✅ All MCP server files exist"
+    fi
+else
+    echo "  ⚠️  WARNING: System/.mcp.json.example not found"
+    WARNINGS=$((WARNINGS + 1))
+fi
+
 # Summary
 echo ""
 echo "================================="

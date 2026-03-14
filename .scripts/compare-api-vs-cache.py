@@ -13,8 +13,16 @@ with open(creds_path, 'r') as f:
 workos_tokens = json.loads(data['workos_tokens'])
 access_token = workos_tokens.get('access_token')
 
-# Read cache
-cache_path = Path.home() / "Library/Application Support/Granola/cache-v3.json"
+# Read cache (find latest version)
+import re as _re
+granola_dir = Path.home() / "Library/Application Support/Granola"
+_candidates = sorted(
+    granola_dir.glob("cache-v*.json"),
+    key=lambda p: int(_re.search(r'v(\d+)', p.name).group(1))
+    if _re.search(r'v(\d+)', p.name) else 0,
+    reverse=True
+)
+cache_path = _candidates[0] if _candidates else granola_dir / "cache-v3.json"
 raw_data = cache_path.read_text()
 cache_wrapper = json.loads(raw_data)
 cache_data = json.loads(cache_wrapper.get('cache', '{}'))

@@ -128,6 +128,13 @@ else
     exit 1
 fi
 
+# Check npx (required for MCP servers)
+if ! command -v npx &> /dev/null; then
+    echo "⚠️  npx not found (usually bundled with Node.js)"
+    echo "   Some MCP servers may not work without npx."
+    echo "   Try reinstalling Node.js from https://nodejs.org/"
+fi
+
 # Install Node dependencies
 echo ""
 echo "📦 Installing dependencies..."
@@ -155,9 +162,20 @@ if [ ! -f .mcp.json ]; then
     echo "   Python command: $PYTHON_CMD"
 fi
 
+# Sync MCP servers to Cursor and Claude Desktop
+echo ""
+echo "🔄 Syncing MCP servers to AI clients..."
+if [ -f "core/scripts/sync-mcp-configs.sh" ]; then
+    bash core/scripts/sync-mcp-configs.sh --quiet
+    echo "✅ Dex MCP servers synced to Cursor and Claude Desktop"
+else
+    echo "⚠️  Sync script not found - MCP servers may not be available in Cursor/Claude"
+    echo "   You can manually copy .mcp.json entries to your AI client configs"
+fi
+
 # Check for Granola (optional)
 echo ""
-if [ -f "$HOME/Library/Application Support/Granola/cache-v3.json" ]; then
+if ls "$HOME/Library/Application Support/Granola/cache-v"*.json 1>/dev/null 2>&1; then
     echo "✅ Granola detected - meeting intelligence available"
 else
     echo "ℹ️  Granola not detected - meeting intelligence won't work"
@@ -181,37 +199,23 @@ if [ -n "$PIP_CMD" ]; then
     echo "   Upgrading pip..."
     $PYTHON_CMD -m pip install --upgrade pip --quiet 2>/dev/null || true
     
-    # Detect Apple Silicon and set appropriate pip flags
-    PIP_FLAGS=""
-    if [[ "$OSTYPE" == "darwin"* ]] && [[ $(uname -m) == "arm64" ]]; then
-        echo "   Detected Apple Silicon - ensuring native ARM64 packages..."
-        # Force reinstall without cache to get native ARM64 binaries
-        PIP_FLAGS="--force-reinstall --no-cache-dir"
-    fi
-    
     # Try standard install first
-    if $PIP_CMD install $PIP_FLAGS "mcp>=1.0.0,<2.0.0" pyyaml python-dateutil pyobjc-framework-EventKit --quiet 2>/dev/null; then
-        echo "✅ MCP dependencies installed (including fast EventKit calendar access)"
+    if $PIP_CMD install mcp pyyaml --quiet 2>/dev/null; then
+        echo "✅ Work MCP dependencies installed"
     else
         # Try with --user flag (works around permission issues)
         echo "   Trying with --user flag..."
-        if $PIP_CMD install --user $PIP_FLAGS "mcp>=1.0.0,<2.0.0" pyyaml python-dateutil pyobjc-framework-EventKit --quiet 2>/dev/null; then
-            echo "✅ MCP dependencies installed (user mode)"
+        if $PIP_CMD install --user mcp pyyaml --quiet 2>/dev/null; then
+            echo "✅ Work MCP dependencies installed (user mode)"
         else
             echo "❌ Could not install Python dependencies"
             echo ""
             echo "Work MCP is critical - it syncs tasks across all your files."
             echo "Without it, checking off a task in one place won't update others."
             echo ""
-            if [[ "$OSTYPE" == "darwin"* ]] && [[ $(uname -m) == "arm64" ]]; then
-                echo "On Apple Silicon, sometimes pip installs Intel packages by mistake."
-                echo "Try manually with explicit architecture flags:"
-                echo "  arch -arm64 $PIP_CMD install --force-reinstall --no-cache-dir \"mcp>=1.0.0,<2.0.0\" pyyaml python-dateutil pyobjc-framework-EventKit"
-            else
-                echo "Try manually (upgrade pip first):"
-                echo "  $PYTHON_CMD -m pip install --upgrade pip"
-                echo "  $PIP_CMD install --user \"mcp>=1.0.0,<2.0.0\" pyyaml python-dateutil pyobjc-framework-EventKit"
-            fi
+            echo "Try manually (upgrade pip first):"
+            echo "  $PYTHON_CMD -m pip install --upgrade pip"
+            echo "  $PIP_CMD install --user mcp pyyaml"
             echo ""
             read -p "Press Enter to continue setup (you can fix this later)..."
         fi
@@ -241,82 +245,16 @@ if [ -n "$PYTHON_CMD" ]; then
     if $PYTHON_CMD -c "import mcp, yaml" 2>/dev/null; then
         echo "✅ Work MCP verified - task sync will work"
         WORK_MCP_STATUS="✅ Working"
+
+        # Generate path constants for CJS/TS consumers
+        echo "Generating path constants..."
+        VAULT_PATH="$(pwd)" $PYTHON_CMD core/paths.py 2>/dev/null || true
     else
         echo "⚠️  Work MCP not working - task sync won't function"
         WORK_MCP_STATUS="⚠️  Needs attention"
     fi
 else
     WORK_MCP_STATUS="⚠️  Needs attention"
-fi
-
-# Cursor/Claude Code compatibility
-echo ""
-echo "🔄 Checking AI editor compatibility..."
-
-# Detect which editor is likely being used
-EDITOR_DETECTED=""
-CURSOR_VERSION=""
-
-if [ -d "$HOME/.cursor" ]; then
-    EDITOR_DETECTED="Cursor"
-    
-    # Try to detect Cursor version from the app bundle (macOS)
-    if [[ "$OSTYPE" == "darwin"* ]]; then
-        CURSOR_PLIST="/Applications/Cursor.app/Contents/Info.plist"
-        if [ -f "$CURSOR_PLIST" ]; then
-            CURSOR_VERSION=$(/usr/libexec/PlistBuddy -c "Print CFBundleShortVersionString" "$CURSOR_PLIST" 2>/dev/null || echo "")
-        fi
-    fi
-fi
-
-# Skills in .claude/skills/ work natively in BOTH editors:
-# - Claude Code (Claude Desktop) - always
-# - Cursor 2.4+ - has .claude/skills/ compatibility built-in (Agent Skills standard)
-#
-# NO SYNC NEEDED - both editors read from the same location!
-
-if [ "$EDITOR_DETECTED" == "Cursor" ]; then
-    echo "   Detected Cursor installation"
-    
-    if [ -n "$CURSOR_VERSION" ]; then
-        echo "   Cursor version: $CURSOR_VERSION"
-        
-        # Extract major.minor version for comparison
-        CURSOR_MAJOR=$(echo "$CURSOR_VERSION" | cut -d'.' -f1)
-        CURSOR_MINOR=$(echo "$CURSOR_VERSION" | cut -d'.' -f2)
-        
-        # Check if version is 2.4 or higher
-        if [ "$CURSOR_MAJOR" -lt 2 ] || ([ "$CURSOR_MAJOR" -eq 2 ] && [ "$CURSOR_MINOR" -lt 4 ]); then
-            echo ""
-            echo "   ⚠️  WARNING: Cursor $CURSOR_VERSION detected (skills require 2.4+)"
-            echo ""
-            echo "   Dex skills won't work until you upgrade Cursor!"
-            echo "   Skills like /setup, /daily-plan, etc. require Cursor 2.4 or later."
-            echo ""
-            echo "   To upgrade: Cursor menu → Check for Updates"
-            echo "   Or download latest from: https://cursor.com"
-            echo ""
-            echo "   After upgrading, skills in .claude/skills/ will work automatically."
-            echo ""
-            read -p "Press Enter to continue (upgrade Cursor later)..."
-        else
-            echo ""
-            echo "   ✅ Cursor $CURSOR_VERSION supports skills natively"
-            echo "   Skills work in both Cursor AND Claude Code from .claude/skills/"
-        fi
-    else
-        echo ""
-        echo "   ℹ️  Could not detect Cursor version automatically."
-        echo "   Skills require Cursor 2.4+ to work."
-        echo ""
-        echo "   Check your version: Cursor menu → About Cursor"
-        echo "   If < 2.4, upgrade via: Cursor menu → Check for Updates"
-    fi
-    echo ""
-    echo "✅ Cursor compatibility check complete"
-else
-    echo "✅ Claude Code / Claude Desktop detected (or no editor found)"
-    echo "   Skills in .claude/skills/ will work natively"
 fi
 
 # Success
@@ -327,7 +265,6 @@ echo ""
 echo "Status:"
 echo "  • Node.js: ✅ Working"
 echo "  • Work MCP: $WORK_MCP_STATUS"
-echo "  • Editor: ${EDITOR_DETECTED:-Claude Code}"
 if [[ "$WORK_MCP_STATUS" == *"Needs"* ]]; then
     echo ""
     echo "⚠️  IMPORTANT: Work MCP enables task sync across all files."
@@ -336,14 +273,7 @@ if [[ "$WORK_MCP_STATUS" == *"Needs"* ]]; then
 fi
 echo ""
 echo "Next steps:"
-if [ "$EDITOR_DETECTED" == "Cursor" ]; then
-    echo "  1. Make sure you're on Cursor 2.4+ for best experience"
-    echo "  2. In Cursor chat, type: /setup"
-    echo "  3. Answer the setup questions (~5 minutes)"
-    echo "  4. Start using Dex!"
-else
-    echo "  1. In chat, type: /setup"
-    echo "  2. Answer the setup questions (~5 minutes)"
-    echo "  3. Start using Dex!"
-fi
+echo "  1. In Cursor chat, type: /setup"
+echo "  2. Answer the setup questions (~5 minutes)"
+echo "  3. Start using Dex!"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"

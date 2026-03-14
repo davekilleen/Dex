@@ -13,11 +13,20 @@ Usage:
     calendar_eventkit.py attendees <calendar_name> <start_offset> <end_offset>
 """
 
-import sys
 import json
+import sys
 import threading
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
+
 import EventKit
+
+from core.paths import RESOURCES_DIR, VAULT_ROOT
+
+CALENDAR_SETUP_DOC = RESOURCES_DIR / "Dex_System" / "Calendar_Setup.md"
+CALENDAR_ACCESS_DENIED = (
+    "Calendar access denied. Enable in System Settings → Privacy & Security → Calendars. "
+    f"See {CALENDAR_SETUP_DOC.relative_to(VAULT_ROOT)} for full setup."
+)
 
 
 def ensure_calendar_access(store):
@@ -46,7 +55,7 @@ def list_calendars():
     """List all available calendars."""
     store = EventKit.EKEventStore.alloc().init()
     if not ensure_calendar_access(store):
-        print(json.dumps({"error": "Calendar access denied. Enable in System Settings → Privacy & Security → Calendars. See 06-Resources/Dex_System/Calendar_Setup.md for full setup."}))
+        print(json.dumps({"error": CALENDAR_ACCESS_DENIED}))
         sys.exit(1)
     calendars = store.calendarsForEntityType_(EventKit.EKEntityTypeEvent)
     
@@ -73,16 +82,65 @@ def find_calendar(store, calendar_name: str):
     return None
 
 
+def _safe_call(obj, attr: str):
+    try:
+        value = getattr(obj, attr)
+    except AttributeError:
+        return None
+    try:
+        return value() if callable(value) else value
+    except Exception:
+        return None
+
+
+def _nsdate_to_iso(value) -> str | None:
+    if value is None:
+        return None
+    seconds = _safe_call(value, "timeIntervalSince1970")
+    if seconds is None:
+        return None
+    return datetime.fromtimestamp(float(seconds), tz=timezone.utc).astimezone().isoformat()
+
+
 def format_event(event) -> dict:
     """Format an EKEvent into a consistent dict structure."""
+    provider_event_id = _safe_call(event, "eventIdentifier") or _safe_call(event, "calendarItemIdentifier")
+    provider_series_id = _safe_call(event, "calendarItemIdentifier") or _safe_call(
+        event, "calendarItemExternalIdentifier"
+    )
+    calendar_obj = _safe_call(event, "calendar")
+    current_user_status = None
+    if _safe_call(event, "attendees"):
+        for attendee in event.attendees():
+            if _safe_call(attendee, "isCurrentUser"):
+                current_user_status = {
+                    0: "Unknown",
+                    1: "Pending",
+                    2: "Accepted",
+                    3: "Declined",
+                    4: "Tentative",
+                    5: "Delegated",
+                    6: "Completed",
+                    7: "In Process",
+                }.get(_safe_call(attendee, "participantStatus"), "Unknown")
+                break
+
     return {
+        "provider": "eventkit",
+        "provider_event_id": provider_event_id,
+        "provider_series_id": provider_series_id,
         "title": event.title() or "",
-        "start": event.startDate().description(),
-        "end": event.endDate().description(),
+        "start": _nsdate_to_iso(event.startDate()),
+        "end": _nsdate_to_iso(event.endDate()),
         "location": event.location() or "",
         "url": event.URL().absoluteString() if event.URL() else "",
         "notes": event.notes() or "",
-        "all_day": event.isAllDay()
+        "all_day": event.isAllDay(),
+        "calendar_identifier": _safe_call(calendar_obj, "calendarIdentifier"),
+        "calendar_name": _safe_call(calendar_obj, "title"),
+        "state": "scheduled",
+        "current_user_status": current_user_status,
+        "last_modified": _nsdate_to_iso(_safe_call(event, "lastModifiedDate")),
     }
 
 
@@ -114,7 +172,8 @@ def format_event_with_attendees(event) -> dict:
                     3: "Resource",
                     4: "Group"
                 }.get(attendee.participantType(), "Unknown"),
-                "is_organizer": attendee.isCurrentUser()
+                "is_organizer": bool(_safe_call(attendee, "isOrganizer")),
+                "is_current_user": bool(attendee.isCurrentUser()),
             }
             attendees.append(att_data)
     
@@ -122,7 +181,7 @@ def format_event_with_attendees(event) -> dict:
     return event_data
 
 
-def get_events(calendar_name: str, start_offset_days: int, end_offset_days: int, with_attendees: bool = False):
+def get_events_data(calendar_name: str, start_offset_days: int, end_offset_days: int, with_attendees: bool = False):
     """Get events for a date range.
     
     Args:
@@ -133,7 +192,7 @@ def get_events(calendar_name: str, start_offset_days: int, end_offset_days: int,
     """
     store = EventKit.EKEventStore.alloc().init()
     if not ensure_calendar_access(store):
-        print(json.dumps({"error": "Calendar access denied. Enable in System Settings → Privacy & Security → Calendars. See 06-Resources/Dex_System/Calendar_Setup.md for full setup."}))
+        print(json.dumps({"error": CALENDAR_ACCESS_DENIED}))
         sys.exit(1)
     
     # Resolve calendar(s)
@@ -175,6 +234,11 @@ def get_events(calendar_name: str, start_offset_days: int, end_offset_days: int,
     # Sort by start time
     result.sort(key=lambda x: x["start"])
     
+    return result
+
+
+def get_events(calendar_name: str, start_offset_days: int, end_offset_days: int, with_attendees: bool = False):
+    result = get_events_data(calendar_name, start_offset_days, end_offset_days, with_attendees=with_attendees)
     print(json.dumps(result, indent=2))
 
 
@@ -189,7 +253,7 @@ def search_events(calendar_name: str, query: str, days_back: int, days_forward: 
     """
     store = EventKit.EKEventStore.alloc().init()
     if not ensure_calendar_access(store):
-        print(json.dumps({"error": "Calendar access denied. Enable in System Settings → Privacy & Security → Calendars. See 06-Resources/Dex_System/Calendar_Setup.md for full setup."}))
+        print(json.dumps({"error": CALENDAR_ACCESS_DENIED}))
         sys.exit(1)
     
     # Find the calendar
@@ -233,7 +297,7 @@ def get_next_event(calendar_name: str):
     """
     store = EventKit.EKEventStore.alloc().init()
     if not ensure_calendar_access(store):
-        print(json.dumps({"error": "Calendar access denied. Enable in System Settings → Privacy & Security → Calendars. See 06-Resources/Dex_System/Calendar_Setup.md for full setup."}))
+        print(json.dumps({"error": CALENDAR_ACCESS_DENIED}))
         sys.exit(1)
     
     # Find the calendar

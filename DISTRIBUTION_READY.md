@@ -100,7 +100,7 @@ User's Claude Desktop (separate)
 **Your install.sh already handles this:**
 ```bash
 # Line 59
-if [ -f "$HOME/Library/Application Support/Granola/cache-v3.json" ]; then
+if ls "$HOME/Library/Application Support/Granola/cache-v"*.json 1>/dev/null 2>&1; then
     echo "✅ Granola detected - meeting intelligence available"
 else
     echo "ℹ️  Granola not detected - meeting intelligence won't work"

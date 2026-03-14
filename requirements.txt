@@ -2,7 +2,7 @@
 # Install with: pip install -r requirements.txt
 
 # Core MCP functionality
-anthropic-mcp>=0.1.0
+mcp>=1.0.0
 
 # Configuration and data handling
 pyyaml>=6.0
@@ -10,6 +10,10 @@ python-dateutil>=2.8.0
 
 # Web scraping (no API key required)
 scrapling[ai]>=0.4.1
+
+# Testing
+pytest
+ruff
 
 # Optional integrations (uncomment if needed)
 # google-auth>=2.16.0

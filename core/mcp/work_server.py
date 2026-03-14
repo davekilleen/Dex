@@ -12,26 +12,26 @@ Provides deterministic operations through structured tools with:
 - Progress tracking and rollup across planning levels
 """
 
-import os
-import sys
 import json
 import logging
+import os
 import re
-from pathlib import Path
-from typing import Dict, List, Optional, Any
-from datetime import datetime, timedelta, date
+import sys
 from collections import Counter
+from datetime import date, datetime, timedelta
 from difflib import SequenceMatcher
+from pathlib import Path
+from typing import Any, Dict, List, Optional
 
 try:
     import yaml
 except ImportError:
     yaml = None  # Will fall back to defaults if yaml not available
 
-from mcp.server import Server, NotificationOptions
-from mcp.server.models import InitializationOptions
 import mcp.server.stdio
 import mcp.types as types
+from mcp.server import NotificationOptions, Server
+from mcp.server.models import InitializationOptions
 
 # QMD semantic search (optional - gracefully degrade if not available)
 try:
@@ -60,12 +60,12 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 # Import reference formatter for Obsidian wiki link support
 try:
     from core.utils.reference_formatter import (
-        format_person_reference,
-        format_project_reference,
         format_company_reference,
         format_meeting_reference,
+        format_person_reference,
+        format_project_reference,
         format_task_reference,
-        get_obsidian_mode
+        get_obsidian_mode,
     )
     HAS_REFERENCE_FORMATTER = True
 except ImportError:
@@ -82,14 +82,16 @@ except ImportError:
 
 # Health system — error queue and health reporting
 try:
-    from core.utils.dex_logger import log_error as _log_health_error, mark_healthy as _mark_healthy
+    from core.utils.dex_logger import log_error as _log_health_error
+    from core.utils.dex_logger import mark_healthy as _mark_healthy
     _HAS_HEALTH = True
 except ImportError:
     _HAS_HEALTH = False
 
 # Timezone-aware date/time (respects user-profile.yaml timezone)
 try:
-    from core.utils.timezone import now as _tz_now, today as _tz_today
+    from core.utils.timezone import now as _tz_now
+    from core.utils.timezone import today as _tz_today
 except ImportError:
     def _tz_now():
         return datetime.now()
@@ -103,27 +105,30 @@ class DateTimeEncoder(json.JSONEncoder):
             return obj.isoformat()
         return super().default(obj)
 
-# Configuration - Vault paths
-_vault_path = os.environ.get('VAULT_PATH')
-if not _vault_path:
-    logging.warning("VAULT_PATH not set — falling back to cwd(). Task ID generation may produce duplicates.")
-BASE_DIR = Path(_vault_path) if _vault_path else Path.cwd()
-TASKS_FILE = BASE_DIR / '03-Tasks/Tasks.md'
-WEEK_PRIORITIES_FILE = BASE_DIR / 'Inbox' / 'Week Priorities.md'
-QUARTER_GOALS_FILE = BASE_DIR / '01-Quarter_Goals/Quarter_Goals.md'
-GOALS_FILE = BASE_DIR / 'GOALS.md'  # Legacy, kept for compatibility
-INBOX_DIR = BASE_DIR / 'Inbox'
-PILLARS_FILE = BASE_DIR / 'System' / 'pillars.yaml'
-SKILL_RATINGS_FILE = BASE_DIR / 'System' / 'Skill_Ratings' / 'ratings.jsonl'
-COMPANIES_DIR = BASE_DIR / 'Active' / 'Relationships' / 'Companies'
-PEOPLE_DIR = BASE_DIR / 'People'
-MEETINGS_DIR = BASE_DIR / 'Inbox' / 'Meetings'
-PEOPLE_INDEX_FILE = BASE_DIR / 'System' / 'People_Index.json'
-MEETING_CACHE_FILE = BASE_DIR / 'System' / 'Memory' / 'meeting-cache.json'
+# Configuration - Vault paths (centralized in core.paths)
+_repo_root = str(Path(__file__).parent.parent.parent)
+if _repo_root not in sys.path:
+    sys.path.append(_repo_root)
+from core.paths import (
+    COMPANIES_DIR,
+    DEMO_DIR,
+    GOALS_FILE,
+    INBOX_DIR,
+    MEETING_CACHE_FILE,
+    MEETINGS_DIR,
+    PEOPLE_DIR,
+    PEOPLE_INDEX_FILE,
+    PILLARS_FILE,
+    QUARTER_GOALS_FILE,
+    SKILL_RATINGS_FILE,
+    TASKS_FILE,
+    USER_PROFILE_FILE,
+    WEEK_PRIORITIES_FILE,
+)
+from core.paths import (
+    VAULT_ROOT as BASE_DIR,
+)
 
-# Demo Mode Configuration
-USER_PROFILE_FILE = BASE_DIR / 'System' / 'user-profile.yaml'
-DEMO_DIR = BASE_DIR / 'System' / 'Demo'
 
 def is_demo_mode() -> bool:
     """Check if demo mode is enabled in user-profile.yaml"""
@@ -155,19 +160,19 @@ def get_pillars_file() -> Path:
 def get_week_priorities_file() -> Path:
     """Get the appropriate Week Priorities file based on demo mode"""
     if is_demo_mode():
-        return DEMO_DIR / 'Inbox' / 'Week Priorities.md'
+        return DEMO_DIR / '02-Week_Priorities' / 'Week_Priorities.md'
     return WEEK_PRIORITIES_FILE
 
 def get_people_dir() -> Path:
     """Get the appropriate People directory based on demo mode"""
     if is_demo_mode():
-        return DEMO_DIR / 'People'
+        return DEMO_DIR / '05-Areas' / 'People'
     return PEOPLE_DIR
 
 def get_meetings_dir() -> Path:
     """Get the appropriate Meetings directory based on demo mode"""
     if is_demo_mode():
-        return DEMO_DIR / 'Inbox' / 'Meetings'
+        return DEMO_DIR / '00-Inbox' / 'Meetings'
     return MEETINGS_DIR
 
 
@@ -796,14 +801,8 @@ def get_company_domains(company_filepath: Path) -> List[str]:
 # ============================================================================
 
 def _resolve_people_dir() -> Path:
-    """Resolve the actual People directory, checking both possible locations."""
-    standard = get_people_dir()
-    if standard.exists() and any(standard.iterdir()):
-        return standard
-    para = BASE_DIR / '05-Areas' / 'People'
-    if para.exists():
-        return para
-    return standard
+    """Resolve the actual People directory."""
+    return get_people_dir()
 
 
 def build_people_index_data() -> Dict[str, Any]:
@@ -1201,7 +1200,7 @@ def refresh_company_page(company_path: str) -> Dict[str, Any]:
     if not company_path.endswith('.md'):
         company_path += '.md'
     
-    if company_path.startswith('Active/'):
+    if company_path.startswith('05-Areas/'):
         filepath = BASE_DIR / company_path
     else:
         filepath = COMPANIES_DIR / Path(company_path).name
@@ -1254,7 +1253,7 @@ def refresh_company_page(company_path: str) -> Dict[str, Any]:
             meetings_section += f"| {meeting['date']} | {meeting['title']} | [{meeting['date']}]({meeting['filepath']}) |\n"
     else:
         meetings_section += "*No meetings found. Add domains to this company page for automatic matching.*\n"
-    meetings_section += f"\n*Meetings detected by email domain matching*"
+    meetings_section += "\n*Meetings detected by email domain matching*"
     
     # Build Related Tasks section
     tasks_section = "## Related Tasks\n\n"
@@ -3079,7 +3078,7 @@ async def handle_list_tools() -> list[types.Tool]:
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "company_path": {"type": "string", "description": "Path to company page (e.g., 'Acme_Corp' or 'Active/Relationships/Companies/Acme_Corp.md')"}
+                    "company_path": {"type": "string", "description": "Path to company page (e.g., 'Acme_Corp' or '05-Areas/Companies/Acme_Corp.md')"}
                 },
                 "required": ["company_path"]
             }
@@ -4851,7 +4850,7 @@ async def _main():
     """Async main entry point for the MCP server"""
     if _HAS_HEALTH:
         _mark_healthy("work-mcp")
-    logger.info(f"Starting Dex Work MCP Server")
+    logger.info("Starting Dex Work MCP Server")
     logger.info(f"Vault path: {BASE_DIR}")
     logger.info(f"Tasks file: {get_tasks_file()}")
     logger.info(f"Pillars loaded: {list(PILLARS.keys())}")

@@ -7,10 +7,10 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 
-const VAULT_PATH = process.env.VAULT_PATH || "/Users/dave/Claudesidian";
+const VAULT_PATH = process.env.VAULT_PATH || process.cwd();
 const TASKS_PATH = path.join(VAULT_PATH, "03-Tasks/Tasks.md");
 const WEEK_PRIORITIES_PATH = path.join(VAULT_PATH, "02-Week_Priorities");
-const DAILY_PLAN_PATH = path.join(VAULT_PATH, "01-Daily_Plan");
+const DAILY_PLAN_PATH = path.join(VAULT_PATH, "00-Inbox", "Daily_Plans");
 const CAREER_EVIDENCE_PATH = path.join(VAULT_PATH, "05-Areas/Career/Evidence");
 
 // Type definitions

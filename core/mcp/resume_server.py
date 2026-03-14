@@ -20,20 +20,18 @@ Tools:
 - export_resume: Export to file
 """
 
-import os
-import re
-import sys
 import json
 import logging
-from pathlib import Path
-from typing import Dict, List, Optional, Any
+import re
+import sys
 from datetime import datetime
-import uuid
+from pathlib import Path
+from typing import Any, Dict, List, Optional
 
-from mcp.server import Server, NotificationOptions
-from mcp.server.models import InitializationOptions
 import mcp.server.stdio
 import mcp.types as types
+from mcp.server import NotificationOptions, Server
+from mcp.server.models import InitializationOptions
 
 # Analytics helper (optional - gracefully degrade if not available)
 try:
@@ -44,35 +42,41 @@ except ImportError:
     def _fire_analytics_event(event_name, properties=None):
         return {'fired': False, 'reason': 'analytics_not_available'}
 
+# Ensure sibling modules (resume_parser) are importable
+_mcp_dir = str(Path(__file__).parent)
+if _mcp_dir not in sys.path:
+    sys.path.insert(0, _mcp_dir)
+
 # Import resume utilities
 from resume_parser import (
+    Achievement,
+    Education,
+    Metric,
+    MetricType,
+    PhaseEnum,
     ResumeSession,
     Role,
-    Achievement,
-    Metric,
-    Education,
-    PhaseEnum,
-    MetricType,
-    validate_date_format,
-    validate_achievement_metrics,
-    extract_metrics_from_text,
+    calculate_ats_score,
     calculate_bullet_quality_score,
-    suggest_improvements,
-    format_role_bullets,
-    format_resume,
-    format_linkedin_headline,
+    calculate_estimated_pages,
+    extract_metrics_from_text,
+    find_relevant_evidence,
     format_linkedin_about,
     format_linkedin_experience,
-    find_relevant_evidence,
+    format_linkedin_headline,
+    format_resume,
+    format_role_bullets,
     map_evidence_to_achievement,
-    calculate_ats_score,
-    calculate_estimated_pages,
+    suggest_improvements,
+    validate_achievement_metrics,
+    validate_date_format,
 )
 
 # Health system — error queue and health reporting
 try:
     sys.path.insert(0, str(Path(__file__).parent.parent.parent))
-    from core.utils.dex_logger import log_error as _log_health_error, mark_healthy as _mark_healthy
+    from core.utils.dex_logger import log_error as _log_health_error
+    from core.utils.dex_logger import mark_healthy as _mark_healthy
     _HAS_HEALTH = True
 except ImportError:
     _HAS_HEALTH = False
@@ -92,12 +96,18 @@ class EnhancedJSONEncoder(json.JSONEncoder):
             return obj.__dict__
         return super().default(obj)
 
-# Configuration - Vault paths
-BASE_DIR = Path(os.environ.get('VAULT_PATH', Path.cwd()))
-CAREER_DIR = BASE_DIR / 'Active' / 'Career'
-RESUME_DIR = CAREER_DIR / 'Resume'
-SESSIONS_DIR = RESUME_DIR / 'Sessions'
-EVIDENCE_DIR = BASE_DIR / 'Resources' / 'Career_Evidence'
+# Configuration - Vault paths (centralized in core.paths)
+_repo_root = str(Path(__file__).parent.parent.parent)
+if _repo_root not in sys.path:
+    sys.path.append(_repo_root)
+from core.paths import (
+    EVIDENCE_DIR,
+    RESUME_DIR,
+    SESSIONS_DIR,
+)
+from core.paths import (
+    VAULT_ROOT as BASE_DIR,
+)
 
 # Ensure directories exist
 SESSIONS_DIR.mkdir(parents=True, exist_ok=True)

@@ -9,28 +9,27 @@ Usage:
     python analytics_server.py
 """
 
+import json
 import os
 import sys
-import json
-import hashlib
 
 # Health system — error queue and health reporting
 try:
     sys.path.insert(0, str(os.path.join(os.path.dirname(__file__), '..', '..')))
-    from core.utils.dex_logger import log_error as _log_health_error, mark_healthy as _mark_healthy
+    from core.utils.dex_logger import log_error as _log_health_error
+    from core.utils.dex_logger import mark_healthy as _mark_healthy
     _HAS_HEALTH = True
 except ImportError:
     _HAS_HEALTH = False
 import logging
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional
 
 # MCP SDK imports
 try:
     from mcp.server import Server
-    from mcp.types import Tool, TextContent
     from mcp.server.stdio import stdio_server
+    from mcp.types import TextContent, Tool
 except ImportError:
     print("Error: MCP SDK not installed. Run: pip install mcp", file=sys.stderr)
     sys.exit(1)
@@ -38,15 +37,13 @@ except ImportError:
 # Import analytics helper (same directory)
 sys.path.insert(0, str(Path(__file__).parent))
 from analytics_helper import (
-    is_analytics_enabled,
     check_consent,
-    get_visitor_info,
-    get_pendo_secret,
     fire_event,
-    calculate_journey_metadata,
-    load_user_profile,
+    get_analytics_transport,
     get_vault_path,
-    PENDO_ENDPOINT,
+    get_visitor_info,
+    is_analytics_enabled,
+    load_user_profile,
 )
 
 try:
@@ -158,17 +155,20 @@ async def _call_tool_inner(name: str, arguments: dict) -> list[TextContent]:
     if name == "check_analytics_status":
         enabled = is_analytics_enabled()
         consent = check_consent()
-        secret_configured = get_pendo_secret() is not None
+        transport = get_analytics_transport()
         visitor_info = get_visitor_info()
 
         result = {
             "analytics_enabled": enabled,
             "consent_status": consent,
-            "pendo_secret_configured": secret_configured,
+            "transport_mode": transport.get("mode"),
+            "transport_endpoint": transport.get("endpoint"),
+            "transport_configured": transport.get("configured", False),
+            "transport_reason": transport.get("reason"),
             "requests_available": HAS_REQUESTS,
             "visitor_id": visitor_info['visitor_id'],
             "account_id": visitor_info['account_id'],
-            "ready": enabled and secret_configured and HAS_REQUESTS
+            "ready": enabled and transport.get("configured", False) and HAS_REQUESTS
         }
 
         return [TextContent(type="text", text=json.dumps(result, indent=2))]
@@ -232,11 +232,11 @@ async def _call_tool_inner(name: str, arguments: dict) -> list[TextContent]:
                 "error": "requests library not installed. Run: pip install requests"
             }))]
 
-        secret = get_pendo_secret()
-        if not secret:
+        transport = get_analytics_transport()
+        if not transport.get("configured"):
             return [TextContent(type="text", text=json.dumps({
                 "success": False,
-                "error": "PENDO_TRACK_SECRET not configured."
+                "error": f"Analytics transport not configured ({transport.get('reason', 'unknown')})."
             }))]
 
         visitor_info = get_visitor_info()
@@ -251,23 +251,27 @@ async def _call_tool_inner(name: str, arguments: dict) -> list[TextContent]:
             "properties": {"test": True, "timestamp": datetime.now().isoformat()}
         }
 
-        headers = {
-            "Content-Type": "application/json",
-            "x-pendo-integration-key": secret
-        }
-
         try:
-            response = requests.post(PENDO_ENDPOINT, json=payload, headers=headers, timeout=10)
+            response = requests.post(
+                transport["endpoint"],
+                json=payload,
+                headers=transport["headers"],
+                timeout=10
+            )
             if response.status_code == 200:
                 return [TextContent(type="text", text=json.dumps({
                     "success": True,
                     "status": response.status_code,
-                    "visitor_id_used": test_visitor
+                    "visitor_id_used": test_visitor,
+                    "transport_mode": transport.get("mode"),
+                    "transport_endpoint": transport.get("endpoint"),
                 }))]
             else:
                 return [TextContent(type="text", text=json.dumps({
                     "success": False,
                     "status": response.status_code,
+                    "transport_mode": transport.get("mode"),
+                    "transport_endpoint": transport.get("endpoint"),
                     "body": response.text[:200]
                 }))]
         except Exception as e:

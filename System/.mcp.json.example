@@ -87,7 +87,10 @@
         "{{VAULT_PATH}}/core/mcp/analytics_server.py"
       ],
       "env": {
-        "VAULT_PATH": "{{VAULT_PATH}}"
+        "VAULT_PATH": "{{VAULT_PATH}}",
+        "DEX_ANALYTICS_MODE": "proxy",
+        "DEX_ANALYTICS_ENDPOINT": "",
+        "DEX_ANALYTICS_PROXY_TOKEN": ""
       }
     },
     "session-memory": {

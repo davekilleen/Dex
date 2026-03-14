@@ -56,6 +56,8 @@ System/my-customizations.md
 
 # Pi integration (created when user activates Pi beta)
 .pi/
+# Symlink to pi-extensions/dex (tracked via pi-extensions/)
+!.pi/agent/extensions/dex
 
 # Beta documentation (created on feature activation)
 System/Beta/
@@ -63,9 +65,13 @@ System/Beta/
 # Beta hooks (copied from templates on activation)
 .claude/hooks/
 # But track core hooks — these ship with Dex
+!.claude/hooks/
 !.claude/hooks/dex-safety-guard.sh
 !.claude/hooks/person-context-injector.cjs
 !.claude/hooks/company-context-injector.cjs
+!.claude/hooks/paths.cjs
+!.claude/hooks/tests/
+!.claude/hooks/tests/*.test.cjs
 
 # Beta skills (copied from templates on activation)
 .claude/skills/commitment-extractor/
@@ -79,6 +85,9 @@ System/Beta/
 # ============================================
 # Python (for MCP servers)
 # ============================================
+
+# Generated path constants (per-vault)
+core/paths.json
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
@@ -159,6 +168,16 @@ core/mcp/__pycache__/
 test-vault/
 demo-vault/
 *-test/
+
+# Keep fixture vault tracked for deterministic tests
+!core/tests/
+!core/tests/fixtures/
+!core/tests/fixtures/vault/
+!core/tests/fixtures/vault/**
+!packages/dex-contracts/dist/
+!packages/dex-contracts/dist/*
+core/tests/fixtures/vault/System/.dex/*
+!core/tests/fixtures/vault/System/.dex/.gitkeep
 
 # Personal experiments
 playground/

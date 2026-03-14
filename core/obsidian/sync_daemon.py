@@ -3,16 +3,20 @@
 Bidirectional sync daemon for Obsidian ↔ Dex
 Monitors file changes and syncs task states using Work MCP
 """
-import os
-import time
 import logging
+import sys
+import time
 from pathlib import Path
 from typing import Set
-from watchdog.observers import Observer
-from watchdog.events import FileSystemEventHandler
 
-BASE_DIR = Path(os.environ.get('VAULT_PATH', Path.cwd()))
-LOG_FILE = BASE_DIR / 'System' / 'obsidian-sync.log'
+from watchdog.events import FileSystemEventHandler
+from watchdog.observers import Observer
+
+_repo_root = str(Path(__file__).parent.parent.parent)
+if _repo_root not in sys.path:
+    sys.path.append(_repo_root)
+from core.paths import OBSIDIAN_SYNC_LOG as LOG_FILE
+from core.paths import VAULT_ROOT as BASE_DIR
 
 logging.basicConfig(
     level=logging.INFO,

@@ -3,6 +3,7 @@
 import json
 from pathlib import Path
 
+
 def generate_config(vault_path: Path):
     """Generate .obsidian/ config files"""
     obsidian_dir = vault_path / '.obsidian'

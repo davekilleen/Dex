@@ -1,6 +1,7 @@
 ---
 name: health-check
 description: Diagnose and fix Dex system health issues — MCP servers, config, recent errors
+model_hint: fast
 ---
 
 ## Purpose
@@ -373,26 +374,9 @@ Don't go into fix mode unless asked.
 
 ---
 
-### Granola Mobile Recording Check
+### Granola Check
 
-As part of the health check, also check for Granola migration status:
-
-1. Run: `node .scripts/meeting-intel/check-granola-migration.cjs 2>/dev/null || echo '{"status":"not_applicable"}'`
-2. If status is `migration_available`, add to the health report under a "Recommended" section:
-   ```
-   RECOMMENDED
-
-   Granola mobile recordings — not yet enabled
-     Your phone call recordings aren't syncing to Dex yet.
-     To enable: say "enable mobile recordings" or run /process-meetings
-   ```
-3. If status is `token_expired`, add under WARNINGS:
-   ```
-   Granola sign-in expired — mobile recordings paused
-     Desktop meetings still sync, but phone recordings need a refresh.
-     Say "refresh Granola" to fix.
-   ```
-4. If `authenticated` or `not_applicable`: don't mention it.
+Granola meeting sync uses the desktop app's stored credentials automatically. As part of the health check, verify that Granola's credentials file exists (supabase.json in Granola's app data directory). If missing, note that Granola isn't installed or the user isn't signed in.
 
 ---
 
