@@ -14,43 +14,18 @@ require('dotenv').config({ path: path.join(VAULT_ROOT, '.env') });
 
 const { generateContent, isConfigured } = require('../lib/llm-client.cjs');
 const { loadProfile, loadPillars, getCalendarToday, getWeekPriorities, getTasks, lookupPerson, searchVault, createTask, completeTask } = require('./data-sources.cjs');
-const { buildClassifyPrompt, buildResponsePrompt } = require('./prompts.cjs');
+const { callWorkServer } = require('./work-bridge.cjs');
+const memory = require('./memory.cjs');
+const { buildClassifyPrompt, buildResponsePrompt, buildReasoningPrompt } = require('./prompts.cjs');
 const { formatDayOverview, formatCalendarView, formatPersonBrief, formatMeetingPrep, formatSearchResults, formatUnknown, formatError, wrapResponse } = require('./formatters.cjs');
 
-// In-memory conversation history per user
-const conversationHistory = new Map();
-const MAX_HISTORY = 5;
-const CONTEXT_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
-
-function addToHistory(userId, role, text) {
-  if (!conversationHistory.has(userId)) conversationHistory.set(userId, []);
-  const history = conversationHistory.get(userId);
-  const now = Date.now();
-
-  // Clear stale context (>30 min gap = new conversation)
-  if (history.length > 0) {
-    const lastTs = history[history.length - 1].timestamp;
-    if (now - lastTs > CONTEXT_TIMEOUT_MS) {
-      conversationHistory.set(userId, []);
-    }
-  }
-
-  const current = conversationHistory.get(userId);
-  current.push({ role, text: text.slice(0, 500), timestamp: now });
-  if (current.length > MAX_HISTORY) current.shift();
+// Persistent conversation history via SQLite (survives restarts)
+function addToHistory(userId, role, text, intent) {
+  memory.addMessage(userId, role, text, intent);
 }
 
 function getHistory(userId) {
-  const history = conversationHistory.get(userId) || [];
-  if (history.length === 0) return [];
-
-  // Check staleness
-  const now = Date.now();
-  if (now - history[history.length - 1].timestamp > CONTEXT_TIMEOUT_MS) {
-    conversationHistory.set(userId, []);
-    return [];
-  }
-  return history;
+  return memory.getRecentHistory(userId, 10, 60);
 }
 
 /**
@@ -87,11 +62,12 @@ async function classifyIntent(text, history, userContext) {
     const parsed = JSON.parse(jsonStr);
     return {
       intent: parsed.intent || 'unknown',
+      complexity: parsed.complexity || 'simple',
       params: parsed.params || {}
     };
   } catch (e) {
     console.error(`[classify] LLM parse error: ${e.message}`);
-    return { intent: 'unknown', params: {} };
+    return { intent: 'unknown', complexity: 'simple', params: {} };
   }
 }
 
@@ -123,6 +99,17 @@ function fetchData(intent, params) {
       const query = params.query || params.person_name || '';
       const results = searchVault(query);
       return { results, query };
+    }
+    case 'week_progress': {
+      return callWorkServer('get_week_progress');
+    }
+    case 'commitment_check': {
+      return callWorkServer('get_commitments_due', { date_range: params.date || 'today' });
+    }
+    case 'pillar_status': {
+      const wp = getWeekPriorities();
+      const tasks = getTasks();
+      return { priorities: wp, tasks };
     }
     default:
       return {};
@@ -162,10 +149,56 @@ function formatResponse(intent, llmResponse) {
     person_lookup: formatPersonBrief,
     meeting_prep: formatMeetingPrep,
     search: formatSearchResults,
+    week_progress: r => wrapResponse(r, '\ud83d\udcca', 'Week Progress'),
+    commitment_check: r => wrapResponse(r, '\ud83d\udccc', 'Commitments'),
+    pillar_status: r => wrapResponse(r, '\ud83c\udfaf', 'Pillar Balance'),
     unknown: formatUnknown
   };
   const formatter = formatters[intent] || formatUnknown;
   return formatter(llmResponse);
+}
+
+/**
+ * Gather data from multiple sub-queries and generate a reasoned response.
+ */
+async function routeComplexMessage(text, subQueries, params, userContext, userId) {
+  const gathered = {};
+
+  // Map sub-query names to data fetchers
+  const fetchers = {
+    calendar: () => getCalendarToday().events,
+    tasks: () => getTasks(),
+    week_progress: () => callWorkServer('get_week_progress'),
+    commitments: () => callWorkServer('get_commitments_due'),
+  };
+
+  // Gather data (sequentially to avoid overwhelming Python calls)
+  for (const sq of (subQueries || [])) {
+    const key = sq.split(':')[0]; // "person:Eoin" → "person", "search:query" → "search"
+    const arg = sq.split(':')[1];
+
+    if (key === 'person' && arg) {
+      gathered.person = lookupPerson(arg);
+      const prev = memory.getLastInteraction('person', arg);
+      if (prev) gathered.person_history = prev;
+    } else if (key === 'search' && arg) {
+      gathered.search = searchVault(arg);
+    } else if (fetchers[key]) {
+      gathered[key] = fetchers[key]();
+    }
+  }
+
+  // Generate reasoned response
+  const prompt = buildReasoningPrompt(text, gathered, userContext);
+  try {
+    let response = await generateContent(prompt, { maxOutputTokens: 1500 });
+    response = response.replace(/\*\*(.+?)\*\*/g, '*$1*');
+    response = response.replace(/^#{1,3}\s+(.+)$/gm, '*$1*');
+    return wrapResponse(response, '\ud83e\udde0', 'Analysis');
+  } catch (e) {
+    console.error(`[reason] LLM error: ${e.message}`);
+    return wrapResponse(`Couldn't complete analysis: ${e.message}`, null, null);
+  }
 }
 
 /**
@@ -176,9 +209,20 @@ async function routeMessage(text, userId) {
   const userContext = getUserContext();
   const history = getHistory(userId || 'default');
 
-  // Pass 1: Classify intent
-  const { intent, params } = await classifyIntent(text, history, userContext);
-  console.log(`[router] Intent: ${intent}, Params: ${JSON.stringify(params)}`);
+  // Pass 1: Classify intent + complexity
+  const { intent, complexity, params } = await classifyIntent(text, history, userContext);
+  console.log(`[router] Intent: ${intent}, Complexity: ${complexity}, Params: ${JSON.stringify(params)}`);
+
+  // Track entity interactions for memory context
+  if (params.person_name) memory.trackInteraction('person', params.person_name, intent);
+
+  // Complex multi-step reasoning path
+  if (complexity === 'multi_step' && params.sub_queries) {
+    const formatted = await routeComplexMessage(text, params.sub_queries, params, userContext, userId);
+    addToHistory(userId || 'default', 'user', text, 'complex_query');
+    addToHistory(userId || 'default', 'assistant', formatted.text, 'complex_query');
+    return formatted;
+  }
 
   // Direct action intents (no LLM pass 2 — just execute and confirm)
   if (intent === 'task_create') {
@@ -190,8 +234,24 @@ async function routeMessage(text, userId) {
       ? `\u2705 *Task created*\n\n*${result.title}*\n${result.pillar} | ${result.priority} | ID: \`${result.task_id}\``
       : `\u274c Couldn't create task: ${result.error}`;
     const formatted = wrapResponse(msg, null, null);
-    addToHistory(userId || 'default', 'user', text);
-    addToHistory(userId || 'default', 'assistant', formatted.text);
+    addToHistory(userId || 'default', 'user', text, intent);
+    addToHistory(userId || 'default', 'assistant', formatted.text, intent);
+    return formatted;
+  }
+
+  if (intent === 'commitment_create') {
+    const title = params.task_title || text;
+    const pillar = params.pillar || userContext.pillars[0]?.id || 'general';
+    const result = createTask(title, pillar, 'P1');
+    if (result.success) {
+      memory.trackInteraction('commitment', title, params.person_name || 'self');
+    }
+    const msg = result.success
+      ? `\ud83d\udccc *Commitment tracked*\n\n*${result.title}*\n${result.pillar} | ${result.priority} | ID: \`${result.task_id}\`\n\nI'll remind you when it's due.`
+      : `\u274c Couldn't track commitment: ${result.error}`;
+    const formatted = wrapResponse(msg, null, null);
+    addToHistory(userId || 'default', 'user', text, intent);
+    addToHistory(userId || 'default', 'assistant', formatted.text, intent);
     return formatted;
   }
 
@@ -202,8 +262,8 @@ async function routeMessage(text, userId) {
       ? `\u2705 *Done!* Checked off: ${result.title}\n_in ${result.file}_`
       : `\u274c ${result.error}`;
     const formatted = wrapResponse(msg, null, null);
-    addToHistory(userId || 'default', 'user', text);
-    addToHistory(userId || 'default', 'assistant', formatted.text);
+    addToHistory(userId || 'default', 'user', text, intent);
+    addToHistory(userId || 'default', 'assistant', formatted.text, intent);
     return formatted;
   }
 
@@ -212,8 +272,8 @@ async function routeMessage(text, userId) {
   const llmResponse = await generateResponse(intent, data, userContext);
   const formatted = formatResponse(intent, llmResponse);
 
-  addToHistory(userId || 'default', 'user', text);
-  addToHistory(userId || 'default', 'assistant', formatted.text);
+  addToHistory(userId || 'default', 'user', text, intent);
+  addToHistory(userId || 'default', 'assistant', formatted.text, intent);
 
   return formatted;
 }

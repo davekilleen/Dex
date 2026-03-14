@@ -632,78 +632,16 @@ if (isEodNow) {
     }
   });
 
-  // --- Proactive meeting briefs ---
-  const { getCalendarToday, lookupPerson } = require('./data-sources.cjs');
-  const sentBriefs = new Set(); // Track sent briefs by meeting start time to avoid dupes
-
-  async function checkUpcomingMeetings() {
-    try {
-      const { events, error } = getCalendarToday();
-      if (error || !events || events.length === 0) return;
-
-      const now = new Date();
-      for (const event of events) {
-        if (event.all_day) continue;
-
-        const start = new Date(event.start);
-        const minsUntil = (start - now) / 60000;
-        const briefKey = `${event.title}-${event.start}`;
-
-        // Send brief 10-15 minutes before meeting
-        if (minsUntil > 0 && minsUntil <= 15 && !sentBriefs.has(briefKey)) {
-          sentBriefs.add(briefKey);
-
-          // Build brief from attendee names
-          const attendeeNames = (event.attendees || [])
-            .map(a => a.name || a.email || '')
-            .filter(n => n && !n.toLowerCase().includes('tom'));
-          const personContext = attendeeNames.slice(0, 2).map(name => {
-            const person = lookupPerson(name.split(' ')[0]);
-            if (person.found) {
-              const lines = person.content.split('\n').filter(l => l.trim()).slice(0, 8);
-              return `*${person.name}*\n${lines.join('\n')}`;
-            }
-            return `*${name}* — no notes on file`;
-          });
-
-          const minsText = Math.round(minsUntil);
-          let briefText = `\ud83d\udce3 *${event.title}* in ${minsText} min`;
-          if (event.location) briefText += `\n\ud83d\udccd ${event.location}`;
-          if (attendeeNames.length > 0) briefText += `\n\ud83d\udc65 ${attendeeNames.join(', ')}`;
-          if (personContext.length > 0) briefText += `\n\n${personContext.join('\n\n')}`;
-
-          try {
-            const { WebClient } = require('@slack/web-api');
-            const web = new WebClient(SLACK_BOT_TOKEN);
-            await web.chat.postMessage({
-              channel: SLACK_USER_ID,
-              text: briefText,
-              mrkdwn: true
-            });
-            log(`[brief] Sent meeting brief for: ${event.title}`);
-          } catch (e) {
-            logError(`[brief] Failed to send brief: ${e.message}`);
-          }
-        }
-      }
-
-      // Clean up old brief keys (older than 1 hour)
-      for (const key of sentBriefs) {
-        const timeStr = key.split('-').pop();
-        if (new Date(timeStr) < new Date(now - 3600000)) sentBriefs.delete(key);
-      }
-    } catch (e) {
-      logError(`[brief] Check failed: ${e.message}`);
-    }
-  }
+  // --- Proactive intelligence engine ---
+  const proactive = require('./proactive.cjs');
 
   (async () => {
     await app.start();
     resetCrashCounter();
     log('Dex Slack bot running in Socket Mode. Listening for messages...');
 
-    // Check for upcoming meetings every 60 seconds
-    setInterval(checkUpcomingMeetings, 60000);
-    checkUpcomingMeetings(); // Run once at startup
+    // Start proactive checks (meeting briefs, stale priorities, commitments, meeting synthesis)
+    const { WebClient } = require('@slack/web-api');
+    proactive.startAll(new WebClient(SLACK_BOT_TOKEN), SLACK_USER_ID);
   })();
 }
