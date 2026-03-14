@@ -1,0 +1,185 @@
+<meetings_data from="Mar 10, 2026" to="Mar 13, 2026" count="5">
+<meeting id="cfa4e1e4-06bb-46aa-8704-bf2409d0e4c6" title="C2 EU" date="Mar 13, 2026 11:00 AM">
+  <known_participants>
+  Tom Green (note creator) from Chapter2 <tom.green@chapter2.group>, Irina Ponomarenko from Bolt <irina.ponomarenko@bolt.eu>, Laura Roulet <Laura.Roulet@chapter2.group>, Roulet, Laura (External) <laura.roulet@softwareag.com>, Yeva Shepilova from Chapter2 <yeva.shepilova@chapter2.group>, Zachariah Baljeu <zachariah@chapter2.group>, Zac Baljeu <zac.baljeu@taptapsend.com>, Robbie Kerr <robbie@chapter2.group>, Eóin Gaynard from Chapter2 <eoin.gaynard@chapter2.group>, Eóin Gaynard <eoin.gaynard@grammarly.com>, Kate Nikiforova from Chapter2 <kate.nikiforova@chapter2.group>, Nikiforova, Kate (External) <kate.nikiforova@aris.com>, Kaur, Ravnoor (External) <ravnoor.kaur@aris.com>, Ravnoor Kaur <ravnoor@chapter2.group>, Maria Brodovski <maria.brodovski@chapter2.group>, maria.brodovski.ext@true-skin.de <maria.brodovski.ext@true-skin.de>, Irina Ponomarenko <irina.p@chapter2.group>, Sohaib Rubnawaz <sohaib@chapter2.group>, sohaib@natter.co <sohaib@natter.co>, Elena Rudakova from Chapter2 <elena.rudakova@chapter2.group>, Manzano, Unai <unai.manzano@softwareag.com>, Unai Manzano <unai.manzano@chapter2.group>, Manzano del Tio, Unai (External) <Unai.ManzanoDelTio@aris.com>, Alex Mustoe <alex.mustoe@chapter2.group>, elena.rudakova@rivia.com <elena.rudakova@rivia.com>, Robbie Kerr from ITV <robbie.kerr@grammarly.com>
+  </known_participants>
+  
+  <summary>
+### Team Updates & Performance
+
+- Irina (Bolt): First offer received after month of early-stage roles, targeting March closure
+  - Self-defense workshop today for International Women’s Day
+  - Met with Yeva in CTO office
+- Maria: Closed two difficult long-standing roles this week
+  - One open since last summer, another with minimal candidates
+  - Back to betting with hiring managers on candidate outcomes
+- Unai (Aris): Three roles ready but HR delays on offer creation since Tuesday
+  - One offer pending after candidate requested 360 review process
+  - Good candidates for lead industry roles but hiring manager ghosting
+- Elena (Rivia): First month completed, eight roles open
+  - One at offer stage with candidate negotiating +20k
+  - Several candidates at final on-site stage
+  - Biotech community proving very interconnected in Zurich
+- Laura (A&N): Bicycle accident recovery, limited activity this week
+  - One offer accepted and contract signed while out
+- Robbie (ITV): Managing difficult offer approval process (10-11 rounds)
+  - Client facing negative press over AI expert review agent lawsuit ($5M class action)
+  - Travel planned: Berlin and San Francisco next month
+- Eóin: Promoting upcoming Berlin product/engineering event
+  - 11 people signed up, targeting 80-100 attendees
+  - Event in less than two weeks, needs immediate outreach
+
+### Technical & Compliance Issues
+
+- ISO 27001 certification pursuit for enterprise market access
+- GDPR compliance concerns with auto-joining note-taking tools
+  - Multiple team members unable to remove AI note-takers from accounts
+  - Audit implications requiring stricter controls
+
+### Berlin Event & Business Development
+
+- High-caliber product engineering event lineup planned
+- Major companies expanding in Berlin: Anthropic, Stripe, Notion, Nebius
+- Two RPO proposals pending with same investment group as successful RSA&N client
+- Mayor’s “Berlin of the Eins” campaign supporting startup ecosystem
+  - 2,800 manufacturing jobs moving to India despite tech support rhetoric
+
+### Next Steps
+
+- Performance reviews scheduled for next week with stakeholder feedback guidance
+- Team attendance at Berlin event pending capacity constraints
+- Weekend follow-up on note-taker removal issues
+</summary>
+</meeting>
+
+<meeting id="53b471d6-9b7d-4cea-9d32-9e053d46c612" title="Cait x Tom - Interview - BD Lead EMEA" date="Mar 11, 2026 2:45 PM">
+  <known_participants>
+  Tom Green (note creator) from Chapter2 <tom.green@chapter2.group>, mscaitkennedy@gmail.com <mscaitkennedy@gmail.com>
+  </known_participants>
+  
+  <summary>
+### Microsoft Deal Case Study
+
+-   10-month sales cycle for Pan-EU tech hiring project
+-   Started with 20 people, scaled to 70 at peak, now mostly US-focused
+-   Champion: Tom (Head of TA level) via outbound email
+-   Signal identification through:
+    -   10K/10Q reports (use LLMs for analysis)
+    -   Google News (last month filter)
+    -   Career page monitoring for new market roles
+
+### Sales Process & Challenges
+
+-   Initial proposal revised 3x based on feedback
+-   Formal RFP process despite existing relationship
+-   Key negotiation areas:
+    1.  Pricing alignment (full quarter to resolve)
+    2.  Legal red lines (most complex)
+    3.  Procurement requirements (checkbox exercise)
+-   Legal complexities:
+    -   Sick leave replacement clauses
+    -   30-day flex down notice (vs standard 12-month minimum)
+    -   Background check requirements
+    -   Rapid deployment SLAs with penalties
+
+### Pricing & Commercial Outcome
+
+-   Final margin: 37% (vs target 45%)
+-   Could have pushed 1k/month higher per person
+-   Cait’s reflection: “Excitement to close” led to leaving money on table
+-   Microsoft had budget flexibility but worked within Tom’s approved number
+
+### TikTok Loss Analysis
+
+-   Lost to Calendly due to global deployment capabilities
+-   RFP-only process with no direct contact allowed
+-   Key mistake: Insufficient external research on decision criteria
+-   Could have addressed geographic scaling concerns in pitch
+-   Calendly later lost the account
+
+### Sales Approach Evolution
+
+-   Past: Rush to close when path visible
+-   Current: More rigid on pricing, less pushback received
+-   Smaller deals easier to maintain pricing discipline
+-   Enterprise psychology: clients expect to negotiate down from high anchor
+</summary>
+</meeting>
+
+<meeting id="e83df47b-bcd6-4a3d-a752-e88ae2a14402" title="Tom Green-Chapter 2 group <> Cedric Mollaret-ARIS" date="Mar 11, 2026 1:30 PM">
+  <known_participants>
+  Unknown
+  </known_participants>
+  
+  <summary>
+No summary
+</summary>
+</meeting>
+
+<meeting id="08ac5d3a-ae19-496d-acad-44a03a51f12e" title="Elena/Tom catch up" date="Mar 11, 2026 9:00 AM">
+  <known_participants>
+  Tom Green (note creator) from Chapter2 <tom.green@chapter2.group>, Elena Rudakova <elena.rudakova@rivia.com>
+  </known_participants>
+  
+  <summary>
+### Personal Updates & Family Health
+
+- Tom’s father experiencing heart disease/cardiovascular issues
+  - Tom believes lifestyle-related (diet, wine consumption) rather than genetic
+  - Has been warning father for \~10 years about potential health consequences
+  - Hoping recent health scare motivates actual lifestyle changes
+- Elena relates similar concerns about her own father’s health habits
+
+### Elena’s Role Growth at Rivia
+
+- Transitioned from Steven Bartlett project to full-time at Rivia
+- Now handling all talent responsibilities solo after head of talent departure
+  - Company has same expectations as previous head of talent role
+  - Doing end-to-end talent work independently
+- Challenges and growth opportunities:
+  - Sometimes feels uncertain (“don’t know what the fuck I’m doing”)
+  - CEO asks strategic questions Elena hasn’t encountered before
+  - Trusted with cultural decisions (remote/hybrid work policies, part-time arrangements)
+  - Balancing high-level strategic discussions with daily admin/sourcing work
+- Company dynamics:
+  - CTO understands importance of not compromising on hiring quality
+  - CEO (Eric) more focused on hiring numbers and speed
+  - Already made difficult decisions to reject good-but-not-excellent candidates
+
+### Strategic Advice & Future Support
+
+- Tom’s leadership philosophy:
+  - “Everyone is making it up as they go along”
+  - Execution more important than strategy
+  - Speed vs. quality tension in hiring: both are true simultaneously
+  - Pattern recognition and creating clarity from ambiguity key leadership skills
+- Potential Chapter2 expansion with Rivia:
+  - Could offer strategic consulting/advisory support
+  - Would augment Elena’s capabilities while providing learning opportunity
+  - US expansion discussions ongoing but slow (Eric hasn’t responded to proposals)
+  - Need to deliver on current work before expanding scope
+- Elena’s development areas:
+  - Strengthen stakeholder communication and assertiveness
+  - Learn to frame messages around client outcomes (“fighting for them”)
+  - Example: Reframe hiring rejections as protecting internal candidates from failure risk
+- Tom’s Zalando example: Changed messaging from “why hire external” to “why hiring internal would damage their experience” - zero rejections after approach change
+
+### Next Steps
+
+- Elena to book follow-up meeting (after next week due to Zurich travel schedule)
+- Tom to discuss potential strategic support expansion with Brad
+- Elena attending Berlin Chapter2 event last week of month
+- Tom sending Elena YouTube video on customer research (25-30 minutes)
+</summary>
+</meeting>
+
+<meeting id="a464fab2-d996-4835-b22a-320d86dbb485" title="Leo/Tom" date="Mar 10, 2026 4:00 PM">
+  <known_participants>
+  Tom Green (note creator) from Chapter2 <tom.green@chapter2.group>, Leo Harrison <leo@chapter2.group>
+  </known_participants>
+  
+  <summary>
+No summary
+</summary>
+</meeting>
+</meetings_data>

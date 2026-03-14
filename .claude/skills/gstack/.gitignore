@@ -1,0 +1,7 @@
+node_modules/
+browse/dist/
+.gstack/
+/tmp/
+*.log
+bun.lock
+*.bun-build

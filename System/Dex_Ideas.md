@@ -42,6 +42,14 @@ Ideas are automatically ranked on 5 dimensions:
   - **Why ranked here:** Pure system learning + proactive behavior. Analyzes session learnings to detect patterns, then proactively suggests improvements before you ask. System gets smarter over time, compounds knowledge.
   - **Description:** Background process that analyzes `System/Session_Learnings/` to identify recurring patterns (same mistakes, common workflows, repeated pain points). Builds a learning model that proactively surfaces relevant past learnings during relevant contexts. Example: If you're editing a command, it shows "Last time you worked on commands, you learned X."
 
+- **[idea-006]** Slack conversational interface — mobile Dex CoS
+  - **Score:** 95 (Impact: 98, Alignment: 90, Token: 80, Memory: 90, Proactive: 95)
+  - **Category:** system
+  - **Captured:** 2026-03-14
+  - **Source:** Inspired by [@bennyautomatic's Pim article](https://x.com/bennyautomatic/status/2032563469208399910) — internal agent at Windmill that lives in Slack with full tool access
+  - **Why ranked here:** Highest-impact capability jump possible. Turns Dex from laptop-only tool into always-available CoS via Slack's iOS app. Zero app development — Slack is already on the phone. Unlocks: mobile person lookups, on-the-go task creation, meeting briefs between meetings, idea capture from anywhere. Existing slack-dex-bot infrastructure provides foundation to build on.
+  - **Description:** Evolve the existing `.scripts/slack-dex-bot/` from one-way EOD updates into a conversational Dex interface. @Dex in Slack DMs or a dedicated channel to ask questions, create tasks, get meeting briefs, look up people — backed by the same context files and MCPs. Key architecture decision: local Mac bridge vs small server component. Pim's approach uses Inngest Connect (outbound only, no open ports) + Vercel AI SDK ToolLoopAgent for the agent loop. Start with read-only queries (lookups, briefs), expand to write operations (task creation, idea capture) once trust is established.
+
 ### ⚡ Medium Priority (Score: 60-84)
 
 - **[idea-003]** Preference learning from edit patterns

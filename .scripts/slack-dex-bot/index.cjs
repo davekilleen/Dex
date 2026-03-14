@@ -494,7 +494,9 @@ if (isEodNow) {
   validateConfig(true);
   checkCrashCounter();
 
-  const { App } = require('@slack/bolt');
+  const { App, Assistant } = require('@slack/bolt');
+  const { routeMessage } = require('./router.cjs');
+  const { formatError } = require('./formatters.cjs');
 
   const app = new App({
     token: SLACK_BOT_TOKEN,
@@ -506,52 +508,202 @@ if (isEodNow) {
     logError(`Bolt error: ${error.message}`);
   });
 
-  app.message(async ({ message, say }) => {
+  // --- Assistant API handler (Chat tab) ---
+  const assistant = new Assistant({
+    threadStarted: async ({ say, setSuggestedPrompts }) => {
+      try {
+        await say('Hey! What do you need?');
+        await setSuggestedPrompts({
+          prompts: [
+            { title: "What's on my plate?", message: "What's on my plate today?" },
+            { title: 'Meetings today', message: 'What meetings do I have today?' },
+            { title: 'Search vault', message: 'Search: ' },
+          ],
+          title: 'Try one of these:',
+        });
+      } catch (e) {
+        logError(`Assistant threadStarted error: ${e.message}`);
+      }
+    },
+
+    userMessage: async ({ message, say, setTitle, setStatus }) => {
+      if (!message.text || !message.thread_ts) return;
+
+      try {
+        await setTitle(message.text.slice(0, 60));
+        await setStatus('Thinking...');
+
+        log(`[assistant] Routing: "${message.text.slice(0, 80)}"`);
+        const result = await routeMessage(message.text.trim(), message.user);
+        await say({ text: result.text });
+      } catch (e) {
+        logError(`Assistant userMessage error: ${e.message}`);
+        await say({ text: 'Something went wrong. Try again or check Dex in Claude Code.' });
+      }
+    },
+  });
+
+  app.assistant(assistant);
+
+  /**
+   * Check if a message looks like an EOD check-in reply.
+   * Only matches OK/Skip/numbered-list patterns — everything else falls through to conversational router.
+   */
+  function isEodReply(text) {
+    const lower = text.toLowerCase().trim();
+    if (OK_SYNONYMS.has(lower)) return true;
+    if (SKIP_SYNONYMS.has(lower)) return true;
+    // Numbered list (at least one line starting with digit + period/paren)
+    if (/^\d+[\.\)]\s/m.test(text)) return true;
+    return false;
+  }
+
+  app.message(async ({ message, say, client }) => {
     if (message.channel_type !== 'im') return;
     if (message.user !== SLACK_USER_ID) return;
     if (message.subtype) return;
 
+    const text = (message.text || '').trim();
     const pending = readPendingCheckin();
-    if (!pending) return;
 
-    const text = (message.text || '').trim().toLowerCase();
-    const intent = classifyReply(text);
+    // --- EOD flow: handle if pending AND message looks like an EOD reply ---
+    if (pending && isEodReply(text)) {
+      const lowerText = text.toLowerCase();
+      const eodIntent = classifyReply(lowerText);
 
-    try {
-      if (intent === 'confirm') {
-        log('User confirmed EOD suggestions');
-        commitPriorities(pending.topThree, 'eod-confirm');
-        clearPendingCheckin();
-        await say('\u2705 Locked in! Tomorrow\'s Must Complete Today items are confirmed.');
-
-      } else if (intent === 'skip') {
-        log('User skipped EOD check-in');
-        clearPendingCheckin();
-        await say('\u23ED Skipped. No items locked in for tomorrow. You can always run your daily plan in the morning.');
-
-      } else if (intent === 'custom') {
-        const lines = text.split('\n').filter(l => /^\d+[\.\)]\s/.test(l.trim()));
-        const formatted = lines.map(l => l.replace(/^\d+[\.\)]\s*/, '').trim()).filter(Boolean);
-        if (formatted.length > 0) {
-          log(`User provided custom list: ${formatted.length} items`);
-          commitPriorities(formatted.map(t => ({ title: t })), 'eod-custom');
+      try {
+        if (eodIntent === 'confirm') {
+          log('User confirmed EOD suggestions');
+          commitPriorities(pending.topThree, 'eod-confirm');
           clearPendingCheckin();
-          await say(`\u2705 Custom list locked in:\n${formatted.map((item, i) => `*${i + 1}.* ${item}`).join('\n')}`);
-        } else {
-          await say('Hmm, I couldn\'t parse that list. Try numbering items like:\n1. First item\n2. Second item\n3. Third item');
-        }
+          await say('\u2705 Locked in! Tomorrow\'s Must Complete Today items are confirmed.');
 
-      } else {
-        await say('I didn\'t catch that. Reply:\n\u2022 `OK` to confirm\n\u2022 `Skip` to skip\n\u2022 A numbered list (1. First item...)');
+        } else if (eodIntent === 'skip') {
+          log('User skipped EOD check-in');
+          clearPendingCheckin();
+          await say('\u23ED Skipped. No items locked in for tomorrow. You can always run your daily plan in the morning.');
+
+        } else if (eodIntent === 'custom') {
+          const lines = lowerText.split('\n').filter(l => /^\d+[\.\)]\s/.test(l.trim()));
+          const formatted = lines.map(l => l.replace(/^\d+[\.\)]\s*/, '').trim()).filter(Boolean);
+          if (formatted.length > 0) {
+            log(`User provided custom list: ${formatted.length} items`);
+            commitPriorities(formatted.map(t => ({ title: t })), 'eod-custom');
+            clearPendingCheckin();
+            await say(`\u2705 Custom list locked in:\n${formatted.map((item, i) => `*${i + 1}.* ${item}`).join('\n')}`);
+          } else {
+            await say('Hmm, I couldn\'t parse that list. Try numbering items like:\n1. First item\n2. Second item\n3. Third item');
+          }
+        }
+      } catch (e) {
+        logError(`EOD reply handler failed: ${e.message} (user sent: "${text.slice(0, 50)}")`);
       }
+      return;
+    }
+
+    // --- Conversational flow ---
+    try {
+      // Add eyes reaction to show we're processing
+      try {
+        await client.reactions.add({
+          channel: message.channel,
+          timestamp: message.ts,
+          name: 'eyes'
+        });
+      } catch { /* reaction failed, non-critical */ }
+
+      log(`[convo] Routing: "${text.slice(0, 80)}"`);
+      const result = await routeMessage(text, message.user);
+      await say({ blocks: result.blocks, text: result.text });
+
+      // Remove eyes reaction
+      try {
+        await client.reactions.remove({
+          channel: message.channel,
+          timestamp: message.ts,
+          name: 'eyes'
+        });
+      } catch { /* non-critical */ }
+
     } catch (e) {
-      logError(`Reply handler failed: ${e.message} (user sent: "${text.slice(0, 50)}")`);
+      logError(`Router failed: ${e.message}`);
+      const errResult = formatError(e.message);
+      await say({ blocks: errResult.blocks, text: errResult.text });
     }
   });
+
+  // --- Proactive meeting briefs ---
+  const { getCalendarToday, lookupPerson } = require('./data-sources.cjs');
+  const sentBriefs = new Set(); // Track sent briefs by meeting start time to avoid dupes
+
+  async function checkUpcomingMeetings() {
+    try {
+      const { events, error } = getCalendarToday();
+      if (error || !events || events.length === 0) return;
+
+      const now = new Date();
+      for (const event of events) {
+        if (event.all_day) continue;
+
+        const start = new Date(event.start);
+        const minsUntil = (start - now) / 60000;
+        const briefKey = `${event.title}-${event.start}`;
+
+        // Send brief 10-15 minutes before meeting
+        if (minsUntil > 0 && minsUntil <= 15 && !sentBriefs.has(briefKey)) {
+          sentBriefs.add(briefKey);
+
+          // Build brief from attendee names
+          const attendeeNames = (event.attendees || [])
+            .map(a => a.name || a.email || '')
+            .filter(n => n && !n.toLowerCase().includes('tom'));
+          const personContext = attendeeNames.slice(0, 2).map(name => {
+            const person = lookupPerson(name.split(' ')[0]);
+            if (person.found) {
+              const lines = person.content.split('\n').filter(l => l.trim()).slice(0, 8);
+              return `*${person.name}*\n${lines.join('\n')}`;
+            }
+            return `*${name}* — no notes on file`;
+          });
+
+          const minsText = Math.round(minsUntil);
+          let briefText = `\ud83d\udce3 *${event.title}* in ${minsText} min`;
+          if (event.location) briefText += `\n\ud83d\udccd ${event.location}`;
+          if (attendeeNames.length > 0) briefText += `\n\ud83d\udc65 ${attendeeNames.join(', ')}`;
+          if (personContext.length > 0) briefText += `\n\n${personContext.join('\n\n')}`;
+
+          try {
+            const { WebClient } = require('@slack/web-api');
+            const web = new WebClient(SLACK_BOT_TOKEN);
+            await web.chat.postMessage({
+              channel: SLACK_USER_ID,
+              text: briefText,
+              mrkdwn: true
+            });
+            log(`[brief] Sent meeting brief for: ${event.title}`);
+          } catch (e) {
+            logError(`[brief] Failed to send brief: ${e.message}`);
+          }
+        }
+      }
+
+      // Clean up old brief keys (older than 1 hour)
+      for (const key of sentBriefs) {
+        const timeStr = key.split('-').pop();
+        if (new Date(timeStr) < new Date(now - 3600000)) sentBriefs.delete(key);
+      }
+    } catch (e) {
+      logError(`[brief] Check failed: ${e.message}`);
+    }
+  }
 
   (async () => {
     await app.start();
     resetCrashCounter();
-    log('Dex Slack bot running in Socket Mode. Listening for EOD replies...');
+    log('Dex Slack bot running in Socket Mode. Listening for messages...');
+
+    // Check for upcoming meetings every 60 seconds
+    setInterval(checkUpcomingMeetings, 60000);
+    checkUpcomingMeetings(); // Run once at startup
   })();
 }
