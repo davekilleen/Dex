@@ -7,6 +7,22 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.19.0] — gstack QA Suite + Skill Rename + User Profile (2026-03-17)
+
+Added the full gstack QA/ship suite and configured Bolu's profile.
+
+**What changed:**
+
+* Added gstack skills: `gstack`, `qa`, `qa-design-review`, `qa-only`, `plan-design-review`, `plan-eng-review`, `plan-ceo-review`, `ship`, `browse`, `daily-review-dex`, `document-release`, `design-consultation`, `retro`, `setup-browser-cookies`, `gstack-upgrade`
+* Renamed `/review` → `/pr-review` to separate PR code review from Dex daily/weekly reviews
+* Fixed `launch.json`: MCP servers now use `python3` instead of `python` (fixes Work Server on macOS)
+* User profile and pillars configured: Bolu, Product Manager at MedWrite, CPO coaching frame
+* CLAUDE.md: added Adamant Design System section with font, color, and spacing rules
+* Added `.gstack/` to `.gitignore`
+* Added `System/Mistakes_and_Learnings.md` for session learning capture
+
+---
+
 ## [1.18.2] — Fix Background Meeting Sync Installation (2026-03-12)
 
 `install-automation.sh` failed because it referenced two files that no longer exist: `granola-auth.cjs` (deprecated — Granola now stores credentials in `supabase.json` automatically) and `sync-from-granola-v2.cjs` (never shipped — v1 works fine).

@@ -1,0 +1,41 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "Adamant Design Preview",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": ["-m", "http.server", "8080", "--directory", "04-Projects/Adamant"],
+      "port": 8080
+    },
+    {
+      "name": "MCP: Work Server",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": ["core/mcp/work_server.py"],
+      "port": 0
+    },
+    {
+      "name": "MCP: Granola Server",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": ["core/mcp/granola_server.py"],
+      "port": 0
+    },
+    {
+      "name": "MCP: Calendar Server",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": ["core/mcp/calendar_server.py"],
+      "port": 0
+    },
+    {
+      "name": "MCP: Career Server",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": ["core/mcp/career_server.py"],
+      "port": 0
+    },
+    {
+      "name": "Meeting Sync",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [".scripts/meeting-intel/sync-from-granola.cjs"],
+      "port": 0
+    }
+  ]
+}

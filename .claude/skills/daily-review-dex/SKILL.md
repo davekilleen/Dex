@@ -1,5 +1,5 @@
 ---
-name: review
+name: daily-review-dex
 description: End of day review with learning capture. Integrates with evening journaling if enabled.
 ---
 

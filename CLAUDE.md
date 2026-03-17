@@ -71,12 +71,16 @@ The system automatically suggests `/getting-started` at next session if vault < 
 ## User Profile
 
 <!-- Updated during onboarding -->
-**Name:** Not yet configured
-**Role:** Not yet configured
-**Company Size:** Not yet configured
-**Working Style:** Not yet configured
+**Name:** Bolu
+**Role:** Product Manager at MedWrite (startup)
+**Company Size:** Startup (1–100)
+**Email Domain:** medwrite.ai
+**Career Goal:** Chief Product Officer
+**Working Style:** Professional, direct, no fluff. Coaching-oriented — always frame feedback and suggestions in terms of CPO-level thinking.
 **Pillars:**
-- Not yet configured
+- Product Strategy
+- Customer Discovery
+- Engineering Partnerships
 
 ---
 
@@ -98,7 +102,27 @@ Read these files when users ask about system details, features, or setup.
 Add any personal instructions between these markers. The `/dex-update` process preserves this block verbatim.
 
 ## USER_EXTENSIONS_START
-<!-- Add your personal customizations here. -->
+
+### Bolu's Context
+
+**Company:** MedWrite — AI healthcare company, selling to hospitals and large health systems
+**Email:** bolu@medwrite.ai
+**Mac username:** boluwatifeogunbiyi
+**OS:** macOS
+
+**Tools confirmed installed:**
+- Granola (meeting intelligence — detected during install)
+- Node.js v24, Python 3.14, Git 2.50
+
+**Preferences:**
+- Not technical — avoid jargon, keep instructions simple and step-by-step
+- Coaching mode: always frame advice in terms of "what a CPO would do"
+- Very direct: skip preamble, get to the point
+- No Obsidian (unfamiliar with it — may revisit later)
+
+**CPO Coaching Frame:**
+When reviewing decisions, PRDs, roadmap trade-offs, or stakeholder situations, always ask: "Is this how a CPO thinks about it?" Push Bolu to zoom out from execution to strategy. Flag when she's operating below her level.
+
 ## USER_EXTENSIONS_END
 
 ---
@@ -606,3 +630,22 @@ flowchart LR
 ```
 
 Use `neutral` theme - works in both light and dark modes.
+
+---
+
+## Adamant Design System
+
+When working on any Adamant UI, visual, or frontend decisions, always read `04-Projects/Adamant/DESIGN.md` first.
+
+All font choices, colors, spacing, and aesthetic direction are defined there. Do not deviate without explicit approval.
+
+**Key rules:**
+- App UI font: Geist (not Inter)
+- Marketing hero: Instrument Serif for headlines
+- Marketing body: Plus Jakarta Sans
+- Data/IDs: JetBrains Mono
+- Primary: `#4F6BFF` — no gradients, no violet, no AI slop
+- Signal colors are part of the data model — never change them
+- Dark mode first; 8pt grid; `--radius-md: 8px` for cards
+
+In QA mode, flag any Adamant code that doesn't match `DESIGN.md`.
