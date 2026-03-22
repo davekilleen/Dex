@@ -54,12 +54,12 @@ if [[ -n "$OPENROUTER_KEY" ]]; then
           "cost": { "input": 0.14, "output": 0.28, "cacheRead": 0, "cacheWrite": 0 }
         },
         {
-          "id": "google/gemini-2.0-flash-exp:free",
-          "name": "Gemini Flash (Free)",
+          "id": "google/gemini-2.5-flash",
+          "name": "Gemini 2.5 Flash (Budget)",
           "input": ["text", "image"],
           "contextWindow": 1048576,
           "maxTokens": 8192,
-          "cost": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 }
+          "cost": { "input": 0.3, "output": 2.5, "cacheRead": 0, "cacheWrite": 0 }
         }
       ]
     }
@@ -130,7 +130,7 @@ if [[ -n "$OPENROUTER_KEY" ]]; then
     echo "☁️  Budget Cloud (OpenRouter):"
     echo "   - Kimi K2.5"
     echo "   - DeepSeek V3"
-    echo "   - Gemini Flash (free tier)"
+    echo "   - Gemini 2.5 Flash"
 fi
 
 if command -v ollama &> /dev/null && ollama list 2>/dev/null | grep -q "$OLLAMA_MODEL"; then
