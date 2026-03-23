@@ -59,7 +59,7 @@ If `04-Projects/` folder doesn't exist, this is a fresh setup.
 **Phase 2 - Getting Started:**
 
 After core onboarding (Step 9), offer Phase 2 tour via `/getting-started` skill:
-- Adaptive based on available data (calendar, Granola, or neither)
+- Adaptive based on available data (calendar, Otter.ai, or neither)
 - **With data:** Analyzes what's there, offers to process meetings/create pages
 - **Without data:** Guides tool integration, builds custom MCPs
 - **Always:** Low pressure, clear escapes, educational even when things don't work
@@ -71,12 +71,16 @@ The system automatically suggests `/getting-started` at next session if vault < 
 ## User Profile
 
 <!-- Updated during onboarding -->
-**Name:** Not yet configured
-**Role:** Not yet configured
-**Company Size:** Not yet configured
-**Working Style:** Not yet configured
+**Name:** Regis Hadiaris
+**Role:** Fractional CPO / Fractional CMO / Founder / Author
+**Company:** The Atelier Company
+**Company Size:** Startup (1-100)
+**Working Style:** Very direct, concise, C-suite level
 **Pillars:**
-- Not yet configured
+- Family — Showing up authentically with Kerry, Ella (17), and Sammy (15)
+- Product Leadership — Leading product for The Wisory
+- Career Transition — Finding a full-time role
+- Thought Leadership — Dot Connector Dispatch on Substack
 
 ---
 
@@ -187,18 +191,17 @@ Adapt your tone and language based on user preferences in `System/user-profile.y
 
 Apply consistently across all interactions (planning, reviews, meetings, project discussions).
 
-### Granola Mobile Recordings (Natural Language Triggers)
+### Meeting Source: Otter.ai
 
-When the user mentions any of these:
-- "mobile recordings", "phone recordings", "phone meetings", "phone calls not syncing"
-- "enable mobile recordings", "set up mobile recordings"
-- "meetings from my phone", "mobile meetings not showing"
-- "refresh Granola", "Granola not working", "Granola sign-in"
+Meetings are sourced from **Otter.ai** via the connected MCP (not Granola). No background sync or local scripts needed — meetings are fetched on-demand from the cloud.
+
+When the user mentions meeting issues:
+- "meetings not showing", "missing meetings", "Otter not working"
 
 **Action:**
-1. Check if Granola credentials exist: look for `supabase.json` in Granola's app data directory
-2. If credentials exist: Mobile recordings sync automatically. Suggest checking if Granola's iOS app is syncing to cloud, and that background sync is installed (`cd .scripts/meeting-intel && ./install-automation.sh`)
-3. If no credentials: Granola isn't installed or user isn't signed in — guide them to [granola.ai](https://granola.ai) and ensure they sign in to the desktop app
+1. Verify Otter.ai MCP is connected (try `mcp__claude_ai_Otter_ai__get_user_info`)
+2. If connected: Search for recent meetings to confirm data is flowing
+3. If not connected: Guide user to connect Otter.ai MCP in Claude settings
 
 ### Meeting Capture
 When the user shares meeting notes or says they had a meeting:
@@ -274,7 +277,7 @@ When the user says they completed a task (any phrasing):
 If `05-Areas/Career/` folder exists, the system automatically captures career development evidence:
 - **During `/daily-review`**: Prompt for achievements worth capturing for career growth
 - **During `/career-coach`**: Achievements with quantifiable metrics are auto-detected and captured as evidence without manual prompting
-- **From Granola meetings**: Extract feedback and development discussions from manager 1:1s
+- **From Otter.ai meetings**: Extract feedback and development discussions from manager 1:1s
 - **Project completions**: Suggest capturing impact and skills demonstrated
 - **Skill tracking**: Tag tasks/goals with `# Career: [skill]` to track skill development over time. **If QMD is available**, the Career MCP also detects skill demonstration *without* explicit tags — semantically matching achievements to competencies (e.g., a task about "designing the API migration strategy" matches the "System Design" competency even without a `# Career: System Design` tag).
 - **Weekly reviews**: Scan for completed work tagged with career skills, prompt evidence capture

@@ -2,13 +2,14 @@
 # This file tracks which integrations are enabled and their settings
 
 # Last updated: (auto-updated when integrations change)
-last_updated: '2026-02-04T18:41:25.882536'
+last_updated: '2026-03-14'
 
 # Enabled integrations
 enabled:
-  notion: false
-  slack: true
-  google: false
+  notion: true
+  slack: false
+  google: true
+  otter: true
 
 # Integration-specific settings are stored in separate files:
 # - notion.yaml (Notion-specific config)
@@ -18,22 +19,22 @@ enabled:
 # Integration hooks - which Dex features use integrations
 hooks:
   meeting_prep:
-    use_notion: true      # Pull relevant Notion docs
-    use_slack: true       # Pull recent Slack context with attendees
+    use_notion: false
+    use_slack: false
     use_google: true      # Pull email threads with attendees
-  
+
   person_pages:
-    use_notion: true      # Link Notion pages
-    use_slack: true       # Show Slack mentions
+    use_notion: false
+    use_slack: false
     use_google: true      # Show email history
-  
+
   daily_plan:
-    use_notion: false     # Not used by default
-    use_slack: true      # Not used by default  
+    use_notion: false
+    use_slack: false
     use_google: true      # Surface emails needing response
 
   commitment_detection:
-    use_slack: true       # Detect promises in Slack
+    use_slack: false
 
 # Detection cache (auto-populated by detect.py)
 detected:

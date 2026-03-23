@@ -1,5 +1,5 @@
 # Strategic Pillars Configuration
-# 
+#
 # Pillars are your main focus areas — think of them as how you carve up your role thematically.
 # These are NOT time-bound (like quarterly goals). They represent ongoing areas of responsibility
 # that typically stay consistent for 6-12+ months, or until your role significantly changes.
@@ -14,15 +14,49 @@
 #
 # The Work MCP uses these to categorize tasks and check balance across your work.
 
-pillars: []
-  # Will be populated during onboarding
-  # Example structure:
-  # - id: pillar_id
-  #   name: "Pillar Name"
-  #   description: "What this pillar represents"
-  #   keywords:
-  #     - keyword1
-  #     - keyword2
+pillars:
+  - id: family
+    name: "Family"
+    description: "Showing up authentically and connectedly with Kerry, Ella (17), and Sammy (15)"
+    keywords:
+      - family
+      - Kerry
+      - Ella
+      - Sammy
+      - personal
+      - home
+
+  - id: wisory_product
+    name: "Product Leadership — The Wisory"
+    description: "Leading product strategy and execution for The Wisory"
+    keywords:
+      - Wisory
+      - product
+      - roadmap
+      - strategy
+      - fractional CPO
+
+  - id: job_search
+    name: "Career Transition"
+    description: "Finding a full-time role — networking, applications, positioning"
+    keywords:
+      - job search
+      - interview
+      - networking
+      - career
+      - resume
+      - opportunity
+
+  - id: thought_leadership
+    name: "Thought Leadership"
+    description: "Dot Connector Dispatch on Substack — fintech teardowns, strategy playbooks, leadership lessons"
+    keywords:
+      - Substack
+      - Dispatch
+      - writing
+      - newsletter
+      - content
+      - thought leadership
 
 # Priority limits (how many active tasks per priority level)
 priority_limits:

@@ -1,6 +1,6 @@
 ---
 name: process-meetings
-description: Process synced Granola meetings to update person pages, extract tasks, and organize meeting notes
+description: Process meetings from Otter.ai to update person pages, extract tasks, and organize meeting notes
 model_hint: balanced
 context: fork
 hooks:
@@ -13,9 +13,11 @@ hooks:
       command: "node .claude/hooks/meeting-summary-generator.cjs"
 ---
 
-# Process Meetings
+# Process Meetings (Otter.ai)
 
-Process meetings that have been synced from Granola by the background automation. Updates person pages, extracts tasks, and organizes meeting notes.
+Fetch and process meetings from Otter.ai via the connected MCP. Updates person pages, extracts tasks, and organizes meeting notes in the vault.
+
+**No background sync needed** — Otter.ai MCP pulls meetings on-demand from the cloud.
 
 ## Background Execution
 
@@ -24,85 +26,102 @@ This skill supports background execution. When invoked:
 2. Process all meetings
 3. On completion, provide summary: "[N] meetings processed. [X] person pages updated. [Y] action items created."
 
-## How It Works
-
-Meetings are synced automatically every 30 minutes by a background process. This command reads those synced files and:
-- Creates/updates person and company pages
-- Extracts action items to 03-Tasks/Tasks.md
-- Links everything together
-
-**No terminal commands are shown** - the heavy lifting happens in the background.
-
 ## Arguments
 
 - No arguments: Process all unprocessed meetings from the last 7 days
 - `today`: Only process today's meetings
-- `"search term"`: Find meetings by title/attendee
+- `"search term"`: Find meetings by title/attendee/topic
 - `--people-only`: Only update person/company pages (skip tasks)
 - `--no-todos`: Create notes but don't extract tasks
-- `--setup`: Install/check background automation
-
-## Pre-flight: Granola Check
-
-Mobile recordings sync automatically as long as Granola is installed and the user is signed in to the desktop app. No separate authentication step needed.
-
----
 
 ## Process
 
-### Step 1: Check Background Sync Status
+### Step 1: Get User Context
 
-First, check if background sync is set up:
+Call `mcp__claude_ai_Otter_ai__get_user_info()` to get the current user's name and email. This is required before searching.
 
-```bash
-# Check for state file (indicates sync has run)
-ls .scripts/meeting-intel/processed-meetings.json
+### Step 2: Search for Meetings
+
+Call `mcp__claude_ai_Otter_ai__search()` with appropriate date filters:
+
+- **Default (no args):** `created_after` = 7 days ago, `created_before` = today
+- **`today`:** `created_after` = today, `created_before` = today
+- **`"search term"`:** Pass as `query` parameter with 7-day date range
+- Set `username` to the name from Step 1
+- Set `include_shared_meetings` to `true`
+
+Date format for Otter.ai: `YYYY/MM/DD`
+
+### Step 3: Check Already-Processed Meetings
+
+Read `00-Inbox/Meetings/` to find existing meeting notes. Compare Otter.ai meeting IDs (stored in frontmatter `otter_id`) against search results to skip already-processed meetings.
+
+If no new meetings found:
+> "No new meetings to process. All [X] meetings from the last 7 days are already in your vault."
+
+### Step 4: Fetch Full Transcripts
+
+For each unprocessed meeting, call `mcp__claude_ai_Otter_ai__fetch(id)` using the speech OTID from search results.
+
+### Step 5: Create Meeting Notes
+
+For each fetched meeting, create a note at `00-Inbox/Meetings/YYYY-MM-DD - {Meeting Title}.md`:
+
+```markdown
+---
+date: YYYY-MM-DD
+otter_id: "{meeting_id}"
+source: otter
+participants:
+  - Name1
+  - Name2
+company: "{inferred from participants/context}"
+pillar: "{inferred from content}"
+---
+
+# {Meeting Title}
+
+**Date:** YYYY-MM-DD
+**Participants:** Name1, Name2, ...
+
+## Summary
+
+{Otter.ai summary or AI-generated summary from transcript}
+
+## Key Discussion Points
+
+{Extracted from outline/transcript}
+
+## Decisions
+
+{Decisions made during the meeting}
+
+## Action Items
+
+### For Me
+
+- [ ] {action item} ^task-YYYYMMDD-XXX
+
+### For Others
+
+- [ ] {person}: {action item}
+
+## Notes
+
+{Additional context, quotes, or details worth preserving}
+
+<!-- processed: {ISO timestamp} -->
 ```
 
-**If state file exists:** Background sync is working. Continue to Step 2.
+**Content extraction guidance:**
+- Use Otter.ai's built-in summary, outline, and action items as starting points
+- Enhance with transcript context where the summary is thin
+- Apply meeting intelligence settings from `System/user-profile.yaml` (extract_customer_intel, extract_competitive_intel, etc.)
+- Infer pillar from content using keywords in `System/pillars.yaml`
 
-**If state file doesn't exist:**
-> "Background meeting sync isn't set up yet. This runs automatically every 30 minutes so `/process-meetings` doesn't need terminal commands.
->
-> **To set up (one-time, takes 30 seconds):**
-> ```bash
-> cd .scripts/meeting-intel && ./install-automation.sh
-> ```
->
-> Or run `/process-meetings --setup` and I'll do it for you.
->
-> **Requirements:**
-> - Granola app installed ([granola.ai](https://granola.ai))
-> - An LLM API key in `.env` (GEMINI_API_KEY, ANTHROPIC_API_KEY, or OPENAI_API_KEY)"
+### Step 6: Update Person Pages
 
-If user runs `--setup`:
-```bash
-cd .scripts/meeting-intel && ./install-automation.sh
-```
-
-### Step 2: Find Synced Meetings
-
-Read the processed meetings state:
-```javascript
-const state = JSON.parse(fs.readFileSync('.scripts/meeting-intel/processed-meetings.json'));
-```
-
-List meeting files in `00-Inbox/Meetings/`:
-```bash
-find 00-Inbox/Meetings -name "*.md" -mtime -7 | head -50
-```
-
-For each meeting file:
-1. Read frontmatter to get `granola_id`, `participants`, `company`, `date`
-2. Check if person/company pages need updating
-3. Check if tasks need extracting (look for unchecked items in "For Me" section)
-
-Report findings:
-> "Found X synced meetings from the last 7 days. Y need person page updates, Z have unextracted tasks."
-
-### Step 3: Update Person Pages
-
-For each participant in synced meetings:
+For each participant in processed meetings:
 
 1. **Load user profile** for email domain:
    ```
@@ -112,10 +131,11 @@ For each participant in synced meetings:
 2. **Classify as Internal/External:**
    - If participant email domain matches user's domain → Internal
    - Otherwise → External
+   - If no email available, default to External
 
 3. **Check if person page exists:**
-   - Internal: `05-Areas/People/Internal/{Name}.md`
-   - External: `05-Areas/People/External/{Name}.md`
+   - Internal: `05-Areas/People/Internal/{Firstname_Lastname}.md`
+   - External: `05-Areas/People/External/{Firstname_Lastname}.md`
 
 4. **If page doesn't exist, create it:**
    ```markdown
@@ -131,7 +151,7 @@ For each participant in synced meetings:
 
    ## Recent Interactions
 
-   - [{Meeting Title}](00-Inbox/Meetings/{date}/{slug}.md) — {date}
+   - [{Meeting Title}](00-Inbox/Meetings/{filename}) — {date}
 
    ## Notes
 
@@ -144,9 +164,9 @@ For each participant in synced meetings:
    - Keep max 20 entries (remove oldest if needed)
    - Update "Last Interaction" in frontmatter
 
-### Step 4: Update Company Pages
+### Step 7: Update Company Pages
 
-For each unique external company domain:
+For each unique external company:
 
 1. **Check if company page exists:** `05-Areas/Companies/{Company}.md`
 
@@ -158,7 +178,7 @@ For each unique external company domain:
 
    | Field | Value |
    |-------|-------|
-   | **Website** | {domain} |
+   | **Website** | {domain if known} |
    | **Stage** | Unknown |
    | **First Contact** | {date} |
 
@@ -168,7 +188,7 @@ For each unique external company domain:
 
    ## Meeting History
 
-   - [{Meeting Title}](00-Inbox/Meetings/{date}/{slug}.md) — {date}
+   - [{Meeting Title}](00-Inbox/Meetings/{filename}) — {date}
 
    ## Notes
 
@@ -179,43 +199,27 @@ For each unique external company domain:
    - Add any new contacts to "Key Contacts"
    - Add meeting to "Meeting History"
 
-### Step 4.5: Semantic Enrichment (if QMD available)
+### Step 7.5: Semantic Enrichment (if QMD available)
 
 **Check if semantic search is available** by looking for `qmd` in PATH.
 
 If available, enhance meeting processing with meaning-based intelligence:
 
-1. **Detect implicit commitments:** For each meeting's discussion notes, search semantically:
-   ```
-   qmd query "we should circle back on..." --limit 3
-   qmd query "let me think about..." --limit 3
-   ```
-   Catch soft commitments that regex action-item extraction misses.
-   - Examples: "we should probably revisit the pricing model" → implicit action item
-   - "I need to noodle on the migration approach" → implicit commitment
-   - "Let's reconnect after the board meeting" → implicit follow-up
+1. **Detect implicit commitments:** Search semantically for soft language like "we should circle back on..." or "let me think about..." that regex misses.
 
-2. **Link meetings to projects:** For the meeting topic, search:
-   ```
-   qmd query "meeting topic/title" --limit 3
-   ```
-   against `04-Projects/` to auto-link the meeting to relevant projects that keyword matching would miss.
+2. **Link meetings to projects:** Search `04-Projects/` for thematically related projects.
 
-3. **Enrich person context:** For each new person encountered, search:
-   ```
-   qmd query "person name + company" --limit 3
-   ```
-   Find if they've been mentioned in other meetings/notes, even if they weren't a direct participant.
+3. **Enrich person context:** Find if participants have been mentioned in other notes.
 
 **Integration:**
-- Add implicit commitments to the action items list with a note: "*(detected — not explicitly stated)*"
+- Add implicit commitments to action items with note: "*(detected — not explicitly stated)*"
 - Add project links to meeting frontmatter
 - Merge person context into newly-created person pages
-- If QMD unavailable, skip silently — regex extraction still works
+- If QMD unavailable, skip silently
 
-### Step 5: Extract Tasks (unless --no-todos or --people-only)
+### Step 8: Extract Tasks (unless --no-todos or --people-only)
 
-For each meeting with unextracted tasks:
+For each meeting with action items:
 
 1. **Find action items** in the "## Action Items > ### For Me" section
 2. **For each unchecked item** (`- [ ]`):
@@ -236,60 +240,52 @@ For each meeting with unextracted tasks:
 
 4. **Mark as extracted** by adding comment to meeting note:
    ```markdown
-   <!-- tasks-extracted: 2026-02-03T10:30:00Z -->
+   <!-- tasks-extracted: {ISO timestamp} -->
    ```
 
-### Step 6: Summary Report
+### Step 9: Summary Report
 
 ```
 ## Meeting Processing Complete ✅
 
-**Synced meetings found:** X (last 7 days)
-**Background sync status:** Running (last sync: 10 min ago)
+**Meetings found:** X (last 7 days)
+**New meetings processed:** Y
+**Source:** Otter.ai
 
 ### Updates Made
 
 **Person pages:**
-- Created: 3 new (Alice Chen, Bob Smith, Carol Wang)
-- Updated: 5 existing
+- Created: N new (names...)
+- Updated: N existing
 
 **Company pages:**
-- Created: 1 new (Acme Corp)
-- Updated: 2 existing
+- Created: N new (names...)
+- Updated: N existing
 
-**Tasks extracted:** 7 items added to 03-Tasks/Tasks.md
+**Tasks extracted:** N items added to 03-Tasks/Tasks.md
 
-### Recent Meetings
+### Processed Meetings
 
-| Date | Meeting | Company | Participants |
-|------|---------|---------|--------------|
-| Feb 3 | Product Review | Acme | Alice, Bob |
-| Feb 2 | Strategy Call | BigCo | Carol |
-
----
-*Background sync runs every 30 min. Check status: `.scripts/meeting-intel/install-automation.sh --status`*
+| Date | Meeting | Participants |
+|------|---------|--------------|
+| Mar 14 | Product Review | Alice, Bob |
+| Mar 13 | Strategy Call | Carol |
 ```
 
 ## Error Handling
 
 **If no meetings found:**
-> "No meetings synced in the last 7 days. Make sure:
-> 1. Granola is running during your meetings
-> 2. Background sync is set up (run `/process-meetings --setup`)
-> 3. Check logs: `.scripts/logs/meeting-intel.stdout.log`"
+> "No meetings found in Otter.ai for the last 7 days. Make sure your meetings are being recorded in Otter.ai."
 
-**If background sync isn't running:**
-> "Background sync appears to be stopped. To restart:
-> ```bash
-> cd .scripts/meeting-intel && ./install-automation.sh
-> ```"
+**If Otter.ai MCP is not connected:**
+> "Otter.ai MCP is not available. Make sure it's connected in your Claude settings."
 
 ## Examples
 
 ```
 /process-meetings
 ```
-> "Found 8 synced meetings. Updating 12 person pages, extracting 5 tasks..."
+> "Found 8 meetings in Otter.ai. 5 are new. Processing..."
 
 ```
 /process-meetings today
@@ -297,9 +293,9 @@ For each meeting with unextracted tasks:
 > "Found 2 meetings from today. Processing..."
 
 ```
-/process-meetings --setup
+/process-meetings "product review"
 ```
-> "Installing background automation..." [runs install script]
+> "Found 3 meetings matching 'product review'. Processing..."
 
 ```
 /process-meetings --people-only

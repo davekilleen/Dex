@@ -1,0 +1,144 @@
+{
+  "version": 1,
+  "built_at": "2026-03-20T06:59:05.702090",
+  "total": 12,
+  "by_type": {
+    "internal": 0,
+    "external": 12,
+    "cpo_network": 0
+  },
+  "people": [
+    {
+      "name": "Jason Whitney",
+      "company": "The Wisory",
+      "role": "Team Member",
+      "email": null,
+      "type": "external",
+      "path": "05-Areas/People/External/Jason_Whitney.md",
+      "last_interaction": null,
+      "tags": [],
+      "status": "populated"
+    },
+    {
+      "name": "Fred Ehle",
+      "company": "The Wisory (Advisor)",
+      "role": "Former Head of Consumer Lending, Rocket Companies",
+      "email": null,
+      "type": "external",
+      "path": "05-Areas/People/External/Fred_Ehle.md",
+      "last_interaction": null,
+      "tags": [],
+      "status": "populated"
+    },
+    {
+      "name": "Lisa Wiese",
+      "company": "Baker's Institute / Compliance Alliance",
+      "role": "Education Director (retiring)",
+      "email": null,
+      "type": "external",
+      "path": "05-Areas/People/External/Lisa_Wiese.md",
+      "last_interaction": null,
+      "tags": [],
+      "status": "populated"
+    },
+    {
+      "name": "Scott Simonelli",
+      "company": "Veritonic",
+      "role": "CEO",
+      "email": null,
+      "type": "external",
+      "path": "05-Areas/People/External/Scott_Simonelli.md",
+      "last_interaction": null,
+      "tags": [],
+      "status": "populated"
+    },
+    {
+      "name": "Kwasi Dwomoh",
+      "company": "Experian",
+      "role": "Senior Director, Talent Acquisition \u2014 North America",
+      "email": null,
+      "type": "external",
+      "path": "05-Areas/People/External/Kwasi_Dwomoh.md",
+      "last_interaction": null,
+      "tags": [],
+      "status": "populated"
+    },
+    {
+      "name": "Sean Naismith",
+      "company": "Independent / Former TransUnion & LeapFrog",
+      "role": "Analytics & AI Leader",
+      "email": null,
+      "type": "external",
+      "path": "05-Areas/People/External/Sean_Naismith.md",
+      "last_interaction": null,
+      "tags": [],
+      "status": "populated"
+    },
+    {
+      "name": "Jim Black",
+      "company": "Fog Line Advisors",
+      "role": "Founder",
+      "email": "jim@revestloans.com",
+      "type": "external",
+      "path": "05-Areas/People/External/Jim_Black.md",
+      "last_interaction": null,
+      "tags": [],
+      "status": "populated"
+    },
+    {
+      "name": "Jason Wadler",
+      "company": "The Wisory",
+      "role": "Founder",
+      "email": null,
+      "type": "external",
+      "path": "05-Areas/People/External/Jason_Wadler.md",
+      "last_interaction": null,
+      "tags": [],
+      "status": "populated"
+    },
+    {
+      "name": "Leo Jorge",
+      "company": "Conrad",
+      "role": "Co-Founder",
+      "email": null,
+      "type": "external",
+      "path": "05-Areas/People/External/Leo_Jorge.md",
+      "last_interaction": null,
+      "tags": [],
+      "status": "populated"
+    },
+    {
+      "name": "Adam Rogove",
+      "company": "Green River Capital / Conrad",
+      "role": "Owner, Green River Capital; Founding Investor, Conrad",
+      "email": null,
+      "type": "external",
+      "path": "05-Areas/People/External/Adam_Rogove.md",
+      "last_interaction": null,
+      "tags": [],
+      "status": "populated"
+    },
+    {
+      "name": "Daniel Sogorka",
+      "company": "Independent (Former Rocket Companies)",
+      "role": "Former VP / Head of Wholesale",
+      "email": null,
+      "type": "external",
+      "path": "05-Areas/People/External/Daniel_Sogorka.md",
+      "last_interaction": null,
+      "tags": [],
+      "status": "populated"
+    },
+    {
+      "name": "Harriette Murtland",
+      "company": "The Wisory",
+      "role": "Product Manager",
+      "email": null,
+      "type": "external",
+      "path": "05-Areas/People/External/Harriette_Murtland.md",
+      "last_interaction": null,
+      "tags": [],
+      "status": "populated"
+    }
+  ]
+}

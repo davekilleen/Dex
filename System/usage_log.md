@@ -8,10 +8,10 @@
 
 ## Core Workflows (8 features)
 
-- [ ] Daily planning (`/daily-plan`)
-- [ ] Daily review (`/review` or `/daily-review`)
+- [x] Daily planning (`/daily-plan`)
+- [x] Daily review (`/review` or `/daily-review`)
 - [ ] Weekly planning (`/week-plan`)
-- [ ] Weekly review (`/week-review`)
+- [x] Weekly review (`/week-review`)
 - [ ] Quarterly planning (`/quarter-plan`)
 - [ ] Quarterly review (`/quarter-review`)
 - [ ] Getting started tour (`/getting-started`)
@@ -20,11 +20,11 @@
 ## Meeting Workflows (7 features)
 
 - [ ] Meeting prep (`/meeting-prep`)
-- [ ] Meeting processing (`/process-meetings`)
+- [x] Meeting processing (`/process-meetings`)
 - [ ] Commitment scan (`/commitment-scan`)
-- [ ] Person page created
-- [ ] Person page updated
-- [ ] Company page created
+- [x] Person page created
+- [x] Person page updated
+- [x] Company page created
 - [ ] Granola connected
 
 ## Task Management (6 features)

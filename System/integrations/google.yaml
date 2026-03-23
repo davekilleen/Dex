@@ -1,0 +1,31 @@
+# Google Workspace Integration Config
+# Connected via Claude.ai MCP (Gmail + Google Calendar)
+
+configured_at: '2026-03-14'
+account: regishadiaris@gmail.com
+auth_type: claude_ai_mcp
+
+# Calendar
+calendar:
+  enabled: true
+  default: true  # Google Calendar is the primary calendar source
+  calendars:
+    - id: primary
+      label: Personal (Gmail)
+      access: owner
+    - id: regis@thewisory.com
+      label: The Wisory
+      access: freeBusyReader  # upgrade to reader for full event details
+    - id: c2603852a71299829288bb576851c24c5644840802588af1bbd4559b42ecdfea@group.calendar.google.com
+      label: Hadiari (Family)
+      access: writer
+
+# Gmail
+gmail:
+  enabled: true
+  labels:
+    - INBOX
+  features:
+    email_digest: true
+    email_followup: true
+    draft_and_send: true
