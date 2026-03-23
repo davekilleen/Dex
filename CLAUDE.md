@@ -15,7 +15,7 @@ Everything below this block is user-facing and ships as-is.
 **Commercial model:**
 - **Free (Dex Core = this repo):** Builds the vault — notes, rituals, entity graph. Local, private. The free product creates the data asset.
 - **Paid (Dex Mobile):** Makes the vault indispensable — entity-connected meeting prep, voice debrief, meeting recording. Users pay for mobile because that's where the magic is FELT.
-- **The insight:** Free builds the vault. Paid makes you look like a genius walking into every meeting.
+- **Free is a great memory. Paid is an unfair advantage.**
 
 **What dex-core owns:**
 - `core/` — Python path contracts, CLI runtime
@@ -23,6 +23,8 @@ Everything below this block is user-facing and ships as-is.
 - `.agents/skills/` — distributable skills (anything in `personal/` stays local)
 - `mcp-servers/` — MCP scripts that ship to users
 - `install.sh` — installer
+
+**🚨 dex-core is the PUBLIC distributable repo.** Never put internal planning docs, PRDs, working-backwards docs, roadmaps, or anything Dave-specific into this repo. Those belong in the Vault (`~/Vault/04-Projects/Dex-2.0/`). Everything in dex-core ships to every user who clones from GitHub.
 
 **Before any PR:** run `/simplify` on changed files.
 **All issues** → `davekilleen/dex-backlog`, never on this repo.
@@ -104,6 +106,24 @@ Add any personal instructions between these markers. The `/dex-update` process p
 ## USER_EXTENSIONS_START
 <!-- Add your personal customizations here. -->
 ## USER_EXTENSIONS_END
+
+---
+
+## Strategic Context (Industry Truths)
+
+If the file `04-Projects/Product_Strategy/Industry_Truths.md` exists, **reference it during strategic conversations:**
+
+- Product roadmap decisions
+- Market positioning discussions
+- Investment prioritization
+- Long-term planning
+- Ideation sessions for new features/products
+
+**Why it matters:** This file contains time-horizoned assumptions (Today, 6 months, 12 months) about the user's industry. Grounding strategic thinking in these explicit beliefs prevents building on quicksand.
+
+**When to check:** Before major strategic recommendations or when the user asks you to ideate. Read the file, understand their current truths, and ensure your suggestions align with (or thoughtfully challenge) those assumptions.
+
+**If it doesn't exist:** The user hasn't run `/industry-truths` yet. Don't mention it unless they're clearly struggling with strategic direction on shifting ground.
 
 ---
 
