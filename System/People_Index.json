@@ -1,10 +1,10 @@
 {
   "version": 1,
-  "built_at": "2026-03-20T06:59:05.702090",
-  "total": 12,
+  "built_at": "2026-03-23T08:46:25.888950",
+  "total": 14,
   "by_type": {
     "internal": 0,
-    "external": 12,
+    "external": 14,
     "cpo_network": 0
   },
   "people": [
@@ -15,6 +15,17 @@
       "email": null,
       "type": "external",
       "path": "05-Areas/People/External/Jason_Whitney.md",
+      "last_interaction": null,
+      "tags": [],
+      "status": "populated"
+    },
+    {
+      "name": "Marcy Barr",
+      "company": "Barr Engineering",
+      "role": "Recruiter",
+      "email": null,
+      "type": "external",
+      "path": "05-Areas/People/External/Marcy_Barr.md",
       "last_interaction": null,
       "tags": [],
       "status": "populated"
@@ -92,6 +103,17 @@
       "email": null,
       "type": "external",
       "path": "05-Areas/People/External/Jason_Wadler.md",
+      "last_interaction": null,
+      "tags": [],
+      "status": "populated"
+    },
+    {
+      "name": "Don Moore",
+      "company": null,
+      "role": null,
+      "email": null,
+      "type": "external",
+      "path": "05-Areas/People/External/Don_Moore.md",
       "last_interaction": null,
       "tags": [],
       "status": "populated"
