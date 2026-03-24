@@ -1,4 +1,15 @@
 {
+  "permissions": {
+    "defaultMode": "bypassPermissions",
+    "deny": [
+      "Bash(rm *)",
+      "Bash(rm -rf *)",
+      "Bash(git reset --hard *)",
+      "Bash(git checkout -- *)",
+      "Bash(git clean *)",
+      "Bash(git push --force *)"
+    ]
+  },
   "hooks": {
     "SessionStart": [
       {
