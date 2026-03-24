@@ -5,6 +5,9 @@ Your task backlog organized by priority.
 ## This Week
 
 - [ ] **Prepare for Experian hiring manager interview — research Susan Allen, Michelle, housing unit strategy** — Interview scheduled Thursday Mar 26 #job_search ^task-20260318-001
+- [x] **Share Wisory Score methodology document (data flows, transformations, sub-index calculations) with Sean for review** — From Digital Twin Strategy meeting #wisory_product ^task-20260323-001 ✅ 2026-03-23
+- [ ] **Build one-page Now/Near/Far roadmap for Intel IQ / Digital Sandbox — circulate to group** — Target EOD Mar 24. Follow-up meeting Thu/Fri #wisory_product ^task-20260323-002
+- [x] **Digest Digital Twin meeting transcript, recommend changes to Wisory Score overview, circulate to group** — Before Thu/Fri follow-up #wisory_product ^task-20260323-003 ✅ 2026-03-23
 
 <!-- Tasks promoted to this week's focus -->
 
