@@ -24,6 +24,7 @@
 - [Wisory Digital Twin and Scenario Planning](00-Inbox/Meetings/2026-03-12%20-%20Wisory%20Digital%20Twin%20and%20Scenario%20Planning.md) — 2026-03-12
 - [Jason Wadler 1:1](00-Inbox/Meetings/2026-03-16%20-%20Jason%20Wadler%201-1.md) — 2026-03-16
 - [Product Strategy Alignment Meeting](00-Inbox/Meetings/2026-03-16%20-%20Product%20Strategy%20Alignment%20Meeting.md) — 2026-03-16
+- [Digital Twin Strategy and Wisory Score](00-Inbox/Meetings/2026-03-23%20-%20Digital%20Twin%20Strategy%20and%20Wisory%20Score.md) — 2026-03-23
 
 ## Notes
 

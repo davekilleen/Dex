@@ -255,7 +255,7 @@ For each completed item:
 
 ### 5.8 Email Intelligence (if Gmail connected)
 
-Check `System/integrations/config.yaml` for `google-workspace.enabled: true`.
+Check `System/integrations/config.yaml` for `google: true` under `enabled:` AND `daily_plan.use_google: true` under `hooks:`.
 
 If enabled and MCP healthy:
 1. Get unread count and priority emails from monitored labels

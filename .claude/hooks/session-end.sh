@@ -48,4 +48,12 @@ if [[ -n "$TRANSCRIPT_PATH" ]] && [[ -f "$TRANSCRIPT_PATH" ]]; then
     echo "" >> "$LEARNING_FILE"
 fi
 
+# Auto-commit and push vault changes to GitHub
+cd "$CLAUDE_DIR"
+if [[ -n $(git status --porcelain 2>/dev/null) ]]; then
+    git add -A
+    git commit -m "vault: auto-sync $(date '+%Y-%m-%d %H:%M')" --quiet
+    git push --quiet 2>/dev/null
+fi
+
 exit 0
