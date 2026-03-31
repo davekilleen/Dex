@@ -17,6 +17,8 @@
 - [Jason Wadler 1:1](00-Inbox/Meetings/2026-03-16%20-%20Jason%20Wadler%201-1.md) — 2026-03-16
 - [Product Strategy Alignment Meeting](00-Inbox/Meetings/2026-03-16%20-%20Product%20Strategy%20Alignment%20Meeting.md) — 2026-03-16
 - [Digital Twin Strategy and Wisory Score](00-Inbox/Meetings/2026-03-23%20-%20Digital%20Twin%20Strategy%20and%20Wisory%20Score.md) — 2026-03-23
+- [Business Strategy and Planning](00-Inbox/Meetings/2026-03-25%20-%20Business%20Strategy%20and%20Planning.md) — 2026-03-25
+- [Regis and Jason 1:1](00-Inbox/Meetings/2026-03-27%20-%20Regis%20and%20Jason%201-1.md) — 2026-03-27
 
 ## Notes
 
@@ -35,5 +37,21 @@
 - Planning to bring Regis on in April
 - Dennis de Casey joining The Wisory board
 - Gets "freaked out" by large raises — prefers lean, controlled growth
+- **Compensation model (Mar 25):** Fixed salary ramping $12K->$15K->$18K/mo (Q2-Q4) + 25% variable on client billings. Floor mechanism if variable underperforms. All gross/pre-tax. Jason's own all-in is $30K/mo
+- **Sure Invest:** $4,250/mo engagement contract being finalized + initial $5K payment
+- **Health insurance:** Offering Blue Cross through ADP. Waiting on Regis's family info for quotes
+- **Sales approach:** Leading with deliverables/case studies instead of platform explanation — landing much better with prospects
+- **Shore partnership:** Principal interested in membership-based diligence work. Follow-up meeting next week
+- **Bondi Capital:** Came back positive — "want to figure something out"
+- **IU Ventures:** Meeting tomorrow, $100K investment structure (equity exchange)
+- Core team cornerstones: Regis, Fred, Jason Whitney, Jason Wadler
+- Working on equity docs with Elmer — 83(b) timing doesn't start until signing
+- Exploring provisional patent for Wisory Score process — defensive IP + sales value
+- **Regis joining formalized (Mar 27):** Consultant invoice for April, employee transition May/June. ADP census being sent for health insurance (Blue Cross PPO). Equity docs being finalized with Elmer
+- **Title discussion:** Leaning toward "Head of AI and Innovation" — Regis to finalize
+- **Sales approach refined:** "Lagniappe" — lead with free unsolicited analysis to open conversations (from Jason's Leapfrog days)
+- **Mantera priority target:** Most active PE firm in country (~100 acquisitions/year). Intel IQ analysis to run on Mantera first, then Sauces & Condiments for Matt Matosian
+- **IU Ventures:** $100K investment likely April. President enthusiastic, navigating internal approval
+- **April Chicago trip:** Regis, Fred, Jason planned. Summer outing at Ravinia
 
 *Auto-created from meetings on 2026-03-11*

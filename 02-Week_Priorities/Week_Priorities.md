@@ -135,16 +135,40 @@
 
 ## 🏁 End of Week Review
 
-*Fill in on Friday*
-
 ### Completed
--
+- Wisory Score methodology shared with Sean
+- Now/Near/Far roadmap built and circulated
+- Digital Twin transcript digest + score recommendations circulated
+- GTM Strategy meeting — PE firms as primary target, Dot Connector demo'd
+- Harriette 1:1 — Intel IQ / Shopify integration mapped
+- Leo 1:1 — Conrad April roadmap locked
+- Jason strategy meetings x2 — comp finalized, Mantera strategy, title discussion
+- Leo 1:1 synthesis emailed to Leo, shared with Adam/Dan
+- Insurance info sent to Jason
+- Ella's Marshall College Survey completed
+- 66 Dot Connector vectors segmented on GitHub
+- Dot Connector AI Patent project created
+- Experian HM interview prep doc built (Ryan Rosales)
 
 ### Didn't Finish
--
+- Triathlon Week 1 training (swim/bike/run sessions)
+- 2025 tax returns
+- GTM frameworks 1-5 update (waiting on Fred/Maeve feedback)
+- Harriette docs + Intel IQ into Dot Connector
+- Multi-year revenue projections
+- Fred's comments review
+- Diagnostic scoring of public-facing materials
+- Phased engineering plan
+- Substack article
 
 ### Learnings
--
+- Meeting-heavy weeks (6 meetings) generate tasks faster than they're completed (9 added, 6 done)
+- Wisory is functionally a full-time role now — adjust planning accordingly
+- Experian prep keeps getting deferred by Wisory urgency — need to protect interview prep time
+- 5 blocked items aging (oldest: Mar 10) — need a dedicated nudge round
 
 ### Next Week Focus
--
+1. Nail Experian interview (Apr 2, 9:30am with Ryan Rosales)
+2. Clear Wisory execution backlog (GTM frameworks, first-principles doc, April invoice)
+3. Finish 2025 tax returns (15 days to deadline)
+4. Publish Substack (maintain cadence)

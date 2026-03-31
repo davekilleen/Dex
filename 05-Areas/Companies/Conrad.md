@@ -17,6 +17,7 @@
 
 - [Conrad Intro](00-Inbox/Meetings/2026-03-13%20-%20Conrad%20Intro.md) — 2026-03-13
 - [Conrad GTM](00-Inbox/Meetings/2026-03-16%20-%20Conrad%20GTM.md) — 2026-03-16
+- [Regis and Leo 1:1](00-Inbox/Meetings/2026-03-25%20-%20Regis%20and%20Leo%201-1.md) — 2026-03-25
 
 ## Notes
 
@@ -33,5 +34,10 @@
 - **Adoption challenge:** Even GRC (80 LOs, friendly shop) struggling with sign-ups. Enterprise-style onboarding needed.
 - **NewRez meeting Thursday** — asking for API integration, need to show why they benefit
 - **Naming debate:** Conrad (company) vs. Link (AI) — Regis pushing for simplicity
+- **April 1 launch:** Purchase (smart home search -> pre-approved showings) + refi workflows going live. Sale process mid-to-late April
+- **Active pilots:** GRC (refi live), Ramon Walker + Jim Black + large Compass team (purchase, April 1)
+- **Post-April:** Buyer/seller matching (private MLS via AI), then full loan application (UWM API ready)
+- **Enterprise analytics:** Workflow progression, time-between-steps, AI conversation quality scoring — not traditional funnel metrics
+- **Strategy:** Learn from pilots before scaling to larger prospects (WestCap held off intentionally)
 
 *Auto-created from meeting on 2026-03-13*

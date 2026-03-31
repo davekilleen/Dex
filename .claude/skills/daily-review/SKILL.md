@@ -36,6 +36,16 @@ find . -type f -name "*.md" -newermt "$TODAY 00:00:00" ! -newermt "$TODAY 23:59:
 
 ---
 
+## Step 1.5: Process Today's Meetings
+
+Before gathering context, ensure today's meetings are in the vault by running `/process-meetings today`. This pulls any unprocessed meetings from Otter.ai, creates meeting notes, updates person/company pages, and extracts tasks — so the rest of the review has complete data.
+
+- If no new meetings are found, continue silently
+- If meetings are processed, note the count for the review summary
+- Do NOT ask for a skill rating after this sub-step — save that for the end of the full review
+
+---
+
 ## Step 2: Gather Context
 
 ### From 03-Tasks/Tasks.md
@@ -48,7 +58,7 @@ Read `02-Week_Priorities/Week_Priorities.md` for:
 - How today's work connects to weekly priorities
 
 ### From Recent Meetings
-Check `00-Inbox/Meetings/` for meeting notes from today.
+Check `00-Inbox/Meetings/` for meeting notes from today (should now include anything just pulled from Otter.ai).
 
 ### From ScreenPipe (If Running)
 
@@ -561,6 +571,7 @@ Add one line at the end of the review output:
 
 | Integration | MCP Server | Tools Used |
 |-------------|------------|------------|
+| Meetings | Otter.ai MCP (via `/process-meetings today`) | `search`, `fetch`, `get_user_info` |
 | Work | dex-work-mcp | `list_tasks`, `get_week_progress`, `get_commitments_due`, `analyze_calendar_capacity` |
 | Calendar | dex-calendar-mcp | `calendar_get_today` |
 | Reminders | dex-calendar-mcp | `reminders_list_completed`, `reminders_find_and_complete`, `reminders_clear_completed` |

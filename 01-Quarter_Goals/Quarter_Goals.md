@@ -5,12 +5,12 @@
 Consistently planning weekly and daily using Dex so I'm organized, not rushing, and fully present for Kerry, Ella, and Sammy.
 
 **Key milestones:**
-- [ ] Run /week-plan every Monday morning
-- [ ] Run /daily-plan each weekday
-- [ ] Run /daily-review each evening
+- [x] Run /week-plan every Monday morning
+- [x] Run /daily-plan each weekday
+- [x] Run /daily-review each evening
 - [ ] Family calendar integrated into weekly planning
 
-**Progress:** 0% 🔴
+**Progress:** 75% 🟡
 
 ---
 
@@ -20,12 +20,12 @@ Consistently planning weekly and daily using Dex so I'm organized, not rushing, 
 Offer accepted by June 30, 2026. Pipeline: Barr Engineering, Experian, QualComm.
 
 **Key milestones:**
-- [ ] Active applications at Barr, Experian, QualComm
-- [ ] First-round interviews completed
+- [x] Active applications at Barr, Experian
+- [x] First-round interviews completed
 - [ ] Final-round interviews
 - [ ] Offer accepted
 
-**Progress:** 0% 🔴
+**Progress:** 50% 🟡
 
 ---
 
@@ -50,11 +50,13 @@ Built and running on live Wisory projects — used in actual PE firm engagements
 $20K in advisory revenue by June 30, 2026. Substack content marketing drives pipeline.
 
 **Key milestones:**
-- [ ] Close first advisory engagement
+- [x] Close first advisory engagement
 - [ ] Publish weekly on Substack consistently
-- [ ] Hit $10K in advisory revenue (midpoint)
+- [x] Hit $10K in advisory revenue (midpoint)
 - [ ] Hit $20K in advisory revenue
 
-**Progress:** 0% 🔴
+**Notes:** $14K collected in Q1
+
+**Progress:** 70% 🟢
 
 ---
