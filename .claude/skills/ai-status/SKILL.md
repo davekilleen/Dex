@@ -27,7 +27,7 @@ Quick status check for AI model configuration. Shows:
 
 Run the test script silently:
 ```bash
-bash ~/Claudesidian/System/scripts/test-ai-connections.sh 2>/dev/null
+bash $VAULT_PATH/System/scripts/test-ai-connections.sh 2>/dev/null
 ```
 
 Also check:

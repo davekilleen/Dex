@@ -8,7 +8,7 @@
 
 ## What We Built
 
-I've converted your Claudesidian/Dex system into a proper **Claude Code plugin** that can be distributed to users with **zero dependency** on your personal vault data.
+I've converted your Vault/Dex system into a proper **Claude Code plugin** that can be distributed to users with **zero dependency** on your personal vault data.
 
 ### What This Means
 

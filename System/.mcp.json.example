@@ -2,7 +2,7 @@
   "mcpServers": {
     "work-mcp": {
       "type": "stdio",
-      "command": "python",
+      "command": "{{VAULT_PATH}}/.venv/bin/python",
       "args": [
         "{{VAULT_PATH}}/core/mcp/work_server.py"
       ],
@@ -12,7 +12,7 @@
     },
     "calendar-mcp": {
       "type": "stdio",
-      "command": "python",
+      "command": "{{VAULT_PATH}}/.venv/bin/python",
       "args": [
         "{{VAULT_PATH}}/core/mcp/calendar_server.py"
       ],
@@ -22,7 +22,7 @@
     },
     "granola-mcp": {
       "type": "stdio",
-      "command": "python",
+      "command": "{{VAULT_PATH}}/.venv/bin/python",
       "args": [
         "{{VAULT_PATH}}/core/mcp/granola_server.py"
       ],
@@ -32,7 +32,7 @@
     },
     "career-mcp": {
       "type": "stdio",
-      "command": "python",
+      "command": "{{VAULT_PATH}}/.venv/bin/python",
       "args": [
         "{{VAULT_PATH}}/core/mcp/career_server.py"
       ],
@@ -42,7 +42,7 @@
     },
     "dex-improvements-mcp": {
       "type": "stdio",
-      "command": "python",
+      "command": "{{VAULT_PATH}}/.venv/bin/python",
       "args": [
         "{{VAULT_PATH}}/core/mcp/dex_improvements_server.py"
       ],
@@ -52,7 +52,7 @@
     },
     "resume-mcp": {
       "type": "stdio",
-      "command": "python",
+      "command": "{{VAULT_PATH}}/.venv/bin/python",
       "args": [
         "{{VAULT_PATH}}/core/mcp/resume_server.py"
       ],
@@ -62,7 +62,7 @@
     },
     "update-checker": {
       "type": "stdio",
-      "command": "python",
+      "command": "{{VAULT_PATH}}/.venv/bin/python",
       "args": [
         "{{VAULT_PATH}}/core/mcp/update_checker.py"
       ],
@@ -72,7 +72,7 @@
     },
     "onboarding-mcp": {
       "type": "stdio",
-      "command": "python",
+      "command": "{{VAULT_PATH}}/.venv/bin/python",
       "args": [
         "{{VAULT_PATH}}/core/mcp/onboarding_server.py"
       ],
@@ -82,7 +82,7 @@
     },
     "dex-analytics": {
       "type": "stdio",
-      "command": "python",
+      "command": "{{VAULT_PATH}}/.venv/bin/python",
       "args": [
         "{{VAULT_PATH}}/core/mcp/analytics_server.py"
       ],
@@ -95,7 +95,7 @@
     },
     "session-memory": {
       "type": "stdio",
-      "command": "python",
+      "command": "{{VAULT_PATH}}/.venv/bin/python",
       "args": [
         "{{VAULT_PATH}}/core/mcp/session_memory_server.py"
       ],
@@ -107,6 +107,10 @@
       "command": "npx",
       "args": ["-y", "slack-mcp"],
       "env": {}
+    },
+    "qmd": {
+      "command": "qmd",
+      "args": ["mcp"]
     },
 
     "_comment_integrations": "--- Optional Integrations (add via /[tool]-setup) ---",
@@ -157,11 +161,7 @@
     },
     "atlassian-mcp": {
       "command": "npx",
-      "args": ["-y", "@anthropic/atlassian-remote-mcp"],
-      "env": {
-        "ATLASSIAN_SITE": "{{ATLASSIAN_SITE}}",
-        "ATLASSIAN_TOKEN": "{{ATLASSIAN_TOKEN}}"
-      }
+      "args": ["-y", "mcp-remote@latest", "https://mcp.atlassian.com/v1/sse"]
     }
   }
 }

@@ -36,7 +36,7 @@ ANALYTICS_MODE_PROXY = "proxy"
 
 def get_vault_path() -> Path:
     """Get vault path from environment or default."""
-    vault = os.environ.get('VAULT_PATH', os.path.expanduser('~/Claudesidian'))
+    vault = os.environ.get('VAULT_PATH', os.path.expanduser('~/Dex'))
     return Path(vault)
 
 

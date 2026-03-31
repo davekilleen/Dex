@@ -6,7 +6,7 @@
 
 ## What happened?
 
-When I built Dex, some file paths got hardcoded to my machine (`/Users/dave/Dex/Dex/...`). 
+When I built Dex, some file paths got hardcoded to my machine (`/Users/dave.killeen/Dex/Dex/...`). 
 
 Yes, I'm blushing. 😅
 

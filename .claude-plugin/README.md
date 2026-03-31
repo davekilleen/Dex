@@ -96,7 +96,7 @@ Fix any errors it reports.
 ### Phase 2: Test Locally (This Week)
 ```bash
 # Install locally
-claude plugin add /Users/dave/Claudesidian/dex-core --scope user
+claude plugin add ~/dex-core --scope user
 
 # Test in a fresh directory
 cd /tmp
@@ -109,7 +109,7 @@ cd test-dex-vault
 ```bash
 # Create repository on GitHub first (via web interface)
 # Then push:
-cd /Users/dave/Claudesidian/dex-core
+cd ~/dex-core
 git init
 git add .
 git commit -m "Initial plugin release"

@@ -26,7 +26,7 @@
 
 1. **Test the Plugin Locally**
    ```bash
-   cd /Users/dave/Claudesidian/dex-core
+   cd ~/dex-core
 
    # Validate the plugin manifest
    claude plugin validate .
@@ -111,7 +111,7 @@
 
 8. **Create GitHub Repository**
    ```bash
-   cd /Users/dave/Claudesidian/dex-core
+   cd ~/dex-core
 
    # Initialize if not already done
    git init

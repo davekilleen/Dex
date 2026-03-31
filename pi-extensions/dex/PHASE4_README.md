@@ -27,7 +27,7 @@ Phase 4 adds rich, interactive TUI components that transform Dex from a function
 ### 1. Load the Extension
 
 ```bash
-cd ~/Claudesidian
+cd ~/Vault
 pi
 ```
 

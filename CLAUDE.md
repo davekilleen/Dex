@@ -134,7 +134,7 @@ Use `lookup_person` from Work MCP first — it reads a lightweight JSON index (~
 
 **Rebuild the index** with `build_people_index` if person pages have been added or changed significantly.
 
-**Semantic Enhancement (QMD):** If QMD MCP tools are available (check with `qmd_status`), also run `qmd_search` for the person's name and role. This finds contextual references like "the VP of Sales mentioned..." or "the PM on the checkout project asked..." that don't mention the person by name. Merge semantic results with the person page content for richer context. If QMD is not available, standard filename/grep lookup works as before.
+**Semantic Enhancement (QMD):** Use the `query` tool (QMD MCP) to search for the person's name and role. This finds contextual references like "the VP of Sales mentioned..." or "the PM on the checkout project asked..." that don't mention the person by name. Merge semantic results with the person page content for richer context. If the `query` tool is unavailable (QMD not installed), fall back to filename/grep lookup.
 
 ### Challenge Feature Requests
 Don't just execute orders. Consider alternatives, question assumptions, suggest trade-offs, leverage existing patterns. Be a thinking partner, not a task executor.
@@ -227,8 +227,8 @@ When the user mentions meeting issues:
 When the user shares meeting notes or says they had a meeting:
 1. Extract key points, decisions, and action items
 2. Identify people mentioned → update/create person pages
-3. Link to relevant projects. **If QMD is available**, also use `qmd_search` with the meeting topic to find thematically related projects and past discussions that keyword matching would miss (e.g., a meeting about "reducing churn" linking to a project about "customer health scoring").
-4. Suggest follow-ups. **If QMD is available**, search for implicit commitments — soft language like "we should revisit" or "let me think about" that regex might not catch as action items.
+3. Link to relevant projects. Use the `query` tool (QMD MCP) with the meeting topic to find thematically related projects and past discussions that keyword matching would miss (e.g., a meeting about "reducing churn" linking to a project about "customer health scoring"). Fall back to grep if QMD unavailable.
+4. Suggest follow-ups. Use the `query` tool to search for implicit commitments — soft language like "we should revisit" or "let me think about" that regex might not catch as action items.
 5. If meeting with manager and Career folder exists, extract career development context
 
 **Automation:** When meetings are processed via `/process-meetings`, skill-scoped hooks automatically update person pages with meeting references and extracted context. Manual person page updates are still applied for ad-hoc meeting notes shared outside the skill.
@@ -276,7 +276,7 @@ When the user says they completed a task (any phrasing):
 - "Done with the meeting prep"
 
 **Your workflow:**
-1. Search `03-Tasks/Tasks.md` for tasks matching the description. **If QMD is available**, also use `qmd_search` — this catches semantic matches like "I finished the pricing thing" matching task "Finalize Q1 pricing proposal." If QMD is not available, use keyword/context matching as before.
+1. Search `03-Tasks/Tasks.md` for tasks matching the description. Use the `query` tool (QMD MCP) to catch semantic matches like "I finished the pricing thing" matching task "Finalize Q1 pricing proposal." Fall back to keyword/context matching if QMD is unavailable.
 2. Find the task and extract its task ID (format: `^task-YYYYMMDD-XXX`)
 3. Call Work MCP: `update_task_status(task_id="task-20260128-001", status="d")`
 4. The MCP automatically updates the task everywhere:
@@ -326,8 +326,8 @@ Help the user capture:
 
 ### Search & Recall
 When asked about something:
-1. **Semantic search (if QMD available):** Use `qmd_search` (hybrid: BM25 + vectors + LLM reranking) for the query first. This finds content by meaning, not just keywords — "customer retention" will find notes about "churn", "cancellation", "NPS scores". Check availability with `qmd_status`.
-2. **Keyword search (fallback):** If QMD is not available, use standard grep/glob search across the vault. This still works well for exact matches and known terms.
+1. **Semantic search (default):** Use the `query` tool (QMD MCP) first. It finds content by meaning, not just keywords — "customer retention" will find notes about "churn", "cancellation", "NPS scores". Use `status` to confirm QMD is healthy if results seem off.
+2. **Keyword search (fallback):** If the `query` tool is unavailable (QMD not installed), use grep/glob. This still works for exact matches and known terms.
 3. Check person pages for context
 4. Look at recent meetings
 5. Surface relevant projects

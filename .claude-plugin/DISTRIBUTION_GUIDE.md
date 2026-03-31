@@ -25,7 +25,7 @@ claude plugin install https://github.com/davekilleen/dex
 
 1. **Create a GitHub repository**
    ```bash
-   cd /Users/dave/Claudesidian/dex-core
+   cd ~/dex-core
    git remote add origin https://github.com/davekilleen/dex.git
    git push -u origin main
    ```
@@ -136,7 +136,7 @@ You create a marketplace that users can add to Claude Code, similar to `every-ma
 
 3. **Copy Dex into the marketplace**
    ```bash
-   cp -r /Users/dave/Claudesidian/dex-core ./plugins/dex
+   cp -r ~/dex-core ./plugins/dex
    ```
 
 4. **Publish to GitHub**
@@ -196,7 +196,7 @@ Before distributing, test thoroughly:
 ### 1. Validate the Plugin Manifest
 
 ```bash
-cd /Users/dave/Claudesidian/dex-core
+cd ~/dex-core
 claude plugin validate .
 ```
 
@@ -210,7 +210,7 @@ This checks:
 
 ```bash
 # Link locally for testing
-claude plugin add /Users/dave/Claudesidian/dex-core --scope user
+claude plugin add ~/dex-core --scope user
 
 # Check it's installed
 claude plugin list

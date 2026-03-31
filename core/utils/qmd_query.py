@@ -236,7 +236,7 @@ def _resolve_vault_path() -> str:
 
     # Check common locations
     home = Path.home()
-    for name in ["Claudesidian", "Dex", "dex-vault"]:
+    for name in ["Dex", "Dex", "dex-vault"]:
         candidate = home / name
         if candidate.exists() and (candidate / "System").exists():
             return str(candidate)

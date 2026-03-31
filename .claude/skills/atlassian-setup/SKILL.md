@@ -92,8 +92,7 @@ authentication and provides secure access to your Jira and Confluence data.
 {
   "atlassian-mcp": {
     "command": "npx",
-    "args": ["-y", "@anthropic/atlassian-mcp"],
-    "env": {}
+    "args": ["-y", "mcp-remote@latest", "https://mcp.atlassian.com/v1/sse"]
   }
 }
 ```

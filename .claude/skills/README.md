@@ -222,6 +222,7 @@ Built specifically for personal knowledge management and productivity workflows 
 - `/project-health` - Review project status
 - `/product-brief` - Generate PRD from ideas
 - `/triage` - Organize inbox and extract tasks *(v1.11: tuned for speed)*
+- `/industry-truths` - Define time-horizoned assumptions that ground strategic thinking
 
 **AI Configuration:**
 - `/ai-setup` - Configure budget cloud models (80% cheaper) and offline mode

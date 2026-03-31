@@ -204,3 +204,4 @@ scripts/private/
 !LICENSE
 !CHANGELOG.md
 !.claude-plugin/
+.ant-colony/

@@ -417,7 +417,12 @@ Show migration output.
 Run:
 ```bash
 npm install
-pip3 install -r core/mcp/requirements.txt
+```
+
+Update Python dependencies using the venv. Create the venv first if upgrading from an older Dex that used system pip:
+```bash
+if [ ! -d ".venv" ]; then python3 -m venv .venv; fi
+.venv/bin/pip install -r core/mcp/requirements.txt
 ```
 
 **C. Sync MCP Configuration (Automatic)**
@@ -436,11 +441,13 @@ For each entry in `.mcp.json.example` that is NOT in the user's `.mcp.json`:
 ```json
 "dex-analytics": {
   "type": "stdio",
-  "command": "python",
+  "command": "<vault_path>/.venv/bin/python",
   "args": ["<vault_path>/core/mcp/analytics_server.py"],
   "env": { "VAULT_PATH": "<vault_path>" }
 }
 ```
+
+**Note:** Always use the venv Python path (`<vault_path>/.venv/bin/python`) for new Python MCP entries, never `"python"` or `"python3"`.
 
 Add to summary if new MCPs added: "✓ Added new MCP servers: dex-analytics"
 

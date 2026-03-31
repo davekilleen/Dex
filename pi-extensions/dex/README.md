@@ -192,7 +192,7 @@ Located in `~/.pi/agent/prompts/`:
 The extension loads automatically when you start PI in your Dex vault:
 
 ```bash
-cd ~/Claudesidian
+cd ~/Vault
 pi
 ```
 

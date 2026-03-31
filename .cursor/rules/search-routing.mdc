@@ -1,0 +1,55 @@
+---
+description: Smart Search Routing — always use QMD semantic search when available, never bypass with grep for vault content
+globs: ["**"]
+alwaysApply: true
+---
+
+# Smart Search Routing (All Platforms)
+
+Before ANY vault search operation, check QMD availability:
+
+```bash
+node .scripts/semantic-search/check-availability.cjs --quiet
+# Exit 0 = QMD available → use qmd query
+# Exit 1 = QMD unavailable → fall back to grep
+```
+
+## Collection Mapping
+
+Use `qmd query "your intent" -c <collection>` for all vault content searches:
+
+| Content Type | QMD Collection | Fallback Path |
+|--------------|---------------|---------------|
+| Meeting notes | `meetings` | `00-Inbox/Meetings` |
+| People / person pages | `people` | `05-Areas/People` |
+| Projects / initiatives | `projects` | `04-Projects` |
+| Accounts / deals | `accounts` | `05-Areas/Relationships/Key_Accounts` |
+| Tasks | `tasks` | `03-Tasks` |
+| Goals | `goals` | `01-Quarter_Goals` |
+| Weekly priorities | `priorities` | `02-Week_Priorities` |
+| PRDs / feature specs | `prds` | `System/PRDs` |
+| Implementation plans | `plans` | `plans/` |
+| Session learnings | `learnings` | `System/Session_Learnings` |
+| Reference / guides | `resources` | `06-Resources` |
+| Career / content / events | `areas` | `05-Areas` |
+| LinkedIn / newsletter / YouTube intel | `intel` | `00-Inbox/*_Intel` |
+| Dex product repo docs | `dex-docs` | `~/dex/product/**/*.md` (if locally cloned) |
+
+## Rules
+
+- **Never** hardcode vault folder paths for content covered by a QMD collection
+- **Never** use `grep -r` or file globbing for natural language vault searches
+- **Always** check availability first — QMD unavailable = grep fallback, not skip
+- **Code files** (`.ts`, `.tsx`, `.py`, `.json`) are NOT in QMD — use grep/glob for those
+
+## Example
+
+```bash
+# ✅ Correct — semantic intent, QMD routes it
+qmd query "renewal risk accounts not touched" -c accounts
+
+# ❌ Wrong — bypasses routing
+grep -r "renewal" 05-Areas/Relationships/Key_Accounts/
+```
+
+This routing applies in Cursor, Claude Code, and Pi sessions — no exceptions.

@@ -129,6 +129,46 @@ const COLLECTION_DEFS = [
     benefit: 'Finds relevant learnings and reference docs by topic',
     example: 'Search "API integration" finds guides and past learnings about APIs',
     priority: 4
+  },
+  {
+    name: 'plans',
+    paths: ['plans'],
+    glob: '**/*.md',
+    minFiles: 3,
+    context: 'Implementation blueprints, component specs, handover docs, and execution plans for Dex features',
+    benefit: 'Find past implementation decisions and patterns when building new features',
+    example: 'Search "MCP integration" finds all past specs and handovers that touched MCP',
+    priority: 3
+  },
+  {
+    name: 'learnings',
+    paths: ['System/Session_Learnings'],
+    glob: '**/*.md',
+    minFiles: 5,
+    context: 'Session-to-session learnings capturing what worked, what didn\'t, and system improvements discovered',
+    benefit: 'Compound knowledge — past sessions inform current decisions without re-learning',
+    example: 'Search "hook migration" finds past session learnings about Claude Code hook changes',
+    priority: 3
+  },
+  {
+    name: 'areas',
+    paths: ['05-Areas'],
+    glob: '**/*.md',
+    minFiles: 10,
+    context: 'Area-of-responsibility content: career, content strategy, events, partnerships, and internal intel not covered by people/accounts collections',
+    benefit: 'Cross-area semantic search surfaces connections across career, content, events, and partnerships',
+    example: 'Search "executive sponsor" finds career evidence, event notes, and partnership context together',
+    priority: 4
+  },
+  {
+    name: 'intel',
+    paths: ['00-Inbox/LinkedIn_Intel', '00-Inbox/Newsletter_Intel', '00-Inbox/YouTube_Intel', '00-Inbox/Twitter_Intel'],
+    glob: '**/*.md',
+    minFiles: 3,
+    context: 'Curated intelligence from LinkedIn, newsletters, YouTube, and Twitter/X — trends, signals, and competitor moves',
+    benefit: 'Cross-source signal search finds themes across all intel channels in a single query',
+    example: 'Search "agent orchestration" finds LinkedIn posts, newsletter summaries, and video transcripts together',
+    priority: 4
   }
 ];
 

@@ -530,7 +530,7 @@ ai_models:
 
 First, check what's set up:
 - Read `System/user-profile.yaml` for `ai_models` section
-- Run `bash ~/Claudesidian/System/scripts/test-ai-connections.sh` silently
+- Run `bash $VAULT_PATH/System/scripts/test-ai-connections.sh` silently
 
 Then adapt the explanation:
 
