@@ -119,7 +119,7 @@ System/pillars.yaml
 - ✅ `System/.mcp.json.example` — Template with `{{VAULT_PATH}}`
 - ✅ `env.example` — Template showing structure
 - ✅ `core/mcp/*.py` — MCP server code (no credentials)
-- ✅ Documentation and README
+- ✅ Documentation and [[README]]
 - ✅ Demo mode files (sanitized examples)
 
 **Never committed:**
@@ -143,8 +143,8 @@ Before pushing to GitHub:
 - [ ] Verify no API keys in commit history: `git log --all -S "sk-ant-" -S "ANTHROPIC_API_KEY" -S "OPENAI_API_KEY"`
 
 ### Documentation
-- [ ] README links to actual podcast episode (currently placeholder)
-- [ ] README links to blog post (currently placeholder)
+- [ ] [[README]] links to actual podcast episode (currently placeholder)
+- [ ] [[README]] links to blog post (currently placeholder)
 - [ ] Verify GitHub repo URL in clone command
 - [ ] Add LICENSE file (MIT recommended)
 - [ ] Add CONTRIBUTING.md if accepting PRs
@@ -215,7 +215,7 @@ Before pushing to GitHub:
 
 2. **Create GitHub Release:**
    - Title: "Dex v1.0.0 — Your AI Chief of Staff"
-   - Description: Paste first 3 sections of README
+   - Description: Paste first 3 sections of [[README]]
    - Attach: Installation guide, demo video (if available)
 
 3. **Post-release:**

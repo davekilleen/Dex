@@ -31,6 +31,9 @@ email_domain: "magentic.com"
 # Notion meeting integration
 notion_meetings: true
 
+# Obsidian integration
+obsidian_mode: true
+
 # Communication Preferences
 # How the AI adapts its tone and language when working with you
 communication:

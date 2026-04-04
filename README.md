@@ -483,7 +483,7 @@ Non-engineers. Product managers, marketers, sales leaders, designers, executives
 
 **If you're an engineer:** Share this with your non-technical colleagues. Distribute Dex across your organization to accelerate AI fluency adoption.
 
-**Want to share this?** Point colleagues to the [companion blog post](https://www.linkedin.com/pulse/your-ai-chief-staff-building-personal-operating-system-dave-killeen-yxnqe/) for the full story. At the bottom of this README, there's a ready-to-use message you can copy and paste.
+**Want to share this?** Point colleagues to the [companion blog post](https://www.linkedin.com/pulse/your-ai-chief-staff-building-personal-operating-system-dave-killeen-yxnqe/) for the full story. At the bottom of this [[README]], there's a ready-to-use message you can copy and paste.
 
 ---
 
@@ -598,7 +598,7 @@ Your data stays on your laptop. It's yours.
 
 Tasks in multiple places (meeting notes, project files, person pages) don't sync in traditional systems. Check off one, others stay open.
 
-Dex handles this with the **Work MCP server** - a Python-based automation layer that syncs tasks with unique IDs across your entire vault. When you process a meeting, action items get IDs like `^task-20260128-001`. Tasks appear in both the meeting note and `03-Tasks/Tasks.md` with the same ID.
+Dex handles this with the **Work MCP server** - a Python-based automation layer that syncs tasks with unique IDs across your entire vault. When you process a meeting, action items get IDs like `[[^task-20260128-001]]`. Tasks appear in both the meeting note and `03-Tasks/Tasks.md` with the same ID.
 
 Just tell Dex what you finished in natural language:
 - "I finished following up with John"

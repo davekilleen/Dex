@@ -459,7 +459,7 @@ Specific achievements I'm working toward:
     └── Skills_Development/
 ```
 
-**7. Create `05-Areas/Career/Evidence/README.md`:**
+**7. Create `05-Areas/Career/Evidence/[[README]].md`:**
 
 ```markdown
 # Career Evidence

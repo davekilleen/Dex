@@ -120,7 +120,7 @@ claude plugin install dex  # from official marketplace
 - [ ] Create GitHub repository
 - [ ] Push dex-core to main branch
 - [ ] Create v1.0.0 release
-- [ ] Update README with installation section
+- [ ] Update [[README]] with installation section
 - [ ] Share on LinkedIn + X/Twitter
 
 **Time investment:** 2-3 hours
@@ -234,7 +234,7 @@ This assumes 10% free-to-paid conversion, which is standard for dev tools.
 ### Next Week (2-3 hours):
 1. Push to GitHub
 2. Create v1.0.0 release
-3. Update README
+3. Update [[README]]
 4. Announce on LinkedIn/X
 
 ---
@@ -268,7 +268,7 @@ Before launching:
 ## Resources You Have
 
 ### Documentation (Created)
-- ✅ Plugin README
+- ✅ Plugin [[README]]
 - ✅ Distribution guide
 - ✅ Installation quick start
 - ✅ Launch checklist

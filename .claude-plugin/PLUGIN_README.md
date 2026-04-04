@@ -144,7 +144,7 @@ Skills are invoked with `/skill-name`:
 - `/project-health` - Check project status
 - `/dex-level-up` - Discover unused features
 
-Full list: Run `/dex-level-up` or check `.claude/skills/README.md`
+Full list: Run `/dex-level-up` or check `.claude/skills/[[README]].md`
 
 ### How Hooks Work
 

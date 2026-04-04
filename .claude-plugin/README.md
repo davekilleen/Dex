@@ -158,7 +158,7 @@ Before publishing, ensure:
    - Replace `YOUR-USERNAME` with your GitHub username
    - Verify all MCP server paths are correct
 
-2. **README.md** (root level)
+2. **[[README]].md** (root level)
    - Add clear "Installation" section at the top
    - Link to `INSTALLATION_QUICK_START.md`
 

@@ -139,7 +139,7 @@ Organize standalone files in the `00-Inbox/` folder by suggesting where they bel
 ### Process
 
 1. **Scan 00-Inbox/**
-   - List all files (exclude Week Priorities.md, README.md)
+   - List all files (exclude Week Priorities.md, [[README]].md)
    - Read each file's content
 
 2. **Match Against Strategic Context & Entities**

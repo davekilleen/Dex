@@ -18,7 +18,7 @@
 - [x] Comprehensive documentation in `06-Resources/Dex_System/`
 - [x] LICENSE file (PolyForm Noncommercial 1.0.0)
 - [x] CHANGELOG.md (detailed version history)
-- [x] README.md (comprehensive overview)
+- [x] [[README]].md (comprehensive overview)
 
 ## What You Need to Do 🔨
 
@@ -74,7 +74,7 @@
 
    If they don't exist, copy from your actual files and remove personal data.
 
-5. **Update Main README.md**
+5. **Update Main [[README]].md**
 
    Add a clear "Installation" section at the top:
    ```markdown
@@ -101,7 +101,7 @@
    - Run through onboarding
    - Demonstrate key skills (/daily-plan, /meeting-prep)
    - Upload to YouTube
-   - Add link to README.md
+   - Add link to [[README]].md
 
 7. **Test Installation on Clean Machine**
    - Use a friend's computer or VM
@@ -133,7 +133,7 @@
    - Go to GitHub → Releases → "Create a new release"
    - Tag: v1.0.0
    - Title: "Dex 1.0 - Your AI Chief of Staff"
-   - Description: Copy from your main README intro
+   - Description: Copy from your main [[README]] intro
    - Attach: Installation quick start guide
    - Mark as "Latest release"
 
@@ -203,7 +203,7 @@
 ### Phase 2: GitHub Release (Week 2)
 - [ ] Push to GitHub
 - [ ] Create v1.0.0 release
-- [ ] Update README with installation instructions
+- [ ] Update [[README]] with installation instructions
 - [ ] Share on LinkedIn (personal network)
 - [ ] Share on X/Twitter
 - [ ] Post in Vibe PM community
@@ -251,7 +251,7 @@ Before publishing, verify:
 - [ ] Onboarding MCP completes setup
 
 ### Documentation
-- [ ] README is clear and accurate
+- [ ] [[README]] is clear and accurate
 - [ ] Installation guide is complete
 - [ ] Troubleshooting section addresses common issues
 - [ ] Links in docs work
@@ -342,7 +342,7 @@ If you want to monetize later:
 1. [ ] Create GitHub repository
 2. [ ] Test GitHub-based installation
 3. [ ] Record demo video
-4. [ ] Update README with installation section
+4. [ ] Update [[README]] with installation section
 5. [ ] Soft launch to 3 beta testers
 
 **Week 3:**

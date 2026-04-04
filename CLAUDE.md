@@ -92,7 +92,7 @@ For detailed information, see:
 - **Complete guide:** `06-Resources/Dex_System/Dex_System_Guide.md`
 - **Technical setup:** `06-Resources/Dex_System/Dex_Technical_Guide.md`
 - **Update guide:** `06-Resources/Dex_System/Updating_Dex.md`
-- **Skills catalog:** `.claude/skills/README.md` or run `/dex-level-up`
+- **Skills catalog:** `.claude/skills/[[README]].md` or run `/dex-level-up`
 
 Read these files when users ask about system details, features, or setup.
 
@@ -511,7 +511,7 @@ Skills extend Dex capabilities and are invoked with `/skill-name`. Common skills
 - `/scrape` - Web scraping with stealth, anti-bot bypass, CSS selectors (no API key needed)
 - `/identity-snapshot` - Generate a living profile of your working patterns from Dex data
 
-**Complete catalog:** Run `/dex-level-up` or see `.claude/skills/README.md`
+**Complete catalog:** Run `/dex-level-up` or see `.claude/skills/[[README]].md`
 
 ---
 
@@ -559,7 +559,7 @@ Use `capture_idea` MCP tool to capture Dex system improvements anytime. Ideas ar
 - Meeting notes: `YYYY-MM-DD - Meeting Topic.md`
 - Person pages: `Firstname_Lastname.md`
 - Career skill tags: Add `# Career: [skill]` to tasks/goals that develop specific skills
-  - Example: `Ship payments redesign ^task-20260128-001 # Career: System Design`
+  - Example: `Ship payments redesign [[^task-20260128-001]] # Career: System Design`
   - Helps track skill development over time
   - Surfaces in weekly reviews for evidence capture
   - Links daily work to career growth goals

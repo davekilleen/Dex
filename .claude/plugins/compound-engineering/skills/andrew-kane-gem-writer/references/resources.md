@@ -116,4 +116,4 @@ From studying 100+ gems, Kane's consistent principles:
 7. **Helpful errors** - Template-based messages with fix suggestions
 8. **Abstract adapters** - Clean multi-database support
 9. **Engine isolation** - isolate_namespace for mountable gems
-10. **Minimal documentation** - Code is self-documenting, README is examples
+10. **Minimal documentation** - Code is self-documenting, [[README]] is examples

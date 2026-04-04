@@ -327,7 +327,7 @@ Celebration message: "You're using Dex like a pro! 🎉"
 - [x] Added explicit tracking to core commands (daily-plan, review, week-plan, week-review)
 - [x] Added CLAUDE.md guidance for system-wide tracking behavior
 - [x] Created `/dex-level-up` command with pattern analysis logic
-- [x] Added README section highlighting feature discovery
+- [x] Added [[README]] section highlighting feature discovery
 - [x] Added onboarding mention of `/dex-level-up`
 - [x] Added smart trigger to `/daily-plan` (7-day cooldown)
 - [x] Tested scenario recommendations (examples in dex-level-up.md)

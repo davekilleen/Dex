@@ -54,7 +54,7 @@ Currently: Not configured
 - **Date format:** YYYY-MM-DD
 - **Meeting notes:** `YYYY-MM-DD - Meeting Topic.md`
 - **Person pages:** `Firstname_Lastname.md`
-- **Task IDs:** `^task-YYYYMMDD-XXX` (e.g., `^task-20260128-001`)
+- **Task IDs:** `^task-YYYYMMDD-XXX` (e.g., `[[^task-20260128-001]]`)
 
 ---
 

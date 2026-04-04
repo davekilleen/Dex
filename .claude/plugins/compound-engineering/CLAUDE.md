@@ -6,7 +6,7 @@
 
 1. **`.claude-plugin/plugin.json`** - Bump version using semver
 2. **`CHANGELOG.md`** - Document changes using Keep a Changelog format
-3. **`README.md`** - Verify/update component counts and tables
+3. **`[[README]].md`** - Verify/update component counts and tables
 
 ### Version Bumping Rules
 
@@ -20,8 +20,8 @@ Before committing ANY changes:
 
 - [ ] Version bumped in `.claude-plugin/plugin.json`
 - [ ] CHANGELOG.md updated with changes
-- [ ] README.md component counts verified
-- [ ] README.md tables accurate (agents, commands, skills)
+- [ ] [[README]].md component counts verified
+- [ ] [[README]].md tables accurate (agents, commands, skills)
 - [ ] plugin.json description matches current counts
 
 ### Directory Structure

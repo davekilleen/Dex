@@ -197,7 +197,7 @@ create_task(
 )
 ```
 Result:
-- Task created with proper ID (`^task-20260128-001`)
+- Task created with proper ID (`[[^task-20260128-001]]`)
 - Pillar tag validated against `System/pillars.yaml`
 - Task added to `03-Tasks/Tasks.md`
 - Task added to `05-Areas/People/Internal/John_Doe.md` → Related Tasks section
@@ -241,7 +241,7 @@ def generate_task_id() -> str:
 
 This ensures every task gets a unique, sortable ID that's stable across files.
 
-**Why this matters:** Task IDs are how we maintain relationships. When a meeting note says "^task-20260128-001", Dex can find that task in `03-Tasks/Tasks.md` AND on the person page AND link back to the meeting.
+**Why this matters:** Task IDs are how we maintain relationships. When a meeting note says "[[^task-20260128-001]]", Dex can find that task in `03-Tasks/Tasks.md` AND on the person page AND link back to the meeting.
 
 #### 2. **Calendar MCP** (`user-dave-calendar-mcp`)
 
@@ -595,14 +595,14 @@ create_task(
    - [ ] Review API design ^task-20260128-001 #product
    ```
 
-**All four locations get updated atomically.** The task ID (`^task-20260128-001`) is how we maintain links.
+**All four locations get updated atomically.** The task ID (`[[^task-20260128-001]]`) is how we maintain links.
 
 ### Task Completion Flow
 
 When you say "I finished reviewing the API design":
 
 1. Claude searches for the task (fuzzy match on title)
-2. Finds task ID: `^task-20260128-001`
+2. Finds task ID: `[[^task-20260128-001]]`
 3. Calls Work MCP: `update_task_status(task_id="task-20260128-001", status="d")`
 4. MCP updates **all four locations**:
    - Changes `- [ ]` to `- [x]` 
@@ -698,8 +698,8 @@ Tasks (03-Tasks/)
 - 2pm: Test signup flow end-to-end
 
 **Tasks:**
-- `- [ ] Review onboarding mockups ^task-20260128-001 #product [Q1-1] [Week-3]`
-- `- [ ] Implement OAuth with Google ^task-20260128-002 #product [Q1-1] [Week-3]`
+- `- [ ] Review onboarding mockups [[^task-20260128-001]] #product [Q1-1] [Week-3]`
+- `- [ ] Implement OAuth with Google [[^task-20260128-002]] #product [Q1-1] [Week-3]`
 
 **Why this works:**
 

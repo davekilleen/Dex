@@ -94,7 +94,7 @@ User's Claude Desktop (separate)
 
 **Distribution strategy:**
 1. Ship with 7 core MCPs
-2. Document optional integrations in README
+2. Document optional integrations in [[README]]
 3. User installs external MCPs separately if needed
 
 **Your install.sh already handles this:**
@@ -227,9 +227,9 @@ mkdir System/Demo/Session_Learnings
 # Move sanitized examples there
 ```
 
-**3. Update README placeholders**
+**3. Update [[README]] placeholders**
 
-Replace these lines in README.md:
+Replace these lines in [[README]].md:
 - Line 9: `[Episode 8 of The Vibe PM Podcast](https://link-tbd)`
 - Line 9: `[full blog post](https://link-tbd)`
 - Line 37: `[companion blog post](https://link-tbd)`
@@ -394,7 +394,7 @@ I need to "Review Q2 roadmap" by Friday
 - [x] MCP servers documented
 - [x] Git remote issue fixed (install.sh handles automatically)
 - [ ] Legacy task_server.py removed
-- [ ] README placeholders updated
+- [ ] [[README]] placeholders updated
 - [ ] License file added
 
 **After distribution:**
@@ -410,7 +410,7 @@ I need to "Review Q2 roadmap" by Friday
 **Immediate (before push):**
 1. Run `./scripts/verify-distribution.sh`
 2. Review warnings, decide on cleanup items
-3. Update README URLs (podcast, blog post)
+3. Update [[README]] URLs (podcast, blog post)
 4. Add LICENSE file
 
 **Pre-launch (before announcement):**

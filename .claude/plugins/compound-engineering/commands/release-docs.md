@@ -55,7 +55,7 @@ For each skill directory in `plugins/compound-engineering/skills/*/`:
 
 ### MCP Servers
 For each MCP server in `plugins/compound-engineering/mcp-servers/*/`:
-- Read the configuration and README
+- Read the configuration and [[README]]
 - List the tools provided
 
 ## Step 2: Update Documentation Pages
@@ -125,7 +125,7 @@ Ensure counts are consistent across:
 2. **`.claude-plugin/marketplace.json`**
    - Update plugin `description` with correct counts
 
-3. **`plugins/compound-engineering/README.md`**
+3. **`plugins/compound-engineering/[[README]].md`**
    - Update intro paragraph with counts
    - Update component lists
 

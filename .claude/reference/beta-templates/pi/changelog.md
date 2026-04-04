@@ -33,7 +33,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   - `/pi-request` - Request new features
 - **Skill scaffolding** - Automatic file structure for new skills
 - **Error handling** - Graceful failures with actionable messages
-- **Beta documentation** - README, troubleshooting, examples
+- **Beta documentation** - [[README]], troubleshooting, examples
 
 ### Technical Notes
 - Pi-built skills are stored in `.claude/skills/pi-custom/`

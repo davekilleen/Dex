@@ -91,7 +91,7 @@ Updated these files to reference `.claude/skills/`:
 - ✅ `.claude/skills/dex-improve/SKILL.md` - Self-reference
 - ✅ `.claude/skills/dex-backlog/SKILL.md` - Self-reference
 - ✅ `.claude/skills/dex-level-up/SKILL.md` - Self-reference
-- ✅ `.claude/skills/README.md` - Created overview
+- ✅ `.claude/skills/[[README]].md` - Created overview
 
 ## Backward Compatibility
 
@@ -143,4 +143,4 @@ All skills are immediately available. Test with:
 See:
 - [Anthropic Skills Guide](https://code.claude.com/docs/en/skills)
 - [Agent Skills Standard](https://agentskills.io)
-- `.claude/skills/README.md` - Overview of all skills
+- `.claude/skills/[[README]].md` - Overview of all skills

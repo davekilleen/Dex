@@ -334,4 +334,4 @@ After running a task through Pi:
 
 - `/pi-tools` - View synced Pi extensions
 - `/beta-status` - Check Pi beta activation
-- `System/Beta/pi/README.md` - Pi setup documentation
+- `System/Beta/pi/[[README]].md` - Pi setup documentation
