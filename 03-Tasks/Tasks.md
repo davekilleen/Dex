@@ -12,7 +12,9 @@ Your task backlog organized by priority.
 
 ## P1 - Important (max 5)
 
-<!-- Important items for this week -->
+- [ ] **Configure Claude Code with enterprise API key for ZDR** — Check auth in Claude Code settings, swap to API key if on enterprise agreement ^task-20260404-001 #systems_ops
+- [x] **Fix weekly Dex upstream update check** — Removed upstream-check.sh; Update Checker MCP already handles this ✅ 2026-04-04 ^task-20260404-002 #systems_ops
+- [ ] **Create project plans** — Set up project pages in 04-Projects/ for active work (hiring, offsite, finance) ^task-20260404-003 #systems_ops
 
 ## P2 - Normal (max 10)
 

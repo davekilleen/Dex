@@ -59,6 +59,22 @@ pillars:
       - bookkeeping
       - audit
 
+  - id: systems_ops
+    name: "Systems & Ops"
+    description: "Internal tooling, processes, and operational infrastructure"
+    keywords:
+      - ops
+      - tooling
+      - setup
+      - system
+      - process
+      - automation
+      - integration
+      - infrastructure
+      - admin
+      - config
+      - workflow
+
 # Priority limits (how many active tasks per priority level)
 priority_limits:
   P0: 3   # Critical/urgent - max 3 at a time

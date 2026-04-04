@@ -82,6 +82,7 @@ The system automatically suggests `/getting-started` at next session if vault < 
 - Hiring
 - Offsite Planning
 - Finance Function
+- Systems & Ops
 
 ---
 
