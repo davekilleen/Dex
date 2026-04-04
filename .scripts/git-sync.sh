@@ -31,6 +31,13 @@ git commit -m "auto-sync: $(date '+%Y-%m-%d %H:%M')" >> "$LOG" 2>&1
 if git push origin main >> "$LOG" 2>&1; then
     echo "$(timestamp) [sync] Pushed to origin/main." >> "$LOG"
 else
-    echo "$(timestamp) [sync] ERROR: Push failed." >> "$LOG"
+    echo "$(timestamp) [sync] ERROR: Push to origin failed." >> "$LOG"
     exit 1
+fi
+
+# Sync personal content to personal repo (non-blocking — failure won't break work sync)
+if bash "$REPO/.scripts/sync-personal.sh" >> "$LOG" 2>&1; then
+    echo "$(timestamp) [sync] Personal repo synced." >> "$LOG"
+else
+    echo "$(timestamp) [sync] WARNING: Personal sync failed — work sync unaffected." >> "$LOG"
 fi

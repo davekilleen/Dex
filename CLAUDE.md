@@ -277,11 +277,11 @@ When the user says they completed a task (any phrasing):
 - "Done with the meeting prep"
 
 **Your workflow:**
-1. Search `03-Tasks/Tasks.md` for tasks matching the description. Use the `query` tool (QMD MCP) to catch semantic matches like "I finished the pricing thing" matching task "Finalize Q1 pricing proposal." Fall back to keyword/context matching if QMD is unavailable.
+1. Search `03-Tasks/Work_Tasks.md` and `03-Tasks/Personal_Tasks.md` for tasks matching the description. Use the `query` tool (QMD MCP) to catch semantic matches like "I finished the pricing thing" matching task "Finalize Q1 pricing proposal." Fall back to keyword/context matching if QMD is unavailable.
 2. Find the task and extract its task ID (format: `^task-YYYYMMDD-XXX`)
 3. Call Work MCP: `update_task_status(task_id="task-20260128-001", status="d")`
 4. The MCP automatically updates the task everywhere:
-   - 03-Tasks/Tasks.md
+   - 03-Tasks/Work_Tasks.md` and `03-Tasks/Personal_Tasks.md
    - Meeting notes where it originated
    - Person pages (Related Tasks sections)
    - Project/company pages
@@ -529,7 +529,8 @@ Dex uses the PARA method: Projects (time-bound), Areas (ongoing), Resources (ref
 - `07-Archives/` - Completed work
 - `00-Inbox/` - Capture zone (meetings, ideas)
 - `System/` - Configuration (pillars.yaml, user-profile.yaml)
-- `03-Tasks/Tasks.md` - Task backlog
+- `03-Tasks/Work_Tasks.md` - Work task backlog (syncs to work repo only)
+- `03-Tasks/Personal_Tasks.md` - Personal task backlog (syncs to personal repo)
 - `01-Quarter_Goals/Quarter_Goals.md` - Quarterly goals (optional)
 - `02-Week_Priorities/Week_Priorities.md` - Weekly priorities
 

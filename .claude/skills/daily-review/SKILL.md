@@ -395,6 +395,18 @@ At the end of the review, check if there's a relevant backlog idea to surface:
 
 ---
 
+## Step 9.6: Research Inbox Check
+
+Check `00-Inbox/Research/` for unprocessed `.md` files (exclude `processed/` subfolder).
+
+If files found:
+
+> 📎 **[N] unprocessed clip(s) in your Research inbox.** Run `/compile-research` to add them to your wiki before wrapping up — or leave them for tomorrow.
+
+**If empty:** Skip silently.
+
+---
+
 ## Step 10: Track Usage (Silent)
 
 Update `System/usage_log.md` to mark daily review as used.

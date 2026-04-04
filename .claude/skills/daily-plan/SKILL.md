@@ -313,6 +313,16 @@ If items found, surface:
 
 **If Dex Inbox is empty:** Skip silently (no "0 items captured" noise).
 
+### 5.10c Research Inbox Check
+
+Check `00-Inbox/Research/` for unprocessed `.md` files (exclude `processed/` subfolder).
+
+If files found, surface briefly:
+
+> 📎 **[N] unprocessed clip(s) in Research inbox** — run `/compile-research` to add to your wiki.
+
+**If empty:** Skip silently.
+
 ### 5.10b Standard Context Gathering
 
 Also gather:

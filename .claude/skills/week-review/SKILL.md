@@ -243,6 +243,20 @@ Review `System/Session_Learnings/` files from this week:
 
 ---
 
+## Research Wiki Health Check
+
+Check `00-Inbox/Research/` for any unprocessed files, and check whether `06-Resources/Wiki/` has any articles.
+
+If wiki has articles, suggest:
+
+> 🔍 **Research wiki has [N] articles.** Run `/compile-research --health` to find gaps and new connections — good weekly habit.
+
+If Research inbox has unprocessed files, surface count alongside the above.
+
+If both are empty: Skip silently.
+
+---
+
 ## Output Format
 
 Create `00-Inbox/Weekly_Synthesis_YYYY-MM-DD.md`:
