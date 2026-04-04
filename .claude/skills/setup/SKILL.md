@@ -116,7 +116,10 @@ If no or later: Skip to next step.
 
 Ask: "Do you use Granola for meeting transcription?"
 
-**If no:** Skip to Step 6.
+**If no:** Ask: "Do you use Notion for meeting notes?"
+
+- **If yes (Notion):** Say: "Great — you can use `/process-notion-meeting` to pull any Notion meeting into Dex. Just share the page URL and I'll extract action items, update person pages, and link to relevant projects." No further setup needed. Note `notion_meetings: true` in `System/user-profile.yaml`.
+- **If no to both:** Skip to Step 6.
 
 **If yes:**
 

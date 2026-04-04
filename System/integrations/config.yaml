@@ -6,7 +6,7 @@ last_updated: '2026-02-04T18:41:25.882536'
 
 # Enabled integrations
 enabled:
-  notion: false
+  notion: true
   slack: true
   google: false
 

@@ -1,0 +1,14 @@
+{
+  "user": {
+    "name": "Tara Livesey",
+    "role": "Chief of Staff / COO",
+    "company": "Magentic",
+    "companySize": "startup",
+    "pillars": ["Hiring", "Offsite Planning", "Finance Function"]
+  },
+  "integrations": {
+    "notion_meetings": true,
+    "granola": false
+  },
+  "createdAt": "2026-04-04"
+}

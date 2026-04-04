@@ -73,12 +73,15 @@ The system automatically suggests `/getting-started` at next session if vault < 
 ## User Profile
 
 <!-- Updated during onboarding -->
-**Name:** Not yet configured
-**Role:** Not yet configured
-**Company Size:** Not yet configured
-**Working Style:** Not yet configured
+**Name:** Tara Livesey
+**Role:** Chief of Staff / COO
+**Company:** Magentic (AI agents for procurement & supply chain, startup)
+**Company Size:** 1-100 (startup)
+**Working Style:** Technical background (former software engineer), serial startup ops leader
 **Pillars:**
-- Not yet configured
+- Hiring
+- Offsite Planning
+- Finance Function
 
 ---
 

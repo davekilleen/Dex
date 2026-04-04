@@ -8,25 +8,28 @@
 demo_mode: false
 
 # Your name (used to identify you in meetings, filter yourself from participant lists)
-name: ""
+name: "Tara Livesey"
 
 # Your role (used in meeting analysis prompts)
-role: ""
+role: "Chief of Staff / COO"
 
 # Role group (for command filtering and adaptation)
 # Options: product, sales, marketing, finance, engineering, customer_success, operations, leadership, design, support, advisory
-role_group: ""
+role_group: "operations"
 
 # Your company (optional, adds context to meeting analysis)
-company: ""
+company: "Magentic"
 
 # Company size tier
-company_size: ""  # options: startup (1-100), scaling (100-1000), enterprise (1000-10000), large_enterprise (10000+)
+company_size: "startup"  # options: startup (1-100), scaling (100-1000), enterprise (1000-10000), large_enterprise (10000+)
 
 # Your company email domain (used to identify internal vs external people)
 # Example: "pendo.io" (without @)
 # Multiple domains: "pendo.io, pendo.com"
-email_domain: ""
+email_domain: "magentic.com"
+
+# Notion meeting integration
+notion_meetings: true
 
 # Communication Preferences
 # How the AI adapts its tone and language when working with you
@@ -41,7 +44,7 @@ communication:
   detail_level: "concise"  # options: concise, balanced, comprehensive
   
   # Career/seniority context (for tone calibration)
-  career_level: "mid"  # options: junior, mid, senior, leadership, c_suite
+  career_level: "c_suite"  # options: junior, mid, senior, leadership, c_suite
   
   # Coaching style preference (for career coaching)
   coaching_style: "collaborative"  # options: encouraging, collaborative, challenging

@@ -14,15 +14,50 @@
 #
 # The Work MCP uses these to categorize tasks and check balance across your work.
 
-pillars: []
-  # Will be populated during onboarding
-  # Example structure:
-  # - id: pillar_id
-  #   name: "Pillar Name"
-  #   description: "What this pillar represents"
-  #   keywords:
-  #     - keyword1
-  #     - keyword2
+pillars:
+  - id: hiring
+    name: "Hiring"
+    description: "Building the team — sourcing, interviewing, offers, onboarding"
+    keywords:
+      - hiring
+      - recruit
+      - interview
+      - candidate
+      - offer
+      - onboarding
+      - headcount
+      - role
+      - job description
+      - JD
+
+  - id: offsite_planning
+    name: "Offsite Planning"
+    description: "Planning and executing team offsites and in-person events"
+    keywords:
+      - offsite
+      - event
+      - retreat
+      - in-person
+      - venue
+      - agenda
+      - travel
+      - team event
+
+  - id: finance_function
+    name: "Finance Function"
+    description: "Getting finance processes, reporting, and controls in place"
+    keywords:
+      - finance
+      - budget
+      - accounting
+      - reporting
+      - forecast
+      - runway
+      - cashflow
+      - invoice
+      - payroll
+      - bookkeeping
+      - audit
 
 # Priority limits (how many active tasks per priority level)
 priority_limits:
