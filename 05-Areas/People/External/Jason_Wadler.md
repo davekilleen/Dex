@@ -19,6 +19,10 @@
 - [Digital Twin Strategy and Wisory Score](00-Inbox/Meetings/2026-03-23%20-%20Digital%20Twin%20Strategy%20and%20Wisory%20Score.md) — 2026-03-23
 - [Business Strategy and Planning](00-Inbox/Meetings/2026-03-25%20-%20Business%20Strategy%20and%20Planning.md) — 2026-03-25
 - [Regis and Jason 1:1](00-Inbox/Meetings/2026-03-27%20-%20Regis%20and%20Jason%201-1.md) — 2026-03-27
+- [Wisory 3-Year Vision and Flywheel](00-Inbox/Meetings/2026-03-30%20-%20Wisory%203-Year%20Vision%20and%20Flywheel.md) — 2026-03-30
+- [Regis and Jason Quick Sync](00-Inbox/Meetings/2026-03-31%20-%20Regis%20and%20Jason%20Quick%20Sync.md) — 2026-03-31
+- [Review Banker Preso — Jason and Jason](00-Inbox/Meetings/2026-04-02%20-%20Review%20Banker%20Preso%20-%20Jason%20and%20Jason.md) — 2026-04-02
+- [Wisory Team Check-In](00-Inbox/Meetings/2026-04-02%20-%20Wisory%20Team%20Check-In.md) — 2026-04-02
 
 ## Notes
 
@@ -37,6 +41,9 @@
 - Planning to bring Regis on in April
 - Dennis de Casey joining The Wisory board
 - Gets "freaked out" by large raises — prefers lean, controlled growth
+- **3-year vision (Mar 30):** AI-native advisory flywheel — continuous portfolio monitoring, matchmaking marketplace ("Zillow of investing"), Wisory Score as industry standard like FICO for businesses
+- **Fundraising pivot (Apr 2):** Dual ask strategy — $15M full raise + $3-5M pre-seed option. Lowered revenue to ~$2.5M. West Coast for big raise, Midwest for bridge. Wes at Raymond James is a friendly.
+- **Regis officially on the team (Apr 2):** Announced to full Wisory team. Harriette scheduling onboarding walkthrough.
 - **Compensation model (Mar 25):** Fixed salary ramping $12K->$15K->$18K/mo (Q2-Q4) + 25% variable on client billings. Floor mechanism if variable underperforms. All gross/pre-tax. Jason's own all-in is $30K/mo
 - **Sure Invest:** $4,250/mo engagement contract being finalized + initial $5K payment
 - **Health insurance:** Offering Blue Cross through ADP. Waiting on Regis's family info for quotes

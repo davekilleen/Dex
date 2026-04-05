@@ -123,8 +123,45 @@ This is critical for genuine situational awareness. Extract:
 
 ### 5.2 Calendar Capacity Analysis (NEW)
 
+**IMPORTANT: Multi-Calendar Merge**
+
+Google Calendar only has the `regishadiaris@gmail.com` account. Additional calendars (Wisory, Curling Club, Marshall School, iCloud) are in **Apple Calendar** and must be checked separately via EventKit:
+
+```python
+python3 -c "
+import EventKit, datetime
+from Foundation import NSDate
+store = EventKit.EKEventStore.alloc().init()
+now = datetime.datetime.now()
+start = now.replace(hour=0, minute=0, second=0)
+end = now.replace(hour=23, minute=59, second=59)
+start_ns = NSDate.dateWithTimeIntervalSince1970_(start.timestamp())
+end_ns = NSDate.dateWithTimeIntervalSince1970_(end.timestamp())
+predicate = store.predicateForEventsWithStartDate_endDate_calendars_(start_ns, end_ns, None)
+events = store.eventsMatchingPredicate_(predicate)
+for event in sorted(events, key=lambda e: e.startDate().timeIntervalSince1970()):
+    st = datetime.datetime.fromtimestamp(event.startDate().timeIntervalSince1970())
+    et = datetime.datetime.fromtimestamp(event.endDate().timeIntervalSince1970())
+    cal = event.calendar().title()
+    if event.isAllDay():
+        print(f'[All Day] {event.title()} ({cal})')
+    else:
+        print(f'{st.strftime(\"%I:%M %p\")} - {et.strftime(\"%I:%M %p\")} | {event.title()} ({cal})')
+"
 ```
-Use: analyze_calendar_capacity(days_ahead=1, events=[...from calendar MCP...])
+
+**Always run this Apple Calendar check AND Google Calendar.** Merge both sets of events before analyzing capacity. Do NOT say "no meetings today" based on Google Calendar alone.
+
+Calendars in Apple Calendar:
+- `regis@thewisory.com` — Wisory meetings (critical, this is his day job)
+- `treasurer@duluthcurlingclub.org` — Curling club
+- `Marshall Calendar` — Kids' school events
+- `Home` (iCloud) — Personal
+
+Then analyze combined events:
+
+```
+Use: analyze_calendar_capacity(days_ahead=1, events=[...merged from BOTH calendar sources...])
 ```
 
 Understand the *shape* of today:
@@ -316,7 +353,7 @@ If items found, surface:
 ### 5.10b Standard Context Gathering
 
 Also gather:
-- **Calendar**: Today's meetings with times and attendees
+- **Calendar**: Today's meetings with times and attendees — **MUST check both Google Calendar AND Apple Calendar (EventKit)**. Wisory meetings are only in Apple Calendar.
 - **Tasks**: P0, P1, started-but-not-completed, overdue
 - **Week Priorities**: This week's Top 3
 - **Work Summary**: Quarterly goals context (if enabled)

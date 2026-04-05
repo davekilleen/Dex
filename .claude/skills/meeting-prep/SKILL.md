@@ -34,7 +34,7 @@ See CLAUDE.md → "Communication Adaptation" for full guidelines.
 
 **Optional:** $MEETING, $ATTENDEES
 
-If not provided, prompt the user for:
+If not provided, check **both Google Calendar AND Apple Calendar (EventKit)** for upcoming meetings. Wisory meetings are only in Apple Calendar (`regis@thewisory.com`). See daily-plan skill Section 5.2 for the EventKit script. Then prompt the user to select which meeting to prep for, or provide:
 1. Meeting topic or title
 2. List of attendees (comma-separated names)
 

@@ -12,8 +12,9 @@
 ## Key Contacts
 
 - [[05-Areas/People/External/Kwasi_Dwomoh|Kwasi Dwomoh]] — Senior Director, Talent Acquisition
+- [[05-Areas/People/External/Ryan_Rosales|Ryan Rosales]] — VP, Strategic Development (hiring manager)
 - Susan Allen — Chief Product Officer, Housing (not yet met)
-- Michelle — President, Housing (not yet met)
+- Michele Bodda — President, Housing BU (not yet met)
 
 ## Context
 
@@ -26,7 +27,15 @@
 ## Meeting History
 
 - [Video Interview - Regis Hadiaris and Experian](00-Inbox/Meetings/2026-03-18%20-%20Video%20Interview%20-%20Regis%20Hadiaris%20and%20Experian.md) — 2026-03-18
+- [Interview with Experian — Ryan Rosales](00-Inbox/Meetings/2026-04-02%20-%20Interview%20with%20Experian%20-%20Ryan%20Rosales.md) — 2026-04-02
 
 ## Notes
 
-*Auto-created from meeting on 2026-03-18*
+- Ryan Rosales is hiring manager — employee #2 at Experian Mortgage, built the division
+- **Role: VP-level strategic advisory** — not a build role, more education/strategy/M&A
+- Three success dimensions: internal education, external industry engagement, M&A strategy
+- Ryan's team is "tip of the spear" for market engagement; Susan Allen's product team owns buy/build/partner roadmap
+- Travel 20-25%, remote-first (no RTO policy)
+- Experian Housing is still a startup within Experian — flexible goals, evolving strategy
+- Own Up acquisition (Feb 2026) — AI-powered mortgage shopping, added to Experian Marketplace
+- Next steps: 1-2 more interviews with other Housing leaders, Kwasi coordinating

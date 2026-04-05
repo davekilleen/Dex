@@ -279,7 +279,9 @@ If tracking completion rates:
 
 ### 4.1 Identify Today's Meetings
 
-From calendar or meeting notes, list meetings that happened today.
+**IMPORTANT: Check BOTH Google Calendar AND Apple Calendar (EventKit).** Wisory meetings, Curling Club events, and Marshall School events are only in Apple Calendar. Run the EventKit Python script (see daily-plan skill Section 5.2 for the code) to get the full picture. Never rely on Google Calendar alone.
+
+From all calendar sources and meeting notes, list meetings that happened today.
 
 ### 4.2 For Each Meeting, Ask:
 
@@ -367,7 +369,7 @@ Based on:
 - Incomplete items from today
 - Weekly priorities (especially lagging ones)
 - Commitments due tomorrow
-- Tomorrow's calendar shape
+- Tomorrow's calendar shape — **check BOTH Google Calendar AND Apple Calendar (EventKit)** to get the full picture
 
 Suggest 3 focus items for tomorrow:
 

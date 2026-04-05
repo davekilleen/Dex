@@ -15,6 +15,7 @@
 - [Wisory Score 2.0 — Sean Intro](00-Inbox/Meetings/2026-03-11%20-%20Wisory%20Score%202.0%20-%20Sean%20Intro.md) — 2026-03-11
 - [Wisory Digital Twin and Scenario Planning](00-Inbox/Meetings/2026-03-12%20-%20Wisory%20Digital%20Twin%20and%20Scenario%20Planning.md) — 2026-03-12
 - [Product Strategy Alignment Meeting](00-Inbox/Meetings/2026-03-16%20-%20Product%20Strategy%20Alignment%20Meeting.md) — 2026-03-16
+- [Wisory Team Check-In](00-Inbox/Meetings/2026-04-02%20-%20Wisory%20Team%20Check-In.md) — 2026-04-02
 
 ## Notes
 
@@ -33,5 +34,9 @@
 - Proposed advisor insights database — interviewing advisors to capture structured primary data for Intel IQ
 - Proactively thinking about platform integration ahead of where Intel IQ is architecturally
 - Husband is VP of Product at FleetWorthy (B2B trucking — safety protocols)
+- **Regis onboarding lead:** Sent welcome email, added Regis to Notion, scheduling 30-min tools walkthrough next week
+- Presenting process model on Wednesday (Apr 2) showing how everyone works together
+- Helping Jason Whitney with Google Drive access
+- Advocating for advisor-facing UI for Intel IQ — "not the backend where Regis goes"
 
 *Auto-created from meetings on 2026-03-11*

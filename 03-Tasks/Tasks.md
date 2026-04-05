@@ -4,6 +4,8 @@ Your task backlog organized by priority.
 
 ## This Week
 
+- [ ] **Complete review of Ella's college surveys** — Due this morning #family ^task-20260403-001
+- [ ] **Add current_status string field to IntelliQ state — each node overwrites it, Studio shows real-time progress as state updates stream** #wisory_product ^task-20260402-001
 - [ ] **Prepare for Experian hiring manager interview — research Ryan (hiring leader), Susan Allen, Michelle, housing unit strategy** — Interview scheduled Thursday Apr 2 #job_search ^task-20260318-001
 - [x] **Share Wisory Score methodology document (data flows, transformations, sub-index calculations) with Sean for review** — From Digital Twin Strategy meeting #wisory_product ^task-20260323-001 ✅ 2026-03-23
 - [x] **Build one-page Now/Near/Far roadmap for Intel IQ / Digital Sandbox — circulate to group** — Target EOD Mar 24. Follow-up meeting Thu/Fri #wisory_product ^task-20260323-002 ✅ 2026-03-24

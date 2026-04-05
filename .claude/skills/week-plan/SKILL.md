@@ -81,8 +81,14 @@ Get all open tasks and:
 
 ### 2.4 Calendar Shape Analysis (NEW)
 
+**IMPORTANT: Multi-Calendar Merge**
+
+Google Calendar only has the `regishadiaris@gmail.com` account. Additional calendars (Wisory, Curling Club, Marshall School, iCloud) are in **Apple Calendar** and must be checked via EventKit. Run the EventKit Python script (see daily-plan skill Section 5.2 for the code — adjust date range for 7 days) to get events for the full week, then merge with Google Calendar events before analyzing capacity.
+
+**Always check both sources. Never say "open day" or "no meetings" based on Google Calendar alone.**
+
 ```
-Use: analyze_calendar_capacity(days_ahead=7, events=[...from calendar MCP...])
+Use: analyze_calendar_capacity(days_ahead=7, events=[...merged from BOTH Google Calendar AND Apple Calendar...])
 ```
 
 Understand the **shape of the week**:

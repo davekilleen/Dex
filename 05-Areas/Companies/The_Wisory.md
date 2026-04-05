@@ -30,6 +30,10 @@
 - [Regis and Harriette — Intel IQ Shopify Integration](00-Inbox/Meetings/2026-03-24%20-%20Regis%20and%20Harriette%20-%20Intel%20IQ%20Shopify%20Integration.md) — 2026-03-24
 - [Business Strategy and Planning](00-Inbox/Meetings/2026-03-25%20-%20Business%20Strategy%20and%20Planning.md) — 2026-03-25
 - [Regis and Jason 1:1](00-Inbox/Meetings/2026-03-27%20-%20Regis%20and%20Jason%201-1.md) — 2026-03-27
+- [Wisory 3-Year Vision and Flywheel](00-Inbox/Meetings/2026-03-30%20-%20Wisory%203-Year%20Vision%20and%20Flywheel.md) — 2026-03-30
+- [Regis and Jason Quick Sync](00-Inbox/Meetings/2026-03-31%20-%20Regis%20and%20Jason%20Quick%20Sync.md) — 2026-03-31
+- [Review Banker Preso — Jason and Jason](00-Inbox/Meetings/2026-04-02%20-%20Review%20Banker%20Preso%20-%20Jason%20and%20Jason.md) — 2026-04-02
+- [Wisory Team Check-In](00-Inbox/Meetings/2026-04-02%20-%20Wisory%20Team%20Check-In.md) — 2026-04-02
 
 ## Notes
 
