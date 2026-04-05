@@ -200,6 +200,23 @@ Use: process_commitment(commitment_id="comm-XXXXXX-XXX", action="dismiss")
 
 ---
 
+## Step 2.55: Dex Inbox Check (Phone Captures)
+
+Check for tasks added from phone during the day that weren't triaged in the morning plan:
+
+```
+Use: reminders_list_items(list_name="Dex Inbox")
+```
+
+If items found:
+- Surface them: "📱 **Phone captures not yet triaged** (X items in Dex Inbox)"
+- Run the same triage flow as daily-plan Step 5.10a: infer pillar, confirm with user, create task, mark Reminder complete
+- If user wants to defer: leave in Dex Inbox for tomorrow's daily-plan
+
+**If empty:** Skip silently.
+
+---
+
 ## Step 2.6: Reminders Completion Sync (Dex Today → Dex)
 
 Check if tasks were completed on phone since the morning plan:
