@@ -4,6 +4,8 @@
 
 Companion to [Episode 8 of The Vibe PM Podcast](https://youtu.be/WaqgSvL-V10?si=b2Pfwf7I5rozWCo0) and the [full blog post](https://www.linkedin.com/pulse/your-ai-chief-staff-building-personal-operating-system-dave-killeen-yxnqe/).
 
+> **Already set up?** Skip this README and go straight to **[Your First Month with Dex](GETTING_STARTED.md)** — a practical guide to building Dex into your daily workflow.
+
 ---
 
 ## Setup Overview

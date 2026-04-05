@@ -29,27 +29,6 @@ echo ""
 echo "📅 Today: $(date '+%A, %B %d, %Y')"
 echo ""
 
-# Demo Mode Check
-DEMO_STATE="$CLAUDE_DIR/System/.demo-mode-state.json"
-if [[ -f "$DEMO_STATE" ]]; then
-    DEMO_ACTIVE=$(python3 -c "import json; d=json.load(open('$DEMO_STATE')); print(d.get('active', False))" 2>/dev/null)
-    if [[ "$DEMO_ACTIVE" == "True" ]]; then
-        TERM_COUNT=$(python3 -c "
-import sys; sys.path.insert(0, '$CLAUDE_DIR')
-from importlib import import_module
-m = import_module('dex-core.core.mcp.demo_mode_server')
-import os; os.environ['VAULT_PATH'] = '$CLAUDE_DIR'
-state = m.load_state()
-print(len(m.get_all_terms(state)))
-" 2>/dev/null || echo "?")
-        echo "🔒 DEMO MODE ACTIVE — $TERM_COUNT terms redacted"
-        echo "   Call get_demo_status() from demo-mode MCP at session start."
-        echo "   ALL output (files, chat, MCP params) must be redacted via redact_text()."
-        echo "   PTY wrapper is the safety net. You are the primary filter."
-        echo ""
-    fi
-fi
-
 # Silent self-healing: ensure vault-path breadcrumb and launch agents stay in sync
 VAULT_BREADCRUMB="$HOME/.config/dex/vault-path"
 if [[ -f "$ONBOARDING_MARKER" ]]; then

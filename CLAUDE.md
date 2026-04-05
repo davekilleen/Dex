@@ -211,18 +211,11 @@ Adapt your tone and language based on user preferences in `System/user-profile.y
 
 Apply consistently across all interactions (planning, reviews, meetings, project discussions).
 
-### Granola Mobile Recordings (Natural Language Triggers)
-
-When the user mentions any of these:
-- "mobile recordings", "phone recordings", "phone meetings", "phone calls not syncing"
-- "enable mobile recordings", "set up mobile recordings"
-- "meetings from my phone", "mobile meetings not showing"
-- "refresh Granola", "Granola not working", "Granola sign-in"
-
-**Action:**
-1. Check if Granola credentials exist: look for `supabase.json` in Granola's app data directory
-2. If credentials exist: Mobile recordings sync automatically. Suggest checking if Granola's iOS app is syncing to cloud, and that background sync is installed (`cd .scripts/meeting-intel && ./install-automation.sh`)
-3. If no credentials: Granola isn't installed or user isn't signed in — guide them to [granola.ai](https://granola.ai) and ensure they sign in to the desktop app
+### Granola Mobile Recordings
+When the user mentions mobile/phone recordings, Granola issues, or mobile meetings not syncing:
+1. Check if Granola credentials exist (`supabase.json` in Granola's app data directory)
+2. If credentials exist: suggest checking iOS app sync and background sync (`cd .scripts/meeting-intel && ./install-automation.sh`)
+3. If no credentials: guide to [granola.ai](https://granola.ai) and desktop app sign-in
 
 ### Meeting Capture
 When the user shares meeting notes or says they had a meeting:
@@ -234,65 +227,8 @@ When the user shares meeting notes or says they had a meeting:
 
 **Automation:** When meetings are processed via `/process-meetings`, skill-scoped hooks automatically update person pages with meeting references and extracted context. Manual person page updates are still applied for ad-hoc meeting notes shared outside the skill.
 
-### Task Creation (Smart Pillar Inference)
-When the user requests task creation without specifying a pillar:
-- "Create a task to review Q1 numbers"
-- "Remind me to prep for Sarah's demo"
-- "Add task: write LinkedIn post about feature launch"
-
-**Your workflow:**
-1. **Analyze the request** against pillar keywords (from `System/pillars.yaml`)
-2. **Infer the most likely pillar** based on content:
-   - **Deal Support**: deal, sales, customer, demo, presentation, enablement, account, pipeline, prospect, opportunity
-   - **Thought Leadership**: podcast, conference, linkedin, content, blog, talk, speaking, brand, article, webinar
-   - **Product Feedback**: product, feedback, feature, roadmap, ux, research, insight, customer voice, beta
-3. **Propose with quick confirmation**:
-   ```
-   Creating "Review Q1 numbers" under Product Feedback pillar (looks like data gathering).
-   Sound right, or should it be Deal Support / Thought Leadership?
-   ```
-4. **Handle response**:
-   - User confirms (yes/sounds good/correct) → Create task with inferred pillar
-   - User specifies different pillar → Use their choice
-   - Unclear task → Ask which pillar makes most sense
-5. **Call Work MCP**: `work_mcp_create_task` with confirmed pillar
-
-**Inference examples:**
-- "Prep demo for Acme Corp" → **Deal Support** (customer + demo keywords)
-- "Write blog post about AI agents" → **Thought Leadership** (content + article keywords)
-- "Review beta feedback on search" → **Product Feedback** (feedback + beta keywords)
-- "Call prospect about pricing" → **Deal Support** (prospect keyword)
-
-**Key points:**
-- Always show your reasoning ("looks like X because Y")
-- Make correction easy - list alternatives in the confirmation
-- If genuinely ambiguous, ask rather than guess
-- Default to user's pillar choice if they override
-
-### Task Completion (Natural Language)
-When the user says they completed a task (any phrasing):
-- "I finished X"
-- "Mark Y as done"
-- "Completed Z"
-- "Done with the meeting prep"
-
-**Your workflow:**
-1. Search `03-Tasks/Work_Tasks.md` and `03-Tasks/Personal_Tasks.md` for tasks matching the description. Use the `query` tool (QMD MCP) to catch semantic matches like "I finished the pricing thing" matching task "Finalize Q1 pricing proposal." Fall back to keyword/context matching if QMD is unavailable.
-2. Find the task and extract its task ID (format: `^task-YYYYMMDD-XXX`)
-3. Call Work MCP: `update_task_status(task_id="task-20260128-001", status="d")`
-4. The MCP automatically updates the task everywhere:
-   - 03-Tasks/Work_Tasks.md` and `03-Tasks/Personal_Tasks.md
-   - Meeting notes where it originated
-   - Person pages (Related Tasks sections)
-   - Project/company pages
-   - Adds completion timestamp (e.g., `✅ 2026-01-28 14:35`)
-5. Confirm to user: "Done! Marked complete in [list locations] at [timestamp]"
-
-**Key points:**
-- Accept any natural phrasing - be smart about parsing intent
-- If multiple tasks match, ask for clarification
-- If no task ID exists (legacy task), update the source file only and note that future tasks will sync everywhere
-- Don't require exact task title - use fuzzy matching on keywords
+### Task Creation & Completion
+When creating tasks, infer the pillar from `System/pillars.yaml` keywords, propose with reasoning, and confirm before creating via `work_mcp_create_task`. When completing tasks, fuzzy-match against task files, extract the task ID, and call `update_task_status`. Full workflow details in `.claude/reference/task-workflows.md`.
 
 ### Career Evidence Capture
 If `05-Areas/Career/` folder exists, the system automatically captures career development evidence:
@@ -339,34 +275,7 @@ When making significant system changes:
 2. Check if `06-Resources/Dex_System/Dex_System_Guide.md` needs updating
 
 ### Learning Capture
-After significant work (new features, complex integrations), ask: "Worth capturing any learnings from this?" Don't prompt after routine tasks.
-
-### Learning Capture via `/review`
-
-Learnings are captured during the daily review process. When the user runs `/review`, you will:
-
-1. **Scan the current session** for learning opportunities:
-   - Mistakes or corrections made
-   - Preferences the user mentioned
-   - Documentation gaps discovered
-   - Workflow inefficiencies noticed
-
-2. **Automatically write to** `System/Session_Learnings/YYYY-MM-DD.md`:
-
-```markdown
-## [HH:MM] - [Short title]
-
-**What happened:** [Specific situation]  
-**Why it matters:** [Impact on system/workflow]  
-**Suggested fix:** [Specific action with file paths]  
-**Status:** pending
-
----
-```
-
-3. **Tell the user** how many learnings you captured, then ask if they want to add more
-
-This happens during `/review` - you don't need to capture learnings silently during the session. The review process handles it systematically.
+After significant work (new features, complex integrations), ask: "Worth capturing any learnings from this?" Don't prompt after routine tasks. During `/review`, systematically scan the session for learnings (mistakes, preferences, documentation gaps, workflow issues) and write them to `System/Session_Learnings/YYYY-MM-DD.md` using the format: `## [HH:MM] - [Title]` with What happened / Why it matters / Suggested fix / Status fields.
 
 ### Background Self-Learning Automation
 
@@ -392,83 +301,8 @@ Person and company context hooks run automatically when reading files:
 - Context is wrapped in XML tags (`<person_context>`, `<company_context>`) for background enrichment
 - No visible headers in responses - reference naturally when relevant
 
-### Analytics (Opt-Out Model)
-
-Analytics is **on by default** for new installs. No prompting needed — users are informed during onboarding and can opt out anytime.
-
-**Do nothing unless the user explicitly asks to opt out or opt in.**
-
-### Analytics Opt-Out (Anytime)
-
-When user says anything like:
-- "Turn off Dex analytics"
-- "Opt out of analytics"
-- "Stop tracking"
-- "Disable analytics"
-
-**Your response:**
-1. Update `System/user-profile.yaml` → `analytics.enabled: false`
-2. Update `System/usage_log.md` → `Consent decision: opted-out`
-3. Say: "Done! Analytics is now off. No more usage data will be sent. You can turn it back on anytime by saying 'turn on Dex analytics'."
-
-When user says anything like:
-- "Turn on Dex analytics"
-- "Enable analytics"
-- "Opt back in to analytics"
-
-**Your response:**
-1. Update `System/user-profile.yaml` → `analytics.enabled: true`
-2. Update `System/usage_log.md` → `Consent decision: opted-in`
-3. Say: "Done! Analytics is back on. Thanks for helping improve Dex!"
-
 ### ScreenPipe Consent (One-Time Ask)
-
-**Beta Feature:** Only applies if user has activated the screenpipe beta.
-
-**Before prompting, check:**
-1. Call `check_beta_enabled(feature="screenpipe")` from Beta MCP
-2. If NOT enabled → skip ScreenPipe entirely (no prompt, no scanning)
-3. If enabled → check `System/usage_log.md` → ScreenPipe Consent section
-
-**If screenpipe beta is enabled AND `Consent asked: false` AND user-profile.yaml `screenpipe.prompted: false`:**
-
-During `/daily-plan` or `/daily-review`, ask ONCE per vault:
-
-```
-**🔔 New Feature: Ambient Commitment Detection**
-
-Dex can now detect promises and asks from your screen activity — things like 
-"I'll send that over" in Slack or "Can you review this?" in email.
-
-**How it works:**
-- ScreenPipe records your screen locally (never sent anywhere)
-- Dex scans for commitment patterns during your daily review
-- You decide what becomes a task — nothing auto-created
-
-**Privacy-first:**
-- All data stays on your machine
-- Browsers, banking, social media blocked by default
-- Auto-deletes after 30 days
-- Disable anytime with `/screenpipe-setup disable`
-
-**Want to enable ScreenPipe features?** [Yes, set it up] / [Not now] / [Never ask again]
-```
-
-Based on response:
-- **Yes**: 
-  - Run `/screenpipe-setup` inline
-  - Update `System/user-profile.yaml` → `screenpipe.enabled: true`, `screenpipe.prompted: true`
-  - Update `System/usage_log.md` → ScreenPipe Consent: `opted-in`
-  
-- **Not now**: 
-  - Update `System/user-profile.yaml` → `screenpipe.prompted: true`
-  - Say: "No problem! Run `/screenpipe-setup` anytime if you change your mind."
-  - Ask again in 7 days (don't mark as permanent opt-out)
-  
-- **Never ask again**: 
-  - Update `System/user-profile.yaml` → `screenpipe.enabled: false`, `screenpipe.prompted: true`
-  - Update `System/usage_log.md` → ScreenPipe Consent: `opted-out`
-  - Remove this section from CLAUDE.md
+Beta feature. Check `check_beta_enabled(feature="screenpipe")` first. If enabled and not yet prompted, follow the consent flow in `.claude/reference/screenpipe-consent.md`.
 
 ### Skill Rating
 After `/daily-plan`, `/week-plan`, `/meeting-prep`, `/process-meetings`, `/week-review`, `/daily-review` complete, ask "Quick rating (1-5)?" If user responds with a number, call `capture_skill_rating`. If they ignore or move on, don't ask again.
@@ -610,7 +444,6 @@ Full skill: `/scrape`
 **Technical reference (read when needed):**
 - `.claude/reference/mcp-servers.md` — MCP server setup and integration
 - `.claude/reference/meeting-intel.md` — Meeting processing details
-- `.claude/reference/demo-mode.md` — Demo mode usage
 - `06-Resources/Dex_System/Memory_Ownership.md` — How memory layers work together
 - `06-Resources/Dex_System/Named_Sessions_Guide.md` — Named session conventions
 - `06-Resources/Dex_System/Background_Processing_Guide.md` — Background execution patterns

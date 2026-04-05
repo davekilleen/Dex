@@ -1,13 +1,8 @@
 ---
 name: setup
-description: Initial Dex system setup and onboarding
+description: Set up your personal knowledge system with a simple conversation
 model_hint: fast
 disable-model-invocation: true
----
-
----
-name: setup
-description: Set up your personal knowledge system with a simple conversation
 ---
 
 # Set Up Your Dex

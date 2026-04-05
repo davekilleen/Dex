@@ -47,13 +47,11 @@ SERVER_MODULES = {
     "career-mcp": "career_server.py",
     "granola-mcp": "granola_server.py",
     "dex-improvements-mcp": "dex_improvements_server.py",
-    "dex-analytics": "analytics_server.py",
     "onboarding-mcp": "onboarding_server.py",
     "resume-mcp": "resume_server.py",
     "beta-mcp": "beta_server.py",
     "update-checker": "update_checker.py",
     "commitment-mcp": "commitment_server.py",
-    "demo-mode-mcp": "demo_mode_server.py",
 }
 
 # Human-friendly names
@@ -63,13 +61,11 @@ SERVER_LABELS = {
     "career-mcp": "Career Tracker",
     "granola-mcp": "Granola (meetings)",
     "dex-improvements-mcp": "Improvements Backlog",
-    "dex-analytics": "Analytics",
     "onboarding-mcp": "Onboarding",
     "resume-mcp": "Resume Builder",
     "beta-mcp": "Beta Features",
     "update-checker": "Update Checker",
     "commitment-mcp": "Commitment Detection",
-    "demo-mode-mcp": "Demo Mode",
 }
 
 

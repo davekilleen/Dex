@@ -2,11 +2,6 @@
 #
 # This file stores your identity and preferences for personalized AI interactions.
 
-# Demo Mode
-# When true, commands read from System/Demo/ instead of real vault
-# Toggle with /demo on or /demo off
-demo_mode: false
-
 # Your name (used to identify you in meetings, filter yourself from participant lists)
 name: "Tara Livesey"
 

@@ -1,253 +1,71 @@
 #!/usr/bin/env node
 /**
- * PreToolUse hook: Inject person context when reading files with People/ references
- * 
- * When Claude reads a file containing references to people (by name or file path),
- * this hook looks up the referenced person pages and injects:
- * - Role & company
- * - Last interaction date
- * - Open action items
- * 
- * Detection methods:
- * - File paths containing People/
- * - Names matching files in People/Internal/ or People/External/
- * - Common name patterns in meeting notes
- * 
- * Triggered on Read tool
+ * PreToolUse hook: Inject person context when reading files with People/ references.
+ * Injects role, company, last interaction, and open action items.
  */
 const fs = require('fs');
 const path = require('path');
+const { skip, parseAndValidate, buildIndex, findReferences, outputContext } = require('./lib/context-base.cjs');
 
-const DEBUG_SKIP = process.env.DEX_HOOK_DEBUG === '1';
-function skip(reason) {
-  if (DEBUG_SKIP) {
-    console.error(`[dex-hook-skip] ${reason}`);
+const { content, paths, vaultRoot } = parseAndValidate({
+  recursionMarkers: ['/People/']
+});
+
+const PEOPLE_DIR = paths.PEOPLE_DIR || path.join(vaultRoot, '05-Areas', 'People');
+const personIndex = buildIndex(
+  ['Internal', 'External', 'CPO_Network'].map(d => path.join(PEOPLE_DIR, d))
+);
+
+if (Object.keys(personIndex).length === 0) skip('no-person-pages-indexed');
+
+const found = findReferences(content, personIndex, {
+  fileRefPattern: /People\/(?:Internal|External|CPO_Network)\/([A-Za-z0-9_-]+)(?:\.md)?/g,
+  contextKeywords: ['meeting', 'attendee', 'call with', 'met with'],
+  requireMultiWord: true
+});
+
+if (found.size === 0) skip('no-person-references-found');
+
+const bodyLines = [];
+for (const personFilePath of found) {
+  const info = parsePersonPage(personFilePath);
+  if (!info) continue;
+  bodyLines.push(`${info.name} - ${info.role || 'No role'} @ ${info.company || 'Unknown'}`);
+  if (info.lastInteraction) bodyLines.push(`  Last interaction: ${info.lastInteraction}`);
+  if (info.openItems.length > 0) {
+    bodyLines.push(`  Open items: ${info.openItems.length}`);
+    info.openItems.slice(0, 2).forEach(item => {
+      bodyLines.push(`    - ${item.substring(0, 60)}${item.length > 60 ? '...' : ''}`);
+    });
   }
-  process.exit(0);
 }
 
-// Read hook input from stdin
-let input;
-try {
-  input = JSON.parse(fs.readFileSync(0, 'utf-8'));
-} catch (e) {
-  skip('invalid-json-input');
-}
+outputContext('person_context', 'Referenced people:', bodyLines);
 
-const filePath = input.tool_input?.path || input.tool_input?.file_path || '';
-
-// Skip if no file path or if reading a Person page itself (avoid recursion)
-if (!filePath || filePath.includes('/People/')) {
-  skip('missing-file-path-or-recursive-person-file');
-}
-
-// Skip binary/non-text files (images, PDFs, archives, etc.)
-const ext = path.extname(filePath).toLowerCase();
-const skipExts = ['.png', '.jpg', '.jpeg', '.gif', '.bmp', '.webp', '.ico', '.svg', '.pdf', '.zip', '.tar', '.gz', '.mp3', '.mp4', '.mov', '.wav', '.pptx', '.xlsx', '.docx'];
-if (skipExts.includes(ext)) {
-  skip(`unsupported-extension:${ext}`);
-}
-
-const { loadPaths } = require('./paths.cjs');
-const _paths = loadPaths();
-const VAULT_ROOT = _paths.VAULT_ROOT || process.env.CLAUDE_PROJECT_DIR || process.env.VAULT_PATH || process.cwd();
-const PEOPLE_DIR = _paths.PEOPLE_DIR || path.join(VAULT_ROOT, '05-Areas', 'People');
-
-// Build an index of all person names to their files
-/**
- * Build a lookup index mapping normalised person names to their file paths.
- * Scans Internal/, External/, and CPO_Network/ subdirectories.
- * @returns {Record<string, string>} Map of lowercase name variants to absolute file paths
- */
-function buildPersonIndex() {
-  const index = {};
-  const subdirs = ['Internal', 'External', 'CPO_Network'];
-  
-  for (const subdir of subdirs) {
-    const dirPath = path.join(PEOPLE_DIR, subdir);
-    if (!fs.existsSync(dirPath)) continue;
-    
-    try {
-      const files = fs.readdirSync(dirPath);
-      for (const file of files) {
-        if (!file.endsWith('.md')) continue;
-        
-        const fileName = file.replace('.md', '');
-        // Create variations for matching
-        const normalizedName = fileName.toLowerCase();
-        const spacedName = fileName.replace(/_/g, ' ').toLowerCase();
-        
-        const filePath = path.join(dirPath, file);
-        index[normalizedName] = filePath;
-        index[spacedName] = filePath;
-      }
-    } catch (e) {
-      // Skip directories we can't read
-    }
-  }
-  
-  return index;
-}
-
-try {
-  // Resolve the full file path
-  const fullFilePath = filePath.startsWith('/') ? filePath : path.join(VAULT_ROOT, filePath);
-  
-  if (!fs.existsSync(fullFilePath)) {
-    skip(`target-file-not-found:${fullFilePath}`);
-  }
-  
-  // Read the file to find person references
-  const content = fs.readFileSync(fullFilePath, 'utf-8');
-  
-  // Build person index
-  const personIndex = buildPersonIndex();
-  const personNames = Object.keys(personIndex);
-  
-  if (personNames.length === 0) {
-    skip('no-person-pages-indexed');
-  }
-  
-  // Find referenced people in the content
-  const foundPeople = new Set();
-  
-  // Method 1: File path references (People/Internal/John_Doe.md or just People/Internal/John_Doe)
-  const fileRefPattern = /People\/(?:Internal|External|CPO_Network)\/([A-Za-z0-9_-]+)(?:\.md)?/g;
-  let match;
-  while ((match = fileRefPattern.exec(content)) !== null) {
-    const name = match[1].toLowerCase();
-    if (personIndex[name]) {
-      foundPeople.add(personIndex[name]);
-    }
-  }
-  
-  // Method 2: Direct name matches (only if content looks like meeting notes or has person context)
-  // Look for patterns like "met with John Doe" or "John Doe mentioned"
-  const contentLower = content.toLowerCase();
-  const isMeetingNotes = contentLower.includes('meeting') || 
-                         contentLower.includes('attendee') || 
-                         contentLower.includes('call with') ||
-                         contentLower.includes('met with');
-  
-  if (isMeetingNotes) {
-    for (const name of personNames) {
-      // Only match full names (with underscores or spaces)
-      if (name.includes(' ') || name.includes('_')) {
-        const spacedName = name.replace(/_/g, ' ');
-        if (contentLower.includes(spacedName)) {
-          foundPeople.add(personIndex[name]);
-        }
-      }
-    }
-  }
-  
-  // Only proceed if we found people
-  if (foundPeople.size === 0) {
-    skip('no-person-references-found');
-  }
-  
-  // Look up each person and build context
-  const personContexts = [];
-  
-  for (const personFilePath of foundPeople) {
-    const personInfo = parsePersonPage(personFilePath);
-    if (personInfo) {
-      personContexts.push(personInfo);
-    }
-  }
-  
-  // Only inject if we found relevant person pages
-  if (personContexts.length === 0) {
-    skip('person-context-parse-empty');
-  }
-  
-  // Build context (silent - no headers, just data)
-  const contextLines = [
-    '<person_context>',
-    'Referenced people:'
-  ];
-  
-  for (const person of personContexts) {
-    contextLines.push(`${person.name} - ${person.role || 'No role'} @ ${person.company || 'Unknown'}`);
-    if (person.lastInteraction) {
-      contextLines.push(`  Last interaction: ${person.lastInteraction}`);
-    }
-    if (person.openItems && person.openItems.length > 0) {
-      contextLines.push(`  Open items: ${person.openItems.length}`);
-      person.openItems.slice(0, 2).forEach(item => {
-        contextLines.push(`    - ${item.substring(0, 60)}${item.length > 60 ? '...' : ''}`);
-      });
-    }
-  }
-  
-  contextLines.push('</person_context>');
-  
-  // Output context
-  const output = {
-    continue: true,
-    hookSpecificOutput: {
-      hookEventName: "PreToolUse",
-      additionalContext: '\n' + contextLines.join('\n')
-    }
-  };
-  console.log(JSON.stringify(output));
-  
-} catch (e) {
-  skip(`unexpected-error:${e.message}`);
-}
-
-/**
- * Parse a person page and extract key info
- */
-/**
- * Parse a person page and extract key info for context injection.
- * @param {string} filePath - Absolute path to the person's markdown file
- * @returns {{ name: string, role: string|null, company: string|null, lastInteraction: string|null, openItems: string[] } | null}
- */
 function parsePersonPage(filePath) {
   try {
-    const content = fs.readFileSync(filePath, 'utf-8');
+    const raw = fs.readFileSync(filePath, 'utf-8');
     const fileName = path.basename(filePath, '.md');
-    
-    const info = {
-      name: fileName.replace(/_/g, ' '),
-      role: null,
-      company: null,
-      lastInteraction: null,
-      openItems: []
-    };
-    
-    // Parse YAML frontmatter
-    if (content.startsWith('---')) {
-      const endMatch = content.slice(3).indexOf('---');
-      if (endMatch !== -1) {
-        const frontmatter = content.slice(3, endMatch + 3);
-        
-        // Extract fields
-        const roleMatch = frontmatter.match(/role:\s*(.+)/);
-        if (roleMatch) info.role = roleMatch[1].trim();
-        
-        const companyMatch = frontmatter.match(/company:\s*(.+)/);
-        if (companyMatch) info.company = companyMatch[1].trim();
-        
-        const lastIntMatch = frontmatter.match(/last_interaction:\s*(.+)/);
-        if (lastIntMatch) info.lastInteraction = lastIntMatch[1].trim();
-        
-        // Get name from frontmatter if available
-        const nameMatch = frontmatter.match(/name:\s*(.+)/);
-        if (nameMatch) info.name = nameMatch[1].trim();
+    const info = { name: fileName.replace(/_/g, ' '), role: null, company: null, lastInteraction: null, openItems: [] };
+
+    if (raw.startsWith('---')) {
+      const endIdx = raw.slice(3).indexOf('---');
+      if (endIdx !== -1) {
+        const fm = raw.slice(3, endIdx + 3);
+        const get = (key) => { const m = fm.match(new RegExp(`${key}:\\s*(.+)`)); return m ? m[1].trim() : null; };
+        info.role = get('role');
+        info.company = get('company');
+        info.lastInteraction = get('last_interaction');
+        const nameVal = get('name');
+        if (nameVal) info.name = nameVal;
       }
     }
-    
-    // Extract open action items
-    const actionItemRegex = /^- \[ \] (.+)$/gm;
+
     let match;
-    while ((match = actionItemRegex.exec(content)) !== null) {
+    const re = /^- \[ \] (.+)$/gm;
+    while ((match = re.exec(raw)) !== null) {
       info.openItems.push(match[1].replace(/\*\*/g, '').trim());
     }
-    
     return info;
-  } catch (e) {
-    return null;
-  }
+  } catch (e) { return null; }
 }
