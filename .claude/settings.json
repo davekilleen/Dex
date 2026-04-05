@@ -55,6 +55,12 @@
           {
             "type": "command",
             "command": "afplay /System/Library/Sounds/Ping.aiff"
+          },
+          {
+            "type": "command",
+            "command": "cd \"$CLAUDE_PROJECT_DIR\" && git add . && git diff --cached --quiet || git commit -m \"vault: auto-sync $(date +%Y-%m-%d\\ %H:%M)\" && git push origin main 2>/dev/null || true",
+            "timeout": 30,
+            "async": true
           }
         ]
       }
