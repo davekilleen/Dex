@@ -65,15 +65,26 @@ First paid PE firm pilots land and convert. Mantera engaged via lagniappe approa
 ### 4. Complete Brewhouse Triathlon — short course, August 2, Duluth — **family** ^Q2-2026-goal-4
 
 **What success looks like:**
-Cross the finish line at Island Lake feeling strong. 17-week training plan (Apr 6 - Aug 2) executed consistently. Q2 covers Phases 1-3 (Foundation through Race-Specific). Target finish: 1:30-1:55.
+Cross the finish line at Island Lake feeling strong. 17-week training plan (Apr 6 - Aug 2) executed consistently. Q2 covers Phases 1-3 (Foundation through Race-Specific). Target finish: 1:35-2:00. Achilles healthy throughout.
 
 **Key milestones:**
-- [ ] Phase 1 complete (Weeks 1-3, Apr 6-26) — base built, swim technique established
-- [ ] Phase 2 complete (Weeks 4-7, Apr 27 - May 24) — 400m swim without stopping, 30 min continuous run, first bricks
-- [ ] Phase 3 complete (Weeks 8-13, May 25 - Jul 5) — open water swimming, race-distance rehearsals, full race sim July 4
-- [ ] 4 sessions/week minimum maintained (no more than 1 missed week per phase)
+- [ ] Phase 1 complete (Weeks 1-3, Apr 6-26) — swim technique, S&S at 16kg, Essentia habit (Tue+Sat)
+- [ ] Phase 2 complete (Weeks 4-7, Apr 27 - May 24) — 400m swim continuous, S&S swings to 20kg, bike volume up
+- [ ] Phase 3 complete (Weeks 8-13, May 25 - Jul 5) — OWS at Island Lake, running begins Week 10 (Achilles gate), full race sim July 4
+- [ ] 5-6 sessions/week maintained (S&S morning + tri sessions, no more than 1 missed week per phase)
 
-**Training structure:** Tue swim, Wed bike, Thu run, Sat brick. Mon/Fri/Sun rest or optional.
+**Training structure (revised v2 — Achilles recovery focus):**
+- **Mon:** REST (dog walk only)
+- **Tue:** S&S morning → ESSENTIA (Peloton bike + pool swim back-to-back)
+- **Wed:** S&S morning → HOME (12-3-30 incline walk, outdoor bike starting Phase 3)
+- **Thu:** S&S morning → HOME (12-3-30 incline walk, running starts Week 10)
+- **Fri:** Optional S&S → REST or OWS (Phase 3+)
+- **Sat:** S&S morning → ESSENTIA (Peloton + swim) or outdoor brick (Phase 3+)
+- **Sun:** Optional S&S → REST or incline walk
+
+**No running until Week 10 (June 8).** Achilles must be pain-free for 2+ weeks first.
+**S&S kettlebells:** 100 swings + 10 TGUs, 4-5 mornings/week. Weight progression: 16kg → 20kg → 24kg.
+**Plan saved at:** `06-Resources/brewhouse-training-plan-v2.docx`
 
 **Progress:** 0% 🔴
 
@@ -104,7 +115,7 @@ Cross the finish line at Island Lake feeling strong. 17-week training plan (Apr 
 - Comp: Q2 $12K/mo, Q3 $15K/mo, Q4 $18K/mo + 25% variable + equity + insurance
 - Q1 lesson: planning helps presence, but boundaries need enforcement mechanisms
 - Q1 surprise: revenue came from relationships and content, not cold outreach — protect the flywheel
-- Brewhouse training plan saved at `/Users/regishadiaris/Downloads/brewhouse-training-plan.docx`
+- Brewhouse training plan (v2, Achilles recovery) saved at `06-Resources/brewhouse-training-plan-v2.docx`
 
 ---
 

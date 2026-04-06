@@ -38,7 +38,7 @@ Your task backlog organized by priority.
 
 - [ ] **Send Mantera brief to Wisory leadership team** — Due Monday Apr 7 #wisory_product ^task-20260405-014
 - [x] **Confirm Anne-Marie meeting** — Rescheduled by Anne-Marie, removed from cal #wisory_product ^task-20260405-003 ✅ 2026-04-05
-- [ ] **Review shares agreement from Jason** — Equity docs review #wisory_product ^task-20260405-004
+- [ ] **Review shares agreement from Jason — received, needs review and signature** #wisory_product ^task-20260405-004
 - [ ] **Send transcript and thoughts from Wes meeting to Jason** — Investor strategy debrief #wisory_product ^task-20260405-005
 - [ ] **Setup counseling appointment** — See email for details #family ^task-20260405-006
 - [ ] **File provisional patent for Dot Connector AI — draft invention disclosure covering orchestration engine, contract enforcement, anti-truncation, schema validation, and adaptive learning loop** — See `04-Projects/Dot_Connector_AI_Patent.md` for full analysis and next steps #thought_leadership ^task-20260325-001
