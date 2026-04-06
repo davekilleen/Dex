@@ -1,174 +1,184 @@
 # Week Priorities
 
-**Week of:** 2026-03-23 (Triathlon Week 1 of 19)
+**Week of:** 2026-04-06 (Triathlon Phase 1 — Week 1 of 17)
+
+---
+
+## 📊 Week Shape
+
+| Day | Type | Deep Work? | Notes |
+|-----|------|------------|-------|
+| Mon | REST day | ✅ | Deep work 9-12. No meetings. Training REST day. |
+| Tue | Essentia day | ✅ | Deep work 9-12. S&S morning. Peloton + swim at Essentia. |
+| Wed | Interview + S&S | ⚠️ | Barr interview 8-9am. Deep work 9-12 (post-interview). S&S morning. 12-3-30 walk. |
+| Thu | Wisory + S&S | ⚠️ | Wisory Team Check-In 10-11am. S&S morning. 12-3-30 walk. Leadership & Culture 2:30pm. |
+| Fri | Open | ✅ | Deep work 9-12. Optional S&S. Wide open for wrap-up. |
+| Sat | Essentia day | — | S&S morning. Peloton + swim at Essentia. Sara Mart's birthday. |
+| Sun | REST | — | Optional S&S or walk. |
+
+**Deep work capacity:** ~12 hours this week (Mon/Tue/Wed post-interview/Fri)
+**Best days for focus:** Monday and Tuesday (no meetings at all)
+**Key constraint:** Barr interview Wed 8am, Wisory check-in Thu 10am
+
+---
+
+## 🎯 Quarterly Goals Context
+
+| Goal | Progress | Status |
+|------|----------|--------|
+| Q2-1: Be less intense, more present (family) | 0% | Week 1 — establishing rhythms |
+| Q2-2: Drive Wisory to $250K Q2 revenue | 0% | Mantera brief due Mon, revenue plan needed |
+| Q2-3: Publish Substack weekly | 0% | First Q2 publish needed this week |
+| Q2-4: Complete Brewhouse Triathlon (Aug 2) | 0% | Phase 1 Week 1 starts today |
+
+**This week advances:** All 4 goals
 
 ---
 
 ## 🎯 Top 4 This Week
 
-1. **Family — Be calm, healthy, present** *(Goal #1: family)*
-   - Kerry's shoulder recovery continues — carry logistics
-   - Kids in All Cast rehearsal every day (show approaching)
-   - Tennis season starts Monday
-   - Sammy haircut Wed 6:30pm
-   - Marshall College Survey deadline Thursday
-   - Phil's birthday + Abe Freye's birthday Tuesday
-   - Mom eye dr Wed 1:15pm, Mom curling Wed + Thu evenings
+1. **Publish Substack article** — **Thought Leadership** ^week-2026-W15-p1
+   - Success criteria: Article published on Dot Connector Dispatch, maintaining weekly cadence
+   - Quarterly goal: Q2-3 (Substack weekly — first of 13)
+   - **Scheduled:** Monday or Tuesday deep work block
+   - Effort: deep_work (2-3 hours writing + editing)
 
-2. **Nail the Experian HM interview (Thu 9:30am)** *(Goal #2: job_search)*
-   - Research Susan Allen (CPO, Housing), Michelle (President, Housing), Experian housing unit strategy
-   - Prep Mon + Tue deep work blocks — be ready before Thursday
-   - $300K total comp confirmed in range
+2. **Mantera brief + Wisory revenue plan** — **Product Leadership** ^week-2026-W15-p2
+   - Success criteria: Mantera brief sent to Wisory leadership (due Mon). Revenue plan discussion initiated with Jason.
+   - Quarterly goal: Q2-2 ($250K Q2 revenue)
+   - **Scheduled:** Mantera brief Monday AM. Revenue plan conversation Tue/Wed.
+   - Effort: deep_work (brief is P1, revenue plan is medium)
 
-3. **Advance Wisory — GTM strategy + roadmap alignment** *(Goal #3: wisory_product)*
-   - Mon 9am: IntelliQ / Twin convo (Wisory)
-   - Tue 2pm: GTM Strategy with Maeve + Fred
-   - Tue 3pm: Harriette + Regis Connect (Wisory)
-   - Tue 3:30pm: Leo re: Roadmaps/Onboarding
-   - Review PE sector report from James (task-20260312-001)
+3. **Nail Barr Engineering interview (Wed 8am)** — **Career Transition** ^week-2026-W15-p3
+   - Success criteria: Strong phone interview with Michelle Schlegel (HR) and Phil Fish (VP, Senior Chemical Engineer). Clear articulation of AI consulting value for engineering firm.
+   - Quarterly goal: Carried from Q1 — complete process, evaluate as optionality
+   - **Scheduled:** Wednesday 8:00-9:00am CT. Prep Tuesday evening.
+   - Effort: medium (1-2 hours prep + 1 hour interview)
+   - Call-in: (833) 450-1894, Conference ID: 768 207 576#
 
-4. **Finish 2025 tax returns** *(Goal #1: family)*
-   - Nearly done — finding extra deductions
-   - April 15 deadline (3 weeks out)
-
----
-
-## 🏋️ Triathlon Training — Week 1 (Foundation)
-
-| Day | Workout | Details |
-|-----|---------|---------|
-| **Mon** | REST | — |
-| **Tue** | Pool Swim | 500m at Essentia. Drill focus: catch-up, fingertip drag, side-kick. 10 x 50m w/ 20 sec rest. |
-| **Wed** | Peloton | 30 min "Just Ride." Cadence 80-90 RPM. Note baseline output. |
-| **Thu** | Easy Run | 20 min. 3 min run / 1 min walk. Afternoon (interview is morning). |
-| **Fri** | REST | — |
-| **Sat** | Longer Swim | 25 min at Essentia. Easy pace. Practice breathing rhythm. |
-| **Sun** | REST or walk | — |
+4. **Start triathlon Phase 1 Week 1** — **Family** ^week-2026-W15-p4
+   - Success criteria: Complete 4-5 S&S sessions + Tue Essentia (Peloton + swim) + Wed/Thu 12-3-30 walks + Sat Essentia (Peloton + swim)
+   - Quarterly goal: Q2-4 (Brewhouse Triathlon Aug 2)
+   - **Scheduled:** Daily S&S mornings, Tue + Sat at Essentia, Wed + Thu incline walks
+   - Effort: distributed (30-60 min/day)
 
 ---
 
-## 🍽️ Meal Plan
+## 🏋️ Triathlon Training — Phase 1, Week 1 (Foundation)
 
-| Night | Plan | Notes |
-|-------|------|-------|
-| **Mon** | Cook #1 — TBD | Full deep work morning, Playhouse Props at 1pm |
-| **Tue** | Leftovers | Meetings 2-4pm, Phil's birthday |
-| **Wed** | Cook #2 — TBD | Mom at eye dr, Sammy haircut 6:30, Mom curling 6-8pm |
-| **Thu** | Leftovers or Cook #3 | Experian interview morning, Mom curling evening |
-| **Fri** | Cook #3 or takeout | Garbage day, open evening |
-| **Sat** | Leftovers | Training swim morning |
-| **Sun** | Leftovers or light | REST day |
+| Day | S&S Morning | Tri Session | Details |
+|-----|-------------|-------------|---------|
+| **Mon** | Optional | REST | Dog walk only |
+| **Tue** | S&S (16kg) | ESSENTIA: Peloton + Pool Swim | 30 min bike (cadence 80-90 RPM) + 500m swim (drill focus: catch-up, fingertip drag, side-kick) |
+| **Wed** | S&S (16kg) | HOME: 12-3-30 incline walk | Treadmill. After Barr interview + deep work. |
+| **Thu** | S&S (16kg) | HOME: 12-3-30 incline walk | After Wisory check-in. |
+| **Fri** | Optional S&S | REST | — |
+| **Sat** | S&S (16kg) | ESSENTIA: Peloton + Pool Swim | 25 min swim easy pace. Practice breathing rhythm. |
+| **Sun** | Optional S&S | REST or walk | — |
 
-*Grocery list + recipes to be finalized Monday morning during /daily-plan*
+**S&S target:** 100 swings + 10 TGUs at 16kg, 4-5 mornings this week
+**No running until Week 10 (June 8)** — Achilles recovery protocol
 
 ---
 
-## 📋 Tasks
+## ⚡ Commitments Due This Week
 
-### Must Complete
-- [ ] Experian HM interview prep — research Susan Allen, Michelle, housing strategy ^task-wp-001
-- [ ] Finish 2025 tax returns ^task-wp-002
-- [ ] Complete triathlon Week 1 training (Tue/Wed/Thu/Sat) ^task-wp-003
+- [ ] Send Mantera brief to Wisory leadership — due Monday ^task-20260405-014
+- [ ] Send transcript and thoughts from Wes meeting to Jason — investor debrief ^task-20260405-005
+- [ ] Review shares agreement from Jason — received, needs review ^task-20260405-004
 
-### Should Complete
-- [ ] Review PE sector report from James ^task-wp-004
-- [ ] Wisory diagnostic scoring of public-facing materials ^task-wp-005
-- [ ] Design phased engineering plan (v1.5 → full LangChain) ^task-wp-006
+---
 
-### If Time Permits
-- [ ] Review Fog Line agreement (blocked on Jim's response) ^task-wp-007
-- [ ] Publish Substack article (maintain weekly cadence) ^task-wp-008
+## 📋 Tasks by Priority
+
+### Must Complete (P0)
+- [ ] Publish Substack article — Supports: Priority #1 — **Mon/Tue**
+- [ ] Send Mantera brief to leadership — Supports: Priority #2 — **Mon** ^task-20260405-014
+- [ ] Barr interview prep (research Michelle Schlegel, Phil Fish, AI consulting positioning) — Supports: Priority #3 — **Tue PM**
+- [ ] Pick up scripts at Walgreens — **Mon** ^task-20260405-001
+- [ ] Buy apple juice and groceries at Super One — **Mon** ^task-20260405-002
+
+### Should Complete (P1)
+- [ ] Send Wes transcript/thoughts to Jason — **Mon/Tue** ^task-20260405-005
+- [ ] Review shares agreement from Jason — **Tue/Wed** ^task-20260405-004
+- [ ] Setup counseling appointment — **Tue** ^task-20260405-006
+- [ ] Complete Ella's college survey review — **Mon** ^task-20260403-001
+- [ ] Polish first-principles breakdown and send to Jason W and Jason Whitney — **Wed/Thu** ^task-20260327-001
+
+### If Time Permits (P2)
+- [ ] Review research article plan ^task-20260405-015
+- [ ] Set up meeting with Leo (Conrad follow-up) ^task-20260405-007
+- [ ] Rerun brand framework based on team feedback ^task-20260405-008
+- [ ] Determine business expenses in AMEX, pay out of Found ^task-20260405-009
+- [ ] Pay balance of AMEX out of North Shore bank ^task-20260405-010
+- [ ] Share triathlon plan with Dex, integrate into Google Calendar ^task-20260405-011
+- [ ] Add Wisory Score Claude skill ^task-20260405-012
+- [ ] Set up call with Beth Brockland ^task-20260405-013
 
 ---
 
 ## 📅 Key Meetings & Events
 
-| Day | Time | Event | Type |
-|-----|------|-------|------|
-| **Mon** | 8-11am | Deep Work | Work |
-| **Mon** | 9-10am | IntelliQ / Twin convo (Wisory) | Product |
-| **Mon** | 1-2pm | Playhouse Props (family) | Family |
-| **Mon** | 3:15-6pm | All cast rehearsal | Kids |
-| **Mon** | 5:30-6:30pm | Piano | Kids |
-| **Mon** | 8-9pm | Ella Dance | Kids |
-| **Tue** | 8-11am | Deep Work | Work |
-| **Tue** | 2-3pm | GTM Strategy — Maeve + Fred | Product |
-| **Tue** | 3pm | Harriette + Regis Connect (Wisory) | Product |
-| **Tue** | 3:30-4pm | Leo re: Roadmaps/Onboarding | Product |
-| **Tue** | All day | Phil's Birthday, Abe Freye's Birthday | Personal |
-| **Wed** | 8-11am | Deep Work | Work |
-| **Wed** | 1:15pm | Mom at Eye Dr | Family |
-| **Wed** | 3:15-6pm | All cast rehearsal | Kids |
-| **Wed** | 6-8pm | Mom curling | Family |
-| **Wed** | 6:30pm | Sammy haircut | Family |
-| **Thu** | **9:30-11:30am** | **Experian Interview Block** | **Job search** |
-| **Thu** | 3:15-6pm | All cast rehearsal | Kids |
-| **Thu** | 6-8pm | Mom curling | Family |
-| **Thu** | All day | Marshall College Survey deadline | Family |
-| **Fri** | 8-11am | Deep Work (wide open) | Work |
-| **Fri** | 7am | Garbage (no recycling) | Home |
-| **Fri** | 3:25-6pm | All cast rehearsal | Kids |
+| Day | Time | Event | Prep Needed | Related Priority |
+|-----|------|---------|-------------|------------------|
+| Sun | All day | Amelia Linde's birthday | Send wishes | — |
+| Wed | 8:00-9:00am | **Barr Engineering Phone Interview** | Research interviewers, AI consulting story | Priority #3 |
+| Thu | 10:00-11:00am | Wisory Team Check-In (Maeve + team) | Status update, Mantera brief follow-up | Priority #2 |
+| Thu | 2:30-3:00pm | Leadership & Culture (Wisory) | — | Priority #2 |
+| Sat | All day | Sara Mart's birthday | Send wishes | — |
 
 ---
 
-## 📊 Pillar Check
+## 📊 Pillar Balance
 
 | Pillar | This Week | Balance |
 |--------|-----------|---------|
-| Family | Kerry support, kids' rehearsals, meal planning, taxes, triathlon training | ✅ Heavy |
-| Product Leadership | 4 Wisory meetings Tue, IntelliQ Mon, PE report review | ✅ Heavy |
-| Career Transition | Experian HM interview Thursday | 🟡 Focused |
-| Thought Leadership | Substack if time permits | 🔴 Light |
+| Family | Triathlon Phase 1 start, counseling setup, Ella survey, presence | 🟩 Good |
+| Product Leadership (Wisory) | Mantera brief, revenue plan, team check-in, shares review | 🟩 Good |
+| Career Transition | Barr interview Wednesday | 🟨 Focused |
+| Thought Leadership | Substack publish (first Q2 article) | 🟩 Good |
+
+**Balance assessment:** All 4 pillars active this week. Q2 starts strong with every goal getting movement.
+
+---
+
+## 🔄 Carried Over
+
+- [ ] Substack article — carried from last 2 weeks, now Priority #1
+- [ ] First-principles breakdown for Jason W / Jason Whitney ^task-20260327-001
+- [ ] LangGraph technical discussion with Terry ^task-20260325-005
+- [ ] Dot Connector AI provisional patent ^task-20260325-001
 
 ---
 
 ## 📝 Notes
 
-- Week 1 of triathlon training — don't overdo it, build the habit
-- Experian: Kwasi presented candidacy Friday. HM interview is with Susan Allen's team.
-- Wisory equity at 2.5%, bridge round ($400-500K) outreach in motion
-- Blocked items: Jason (share agreement), Jim Black (Fog Line), Scott (Veritonic), Dan (Conrad materials), Don (HubSpot demo)
-- Barr Engineering: Marcy following up this week on AI Consultant role
-- Conrad 30-day engagement active — diagnostic + persona framework delivered
+- Q2 Week 1 — set the tone. All 4 quarterly goals need first activity this week.
+- Wisory comp: $12K/mo Q2 consultant rate. Shares agreement received, needs review.
+- Barr interview: AI Consultant, Senior Level (Hybrid/Remote). Interviewers are Michelle Schlegel (HR) and Phil Fish (VP, Senior Chemical Engineer).
+- Triathlon: Phase 1 is Foundation. 16kg kettlebells, pool swim technique, Peloton bike, incline walks. No running until Week 10.
+- Blocked items aging: Jim Black (Fog Line), Scott (Veritonic), Don (HubSpot demo)
+- Notify Marcy at Barr if other timelines change (~30 day window on verbals)
 
 ---
 
 ## 🏁 End of Week Review
 
+*Fill in on Friday*
+
 ### Completed
-- Wisory Score methodology shared with Sean
-- Now/Near/Far roadmap built and circulated
-- Digital Twin transcript digest + score recommendations circulated
-- GTM Strategy meeting — PE firms as primary target, Dot Connector demo'd
-- Harriette 1:1 — Intel IQ / Shopify integration mapped
-- Leo 1:1 — Conrad April roadmap locked
-- Jason strategy meetings x2 — comp finalized, Mantera strategy, title discussion
-- Leo 1:1 synthesis emailed to Leo, shared with Adam/Dan
-- Insurance info sent to Jason
-- Ella's Marshall College Survey completed
-- 66 Dot Connector vectors segmented on GitHub
-- Dot Connector AI Patent project created
-- Experian HM interview prep doc built (Ryan Rosales)
+-
 
 ### Didn't Finish
-- Triathlon Week 1 training (swim/bike/run sessions)
-- 2025 tax returns
-- GTM frameworks 1-5 update (waiting on Fred/Maeve feedback)
-- Harriette docs + Intel IQ into Dot Connector
-- Multi-year revenue projections
-- Fred's comments review
-- Diagnostic scoring of public-facing materials
-- Phased engineering plan
-- Substack article
+-
 
 ### Learnings
-- Meeting-heavy weeks (6 meetings) generate tasks faster than they're completed (9 added, 6 done)
-- Wisory is functionally a full-time role now — adjust planning accordingly
-- Experian prep keeps getting deferred by Wisory urgency — need to protect interview prep time
-- 5 blocked items aging (oldest: Mar 10) — need a dedicated nudge round
+-
 
 ### Next Week Focus
-1. Nail Experian interview (Apr 2, 9:30am with Ryan Rosales)
-2. Clear Wisory execution backlog (GTM frameworks, first-principles doc, April invoice)
-3. Finish 2025 tax returns (15 days to deadline)
-4. Publish Substack (maintain cadence)
+-
+
+---
+
+*Generated: 2026-04-06*
+*Command: /week-plan*
