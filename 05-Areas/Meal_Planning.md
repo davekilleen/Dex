@@ -90,6 +90,90 @@ Plan dinners during `/week-plan` on Monday mornings:
 ### Sunday (Mar 22) — LEFTOVERS
 - Regis curling 3-9pm — eat before or have leftovers ready
 
+---
+
+## Week of April 7-13, 2026
+
+**Context:** Spring break just ended. Kids back in school. Evenings mostly open. Ella at dance Monday 8-9pm (grocery run). Triathlon training started — Reg needs protein-heavy, anti-inflammatory meals.
+
+### Monday (Apr 7) — BIG COOK #1
+**Chicken Stir-Fry + Rice (dairy-free)** (8-10 servings)
+- 3 lbs chicken breast, sliced thin
+- Broccoli, bell peppers, snap peas, carrots — cut big
+- Sauce: soy sauce, garlic, ginger, sesame oil, rice vinegar, cornstarch slurry
+- 3 cups rice on stovetop (2:3 ratio, boil, lid, low 18 min)
+- Cook after Wisory meeting wraps (~3pm). Grocery run during Ella's dance (8-9pm)
+
+→ Covers **Monday + Tuesday**
+
+### Tuesday (Apr 7) — LEFTOVERS
+**Stir-fry round 2** — family self-serves
+- Reg at Essentia morning (Peloton + swim), needs good fuel
+
+### Wednesday (Apr 9) — BIG COOK #2
+**Sheet Pan Italian Sausage + Roasted Veggies + Rice** (8-10 servings)
+- 2 lbs Italian sausage (dairy-free check label), sliced
+- Zucchini, red onion, cherry tomatoes, bell peppers — olive oil, Italian seasoning
+- Oven 425°F, 25-30 min
+- 3 cups rice
+- Leadership & Culture at 2:30pm — cook after
+
+→ Covers **Wednesday + Thursday**
+
+### Thursday (Apr 10) — LEFTOVERS
+**Sausage + veggies round 2**
+- Wisory Team Check-In 10-11am, rest of day open
+
+### Friday (Apr 11) — BIG COOK #3
+**Beef Tacos (big batch)** (8-10 servings)
+- 2 lbs ground beef with taco seasoning
+- Tortillas, lettuce, salsa, pickled jalapeños, hot sauce
+- Black beans, rice on the side
+- Reg at Essentia morning (Peloton + swim), cook afternoon
+
+→ Covers **Friday + Saturday**
+
+### Saturday (Apr 12) — LEFTOVERS
+**Taco round 2** or build-your-own bowls with leftover taco meat + rice + beans
+
+### Sunday (Apr 13) — FLEX
+- Leftovers, takeout, or light cook
+- Meal plan for next week during Sunday evening wind-down
+
+### Grocery List (Monday — during Ella's dance 8-9pm)
+
+**Super One:**
+- 3 lbs chicken breast
+- 2 lbs Italian sausage (check: dairy-free)
+- 2 lbs ground beef
+- Taco seasoning
+- Salsa
+- Pickled jalapeños
+- Black beans (2 cans)
+- Tortillas
+- Soy sauce (if low)
+- Rice vinegar
+- Cornstarch
+
+**Whole Foods Coop:**
+- Broccoli (2 heads)
+- Bell peppers (4-5, mixed colors)
+- Snap peas
+- Carrots
+- Zucchini (2-3)
+- Red onion (2)
+- Cherry tomatoes (2 pints)
+- Garlic
+- Fresh ginger
+- Lettuce
+
+**Costco (if going this week):**
+- Rice (if low)
+- Olive oil (if low)
+- Ground beef bulk (can cover 2 weeks)
+
+---
+
 ### Grocery List (Tonight — Monday)
 
 **Costco (if going this week):**
