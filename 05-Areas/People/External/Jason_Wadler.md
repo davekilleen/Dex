@@ -23,6 +23,7 @@
 - [Regis and Jason Quick Sync](00-Inbox/Meetings/2026-03-31%20-%20Regis%20and%20Jason%20Quick%20Sync.md) — 2026-03-31
 - [Review Banker Preso — Jason and Jason](00-Inbox/Meetings/2026-04-02%20-%20Review%20Banker%20Preso%20-%20Jason%20and%20Jason.md) — 2026-04-02
 - [Wisory Team Check-In](00-Inbox/Meetings/2026-04-02%20-%20Wisory%20Team%20Check-In.md) — 2026-04-02
+- [AI-Powered Investment Strategy](00-Inbox/Meetings/2026-04-03%20-%20AI-Powered%20Investment%20Strategy.md) — 2026-04-03
 
 ## Notes
 
@@ -60,5 +61,6 @@
 - **Mantera priority target:** Most active PE firm in country (~100 acquisitions/year). Intel IQ analysis to run on Mantera first, then Sauces & Condiments for Matt Matosian
 - **IU Ventures:** $100K investment likely April. President enthusiastic, navigating internal approval
 - **April Chicago trip:** Regis, Fred, Jason planned. Summer outing at Ravinia
+- **Wes Lund advisory session (Apr 3):** Presented investor deck to Wes (tech M&A banker). Key feedback: pursue $15M strategic raise (not $3-5M bridge), target "20 and 20" profile, curate 10-15 investors max. Wes to provide 5-10 investor names in 2-3 weeks. Must ensure NDA positioning as advisory service provider, not tech platform.
 
 *Auto-created from meetings on 2026-03-11*

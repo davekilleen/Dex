@@ -16,6 +16,7 @@
 - [[05-Areas/People/External/Harriette_Murtland|Harriette Murtland]] — Team
 - [[05-Areas/People/External/Jason_Whitney|Jason Whitney]] — Team
 - [[05-Areas/People/External/Maeve_Levy|Maeve Levy]] — Marketing
+- [[05-Areas/People/External/Wes_Lund|Wes Lund]] — External Advisor (Tech M&A)
 
 ## Meeting History
 
@@ -34,6 +35,7 @@
 - [Regis and Jason Quick Sync](00-Inbox/Meetings/2026-03-31%20-%20Regis%20and%20Jason%20Quick%20Sync.md) — 2026-03-31
 - [Review Banker Preso — Jason and Jason](00-Inbox/Meetings/2026-04-02%20-%20Review%20Banker%20Preso%20-%20Jason%20and%20Jason.md) — 2026-04-02
 - [Wisory Team Check-In](00-Inbox/Meetings/2026-04-02%20-%20Wisory%20Team%20Check-In.md) — 2026-04-02
+- [AI-Powered Investment Strategy](00-Inbox/Meetings/2026-04-03%20-%20AI-Powered%20Investment%20Strategy.md) — 2026-04-03
 
 ## Notes
 
@@ -57,5 +59,7 @@
 - **Mantera (Mar 27):** Priority target — most active PE firm (~100 acq/year). Intel IQ analysis first, then Sauces & Condiments for Matt Matosian
 - **IU Ventures (Mar 27):** $100K investment likely April. President enthusiastic, navigating internal approval
 - **Regis formalization (Mar 27):** Consultant invoice April, employee May/June. Title TBD (leaning Head of AI and Innovation). ADP/health insurance in progress
+- **Wes Lund advisory session (Apr 3):** Tech M&A banker reviewed investor deck. Recommends $15M strategic raise with curated 10-15 investors. Target "20 and 20" (20% growth, 20% margin). Wes providing 5-10 investor names. Blackstone small fund and Social Capital floated as targets. NDA positioning flagged — must be advisory service provider.
+- **Fundraising strategy refined (Apr 3):** Shift from bridge ($3-5M) to full strategic raise ($15M). Competitive process, non-commoditized capital. Stealth + speed = top priority. 2-year inflection expected if advisor network scales.
 
 *Auto-created from meetings on 2026-03-11*
