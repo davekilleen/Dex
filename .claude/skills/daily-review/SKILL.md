@@ -36,6 +36,16 @@ find . -type f -name "*.md" -newermt "$TODAY 00:00:00" ! -newermt "$TODAY 23:59:
 
 ---
 
+## Step 1.5: Process Today's Meetings
+
+Before gathering context, ensure today's meetings are in the vault by running `/process-meetings today`. This pulls any unprocessed meetings from the meeting source (Otter.ai, Granola, etc.), creates meeting notes, updates person/company pages, and extracts tasks — so the rest of the review has complete data.
+
+- If no new meetings are found, continue silently
+- If meetings are processed, note the count for the review summary
+- Do NOT ask for a skill rating after this sub-step — save that for the end of the full review
+
+---
+
 ## Step 2: Gather Context
 
 ### From 03-Tasks/Tasks.md
@@ -48,7 +58,7 @@ Read `02-Week_Priorities/Week_Priorities.md` for:
 - How today's work connects to weekly priorities
 
 ### From Recent Meetings
-Check `00-Inbox/Meetings/` for meeting notes from today.
+Check `00-Inbox/Meetings/` for meeting notes from today (should now include anything just pulled from the meeting source).
 
 ### From ScreenPipe (If Running)
 
@@ -187,6 +197,25 @@ Use: process_commitment(commitment_id="comm-XXXXXX-XXX", action="dismiss")
 - Merge insights into the Plan vs. Reality section: "Task X also advanced Goal Y (semantic match)"
 - Add to the Weekly Priorities Progress section if semantic search reveals hidden progress
 - If QMD is not available, skip this step silently — the review works fine without it
+
+---
+
+## Step 2.55: Dex Inbox Check (Phone Captures)
+
+Check for tasks added from phone during the day that weren't triaged in the morning plan:
+
+```
+Use: reminders_list_items(list_name="Dex Inbox")
+```
+
+If items found:
+- Surface them: "📱 **Phone captures not yet triaged** (X items in Dex Inbox)"
+- Run the same triage flow as daily-plan Step 5.10a: infer pillar, confirm with user, create task, mark Reminder complete
+- If user wants to defer: leave in Dex Inbox for tomorrow's daily-plan
+
+**If empty:** Skip silently.
+
+**Setup:** If the user hasn't created a "Dex Inbox" Reminders list yet, mention it: "You can capture tasks from your phone by adding them to a 'Dex Inbox' list in Apple Reminders. They'll show up here automatically."
 
 ---
 
@@ -561,9 +590,10 @@ Add one line at the end of the review output:
 
 | Integration | MCP Server | Tools Used |
 |-------------|------------|------------|
+| Meetings | Meeting source MCP (via `/process-meetings today`) | Fetches and processes unprocessed meetings |
 | Work | dex-work-mcp | `list_tasks`, `get_week_progress`, `get_commitments_due`, `analyze_calendar_capacity` |
 | Calendar | dex-calendar-mcp | `calendar_get_today` |
-| Reminders | dex-calendar-mcp | `reminders_list_completed`, `reminders_find_and_complete`, `reminders_clear_completed` |
+| Reminders | dex-calendar-mcp | `reminders_list_completed`, `reminders_find_and_complete`, `reminders_clear_completed`, `reminders_list_items` |
 | Screen Activity | screenpipe-mcp | `screenpipe_time_audit`, `screenpipe_summarize`, `screenpipe_query` |
 
 ### ScreenPipe Integration Notes
