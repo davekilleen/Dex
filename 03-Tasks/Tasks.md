@@ -26,6 +26,8 @@ Your task backlog organized by priority.
 
 ## P0 - Urgent (max 3)
 
+- [ ] **Pick up scripts at Walgreens** #family ^task-20260405-001
+- [ ] **Buy apple juice and groceries at Super One** #family ^task-20260405-002
 - [x] **Return call from Abby at Barr Engineering to schedule next Tuesday interview** #job_search ^task-20260328-003 ✅ 2026-03-31
 - [x] **Drop off return at Dick's Sporting Goods** #family ^task-20260328-001 ✅ 2026-03-31
 - [x] **Buy dog food** #family ^task-20260328-002 ✅ 2026-03-31
@@ -34,8 +36,11 @@ Your task backlog organized by priority.
 
 ## P1 - Important (max 5)
 
+- [ ] **Confirm Anne-Marie meeting** — Schedule follow-up session #wisory_product ^task-20260405-003
+- [ ] **Review shares agreement from Jason** — Equity docs review #wisory_product ^task-20260405-004
+- [ ] **Send transcript and thoughts from Wes meeting to Jason** — Investor strategy debrief #wisory_product ^task-20260405-005
+- [ ] **Setup counseling appointment** — See email for details #family ^task-20260405-006
 - [ ] **File provisional patent for Dot Connector AI — draft invention disclosure covering orchestration engine, contract enforcement, anti-truncation, schema validation, and adaptive learning loop** — See `04-Projects/Dot_Connector_AI_Patent.md` for full analysis and next steps #thought_leadership ^task-20260325-001
-- [b] **Review Wisory share agreement and send feedback to Jason Wadler** — Feedback sent, waiting on Jason's response #wisory_product ^task-20260319-001
 - [b] **Review Fog Line Advisors agreement and NDA and send feedback to Jim Black** — Feedback sent, waiting on Jim's response #job_search ^task-20260319-002
 - [x] **Complete 2025 business and personal tax returns** — State + federal filed, quarterly estimates paid for both #family ^task-20260319-003 ✅ 2026-03-31
 - [x] **Review PE sector activity report from James (Deerpath)** — Report received, needs review to recommend 3-4 target industries #wisory_product ^task-20260312-001 ✅ 2026-03-28
@@ -43,6 +48,13 @@ Your task backlog organized by priority.
 
 ## P2 - Normal (max 10)
 
+- [ ] **Set up meeting with Leo** — Conrad follow-up #wisory_product ^task-20260405-007
+- [ ] **Rerun brand framework based on team feedback** #wisory_product ^task-20260405-008
+- [ ] **Determine business expenses in AMEX account and pay out of Found** #family ^task-20260405-009
+- [ ] **Pay balance of AMEX account out of North Shore bank** #family ^task-20260405-010
+- [ ] **Share new triathlon plan with Dex and integrate into Google Calendar** #family ^task-20260405-011
+- [ ] **Add Wisory Score Claude skill to Claude Code** #wisory_product ^task-20260405-012
+- [ ] **Set up call with Beth Brockland** #wisory_product ^task-20260405-013
 - [b] **Review Veritonic Insights product after Scott's update** — Waiting on Scott #job_search ^task-20260310-001
 - [x] **Review Conrad deck, Splittero and Fund Loans materials** — Waiting on Dan Sogorka to send materials #job_search ^task-20260312-002 ✅ 2026-03-28
 - [x] **Perform diagnostic scoring of Wisory's current public-facing materials** — Start of engagement, use frameworks #wisory_product ^task-20260316-006 ✅ 2026-03-28
