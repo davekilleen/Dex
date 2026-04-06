@@ -97,17 +97,16 @@ Plan dinners during `/week-plan` on Monday mornings:
 **Context:** Spring break just ended. Kids back in school. Evenings mostly open. Ella at dance Monday 8-9pm (grocery run). Triathlon training started — Reg needs protein-heavy, anti-inflammatory meals.
 
 ### Monday (Apr 7) — BIG COOK #1
-**Chicken Stir-Fry + Rice (dairy-free)** (8-10 servings)
-- 3 lbs chicken breast, sliced thin
-- Broccoli, bell peppers, snap peas, carrots — cut big
-- Sauce: soy sauce, garlic, ginger, sesame oil, rice vinegar, cornstarch slurry
-- 3 cups rice on stovetop (2:3 ratio, boil, lid, low 18 min)
+**Pan-Seared Steak + Roasted Potatoes + Veggies** (8-10 servings)
+- Steaks (defrosted) — salt, pepper, garlic powder. Sear in cast iron with olive oil, high heat 3-4 min/side, rest 5 min
+- 3-4 lbs potatoes, cubed — toss in olive oil, salt, pepper, garlic powder. Oven 425°F, 30-35 min
+- Broccoli or asparagus roasted alongside potatoes last 15 min
 - Cook after Wisory meeting wraps (~3pm). Grocery run during Ella's dance (8-9pm)
 
 → Covers **Monday + Tuesday**
 
-### Tuesday (Apr 7) — LEFTOVERS
-**Stir-fry round 2** — family self-serves
+### Tuesday (Apr 8) — LEFTOVERS
+**Steak + potatoes round 2** — family self-serves. Slice leftover steak cold for sandwiches if preferred.
 - Reg at Essentia morning (Peloton + swim), needs good fuel
 
 ### Wednesday (Apr 9) — BIG COOK #2
@@ -143,7 +142,6 @@ Plan dinners during `/week-plan` on Monday mornings:
 ### Grocery List (Monday — during Ella's dance 8-9pm)
 
 **Super One:**
-- 3 lbs chicken breast
 - 2 lbs Italian sausage (check: dairy-free)
 - 2 lbs ground beef
 - Taco seasoning
@@ -151,24 +149,20 @@ Plan dinners during `/week-plan` on Monday mornings:
 - Pickled jalapeños
 - Black beans (2 cans)
 - Tortillas
-- Soy sauce (if low)
-- Rice vinegar
-- Cornstarch
 
 **Whole Foods Coop:**
-- Broccoli (2 heads)
-- Bell peppers (4-5, mixed colors)
-- Snap peas
-- Carrots
+- Broccoli (2 heads) or asparagus (2 bunches)
 - Zucchini (2-3)
 - Red onion (2)
+- Bell peppers (3-4, mixed)
 - Cherry tomatoes (2 pints)
 - Garlic
-- Fresh ginger
 - Lettuce
 
+**Already have:** Steaks (defrosted), potatoes, rice
+**Skip:** Chicken breast, snap peas, ginger, soy sauce, rice vinegar, cornstarch (no stir-fry this week)
+
 **Costco (if going this week):**
-- Rice (if low)
 - Olive oil (if low)
 - Ground beef bulk (can cover 2 weeks)
 
