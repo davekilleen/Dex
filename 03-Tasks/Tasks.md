@@ -49,6 +49,7 @@ Your task backlog organized by priority.
 
 ## P2 - Normal (max 10)
 
+- [ ] **Review research article plan** #thought_leadership ^task-20260405-015
 - [ ] **Set up meeting with Leo** — Conrad follow-up #wisory_product ^task-20260405-007
 - [ ] **Rerun brand framework based on team feedback** #wisory_product ^task-20260405-008
 - [ ] **Determine business expenses in AMEX account and pay out of Found** #family ^task-20260405-009
