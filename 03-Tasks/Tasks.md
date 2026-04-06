@@ -64,6 +64,10 @@ Your task backlog organized by priority.
 - [b] **Run clarity score/index on HubSpot Small Business Unit as demo for Don Moore** — Waiting on Don #job_search ^task-20260320-002
 - [ ] **Notify Marcy at Barr Engineering if status or timelines change on other offers** — ~30 day window on verbals. Marcy following up next week. #job_search ^task-20260320-003
 
+## Recurring (Monthly)
+
+- [ ] **Review LangGraph releases for upgrades** — https://github.com/langchain-ai/langgraph/releases — Check 1st of each month #wisory_product ^task-recurring-langgraph
+
 ## P3 - Backlog
 
 - [ ] **Develop referral/finder-fee compensation structure for CTV advisors** — Commission-based model for opening CTV doors, share with Scott #job_search ^task-20260310-002
