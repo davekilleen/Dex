@@ -296,7 +296,9 @@ If tracking completion rates:
 
 ### 4.1 Identify Today's Meetings
 
-**IMPORTANT: Check BOTH Google Calendar AND Apple Calendar (EventKit).** Wisory meetings, Curling Club events, and Marshall School events are only in Apple Calendar. Run the EventKit Python script (see daily-plan skill Section 5.2 for the code) to get the full picture. Never rely on Google Calendar alone.
+**IMPORTANT: Check BOTH Google Calendar AND Apple Calendar (EventKit).** Wisory meetings and Curling Club events are only in Apple Calendar. Run the EventKit Python script (see daily-plan skill Section 5.2 for the code) to get the full picture. Never rely on Google Calendar alone.
+
+**Date verification:** The EventKit script prints each event with a `[Mon Apr 07]` date prefix. Before including ANY event in the review, verify its date prefix matches today's date. Events from adjacent days can bleed into queries due to timezone boundaries — exclude them.
 
 From all calendar sources and meeting notes, list meetings that happened today.
 

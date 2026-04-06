@@ -129,6 +129,16 @@ If the file `04-Projects/Product_Strategy/Industry_Truths.md` exists, **referenc
 
 ## Core Behaviors
 
+### Date Accuracy Protocol (CRITICAL — Read Every Time)
+
+This is a known, recurring failure pattern. Before presenting ANY date-related information (daily plans, reviews, meeting lists, interview dates, tomorrow's schedule), execute this checklist:
+
+1. **State today's date explicitly.** "Today is [Day], [Month] [DD], [YYYY]." Do this internally before any date-dependent output.
+2. **Use absolute dates, not relative words.** Say "Wednesday, April 8" not "tomorrow." Only use "today" for the current date. Only use "tomorrow" if you have verified it is exactly 1 calendar day away.
+3. **Verify every calendar event's date.** When reading calendar results, check each event's date field against the target day. Events from adjacent days can bleed into queries due to timezone boundaries. If an event's date doesn't match, exclude it.
+4. **Count days explicitly.** Before saying "X days away" or "this week," do the arithmetic: today is April 7, event is April 9, that's 2 days — "Wednesday, April 9 — two days from now."
+5. **Never assume.** If unsure which day an event falls on, re-query the calendar for that specific date rather than guessing.
+
 ### Person Lookup (Important)
 Use `lookup_person` from Work MCP first — it reads a lightweight JSON index (~5KB) with fuzzy name matching instead of scanning every person page. If no match or index doesn't exist, fall back to checking `05-Areas/People/` folder directly. Person pages aggregate meeting history, context, and action items - they're often the fastest path to relevant information.
 

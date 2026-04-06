@@ -132,30 +132,39 @@ python3 -c "
 import EventKit, datetime
 from Foundation import NSDate
 store = EventKit.EKEventStore.alloc().init()
-now = datetime.datetime.now()
-start = now.replace(hour=0, minute=0, second=0)
-end = now.replace(hour=23, minute=59, second=59)
+# USE TARGET DATE EXPLICITLY — do not rely on 'now' for multi-day queries
+target = datetime.datetime(2026, MM, DD)  # <-- REPLACE with actual target date
+start = target.replace(hour=0, minute=0, second=0)
+end = target.replace(hour=23, minute=59, second=59)
 start_ns = NSDate.dateWithTimeIntervalSince1970_(start.timestamp())
 end_ns = NSDate.dateWithTimeIntervalSince1970_(end.timestamp())
 predicate = store.predicateForEventsWithStartDate_endDate_calendars_(start_ns, end_ns, None)
 events = store.eventsMatchingPredicate_(predicate)
+print(f'=== Events for {target.strftime(\"%A, %B %d, %Y\")} ===')
 for event in sorted(events, key=lambda e: e.startDate().timeIntervalSince1970()):
     st = datetime.datetime.fromtimestamp(event.startDate().timeIntervalSince1970())
     et = datetime.datetime.fromtimestamp(event.endDate().timeIntervalSince1970())
     cal = event.calendar().title()
+    date_str = st.strftime('%a %b %d')
     if event.isAllDay():
-        print(f'[All Day] {event.title()} ({cal})')
+        print(f'[All Day] [{date_str}] {event.title()} ({cal})')
     else:
-        print(f'{st.strftime(\"%I:%M %p\")} - {et.strftime(\"%I:%M %p\")} | {event.title()} ({cal})')
+        print(f'[{date_str}] {st.strftime(\"%I:%M %p\")} - {et.strftime(\"%I:%M %p\")} | {event.title()} ({cal})')
 "
 ```
+
+**CRITICAL: Date verification protocol (applies to ALL calendar checks):**
+1. Always set the target date explicitly in the script — never rely on `datetime.now()` for anything except "today"
+2. The script prints `=== Events for [Day, Date] ===` as a header — **verify this matches the day you are planning for**
+3. Every event line includes `[Mon Apr 07]` prefix — **verify each event's date matches the target day before including it in any plan or review**
+4. If ANY event's date prefix doesn't match the target day, exclude it and investigate
+5. When presenting events to the user, always include the day name: "Monday 1:00pm" not just "1:00pm"
 
 **Always run this Apple Calendar check AND Google Calendar.** Merge both sets of events before analyzing capacity. Do NOT say "no meetings today" based on Google Calendar alone.
 
 Calendars in Apple Calendar:
 - `regis@thewisory.com` — Wisory meetings (critical, this is his day job)
 - `treasurer@duluthcurlingclub.org` — Curling club
-- `Marshall Calendar` — Kids' school events
 - `Home` (iCloud) — Personal
 
 Then analyze combined events:
