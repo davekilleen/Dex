@@ -37,7 +37,7 @@ Your task backlog organized by priority.
 ## P1 - Important (max 5)
 
 - [ ] **Send Mantera brief to Wisory leadership team** — Due Monday Apr 7 #wisory_product ^task-20260405-014
-- [ ] **Confirm Anne-Marie meeting** — Schedule follow-up session #wisory_product ^task-20260405-003
+- [x] **Confirm Anne-Marie meeting** — Rescheduled by Anne-Marie, removed from cal #wisory_product ^task-20260405-003 ✅ 2026-04-05
 - [ ] **Review shares agreement from Jason** — Equity docs review #wisory_product ^task-20260405-004
 - [ ] **Send transcript and thoughts from Wes meeting to Jason** — Investor strategy debrief #wisory_product ^task-20260405-005
 - [ ] **Setup counseling appointment** — See email for details #family ^task-20260405-006
