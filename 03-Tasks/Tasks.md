@@ -36,6 +36,7 @@ Your task backlog organized by priority.
 
 ## P1 - Important (max 5)
 
+- [ ] **Prepare Terminus opportunity report — incorporate provided answers + press release, share with team** — From Apr 6 Wisory check-in with Jason #wisory_product ^task-20260407-001
 - [ ] **Send Mantera brief to Wisory leadership team** — Due Monday Apr 7 #wisory_product ^task-20260405-014
 - [x] **Confirm Anne-Marie meeting** — Rescheduled by Anne-Marie, removed from cal #wisory_product ^task-20260405-003 ✅ 2026-04-05
 - [x] **Review shares agreement from Jason — received, needs review and signature** #wisory_product ^task-20260405-004 ✅ 2026-04-07
