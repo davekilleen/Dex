@@ -26,8 +26,8 @@ Your task backlog organized by priority.
 
 ## P0 - Urgent (max 3)
 
-- [ ] **Pick up scripts at Walgreens** #family ^task-20260405-001
-- [ ] **Buy apple juice and groceries at Super One** #family ^task-20260405-002
+- [x] **Pick up scripts at Walgreens** #family ^task-20260405-001 ✅ 2026-04-06
+- [x] **Buy apple juice and groceries at Super One** #family ^task-20260405-002 ✅ 2026-04-06
 - [x] **Return call from Abby at Barr Engineering to schedule next Tuesday interview** #job_search ^task-20260328-003 ✅ 2026-03-31
 - [x] **Drop off return at Dick's Sporting Goods** #family ^task-20260328-001 ✅ 2026-03-31
 - [x] **Buy dog food** #family ^task-20260328-002 ✅ 2026-03-31
