@@ -36,7 +36,7 @@ Your task backlog organized by priority.
 
 ## P1 - Important (max 5)
 
-- [ ] **Send Mantera IntelliQ report to Wisory leadership team — incorporate Whitney's answers + press release, review at 10am CT tomorrow** — Due tonight/early Monday #wisory_product ^task-20260405-014
+- [x] **Send Mantera IntelliQ report to Wisory leadership team — incorporate Whitney's answers + press release, review at 10am CT tomorrow** — Due tonight/early Monday #wisory_product ^task-20260405-014 ✅ 2026-04-06
 - [x] **Confirm Anne-Marie meeting** — Rescheduled by Anne-Marie, removed from cal #wisory_product ^task-20260405-003 ✅ 2026-04-05
 - [x] **Review shares agreement from Jason — received, needs review and signature** #wisory_product ^task-20260405-004 ✅ 2026-04-07
 - [x] **Send transcript and thoughts from Wes meeting to Jason** — Investor strategy debrief #wisory_product ^task-20260405-005 ✅ 2026-04-07
