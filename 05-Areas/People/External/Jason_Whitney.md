@@ -15,6 +15,9 @@
 - [Wisory 3-Year Vision and Flywheel](00-Inbox/Meetings/2026-03-30%20-%20Wisory%203-Year%20Vision%20and%20Flywheel.md) — 2026-03-30
 - [Review Banker Preso — Jason and Jason](00-Inbox/Meetings/2026-04-02%20-%20Review%20Banker%20Preso%20-%20Jason%20and%20Jason.md) — 2026-04-02
 - [Wisory Team Check-In](00-Inbox/Meetings/2026-04-02%20-%20Wisory%20Team%20Check-In.md) — 2026-04-02
+- [Wisory Team Check-in](00-Inbox/Meetings/2026-04-06%20-%20Wisory%20Team%20Check-in.md) — 2026-04-06
+- [Maintera Prep](00-Inbox/Meetings/2026-04-07%20-%20Maintera%20Prep.md) — 2026-04-07
+- [Wisory Intro — Maintera](00-Inbox/Meetings/2026-04-07%20-%20Wisory%20Intro%20-%20Maintera.md) — 2026-04-07
 
 ## Notes
 
@@ -26,5 +29,9 @@
 - **Investor outreach lead:** Secondary outreach to warm contacts. Compiling shortlist of target investors with firm, location, thesis, and check sizes.
 - **IU relationships:** Close with Tony (IU) and Olivia. Managing Michael ARR situation (angry about Angel Network going free). IU Inc. stole Tony's idea — Janet Fowdy named to board.
 - Has a "big ass network" — thousands of investor contacts on LinkedIn
+
+- **Bridge round preference (Apr 6):** Prefers $3M bridge to build proof before going for growth round. "Smaller number would allow us to build out the tool, prove the value proposition, and get face to face"
+- **University play (Apr 6):** Knows Mike Partsch (Chief Venture Officer, Wisconsin). Bascom Ventures is unaffiliated alumni network — not endorsed by university. Whitney previously declined starting rogue IU fund for Alumni Ventures
+- **Maintera call (Apr 7):** Drove slide deck and DOCX during call. Managed screen sharing and pacing
 
 *Auto-created from meetings on 2026-03-12*

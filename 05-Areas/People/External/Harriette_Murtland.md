@@ -16,6 +16,7 @@
 - [Wisory Digital Twin and Scenario Planning](00-Inbox/Meetings/2026-03-12%20-%20Wisory%20Digital%20Twin%20and%20Scenario%20Planning.md) — 2026-03-12
 - [Product Strategy Alignment Meeting](00-Inbox/Meetings/2026-03-16%20-%20Product%20Strategy%20Alignment%20Meeting.md) — 2026-03-16
 - [Wisory Team Check-In](00-Inbox/Meetings/2026-04-02%20-%20Wisory%20Team%20Check-In.md) — 2026-04-02
+- [Harriette x Regis Connect](00-Inbox/Meetings/2026-04-07%20-%20Harriette%20x%20Regis%20Connect.md) — 2026-04-07
 
 ## Notes
 
@@ -38,5 +39,11 @@
 - Presenting process model on Wednesday (Apr 2) showing how everyone works together
 - Helping Jason Whitney with Google Drive access
 - Advocating for advisor-facing UI for Intel IQ — "not the backend where Regis goes"
+
+- **Onboarding walkthrough (Apr 7):** Gave Regis full tour of Notion workspace (advisor database, PE tracker, resource hub), Shopify architecture (metafields, templates, Locksmith, Klaviyo), and Figma workflows. Added Regis to Wisory Hub and Client team spaces. Meeting rhythm: Monday + Thursday 10-11am CT
+- Chris Khan introduced her to Jason Wadler — that's how she joined the team
+- Feels things are "actually clearer now" for the first time — able to define who they're selling to
+- Preparing second iteration of Wisory workflows in Figma — splitting by individual roles and scenarios (IntelliQ + advisors vs. IntelliQ-only vs. advisor-only)
+- Wants to learn Claude Code — potential for co-building with Regis
 
 *Auto-created from meetings on 2026-03-11*

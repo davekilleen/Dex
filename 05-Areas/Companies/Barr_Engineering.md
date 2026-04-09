@@ -15,10 +15,13 @@
 ## Key Contacts
 
 - Marcy — Recruiter (joined ~6 months ago)
+- [[05-Areas/People/External/Phil_Fish|Phil Fish]] — VP, Environmental Management (AI initiative lead)
+- [[05-Areas/People/External/Michelle_Schlegel|Michelle Schlegel]] — HR Generalist
 
 ## Meeting History
 
 - [Barr Interview Screening](../../00-Inbox/Meetings/2026-03-20%20-%20Barr%20Interview%20Screening.md) — 2026-03-20
+- [Barr Engineering Interview — Phil and Michelle](../../00-Inbox/Meetings/2026-04-08%20-%20Barr%20Engineering%20Interview%20-%20Phil%20and%20Michelle.md) — 2026-04-08
 
 ## Role: AI Consultant
 

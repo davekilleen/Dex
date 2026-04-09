@@ -36,6 +36,10 @@
 - [Review Banker Preso — Jason and Jason](00-Inbox/Meetings/2026-04-02%20-%20Review%20Banker%20Preso%20-%20Jason%20and%20Jason.md) — 2026-04-02
 - [Wisory Team Check-In](00-Inbox/Meetings/2026-04-02%20-%20Wisory%20Team%20Check-In.md) — 2026-04-02
 - [AI-Powered Investment Strategy](00-Inbox/Meetings/2026-04-03%20-%20AI-Powered%20Investment%20Strategy.md) — 2026-04-03
+- [Wisory Team Check-in](00-Inbox/Meetings/2026-04-06%20-%20Wisory%20Team%20Check-in.md) — 2026-04-06
+- [Maintera Prep](00-Inbox/Meetings/2026-04-07%20-%20Maintera%20Prep.md) — 2026-04-07
+- [Wisory Intro — Maintera](00-Inbox/Meetings/2026-04-07%20-%20Wisory%20Intro%20-%20Maintera.md) — 2026-04-07
+- [Harriette x Regis Connect](00-Inbox/Meetings/2026-04-07%20-%20Harriette%20x%20Regis%20Connect.md) — 2026-04-07
 
 ## Notes
 
