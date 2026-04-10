@@ -64,6 +64,26 @@ If items found, triage them before building the plan so task counts are accurate
 
 **If empty:** Skip silently.
 
+## Step 0.7: IntelliQ GitHub Activity (Yesterday's Work)
+
+Pull commits from the IntelliQ repo since yesterday to capture engineering work that happened outside this Dex instance:
+
+```bash
+gh api "repos/rhadiaris/intelliq/commits?since=$(date -v-1d +%Y-%m-%dT00:00:00Z)" --jq '.[] | {sha: .sha[0:7], date: .commit.author.date, message: .commit.message | split("\n")[0]}'
+```
+
+Also check for new CHANGELOG.md entries:
+```bash
+gh api repos/rhadiaris/intelliq/contents/CHANGELOG.md --jq '.content' | base64 -d | head -30
+```
+
+If commits or changelog entries exist:
+- Surface them in the plan: "📦 **IntelliQ progress yesterday:** [N] commits, [top 3 meaningful changes]"
+- Reference them when suggesting focus for today (e.g., "Yesterday you shipped X — Y is the natural next step")
+- Count toward Q2 Goal 2 (Wisory product) progress
+
+**If no activity:** Skip silently (don't say "no commits today").
+
 ---
 
 ## Step 1: Background Checks (Silent)

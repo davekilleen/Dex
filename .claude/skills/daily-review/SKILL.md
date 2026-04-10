@@ -36,6 +36,28 @@ find . -type f -name "*.md" -newermt "$TODAY 00:00:00" ! -newermt "$TODAY 23:59:
 
 ---
 
+## Step 1.4: IntelliQ GitHub Activity (Today's Work)
+
+Pull commits from the IntelliQ repo for today to capture engineering work that happened outside this Dex instance:
+
+```bash
+gh api "repos/rhadiaris/intelliq/commits?since=$(date +%Y-%m-%dT00:00:00Z)" --jq '.[] | {sha: .sha[0:7], date: .commit.author.date, message: .commit.message | split("\n")[0]}'
+```
+
+Also check for new CHANGELOG.md entries:
+```bash
+gh api repos/rhadiaris/intelliq/contents/CHANGELOG.md --jq '.content' | base64 -d | head -40
+```
+
+If commits or changelog entries exist:
+- Surface them in the "Accomplished" section: "📦 **IntelliQ commits today:** [N] commits — [summary of key changes]"
+- Count toward Q2 Goal 2 (Wisory product) progress
+- Reference commits in meeting follow-ups if they relate to action items discussed
+
+**If no activity:** Skip silently.
+
+---
+
 ## Step 1.5: Process Today's Meetings
 
 Before gathering context, ensure today's meetings are in the vault by running `/process-meetings today`. This pulls any unprocessed meetings from Otter.ai, creates meeting notes, updates person/company pages, and extracts tasks — so the rest of the review has complete data.

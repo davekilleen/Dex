@@ -10,6 +10,29 @@ Create a synthesis of the week reviewing activity, progress, and what was accomp
 
 ---
 
+## Step 0: IntelliQ GitHub Activity (This Week's Work)
+
+Before gathering other data, pull this week's commits and changelog updates from the IntelliQ repo to capture engineering work that happened outside this Dex instance:
+
+```bash
+# All commits from the past 7 days
+gh api "repos/rhadiaris/intelliq/commits?since=$(date -v-7d +%Y-%m-%dT00:00:00Z)" --jq '.[] | {sha: .sha[0:7], date: .commit.author.date, message: .commit.message | split("\n")[0]}'
+
+# Full CHANGELOG.md for version tracking
+gh api repos/rhadiaris/intelliq/contents/CHANGELOG.md --jq '.content' | base64 -d | head -100
+```
+
+**Use this data to:**
+- Count commits in the week for pace measurement
+- Extract the top 5-10 meaningful changes as "Accomplished" items
+- Identify any version bumps (e.g., "Shipped v5.3.0")
+- Count toward Q2 Goal 2 (Wisory product) progress
+- Include in the "Major Accomplishments" section of the synthesis
+
+**If no activity:** Skip silently.
+
+---
+
 ## Data Sources
 
 ### 1. Task Progress
