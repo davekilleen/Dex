@@ -167,16 +167,27 @@
 *Fill in on Friday*
 
 ### Completed
--
+- Mantera brief + revenue plan — report delivered, client intro call with David Jaffee, $3-5M bridge round aligned
+- Barr Engineering interview — strong showing with Phil Fish + Michelle Schlegel, decision early next week
+- IntelliQ v5.3.0-v5.6.1 — 30 commits, 270 tests, file upload pipeline, python-docx reports, registry architecture
+- 15 tasks cleared from backlog (9 on Tuesday alone)
 
 ### Didn't Finish
--
+- Substack article — strategic pause pending Monday Jason alignment on Wisory vs. personal content (22+ day gap)
+- Conrad marketing frameworks — new P1 from Thursday, due Monday
+- Triathlon Phase 1 Week 1 — started but not yet complete
 
 ### Learnings
--
+- Build sprints were invisible until GitHub integration was wired in — most impactful work wasn't being measured
+- Backlog gravity displaces planned focus — 9-task Tuesday felt productive but displaced Substack
+- Strategic pauses are valid but have a cost — 22 days is approaching structural damage to weekly cadence goal
+- Wisory team is operating independently — Thursday check-in landed zero new commitments on you
 
 ### Next Week Focus
--
+- Substack: Monday Jason meeting then write Tuesday, publish by Friday (22+ day gap must end)
+- Conrad marketing frameworks for Leo (due Monday)
+- Continue IntelliQ momentum (Phase 2 inline citations)
+- Triathlon Phase 1 Week 2 — maintain rhythm
 
 ---
 
