@@ -1,6 +1,6 @@
 # Week Priorities
 
-**Week of:** 2026-04-06 (Triathlon Phase 1 — Week 1 of 17)
+**Week of:** 2026-04-13 (Triathlon Phase 1 — Week 2 of 17 · Q2 Week 2)
 
 ---
 
@@ -8,124 +8,126 @@
 
 | Day | Type | Deep Work? | Notes |
 |-----|------|------------|-------|
-| Mon | REST day | ✅ | Deep work 9-12. No meetings. Training REST day. |
-| Tue | Essentia day | ✅ | Deep work 9-12. S&S morning. Peloton + swim at Essentia. |
-| Wed | Interview + S&S | ⚠️ | Barr interview 8-9am. Deep work 9-12 (post-interview). S&S morning. 12-3-30 walk. |
-| Thu | Wisory + S&S | ⚠️ | Wisory Team Check-In 10-11am. S&S morning. 12-3-30 walk. Leadership & Culture 2:30pm. |
-| Fri | Open | ✅ | Deep work 9-12. Optional S&S. Wide open for wrap-up. |
-| Sat | Essentia day | — | S&S morning. Peloton + swim at Essentia. Sara Mart's birthday. |
-| Sun | REST | — | Optional S&S or walk. |
+| Mon | Build day | ✅ 10-12 | 9:30 Regis/[[05-Areas/People/External/Jason_Wadler\|Jason]] call (Substack lane unblock). Deep work 10-12. S&S morning. REST training. |
+| Tue | Meeting-heavy | ⚠️ 8-10 only | 10:00 Wisory Follow-Up, 11:00 Jason Wadler + Matt Panucci, 13:00 GTM Touch Base, 17:00 DCC Board Meeting. Essentia PM. |
+| Wed | Biggest block | ✅ 9-12 | Deep work 9-12. 14:00 Dad counseling appt. 12-3-30 walk. |
+| Thu | Family arrival | ⚠️ 8-10 only | 10:00 Wisory Team Check-In. 15:00 Wisory Follow-Up. **Mom + Monica arrive.** Musical night #1. |
+| Fri | Essentially off | ❌ | 07:00 Columbia Digital Twins Lab (Zoom). 10:00-12:30 Wisory Quarterly Advisor Meeting. Musical night #2. Family mode otherwise. |
+| Sat | Family | — | S&S. Essentia (Peloton + swim). Musical night #3. |
+| Sun | Family | — | Musical matinee #4. Mom + Monica depart. |
 
-**Deep work capacity:** ~12 hours this week (Mon/Tue/Wed post-interview/Fri)
-**Best days for focus:** Monday and Tuesday (no meetings at all)
-**Key constraint:** Barr interview Wed 8am, Wisory check-in Thu 10am
+**Deep work capacity:** ~10 hours this week (Mon 10-12, Tue 8-10, Wed 9-12, Thu 8-10)
+**Best day:** Wednesday (3-hour uninterrupted block)
+**Key constraint:** Thu-Sun is family + musical, no work expected
 
 ---
 
 ## 🎯 Quarterly Goals Context
 
-| Goal | Progress | Status |
-|------|----------|--------|
-| Q2-1: Be less intense, more present (family) | 0% | Week 1 — establishing rhythms |
-| Q2-2: Drive Wisory to $250K Q2 revenue | 0% | Mantera brief due Mon, revenue plan needed |
-| Q2-3: Publish Substack weekly | 0% | First Q2 publish needed this week |
-| Q2-4: Complete Brewhouse Triathlon (Aug 2) | 0% | Phase 1 Week 1 starts today |
-
-**This week advances:** All 4 goals
+| Goal | Progress | Status Heading into Week 2 |
+|------|----------|----------------------------|
+| Q2-1: Be less intense, more present (family) | 0% | Hosting mom + Monica, 4 musicals, counseling Wed — presence week |
+| Q2-2: Drive Wisory to $250K Q2 revenue | 0% | IntelliQ v5.6.9+ shipping fast (23 commits today), Maintera delivered |
+| Q2-3: Publish Substack weekly | 0% | **Jason lane aligned. v9 plan set. Apr 21 kickoff.** Prep week. |
+| Q2-4: Complete Brewhouse Triathlon (Aug 2) | ~6% | Phase 1 Week 2 — maintain rhythm |
 
 ---
 
 ## 🎯 Top 4 This Week
 
-1. **Publish Substack article** — **Thought Leadership** ^week-2026-W15-p1
-   - Success criteria: Article published on Dot Connector Dispatch, maintaining weekly cadence
-   - Quarterly goal: Q2-3 (Substack weekly — first of 13)
-   - **Scheduled:** Monday or Tuesday deep work block
-   - Effort: deep_work (2-3 hours writing + editing)
-
-2. **Mantera brief + Wisory revenue plan** — **Product Leadership** ^week-2026-W15-p2
-   - Success criteria: Mantera brief sent to Wisory leadership (due Mon). Revenue plan discussion initiated with Jason.
+1. **IntelliQ Phase 2 momentum** — **Product Leadership** ^week-2026-W16-p1
+   - Success criteria: Source citations + cleanup shipped. Multiple releases this week. Keep the flow state.
    - Quarterly goal: Q2-2 ($250K Q2 revenue)
-   - **Scheduled:** Mantera brief Monday AM. Revenue plan conversation Tue/Wed.
-   - Effort: deep_work (brief is P1, revenue plan is medium)
+   - **Scheduled:** Mon 10-12, Wed 9-12, Thu 8-10 — ~7 focused hours
+   - Effort: deep_work — build-sprint mode, don't context-switch away
+   - Today's context: v5.6.9+ just shipped (hyperlinked audit sources, LLM retry resilience, Perplexity+Tavily as BOTH, Studio status messages)
 
-3. **Nail Barr Engineering interview (Wed 8am)** — **Career Transition** ^week-2026-W15-p3
-   - Success criteria: Strong phone interview with Michelle Schlegel (HR) and Phil Fish (VP, Senior Chemical Engineer). Clear articulation of AI consulting value for engineering firm.
-   - Quarterly goal: Carried from Q1 — complete process, evaluate as optionality
-   - **Scheduled:** Wednesday 8:00-9:00am CT. Prep Tuesday evening.
-   - Effort: medium (1-2 hours prep + 1 hour interview)
-   - Call-in: (833) 450-1894, Conference ID: 768 207 576#
+2. **Substack v9 prep for Apr 21 launch** — **Thought Leadership** ^week-2026-W16-p2
+   - Success criteria: Week 1 Tuesday (Wisory) and Week 1 Thursday (Dispatch) drafts polished and ready. Substack mechanics confirmed on both platforms.
+   - Quarterly goal: Q2-3 (Substack weekly — 8-week run starts Apr 21)
+   - **Scheduled:** Tue 8-10 (confirm Substack setup, draft polish), any slack in Wed block
+   - Effort: medium (catalog prose is 90% there, just needs Reg-voice pass + platform setup)
+   - Note: v9 cadence is **Tue Wisory / Thu Dispatch / Sun LinkedIn newsletter**
 
-4. **Start triathlon Phase 1 Week 1** — **Family** ^week-2026-W15-p4
-   - Success criteria: Complete 4-5 S&S sessions + Tue Essentia (Peloton + swim) + Wed/Thu 12-3-30 walks + Sat Essentia (Peloton + swim)
+3. **Host mom + Monica, Guys and Dolls run** — **Family** ^week-2026-W16-p3
+   - Success criteria: Present and connected Thu-Sun. Attend all 4 musical performances (Thu/Fri/Sat/Sun). No work after Thursday arrival.
+   - Quarterly goal: Q2-1 (less intense, more present)
+   - **Scheduled:** Thu arrival through Sun departure
+   - Effort: distributed — this IS the goal this week
+
+4. **Triathlon Phase 1 Week 2** — **Family** ^week-2026-W16-p4
+   - Success criteria: 4-5 S&S sessions + Tue Essentia + Sat Essentia + Wed/Thu incline walks
    - Quarterly goal: Q2-4 (Brewhouse Triathlon Aug 2)
-   - **Scheduled:** Daily S&S mornings, Tue + Sat at Essentia, Wed + Thu incline walks
-   - Effort: distributed (30-60 min/day)
+   - **Scheduled:** Distributed, 30-60 min/day
+   - Effort: distributed — rhythm is set, just maintain
 
 ---
 
-## 🏋️ Triathlon Training — Phase 1, Week 1 (Foundation)
+## 🏋️ Triathlon Training — Phase 1, Week 2 (Foundation)
 
 | Day | S&S Morning | Tri Session | Details |
 |-----|-------------|-------------|---------|
-| **Mon** | Optional | REST | Dog walk only |
-| **Tue** | S&S (16kg) | ESSENTIA: Peloton + Pool Swim | 30 min bike (cadence 80-90 RPM) + 500m swim (drill focus: catch-up, fingertip drag, side-kick) |
-| **Wed** | S&S (16kg) | HOME: 12-3-30 incline walk | Treadmill. After Barr interview + deep work. |
-| **Thu** | S&S (16kg) | HOME: 12-3-30 incline walk | After Wisory check-in. |
+| **Mon** | S&S (16kg) | REST | Dog walk only |
+| **Tue** | S&S (16kg) | ESSENTIA: Peloton + Pool Swim | 30 min bike + 500m swim (same drill focus) |
+| **Wed** | S&S (16kg) | HOME: 12-3-30 incline walk | Post deep work |
+| **Thu** | S&S (16kg) | HOME: 12-3-30 incline walk | Before family arrival |
 | **Fri** | Optional S&S | REST | — |
-| **Sat** | S&S (16kg) | ESSENTIA: Peloton + Pool Swim | 25 min swim easy pace. Practice breathing rhythm. |
-| **Sun** | Optional S&S | REST or walk | — |
+| **Sat** | S&S (16kg) | ESSENTIA: Peloton + Pool Swim | 25 min swim easy pace |
+| **Sun** | Optional | REST or walk | — |
 
-**S&S target:** 100 swings + 10 TGUs at 16kg, 4-5 mornings this week
-**No running until Week 10 (June 8)** — Achilles recovery protocol
-
----
-
-## ⚡ Commitments Due This Week
-
-- [ ] Send Mantera brief to Wisory leadership — due Monday ^task-20260405-014
-- [ ] Send transcript and thoughts from Wes meeting to Jason — investor debrief ^task-20260405-005
-- [ ] Review shares agreement from Jason — received, needs review ^task-20260405-004
+**S&S target:** 100 swings + 10 TGUs at 16kg, 4-5 mornings
+**No running until Week 10 (June 8)** — Achilles recovery
 
 ---
 
 ## 📋 Tasks by Priority
 
 ### Must Complete (P0)
-- [ ] Publish Substack article — Supports: Priority #1 — **Mon/Tue**
-- [ ] Send Mantera brief to leadership — Supports: Priority #2 — **Mon** ^task-20260405-014
-- [ ] Barr interview prep (research Michelle Schlegel, Phil Fish, AI consulting positioning) — Supports: Priority #3 — **Tue PM**
-- [ ] Pick up scripts at Walgreens — **Mon** ^task-20260405-001
-- [ ] Buy apple juice and groceries at Super One — **Mon** ^task-20260405-002
+- [ ] IntelliQ Phase 2 work sessions (Mon/Wed/Thu) — Supports: Priority #1
+- [ ] Polish Week 1 Tuesday (Wisory) draft — Supports: Priority #2 — **Tue**
+- [ ] Polish Week 1 Thursday (Dispatch) draft — Supports: Priority #2 — **Wed**
+- [ ] Confirm Wisory Substack setup + publishing access — Supports: Priority #2 — **Tue**
+- [ ] Attend 4 musical performances Thu/Fri/Sat/Sun — Supports: Priority #3
 
 ### Should Complete (P1)
-- [ ] Send Wes transcript/thoughts to Jason — **Mon/Tue** ^task-20260405-005
-- [ ] Review shares agreement from Jason — **Tue/Wed** ^task-20260405-004
-- [ ] Setup counseling appointment — **Tue** ^task-20260405-006
-- [ ] Complete Ella's college survey review — **Mon** ^task-20260403-001
-- [ ] Polish first-principles breakdown and send to Jason W and Jason Whitney — **Wed/Thu** ^task-20260327-001
+- [ ] Prep Regis/Jason 9:30 call (Substack lane proposal) — **Mon AM**
+- [ ] Dad counseling appt — **Wed 14:00**
+- [ ] Wisory Quarterly Advisor Meeting prep — **Fri 10:00-12:30**
+- [ ] Columbia Digital Twins Lab (Zoom) — **Fri 07:00**
+- [ ] Airport pickup logistics for mom + Monica — **Thu** (time TBD)
 
 ### If Time Permits (P2)
-- [ ] Review research article plan ^task-20260405-015
-- [ ] Set up meeting with Leo (Conrad follow-up) ^task-20260405-007
-- [ ] Rerun brand framework based on team feedback ^task-20260405-008
-- [ ] Determine business expenses in AMEX, pay out of Found ^task-20260405-009
-- [ ] Pay balance of AMEX out of North Shore bank ^task-20260405-010
-- [ ] Share triathlon plan with Dex, integrate into Google Calendar ^task-20260405-011
-- [ ] Add Wisory Score Claude skill ^task-20260405-012
-- [ ] Set up call with Beth Brockland ^task-20260405-013
+- [ ] Beth Brockland call setup ^task-20260405-013
+- [ ] AMEX reconciliation (business vs personal) ^task-20260405-009
+- [ ] Pay AMEX balance from North Shore ^task-20260405-010
+- [ ] Dot Connector AI provisional patent (19 days stale) ^task-20260325-001
+- [ ] Research article plan review ^task-20260405-015
+
+### Explicitly Deferred
+- Blocked chasing ([[05-Areas/People/External/Jim_Black|Jim Black]], [[05-Areas/People/External/Scott_Simonelli|Scott]], Don) — 23-33 days stale, let them surface or die
+- [[04-Projects/Barr_Interview_Prep|Barr]] decision — awaiting [[05-Areas/People/External/Michelle_Schlegel|Michelle]], not your move
+- Substack first publish — deliberately delayed to Apr 21 for clean 8-week kickoff
 
 ---
 
 ## 📅 Key Meetings & Events
 
-| Day | Time | Event | Prep Needed | Related Priority |
-|-----|------|---------|-------------|------------------|
-| Sun | All day | Amelia Linde's birthday | Send wishes | — |
-| Wed | 8:00-9:00am | **Barr Engineering Phone Interview** | Research interviewers, AI consulting story | Priority #3 |
-| Thu | 10:00-11:00am | Wisory Team Check-In (Maeve + team) | Status update, Mantera brief follow-up | Priority #2 |
-| Thu | 2:30-3:00pm | Leadership & Culture (Wisory) | — | Priority #2 |
-| Sat | All day | Sara Mart's birthday | Send wishes | — |
+| Day | Time | Event | Prep Needed |
+|-----|------|---------|-------------|
+| Mon | 9:30-10:00 | Regis / [[05-Areas/People/External/Jason_Wadler\|Jason]] (Substack lane) | Proposal: v9 split confirmed, Apr 21 kickoff |
+| Tue | 10:00-10:45 | Wisory Follow-Up | — |
+| Tue | 11:00-12:00 | Jason Wadler + Matt Panucci | — |
+| Tue | 13:00-14:00 | GTM Touch Base | — |
+| Tue | 17:00-18:00 | Duluth Curling Club Board Meeting | Treasurer update |
+| Wed | 14:00 | Dad counseling | — |
+| Thu | 10:00-11:00 | Wisory Team Check-In | Status update |
+| Thu | 15:00-15:45 | Wisory Follow-Up | — |
+| Thu | PM | **Mom + Monica arrive** + Musical #1 | Airport pickup, dinner |
+| Fri | 07:00-08:00 | Columbia Digital Twins Lab (Zoom) | — |
+| Fri | 10:00-12:30 CT | Wisory Quarterly Advisor Meeting | Quarterly prep |
+| Fri | PM | Musical #2 | — |
+| Sat | PM | Musical #3 | — |
+| Sun | Matinee | Musical #4, Mom + Monica depart | — |
 
 ---
 
@@ -133,63 +135,49 @@
 
 | Pillar | This Week | Balance |
 |--------|-----------|---------|
-| Family | Triathlon Phase 1 start, counseling setup, Ella survey, presence | 🟩 Good |
-| Product Leadership (Wisory) | Mantera brief, revenue plan, team check-in, shares review | 🟩 Good |
-| Career Transition | Barr interview Wednesday | 🟨 Focused |
-| Thought Leadership | Substack publish (first Q2 article) | 🟩 Good |
+| Family | 4 musicals, hosting, counseling, triathlon, presence | 🟩 Heavy (intentional) |
+| Product Leadership (Wisory) | IntelliQ build sprint, Mon/Tue/Thu/Fri Wisory meetings | 🟩 Strong |
+| Career Transition | Barr awaiting Michelle response | 🟨 Passive |
+| Thought Leadership | Substack v9 prep, Apr 21 launch prep | 🟨 Prep mode |
 
-**Balance assessment:** All 4 pillars active this week. Q2 starts strong with every goal getting movement.
+**Balance assessment:** Family + Wisory dominate — appropriate for hosting week + active build. Substack is preparing, not publishing. Career is dormant by choice.
 
 ---
 
 ## 🔄 Carried Over
 
-- [ ] Substack article — carried from last 2 weeks, now Priority #1
-- [ ] First-principles breakdown for Jason W / Jason Whitney ^task-20260327-001
-- [ ] LangGraph technical discussion with Terry ^task-20260325-005
-- [ ] Dot Connector AI provisional patent ^task-20260325-001
+- [ ] Dot Connector AI provisional patent (19 days stale) ^task-20260325-001
+- [ ] LangGraph technical discussion with [[05-Areas/People/External/Terry|Terry]] ^task-20260325-005
+- [ ] First-principles breakdown for Jason W / [[05-Areas/People/External/Jason_Whitney\|Jason Whitney]] ^task-20260327-001
 
 ---
 
 ## 📝 Notes
 
-- Q2 Week 1 — set the tone. All 4 quarterly goals need first activity this week.
-- Wisory comp: $12K/mo Q2 consultant rate. Shares agreement received, needs review.
-- Barr interview: AI Consultant, Senior Level (Hybrid/Remote). Interviewers are Michelle Schlegel (HR) and Phil Fish (VP, Senior Chemical Engineer).
-- Triathlon: Phase 1 is Foundation. 16kg kettlebells, pool swim technique, Peloton bike, incline walks. No running until Week 10.
-- Blocked items aging: Jim Black (Fog Line), Scott (Veritonic), Don (HubSpot demo)
-- Notify Marcy at Barr if other timelines change (~30 day window on verbals)
+- **v9 editorial plan decision:** Tue → The Wisory Substack (Teardown), Thu → Dot Connector Dispatch (Signal), Sun → LinkedIn newsletter (2-slot roundup). Same voice, loose coupling. Reg writes both. Full catalog at `04-Projects/Substack_Editorial_Catalog_v9.md`.
+- **Substack kickoff:** Tue Apr 21 (Week 1 Tuesday on Wisory), Thu Apr 23 (Week 1 Thursday on Dispatch). 8-week run ends Jun 15.
+- **IntelliQ:** Currently v5.6.9+ with 23 commits today. Phase 2 source citations actively shipping. Don't break the build sprint for non-urgent admin.
+- **Thursday cutoff:** Work ends when mom + Monica land. No evening work Thu-Sun.
+- **DCC Board Meeting:** Added Tue 17:00, treasurer@duluthcurlingclub.org calendar.
 
 ---
 
 ## 🏁 End of Week Review
 
-*Fill in on Friday*
+*Fill in on Friday or Sunday*
 
 ### Completed
-- Mantera brief + revenue plan — report delivered, client intro call with David Jaffee, $3-5M bridge round aligned
-- Barr Engineering interview — strong showing with Phil Fish + Michelle Schlegel, decision early next week
-- IntelliQ v5.3.0-v5.6.1 — 30 commits, 270 tests, file upload pipeline, python-docx reports, registry architecture
-- 15 tasks cleared from backlog (9 on Tuesday alone)
 
 ### Didn't Finish
-- Substack article — strategic pause pending Monday Jason alignment on Wisory vs. personal content (22+ day gap)
-- Conrad marketing frameworks — new P1 from Thursday, due Monday
-- Triathlon Phase 1 Week 1 — started but not yet complete
 
 ### Learnings
-- Build sprints were invisible until GitHub integration was wired in — most impactful work wasn't being measured
-- Backlog gravity displaces planned focus — 9-task Tuesday felt productive but displaced Substack
-- Strategic pauses are valid but have a cost — 22 days is approaching structural damage to weekly cadence goal
-- Wisory team is operating independently — Thursday check-in landed zero new commitments on you
 
 ### Next Week Focus
-- Substack: Monday Jason meeting then write Tuesday, publish by Friday (22+ day gap must end)
-- Conrad marketing frameworks for Leo (due Monday)
-- Continue IntelliQ momentum (Phase 2 inline citations)
-- Triathlon Phase 1 Week 2 — maintain rhythm
+- Substack kickoff: Week 1 Tuesday (Wisory) Apr 21, Week 1 Thursday (Dispatch) Apr 23
+- IntelliQ Phase 2 continuation
+- Triathlon Phase 1 Week 3
 
 ---
 
-*Generated: 2026-04-06*
+*Generated: 2026-04-13*
 *Command: /week-plan*
