@@ -68,11 +68,11 @@
 | Day | S&S Morning | Tri Session | Details |
 |-----|-------------|-------------|---------|
 | **Mon** | S&S (16kg) | REST | Dog walk only |
-| **Tue** | S&S (16kg) | ESSENTIA: Peloton + Pool Swim | 30 min bike + 500m swim (same drill focus) |
+| **Tue** | S&S (16kg) | ESSENTIA: Peloton + Pool Swim | Peloton 35 min (higher output than Wk 1) + 700m swim (4x25m drill + 4x100m free w/ 20s rest, incl. 2x100m continuous) |
 | **Wed** | S&S (16kg) | HOME: 12-3-30 incline walk | Post deep work |
 | **Thu** | S&S (16kg) | HOME: 12-3-30 incline walk | Before family arrival |
-| **Fri** | Optional S&S | REST | — |
-| **Sat** | S&S (16kg) | ESSENTIA: Peloton + Pool Swim | 25 min swim easy pace |
+| **Fri** | Optional S&S | REST | Dog walk only |
+| **Sat** | S&S (16kg) | ESSENTIA: Peloton + Pool Swim | Peloton 25 min + 20 min swim — **first bike-swim brick feel** |
 | **Sun** | Optional | REST or walk | — |
 
 **S&S target:** 100 swings + 10 TGUs at 16kg, 4-5 mornings
