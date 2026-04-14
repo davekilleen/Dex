@@ -59,6 +59,9 @@ Your task backlog organized by priority.
 - [ ] **Email Jason the Intel IQ origin-story document for review** — From 2026-04-13 Regis/Jason 1:1 #wisory_product ^task-20260413-008
 - [ ] **Outline Intel IQ tooling changes needed to support IU Ventures + broader university engagement model** — From 2026-04-13 Regis/Jason 1:1 #wisory_product ^task-20260413-009
 - [ ] **Attend next advisory group call for latest Intel IQ updates** — From 2026-04-13 Regis/Jason 1:1 #wisory_product ^task-20260413-010
+- [ ] **Sort Chicago trip dates** — Confirm travel dates and logistics #family ^task-20260414-001
+- [ ] **Complete Wokelo analysis** #wisory_product ^task-20260414-002
+- [ ] **Start Python best practices audit** — IntelliQ codebase review #wisory_product ^task-20260414-003
 - [ ] **Draft first Conrad marketing frameworks (positioning, messaging) by Monday ahead of Leo's Tuesday Zillow meeting** — From 2026-04-09 Conrad Consumer Portal Strategy #job_search ^task-20260413-011
 - [ ] **Share drafted Conrad marketing frameworks with Conrad team once ready** — From 2026-04-09 Conrad Consumer Portal Strategy #job_search ^task-20260413-012
 - [ ] **Review research article plan** #thought_leadership ^task-20260405-015
