@@ -14,6 +14,7 @@
 - [Conrad Intro](00-Inbox/Meetings/2026-03-13%20-%20Conrad%20Intro.md) — 2026-03-13
 - [Conrad GTM](00-Inbox/Meetings/2026-03-16%20-%20Conrad%20GTM.md) — 2026-03-16
 - [Conrad Positioning with Leo Jorge](00-Inbox/Meetings/2026-04-06%20-%20Conrad%20Positioning%20with%20Leo%20Jorge.md) — 2026-04-06
+- [Conrad Consumer Portal Strategy](00-Inbox/Meetings/2026-04-09%20-%20Conrad%20Consumer%20Portal%20Strategy.md) — 2026-04-09
 
 ## Notes
 

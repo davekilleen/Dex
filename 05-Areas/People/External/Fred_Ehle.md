@@ -17,6 +17,8 @@
 - [Wisory Team Check-in](00-Inbox/Meetings/2026-04-06%20-%20Wisory%20Team%20Check-in.md) — 2026-04-06
 - [Maintera Prep](00-Inbox/Meetings/2026-04-07%20-%20Maintera%20Prep.md) — 2026-04-07
 - [Wisory Intro — Maintera](00-Inbox/Meetings/2026-04-07%20-%20Wisory%20Intro%20-%20Maintera.md) — 2026-04-07
+- [Wisory Team Check-In](00-Inbox/Meetings/2026-04-09%20-%20Wisory%20Team%20Check-In.md) — 2026-04-09
+- [Wisory Team Check-In](00-Inbox/Meetings/2026-04-13%20-%20Wisory%20Team%20Check-In.md) — 2026-04-13
 
 ## Notes
 

@@ -49,6 +49,18 @@ Your task backlog organized by priority.
 
 ## P2 - Normal (max 10)
 
+- [ ] **Compile all messaging framework feedback (mine + Fred's) into single updated pass, share with Maeve** — From 2026-04-13 Wisory Team Check-In #wisory_product ^task-20260413-001
+- [ ] **Design short "brief" slide template for content creation based on agreed messaging framework** — From 2026-04-13 Wisory Team Check-In #wisory_product ^task-20260413-002
+- [ ] **Run Intel IQ report for XTI Aerospace using Drone Nerds as anchor; identify Buckman-style add-on acquisitions** — From 2026-04-13 Wisory Team Check-In #wisory_product ^task-20260413-003
+- [ ] **Locate existing culture/team/leadership indices slides and send to Jason Whitney for XTI appendix** — From 2026-04-13 Wisory Team Check-In #wisory_product ^task-20260413-004
+- [ ] **Draft concise high-level Intel IQ platform description (software + AI + tech stack + differentiation) for investors/prospects/analysts** — From 2026-04-13 Wisory Team Check-In #wisory_product ^task-20260413-005
+- [ ] **Research and outline Intel IQ security overview (data room access, storage, encryption, API, protection) for prospect Q&A** — From 2026-04-13 Wisory Team Check-In #wisory_product ^task-20260413-006
+- [ ] **Send revised shares + advisor agreements back to Elmer (copy Jason) — starts the 30-day equity clock** — From 2026-04-13 Regis/Jason 1:1 #wisory_product ^task-20260413-007
+- [ ] **Email Jason the Intel IQ origin-story document for review** — From 2026-04-13 Regis/Jason 1:1 #wisory_product ^task-20260413-008
+- [ ] **Outline Intel IQ tooling changes needed to support IU Ventures + broader university engagement model** — From 2026-04-13 Regis/Jason 1:1 #wisory_product ^task-20260413-009
+- [ ] **Attend next advisory group call for latest Intel IQ updates** — From 2026-04-13 Regis/Jason 1:1 #wisory_product ^task-20260413-010
+- [ ] **Draft first Conrad marketing frameworks (positioning, messaging) by Monday ahead of Leo's Tuesday Zillow meeting** — From 2026-04-09 Conrad Consumer Portal Strategy #job_search ^task-20260413-011
+- [ ] **Share drafted Conrad marketing frameworks with Conrad team once ready** — From 2026-04-09 Conrad Consumer Portal Strategy #job_search ^task-20260413-012
 - [ ] **Review research article plan** #thought_leadership ^task-20260405-015
 - [x] **Set up meeting with Leo** — Conrad follow-up #wisory_product ^task-20260405-007 ✅ 2026-04-07
 - [ ] **Rerun brand framework based on team feedback** #wisory_product ^task-20260405-008

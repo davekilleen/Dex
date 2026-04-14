@@ -17,6 +17,8 @@
 - [Product Strategy Alignment Meeting](00-Inbox/Meetings/2026-03-16%20-%20Product%20Strategy%20Alignment%20Meeting.md) — 2026-03-16
 - [Wisory Team Check-In](00-Inbox/Meetings/2026-04-02%20-%20Wisory%20Team%20Check-In.md) — 2026-04-02
 - [Harriette x Regis Connect](00-Inbox/Meetings/2026-04-07%20-%20Harriette%20x%20Regis%20Connect.md) — 2026-04-07
+- [Wisory Team Check-In](00-Inbox/Meetings/2026-04-09%20-%20Wisory%20Team%20Check-In.md) — 2026-04-09
+- [Wisory Team Check-In](00-Inbox/Meetings/2026-04-13%20-%20Wisory%20Team%20Check-In.md) — 2026-04-13
 
 ## Notes
 
