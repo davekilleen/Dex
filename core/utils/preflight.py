@@ -126,9 +126,22 @@ def needs_recheck(health: dict) -> bool:
     return False
 
 
+def get_mcp_dir() -> Path:
+    """Return the directory containing MCP server modules.
+
+    Supports both layouts: vault with a `dex-core/` wrapper, and flat vaults
+    where `core/` lives at the vault root.
+    """
+    vault = Path(get_vault_path())
+    wrapped = vault / "dex-core" / "core" / "mcp"
+    if wrapped.exists():
+        return wrapped
+    return vault / "core" / "mcp"
+
+
 def check_server(server_name: str) -> dict:
     """Run fast health check for a single MCP server."""
-    mcp_dir = Path(get_vault_path()) / "dex-core" / "core" / "mcp"
+    mcp_dir = get_mcp_dir()
     module_file = SERVER_MODULES.get(server_name)
 
     if not module_file:
@@ -157,22 +170,38 @@ def check_server(server_name: str) -> dict:
             "humanError": f"{label} has a syntax error — may need updating",
         }
 
-    # Check 3: Can core MCP dependency import?
-    try:
-        # Check if mcp package is available (all servers need this)
-        spec = importlib.util.find_spec("mcp")
-        if spec is None:
+    # Check 3: Can core MCP dependency import in the runtime interpreter?
+    # Servers launch via the vault's .venv (per .mcp.json), not the interpreter
+    # running this preflight — so check that interpreter when present.
+    venv_python = Path(get_vault_path()) / ".venv" / "bin" / "python3"
+    if venv_python.exists():
+        import subprocess
+        try:
+            subprocess.run(
+                [str(venv_python), "-c", "import mcp"],
+                check=True, capture_output=True, timeout=5,
+            )
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired, OSError):
             return {
                 "status": "error",
-                "error": "mcp package not found",
-                "humanError": f"{label} can't start: 'mcp' package missing (pip install mcp)",
+                "error": "mcp package not importable in .venv",
+                "humanError": f"{label} can't start: 'mcp' package missing in vault .venv (pip install mcp)",
             }
-    except (ModuleNotFoundError, ValueError):
-        return {
-            "status": "error",
-            "error": "mcp package not importable",
-            "humanError": f"{label} can't start: 'mcp' package broken",
-        }
+    else:
+        try:
+            spec = importlib.util.find_spec("mcp")
+            if spec is None:
+                return {
+                    "status": "error",
+                    "error": "mcp package not found",
+                    "humanError": f"{label} can't start: 'mcp' package missing (pip install mcp)",
+                }
+        except (ModuleNotFoundError, ValueError):
+            return {
+                "status": "error",
+                "error": "mcp package not importable",
+                "humanError": f"{label} can't start: 'mcp' package broken",
+            }
 
     return {"status": "ok"}
 
