@@ -50,10 +50,15 @@ gh api repos/rhadiaris/intelliq/contents/CHANGELOG.md --jq '.content' | base64 -
 - `06-Resources/Learnings/**/*.md` — Explicit learnings
 - `System/Session_Learnings/*.md` — Auto-captured session learnings
 
-### 5. Daily Reviews
+### 5. Daily Plans & Reviews
+- `07-Archives/Plans/YYYY-MM-DD.md` — This week's daily plans (primary record of planning ritual)
 - `07-Archives/Reviews/Daily_Review_YYYY-MM-DD.md` — This week's reviews
 
-### 6. Journals (If Enabled)
+### 6. Training Progress
+- `05-Areas/Triathlon_Training.md` — Full 19-week Brewhouse Tri training plan with per-day workouts
+- `04-Projects/Triathlon_Training.md` — Project page with phase/milestone tracking
+
+### 7. Journals (If Enabled)
 - `00-Inbox/Journals/YYYY/MM-Month/` — Morning/evening journals
 
 ---
@@ -162,9 +167,11 @@ For each goal:
 > **Goal 1** advanced because you completed Priority 1.
 > **Goal 2** needs attention — no linked work completed this week."
 
-### 4. Daily Completion Rate Trend (NEW)
+### 4. Daily Completion Rate Trend
 
-If daily reviews exist, calculate completion trends:
+**First check `07-Archives/Plans/` for this week's daily plans.** Count how many days had a `/daily-plan` generated. If daily reviews also exist, cross-reference plan focus items against review completion. If only plans exist (no corresponding review), still count the plan as evidence of the planning ritual and note which focus items were checked off in the plan file itself.
+
+Calculate completion trends:
 
 > "**Daily plan completion this week:**
 > 
@@ -377,6 +384,23 @@ Create `00-Inbox/Weekly_Synthesis_YYYY-MM-DD.md`:
 
 ### Actionable Improvements
 - [ ] [Specific improvement to make]
+
+---
+
+## 🏊 Training This Week
+
+Read `05-Areas/Triathlon_Training.md` to determine the current training week and phase. Cross-reference the plan's scheduled workouts (Tue/Wed/Thu/Sat) against what actually happened (check calendar, daily plans, daily reviews for evidence of completion).
+
+| Day | Planned Workout | Status |
+|-----|----------------|--------|
+| Tue | [From plan] | ✅ / ❌ / ? |
+| Wed | [From plan] | ✅ / ❌ / ? |
+| Thu | [From plan] | ✅ / ❌ / ? |
+| Sat | [From plan] | ✅ / ❌ / ? |
+
+**Phase:** [Current phase name] — Week [X] of 19
+**Consistency:** [X] of 4 sessions completed
+**Next milestone:** [From plan — e.g., first open water swim, first brick, down week]
 
 ---
 
