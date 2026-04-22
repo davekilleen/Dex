@@ -17,7 +17,7 @@ description: Grant Python calendar access for 30x faster calendar queries (30s â
 ## Process
 
 1. **Check current permission status:**
-   - Run the permission checker: `python3 core/mcp/scripts/check_calendar_permission.py`
+   - Run the permission checker: `.venv/bin/python3 core/mcp/scripts/check_calendar_permission.py`
    - Show the user what status was returned
 
 2. **If Already Authorized:**
@@ -66,8 +66,9 @@ description: Grant Python calendar access for 30x faster calendar queries (30s â
 ## Troubleshooting
 
 **"Module EventKit not found":**
-- Run: `pip3 install pyobjc-framework-EventKit`
-- This should have been installed during Dex setup
+- Run: `.venv/bin/pip install pyobjc-framework-EventKit`
+- This should have been installed during Dex setup into `.venv/`
+- Note: system `python3` / `pip3` will not work on modern macOS (PEP 668); always use the venv
 
 **Permission dialog doesn't appear:**
 - System Settings might already show "Denied" from a previous attempt
@@ -75,4 +76,4 @@ description: Grant Python calendar access for 30x faster calendar queries (30s â
 
 **Still seeing slow queries after granting access:**
 - Restart your coding harness (Cursor/Claude Code/Pi) to reload MCP server
-- Verify permission: `python3 core/mcp/scripts/check_calendar_permission.py`
+- Verify permission: `.venv/bin/python3 core/mcp/scripts/check_calendar_permission.py`

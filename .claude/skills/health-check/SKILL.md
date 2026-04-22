@@ -268,7 +268,7 @@ Want me to run a fresh pre-flight check to verify everything?
 1. Delete `.logs/mcp-health.json` (forces re-check)
 2. Run the pre-flight checker:
    ```bash
-   python3 "$VAULT_PATH/dex-core/core/utils/preflight.py" 2>/dev/null || python3 "core/utils/preflight.py" 2>/dev/null
+   .venv/bin/python3 "$VAULT_PATH/dex-core/core/utils/preflight.py" 2>/dev/null || .venv/bin/python3 "core/utils/preflight.py" 2>/dev/null
    ```
 3. Read the newly generated `.logs/mcp-health.json`
 4. Report results:
@@ -291,8 +291,8 @@ Fall back to manual checks:
 
 ```python
 # For each server in .mcp.json, try importing the module
-python3 -c "import core.mcp.work_server" 2>&1
-python3 -c "import core.mcp.calendar_server" 2>&1
+.venv/bin/python3 -c "import core.mcp.work_server" 2>&1
+.venv/bin/python3 -c "import core.mcp.calendar_server" 2>&1
 # etc.
 ```
 
