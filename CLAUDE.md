@@ -73,12 +73,22 @@ The system automatically suggests `/getting-started` at next session if vault < 
 ## User Profile
 
 <!-- Updated during onboarding -->
-**Name:** Not yet configured
-**Role:** Not yet configured
-**Company Size:** Not yet configured
-**Working Style:** Not yet configured
+**Name:** Peter Preston
+**Role:** Founder & Co-CEO at Accoil (Accoil Analytics + Accoil Advisors)
+**Company Size:** Startup — 4-person founding/operating team
+**Working Style:** Direct feedback preferred; no sugarcoating
 **Pillars:**
-- Not yet configured
+- Revenue (Founder-Led Sales)
+- Brand & Thought Leadership
+- Fundraising & Runway
+- Self & Family
+
+**Company Context:**
+- **Accoil Analytics** (accoil.com) — B2B SaaS product analytics platform for customer-facing teams (engagement scores, activation insights, AI summaries, account health signals)
+- **Accoil Advisors** (accoiladvisors.com) — 4–6 week consulting engagement ($10K–$50K+) building "Retention Signal Systems" to improve NRR
+- **Co-founders:** Simon Herd (Co-CEO), Kate Caldecott (COO)
+- **Background:** Previously Senior Product Marketing Manager at Atlassian (post ThinkTilt/ProForma acquisition, 2021)
+- **Other:** Co-hosts *Marketplace Growth by Accoil* (YouTube), writes on Substack (@marketplacegrowth)
 
 ---
 
@@ -101,6 +111,37 @@ Add any personal instructions between these markers. The `/dex-update` process p
 
 ## USER_EXTENSIONS_START
 <!-- Add your personal customizations here. -->
+
+### Clarify CRM Enrichment
+
+When loading person context (via the person-context-injector hook OR `/meeting-prep`):
+1. Call the Clarify MCP `find-leads` tool with the person's email (preferred) or full name.
+2. If a record is returned, merge into `<person_context>`: deal stage, last touchpoint, lead score, owner, next action.
+3. For companies referenced in any vault file, call Clarify `query-data` for account context (open opportunities, ARR, status).
+
+Treat Dex person/company pages as the source of truth for narrative context; treat Clarify as the source of truth for pipeline data. Always surface pipeline state in `/meeting-prep` so I walk into every call knowing the deal context.
+
+### Multi-Calendar Awareness
+
+For any skill that loads calendar context (especially `/daily-plan`, `/week-plan`, `/meeting-prep`, and ad-hoc "what's on my calendar" / "what's my week look like" questions):
+
+1. **Preferred tool: `mcp__claude_ai_Google_Calendar__list_events`** (claude.ai Google Calendar connector). It's currently the only working path — the local `calendar-mcp` (Python bridge to Apple Calendar.app) is known broken as of 2026-04-24 and should be treated as unavailable until explicitly repaired.
+2. The default is `calendar.work_calendar` in `System/user-profile.yaml` (`peter@accoil.com`). Work calendar first, then additional calendars.
+3. **Read the full list from `calendar.additional_calendars` in `System/user-profile.yaml` — don't hardcode the list here.** As of 2026-04-24 it includes: TEAM CALENDAR, `peter@pgpreston.com` (personal — critical, drives a lot of the day), Em Shifts and Church, Kids events ATTENDING, Kids events AWARE, SCOUTS, Garmin, Kate Caldecott - Accoil, Holidays in Australia. If the config changes, the config is the source of truth.
+4. **Call `list_events` once per calendar** passing the `calendarId` from the config (not `calendar_name` — the claude.ai tool needs the full Google Calendar ID). Run calls in parallel where possible. Merge results into a single chronological view.
+5. When summarizing, label each event with its source calendar so Peter can see at a glance whether something is work, personal, or family.
+6. For the primary work calendar (`peter@accoil.com`), the `calendarId` parameter can be omitted — it defaults to primary.
+
+Rationale: Peter runs a small team and has 4 kids — work and personal commitments interleave through the day. A daily plan that only sees the work calendar misses half the day's reality. The claude.ai connector already has OAuth to Peter's work Google identity, which has shared access to every calendar listed above — no additional setup needed.
+
+### Disabled bundled MCPs (do not re-enable)
+
+Two bundled Dex MCPs are intentionally removed from `.mcp.json` because user-scoped versions already provide the same tools and would collide:
+- `granola-mcp` — replaced by user-scoped Granola HTTP MCP.
+- `slack-mcp` — replaced by user-scoped Slack MCP.
+
+After running `/dex-update`, re-check `.mcp.json` and remove these two blocks again if upstream re-introduces them.
+
 ## USER_EXTENSIONS_END
 
 ---

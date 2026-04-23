@@ -8,25 +8,25 @@
 demo_mode: false
 
 # Your name (used to identify you in meetings, filter yourself from participant lists)
-name: ""
+name: "Peter Preston"
 
 # Your role (used in meeting analysis prompts)
-role: ""
+role: "Founder & Co-CEO"
 
 # Role group (for command filtering and adaptation)
 # Options: product, sales, marketing, finance, engineering, customer_success, operations, leadership, design, support, advisory
-role_group: ""
+role_group: "leadership"
 
 # Your company (optional, adds context to meeting analysis)
-company: ""
+company: "Accoil"
 
 # Company size tier
-company_size: ""  # options: startup (1-100), scaling (100-1000), enterprise (1000-10000), large_enterprise (10000+)
+company_size: "startup"  # options: startup (1-100), scaling (100-1000), enterprise (1000-10000), large_enterprise (10000+)
 
 # Your company email domain (used to identify internal vs external people)
 # Example: "pendo.io" (without @)
 # Multiple domains: "pendo.io, pendo.com"
-email_domain: ""
+email_domain: "accoil.com"
 
 # Communication Preferences
 # How the AI adapts its tone and language when working with you
@@ -41,17 +41,46 @@ communication:
   detail_level: "concise"  # options: concise, balanced, comprehensive
   
   # Career/seniority context (for tone calibration)
-  career_level: "mid"  # options: junior, mid, senior, leadership, c_suite
+  career_level: "c_suite"  # options: junior, mid, senior, leadership, c_suite
   
   # Coaching style preference (for career coaching)
   coaching_style: "collaborative"  # options: encouraging, collaborative, challenging
+
+# Calendar Configuration
+# work_calendar is the fast-path default for calendar queries (45s -> 0.3s perf gain).
+# The MCP only supports a single work_calendar; the additional_calendars list below
+# is referenced by the Multi-Calendar Awareness instruction in CLAUDE.md so daily/week-plan
+# skills query each calendar explicitly and merge results.
+calendar:
+  work_calendar: "peter@accoil.com"
+  # Each entry: name (display label) + id (calendar ID for API calls)
+  # Google Calendar API requires IDs, not display names, for non-primary calendars.
+  additional_calendars:
+    - name: "TEAM CALENDAR"
+      id: "c_3a2bc5794ee00062239c671c9f8c3ada2ca01de756cd805e75894dc03193f82d@group.calendar.google.com"
+    - name: "peter@pgpreston.com"
+      id: "peter@pgpreston.com"
+    - name: "Em Shifts and Church"
+      id: "c_662b187b55e1045f3bdef970784d00d72eafbcfe39d1e2d6e747f469fd3b4e0b@group.calendar.google.com"
+    - name: "Kids events - ATTENDING"
+      id: "c_8e24bf56e0baca833c8e32d2ca3626ae1ee0b2dd7e093515ab6b49688a2fed94@group.calendar.google.com"
+    - name: "Kids events - AWARE"
+      id: "c_cad24973f0a3252d72d4a28bf628bbc3bd5848be8bcb587117c7e8511e368c93@group.calendar.google.com"
+    - name: "SCOUTS"
+      id: "c_3de7dcf28cc842dd6d44813824e19e709719596215d64d454fd1999800308812@group.calendar.google.com"
+    - name: "Garmin"
+      id: "d9rkb8c2jou053g8l1o83iul1sh5c7sd@import.calendar.google.com"
+    - name: "Kate Caldecott - Accoil"
+      id: "kate@accoil.com"
+    - name: "Holidays in Australia"
+      id: "en-gb.australian#holiday@group.v.calendar.google.com"
 
 # Meeting Processing Configuration
 # How Dex processes meetings from Granola
 meeting_processing:
   # Mode: "automatic" (notes appear in your vault within 30min) or "manual" (run /process-meetings)
-  mode: automatic
-  
+  mode: manual
+
   # API provider for automatic mode: gemini, anthropic, or openai
   api_provider: gemini
 
@@ -59,23 +88,23 @@ meeting_processing:
 # Controls what gets extracted from your meetings (set during onboarding based on role)
 meeting_intelligence:
   # Extract customer pain points and challenges
-  extract_customer_intel: false
-  
+  extract_customer_intel: true
+
   # Extract competitive mentions and comparisons
-  extract_competitive_intel: false
-  
+  extract_competitive_intel: true
+
   # Extract action items (always recommended)
   extract_action_items: true
-  
+
   # Extract decisions made (always recommended)
   extract_decisions: true
-  
+
   # Extract stakeholder dynamics and relationships
-  extract_stakeholder_dynamics: false
-  
+  extract_stakeholder_dynamics: true
+
   # Extract budget, authority, need, timeline (BANT for sales)
-  extract_budget_timeline: false
-  
+  extract_budget_timeline: true
+
   # Extract technical decisions and architecture choices
   extract_technical_decisions: false
 
@@ -95,18 +124,17 @@ journaling:
 # Controls whether you use quarterly goal setting
 quarterly_planning:
   # Whether quarterly planning is enabled
-  enabled: false
-  
+  enabled: true
+
   # Has user been asked about quarterly planning during onboarding?
-  prompted: false
-  
-  # Month when Q1 starts (1=Jan, 2=Feb, 4=Apr, etc)
-  # Common: 1 (calendar year), 2 (some fiscal years), 4 (many fiscal years)
-  q1_start_month: 1
-  
+  prompted: true
+
+  # Month when Q1 starts (1=Jan, 2=Feb, 4=Apr, 7=Jul for Australian FY, etc)
+  q1_start_month: 7
+
   # Current quarter (auto-calculated by system)
-  current_quarter: "Q1 2026"
-  
+  current_quarter: "Q4 FY26"
+
   # Current quarter dates (auto-calculated)
-  quarter_start_date: "2026-01-01"
-  quarter_end_date: "2026-03-31"
+  quarter_start_date: "2026-04-01"
+  quarter_end_date: "2026-06-30"

@@ -2,13 +2,13 @@
 # This file tracks which integrations are enabled and their settings
 
 # Last updated: (auto-updated when integrations change)
-last_updated: '2026-02-04T18:41:25.882536'
+last_updated: '2026-04-24T00:00:00.000000'
 
 # Enabled integrations
 enabled:
   notion: false
   slack: true
-  google: false
+  google: true
 
 # Integration-specific settings are stored in separate files:
 # - notion.yaml (Notion-specific config)
