@@ -1623,10 +1623,12 @@ def get_goal_by_id(goal_id: str) -> Optional[Dict[str, Any]]:
 
 def find_linked_priorities(goal_id: str) -> List[Dict[str, Any]]:
     """Find all weekly priorities linked to a goal"""
+    if not goal_id:
+        return []
     priorities_file = get_week_priorities_file()
     if not priorities_file.exists():
         return []
-    
+
     content = priorities_file.read_text()
     lines = content.split('\n')
     
