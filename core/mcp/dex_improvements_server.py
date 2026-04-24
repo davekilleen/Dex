@@ -28,7 +28,7 @@ from mcp.server.models import InitializationOptions
 
 # QMD semantic search (optional - gracefully degrade if not available)
 try:
-    from utils.qmd_query import is_qmd_available, vault_search
+    from core.utils.qmd_query import is_qmd_available, vault_search
     HAS_QMD = True
 except ImportError:
     HAS_QMD = False

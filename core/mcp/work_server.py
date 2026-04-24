@@ -35,7 +35,7 @@ from mcp.server.models import InitializationOptions
 
 # QMD semantic search (optional - gracefully degrade if not available)
 try:
-    from utils.qmd_query import is_qmd_available, vault_search
+    from core.utils.qmd_query import is_qmd_available, vault_search
     HAS_QMD = True
 except ImportError:
     HAS_QMD = False
@@ -75,9 +75,7 @@ except ImportError:
 # Import QMD search index refresh (optional - silently skips if QMD not installed)
 try:
     from core.utils.qmd_indexer import refresh_search_index
-    HAS_QMD = True
 except ImportError:
-    HAS_QMD = False
     def refresh_search_index(): pass
 
 # Health system — error queue and health reporting
@@ -1502,7 +1500,7 @@ def generate_goal_id(quarter: str, existing_goals: List[Dict]) -> str:
     max_num = 0
     prefix = f"{q_num}-{year}-goal-"
     for goal in existing_goals:
-        if 'goal_id' in goal and goal['goal_id'].startswith(prefix):
+        if goal.get('goal_id') and goal['goal_id'].startswith(prefix):
             try:
                 num = int(goal['goal_id'].split('-')[-1])
                 max_num = max(max_num, num)
