@@ -73,12 +73,14 @@ The system automatically suggests `/getting-started` at next session if vault < 
 ## User Profile
 
 <!-- Updated during onboarding -->
-**Name:** Not yet configured
-**Role:** Not yet configured
-**Company Size:** Not yet configured
-**Working Style:** Not yet configured
+**Name:** Carl
+**Role:** Co-Founder/CPO at Sploor (startup, 1-100 people)
+**Company:** Sploor — dual-sided marketplace for families to discover kid-friendly venues, and for venue owners to manage their listings
+**Working Style:** Founder wearing many hats — spans Product, Sales, Marketing, Design, Customer Success, and Product Operations
 **Pillars:**
-- Not yet configured
+- Sales Engine — build and grow the sales pipeline (venue owner acquisition)
+- Marketing Engine — create and scale marketing workflows (parent-facing growth)
+- Customer Operations — automate and optimize customer workflows for both sides of the marketplace
 
 ---
 

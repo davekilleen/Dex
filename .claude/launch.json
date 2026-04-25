@@ -1,0 +1,71 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "work",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["core/mcp/work_server.py"],
+      "port": null
+    },
+    {
+      "name": "granola",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["core/mcp/granola_server.py"],
+      "port": null
+    },
+    {
+      "name": "calendar",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["core/mcp/calendar_server.py"],
+      "port": null
+    },
+    {
+      "name": "career",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["core/mcp/career_server.py"],
+      "port": null
+    },
+    {
+      "name": "commitment-detection",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["core/mcp/commitment_server.py"],
+      "port": null
+    },
+    {
+      "name": "resume",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["core/mcp/resume_server.py"],
+      "port": null
+    },
+    {
+      "name": "onboarding",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["core/mcp/onboarding_server.py"],
+      "port": null
+    },
+    {
+      "name": "dex-improvements",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["core/mcp/dex_improvements_server.py"],
+      "port": null
+    },
+    {
+      "name": "session-memory",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["core/mcp/session_memory_server.py"],
+      "port": null
+    },
+    {
+      "name": "analytics",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["core/mcp/analytics_server.py"],
+      "port": null
+    },
+    {
+      "name": "meeting-sync",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [".scripts/meeting-intel/sync-from-granola.cjs"],
+      "port": null
+    }
+  ]
+}

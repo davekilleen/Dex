@@ -14,15 +14,53 @@
 #
 # The Work MCP uses these to categorize tasks and check balance across your work.
 
-pillars: []
-  # Will be populated during onboarding
-  # Example structure:
-  # - id: pillar_id
-  #   name: "Pillar Name"
-  #   description: "What this pillar represents"
-  #   keywords:
-  #     - keyword1
-  #     - keyword2
+pillars:
+  - id: sales_engine
+    name: "Sales Engine"
+    description: "Build and grow the sales pipeline — venue owner acquisition, outreach, and deal flow"
+    keywords:
+      - sales
+      - pipeline
+      - outreach
+      - venue
+      - listing
+      - deal
+      - prospect
+      - business owner
+      - revenue
+      - acquisition
+      - B2B
+
+  - id: marketing_engine
+    name: "Marketing Engine"
+    description: "Create and scale marketing workflows — parent-facing growth, content, and brand"
+    keywords:
+      - marketing
+      - content
+      - growth
+      - brand
+      - SEO
+      - social
+      - campaign
+      - audience
+      - awareness
+      - parent
+      - family
+
+  - id: customer_operations
+    name: "Customer Operations"
+    description: "Automate and optimize customer workflows — onboarding, support, and retention for both sides of the marketplace"
+    keywords:
+      - customer
+      - operations
+      - onboarding
+      - retention
+      - support
+      - churn
+      - workflow
+      - automation
+      - success
+      - experience
 
 # Priority limits (how many active tasks per priority level)
 priority_limits:

@@ -1,0 +1,14 @@
+{
+  "user": {
+    "name": "Carl",
+    "role": "Co-Founder/CPO",
+    "company": "Sploor",
+    "companySize": "startup",
+    "pillars": [
+      "Sales Engine",
+      "Marketing Engine",
+      "Customer Operations"
+    ]
+  },
+  "createdAt": "2026-04-24"
+}
