@@ -38,6 +38,9 @@ CLAUDE-custom.md
 core/mcp-custom/
 core/mcp-premium/
 
+# Rowboat sync (symlink to ~/.rowboat/knowledge/)
+06-Resources/Rowboat_Sync
+
 # User data folders (PARA structure)
 00-Inbox/
 01-Quarter_Goals/
@@ -205,3 +208,25 @@ scripts/private/
 !CHANGELOG.md
 !.claude-plugin/
 .ant-colony/
+
+# ============================================
+# User content under 06-Resources/ (personal vault, not platform)
+# ============================================
+
+# Folders containing user-generated content (meeting intel, reports, interviews)
+06-Resources/Intel/**
+06-Resources/Al_Liwan_Reports/
+06-Resources/AI_Workflow_Interviews/
+06-Resources/Briefings/
+06-Resources/Decisions/
+06-Resources/Meeting_Cache/
+06-Resources/Regulatory/
+06-Resources/Reports/
+06-Resources/Transcripts/
+06-Resources/Writing/
+
+# Loose user reports at 06-Resources/ root
+06-Resources/AI_Quant_Agent_Due_Diligence_Report.md
+06-Resources/ALG_Wealth_Management_Strategic_Plan_260312_Draft.md
+06-Resources/RaiseTalks_CoFounder_Deal_Analysis.md
+06-Resources/al-liwan-brand-guidelines.skill
