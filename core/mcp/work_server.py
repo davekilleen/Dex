@@ -115,6 +115,7 @@ from core.paths import (
     GOALS_FILE,
     INBOX_DIR,
     MEETING_CACHE_FILE,
+    MEETING_CACHE_INDEX,
     MEETINGS_DIR,
     PEOPLE_DIR,
     PEOPLE_INDEX_FILE,
@@ -805,10 +806,50 @@ def _resolve_people_dir() -> Path:
     return get_people_dir()
 
 
+def _load_meeting_cache_index() -> Dict[str, Any]:
+    """Load the meeting cache person-meeting index if available."""
+    if MEETING_CACHE_INDEX.exists():
+        try:
+            return json.loads(MEETING_CACHE_INDEX.read_text())
+        except (json.JSONDecodeError, OSError):
+            pass
+    return {}
+
+
+def _count_open_actions_for_person(name: str, tasks_content: str) -> int:
+    """Count open (unchecked) tasks in Tasks.md that mention this person."""
+    name_lower = name.lower()
+    first_name = name_lower.split()[0] if name_lower else ''
+    count = 0
+    for line in tasks_content.split('\n'):
+        if not line.strip().startswith('- [ ]'):
+            continue
+        line_lower = line.lower()
+        if name_lower in line_lower or (len(first_name) > 3 and first_name in line_lower):
+            count += 1
+    return count
+
+
 def build_people_index_data() -> Dict[str, Any]:
-    """Scan all person pages and build a lightweight JSON index."""
+    """Scan all person pages and build a lightweight JSON index.
+
+    Enriched with meeting cache data (last_met, meeting_count) and
+    open action item counts from Tasks.md.
+    """
     people_dir = _resolve_people_dir()
     entries = []
+
+    # Load meeting cache index for last_met enrichment
+    cache_index = _load_meeting_cache_index()
+    by_person = cache_index.get('by_person', {})
+
+    # Load tasks for open action count
+    tasks_content = ''
+    if TASKS_FILE.exists():
+        try:
+            tasks_content = TASKS_FILE.read_text()
+        except OSError:
+            pass
 
     for subdir_name in ['Internal', 'External', 'CPO_Network']:
         subdir = people_dir / subdir_name
@@ -834,20 +875,38 @@ def build_people_index_data() -> Dict[str, Any]:
                         tags = [t.strip() for t in parts[2].strip().split(',') if t.strip()]
                     break
 
-            entries.append({
-                'name': person.get('name', person_file.stem.replace('_', ' ')),
+            # Enrich from meeting cache index
+            person_name = person.get('name', person_file.stem.replace('_', ' '))
+            cache_key = person_name.lower().replace(' ', '_')
+            meetings = by_person.get(cache_key, [])
+            meeting_count = len(meetings)
+            last_met = None
+            if meetings:
+                dates = [m.get('date', '') for m in meetings if m.get('date')]
+                if dates:
+                    last_met = max(dates)
+
+            # Count open action items mentioning this person
+            open_actions = _count_open_actions_for_person(person_name, tasks_content)
+
+            entry = {
+                'name': person_name,
                 'company': person.get('company'),
                 'role': person.get('role'),
                 'email': person.get('email'),
                 'type': subdir_name.lower(),
                 'path': str(person_file.relative_to(BASE_DIR)),
                 'last_interaction': person.get('last_interaction'),
+                'last_met': last_met,
+                'meeting_count': meeting_count,
+                'open_actions': open_actions,
                 'tags': tags,
                 'status': 'populated' if has_content else 'stub',
-            })
+            }
+            entries.append(entry)
 
     index = {
-        'version': 1,
+        'version': 2,
         'built_at': datetime.now().isoformat(),
         'total': len(entries),
         'by_type': {
