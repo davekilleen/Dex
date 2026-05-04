@@ -1,11 +1,13 @@
 ---
 name: audience-intel
 description: Synthesize what we're learning about our audience
-role_groups:
-- marketing
-- product
-jtbd: "Understanding your audience requires synthesizing insights from customer conversations, \nfeedback, and behavior patterns. This reviews recent interactions, identifies persona \npatterns, surfaces pain points and motivations, and updates your audience understanding \nso marketing stays targeted and relevant.\n"
-time_investment: 10-15 minutes per review
+role_groups: [marketing, product]
+jtbd: |
+  Understanding your audience requires synthesizing insights from customer conversations, 
+  feedback, and behavior patterns. This reviews recent interactions, identifies persona 
+  patterns, surfaces pain points and motivations, and updates your audience understanding 
+  so marketing stays targeted and relevant.
+time_investment: "10-15 minutes per review"
 ---
 
 # audience-intel

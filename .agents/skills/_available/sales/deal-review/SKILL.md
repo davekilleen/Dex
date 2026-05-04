@@ -1,11 +1,13 @@
 ---
 name: deal-review
 description: Review active deals and surface risks
-role_groups:
-- sales
-- leadership
-jtbd: "You have multiple deals in flight and it's hard to keep track of which need \nattention. This scans your deal pages, identifies stale deals (no recent activity), \nflags missing next steps, and checks for upcoming deadlines so nothing slips \nthrough the cracks.\n"
-time_investment: 5-10 minutes per review
+role_groups: [sales, leadership]
+jtbd: |
+  You have multiple deals in flight and it's hard to keep track of which need 
+  attention. This scans your deal pages, identifies stale deals (no recent activity), 
+  flags missing next steps, and checks for upcoming deadlines so nothing slips 
+  through the cracks.
+time_investment: "5-10 minutes per review"
 ---
 
 # deal-review

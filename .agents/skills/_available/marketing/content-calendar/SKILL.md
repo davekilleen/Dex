@@ -1,10 +1,12 @@
 ---
 name: content-calendar
 description: Review upcoming content and identify gaps
-role_groups:
-- marketing
-jtbd: "Your content pipeline is scattered across files and you're not sure if you have \ngaps. This scans 05-Areas/Content/, checks alignment with campaigns and priorities, \nidentifies gaps in the pipeline, and suggests topics based on recent customer intel.\n"
-time_investment: 10-15 minutes per review
+role_groups: [marketing]
+jtbd: |
+  Your content pipeline is scattered across files and you're not sure if you have 
+  gaps. This scans 05-Areas/Content/, checks alignment with campaigns and priorities, 
+  identifies gaps in the pipeline, and suggests topics based on recent customer intel.
+time_investment: "10-15 minutes per review"
 ---
 
 # content-calendar

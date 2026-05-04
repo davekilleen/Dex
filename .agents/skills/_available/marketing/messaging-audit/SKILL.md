@@ -1,12 +1,12 @@
 ---
 name: messaging-audit
 description: Review positioning and messaging across content
-role_groups:
-- marketing
-- product
-- leadership
-jtbd: "Your messaging drifts over time as different people write content. This scans \n05-Areas/Content/, checks consistency across materials, identifies conflicts or gaps, \nand suggests refinements so your positioning stays tight and consistent.\n"
-time_investment: 15-20 minutes per audit
+role_groups: [marketing, product, leadership]
+jtbd: |
+  Your messaging drifts over time as different people write content. This scans 
+  05-Areas/Content/, checks consistency across materials, identifies conflicts or gaps, 
+  and suggests refinements so your positioning stays tight and consistent.
+time_investment: "15-20 minutes per audit"
 ---
 
 # messaging-audit

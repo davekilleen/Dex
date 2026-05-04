@@ -1,11 +1,12 @@
 ---
 name: expansion-opportunities
 description: Identify upsell/cross-sell opportunities
-role_groups:
-- customer_success
-- sales
-jtbd: "You're focused on retention and miss expansion opportunities. This reviews active \naccounts, identifies product usage patterns, suggests expansion based on needs \nexpressed, and prioritizes by likelihood so you systematically grow accounts.\n"
-time_investment: 15-20 minutes per review
+role_groups: [customer_success, sales]
+jtbd: |
+  You're focused on retention and miss expansion opportunities. This reviews active 
+  accounts, identifies product usage patterns, suggests expansion based on needs 
+  expressed, and prioritizes by likelihood so you systematically grow accounts.
+time_investment: "15-20 minutes per review"
 ---
 
 # expansion-opportunities

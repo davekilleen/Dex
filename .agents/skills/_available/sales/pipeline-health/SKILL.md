@@ -1,11 +1,13 @@
 ---
 name: pipeline-health
 description: Analyze pipeline coverage and forecast accuracy
-role_groups:
-- sales
-- leadership
-jtbd: "You need to forecast accurately and ensure you have enough pipeline to hit quota. \nThis reviews deal velocity (time in each stage), identifies forecast gaps, and \nsuggests actions to move deals forward so you can report confidently on where \nyou'll land.\n"
-time_investment: 10-15 minutes per review
+role_groups: [sales, leadership]
+jtbd: |
+  You need to forecast accurately and ensure you have enough pipeline to hit quota. 
+  This reviews deal velocity (time in each stage), identifies forecast gaps, and 
+  suggests actions to move deals forward so you can report confidently on where 
+  you'll land.
+time_investment: "10-15 minutes per review"
 ---
 
 # pipeline-health

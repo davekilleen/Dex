@@ -6,8 +6,8 @@ manifest:
   auth: oauth2
   category: project_management
   services:
-  - jira
-  - confluence
+    - jira
+    - confluence
 ---
 
 # Atlassian Setup

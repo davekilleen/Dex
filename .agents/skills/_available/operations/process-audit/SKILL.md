@@ -1,10 +1,12 @@
 ---
 name: process-audit
 description: Review process health and bottlenecks
-role_groups:
-- operations
-jtbd: "Processes break down over time but you don't know where. This gathers feedback \non a process, identifies bottlenecks or friction, suggests improvements, and \ndocuments current vs. desired state so you can fix what's broken.\n"
-time_investment: 20-30 minutes per process
+role_groups: [operations]
+jtbd: |
+  Processes break down over time but you don't know where. This gathers feedback 
+  on a process, identifies bottlenecks or friction, suggests improvements, and 
+  documents current vs. desired state so you can fix what's broken.
+time_investment: "20-30 minutes per process"
 ---
 
 # process-audit

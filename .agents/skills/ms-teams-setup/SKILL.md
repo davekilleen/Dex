@@ -7,15 +7,15 @@ integration:
   mcp_server: teams-mcp
   auth: oauth2
   enhances:
-  - skill: daily-plan
-    capability: "Teams digest alongside Slack \u2014 unread chats, mentions, and priority channel activity"
-  - skill: meeting-prep
-    capability: Teams conversation context with attendees, recent threads, and channel decisions
+    - skill: daily-plan
+      capability: Teams digest alongside Slack — unread chats, mentions, and priority channel activity
+    - skill: meeting-prep
+      capability: Teams conversation context with attendees, recent threads, and channel decisions
   new_capabilities:
-  - name: teams-digest
-    trigger: Automatically included in /daily-plan when Teams is connected
-  - name: teams-person-context
-    trigger: Person pages enriched with latest Teams conversations
+    - name: teams-digest
+      trigger: Automatically included in /daily-plan when Teams is connected
+    - name: teams-person-context
+      trigger: Person pages enriched with latest Teams conversations
   sync:
     direction: read
     entities: messages, channels, presence

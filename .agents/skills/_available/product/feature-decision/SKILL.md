@@ -1,11 +1,13 @@
 ---
 name: feature-decision
 description: Framework for making feature prioritization decisions
-role_groups:
-- product
-- leadership
-jtbd: "Prioritization decisions get made in meetings and forgotten, or worse - made \nwithout proper framework. This guides you through key questions (impact, effort, \nstrategic fit), checks recent customer intel, and documents the decision with \nrationale so you can reference it later.\n"
-time_investment: 15-20 minutes per decision
+role_groups: [product, leadership]
+jtbd: |
+  Prioritization decisions get made in meetings and forgotten, or worse - made 
+  without proper framework. This guides you through key questions (impact, effort, 
+  strategic fit), checks recent customer intel, and documents the decision with 
+  rationale so you can reference it later.
+time_investment: "15-20 minutes per decision"
 ---
 
 # feature-decision

@@ -1,6 +1,6 @@
 ---
 name: identity-snapshot
-description: "Reads existing Dex data and synthesizes `System/identity-model.md` \u2014 a living document the system writes, not the user. This captures who you are as a professional based on your actual behavior, not self-reported traits."
+description: Reads existing Dex data and synthesizes `System/identity-model.md` — a living document the system writes, not the user. This captures who you are as a professional based on your actual behavior, not self-reported traits.
 ---
 
 # Identity Snapshot

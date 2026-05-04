@@ -1,11 +1,13 @@
 ---
 name: variance-analysis
 description: Compare actuals vs budget with narrative
-role_groups:
-- finance
-- leadership
-jtbd: "Variances happen every month but documenting them takes time. This prompts for \nkey variances, helps you document explanations with context, links to supporting \nmaterials, and prepares a board-ready narrative so you're ready for leadership \nreviews.\n"
-time_investment: 20-30 minutes per analysis
+role_groups: [finance, leadership]
+jtbd: |
+  Variances happen every month but documenting them takes time. This prompts for 
+  key variances, helps you document explanations with context, links to supporting 
+  materials, and prepares a board-ready narrative so you're ready for leadership 
+  reviews.
+time_investment: "20-30 minutes per analysis"
 ---
 
 # variance-analysis

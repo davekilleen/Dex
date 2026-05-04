@@ -5,12 +5,12 @@ model_hint: balanced
 context: fork
 hooks:
   PostToolUse:
-  - matcher: Write
-    type: command
-    command: node .codex/hooks/post-write-meeting-person-update.cjs
+    - matcher: Write
+      type: command
+      command: "node .codex/hooks/post-write-meeting-person-update.cjs"
   Stop:
-  - type: command
-    command: node .codex/hooks/meeting-summary-generator.cjs
+    - type: command
+      command: "node .codex/hooks/meeting-summary-generator.cjs"
 ---
 
 # Process Meetings

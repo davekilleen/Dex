@@ -1,11 +1,12 @@
 ---
 name: architecture-decision
 description: Document architectural choices
-role_groups:
-- engineering
-- leadership
-jtbd: "Architecture decisions get made in meetings and lost. This provides an ADR template, \nprompts for context/options/decision, links to related projects, and saves to \n06-Resources/ so future engineers understand why choices were made.\n"
-time_investment: 20-30 minutes per decision
+role_groups: [engineering, leadership]
+jtbd: |
+  Architecture decisions get made in meetings and lost. This provides an ADR template, 
+  prompts for context/options/decision, links to related projects, and saves to 
+  06-Resources/ so future engineers understand why choices were made.
+time_investment: "20-30 minutes per decision"
 ---
 
 # architecture-decision

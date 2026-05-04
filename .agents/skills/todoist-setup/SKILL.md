@@ -7,17 +7,17 @@ integration:
   mcp_server: todoist-mcp
   auth: api_key
   enhances:
-  - skill: daily-plan
-    capability: Merges Todoist tasks due today alongside Dex tasks
-  - skill: triage
-    capability: Routes items to Dex, Todoist, or both
-  - skill: process-inbox
-    capability: Creates tasks in both systems when processing captured items
-  - skill: week-review
-    capability: Shows cross-system completion stats (Dex + Todoist)
+    - skill: daily-plan
+      capability: Merges Todoist tasks due today alongside Dex tasks
+    - skill: triage
+      capability: Routes items to Dex, Todoist, or both
+    - skill: process-inbox
+      capability: Creates tasks in both systems when processing captured items
+    - skill: week-review
+      capability: Shows cross-system completion stats (Dex + Todoist)
   new_capabilities:
-  - name: Bidirectional task sync
-    trigger: Automatic at daily plan and task creation touchpoints
+    - name: Bidirectional task sync
+      trigger: Automatic at daily plan and task creation touchpoints
   sync:
     direction: bidirectional
     entities: tasks

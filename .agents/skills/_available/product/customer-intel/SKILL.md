@@ -1,12 +1,12 @@
 ---
 name: customer-intel
 description: Synthesize recent customer feedback and pain points
-role_groups:
-- product
-- customer_success
-- sales
-jtbd: "Customer feedback is scattered across meeting notes, person pages, and quick \ncaptures. This synthesizes recent feedback by theme, shows frequency of mentions, \nand surfaces patterns you might miss when looking at conversations individually.\n"
-time_investment: 5-10 minutes per review
+role_groups: [product, customer_success, sales]
+jtbd: |
+  Customer feedback is scattered across meeting notes, person pages, and quick 
+  captures. This synthesizes recent feedback by theme, shows frequency of mentions, 
+  and surfaces patterns you might miss when looking at conversations individually.
+time_investment: "5-10 minutes per review"
 ---
 
 # customer-intel

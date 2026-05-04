@@ -1,11 +1,12 @@
 ---
 name: design-system-audit
 description: Review design system usage and gaps
-role_groups:
-- design
-- product
-jtbd: "Design systems drift and gaps appear. This scans projects for design system \nmentions, identifies inconsistencies or gaps, suggests components to build, and \ntracks adoption so your design system stays healthy and useful.\n"
-time_investment: 20-30 minutes per audit
+role_groups: [design, product]
+jtbd: |
+  Design systems drift and gaps appear. This scans projects for design system 
+  mentions, identifies inconsistencies or gaps, suggests components to build, and 
+  tracks adoption so your design system stays healthy and useful.
+time_investment: "20-30 minutes per audit"
 ---
 
 # design-system-audit

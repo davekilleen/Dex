@@ -9,17 +9,17 @@ integration:
   category: meetings
   sync_direction: bidirectional
   enhances:
-  - skill: meeting-prep
-    capability: Shows last Zoom with each attendee, surfaces recording summaries
-  - skill: process-meetings
-    capability: Zoom recordings as alternative meeting source alongside Granola
-  - skill: week-review
-    capability: Meeting time stats from Zoom (hours, count, distribution)
+    - skill: meeting-prep
+      capability: Shows last Zoom with each attendee, surfaces recording summaries
+    - skill: process-meetings
+      capability: Zoom recordings as alternative meeting source alongside Granola
+    - skill: week-review
+      capability: Meeting time stats from Zoom (hours, count, distribution)
   new_capabilities:
-  - name: Recording Search
-    trigger: During /meeting-prep, search Zoom recordings for past meetings with attendees
-  - name: Zoom Scheduling
-    trigger: Schedule Zoom meetings directly from Dex with confirmation
+    - name: Recording Search
+      trigger: During /meeting-prep, search Zoom recordings for past meetings with attendees
+    - name: Zoom Scheduling
+      trigger: Schedule Zoom meetings directly from Dex with confirmation
 ---
 
 # Zoom Setup

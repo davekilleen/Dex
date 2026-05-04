@@ -9,8 +9,8 @@ model_routing:
 context: fork
 hooks:
   Stop:
-  - type: command
-    command: node .codex/hooks/daily-plan-quick-ref.cjs
+    - type: command
+      command: "node .codex/hooks/daily-plan-quick-ref.cjs"
 ---
 
 # daily-plan

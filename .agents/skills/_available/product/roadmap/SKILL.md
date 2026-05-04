@@ -1,11 +1,12 @@
 ---
 name: roadmap
 description: Review roadmap, surface blockers, check alignment with priorities
-role_groups:
-- product
-- operations
-jtbd: "You're constantly asked \"what's on the roadmap?\" and need to check alignment. \nThis scans your projects, surfaces blockers and stale initiatives, and checks \nif your current work aligns with your strategic pillars.\n"
-time_investment: 10-15 minutes per review
+role_groups: [product, operations]
+jtbd: |
+  You're constantly asked "what's on the roadmap?" and need to check alignment. 
+  This scans your projects, surfaces blockers and stale initiatives, and checks 
+  if your current work aligns with your strategic pillars.
+time_investment: "10-15 minutes per review"
 ---
 
 # roadmap
