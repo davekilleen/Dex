@@ -12,11 +12,17 @@ import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 // ============================================================================
 
 type ModelTier = "fast" | "balanced" | "powerful";
+type ModelProvider = "anthropic" | "openai";
 
 interface TaskClassification {
   tier: ModelTier;
   reason: string;
   suggestedModel?: string;
+}
+
+interface PreferredModel {
+  provider: ModelProvider;
+  id: string;
 }
 
 const FAST_PATTERNS = [
@@ -66,10 +72,24 @@ function classifyTask(prompt: string): TaskClassification {
 }
 
 // Model preferences by tier
-const TIER_MODELS: Record<ModelTier, string[]> = {
-  fast: ["claude-haiku-3-5", "claude-3-haiku", "gpt-4o-mini"],
-  balanced: ["claude-sonnet-4-5", "claude-3-5-sonnet", "gpt-4o"],
-  powerful: ["claude-sonnet-4-5", "claude-3-5-sonnet", "claude-3-opus"]
+const TIER_MODELS: Record<ModelTier, PreferredModel[]> = {
+  fast: [
+    { provider: "anthropic", id: "claude-haiku-3-5" },
+    { provider: "anthropic", id: "claude-3-haiku" },
+    { provider: "openai", id: "gpt-4o-mini" }
+  ],
+  balanced: [
+    { provider: "openai", id: "gpt-5.5" },
+    { provider: "anthropic", id: "claude-sonnet-4-5" },
+    { provider: "anthropic", id: "claude-3-5-sonnet" },
+    { provider: "openai", id: "gpt-4o" }
+  ],
+  powerful: [
+    { provider: "openai", id: "gpt-5.5" },
+    { provider: "anthropic", id: "claude-sonnet-4-5" },
+    { provider: "anthropic", id: "claude-3-5-sonnet" },
+    { provider: "anthropic", id: "claude-3-opus" }
+  ]
 };
 
 // ============================================================================
@@ -90,8 +110,8 @@ export function registerModelRouter(pi: ExtensionAPI) {
     const preferredModels = TIER_MODELS[classification.tier];
     
     // Try to find a matching model in the registry
-    for (const modelId of preferredModels) {
-      const model = ctx.modelRegistry.find("anthropic", modelId);
+    for (const preferredModel of preferredModels) {
+      const model = ctx.modelRegistry.find(preferredModel.provider, preferredModel.id);
       if (model) {
         // Only switch if different
         if (currentModel?.id !== model.id) {

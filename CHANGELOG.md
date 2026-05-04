@@ -7,6 +7,20 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [Unreleased]
+
+Dex now treats `GPT-5.5` as the premium default instead of Sonnet-era Anthropic models in the smart router and AI setup guidance.
+
+**What changed:**
+* Updated `pi-extensions/dex/model-router.ts` to prefer OpenAI `gpt-5.5` for balanced and powerful tasks while preserving legacy fallbacks
+* Updated AI setup and status skills to show `GPT-5.5` as the premium/default model
+* Updated `06-Resources/Dex_System/AI_Model_Options.md` to document `GPT-5.5` as Dex's premium model
+
+**Why you'll care:**
+* Smart routing and model guidance now match the current premium model you asked Dex to use
+
+---
+
 ## [1.20.0] — Dex Is Now Codex-First End To End (2026-05-04)
 
 Dex no longer relies on Claude Code or Cursor as the active runtime surface.

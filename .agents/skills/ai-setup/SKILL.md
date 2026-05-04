@@ -617,9 +617,9 @@ ai_models:
     # Only include models that are actually configured
     rules:
       complex_tasks:
-        model: claude-sonnet  # Always available
+        model: gpt-5.5  # Always available
       routine_tasks:
-        model: {{budget_model_if_configured OR "claude-sonnet"}}
+        model: {{budget_model_if_configured OR "gpt-5.5"}}
       offline:
         model: {{offline_model_if_configured OR null}}
 ```
@@ -836,7 +836,7 @@ You can add offline mode later with `$ai-setup` for travel.
 
 | Mode | Status | Model |
 |------|--------|-------|
-| Premium | ✅ | Codex Sonnet |
+| Premium | ✅ | GPT-5.5 |
 | Budget | ✅ | Kimi K2.5 |
 | Offline | ✅ | Qwen 2.5 |
 
@@ -882,7 +882,7 @@ $ai-status
 
 | Mode | Status | Model |
 |------|--------|-------|
-| Premium | ✅ | Codex Sonnet |
+| Premium | ✅ | GPT-5.5 |
 | Budget | {{✅ / ❌}} | {{Kimi K2.5 / Not configured}} |
 | Offline | {{✅ / ❌}} | {{Qwen 2.5 / Not configured}} |
 | Smart Routing | {{✅ Enabled / ❌ Disabled}} | |

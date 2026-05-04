@@ -41,7 +41,7 @@ Also check:
 
 | Mode | Status | Model |
 |------|--------|-------|
-| Premium | ✅ Ready | Codex Sonnet |
+| Premium | ✅ Ready | GPT-5.5 |
 | Budget Cloud | {{✅ Ready / ❌ Not set up}} | {{Kimi K2.5 / —}} |
 | Offline | {{✅ Ready / ❌ Not set up}} | {{Qwen 2.5 14B / —}} |
 | Smart Routing | {{✅ Enabled / ❌ Disabled}} | |
@@ -89,7 +89,7 @@ Need help? Run `$ai-setup` to reconfigure.
 ```
 **Your AI Configuration**
 
-Currently using **Codex** (premium) only.
+Currently using **GPT-5.5 via Codex** (premium) only.
 
 Want to save money or work offline? Run `$ai-setup` to configure:
 - 💰 Budget cloud (80% cheaper for routine tasks)

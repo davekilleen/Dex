@@ -10,7 +10,7 @@ Dex can use different AI models depending on your needs:
 
 | Option | Cost | Internet Required | Best For |
 |--------|------|-------------------|----------|
-| **Claude** (default) | ~$3-15/M tokens | Yes | Best quality, complex tasks |
+| **GPT-5.5** (default) | ~$3-15/M tokens | Yes | Best quality, complex tasks |
 | **Budget Cloud** | ~$0.14-3/M tokens | Yes | Daily tasks, save 80%+ |
 | **Offline** | Free | No | Travel, privacy |
 
@@ -20,7 +20,7 @@ Dex can use different AI models depending on your needs:
 
 ### What Are They?
 
-Other companies make AI models that cost much less than Claude:
+Other companies make AI models that cost much less than GPT-5.5:
 - **Kimi K2.5** (Moonshot AI) — 80% cheaper, similar quality
 - **DeepSeek V3** — 95% cheaper, great for coding
 - **Gemini Flash** (Google) — 97% cheaper, handles long documents
@@ -28,12 +28,12 @@ Other companies make AI models that cost much less than Claude:
 ### Why Use Them?
 
 - Save money on everyday tasks
-- Claude is overkill for simple stuff
+- GPT-5.5 is overkill for simple stuff
 - Still get excellent results for most things
 
 ### Quality Comparison
 
-| Task | Claude | Kimi | DeepSeek |
+| Task | GPT-5.5 | Kimi | DeepSeek |
 |------|--------|------|----------|
 | Complex planning | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐ | ⭐⭐⭐ |
 | Meeting summaries | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐ | ⭐⭐⭐⭐ |
@@ -51,7 +51,7 @@ Other companies make AI models that cost much less than Claude:
 
 ### Cost Calculator
 
-| Usage Level | Claude/Month | With Budget Models |
+| Usage Level | Premium/Month | With Budget Models |
 |-------------|--------------|-------------------|
 | Light (10 queries/day) | ~$15 | ~$3 |
 | Medium (30 queries/day) | ~$45 | ~$9 |
@@ -102,7 +102,7 @@ Download an AI model directly to your computer. It runs without internet.
 - Note organization
 - Quick questions
 
-**Better with Claude:**
+**Better with GPT-5.5:**
 - Quarterly planning
 - Career coaching
 - Complex analysis
@@ -115,7 +115,7 @@ Download an AI model directly to your computer. It runs without internet.
 ### What Is It?
 
 Let Dex automatically pick the best model for each task:
-- Complex stuff → Claude (best quality)
+- Complex stuff → GPT-5.5 (best quality)
 - Simple stuff → Budget model (saves money)
 - No internet → Local model (offline backup)
 
@@ -123,10 +123,10 @@ Let Dex automatically pick the best model for each task:
 
 | Task | Model Used | Reason |
 |------|------------|--------|
-| `/quarter-plan` | Claude | Needs deep thinking |
+| `/quarter-plan` | GPT-5.5 | Needs deep thinking |
 | `/daily-plan` | Budget (Kimi) | Routine task |
 | `/meeting-prep` | Budget (Kimi) | Straightforward |
-| `/career-coach` | Claude | Needs nuance |
+| `/career-coach` | GPT-5.5 | Needs nuance |
 | "What's on my calendar?" | Budget | Simple question |
 | *No internet* | Local | Only option |
 
@@ -147,7 +147,7 @@ Let Dex automatically pick the best model for each task:
 **Method 1: Ask me**
 - "Use the budget model for this"
 - "Switch to Kimi"
-- "Use Claude for this one"
+- "Use GPT-5.5 for this one"
 
 **Method 2: Model picker**
 - Type `/model` in pi
@@ -206,15 +206,15 @@ Your model might be too big for your RAM:
 ## FAQ
 
 **Q: Will I notice a quality difference with budget models?**
-A: For everyday tasks (planning, summaries, organization), most people don't notice. For complex reasoning or creative work, Claude is noticeably better.
+A: For everyday tasks (planning, summaries, organization), most people don't notice. For complex reasoning or creative work, GPT-5.5 is noticeably better.
 
 **Q: How much will I actually save?**
-A: Depends on usage, but typically 50-80% if you use budget models for routine tasks and Claude for complex ones.
+A: Depends on usage, but typically 50-80% if you use budget models for routine tasks and GPT-5.5 for complex ones.
 
 **Q: Is my data safe with other models?**
 A: Budget cloud models (Kimi, DeepSeek) are hosted by other companies. If privacy is critical, use offline mode — data never leaves your computer.
 
-**Q: Can I go back to Claude-only?**
+**Q: Can I go back to GPT-5.5-only?**
 A: Yes! Just don't use the other models, or disable them in settings.
 
 **Q: What if I'm offline and haven't set up local models?**
