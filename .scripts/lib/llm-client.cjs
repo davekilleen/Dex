@@ -3,23 +3,36 @@
 /**
  * Unified LLM Client
  * 
- * Supports Anthropic, OpenAI, and Google Gemini with automatic provider selection
+ * Supports OpenAI, Anthropic, and Google Gemini with automatic provider selection
  * based on available API keys.
  * 
- * Priority order: Anthropic > OpenAI > Gemini
+ * Priority order: OpenAI > Anthropic > Gemini
  */
 
-require('dotenv').config();
+try {
+  require('dotenv').config();
+} catch {
+  // Optional in test or stripped-down environments.
+}
 
-const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
-const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+const DEFAULT_OPENAI_MODEL = 'gpt-5.5';
+const DEFAULT_ANTHROPIC_MODEL = 'claude-sonnet-4-6';
+const DEFAULT_GEMINI_MODEL = 'gemini-2.0-flash-thinking-exp-1219';
+
+function getConfiguredApiKeys(env = process.env) {
+  return {
+    openai: env.OPENAI_API_KEY || '',
+    anthropic: env.ANTHROPIC_API_KEY || '',
+    gemini: env.GEMINI_API_KEY || '',
+  };
+}
 
 // Determine which provider to use
-function getAvailableProvider() {
-  if (ANTHROPIC_API_KEY) return 'anthropic';
-  if (OPENAI_API_KEY) return 'openai';
-  if (GEMINI_API_KEY) return 'gemini';
+function getAvailableProvider(env = process.env) {
+  const keys = getConfiguredApiKeys(env);
+  if (keys.openai) return 'openai';
+  if (keys.anthropic) return 'anthropic';
+  if (keys.gemini) return 'gemini';
   return null;
 }
 
@@ -28,11 +41,13 @@ function getAvailableProvider() {
 // ============================================================================
 
 async function generateWithAnthropic(prompt, options = {}) {
-  const Anthropic = require('@anthropic-ai/sdk');
-  const anthropic = new Anthropic({ apiKey: ANTHROPIC_API_KEY });
+  const { anthropic: apiKey } = getConfiguredApiKeys(options.env);
+  const anthropic =
+    options.anthropicClient ||
+    new (require('@anthropic-ai/sdk'))({ apiKey });
   
   const message = await anthropic.messages.create({
-    model: options.model || 'claude-sonnet-4-6',
+    model: options.model || DEFAULT_ANTHROPIC_MODEL,
     max_tokens: options.maxOutputTokens || 4096,
     messages: [
       {
@@ -49,22 +64,64 @@ async function generateWithAnthropic(prompt, options = {}) {
 // OPENAI CLIENT
 // ============================================================================
 
-async function generateWithOpenAI(prompt, options = {}) {
-  const OpenAI = require('openai');
-  const openai = new OpenAI({ apiKey: OPENAI_API_KEY });
-  
-  const completion = await openai.chat.completions.create({
-    model: options.model || 'gpt-4o',
-    max_tokens: options.maxOutputTokens || 4096,
-    messages: [
-      {
-        role: 'user',
-        content: prompt
+function shouldUseReasoningConfig(model) {
+  return typeof model === 'string' && model.startsWith('gpt-5');
+}
+
+function extractOpenAIResponseText(response) {
+  if (typeof response?.output_text === 'string' && response.output_text.trim()) {
+    return response.output_text.trim();
+  }
+
+  const output = Array.isArray(response?.output) ? response.output : [];
+  const textParts = [];
+
+  for (const item of output) {
+    if (item?.type !== 'message' || !Array.isArray(item.content)) {
+      continue;
+    }
+
+    for (const contentItem of item.content) {
+      if (typeof contentItem?.text === 'string' && contentItem.text.trim()) {
+        textParts.push(contentItem.text.trim());
       }
-    ]
-  });
+    }
+  }
+
+  if (textParts.length === 0) {
+    throw new Error('OpenAI returned no output text');
+  }
+
+  return textParts.join('\n\n');
+}
+
+async function generateWithOpenAI(prompt, options = {}) {
+  const { openai: apiKey } = getConfiguredApiKeys(options.env);
+  const openai =
+    options.openaiClient ||
+    new (require('openai'))({ apiKey });
+  const model = options.model || DEFAULT_OPENAI_MODEL;
   
-  return completion.choices[0].message.content;
+  const request = {
+    model,
+    input: prompt,
+    max_output_tokens: options.maxOutputTokens || 4096,
+    store: false,
+  };
+
+  if (options.temperature !== undefined) {
+    request.temperature = options.temperature;
+  }
+
+  if (shouldUseReasoningConfig(model)) {
+    request.reasoning = {
+      effort: options.reasoningEffort || 'medium',
+    };
+  }
+
+  const response = await openai.responses.create(request);
+  
+  return extractOpenAIResponseText(response);
 }
 
 // ============================================================================
@@ -72,11 +129,13 @@ async function generateWithOpenAI(prompt, options = {}) {
 // ============================================================================
 
 async function generateWithGemini(prompt, options = {}) {
-  const { GoogleGenerativeAI } = require('@google/generative-ai');
-  const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
+  const { gemini: apiKey } = getConfiguredApiKeys(options.env);
+  const genAI =
+    options.geminiClient ||
+    new (require('@google/generative-ai').GoogleGenerativeAI)(apiKey);
   
   const model = genAI.getGenerativeModel({
-    model: options.model || 'gemini-2.0-flash-thinking-exp-1219',
+    model: options.model || DEFAULT_GEMINI_MODEL,
     generationConfig: {
       maxOutputTokens: options.maxOutputTokens || 4096,
       temperature: options.temperature || 1.0,
@@ -103,11 +162,11 @@ async function generateWithGemini(prompt, options = {}) {
  * @returns {Promise<string>} Generated text
  */
 async function generateContent(prompt, options = {}) {
-  const provider = options.provider || getAvailableProvider();
+  const provider = options.provider || getAvailableProvider(options.env);
   
   if (!provider) {
     throw new Error(
-      'No LLM API key found. Set ANTHROPIC_API_KEY, OPENAI_API_KEY, or GEMINI_API_KEY in your .env file'
+      'No LLM API key found. Set OPENAI_API_KEY, ANTHROPIC_API_KEY, or GEMINI_API_KEY in your .env file'
     );
   }
   
@@ -138,10 +197,14 @@ function isConfigured() {
 }
 
 module.exports = {
+  DEFAULT_OPENAI_MODEL,
+  DEFAULT_ANTHROPIC_MODEL,
+  DEFAULT_GEMINI_MODEL,
+  getConfiguredApiKeys,
+  getAvailableProvider,
+  extractOpenAIResponseText,
   generateContent,
+  generateWithOpenAI,
   getActiveProvider,
   isConfigured,
-  ANTHROPIC_API_KEY,
-  OPENAI_API_KEY,
-  GEMINI_API_KEY
 };

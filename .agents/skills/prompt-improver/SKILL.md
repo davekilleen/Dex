@@ -1,11 +1,11 @@
 ---
 name: prompt-improver
-description: Transform vague prompts into rich, structured prompts with automatic fallback
+description: Transform vague prompts into rich, structured prompts with OpenAI GPT-5.5 and automatic fallback
 ---
 
 ## Purpose
 
-Transform vague, ambiguous prompts into rich, well-structured prompts. Uses Anthropic's prompt improvement capabilities when available, with graceful fallback to the current LLM.
+Transform vague, ambiguous prompts into rich, well-structured prompts. Uses an OpenAI `GPT-5.5` prompt improver when available, with graceful fallback to the current LLM.
 
 **How it works:**
 1. User provides a vague prompt (e.g., "critique this doc")
@@ -52,20 +52,20 @@ Check if $PROMPT starts with a flag (`-p`, `-v`) and extract:
 **Check in this order:**
 
 1. **Script available?** Check if `.scripts/improve-prompt.cjs` exists
-   - If yes → Use script (calls Anthropic API directly)
-   - If no → Check for API key
+   - If yes and `OPENAI_API_KEY` is set → Use script (calls OpenAI Responses API directly)
+   - If yes but no key → Fall back to current LLM
 
-2. **API key available?** Check if `ANTHROPIC_API_KEY` is set in environment
-   - If yes → Use Anthropic Messages API inline
+2. **API key available?** If the script is missing, check if `OPENAI_API_KEY` is set in environment
+   - If yes → Use OpenAI Responses API inline
    - If no → Fall back to current LLM
 
 **The fallback cascade:**
 ```
 Script (.scripts/improve-prompt.cjs)
     ↓ (if not available)
-Anthropic Messages API (direct call)
-    ↓ (if no API key)
-Current LLM (Opus 4.5, Sonnet, etc.)
+OpenAI Responses API (direct call)
+    ↓ (if no OPENAI_API_KEY)
+Current LLM (GPT-5.5, GPT-5, etc.)
 ```
 
 ### Step 3: Improve the Prompt
@@ -75,16 +75,17 @@ Current LLM (Opus 4.5, Sonnet, etc.)
 node .scripts/improve-prompt.cjs "$PROMPT" "$FEEDBACK" "$TARGET_MODEL" "$SYSTEM"
 ```
 
-**Method B: Anthropic Messages API (direct)**
+**Method B: OpenAI Responses API (direct)**
 Make API call with:
-- **Model**: `claude-sonnet-4-5-20250929` (optimized for prompt engineering)
-- **System Prompt**: Prompt engineering expert persona (see below)
+- **Model**: `gpt-5.5`
+- **Reasoning effort**: `medium`
+- **System Prompt**: Prompt engineering expert persona tuned for OpenAI best practices (see below)
 - **User Message**: The original vague prompt
-- **Temperature**: 0.3
+- **Store**: `false`
 
 **Method C: Current LLM Fallback**
 Use the current session's LLM to improve the prompt inline:
-- Notify user: `"💡 Using inline improvement (no API key configured). For best results, add ANTHROPIC_API_KEY to .env"`
+- Notify user: `"💡 Using inline improvement (no API key configured). For best results, add OPENAI_API_KEY to .env"`
 - Apply the same prompt engineering system prompt
 - Continue with the improved result
 
@@ -121,7 +122,7 @@ Use the current session's LLM to improve the prompt inline:
 Used for both API and fallback methods:
 
 ```
-You are an expert prompt engineer trained in Anthropic's best practices. Your job is to transform vague, ambiguous prompts into clear, structured, effective prompts.
+You are an expert prompt engineer using OpenAI prompt engineering best practices. Your job is to transform vague, ambiguous prompts into clear, structured, effective prompts.
 
 Analyze the user's prompt and improve it using these techniques:
 
@@ -202,10 +203,10 @@ The improved prompt typically follows this structure:
 
 ## Setup (Optional)
 
-For best results, add your Anthropic API key:
+For best results, add your OpenAI API key:
 
 1. Create `.env` file in vault root (if not exists)
-2. Add: `ANTHROPIC_API_KEY=your-key-here`
+2. Add: `OPENAI_API_KEY=your-key-here`
 
 Without the API key, the skill still works using the current LLM session.
 

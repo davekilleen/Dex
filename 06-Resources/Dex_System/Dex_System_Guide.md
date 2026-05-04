@@ -817,7 +817,7 @@ Skills are reusable AI workflows invoked with `/skill-name`. All skills follow t
 - `/resume-builder` — Build resume and LinkedIn through guided interview
 
 **System Management:**
-- `/prompt-improver` — Transform vague prompts into expert-level prompts via Anthropic Messages API
+- `/prompt-improver` — Transform vague prompts into expert-level prompts via OpenAI `GPT-5.5`
 - `/dex-level-up` — Discover unused features based on usage patterns
 - `/dex-backlog` — AI-powered ranking of improvement ideas
 - `/dex-improve` — Workshop an idea into implementation plan

@@ -72,20 +72,20 @@ fi
 
 echo ""
 
-# Test Anthropic (premium)
-echo "🌟 Anthropic (Premium):"
+# Test OpenAI / Codex premium
+echo "🌟 GPT-5.5 (Premium):"
 
-# Check for Anthropic API key
-if [[ -n "$ANTHROPIC_API_KEY" ]]; then
+# Check for OpenAI API key
+if [[ -n "$OPENAI_API_KEY" ]]; then
     echo "   API Key: ✅ Set (env var)"
 elif [[ -f "$HOME/.pi/agent/auth.json" ]]; then
-    echo "   API Key: ✅ Set (auth file)"
+    echo "   API Key: ✅ Codex/Pi auth present"
 else
-    echo "   API Key: ⚠️ May be using Pi subscription"
+    echo "   API Key: ⚠️ No OPENAI_API_KEY found; may still be using Codex/Pi subscription"
 fi
 
 # Quick connectivity test
-if curl -s --max-time 5 https://api.anthropic.com > /dev/null 2>&1; then
+if curl -s --max-time 5 https://api.openai.com > /dev/null 2>&1; then
     echo "   Connection: ✅ Reachable"
 else
     echo "   Connection: ⚠️ Cannot reach API (offline?)"
@@ -108,7 +108,7 @@ if command -v ollama &> /dev/null && curl -s http://localhost:11434/api/tags > /
     fi
 fi
 
-echo "Premium (Anthropic): ✅ Available"
+echo "Premium (GPT-5.5): ✅ Available"
 if $BUDGET_OK; then
     echo "Budget Cloud:      ✅ Configured"
 else

@@ -177,8 +177,8 @@ Before pushing to GitHub:
 - All `/commands`
 
 **Optional API keys** (only if enabling background automation):
-- Anthropic API key — For `/prompt-improver` and background meeting processing
-- OpenAI or Gemini — Alternative to Anthropic
+- OpenAI API key — For `/prompt-improver`
+- Anthropic, OpenAI, or Gemini — Optional providers for background meeting processing
 
 ### Setup Flow
 

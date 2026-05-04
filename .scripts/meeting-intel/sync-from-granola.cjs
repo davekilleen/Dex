@@ -737,7 +737,7 @@ async function analyzeWithLLM(meeting, profile, pillars) {
   const { generateContent, isConfigured, getActiveProvider } = require('../lib/llm-client.cjs');
 
   if (!isConfigured()) {
-    throw new Error('No LLM API key found. Set ANTHROPIC_API_KEY, OPENAI_API_KEY, or GEMINI_API_KEY in .env');
+    throw new Error('No LLM API key found. Set OPENAI_API_KEY, ANTHROPIC_API_KEY, or GEMINI_API_KEY in .env');
   }
 
   const prompt = buildAnalysisPrompt(meeting, profile, pillars);

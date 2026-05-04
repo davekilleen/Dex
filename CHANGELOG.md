@@ -15,6 +15,8 @@ Dex now treats `GPT-5.5` as the premium default instead of Sonnet-era Anthropic 
 * Updated `pi-extensions/dex/model-router.ts` to prefer OpenAI `gpt-5.5` for balanced and powerful tasks while preserving legacy fallbacks
 * Updated AI setup and status skills to show `GPT-5.5` as the premium/default model
 * Updated `06-Resources/Dex_System/AI_Model_Options.md` to document `GPT-5.5` as Dex's premium model
+* Added an OpenAI-backed `.scripts/improve-prompt.cjs` and switched `/prompt-improver` guidance from Anthropic-specific instructions to `GPT-5.5`
+* Switched Dex's shared optional-LLM client and AI connection checks to prefer OpenAI `gpt-5.5` before Anthropic fallbacks
 
 **Why you'll care:**
 * Smart routing and model guidance now match the current premium model you asked Dex to use

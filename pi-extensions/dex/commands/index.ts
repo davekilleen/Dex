@@ -225,7 +225,7 @@ export function registerCommands(pi: ExtensionAPI, vaultRoot: string): void {
 - \`/capture <text>\` - Quick capture to inbox
 - \`/done <task>\` - Mark task as done
 
-## Custom Tools (ask Claude to use)
+## Custom Tools (ask Dex to use)
 - \`vault_search\` - Full-text search across vault
 - \`dex_task\` - Create, complete, list tasks
 - \`quick_capture\` - Capture ideas to inbox

@@ -18,7 +18,7 @@ async function test() {
   
   if (!isConfigured()) {
     console.log('❌ No API key found in .env');
-    console.log('   Add ANTHROPIC_API_KEY, OPENAI_API_KEY, or GEMINI_API_KEY\n');
+    console.log('   Add OPENAI_API_KEY, ANTHROPIC_API_KEY, or GEMINI_API_KEY\n');
     process.exit(1);
   }
   
