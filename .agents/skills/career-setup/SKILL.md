@@ -1,6 +1,7 @@
 ---
-name: "career-setup"
-description: "Initialize career development system (job description, ladder, reviews, goals)"
+name: career-setup
+description: Initialize career development system (job description, ladder, reviews, goals)
+disable-model-invocation: true
 ---
 
 # career-setup

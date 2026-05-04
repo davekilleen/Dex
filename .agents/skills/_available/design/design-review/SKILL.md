@@ -1,6 +1,11 @@
 ---
-name: "design-review"
-description: "Prepare for or document design review"
+name: design-review
+description: Prepare for or document design review
+role_groups:
+- design
+- product
+jtbd: "Design reviews need context and decisions get lost. This gathers project context \nand requirements, surfaces customer feedback related to design, prompts for key \ndecisions and rationale, and documents outcomes so design choices are preserved.\n"
+time_investment: 20-30 minutes per review
 ---
 
 # design-review

@@ -1,6 +1,16 @@
 ---
 name: process-meetings
 description: Process synced Granola meetings to update person pages, extract tasks, and organize meeting notes
+model_hint: balanced
+context: fork
+hooks:
+  PostToolUse:
+  - matcher: Write
+    type: command
+    command: node .codex/hooks/post-write-meeting-person-update.cjs
+  Stop:
+  - type: command
+    command: node .codex/hooks/meeting-summary-generator.cjs
 ---
 
 # Process Meetings

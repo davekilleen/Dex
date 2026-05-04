@@ -1,6 +1,6 @@
 ---
-name: "commitment-scan"
-description: "Proactively detect commitments you've made or been asked for across apps like Slack, Email, and Notion, then offer to create tasks for any that haven't been captured yet."
+name: commitment-scan
+description: Proactively detect commitments you've made or been asked for across apps like Slack, Email, and Notion, then offer to create tasks for any that haven't been captured yet.
 ---
 
 # $commitment-scan

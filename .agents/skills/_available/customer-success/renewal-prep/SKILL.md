@@ -1,6 +1,11 @@
 ---
-name: "renewal-prep"
-description: "Prepare for upcoming renewal"
+name: renewal-prep
+description: Prepare for upcoming renewal
+role_groups:
+- customer_success
+- sales
+jtbd: "Renewals sneak up and you're not prepared. This gathers account history and value \ndelivered, identifies expansion opportunities, flags risks or concerns, and creates \na renewal strategy so you maximize retention and growth.\n"
+time_investment: 20-30 minutes per renewal
 ---
 
 # renewal-prep

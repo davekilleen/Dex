@@ -1,6 +1,7 @@
 ---
-name: "week-plan"
-description: "Set weekly priorities and plan the week ahead with intelligent suggestions based on goals, calendar shape, and task effort."
+name: week-plan
+description: Set weekly priorities and plan the week ahead with intelligent suggestions based on goals, calendar shape, and task effort.
+context: fork
 ---
 
 # week-plan

@@ -1,6 +1,6 @@
 ---
-name: "beta-activate"
-description: "Activate early access to new Dex features using an activation code."
+name: beta-activate
+description: Activate early access to new Dex features using an activation code.
 ---
 
 # Beta Feature Activation

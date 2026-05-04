@@ -1,6 +1,11 @@
 ---
-name: "account-plan"
-description: "Create or update strategic account plan"
+name: account-plan
+description: Create or update strategic account plan
+role_groups:
+- sales
+- customer_success
+jtbd: "You need to think strategically about a key account but the context is scattered. \nThis gathers all information on the account - stakeholders, history, opportunities, \nrisks - and creates a structured account plan so you have a clear strategy for \ngrowing the relationship.\n"
+time_investment: 20-30 minutes per account
 ---
 
 # account-plan

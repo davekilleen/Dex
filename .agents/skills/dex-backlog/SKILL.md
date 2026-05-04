@@ -1,6 +1,6 @@
 ---
-name: "dex-backlog"
-description: "AI-powered ranking of Dex system improvement ideas"
+name: dex-backlog
+description: AI-powered ranking of Dex system improvement ideas
 ---
 
 # dex-backlog

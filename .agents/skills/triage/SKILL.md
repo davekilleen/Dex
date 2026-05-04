@@ -1,6 +1,7 @@
 ---
-name: "triage"
-description: "Strategically route orphaned files and extract scattered tasks"
+name: triage
+description: Strategically route orphaned files and extract scattered tasks
+model_hint: fast
 ---
 
 # triage

@@ -1,6 +1,6 @@
 ---
-name: "save-insight"
-description: "Capture learnings from completed work for future reference"
+name: save-insight
+description: Capture learnings from completed work for future reference
 ---
 
 # save-insight

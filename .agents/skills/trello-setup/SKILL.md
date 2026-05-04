@@ -1,6 +1,12 @@
 ---
-name: "trello-setup"
-description: "Connect your Trello boards to Dex so your tasks, projects, and daily plans stay in sync with your Trello Kanban boards."
+name: trello-setup
+description: Connect your Trello boards to Dex so your tasks, projects, and daily plans stay in sync with your Trello Kanban boards.
+manifest:
+  id: trello
+  auth: api_key_token
+  category: task_sync
+  mcp_server: mcp-server-trello
+  runtime: bun
 ---
 
 # Trello Setup

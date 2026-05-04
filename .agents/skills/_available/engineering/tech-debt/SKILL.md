@@ -1,6 +1,11 @@
 ---
-name: "tech-debt"
-description: "Review and prioritize technical debt"
+name: tech-debt
+description: Review and prioritize technical debt
+role_groups:
+- engineering
+- leadership
+jtbd: "Tech debt accumulates but gets lost in scattered notes. This scans projects and \nnotes for tech debt mentions, groups by impact and effort, checks age of items, \nand suggests prioritization so you can make data-driven decisions about when to \npay down debt.\n"
+time_investment: 15-20 minutes per review
 ---
 
 # tech-debt

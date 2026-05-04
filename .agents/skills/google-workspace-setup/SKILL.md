@@ -1,6 +1,13 @@
 ---
-name: "google-workspace-setup"
-description: "Connect your Google Workspace to Dex so your daily plans, meeting prep, and weekly reviews get richer context from email, Google Calendar, and Docs."
+name: google-workspace-setup
+description: Connect your Google Workspace to Dex so your daily plans, meeting prep, and weekly reviews get richer context from email, Google Calendar, and Docs.
+integration:
+  id: google-workspace
+  name: Google Workspace
+  auth: oauth2
+  mcp_server: google-workspace-mcp
+  category: communication
+  sync_direction: bidirectional
 ---
 
 # Google Workspace Setup

@@ -1,6 +1,6 @@
 ---
-name: "ai-status"
-description: "Check your AI model configuration - see what's set up, current model, credits remaining"
+name: ai-status
+description: Check your AI model configuration - see what's set up, current model, credits remaining
 ---
 
 # ai-status

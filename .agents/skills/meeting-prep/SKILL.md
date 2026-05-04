@@ -1,6 +1,7 @@
 ---
-name: "meeting-prep"
-description: "Prepare for meetings by gathering attendee context and related topics"
+name: meeting-prep
+description: Prepare for meetings by gathering attendee context and related topics
+context: fork
 ---
 
 # meeting-prep

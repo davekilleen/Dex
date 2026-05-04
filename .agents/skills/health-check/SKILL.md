@@ -1,6 +1,7 @@
 ---
-name: "health-check"
+name: health-check
 description: "Diagnose and fix Dex system health issues \u2014 MCP servers, config, recent errors"
+model_hint: fast
 ---
 
 # health-check

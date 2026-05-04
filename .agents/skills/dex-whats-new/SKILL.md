@@ -1,6 +1,6 @@
 ---
-name: "dex-whats-new"
-description: "Check for system improvements (learnings + Codex updates)"
+name: dex-whats-new
+description: Check for system improvements (learnings + Codex updates)
 ---
 
 # dex-whats-new

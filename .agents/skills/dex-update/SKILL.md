@@ -1,6 +1,6 @@
 ---
-name: "dex-update"
-description: "Safely update Dex with one command (handles everything automatically)"
+name: dex-update
+description: Safely update Dex with one command (handles everything automatically)
 ---
 
 # dex-update

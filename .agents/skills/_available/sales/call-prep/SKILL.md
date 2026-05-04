@@ -1,6 +1,11 @@
 ---
-name: "call-prep"
-description: "Prepare for upcoming call with full context"
+name: call-prep
+description: Prepare for upcoming call with full context
+role_groups:
+- sales
+- customer_success
+jtbd: "You have a call coming up and need to quickly get context on the person or account. \nThis pulls their person page, account history, recent interactions, and open items \nso you walk into the call prepared and never ask \"remind me where we left off?\"\n"
+time_investment: 3-5 minutes per call
 ---
 
 # call-prep

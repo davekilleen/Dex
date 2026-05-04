@@ -1,6 +1,11 @@
 ---
-name: "close-status"
-description: "Month-end close checklist and blockers"
+name: close-status
+description: Month-end close checklist and blockers
+role_groups:
+- finance
+- leadership
+jtbd: "Month-end close has many moving parts and dependencies. This shows the close \nchecklist for the current period, flags incomplete items, surfaces blockers from \nrecent meetings, and tracks dependencies on other teams so you know exactly where \nyou stand.\n"
+time_investment: 10-15 minutes per check
 ---
 
 # close-status

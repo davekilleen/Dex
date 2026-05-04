@@ -1,6 +1,11 @@
 ---
-name: "incident-review"
-description: "Post-mortem on incidents"
+name: incident-review
+description: Post-mortem on incidents
+role_groups:
+- engineering
+- operations
+jtbd: "Incidents happen and learnings get lost without proper post-mortems. This gathers \nincident notes and timeline, prompts for root cause analysis, documents action \nitems, and saves to 06-Resources/Learnings/ so you build institutional knowledge \nand prevent recurrence.\n"
+time_investment: 30-45 minutes per incident
 ---
 
 # incident-review

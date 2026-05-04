@@ -1,6 +1,6 @@
 ---
-name: "dex-improve"
-description: "Workshop an improvement idea into implementation plan"
+name: dex-improve
+description: Workshop an improvement idea into implementation plan
 ---
 
 # dex-improve

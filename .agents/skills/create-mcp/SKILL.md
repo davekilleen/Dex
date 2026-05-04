@@ -1,6 +1,6 @@
 ---
-name: "create-mcp"
-description: "Create new MCP integration with guided wizard"
+name: create-mcp
+description: Create new MCP integration with guided wizard
 ---
 
 # create-mcp

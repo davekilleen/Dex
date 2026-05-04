@@ -1,6 +1,11 @@
 ---
-name: "board-prep"
-description: "Compile financial narrative for board meeting"
+name: board-prep
+description: Compile financial narrative for board meeting
+role_groups:
+- finance
+- leadership
+jtbd: "Board meetings require pulling together financial narrative from multiple sources. \nThis gathers recent variance analyses, pulls key decisions and context, structures \na board-ready narrative, and identifies questions the board might ask so you're \nfully prepared.\n"
+time_investment: 30-45 minutes per board meeting
 ---
 
 # board-prep

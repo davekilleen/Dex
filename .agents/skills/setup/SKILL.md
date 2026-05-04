@@ -1,6 +1,8 @@
 ---
-name: "setup"
-description: "Initial Dex system setup and onboarding"
+name: setup
+description: Initial Dex system setup and onboarding
+model_hint: fast
+disable-model-invocation: true
 ---
 
 # setup

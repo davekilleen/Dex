@@ -1,6 +1,6 @@
 ---
-name: "dex-add-mcp"
-description: "Add an MCP server using Dex-safe scope (user by default)"
+name: dex-add-mcp
+description: Add an MCP server using Dex-safe scope (user by default)
 ---
 
 # dex-add-mcp

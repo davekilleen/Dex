@@ -1,6 +1,11 @@
 ---
-name: "campaign-review"
-description: "Post-mortem on recent campaign"
+name: campaign-review
+description: Post-mortem on recent campaign
+role_groups:
+- marketing
+- leadership
+jtbd: "Campaigns finish and learnings get lost. This helps you run a post-mortem - gather \ncampaign materials, prompt for results and learnings, document what worked and \nwhat didn't, and save to 06-Resources/Learnings/ so you compound knowledge over time.\n"
+time_investment: 20-30 minutes per campaign
 ---
 
 # campaign-review

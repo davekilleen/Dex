@@ -1,6 +1,6 @@
 ---
-name: "dex-obsidian-setup"
-description: "Enable Obsidian integration and migrate existing vault to wiki links"
+name: dex-obsidian-setup
+description: Enable Obsidian integration and migrate existing vault to wiki links
 ---
 
 # dex-obsidian-setup

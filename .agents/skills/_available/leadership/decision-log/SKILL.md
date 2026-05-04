@@ -1,6 +1,10 @@
 ---
-name: "decision-log"
-description: "Document major decisions made"
+name: decision-log
+description: Document major decisions made
+role_groups:
+- leadership
+jtbd: "Important decisions get made and the context is lost. This provides a decision \ntemplate, prompts for context/options/rationale, links to supporting materials, \nand saves to a searchable decision log so you can reference why choices were made.\n"
+time_investment: 15-20 minutes per decision
 ---
 
 # decision-log

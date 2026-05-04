@@ -1,6 +1,10 @@
 ---
-name: "delegate-check"
-description: "Review what should be delegated"
+name: delegate-check
+description: Review what should be delegated
+role_groups:
+- leadership
+jtbd: "Leaders stay in the weeds when they should delegate. This scans recent activities \nand time spent, identifies low-leverage work, suggests delegation opportunities, \nand checks team capacity so you focus on what only you can do.\n"
+time_investment: 15-20 minutes per review
 ---
 
 # delegate-check

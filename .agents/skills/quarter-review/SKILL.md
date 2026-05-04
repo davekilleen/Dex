@@ -1,6 +1,6 @@
 ---
-name: "quarter-review"
-description: "Review quarter completion and capture learnings"
+name: quarter-review
+description: Review quarter completion and capture learnings
 ---
 
 # quarter-review

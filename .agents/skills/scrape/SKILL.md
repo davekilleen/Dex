@@ -1,6 +1,6 @@
 ---
-name: "scrape"
-description: "Extract data from any website using Scrapling's MCP tools. Bypasses Cloudflare, handles dynamic JS-rendered pages, supports CSS selectors to pre-filter content (saves tokens)."
+name: scrape
+description: Extract data from any website using Scrapling's MCP tools. Bypasses Cloudflare, handles dynamic JS-rendered pages, supports CSS selectors to pre-filter content (saves tokens).
 ---
 
 # scrape

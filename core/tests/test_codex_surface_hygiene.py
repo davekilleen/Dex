@@ -7,6 +7,7 @@ import yaml
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 CODEX_SKILLS_DIR = REPO_ROOT / ".agents" / "skills"
+SKILL_FRONTMATTER_CONTRACT_PATH = REPO_ROOT / "core" / "tests" / "fixtures" / "codex_skill_frontmatter_contract.json"
 EXPECTED_FIRST_PARTY_CODEX_SKILLS = (
     "ai-setup",
     "ai-status",
@@ -132,6 +133,23 @@ def _load_codex_hooks_config() -> dict:
     return json.loads(hooks_path.read_text(encoding="utf-8"))
 
 
+def _load_skill_frontmatter(skill_path: Path) -> dict:
+    text = skill_path.read_text(encoding="utf-8")
+    if not text.startswith("---\n"):
+        raise ValueError("missing opening frontmatter delimiter")
+
+    try:
+        _, frontmatter, _ = text.split("---\n", 2)
+    except ValueError as error:
+        raise ValueError("missing closing frontmatter delimiter") from error
+
+    parsed_frontmatter = yaml.safe_load(frontmatter)
+    if not isinstance(parsed_frontmatter, dict):
+        raise ValueError("frontmatter must parse to a mapping")
+
+    return parsed_frontmatter
+
+
 def _extract_repo_local_hook_target(command: str) -> tuple[str, Path]:
     match = re.fullmatch(r'(node|bash) "\$\(git rev-parse --show-toplevel\)/\.codex/hooks/([^"]+)"', command)
     assert match is not None, f"Hook command must target repo-local .codex/hooks via git root: {command}"
@@ -242,6 +260,18 @@ def test_execplan_convention_doc_exists():
     assert (REPO_ROOT / "docs" / "PLANS.md").is_file()
 
 
+def test_codex_skill_frontmatter_contract_is_preserved():
+    contract = json.loads(SKILL_FRONTMATTER_CONTRACT_PATH.read_text(encoding="utf-8"))
+
+    for relative_skill_path, expected_metadata in contract.items():
+        actual_frontmatter = _load_skill_frontmatter(CODEX_SKILLS_DIR / relative_skill_path)
+        actual_metadata = {key: actual_frontmatter.get(key) for key in expected_metadata}
+        assert actual_metadata == expected_metadata, (
+            f"{relative_skill_path} metadata drifted from the restored contract: "
+            f"{actual_metadata} != {expected_metadata}"
+        )
+
+
 def test_wrapper_migration_is_complete():
     wrapper_marker = "This is the authoritative Codex entrypoint for the legacy Dex workflow documented in `.claude/skills/"
 
@@ -258,25 +288,10 @@ def test_all_codex_skill_files_have_valid_top_level_frontmatter():
     offenders: list[str] = []
 
     for skill_path in CODEX_SKILLS_DIR.rglob("SKILL.md"):
-        text = skill_path.read_text(encoding="utf-8")
-        if not text.startswith("---\n"):
-            offenders.append(f"{skill_path.relative_to(REPO_ROOT)} -> missing opening frontmatter delimiter")
-            continue
-
         try:
-            _, frontmatter, _ = text.split("---\n", 2)
-        except ValueError:
-            offenders.append(f"{skill_path.relative_to(REPO_ROOT)} -> missing closing frontmatter delimiter")
-            continue
-
-        try:
-            parsed_frontmatter = yaml.safe_load(frontmatter)
-        except yaml.YAMLError as error:
-            offenders.append(f"{skill_path.relative_to(REPO_ROOT)} -> invalid YAML frontmatter: {error}")
-            continue
-
-        if not isinstance(parsed_frontmatter, dict):
-            offenders.append(f"{skill_path.relative_to(REPO_ROOT)} -> frontmatter must parse to a mapping")
+            parsed_frontmatter = _load_skill_frontmatter(skill_path)
+        except (ValueError, yaml.YAMLError) as error:
+            offenders.append(f"{skill_path.relative_to(REPO_ROOT)} -> {error}")
             continue
 
         if parsed_frontmatter.get("name") != skill_path.parent.name:

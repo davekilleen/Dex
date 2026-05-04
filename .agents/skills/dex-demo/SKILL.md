@@ -1,6 +1,7 @@
 ---
-name: "dex-demo"
-description: "Toggle demo mode (see `docs/demo-mode.md`)"
+name: dex-demo
+description: Toggle demo mode (see `docs/demo-mode.md`)
+disable-model-invocation: false
 ---
 
 # dex-demo

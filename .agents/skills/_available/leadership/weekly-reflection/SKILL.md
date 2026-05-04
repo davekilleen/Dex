@@ -1,6 +1,10 @@
 ---
-name: "weekly-reflection"
-description: "Weekly synthesis of progress and priorities"
+name: weekly-reflection
+description: Weekly synthesis of progress and priorities
+role_groups:
+- leadership
+jtbd: "Weeks blur together without reflection. This reviews the week's meetings and \ndecisions, checks progress against pillars, identifies wins and challenges, and \nsets focus for next week so you stay strategically aligned and don't lose sight \nof what matters.\n"
+time_investment: 15-20 minutes weekly
 ---
 
 # weekly-reflection

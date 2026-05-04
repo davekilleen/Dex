@@ -1,6 +1,6 @@
 ---
-name: "dex-level-up"
-description: "Discover unused Dex features based on your usage patterns"
+name: dex-level-up
+description: Discover unused Dex features based on your usage patterns
 ---
 
 # dex-level-up

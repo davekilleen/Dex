@@ -1,6 +1,7 @@
 ---
-name: "daily-review"
-description: "End of day review with learning capture, daily plan completion tracking, and meeting follow-up surfacing."
+name: daily-review
+description: End of day review with learning capture, daily plan completion tracking, and meeting follow-up surfacing.
+context: fork
 ---
 
 # daily-review

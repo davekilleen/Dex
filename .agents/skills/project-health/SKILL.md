@@ -1,6 +1,6 @@
 ---
-name: "project-health"
-description: "Scan active projects for status, blockers, and next steps"
+name: project-health
+description: Scan active projects for status, blockers, and next steps
 ---
 
 # project-health

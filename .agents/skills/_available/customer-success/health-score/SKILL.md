@@ -1,6 +1,10 @@
 ---
-name: "health-score"
-description: "Review account health across portfolio"
+name: health-score
+description: Review account health across portfolio
+role_groups:
+- customer_success
+jtbd: "You manage many accounts and can't track them all manually. This scans customer \naccount pages, identifies at-risk accounts (no recent contact, open issues), flags \nupcoming renewals, and suggests proactive outreach so you prevent churn before \nit happens.\n"
+time_investment: 10-15 minutes per review
 ---
 
 # health-score

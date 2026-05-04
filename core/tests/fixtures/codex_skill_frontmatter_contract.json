@@ -1,0 +1,451 @@
+{
+  "_available/customer-success/expansion-opportunities/SKILL.md": {
+    "jtbd": "You're focused on retention and miss expansion opportunities. This reviews active \naccounts, identifies product usage patterns, suggests expansion based on needs \nexpressed, and prioritizes by likelihood so you systematically grow accounts.\n",
+    "role_groups": [
+      "customer_success",
+      "sales"
+    ],
+    "time_investment": "15-20 minutes per review"
+  },
+  "_available/customer-success/health-score/SKILL.md": {
+    "jtbd": "You manage many accounts and can't track them all manually. This scans customer \naccount pages, identifies at-risk accounts (no recent contact, open issues), flags \nupcoming renewals, and suggests proactive outreach so you prevent churn before \nit happens.\n",
+    "role_groups": [
+      "customer_success"
+    ],
+    "time_investment": "10-15 minutes per review"
+  },
+  "_available/customer-success/renewal-prep/SKILL.md": {
+    "jtbd": "Renewals sneak up and you're not prepared. This gathers account history and value \ndelivered, identifies expansion opportunities, flags risks or concerns, and creates \na renewal strategy so you maximize retention and growth.\n",
+    "role_groups": [
+      "customer_success",
+      "sales"
+    ],
+    "time_investment": "20-30 minutes per renewal"
+  },
+  "_available/design/design-review/SKILL.md": {
+    "jtbd": "Design reviews need context and decisions get lost. This gathers project context \nand requirements, surfaces customer feedback related to design, prompts for key \ndecisions and rationale, and documents outcomes so design choices are preserved.\n",
+    "role_groups": [
+      "design",
+      "product"
+    ],
+    "time_investment": "20-30 minutes per review"
+  },
+  "_available/design/design-system-audit/SKILL.md": {
+    "jtbd": "Design systems drift and gaps appear. This scans projects for design system \nmentions, identifies inconsistencies or gaps, suggests components to build, and \ntracks adoption so your design system stays healthy and useful.\n",
+    "role_groups": [
+      "design",
+      "product"
+    ],
+    "time_investment": "20-30 minutes per audit"
+  },
+  "_available/engineering/architecture-decision/SKILL.md": {
+    "jtbd": "Architecture decisions get made in meetings and lost. This provides an ADR template, \nprompts for context/options/decision, links to related projects, and saves to \n06-Resources/ so future engineers understand why choices were made.\n",
+    "role_groups": [
+      "engineering",
+      "leadership"
+    ],
+    "time_investment": "20-30 minutes per decision"
+  },
+  "_available/engineering/incident-review/SKILL.md": {
+    "jtbd": "Incidents happen and learnings get lost without proper post-mortems. This gathers \nincident notes and timeline, prompts for root cause analysis, documents action \nitems, and saves to 06-Resources/Learnings/ so you build institutional knowledge \nand prevent recurrence.\n",
+    "role_groups": [
+      "engineering",
+      "operations"
+    ],
+    "time_investment": "30-45 minutes per incident"
+  },
+  "_available/engineering/tech-debt/SKILL.md": {
+    "jtbd": "Tech debt accumulates but gets lost in scattered notes. This scans projects and \nnotes for tech debt mentions, groups by impact and effort, checks age of items, \nand suggests prioritization so you can make data-driven decisions about when to \npay down debt.\n",
+    "role_groups": [
+      "engineering",
+      "leadership"
+    ],
+    "time_investment": "15-20 minutes per review"
+  },
+  "_available/finance/board-prep/SKILL.md": {
+    "jtbd": "Board meetings require pulling together financial narrative from multiple sources. \nThis gathers recent variance analyses, pulls key decisions and context, structures \na board-ready narrative, and identifies questions the board might ask so you're \nfully prepared.\n",
+    "role_groups": [
+      "finance",
+      "leadership"
+    ],
+    "time_investment": "30-45 minutes per board meeting"
+  },
+  "_available/finance/close-status/SKILL.md": {
+    "jtbd": "Month-end close has many moving parts and dependencies. This shows the close \nchecklist for the current period, flags incomplete items, surfaces blockers from \nrecent meetings, and tracks dependencies on other teams so you know exactly where \nyou stand.\n",
+    "role_groups": [
+      "finance",
+      "leadership"
+    ],
+    "time_investment": "10-15 minutes per check"
+  },
+  "_available/finance/variance-analysis/SKILL.md": {
+    "jtbd": "Variances happen every month but documenting them takes time. This prompts for \nkey variances, helps you document explanations with context, links to supporting \nmaterials, and prepares a board-ready narrative so you're ready for leadership \nreviews.\n",
+    "role_groups": [
+      "finance",
+      "leadership"
+    ],
+    "time_investment": "20-30 minutes per analysis"
+  },
+  "_available/leadership/decision-log/SKILL.md": {
+    "jtbd": "Important decisions get made and the context is lost. This provides a decision \ntemplate, prompts for context/options/rationale, links to supporting materials, \nand saves to a searchable decision log so you can reference why choices were made.\n",
+    "role_groups": [
+      "leadership"
+    ],
+    "time_investment": "15-20 minutes per decision"
+  },
+  "_available/leadership/delegate-check/SKILL.md": {
+    "jtbd": "Leaders stay in the weeds when they should delegate. This scans recent activities \nand time spent, identifies low-leverage work, suggests delegation opportunities, \nand checks team capacity so you focus on what only you can do.\n",
+    "role_groups": [
+      "leadership"
+    ],
+    "time_investment": "15-20 minutes per review"
+  },
+  "_available/leadership/weekly-reflection/SKILL.md": {
+    "jtbd": "Weeks blur together without reflection. This reviews the week's meetings and \ndecisions, checks progress against pillars, identifies wins and challenges, and \nsets focus for next week so you stay strategically aligned and don't lose sight \nof what matters.\n",
+    "role_groups": [
+      "leadership"
+    ],
+    "time_investment": "15-20 minutes weekly"
+  },
+  "_available/marketing/audience-intel/SKILL.md": {
+    "jtbd": "Understanding your audience requires synthesizing insights from customer conversations, \nfeedback, and behavior patterns. This reviews recent interactions, identifies persona \npatterns, surfaces pain points and motivations, and updates your audience understanding \nso marketing stays targeted and relevant.\n",
+    "role_groups": [
+      "marketing",
+      "product"
+    ],
+    "time_investment": "10-15 minutes per review"
+  },
+  "_available/marketing/campaign-review/SKILL.md": {
+    "jtbd": "Campaigns finish and learnings get lost. This helps you run a post-mortem - gather \ncampaign materials, prompt for results and learnings, document what worked and \nwhat didn't, and save to 06-Resources/Learnings/ so you compound knowledge over time.\n",
+    "role_groups": [
+      "marketing",
+      "leadership"
+    ],
+    "time_investment": "20-30 minutes per campaign"
+  },
+  "_available/marketing/content-calendar/SKILL.md": {
+    "jtbd": "Your content pipeline is scattered across files and you're not sure if you have \ngaps. This scans 05-Areas/Content/, checks alignment with campaigns and priorities, \nidentifies gaps in the pipeline, and suggests topics based on recent customer intel.\n",
+    "role_groups": [
+      "marketing"
+    ],
+    "time_investment": "10-15 minutes per review"
+  },
+  "_available/marketing/messaging-audit/SKILL.md": {
+    "jtbd": "Your messaging drifts over time as different people write content. This scans \n05-Areas/Content/, checks consistency across materials, identifies conflicts or gaps, \nand suggests refinements so your positioning stays tight and consistent.\n",
+    "role_groups": [
+      "marketing",
+      "product",
+      "leadership"
+    ],
+    "time_investment": "15-20 minutes per audit"
+  },
+  "_available/operations/metrics-review/SKILL.md": {
+    "jtbd": "Metrics drift and anomalies get missed. This checks recent metric mentions in \nmeetings, identifies trends or anomalies, prompts for context and analysis, and \ndocuments insights so you stay on top of performance indicators.\n",
+    "role_groups": [
+      "operations",
+      "leadership"
+    ],
+    "time_investment": "10-15 minutes per review"
+  },
+  "_available/operations/process-audit/SKILL.md": {
+    "jtbd": "Processes break down over time but you don't know where. This gathers feedback \non a process, identifies bottlenecks or friction, suggests improvements, and \ndocuments current vs. desired state so you can fix what's broken.\n",
+    "role_groups": [
+      "operations"
+    ],
+    "time_investment": "20-30 minutes per process"
+  },
+  "_available/product/customer-intel/SKILL.md": {
+    "jtbd": "Customer feedback is scattered across meeting notes, person pages, and quick \ncaptures. This synthesizes recent feedback by theme, shows frequency of mentions, \nand surfaces patterns you might miss when looking at conversations individually.\n",
+    "role_groups": [
+      "product",
+      "customer_success",
+      "sales"
+    ],
+    "time_investment": "5-10 minutes per review"
+  },
+  "_available/product/feature-decision/SKILL.md": {
+    "jtbd": "Prioritization decisions get made in meetings and forgotten, or worse - made \nwithout proper framework. This guides you through key questions (impact, effort, \nstrategic fit), checks recent customer intel, and documents the decision with \nrationale so you can reference it later.\n",
+    "role_groups": [
+      "product",
+      "leadership"
+    ],
+    "time_investment": "15-20 minutes per decision"
+  },
+  "_available/product/roadmap/SKILL.md": {
+    "jtbd": "You're constantly asked \"what's on the roadmap?\" and need to check alignment. \nThis scans your projects, surfaces blockers and stale initiatives, and checks \nif your current work aligns with your strategic pillars.\n",
+    "role_groups": [
+      "product",
+      "operations"
+    ],
+    "time_investment": "10-15 minutes per review"
+  },
+  "_available/sales/account-plan/SKILL.md": {
+    "jtbd": "You need to think strategically about a key account but the context is scattered. \nThis gathers all information on the account - stakeholders, history, opportunities, \nrisks - and creates a structured account plan so you have a clear strategy for \ngrowing the relationship.\n",
+    "role_groups": [
+      "sales",
+      "customer_success"
+    ],
+    "time_investment": "20-30 minutes per account"
+  },
+  "_available/sales/call-prep/SKILL.md": {
+    "jtbd": "You have a call coming up and need to quickly get context on the person or account. \nThis pulls their person page, account history, recent interactions, and open items \nso you walk into the call prepared and never ask \"remind me where we left off?\"\n",
+    "role_groups": [
+      "sales",
+      "customer_success"
+    ],
+    "time_investment": "3-5 minutes per call"
+  },
+  "_available/sales/deal-review/SKILL.md": {
+    "jtbd": "You have multiple deals in flight and it's hard to keep track of which need \nattention. This scans your deal pages, identifies stale deals (no recent activity), \nflags missing next steps, and checks for upcoming deadlines so nothing slips \nthrough the cracks.\n",
+    "role_groups": [
+      "sales",
+      "leadership"
+    ],
+    "time_investment": "5-10 minutes per review"
+  },
+  "_available/sales/pipeline-health/SKILL.md": {
+    "jtbd": "You need to forecast accurately and ensure you have enough pipeline to hit quota. \nThis reviews deal velocity (time in each stage), identifies forecast gaps, and \nsuggests actions to move deals forward so you can report confidently on where \nyou'll land.\n",
+    "role_groups": [
+      "sales",
+      "leadership"
+    ],
+    "time_investment": "10-15 minutes per review"
+  },
+  "atlassian-setup/SKILL.md": {
+    "manifest": {
+      "auth": "oauth2",
+      "category": "project_management",
+      "id": "atlassian",
+      "services": [
+        "jira",
+        "confluence"
+      ]
+    }
+  },
+  "career-coach/SKILL.md": {
+    "context": "fork",
+    "hooks": {
+      "PostToolUse": [
+        {
+          "command": "node .codex/hooks/post-write-career-evidence.cjs",
+          "matcher": "Write",
+          "type": "command"
+        }
+      ]
+    }
+  },
+  "career-setup/SKILL.md": {
+    "disable-model-invocation": true
+  },
+  "daily-plan/SKILL.md": {
+    "context": "fork",
+    "hooks": {
+      "Stop": [
+        {
+          "command": "node .codex/hooks/daily-plan-quick-ref.cjs",
+          "type": "command"
+        }
+      ]
+    },
+    "model_routing": {
+      "default": "balanced",
+      "steps": {
+        "data-gathering": "fast",
+        "synthesis": "balanced"
+      }
+    }
+  },
+  "daily-review/SKILL.md": {
+    "context": "fork"
+  },
+  "dex-demo/SKILL.md": {
+    "disable-model-invocation": false
+  },
+  "getting-started/SKILL.md": {
+    "model_hint": "fast"
+  },
+  "google-workspace-setup/SKILL.md": {
+    "integration": {
+      "auth": "oauth2",
+      "category": "communication",
+      "id": "google-workspace",
+      "mcp_server": "google-workspace-mcp",
+      "name": "Google Workspace",
+      "sync_direction": "bidirectional"
+    }
+  },
+  "health-check/SKILL.md": {
+    "model_hint": "fast"
+  },
+  "industry-truths/SKILL.md": {
+    "context": "fork"
+  },
+  "meeting-prep/SKILL.md": {
+    "context": "fork"
+  },
+  "ms-teams-setup/SKILL.md": {
+    "integration": {
+      "auth": "oauth2",
+      "enhances": [
+        {
+          "capability": "Teams digest alongside Slack \u2014 unread chats, mentions, and priority channel activity",
+          "skill": "daily-plan"
+        },
+        {
+          "capability": "Teams conversation context with attendees, recent threads, and channel decisions",
+          "skill": "meeting-prep"
+        }
+      ],
+      "id": "teams",
+      "mcp_server": "teams-mcp",
+      "name": "Microsoft Teams",
+      "new_capabilities": [
+        {
+          "name": "teams-digest",
+          "trigger": "Automatically included in /daily-plan when Teams is connected"
+        },
+        {
+          "name": "teams-person-context",
+          "trigger": "Person pages enriched with latest Teams conversations"
+        }
+      ],
+      "sync": {
+        "direction": "read",
+        "entities": "messages, channels, presence"
+      }
+    }
+  },
+  "process-meetings/SKILL.md": {
+    "context": "fork",
+    "hooks": {
+      "PostToolUse": [
+        {
+          "command": "node .codex/hooks/post-write-meeting-person-update.cjs",
+          "matcher": "Write",
+          "type": "command"
+        }
+      ],
+      "Stop": [
+        {
+          "command": "node .codex/hooks/meeting-summary-generator.cjs",
+          "type": "command"
+        }
+      ]
+    },
+    "model_hint": "balanced"
+  },
+  "reset/SKILL.md": {
+    "disable-model-invocation": true
+  },
+  "screenpipe-setup/SKILL.md": {
+    "triggers": [
+      "/screenpipe-setup",
+      "/screenpipe-enable",
+      "enable screen capture",
+      "setup screenpipe",
+      "ambient intelligence"
+    ],
+    "version": "0.1.0"
+  },
+  "setup/SKILL.md": {
+    "disable-model-invocation": true,
+    "model_hint": "fast"
+  },
+  "things-setup/SKILL.md": {
+    "manifest": {
+      "auth": "none",
+      "category": "task_sync",
+      "id": "things",
+      "mcp_server": "things3-mcp",
+      "platform": "macos"
+    }
+  },
+  "todoist-setup/SKILL.md": {
+    "integration": {
+      "auth": "api_key",
+      "enhances": [
+        {
+          "capability": "Merges Todoist tasks due today alongside Dex tasks",
+          "skill": "daily-plan"
+        },
+        {
+          "capability": "Routes items to Dex, Todoist, or both",
+          "skill": "triage"
+        },
+        {
+          "capability": "Creates tasks in both systems when processing captured items",
+          "skill": "process-inbox"
+        },
+        {
+          "capability": "Shows cross-system completion stats (Dex + Todoist)",
+          "skill": "week-review"
+        }
+      ],
+      "id": "todoist",
+      "mcp_server": "todoist-mcp",
+      "name": "Todoist",
+      "new_capabilities": [
+        {
+          "name": "Bidirectional task sync",
+          "trigger": "Automatic at daily plan and task creation touchpoints"
+        }
+      ],
+      "sync": {
+        "direction": "bidirectional",
+        "entities": "tasks"
+      }
+    }
+  },
+  "trello-setup/SKILL.md": {
+    "manifest": {
+      "auth": "api_key_token",
+      "category": "task_sync",
+      "id": "trello",
+      "mcp_server": "mcp-server-trello",
+      "runtime": "bun"
+    }
+  },
+  "triage/SKILL.md": {
+    "model_hint": "fast"
+  },
+  "week-plan/SKILL.md": {
+    "context": "fork"
+  },
+  "week-review/SKILL.md": {
+    "context": "fork"
+  },
+  "zoom-setup/SKILL.md": {
+    "integration": {
+      "auth": "oauth2",
+      "category": "meetings",
+      "enhances": [
+        {
+          "capability": "Shows last Zoom with each attendee, surfaces recording summaries",
+          "skill": "meeting-prep"
+        },
+        {
+          "capability": "Zoom recordings as alternative meeting source alongside Granola",
+          "skill": "process-meetings"
+        },
+        {
+          "capability": "Meeting time stats from Zoom (hours, count, distribution)",
+          "skill": "week-review"
+        }
+      ],
+      "id": "zoom",
+      "mcp_server": "zoom-mcp",
+      "name": "Zoom",
+      "new_capabilities": [
+        {
+          "name": "Recording Search",
+          "trigger": "During /meeting-prep, search Zoom recordings for past meetings with attendees"
+        },
+        {
+          "name": "Zoom Scheduling",
+          "trigger": "Schedule Zoom meetings directly from Dex with confirmation"
+        }
+      ],
+      "sync_direction": "bidirectional"
+    }
+  }
+}

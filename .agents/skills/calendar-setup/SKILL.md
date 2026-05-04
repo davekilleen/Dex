@@ -1,5 +1,5 @@
 ---
-name: "calendar-setup"
+name: calendar-setup
 description: "**Purpose:** Grant Python calendar access for 30x faster calendar queries (30s \u2192 <1s)"
 ---
 

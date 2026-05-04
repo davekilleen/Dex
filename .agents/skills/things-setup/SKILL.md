@@ -1,6 +1,12 @@
 ---
-name: "things-setup"
-description: "Connect Things 3 to Dex for bi-directional task sync. No account needed. Everything stays on your Mac. Works offline."
+name: things-setup
+description: Connect Things 3 to Dex for bi-directional task sync. No account needed. Everything stays on your Mac. Works offline.
+manifest:
+  id: things
+  auth: none
+  category: task_sync
+  platform: macos
+  mcp_server: things3-mcp
 ---
 
 # Things 3 Setup

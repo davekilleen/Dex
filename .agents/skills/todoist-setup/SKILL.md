@@ -1,6 +1,26 @@
 ---
-name: "todoist-setup"
-description: "Connect your Todoist account to Dex so tasks stay in sync across both systems. Create a task in Dex and it appears in Todoist. Complete one in Todoist and Dex knows about it."
+name: todoist-setup
+description: Connect your Todoist account to Dex so tasks stay in sync across both systems. Create a task in Dex and it appears in Todoist. Complete one in Todoist and Dex knows about it.
+integration:
+  id: todoist
+  name: Todoist
+  mcp_server: todoist-mcp
+  auth: api_key
+  enhances:
+  - skill: daily-plan
+    capability: Merges Todoist tasks due today alongside Dex tasks
+  - skill: triage
+    capability: Routes items to Dex, Todoist, or both
+  - skill: process-inbox
+    capability: Creates tasks in both systems when processing captured items
+  - skill: week-review
+    capability: Shows cross-system completion stats (Dex + Todoist)
+  new_capabilities:
+  - name: Bidirectional task sync
+    trigger: Automatic at daily plan and task creation touchpoints
+  sync:
+    direction: bidirectional
+    entities: tasks
 ---
 
 # Todoist Setup

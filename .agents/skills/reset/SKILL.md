@@ -1,6 +1,7 @@
 ---
-name: "reset"
-description: "Restructure Dex system based on new role or preferences"
+name: reset
+description: Restructure Dex system based on new role or preferences
+disable-model-invocation: true
 ---
 
 # reset

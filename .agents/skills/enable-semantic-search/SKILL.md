@@ -1,5 +1,5 @@
 ---
-name: "enable-semantic-search"
+name: enable-semantic-search
 description: "Set up local AI-powered semantic search for your vault. This is a **concierge experience** \u2014 it analyzes your vault, discovers what collections make sense, and creates a tailored search setup."
 ---
 

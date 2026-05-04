@@ -1,6 +1,11 @@
 ---
-name: "metrics-review"
-description: "Review key metrics and anomalies"
+name: metrics-review
+description: Review key metrics and anomalies
+role_groups:
+- operations
+- leadership
+jtbd: "Metrics drift and anomalies get missed. This checks recent metric mentions in \nmeetings, identifies trends or anomalies, prompts for context and analysis, and \ndocuments insights so you stay on top of performance indicators.\n"
+time_investment: 10-15 minutes per review
 ---
 
 # metrics-review

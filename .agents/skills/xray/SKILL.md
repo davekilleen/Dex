@@ -1,5 +1,5 @@
 ---
-name: "xray"
+name: xray
 description: "**Default behavior:** Explain what just happened in THIS conversation \u2014 the specific tools, files, and context that were used, with educational explanations of WHY."
 ---
 

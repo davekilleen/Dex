@@ -1,6 +1,6 @@
 ---
-name: "resume-builder"
-description: "Build resume and LinkedIn profile through guided interview"
+name: resume-builder
+description: Build resume and LinkedIn profile through guided interview
 ---
 
 # resume-builder

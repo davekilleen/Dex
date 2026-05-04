@@ -1,6 +1,6 @@
 ---
-name: "product-brief"
-description: "Extract product ideas through guided questions and generate PRD"
+name: product-brief
+description: Extract product ideas through guided questions and generate PRD
 ---
 
 # product-brief
