@@ -27,8 +27,8 @@ Create a synthesis of the week reviewing activity, progress, and what was accomp
 - `06-Resources/Learnings/**/*.md` — Explicit learnings
 - `System/Session_Learnings/*.md` — Auto-captured session learnings
 
-### 5. Daily Reviews
-- `07-Archives/Reviews/Daily_Review_YYYY-MM-DD.md` — This week's reviews
+### 5. Daily Plans & Reviews
+- `07-Archives/Plans/YYYY-MM-DD.md` — This week's daily plans (primary record of planning ritual)- `07-Archives/Reviews/Daily_Review_YYYY-MM-DD.md` — This week's reviews
 
 ### 6. Journals (If Enabled)
 - `00-Inbox/Journals/YYYY/MM-Month/` — Morning/evening journals
@@ -139,9 +139,10 @@ For each goal:
 > **Goal 1** advanced because you completed Priority 1.
 > **Goal 2** needs attention — no linked work completed this week."
 
-### 4. Daily Completion Rate Trend (NEW)
+### 4. Daily Completion Rate Trend
 
-If daily reviews exist, calculate completion trends:
+**First check `07-Archives/Plans/` for this week's daily plans.** Count how many days had a `/daily-plan` generated. If daily reviews also exist, cross-reference plan focus items against review completion. If only plans exist (no corresponding review), still count the plan as evidence of the planning ritual and note which focus items were checked off in the plan file itself.
+Calculate completion trends:
 
 > "**Daily plan completion this week:**
 > 
