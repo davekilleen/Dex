@@ -357,6 +357,22 @@ Create `00-Inbox/Weekly_Synthesis_YYYY-MM-DD.md`:
 
 ---
 
+## 🏋️ Training This Week
+
+If a training plan exists at `05-Areas/Triathlon_Training.md` or similar user-configured path, determine the current training week and phase. Cross-reference the plan's scheduled workouts against what actually happened (check calendar, daily plans, daily reviews for evidence of completion).
+
+| Day | Planned Workout | Status |
+|-----|----------------|--------|
+| [Day] | [From plan] | ✅ / ❌ / ? |
+
+**Phase:** [Current phase name] — Week [X]
+**Consistency:** [X] of [Y] sessions completed
+**Next milestone:** [From plan]
+
+If no training plan file exists, skip this section silently.
+
+---
+
 ## 📊 Pillar Balance
 
 | Pillar | Tasks Done | Focus |

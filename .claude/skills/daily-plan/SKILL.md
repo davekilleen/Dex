@@ -459,6 +459,21 @@ integrations_used: [calendar, tasks, people, work-intelligence]
 
 ---
 
+## 🏋️ Training Today
+
+If a training plan exists at `05-Areas/Triathlon_Training.md` or similar path configured by the user, read it and find today's scheduled workout based on the current week and day. Include the specific session details (sets, distances, duration, intensity) from the plan — don't generalize.
+
+- **Session:** {{Workout name from plan}} — {{Duration/details}}
+- **Suggested slot:** {{Time block that fits around meetings}}
+- **Phase:** {{Current phase}} — Week {{X}}
+- **Notes:** {{Any phase-specific guidance}}
+
+If today is a REST day per the plan, say so explicitly.
+
+If no training plan file exists, skip this section silently.
+
+---
+
 ## ⚠️ Heads Up
 
 - {{Warning about lagging weekly priority}}
