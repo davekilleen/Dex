@@ -366,6 +366,8 @@ Flag potential issues:
 
 ## Step 7: Generate Daily Plan
 
+**ALWAYS generate and save a new plan file.** Never skip generation because a plan from a previous day exists in the conversation or vault. Even if context from a prior plan is visible, today is a new day and requires its own plan. If a plan for today's date already exists, overwrite it (the user is requesting a refresh).
+
 Create `07-Archives/Plans/YYYY-MM-DD.md`:
 
 ```markdown
@@ -456,6 +458,19 @@ integrations_used: [calendar, tasks, people, work-intelligence]
 
 {{If deep work capacity warning}}
 > ⚠️ You have {{X}} deep work tasks but only {{Y}} suitable slots this week. Consider protecting time or deferring.
+
+---
+
+## 🏊 Training Today
+
+Read `05-Areas/Triathlon_Training.md` and find today's scheduled workout based on the current week and day. Include the specific session details (sets, distances, duration, intensity) from the plan — don't generalize.
+
+- **Session:** {{Workout name from plan}} — {{Duration/details}}
+- **Suggested slot:** {{Time block that fits around meetings}}
+- **Phase:** {{Current phase}} — Week {{X}} of 19
+- **Notes:** {{Any phase-specific guidance, e.g., "Down week — don't push" or "First brick feel"}}
+
+If today is a REST day per the plan, say so explicitly: "**REST day** — recovery is where 51-year-old bodies get stronger."
 
 ---
 
