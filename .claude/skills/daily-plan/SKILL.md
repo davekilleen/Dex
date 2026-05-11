@@ -44,6 +44,61 @@ Before anything else, check if demo mode is active:
 
 ---
 
+## Step 0.5: Gmail @To Do Label Check (Optional — if Gmail integration configured)
+
+If the user has configured Gmail accounts via [`core/mcp/scripts/gmail_client.py`](../../../core/mcp/scripts/gmail_client.py) (read + write) or `gmail_reader.py` (read-only), survey labeled emails as part of the morning triage. Many users tag actionable emails with a `@To Do` label (a common GTD convention); these should be reviewed and turned into tasks if not already tracked.
+
+### Discover configured accounts
+
+```bash
+python3 core/mcp/scripts/gmail_client.py list_accounts
+```
+
+If no accounts are configured, skip the rest of this step silently.
+
+### Query the @To Do label across each account
+
+The display label `@To Do` is queryable as `label:@to-do` (hyphenated). Always include `in:anywhere` because labeled items are often archived out of inbox:
+
+```bash
+python3 core/mcp/scripts/gmail_client.py search you@example.com 'label:@to-do in:anywhere' --max-results 25
+```
+
+**Label naming varies per account.** Some users adopt account-specific names (e.g., `@To Do - Work`, `@To Do - Treasurer`). If a search returns empty but you know the label exists, list labels to find the actual name and ID:
+
+```bash
+python3 core/mcp/scripts/gmail_client.py list_labels you@example.com
+```
+
+Then query by `labelId` for reliability:
+
+```bash
+python3 core/mcp/scripts/gmail_client.py search you@example.com 'label:Label_XXXXX in:anywhere' --max-results 25
+```
+
+### For each tagged thread
+
+1. Cross-check against `03-Tasks/Tasks.md` — does a task already exist (match by sender, subject, or topic)?
+2. If no task exists: classify priority and pillar, add to Tasks.md with email source and date noted.
+3. If a task exists and the thread has new activity: update the task's context.
+4. Group findings by urgency. Highlight URGENT/today items prominently; bundle stale items briefly.
+
+### Optional: Triage actions (if the user asks to move, archive, or relabel)
+
+```bash
+python3 core/mcp/scripts/gmail_client.py to_waiting you@example.com <thread_id>   # @To Do → @Waiting For
+python3 core/mcp/scripts/gmail_client.py archive    you@example.com <thread_id>   # remove INBOX
+python3 core/mcp/scripts/gmail_client.py move       you@example.com <thread_id> --from "<label>" --to "<label>"
+```
+
+### Failure modes
+
+- `gmail_client.py` not installed or no accounts authenticated: skip silently.
+- One account fails (network, auth): state which account couldn't be checked — never silently default.
+- All accounts return empty: skip silently.
+
+---
+
 ## Step 1: Background Checks (Silent)
 
 Run these silently without user-facing output:
@@ -322,6 +377,25 @@ Also gather:
 - **Work Summary**: Quarterly goals context (if enabled)
 - **People**: Context for meeting attendees
 - **Self-Learning Alerts**: Changelog updates, pending learnings
+
+### 5.10c Task Status Verification (Optional — if Gmail integration configured)
+
+Before declaring any task "not started," "carried for X weeks," or "lagging," verify against sent mail. `03-Tasks/Tasks.md` is updated by hand and lags reality — a task may have been delivered out-of-band (email attachment, document share, Slack handoff) without the vault reflecting it.
+
+For each task you're about to flag as not-started or carried, search sent mail for distinctive keywords (project name, recipient, doc title):
+
+```bash
+python3 core/mcp/scripts/gmail_client.py search you@example.com \
+  'from:you@example.com (KEYWORD1 OR KEYWORD2) newer_than:14d' --max-results 10
+```
+
+If a relevant sent message exists:
+- Treat the task as `[s]` (started/in-review), not `[ ]` (not started)
+- Update Tasks.md to reflect reality (mark `[s]` with delivery context)
+- Pull the recipient's reply via `gmail_client.py get_thread` to see what's actually open
+- Frame today's action as the next-step response, not the original task
+
+This prevents false P0s for work that has actually shipped. If `gmail_client.py` is unavailable: state "Task status not verified against sent mail" — do not silently default to Tasks.md.
 
 ---
 
