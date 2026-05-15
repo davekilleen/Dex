@@ -1,0 +1,21 @@
+/* graph-colors.css
+ * Visual defaults for the Graph view.
+ * Enable in Obsidian: Settings → Appearance → CSS snippets → toggle on.
+ * Group colors are set in .obsidian/graph.json via .scripts/update-obsidian-graph.cjs.
+ */
+
+.theme-dark .graph-view.color-fill            { color: #cfd8dc; }   /* default node */
+.theme-dark .graph-view.color-line            { color: #37474f; }   /* edges */
+.theme-dark .graph-view.color-text            { color: #eceff1; }   /* labels */
+.theme-dark .graph-view.color-fill-unresolved { color: #5d4037; }   /* missing links */
+.theme-dark .graph-view.color-arrow           { color: #607d8b; }
+
+.theme-light .graph-view.color-fill            { color: #455a64; }
+.theme-light .graph-view.color-line            { color: #b0bec5; }
+.theme-light .graph-view.color-text            { color: #263238; }
+.theme-light .graph-view.color-fill-unresolved { color: #d7ccc8; }
+.theme-light .graph-view.color-arrow           { color: #78909c; }
+
+/* Slightly larger labels so colors read at a glance */
+.graph-view .graph-control-section .checkbox-container,
+.graph-view .graph-controls { font-size: 0.92em; }

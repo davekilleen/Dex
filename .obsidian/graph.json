@@ -1,0 +1,163 @@
+{
+  "collapse-filter": false,
+  "search": "",
+  "showTags": true,
+  "showAttachments": true,
+  "hideUnresolved": false,
+  "showOrphans": true,
+  "collapse-color-groups": true,
+  "colorGroups": [
+    {
+      "query": "path:\"05-Areas/People\"",
+      "color": {
+        "a": 1,
+        "rgb": 11894492
+      }
+    },
+    {
+      "query": "path:\"05-Areas/Companies\"",
+      "color": {
+        "a": 1,
+        "rgb": 8346352
+      }
+    },
+    {
+      "query": "path:\"05-Areas/Career\"",
+      "color": {
+        "a": 1,
+        "rgb": 13073919
+      }
+    },
+    {
+      "query": "path:\"06-Resources/Meeting_Cache\"",
+      "color": {
+        "a": 1,
+        "rgb": 9479342
+      }
+    },
+    {
+      "query": "path:\"00-Inbox/Meetings\"",
+      "color": {
+        "a": 1,
+        "rgb": 16765286
+      }
+    },
+    {
+      "query": "path:\"00-Inbox/Ideas\"",
+      "color": {
+        "a": 1,
+        "rgb": 16769126
+      }
+    },
+    {
+      "query": "path:00-Inbox",
+      "color": {
+        "a": 1,
+        "rgb": 15844367
+      }
+    },
+    {
+      "query": "path:01-Quarter_Goals",
+      "color": {
+        "a": 1,
+        "rgb": 6000111
+      }
+    },
+    {
+      "query": "path:02-Week_Priorities",
+      "color": {
+        "a": 1,
+        "rgb": 49832
+      }
+    },
+    {
+      "query": "path:03-Tasks",
+      "color": {
+        "a": 1,
+        "rgb": 16024671
+      }
+    },
+    {
+      "query": "path:04-Projects",
+      "color": {
+        "a": 1,
+        "rgb": 3066993
+      }
+    },
+    {
+      "query": "path:05-Areas",
+      "color": {
+        "a": 1,
+        "rgb": 10181046
+      }
+    },
+    {
+      "query": "path:06-Resources",
+      "color": {
+        "a": 1,
+        "rgb": 8359053
+      }
+    },
+    {
+      "query": "path:07-Archives",
+      "color": {
+        "a": 1,
+        "rgb": 9799019
+      }
+    },
+    {
+      "query": "path:System",
+      "color": {
+        "a": 1,
+        "rgb": 15277667
+      }
+    },
+    {
+      "query": "path:core",
+      "color": {
+        "a": 1,
+        "rgb": 5533306
+      }
+    },
+    {
+      "query": "path:docs",
+      "color": {
+        "a": 1,
+        "rgb": 7901340
+      }
+    },
+    {
+      "query": "path:plans",
+      "color": {
+        "a": 1,
+        "rgb": 6056896
+      }
+    },
+    {
+      "query": "path:extensions",
+      "color": {
+        "a": 1,
+        "rgb": 4545124
+      }
+    },
+    {
+      "query": "path:packages",
+      "color": {
+        "a": 1,
+        "rgb": 4545124
+      }
+    }
+  ],
+  "collapse-display": false,
+  "showArrow": false,
+  "textFadeMultiplier": 0,
+  "nodeSizeMultiplier": 1,
+  "lineSizeMultiplier": 1,
+  "collapse-forces": false,
+  "centerStrength": 0.407855902777778,
+  "repelStrength": 10.8081597222222,
+  "linkStrength": 0.791710069444444,
+  "linkDistance": 210,
+  "scale": 0.1512929761892673,
+  "close": true
+}

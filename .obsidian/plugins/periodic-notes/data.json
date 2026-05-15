@@ -1,0 +1,79 @@
+{
+  "installedVersion": "1.0.0-beta1",
+  "activeCalendarSet": "Default",
+  "showGettingStartedBanner": false,
+  "hasMigratedDailyNoteSettings": true,
+  "hasMigratedWeeklyNoteSettings": true,
+  "calendarSets": [
+    {
+      "day": {
+        "enabled": true,
+        "format": "YYYY-MM-DD",
+        "folder": "00-Inbox/Daily_Plans",
+        "openAtStartup": false,
+        "templatePath": ""
+      },
+      "week": {
+        "enabled": false,
+        "format": "gggg-[W]ww",
+        "folder": "",
+        "openAtStartup": false,
+        "templatePath": ""
+      },
+      "month": {
+        "enabled": false,
+        "format": "YYYY-MM",
+        "folder": "",
+        "openAtStartup": false,
+        "templatePath": ""
+      },
+      "quarter": {
+        "enabled": false,
+        "format": "YYYY-[Q]Q",
+        "folder": "",
+        "openAtStartup": false,
+        "templatePath": ""
+      },
+      "year": {
+        "enabled": false,
+        "format": "YYYY",
+        "folder": "",
+        "openAtStartup": false,
+        "templatePath": ""
+      },
+      "id": "Default",
+      "ctime": "2026-05-15T15:14:27+02:00"
+    }
+  ],
+  "enableTimelineComplication": true,
+  "daily": {
+    "enabled": true,
+    "format": "YYYY-MM-DD",
+    "folder": "00-Inbox/Daily_Plans",
+    "template": ""
+  },
+  "weekly": {
+    "enabled": false,
+    "format": "gggg-[W]ww",
+    "folder": "",
+    "template": ""
+  },
+  "monthly": {
+    "enabled": false,
+    "format": "YYYY-MM",
+    "folder": "",
+    "template": ""
+  },
+  "quarterly": {
+    "enabled": false,
+    "format": "YYYY-[Q]Q",
+    "folder": "",
+    "template": ""
+  },
+  "yearly": {
+    "enabled": false,
+    "format": "YYYY",
+    "folder": "",
+    "template": ""
+  }
+}
