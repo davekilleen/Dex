@@ -8,6 +8,9 @@ hooks:
     - matcher: Write
       type: command
       command: "node .claude/hooks/post-meeting-person-update.cjs"
+    - matcher: Write
+      type: command
+      command: "node .claude/hooks/post-meeting-project-update.cjs"
   Stop:
     - type: command
       command: "node .claude/hooks/meeting-summary-generator.cjs"

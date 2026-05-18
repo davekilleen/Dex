@@ -7,6 +7,39 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [Unreleased] — Meetings Auto-Link to Projects
+
+### 📍 Meeting Transcripts Now Update Their Related Projects Automatically
+
+**Before:** When you processed a meeting via `/process-meetings`, person pages got
+updated with meeting references (via the existing `post-meeting-person-update.cjs`
+hook) but project pages did not. If you met with someone about a specific project,
+you had to manually go to that project page and link the meeting yourself — and
+most of the time it just never happened. Project pages drifted out of sync with
+the actual work being discussed.
+
+**Now:** A new hook — `post-meeting-project-update.cjs` — scans each newly written
+meeting note for active project keywords and appends a link to a `## Meeting History`
+section on every matching project page. Works whether the meeting was saved as
+a file (file-mode, via `PostToolUse`/`Write`) or fetched inline by a skill
+(inline-mode, via stdin + `--name`).
+
+**How matching works:**
+- Each project can declare `keywords:` in its frontmatter (comma-separated).
+- If `keywords:` is missing, the hook falls back to the project's filename
+  converted to a full multi-word phrase (e.g., `Acme_Migration.md` → `"acme migration"`).
+- **No single-word fallback** for multi-word project names — this prevents
+  generic words like `"brief"` or `"pipeline"` from matching every meeting that
+  mentions them in passing.
+- Closed and archived projects are skipped automatically.
+- Idempotent — re-running on the same meeting won't double-link.
+
+**Result:** Project pages stay in sync with the meetings about them, with zero
+manual upkeep. Each auto-linked entry carries a `source: file` or `source: inline`
+audit tag so you can tell at a glance how it got there.
+
+---
+
 ## [1.19.0] — Semantic Search Now Covers Your Entire Vault (2026-03-23)
 
 ### 🔍 Semantic Search Now Covers Your Entire Vault
