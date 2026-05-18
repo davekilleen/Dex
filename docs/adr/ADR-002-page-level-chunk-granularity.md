@@ -1,7 +1,8 @@
 # ADR-002: Chunk granularity — page-level via markdown page markers
 
-- **Status**: proposed
+- **Status**: accepted
 - **Date**: 2026-05-16
+- **Implemented**: 2026-05-18 (commit 9d2e28c on `feat/proactive-librarian-hardening`)
 - **Deciders**: David Orban
 - **Tags**: librarian, retrieval, granularity
 

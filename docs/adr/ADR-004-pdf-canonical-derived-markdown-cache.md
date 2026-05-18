@@ -1,7 +1,8 @@
 # ADR-004: Source of truth — PDF canonical, derived markdown cache under `.derived/`
 
-- **Status**: proposed
+- **Status**: accepted
 - **Date**: 2026-05-16
+- **Implemented**: 2026-05-18 (commit 9d2e28c on `feat/proactive-librarian-hardening`)
 - **Deciders**: David Orban
 - **Tags**: librarian, storage, source-of-truth
 
