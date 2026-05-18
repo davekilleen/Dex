@@ -362,6 +362,21 @@ Some hooks only fire during a specific skill's execution, not globally. These ar
 - **What it does:** After a meeting note is written, extracts person mentions (WikiLinks and plain name patterns) and appends meeting references to their person pages.
 - **Fires:** Only during `/process-meetings`
 
+### post-meeting-project-update.cjs
+
+- **Trigger:** PostToolUse (Write matcher) — file mode · OR direct CLI invocation — inline mode
+- **Skill:** `/process-meetings` (and callable from any meeting-fetching skill)
+- **What it does:** After a meeting note is written (or piped inline), scans the meeting content against active project pages in `04-Projects/` and appends a link under each matching project's `## Meeting History` section.
+- **Matching:** Uses an explicit `keywords:` frontmatter field on each project (preferred) or falls back to the project's filename converted to a full multi-word phrase. Single-word fallback is intentionally disabled to avoid false positives on generic terms like "brief" or "pipeline".
+- **Status filter:** Skips projects with `status: closed` or `status: archived`.
+- **Idempotent:** Won't add a duplicate link if the meeting is already referenced anywhere in the project file.
+- **Inline mode usage** (for skills that fetch transcripts inline without saving):
+  ```bash
+  echo "$transcript" | node .claude/hooks/post-meeting-project-update.cjs \
+      --inline --name "YYYY-MM-DD - Meeting Title"
+  ```
+  Each linked entry carries a `source: file` or `source: inline` audit tag.
+
 ### meeting-summary-generator.cjs
 
 - **Trigger:** Stop
