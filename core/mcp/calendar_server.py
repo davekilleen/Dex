@@ -184,9 +184,14 @@ def run_shell_script(script_name: str, *args) -> tuple[bool, str]:
             err_path = err_file.name
         
         try:
-            # Build command with quoted args
+            # Build command with quoted args.
+            # Run the helper under THIS interpreter (the venv python, which has
+            # pyobjc EventKit) and put the repo root on PYTHONPATH so the
+            # helper's `from core.paths import ...` resolves. Relying on the
+            # script's `#!/usr/bin/env python3` shebang picks up system python3,
+            # which lacks EventKit and the `core` package.
             cmd_args = ' '.join(f'"{arg}"' for arg in args)
-            cmd = f'"{script_path}" {cmd_args} > "{out_path}" 2> "{err_path}"'
+            cmd = f'PYTHONPATH="{VAULT_PATH}" "{sys.executable}" "{script_path}" {cmd_args} > "{out_path}" 2> "{err_path}"'
             exit_code = os.system(cmd)
             
             with open(out_path, 'r') as f:
