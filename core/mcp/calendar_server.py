@@ -25,12 +25,11 @@ Tools:
 
 import json
 import logging
-import os
 import re
 
 # Vault paths (centralized in core.paths)
+import subprocess
 import sys
-import tempfile
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Optional
@@ -126,85 +125,40 @@ class DateTimeEncoder(json.JSONEncoder):
         return super().default(obj)
 
 
-def run_applescript(script: str) -> tuple[bool, str]:
-    """Run an AppleScript and return (success, output).
-    
-    Uses os.system with temp file output to avoid subprocess.run timeout issues
-    with Calendar.app AppleScript queries.
-    """
-    try:
-        # Write script to temp file
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.scpt', delete=False) as script_file:
-            script_file.write(script)
-            script_path = script_file.name
-        
-        # Output file
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False) as out_file:
-            out_path = out_file.name
-        
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False) as err_file:
-            err_path = err_file.name
-        
-        try:
-            # Run osascript via os.system (avoids subprocess pipe issues)
-            exit_code = os.system(f'osascript "{script_path}" > "{out_path}" 2> "{err_path}"')
-            
-            with open(out_path, 'r') as f:
-                stdout = f.read().strip()
-            with open(err_path, 'r') as f:
-                stderr = f.read().strip()
-            
-            if exit_code == 0:
-                return True, stdout
-            else:
-                return False, stderr or f"Exit code: {exit_code}"
-        finally:
-            # Cleanup temp files
-            for path in [script_path, out_path, err_path]:
-                try:
-                    os.unlink(path)
-                except:
-                    pass
-                    
-    except Exception as e:
-        return False, str(e)
+ALLOWED_SCRIPTS = {
+    "calendar_eventkit.py",
+    "calendar_create_event.sh",
+    "calendar_delete_event.sh",
+    "reminders_eventkit.py",
+    "check_calendar_permission.py",
+    "check_reminders_permission.py",
+}
 
 
 def run_shell_script(script_name: str, *args) -> tuple[bool, str]:
-    """Run a shell script from the scripts directory."""
-    script_path = SCRIPTS_DIR / script_name
+    """Run an allowed shell script from the scripts directory."""
+    if script_name not in ALLOWED_SCRIPTS:
+        return False, f"Script not allowed: {script_name}"
+
+    script_path = (SCRIPTS_DIR / script_name).resolve()
+    if not script_path.is_relative_to(SCRIPTS_DIR.resolve()):
+        return False, "Invalid script path"
+
     if not script_path.exists():
-        return False, f"Script not found: {script_path}"
-    
+        return False, f"Script not found: {script_name}"
+
     try:
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False) as out_file:
-            out_path = out_file.name
-        
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False) as err_file:
-            err_path = err_file.name
-        
-        try:
-            # Build command with quoted args
-            cmd_args = ' '.join(f'"{arg}"' for arg in args)
-            cmd = f'"{script_path}" {cmd_args} > "{out_path}" 2> "{err_path}"'
-            exit_code = os.system(cmd)
-            
-            with open(out_path, 'r') as f:
-                stdout = f.read().strip()
-            with open(err_path, 'r') as f:
-                stderr = f.read().strip()
-            
-            if exit_code == 0:
-                return True, stdout
-            else:
-                return False, stderr or f"Exit code: {exit_code}"
-        finally:
-            for path in [out_path, err_path]:
-                try:
-                    os.unlink(path)
-                except:
-                    pass
-                    
+        result = subprocess.run(
+            [str(script_path), *args],
+            capture_output=True, text=True, timeout=120
+        )
+
+        if result.returncode == 0:
+            return True, result.stdout.strip()
+        else:
+            return False, result.stderr.strip() or f"Exit code: {result.returncode}"
+    except subprocess.TimeoutExpired:
+        return False, f"Script '{script_name}' timed out after 120 seconds"
     except Exception as e:
         return False, str(e)
 
