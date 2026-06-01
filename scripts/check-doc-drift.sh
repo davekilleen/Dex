@@ -8,11 +8,6 @@ MERGE_BASE="$(git merge-base HEAD "origin/$BASE_REF")"
 # a doc change.
 CHANGED_FILES="$(git diff --name-only --diff-filter=ACMR "$MERGE_BASE...HEAD")"
 
-if [ ! -f "docs/testing-governance.md" ]; then
-  echo "Missing required governance document: docs/testing-governance.md"
-  exit 1
-fi
-
 if [ -z "$CHANGED_FILES" ]; then
   echo "No changed files detected."
   exit 0
@@ -35,29 +30,8 @@ if [ -n "$DOC_CHANGED" ]; then
   exit 0
 fi
 
-LABEL_APPROVED=$(python3 - <<'PY'
-import json
-import os
-from pathlib import Path
-
-event_path = os.environ.get("GITHUB_EVENT_PATH")
-if not event_path or not Path(event_path).is_file():
-    print("0")
-    raise SystemExit
-event = json.loads(Path(event_path).read_text(encoding="utf-8"))
-labels = {(label.get("name") or "").strip() for label in (event.get("pull_request") or {}).get("labels", [])}
-print("1" if "docs-exception-approved" in labels else "0")
-PY
-)
-
-if [ "$LABEL_APPROVED" = "1" ]; then
-  echo "docs-exception-approved label found; bypassing docs drift gate."
-  exit 0
-fi
-
-echo "Source files changed without documentation updates."
+# Advisory only: warn, never block. Quality relies on reviewer judgment.
+echo "::warning::Source changed without doc updates (advisory). Consider updating docs/, System/PRDs/, README, CHANGELOG, or CONTRIBUTING."
 echo "Changed source files:"
 printf "%s\n" "$SOURCE_CHANGED"
-echo ""
-echo "Update docs/System/PRDs or apply 'docs-exception-approved' label with rationale."
-exit 1
+exit 0

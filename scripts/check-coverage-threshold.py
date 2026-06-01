@@ -24,6 +24,33 @@ def normalize_path(path: str, root: Path) -> str:
     return p.as_posix()
 
 
+def added_line_numbers(merge_base: str, file_path: str) -> set[int]:
+    """Return the new-file line numbers ADDED by this PR for file_path."""
+    try:
+        diff = run(["git", "diff", "--unified=0", f"{merge_base}...HEAD", "--", file_path])
+    except subprocess.CalledProcessError:
+        return set()
+    added: set[int] = set()
+    new_lineno = 0
+    for line in diff.splitlines():
+        if line.startswith("@@"):
+            # @@ -old,cnt +new,cnt @@
+            seg = line.split("+", 1)
+            if len(seg) < 2:
+                continue
+            try:
+                new_lineno = int(seg[1].split(" ", 1)[0].split(",", 1)[0])
+            except ValueError:
+                continue
+        elif line.startswith(("+++", "---")):
+            continue
+        elif line.startswith("+"):
+            added.add(new_lineno)
+            new_lineno += 1
+        # '-' (old-file) and '\' (no-newline) lines do not advance the new-file counter
+    return added
+
+
 def main() -> int:
     coverage_path = Path(os.environ.get("COVERAGE_JSON", "coverage.json"))
     min_total = float(os.environ.get("COVERAGE_MIN_TOTAL", "15"))
@@ -68,17 +95,31 @@ def main() -> int:
         print(f"Coverage gate passed. Total coverage: {total:.2f}% (no touched source files).")
         return 0
 
-    file_coverage: dict[str, float] = {}
+    # Patch coverage: judge each touched file on the lines it CHANGED, not its
+    # whole-file coverage. Editing a line in a historically-untested file no
+    # longer inherits that file's pre-existing debt.
+    line_coverage: dict[str, tuple[set[int], set[int]]] = {}
     for raw_path, payload in data.get("files", {}).items():
         key = normalize_path(raw_path, cwd)
-        pct = float(payload.get("summary", {}).get("percent_covered", 0.0))
-        file_coverage[key] = pct
+        executed = set(payload.get("executed_lines", []) or [])
+        missing = set(payload.get("missing_lines", []) or [])
+        line_coverage[key] = (executed, missing)
 
     failures: list[str] = []
     for file_path in touched:
-        pct = file_coverage.get(file_path, 0.0)
+        added = added_line_numbers(merge_base, file_path)
+        executed, missing = line_coverage.get(file_path, (set(), set()))
+        coverable = added & (executed | missing)
+        if not coverable:
+            # No new executable lines (comments, blanks, docstrings) — nothing to score.
+            continue
+        covered = added & executed
+        pct = len(covered) / len(coverable) * 100.0
         if pct < min_touched:
-            failures.append(f"{file_path}: {pct:.2f}% (required {min_touched:.2f}%)")
+            failures.append(
+                f"{file_path}: {pct:.2f}% of changed lines covered "
+                f"({len(covered)}/{len(coverable)}, required {min_touched:.2f}%)"
+            )
 
     if failures:
         print("Touched-file coverage gate failed:", file=sys.stderr)
