@@ -111,57 +111,6 @@
     "qmd": {
       "command": "qmd",
       "args": ["mcp"]
-    },
-
-    "_comment_integrations": "--- Optional Integrations (add via /[tool]-setup) ---",
-
-    "google-workspace-mcp": {
-      "command": "npx",
-      "args": ["-y", "google-workspace-mcp"],
-      "env": {
-        "GOOGLE_CLIENT_ID": "{{GOOGLE_CLIENT_ID}}",
-        "GOOGLE_CLIENT_SECRET": "{{GOOGLE_CLIENT_SECRET}}"
-      }
-    },
-    "teams-mcp": {
-      "command": "npx",
-      "args": ["-y", "teams-mcp"],
-      "env": {
-        "TEAMS_TENANT_ID": "{{TEAMS_TENANT_ID}}",
-        "TEAMS_CLIENT_ID": "{{TEAMS_CLIENT_ID}}"
-      }
-    },
-    "todoist-mcp": {
-      "command": "npx",
-      "args": ["-y", "todoist-mcp-server"],
-      "env": {
-        "TODOIST_API_KEY": "{{TODOIST_API_KEY}}"
-      }
-    },
-    "things3-mcp": {
-      "command": "npx",
-      "args": ["-y", "things3-mcp"],
-      "env": {}
-    },
-    "trello-mcp": {
-      "command": "npx",
-      "args": ["-y", "mcp-server-trello"],
-      "env": {
-        "TRELLO_API_KEY": "{{TRELLO_API_KEY}}",
-        "TRELLO_TOKEN": "{{TRELLO_TOKEN}}"
-      }
-    },
-    "zoom-mcp": {
-      "command": "npx",
-      "args": ["-y", "zoom-mcp"],
-      "env": {
-        "ZOOM_CLIENT_ID": "{{ZOOM_CLIENT_ID}}",
-        "ZOOM_CLIENT_SECRET": "{{ZOOM_CLIENT_SECRET}}"
-      }
-    },
-    "atlassian-mcp": {
-      "command": "npx",
-      "args": ["-y", "mcp-remote@latest", "https://mcp.atlassian.com/v1/sse"]
     }
   }
 }
