@@ -996,7 +996,7 @@ Dex includes seven custom MCP servers in `core/mcp/`:
 |------------|------|--------------|
 | **Work** | `work_server.py` | Task/priority management with deduplication, priority limits, pillar alignment |
 | **Calendar** | `calendar_server.py` | Apple Calendar integration via AppleScript (Google, Exchange, iCloud) |
-| **Granola** | `granola_server.py` | Meeting transcripts from Granola's local cache |
+| **Granola** | `granola_server.py` | Meeting transcripts via the official Granola API (requires a Granola Business plan; connect with `/granola-setup`) |
 | **Career** | `career_server.py` | Career development tracking, evidence aggregation, competency analysis |
 | **Resume** | `resume_server.py` | Resume building with sessions, metric validation, LinkedIn generation |
 | **Dex Improvements** | `dex_improvements_server.py` | Improvement idea capture, duplicate detection, backlog management |
@@ -1022,7 +1022,7 @@ Dex includes seven custom MCP servers in `core/mcp/`:
 
 | Tool | Purpose |
 |------|---------|
-| `granola_check_available` | Check if Granola is installed |
+| `granola_check_available` | Check if your Granola API key is connected |
 | `granola_get_recent_meetings` | Get recent meeting notes |
 | `granola_get_today_meetings` | Get today's meetings with notes |
 | `granola_search_meetings` | Search by title, notes, or attendee |
@@ -1030,7 +1030,7 @@ Dex includes seven custom MCP servers in `core/mcp/`:
 
 ### Meeting Intelligence
 
-Dex processes meetings from Granola to extract structured insights, action items, and update person pages. Choose between manual and automatic processing.
+Dex processes meetings from Granola to extract structured insights, action items, and update person pages. It connects through the official Granola public API, which requires a Granola Business plan and an API key — run `/granola-setup` to connect it once (no file editing needed). After that, choose between manual and automatic processing.
 
 #### Manual Processing (Recommended to Start)
 
@@ -1084,7 +1084,7 @@ Run `/process-meetings` whenever you want to pull in new meetings. Uses Claude d
 
 #### Historical Data Processing
 
-When you first connect Granola (via `/getting-started` or during onboarding), the system analyzes your meeting history:
+When you first connect Granola (via `/granola-setup`, then `/getting-started` or onboarding), the system analyzes your meeting history:
 
 **Discovery phase (fast):**
 - Fetches last 6 months by default for quick initial analysis

@@ -5,7 +5,7 @@ jobs:
     runs-on: macos-latest
     env:
       VAULT_PATH: core/tests/fixtures/vault
-      COVERAGE_MIN_TOTAL: "15"
+      COVERAGE_MIN_TOTAL: "25"
       COVERAGE_MIN_TOUCHED: "10"
     steps:
       - uses: actions/checkout@v4
@@ -24,11 +24,11 @@ jobs:
       - run: npm ci
       - name: Ensure policy scripts are executable
         run: chmod +x scripts/check-*.sh scripts/check-coverage-threshold.py scripts/check-path-contract-usage.sh scripts/security-gate.sh scripts/benchmark_large_vault.py
+      - name: Governance docs present
+        run: |
+          test -f docs/testing-governance.md || { echo "Missing required governance document docs/testing-governance.md"; exit 1; }
       - name: Hook harness tests
         run: npm run test:hooks
-      - name: PR governance check
-        if: github.event_name == 'pull_request'
-        run: bash scripts/check-pr-governance.sh
       - name: Diff-aware test gate
         if: github.event_name == 'pull_request'
         run: bash scripts/check-test-delta.sh

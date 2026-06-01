@@ -387,62 +387,13 @@ Show the summary from the MCP response.
 
 ## Step 8: Connect Your Tools (Integration Discovery)
 
-**This step uses the Integration Concierge to intelligently recommend tool connections based on what's already in the user's vault.**
+Help the user connect the tools they use. Present the available integrations by category and let them choose — keep it light.
 
-### 8a: Run Integration Concierge
+### 8a: Present Available Integrations
 
-Execute the vault scanner to detect tool signals:
+If `System/integrations/config.yaml` exists, read it first and note any already-enabled integrations so you don't re-offer them.
 
-```bash
-node .claude/hooks/integration-concierge.cjs
-```
-
-Parse the JSON output. It returns four tiers:
-- `high_value` — Strong signals (score >= 5), high-confidence recommendations
-- `moderate_value` — Some signals (score 1-4), worth mentioning
-- `available` — No signals but available for connection
-- `already_connected` — Already enabled in config.yaml
-
-### 8b: Present Recommendations
-
-Say: "Now the fun part — I just scanned your vault to see what tools you use."
-
-**IF high_value integrations found:**
-
-```
-**Based on your notes, these would make the biggest difference:**
-
-[For each high_value item:]
-- **[name]** — Found [mentions] references in your notes ([list example files])
-  → [value proposition]
-  Setup time: [setupTime] | Auth: [auth type]
-  [If item has a note field, show it as an italicized aside]
-
-[IF moderate_value also found:]
-**Also available (fewer signals, but useful):**
-[For each moderate_value item:]
-- **[shortName]** — [mentions] mention(s). [value proposition]. Setup: [setupTime]
-
-[IF available items:]
-**Other integrations you can add anytime:**
-[Comma-separated list of shortNames from available items]
-```
-
-**IF NO high_value found but moderate_value found:**
-
-```
-**I found a few tool signals in your notes:**
-
-[For each moderate_value item:]
-- **[name]** — [mentions] mention(s) in your notes
-  → [value proposition]
-  Setup time: [setupTime] | Auth: [auth type]
-
-**Other integrations available anytime:**
-[Comma-separated list of shortNames from available items]
-```
-
-**IF NO signals found at all (both high_value and moderate_value empty):**
+Say: "Now the fun part — let's connect the tools you use day to day."
 
 ```
 **Here are the integrations available, organized by category:**
@@ -461,11 +412,7 @@ Say: "Now the fun part — I just scanned your vault to see what tools you use."
 - Atlassian (Jira + Confluence) — Tickets and docs in daily plans. Setup: 3 min
 ```
 
-**IF already_connected items exist, mention them:**
-
-```
-**Already connected:** [comma-separated list of shortNames]
-```
+If any integrations are already connected, briefly note them so you don't re-offer.
 
 **Then ask:**
 
@@ -519,20 +466,22 @@ Ask: "Which journaling prompts do you want?"
 
 Say: "Granola captures your meeting notes and transcripts. I can help you process them.
 
-**Processing modes:**
-- **Manual** (recommended) — Run `/process-meetings` when you want. No API key needed.
-- **Automatic** — Background sync every 30 minutes. Requires API key (Gemini/Anthropic/OpenAI).
+**First, connect Granola:** Dex uses the official Granola API, which needs a Granola Business plan and an API key. Run `/granola-setup` and I'll walk you through adding it — no file editing needed.
+
+**Processing modes (once connected):**
+- **Manual** (recommended) — Run `/process-meetings` when you want. No extra LLM API key needed.
+- **Automatic** — Background sync every 30 minutes. Requires an LLM API key (Gemini/Anthropic/OpenAI).
 
 **What gets processed:**
 When you first connect Granola (or later via `/getting-started`), you'll choose:
 - How much history to backfill (people pages, meeting notes, todos)
 - Different time ranges for each type (e.g., all people, last 30 days notes, last 7 days todos)
 
-Want to set up manual or automatic processing?"
+Want to connect Granola now with `/granola-setup`, then set up manual or automatic processing?"
 
 **If manual:** 
 1. Update `System/user-profile.yaml` with `meeting_processing: manual`
-2. Say: "✓ Manual processing enabled. Run `/process-meetings` or `/getting-started` to process your Granola data."
+2. Say: "✓ Manual processing enabled. Once Granola is connected via `/granola-setup`, run `/process-meetings` or `/getting-started` to process your meetings."
 
 **If automatic:**
 1. Ask which provider (Gemini has free tier)

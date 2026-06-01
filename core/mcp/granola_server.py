@@ -1,110 +1,66 @@
 #!/usr/bin/env python3
-# ============================================================================
-# DEPRECATED: Background sync now uses Granola's direct API (api.granola.ai)
-# via sync-from-granola.cjs. This file is kept for reference only.
-# See: .claude/reference/meeting-intel.md
-# ============================================================================
 """
 Granola Meeting Notes MCP Server for Dex
 
-Primary: Uses Granola's unofficial API for complete data
-Fallback: Reads from local cache if API fails
-Provides access to meeting notes, transcripts, and action items.
+Data source: Granola's official public REST API (https://public-api.granola.ai).
 
-Tools:
-- granola_check_available: Check if Granola is installed and cache exists
+Authentication uses a Granola API key (format grn_...), created on a Granola
+Business/Enterprise plan. The key is read from the GRANOLA_API_KEY environment
+variable, or from a .env file at the vault root (VAULT_ROOT) if not set in the
+environment. There is NO local-file fallback — the official API is the only
+data source. If no key is configured, tools return a friendly "not connected"
+message instead of erroring.
+
+API shape:
+- LIST:   GET /v1/notes (cursor pagination; list items have no summary/attendees/transcript)
+- DETAIL: GET /v1/notes/{note_id}?include=transcript (full summary, attendees, transcript)
+
+Tools (interface unchanged):
+- granola_check_available: Check if the Granola API is connected and reachable
 - granola_get_recent_meetings: Get recent meetings
-- granola_get_meeting_details: Get full details for a specific meeting
+- granola_get_meeting_details: Get full details for a specific meeting (incl. transcript)
 - granola_search_meetings: Search meetings by title or attendee
+- granola_get_today_meetings: Get today's meetings
+- granola_get_extent: Get the date range and summary stats of available data
 """
 
 import json
 import logging
 import os
-import platform
-import re
 import time
-from datetime import date, datetime, timedelta
+import urllib.error
+import urllib.parse
+import urllib.request
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import mcp.server.stdio
 import mcp.types as types
-import requests
 from mcp.server import NotificationOptions, Server
 from mcp.server.models import InitializationOptions
 
+# ============================================================================
+# CONFIGURATION
+# ============================================================================
 
-# Granola paths (cross-platform)
-def _find_latest_cache(granola_dir):
-    """Find highest-versioned cache-v*.json in a directory."""
-    candidates = sorted(
-        granola_dir.glob("cache-v*.json"),
-        key=lambda p: int(re.search(r'v(\d+)', p.name).group(1))
-        if re.search(r'v(\d+)', p.name) else 0,
-        reverse=True
-    )
-    for c in candidates:
-        if c.exists():
-            return c
-    return None
-
-def get_granola_cache_path():
-    """Get Granola cache path for current OS (auto-detects latest cache version)"""
-    system = platform.system()
-    home = Path.home()
-
-    if system == "Darwin":  # macOS
-        granola_dir = home / "Library" / "Application Support" / "Granola"
-    elif system == "Windows":
-        # Try AppData\Roaming first, then Local
-        roaming = Path(os.environ.get('APPDATA', home / 'AppData' / 'Roaming'))
-        local = Path(os.environ.get('LOCALAPPDATA', home / 'AppData' / 'Local'))
-
-        for base_path in [roaming, local]:
-            result = _find_latest_cache(base_path / "Granola")
-            if result:
-                return result
-
-        # Default fallback
-        return roaming / "Granola" / "cache-v3.json"
-    else:  # Linux or other
-        granola_dir = home / ".config" / "Granola"
-
-    return _find_latest_cache(granola_dir) or granola_dir / "cache-v3.json"
-
-def get_granola_creds_path():
-    """Get Granola credentials path for current OS"""
-    system = platform.system()
-    home = Path.home()
-    
-    if system == "Darwin":  # macOS
-        return home / "Library" / "Application Support" / "Granola" / "supabase.json"
-    elif system == "Windows":
-        roaming = Path(os.environ.get('APPDATA', home / 'AppData' / 'Roaming'))
-        local = Path(os.environ.get('LOCALAPPDATA', home / 'AppData' / 'Local'))
-        
-        for base_path in [roaming, local]:
-            creds_path = base_path / "Granola" / "supabase.json"
-            if creds_path.exists():
-                return creds_path
-        
-        return roaming / "Granola" / "supabase.json"
-    else:  # Linux or other
-        return home / ".config" / "Granola" / "supabase.json"
-
-GRANOLA_CACHE = get_granola_cache_path()
-GRANOLA_CREDS = get_granola_creds_path()
+API_BASE_URL = "https://public-api.granola.ai"
 
 # Vault paths
-VAULT_PATH = Path(os.environ.get('VAULT_PATH', Path.cwd()))
+VAULT_PATH = Path(os.environ.get("VAULT_PATH", Path.cwd()))
+
+# Friendly message shown when no API key is configured (shared convention).
+NOT_CONNECTED_MESSAGE = (
+    "Granola not connected — run /granola-setup to add your Granola API key "
+    "(requires a Granola Business plan)."
+)
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Response cache to avoid rate limits (5 min TTL)
-_response_cache = {}
+# Response cache to avoid hammering the API (5 min TTL)
+_response_cache: Dict[str, Any] = {}
 _cache_ttl = 300  # 5 minutes
 
 
@@ -117,630 +73,372 @@ class DateTimeEncoder(json.JSONEncoder):
 
 
 # ============================================================================
-# API CLIENT (Primary data source)
+# API KEY RESOLUTION
 # ============================================================================
 
-def get_api_access_token() -> Optional[str]:
-    """Get Granola API access token from local credentials"""
-    if not GRANOLA_CREDS.exists():
-        logger.debug(f"Credentials file not found at: {GRANOLA_CREDS}")
+
+def _vault_root() -> Path:
+    """Resolve the vault root for locating a .env file."""
+    return Path(os.environ.get("VAULT_ROOT") or os.environ.get("VAULT_PATH") or Path.cwd())
+
+
+def _read_key_from_env_file() -> Optional[str]:
+    """Parse GRANOLA_API_KEY=... from a .env file at the vault root, if present."""
+    env_path = _vault_root() / ".env"
+    if not env_path.exists():
         return None
-    
+
     try:
-        with open(GRANOLA_CREDS, 'r') as f:
-            data = json.load(f)
-        
-        workos_tokens = json.loads(data.get('workos_tokens', '{}'))
-        access_token = workos_tokens.get('access_token')
-        
-        if access_token:
-            logger.debug("Successfully loaded API access token")
-            return access_token
-        else:
-            logger.warning("No access token found in credentials")
-            return None
+        for raw_line in env_path.read_text().splitlines():
+            line = raw_line.strip()
+            if not line or line.startswith("#"):
+                continue
+            if line.startswith("export "):
+                line = line[len("export "):].strip()
+            if "=" not in line:
+                continue
+            name, _, value = line.partition("=")
+            if name.strip() != "GRANOLA_API_KEY":
+                continue
+            value = value.strip()
+            # Strip surrounding quotes if present.
+            if len(value) >= 2 and value[0] == value[-1] and value[0] in ("'", '"'):
+                value = value[1:-1]
+            return value or None
     except Exception as e:
-        logger.warning(f"Error reading credentials: {e}")
+        logger.warning(f"Error reading .env file: {e}")
+
+    return None
+
+
+def get_api_key() -> Optional[str]:
+    """Resolve the Granola API key from the environment, then a .env at VAULT_ROOT."""
+    key = os.environ.get("GRANOLA_API_KEY")
+    if key:
+        return key.strip() or None
+    return _read_key_from_env_file()
+
+
+# ============================================================================
+# OFFICIAL PUBLIC API CLIENT
+# ============================================================================
+
+
+def _api_get(path: str, params: Optional[Dict[str, Any]] = None) -> Optional[Dict[str, Any]]:
+    """
+    GET a JSON resource from the Granola public API.
+
+    Returns the parsed JSON dict, or None on failure / missing key. Retries once
+    on HTTP 429 with a short backoff (rate limits are undocumented; be gentle).
+    """
+    key = get_api_key()
+    if not key:
         return None
 
+    query = ""
+    if params:
+        # Drop None values, stringify the rest.
+        clean = {k: v for k, v in params.items() if v is not None}
+        if clean:
+            query = "?" + urllib.parse.urlencode(clean)
 
-def fetch_from_api(endpoint: str, data: Dict[str, Any], retries: int = 2) -> Optional[Dict[str, Any]]:
-    """
-    Fetch data from Granola API with exponential backoff on failures
-    
-    Args:
-        endpoint: API endpoint (e.g., '/v2/get-documents')
-        data: Request payload
-        retries: Number of retries on failure
-    
-    Returns:
-        API response dict or None on failure
-    """
-    # Check response cache
-    cache_key = f"{endpoint}:{json.dumps(data, sort_keys=True)}"
+    url = f"{API_BASE_URL}{path}{query}"
+
+    # Response cache check.
+    cache_key = url
     if cache_key in _response_cache:
         cached_time, cached_response = _response_cache[cache_key]
         if time.time() - cached_time < _cache_ttl:
-            logger.debug(f"Using cached response for {endpoint}")
+            logger.debug(f"Using cached response for {url}")
             return cached_response
-    
-    token = get_api_access_token()
-    if not token:
-        logger.warning("No API token available, falling back to cache")
-        return None
-    
-    url = f"https://api.granola.ai{endpoint}"
+
     headers = {
-        "Authorization": f"Bearer {token}",
-        "Content-Type": "application/json",
-        "Accept": "*/*",
-        "User-Agent": "Granola/5.354.0",
-        "X-Client-Version": "5.354.0"
+        "Authorization": f"Bearer {key}",
+        "Accept": "application/json",
     }
-    
-    for attempt in range(retries + 1):
+
+    for attempt in range(2):  # initial try + one retry on 429
+        request = urllib.request.Request(url, headers=headers, method="GET")
         try:
-            response = requests.post(url, headers=headers, json=data, timeout=10)
-            
-            if response.status_code == 200:
-                result = response.json()
-                # Cache successful response
+            with urllib.request.urlopen(request, timeout=15) as response:
+                payload = response.read().decode("utf-8")
+                result = json.loads(payload) if payload else {}
                 _response_cache[cache_key] = (time.time(), result)
-                logger.debug(f"API request successful: {endpoint}")
+                logger.debug(f"API request successful: {url}")
                 return result
-            elif response.status_code == 429:
-                # Rate limited - don't retry, fall back to cache
-                logger.warning("API rate limited (429), falling back to cache")
-                return None
-            elif response.status_code == 401:
-                # Auth failed - don't retry
-                logger.warning("API auth failed (401), token may be expired")
-                return None
+        except urllib.error.HTTPError as e:
+            if e.code == 429 and attempt == 0:
+                logger.warning("API rate limited (429), retrying after backoff")
+                time.sleep(1.5)
+                continue
+            if e.code == 401:
+                logger.warning("API auth failed (401) — Granola API key may be invalid")
             else:
-                logger.warning(f"API returned {response.status_code}: {response.text[:200]}")
-                
-        except requests.exceptions.Timeout:
-            logger.warning(f"API timeout on attempt {attempt + 1}/{retries + 1}")
-        except requests.exceptions.RequestException as e:
+                body = ""
+                try:
+                    body = e.read().decode("utf-8")[:200]
+                except Exception:
+                    pass
+                logger.warning(f"API returned {e.code}: {body}")
+            return None
+        except urllib.error.URLError as e:
             logger.warning(f"API request failed: {e}")
-        
-        # Exponential backoff before retry
-        if attempt < retries:
-            wait_time = (2 ** attempt) * 0.5  # 0.5s, 1s, 2s...
-            logger.debug(f"Retrying in {wait_time}s...")
-            time.sleep(wait_time)
-    
-    logger.warning(f"API request failed after {retries + 1} attempts")
+            return None
+        except Exception as e:
+            logger.warning(f"Unexpected error calling API: {e}")
+            return None
+
     return None
 
 
-def convert_api_doc_to_meeting_info(doc: Dict[str, Any]) -> Dict[str, Any]:
-    """Convert API document format to standardized meeting info"""
-    meeting_id = doc.get('id', '')
-    title = doc.get('title', 'Untitled Meeting')
-    created_at = doc.get('created_at', '')
-    meeting_date = created_at.split('T')[0] if created_at else None
-    
-    # Extract notes from last_viewed_panel
-    notes = ""
-    has_content = False
-    content_blocks = 0
-    
-    panel = doc.get('last_viewed_panel')
-    if panel and isinstance(panel, dict):
-        content = panel.get('content')
-        if content and isinstance(content, dict):
-            # Convert ProseMirror JSON to markdown
-            notes = convert_prosemirror_to_markdown(content)
-            if notes:
-                has_content = True
-                content_blocks = len(content.get('content', []))
-        elif content and isinstance(content, str):
-            # Convert HTML string to markdown (meetings recorded on other machines)
-            notes = convert_html_to_markdown(content)
-            if notes:
-                has_content = True
-    
-    # Extract participants
-    participants = []
-    if doc.get('people', {}).get('attendees'):
-        for attendee in doc['people']['attendees']:
-            name = (
-                attendee.get('details', {}).get('person', {}).get('name', {}).get('fullName') or
-                attendee.get('name') or
-                attendee.get('email')
-            )
-            if name:
-                participants.append({
-                    'name': name,
-                    'email': attendee.get('email')
-                })
-    
-    return {
-        'id': meeting_id,
-        'title': title,
-        'date': meeting_date,
-        'created_at': created_at,
-        'notes': notes,
-        'has_transcript': False,  # API doesn't include transcript in list view
-        'transcript_length': 0,
-        'participants': participants,
-        'participant_count': len(participants),
-        'source': 'api'
-    }
-
-
-def convert_prosemirror_to_markdown(content: Dict[str, Any]) -> str:
-    """Convert ProseMirror JSON to Markdown"""
-    if not content or not isinstance(content, dict) or 'content' not in content:
-        return ""
-    
-    def process_node(node):
-        if not isinstance(node, dict):
-            return ""
-        
-        node_type = node.get('type', '')
-        content = node.get('content', [])
-        text = node.get('text', '')
-        marks = node.get('marks', [])
-        
-        # Apply text marks
-        if text and marks:
-            for mark in marks:
-                mark_type = mark.get('type', '')
-                if mark_type == 'bold':
-                    text = f"**{text}**"
-                elif mark_type == 'italic':
-                    text = f"*{text}*"
-                elif mark_type == 'code':
-                    text = f"`{text}`"
-        
-        if node_type == 'heading':
-            level = node.get('attrs', {}).get('level', 1)
-            heading_text = ''.join(process_node(child) for child in content)
-            return f"{'#' * level} {heading_text}\n\n"
-        elif node_type == 'paragraph':
-            para_text = ''.join(process_node(child) for child in content)
-            return f"{para_text}\n\n"
-        elif node_type == 'bulletList':
-            items = []
-            for item in content:
-                if item.get('type') == 'listItem':
-                    item_content = ''.join(process_node(child) for child in item.get('content', []))
-                    items.append(f"- {item_content.strip()}")
-            return '\n'.join(items) + '\n\n'
-        elif node_type == 'orderedList':
-            items = []
-            for idx, item in enumerate(content, 1):
-                if item.get('type') == 'listItem':
-                    item_content = ''.join(process_node(child) for child in item.get('content', []))
-                    items.append(f"{idx}. {item_content.strip()}")
-            return '\n'.join(items) + '\n\n'
-        elif node_type == 'codeBlock':
-            code_text = ''.join(process_node(child) for child in content)
-            return f"```\n{code_text}```\n\n"
-        elif node_type == 'blockquote':
-            quote_text = ''.join(process_node(child) for child in content)
-            return f"> {quote_text}\n\n"
-        elif node_type == 'text':
-            return text
-        elif node_type == 'hardBreak':
-            return '\n'
-        
-        # Recursively process children for unknown types
-        return ''.join(process_node(child) for child in content)
-    
-    markdown = process_node(content)
-    return markdown.strip()
-
-
-def convert_html_to_markdown(html: str) -> str:
-    """Convert HTML string content to basic Markdown.
-
-    Granola stores notes as HTML strings for meetings recorded on other machines,
-    rather than ProseMirror JSON. This handles that case.
+def _iter_note_pages(params: Dict[str, Any]):
     """
-    if not html or not isinstance(html, str):
-        return ""
+    Yield each page (list of note summaries) from GET /v1/notes, following the
+    cursor until hasMore is false. `params` is the base query (created_after,
+    page_size, etc.); the cursor is managed here.
+    """
+    cursor: Optional[str] = None
+    while True:
+        page_params = dict(params)
+        if cursor:
+            page_params["cursor"] = cursor
+        response = _api_get("/v1/notes", page_params)
+        if not response:
+            return
+        notes = response.get("notes", []) or []
+        yield notes
+        if not response.get("hasMore"):
+            return
+        cursor = response.get("cursor")
+        if not cursor:
+            return
 
-    text = html
-    # Headings
-    text = re.sub(r'<h([1-6])[^>]*>(.*?)</h\1>', lambda m: '#' * int(m.group(1)) + ' ' + m.group(2) + '\n\n', text)
-    # Paragraphs
-    text = re.sub(r'<p[^>]*>(.*?)</p>', r'\1\n\n', text, flags=re.DOTALL)
-    # Line breaks
-    text = re.sub(r'<br\s*/?>', '\n', text)
-    # List items
-    text = re.sub(r'<li[^>]*>(.*?)</li>', r'- \1\n', text, flags=re.DOTALL)
-    # Bold
-    text = re.sub(r'<strong[^>]*>(.*?)</strong>', r'**\1**', text)
-    text = re.sub(r'<b[^>]*>(.*?)</b>', r'**\1**', text)
-    # Italic
-    text = re.sub(r'<em[^>]*>(.*?)</em>', r'*\1*', text)
-    text = re.sub(r'<i[^>]*>(.*?)</i>', r'*\1*', text)
-    # Code
-    text = re.sub(r'<code[^>]*>(.*?)</code>', r'`\1`', text)
-    # Strip remaining tags
-    text = re.sub(r'<[^>]+>', '', text)
-    # Clean up whitespace
-    text = re.sub(r'\n{3,}', '\n\n', text)
 
-    return text.strip()
+def _list_notes(
+    created_after: Optional[str] = None,
+    max_notes: int = 1000,
+    page_size: int = 30,
+) -> List[Dict[str, Any]]:
+    """
+    List note summaries via cursor pagination, oldest filter applied server-side
+    where possible. Stops once max_notes are collected.
+    """
+    params: Dict[str, Any] = {"page_size": max(1, min(page_size, 30))}
+    if created_after:
+        params["created_after"] = created_after
+
+    collected: List[Dict[str, Any]] = []
+    for page in _iter_note_pages(params):
+        collected.extend(page)
+        if len(collected) >= max_notes:
+            return collected[:max_notes]
+    return collected
+
+
+def _get_note_detail(note_id: str, include_transcript: bool = True) -> Optional[Dict[str, Any]]:
+    """Fetch a single note's full detail (and transcript) from the API."""
+    params = {"include": "transcript"} if include_transcript else None
+    return _api_get(f"/v1/notes/{note_id}", params)
 
 
 # ============================================================================
-# CACHE CLIENT (Fallback data source)
+# DATE HELPERS
 # ============================================================================
 
 
-def read_granola_cache() -> Optional[Dict[str, Any]]:
-    """Read and parse Granola's local cache file (fallback data source)"""
-    if not GRANOLA_CACHE.exists():
-        logger.debug("Cache file not found")
+def _parse_iso(value: str) -> Optional[datetime]:
+    """Parse an ISO timestamp into a timezone-aware datetime (UTC if naive)."""
+    if not value:
         return None
-    
     try:
-        raw_data = GRANOLA_CACHE.read_text()
-        cache_wrapper = json.loads(raw_data)
-        
-        # The cache has a nested structure: { cache: JSON_STRING }
-        cache_data = json.loads(cache_wrapper.get('cache', '{}'))
-        
-        logger.debug("Successfully read cache file")
-        return {
-            'documents': cache_data.get('state', {}).get('documents', {}),
-            'transcripts': cache_data.get('state', {}).get('transcripts', {}),
-            'people': cache_data.get('state', {}).get('people', {})
-        }
-    except Exception as e:
-        logger.error(f"Error reading Granola cache: {e}")
+        dt = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt
+    except Exception:
         return None
 
 
-def extract_meeting_info_from_cache(doc: Dict[str, Any], transcripts: Dict[str, Any], meeting_id: str) -> Dict[str, Any]:
-    """Extract relevant meeting information from a Granola cache document (fallback)"""
-    
-    # Get transcript if available
-    transcript_entries = transcripts.get(meeting_id, [])
-    if transcript_entries:
-        transcript = ' '.join(
-            t.get('text', '') 
-            for t in sorted(transcript_entries, key=lambda x: x.get('start_timestamp', ''))
-        ).strip()
-    else:
-        transcript = None
-    
-    # Extract participants
+def _cutoff_iso(days_back: int) -> str:
+    """Return an ISO datetime `days_back` days ago (UTC), for created_after."""
+    return (datetime.now(timezone.utc) - timedelta(days=days_back)).isoformat()
+
+
+def _date_only(value: str) -> Optional[str]:
+    """Extract the YYYY-MM-DD date portion from an ISO timestamp."""
+    if not value:
+        return None
+    return value.split("T")[0]
+
+
+# ============================================================================
+# NORMALIZATION
+# ============================================================================
+
+
+def _attendees_from_detail(detail: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Build a participant list from a note detail's attendees array."""
     participants = []
-    if doc.get('people', {}).get('attendees'):
-        for attendee in doc['people']['attendees']:
-            name = (
-                attendee.get('details', {}).get('person', {}).get('name', {}).get('fullName') or
-                attendee.get('name') or
-                attendee.get('email')
+    for attendee in detail.get("attendees", []) or []:
+        name = attendee.get("name") or attendee.get("email")
+        if name:
+            participants.append(
+                {"name": name, "email": attendee.get("email")}
             )
-            if name:
-                participants.append({
-                    'name': name,
-                    'email': attendee.get('email')
-                })
-    
-    # Parse created_at
-    created_at = doc.get('created_at', '')
-    meeting_date = created_at.split('T')[0] if created_at else None
-    
+    return participants
+
+
+def _summary_from_list_item(note: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Normalize a list-view note summary into the standardized meeting info shape.
+
+    List items contain no summary/attendees/transcript, so those fields are empty
+    here. Use _meeting_info_from_detail for the full record.
+    """
+    created_at = note.get("created_at", "") or ""
     return {
-        'id': meeting_id,
-        'title': doc.get('title', 'Untitled Meeting'),
-        'date': meeting_date,
-        'created_at': created_at,
-        'notes': doc.get('notes_markdown', ''),
-        'has_transcript': bool(transcript),
-        'transcript_length': len(transcript) if transcript else 0,
-        'participants': participants,
-        'participant_count': len(participants),
-        'source': 'cache'
+        "id": note.get("id", ""),
+        "title": note.get("title") or "Untitled Meeting",
+        "date": _date_only(created_at),
+        "created_at": created_at,
+        "updated_at": note.get("updated_at", ""),
+        "notes": "",
+        "has_transcript": False,
+        "transcript_length": 0,
+        "participants": [],
+        "participant_count": 0,
+        "source": "api",
     }
 
 
-def get_meetings_from_cache(
-    cache: Dict[str, Any],
-    days_back: int = 7,
-    limit: int = 20
-) -> List[Dict[str, Any]]:
-    """Get meetings from cache within the specified time range (fallback)"""
-    
-    cutoff_date = datetime.now() - timedelta(days=days_back)
-    meetings = []
-    
-    for meeting_id, doc in cache['documents'].items():
-        # Skip non-meeting documents
-        if doc.get('type') != 'meeting':
-            continue
-        
-        # Skip deleted documents
-        if doc.get('deleted_at'):
-            continue
-        
-        # Check date cutoff
-        created_at = doc.get('created_at', '')
-        if created_at:
-            try:
-                meeting_date = datetime.fromisoformat(created_at.replace('Z', '+00:00'))
-                if meeting_date.replace(tzinfo=None) < cutoff_date:
-                    continue
-            except:
-                pass
-        
-        meeting_info = extract_meeting_info_from_cache(doc, cache['transcripts'], meeting_id)
-        meetings.append(meeting_info)
-    
-    # Sort by date descending
-    meetings.sort(key=lambda x: x.get('created_at', ''), reverse=True)
-    
-    return meetings[:limit]
+def _meeting_info_from_detail(detail: Dict[str, Any]) -> Dict[str, Any]:
+    """Normalize a full note detail into the standardized meeting info shape."""
+    created_at = detail.get("created_at", "") or ""
+    participants = _attendees_from_detail(detail)
+
+    # Prefer markdown summary, fall back to plain text summary.
+    notes = detail.get("summary_markdown") or detail.get("summary_text") or ""
+
+    # Flatten the transcript (list of speaker turns) into a single string.
+    transcript_text = ""
+    transcript = detail.get("transcript")
+    if isinstance(transcript, list) and transcript:
+        transcript_text = " ".join(
+            (turn.get("text") or "").strip()
+            for turn in transcript
+            if isinstance(turn, dict) and turn.get("text")
+        ).strip()
+
+    # Action items: checkbox lines in the markdown summary.
+    action_items = []
+    for line in notes.split("\n"):
+        line = line.strip()
+        if line.startswith("- [ ]") or line.startswith("* [ ]"):
+            action_items.append(line[5:].strip())
+
+    return {
+        "id": detail.get("id", ""),
+        "title": detail.get("title") or "Untitled Meeting",
+        "date": _date_only(created_at),
+        "created_at": created_at,
+        "updated_at": detail.get("updated_at", ""),
+        "web_url": detail.get("web_url"),
+        "notes": notes,
+        "has_transcript": bool(transcript_text),
+        "transcript_length": len(transcript_text),
+        "transcript": transcript_text,
+        "participants": participants,
+        "participant_count": len(participants),
+        "action_items": action_items,
+        "source": "api",
+    }
 
 
 # ============================================================================
-# HYBRID FUNCTIONS (API-first with cache fallback)
+# HIGH-LEVEL DATA FUNCTIONS
 # ============================================================================
+
 
 def get_recent_meetings(days_back: int = 7, limit: int = 20) -> List[Dict[str, Any]]:
     """
-    Get recent meetings (API-first with cache fallback)
-    
-    Tries API first for better data, falls back to cache if API fails
+    Get recent meetings via the public API.
+
+    Lists note summaries within the date window. NOTE: list items contain no
+    attendees, so participant data is only populated by detail fetches (used by
+    get_meeting_details and get_extent, which enrich per note).
     """
-    # Try API first
     logger.info(f"Fetching recent meetings (days_back={days_back}, limit={limit})")
-    api_response = fetch_from_api('/v2/get-documents', {
-        'limit': 100,  # Get more to filter by date
-        'offset': 0,
-        'include_last_viewed_panel': True
-    })
-    
-    if api_response and 'docs' in api_response:
-        logger.info(f"Using API data ({len(api_response['docs'])} documents)")
-        
-        # Filter and convert API documents
-        cutoff_date = datetime.now() - timedelta(days=days_back)
-        meetings = []
-        
-        for doc in api_response['docs']:
-            created_at = doc.get('created_at', '')
-            if created_at:
-                try:
-                    meeting_date = datetime.fromisoformat(created_at.replace('Z', '+00:00'))
-                    if meeting_date.replace(tzinfo=None) < cutoff_date:
-                        continue
-                except:
-                    # If date parsing fails, include it anyway
-                    pass
-            
-            meetings.append(convert_api_doc_to_meeting_info(doc))
-        
-        # Sort by date descending and limit
-        meetings.sort(key=lambda x: x.get('created_at', ''), reverse=True)
-        return meetings[:limit]
-    
-    # Fallback to cache
-    logger.info("API failed, falling back to cache")
-    cache = read_granola_cache()
-    if cache:
-        return get_meetings_from_cache(cache, days_back, limit)
-    
-    logger.error("Both API and cache failed")
-    return []
-
-
-def get_meeting_by_id_from_cache(cache: Dict[str, Any], meeting_id: str) -> Optional[Dict[str, Any]]:
-    """Get detailed meeting information by ID from cache (fallback)"""
-    
-    doc = cache['documents'].get(meeting_id)
-    if not doc:
-        return None
-    
-    info = extract_meeting_info_from_cache(doc, cache['transcripts'], meeting_id)
-    
-    # Add full transcript for detail view
-    transcript_entries = cache['transcripts'].get(meeting_id, [])
-    if transcript_entries:
-        info['transcript'] = ' '.join(
-            t.get('text', '') 
-            for t in sorted(transcript_entries, key=lambda x: x.get('start_timestamp', ''))
-        ).strip()
-    
-    # Add action items if present in notes
-    notes = doc.get('notes_markdown', '')
-    action_items = []
-    for line in notes.split('\n'):
-        line = line.strip()
-        if line.startswith('- [ ]') or line.startswith('* [ ]'):
-            action_items.append(line[5:].strip())
-    
-    info['action_items'] = action_items
-    
-    return info
+    notes = _list_notes(created_after=_cutoff_iso(days_back), max_notes=max(limit, 1))
+    meetings = [_summary_from_list_item(n) for n in notes]
+    meetings.sort(key=lambda x: x.get("created_at", ""), reverse=True)
+    return meetings[:limit]
 
 
 def get_meeting_details(meeting_id: str) -> Optional[Dict[str, Any]]:
-    """
-    Get detailed meeting information by ID (API-first with cache fallback)
-    """
+    """Get detailed meeting information (incl. transcript) by ID via the API."""
     logger.info(f"Fetching details for meeting {meeting_id}")
-    
-    # Try API first - get all meetings and find the one we need
-    api_response = fetch_from_api('/v2/get-documents', {
-        'limit': 100,
-        'offset': 0,
-        'include_last_viewed_panel': True
-    })
-    
-    if api_response and 'docs' in api_response:
-        for doc in api_response['docs']:
-            if doc.get('id') == meeting_id:
-                logger.info("Found meeting in API data")
-                info = convert_api_doc_to_meeting_info(doc)
-                
-                # Extract action items from notes
-                action_items = []
-                notes = info.get('notes', '')
-                for line in notes.split('\n'):
-                    line = line.strip()
-                    if line.startswith('- [ ]') or line.startswith('* [ ]'):
-                        action_items.append(line[5:].strip())
-                
-                info['action_items'] = action_items
-                return info
-    
-    # Fallback to cache
-    logger.info("Meeting not in API data or API failed, trying cache")
-    cache = read_granola_cache()
-    if cache:
-        result = get_meeting_by_id_from_cache(cache, meeting_id)
-        if result:
-            return result
-    
-    logger.warning(f"Meeting {meeting_id} not found in API or cache")
-    return None
-
-
-def search_meetings_in_cache(
-    cache: Dict[str, Any],
-    query: str,
-    days_back: int = 30,
-    limit: int = 10
-) -> List[Dict[str, Any]]:
-    """Search meetings by title, notes, or participant names in cache (fallback)"""
-    
-    query_lower = query.lower()
-    cutoff_date = datetime.now() - timedelta(days=days_back)
-    results = []
-    
-    for meeting_id, doc in cache['documents'].items():
-        # Skip non-meeting documents
-        if doc.get('type') != 'meeting':
-            continue
-        
-        # Skip deleted documents
-        if doc.get('deleted_at'):
-            continue
-        
-        # Check date cutoff
-        created_at = doc.get('created_at', '')
-        if created_at:
-            try:
-                meeting_date = datetime.fromisoformat(created_at.replace('Z', '+00:00'))
-                if meeting_date.replace(tzinfo=None) < cutoff_date:
-                    continue
-            except:
-                pass
-        
-        # Search in title
-        title = doc.get('title', '').lower()
-        if query_lower in title:
-            results.append(extract_meeting_info_from_cache(doc, cache['transcripts'], meeting_id))
-            continue
-        
-        # Search in notes
-        notes = doc.get('notes_markdown', '').lower()
-        if query_lower in notes:
-            results.append(extract_meeting_info_from_cache(doc, cache['transcripts'], meeting_id))
-            continue
-        
-        # Search in participant names
-        attendees = doc.get('people', {}).get('attendees', [])
-        for attendee in attendees:
-            name = (
-                attendee.get('details', {}).get('person', {}).get('name', {}).get('fullName', '') or
-                attendee.get('name', '') or
-                attendee.get('email', '')
-            ).lower()
-            if query_lower in name:
-                results.append(extract_meeting_info_from_cache(doc, cache['transcripts'], meeting_id))
-                break
-    
-    # Sort by date descending
-    results.sort(key=lambda x: x.get('created_at', ''), reverse=True)
-    
-    return results[:limit]
+    detail = _get_note_detail(meeting_id, include_transcript=True)
+    if not detail:
+        logger.warning(f"Meeting {meeting_id} not found via API")
+        return None
+    return _meeting_info_from_detail(detail)
 
 
 def search_meetings(query: str, days_back: int = 30, limit: int = 10) -> List[Dict[str, Any]]:
     """
-    Search meetings by title, notes, or participant names (API-first with cache fallback)
+    Search meetings by title or participant name via the API.
+
+    The public API has no full-text search endpoint, so this lists notes in the
+    window, matches titles directly, then fetches detail for unmatched notes to
+    match on attendees and summary. Detail fetches are sequential and bounded.
     """
     logger.info(f"Searching meetings for '{query}' (days_back={days_back}, limit={limit})")
-    
-    # Try API first - get broader set and filter
-    api_response = fetch_from_api('/v2/get-documents', {
-        'limit': 100,
-        'offset': 0,
-        'include_last_viewed_panel': True
-    })
-    
-    if api_response and 'docs' in api_response:
-        logger.info(f"Searching in API data ({len(api_response['docs'])} documents)")
-        
-        query_lower = query.lower()
-        cutoff_date = datetime.now() - timedelta(days=days_back)
-        results = []
-        
-        for doc in api_response['docs']:
-            # Check date cutoff
-            created_at = doc.get('created_at', '')
-            if created_at:
-                try:
-                    meeting_date = datetime.fromisoformat(created_at.replace('Z', '+00:00'))
-                    if meeting_date.replace(tzinfo=None) < cutoff_date:
-                        continue
-                except:
-                    pass
-            
-            # Search in title
-            title = doc.get('title') or ''
-            if query_lower in title.lower():
-                results.append(convert_api_doc_to_meeting_info(doc))
-                continue
-            
-            # Search in notes content (ProseMirror JSON or HTML string)
-            panel = doc.get('last_viewed_panel', {})
-            if isinstance(panel, dict):
-                content = panel.get('content')
-                notes_text = ""
-                if content and isinstance(content, dict):
-                    notes_text = convert_prosemirror_to_markdown(content)
-                elif content and isinstance(content, str):
-                    notes_text = convert_html_to_markdown(content)
-                if notes_text and query_lower in notes_text.lower():
-                    results.append(convert_api_doc_to_meeting_info(doc))
-                    continue
-            
-            # Search in participant names
-            attendees = doc.get('people', {}).get('attendees', [])
-            for attendee in attendees:
-                name = (
-                    attendee.get('details', {}).get('person', {}).get('name', {}).get('fullName') or
-                    attendee.get('name') or
-                    attendee.get('email') or
-                    ''
-                )
-                if name and query_lower in name.lower():
-                    results.append(convert_api_doc_to_meeting_info(doc))
-                    break
-        
-        # Sort by date descending and limit
-        results.sort(key=lambda x: x.get('created_at', ''), reverse=True)
-        return results[:limit]
-    
-    # Fallback to cache
-    logger.info("API failed, falling back to cache for search")
-    cache = read_granola_cache()
-    if cache:
-        return search_meetings_in_cache(cache, query, days_back, limit)
-    
-    logger.error("Both API and cache failed for search")
-    return []
+    query_lower = query.lower()
+    notes = _list_notes(created_after=_cutoff_iso(days_back), max_notes=1000)
+
+    results: List[Dict[str, Any]] = []
+
+    # First pass: cheap title matches from the list view.
+    title_matched_ids = set()
+    unmatched: List[Dict[str, Any]] = []
+    for note in notes:
+        title = (note.get("title") or "").lower()
+        if query_lower in title:
+            results.append(_summary_from_list_item(note))
+            title_matched_ids.add(note.get("id"))
+        else:
+            unmatched.append(note)
+
+    # Second pass: enrich unmatched notes with detail to match attendees/summary.
+    # Bounded so we don't fetch the whole history for a broad query.
+    detail_budget = max(limit * 5, 25)
+    for note in unmatched:
+        if len(results) >= limit or detail_budget <= 0:
+            break
+        note_id = note.get("id")
+        if not note_id:
+            continue
+        detail_budget -= 1
+        detail = _get_note_detail(note_id, include_transcript=False)
+        if not detail:
+            continue
+
+        matched = False
+        for attendee in detail.get("attendees", []) or []:
+            name = (attendee.get("name") or attendee.get("email") or "").lower()
+            if name and query_lower in name:
+                matched = True
+                break
+        if not matched:
+            summary = (detail.get("summary_markdown") or detail.get("summary_text") or "").lower()
+            if summary and query_lower in summary:
+                matched = True
+
+        if matched:
+            results.append(_meeting_info_from_detail(detail))
+
+    results.sort(key=lambda x: x.get("created_at", ""), reverse=True)
+    return results[:limit]
 
 
 # Initialize the MCP server
@@ -753,7 +451,7 @@ async def handle_list_tools() -> list[types.Tool]:
     return [
         types.Tool(
             name="granola_check_available",
-            description="Check if Granola is installed and cache exists",
+            description="Check if the Granola API is connected and reachable",
             inputSchema={
                 "type": "object",
                 "properties": {}
@@ -846,239 +544,257 @@ async def handle_list_tools() -> list[types.Tool]:
     ]
 
 
+def _not_connected_response() -> list[types.TextContent]:
+    """Standard payload returned by every tool when no API key is configured."""
+    return [types.TextContent(type="text", text=json.dumps({
+        "success": False,
+        "connected": False,
+        "message": NOT_CONNECTED_MESSAGE
+    }, indent=2))]
+
+
 @app.call_tool()
 async def handle_call_tool(
     name: str, arguments: dict | None
 ) -> list[types.TextContent | types.ImageContent | types.EmbeddedResource]:
     """Handle tool calls"""
-    
+
     arguments = arguments or {}
-    
+
+    # Validate the tool name first, so an unknown tool always returns an explicit
+    # error, even when no API key is configured.
+    valid_tools = {
+        "granola_check_available",
+        "granola_get_recent_meetings",
+        "granola_get_meeting_details",
+        "granola_search_meetings",
+        "granola_get_today_meetings",
+        "granola_get_extent",
+    }
+    if name not in valid_tools:
+        return [types.TextContent(type="text", text=json.dumps({
+            "error": f"Unknown tool: {name}"
+        }, indent=2))]
+
+    # Every tool requires a configured API key. If absent, return the friendly
+    # not-connected message rather than erroring.
+    if not get_api_key():
+        return _not_connected_response()
+
     if name == "granola_check_available":
-        # Check API availability
-        api_available = False
-        api_token = get_api_access_token()
-        if api_token:
-            # Quick test - try to fetch 1 document
-            test_response = fetch_from_api('/v2/get-documents', {'limit': 1, 'offset': 0})
-            api_available = test_response is not None
-        
-        # Check cache availability
-        cache_exists = GRANOLA_CACHE.exists()
-        cache_available = False
-        meetings_count = 0
-        
-        if cache_exists:
-            cache = read_granola_cache()
-            if cache:
-                cache_available = True
-                meetings_count = len([
-                    doc for doc in cache.get('documents', {}).values()
-                    if doc.get('type') == 'meeting' and not doc.get('deleted_at')
-                ])
-        
+        # Quick reachability test — fetch a single note page.
+        test_response = _api_get("/v1/notes", {"page_size": 1})
+        api_available = test_response is not None
+
         result = {
-            "available": api_available or cache_available,
+            "available": api_available,
+            "connected": True,
             "api": {
-                "available": api_available,
-                "creds_path": str(GRANOLA_CREDS),
+                "base_url": API_BASE_URL,
                 "status": "ready" if api_available else "unavailable"
             },
-            "cache": {
-                "available": cache_available,
-                "path": str(GRANOLA_CACHE),
-                "status": "ready" if cache_available else "unavailable"
-            },
-            "meetings_count": meetings_count,
-            "data_source": "api (primary)" if api_available else "cache (fallback)" if cache_available else "none",
+            "data_source": "official_api",
             "message": (
-                "Granola API and cache available" if (api_available and cache_available) else
-                "Granola API available (cache unavailable)" if api_available else
-                "Granola cache available (API unavailable)" if cache_available else
-                "Granola not available. Is Granola installed?"
+                "Granola API connected and reachable" if api_available else
+                "Granola API key configured but the API is not reachable "
+                "(check the key is valid and you have a Granola Business plan)."
             )
         }
-        
-        if cache_exists:
-            result["cache"]["last_modified"] = datetime.fromtimestamp(
-                GRANOLA_CACHE.stat().st_mtime
-            ).isoformat()
-        
+
         return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
-    
+
     elif name == "granola_get_recent_meetings":
         days_back = arguments.get("days_back", 7)
         limit = arguments.get("limit", 20)
-        
+
         meetings = get_recent_meetings(days_back, limit)
-        
+
         if not meetings:
             return [types.TextContent(type="text", text=json.dumps({
-                "success": False,
-                "error": "No meetings found. Both API and cache unavailable."
+                "success": True,
+                "meetings": [],
+                "count": 0,
+                "days_back": days_back,
+                "data_source": "official_api"
             }, indent=2))]
-        
+
         result = {
             "success": True,
             "meetings": meetings,
             "count": len(meetings),
             "days_back": days_back,
-            "data_source": meetings[0].get('source', 'unknown') if meetings else 'none'
+            "data_source": "official_api"
         }
-        
+
         return [types.TextContent(type="text", text=json.dumps(result, indent=2, cls=DateTimeEncoder))]
-    
+
     elif name == "granola_get_meeting_details":
         meeting_id = arguments.get("meeting_id")
-        
+
         if not meeting_id:
             return [types.TextContent(type="text", text=json.dumps({
                 "success": False,
                 "error": "meeting_id is required"
             }, indent=2))]
-        
+
         meeting = get_meeting_details(meeting_id)
-        
+
         if not meeting:
             return [types.TextContent(type="text", text=json.dumps({
                 "success": False,
                 "error": f"Meeting not found: {meeting_id}"
             }, indent=2))]
-        
+
         result = {
             "success": True,
             "meeting": meeting,
-            "data_source": meeting.get('source', 'unknown')
+            "data_source": "official_api"
         }
-        
+
         return [types.TextContent(type="text", text=json.dumps(result, indent=2, cls=DateTimeEncoder))]
-    
+
     elif name == "granola_search_meetings":
         query = arguments.get("query")
-        
+
         if not query:
             return [types.TextContent(type="text", text=json.dumps({
                 "success": False,
                 "error": "query is required"
             }, indent=2))]
-        
+
         days_back = arguments.get("days_back", 30)
         limit = arguments.get("limit", 10)
-        
+
         meetings = search_meetings(query, days_back, limit)
-        
+
         result = {
             "success": True,
             "query": query,
             "meetings": meetings,
             "count": len(meetings),
-            "data_source": meetings[0].get('source', 'unknown') if meetings else 'none'
+            "data_source": "official_api"
         }
-        
+
         return [types.TextContent(type="text", text=json.dumps(result, indent=2, cls=DateTimeEncoder))]
-    
+
     elif name == "granola_get_today_meetings":
-        # Get meetings from last 1 day using hybrid function
+        # Get meetings from the last 1 day, then filter to today.
         meetings = get_recent_meetings(days_back=1, limit=50)
-        
-        # Filter to only today
+
         today = datetime.now().strftime("%Y-%m-%d")
         today_meetings = [
-            m for m in meetings 
-            if m.get('date') == today
+            m for m in meetings
+            if m.get("date") == today
         ]
-        
-        # Sort by time
-        today_meetings.sort(key=lambda x: x.get('created_at', ''))
-        
+
+        today_meetings.sort(key=lambda x: x.get("created_at", ""))
+
         result = {
             "success": True,
             "date": today,
             "meetings": today_meetings,
             "count": len(today_meetings),
-            "data_source": today_meetings[0].get('source', 'unknown') if today_meetings else 'none'
+            "data_source": "official_api"
         }
-        
+
         return [types.TextContent(type="text", text=json.dumps(result, indent=2, cls=DateTimeEncoder))]
-    
+
     elif name == "granola_get_extent":
         user_email_domain = arguments.get("user_email_domain", "")
         extended = arguments.get("extended", False)
-        
-        # Default to 6 months for speed, optionally extend to 2 years
+
+        # Default to 6 months for speed, optionally extend to 2 years.
         days_to_fetch = 365 * 2 if extended else 180
-        meetings = get_recent_meetings(days_back=days_to_fetch, limit=1000)
-        
-        if not meetings:
+        notes = _list_notes(created_after=_cutoff_iso(days_to_fetch), max_notes=1000)
+
+        if not notes:
             return [types.TextContent(type="text", text=json.dumps({
                 "success": False,
                 "error": "No meetings found",
                 "has_data": False
             }, indent=2))]
-        
-        # Find oldest and newest dates
-        dates = [m['date'] for m in meetings if m.get('date')]
+
+        meetings = [_summary_from_list_item(n) for n in notes]
+
+        # People/company stats require attendees, which only appear in detail.
+        # Enrich a bounded number of notes so discovery stays fast.
+        enrich_budget = min(len(notes), 150)
+        for note in notes[:enrich_budget]:
+            note_id = note.get("id")
+            if not note_id:
+                continue
+            detail = _get_note_detail(note_id, include_transcript=False)
+            if not detail:
+                continue
+            participants = _attendees_from_detail(detail)
+            for meeting in meetings:
+                if meeting["id"] == note_id:
+                    meeting["participants"] = participants
+                    meeting["participant_count"] = len(participants)
+                    break
+
+        # Find oldest and newest dates.
+        dates = [m["date"] for m in meetings if m.get("date")]
         if not dates:
             return [types.TextContent(type="text", text=json.dumps({
                 "success": False,
                 "has_data": False,
                 "meetings_count": 0
             }, indent=2))]
-        
+
         oldest = min(dates)
         newest = max(dates)
-        
-        # Calculate days back
+
+        # Calculate days back.
         oldest_dt = datetime.fromisoformat(oldest)
         newest_dt = datetime.fromisoformat(newest)
         days_back = (newest_dt - oldest_dt).days + 1
-        
-        # Extract unique people and companies
+
+        # Extract unique people and companies.
         people = set()
         internal_people = set()
         external_people = set()
         companies = set()
-        
-        # Normalize user domain for comparison
-        user_domains = [d.strip().lower() for d in user_email_domain.split(',')] if user_email_domain else []
-        
+
+        # Normalize user domain for comparison.
+        user_domains = [d.strip().lower() for d in user_email_domain.split(",")] if user_email_domain else []
+
         for meeting in meetings:
-            for participant in meeting.get('participants', []):
-                name = participant.get('name')
-                email = participant.get('email')
-                
+            for participant in meeting.get("participants", []):
+                name = participant.get("name")
+                email = participant.get("email")
+
                 if name:
                     people.add(name)
-                    
-                    if email and '@' in email:
-                        domain = email.split('@')[1].lower()
-                        
-                        # Classify as internal or external
+
+                    if email and "@" in email:
+                        domain = email.split("@")[1].lower()
+
+                        # Classify as internal or external.
                         if user_domains and any(d in domain or domain in d for d in user_domains):
                             internal_people.add(name)
                         else:
                             external_people.add(name)
                             companies.add(domain)
                     else:
-                        # No email provided - default to external
+                        # No email provided - default to external.
                         external_people.add(name)
-        
-        # Calculate meetings in different time ranges
+
+        # Calculate meetings in different time ranges.
         now = datetime.now()
-        meetings_7d = sum(1 for m in meetings if m.get('date') and 
-                          (now - datetime.fromisoformat(m['date'])).days <= 7)
-        meetings_30d = sum(1 for m in meetings if m.get('date') and 
-                           (now - datetime.fromisoformat(m['date'])).days <= 30)
-        meetings_90d = sum(1 for m in meetings if m.get('date') and 
-                           (now - datetime.fromisoformat(m['date'])).days <= 90)
-        
-        # Check if there might be more data beyond what we fetched
+        meetings_7d = sum(1 for m in meetings if m.get("date") and
+                          (now - datetime.fromisoformat(m["date"])).days <= 7)
+        meetings_30d = sum(1 for m in meetings if m.get("date") and
+                           (now - datetime.fromisoformat(m["date"])).days <= 30)
+        meetings_90d = sum(1 for m in meetings if m.get("date") and
+                           (now - datetime.fromisoformat(m["date"])).days <= 90)
+
+        # Check if there might be more data beyond what we fetched.
         has_more = False
         if not extended:
-            # If we got close to 1000 meetings or date range is close to 180 days, likely more data exists
             if len(meetings) >= 900 or days_back >= 175:
                 has_more = True
-        
+
         result = {
             "success": True,
             "has_data": True,
@@ -1097,11 +813,12 @@ async def handle_call_tool(
             "meetings_90d": meetings_90d,
             "has_more_data": has_more,
             "fetched_range_days": days_to_fetch,
-            "data_source": meetings[0].get('source', 'unknown') if meetings else 'none'
+            "people_enriched": enrich_budget,
+            "data_source": "official_api"
         }
-        
+
         return [types.TextContent(type="text", text=json.dumps(result, indent=2, cls=DateTimeEncoder))]
-    
+
     else:
         return [types.TextContent(type="text", text=json.dumps({
             "error": f"Unknown tool: {name}"
@@ -1110,17 +827,18 @@ async def handle_call_tool(
 
 async def _main():
     """Async main entry point for the MCP server"""
-    logger.info("Starting Dex Granola MCP Server (API-first with cache fallback)")
-    logger.info(f"API credentials: {GRANOLA_CREDS}")
-    logger.info(f"Cache fallback: {GRANOLA_CACHE}")
-    
+    logger.info("Starting Dex Granola MCP Server (official public API)")
+    logger.info(f"API base URL: {API_BASE_URL}")
+    if not get_api_key():
+        logger.info(NOT_CONNECTED_MESSAGE)
+
     async with mcp.server.stdio.stdio_server() as (read_stream, write_stream):
         await app.run(
             read_stream,
             write_stream,
             InitializationOptions(
                 server_name="dex-granola-mcp",
-                server_version="2.0.0",
+                server_version="3.0.0",
                 capabilities=app.get_capabilities(
                     notification_options=NotificationOptions(),
                     experimental_capabilities={},

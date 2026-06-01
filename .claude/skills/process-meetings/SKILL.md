@@ -44,7 +44,7 @@ Meetings are synced automatically every 30 minutes by a background process. This
 
 ## Pre-flight: Granola Check
 
-Mobile recordings sync automatically as long as Granola is installed and the user is signed in to the desktop app. No separate authentication step needed.
+Granola sync uses the official Granola public API. Desktop and mobile recordings both come through it once your Granola API key is connected. If `GRANOLA_API_KEY` isn't set (checked in the environment, then the `.env` file at the vault root), say: "Granola isn't connected yet — run `/granola-setup` to add your Granola API key (requires a Granola Business plan)." and continue with any meetings already synced.
 
 ---
 
@@ -72,7 +72,7 @@ ls .scripts/meeting-intel/processed-meetings.json
 > Or run `/process-meetings --setup` and I'll do it for you.
 >
 > **Requirements:**
-> - Granola app installed ([granola.ai](https://granola.ai))
+> - A Granola Business plan, with your Granola API key connected via `/granola-setup`
 > - An LLM API key in `.env` (GEMINI_API_KEY, ANTHROPIC_API_KEY, or OPENAI_API_KEY)"
 
 If user runs `--setup`:
@@ -274,7 +274,7 @@ For each meeting with unextracted tasks:
 
 **If no meetings found:**
 > "No meetings synced in the last 7 days. Make sure:
-> 1. Granola is running during your meetings
+> 1. Your Granola API key is connected (run `/granola-setup` if not)
 > 2. Background sync is set up (run `/process-meetings --setup`)
 > 3. Check logs: `.scripts/logs/meeting-intel.stdout.log`"
 

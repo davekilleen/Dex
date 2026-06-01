@@ -216,9 +216,9 @@ When the user mentions any of these:
 - "refresh Granola", "Granola not working", "Granola sign-in"
 
 **Action:**
-1. Check if Granola credentials exist: look for `supabase.json` in Granola's app data directory
-2. If credentials exist: Mobile recordings sync automatically. Suggest checking if Granola's iOS app is syncing to cloud, and that background sync is installed (`cd .scripts/meeting-intel && ./install-automation.sh`)
-3. If no credentials: Granola isn't installed or user isn't signed in — guide them to [granola.ai](https://granola.ai) and ensure they sign in to the desktop app
+1. Check if a Granola API key is configured: `GRANOLA_API_KEY` in the environment, or in the `.env` file at the vault root.
+2. If a key is configured: Granola sync uses the official Granola public API, so desktop and mobile recordings come through the same way — there's nothing phone-specific to set up. Offer to run a sync (`/process-meetings`) and confirm background sync is installed (`cd .scripts/meeting-intel && ./install-automation.sh`).
+3. If no key is configured: tell the user "Granola isn't connected yet — run `/granola-setup` to add your Granola API key (requires a Granola Business plan)." Offer to walk them through it.
 
 ### Meeting Capture
 When the user shares meeting notes or says they had a meeting:
@@ -238,14 +238,11 @@ When the user requests task creation without specifying a pillar:
 
 **Your workflow:**
 1. **Analyze the request** against pillar keywords (from `System/pillars.yaml`)
-2. **Infer the most likely pillar** based on content:
-   - **Deal Support**: deal, sales, customer, demo, presentation, enablement, account, pipeline, prospect, opportunity
-   - **Thought Leadership**: podcast, conference, linkedin, content, blog, talk, speaking, brand, article, webinar
-   - **Product Feedback**: product, feedback, feature, roadmap, ux, research, insight, customer voice, beta
+2. **Infer the most likely pillar** by matching the request against each pillar's `keywords` and `description` in `System/pillars.yaml`. Do not assume a fixed set of pillars — every user configures their own.
 3. **Propose with quick confirmation**:
    ```
-   Creating "Review Q1 numbers" under Product Feedback pillar (looks like data gathering).
-   Sound right, or should it be Deal Support / Thought Leadership?
+   Creating "Review Q1 numbers" under [inferred pillar] (looks like data gathering).
+   Sound right, or should it be a different pillar?
    ```
 4. **Handle response**:
    - User confirms (yes/sounds good/correct) → Create task with inferred pillar
@@ -253,11 +250,11 @@ When the user requests task creation without specifying a pillar:
    - Unclear task → Ask which pillar makes most sense
 5. **Call Work MCP**: `work_mcp_create_task` with confirmed pillar
 
-**Inference examples:**
-- "Prep demo for Acme Corp" → **Deal Support** (customer + demo keywords)
-- "Write blog post about AI agents" → **Thought Leadership** (content + article keywords)
-- "Review beta feedback on search" → **Product Feedback** (feedback + beta keywords)
-- "Call prospect about pricing" → **Deal Support** (prospect keyword)
+**Inference examples** (match against the user's actual pillars in `System/pillars.yaml` — names below are illustrative only):
+- "Prep demo for Acme Corp" → the pillar whose keywords cover sales/customer/demo work
+- "Write blog post about AI agents" → the pillar covering content/thought-leadership work
+- "Review beta feedback on search" → the pillar covering product/feedback work
+- "Call prospect about pricing" → the pillar covering sales/pipeline work
 
 **Key points:**
 - Always show your reasoning ("looks like X because Y")
