@@ -49,7 +49,7 @@ features:
 
   analytics:
     name: "Dex Analytics"
-    description: "Optional, privacy-first analytics to help Dave improve Dex. Only tracks which Dex features are used, never content or what you do with them."
+    description: "Optional, privacy-first analytics to help improve Dex. Only tracks which Dex features are used, never content or what you do with them."
     version: "0.1.0"
     status: "active"
 

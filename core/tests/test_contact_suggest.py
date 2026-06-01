@@ -49,13 +49,16 @@ def _event(*, source_event_id: str, starts_at: datetime) -> NormalizedCalendarEv
 def test_contact_suggestion_renders_inside_tracked_brief_and_actions_work():
     _cleanup()
     service = RitualIntelligenceService()
-    prior = datetime(2026, 3, 3, 9, 0, tzinfo=timezone.utc)
-    current = datetime(2026, 3, 17, 9, 0, tzinfo=timezone.utc)
+    # Relative dates so events always fall within the matcher's 28-day window (issue #44).
+    base = datetime.now(timezone.utc).replace(hour=9, minute=0, second=0, microsecond=0)
+    current = base - timedelta(days=(base.weekday() - 1) % 7 + 7)  # a Tuesday within the 28-day window
+    prior = current - timedelta(days=14)
+    current_str = current.strftime("%Y-%m-%d")
     service.refresh_calendar(events=[_event(source_event_id="c1", starts_at=prior), _event(source_event_id="c2", starts_at=current)])
 
     suggestion = list_ritual_suggestions()[0]
-    result = confirm_ritual(suggestion["series_id"], now=datetime(2026, 3, 17, 8, 0, tzinfo=timezone.utc))
-    note_path = Path([item["note_path"] for item in result["generated"] if "2026-03-17" in item["note_path"]][0])
+    result = confirm_ritual(suggestion["series_id"], now=current.replace(hour=8))
+    note_path = Path([item["note_path"] for item in result["generated"] if current_str in item["note_path"]][0])
     note_text = note_path.read_text(encoding="utf-8")
 
     assert "Suggested contact pages" in note_text
@@ -68,7 +71,7 @@ def test_contact_suggestion_renders_inside_tracked_brief_and_actions_work():
         row = conn.execute("SELECT id FROM contacts WHERE email = 'pat@acme.com'").fetchone()
         contact_id = row["id"]
         current_occurrence = conn.execute(
-            "SELECT id FROM occurrences WHERE substr(starts_at, 1, 10) = '2026-03-17'"
+            f"SELECT id FROM occurrences WHERE substr(starts_at, 1, 10) = '{current_str}'"
         ).fetchone()["id"]
 
     dismissed = service.dismiss_contact_suggestion(contact_id, current_occurrence)

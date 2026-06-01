@@ -8,5 +8,5 @@
       "VAULT_PATH": "${workspaceFolder}"
     }
   },
-  "notes": "Reads from Granola's local cache. Requires Granola app installed."
+  "notes": "Uses the official Granola public API (https://public-api.granola.ai). Requires a Granola Business plan and a GRANOLA_API_KEY — set it up with /granola-setup."
 }

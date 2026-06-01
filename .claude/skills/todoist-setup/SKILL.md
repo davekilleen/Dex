@@ -182,9 +182,10 @@ You can pick one default project, or map each Dex pillar to a different project.
 
 **Option A:** All Dex tasks go to one project (simplest)
 **Option B:** Map each pillar to a project:
-  - Deal Support → [project]
-  - Thought Leadership → [project]
-  - Product Feedback → [project]
+  (Read pillar names from `System/pillars.yaml` and list them here)
+  - [pillar 1 name] → [project]
+  - [pillar 2 name] → [project]
+  - [pillar 3 name] → [project]
 
 Which works for you?
 ```

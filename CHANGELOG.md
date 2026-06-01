@@ -7,6 +7,22 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.20.0] - Granola Meetings Now Sync Through the Official API (2026-06-01)
+
+For a while, Dex pulled your Granola meetings by reading Granola's local files on your machine. That worked until Granola encrypted those files in v7.162.6, and the local route quietly stopped being viable.
+
+Dex now connects to Granola the supported way: through Granola's official public API. It pulls both your notes and your transcripts directly from Granola, so nothing depends on poking around in local files anymore.
+
+**What this means for you:**
+
+* Meeting sync uses Granola's official, supported API, so there is no more reading of local files
+* Both your notes and full transcripts come through
+* It keeps working through Granola updates, including encryption changes
+
+**To connect:** Run `/granola-setup` and Dex will walk you through adding your Granola API key. API access comes with Granola's Business plan, which is available to individuals, not just companies, at $14 a month. You do not need a big corporate plan.
+
+---
+
 ## [1.19.0] — Semantic Search Now Covers Your Entire Vault (2026-03-23)
 
 ### 🔍 Semantic Search Now Covers Your Entire Vault

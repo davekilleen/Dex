@@ -4,13 +4,13 @@ Process meetings from Granola to extract structured insights, action items, and 
 
 ## How It Works
 
-Meetings sync **automatically in the background** every 30 minutes via Granola's API.
+Meetings sync **automatically in the background** every 30 minutes via the official Granola public API.
 
 ```
-Granola App (desktop + mobile) → Granola Cloud → API → Background Sync (every 30 min) → Synced Files → /process-meetings → Person Pages, Tasks
+Granola App (desktop + mobile) → Granola Cloud → Official Granola API → Background Sync (every 30 min) → Synced Files → /process-meetings → Person Pages, Tasks
 ```
 
-**Key features:** Mobile phone recordings are captured alongside desktop meetings. No separate OAuth setup needed — uses the token Granola's desktop app already stores on your machine.
+**Key features:** Mobile phone recordings are captured alongside desktop meetings — the official API returns both. Connect once with `/granola-setup` to add your Granola API key; there's no separate per-device setup.
 
 ## Setup (One-Time)
 
@@ -21,23 +21,25 @@ cd .scripts/meeting-intel && ./install-automation.sh
 ```
 
 This will:
-- Check prerequisites (Node.js, Granola, LLM API key)
+- Check prerequisites (Node.js, Granola API key, LLM API key)
 - Install the 30-minute background sync via macOS Launch Agent
 
-### 2. Authentication
+### 2. Connect Granola
 
-Dex uses the same credentials Granola's desktop app stores locally. As long as you're signed into Granola on your computer, meeting sync works automatically. No separate sign-in step needed.
+Dex talks to the official Granola public API using your own API key. Run `/granola-setup` to add it — Dex stores it as `GRANOLA_API_KEY` for you. Once connected, sync works automatically with no per-device or sign-in step.
 
 **Requirements:**
-- Granola app installed ([granola.ai](https://granola.ai)) with a paid plan
+- A Granola Business plan (the official API key, format `grn_...`, is created there)
+- Your Granola API key connected via `/granola-setup`
 - An LLM API key in `.env` (GEMINI_API_KEY, ANTHROPIC_API_KEY, or OPENAI_API_KEY)
 
 ## Data Sources
 
 | Source | What it captures | When used |
 |--------|-----------------|-----------|
-| **Granola API** (primary) | Desktop + mobile recordings, notes, transcripts | When Granola is signed in |
-| **Local cache** (fallback) | Desktop recordings only | When API unavailable |
+| **Official Granola API** (only source) | Desktop + mobile recordings, notes, transcripts | When your Granola API key is connected via `/granola-setup` |
+
+There is no local-file fallback — the official Granola API is the single source of truth.
 
 ## Using /process-meetings
 
@@ -112,14 +114,14 @@ node .scripts/meeting-intel/sync-from-granola.cjs --force   # Reprocess today
 ## Troubleshooting
 
 **No meetings showing up?**
-1. Check if Granola is installed and you're signed in
+1. Check your Granola API key is connected — run `/granola-setup` if you haven't, or to re-add it
 2. Check if background sync is set up: `./install-automation.sh --status`
 3. Check logs for errors: `tail -50 .scripts/logs/meeting-intel.stderr.log`
 
 **Mobile recordings not syncing?**
-1. Ensure you have a paid Granola plan
+1. Ensure you have a Granola Business plan (required for the API key)
 2. Check that the Granola iOS app is syncing to cloud
-3. Sign out and back in to the Granola desktop app to refresh credentials
+3. Re-run `/granola-setup` to confirm your API key is still valid
 
 **Background sync not running?**
 ```bash
@@ -137,13 +139,13 @@ node .scripts/meeting-intel/sync-from-granola.cjs --force
 ┌─────────────────────────────────────────────────────┐
 │ Granola Cloud (desktop + mobile recordings)          │
 └──────────────────────┬──────────────────────────────┘
-                       │ API (api.granola.ai, structured JSON)
+                       │ Official API (public-api.granola.ai, structured JSON)
                        ▼
 ┌─────────────────────────────────────────────────────┐
 │ Background Sync (launchd, every 30 min)              │
 │  - sync-from-granola.cjs → API fetch + LLM analysis │
-│  - Auth: reads Granola's local supabase.json         │
-│  - Fallback: local cache-v*.json (desktop only)      │
+│  - Auth: Bearer GRANOLA_API_KEY (via /granola-setup) │
+│  - No local-file fallback                            │
 └──────────────────────┬──────────────────────────────┘
                        │ LLM extraction (Gemini/Claude/GPT)
                        ▼

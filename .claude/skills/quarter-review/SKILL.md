@@ -181,6 +181,10 @@ Read `System/pillars.yaml` and assess:
 > 
 > Any pillar that needs more attention next quarter?"
 
+After presenting the balance, prompt:
+
+> "Do your strategic pillars still reflect your focus? If your role or priorities have shifted significantly this quarter, now is a good time to update them before planning next quarter. Just tell me 'I need to reconfigure my strategic pillars' and I'll walk you through it."
+
 ---
 
 ## Step 5.5: System Health & Backlog Review

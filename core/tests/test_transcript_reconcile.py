@@ -151,8 +151,11 @@ def test_reassign_transcript_to_previous_session():
 def test_confirmed_ritual_brief_uses_previous_transcript_summary():
     _cleanup()
     service = RitualIntelligenceService()
-    prior = datetime(2026, 3, 3, 10, 0, tzinfo=timezone.utc)
-    upcoming = datetime(2026, 3, 10, 10, 0, tzinfo=timezone.utc)
+    # Relative dates so events always fall within the matcher's 28-day window (issue #44).
+    base = datetime.now(timezone.utc).replace(hour=10, minute=0, second=0, microsecond=0)
+    upcoming = base - timedelta(days=(base.weekday() - 1) % 7 + 7)  # a Tuesday within the 28-day window
+    prior = upcoming - timedelta(days=7)
+    upcoming_str = upcoming.strftime("%Y-%m-%d")
     service.refresh_calendar(
         events=[
             _event(source_event_id="evt-d1", source_series_id="series-d", title="Weekly 1:1", starts_at=prior),
@@ -176,8 +179,8 @@ def test_confirmed_ritual_brief_uses_previous_transcript_summary():
     reconcile_unmatched_transcripts()
 
     suggestions = list_ritual_suggestions()
-    result = confirm_ritual(suggestions[0]["series_id"], now=datetime(2026, 3, 10, 8, 0, tzinfo=timezone.utc))
-    upcoming_note = Path([item["note_path"] for item in result["generated"] if "2026-03-10" in item["note_path"]][0])
+    result = confirm_ritual(suggestions[0]["series_id"], now=upcoming.replace(hour=8))
+    upcoming_note = Path([item["note_path"] for item in result["generated"] if upcoming_str in item["note_path"]][0])
     rendered = upcoming_note.read_text(encoding="utf-8")
 
     assert "Transcript continuity: Decision: ship the update" in rendered

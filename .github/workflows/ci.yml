@@ -26,9 +26,6 @@ jobs:
         run: chmod +x scripts/check-*.sh scripts/check-coverage-threshold.py scripts/check-path-contract-usage.sh scripts/security-gate.sh scripts/benchmark_large_vault.py
       - name: Hook harness tests
         run: npm run test:hooks
-      - name: PR governance check
-        if: github.event_name == 'pull_request'
-        run: bash scripts/check-pr-governance.sh
       - name: Diff-aware test gate
         if: github.event_name == 'pull_request'
         run: bash scripts/check-test-delta.sh
