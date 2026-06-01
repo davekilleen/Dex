@@ -57,7 +57,7 @@ class TestSetupMcpConfig:
         target = tmp_path / ".mcp.json"
         _redirect_config(monkeypatch, example, target)
 
-        ok, err = onboarding_server.setup_mcp_config(Path("/Users/me/Vault"))
+        ok, err = onboarding_server.setup_mcp_config(Path("/tmp/test-vault"))
 
         assert ok is True
         assert err is None
@@ -65,7 +65,7 @@ class TestSetupMcpConfig:
         servers = json.loads(target.read_text())["mcpServers"]
         # Clean server survives with the real path substituted in.
         assert "clean" in servers
-        assert servers["clean"]["env"]["VAULT_PATH"] == "/Users/me/Vault"
+        assert servers["clean"]["env"]["VAULT_PATH"] == "/tmp/test-vault"
         assert "{{VAULT_PATH}}" not in json.dumps(servers["clean"])
         # Server with an unresolved credential placeholder is dropped.
         assert "needs_api_key" not in servers
@@ -79,7 +79,7 @@ class TestSetupMcpConfig:
             tmp_path / ".mcp.json",
         )
 
-        ok, err = onboarding_server.setup_mcp_config(Path("/Users/me/Vault"))
+        ok, err = onboarding_server.setup_mcp_config(Path("/tmp/test-vault"))
 
         assert ok is False
         assert ".mcp.json.example not found" in err
@@ -92,7 +92,7 @@ class TestSetupMcpConfig:
         target = tmp_path / ".mcp.json"
         _redirect_config(monkeypatch, example, target)
 
-        ok, err = onboarding_server.setup_mcp_config(Path("/Users/me/Vault"))
+        ok, err = onboarding_server.setup_mcp_config(Path("/tmp/test-vault"))
 
         assert ok is False
         assert "Invalid JSON after substitution" in err
