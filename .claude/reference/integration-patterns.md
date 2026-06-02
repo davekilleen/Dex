@@ -85,23 +85,6 @@ For each `new_capabilities` entry:
 "These work automatically starting now. Run `/dex-level-up` anytime to see what else you can do."
 ```
 
-## Health Check Pattern
-
-Every integration with auth creates a health checker following `slack-token-checker.cjs`:
-
-```javascript
-// Template: .claude/hooks/[tool]-health-checker.cjs
-//
-// 1. Check if integration is enabled in config.yaml
-// 2. Throttle: only check once per day (state file)
-// 3. Test the token/connection
-// 4. If healthy: save state silently
-// 5. If unhealthy: surface friendly message with fix instructions
-// 6. ALWAYS exit cleanly (exit 0) — never block the user
-```
-
-State files go in `System/integrations/.[tool]-health-state.json`.
-
 ## Graceful Degradation
 
 Skills check integrations at runtime. If an integration is enabled but unhealthy:
@@ -124,17 +107,10 @@ For each enabled integration with relevant capabilities:
 `System/integrations/config.yaml` is the single source of truth:
 - Only setup skills write to it
 - Skills read at runtime to know what's available
-- Health checkers read to know what to verify
 - Commented-out sections are templates
 
-## Vault Scanner (Integration Concierge)
+## Adding Integrations
 
-The concierge (`integration-concierge.cjs`) scans vault files for tool signals:
-- Direct keyword mentions ("Todoist", "Jira")
-- URL patterns (zoom.us, trello.com)
-- Calendar signatures ("Teams meeting")
-- Email patterns (@gmail.com in person pages)
-- Ticket IDs (PROJ-123 for Jira)
-
-Returns ranked recommendations: high_value / moderate_value / available.
-Called by onboarding Step 8 and `/getting-started`.
+Users connect tools with `/integrate-mcp` or the individual setup skills
+(`/todoist-setup`, `/things-setup`, etc.). Setup skills write to
+`System/integrations/config.yaml`; other skills read it at runtime.

@@ -261,23 +261,23 @@ This ensures every task gets a unique, sortable ID that's stable across files.
 
 **What's Granola?** AI meeting assistant that records, transcribes, and summarizes meetings.
 
-**Architecture:** API-first with cache fallback (v2.0)
-- **Primary:** Uses Granola's unofficial API for complete historical data (91% success rate)
-- **Fallback:** Reads from local cache (`~/Library/Application Support/Granola/cache-v*.json`, auto-detects latest) if API fails
-- **Protection:** Response caching (5 min TTL), exponential backoff, graceful degradation
+**Architecture:** Official Granola public API only
+- **Source:** The official Granola API at `https://public-api.granola.ai` — the single source of truth
+- **Auth:** Bearer `GRANOLA_API_KEY` (format `grn_...`), created on a Granola Business plan and connected via `/granola-setup`
+- **No local-file fallback:** No reading of `supabase.json`, cache files, spoofed headers, or local crypto
+- **Protection:** Sequential detail fetches with a gentle retry on HTTP 429
 
 **Key tools:**
 - `granola_get_recent_meetings` - Get meetings within date range
 - `granola_get_meeting_details` - Get full details + transcript
 - `granola_search_meetings` - Search by title/attendee/content
-- `granola_check_available` - Verify API + cache availability
+- `granola_check_available` - Verify the API key is connected
 
 **How it works:**
-1. Reads auth token from `~/Library/Application Support/Granola/supabase.json`
-2. Hits `https://api.granola.ai/v2/get-documents` with Bearer auth
-3. Converts ProseMirror JSON to Markdown
-4. Falls back to cache on rate limits (429), auth failures (401), or network errors
-5. Caches responses (5 min) to avoid rate limits
+1. Reads `GRANOLA_API_KEY` from the environment, falling back to the `.env` file at the vault root
+2. `GET https://public-api.granola.ai/v1/notes` (list) with `Authorization: Bearer <key>`, paginating via the returned `cursor` until `hasMore` is false
+3. `GET /v1/notes/{note_id}?include=transcript` per note for summary, attendees, and transcript (list items contain none of these)
+4. Retries once on HTTP 429 with a short backoff; if no key is configured, prompts the user to run `/granola-setup` and exits cleanly
 
 **How it's used:** The `/process-meetings` skill calls `granola_get_recent_meetings(days_back=7)` to find recent meetings, then extracts:
 - Action items
@@ -285,7 +285,7 @@ This ensures every task gets a unique, sortable ID that's stable across files.
 - People mentioned
 - Career development context (if it's a 1:1 with manager)
 
-**Why API-first?** Granola's cache doesn't retain full content for older meetings. API provides 9x more complete historical data than cache-only approach.
+**Why the official API?** It's the supported, stable source for complete desktop and mobile meeting data, with no dependency on Granola's local files.
 
 #### 4. **Career MCP** (`core/mcp/career_server.py`)
 
@@ -769,8 +769,8 @@ Tasks use three tag types:
 **Goal:** Process meeting transcripts to extract action items and update person pages.
 
 **Tech stack:**
-- **Granola MCP** (`user-granola`)
-- **Granola app** (records + transcribes meetings)
+- **Granola MCP** (`granola_server.py`) — calls the official Granola public API
+- **Granola Business plan + API key** (`GRANOLA_API_KEY`, connected via `/granola-setup`)
 - **Background automation** (`.scripts/meeting-intel/sync-from-granola.cjs`)
 
 **Flow (automated, runs daily):**

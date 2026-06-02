@@ -76,7 +76,7 @@ async function generateWithGemini(prompt, options = {}) {
   const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
   
   const model = genAI.getGenerativeModel({
-    model: options.model || 'gemini-2.0-flash-thinking-exp-1219',
+    model: options.model || 'gemini-2.5-flash',
     generationConfig: {
       maxOutputTokens: options.maxOutputTokens || 4096,
       temperature: options.temperature || 1.0,

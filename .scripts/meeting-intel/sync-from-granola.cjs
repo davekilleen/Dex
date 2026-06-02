@@ -3,16 +3,28 @@
 /**
  * Sync from Granola - Background meeting intelligence processor
  *
- * Uses Granola's Supabase API as PRIMARY data source (structured JSON,
- * includes mobile recordings), with local cache as FALLBACK.
- * Processes new meetings with LLM and generates structured meeting notes.
+ * Uses the OFFICIAL Granola public REST API as the ONLY data source.
+ * No local files: there is no reading of supabase.json, cache-v*.json,
+ * granola-crypto, or any spoofed desktop-app headers. Everything comes
+ * from https://public-api.granola.ai authenticated with a Bearer key.
  *
+ * Processes new meetings with the LLM and generates structured meeting notes.
  * Designed to run automatically via macOS Launch Agent every 30 minutes.
  * No Cursor or Claude required - fully autonomous.
  *
- * Data source priority:
- *   1. Granola API (api.granola.ai) — structured JSON, includes mobile recordings
- *   2. Local Granola cache (cache-v*.json, latest version) — desktop-only fallback
+ * Auth:
+ *   - Reads GRANOLA_API_KEY from process.env, then from a .env file at the
+ *     vault root. Key format is grn_... and requires a Granola Business plan.
+ *   - If no key is configured the script logs a friendly one-liner and exits
+ *     cleanly (exit 0) — it never errors.
+ *
+ * Data flow:
+ *   1. LIST:   GET /v1/notes (page_size=30, created_after=lookback cutoff),
+ *              paging via the returned cursor until hasMore is false.
+ *   2. DETAIL: GET /v1/notes/{id}?include=transcript for each NEW note —
+ *              the list response contains no summary/attendees/transcript.
+ *   3. Map title, created_at, attendees, notes (summary_markdown||summary_text),
+ *      and a flattened transcript into the existing note-generation flow.
  *
  * Usage:
  *   node .scripts/meeting-intel/sync-from-granola.cjs           # Process new meetings
@@ -22,7 +34,6 @@
 
 const fs = require('fs');
 const path = require('path');
-const os = require('os');
 const { execSync } = require('child_process');
 const yaml = require('js-yaml');
 
@@ -32,60 +43,44 @@ const yaml = require('js-yaml');
 
 const VAULT_ROOT = path.resolve(__dirname, '../..');
 
-// Find the highest-versioned cache-v*.json in a directory
-function findLatestGranolaCache(granolaDir) {
-  if (!fs.existsSync(granolaDir)) return null;
-  const files = fs.readdirSync(granolaDir)
-    .filter(f => /^cache-v\d+\.json$/.test(f))
-    .sort((a, b) => {
-      const vA = parseInt(a.match(/v(\d+)/)[1]);
-      const vB = parseInt(b.match(/v(\d+)/)[1]);
-      return vB - vA; // descending
-    });
-  return files.length > 0 ? path.join(granolaDir, files[0]) : null;
-}
+// Official Granola public REST API
+const GRANOLA_API_BASE = 'https://public-api.granola.ai';
 
-// Get Granola cache path for current OS (auto-detects latest cache version)
-function getGranolaCachePath() {
-  const homedir = os.homedir();
-  const platform = os.platform();
+/**
+ * Read the Granola API key.
+ * Priority: process.env.GRANOLA_API_KEY, then a GRANOLA_API_KEY=... line in
+ * the .env file at the vault root. Returns the key string, or null if absent.
+ * Never throws.
+ */
+function getGranolaApiKey() {
+  if (process.env.GRANOLA_API_KEY && process.env.GRANOLA_API_KEY.trim()) {
+    return process.env.GRANOLA_API_KEY.trim();
+  }
 
-  if (platform === 'darwin') {
-    const granolaDir = path.join(homedir, 'Library/Application Support/Granola');
-    return findLatestGranolaCache(granolaDir) || path.join(granolaDir, 'cache-v3.json');
-  } else if (platform === 'win32') {
-    const roaming = process.env.APPDATA || path.join(homedir, 'AppData/Roaming');
-    const local = process.env.LOCALAPPDATA || path.join(homedir, 'AppData/Local');
-
-    for (const basePath of [roaming, local]) {
-      const result = findLatestGranolaCache(path.join(basePath, 'Granola'));
-      if (result) return result;
+  try {
+    const envPath = path.join(VAULT_ROOT, '.env');
+    if (!fs.existsSync(envPath)) return null;
+    const raw = fs.readFileSync(envPath, 'utf-8');
+    for (const line of raw.split('\n')) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith('#')) continue;
+      const match = trimmed.match(/^GRANOLA_API_KEY\s*=\s*(.*)$/);
+      if (match) {
+        // Strip optional surrounding quotes and inline whitespace
+        let value = match[1].trim();
+        if ((value.startsWith('"') && value.endsWith('"')) ||
+            (value.startsWith("'") && value.endsWith("'"))) {
+          value = value.slice(1, -1);
+        }
+        return value.trim() || null;
+      }
     }
-
-    return path.join(roaming, 'Granola/cache-v3.json');
-  } else {
-    const granolaDir = path.join(homedir, '.config/Granola');
-    return findLatestGranolaCache(granolaDir) || path.join(granolaDir, 'cache-v3.json');
+  } catch (e) {
+    // Unreadable .env — treat as not configured rather than failing.
   }
+  return null;
 }
 
-// Get Granola credentials path (for API access)
-function getGranolaCredsPath() {
-  const homedir = os.homedir();
-  const platform = os.platform();
-
-  if (platform === 'darwin') {
-    return path.join(homedir, 'Library/Application Support/Granola/supabase.json');
-  } else if (platform === 'win32') {
-    const roaming = process.env.APPDATA || path.join(homedir, 'AppData/Roaming');
-    return path.join(roaming, 'Granola/supabase.json');
-  } else {
-    return path.join(homedir, '.config/Granola/supabase.json');
-  }
-}
-
-const GRANOLA_CACHE = getGranolaCachePath();
-const GRANOLA_CREDS = getGranolaCredsPath();
 const STATE_FILE = path.join(__dirname, 'processed-meetings.json');
 const MEETINGS_DIR = path.join(VAULT_ROOT, '00-Inbox', 'Meetings');
 const QUEUE_FILE = path.join(MEETINGS_DIR, 'queue.md');
@@ -97,117 +92,6 @@ const PROFILE_FILE = path.join(VAULT_ROOT, 'System', 'user-profile.yaml');
 const MIN_NOTES_LENGTH = 50;
 // How many days back to look for new meetings
 const LOOKBACK_DAYS = 7;
-
-// ============================================================================
-// PROSEMIRROR TO MARKDOWN CONVERTER
-// ============================================================================
-
-/**
- * Convert ProseMirror JSON content to Markdown.
- * Ported from granola_server.py convert_prosemirror_to_markdown()
- */
-function convertProseMirrorToMarkdown(content) {
-  if (!content || typeof content !== 'object' || !content.content) {
-    return '';
-  }
-
-  function processNode(node) {
-    if (!node || typeof node !== 'object') return '';
-
-    const nodeType = node.type || '';
-    const children = node.content || [];
-    let text = node.text || '';
-    const marks = node.marks || [];
-
-    // Apply text marks
-    if (text && marks.length > 0) {
-      for (const mark of marks) {
-        const markType = mark.type || '';
-        if (markType === 'bold') {
-          text = `**${text}**`;
-        } else if (markType === 'italic') {
-          text = `*${text}*`;
-        } else if (markType === 'code') {
-          text = `\`${text}\``;
-        }
-      }
-    }
-
-    if (nodeType === 'heading') {
-      const level = (node.attrs && node.attrs.level) || 1;
-      const headingText = children.map(processNode).join('');
-      return '#'.repeat(level) + ' ' + headingText + '\n\n';
-    } else if (nodeType === 'paragraph') {
-      const paraText = children.map(processNode).join('');
-      return paraText + '\n\n';
-    } else if (nodeType === 'bulletList') {
-      const items = [];
-      for (const item of children) {
-        if (item.type === 'listItem') {
-          const itemContent = (item.content || []).map(processNode).join('').trim();
-          items.push(`- ${itemContent}`);
-        }
-      }
-      return items.join('\n') + '\n\n';
-    } else if (nodeType === 'orderedList') {
-      const items = [];
-      let idx = 1;
-      for (const item of children) {
-        if (item.type === 'listItem') {
-          const itemContent = (item.content || []).map(processNode).join('').trim();
-          items.push(`${idx}. ${itemContent}`);
-          idx++;
-        }
-      }
-      return items.join('\n') + '\n\n';
-    } else if (nodeType === 'codeBlock') {
-      const codeText = children.map(processNode).join('');
-      return '```\n' + codeText + '```\n\n';
-    } else if (nodeType === 'blockquote') {
-      const quoteText = children.map(processNode).join('');
-      return '> ' + quoteText + '\n\n';
-    } else if (nodeType === 'text') {
-      return text;
-    } else if (nodeType === 'hardBreak') {
-      return '\n';
-    }
-
-    // Recursively process children for unknown types
-    return children.map(processNode).join('');
-  }
-
-  return processNode(content).trim();
-}
-
-/**
- * Extract notes from a Granola document, checking notes_markdown first,
- * then falling back to last_viewed_panel (ProseMirror JSON).
- */
-function extractNotesFromDoc(doc) {
-  // Try notes_markdown first
-  let notes = doc.notes_markdown || '';
-  if (notes.length >= MIN_NOTES_LENGTH) return notes;
-
-  // Fallback: check last_viewed_panel (ProseMirror format)
-  if (doc.last_viewed_panel) {
-    try {
-      let panel = doc.last_viewed_panel;
-      if (typeof panel === 'string') {
-        panel = JSON.parse(panel);
-      }
-      if (panel && panel.content) {
-        const converted = convertProseMirrorToMarkdown(panel.content || panel);
-        if (converted.length > notes.length) {
-          return converted;
-        }
-      }
-    } catch (e) {
-      // If parsing fails, stick with notes_markdown
-    }
-  }
-
-  return notes;
-}
 
 // ============================================================================
 // LOGGING
@@ -297,334 +181,286 @@ function saveState(state) {
 }
 
 // ============================================================================
-// GRANOLA API CLIENT — PRIMARY DATA SOURCE
+// GRANOLA OFFICIAL PUBLIC API CLIENT — THE ONLY DATA SOURCE
 // ============================================================================
 
 /**
- * Get Granola API access token from local credentials file.
- * Granola's desktop app stores these automatically — no separate OAuth needed.
- * Returns null if credentials not found or token missing.
+ * Perform a GET request against the official Granola public API.
+ *
+ * Authenticated with the Bearer GRANOLA_API_KEY. Handles gzip/deflate.
+ * Returns { status, data } where data is the parsed JSON (or null if the
+ * body could not be parsed). Never throws — network/parse failures resolve
+ * to { status: 0, data: null } so callers can decide how to react.
  */
-function getGranolaApiToken() {
-  if (!fs.existsSync(GRANOLA_CREDS)) {
-    return null;
-  }
-
-  try {
-    const data = JSON.parse(fs.readFileSync(GRANOLA_CREDS, 'utf-8'));
-    const workosTokens = JSON.parse(data.workos_tokens || '{}');
-    return workosTokens.access_token || null;
-  } catch (e) {
-    return null;
-  }
-}
-
-/**
- * Fetch data from Granola API.
- * Returns parsed JSON response or null on failure.
- * Handles gzip-compressed responses automatically.
- */
-async function fetchFromGranolaApi(endpoint, data) {
-  const token = getGranolaApiToken();
-  if (!token) return null;
-
+function granolaApiGet(apiKey, pathWithQuery) {
   const https = require('https');
   const zlib = require('zlib');
-  const url = `https://api.granola.ai${endpoint}`;
-  const payload = JSON.stringify(data);
+  const url = `${GRANOLA_API_BASE}${pathWithQuery}`;
 
   return new Promise((resolve) => {
-    const req = https.request(url, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json',
-        'Accept': '*/*',
-        'Accept-Encoding': 'gzip, deflate',
-        'User-Agent': 'Granola/5.354.0',
-        'X-Client-Version': '5.354.0'
-      },
-      timeout: 15000
-    }, (res) => {
-      // Handle gzip/deflate compressed responses
-      let stream = res;
-      const encoding = res.headers['content-encoding'];
-      if (encoding === 'gzip') {
-        stream = res.pipe(zlib.createGunzip());
-      } else if (encoding === 'deflate') {
-        stream = res.pipe(zlib.createInflate());
-      }
+    let settled = false;
+    const done = (result) => { if (!settled) { settled = true; resolve(result); } };
 
-      const chunks = [];
-      stream.on('data', chunk => chunks.push(chunk));
-      stream.on('end', () => {
-        const body = Buffer.concat(chunks).toString('utf-8');
-        if (res.statusCode === 200) {
-          try {
-            resolve(JSON.parse(body));
-          } catch (e) {
-            log(`  API response parse error: ${e.message}`);
-            resolve(null);
-          }
-        } else {
-          log(`  API returned ${res.statusCode}`);
-          resolve(null);
+    let req;
+    try {
+      req = https.request(url, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Accept': 'application/json',
+          'Accept-Encoding': 'gzip, deflate'
+        },
+        timeout: 20000
+      }, (res) => {
+        // Handle gzip/deflate compressed responses
+        let stream = res;
+        const encoding = res.headers['content-encoding'];
+        if (encoding === 'gzip') {
+          stream = res.pipe(zlib.createGunzip());
+        } else if (encoding === 'deflate') {
+          stream = res.pipe(zlib.createInflate());
         }
-      });
-      stream.on('error', () => resolve(null));
-    });
 
-    req.on('error', () => resolve(null));
-    req.on('timeout', () => { req.destroy(); resolve(null); });
-    req.write(payload);
+        const chunks = [];
+        stream.on('data', chunk => chunks.push(chunk));
+        stream.on('end', () => {
+          const body = Buffer.concat(chunks).toString('utf-8');
+          let data = null;
+          if (body) {
+            try { data = JSON.parse(body); } catch (e) { data = null; }
+          }
+          done({ status: res.statusCode, data });
+        });
+        stream.on('error', () => done({ status: res.statusCode || 0, data: null }));
+      });
+    } catch (e) {
+      done({ status: 0, data: null });
+      return;
+    }
+
+    req.on('error', () => done({ status: 0, data: null }));
+    req.on('timeout', () => { req.destroy(); done({ status: 0, data: null }); });
     req.end();
   });
 }
 
 /**
- * Convert an API document (from /v2/get-documents) to the standard meeting format.
+ * granolaApiGet with a single retry on HTTP 429 (rate limit), backing off
+ * briefly before the retry. All other statuses are returned as-is.
  */
-function convertApiDocToMeeting(doc) {
-  const id = doc.id || '';
-  const title = doc.title || 'Untitled Meeting';
-  const createdAt = doc.created_at || '';
+async function fetchFromGranolaApi(apiKey, pathWithQuery) {
+  let result = await granolaApiGet(apiKey, pathWithQuery);
+  if (result.status === 429) {
+    log('  Granola API rate limited (429) — backing off and retrying once...');
+    await new Promise(r => setTimeout(r, 2000));
+    result = await granolaApiGet(apiKey, pathWithQuery);
+  }
+  return result;
+}
 
-  // Extract notes — try last_viewed_panel (ProseMirror) first, then notes_markdown
-  let notes = '';
-  const panel = doc.last_viewed_panel;
-  if (panel && typeof panel === 'object') {
-    const content = panel.content;
-    if (content && typeof content === 'object') {
-      notes = convertProseMirrorToMarkdown(content);
+/**
+ * Encode query params into a URL query string.
+ */
+function buildQuery(params) {
+  const parts = [];
+  for (const [k, v] of Object.entries(params)) {
+    if (v === undefined || v === null || v === '') continue;
+    parts.push(`${encodeURIComponent(k)}=${encodeURIComponent(v)}`);
+  }
+  return parts.length ? `?${parts.join('&')}` : '';
+}
+
+/**
+ * Flatten a detail-endpoint transcript array into a single readable string.
+ * Prefixes each line with its diarization label when present.
+ */
+function flattenTranscript(transcript) {
+  if (!Array.isArray(transcript) || transcript.length === 0) return '';
+  return transcript
+    .map(entry => {
+      if (!entry || typeof entry !== 'object') return '';
+      const text = (entry.text || '').trim();
+      if (!text) return '';
+      const label = entry.speaker && entry.speaker.diarization_label;
+      return label ? `${label}: ${text}` : text;
+    })
+    .filter(Boolean)
+    .join('\n')
+    .trim();
+}
+
+/**
+ * Page through GET /v1/notes (page_size=30) using created_after = lookback
+ * cutoff, following the returned cursor until hasMore is false.
+ *
+ * Returns an array of list-item note objects ({ id, title, created_at, ... }),
+ * or null if the API rejected auth / was unreachable so the caller can exit
+ * cleanly. List items contain NO summary/attendees/transcript.
+ */
+async function listGranolaNotes(apiKey) {
+  const cutoffDate = new Date();
+  cutoffDate.setDate(cutoffDate.getDate() - LOOKBACK_DAYS);
+  const createdAfter = cutoffDate.toISOString();
+
+  const notes = [];
+  let cursor = null;
+  let page = 0;
+  const MAX_PAGES = 200; // safety bound against a runaway cursor loop
+
+  while (page < MAX_PAGES) {
+    page++;
+    const query = buildQuery({
+      page_size: 30,
+      created_after: createdAfter,
+      cursor: cursor || undefined
+    });
+
+    const { status, data } = await fetchFromGranolaApi(apiKey, `/v1/notes${query}`);
+
+    if (status === 401) {
+      log('Granola API key rejected — re-run /granola-setup');
+      return null;
     }
-  }
-  if (!notes && doc.notes_markdown) {
-    notes = doc.notes_markdown;
+    if (status !== 200 || !data) {
+      log(`  Granola API list request failed (HTTP ${status || 'no response'})`);
+      return null;
+    }
+
+    const pageNotes = Array.isArray(data.notes) ? data.notes : [];
+    notes.push(...pageNotes);
+    log(`  Listed page ${page}: ${pageNotes.length} notes (total ${notes.length})`);
+
+    if (!data.hasMore || !data.cursor) break;
+    cursor = data.cursor;
+
+    // Be gentle between sequential list pages.
+    await new Promise(r => setTimeout(r, 200));
   }
 
-  // Extract participants
+  return notes;
+}
+
+/**
+ * Fetch full detail for a single note (GET /v1/notes/{id}?include=transcript)
+ * and map it to the standard meeting object the downstream flow consumes.
+ *
+ * Returns a meeting object, or null on 401 (so the caller can abort) or
+ * undefined-equivalent null when the note could not be fetched/mapped.
+ */
+async function fetchMeetingDetail(apiKey, noteId) {
+  const { status, data } = await fetchFromGranolaApi(
+    apiKey,
+    `/v1/notes/${encodeURIComponent(noteId)}${buildQuery({ include: 'transcript' })}`
+  );
+
+  if (status === 401) {
+    log('Granola API key rejected — re-run /granola-setup');
+    return { authFailed: true };
+  }
+  if (status !== 200 || !data) {
+    log(`  Could not fetch note ${noteId} (HTTP ${status || 'no response'})`);
+    return null;
+  }
+
+  const id = data.id || noteId;
+  const title = data.title || 'Untitled Meeting';
+  const createdAt = data.created_at || '';
+
+  // Notes: prefer the richer markdown summary, fall back to plain summary text.
+  const notes = (data.summary_markdown && data.summary_markdown.trim())
+    ? data.summary_markdown
+    : (data.summary_text || '');
+
+  // Attendees: name (fallback to email) for each attendee.
   const participants = [];
-  if (doc.people?.attendees) {
-    for (const attendee of doc.people.attendees) {
-      const name = attendee.details?.person?.name?.fullName || attendee.name || attendee.email;
+  if (Array.isArray(data.attendees)) {
+    for (const attendee of data.attendees) {
+      if (!attendee) continue;
+      const name = (attendee.name && attendee.name.trim()) ? attendee.name.trim() : attendee.email;
       if (name) participants.push(name);
     }
   }
-  if (doc.people?.creator?.name) {
-    participants.push(doc.people.creator.name);
+  // Include the owner if present so creator filtering still works downstream.
+  if (data.owner && (data.owner.name || data.owner.email)) {
+    participants.push(data.owner.name || data.owner.email);
   }
 
-  // Get transcript if available in the document
-  let transcript = '';
-  if (doc.transcripts && Array.isArray(doc.transcripts)) {
-    transcript = doc.transcripts
-      .sort((a, b) => new Date(a.start_timestamp) - new Date(b.start_timestamp))
-      .map(t => t.text)
-      .join(' ')
-      .replace(/\s+/g, ' ')
-      .trim();
-  }
+  const transcript = flattenTranscript(data.transcript);
 
   return {
     id,
     title,
     createdAt,
-    updatedAt: doc.updated_at || '',
+    updatedAt: data.updated_at || '',
     notes,
     transcript,
     participants: [...new Set(participants)],
     company: extractCompanyFromTitle(title),
-    duration: doc.meeting_end_count ? doc.meeting_end_count * 5 : null,
+    duration: null, // not provided by the public API
     source: 'api'
   };
 }
 
 /**
- * Fetch new meetings via Granola's API (includes mobile recordings).
+ * Build the list of NEW meetings (full detail) from the official API.
  *
- * Uses the same API that Granola's desktop app uses, authenticated via
- * the token Granola stores locally in supabase.json. No separate OAuth
- * flow needed — if Granola is installed and you're signed in, it works.
+ * 1. List notes within the lookback window (cursor-paged).
+ * 2. Filter to notes not already processed (unless forcing today's meetings)
+ *    and within the lookback cutoff.
+ * 3. Fetch per-note detail (summary + attendees + transcript) sequentially.
+ * 4. Keep notes that have meaningful content (notes OR transcript).
  *
- * Returns an array of meeting objects, or null if API is unavailable.
+ * Returns an array of meeting objects (possibly empty), or null if the API
+ * was unavailable / auth was rejected so the caller can exit cleanly.
  */
-async function getNewMeetingsFromApi(state, forceToday = false) {
-  const token = getGranolaApiToken();
-  if (!token) {
-    log('  Granola API token not found (is Granola installed and signed in?)');
-    return null;
-  }
+async function getNewMeetingsFromApi(apiKey, state, forceToday = false) {
+  const listed = await listGranolaNotes(apiKey);
+  if (listed === null) return null; // auth/network failure already logged
 
-  try {
-    const response = await fetchFromGranolaApi('/v2/get-documents', {
-      limit: 100,
-      offset: 0,
-      include_last_viewed_panel: true
-    });
+  log(`  API returned ${listed.length} notes within the last ${LOOKBACK_DAYS} days`);
 
-    if (!response || !response.docs) {
-      log('  API unavailable or returned no data');
-      return null;
-    }
-
-    log(`  API returned ${response.docs.length} documents`);
-
-    // Load local cache to augment API meetings with transcripts
-    // (API /v2/get-documents does not embed transcripts — they live in the local cache)
-    let localTranscripts = {};
-    try {
-      const cache = readGranolaCache();
-      localTranscripts = cache.transcripts || {};
-      log(`  Loaded ${Object.keys(localTranscripts).length} transcripts from local cache`);
-    } catch (e) {
-      log(`  Warning: Could not load local cache for transcripts: ${e.message}`);
-    }
-
-    const cutoffDate = new Date();
-    cutoffDate.setDate(cutoffDate.getDate() - LOOKBACK_DAYS);
-    const today = new Date().toISOString().split('T')[0];
-
-    const newMeetings = [];
-    for (const doc of response.docs) {
-      // Skip deleted
-      if (doc.deleted_at) continue;
-
-      // Check if already processed (unless forcing today's meetings)
-      const docDate = doc.created_at?.split('T')[0];
-      if (forceToday && docDate === today) {
-        // Allow reprocessing today's meetings
-      } else if (state.processedMeetings[doc.id]) {
-        continue;
-      }
-
-      // Check date cutoff
-      const createdAt = new Date(doc.created_at);
-      if (isNaN(createdAt.getTime()) || createdAt < cutoffDate) continue;
-
-      const meeting = convertApiDocToMeeting(doc);
-
-      // Augment with transcript from local cache if API doc has none
-      if (!meeting.transcript && localTranscripts[doc.id]?.length > 0) {
-        meeting.transcript = localTranscripts[doc.id]
-          .sort((a, b) => new Date(a.start_timestamp) - new Date(b.start_timestamp))
-          .map(t => t.text)
-          .join(' ')
-          .replace(/\s+/g, ' ')
-          .trim();
-      }
-
-      // Check minimum content — allow through if transcript exists even when notes are short
-      if (meeting.notes.length < MIN_NOTES_LENGTH && meeting.transcript.length < MIN_NOTES_LENGTH) continue;
-
-      newMeetings.push(meeting);
-    }
-
-    newMeetings.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-    return newMeetings;
-
-  } catch (err) {
-    log(`  API error: ${err.message}`);
-    return null;
-  }
-}
-
-// ============================================================================
-// GRANOLA CACHE READING — FALLBACK DATA SOURCE
-// ============================================================================
-
-function readGranolaCache() {
-  if (!fs.existsSync(GRANOLA_CACHE)) {
-    throw new Error(`Granola cache not found at ${GRANOLA_CACHE}`);
-  }
-
-  const rawData = fs.readFileSync(GRANOLA_CACHE, 'utf-8');
-  const cacheWrapper = JSON.parse(rawData);
-
-  // The cache has a nested structure: { cache: JSON_STRING } or { cache: OBJECT }
-  // Newer Granola versions store cache as a pre-parsed object, not a JSON string
-  const cacheData = typeof cacheWrapper.cache === 'string'
-    ? JSON.parse(cacheWrapper.cache)
-    : cacheWrapper.cache;
-
-  return {
-    documents: cacheData.state?.documents || {},
-    transcripts: cacheData.state?.transcripts || {},
-    people: cacheData.state?.people || {}
-  };
-}
-
-function getNewMeetings(cache, state, forceToday = false) {
   const cutoffDate = new Date();
   cutoffDate.setDate(cutoffDate.getDate() - LOOKBACK_DAYS);
-
   const today = new Date().toISOString().split('T')[0];
-  const newMeetings = [];
 
-  for (const [id, doc] of Object.entries(cache.documents)) {
-    // Skip non-meeting documents
-    if (doc.type !== 'meeting') continue;
+  // Decide which listed notes are new and in-window before paying for detail fetches.
+  const toFetch = [];
+  for (const note of listed) {
+    if (!note || !note.id) continue;
 
-    // Skip deleted documents
-    if (doc.deleted_at) continue;
-
-    // Check if already processed (unless forcing today's meetings)
-    const docDate = doc.created_at?.split('T')[0];
-    if (forceToday && docDate === today) {
-      // Allow reprocessing today's meetings
-    } else if (state.processedMeetings[id]) {
+    const noteDate = note.created_at ? note.created_at.split('T')[0] : '';
+    if (forceToday && noteDate === today) {
+      // Allow reprocessing today's meetings.
+    } else if (state.processedMeetings[note.id]) {
       continue;
     }
 
-    // Check date cutoff
-    const createdAt = new Date(doc.created_at);
-    if (createdAt < cutoffDate) continue;
+    const createdAt = new Date(note.created_at);
+    if (isNaN(createdAt.getTime()) || createdAt < cutoffDate) continue;
 
-    // Check if meeting has meaningful content (checks notes_markdown + last_viewed_panel)
-    const notes = extractNotesFromDoc(doc);
-    const hasTranscript = cache.transcripts[id] && cache.transcripts[id].length > 0;
-
-    if (notes.length < MIN_NOTES_LENGTH && !hasTranscript) {
-      continue;
-    }
-
-    // Get transcript if available
-    const transcriptEntries = cache.transcripts[id] || [];
-    const transcript = transcriptEntries
-      .sort((a, b) => new Date(a.start_timestamp) - new Date(b.start_timestamp))
-      .map(t => t.text)
-      .join(' ')
-      .replace(/\s+/g, ' ')
-      .trim();
-
-    // Extract participants from people data
-    const participants = [];
-    if (doc.people?.attendees) {
-      for (const attendee of doc.people.attendees) {
-        const name = attendee.details?.person?.name?.fullName || attendee.name || attendee.email;
-        if (name) participants.push(name);
-      }
-    }
-    if (doc.people?.creator?.name) {
-      participants.push(doc.people.creator.name);
-    }
-
-    newMeetings.push({
-      id,
-      title: doc.title || 'Untitled Meeting',
-      createdAt: doc.created_at,
-      updatedAt: doc.updated_at,
-      notes,
-      transcript,
-      participants: [...new Set(participants)],
-      company: extractCompanyFromTitle(doc.title),
-      duration: doc.meeting_end_count ? doc.meeting_end_count * 5 : null, // rough estimate
-      source: 'cache'
-    });
+    toFetch.push(note);
   }
 
-  // Sort by date (newest first)
-  newMeetings.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+  log(`  ${toFetch.length} new note(s) need detail fetches`);
 
+  const newMeetings = [];
+  for (const note of toFetch) {
+    const meeting = await fetchMeetingDetail(apiKey, note.id);
+    if (meeting && meeting.authFailed) return null; // 401 mid-run — abort cleanly
+    if (!meeting) continue;
+
+    // Keep if either notes or transcript carry meaningful content.
+    if (meeting.notes.length < MIN_NOTES_LENGTH && meeting.transcript.length < MIN_NOTES_LENGTH) {
+      continue;
+    }
+
+    newMeetings.push(meeting);
+
+    // Gentle, sequential detail fetches (rate limits undocumented).
+    await new Promise(r => setTimeout(r, 250));
+  }
+
+  newMeetings.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
   return newMeetings;
 }
 
@@ -1063,8 +899,15 @@ async function main() {
   const force = args.includes('--force');
 
   log('='.repeat(60));
-  log('Dex Meeting Intel - Granola Sync (API-first)');
+  log('Dex Meeting Intel - Granola Sync (official public API)');
   log('='.repeat(60));
+
+  // ---- Auth: official Granola public API key (no local files) ----
+  const apiKey = getGranolaApiKey();
+  if (!apiKey) {
+    log('Granola not connected — run /granola-setup to add your Granola API key (requires a Granola Business plan).');
+    return; // clean exit (exit 0 via the runner)
+  }
 
   // Load configuration
   const profile = loadUserProfile();
@@ -1077,32 +920,17 @@ async function main() {
   log(`Last sync: ${state.lastSync || 'Never'}`);
   log(`Previously processed: ${Object.keys(state.processedMeetings).length} meetings`);
 
-  // ---- Data source: API-first with cache fallback ----
-  let newMeetings = null;
-  let dataSource = 'none';
+  // ---- Data source: official Granola public API (the only source) ----
+  const dataSource = 'api';
 
-  log('\nFetching meetings (API-first with cache fallback)...');
+  log('\nFetching meetings from the Granola public API...');
 
-  // Try Granola API first (structured JSON, includes mobile recordings)
-  newMeetings = await getNewMeetingsFromApi(state, force);
+  const newMeetings = await getNewMeetingsFromApi(apiKey, state, force);
 
-  if (newMeetings !== null) {
-    dataSource = 'api';
-    log(`  Using API data (${newMeetings.length} meetings)`);
-  } else {
-    // Fallback to local cache (desktop meetings only)
-    log('  API unavailable, falling back to local cache...');
-    let cache;
-    try {
-      cache = readGranolaCache();
-      log(`  Granola cache loaded: ${Object.keys(cache.documents).length} documents`);
-      dataSource = 'cache';
-    } catch (err) {
-      log(`ERROR: Could not read cache either: ${err.message}`);
-      log('Neither API nor local cache available. Exiting.');
-      process.exit(1);
-    }
-    newMeetings = getNewMeetings(cache, state, force);
+  if (newMeetings === null) {
+    // Auth rejected or network failure — already logged a friendly reason.
+    log('Could not reach the Granola API this run. Exiting cleanly.');
+    return;
   }
 
   log(`Found ${newMeetings.length} new meetings to process (source: ${dataSource})`);
@@ -1220,4 +1048,4 @@ if (require.main === module) {
     });
 }
 
-module.exports = { main, readGranolaCache, getNewMeetings };
+module.exports = { main, getGranolaApiKey, getNewMeetingsFromApi, fetchMeetingDetail };

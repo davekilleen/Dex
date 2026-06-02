@@ -5,6 +5,7 @@ Zero AI tokens - pure regex pattern matching
 """
 import os
 import re
+import subprocess
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -148,7 +149,8 @@ def migrate_vault(dry_run: bool = False):
     if not dry_run:
         print("\nCreating backup...")
         timestamp = datetime.now().strftime('%Y%m%d-%H%M%S')
-        os.system(f'cd "{BASE_DIR}" && git add -A && git commit -m "Backup before Obsidian migration - {timestamp}"')
+        subprocess.run(['git', 'add', '-A'], cwd=BASE_DIR)
+        subprocess.run(['git', 'commit', '-m', f'Backup before Obsidian migration - {timestamp}'], cwd=BASE_DIR)
     
     # Process files
     print("\nConverting files...")
@@ -183,13 +185,14 @@ def migrate_vault(dry_run: bool = False):
         print("\nBackup saved. To revert: git reset --hard HEAD~1")
         
         # macOS notification
-        os.system(f'''
-            osascript -e 'display notification "{files_modified} files converted with wiki links" 
-            with title "Dex Obsidian Migration Complete" sound name "Glass"'
-        ''')
-        
+        subprocess.run([
+            'osascript', '-e',
+            f'display notification "{files_modified} files converted with wiki links" '
+            f'with title "Dex Obsidian Migration Complete" sound name "Glass"'
+        ])
+
         # Sound
-        os.system('afplay /System/Library/Sounds/Glass.aiff')
+        subprocess.run(['afplay', '/System/Library/Sounds/Glass.aiff'])
     else:
         print("\n[DRY RUN] No files were modified. Run without --dry-run to apply changes.")
 

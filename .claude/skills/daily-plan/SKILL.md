@@ -388,6 +388,8 @@ Flag potential issues:
 
 ## Step 7: Generate Daily Plan
 
+**ALWAYS generate and save a new plan file.** Never skip generation because a plan from a previous day exists in the conversation or vault. Even if context from a prior plan is visible, today is a new day and requires its own plan. If a plan for today's date already exists, overwrite it (the user is requesting a refresh).
+
 Create `07-Archives/Plans/YYYY-MM-DD.md`:
 
 ```markdown

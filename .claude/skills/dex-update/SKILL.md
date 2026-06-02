@@ -432,8 +432,10 @@ Check if new MCP servers were added in the update by comparing `.mcp.json.exampl
 For each entry in `.mcp.json.example` that is NOT in the user's `.mcp.json`:
 1. Read the entry from `.mcp.json.example`
 2. Replace `{{VAULT_PATH}}` with the actual vault path
-3. Add to the user's `.mcp.json`
-4. Log: "✓ Added new MCP server: [name]"
+3. **Skip** entries whose env values still contain `{{...}}` placeholder patterns after substitution
+4. **Skip** entries whose key starts with `_` (comment keys)
+5. Add to the user's `.mcp.json`
+6. Log: "✓ Added new MCP server: [name]"
 
 **Never remove or modify existing user MCP entries.** Only add missing ones.
 

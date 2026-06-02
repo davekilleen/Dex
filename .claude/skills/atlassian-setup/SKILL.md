@@ -90,7 +90,7 @@ authentication and provides secure access to your Jira and Confluence data.
 
 ```json
 {
-  "atlassian-mcp": {
+  "atlassian": {
     "command": "npx",
     "args": ["-y", "mcp-remote@latest", "https://mcp.atlassian.com/v1/sse"]
   }
