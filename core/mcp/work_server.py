@@ -340,6 +340,30 @@ def guess_priority(item: str) -> str:
     # Default
     return 'P2'
 
+def priority_from_section(section: Optional[str]) -> Optional[str]:
+    """Read priority from a markdown section heading when present."""
+    if not section:
+        return None
+
+    section_upper = section.upper()
+    if section_upper.startswith('P0') or 'URGENT' in section_upper:
+        return 'P0'
+    if section_upper.startswith('P1') or 'IMPORTANT' in section_upper:
+        return 'P1'
+    if section_upper.startswith('P2') or 'NORMAL' in section_upper:
+        return 'P2'
+    if section_upper.startswith('P3') or 'BACKLOG' in section_upper:
+        return 'P3'
+
+    return None
+
+def active_tasks_for_priority_limits(tasks: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Return open canonical backlog tasks for priority limit checks."""
+    return [
+        task for task in tasks
+        if not task.get('completed') and task.get('source', 'tasks') == 'tasks'
+    ]
+
 def generate_task_id() -> str:
     """Generate a unique task ID in format: task-YYYYMMDD-XXX
 
@@ -2034,12 +2058,14 @@ def parse_tasks_file(filepath: Path) -> List[Dict[str, Any]]:
     lines = content.split('\n')
     
     current_section = None
+    current_section_priority = None
     task_counter = 0
     
     for i, line in enumerate(lines):
         # Track section headers
         if line.startswith('# ') or line.startswith('## '):
             current_section = line.lstrip('#').strip()
+            current_section_priority = priority_from_section(current_section)
             continue
         
         # Parse task lines
@@ -2073,7 +2099,7 @@ def parse_tasks_file(filepath: Path) -> List[Dict[str, Any]]:
                 'line_number': i + 1,
                 'source_file': str(filepath),
                 'pillar': guess_pillar(clean_title),
-                'priority': guess_priority(clean_title),
+                'priority': current_section_priority or guess_priority(clean_title),
             })
     
     return tasks
@@ -3530,8 +3556,8 @@ async def _handle_call_tool_inner(
                 "suggestion": "Review these similar tasks. If still unique, rephrase the title to be more distinct."
             }, indent=2))]
         
-        # Check priority limits
-        active_tasks = [t for t in existing_tasks if not t.get('completed')]
+        # Check priority limits against the canonical backlog only.
+        active_tasks = active_tasks_for_priority_limits(existing_tasks)
         priority_counts = Counter(t.get('priority', 'P2') for t in active_tasks)
         
         if priority in PRIORITY_LIMITS and priority_counts.get(priority, 0) >= PRIORITY_LIMITS[priority]:
@@ -3732,14 +3758,16 @@ async def _handle_call_tool_inner(
         all_tasks = get_all_tasks()
         active_tasks = [t for t in all_tasks if not t.get('completed')]
         
+        limit_tasks = active_tasks_for_priority_limits(all_tasks)
         priority_counts = Counter(t.get('priority', 'P2') for t in active_tasks)
+        priority_limit_counts = Counter(t.get('priority', 'P2') for t in limit_tasks)
         pillar_counts = Counter(t.get('pillar') or 'unassigned' for t in active_tasks)
         source_counts = Counter(t.get('source', 'unknown') for t in active_tasks)
         
         # Check priority limits
         alerts = []
         for priority, limit in PRIORITY_LIMITS.items():
-            count = priority_counts.get(priority, 0)
+            count = priority_limit_counts.get(priority, 0)
             if count > limit:
                 alerts.append(f"{priority} has {count} tasks (limit: {limit})")
         
@@ -3771,7 +3799,7 @@ async def _handle_call_tool_inner(
         return [types.TextContent(type="text", text=json.dumps(result, indent=2, cls=DateTimeEncoder))]
     
     elif name == "check_priority_limits":
-        tasks = [t for t in get_all_tasks() if not t.get('completed')]
+        tasks = active_tasks_for_priority_limits(get_all_tasks())
         priority_counts = Counter(t.get('priority', 'P2') for t in tasks)
         
         alerts = []
