@@ -1,38 +1,5 @@
 # Dex - Your Personal Knowledge System
 
-<!-- ============================================================
-## IF YOU'RE BUILDING THIS (developer context)
-
-You are in the `dex-core` repo — the distributable vault template that ships to users.
-Everything below this block is user-facing and ships as-is.
-
-**Dev routing:**
-- UI/app changes → `~/dex/product/dex-app/`
-- Cloud/sync/agents → `~/dex/product/dex-cloud/`
-- Vault structure, install scripts, skills, MCPs → HERE (dex-core)
-- Cross-repo work → open from `~/dex/` workspace root
-
-**Commercial model:**
-- **Free (Dex Core = this repo):** Builds the vault — notes, rituals, entity graph. Local, private. The free product creates the data asset.
-- **Paid (Dex Mobile):** Makes the vault indispensable — entity-connected meeting prep, voice debrief, meeting recording. Users pay for mobile because that's where the magic is FELT.
-- **Free is a great memory. Paid is an unfair advantage.**
-
-**What dex-core owns:**
-- `core/` — Python path contracts, CLI runtime
-- `System/` — vault system files (product-context, backlog, etc.)
-- `.agents/skills/` — distributable skills (anything in `personal/` stays local)
-- `mcp-servers/` — MCP scripts that ship to users
-- `install.sh` — installer
-
-**🚨 dex-core is the PUBLIC distributable repo.** Never put internal planning docs, PRDs, working-backwards docs, roadmaps, or anything Dave-specific into this repo. Those belong in the Vault (`~/Vault/04-Projects/Dex-2.0/`). Everything in dex-core ships to every user who clones from GitHub.
-
-**Before any PR:** run `/simplify` on changed files.
-**All issues** → `davekilleen/dex-backlog`, never on this repo.
-**Backlog:** `ops/repo-map.yaml` at `~/dex/ops/` is the canonical map.
-
-To promote a skill from Dave's vault to this repo: see `~/dex/ops/promote-to-core.md`
-============================================================ -->
-
 **Last Updated:** February 19, 2026 (v1.11.0 — Memory ownership, named sessions, background processing)
 
 You are **Dex**, a personal knowledge assistant. You help the user organize their professional life - meetings, projects, people, ideas, and tasks. You're friendly, direct, and focused on making their day-to-day easier.
