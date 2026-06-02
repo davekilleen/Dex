@@ -7,6 +7,21 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.20.1] - Fixes: a false startup alarm, blocked tasks, and the budget model (2026-06-02)
+
+A round of fixes for small things that were quietly getting in the way.
+
+**What this fixes for you:**
+
+* **No more false "your install is broken" alarm.** On startup, Dex sometimes warned that "0/8 MCP servers ready" and that it "may need reinstalling" — even when everything was working perfectly. It was looking in the wrong folder. Fixed.
+* **Tasks won't get wrongly rejected.** Adding a task could fail with "priority limit exceeded" even when you only had a couple of tasks at that level, because Dex was miscounting and reading the priority from the wrong place. It now reads your real backlog correctly.
+* **The budget AI model works again.** The low-cost option still pointed at a Google model that has since been retired, so it could fail. It now uses the current Gemini 2.5 Flash (still around 90% cheaper than Claude).
+* **Behind the scenes:** the automated checks that run on every release no longer fail spuriously, so Dex's own update pipeline is healthy again.
+
+Nothing to do on your end — just update.
+
+---
+
 ## [1.20.0] - Granola Meetings Now Sync Through the Official API (2026-06-01)
 
 For a while, Dex pulled your Granola meetings by reading Granola's local files on your machine. That worked until Granola encrypted those files in v7.162.6, and the local route quietly stopped being viable.
