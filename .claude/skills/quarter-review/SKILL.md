@@ -58,6 +58,28 @@ Check for `01-Quarter_Goals/Quarter_Goals.md`:
 - Check `07-Archives/Reviews/[quarter]-goals.md` (archived version)
 - If still missing: "No goals found for this quarter"
 
+### Dex Inbox Check (Phone Captures)
+
+Before reviewing, check for tasks captured from phone that haven't been triaged:
+
+```
+Use: reminders_list_items(list_name="Dex Inbox")
+```
+
+If items found:
+- Surface them: "📱 **Phone captures not yet triaged** (X items in Dex Inbox)"
+- Run triage flow: infer pillar, confirm with user, create task, mark Reminder complete
+- Complete this before the review so task counts are accurate
+
+**If empty:** Skip silently.
+
+### Process Unprocessed Meetings
+
+Before scanning meeting data, ensure all recent meetings are in the vault by running `/process-meetings`. This pulls any unprocessed meetings from the meeting source (Otter.ai, Granola, etc.), creates meeting notes, updates person/company pages, and extracts tasks — so the quarterly review has complete meeting data.
+
+- If no new meetings are found, continue silently
+- If meetings are processed, note the count
+
 ### Task Completion
 
 Scan `03-Tasks/Tasks.md` for tasks completed during quarter:
