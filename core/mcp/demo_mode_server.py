@@ -52,13 +52,13 @@ from core.paths import VAULT_ROOT as BASE_DIR
 # Minimum character length for name parts (avoid false positives)
 MIN_TERM_LENGTH = 3
 
-# These terms are NEVER redacted (public information)
+# These terms are NEVER redacted (generic, product-level public information).
+# Add your own name / company / frequent contacts via
+# System/user-profile.yaml (demo_allowlist) — do NOT hardcode personal
+# names here, this file ships to every user.
 DEFAULT_ALLOWLIST = {
-    'Dave', 'Killeen', 'Dave Killeen',
-    'Pendo',
     'Dex',
     'Claude', 'Anthropic', 'Claude Code', 'Cursor', 'Obsidian',
-    'Aakash', 'Gupta', 'Aakash Gupta',
     'README', 'CLAUDE', 'Active', 'System', 'Demo',
 }
 
@@ -139,8 +139,7 @@ def scan_companies() -> Set[str]:
         'opp-', 'Deal_Analysis', 'Call_Prep', 'Financial',
         'Strategic', 'Momentum', 'Deep_Dive', 'Action_Plan',
         'Pre-Meeting', 'Comparable', 'Whitepaper', 'Conference',
-        'Liselle', 'HiBob_Deal', 'Pendo_Executive', 'Ocado_',
-        'Norstella_Account', 'S1_S2', 'Customer_Success',
+        'S1_S2', 'Customer_Success',
         'Global_Support', 'exports', 'synced',
     )
     skip_date_pattern = re.compile(r'^\d{4}[-_]')
@@ -271,7 +270,6 @@ PLANNING_SKIP_PHRASES = {
     'Principal PM', 'General Manager',
     'Chief Product Officer', 'Chief Revenue Officer',
     'Chief Technology Officer', 'Chief Executive Officer',
-    'Deal Support', 'Thought Leadership', 'Product Feedback',
     'Key Account', 'Key Accounts', 'Career Goal', 'Career Goals',
     'Quarter Goals', 'Week Priorities', 'Daily Plan', 'Daily Plans',
     'Growth Goals', 'Career Ladder', 'Current Role', 'Career Coach',
@@ -544,7 +542,7 @@ async def handle_list_tools() -> list[types.Tool]:
                 "properties": {
                     "term": {
                         "type": "string",
-                        "description": "The term to allow (e.g., 'Aakash Gupta')."
+                        "description": "The term to allow (e.g., a public name or brand that should always stay visible)."
                     },
                 },
                 "required": ["term"],

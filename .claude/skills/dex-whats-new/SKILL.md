@@ -372,7 +372,7 @@ Current version: 1.0.32
 2. Auto-Research on New Topics
    Uses: Sub-agent Communication
    What: When you mention a new company, auto-research in background
-   Pillar: Deal Support
+   Pillar: [context-dependent]
 
 Want me to implement any of these? (Enter 1 or 2)
 ```

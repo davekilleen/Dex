@@ -29,9 +29,7 @@ Example use cases:
 
 I'm selectively inviting people who are actively using Dex and interested in pushing its capabilities.
 
-**Get in touch:**
-- LinkedIn: [linkedin.com/in/DaveKilleen](https://linkedin.com/in/DaveKilleen)
-- Twitter/X: [@TheVibePM](https://twitter.com/TheVibePM)
+**Get in touch:** open an issue or discussion on the [Dex GitHub repo](https://github.com/davekilleen/dex).
 
 Let me know:
 1. How you're using Dex today

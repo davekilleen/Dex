@@ -163,15 +163,15 @@ If the test fails, jump to Troubleshooting.
 
 ### Step 6: Configure Mapping
 
+First, read `System/pillars.yaml` and extract the user's pillar `id` and `name` fields. If pillars are empty/not yet configured, prompt the user to run `/quarter-plan` first.
+
 Map Dex pillars to Things Areas:
 
 ```
 Now let's map your Dex pillars to Things Areas.
 
-Your Dex pillars:
-1. Deal Support
-2. Thought Leadership
-3. Product Feedback
+Your Dex pillars (from System/pillars.yaml):
+[list each pillar name, numbered]
 
 Your Things Areas:
 [list from Step 5]
@@ -180,17 +180,17 @@ I'll suggest a mapping — adjust if needed:
 
 | Dex Pillar | Things Area |
 |------------|-------------|
-| Deal Support | [best match or "Deal Support"] |
-| Thought Leadership | [best match or "Thought Leadership"] |
-| Product Feedback | [best match or "Product Feedback"] |
+| [pillar 1 name] | [best match or "[pillar 1 name]"] |
+| [pillar 2 name] | [best match or "[pillar 2 name]"] |
+...
 
 Does this mapping look right? I can create any missing Areas in Things.
 ```
 
-If areas don't exist, offer to create them:
+If areas don't exist, offer to create them (run once per missing pillar):
 
 ```bash
-osascript -e 'tell application "Things3" to make new area with properties {name:"Deal Support"}'
+osascript -e 'tell application "Things3" to make new area with properties {name:"[pillar name]"}'
 ```
 
 Then ask about sync behavior:
@@ -206,7 +206,7 @@ Most people prefer auto-sync. Which do you want?
 
 ### Step 7: Save Configuration
 
-Write to `System/integrations/config.yaml` — update the things section:
+Write to `System/integrations/config.yaml` — update the things section. Build `area_mapping` dynamically from the user's pillars: use each pillar's `id` as the key and the confirmed Things Area name as the value.
 
 ```yaml
 things:
@@ -217,9 +217,7 @@ things:
   task_sync: true
   sync_mode: auto
   area_mapping:
-    deal_support: Deal Support
-    thought_leadership: Thought Leadership
-    product_feedback: Product Feedback
+    [pillar_id]: [Things Area name]   # one entry per pillar
   features:
     task_sync: true
     external_task_merge: true

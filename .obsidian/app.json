@@ -1,0 +1,23 @@
+{
+  "userIgnoreFilters": [
+    "core/",
+    "docs/",
+    "packages/",
+    "extensions/",
+    "pi-extensions/",
+    "scripts/",
+    "mcp-servers/",
+    "node_modules/",
+    "CHANGELOG.md",
+    "CONTRIBUTING.md",
+    "DISTRIBUTION_READY.md",
+    "COMMERCIAL_LICENSE.md",
+    "LICENSE",
+    "package.json",
+    "package-lock.json",
+    "pyproject.toml",
+    "requirements.txt",
+    "install.sh",
+    "env.example"
+  ]
+}

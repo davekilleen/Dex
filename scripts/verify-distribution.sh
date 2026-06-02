@@ -179,6 +179,41 @@ else
     WARNINGS=$((WARNINGS + 1))
 fi
 
+# Check 14: No hardcoded /Users/ paths in docs/config (.md, .yaml, .json)
+# These ship to users and either break installs or leak personal paths.
+echo ""
+echo "✓ Checking for hardcoded /Users/ paths in docs/config..."
+DOC_USER_PATHS=$(git ls-files -- '*.md' '*.yaml' '*.yml' '*.json' | \
+    xargs grep -n '/Users/' 2>/dev/null | \
+    grep -v 'env.example\|Distribution_Checklist\|DISTRIBUTION_READY\|verify-distribution' | \
+    grep -vE '/Users/(your-name|your-username|username|testuser|you|name|<|\{)' || true)
+if [ -n "$DOC_USER_PATHS" ]; then
+    echo "  ❌ ERROR: Hardcoded /Users/ paths found in docs/config:"
+    echo "$DOC_USER_PATHS" | head -10 | sed 's/^/     /'
+    echo "     Use \$CLAUDE_PROJECT_DIR, ~/your-vault, or a placeholder instead."
+    ERRORS=$((ERRORS + 1))
+else
+    echo "  ✅ No hardcoded /Users/ paths in docs/config"
+fi
+
+# Check 15: Scripts that docs tell Dex to RUN must exist.
+# Catches "instruction shipped, implementation didn't" (e.g. auto-link-people.cjs).
+# Only matches runnable invocations (node/bash/sh/python <path>) of Dex-owned
+# dirs (.scripts/.claude/core) — prose mentions of a filename are ignored.
+echo ""
+echo "✓ Checking referenced runnable scripts exist..."
+MISSING_RUN=$(git grep -hoE '(node|bash|sh|python3?)[[:space:]]+(\./)?(\.scripts|\.claude|core)/[A-Za-z0-9_./-]+\.(cjs|js|sh|py)' -- '*.md' 2>/dev/null \
+    | grep -oE '(\.scripts|\.claude|core)/[A-Za-z0-9_./-]+\.(cjs|js|sh|py)' \
+    | sort -u | while read -r p; do if [ ! -e "$p" ]; then echo "$p"; fi; done || true)
+if [ -n "$MISSING_RUN" ]; then
+    echo "  ⚠️  WARNING: Docs tell Dex to run scripts that don't exist:"
+    echo "$MISSING_RUN" | sed 's/^/     /'
+    echo "     Either ship the script or remove the instruction."
+    WARNINGS=$((WARNINGS + 1))
+else
+    echo "  ✅ All referenced runnable scripts exist"
+fi
+
 # Summary
 echo ""
 echo "================================="

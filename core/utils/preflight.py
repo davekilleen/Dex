@@ -40,7 +40,7 @@ def get_error_queue_path() -> Path:
     return Path(get_vault_path()) / ".logs" / "error-queue.json"
 
 
-# Map of MCP server names → their Python module files (relative to dex-core/core/mcp/)
+# Map of MCP server names → their Python module files (relative to core/mcp/)
 SERVER_MODULES = {
     "work-mcp": "work_server.py",
     "calendar-mcp": "calendar_server.py",
@@ -128,7 +128,7 @@ def needs_recheck(health: dict) -> bool:
 
 def check_server(server_name: str) -> dict:
     """Run fast health check for a single MCP server."""
-    mcp_dir = Path(get_vault_path()) / "dex-core" / "core" / "mcp"
+    mcp_dir = Path(get_vault_path()) / "core" / "mcp"
     module_file = SERVER_MODULES.get(server_name)
 
     if not module_file:

@@ -482,15 +482,28 @@ def setup_mcp_config(vault_path: Path) -> tuple[bool, Optional[str]]:
         # Replace {{VAULT_PATH}} with actual path
         config_content = config_content.replace('{{VAULT_PATH}}', str(vault_path))
         
-        # Validate JSON
+        # Validate JSON and filter placeholder servers
         try:
-            json.loads(config_content)
+            config = json.loads(config_content)
         except json.JSONDecodeError as e:
             return False, f"Invalid JSON after substitution: {e}"
+
+        # Remove servers with unresolved placeholder credentials or comment keys
+        if 'mcpServers' in config:
+            placeholder_re = re.compile(r'\{\{.*?\}\}')
+            to_remove = [
+                name for name, cfg in config['mcpServers'].items()
+                if name.startswith('_') or any(
+                    placeholder_re.search(str(v))
+                    for v in cfg.get('env', {}).values()
+                )
+            ]
+            for name in to_remove:
+                del config['mcpServers'][name]
         
         # Write to target
         with open(MCP_CONFIG_TARGET, 'w') as f:
-            f.write(config_content)
+            json.dump(config, f, indent=2)
         
         return True, None
     except Exception as e:

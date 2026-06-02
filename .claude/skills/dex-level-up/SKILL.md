@@ -182,27 +182,7 @@ If all features of all connected integrations are active, skip this section.
 
 ### Missing Integrations (Not Connected)
 
-Run the integration concierge to check for tool signals in the vault:
-
-```bash
-node .claude/hooks/integration-concierge.cjs
-```
-
-Parse the JSON output. If `high_value` items are found that aren't already connected:
-
-```markdown
-## Tool Connections You Might Want
-
-I scanned your notes and found references to tools you haven't connected:
-
-- **[Name]** — [mentions] references across your notes ([example files])
-  → [value proposition]
-  → Connect with `[setup command]` ([setupTime] setup)
-
-[Repeat for each high_value item, max 3]
-```
-
-If no high_value items found, skip this section entirely. Don't show moderate or available items here — keep `/dex-level-up` focused on high-signal recommendations only.
+If the user has few integrations connected, suggest one or two that fit their role and point them to `/integrate-mcp` to connect tools (calendar, email, Slack, task managers, and more) whenever they're ready. Keep it to high-signal suggestions only — don't overwhelm.
 
 ---
 

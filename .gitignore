@@ -118,6 +118,7 @@ ENV/
 # pytest
 .pytest_cache/
 .coverage
+coverage.json
 htmlcov/
 
 # ============================================
@@ -205,3 +206,7 @@ scripts/private/
 !CHANGELOG.md
 !.claude-plugin/
 .ant-colony/
+
+# Agent/codex runtime task artifacts — contain local absolute paths, never commit
+.codex-analytics-task.md
+.codex-*-task.md
