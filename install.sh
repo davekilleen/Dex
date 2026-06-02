@@ -4,6 +4,12 @@
 
 set -e
 
+# Quiet Node's noisy upstream deprecation warnings (e.g. DEP0040 "punycode is
+# deprecated") so first-run install output stays clean. These originate from
+# transitive dependencies / npm internals on newer Node versions, not from Dex,
+# and are harmless. Preserves any NODE_OPTIONS the user already set.
+export NODE_OPTIONS="${NODE_OPTIONS:+$NODE_OPTIONS }--no-deprecation"
+
 echo "🚀 Setting up Dex..."
 echo ""
 
