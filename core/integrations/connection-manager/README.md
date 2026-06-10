@@ -39,9 +39,27 @@ See the decision record: `Vault/System/PRDs/dex-integrations-suite.md` § Decisi
    access_token = json.loads(tok)["access_token"]
    ```
 
+## Failure modes (hardened 2026-06-10)
+
+The store is designed so that nothing fails silently and nothing user-recoverable is ever destroyed:
+
+| Failure | Behaviour |
+|---------|-----------|
+| Corrupt/truncated token file | Quarantined as `<name>.json.corrupt-<timestamp>` (never deleted), connection becomes `needs_reauth` with `error: token_file_corrupt`, the health sweep keeps going, `get-token`/`dex-call` exit 3 with a reconnect message. |
+| Corrupt/missing/wiped registry | Quarantined as `connections.json.corrupt-<timestamp>` and rebuilt from the encrypted token files (provider, alias, scopes, expiry, auth mode recovered). `status` prints a visible warning with counts. `_defaults` is not recoverable; multi-account users may need to re-pick a default. |
+| Crash mid-write | All writes (registry, tokens, key, oauth-apps, gitignore guard) are atomic temp+rename in the same directory via `fs-safe.cjs`; readers see old or new content, never a torn file. Permissions are re-applied on every write (0600 files / 0700 dirs). Leftover `.tmp` files are inert. |
+| Two processes mutating at once | `.dex-cm.lock` (lockfile with PID + staleness: dead-PID steal, 30s unreadable, 10min hard cap; 10s acquire timeout that errors rather than running unlocked). Reads stay lock-free thanks to atomic writes. Same-machine scope only. |
+| Two processes refreshing the same OAuth token | `.dex-cm.refresh-<conn>.lock` held across the network call; the loser re-checks freshness after acquiring and reuses the winner's token (safe for refresh-token rotation). |
+| Encryption key missing/unreadable with tokens on disk | Explicit state, never silent re-keying: reads throw/report `encryption_key_lost` (computed at read time, nothing persisted, so a transient keychain blip self-heals). The one recovery path is reconnecting a tool, which preserves old token files as `*.keyloss-<timestamp>`, flags every other connection, prints why once, then issues a fresh key. |
+| Secrets in logs | No CLI prints token material (refresh prints none; `dex-call` diagnostics are redacted via `auth-context.secretsOf`/`redactSecrets`). Exception by contract: `get-token` IS the credential accessor; consume it via the pp-* env-injection pattern, never echo it. |
+
+Env switches: `DEX_CM_NO_KEYCHAIN=1` forces the file-based key (tests, sandboxes without `security`); `DEX_CM_TEST_CRASH_BEFORE_RENAME=1` is test-only fault injection used by the crash-simulation test.
+
+Tests: `node --test connection-manager.test.cjs connection-manager.hardening.test.cjs` from this directory (40 happy-path/policy + 28 failure-mode tests; offline, throwaway temp vault, fake fixtures only).
+
 ## Status
 
-Foundation built and smoke-tested (catalog resolution, PKCE auth-URL, encrypted token round-trip, health). **Not yet run against a live provider** — that needs your registered OAuth app. **Do not `dex-push`** until the break→detect→reconnect loop is verified on real accounts.
+Foundation built and smoke-tested (catalog resolution, PKCE auth-URL, encrypted token round-trip, health), plus the corruption/concurrency/key-loss hardening pass above. **Not yet run against a live provider** — that needs your registered OAuth app. **Do not `dex-push`** until the break→detect→reconnect loop is verified on real accounts.
 
 ## License note
 
