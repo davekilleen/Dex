@@ -25,6 +25,41 @@ async function main() {
       process.stdout.write('ok');
       return;
     }
+    case 'upsert-many': {
+      // upsert-many <prefix> <count> — N sequential registry read-modify-writes.
+      const [prefix, countStr] = args;
+      const count = Number(countStr);
+      for (let i = 0; i < count; i++) {
+        store.upsertConnection(`${prefix}-${i}`, { provider: prefix, status: 'connected' });
+      }
+      process.stdout.write('ok');
+      return;
+    }
+    case 'hold-lock': {
+      // hold-lock <ms> — acquire the store mutation lock and sit on it.
+      const ms = Number(args[0]);
+      store.withStoreLock(() => {
+        Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+      });
+      process.stdout.write('held');
+      return;
+    }
+    case 'hold-refresh-then-save': {
+      // hold-refresh-then-save <connId> <ms> <accessToken> — simulate a process
+      // that wins the refresh race: hold the per-connection refresh lock for a
+      // while (the "network call"), store the refreshed token, release.
+      const [connId, msStr, accessToken] = args;
+      await store.withRefreshLock(connId, async () => {
+        await new Promise((resolve) => setTimeout(resolve, Number(msStr)));
+        store.saveToken(
+          connId,
+          { access_token: accessToken, refresh_token: 'FAKE-rt', expires_at: Date.now() + 3600_000 },
+          { provider: 'google' }
+        );
+      });
+      process.stdout.write('refreshed');
+      return;
+    }
     default:
       process.stderr.write(`unknown verb: ${verb}\n`);
       process.exit(64);

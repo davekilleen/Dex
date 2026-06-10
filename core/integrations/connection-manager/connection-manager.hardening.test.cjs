@@ -31,6 +31,7 @@ process.env.DEX_VAULT = TMP_VAULT;
 process.env.DEX_CM_NO_KEYCHAIN = '1';
 
 const store = require('./token-store.cjs');
+const health = require('./health.cjs');
 const fsSafe = require('./fs-safe.cjs');
 
 const DIR = __dirname;
@@ -107,4 +108,119 @@ test('atomic: crash between temp write and rename leaves the old registry intact
   assert.ok(reg2['crash-keeper'] && reg2['crash-victim'], 'both entries present after the retry');
   store.deleteToken('crash-keeper');
   store.deleteToken('crash-victim');
+});
+
+// ---- cross-process locking (fix: desktop app and CLI must not interleave) ----
+
+const STORE_LOCK = path.join(CRED_DIR, '.dex-cm.lock');
+
+function execFileP(cmd, cmdArgs, opts) {
+  return new Promise((resolve, reject) => {
+    execFile(cmd, cmdArgs, opts, (err, stdout, stderr) => (err ? reject(Object.assign(err, { stdout, stderr })) : resolve({ stdout, stderr })));
+  });
+}
+
+async function waitFor(predicate, ms, what) {
+  const start = Date.now();
+  while (!predicate()) {
+    if (Date.now() - start > ms) throw new Error(`timed out waiting for ${what}`);
+    await new Promise((r) => setTimeout(r, 10));
+  }
+}
+
+test('lock: two processes upserting concurrently lose no registry updates', async () => {
+  const [a, b] = await Promise.all([
+    execFileP('node', [CHILD, 'upsert-many', 'race-a', '25'], { env: childEnv }),
+    execFileP('node', [CHILD, 'upsert-many', 'race-b', '25'], { env: childEnv }),
+  ]);
+  assert.equal(a.stdout, 'ok');
+  assert.equal(b.stdout, 'ok');
+  const reg = store.readRegistry();
+  for (let i = 0; i < 25; i++) {
+    assert.ok(reg[`race-a-${i}`], `race-a-${i} must survive the race`);
+    assert.ok(reg[`race-b-${i}`], `race-b-${i} must survive the race`);
+  }
+  for (let i = 0; i < 25; i++) {
+    store.deleteToken(`race-a-${i}`);
+    store.deleteToken(`race-b-${i}`);
+  }
+});
+
+test('lock: a waiter blocks until the holder releases, then proceeds', async () => {
+  const child = spawn('node', [CHILD, 'hold-lock', '700'], { env: childEnv });
+  const done = new Promise((resolve) => child.on('exit', resolve));
+  await waitFor(() => fs.existsSync(STORE_LOCK), 3000, 'child to take the lock');
+  const t0 = Date.now();
+  store.upsertConnection('lock-waiter', { provider: 'lock-waiter', status: 'connected' }); // blocks until child releases
+  const waited = Date.now() - t0;
+  assert.ok(waited >= 150, `the write should have waited for the holder (waited ${waited}ms)`);
+  assert.ok(store.readRegistry()['lock-waiter'], 'the waited write landed');
+  await done;
+  store.deleteToken('lock-waiter');
+});
+
+test('lock: a lockfile from a dead process is stolen, not waited on', () => {
+  const dead = require('node:child_process').spawnSync('node', ['-e', '']); // exits immediately
+  fs.mkdirSync(CRED_DIR, { recursive: true, mode: 0o700 });
+  fs.writeFileSync(STORE_LOCK, JSON.stringify({ pid: dead.pid, createdAt: Date.now() }), { mode: 0o600 });
+  const t0 = Date.now();
+  store.upsertConnection('stale-steal', { provider: 'stale-steal', status: 'connected' });
+  assert.ok(Date.now() - t0 < 2000, 'stale lock must be stolen quickly, not waited out');
+  assert.ok(store.readRegistry()['stale-steal']);
+  store.deleteToken('stale-steal');
+});
+
+test('lock: acquisition times out with a clear error instead of proceeding unlocked', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dex-lock-'));
+  const lockPath = path.join(dir, 'busy.lock');
+  // A live foreign holder: our own PID is alive, but this process never acquired
+  // the lock through withLock, so it is treated as another process's lock.
+  fs.writeFileSync(lockPath, JSON.stringify({ pid: process.pid, createdAt: Date.now() }));
+  assert.throws(
+    () => fsSafe.withLockSync(lockPath, () => 'never-runs', { timeoutMs: 300 }),
+    /Could not lock/,
+    'must throw rather than run the critical section unlocked'
+  );
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('lock: a throw inside the critical section still releases the lock', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dex-lock-'));
+  const lockPath = path.join(dir, 'throwy.lock');
+  assert.throws(() => fsSafe.withLockSync(lockPath, () => { throw new Error('boom'); }), /boom/);
+  assert.ok(!fs.existsSync(lockPath), 'lockfile must be gone after the throw');
+  // and the lock is immediately reusable
+  assert.equal(fsSafe.withLockSync(lockPath, () => 'ran'), 'ran');
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('lock: nested store mutations are reentrant within one process (no self-deadlock)', () => {
+  const result = store.withStoreLock(() => {
+    store.upsertConnection('reentrant-check', { provider: 'reentrant-check', status: 'connected' }); // takes the same lock inside
+    return 'done';
+  });
+  assert.equal(result, 'done');
+  assert.ok(!fs.existsSync(STORE_LOCK), 'lock released after the outer section');
+  store.deleteToken('reentrant-check');
+});
+
+test('lock: losing refresh racer reuses the winner token instead of refreshing again', async () => {
+  // An expired OAuth token that would need a (network) refresh.
+  store.saveToken(
+    'refresh-race',
+    { access_token: 'FAKE-STALE-AT', refresh_token: 'FAKE-rt', expires_at: Date.now() - 1000 },
+    { provider: 'google' }
+  );
+  // Another process wins the race: holds the refresh lock (its "network call"),
+  // then stores the refreshed token. No OAuth app is registered in this vault,
+  // so if our process tried its own refresh it would throw — proving the
+  // double-check path is what returns the token.
+  const child = spawn('node', [CHILD, 'hold-refresh-then-save', 'refresh-race', '500', 'FAKE-WINNER-AT'], { env: childEnv });
+  const done = new Promise((resolve) => child.on('exit', resolve));
+  const refreshLock = path.join(CRED_DIR, '.dex-cm.refresh-refresh-race.lock');
+  await waitFor(() => fs.existsSync(refreshLock), 3000, 'child to take the refresh lock');
+  const tokenOut = await health.ensureFreshToken('refresh-race');
+  assert.equal(tokenOut, 'FAKE-WINNER-AT', 'the waiter must adopt the winner refreshed token');
+  await done;
+  store.deleteToken('refresh-race');
 });

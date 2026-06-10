@@ -24,7 +24,7 @@ const os = require('os');
 const path = require('path');
 const crypto = require('crypto');
 const { execFileSync } = require('child_process');
-const { writeFileAtomic } = require('./fs-safe.cjs');
+const { writeFileAtomic, withLockSync, withLock } = require('./fs-safe.cjs');
 
 const KEYCHAIN_SERVICE = 'dex-connection-manager';
 const KEYCHAIN_ACCOUNT = 'token-store-key';
@@ -134,6 +134,39 @@ function getKey() {
   return key;
 }
 
+// ---- Cross-process locking ----------------------------------------------------
+// See fs-safe.cjs for the full lock semantics (lockfile + PID staleness + timeout).
+
+function storeLockPath() {
+  return path.join(credentialsDir(), '.dex-cm.lock');
+}
+
+function refreshLockPath(connId) {
+  return path.join(credentialsDir(), `.dex-cm.refresh-${String(connId).replace(/:/g, '__')}.lock`);
+}
+
+/**
+ * Serialize store MUTATIONS (registry read-modify-write + token file writes)
+ * across processes. Reads stay lock-free: every file is written atomically, so
+ * a reader always sees a complete old or new version. Hold times are
+ * milliseconds; acquisition errors out after 10s rather than proceeding unlocked.
+ */
+function withStoreLock(fn) {
+  return withLockSync(storeLockPath(), fn);
+}
+
+/**
+ * Serialize an OAuth REFRESH for one connection across processes, held across
+ * the network round-trip (so providers with refresh-token rotation never see
+ * two competing refreshes, which would invalidate one side). Waiters poll
+ * without blocking the event loop; after acquiring, callers re-check token
+ * freshness so a second process reuses the winner's result instead of
+ * refreshing again. 30s timeout covers a slow token endpoint.
+ */
+function withRefreshLock(connId, fn) {
+  return withLock(refreshLockPath(connId), fn, { timeoutMs: 30_000 });
+}
+
 // ---- Encrypt / decrypt ------------------------------------------------------
 
 function encrypt(plaintext) {
@@ -200,21 +233,26 @@ function tokenPath(connId) {
 
 /** Persist a token object (encrypted) and refresh the registry entry. `connId` may be `provider` or `provider:alias`. */
 function saveToken(connId, token, meta = {}) {
-  writeFileAtomic(tokenPath(connId), JSON.stringify(encrypt(JSON.stringify(token)), null, 2), { mode: 0o600 });
   const parsed = parseConnectionId(connId);
-  const fields = {
-    provider: meta.provider || parsed.provider,
-    status: 'connected',
-    scopes: token.scope ? String(token.scope).split(/[ ,]+/).filter(Boolean) : meta.scopes || [],
-    expiresAt: token.expires_at || token.expiry_date || null,
-    connectedAt: meta.connectedAt || nowIso(),
-    lastRefreshedAt: nowIso(),
-    error: null,
-    ...meta.extra,
-  };
-  if (parsed.alias) fields.alias = parsed.alias;
-  upsertConnection(connId, fields);
-  return token;
+  return withStoreLock(() => {
+    const fields = {
+      provider: meta.provider || parsed.provider,
+      status: 'connected',
+      scopes: token.scope ? String(token.scope).split(/[ ,]+/).filter(Boolean) : meta.scopes || [],
+      expiresAt: token.expires_at || token.expiry_date || null,
+      connectedAt: meta.connectedAt || nowIso(),
+      lastRefreshedAt: nowIso(),
+      error: null,
+      ...meta.extra,
+    };
+    if (parsed.alias) fields.alias = parsed.alias;
+    // Registry first, then the token file: a crash in between leaves a registry
+    // entry with no token (harmless "not connected"), never a token file with no
+    // registry entry (which would look like registry data loss).
+    upsertConnection(connId, fields);
+    writeFileAtomic(tokenPath(connId), JSON.stringify(encrypt(JSON.stringify(token)), null, 2), { mode: 0o600 });
+    return token;
+  });
 }
 
 /**
@@ -229,29 +267,33 @@ function saveToken(connId, token, meta = {}) {
  */
 function saveApiKey(service, secretObj, meta = {}) {
   const stored = { kind: 'api_key', ...secretObj, obtained_at: Date.now() };
-  writeFileAtomic(tokenPath(service), JSON.stringify(encrypt(JSON.stringify(stored)), null, 2), { mode: 0o600 });
   const parsed = parseConnectionId(service);
-  const fields = {
-    provider: meta.provider || parsed.provider,
-    authMode: meta.authMode || 'API_KEY',
-    status: 'connected',
-    scopes: meta.scopes || [],
-    expiresAt: null,
-    connectedAt: meta.connectedAt || nowIso(),
-    lastRefreshedAt: nowIso(),
-    error: null,
-    ...meta.extra,
-  };
-  if (parsed.alias) fields.alias = parsed.alias;
-  upsertConnection(service, fields);
-  return stored;
+  return withStoreLock(() => {
+    const fields = {
+      provider: meta.provider || parsed.provider,
+      authMode: meta.authMode || 'API_KEY',
+      status: 'connected',
+      scopes: meta.scopes || [],
+      expiresAt: null,
+      connectedAt: meta.connectedAt || nowIso(),
+      lastRefreshedAt: nowIso(),
+      error: null,
+      ...meta.extra,
+    };
+    if (parsed.alias) fields.alias = parsed.alias;
+    upsertConnection(service, fields); // registry first — see saveToken
+    writeFileAtomic(tokenPath(service), JSON.stringify(encrypt(JSON.stringify(stored)), null, 2), { mode: 0o600 });
+    return stored;
+  });
 }
 
 /** Record that a token was just read/used (drives the Connected_Apps lastUsedAt column). */
 function touchUsed(id) {
   const connId = resolveConnId(id);
-  if (!readRegistry()[connId]) return null;
-  return upsertConnection(connId, { lastUsedAt: nowIso() });
+  return withStoreLock(() => {
+    if (!readRegistry()[connId]) return null;
+    return upsertConnection(connId, { lastUsedAt: nowIso() });
+  });
 }
 
 /** Load and decrypt a token object, or null if not connected. Resolves bare ids to the default account. */
@@ -264,16 +306,18 @@ function loadToken(id) {
 
 function deleteToken(id) {
   const connId = resolveConnId(id);
-  const p = tokenPath(connId);
-  if (fs.existsSync(p)) fs.unlinkSync(p);
-  const reg = readRegistry();
-  delete reg[connId];
-  const { provider } = parseConnectionId(connId);
-  if (reg._defaults && reg._defaults[provider] === connId) {
-    delete reg._defaults[provider];
-    if (!Object.keys(reg._defaults).length) delete reg._defaults;
-  }
-  writeRegistry(reg);
+  return withStoreLock(() => {
+    const p = tokenPath(connId);
+    if (fs.existsSync(p)) fs.unlinkSync(p);
+    const reg = readRegistry();
+    delete reg[connId];
+    const { provider } = parseConnectionId(connId);
+    if (reg._defaults && reg._defaults[provider] === connId) {
+      delete reg._defaults[provider];
+      if (!Object.keys(reg._defaults).length) delete reg._defaults;
+    }
+    writeRegistry(reg);
+  });
 }
 
 // ---- Connection registry (connections.json) ---------------------------------
@@ -298,10 +342,12 @@ function writeRegistry(reg) {
 }
 
 function upsertConnection(service, fields) {
-  const reg = readRegistry();
-  reg[service] = { ...(reg[service] || {}), service, ...fields };
-  writeRegistry(reg);
-  return reg[service];
+  return withStoreLock(() => {
+    const reg = readRegistry();
+    reg[service] = { ...(reg[service] || {}), service, ...fields };
+    writeRegistry(reg);
+    return reg[service];
+  });
 }
 
 function listConnections() {
@@ -312,11 +358,13 @@ function listConnections() {
 
 /** Set the default account for a provider (used when a bare id is otherwise ambiguous). */
 function setDefault(provider, alias) {
-  const reg = readRegistry();
-  reg._defaults = reg._defaults || {};
-  reg._defaults[provider] = alias ? `${provider}:${alias}` : provider;
-  writeRegistry(reg);
-  return reg._defaults[provider];
+  return withStoreLock(() => {
+    const reg = readRegistry();
+    reg._defaults = reg._defaults || {};
+    reg._defaults[provider] = alias ? `${provider}:${alias}` : provider;
+    writeRegistry(reg);
+    return reg._defaults[provider];
+  });
 }
 
 function getDefault(provider) {
@@ -356,11 +404,13 @@ function getOAuthApp(provider) {
 function setOAuthApp(provider, { clientId, clientSecret = '' }) {
   if (!clientId) throw new Error('setOAuthApp requires a clientId.');
   ensureDir(credentialsDir());
-  const p = oauthAppsPath();
-  const apps = fs.existsSync(p) ? JSON.parse(fs.readFileSync(p, 'utf8')) : {};
-  apps[provider] = { clientId, clientSecret };
-  writeFileAtomic(p, JSON.stringify(apps, null, 2), { mode: 0o600 });
-  return apps[provider];
+  return withStoreLock(() => {
+    const p = oauthAppsPath();
+    const apps = fs.existsSync(p) ? JSON.parse(fs.readFileSync(p, 'utf8')) : {};
+    apps[provider] = { clientId, clientSecret };
+    writeFileAtomic(p, JSON.stringify(apps, null, 2), { mode: 0o600 });
+    return apps[provider];
+  });
 }
 
 function nowIso() {
@@ -372,6 +422,8 @@ module.exports = {
   credentialsDir,
   parseConnectionId,
   resolveConnId,
+  withStoreLock,
+  withRefreshLock,
   saveToken,
   saveApiKey,
   touchUsed,
