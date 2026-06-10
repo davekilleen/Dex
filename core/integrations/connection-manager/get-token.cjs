@@ -30,8 +30,21 @@ async function main() {
     console.error('Usage: node get-token.cjs <service> [--access-token-only]');
     process.exit(1);
   }
-  const token = store.loadToken(service);
+  let token;
+  try {
+    token = store.loadToken(service);
+  } catch (err) {
+    console.error(err.message);
+    process.exit(err.code === 'DEX_CM_KEY_LOST' ? 3 : 1);
+  }
   if (!token) {
+    // A corrupt token file was quarantined and stamped by loadToken — that is a
+    // reconnect (exit 3 with the reason), not a plain "not connected" (exit 2).
+    const reg = store.getConnection(service);
+    if (reg && reg.error) {
+      console.error(`${service} needs re-authentication (${reg.error}). Run: node connect.cjs connect ${service}`);
+      process.exit(3);
+    }
     console.error(`${service} is not connected.`);
     process.exit(2);
   }

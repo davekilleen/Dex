@@ -43,8 +43,25 @@ function apiKeyContext(token, service) {
  * Throws an Error with `.exitCode` (2 = not connected, 3 = needs re-auth) so CLIs map exit codes.
  */
 async function resolveAuthContext(service) {
-  const token = store.loadToken(service);
+  let token;
+  try {
+    token = store.loadToken(service);
+  } catch (err) {
+    if (err.code === 'DEX_CM_KEY_LOST') {
+      err.exitCode = 3;
+      throw err;
+    }
+    throw err;
+  }
   if (!token) {
+    // loadToken quarantines corrupt token files and stamps the reason — surface
+    // that as "reconnect" (exit 3) rather than a misleading "not connected".
+    const reg = store.getConnection(service);
+    if (reg && reg.error) {
+      const e = new Error(`${service} needs re-authentication (${reg.error}). Run: node connect.cjs connect ${service}`);
+      e.exitCode = 3;
+      throw e;
+    }
     const e = new Error(`${service} is not connected.`);
     e.exitCode = 2;
     throw e;

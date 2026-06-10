@@ -296,12 +296,55 @@ function touchUsed(id) {
   });
 }
 
-/** Load and decrypt a token object, or null if not connected. Resolves bare ids to the default account. */
+/**
+ * Quarantine a damaged file: rename it next to its original path with a reason
+ * and timestamp (e.g. google.json.corrupt-2026-06-10T12-00-00-000Z). NEVER
+ * deletes — the bytes are preserved for inspection/recovery. Returns the new
+ * basename, or null if even the rename failed (recovery proceeds regardless).
+ */
+function quarantineFile(p, reason) {
+  try {
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+    let dest = `${p}.${reason}-${stamp}`;
+    if (fs.existsSync(dest)) dest += `-${crypto.randomBytes(2).toString('hex')}`;
+    fs.renameSync(p, dest);
+    return path.basename(dest);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Load and decrypt a token object, or null if not connected. Resolves bare ids
+ * to the default account.
+ *
+ * A corrupt/truncated/undecryptable token file never throws and never takes
+ * anything else down: the file is quarantined (renamed *.corrupt-<timestamp>,
+ * never deleted), the connection is stamped needs_reauth with a clear reason,
+ * and null is returned. Health reads surface the reason; the rest of the store
+ * keeps working.
+ */
 function loadToken(id) {
-  const p = tokenPath(resolveConnId(id));
+  const connId = resolveConnId(id);
+  const p = tokenPath(connId);
   if (!fs.existsSync(p)) return null;
-  const envelope = JSON.parse(fs.readFileSync(p, 'utf8'));
-  return JSON.parse(decrypt(envelope));
+  try {
+    const envelope = JSON.parse(fs.readFileSync(p, 'utf8'));
+    return JSON.parse(decrypt(envelope));
+  } catch (err) {
+    withStoreLock(() => {
+      const quarantined = quarantineFile(p, 'corrupt');
+      const existing = readRegistry()[connId] || {};
+      upsertConnection(connId, {
+        provider: existing.provider || parseConnectionId(connId).provider,
+        status: 'needs_reauth',
+        error: 'token_file_corrupt',
+        corruptedAt: nowIso(),
+        ...(quarantined ? { corruptFile: quarantined } : {}),
+      });
+    });
+    return null;
+  }
 }
 
 function deleteToken(id) {

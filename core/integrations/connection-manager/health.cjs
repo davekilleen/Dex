@@ -25,9 +25,26 @@ function isKeyBased(reg, token) {
 function connectionHealth(service) {
   const connId = store.resolveConnId(service);
   const reg = store.readRegistry()[connId];
-  const token = store.loadToken(connId);
+  const token = store.loadToken(connId); // a corrupt file is quarantined + stamped here, never thrown
   const provider = (reg && reg.provider) || store.parseConnectionId(connId).provider;
-  if (!token) return { service: connId, status: 'not_connected', provider, alias: reg && reg.alias };
+  if (!token) {
+    // Re-read: loadToken may just have stamped a corruption reason on the entry.
+    const reg2 = store.readRegistry()[connId] || reg;
+    if (reg2 && reg2.error) {
+      return {
+        service: connId,
+        provider: reg2.provider || provider,
+        alias: reg2.alias,
+        status: 'needs_reauth',
+        expiresAt: null,
+        hasRefreshToken: false,
+        scopes: reg2.scopes || [],
+        lastRefreshedAt: reg2.lastRefreshedAt,
+        error: reg2.error,
+      };
+    }
+    return { service: connId, status: 'not_connected', provider, alias: reg && reg.alias };
+  }
 
   // Class B (paste-a-key): no expiry, no refresh state machine. A bad key only
   // surfaces if a probe stamped reg.error → needs_reauth; otherwise connected.
@@ -64,9 +81,21 @@ function connectionHealth(service) {
   };
 }
 
-/** Sweep every known connection (the monitoring view). */
+/** Sweep every known connection (the monitoring view). One broken connection must never kill the sweep. */
 function allConnectionsHealth() {
-  return store.listConnections().map((c) => connectionHealth(c.service));
+  return store.listConnections().map((c) => {
+    try {
+      return connectionHealth(c.service);
+    } catch (err) {
+      return {
+        service: c.service,
+        provider: c.provider,
+        alias: c.alias,
+        status: 'needs_reauth',
+        error: `health_check_failed: ${err.message}`,
+      };
+    }
+  });
 }
 
 // Per-process refresh dedup so concurrent callers in ONE process share a refresh.
@@ -87,7 +116,15 @@ const _inFlight = new Map();
 async function ensureFreshToken(service) {
   const connId = store.resolveConnId(service);
   const token = store.loadToken(connId);
-  if (!token) throw new Error(`${connId} is not connected.`);
+  if (!token) {
+    // Distinguish "never connected" from "stored credential unreadable" (a
+    // corrupt token file was just quarantined) — the latter is a reconnect.
+    const reg = store.readRegistry()[connId];
+    if (reg && reg.error) {
+      throw Object.assign(new Error(`${connId} needs re-authentication (${reg.error}).`), { needsReauth: true });
+    }
+    throw new Error(`${connId} is not connected.`);
+  }
 
   // Class B (paste-a-key): the stored secret is the credential — never expires,
   // no refresh dance. Return it directly (apiKey, or BASIC password).

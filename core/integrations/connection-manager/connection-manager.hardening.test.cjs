@@ -224,3 +224,81 @@ test('lock: losing refresh racer reuses the winner token instead of refreshing a
   await done;
   store.deleteToken('refresh-race');
 });
+
+// ---- corrupt token files (fix: one bad file must not kill the sweep) ---------
+
+function corruptTokens() {
+  return fs.readdirSync(TOKENS_DIR).filter((n) => n.includes('.corrupt-'));
+}
+
+test('corrupt token: truncated file becomes needs_reauth with reason, file quarantined not deleted', () => {
+  store.saveApiKey('corrupt-a', { apiKey: 'FAKE-key-a' }, { provider: 'corrupt-a', authMode: 'API_KEY' });
+  const p = path.join(TOKENS_DIR, 'corrupt-a.json');
+  const garbage = '{"v":1,"iv":'; // truncated mid-write, pre-atomic style
+  fs.writeFileSync(p, garbage);
+
+  const h = health.connectionHealth('corrupt-a');
+  assert.equal(h.status, 'needs_reauth', 'corrupt file maps to needs_reauth, not a crash');
+  assert.equal(h.error, 'token_file_corrupt', 'the reason is explicit');
+
+  assert.ok(!fs.existsSync(p), 'the corrupt file is moved out of the live path');
+  const q = corruptTokens().filter((n) => n.startsWith('corrupt-a.json.corrupt-'));
+  assert.equal(q.length, 1, 'exactly one quarantine file');
+  assert.equal(fs.readFileSync(path.join(TOKENS_DIR, q[0]), 'utf8'), garbage, 'quarantined bytes preserved verbatim');
+
+  const reg = store.readRegistry()['corrupt-a'];
+  assert.equal(reg.status, 'needs_reauth');
+  assert.equal(reg.error, 'token_file_corrupt');
+  assert.ok(reg.corruptFile, 'registry records which quarantine file holds the evidence');
+
+  // The state is stable on subsequent reads (file already quarantined).
+  assert.equal(store.loadToken('corrupt-a'), null);
+  assert.equal(health.connectionHealth('corrupt-a').status, 'needs_reauth');
+  store.deleteToken('corrupt-a');
+});
+
+test('corrupt token: tampered ciphertext (GCM auth failure) takes the same quarantine path', () => {
+  store.saveApiKey('corrupt-b', { apiKey: 'FAKE-key-b' }, { provider: 'corrupt-b', authMode: 'API_KEY' });
+  const p = path.join(TOKENS_DIR, 'corrupt-b.json');
+  const envelope = JSON.parse(fs.readFileSync(p, 'utf8'));
+  envelope.data = Buffer.from('tampered-bytes-here').toString('base64'); // valid JSON, fails tag verification
+  fs.writeFileSync(p, JSON.stringify(envelope));
+
+  const h = health.connectionHealth('corrupt-b');
+  assert.equal(h.status, 'needs_reauth');
+  assert.equal(h.error, 'token_file_corrupt');
+  assert.ok(corruptTokens().some((n) => n.startsWith('corrupt-b.json.corrupt-')), 'tampered file quarantined');
+  store.deleteToken('corrupt-b');
+});
+
+test('corrupt token: the health sweep survives and still reports the healthy connections', () => {
+  store.saveApiKey('sweep-good', { apiKey: 'FAKE-good' }, { provider: 'sweep-good', authMode: 'API_KEY' });
+  store.saveApiKey('sweep-bad', { apiKey: 'FAKE-bad' }, { provider: 'sweep-bad', authMode: 'API_KEY' });
+  fs.writeFileSync(path.join(TOKENS_DIR, 'sweep-bad.json'), 'not even json');
+
+  const rows = health.allConnectionsHealth();
+  const good = rows.find((r) => r.service === 'sweep-good');
+  const bad = rows.find((r) => r.service === 'sweep-bad');
+  assert.equal(good.status, 'connected', 'healthy connection unaffected by the corrupt one');
+  assert.equal(bad.status, 'needs_reauth');
+  assert.equal(bad.error, 'token_file_corrupt');
+  store.deleteToken('sweep-good');
+  store.deleteToken('sweep-bad');
+});
+
+test('corrupt token: get-token exits 3 with a reconnect message, not a crash or exit 2', () => {
+  store.saveApiKey('corrupt-cli', { apiKey: 'FAKE-cli-key' }, { provider: 'corrupt-cli', authMode: 'API_KEY' });
+  fs.writeFileSync(path.join(TOKENS_DIR, 'corrupt-cli.json'), '%%%');
+  let code = 0;
+  let stderr = '';
+  try {
+    execFileSync('node', [path.join(DIR, 'get-token.cjs'), 'corrupt-cli'], { env: childEnv, stdio: 'pipe' });
+  } catch (err) {
+    code = err.status;
+    stderr = err.stderr.toString();
+  }
+  assert.equal(code, 3, 'corrupt credential is a re-auth (3), not not-connected (2) or crash (1)');
+  assert.match(stderr, /re-authentication/, 'message tells the user to reconnect');
+  assert.match(stderr, /token_file_corrupt/, 'message carries the reason');
+  store.deleteToken('corrupt-cli');
+});
