@@ -24,6 +24,7 @@ const os = require('os');
 const path = require('path');
 const crypto = require('crypto');
 const { execFileSync } = require('child_process');
+const { writeFileAtomic } = require('./fs-safe.cjs');
 
 const KEYCHAIN_SERVICE = 'dex-connection-manager';
 const KEYCHAIN_ACCOUNT = 'token-store-key';
@@ -54,7 +55,7 @@ function ensureCredentialsGitignore(dir) {
   }
   if (!/^\*\s*$/m.test(cur)) {
     try {
-      fs.writeFileSync(gi, '# Dex connection manager — never commit credentials (tokens, keys, OAuth secrets).\n*\n!.gitignore\n!README.md\n', { mode: 0o600 });
+      writeFileAtomic(gi, '# Dex connection manager — never commit credentials (tokens, keys, OAuth secrets).\n*\n!.gitignore\n!README.md\n', { mode: 0o600 });
     } catch {
       /* best-effort: never block a save on the guard */
     }
@@ -70,8 +71,15 @@ function tokensDir() {
 
 // ---- Encryption key ---------------------------------------------------------
 
+// DEX_CM_NO_KEYCHAIN=1 forces the file-based key. Used by tests (so they never
+// touch the user's real keychain entry) and useful in sandboxes where the
+// `security` binary is unavailable or blocked.
+function keychainDisabled() {
+  return process.env.DEX_CM_NO_KEYCHAIN === '1';
+}
+
 function keyFromMacKeychain() {
-  if (process.platform !== 'darwin') return null;
+  if (process.platform !== 'darwin' || keychainDisabled()) return null;
   try {
     const out = execFileSync(
       'security',
@@ -87,7 +95,7 @@ function keyFromMacKeychain() {
 }
 
 function storeKeyInMacKeychain(keyB64) {
-  if (process.platform !== 'darwin') return false;
+  if (process.platform !== 'darwin' || keychainDisabled()) return false;
   try {
     execFileSync(
       'security',
@@ -109,7 +117,7 @@ function keyFromFile() {
 function writeKeyFile(keyB64) {
   ensureDir(credentialsDir());
   const keyPath = path.join(credentialsDir(), '.dex-cm.key');
-  fs.writeFileSync(keyPath, keyB64, { mode: 0o600 });
+  writeFileAtomic(keyPath, keyB64, { mode: 0o600 });
 }
 
 let _cachedKey = null;
@@ -192,7 +200,7 @@ function tokenPath(connId) {
 
 /** Persist a token object (encrypted) and refresh the registry entry. `connId` may be `provider` or `provider:alias`. */
 function saveToken(connId, token, meta = {}) {
-  fs.writeFileSync(tokenPath(connId), JSON.stringify(encrypt(JSON.stringify(token)), null, 2), { mode: 0o600 });
+  writeFileAtomic(tokenPath(connId), JSON.stringify(encrypt(JSON.stringify(token)), null, 2), { mode: 0o600 });
   const parsed = parseConnectionId(connId);
   const fields = {
     provider: meta.provider || parsed.provider,
@@ -221,7 +229,7 @@ function saveToken(connId, token, meta = {}) {
  */
 function saveApiKey(service, secretObj, meta = {}) {
   const stored = { kind: 'api_key', ...secretObj, obtained_at: Date.now() };
-  fs.writeFileSync(tokenPath(service), JSON.stringify(encrypt(JSON.stringify(stored)), null, 2), { mode: 0o600 });
+  writeFileAtomic(tokenPath(service), JSON.stringify(encrypt(JSON.stringify(stored)), null, 2), { mode: 0o600 });
   const parsed = parseConnectionId(service);
   const fields = {
     provider: meta.provider || parsed.provider,
@@ -286,7 +294,7 @@ function readRegistry() {
 
 function writeRegistry(reg) {
   ensureDir(credentialsDir());
-  fs.writeFileSync(registryPath(), JSON.stringify(reg, null, 2), { mode: 0o600 });
+  writeFileAtomic(registryPath(), JSON.stringify(reg, null, 2), { mode: 0o600 });
 }
 
 function upsertConnection(service, fields) {
@@ -351,7 +359,7 @@ function setOAuthApp(provider, { clientId, clientSecret = '' }) {
   const p = oauthAppsPath();
   const apps = fs.existsSync(p) ? JSON.parse(fs.readFileSync(p, 'utf8')) : {};
   apps[provider] = { clientId, clientSecret };
-  fs.writeFileSync(p, JSON.stringify(apps, null, 2), { mode: 0o600 });
+  writeFileAtomic(p, JSON.stringify(apps, null, 2), { mode: 0o600 });
   return apps[provider];
 }
 
