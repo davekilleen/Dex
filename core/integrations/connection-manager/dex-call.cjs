@@ -16,7 +16,7 @@
  * Exit codes: 0 ok · 2 not connected · 3 needs re-auth · 4 HTTP 4xx/5xx · 1 other error.
  */
 
-const { resolveAuthContext } = require('./auth-context.cjs');
+const { resolveAuthContext, secretsOf, redactSecrets } = require('./auth-context.cjs');
 
 const HTTP_VERBS = new Set(['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS']);
 
@@ -161,6 +161,12 @@ async function main() {
     console.error(`note: ${service}'s credential was NOT attached (target host differs from the service base). Add --header if this call needs auth.`);
   }
 
+  // Diagnostics must never echo the credential: the URL can EMBED it (key-in-URL
+  // providers like Telegram, or query-param auth), so anything printed about the
+  // request goes through redaction first. The response BODY is the user's data
+  // and is printed as-is (that is this tool's job).
+  const secrets = secretsOf(ctx);
+
   let res;
   try {
     res = await fetch(req.url, {
@@ -171,12 +177,12 @@ async function main() {
       signal: AbortSignal.timeout(30000),
     });
   } catch (e) {
-    console.error(`request failed: ${e.message}`);
+    console.error(redactSecrets(`request failed: ${e.message}`, secrets));
     process.exit(1);
   }
 
   const text = await res.text();
-  if (flags.status) console.error(`${res.status} ${res.statusText}  ${req.method} ${req.url}`);
+  if (flags.status) console.error(redactSecrets(`${res.status} ${res.statusText}  ${req.method} ${req.url}`, secrets));
   if (!flags.raw) {
     try {
       process.stdout.write(JSON.stringify(JSON.parse(text), null, 2) + '\n');

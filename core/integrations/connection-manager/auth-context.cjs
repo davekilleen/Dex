@@ -29,7 +29,9 @@ function apiKeyContext(token, service) {
     });
     // A few providers embed the secret IN the base_url path (Telegram: …/bot${apiKey}).
     const baseUrl = (descriptor.proxyBaseUrl || '').replace(/\$\{apiKey\}/g, token.apiKey || '');
-    return { kind: 'api_key', baseUrl: baseUrl || null, headers, query };
+    // apiKey rides along so CLIs can REDACT it from anything they print (the
+    // envelope itself is secret-bearing by contract: headers/baseUrl carry it).
+    return { kind: 'api_key', baseUrl: baseUrl || null, headers, query, ...(token.apiKey ? { apiKey: token.apiKey } : {}) };
   } catch {
     // Not in catalog (or BASIC-only) — hand back the raw secret with no scheme; a caller can
     // still hit a full URL and supply its own header.
@@ -94,4 +96,34 @@ async function resolveAuthContext(service) {
   return { kind: 'oauth', baseUrl, headers: { Authorization: `Bearer ${accessToken}` }, query: {} };
 }
 
-module.exports = { apiKeyContext, resolveAuthContext };
+/**
+ * Every secret string carried by an auth context: header values (and the token
+ * part after a Bearer/Basic/Token scheme), auth query values, and the raw
+ * apiKey (which can be embedded in the base URL, e.g. Telegram's /bot<key>).
+ * Used to REDACT diagnostics, never to print. Short values (<4 chars) are
+ * skipped so redaction can't shred ordinary text.
+ */
+function secretsOf(ctx) {
+  const out = new Set();
+  const add = (v) => {
+    if (typeof v === 'string' && v.length >= 4) out.add(v);
+  };
+  for (const v of Object.values((ctx && ctx.headers) || {})) {
+    add(v);
+    const m = typeof v === 'string' && v.match(/^(?:Bearer|Basic|Token)\s+(.+)$/i);
+    if (m) add(m[1]);
+  }
+  for (const v of Object.values((ctx && ctx.query) || {})) add(v);
+  if (ctx && ctx.apiKey) add(ctx.apiKey);
+  // Longest first so overlapping values redact fully.
+  return [...out].sort((a, b) => b.length - a.length);
+}
+
+/** Replace every occurrence of each secret in `text` with '***'. */
+function redactSecrets(text, secrets) {
+  let s = String(text);
+  for (const secret of secrets || []) s = s.split(secret).join('***');
+  return s;
+}
+
+module.exports = { apiKeyContext, resolveAuthContext, secretsOf, redactSecrets };

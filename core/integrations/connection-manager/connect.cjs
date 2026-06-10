@@ -315,8 +315,10 @@ function cmdStatus() {
 }
 
 async function cmdRefresh(service) {
-  const token = await health.ensureFreshToken(service);
-  console.log(`✅ ${service}: token valid (refreshed if needed). access_token ${String(token).slice(0, 10)}…`);
+  // No token material in output, not even a prefix: logs and transcripts of this
+  // command must stay credential-free. get-token is the sanctioned accessor.
+  await health.ensureFreshToken(service);
+  console.log(`✅ ${service}: token valid (refreshed if needed).`);
 }
 
 function cmdProviders(filter, flags = {}) {

@@ -33,6 +33,8 @@ process.env.DEX_CM_NO_KEYCHAIN = '1';
 const store = require('./token-store.cjs');
 const health = require('./health.cjs');
 const fsSafe = require('./fs-safe.cjs');
+const catalog = require('./catalog.cjs');
+const authctx = require('./auth-context.cjs');
 
 const DIR = __dirname;
 const CHILD = path.join(DIR, 'hardening.child.cjs');
@@ -514,5 +516,78 @@ test('corrupt registry: status CLI surfaces the rebuilt warning to the user', ()
   assert.match(out, /rebuilt from your saved tokens/);
   assert.match(out, /reg-warn/, 'the recovered connection is listed');
   store.deleteToken('reg-warn');
+  resetRegistryFile();
+});
+
+// ---- secrets in logs (fix: no token material in any diagnostic output) -------
+
+test('logs: secretsOf + redactSecrets strip header, query, scheme and key-in-URL secrets', () => {
+  const ctx = {
+    kind: 'api_key',
+    baseUrl: 'https://api.telegram.org/botFAKE-URL-KEY-123',
+    headers: { authorization: 'Bearer FAKE-BEARER-456', 'x-api-key': 'FAKE-HEADER-789' },
+    query: { api_key: 'FAKE-QUERY-321' },
+    apiKey: 'FAKE-URL-KEY-123',
+  };
+  const secrets = authctx.secretsOf(ctx);
+  assert.ok(secrets.includes('FAKE-URL-KEY-123'), 'raw apiKey collected');
+  assert.ok(secrets.includes('FAKE-BEARER-456'), 'bearer token collected without the scheme');
+  const line = `200 OK GET https://api.telegram.org/botFAKE-URL-KEY-123/getMe?api_key=FAKE-QUERY-321 auth=Bearer FAKE-BEARER-456 x=FAKE-HEADER-789`;
+  const red = authctx.redactSecrets(line, secrets);
+  for (const s of ['FAKE-URL-KEY-123', 'FAKE-BEARER-456', 'FAKE-HEADER-789', 'FAKE-QUERY-321']) {
+    assert.ok(!red.includes(s), `redacted line must not contain ${s}: ${red}`);
+  }
+  assert.match(red, /getMe/, 'non-secret parts of the URL survive for debugging');
+});
+
+test('logs: refresh prints no token material, not even a prefix', () => {
+  store.saveToken(
+    'noleak-oauth',
+    { access_token: 'FAKE-AT-MUSTNOTPRINT-9876543210', refresh_token: 'FAKE-RT-MUSTNOTPRINT', expires_at: Date.now() + 3600_000 },
+    { provider: 'google' }
+  );
+  const out = execFileSync('node', [path.join(DIR, 'connect.cjs'), 'refresh', 'noleak-oauth'], { env: childEnv }).toString();
+  assert.match(out, /token valid/, 'the command still confirms success');
+  assert.ok(!out.includes('FAKE-AT'), 'no access-token material in output');
+  assert.ok(!out.includes('FAKE-AT-MUSTNOTPRINT-9876543210'.slice(0, 10)), 'not even the old 10-char prefix');
+  assert.ok(!out.includes('FAKE-RT'), 'no refresh-token material in output');
+  store.deleteToken('noleak-oauth');
+});
+
+test('logs: a full offline flow never echoes fixture secrets (get-token contract calls excluded)', () => {
+  const SECRET = 'FAKE-FLOW-SECRET-123xyz';
+  const OAUTH_AT = 'FAKE-FLOW-AT-abcdef';
+  const OAUTH_RT = 'FAKE-FLOW-RT-ghijkl';
+  const keyProv = (catalog.listKeyProviders().find((p) => p.authMode === 'API_KEY' && catalog.requiredConnectionConfig(p.id).length === 0) || {}).id;
+  assert.ok(keyProv, 'catalog provides a single-key provider');
+
+  const captured = [];
+  const run = (cmd, cmdArgs, input) => {
+    const r = require('node:child_process').spawnSync('node', [path.join(DIR, cmd), ...cmdArgs], {
+      env: childEnv,
+      input,
+      encoding: 'utf8',
+    });
+    captured.push(r.stdout || '', r.stderr || '');
+    return r;
+  };
+
+  run('connect.cjs', ['set-key', keyProv, '--no-probe'], `${SECRET}\n`); // paste a key (stdin)
+  store.saveToken('flow-oauth', { access_token: OAUTH_AT, refresh_token: OAUTH_RT, expires_at: Date.now() + 3600_000 }, { provider: 'google' });
+  run('connect.cjs', ['status']); // sweep over both
+  run('connect.cjs', ['refresh', 'flow-oauth']); // refresh path
+  run('get-token.cjs', ['never-was-connected']); // error path (exit 2)
+  fs.writeFileSync(path.join(TOKENS_DIR, 'flow-oauth.json'), '{"v":1,"iv":"x"'); // corrupt it
+  run('connect.cjs', ['status']); // sweep over the corruption
+  run('get-token.cjs', ['flow-oauth']); // corrupt-credential error path (exit 3)
+
+  const all = captured.join('\n');
+  for (const s of [SECRET, OAUTH_AT, OAUTH_RT]) {
+    assert.ok(!all.includes(s), `no command output may contain the fixture secret ${s}`);
+  }
+  assert.match(all, /token_file_corrupt/, 'sanity: the flow did exercise the corruption path');
+
+  store.deleteToken(keyProv);
+  store.deleteToken('flow-oauth');
   resetRegistryFile();
 });
