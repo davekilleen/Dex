@@ -127,18 +127,108 @@ function writeKeyFile(keyB64) {
   writeFileAtomic(keyPath, keyB64, { mode: 0o600 });
 }
 
+/**
+ * Thrown when the encryption key is missing/unreadable while encrypted token
+ * files exist. This is an EXPLICIT, recoverable-by-reauth state: the store
+ * must never mint a fresh key behind the user's back (that would silently
+ * orphan every saved token while everything looked fine).
+ */
+class KeyLossError extends Error {
+  constructor(tokenCount, keyFoundButInvalid) {
+    const n = `${tokenCount} saved connection${tokenCount === 1 ? '' : 's'}`;
+    super(
+      `Dex's encryption key is ${keyFoundButInvalid ? 'unreadable' : 'missing'} but ${n} exist. ` +
+        'Saved tokens cannot be unlocked without it, so those connections need to be reconnected. ' +
+        'Dex will not create a replacement key on its own; reconnecting any tool issues a fresh key ' +
+        'and preserves the old token files as *.keyloss-* for inspection.'
+    );
+    this.name = 'KeyLossError';
+    this.code = 'DEX_CM_KEY_LOST';
+    this.tokenCount = tokenCount;
+  }
+}
+
 let _cachedKey = null;
-/** Get-or-create the 32-byte AES key. Prefers OS keychain; falls back to a 0600 file. */
+/**
+ * Get-or-create the 32-byte AES key. Prefers OS keychain; falls back to a 0600 file.
+ *
+ * Key loss is explicit: if no usable key can be found while encrypted token
+ * files exist, this throws KeyLossError (code DEX_CM_KEY_LOST) instead of
+ * generating a new key (the old behaviour, which orphaned every existing
+ * token with no visible signal). A fresh key is only minted when there are no
+ * tokens the old key protected, or via recoverFromKeyLoss().
+ */
 function getKey() {
   if (_cachedKey) return _cachedKey;
-  let key = keyFromMacKeychain() || keyFromFile();
-  if (!key || key.length !== 32) {
-    key = crypto.randomBytes(32);
-    const b64 = key.toString('base64');
-    if (!storeKeyInMacKeychain(b64)) writeKeyFile(b64);
+  let found = null;
+  let lookupFailed = false;
+  try {
+    found = keyFromMacKeychain() || keyFromFile();
+  } catch {
+    lookupFailed = true; // unreadable key source counts as loss, not as "fresh start"
   }
+  if (found && found.length === 32) {
+    _cachedKey = found;
+    return found;
+  }
+  const tokenCount = listTokenFiles().length;
+  if (tokenCount > 0) throw new KeyLossError(tokenCount, Boolean(found) || lookupFailed);
+  const key = crypto.randomBytes(32);
+  const b64 = key.toString('base64');
+  if (!storeKeyInMacKeychain(b64)) writeKeyFile(b64);
   _cachedKey = key;
   return key;
+}
+
+/**
+ * Explicit recovery from key loss, invoked when the user RECONNECTS a tool
+ * while the key is gone (never on a read path). Preserves every old token
+ * file as *.keyloss-<timestamp> (they are undecryptable without the lost
+ * key), quarantines an invalid key file if present, stamps every registry
+ * entry needs_reauth with reason encryption_key_lost, and clears the key
+ * cache so the next getKey() mints a fresh key. Returns how many connections
+ * now need reconnecting.
+ */
+function recoverFromKeyLoss() {
+  return withStoreLock(() => {
+    const files = listTokenFiles();
+    for (const f of files) quarantineFile(path.join(credentialsDir(), 'tokens', f), 'keyloss');
+    const keyPath = path.join(credentialsDir(), '.dex-cm.key');
+    if (fs.existsSync(keyPath)) quarantineFile(keyPath, 'keyloss');
+    const reg = readRegistry();
+    let stamped = 0;
+    for (const k of Object.keys(reg)) {
+      if (k === '_defaults' || k === '_meta' || !reg[k] || !reg[k].service) continue;
+      reg[k] = { ...reg[k], status: 'needs_reauth', error: 'encryption_key_lost' };
+      stamped++;
+    }
+    writeRegistry(reg);
+    _cachedKey = null;
+    return Math.max(stamped, files.length);
+  });
+}
+
+/**
+ * encrypt() for the save paths: a save is an explicit (re)connect, so if the
+ * key is lost this recovers LOUDLY (preserve old token files, flag every
+ * connection, print why once) and then proceeds with a fresh key, instead of
+ * leaving the user wedged or doing anything silently.
+ */
+function encryptForSave(plaintext) {
+  try {
+    return encrypt(plaintext);
+  } catch (err) {
+    if (err && err.code === 'DEX_CM_KEY_LOST') {
+      const n = recoverFromKeyLoss();
+      console.error(
+        `Dex's encryption key was missing, so a fresh one was created. ${n} previously saved connection(s) ` +
+          'cannot be unlocked and need reconnecting (their token files were preserved as *.keyloss-*). ' +
+          'Run: node connect.cjs status'
+      );
+      return encrypt(plaintext);
+    }
+    throw err;
+  }
 }
 
 // ---- Cross-process locking ----------------------------------------------------
@@ -248,6 +338,9 @@ function tokenPath(connId) {
 /** Persist a token object (encrypted) and refresh the registry entry. `connId` may be `provider` or `provider:alias`. */
 function saveToken(connId, token, meta = {}) {
   const parsed = parseConnectionId(connId);
+  // Encrypt BEFORE touching the registry: if the key is lost this triggers the
+  // loud recovery first, so the entry we then upsert stays 'connected'.
+  const envelope = JSON.stringify(encryptForSave(JSON.stringify(token)), null, 2);
   return withStoreLock(() => {
     const fields = {
       provider: meta.provider || parsed.provider,
@@ -264,7 +357,7 @@ function saveToken(connId, token, meta = {}) {
     // entry with no token (harmless "not connected"), never a token file with no
     // registry entry (which would look like registry data loss).
     upsertConnection(connId, fields);
-    writeFileAtomic(tokenPath(connId), JSON.stringify(encrypt(JSON.stringify(token)), null, 2), { mode: 0o600 });
+    writeFileAtomic(tokenPath(connId), envelope, { mode: 0o600 });
     return token;
   });
 }
@@ -282,6 +375,7 @@ function saveToken(connId, token, meta = {}) {
 function saveApiKey(service, secretObj, meta = {}) {
   const stored = { kind: 'api_key', ...secretObj, obtained_at: Date.now() };
   const parsed = parseConnectionId(service);
+  const envelope = JSON.stringify(encryptForSave(JSON.stringify(stored)), null, 2); // key-loss recovery before registry writes; see saveToken
   return withStoreLock(() => {
     const fields = {
       provider: meta.provider || parsed.provider,
@@ -296,7 +390,7 @@ function saveApiKey(service, secretObj, meta = {}) {
     };
     if (parsed.alias) fields.alias = parsed.alias;
     upsertConnection(service, fields); // registry first; see saveToken
-    writeFileAtomic(tokenPath(service), JSON.stringify(encrypt(JSON.stringify(stored)), null, 2), { mode: 0o600 });
+    writeFileAtomic(tokenPath(service), envelope, { mode: 0o600 });
     return stored;
   });
 }
@@ -346,6 +440,9 @@ function loadToken(id) {
     const envelope = JSON.parse(fs.readFileSync(p, 'utf8'));
     return JSON.parse(decrypt(envelope));
   } catch (err) {
+    // Key loss is store-wide, not a damaged file: keep the (intact) token file
+    // where it is and surface the explicit state to the caller instead.
+    if (err && err.code === 'DEX_CM_KEY_LOST') throw err;
     withStoreLock(() => {
       const quarantined = quarantineFile(p, 'corrupt');
       const existing = readRegistry()[connId] || {};
@@ -620,4 +717,6 @@ module.exports = {
   setOAuthApp,
   encrypt,
   decrypt,
+  KeyLossError,
+  recoverFromKeyLoss,
 };

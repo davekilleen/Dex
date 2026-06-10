@@ -60,6 +60,31 @@ async function main() {
       process.stdout.write('refreshed');
       return;
     }
+    case 'load-token': {
+      // load-token <connId>: prints the decrypted token JSON. Exit 9 on key loss
+      // (distinct from generic failure) so tests can assert the explicit state.
+      try {
+        process.stdout.write(JSON.stringify(store.loadToken(args[0])));
+      } catch (err) {
+        process.stderr.write(`${err.code || ''} ${err.message}\n`);
+        process.exit(err.code === 'DEX_CM_KEY_LOST' ? 9 : 1);
+      }
+      return;
+    }
+    case 'health-sweep': {
+      // health-sweep: prints allConnectionsHealth() as JSON (fresh process, fresh key cache).
+      const health = require('./health.cjs');
+      process.stdout.write(JSON.stringify(health.allConnectionsHealth()));
+      return;
+    }
+    case 'save-key': {
+      // save-key <connId> <apiKey>: saveApiKey from a fresh process (exercises
+      // explicit key-loss recovery when the key file has been removed).
+      const [connId, apiKey] = args;
+      store.saveApiKey(connId, { apiKey }, { provider: connId, authMode: 'API_KEY' });
+      process.stdout.write('saved');
+      return;
+    }
     default:
       process.stderr.write(`unknown verb: ${verb}\n`);
       process.exit(64);

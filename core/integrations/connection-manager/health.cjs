@@ -25,8 +25,29 @@ function isKeyBased(reg, token) {
 function connectionHealth(service) {
   const connId = store.resolveConnId(service);
   const reg = store.readRegistry()[connId];
-  const token = store.loadToken(connId); // a corrupt file is quarantined + stamped here, never thrown
   const provider = (reg && reg.provider) || store.parseConnectionId(connId).provider;
+  let token;
+  try {
+    token = store.loadToken(connId); // a corrupt file is quarantined + stamped here, never thrown
+  } catch (err) {
+    if (err && err.code === 'DEX_CM_KEY_LOST') {
+      // Computed at read time and never persisted, so a transient keychain
+      // blip self-heals completely the moment the key is readable again.
+      return {
+        service: connId,
+        provider,
+        alias: reg && reg.alias,
+        status: 'needs_reauth',
+        expiresAt: null,
+        hasRefreshToken: false,
+        scopes: (reg && reg.scopes) || [],
+        lastRefreshedAt: reg && reg.lastRefreshedAt,
+        error: 'encryption_key_lost',
+        message: err.message,
+      };
+    }
+    throw err;
+  }
   if (!token) {
     // Re-read: loadToken may just have stamped a corruption reason on the entry.
     const reg2 = store.readRegistry()[connId] || reg;
@@ -92,7 +113,7 @@ function allConnectionsHealth() {
         provider: c.provider,
         alias: c.alias,
         status: 'needs_reauth',
-        error: `health_check_failed: ${err.message}`,
+        error: err && err.code === 'DEX_CM_KEY_LOST' ? 'encryption_key_lost' : `health_check_failed: ${err.message}`,
       };
     }
   });
@@ -115,7 +136,15 @@ const _inFlight = new Map();
  */
 async function ensureFreshToken(service) {
   const connId = store.resolveConnId(service);
-  const token = store.loadToken(connId);
+  let token;
+  try {
+    token = store.loadToken(connId);
+  } catch (err) {
+    // Key loss: the only fix is reconnecting, so flag it as a re-auth with the
+    // explicit message rather than letting a raw decrypt error escape.
+    if (err && err.code === 'DEX_CM_KEY_LOST') throw Object.assign(err, { needsReauth: true });
+    throw err;
+  }
   if (!token) {
     // Distinguish "never connected" from "stored credential unreadable" (a
     // corrupt token file was just quarantined); the latter is a reconnect.

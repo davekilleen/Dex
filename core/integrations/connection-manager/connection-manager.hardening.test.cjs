@@ -420,6 +420,92 @@ test('ids: path-traversal connection ids are rejected before they reach the file
   assert.equal(store.parseConnectionId('7shifts').provider, '7shifts');
 });
 
+// ---- key loss (fix: never silently mint a new key over existing tokens) -------
+
+const KEY_FILE = path.join(CRED_DIR, '.dex-cm.key');
+
+test('key loss: reads surface an explicit state, never a silent new key or quarantine', () => {
+  store.saveApiKey('kl-a', { apiKey: 'FAKE-kl-a' }, { provider: 'kl-a', authMode: 'API_KEY' });
+  store.saveApiKey('kl-b', { apiKey: 'FAKE-kl-b' }, { provider: 'kl-b', authMode: 'API_KEY' });
+  assert.ok(fs.existsSync(KEY_FILE), 'file-based key exists (keychain disabled in this suite)');
+  const originalKey = fs.readFileSync(KEY_FILE, 'utf8');
+  fs.rmSync(KEY_FILE);
+
+  // A fresh process (empty key cache) tries to read a token.
+  let code = 0;
+  let stderr = '';
+  try {
+    execFileSync('node', [CHILD, 'load-token', 'kl-a'], { env: childEnv, stdio: 'pipe' });
+  } catch (err) {
+    code = err.status;
+    stderr = err.stderr.toString();
+  }
+  assert.equal(code, 9, 'load throws the explicit DEX_CM_KEY_LOST state');
+  assert.match(stderr, /encryption key is missing/, 'the message says what happened');
+  assert.match(stderr, /reconnect/i, 'and what to do about it');
+
+  assert.ok(!fs.existsSync(KEY_FILE), 'no replacement key was minted by a read');
+  assert.ok(fs.existsSync(path.join(TOKENS_DIR, 'kl-a.json')), 'token file untouched (key loss is not file corruption)');
+  assert.equal(fs.readdirSync(TOKENS_DIR).filter((n) => n.includes('kl-a') && n.includes('.corrupt-')).length, 0, 'nothing quarantined');
+
+  // The health sweep keeps working and flags every connection with the reason.
+  const rows = JSON.parse(execFileSync('node', [CHILD, 'health-sweep'], { env: childEnv }).toString());
+  const a = rows.find((r) => r.service === 'kl-a');
+  const b = rows.find((r) => r.service === 'kl-b');
+  assert.equal(a.status, 'needs_reauth');
+  assert.equal(a.error, 'encryption_key_lost');
+  assert.equal(b.status, 'needs_reauth');
+  assert.equal(b.error, 'encryption_key_lost');
+  assert.ok(!fs.existsSync(KEY_FILE), 'the sweep did not mint a key either');
+
+  // Nothing was persisted: when the key comes back (e.g. keychain blip ends),
+  // everything self-heals with zero residue.
+  fs.writeFileSync(KEY_FILE, originalKey, { mode: 0o600 });
+  const rows2 = JSON.parse(execFileSync('node', [CHILD, 'health-sweep'], { env: childEnv }).toString());
+  assert.equal(rows2.find((r) => r.service === 'kl-a').status, 'connected', 'key restored: state fully self-heals');
+  assert.equal(rows2.find((r) => r.service === 'kl-b').status, 'connected');
+});
+
+test('key loss: reconnecting recovers explicitly and loudly (old tokens preserved, others flagged)', () => {
+  // kl-a / kl-b still exist from the previous test; lose the key for real now.
+  const originalKey = fs.readFileSync(KEY_FILE, 'utf8');
+  fs.rmSync(KEY_FILE);
+
+  // The user reconnects a tool in a fresh process: this is the ONE sanctioned
+  // path that mints a new key, and it must say so and preserve the old tokens.
+  const res = execFileSync('node', [CHILD, 'save-key', 'kl-new', 'FAKE-kl-new'], { env: childEnv, stdio: 'pipe' }).toString();
+  assert.equal(res, 'saved');
+
+  assert.ok(fs.existsSync(KEY_FILE), 'a fresh key now exists');
+  assert.notEqual(fs.readFileSync(KEY_FILE, 'utf8'), originalKey, 'and it is a new key, not the lost one');
+  const keyloss = fs.readdirSync(TOKENS_DIR).filter((n) => n.includes('.keyloss-'));
+  assert.ok(keyloss.some((n) => n.startsWith('kl-a.json.keyloss-')), 'old token preserved as *.keyloss-*');
+  assert.ok(keyloss.some((n) => n.startsWith('kl-b.json.keyloss-')), 'old token preserved as *.keyloss-*');
+
+  const reg = store.readRegistry();
+  assert.equal(reg['kl-a'].status, 'needs_reauth');
+  assert.equal(reg['kl-a'].error, 'encryption_key_lost');
+  assert.equal(reg['kl-b'].error, 'encryption_key_lost');
+  assert.equal(reg['kl-new'].status, 'connected', 'the reconnected tool is healthy under the new key');
+
+  // The new connection round-trips in another fresh process.
+  const tok = JSON.parse(execFileSync('node', [CHILD, 'load-token', 'kl-new'], { env: childEnv }).toString());
+  assert.equal(tok.apiKey, 'FAKE-kl-new');
+
+  // status explains the situation to the user.
+  const status = execFileSync('node', [path.join(DIR, 'connect.cjs'), 'status'], { env: childEnv }).toString();
+  assert.match(status, /encryption key is missing or unreadable/);
+  assert.match(status, /Reconnect each tool/);
+
+  // Cleanup. deleteToken never decrypts, so the parent's stale in-process key
+  // cache is irrelevant here; restore key-file/cache parity for later tests.
+  store.deleteToken('kl-new');
+  store.deleteToken('kl-a');
+  store.deleteToken('kl-b');
+  fs.writeFileSync(KEY_FILE, originalKey, { mode: 0o600 });
+  resetRegistryFile();
+});
+
 test('corrupt registry: status CLI surfaces the rebuilt warning to the user', () => {
   store.saveApiKey('reg-warn', { apiKey: 'FAKE-warn' }, { provider: 'reg-warn', authMode: 'API_KEY' });
   fs.writeFileSync(REGISTRY, 'BROKEN');

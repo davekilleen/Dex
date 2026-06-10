@@ -299,6 +299,12 @@ function cmdStatus() {
     console.log('No connections yet. Run: node connect.cjs connect <provider>');
     return;
   }
+  if (rows.some((r) => r.error === 'encryption_key_lost')) {
+    console.log(
+      "\n🔑 Dex's encryption key is missing or unreadable, so the saved connections below can't be unlocked. " +
+        'Reconnect each tool (node connect.cjs connect <provider>); reconnecting issues a fresh key and preserves the old token files.'
+    );
+  }
   const icon = { connected: '🟢', expiring: '🟡', expired: '🟠', needs_reauth: '🔴', error: '🔴', not_connected: '⚪' };
   console.log('\nConnection status:\n');
   for (const r of rows) {
