@@ -33,7 +33,9 @@ You have these adopted workflows:
 Which one would you like to remove?
 ```
 
-To get the list, read all JSON files in `.dex/adoptions/`.
+To get the list, read all JSON files in **both** adoption locations:
+- `.dex/adoptions/` — single-workflow adoptions from `/diff-adopt`
+- `System/.dex/adoptions/profiles/` — whole-profile adoptions from `/diff-adopt-profile` (these are profile-level records; removing one means removing the skills generated for that profile's workflows, then deleting the profile log)
 
 ---
 
@@ -41,7 +43,7 @@ To get the list, read all JSON files in `.dex/adoptions/`.
 
 ### Step 1: Find the Adoption Log
 
-Read `.dex/adoptions/$ARGUMENTS.json`.
+Read `.dex/adoptions/$ARGUMENTS.json`. If it is not there and `$ARGUMENTS` looks like a handle, check `System/.dex/adoptions/profiles/$ARGUMENTS.json` instead.
 
 If the file doesn't exist:
 ```

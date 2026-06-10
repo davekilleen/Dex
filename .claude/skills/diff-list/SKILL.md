@@ -22,21 +22,26 @@ None.
 
 ## Process
 
-### Step 1: Read Adoption Logs
+### Step 1: Read Adoption Logs (both locations)
 
-Check `.dex/adoptions/` for JSON files. Each file represents one adopted workflow.
+Adoptions live in two places — read **both**:
 
-If the directory doesn't exist or is empty:
+1. `.dex/adoptions/` — single-workflow adoptions from `/diff-adopt` (one JSON per workflow)
+2. `System/.dex/adoptions/profiles/` — whole-profile adoptions from `/diff-adopt-profile` (one JSON per profile, with `workflow_ids` inside)
+
+If neither directory exists or both are empty:
 ```
 No workflows adopted yet.
 
 Browse workflows at heydex.ai/diff, then use:
-  /diff-adopt https://heydex.ai/diff/[workflow-name]
+  /diff-adopt @[handle]/[workflow-id]
+or adopt someone's whole setup:
+  /diff-adopt-profile @[handle]
 ```
 
 ### Step 2: Display Summary
 
-For each adoption log, show:
+For each single-workflow adoption log, show:
 
 ```
 Adopted workflows:
@@ -47,13 +52,18 @@ Adopted workflows:
     Skills: /meeting-prep, /process-meeting
     Source: DexDiff draft area (`DEXDIFF_DIFFS_DIR`, default `04-Projects/DexDiff/beta/diffs/meeting-prep.yaml`)
 
-  deal-review
-    "Deal Review Ritual" by Dave Killeen
-    Adopted: 2026-03-25
-    Skills: /deal-review, /deals-attention
-    Source: https://heydex.ai/diff/deal-review
-
 To remove a workflow: /diff-remove [id]
+```
+
+For each profile adoption log, show the profile as a group:
+
+```
+Adopted profiles:
+
+  @davekilleen — Dave Killeen
+    Adopted: 2026-06-16
+    Workflows: meeting-intelligence, deal-intelligence, operating-rhythm, ...
+    Bundle saved at: 04-Projects/DexDiff/beta/profile/adopted/davekilleen/
 ```
 
 ### Step 3: Health Check (Optional)

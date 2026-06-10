@@ -5,7 +5,7 @@ description: Generate a full DexDiff profile — package your entire system so o
 
 ## What This Command Does
 
-**In plain English:** Scans your entire vault, identifies your strongest custom workflows, groups them at the right level of granularity, and generates methodology documents for each one — plus an overview of how you use Dex. The result is a complete profile that lives at `heydex.ai/@your-handle`.
+**In plain English:** Scans your entire vault, identifies your strongest custom workflows, groups them at the right level of granularity, and generates methodology documents for each one — plus an overview of how you use Dex. The result is a complete profile that lives at `heydex.ai/diff/@your-handle/`.
 
 **How to run it:**
 ```
