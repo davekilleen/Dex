@@ -1,18 +1,18 @@
 'use strict';
 /**
- * fs-safe.cjs — crash-safe filesystem primitives for the connection manager.
+ * fs-safe.cjs: crash-safe filesystem primitives for the connection manager.
  *
- * writeFileAtomic(filePath, data, { mode }) — temp-file + rename in the SAME
+ * writeFileAtomic(filePath, data, { mode }): temp-file + rename in the SAME
  * directory, so a crash mid-write can never leave a truncated/partial file at
  * the real path: readers see the old contents or the new contents, never a mix.
  * The temp file is created fresh on every write, so the requested mode (0600)
- * is applied every time — unlike fs.writeFileSync, whose `mode` only applies
+ * is applied every time, unlike fs.writeFileSync, whose `mode` only applies
  * when the target file is first created, never on overwrite.
  *
  * Stale `.tmp` files from a crashed writer are inert: they live in the
  * credentials directory (gitignored with `*`) and are never read back.
  *
- * withLockSync / withLock — a dependency-free cross-process mutex built on
+ * withLockSync / withLock: a dependency-free cross-process mutex built on
  * exclusive lockfile creation (open with O_CREAT|O_EXCL, atomic on every
  * filesystem Node supports). Semantics:
  *
@@ -105,14 +105,14 @@ function tryAcquire(lockPath) {
   } catch (err) {
     if (err.code !== 'EEXIST') throw err;
   }
-  // Lock exists — decide whether it is stale enough to steal.
+  // Lock exists. Decide whether it is stale enough to steal.
   let ageMs = null;
   let holderPid = null;
   try {
     ageMs = Date.now() - fs.statSync(lockPath).mtimeMs;
     holderPid = Number(JSON.parse(fs.readFileSync(lockPath, 'utf8')).pid) || null;
   } catch {
-    // Race (deleted between attempts) or unreadable content — handled below.
+    // Race (deleted between attempts) or unreadable content; handled below.
   }
   const stale =
     (holderPid !== null && !pidAlive(holderPid)) ||
@@ -138,7 +138,7 @@ function pollDelay() {
 
 function timeoutError(lockPath, timeoutMs) {
   return new Error(
-    `Could not lock the connection store within ${timeoutMs}ms — another Dex process is holding ${path.basename(lockPath)}. ` +
+    `Could not lock the connection store within ${timeoutMs}ms (another Dex process is holding ${path.basename(lockPath)}). ` +
       'Try again in a moment.'
   );
 }
@@ -165,7 +165,7 @@ function release(lockPath) {
   try {
     fs.unlinkSync(lockPath);
   } catch {
-    /* already gone (stolen as stale after a long pause) — nothing to release */
+    /* already gone (stolen as stale after a long pause); nothing to release */
   }
 }
 

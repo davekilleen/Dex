@@ -285,6 +285,15 @@ async function cmdSetKey(service, flags) {
 }
 
 function cmdStatus() {
+  const meta = store.readRegistry()._meta;
+  if (meta && meta.notice === 'registry_rebuilt') {
+    console.log(
+      `\n⚠️  Dex's connection list was damaged (${meta.reason}) and was rebuilt from your saved tokens on ${meta.rebuiltAt}: ` +
+        `${meta.recovered} recovered, ${meta.unreadable} unreadable.` +
+        `${meta.quarantinedRegistry ? ` The damaged list was kept as ${meta.quarantinedRegistry} in ${store.credentialsDir()}.` : ''}` +
+        ' Check the list below and reconnect anything missing or red.'
+    );
+  }
   const rows = health.allConnectionsHealth();
   if (!rows.length) {
     console.log('No connections yet. Run: node connect.cjs connect <provider>');

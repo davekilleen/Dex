@@ -38,7 +38,7 @@ async function main() {
     process.exit(err.code === 'DEX_CM_KEY_LOST' ? 3 : 1);
   }
   if (!token) {
-    // A corrupt token file was quarantined and stamped by loadToken — that is a
+    // A corrupt token file was quarantined and stamped by loadToken; that is a
     // reconnect (exit 3 with the reason), not a plain "not connected" (exit 2).
     const reg = store.getConnection(service);
     if (reg && reg.error) {

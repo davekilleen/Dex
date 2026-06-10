@@ -1,6 +1,6 @@
 'use strict';
 /**
- * connection-manager.hardening.test.cjs — failure-mode coverage for the token
+ * connection-manager.hardening.test.cjs: failure-mode coverage for the token
  * store: atomic writes, cross-process locking, corrupt token files, corrupt
  * registry recovery, key loss, and secrets-in-logs.
  *
@@ -213,7 +213,7 @@ test('lock: losing refresh racer reuses the winner token instead of refreshing a
   );
   // Another process wins the race: holds the refresh lock (its "network call"),
   // then stores the refreshed token. No OAuth app is registered in this vault,
-  // so if our process tried its own refresh it would throw — proving the
+  // so if our process tried its own refresh it would throw, proving the
   // double-check path is what returns the token.
   const child = spawn('node', [CHILD, 'hold-refresh-then-save', 'refresh-race', '500', 'FAKE-WINNER-AT'], { env: childEnv });
   const done = new Promise((resolve) => child.on('exit', resolve));
@@ -301,4 +301,132 @@ test('corrupt token: get-token exits 3 with a reconnect message, not a crash or 
   assert.match(stderr, /re-authentication/, 'message tells the user to reconnect');
   assert.match(stderr, /token_file_corrupt/, 'message carries the reason');
   store.deleteToken('corrupt-cli');
+});
+
+// ---- corrupt registry (fix: damage must never silently wipe the connection list) ----
+
+function resetRegistryFile() {
+  // Tests only: with no token files on disk an empty object is a valid registry.
+  fs.writeFileSync(REGISTRY, '{}');
+}
+
+function quarantinedRegistries() {
+  return fs.readdirSync(CRED_DIR).filter((n) => n.startsWith('connections.json.corrupt-'));
+}
+
+test('corrupt registry: quarantined and rebuilt from token files, not silently reset', () => {
+  store.saveApiKey('reg-key', { apiKey: 'FAKE-reg-key' }, { provider: 'reg-key', authMode: 'API_KEY' });
+  store.saveToken(
+    'reg-ali:work',
+    { access_token: 'FAKE-AT', refresh_token: 'FAKE-RT', expires_at: Date.now() + 3600_000, scope: 'a b' },
+    { provider: 'reg-ali' }
+  );
+  const before = quarantinedRegistries().length;
+  fs.writeFileSync(REGISTRY, '{"this is": not even json');
+
+  const reg = store.readRegistry(); // any read triggers recovery
+  assert.equal(quarantinedRegistries().length, before + 1, 'the damaged registry is preserved, not deleted');
+  assert.ok(reg['reg-key'], 'API-key connection recovered from its token file');
+  assert.ok(reg['reg-ali:work'], 'aliased OAuth connection recovered from its token file');
+  assert.equal(reg['reg-key'].authMode, 'API_KEY', 'auth mode recovered from the decrypted token');
+  assert.equal(reg['reg-ali:work'].alias, 'work', 'alias recovered from the filename');
+  assert.equal(reg['reg-ali:work'].provider, 'reg-ali');
+  assert.deepEqual(reg['reg-ali:work'].scopes, ['a', 'b'], 'scopes recovered from the decrypted token');
+  assert.equal(reg._meta.notice, 'registry_rebuilt', 'a visible warning state is recorded');
+  assert.equal(reg._meta.recovered, 2);
+
+  // The recovered store still works end to end.
+  assert.equal(store.loadToken('reg-key').apiKey, 'FAKE-reg-key');
+  assert.equal(health.connectionHealth('reg-key').status, 'connected');
+
+  // And the old amnesia bug is dead: a write after recovery keeps everything.
+  store.upsertConnection('reg-new', { provider: 'reg-new', status: 'connected' });
+  const reg2 = store.readRegistry();
+  assert.ok(reg2['reg-key'] && reg2['reg-ali:work'] && reg2['reg-new'], 'no entries lost on the next write');
+
+  store.deleteToken('reg-key');
+  store.deleteToken('reg-ali:work');
+  store.deleteToken('reg-new');
+  resetRegistryFile();
+});
+
+test('corrupt registry: missing file with tokens on disk is rebuilt (crash-window self-heal)', () => {
+  store.saveApiKey('reg-miss', { apiKey: 'FAKE-miss' }, { provider: 'reg-miss', authMode: 'API_KEY' });
+  fs.rmSync(REGISTRY);
+  const reg = store.readRegistry();
+  assert.ok(reg['reg-miss'], 'entry rebuilt from the surviving token file');
+  assert.equal(reg._meta.reason, 'registry_missing');
+  store.deleteToken('reg-miss');
+  resetRegistryFile();
+});
+
+test('corrupt registry: valid JSON of the wrong shape (array) is treated as corrupt', () => {
+  store.saveApiKey('reg-shape', { apiKey: 'FAKE-shape' }, { provider: 'reg-shape', authMode: 'API_KEY' });
+  fs.writeFileSync(REGISTRY, '[1,2,3]');
+  const reg = store.readRegistry();
+  assert.ok(reg['reg-shape'], 'rebuilt');
+  assert.equal(reg._meta.reason, 'registry_corrupt');
+  store.deleteToken('reg-shape');
+  resetRegistryFile();
+});
+
+test('corrupt registry: empty object while tokens exist (the legacy wipe end-state) is rebuilt', () => {
+  store.saveApiKey('reg-wiped', { apiKey: 'FAKE-wiped' }, { provider: 'reg-wiped', authMode: 'API_KEY' });
+  fs.writeFileSync(REGISTRY, '{}');
+  const reg = store.readRegistry();
+  assert.ok(reg['reg-wiped'], 'orphaned token resurfaces instead of looking disconnected forever');
+  assert.equal(reg._meta.reason, 'registry_empty_with_tokens');
+  store.deleteToken('reg-wiped');
+  resetRegistryFile();
+});
+
+test('corrupt registry: rebuild quarantines undecryptable token files and recovers the rest', () => {
+  store.saveApiKey('reg-ok', { apiKey: 'FAKE-ok' }, { provider: 'reg-ok', authMode: 'API_KEY' });
+  store.saveApiKey('reg-bad', { apiKey: 'FAKE-bad' }, { provider: 'reg-bad', authMode: 'API_KEY' });
+  fs.writeFileSync(path.join(TOKENS_DIR, 'reg-bad.json'), 'garbage-not-json');
+  fs.writeFileSync(REGISTRY, 'BROKEN');
+  const reg = store.readRegistry();
+  assert.equal(reg['reg-ok'].status, 'connected');
+  assert.equal(reg['reg-bad'].status, 'needs_reauth');
+  assert.equal(reg['reg-bad'].error, 'token_file_corrupt');
+  assert.ok(corruptTokens().some((n) => n.startsWith('reg-bad.json.corrupt-')), 'bad token quarantined during rebuild');
+  assert.equal(reg._meta.recovered, 1);
+  assert.equal(reg._meta.unreadable, 1);
+  store.deleteToken('reg-ok');
+  store.deleteToken('reg-bad');
+  resetRegistryFile();
+});
+
+test('corrupt registry: hostile token filename is skipped, never becomes a registry entry', () => {
+  store.saveApiKey('reg-host', { apiKey: 'FAKE-host' }, { provider: 'reg-host', authMode: 'API_KEY' });
+  const hostile = path.join(TOKENS_DIR, '-evil__x.json'); // derives provider '-evil', which fails the charset guard
+  fs.writeFileSync(hostile, '{}');
+  fs.writeFileSync(REGISTRY, 'BROKEN');
+  const reg = store.readRegistry();
+  assert.ok(reg['reg-host'], 'legit entry recovered');
+  assert.equal(reg['-evil:x'], undefined, 'hostile name does not become an entry');
+  assert.ok(fs.existsSync(hostile), 'hostile file left untouched for inspection');
+  fs.rmSync(hostile);
+  store.deleteToken('reg-host');
+  resetRegistryFile();
+});
+
+test('ids: path-traversal connection ids are rejected before they reach the filesystem', () => {
+  assert.throws(() => store.parseConnectionId('../etc'), /Invalid provider/);
+  assert.throws(() => store.saveApiKey('../escape', { apiKey: 'FAKE-x' }), /Invalid provider/);
+  assert.throws(() => store.parseConnectionId('a/b'), /Invalid provider/);
+  // normal ids still fine
+  assert.equal(store.parseConnectionId('google:work').connId, 'google:work');
+  assert.equal(store.parseConnectionId('7shifts').provider, '7shifts');
+});
+
+test('corrupt registry: status CLI surfaces the rebuilt warning to the user', () => {
+  store.saveApiKey('reg-warn', { apiKey: 'FAKE-warn' }, { provider: 'reg-warn', authMode: 'API_KEY' });
+  fs.writeFileSync(REGISTRY, 'BROKEN');
+  const out = execFileSync('node', [path.join(DIR, 'connect.cjs'), 'status'], { env: childEnv }).toString();
+  assert.match(out, /connection list was damaged/, 'the warning is visible, not buried');
+  assert.match(out, /rebuilt from your saved tokens/);
+  assert.match(out, /reg-warn/, 'the recovered connection is listed');
+  store.deleteToken('reg-warn');
+  resetRegistryFile();
 });

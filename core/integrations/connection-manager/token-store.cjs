@@ -69,6 +69,13 @@ function tokensDir() {
   return dir;
 }
 
+/** Live token files only (excludes quarantined *.corrupt-* / *.keyloss-* and .tmp leftovers). Read-only: never creates dirs. */
+function listTokenFiles() {
+  const dir = path.join(credentialsDir(), 'tokens');
+  if (!fs.existsSync(dir)) return [];
+  return fs.readdirSync(dir).filter((f) => f.endsWith('.json') && !f.startsWith('.'));
+}
+
 // ---- Encryption key ---------------------------------------------------------
 
 // DEX_CM_NO_KEYCHAIN=1 forces the file-based key. Used by tests (so they never
@@ -190,12 +197,19 @@ function decrypt(envelope) {
  * A connection id is `provider` or `provider:alias`. Bare `provider` is the
  * DEFAULT account for that provider (back-compat: existing tokens keep their id).
  * Aliases are lowercased; charset [a-z0-9_-]. Nango provider ids never contain ':'.
+ *
+ * The provider segment is charset-validated too: connection ids become token
+ * FILENAMES (and the registry rebuild derives ids back from filenames), so a
+ * hostile id like '../x' must never reach tokenPath and escape the tokens dir.
  */
 function parseConnectionId(id) {
   const s = String(id);
   const i = s.indexOf(':');
+  const provider = i === -1 ? s : s.slice(0, i);
+  if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$/.test(provider)) {
+    throw new Error(`Invalid provider in connection id '${id}'. Use letters, digits, '.', '-' or '_' (must start with a letter or digit).`);
+  }
   if (i === -1) return { provider: s, alias: null, connId: s };
-  const provider = s.slice(0, i);
   const alias = s.slice(i + 1).toLowerCase();
   if (!/^[a-z0-9_-]+$/.test(alias)) throw new Error(`Invalid connection alias in '${id}'. Use letters, digits, '-' or '_'.`);
   return { provider, alias, connId: `${provider}:${alias}` };
@@ -215,7 +229,7 @@ function resolveConnId(id) {
   if (!alias) {
     const def = reg._defaults && reg._defaults[provider];
     if (def && reg[def]) return def;
-    const matches = Object.keys(reg).filter((k) => k !== '_defaults' && reg[k] && reg[k].provider === provider);
+    const matches = Object.keys(reg).filter((k) => k !== '_defaults' && k !== '_meta' && reg[k] && reg[k].provider === provider);
     if (matches.length === 1) return matches[0];
     if (matches.length > 1) {
       throw new Error(`Multiple '${provider}' accounts: ${matches.join(', ')}. Pick one (e.g. ${matches[0]}) or set a default: connect ${provider} --as <alias> --default`);
@@ -281,7 +295,7 @@ function saveApiKey(service, secretObj, meta = {}) {
       ...meta.extra,
     };
     if (parsed.alias) fields.alias = parsed.alias;
-    upsertConnection(service, fields); // registry first — see saveToken
+    upsertConnection(service, fields); // registry first; see saveToken
     writeFileAtomic(tokenPath(service), JSON.stringify(encrypt(JSON.stringify(stored)), null, 2), { mode: 0o600 });
     return stored;
   });
@@ -299,7 +313,7 @@ function touchUsed(id) {
 /**
  * Quarantine a damaged file: rename it next to its original path with a reason
  * and timestamp (e.g. google.json.corrupt-2026-06-10T12-00-00-000Z). NEVER
- * deletes — the bytes are preserved for inspection/recovery. Returns the new
+ * deletes; the bytes are preserved for inspection/recovery. Returns the new
  * basename, or null if even the rename failed (recovery proceeds regardless).
  */
 function quarantineFile(p, reason) {
@@ -369,14 +383,138 @@ function registryPath() {
   return path.join(credentialsDir(), 'connections.json');
 }
 
+function hasServiceEntries(reg) {
+  return Object.keys(reg).some((k) => k !== '_defaults' && k !== '_meta' && reg[k] && reg[k].service);
+}
+
+function isPlainObject(v) {
+  return Boolean(v) && typeof v === 'object' && !Array.isArray(v);
+}
+
+/**
+ * Read the connection registry. A damaged registry must NEVER silently reset
+ * to empty (the old behaviour: every connection looked "not connected" and the
+ * next write permanently discarded all other entries). Instead:
+ *   - unparseable / non-object content, or a registry that lost its entries
+ *     while token files still exist, or a missing file with tokens on disk,
+ *     all trigger recovery: quarantine the damaged file (never delete) and
+ *     rebuild entries from the surviving encrypted token files
+ *   - the rebuilt registry carries a visible `_meta` warning that `status`
+ *     surfaces to the user
+ */
 function readRegistry() {
   const p = registryPath();
-  if (!fs.existsSync(p)) return {};
-  try {
-    return JSON.parse(fs.readFileSync(p, 'utf8'));
-  } catch {
-    return {};
+  if (fs.existsSync(p)) {
+    try {
+      const reg = JSON.parse(fs.readFileSync(p, 'utf8'));
+      if (isPlainObject(reg) && (hasServiceEntries(reg) || !listTokenFiles().length)) return reg;
+    } catch {
+      /* unparseable: fall through to recovery */
+    }
+  } else if (!listTokenFiles().length) {
+    return {}; // genuine first run: nothing saved yet
   }
+  return recoverRegistry();
+}
+
+/** Quarantine a damaged registry and rebuild it from the token files on disk. Idempotent and cross-process safe. */
+function recoverRegistry() {
+  return withStoreLock(() => {
+    // Re-check inside the lock: another process may have recovered it already.
+    const p = registryPath();
+    let reason = 'registry_missing';
+    let quarantinedName = null;
+    if (fs.existsSync(p)) {
+      try {
+        const reg = JSON.parse(fs.readFileSync(p, 'utf8'));
+        if (isPlainObject(reg)) {
+          if (hasServiceEntries(reg) || !listTokenFiles().length) return reg;
+          reason = 'registry_empty_with_tokens';
+        } else {
+          reason = 'registry_corrupt';
+        }
+      } catch {
+        reason = 'registry_corrupt';
+      }
+      quarantinedName = quarantineFile(p, 'corrupt');
+    }
+    const rebuilt = rebuildRegistryFromTokens(reason, quarantinedName);
+    writeRegistry(rebuilt);
+    return rebuilt;
+  });
+}
+
+/**
+ * Rebuild registry entries from the encrypted token files (the tokens are the
+ * source of truth; the registry is derivable metadata). Recovers provider,
+ * alias, scopes, expiry and auth mode from each decryptable token; quarantines
+ * undecryptable ones as corrupt. `_defaults` cannot be recovered (the user may
+ * need to re-pick a default account for multi-account providers).
+ * NOTE: reads token files directly; loadToken/resolveConnId would recurse into
+ * readRegistry.
+ */
+function rebuildRegistryFromTokens(reason, quarantinedName) {
+  const rebuilt = {};
+  let recovered = 0;
+  let unreadable = 0;
+  for (const f of listTokenFiles()) {
+    let parsed;
+    try {
+      parsed = parseConnectionId(f.replace(/\.json$/, '').replace(/__/g, ':'));
+    } catch {
+      continue; // foreign or hostile filename: leave the file alone, add no entry
+    }
+    const fp = path.join(credentialsDir(), 'tokens', f);
+    const base = { service: parsed.connId, provider: parsed.provider, ...(parsed.alias ? { alias: parsed.alias } : {}) };
+    let token;
+    try {
+      token = JSON.parse(decrypt(JSON.parse(fs.readFileSync(fp, 'utf8'))));
+    } catch (err) {
+      unreadable++;
+      if (err && err.code === 'DEX_CM_KEY_LOST') {
+        // The key is gone, not the file: keep the file untouched and mark the state.
+        rebuilt[parsed.connId] = { ...base, status: 'needs_reauth', error: 'encryption_key_lost', recoveredAt: nowIso() };
+      } else {
+        const q = quarantineFile(fp, 'corrupt');
+        rebuilt[parsed.connId] = {
+          ...base,
+          status: 'needs_reauth',
+          error: 'token_file_corrupt',
+          corruptedAt: nowIso(),
+          ...(q ? { corruptFile: q } : {}),
+        };
+      }
+      continue;
+    }
+    let st = null;
+    try {
+      st = fs.statSync(fp);
+    } catch {
+      /* stat is best-effort */
+    }
+    const entry = {
+      ...base,
+      status: 'connected',
+      scopes: token.scope ? String(token.scope).split(/[ ,]+/).filter(Boolean) : [],
+      expiresAt: token.expires_at || token.expiry_date || null,
+      connectedAt: token.obtained_at ? new Date(token.obtained_at).toISOString() : st ? st.birthtime.toISOString() : nowIso(),
+      lastRefreshedAt: st ? st.mtime.toISOString() : nowIso(),
+      error: null,
+      recoveredAt: nowIso(),
+    };
+    if (token.kind === 'api_key') entry.authMode = token.username && token.password ? 'BASIC' : 'API_KEY';
+    rebuilt[parsed.connId] = entry;
+    recovered++;
+  }
+  rebuilt._meta = {
+    notice: 'registry_rebuilt',
+    reason,
+    rebuiltAt: nowIso(),
+    ...(quarantinedName ? { quarantinedRegistry: quarantinedName } : {}),
+    recovered,
+    unreadable,
+  };
+  return rebuilt;
 }
 
 function writeRegistry(reg) {
@@ -395,7 +533,7 @@ function upsertConnection(service, fields) {
 
 function listConnections() {
   return Object.entries(readRegistry())
-    .filter(([k, v]) => k !== '_defaults' && v && v.service)
+    .filter(([k, v]) => k !== '_defaults' && k !== '_meta' && v && v.service)
     .map(([, v]) => v);
 }
 

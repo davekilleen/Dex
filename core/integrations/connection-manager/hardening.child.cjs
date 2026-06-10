@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 'use strict';
 /**
- * hardening.child.cjs — subprocess driver for the hardening test suite.
+ * hardening.child.cjs: subprocess driver for the hardening test suite.
  * NOT a test file (the name deliberately avoids node --test discovery).
  *
  * The tests spawn this script as a real second process to exercise behaviour
@@ -26,7 +26,7 @@ async function main() {
       return;
     }
     case 'upsert-many': {
-      // upsert-many <prefix> <count> — N sequential registry read-modify-writes.
+      // upsert-many <prefix> <count>: N sequential registry read-modify-writes.
       const [prefix, countStr] = args;
       const count = Number(countStr);
       for (let i = 0; i < count; i++) {
@@ -36,7 +36,7 @@ async function main() {
       return;
     }
     case 'hold-lock': {
-      // hold-lock <ms> — acquire the store mutation lock and sit on it.
+      // hold-lock <ms>: acquire the store mutation lock and sit on it.
       const ms = Number(args[0]);
       store.withStoreLock(() => {
         Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
@@ -45,7 +45,7 @@ async function main() {
       return;
     }
     case 'hold-refresh-then-save': {
-      // hold-refresh-then-save <connId> <ms> <accessToken> — simulate a process
+      // hold-refresh-then-save <connId> <ms> <accessToken>: simulate a process
       // that wins the refresh race: hold the per-connection refresh lock for a
       // while (the "network call"), store the refreshed token, release.
       const [connId, msStr, accessToken] = args;

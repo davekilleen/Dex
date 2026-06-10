@@ -54,7 +54,7 @@ async function resolveAuthContext(service) {
     throw err;
   }
   if (!token) {
-    // loadToken quarantines corrupt token files and stamps the reason — surface
+    // loadToken quarantines corrupt token files and stamps the reason; surface
     // that as "reconnect" (exit 3) rather than a misleading "not connected".
     const reg = store.getConnection(service);
     if (reg && reg.error) {

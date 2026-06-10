@@ -118,7 +118,7 @@ async function ensureFreshToken(service) {
   const token = store.loadToken(connId);
   if (!token) {
     // Distinguish "never connected" from "stored credential unreadable" (a
-    // corrupt token file was just quarantined) — the latter is a reconnect.
+    // corrupt token file was just quarantined); the latter is a reconnect.
     const reg = store.readRegistry()[connId];
     if (reg && reg.error) {
       throw Object.assign(new Error(`${connId} needs re-authentication (${reg.error}).`), { needsReauth: true });
@@ -145,7 +145,7 @@ async function ensureFreshToken(service) {
     try {
       return await store.withRefreshLock(connId, async () => {
         // Double-check under the lock: another process may have refreshed while
-        // we waited. If the stored token is fresh now, use it — no network call.
+        // we waited. If the stored token is fresh now, use it: no network call.
         const current = store.loadToken(connId) || token;
         if (connectionHealth(connId).status === 'connected') return current.access_token;
 
