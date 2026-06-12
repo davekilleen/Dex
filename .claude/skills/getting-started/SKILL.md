@@ -25,6 +25,7 @@ marker_file = BASE_DIR / 'System' / '.onboarding-complete'
 if marker_file.exists():
     marker_data = json.loads(marker_file.read_text())
     pre_analysis_deferred = marker_data.get('pre_analysis_deferred', False)
+    adopted = marker_data.get('adopted', False)
     completed_at = datetime.fromisoformat(marker_data['completed_at'])
     age_hours = (datetime.now() - completed_at).total_seconds() / 3600
     
@@ -37,7 +38,18 @@ if marker_file.exists():
         run_dramatic_reveal = False
 else:
     run_dramatic_reveal = False
+    adopted = False
 ```
+
+### Adopted Vault Gate (check before any automatic creation)
+
+If `adopted` is true, this vault was adopted from an existing setup (for example Dex Desktop) and the user already has real content. **Suppress every proactive vault write in this skill and downgrade it to a per-item proposal:**
+
+- Do NOT write or overwrite `02-Week_Priorities/Week_Priorities.md`. Offer instead: "Want me to draft a weekly plan from your calendar? Your current file stays untouched unless you say yes."
+- Do NOT auto-create person pages. List the frequent contacts you found and ask which ones to create, one decision per person.
+- Do NOT auto-create company pages. Same rule: propose, then create only what the user approves.
+
+Read-only analysis is always fine: counting meetings, spotting frequent contacts, summarizing the week. In the dramatic reveal below, replace the "I went ahead and created..." block with "Here's what I can set up for you (nothing written yet):" followed by the per-item proposals. Explicitly user-requested work (like the backfill the user configures and confirms) is not affected by this gate.
 
 ### Step 2: Dramatic Reveal (if flagged)
 
@@ -117,6 +129,7 @@ if marker_file.exists():
     marker_data = json.loads(marker_file.read_text())
     pre_analysis = marker_data.get('pre_analysis', {})
     pre_analysis_deferred = marker_data.get('pre_analysis_deferred', False)
+    adopted = marker_data.get('adopted', False)  # adopted vaults: propose, never auto-create
 else:
     pre_analysis = {}
     pre_analysis_deferred = False

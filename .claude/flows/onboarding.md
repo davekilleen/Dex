@@ -373,11 +373,13 @@ Call `finalize_onboarding()` from onboarding-mcp. This single call handles:
 1. Pre-check: Verify all steps completed (especially Step 4!)
 2. Create PARA folder structure (04-Projects/, 05-Areas/, etc.)
 3. Create initial files (03-Tasks/Tasks.md, 02-Week_Priorities/Week_Priorities.md)
-4. Write System/user-profile.yaml from session data
-5. Write System/pillars.yaml from pillars
-6. Update CLAUDE.md User Profile section
-7. Setup System/.mcp.json (replace {{VAULT_PATH}} automatically)
+4. Write System/user-profile.yaml from session data (an existing profile is preserved; only missing fields merge in additively)
+5. Write System/pillars.yaml from pillars (an existing pillars.yaml is preserved as-is)
+6. Update CLAUDE.md User Profile section (bounded by marker comments; created if missing)
+7. Setup System/.mcp.json (replace {{VAULT_PATH}} automatically; an existing config is merged into, never overwritten)
 8. Delete session file on success
+
+Finalize is safe to run against a vault that already has content (for example one adopted from Dex Desktop): existing config files are never overwritten, and the summary reports them under `files_preserved`.
 
 The MCP returns a summary of what was created (folders, files, configs).
 
@@ -655,6 +657,16 @@ After updating, all Dex skills will work automatically. For now, you can continu
 
 ---
 
+### Adopted Vault Check (do this before the completion message)
+
+Call `check_onboarding_complete()` and look at the `adopted` field (it mirrors `"adopted": true` in the `System/.onboarding-complete` marker, written by the adopt-existing-vault path). If the vault is adopted, the user already has real content, so Phase 2 must not write anything proactively:
+
+- Do NOT auto-create or overwrite the weekly plan. Propose it instead: offer to draft one from their calendar and write it only if they say yes.
+- Do NOT auto-create person pages. List the frequent contacts you found and propose each page individually; create only the ones they approve.
+- Adjust the completion message below: replace the "I'm going to analyze... and create..." promises with "I can suggest a weekly plan and person pages, one item at a time, and nothing gets written without your OK."
+
+Read-only analysis (counting meetings, finding frequent contacts) is fine either way. The `/getting-started` skill applies the same gate internally.
+
 ### Completion Message
 
 Say: "✓ **Your workspace is ready, [Name]!**
@@ -695,6 +707,7 @@ This takes about 2 minutes and shows you what Dex can really do.
 - The skill will check for `pre_analysis_deferred: true` flag in `.onboarding-complete`
 - If found, it will run the full calendar/Granola analysis NOW
 - This includes the dramatic reveal showing meetings, contacts, and auto-created artifacts
+- On adopted vaults (`adopted: true` in the marker) the skill suppresses automatic creation and proposes each item instead
 - Much better UX than blocking during finalization
 
 **If no:** 
