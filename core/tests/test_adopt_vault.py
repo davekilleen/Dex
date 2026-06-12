@@ -462,6 +462,152 @@ def test_partial_scaffolding_collisions_skipped_and_reported(tmp_path: Path):
 
 
 # ---------------------------------------------------------------------------
+# C-F1: a refusal must not poison its own log so a second run adopts it
+# ---------------------------------------------------------------------------
+
+
+def test_refused_unrecognizable_folder_stays_refused_on_rerun(tmp_path: Path):
+    """Twice-run unrecognizable folder: exit 2 both times, never adopted.
+
+    The per-vault log is written before the mode decision, so a refusal logs
+    run-start. If prior-log existence alone forced adopt mode, the documented
+    retry would adopt a folder the first run refused. Re-running must still
+    refuse, with no marker and no overlay landed.
+    """
+    target = tmp_path / "random-folder"
+    (target / "notes").mkdir(parents=True)
+    (target / "a.txt").write_text("hello\n", encoding="utf-8")
+    archive, checksum = make_archive(tmp_path)
+    home = tmp_path / "home"
+    before = snapshot(target)
+
+    first = run_adopt(target, str(archive), checksum, home)
+    assert first.returncode == 2, first.stdout + first.stderr
+
+    second = run_adopt(target, str(archive), checksum, home)
+    assert second.returncode == 2, second.stdout + second.stderr
+    assert "does not look like a Dex vault" in second.stdout
+
+    # No overlay, no marker, content byte-identical after the second run
+    assert snapshot(target) == before
+    assert not (target / "System" / ".onboarding-complete").exists()
+    assert not (target / "core").exists()
+    assert not (target / "install.sh").exists()
+
+
+def test_refused_dex_core_checkout_stays_refused_on_rerun(tmp_path: Path):
+    """Twice-run dex-core checkout: exit 2 both times, never adopted."""
+    target = tmp_path / "dex-core-clone"
+    (target / "core" / "mcp").mkdir(parents=True)
+    (target / "core" / "paths.py").write_text("# paths\n", encoding="utf-8")
+    (target / "core" / "mcp" / "onboarding_server.py").write_text("# server\n", encoding="utf-8")
+    (target / "install.sh").write_text("#!/bin/bash\n", encoding="utf-8")
+    archive, checksum = make_archive(tmp_path)
+    home = tmp_path / "home"
+    before = snapshot(target)
+
+    first = run_adopt(target, str(archive), checksum, home)
+    assert first.returncode == 2, first.stdout + first.stderr
+
+    second = run_adopt(target, str(archive), checksum, home)
+    assert second.returncode == 2, second.stdout + second.stderr
+    assert "already contains the open-source Dex code" in second.stdout
+
+    assert snapshot(target) == before
+    assert not (target / "System" / ".onboarding-complete").exists()
+    # The refusal log carries no copy action that could flip mode to adopt
+    log_file = log_path_from_output(second.stdout)
+    actions = read_log_actions(log_file)
+    assert not any(r["action"] == "copy" for r in actions)
+
+
+# ---------------------------------------------------------------------------
+# C-F2: an interrupted (torn) copy is repaired, not reported as "kept yours"
+# ---------------------------------------------------------------------------
+
+
+def test_torn_temp_copy_is_replaced_not_kept(tmp_path: Path):
+    """A leftover *.dex-adopt-tmp from an interrupted copy is cleaned and the
+    file is freshly copied, rather than the torn fragment surviving and a
+    later existence-only check reporting the vault complete."""
+    vault = make_desktop_vault(tmp_path)
+    # Simulate an interruption mid-copy of requirements.txt: the temp file
+    # exists with truncated content and there is no completed-copy marker for
+    # it (a fresh adopt run, no prior log).
+    torn = vault / "requirements.txt.dex-adopt-tmp"
+    torn.write_text("pyyam", encoding="utf-8")  # truncated, not the full release content
+    archive, checksum = make_archive(tmp_path)
+
+    result = run_adopt(vault, str(archive), checksum, tmp_path / "home")
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    # The torn temp is gone and the final file holds the full release content
+    assert not torn.exists()
+    final = vault / "requirements.txt"
+    assert final.exists()
+    assert final.read_text(encoding="utf-8") == RELEASE_FILES["requirements.txt"]
+    # It was copied, not reported as a kept collision
+    assert "kept yours: requirements.txt" not in result.stdout
+    actions = read_log_actions(log_path_from_output(result.stdout))
+    assert any(r["action"] == "repair" and r["path"] == "requirements.txt" for r in actions)
+    assert any(r["action"] == "copy" and r["path"] == "requirements.txt" for r in actions)
+
+
+# ---------------------------------------------------------------------------
+# C-F7: verify mode honors --tag and refuses to silently upgrade
+# ---------------------------------------------------------------------------
+
+
+def test_rerun_with_different_tag_reports_no_inplace_upgrade(tmp_path: Path):
+    """Re-running an adopted vault with a newer tag must say plainly that a
+    different release is already adopted and adoption does not upgrade, rather
+    than silently no-opping while the marker still names the old tag."""
+    vault = make_desktop_vault(tmp_path)
+    archive, checksum = make_archive(tmp_path)
+    home = tmp_path / "home"
+
+    first = run_adopt(vault, str(archive), checksum, home)
+    assert first.returncode == 0, first.stdout + first.stderr
+    after_first = snapshot(vault)
+
+    # Re-run with a DIFFERENT tag. A bogus archive URL also proves nothing is
+    # fetched: the tag-mismatch branch must short-circuit before any download.
+    env = dict(os.environ)
+    env["HOME"] = str(home)
+    env.pop("DEX_ADOPT_LOG_DIR", None)
+    env.pop("DEX_ADOPT_ARCHIVE_URL", None)
+    env.pop("DEX_ADOPT_REPO", None)
+    second = subprocess.run(
+        [
+            "bash",
+            str(SCRIPT),
+            "--vault",
+            str(vault),
+            "--tag",
+            "v9.9.10-test",  # different from TAG
+            "--checksum",
+            checksum,
+            "--archive-url",
+            "file:///nonexistent/never-fetched.tar.gz",
+            "--no-install",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+        env=env,
+    )
+
+    assert second.returncode == 0, second.stdout + second.stderr
+    assert "different release" in second.stdout
+    assert "does not upgrade" in second.stdout
+    assert TAG in second.stdout  # names the already-adopted release
+    # Nothing changed and the marker still names the original tag
+    assert snapshot(vault) == after_first
+    marker = json.loads((vault / "System" / ".onboarding-complete").read_text(encoding="utf-8"))
+    assert marker["adopt_release_tag"] == TAG
+
+
+# ---------------------------------------------------------------------------
 # Manifest boundaries and the adoption log
 # ---------------------------------------------------------------------------
 
@@ -590,6 +736,77 @@ def test_prefill_partial_profile_asks_only_missing_steps(adopted_marker_vault: P
     assert sorted(session["completed_steps"]) == [1, 2, 3, 4, 6]
     assert session["current_step"] == 5
     assert "missing steps" in response["message"] or "Ask" in response["message"]
+
+
+def test_prefill_ceo_without_group_derives_leadership(adopted_marker_vault: Path):
+    """C-F4: a profile with role CEO and no role_group must derive 'leadership'
+    via the ROLES table, never hardcode 'product'. The derived group must not
+    be planted as a wrong guess into the preserved profile on finalize."""
+    profile_path = adopted_marker_vault / "System" / "user-profile.yaml"
+    profile_path.write_text(
+        "name: Chief Exec\n"
+        "role: CEO\n"
+        "company: Acme\n"
+        "company_size: scaling\n"
+        "email_domain: acme.example\n",
+        encoding="utf-8",
+    )
+    # Populated pillars so all six steps pre-fill and finalize can run.
+    (adopted_marker_vault / "System" / "pillars.yaml").write_text(
+        "pillars:\n"
+        "  - id: vision\n"
+        "    name: Vision\n"
+        "  - id: growth\n"
+        "    name: Growth\n",
+        encoding="utf-8",
+    )
+
+    response = _call_tool("start_onboarding_session")
+
+    assert response["success"] is True
+    session = response["data"]
+    assert session["prefilled"] is True
+    assert session["data"]["role"] == "CEO"
+    # Derived from ROLES, not the old hardcoded 'product'
+    assert session["data"]["role_group"] == "leadership"
+
+    # Finalize preserves the profile; if a group is written it must be the
+    # correct one, never the wrong 'product' guess.
+    finalize = _call_tool("finalize_onboarding")
+    assert finalize["success"] is True
+
+    import yaml
+
+    saved = yaml.safe_load(profile_path.read_text(encoding="utf-8"))
+    assert saved["role"] == "CEO"
+    assert saved.get("role_group", "leadership") == "leadership"
+    assert saved.get("role_group") != "product"
+
+
+def test_filling_prefilled_gap_does_not_point_at_completed_step(adopted_marker_vault: Path):
+    """C-F8: when prefill leaves only step 5 open (completed [1,2,3,4,6]),
+    answering step 5 must advance current_step to the lowest open step (7,
+    since none remain), never to an already-completed step like 6 that an
+    agent would then wrongly re-interview."""
+    # Fixture pillars.yaml is empty, so prefill completes [1,2,3,4,6].
+    start = _call_tool("start_onboarding_session")
+    assert start["success"] is True
+    assert sorted(start["data"]["completed_steps"]) == [1, 2, 3, 4, 6]
+    assert start["data"]["current_step"] == 5
+
+    # Answer the one genuinely-open step.
+    step5 = _call_tool(
+        "validate_and_save_step",
+        {"step_number": 5, "step_data": {"pillars": ["Pillar One", "Pillar Two"]}},
+    )
+    assert step5["success"] is True
+
+    status = _call_tool("get_onboarding_status")
+    completed = status["data"]
+    # All six steps complete now; current_step points past the interview, not
+    # back at the already-completed step 6.
+    assert onboarding.load_session()["current_step"] == 7
+    assert completed["ready_to_finalize"] is True
 
 
 def test_absent_profile_falls_back_to_interview_with_adopted_flag(

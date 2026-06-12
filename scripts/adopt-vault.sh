@@ -82,10 +82,46 @@ say() {
 }
 
 json_escape() {
-    # Escape backslashes and double quotes for JSON string values.
+    # Escape backslashes, double quotes, and control characters (newline,
+    # carriage return, tab) for JSON string values. Without escaping the
+    # control characters a newline-bearing name could forge extra log records
+    # or emit invalid JSONL.
     _s=${1//\\/\\\\}
     _s=${_s//\"/\\\"}
+    _s=${_s//$'\n'/\\n}
+    _s=${_s//$'\r'/\\r}
+    _s=${_s//$'\t'/\\t}
     printf '%s' "$_s"
+}
+
+redact_url() {
+    # Strip any userinfo (user:token@) from an http(s) URL before logging, so
+    # embedded credentials never land in the adoption log the guide tells users
+    # to attach to public issues. Only an '@' inside the authority (before the
+    # first '/', '?', or '#') is userinfo; an '@' in the path or query is left
+    # alone. Non-URL inputs are returned unchanged.
+    case "$1" in
+        http://*|https://*)
+            _scheme=${1%%://*}
+            _rest=${1#*://}
+            # Authority is everything up to the first path/query/fragment char.
+            _authority=${_rest%%[/?#]*}
+            _tail=${_rest#"$_authority"}
+            case "$_authority" in
+                *@*)
+                    # Drop everything up to and including the userinfo '@'.
+                    _authority=${_authority#*@}
+                    printf '%s://%s%s' "$_scheme" "$_authority" "$_tail"
+                    ;;
+                *)
+                    printf '%s' "$1"
+                    ;;
+            esac
+            ;;
+        *)
+            printf '%s' "$1"
+            ;;
+    esac
 }
 
 log_event() {
@@ -162,6 +198,18 @@ if [ -z "$VAULT" ] || [ -z "$TAG" ] || [ -z "$CHECKSUM" ]; then
     exit 64
 fi
 
+# Validate TAG against a sane ref pattern up front. An unsafe tag (quotes,
+# backslashes, control characters) could otherwise produce an invalid
+# completion marker via the python-absent printf branch, which would later make
+# vault_is_adopted() fail to parse and silently disable Phase 2 gating.
+case "$TAG" in
+    *[!A-Za-z0-9._/-]*|"")
+        say "The release tag contains unexpected characters."
+        say "Tags may use letters, digits, dot, underscore, slash, and hyphen only."
+        exit 64
+        ;;
+esac
+
 CHECKSUM=$(printf '%s' "$CHECKSUM" | tr 'A-F' 'a-f')
 case "$CHECKSUM" in
     *[!0-9a-f]*)
@@ -183,13 +231,20 @@ if [ ! -d "$VAULT" ]; then
     say "Nothing was changed. Check the path and try again."
     exit 2
 fi
-VAULT=$(cd "$VAULT" && pwd)
+VAULT=$(cd "$VAULT" && pwd -P) || { say "Cannot enter $VAULT (permission?). Nothing was changed."; exit 2; }
+if [ -z "$VAULT" ]; then
+    say "Could not resolve the vault path. Nothing was changed."
+    exit 2
+fi
 
-# Resolve the log location and make sure it lives outside the vault.
+# Resolve the log location and make sure it lives outside the vault. A relative,
+# '..'-reentrant, or symlinked DEX_ADOPT_LOG_DIR could otherwise slip a log
+# inside the vault, so the guard runs against the physically resolved path.
 case "$LOG_DIR" in
-    "$VAULT"|"$VAULT"/*)
-        say "The adoption log location ($LOG_DIR) is inside the vault."
-        say "The log must live outside your vault. Unset DEX_ADOPT_LOG_DIR or point it elsewhere."
+    /*) ;;
+    *)
+        say "The adoption log location ($LOG_DIR) is not an absolute path."
+        say "Set DEX_ADOPT_LOG_DIR to an absolute path outside your vault."
         exit 64
         ;;
 esac
@@ -197,11 +252,28 @@ mkdir -p "$LOG_DIR" || {
     say "Could not create the log folder at $LOG_DIR. Nothing was changed."
     exit 64
 }
+LOG_DIR=$(cd "$LOG_DIR" && pwd -P) || {
+    say "Could not resolve the log folder at $LOG_DIR. Nothing was changed."
+    exit 64
+}
+case "$LOG_DIR" in
+    "$VAULT"|"$VAULT"/*)
+        say "The adoption log location resolves inside the vault ($LOG_DIR)."
+        say "The log must live outside your vault. Unset DEX_ADOPT_LOG_DIR or point it elsewhere."
+        exit 64
+        ;;
+esac
 VAULT_KEY=$(printf '%s' "$VAULT" | cksum | awk '{print $1}')
 LOG_FILE="$LOG_DIR/$(basename "$VAULT")-$VAULT_KEY.jsonl"
-HAD_PRIOR_LOG=0
-if [ -f "$LOG_FILE" ]; then
-    HAD_PRIOR_LOG=1
+# Evidence that a previous run actually began overlaying files into THIS vault,
+# not merely that a log file exists. A preflight refusal (unrecognized target,
+# or a dex-core checkout) writes run-start and refuse lines but never a "copy"
+# action, so it must not flip later runs into adopt mode and adopt the refused
+# folder. Only a recorded copy proves an overlay started; fetch and checksum
+# failures leave the vault untouched, so shape-based preflight stays correct.
+HAD_PRIOR_OVERLAY=0
+if [ -f "$LOG_FILE" ] && grep -q '"action":"copy"' "$LOG_FILE" 2>/dev/null; then
+    HAD_PRIOR_OVERLAY=1
 fi
 
 log_event "run-start" "tag=$TAG vault=$VAULT"
@@ -231,11 +303,11 @@ elif [ -e "$VAULT/System/routines" ]; then
     # as little as one content folder) are accepted here too.
     MODE="adopt"
     log_event "preflight" "desktop-vault-recognized" "System/routines"
-elif [ "$HAD_PRIOR_LOG" -eq 1 ]; then
-    # A previous adoption attempt was recorded for this exact folder, so a
+elif [ "$HAD_PRIOR_OVERLAY" -eq 1 ]; then
+    # A previous run actually copied files into this exact folder, so a
     # partially copied overlay must not be mistaken for a dex-core checkout.
     MODE="adopt"
-    log_event "preflight" "prior-adoption-log-found"
+    log_event "preflight" "prior-overlay-recorded"
 elif [ -f "$VAULT/core/paths.py" ] && [ -f "$VAULT/core/mcp/onboarding_server.py" ] && [ -f "$VAULT/install.sh" ]; then
     say ""
     say "This folder already contains the open-source Dex code itself (a dex-core"
@@ -283,7 +355,44 @@ missing_required() {
     printf '%s' "$_missing"
 }
 
+marker_adopt_tag() {
+    # Read adopt_release_tag from the completion marker, empty if unreadable.
+    _marker="$VAULT/$MARKER_REL"
+    [ -f "$_marker" ] || { printf '%s' ""; return 0; }
+    if command -v python3 >/dev/null 2>&1; then
+        ADOPT_MARKER="$_marker" python3 - <<'PYEOF' 2>/dev/null || printf '%s' ""
+import json
+import os
+
+try:
+    with open(os.environ["ADOPT_MARKER"], "r", encoding="utf-8") as fh:
+        data = json.load(fh)
+    print(data.get("adopt_release_tag", "") if isinstance(data, dict) else "")
+except Exception:
+    print("")
+PYEOF
+    else
+        # Best-effort extraction without python3.
+        grep -o '"adopt_release_tag"[[:space:]]*:[[:space:]]*"[^"]*"' "$_marker" 2>/dev/null \
+            | head -n1 | sed 's/.*:[[:space:]]*"\([^"]*\)".*/\1/'
+    fi
+}
+
 if [ "$MODE" = "verify" ]; then
+    # Adoption pins one exact release and does not upgrade in place. If the
+    # marker already names a different release, say so plainly and stop rather
+    # than silently no-opping while reporting success.
+    ADOPTED_TAG=$(marker_adopt_tag)
+    if [ -n "$ADOPTED_TAG" ] && [ "$ADOPTED_TAG" != "$TAG" ]; then
+        say ""
+        say "This vault is already adopted at a different release ($ADOPTED_TAG),"
+        say "and the command you ran names $TAG. Adoption does not upgrade an"
+        say "already-adopted vault in place, so nothing was changed."
+        say "To move to a newer release, follow the update steps in the Dex docs"
+        say "(docs/continue-from-dex-desktop.md) rather than re-running adoption."
+        log_event "verify" "tag-mismatch adopted=$ADOPTED_TAG requested=$TAG"
+        exit 0
+    fi
     MISSING=$(missing_required)
     if [ -z "$MISSING" ]; then
         say ""
@@ -334,10 +443,12 @@ if [ -z "$ARCHIVE_URL" ]; then
     ARCHIVE_URL="https://github.com/$REPO_SLUG/archive/refs/tags/$TAG.tar.gz"
 fi
 ARCHIVE_FILE="$STAGING/release.tar.gz"
+# What gets logged: any embedded credentials are stripped first.
+ARCHIVE_URL_LOG=$(redact_url "$ARCHIVE_URL")
 
 say ""
 say "Fetching the sealed Dex release ($TAG)..."
-log_event "fetch" "starting" "$ARCHIVE_URL"
+log_event "fetch" "starting" "$ARCHIVE_URL_LOG"
 
 FETCH_OK=0
 case "$ARCHIVE_URL" in
@@ -364,10 +475,10 @@ case "$ARCHIVE_URL" in
 esac
 
 if [ "$FETCH_OK" -ne 1 ] || [ ! -s "$ARCHIVE_FILE" ]; then
-    log_event "fetch" "failed" "$ARCHIVE_URL"
+    log_event "fetch" "failed" "$ARCHIVE_URL_LOG"
     fail 3 "The download did not complete. Your vault was not touched. Check your internet connection and run the same command again; it picks up where it left off."
 fi
-log_event "fetch" "complete" "$ARCHIVE_URL"
+log_event "fetch" "complete" "$ARCHIVE_URL_LOG"
 
 # Verify the seal BEFORE expanding or executing anything from the archive.
 say "Checking the seal (SHA-256 checksum)..."
@@ -441,6 +552,17 @@ copy_one() {
 
     _src="$RELEASE_ROOT/$_rel"
     _dst="$VAULT/$_rel"
+    _tmp="$_dst.dex-adopt-tmp"
+
+    # A leftover temp file means a previous copy was interrupted mid-write
+    # before its atomic rename. It is never a user file (the suffix is ours),
+    # so delete it: a file under the FINAL name then always means a real user
+    # file or a fully-copied release file, never a torn fragment.
+    if [ -e "$_tmp" ] || [ -L "$_tmp" ]; then
+        rm -f "$_tmp"
+        log_event "repair" "removed interrupted temporary copy" "$_rel"
+    fi
+
     if [ -e "$_dst" ] || [ -L "$_dst" ]; then
         SKIPPED=$((SKIPPED + 1))
         log_event "skip-collision" "already exists, left untouched" "$_rel"
@@ -455,9 +577,18 @@ copy_one() {
         log_event "error" "could not create folder" "$_parent"
         fail 6 "Could not create a folder at $_parent. Your existing files are untouched. Run the same command again to finish the remaining copies."
     fi
-    if ! cp -p "$_src" "$_dst"; then
+    # Copy to a temp name then atomically rename into place, so an interruption
+    # mid-copy can never leave a torn file under the final name that later
+    # passes the existence-only collision and verification checks.
+    if ! cp -p "$_src" "$_tmp"; then
+        rm -f "$_tmp"
         log_event "error" "copy failed" "$_rel"
         fail 6 "Could not copy $_rel. Your existing files are untouched. Run the same command again to finish the remaining copies."
+    fi
+    if ! mv "$_tmp" "$_dst"; then
+        rm -f "$_tmp"
+        log_event "error" "rename failed" "$_rel"
+        fail 6 "Could not place $_rel. Your existing files are untouched. Run the same command again to finish the remaining copies."
     fi
     COPIED=$((COPIED + 1))
     log_event "copy" "added" "$_rel"
@@ -570,18 +701,30 @@ log_event "final-verify" "complete"
 # Optional install step (creates .venv, .mcp.json, node modules; additive)
 # ---------------------------------------------------------------------------
 
-if [ "$RUN_INSTALL" -eq 1 ] && [ -f "$VAULT/install.sh" ]; then
-    say ""
-    say "Finishing setup (install step)..."
-    log_event "install" "starting"
-    if (cd "$VAULT" && bash install.sh < /dev/null); then
-        log_event "install" "succeeded"
-    else
-        log_event "install" "failed"
+if [ "$RUN_INSTALL" -eq 1 ]; then
+    # Run the checksum-verified staged installer explicitly, with the vault as
+    # the working directory. The vault's own install.sh may be a pre-existing
+    # file that collided (and was therefore skipped, not overwritten), so
+    # running it by relative name could execute unverified code. The staged
+    # copy under RELEASE_ROOT is the one we just verified. NOTE: install.sh
+    # itself fetches dependencies that the archive checksum does not cover.
+    _installer="$RELEASE_ROOT/install.sh"
+    if [ ! -f "$_installer" ] && [ -f "$VAULT/install.sh" ]; then
+        _installer="$VAULT/install.sh"
+    fi
+    if [ -f "$_installer" ]; then
         say ""
-        say "The setup step did not finish. Your notes are untouched and the adoption"
-        say "itself is complete. To finish setup, open Terminal in your vault folder"
-        say "and run: bash install.sh"
+        say "Finishing setup (install step)..."
+        log_event "install" "starting"
+        if (cd "$VAULT" && bash "$_installer" < /dev/null); then
+            log_event "install" "succeeded"
+        else
+            log_event "install" "failed"
+            say ""
+            say "The setup step did not finish. Your notes are untouched and the adoption"
+            say "itself is complete. To finish setup, open Terminal in your vault folder"
+            say "and run: bash install.sh"
+        fi
     fi
 fi
 

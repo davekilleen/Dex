@@ -31,8 +31,10 @@ The first time you talk to Dex it will confirm your name, role, and pillars from
 
 It fetches a sealed copy of open-source Dex pinned to one exact release, checks the seal (a SHA-256 checksum) before opening anything, and only then copies in the machinery: the engine code, the skills, and the configuration templates. It places these around your folders, never inside your content folders, and it never modifies or deletes a file that already exists. If a file would collide with one of yours, yours wins and the skip is recorded. Every action is written to a log that lives outside your vault, so there is always an exact record of what was added.
 
+By default the command also runs the project installer (`install.sh`) at the end to create the Python environment and configuration. You can skip that with `--no-install` and run it yourself later. Note that the installer fetches its own dependencies from the internet, and those downloads are not covered by the release seal the command checks, so run adoption on a network you trust.
+
 ## If something goes wrong
 
 Run the same command again. It is safe to repeat: it checks what is already in place, fetches a fresh verified copy only if something is missing, and completes only the missing pieces. It never duplicates and never overwrites your content. If the download fails or the seal does not match, nothing is copied at all and your vault is left exactly as it was.
 
-If it still does not work after a second try, your notes are fine and untouched. Open an issue on the Dex GitHub repository and include the adoption log it printed at the end.
+If it still does not work after a second try, your notes are fine and untouched. Open an issue on the Dex GitHub repository and include the adoption log it printed at the end. Before you attach the log publicly, glance at it: it records the release archive location, and if you supplied a custom archive URL with credentials in it, remove them first. The default GitHub URL has nothing sensitive in it.

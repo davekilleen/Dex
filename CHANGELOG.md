@@ -29,6 +29,14 @@ All notable changes to Dex will be documented in this file.
 * On adopted vaults, onboarding pre-fills from your existing `System/user-profile.yaml` and `System/pillars.yaml`, so you are never re-interviewed for answers your vault already holds; if that config is absent it falls back to the standard interview, and Phase 2 stays proposal-only either way
 * New guide for people arriving from the desktop app: `docs/continue-from-dex-desktop.md`
 
+**Hardening from review of the adoption path:**
+
+* A folder the command refuses (one that does not look like a Dex vault, or one that is already the open-source code itself) stays refused when you run the command again. Previously the refusal could leave a trace that made a second identical run adopt the folder it had just declined
+* If a copy is interrupted partway through, the half-written file can no longer be mistaken for a finished one. Files are now written under a temporary name and moved into place only once complete, and any leftover fragment from an interrupted run is cleaned up and recopied on the next run
+* Re-running adoption with a different release tag now says plainly that the vault is already adopted at another release and that adoption does not upgrade in place, instead of quietly doing nothing while reporting success
+* When onboarding updates `CLAUDE.md`, a section of your own notes sitting between the profile heading and the next separator is preserved rather than overwritten, and your role group is read from your role instead of being guessed
+* The adoption log no longer records credentials embedded in a custom archive URL, the release tag is validated up front, and the verified copy of the installer is the one that runs
+
 ---
 
 ## [1.19.0] — Semantic Search Now Covers Your Entire Vault (2026-03-23)
