@@ -373,52 +373,125 @@ def create_initial_files(base_path: Path, session_data: Dict) -> List[str]:
     
     return created
 
-def create_user_profile(session_data: Dict) -> bool:
-    """Create user-profile.yaml from session data"""
+def _profile_value_missing(value) -> bool:
+    """True when a profile value is absent or empty (None or empty string)"""
+    return value is None or value == ''
+
+def create_user_profile(session_data: Dict) -> tuple[bool, str]:
+    """Create user-profile.yaml from session data.
+
+    Existing profiles are preserved: a pre-populated vault (for example one
+    adopted from Dex Desktop) keeps its file byte-identical. Fields that are
+    missing or empty in the existing profile are filled in additively from
+    session data; existing values are never overwritten or dropped.
+
+    Returns (success, outcome) where outcome is 'created', 'preserved',
+    or 'merged: <fields>'.
+    """
     try:
-        # Load template
+        data = session_data['data']
+        comm = data.get('communication', {})
+        session_fields = {
+            'name': data.get('name', ''),
+            'role': data.get('role', ''),
+            'role_group': data.get('role_group', ''),
+            'company': data.get('company', ''),
+            'company_size': data.get('company_size', ''),
+            'email_domain': data.get('email_domain', ''),
+        }
+        session_communication = {
+            'formality': comm.get('formality', 'professional_casual'),
+            'directness': comm.get('directness', 'balanced'),
+            'career_level': comm.get('career_level', 'mid'),
+            'coaching_style': comm.get('coaching_style', 'collaborative'),
+        }
+
+        if USER_PROFILE_FILE.exists():
+            if not yaml:
+                logger.warning("yaml unavailable, preserving existing user-profile.yaml as-is")
+                return True, 'preserved'
+
+            with open(USER_PROFILE_FILE, 'r') as f:
+                existing = yaml.safe_load(f)
+            if not isinstance(existing, dict):
+                # Unreadable or non-mapping profile: never overwrite it
+                logger.warning("Existing user-profile.yaml is not a mapping, preserving as-is")
+                return True, 'preserved'
+
+            # Additive merge: only fill fields the existing profile lacks
+            merged_fields = []
+            for key, value in session_fields.items():
+                if _profile_value_missing(existing.get(key)) and not _profile_value_missing(value):
+                    existing[key] = value
+                    merged_fields.append(key)
+            if data.get('obsidian_mode') and _profile_value_missing(existing.get('obsidian_mode')):
+                existing['obsidian_mode'] = True
+                merged_fields.append('obsidian_mode')
+            existing_comm = existing.get('communication')
+            if isinstance(existing_comm, dict):
+                for key, value in session_communication.items():
+                    if _profile_value_missing(existing_comm.get(key)):
+                        existing_comm[key] = value
+                        merged_fields.append(f'communication.{key}')
+            elif _profile_value_missing(existing_comm):
+                existing['communication'] = session_communication
+                merged_fields.append('communication')
+
+            if not merged_fields:
+                # Nothing to add: leave the file byte-identical
+                return True, 'preserved'
+
+            with open(USER_PROFILE_FILE, 'w') as f:
+                yaml.dump(existing, f, default_flow_style=False, sort_keys=False)
+            return True, 'merged: ' + ', '.join(merged_fields)
+
+        # Fresh vault: create from template
+        if not yaml:
+            logger.error("yaml unavailable, cannot create user-profile.yaml")
+            return False, 'error'
         if not USER_PROFILE_TEMPLATE.exists():
             logger.error("user-profile-template.yaml not found")
-            return False
-        
+            return False, 'error'
+
         with open(USER_PROFILE_TEMPLATE, 'r') as f:
-            profile = yaml.safe_load(f) if yaml else {}
-        
-        # Update with session data
-        data = session_data['data']
-        profile['name'] = data.get('name', '')
-        profile['role'] = data.get('role', '')
-        profile['role_group'] = data.get('role_group', '')
-        profile['company'] = data.get('company', '')
-        profile['company_size'] = data.get('company_size', '')
-        profile['email_domain'] = data.get('email_domain', '')
-        
+            profile = yaml.safe_load(f)
+
+        profile.update(session_fields)
+
         # Update Obsidian mode (defaults to false)
         profile['obsidian_mode'] = data.get('obsidian_mode', False)
-        
+
         # Update communication preferences
-        comm = data.get('communication', {})
         if 'communication' not in profile:
             profile['communication'] = {}
-        profile['communication']['formality'] = comm.get('formality', 'professional_casual')
-        profile['communication']['directness'] = comm.get('directness', 'balanced')
-        profile['communication']['career_level'] = comm.get('career_level', 'mid')
-        profile['communication']['coaching_style'] = comm.get('coaching_style', 'collaborative')
-        
-        # Save
+        profile['communication'].update(session_communication)
+
         with open(USER_PROFILE_FILE, 'w') as f:
             yaml.dump(profile, f, default_flow_style=False, sort_keys=False)
-        
-        return True
+
+        return True, 'created'
     except Exception as e:
         logger.error(f"Error creating user profile: {e}")
-        return False
+        return False, 'error'
 
-def create_pillars_file(pillars: List[str]) -> bool:
-    """Create pillars.yaml from pillar list"""
+def create_pillars_file(pillars: List[str]) -> tuple[bool, str]:
+    """Create pillars.yaml from pillar list.
+
+    An existing pillars.yaml is preserved byte-identical: an adopted vault's
+    pillars are authoritative and never overwritten.
+
+    Returns (success, outcome) where outcome is 'created' or 'preserved'.
+    """
     try:
+        if PILLARS_FILE.exists():
+            return True, 'preserved'
+
+        if not yaml:
+            logger.error("yaml unavailable, cannot create pillars.yaml")
+            return False, 'error'
+
         pillars_data = {"pillars": []}
-        
+
         for pillar in pillars:
             pillar_id = pillar.lower().replace(' ', '-').replace('_', '-')
             pillars_data["pillars"].append({
@@ -426,75 +499,159 @@ def create_pillars_file(pillars: List[str]) -> bool:
                 "name": pillar,
                 "description": ""
             })
-        
+
         with open(PILLARS_FILE, 'w') as f:
             yaml.dump(pillars_data, f, default_flow_style=False, sort_keys=False)
-        
-        return True
+
+        return True, 'created'
     except Exception as e:
         logger.error(f"Error creating pillars file: {e}")
-        return False
+        return False, 'error'
+
+# Explicit markers bounding the CLAUDE.md region onboarding owns.
+# Content outside these markers is never touched.
+CLAUDE_MD_PROFILE_START = '<!-- DEX_USER_PROFILE_START -->'
+CLAUDE_MD_PROFILE_END = '<!-- DEX_USER_PROFILE_END -->'
+
+def build_claude_md_profile_section(session_data: Dict) -> str:
+    """Build the marker-bounded User Profile section for CLAUDE.md"""
+    data = session_data['data']
+    lines = [
+        CLAUDE_MD_PROFILE_START,
+        '## User Profile',
+        '',
+        '<!-- Updated during onboarding -->',
+        f"**Name:** {data.get('name', 'Not configured')}",
+        f"**Role:** {data.get('role', 'Not configured')}",
+        f"**Company Size:** {data.get('company_size', 'Not configured')}",
+        f"**Working Style:** {data.get('communication', {}).get('formality', 'Not configured')}",
+        '**Pillars:**',
+    ]
+    for pillar in data.get('pillars', []):
+        lines.append(f"- {pillar}")
+    lines.append(CLAUDE_MD_PROFILE_END)
+    return '\n'.join(lines)
 
 def update_claude_md(session_data: Dict) -> bool:
-    """Update CLAUDE.md User Profile section"""
-    try:
-        if not CLAUDE_MD.exists():
-            logger.error("CLAUDE.md not found")
-            return False
-        
-        content = CLAUDE_MD.read_text()
-        data = session_data['data']
-        
-        # Find and replace User Profile section
-        profile_section = f"""## User Profile
+    """Update the CLAUDE.md User Profile section.
 
-<!-- Updated during onboarding -->
-**Name:** {data.get('name', 'Not configured')}
-**Role:** {data.get('role', 'Not configured')}
-**Company Size:** {data.get('company_size', 'Not configured')}
-**Working Style:** {data.get('communication', {}).get('formality', 'Not configured')}
-**Pillars:**
-"""
-        for pillar in data.get('pillars', []):
-            profile_section += f"- {pillar}\n"
-        
-        # Replace between "## User Profile" and next "---"
-        pattern = r'## User Profile.*?---'
-        replacement = profile_section + "\n---"
-        content = re.sub(pattern, replacement, content, flags=re.DOTALL)
-        
+    The replaced region is bounded by explicit marker comments, so user
+    content outside the markers is never touched. A file without markers
+    (legacy template or user-edited) gets markers added around only the
+    replaced or inserted region. A missing CLAUDE.md is created.
+    """
+    try:
+        profile_section = build_claude_md_profile_section(session_data)
+
+        if not CLAUDE_MD.exists():
+            logger.info("CLAUDE.md not found, creating it with the profile section")
+            CLAUDE_MD.write_text(
+                "# Dex - Your Personal Knowledge System\n\n" + profile_section + "\n\n---\n"
+            )
+            return True
+
+        content = CLAUDE_MD.read_text()
+
+        if CLAUDE_MD_PROFILE_START in content and CLAUDE_MD_PROFILE_END in content:
+            # Marker-bounded replacement: only the marked region changes
+            pattern = re.escape(CLAUDE_MD_PROFILE_START) + r'.*?' + re.escape(CLAUDE_MD_PROFILE_END)
+            content = re.sub(pattern, lambda _m: profile_section, content, count=1, flags=re.DOTALL)
+        elif re.search(r'## User Profile.*?\n---', content, flags=re.DOTALL):
+            # Legacy template section without markers: replace it once and
+            # add markers around only the inserted region
+            content = re.sub(
+                r'## User Profile.*?\n---',
+                lambda _m: profile_section + '\n\n---',
+                content,
+                count=1,
+                flags=re.DOTALL,
+            )
+        else:
+            # No recognizable profile region: append a marker-bounded section,
+            # leaving every existing line untouched
+            if content and not content.endswith('\n'):
+                content += '\n'
+            content += '\n' + profile_section + '\n'
+
         CLAUDE_MD.write_text(content)
         return True
     except Exception as e:
         logger.error(f"Error updating CLAUDE.md: {e}")
         return False
 
-def setup_mcp_config(vault_path: Path) -> tuple[bool, Optional[str]]:
-    """Setup .mcp.json by replacing {{VAULT_PATH}} in example"""
+def setup_mcp_config(vault_path: Path) -> tuple[bool, Optional[str], Dict]:
+    """Setup System/.mcp.json from the example template.
+
+    A missing target is created from the example with {{VAULT_PATH}}
+    substituted. An existing target is merged additively: server entries the
+    user already has are never overwritten, only example servers that are
+    missing get added. The returned report states exactly what happened:
+    action is 'created', 'merged', or 'unchanged'.
+    """
+    report = {"action": "none", "merged_servers": [], "preserved_servers": []}
     try:
         if not MCP_CONFIG_EXAMPLE.exists():
-            return False, ".mcp.json.example not found"
-        
-        # Read example
+            return False, ".mcp.json.example not found", report
+
+        # Read example and replace {{VAULT_PATH}} with actual path
         with open(MCP_CONFIG_EXAMPLE, 'r') as f:
             config_content = f.read()
-        
-        # Replace {{VAULT_PATH}} with actual path
         config_content = config_content.replace('{{VAULT_PATH}}', str(vault_path))
-        
+
         # Validate JSON
         try:
-            json.loads(config_content)
+            example_config = json.loads(config_content)
         except json.JSONDecodeError as e:
-            return False, f"Invalid JSON after substitution: {e}"
-        
-        # Write to target
+            return False, f"Invalid JSON after substitution: {e}", report
+
+        if not MCP_CONFIG_TARGET.exists():
+            with open(MCP_CONFIG_TARGET, 'w') as f:
+                f.write(config_content)
+            report["action"] = "created"
+            return True, None, report
+
+        # Existing config: merge additively, never blind-overwrite
+        try:
+            existing_config = json.loads(MCP_CONFIG_TARGET.read_text())
+        except json.JSONDecodeError as e:
+            return False, f"Existing System/.mcp.json is not valid JSON, left untouched: {e}", report
+        if not isinstance(existing_config, dict):
+            return False, "Existing System/.mcp.json is not a JSON object, left untouched", report
+
+        existing_servers = existing_config.setdefault('mcpServers', {})
+        for server_name, server_config in example_config.get('mcpServers', {}).items():
+            if server_name in existing_servers:
+                report["preserved_servers"].append(server_name)
+            else:
+                existing_servers[server_name] = server_config
+                report["merged_servers"].append(server_name)
+
+        if not report["merged_servers"]:
+            # Nothing to add: leave the file byte-identical
+            report["action"] = "unchanged"
+            return True, None, report
+
         with open(MCP_CONFIG_TARGET, 'w') as f:
-            f.write(config_content)
-        
-        return True, None
+            json.dump(existing_config, f, indent=2)
+            f.write('\n')
+        report["action"] = "merged"
+        return True, None, report
     except Exception as e:
-        return False, str(e)
+        return False, str(e), report
+
+def vault_is_adopted() -> bool:
+    """Check whether the completion marker carries the adopted flag.
+
+    The adopt-existing-vault path writes the marker with "adopted": true.
+    Proactive Phase 2 vault writes are suppressed on adopted vaults.
+    """
+    try:
+        if MARKER_FILE.exists():
+            marker_data = json.loads(MARKER_FILE.read_text())
+            return bool(marker_data.get('adopted', False))
+    except Exception as e:
+        logger.warning(f"Could not read completion marker for adopted flag: {e}")
+    return False
 
 # ============================================================================
 # PRE-ANALYSIS HELPER FUNCTIONS
@@ -622,12 +779,19 @@ Based on your calendar and pillars, here are suggested priorities:
     
     return content
 
-def write_weekly_plan(content: str) -> bool:
-    """Write weekly plan to file"""
+def write_weekly_plan(content: str, force: bool = False) -> bool:
+    """Write weekly plan to file.
+
+    On adopted vaults this proactive Phase 2 write is suppressed unless
+    force=True: propose the plan to the user and write only on approval.
+    """
+    if vault_is_adopted() and not force:
+        logger.info("Adopted vault: weekly plan write suppressed, propose it to the user instead")
+        return False
     try:
         week_priorities_dir = BASE_DIR / '02-Week_Priorities'
         week_priorities_dir.mkdir(parents=True, exist_ok=True)
-        
+
         week_file = week_priorities_dir / 'Week_Priorities.md'
         week_file.write_text(content)
         return True
@@ -656,8 +820,17 @@ def get_frequent_attendees(events: List[Dict], limit: int = 3) -> List[Dict]:
     sorted_attendees = sorted(attendee_data.values(), key=lambda x: x['count'], reverse=True)
     return sorted_attendees[:limit]
 
-def create_person_page(contact: Dict, email_domain: str) -> bool:
-    """Create a person page, routing to Internal or External based on email domain"""
+def create_person_page(contact: Dict, email_domain: str, force: bool = False) -> bool:
+    """Create a person page, routing to Internal or External based on email domain.
+
+    On adopted vaults this proactive Phase 2 write is suppressed unless
+    force=True: propose each page to the user and create only on approval.
+    """
+    if vault_is_adopted() and not force:
+        logger.info(
+            f"Adopted vault: person page for {contact.get('name', 'unknown')} suppressed, propose it instead"
+        )
+        return False
     try:
         email = contact['email']
         name = contact['name']
@@ -826,6 +999,11 @@ async def handle_list_tools() -> list[types.Tool]:
                     "dry_run": {
                         "type": "boolean",
                         "description": "If true, show what would be created without actually creating anything. Used for QA testing.",
+                        "default": False
+                    },
+                    "adopted": {
+                        "type": "boolean",
+                        "description": "Mark this vault as adopted from an existing setup (for example Dex Desktop). Recorded in the completion marker and suppresses proactive Phase 2 writes.",
                         "default": False
                     }
                 }
@@ -1145,6 +1323,9 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[types.Text
         
         elif name == "finalize_onboarding":
             dry_run = arguments.get('dry_run', False)
+            # The adopted flag comes from the adopt-existing-vault path, either
+            # as an explicit argument or already present in a pre-written marker
+            adopted = bool(arguments.get('adopted', False)) or vault_is_adopted()
             session = load_session()
 
             if not session:
@@ -1205,13 +1386,27 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[types.Text
                 else:
                     already_exist_files.append('02-Week_Priorities/Week_Priorities.md')
 
-                would_create_files.append('System/user-profile.yaml')
-                would_create_files.append('System/pillars.yaml')
+                # Config files are preserved when they already exist, so the
+                # dry run must report them truthfully
+                if USER_PROFILE_FILE.exists():
+                    already_exist_files.append('System/user-profile.yaml')
+                else:
+                    would_create_files.append('System/user-profile.yaml')
+                if PILLARS_FILE.exists():
+                    already_exist_files.append('System/pillars.yaml')
+                else:
+                    would_create_files.append('System/pillars.yaml')
 
                 # Configs that would be updated
-                would_update_configs = ['CLAUDE.md (User Profile section)']
+                if CLAUDE_MD.exists():
+                    would_update_configs = ['CLAUDE.md (User Profile section)']
+                else:
+                    would_update_configs = ['CLAUDE.md (create with User Profile section)']
                 if MCP_CONFIG_EXAMPLE.exists():
-                    would_update_configs.append('System/.mcp.json')
+                    if MCP_CONFIG_TARGET.exists():
+                        would_update_configs.append('System/.mcp.json (merge missing servers into existing)')
+                    else:
+                        would_update_configs.append('System/.mcp.json')
 
                 # Build preview of user-profile.yaml content
                 data = session['data']
@@ -1240,7 +1435,8 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[types.Text
                     'email_domain': data.get('email_domain', ''),
                     'has_pillars': len(data.get('pillars', [])) > 0,
                     'phase2_completed': False,
-                    'pre_analysis_deferred': True
+                    'pre_analysis_deferred': True,
+                    'adopted': adopted
                 }
 
                 dry_run_summary = {
@@ -1269,6 +1465,7 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[types.Text
             summary = {
                 "folders_created": [],
                 "files_created": [],
+                "files_preserved": [],
                 "configs_updated": [],
                 "errors": []
             }
@@ -1284,17 +1481,25 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[types.Text
                 files = create_initial_files(BASE_DIR, session)
                 summary['files_created'].extend(files)
 
-                # 3. Create user-profile.yaml
+                # 3. Create or preserve user-profile.yaml
                 logger.info("Creating user-profile.yaml")
-                if yaml and create_user_profile(session):
-                    summary['files_created'].append('System/user-profile.yaml')
+                profile_ok, profile_outcome = create_user_profile(session)
+                if profile_ok:
+                    if profile_outcome == 'created':
+                        summary['files_created'].append('System/user-profile.yaml')
+                    else:
+                        summary['files_preserved'].append(f"System/user-profile.yaml ({profile_outcome})")
                 else:
                     summary['errors'].append("Could not create user-profile.yaml")
 
-                # 4. Create pillars.yaml
+                # 4. Create or preserve pillars.yaml
                 logger.info("Creating pillars.yaml")
-                if yaml and create_pillars_file(session['data']['pillars']):
-                    summary['files_created'].append('System/pillars.yaml')
+                pillars_ok, pillars_outcome = create_pillars_file(session['data']['pillars'])
+                if pillars_ok:
+                    if pillars_outcome == 'created':
+                        summary['files_created'].append('System/pillars.yaml')
+                    else:
+                        summary['files_preserved'].append(f"System/pillars.yaml ({pillars_outcome})")
                 else:
                     summary['errors'].append("Could not create pillars.yaml")
 
@@ -1305,11 +1510,17 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[types.Text
                 else:
                     summary['errors'].append("Could not update CLAUDE.md")
 
-                # 6. Setup MCP config
+                # 6. Setup MCP config (create, or merge into an existing one)
                 logger.info("Setting up .mcp.json")
-                success, error = setup_mcp_config(BASE_DIR)
+                success, error, mcp_report = setup_mcp_config(BASE_DIR)
                 if success:
-                    summary['configs_updated'].append('System/.mcp.json')
+                    if mcp_report['action'] == 'merged':
+                        merged = ', '.join(mcp_report['merged_servers'])
+                        summary['configs_updated'].append(f"System/.mcp.json (merged: {merged})")
+                    elif mcp_report['action'] == 'unchanged':
+                        summary['files_preserved'].append('System/.mcp.json (already configured)')
+                    else:
+                        summary['configs_updated'].append('System/.mcp.json')
                 else:
                     summary['errors'].append(f"MCP config error: {error}")
 
@@ -1322,7 +1533,8 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[types.Text
                     "email_domain": session['data'].get('email_domain', ''),
                     "has_pillars": len(session['data'].get('pillars', [])) > 0,
                     "phase2_completed": False,
-                    "pre_analysis_deferred": True  # Analysis moved to /getting-started for performance
+                    "pre_analysis_deferred": True,  # Analysis moved to /getting-started for performance
+                    "adopted": adopted  # True when this vault was adopted, gates Phase 2 writes
                 }
                 MARKER_FILE.write_text(json.dumps(marker_data, indent=2, cls=DateTimeEncoder))
                 logger.info("Completion marker created")
@@ -1332,10 +1544,12 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[types.Text
                     SESSION_FILE.unlink()
                     logger.info("Deleted session file")
 
-                result = create_success_response(
-                    summary,
+                completion_message = (
                     f"Onboarding complete! Created {len(folders)} folders, {len(summary['files_created'])} files"
                 )
+                if summary['files_preserved']:
+                    completion_message += f", preserved {len(summary['files_preserved'])} existing files"
+                result = create_success_response(summary, completion_message)
                 
             except Exception as e:
                 logger.error(f"Error during finalization: {e}")
@@ -1356,14 +1570,21 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[types.Text
             
             try:
                 marker_data = json.loads(MARKER_FILE.read_text())
-                completed_at = datetime.fromisoformat(marker_data['completed_at'])
-                age_days = (datetime.now() - completed_at).days
-                
+                completed_at_raw = marker_data.get('completed_at')
+                if completed_at_raw:
+                    completed_at = datetime.fromisoformat(completed_at_raw)
+                    age_days = (datetime.now() - completed_at).days
+                else:
+                    # Tolerate a minimal marker (for example one written by
+                    # the adopt-existing-vault path before finalize runs)
+                    age_days = 0
+
                 result = create_success_response({
                     "complete": True,
                     "age_days": age_days,
                     "is_new_vault": age_days <= 7,
                     "phase2_completed": marker_data.get('phase2_completed', False),
+                    "adopted": marker_data.get('adopted', False),
                     "user_name": marker_data.get('user_name', ''),
                     "role": marker_data.get('role', '')
                 })

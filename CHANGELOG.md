@@ -7,6 +7,22 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.20.0]: Onboarding Is Now Safe for Existing Vaults (2026-06-12)
+
+**Before:** Running onboarding against a vault that already had content was destructive. Finalization overwrote `System/user-profile.yaml`, `System/pillars.yaml`, and `System/.mcp.json` with fresh defaults, the dry run claimed it would create files that already existed, and the post-onboarding magic wrote a weekly plan and person pages into your vault without asking.
+
+**Now:** Onboarding treats an existing vault (for example one you bring over from Dex Desktop) as yours:
+
+* Existing `user-profile.yaml` and `pillars.yaml` are preserved byte for byte; only genuinely missing profile fields are filled in, and existing values are never dropped
+* The dry run reports existing config files truthfully as already existing
+* `CLAUDE.md` updates are bounded by explicit marker comments, so content outside the markers is never touched; a missing `CLAUDE.md` is created
+* `System/.mcp.json` merges missing servers into your existing config and reports exactly what merged; it never blind-overwrites
+* The completion marker (`System/.onboarding-complete`) supports an `adopted` flag; when set, proactive Phase 2 writes (weekly plan, auto-created person pages) are suppressed and offered as per-item proposals instead
+
+**Result:** You can point Dex at a vault you already have and onboarding scaffolds around your content instead of clobbering it. Fresh-vault onboarding is unchanged.
+
+---
+
 ## [1.19.0] — Semantic Search Now Covers Your Entire Vault (2026-03-23)
 
 ### 🔍 Semantic Search Now Covers Your Entire Vault
