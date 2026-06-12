@@ -4,6 +4,8 @@
 
 Companion to [Episode 8 of The Vibe PM Podcast](https://youtu.be/WaqgSvL-V10?si=b2Pfwf7I5rozWCo0) and the [full blog post](https://www.linkedin.com/pulse/your-ai-chief-staff-building-personal-operating-system-dave-killeen-yxnqe/).
 
+**Coming from the Dex desktop app?** Your notes stay put. See [Continue from Dex Desktop](docs/continue-from-dex-desktop.md).
+
 ---
 
 ## Setup Overview

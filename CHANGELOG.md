@@ -21,6 +21,14 @@ All notable changes to Dex will be documented in this file.
 
 **Result:** You can point Dex at a vault you already have and onboarding scaffolds around your content instead of clobbering it. Fresh-vault onboarding is unchanged.
 
+**Also in this release: one command adopts an existing vault.**
+
+* `scripts/adopt-vault.sh` sets up open-source Dex around an existing vault (for example one created by Dex Desktop) from one pasted command. It checks the target actually looks like a Dex vault and refuses anything unrecognizable, fetches the pinned release into temporary staging outside the vault, and verifies its SHA-256 checksum before opening anything
+* The overlay is additive and runtime-only: `core/`, `.claude/`, `.agents/`, `scripts/`, `docs/`, root config files, and the two System templates the runtime needs. Nothing is ever written inside the numbered content folders, `.git` is never touched, existing files are never modified or deleted, and every collision is skipped and recorded
+* Every action lands in a machine-readable adoption log outside the vault (under `~/.dex/adopt/`). Re-running after success verifies and reports without downloading; re-running after a failure repairs by completing only what is missing
+* On adopted vaults, onboarding pre-fills from your existing `System/user-profile.yaml` and `System/pillars.yaml`, so you are never re-interviewed for answers your vault already holds; if that config is absent it falls back to the standard interview, and Phase 2 stays proposal-only either way
+* New guide for people arriving from the desktop app: `docs/continue-from-dex-desktop.md`
+
 ---
 
 ## [1.19.0] — Semantic Search Now Covers Your Entire Vault (2026-03-23)

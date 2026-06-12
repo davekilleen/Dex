@@ -653,6 +653,91 @@ def vault_is_adopted() -> bool:
         logger.warning(f"Could not read completion marker for adopted flag: {e}")
     return False
 
+def _prefill_pillars_from_file() -> List[str]:
+    """Read pillar names from an existing System/pillars.yaml, if usable."""
+    try:
+        if yaml and PILLARS_FILE.exists():
+            data = yaml.safe_load(PILLARS_FILE.read_text())
+            if isinstance(data, dict):
+                names = [
+                    p.get('name')
+                    for p in data.get('pillars', [])
+                    if isinstance(p, dict) and isinstance(p.get('name'), str) and p.get('name').strip()
+                ]
+                return [n.strip() for n in names]
+    except Exception as e:
+        logger.warning(f"Could not read pillars.yaml for pre-fill: {e}")
+    return []
+
+def prefill_session_from_existing_config() -> Optional[Dict]:
+    """Build a pre-filled onboarding session from existing System config.
+
+    Used on adopted vaults (the completion marker carries "adopted": true,
+    written by the adopt-existing-vault path) so the user is never
+    re-interviewed for answers their vault already holds. Steps whose answers
+    exist in System/user-profile.yaml (and pillars in System/pillars.yaml)
+    are marked complete; anything genuinely missing stays open so the
+    standard interview asks only those questions.
+
+    Returns None when System/user-profile.yaml is absent or unreadable; the
+    caller then falls back to the standard interview. The adopted flag in the
+    marker keeps gating Phase 2 writes in both cases.
+    """
+    if not yaml or not USER_PROFILE_FILE.exists():
+        return None
+    try:
+        profile = yaml.safe_load(USER_PROFILE_FILE.read_text())
+    except Exception as e:
+        logger.warning(f"Could not read user-profile.yaml for pre-fill: {e}")
+        return None
+    if not isinstance(profile, dict):
+        return None
+
+    session = create_new_session()
+    session['prefilled'] = True
+    session['prefill_source'] = 'System/user-profile.yaml'
+    data = session['data']
+    completed = session['completed_steps']
+
+    if not _profile_value_missing(profile.get('name')):
+        data['name'] = str(profile['name'])
+        completed.append(1)
+    if not _profile_value_missing(profile.get('role')):
+        data['role'] = str(profile['role'])
+        data['role_group'] = str(profile.get('role_group') or 'product')
+        completed.append(2)
+    if not _profile_value_missing(profile.get('company_size')):
+        # Existing values are authoritative even when they use a different
+        # vocabulary than the interview enums; the profile file itself is
+        # preserved untouched by finalize either way.
+        data['company'] = str(profile.get('company') or '')
+        data['company_size'] = str(profile['company_size'])
+        completed.append(3)
+    email_domain = profile.get('email_domain')
+    if not _profile_value_missing(email_domain) and validate_email_domain(str(email_domain))[0]:
+        data['email_domain'] = str(email_domain)
+        completed.append(4)
+    pillars = _prefill_pillars_from_file()
+    if validate_pillars(pillars)[0]:
+        data['pillars'] = pillars
+        completed.append(5)
+    # Communication preferences default sensibly; an adopted user is never
+    # re-asked about formality. The existing profile values win when present.
+    comm = profile.get('communication')
+    comm = comm if isinstance(comm, dict) else {}
+    data['communication'] = {
+        'formality': comm.get('formality', 'professional_casual'),
+        'directness': comm.get('directness', 'balanced'),
+        'career_level': comm.get('career_level', 'mid'),
+        'coaching_style': comm.get('coaching_style', 'collaborative'),
+    }
+    data['obsidian_mode'] = bool(profile.get('obsidian_mode', False))
+    completed.append(6)
+
+    remaining = [s for s in (1, 2, 3, 4, 5, 6) if s not in completed]
+    session['current_step'] = remaining[0] if remaining else 7
+    return session
+
 # ============================================================================
 # PRE-ANALYSIS HELPER FUNCTIONS
 # ============================================================================
@@ -1041,7 +1126,7 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[types.Text
             force_new = arguments.get('force_new', False)
             
             session = load_session()
-            
+
             if session and not force_new:
                 result = create_success_response(
                     session,
@@ -1050,13 +1135,49 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[types.Text
             else:
                 if session and force_new:
                     logger.info("Creating new session (force_new=True)")
-                
-                session = create_new_session()
-                save_session(session)
-                result = create_success_response(
-                    session,
-                    "New onboarding session created"
-                )
+
+                prefilled = None
+                if vault_is_adopted():
+                    # Existing-vault path: pre-fill from System config so the
+                    # user is not re-interviewed. Falls back to the standard
+                    # interview when that config is absent; the adopted flag
+                    # in the marker keeps gating Phase 2 writes either way.
+                    prefilled = prefill_session_from_existing_config()
+
+                if prefilled:
+                    session = prefilled
+                    save_session(session)
+                    completed_count = len(session['completed_steps'])
+                    if completed_count == 6:
+                        guidance = (
+                            "Adopted vault detected: onboarding pre-filled from "
+                            "System/user-profile.yaml. All 6 steps are complete. Do not "
+                            "re-interview; show the user what was found, confirm it still "
+                            "looks right, then call finalize_onboarding (existing config "
+                            "files are preserved)."
+                        )
+                    else:
+                        guidance = (
+                            f"Adopted vault detected: onboarding pre-filled from "
+                            f"System/user-profile.yaml ({completed_count}/6 steps). Ask "
+                            f"only the missing steps, then finalize as normal."
+                        )
+                    result = create_success_response(session, guidance)
+                else:
+                    session = create_new_session()
+                    save_session(session)
+                    if vault_is_adopted():
+                        result = create_success_response(
+                            session,
+                            "New onboarding session created. This vault is adopted but has "
+                            "no readable System/user-profile.yaml, so run the standard "
+                            "interview; the adopted flag still applies at finalize."
+                        )
+                    else:
+                        result = create_success_response(
+                            session,
+                            "New onboarding session created"
+                        )
             
             return [types.TextContent(type="text", text=json.dumps(result, indent=2, cls=DateTimeEncoder))]
         

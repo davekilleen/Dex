@@ -10,6 +10,17 @@ Guide new users through setup in a friendly ~5 minute conversation. Keep it simp
 - The MCP tracks completion and validates each step
 - Session state enables resume if interrupted
 
+### Adopted vault (continue from Dex Desktop): no re-interview
+
+If the response from `start_onboarding_session()` includes `"prefilled": true`, this vault was adopted from an existing setup (the completion marker carries `"adopted": true`, written by `scripts/adopt-vault.sh`) and the session was pre-filled from `System/user-profile.yaml` and `System/pillars.yaml`:
+
+- **Do not re-run the interview for completed steps.** Show a short summary of what was found (name, role, pillars) and ask the user to confirm it still looks right.
+- If all 6 steps are complete, go straight to `finalize_onboarding()`. It preserves existing config files untouched.
+- If some steps are missing (for example no pillars yet), ask only those questions.
+- The marker keeps `"adopted": true` through finalize, so Phase 2 stays proposal-only (see "Adopted vaults" under Phase 2 below).
+
+If the vault is adopted but has no readable `System/user-profile.yaml`, the session is a normal empty one: run the standard interview. The adopted flag still applies at finalize and Phase 2 stays gated.
+
 **After each step (1-6):** Call `validate_and_save_step(step_number=X, step_data={...})` before proceeding. If validation fails, show the error and retry the step.
 
 ### Platform Detection (do this once, before Step 1)
