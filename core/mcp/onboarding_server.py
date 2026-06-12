@@ -103,6 +103,22 @@ FORMALITY_LEVELS = ["formal", "professional_casual", "casual"]
 DIRECTNESS_LEVELS = ["very_direct", "balanced", "supportive"]
 CAREER_LEVELS = ["junior", "mid", "senior", "leadership", "c_suite"]
 
+# Case-insensitive reverse lookup from a role NAME to its group. Role names in
+# ROLES are unique, so this is unambiguous. Used to derive role_group from an
+# existing profile that records a role but no (or a stale) group.
+_ROLE_NAME_TO_GROUP = {name.casefold(): group for name, group in ROLES.values()}
+
+
+def role_group_for(role_name: str, default: str = "product") -> str:
+    """Return the role group for a known role name, else the default.
+
+    The match is case-insensitive against the ROLES table. An unknown or empty
+    role name falls back to the default rather than guessing a specific group.
+    """
+    if not isinstance(role_name, str):
+        return default
+    return _ROLE_NAME_TO_GROUP.get(role_name.strip().casefold(), default)
+
 # ============================================================================
 # UTILITY FUNCTIONS
 # ============================================================================
@@ -162,6 +178,21 @@ def create_new_session() -> Dict:
         "current_step": 1,
         "data": {}
     }
+
+def next_open_step(completed_steps: List[int]) -> int:
+    """Return the lowest required step (1-6) not yet completed, or 7 if all are.
+
+    Pointing current_step at N+1 unconditionally can land it on an
+    already-completed step (e.g. when a prefilled gap is filled out of order),
+    which an agent navigating by current_step would treat as the next question
+    and re-interview. The adopted contract forbids re-asking answered steps, so
+    advance to the first genuinely open step instead.
+    """
+    completed = set(completed_steps)
+    for step in (1, 2, 3, 4, 5, 6):
+        if step not in completed:
+            return step
+    return 7
 
 def validate_email_domain(domain: str) -> tuple[bool, Optional[str]]:
     """Validate email domain format (supports multiple domains separated by commas)"""
@@ -552,23 +583,34 @@ def update_claude_md(session_data: Dict) -> bool:
 
         content = CLAUDE_MD.read_text()
 
-        if CLAUDE_MD_PROFILE_START in content and CLAUDE_MD_PROFILE_END in content:
-            # Marker-bounded replacement: only the marked region changes
-            pattern = re.escape(CLAUDE_MD_PROFILE_START) + r'.*?' + re.escape(CLAUDE_MD_PROFILE_END)
-            content = re.sub(pattern, lambda _m: profile_section, content, count=1, flags=re.DOTALL)
-        elif re.search(r'## User Profile.*?\n---', content, flags=re.DOTALL):
-            # Legacy template section without markers: replace it once and
-            # add markers around only the inserted region
+        marker_pattern = re.escape(CLAUDE_MD_PROFILE_START) + r'.*?' + re.escape(CLAUDE_MD_PROFILE_END)
+        # The legacy span stops at the NEXT heading or separator, never running
+        # past it to a later '---'. A bare '.*?\n---' would swallow any user
+        # subsection sitting between the heading and that separator.
+        legacy_pattern = r'## User Profile.*?(?=\n## |\n---)'
+
+        if re.search(marker_pattern, content, flags=re.DOTALL):
+            # Marker-bounded replacement: only the marked region changes. The
+            # non-greedy DOTALL match only succeeds when START precedes END, so
+            # markers in the wrong order fall through to the branches below
+            # instead of rewriting the file unchanged and reporting success.
+            content = re.sub(marker_pattern, lambda _m: profile_section, content, count=1, flags=re.DOTALL)
+        elif re.search(legacy_pattern, content, flags=re.DOTALL):
+            # Legacy template section without markers: replace only the heading
+            # region up to the next heading/separator and add markers around the
+            # inserted region. The boundary token (next '## ' or '---') is left
+            # in place, so user content after the section survives untouched.
             content = re.sub(
-                r'## User Profile.*?\n---',
-                lambda _m: profile_section + '\n\n---',
+                legacy_pattern,
+                lambda _m: profile_section + '\n',
                 content,
                 count=1,
                 flags=re.DOTALL,
             )
         else:
-            # No recognizable profile region: append a marker-bounded section,
-            # leaving every existing line untouched
+            # No recognizable profile region (or markers present but unmatched,
+            # e.g. END before START): append a marker-bounded section, leaving
+            # every existing line untouched.
             if content and not content.endswith('\n'):
                 content += '\n'
             content += '\n' + profile_section + '\n'
@@ -704,7 +746,15 @@ def prefill_session_from_existing_config() -> Optional[Dict]:
         completed.append(1)
     if not _profile_value_missing(profile.get('role')):
         data['role'] = str(profile['role'])
-        data['role_group'] = str(profile.get('role_group') or 'product')
+        # Prefer the profile's own group when set; otherwise derive it from the
+        # role name via the ROLES table rather than hardcoding 'product' (which
+        # the additive merge would then plant as a wrong group, e.g. a CEO
+        # ending up in 'product' instead of 'leadership').
+        existing_group = profile.get('role_group')
+        if not _profile_value_missing(existing_group):
+            data['role_group'] = str(existing_group)
+        else:
+            data['role_group'] = role_group_for(data['role'])
         completed.append(2)
     if not _profile_value_missing(profile.get('company_size')):
         # Existing values are authoritative even when they use a different
@@ -1208,7 +1258,7 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[types.Text
                     session['data']['name'] = name_val
                     if step_number not in session['completed_steps']:
                         session['completed_steps'].append(step_number)
-                    session['current_step'] = 2
+                    session['current_step'] = next_open_step(session['completed_steps'])
                     save_session(session)
                     result = create_success_response({"step": 1, "completed": True}, "Step 1 complete")
             
@@ -1236,7 +1286,7 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[types.Text
                 
                 if step_number not in session['completed_steps']:
                     session['completed_steps'].append(step_number)
-                session['current_step'] = 3
+                session['current_step'] = next_open_step(session['completed_steps'])
                 save_session(session)
                 result = create_success_response({"step": 2, "completed": True}, "Step 2 complete")
             
@@ -1258,7 +1308,7 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[types.Text
                 session['data']['company_size'] = company_size
                 if step_number not in session['completed_steps']:
                     session['completed_steps'].append(step_number)
-                session['current_step'] = 4
+                session['current_step'] = next_open_step(session['completed_steps'])
                 save_session(session)
                 result = create_success_response({"step": 3, "completed": True}, "Step 3 complete")
             
@@ -1278,7 +1328,7 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[types.Text
                     session['data']['email_domain'] = email_domain
                     if step_number not in session['completed_steps']:
                         session['completed_steps'].append(step_number)
-                    session['current_step'] = 5
+                    session['current_step'] = next_open_step(session['completed_steps'])
                     save_session(session)
                     result = create_success_response(
                         {"step": 4, "completed": True, "email_domain": email_domain},
@@ -1303,9 +1353,9 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[types.Text
                     session['data']['pillars'] = pillars
                     if step_number not in session['completed_steps']:
                         session['completed_steps'].append(step_number)
-                    session['current_step'] = 6
+                    session['current_step'] = next_open_step(session['completed_steps'])
                     save_session(session)
-                    
+
                     response_msg = "Step 5 complete"
                     if message:  # Warning about pillar count
                         response_msg += f" - {message}"
@@ -1372,7 +1422,7 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[types.Text
                 
                 if step_number not in session['completed_steps']:
                     session['completed_steps'].append(step_number)
-                session['current_step'] = 7
+                session['current_step'] = next_open_step(session['completed_steps'])
                 save_session(session)
                 result = create_success_response({"step": 6, "completed": True}, "Step 6 complete")
             
@@ -1645,9 +1695,22 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[types.Text
                 else:
                     summary['errors'].append(f"MCP config error: {error}")
 
-                # 7. Create completion marker
+                # 7. Create or update completion marker. The adopt-existing-vault
+                # path may have written the marker first with adopt_release_tag
+                # and adopted_at; load and update in place so those survive
+                # finalize instead of being rebuilt away (mirrors the adopt
+                # script's merge semantics).
                 logger.info("Creating completion marker")
-                marker_data = {
+                marker_data = {}
+                if MARKER_FILE.exists():
+                    try:
+                        loaded = json.loads(MARKER_FILE.read_text())
+                        if isinstance(loaded, dict):
+                            marker_data = loaded
+                    except (json.JSONDecodeError, OSError) as e:
+                        logger.warning(f"Could not read existing marker, rebuilding: {e}")
+                        marker_data = {}
+                marker_data.update({
                     "completed_at": datetime.now().isoformat(),
                     "user_name": session['data']['name'],
                     "role": session['data']['role'],
@@ -1655,8 +1718,8 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[types.Text
                     "has_pillars": len(session['data'].get('pillars', [])) > 0,
                     "phase2_completed": False,
                     "pre_analysis_deferred": True,  # Analysis moved to /getting-started for performance
-                    "adopted": adopted  # True when this vault was adopted, gates Phase 2 writes
-                }
+                    "adopted": adopted,  # True when this vault was adopted, gates Phase 2 writes
+                })
                 MARKER_FILE.write_text(json.dumps(marker_data, indent=2, cls=DateTimeEncoder))
                 logger.info("Completion marker created")
 

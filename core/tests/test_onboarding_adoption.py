@@ -342,6 +342,72 @@ def test_update_claude_md_appends_when_no_profile_region(adopted_vault: Path):
     assert "**Name:** Interview Name" in content
 
 
+def test_update_claude_md_legacy_preserves_user_subsection_before_separator(adopted_vault: Path):
+    """C-F3: a user subsection sitting between the legacy '## User Profile'
+    heading and the next '---' must survive. The old '## User Profile.*?\\n---'
+    span ran to the FIRST separator and destroyed everything in between."""
+    claude_md = adopted_vault / "CLAUDE.md"
+    claude_md.write_text(
+        "# Top\n\n"
+        "## User Profile\n\n"
+        "<!-- Updated during onboarding -->\n"
+        "**Name:** Old Name\n\n"
+        "## My Private Rules\n\n"
+        "never touch these\n\n"
+        "---\n\n"
+        "## Footer Section\n\nstays too\n",
+        encoding="utf-8",
+    )
+
+    assert onboarding.update_claude_md(_completed_session()) is True
+
+    content = claude_md.read_text(encoding="utf-8")
+    # The user's private subsection and its body survive untouched
+    assert "## My Private Rules" in content
+    assert "never touch these" in content
+    # Later content survives too
+    assert "## Footer Section" in content
+    assert "stays too" in content
+    # The profile itself was replaced and is now marker-bounded
+    assert "**Name:** Interview Name" in content
+    assert "Old Name" not in content
+    assert onboarding.CLAUDE_MD_PROFILE_START in content
+    assert onboarding.CLAUDE_MD_PROFILE_END in content
+    # The replaced profile region does not swallow the private subsection
+    start = content.index(onboarding.CLAUDE_MD_PROFILE_START)
+    end = content.index(onboarding.CLAUDE_MD_PROFILE_END)
+    assert content.index("## My Private Rules") > end
+    assert start < content.index("**Name:** Interview Name") < end
+
+
+def test_update_claude_md_mangled_marker_order_falls_through_to_append(adopted_vault: Path):
+    """C-F5: when both markers exist but END precedes START, the marker regex
+    finds no bounded match. The file must NOT be rewritten unchanged while
+    reporting success; it falls through to a real append."""
+    claude_md = adopted_vault / "CLAUDE.md"
+    mangled = (
+        "# Rules\n\n"
+        + onboarding.CLAUDE_MD_PROFILE_END
+        + "\nstray content between reversed markers\n"
+        + onboarding.CLAUDE_MD_PROFILE_START
+        + "\n"
+    )
+    claude_md.write_text(mangled, encoding="utf-8")
+
+    assert onboarding.update_claude_md(_completed_session()) is True
+
+    content = claude_md.read_text(encoding="utf-8")
+    # The original (reversed) content is preserved and a real profile section
+    # was appended, rather than the file being written back byte-identical.
+    assert content != mangled
+    assert "stray content between reversed markers" in content
+    assert "**Name:** Interview Name" in content
+    # A correctly ordered START...END pair now exists in the appended section
+    last_start = content.rindex(onboarding.CLAUDE_MD_PROFILE_START)
+    last_end = content.rindex(onboarding.CLAUDE_MD_PROFILE_END)
+    assert last_start < last_end
+
+
 # ---------------------------------------------------------------------------
 # .mcp.json merge
 # ---------------------------------------------------------------------------
@@ -421,9 +487,19 @@ def test_finalize_writes_adopted_flag(adopted_vault: Path):
 
 def test_finalize_preserves_preexisting_adopted_marker(adopted_vault: Path):
     """The adopt path may write the marker before finalize runs; the flag
-    survives finalization even without the explicit argument."""
+    survives finalization even without the explicit argument.
+
+    C-F6: the adopt script also writes adopt_release_tag and adopted_at. These
+    must survive finalize, which previously rebuilt the marker from scratch and
+    dropped them.
+    """
     marker_file = adopted_vault / "System" / ".onboarding-complete"
-    marker_file.write_text(json.dumps({"adopted": True}), encoding="utf-8")
+    adopt_written = {
+        "adopted": True,
+        "adopt_release_tag": "v9.9.9-test",
+        "adopted_at": "2026-06-01T12:00:00",
+    }
+    marker_file.write_text(json.dumps(adopt_written), encoding="utf-8")
 
     # A minimal adopt-written marker is tolerated by the checker
     pre_check = _call_tool("check_onboarding_complete")
@@ -435,6 +511,12 @@ def test_finalize_preserves_preexisting_adopted_marker(adopted_vault: Path):
 
     marker = json.loads(marker_file.read_text())
     assert marker["adopted"] is True
+    # Fields the adopt script wrote survive finalize
+    assert marker["adopt_release_tag"] == "v9.9.9-test"
+    assert marker["adopted_at"] == "2026-06-01T12:00:00"
+    # Finalize's own fields are present too
+    assert marker["user_name"] == "Interview Name"
+    assert "completed_at" in marker
 
 
 def test_fresh_finalize_marks_not_adopted(fresh_vault: Path):
