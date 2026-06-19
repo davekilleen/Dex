@@ -33,12 +33,9 @@ import mcp.types as types
 from mcp.server import NotificationOptions, Server
 from mcp.server.models import InitializationOptions
 
-# QMD semantic search (optional - gracefully degrade if not available)
-try:
-    from utils.qmd_query import is_qmd_available, vault_search
-    HAS_QMD = True
-except ImportError:
-    HAS_QMD = False
+# QMD semantic search (optional). The real import is deferred until after
+# sys.path is set up for 'core.*' below; assume unavailable until then.
+HAS_QMD = False
 
 # Analytics helper (optional - gracefully degrade if not available)
 try:
@@ -57,6 +54,14 @@ logger = logging.getLogger(__name__)
 # The script is at core/mcp/work_server.py, so we need to add the vault root
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
+# QMD semantic search (optional - gracefully degrade if not available).
+# Must come after the sys.path.insert above so 'core.*' resolves.
+try:
+    from core.utils.qmd_query import is_qmd_available, vault_search
+    HAS_QMD = True
+except ImportError:
+    HAS_QMD = False
+
 # Import reference formatter for Obsidian wiki link support
 try:
     from core.utils.reference_formatter import (
@@ -73,11 +78,10 @@ except ImportError:
     HAS_REFERENCE_FORMATTER = False
 
 # Import QMD search index refresh (optional - silently skips if QMD not installed)
+# Note: does not touch HAS_QMD — that flag tracks the qmd_query import above.
 try:
     from core.utils.qmd_indexer import refresh_search_index
-    HAS_QMD = True
 except ImportError:
-    HAS_QMD = False
     def refresh_search_index(): pass
 
 # Health system — error queue and health reporting
@@ -226,7 +230,9 @@ def load_pillars_from_yaml() -> Dict[str, Dict]:
             pillars[pillar_id] = {
                 'name': pillar.get('name', pillar_id),
                 'description': pillar.get('description', ''),
-                'keywords': pillar.get('keywords', [])
+                # Coerce to str: YAML parses unquoted tokens like 1:1 as ints
+                # (base-60), which would crash guess_pillar's `keyword in text`.
+                'keywords': [str(k) for k in pillar.get('keywords', [])]
             }
         
         if not pillars:
