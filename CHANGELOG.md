@@ -7,6 +7,21 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.21.0] - Your skills now show up when you type "/" (2026-06-18)
+
+Dex has 50+ skills, but none of them appeared in the slash-command dropdown — so it was easy to forget what existed and hard to discover what Dex could do.
+
+**What this fixes for you:**
+
+* **Type `/` and browse everything.** Every Dex skill now appears in the chat box autocomplete, each with its description. No more memorizing command names — recognize them as you type.
+* **New `/dex` command — your menu of everything.** Run `/dex` to see all skills grouped by category (Daily, Meetings, Sales, Career, System…). Filter with `/dex meetings`, `/dex sales`, etc. This is the "what can I do right now" command.
+* **New `/log-meeting` command.** Turn raw meeting notes or a voice dump into a structured Dex note *and* a logged Salesforce activity in one step — extracts action items, matches the opportunity, pushes the activity log. No manual SF data entry.
+* **Stays in sync automatically.** A pre-commit hook regenerates the dropdown and catalog whenever skills change, so new skills always show up without any manual step.
+
+**Behind the scenes:** `.scripts/sync-skill-commands.cjs` scans `.claude/skills/`, generates command stubs in `.claude/commands/`, and writes a categorized `CATALOG.md`. Run it manually any time with `node .scripts/sync-skill-commands.cjs`.
+
+---
+
 ## [1.20.1] - Fixes: a false startup alarm, blocked tasks, and the budget model (2026-06-02)
 
 A round of fixes for small things that were quietly getting in the way.

@@ -110,3 +110,6 @@ quarterly_planning:
   # Current quarter dates (auto-calculated)
   quarter_start_date: "2026-01-01"
   quarter_end_date: "2026-03-31"
+
+# Obsidian Integration
+obsidian_mode: true

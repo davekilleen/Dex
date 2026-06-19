@@ -44,7 +44,7 @@ Tasks live in multiple files (`03-Tasks/Tasks.md`, meeting notes, person pages).
 You create task "Ship payments redesign" in meeting with Sarah. Work MCP:
 1. Tags it `#Platform` (matches pillar keywords)
 2. Detects similarity to existing "Rebuild payment flow" (70% match), asks if duplicate
-3. Assigns unique ID `^task-20260128-001`
+3. Assigns unique ID `[[^task-20260128-001]]`
 4. Updates `03-Tasks/Tasks.md`, meeting note, and Sarah's person page with backlinks
 5. Surfaces during `/daily-plan` as part of Platform work
 

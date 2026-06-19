@@ -103,7 +103,7 @@ Files not intended to be loaded into context, but rather used within the output 
 
 A skill should only contain essential files that directly support its functionality. Do NOT create extraneous documentation or auxiliary files, including:
 
-- README.md
+- [[README]].md
 - INSTALLATION_GUIDE.md
 - QUICK_REFERENCE.md
 - CHANGELOG.md

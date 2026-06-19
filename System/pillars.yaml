@@ -14,18 +14,49 @@
 #
 # The Work MCP uses these to categorize tasks and check balance across your work.
 
-pillars: []
-  # Will be populated during onboarding
-  # Example structure:
-  # - id: pillar_id
-  #   name: "Pillar Name"
-  #   description: "What this pillar represents"
-  #   keywords:
-  #     - keyword1
-  #     - keyword2
+pillars:
+  - id: pillar_1
+    name: "Pipeline & Revenue"
+    description: "Active sales opportunities, quotes, follow-ups, and closing deals"
+    keywords:
+      - follow up
+      - call
+      - quote
+      - opportunity
+      - demo
+      - prospect
+      - close
+      - deal
+      - lead
+      - account
+      - proposal
+
+  - id: pillar_2
+    name: "Account Management"
+    description: "Existing customer relationships, retention, and expansion"
+    keywords:
+      - customer
+      - existing
+      - renewal
+      - relationship
+      - check in
+      - support
+      - upsell
+
+  - id: pillar_3
+    name: "Product & Market Knowledge"
+    description: "Product training, competitive intel, and market development"
+    keywords:
+      - training
+      - product
+      - competitive
+      - market
+      - learn
+      - research
+      - spec
 
 # Priority limits (how many active tasks per priority level)
 priority_limits:
-  P0: 3   # Critical/urgent - max 3 at a time
-  P1: 5   # Important - max 5 at a time
-  P2: 10  # Normal - suggested limit
+  P0: 10   # Critical/urgent
+  P1: 50   # Important - sales role has many active opportunities
+  P2: 200  # Normal - pipeline tasks

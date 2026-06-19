@@ -1,4 +1,4 @@
-# Dex System Improvement Backlog
+﻿# Dex System Improvement Backlog
 
 *Last ranked: 2026-01-28 (Initial setup)*
 
@@ -42,7 +42,7 @@ The ideas below demonstrate the level of detail you'll see when you capture your
 
 <!-- Auto-ranked by /dex-backlog command -->
 
-### 🔥 High Priority (Score: 85+)
+### ðŸ”¥ High Priority (Score: 85+)
 
 - **[idea-001]** Save meeting summaries so I don't re-read entire notes every time
 
@@ -57,7 +57,7 @@ The ideas below demonstrate the level of detail you'll see when you capture your
   - Important topics discussed
   
   **How It Works in Cursor:**
-  ✅ Totally doable! When you run `/process-meetings` or create a meeting note, Cursor:
+  âœ… Totally doable! When you run `/process-meetings` or create a meeting note, Cursor:
   1. Reads the new meeting note (one file)
   2. Extracts the key information above
   3. Saves a short summary file in the cache folder
@@ -67,14 +67,14 @@ The ideas below demonstrate the level of detail you'll see when you capture your
   Instead of reading 2,000 words of meeting notes, Cursor reads 200 words of summaries. That's 90% less to process, which means faster responses and you stay under usage limits.
   
   **Real Example:**
-  - Before: "Prepare for my 1:1 with Sarah" → Reads 3 full meeting notes (3,000 words)
-  - After: "Prepare for my 1:1 with Sarah" → Reads cached summaries (300 words), only reads full notes if you ask for specific details
+  - Before: "Prepare for my 1:1 with Sarah" â†’ Reads 3 full meeting notes (3,000 words)
+  - After: "Prepare for my 1:1 with Sarah" â†’ Reads cached summaries (300 words), only reads full notes if you ask for specific details
   
   - **Score:** 92 (Impact: 95, Alignment: 85, Token: 95, Memory: 90, Proactive: 85)
   - **Category:** knowledge
   - **Captured:** 2026-01-28
 
-### ⚡ Medium Priority (Score: 60-84)
+### âš¡ Medium Priority (Score: 60-84)
 
 - **[idea-002]** Quick-reference directory of people so Cursor doesn't read every person page
 
@@ -84,12 +84,12 @@ The ideas below demonstrate the level of detail you'll see when you capture your
   **The Solution:**
   Create one lightweight "directory" file (`System/People_Index.json`) that lists basic info about everyone:
   ```
-  Sarah Johnson → Internal, Engineering Manager, last met 2026-01-25
-  Mike Chen → External, Acme Corp, Product Lead, last met 2026-01-20
+  Sarah Johnson â†’ Internal, Engineering Manager, last met 2026-01-25
+  Mike Chen â†’ External, Acme Corp, Product Lead, last met 2026-01-20
   ```
   
   **How It Works in Cursor:**
-  ✅ Totally doable! Here's how:
+  âœ… Totally doable! Here's how:
   1. When you create or update a person page, Cursor quickly scans it
   2. Extracts just the basics: name, company, role, last interaction
   3. Adds or updates that one entry in the directory file
@@ -100,14 +100,14 @@ The ideas below demonstrate the level of detail you'll see when you capture your
   Simple lookups become instant. Instead of reading 30 full person pages (15,000 words), Cursor reads one directory file (500 words). That's 97% less to process for common questions.
   
   **Real Example:**
-  - Before: "Who did I meet with last week?" → Opens and reads all 30 person pages
-  - After: "Who did I meet with last week?" → Reads directory, finds 3 names, only opens those 3 person pages if you need details
+  - Before: "Who did I meet with last week?" â†’ Opens and reads all 30 person pages
+  - After: "Who did I meet with last week?" â†’ Reads directory, finds 3 names, only opens those 3 person pages if you need details
   
   - **Score:** 78 (Impact: 75, Alignment: 80, Token: 90, Memory: 70, Proactive: 65)
   - **Category:** system
   - **Captured:** 2026-01-28
 
-### 💡 Low Priority (Score: <60)
+### ðŸ’¡ Low Priority (Score: <60)
 
 *Example ideas provided above to show the level of detail and clarity expected.*
 
@@ -120,6 +120,13 @@ The ideas below demonstrate the level of detail you'll see when you capture your
 *The AI will handle the technical details and feasibility assessment - you focus on describing the problem clearly!*
 
 ---
+
+- **[idea-003]** Salesforce MCP write capabilities — create tasks, update opportunities
+  - **Score:** 0 (not yet ranked - run `/dex-backlog` to calculate)
+  - **Category:** integration
+  - **Captured:** 2026-06-17
+  - **Description:** The current Salesforce MCP is read-only (sf_get_pipeline, sf_get_opportunity, sf_get_account, etc.). Adding write tools would let Dex keep Salesforce current as Chris works, eliminating dual-maintenance. Priority tools: sf_update_opportunity (stage, amount, close date, next steps), sf_create_task (related to account/contact/opportunity), sf_log_activity (calls, emails). This came up directly — Chris asked if Dex could create SF tasks and update opp records, and the answer was no.
+
 
 ## Archive (Implemented)
 

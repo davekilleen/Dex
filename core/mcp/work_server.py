@@ -37,8 +37,10 @@ from mcp.server.models import InitializationOptions
 try:
     from utils.qmd_query import is_qmd_available, vault_search
     HAS_QMD = True
-except ImportError:
+except Exception:
     HAS_QMD = False
+    def is_qmd_available(): return False
+    def vault_search(*args, **kwargs): return []
 
 # Analytics helper (optional - gracefully degrade if not available)
 try:

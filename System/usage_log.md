@@ -75,6 +75,7 @@
 
 ## Integrations (8 features)
 
+- [x] Pipeline synced (`/pipeline-sync`)
 - [ ] Calendar connected (via Calendar MCP)
 - [ ] Calendar synced daily
 - [ ] Granola connected (via Granola MCP)

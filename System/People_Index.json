@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "built_at": "2026-06-17T13:52:52.304947",
+  "total": 1,
+  "by_type": {
+    "internal": 0,
+    "external": 1,
+    "cpo_network": 0
+  },
+  "people": [
+    {
+      "name": "Brian A. Clark",
+      "company": null,
+      "role": null,
+      "email": null,
+      "type": "external",
+      "path": "05-Areas\\People\\External\\Brian_A._Clark.md",
+      "last_interaction": null,
+      "tags": [],
+      "status": "populated"
+    }
+  ]
+}

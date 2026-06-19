@@ -51,7 +51,7 @@ find . -type f -name "*.md" -newermt "$TODAY 00:00:00" ! -newermt "$TODAY 23:59:
 Check `03-Tasks/Tasks.md` for tasks completed today using completion timestamps:
 - Look for `✅ YYYY-MM-DD` matching today's date
 - These show what you actually finished (not just what you worked on)
-- Example: `- [x] **Review pricing proposal** ^task-20260127-003 ✅ 2026-01-28 09:15`
+- Example: `- [x] **Review pricing proposal** [[^task-20260127-003]] ✅ 2026-01-28 09:15`
 
 ### Weekly Priorities
 Read `00-Inbox/Weekly_Plans.md` for:

@@ -5,7 +5,7 @@ This guide explains how to distribute Dex as a Claude Code plugin.
 ## Current Status
 
 ✅ **Plugin manifest created** - `.claude-plugin/plugin.json`
-✅ **Plugin README created** - `.claude-plugin/PLUGIN_README.md`
+✅ **Plugin [[README]] created** - `.claude-plugin/PLUGIN_README.md`
 ✅ **Core components organized** - Skills, MCP servers, hooks all in `.claude/`
 ✅ **Python MCP servers functional** - `core/mcp/` directory with all servers
 ✅ **Documentation complete** - Comprehensive guides in `06-Resources/Dex_System/`
@@ -253,11 +253,11 @@ Before publishing, ensure:
 - [ ] `plugin.json` has correct GitHub repository URL
 - [ ] LICENSE file is present (PolyForm Noncommercial 1.0.0 - ✅)
 - [ ] CHANGELOG.md is up to date (✅)
-- [ ] README.md explains installation clearly
+- [ ] [[README]].md explains installation clearly
 - [ ] Python requirements documented
 - [ ] `.gitignore` excludes personal data (vault contents, `.env`, etc.)
 - [ ] All skills have proper YAML frontmatter
-- [ ] MCP servers are documented in `.claude/mcp/README.md` (✅)
+- [ ] MCP servers are documented in `.claude/mcp/[[README]].md` (✅)
 - [ ] Test installation on a clean machine/directory
 - [ ] Verify onboarding works from scratch
 - [ ] Document any prerequisites (Python, Granola, etc.)
@@ -315,7 +315,7 @@ Thumbs.db
 
 ## Example Installation Flow for Users
 
-Document this clearly in your main README:
+Document this clearly in your main [[README]]:
 
 ```bash
 # 1. Install the plugin
@@ -342,7 +342,7 @@ Once distributed, promote it:
 
 1. **Vibe PM Podcast Episode** - You already have Episode 8, create a follow-up about the plugin
 2. **LinkedIn Post** - "Dex is now available as a Claude Code plugin"
-3. **GitHub README** - Clear "Install" button at the top
+3. **GitHub [[README]]** - Clear "Install" button at the top
 4. **Demo Video** - Show installation and first 5 minutes
 5. **X/Twitter Thread** - Installation walkthrough
 6. **Blog Post Update** - Add "How to Install" section to existing post
@@ -380,7 +380,7 @@ If you want to offer premium features later:
    - [ ] Create GitHub repository for Dex
    - [ ] Push dex-core to main branch
    - [ ] Test GitHub-based installation
-   - [ ] Update main README with plugin installation instructions
+   - [ ] Update main [[README]] with plugin installation instructions
    - [ ] Record quick installation demo
 
 3. **Medium-term** (Next month):

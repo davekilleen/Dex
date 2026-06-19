@@ -61,7 +61,7 @@ Add a new feature entry in `.claude/config/beta-features.yaml`:
 
 1. Merge the Ritual Intelligence implementation into the release branch you want BT users on.
 2. Add the Ritual Intelligence beta feature entry to `.claude/config/beta-features.yaml`.
-3. Create or copy user-facing instructions into `System/Beta/ritual-intelligence/README.md`.
+3. Create or copy user-facing instructions into `System/Beta/ritual-intelligence/[[README]].md`.
 4. Share the activation code only with the BT cohort.
 5. Ask testers to update Dex, activate the feature, and run the test flows below.
 6. Collect feedback for 1-2 weeks before opening it more broadly.

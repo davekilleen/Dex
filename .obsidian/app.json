@@ -1,23 +1,13 @@
 {
-  "userIgnoreFilters": [
-    "core/",
-    "docs/",
-    "packages/",
-    "extensions/",
-    "pi-extensions/",
-    "scripts/",
-    "mcp-servers/",
-    "node_modules/",
-    "CHANGELOG.md",
-    "CONTRIBUTING.md",
-    "DISTRIBUTION_READY.md",
-    "COMMERCIAL_LICENSE.md",
-    "LICENSE",
-    "package.json",
-    "package-lock.json",
-    "pyproject.toml",
-    "requirements.txt",
-    "install.sh",
-    "env.example"
-  ]
+  "alwaysUpdateLinks": true,
+  "newLinkFormat": "shortest",
+  "useMarkdownLinks": false,
+  "showFrontmatter": true,
+  "foldHeading": true,
+  "foldIndent": true,
+  "showLineNumber": false,
+  "spellcheck": true,
+  "strictLineBreaks": false,
+  "readableLineLength": true,
+  "defaultViewMode": "preview"
 }

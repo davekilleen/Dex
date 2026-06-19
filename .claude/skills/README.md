@@ -211,6 +211,7 @@ Built specifically for personal knowledge management and productivity workflows 
 
 **Meetings:**
 - `/meeting-prep` - Prepare for meetings *(v1.11: isolated context)*
+- `/log-meeting` - Log meeting notes to Dex + Salesforce in one step (extracts action items, matches opp, pushes activity)
 - `/process-meetings` - Process Granola meetings *(v1.11: isolated context, auto-updates person pages, background execution)*
 
 **Career Development:**

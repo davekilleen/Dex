@@ -232,6 +232,14 @@ Based on their answers:
      "createdAt": "2026-01-22"
    }
    ```
+6. **Populate the slash-command dropdown** (silently): run
+   `node .scripts/sync-skill-commands.cjs`
+   This generates a command stub for every skill so they appear in Claude Code's
+   `/` autocomplete, writes the `/dex` catalog, and installs a git pre-commit hook
+   that keeps the dropdown in sync. Required on every fresh install because
+   `.git/hooks/` is not version-controlled. If `node` isn't available, skip and
+   note the user can run it later — the skills still work, they just won't show in
+   the dropdown until then.
 
 ### Step 7: Welcome Message
 
