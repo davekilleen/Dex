@@ -292,13 +292,13 @@ TOOLS = [
     },
     {
         "name": "sf_get_opportunity",
-        "description": "Get full details for a single opportunity including contacts, quotes, and recent activity.",
+        "description": "Get full details for a single opportunity including contacts, quotes, and recent activity. Pass either 'name' (partial match) or 'id' (exact Salesforce Id).",
         "inputSchema": {
             "type": "object",
             "properties": {
                 "name": {"type": "string", "description": "Opportunity name (partial match)"},
+                "id": {"type": "string", "description": "Exact Salesforce Opportunity Id (18-char, e.g. 006Nu00000...)"},
             },
-            "required": ["name"],
         },
     },
     {
@@ -360,7 +360,7 @@ def tool_sf_get_pipeline(args):
     owner_filter = f"AND OwnerId = '{OWNER_ID}'" if OWNER_ID else ""
     soql = f"""
         SELECT Id, Name, StageName, Amount, CloseDate, Account.Name, Account.Id,
-               Owner.Name, OwnerId, Probability, Vendor__c
+               Owner.Name, OwnerId, Probability, Vendor__c, Vendor__r.Name
         FROM Opportunity
         WHERE IsClosed = false {stage_filter} {owner_filter}
         ORDER BY CloseDate ASC
@@ -379,7 +379,8 @@ def tool_sf_get_pipeline(args):
             "account_id": r.get("Account", {}).get("Id") if r.get("Account") else None,
             "owner": r.get("Owner", {}).get("Name") if r.get("Owner") else None,
             "probability": r.get("Probability"),
-            "vendor": r.get("Vendor__c"),
+            "vendor_id": r.get("Vendor__c"),
+            "vendor": r.get("Vendor__r", {}).get("Name") if r.get("Vendor__r") else None,
         })
     return {"opportunities": opps, "count": len(opps)}
 
@@ -569,18 +570,30 @@ def tool_sf_get_opportunity(args):
     tokens = get_valid_tokens()
     if not tokens:
         return {"error": "Not authenticated. Run sf_authenticate first."}
-    name = args["name"]
-    soql = f"""
-        SELECT Id, Name, StageName, Amount, CloseDate, Probability,
-               Account.Name, Account.Id, Owner.Name, Description,
-               NextStep, LeadSource, Type, Vendor__c
-        FROM Opportunity
-        WHERE Name LIKE '%{name}%'
-        LIMIT 5
-    """
+    opp_id_arg = args.get("id")
+    name = args.get("name")
+    if not opp_id_arg and not name:
+        return {"error": "Provide either 'name' or 'id' parameter."}
+    if opp_id_arg:
+        soql = f"""
+            SELECT Id, Name, StageName, Amount, CloseDate, Probability,
+                   Account.Name, Account.Id, Owner.Name, Description,
+                   NextStep, LeadSource, Type, Vendor__c, Vendor__r.Name
+            FROM Opportunity
+            WHERE Id = '{opp_id_arg}'
+        """
+    else:
+        soql = f"""
+            SELECT Id, Name, StageName, Amount, CloseDate, Probability,
+                   Account.Name, Account.Id, Owner.Name, Description,
+                   NextStep, LeadSource, Type, Vendor__c, Vendor__r.Name
+            FROM Opportunity
+            WHERE Name LIKE '%{name}%'
+            LIMIT 5
+        """
     opps = sf_query(tokens, soql).get("records", [])
     if not opps:
-        return {"error": f"No opportunity found matching '{name}'"}
+        return {"error": f"No opportunity found matching '{opp_id_arg or name}'"}
     opp = opps[0]
     opp_id = opp["Id"]
     contacts_soql = f"""
