@@ -1,71 +1,132 @@
 # Week Priorities
 
-**Week of:** {{WEEK_START_DATE}}
+**Week of:** 2026-06-22 (Monday June 22 – Friday June 27)
 
 ---
 
-## 🎯 Top 3 This Week
+## Week Shape
 
-The most important outcomes for this week. Everything else is secondary.
+No calendar data connected yet. To unlock calendar-aware scheduling, connect your calendar via the Work MCP.
 
-1. 
-2. 
-3. 
+**Tip:** Once connected, Dex will show which days are stacked with meetings vs. open for deep work, and match tasks to the right time blocks.
 
 ---
 
-## 📋 Tasks
+## Quarterly Goals Context
 
-### Must Complete
-- [ ] 
+Quarterly planning is not yet enabled. To set Q2/Q3 goals and have your weekly priorities ladder up to them, say "I want to set quarterly goals" or run `/quarter-plan`.
 
-### Should Complete
-- [ ] 
-
-### If Time Permits
-- [ ] 
+**All priorities this week are operational** — focused on clearing pipeline and building momentum.
 
 ---
 
-## 📅 Key Meetings
+## Top 3 This Week
 
-| Day | Time | Meeting | Prep Needed |
-|-----|------|---------|-------------|
-| Mon |      |         |             |
-| Tue |      |         |             |
-| Wed |      |         |             |
-| Thu |      |         |             |
-| Fri |      |         |             |
+1. **Clear the 9 Carried-Over Pipeline Tasks** — **Pipeline & Revenue** ^week-2026-W26-p1
+   - Success criteria: All 9 "This Week" tasks contacted, logged, or moved to next action. At minimum: Gambone EMI call done, OBI quote 154596 submitted/followed up, Pocono Metals follow-up completed.
+   - Goal alignment: Operational pipeline hygiene
+   - Effort: Medium (mix of calls, emails, quote work)
+   - These have been open since June 18 — clear them before adding new tasks
 
----
+2. **Work the 8 Overdue 2026 Accounts** — **Pipeline & Revenue** ^week-2026-W26-p2
+   - Success criteria: All 8 accounts from 2026 contacted (call, email, or visit logged). Accounts: JKF Technologies, DEMCO Automation, Delaware Valley Steel (Zach Worman), Szoke Brothers, J.I. Landis, Delaware Valley Steel (Bill Leahy), Delaware Valley Steel (Jerry Sharpe), + used cold saw prospect.
+   - Goal alignment: Revive warm opportunities before they go stale another month
+   - Effort: Medium — primarily phone/email outreach
+   - These are most likely still warm — 2026 outreach takes priority over 2025/2024 stale tasks
 
-## 📊 Pillar Check
-
-How does this week's work align to your strategic pillars?
-
-| Pillar | Tasks/Focus | Balance |
-|--------|-------------|---------|
-| Pillar 1 |  | ⬜ |
-| Pillar 2 |  | ⬜ |
-| Pillar 3 |  | ⬜ |
+3. **Set Up Meeting Capture** — **Product & Market Knowledge** ^week-2026-W26-p3
+   - Success criteria: At least one meeting or call logged in Dex by Wednesday. Ideally: Granola connected (run `/granola-setup`) OR 3+ calls manually logged this week.
+   - Goal alignment: Build account intelligence that pays dividends every week
+   - Effort: Quick setup (~30 min for Granola), then lightweight habit per call
+   - You have 0 meeting notes in the vault. Every call this week is context you're losing.
 
 ---
 
-## 🔄 Carried Over
+## Commitments Due This Week
 
-Tasks from last week that still need attention:
-
-- [ ] 
+No commitments were extracted from meeting notes (no meetings logged yet). Once you start logging calls, Dex will automatically surface follow-ups here.
 
 ---
 
-## 📝 Notes
+## Tasks by Priority
+
+### Must Complete (P0) — Carried Over from Last Week
+
+- [ ] Follow up - Pocono Metals - Used EMI [[^task-20260618-w01]] #pillar_1
+- [ ] Quote 154596 - OBI Presses Back Geared for SS Industries [[^task-20260618-w02]] #pillar_1
+- [ ] Follow up - Trumpf N 700 Nibbler [[^task-20260618-w03]] #pillar_1
+- [ ] Call - Glenn Spalding - Finishline [[^task-20260618-w04]] #pillar_1
+- [ ] Call - Gambone - EMI [[^task-20260618-w05]] #pillar_1
+- [ ] Vaski opportunities at DVM [[^task-20260618-w06]] #pillar_1
+- [ ] Call - AW Mercer - Haeger new/used [[^task-20260618-w07]] #pillar_1
+- [ ] Call - Joe Carr - Trumpf 1000 Series / Cidan [[^task-20260618-w08]] #pillar_1
+- [ ] Follow up - suggest local demo - Rybnick Mechanical [[^task-20260618-w09]] #pillar_1
+
+### Should Complete (P1) — 2026 Overdue Accounts
+
+- [ ] Visit – Introduce Capability @ JKF Technologies LLC [[^task-20260618-019]] #pillar_1
+- [ ] Request Meeting @ UNK - Used Cold Saw (Contact: John) [[^task-20260618-020]] #pillar_1
+- [ ] Visit – TRUMPF @ Demco Automation (Contact: Stephen R. Maund) [[^task-20260618-021]] #pillar_1
+- [ ] Call – Review Quote – FLE A36 (Contact: Zach Worman) [[^task-20260618-022]] #pillar_1
+- [ ] Visit – Status Update – ALL Plasma @ Szoke Brothers (Contact: Luke Szoke) [[^task-20260618-023]] #pillar_1
+- [ ] Call – Qualify Interest @ J.I. Landis Welding & Mechanical Inc. (Contact: Jesse Landis) [[^task-20260618-024]] #pillar_1
+- [ ] Call – Qualify Interest @ Delaware Valley Steel Co (Contact: Bill Leahy) [[^task-20260618-025]] #pillar_1
+- [ ] Call – Qualify Interest @ Delaware Valley Steel Co (Contact: Jerry Sharpe) [[^task-20260618-026]] #pillar_1
+
+### If Time Permits (P2) — High-Value 2025 Overdue
+
+- [ ] Call – Review Quote @ Phoenix Forge (Contact: Scott Adam — 8 months since quote) [[^task-20260618-027]] #pillar_1
+- [ ] Call – Qualify Interest @ Penn Steel Fabrication Inc. (Contact: Abdullah Afridi — In Progress) [[^task-20260618-030]] #pillar_1
+- [ ] Call – Qualify Interest @ Victaulic Company (Contact: Colin Phelps — In Progress) [[^task-20260618-035]] #pillar_1
+- [ ] Call – Qualify Interest @ Sencillo Systems (Contact: Steve Crowder — In Progress) [[^task-20260618-034]] #pillar_1
 
 ---
 
-## 🏁 End of Week Review
+## Key Meetings
 
-*Fill in on Friday*
+No meetings scheduled yet — calendar not connected.
+
+Once you have calls this week, log them by telling Dex: "I just had a call with [name] at [company]..."
+
+---
+
+## Pillar Balance
+
+| Pillar | This Week | Balance |
+|--------|-----------|---------|
+| Pipeline & Revenue | 17 tasks — core call/follow-up/quote work | Strong |
+| Account Management | Not prioritized this week | Light |
+| Product & Market Knowledge | Meeting capture setup (Priority 3) | Light |
+
+**Note:** The heavy Pipeline & Revenue weight is appropriate for this first active week. Account Management and Product Knowledge will fill in naturally as meeting notes accumulate. Revisit balance in next week's plan.
+
+---
+
+## Carried Over
+
+All 9 tasks from last week's "This Week" list (June 18 setup week):
+
+- [ ] Follow up - Pocono Metals - Used EMI
+- [ ] Quote 154596 - OBI Presses Back Geared for SS Industries
+- [ ] Follow up - Trumpf N 700 Nibbler
+- [ ] Call - Glenn Spalding - Finishline
+- [ ] Call - Gambone - EMI
+- [ ] Vaski opportunities at DVM
+- [ ] Call - AW Mercer - Haeger new/used
+- [ ] Call - Joe Carr - Trumpf 1000 Series / Cidan
+- [ ] Follow up - suggest local demo - Rybnick Mechanical
+
+---
+
+## Pipeline Cleanup Backlog
+
+89 tasks from 2025 and earlier need review (44 overdue 2025, 45 stale 2024+). Don't try to work these this week — but consider blocking 1 hour next Friday to triage the 2025 list and write off deals that are clearly dead.
+
+---
+
+## End of Week Review
+
+*Fill in on Friday June 27*
 
 ### Completed
 - 
@@ -78,3 +139,8 @@ Tasks from last week that still need attention:
 
 ### Next Week Focus
 - 
+
+---
+
+*Generated: 2026-06-20*
+*Command: /week-plan*

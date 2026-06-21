@@ -10,8 +10,8 @@
 
 - [x] Daily planning (`/daily-plan`)
 - [ ] Daily review (`/review` or `/daily-review`)
-- [ ] Weekly planning (`/week-plan`)
-- [ ] Weekly review (`/week-review`)
+- [x] Weekly planning (`/week-plan`)
+- [x] Weekly review (`/week-review`)
 - [ ] Quarterly planning (`/quarter-plan`)
 - [ ] Quarterly review (`/quarter-review`)
 - [ ] Getting started tour (`/getting-started`)
