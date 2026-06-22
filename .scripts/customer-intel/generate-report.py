@@ -98,6 +98,25 @@ def sf_query(tokens, soql):
         raise
 
 
+def sf_describe(tokens, object_name):
+    """Return field metadata for a Salesforce object."""
+    instance_url = tokens["instance_url"]
+    access_token = tokens["access_token"]
+    req = Request(
+        f"{instance_url}/services/data/v59.0/sobjects/{object_name}/describe",
+        headers={"Authorization": f"Bearer {access_token}"},
+    )
+    try:
+        with urlopen(req) as resp:
+            return json.loads(resp.read())
+    except HTTPError as e:
+        if e.code == 401 and tokens.get("refresh_token"):
+            refreshed = refresh_tokens(tokens)
+            if refreshed:
+                return sf_describe(refreshed, object_name)
+        raise
+
+
 # ── Asset Parsing ─────────────────────────────────────────────────────────────
 
 def expiry_info(usage_end_str):
@@ -395,6 +414,67 @@ def diagnose(tokens, account_name=""):
         print(f"  EMPTY ({len(empty)}): {', '.join(empty)}")
 
 
+def diagnose_pm(tokens):
+    """Discover the Project Management object schema and show sample records."""
+    print("\n=== Project Management Object — Field Discovery ===\n")
+
+    # 1. Describe the object to get all field names and types
+    try:
+        meta = sf_describe(tokens, "Project_Management__c")
+    except Exception as e:
+        print(f"Could not describe Project_Management__c: {e}")
+        print("The object may have a different API name. Check Setup > Object Manager in Salesforce.")
+        return
+
+    fields = meta.get("fields", [])
+    date_fields   = [f for f in fields if f["type"] in ("date", "datetime")]
+    lookup_fields = [f for f in fields if f["type"] == "reference"]
+    text_fields   = [f for f in fields if f["type"] in ("string", "picklist", "textarea", "currency", "double")]
+
+    print(f"Total fields: {len(fields)}")
+    print(f"\nDate/DateTime fields ({len(date_fields)}):")
+    for f in date_fields:
+        print(f"  {f['name']:<40} {f['label']}")
+
+    print(f"\nLookup/Relationship fields ({len(lookup_fields)}):")
+    for f in lookup_fields:
+        refs = ", ".join(f.get("referenceTo", []))
+        print(f"  {f['name']:<40} {f['label']} → {refs}")
+
+    print(f"\nKey text/picklist/currency fields ({len(text_fields)}):")
+    for f in text_fields[:30]:
+        print(f"  {f['name']:<40} {f['label']} ({f['type']})")
+    if len(text_fields) > 30:
+        print(f"  ... and {len(text_fields) - 30} more")
+
+    # 2. Pull 5 sample records with all date fields + name + lookups
+    date_field_names = [f["name"] for f in date_fields]
+    lookup_field_names = [f["name"] for f in lookup_fields[:5]]
+    select_fields = ["Id", "Name"] + date_field_names + lookup_field_names
+    soql = f"SELECT {', '.join(select_fields[:25])} FROM Project_Management__c ORDER BY CreatedDate DESC LIMIT 5"
+
+    print(f"\n=== Sample Records (most recent 5) ===")
+    try:
+        result = sf_query(tokens, soql)
+        records = result.get("records", [])
+        if not records:
+            print("No Project Management records found.")
+            return
+        for r in records:
+            print(f"\n  Name: {r.get('Name')}")
+            for fn in date_field_names:
+                if r.get(fn):
+                    label = next((f["label"] for f in date_fields if f["name"] == fn), fn)
+                    print(f"    {label:<35} {r[fn]}")
+            for fn in lookup_field_names:
+                if r.get(fn):
+                    label = next((f["label"] for f in lookup_fields if f["name"] == fn), fn)
+                    print(f"    {label:<35} {r[fn]}")
+    except Exception as e:
+        print(f"Could not query sample records: {e}")
+        print(f"Attempted SOQL: {soql}")
+
+
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 def main():
@@ -403,7 +483,8 @@ def main():
     parser.add_argument("--months", type=int, default=12, help="Look-ahead for lease expirations (default: 12)")
     parser.add_argument("--output", type=str, default="", help="Override output file path")
     parser.add_argument("--stdout", action="store_true", help="Print to stdout instead of saving")
-    parser.add_argument("--diagnose", action="store_true", help="Show raw field values for 5 sample records")
+    parser.add_argument("--diagnose", action="store_true", help="Show raw field values for 5 sample Asset records")
+    parser.add_argument("--diagnose-pm", action="store_true", help="Discover Project Management object schema and sample data")
     parser.add_argument("--account", type=str, default="", help="Account name filter for --diagnose mode")
     args = parser.parse_args()
 
@@ -414,6 +495,10 @@ def main():
 
     if args.diagnose:
         diagnose(tokens, account_name=args.account)
+        return
+
+    if getattr(args, "diagnose_pm", False):
+        diagnose_pm(tokens)
         return
 
     print("Fetching lease expirations...", file=sys.stderr)
