@@ -10,6 +10,8 @@ Usage:
     python3 eda-scraper.py --download --query "CB Accounts - Press Brakes"  # One specific query
     python3 eda-scraper.py --search "Keystone Fab"                       # Search cached data
     python3 eda-scraper.py --search "Keystone" --field buycomp1          # Search specific field
+    python3 eda-scraper.py --sync                                         # Sync EDA cache → Salesforce Assets
+    python3 eda-scraper.py --sync --account "Keystone Fab"               # Sync one account only
     python3 eda-scraper.py --list-queries                                 # List available queries
     python3 eda-scraper.py --cache-info                                   # Show cache stats
     python3 eda-scraper.py --no-login-cache                               # Force fresh login
@@ -18,16 +20,23 @@ Usage:
 Credentials: stored in .env at vault root
     EDA_USERNAME=your@email.com
     EDA_PASSWORD=yourpassword
+
+Our brands config: .scripts/customer-intel/our-brands.json
+    List of manufacturer names we sell — everything else is flagged as competitor.
 """
 
 import csv
 import json
 import os
+import re
 import sys
 import argparse
 import time
-from datetime import datetime
+from datetime import datetime, date, timedelta
 from pathlib import Path
+from urllib.parse import urlencode
+from urllib.request import Request, urlopen
+from urllib.error import HTTPError
 
 # ── Config ────────────────────────────────────────────────────────────────────
 
@@ -369,6 +378,289 @@ def all_records(cache):
     return records
 
 
+# ── Salesforce Sync Helpers ────────────────────────────────────────────────────
+
+SF_TOKEN_FILE = Path.home() / ".claude" / "sf_tokens.json"
+OUR_BRANDS_FILE = Path(__file__).parent / "our-brands.json"
+
+# Map EDA eqtdesc keywords → SF Machine_Type_New__c picklist values
+_MACHINE_TYPE_MAP = [
+    ("press brake",            "Press Brake"),
+    ("pressbrake",             "Press Brake"),
+    ("laser punch",            "Laser Punch Press"),
+    ("tube laser",             "Laser (Tube)"),
+    ("pipe laser",             "Laser (Tube)"),
+    ("laser",                  "Laser"),
+    ("shear",                  "Shear"),
+    ("punch press",            "Punch"),
+    ("turret punch",           "Punch"),
+    ("punch",                  "Punch"),
+    ("waterjet",               "Waterjet"),
+    ("plasma",                 "Plasma (CNC)"),
+    ("ironworker",             "Ironworker"),
+    ("angle line",             "Angle Line"),
+    ("bandsaw",                "Bandsaw"),
+    ("band saw",               "Bandsaw"),
+    ("cold saw",               "Cold Saw"),
+    ("saw",                    "Saw (NEC)"),
+    ("panel bender",           "Panel Bender"),
+    ("folder",                 "Folder (CNC)"),
+    ("roll",                   "Rolls (Plate)"),
+    ("leveler",                "Leveler"),
+    ("deburr",                 "Deburring Machine"),
+    ("notcher",                "Notcher"),
+    ("tube bender",            "Tube/Pipe Bender"),
+    ("pipe bender",            "Tube/Pipe Bender"),
+    ("robot",                  "Robot (Tending)"),
+    ("welder",                 "Welder (Manual)"),
+    ("machining center",       "Vertical Machining Center (3-4 Axis)"),
+    ("vertical machining",     "Vertical Machining Center (3-4 Axis)"),
+    ("lathe",                  "Lathe (CNC)"),
+    ("stamping",               "Stamping Press"),
+    ("nitrogen",               "Nitrogen Generator"),
+    ("shot blast",             "Shot Blast Equipment"),
+    ("storage",                "Storage System"),
+    ("software",               "Software"),
+    ("coil feed",              "Coil Feeding"),
+    ("cut to length",          "Cut To Length"),
+]
+
+# Map EDA eqtman keywords → SF Builder__c picklist values
+_BUILDER_MAP = {
+    "amada":        "Amada/Marvel",
+    "trumpf":       "TRUMPF",
+    "mitsubishi":   "Mitsubishi",
+    "piranha":      "Piranha",
+    "scotchman":    "Scotchman",
+    "hyd-mech":     "Hyd-Mech",
+    "hydmech":      "Hyd-Mech",
+    "flow":         "Flow",
+    "aida":         "AIDA",
+    "arku":         "Arku",
+    "cidan":        "Cidan",
+    "ehrt":         "EHRT",
+    "faccin":       "Faccin",
+    "geka":         "Geka",
+    "haco":         "Haco",
+    "haeger":       "Haeger",
+    "he&m":         "HE&M Saw",
+    "baileigh":     "Baileigh",
+    "wila":         "WILA",
+    "tigerstop":    "TigerStop",
+    "virtek":       "Virtek",
+    "vectis":       "Vectis",
+    "mid atlantic": "Mid Atlantic Machinery Automation",
+    "midwest auto": "Midwest Automation",
+    "miller":       "Miller Welding",
+    "royson":       "Royson",
+    "standard ind": "Standard Industrial",
+    "accurex":      "Accurex",
+    "ercolina":     "Ercolina",
+    "transfluid":   "Transfluid",
+    "prodevco":     "Prodevco",
+    "p/a industr":  "P/A Industries",
+    "pat mooney":   "Pat Mooney",
+}
+
+# Sale/lease → SF Sale_or_Lease__c values (check real picklist)
+_SALE_LEASE_MAP = {
+    "SALE":       "Sale",
+    "LEASE":      "Lease",
+    "RENTAL":     "Lease",
+    "REFINANCE":  "Lease",
+    "WHOLESALE":  "Sale",
+    "TERMINATION": None,
+}
+
+
+def load_sf_tokens():
+    if not SF_TOKEN_FILE.exists():
+        return None
+    try:
+        return json.loads(SF_TOKEN_FILE.read_text())
+    except Exception:
+        return None
+
+
+def sf_request(tokens, path, data=None, method=None):
+    url = tokens["instance_url"] + "/services/data/v59.0" + path
+    req = Request(url,
+                  data=json.dumps(data).encode() if data else None,
+                  headers={"Authorization": f"Bearer {tokens['access_token']}",
+                           "Content-Type": "application/json"},
+                  method=method or ("POST" if data else "GET"))
+    try:
+        with urlopen(req) as resp:
+            body = resp.read()
+            return json.loads(body) if body else {}
+    except HTTPError as e:
+        body = e.read().decode(errors="replace")
+        raise RuntimeError(f"SF API {e.code}: {body[:500]}") from e
+
+
+def sf_query_all(tokens, soql):
+    """Paginate through all SOQL records."""
+    path = "/query?" + urlencode({"q": soql})
+    records = []
+    while path:
+        result = sf_request(tokens, path)
+        records.extend(result.get("records", []))
+        next_url = result.get("nextRecordsUrl")
+        if next_url:
+            # nextRecordsUrl is like /services/data/v59.0/query/...
+            path = next_url.replace("/services/data/v59.0", "")
+        else:
+            path = None
+    return records
+
+
+def load_our_brands():
+    """Load list of brand names we sell. Falls back to empty list (all = competitor)."""
+    if OUR_BRANDS_FILE.exists():
+        try:
+            return [b.upper() for b in json.loads(OUR_BRANDS_FILE.read_text())]
+        except Exception:
+            pass
+    return []
+
+
+def is_competitor(eqtman, our_brands):
+    if not our_brands:
+        return False
+    man_upper = (eqtman or "").upper()
+    return not any(brand in man_upper for brand in our_brands)
+
+
+def map_machine_type(eqtdesc):
+    desc_lower = (eqtdesc or "").lower()
+    for keyword, sf_val in _MACHINE_TYPE_MAP:
+        if keyword in desc_lower:
+            return sf_val
+    return None
+
+
+def map_builder(eqtman):
+    man_lower = (eqtman or "").lower()
+    for keyword, sf_val in _BUILDER_MAP.items():
+        if keyword in man_lower:
+            return sf_val
+    return None
+
+
+def normalize_name(name):
+    name = (name or "").lower().strip()
+    for suffix in [" inc.", " inc", " llc.", " llc", " corp.", " corp",
+                   " co.", " company", " ltd.", " ltd", " & co"]:
+        if name.endswith(suffix):
+            name = name[:-len(suffix)].strip()
+    name = re.sub(r"[^\w\s]", " ", name)
+    return re.sub(r"\s+", " ", name).strip()
+
+
+def build_sf_account_index(tokens):
+    """Return dict of normalized_name → {Id, Name}."""
+    print("  Loading Salesforce accounts...", end=" ", flush=True)
+    records = sf_query_all(tokens, "SELECT Id, Name FROM Account WHERE IsDeleted = false LIMIT 100000")
+    index = {}
+    for r in records:
+        key = normalize_name(r["Name"])
+        index[key] = {"Id": r["Id"], "Name": r["Name"]}
+    print(f"{len(index)} accounts.")
+    return index
+
+
+def find_sf_account(index, company_name):
+    key = normalize_name(company_name)
+    if key in index:
+        return index[key]
+    # Try prefix match on first 2+ words
+    words = key.split()
+    if len(words) >= 2:
+        prefix = " ".join(words[:2])
+        for k, v in index.items():
+            if k.startswith(prefix):
+                return v
+    return None
+
+
+def get_existing_ucc_ids(tokens, account_id):
+    """Return set of UCCID__c values already in SF for this account."""
+    try:
+        records = sf_query_all(
+            tokens,
+            f"SELECT UCCID__c FROM Asset WHERE AccountId = '{account_id}' AND UCCID__c != null"
+        )
+        return {r["UCCID__c"] for r in records}
+    except Exception:
+        return set()
+
+
+def build_asset_payload(eda_rec, account_id, our_brands):
+    """Map one EDA record to a Salesforce Asset create payload."""
+    uccid = str(eda_rec.get("uccid") or "").strip()
+    uccstatus = (eda_rec.get("uccstatus") or "").upper().strip()
+    uccdate_raw = (eda_rec.get("uccdate") or "")[:10]
+    eqtman = (eda_rec.get("eqtman") or "").strip()
+    eqtmodel = (eda_rec.get("eqtmodel") or "").strip()
+    eqtdesc = (eda_rec.get("eqtdesc") or "").strip()
+
+    # Asset name
+    parts = [p for p in [eqtman, eqtmodel] if p]
+    name = " - ".join(parts) if parts else (eqtdesc or "EDA Record")
+    name = name[:255]
+
+    # Sale or Lease
+    sale_or_lease = _SALE_LEASE_MAP.get(uccstatus)
+
+    # Estimated lease end: UCC filings lapse after 5 years
+    usage_end = None
+    if uccdate_raw and "LEASE" in uccstatus or "RENTAL" in uccstatus or "REFINANCE" in uccstatus:
+        try:
+            filing = datetime.strptime(uccdate_raw, "%Y-%m-%d").date()
+            usage_end = (filing + timedelta(days=5 * 365)).isoformat()
+        except Exception:
+            pass
+
+    # Builder picklist vs Other
+    sf_builder = map_builder(eqtman)
+    builder_other = eqtman if (eqtman and not sf_builder) else None
+
+    # Machine type picklist
+    sf_machine_type = map_machine_type(eqtdesc)
+
+    # New or Used
+    eqtnu = (eda_rec.get("eqtnu") or "").strip().upper()
+    new_or_used = "New" if eqtnu == "N" else ("Used" if eqtnu == "U" else None)
+
+    payload = {
+        "Name": name,
+        "AccountId": account_id,
+        "UCCID__c": uccid,
+        "UCC_BuyID__c": (eda_rec.get("buyid") or "").strip() or None,
+        "UCC_Status__c": uccstatus or None,
+        "UCC_Vendor__c": (eda_rec.get("spcomp") or "").strip() or None,
+        "UCC_S_N__c": (eda_rec.get("eqtsn") or "").strip() or None,
+        "UCC_EQT_Code__c": (eda_rec.get("eqtcode") or "").strip() or None,
+        "UCC_New_or_Used__c": new_or_used,
+        "ModelName__c": eqtmodel or None,
+        "Sale_or_Lease__c": sale_or_lease,
+        "InstallDate": uccdate_raw or None,
+        "UsageEndDate": usage_end,
+        "IsCompetitorProduct": is_competitor(eqtman, our_brands),
+        "Status": "Installed",
+    }
+
+    if sf_builder:
+        payload["Builder__c"] = sf_builder
+    if builder_other:
+        payload["Builder_Other__c"] = builder_other
+    if sf_machine_type:
+        payload["Machine_Type_New__c"] = sf_machine_type
+
+    # Strip None values — SF rejects null writes for some fields
+    return {k: v for k, v in payload.items() if v is not None}
+
+
 # ── Commands ───────────────────────────────────────────────────────────────────
 
 def cmd_download(session, query_filter=None, headed=False):
@@ -450,6 +742,96 @@ def cmd_list_queries():
     print(f"Download all: --download")
 
 
+def cmd_sync(account_filter=None, dry_run=False):
+    """Sync EDA local cache → Salesforce Assets for all matching accounts."""
+    cache = load_cache()
+    if not cache:
+        print("No local cache found. Run --download first.")
+        sys.exit(1)
+
+    tokens = load_sf_tokens()
+    if not tokens:
+        print("No Salesforce tokens found at ~/.claude/sf_tokens.json")
+        print("Run sf_authenticate from Dex first.")
+        sys.exit(1)
+
+    our_brands = load_our_brands()
+    records = all_records(cache)
+
+    # Group EDA records by buyer company name
+    by_company: dict[str, list] = {}
+    for r in records:
+        company = (r.get("buycomp1") or "").strip()
+        if company:
+            by_company.setdefault(company, []).append(r)
+
+    if account_filter:
+        filter_lower = account_filter.lower()
+        by_company = {k: v for k, v in by_company.items() if filter_lower in k.lower()}
+        if not by_company:
+            print(f"No EDA records match account filter '{account_filter}'.")
+            return
+
+    print(f"EDA cache: {len(records)} records across {len(by_company)} companies")
+    if dry_run:
+        print("[DRY RUN - no records will be written to Salesforce]")
+
+    # Build SF account index (one batch query)
+    sf_index = build_sf_account_index(tokens)
+
+    matched_companies = 0
+    skipped_companies = 0
+    already_exists = 0
+    created = 0
+    failed = 0
+
+    for company_name, eda_recs in sorted(by_company.items()):
+        sf_acct = find_sf_account(sf_index, company_name)
+        if not sf_acct:
+            skipped_companies += 1
+            continue
+
+        matched_companies += 1
+        account_id = sf_acct["Id"]
+
+        # Only fetch existing UCCIDs for this account when not dry-running
+        existing_ucc_ids = set() if dry_run else get_existing_ucc_ids(tokens, account_id)
+
+        for eda_rec in eda_recs:
+            ucc_id = str(eda_rec.get("uccid") or "").strip()
+            if not ucc_id:
+                continue
+
+            if ucc_id in existing_ucc_ids:
+                already_exists += 1
+                continue
+
+            payload = build_asset_payload(eda_rec, account_id, our_brands)
+
+            if dry_run:
+                print(f"  [DRY RUN] {company_name} -> {payload.get('Name')} (UCCID {ucc_id})")
+                created += 1
+                continue
+
+            try:
+                sf_request(tokens, "/sobjects/Asset", data=payload, method="POST")
+                created += 1
+            except Exception as e:
+                print(f"  ERROR {company_name}/{ucc_id}: {e}", file=sys.stderr)
+                failed += 1
+
+    print(f"\nSync complete:")
+    print(f"  Matched SF accounts:  {matched_companies}")
+    print(f"  No SF match:          {skipped_companies} companies")
+    print(f"  Already in SF:        {already_exists}")
+    print(f"  {'Would create' if dry_run else 'Created'}:            {created}")
+    if not dry_run:
+        print(f"  Failed:               {failed}")
+    if not our_brands:
+        print("\nTip: create .scripts/customer-intel/our-brands.json to flag competitor equipment.")
+        print('  Example: ["AMADA", "TRUMPF", "MITSUBISHI"]')
+
+
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 def main():
@@ -458,6 +840,9 @@ def main():
     parser.add_argument("--query",          type=str, default="", help="Filter which saved query to download (partial name match)")
     parser.add_argument("--search",         type=str, default="", help="Search cached data by any field value")
     parser.add_argument("--field",          type=str, default="", help="Restrict --search to a specific field name")
+    parser.add_argument("--sync",           action="store_true", help="Sync EDA cache to Salesforce Assets")
+    parser.add_argument("--account",        type=str, default="", help="Limit --sync to one account name (partial match)")
+    parser.add_argument("--dry-run",        action="store_true", help="Preview --sync without writing to Salesforce")
     parser.add_argument("--list-queries",   action="store_true", help="List available saved queries")
     parser.add_argument("--cache-info",     action="store_true", help="Show cache stats")
     parser.add_argument("--no-login-cache", action="store_true", help="Force fresh browser login")
@@ -474,6 +859,10 @@ def main():
 
     if args.search and not args.download:
         cmd_search(args.search, field=args.field or None)
+        return
+
+    if args.sync or args.dry_run:
+        cmd_sync(account_filter=args.account or None, dry_run=args.dry_run)
         return
 
     session = make_session()
