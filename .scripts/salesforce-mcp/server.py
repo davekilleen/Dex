@@ -343,6 +343,17 @@ TOOLS = [
         },
     },
     {
+        "name": "sf_get_project_management",
+        "description": "Get Project Management records (closed won orders in delivery). Returns account, related opportunity, scheduled ship date, install date, and deposit/invoice status. Use in daily planning to surface upcoming deliveries and milestone check-ins.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "limit": {"type": "integer", "description": "Max results (default 50)"},
+                "days_ahead": {"type": "integer", "description": "Only return records with install date within this many days (optional)"},
+            },
+        },
+    },
+    {
         "name": "sf_update_opportunity_notes",
         "description": "Update the Next Steps and/or Description fields on a Salesforce opportunity. Use after decisions are made or next actions are defined.",
         "inputSchema": {
@@ -740,6 +751,61 @@ def tool_sf_get_completed_tasks(args):
     return {"tasks": tasks, "count": len(tasks)}
 
 
+def tool_sf_get_project_management(args):
+    tokens = get_valid_tokens()
+    if not tokens:
+        return {"error": "Not authenticated. Run sf_authenticate first."}
+    import datetime
+    limit = args.get("limit", 50)
+    days_ahead = args.get("days_ahead")
+    date_filter = ""
+    if days_ahead:
+        cutoff = (datetime.date.today() + datetime.timedelta(days=days_ahead)).isoformat()
+        date_filter = f"AND Install_Date__c <= {cutoff}"
+    soql = f"""
+        SELECT Id, Name, Account__r.Name, Opportunity__r.Name,
+               Scheduled_Ship_Date__c, Install_Date__c, Deposit_and_Invoices__c,
+               CreatedDate
+        FROM Project_Management__c
+        WHERE Install_Date__c != null
+        {date_filter}
+        ORDER BY Install_Date__c ASC NULLS LAST
+        LIMIT {limit}
+    """
+    result = sf_query(tokens, soql)
+    today = datetime.date.today()
+    records = []
+    for r in result.get("records", []):
+        install_raw = r.get("Install_Date__c")
+        ship_raw = r.get("Scheduled_Ship_Date__c")
+        install_date = datetime.date.fromisoformat(install_raw) if install_raw else None
+        days_until_install = (install_date - today).days if install_date else None
+
+        # Determine which milestone action is most relevant right now
+        milestone = None
+        if days_until_install is not None:
+            if days_until_install <= 14:
+                milestone = "DELIVERY IMMINENT — confirm pre-install checklist complete"
+            elif days_until_install <= 30:
+                milestone = "Send pre-installation manual to customer"
+            elif days_until_install <= 60:
+                milestone = "Confirm foundation/site requirements with customer"
+            else:
+                milestone = "Verify tooling, software, and training ordered"
+
+        records.append({
+            "name": r.get("Name"),
+            "account": r.get("Account__r", {}).get("Name") if r.get("Account__r") else None,
+            "opportunity": r.get("Opportunity__r", {}).get("Name") if r.get("Opportunity__r") else None,
+            "scheduled_ship_date": ship_raw,
+            "install_date": install_raw,
+            "days_until_install": days_until_install,
+            "deposit_invoices": r.get("Deposit_and_Invoices__c"),
+            "milestone_action": milestone,
+        })
+    return {"project_management_records": records, "count": len(records)}
+
+
 def tool_sf_update_opportunity_notes(args):
     tokens = get_valid_tokens()
     if not tokens:
@@ -769,6 +835,7 @@ TOOL_FNS = {
     "sf_create_task": tool_sf_create_task,
     "sf_get_open_tasks": tool_sf_get_open_tasks,
     "sf_get_completed_tasks": tool_sf_get_completed_tasks,
+    "sf_get_project_management": tool_sf_get_project_management,
     "sf_update_opportunity_notes": tool_sf_update_opportunity_notes,
 }
 

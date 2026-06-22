@@ -349,13 +349,13 @@ Also gather:
 Scan all `Projects/*.md` files and extract Stage, Amount, Close Date, and deal name. Then:
 
 1. **Group by stage** — Negotiation → Favorable → Quoting → Discovery → Active Project
+   - **Note:** "Active Project" is an open opportunity stage (a deal currently being worked), NOT a closed/won order. Treat it the same as other open stages.
 2. **Flag urgency** for each Negotiation deal:
    - Close date in the past → ⚠️ Overdue — needs attention
    - Close date within 14 days → 🔥 Closing soon
    - Close date within 30 days → 📅 On horizon
 3. **Show totals per stage** (sum of dollar amounts, count of deals)
-4. **Active Projects** = won/ordered deals in delivery. Flag any that haven't been mentioned in meeting notes or tasks recently — they may need a check-in on delivery, install scheduling, or payment status.
-5. **Open Tasks (Actionable View)** — from `Planning/Tasks.md`, show only:
+4. **Open Tasks (Actionable View)** — from `Planning/Tasks.md`, show only:
    - "This Week" tasks (not completed)
    - Overdue 2026 tasks (skip 2025 and older stale tasks — those are backlog, not daily action)
    - Group by priority if pillars differ
@@ -369,17 +369,35 @@ Scan all `Projects/*.md` files and extract Stage, Amount, Close Date, and deal n
 > | Negotiation | 2 | $1.23M |
 > | Favorable | 10 | $1.6M+ |
 > | Quoting | 28 | ~$5.2M |
-> | Active Projects | 15 | ~$4.4M |
 >
 > **⚠️ Overdue closes (Negotiation):**
 > - Hanwha Philly Shipyard — $1.09M — 204 days past close date
 > - James Cox & Sons TruBend 1100 — $139K — 24 days past close
->
-> **Active Orders — consider a check-in:**
-> - Hanwha 80' Laser — $1M (largest order in delivery)
-> - Gottstein Mach500 / Michael Addesso Mach500 — $415K each
 
 **If no Projects/ folder:** Skip silently.
+
+### 5.12 Closed Won — Project Management (Delivery Milestones)
+
+Call `sf_get_project_management` from the Salesforce MCP to pull all active `Project_Management__c` records (closed won orders in delivery).
+
+**Milestone logic** (auto-computed by the tool based on install date):
+- **> 60 days out:** Verify tooling, software, and training are ordered
+- **30–60 days out:** Confirm foundation and site requirements with customer
+- **14–30 days out:** Send pre-installation manual (includes checklist) to customer
+- **< 14 days out:** DELIVERY IMMINENT — confirm pre-install checklist is complete, all items accounted for
+
+**Surface in the plan only if there are actionable milestones:**
+
+> **📦 Active Orders — Milestone Check**
+>
+> | Customer | Machine | Install Date | Days Out | Action Needed |
+> |----------|---------|--------------|----------|---------------|
+> | Hanwha Philly Shipyard | TEC 80' Laser | 2026-07-15 | 23 days | Send pre-installation manual |
+> | Gottstein Corporation | FLO Mach500 | 2026-09-01 | 71 days | Verify tooling/software ordered |
+
+**Deposit & Invoices column:** Surface any records where `Deposit_and_Invoices__c` is blank or flagged — missing deposit info before delivery is a risk.
+
+**If Salesforce MCP unavailable or PM object returns no records:** Skip this section silently.
 
 ---
 
@@ -526,7 +544,6 @@ integrations_used: [calendar, tasks, people, work-intelligence]
 | Negotiation | {{N}} | ${{X}} |
 | Favorable | {{N}} | ${{X}} |
 | Quoting | {{N}} | ${{X}} |
-| Active Projects | {{N}} | ${{X}} |
 
 **Negotiation — needs action:**
 {{For each Negotiation deal}}
@@ -537,12 +554,16 @@ integrations_used: [calendar, tasks, people, work-intelligence]
 
 ---
 
-## 📦 Active Orders — Follow-Up Check
+## 📦 Active Orders — Milestone Check
 
-{{For each Active Project deal, especially large ones or those with no recent activity}}
-- [ ] **{{Account}}** — {{Product}} — ${{Amount}} — {{follow-up suggestion: delivery status / install date / payment}}
+*Pulled from Salesforce Project Management (closed won orders in delivery)*
 
-*If no follow-ups needed, skip this section.*
+{{If PM records exist with actionable milestones}}
+| Customer | Machine | Install Date | Days Out | Action Needed |
+|----------|---------|--------------|----------|---------------|
+| {{Account}} | {{Product}} | {{Install Date}} | {{N}} days | {{Milestone action}} |
+
+{{If no PM records or all milestones are clear}} *No delivery milestones due this week.*
 
 ---
 
