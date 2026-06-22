@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
 Dex EDA Data Scraper — UCC-1 Machine Tool Filing Intelligence
 
@@ -37,6 +38,12 @@ from pathlib import Path
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 from urllib.error import HTTPError
+
+# Force UTF-8 output on Windows so em-dashes and arrows render correctly
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+if hasattr(sys.stderr, "reconfigure"):
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
 # ── Config ────────────────────────────────────────────────────────────────────
 
@@ -734,6 +741,245 @@ def cmd_cache_info():
         print(f"{q:<45} {data.get('count',0):>8}  {ts}")
 
 
+def cmd_profile(company_query, our_brands):
+    """Generate a customer intelligence profile from the local EDA cache."""
+    cache = load_cache()
+    if not cache:
+        print("No local cache found. Run --download first.")
+        return
+
+    records = all_records(cache)
+    query_lower = company_query.lower()
+    matches = [r for r in records if query_lower in (r.get("buycomp1") or "").lower()]
+
+    if not matches:
+        print(f"No EDA records found for '{company_query}'.")
+        # Suggest close matches
+        names = sorted({r.get("buycomp1","") for r in records if r.get("buycomp1")})
+        close = [n for n in names if any(w in n.lower() for w in query_lower.split())][:5]
+        if close:
+            print("Did you mean:")
+            for n in close:
+                print(f"  {n}")
+        return
+
+    # Deduplicate on uccid
+    seen_ids = set()
+    unique = []
+    for r in matches:
+        uid = str(r.get("uccid",""))
+        if uid not in seen_ids:
+            seen_ids.add(uid)
+            unique.append(r)
+
+    company_name = unique[0].get("buycomp1","")
+    buyer = unique[0]
+
+    # ── Parse all records ─────────────────────────────────────────────────────
+    today = date.today()
+
+    def parse_date(raw):
+        s = (raw or "")[:10]
+        try:
+            return datetime.strptime(s, "%Y-%m-%d").date()
+        except Exception:
+            return None
+
+    def urgency(end_date):
+        if not end_date:
+            return None
+        days = (end_date - today).days
+        if days < 0:     return "LAPSED"
+        if days <= 90:   return "CRITICAL"
+        if days <= 180:  return "HIGH"
+        if days <= 365:  return "MEDIUM"
+        return "LOW"
+
+    URGENCY_ICON = {"CRITICAL": "[!!]", "HIGH": "[! ]", "MEDIUM": "[ ~]", "LOW": "[  ]", "LAPSED": "[--]"}
+
+    assets = []
+    for r in unique:
+        uccstatus = (r.get("uccstatus") or "").upper()
+        filing_date = parse_date(r.get("uccdate"))
+        is_lease = uccstatus in ("LEASE", "RENTAL", "REFINANCE")
+        est_end = None
+        if is_lease and filing_date:
+            est_end = filing_date + timedelta(days=5 * 365)
+        urg = urgency(est_end) if est_end else ("LAPSED" if uccstatus == "TERMINATION" else None)
+        eqtman = (r.get("eqtman") or "").strip()
+        comp = is_competitor(eqtman, our_brands) if our_brands else False
+        assets.append({
+            "uccid":       r.get("uccid",""),
+            "uccstatus":   uccstatus,
+            "filing_date": filing_date,
+            "est_end":     est_end,
+            "urgency":     urg,
+            "eqtman":      eqtman,
+            "eqtmodel":    (r.get("eqtmodel") or "").strip(),
+            "eqtdesc":     (r.get("eqtdesc") or "").strip(),
+            "eqtsn":       (r.get("eqtsn") or "").strip(),
+            "spcomp":      (r.get("spcomp") or "").strip(),
+            "is_lease":    is_lease,
+            "is_comp":     comp,
+            "eqtnu":       (r.get("eqtnu") or "").strip().upper(),
+        })
+
+    assets_sorted = sorted(assets, key=lambda a: a["filing_date"] or date(1900,1,1))
+
+    our_eq  = [a for a in assets_sorted if not a["is_comp"] and a["uccstatus"] != "TERMINATION"]
+    comp_eq = [a for a in assets_sorted if a["is_comp"] and a["uccstatus"] != "TERMINATION"]
+    terms   = [a for a in assets_sorted if a["uccstatus"] == "TERMINATION"]
+    leases  = [a for a in assets_sorted if a["is_lease"] and a["uccstatus"] != "TERMINATION"]
+    crit    = [a for a in leases if a["urgency"] in ("CRITICAL","HIGH")]
+
+    # ── Buying pattern analysis ───────────────────────────────────────────────
+    active = [a for a in assets_sorted if a["uccstatus"] != "TERMINATION" and a["filing_date"]]
+    filing_dates = [a["filing_date"] for a in active]
+    if len(filing_dates) >= 2:
+        intervals = [(filing_dates[i+1] - filing_dates[i]).days for i in range(len(filing_dates)-1)]
+        avg_interval_months = round(sum(intervals) / len(intervals) / 30)
+    else:
+        avg_interval_months = None
+
+    # Buying season from filing month
+    from collections import Counter as _Counter
+    month_counts = _Counter(d.month for d in filing_dates)
+    season_months = month_counts.most_common(3)
+    MONTH_NAMES = ["","Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"]
+    season_str = ", ".join(MONTH_NAMES[m] for m, _ in season_months) if season_months else "unknown"
+
+    # ── Print profile ─────────────────────────────────────────────────────────
+    sep = "-" * 72
+
+    print(sep)
+    print(f"  CUSTOMER INTELLIGENCE PROFILE")
+    print(f"  {company_name}")
+    print(sep)
+
+    # Company info
+    addr_parts = [buyer.get("buyadr1",""), buyer.get("buycity",""), buyer.get("buystate",""), buyer.get("buyzip","")]
+    addr = ", ".join(p for p in addr_parts if p)
+    print(f"  Address:  {addr}")
+    phone = buyer.get("buyphone","")
+    if phone:
+        print(f"  Phone:    {phone}")
+    sic = buyer.get("buysicdesc","")
+    if sic:
+        print(f"  Industry: {sic}")
+    contacts = []
+    for n in ["buyc1first buyc1last buyc1title", "buyc2first buyc2last buyc2title"]:
+        fn, ln, tt = [buyer.get(k,"").strip() for k in n.split()]
+        if fn or ln:
+            contacts.append(f"{fn} {ln}".strip() + (f" ({tt})" if tt else ""))
+    for c in contacts:
+        print(f"  Contact:  {c}")
+    print()
+
+    # Summary
+    print(f"  FLEET SUMMARY")
+    print(f"  Total EDA records:   {len(unique)}")
+    print(f"  Active (non-term):   {len(our_eq) + len(comp_eq)}")
+    if our_brands:
+        print(f"  Our equipment:       {len(our_eq)}")
+        print(f"  Competitor equip:    {len(comp_eq)}")
+    print(f"  Terminated/lapsed:   {len(terms)}")
+    print(f"  Leases tracked:      {len(leases)}")
+    if crit:
+        print(f"  Leases expiring <6m: {len(crit)}  <-- OUTREACH PRIORITY")
+    if avg_interval_months:
+        print(f"  Avg buy interval:    ~{avg_interval_months} months")
+    print(f"  Buying season:       {season_str}")
+    if filing_dates:
+        print(f"  First filing:        {filing_dates[0]}")
+        print(f"  Most recent filing:  {filing_dates[-1]}")
+    print()
+
+    # Lease urgency alerts
+    if leases:
+        print(f"  LEASE EXPIRATION TRACKER")
+        print(f"  {'Icon':<6} {'Machine':<30} {'Manufacturer':<18} {'Filed':<12} {'Est. End':<12} {'Status'}")
+        print(f"  {'----':<6} {'-------':<30} {'------------':<18} {'------':<12} {'--------':<12} {'------'}")
+        for a in sorted(leases, key=lambda x: x["est_end"] or date(2099,1,1)):
+            icon = URGENCY_ICON.get(a["urgency"] or "", "    ")
+            machine = (a["eqtdesc"] or a["eqtmodel"] or "—")[:29]
+            mfr = (a["eqtman"] or "—")[:17]
+            filed = str(a["filing_date"]) if a["filing_date"] else "—"
+            end = str(a["est_end"]) if a["est_end"] else "—"
+            urg_label = a["urgency"] or ""
+            print(f"  {icon:<6} {machine:<30} {mfr:<18} {filed:<12} {end:<12} {urg_label}")
+        print()
+
+    # Equipment floor — our equipment
+    if our_eq and our_brands:
+        print(f"  OUR EQUIPMENT ON FLOOR ({len(our_eq)} records)")
+        print(f"  {'Machine Type':<30} {'Model':<25} {'Builder':<20} {'Filed':<12} {'S/L'}")
+        print(f"  {'------------':<30} {'-----':<25} {'-------':<20} {'------':<12} {'---'}")
+        for a in our_eq:
+            mtype = (a["eqtdesc"] or "—")[:29]
+            model = (a["eqtmodel"] or "—")[:24]
+            builder = (a["eqtman"] or "—")[:19]
+            filed = str(a["filing_date"]) if a["filing_date"] else "—"
+            sl = "Lease" if a["is_lease"] else "Sale"
+            print(f"  {mtype:<30} {model:<25} {builder:<20} {filed:<12} {sl}")
+        print()
+
+    # Competitor equipment
+    if comp_eq and our_brands:
+        print(f"  COMPETITOR EQUIPMENT ({len(comp_eq)} records)")
+        print(f"  {'Machine Type':<30} {'Model':<25} {'Competitor':<20} {'Filed':<12} {'S/L'}")
+        print(f"  {'------------':<30} {'-----':<25} {'----------':<20} {'------':<12} {'---'}")
+        for a in comp_eq:
+            mtype = (a["eqtdesc"] or "—")[:29]
+            model = (a["eqtmodel"] or "—")[:24]
+            comp = (a["eqtman"] or "—")[:19]
+            filed = str(a["filing_date"]) if a["filing_date"] else "—"
+            sl = "Lease" if a["is_lease"] else "Sale"
+            print(f"  {mtype:<30} {model:<25} {comp:<20} {filed:<12} {sl}")
+        print()
+
+    # All equipment (when no our-brands config)
+    if not our_brands:
+        print(f"  ALL EQUIPMENT ({len(our_eq) + len(comp_eq)} active records)")
+        print(f"  {'Machine Type':<30} {'Model':<25} {'Manufacturer':<20} {'Filed':<12} {'S/L'}")
+        print(f"  {'------------':<30} {'-----':<25} {'------------':<20} {'------':<12} {'---'}")
+        for a in our_eq + comp_eq:
+            mtype = (a["eqtdesc"] or "—")[:29]
+            model = (a["eqtmodel"] or "—")[:24]
+            mfr = (a["eqtman"] or "—")[:19]
+            filed = str(a["filing_date"]) if a["filing_date"] else "—"
+            sl = "Lease" if a["is_lease"] else "Sale"
+            print(f"  {mtype:<30} {model:<25} {mfr:<20} {filed:<12} {sl}")
+        print()
+
+    # Terminated / historical
+    if terms:
+        print(f"  HISTORICAL (TERMINATED UCC FILINGS) — {len(terms)} records")
+        for a in terms[-5:]:  # show last 5
+            print(f"  {str(a['filing_date']):<12}  {a['eqtdesc'] or a['eqtmodel'] or '—':<30}  {a['eqtman']:<20}")
+        if len(terms) > 5:
+            print(f"  ... and {len(terms)-5} more")
+        print()
+
+    # Strategic notes
+    print(f"  STRATEGIC NOTES")
+    if crit:
+        print(f"  PRIORITY: {len(crit)} lease(s) expiring within 6 months — contact now.")
+    if comp_eq and our_brands:
+        comp_brands = sorted({a["eqtman"] for a in comp_eq if a["eqtman"]})
+        old_comp = [a for a in comp_eq if a["filing_date"] and (today - a["filing_date"]).days > 365*7]
+        print(f"  Competitor brands on floor: {', '.join(comp_brands)}")
+        if old_comp:
+            print(f"  {len(old_comp)} competitor machine(s) 7+ years old — displacement opportunity.")
+    if avg_interval_months and filing_dates:
+        next_pred = filing_dates[-1] + timedelta(days=avg_interval_months * 30)
+        if next_pred >= today:
+            print(f"  Next predicted buy window: ~{next_pred} (based on {avg_interval_months}-month avg interval)")
+        else:
+            overdue = (today - next_pred).days // 30
+            print(f"  Pattern suggests purchase was due ~{overdue} months ago — may be shopping now.")
+    print(sep)
+
+
 def cmd_list_queries():
     print("Saved EDA queries:")
     for q in KNOWN_SAVED_QUERIES:
@@ -840,6 +1086,7 @@ def main():
     parser.add_argument("--query",          type=str, default="", help="Filter which saved query to download (partial name match)")
     parser.add_argument("--search",         type=str, default="", help="Search cached data by any field value")
     parser.add_argument("--field",          type=str, default="", help="Restrict --search to a specific field name")
+    parser.add_argument("--profile",        type=str, default="", help="Generate customer intelligence profile from local cache")
     parser.add_argument("--sync",           action="store_true", help="Sync EDA cache to Salesforce Assets")
     parser.add_argument("--account",        type=str, default="", help="Limit --sync to one account name (partial match)")
     parser.add_argument("--dry-run",        action="store_true", help="Preview --sync without writing to Salesforce")
@@ -859,6 +1106,10 @@ def main():
 
     if args.search and not args.download:
         cmd_search(args.search, field=args.field or None)
+        return
+
+    if args.profile:
+        cmd_profile(args.profile, load_our_brands())
         return
 
     if args.sync or args.dry_run:
