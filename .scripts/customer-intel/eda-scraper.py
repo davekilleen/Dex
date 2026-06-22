@@ -407,7 +407,7 @@ def main():
 
     session = make_session()
 
-    if not args.no_cache and load_session(session) and session_is_authenticated(session):
+    if not args.no_cache and load_session(session):
         print("Using saved session.", file=sys.stderr)
     else:
         if not login(session, headed=args.headed, debug=args.debug):
