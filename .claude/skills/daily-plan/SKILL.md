@@ -344,6 +344,43 @@ Also gather:
 - **People**: Context for meeting attendees
 - **Self-Learning Alerts**: Changelog updates, pending learnings
 
+### 5.11 Pipeline Snapshot (Sales role)
+
+Scan all `Projects/*.md` files and extract Stage, Amount, Close Date, and deal name. Then:
+
+1. **Group by stage** — Negotiation → Favorable → Quoting → Discovery → Active Project
+2. **Flag urgency** for each Negotiation deal:
+   - Close date in the past → ⚠️ Overdue — needs attention
+   - Close date within 14 days → 🔥 Closing soon
+   - Close date within 30 days → 📅 On horizon
+3. **Show totals per stage** (sum of dollar amounts, count of deals)
+4. **Active Projects** = won/ordered deals in delivery. Flag any that haven't been mentioned in meeting notes or tasks recently — they may need a check-in on delivery, install scheduling, or payment status.
+5. **Open Tasks (Actionable View)** — from `Planning/Tasks.md`, show only:
+   - "This Week" tasks (not completed)
+   - Overdue 2026 tasks (skip 2025 and older stale tasks — those are backlog, not daily action)
+   - Group by priority if pillars differ
+
+**Surface in the plan:**
+
+> **Pipeline Snapshot (as of [date])**
+>
+> | Stage | Deals | Total |
+> |-------|-------|-------|
+> | Negotiation | 2 | $1.23M |
+> | Favorable | 10 | $1.6M+ |
+> | Quoting | 28 | ~$5.2M |
+> | Active Projects | 15 | ~$4.4M |
+>
+> **⚠️ Overdue closes (Negotiation):**
+> - Hanwha Philly Shipyard — $1.09M — 204 days past close date
+> - James Cox & Sons TruBend 1100 — $139K — 24 days past close
+>
+> **Active Orders — consider a check-in:**
+> - Hanwha 80' Laser — $1M (largest order in delivery)
+> - Gottstein Mach500 / Michael Addesso Mach500 — $415K each
+
+**If no Projects/ folder:** Skip silently.
+
 ---
 
 ## Step 6: Synthesis
@@ -479,6 +516,43 @@ integrations_used: [calendar, tasks, people, work-intelligence]
 
 {{If deep work capacity warning}}
 > ⚠️ You have {{X}} deep work tasks but only {{Y}} suitable slots this week. Consider protecting time or deferring.
+
+---
+
+## 💼 Pipeline Snapshot
+
+| Stage | Deals | Total |
+|-------|-------|-------|
+| Negotiation | {{N}} | ${{X}} |
+| Favorable | {{N}} | ${{X}} |
+| Quoting | {{N}} | ${{X}} |
+| Active Projects | {{N}} | ${{X}} |
+
+**Negotiation — needs action:**
+{{For each Negotiation deal}}
+- {{Flag}} **{{Deal name}}** — ${{Amount}} — {{days}} days {{past/until}} close date
+
+**Top Quoting deals (>$200K):**
+{{List top Quoting deals by amount}}
+
+---
+
+## 📦 Active Orders — Follow-Up Check
+
+{{For each Active Project deal, especially large ones or those with no recent activity}}
+- [ ] **{{Account}}** — {{Product}} — ${{Amount}} — {{follow-up suggestion: delivery status / install date / payment}}
+
+*If no follow-ups needed, skip this section.*
+
+---
+
+## ✅ Open Tasks — This Week
+
+**This week's tasks:**
+{{List "This Week" tasks from Planning/Tasks.md, uncompleted}}
+
+**Overdue 2026 (top priority outreach):**
+{{List overdue 2026 tasks — max 8, focus on most recent due dates first}}
 
 ---
 
