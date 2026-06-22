@@ -1,60 +1,62 @@
 ---
 name: customer-intel
-description: Deep customer intelligence from EDA Data UCC-1 filings — equipment inventory, lease expiration tracking, purchase pattern analysis, and strategic outreach timing
+description: Deep customer intelligence from Salesforce Asset records (EDA/UCC data) — equipment inventory, lease expiration tracking, purchase pattern analysis, and strategic outreach timing
 role_groups: [sales]
 jtbd: |
-  You need to know exactly what machines your customers and prospects have on their floor,
-  when their leases expire (= cash flow freed up), what they're likely to buy next, and
-  the precise moment to pick up the phone. EDA Data's UCC-1 filings give you all of this.
-  This skill turns raw filing data into a measurable sales advantage.
-time_investment: "15-30 minutes per company (2 minutes for alerts/scans)"
+  You need to know exactly what machines your customers have on their floor, when their
+  leases expire (= freed-up cash flow), what they're likely to buy next, and the precise
+  moment to pick up the phone. Your EDA Data UCC-1 records are already synced into
+  Salesforce as Asset objects. This skill turns that data into a measurable sales advantage.
+time_investment: "5-10 minutes per company (instant for alerts)"
 ---
 
-# Customer Intelligence — EDA Data Analysis
+# Customer Intelligence — Salesforce Asset Analysis
 
-Convert UCC-1 machine tool financing records into a complete picture of any company's
-equipment floor, buying cycles, cash flow windows, and your best next move.
+Convert your Salesforce Asset records (EDA/UCC-1 machine tool data) into a complete picture
+of any account's equipment floor, buying cycles, cash flow windows, and your best next move.
+
+> **Data source:** Salesforce Asset object — EDA Data UCC-1 filings are already synced here.
+> No manual data entry or web scraping needed. Requires `sf_authenticate` to be completed first.
 
 ## Usage
 
-- `/customer-intel [company-name]` — Full intelligence analysis for a specific company
-- `/customer-intel prospect [company-name]` — Research a prospect not yet in your vault
+- `/customer-intel [company-name]` — Full intelligence profile for a specific account
+- `/customer-intel prospect [company-name]` — Research a prospect using their asset history
 - `/customer-intel alerts` — All accounts with lease expirations in the next 12 months
-- `/customer-intel scan [state or industry]` — Find new prospects from recent EDA filings
-- `/customer-intel update [company-name]` — Refresh EDA data for an existing account
+- `/customer-intel competitive` — Competitor equipment map across all accounts
+- `/customer-intel scan [machine-type]` — Find all accounts with a specific machine type
 
 ## Arguments
 
-$COMPANY: Company name to research (partial match OK — try the most distinctive part)
-$MODE: `prospect`, `alerts`, `scan`, or `update` (default: full company analysis)
-$REGION: For scan mode — state abbreviation, metro area name, or industry keyword
+$COMPANY: Account name to research (partial match OK)
+$MODE: `prospect`, `alerts`, `competitive`, or `scan` (default: full account analysis)
+$MACHINE_TYPE: For scan mode — machine type keyword (e.g., "laser", "press brake", "VMC")
 
 ---
 
 ## Step 0: Route by Mode
 
 - **`alerts` mode** → Skip to Step 6: Lease Expiration Dashboard
-- **`scan` mode** → Skip to Step 7: Territory Discovery
+- **`competitive` mode** → Skip to Step 7: Competitive Equipment Map
+- **`scan` mode** → Skip to Step 8: Machine Type Territory Scan
 - **All other modes** → Continue to Step 1
 
 ---
 
-## Step 1: Load Existing Vault Context
+## Step 1: Load Vault Context
 
-Before touching EDA Data, gather what Dex already knows:
+Before pulling Salesforce data, check what Dex already knows:
 
 1. Check `People/Companies/` for an existing company page — read it fully if found
 2. Check `People/External/` for contacts at this company
-3. Search `Projects/` for open or archived opportunities with this company name
-4. Note: existing equipment mentions, last touch date, open quotes, relationship notes
+3. Search `Projects/` for open or archived opportunities with this account name
+4. Note any existing equipment mentions, last contact, open quotes, relationship notes
 
-If no company page exists, create a stub now at `People/Companies/[Company_Name].md` with:
+If no company page exists, create a stub now at `People/Companies/[Company_Name].md`:
 ```markdown
 ---
 name: [Company Name]
 type: customer|prospect
-industry: [infer from context]
-location: [City, State if known]
 ---
 
 # [Company Name]
@@ -63,192 +65,146 @@ location: [City, State if known]
 *Not yet populated — run `/customer-intel [company]` to build*
 ```
 
-Summarize what you already know before pulling EDA data. Tell the user what you found.
+---
+
+## Step 2: Pull Salesforce Asset Data
+
+Call `sf_get_account_assets` with the account name:
+```
+sf_get_account_assets(account_name="[COMPANY]", include_competitor=true)
+```
+
+If the account name returns no results, try a shorter version of the name (first word, 
+or without "Inc", "LLC", "Corp", etc.).
+
+If still no results, tell the user:
+```
+No assets found for "[Company]" in Salesforce. This could mean:
+1. The account name in SF is slightly different — what's the exact name in Salesforce?
+2. No EDA/UCC data has been synced for this account yet
+3. They're a prospect not yet in your SF Asset records
+```
 
 ---
 
-## Step 2: Pull EDA Data
+## Step 3: Parse and Structure the Equipment Floor
 
-Attempt to fetch UCC-1 filings from EDA Data using Scrapling.
+With asset records in hand, categorize them:
 
-**Try direct fetch first:**
-```
-scrapling_stealthy_fetch(url="https://edadata.com/search/[COMPANY_NAME_URL_ENCODED]")
-```
+**Our Equipment** (`is_competitor = false`):
+- Group by `machine_type`
+- For each machine: note model, builder, install date, usage_end_date, urgency rating
+- Calculate equipment age: today minus install_date (or purchase_date)
 
-Try these URL patterns if the first fails:
-- `https://edadata.com/?s=[company]`
-- `https://edadata.com/search/?debtor=[company]`
-- `https://edadata.com/results?q=[company]`
+**Competitor Equipment** (`is_competitor = true`):
+- List separately — these are conquest and displacement opportunities
+- Note which competitor brands they have (builder / ucc_vendor field)
+- Note age of competitor machines — old competitor equipment = strongest upgrade conversations
 
-Pass `css_selector=".results, table, .filings, .records, main"` to extract the relevant content.
-
-**If the site requires login or URL pattern is unknown:**
-
-Tell the user exactly what to do:
-```
-To pull EDA Data for [Company], I need the filing records. Quickest option:
-
-1. Go to edadata.com and search for "[Company]"
-2. Select all results on the page (Ctrl+A / Cmd+A), copy (Ctrl+C / Cmd+C)
-3. Paste it here
-
-Alternatively, copy the URL of your search results and I'll fetch it directly.
-
-What to look for: filing date, equipment description (collateral), secured party
-(lender), and expiration/lapse date for each filing.
-```
-
-Accept data in ANY format — copied table, raw text, CSV, screenshot description, or
-manual entry. The analysis works regardless of how the data arrives.
-
----
-
-## Step 3: Parse Each UCC-1 Filing
-
-For every filing record, extract and calculate:
-
-**Extract these fields:**
-
-| Field | What It Means | How to Parse |
-|-------|--------------|--------------|
-| Filing Date | When they bought/leased | Use as equipment acquisition date |
-| Lapse/Expiration Date | When financing ends | If absent, estimate: Filing Date + 5 years |
-| Secured Party | The lender/lessor | Wells Fargo, Key Equipment Finance, NMHG Financial, etc. |
-| Collateral Description | The actual equipment | Extract manufacturer, machine type, model, serial if present |
-| Amendment/Continuation | Filing was modified | Continuation = lease extended; Amendment = terms changed |
-| Filing State | Where equipment is | Confirms physical location |
-
-**Equipment Name Parsing — Extract:**
-- **Manufacturer:** Trumpf, Amada, Bystronic, Mazak, Haas, Okuma, Cincinnati, LVD,
-  Prima Power, Salvagnini, Mitsubishi, Fanuc, Hypertherm, Lincoln, Miller, etc.
-- **Machine Type:** fiber laser, CO2 laser, tube laser, press brake, punch press,
-  turret punch, VMC, turning center, lathe, plasma cutter, waterjet, robot, automation, etc.
-- **Model:** If present in collateral text — capture it exactly
-- **Specificity flag:** "All equipment" = generic (can't identify exact machine) vs.
-  "Trumpf TruLaser 3030 Fiber 6kW S/N 12345" = specific
-
-**Calculate for each record:**
-- **Age:** `[Today] - [Filing Date]` → years and months
-- **Months to Lapse:** `[Lapse Date] - [Today]` → positive = time remaining, negative = already lapsed
-- **Status:**
-  - 🔴 **EXPIRING** — 0 to 3 months remaining (act immediately)
-  - 🟡 **APPROACHING** — 3 to 12 months remaining (schedule outreach now)
-  - 🟢 **ACTIVE** — 12+ months remaining (on radar)
-  - ⚫ **LAPSED** — expiration date passed (financing ended; machine may be paid off or replaced)
+**Urgency Ratings from the API:**
+- 🔴 `CRITICAL` — UsageEndDate within 0–90 days (call this week)
+- 🟡 `HIGH` — UsageEndDate 90–180 days out (schedule outreach now)
+- 🟠 `MEDIUM` — UsageEndDate 180–365 days out (on the calendar)
+- 🟢 `LOW` — UsageEndDate 12+ months out (on radar)
+- ⚫ `LAPSED` — UsageEndDate passed (financing ended; machine paid off or replaced)
 
 ---
 
 ## Step 4: Analyze Purchase Patterns
 
-With all filings parsed, identify these patterns across the full filing history:
+From the full asset history, identify:
 
 ### Buying Frequency
-- First EDA appearance: what year? What equipment? (establishes when they became a machine tool buyer)
-- Total machines financed over time
-- Average interval between purchases (months)
-- Trend: **Accelerating** (intervals shrinking) | **Stable** | **Slowing** (intervals growing)
+- Oldest asset install/purchase date → establishes how long they've been a machine tool buyer
+- Count of assets financed over time
+- Average interval between purchases (months between consecutive install dates)
+- Trend: accelerating (intervals shrinking), stable, or slowing
 
 ### Equipment Evolution
-- Technology progression: e.g., "CO2 laser (2014) → fiber laser (2019) → added tube laser (2022)"
-- Capacity trajectory: are machines getting larger/higher-powered over time?
-- Process expansion: are they adding new processes (e.g., added bending after laser)?
-- Brand loyalty score: same manufacturer every time? Switching brands?
+- Technology progression: e.g., "CO2 laser (2014) → 3kW fiber (2019) → 6kW fiber (2022)"
+- Capacity growth: are machines getting larger/higher-powered?
+- Process expansion: adding new process types over time?
+- Brand loyalty: always the same builder, or shopping around?
 
-### Financing Patterns
-- Primary lender(s): same lender consistently = strong relationship there
-- Lender switching: may indicate credit changes or lender-driven deals
-- Term patterns: if multiple filings visible, infer average lease term
-- Cash purchase signal: long gap between filings with known activity = possible cash buyer
+### Sale vs. Lease Split
+- What percentage of their equipment is leased vs. purchased outright?
+- Leased = UsageEndDate present and Sale_or_Lease = "Lease"
+- All-lease shop: highly finance-driven, timing conversations matter enormously
+- All-purchase shop: capital budget driven, fiscal year timing matters more
 
 ### Seasonal Buying Pattern
-Look at the month of each filing date. Fabricators cluster purchases around:
-- **Oct-Dec:** Year-end tax planning (Section 179, bonus depreciation)
-- **Jan-Feb:** New budget year approval
-- **May-Jun:** Mid-year capital utilization
+Look at the month of install_date / purchase_date across all assets.
+Fabricators cluster purchases around:
+- **Oct–Dec:** Year-end tax planning (Section 179, bonus depreciation)
+- **Jan–Feb:** New fiscal year, fresh capital budget
+- **May–Jun:** Mid-year budget utilization
 
-State the company's apparent buying season with confidence level.
-
-### Expansion Signals (Bullish)
-- Multiple filings within 12 months = rapid growth mode
-- Increasingly capable equipment (higher wattage, larger bed, more axes)
-- Adding complementary processes (laser + press brake + automation)
-
-### Caution Signals
-- UCC amendments with lender changes = possible financial restructuring
-- No new filings in 4+ years despite known activity = may have switched to cash, or slowing growth
-- Multiple lenders simultaneously = complex financing situation
+State the account's apparent buying season with confidence level.
 
 ---
 
 ## Step 5: Generate the Intelligence Profile
 
-Write the full analysis into the company page. Replace or update the `## EDA Intelligence`
-section with:
+Write the full analysis into the company page. Replace or update `## EDA Intelligence`:
 
 ```markdown
 ## EDA Intelligence
-*Last updated: [YYYY-MM-DD] | Source: EDA Data UCC-1 Filings*
+*Last updated: [YYYY-MM-DD] | Source: Salesforce Assets (EDA/UCC-1)*
 
-### Equipment Inventory
-| Equipment | Manufacturer | Model | Filed | Lease Expires | Status | Financed By |
-|-----------|-------------|-------|-------|---------------|--------|-------------|
-| [Type] | [Brand] | [Model or —] | [Date] | [Date] | 🟢/🟡/🔴/⚫ | [Lender] |
+### Our Equipment on Floor
+| Machine Type | Model | Builder | Installed | Lease Ends | Status | Sale/Lease |
+|-------------|-------|---------|-----------|-----------|--------|-----------|
+| [Type] | [Model or —] | [Brand] | [Date] | [Date or —] | 🔴/🟡/🟠/🟢/⚫ | [S/L] |
+
+### Competitor Equipment on Floor
+| Machine Type | Model | Competitor | Installed | Lease Ends | Status |
+|-------------|-------|-----------|-----------|-----------|--------|
+| [Type] | [Model] | [Brand] | [Date] | [Date] | [Urgency] |
 
 **Fleet summary:**
-- [X] machines in EDA history | [Y] active financing | [Z] lapsed/paid off
-- Est. floor value: $[Range] (based on typical new pricing for equipment types found)
-- Fleet age: Newest [X yr] | Oldest [X yr] | Average [X yr]
-
----
-
-### Purchase Pattern
-- **EDA history start:** [Year] — [First equipment]
-- **Buying cadence:** Every ~[X] months ([trend: accelerating/stable/slowing])
-- **Buying season:** [Q4/Q1/etc.] — based on [X] of [Y] purchases occurring [Month range]
-- **Technology path:** [e.g., "CO2 laser (2014) → 3kW fiber (2019) → 6kW fiber + tube laser (2022)"]
-- **Brand loyalty:** [e.g., "Exclusively Trumpf" / "Mix of Amada and LVD" / "No clear preference"]
-- **Financing:** [e.g., "Consistently uses Key Equipment Finance"]
-- **Growth signal:** [Accelerating / Stable / Contracting] — [one sentence rationale]
+- Our equipment: [X] machines | [Y] active leases | [Z] expiring within 12 months
+- Competitor equipment: [X] machines (displacement opportunities)
+- Buying pattern: Every ~[X] months | Buying season: [Q4/Q1/etc.] | [Sale/Lease split]
+- Technology path: [e.g., "CO2 laser (2014) → 3kW fiber (2019) → tube laser (2022)"]
 
 ---
 
 ### Cash Flow & Timing Opportunities
-| Window | Equipment | Lease Ends | Action Date | Priority |
-|--------|-----------|-----------|-------------|----------|
-| 🔴 Now | [Machine] | [Date] | Call this week | Immediate |
-| 🟡 Q[X] | [Machine] | [Date] | Reach out by [Date] | Schedule |
-| 🟢 [Year] | [Machine] | [Date] | Log for later | On radar |
+| Urgency | Equipment | Lease Ends | Days Left | Action |
+|---------|-----------|-----------|-----------|--------|
+| 🔴 CRITICAL | [Machine] | [Date] | [X] days | Call this week |
+| 🟡 HIGH | [Machine] | [Date] | [X] days | Schedule outreach by [Date] |
+| 🟠 MEDIUM | [Machine] | [Date] | [X] days | Calendar reminder for [Date - 90 days] |
 
-**Next predicted purchase window:** [Date range] — [rationale: cadence pattern + lease timing]
+**Next predicted purchase window:** [Date range] — [rationale]
 
 ---
 
 ### Strategic Recommendations
 
-**[Recommendation 1 — most urgent]**
-[Specific action grounded in the data. E.g., "Their 2019 Trumpf fiber lease lapses in 4 months.
-With fiber laser technology now 40% more productive at the same power level, this is a strong
-upgrade conversation. Call before they decide to re-finance the existing machine."]
+**[Most urgent recommendation]**
+[Specific, data-grounded action. E.g., "Their 2019 Trumpf fiber lease ends in 67 days.
+Call [Contact] this week — if they haven't already decided to re-finance, this is the
+conversation window for an upgrade to the current generation."]
 
-**[Recommendation 2 — equipment gap or expansion]**
-[E.g., "They have a fiber laser but no press brake in EDA history — every sheet they cut has
-to go somewhere. Either they're job-shopping forming work or using an old brake not financed
-through EDA. Worth asking."]
+**[Equipment gap or expansion opportunity]**
+[E.g., "They have two fiber lasers but no press brake in their asset history — every
+sheet they cut goes out for forming. Either they're job-shopping it or using an old
+manual brake. Worth asking about their forming bottleneck."]
 
-**[Recommendation 3 — competitive or financial insight]**
-[E.g., "Two filings in 18 months signals growth. This is the right time to get in front of
-their next capital purchase before they go to bid."]
+**[Competitive displacement opportunity]**
+[E.g., "Their Amada CO2 laser was installed in 2013 — 13 years old. The fiber ROI
+case is compelling now. Their CO2 lease is lapsed, so they own it outright and are
+likely thinking about replacement. Best angle: throughput comparison demo."]
 
 ---
 
 ### Outreach Calendar
 - **[Date]:** [Specific action] — [Rationale]
 - **[Date]:** [Specific action] — [Rationale]
-- **[Date]:** [Specific action] — [Rationale]
 ```
 
-After writing the profile, run auto-link to connect people mentions:
+After writing, run auto-link:
 ```bash
 node .scripts/auto-link-people.cjs People/Companies/[Company_Name].md
 ```
@@ -259,207 +215,156 @@ node .scripts/auto-link-people.cjs People/Companies/[Company_Name].md
 
 When invoked as `/customer-intel alerts`:
 
-1. Scan every file in `People/Companies/` that contains an `## EDA Intelligence` section
-2. Extract all equipment rows and their Lease Expires dates
-3. Calculate days until expiration for each
-4. Sort by urgency (soonest first)
+Call `sf_get_assets_expiring_soon(months=12)`.
+
+Display results grouped by urgency:
+
+```
+## Equipment Lease Expiration Alert — [DATE]
+
+### 🔴 CRITICAL — Expiring in 0–90 Days (Call This Week)
+| Account | Machine Type | Model | Expires | Days Left | Follow-Up Set? |
+|---------|-------------|-------|---------|-----------|---------------|
+
+### 🟡 HIGH — Expiring in 90–180 Days (Schedule Now)
+| Account | Machine Type | Model | Expires | Days Left | Suggested Outreach |
+|---------|-------------|-------|---------|-----------|-------------------|
+
+### 🟠 MEDIUM — Expiring in 180–365 Days (On Calendar)
+| Account | Machine Type | Model | Expires | Predicted Purchase Window |
+|---------|-------------|-------|---------|--------------------------|
+
+---
+Summary: [X] total tracked expirations | [Y] critical | [Z] accounts affected
+Estimated pipeline opportunity: ~$[Range] in replacement/upgrade conversations
+```
+
+Then offer:
+- "Create follow-up tasks for all CRITICAL accounts?"
+- "Set follow-up dates directly on these SF Asset records?"
+- "Run `/customer-intel [account]` on any of these for a full profile?"
+
+---
+
+## Step 7 (Competitive Mode): Competitor Equipment Map
+
+When invoked as `/customer-intel competitive`:
+
+Call `sf_get_competitor_assets()` for a full picture across all accounts.
 
 Display:
-
 ```
-## Equipment Lease Expiration Report — [DATE]
+## Competitive Equipment Map — [DATE]
 
-### 🔴 Expiring in 0–3 Months — Call This Week
-| Company | Equipment | Expires | Days Left | Primary Contact | Last Touch |
-|---------|-----------|---------|-----------|-----------------|------------|
+### By Competitor Brand
+| Brand | # Machines | Accounts | Avg Age | Expiring < 12 Mo |
+|-------|-----------|---------|---------|-----------------|
 
-### 🟡 Expiring in 3–12 Months — Schedule Outreach Now
-| Company | Equipment | Expires | Suggested Outreach Date | Primary Contact |
-|---------|-----------|---------|------------------------|-----------------|
+### Highest-Priority Displacement Targets
+[Accounts where a competitor machine is old and/or lease expiring — best upgrade conversations]
 
-### 🟢 On Radar — 12–24 Months
-| Company | Equipment | Expires | Predicted Purchase Window |
-|---------|-----------|---------|--------------------------|
-
----
-**Summary:** [X] tracked expirations across [Y] accounts
-**Revenue opportunity:** ~$[Range] in potential equipment replacements/upgrades in the next 12 months
-**Most urgent:** [Company] — [Equipment] expires [DATE] ([X] days)
+### Accounts with ONLY Competitor Equipment
+[These accounts have never bought from you — conquest targets]
 ```
-
-Offer:
-- "Create follow-up tasks for all 🔴 accounts?" 
-- "Export this as a PDF for your sales manager?"
-- "Run `/customer-intel [company]` on any of these for a full profile?"
 
 ---
 
-## Step 7 (Scan Mode): Territory Prospect Discovery
+## Step 8 (Scan Mode): Machine Type Territory Scan
 
-When invoked as `/customer-intel scan [region]`:
+When invoked as `/customer-intel scan [machine-type]`:
 
-Use Scrapling to search EDA Data for recent filings in the target area. Search for:
-- New filings in the past 90 days (fresh purchases = great time to introduce yourself)
-- Companies with multiple recent filings (rapid growth)
-- Companies not already in `People/Companies/` (net-new prospects)
+Call `sf_search_assets(machine_type="[machine-type]", competitor_only=false)`.
 
-```
-scrapling_stealthy_fetch(url="https://edadata.com/search?state=[STATE]&days=90")
-```
+Useful questions this answers:
+- "Which of my accounts have a press brake?" → find expansion candidates for lasers
+- "Which accounts have CO2 lasers?" → fiber upgrade conversation list
+- "Which accounts have Trumpf equipment?" → brand-loyal accounts vs. mixed-brand accounts
 
-For each new company found:
-1. Check if they're already in your vault — skip if yes
-2. Evaluate: first-time buyer vs. repeat buyer?
-3. Note equipment type — does it match what you sell?
-4. Flag growth signals (multiple filings, increasing machine capability)
-
-Present findings:
-```
-## Territory Scan — [Region] — [DATE]
-Found [X] companies with recent machine tool financing not yet in your vault.
-
-### Top New Prospects
-
-**[Company Name]** — [City, State]
-- Just financed: [Equipment] ([Date])
-- Signal: [First machine tool purchase / Third purchase in 18 months / etc.]
-- Why interesting: [Specific rationale]
-- Suggested approach: [Cold call? LinkedIn? Trade association? Reference from nearby customer?]
-- Est. deal potential: [Size range based on equipment type purchased]
-
-[Repeat for each prospect]
-```
-
-Offer to create stub company pages and prospecting tasks for the top candidates.
+Display a summary table and offer to create outreach tasks for the highest-potential accounts.
 
 ---
 
-## Step 8: Task Creation
+## Step 9: Task Creation
 
-After any analysis (Steps 5, 6, or 7), offer to create tasks:
+After any analysis, offer to create tasks:
 
 ```
 Based on this analysis, here are suggested tasks:
 
-1. [URGENT - P0] Call [Contact] at [Company] — [Equipment] lease expires [DATE] ([X] days)
+1. [URGENT - P0] Call [Contact] at [Company] — [Machine] lease ends in [X] days
    Pillar: Account Management
 
-2. [PLANNED - P1] Outreach to [Company] — lease expiration window opens [DATE]
+2. [PLANNED - P1] Outreach to [Company] — upgrade conversation for [Old Machine]
    Pillar: Pipeline & Revenue
 
-3. [RESEARCH - P2] Build upgrade proposal: [Old Machine] → [Recommended New Machine]
+3. [RESEARCH - P2] Build displacement proposal: [Competitor Machine] → [Your Product]
    Pillar: Product & Market Knowledge
 
-Create tasks? Reply with numbers (e.g., "1 3"), "all", or "skip"
+Create tasks? (1, 2, 3, all, or skip)
+```
+
+For CRITICAL items, also offer to update the asset's `FollowUpDate__c` in Salesforce:
+```
+sf_update_asset(asset_id="[ID]", follow_up_date="[DATE]")
 ```
 
 ---
 
 ## Sales Intelligence Frameworks
 
-Apply these frameworks once you have EDA data for your accounts.
-
 ### The Equipment Lifecycle Clock
-Use equipment age (filing date to today) to time upgrade conversations:
+Use equipment age (install_date to today) to time upgrade conversations:
 
-| Equipment Type | Typical Replacement Window | Upgrade Trigger |
-|---------------|---------------------------|-----------------|
-| CO2 Laser Cutter | 8–12 years | Fiber ROI becomes compelling at ~7 years |
-| Fiber Laser (early gen) | 10–15 years | Higher wattage economics; automation integration |
-| Press Brake (mechanical) | 15–25 years | CNC retrofit conversation at 12–15 years |
-| Press Brake (CNC) | 12–18 years | Servo/ATC; EuroBend-style automation |
-| Turret Punch Press | 15–20 years | Combo punch/laser often replaces aging turrets |
-| Turning Center | 10–15 years (precision) | Spindle hours and accuracy drift |
-| VMC | 10–15 years | Multi-pallet; 5-axis upgrade path |
-| Plasma Cutter | 8–12 years | Fiber laser displacement (if cutting <1") |
-| Tube Laser | 10–15 years | Wattage and automation upgrades |
-
-Cross-reference age against these windows to prioritize your conversations.
+| Machine Type | Typical Replacement Window | Best Conversation Trigger |
+|-------------|---------------------------|--------------------------|
+| CO2 Laser | 8–12 years | Fiber ROI compelling at ~7 years |
+| Fiber Laser (early gen) | 10–15 years | Higher wattage; automation integration |
+| Press Brake (mechanical) | 15–25 years | CNC/servo conversation at 12–15 years |
+| Press Brake (CNC) | 12–18 years | ATC; automation upgrade path |
+| Turret Punch Press | 15–20 years | Combo punch/laser replacement |
+| Turning Center | 10–15 years | Spindle hours; accuracy drift |
+| VMC | 10–15 years | Multi-pallet; 5-axis upgrade |
+| Plasma Cutter | 8–12 years | Fiber laser displacement |
+| Tube/Structural Laser | 10–15 years | Wattage and automation upgrades |
 
 ### The Complementary Machine Matrix
-When a customer has Machine A, they often need Machine B. Drive account expansion:
+When an account has Machine A, they often need Machine B next:
 
-| They Have | They Often Need Next | Why |
-|-----------|---------------------|-----|
-| Fiber laser (flat) | Press brake | Cutting creates bending demand immediately |
-| Fiber laser (flat) | Tube/structural laser | Natural progression to 3D cutting |
-| Press brake | Welding robot | Formed parts need joining; labor pressure |
-| Turret punch | Press brake | Punched blanks still need forming |
-| Any CNC | Automation / pallet system | Volume growth → lights-out pressure |
+| They Have | They Often Need | Why |
+|-----------|----------------|-----|
+| Fiber laser (flat) | Press brake | Cutting creates bending demand |
+| Fiber laser (flat) | Tube laser | Natural 3D cutting progression |
+| Press brake | Welding robot | Formed parts need joining |
+| Turret punch | Press brake | Punched blanks need forming |
+| Any CNC | Pallet automation | Volume growth → lights-out pressure |
 | VMC | Turning center | Rotational parts need a lathe |
-| Manual processes | First CNC | Labor cost and accuracy forcing the move |
-| Laser + brake | Automated material handling | Throughput bottleneck shifts to material flow |
-
-Use their current EDA inventory to identify which conversation to start.
 
 ### The Three Strongest Conversation Triggers
 1. **Lease ending (6–12 months out):**
-   > "Your [machine] financing is winding down in the next several months — a lot of shops
-   > use that timing to evaluate what's next rather than re-upping on older technology.
-   > Worth a conversation?"
+   > "Your [machine] financing wraps up in the next several months — a lot of shops use
+   > that window to evaluate what's next rather than re-upping on older technology."
 
-2. **Equipment age milestone (cross-reference lifecycle clock above):**
-   > "Your [machine] is [X] years old now — at that point, most shops start looking at
-   > what a current-generation machine would do for throughput. Has that come up for you?"
+2. **Equipment age milestone:**
+   > "Your [machine] is [X] years old — at that point, most shops start looking at what
+   > a current-generation machine would do for throughput. Has that come up?"
 
-3. **New filing detected (they just bought something):**
-   > "I saw you recently added a [machine] — how's it fitting in? Any bottlenecks it's
-   > created that we might be able to help with?"
+3. **Competitor equipment aging:**
+   > "I noticed you have a [competitor machine] that's getting up there in age. We've
+   > helped a few shops in similar situations make the switch — worth a quick comparison?"
 
-### The Buying Season Hypothesis
-Fabricators cluster purchases around:
-- **Oct–Dec:** Section 179 / bonus depreciation — year-end tax planning
-- **Jan–Feb:** New fiscal year, fresh capital budget approved
-- **May–Jun:** Mid-year budget reviews, use-it-or-lose-it capital
-
-After building EDA profiles on 5+ accounts, look for your territory's dominant buying season.
-Time your proposal deliveries to land 30–60 days before their typical filing month.
-
-### Lookalike Prospecting Formula
-Take your best customer's EDA profile:
-- Equipment types they have → search EDA for other companies with the same equipment
-- Their industry/size → filter by SIC code or NAICS if EDA supports it
-- Their geography → expand to adjacent metro areas
-
-Companies with similar equipment profiles face the same challenges → highest-probability new prospects.
-Run `/customer-intel scan` with the equipment type as a keyword to find them.
+### Buying Season Hypothesis
+After analyzing 5+ accounts, look for your territory's dominant buying season.
+Time proposal deliveries to land 30–60 days before their typical purchase month.
 
 ### The Financial Health Signal
-Active, recent UCC-1 filings tell you:
-- **Creditworthy** — a lender approved them
-- **Growth mode** — they're investing in capacity
-- **Equipment financers** — comfortable with the leasing model (your deal is easier)
-
-No recent filings (in a company you know is active) could mean: cash purchases, growth pause,
-or financial difficulty. Worth a casual question before investing heavily in a proposal.
-
-### The Competitive Intelligence Layer
-UCC-1 collateral descriptions often include brand names. Track:
-- Customers buying competitor equipment → understand why; position alternatives for next time
-- Prospects buying only competitor equipment → conquest targets with displacement story
-- Mixed-brand shops → open to options; focus on total cost of ownership
-
-Track "brand affinity" in each company's EDA profile. It turns your customer list into a
-competitive landscape map.
-
-### Annual Account Planning Integration
-After running `/customer-intel` for each account, you have the inputs for a data-driven
-annual account plan:
-- Current equipment floor → what are they doing today?
-- Lease schedule → when will they have capital to spend?
-- Technology gaps → where can you add value?
-- Buying history → what's the realistic deal size and frequency?
-- Purchase season → when should you have your proposal ready?
-
-This turns EDA data into a multi-year revenue forecast per account.
-Run this alongside `/pipeline-sync` at the start of each quarter.
+Active, recent asset records signal creditworthiness and growth mode — a good buyer.
+Accounts with no recent assets (stale data) warrant a gentle probe before large proposals.
 
 ---
 
 ## Integration with Other Skills
 
-- **`/customer-intel alerts`** — Run weekly (every Monday) to stay ahead of expiring leases
-- **`/meeting-prep [company]`** — EDA intelligence in the company page auto-surfaces here
-- **`/pipeline-sync`** — EDA expiration timing informs expected close dates in Salesforce
-- **`/pipeline-review`** — Cross-reference pipeline stage against lease expiration urgency
-- **`/account-plan [company]`** — EDA data is the foundation of a credible account plan
+- **`/customer-intel alerts`** — Run every Monday morning for weekly lease expiration review
+- **`/meeting-prep [company]`** — EDA Intelligence in the company page surfaces automatically
+- **`/pipeline-sync`** — Asset expiration timing informs expected close dates in Salesforce
+- **`/pipeline-review`** — Cross-reference open opportunities against lease urgency

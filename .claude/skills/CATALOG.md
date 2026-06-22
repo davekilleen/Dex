@@ -86,7 +86,7 @@ fuzzy-search any of these, or just ask Dex in plain language.
 
 ## 📦 Other
 
-- **/customer-intel** — Deep customer intelligence from EDA Data UCC-1 filings — equipment inventory, lease expiration tracking, purchase pattern analysis, and strategic outreach timing
+- **/customer-intel** — Deep customer intelligence from Salesforce Asset records (EDA/UCC data) — equipment inventory, lease expiration tracking, purchase pattern analysis, and strategic outreach timing
 - **/dex** — Show the full catalog of Dex skills grouped by category — your menu of everything Dex can do
 - **/pipeline-review** — Weekly pipeline activity review — surface recent activity across all deals, select what to log to Salesforce, and sync in one shot
 - **/review** — End of day review with learning capture. Integrates with evening journaling if enabled.

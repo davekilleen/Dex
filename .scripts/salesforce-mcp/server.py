@@ -9,6 +9,7 @@ import secrets
 import sys
 import threading
 import webbrowser
+from datetime import datetime, date, timedelta
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlencode, urlparse
@@ -353,6 +354,71 @@ TOOLS = [
                 "description": {"type": "string", "description": "Description/notes to set on the opportunity"},
             },
             "required": ["opportunity_id"],
+        },
+    },
+    # ── Asset / Equipment Intelligence (EDA Data synced to SF) ──────────────────
+    {
+        "name": "sf_get_account_assets",
+        "description": "Get all equipment (assets) on record for a specific account. Returns machine type, model, builder, install date, lease/usage end date, UCC data, and expiry status. Use for customer equipment floor analysis and lease expiration tracking.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "account_name": {"type": "string", "description": "Account name (partial match OK)"},
+                "account_id": {"type": "string", "description": "Salesforce Account Id (exact, preferred over name)"},
+                "include_competitor": {"type": "boolean", "description": "Include competitor equipment (default true)"},
+            },
+        },
+    },
+    {
+        "name": "sf_get_assets_expiring_soon",
+        "description": "Get all assets across every account whose UsageEndDate (lease/financing end) falls within the next N months. Returns urgency ratings: CRITICAL (0-90 days), HIGH (90-180 days), MEDIUM (180-365 days). Use for weekly lease expiration alerts and outreach prioritization.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "months": {"type": "integer", "description": "Look-ahead window in months (default 12)"},
+            },
+        },
+    },
+    {
+        "name": "sf_search_assets",
+        "description": "Search assets across all accounts by machine type, builder/manufacturer, sale-or-lease status, or other criteria. Use for territory analysis, lookalike prospecting, and finding all accounts with a specific machine type.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "machine_type": {"type": "string", "description": "Machine type keyword (e.g. 'laser', 'press brake', 'VMC')"},
+                "builder": {"type": "string", "description": "Manufacturer/builder name (e.g. 'Trumpf', 'Amada', 'Mazak')"},
+                "account_name": {"type": "string", "description": "Filter to specific account (partial match)"},
+                "competitor_only": {"type": "boolean", "description": "Return only competitor equipment (IsCompetitorProduct = true)"},
+                "sale_or_lease": {"type": "string", "description": "Filter by Sale or Lease picklist value"},
+                "status": {"type": "string", "description": "Asset status filter"},
+                "limit": {"type": "integer", "description": "Max results (default 100)"},
+            },
+        },
+    },
+    {
+        "name": "sf_get_competitor_assets",
+        "description": "Get all competitor equipment tracked across accounts. Returns a breakdown by competitor brand. Use to understand competitive penetration, identify displacement opportunities, and time conversations around aging competitor equipment.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "account_name": {"type": "string", "description": "Filter to a specific account (optional, partial match)"},
+                "machine_type": {"type": "string", "description": "Filter by machine type (optional)"},
+            },
+        },
+    },
+    {
+        "name": "sf_update_asset",
+        "description": "Update fields on a Salesforce Asset record. Use to set follow-up dates, update status, add notes, or correct usage end dates after a customer conversation.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "asset_id": {"type": "string", "description": "Salesforce Asset Id (exact)"},
+                "follow_up_date": {"type": "string", "description": "Follow-up date in YYYY-MM-DD format"},
+                "status": {"type": "string", "description": "New asset status"},
+                "description": {"type": "string", "description": "Notes or description to set on the asset"},
+                "usage_end_date": {"type": "string", "description": "Corrected usage/lease end date in YYYY-MM-DD format"},
+            },
+            "required": ["asset_id"],
         },
     },
 ]
@@ -756,6 +822,222 @@ def tool_sf_update_opportunity_notes(args):
     return {"success": True, "opportunity_id": opp_id, "updated_fields": list(payload.keys())}
 
 
+def _asset_expiry_status(usage_end_str):
+    """Return (days_to_expiry, urgency) for a UsageEndDate string."""
+    if not usage_end_str:
+        return None, None
+    try:
+        end_date = datetime.strptime(usage_end_str[:10], "%Y-%m-%d").date()
+        days = (end_date - date.today()).days
+        if days <= 0:
+            urgency = "LAPSED"
+        elif days <= 90:
+            urgency = "CRITICAL"
+        elif days <= 180:
+            urgency = "HIGH"
+        elif days <= 365:
+            urgency = "MEDIUM"
+        else:
+            urgency = "LOW"
+        return days, urgency
+    except Exception:
+        return None, None
+
+
+def _parse_asset_record(r):
+    days, urgency = _asset_expiry_status(r.get("UsageEndDate"))
+    return {
+        "id": r["Id"],
+        "name": r.get("Name"),
+        "machine_type": r.get("Machine_Type_New__c"),
+        "model": r.get("ModelName__c"),
+        "builder": r.get("Builder__c"),
+        "serial_number": r.get("SerialNumber"),
+        "ucc_vendor": r.get("UCC_Vendor__c"),
+        "ucc_id": r.get("UCCID__c"),
+        "ucc_status": r.get("UCC_Status__c"),
+        "new_or_used": r.get("UCC_New_or_Used__c"),
+        "sale_or_lease": r.get("Sale_or_Lease__c"),
+        "install_date": r.get("InstallDate"),
+        "purchase_date": r.get("Purchase_Date__c") or r.get("PurchaseDate"),
+        "usage_end_date": r.get("UsageEndDate"),
+        "days_to_expiry": days,
+        "urgency": urgency,
+        "status": r.get("Status"),
+        "is_competitor": r.get("IsCompetitorProduct", False),
+        "price": r.get("Price"),
+        "warranty_length": r.get("Warranty_Length__c"),
+        "follow_up_date": r.get("FollowUpDate__c"),
+        "account": r.get("Account", {}).get("Name") if r.get("Account") else None,
+        "account_id": r.get("Account", {}).get("Id") if r.get("Account") else None,
+        "contact": r.get("Contact", {}).get("Name") if r.get("Contact") else None,
+        "opportunity_id": r.get("Opportunity__c"),
+        "description": r.get("Description"),
+    }
+
+
+def tool_sf_get_account_assets(args):
+    tokens = get_valid_tokens()
+    if not tokens:
+        return {"error": "Not authenticated. Run sf_authenticate first."}
+    account_id = args.get("account_id", "")
+    account_name = args.get("account_name", "")
+    include_competitor = args.get("include_competitor", True)
+    if not account_id and not account_name:
+        return {"error": "Provide account_name or account_id."}
+    account_filter = f"AccountId = '{account_id}'" if account_id else f"Account.Name LIKE '%{account_name}%'"
+    competitor_filter = "" if include_competitor else "AND IsCompetitorProduct = false"
+    soql = f"""
+        SELECT Id, Name, Machine_Type_New__c, ModelName__c, Builder__c, SerialNumber,
+               UCC_Vendor__c, UCCID__c, UCC_Status__c, UCC_New_or_Used__c,
+               Sale_or_Lease__c, InstallDate, Purchase_Date__c, PurchaseDate,
+               UsageEndDate, Status, IsCompetitorProduct, Price, Warranty_Length__c,
+               FollowUpDate__c, Description, Account.Name, Account.Id,
+               Contact.Name, Opportunity__c
+        FROM Asset
+        WHERE {account_filter} {competitor_filter}
+        ORDER BY InstallDate DESC NULLS LAST
+        LIMIT 200
+    """
+    result = sf_query(tokens, soql)
+    assets = [_parse_asset_record(r) for r in result.get("records", [])]
+    our_machines = [a for a in assets if not a["is_competitor"]]
+    competitor_machines = [a for a in assets if a["is_competitor"]]
+    expiring = [a for a in our_machines if a["urgency"] in ("CRITICAL", "HIGH", "MEDIUM")]
+    return {
+        "assets": assets,
+        "count": len(assets),
+        "our_equipment_count": len(our_machines),
+        "competitor_equipment_count": len(competitor_machines),
+        "expiring_within_12_months": len(expiring),
+        "account": assets[0]["account"] if assets else (account_name or account_id),
+    }
+
+
+def tool_sf_get_assets_expiring_soon(args):
+    tokens = get_valid_tokens()
+    if not tokens:
+        return {"error": "Not authenticated. Run sf_authenticate first."}
+    months = args.get("months", 12)
+    owner_filter = f"AND OwnerId = '{OWNER_ID}'" if OWNER_ID else ""
+    future_date = (date.today() + timedelta(days=months * 30)).strftime("%Y-%m-%d")
+    soql = f"""
+        SELECT Id, Name, Machine_Type_New__c, ModelName__c, Builder__c,
+               Sale_or_Lease__c, UsageEndDate, Status, IsCompetitorProduct,
+               Account.Name, Account.Id, FollowUpDate__c
+        FROM Asset
+        WHERE UsageEndDate != null
+          AND UsageEndDate >= TODAY
+          AND UsageEndDate <= {future_date}
+          {owner_filter}
+        ORDER BY UsageEndDate ASC
+        LIMIT 500
+    """
+    result = sf_query(tokens, soql)
+    assets = [_parse_asset_record(r) for r in result.get("records", [])]
+    counts = {"CRITICAL": 0, "HIGH": 0, "MEDIUM": 0, "LOW": 0}
+    for a in assets:
+        if a["urgency"] in counts:
+            counts[a["urgency"]] += 1
+    return {
+        "assets": assets,
+        "count": len(assets),
+        "summary": {
+            "critical_0_90_days": counts["CRITICAL"],
+            "high_90_180_days": counts["HIGH"],
+            "medium_180_365_days": counts["MEDIUM"],
+        },
+        "months_ahead": months,
+    }
+
+
+def tool_sf_search_assets(args):
+    tokens = get_valid_tokens()
+    if not tokens:
+        return {"error": "Not authenticated. Run sf_authenticate first."}
+    filters = []
+    if args.get("machine_type"):
+        filters.append(f"Machine_Type_New__c LIKE '%{args['machine_type']}%'")
+    if args.get("builder"):
+        filters.append(f"Builder__c LIKE '%{args['builder']}%'")
+    if args.get("account_name"):
+        filters.append(f"Account.Name LIKE '%{args['account_name']}%'")
+    if args.get("competitor_only"):
+        filters.append("IsCompetitorProduct = true")
+    if args.get("sale_or_lease"):
+        filters.append(f"Sale_or_Lease__c = '{args['sale_or_lease']}'")
+    if args.get("status"):
+        filters.append(f"Status = '{args['status']}'")
+    where_clause = " AND ".join(filters) if filters else "Id != null"
+    limit = args.get("limit", 100)
+    soql = f"""
+        SELECT Id, Name, Machine_Type_New__c, ModelName__c, Builder__c, SerialNumber,
+               UCC_Vendor__c, Sale_or_Lease__c, InstallDate, Purchase_Date__c,
+               UsageEndDate, Status, IsCompetitorProduct, Price,
+               Account.Name, Account.Id
+        FROM Asset
+        WHERE {where_clause}
+        ORDER BY Account.Name ASC, InstallDate DESC NULLS LAST
+        LIMIT {limit}
+    """
+    result = sf_query(tokens, soql)
+    assets = [_parse_asset_record(r) for r in result.get("records", [])]
+    return {"assets": assets, "count": len(assets)}
+
+
+def tool_sf_get_competitor_assets(args):
+    tokens = get_valid_tokens()
+    if not tokens:
+        return {"error": "Not authenticated. Run sf_authenticate first."}
+    filters = ["IsCompetitorProduct = true"]
+    if args.get("account_name"):
+        filters.append(f"Account.Name LIKE '%{args['account_name']}%'")
+    if args.get("machine_type"):
+        filters.append(f"Machine_Type_New__c LIKE '%{args['machine_type']}%'")
+    soql = f"""
+        SELECT Id, Name, Machine_Type_New__c, ModelName__c, Builder__c, SerialNumber,
+               UCC_Vendor__c, InstallDate, Purchase_Date__c, UsageEndDate, Status,
+               Account.Name, Account.Id, Description
+        FROM Asset
+        WHERE {" AND ".join(filters)}
+        ORDER BY Account.Name ASC, InstallDate DESC NULLS LAST
+        LIMIT 200
+    """
+    result = sf_query(tokens, soql)
+    assets = [_parse_asset_record(r) for r in result.get("records", [])]
+    by_builder = {}
+    for a in assets:
+        key = a.get("builder") or a.get("ucc_vendor") or "Unknown"
+        by_builder.setdefault(key, []).append(a)
+    return {
+        "assets": assets,
+        "count": len(assets),
+        "by_competitor_brand": {k: len(v) for k, v in sorted(by_builder.items(), key=lambda x: -len(x[1]))},
+    }
+
+
+def tool_sf_update_asset(args):
+    tokens = get_valid_tokens()
+    if not tokens:
+        return {"error": "Not authenticated. Run sf_authenticate first."}
+    asset_id = args.get("asset_id")
+    if not asset_id:
+        return {"error": "asset_id is required."}
+    payload = {}
+    if args.get("follow_up_date"):
+        payload["FollowUpDate__c"] = args["follow_up_date"]
+    if args.get("status"):
+        payload["Status"] = args["status"]
+    if args.get("description"):
+        payload["Description"] = args["description"]
+    if args.get("usage_end_date"):
+        payload["UsageEndDate"] = args["usage_end_date"]
+    if not payload:
+        return {"error": "Provide at least one field: follow_up_date, status, description, usage_end_date."}
+    sf_patch(tokens, f"sobjects/Asset/{asset_id}", payload)
+    return {"success": True, "asset_id": asset_id, "updated_fields": list(payload.keys())}
+
+
 TOOL_FNS = {
     "sf_authenticate": tool_sf_authenticate,
     "sf_get_pipeline": tool_sf_get_pipeline,
@@ -770,6 +1052,11 @@ TOOL_FNS = {
     "sf_get_open_tasks": tool_sf_get_open_tasks,
     "sf_get_completed_tasks": tool_sf_get_completed_tasks,
     "sf_update_opportunity_notes": tool_sf_update_opportunity_notes,
+    "sf_get_account_assets": tool_sf_get_account_assets,
+    "sf_get_assets_expiring_soon": tool_sf_get_assets_expiring_soon,
+    "sf_search_assets": tool_sf_search_assets,
+    "sf_get_competitor_assets": tool_sf_get_competitor_assets,
+    "sf_update_asset": tool_sf_update_asset,
 }
 
 
