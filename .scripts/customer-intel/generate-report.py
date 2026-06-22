@@ -286,7 +286,7 @@ def build_report(expiring_assets, new_assets, days_back, months_ahead, generated
         lines.append(f"### New Equipment Records — Our Machines ({len(our_new)})")
         lines.append("")
         rows = [[a["account"], a["machine_type"], a["model"], a["builder"],
-                 a["sale_or_lease"], a["install_date"], a["usage_end_date"]] for a in our_new]
+                 a["sale_or_lease"], a["install_date"], a["usage_end_date"] or "—"] for a in our_new]
         lines.append(md_table(
             ["Account", "Machine Type", "Model", "Builder", "S/L", "Install Date", "Lease End"],
             rows
@@ -301,7 +301,7 @@ def build_report(expiring_assets, new_assets, days_back, months_ahead, generated
         lines.append(f"### New Competitor Equipment ({len(comp_new)})")
         lines.append("")
         rows = [[a["account"], a["machine_type"], a["model"], a["builder"],
-                 a["install_date"], a["usage_end_date"]] for a in comp_new]
+                 a["install_date"], a["usage_end_date"] or "—"] for a in comp_new]
         lines.append(md_table(
             ["Account", "Machine Type", "Model", "Competitor", "Install Date", "Lease End"],
             rows
