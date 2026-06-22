@@ -344,6 +344,63 @@ Also gather:
 - **People**: Context for meeting attendees
 - **Self-Learning Alerts**: Changelog updates, pending learnings
 
+### 5.11 Pipeline Snapshot (Sales role)
+
+Scan all `Projects/*.md` files and extract Stage, Amount, Close Date, and deal name. Then:
+
+1. **Group by stage** — Negotiation → Favorable → Quoting → Discovery → Active Project
+   - **Note:** "Active Project" is an open opportunity stage (a deal currently being worked), NOT a closed/won order. Treat it the same as other open stages.
+2. **Flag urgency** for each Negotiation deal:
+   - Close date in the past → ⚠️ Overdue — needs attention
+   - Close date within 14 days → 🔥 Closing soon
+   - Close date within 30 days → 📅 On horizon
+3. **Show totals per stage** (sum of dollar amounts, count of deals)
+4. **Open Tasks (Actionable View)** — from `Planning/Tasks.md`, show only:
+   - "This Week" tasks (not completed)
+   - Overdue 2026 tasks (skip 2025 and older stale tasks — those are backlog, not daily action)
+   - Group by priority if pillars differ
+
+**Surface in the plan:**
+
+> **Pipeline Snapshot (as of [date])**
+>
+> | Stage | Deals | Total |
+> |-------|-------|-------|
+> | Negotiation | 2 | $1.23M |
+> | Favorable | 10 | $1.6M+ |
+> | Quoting | 28 | ~$5.2M |
+>
+> **⚠️ Overdue closes (Negotiation):**
+> - Hanwha Philly Shipyard — $1.09M — 204 days past close date
+> - James Cox & Sons TruBend 1100 — $139K — 24 days past close
+
+**If no Projects/ folder:** Skip silently.
+
+### 5.12 Closed Won — Project Management (Delivery Milestones)
+
+Call `sf_get_project_management` from the Salesforce MCP to pull all active `Project_Management__c` records (closed won orders in delivery).
+
+The tool auto-computes `pending_actions` for each record based on actual checkbox fields in Salesforce:
+- **`Intro_Customer_Call__c` = false** → Make intro customer call (early action)
+- **`Intro_Vendor_Email__c` = false** → Send intro vendor email (early action)
+- **`Deposit_Paid__c` = false** → 💰 Deposit not yet received (flag any time)
+- **Within 30 days + `PIM_Sent__c` = false** → Send pre-installation manual to customer
+- **Within 14 days** → 🔴 DELIVERY IMMINENT — confirm pre-install checklist complete
+- **`Ship_in_4_weeks__c` = true** → Machine shipping soon — coordinate with customer
+
+**Surface in the plan only if there are records with non-empty `pending_actions`:**
+
+> **📦 Active Orders — Milestone Check**
+>
+> | Customer | Machine | Ship Date | Install Date | Days Out | Pending |
+> |----------|---------|-----------|--------------|----------|---------|
+> | Hanwha Philly Shipyard | TEC 80' Laser | 2026-07-01 | 2026-07-22 | 30 days | Send PIM |
+> | Gottstein Corp | FLO Mach500 | — | 2026-09-10 | 80 days | 💰 Deposit not received, intro call |
+
+**Show `ships_in_4_weeks = true` records prominently** — these need immediate attention regardless of install date.
+
+**If Salesforce MCP unavailable or PM object returns no records with pending actions:** Skip this section silently.
+
 ---
 
 ## Step 6: Synthesis
@@ -479,6 +536,46 @@ integrations_used: [calendar, tasks, people, work-intelligence]
 
 {{If deep work capacity warning}}
 > ⚠️ You have {{X}} deep work tasks but only {{Y}} suitable slots this week. Consider protecting time or deferring.
+
+---
+
+## 💼 Pipeline Snapshot
+
+| Stage | Deals | Total |
+|-------|-------|-------|
+| Negotiation | {{N}} | ${{X}} |
+| Favorable | {{N}} | ${{X}} |
+| Quoting | {{N}} | ${{X}} |
+
+**Negotiation — needs action:**
+{{For each Negotiation deal}}
+- {{Flag}} **{{Deal name}}** — ${{Amount}} — {{days}} days {{past/until}} close date
+
+**Top Quoting deals (>$200K):**
+{{List top Quoting deals by amount}}
+
+---
+
+## 📦 Active Orders — Milestone Check
+
+*Pulled from Salesforce Project Management (closed won orders in delivery)*
+
+{{If PM records exist with actionable milestones}}
+| Customer | Machine | Install Date | Days Out | Action Needed |
+|----------|---------|--------------|----------|---------------|
+| {{Account}} | {{Product}} | {{Install Date}} | {{N}} days | {{Milestone action}} |
+
+{{If no PM records or all milestones are clear}} *No delivery milestones due this week.*
+
+---
+
+## ✅ Open Tasks — This Week
+
+**This week's tasks:**
+{{List "This Week" tasks from Planning/Tasks.md, uncompleted}}
+
+**Overdue 2026 (top priority outreach):**
+{{List overdue 2026 tasks — max 8, focus on most recent due dates first}}
 
 ---
 
