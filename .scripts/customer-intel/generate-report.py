@@ -335,18 +335,86 @@ def build_report(expiring_assets, new_assets, days_back, months_ahead, generated
 
 # ── Main ──────────────────────────────────────────────────────────────────────
 
+def diagnose(tokens, account_name=""):
+    """Pull raw field values from a sample of Asset records to see what's populated."""
+    account_filter = f"Account.Name LIKE '%{account_name}%' AND" if account_name else ""
+    soql = f"""
+        SELECT Id, Name, Account.Name,
+               Machine_Type_New__c, ModelName__c, Builder__c, SerialNumber,
+               InstallDate, PurchaseDate, Purchase_Date__c, UsageEndDate,
+               Sale_or_Lease__c, Status, Price,
+               UCCID__c, UCC_BuyID__c, UCC_Status__c, UCC_New_or_Used__c,
+               UCC_EQT_Code__c, UCC_S_N__c, UCC_Vendor__c,
+               IsCompetitorProduct, FollowUpDate__c, Description,
+               Close_Date__c, ShippingDate__c
+        FROM Asset
+        WHERE {account_filter} Id != null
+        ORDER BY CreatedDate DESC
+        LIMIT 5
+    """
+    result = sf_query(tokens, soql)
+    records = result.get("records", [])
+    if not records:
+        print("No records found.")
+        return
+
+    for r in records:
+        print(f"\n{'='*60}")
+        print(f"Asset: {r.get('Name')}  |  Account: {(r.get('Account') or {}).get('Name')}")
+        print(f"{'='*60}")
+        fields = [
+            ("Machine Type",    r.get("Machine_Type_New__c")),
+            ("Model",           r.get("ModelName__c")),
+            ("Builder",         r.get("Builder__c")),
+            ("Serial Number",   r.get("SerialNumber")),
+            ("Install Date",    r.get("InstallDate")),
+            ("Purchase Date",   r.get("PurchaseDate")),
+            ("Purchase Date 2", r.get("Purchase_Date__c")),
+            ("Usage End Date",  r.get("UsageEndDate")),
+            ("Close Date",      r.get("Close_Date__c")),
+            ("Shipping Date",   r.get("ShippingDate__c")),
+            ("Sale or Lease",   r.get("Sale_or_Lease__c")),
+            ("Status",          r.get("Status")),
+            ("Price",           r.get("Price")),
+            ("UCC ID",          r.get("UCCID__c")),
+            ("UCC Buy ID",      r.get("UCC_BuyID__c")),
+            ("UCC Status",      r.get("UCC_Status__c")),
+            ("UCC New/Used",    r.get("UCC_New_or_Used__c")),
+            ("UCC EQT Code",    r.get("UCC_EQT_Code__c")),
+            ("UCC Serial",      r.get("UCC_S_N__c")),
+            ("UCC Vendor",      r.get("UCC_Vendor__c")),
+            ("Is Competitor",   r.get("IsCompetitorProduct")),
+            ("Follow Up Date",  r.get("FollowUpDate__c")),
+            ("Description",     (r.get("Description") or "")[:80] or None),
+        ]
+        populated = [(k, v) for k, v in fields if v not in (None, "", False)]
+        empty     = [k for k, v in fields if v in (None, "", False)]
+        print(f"  POPULATED ({len(populated)}):")
+        for k, v in populated:
+            print(f"    {k:<20} {v}")
+        print(f"  EMPTY ({len(empty)}): {', '.join(empty)}")
+
+
+# ── Main ──────────────────────────────────────────────────────────────────────
+
 def main():
     parser = argparse.ArgumentParser(description="Generate Dex Customer Intelligence report")
     parser.add_argument("--days", type=int, default=30, help="Look-back window for new assets (default: 30)")
     parser.add_argument("--months", type=int, default=12, help="Look-ahead for lease expirations (default: 12)")
     parser.add_argument("--output", type=str, default="", help="Override output file path")
     parser.add_argument("--stdout", action="store_true", help="Print to stdout instead of saving")
+    parser.add_argument("--diagnose", action="store_true", help="Show raw field values for 5 sample records")
+    parser.add_argument("--account", type=str, default="", help="Account name filter for --diagnose mode")
     args = parser.parse_args()
 
     tokens = get_valid_tokens()
     if not tokens:
         print("ERROR: No Salesforce tokens found. Run sf_authenticate from Dex first.", file=sys.stderr)
         sys.exit(1)
+
+    if args.diagnose:
+        diagnose(tokens, account_name=args.account)
+        return
 
     print("Fetching lease expirations...", file=sys.stderr)
     expiring = get_expiring_assets(tokens, months=args.months)
@@ -370,14 +438,14 @@ def main():
         filename = f"Customer_Intel_{date.today().strftime('%Y-%m')}.md"
         output_path = report_dir / filename
     else:
-        # Fallback: write next to this script
         script_dir = Path(__file__).parent
         output_path = script_dir / f"customer-intel-{date.today().strftime('%Y-%m')}.md"
 
     output_path.write_text(report, encoding="utf-8")
     print(f"Report saved: {output_path}", file=sys.stderr)
-    print(str(output_path))  # stdout = path, for the installer to use
+    print(str(output_path))
 
 
 if __name__ == "__main__":
     main()
+
