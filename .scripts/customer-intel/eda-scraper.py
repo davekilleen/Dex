@@ -398,9 +398,17 @@ def search_company(session, company_name, headed=False):
         page = context.new_page()
         try:
             page.goto(f"{BASE_URL}/Query", timeout=30000)
-            page.wait_for_selector('input[name="SearchTextBox"]', timeout=10000)
 
-            page.fill('input[name="SearchTextBox"]', company_name)
+            # Confirm we're authenticated (not redirected to Fusable login)
+            if FUSABLE_HOST in page.url:
+                print(f"  Session not valid in browser — cookies didn't stick. Try --no-cache.", file=sys.stderr)
+                browser.close()
+                return []
+
+            # SearchTextBox is inside an autosuggest widget and may be CSS-hidden;
+            # wait for it to be in the DOM then force-fill it.
+            page.wait_for_selector('input[name="SearchTextBox"]', timeout=10000, state="attached")
+            page.fill('input[name="SearchTextBox"]', company_name, force=True)
             page.keyboard.press("Enter")
 
             # Wait for results table or "no results" indicator
