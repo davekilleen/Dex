@@ -373,39 +373,19 @@ def search_company(session, company_name):
             if inputs or selects:
                 print(f"    action='{action}' inputs={inputs} selects={selects}", file=sys.stderr)
 
-        # Guess the company name field from placeholder text or name patterns
-        search_input = (
-            soup.find("input", {"placeholder": lambda p: p and "company" in p.lower()}) or
-            soup.find("input", {"name": lambda n: n and any(
-                k in n.lower() for k in ("company", "debtor", "name", "search", "query"))}) or
-            soup.find("input", {"type": "text"})
-        )
-
-        if not search_input:
-            print("  Could not detect search field. Check form fields above.", file=sys.stderr)
-            return []
-
-        field_name = search_input.get("name", "company")
-        form_el = search_input.find_parent("form")
+        # Discovery confirmed: company name search field is SearchTextBox, POST to /Query
+        field_name = "SearchTextBox"
         form_action = f"{BASE_URL}/Query"
-        if form_el and form_el.get("action"):
-            action = form_el["action"]
-            form_action = action if action.startswith("http") else f"{BASE_URL}{action}"
 
-        # Hidden fields (CSRF etc.)
-        hidden = {i["name"]: i.get("value", "") for i in soup.find_all("input", type="hidden") if i.get("name")}
+        # Include any hidden fields (CSRF tokens etc.)
+        hidden = {i["name"]: i.get("value", "")
+                  for i in soup.find_all("input", type="hidden") if i.get("name")}
 
-        print(f"  Submitting search: field='{field_name}' action='{form_action}'", file=sys.stderr)
+        print(f"  Submitting: POST /Query SearchTextBox='{company_name}'", file=sys.stderr)
+        time.sleep(1)  # polite pause
 
-        # Request 2: submit the search (try GET first, then POST)
-        method = (form_el.get("method", "get").lower() if form_el else "get")
-        payload = {**hidden, field_name: company_name}
-
-        time.sleep(1)  # polite pause between requests
-        if method == "post":
-            r2 = session.post(form_action, data=payload, timeout=30)
-        else:
-            r2 = session.get(form_action, params={field_name: company_name}, timeout=30)
+        # Request 2: POST the search
+        r2 = session.post(form_action, data={**hidden, field_name: company_name}, timeout=30)
 
     except Exception as e:
         print(f"  Search error: {e}", file=sys.stderr)
@@ -442,16 +422,78 @@ def parse_results(html):
     return results
 
 
+# ── Saved Query Execution ─────────────────────────────────────────────────────
+
+KNOWN_SAVED_QUERIES = [
+    "All Data - 10 YR CB", "All Data - 10YR", "All Data - 2025 PA",
+    "CB Account - NY", "CB Account Match - CNC Router",
+    "CB Accounts - Benders", "CB Accounts - Coil Straightners",
+    "CB Accounts - Folder", "CB Accounts - High Probability Buy",
+    "CB Accounts - Ironworker", "CB Accounts - Laser",
+    "CB Accounts - Med Probability Buy", "CB Accounts - Plasma",
+    "CB Accounts - Plasma1", "CB Accounts - Press Brakes",
+    "CB Accounts - Punch", "CB Accounts - Roll", "CB Accounts - Saw",
+    "CB Accounts - Shear", "CB Accounts - Stamping Press",
+    "CB Accounts - VMC/UMC", "CB Accounts - Waterjet",
+    "CB Accounts Matched", "CB-PK Accounts - Waterjet",
+    "Comp Waterjet Accounts", "Florida-JZ", "LVD Strippit Punch",
+    "NY - 1 YR - EQUIPMENT BREAKDOWN", "NY - 1YR - Trumpf",
+    "TRUMPF Press Brakes", "Vaski Metal (Rotand) - NA Installations",
+    "WA, OR, CA - Copper",
+]
+
+
+def list_saved_queries(session):
+    print("\nSaved EDA queries:")
+    for q in KNOWN_SAVED_QUERIES:
+        print(f"  {q}")
+    print(f"\nRun one: --run-query \"CB Accounts - Press Brakes\"")
+
+
+def run_saved_query(session, query_name):
+    """
+    Run a named saved query from /Query by submitting its button value.
+    Each saved query appears as a named input on the /Query form.
+    """
+    print(f"\nRunning saved query: {query_name}", file=sys.stderr)
+
+    r = session.get(f"{BASE_URL}/Query", timeout=30)
+    if r.status_code != 200:
+        print(f"  /Query returned {r.status_code}", file=sys.stderr)
+        return []
+
+    try:
+        from bs4 import BeautifulSoup
+        soup = BeautifulSoup(r.text, "html.parser")
+        hidden = {i["name"]: i.get("value", "")
+                  for i in soup.find_all("input", type="hidden") if i.get("name")}
+    except Exception as e:
+        print(f"  Parse error: {e}", file=sys.stderr)
+        return []
+
+    # The saved query name is a named submit button on the form
+    payload = {**hidden, query_name: query_name}
+    print(f"  Submitting saved query button...", file=sys.stderr)
+    time.sleep(1)
+
+    r2 = session.post(f"{BASE_URL}/Query", data=payload, timeout=60)
+    results = parse_results(r2.text)
+    print(f"  Found {len(results)} results.", file=sys.stderr)
+    return results
+
+
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 def main():
     parser = argparse.ArgumentParser(description="EDA Data scraper for Dex")
-    parser.add_argument("--discover",  action="store_true", help="Map site structure after login")
-    parser.add_argument("--search",    type=str, default="",  help="Search by company name")
-    parser.add_argument("--sync",      action="store_true", help="Sync new filings to Salesforce")
-    parser.add_argument("--no-cache",  action="store_true", help="Force fresh login, ignore saved session")
-    parser.add_argument("--headed",    action="store_true", help="Show browser window during login")
-    parser.add_argument("--debug",     action="store_true", help="Verbose login output + screenshot on error")
+    parser.add_argument("--discover",   action="store_true", help="Map site structure after login")
+    parser.add_argument("--search",     type=str, default="", help="Search by company name")
+    parser.add_argument("--run-query",  type=str, default="", help="Run a saved EDA query by name")
+    parser.add_argument("--list-queries", action="store_true", help="List all saved queries")
+    parser.add_argument("--sync",       action="store_true", help="Sync new filings to Salesforce")
+    parser.add_argument("--no-cache",   action="store_true", help="Force fresh login, ignore saved session")
+    parser.add_argument("--headed",     action="store_true", help="Show browser window during login")
+    parser.add_argument("--debug",      action="store_true", help="Verbose login output + screenshot on error")
     args = parser.parse_args()
 
     session = make_session()
@@ -466,6 +508,14 @@ def main():
         discover(session)
     elif args.search:
         results = search_company(session, args.search)
+        if results:
+            print(json.dumps(results, indent=2))
+        else:
+            print("No results found.")
+    elif args.list_queries:
+        list_saved_queries(session)
+    elif args.run_query:
+        results = run_saved_query(session, args.run_query)
         if results:
             print(json.dumps(results, indent=2))
         else:
