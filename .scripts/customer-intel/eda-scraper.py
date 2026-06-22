@@ -211,20 +211,68 @@ def login(session, debug=False):
 
     step2_url = _form_action(soup1, fusable_login_url)
 
-    # ── Step 2: POST username + password ──────────────────────────────────────
+    # ── Step 2: POST username + password, then trace the redirect chain ────────
     print("  Step 2: submitting password...", file=sys.stderr)
+
+    if debug:
+        eda_cookies_before = [(k, v[:30] + "...") for k, v in session.cookies.items()
+                              if "edadata" in session.cookies.get_dict().get(k, "") or True]
+        print(f"  [debug] Session cookies before password POST ({len(list(session.cookies))} total):",
+              file=sys.stderr)
+        for c in session.cookies:
+            print(f"    {c.domain:<35} {c.name}", file=sys.stderr)
+
     payload2 = {**hidden1, "Username": EDA_USERNAME, "Password": EDA_PASSWORD}
     resp2 = session.post(
         step2_url,
         data=payload2,
         headers={"Referer": f"{FUSABLE_BASE}/Account/Login", "Sec-Fetch-Site": "same-origin"},
         timeout=30,
-        allow_redirects=True,  # follows OIDC callback chain back to EDA
+        allow_redirects=False,  # follow manually so we can trace each hop
     )
 
-    # After following all redirects we should land back on online.edadata.com
-    final_url = resp2.url
-    print(f"  Final URL: {final_url}", file=sys.stderr)
+    # ── Manually follow the redirect chain ────────────────────────────────────
+    from urllib.parse import urljoin
+    current_url = step2_url
+    max_hops = 12
+
+    for hop in range(max_hops):
+        status = resp2.status_code
+        location = resp2.headers.get("Location", "")
+
+        if debug:
+            new_cookies = list(resp2.cookies.keys())
+            print(f"  [debug] hop {hop}: {status} {current_url[:90]}", file=sys.stderr)
+            if new_cookies:
+                print(f"    new cookies: {new_cookies}", file=sys.stderr)
+            if location:
+                print(f"    → {location[:90]}", file=sys.stderr)
+
+        if status not in (301, 302, 303, 307, 308):
+            break  # Final response
+
+        if not location:
+            break
+
+        # Make absolute URL
+        if not location.startswith("http"):
+            location = urljoin(current_url, location)
+
+        current_url = location
+
+        # Stop and check if we've arrived at EDA Data
+        if BASE_URL in current_url:
+            if debug:
+                print(f"  [debug] Hitting EDA callback: {current_url[:90]}", file=sys.stderr)
+                print(f"  [debug] EDA cookies in session:", file=sys.stderr)
+                for c in session.cookies:
+                    if "edadata" in c.domain:
+                        print(f"    {c.name}", file=sys.stderr)
+
+        resp2 = session.get(current_url, timeout=30, allow_redirects=False)
+
+    final_url = current_url
+    print(f"  Final URL: {final_url[:100]}", file=sys.stderr)
 
     if BASE_URL in final_url:
         eda_cookies = {n: v for n, v in session.cookies.items()}
@@ -232,18 +280,17 @@ def login(session, debug=False):
             save_session(eda_cookies)
             print(f"  ✓ Login successful. {len(eda_cookies)} session cookies saved.", file=sys.stderr)
             return True
-        # May have landed but without cookies (SPA — verify via content check)
         if _looks_authenticated(resp2.text):
             save_session({})
-            print("  ✓ Login successful (no explicit cookies — may use storage).", file=sys.stderr)
+            print("  ✓ Login successful (no explicit cookies — may use local storage).", file=sys.stderr)
             return True
 
     if "invalid" in resp2.text.lower() or "incorrect" in resp2.text.lower():
         print("  ✗ Credentials rejected. Check EDA_USERNAME / EDA_PASSWORD in .env", file=sys.stderr)
         return False
 
-    print(f"  ERROR: Login did not complete. Final URL: {final_url}", file=sys.stderr)
-    print("  Check credentials in .env and try again.", file=sys.stderr)
+    print(f"  ERROR: Login did not complete. Landed at: {final_url[:100]}", file=sys.stderr)
+    print("  Run with --debug to trace the redirect chain.", file=sys.stderr)
     return False
 
 
