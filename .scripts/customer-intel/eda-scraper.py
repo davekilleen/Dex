@@ -136,7 +136,7 @@ def _form_action(soup, fallback_url):
     return fallback_url
 
 
-def login(session):
+def login(session, debug=False):
     try:
         from bs4 import BeautifulSoup
     except ImportError:
@@ -168,8 +168,10 @@ def login(session):
     hidden0 = _collect_hidden(soup0)
 
     # ── Step 1: POST username only ─────────────────────────────────────────────
+    # IdentityServer (Fusable) requires a named button value to know which action
+    # to execute — "button=login" is the standard IdentityServer pattern.
     print("  Step 1: submitting username...", file=sys.stderr)
-    payload1 = {**hidden0, "Username": EDA_USERNAME}
+    payload1 = {**hidden0, "Username": EDA_USERNAME, "button": "login"}
     resp1 = session.post(
         fusable_login_url,
         data=payload1,
@@ -184,6 +186,18 @@ def login(session):
 
     soup1 = BeautifulSoup(resp1.text, "html.parser")
     hidden1 = _collect_hidden(soup1)
+
+    if debug:
+        print(f"  [debug] Step 1 URL: {resp1.url}", file=sys.stderr)
+        print(f"  [debug] Step 1 hidden fields: {list(hidden1.keys())}", file=sys.stderr)
+        pw_inp = soup1.find("input", {"name": "Password"})
+        print(f"  [debug] Password field present: {pw_inp is not None}", file=sys.stderr)
+        # Show first 500 chars of form HTML to help diagnose
+        form = soup1.find("form")
+        if form:
+            print(f"  [debug] Form action: {form.get('action', '(none)')}", file=sys.stderr)
+            visible = [i.get("name") for i in form.find_all("input") if i.get("type") != "hidden" and i.get("name")]
+            print(f"  [debug] Visible inputs: {visible}", file=sys.stderr)
 
     # Check password field appeared
     if not soup1.find("input", {"name": "Password"}):
@@ -368,6 +382,7 @@ def main():
     parser.add_argument("--search",    type=str, default="",  help="Search by company name")
     parser.add_argument("--sync",      action="store_true", help="Sync new filings to Salesforce")
     parser.add_argument("--no-cache",  action="store_true", help="Force fresh login, ignore saved session")
+    parser.add_argument("--debug",     action="store_true", help="Print debug info during login")
     args = parser.parse_args()
 
     session = make_session()
@@ -375,7 +390,7 @@ def main():
     if not args.no_cache and load_session(session):
         print("Using saved session.", file=sys.stderr)
     else:
-        if not login(session):
+        if not login(session, debug=args.debug):
             sys.exit(1)
 
     if args.discover:
