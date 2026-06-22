@@ -355,24 +355,38 @@ Scan all `Projects/*.md` files and extract Stage, Amount, Close Date, and deal n
    - Close date within 14 days → 🔥 Closing soon
    - Close date within 30 days → 📅 On horizon
 3. **Show totals per stage** (sum of dollar amounts, count of deals)
-4. **Open Tasks (Actionable View)** — from `Planning/Tasks.md`, show only:
-   - "This Week" tasks (not completed)
-   - Overdue 2026 tasks (skip 2025 and older stale tasks — those are backlog, not daily action)
-   - Group by priority if pillars differ
+4. **Favorable deals — show individually, not as a bulk paragraph.** Each deal gets its own row with a specific day-of-week action assigned based on the weekly plan. Sort by amount descending. This is what makes the Favorable sweep actionable rather than aspirational.
+5. **Quoting — show top deals by amount** (≥$200K). Skip small deals in the daily plan — they live in the task list instead.
 
 **Surface in the plan:**
 
-> **Pipeline Snapshot (as of [date])**
+> **Pipeline Snapshot**
 >
 > | Stage | Deals | Total |
 > |-------|-------|-------|
 > | Negotiation | 2 | $1.23M |
 > | Favorable | 10 | $1.6M+ |
-> | Quoting | 28 | ~$5.2M |
+> | Quoting | 47 | ~$6.3M |
 >
-> **⚠️ Overdue closes (Negotiation):**
-> - Hanwha Philly Shipyard — $1.09M — 204 days past close date
-> - James Cox & Sons TruBend 1100 — $139K — 24 days past close
+> **⚠️ Negotiation — action required:**
+> - ⚠️ Hanwha Philly Shipyard — $1.09M — 204 days past close
+> - ⚠️ James Cox & Sons TruBend 1100 — $139K — 24 days past close
+>
+> **Top Quoting (≥$200K):**
+> | Deal | Amount | Action |
+> |------|--------|--------|
+> | S&W Metal — TruBend Cell 5000 | $942K | Follow up today |
+> | ASGCO Mfg — TL3030 Laser | $755K | Check status Thu |
+>
+> **Favorable — individual deal list:**
+> | Deal | Amount | Assigned Day |
+> |------|--------|--------------|
+> | Kelly Iron Works — Robotic Beam Line | $482K | Wed |
+> | Levan Associates — BeamMaster | $413K | Wed |
+> | Dynamic Metal — TruBend | $165K | Thu |
+> | Hale Trailer — Press Brake | $127K | Thu |
+> | SS Industries — Cobot Welder | $125K | Thu |
+> | ... | ... | ... |
 
 **If no Projects/ folder:** Skip silently.
 
@@ -547,12 +561,21 @@ integrations_used: [calendar, tasks, people, work-intelligence]
 | Favorable | {{N}} | ${{X}} |
 | Quoting | {{N}} | ${{X}} |
 
-**Negotiation — needs action:**
+**⚠️ Negotiation — action required:**
 {{For each Negotiation deal}}
 - {{Flag}} **{{Deal name}}** — ${{Amount}} — {{days}} days {{past/until}} close date
 
-**Top Quoting deals (>$200K):**
-{{List top Quoting deals by amount}}
+**Top Quoting (≥$200K):**
+| Deal | Amount | Action |
+|------|--------|--------|
+{{For each Quoting deal ≥$200K, sorted by amount desc}}
+| {{Account}} — {{Product}} | ${{Amount}} | {{Specific action + day}} |
+
+**Favorable — this week's sweep:**
+| Deal | Amount | Day |
+|------|--------|-----|
+{{For each Favorable deal, sorted by amount desc, assign a day Wed/Thu}}
+| {{Account}} — {{Product}} | ${{Amount}} | {{Day}} |
 
 ---
 
@@ -561,21 +584,27 @@ integrations_used: [calendar, tasks, people, work-intelligence]
 *Pulled from Salesforce Project Management (closed won orders in delivery)*
 
 {{If PM records exist with actionable milestones}}
-| Customer | Machine | Install Date | Days Out | Action Needed |
-|----------|---------|--------------|----------|---------------|
-| {{Account}} | {{Product}} | {{Install Date}} | {{N}} days | {{Milestone action}} |
+| Customer | Machine | Ship Date | Install Date | Days Out | Pending |
+|----------|---------|-----------|--------------|----------|---------|
+| {{Account}} | {{Machine}} | {{Ship Date}} | {{Install Date}} | {{N}} days | {{pending_actions joined}} |
 
 {{If no PM records or all milestones are clear}} *No delivery milestones due this week.*
 
 ---
 
-## ✅ Open Tasks — This Week
+## ✅ Tasks
 
-**This week's tasks:**
-{{List "This Week" tasks from Planning/Tasks.md, uncompleted}}
+**Do today** (picked from "This Week" tasks that align with today's focus):
+- [ ] {{Task directly tied to today's top 3 focus items}}
+- [ ] {{Task that can be batched in an afternoon call block}}
 
-**Overdue 2026 (top priority outreach):**
-{{List overdue 2026 tasks — max 8, focus on most recent due dates first}}
+**Queue — this week** (remaining "This Week" tasks):
+{{List remaining "This Week" tasks not already in "Do today"}}
+
+**Overdue 2026 — warm accounts** (max 5, most recent due dates first):
+{{List top 5 overdue 2026 tasks by due date descending}}
+
+*Full overdue list in Planning/Tasks.md*
 
 ---
 
@@ -583,13 +612,13 @@ integrations_used: [calendar, tasks, people, work-intelligence]
 
 - {{Warning about lagging weekly priority}}
 - {{Commitment due today}}
-- {{Back-to-back meetings}}
-- {{Other flags}}
+- {{Back-to-back meetings or calendar conflicts}}
+- {{Other flags — cross-contact opportunities, closing deadlines, etc.}}
 
 ---
 
 *Generated: {{timestamp}}*
-*Week progress: {{X}}/{{Y}} priorities on track*
+*Pipeline: {{N}} Negotiation (${{X}}) · {{N}} Favorable (${{X}}) · {{N}} Quoting (${{X}})*
 ```
 
 ---
