@@ -344,64 +344,79 @@ def discover(session):
     return found_pages
 
 
-# ── Search ────────────────────────────────────────────────────────────────────
+# ── Search & Query (Playwright) ───────────────────────────────────────────────
+#
+# Results on /Query are JavaScript-rendered via AJAX — a plain POST returns
+# the shell page with no data. We inject the saved session cookies into a
+# Playwright context so no re-login is needed, then wait for the results
+# table to populate in the DOM before extracting.
 
-def search_company(session, company_name):
+def _pw_context_with_cookies(playwright, session, headed=False):
+    """Create a Playwright browser context pre-loaded with the saved session cookies."""
+    browser = playwright.chromium.launch(headless=not headed)
+    context = browser.new_context(
+        user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                   "(KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36",
+    )
+    # Inject session cookies
+    pw_cookies = []
+    for cookie in session.cookies:
+        pw_cookies.append({
+            "name":   cookie.name,
+            "value":  cookie.value,
+            "domain": cookie.domain.lstrip("."),
+            "path":   cookie.path or "/",
+        })
+    if pw_cookies:
+        context.add_cookies(pw_cookies)
+    return browser, context
+
+
+def search_company(session, company_name, headed=False):
     """
-    Search EDA Data for a company's UCC/equipment filings via /Query.
-    Makes exactly 2 requests: one to read the form, one to submit.
+    Search /Query for a company name. Uses Playwright because results are AJAX-rendered.
     """
+    try:
+        from playwright.sync_api import sync_playwright, TimeoutError as PWTimeout
+    except ImportError:
+        print("ERROR: playwright not installed. Run: pip install playwright && python -m playwright install chromium")
+        sys.exit(1)
+
     print(f"\nSearching for: {company_name}", file=sys.stderr)
 
-    # Request 1: GET /Query to read the form structure
-    r = session.get(f"{BASE_URL}/Query", timeout=30)
-    if r.status_code != 200:
-        print(f"  /Query returned {r.status_code}", file=sys.stderr)
-        return []
+    with sync_playwright() as p:
+        browser, context = _pw_context_with_cookies(p, session, headed)
+        page = context.new_page()
+        try:
+            page.goto(f"{BASE_URL}/Query", timeout=30000)
+            page.wait_for_selector('input[name="SearchTextBox"]', timeout=10000)
 
-    try:
-        from bs4 import BeautifulSoup
-        soup = BeautifulSoup(r.text, "html.parser")
+            page.fill('input[name="SearchTextBox"]', company_name)
+            page.keyboard.press("Enter")
 
-        # Print form fields so we can identify the right param name
-        print("  /Query form fields:", file=sys.stderr)
-        for form in soup.find_all("form"):
-            action = form.get("action", "/Query")
-            inputs = [(i.get("name"), i.get("type", "text"), i.get("placeholder", ""))
-                      for i in form.find_all("input") if i.get("name")]
-            selects = [s.get("name") for s in form.find_all("select") if s.get("name")]
-            if inputs or selects:
-                print(f"    action='{action}' inputs={inputs} selects={selects}", file=sys.stderr)
+            # Wait for results table or "no results" indicator
+            print("  Waiting for results...", file=sys.stderr)
+            try:
+                page.wait_for_selector("table.results, .no-results, #resultsGrid, [class*='result']",
+                                       timeout=15000)
+            except PWTimeout:
+                pass  # Parse whatever loaded
 
-        # Discovery confirmed: company name search field is SearchTextBox, POST to /Query
-        field_name = "SearchTextBox"
-        form_action = f"{BASE_URL}/Query"
+            html = page.content()
+            browser.close()
+        except Exception as e:
+            print(f"  Error: {e}", file=sys.stderr)
+            _debug_screenshot(page)
+            browser.close()
+            return []
 
-        # Include any hidden fields (CSRF tokens etc.)
-        hidden = {i["name"]: i.get("value", "")
-                  for i in soup.find_all("input", type="hidden") if i.get("name")}
-
-        print(f"  Submitting: POST /Query SearchTextBox='{company_name}'", file=sys.stderr)
-        time.sleep(1)  # polite pause
-
-        # Request 2: POST the search
-        r2 = session.post(form_action, data={**hidden, field_name: company_name}, timeout=30)
-
-    except Exception as e:
-        print(f"  Search error: {e}", file=sys.stderr)
-        return []
-
-    results = parse_results(r2.text)
+    results = parse_results(html)
     print(f"  Found {len(results)} results.", file=sys.stderr)
     return results
 
 
 def parse_results(html):
-    """
-    Parse UCC filing results. Generic table parser — update selectors after discovery.
-    Key fields: debtor_name, filing_date, lapse_date, filing_number,
-                collateral_description, secured_party, status
-    """
+    """Parse results table from a /Query results page."""
     try:
         from bs4 import BeautifulSoup
     except ImportError:
@@ -450,34 +465,74 @@ def list_saved_queries(session):
     print(f"\nRun one: --run-query \"CB Accounts - Press Brakes\"")
 
 
-def run_saved_query(session, query_name):
+def run_saved_query(session, query_name, headed=False):
     """
-    Run a named saved query from /Query by submitting its button value.
-    Each saved query appears as a named input on the /Query form.
+    Run a named saved query from /Query by clicking its checkbox and submitting.
+    Uses Playwright because results are AJAX-rendered.
     """
+    try:
+        from playwright.sync_api import sync_playwright, TimeoutError as PWTimeout
+    except ImportError:
+        print("ERROR: playwright not installed. Run: pip install playwright && python -m playwright install chromium")
+        sys.exit(1)
+
     print(f"\nRunning saved query: {query_name}", file=sys.stderr)
 
-    r = session.get(f"{BASE_URL}/Query", timeout=30)
-    if r.status_code != 200:
-        print(f"  /Query returned {r.status_code}", file=sys.stderr)
-        return []
+    with sync_playwright() as p:
+        browser, context = _pw_context_with_cookies(p, session, headed)
+        page = context.new_page()
+        try:
+            page.goto(f"{BASE_URL}/Query", timeout=30000)
 
-    try:
-        from bs4 import BeautifulSoup
-        soup = BeautifulSoup(r.text, "html.parser")
-        hidden = {i["name"]: i.get("value", "")
-                  for i in soup.find_all("input", type="hidden") if i.get("name")}
-    except Exception as e:
-        print(f"  Parse error: {e}", file=sys.stderr)
-        return []
+            # Find the checkbox/button for this saved query by its label text
+            # Saved queries appear as checkboxes or named submit buttons on the form
+            found = False
 
-    # The saved query name is a named submit button on the form
-    payload = {**hidden, query_name: query_name}
-    print(f"  Submitting saved query button...", file=sys.stderr)
-    time.sleep(1)
+            # Try checkbox with matching label
+            labels = page.query_selector_all("label")
+            for label in labels:
+                if query_name.lower() in label.inner_text().lower():
+                    label.click()
+                    found = True
+                    print(f"  Checked query: {query_name}", file=sys.stderr)
+                    break
 
-    r2 = session.post(f"{BASE_URL}/Query", data=payload, timeout=60)
-    results = parse_results(r2.text)
+            if not found:
+                # Fall back: try input[value] matching
+                btn = page.query_selector(f'input[value="{query_name}"], button:has-text("{query_name}")')
+                if btn:
+                    btn.click()
+                    found = True
+
+            if not found:
+                print(f"  WARNING: Could not find saved query '{query_name}' on /Query page.", file=sys.stderr)
+                browser.close()
+                return []
+
+            # Click Search/Submit to run the selected query
+            for sel in ['input[type="submit"][value*="Search"]', 'button[type="submit"]', 'input[type="submit"]']:
+                submit = page.query_selector(sel)
+                if submit:
+                    submit.click()
+                    break
+
+            # Wait for results
+            print("  Waiting for results...", file=sys.stderr)
+            try:
+                page.wait_for_selector("table.results, .no-results, #resultsGrid, [class*='result']",
+                                       timeout=15000)
+            except PWTimeout:
+                pass  # Parse whatever loaded
+
+            html = page.content()
+            browser.close()
+        except Exception as e:
+            print(f"  Error: {e}", file=sys.stderr)
+            _debug_screenshot(page)
+            browser.close()
+            return []
+
+    results = parse_results(html)
     print(f"  Found {len(results)} results.", file=sys.stderr)
     return results
 
@@ -515,7 +570,7 @@ def main():
     elif args.list_queries:
         list_saved_queries(session)
     elif args.run_query:
-        results = run_saved_query(session, args.run_query)
+        results = run_saved_query(session, args.run_query, headed=args.headed)
         if results:
             print(json.dumps(results, indent=2))
         else:
