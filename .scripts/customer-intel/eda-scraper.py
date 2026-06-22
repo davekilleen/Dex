@@ -101,6 +101,25 @@ def load_session(session):
         return False
 
 
+def session_is_authenticated(session):
+    try:
+        r = session.get(f"{BASE_URL}/", timeout=15, allow_redirects=False)
+    except Exception as e:
+        print(f"Cached session check failed: {e}", file=sys.stderr)
+        return False
+
+    if r.status_code in (301, 302, 303, 307, 308):
+        loc = r.headers.get("Location", "")
+        if FUSABLE_HOST in loc or "/connect/authorize" in loc:
+            return False
+
+    if r.status_code == 200:
+        return True
+
+    print(f"Cached session check returned HTTP {r.status_code}; re-login required.", file=sys.stderr)
+    return False
+
+
 # ── Login (Playwright / Fusable OIDC) ─────────────────────────────────────────
 #
 # Fusable enforces browser integrity checks (Sec-Fetch-User, consent validation)
@@ -234,7 +253,7 @@ def _extract_cookies(context, session, browser):
         return False
 
     save_session(cookie_dict)
-    print(f"  ✓ Login successful. {len(cookie_dict)} cookies saved.", file=sys.stderr)
+    print(f"  OK: Login successful. {len(cookie_dict)} cookies saved.", file=sys.stderr)
     return True
 
 
@@ -276,7 +295,7 @@ def discover(session):
             r = session.get(f"{BASE_URL}{path}", timeout=15, allow_redirects=False)
             if r.status_code == 302:
                 loc = r.headers.get("Location", "")
-                print(f"  → {path:<20} [302] → {loc[:60]}")
+                print(f"  -> {path:<20} [302] -> {loc[:60]}")
                 continue
             if r.status_code == 200 and len(r.text) > 500:
                 # Follow manually to get final page
@@ -287,7 +306,7 @@ def discover(session):
                 links = len(soup.find_all("a"))
                 forms = len(soup.find_all("form"))
                 inputs = len(soup.find_all("input"))
-                print(f"  ✓ {path:<20} [{r.status_code}] '{title_text}' "
+                print(f"  OK {path:<20} [{r.status_code}] '{title_text}' "
                       f"({links} links, {forms} forms, {inputs} inputs)")
                 found_pages.append({"path": path, "title": title_text})
 
@@ -295,7 +314,7 @@ def discover(session):
                     action = form.get("action", "")
                     fields = [i.get("name") for i in form.find_all("input") if i.get("name")]
                     if fields:
-                        print(f"    Form → action='{action}' fields={fields}")
+                        print(f"    Form -> action='{action}' fields={fields}")
 
                 for t in soup.find_all("table")[:2]:
                     headers = [th.get_text(strip=True) for th in t.find_all("th")]
@@ -305,7 +324,7 @@ def discover(session):
             elif r.status_code not in (200, 404):
                 print(f"  ? {path:<20} [{r.status_code}]")
         except Exception as e:
-            print(f"  ✗ {path:<20} Error: {e}")
+            print(f"  X  {path:<20} Error: {e}")
         time.sleep(0.5)
 
     # Scan homepage nav links
@@ -318,10 +337,10 @@ def discover(session):
                 href = a["href"]
                 text = a.get_text(strip=True)
                 if href.startswith("/") and text and len(text) < 60:
-                    print(f"    {text:<35} → {href}")
+                    print(f"    {text:<35} -> {href}")
         else:
             print(f"\n  Homepage redirected to: {r.url}")
-            print("  Session may not be authenticated — try --no-cache to re-login.")
+            print("  Session may not be authenticated - try --no-cache to re-login.")
     except Exception:
         pass
 
@@ -388,7 +407,7 @@ def main():
 
     session = make_session()
 
-    if not args.no_cache and load_session(session):
+    if not args.no_cache and load_session(session) and session_is_authenticated(session):
         print("Using saved session.", file=sys.stderr)
     else:
         if not login(session, headed=args.headed, debug=args.debug):
