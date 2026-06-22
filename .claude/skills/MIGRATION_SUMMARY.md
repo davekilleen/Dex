@@ -87,7 +87,7 @@
 Updated these files to reference `.claude/skills/`:
 - ✅ `CLAUDE.md` - Main system docs
 - ✅ `CHANGELOG.md` - Migration entry
-- ✅ `06-Resources/Dex_System/Dex_System_Guide.md` - System guide
+- ✅ `System/Dex_System/Dex_System_Guide.md` - System guide
 - ✅ `.claude/skills/dex-improve/SKILL.md` - Self-reference
 - ✅ `.claude/skills/dex-backlog/SKILL.md` - Self-reference
 - ✅ `.claude/skills/dex-level-up/SKILL.md` - Self-reference

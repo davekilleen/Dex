@@ -388,7 +388,7 @@ If real commitments aren't detected:
 
 - `/daily-review` - Integrates commitment check
 - `/week-review` - Shows commitment health stats
-- ScreenPipe Setup Guide - `06-Resources/Dex_System/ScreenPipe_Setup.md`
+- ScreenPipe Setup Guide - `System/Dex_System/ScreenPipe_Setup.md`
 
 ## Track Usage (Silent)
 

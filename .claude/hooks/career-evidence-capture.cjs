@@ -12,7 +12,7 @@ const input = JSON.parse(process.env.CLAUDE_HOOK_CONTEXT || '{}');
 const filePath = input?.tool_input?.file_path || input?.toolInput?.file_path || '';
 
 // Only act on Career directory files
-if (!filePath.includes('05-Areas/Career') && !filePath.includes('Career/')) {
+if (!filePath.includes('Career') && !filePath.includes('Career/')) {
   process.exit(0);
 }
 

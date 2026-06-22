@@ -98,7 +98,7 @@ pull_career_evidence({
 })
 ```
 
-This returns pre-populated achievements from `05-Areas/Career/Evidence/` matching the role's timeframe. Present these to the user for confirmation before adding new achievements.
+This returns pre-populated achievements from `Career/Evidence/` matching the role's timeframe. Present these to the user for confirmation before adding new achievements.
 
 ---
 
@@ -247,8 +247,8 @@ Once confirmed, proceed to Phase 3.
 
 **Check for existing career evidence:**
 
-If `05-Areas/Career/` folder exists:
-1. Check `05-Areas/Career/Evidence/Achievements/` for relevant files
+If `Career/` folder exists:
+1. Check `Career/Evidence/Achievements/` for relevant files
 2. If evidence exists for this role/timeframe, use it to pre-populate details
 3. Show user what was found and ask if they want to add more
 
@@ -506,7 +506,7 @@ Generate the complete 2-page resume:
 ```markdown
 ## ✅ Resume Complete
 
-**Saved to:** `05-Areas/Career/Resume/YYYY-MM-DD - Resume.md`
+**Saved to:** `Career/Resume/YYYY-MM-DD - Resume.md`
 
 ---
 
@@ -667,7 +667,7 @@ LinkedIn profiles differ from resumes — they're more conversational, searchabl
 ```markdown
 ## ✅ LinkedIn Profile Ready
 
-**Saved to:** `05-Areas/Career/Resume/YYYY-MM-DD - LinkedIn Profile.md`
+**Saved to:** `Career/Resume/YYYY-MM-DD - LinkedIn Profile.md`
 
 ---
 
@@ -708,11 +708,11 @@ Let me know what changes you'd like.
 
 ### Career Evidence System
 
-If `05-Areas/Career/` exists:
+If `Career/` exists:
 
 **During Phase 3 (Achievement Extraction):**
 
-1. Check `05-Areas/Career/Evidence/Achievements/` for relevant files
+1. Check `Career/Evidence/Achievements/` for relevant files
 2. Read achievement files that match timeframe/company of current role
 3. Present to user:
 
@@ -737,7 +737,7 @@ I found these achievements you've already captured for [Company]:
 
 ### Career Ladder Integration
 
-If `05-Areas/Career/Career_Ladder.md` exists:
+If `Career/Career_Ladder.md` exists:
 
 **During Phase 4 (Role Write-up):**
 
@@ -771,7 +771,7 @@ You mentioned working with [Name]. Want me to create a person page for them? (Us
 
 ### Project Integration
 
-If user mentions projects that exist in `04-Projects/`:
+If user mentions projects that exist in `Projects/`:
 
 1. Link the achievement to the project
 2. Add note in project file referencing resume content
@@ -862,7 +862,7 @@ During our session, you shared some great achievements I don't see in your evide
 - [Achievement 2]
 - [Achievement 3]
 
-**Want me to save these to `05-Areas/Career/Evidence/Achievements/`?**
+**Want me to save these to `Career/Evidence/Achievements/`?**
 
 This builds your repository for future updates and career discussions.
 ```
@@ -952,22 +952,22 @@ Before finalizing resume and LinkedIn profile, verify:
 - Note patterns (user is strongest in X type of work)
 
 **Save strategically:**
-- Resume to `05-Areas/Career/Resume/`
-- LinkedIn to `05-Areas/Career/Resume/`
-- Achievement evidence to `05-Areas/Career/Evidence/Achievements/`
+- Resume to `Career/Resume/`
+- LinkedIn to `Career/Resume/`
+- Achievement evidence to `Career/Evidence/Achievements/`
 
 ---
 
 ## Output Locations
 
 **Resume:**
-`05-Areas/Career/Resume/YYYY-MM-DD - Resume.md`
+`Career/Resume/YYYY-MM-DD - Resume.md`
 
 **LinkedIn Profile:**
-`05-Areas/Career/Resume/YYYY-MM-DD - LinkedIn Profile.md`
+`Career/Resume/YYYY-MM-DD - LinkedIn Profile.md`
 
 **Career Evidence (if captured):**
-`05-Areas/Career/Evidence/Achievements/YYYY-MM-DD - [Achievement Name].md`
+`Career/Evidence/Achievements/YYYY-MM-DD - [Achievement Name].md`
 
 ---
 

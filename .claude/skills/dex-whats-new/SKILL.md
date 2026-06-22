@@ -32,8 +32,8 @@ $MODE: Optional flags
 **Check for learnings to review:**
 
 1. Read files in `System/Session_Learnings/` from last 30 days
-2. Read `06-Resources/Learnings/Mistake_Patterns.md` - check for new patterns
-3. Read `06-Resources/Learnings/Working_Preferences.md` - check for trends
+2. Read `System/Learnings/Mistake_Patterns.md` - check for new patterns
+3. Read `System/Learnings/Working_Preferences.md` - check for trends
 
 **Extract improvement opportunities:**
 - Recurring mistakes → suggest preventive measures

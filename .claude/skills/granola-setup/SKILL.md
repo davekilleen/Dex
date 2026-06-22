@@ -14,21 +14,21 @@ integration:
     requires_plan: Granola Business or Enterprise
   enhances:
     - skill: process-meetings
-      capability: "Granola is the primary meeting source — notes and transcripts sync into 00-Inbox/Meetings/"
+      capability: "Granola is the primary meeting source — notes and transcripts sync into Inbox/Meetings/"
     - skill: meeting-prep
       capability: "Surfaces past Granola notes and summaries with each attendee"
     - skill: week-review
       capability: "Meeting counts and topics from Granola notes"
   new_capabilities:
     - name: Automatic Meeting Sync
-      trigger: "New Granola notes are pulled into 00-Inbox/Meetings/ for processing"
+      trigger: "New Granola notes are pulled into Inbox/Meetings/ for processing"
     - name: Transcript Access
       trigger: "During /process-meetings, fetch full speaker-labelled transcripts per note"
 ---
 
 # Granola Setup
 
-Connect your Granola account to Dex so your meetings sync automatically. Dex uses **Granola's official API** to read your notes, summaries, attendees, and transcripts — then files them into `00-Inbox/Meetings/` ready for `/process-meetings`.
+Connect your Granola account to Dex so your meetings sync automatically. Dex uses **Granola's official API** to read your notes, summaries, attendees, and transcripts — then files them into `Inbox/Meetings/` ready for `/process-meetings`.
 
 This integration needs a **Granola Business (or Enterprise) plan**, because API keys can only be created on those plans. Granola **Basic / free** accounts can't create an API key, so this setup won't work on them.
 
@@ -42,12 +42,12 @@ Once connected, Dex can:
 - Fetch full speaker-labelled transcripts per note
 
 **Skill Enhancements:**
-- **Process Meetings** (`/process-meetings`) uses Granola as the primary meeting source — notes sync into `00-Inbox/Meetings/`, then get turned into structured meeting notes (decisions, actions, key points)
+- **Process Meetings** (`/process-meetings`) uses Granola as the primary meeting source — notes sync into `Inbox/Meetings/`, then get turned into structured meeting notes (decisions, actions, key points)
 - **Meeting Prep** (`/meeting-prep`) surfaces your last Granola note and summary with each attendee
 - **Week Review** (`/week-review`) includes meeting counts and topics from Granola
 
 **New Capabilities:**
-- **Automatic Meeting Sync:** new Granola notes are pulled into `00-Inbox/Meetings/`
+- **Automatic Meeting Sync:** new Granola notes are pulled into `Inbox/Meetings/`
 - **Transcript Access:** full transcripts are available when processing a meeting
 
 ## Privacy
@@ -198,7 +198,7 @@ Granola is connected!
 
 Here's what just got enabled:
 
-- **Automatic meeting sync** — your Granola notes flow into 00-Inbox/Meetings/,
+- **Automatic meeting sync** — your Granola notes flow into Inbox/Meetings/,
   ready to be turned into structured notes.
 - **Transcripts** — full speaker-labelled transcripts are available per meeting.
 - **Meeting Prep** (/meeting-prep) — surfaces your last Granola note and summary

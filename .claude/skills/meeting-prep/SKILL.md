@@ -1,7 +1,6 @@
 ---
 name: meeting-prep
 description: Prepare for meetings by gathering attendee context and related topics
-context: fork
 ---
 
 Prepare for an upcoming meeting by gathering context on attendees and related topics.
@@ -66,7 +65,7 @@ Ask: "Who's attending? (comma-separated names or just list them)"
 
 For each attendee in $ATTENDEES:
 
-1. Search `05-Areas/People/Internal/` and `05-Areas/People/External/` for matching names
+1. Search `People/Internal/` and `People/External/` for matching names
 2. If found, extract:
    - Role and company
    - Last interaction date
@@ -77,7 +76,7 @@ For each attendee in $ATTENDEES:
 
 ### Step 2: Related Projects
 
-Search `04-Projects/` for any projects that:
+Search `Projects/` for any projects that:
 - Mention the attendees
 - Relate to the meeting topic ($MEETING)
 
@@ -88,7 +87,7 @@ Extract:
 
 ### Step 3: Recent Context
 
-Search `00-Inbox/Meetings/` for recent meetings with these attendees:
+Search `Inbox/Meetings/` for recent meetings with these attendees:
 - What was discussed?
 - What was decided?
 - What follow-ups were committed?
@@ -300,7 +299,7 @@ Based on the context above:
 ## Post-Meeting
 
 After the meeting:
-1. Add notes to `00-Inbox/Meetings/YYYY-MM-DD - [Topic].md`
+1. Add notes to `Inbox/Meetings/YYYY-MM-DD - [Topic].md`
 2. Update person pages with new context
 3. Create tasks for any action items
 ```

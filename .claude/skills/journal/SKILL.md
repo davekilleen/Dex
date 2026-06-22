@@ -23,13 +23,13 @@ Toggle journaling on/off, or start a journal entry.
 ### `/journal on`
 
 1. Update `System/user-profile.yaml` journaling section to enable all types (morning: true, evening: true, weekly: true)
-2. Create `00-Inbox/Journals/` folder if it doesn't exist
-3. Confirm: "Journaling enabled. I'll prompt you for morning reflection before daily planning, and offer evening reflection at end of day. Your journals will be in `00-Inbox/Journals/`."
+2. Create `Inbox/Journals/` folder if it doesn't exist
+3. Confirm: "Journaling enabled. I'll prompt you for morning reflection before daily planning, and offer evening reflection at end of day. Your journals will be in `Inbox/Journals/`."
 
 ### `/journal off`
 
 1. Update `System/user-profile.yaml` journaling section to disable all types (morning: false, evening: false, weekly: false)
-2. Confirm: "Journaling disabled. Daily planning will work normally without journal prompts. Your existing journals are preserved in `00-Inbox/Journals/`."
+2. Confirm: "Journaling disabled. Daily planning will work normally without journal prompts. Your existing journals are preserved in `Inbox/Journals/`."
 3. Do NOT delete existing journal entries
 
 ### `/journal` (no argument)
@@ -87,7 +87,7 @@ When journaling is enabled and user asks to plan their day:
 When journaling is enabled:
 
 ```
-00-Inbox/
+Inbox/
 └── Journals/
     ├── 2024/
     │   ├── 01-January/

@@ -33,7 +33,7 @@ Ask the user (or extract from recent work context):
 
 ### 2. Create or Update Learning Note
 
-Store in: `06-Resources/Learnings/[Category]_Learnings.md`
+Store in: `System/Learnings/[Category]_Learnings.md`
 
 **Categories:**
 - `Working_Preferences` - How you like to work, communication style, tool preferences

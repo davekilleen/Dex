@@ -8,7 +8,7 @@ import sys
 from datetime import datetime
 
 VAULT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-PROJECTS = os.path.join(VAULT, "04-Projects")
+PROJECTS = os.path.join(VAULT, "Projects")
 
 def sanitize(name):
     return re.sub(r'[<>:"/\\|?*]', '', name).strip()

@@ -27,44 +27,42 @@ if not _vault_path:
     )
 VAULT_ROOT = Path(_vault_path) if _vault_path else Path.cwd()
 
-# --- PARA directories (numbered prefixes) ---
-INBOX_DIR = VAULT_ROOT / '00-Inbox'
-QUARTER_GOALS_DIR = VAULT_ROOT / '01-Quarter_Goals'
-WEEK_PRIORITIES_DIR = VAULT_ROOT / '02-Week_Priorities'
-TASKS_DIR = VAULT_ROOT / '03-Tasks'
-PROJECTS_DIR = VAULT_ROOT / '04-Projects'
-AREAS_DIR = VAULT_ROOT / '05-Areas'
-RESOURCES_DIR = VAULT_ROOT / '06-Resources'
-ARCHIVES_DIR = VAULT_ROOT / '07-Archives'
+# --- Top-level directories ---
+INBOX_DIR = VAULT_ROOT / 'Inbox'
+PROJECTS_DIR = VAULT_ROOT / 'Projects'
+PEOPLE_DIR = VAULT_ROOT / 'People'
+PLANNING_DIR = VAULT_ROOT / 'Planning'
+CAREER_DIR = VAULT_ROOT / 'Career'
+ARCHIVES_DIR = VAULT_ROOT / 'Archive'
 
 # --- Derived: Inbox ---
 MEETINGS_DIR = INBOX_DIR / 'Meetings'
 IDEAS_DIR = INBOX_DIR / 'Ideas'
 DAILY_PLANS_DIR = INBOX_DIR / 'Daily_Plans'
-
-# --- Derived: Meetings ---
-TRACKED_MEETINGS_DIR = AREAS_DIR / 'Meetings'
-MEETING_DAILY_LOGS_DIR = TRACKED_MEETINGS_DIR / 'Daily_Log'
 LEGACY_MEETINGS_DIR = MEETINGS_DIR
 
-# --- Derived: Tasks & Goals ---
-TASKS_FILE = TASKS_DIR / 'Tasks.md'
-QUARTER_GOALS_FILE = QUARTER_GOALS_DIR / 'Quarter_Goals.md'
-WEEK_PRIORITIES_FILE = WEEK_PRIORITIES_DIR / 'Week_Priorities.md'
+# --- Derived: Planning ---
+TASKS_DIR = PLANNING_DIR
+TASKS_FILE = PLANNING_DIR / 'Tasks.md'
+QUARTER_GOALS_DIR = PLANNING_DIR
+QUARTER_GOALS_FILE = PLANNING_DIR / 'Quarter_Goals.md'
+WEEK_PRIORITIES_DIR = PLANNING_DIR
+WEEK_PRIORITIES_FILE = PLANNING_DIR / 'Week_Priorities.md'
 GOALS_FILE = VAULT_ROOT / 'GOALS.md'  # Legacy, kept for compatibility
 
-# --- Derived: Areas ---
-PEOPLE_DIR = AREAS_DIR / 'People'
-COMPANIES_DIR = AREAS_DIR / 'Companies'
-CAREER_DIR = AREAS_DIR / 'Career'
+# --- Derived: People ---
+COMPANIES_DIR = PEOPLE_DIR / 'Companies'
+AREAS_DIR = PEOPLE_DIR  # Legacy alias
+
+# --- Derived: Career ---
 EVIDENCE_DIR = CAREER_DIR / 'Evidence'
 RESUME_DIR = CAREER_DIR / 'Resume'
 SESSIONS_DIR = RESUME_DIR / 'Sessions'
 
-# --- Derived: Resources ---
-INTEL_DIR = RESOURCES_DIR / 'Intel'
+# --- Derived: Archive ---
+INTEL_DIR = ARCHIVES_DIR / 'Intel'
 MEETING_INTEL_DIR = INTEL_DIR / 'Meeting_Intel'
-LEARNINGS_DIR = RESOURCES_DIR / 'Learnings'
+LEARNINGS_DIR = ARCHIVES_DIR / 'Learnings'
 
 # --- System ---
 SYSTEM_DIR = VAULT_ROOT / 'System'

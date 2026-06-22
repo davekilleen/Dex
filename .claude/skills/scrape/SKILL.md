@@ -77,7 +77,7 @@ The MCP returns extracted content (HTML or text depending on selector).
 
 **If user wants raw data:** Present it formatted
 **If user wants summary:** Summarize the extracted content
-**If user wants vault storage:** Save to `00-Inbox/Scrape - [Title].md`:
+**If user wants vault storage:** Save to `Inbox/Scrape - [Title].md`:
 
 ```markdown
 # [Page Title]

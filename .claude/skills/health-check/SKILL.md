@@ -174,11 +174,11 @@ Recommended fixes:
      [Auto-fixable]
 
   2. Work MCP — task file not found
-     → Want me to check if 03-Tasks/Tasks.md exists?
+     → Want me to check if Planning/Tasks.md exists?
      [Needs investigation]
 
   3. Career MCP — permission error on evidence file
-     → Run: chmod 644 05-Areas/Career/Evidence/2026-Q1.md
+     → Run: chmod 644 Career/Evidence/2026-Q1.md
      [Manual fix]
 ```
 
@@ -218,9 +218,9 @@ Execute auto-fixable items in order:
 After each fix, report:
 ```
 ✓ Reinstalled Python packages
-✓ Created missing 03-Tasks/Tasks.md
+✓ Created missing Planning/Tasks.md
 ✗ Couldn't fix permission on Evidence file — you'll need to run:
-  chmod 644 05-Areas/Career/Evidence/2026-Q1.md
+  chmod 644 Career/Evidence/2026-Q1.md
 ```
 
 **If user says "show me details first":**

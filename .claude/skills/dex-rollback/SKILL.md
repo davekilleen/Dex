@@ -207,7 +207,7 @@ rm -f .migration-version
    ```
 
 2. Check key files:
-   - `03-Tasks/Tasks.md`
+   - `Planning/Tasks.md`
    - `System/user-profile.yaml`
    - `.claude/skills/daily-plan/SKILL.md`
 
@@ -302,13 +302,13 @@ To restore an older version without Git:
    
    ✓ System/user-profile.yaml
    ✓ System/pillars.yaml
-   ✓ 00-Inbox/
+   ✓ Inbox/
    ✓ 01-Quarter_Goals/
    ✓ 02-Week_Priorities/
    ✓ 03-Tasks/
-   ✓ 04-Projects/
-   ✓ 05-Areas/
-   ✓ 07-Archives/
+   ✓ Projects/
+   ✓ People/
+   ✓ Archive/
    ✓ .env (if exists)
 
 3. **Replace folders:**
@@ -364,7 +364,7 @@ Your task data is unchanged. What might look different:
 - Task display format (if update changed rendering)
 - Task sorting (if update changed logic)
 
-**Your actual tasks are safe.** Check `03-Tasks/Tasks.md` directly - everything is there.
+**Your actual tasks are safe.** Check `Planning/Tasks.md` directly - everything is there.
 
 ### "Can I rollback multiple versions?"
 

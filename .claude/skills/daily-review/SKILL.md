@@ -1,7 +1,6 @@
 ---
 name: daily-review
 description: End of day review with learning capture, daily plan completion tracking, and meeting follow-up surfacing.
-context: fork
 ---
 
 ## Purpose
@@ -48,17 +47,17 @@ Before gathering context, ensure today's meetings are in the vault by running `/
 
 ## Step 2: Gather Context
 
-### From 03-Tasks/Tasks.md
+### From Planning/Tasks.md
 - Tasks completed today (look for `✅ YYYY-MM-DD` matching today)
 - Tasks started but not finished
 
 ### From Weekly Priorities
-Read `02-Week_Priorities/Week_Priorities.md` for:
+Read `Planning/Week_Priorities.md` for:
 - This week's strategic focus
 - How today's work connects to weekly priorities
 
 ### From Recent Meetings
-Check `00-Inbox/Meetings/` for meeting notes from today (should now include anything just pulled from the meeting source).
+Check `Inbox/Meetings/` for meeting notes from today (should now include anything just pulled from the meeting source).
 
 ### From ScreenPipe (If Running)
 
@@ -257,7 +256,7 @@ Use: reminders_clear_completed(list_name="Dex Today")
 
 ### 3.1 Find Today's Plan
 
-Look for `07-Archives/Plans/YYYY-MM-DD.md` (today's date).
+Look for `Archive/Plans/YYYY-MM-DD.md` (today's date).
 
 ### 3.2 Extract Planned Focus
 
@@ -373,8 +372,8 @@ Then ask: "I captured [N] learnings from today's session. Anything else you'd li
 ## Step 8: Categorize Learnings (If Applicable)
 
 Check if any learnings should be elevated to pattern files:
-- **Recurring mistakes** → `06-Resources/Learnings/Mistake_Patterns.md`
-- **Workflow preferences** → `06-Resources/Learnings/Working_Preferences.md`
+- **Recurring mistakes** → `System/Learnings/Mistake_Patterns.md`
+- **Workflow preferences** → `System/Learnings/Working_Preferences.md`
 
 Get user confirmation before adding.
 
@@ -446,7 +445,7 @@ If `journaling.evening: true`, prompt for evening reflection.
 
 ## Output Format
 
-Create `07-Archives/Reviews/Daily_Review_YYYY-MM-DD.md`:
+Create `Archive/Reviews/Daily_Review_YYYY-MM-DD.md`:
 
 ```markdown
 ---

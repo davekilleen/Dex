@@ -8,5 +8,5 @@
       "VAULT_PATH": "${workspaceFolder}"
     }
   },
-  "notes": "Powers /career-coach with evidence scanning, career ladder parsing, competency coverage analysis, and growth velocity tracking. Works with 05-Areas/Career/ and 05-Areas/Career/Evidence/ directories."
+  "notes": "Powers /career-coach with evidence scanning, career ladder parsing, competency coverage analysis, and growth velocity tracking. Works with Career/ and Career/Evidence/ directories."
 }

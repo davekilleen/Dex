@@ -63,7 +63,7 @@ description: Generate context-aware daily plan with calendar and tasks
 ## How This Skill Works
 
 1. Check the calendar for today
-2. Review 03-Tasks/Tasks.md for high-priority items
+2. Review Planning/Tasks.md for high-priority items
 3. Create a daily plan...
 ```
 

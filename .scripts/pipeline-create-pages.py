@@ -3,7 +3,7 @@ import json, os, sys, re
 from datetime import datetime
 
 VAULT = os.environ.get("VAULT_PATH", os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-PROJECTS = os.path.join(VAULT, "04-Projects")
+PROJECTS = os.path.join(VAULT, "Projects")
 NOW = datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
 
 def sanitize_folder(name):

@@ -1,7 +1,6 @@
 ---
 name: career-coach
 description: Personal career coach with 4 modes: weekly reports, monthly reflections, self-reviews, promotion assessments
-context: fork
 hooks:
   PostToolUse:
     - matcher: Write
@@ -43,7 +42,7 @@ This command uses **Career MCP tools** for efficient data aggregation:
 
 The coach adapts based on:
 1. **Career level** from `System/user-profile.yaml` → `communication.career_level`
-2. **Current role** from career ladder in `05-Areas/Career/Career_Ladder.md`
+2. **Current role** from career ladder in `Career/Career_Ladder.md`
 3. **Coaching style preference** from `communication.coaching_style`
 
 ### Coaching Style Application
@@ -265,7 +264,7 @@ Generate a manager-ready weekly report:
 ## ✅ Weekly Report Ready
 
 **Want me to:**
-- Save this to `05-Areas/Career/Reports/YYYY-MM-DD - Weekly Report.md`?
+- Save this to `Career/Reports/YYYY-MM-DD - Weekly Report.md`?
 - Copy to clipboard for easy pasting?
 - Draft an email to your manager?
 
@@ -388,7 +387,7 @@ Specific steps for next month:
 ```markdown
 ## ✅ Monthly Reflection Complete
 
-**Saved to:** `05-Areas/Career/Reflections/YYYY-MM - Monthly Reflection.md`
+**Saved to:** `Career/Reflections/YYYY-MM - Monthly Reflection.md`
 
 **Suggested Actions:**
 - Review this at the start of next month
@@ -583,7 +582,7 @@ What I want to develop in the coming year:
 
 ---
 
-*This self-review was prepared using evidence captured in Dex throughout [YEAR]. See `05-Areas/Career/Evidence/` for detailed examples.*
+*This self-review was prepared using evidence captured in Dex throughout [YEAR]. See `Career/Evidence/` for detailed examples.*
 ```
 
 **After generating:**
@@ -591,7 +590,7 @@ What I want to develop in the coming year:
 ```markdown
 ## ✅ Self-Review Ready
 
-**Saved to:** `05-Areas/Career/Reviews/YYYY - Self-Review.md`
+**Saved to:** `Career/Reviews/YYYY - Self-Review.md`
 
 **Next Steps:**
 - Review and refine before submitting
@@ -824,7 +823,7 @@ When discussing promotion with your manager, emphasize:
 
 ## Supporting Evidence
 
-[Reference specific files in `05-Areas/Career/Evidence/` that demonstrate competency]
+[Reference specific files in `Career/Evidence/` that demonstrate competency]
 
 ---
 
@@ -836,7 +835,7 @@ When discussing promotion with your manager, emphasize:
 ```markdown
 ## ✅ Promotion Assessment Complete
 
-**Saved to:** `05-Areas/Career/Assessments/YYYY-MM-DD - Promotion Assessment.md`
+**Saved to:** `Career/Assessments/YYYY-MM-DD - Promotion Assessment.md`
 
 **This is a snapshot based on current evidence.** As you continue working, Dex will capture more examples that strengthen your case.
 
@@ -874,7 +873,7 @@ Based on what you shared, I noticed:
 - [Achievement/skill 2]
 - [Achievement/skill 3]
 
-**Want me to save these to `05-Areas/Career/Evidence/`?**
+**Want me to save these to `Career/Evidence/`?**
 
 This builds your repository for future reviews and promotion discussions.
 ```
@@ -892,7 +891,7 @@ If the session revealed new priorities or focus areas:
 
 It sounds like [NEW PRIORITY] is becoming important.
 
-Want me to add this to `05-Areas/Career/Growth_Goals.md`?
+Want me to add this to `Career/Growth_Goals.md`?
 ```
 
 ---
@@ -904,7 +903,7 @@ If this was a reflection on formal feedback:
 ```markdown
 ## Add to Review History?
 
-Want me to append these reflections to `05-Areas/Career/Review_History.md`?
+Want me to append these reflections to `Career/Review_History.md`?
 
 This keeps a timeline of your feedback and progress.
 ```
@@ -960,7 +959,7 @@ When processing meetings with manager (tagged in `People/` folder):
 - Extract feedback (positive and constructive)
 - Note development discussions
 - Flag career-related action items
-- Append to `05-Areas/Career/Review_History.md` as informal feedback
+- Append to `Career/Review_History.md` as informal feedback
 
 ### Quarterly Reviews
 

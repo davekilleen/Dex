@@ -48,7 +48,7 @@ CLAUDE.md                          # Current capabilities
 System/Session_Learnings/           # Recent pain points (last 30 days)
 .claude/commands/                  # Available commands
 core/mcp/                          # MCP integrations
-06-Resources/Learnings/               # Captured patterns
+System/Learnings/               # Captured patterns
 ```
 
 ### Extract Context
@@ -106,7 +106,7 @@ Base score: 50
 
 +15 if affects_daily_workflow():
   - Touches commands used >3x per week (from usage_log)
-  - Modifies core files (03-Tasks/Tasks.md, daily plans, person pages)
+  - Modifies core files (Planning/Tasks.md, daily plans, person pages)
   - Impacts repetitive actions
 
 +15 if has_compound_value():

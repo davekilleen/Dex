@@ -8,7 +8,7 @@ import sys
 from datetime import datetime
 
 VAULT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-PROJECTS = os.path.join(VAULT, "04-Projects")
+PROJECTS = os.path.join(VAULT, "Projects")
 
 def find_project_page(opp_name, account):
     """Find existing project page by matching opp name in folder names."""

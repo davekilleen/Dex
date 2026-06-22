@@ -633,15 +633,15 @@ Explicitly not included in this version:
 After generating the PRD:
 
 1. **Save the document:**
-   - Create folder: `04-Projects/[Product Name]/`
-   - Save as: `04-Projects/[Product Name]/PRD.md`
+   - Create folder: `Projects/[Product Name]/`
+   - Save as: `Projects/[Product Name]/PRD.md`
 
 2. **Create person pages** (if stakeholders mentioned):
    - For each stakeholder mentioned, check if person page exists
    - Create/update pages in `People/Internal/` or `People/External/`
    - Add note in their page referencing this project
 
-3. **Link to 03-Tasks/Tasks.md:**
+3. **Link to Planning/Tasks.md:**
    - If user mentioned any immediate actions, suggest creating tasks
    - Link tasks to the project
 
@@ -650,13 +650,13 @@ After generating the PRD:
 ```markdown
 ## ✅ PRD Created
 
-**Saved to:** `04-Projects/[Product Name]/PRD.md`
+**Saved to:** `Projects/[Product Name]/PRD.md`
 
 **Next Steps:**
 1. Review and refine the PRD
 2. Share with stakeholders for feedback
 3. Use `/project-health` to track progress
-4. Create tasks in 03-Tasks/Tasks.md when ready to execute
+4. Create tasks in Planning/Tasks.md when ready to execute
 
 **Want to:**
 - Revise any section → Just tell me what to change

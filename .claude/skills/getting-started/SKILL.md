@@ -72,7 +72,7 @@ Say: "Hold on... analyzing your calendar and meetings. 🔍"
 ✅ Person pages for [Person1], [Person2], [Person3]
 ✅ Identified [K] external organizations to track
 
-Want to see? [Show excerpt from 02-Week_Priorities/Week_Priorities.md]
+Want to see? [Show excerpt from Planning/Week_Priorities.md]
 
 **This is what Dex does** - turns your calendar chaos into structure automatically.
 
@@ -481,7 +481,7 @@ def map_strategy_to_ranges(strategy: str, extent: dict) -> dict:
    
    # For meetings that have notes:
    # - Extract action items
-   # - Create tasks in 03-Tasks/Tasks.md
+   # - Create tasks in Planning/Tasks.md
    # - Add task IDs to meeting notes
    
    # For meetings in todo range but not notes range:
@@ -504,7 +504,7 @@ def map_strategy_to_ranges(strategy: str, extent: dict) -> dict:
    **Action Items:**
    • Extracted [T] todos
    • From last [todos_days] days
-   • Added to 03-Tasks/Tasks.md
+   • Added to Planning/Tasks.md
    
    **Your vault now has:**
    • Rich context from [people_days] days of meetings

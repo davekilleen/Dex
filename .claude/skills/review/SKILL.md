@@ -48,19 +48,19 @@ find . -type f -name "*.md" -newermt "$TODAY 00:00:00" ! -newermt "$TODAY 23:59:
 ## Step 1: Gather Context
 
 ### Completed Tasks Today
-Check `03-Tasks/Tasks.md` for tasks completed today using completion timestamps:
+Check `Planning/Tasks.md` for tasks completed today using completion timestamps:
 - Look for `✅ YYYY-MM-DD` matching today's date
 - These show what you actually finished (not just what you worked on)
 - Example: `- [x] **Review pricing proposal** [[^task-20260127-003]] ✅ 2026-01-28 09:15`
 
 ### Weekly Priorities
-Read `00-Inbox/Weekly_Plans.md` for:
+Read `Inbox/Weekly_Plans.md` for:
 - This week's strategic focus
 - Commitments and deadlines
 - Key people involved
 
 ### Recent Meetings
-Check `00-Inbox/Meetings/` for any meeting notes from today.
+Check `Inbox/Meetings/` for any meeting notes from today.
 
 ## Step 2: User Verification
 
@@ -105,7 +105,7 @@ Before asking the user anything, reflect on today's session and automatically ex
    - Were there repetitive manual steps?
    - Opportunities for automation?
 
-**For each learning identified, write to `00-Inbox/Session_Learnings/YYYY-MM-DD.md`:**
+**For each learning identified, write to `Inbox/Session_Learnings/YYYY-MM-DD.md`:**
 
 ```markdown
 ## HH:MM - [Short title]
@@ -161,7 +161,7 @@ Check if evening journaling is enabled:
 1. Read `System/user-profile.yaml`
 2. Check `journaling.evening` value
 3. **If `journaling.evening: true`:**
-   - Check if today's evening journal exists in `00-Inbox/Journals/YYYY/MM-Month/Evening/YYYY-MM-DD-evening.md`
+   - Check if today's evening journal exists in `Inbox/Journals/YYYY/MM-Month/Evening/YYYY-MM-DD-evening.md`
    - **If missing:**
      - After creating the daily review, prompt: "Want to close the day with an evening reflection? (3 minutes)"
      - If yes: Guide through evening journal (see `/journal` command)
@@ -171,7 +171,7 @@ Check if evening journaling is enabled:
 
 ## Output Format
 
-Create daily note at `00-Inbox/Daily_Reviews/Daily_Review_[YYYY-MM-DD].md`:
+Create daily note at `Inbox/Daily_Reviews/Daily_Review_[YYYY-MM-DD].md`:
 
 ```markdown
 ---
@@ -209,7 +209,7 @@ type: daily-review
 
 ## Weekly Priorities Progress
 
-> Reference: 00-Inbox/Weekly_Plans.md
+> Reference: Inbox/Weekly_Plans.md
 
 - **[Priority 1]:** [Status/progress]
 - **[Priority 2]:** [Status/progress]

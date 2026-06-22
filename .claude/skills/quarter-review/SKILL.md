@@ -47,7 +47,7 @@ Calculate:
 
 ### Quarter Goals File
 
-Check for `01-Quarter_Goals/Quarter_Goals.md`:
+Check for `Planning/Quarter_Goals.md`:
 
 **If exists and matches target quarter:**
 - Extract goals that were set
@@ -55,7 +55,7 @@ Check for `01-Quarter_Goals/Quarter_Goals.md`:
 - List milestones and completion status
 
 **If missing or wrong quarter:**
-- Check `07-Archives/Reviews/[quarter]-goals.md` (archived version)
+- Check `Archive/Reviews/[quarter]-goals.md` (archived version)
 - If still missing: "No goals found for this quarter"
 
 ### Dex Inbox Check (Phone Captures)
@@ -82,14 +82,14 @@ Before scanning meeting data, ensure all recent meetings are in the vault by run
 
 ### Task Completion
 
-Scan `03-Tasks/Tasks.md` for tasks completed during quarter:
+Scan `Planning/Tasks.md` for tasks completed during quarter:
 - Count completed tasks in date range
 - Major completions
 - Tasks that were blocked
 
 ### Project Activity
 
-Scan `04-Projects/` for activity during quarter:
+Scan `Projects/` for activity during quarter:
 - Modified files in date range
 - Projects launched
 - Projects completed
@@ -97,14 +97,14 @@ Scan `04-Projects/` for activity during quarter:
 
 ### Meetings & People
 
-Scan `00-Inbox/Meetings/` for quarter date range:
+Scan `Inbox/Meetings/` for quarter date range:
 - Total meetings held
 - Key discussions and decisions
 - New relationships formed
 
 ### Weekly Syntheses
 
-Look for `00-Inbox/Weekly_Synthesis_*.md` files in quarter:
+Look for `Inbox/Weekly_Synthesis_*.md` files in quarter:
 - Extract recurring themes
 - Compile learnings
 - Note energy patterns
@@ -121,7 +121,7 @@ If available, enhance the quarterly review with meaning-based analysis:
    ```
    qmd query "learning description" --limit 3
    ```
-   against `01-Quarter_Goals/Quarter_Goals.md`. Discover which goals a learning actually impacted, even without explicit tags.
+   against `Planning/Quarter_Goals.md`. Discover which goals a learning actually impacted, even without explicit tags.
    - Example: Learning "Realized we need better onboarding docs" semantically matches goal "Improve customer activation rate"
 
 2. **Detect hidden goal progress:** For each quarterly goal, search across all meeting notes and tasks:
@@ -145,7 +145,7 @@ If available, enhance the quarterly review with meaning-based analysis:
 
 ## Step 3: Goal Assessment
 
-For each goal from `01-Quarter_Goals/Quarter_Goals.md`:
+For each goal from `Planning/Quarter_Goals.md`:
 
 **Evaluate:**
 - ✅ **Completed:** Fully achieved
@@ -253,7 +253,7 @@ Wait for user input on:
 
 ## Step 6: Generate Quarterly Review
 
-Create `07-Archives/Reviews/[Quarter].md`:
+Create `Archive/Reviews/[Quarter].md`:
 
 ```markdown
 ---
@@ -285,7 +285,7 @@ reviewed_on: [date]
 **Status:** ✅ Completed / 🔄 Partial (X%) / ❌ Not Started / 🚫 Deprioritized
 
 **Original success criteria:**
-[What was defined in 01-Quarter_Goals/Quarter_Goals.md]
+[What was defined in Planning/Quarter_Goals.md]
 
 **What happened:**
 [Narrative from user + gathered context]
@@ -453,7 +453,7 @@ Based on this quarter's learnings:
 
 After review is complete:
 
-> "Quarter reviewed and saved to `07-Archives/Reviews/Q1-2026.md`
+> "Quarter reviewed and saved to `Archive/Reviews/Q1-2026.md`
 > 
 > **Ready to plan next quarter (Q2 2026)?**
 > 
@@ -468,7 +468,7 @@ After review is complete:
 ## Follow-up Actions
 
 After review:
-1. Archive old `01-Quarter_Goals/Quarter_Goals.md` if not already done
+1. Archive old `Planning/Quarter_Goals.md` if not already done
 2. Update `System/user-profile.yaml` with completed quarter
 3. Suggest running `/quarter-plan` for next quarter
 
@@ -485,7 +485,7 @@ After review:
 - Suggestions inform new goals
 
 **References:**
-- `01-Quarter_Goals/Quarter_Goals.md` — Original plan
+- `Planning/Quarter_Goals.md` — Original plan
 - Weekly syntheses — Week-by-week activity
 - Task completions — Actual work done
 - Meeting notes — Context gathered

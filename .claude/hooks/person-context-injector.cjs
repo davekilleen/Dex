@@ -51,7 +51,7 @@ if (skipExts.includes(ext)) {
 const { loadPaths } = require('./paths.cjs');
 const _paths = loadPaths();
 const VAULT_ROOT = _paths.VAULT_ROOT || process.env.CLAUDE_PROJECT_DIR || process.env.VAULT_PATH || process.cwd();
-const PEOPLE_DIR = _paths.PEOPLE_DIR || path.join(VAULT_ROOT, '05-Areas', 'People');
+const PEOPLE_DIR = _paths.PEOPLE_DIR || path.join(VAULT_ROOT, 'People', 'People');
 
 // Build an index of all person names to their files
 /**

@@ -6,7 +6,6 @@ model_routing:
   steps:
     data-gathering: fast
     synthesis: balanced
-context: fork
 hooks:
   Stop:
     - type: command
@@ -281,7 +280,7 @@ Check `System/integrations/config.yaml` for `google-workspace.enabled: true`.
 
 If enabled and MCP healthy:
 1. Get unread count and priority emails from monitored labels
-2. Flag emails needing reply (> 48h since received, from key contacts in `05-Areas/People/`)
+2. Flag emails needing reply (> 48h since received, from key contacts in `People/`)
 3. Surface email threads with today's meeting attendees
 
 Include in plan:
@@ -390,7 +389,7 @@ Flag potential issues:
 
 **ALWAYS generate and save a new plan file.** Never skip generation because a plan from a previous day exists in the conversation or vault. Even if context from a prior plan is visible, today is a new day and requires its own plan. If a plan for today's date already exists, overwrite it (the user is requesting a refresh).
 
-Create `07-Archives/Plans/YYYY-MM-DD.md`:
+Create `Archive/Plans/YYYY-MM-DD.md`:
 
 ```markdown
 ---

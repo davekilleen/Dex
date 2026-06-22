@@ -26,7 +26,7 @@ const report = { staleFiles: [], brokenLinks: [], orphanedPages: [], staleMemory
  * Populates report.staleFiles.
  */
 function checkStaleInbox() {
-  const inboxDir = path.join(vaultRoot, '00-Inbox');
+  const inboxDir = path.join(vaultRoot, 'Inbox');
   if (!fs.existsSync(inboxDir)) return;
 
   const walkDir = (dir) => {
@@ -77,7 +77,7 @@ function checkBrokenLinks() {
   };
 
   // Only scan key PARA directories
-  ['00-Inbox', '01-Quarter_Goals', '02-Week_Priorities', '03-Tasks', '04-Projects', '05-Areas'].forEach(d => {
+  ['Inbox', '01-Quarter_Goals', '02-Week_Priorities', 'Planning', 'Projects', 'People'].forEach(d => {
     collectMd(path.join(vaultRoot, d));
   });
 
@@ -117,7 +117,7 @@ function checkBrokenLinks() {
  * Populates report.orphanedPages.
  */
 function checkOrphanedPages() {
-  const peopleDir = path.join(vaultRoot, '05-Areas/People');
+  const peopleDir = path.join(vaultRoot, 'People');
   if (!fs.existsSync(peopleDir)) return;
 
   const personFiles = [];

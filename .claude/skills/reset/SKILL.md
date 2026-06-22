@@ -110,7 +110,7 @@ Ask: "Does this look right? Type 'yes' to proceed or suggest changes."
 1. **Create new folder structure** using standard PARA structure
 2. **Move existing content** to appropriate new locations:
    - Match by folder name where possible
-   - Put ambiguous content in `00-Inbox/` for user to sort
+   - Put ambiguous content in `Inbox/` for user to sort
    - Never delete user content
 3. **Update CLAUDE.md** User Profile section with:
    - New role
@@ -132,9 +132,9 @@ After completion, show:
 
 1. **Exact matches** - If old folder name matches new structure, keep content in place
 2. **Similar matches** - If folders are similar (e.g., `Pipeline/` → `Opportunities/`), move content
-3. **No match** - Move to `00-Inbox/To_Sort/` with a note about original location
+3. **No match** - Move to `Inbox/To_Sort/` with a note about original location
 4. **Person pages** - Always preserve `People/` folder structure
-5. **Meeting notes** - Always preserve `00-Inbox/Meetings/` content
+5. **Meeting notes** - Always preserve `Inbox/Meetings/` content
 
 ## Example Migrations
 
@@ -152,7 +152,7 @@ After completion, show:
 
 ### Engineer → Engineering Manager
 - Add `Team/` folder for 1:1s, hiring
-- Keep `04-Projects/` and `Systems/`
+- Keep `Projects/` and `Systems/`
 - Add management templates
 - Adjust focus from IC to leadership
 

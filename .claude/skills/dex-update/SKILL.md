@@ -74,13 +74,13 @@ Looks like you downloaded Dex as a ZIP file instead of cloning it.
 3. Copy these folders from your current Dex to the new one:
    • System/user-profile.yaml
    • System/pillars.yaml
-   • 00-Inbox/
+   • Inbox/
    • 01-Quarter_Goals/
    • 02-Week_Priorities/
    • 03-Tasks/
-   • 04-Projects/
-   • 05-Areas/
-   • 07-Archives/
+   • Projects/
+   • People/
+   • Archive/
 4. Delete old Dex folder
 5. Rename new folder to 'dex'
 6. Open in Cursor
@@ -89,7 +89,7 @@ Looks like you downloaded Dex as a ZIP file instead of cloning it.
 [Cancel] — I'll do this later
 ```
 
-If detailed guide selected, open `06-Resources/Dex_System/Updating_Dex.md` (Manual Update section).
+If detailed guide selected, open `System/Dex_System/Updating_Dex.md` (Manual Update section).
 
 ---
 
@@ -514,7 +514,7 @@ Add to summary if installed: "✓ Enabled automatic meeting sync (runs every 30 
 **Quick smoke test:**
 
 1. Check key files exist:
-   - `03-Tasks/Tasks.md`
+   - `Planning/Tasks.md`
    - `System/user-profile.yaml`
    - `.claude/skills/daily-plan/SKILL.md`
 
@@ -743,13 +743,13 @@ If automatic updates don't work, you can update manually:
    
    ✓ System/user-profile.yaml
    ✓ System/pillars.yaml
-   ✓ 00-Inbox/ (entire folder)
+   ✓ Inbox/ (entire folder)
    ✓ 01-Quarter_Goals/ (entire folder)
    ✓ 02-Week_Priorities/ (entire folder)
    ✓ 03-Tasks/ (entire folder)
-   ✓ 04-Projects/ (entire folder)
-   ✓ 05-Areas/ (entire folder)
-   ✓ 07-Archives/ (entire folder)
+   ✓ Projects/ (entire folder)
+   ✓ People/ (entire folder)
+   ✓ Archive/ (entire folder)
    ✓ .env (if it exists)
    ✓ Your `USER_EXTENSIONS` block from `CLAUDE.md`
    ✓ Any custom MCP entries named `custom-*` from `.mcp.json`

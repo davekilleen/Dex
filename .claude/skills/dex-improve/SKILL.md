@@ -67,7 +67,7 @@ Build context from multiple sources:
 
 **Internal (always check):**
 ```
-06-Resources/Learnings/                 # What you've learned so far
+System/Learnings/                 # What you've learned so far
 System/Skills/                       # Existing reusable behaviors
 .claude/commands/                    # Existing commands that might overlap
 System/pillars.yaml                  # Strategic priorities
@@ -126,7 +126,7 @@ When requirements are firm:
 
 1. Generate the plan document (see template below)
 2. Save to `plans/dex-improvement-[slug].md`
-3. Add any new patterns to `06-Resources/Learnings/`
+3. Add any new patterns to `System/Learnings/`
 4. Add viable future ideas to backlog
 
 ---
@@ -215,7 +215,7 @@ Review all known Claude Code capabilities against your current system.
    - Scan `.claude/` folder for hooks, commands, settings
    - Check `System/Skills/` for skills
    - Check `core/mcp/` for MCP integrations
-   - Read `06-Resources/Learnings/` for known patterns
+   - Read `System/Learnings/` for known patterns
 
 2. **Load capability reference:**
    - Use the capability match table (from Mode 1, Phase 3)
@@ -334,7 +334,7 @@ Create at: `plans/dex-improvement-[slug].md`
 > task management (capture and routing).
 >
 > **Current state** (from Learnings):
-> - Meeting notes go to `00-Inbox/Meetings/`
+> - Meeting notes go to `Inbox/Meetings/`
 > - Action items manually extracted during review
 >
 > **Capability scan:**

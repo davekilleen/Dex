@@ -480,7 +480,7 @@ Check if CLAUDE.md has mcp_instructions section. If not, add:
 
 **Step 4.3: Update System Guide**
 
-Add to `06-Resources/Dex_System/Dex_System_Guide.md` under Integration Options:
+Add to `System/Dex_System/Dex_System_Guide.md` under Integration Options:
 
 ```markdown
 | **[Service]** | [Brief description of capabilities] |

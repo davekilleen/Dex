@@ -227,9 +227,9 @@ Great. So your growth direction:
 
 Create the folder structure and files:
 
-**1. Create folder:** `05-Areas/Career/`
+**1. Create folder:** `Career/`
 
-**2. Create `05-Areas/Career/Current_Role.md`:**
+**2. Create `Career/Current_Role.md`:**
 
 ```markdown
 # Current Role
@@ -265,7 +265,7 @@ Create the folder structure and files:
 [Any additional context worth capturing]
 ```
 
-**3. Create `05-Areas/Career/Career_Ladder.md`:**
+**3. Create `Career/Career_Ladder.md`:**
 
 ```markdown
 # Career Ladder
@@ -325,7 +325,7 @@ Create the folder structure and files:
 [Any additional context about the ladder]
 ```
 
-**4. Create `05-Areas/Career/Review_History.md`:**
+**4. Create `Career/Review_History.md`:**
 
 ```markdown
 # Review History
@@ -373,7 +373,7 @@ Track formal performance reviews, feedback, and progress over time.
 - Reference this when preparing for promotion discussions
 ```
 
-**5. Create `05-Areas/Career/Growth_Goals.md`:**
+**5. Create `Career/Growth_Goals.md`:**
 
 ```markdown
 # Growth Goals
@@ -448,7 +448,7 @@ Specific achievements I'm working toward:
 - Use `/career-coach` to work through career challenges
 ```
 
-**6. Create `05-Areas/Career/Evidence/` folder structure:**
+**6. Create `Career/Evidence/` folder structure:**
 
 ```
 06-Resources/
@@ -459,7 +459,7 @@ Specific achievements I'm working toward:
     └── Skills_Development/
 ```
 
-**7. Create `05-Areas/Career/Evidence/[[README]].md`:**
+**7. Create `Career/Evidence/[[README]].md`:**
 
 ```markdown
 # Career Evidence
@@ -519,13 +519,13 @@ Your Career system is now live. Here's what I created:
 
 ### Files Created
 
-**`05-Areas/Career/`**
+**`Career/`**
 - `Current_Role.md` — Your job description and responsibilities
 - `Career_Ladder.md` — Progression framework and promotion requirements
 - `Review_History.md` — Performance review tracking
 - `Growth_Goals.md` — Long-term development objectives
 
-**`05-Areas/Career/Evidence/`**
+**`Career/Evidence/`**
 - Evidence capture system for achievements, feedback, and skill development
 
 ---

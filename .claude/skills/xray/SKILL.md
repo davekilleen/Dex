@@ -275,7 +275,7 @@ the **system prompt**. For Dex, that's `CLAUDE.md`.
 │ "You are Dex, a personal knowledge assistant"   │
 │ "User's pillars: [your pillars]"                │
 │ "When tasks are mentioned, use Work MCP"        │
-│ "Person pages are in 05-Areas/People/"          │
+│ "Person pages are in People/"          │
 │ ... (hundreds more lines of context)            │
 └─────────────────────────────────────────────────┘
 ```
@@ -367,8 +367,8 @@ the limitations to create something useful.
 │  (Plain Markdown files YOU own)                 │
 ├─────────────────────────────────────────────────┤
 │ • CLAUDE.md - Core context & personality        │
-│ • 05-Areas/People/ - Relationship memory        │
-│ • 03-Tasks/Tasks.md - Work in progress          │
+│ • People/ - Relationship memory        │
+│ • Planning/Tasks.md - Work in progress          │
 │ • System/Session_Memory/ - Past conversations   │
 │ • System/Work_In_Progress.md - Active projects  │
 └─────────────────────────────────────────────────┘
@@ -471,10 +471,10 @@ Everything persists to Markdown files:
 
 ```
 Your Vault/
-├── 00-Inbox/           ← Capture zone
+├── Inbox/           ← Capture zone
 ├── 03-Tasks/           ← Active tasks
-├── 04-Projects/        ← Time-bound work
-├── 05-Areas/           ← Ongoing responsibilities
+├── Projects/        ← Time-bound work
+├── People/           ← Ongoing responsibilities
 │   ├── People/         ← Person pages
 │   └── Companies/      ← Company profiles
 ├── 06-Resources/       ← Reference material

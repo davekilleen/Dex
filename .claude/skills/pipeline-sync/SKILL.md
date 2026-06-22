@@ -3,16 +3,16 @@ name: pipeline-sync
 description: Sync Salesforce opportunities into project pages with quotes and contact links
 ---
 
-Pulls your open Salesforce pipeline and creates/updates project pages in `04-Projects/` for each opportunity. Downloads quote documents and links contacts to People pages.
+Pulls your open Salesforce pipeline and creates/updates project pages in `Projects/` for each opportunity. Downloads quote documents and links contacts to People pages.
 
 ## What This Does
 
 1. Fetches open opportunities from Salesforce (`sf_get_pipeline`)
-2. For each opportunity, creates or updates a project page in `04-Projects/`
+2. For each opportunity, creates or updates a project page in `Projects/`
 3. Pulls quotes and their attached documents (`sf_get_quotes`)
 4. Downloads quote PDFs into each opportunity's `Quotes/` subfolder (`sf_download_quote_file`)
-5. Links Salesforce contacts to People pages in `05-Areas/People/`
-6. Flags closed/won/lost opps for archival to `07-Archives/Projects/`
+5. Links Salesforce contacts to People pages in `People/`
+6. Flags closed/won/lost opps for archival to `Archive/Projects/`
 
 ## Usage
 
@@ -40,7 +40,7 @@ If not authenticated, tell the user to run `sf_authenticate` first.
 
 ### Step 2: Diff Against Existing Projects
 
-Scan `04-Projects/` for existing opportunity project pages. Match by the `sf_opportunity_id` in frontmatter.
+Scan `Projects/` for existing opportunity project pages. Match by the `sf_opportunity_id` in frontmatter.
 
 Categorize each opp:
 - **New** — No matching project page exists → create
@@ -53,10 +53,10 @@ Categorize each opp:
 For each new or updated opportunity:
 
 1. Call `sf_get_opportunity` to get full details (contacts, quotes, activity)
-2. Create the project folder: `04-Projects/{Account_Name} - {Opportunity_Name} - {Vendor__c}/`
+2. Create the project folder: `Projects/{Account_Name} - {Opportunity_Name} - {Vendor__c}/`
 3. Write the project page using the template below
 4. For each contact with an OpportunityContactRole:
-   - Check if a People page exists in `05-Areas/People/External/`
+   - Check if a People page exists in `People/External/`
    - If not, create a stub page with name, title, email, company
    - Wiki-link the contact in the project page
 
@@ -70,7 +70,7 @@ For all other stages (Discovery, Quoting, Active Project, etc.), sync quote meta
 1. Call `sf_get_quotes` for each opportunity
 2. For each quote with attached documents:
    - If opp stage is Favorable, Negotiation, or Buying:
-     - Create `04-Projects/{folder}/Quotes/` if needed
+     - Create `Projects/{folder}/Quotes/` if needed
      - Call `sf_download_quote_file` with the `content_version_id`
      - Save as `{QuoteNumber}_{Title}.{FileType}` (e.g., `Q-00123_Proposal.pdf`)
      - Link the file in the project page's Quotes section
@@ -184,10 +184,10 @@ _Recent Salesforce activity synced automatically._
 
 ## Folder Structure
 
-After sync, `04-Projects/` looks like:
+After sync, `Projects/` looks like:
 
 ```
-04-Projects/
+Projects/
   README.md
   Acme Corp - Widget Deal - WidgetCo/
     Acme Corp - Widget Deal - WidgetCo.md

@@ -47,7 +47,7 @@ if (mentions.size === 0) {
 const peopleDir = path.resolve(path.dirname(filePath), '../../05-Areas/People');
 // Also try from vault root
 const vaultRoot = process.env.CLAUDE_PROJECT_DIR || path.resolve(path.dirname(filePath), '../..');
-const peopleDirAlt = path.join(vaultRoot, '05-Areas/People');
+const peopleDirAlt = path.join(vaultRoot, 'People');
 const actualPeopleDir = fs.existsSync(peopleDir) ? peopleDir : peopleDirAlt;
 
 const updated = [];

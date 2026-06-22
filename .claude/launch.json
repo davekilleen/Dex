@@ -1,0 +1,26 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "salesforce-mcp",
+      "runtimeExecutable": "python",
+      "runtimeArgs": [".scripts/salesforce-mcp/server.py"],
+      "port": 8080,
+      "note": "Stdio MCP server. Port 8080 is used temporarily for Salesforce OAuth callbacks only."
+    },
+    {
+      "name": "retool-mcp",
+      "runtimeExecutable": "python",
+      "runtimeArgs": [".scripts/retool-mcp/server.py"],
+      "port": null,
+      "note": "Stdio MCP server. No HTTP port — communicates over stdin/stdout."
+    },
+    {
+      "name": "meeting-sync",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [".scripts/meeting-intel/sync-from-granola.cjs"],
+      "port": null,
+      "note": "One-shot sync script (not a persistent server). Pulls meetings from Granola API."
+    }
+  ]
+}

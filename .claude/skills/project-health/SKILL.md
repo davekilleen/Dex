@@ -7,7 +7,7 @@ Quick scan of all active projects to see what's stalled, blocked, or needs atten
 
 ## What This Does
 
-Checks each project in `04-Projects/` for:
+Checks each project in `Projects/` for:
 1. Activity levels (when was project last touched?)
 2. Week Priorities presence (does project have active tasks?)
 3. Blockers (anything blocking progress?)
@@ -17,9 +17,9 @@ Checks each project in `04-Projects/` for:
 
 ### Step 1: Scan Projects
 
-List all projects in `04-Projects/`:
+List all projects in `Projects/`:
 ```bash
-ls -la 04-Projects/
+ls -la Projects/
 ```
 
 ### Step 2: Check Each Project
@@ -32,7 +32,7 @@ For each project folder or file:
 - >14 days without activity = red
 
 **Week Priorities Presence:**
-- Scan `00-Inbox/Weekly_Plans.md` for project mentions
+- Scan `Inbox/Weekly_Plans.md` for project mentions
 - No tasks for 2+ weeks = yellow
 
 **Blocker Check:**

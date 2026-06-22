@@ -2,7 +2,6 @@
 name: process-meetings
 description: Process synced Granola meetings to update person pages, extract tasks, and organize meeting notes
 model_hint: balanced
-context: fork
 hooks:
   PostToolUse:
     - matcher: Write
@@ -28,7 +27,7 @@ This skill supports background execution. When invoked:
 
 Meetings are synced automatically every 30 minutes by a background process. This command reads those synced files and:
 - Creates/updates person and company pages
-- Extracts action items to 03-Tasks/Tasks.md
+- Extracts action items to Planning/Tasks.md
 - Links everything together
 
 **No terminal commands are shown** - the heavy lifting happens in the background.
@@ -87,9 +86,9 @@ Read the processed meetings state:
 const state = JSON.parse(fs.readFileSync('.scripts/meeting-intel/processed-meetings.json'));
 ```
 
-List meeting files in `00-Inbox/Meetings/`:
+List meeting files in `Inbox/Meetings/`:
 ```bash
-find 00-Inbox/Meetings -name "*.md" -mtime -7 | head -50
+find Inbox/Meetings -name "*.md" -mtime -7 | head -50
 ```
 
 For each meeting file:
@@ -114,8 +113,8 @@ For each participant in synced meetings:
    - Otherwise → External
 
 3. **Check if person page exists:**
-   - Internal: `05-Areas/People/Internal/{Name}.md`
-   - External: `05-Areas/People/External/{Name}.md`
+   - Internal: `People/Internal/{Name}.md`
+   - External: `People/External/{Name}.md`
 
 4. **If page doesn't exist, create it:**
    ```markdown
@@ -131,7 +130,7 @@ For each participant in synced meetings:
 
    ## Recent Interactions
 
-   - [{Meeting Title}](00-Inbox/Meetings/{date}/{slug}.md) — {date}
+   - [{Meeting Title}](Inbox/Meetings/{date}/{slug}.md) — {date}
 
    ## Notes
 
@@ -148,7 +147,7 @@ For each participant in synced meetings:
 
 For each unique external company domain:
 
-1. **Check if company page exists:** `05-Areas/Companies/{Company}.md`
+1. **Check if company page exists:** `People/Companies/{Company}.md`
 
 2. **If doesn't exist, create it:**
    ```markdown
@@ -164,11 +163,11 @@ For each unique external company domain:
 
    ## Key Contacts
 
-   - [[05-Areas/People/External/{Person}|{Person}]]
+   - [[People/External/{Person}|{Person}]]
 
    ## Meeting History
 
-   - [{Meeting Title}](00-Inbox/Meetings/{date}/{slug}.md) — {date}
+   - [{Meeting Title}](Inbox/Meetings/{date}/{slug}.md) — {date}
 
    ## Notes
 
@@ -199,7 +198,7 @@ If available, enhance meeting processing with meaning-based intelligence:
    ```
    qmd query "meeting topic/title" --limit 3
    ```
-   against `04-Projects/` to auto-link the meeting to relevant projects that keyword matching would miss.
+   against `Projects/` to auto-link the meeting to relevant projects that keyword matching would miss.
 
 3. **Enrich person context:** For each new person encountered, search:
    ```
@@ -257,7 +256,7 @@ For each meeting with unextracted tasks:
 - Created: 1 new (Acme Corp)
 - Updated: 2 existing
 
-**Tasks extracted:** 7 items added to 03-Tasks/Tasks.md
+**Tasks extracted:** 7 items added to Planning/Tasks.md
 
 ### Recent Meetings
 

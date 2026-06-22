@@ -88,7 +88,7 @@ Store:
 
 ### Check for Last Quarter's Review
 
-Look for `07-Archives/Reviews/[last-quarter].md`:
+Look for `Archive/Reviews/[last-quarter].md`:
 
 **If exists, extract:**
 - Completed goals
@@ -102,7 +102,7 @@ Look for `07-Archives/Reviews/[last-quarter].md`:
 
 ### Check Current Quarter Goals (if mid-quarter update)
 
-If `01-Quarter_Goals/Quarter_Goals.md` exists with current quarter:
+If `Planning/Quarter_Goals.md` exists with current quarter:
 - Read current goals
 - Note progress made
 - Ask if updating or replacing
@@ -116,14 +116,14 @@ Read `System/pillars.yaml`:
 
 ### Scan Recent Projects
 
-Look at `04-Projects/` for active initiatives:
+Look at `Projects/` for active initiatives:
 - What's in flight?
 - What needs to land this quarter?
 - Any new initiatives starting?
 
 ### Check Career Goals (if Career system enabled)
 
-Look for `05-Areas/Career/Growth_Goals.md`:
+Look for `Career/Growth_Goals.md`:
 
 **If exists, extract:**
 - Long-term vision (1-3 years)
@@ -219,9 +219,9 @@ Allow adjustment.
 
 ## Step 4: Archive Old Quarter Goals
 
-**If `01-Quarter_Goals/Quarter_Goals.md` exists:**
+**If `Planning/Quarter_Goals.md` exists:**
 1. Determine the quarter it represents
-2. Move to `07-Archives/Reviews/[old-quarter]-goals.md`
+2. Move to `Archive/Reviews/[old-quarter]-goals.md`
 3. Note: This preserves what was PLANNED vs what ACTUALLY happened (from review)
 
 ---
@@ -355,7 +355,7 @@ created: [timestamp]
 
 Display summary:
 
-> "Q1 2026 goals set and saved to `01-Quarter_Goals/Quarter_Goals.md`
+> "Q1 2026 goals set and saved to `Planning/Quarter_Goals.md`
 > 
 > **Your focus this quarter:**
 > 1. [Goal 1]
@@ -376,7 +376,7 @@ Display summary:
 ## Integration Points
 
 **Called by `/week-plan`:**
-- Weekly planning reads from `01-Quarter_Goals/Quarter_Goals.md`
+- Weekly planning reads from `Planning/Quarter_Goals.md`
 - Prompts user to connect weekly priorities to quarterly goals
 
 **Updated manually:**

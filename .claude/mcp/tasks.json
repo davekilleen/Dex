@@ -8,5 +8,5 @@
       "VAULT_PATH": "${workspaceFolder}"
     }
   },
-  "notes": "Manages complete planning hierarchy: 01-Quarter_Goals/Quarter_Goals.md → Week Priorities.md → 03-Tasks/Tasks.md. Loads pillars from System/pillars.yaml."
+  "notes": "Manages complete planning hierarchy: Planning/Quarter_Goals.md → Week Priorities.md → Planning/Tasks.md. Loads pillars from System/pillars.yaml."
 }

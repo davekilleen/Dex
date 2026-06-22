@@ -126,7 +126,7 @@ Say: "✅ Obsidian mode enabled!
 - Backlinks pane: See everywhere a note is referenced
 
 **Resources:**
-- See `06-Resources/Dex_System/Obsidian_Guide.md` for detailed tips
+- See `System/Dex_System/Obsidian_Guide.md` for detailed tips
 - Watch the [beginner's guide](https://www.youtube.com/watch?v=gafuqdKwD_U) if you're new to Obsidian
 
 You can still use Dex in Cursor/terminal exactly as before. Wiki links work everywhere."

@@ -27,7 +27,7 @@ Look for natural progressions and gaps:
 
 **Meeting Capture → Relationship Tracking:**
 - Processing meetings but no person pages? → Suggest person pages
-- Have person pages but not company pages? → Suggest processing meetings to auto-create company pages in 05-Areas/Companies/
+- Have person pages but not company pages? → Suggest processing meetings to auto-create company pages in People/Companies/
 
 **Tasks → Projects:**
 - Managing tasks but no project pages? → Suggest project tracking
@@ -371,7 +371,7 @@ You're using Dex like a pro. Here are **2 advanced features** that could push yo
 
 **Why it's relevant:** You have a goldmine of captured experience. Running `/save-insight` regularly would turn those raw learnings into a knowledge base you can reference and share.
 
-**How to start:** Run `/save-insight` after finishing a complex project or at the end of each month. I'll help you extract patterns from your session learnings and write them into `06-Resources/Learnings/`.
+**How to start:** Run `/save-insight` after finishing a complex project or at the end of each month. I'll help you extract patterns from your session learnings and write them into `System/Learnings/`.
 
 **Time:** 10 minutes per insight, quarterly or as-needed
 
@@ -411,7 +411,7 @@ Then show the essentials:
 > If you want to browse everything, check out:
 > - `CLAUDE.md` for the full system overview
 > - `.claude/commands/` folder for all available commands
-> - `06-Resources/Dex_System/Dex_System_Guide.md` for the complete guide"
+> - `System/Dex_System/Dex_System_Guide.md` for the complete guide"
 
 ---
 

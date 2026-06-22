@@ -401,6 +401,7 @@ def tool_sf_search_contacts(args):
     contacts = []
     for r in result.get("records", []):
         contacts.append({
+            "id": r.get("Id"),
             "name": r.get("Name"),
             "email": r.get("Email"),
             "phone": r.get("Phone"),

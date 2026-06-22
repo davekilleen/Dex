@@ -16,15 +16,15 @@ Reads existing Dex data and synthesizes `System/identity-model.md` — a living 
 
 Read ALL of the following in parallel before synthesizing:
 
-1. **Quarter Goals** — `01-Quarter_Goals/Quarter_Goals.md`
+1. **Quarter Goals** — `Planning/Quarter_Goals.md`
    - What you're working toward, pillar distribution, ambition level
-2. **Week Priorities** — `02-Week_Priorities/Week_Priorities.md`
+2. **Week Priorities** — `Planning/Week_Priorities.md`
    - Recent 4 weeks of priorities (look for patterns in what gets prioritized)
-3. **Tasks** — `03-Tasks/Tasks.md`
+3. **Tasks** — `Planning/Tasks.md`
    - Completion patterns, pillar distribution, velocity, what gets blocked
 4. **Session Learnings** — `System/Session_Learnings/*.md` (last 30 days)
    - What you've learned, recurring themes
-5. **Mistake Patterns** — `06-Resources/Learnings/Mistake_Patterns.md`
+5. **Mistake Patterns** — `System/Learnings/Mistake_Patterns.md`
    - Known failure modes, triggers, what to watch for
 6. **Skill Ratings** — `System/Skill_Ratings/ratings.jsonl`
    - Which skills score highest, what you value in AI interactions

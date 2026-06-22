@@ -185,7 +185,7 @@ The scanner returns a JSON structure like:
   "candidates": [
     {
       "name": "people",
-      "path": "05-Areas/People",
+      "path": "People/People",
       "glob": "**/*.md",
       "fileCount": 23,
       "context": "Person pages with meeting history, relationship notes, action items, and role context",
@@ -194,7 +194,7 @@ The scanner returns a JSON structure like:
     },
     {
       "name": "accounts",
-      "path": "05-Areas/Companies",
+      "path": "People/Companies",
       "glob": "**/*.md",
       "fileCount": 8,
       "context": "Company and account pages with deal status, relationship notes, and interaction history",
@@ -206,7 +206,7 @@ The scanner returns a JSON structure like:
     {
       "name": "career",
       "reason": "Folder not set up (run /career-setup)",
-      "path": "05-Areas/Career"
+      "path": "People/Career"
     }
   ],
   "totalFiles": 156,
@@ -282,18 +282,18 @@ qmd context add <name> "<context description>"
 
 | Name | Path | Glob | Context | Min Files |
 |------|------|------|---------|-----------|
-| `people` | `05-Areas/People` | `**/*.md` | Person pages with meeting history, relationship notes, action items, and role context | 3 |
-| `accounts` | `05-Areas/Companies` | `**/*.md` | Company and account pages with deal status, relationship notes, and interaction history | 1 |
-| `accounts` (alt) | `05-Areas/Relationships/Key_Accounts` | `**/*.md` | Key Account pages with deal status, MEDDPICC, and engagement history | 1 |
-| `meetings` | `00-Inbox/Meetings` | `**/*.md` | Meeting notes with attendees, key discussion points, decisions made, and action items | 5 |
-| `tasks` | `03-Tasks` | `**/*.md` | Task backlog with priorities (P0-P3), pillar alignment, status tracking, and linked goals | 1 |
-| `projects` | `04-Projects` | `**/*.md` | Active project tracking with status, stakeholders, timelines, and related decisions | 1 |
+| `people` | `People/People` | `**/*.md` | Person pages with meeting history, relationship notes, action items, and role context | 3 |
+| `accounts` | `People/Companies` | `**/*.md` | Company and account pages with deal status, relationship notes, and interaction history | 1 |
+| `accounts` (alt) | `People/Relationships/Key_Accounts` | `**/*.md` | Key Account pages with deal status, MEDDPICC, and engagement history | 1 |
+| `meetings` | `Inbox/Meetings` | `**/*.md` | Meeting notes with attendees, key discussion points, decisions made, and action items | 5 |
+| `tasks` | `Planning` | `**/*.md` | Task backlog with priorities (P0-P3), pillar alignment, status tracking, and linked goals | 1 |
+| `projects` | `Projects` | `**/*.md` | Active project tracking with status, stakeholders, timelines, and related decisions | 1 |
 | `goals` | `01-Quarter_Goals` | `**/*.md` | Quarterly strategic goals with success criteria, milestones, and progress tracking | 1 |
 | `priorities` | `02-Week_Priorities` | `**/*.md` | Weekly priorities linked to quarterly goals with completion tracking | 1 |
-| `content` | `05-Areas/Content` | `**/*.md` | Content ideas, articles, LinkedIn posts, and thought leadership material | 1 |
-| `career` | `05-Areas/Career` | `**/*.md` | Career development evidence, feedback received, skills tracking, and growth goals | 1 |
+| `content` | `People/Content` | `**/*.md` | Content ideas, articles, LinkedIn posts, and thought leadership material | 1 |
+| `career` | `People/Career` | `**/*.md` | Career development evidence, feedback received, skills tracking, and growth goals | 1 |
 | `prds` | `System/PRDs` | `**/*.md` | Product requirement documents, feature specs, and technical design docs | 1 |
-| `resources` | `06-Resources` | `**/*.md` | Reference material, learnings, system documentation, and guides | 5 |
+| `resources` | `System` | `**/*.md` | Reference material, learnings, system documentation, and guides | 5 |
 
 **After all collections are created, embed the vectors:**
 
@@ -393,7 +393,7 @@ This compares existing collections against current vault state and returns:
   "newCandidates": [
     {
       "name": "accounts",
-      "path": "05-Areas/Companies",
+      "path": "People/Companies",
       "fileCount": 5,
       "reason": "You've created 5 company pages since last check"
     }

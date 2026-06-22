@@ -1,7 +1,6 @@
 ---
 name: week-review
 description: Review week's progress with concrete accomplishments (not fake percentages), pattern detection, and goal tracking.
-context: fork
 ---
 
 ## Purpose
@@ -40,26 +39,26 @@ If items found:
 ## Data Sources
 
 ### 1. Task Progress
-- `03-Tasks/Tasks.md` — Task completion status
-- `02-Week_Priorities/Week_Priorities.md` — Weekly priorities
+- `Planning/Tasks.md` — Task completion status
+- `Planning/Week_Priorities.md` — Weekly priorities
 
 ### 2. Project Activity
-- `04-Projects/**/*.md` — Modified this week
+- `Projects/**/*.md` — Modified this week
 
 ### 3. Meetings & People
-- `00-Inbox/Meetings/*.md` — Meeting notes from this week
+- `Inbox/Meetings/*.md` — Meeting notes from this week
 - `People/**/*.md` — Person pages updated
 
 ### 4. Learnings
-- `06-Resources/Learnings/**/*.md` — Explicit learnings
+- `System/Learnings/**/*.md` — Explicit learnings
 - `System/Session_Learnings/*.md` — Auto-captured session learnings
 
 ### 5. Daily Plans & Reviews
-- `07-Archives/Plans/YYYY-MM-DD.md` — This week's daily plans (primary record of planning ritual)
-- `07-Archives/Reviews/Daily_Review_YYYY-MM-DD.md` — This week's reviews
+- `Archive/Plans/YYYY-MM-DD.md` — This week's daily plans (primary record of planning ritual)
+- `Archive/Reviews/Daily_Review_YYYY-MM-DD.md` — This week's reviews
 
 ### 6. Journals (If Enabled)
-- `00-Inbox/Journals/YYYY/MM-Month/` — Morning/evening journals
+- `Inbox/Journals/YYYY/MM-Month/` — Morning/evening journals
 
 ---
 
@@ -127,7 +126,7 @@ If available, enhance the weekly priority review with meaning-based analysis:
 
 ### 2. Task Completion Stats (Concrete Numbers)
 
-Scan `03-Tasks/Tasks.md` for completion timestamps from this week:
+Scan `Planning/Tasks.md` for completion timestamps from this week:
 - Count tasks completed (look for `✅ YYYY-MM-DD` in date range)
 - Count tasks added mid-week
 - Count tasks carried over
@@ -169,7 +168,7 @@ For each goal:
 
 ### 4. Daily Completion Rate Trend
 
-**First check `07-Archives/Plans/` for this week's daily plans.** Count how many days had a `/daily-plan` generated. If daily reviews also exist, cross-reference plan focus items against review completion. If only plans exist (no corresponding review), still count the plan as evidence of the planning ritual and note which focus items were checked off in the plan file itself.
+**First check `Archive/Plans/` for this week's daily plans.** Count how many days had a `/daily-plan` generated. If daily reviews also exist, cross-reference plan focus items against review completion. If only plans exist (no corresponding review), still count the plan as evidence of the planning ritual and note which focus items were checked off in the plan file itself.
 Calculate completion trends:
 
 > "**Daily plan completion this week:**
@@ -274,7 +273,7 @@ Review `System/Session_Learnings/` files from this week:
 
 ## Output Format
 
-Create `00-Inbox/Weekly_Synthesis_YYYY-MM-DD.md`:
+Create `Inbox/Weekly_Synthesis_YYYY-MM-DD.md`:
 
 ```markdown
 # Weekly Synthesis — Week of [Date]
@@ -497,6 +496,21 @@ After synthesis:
 2. Archive completed items
 3. Update project pages with status changes
 4. Offer to run `/week-plan` for next week
+
+---
+
+## Pipeline Activity Review (Sales)
+
+After the synthesis, run the pipeline activity review to log the week's sales activity to Salesforce:
+
+```
+Run skill: /pipeline-review
+```
+
+This surfaces all unsynced activity entries from the past 7 days across `Projects/`, lets you pick what to log, and pushes selected entries to Salesforce as completed Tasks.
+
+- If no activity is found, skip silently
+- Do NOT ask for a skill rating after this sub-step — it was already asked after the main review
 
 ---
 

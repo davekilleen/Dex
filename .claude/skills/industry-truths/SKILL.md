@@ -115,7 +115,7 @@ Start by explaining the concept:
 
 ## File Creation
 
-After the interview, create `04-Projects/Product_Strategy/Industry_Truths.md` (or update if it exists):
+After the interview, create `Projects/Product_Strategy/Industry_Truths.md` (or update if it exists):
 
 ```markdown
 ---

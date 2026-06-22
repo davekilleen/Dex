@@ -85,7 +85,7 @@ DECISIONS:
 NEXT STEPS:
 • [action item / follow-up]
 
-[Dex note link: 00-Inbox/Meetings/YYYY-MM-DD - Account Name.md]
+[Dex note link: Inbox/Meetings/YYYY-MM-DD - Account Name.md]
 ```
 
 Keep it clean — Salesforce descriptions are plain text, no markdown headers.
@@ -94,7 +94,7 @@ Keep it clean — Salesforce descriptions are plain text, no markdown headers.
 
 ## Step 4: Save Dex Note
 
-Write a meeting note to `00-Inbox/Meetings/YYYY-MM-DD - [Account Name].md`:
+Write a meeting note to `Inbox/Meetings/YYYY-MM-DD - [Account Name].md`:
 
 ```markdown
 ---
@@ -135,7 +135,7 @@ Infer the pillar from `System/pillars.yaml`:
 - Check-ins, relationship work → Account Management
 - Research, product questions → Product & Market Knowledge
 
-Call `work_mcp_create_task` for each, or write directly to `03-Tasks/Tasks.md` if Work MCP is unavailable.
+Call `work_mcp_create_task` for each, or write directly to `Planning/Tasks.md` if Work MCP is unavailable.
 
 Format:
 ```
@@ -167,7 +167,7 @@ Show a summary:
    Linked to: [Opportunity or Account name]
 
 📝 Dex note saved
-   00-Inbox/Meetings/YYYY-MM-DD - Account Name.md
+   Inbox/Meetings/YYYY-MM-DD - Account Name.md
 
 ✅ Tasks created ([n])
    • [task 1]
