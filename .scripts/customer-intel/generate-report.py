@@ -140,8 +140,45 @@ def expiry_info(usage_end_str):
         return None, None
 
 
+EARLY_TERM = 54   # months — previous standard lease term
+STD_TERM   = 60   # months — common standard lease term
+
+
 def urgency_icon(urgency):
     return {"CRITICAL": "🔴", "HIGH": "🟡", "MEDIUM": "🟠", "LOW": "🟢", "LAPSED": "⚫"}.get(urgency or "", "—")
+
+
+def replacement_window(close_date_str):
+    """Calculate 54/60-month replacement window from sale close date."""
+    if not close_date_str:
+        return None
+    try:
+        close = datetime.strptime(close_date_str[:10], "%Y-%m-%d").date()
+        today = date.today()
+        months_elapsed = (today.year - close.year) * 12 + (today.month - close.month)
+        std_end = close + timedelta(days=STD_TERM * 30)
+        days_to_std = (std_end - today).days
+
+        if months_elapsed >= STD_TERM:
+            status, urgency = "PAST_WINDOW", "CRITICAL"
+        elif months_elapsed >= EARLY_TERM:
+            status, urgency = "IN_WINDOW", "CRITICAL"
+        elif days_to_std <= 180:
+            status, urgency = "APPROACHING", "HIGH"
+        elif days_to_std <= 365:
+            status, urgency = "UPCOMING", "MEDIUM"
+        else:
+            status, urgency = "ACTIVE", "LOW"
+
+        return {
+            "months_elapsed": months_elapsed,
+            "std_end_date": std_end.isoformat(),
+            "days_to_std_end": days_to_std,
+            "status": status,
+            "urgency": urgency,
+        }
+    except Exception:
+        return None
 
 
 def parse_record(r):
@@ -198,6 +235,43 @@ def get_new_assets(tokens, days=30):
     return [parse_record(r) for r in result.get("records", [])]
 
 
+def get_financed_deals(tokens):
+    """Pull all PM records with a close date and calculate replacement windows."""
+    soql = """
+        SELECT Id, Name, Sale_Close_Date__c, Install_Date__c,
+               Updated_Ship_Date__c, OWU_Ship_Date__c,
+               Warranty_Length__c, Machine_Type__c, Model__c, Status__c,
+               Account_Name__r.Name, Account_Name__c,
+               Sales_Rep__r.Name, Vendor__r.Name
+        FROM Project_Management__c
+        WHERE Sale_Close_Date__c != null
+        ORDER BY Sale_Close_Date__c ASC
+        LIMIT 2000
+    """
+    result = sf_query(tokens, soql)
+    deals = []
+    for r in result.get("records", []):
+        w = replacement_window(r.get("Sale_Close_Date__c"))
+        if not w:
+            continue
+        deals.append({
+            "id": r["Id"],
+            "name": r.get("Name", ""),
+            "machine_type": r.get("Machine_Type__c") or "—",
+            "model": r.get("Model__c") or "—",
+            "status": r.get("Status__c") or "—",
+            "close_date": (r.get("Sale_Close_Date__c") or "")[:10],
+            "install_date": (r.get("Install_Date__c") or "")[:10] or "—",
+            "warranty_length": r.get("Warranty_Length__c") or "—",
+            "account": (r.get("Account_Name__r") or {}).get("Name") or "Unknown",
+            "account_id": r.get("Account_Name__c") or "",
+            "sales_rep": (r.get("Sales_Rep__r") or {}).get("Name") or "—",
+            "vendor": (r.get("Vendor__r") or {}).get("Name") or "—",
+            "window": w,
+        })
+    return deals
+
+
 # ── Report Generation ─────────────────────────────────────────────────────────
 
 def md_table(headers, rows, alignments=None):
@@ -213,7 +287,72 @@ def md_table(headers, rows, alignments=None):
     return "\n".join([header_row, sep] + data_rows) + "\n"
 
 
-def build_report(expiring_assets, new_assets, days_back, months_ahead, generated_at):
+def build_replacement_section(deals):
+    """Build the predicted replacement window section from PM records."""
+    if not deals:
+        return ["*No Project Management records with close dates found.*", ""]
+
+    in_window  = [d for d in deals if d["window"]["status"] in ("IN_WINDOW", "PAST_WINDOW")]
+    approaching = [d for d in deals if d["window"]["status"] == "APPROACHING"]
+    upcoming   = [d for d in deals if d["window"]["status"] == "UPCOMING"]
+    active     = [d for d in deals if d["window"]["status"] == "ACTIVE"]
+
+    lines = []
+    lines.append(f"*Based on {STD_TERM}-month standard lease term ({EARLY_TERM}-month early window). "
+                 f"Close date used as financing start.*")
+    lines.append("")
+
+    lines.append("### Summary")
+    lines.append("")
+    lines.append("| Status | Count | Description |")
+    lines.append("|--------|-------|-------------|")
+    lines.append(f"| 🔴 In Window Now | **{len(in_window)}** | Past {EARLY_TERM}mo mark — call now |")
+    lines.append(f"| 🟡 Approaching (≤180 days to 60mo) | **{len(approaching)}** | Schedule outreach |")
+    lines.append(f"| 🟠 Upcoming (≤365 days to 60mo) | **{len(upcoming)}** | Calendar reminder |")
+    lines.append(f"| 🟢 Active | **{len(active)}** | 12+ months remaining |")
+    lines.append("")
+
+    if in_window:
+        lines.append(f"### 🔴 In Replacement Window Now — {len(in_window)} Deals")
+        lines.append("")
+        rows = []
+        for d in sorted(in_window, key=lambda x: x["window"]["months_elapsed"], reverse=True):
+            mo = d["window"]["months_elapsed"]
+            status_label = f"{mo}mo elapsed"
+            if d["window"]["status"] == "PAST_WINDOW":
+                status_label += " ⚠️ past 60mo"
+            rows.append([d["account"], d["machine_type"], d["model"],
+                         d["close_date"], status_label, d["sales_rep"]])
+        lines.append(md_table(
+            ["Account", "Machine Type", "Model", "Close Date", "Elapsed", "Sales Rep"],
+            rows
+        ))
+
+    if approaching:
+        lines.append(f"### 🟡 Approaching — {len(approaching)} Deals (Window Opens ≤180 Days)")
+        lines.append("")
+        rows = [[d["account"], d["machine_type"], d["model"],
+                 d["close_date"], d["window"]["std_end_date"],
+                 str(d["window"]["days_to_std_end"]) + " days"] for d in approaching]
+        lines.append(md_table(
+            ["Account", "Machine Type", "Model", "Close Date", "60mo End", "Days Left"],
+            rows
+        ))
+
+    if upcoming:
+        lines.append(f"### 🟠 Upcoming — {len(upcoming)} Deals (Window Opens ≤1 Year)")
+        lines.append("")
+        rows = [[d["account"], d["machine_type"], d["model"],
+                 d["close_date"], d["window"]["std_end_date"]] for d in upcoming]
+        lines.append(md_table(
+            ["Account", "Machine Type", "Model", "Close Date", "60mo End"],
+            rows
+        ))
+
+    return lines
+
+
+def build_report(expiring_assets, new_assets, days_back, months_ahead, generated_at, deals=None):
     today_str = date.today().strftime("%B %d, %Y")
     month_str = date.today().strftime("%B %Y")
 
@@ -225,6 +364,11 @@ def build_report(expiring_assets, new_assets, days_back, months_ahead, generated
     comp_new = [a for a in new_assets if a["is_competitor"]]
     new_accounts = list({a["account_id"]: a["account"] for a in new_assets if a["account_id"]}.values())
 
+    deals = deals or []
+    deals_in_window   = [d for d in deals if d["window"]["status"] in ("IN_WINDOW", "PAST_WINDOW")]
+    deals_approaching = [d for d in deals if d["window"]["status"] == "APPROACHING"]
+    deals_upcoming    = [d for d in deals if d["window"]["status"] == "UPCOMING"]
+
     lines = []
     lines.append(f"# Customer Intelligence Report — {month_str}")
     lines.append(f"*Generated: {generated_at} | Source: Salesforce Assets (EDA/UCC-1)*")
@@ -235,18 +379,25 @@ def build_report(expiring_assets, new_assets, days_back, months_ahead, generated
     lines.append("")
     lines.append(f"| Metric | Count |")
     lines.append(f"|--------|-------|")
-    lines.append(f"| 🔴 Leases expiring 0–90 days (CRITICAL) | **{len(critical)}** |")
-    lines.append(f"| 🟡 Leases expiring 90–180 days (HIGH) | **{len(high)}** |")
-    lines.append(f"| 🟠 Leases expiring 180–365 days (MEDIUM) | **{len(medium)}** |")
+    lines.append(f"| 🔴 In replacement window now ({EARLY_TERM}–{STD_TERM}mo) | **{len(deals_in_window)}** |")
+    lines.append(f"| 🟡 Approaching window (≤180 days to 60mo) | **{len(deals_approaching)}** |")
+    lines.append(f"| 🟠 Upcoming window (≤365 days to 60mo) | **{len(deals_upcoming)}** |")
+    lines.append(f"| EDA — Leases expiring 0–90 days | {len(critical)} |")
     lines.append(f"| New equipment records (last {days_back} days) | {len(new_assets)} |")
     lines.append(f"| New accounts with records | {len(new_accounts)} |")
-    lines.append(f"| Competitor equipment added | {len(comp_new)} |")
     lines.append("")
     lines.append("---")
     lines.append("")
 
-    # Expiration sections
-    lines.append("## Lease Expirations")
+    # Replacement window section (PM-based)
+    lines.append("## Predicted Replacement Windows (Your Deals)")
+    lines.append("")
+    lines.extend(build_replacement_section(deals))
+    lines.append("---")
+    lines.append("")
+
+    # EDA expiration section
+    lines.append("## EDA Asset Lease Expirations")
     lines.append("")
 
     if critical:
@@ -501,14 +652,17 @@ def main():
         diagnose_pm(tokens)
         return
 
-    print("Fetching lease expirations...", file=sys.stderr)
+    print("Fetching replacement windows (Project Management)...", file=sys.stderr)
+    deals = get_financed_deals(tokens)
+
+    print("Fetching EDA lease expirations...", file=sys.stderr)
     expiring = get_expiring_assets(tokens, months=args.months)
 
     print(f"Fetching new assets (last {args.days} days)...", file=sys.stderr)
     new = get_new_assets(tokens, days=args.days)
 
     generated_at = datetime.now().strftime("%Y-%m-%d %H:%M")
-    report = build_report(expiring, new, args.days, args.months, generated_at)
+    report = build_report(expiring, new, args.days, args.months, generated_at, deals=deals)
 
     if args.stdout:
         print(report)
