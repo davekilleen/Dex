@@ -25,12 +25,16 @@ of any account's equipment floor, buying cycles, cash flow windows, and your bes
 - `/customer-intel alerts` — All accounts with lease expirations in the next 12 months
 - `/customer-intel competitive` — Competitor equipment map across all accounts
 - `/customer-intel scan [machine-type]` — Find all accounts with a specific machine type
+- `/customer-intel report` — Generate a full time-based report (new activity + expirations)
+- `/customer-intel report 60` — Report with 60-day look-back for new activity
+- `/customer-intel setup-automation` — Install the monthly auto-report (runs 1st of each month)
 
 ## Arguments
 
 $COMPANY: Account name to research (partial match OK)
-$MODE: `prospect`, `alerts`, `competitive`, or `scan` (default: full account analysis)
+$MODE: `prospect`, `alerts`, `competitive`, `scan`, `report`, or `setup-automation`
 $MACHINE_TYPE: For scan mode — machine type keyword (e.g., "laser", "press brake", "VMC")
+$DAYS: For report mode — look-back window in days for new activity (default 30)
 
 ---
 
@@ -39,6 +43,8 @@ $MACHINE_TYPE: For scan mode — machine type keyword (e.g., "laser", "press bra
 - **`alerts` mode** → Skip to Step 6: Lease Expiration Dashboard
 - **`competitive` mode** → Skip to Step 7: Competitive Equipment Map
 - **`scan` mode** → Skip to Step 8: Machine Type Territory Scan
+- **`report` mode** → Skip to Step 9: Time-Based Report
+- **`setup-automation` mode** → Skip to Step 10: Monthly Auto-Report
 - **All other modes** → Continue to Step 1
 
 ---
@@ -284,7 +290,93 @@ Display a summary table and offer to create outreach tasks for the highest-poten
 
 ---
 
-## Step 9: Task Creation
+## Step 9 (Report Mode): Time-Based Report
+
+When invoked as `/customer-intel report` or `/customer-intel report [days]`:
+
+### On-Demand Report
+
+Call both:
+1. `sf_get_new_assets(days=[DAYS])` — what's been added recently
+2. `sf_get_assets_expiring_soon(months=12)` — full lease expiration picture
+
+Then call the standalone report generator via bash to produce and save the markdown file:
+```bash
+python3 .scripts/customer-intel/generate-report.py --days [DAYS]
+```
+
+The script saves the report to `Inbox/Reports/Customer_Intel_YYYY-MM.md` and prints the
+path. Read the saved file and present the key highlights:
+- Critical expiration count (and list if ≤ 5)
+- New equipment/account count
+- Any new competitor equipment added
+
+After presenting, offer:
+- "Create follow-up tasks for the CRITICAL accounts?"
+- "Set up monthly automation so this runs automatically? (`/customer-intel setup-automation`)"
+
+### Prompted time-range variations
+- "Show me what's new in the last 60 days" → `--days 60`
+- "What leases are expiring in the next 6 months" → use `sf_get_assets_expiring_soon(months=6)`
+- "What changed this quarter" → `--days 90`
+
+---
+
+## Step 10 (Setup Automation): Monthly Auto-Report
+
+When invoked as `/customer-intel setup-automation`:
+
+This installs a macOS Launch Agent that runs on the 1st of every month at 8 AM and
+auto-generates the customer intelligence report to `Inbox/Reports/`.
+
+Walk the user through:
+
+1. **Confirm they want it:**
+   ```
+   This will install a background task that auto-generates your Customer Intelligence
+   report on the 1st of every month at 8 AM. Reports save to Inbox/Reports/.
+   
+   Requirements: macOS (uses launchd), Salesforce authenticated, Python 3
+   
+   Install? (yes / no)
+   ```
+
+2. **Run the installer:**
+   ```bash
+   bash .scripts/customer-intel/install-automation.sh
+   ```
+
+3. **Confirm it worked:**
+   ```bash
+   bash .scripts/customer-intel/install-automation.sh --status
+   ```
+
+4. **Offer to run a test report now:**
+   ```bash
+   bash .scripts/customer-intel/install-automation.sh --run
+   ```
+
+5. Report success:
+   ```
+   ✓ Monthly Customer Intelligence automation installed!
+   
+   Every month on the 1st, your report will auto-save to Inbox/Reports/.
+   
+   You'll see files like:
+   - Inbox/Reports/Customer_Intel_2026-07.md
+   - Inbox/Reports/Customer_Intel_2026-08.md
+   
+   To check status: `bash .scripts/customer-intel/install-automation.sh --status`
+   To run manually: `/customer-intel report`
+   To uninstall: `bash .scripts/customer-intel/install-automation.sh --stop`
+   ```
+
+**Non-macOS users:** Explain that launchd is macOS-only. For Windows/Linux, suggest a
+cron job: `0 8 1 * * cd /path/to/vault && python3 .scripts/customer-intel/generate-report.py`
+
+---
+
+## Step 11: Task Creation
 
 After any analysis, offer to create tasks:
 
@@ -365,6 +457,37 @@ Accounts with no recent assets (stale data) warrant a gentle probe before large 
 ## Integration with Other Skills
 
 - **`/customer-intel alerts`** — Run every Monday morning for weekly lease expiration review
+- **`/customer-intel report`** — On-demand time-based report (new activity + expirations)
+- **`/customer-intel setup-automation`** — Install monthly auto-report (1st of each month)
 - **`/meeting-prep [company]`** — EDA Intelligence in the company page surfaces automatically
 - **`/pipeline-sync`** — Asset expiration timing informs expected close dates in Salesforce
 - **`/pipeline-review`** — Cross-reference open opportunities against lease urgency
+
+## Monthly Report Automation
+
+The report generator (`generate-report.py`) runs headless — no Dex session needed.
+Install it once with `/customer-intel setup-automation`, then every month on the 1st
+a fresh report appears in `Inbox/Reports/Customer_Intel_YYYY-MM.md` automatically.
+
+**What the monthly report covers:**
+- 🔴 CRITICAL leases expiring in 0–90 days (act now)
+- 🟡 HIGH leases expiring in 90–180 days (schedule)
+- 🟠 MEDIUM leases expiring in 180–365 days (calendar)
+- New equipment records added in the past 30 days
+- New accounts that appeared in the asset records
+- New competitor equipment tracked
+
+**Manual triggers (any time):**
+```bash
+# Generate now (saves to Inbox/Reports/)
+python3 .scripts/customer-intel/generate-report.py
+
+# Custom look-back (60 days of new activity)
+python3 .scripts/customer-intel/generate-report.py --days 60
+
+# Print to terminal instead of saving
+python3 .scripts/customer-intel/generate-report.py --stdout
+
+# Check automation status
+bash .scripts/customer-intel/install-automation.sh --status
+```

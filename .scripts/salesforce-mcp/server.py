@@ -432,6 +432,17 @@ TOOLS = [
             "required": ["asset_id"],
         },
     },
+    {
+        "name": "sf_get_new_assets",
+        "description": "Get assets added to Salesforce in the last N days. Shows new accounts, new equipment records, and recent UCC filings. Use for monthly 'what's new' reports and pipeline prospecting.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "days": {"type": "integer", "description": "Look-back window in days (default 30)"},
+                "include_competitor": {"type": "boolean", "description": "Include competitor equipment (default true)"},
+            },
+        },
+    },
 ]
 
 
@@ -1127,6 +1138,42 @@ def tool_sf_update_asset(args):
     return {"success": True, "asset_id": asset_id, "updated_fields": list(payload.keys())}
 
 
+def tool_sf_get_new_assets(args):
+    tokens = get_valid_tokens()
+    if not tokens:
+        return {"error": "Not authenticated. Run sf_authenticate first."}
+    days = args.get("days", 30)
+    include_competitor = args.get("include_competitor", True)
+    competitor_filter = "" if include_competitor else "AND IsCompetitorProduct = false"
+    soql = f"""
+        SELECT Id, Name, Machine_Type_New__c, ModelName__c, Builder__c, SerialNumber,
+               UCC_Vendor__c, UCCID__c, UCC_Status__c, Sale_or_Lease__c,
+               InstallDate, Purchase_Date__c, UsageEndDate, Status,
+               IsCompetitorProduct, Price, Account.Name, Account.Id, CreatedDate
+        FROM Asset
+        WHERE CreatedDate >= LAST_N_DAYS:{days}
+          {competitor_filter}
+        ORDER BY CreatedDate DESC
+        LIMIT 500
+    """
+    result = sf_query(tokens, soql)
+    assets = [_parse_asset_record(r) for r in result.get("records", [])]
+    for a, r in zip(assets, result.get("records", [])):
+        a["created_date"] = r.get("CreatedDate")
+    new_accounts = list({a["account_id"]: a["account"] for a in assets if a.get("account_id")}.items())
+    our_assets = [a for a in assets if not a["is_competitor"]]
+    competitor_assets = [a for a in assets if a["is_competitor"]]
+    return {
+        "assets": assets,
+        "count": len(assets),
+        "our_equipment_added": len(our_assets),
+        "competitor_equipment_added": len(competitor_assets),
+        "new_accounts_with_records": [{"account_id": aid, "account": name} for aid, name in new_accounts],
+        "unique_accounts_count": len(new_accounts),
+        "days_back": days,
+    }
+
+
 TOOL_FNS = {
     "sf_authenticate": tool_sf_authenticate,
     "sf_get_pipeline": tool_sf_get_pipeline,
@@ -1147,6 +1194,7 @@ TOOL_FNS = {
     "sf_search_assets": tool_sf_search_assets,
     "sf_get_competitor_assets": tool_sf_get_competitor_assets,
     "sf_update_asset": tool_sf_update_asset,
+    "sf_get_new_assets": tool_sf_get_new_assets,
 }
 
 

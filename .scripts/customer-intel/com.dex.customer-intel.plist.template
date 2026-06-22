@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.dex.customer-intel</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>__VAULT_PATH__/.scripts/dex-launcher.sh</string>
+        <string>.scripts/customer-intel/generate-report.py</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>__VAULT_PATH__</string>
+
+    <!-- Run on the 1st of every month at 8:00 AM -->
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Day</key>
+        <integer>1</integer>
+        <key>Hour</key>
+        <integer>8</integer>
+        <key>Minute</key>
+        <integer>0</integer>
+    </dict>
+
+    <!-- Log output -->
+    <key>StandardOutPath</key>
+    <string>__VAULT_PATH__/.scripts/logs/customer-intel.stdout.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>__VAULT_PATH__/.scripts/logs/customer-intel.stderr.log</string>
+
+    <!-- Environment variables -->
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/usr/local/bin:/usr/bin:/bin:/opt/homebrew/bin</string>
+        <key>VAULT_PATH</key>
+        <string>__VAULT_PATH__</string>
+        <key>SF_CLIENT_ID</key>
+        <string>__SF_CLIENT_ID__</string>
+        <key>SF_CLIENT_SECRET</key>
+        <string>__SF_CLIENT_SECRET__</string>
+    </dict>
+
+    <!-- Only run when user is logged in -->
+    <key>LimitLoadToSessionType</key>
+    <string>Aqua</string>
+
+    <!-- Nice priority -->
+    <key>Nice</key>
+    <integer>10</integer>
+
+    <!-- Timeout after 5 minutes -->
+    <key>TimeOut</key>
+    <integer>300</integer>
+
+    <!-- Throttle on failures -->
+    <key>ThrottleInterval</key>
+    <integer>300</integer>
+</dict>
+</plist>
