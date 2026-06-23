@@ -16,7 +16,7 @@ Convert your Salesforce Asset records (EDA/UCC-1 machine tool data) into a compl
 of any account's equipment floor, buying cycles, cash flow windows, and your best next move.
 
 > **Data source:** Salesforce Asset object — EDA Data UCC-1 filings are already synced here.
-> No manual data entry or web scraping needed. Requires `sf_authenticate` to be completed first.
+> No manual data entry or web scraping needed. Uses `salesforce-remote` MCP (Cloudflare Worker — no auth action needed).
 
 ## Usage
 
@@ -75,9 +75,9 @@ type: customer|prospect
 
 ## Step 2: Pull Salesforce Asset Data
 
-Call `sf_get_account_assets` with the account name:
+Call `get_account_assets` (salesforce-remote MCP) with the account name:
 ```
-sf_get_account_assets(account_name="[COMPANY]", include_competitor=true)
+get_account_assets(account_name="[COMPANY]", include_competitor=true)
 ```
 
 If the account name returns no results, try a shorter version of the name (first word, 
@@ -221,7 +221,7 @@ node .scripts/auto-link-people.cjs People/Companies/[Company_Name].md
 
 When invoked as `/customer-intel alerts`:
 
-Call `sf_get_assets_expiring_soon(months=12)`.
+Call `get_assets_expiring_soon` (salesforce-remote MCP) with `months=12`.
 
 Display results grouped by urgency:
 
@@ -256,7 +256,7 @@ Then offer:
 
 When invoked as `/customer-intel competitive`:
 
-Call `sf_get_competitor_assets()` for a full picture across all accounts.
+Call `get_competitor_assets` (salesforce-remote MCP) for a full picture across all accounts.
 
 Display:
 ```
@@ -279,7 +279,7 @@ Display:
 
 When invoked as `/customer-intel scan [machine-type]`:
 
-Call `sf_search_assets(machine_type="[machine-type]", competitor_only=false)`.
+Call `search_assets` (salesforce-remote MCP) with `machine_type="[machine-type]"` and `competitor_only=false`.
 
 Useful questions this answers:
 - "Which of my accounts have a press brake?" → find expansion candidates for lasers
@@ -297,8 +297,8 @@ When invoked as `/customer-intel report` or `/customer-intel report [days]`:
 ### On-Demand Report
 
 Call both:
-1. `sf_get_new_assets(days=[DAYS])` — what's been added recently
-2. `sf_get_assets_expiring_soon(months=12)` — full lease expiration picture
+1. `get_new_assets` (salesforce-remote MCP) with `days=[DAYS]` — what's been added recently
+2. `get_assets_expiring_soon` (salesforce-remote MCP) with `months=12` — full lease expiration picture
 
 Then call the standalone report generator via bash to produce and save the markdown file:
 ```bash
@@ -317,7 +317,7 @@ After presenting, offer:
 
 ### Prompted time-range variations
 - "Show me what's new in the last 60 days" → `--days 60`
-- "What leases are expiring in the next 6 months" → use `sf_get_assets_expiring_soon(months=6)`
+- "What leases are expiring in the next 6 months" → use `get_assets_expiring_soon(months=6)`
 - "What changed this quarter" → `--days 90`
 
 ---
@@ -397,7 +397,7 @@ Create tasks? (1, 2, 3, all, or skip)
 
 For CRITICAL items, also offer to update the asset's `FollowUpDate__c` in Salesforce:
 ```
-sf_update_asset(asset_id="[ID]", follow_up_date="[DATE]")
+update_asset(asset_id="[ID]", follow_up_date="[DATE]")  // salesforce-remote MCP
 ```
 
 ---
