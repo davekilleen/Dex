@@ -621,7 +621,7 @@ def build_asset_payload(eda_rec, account_id, our_brands):
 
     # Estimated lease end: UCC filings lapse after 5 years
     usage_end = None
-    if uccdate_raw and "LEASE" in uccstatus or "RENTAL" in uccstatus or "REFINANCE" in uccstatus:
+    if uccdate_raw and ("LEASE" in uccstatus or "RENTAL" in uccstatus or "REFINANCE" in uccstatus):
         try:
             filing = datetime.strptime(uccdate_raw, "%Y-%m-%d").date()
             usage_end = (filing + timedelta(days=5 * 365)).isoformat()
