@@ -444,6 +444,25 @@ TOOLS = [
         },
     },
     {
+        "name": "sf_create_opportunity",
+        "description": "Create a new Opportunity in Salesforce linked to an account and optionally a contact. Returns the new Opportunity Id.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "name": {"type": "string", "description": "Opportunity name (e.g. 'McGregor Industries - HEM Saw VT120')"},
+                "account_id": {"type": "string", "description": "Salesforce Account Id (18-char) to link the opportunity to"},
+                "stage": {"type": "string", "description": "Stage name (e.g. 'Prospecting', 'Qualification', 'Proposal/Price Quote'). Defaults to 'Prospecting'"},
+                "close_date": {"type": "string", "description": "Expected close date in YYYY-MM-DD format. Defaults to 90 days from today"},
+                "amount": {"type": "number", "description": "Opportunity amount (optional)"},
+                "contact_id": {"type": "string", "description": "Salesforce Contact Id to link as primary contact role (optional)"},
+                "description": {"type": "string", "description": "Opportunity description or notes (optional)"},
+                "next_step": {"type": "string", "description": "Next steps text (optional)"},
+                "type": {"type": "string", "description": "Opportunity type (optional, e.g. 'New Business', 'Existing Business')"},
+            },
+            "required": ["name", "account_id"],
+        },
+    },
+    {
         "name": "sf_get_financed_deals",
         "description": "Get Project Management records (machines you've sold) with close dates to calculate predicted replacement windows. Uses 54/60-month lease terms to identify which customers are entering their buying window. Optionally filter by account name, sales rep, or how many months ahead to look.",
         "inputSchema": {
@@ -1313,6 +1332,43 @@ def tool_sf_get_financed_deals(args):
     }
 
 
+def tool_sf_create_opportunity(args):
+    tokens = get_valid_tokens()
+    if not tokens:
+        return {"error": "Not authenticated. Run sf_authenticate first."}
+    default_close = (date.today() + timedelta(days=90)).isoformat()
+    payload = {
+        "Name": args["name"],
+        "AccountId": args["account_id"],
+        "StageName": args.get("stage", "Prospecting"),
+        "CloseDate": args.get("close_date", default_close),
+    }
+    if args.get("amount") is not None:
+        payload["Amount"] = args["amount"]
+    if args.get("description"):
+        payload["Description"] = args["description"]
+    if args.get("next_step"):
+        payload["NextStep"] = args["next_step"]
+    if args.get("type"):
+        payload["Type"] = args["type"]
+    if OWNER_ID:
+        payload["OwnerId"] = OWNER_ID
+    result = sf_post(tokens, "sobjects/Opportunity", payload)
+    opp_id = result.get("id")
+    if not opp_id:
+        return {"success": False, "errors": result.get("errors", []), "raw": result}
+    if args.get("contact_id"):
+        try:
+            sf_post(tokens, "sobjects/OpportunityContactRole", {
+                "OpportunityId": opp_id,
+                "ContactId": args["contact_id"],
+                "IsPrimary": True,
+            })
+        except Exception as e:
+            return {"success": True, "opportunity_id": opp_id, "contact_role_warning": str(e)}
+    return {"success": True, "opportunity_id": opp_id}
+
+
 TOOL_FNS = {
     "sf_authenticate": tool_sf_authenticate,
     "sf_get_pipeline": tool_sf_get_pipeline,
@@ -1335,6 +1391,7 @@ TOOL_FNS = {
     "sf_update_asset": tool_sf_update_asset,
     "sf_get_new_assets": tool_sf_get_new_assets,
     "sf_get_financed_deals": tool_sf_get_financed_deals,
+    "sf_create_opportunity": tool_sf_create_opportunity,
 }
 
 
