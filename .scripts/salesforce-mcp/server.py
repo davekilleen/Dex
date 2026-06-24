@@ -471,6 +471,8 @@ TOOLS = [
                 "description": {"type": "string", "description": "Opportunity description or notes (optional)"},
                 "next_step": {"type": "string", "description": "Next steps text (optional)"},
                 "type": {"type": "string", "description": "Opportunity type (optional, e.g. 'New Business', 'Existing Business')"},
+                "skip_follow_up_task": {"type": "boolean", "description": "Set true to skip auto-creating a Discovery Call follow-up task (default false — task is created automatically)"},
+                "force_create": {"type": "boolean", "description": "Set true to create even if a duplicate open opportunity with the same name exists on this account (default false)"},
             },
             "required": ["account_id"],
         },
@@ -1381,6 +1383,22 @@ def tool_sf_create_opportunity(args):
         vendor_prefix = vendor_name[:3].upper()
         opp_name = f"{vendor_prefix} - {machine_model} - {account_name}"
 
+    # Duplicate detection — check for open opp with same name on this account
+    dup_check = sf_query(tokens, (
+        f"SELECT Id, Name, StageName FROM Opportunity "
+        f"WHERE AccountId = '{account_id}' AND Name = '{opp_name}' AND IsClosed = false LIMIT 1"
+    ))
+    dup_records = dup_check.get("records", [])
+    if dup_records and not args.get("force_create"):
+        dup = dup_records[0]
+        return {
+            "duplicate": True,
+            "message": f"An open opportunity with this name already exists. Pass force_create=true to create anyway.",
+            "existing_opportunity_id": dup["Id"],
+            "existing_opportunity_name": dup["Name"],
+            "existing_stage": dup["StageName"],
+        }
+
     default_close = (date.today() + timedelta(days=90)).isoformat()
     payload = {
         "Name": opp_name,
@@ -1406,6 +1424,8 @@ def tool_sf_create_opportunity(args):
     if not opp_id:
         return {"success": False, "errors": result.get("errors", []), "raw": result}
 
+    warnings = []
+
     if args.get("contact_id"):
         try:
             sf_post(tokens, "sobjects/OpportunityContactRole", {
@@ -1414,9 +1434,39 @@ def tool_sf_create_opportunity(args):
                 "IsPrimary": True,
             })
         except Exception as e:
-            return {"success": True, "opportunity_id": opp_id, "opportunity_name": opp_name, "contact_role_warning": str(e)}
+            warnings.append(f"Contact role not linked: {e}")
 
-    return {"success": True, "opportunity_id": opp_id, "opportunity_name": opp_name}
+    # Auto-create a follow-up task unless suppressed
+    follow_up_task_id = None
+    if not args.get("skip_follow_up_task"):
+        follow_up_date = (date.today() + timedelta(days=3)).isoformat()
+        task_payload = {
+            "Subject": f"Discovery Call - {opp_name}",
+            "Status": "Not Started",
+            "ActivityDate": follow_up_date,
+            "WhatId": opp_id,
+            "Type": "Call",
+        }
+        if args.get("contact_id"):
+            task_payload["WhoId"] = args["contact_id"]
+        if OWNER_ID:
+            task_payload["OwnerId"] = OWNER_ID
+        try:
+            task_result = sf_post(tokens, "sobjects/Task", task_payload)
+            follow_up_task_id = task_result.get("id")
+        except Exception as e:
+            warnings.append(f"Follow-up task not created: {e}")
+
+    response = {
+        "success": True,
+        "opportunity_id": opp_id,
+        "opportunity_name": opp_name,
+        "follow_up_task_id": follow_up_task_id,
+        "follow_up_task_due": follow_up_date if follow_up_task_id else None,
+    }
+    if warnings:
+        response["warnings"] = warnings
+    return response
 
 
 TOOL_FNS = {
