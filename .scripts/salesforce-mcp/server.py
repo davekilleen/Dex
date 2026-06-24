@@ -444,13 +444,26 @@ TOOLS = [
         },
     },
     {
+        "name": "sf_get_vendors",
+        "description": "Get all Vendor accounts from Salesforce (Record Type = Vendor). Use to present a vendor picklist when creating opportunities. Returns Id and Name for each vendor.",
+        "inputSchema": {"type": "object", "properties": {}},
+    },
+    {
         "name": "sf_create_opportunity",
-        "description": "Create a new Opportunity in Salesforce linked to an account and optionally a contact. Returns the new Opportunity Id.",
+        "description": (
+            "Create a new Opportunity in Salesforce. "
+            "Opportunity name is auto-generated as '[VEN] - [Machine Model] - [Account Name]' "
+            "when vendor_id and machine_model are provided (e.g. 'HEM - HEM Saw VT120 - McGregor Industries Inc.'). "
+            "Call sf_get_vendors first to resolve a vendor_id from the vendor name. "
+            "Returns the new Opportunity Id."
+        ),
         "inputSchema": {
             "type": "object",
             "properties": {
-                "name": {"type": "string", "description": "Opportunity name (e.g. 'McGregor Industries - HEM Saw VT120')"},
                 "account_id": {"type": "string", "description": "Salesforce Account Id (18-char) to link the opportunity to"},
+                "machine_model": {"type": "string", "description": "Machine model name used in the auto-generated opportunity name (e.g. 'HEM Saw VT120')"},
+                "vendor_id": {"type": "string", "description": "Salesforce Account Id of the Vendor (from sf_get_vendors). Saved to Vendor__c and used to generate the opportunity name prefix."},
+                "name": {"type": "string", "description": "Explicit opportunity name. If omitted, auto-generated from vendor, machine_model, and account name."},
                 "stage": {"type": "string", "description": "Stage name (e.g. 'Discovery', 'Qualification', 'Proposal/Price Quote'). Defaults to 'Discovery'"},
                 "close_date": {"type": "string", "description": "Expected close date in YYYY-MM-DD format. Defaults to 90 days from today"},
                 "amount": {"type": "number", "description": "Opportunity amount (optional)"},
@@ -459,7 +472,7 @@ TOOLS = [
                 "next_step": {"type": "string", "description": "Next steps text (optional)"},
                 "type": {"type": "string", "description": "Opportunity type (optional, e.g. 'New Business', 'Existing Business')"},
             },
-            "required": ["name", "account_id"],
+            "required": ["account_id"],
         },
     },
     {
@@ -1332,17 +1345,51 @@ def tool_sf_get_financed_deals(args):
     }
 
 
+def tool_sf_get_vendors(args):
+    tokens = get_valid_tokens()
+    if not tokens:
+        return {"error": "Not authenticated. Run sf_authenticate first."}
+    soql = "SELECT Id, Name FROM Account WHERE RecordType.Name = 'Vendor' ORDER BY Name ASC LIMIT 200"
+    result = sf_query(tokens, soql)
+    vendors = [{"id": r["Id"], "name": r["Name"]} for r in result.get("records", [])]
+    return {"vendors": vendors, "count": len(vendors)}
+
+
 def tool_sf_create_opportunity(args):
     tokens = get_valid_tokens()
     if not tokens:
         return {"error": "Not authenticated. Run sf_authenticate first."}
+
+    account_id = args["account_id"]
+    vendor_id = args.get("vendor_id")
+    machine_model = args.get("machine_model", "")
+
+    # Resolve opportunity name
+    opp_name = args.get("name")
+    if not opp_name:
+        if not vendor_id or not machine_model:
+            return {"error": "Provide either 'name', or both 'vendor_id' and 'machine_model' to auto-generate the opportunity name."}
+        # Look up vendor name and account name
+        vendor_records = sf_query(tokens, f"SELECT Name FROM Account WHERE Id = '{vendor_id}' LIMIT 1").get("records", [])
+        if not vendor_records:
+            return {"error": f"Vendor not found for id '{vendor_id}'. Run sf_get_vendors to get valid vendor IDs."}
+        vendor_name = vendor_records[0]["Name"]
+        acct_records = sf_query(tokens, f"SELECT Name FROM Account WHERE Id = '{account_id}' LIMIT 1").get("records", [])
+        if not acct_records:
+            return {"error": f"Account not found for id '{account_id}'."}
+        account_name = acct_records[0]["Name"]
+        vendor_prefix = vendor_name[:3].upper()
+        opp_name = f"{vendor_prefix} - {machine_model} - {account_name}"
+
     default_close = (date.today() + timedelta(days=90)).isoformat()
     payload = {
-        "Name": args["name"],
-        "AccountId": args["account_id"],
+        "Name": opp_name,
+        "AccountId": account_id,
         "StageName": args.get("stage", "Discovery"),
         "CloseDate": args.get("close_date", default_close),
     }
+    if vendor_id:
+        payload["Vendor__c"] = vendor_id
     if args.get("amount") is not None:
         payload["Amount"] = args["amount"]
     if args.get("description"):
@@ -1353,10 +1400,12 @@ def tool_sf_create_opportunity(args):
         payload["Type"] = args["type"]
     if OWNER_ID:
         payload["OwnerId"] = OWNER_ID
+
     result = sf_post(tokens, "sobjects/Opportunity", payload)
     opp_id = result.get("id")
     if not opp_id:
         return {"success": False, "errors": result.get("errors", []), "raw": result}
+
     if args.get("contact_id"):
         try:
             sf_post(tokens, "sobjects/OpportunityContactRole", {
@@ -1365,8 +1414,9 @@ def tool_sf_create_opportunity(args):
                 "IsPrimary": True,
             })
         except Exception as e:
-            return {"success": True, "opportunity_id": opp_id, "contact_role_warning": str(e)}
-    return {"success": True, "opportunity_id": opp_id}
+            return {"success": True, "opportunity_id": opp_id, "opportunity_name": opp_name, "contact_role_warning": str(e)}
+
+    return {"success": True, "opportunity_id": opp_id, "opportunity_name": opp_name}
 
 
 TOOL_FNS = {
@@ -1391,6 +1441,7 @@ TOOL_FNS = {
     "sf_update_asset": tool_sf_update_asset,
     "sf_get_new_assets": tool_sf_get_new_assets,
     "sf_get_financed_deals": tool_sf_get_financed_deals,
+    "sf_get_vendors": tool_sf_get_vendors,
     "sf_create_opportunity": tool_sf_create_opportunity,
 }
 
