@@ -234,102 +234,85 @@ KNOWN_SAVED_QUERIES = [
 
 # ── Download ───────────────────────────────────────────────────────────────────
 
-def download_query(session, query_name, headed=False):
-    """Click a saved query link, export via gear → accordion → Go, return rows."""
-    try:
-        from playwright.sync_api import sync_playwright, TimeoutError as PWTimeout
-    except ImportError:
-        print("ERROR: playwright not installed.")
-        sys.exit(1)
+def _download_one(page, query_name):
+    """Run one saved query export using an already-open, authenticated Playwright page."""
+    from playwright.sync_api import TimeoutError as PWTimeout
 
     print(f"  {query_name}...", file=sys.stderr)
 
-    with sync_playwright() as p:
-        browser, context = _pw_context_with_cookies(p, session, headed)
-        page = context.new_page()
-        try:
-            page.goto(f"{BASE_URL}/Query", timeout=30000)
+    page.goto(f"{BASE_URL}/Query", timeout=30000)
 
-            if FUSABLE_HOST in page.url:
-                print("  Session expired — re-run with --no-login-cache", file=sys.stderr)
-                browser.close()
-                return []
+    if FUSABLE_HOST in page.url:
+        raise RuntimeError("Session expired — re-run with --no-login-cache")
 
-            page.wait_for_load_state("domcontentloaded", timeout=15000)
-            time.sleep(1)
+    page.wait_for_load_state("domcontentloaded", timeout=15000)
+    time.sleep(1)
 
-            # Click the saved query link by name
-            found = False
-            for a in page.query_selector_all("a"):
-                if query_name.lower() in (a.inner_text() or "").lower():
-                    a.click()
-                    found = True
-                    break
+    # Click the saved query link by name
+    found = False
+    for a in page.query_selector_all("a"):
+        if query_name.lower() in (a.inner_text() or "").lower():
+            a.click()
+            found = True
+            break
 
-            if not found:
-                print(f"  WARNING: '{query_name}' not found on /Query page.", file=sys.stderr)
-                browser.close()
-                return []
+    if not found:
+        print(f"  WARNING: '{query_name}' not found on /Query page.", file=sys.stderr)
+        return []
 
-            # Wait for the summary page to load, then give JS time to render
-            try:
-                page.wait_for_selector("[class*='gear']", timeout=20000)
-            except PWTimeout:
-                pass
-            time.sleep(1.5)
+    # Wait for results summary page, give JS time to render
+    try:
+        page.wait_for_selector("[class*='gear']", timeout=20000)
+    except PWTimeout:
+        pass
+    time.sleep(1.5)
 
-            # Gear icon → export ACTION panel
+    # Gear icon → export action panel
+    page.evaluate("""() => {
+        const byId = document.getElementById('gear-button');
+        if (byId) { byId.click(); return; }
+        const els = document.querySelectorAll('[class*="gear"]');
+        if (els[0]) els[0].click();
+    }""")
+    time.sleep(1)
+
+    # Export accordion → reveals Go button
+    page.evaluate("""() => {
+        const el = document.getElementById('export-accordion-section');
+        if (el) { el.click(); return; }
+        for (const a of document.querySelectorAll('a')) {
+            if (a.innerText?.trim() === 'Export' && a.offsetParent) { a.click(); return; }
+        }
+    }""")
+    time.sleep(0.8)
+
+    # Go button → triggers file download
+    rows = []
+    try:
+        with page.expect_download(timeout=30000) as dl_info:
             page.evaluate("""() => {
-                const byId = document.getElementById('gear-button');
-                if (byId) { byId.click(); return; }
-                const els = document.querySelectorAll('[class*="gear"]');
-                if (els[0]) els[0].click();
-            }""")
-            time.sleep(1)
-
-            # Export accordion → reveals Go button
-            page.evaluate("""() => {
-                const el = document.getElementById('export-accordion-section');
-                if (el) { el.click(); return; }
-                for (const a of document.querySelectorAll('a')) {
-                    if (a.innerText?.trim() === 'Export' && a.offsetParent) { a.click(); return; }
+                const btn = document.getElementById('export-button');
+                if (btn) { btn.click(); return; }
+                for (const b of document.querySelectorAll('button')) {
+                    if ((b.innerText || '').toLowerCase().includes('go') && b.offsetParent) {
+                        b.click(); return;
+                    }
                 }
             }""")
-            time.sleep(0.8)
+        download = dl_info.value
+        fname = download.suggested_filename or "eda_export"
+        suffix = Path(fname).suffix or ".xlsx"
+        tmp = Path.home() / ".claude" / f"eda_export_{int(time.time())}{suffix}"
+        download.save_as(str(tmp))
+        rows = _parse_excel_or_csv(tmp)
+        try:
+            tmp.unlink(missing_ok=True)
+        except Exception:
+            pass
+    except Exception as e:
+        print(f"  ERROR downloading '{query_name}': {e}", file=sys.stderr)
 
-            # Go button → triggers file download
-            rows = []
-            try:
-                with page.expect_download(timeout=30000) as dl_info:
-                    page.evaluate("""() => {
-                        const btn = document.getElementById('export-button');
-                        if (btn) { btn.click(); return; }
-                        for (const b of document.querySelectorAll('button')) {
-                            if ((b.innerText || '').toLowerCase().includes('go') && b.offsetParent) {
-                                b.click(); return;
-                            }
-                        }
-                    }""")
-                download = dl_info.value
-                fname = download.suggested_filename or "eda_export"
-                suffix = Path(fname).suffix or ".xlsx"
-                tmp = Path.home() / ".claude" / f"eda_export_{int(time.time())}{suffix}"
-                download.save_as(str(tmp))
-                rows = _parse_excel_or_csv(tmp)
-                try:
-                    tmp.unlink(missing_ok=True)
-                except Exception:
-                    pass
-            except Exception as e:
-                print(f"  ERROR downloading '{query_name}': {e}", file=sys.stderr)
-
-            browser.close()
-            return rows
-
-        except Exception as e:
-            print(f"  ERROR: {e}", file=sys.stderr)
-            browser.close()
-            return []
+    return rows
 
 
 def _parse_excel_or_csv(path):
@@ -671,6 +654,12 @@ def build_asset_payload(eda_rec, account_id, our_brands):
 # ── Commands ───────────────────────────────────────────────────────────────────
 
 def cmd_download(session, query_filter=None, headed=False):
+    try:
+        from playwright.sync_api import sync_playwright
+    except ImportError:
+        print("ERROR: playwright not installed. Run: pip install playwright && python -m playwright install chromium")
+        sys.exit(1)
+
     queries = KNOWN_SAVED_QUERIES
     if query_filter:
         queries = [q for q in queries if query_filter.lower() in q.lower()]
@@ -678,20 +667,43 @@ def cmd_download(session, query_filter=None, headed=False):
             print(f"No saved queries match '{query_filter}'. Run --list-queries to see options.")
             return
 
+    print(f"Downloading {len(queries)} saved quer{'y' if len(queries)==1 else 'ies'}...", file=sys.stderr)
+
     cache = load_cache()
     cache.setdefault("queries", {})
     cache.setdefault("downloaded_at", {})
 
     total = 0
-    for q in queries:
-        rows = download_query(session, q, headed=headed)
-        if rows:
-            cache["queries"][q] = {"rows": rows, "count": len(rows)}
-            cache["downloaded_at"][q] = datetime.now().isoformat()
-            total += len(rows)
-            print(f"  {q}: {len(rows)} records")
-        else:
-            print(f"  {q}: 0 records (skipped or empty)")
+    # One browser session for all queries — avoids per-query browser launch overhead
+    with sync_playwright() as p:
+        browser, context = _pw_context_with_cookies(p, session, headed)
+        page = context.new_page()
+
+        # Verify session is valid before starting the loop
+        page.goto(f"{BASE_URL}/Query", timeout=30000)
+        if FUSABLE_HOST in page.url:
+            print("Session expired — re-run with --no-login-cache", file=sys.stderr)
+            browser.close()
+            return
+
+        for q in queries:
+            try:
+                rows = _download_one(page, q)
+            except Exception as e:
+                print(f"  ERROR on '{q}': {e}", file=sys.stderr)
+                rows = []
+
+            if rows:
+                cache["queries"][q] = {"rows": rows, "count": len(rows)}
+                cache["downloaded_at"][q] = datetime.now().isoformat()
+                total += len(rows)
+                print(f"  {q}: {len(rows)} records")
+            else:
+                print(f"  {q}: 0 records (skipped or empty)")
+
+            time.sleep(1)  # brief pause between queries
+
+        browser.close()
 
     save_cache(cache)
     unique = len(all_records(cache))
