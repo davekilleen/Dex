@@ -291,8 +291,8 @@ def _download_one(page, query_name, debug=False):
 
     # ── Step 3: Gear icon → opens action/export panel ─────────────────────────
     clicked_gear = page.evaluate("""() => {
-        const byId = document.getElementById('gear-button');
-        if (byId) { byId.click(); return 'id:gear-button'; }
+        const byId = document.getElementById('summary-tab-gear') || document.getElementById('gear-button');
+        if (byId) { byId.click(); return byId.id; }
         const byCls = document.querySelector('[class*="gear"],[id*="gear"]');
         if (byCls) { byCls.click(); return byCls.id || byCls.className; }
         return null;
