@@ -651,6 +651,67 @@ TOOLS = [
             "required": ["filename"],
         },
     },
+    {
+        "name": "sf_get_vendors",
+        "description": "Get all Vendor accounts from Salesforce (Record Type = Vendor). Use to present a vendor picklist when creating opportunities. Returns Id, Name, and a 3-letter prefix derived from the vendor name.",
+        "inputSchema": {"type": "object", "properties": {}},
+    },
+    {
+        "name": "sf_create_opportunity",
+        "description": (
+            "Create a new Opportunity in Salesforce. "
+            "Opportunity name is auto-generated as '[VEN] - [Machine Model] - [Account Name]' "
+            "when vendor_id and machine_model are provided (e.g. 'HEM - HEM Saw VT120 - McGregor Industries Inc.'). "
+            "Call sf_get_vendors first to resolve a vendor_id from the vendor name. "
+            "Returns the new Opportunity Id and a Salesforce Lightning URL."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "account_id": {"type": "string", "description": "Salesforce Account Id (18-char) to link the opportunity to"},
+                "machine_model": {"type": "string", "description": "Machine model name used in the auto-generated opportunity name (e.g. 'HEM Saw VT120')"},
+                "vendor_id": {"type": "string", "description": "Salesforce Account Id of the Vendor (from sf_get_vendors). Saved to Vendor__c and used to generate the opportunity name prefix."},
+                "name": {"type": "string", "description": "Explicit opportunity name. If omitted, auto-generated from vendor, machine_model, and account name."},
+                "stage": {"type": "string", "description": "Stage name (e.g. 'Discovery', 'Qualification', 'Proposal/Price Quote'). Defaults to 'Discovery'"},
+                "close_date": {"type": "string", "description": "Expected close date in YYYY-MM-DD format. Defaults to 90 days from today"},
+                "amount": {"type": "number", "description": "Opportunity amount (optional)"},
+                "contact_id": {"type": "string", "description": "Salesforce Contact Id to link as primary contact role (optional)"},
+                "description": {"type": "string", "description": "Opportunity description or notes (optional)"},
+                "next_step": {"type": "string", "description": "Next steps text (optional)"},
+                "type": {"type": "string", "description": "Opportunity type (optional, e.g. 'New Business', 'Existing Business')"},
+                "machine_type": {"type": "string", "description": "Machine type/category (e.g. 'Band Saw', 'Laser', 'Press Brake'). Saved to Machine_Type__c."},
+                "skip_follow_up_task": {"type": "boolean", "description": "Set true to skip auto-creating a Discovery Call follow-up task (default false)"},
+                "force_create": {"type": "boolean", "description": "Set true to create even if a duplicate open opportunity with the same name exists (default false)"},
+            },
+            "required": ["account_id"],
+        },
+    },
+    {
+        "name": "sf_new_deal",
+        "description": (
+            "Full new-deal flow in one call: resolves account and vendor by name, "
+            "creates the Opportunity (auto-named '[VEN] - [Model] - [Account]'), "
+            "creates a Draft Quote linked to the opportunity with the Sales pricebook, "
+            "logs a 'New Deal Created' completed activity, and returns Salesforce Lightning "
+            "URLs to both the Opportunity and Quote for immediate review."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "account_name": {"type": "string", "description": "Account/company name (partial match OK)"},
+                "vendor_name": {"type": "string", "description": "Vendor name (partial match — e.g. 'HEM', 'Trumpf')"},
+                "machine_model": {"type": "string", "description": "Machine model (e.g. 'HEM Saw VT120')"},
+                "machine_type": {"type": "string", "description": "Machine type/category (e.g. 'Band Saw', 'Laser'). Saved to Machine_Type__c."},
+                "contact_name": {"type": "string", "description": "Primary contact name (partial match, optional)"},
+                "amount": {"type": "number", "description": "Estimated deal amount (optional)"},
+                "stage": {"type": "string", "description": "Opportunity stage (defaults to 'Discovery')"},
+                "close_date": {"type": "string", "description": "Expected close date YYYY-MM-DD (defaults to 90 days out)"},
+                "notes": {"type": "string", "description": "Deal notes — saved to Opportunity Description and the activity log"},
+                "quote_expiration_date": {"type": "string", "description": "Quote expiration date YYYY-MM-DD (defaults to 30 days out)"},
+            },
+            "required": ["account_name", "vendor_name", "machine_model"],
+        },
+    },
 ]
 
 
@@ -1577,19 +1638,29 @@ def tool_sf_search_opportunities(args):
     return {"opportunities": opps, "count": len(opps)}
 
 
+SALES_PRICEBOOK_ID = "01sNu000001OquXIAS"
+
+
 def tool_sf_create_quote(args):
     tokens = get_valid_tokens()
     if not tokens:
         return {"error": "Not authenticated. Run sf_authenticate first."}
 
+    # Default name to opportunity name if not provided
+    name = args.get("name")
+    if not name:
+        opp_records = sf_query(tokens, f"SELECT Name FROM Opportunity WHERE Id = '{args['opportunity_id']}' LIMIT 1").get("records", [])
+        name = opp_records[0]["Name"] if opp_records else args["opportunity_id"]
+
+    # Default pricebook to Sales pricebook
     payload = {
-        "Name": args["name"],
+        "Name": name,
         "OpportunityId": args["opportunity_id"],
         "Status": args.get("status", "Draft"),
+        "Pricebook2Id": args.get("pricebook_id", SALES_PRICEBOOK_ID),
     }
     for field, key in [
         ("expiration_date", "ExpirationDate"),
-        ("pricebook_id", "Pricebook2Id"),
         ("payment_terms", "PaymentTerms"),
         ("description", "Description"),
         ("billing_name", "BillingName"),
@@ -2036,6 +2107,287 @@ def tool_email_archive_pending(args):
     return {"success": True, "archived_to": str(dst)}
 
 
+def tool_sf_get_vendors(args):
+    tokens = get_valid_tokens()
+    if not tokens:
+        return {"error": "Not authenticated. Run sf_authenticate first."}
+    soql = "SELECT Id, Name FROM Account WHERE RecordType.Name = 'Vendor' ORDER BY Name ASC LIMIT 200"
+    result = sf_query(tokens, soql)
+    vendors = [{"id": r["Id"], "name": r["Name"], "prefix": r["Name"][:3].upper()} for r in result.get("records", [])]
+    return {"vendors": vendors, "count": len(vendors)}
+
+
+def tool_sf_create_opportunity(args):
+    tokens = get_valid_tokens()
+    if not tokens:
+        return {"error": "Not authenticated. Run sf_authenticate first."}
+
+    account_id = args["account_id"]
+    vendor_id = args.get("vendor_id")
+    machine_model = args.get("machine_model", "")
+
+    opp_name = args.get("name")
+    if not opp_name:
+        if not vendor_id or not machine_model:
+            return {"error": "Provide either 'name', or both 'vendor_id' and 'machine_model' to auto-generate the opportunity name."}
+        vendor_records = sf_query(tokens, f"SELECT Name FROM Account WHERE Id = '{vendor_id}' LIMIT 1").get("records", [])
+        if not vendor_records:
+            return {"error": f"Vendor not found for id '{vendor_id}'. Run sf_get_vendors to get valid vendor IDs."}
+        vendor_prefix = vendor_records[0]["Name"][:3].upper()
+        acct_records = sf_query(tokens, f"SELECT Name FROM Account WHERE Id = '{account_id}' LIMIT 1").get("records", [])
+        if not acct_records:
+            return {"error": f"Account not found for id '{account_id}'."}
+        account_name = acct_records[0]["Name"]
+        opp_name = f"{vendor_prefix} - {machine_model} - {account_name}"
+
+    dup_check = sf_query(tokens, (
+        f"SELECT Id, Name, StageName FROM Opportunity "
+        f"WHERE AccountId = '{account_id}' AND Name = '{opp_name}' AND IsClosed = false LIMIT 1"
+    ))
+    dup_records = dup_check.get("records", [])
+    if dup_records and not args.get("force_create"):
+        dup = dup_records[0]
+        instance_url = tokens.get("instance_url", "")
+        return {
+            "duplicate": True,
+            "message": "An open opportunity with this name already exists. Pass force_create=true to create anyway.",
+            "existing_opportunity_id": dup["Id"],
+            "existing_opportunity_name": dup["Name"],
+            "existing_stage": dup["StageName"],
+            "salesforce_url": f"{instance_url}/lightning/r/Opportunity/{dup['Id']}/view" if instance_url else None,
+        }
+
+    default_close = (date.today() + timedelta(days=90)).isoformat()
+    payload = {
+        "Name": opp_name,
+        "AccountId": account_id,
+        "StageName": args.get("stage", "Discovery"),
+        "CloseDate": args.get("close_date", default_close),
+    }
+    if vendor_id:
+        payload["Vendor__c"] = vendor_id
+    if args.get("machine_type"):
+        payload["Machine_Type__c"] = args["machine_type"]
+    if args.get("amount") is not None:
+        payload["Amount"] = args["amount"]
+    if args.get("description"):
+        payload["Description"] = args["description"]
+    if args.get("next_step"):
+        payload["NextStep"] = args["next_step"]
+    if args.get("type"):
+        payload["Type"] = args["type"]
+    if OWNER_ID:
+        payload["OwnerId"] = OWNER_ID
+
+    result = sf_post(tokens, "sobjects/Opportunity", payload)
+    opp_id = result.get("id")
+    if not opp_id:
+        return {"success": False, "errors": result.get("errors", []), "raw": result}
+
+    instance_url = tokens.get("instance_url", "")
+    warnings = []
+
+    if args.get("contact_id"):
+        try:
+            sf_post(tokens, "sobjects/OpportunityContactRole", {
+                "OpportunityId": opp_id,
+                "ContactId": args["contact_id"],
+                "IsPrimary": True,
+            })
+        except Exception as e:
+            warnings.append(f"Contact role not linked: {e}")
+
+    follow_up_task_id = None
+    follow_up_date = None
+    if not args.get("skip_follow_up_task"):
+        follow_up_date = (date.today() + timedelta(days=3)).isoformat()
+        task_payload = {
+            "Subject": f"Discovery Call - {opp_name}",
+            "Status": "Not Started",
+            "ActivityDate": follow_up_date,
+            "WhatId": opp_id,
+            "Type": "Call",
+        }
+        if args.get("contact_id"):
+            task_payload["WhoId"] = args["contact_id"]
+        if OWNER_ID:
+            task_payload["OwnerId"] = OWNER_ID
+        try:
+            task_result = sf_post(tokens, "sobjects/Task", task_payload)
+            follow_up_task_id = task_result.get("id")
+        except Exception as e:
+            warnings.append(f"Follow-up task not created: {e}")
+
+    response = {
+        "success": True,
+        "opportunity_id": opp_id,
+        "opportunity_name": opp_name,
+        "follow_up_task_id": follow_up_task_id,
+        "follow_up_task_due": follow_up_date,
+        "salesforce_url": f"{instance_url}/lightning/r/Opportunity/{opp_id}/view" if instance_url else None,
+    }
+    if warnings:
+        response["warnings"] = warnings
+    return response
+
+
+def tool_sf_new_deal(args):
+    tokens = get_valid_tokens()
+    if not tokens:
+        return {"error": "Not authenticated. Run sf_authenticate first."}
+
+    instance_url = tokens.get("instance_url", "")
+    steps = []
+    warnings = []
+
+    # 1. Resolve account
+    acct_records = sf_query(tokens, f"SELECT Id, Name FROM Account WHERE Name LIKE '%{args['account_name']}%' LIMIT 5").get("records", [])
+    if not acct_records:
+        return {"error": f"No account found matching '{args['account_name']}'."}
+    account = acct_records[0]
+    account_id, account_name = account["Id"], account["Name"]
+    steps.append(f"✅ Account: {account_name} ({account_id})")
+
+    # 2. Resolve vendor
+    vendor_records = sf_query(tokens, f"SELECT Id, Name FROM Account WHERE RecordType.Name = 'Vendor' AND Name LIKE '%{args['vendor_name']}%' ORDER BY Name ASC LIMIT 5").get("records", [])
+    if not vendor_records:
+        return {"error": f"No vendor found matching '{args['vendor_name']}'. Run sf_get_vendors to see all vendors."}
+    vendor = vendor_records[0]
+    vendor_id, vendor_name = vendor["Id"], vendor["Name"]
+    vendor_prefix = vendor_name[:3].upper()
+    steps.append(f"✅ Vendor: {vendor_name} ({vendor_id})")
+
+    # 3. Resolve contact (optional)
+    contact_id = None
+    if args.get("contact_name"):
+        contact_records = sf_query(tokens, f"SELECT Id, Name FROM Contact WHERE Name LIKE '%{args['contact_name']}%' AND AccountId = '{account_id}' LIMIT 5").get("records", [])
+        if contact_records:
+            contact_id = contact_records[0]["Id"]
+            steps.append(f"✅ Contact: {contact_records[0]['Name']} ({contact_id})")
+        else:
+            warnings.append(f"Contact '{args['contact_name']}' not found on this account — skipping contact link.")
+
+    # 4. Create opportunity
+    machine_model = args["machine_model"]
+    opp_name = f"{vendor_prefix} - {machine_model} - {account_name}"
+
+    dup_check = sf_query(tokens, f"SELECT Id, Name FROM Opportunity WHERE AccountId = '{account_id}' AND Name = '{opp_name}' AND IsClosed = false LIMIT 1").get("records", [])
+    if dup_check:
+        dup = dup_check[0]
+        return {
+            "duplicate": True,
+            "message": "An open opportunity with this name already exists.",
+            "existing_opportunity_id": dup["Id"],
+            "existing_opportunity_name": dup["Name"],
+            "salesforce_url": f"{instance_url}/lightning/r/Opportunity/{dup['Id']}/view",
+        }
+
+    default_close = (date.today() + timedelta(days=90)).isoformat()
+    opp_payload = {
+        "Name": opp_name,
+        "AccountId": account_id,
+        "Vendor__c": vendor_id,
+        "StageName": args.get("stage", "Discovery"),
+        "CloseDate": args.get("close_date", default_close),
+    }
+    if args.get("machine_type"):
+        opp_payload["Machine_Type__c"] = args["machine_type"]
+    if args.get("amount") is not None:
+        opp_payload["Amount"] = args["amount"]
+    if args.get("notes"):
+        opp_payload["Description"] = args["notes"]
+    if OWNER_ID:
+        opp_payload["OwnerId"] = OWNER_ID
+
+    opp_result = sf_post(tokens, "sobjects/Opportunity", opp_payload)
+    opp_id = opp_result.get("id")
+    if not opp_id:
+        return {"success": False, "step_failed": "create_opportunity", "errors": opp_result.get("errors", []), "steps_completed": steps}
+    opp_url = f"{instance_url}/lightning/r/Opportunity/{opp_id}/view" if instance_url else None
+    steps.append(f"✅ Opportunity created: {opp_name}")
+
+    if contact_id:
+        try:
+            sf_post(tokens, "sobjects/OpportunityContactRole", {"OpportunityId": opp_id, "ContactId": contact_id, "IsPrimary": True})
+            steps.append("✅ Primary contact linked")
+        except Exception as e:
+            warnings.append(f"Contact role not linked: {e}")
+
+    follow_up_date = (date.today() + timedelta(days=3)).isoformat()
+    task_payload = {
+        "Subject": f"Discovery Call - {opp_name}",
+        "Status": "Not Started",
+        "ActivityDate": follow_up_date,
+        "WhatId": opp_id,
+        "Type": "Call",
+    }
+    if contact_id:
+        task_payload["WhoId"] = contact_id
+    if OWNER_ID:
+        task_payload["OwnerId"] = OWNER_ID
+    try:
+        sf_post(tokens, "sobjects/Task", task_payload)
+        steps.append(f"✅ Discovery Call task scheduled for {follow_up_date}")
+    except Exception as e:
+        warnings.append(f"Discovery Call task not created: {e}")
+
+    # 5. Create quote
+    default_expiry = (date.today() + timedelta(days=30)).isoformat()
+    quote_payload = {
+        "OpportunityId": opp_id,
+        "Name": opp_name,
+        "Status": "Draft",
+        "ExpirationDate": args.get("quote_expiration_date", default_expiry),
+        "Pricebook2Id": SALES_PRICEBOOK_ID,
+    }
+    quote_result = sf_post(tokens, "sobjects/Quote", quote_payload)
+    quote_id = quote_result.get("id")
+    quote_url = None
+    quote_number = None
+    if quote_id:
+        quote_url = f"{instance_url}/lightning/r/Quote/{quote_id}/view" if instance_url else None
+        qn_records = sf_query(tokens, f"SELECT QuoteNumber FROM Quote WHERE Id = '{quote_id}' LIMIT 1").get("records", [])
+        quote_number = qn_records[0].get("QuoteNumber") if qn_records else None
+        steps.append(f"✅ Quote created: {quote_number or quote_id}")
+    else:
+        warnings.append(f"Quote not created: {quote_result.get('errors', quote_result)}")
+
+    # 6. Log completed activity
+    log_payload = {
+        "Subject": f"New Deal Created - {opp_name}",
+        "Status": "Completed",
+        "ActivityDate": date.today().isoformat(),
+        "WhatId": opp_id,
+        "Type": "Note",
+        "Description": args.get("notes") or f"Opportunity and quote created for {machine_model} at {account_name}.",
+    }
+    if contact_id:
+        log_payload["WhoId"] = contact_id
+    if OWNER_ID:
+        log_payload["OwnerId"] = OWNER_ID
+    try:
+        sf_post(tokens, "sobjects/Task", log_payload)
+        steps.append("✅ Activity logged: New Deal Created")
+    except Exception as e:
+        warnings.append(f"Activity log not created: {e}")
+
+    response = {
+        "success": True,
+        "opportunity_id": opp_id,
+        "opportunity_name": opp_name,
+        "opportunity_url": opp_url,
+        "quote_id": quote_id,
+        "quote_number": quote_number,
+        "quote_url": quote_url,
+        "account": account_name,
+        "vendor": vendor_name,
+        "steps": steps,
+    }
+    if warnings:
+        response["warnings"] = warnings
+    return response
+
+
 TOOL_FNS = {
     "sf_authenticate": tool_sf_authenticate,
     "sf_get_pipeline": tool_sf_get_pipeline,
@@ -2069,6 +2421,9 @@ TOOL_FNS = {
     "sf_get_opportunity_contacts": tool_sf_get_opportunity_contacts,
     "email_read_pending": tool_email_read_pending,
     "email_archive_pending": tool_email_archive_pending,
+    "sf_get_vendors": tool_sf_get_vendors,
+    "sf_create_opportunity": tool_sf_create_opportunity,
+    "sf_new_deal": tool_sf_new_deal,
 }
 
 
