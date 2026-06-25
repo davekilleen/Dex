@@ -242,6 +242,62 @@ def sf_search(tokens, query):
         return json.loads(resp.read())
 
 
+# ── Business day helper ───────────────────────────────────────────────────────
+
+def _us_federal_holidays(year):
+    """Return a set of observed US federal holiday dates for the given year."""
+    def nth_weekday(year, month, weekday, n):
+        """Return the nth occurrence (1-based) of weekday in the given month."""
+        d = date(year, month, 1)
+        offset = (weekday - d.weekday()) % 7
+        d += timedelta(days=offset + (n - 1) * 7)
+        return d
+
+    def last_weekday(year, month, weekday):
+        """Return the last occurrence of weekday in the given month."""
+        d = date(year, month + 1, 1) - timedelta(days=1) if month < 12 else date(year, 12, 31)
+        offset = (d.weekday() - weekday) % 7
+        return d - timedelta(days=offset)
+
+    def observed(d):
+        if d.weekday() == 5:   # Saturday → Friday
+            return d - timedelta(days=1)
+        if d.weekday() == 6:   # Sunday → Monday
+            return d + timedelta(days=1)
+        return d
+
+    holidays = {
+        observed(date(year, 1, 1)),                        # New Year's Day
+        nth_weekday(year, 1, 0, 3),                        # MLK Day (3rd Mon Jan)
+        nth_weekday(year, 2, 0, 3),                        # Presidents Day (3rd Mon Feb)
+        last_weekday(year, 5, 0),                          # Memorial Day (last Mon May)
+        observed(date(year, 6, 19)),                       # Juneteenth
+        observed(date(year, 7, 4)),                        # Independence Day
+        nth_weekday(year, 9, 0, 1),                        # Labor Day (1st Mon Sep)
+        nth_weekday(year, 10, 0, 2),                       # Columbus Day (2nd Mon Oct)
+        observed(date(year, 11, 11)),                      # Veterans Day
+        nth_weekday(year, 11, 3, 4),                       # Thanksgiving (4th Thu Nov)
+        observed(date(year, 12, 25)),                      # Christmas Day
+    }
+    return holidays
+
+
+def next_business_day(d):
+    """Advance d forward until it lands on a non-weekend, non-US-federal-holiday."""
+    holidays = _us_federal_holidays(d.year)
+    for _ in range(14):
+        if d.weekday() == 5:          # Saturday → Monday
+            d += timedelta(days=2)
+        elif d.weekday() == 6:        # Sunday → Monday
+            d += timedelta(days=1)
+        if d.year not in {h.year for h in holidays}:
+            holidays = _us_federal_holidays(d.year)
+        if d not in holidays:
+            break
+        d += timedelta(days=1)
+    return d
+
+
 # ── Tools ─────────────────────────────────────────────────────────────────────
 
 TOOLS = [
@@ -2196,7 +2252,7 @@ def tool_sf_create_opportunity(args):
     follow_up_task_id = None
     follow_up_date = None
     if not args.get("skip_follow_up_task"):
-        follow_up_date = (date.today() + timedelta(days=3)).isoformat()
+        follow_up_date = next_business_day(date.today() + timedelta(days=3)).isoformat()
         task_payload = {
             "Subject": f"Discovery Call - {opp_name}",
             "Status": "Not Started",
