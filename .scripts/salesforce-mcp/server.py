@@ -679,7 +679,6 @@ TOOLS = [
                 "description": {"type": "string", "description": "Opportunity description or notes (optional)"},
                 "next_step": {"type": "string", "description": "Next steps text (optional)"},
                 "type": {"type": "string", "description": "Opportunity type (optional, e.g. 'New Business', 'Existing Business')"},
-                "machine_type": {"type": "string", "description": "Machine type/category (e.g. 'Band Saw', 'Laser', 'Press Brake'). Saved to Machine_Type__c."},
                 "skip_follow_up_task": {"type": "boolean", "description": "Set true to skip auto-creating a Discovery Call follow-up task (default false)"},
                 "force_create": {"type": "boolean", "description": "Set true to create even if a duplicate open opportunity with the same name exists (default false)"},
             },
@@ -701,7 +700,6 @@ TOOLS = [
                 "account_name": {"type": "string", "description": "Account/company name (partial match OK)"},
                 "vendor_name": {"type": "string", "description": "Vendor name (partial match — e.g. 'HEM', 'Trumpf')"},
                 "machine_model": {"type": "string", "description": "Machine model (e.g. 'HEM Saw VT120')"},
-                "machine_type": {"type": "string", "description": "Machine type/category (e.g. 'Band Saw', 'Laser'). Saved to Machine_Type__c."},
                 "contact_name": {"type": "string", "description": "Primary contact name (partial match, optional)"},
                 "amount": {"type": "number", "description": "Estimated deal amount (optional)"},
                 "stage": {"type": "string", "description": "Opportunity stage (defaults to 'Discovery')"},
@@ -2166,8 +2164,6 @@ def tool_sf_create_opportunity(args):
     }
     if vendor_id:
         payload["Vendor__c"] = vendor_id
-    if args.get("machine_type"):
-        payload["Machine_Type__c"] = args["machine_type"]
     if args.get("amount") is not None:
         payload["Amount"] = args["amount"]
     if args.get("description"):
@@ -2290,8 +2286,6 @@ def tool_sf_new_deal(args):
         "StageName": args.get("stage", "Discovery"),
         "CloseDate": args.get("close_date", default_close),
     }
-    if args.get("machine_type"):
-        opp_payload["Machine_Type__c"] = args["machine_type"]
     if args.get("amount") is not None:
         opp_payload["Amount"] = args["amount"]
     if args.get("notes"):
