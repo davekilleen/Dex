@@ -38,7 +38,7 @@ Reusable patterns for pulling and analyzing Chris's Salesforce data (pipeline re
 **Implementation (live):**
 - Pull script: `.scripts/sf-pull-sync.py --group {full|frequent}` → writes `.scripts/salesforce-data/` (opportunities, quotes, tasks, events, accounts, contacts, manifest). Scoped to OwnerId = Chris; auth reuses `~/.claude/sf_tokens.json` with creds from `.mcp.json`. Manifest tracks per-object `synced_at` so a frequent run doesn't stale-stamp the weekly objects.
 - **Two-tier schedule** (high-velocity data stays near-live):
-  - `frequent` = opportunities, quotes, tasks → Windows Task "Dex SF Frequent Sync", hourly 6 AM–6 PM daily.
+  - `frequent` = opportunities, quotes, tasks → Windows Task "Dex SF Frequent Sync", twice daily at 6:00 AM and 6:00 PM (start/end of day).
   - `full` = everything incl. accounts, contacts, events → "Dex SF Weekly Sync", Sundays 6:00 AM.
 - Activity scope: activities on Chris's accounts by **any** owner, plus Chris's own activities anywhere (`Account.OwnerId = Chris OR OwnerId = Chris`). Contacts scoped to `Account.OwnerId = Chris`; quotes to `Opportunity.OwnerId = Chris`.
 - The dataset is **gitignored** (customer PII + email bodies — never commit). Read these files for analysis; only query SF live for real-time validation.
