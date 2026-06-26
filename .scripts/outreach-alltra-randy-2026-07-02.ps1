@@ -53,6 +53,42 @@ $emails = @(
         To      = "pfk@kellyiron.com"   # Padraig Kelly, Owner
         Subject = "Randy from ALLtra in Hazleton Thursday 7/2"
         Body    = "Hi Padraig,`n`nYour plasma is fairly recent (2020), but Randy from ALLtra will be in the Hazleton area Thursday, July 2, and I wanted to make the introduction while he's local - useful if you ever weigh a second table or added capacity.`n`nNo pressure at all. Want me to hold a few minutes Thursday 7/2?`n`nThanks,`nChris Barsanti`nMid Atlantic Machinery"
+    },
+    @{
+        # R/J Florig - FICEP plasma 2011 (oldest fab-shop table)
+        To      = "jflorig@rjflorig.com"   # Jack Florig, Owner
+        Subject = "ALLtra Plasma - Randy in the Area Thursday 7/2"
+        Body    = "Hi Jack,`n`nYour plasma table goes back to 2011, so it's really earned a look at what's current. Randy from ALLtra will be back in our area Thursday, July 2.`n`nALLtra builds a heavy-duty unitized plasma - a big step up on cut quality, speed, and uptime versus a table of that vintage. Worth having Randy stop by for a no-pressure look or some sample cuts? Let me know and I'll set it up.`n`nThanks,`nChris Barsanti`nMid Atlantic Machinery"
+    },
+    @{
+        # Chown's Fabrication & Rigging - Promax plasma 2007 (oldest overall)
+        To      = "kevinchowns@aol.com"   # Kevin Chowns, President
+        Subject = "Time to Look at a New Plasma? Randy from ALLtra Here 7/2"
+        Body    = "Hi Kevin,`n`nThat plasma table of yours dates back to 2007 - it's done its time, and the technology has come a long way since. Randy from ALLtra will be back in our area Thursday, July 2.`n`nALLtra's unitized plasma is rugged and a major jump in cut quality and throughput. No pressure - if you'd be open to a look or some sample parts while Randy's local, I'll bring him by. Worth a conversation?`n`nThanks,`nChris Barsanti`nMid Atlantic Machinery"
+    },
+    @{
+        # K & C Machining - Dynatorch plasma 2019
+        To      = "kcmach@ptd.net"   # Randy (K & C Machining)
+        Subject = "ALLtra Plasma - Randy in the Area Thursday 7/2"
+        Body    = "Hi Randy,`n`nYour plasma is a few years in now (2019), and Randy from ALLtra is going to be back in our area Thursday, July 2.`n`nALLtra builds a heavy-duty unitized plasma worth a look on cut quality and uptime. If you're open to a quick visit or some sample cuts while he's local, I'll set it up. Worth 20 minutes Thursday 7/2?`n`nThanks,`nChris Barsanti`nMid Atlantic Machinery"
+    },
+    @{
+        # Gottstein Corporation - Bend-tech plasma 2019 (also active TRUMPF laser discussion)
+        To      = "ken@gottsteincorporation.com"   # Ken Gottstein, President
+        Subject = "ALLtra Plasma - Randy in the Area Thursday 7/2"
+        Body    = "Hi Ken,`n`nAlongside everything else we've been working on, I wanted to flag the plasma side - your table dates to 2019, and Randy from ALLtra will be back in our area Thursday, July 2.`n`nALLtra's unitized plasma is strong on cut quality and uptime if you're ever weighing a refresh or added capacity. Happy to have him stop by for a quick look while he's local. Want me to hold some time Thursday 7/2?`n`nThanks,`nChris Barsanti`nMid Atlantic Machinery"
+    },
+    @{
+        # Goulstone and Roberts Inc - Piranha plasma 2020
+        To      = "froberts@goulstoneandrobertsinc.com"   # Francis Roberts, Owner
+        Subject = "ALLtra Plasma - Randy in the Area Thursday 7/2"
+        Body    = "Hi Francis,`n`nYour plasma is a few years in (2020), and Randy from ALLtra will be back in our area Thursday, July 2.`n`nALLtra builds a rugged unitized plasma worth a look on speed, cut quality, and uptime. No pressure - if a short visit or some sample parts would be useful while Randy's local, I'll bring him by. Worth setting up Thursday 7/2?`n`nThanks,`nChris Barsanti`nMid Atlantic Machinery"
+    },
+    @{
+        # EC Fence & Ironworks - Bend-tech plasma 2020
+        To      = "erik@ecfence.net"   # Erik Sims
+        Subject = "ALLtra Plasma - Randy in the Area Thursday 7/2"
+        Body    = "Hi Erik,`n`nYour plasma is a few years in now (2020), and Randy from ALLtra is going to be back in our area Thursday, July 2.`n`nALLtra's unitized plasma is a strong option on cut quality and uptime as the work grows. If you're open to a quick look or sample cuts while he's local, I'll route him your way. Worth 20 minutes Thursday 7/2?`n`nThanks,`nChris Barsanti`nMid Atlantic Machinery"
     }
 )
 

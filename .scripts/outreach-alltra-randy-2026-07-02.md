@@ -21,6 +21,14 @@
 | Michelman Steel Enterprises | Bethlehem PA | Eric Michelman (Owner) | emichelman@michelmansteel.com | FICEP | 2017 |
 | Hazleton Iron, LLC | Hazleton PA | Russ Krobert | rkrobert@hazletoniron.com | plasma | 2019 |
 | Kelly Iron Works, Inc. | Hazleton PA | Padraig Kelly (Owner) | pfk@kellyiron.com | FICEP | 2020 |
+| R/J Florig | PA | Jack Florig (Owner) | jflorig@rjflorig.com | FICEP | 2011 |
+| Chown's Fabrication & Rigging | PA | Kevin Chowns (Pres) | kevinchowns@aol.com | Promax | 2007 |
+| K & C Machining | PA | Randy | kcmach@ptd.net | Dynatorch | 2019 |
+| Gottstein Corporation | PA | Ken Gottstein (Pres) | ken@gottsteincorporation.com | Bend-tech | 2019 |
+| Goulstone and Roberts Inc | PA | Francis Roberts (Owner) | froberts@goulstoneandrobertsinc.com | Piranha | 2020 |
+| EC Fence & Ironworks | PA | Erik Sims | erik@ecfence.net | Bend-tech | 2020 |
+
+**Herman Goldner Co. Inc** (MPM plasma, 2020) - your account, aging plasma, but **no contact with an email on file**. Add a contact in SF to include.
 
 ## Removed per ownership rule (NOT yours - colleagues' accounts)
 Excluded from all outreach because the account owner is a colleague, not you:
