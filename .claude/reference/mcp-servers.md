@@ -52,22 +52,29 @@ You create task "Ship payments redesign" in meeting with Sarah. Work MCP:
 
 ---
 
-### Calendar MCP (`calendar_server.py`)
+### Calendar MCP (Cloudflare Worker — Remote HTTP)
+
+**Endpoint:** `https://calendar-mcp.cbarsanti.workers.dev/mcp`  
+**Source:** `.scripts/calendar-mcp-worker/worker.js`  
+**Auth:** Bearer token (`CALENDAR_MCP_SECRET` in `.env` = Worker secret)
 
 **What it does:**  
-Apple Calendar integration via AppleScript. Reads events, attendees, and meeting context without leaving Cursor.
+Fetches the Outlook ICS subscription URL (stored as a Cloudflare Worker secret) and exposes calendar data as MCP tools. Runs in the cloud — no local Python or dependencies required.
 
-**Why it's an MCP:**  
-Calendar data changes frequently. Having an MCP means `/daily-plan` always gets live meeting data without manually exporting/importing CSVs or leaving the editor.
+**Why remote:**  
+- Works from any machine, any OS
+- No Python environment needed
+- Can be connected to claude.ai web/mobile via OAuth 2.0
+- Same tool interface as the previous local server — all skills work unchanged
 
 **Power:**
-- **Universal sync** - Works with any calendar in Calendar.app (Google, Exchange, iCloud, etc.)
 - **Attendee context** - Returns full attendee lists for meeting prep
-- **Day-at-a-glance** - Instant view of today's schedule with times and locations
-- **No API keys** - Uses native macOS calendar access
+- **Day-at-a-glance** - Today's schedule with times and locations
+- **Date range queries** - Fetch any window of events
+- **OAuth 2.0** - Built-in flow for connecting claude.ai web/mobile
 
 **Real-world example:**  
-You run `/daily-plan` at 8am. Calendar MCP fetches today's meetings:
+You run `/daily-plan` at 8am. Calendar MCP fetches today's meetings from Outlook ICS:
 - 10am: Product Review (Sarah, Mike, Alex)
 - 2pm: Customer Call - Acme Corp (John from external contacts)
 
@@ -77,7 +84,19 @@ Dex automatically:
 - Shows outstanding action items
 - Suggests prep based on recent interactions
 
-**Tools:** `calendar_list_calendars`, `calendar_get_today`, `calendar_get_events_with_attendees`
+**Tools:** `calendar_list_calendars`, `calendar_get_today`, `calendar_get_events`, `calendar_get_next_event`, `calendar_get_events_with_attendees`
+
+**Deploy/update:**
+```bash
+cd .scripts/calendar-mcp-worker
+npx wrangler deploy
+```
+
+**Rotate secret:**
+```bash
+echo "NEW_SECRET" | npx wrangler secret put MCP_SECRET
+# Then update .env CALENDAR_MCP_SECRET and the Authorization header in .mcp.json
+```
 
 ---
 
@@ -263,7 +282,7 @@ User runs `/dex-update` → Update Checker MCP checks GitHub → finds v2.1.0 wi
 
 | Integration | MCP Server | Status |
 |-------------|------------|--------|
-| Apple Calendar | `calendar_server.py` | Built-in |
+| Outlook Calendar | Cloudflare Worker (remote HTTP) | Built-in |
 | Granola | `granola_server.py` | Built-in |
 | Work | `work_server.py` | Built-in (always enabled) |
 | Dex Improvements | `dex_improvements_server.py` | Built-in |

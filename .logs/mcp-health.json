@@ -1,0 +1,72 @@
+{
+  "lastCheck": "2026-06-30T09:04:07.293063-04:00",
+  "configHash": "5aca9af0378a",
+  "servers": {
+    "work-mcp": {
+      "status": "ok",
+      "checkedAt": "2026-06-30T09:04:07.293063-04:00"
+    },
+    "calendar-mcp": {
+      "status": "ok",
+      "checkedAt": "2026-06-30T09:04:07.293063-04:00"
+    },
+    "granola-mcp": {
+      "status": "ok",
+      "checkedAt": "2026-06-30T09:04:07.293063-04:00"
+    },
+    "career-mcp": {
+      "status": "ok",
+      "checkedAt": "2026-06-30T09:04:07.293063-04:00"
+    },
+    "dex-improvements-mcp": {
+      "status": "ok",
+      "checkedAt": "2026-06-30T09:04:07.293063-04:00"
+    },
+    "resume-mcp": {
+      "status": "ok",
+      "checkedAt": "2026-06-30T09:04:07.293063-04:00"
+    },
+    "update-checker": {
+      "status": "ok",
+      "checkedAt": "2026-06-30T09:04:07.293063-04:00"
+    },
+    "onboarding-mcp": {
+      "status": "ok",
+      "checkedAt": "2026-06-30T09:04:07.293063-04:00"
+    },
+    "dex-analytics": {
+      "status": "ok",
+      "checkedAt": "2026-06-30T09:04:07.293063-04:00"
+    },
+    "session-memory": {
+      "status": "unknown",
+      "note": "Not a core Dex server",
+      "checkedAt": "2026-06-30T09:04:07.293063-04:00"
+    },
+    "slack-mcp": {
+      "status": "unknown",
+      "note": "Not a core Dex server",
+      "checkedAt": "2026-06-30T09:04:07.293063-04:00"
+    },
+    "qmd": {
+      "status": "unknown",
+      "note": "Not a core Dex server",
+      "checkedAt": "2026-06-30T09:04:07.293063-04:00"
+    },
+    "retool-email": {
+      "status": "unknown",
+      "note": "Not a core Dex server",
+      "checkedAt": "2026-06-30T09:04:07.293063-04:00"
+    },
+    "salesforce-sobject-all": {
+      "status": "unknown",
+      "note": "Not a core Dex server",
+      "checkedAt": "2026-06-30T09:04:07.293063-04:00"
+    },
+    "salesforce": {
+      "status": "unknown",
+      "note": "Not a core Dex server",
+      "checkedAt": "2026-06-30T09:04:07.293063-04:00"
+    }
+  }
+}

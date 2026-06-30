@@ -322,10 +322,10 @@ async function handleMCP(request, env) {
   switch (method) {
     case "initialize":
       return mcpResult(id, {
-        protocolVersion: "2024-11-05",
+        protocolVersion: "2025-11-25",
         capabilities: { tools: {} },
         serverInfo: { name: "calendar-mcp", version: "1.0.0" }
-      });
+      }, { "Mcp-Session-Id": crypto.randomUUID() });
 
     case "notifications/initialized":
       return new Response(null, { status: 204 });
@@ -353,10 +353,35 @@ async function handleMCP(request, env) {
   }
 }
 
+// ─── SSE stream for GET /mcp (server-to-client events, stateless keep-alive) ──
+
+function handleMCPStream(sessionId) {
+  const { readable, writable } = new TransformStream();
+  const writer = writable.getWriter();
+  const enc    = new TextEncoder();
+
+  // Send an initial keep-alive comment so the client knows we're alive
+  writer.write(enc.encode(": connected\n\n")).then(() => {
+    // Leave stream open — CF Worker stays alive until client disconnects
+    // For a stateless server we have no server-initiated events to push
+  }).catch(() => writer.close());
+
+  return new Response(readable, {
+    headers: {
+      "Content-Type":                "text/event-stream",
+      "Cache-Control":               "no-cache",
+      "Connection":                  "keep-alive",
+      "Mcp-Session-Id":              sessionId,
+      "Access-Control-Expose-Headers": "Mcp-Session-Id",
+      ...cors()
+    }
+  });
+}
+
 // ─── Main Fetch Handler ───────────────────────────────────────────────────────
 
 export default {
-  async fetch(request, env) {
+  async fetch(request, env, ctx) {
     const url = new URL(request.url);
 
     if (request.method === "OPTIONS") {
@@ -368,6 +393,13 @@ export default {
     }
 
     // ── OAuth 2.0 (required for claude.ai web/mobile) ──
+
+    if (url.pathname === "/.well-known/oauth-protected-resource") {
+      return json({
+        resource:              `https://${url.hostname}`,
+        authorization_servers: [`https://${url.hostname}`]
+      });
+    }
 
     if (url.pathname === "/.well-known/oauth-authorization-server") {
       return json({
@@ -427,8 +459,19 @@ export default {
       return json({ error: "Unauthorized" }, 401);
     }
 
-    if (url.pathname === "/mcp" && request.method === "POST") {
-      return handleMCP(request, env);
+    // ── MCP endpoints — root "/" for claude.ai, "/mcp" for Claude Code ──
+
+    if (url.pathname === "/" || url.pathname === "/mcp") {
+      if (request.method === "POST") {
+        return handleMCP(request, env);
+      }
+      if (request.method === "GET") {
+        const accept = request.headers.get("Accept") || "";
+        if (accept.includes("text/event-stream")) {
+          return handleMCPStream(crypto.randomUUID());
+        }
+        return json({ error: "Use POST for MCP requests, or GET with Accept: text/event-stream" }, 405);
+      }
     }
 
     return json({ error: "Not found", path: url.pathname }, 404);
@@ -437,9 +480,14 @@ export default {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function mcpResult(id, result) {
+function mcpResult(id, result, extraHeaders = {}) {
   return new Response(JSON.stringify({ jsonrpc: "2.0", id, result }), {
-    headers: { "Content-Type": "application/json", ...cors() }
+    headers: {
+      "Content-Type": "application/json",
+      "Access-Control-Expose-Headers": "Mcp-Session-Id",
+      ...cors(),
+      ...extraHeaders
+    }
   });
 }
 
@@ -460,7 +508,7 @@ function json(data, status = 200) {
 function cors() {
   return {
     "Access-Control-Allow-Origin":  "*",
-    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type, Authorization"
+    "Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type, Authorization, Mcp-Session-Id"
   };
 }

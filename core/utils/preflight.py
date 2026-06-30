@@ -41,9 +41,10 @@ def get_error_queue_path() -> Path:
 
 
 # Map of MCP server names → their Python module files (relative to core/mcp/)
+# Remote HTTP servers (type: "http" in .mcp.json) are not listed here — they're
+# checked separately via HTTP health endpoints, not Python imports.
 SERVER_MODULES = {
     "work-mcp": "work_server.py",
-    "calendar-mcp": "calendar_server.py",
     "career-mcp": "career_server.py",
     "granola-mcp": "granola_server.py",
     "dex-improvements-mcp": "dex_improvements_server.py",
@@ -56,10 +57,15 @@ SERVER_MODULES = {
     "demo-mode-mcp": "demo_mode_server.py",
 }
 
+# Remote HTTP MCP servers — checked via /health endpoint
+HTTP_SERVERS = {
+    "calendar-mcp": "https://calendar-mcp.cbarsanti.workers.dev/health",
+}
+
 # Human-friendly names
 SERVER_LABELS = {
     "work-mcp": "Task Manager",
-    "calendar-mcp": "Calendar",
+    "calendar-mcp": "Calendar (remote)",
     "career-mcp": "Career Tracker",
     "granola-mcp": "Granola (meetings)",
     "dex-improvements-mcp": "Improvements Backlog",
@@ -177,6 +183,33 @@ def check_server(server_name: str) -> dict:
     return {"status": "ok"}
 
 
+def check_http_server(server_name: str) -> dict:
+    """Check a remote HTTP MCP server via its /health endpoint."""
+    import urllib.request
+    import urllib.error
+
+    url = HTTP_SERVERS.get(server_name)
+    label = SERVER_LABELS.get(server_name, server_name)
+    if not url:
+        return {"status": "unknown"}
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": "dex-preflight/1.0"})
+        with urllib.request.urlopen(req, timeout=3) as resp:
+            if resp.status == 200:
+                return {"status": "ok"}
+            return {
+                "status": "error",
+                "error": f"HTTP {resp.status}",
+                "humanError": f"{label} returned HTTP {resp.status}",
+            }
+    except Exception as e:
+        return {
+            "status": "error",
+            "error": str(e),
+            "humanError": f"{label} is unreachable — check network or redeploy Worker",
+        }
+
+
 def run_preflight() -> dict:
     """Run pre-flight checks on all configured servers. Returns health dict."""
     configured = get_configured_servers()
@@ -199,7 +232,10 @@ def run_preflight() -> dict:
     servers = {}
 
     for server_name in configured:
-        result = check_server(server_name)
+        if server_name in HTTP_SERVERS:
+            result = check_http_server(server_name)
+        else:
+            result = check_server(server_name)
         result["checkedAt"] = now
         servers[server_name] = result
 
