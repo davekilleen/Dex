@@ -10,6 +10,30 @@ import urllib.parse
 import urllib.error
 from html.parser import HTMLParser
 
+
+def _load_dotenv():
+    """Load .env from cwd or up to 3 parent dirs — fallback when env vars aren't set at the system level."""
+    path = os.getcwd()
+    for _ in range(4):
+        env_file = os.path.join(path, '.env')
+        if os.path.isfile(env_file):
+            with open(env_file) as f:
+                for line in f:
+                    line = line.strip()
+                    if line and not line.startswith('#') and '=' in line:
+                        k, _, v = line.partition('=')
+                        k = k.strip()
+                        v = v.strip().strip('"').strip("'")
+                        if k not in os.environ:
+                            os.environ[k] = v
+            break
+        parent = os.path.dirname(path)
+        if parent == path:
+            break
+        path = parent
+
+_load_dotenv()
+
 WORKER_URL = os.environ.get("EMAIL_TRIAGE_URL", "https://mam-email-triage.cbarsanti.workers.dev")
 API_KEY    = os.environ.get("EMAIL_TRIAGE_KEY", "")
 
