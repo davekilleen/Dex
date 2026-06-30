@@ -226,7 +226,10 @@ export class TriageAgent extends Agent {
   // ---------------------------------------------------------------------------
   // HTTP routing
   // ---------------------------------------------------------------------------
-  async onFetch(request, env, ctx) {
+  // Agent extends Server (partyserver) — the correct hook is onRequest, not onFetch
+  async onRequest(request) {
+    const env = this.env;
+    const ctx = this.ctx;
     const url    = new URL(request.url);
     const method = request.method;
     const path   = url.pathname;
