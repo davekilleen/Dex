@@ -11,20 +11,21 @@ function money(n: number) {
   return n.toLocaleString(undefined, { style: "currency", currency: "USD", maximumFractionDigits: 0 });
 }
 
-export default async function SearchResultsPage({ params }: { params: { id: string } }) {
+export default async function SearchResultsPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
   let configError: string | null = null;
   let search: Record<string, unknown> | null = null;
   let matches: Array<Record<string, any>> = [];
 
   try {
     const supabase = getServerSupabaseClient();
-    const result = await refreshSearchMatches(supabase, params.id);
+    const result = await refreshSearchMatches(supabase, id);
     search = result.search;
 
     const { data } = await supabase
       .from("search_matches")
       .select("*, listings(*)")
-      .eq("search_id", params.id)
+      .eq("search_id", id)
       .order("match_score", { ascending: false });
     matches = data ?? [];
   } catch (err) {

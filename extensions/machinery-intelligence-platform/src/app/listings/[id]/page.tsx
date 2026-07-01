@@ -1,7 +1,8 @@
 import { getServerSupabaseClient } from "@/lib/supabaseClient";
 import { PricingPanel } from "@/components/PricingPanel";
 
-export default async function ListingDetailPage({ params }: { params: { id: string } }) {
+export default async function ListingDetailPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
   let listing: Record<string, unknown> | null = null;
   let valuation: Record<string, unknown> | null = null;
   let configError: string | null = null;
@@ -11,14 +12,14 @@ export default async function ListingDetailPage({ params }: { params: { id: stri
     const { data: listingData } = await supabase
       .from("listings")
       .select("*")
-      .eq("id", params.id)
+      .eq("id", id)
       .single();
     listing = listingData;
 
     const { data: valuationData } = await supabase
       .from("valuations")
       .select("*")
-      .eq("listing_id", params.id)
+      .eq("listing_id", id)
       .order("computed_at", { ascending: false })
       .limit(1)
       .maybeSingle();
@@ -69,7 +70,7 @@ export default async function ListingDetailPage({ params }: { params: { id: stri
       </div>
 
       <PricingPanel
-        listingId={params.id}
+        listingId={id}
         initialDealerAskingPrice={askingPrice}
         initialFmvLow={fmvLow}
         initialFmvHigh={fmvHigh}

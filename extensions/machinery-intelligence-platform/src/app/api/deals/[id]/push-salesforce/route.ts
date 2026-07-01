@@ -8,11 +8,12 @@ import { NextRequest, NextResponse } from "next/server";
  * once those credentials are configured, without silently faking the
  * integration in the meantime.
  */
-export async function POST(_req: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
   return NextResponse.json(
     {
       error: "Salesforce push is not configured yet.",
-      dealId: params.id,
+      dealId: id,
       nextStep:
         "Add SALESFORCE_CLIENT_ID, SALESFORCE_CLIENT_SECRET, and SALESFORCE_INSTANCE_URL to .env.local, then implement the Opportunity create/update call here.",
     },
