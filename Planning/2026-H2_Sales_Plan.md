@@ -2,6 +2,25 @@
 
 *Owner: Chris Barsanti · Mid Atlantic Machinery · Horizon: July–December 2026 · Created June 30, 2026*
 
+---
+
+## Activation Status
+
+| Check | Status | Detail |
+|-------|--------|--------|
+| Salesforce auth | ✅ Live | `~/.claude/sf_tokens.json` present |
+| Dex-Weekly-SF-Sync | ✅ Scheduled | Mon 06:00 · Next run Jul 6, 2026 |
+| Dex-Weekly-Lease-Alert | ✅ Scheduled | Mon 06:30 · Next run Jul 6, 2026 |
+| Dex-Monthly-Intel-Report | ✅ Scheduled | 1st of month 08:00 · Last ran Jul 1, 2026 08:08 |
+| Data freshness | ✅ Current | SF cache synced Jul 1, 2026 14:26 (1,165 accts · 203 opps) |
+| Key accounts ranked | ✅ Current | `Key_Accounts_H2-2026.md` generated Jul 1, 2026 · Top 5 stable |
+| Equipment intel | ✅ Annotated | Top 10 Tier-1 accounts enriched with live SF asset data Jul 1, 2026 |
+| Guardrails | ✅ Intact | No automation sends email or writes to SF; outreach stays human-approved |
+
+*Last verified: July 1, 2026 by Dex. Re-verify weekly after Monday sync completes.*
+
+---
+
 > **No hard quota.** The objective is to maximize **qualified pipeline and closes** from the best-fit accounts. Goals below are **leading indicators**, not a revenue target.
 
 ---

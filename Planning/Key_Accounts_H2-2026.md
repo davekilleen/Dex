@@ -1,6 +1,6 @@
 # Key Accounts — H2 2026 (Jul–Dec)
 
-*Generated June 30, 2026 by `score-key-accounts.py`. Source: local Salesforce cache (Chris-owned scope) + EDA equipment data. Re-run after each weekly sync to refresh.*
+*Generated July 01, 2026 by `score-key-accounts.py`. Source: local Salesforce cache (Chris-owned scope) + EDA equipment data. Re-run after each weekly sync to refresh.*
 
 **Scoring (0–100):** Replacement urgency 35 · Historic buying 25 · Open pipeline 25 · Competitive displacement 15.
 
@@ -16,16 +16,16 @@
 |---|---------|-------|---------|--------------------|--------|-------------|
 | 1 | **Chown's Fabrication & Rigging** (Skippack, PA) | 55 | owned equipment ~11yr past replacement window; $967,335 open (Discovery, Quoting) | PROMAX N/A Plasma (CNC) ~19yr | $967,335 | Advance open opp + book demo/visit on territory day |
 | 2 | **R/J Florig** (Conshohocken, PA) | 52 | owned equipment ~7yr past replacement window; $480,000 open (Quoting) | FICEP GEMINI-36-HD Plasma (CNC) ~15yr | $480,000 | Advance open opp + book demo/visit on territory day |
-| 3 | **Galaxy Manufacturing Co** (Moosic, PA) | 47 | 5 prior win(s), last 0.1yr ago; $616,780 open (Active Project, Discovery) | - | $616,780 | Advance open opp + book demo/visit on territory day |
-| 4 | **RJR Fabrication** (Clark Summit, PA) | 34 | 2 prior win(s), last 1.9yr ago; $295,000 open (Negotiation) | - | $295,000 | Close push: confirm config, propose demo/visit, drive to PO |
-| 5 | **Hadco Metal Trading Co, LLC - Bensalem, PA** (Bensalem, PA) | 32 | 1 prior win(s), last 1.7yr ago; $1,709,589 open (Favorable, Quoting) | - | $1,709,589 | Close push: confirm config, propose demo/visit, drive to PO |
-| 6 | **Myers Emergency Power Systems** (Bethlehem, PA) | 30 | 2 prior win(s), last 3.0yr ago; $526,400 open (Negotiation) | - | $526,400 | Close push: confirm config, propose demo/visit, drive to PO |
-| 7 | **Anvil Craft Corporation** (Easton, PA) | 30 | 1 prior win(s), last 0.4yr ago; $513,890 open (Discovery, Quoting) | - | $513,890 | Advance open opp + book demo/visit on territory day |
-| 8 | **TrenchTech, Inc.** (Morrisville, PA) | 28 | 1 prior win(s), last 2.1yr ago; $357,304 open (Discovery, Favorable, Quoting) | - | $357,304 | Close push: confirm config, propose demo/visit, drive to PO |
-| 9 | **Precision Fabricating Group** (Easton, PA) | 28 | 1 prior win(s), last 3.0yr ago; $1,269,900 open (Discovery, Favorable) | - | $1,269,900 | Close push: confirm config, propose demo/visit, drive to PO |
-| 10 | **Pennsylvania Steel Company - Bensalem, PA** (Bensalem, PA) | 28 | 1 prior win(s), last 5.0yr ago; $719,895 open (Active Project, Discovery, Quoting) | - | $719,895 | Advance open opp + book demo/visit on territory day |
+| 3 | **Galaxy Manufacturing Co** (Moosic, PA) | 47 | 5 prior win(s), last 0.1yr ago; $616,780 open (Active Project, Discovery) | TRUMPF TruPunch 2020R Punch (Apr 2018, ~8yr); TRUMPF TruLaser 2030 ×2 (2019, ~6-7yr); Flow Waterjet MACH-200-C (Jun 2024, new) | $616,780 | Advance open opp + book demo/visit on territory day |
+| 4 | **RJR Fabrication** (Clark Summit, PA) | 34 | 2 prior win(s), last 1.9yr ago; $295,000 open (Negotiation) | TRUMPF TruLaser 1030 ×2 (Oct 2024, new); TRUMPF TruBend 2100 Press Brake (Sep 2020, ~6yr) | $295,000 | Close push: confirm config, propose demo/visit, drive to PO |
+| 5 | **Hadco Metal Trading Co, LLC - Bensalem, PA** (Bensalem, PA) | 32 | 1 prior win(s), last 1.7yr ago; $1,709,589 open (Favorable, Quoting) | CR Onsrud 145G18 CNC router (Q4 2024, new); thin asset record — replacement trigger is deal-driven not age-driven | $1,709,589 | Close push: confirm config, propose demo/visit, drive to PO |
+| 6 | **Myers Emergency Power Systems** (Bethlehem, PA) | 30 | 2 prior win(s), last 3.0yr ago; $526,400 open (Negotiation) | STRIPPIT ST-PLUS-1225 Punch (Sep 2007, ~19yr 🔴); LVD-STRIPPIT ST-1225 Punch (Aug 2014, ~12yr); TRUMPF TM-1000 tube laser (Oct 2023, new) | $526,400 | Close push: confirm config, propose demo/visit, drive to PO |
+| 7 | **Anvil Craft Corporation** (Easton, PA) | 30 | 1 prior win(s), last 0.4yr ago; $513,890 open (Discovery, Quoting) | Flow Waterjet Mach 500 3020 (open opp, not yet installed); Ercolina EB76 tube bender (2020, ~6yr); FMB Antares Bandsaw | $513,890 | Advance open opp + book demo/visit on territory day |
+| 8 | **TrenchTech, Inc.** (Morrisville, PA) | 28 | 1 prior win(s), last 2.1yr ago; $357,304 open (Discovery, Favorable, Quoting) | HE&M WF1827M Saw (May 2024, ~13mo); new customer — growing floor, thin base | $357,304 | Close push: confirm config, propose demo/visit, drive to PO |
+| 9 | **Precision Fabricating Group** (Easton, PA) | 28 | 1 prior win(s), last 3.0yr ago; $1,269,900 open (Discovery, Favorable) | Ercolina EB76 tube bender (2019, ~7yr); Ercolina SG10 bender (2021, ~4yr); no plasma/laser/waterjet on record — expansion buyer | $1,269,900 | Close push: confirm config, propose demo/visit, drive to PO |
+| 10 | **Pennsylvania Steel Company - Bensalem, PA** (Bensalem, PA) | 28 | 1 prior win(s), last 5.0yr ago; $719,895 open (Active Project, Discovery, Quoting) | Behringer HBP-430-A Saw (2005, ~21yr 🔴); multiple HE&M H-105-A bandsaws (2012, ~14yr); AMADA CMB-100/PCSAW-330 saws (2010-2012, ~13-16yr); AMADA DYNASAW-430 ×2 (Feb 2024, new) | $719,895 | Advance open opp + book demo/visit on territory day |
 | 11 | **Dynamic Metal Innovations** (Emmaus, PA) | 27 | 2 prior win(s), last 1.0yr ago; $196,058 open (Discovery, Favorable) | - | $196,058 | Close push: confirm config, propose demo/visit, drive to PO |
-| 12 | **Gerhart** (Tatamy, PA) | 27 | 1 prior win(s), last 1.7yr ago; $280,000 open (Active Project) | - | $280,000 | Advance open opp + book demo/visit on territory day |
+| 12 | **Gerhart** (Tatamy, PA) | 26 | 1 prior win(s), last 1.7yr ago; $280,000 open (Active Project) | - | $280,000 | Advance open opp + book demo/visit on territory day |
 | 13 | **Gottstein Corporation** (Hazleton, PA) | 25 | $695,000 open (Active Project, Quoting) | Bend-tech LLC N/A Plasma (CNC) ~7yr | $695,000 | Advance open opp + book demo/visit on territory day |
 | 14 | **SS Industries** (Collegeville, PA) | 25 | $1,261,972 open (Discovery, Favorable, Quoting) | - | $1,261,972 | Close push: confirm config, propose demo/visit, drive to PO |
 | 15 | **ASGCO Mfg Inc.** (Nazareth, PA) | 25 | $755,000 open (Quoting) | - | $755,000 | Advance open opp + book demo/visit on territory day |
@@ -81,7 +81,7 @@
 | Precision Fabricating Group | 28 | 0 | 3 | 25 | 0 |
 | Pennsylvania Steel Company - Bensalem, PA | 28 | 0 | 2 | 25 | 0 |
 | Dynamic Metal Innovations | 27 | 0 | 12 | 15 | 0 |
-| Gerhart | 27 | 0 | 7 | 20 | 0 |
+| Gerhart | 26 | 0 | 7 | 20 | 0 |
 | Gottstein Corporation | 25 | 0 | 0 | 25 | 0 |
 | SS Industries | 25 | 0 | 0 | 25 | 0 |
 | ASGCO Mfg Inc. | 25 | 0 | 0 | 25 | 0 |
