@@ -1,6 +1,6 @@
 # Used Machinery Intelligence Platform — Architecture
 
-**Status:** Design phase — no application code yet. This document is the Phase 1 deliverable requested before any implementation begins. Once the open decisions below are confirmed/adjusted, the build proceeds incrementally (MVP first).
+**Status:** Open decisions in §15 confirmed. MVP build started — see [README.md](./README.md) for what's implemented so far (Pricing & Profitability engine, schema, intake form, listing detail + pricing panel).
 
 **Owner:** Chris Barsanti, Mid Atlantic Machinery (sales)
 **Scope:** Sheet metal fabrication and structural steel fabrication equipment only.
