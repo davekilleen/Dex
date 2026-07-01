@@ -23,7 +23,7 @@ Traditional approach: AI directly parses raw files/APIs every time (slow, incons
 
 ## Built-in MCP Servers
 
-Dex includes eight custom MCP servers in `core/mcp/`:
+Dex includes nine custom MCP servers in `core/mcp/`:
 
 ### Work MCP (`work_server.py`)
 
@@ -256,6 +256,30 @@ Update checking requires structured version tracking, git operations, changelog 
 User runs `/dex-update` → Update Checker MCP checks GitHub → finds v2.1.0 with new features → shows changelog with "Added Obsidian integration, improved onboarding" → user confirms → creates backup → pulls updates → installs dependencies → success message with "Run `/getting-started` to explore new features."
 
 **Tools:** `check_for_updates`, `get_changelog`, `perform_update`, `create_backup`, `rollback_update`
+
+---
+
+### Adobe eSign & PDF MCP (`adobe_server.py`)
+
+**What it does:**
+Two capability groups in one server: local PDF utilities (no auth) built on `pypdf`, and Adobe Acrobat Sign e-signature workflows (OAuth). Send a document out for signature, check status, remind, cancel, and download the signed result.
+
+**Why it's an MCP:**
+PDF parsing (form fields, merges, page extraction) and Adobe Sign's REST API both need deterministic, structured handling — not an LLM guessing at byte offsets or hand-rolling multipart uploads. The MCP gives Claude clean tool calls for both instead.
+
+**Power:**
+- **PDF tools work with no setup** - info, text extraction, merge/split, page extraction, form-field read & fill all work immediately (just `pip install -r core/mcp/requirements.txt`)
+- **Send for signature** - upload a PDF and send it to one or more signers, parallel or sequential
+- **Status tracking** - check an agreement's status and exactly which signers are still pending
+- **Reminders & cancellation** - nudge slow signers or void an agreement
+- **Download** - pull the completed, signed PDF back into the vault
+
+**Real-world example:**
+You generate a quote PDF via `/salesforce-quote-email`. Instead of just emailing it, you say "send this out for signature to john@acme.com." The Adobe MCP uploads the file as a transient document, creates an agreement, and returns an agreement ID. Next week you ask "has John signed yet?" — the MCP checks status and reports "Out for signature, awaiting John Smith." You send a reminder, and once it's signed, download the countersigned PDF straight into `Projects/Acme Corp/`.
+
+**Configuration:** PDF tools need nothing. Adobe Sign tools need `ADOBE_SIGN_CLIENT_ID` / `ADOBE_SIGN_CLIENT_SECRET` / `ADOBE_SIGN_SHARD` (set via `/adobe-esign-setup`); OAuth tokens are stored at `~/.claude/adobe_sign_tokens.json`, outside the repo.
+
+**Tools:** `pdf_get_info`, `pdf_extract_text`, `pdf_merge`, `pdf_split`, `pdf_extract_pages`, `pdf_get_form_fields`, `pdf_fill_form`, `adobe_sign_authenticate`, `adobe_sign_check_connection`, `adobe_sign_send_for_signature`, `adobe_sign_get_status`, `adobe_sign_list_agreements`, `adobe_sign_send_reminder`, `adobe_sign_cancel_agreement`, `adobe_sign_download_signed_document`
 
 ---
 

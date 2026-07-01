@@ -1,0 +1,15 @@
+{
+  "name": "adobe",
+  "description": "Adobe eSign & PDF MCP - local PDF tools (info, text extraction, merge/split, form fields) plus Adobe Acrobat Sign e-signature workflows",
+  "server": {
+    "command": "python",
+    "args": ["core/mcp/adobe_server.py"],
+    "env": {
+      "VAULT_PATH": "${workspaceFolder}",
+      "ADOBE_SIGN_CLIENT_ID": "${ADOBE_SIGN_CLIENT_ID}",
+      "ADOBE_SIGN_CLIENT_SECRET": "${ADOBE_SIGN_CLIENT_SECRET}",
+      "ADOBE_SIGN_SHARD": "${ADOBE_SIGN_SHARD}"
+    }
+  },
+  "notes": "PDF tools (pdf_get_info, pdf_extract_text, pdf_merge, pdf_split, pdf_extract_pages, pdf_get_form_fields, pdf_fill_form) work with no setup beyond `pip install -r core/mcp/requirements.txt`. Adobe Sign tools (adobe_sign_*) require an Acrobat Sign OAuth app — run /adobe-esign-setup once. OAuth tokens are stored at ~/.claude/adobe_sign_tokens.json, never committed."
+}
