@@ -1,0 +1,111 @@
+{
+  "urgent": [
+    {
+      "patterns": ["URGENT", "CRITICAL", "EMERGENCY", "DOWN", "OUTAGE"],
+      "confidence": 0.95,
+      "reason": "Contains urgent keywords"
+    },
+    {
+      "from_patterns": ["oncall@", "alerts@", "emergency@", "pagerduty@"],
+      "confidence": 0.9,
+      "reason": "From alert service"
+    },
+    {
+      "subject_patterns": ["production.*down", "database.*error", "service.*outage", "\\bsystem\\s+down\\b"],
+      "confidence": 0.95,
+      "reason": "Production issue detected"
+    },
+    {
+      "body_patterns": ["immediate action", "right now", "asap", "call me", "drop everything"],
+      "confidence": 0.85,
+      "reason": "High urgency language"
+    }
+  ],
+  "follow_up": [
+    {
+      "patterns": ["please review", "feedback needed", "input required", "approval", "decision"],
+      "confidence": 0.9,
+      "reason": "Requires action/input"
+    },
+    {
+      "patterns": ["by end of day", "by tomorrow", "deadline", "due date", "due by"],
+      "confidence": 0.85,
+      "reason": "Has deadline"
+    },
+    {
+      "from_patterns": ["manager@", "boss@", "cto@", "ceo@", "director@"],
+      "patterns": ["review", "check", "look at", "thoughts on"],
+      "confidence": 0.8,
+      "reason": "Manager request for review"
+    },
+    {
+      "subject_patterns": ["for your review", "action required", "response needed", "awaiting"],
+      "confidence": 0.9,
+      "reason": "Action requested in subject"
+    },
+    {
+      "patterns": ["please confirm", "let me know", "your thoughts"],
+      "confidence": 0.8,
+      "reason": "Seeking response"
+    }
+  ],
+  "fyi": [
+    {
+      "patterns": ["FYI", "heads up", "just so you know", "announcement", "fyi:"],
+      "confidence": 0.85,
+      "reason": "Informational email"
+    },
+    {
+      "subject_patterns": ["schedule", "policy", "announcement", "reminder", "note that"],
+      "confidence": 0.8,
+      "reason": "Informational subject"
+    },
+    {
+      "from_patterns": ["admin@", "hr@", "announce@"],
+      "confidence": 0.8,
+      "reason": "From announcement service"
+    },
+    {
+      "patterns": ["please find attached", "for your information"],
+      "confidence": 0.75,
+      "reason": "Informational phrasing"
+    },
+    {
+      "subject_patterns": ["holiday", "office closed", "meeting summary", "week ahead"],
+      "confidence": 0.85,
+      "reason": "Informational content"
+    }
+  ],
+  "ignore": [
+    {
+      "from_patterns": ["newsletter@", "promotions@", "marketing@", "noreply@", "no-reply@", "info@"],
+      "confidence": 0.95,
+      "reason": "Marketing/newsletter sender"
+    },
+    {
+      "subject_patterns": ["unsubscribe", "promotional", "sale", "offer", "discount", "limited time"],
+      "confidence": 0.9,
+      "reason": "Promotional content"
+    },
+    {
+      "patterns": ["click here to unsubscribe", "marketing email", "promotional content"],
+      "confidence": 0.95,
+      "reason": "Marketing indicators"
+    },
+    {
+      "from_patterns": ["mail-delivery-failed@", "mailer-daemon@", "postmaster@", "delivery-status@"],
+      "confidence": 0.95,
+      "reason": "System message"
+    },
+    {
+      "subject_patterns": ["delivery status notification", "mail delivery failed", "auto-reply"],
+      "confidence": 0.9,
+      "reason": "Automatic/system message"
+    },
+    {
+      "from_patterns": ["linkedin@", "twitter@", "facebook@", "instagram@"],
+      "confidence": 0.8,
+      "reason": "Social media notification"
+    }
+  ]
+}

@@ -1,0 +1,14 @@
+{
+  "name": "email-triage-worker",
+  "version": "1.0.0",
+  "description": "Cloudflare Worker for email classification using Claude AI",
+  "type": "module",
+  "scripts": {
+    "deploy": "wrangler deploy",
+    "dev": "wrangler dev",
+    "test": "node test.js"
+  },
+  "devDependencies": {
+    "wrangler": "^3.0.0"
+  }
+}

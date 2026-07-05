@@ -225,6 +225,9 @@ Built specifically for personal knowledge management and productivity workflows 
 - `/triage` - Organize inbox and extract tasks *(v1.11: tuned for speed)*
 - `/industry-truths` - Define time-horizoned assumptions that ground strategic thinking
 
+**Documents & Signatures:**
+- `/adobe-esign-setup` - Connect Adobe Acrobat Sign for e-signature workflows; local PDF tools (merge/split/forms) work without setup
+
 **AI Configuration:**
 - `/ai-setup` - Configure budget cloud models (80% cheaper) and offline mode
 - `/ai-status` - Check your AI configuration and credits

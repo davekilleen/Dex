@@ -56,6 +56,7 @@ Each `.json` file in this folder connects one external system (Calendar, Granola
 
 ## Examples
 
+- **adobe.json** - PDF tools (info, text extraction, merge/split, form fields) plus Adobe Acrobat Sign e-signature workflows (send, status, remind, cancel, download)
 - **calendar.json** - Apple Calendar integration (events, scheduling)
 - **career.json** - Career development (evidence aggregation, ladder parsing, competency analysis)
 - **granola.json** - Meeting transcription and processing
