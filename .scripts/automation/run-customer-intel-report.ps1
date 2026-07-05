@@ -16,10 +16,19 @@ param([Parameter(ValueFromRemainingArguments = $true)] $PassThrough)
 
 Set-Location $DexVault
 $script = Join-Path $DexVault '.scripts\customer-intel\generate-report.py'
+$edaScript = Join-Path $DexVault '.scripts\customer-intel\eda-scraper.py'
 
 # generate-report.py writes progress to stderr; under powershell.exe (5.1) with
 # ErrorActionPreference=Stop that would falsely terminate. Trust the exit code instead.
 $ErrorActionPreference = 'Continue'
+
+Write-DexLog 'customer-intel' 'START eda-scraper.py --download-watch "54 Month Lease CB Watch"'
+$watchOutput = & $DexPython $edaScript --download-watch "54 Month Lease CB Watch" 2>&1
+$watchCode = $LASTEXITCODE
+$watchOutput | ForEach-Object { Write-DexLog 'customer-intel' ($_.ToString()) }
+if ($watchCode -ne 0) {
+    Write-DexLog 'customer-intel' "WARN: eda-scraper.py exited $watchCode; continuing with latest cached EDA watch export"
+}
 
 Write-DexLog 'customer-intel' "START generate-report.py $PassThrough"
 $output = & $DexPython $script @PassThrough 2>&1

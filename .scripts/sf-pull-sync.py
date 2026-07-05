@@ -145,8 +145,9 @@ def queries(days):
             "ORDER BY ActivityDate DESC NULLS LAST"
         ),
         "accounts": ("full",
-            "SELECT Id, Name, BillingState, BillingCity, Type, Industry, Phone, "
-            "LastActivityDate, OwnerId "
+            "SELECT Id, Name, BillingStreet, BillingCity, BillingState, BillingPostalCode, "
+            "ShippingStreet, ShippingCity, ShippingState, ShippingPostalCode, "
+            "Type, Industry, Phone, LastActivityDate, OwnerId, UCC_BuyID__c "
             f"FROM Account WHERE OwnerId = '{owner}'"
         ),
         "contacts": ("full",

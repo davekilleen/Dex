@@ -17,6 +17,12 @@ of any account's equipment floor, buying cycles, cash flow windows, and your bes
 
 > **Data source:** Salesforce Asset object — EDA Data UCC-1 filings are already synced here.
 > No manual data entry or web scraping needed. Uses `salesforce-remote` MCP (Cloudflare Worker — no auth action needed).
+>
+> **Ownership scope:** For Chris's reports, only include records that match Chris-owned Salesforce accounts.
+> Match Asset/EDA records by Salesforce Account ID, then `UCC_BuyID__c`, then exact normalized
+> company name plus state or ZIP. Never use fuzzy or plain name-only matching.
+> Filter source records to Pennsylvania (`PA`) before matching; Chris covers eastern PA.
+> Do not present territory-wide Asset/EDA records as "my accounts."
 
 ## Usage
 
@@ -296,20 +302,36 @@ When invoked as `/customer-intel report` or `/customer-intel report [days]`:
 
 ### On-Demand Report
 
-Call both:
-1. `get_new_assets` (salesforce-remote MCP) with `days=[DAYS]` — what's been added recently
-2. `get_assets_expiring_soon` (salesforce-remote MCP) with `months=12` — full lease expiration picture
+Use the standalone report generator as the source of truth for Chris-owned reports.
+Do not present raw `get_new_assets` or `get_assets_expiring_soon` results directly; those
+tools may return territory-wide Asset records unless they are explicitly scoped.
 
-Then call the standalone report generator via bash to produce and save the markdown file:
+Before generating the report, refresh the EDA lease watch export when lease expirations
+matter:
+```bash
+python3 .scripts/customer-intel/eda-scraper.py --download-watch "54 Month Lease CB Watch"
+```
+
+Call the generator via bash to produce and save the markdown file:
 ```bash
 python3 .scripts/customer-intel/generate-report.py --days [DAYS]
 ```
 
 The script saves the report to `Inbox/Reports/Customer_Intel_YYYY-MM.md` and prints the
-path. Read the saved file and present the key highlights:
+path. It filters Asset records against the local Chris-owned account cache using:
+1. Salesforce Account ID (100 confidence)
+2. `UCC_BuyID__c` (99 confidence)
+3. exact normalized company name + state (90 confidence)
+4. exact normalized company name + ZIP (95 confidence)
+
+Normalization removes only true legal suffixes (`inc`, `incorporated`, `corp`,
+`corporation`, `co`, `company`, `llc`, `ltd`, `lp`, `pllc`, `the`). Everything
+else is retained. Refresh the cache with `.scripts/sf-pull-sync.py --group full`
+if the account scope or address fields look stale. Read the saved file and present the key highlights:
 - Critical expiration count (and list if ≤ 5)
 - New equipment/account count
 - Any new competitor equipment added
+- Unmatched source-record counts and rejection reasons
 
 After presenting, offer:
 - "Create follow-up tasks for the CRITICAL accounts?"

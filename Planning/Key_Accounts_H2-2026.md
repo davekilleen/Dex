@@ -1,6 +1,6 @@
 # Key Accounts — H2 2026 (Jul–Dec)
 
-*Generated July 01, 2026 by `score-key-accounts.py`. Source: local Salesforce cache (Chris-owned scope) + EDA equipment data. Re-run after each weekly sync to refresh.*
+*Generated July 05, 2026 by `score-key-accounts.py`. Source: local Salesforce cache (Chris-owned scope) + EDA equipment data. Re-run after each weekly sync to refresh.*
 
 **Scoring (0–100):** Replacement urgency 35 · Historic buying 25 · Open pipeline 25 · Competitive displacement 15.
 
@@ -21,8 +21,8 @@
 | 5 | **Hadco Metal Trading Co, LLC - Bensalem, PA** (Bensalem, PA) | 32 | 1 prior win(s), last 1.7yr ago; $1,709,589 open (Favorable, Quoting) | - | $1,709,589 | Close push: confirm config, propose demo/visit, drive to PO |
 | 6 | **Myers Emergency Power Systems** (Bethlehem, PA) | 30 | 2 prior win(s), last 3.0yr ago; $526,400 open (Negotiation) | - | $526,400 | Close push: confirm config, propose demo/visit, drive to PO |
 | 7 | **Anvil Craft Corporation** (Easton, PA) | 30 | 1 prior win(s), last 0.4yr ago; $513,890 open (Discovery, Quoting) | - | $513,890 | Advance open opp + book demo/visit on territory day |
-| 8 | **TrenchTech, Inc.** (Morrisville, PA) | 28 | 1 prior win(s), last 2.1yr ago; $357,304 open (Discovery, Favorable, Quoting) | - | $357,304 | Close push: confirm config, propose demo/visit, drive to PO |
-| 9 | **Precision Fabricating Group** (Easton, PA) | 28 | 1 prior win(s), last 3.0yr ago; $1,269,900 open (Discovery, Favorable) | - | $1,269,900 | Close push: confirm config, propose demo/visit, drive to PO |
+| 8 | **Precision Fabricating Group** (Easton, PA) | 28 | 1 prior win(s), last 3.0yr ago; $1,269,900 open (Discovery, Favorable) | - | $1,269,900 | Close push: confirm config, propose demo/visit, drive to PO |
+| 9 | **TrenchTech, Inc.** (Morrisville, PA) | 28 | 1 prior win(s), last 2.2yr ago; $357,304 open (Discovery, Favorable, Quoting) | - | $357,304 | Close push: confirm config, propose demo/visit, drive to PO |
 | 10 | **Pennsylvania Steel Company - Bensalem, PA** (Bensalem, PA) | 28 | 1 prior win(s), last 5.0yr ago; $719,895 open (Active Project, Discovery, Quoting) | - | $719,895 | Advance open opp + book demo/visit on territory day |
 | 11 | **Dynamic Metal Innovations** (Emmaus, PA) | 27 | 2 prior win(s), last 1.0yr ago; $196,058 open (Discovery, Favorable) | - | $196,058 | Close push: confirm config, propose demo/visit, drive to PO |
 | 12 | **Gerhart** (Tatamy, PA) | 26 | 1 prior win(s), last 1.7yr ago; $280,000 open (Active Project) | - | $280,000 | Advance open opp + book demo/visit on territory day |
@@ -47,7 +47,7 @@
 | # | Account | Score | Why now | Equipment / Expiry | Open $ | Next action |
 |---|---------|-------|---------|--------------------|--------|-------------|
 | 1 | **MBI HVAC Inc.** (Allentown, PA) | 26 | owned equipment ~7yr past replacement window | PLASMA-PRO N/A plasma (2011) ~15yr | - | Replacement discovery: lead with lease/age trigger, offer demo |
-| 2 | **Roy J. Shelton Inc** (Quakertown, PA) | 19 | 4 prior win(s), last 0.3yr ago | - | - | Reactivation: historic buyer, open discovery on current needs |
+| 2 | **Roy J. Shelton Inc** (Quakertown, PA) | 19 | 4 prior win(s), last 0.4yr ago | - | - | Reactivation: historic buyer, open discovery on current needs |
 | 3 | **Sutphen East Corporation** (Lake Ariel, PA) | 14 | 3 prior win(s), last 1.0yr ago | - | - | Reactivation: historic buyer, open discovery on current needs |
 | 4 | **Anderson Tube** (Hatfield, PA) | 11 | 1 prior win(s), last 0.6yr ago | - | - | Reactivation: historic buyer, open discovery on current needs |
 | 5 | **S&W Metal Products LLC** (Birdsboro, PA) | 10 | 2 prior win(s), last 1.6yr ago | - | - | Reactivation: historic buyer, open discovery on current needs |
@@ -62,7 +62,7 @@
 | # | Account | Score | Why now | Equipment / Expiry | Open $ | Next action |
 |---|---------|-------|---------|--------------------|--------|-------------|
 | 1 | **Load Rite Trailers Inc** (Fairless Hills, PA) | 22 | owned equipment ~6yr past replacement window | PRAXAIR PRS-150 plasma (2012) ~14yr | - | Quarterly relationship touch / event invite |
-| 2 | **Fabtech Welding and Repair Corp** (Emmaus, PA) | 22 | owned equipment ~5yr past replacement window; 1 prior win(s), last 5.3yr ago | SHOPSABRE SHOPMSTRPRO10 Plasma (CNC) ~13yr | - | Quarterly relationship touch / event invite |
+| 2 | **Fabtech Welding and Repair Corp** (Emmaus, PA) | 22 | owned equipment ~5yr past replacement window; 1 prior win(s), last 5.4yr ago | SHOPSABRE SHOPMSTRPRO10 Plasma (CNC) ~13yr | - | Quarterly relationship touch / event invite |
 
 ---
 
@@ -77,8 +77,8 @@
 | Hadco Metal Trading Co, LLC - Bensalem, PA | 32 | 0 | 7 | 25 | 0 |
 | Myers Emergency Power Systems | 30 | 0 | 5 | 25 | 0 |
 | Anvil Craft Corporation | 30 | 0 | 11 | 19 | 0 |
-| TrenchTech, Inc. | 28 | 0 | 5 | 22 | 0 |
 | Precision Fabricating Group | 28 | 0 | 3 | 25 | 0 |
+| TrenchTech, Inc. | 28 | 0 | 5 | 22 | 0 |
 | Pennsylvania Steel Company - Bensalem, PA | 28 | 0 | 2 | 25 | 0 |
 | Dynamic Metal Innovations | 27 | 0 | 12 | 15 | 0 |
 | Gerhart | 26 | 0 | 7 | 20 | 0 |

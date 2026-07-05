@@ -53,6 +53,11 @@ BASE_URL      = "https://online.edadata.com"
 FUSABLE_HOST  = "appident.fusable.com"
 LOGIN_SESSION = Path.home() / ".claude" / "eda_session.json"
 DATA_CACHE    = Path.home() / ".claude" / "eda_data_cache.json"
+EDA_DATA_DIR  = Path(__file__).parent / "eda-data"
+
+KNOWN_WATCH_REPORTS = {
+    "54 Month Lease CB Watch": "/Watch/Index/9865eb32cb6f40979ede32677e98fad2",
+}
 
 
 def load_env():
@@ -229,8 +234,12 @@ KNOWN_SAVED_QUERIES = [
     "Comp Waterjet Accounts", "Florida-JZ", "LVD Strippit Punch",
     "NY - 1 YR - EQUIPMENT BREAKDOWN", "NY - 1YR - Trumpf",
     "TRUMPF Press Brakes", "Vaski Metal (Rotand) - NA Installations",
-    "WA, OR, CA - Copper",
+    "WA, OR, CA - Copper", "54 Month Lease CB Watch",
 ]
+
+
+def _safe_filename(name):
+    return re.sub(r"[^A-Za-z0-9._-]+", "_", name).strip("_")
 
 
 # ── Download ───────────────────────────────────────────────────────────────────
@@ -360,6 +369,54 @@ def _download_one(page, query_name, debug=False):
             _screenshot(page, f"error_{re.sub(r'[^\\w]','_',query_name)[:20]}")
 
     return rows
+
+
+def _download_watch_one(page, watch_name, watch_path, debug=False):
+    """Export one saved Watch report to XLSX and return parsed rows plus saved file path."""
+    print(f"  {watch_name}...", file=sys.stderr)
+    page.goto(f"{BASE_URL}{watch_path}", timeout=30000, wait_until="domcontentloaded")
+
+    if FUSABLE_HOST in page.url:
+        raise RuntimeError("Session expired — re-run with --no-login-cache")
+
+    time.sleep(5)
+    if debug:
+        _screenshot(page, f"watch_{_safe_filename(watch_name)[:20]}")
+
+    page.evaluate("""() => {
+        const gear = document.querySelector('input.query-icon-gear, .query-icon-gear, [title="Export Results"]');
+        if (gear) gear.click();
+    }""")
+    time.sleep(0.8)
+    page.evaluate("""() => {
+        const section = document.getElementById('export-accordion-section');
+        if (section) section.click();
+    }""")
+    time.sleep(0.8)
+
+    try:
+        page.select_option("#ExportFileType", "0", force=True)    # Full File
+        page.select_option("#ExportFileFormat", "0", force=True)  # XLSX
+    except Exception as e:
+        if debug:
+            print(f"  [debug] export select failed: {e}", file=sys.stderr)
+
+    with page.expect_download(timeout=30000) as dl_info:
+        page.evaluate("""() => {
+            const btn = document.getElementById('export-button');
+            if (btn) {
+                btn.dispatchEvent(new MouseEvent('click', {bubbles: true, cancelable: true, view: window}));
+            }
+        }""")
+
+    download = dl_info.value
+    suggested = download.suggested_filename or f"{_safe_filename(watch_name)}.xlsx"
+    suffix = Path(suggested).suffix or ".xlsx"
+    EDA_DATA_DIR.mkdir(parents=True, exist_ok=True)
+    out = EDA_DATA_DIR / f"EDA_Export_FullFile_{date.today().strftime('%Y%m%d')}{suffix}"
+    download.save_as(str(out))
+    print(f"  Downloaded watch export: {out}", file=sys.stderr)
+    return _parse_excel_or_csv(out), out
 
 
 def _parse_excel_or_csv(path):
@@ -772,6 +829,58 @@ def cmd_download(session, query_filter=None, all_queries=False, headed=False, de
     unique = len(all_records(cache))
     print(f"\nCache updated: {total} rows downloaded, {unique} unique records total.")
     print(f"Cache: {DATA_CACHE}")
+
+
+def cmd_download_watch(session, watch_filter=None, headed=False, debug=False):
+    try:
+        from playwright.sync_api import sync_playwright
+    except ImportError:
+        print("ERROR: playwright not installed. Run: pip install playwright && python -m playwright install chromium")
+        sys.exit(1)
+
+    if watch_filter:
+        watches = {name: path for name, path in KNOWN_WATCH_REPORTS.items()
+                   if watch_filter.lower() in name.lower()}
+        if not watches:
+            print(f"No watch reports match '{watch_filter}'. Known watches:")
+            for name in KNOWN_WATCH_REPORTS:
+                print(f"  {name}")
+            return
+    else:
+        watches = KNOWN_WATCH_REPORTS
+
+    cache = load_cache()
+    cache.setdefault("queries", {})
+    cache.setdefault("downloaded_at", {})
+
+    with sync_playwright() as p:
+        browser, context = _pw_context_with_cookies(p, session, headed)
+        page = context.new_page()
+        page.set_viewport_size({"width": 1600, "height": 1200})
+
+        for name, path in watches.items():
+            try:
+                rows, saved_path = _download_watch_one(page, name, path, debug=debug)
+            except Exception as e:
+                print(f"  ERROR on watch '{name}': {e}", file=sys.stderr)
+                rows, saved_path = [], None
+
+            if rows:
+                key = f"WATCH: {name}"
+                cache["queries"][key] = {
+                    "rows": rows,
+                    "count": len(rows),
+                    "source_file": str(saved_path) if saved_path else "",
+                }
+                cache["downloaded_at"][key] = datetime.now().isoformat()
+                print(f"  {name}: {len(rows)} rows")
+            else:
+                print(f"  {name}: 0 rows (skipped or empty)")
+
+        browser.close()
+
+    save_cache(cache)
+    print(f"\nWatch cache updated: {DATA_CACHE}")
 
 
 def cmd_search(query, field=None):
@@ -1236,7 +1345,11 @@ def cmd_list_queries():
     print("Saved EDA queries:")
     for q in KNOWN_SAVED_QUERIES:
         print(f"  {q}")
+    print("\nSaved EDA watch reports:")
+    for w in KNOWN_WATCH_REPORTS:
+        print(f"  {w}")
     print(f'\nDownload one: --download --query "CB Accounts - Press Brakes"')
+    print(f'Download watch: --download-watch "54 Month Lease CB Watch"')
     print(f"Download all: --download")
 
 
@@ -1335,6 +1448,7 @@ def cmd_sync(account_filter=None, dry_run=False):
 def main():
     parser = argparse.ArgumentParser(description="EDA Data scraper — download all, filter locally")
     parser.add_argument("--download",       action="store_true", help="Download 'All Data - 10YR' to local cache (default query)")
+    parser.add_argument("--download-watch", type=str, default="", help="Download a saved EDA Watch report by name")
     parser.add_argument("--query",          type=str, default="", help="Download a specific saved query by name (partial match)")
     parser.add_argument("--all-queries",    action="store_true", help="Download all 32 saved queries instead of just All Data - 10YR")
     parser.add_argument("--search",         type=str, default="", help="Search cached data by any field value")
@@ -1378,7 +1492,10 @@ def main():
         if not login(session, headed=args.headed):
             sys.exit(1)
 
-    if args.download:
+    if args.download_watch:
+        cmd_download_watch(session, watch_filter=args.download_watch,
+                           headed=args.headed, debug=args.debug)
+    elif args.download:
         cmd_download(session, query_filter=args.query or None, all_queries=args.all_queries,
                      headed=args.headed, debug=args.debug)
     else:
