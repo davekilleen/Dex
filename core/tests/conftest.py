@@ -12,6 +12,9 @@ for relative in (
     "05-Areas/Meetings",
     "05-Areas/Meetings/Daily_Log",
     "System/.dex",
+    "04-Projects/DexDiff/beta/diffs",
+    "04-Projects/DexDiff/beta/profile",
+    "04-Projects/DexDiff/design",
 ):
     (FIXTURE_VAULT / relative).mkdir(parents=True, exist_ok=True)
 
