@@ -1,17 +1,31 @@
 # Week Priorities
 
-**Week of:** 2026-06-22 (Last week of Q2)
-*Generated: 2026-06-21 | Command: /week-plan + /week-itinerary*
+**Week of:** 2026-07-07 (July 7–11)
+*Generated: 2026-07-05 | Command: /week-plan*
 
 ---
 
 ## 🎯 Top Priorities This Week
 
-1. **Penn Steel / AGT demo (Tuesday)** — In-person at Penn Steel Fabrication with Ali Fahim and their welding/QC team. Tom Belizzia and Dean Bower (AGT) attending. Prep talking points around their automation goals.
-2. **Push Hanwha Philly Shipyard press brake to close** — $1.09M in Negotiation. Open week = dedicated time to move this forward.
-3. **Follow up on S&W Metal TruBend Cell 5000** — $942K quoting. Get quote status and next steps confirmed.
-4. **Schedule Pat Mooney aluminum saw call** — Patrick Thornton replied and is available Wed–Fri. Get it booked before it goes cold.
-5. **Sweep Favorable deals** — 9 deals in Favorable totaling $2M+. Quick outreach round to keep them moving.
+1. **🔴 CRITICAL — Myers EPS (Aaron Fry) — Cidan CNC Folder, $526,400 (Negotiation)**
+   - ROI analysis was due 6/30; Cidan's discounted pricing locked through 6/30
+   - **Monday first thing:** Call Aaron for status (yes/LOI/clear no)
+   - Then call Doug at Cidan to confirm pricing extension if needed
+   - Email draft ready to send
+   - **This deal unblocks next actions at Cidan**
+
+2. **Close Hanwha Philly Shipyard** — $12.06M (largest account, multiple stages)
+   - Needs dedicated close push this week
+   - Confirm next steps with key contacts
+
+3. **Favorable Deals Sweep & Quote Follow-ups** — $5M+ combined
+   - ASGCO TL3030 Laser ($755K Quoting) — follow up on quote status
+   - Hadco Metal Trading ($1.71M Favorable/Quoting) — close push
+   - Precision Fabricating ($1.27M Favorable) — close push + demo
+   - Kelly Iron Works ($3.84M across all stages) — outreach + momentum
+   - SS Industries, TrenchTech, Dynamic Metal, Levan, Penn Steel — quick outreach round
+
+4. **Check WINHOLT EQUIPMENT Emails** — Clarify if customer inquiries or Steve Malaro forwarded quotes
 
 ---
 
@@ -19,46 +33,76 @@
 
 | Day | Load | Deep Work? | Key Meetings |
 |-----|------|------------|--------------|
-| Mon 6/22 | Open | ✅ | None |
-| Tue 6/23 | Light | ⚠️ | AGT Demo @ Penn Steel 1:00–2:30pm (in-person, Bristol PA) |
-| Wed 6/24 | Open | ✅ | None |
-| Thu 6/25 | Open | ✅ | None |
-| Fri 6/26 | Light | ✅ | Check-in w/ Bridget Kilgallen 3:30pm (Teams) |
+| Mon | TBD | ⚠️ | Aaron call (early AM) + outreach |
+| Tue | TBD | ✅ | Outreach/follow-ups |
+| Wed | TBD | ✅ | Favorable sweep calls |
+| Thu | TBD | ✅ | Quoting follow-ups |
+| Fri | TBD | ✅ | Week wrap-up |
 
-Very open week. Use Mon/Wed/Thu for proactive outreach and deep work on big deals.
+*Block 2–3 hour windows for uninterrupted outreach calls*
 
 ---
 
 ## 💼 Pipeline — This Week's Actions
 
-| Deal | Stage | Amount | Action | Day |
-|------|-------|--------|--------|-----|
-| BAY - Press Brake - Hanwha Philly Shipyard | Negotiation | $1,092,365 | Call/email to advance toward close | Mon |
-| TRU - TruBend Cell 5000 - S&W Metal Products | Quoting | $942,000 | Follow up on quote status | Mon |
-| AGT - Penn Steel Fabrication demo | — | — | Prep + execute in-person demo | Tue |
-| PRO - Robotic Beam Line - Kelly Iron Works | Favorable | $481,920 | Outreach to advance | Wed |
-| AGT - BeamMaster - Levan Associates | Favorable | $413,248 | Outreach to advance | Wed |
-| TRU - TL3030 Laser - ASGCO | Quoting | $755,000 | Check quote status | Thu |
-| STA - AB250-12 - DVM Manufacturing | Quoting | $125,000 | Follow up | Thu |
-| Favorable sweep (SS Industries, TrenchTech, Hale Trailer, EC Fence, Dynamic Metal, Galaxy Mfg) | Favorable | ~$620K | Quick outreach round | Wed |
+| Deal | Stage | Amount | Action | Priority | By |
+|------|-------|--------|--------|----------|-----|
+| Myers EPS — Cidan CNC Folder | Negotiation | $526,400 | Call Aaron for status, then Doug at Cidan | 🔴 URGENT | Mon AM |
+| Hanwha Philly Shipyard | Negotiation/Favorable/Active | $12,056,255 | Drive to close — confirm next steps | **High** | This week |
+| Hadco Metal Trading | Favorable/Quoting | $1,709,589 | Follow up, close push, demo | High | Mon-Wed |
+| Precision Fabricating | Favorable/Discovery | $1,269,900 | Close push + demo proposal | High | Wed-Thu |
+| Kelly Iron Works | Favorable/Active/Quoting | $3,844,805 | Outreach + momentum calls | High | Tue-Thu |
+| SS Industries | Favorable/Quoting | $1,261,972 | Close push | Med | Wed-Thu |
+| ASGCO Mfg | Quoting | $755,000 | Follow up on quote status | Med | Tue-Wed |
+| TrenchTech | Favorable/Discovery | $357,304 | Quick outreach | Med | Wed |
+| Penn Steel | Favorable/Active | $720,905 | Close push + demo | Med | Wed-Thu |
+| Levan Associates | Favorable | $413,248 | Outreach call | Med | Thu |
+| Dynamic Metal | Favorable/Discovery | $196,058 | Quick outreach | Med | Thu |
 
 ---
 
 ## 📋 Tasks
 
-### P0 — Must Do
-*(No tasks in system)*
+### P0 — Must Do This Week
+- [ ] **Call Aaron Fry at Myers EPS** — Cidan Folder status ($526,400) — **Monday A.M.**
+- [ ] **Call Doug at Cidan** — Confirm pricing extension options if needed — **Monday A.M.**
 
-### P1 — Should Do
-*(No tasks in system)*
+### P1 — Should Do This Week
+- [ ] Pocono Metals follow-up (Used EMI)
+- [ ] Glenn Spalding call (Finishline)
+- [ ] Trumpf N 700 Nibbler follow-up
+- [ ] Joe Carr call (Trumpf 1000 Series / Cidan)
+- [ ] Gambone call (EMI)
+- [ ] AW Mercer call (Haeger new/used)
+
+### Email & Follow-ups
+- [ ] Check WINHOLT EQUIPMENT emails — customer inquiry or Steve Malaro quotes?
+- [ ] Review any new "machinery" prospect inquiries from email
 
 ---
 
-## 📬 Email / Follow-ups
+## 📊 The 9 Favorable Deals ($5.7M+ Total)
 
-- [x] Reply to Patrick Thornton (Pat Mooney) — schedule aluminum upcut saw call, Wed–Fri available
-- [x] Respond to Bridget re: FMA Young Member Group Baseball event 6/30 (yes/no)
-- [x] Follow up on Patrick Kilgallen Teams message re: TJ Snow
+Quick reference for sweep calls:
+
+1. Kelly Iron Works — $3,844,805 — Outreach + momentum
+2. Hanwha Philly Shipyard — $12,056,255 — Drive to close
+3. Hadco Metal Trading — $1,709,589 — Close push + demo
+4. Precision Fabricating — $1,269,900 — Close push + demo
+5. SS Industries — $1,261,972 — Close push
+6. Penn Steel Fabrication — $720,905 — Close push + demo
+7. Levan Associates — $413,248 — Quick call
+8. TrenchTech, Inc. — $357,304 — Quick call
+9. Dynamic Metal Innovations — $196,058 — Quick call
+
+---
+
+## ⚠️ Heads Up
+
+1. **Myers EPS pricing window closed 6/30** — but deal is still active. Aaron call Monday is CRITICAL to unblock next steps.
+2. **S&W Metal TruBend is closed-lost** (removed from plan).
+3. **Hanwha Philly** ($12M) remains your largest multi-stage opportunity.
+4. **Used machinery deals** sometimes come from Steve Malaro directly — check WINHOLT emails for context.
 
 ---
 

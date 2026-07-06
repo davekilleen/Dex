@@ -1,20 +1,119 @@
 {
   "version": 1,
-  "built_at": "2026-06-17T13:52:52.304947",
-  "total": 1,
+  "built_at": "2026-07-06T10:41:51.488041",
+  "total": 10,
   "by_type": {
     "internal": 0,
-    "external": 1,
+    "external": 10,
     "cpo_network": 0
   },
   "people": [
+    {
+      "name": "Aaron Fry",
+      "company": null,
+      "role": null,
+      "email": null,
+      "type": "external",
+      "path": "People\\External\\Aaron_Fry.md",
+      "last_interaction": null,
+      "tags": [],
+      "status": "populated"
+    },
     {
       "name": "Brian A. Clark",
       "company": null,
       "role": null,
       "email": null,
       "type": "external",
-      "path": "05-Areas\\People\\External\\Brian_A._Clark.md",
+      "path": "People\\External\\Brian_A._Clark.md",
+      "last_interaction": null,
+      "tags": [],
+      "status": "populated"
+    },
+    {
+      "name": "Connor Stutzman",
+      "company": null,
+      "role": null,
+      "email": null,
+      "type": "external",
+      "path": "People\\External\\Connor_Stutzman.md",
+      "last_interaction": null,
+      "tags": [],
+      "status": "populated"
+    },
+    {
+      "name": "Don Constantini",
+      "company": null,
+      "role": null,
+      "email": null,
+      "type": "external",
+      "path": "People\\External\\Don_Constantini.md",
+      "last_interaction": null,
+      "tags": [],
+      "status": "populated"
+    },
+    {
+      "name": "Erik Sims",
+      "company": null,
+      "role": null,
+      "email": null,
+      "type": "external",
+      "path": "People\\External\\Erik_Sims.md",
+      "last_interaction": null,
+      "tags": [],
+      "status": "populated"
+    },
+    {
+      "name": "Gwendolyn Sims",
+      "company": null,
+      "role": null,
+      "email": null,
+      "type": "external",
+      "path": "People\\External\\Gwendolyn_Sims.md",
+      "last_interaction": null,
+      "tags": [],
+      "status": "populated"
+    },
+    {
+      "name": "Jim Kressler",
+      "company": null,
+      "role": null,
+      "email": null,
+      "type": "external",
+      "path": "People\\External\\Jim_Kressler.md",
+      "last_interaction": null,
+      "tags": [],
+      "status": "populated"
+    },
+    {
+      "name": "Joe Carr",
+      "company": null,
+      "role": null,
+      "email": null,
+      "type": "external",
+      "path": "People\\External\\Joe_Carr.md",
+      "last_interaction": null,
+      "tags": [],
+      "status": "populated"
+    },
+    {
+      "name": "Matthew Orehek",
+      "company": null,
+      "role": null,
+      "email": null,
+      "type": "external",
+      "path": "People\\External\\Matthew_Orehek.md",
+      "last_interaction": null,
+      "tags": [],
+      "status": "populated"
+    },
+    {
+      "name": "Ray Brue",
+      "company": null,
+      "role": null,
+      "email": null,
+      "type": "external",
+      "path": "People\\External\\Ray_Brue.md",
       "last_interaction": null,
       "tags": [],
       "status": "populated"
