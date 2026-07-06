@@ -340,3 +340,12 @@ You already have /[name] — it looks like [brief description of what it does].
 - **Be educational.** Explain what each component does in plain language. The user should understand their system better after adoption than before.
 - **Log everything.** The adoption log is the contract for `/diff-remove`.
 - **Suggest next steps.** Always end with a concrete action the user can take right now.
+
+## Inside Dex Desktop Chat (no shell available)
+
+When the tools `mcp__dex-dexdiff__dexdiff_fetch_bundle` and
+`mcp__dex-dexdiff__dexdiff_write_adoption` are available (the Dex desktop
+app's chat lane, which cannot run shell commands), use them for the fetch and
+write steps. Fetch the author's bundle, present only the requested workflow,
+and pass just that workflow to `dexdiff_write_adoption`. The preview-consent
+conversation stays exactly as described above.

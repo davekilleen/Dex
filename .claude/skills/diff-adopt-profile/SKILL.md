@@ -170,3 +170,20 @@ End by explaining:
 - Preserve workflow order from the hosted bundle.
 - Save the bundle locally before generating anything else.
 - Never overwrite existing files without approval.
+
+## Inside Dex Desktop Chat (no shell available)
+
+The Dex desktop app's chat lane cannot run shell commands or scripts. When the
+tools `mcp__dex-dexdiff__dexdiff_fetch_bundle` and
+`mcp__dex-dexdiff__dexdiff_write_adoption` are available, use THEM for the
+deterministic halves instead of `scripts/adopt_profile.py`:
+
+- `dexdiff_fetch_bundle` replaces the hosted fetch + validation step and
+  returns the validated bundle.
+- `dexdiff_write_adoption` replaces the file-writing + adoption-log step; it
+  writes atomically, never overwrites, and records the adoption server-side
+  on completion.
+
+The conversational halves — preview against the user's real vault, consent,
+adaptation, education — stay with this skill, unchanged. If neither tool is
+available (plain terminal), use the bundled script exactly as documented above.
