@@ -432,6 +432,7 @@ textarea#edBody {
   font-size: 13px;
   color: var(--text-muted);
   cursor: pointer;
+  -webkit-user-select: none;
   user-select: none;
 }
 
