@@ -18,7 +18,11 @@ if [ -z "$CODE_FILES" ]; then
 fi
 
 PATTERN="00-Inbox|01-Quarter_Goals|02-Week_Priorities|03-Tasks|04-Projects|05-Areas|06-Resources|07-Archives"
-ALLOWLIST='^(core/paths\.py|\.claude/hooks/paths\.cjs|\.claude/hooks/(company-context-injector|person-context-injector)\.cjs|scripts/check-path-consistency\.sh|scripts/verify-distribution\.sh|scripts/check-path-contract-usage\.sh|core/migrations/)'
+# .claude/skills/*/scripts/ are STANDALONE-BY-DESIGN: they ship inside a skill
+# and run in end users' vaults where dex-core (and core.paths) is not
+# installed, so they cannot import the contract. Their literals are checked
+# instead by the skills' own tests against the contract JSON.
+ALLOWLIST='^(core/paths\.py|\.claude/hooks/paths\.cjs|\.claude/hooks/(company-context-injector|person-context-injector)\.cjs|scripts/check-path-consistency\.sh|scripts/verify-distribution\.sh|scripts/check-path-contract-usage\.sh|core/migrations/|\.claude/skills/[a-z-]+/scripts/)'
 
 VIOLATIONS=0
 for file in $CODE_FILES; do
