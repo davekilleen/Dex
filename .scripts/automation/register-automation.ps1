@@ -1,6 +1,6 @@
 # register-automation.ps1 -- Install Dex's scheduled data-refresh jobs on Windows.
 #
-# Replaces the macOS launchd assumption with Windows Task Scheduler. Registers three
+# Replaces the macOS launchd assumption with Windows Task Scheduler. Registers four
 # idempotent tasks (re-running overwrites cleanly). Each runs a read-only Python job
 # under the current user, ONLY while logged on (InteractiveToken -- the Windows
 # equivalent of launchd's "Aqua" session guard). No elevation required.
@@ -8,6 +8,7 @@
 #   Dex-Weekly-SF-Sync        Mondays 06:00   refresh local Salesforce cache
 #   Dex-Weekly-Lease-Alert    Mondays 06:30   short-lookback lease-expiry report
 #   Dex-Monthly-Intel-Report  1st @ 08:00     full customer-intelligence report
+#   Dex-Daily-Case-Alert      Daily 07:15     new/updated open Case check + toast alert
 #
 # GUARDRAIL: every job only REFRESHES DATA and GENERATES REPORTS. None of them send
 # email or write to Salesforce. All outreach stays draft-and-approve; activity logging
@@ -100,6 +101,12 @@ $weekly = @'
       </ScheduleByWeek>
 '@
 
+$daily = @'
+      <ScheduleByDay>
+        <DaysInterval>1</DaysInterval>
+      </ScheduleByDay>
+'@
+
 $monthly = @'
       <ScheduleByMonth>
         <DaysOfMonth><Day>1</Day></DaysOfMonth>
@@ -120,6 +127,10 @@ $jobs = @(
        Desc = 'Full customer-intelligence report to Inbox/Reports. 1st of month 08:00.'
        File = 'run-customer-intel-report.ps1'; Args = ''
        Trigger = $monthly; Start = 'T08:00:00' }
+    @{ Name = 'Dex-Daily-Case-Alert'
+       Desc = 'Check for new/updated open Salesforce Cases on owned accounts. Daily 07:15.'
+       File = 'run-case-alert.ps1'; Args = ''
+       Trigger = $daily; Start = 'T07:15:00' }
 )
 
 $dateStr = (Get-Date -Format 'yyyy-MM-dd')

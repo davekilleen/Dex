@@ -1,5 +1,39 @@
 # Tasks
 
+## Next Week
+- [ ] **Follow up on open case 00001864 — Standard Shear backgauge binding (PA Steel - Throop, PA)** | People/Companies/Pennsylvania_Steel_Company_Throop_PA.md ^task-20260706-117
+	- High-priority open service case, opened 2026-05-13. Contact: Bill Kovaleski.
+	- Pillar: Account Management | Priority: P2
+
+- [ ] **Follow up on open case 00001915 — Machine keeps shutting off (McGregor Industries)** | People/Companies/McGregor_Industries_Inc.md ^task-20260706-117
+	- High-priority open service case, opened 2026-06-15. Contact: John Wallo.
+	- Pillar: Account Management | Priority: P2
+
+- [ ] **Follow up on open case 00001840 — Hyd-Mech M-16A band saw not cutting straight (McGregor Industries)** | People/Companies/McGregor_Industries_Inc.md ^task-20260706-117
+	- High-priority open service case, opened 2026-04-30. Contact: John Wallo.
+	- Pillar: Account Management | Priority: P2
+
+- [ ] **Follow up on open case 00001935 — Rico Press Brake Down (Reliable Equipment Mfg Co)** | People/Companies/Reliable_Equipment_Mfg_Co.md ^task-20260706-117
+	- High-priority open service case, opened 2026-06-26. Contact: Raymond Lake.
+	- Pillar: Account Management | Priority: P2
+
+- [ ] **Follow up on open case 00001787 — Ercolina Bender controls not working (Reliable Equipment Mfg Co)** | People/Companies/Reliable_Equipment_Mfg_Co.md ^task-20260706-117
+	- High-priority open service case, opened 2026-04-06. Contact: Raymond Lake.
+	- Pillar: Account Management | Priority: P2
+
+- [ ] **Follow up on open case 00001591 — Press Brake Preventative Maintenance (DVM Manufacturing - Norristown, PA)** | People/Companies/DVM_Manufacturing_Norristown_PA.md ^task-20260706-117
+	- High-priority open service case, opened 2025-11-25. Contact: Chad Pantelich.
+	- Pillar: Account Management | Priority: P2
+
+- [ ] **Follow up on open case 00001526 — Repair/Fix HE&M saw (Anderson Tube)** | People/Companies/Anderson_Tube.md ^task-20260706-117
+	- High-priority open service case, opened 2025-10-21. Contact: Brandon Gilbert.
+	- Pillar: Account Management | Priority: P2
+
+- [ ] **Invite BGC Inc. Water & Wastewater to Thursday Summer Showroom Demos Days** ^task-20260705-117
+	- Contact: BGC Inc. Water & Wastewater Services Division, Skippack PA (267-642-8131). Reach out about Thursday Summer Showroom Demos Days event - position as new prospect opportunity. Log as potential if interested.
+	- Pillar: Pipeline & Revenue | Priority: P2
+
+
 ## Upcoming
 - [ ] **Reach out to Rybnick Mechanical - schedule meeting to discuss Flow Waterjet and Ironworker (bring Eric Marciniak from Flow)** ^task-20260628-117
 	- Target mid-August meeting. Discuss Flow Waterjet and Ironworker product lines. Coordinate with Eric Marciniak (Flow rep) to potentially join on customer visits. Good opportunity to bring factory support into the conversation.

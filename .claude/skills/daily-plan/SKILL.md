@@ -299,6 +299,12 @@ If MCP call fails: skip silently.
 
 If both counts are zero, omit the line entirely. If either MCP call fails, drop that half of the line silently (e.g. show only the case count if email tracking is unavailable).
 
+**New/updated case alert:** Check whether `Inbox/Alerts/case-alert-{today's date}.md` exists (written by the `Dex-Daily-Case-Alert` scheduled task — see `.scripts/automation/README.md`). If it exists, read it and surface a line plus the new/changed case list in **Heads Up** (Step 6):
+
+> **🔔 Case Alert:** 2 new case(s), 1 updated case(s) since yesterday — see below.
+
+If the file doesn't exist, skip silently (no alert fired today, or the scheduled task isn't installed yet — don't nag about setup here).
+
 ### 5.9 Teams Intelligence (if Teams connected)
 
 Check `System/integrations/config.yaml` for `teams.enabled: true`.
@@ -464,6 +470,7 @@ Flag potential issues:
 - P0 items with no time blocked
 - Deep work tasks with no suitable slot this week
 - Emails awaiting reply past the business-day threshold, or escalated service cases (from 5.8's Reply/Service Pulse)
+- New or status/priority-changed Cases from today's Case Alert file (from 5.8), with the case table inline
 
 ---
 

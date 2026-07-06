@@ -7,7 +7,7 @@
 
 $ErrorActionPreference = 'Stop'
 
-$names = @('Dex-Weekly-SF-Sync', 'Dex-Weekly-Lease-Alert', 'Dex-Monthly-Intel-Report')
+$names = @('Dex-Weekly-SF-Sync', 'Dex-Weekly-Lease-Alert', 'Dex-Monthly-Intel-Report', 'Dex-Daily-Case-Alert')
 
 foreach ($name in $names) {
     $existing = Get-ScheduledTask -TaskName $name -ErrorAction SilentlyContinue
