@@ -8,6 +8,7 @@ import sys
 import urllib.request
 import urllib.parse
 import urllib.error
+from datetime import date, datetime, timedelta
 from html.parser import HTMLParser
 
 
@@ -82,6 +83,64 @@ def clean_email(row):
     if row.get('full_body'):
         row['full_body'] = strip_html(row['full_body'])[:2000]  # cap at 2k chars
     return row
+
+
+# ── Business day helper (mirrors .scripts/salesforce-mcp/server.py) ────────────
+
+def _us_federal_holidays(year):
+    """Return a set of observed US federal holiday dates for the given year."""
+    def nth_weekday(year, month, weekday, n):
+        d = date(year, month, 1)
+        offset = (weekday - d.weekday()) % 7
+        d += timedelta(days=offset + (n - 1) * 7)
+        return d
+
+    def last_weekday(year, month, weekday):
+        d = date(year, month + 1, 1) - timedelta(days=1) if month < 12 else date(year, 12, 31)
+        offset = (d.weekday() - weekday) % 7
+        return d - timedelta(days=offset)
+
+    def observed(d):
+        if d.weekday() == 5:
+            return d - timedelta(days=1)
+        if d.weekday() == 6:
+            return d + timedelta(days=1)
+        return d
+
+    return {
+        observed(date(year, 1, 1)),
+        nth_weekday(year, 1, 0, 3),
+        nth_weekday(year, 2, 0, 3),
+        last_weekday(year, 5, 0),
+        observed(date(year, 6, 19)),
+        observed(date(year, 7, 4)),
+        nth_weekday(year, 9, 0, 1),
+        nth_weekday(year, 10, 0, 2),
+        observed(date(year, 11, 11)),
+        nth_weekday(year, 11, 3, 4),
+        observed(date(year, 12, 25)),
+    }
+
+
+def business_days_since(iso_timestamp):
+    """Count weekday/non-holiday days between an ISO timestamp and now."""
+    try:
+        sent = datetime.fromisoformat(iso_timestamp.replace('Z', '+00:00'))
+    except (ValueError, AttributeError):
+        return 0
+    now = datetime.now(sent.tzinfo) if sent.tzinfo else datetime.utcnow()
+
+    d = sent.date()
+    end = now.date()
+    holidays = _us_federal_holidays(d.year)
+    count = 0
+    while d < end:
+        d += timedelta(days=1)
+        if d.year not in {h.year for h in holidays}:
+            holidays |= _us_federal_holidays(d.year)
+        if d.weekday() < 5 and d not in holidays:
+            count += 1
+    return count
 
 
 # ── MCP stdio protocol ─────────────────────────────────────────────────────────
@@ -189,6 +248,47 @@ TOOLS = [
             "required": ["contact"],
         },
     },
+    {
+        "name": "get_sent_emails",
+        "description": (
+            "Get emails Chris has sent, newest first. Optionally filter to a specific recipient "
+            "or to only emails still awaiting a reply. Reply status is only tracked for emails "
+            "sent to a matched Salesforce contact."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "recipient": {
+                    "type": "string",
+                    "description": "Filter by recipient email or name (partial match)",
+                },
+                "awaiting_reply_only": {
+                    "type": "boolean",
+                    "description": "Only return sent emails that haven't been replied to yet",
+                },
+                "limit": {
+                    "type": "integer",
+                    "description": "Max results (default 20, max 50)",
+                },
+            },
+        },
+    },
+    {
+        "name": "get_unreplied_emails",
+        "description": (
+            "Get sent emails to Salesforce contacts that have gone unanswered for at least "
+            "N business days (default 3). Use this to find customer follow-ups that are overdue."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "min_business_days": {
+                    "type": "integer",
+                    "description": "Minimum business days of silence before flagging (default 3)",
+                },
+            },
+        },
+    },
 ]
 
 
@@ -288,11 +388,59 @@ def get_emails_from_contact(args):
     return {"emails": results[:50], "count": len(results)}
 
 
+def get_sent_emails(args):
+    recipient   = (args.get("recipient") or "").lower()
+    awaiting    = args.get("awaiting_reply_only", False)
+    limit       = min(args.get("limit", 20), 50)
+
+    params = {"direction": "sent", "limit": min(limit * 3, 150), "offset": 0}
+    if awaiting:
+        params["reply_status"] = "awaiting_reply"
+
+    data   = worker_get("/emails", params)
+    emails = data.get("emails", [])
+
+    results = []
+    for e in emails:
+        if recipient and recipient not in (e.get("recipient_email") or "").lower() \
+                      and recipient not in (e.get("recipient_name") or "").lower():
+            continue
+        results.append(clean_email(e))
+        if len(results) >= limit:
+            break
+
+    return {"emails": results, "count": len(results)}
+
+
+def get_unreplied_emails(args):
+    min_days = args.get("min_business_days", 3)
+
+    data   = worker_get("/emails", {"direction": "sent", "reply_status": "awaiting_reply", "limit": 150, "offset": 0})
+    emails = data.get("emails", [])
+
+    overdue = []
+    for e in emails:
+        days = business_days_since(e.get("received_at"))
+        if days >= min_days:
+            row = clean_email(e)
+            row["business_days_waiting"] = days
+            overdue.append(row)
+
+    overdue.sort(key=lambda x: x["business_days_waiting"], reverse=True)
+    return {
+        "emails": overdue,
+        "count":  len(overdue),
+        "summary": f"{len(overdue)} sent email(s) awaiting reply for {min_days}+ business days",
+    }
+
+
 TOOL_FNS = {
     "get_actionable_emails":   get_actionable_emails,
     "search_emails":           search_emails,
     "get_recent_emails":       get_recent_emails,
     "get_emails_from_contact": get_emails_from_contact,
+    "get_sent_emails":         get_sent_emails,
+    "get_unreplied_emails":    get_unreplied_emails,
 }
 
 

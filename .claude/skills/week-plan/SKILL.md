@@ -38,6 +38,8 @@ Use the email MCP (retool-email or gmail) to get recent emails (last 3–5 days)
 - Follow-ups you owe someone
 - Threads with customers, prospects, or leadership that need attention this week
 
+Also call `get_unreplied_emails` (retool-email MCP, default 3 business days) for a count of sent emails still awaiting a customer reply — this feeds the one-line pulse in Step 3, not a full breakdown (that's `/service-pulse`).
+
 ### 2.3 Salesforce Opportunities
 
 Call `get_opportunities` from the salesforce-remote MCP to pull open opportunities. Focus on:
@@ -52,6 +54,10 @@ Use `list_tasks(include_done=False)` from Work MCP. Group by:
 - P0 / must do this week
 - P1 / should do this week
 - Anything that's been sitting more than 2 weeks (flag it)
+
+### 2.5 Open Service Cases
+
+Call `sf_get_open_cases` from the Salesforce MCP. Note the count, and flag anything with `status = "Escalated"` or `priority = "High"` by name — these belong in the week's priorities, not just the tally. Full per-account detail lives in `/service-pulse`, not here.
 
 ---
 
@@ -129,6 +135,8 @@ Archive existing `Planning/Week_Priorities.md` to `Archive/Plans/YYYY-Wxx.md`, t
 - [ ] Reply to [person] re: [topic]
 - [ ] Follow up with [person] on [topic]
 
+**Reply/Service Pulse:** [X] sent emails awaiting reply · [Y] open service cases ([Z] escalated)
+
 ---
 
 ## 🏁 End of Week
@@ -163,7 +171,8 @@ Update `System/usage_log.md`. Call `track_event` with `week_plan_completed`.
 > 3. [P3]
 >
 > **Pipeline actions:** [X deals need attention]
-> **Open tasks:** [X P0, Y P1]"
+> **Open tasks:** [X P0, Y P1]
+> **Reply/Service Pulse:** [X] awaiting reply, [Y] open cases ([Z] escalated)"
 
 ---
 
@@ -173,5 +182,6 @@ Update `System/usage_log.md`. Call `track_event` with `week_plan_completed`.
 |--------|-----|-------|
 | Calendar | calendar-mcp | `get_events` for target week |
 | Email | retool-email or gmail | recent inbox, action items |
-| Salesforce | salesforce | open opportunities, close dates |
+| Salesforce | salesforce | open opportunities, close dates, `sf_get_open_cases` |
 | Tasks | work-mcp | `list_tasks` |
+| Email Reply Tracking | retool-email | `get_unreplied_emails` |

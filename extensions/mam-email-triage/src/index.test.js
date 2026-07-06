@@ -2,7 +2,7 @@
 // Exercises pure logic functions and the HTTP router via a mock env.
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import worker from './index.js';
+import worker, { TriageAgent } from './index.js';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -69,8 +69,21 @@ function makeAI(label = 'follow_up', confidence = 0.85, reasoning = 'looks relev
   };
 }
 
-function makeEnv(overrides = {}) {
+// The outer worker `fetch` (bottom of index.js) routes through a
+// TRIAGE_AGENT Durable Object binding before reaching TriageAgent#onRequest.
+// Tests exercise real logic without a Miniflare DO runtime, so this stub
+// wires idFromName/get straight to a real TriageAgent instance.
+function makeTriageAgentBinding(env) {
   return {
+    idFromName: () => 'default',
+    get: () => ({
+      fetch: (request) => new TriageAgent({ waitUntil: () => {} }, env).onRequest(request),
+    }),
+  };
+}
+
+function makeEnv(overrides = {}) {
+  const env = {
     API_KEY: 'test-secret',
     DB: makeDB(),
     SALESFORCE_MCP: makeSalesforceMCP(),
@@ -78,6 +91,8 @@ function makeEnv(overrides = {}) {
     MCP_SECRET: 'mcp-secret',
     ...overrides,
   };
+  env.TRIAGE_AGENT = makeTriageAgentBinding(env);
+  return env;
 }
 
 // ---------------------------------------------------------------------------
@@ -250,6 +265,145 @@ describe('POST /ingest-email', () => {
 });
 
 // ---------------------------------------------------------------------------
+// POST /ingest-email — sent mail + reply tracking
+// ---------------------------------------------------------------------------
+
+describe('POST /ingest-email (sent mail)', () => {
+  it('returns 400 when recipient_email is missing for a sent email', async () => {
+    const res = await worker.fetch(
+      makeRequest('POST', '/ingest-email', {
+        received_at:  '2026-07-01T10:00:00Z',
+        sender_email: 'chris@midatlanticmachinery.com',
+        subject:      'Following up on your quote',
+        direction:    'sent',
+      }),
+      makeEnv(),
+    );
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error).toMatch(/recipient_email/i);
+  });
+
+  it('sets reply_status to awaiting_reply when the recipient matches a Salesforce contact', async () => {
+    const aiSpy = vi.fn();
+    const env = makeEnv({
+      AI: { run: aiSpy },
+      SALESFORCE_MCP: makeSalesforceMCP([{
+        Id: 'sf002', FirstName: 'Jane', LastName: 'Doe',
+        Email: 'jane@customer.com', Title: 'Buyer', Account: { Name: 'Customer Corp' },
+      }]),
+    });
+
+    const res = await worker.fetch(
+      makeRequest('POST', '/ingest-email', {
+        received_at:     '2026-07-01T10:00:00Z',
+        sender_email:    'chris@midatlanticmachinery.com',
+        subject:         'Following up on your quote',
+        direction:       'sent',
+        recipient_email: 'jane@customer.com',
+      }),
+      env,
+    );
+    expect(res.status).toBe(201);
+    const body = await res.json();
+    expect(body.direction).toBe('sent');
+    expect(body.reply_status).toBe('awaiting_reply');
+    expect(body.sf_account_name).toBe('Customer Corp');
+    // Outbound mail isn't triaged — no AI call needed.
+    expect(aiSpy).not.toHaveBeenCalled();
+  });
+
+  it('leaves reply_status null when the recipient is not a known Salesforce contact', async () => {
+    const env = makeEnv({ SALESFORCE_MCP: makeSalesforceMCP([]) });
+    const res = await worker.fetch(
+      makeRequest('POST', '/ingest-email', {
+        received_at:     '2026-07-01T10:00:00Z',
+        sender_email:    'chris@midatlanticmachinery.com',
+        subject:         'Lunch next week?',
+        direction:       'sent',
+        recipient_email: 'friend@personal.com',
+      }),
+      env,
+    );
+    expect(res.status).toBe(201);
+    const body = await res.json();
+    expect(body.reply_status).toBeNull();
+  });
+
+  it('marks a matching sent email as replied when an inbound reply arrives (by conversation_id)', async () => {
+    const updateCalls = [];
+    const sentRow = { id: 42, conversation_id: 'conv-123' };
+    const db = {
+      prepare: (sql) => ({
+        bind: (...bindings) => ({
+          run: async () => {
+            if (/^UPDATE/i.test(sql)) updateCalls.push({ sql, bindings });
+            return { meta: { last_row_id: 1, changes: 1 } };
+          },
+          all: async () => {
+            if (/direction = 'sent' AND reply_status = 'awaiting_reply' AND conversation_id = \?/.test(sql)) {
+              return { results: [sentRow] };
+            }
+            return { results: [] };
+          },
+        }),
+      }),
+    };
+
+    const env = makeEnv({ DB: db, SALESFORCE_MCP: makeSalesforceMCP([]) });
+    const res = await worker.fetch(
+      makeRequest('POST', '/ingest-email', {
+        received_at:     '2026-07-02T09:00:00Z',
+        sender_email:    'jane@customer.com',
+        subject:         'Re: Following up on your quote',
+        body_preview:    'Thanks, looks good.',
+        conversation_id: 'conv-123',
+      }),
+      env,
+    );
+    expect(res.status).toBe(201);
+    expect(updateCalls.length).toBe(1);
+    expect(updateCalls[0].sql).toMatch(/SET reply_status = 'replied'/);
+    expect(updateCalls[0].bindings).toEqual(['2026-07-02T09:00:00Z', 42]);
+  });
+
+  it('falls back to matching on recipient_email when conversation_id is absent', async () => {
+    const updateCalls = [];
+    const sentRow = { id: 7 };
+    const db = {
+      prepare: (sql) => ({
+        bind: (...bindings) => ({
+          run: async () => {
+            if (/^UPDATE/i.test(sql)) updateCalls.push({ sql, bindings });
+            return { meta: { last_row_id: 1, changes: 1 } };
+          },
+          all: async () => {
+            if (/direction = 'sent' AND reply_status = 'awaiting_reply' AND recipient_email = \?/.test(sql)) {
+              return { results: [sentRow] };
+            }
+            return { results: [] };
+          },
+        }),
+      }),
+    };
+
+    const env = makeEnv({ DB: db, SALESFORCE_MCP: makeSalesforceMCP([]) });
+    const res = await worker.fetch(
+      makeRequest('POST', '/ingest-email', {
+        received_at:  '2026-07-02T09:00:00Z',
+        sender_email: 'jane@customer.com',
+        subject:      'Re: Following up on your quote',
+        body_preview: 'Thanks, looks good.',
+      }),
+      env,
+    );
+    expect(res.status).toBe(201);
+    expect(updateCalls.length).toBe(1);
+    expect(updateCalls[0].bindings).toEqual(['2026-07-02T09:00:00Z', 7]);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // GET /emails
 // ---------------------------------------------------------------------------
 
@@ -275,6 +429,30 @@ describe('GET /emails', () => {
     const res = await worker.fetch(makeRequest('GET', '/emails?limit=9999'), makeEnv());
     const body = await res.json();
     expect(body.limit).toBe(200);
+  });
+
+  it('filters by direction and reply_status', async () => {
+    const capturedSql = [];
+    const env = makeEnv({
+      DB: {
+        prepare: (sql) => {
+          capturedSql.push(sql);
+          return {
+            bind: (...bindings) => ({
+              all: async () => ({ results: [] }),
+              run: async () => ({ meta: { changes: 0 } }),
+            }),
+          };
+        },
+      },
+    });
+    const res = await worker.fetch(
+      makeRequest('GET', '/emails?direction=sent&reply_status=awaiting_reply'),
+      env,
+    );
+    expect(res.status).toBe(200);
+    expect(capturedSql[0]).toMatch(/direction = \?/);
+    expect(capturedSql[0]).toMatch(/reply_status = \?/);
   });
 });
 

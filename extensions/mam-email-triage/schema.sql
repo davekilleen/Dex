@@ -29,7 +29,16 @@ CREATE TABLE IF NOT EXISTS emails (
   created_at       TEXT    NOT NULL DEFAULT (datetime('now')),
   updated_at       TEXT    NOT NULL DEFAULT (datetime('now')),
 
-  UNIQUE(received_at, sender_email, subject)
+  direction        TEXT    NOT NULL DEFAULT 'inbox'
+                           CHECK(direction IN ('inbox','sent')),
+  recipient_email  TEXT,
+  recipient_name   TEXT,
+  message_id       TEXT,
+  conversation_id  TEXT,
+  reply_status     TEXT    CHECK(reply_status IN ('awaiting_reply','replied','no_reply_needed')),
+  replied_at       TEXT,
+
+  UNIQUE(received_at, sender_email, subject, direction)
 );
 
 -- Indexes
@@ -40,6 +49,9 @@ CREATE INDEX IF NOT EXISTS idx_received_at     ON emails(received_at DESC);
 CREATE INDEX IF NOT EXISTS idx_sender_email    ON emails(sender_email);
 CREATE INDEX IF NOT EXISTS idx_triage_status   ON emails(triage_label, status);
 CREATE INDEX IF NOT EXISTS idx_sf_match_status ON emails(sf_match_status);
+CREATE INDEX IF NOT EXISTS idx_conversation_id ON emails(conversation_id);
+CREATE INDEX IF NOT EXISTS idx_direction       ON emails(direction);
+CREATE INDEX IF NOT EXISTS idx_reply_status    ON emails(reply_status);
 
 -- Per-email attachments (multiple supported)
 CREATE TABLE IF NOT EXISTS attachments (

@@ -275,34 +275,55 @@ export class TriageAgent extends Agent {
     catch { return jsonResponse({ error: 'Invalid JSON body' }, 400); }
 
     const { received_at, sender_email, sender_name, subject, body_preview, full_body,
-            has_attachment, attachment_name } = payload;
+            has_attachment, attachment_name,
+            direction, recipient_email, recipient_name, message_id, conversation_id } = payload;
 
     if (!received_at || !sender_email || !subject) {
       return jsonResponse({ error: 'received_at, sender_email, and subject are required' }, 400);
     }
 
-    const isObviousNoise = quickIgnoreCheck(sender_email, subject);
+    const dir = direction === 'sent' ? 'sent' : 'inbox';
+    if (dir === 'sent' && !recipient_email) {
+      return jsonResponse({ error: 'recipient_email is required for sent emails' }, 400);
+    }
 
     let sfFields = {
       sf_contact_id: null, sf_contact_name: null, sf_contact_title: null,
       sf_account_id: null, sf_account_name: null, sf_match_status: 'unmatched',
     };
+    let triage;
+    let replyStatus = null;
 
-    if (!isObviousNoise) {
+    if (dir === 'sent') {
+      // Outbound mail is matched against the recipient, not the sender (Chris).
       try {
-        const match = await matchSalesforceContact(sender_email, env);
+        const match = await matchSalesforceContact(recipient_email, env);
         if (match) sfFields = { ...match, sf_match_status: 'matched' };
       } catch (err) {
         console.error('SF match error:', err.message);
         sfFields.sf_match_status = 'error';
       }
-    }
-
-    let triage;
-    if (isObviousNoise) {
-      triage = { label: 'ignore', confidence: 0.95, reasoning: 'Matched ignore rule (spam/newsletter/digest)' };
+      triage = { label: 'fyi', confidence: 1, reasoning: 'Outbound email — not triaged' };
+      // Only track reply status for known SF contacts — that's what "sent to a customer" means here.
+      replyStatus = sfFields.sf_match_status === 'matched' ? 'awaiting_reply' : null;
     } else {
-      triage = await classifyWithAI(env, subject, body_preview, sfFields.sf_match_status === 'matched');
+      const isObviousNoise = quickIgnoreCheck(sender_email, subject);
+
+      if (!isObviousNoise) {
+        try {
+          const match = await matchSalesforceContact(sender_email, env);
+          if (match) sfFields = { ...match, sf_match_status: 'matched' };
+        } catch (err) {
+          console.error('SF match error:', err.message);
+          sfFields.sf_match_status = 'error';
+        }
+      }
+
+      if (isObviousNoise) {
+        triage = { label: 'ignore', confidence: 0.95, reasoning: 'Matched ignore rule (spam/newsletter/digest)' };
+      } else {
+        triage = await classifyWithAI(env, subject, body_preview, sfFields.sf_match_status === 'matched');
+      }
     }
 
     const preview = body_preview ? body_preview.slice(0, 500) : null;
@@ -314,8 +335,9 @@ export class TriageAgent extends Agent {
            has_attachment, attachment_name,
            sf_contact_id, sf_contact_name, sf_contact_title,
            sf_account_id, sf_account_name, sf_match_status,
-           triage_label, triage_category, triage_confidence, triage_reasoning)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+           triage_label, triage_category, triage_confidence, triage_reasoning,
+           direction, recipient_email, recipient_name, message_id, conversation_id, reply_status)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).bind(
         received_at, sender_email, sender_name ?? null, subject,
         preview, full_body ?? null,
@@ -323,7 +345,17 @@ export class TriageAgent extends Agent {
         sfFields.sf_contact_id, sfFields.sf_contact_name, sfFields.sf_contact_title,
         sfFields.sf_account_id, sfFields.sf_account_name, sfFields.sf_match_status,
         triage.label, triage.label, triage.confidence, triage.reasoning,
+        dir, recipient_email ?? null, recipient_name ?? null, message_id ?? null, conversation_id ?? null, replyStatus,
       ).run();
+
+      // An inbound reply can close out a sent email that was awaiting a response.
+      if (dir === 'inbox') {
+        try {
+          await this.markRepliedIfMatch(env, { sender_email, conversation_id, received_at });
+        } catch (err) {
+          console.error('Reply-match error:', err.message);
+        }
+      }
 
       const responsePayload = {
         id:               result.meta.last_row_id,
@@ -338,6 +370,9 @@ export class TriageAgent extends Agent {
         subject,
         has_attachment:   has_attachment ? true : false,
         attachment_name:  attachment_name ?? null,
+        direction:        dir,
+        recipient_email:  recipient_email ?? null,
+        reply_status:     replyStatus,
       };
 
       ctx?.waitUntil(triggerPowerAutomate(env, responsePayload));
@@ -353,24 +388,61 @@ export class TriageAgent extends Agent {
   }
 
   // ---------------------------------------------------------------------------
+  // Reply matching — called after an inbound email is ingested. Closes out
+  // any 'sent' row still awaiting a reply from this sender (by conversation_id
+  // when available, falling back to matching on recipient_email).
+  // ---------------------------------------------------------------------------
+  async markRepliedIfMatch(env, { sender_email, conversation_id, received_at }) {
+    let row = null;
+
+    if (conversation_id) {
+      const { results } = await env.DB.prepare(
+        `SELECT id FROM emails
+         WHERE direction = 'sent' AND reply_status = 'awaiting_reply' AND conversation_id = ?
+         ORDER BY received_at DESC LIMIT 1`
+      ).bind(conversation_id).all();
+      row = results[0];
+    }
+
+    if (!row) {
+      const { results } = await env.DB.prepare(
+        `SELECT id FROM emails
+         WHERE direction = 'sent' AND reply_status = 'awaiting_reply' AND recipient_email = ?
+         ORDER BY received_at DESC LIMIT 1`
+      ).bind(sender_email).all();
+      row = results[0];
+    }
+
+    if (!row) return;
+
+    await env.DB.prepare(
+      `UPDATE emails SET reply_status = 'replied', replied_at = ? WHERE id = ?`
+    ).bind(received_at, row.id).run();
+  }
+
+  // ---------------------------------------------------------------------------
   // GET /emails
   // ---------------------------------------------------------------------------
   async handleListEmails(request, env) {
     if (!checkAuth(request, env)) return jsonResponse({ error: 'Unauthorized' }, 401);
 
-    const url     = new URL(request.url);
-    const label   = url.searchParams.get('label');
-    const status  = url.searchParams.get('status');
-    const account = url.searchParams.get('account');
+    const url         = new URL(request.url);
+    const label       = url.searchParams.get('label');
+    const status      = url.searchParams.get('status');
+    const account     = url.searchParams.get('account');
+    const direction   = url.searchParams.get('direction');
+    const replyStatus = url.searchParams.get('reply_status');
     const limit   = Math.min(parseInt(url.searchParams.get('limit')  || '50', 10), 200);
     const offset  = parseInt(url.searchParams.get('offset') || '0', 10);
 
     const conditions = [];
     const bindings   = [];
 
-    if (label)   { conditions.push('triage_label = ?');       bindings.push(label); }
-    if (status)  { conditions.push('status = ?');             bindings.push(status); }
-    if (account) { conditions.push('sf_account_name LIKE ?'); bindings.push(`%${account}%`); }
+    if (label)       { conditions.push('triage_label = ?');       bindings.push(label); }
+    if (status)      { conditions.push('status = ?');             bindings.push(status); }
+    if (account)     { conditions.push('sf_account_name LIKE ?'); bindings.push(`%${account}%`); }
+    if (direction)   { conditions.push('direction = ?');           bindings.push(direction); }
+    if (replyStatus) { conditions.push('reply_status = ?');        bindings.push(replyStatus); }
 
     const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
     bindings.push(limit, offset);

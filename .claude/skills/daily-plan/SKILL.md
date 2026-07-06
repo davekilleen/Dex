@@ -293,6 +293,12 @@ Include in plan:
 If no urgent emails, omit the section or say "No urgent emails — [Y] follow-ups pending."
 If MCP call fails: skip silently.
 
+**Reply & service case pulse (lightweight):** Also call `get_unreplied_emails` (retool-email MCP, default 3 business days) and `sf_get_open_cases` (Salesforce MCP). Add one summary line to the plan — don't build out a full section here, that's what `/service-pulse` is for:
+
+> **Reply/Service Pulse:** [X] emails awaiting reply · [Y] open service cases ([Z] escalated)
+
+If both counts are zero, omit the line entirely. If either MCP call fails, drop that half of the line silently (e.g. show only the case count if email tracking is unavailable).
+
 ### 5.9 Teams Intelligence (if Teams connected)
 
 Check `System/integrations/config.yaml` for `teams.enabled: true`.
@@ -457,6 +463,7 @@ Flag potential issues:
 - Back-to-back meetings
 - P0 items with no time blocked
 - Deep work tasks with no suitable slot this week
+- Emails awaiting reply past the business-day threshold, or escalated service cases (from 5.8's Reply/Service Pulse)
 
 ---
 
@@ -695,6 +702,8 @@ The plan works at multiple levels:
 | Reminders | dex-calendar-mcp | `reminders_list_items`, `reminders_complete_item`, `reminders_create_item`, `reminders_ensure_lists`, `reminders_list_completed`, `reminders_find_and_complete`, `reminders_clear_completed` |
 | Granola | dex-granola-mcp | `get_recent_meetings` |
 | Work | dex-work-mcp | `list_tasks`, `get_week_progress`, `get_meeting_context`, `get_commitments_due`, `analyze_calendar_capacity`, `suggest_task_scheduling` |
+| Email Reply Tracking | retool-email | `get_unreplied_emails` |
+| Salesforce Cases | salesforce | `sf_get_open_cases` |
 | Improvements | dex-improvements-mcp | `synthesize_changelog`, `synthesize_learnings`, `list_ideas` |
 | Google Workspace | google-workspace-mcp | Gmail query, email search (if enabled) |
 | Teams | teams-mcp | `teams_list_chats`, `teams_search_messages`, `teams_health_check` (if enabled) |

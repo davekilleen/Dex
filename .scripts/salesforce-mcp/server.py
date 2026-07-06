@@ -448,6 +448,30 @@ TOOLS = [
         },
     },
     {
+        "name": "sf_get_open_cases",
+        "description": "Get open (not closed) Salesforce service Cases for accounts you own. Returns case number, subject, status, priority, type, reason, and account/contact. Cases are owned by service dispatch, not by you, so this is scoped via the account owner rather than the case owner.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "priority": {"type": "string", "description": "Filter by priority: High, Medium, Low"},
+                "case_type": {"type": "string", "description": "Filter by Type: Install, PM, Service, Training, Care Visit, Decommissioning, Warranty, On the Job Training"},
+                "account_name": {"type": "string", "description": "Filter by account name (partial match)"},
+                "limit": {"type": "integer", "description": "Max results (default 100)"},
+            },
+        },
+    },
+    {
+        "name": "sf_get_case",
+        "description": "Get full detail for a single Salesforce Case by case number, including description, work order stage, and assigned technician.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "case_number": {"type": "string", "description": "Case number, e.g. '00001950'"},
+            },
+            "required": ["case_number"],
+        },
+    },
+    {
         "name": "sf_get_completed_tasks",
         "description": "Get completed tasks logged in Salesforce within a date range. Returns subject, description/comments, date, contact, and related record. Use to review activity history or analyze note-writing patterns.",
         "inputSchema": {
@@ -1131,6 +1155,91 @@ def tool_sf_get_open_tasks(args):
             "related_id": r.get("What", {}).get("Id") if r.get("What") else None,
         })
     return {"tasks": tasks, "count": len(tasks)}
+
+
+def tool_sf_get_open_cases(args):
+    tokens = get_valid_tokens()
+    if not tokens:
+        return {"error": "Not authenticated. Run sf_authenticate first."}
+    limit = args.get("limit", 100)
+    # Cases are owned by service dispatch (techs), not the sales rep — scope
+    # via the account owner instead of Case.OwnerId, confirmed against the
+    # live org (Case owners were "Lance Fisher", "Jim Frampton", etc.).
+    owner_filter    = f"AND Account.OwnerId = '{OWNER_ID}'" if OWNER_ID else ""
+    priority_filter = f"AND Priority = '{args['priority']}'" if args.get("priority") else ""
+    type_filter     = f"AND Type = '{args['case_type']}'" if args.get("case_type") else ""
+    account_filter  = f"AND Account.Name LIKE '%{args['account_name']}%'" if args.get("account_name") else ""
+    soql = f"""
+        SELECT Id, CaseNumber, Subject, Status, Priority, Type, Reason, Origin,
+               CreatedDate, Account.Name, Account.Id, Contact.Name, Owner.Name, Description
+        FROM Case
+        WHERE IsClosed = false {owner_filter} {priority_filter} {type_filter} {account_filter}
+        ORDER BY CreatedDate ASC
+        LIMIT {limit}
+    """
+    result = sf_query(tokens, soql)
+    cases = []
+    for r in result.get("records", []):
+        cases.append({
+            "id": r.get("Id"),
+            "case_number": r.get("CaseNumber"),
+            "subject": r.get("Subject"),
+            "status": r.get("Status"),
+            "priority": r.get("Priority"),
+            "type": r.get("Type"),
+            "reason": r.get("Reason"),
+            "origin": r.get("Origin"),
+            "created_date": r.get("CreatedDate"),
+            "account": r.get("Account", {}).get("Name") if r.get("Account") else None,
+            "account_id": r.get("Account", {}).get("Id") if r.get("Account") else None,
+            "contact": r.get("Contact", {}).get("Name") if r.get("Contact") else None,
+            "owner": r.get("Owner", {}).get("Name") if r.get("Owner") else None,
+            "description": r.get("Description"),
+        })
+    return {"cases": cases, "count": len(cases)}
+
+
+def tool_sf_get_case(args):
+    tokens = get_valid_tokens()
+    if not tokens:
+        return {"error": "Not authenticated. Run sf_authenticate first."}
+    case_number = args.get("case_number", "").replace("'", "\\'")
+    soql = f"""
+        SELECT Id, CaseNumber, Subject, Status, Priority, Type, Reason, Origin,
+               CreatedDate, ClosedDate, IsClosed, Account.Name, Account.Id,
+               Contact.Name, Contact.Email, Owner.Name, Description,
+               Work_Order_Stage__c, Work_Order_Status__c, Work_Order_Technician__r.Name
+        FROM Case
+        WHERE CaseNumber = '{case_number}'
+        LIMIT 1
+    """
+    result = sf_query(tokens, soql)
+    records = result.get("records", [])
+    if not records:
+        return {"error": f"No case found with number '{case_number}'"}
+    r = records[0]
+    return {
+        "id": r.get("Id"),
+        "case_number": r.get("CaseNumber"),
+        "subject": r.get("Subject"),
+        "status": r.get("Status"),
+        "priority": r.get("Priority"),
+        "type": r.get("Type"),
+        "reason": r.get("Reason"),
+        "origin": r.get("Origin"),
+        "created_date": r.get("CreatedDate"),
+        "closed_date": r.get("ClosedDate"),
+        "is_closed": r.get("IsClosed"),
+        "account": r.get("Account", {}).get("Name") if r.get("Account") else None,
+        "account_id": r.get("Account", {}).get("Id") if r.get("Account") else None,
+        "contact": r.get("Contact", {}).get("Name") if r.get("Contact") else None,
+        "contact_email": r.get("Contact", {}).get("Email") if r.get("Contact") else None,
+        "owner": r.get("Owner", {}).get("Name") if r.get("Owner") else None,
+        "description": r.get("Description"),
+        "work_order_stage": r.get("Work_Order_Stage__c"),
+        "work_order_status": r.get("Work_Order_Status__c"),
+        "technician": r.get("Work_Order_Technician__r", {}).get("Name") if r.get("Work_Order_Technician__r") else None,
+    }
 
 
 def tool_sf_get_completed_tasks(args):
@@ -2486,6 +2595,8 @@ TOOL_FNS = {
     "sf_get_opportunity": tool_sf_get_opportunity,
     "sf_create_task": tool_sf_create_task,
     "sf_get_open_tasks": tool_sf_get_open_tasks,
+    "sf_get_open_cases": tool_sf_get_open_cases,
+    "sf_get_case": tool_sf_get_case,
     "sf_get_completed_tasks": tool_sf_get_completed_tasks,
     "sf_get_project_management": tool_sf_get_project_management,
     "sf_update_opportunity_notes": tool_sf_update_opportunity_notes,
