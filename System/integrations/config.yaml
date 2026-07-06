@@ -9,6 +9,7 @@ enabled:
   notion: false
   slack: true
   google: false
+  adobe_sign: false
 
 # Integration-specific settings are stored in separate files:
 # - notion.yaml (Notion-specific config)
@@ -40,3 +41,11 @@ detected:
   notion: null
   slack: null
   google: null
+
+# Adobe Sign: OAuth app creation requires API Applications access, which isn't
+# available on this account's current Acrobat Sign plan. PDF tools (merge,
+# split, extract, form fields) still work with no Adobe account at all.
+# Revisit /adobe-esign-setup if the plan changes.
+adobe_sign:
+  enabled: false
+  blocked_reason: plan_lacks_api_applications
