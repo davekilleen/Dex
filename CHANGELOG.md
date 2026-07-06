@@ -7,6 +7,21 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.22.0] - Email drafts dashboard: review and push outreach in one place (2026-07-06)
+
+Drafting outreach emails meant a one-shot flow: write copy, generate a throwaway PowerShell script per campaign, dot-source it manually to push everything to Outlook Drafts at once. No way to review or tweak an individual email first, and no path from a Task straight to a drafted email.
+
+**What this fixes for you:**
+
+* **New `/email-drafts-custom` skill.** Scans `Planning/Tasks.md` for outreach-shaped tasks (calls, emails, follow-ups with a contact), resolves the contact to an email via `lookup_person` or their person page, and drafts a personalized email in your tone — or runs the same campaign-targeting flow as `outreach-drafts-custom` for event/promo blasts. Both sources land in one shared queue.
+* **A real dashboard, not a script.** `.scripts/email-drafts/launch.bat` opens a local browser dashboard where every queued draft is editable in place — To/CC/Subject/Body — before it goes anywhere.
+* **Draft by default, send only when you choose.** Every "Push" defaults to creating an Outlook draft. Each email has its own "Send now" toggle for when you've already reviewed it and want it to go out immediately — no separate script, no undo if you check it, so it's opt-in per email.
+* **`outreach-drafts-custom` still works** for a quick one-off campaign script when a review step isn't needed.
+
+**Behind the scenes:** `.scripts/email-drafts/server.cjs` is a dependency-free Node server over `data/drafts.json`; pushes go through a parameterized `push-to-outlook.ps1` (same Outlook COM pattern as the existing outreach scripts).
+
+---
+
 ## [1.21.0] - Your skills now show up when you type "/" (2026-06-18)
 
 Dex has 50+ skills, but none of them appeared in the slash-command dropdown — so it was easy to forget what existed and hard to discover what Dex could do.

@@ -117,3 +117,4 @@ If any target accounts don't have an email address in Salesforce, note them clea
 - One script per campaign — keeps outreach organized and auditable
 - The `-custom` suffix protects this skill from Dex updates
 - To edit this skill: `.claude/skills/outreach-drafts-custom/SKILL.md`
+- **Prefer `email-drafts-custom`** for most campaigns now — it queues drafts in the same review dashboard as task-sourced outreach (edit, then push as an Outlook draft or send directly, per email) instead of generating a one-off script. Use this skill's standalone-script path only for a quick one-off push with no review step needed.

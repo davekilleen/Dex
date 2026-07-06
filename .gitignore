@@ -217,6 +217,9 @@ scripts/private/
 # Salesforce local working dataset — customer PII + email bodies, never commit
 .scripts/salesforce-data/
 
+# Email drafts queue — customer PII + draft email bodies, never commit
+.scripts/email-drafts/data/
+
 # Next.js "src/lib" would otherwise be swallowed by the Python "lib/" rule above
 !extensions/machinery-intelligence-platform/src/lib/
 !extensions/machinery-intelligence-platform/src/lib/**

@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Email Drafts — Mid Atlantic Machinery</title>
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <!-- TOP BAR -->
+  <header class="topbar">
+    <div class="topbar-left">
+      <div class="logo">✉ MAM Drafts</div>
+      <div class="counts" id="counts"></div>
+    </div>
+    <div class="topbar-right">
+      <button id="refreshBtn" class="btn btn-ghost">↺ Refresh</button>
+      <button id="pushAllBtn" class="btn btn-primary">Push All Queued →</button>
+    </div>
+  </header>
+
+  <!-- BODY: two-column layout -->
+  <div class="layout">
+
+    <!-- LEFT: draft list table -->
+    <aside class="sidebar">
+      <div class="sidebar-header">
+        <span>Queue</span>
+        <span id="sidebarCount" class="sidebar-count">0</span>
+      </div>
+      <p id="emptyState" class="empty-state" hidden>
+        No drafts in the queue.<br/>
+        <small>Run <code>/email-drafts</code> in Dex to generate some.</small>
+      </p>
+      <ul id="draftList" class="draft-list"></ul>
+    </aside>
+
+    <!-- RIGHT: editor panel -->
+    <main class="editor" id="editorPanel">
+      <div class="editor-placeholder" id="editorPlaceholder">
+        <div class="placeholder-icon">✉</div>
+        <p>Select a draft from the queue to review and edit it.</p>
+      </div>
+
+      <!-- Editor (hidden until a draft is selected) -->
+      <div id="editorContent" hidden>
+
+        <!-- Editor header -->
+        <div class="editor-header">
+          <div class="editor-header-meta">
+            <span class="editor-contact" id="edContactName"></span>
+            <span class="editor-company" id="edCompany"></span>
+          </div>
+          <div class="editor-header-actions">
+            <span class="badge status-badge" id="edStatusBadge"></span>
+            <button class="btn btn-ghost btn-sm" id="edRemoveBtn">✕ Remove</button>
+          </div>
+        </div>
+
+        <!-- SF Contact Info bar -->
+        <div class="sf-bar" id="sfBar">
+          <div class="sf-bar-info" id="sfInfo">
+            <span class="sf-label">Salesforce</span>
+            <span class="sf-detail" id="sfDetail">Not loaded</span>
+          </div>
+          <button class="btn btn-ghost btn-sm" id="sfLookupBtn">⚡ Look up in SF</button>
+        </div>
+
+        <!-- Fields -->
+        <div class="editor-fields">
+          <div class="field-row">
+            <div class="field">
+              <label>To</label>
+              <input type="email" id="edTo" placeholder="contact@company.com" />
+            </div>
+            <div class="field">
+              <label>CC</label>
+              <input type="email" id="edCc" placeholder="optional" />
+            </div>
+          </div>
+          <div class="field">
+            <label>Subject</label>
+            <input type="text" id="edSubject" />
+          </div>
+          <div class="field">
+            <label>Body</label>
+            <textarea id="edBody"></textarea>
+          </div>
+        </div>
+
+        <!-- AI Rewrite bar -->
+        <div class="rewrite-bar">
+          <div class="rewrite-input-wrap">
+            <input type="text" id="rewritePrompt" placeholder="e.g. Make it shorter and more urgent, mention we have a tech on call this week..." />
+          </div>
+          <button class="btn btn-ai" id="rewriteBtn">✦ AI Rewrite</button>
+        </div>
+        <div class="rewrite-status" id="rewriteStatus" hidden></div>
+
+        <!-- Footer actions -->
+        <div class="editor-footer">
+          <label class="send-toggle">
+            <input type="checkbox" id="edSendMode" />
+            <span>Send now <small>(skips Drafts folder — sends immediately, no undo)</small></span>
+          </label>
+          <div class="footer-actions">
+            <button class="btn btn-secondary" id="edSaveBtn">Save</button>
+            <button class="btn btn-push" id="edPushBtn">Push as Draft</button>
+          </div>
+        </div>
+
+      </div>
+    </main>
+
+  </div><!-- /.layout -->
+
+  <script src="app.js"></script>
+</body>
+</html>
