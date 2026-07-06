@@ -531,13 +531,109 @@ Mid Atlantic Machinery
 
 ---
 
+## 📧 EVENT-SPECIFIC OUTREACH CAMPAIGNS
+
+### EVENT 1: Summer Demo Days 2026 (Every Other Thursday, 10am-2pm)
+
+These are perfect for accounts that need to see equipment in action or have been aging machines.
+
+#### 26. Summer Demo Days — General Outreach (Template)
+**When to use:** For accounts not yet invited to specific events
+
+```
+Subject: Summer Demo Days — See the Latest Cutting & Bending Equipment
+
+Hi [Contact Name],
+
+We're running Summer Demo Days every other Thursday this summer from 10am to 2pm. 
+
+What makes it different:
+- Live equipment running (laser, plasma, waterjet, press brake, etc.)
+- Personalized demos with your materials
+- Our experts on hand to answer technical questions
+- No pressure — come see what's new in the equipment space
+
+Given [your operation / past projects], I think you'd find it valuable. Worth a couple hours?
+
+Full schedule: https://midatlanticmachinery.com/events/
+
+Let me know if you want to reserve a spot.
+
+Thanks,
+Chris Barsanti
+Mid Atlantic Machinery
+```
+
+---
+
+### EVENT 2: Press Brake Bending Training — Wednesday, August 26th, 8:00am
+
+**Target:** Accounts with existing press brakes or interested in press brake optimization. Expert: John Moran
+
+#### 27. Press Brake Training Outreach (Template)
+**When to use:** Fabricators, shops with press brake operations
+
+```
+Subject: Free Press Brake Training — August 26th (Expert John Moran)
+
+Hi [Contact Name],
+
+We're hosting a Foundational and Advanced Techniques of Press Brake Bending training on Wednesday, August 26th at 8:00am with expert John Moran.
+
+This is valuable if:
+- You're maximizing your current press brake throughput
+- You're training a new team or operator
+- You're evaluating whether your current machine can handle your work
+
+It's a full working session with hands-on learning. Want me to reserve a couple of spots for your team?
+
+Details & registration: https://midatlanticmachinery.com/events/
+
+Let me know.
+
+Thanks,
+Chris Barsanti
+Mid Atlantic Machinery
+```
+
+---
+
+### EVENT 3: 2026 Mid Atlantic Machinery Classic Golf Outing — Monday, September 28th
+
+**Purpose:** Relationship-building charity event. Benefits Thaddeus Stevens College (future fabricators program)
+
+#### 28. MAM Classic Golf Outing Outreach (Template)
+**When to use:** Key accounts, long-standing relationships, decision-makers
+
+```
+Subject: Join Us for the 2026 MAM Classic — September 28th (Golf Outing + Charity)
+
+Hi [Contact Name],
+
+We're hosting our annual Mid Atlantic Machinery Classic on Monday, September 28th — a charity golf outing that benefits Thaddeus Stevens College (their future fabricators program).
+
+It's a good day: golf, food, drinks, and a chance to connect with other shop owners and industry folks. All proceeds go to supporting the next generation of fabricators.
+
+Would you be interested in joining? I can get you registered.
+
+Details: https://midatlanticmachinery.com/events/
+
+Let me know.
+
+Thanks,
+Chris Barsanti
+Mid Atlantic Machinery
+```
+
+---
+
 ## 📧 REPLACEMENT-TIMING OUTREACH (July 5 weekend)
 
 **Status:** Replacement-timing campaign with Summer Demo Days / Events promotion
 
-### 26-35. Replacement Timing Campaign Emails
+### 29-38. Replacement Timing Campaign Emails
 
-**Mark B, Roy Shelton, Tony Sambuca, Brandon Gilbert, Whitney, Dennis, Mike, Andrius, Vito, Todd** — see full emails in scripts. These focus on equipment replacement timing and Summer Demo Days event invitations.
+**Mark B, Roy Shelton, Tony Sambuca, Brandon Gilbert, Whitney, Dennis, Mike, Andrius, Vito, Todd** — These focus on equipment replacement timing and Summer Demo Days event invitations.
 
 ---
 
@@ -556,21 +652,26 @@ Mid Atlantic Machinery
 
 ## 🎯 SUMMARY
 
-**Total Email Drafts:** 41  
+**Total Email Templates:** 47+  
 **Unsent from Last Week:** 13 (ALLtra Randy visit, July 2)  
 **Priority This Week:** 28  
+**Event Outreach Templates:** 6  
 
-**🔴 URGENT (Monday AM):**
+---
+
+## 📍 EMAIL OUTREACH BREAKDOWN
+
+### 🔴 URGENT (Monday AM)
 1. Call Aaron Fry — Myers EPS (Cidan Folder, $526,400)
 2. Call Doug — Cidan (Pricing Extension)
 
-**🔥 HIGH PRIORITY (Mon-Wed):**
+### 🔥 HIGH PRIORITY (Mon-Wed)
 - Hanwha Philly Shipyard ($12.06M)
 - Hadco Metal Trading ($1.71M)
 - Precision Fabricating ($1.27M)
 - Kelly Iron Works ($3.84M)
 
-**✅ MEDIUM PRIORITY (Tue-Thu):**
+### ✅ MEDIUM PRIORITY (Tue-Thu)
 - SS Industries ($1.26M)
 - ASGCO Mfg ($755K)
 - TrenchTech ($357K)
@@ -578,12 +679,60 @@ Mid Atlantic Machinery
 - Levan Associates ($413K)
 - Dynamic Metal ($196K)
 
-**📧 ACTION:** 
-1. Review drafts above for each priority level
-2. Pull contact details from Salesforce for high/medium priority accounts
-3. Personalize each email with specific deal info
-4. Send/schedule throughout the week per priority order
+### 📅 EVENT-BASED OUTREACH (June-Sept)
+1. **Summer Demo Days** (Every other Thursday, 10am-2pm) — 6 key accounts
+   - Upgrade prospects, decision-makers
+   - High-touch personal invites
+
+2. **Press Brake Training** (August 26th, 8:00am) — 5-10 press brake users
+   - Press brake shops
+   - Training-focused outreach
+
+3. **MAM Classic Golf Outing** (September 28th) — 10+ key relationships
+   - Relationship-building
+   - Long-standing customers
+   - Industry connections
+
+---
+
+## 🚀 ACTION PLAN
+
+**This Week (July 7-11):**
+1. Monday AM: Call Aaron (Myers EPS) + Doug (Cidan)
+2. Mon-Wed: Send high-priority deal emails (Hanwha, Hadco, Precision, Kelly)
+3. Tue-Thu: Medium-priority follow-ups and sweep calls
+4. Throughout: Personalize event invites for each account (Summer Demo Days first)
+
+**Summer (July-August):**
+- Send Summer Demo Days invites in batches
+- Target: aging plasma/cutting equipment owners
+- Personal touch: mention specific machine upgrades
+
+**August:**
+- Press Brake Training outreach (2-3 weeks before event)
+- Target: press brake operators, fabrication shops
+
+**September:**
+- Golf Outing invites (3-4 weeks before event)
+- Target: key decision-makers, long-term customers
+
+---
+
+## 💡 PERSONALIZATION NOTES
+
+**Deal-specific emails:** Pull company name, equipment type, quote number from Salesforce
+**Event emails:** Customize based on:
+- Current equipment age/type
+- Past purchase history
+- Relationship strength
+- Business focus (cutting, bending, automation)
+
+**For Summer Demo Days:** Lead with time-savings or capacity benefits
+**For Press Brake Training:** Lead with operational efficiency or team development
+**For Golf Outing:** Lead with relationship/networking value + charity impact
 
 ---
 
 *Last Updated: July 5, 2026*
+*Next Review: Friday, July 11, 2026*
+*Event Outreach Follow-up: Week of July 14-18 (after week priorities close)*
