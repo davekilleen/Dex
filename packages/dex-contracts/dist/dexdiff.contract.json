@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dex/contracts/dexdiff.contract.json",
+  "title": "DexDiff Hosted Runtime Contract",
+  "version": "2026-04-10",
+  "hostedOwner": "heydex-website",
+  "portableRuntimeOwner": "dex-core",
+  "referenceOnly": [
+    "dex-pi"
+  ],
+  "publicProfilePath": "/diff/@:handle/",
+  "selfProfilePath": "/diff/profile/",
+  "reviewPath": "/diff/review/",
+  "connectPath": "/connect/",
+  "cliAuth": {
+    "redeemEndpoint": "/api/connect/redeem",
+    "reviewCreateEndpoint": "/api/review/create",
+    "reviewStatusEndpoint": "/api/review/status",
+    "credential": "sessionToken"
+  },
+  "adoption": {
+    "singleWorkflowCommand": "/diff-adopt @handle/diffId",
+    "profileCommand": "/diff-adopt-profile @handle",
+    "singleWorkflowEndpoint": "/api/diff",
+    "profileBundleEndpoint": "/api/profile-bundle",
+    "profileBundleContractVersion": "2026-04-10"
+  },
+  "notes": [
+    "CLI clients should not persist raw Convex tokenIdentifier values.",
+    "Portable /diff-* commands should call the hosted contract and then apply results locally.",
+    "Whole-profile adoption must use the dedicated profile bundle contract instead of the normal public profile payload."
+  ]
+}

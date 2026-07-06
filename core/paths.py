@@ -66,6 +66,13 @@ INTEL_DIR = RESOURCES_DIR / 'Intel'
 MEETING_INTEL_DIR = INTEL_DIR / 'Meeting_Intel'
 LEARNINGS_DIR = RESOURCES_DIR / 'Learnings'
 
+# --- Derived: DexDiff (contract keys, see docs/dexdiff-runtime-boundary.md) ---
+DEXDIFF_DIR = PROJECTS_DIR / 'DexDiff'
+DEXDIFF_BETA_DIR = DEXDIFF_DIR / 'beta'
+DEXDIFF_DIFFS_DIR = DEXDIFF_BETA_DIR / 'diffs'
+DEXDIFF_PROFILE_DRAFTS_DIR = DEXDIFF_BETA_DIR / 'profile'
+DEXDIFF_DESIGN_DIR = DEXDIFF_DIR / 'design'
+
 # --- System ---
 SYSTEM_DIR = VAULT_ROOT / 'System'
 DEX_RUNTIME_DIR = SYSTEM_DIR / '.dex'
