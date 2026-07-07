@@ -1,6 +1,35 @@
 {
+  "skill": "salesforce-mcp",
   "name": "salesforce",
-  "description": "Salesforce CRM — contacts, accounts, opportunities, quotes, assets, activities, and file uploads",
+  "description": "Headless Salesforce REST API tool execution via Cloudflare Workers",
+  "auth_type": "oauth_client_credentials",
+  "environment_variables": [
+    {
+      "name": "SF_CLIENT_ID",
+      "description": "Salesforce External Client App Consumer Key",
+      "required": true
+    },
+    {
+      "name": "SF_CLIENT_SECRET",
+      "description": "Salesforce External Client App Consumer Secret",
+      "required": true
+    },
+    {
+      "name": "SF_MY_DOMAIN",
+      "description": "Salesforce base org domain (e.g., yourcompany.my.salesforce.com)",
+      "required": true
+    },
+    {
+      "name": "MCP_SECRET",
+      "description": "Incoming API validation key securing the Worker endpoints",
+      "required": true
+    }
+  ],
+  "deprecated_variables": [
+    "SF_USERNAME",
+    "SF_PASSWORD",
+    "SF_SECURITY_TOKEN"
+  ],
   "server": {
     "command": "python",
     "args": [".scripts/salesforce-mcp/server.py"],
@@ -12,5 +41,5 @@
       "EMAIL_QUEUE_PATH": "C:\\Users\\Chris\\OneDrive - Mid Atlantic Machinery Inc\\Dex-Email-Queue"
     }
   },
-  "notes": "OAuth tokens stored in ~/.claude/sf_tokens.json. Run sf_authenticate once to connect. Provides pipeline, contacts, accounts, opportunities, quotes (read+create), assets, tasks, file uploads, and quote line items."
+  "notes": "Uses OAuth 2.0 Client Credentials with in-memory token caching; no Salesforce password or security token is required. Provides pipeline, contacts, accounts, opportunities, quotes (read+create), assets, tasks, file uploads, and quote line items."
 }

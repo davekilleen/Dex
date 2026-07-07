@@ -5,11 +5,9 @@
  *
  * Required Worker Secrets (set via `wrangler secret put`):
  *   MCP_SECRET          – Bearer token Dex uses to authenticate
- *   SF_CLIENT_ID        – Salesforce Connected App client ID
- *   SF_CLIENT_SECRET    – Salesforce Connected App client secret
- *   SF_USERNAME         – Only needed if client_credentials grant not enabled
- *   SF_PASSWORD         – Only needed if client_credentials grant not enabled
- *   SF_SECURITY_TOKEN   – Only needed if client_credentials grant not enabled
+ *   SF_CLIENT_ID        – Salesforce External Client App Consumer Key
+ *   SF_CLIENT_SECRET    – Salesforce External Client App Consumer Secret
+ *   SF_MY_DOMAIN        – Your Salesforce org's My Domain URL
  */
 
 const OWNER_ID = "0055Y00000GU69oQAD";
@@ -387,80 +385,78 @@ async function handleMCP(request, env) {
       return mcpResult(id, { tools: TOOLS });
 
     case "tools/call": {
-      const { name, arguments: args } = params || {};
-      try {
-        const { token, instance } = await getSFToken(env);
-        const result = await callTool(name, args || {}, token, instance);
-        return mcpResult(id, {
-          content: [{ type: "text", text: JSON.stringify(result, null, 2) }]
-        });
-      } catch (e) {
-        return mcpResult(id, {
-          content: [{ type: "text", text: `Error: ${e.message}` }],
-          isError: true
-        });
+        const { name, arguments: args } = params || {};
+        try {
+          let { token, instance } = await getSFToken(env);
+          let result;
+          try {
+            result = await callTool(name, args || {}, token, instance);
+          } catch (e) {
+            // Trigger self-healing if token expired or was revoked mid-session
+            if (!String(e.message).includes("401")) throw e;
+            
+            ({ token, instance } = await getSFToken(env, true)); // force refresh
+            result = await callTool(name, args || {}, token, instance);
+          }
+          
+          return new Response(JSON.stringify({
+            jsonrpc: "2.0",
+            id,
+            result: {
+              content: [{ type: "text", text: JSON.stringify(result, null, 2) }]
+            }
+          }), { headers });
+        } catch (error) {
+          return new Response(JSON.stringify({
+            jsonrpc: "2.0",
+            id,
+            error: { code: -32000, message: error.message }
+          }), { headers });
+        }
       }
-    }
 
     default:
       return mcpError(id, -32601, `Method not found: ${method}`);
   }
 }
 
-// ─── Salesforce Auth ─────────────────────────────────────────────────────────
+// ─── Salesforce Auth ─────────────────────────────────────────────
+// OAuth 2.0 Client Credentials Flow. Cached per-isolate; Salesforce
+// access tokens live as long as the org session timeout (2h default),
+// we refresh well before that.
+let sfTokenCache = { token: null, instance: null, expiresAt: 0 };
 
-async function getSFToken(env) {
-  // Try client_credentials first (Connected App OAuth), fall back to SOAP password grant
-  if (env.SF_CLIENT_ID && env.SF_CLIENT_SECRET) {
-    const params = new URLSearchParams({
+async function getSFToken(env, forceRefresh = false) {
+  if (!forceRefresh && sfTokenCache.token && Date.now() < sfTokenCache.expiresAt) {
+    return sfTokenCache;
+  }
+  
+  if (!env.SF_CLIENT_ID || !env.SF_CLIENT_SECRET || !env.SF_MY_DOMAIN) {
+    throw new Error("Missing credentials. Set SF_CLIENT_ID, SF_CLIENT_SECRET, SF_MY_DOMAIN.");
+  }
+  
+  const res = await fetch(`https://${env.SF_MY_DOMAIN}/services/oauth2/token`, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
       grant_type:    "client_credentials",
       client_id:     env.SF_CLIENT_ID,
       client_secret: env.SF_CLIENT_SECRET
-    });
-    const res  = await fetch("https://login.salesforce.com/services/oauth2/token", {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body:    params.toString()
-    });
-    const data = await res.json();
-    if (data.access_token) {
-      return { token: data.access_token, instance: data.instance_url };
-    }
-    // Fall through to SOAP if client_credentials not enabled on the Connected App
-  }
-
-  if (!env.SF_USERNAME || !env.SF_PASSWORD || !env.SF_SECURITY_TOKEN) {
-    throw new Error("Set SF_CLIENT_ID+SF_CLIENT_SECRET (OAuth) or SF_USERNAME+SF_PASSWORD+SF_SECURITY_TOKEN (SOAP) via wrangler secret put.");
-  }
-
-  const soapBody = `<?xml version="1.0" encoding="utf-8"?>
-<env:Envelope xmlns:xsd="http://www.w3.org/2001/XMLSchema"
-    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-    xmlns:env="http://schemas.xmlsoap.org/soap/envelope/">
-  <env:Body>
-    <n1:login xmlns:n1="urn:partner.soap.sforce.com">
-      <n1:username>${env.SF_USERNAME}</n1:username>
-      <n1:password>${env.SF_PASSWORD}${env.SF_SECURITY_TOKEN}</n1:password>
-    </n1:login>
-  </env:Body>
-</env:Envelope>`;
-
-  const res = await fetch("https://login.salesforce.com/services/Soap/u/57.0", {
-    method: "POST",
-    headers: { "Content-Type": "text/xml", SOAPAction: "login" },
-    body: soapBody
+    }).toString()
   });
-
-  const xml    = await res.text();
-  const fault  = xml.match(/<faultstring>([^<]+)<\/faultstring>/);
-  if (fault) throw new Error(`SF Auth: ${fault[1]}`);
-
-  const session = xml.match(/<sessionId>([^<]+)<\/sessionId>/);
-  const server  = xml.match(/<serverUrl>([^<]+)<\/serverUrl>/);
-  if (!session || !server) throw new Error("Could not parse SF login response");
-
-  const instance = server[1].match(/(https:\/\/[^\/]+)/)[1];
-  return { token: session[1], instance };
+  
+  const data = await res.json();
+  if (!data.access_token) {
+    throw new Error(`SF OAuth failed (${res.status}): ${data.error} — ${data.error_description}`);
+  }
+  
+  sfTokenCache = {
+    token:     data.access_token,
+    instance:  data.instance_url,
+    expiresAt: Date.now() + 30 * 60 * 1000   // Conservative 30-min TTL
+  };
+  
+  return sfTokenCache;
 }
 
 // ─── SOQL Helper ─────────────────────────────────────────────────────────────

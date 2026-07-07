@@ -7,6 +7,50 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.24.0] - /visit-prep: one-page field packets, single account or whole route (2026-07-06)
+
+Before a customer visit, the intel lived in six places: the key-account list, open opps, quotes, service cases, EDA equipment data, and old email threads. Assembling it meant either skipping prep or burning 20 minutes per stop.
+
+**What this fixes for you:**
+
+* **New `/visit-prep [account]` skill.** One command builds a packet in `Inbox/Visit_Prep/`: why you're walking in (lease triggers, replacement windows, competitor equipment, stale opps), contacts with phones, equipment floor with ages, open pipeline/quotes/cases, deduped recent activity (email-thread noise collapsed, headers stripped), then an AI **Conversation Strategy** — opener, the one thing to accomplish, talk track, landmines (e.g. "this account is 5 won / 12 lost — don't assume loyalty"), and what to bring.
+* **`/visit-prep route [day]`** preps every account on a territory day from the week's itinerary in one shot — packets ready before the drive.
+* **Knowledge compounds.** Each packet is auto-linked (people → WikiLinks) and cross-linked from the account's hub page under "Visit Preps," so next quarter's prep starts warm instead of cold.
+* **Cheap by design.** A deterministic script (`.scripts/visit-prep.py`, built on sflib) does all data gathering from the local cache — AI only writes the strategy layer. `--stdout`, `--match`, and multi-account batch modes included.
+* **Auto-linker bug fixed.** `auto-link-people.cjs` was turning "Don't" into a link to Don Constantini — contractions are now excluded and bare first names must be capitalized to link.
+
+Inspired by three workflow ideas worth stealing: agentic phase separation (script gathers, AI judges), Karpathy-style compounding wiki (packets feed the knowledge graph), and route-level batch prep (agent-team style automation).
+
+---
+
+## [1.23.0] - Morning Brief + one shared Salesforce library (2026-07-06)
+
+Every morning the signal was scattered across five places — case alerts, the key-account list, quote expirations, pipeline staleness, tasks. And under the hood, the Salesforce auth/query code was copy-pasted across seven scripts, so any fix meant seven edits.
+
+**What this fixes for you:**
+
+* **One daily Morning Brief.** `.scripts/morning-brief.py` writes `Inbox/Daily_Brief/YYYY-MM-DD.md` joining: Tier-1 focus accounts (with next actions), opps closing within 21 days, advanced-stage opps untouched 14+ days (real last-touch computed from Task records, biggest deals first), quotes expiring within 14 days, lease/usage-end radar, today's case alert + open-case count, email follow-ups (when the triage worker is reachable), and open tasks. Runs automatically after the daily 07:15 case alert — no new scheduled task needed.
+* **Key accounts never go stale.** The weekly Monday sync now chains straight into `score-key-accounts.py`, so `Planning/Key_Accounts_H2-2026.md` refreshes itself.
+* **Freshness guard.** The brief warns loudly when the Salesforce cache is more than 8 days old instead of silently reporting stale numbers.
+* **One Salesforce library.** New `.scripts/lib/sflib.py` owns credentials resolution (env → .env → .mcp.json), token refresh, paginated SOQL, 401-retry, and `soql_escape()`. Refactored to use it: `sf-pull-sync.py`, `case-alert.py`, `sf-activity-sync.py`, `customer-intel/generate-report.py`, and the Salesforce MCP server (~350 duplicated lines deleted). Free-text searches now escape quotes, so "O'Brien Metals" no longer breaks queries.
+* **Verified end-to-end:** full read-only sync (817 opps / 758 quotes / 7,741 tasks), case alert, activity-sync dry run, MCP server import (37 tools), and both scheduled wrappers.
+
+**Known issue surfaced:** the deployed mam-email-triage worker returns 403 with the stored `EMAIL_TRIAGE_KEY` — the worker secret and local keys are out of sync, which likely also affects the retool-email MCP tools. The brief degrades gracefully and says how to fix it.
+
+---
+
+## [1.22.1] - Repo hygiene: script archive, Office lock files, full architecture review (2026-07-06)
+
+The `.scripts/` root had accumulated 21 one-off scripts (dated outreach generators, completed migration scripts, ad-hoc API tests) mixed in with the live automation, and Excel lock files showed up as untracked noise in git status.
+
+**What this fixes for you:**
+
+* **`.scripts/` root now only contains live automation.** One-off and completed scripts moved to `.scripts/archive/one-offs/` (git history preserved) — nothing referenced them except their own campaign notes.
+* **Office lock files ignored.** `~$*` added to `.gitignore` so open Excel itineraries no longer clutter git status.
+* **Full architecture & product review** written to `docs/Architecture_Review_2026-07-06.md` — architecture map, ranked tech-debt report, security review, product roadmap (Morning Brief, /visit-prep, territory heat map, buying signals), and Dex v2 vision.
+
+---
+
 ## [1.22.0] - Email drafts dashboard: review and push outreach in one place (2026-07-06)
 
 Drafting outreach emails meant a one-shot flow: write copy, generate a throwaway PowerShell script per campaign, dot-source it manually to push everything to Outlook Drafts at once. No way to review or tweak an individual email first, and no path from a Task straight to a drafted email.

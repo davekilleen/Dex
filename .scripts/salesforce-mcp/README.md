@@ -27,22 +27,37 @@ Wrangler will print your Worker URL:
 
 ---
 
+## Authentication & Architecture
+
+The Worker utilizes the modern Salesforce OAuth 2.0 Client Credentials flow managed through a Salesforce External Client App (ECA).
+
+Authentication tokens are cached in-memory per Cloudflare isolate for 30 minutes to eliminate redundant network round-trips. In the event that a token is revoked or expires early mid-session, the worker features a self-healing retry mechanism that catches `401` errors, clears the cache, fetches a fresh token, and completes the execution seamlessly.
+
+### Required Environment Secrets (Cloudflare Wrangler)
+
+Configure these secrets on your deployed Worker using `wrangler secret put <NAME>`:
+
+| Secret Key | Description | Example / Value |
+| :--- | :--- | :--- |
+| `SF_CLIENT_ID` | Consumer Key from the Salesforce External Client App | *Obtained from App Setup* |
+| `SF_CLIENT_SECRET` | Consumer Secret from the Salesforce External Client App | *Obtained from App Setup* |
+| `SF_MY_DOMAIN` | Your specific Salesforce My Domain URL | `midatlanticmachinery.my.salesforce.com` |
+| `MCP_SECRET` | Inbound bearer token to secure the Worker endpoint | *Your custom communication token* |
+
+*Note: The legacy `SF_USERNAME`, `SF_PASSWORD`, and `SF_SECURITY_TOKEN` variables are deprecated and have been removed from the environment.*
+
+---
+
 ## Step 2 — Set Secrets
 
 Run each of these (you'll be prompted to paste the value):
 
 ```bash
-# Pick any strong random string — save it, you'll need it for .mcp.json
+npx wrangler secret put SF_CLIENT_ID
+npx wrangler secret put SF_CLIENT_SECRET
+npx wrangler secret put SF_MY_DOMAIN
 npx wrangler secret put MCP_SECRET
-
-# Your Salesforce login
-npx wrangler secret put SF_USERNAME
-npx wrangler secret put SF_PASSWORD
-npx wrangler secret put SF_SECURITY_TOKEN
 ```
-
-SF_SECURITY_TOKEN is the token Salesforce emails you when you reset it
-(Settings → Reset My Security Token).
 
 ---
 
@@ -93,6 +108,7 @@ curl -X POST https://salesforce-mcp.cbarsanti.workers.dev/mcp \
 ---
 
 ## Notes
-- All SOQL queries are automatically scoped to OwnerId = your Salesforce user ID
-- SF auth happens per-request (SOAP login) — no session caching needed
-- The /health endpoint is public (no auth) for uptime checks
+- All tool calls now use OAuth 2.0 Client Credentials with cached access tokens.
+- The Worker no longer stores or uses `SF_PASSWORD` or `SF_SECURITY_TOKEN`.
+- The /health endpoint is public (no auth) for uptime checks.
+

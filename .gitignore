@@ -128,6 +128,9 @@ htmlcov/
 # Secrets and Credentials
 # ============================================
 
+# Office temp/lock files (e.g. Planning/~$Week XX - Itinerary.xlsx)
+~$*
+
 # Secrets
 .secrets
 .secrets.reference
