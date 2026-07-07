@@ -1,36 +1,36 @@
 ---
-sf_opportunity_id: 006Nu00000G6k8dIAB
+sf_opportunity_id: 006Nu00000DlV5hIAF
 sf_account_id: 001Nu00000EbflhIAB
 sf_last_synced: 2026-07-07T13:38:47
 ---
 
-# USE - GEKA Hydracrop - Rybnick Mechanical
+# FLO - Waterjet - Rybnick Mechanical
 
 **Account:** [[Rybnick_Mechanical|Rybnick Mechanical]]
-**Stage:** Quoting
-**Amount:** $26,450.00
-**Close Date:** 2025-11-30
-**Probability:** 40%
+**Stage:** Active Project
+**Amount:** $165,000.00
+**Close Date:** 2026-05-29
+**Probability:** 20%
 **Owner:** Chris Barsanti
-**Lead Source:** —
-**Type:** —
+**Vendor:** Flow Waterjet
+**Lead Source:** Employee Referral
 
 ## Next Steps
 
-11/1 - Call Check On Project, End of Year deal
+10/24 – Call Bill Lawrence to check in and offer Flow end of year deal
 
 ## Key Contacts
 
 | Name | Role | Title |
 |------|------|-------|
 | [[Bill_Lawrence|Bill Lawrence]] | — | — |
+| [[Dan_Rybnick|Dan Rybnick]] | — | Owner |
 
 ## Quotes
 
 | Quote # | Status | Total | Expiration | File |
 |---------|--------|-------|------------|------|
-| 00013440 | Customer | $26,450.00 | — | |
-| 00013441 | Customer | $17,880.00 | — | |
+| _No quotes in Salesforce_ | | | | |
 
 ## Correspondence & Files
 
@@ -40,7 +40,7 @@ _Link emails (from Retool email MCP) and OneDrive documents here._
 
 ## Activity Log
 
-_No recent activity_
+_Add entries as `- **YYYY-MM-DD** — Call/Meeting/Email/Note: summary [dex]` to sync to Salesforce._
 
 ## Decisions
 

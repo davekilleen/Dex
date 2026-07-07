@@ -3,220 +3,72 @@ name: pipeline-sync
 description: Sync Salesforce opportunities into project pages with quotes and contact links
 ---
 
-Pulls your open Salesforce pipeline and creates/updates project pages in `Projects/` for each opportunity. Downloads quote documents and links contacts to People pages.
+Syncs the open Salesforce pipeline into project pages in `Projects/`, using the local SF cache — zero MCP calls for data gathering.
 
-## What This Does
-
-1. Fetches open opportunities from Salesforce (`get_opportunities` via salesforce-remote MCP)
-2. For each opportunity, creates or updates a project page in `Projects/`
-3. Pulls quotes and their attached documents (`sf_get_quotes` via local salesforce MCP)
-4. Downloads quote PDFs into each opportunity's `Quotes/` subfolder (`sf_download_quote_file` via local salesforce MCP)
-5. Links Salesforce contacts to People pages in `People/`
-6. Flags closed/won/lost opps for archival to `Archive/Projects/`
+**Design (agentic-OS pattern, see `System/Dex_System/Agentic_Skill_Pattern.md`):** `.scripts/pipeline-sync.py` does all gathering, diffing, and page writing deterministically from `.scripts/salesforce-data/`. AI only handles judgment: quote file downloads, archive decisions, and narrative review. Never fetch opportunities via MCP for this skill.
 
 ## Usage
 
-- `/pipeline-sync` — Full sync: all open opps, quotes, and documents
-- `/pipeline-sync Acme` — Sync only opportunities matching "Acme"
-- `/pipeline-sync --no-download` — Sync metadata only, skip file downloads
-
-## Arguments
-
-$FILTER: Optional. Opportunity name filter (partial match). Default: all open opps.
-$FLAGS: Optional. `--no-download` to skip quote file downloads.
-
-## Prerequisites
-
-- salesforce-remote MCP must be available (Cloudflare Worker — no auth action needed)
-- Local salesforce MCP needed only for quote file downloads
+- `/pipeline-sync` — Full sync: all open opps
+- `/pipeline-sync Acme` — Sync only opps/accounts matching "Acme"
+- `/pipeline-sync --no-download` — Skip quote file downloads
 
 ## Process
 
-### Step 1: Fetch Pipeline
-
-Call `get_opportunities` from the salesforce-remote MCP. If $FILTER is provided, pass it as `account_name` or filter results by opportunity name after fetching.
-
-### Step 2: Diff Against Existing Projects
-
-Scan `Projects/` **recursively** for existing opportunity project pages (they now live at `Projects/{Account}/{Opp}.md`). Match by the `sf_opportunity_id` in frontmatter.
-
-Categorize each opp:
-- **New** — No matching project page exists → create
-- **Update** — Page exists, Salesforce data has changed (stage, amount, close date) → update
-- **Unchanged** — Page exists and data matches → skip
-- **Archive candidate** — Project page exists but opp is no longer in open pipeline → flag
-
-### Step 3: Create/Update Project Pages
-
-For each new or updated opportunity:
-
-1. Call `get_account_details` (salesforce-remote MCP) with the account_id to get full account info and recent activity
-2. Call `get_account_contacts` (salesforce-remote MCP) to get contacts for the account
-3. Create the project page at: `Projects/{Account_Name}/{Opportunity_Slug} - {Vendor__c}.md`
-   - `{Account_Name}` = sanitized account name (replace `&` → `and`, strip forbidden chars)
-   - `{Opportunity_Slug}` = opp name with account prefix stripped, sanitized the same way
-   - Create `Projects/{Account_Name}/` folder if it doesn't exist
-   - Create or update `Projects/{Account_Name}/{Account_Name}.md` hub page listing all opps for that account
-4. Write the project page using the template below
-5. For each contact found:
-   - Check if a People page exists in `People/External/`
-   - If not, create a stub page with name, title, email, company
-   - Wiki-link the contact in the project page
-
-### Step 4: Download Quote Documents
-
-Unless `--no-download` is set:
-
-**Only download quote files for opportunities in these stages:** Favorable, Negotiation, Buying.
-For all other stages (Discovery, Quoting, Active Project, etc.), sync quote metadata (number, status, total) into the project page but skip the actual file download.
-
-1. Call `sf_get_quotes` (local salesforce MCP) for each opportunity
-2. For each quote with attached documents:
-   - If opp stage is Favorable, Negotiation, or Buying:
-     - Create `Projects/{folder}/Quotes/` if needed
-     - Call `sf_download_quote_file` (local salesforce MCP) with the `content_version_id`
-     - Save as `{QuoteNumber}_{Title}.{FileType}` (e.g., `Q-00123_Proposal.pdf`)
-     - Link the file in the project page's Quotes section
-   - Otherwise: record quote metadata in the project page but do not download files
-
-### Step 5: Sync Activity Back to Salesforce
-
-After pulling the pipeline, run the activity sync to push any Dex-originated entries back to Salesforce:
+### Step 1: Run the deterministic sync
 
 ```bash
+python .scripts/pipeline-sync.py [--filter "NAME"]
+```
+
+The script creates new project pages (with contacts and quote metadata from the cache), updates header fields and quote tables on existing pages (never touching Activity Log / Notes / Decisions / Correspondence), creates account hub pages, and prints a summary table.
+
+**Sentinels:**
+- `STALE_CACHE` — offer to run `.scripts/automation/run-sf-sync.ps1` first, then re-run.
+- `NO_CACHE` — run `python .scripts/sf-pull-sync.py` (needs SF auth via local MCP).
+- Use `--dry-run` first if the user wants a preview.
+
+### Step 2: Download quote files (AI judgment — needs local salesforce MCP)
+
+The script ends with a `DOWNLOAD-LIST` of quotes on opps in Favorable/Negotiation/Buying stages. Unless `--no-download`:
+
+1. For each listed quote, call `sf_get_quotes` for the opportunity to get attached document `content_version_id`s.
+2. Skip quotes whose File column in the project page already has a link.
+3. `sf_download_quote_file` → save to `Projects/{Account}/Quotes/{QuoteNumber}_{Title}.{ext}` and add the link in the page's Quotes table File column.
+
+### Step 3: Archive candidates (AI judgment)
+
+The script lists pages whose opps are now closed. Present the list; on confirmation, move each project folder/page to `Archive/Projects/` and update the account hub. Never archive without confirmation.
+
+### Step 4: Auto-link and activity sync
+
+```bash
+node .scripts/auto-link-people.cjs "Projects/<each new/updated file>.md"
 python .scripts/sf-activity-sync.py
 ```
 
-This scans project pages for activity entries tagged `[dex]` that haven't been synced yet (no `<!-- sf:TASK_ID -->` marker) and creates Salesforce Tasks linked to the opportunity. Each entry is marked after sync so it's idempotent on re-run.
-
-**To preview without writing:** `python .scripts/sf-activity-sync.py --dry-run`
-**To sync a single project:** `python .scripts/sf-activity-sync.py --project "Acme Corp"`
-
-**Tagging activity for sync:** When you add an activity line to a project page's `## Activity Log` section, append `[dex]` to queue it for sync on next run:
+The activity sync pushes `[dex]`-tagged Activity Log entries back to Salesforce (idempotent; `--dry-run` to preview). Tag format:
 
 ```markdown
-## Activity Log
-
 - **2026-06-18** — Call: Discussed quote pricing, customer wants 10% reduction [dex]
-- **2026-06-17** — Meeting: Site visit walkthrough, 3 stakeholders attended [dex]
-- **2026-02-20** — Email: Re: Steel Tech (pulled from Salesforce, no tag)
 ```
 
-**Activity subject formats:**
-- `Call: [summary]` for phone calls
-- `Meeting: [summary]` for meetings
-- `Email: [summary]` for email follow-ups
-- `Note: [summary]` for general notes/decisions
-- `Task: [summary]` for completed action items
+Subjects: `Call:` / `Meeting:` / `Email:` / `Note:` / `Task:`.
 
-### Step 6: Summary
+### Step 5: Report
 
-Output a table:
-
-```markdown
-### Pipeline Sync Complete
-
-| Opportunity | Account | Stage | Action |
-|-------------|---------|-------|--------|
-| Widget Deal | Acme Corp | Proposal | Created |
-| Service Contract | Beta Inc | Negotiation | Updated (stage changed) |
-| Old Project | Gamma LLC | — | Archive candidate |
-
-**Created:** X | **Updated:** Y | **Unchanged:** Z | **Archive candidates:** W
-**Quote files downloaded:** N
-```
-
-## Project Page Template
-
-Use this template when creating new opportunity project pages:
-
-```markdown
----
-sf_opportunity_id: {Opportunity.Id}
-sf_account_id: {Account.Id}
-sf_last_synced: {ISO timestamp}
----
-
-# {Opportunity.Name}
-
-**Account:** [[{Account_Name}]]
-**Stage:** {StageName}
-**Amount:** ${Amount}
-**Close Date:** {CloseDate}
-**Probability:** {Probability}%
-**Owner:** {Owner.Name}
-**Lead Source:** {LeadSource}
-**Type:** {Type}
-
-## Next Steps
-
-{NextStep from Salesforce, or "— TBD —"}
-
-## Key Contacts
-
-| Name | Role | Title |
-|------|------|-------|
-| [[{Contact_Name}]] | {OpportunityContactRole.Role} | {Contact.Title} |
-
-## Quotes
-
-| Quote # | Status | Total | Expiration | File |
-|---------|--------|-------|------------|------|
-| {QuoteNumber} | {Status} | ${GrandTotal} | {ExpirationDate} | [[Quotes_{OppSlug}/{filename}]] |
-
-## Correspondence & Files
-
-_Link emails (from Retool email MCP) and OneDrive documents here._
-
-- 
-
-## Activity Log
-
-_Recent Salesforce activity synced automatically._
-
-{Recent tasks/events from sf_get_opportunity}
-
-## Decisions
-
-- 
-
-## Notes
-
-- 
-```
-
-## Folder Structure
-
-After sync, `Projects/` looks like:
-
-```
-Projects/
-  Acme Corp/
-    Acme Corp.md                          ← account hub (auto-generated)
-    Widget Deal - WidgetCo.md
-    Quotes_Widget Deal - WidgetCo/
-      Q-00123_Proposal.pdf
-      Q-00124_Revised_Proposal.pdf
-  Beta Inc/
-    Beta Inc.md                           ← account hub
-    Service Contract - ServicePro.md
-    Quotes_Service Contract - ServicePro/
-      Q-00200_SOW.pdf
-```
-
-## Integration with Other Skills
-
-- **`/daily-plan`** — Pipeline opps surface in daily plans when close dates are near
-- **`/meeting-prep`** — When meeting attendees match opp contacts, the opp page is pulled for context
-- **`/project-health`** — Opp project pages are included in the health scan
-- **`/pipeline-review`** — Sales-specific pipeline analysis (separate skill, uses these pages as input)
+Relay the script's summary table plus what you downloaded/archived. Flag anything odd (e.g., large amount changes, opps missing close dates).
 
 ## When to Run
 
 - Start of week during `/week-plan`
 - Before important sales meetings
 - After a stage change or new quote in Salesforce
-- Anytime you say "sync my pipeline" or "update my deals"
+- Anytime the user says "sync my pipeline" or "update my deals"
+
+## Integration
+
+- `/daily-plan`, `/meeting-prep`, `/project-health`, `/pipeline-review` all read these pages.
 
 ---
 

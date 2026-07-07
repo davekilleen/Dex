@@ -87,10 +87,10 @@ fuzzy-search any of these, or just ask Dex in plain language.
 ## 📦 Other
 
 - **/adobe-esign-setup** — Connect Adobe Acrobat Sign to Dex for sending documents out for e-signature, tracking status, and downloading signed PDFs
+- **/campaign-email-wrapper** — Campaign-focused wrapper for the unified email outreach workflow; drafts event and promotion outreach, queues it into the shared dashboard, and lets you review/edit before pushing to Outlook.
 - **/customer-intel** — Deep customer intelligence from Salesforce Asset records (EDA/UCC data) — equipment inventory, lease expiration tracking, purchase pattern analysis, and strategic outreach timing
 - **/dex** — Show the full catalog of Dex skills grouped by category — your menu of everything Dex can do
-- **/email-drafts-custom** — Generate personalized outreach email drafts from Tasks.md and/or Salesforce campaigns, append them to a shared review queue, and launch the local dashboard where they can be edited and pushed to Outlook (as drafts, or sent directly per email).
-- **/outreach-drafts-custom** — Generate targeted Outlook draft emails for sales events and promotions — pulls matching contacts from Salesforce, writes personalized emails, and pushes them to Outlook Drafts via PowerShell.
+- **/email-queue-manager** — Unified email outreach skill for task follow-ups and campaign/event outreach; queues personalized drafts into the shared dashboard for review, editing, and Outlook push.
 - **/pipeline-review** — Weekly pipeline activity review — surface recent activity across all deals, select what to log to Salesforce, and sync in one shot
 - **/review** — End of day review with learning capture. Integrates with evening journaling if enabled.
 - **/salesforce-quote-email** — Parse an inbound quote-request email, match Salesforce records, collect any missing details interactively, and create a Quote linked to the correct Opportunity — with all attachments uploaded and an audit task logged.

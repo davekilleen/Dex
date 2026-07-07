@@ -67,7 +67,10 @@ Read these files when users ask about system details, features, or setup.
 Add any personal instructions between these markers. The `/dex-update` process preserves this block verbatim.
 
 ## USER_EXTENSIONS_START
-<!-- Add your personal customizations here. -->
+
+### Agentic Skill Pattern (phase separation + model routing)
+When creating or modifying any skill, read `System/Dex_System/Agentic_Skill_Pattern.md` first and follow it: a deterministic script does the data gathering/formatting for zero tokens; AI only does judgment (strategy, framing, cross-linking). Never re-derive in-context what a script already computes. Reference implementation: `/visit-prep`.
+
 ## USER_EXTENSIONS_END
 
 ---
