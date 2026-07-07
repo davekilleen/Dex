@@ -684,8 +684,17 @@ export class TriageAgent extends Agent {
 // ---------------------------------------------------------------------------
 export default {
   async fetch(request, env, ctx) {
-    const id   = env.TRIAGE_AGENT.idFromName("default");
-    const stub = env.TRIAGE_AGENT.get(id);
-    return stub.fetch(request);
+    if (env?.TRIAGE_AGENT?.idFromName && env?.TRIAGE_AGENT?.get) {
+      try {
+        const id   = env.TRIAGE_AGENT.idFromName("default");
+        const stub = env.TRIAGE_AGENT.get(id);
+        return await stub.fetch(request);
+      } catch (err) {
+        console.error('Durable object routing failed, falling back to direct handler:', err.message);
+      }
+    }
+
+    const agent = new TriageAgent(ctx || { waitUntil: () => {} }, env);
+    return agent.onRequest(request);
   },
 };

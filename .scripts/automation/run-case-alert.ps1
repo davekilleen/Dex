@@ -49,4 +49,13 @@ if ($summaryLine) {
     Write-DexLog 'case-alert' 'No alert-worthy changes today'
 }
 
+# Chain: assemble the Morning Brief now that today's case alert (if any) exists.
+$brief = Join-Path $DexVault '.scripts\morning-brief.py'
+Write-DexLog 'case-alert' 'START morning-brief.py'
+$briefOut = & $DexPython $brief 2>&1
+$briefOut | ForEach-Object { Write-DexLog 'case-alert' ($_.ToString()) }
+if ($LASTEXITCODE -ne 0) {
+    Write-DexLog 'case-alert' "WARN: morning-brief.py exited $LASTEXITCODE"
+}
+
 Write-DexLog 'case-alert' 'DONE'

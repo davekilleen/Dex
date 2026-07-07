@@ -148,6 +148,25 @@ describe('POST /ingest-email', () => {
     expect(body.triage_label).toBe('urgent');
   });
 
+  it('falls back to the direct agent when the durable object binding is unavailable', async () => {
+    const env = makeEnv({ AI: makeAI('follow_up', 0.8, 'business follow-up') });
+    delete env.TRIAGE_AGENT;
+
+    const res = await worker.fetch(
+      makeRequest('POST', '/ingest-email', {
+        received_at:  '2026-06-29T10:05:00Z',
+        sender_email: 'ops@customer.com',
+        subject:      'Follow-up needed',
+        body_preview: 'Please review the latest quote.',
+      }),
+      env,
+    );
+
+    expect(res.status).toBe(201);
+    const body = await res.json();
+    expect(body.triage_label).toBe('follow_up');
+  });
+
   it('auto-ignores LinkedIn notification emails without calling AI', async () => {
     const aiSpy = vi.fn();
     const env = makeEnv({

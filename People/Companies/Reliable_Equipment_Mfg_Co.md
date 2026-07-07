@@ -5,6 +5,10 @@ type: customer
 
 # Reliable Equipment Mfg Co
 
+## Visit Preps
+
+- [[2026-07-06 - Reliable Equipment Mfg Co|2026-07-06 visit prep]] — down Rico press brake + 2 more open cases; goal: empathy first, then convert Rico failure into the used press brake discovery and identify the real POC.
+
 
 ## Related Tasks
 *Synced from 03-Tasks/Tasks.md — 2026-07-06 13:59*

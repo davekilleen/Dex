@@ -11,6 +11,10 @@
 
 _See [[People/External]] for contact pages._
 
+## Visit Preps
+
+- [[2026-07-06 - Galaxy Manufacturing Co|2026-07-06 visit prep]] — buying momentum live (SSP49D closed May); goal: TruBend 3100 discovery with Lee/Joe, re-date lapsed AutoTend milestone.
+
 ## Notes
 
 -

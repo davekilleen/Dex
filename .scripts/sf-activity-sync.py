@@ -36,15 +36,12 @@ import os
 import re
 import sys
 from pathlib import Path
-from urllib.parse import urlencode, quote
-from urllib.request import Request, urlopen
+
+sys.path.insert(0, str(Path(__file__).resolve().parent / "lib"))
+import sflib
 
 VAULT_PATH = Path(os.environ.get("VAULT_PATH", Path(__file__).parent.parent))
-TOKEN_FILE = Path.home() / ".claude" / "sf_tokens.json"
-OWNER_ID = os.environ.get("SF_OWNER_ID", "")
-CLIENT_ID = os.environ.get("SF_CLIENT_ID", "")
-CLIENT_SECRET = os.environ.get("SF_CLIENT_SECRET", "")
-LOGIN_URL = "https://login.salesforce.com"
+CLIENT_ID, CLIENT_SECRET, OWNER_ID = sflib.resolve_creds(VAULT_PATH)
 
 # Maps activity line prefix (lowercase) to Salesforce Type picklist value
 PREFIX_TO_TYPE = {
@@ -75,62 +72,21 @@ PREFIX_PATTERN = re.compile(r"^([^:]{2,30}):\s+(.+)$")
 
 # -- Token / auth ---------------------------------------------------------------
 
-def load_tokens():
-    if TOKEN_FILE.exists():
-        return json.loads(TOKEN_FILE.read_text())
-    return None
-
-
-def save_tokens(tokens):
-    TOKEN_FILE.parent.mkdir(parents=True, exist_ok=True)
-    TOKEN_FILE.write_text(json.dumps(tokens, indent=2))
-
-
-def refresh_access_token(refresh_token):
-    data = urlencode({
-        "grant_type": "refresh_token",
-        "client_id": CLIENT_ID,
-        "client_secret": CLIENT_SECRET,
-        "refresh_token": refresh_token,
-    }).encode()
-    req = Request(f"{LOGIN_URL}/services/oauth2/token", data=data, method="POST")
-    with urlopen(req) as resp:
-        return json.loads(resp.read())
-
-
 def get_valid_tokens():
-    tokens = load_tokens()
+    tokens = sflib.get_valid_tokens()
     if not tokens:
         print("ERROR: Not authenticated. Run sf_authenticate via MCP first.", file=sys.stderr)
         sys.exit(1)
-    try:
-        refreshed = refresh_access_token(tokens["refresh_token"])
-        tokens["access_token"] = refreshed["access_token"]
-        if "instance_url" in refreshed:
-            tokens["instance_url"] = refreshed["instance_url"]
-        save_tokens(tokens)
-    except Exception:
-        pass
     return tokens
 
 
 # -- Salesforce API -------------------------------------------------------------
 
 def sf_query(tokens, soql):
-    instance_url = tokens["instance_url"]
-    access_token = tokens["access_token"]
-    encoded = quote(soql)
-    req = Request(
-        f"{instance_url}/services/data/v59.0/query?q={encoded}",
-        headers={"Authorization": f"Bearer {access_token}"},
-    )
-    with urlopen(req) as resp:
-        return json.loads(resp.read())
+    return sflib.query(tokens, soql)
 
 
 def sf_create_task(tokens, subject, description, activity_date, sf_type, what_id, who_id=None):
-    instance_url = tokens["instance_url"]
-    access_token = tokens["access_token"]
     payload = {
         "Subject": subject,
         "Status": "Completed",
@@ -144,15 +100,7 @@ def sf_create_task(tokens, subject, description, activity_date, sf_type, what_id
         payload["WhoId"] = who_id
     if OWNER_ID:
         payload["OwnerId"] = OWNER_ID
-    data = json.dumps(payload).encode()
-    req = Request(
-        f"{instance_url}/services/data/v59.0/sobjects/Task",
-        data=data,
-        headers={"Authorization": f"Bearer {access_token}", "Content-Type": "application/json"},
-        method="POST",
-    )
-    with urlopen(req) as resp:
-        return json.loads(resp.read())
+    return sflib.rest(tokens, "POST", "sobjects/Task", payload)
 
 
 # -- Activity text parsing ------------------------------------------------------
@@ -212,7 +160,7 @@ def lookup_contact_from_opportunity(tokens, opp_id):
     if opp_id in _contact_cache:
         return _contact_cache[opp_id]
     try:
-        soql = f"SELECT Contact__c FROM Opportunity WHERE Id = '{opp_id}' LIMIT 1"
+        soql = f"SELECT Contact__c FROM Opportunity WHERE Id = '{sflib.soql_escape(opp_id)}' LIMIT 1"
         result = sf_query(tokens, soql)
         records = result.get("records", [])
         contact_id = records[0].get("Contact__c") if records else None

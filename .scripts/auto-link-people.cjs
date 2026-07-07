@@ -201,12 +201,18 @@ function linkSegment(text, fullNameMap, firstNameMap, suppress) {
     ...firstNames.map(n => escapeName(n)),
   ];
 
-  const re = new RegExp(`\\b(${allPatterns.join('|')})\\b`, 'gi');
+  // (?!['’]\w) — don't treat the "Don" in "Don't" / "don't" as a name; the
+  // apostrophe is a non-word char, so \b alone fires mid-contraction.
+  const re = new RegExp(`\\b(${allPatterns.join('|')})\\b(?!['’]\\w)`, 'gi');
 
   return text.replace(re, (match) => {
     const lower = match.toLowerCase();
+    const isFullName = fullNameMap.has(lower);
     const person = fullNameMap.get(lower) || firstNameMap.get(lower);
     if (!person) return match; // shouldn't happen but guard
+    // Bare first names must be capitalised in the text ("Don", not "don") —
+    // lowercase hits are almost always ordinary words, not people.
+    if (!isFullName && !/^[A-Z]/.test(match)) return match;
     return `[[${person.wikiTarget}|${match}]]`;
   });
 }

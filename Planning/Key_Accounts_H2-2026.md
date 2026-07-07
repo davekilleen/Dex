@@ -1,6 +1,6 @@
 # Key Accounts — H2 2026 (Jul–Dec)
 
-*Generated July 05, 2026 by `score-key-accounts.py`. Source: local Salesforce cache (Chris-owned scope) + EDA equipment data. Re-run after each weekly sync to refresh.*
+*Generated July 06, 2026 by `score-key-accounts.py`. Source: local Salesforce cache (Chris-owned scope) + EDA equipment data. Re-run after each weekly sync to refresh.*
 
 **Scoring (0–100):** Replacement urgency 35 · Historic buying 25 · Open pipeline 25 · Competitive displacement 15.
 
@@ -21,7 +21,7 @@
 | 5 | **Hadco Metal Trading Co, LLC - Bensalem, PA** (Bensalem, PA) | 32 | 1 prior win(s), last 1.7yr ago; $1,709,589 open (Favorable, Quoting) | - | $1,709,589 | Close push: confirm config, propose demo/visit, drive to PO |
 | 6 | **Myers Emergency Power Systems** (Bethlehem, PA) | 30 | 2 prior win(s), last 3.0yr ago; $526,400 open (Negotiation) | - | $526,400 | Close push: confirm config, propose demo/visit, drive to PO |
 | 7 | **Anvil Craft Corporation** (Easton, PA) | 30 | 1 prior win(s), last 0.4yr ago; $513,890 open (Discovery, Quoting) | - | $513,890 | Advance open opp + book demo/visit on territory day |
-| 8 | **Precision Fabricating Group** (Easton, PA) | 28 | 1 prior win(s), last 3.0yr ago; $1,269,900 open (Discovery, Favorable) | - | $1,269,900 | Close push: confirm config, propose demo/visit, drive to PO |
+| 8 | **Precision Fabricating Group** (Easton, PA) | 28 | 1 prior win(s), last 3.0yr ago; $1,269,900 open (Closed - Lost, Discovery, Favorable) | - | $1,269,900 | Close push: confirm config, propose demo/visit, drive to PO |
 | 9 | **TrenchTech, Inc.** (Morrisville, PA) | 28 | 1 prior win(s), last 2.2yr ago; $357,304 open (Discovery, Favorable, Quoting) | - | $357,304 | Close push: confirm config, propose demo/visit, drive to PO |
 | 10 | **Pennsylvania Steel Company - Bensalem, PA** (Bensalem, PA) | 28 | 1 prior win(s), last 5.0yr ago; $719,895 open (Active Project, Discovery, Quoting) | - | $719,895 | Advance open opp + book demo/visit on territory day |
 | 11 | **Dynamic Metal Innovations** (Emmaus, PA) | 27 | 2 prior win(s), last 1.0yr ago; $196,058 open (Discovery, Favorable) | - | $196,058 | Close push: confirm config, propose demo/visit, drive to PO |
@@ -52,7 +52,7 @@
 | 4 | **Anderson Tube** (Hatfield, PA) | 11 | 1 prior win(s), last 0.6yr ago | - | - | Reactivation: historic buyer, open discovery on current needs |
 | 5 | **S&W Metal Products LLC** (Birdsboro, PA) | 10 | 2 prior win(s), last 1.6yr ago | - | - | Reactivation: historic buyer, open discovery on current needs |
 | 6 | **DEL Motorized Solutions** (Bensalem, PA) | 9 | 1 prior win(s), last 1.1yr ago | - | - | Reactivation: historic buyer, open discovery on current needs |
-| 7 | **TRS Welding & Fabrication Inc** (Gilbertsville, PA) | 7 | 1 prior win(s), last 1.7yr ago | - | - | Reactivation: historic buyer, open discovery on current needs |
+| 7 | **TRS Welding & Fabrication Inc** (Gilbertsville, PA) | 7 | 1 prior win(s), last 1.8yr ago | - | - | Reactivation: historic buyer, open discovery on current needs |
 | 8 | **Soti Union Inc** (Philadelphia, PA) | 6 | 1 prior win(s), last 1.8yr ago | - | - | Reactivation: historic buyer, open discovery on current needs |
 
 ## Tier 3 — Relationship / Radar

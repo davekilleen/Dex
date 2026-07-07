@@ -23,91 +23,25 @@ Usage:
 
 import argparse, json, os, sys, datetime
 from pathlib import Path
-from urllib.parse import quote
-from urllib.request import Request, urlopen
+
+sys.path.insert(0, str(Path(__file__).resolve().parent / "lib"))
+import sflib
 
 VAULT_PATH = Path(os.environ.get("VAULT_PATH", Path(__file__).resolve().parent.parent))
 OUT_DIR = VAULT_PATH / ".scripts" / "salesforce-data"
-TOKEN_FILE = Path.home() / ".claude" / "sf_tokens.json"
-LOGIN_URL = "https://login.salesforce.com"
-API = "v59.0"
 
+CLIENT_ID, CLIENT_SECRET, OWNER_ID = sflib.resolve_creds(VAULT_PATH)
 
-# -- Credentials: env first, then .mcp.json (so scheduled tasks work) -----------
-
-def _load_creds():
-    cid = os.environ.get("SF_CLIENT_ID", "")
-    csec = os.environ.get("SF_CLIENT_SECRET", "")
-    owner = os.environ.get("SF_OWNER_ID", "")
-    if not (cid and csec and owner):
-        mcp = VAULT_PATH / ".mcp.json"
-        if mcp.exists():
-            try:
-                cfg = json.loads(mcp.read_text(encoding="utf-8"))
-                # find the salesforce server env block
-                servers = cfg.get("mcpServers", cfg.get("servers", {}))
-                for name, s in servers.items():
-                    env = s.get("env") or {}
-                    if env.get("SF_CLIENT_ID") or env.get("SF_OWNER_ID"):
-                        cid = cid or env.get("SF_CLIENT_ID", "")
-                        csec = csec or env.get("SF_CLIENT_SECRET", "")
-                        owner = owner or env.get("SF_OWNER_ID", "")
-                        if cid and csec and owner:
-                            break
-            except Exception as e:
-                print(f"WARN: could not read .mcp.json creds: {e}", file=sys.stderr)
-    return cid, csec, owner
-
-CLIENT_ID, CLIENT_SECRET, OWNER_ID = _load_creds()
-
-
-# -- Auth (same pattern as sf-activity-sync.py) ---------------------------------
 
 def get_valid_tokens():
-    if not TOKEN_FILE.exists():
+    tokens = sflib.get_valid_tokens()
+    if not tokens:
         print("ERROR: Not authenticated. Run sf_authenticate via the Salesforce MCP first.", file=sys.stderr)
         sys.exit(1)
-    tokens = json.loads(TOKEN_FILE.read_text())
     if not (CLIENT_ID and CLIENT_SECRET):
-        print("ERROR: SF_CLIENT_ID / SF_CLIENT_SECRET not found (env or .mcp.json).", file=sys.stderr)
+        print("ERROR: SF_CLIENT_ID / SF_CLIENT_SECRET not found (env, .env, or .mcp.json).", file=sys.stderr)
         sys.exit(1)
-    from urllib.parse import urlencode
-    data = urlencode({
-        "grant_type": "refresh_token",
-        "client_id": CLIENT_ID,
-        "client_secret": CLIENT_SECRET,
-        "refresh_token": tokens["refresh_token"],
-    }).encode()
-    try:
-        with urlopen(Request(f"{LOGIN_URL}/services/oauth2/token", data=data, method="POST")) as r:
-            refreshed = json.loads(r.read())
-        tokens["access_token"] = refreshed["access_token"]
-        if "instance_url" in refreshed:
-            tokens["instance_url"] = refreshed["instance_url"]
-        TOKEN_FILE.write_text(json.dumps(tokens, indent=2))
-    except Exception as e:
-        print(f"WARN: token refresh failed ({e}); using existing access_token", file=sys.stderr)
     return tokens
-
-
-def sf_query_all(tokens, soql):
-    """Run SOQL and follow pagination until all records are retrieved."""
-    inst, tok = tokens["instance_url"], tokens["access_token"]
-    url = f"{inst}/services/data/{API}/query?q={quote(soql)}"
-    records = []
-    while url:
-        with urlopen(Request(url, headers={"Authorization": f"Bearer {tok}"})) as r:
-            data = json.loads(r.read())
-        records.extend(data.get("records", []))
-        nxt = data.get("nextRecordsUrl")
-        url = f"{inst}{nxt}" if nxt else None
-    return records
-
-
-def strip_attrs(records):
-    for rec in records:
-        rec.pop("attributes", None)
-    return records
 
 
 # -- Queries --------------------------------------------------------------------
@@ -189,7 +123,7 @@ def main():
 
     for name, soql in selected.items():
         try:
-            recs = strip_attrs(sf_query_all(tokens, soql))
+            recs = sflib.query_all(tokens, soql)
             (OUT_DIR / f"{name}.json").write_text(
                 json.dumps(recs, indent=2, default=str, ensure_ascii=False), encoding="utf-8"
             )

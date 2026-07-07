@@ -28,4 +28,14 @@ if ($code -ne 0) {
     Write-DexLog 'sf-sync' "ERROR: sf-pull-sync.py exited $code"
     exit 1
 }
+
+# Chain: re-score key accounts off the fresh cache so the tier list never goes stale.
+$scorer = Join-Path $DexVault '.scripts\customer-intel\score-key-accounts.py'
+Write-DexLog 'sf-sync' 'START score-key-accounts.py'
+$scoreOut = & $DexPython $scorer 2>&1
+$scoreOut | ForEach-Object { Write-DexLog 'sf-sync' ($_.ToString()) }
+if ($LASTEXITCODE -ne 0) {
+    Write-DexLog 'sf-sync' "WARN: score-key-accounts.py exited $LASTEXITCODE"
+}
+
 Write-DexLog 'sf-sync' "DONE"

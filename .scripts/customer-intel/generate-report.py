@@ -24,9 +24,8 @@ import argparse
 import re
 from datetime import datetime, date, timedelta
 from pathlib import Path
-from urllib.parse import urlencode
-from urllib.request import Request, urlopen
-from urllib.error import HTTPError
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
+import sflib
 
 # ── Config ────────────────────────────────────────────────────────────────────
 
@@ -34,10 +33,7 @@ VAULT_PATH = os.environ.get("VAULT_PATH", "")
 VAULT_ROOT = Path(VAULT_PATH) if VAULT_PATH else Path(__file__).resolve().parent.parent.parent
 SF_DATA_DIR = VAULT_ROOT / ".scripts" / "salesforce-data"
 EDA_DATA_DIR = VAULT_ROOT / ".scripts" / "customer-intel" / "eda-data"
-TOKEN_FILE = Path.home() / ".claude" / "sf_tokens.json"
-LOGIN_URL = "https://login.salesforce.com"
-CLIENT_ID = os.environ.get("SF_CLIENT_ID", "")
-CLIENT_SECRET = os.environ.get("SF_CLIENT_SECRET", "")
+CLIENT_ID, CLIENT_SECRET, _OWNER = sflib.resolve_creds(VAULT_ROOT)
 REPORT_STATES = {"PA"}
 
 LEGAL_SUFFIXES = {
@@ -62,66 +58,14 @@ US_STATE_ABBR = {
 }
 
 
-# ── Salesforce Auth ────────────────────────────────────────────────────────────
-
-def load_tokens():
-    if not TOKEN_FILE.exists():
-        return None
-    with open(TOKEN_FILE) as f:
-        return json.load(f)
-
-
-def save_tokens(tokens):
-    TOKEN_FILE.parent.mkdir(parents=True, exist_ok=True)
-    with open(TOKEN_FILE, "w") as f:
-        json.dump(tokens, f)
-
-
-def refresh_tokens(tokens):
-    refresh_token = tokens.get("refresh_token")
-    if not refresh_token:
-        return None
-    data = urlencode({
-        "grant_type": "refresh_token",
-        "client_id": CLIENT_ID,
-        "client_secret": CLIENT_SECRET,
-        "refresh_token": refresh_token,
-    }).encode()
-    req = Request(f"{LOGIN_URL}/services/oauth2/token", data=data, method="POST")
-    try:
-        with urlopen(req) as resp:
-            new_tokens = json.loads(resp.read())
-            new_tokens["refresh_token"] = refresh_token
-            save_tokens(new_tokens)
-            return new_tokens
-    except Exception:
-        return None
-
+# ── Salesforce Auth (delegated to sflib) ──────────────────────────────────────
 
 def get_valid_tokens():
-    tokens = load_tokens()
-    if not tokens:
-        return None
-    return tokens
+    return sflib.load_tokens()
 
 
 def sf_query(tokens, soql):
-    instance_url = tokens["instance_url"]
-    access_token = tokens["access_token"]
-    encoded = urlencode({"q": soql})
-    req = Request(
-        f"{instance_url}/services/data/v59.0/query?{encoded}",
-        headers={"Authorization": f"Bearer {access_token}"},
-    )
-    try:
-        with urlopen(req) as resp:
-            return json.loads(resp.read())
-    except HTTPError as e:
-        if e.code == 401 and tokens.get("refresh_token"):
-            refreshed = refresh_tokens(tokens)
-            if refreshed:
-                return sf_query(refreshed, soql)
-        raise
+    return sflib.query(tokens, soql)
 
 
 # ── Owned Account Scope ───────────────────────────────────────────────────────

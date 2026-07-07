@@ -18,6 +18,9 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlencode, urlparse
 from urllib.request import Request, urlopen
 
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
+import sflib
+
 VAULT_PATH = os.environ.get("VAULT_PATH", "")
 EMAIL_QUEUE_PATH = os.environ.get("EMAIL_QUEUE_PATH", "")  # overrides vault-based path for email queue
 
@@ -46,53 +49,20 @@ _load_mcp_config_env()
 
 # ── Config ────────────────────────────────────────────────────────────────────
 
-CLIENT_ID = os.environ.get("SF_CLIENT_ID", "")
-CLIENT_SECRET = os.environ.get("SF_CLIENT_SECRET", "")
+CLIENT_ID, CLIENT_SECRET, OWNER_ID = sflib.resolve_creds(VAULT_PATH or None)
 REDIRECT_URI = "http://localhost:8080/callback"
 LOGIN_URL = "https://login.salesforce.com"
-TOKEN_FILE = Path.home() / ".claude" / "sf_tokens.json"
-OWNER_ID = os.environ.get("SF_OWNER_ID", "")
+TOKEN_FILE = sflib.TOKEN_FILE
 
 
-# ── Token storage ─────────────────────────────────────────────────────────────
+# ── Token storage (delegated to sflib) ────────────────────────────────────────
 
-def load_tokens():
-    if TOKEN_FILE.exists():
-        return json.loads(TOKEN_FILE.read_text())
-    return None
-
-
-def save_tokens(tokens):
-    TOKEN_FILE.parent.mkdir(parents=True, exist_ok=True)
-    TOKEN_FILE.write_text(json.dumps(tokens, indent=2))
-
-
-def refresh_access_token(refresh_token):
-    data = urlencode({
-        "grant_type": "refresh_token",
-        "client_id": CLIENT_ID,
-        "client_secret": CLIENT_SECRET,
-        "refresh_token": refresh_token,
-    }).encode()
-    req = Request(f"{LOGIN_URL}/services/oauth2/token", data=data, method="POST")
-    with urlopen(req) as resp:
-        result = json.loads(resp.read())
-    return result
+load_tokens = sflib.load_tokens
+save_tokens = sflib.save_tokens
 
 
 def get_valid_tokens():
-    tokens = load_tokens()
-    if not tokens:
-        return None
-    try:
-        refreshed = refresh_access_token(tokens["refresh_token"])
-        tokens["access_token"] = refreshed["access_token"]
-        if "instance_url" in refreshed:
-            tokens["instance_url"] = refreshed["instance_url"]
-        save_tokens(tokens)
-        return tokens
-    except Exception:
-        return tokens  # return as-is and let the caller fail
+    return sflib.get_valid_tokens()
 
 
 # ── OAuth flow ────────────────────────────────────────────────────────────────
@@ -177,70 +147,30 @@ def do_oauth():
     return tokens
 
 
-# ── Salesforce REST API ───────────────────────────────────────────────────────
+# ── Salesforce REST API (delegated to sflib) ─────────────────────────────────
 
 def sf_query(tokens, soql):
-    instance_url = tokens["instance_url"]
-    access_token = tokens["access_token"]
-    encoded = urlencode({"q": soql})
-    req = Request(
-        f"{instance_url}/services/data/v59.0/query?{encoded}",
-        headers={"Authorization": f"Bearer {access_token}", "Content-Type": "application/json"},
-    )
-    with urlopen(req) as resp:
-        return json.loads(resp.read())
+    return sflib.query(tokens, soql)
 
 
 def sf_post(tokens, path, payload):
-    instance_url = tokens["instance_url"]
-    access_token = tokens["access_token"]
-    data = json.dumps(payload).encode()
-    req = Request(
-        f"{instance_url}/services/data/v59.0/{path}",
-        data=data,
-        headers={"Authorization": f"Bearer {access_token}", "Content-Type": "application/json"},
-        method="POST",
-    )
-    with urlopen(req) as resp:
-        return json.loads(resp.read())
+    return sflib.rest(tokens, "POST", path, payload)
 
 
 def sf_get(tokens, path):
-    instance_url = tokens["instance_url"]
-    access_token = tokens["access_token"]
-    req = Request(
-        f"{instance_url}/services/data/v59.0/{path}",
-        headers={"Authorization": f"Bearer {access_token}", "Content-Type": "application/json"},
-    )
-    with urlopen(req) as resp:
-        return json.loads(resp.read())
+    return sflib.rest(tokens, "GET", path)
 
 
 def sf_patch(tokens, path, payload):
-    instance_url = tokens["instance_url"]
-    access_token = tokens["access_token"]
-    data = json.dumps(payload).encode()
-    req = Request(
-        f"{instance_url}/services/data/v59.0/{path}",
-        data=data,
-        headers={"Authorization": f"Bearer {access_token}", "Content-Type": "application/json"},
-        method="PATCH",
-    )
-    with urlopen(req) as resp:
-        body = resp.read()
-        return json.loads(body) if body else {"success": True}
+    return sflib.rest(tokens, "PATCH", path, payload)
 
 
 def sf_search(tokens, query):
-    instance_url = tokens["instance_url"]
-    access_token = tokens["access_token"]
-    encoded = urlencode({"q": query})
-    req = Request(
-        f"{instance_url}/services/data/v59.0/search?{encoded}",
-        headers={"Authorization": f"Bearer {access_token}"},
-    )
-    with urlopen(req) as resp:
-        return json.loads(resp.read())
+    return sflib.search(tokens, query)
+
+
+# Escape free-text values before interpolating into SOQL ("O'Brien Metals").
+esc = sflib.soql_escape
 
 
 # ── Machine Type picklist ─────────────────────────────────────────────────────
@@ -828,7 +758,7 @@ def tool_sf_get_pipeline(args):
         return {"error": "Not authenticated. Run sf_authenticate first."}
     stage = args.get("stage", "")
     limit = args.get("limit", 100)
-    stage_filter = f"AND StageName LIKE '%{stage}%'" if stage else ""
+    stage_filter = f"AND StageName LIKE '%{esc(stage)}%'" if stage else ""
     owner_filter = f"AND OwnerId = '{OWNER_ID}'" if OWNER_ID else ""
     soql = f"""
         SELECT Id, Name, StageName, Amount, CloseDate, Account.Name, Account.Id,
@@ -866,7 +796,7 @@ def tool_sf_search_contacts(args):
     soql = f"""
         SELECT Id, Name, Email, Phone, Title, Account.Name
         FROM Contact
-        WHERE (Name LIKE '%{query}%' OR Email LIKE '%{query}%' OR Account.Name LIKE '%{query}%') {owner_filter}
+        WHERE (Name LIKE '%{esc(query)}%' OR Email LIKE '%{esc(query)}%' OR Account.Name LIKE '%{esc(query)}%') {owner_filter}
         LIMIT 10
     """
     result = sf_query(tokens, soql)
@@ -889,7 +819,7 @@ def tool_sf_get_account(args):
         return {"error": "Not authenticated. Run sf_authenticate first."}
     name = args["name"]
     owner_filter = f"AND OwnerId = '{OWNER_ID}'" if OWNER_ID else ""
-    soql = f"SELECT Id, Name, Phone, Website, BillingCity, BillingState, BillingPostalCode, Division__c, Territory__c, CompanyType__c, Account_Status__c, Account_Rating__c, Open_Deal_Amount__c, Open_Deal_Count__c, Closed_Deal_Amount__c, Closed_Deal_Count__c FROM Account WHERE Name LIKE '%{name}%' {owner_filter} LIMIT 5"
+    soql = f"SELECT Id, Name, Phone, Website, BillingCity, BillingState, BillingPostalCode, Division__c, Territory__c, CompanyType__c, Account_Status__c, Account_Rating__c, Open_Deal_Amount__c, Open_Deal_Count__c, Closed_Deal_Amount__c, Closed_Deal_Count__c FROM Account WHERE Name LIKE '%{esc(name)}%' {owner_filter} LIMIT 5"
     accounts = sf_query(tokens, soql).get("records", [])
     if not accounts:
         return {"error": f"No account found matching '{name}'"}
@@ -938,7 +868,7 @@ def tool_sf_get_contact(args):
         return {"error": "Not authenticated. Run sf_authenticate first."}
     name = args["name"]
     owner_filter = f"AND OwnerId = '{OWNER_ID}'" if OWNER_ID else ""
-    soql = f"SELECT Id, Name, Email, Phone, Title, Account.Name, LastActivityDate FROM Contact WHERE Name LIKE '%{name}%' {owner_filter} LIMIT 5"
+    soql = f"SELECT Id, Name, Email, Phone, Title, Account.Name, LastActivityDate FROM Contact WHERE Name LIKE '%{esc(name)}%' {owner_filter} LIMIT 5"
     contacts = sf_query(tokens, soql).get("records", [])
     if not contacts:
         return {"error": f"No contact found matching '{name}'"}
@@ -969,7 +899,7 @@ def tool_sf_get_quotes(args):
     if not opp_id and not opp_name:
         return {"error": "Provide opportunity_id or opportunity_name."}
     if not opp_id:
-        opp_result = sf_query(tokens, f"SELECT Id FROM Opportunity WHERE Name LIKE '%{opp_name}%' LIMIT 1")
+        opp_result = sf_query(tokens, f"SELECT Id FROM Opportunity WHERE Name LIKE '%{esc(opp_name)}%' LIMIT 1")
         records = opp_result.get("records", [])
         if not records:
             return {"error": f"No opportunity found matching '{opp_name}'"}
@@ -1061,7 +991,7 @@ def tool_sf_get_opportunity(args):
                    Account.Name, Account.Id, Owner.Name, Description,
                    NextStep, LeadSource, Type, Vendor__c, Vendor__r.Name
             FROM Opportunity
-            WHERE Name LIKE '%{name}%'
+            WHERE Name LIKE '%{esc(name)}%'
             LIMIT 5
         """
     opps = sf_query(tokens, soql).get("records", [])
@@ -1168,7 +1098,7 @@ def tool_sf_get_open_cases(args):
     owner_filter    = f"AND Account.OwnerId = '{OWNER_ID}'" if OWNER_ID else ""
     priority_filter = f"AND Priority = '{args['priority']}'" if args.get("priority") else ""
     type_filter     = f"AND Type = '{args['case_type']}'" if args.get("case_type") else ""
-    account_filter  = f"AND Account.Name LIKE '%{args['account_name']}%'" if args.get("account_name") else ""
+    account_filter  = f"AND Account.Name LIKE '%{esc(args['account_name'])}%'" if args.get("account_name") else ""
     soql = f"""
         SELECT Id, CaseNumber, Subject, Status, Priority, Type, Reason, Origin,
                CreatedDate, Account.Name, Account.Id, Contact.Name, Owner.Name, Description
@@ -1441,7 +1371,7 @@ def tool_sf_get_account_assets(args):
     include_competitor = args.get("include_competitor", True)
     if not account_id and not account_name:
         return {"error": "Provide account_name or account_id."}
-    account_filter = f"AccountId = '{account_id}'" if account_id else f"Account.Name LIKE '%{account_name}%'"
+    account_filter = f"AccountId = '{esc(account_id)}'" if account_id else f"Account.Name LIKE '%{esc(account_name)}%'"
     competitor_filter = "" if include_competitor else "AND IsCompetitorProduct = false"
     soql = f"""
         SELECT Id, Name, Machine_Type_New__c, ModelName__c, Builder__c, SerialNumber,
@@ -1513,11 +1443,11 @@ def tool_sf_search_assets(args):
         return {"error": "Not authenticated. Run sf_authenticate first."}
     filters = []
     if args.get("machine_type"):
-        filters.append(f"Machine_Type_New__c LIKE '%{args['machine_type']}%'")
+        filters.append(f"Machine_Type_New__c LIKE '%{esc(args['machine_type'])}%'")
     if args.get("builder"):
-        filters.append(f"Builder__c LIKE '%{args['builder']}%'")
+        filters.append(f"Builder__c LIKE '%{esc(args['builder'])}%'")
     if args.get("account_name"):
-        filters.append(f"Account.Name LIKE '%{args['account_name']}%'")
+        filters.append(f"Account.Name LIKE '%{esc(args['account_name'])}%'")
     if args.get("competitor_only"):
         filters.append("IsCompetitorProduct = true")
     if args.get("sale_or_lease"):
@@ -1547,9 +1477,9 @@ def tool_sf_get_competitor_assets(args):
         return {"error": "Not authenticated. Run sf_authenticate first."}
     filters = ["IsCompetitorProduct = true"]
     if args.get("account_name"):
-        filters.append(f"Account.Name LIKE '%{args['account_name']}%'")
+        filters.append(f"Account.Name LIKE '%{esc(args['account_name'])}%'")
     if args.get("machine_type"):
-        filters.append(f"Machine_Type_New__c LIKE '%{args['machine_type']}%'")
+        filters.append(f"Machine_Type_New__c LIKE '%{esc(args['machine_type'])}%'")
     soql = f"""
         SELECT Id, Name, Machine_Type_New__c, ModelName__c, Builder__c, SerialNumber,
                UCC_Vendor__c, InstallDate, Purchase_Date__c, UsageEndDate, Status,
@@ -1687,7 +1617,7 @@ def tool_sf_get_financed_deals(args):
 
     filters = ["Sale_Close_Date__c != null"]
     if account_name:
-        filters.append(f"Account_Name__r.Name LIKE '%{account_name}%'")
+        filters.append(f"Account_Name__r.Name LIKE '%{esc(account_name)}%'")
     if months_ahead:
         cutoff = (date.today() + timedelta(days=months_ahead * 30)).strftime("%Y-%m-%d")
         # deals closed within the past (months_ahead + 60) months are relevant
@@ -1765,9 +1695,9 @@ def tool_sf_search_opportunities(args):
 
     filters = ["IsClosed = false"]
     if args.get("account_name"):
-        filters.append(f"Account.Name LIKE '%{args['account_name']}%'")
+        filters.append(f"Account.Name LIKE '%{esc(args['account_name'])}%'")
     if args.get("opportunity_name"):
-        filters.append(f"Name LIKE '%{args['opportunity_name']}%'")
+        filters.append(f"Name LIKE '%{esc(args['opportunity_name'])}%'")
     if args.get("machine_type"):
         mt = args["machine_type"].replace("'", "\\'")
         filters.append(f"(Name LIKE '%{mt}%' OR Description LIKE '%{mt}%')")
@@ -1898,7 +1828,7 @@ def tool_sf_get_pricebook_entries(args):
         return {"error": "Not authenticated. Run sf_authenticate first."}
     pricebook_id = args["pricebook_id"]
     limit = args.get("limit", 25)
-    name_filter = f"AND Product2.Name LIKE '%{args['product_name']}%'" if args.get("product_name") else ""
+    name_filter = f"AND Product2.Name LIKE '%{esc(args['product_name'])}%'" if args.get("product_name") else ""
     soql = f"""
         SELECT Id, Product2Id, Product2.Name, Product2.Description,
                Product2.ProductCode, UnitPrice, IsActive
@@ -2329,7 +2259,7 @@ def tool_sf_create_opportunity(args):
 
     dup_check = sf_query(tokens, (
         f"SELECT Id, Name, StageName FROM Opportunity "
-        f"WHERE AccountId = '{account_id}' AND Name = '{opp_name}' AND IsClosed = false LIMIT 1"
+        f"WHERE AccountId = '{esc(account_id)}' AND Name = '{esc(opp_name)}' AND IsClosed = false LIMIT 1"
     ))
     dup_records = dup_check.get("records", [])
     if dup_records and not args.get("force_create"):
@@ -2432,7 +2362,7 @@ def tool_sf_new_deal(args):
     warnings = []
 
     # 1. Resolve account
-    acct_records = sf_query(tokens, f"SELECT Id, Name FROM Account WHERE Name LIKE '%{args['account_name']}%' LIMIT 5").get("records", [])
+    acct_records = sf_query(tokens, f"SELECT Id, Name FROM Account WHERE Name LIKE '%{esc(args['account_name'])}%' LIMIT 5").get("records", [])
     if not acct_records:
         return {"error": f"No account found matching '{args['account_name']}'."}
     account = acct_records[0]
@@ -2440,7 +2370,7 @@ def tool_sf_new_deal(args):
     steps.append(f"✅ Account: {account_name} ({account_id})")
 
     # 2. Resolve vendor
-    vendor_records = sf_query(tokens, f"SELECT Id, Name FROM Account WHERE RecordType.Name = 'Vendor' AND Name LIKE '%{args['vendor_name']}%' ORDER BY Name ASC LIMIT 5").get("records", [])
+    vendor_records = sf_query(tokens, f"SELECT Id, Name FROM Account WHERE RecordType.Name = 'Vendor' AND Name LIKE '%{esc(args['vendor_name'])}%' ORDER BY Name ASC LIMIT 5").get("records", [])
     if not vendor_records:
         return {"error": f"No vendor found matching '{args['vendor_name']}'. Run sf_get_vendors to see all vendors."}
     vendor = vendor_records[0]
@@ -2451,7 +2381,7 @@ def tool_sf_new_deal(args):
     # 3. Resolve contact (optional)
     contact_id = None
     if args.get("contact_name"):
-        contact_records = sf_query(tokens, f"SELECT Id, Name FROM Contact WHERE Name LIKE '%{args['contact_name']}%' AND AccountId = '{account_id}' LIMIT 5").get("records", [])
+        contact_records = sf_query(tokens, f"SELECT Id, Name FROM Contact WHERE Name LIKE '%{esc(args['contact_name'])}%' AND AccountId = '{esc(account_id)}' LIMIT 5").get("records", [])
         if contact_records:
             contact_id = contact_records[0]["Id"]
             steps.append(f"✅ Contact: {contact_records[0]['Name']} ({contact_id})")
@@ -2462,7 +2392,7 @@ def tool_sf_new_deal(args):
     machine_model = args["machine_model"]
     opp_name = f"{vendor_prefix} - {machine_model} - {account_name}"
 
-    dup_check = sf_query(tokens, f"SELECT Id, Name FROM Opportunity WHERE AccountId = '{account_id}' AND Name = '{opp_name}' AND IsClosed = false LIMIT 1").get("records", [])
+    dup_check = sf_query(tokens, f"SELECT Id, Name FROM Opportunity WHERE AccountId = '{esc(account_id)}' AND Name = '{esc(opp_name)}' AND IsClosed = false LIMIT 1").get("records", [])
     if dup_check:
         dup = dup_check[0]
         return {
