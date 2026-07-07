@@ -1,6 +1,11 @@
 ---
 name: week-plan
 description: Create a weekly plan by pulling email, calendar, pipeline opportunities, and open tasks.
+model_routing:
+  default: balanced
+  steps:
+    data-gathering: fast
+    synthesis: balanced
 ---
 
 ## Purpose
@@ -22,7 +27,13 @@ Calculate the Monday start date for the target week. If today is Friday, Saturda
 
 ## Step 2: Gather Context
 
-Pull all four sources in parallel.
+Start with the deterministic local gatherer, then pull the live sources that still need human judgment.
+
+```bash
+python .scripts/plan-context.py --mode weekly
+```
+
+That script reads `Planning/Tasks.md`, `Planning/Week_Priorities.md`, `Planning/Quarter_Goals.md`, and the local Salesforce cache so the skill can start from structured data instead of re-deriving it in-context. Use it as the base for Steps 2.1–2.5 below; only fall back to live Salesforce/email/calendar MCP calls when you need fresh evidence or the script indicates the cache is stale.
 
 ### 2.1 Calendar
 

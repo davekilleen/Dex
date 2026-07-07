@@ -17,6 +17,8 @@ hooks:
 
 Generate your daily plan with full context awareness. Automatically gathers information from your calendar, tasks, meetings, relationships, and weekly progress to create a focused plan with genuine situational awareness.
 
+**Agentic-OS pattern:** run `.scripts/plan-context.py --mode daily` first. That deterministic script gathers the local planning context from `Planning/Tasks.md`, `Planning/Week_Priorities.md`, `Planning/Quarter_Goals.md`, and the local Salesforce cache so the AI only has to do judgment and synthesis.
+
 ## Usage
 
 - `/daily-plan` — Create today's daily plan
@@ -120,7 +122,13 @@ Check for yesterday's review and extract context (open loops, tomorrow's focus, 
 
 ## Step 5: Context Gathering (ENHANCED)
 
-Gather context from all available sources. **This is where the magic happens.**
+Run the deterministic gatherer first, then enrich it with calendar, meeting, and commitment context. **This is where the magic happens.**
+
+```bash
+python .scripts/plan-context.py --mode daily
+```
+
+Use the JSON output as the base context for the rest of the plan. Only add richer live context from MCP tools when it meaningfully changes the recommendation.
 
 ### 5.1 Midweek Progress Check (NEW)
 

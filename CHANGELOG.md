@@ -7,6 +7,19 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.25.0] - Agentic Skill Pattern codified as the default skill design (2026-07-07)
+
+The "script gathers, AI judges" pattern proven in /visit-prep was tribal knowledge — nothing forced future skills to follow it, so new skills could drift back to token-heavy MCP gathering.
+
+**What this fixes for you:**
+
+* **New system doc:** `System/Dex_System/Agentic_Skill_Pattern.md` — phase separation (gather/judge/format), model routing rules, sentinel-based error handling, quick-mode convention, and reference implementations.
+* **Enforced by default:** CLAUDE.md's protected User Extensions block now directs every skill creation/modification to read and follow the pattern doc, so it survives Dex updates.
+* **Refactor backlog documented:** week-itinerary, pipeline-sync, daily-plan/week-plan, and service-pulse identified as the highest-value conversions.
+* **Planning gatherer added:** `.scripts/plan-context.py` now gives daily-plan and week-plan a deterministic local-first context layer before AI synthesis, so they start from the vault and Salesforce cache instead of re-deriving structure in-context.
+
+---
+
 ## [1.24.0] - /visit-prep: one-page field packets, single account or whole route (2026-07-06)
 
 Before a customer visit, the intel lived in six places: the key-account list, open opps, quotes, service cases, EDA equipment data, and old email threads. Assembling it meant either skipping prep or burning 20 minutes per stop.
