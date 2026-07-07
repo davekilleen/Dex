@@ -41,7 +41,7 @@ Configure these secrets on your deployed Worker using `wrangler secret put <NAME
 | :--- | :--- | :--- |
 | `SF_CLIENT_ID` | Consumer Key from the Salesforce External Client App | *Obtained from App Setup* |
 | `SF_CLIENT_SECRET` | Consumer Secret from the Salesforce External Client App | *Obtained from App Setup* |
-| `SF_MY_DOMAIN` | Your specific Salesforce My Domain URL | `midatlanticmachinery.my.salesforce.com` |
+| `SF_MY_DOMAIN` | Your specific Salesforce My Domain URL | `midatlanticmachinery1.my.salesforce.com` |
 | `MCP_SECRET` | Inbound bearer token to secure the Worker endpoint | *Your custom communication token* |
 
 *Note: The legacy `SF_USERNAME`, `SF_PASSWORD`, and `SF_SECURITY_TOKEN` variables are deprecated and have been removed from the environment.*

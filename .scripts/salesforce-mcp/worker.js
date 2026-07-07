@@ -394,24 +394,16 @@ async function handleMCP(request, env) {
           } catch (e) {
             // Trigger self-healing if token expired or was revoked mid-session
             if (!String(e.message).includes("401")) throw e;
-            
+
             ({ token, instance } = await getSFToken(env, true)); // force refresh
             result = await callTool(name, args || {}, token, instance);
           }
-          
-          return new Response(JSON.stringify({
-            jsonrpc: "2.0",
-            id,
-            result: {
-              content: [{ type: "text", text: JSON.stringify(result, null, 2) }]
-            }
-          }), { headers });
+
+          return mcpResult(id, {
+            content: [{ type: "text", text: JSON.stringify(result, null, 2) }]
+          });
         } catch (error) {
-          return new Response(JSON.stringify({
-            jsonrpc: "2.0",
-            id,
-            error: { code: -32000, message: error.message }
-          }), { headers });
+          return mcpError(id, -32000, error.message);
         }
       }
 
