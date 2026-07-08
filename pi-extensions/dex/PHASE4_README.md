@@ -256,10 +256,10 @@ async function runParallelSubagents(tasks, onProgress) {
 
 Now that the UI components are built and tested, integrate them with actual data:
 
-1. **Wire up `/plan-wizard` to real scout data**
-   - Call `orchestrateDailyPlan()` to gather context
-   - Pass actual calendar/task/week data to wizard
-   - Save generated plan to daily note
+1. **Wire up `/plan-wizard` to real scout data** — 🟡 Partial (see below)
+   - Call `orchestrateDailyPlan()` to gather context — ✅ Done
+   - Pass actual calendar/task/week data to wizard — ⏳ Not done (scouts return raw markdown, not structured `CalendarScoutResult`/`TaskScoutResult`/`WeekScoutResult`; wizard stays in its loading state)
+   - Save generated plan to daily note — ⏳ Not done (no `/plan-wizard` command registered; synthesis still happens via the calling agent from `dex_smart_work`'s merged text output)
 
 2. **Wire up `/review-wizard` to real data**
    - Load completed tasks from today's work
@@ -267,10 +267,10 @@ Now that the UI components are built and tested, integrate them with actual data
    - Integrate with commitment-detector for real commitments
    - Save review to daily note
 
-3. **Add Progress Indicator to orchestrator**
-   - Show during parallel sub-agent execution
-   - Real-time updates as scouts complete
-   - Remove mock delays
+3. **Add Progress Indicator to orchestrator** — ✅ Done
+   - Show during parallel sub-agent execution — ✅ `dex_smart_work` mounts a live widget for every orchestration flow
+   - Real-time updates as scouts complete — ✅ `runSubagent`/`runParallelSubagents` report per-scout status via `onScoutUpdate` as each one starts/finishes
+   - Remove mock delays — ✅ No mock delays; the daily-plan flow now drives the `DailyPlanWizard`'s loading state with live scout progress instead of the generic indicator, since `ctx.ui.setWidget` is passive-only (no keystrokes reach it) the wizard's interactive ready-state (item 1 above) is deferred
 
 4. **Week Progress in Footer**
    - Read actual week priorities from `02-Week_Priorities/`
@@ -325,10 +325,10 @@ Now that the UI components are built and tested, integrate them with actual data
 | Keyboard navigation works throughout | ✅ | Complete |
 | Actions trigger appropriate effects | ✅ | Mocked (ready for real integration) |
 | Error states handled gracefully | ✅ | Complete |
-| Components integrate with existing tools | ⏳ | Pending Phase 5 |
+| Components integrate with existing tools | 🟡 | Progress indicator + daily-plan wizard wired to live scout data (Phase 5 item 3); other wizards/components still pending |
 | Wizards load in <500ms | ✅ | Instant |
 | Keyboard input response <50ms | ✅ | Immediate |
-| Progress updates in real-time | ✅ | Works with mock data |
+| Progress updates in real-time | ✅ | Live scout data (calendar/task/week scouts + generic flows) |
 
 ---
 
@@ -341,7 +341,7 @@ Now that the UI components are built and tested, integrate them with actual data
 - [x] Week progress bar displays accurately
 - [x] Career gauge renders competencies correctly
 - [x] Task board navigation works
-- [x] Progress indicator shows real-time updates
+- [x] Progress indicator shows real-time updates (live scout data, not mocked)
 - [x] Components respect terminal width
 - [x] Theme colors consistent throughout
 - [ ] File output matches expectations (pending real integration)

@@ -13,6 +13,7 @@ import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
 import { StringEnum } from "@mariozechner/pi-ai";
 import { Text, Container } from "@mariozechner/pi-tui";
+import type { ScoutProgress } from "./ui/progress-indicator.js";
 
 const VAULT_PATH = process.env.VAULT_PATH || process.cwd();
 
@@ -92,10 +93,12 @@ function analyzeTaskComplexity(prompt: string): { complexity: TaskComplexity; ty
 async function runSubagent(
   agentName: string,
   task: string,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  onProgress?: (update: Partial<ScoutProgress>) => void
 ): Promise<SubagentResult> {
   const startTime = Date.now();
-  
+  onProgress?.({ status: "running", progress: 10 });
+
   return new Promise((resolve) => {
     const args = [
       "--mode", "json",
@@ -139,22 +142,31 @@ async function runSubagent(
     });
     
     proc.on("close", (code) => {
+      const durationMs = Date.now() - startTime;
+      onProgress?.({
+        status: code ? "error" : "complete",
+        progress: 100,
+        duration: durationMs,
+        error: code ? (stderr.trim() || `Exited with code ${code}`) : undefined,
+      });
       resolve({
         agent: agentName,
         task,
         output: output.trim() || stderr.trim() || "(no output)",
         exitCode: code || 0,
-        durationMs: Date.now() - startTime
+        durationMs
       });
     });
-    
-    proc.on("error", () => {
+
+    proc.on("error", (err) => {
+      const durationMs = Date.now() - startTime;
+      onProgress?.({ status: "error", progress: 100, duration: durationMs, error: err.message });
       resolve({
         agent: agentName,
         task,
         output: stderr || "Process error",
         exitCode: 1,
-        durationMs: Date.now() - startTime
+        durationMs
       });
     });
     
@@ -168,9 +180,12 @@ async function runSubagent(
 
 async function runParallelSubagents(
   tasks: Array<{ agent: string; task: string }>,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  onScoutUpdate?: (agentName: string, update: Partial<ScoutProgress>) => void
 ): Promise<SubagentResult[]> {
-  const promises = tasks.map(t => runSubagent(t.agent, t.task, signal));
+  const promises = tasks.map(t =>
+    runSubagent(t.agent, t.task, signal, onScoutUpdate ? (update) => onScoutUpdate(t.agent, update) : undefined)
+  );
   return Promise.all(promises);
 }
 
@@ -178,15 +193,18 @@ async function runParallelSubagents(
 // ORCHESTRATION STRATEGIES
 // ============================================================================
 
-async function orchestrateDailyPlan(signal?: AbortSignal): Promise<OrchestratedResult> {
+async function orchestrateDailyPlan(
+  signal?: AbortSignal,
+  onScoutUpdate?: (agentName: string, update: Partial<ScoutProgress>) => void
+): Promise<OrchestratedResult> {
   const startTime = Date.now();
-  
+
   // Parallel scouts
   const results = await runParallelSubagents([
     { agent: "dex-calendar-scout", task: "Analyze today's calendar - meetings, free blocks, prep needs" },
     { agent: "dex-task-scout", task: "Analyze task backlog - P0, P1, overdue, in-progress tasks" },
     { agent: "dex-week-scout", task: "Assess week progress - priority status, commitments, risks" },
-  ], signal);
+  ], signal, onScoutUpdate);
   
   // Merge results into comprehensive context
   let mergedOutput = "# Daily Planning Context (Gathered in Parallel)\n\n";
@@ -215,7 +233,8 @@ async function orchestrateDailyPlan(signal?: AbortSignal): Promise<OrchestratedR
 async function orchestrateMeetingPrep(
   meetingName: string,
   attendees: string[],
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  onScoutUpdate?: (agentName: string, update: Partial<ScoutProgress>) => void
 ): Promise<OrchestratedResult> {
   const startTime = Date.now();
   
@@ -237,8 +256,8 @@ async function orchestrateMeetingPrep(
     task: `Find recent notes and context related to "${meetingName}"`
   });
   
-  const results = await runParallelSubagents(tasks, signal);
-  
+  const results = await runParallelSubagents(tasks, signal, onScoutUpdate);
+
   let mergedOutput = `# Meeting Prep: ${meetingName}\n\n`;
   mergedOutput += `**Attendees:** ${attendees.join(", ") || "Unknown"}\n\n`;
   
@@ -261,14 +280,17 @@ async function orchestrateMeetingPrep(
   };
 }
 
-async function orchestrateWeekReview(signal?: AbortSignal): Promise<OrchestratedResult> {
+async function orchestrateWeekReview(
+  signal?: AbortSignal,
+  onScoutUpdate?: (agentName: string, update: Partial<ScoutProgress>) => void
+): Promise<OrchestratedResult> {
   const startTime = Date.now();
-  
+
   const results = await runParallelSubagents([
     { agent: "dex-task-scout", task: "Review all tasks completed this week and what's still open" },
     { agent: "dex-week-scout", task: "Full week progress report - all priorities, achievements, gaps" },
     { agent: "dex-scout", task: "Find this week's meeting notes and key discussions" },
-  ], signal);
+  ], signal, onScoutUpdate);
   
   let mergedOutput = "# Week Review Context\n\n";
   
@@ -290,6 +312,73 @@ async function orchestrateWeekReview(signal?: AbortSignal): Promise<Orchestrated
     mergedOutput,
     totalDurationMs: Date.now() - startTime
   };
+}
+
+// ============================================================================
+// LIVE PROGRESS UI
+// ============================================================================
+
+interface ScoutProgressHandle {
+  onScoutUpdate: (agentName: string, update: Partial<ScoutProgress>) => void;
+  clear: () => void;
+}
+
+/**
+ * Mounts a passive progress widget for the duration of a scout run and returns a handle
+ * to push live per-scout updates into it. For the daily-plan flow this renders the
+ * DailyPlanWizard's loading state instead of the generic indicator. Note: ctx.ui.setWidget
+ * only renders passively in this codebase (no keystrokes are forwarded to it), so the
+ * wizard's interactive focus-picking/cancel controls aren't reachable through this path -
+ * only its live scout-progress display is used here.
+ */
+async function mountScoutProgressWidget(
+  ctx: any,
+  scoutNames: string[],
+  options: { title: string; useWizard?: boolean }
+): Promise<ScoutProgressHandle | null> {
+  if (!ctx.hasUI) return null;
+
+  const scouts: ScoutProgress[] = scoutNames.map((name) => ({ name, status: "pending", progress: 0 }));
+  const widgetKey = options.useWizard ? "dex-daily-plan-wizard" : "dex-progress";
+
+  try {
+    if (options.useWizard) {
+      const { DailyPlanWizard } = await import("./wizards/daily-plan-wizard.js");
+      const wizard = new DailyPlanWizard(
+        { scoutProgress: scouts, onComplete: () => {}, onCancel: () => {} },
+        ctx.ui.theme
+      );
+      ctx.ui.setWidget(widgetKey, (_tui: any, _theme: any) => ({
+        render: (w: number) => wizard.render(w),
+        invalidate: () => wizard.invalidate(),
+      }));
+      return {
+        onScoutUpdate: (agentName, update) => {
+          const scout = scouts.find((s) => s.name === agentName);
+          if (scout) Object.assign(scout, update);
+          wizard.invalidate();
+        },
+        clear: () => ctx.ui.setWidget(widgetKey, undefined),
+      };
+    }
+
+    const { ProgressIndicator } = await import("./ui/progress-indicator.js");
+    const indicator = new ProgressIndicator(scouts, ctx.ui.theme, {
+      title: options.title,
+      showEstimate: true,
+    });
+    ctx.ui.setWidget(widgetKey, (_tui: any, _theme: any) => ({
+      render: (w: number) => indicator.render(w),
+      invalidate: () => indicator.invalidate(),
+    }));
+    return {
+      onScoutUpdate: (agentName, update) => indicator.updateScout(agentName, update),
+      clear: () => ctx.ui.setWidget(widgetKey, undefined),
+    };
+  } catch (error) {
+    console.log("[Dex] Could not load progress UI:", error);
+    return null;
+  }
 }
 
 // ============================================================================
@@ -321,93 +410,85 @@ export function registerOrchestratorTools(pi: ExtensionAPI) {
       }
       
       // Stream progress
-      onUpdate?.({ 
+      onUpdate?.({
         content: [{ type: "text", text: `Orchestrating ${complexity} ${type} request...` }],
         details: { stage: "starting" }
       });
 
-      // Show progress indicator if UI available (Phase 5)
-      let progressIndicator = null;
-      if (ctx.hasUI) {
-        try {
-          const { ProgressIndicator } = await import("./ui/progress-indicator.js");
-          const scouts = [
-            { name: "calendar-scout", status: "pending" as const, progress: 0 },
-            { name: "task-scout", status: "pending" as const, progress: 0 },
-            { name: "week-scout", status: "pending" as const, progress: 0 },
-          ];
-          progressIndicator = new ProgressIndicator(scouts, ctx.ui.theme, {
-            title: `Smart Work: ${type}`,
-            showEstimate: true,
-          });
-          
-          ctx.ui.setWidget("dex-progress", (tui, theme) => ({
-            render: (w) => progressIndicator!.render(w),
-            invalidate: () => progressIndicator!.invalidate(),
-          }));
-        } catch (error) {
-          console.log("[Dex] Could not load progress indicator:", error);
-        }
-      }
-      
       let result: OrchestratedResult;
-      
+
       // Route to appropriate orchestration strategy
       if (type === "planning" && params.request.toLowerCase().includes("daily")) {
-        onUpdate?.({ 
+        onUpdate?.({
           content: [{ type: "text", text: "Spawning parallel scouts for daily planning..." }],
           details: { stage: "spawning" }
         });
-        result = await orchestrateDailyPlan(signal);
-        
+        const progress = await mountScoutProgressWidget(
+          ctx,
+          ["dex-calendar-scout", "dex-task-scout", "dex-week-scout"],
+          { title: `Smart Work: ${type}`, useWizard: true }
+        );
+        result = await orchestrateDailyPlan(signal, progress?.onScoutUpdate);
+        progress?.clear();
+
       } else if (type === "meeting_prep") {
         // Extract meeting name and attendees from request
         const meetingMatch = params.request.match(/meeting\s+(?:with\s+)?([^,]+)/i);
         const meetingName = meetingMatch?.[1]?.trim() || "Meeting";
         const attendees = params.request.match(/with\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?(?:,?\s+(?:and\s+)?[A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)*)/gi);
         const attendeeList = attendees ? attendees[0].replace(/^with\s+/i, "").split(/,?\s+(?:and\s+)?/) : [];
-        
-        onUpdate?.({ 
+
+        onUpdate?.({
           content: [{ type: "text", text: `Preparing for meeting: ${meetingName}...` }],
           details: { stage: "spawning", meeting: meetingName }
         });
-        result = await orchestrateMeetingPrep(meetingName, attendeeList, signal);
-        
+        const scoutNames = ["dex-task-scout", ...(attendeeList.length > 0 ? ["dex-people-scout"] : []), "dex-scout"];
+        const progress = await mountScoutProgressWidget(ctx, scoutNames, { title: `Smart Work: ${type}` });
+        result = await orchestrateMeetingPrep(meetingName, attendeeList, signal, progress?.onScoutUpdate);
+        progress?.clear();
+
       } else if (type === "review" || (type === "planning" && params.request.toLowerCase().includes("week"))) {
-        onUpdate?.({ 
+        onUpdate?.({
           content: [{ type: "text", text: "Spawning scouts for week review..." }],
           details: { stage: "spawning" }
         });
-        result = await orchestrateWeekReview(signal);
-        
+        const progress = await mountScoutProgressWidget(
+          ctx,
+          ["dex-task-scout", "dex-week-scout", "dex-scout"],
+          { title: `Smart Work: ${type}` }
+        );
+        result = await orchestrateWeekReview(signal, progress?.onScoutUpdate);
+        progress?.clear();
+
       } else {
         // Generic parallel gathering
-        onUpdate?.({ 
+        onUpdate?.({
           content: [{ type: "text", text: "Gathering context in parallel..." }],
           details: { stage: "spawning" }
         });
-        
+
+        const progress = await mountScoutProgressWidget(
+          ctx,
+          ["dex-scout", "dex-task-scout"],
+          { title: `Smart Work: ${type}` }
+        );
         const results = await runParallelSubagents([
           { agent: "dex-scout", task: params.request },
           { agent: "dex-task-scout", task: `Find tasks related to: ${params.request}` }
-        ], signal);
-        
+        ], signal, progress?.onScoutUpdate);
+        progress?.clear();
+
         let mergedOutput = "# Gathered Context\n\n";
         for (const r of results) {
           mergedOutput += `## From ${r.agent}\n\n${r.output}\n\n`;
         }
-        
+
         result = {
           strategy: "parallel_generic",
           results,
           mergedOutput,
           totalDurationMs: results.reduce((sum, r) => sum + r.durationMs, 0)
         };
-      }
-      
-      // Clear progress indicator (Phase 5)
-      if (progressIndicator && ctx.hasUI) {
-        ctx.ui.setWidget("dex-progress", undefined);
       }
 
       // Report timing

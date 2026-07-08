@@ -6,6 +6,7 @@
 
 import { Container, Text, Spacer, truncateToWidth, matchesKey, Key } from "@mariozechner/pi-tui";
 import { ProgressIndicator, type ScoutProgress } from "../ui/progress-indicator.js";
+import { renderProgressBar, type ProgressBarTheme } from "../ui/progress-bar.js";
 import { WeekProgressBar, type WeekProgress } from "../ui/week-progress.js";
 import { CollapsibleSection } from "../ui/collapsible-section.js";
 import type { Theme } from "@mariozechner/pi-coding-agent";
@@ -35,7 +36,7 @@ export interface CalendarScoutResult {
 export interface TaskScoutResult {
   p0Tasks: string[];
   p1Tasks: string[];
-  overdueTasksstring[];
+  overdueTasks: string[];
   totalOpen: number;
 }
 
@@ -54,6 +55,7 @@ export interface DailyPlanWizardProps {
   calendarData?: CalendarScoutResult;
   taskData?: TaskScoutResult;
   weekData?: WeekScoutResult;
+  scoutProgress?: ScoutProgress[];
   onComplete: (plan: { focusTasks: string[]; notes: string }) => void;
   onCancel: () => void;
 }
@@ -157,10 +159,60 @@ export class DailyPlanWizard {
     container.addChild(new Text("│ " + loadingText + " ".repeat(Math.max(0, width - 4 - loadingText.length)) + " │", 0, 0));
     container.addChild(new Text("│" + " ".repeat(width - 2) + "│", 0, 0));
 
-    // TODO: Show progress indicator when we have scout progress
-    const statusText = this.theme.fg("dim", "Loading calendar, tasks, and week progress...");
-    container.addChild(new Text("│ " + statusText + " ".repeat(Math.max(0, width - 4 - statusText.length)) + " │", 0, 0));
+    if (this.props.scoutProgress && this.props.scoutProgress.length > 0) {
+      for (const scout of this.props.scoutProgress) {
+        const line = this.renderScoutProgressLine(scout, width - 4);
+        container.addChild(new Text("│ " + line + " ".repeat(Math.max(0, width - 4 - this.getVisibleWidth(line))) + " │", 0, 0));
+      }
+    } else {
+      const statusText = this.theme.fg("dim", "Loading calendar, tasks, and week progress...");
+      container.addChild(new Text("│ " + statusText + " ".repeat(Math.max(0, width - 4 - statusText.length)) + " │", 0, 0));
+    }
     container.addChild(new Text("│" + " ".repeat(width - 2) + "│", 0, 0));
+  }
+
+  private renderScoutProgressLine(scout: ScoutProgress, width: number): string {
+    const statusColor = this.getScoutStatusColor(scout.status);
+    const progressBarTheme: ProgressBarTheme = {
+      filled: (s) => statusColor(s),
+      empty: (s) => this.theme.fg("dim", s),
+    };
+    const icon = this.getScoutStatusIcon(scout.status);
+    const bar = renderProgressBar(scout.progress, 10, progressBarTheme);
+    const label = truncateToWidth(scout.name, 20).padEnd(20);
+    const statusText = scout.status === "complete" && scout.duration
+      ? this.theme.fg("success", `Done (${(scout.duration / 1000).toFixed(1)}s)`)
+      : scout.status === "error"
+        ? this.theme.fg("error", scout.error ?? "Error")
+        : statusColor(scout.status === "running" ? "Running..." : "Waiting...");
+
+    return truncateToWidth(`${icon} ${label} [${bar}] ${statusText}`, width);
+  }
+
+  private getScoutStatusIcon(status: ScoutProgress["status"]): string {
+    switch (status) {
+      case "pending":
+        return this.theme.fg("dim", "⏸");
+      case "running":
+        return this.theme.fg("accent", "⏳");
+      case "complete":
+        return this.theme.fg("success", "✅");
+      case "error":
+        return this.theme.fg("error", "❌");
+    }
+  }
+
+  private getScoutStatusColor(status: ScoutProgress["status"]): (s: string) => string {
+    switch (status) {
+      case "pending":
+        return (s) => this.theme.fg("dim", s);
+      case "running":
+        return (s) => this.theme.fg("accent", s);
+      case "complete":
+        return (s) => this.theme.fg("success", s);
+      case "error":
+        return (s) => this.theme.fg("error", s);
+    }
   }
 
   private renderGeneratingState(container: Container, width: number): void {
@@ -268,7 +320,7 @@ export class DailyPlanWizard {
         });
       }
 
-      for (const task of this.props.taskData.overdueTaskasks.slice(0, 1)) {
+      for (const task of this.props.taskData.overdueTasks.slice(0, 1)) {
         suggestions.push({
           task: truncateToWidth(task, 60),
           reason: "Overdue - catch up needed",
