@@ -39,7 +39,9 @@ export class TaskBoard {
   private theme: Theme;
   private selectedColumn: number = 0;
   private selectedCard: number = 0;
+  private viewingTask: Task | null = null;
   private cachedWidth?: number;
+  private cachedViewingTask?: Task | null;
   private cachedLines?: string[];
 
   constructor(
@@ -58,6 +60,14 @@ export class TaskBoard {
    * Handle keyboard input
    */
   handleInput(data: string): void {
+    if (this.viewingTask) {
+      if (matchesKey(data, Key.enter) || matchesKey(data, Key.escape)) {
+        this.viewingTask = null;
+        this.invalidate();
+      }
+      return;
+    }
+
     if (matchesKey(data, Key.left)) {
       this.moveColumnSelection(-1);
     } else if (matchesKey(data, Key.right)) {
@@ -83,10 +93,19 @@ export class TaskBoard {
    * Render the task board
    */
   render(width: number): string[] {
-    if (this.cachedLines && this.cachedWidth === width) {
+    if (this.cachedLines && this.cachedWidth === width && this.cachedViewingTask === this.viewingTask) {
       return this.cachedLines;
     }
 
+    const lines = this.viewingTask ? this.renderTaskOverlay(this.viewingTask, width) : this.renderBoard(width);
+
+    this.cachedWidth = width;
+    this.cachedViewingTask = this.viewingTask;
+    this.cachedLines = lines;
+    return lines;
+  }
+
+  private renderBoard(width: number): string[] {
     const lines: string[] = [];
 
     // Title - Fixed: calculate border fill based on actual visible width
@@ -121,9 +140,37 @@ export class TaskBoard {
     // Bottom border
     lines.push("└" + "─".repeat(width - 2) + "┘");
 
-    this.cachedWidth = width;
-    this.cachedLines = lines;
     return lines;
+  }
+
+  private renderTaskOverlay(task: Task, width: number): string[] {
+    const lines: string[] = [];
+
+    const title = this.theme.fg("accent", this.theme.bold("Task Details"));
+    const titleWidth = this.getVisibleWidth(title);
+    const borderFill = Math.max(0, width - titleWidth - 5);
+    lines.push("┌─ " + title + " " + "─".repeat(borderFill) + "┐");
+    lines.push("│" + " ".repeat(width - 2) + "│");
+
+    const statusLabel =
+      task.status === "done" ? "Done" : task.status === "in-progress" ? "In Progress" : "To Do";
+    const priorityColor = task.priority === "P0" ? "error" : task.priority === "P1" ? "warning" : "text";
+
+    lines.push(this.formatOverlayLine(`ID:       ${task.id}`, width, "dim"));
+    lines.push(this.formatOverlayLine(`Title:    ${task.title}`, width, "text"));
+    lines.push(this.formatOverlayLine(`Priority: ${task.priority}`, width, priorityColor));
+    lines.push(this.formatOverlayLine(`Status:   ${statusLabel}`, width, "text"));
+    lines.push("│" + " ".repeat(width - 2) + "│");
+    lines.push(this.formatOverlayLine("[Enter/Esc] Close", width, "dim"));
+
+    lines.push("└" + "─".repeat(width - 2) + "┘");
+    return lines;
+  }
+
+  private formatOverlayLine(content: string, width: number, color: string): string {
+    const innerWidth = Math.max(0, width - 4);
+    const padded = truncateToWidth(content, innerWidth).padEnd(innerWidth);
+    return "│ " + this.theme.fg(color, padded) + " │";
   }
 
   private renderColumnHeaders(columnWidth: number): string {
@@ -203,8 +250,8 @@ export class TaskBoard {
     const tasks = this.getTasksForColumn(currentColumn);
     const task = tasks[this.selectedCard];
     if (task) {
-      // TODO: Show task details in overlay
-      console.log("View task:", task.id);
+      this.viewingTask = task;
+      this.invalidate();
     }
   }
 
