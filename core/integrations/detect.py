@@ -77,31 +77,58 @@ def get_claude_config_path() -> Optional[Path]:
     mac_path = Path.home() / "Library" / "Application Support" / "Claude" / "claude_desktop_config.json"
     if mac_path.exists():
         return mac_path
-    
+
     # Windows
     win_path = Path(os.environ.get("APPDATA", "")) / "Claude" / "claude_desktop_config.json"
     if win_path.exists():
         return win_path
-    
+
     # Linux
     linux_path = Path.home() / ".config" / "Claude" / "claude_desktop_config.json"
     if linux_path.exists():
         return linux_path
-    
+
+    return None
+
+
+def get_project_mcp_config_path() -> Optional[Path]:
+    """Find project-local .mcp.json (used by Claude Code / Dex itself)."""
+    vault_path = Path(os.environ.get("VAULT_PATH", os.getcwd()))
+    project_path = vault_path / ".mcp.json"
+    if project_path.exists():
+        return project_path
     return None
 
 
 def load_claude_config() -> Optional[dict]:
-    """Load Claude Desktop MCP configuration."""
-    config_path = get_claude_config_path()
-    if not config_path:
-        return None
-    
-    try:
-        with open(config_path) as f:
-            return json.load(f)
-    except (json.JSONDecodeError, IOError):
-        return None
+    """Load MCP server configuration, merging Desktop config and project-local .mcp.json.
+
+    Checks both Claude Desktop's global config and the project-local .mcp.json so that
+    integrations configured for Claude Code / Dex are detected alongside desktop ones.
+    """
+    merged: dict = {}
+
+    # Claude Desktop global config
+    desktop_path = get_claude_config_path()
+    if desktop_path:
+        try:
+            with open(desktop_path) as f:
+                desktop_cfg = json.load(f)
+            merged.setdefault("mcpServers", {}).update(desktop_cfg.get("mcpServers", {}))
+        except (json.JSONDecodeError, IOError):
+            pass
+
+    # Project-local .mcp.json (top-level mcpServers key, Claude Code format)
+    project_path = get_project_mcp_config_path()
+    if project_path:
+        try:
+            with open(project_path) as f:
+                project_cfg = json.load(f)
+            merged.setdefault("mcpServers", {}).update(project_cfg.get("mcpServers", {}))
+        except (json.JSONDecodeError, IOError):
+            pass
+
+    return merged if merged.get("mcpServers") else None
 
 
 def detect_integration(service: str, config: dict) -> IntegrationStatus:

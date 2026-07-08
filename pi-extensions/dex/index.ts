@@ -21,7 +21,11 @@ import { Type, type Static } from "@sinclair/typebox";
 import { StringEnum } from "@mariozechner/pi-ai";
 import { Text, Container, Markdown } from "@mariozechner/pi-tui";
 import { registerOrchestratorTools } from "./orchestrator.js";
-// DISABLED: import { registerCommitmentDetector } from "./commitment-detector.js";
+// Commitment detector disabled: fires after every agent turn which causes
+// noisy false-positives on normal assistant replies. Re-enable by uncommenting
+// both this import and the registerCommitmentDetector call below, then tune
+// PROMISE_PATTERNS confidence thresholds in commitment-detector.ts first.
+// import { registerCommitmentDetector } from "./commitment-detector.js";
 import { registerModelRouter } from "./model-router.js";
 import { registerRitualCommandBar } from "./ritual-command-bar.js";
 
@@ -1474,9 +1478,10 @@ export default function (pi: ExtensionAPI) {
   registerOrchestratorTools(pi);
   
   // =========================================================================
-  // REGISTER COMMITMENT DETECTOR (Ambient Intelligence) - DISABLED
+  // REGISTER COMMITMENT DETECTOR (Ambient Intelligence)
+  // Disabled — see import comment above for re-enable instructions.
   // =========================================================================
-  
+
   // registerCommitmentDetector(pi);
   
   // =========================================================================

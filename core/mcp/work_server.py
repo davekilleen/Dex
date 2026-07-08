@@ -262,9 +262,27 @@ def load_priority_limits_from_yaml() -> Dict[str, int]:
     
     return DEFAULT_PRIORITY_LIMITS
 
-# Load configuration at startup
-PILLARS = load_pillars_from_yaml()
-PRIORITY_LIMITS = load_priority_limits_from_yaml()
+# Configuration — hot-reloads automatically when pillars.yaml changes on disk
+PILLARS: Dict[str, Dict] = {}
+PRIORITY_LIMITS: Dict[str, int] = {}
+_config_mtime: Optional[float] = None
+
+
+def _reload_config_if_stale() -> None:
+    """Reload PILLARS and PRIORITY_LIMITS if pillars.yaml has changed since last read."""
+    global PILLARS, PRIORITY_LIMITS, _config_mtime
+    pillars_file = get_pillars_file()
+    try:
+        current_mtime = pillars_file.stat().st_mtime if pillars_file.exists() else None
+    except OSError:
+        current_mtime = None
+    if current_mtime != _config_mtime:
+        PILLARS = load_pillars_from_yaml()
+        PRIORITY_LIMITS = load_priority_limits_from_yaml()
+        _config_mtime = current_mtime
+
+
+_reload_config_if_stale()  # initial load
 
 # Priority configuration
 PRIORITIES = ['P0', 'P1', 'P2', 'P3']
@@ -283,18 +301,32 @@ DEDUP_CONFIG = {
     "check_keywords": True,
 }
 
+# Pre-compiled regex patterns (avoid recompiling on every parse call)
+_RE_TASK_ID = re.compile(r'\^(task-\d{8}-\d{3})')
+_RE_TASK_LINE = re.compile(r'-\s*\[[x ]\]\s*\*?\*?(.+?)\*?\*?(?:\s*\^task-\d{8}-\d{3})?\s*$')
+_RE_COMPLETION_TS = re.compile(r'✅\s*(\d{4}-\d{2}-\d{2})\s+(\d{2}:\d{2})')
+_RE_STRIP_TS = re.compile(r'\s*✅\s*\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}')
+_RE_PRIORITY_LINE = re.compile(
+    r'✅?\s*(\d+)\.\s+(?:~~)?(.+?)(?:~~)?\s+—\s+\*\*(.+?)\*\*(?:\s+\^(week-\d{4}-W\d{2}-p\d+))?'
+)
+_RE_GOAL_ID = re.compile(r'\[(Q\d+-\d{4}-goal-\d+)\]')
+_RE_DATE_IN_FILENAME = re.compile(r'(\d{4}-\d{2}-\d{2})')
+_RE_FRONTMATTER = re.compile(r'^---\n(.*?)\n---', re.DOTALL)
+_RE_FRONTMATTER_KV = re.compile(r'^(\w+):\s*(.+)')
+_RE_WORDS = re.compile(r'\b\w+\b')
+
 # ============================================================================
 # UTILITY FUNCTIONS
 # ============================================================================
 
 def extract_keywords(text: str) -> set:
     """Extract meaningful keywords from text"""
-    stop_words = {'the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 
+    stop_words = {'the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for',
                   'with', 'from', 'up', 'out', 'is', 'are', 'was', 'were', 'be', 'been',
                   'being', 'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would',
                   'could', 'should', 'may', 'might', 'must', 'shall', 'can', 'need',
                   'this', 'that', 'these', 'those', 'i', 'you', 'he', 'she', 'it', 'we', 'they'}
-    words = re.findall(r'\b\w+\b', text.lower())
+    words = _RE_WORDS.findall(text.lower())
     return {w for w in words if w not in stop_words and len(w) > 2}
 
 def calculate_similarity(text1: str, text2: str) -> float:
@@ -403,7 +435,7 @@ def generate_task_id() -> str:
 
 def extract_task_id(line: str) -> Optional[str]:
     """Extract task ID from a line"""
-    match = re.search(r'\^(task-\d{8}-\d{3})', line)
+    match = _RE_TASK_ID.search(line)
     return match.group(1) if match else None
 
 def find_task_by_id(task_id: str) -> List[Dict[str, Any]]:
@@ -459,12 +491,9 @@ def update_task_status_everywhere(task_id: str, completed: bool) -> Dict[str, An
             # Update checkbox and add/remove completion timestamp
             if completed:
                 new_line = old_line.replace('- [ ]', '- [x]')
-                
-                # Add completion timestamp after task ID if not already present
-                # Remove any existing timestamp first
-                new_line = re.sub(r'\s*✅\s*\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}', '', new_line)
-                
-                # Find position after task ID to insert timestamp
+
+                # Add completion timestamp after task ID; strip any existing one first
+                new_line = _RE_STRIP_TS.sub('', new_line)
                 task_id_match = re.search(r'\^' + re.escape(task_id), new_line)
                 if task_id_match:
                     insert_pos = task_id_match.end()
@@ -472,7 +501,7 @@ def update_task_status_everywhere(task_id: str, completed: bool) -> Dict[str, An
             else:
                 # Uncompleting: change checkbox and remove timestamp
                 new_line = old_line.replace('- [x]', '- [ ]')
-                new_line = re.sub(r'\s*✅\s*\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}', '', new_line)
+                new_line = _RE_STRIP_TS.sub('', new_line)
             
             if new_line != old_line:
                 lines[line_idx] = new_line
@@ -832,9 +861,22 @@ def _resolve_people_dir() -> Path:
 
 
 def build_people_index_data() -> Dict[str, Any]:
-    """Scan all person pages and build a lightweight JSON index."""
+    """Scan all person pages and build a lightweight JSON index (incremental via mtime)."""
     people_dir = _resolve_people_dir()
-    entries = []
+
+    # Load existing index to enable incremental updates
+    existing_index: Dict[str, Any] = {}
+    if PEOPLE_INDEX_FILE.exists():
+        try:
+            existing_index = json.loads(PEOPLE_INDEX_FILE.read_text())
+        except (json.JSONDecodeError, OSError):
+            existing_index = {}
+
+    existing_by_path: Dict[str, Dict] = {e['path']: e for e in existing_index.get('people', [])}
+    cached_mtimes: Dict[str, float] = existing_index.get('_file_mtimes', {})
+
+    entries: List[Dict[str, Any]] = []
+    new_mtimes: Dict[str, float] = {}
 
     for subdir_name in ['Internal', 'External', 'CPO_Network']:
         subdir = people_dir / subdir_name
@@ -844,14 +886,21 @@ def build_people_index_data() -> Dict[str, Any]:
         for person_file in subdir.glob('*.md'):
             if person_file.name == 'README.md':
                 continue
-            person = parse_person_page(person_file)
 
-            # Determine populated vs stub
+            rel_path = str(person_file.relative_to(BASE_DIR))
+            mtime = person_file.stat().st_mtime
+            new_mtimes[rel_path] = mtime
+
+            # Reuse cached entry when file hasn't changed
+            if rel_path in existing_by_path and abs(cached_mtimes.get(rel_path, 0) - mtime) < 1.0:
+                entries.append(existing_by_path[rel_path])
+                continue
+
+            person = parse_person_page(person_file)
             content = person_file.read_text()
             has_content = bool(person.get('role') or person.get('email') or
-                            '## Meeting' in content or '## Notes' in content)
+                               '## Meeting' in content or '## Notes' in content)
 
-            # Extract tags from content
             tags = []
             for line in content.split('\n'):
                 if '**Tags**' in line and '|' in line:
@@ -866,7 +915,7 @@ def build_people_index_data() -> Dict[str, Any]:
                 'role': person.get('role'),
                 'email': person.get('email'),
                 'type': subdir_name.lower(),
-                'path': str(person_file.relative_to(BASE_DIR)),
+                'path': rel_path,
                 'last_interaction': person.get('last_interaction'),
                 'tags': tags,
                 'status': 'populated' if has_content else 'stub',
@@ -882,9 +931,9 @@ def build_people_index_data() -> Dict[str, Any]:
             'cpo_network': sum(1 for e in entries if e['type'] == 'cpo_network'),
         },
         'people': entries,
+        '_file_mtimes': new_mtimes,
     }
 
-    # Write to file
     PEOPLE_INDEX_FILE.parent.mkdir(parents=True, exist_ok=True)
     PEOPLE_INDEX_FILE.write_text(json.dumps(index, indent=2, cls=DateTimeEncoder) + '\n')
 
@@ -1872,26 +1921,26 @@ def parse_weekly_priorities(filepath: Path) -> List[Dict[str, Any]]:
     for i, line in enumerate(lines):
         # Match priority lines like:
         # 1. Priority Title — **Pillar** ^week-2026-W05-p1
-        # Or task-style: - [ ] **Priority Title** ^week-2026-W05-p1
-        
-        priority_match = re.match(r'(\d+)\.\s+(.+?)\s+—\s+\*\*(.+?)\*\*(?:\s+\^(week-\d{4}-W\d{2}-p\d+))?', line)
+        # Completed form: ✅ 1. ~~Priority Title~~ — **Pillar** ^week-2026-W05-p1
+
+        priority_match = _RE_PRIORITY_LINE.match(line)
         if priority_match:
             priority_num = int(priority_match.group(1))
             title = priority_match.group(2).strip()
             pillar = priority_match.group(3).strip()
             priority_id = priority_match.group(4) if priority_match.group(4) else None
-            
+
             # Look for linked goal in following lines
             linked_goal_id = None
             j = i + 1
             if j < len(lines) and 'Quarterly goal:' in lines[j]:
-                goal_match = re.search(r'\[(Q\d+-\d{4}-goal-\d+)\]', lines[j])
+                goal_match = _RE_GOAL_ID.search(lines[j])
                 if goal_match:
                     linked_goal_id = goal_match.group(1)
-            
-            # Check completion (look for checkmark or completion note)
-            completed = False  # For now, will enhance later
-            
+
+            # Detect completion: ✅ prefix or ~~strikethrough~~ title
+            completed = line.lstrip().startswith('✅') or '~~' in line
+
             priorities.append({
                 'priority_id': priority_id,
                 'priority_num': priority_num,
@@ -2079,22 +2128,30 @@ def parse_tasks_file(filepath: Path) -> List[Dict[str, Any]]:
         if line.strip().startswith('- [ ]') or line.strip().startswith('- [x]'):
             task_counter += 1
             completed = line.strip().startswith('- [x]')
-            
+
             # Extract task ID if present
             task_id = extract_task_id(line)
-            
-            # Extract task title (remove the checkbox and task ID)
-            title_match = re.match(r'-\s*\[[x ]\]\s*\*?\*?(.+?)\*?\*?(?:\s*\^task-\d{8}-\d{3})?\s*$', line.strip())
+
+            # Extract completion timestamp written by update_task_status_everywhere (✅ YYYY-MM-DD HH:MM)
+            completed_at = None
+            if completed:
+                ts_match = _RE_COMPLETION_TS.search(line)
+                if ts_match:
+                    completed_at = f"{ts_match.group(1)} {ts_match.group(2)}"
+
+            # Extract task title (remove checkbox and task ID)
+            title_match = _RE_TASK_LINE.match(line.strip())
             title = title_match.group(1).strip() if title_match else line.strip()[6:]
-            
-            # Clean title - remove file path references for display
+
+            # Clean title — strip wikilink paths, trailing .md, task ID, and ✅ timestamp
             clean_title = re.sub(r'\s*\|\s*(?:People|Active)/[^\s]+', '', title)
             clean_title = re.sub(r'\s+\.md\b', '', clean_title)
-            clean_title = re.sub(r'\s*\^task-\d{8}-\d{3}\s*', '', clean_title)  # Remove task ID
-            
+            clean_title = re.sub(r'\s*\^task-\d{8}-\d{3}\s*', '', clean_title)
+            clean_title = _RE_STRIP_TS.sub('', clean_title).strip()
+
             # Determine status
             status = 'd' if completed else 'n'
-            
+
             tasks.append({
                 'id': task_id or f'temp-{task_counter}',
                 'task_id': task_id,  # The actual ^task-YYYYMMDD-XXX ID
@@ -2102,6 +2159,7 @@ def parse_tasks_file(filepath: Path) -> List[Dict[str, Any]]:
                 'raw_title': title,
                 'section': current_section,
                 'completed': completed,
+                'completed_at': completed_at,
                 'status': status,
                 'line_number': i + 1,
                 'source_file': str(filepath),
@@ -2158,7 +2216,7 @@ def find_similar_tasks(item: str, existing_tasks: List[Dict[str, Any]]) -> List[
                 # Only care about task file matches
                 if 'Tasks' in filepath and score >= 0.4:
                     qmd_matches.add(snippet[:80].strip())
-        except Exception:
+        except Exception:  # analytics must never block user operations
             pass  # Fall through to keyword matching
     
     # --- Standard keyword + sequence matching ---
@@ -2415,14 +2473,20 @@ def get_week_progress_data() -> Dict[str, Any]:
     in_progress_priorities = sum(1 for p in priorities_detail if p['status'] == 'in_progress')
     not_started_priorities = sum(1 for p in priorities_detail if p['status'] == 'not_started')
     
-    # Get tasks completed this week
+    # Count tasks completed during the current week using ✅ timestamps
     all_tasks = get_all_tasks()
     tasks_completed_this_week = 0
     for task in all_tasks:
         if task.get('completed'):
-            # Check if completed this week by looking at the task line for timestamp
-            # This is a simplified check - would need completion timestamps
-            tasks_completed_this_week += 1  # Placeholder
+            completed_at = task.get('completed_at')
+            if completed_at:
+                try:
+                    completed_date = date.fromisoformat(completed_at[:10])
+                    if week_start <= completed_date <= week_end:
+                        tasks_completed_this_week += 1
+                except (ValueError, TypeError):
+                    pass
+            # Tasks without a ✅ timestamp are legacy completions; excluded from weekly count
     
     return {
         'date': today.isoformat(),
@@ -2634,7 +2698,7 @@ def get_meeting_context_data(meeting_title: str = None, attendees: List[str] = N
                         'snippet': snippet[:200],
                         'relevance_score': round(score, 2)
                     })
-        except Exception:
+        except Exception:  # analytics must never block user operations
             pass  # Graceful degradation
     
     # Generate prep suggestions
@@ -3487,7 +3551,8 @@ async def _handle_call_tool_inner(
     name: str, arguments: dict | None
 ) -> list[types.TextContent | types.ImageContent | types.EmbeddedResource]:
     """Inner tool handler — wrapped by handle_call_tool for post-write hooks."""
-    
+    _reload_config_if_stale()
+
     if name == "list_tasks":
         tasks = get_all_tasks()
         
@@ -3643,7 +3708,7 @@ async def _handle_call_tool_inner(
                 'pillar': pillar,
                 'priority': priority,
             })
-        except Exception:
+        except Exception:  # analytics must never block user operations
             pass
         
         result = {
@@ -4353,9 +4418,16 @@ async def _handle_call_tool_inner(
                 "error": f"Priority not found: {priority_id}"
             }, indent=2))]
         
-        # Mark as completed (for now, just return success)
-        # In full implementation, would update the file
-        
+        # Write ✅ prefix to the priority line in the file
+        content = priorities_file.read_text()
+        lines = content.split('\n')
+        line_idx = priority['line_number'] - 1
+        if 0 <= line_idx < len(lines):
+            old_line = lines[line_idx]
+            if not old_line.lstrip().startswith('✅'):
+                lines[line_idx] = '✅ ' + old_line
+                priorities_file.write_text('\n'.join(lines))
+
         # If linked to a goal, recalculate goal progress
         goal_progress = None
         if priority.get('linked_goal_id'):
@@ -4823,7 +4895,7 @@ async def _handle_call_tool_inner(
                 'skill_name': skill_name,
                 'rating': rating,
             })
-        except Exception:
+        except Exception:  # analytics must never block user operations
             pass
 
         return [types.TextContent(type="text", text=json.dumps({
