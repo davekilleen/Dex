@@ -57,6 +57,8 @@
 - [ ] Vaski opportunities at DVM [[^task-20260618-w06]] #pillar_1
 - [ ] Call - AW Mercer - Haeger new/used [[^task-20260618-w07]] #pillar_1
 - [ ] Call - Joe Carr - Trumpf 1000 Series / Cidan [[^task-20260618-w08]] #pillar_1
+- [ ] Follow up - suggest local demo - Rybnick Mechanical [[^task-20260618-w09]] #pillar_1
+- [ ] Suggest AGT demo - Levan @ Borron (structural shop, Newark) [[^task-20260623-w10]] #pillar_1
 - [x] Follow up - suggest local demo - Rybnick Mechanical [[^task-20260618-w09]] #pillar_1
 
 ## Salesforce Import – Overdue (2026)
