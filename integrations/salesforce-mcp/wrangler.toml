@@ -1,0 +1,7 @@
+name = "salesforce-mcp"
+main = "src/index.ts"
+compatibility_date = "2024-11-01"
+compatibility_flags = ["nodejs_compat"]
+
+[vars]
+SF_LOGIN_URL = "https://login.salesforce.com"
