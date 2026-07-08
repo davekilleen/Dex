@@ -35,6 +35,10 @@
 
 
 ## Upcoming
+- [ ] **Confirm dispatch requirements with Lance Fisher; follow up with Jim Papeika once tech is scheduled — Winholt Equipment laser service** ^task-20260702-001
+	- Fibermak Raptor 3X1.5 fiber laser (S/N 00031008-ERH) down — mechanical issue on pallet changer chain/motor. Awaiting PO or credit card from Winholt per MAM service terms before dispatch.
+	- Pillar: Account Management | Priority: P1
+
 - [ ] **Reach out to Rybnick Mechanical - schedule meeting to discuss Flow Waterjet and Ironworker (bring Eric Marciniak from Flow)** ^task-20260628-117
 	- Target mid-August meeting. Discuss Flow Waterjet and Ironworker product lines. Coordinate with Eric Marciniak (Flow rep) to potentially join on customer visits. Good opportunity to bring factory support into the conversation.
 	- Pillar: Pipeline & Revenue | Priority: P2
