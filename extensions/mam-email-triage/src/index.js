@@ -62,11 +62,28 @@ async function matchSalesforceContact(email, env) {
 // ---------------------------------------------------------------------------
 
 const IGNORE_DOMAINS = [
+  // Social & job networks
   'linkedin.com', 'jobalerts-noreply@linkedin.com',
-  'barracudanetworks.com', 'mailer.linkedin.com',
-  'bounce.linkedin.com', 'notifications.google.com',
+  'mailer.linkedin.com', 'bounce.linkedin.com',
+  'indeed.com', 'glassdoor.com',
+  // Security & messaging infrastructure
+  'barracudanetworks.com', 'notifications.google.com',
   'accounts.google.com', 'mc.sendgrid.net',
-  'bounce.sendgrid.net',
+  'bounce.sendgrid.net', 'stripe.com', 'postmark.com',
+  // Vendor reports & analytics
+  'builtwith.com', 'andrew.rogers@builtwith.com',
+  'salesforce.com', 'pardot.com',
+  'hubspot.com', 'pipedrive.com',
+  'typeform.com', 'survey.com',
+  'freshworks.com', 'intercom.com',
+  // Marketing & newsletters
+  'mailchimp.com', 'sendgrid.com', 'constant-contact.com',
+  'activetrail.com', 'klaviyo.com', 'brevo.com',
+  'maropost.com', 'getresponse.com',
+  // General notifications & automated reports
+  'noreply@', '-noreply@', 'no-reply@', 'no_reply@',
+  'automated@', 'bot@', 'system@',
+  'alerts@', 'notifications@', 'updates@',
 ];
 
 const IGNORE_SUBJECT_PATTERNS = [
@@ -75,6 +92,32 @@ const IGNORE_SUBJECT_PATTERNS = [
   /\d+ new connection/i,
   /storage (critical|warning)/i,
   /photos are no longer backing up/i,
+  // Vendor reports
+  /builtwith.*report/i,
+  /daily.*prospect assignment/i,
+  /pardot:.*daily/i,
+  /(?:automated|daily|weekly|monthly).*report/i,
+  /(?:automated|daily|weekly|monthly).*digest/i,
+  // Marketing automation
+  /marketing.*automation/i,
+  /campaign.*report/i,
+  /lead.*assignment/i,
+  // Social & job alerts
+  /people you may know/i,
+  /connection.*request/i,
+  /job match/i,
+  /new job posted/i,
+  // Security & system
+  /password.*reset/i,
+  /confirm.*email/i,
+  /verify.*account/i,
+  /two.?factor/i,
+  /2fa|mfa|authentication/i,
+  // Cloud & app notifications
+  /invitation.*join/i,
+  /welcome.*to/i,
+  /account.*created/i,
+  /sign.?up.*confirmation/i,
 ];
 
 function quickIgnoreCheck(senderEmail, subject) {
