@@ -9,6 +9,13 @@
       "note": "Stdio MCP server. Port 8080 is used temporarily for Salesforce OAuth callbacks only."
     },
     {
+      "name": "salesforce-remote",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": [".scripts/salesforce-mcp/remote-proxy.py"],
+      "port": null,
+      "note": "Remote MCP proxy — forwards stdio calls to Cloudflare Worker. Reads SF_MCP_SECRET from .env.local. Use this in remote/mobile sessions instead of salesforce-mcp."
+    },
+    {
       "name": "retool-mcp",
       "runtimeExecutable": "python",
       "runtimeArgs": [".scripts/retool-mcp/server.py"],
