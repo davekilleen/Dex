@@ -1,3 +1,8 @@
+---
+type: documentation
+name: Templates README
+---
+
 # Templates
 
 Templates used by Dex automation for consistent structure.
@@ -8,6 +13,7 @@ These templates are actively used by Dex skills:
 
 - **`Person_Page.md`** — Person page structure (used when creating person pages)
 - **`Company.md`** — Company page structure (used by `/process-meetings`)
+- **`Opportunity.md`** — Opportunity pipeline structure for the file-first CRM
 - **`Career_Evidence_Achievement.md`** — Achievement capture (used by `/week-review`, `/resume-builder`)
 - **`Career_Evidence_Feedback.md`** — Feedback tracking (used by career system)
 

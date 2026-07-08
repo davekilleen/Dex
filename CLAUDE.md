@@ -496,6 +496,7 @@ Dex uses the PARA method: Projects (time-bound), Areas (ongoing), Resources (ref
 - `04-Projects/` - Active projects
 - `05-Areas/People/` - Person pages (Internal/ and External/)
 - `05-Areas/Companies/` - External organizations
+- `05-Areas/Opportunities/` - CRM pipeline records
 - `05-Areas/Career/` - Career development (optional, via `/career-setup`)
 - `06-Resources/` - Reference material
 - `07-Archives/` - Completed work

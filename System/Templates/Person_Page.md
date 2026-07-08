@@ -1,3 +1,16 @@
+---
+type: person
+name: "{{First Name}} {{Last Name}}"
+email: "{{email@company.com}}"
+priority: medium
+warmth: warm
+next_action: ""
+next_action_date:
+last_contact:
+status_changed:
+tags: []
+---
+
 # {{First Name}} {{Last Name}}
 
 ## Overview

@@ -44,7 +44,23 @@ core/mcp-premium/
 02-Week_Priorities/
 03-Tasks/
 04-Projects/
-05-Areas/
+05-Areas/**
+!05-Areas/
+!05-Areas/README.md
+!05-Areas/CRM_Boards.md
+!05-Areas/People/
+!05-Areas/People/README.md
+!05-Areas/People/Internal/
+!05-Areas/People/Internal/README.md
+!05-Areas/People/External/
+!05-Areas/People/External/README.md
+!05-Areas/Companies/
+!05-Areas/Companies/README.md
+!05-Areas/Opportunities/
+!05-Areas/Opportunities/README.md
+!05-Areas/Career/
+!05-Areas/Career/Evidence/
+!05-Areas/Career/Evidence/README.md
 07-Archives/
 
 # User customization notes

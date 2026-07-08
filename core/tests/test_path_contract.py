@@ -26,6 +26,14 @@ def test_relative_contract_values_are_not_absolute_paths():
     assert not absolute, f"Expected vault-relative paths, got absolutes: {absolute}"
 
 
+def test_relative_contract_includes_crm_area_roots():
+    rel_map = build_relative_paths_contract()["vault_relative_paths"]
+
+    assert rel_map["PEOPLE_DIR"] == "05-Areas/People"
+    assert rel_map["COMPANIES_DIR"] == "05-Areas/Companies"
+    assert rel_map["OPPORTUNITIES_DIR"] == "05-Areas/Opportunities"
+
+
 def test_write_contract_package_outputs_expected_files(tmp_path: Path):
     contract = write_contract_package(tmp_path)
 

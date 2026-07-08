@@ -56,6 +56,7 @@ GOALS_FILE = VAULT_ROOT / 'GOALS.md'  # Legacy, kept for compatibility
 # --- Derived: Areas ---
 PEOPLE_DIR = AREAS_DIR / 'People'
 COMPANIES_DIR = AREAS_DIR / 'Companies'
+OPPORTUNITIES_DIR = AREAS_DIR / 'Opportunities'
 CAREER_DIR = AREAS_DIR / 'Career'
 EVIDENCE_DIR = CAREER_DIR / 'Evidence'
 RESUME_DIR = CAREER_DIR / 'Resume'

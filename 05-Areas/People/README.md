@@ -1,3 +1,8 @@
+---
+type: documentation
+name: People README
+---
+
 # People
 
 Everyone you work with—colleagues, customers, partners, stakeholders.
@@ -44,3 +49,31 @@ Always check `05-Areas/People/` FIRST when looking for context. Person pages are
 - Tasks reference people involved
 - `/meeting-prep` pulls from person pages
 - Action items surface on relevant person pages
+
+## CRM schema
+
+Person pages are CRM contact records for Dex and Obsidian. Use `type: person` in frontmatter.
+
+**Required fields:** `name`, `priority`, `warmth`, `next_action`, `next_action_date`
+
+**Status field:** `warmth`
+
+**Board:** band, grouped by warmth
+
+| Field | Type | Notes |
+|-------|------|-------|
+| `name` | string | Display name for the person |
+| `email` | string | Primary email address |
+| `priority` | priority | `high`, `medium`, or `low` |
+| `warmth` | warmth | Relationship band used for CRM boards |
+| `next_action` | string | Next concrete follow-up |
+| `next_action_date` | date | Due date for the next action |
+| `last_contact` | date | Most recent meaningful contact |
+| `status_changed` | date | Last time `warmth` changed |
+| `tags` | list of tag | CRM tags for the relationship |
+
+**Vocabulary**
+
+- `priority`: `high`, `medium`, `low`
+- `warmth`: `hot`, `warm`, `cool`, `cold`
+- `tags`: `champion`, `buyer`, `connector`, `advisor`, `candidate`

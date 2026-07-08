@@ -7,6 +7,19 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.21.0] - File-first CRM vault template (2026-07-08)
+
+Dex now ships a file-first CRM structure that works in both the desktop app and Obsidian.
+
+**What this adds for you:**
+
+* **A real Opportunities pipeline.** `05-Areas/Opportunities/` is now part of the core vault path contract alongside People and Companies.
+* **CRM-ready templates.** Person, Company, and Opportunity templates now carry the shared CRM frontmatter fields used by the desktop app.
+* **Obsidian board views.** `05-Areas/CRM_Boards.md` provides Dataview grouped views for People bands, Target Companies funnel, and Opportunities pipeline.
+* **Schema guidance in the vault.** CRM fields, exact vocabularies, and capture/sweep behavior are documented so file-first users do not split data with alternate statuses.
+
+---
+
 ## [1.20.1] - Fixes: a false startup alarm, blocked tasks, and the budget model (2026-06-02)
 
 A round of fixes for small things that were quietly getting in the way.

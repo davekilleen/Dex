@@ -1,3 +1,17 @@
+---
+type: company
+name: "{{Company Name}}"
+domains:
+  - "{{company.com}}"
+priority: medium
+stage: researching
+next_action: ""
+next_action_date:
+status_changed:
+icp_tags: []
+signal: ""
+---
+
 # {{Company Name}}
 
 ## Overview
@@ -7,7 +21,7 @@
 | **Website** | {{company.com}} |
 | **Industry** | {{Industry}} |
 | **Size** | {{Startup / Scale-up / Enterprise}} |
-| **Stage** | {{Prospect / Customer / Partner / Churned}} |
+| **Stage** | researching |
 | **Domains** | {{company.com, company.io}} |
 
 ---

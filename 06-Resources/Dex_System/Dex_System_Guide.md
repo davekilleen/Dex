@@ -345,6 +345,8 @@ Dex/
 │   ├── People/               # Person pages
 │   │   ├── Internal/         # Colleagues
 │   │   └── External/         # Customers, partners, contacts
+│   ├── Companies/            # Target companies and account context
+│   ├── Opportunities/        # CRM pipeline records
 │   ├── Accounts/             # Key accounts (Sales/CS roles only)
 │   ├── Team/                 # Team management (Leadership roles only)
 │   ├── Content/              # Content strategy (Marketing roles only)
@@ -377,12 +379,13 @@ Dex/
 
 ## Templates
 
-4 templates in `System/Templates/` used by Dex automation:
+5 templates in `System/Templates/` used by Dex automation:
 
 | Template | Use Case |
 |----------|----------|
 | `Person_Page.md` | Person page structure |
 | `Company.md` | Company page template (used by `/process-meetings`) |
+| `Opportunity.md` | Opportunity pipeline structure for the file-first CRM |
 | `Career_Evidence_Achievement.md` | Achievement capture (used by `/week-review`, `/resume-builder`) |
 | `Career_Evidence_Feedback.md` | Feedback tracking (career system) |
 

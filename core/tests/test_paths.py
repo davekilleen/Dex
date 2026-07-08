@@ -60,6 +60,9 @@ class TestDerivedPaths:
     def test_companies_dir_parent_is_areas(self):
         assert paths.COMPANIES_DIR.parent == paths.AREAS_DIR
 
+    def test_opportunities_dir_parent_is_areas(self):
+        assert paths.OPPORTUNITIES_DIR.parent == paths.AREAS_DIR
+
     def test_career_dir_parent_is_areas(self):
         assert paths.CAREER_DIR.parent == paths.AREAS_DIR
 

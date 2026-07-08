@@ -31,6 +31,7 @@
     "MEETING_DAILY_LOGS_DIR": "05-Areas/Meetings/Daily_Log",
     "MEETING_INTEL_DIR": "06-Resources/Intel/Meeting_Intel",
     "OBSIDIAN_SYNC_LOG": "System/obsidian-sync.log",
+    "OPPORTUNITIES_DIR": "05-Areas/Opportunities",
     "PEOPLE_DIR": "05-Areas/People",
     "PEOPLE_INDEX_FILE": "System/People_Index.json",
     "PILLARS_FILE": "System/pillars.yaml",

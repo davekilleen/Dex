@@ -25,6 +25,7 @@ Dex/
 │   │   ├── Internal/         # Colleagues (same email domain)
 │   │   └── External/         # Customers, partners (different domain)
 │   ├── Companies/            # External organizations (universal)
+│   ├── Opportunities/        # CRM pipeline records (universal)
 │   ├── Career/               # Career development (via /career-setup)
 │   └── [Role-specific]/     # Accounts/, Team/, Content/, etc.
 ├── 06-Resources/                # Reference material
@@ -89,10 +90,11 @@ Area = ongoing ("Customer success management")
   - `Internal/` — Teammates, managers, cross-functional partners (same email domain)
   - `External/` — Customers, prospects, partners (different email domain)
 - **Companies/** — External organizations you interact with
+- **Opportunities/** — CRM pipeline records linked to people and companies
 
 ### Role-Specific Areas
 
-Most users only need the universal areas (People and Companies). You can create additional areas as needed for your workflow.
+Most users only need the universal areas (People, Companies, and Opportunities). You can create additional areas as needed for your workflow.
 
 ### Career Area (Optional)
 
