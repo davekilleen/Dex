@@ -28,7 +28,7 @@ If `Projects/` folder doesn't exist, this is a fresh setup.
 **Phase 2 - Getting Started:**
 
 After core onboarding (Step 9), offer Phase 2 tour via `/getting-started` skill:
-- Adaptive based on available data (calendar, Granola, or neither)
+- Adaptive based on available data (calendar or not)
 - **With data:** Analyzes what's there, offers to process meetings/create pages
 - **Without data:** Guides tool integration, builds custom MCPs
 - **Always:** Low pressure, clear escapes, educational even when things don't work
@@ -189,19 +189,6 @@ Adapt your tone and language based on user preferences in `System/user-profile.y
 
 Apply consistently across all interactions (planning, reviews, meetings, project discussions).
 
-### Granola Mobile Recordings (Natural Language Triggers)
-
-When the user mentions any of these:
-- "mobile recordings", "phone recordings", "phone meetings", "phone calls not syncing"
-- "enable mobile recordings", "set up mobile recordings"
-- "meetings from my phone", "mobile meetings not showing"
-- "refresh Granola", "Granola not working", "Granola sign-in"
-
-**Action:**
-1. Check if a Granola API key is configured: `GRANOLA_API_KEY` in the environment, or in the `.env` file at the vault root.
-2. If a key is configured: Granola sync uses the official Granola public API, so desktop and mobile recordings come through the same way — there's nothing phone-specific to set up. Offer to run a sync (`/process-meetings`) and confirm background sync is installed (`cd .scripts/meeting-intel && ./install-automation.sh`).
-3. If no key is configured: tell the user "Granola isn't connected yet — run `/granola-setup` to add your Granola API key (requires a Granola Business plan)." Offer to walk them through it.
-
 ### Meeting Capture
 When the user shares meeting notes or says they had a meeting:
 1. Extract key points, decisions, and action items
@@ -210,7 +197,7 @@ When the user shares meeting notes or says they had a meeting:
 4. Suggest follow-ups. Use the `query` tool to search for implicit commitments — soft language like "we should revisit" or "let me think about" that regex might not catch as action items.
 5. If meeting with manager and Career folder exists, extract career development context
 
-**Automation:** When meetings are processed via `/process-meetings`, skill-scoped hooks automatically update person pages with meeting references and extracted context. Manual person page updates are still applied for ad-hoc meeting notes shared outside the skill.
+**Automation:** Use `/log-meeting` to capture meeting notes — it extracts action items, updates person pages, and can log the activity to Salesforce in one step.
 
 ### Task Creation (Smart Pillar Inference)
 When the user requests task creation without specifying a pillar:
@@ -273,7 +260,6 @@ When the user says they completed a task (any phrasing):
 If `Career/` folder exists, the system automatically captures career development evidence:
 - **During `/daily-review`**: Prompt for achievements worth capturing for career growth
 - **During `/career-coach`**: Achievements with quantifiable metrics are auto-detected and captured as evidence without manual prompting
-- **From Granola meetings**: Extract feedback and development discussions from manager 1:1s
 - **Project completions**: Suggest capturing impact and skills demonstrated
 - **Skill tracking**: Tag tasks/goals with `# Career: [skill]` to track skill development over time. **If QMD is available**, the Career MCP also detects skill demonstration *without* explicit tags — semantically matching achievements to competencies (e.g., a task about "designing the API migration strategy" matches the "System Design" competency even without a `# Career: System Design` tag).
 - **Weekly reviews**: Scan for completed work tagged with career skills, prompt evidence capture
@@ -446,7 +432,7 @@ Based on response:
   - Remove this section from CLAUDE.md
 
 ### Skill Rating
-After `/daily-plan`, `/week-plan`, `/meeting-prep`, `/process-meetings`, `/week-review`, `/daily-review` complete, ask "Quick rating (1-5)?" If user responds with a number, call `capture_skill_rating`. If they ignore or move on, don't ask again.
+After `/daily-plan`, `/week-plan`, `/meeting-prep`, `/week-review`, `/daily-review` complete, ask "Quick rating (1-5)?" If user responds with a number, call `capture_skill_rating`. If they ignore or move on, don't ask again.
 
 ### Identity Model
 Read `System/identity-model.md` when making prioritization recommendations or tone decisions. Updated automatically during `/week-review` via `/identity-snapshot`.
@@ -473,7 +459,7 @@ Skills extend Dex capabilities and are invoked with `/skill-name`. Common skills
 - `/daily-plan`, `/daily-review` - Daily workflow
 - `/week-plan`, `/week-review` - Weekly workflow
 - `/quarter-plan`, `/quarter-review` - Quarterly planning
-- `/triage`, `/meeting-prep`, `/process-meetings` - Meetings and inbox
+- `/triage`, `/meeting-prep`, `/log-meeting` - Meetings and inbox
 - `/project-health`, `/product-brief` - Projects
 - `/career-coach`, `/resume-builder` - Career development
 - `/ai-setup`, `/ai-status` - Configure budget cloud models (80% cheaper) and offline mode

@@ -52,14 +52,13 @@ Create an MCP config when:
 
 ## Structure
 
-Each `.json` file in this folder connects one external system (Calendar, Granola meetings, etc.). You don't need to understand the technical details - the `/create-mcp` skill will create these files for you when you want to add a new integration.
+Each `.json` file in this folder connects one external system (Calendar, etc.). You don't need to understand the technical details - the `/create-mcp` skill will create these files for you when you want to add a new integration.
 
 ## Examples
 
 - **adobe.json** - PDF tools (info, text extraction, merge/split, form fields) plus Adobe Acrobat Sign e-signature workflows (send, status, remind, cancel, download)
 - **calendar.json** - Apple Calendar integration (events, scheduling)
 - **career.json** - Career development (evidence aggregation, ladder parsing, competency analysis)
-- **granola.json** - Meeting transcription and processing
 - **onboarding.json** - Stateful onboarding with validation (session management, dependency checks, vault creation)
 - **resume.json** - Resume builder (stateful resume building, achievement validation, LinkedIn generation)
 - **update-checker.json** - GitHub update detection for `/dex-update` (changelog checking, version comparison)

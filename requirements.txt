@@ -8,6 +8,9 @@ mcp>=1.0.0
 pyyaml>=6.0
 python-dateutil>=2.8.0
 
+# ICS calendar feed parsing (ics_calendar_server)
+icalendar>=5.0
+
 # Web scraping (no API key required)
 scrapling[ai]>=0.4.1
 

@@ -25,7 +25,6 @@ fuzzy-search any of these, or just ask Dex in plain language.
 
 - **/meeting-prep** — Prepare for meetings by gathering attendee context and related topics
 - **/log-meeting** — Log meeting notes to Dex and Salesforce in one step — extracts action items, matches opportunity, pushes activity log
-- **/process-meetings** — Process synced Granola meetings to update person pages, extract tasks, and organize meeting notes
 - **/commitment-scan** — Scan ScreenPipe data for uncommitted asks and promises, match to projects/people, and offer to create tasks.
 
 ## 💰 Sales & Pipeline
@@ -49,7 +48,6 @@ fuzzy-search any of these, or just ask Dex in plain language.
 - **/setup** — Initial Dex system setup and onboarding
 - **/getting-started** — Interactive post-onboarding tour with adaptive pathways based on available data
 - **/calendar-setup** — Grant Python calendar access for 30x faster calendar queries (30s → <1s)
-- **/granola-setup** — Connect Granola to Dex via Granola's official API for automatic meeting sync and transcripts
 - **/google-workspace-setup** — Connect Google Workspace (Gmail, Calendar, Docs) to Dex for email-aware planning and meeting prep
 - **/ms-teams-setup** — Connect Microsoft Teams to Dex for cross-channel context awareness
 - **/zoom-setup** — Connect Zoom to Dex for meeting recordings, scheduling, and transcript context

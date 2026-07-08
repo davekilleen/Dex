@@ -218,7 +218,6 @@ async def _call_tool_inner(name: str, arguments: dict) -> list[TextContent]:
             "company_size": profile.get("company_size", "unknown"),
             "pillars_count": len(profile.get("pillars", [])),
             "obsidian_enabled": profile.get("obsidian_mode", False),
-            "granola_enabled": profile.get("meeting_processing", {}).get("mode") == "automatic",
             **metadata
         }
 

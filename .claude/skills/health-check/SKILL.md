@@ -169,7 +169,7 @@ For each issue, analyze the technical `message`/`error` field (not shown to user
 ```
 Recommended fixes:
 
-  1. Granola MCP — missing package
+  1. Career MCP — missing package
      → Run: pip install -e dex-core
      [Auto-fixable]
 
@@ -228,10 +228,10 @@ After each fix, report:
 For each issue, show the full technical context (this is the one time you show technical detail):
 
 ```
-Issue #1: Granola MCP — missing package
+Issue #1: Career MCP — missing package
 
-  Technical error: ModuleNotFoundError: No module named 'granola_server'
-  Server config: dex-granola-mcp in .mcp.json
+  Technical error: ModuleNotFoundError: No module named 'career_server'
+  Server config: career-mcp in .mcp.json
   Last working: 2 days ago
 
   Fix: pip install -e dex-core
@@ -278,7 +278,7 @@ Want me to run a fresh pre-flight check to verify everything?
    ✓ work-mcp — OK
    ✓ calendar-mcp — OK
    ✓ career-mcp — OK
-   ✗ granola-mcp — still failing (missing package)
+   ✗ career-mcp — still failing (missing package)
    ✓ dex-improvements-mcp — OK
    ...
 
@@ -340,7 +340,7 @@ The older errors are likely symptoms of the same issues. Want me to acknowledge 
 If a server has both a pre-flight failure AND error queue entries, combine them:
 
 ```
-Granola MCP — can't start (missing package)
+Career MCP — can't start (missing package)
   Pre-flight: Failed to import at [time]
   Also: 3 tool errors since [time] (task creation, task update, etc.)
   Root cause: Missing Python package — fixing the import will resolve the tool errors too
@@ -371,14 +371,6 @@ Recent errors: [N] (or "None")
 ```
 
 Don't go into fix mode unless asked.
-
----
-
-### Granola Check
-
-Granola meeting sync uses the desktop app's stored credentials automatically. As part of the health check, verify that Granola's credentials file exists (supabase.json in Granola's app data directory). If missing, note that Granola isn't installed or the user isn't signed in.
-
----
 
 ## Related Commands
 

@@ -111,11 +111,6 @@ class RitualIntelligenceService:
 
         return list_unmatched_transcripts()
 
-    def ingest_granola_local(self, *, days_back: int = 30) -> list[dict]:
-        from .transcript_ingest import ingest_granola_local
-
-        return ingest_granola_local(days_back=days_back)
-
     def import_manual_transcript(
         self,
         *,

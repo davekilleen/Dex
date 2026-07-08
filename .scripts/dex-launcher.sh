@@ -8,7 +8,7 @@
 #   dex-launcher.sh <script-relative-path> [args...]
 #
 # Example:
-#   dex-launcher.sh .scripts/meeting-intel/sync-from-granola.cjs
+#   dex-launcher.sh .scripts/check-anthropic-changelog.cjs
 #
 # Path resolution (in order):
 #   1. ~/.config/dex/vault-path (written at install time)

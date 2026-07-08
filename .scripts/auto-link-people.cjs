@@ -37,10 +37,10 @@ const VAULT = path.resolve(__dirname, '..');
 // Registry: scan People/ subdirs for person pages
 // ---------------------------------------------------------------------------
 
-function buildRegistry() {
+function buildRegistry(vaultRoot = VAULT) {
   const dirs = [
-    path.join(VAULT, 'People', 'External'),
-    path.join(VAULT, 'People', 'Internal'),
+    path.join(vaultRoot, 'People', 'External'),
+    path.join(vaultRoot, 'People', 'Internal'),
   ];
 
   // Map: canonical name → { wikiTarget, fullName }
@@ -325,7 +325,7 @@ function scanRecent(dir, today, out) {
 // ---------------------------------------------------------------------------
 
 function autoLinkContent(content, opts = {}) {
-  const people = buildRegistry();
+  const people = buildRegistry(opts.vaultRoot || VAULT);
   if (people.length === 0) return content;
   const { fullNameMap, firstNameMap } = buildLinkMaps(people);
   const suppress = findUnknownFullNames(content, firstNameMap);
@@ -335,7 +335,14 @@ function autoLinkContent(content, opts = {}) {
   ).join('');
 }
 
-module.exports = { autoLinkContent, buildRegistry, buildLinkMaps };
+module.exports = {
+  autoLinkContent,
+  buildRegistry,
+  buildLinkMaps,
+  splitSafeZones,
+  linkSegment,
+  findUnknownFullNames,
+};
 
 // ---------------------------------------------------------------------------
 // CLI entry point

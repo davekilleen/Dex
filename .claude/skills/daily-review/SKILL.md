@@ -35,16 +35,6 @@ find . -type f -name "*.md" -newermt "$TODAY 00:00:00" ! -newermt "$TODAY 23:59:
 
 ---
 
-## Step 1.5: Process Today's Meetings
-
-Before gathering context, ensure today's meetings are in the vault by running `/process-meetings today`. This pulls any unprocessed meetings from the meeting source (Otter.ai, Granola, etc.), creates meeting notes, updates person/company pages, and extracts tasks — so the rest of the review has complete data.
-
-- If no new meetings are found, continue silently
-- If meetings are processed, note the count for the review summary
-- Do NOT ask for a skill rating after this sub-step — save that for the end of the full review
-
----
-
 ## Step 2: Gather Context
 
 ### From Planning/Tasks.md

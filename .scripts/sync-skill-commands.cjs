@@ -63,7 +63,7 @@ const CATEGORIES = [
   ['💰 Sales & Pipeline', ['pipeline-sync']],
   ['📁 Projects & Tasks', ['triage', 'project-health', 'save-insight']],
   ['🚀 Career', ['career-setup', 'career-coach', 'resume-builder']],
-  ['🔌 Setup & Integrations', ['setup', 'getting-started', 'calendar-setup', 'granola-setup', 'google-workspace-setup', 'ms-teams-setup', 'zoom-setup', 'atlassian-setup', 'todoist-setup', 'trello-setup', 'things-setup', 'screenpipe-setup', 'enable-semantic-search', 'ai-setup', 'ai-status', 'create-mcp', 'dex-add-mcp', 'integrate-mcp', 'dex-obsidian-setup', 'beta-activate', 'beta-status']],
+  ['🔌 Setup & Integrations', ['setup', 'getting-started', 'calendar-setup', 'google-workspace-setup', 'ms-teams-setup', 'zoom-setup', 'atlassian-setup', 'todoist-setup', 'trello-setup', 'things-setup', 'screenpipe-setup', 'enable-semantic-search', 'ai-setup', 'ai-status', 'create-mcp', 'dex-add-mcp', 'integrate-mcp', 'dex-obsidian-setup', 'beta-activate', 'beta-status']],
   ['🛠️ System & Maintenance', ['dex-update', 'dex-rollback', 'dex-whats-new', 'dex-level-up', 'dex-backlog', 'dex-improve', 'dex-demo', 'health-check', 'reset', 'create-skill', 'prompt-improver', 'xray', 'scrape']],
 ];
 

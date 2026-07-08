@@ -5,7 +5,7 @@ jobs:
     runs-on: macos-latest
     env:
       VAULT_PATH: core/tests/fixtures/vault
-      COVERAGE_MIN_TOTAL: "25"
+      COVERAGE_MIN_TOTAL: "40"
       COVERAGE_MIN_TOUCHED: "10"
     steps:
       - uses: actions/checkout@v4
@@ -20,7 +20,7 @@ jobs:
       - name: Install Python dependencies
         run: |
           pip install pytest pytest-cov ruff
-          pip install mcp pyyaml python-dateutil requests
+          pip install mcp pyyaml python-dateutil requests icalendar
       - run: npm ci
       - name: Ensure policy scripts are executable
         run: chmod +x scripts/check-*.sh scripts/check-coverage-threshold.py scripts/check-path-contract-usage.sh scripts/security-gate.sh scripts/benchmark_large_vault.py
@@ -29,6 +29,18 @@ jobs:
           test -f docs/testing-governance.md || { echo "Missing required governance document docs/testing-governance.md"; exit 1; }
       - name: Hook harness tests
         run: npm run test:hooks
+      - name: Vault script tests
+        run: npm run test:scripts
+      - name: Extension tests (machinery-intelligence-platform)
+        working-directory: extensions/machinery-intelligence-platform
+        run: |
+          npm ci
+          npm test
+      - name: Extension tests (mam-email-triage)
+        working-directory: extensions/mam-email-triage
+        run: |
+          npm ci
+          npm test
       - name: Diff-aware test gate
         if: github.event_name == 'pull_request'
         run: bash scripts/check-test-delta.sh
@@ -44,6 +56,8 @@ jobs:
         run: python core/paths.py
       - name: Test suites + coverage
         run: pytest core/tests/ core/mcp/tests/ core/migrations/tests/ -v --cov=core --cov-report=term --cov-report=json:coverage.json --cov-fail-under="${COVERAGE_MIN_TOTAL}"
+      - name: Sales tooling tests
+        run: pytest .scripts/tests/python -q
       - name: Touched-file coverage gate
         if: github.event_name == 'pull_request'
         run: python scripts/check-coverage-threshold.py

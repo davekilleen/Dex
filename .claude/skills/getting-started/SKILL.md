@@ -97,7 +97,7 @@ Call `check_onboarding_complete()` from onboarding-mcp to verify vault status.
 
 Then check what data sources are available:
 - Calendar: Try calling calendar MCP (if fails, not available)
-- Granola: Call `granola_check_available()` from granola-mcp
+- Granola: not available (integration removed from this vault) — always treat Granola as unavailable and use the calendar-only or no-data flows
 
 Based on results, route to appropriate flow.
 

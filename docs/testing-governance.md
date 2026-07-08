@@ -18,12 +18,20 @@ Dex uses repository-enforced quality gates so unsafe changes cannot merge.
 - Documentation drift gate passes or approved exception label exists.
 - Lint, test suites, and coverage thresholds pass.
 - Hook harness tests pass.
+- Vault script tests pass (`npm run test:scripts`).
+- Sales tooling tests pass (`pytest .scripts/tests/python`).
+- Extension test suites pass (machinery-intelligence-platform, mam-email-triage).
 - Security gate passes (secret leakage detection).
 - Large-vault performance budget passes.
 
 Current coverage thresholds (ratchet baseline):
-- Total coverage >= 15%
+- Total coverage >= 40% (measured ~47% as of 2026-07; raise the floor as coverage grows, never lower it)
 - Touched source files >= 10%
+
+## Test Hermeticity
+- Tests must never write to the checked-in fixture vault (`core/tests/fixtures/vault`).
+  `core/conftest.py` copies it to a temp directory per session and points
+  `VAULT_PATH` at the copy; new suites inherit this automatically.
 
 ## Golden User Journeys
 These journeys are release-critical and cannot regress:

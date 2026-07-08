@@ -629,7 +629,7 @@ def find_tasks_for_page(page_path: str) -> List[Dict[str, Any]]:
                 # Look for context/priority in following lines
                 priority = 'P2'
                 j = i + 1
-                while j < len(lines) and lines[j].strip().startswith('\t-'):
+                while j < len(lines) and lines[j].startswith('\t-'):
                     if 'Priority:' in lines[j]:
                         priority_match = re.search(r'Priority:\s*(P[0-3])', lines[j])
                         if priority_match:
@@ -1779,7 +1779,12 @@ created: {_tz_now().strftime('%Y-%m-%d')}
     
     # Build goal section
     goal_num = len(existing_goals) + 1
-    milestones_md = '\n'.join([f"- [ ] {m['title']}" for m in goal_data.get('milestones', [])])
+    # Milestones arrive as {"title": ...} objects per the tool schema, but
+    # LLM callers frequently send plain strings — accept both.
+    milestones_md = '\n'.join(
+        f"- [ ] {m['title'] if isinstance(m, dict) else m}"
+        for m in goal_data.get('milestones', [])
+    )
     
     goal_section = f"""
 ### {goal_num}. {goal_data['title']} — **{goal_data['pillar']}** ^{goal_id}

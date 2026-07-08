@@ -441,7 +441,6 @@ Say: "No problem! You can connect tools anytime with `/integrate-mcp` or the ind
 Say: "A couple more optional add-ons:
 
 - **Journaling** — Daily/weekly reflection prompts (2-3 min/day)
-- **Granola** — Automatic meeting processing (if you use it)
 - **Pendo** — Product analytics integration (if you're a Pendo customer)
 - **Background Learning** — Automatic checks for new Claude features and pending learnings (macOS only)
 
@@ -461,33 +460,6 @@ Ask: "Which journaling prompts do you want?"
 1. Create `00-Inbox/Journals/` folder
 2. Update `System/user-profile.yaml` with selections
 3. Say: "✓ Journaling enabled. You'll see prompts in `/daily-plan` and `/review`"
-
-### Granola Setup (if selected):
-
-Say: "Granola captures your meeting notes and transcripts. I can help you process them.
-
-**First, connect Granola:** Dex uses the official Granola API, which needs a Granola Business plan and an API key. Run `/granola-setup` and I'll walk you through adding it — no file editing needed.
-
-**Processing modes (once connected):**
-- **Manual** (recommended) — Run `/process-meetings` when you want. No extra LLM API key needed.
-- **Automatic** — Background sync every 30 minutes. Requires an LLM API key (Gemini/Anthropic/OpenAI).
-
-**What gets processed:**
-When you first connect Granola (or later via `/getting-started`), you'll choose:
-- How much history to backfill (people pages, meeting notes, todos)
-- Different time ranges for each type (e.g., all people, last 30 days notes, last 7 days todos)
-
-Want to connect Granola now with `/granola-setup`, then set up manual or automatic processing?"
-
-**If manual:** 
-1. Update `System/user-profile.yaml` with `meeting_processing: manual`
-2. Say: "✓ Manual processing enabled. Once Granola is connected via `/granola-setup`, run `/process-meetings` or `/getting-started` to process your meetings."
-
-**If automatic:**
-1. Ask which provider (Gemini has free tier)
-2. Get their API key
-3. Update `System/user-profile.yaml` and `.env`
-4. Say: "✓ Automatic processing enabled. I'll sync every 30 minutes. You can still use `/getting-started` for historical data."
 
 ### Analytics Notice (Inform, Don't Ask):
 
@@ -612,7 +584,7 @@ I've configured your system with:
 - Strategic pillars: [list their pillars]
 - Folder structure for PARA method
 - [Any optional features they enabled]
-- **All your integrations** (calendar, Granola, etc.)
+- **All your integrations** (calendar, etc.)
 
 **Here's what happens next:**
 
@@ -638,11 +610,11 @@ This takes about 2 minutes and shows you what Dex can really do.
 
 **Trigger:** Either immediately after Step 9, OR at next session start if vault is < 7 days old.
 
-**Purpose:** Transform "I have a system, now what?" into immediate value and confidence. This is where the **dramatic reveal** happens - analyzing their calendar/Granola data and showing what Dex built automatically.
+**Purpose:** Transform "I have a system, now what?" into immediate value and confidence. This is where the **dramatic reveal** happens - analyzing their calendar data and showing what Dex built automatically.
 
 **If yes (user wants to continue):** Run `/getting-started` skill (see `.claude/skills/getting-started/SKILL.md`)
 - The skill will check for `pre_analysis_deferred: true` flag in `.onboarding-complete`
-- If found, it will run the full calendar/Granola analysis NOW
+- If found, it will run the full calendar analysis NOW
 - This includes the dramatic reveal showing meetings, contacts, and auto-created artifacts
 - Much better UX than blocking during finalization
 

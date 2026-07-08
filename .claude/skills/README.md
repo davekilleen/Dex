@@ -179,7 +179,6 @@ Invoked with `/skill-name` - automatically discovered by Claude.
 Skills that run heavy workflows now execute in **isolated context** — your conversation stays clean, no context bleed. Key enhancements:
 
 - **Daily/Weekly workflows** (`/daily-plan`, `/daily-review`, `/week-plan`, `/week-review`) — Isolated context execution. `/daily-plan` generates a quickref summary and is powered by agents with memory that track trends across sessions.
-- **Meetings** (`/meeting-prep`, `/process-meetings`) — Isolated context. `/process-meetings` auto-updates person pages and supports background execution for large batches.
 - **Career** (`/career-coach`) — Isolated context. Auto-captures career evidence when achievements with metrics are discussed.
 - **Triage** (`/triage`) — Tuned for speed. Quick routing decisions without over-analysis.
 
@@ -212,7 +211,6 @@ Built specifically for personal knowledge management and productivity workflows 
 **Meetings:**
 - `/meeting-prep` - Prepare for meetings *(v1.11: isolated context)*
 - `/log-meeting` - Log meeting notes to Dex + Salesforce in one step (extracts action items, matches opp, pushes activity)
-- `/process-meetings` - Process Granola meetings *(v1.11: isolated context, auto-updates person pages, background execution)*
 
 **Career Development:**
 - `/career-setup` - Initialize career system

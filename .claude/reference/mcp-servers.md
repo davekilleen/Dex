@@ -100,33 +100,6 @@ echo "NEW_SECRET" | npx wrangler secret put MCP_SECRET
 
 ---
 
-### Granola MCP (`granola_server.py`)
-
-**What it does:**  
-Reads meeting transcripts from Granola's local cache. No API, no cloud—just direct file access to your local meeting notes.
-
-**Why it's an MCP:**  
-Granola stores meetings in a SQLite database with proprietary schema. The MCP abstracts that complexity, providing simple queries like "get last 5 meetings" or "search meetings mentioning 'roadmap'".
-
-**Power:**
-- **Zero-config** - Works immediately if Granola is installed
-- **Full-text search** - Find specific topics across all meeting transcripts
-- **Recency-based retrieval** - "What did we discuss with Sarah this week?"
-- **Integration with person pages** - Automatically links meeting transcripts to attendees
-
-**Real-world example:**  
-You're preparing for tomorrow's meeting with Sarah. You say: "What did Sarah and I discuss last week?"
-
-Granola MCP:
-1. Searches local transcript database for meetings with Sarah
-2. Returns 2 meetings from last week
-3. Extracts key topics: roadmap planning, hiring timeline, Q1 goals
-4. Dex summarizes: "Last week you discussed Q1 roadmap priorities. Sarah mentioned hiring concerns for the design team. Follow up on design headcount."
-
-**Tools:** `granola_get_recent_meetings`, `granola_search_meetings`, `granola_get_meeting_details`
-
----
-
 ### Career MCP (`career_server.py`)
 
 **What it does:**  
@@ -240,17 +213,17 @@ Later, when you implement it, call `mark_implemented(idea-042)` and it moves to 
 Stateful onboarding system with validation enforcement. Manages new user setup with session state, step validation, and automatic vault creation.
 
 **Why it's an MCP:**  
-Onboarding requires bulletproof validation (email domain is mandatory), session persistence (resume if interrupted), and complex dependencies (Python packages, Calendar.app, Granola). An MCP enforces these requirements systematically vs. ad-hoc validation in prompts.
+Onboarding requires bulletproof validation (email domain is mandatory), session persistence (resume if interrupted), and complex dependencies (Python packages, Calendar.app). An MCP enforces these requirements systematically vs. ad-hoc validation in prompts.
 
 **Power:**
 - **Session management** - Resume onboarding if interrupted without starting over
 - **Validation enforcement** - Cannot skip required fields (especially Step 4: email domain)
 - **Dependency checking** - Verifies Python packages and Calendar.app before finalization
 - **Automatic configuration** - Creates PARA folders and generates MCP configs with VAULT_PATH substitution
-- **Pre-analysis** - Analyzes calendar and Granola data during setup for dramatic reveal
+- **Pre-analysis** - Analyzes calendar data during setup for dramatic reveal
 
 **Real-world example:**  
-New user runs onboarding → provides name, role, company size → **tries to skip email domain** → Onboarding MCP blocks progression: "Email domain is required for Internal/External person routing." → User provides domain → continues → finalization creates vault structure, configures MCPs, analyzes existing calendar/Granola data → reveals insights: "Found 47 meetings, 12 unique people, 3 external companies. Already created person pages for your top 3 contacts."
+New user runs onboarding → provides name, role, company size → **tries to skip email domain** → Onboarding MCP blocks progression: "Email domain is required for Internal/External person routing." → User provides domain → continues → finalization creates vault structure, configures MCPs, analyzes existing calendar data → reveals insights: "Found 47 meetings, 12 unique people, 3 external companies. Already created person pages for your top 3 contacts."
 
 **Tools:** `start_onboarding_session`, `validate_and_save_step`, `get_onboarding_status`, `verify_dependencies`, `finalize_onboarding`, `check_onboarding_complete`
 
@@ -307,7 +280,6 @@ You generate a quote PDF via `/salesforce-quote-email`. Instead of just emailing
 | Integration | MCP Server | Status |
 |-------------|------------|--------|
 | Outlook Calendar | Cloudflare Worker (remote HTTP) | Built-in |
-| Granola | `granola_server.py` | Built-in |
 | Work | `work_server.py` | Built-in (always enabled) |
 | Dex Improvements | `dex_improvements_server.py` | Built-in |
 | Career | `career_server.py` | Built-in |
@@ -324,7 +296,6 @@ Run `/daily-plan --setup` to configure integrations interactively, or add MCP se
 See `System/.mcp.json.example` for a complete config with all built-in servers:
 - `work_server.py` - Task management (always enabled)
 - `calendar_server.py` - Apple Calendar integration
-- `granola_server.py` - Meeting notes integration
 - `career_server.py` - Career development tracking
 - `resume_server.py` - Resume building
 - `dex_improvements_server.py` - System improvement backlog
@@ -457,7 +428,7 @@ bash .scripts/install-learning-automation.sh --uninstall
 
 ### Architecture Pattern
 
-These background scripts follow the same pattern as Granola automation (`.scripts/meeting-intel/sync-from-granola.cjs`):
+These background scripts follow a common launchd pattern:
 - No LLM/API required - pure data processing
 - Deterministic, fast execution
 - Write alert files that session hooks detect

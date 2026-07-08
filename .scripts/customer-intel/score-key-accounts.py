@@ -74,7 +74,21 @@ def norm_name(n):
     n = re.sub(r"\b(inc|llc|ltd|corp|corporation|company|co|the|and|&|mfg|"
               r"manufacturing|industries|enterprises|group|services|division)\b", " ", n)
     n = re.sub(r"[^a-z0-9 ]", " ", n)
-    return re.sub(r"\s+", " ", n).strip()
+    n = re.sub(r"\s+", " ", n).strip()
+    # Merge runs of single-character tokens so dotted initials join their
+    # undotted form: "J.R. Steel" -> "j r steel" -> "jr steel" == "JR Steel".
+    merged, run = [], []
+    for token in n.split():
+        if len(token) == 1:
+            run.append(token)
+        else:
+            if run:
+                merged.append("".join(run))
+                run = []
+            merged.append(token)
+    if run:
+        merged.append("".join(run))
+    return " ".join(merged)
 
 
 def parse_date(s):

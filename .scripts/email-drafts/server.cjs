@@ -15,10 +15,11 @@ const https = require('https');
 
 const ROOT = __dirname;
 const PUBLIC_DIR = path.join(ROOT, 'public');
-const DATA_DIR = path.join(ROOT, 'data');
+// Overridable so tests can run against a throwaway queue on a free port.
+const DATA_DIR = process.env.EMAIL_DRAFTS_DATA_DIR || path.join(ROOT, 'data');
 const DRAFTS_FILE = path.join(DATA_DIR, 'drafts.json');
 const PUSH_SCRIPT = path.join(ROOT, 'push-to-outlook.ps1');
-const PORT = 4747;
+const PORT = Number(process.env.EMAIL_DRAFTS_PORT) || 4747;
 
 const MIME_TYPES = {
   '.html': 'text/html; charset=utf-8',

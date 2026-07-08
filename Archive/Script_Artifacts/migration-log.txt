@@ -1,0 +1,372 @@
+2026-06-25 12:38:15  === MIGRATION START ===
+
+2026-06-25 12:38:15  DIR created: AC Gentry/
+2026-06-25 12:38:15  MOVED: AC Gentry - CID - FX Series - AC Gentry - Cidan Machinery/AC Gentry - CID - FX Series - AC Gentry - Cidan Machinery.md -> AC Gentry/CID - FX Series - AC Gentry - Cidan Machinery.md
+2026-06-25 12:38:15    QUOTES moved: Quotes/ -> Quotes_CID - FX Series - AC Gentry - Cidan Machinery/
+2026-06-25 12:38:15  DIR created: All Steel Service Inc/
+2026-06-25 12:38:15  MOVED: All Steel Service Inc - FIN - Oxy - All Steel Service - Mid Atlantic Global/All Steel Service Inc - FIN - Oxy - All Steel Service - Mid Atlantic Global.md -> All Steel Service Inc/FIN - Oxy - All Steel Service - Mid Atlantic Global.md
+2026-06-25 12:38:15    QUOTES moved: Quotes/ -> Quotes_FIN - Oxy - All Steel Service - Mid Atlantic Global/
+2026-06-25 12:38:15  MOVED: All Steel Service Inc - TRU - TruLaser 1000_3000 6kW-9kW - TRUMPF - Vendor/All Steel Service Inc - TRU - TruLaser 1000_3000 6kW-9kW - TRUMPF - Vendor.md -> All Steel Service Inc/TRU - TruLaser 1000_3000 6kW-9kW - TRUMPF - Vendor.md
+2026-06-25 12:38:15  DIR created: Allen Welding/
+2026-06-25 12:38:15  MOVED: Allen Welding - CAR - Carif 250BA - CARIF/Allen Welding - CAR - Carif 250BA - CARIF.md -> Allen Welding/CAR - Carif 250BA - CARIF.md
+2026-06-25 12:38:15  DIR created: AllPro Stainless Steel and Metal Fabrication/
+2026-06-25 12:38:15  MOVED: AllPro Stainless Steel and Metal Fabrication - TRU - TL1030 - TRUMPF - Vendor/AllPro Stainless Steel and Metal Fabrication - TRU - TL1030 - TRUMPF - Vendor.md -> AllPro Stainless Steel and Metal Fabrication/TRU - TL1030 - TRUMPF - Vendor.md
+2026-06-25 12:38:15  DIR created: American Alloy Fabricators/
+2026-06-25 12:38:15  MOVED: American Alloy Fabricators - WYS - Shear - American Alloy Fabricators - Wysong/American Alloy Fabricators - WYS - Shear - American Alloy Fabricators - Wysong.md -> American Alloy Fabricators/WYS - Shear - American Alloy Fabricators - Wysong.md
+2026-06-25 12:38:15    QUOTES moved: Quotes/ -> Quotes_WYS - Shear - American Alloy Fabricators - Wysong/
+2026-06-25 12:38:15  DIR created: Anvil Craft Corporation/
+2026-06-25 12:38:15  MOVED: Anvil Craft Corporation - MAG - Carif 260 - Anvil Craft - Mid Atlantic Global/Anvil Craft Corporation - MAG - Carif 260 - Anvil Craft - Mid Atlantic Global.md -> Anvil Craft Corporation/MAG - Carif 260 - Anvil Craft - Mid Atlantic Global.md
+2026-06-25 12:38:15    QUOTES moved: Quotes/ -> Quotes_MAG - Carif 260 - Anvil Craft - Mid Atlantic Global/
+2026-06-25 12:38:15  DIR created: ASGCO Mfg Inc/
+2026-06-25 12:38:15  MOVED: ASGCO Mfg Inc. - TRU - TL3030 Laser - ASGCO - TRUMPF - Vendor/ASGCO Mfg Inc. - TRU - TL3030 Laser - ASGCO - TRUMPF - Vendor.md -> ASGCO Mfg Inc/TRU - TL3030 Laser - ASGCO - TRUMPF - Vendor.md
+2026-06-25 12:38:15    QUOTES moved: Quotes/ -> Quotes_TRU - TL3030 Laser - ASGCO - TRUMPF - Vendor/
+2026-06-25 12:38:15  DIR created: ATAS International Inc/
+2026-06-25 12:38:15  MOVED: ATAS International Inc - MAG - FL6500RD - MAGNABEND/ATAS International Inc - MAG - FL6500RD - MAGNABEND.md -> ATAS International Inc/MAG - FL6500RD - MAGNABEND.md
+2026-06-25 12:38:15  DIR created: Atkore - Philadelphia, PA/
+2026-06-25 12:38:15  MOVED: Atkore - Philadelphia, PA - AID - Stamping Press - Atkore - AIDA/Atkore - Philadelphia, PA - AID - Stamping Press - Atkore - AIDA.md -> Atkore - Philadelphia, PA/AID - Stamping Press - Atkore - AIDA.md
+2026-06-25 12:38:15    QUOTES moved: Quotes/ -> Quotes_AID - Stamping Press - Atkore - AIDA/
+2026-06-25 12:38:15  DIR created: AW Mercer/
+2026-06-25 12:38:15  MOVED: AW Mercer - FIN - FL6300RDDR - Mid Atlantic Global/AW Mercer - FIN - FL6300RDDR - Mid Atlantic Global.md -> AW Mercer/FIN - FL6300RDDR - Mid Atlantic Global.md
+2026-06-25 12:38:16  MOVED: AW Mercer - HAE - Pemserter 2000 - Haeger Inc/AW Mercer - HAE - Pemserter 2000 - Haeger Inc..md -> AW Mercer/HAE - Pemserter 2000 - Haeger Inc.md
+2026-06-25 12:38:16  DIR created: Bangor Steel Corp/
+2026-06-25 12:38:16  MOVED: Bangor Steel Corp - PMI - Vertical Saw - Bangor Steel - Pat Mooney Saws/Bangor Steel Corp - PMI - Vertical Saw - Bangor Steel - Pat Mooney Saws.md -> Bangor Steel Corp/PMI - Vertical Saw - Bangor Steel - Pat Mooney Saws.md
+2026-06-25 12:38:16    QUOTES moved: Quotes/ -> Quotes_PMI - Vertical Saw - Bangor Steel - Pat Mooney Saws/
+2026-06-25 12:38:16  DIR created: BGC, Inc. Water and Wastewater Services Division/
+2026-06-25 12:38:16  MOVED: BGC, Inc. Water & Wastewater Services Division - CAR - 360 BSA VAR  320 BSA  550 BSA VAR-E - Mid Atlantic Global/BGC, Inc. Water & Wastewater Services Division - CAR - 360 BSA VAR  320 BSA  550 BSA VAR-E - Mid Atlantic Global.md -> BGC, Inc. Water and Wastewater Services Division/CAR - 360 BSA VAR 320 BSA 550 BSA VAR-E - Mid Atlantic Global.md
+2026-06-25 12:38:16    QUOTES moved: Quotes/ -> Quotes_CAR - 360 BSA VAR 320 BSA 550 BSA VAR-E - Mid Atlantic Global/
+2026-06-25 12:38:16  MOVED: BGC, Inc. Water & Wastewater Services Division - CNC - Super B+ CNC Plasma - CNC Shop and Service LLC/BGC, Inc. Water & Wastewater Services Division - CNC - Super B+ CNC Plasma - CNC Shop and Service LLC.md -> BGC, Inc. Water and Wastewater Services Division/CNC - Super B+ CNC Plasma - CNC Shop and Service LLC.md
+2026-06-25 12:38:16    QUOTES moved: Quotes/ -> Quotes_CNC - Super B+ CNC Plasma - CNC Shop and Service LLC/
+2026-06-25 12:38:16  MOVED: BGC, Inc. Water & Wastewater Services Division - LON - Trooper - Lone Star Cutting Solutions/BGC, Inc. Water & Wastewater Services Division - LON - Trooper - Lone Star Cutting Solutions.md -> BGC, Inc. Water and Wastewater Services Division/LON - Trooper - Lone Star Cutting Solutions.md
+2026-06-25 12:38:16    QUOTES moved: Quotes/ -> Quotes_LON - Trooper - Lone Star Cutting Solutions/
+2026-06-25 12:38:16  DIR created: Bloomsburg Metal Co. LLC/
+2026-06-25 12:38:16  MOVED: Bloomsburg Metal Co. LLC - GEK - Ironworker - Geka USA/Bloomsburg Metal Co. LLC - GEK - Ironworker - Geka USA.md -> Bloomsburg Metal Co. LLC/GEK - Ironworker - Geka USA.md
+2026-06-25 12:38:16  DIR created: Brey-Krause Mfg/
+2026-06-25 12:38:16  MOVED: Brey-Krause Mfg - FLO - M1313 - Brey Krause - Flow Waterjet/Brey-Krause Mfg - FLO - M1313 - Brey Krause - Flow Waterjet.md -> Brey-Krause Mfg/FLO - M1313 - Brey Krause - Flow Waterjet.md
+2026-06-25 12:38:16  MOVED: Brey-Krause Mfg - PA - Payoff Reel - Brey-Krause - PA Industries/Brey-Krause Mfg - PA - Payoff Reel - Brey-Krause - PA Industries.md -> Brey-Krause Mfg/PA - Payoff Reel - Brey-Krause - PA Industries.md
+2026-06-25 12:38:16    QUOTES moved: Quotes/ -> Quotes_PA - Payoff Reel - Brey-Krause - PA Industries/
+2026-06-25 12:38:16  DIR created: Chown's Fabrication and Rigging/
+2026-06-25 12:38:16  MOVED: Chown's Fabrication & Rigging - EMI - El SQRD - Electro-Mechanical Integrators, Inc. (EMI)/Chown's Fabrication & Rigging - EMI - El SQRD - Electro-Mechanical Integrators, Inc. (EMI).md -> Chown's Fabrication and Rigging/EMI - El SQRD - Electro-Mechanical Integrators, Inc. (EMI).md
+2026-06-25 12:38:16  MOVED: Chown's Fabrication & Rigging - GEK - GR150 - Chowns - Geka USA/Chown's Fabrication & Rigging - GEK - GR150 - Chowns - Geka USA.md -> Chown's Fabrication and Rigging/GEK - GR150 - Chowns - Geka USA.md
+2026-06-25 12:38:16  DIR created: Craftweld Fabrication/
+2026-06-25 12:38:16  MOVED: Craftweld Fabrication - FIN - FL4200 - Craftweld Fabrication - Mid Atlantic Global/Craftweld Fabrication - FIN - FL4200 - Craftweld Fabrication - Mid Atlantic Global.md -> Craftweld Fabrication/FIN - FL4200 - Craftweld Fabrication - Mid Atlantic Global.md
+2026-06-25 12:38:16  DIR created: Crystal Metalworks Inc/
+2026-06-25 12:38:16  MOVED: Crystal Metalworks Inc - LON - Stinger 2000 Laser Welder & Feeder - Lone Star Cutting Solutions/Crystal Metalworks Inc - LON - Stinger 2000 Laser Welder & Feeder - Lone Star Cutting Solutions.md -> Crystal Metalworks Inc/LON - Stinger 2000 Laser Welder and Feeder - Lone Star Cutting Solutions.md
+2026-06-25 12:38:16  MOVED: Crystal Metalworks Inc - TRU - TL3000TL5000 - TRUMPF - Vendor/Crystal Metalworks Inc - TRU - TL3000TL5000 - TRUMPF - Vendor.md -> Crystal Metalworks Inc/TRU - TL3000TL5000 - TRUMPF - Vendor.md
+2026-06-25 12:38:16  DIR created: David J Hohenshilt Welding, LLC/
+2026-06-25 12:38:16  MOVED: David J Hohenshilt Welding, LLC - PRO - PCR41 - David J Hohenshilt Welding - Prodevco/David J Hohenshilt Welding, LLC - PRO - PCR41 - David J Hohenshilt Welding - Prodevco.md -> David J Hohenshilt Welding, LLC/PRO - PCR41 - David J Hohenshilt Welding - Prodevco.md
+2026-06-25 12:38:16    QUOTES moved: Quotes/ -> Quotes_PRO - PCR41 - David J Hohenshilt Welding - Prodevco/
+2026-06-25 12:38:16  DIR created: DVM Manufacturing - Norristown, PA/
+2026-06-25 12:38:16  MOVED: DVM Manufacturing - Norristown, PA - BAY - 4' x 44 ton brake - FAB-LINE MACHINERY LLC (Baykal)/DVM Manufacturing - Norristown, PA - BAY - 4' x 44 ton brake - FAB-LINE MACHINERY LLC (Baykal).md -> DVM Manufacturing - Norristown, PA/BAY - 4' x 44 ton brake - FAB-LINE MACHINERY LLC (Baykal).md
+2026-06-25 12:38:16  MOVED: DVM Manufacturing - Norristown, PA - STA - AB250-12  AB325-12 - Standard Industrial Corp/DVM Manufacturing - Norristown, PA - STA - AB250-12  AB325-12 - Standard Industrial Corp..md -> DVM Manufacturing - Norristown, PA/STA - AB250-12 AB325-12 - Standard Industrial Corp.md
+2026-06-25 12:38:16    QUOTES moved: Quotes/ -> Quotes_STA - AB250-12 AB325-12 - Standard Industrial Corp/
+2026-06-25 12:38:16  DIR created: Dynamic Metal Innovations/
+2026-06-25 12:38:16  MOVED: Dynamic Metal Innovations - TRU - TruBend 70367050 - Dynamic Metal Innovations - TRUMPF - Vendor/Dynamic Metal Innovations - TRU - TruBend 70367050 - Dynamic Metal Innovations - TRUMPF - Vendor.md -> Dynamic Metal Innovations/TRU - TruBend 70367050 - Dynamic Metal Innovations - TRUMPF - Vendor.md
+2026-06-25 12:38:16    QUOTES moved: Quotes/ -> Quotes_TRU - TruBend 70367050 - Dynamic Metal Innovations - TRUMPF - Vendor/
+2026-06-25 12:38:16  DIR created: EC Fence and Ironworks, Inc/
+2026-06-25 12:38:16  MOVED: EC Fence & Ironworks, Inc. - REA - Reading Overhead Crane - TBD/EC Fence & Ironworks, Inc. - REA - Reading Overhead Crane - TBD.md -> EC Fence and Ironworks, Inc/REA - Reading Overhead Crane - TBD.md
+2026-06-25 12:38:16  DIR created: EC Fence and Ironworks/
+2026-06-25 12:38:16  MOVED: EC Fence & Ironworks, Inc. - UNK - Aluminum Saw - 455_SUP600 - Scotchman Industries, Inc/EC Fence & Ironworks, Inc. - UNK - Aluminum Saw - 455_SUP600 - Scotchman Industries, Inc.md -> EC Fence and Ironworks/UNK - Aluminum Saw - 455_SUP600 - Scotchman Industries, Inc.md
+2026-06-25 12:38:16    QUOTES moved: Quotes/ -> Quotes_UNK - Aluminum Saw - 455_SUP600 - Scotchman Industries, Inc/
+2026-06-25 12:38:16  DIR created: EMP Industries/
+2026-06-25 12:38:16  MOVED: EMP Industries - PMI - Band Saw - EMP Industries - Pat Mooney Saws/EMP Industries - PMI - Band Saw - EMP Industries - Pat Mooney Saws.md -> EMP Industries/PMI - Band Saw - EMP Industries - Pat Mooney Saws.md
+2026-06-25 12:38:16    QUOTES moved: Quotes/ -> Quotes_PMI - Band Saw - EMP Industries - Pat Mooney Saws/
+2026-06-25 12:38:16  DIR created: ETC - Environmental Tectonics/
+2026-06-25 12:38:16  MOVED: ETC - Environmental Tectonics - USE - Geka Ironworker 55S - GEKA/ETC - Environmental Tectonics - USE - Geka Ironworker 55S - GEKA.md -> ETC - Environmental Tectonics/USE - Geka Ironworker 55S - GEKA.md
+2026-06-25 12:38:16  DIR created: EVS Metal - East Stroudsburg, PA/
+2026-06-25 12:38:16  MOVED: EVS Metal - East Stroudsburg, PA - MAG - Finishline - EVS Metal - Mid Atlantic Global/EVS Metal - East Stroudsburg, PA - MAG - Finishline - EVS Metal - Mid Atlantic Global.md -> EVS Metal - East Stroudsburg, PA/MAG - Finishline - EVS Metal - Mid Atlantic Global.md
+2026-06-25 12:38:16    QUOTES moved: Quotes/ -> Quotes_MAG - Finishline - EVS Metal - Mid Atlantic Global/
+2026-06-25 12:38:16  DIR created: Frank B Clayton Sons Inc/
+2026-06-25 12:38:16  MOVED: Frank B Clayton Sons Inc - TRI - Lemas Plate Roll - Frank B Clayton - Weaver Metalworking Machines LLC/Frank B Clayton Sons Inc - TRI - Lemas Plate Roll - Frank B Clayton - Weaver Metalworking Machines LLC.md -> Frank B Clayton Sons Inc/TRI - Lemas Plate Roll - Frank B Clayton - Weaver Metalworking Machines LLC.md
+2026-06-25 12:38:16    QUOTES moved: Quotes/ -> Quotes_TRI - Lemas Plate Roll - Frank B Clayton - Weaver Metalworking Machines LLC/
+2026-06-25 12:38:16  DIR created: Galaxy Manufacturing Co/
+2026-06-25 12:38:16  MOVED: Galaxy Manufacturing Co - FIN - FL4200RDR - Mid Atlantic Global/Galaxy Manufacturing Co - FIN - FL4200RDR - Mid Atlantic Global.md -> Galaxy Manufacturing Co/FIN - FL4200RDR - Mid Atlantic Global.md
+2026-06-25 12:38:16  MOVED: Galaxy Manufacturing Co - TRU - TB2100 - TRUMPF - Vendor/Galaxy Manufacturing Co - TRU - TB2100 - TRUMPF - Vendor.md -> Galaxy Manufacturing Co/TRU - TB2100 - TRUMPF - Vendor.md
+2026-06-25 12:38:16  DIR created: Gambone Steel Company, Inc/
+2026-06-25 12:38:16  MOVED: Gambone Steel Company, Inc. - ALL - US-612 Plasma - Gambone - ALLtra Corp/Gambone Steel Company, Inc. - ALL - US-612 Plasma - Gambone - ALLtra Corp..md -> Gambone Steel Company, Inc/ALL - US-612 Plasma - Gambone - ALLtra Corp.md
+2026-06-25 12:38:16    QUOTES moved: Quotes/ -> Quotes_ALL - US-612 Plasma - Gambone - ALLtra Corp/
+2026-06-25 12:38:16  MOVED: Gambone Steel Company, Inc. - EMI - ELSQ - Electro-Mechanical Integrators, Inc. (EMI)/Gambone Steel Company, Inc. - EMI - ELSQ - Electro-Mechanical Integrators, Inc. (EMI).md -> Gambone Steel Company, Inc/EMI - ELSQ - Electro-Mechanical Integrators, Inc. (EMI).md
+2026-06-25 12:38:16  DIR created: Garrety Manufacturing/
+2026-06-25 12:38:16  MOVED: Garrety Manufacturing - CID - FX - Cidan Machinery/Garrety Manufacturing - CID - FX - Cidan Machinery.md -> Garrety Manufacturing/CID - FX - Cidan Machinery.md
+2026-06-25 12:38:16  DIR created: Gerhart/
+2026-06-25 12:38:16  MOVED: Gerhart - FLO - Waterjet - FLOW International/Gerhart - FLO - Waterjet - FLOW International.md -> Gerhart/FLO - Waterjet - FLOW International.md
+2026-06-25 12:38:16  DIR created: Gottstein Corporation/
+2026-06-25 12:38:16  MOVED: Gottstein Corporation - FLO - Mach500 - Gottstein - Flow Waterjet/Gottstein Corporation - FLO - Mach500 - Gottstein - Flow Waterjet.md -> Gottstein Corporation/FLO - Mach500 - Gottstein - Flow Waterjet.md
+2026-06-25 12:38:16    QUOTES moved: Quotes/ -> Quotes_FLO - Mach500 - Gottstein - Flow Waterjet/
+2026-06-25 12:38:16  MOVED: Gottstein Corporation - TRU - LaserBrakePunch - Gottstein Corporation - TRUMPF - Vendor/Gottstein Corporation - TRU - LaserBrakePunch - Gottstein Corporation - TRUMPF - Vendor.md -> Gottstein Corporation/TRU - LaserBrakePunch - Gottstein Corporation - TRUMPF - Vendor.md
+2026-06-25 12:38:16    QUOTES moved: Quotes/ -> Quotes_TRU - LaserBrakePunch - Gottstein Corporation - TRUMPF - Vendor/
+2026-06-25 12:38:16  DIR created: Gros LP/
+2026-06-25 12:38:16  MOVED: Gros LP - TEN - HB121-14 Hand Brake - TENNSMITH INC/Gros LP - TEN - HB121-14 Hand Brake - TENNSMITH INC.md -> Gros LP/TEN - HB121-14 Hand Brake - TENNSMITH INC.md
+2026-06-25 12:38:16    QUOTES moved: Quotes/ -> Quotes_TEN - HB121-14 Hand Brake - TENNSMITH INC/
+2026-06-25 12:38:16  DIR created: Haberle Steel, Inc/
+2026-06-25 12:38:16  MOVED: Haberle Steel, Inc - FMB - Used EMI - FMB Inc/Haberle Steel, Inc - FMB - Used EMI - FMB Inc.md -> Haberle Steel, Inc/FMB - Used EMI - FMB Inc.md
+2026-06-25 12:38:16  DIR created: Hadco Metal Trading Co, LLC - Bensalem, PA/
+2026-06-25 12:38:16  MOVED: Hadco Metal Trading Co, LLC - Bensalem, PA - SOU - N2 Generation - South-Tek Systems/Hadco Metal Trading Co, LLC - Bensalem, PA - SOU - N2 Generation - South-Tek Systems.md -> Hadco Metal Trading Co, LLC - Bensalem, PA/SOU - N2 Generation - South-Tek Systems.md
+2026-06-25 12:38:16  DIR created: Hale Trailer Brake and Wheel - Allentown, PA/
+2026-06-25 12:38:16  MOVED: Hale Trailer Brake & Wheel - Allentown, PA - STA - Press Brake - Hale Trailer - Standard Industrial Corp/Hale Trailer Brake & Wheel - Allentown, PA - STA - Press Brake - Hale Trailer - Standard Industrial Corp..md -> Hale Trailer Brake and Wheel - Allentown, PA/STA - Press Brake - Hale Trailer - Standard Industrial Corp.md
+2026-06-25 12:38:16    QUOTES moved: Quotes/ -> Quotes_STA - Press Brake - Hale Trailer - Standard Industrial Corp/
+2026-06-25 12:38:16  DIR created: Hanwha Philly Shipyard/
+2026-06-25 12:38:16  MOVED: Hanwha Philly Shipyard - BAY - Press Brake - Small - FAB-LINE MACHINERY LLC (Baykal)/Hanwha Philly Shipyard - BAY - Press Brake - Small - FAB-LINE MACHINERY LLC (Baykal).md -> Hanwha Philly Shipyard/BAY - Press Brake - Small - FAB-LINE MACHINERY LLC (Baykal).md
+2026-06-25 12:38:16    QUOTES moved: Quotes/ -> Quotes_BAY - Press Brake - Small - FAB-LINE MACHINERY LLC (Baykal)/
+2026-06-25 12:38:16  MOVED: Hanwha Philly Shipyard - BAY - Press Brake - Tandem - FAB-LINE MACHINERY LLC (Baykal)/Hanwha Philly Shipyard - BAY - Press Brake - Tandem - FAB-LINE MACHINERY LLC (Baykal).md -> Hanwha Philly Shipyard/BAY - Press Brake - Tandem - FAB-LINE MACHINERY LLC (Baykal).md
+2026-06-25 12:38:16    RENAME: 'TEC - 80â€™ Laser - Philly Shipyard - TECOi USA' -> 'TEC - 80ft Laser - Philly Shipyard - TECOi USA'
+2026-06-25 12:38:16  MOVED: Hanwha Philly Shipyard - TEC - 80â€™ Laser - Philly Shipyard - TECOi USA/Hanwha Philly Shipyard - TEC - 80â€™ Laser - Philly Shipyard - TECOi USA.md -> Hanwha Philly Shipyard/TEC - 80ft Laser - Philly Shipyard - TECOi USA.md
+2026-06-25 12:38:16    QUOTES moved: Quotes/ -> Quotes_TEC - 80ft Laser - Philly Shipyard - TECOi USA/
+2026-06-25 12:38:16  DIR created: Hovus/
+2026-06-25 12:38:16  MOVED: Hovus - SCH - Lift - Presto ECOA/Hovus - SCH - Lift - Presto ECOA.md -> Hovus/SCH - Lift - Presto ECOA.md
+2026-06-25 12:38:16  DIR created: Human Active Technology/
+2026-06-25 12:38:16  MOVED: Human Active Technology - TRU - Panel Bender 5030 - TRUMPF - Vendor/Human Active Technology - TRU - Panel Bender 5030 - TRUMPF - Vendor.md -> Human Active Technology/TRU - Panel Bender 5030 - TRUMPF - Vendor.md
+2026-06-25 12:38:16  MOVED: Human Active Technology - TRU - TB1000_3000 - TRUMPF - Vendor/Human Active Technology - TRU - TB1000_3000 - TRUMPF - Vendor.md -> Human Active Technology/TRU - TB1000_3000 - TRUMPF - Vendor.md
+2026-06-25 12:38:16  MOVED: Human Active Technology - TRU - TM3000_5000 - TRUMPF - Vendor/Human Active Technology - TRU - TM3000_5000 - TRUMPF - Vendor.md -> Human Active Technology/TRU - TM3000_5000 - TRUMPF - Vendor.md
+2026-06-25 12:38:16  MOVED: Human Active Technology - TRU - TruArc Weld 1000 - TRUMPF - Vendor/Human Active Technology - TRU - TruArc Weld 1000 - TRUMPF - Vendor.md -> Human Active Technology/TRU - TruArc Weld 1000 - TRUMPF - Vendor.md
+2026-06-25 12:38:16  DIR created: Hygrade Components/
+2026-06-25 12:38:16  MOVED: Hygrade Components - LINISBWIN - 2600 DPPLS or ISB or Wintriss - ISB Lite-Merlin/Hygrade Components - LINISBWIN - 2600 DPPLS or ISB or Wintriss - ISB Lite-Merlin.md -> Hygrade Components/LINISBWIN - 2600 DPPLS or ISB or Wintriss - ISB Lite-Merlin.md
+2026-06-25 12:38:16  DIR created: IDAC/
+2026-06-25 12:38:16  MOVED: IDAC - SCO - Ironworker - IDAC - Scotchman Industries, Inc/IDAC - SCO - Ironworker - IDAC - Scotchman Industries, Inc.md -> IDAC/SCO - Ironworker - IDAC - Scotchman Industries, Inc.md
+2026-06-25 12:38:16    QUOTES moved: Quotes/ -> Quotes_SCO - Ironworker - IDAC - Scotchman Industries, Inc/
+2026-06-25 12:38:17  DIR created: J.I. Landis Welding and Mechanical, Inc/
+2026-06-25 12:38:17  MOVED: J.I. Landis Welding & Mechanical, Inc. - WIL - CNCManual Lathe - Willis Machinery/J.I. Landis Welding & Mechanical, Inc. - WIL - CNCManual Lathe - Willis Machinery.md -> J.I. Landis Welding and Mechanical, Inc/WIL - CNCManual Lathe - Willis Machinery.md
+2026-06-25 12:38:17  MOVED: J.I. Landis Welding & Mechanical, Inc. - WIL - Knee Mill - Willis Machinery/J.I. Landis Welding & Mechanical, Inc. - WIL - Knee Mill - Willis Machinery.md -> J.I. Landis Welding and Mechanical, Inc/WIL - Knee Mill - Willis Machinery.md
+2026-06-25 12:38:17  DIR created: James Cox and Sons/
+2026-06-25 12:38:17  MOVED: James Cox & Sons - CID - Folder - TBD/James Cox & Sons - CID - Folder - TBD.md -> James Cox and Sons/CID - Folder - TBD.md
+2026-06-25 12:38:17  MOVED: James Cox & Sons - TRU - TruBend 1100 - TBD/James Cox & Sons - TRU - TruBend 1100 - TBD.md -> James Cox and Sons/TRU - TruBend 1100 - TBD.md
+2026-06-25 12:38:17  DIR created: Jost Iron Works/
+2026-06-25 12:38:17  MOVED: Jost Iron Works - Opp-Tennsmith - Jost Iron Works - TENNSMITH INC/Jost Iron Works - Opp-Tennsmith - Jost Iron Works - TENNSMITH INC.md -> Jost Iron Works/Opp-Tennsmith - Jost Iron Works - TENNSMITH INC.md
+2026-06-25 12:38:17    QUOTES moved: Quotes/ -> Quotes_Opp-Tennsmith - Jost Iron Works - TENNSMITH INC/
+2026-06-25 12:38:17  DIR created: Kelly Iron Works, Inc/
+2026-06-25 12:38:17  MOVED: Kelly Iron Works, Inc. - AGT - robotic welder - AGT Robotics/Kelly Iron Works, Inc. - AGT - robotic welder - AGT Robotics.md -> Kelly Iron Works, Inc/AGT - robotic welder - AGT Robotics.md
+2026-06-25 12:38:17    QUOTES moved: Quotes/ -> Quotes_AGT - robotic welder - AGT Robotics/
+2026-06-25 12:38:17  MOVED: Kelly Iron Works, Inc. - KAL - Saw Drill Machine - KALTENBACH North America Inc/Kelly Iron Works, Inc. - KAL - Saw Drill Machine - KALTENBACH North America Inc.md -> Kelly Iron Works, Inc/KAL - Saw Drill Machine - KALTENBACH North America Inc.md
+2026-06-25 12:38:17  MOVED: Kelly Iron Works, Inc. - PRO - Robotic Beam Line - Kelly Iron Works - Prodevco/Kelly Iron Works, Inc. - PRO - Robotic Beam Line - Kelly Iron Works - Prodevco.md -> Kelly Iron Works, Inc/PRO - Robotic Beam Line - Kelly Iron Works - Prodevco.md
+2026-06-25 12:38:17    QUOTES moved: Quotes/ -> Quotes_PRO - Robotic Beam Line - Kelly Iron Works - Prodevco/
+2026-06-25 12:38:17  DIR created: KGM Gaming/
+2026-06-25 12:38:17  MOVED: KGM Gaming - BAY - APHS C 66 ton x 6' Press Brake - FAB-LINE MACHINERY LLC (Baykal)/KGM Gaming - BAY - APHS C 66 ton x 6' Press Brake - FAB-LINE MACHINERY LLC (Baykal).md -> KGM Gaming/BAY - APHS C 66 ton x 6' Press Brake - FAB-LINE MACHINERY LLC (Baykal).md
+2026-06-25 12:38:17  MOVED: KGM Gaming - USED - TRUMPF TruBend C60 - Prestige - Prestige Equipment Corporation/KGM Gaming - USED - TRUMPF TruBend C60 - Prestige - Prestige Equipment Corporation.md -> KGM Gaming/USED - TRUMPF TruBend C60 - Prestige - Prestige Equipment Corporation.md
+2026-06-25 12:38:17  DIR created: Klover Prefab/
+2026-06-25 12:38:17  MOVED: Klover Prefab - PA - HSC or PSC - PA Industries/Klover Prefab - PA - HSC or PSC - PA Industries.md -> Klover Prefab/PA - HSC or PSC - PA Industries.md
+2026-06-25 12:38:17  DIR created: KLT Group, Inc/
+2026-06-25 12:38:17  MOVED: KLT Group, Inc - TRU - Laser - KLT Group - TRUMPF - Vendor/KLT Group, Inc - TRU - Laser - KLT Group - TRUMPF - Vendor.md -> KLT Group, Inc/TRU - Laser - KLT Group - TRUMPF - Vendor.md
+2026-06-25 12:38:17  DIR created: KxK Industries LLC/
+2026-06-25 12:38:17  MOVED: KxK Industries LLC - FAB - Layout - Fabstation/KxK Industries LLC - FAB - Layout - Fabstation.md -> KxK Industries LLC/FAB - Layout - Fabstation.md
+2026-06-25 12:38:17  MOVED: KxK Industries LLC - LON - 2.0 Stinger - Lone Star Cutting Solutions/KxK Industries LLC - LON - 2.0 Stinger - Lone Star Cutting Solutions.md -> KxK Industries LLC/LON - 2.0 Stinger - Lone Star Cutting Solutions.md
+2026-06-25 12:38:17  DIR created: Levan Associates Inc/
+2026-06-25 12:38:17  MOVED: Levan Associates Inc - AGT - BeamMaster - Levan Associates - AGT Robotics/Levan Associates Inc - AGT - BeamMaster - Levan Associates - AGT Robotics.md -> Levan Associates Inc/AGT - BeamMaster - Levan Associates - AGT Robotics.md
+2026-06-25 12:38:17    QUOTES moved: Quotes/ -> Quotes_AGT - BeamMaster - Levan Associates - AGT Robotics/
+2026-06-25 12:38:17  DIR created: Lockheed Martin - King of Prussia, PA/
+2026-06-25 12:38:17  MOVED: Lockheed Martin - King of Prussia, PA - HEM - VT120HA-60-CTS - HE&M Saw/Lockheed Martin - King of Prussia, PA - HEM - VT120HA-60-CTS - HE&M Saw.md -> Lockheed Martin - King of Prussia, PA/HEM - VT120HA-60-CTS - HE and M Saw.md
+2026-06-25 12:38:17  DIR created: McDal Corporation/
+2026-06-25 12:38:17  MOVED: McDal Corporation - ALL - Plasma - McDal Corp - ALLtra Corp/McDal Corporation - ALL - Plasma - McDal Corp - ALLtra Corp..md -> McDal Corporation/ALL - Plasma - McDal Corp - ALLtra Corp.md
+2026-06-25 12:38:17  DIR created: Michael Addesso Marble and Granite World, Inc/
+2026-06-25 12:38:17  MOVED: Michael Addesso Marble & Granite World, Inc. - FLO - Mach500c - Michael Addesso Marble - Flow Waterjet/Michael Addesso Marble & Granite World, Inc. - FLO - Mach500c - Michael Addesso Marble - Flow Waterjet.md -> Michael Addesso Marble and Granite World, Inc/FLO - Mach500c - Michael Addesso Marble - Flow Waterjet.md
+2026-06-25 12:38:17    QUOTES moved: Quotes/ -> Quotes_FLO - Mach500c - Michael Addesso Marble - Flow Waterjet/
+2026-06-25 12:38:17  DIR created: Michelman Steel Enterprises/
+2026-06-25 12:38:17  MOVED: Michelman Steel Enterprises - AGT - BeamMaster - Michelman - AGT Robotics/Michelman Steel Enterprises - AGT - BeamMaster - Michelman - AGT Robotics.md -> Michelman Steel Enterprises/AGT - BeamMaster - Michelman - AGT Robotics.md
+2026-06-25 12:38:17  MOVED: Michelman Steel Enterprises - VEC - Robot Welder - Michelman - Vectis Automation/Michelman Steel Enterprises - VEC - Robot Welder - Michelman - Vectis Automation.md -> Michelman Steel Enterprises/VEC - Robot Welder - Michelman - Vectis Automation.md
+2026-06-25 12:38:17    QUOTES moved: Quotes/ -> Quotes_VEC - Robot Welder - Michelman - Vectis Automation/
+2026-06-25 12:38:17  DIR created: Mike Kobithen Roofing and Insulation/
+2026-06-25 12:38:17  MOVED: Mike Kobithen Roofing & Insulation - LON - CNC Plasma - Mike Kobithen - Lone Star Cutting Solutions/Mike Kobithen Roofing & Insulation - LON - CNC Plasma - Mike Kobithen - Lone Star Cutting Solutions.md -> Mike Kobithen Roofing and Insulation/LON - CNC Plasma - Mike Kobithen - Lone Star Cutting Solutions.md
+2026-06-25 12:38:17    QUOTES moved: Quotes/ -> Quotes_LON - CNC Plasma - Mike Kobithen - Lone Star Cutting Solutions/
+2026-06-25 12:38:17  DIR created: MJ Nester Equipment Sales LLC/
+2026-06-25 12:38:17  MOVED: MJ Nester Equipment Sales LLC - STA - Press Brake - MJ Nester Equipipment - Weaver Metalworking Machines LLC/MJ Nester Equipment Sales LLC - STA - Press Brake - MJ Nester Equipipment - Weaver Metalworking Machines LLC.md -> MJ Nester Equipment Sales LLC/STA - Press Brake - MJ Nester Equipipment - Weaver Metalworking Machines LLC.md
+2026-06-25 12:38:17    QUOTES moved: Quotes/ -> Quotes_STA - Press Brake - MJ Nester Equipipment - Weaver Metalworking Machines LLC/
+2026-06-25 12:38:17    RENAME: 'CID - CNC Folder - MyersEPS - TRUMPF - Vendor' -> 'CID - CNC Folder - Cidan Machinery'
+2026-06-25 12:38:17  DIR created: Myers Emergency Power Systems/
+2026-06-25 12:38:17  MOVED: Myers Emergency Power Systems - CID - CNC Folder - MyersEPS - TRUMPF - Vendor/Myers Emergency Power Systems - CID - CNC Folder - MyersEPS - TRUMPF - Vendor.md -> Myers Emergency Power Systems/CID - CNC Folder - Cidan Machinery.md
+2026-06-25 12:38:17  MOVED: Myers Emergency Power Systems - TRU - TruBend 1000_3000 - TRUMPF - Vendor/Myers Emergency Power Systems - TRU - TruBend 1000_3000 - TRUMPF - Vendor.md -> Myers Emergency Power Systems/TRU - TruBend 1000_3000 - TRUMPF - Vendor.md
+2026-06-25 12:38:17    QUOTES moved: Quotes/ -> Quotes_TRU - TruBend 1000_3000 - TRUMPF - Vendor/
+2026-06-25 12:38:17  DIR created: NC Stauffer and Sons/
+2026-06-25 12:38:17  MOVED: NC Stauffer & Sons - TRU - MRC CO2 Laser - TRUMPF - Vendor/NC Stauffer & Sons - TRU - MRC CO2 Laser - TRUMPF - Vendor.md -> NC Stauffer and Sons/TRU - MRC CO2 Laser - TRUMPF - Vendor.md
+2026-06-25 12:38:17  DIR created: Penn Steel Fabrication, Inc/
+2026-06-25 12:38:17  MOVED: Penn Steel Fabrication, Inc. - KAL - KBB_KBP Drill Saw - KALTENBACH North America Inc/Penn Steel Fabrication, Inc. - KAL - KBB_KBP Drill Saw - KALTENBACH North America Inc.md -> Penn Steel Fabrication, Inc/KAL - KBB_KBP Drill Saw - KALTENBACH North America Inc.md
+2026-06-25 12:38:17  DIR created: Pennsylvania Steel Company - Bensalem, PA/
+2026-06-25 12:38:17  MOVED: Pennsylvania Steel Company - Bensalem, PA - HEM - Horizontal Bandsaw - HE&M Saw/Pennsylvania Steel Company - Bensalem, PA - HEM - Horizontal Bandsaw - HE&M Saw.md -> Pennsylvania Steel Company - Bensalem, PA/HEM - Horizontal Bandsaw - HE and M Saw.md
+2026-06-25 12:38:17    QUOTES moved: Quotes/ -> Quotes_HEM - Horizontal Bandsaw - HE and M Saw/
+2026-06-25 12:38:17  MOVED: Pennsylvania Steel Company - Bensalem, PA - HYD - Horizontal Bandsaw - PA Steel - Hydmech USA Inc/Pennsylvania Steel Company - Bensalem, PA - HYD - Horizontal Bandsaw - PA Steel - Hydmech USA Inc..md -> Pennsylvania Steel Company - Bensalem, PA/HYD - Horizontal Bandsaw - PA Steel - Hydmech USA Inc.md
+2026-06-25 12:38:17    QUOTES moved: Quotes/ -> Quotes_HYD - Horizontal Bandsaw - PA Steel - Hydmech USA Inc/
+2026-06-25 12:38:17  MOVED: Pennsylvania Steel Company - Bensalem, PA - PMI - T1 Plate Saw - Pat Mooney Saws/Pennsylvania Steel Company - Bensalem, PA - PMI - T1 Plate Saw - Pat Mooney Saws.md -> Pennsylvania Steel Company - Bensalem, PA/PMI - T1 Plate Saw - Pat Mooney Saws.md
+2026-06-25 12:38:17    QUOTES moved: Quotes/ -> Quotes_PMI - T1 Plate Saw - Pat Mooney Saws/
+2026-06-25 12:38:17  DIR created: Phoenix Forge/
+2026-06-25 12:38:17  MOVED: Phoenix Forge - AID - NC1 Press - AIDA Engineering/Phoenix Forge - AID - NC1 Press - AIDA Engineering.md -> Phoenix Forge/AID - NC1 Press - AIDA Engineering.md
+2026-06-25 12:38:17  DIR created: Pocono Metal Craft/
+2026-06-25 12:38:17  MOVED: Pocono Metal Craft - EMI - ELSQ - EMI/Pocono Metal Craft - EMI - ELSQ - EMI.md -> Pocono Metal Craft/EMI - ELSQ - EMI.md
+2026-06-25 12:38:17  MOVED: Pocono Metal Craft - TRU - TruArc Weld - TRUMPF - Vendor/Pocono Metal Craft - TRU - TruArc Weld - TRUMPF - Vendor.md -> Pocono Metal Craft/TRU - TruArc Weld - TRUMPF - Vendor.md
+2026-06-25 12:38:17  DIR created: Powell's Sales and Service/
+2026-06-25 12:38:17  MOVED: Powell's Sales and Service - GEK - HYD 165S Semi Paxy 4000 - Geka USA/Powell's Sales and Service - GEK - HYD 165S Semi Paxy 4000 - Geka USA.md -> Powell's Sales and Service/GEK - HYD 165S Semi Paxy 4000 - Geka USA.md
+2026-06-25 12:38:17    QUOTES moved: Quotes/ -> Quotes_GEK - HYD 165S Semi Paxy 4000 - Geka USA/
+2026-06-25 12:38:17  MOVED: Powell's Sales and Service - STA - AB500-12 - Standard Industrial Corp/Powell's Sales and Service - STA - AB500-12 - Standard Industrial Corp..md -> Powell's Sales and Service/STA - AB500-12 - Standard Industrial Corp.md
+2026-06-25 12:38:17  DIR created: Prime Sheet Metal Inc/
+2026-06-25 12:38:17  MOVED: Prime Sheet Metal Inc - PA - Coil Line - Prime Sheet Metal - PA Industries/Prime Sheet Metal Inc - PA - Coil Line - Prime Sheet Metal - PA Industries.md -> Prime Sheet Metal Inc/PA - Coil Line - Prime Sheet Metal - PA Industries.md
+2026-06-25 12:38:17    QUOTES moved: Quotes/ -> Quotes_PA - Coil Line - Prime Sheet Metal - PA Industries/
+2026-06-25 12:38:17  DIR created: Production Systems Automation (PSA) - Duryea, PA/
+2026-06-25 12:38:17  MOVED: Production Systems Automation (PSA) - Duryea, PA - TRU - TL1030 - PSA - TRUMPF - Vendor/Production Systems Automation (PSA) - Duryea, PA - TRU - TL1030 - PSA - TRUMPF - Vendor.md -> Production Systems Automation (PSA) - Duryea, PA/TRU - TL1030 - PSA - TRUMPF - Vendor.md
+2026-06-25 12:38:17    QUOTES moved: Quotes/ -> Quotes_TRU - TL1030 - PSA - TRUMPF - Vendor/
+2026-06-25 12:38:17  DIR created: Prompton Tool, Inc/
+2026-06-25 12:38:17  MOVED: Prompton Tool, Inc - TRU - MRC 7050New 7036  - Prompton Tool - TRUMPF - Vendor/Prompton Tool, Inc - TRU - MRC 7050New 7036  - Prompton Tool - TRUMPF - Vendor.md -> Prompton Tool, Inc/TRU - MRC 7050New 7036 - Prompton Tool - TRUMPF - Vendor.md
+2026-06-25 12:38:17    QUOTES moved: Quotes/ -> Quotes_TRU - MRC 7050New 7036 - Prompton Tool - TRUMPF - Vendor/
+2026-06-25 12:38:17  DIR created: Reliable Equipment Mfg Co/
+2026-06-25 12:38:17  MOVED: Reliable Equipment Mfg Co - USE - Press Brake - Reliable Equipment Mfg - Prestige Equipment Corporation/Reliable Equipment Mfg Co - USE - Press Brake - Reliable Equipment Mfg - Prestige Equipment Corporation.md -> Reliable Equipment Mfg Co/USE - Press Brake - Reliable Equipment Mfg - Prestige Equipment Corporation.md
+2026-06-25 12:38:17  DIR created: Rhoads Industries/
+2026-06-25 12:38:17  MOVED: Rhoads Industries - KIN - K5000 - Kinetic Cutting Systems/Rhoads Industries - KIN - K5000 - Kinetic Cutting Systems.md -> Rhoads Industries/KIN - K5000 - Kinetic Cutting Systems.md
+2026-06-25 12:38:17  DIR created: Rise Construction Enterprises, LLC/
+2026-06-25 12:38:17  MOVED: Rise Construction Enterprises, LLC - MAM - Used Plasma - Mid Atlantic Machinery/Rise Construction Enterprises, LLC - MAM - Used Plasma - Mid Atlantic Machinery.md -> Rise Construction Enterprises, LLC/MAM - Used Plasma - Mid Atlantic Machinery.md
+2026-06-25 12:38:17    QUOTES moved: Quotes/ -> Quotes_MAM - Used Plasma - Mid Atlantic Machinery/
+2026-06-25 12:38:17  MOVED: Rise Construction Enterprises, LLC - PRO - PCR41 - Rise Construction - Standard Industrial Corp/Rise Construction Enterprises, LLC - PRO - PCR41 - Rise Construction - Standard Industrial Corp..md -> Rise Construction Enterprises, LLC/PRO - PCR41 - Rise Construction - Standard Industrial Corp.md
+2026-06-25 12:38:17    QUOTES moved: Quotes/ -> Quotes_PRO - PCR41 - Rise Construction - Standard Industrial Corp/
+2026-06-25 12:38:17  MOVED: Rise Construction Enterprises, LLC - STA - Press Brake - Standard Industrial Corp/Rise Construction Enterprises, LLC - STA - Press Brake - Standard Industrial Corp..md -> Rise Construction Enterprises, LLC/STA - Press Brake - Standard Industrial Corp.md
+2026-06-25 12:38:17    QUOTES moved: Quotes/ -> Quotes_STA - Press Brake - Standard Industrial Corp/
+2026-06-25 12:38:17  DIR created: RJR Fabrication/
+2026-06-25 12:38:17  MOVED: RJR Fabrication - TRU - TruBend 3000_5000_7000 - TRUMPF - Vendor/RJR Fabrication - TRU - TruBend 3000_5000_7000 - TRUMPF - Vendor.md -> RJR Fabrication/TRU - TruBend 3000_5000_7000 - TRUMPF - Vendor.md
+2026-06-25 12:38:17  DIR created: Rybnick Mechanical/
+2026-06-25 12:38:17  MOVED: Rybnick Mechanical - USE - GEKA Hydracrop - Rybnick Mechanical - Weaver Metalworking Machines LLC/Rybnick Mechanical - USE - GEKA Hydracrop - Rybnick Mechanical - Weaver Metalworking Machines LLC.md -> Rybnick Mechanical/USE - GEKA Hydracrop - Rybnick Mechanical - Weaver Metalworking Machines LLC.md
+2026-06-25 12:38:17    QUOTES moved: Quotes/ -> Quotes_USE - GEKA Hydracrop - Rybnick Mechanical - Weaver Metalworking Machines LLC/
+2026-06-25 12:38:17  DIR created: S + K Iron Works, Inc/
+2026-06-25 12:38:17  MOVED: S + K Iron Works, Inc. - PMI - FMB Band Saw - S&K Iron Works, Inc. - Pat Mooney Saws/S + K Iron Works, Inc. - PMI - FMB Band Saw - S&K Iron Works, Inc. - Pat Mooney Saws.md -> S + K Iron Works, Inc/PMI - FMB Band Saw - S and K Iron Works, Inc. - Pat Mooney Saws.md
+2026-06-25 12:38:17    QUOTES moved: Quotes/ -> Quotes_PMI - FMB Band Saw - S and K Iron Works, Inc. - Pat Mooney Saws/
+2026-06-25 12:38:18  DIR created: S and W Metal Products LLC/
+2026-06-25 12:38:18  MOVED: S&W Metal Products LLC - TRU - TruBend Cell 5000 - TRUMPF - Vendor/S&W Metal Products LLC - TRU - TruBend Cell 5000 - TRUMPF - Vendor.md -> S and W Metal Products LLC/TRU - TruBend Cell 5000 - TRUMPF - Vendor.md
+2026-06-25 12:38:18    QUOTES moved: Quotes/ -> Quotes_TRU - TruBend Cell 5000 - TRUMPF - Vendor/
+2026-06-25 12:38:18  DIR created: Scaletron Industries Inc/
+2026-06-25 12:38:18  MOVED: Scaletron Industries Inc - TRU - TB31705170 - Scaletron - TRUMPF - Vendor/Scaletron Industries Inc - TRU - TB31705170 - Scaletron - TRUMPF - Vendor.md -> Scaletron Industries Inc/TRU - TB31705170 - Scaletron - TRUMPF - Vendor.md
+2026-06-25 12:38:18  DIR created: Sencillo Systems/
+2026-06-25 12:38:18  MOVED: Sencillo Systems - MAG - Carif 320 BSA - Sencillo Systems - Mid Atlantic Global/Sencillo Systems - MAG - Carif 320 BSA - Sencillo Systems - Mid Atlantic Global.md -> Sencillo Systems/MAG - Carif 320 BSA - Sencillo Systems - Mid Atlantic Global.md
+2026-06-25 12:38:18    QUOTES moved: Quotes/ -> Quotes_MAG - Carif 320 BSA - Sencillo Systems - Mid Atlantic Global/
+2026-06-25 12:38:18  DIR created: SS Industries/
+2026-06-25 12:38:18  MOVED: SS Industries - ALL - Plasma - SS Industries - ALLtra Corp/SS Industries - ALL - Plasma - SS Industries - ALLtra Corp..md -> SS Industries/ALL - Plasma - SS Industries - ALLtra Corp.md
+2026-06-25 12:38:18  MOVED: SS Industries - EMI - Tube & Pipe Plasma - SS Industries - Electro-Mechanical Integrators, Inc. (EMI)/SS Industries - EMI - Tube & Pipe Plasma - SS Industries - Electro-Mechanical Integrators, Inc. (EMI).md -> SS Industries/EMI - Tube and Pipe Plasma - SS Industries - Electro-Mechanical Integrators, Inc. (EMI).md
+2026-06-25 12:38:18    QUOTES moved: Quotes/ -> Quotes_EMI - Tube and Pipe Plasma - SS Industries - Electro-Mechanical Integrators, Inc. (EMI)/
+2026-06-25 12:38:18  MOVED: SS Industries - TRU - TruBend 3100 - TRUMPF - Vendor/SS Industries - TRU - TruBend 3100 - TRUMPF - Vendor.md -> SS Industries/TRU - TruBend 3100 - TRUMPF - Vendor.md
+2026-06-25 12:38:18  MOVED: SS Industries - UNK - 8' x 100 ton Brake - ALLtra Corp/SS Industries - UNK - 8' x 100 ton Brake - ALLtra Corp..md -> SS Industries/UNK - 8' x 100 ton Brake - ALLtra Corp.md
+2026-06-25 12:38:18  MOVED: SS Industries - VEC - Cobot Welder - Vectis Automation/SS Industries - VEC - Cobot Welder - Vectis Automation.md -> SS Industries/VEC - Cobot Welder - Vectis Automation.md
+2026-06-25 12:38:18    QUOTES moved: Quotes/ -> Quotes_VEC - Cobot Welder - Vectis Automation/
+2026-06-25 12:38:18  DIR created: State of the Arc Welding and Fabricating LLC/
+2026-06-25 12:38:18  MOVED: State of the Arc Welding and Fabricating LLC - USE - Shear - State of the Arc Welding - Weaver Metalworking Machines LLC/State of the Arc Welding and Fabricating LLC - USE - Shear - State of the Arc Welding - Weaver Metalworking Machines LLC.md -> State of the Arc Welding and Fabricating LLC/USE - Shear - State of the Arc Welding - Weaver Metalworking Machines LLC.md
+2026-06-25 12:38:18    QUOTES moved: Quotes/ -> Quotes_USE - Shear - State of the Arc Welding - Weaver Metalworking Machines LLC/
+2026-06-25 12:38:18  DIR created: Sutphen East Corporation/
+2026-06-25 12:38:18  MOVED: Sutphen East Corporation - PIR - P50 Ironworker - Piranha/Sutphen East Corporation - PIR - P50 Ironworker - Piranha.md -> Sutphen East Corporation/PIR - P50 Ironworker - Piranha.md
+2026-06-25 12:38:18    QUOTES moved: Quotes/ -> Quotes_PIR - P50 Ironworker - Piranha/
+2026-06-25 12:38:18  DIR created: Szoke Brothers Inc/
+2026-06-25 12:38:18  MOVED: Szoke Brothers Inc. - ALL - Plasma - ALLTRA/Szoke Brothers Inc. - ALL - Plasma - ALLTRA.md -> Szoke Brothers Inc/ALL - Plasma - ALLTRA.md
+2026-06-25 12:38:18  DIR created: Tinsley Design and Fabrication/
+2026-06-25 12:38:18  MOVED: Tinsley Design and Fabrication - FIN - FL5100RDFL3600RD - Tinsley - Mid Atlantic Global/Tinsley Design and Fabrication - FIN - FL5100RDFL3600RD - Tinsley - Mid Atlantic Global.md -> Tinsley Design and Fabrication/FIN - FL5100RDFL3600RD - Tinsley - Mid Atlantic Global.md
+2026-06-25 12:38:18    QUOTES moved: Quotes/ -> Quotes_FIN - FL5100RDFL3600RD - Tinsley - Mid Atlantic Global/
+2026-06-25 12:38:18  MOVED: Tinsley Design and Fabrication - TRU - TB7036 - TRUMPF - Vendor/Tinsley Design and Fabrication - TRU - TB7036 - TRUMPF - Vendor.md -> Tinsley Design and Fabrication/TRU - TB7036 - TRUMPF - Vendor.md
+2026-06-25 12:38:18  DIR created: Todorow Fabrication/
+2026-06-25 12:38:18  MOVED: Todorow Fabrication - Weaver - Press Brake - Weaver Metalworking Machines LLC/Todorow Fabrication - Weaver - Press Brake - Weaver Metalworking Machines LLC.md -> Todorow Fabrication/Weaver - Press Brake - Weaver Metalworking Machines LLC.md
+2026-06-25 12:38:18    QUOTES moved: Quotes/ -> Quotes_Weaver - Press Brake - Weaver Metalworking Machines LLC/
+2026-06-25 12:38:18  DIR created: TrenchTech, Inc/
+2026-06-25 12:38:18  MOVED: TrenchTech, Inc. - ALL - Plasma - TrenchTech - ALLtra Corp/TrenchTech, Inc. - ALL - Plasma - TrenchTech - ALLtra Corp..md -> TrenchTech, Inc/ALL - Plasma - TrenchTech - ALLtra Corp.md
+2026-06-25 12:38:18  MOVED: TrenchTech, Inc. - VEC - Robotic Welder - TrenchTech - Vectis Automation/TrenchTech, Inc. - VEC - Robotic Welder - TrenchTech - Vectis Automation.md -> TrenchTech, Inc/VEC - Robotic Welder - TrenchTech - Vectis Automation.md
+2026-06-25 12:38:18    QUOTES moved: Quotes/ -> Quotes_VEC - Robotic Welder - TrenchTech - Vectis Automation/
+2026-06-25 12:38:18  MOVED: TrenchTech, Inc. - WIL - Radial Arm Drill - TrenchTech, Inc - Willis Machinery/TrenchTech, Inc. - WIL - Radial Arm Drill - TrenchTech, Inc - Willis Machinery.md -> TrenchTech, Inc/WIL - Radial Arm Drill - TrenchTech, Inc - Willis Machinery.md
+2026-06-25 12:38:18  DIR created: Trexler Industries/
+2026-06-25 12:38:18  MOVED: Trexler Industries - LON - Stinger 1.5 or 2 - Lone Star Cutting Solutions/Trexler Industries - LON - Stinger 1.5 or 2 - Lone Star Cutting Solutions.md -> Trexler Industries/LON - Stinger 1.5 or 2 - Lone Star Cutting Solutions.md
+2026-06-25 12:38:18    QUOTES moved: Quotes/ -> Quotes_LON - Stinger 1.5 or 2 - Lone Star Cutting Solutions/
+2026-06-25 12:38:18  DIR created: Unique Machine Co/
+2026-06-25 12:38:18  MOVED: Unique Machine Co. - PMI - Horizontal Band Saw - Unique Machine Co. - Pat Mooney Saws/Unique Machine Co. - PMI - Horizontal Band Saw - Unique Machine Co. - Pat Mooney Saws.md -> Unique Machine Co/PMI - Horizontal Band Saw - Unique Machine Co. - Pat Mooney Saws.md
+2026-06-25 12:38:18    QUOTES moved: Quotes/ -> Quotes_PMI - Horizontal Band Saw - Unique Machine Co. - Pat Mooney Saws/
+2026-06-25 12:38:18  DIR created: Vulcan Spring and Manufacturing/
+2026-06-25 12:38:18  MOVED: Vulcan Spring & Manufacturing - TRU - TLS7000 - Vulcan Springs - TRUMPF - Vendor/Vulcan Spring & Manufacturing - TRU - TLS7000 - Vulcan Springs - TRUMPF - Vendor.md -> Vulcan Spring and Manufacturing/TRU - TLS7000 - Vulcan Springs - TRUMPF - Vendor.md
+2026-06-25 12:38:18  DIR created: Wolsky Metal Fabrication/
+2026-06-25 12:38:18  MOVED: Wolsky Metal Fabrication - VIR - LTG - Virtek Vision International/Wolsky Metal Fabrication - VIR - LTG - Virtek Vision International.md -> Wolsky Metal Fabrication/VIR - LTG - Virtek Vision International.md
+2026-06-25 12:38:18  DIR created: Ziamatic Corporation/
+2026-06-25 12:38:18  MOVED: Ziamatic Corporation - USE - 60-80 Ton x 6' Press Brake - Ziamatic - Weaver Metalworking Machines LLC/Ziamatic Corporation - USE - 60-80 Ton x 6' Press Brake - Ziamatic - Weaver Metalworking Machines LLC.md -> Ziamatic Corporation/USE - 60-80 Ton x 6' Press Brake - Ziamatic - Weaver Metalworking Machines LLC.md
+2026-06-25 12:38:18    QUOTES moved: Quotes/ -> Quotes_USE - 60-80 Ton x 6' Press Brake - Ziamatic - Weaver Metalworking Machines LLC/
+2026-06-25 12:38:18  
+2026-06-25 12:38:18  === GENERATING ACCOUNT HUBS ===
+2026-06-25 12:38:18    HUB created: AC Gentry.md
+2026-06-25 12:38:18    HUB created: All Steel Service Inc.md
+2026-06-25 12:38:18    HUB created: Allen Welding.md
+2026-06-25 12:38:18    HUB created: AllPro Stainless Steel and Metal Fabrication.md
+2026-06-25 12:38:18    HUB created: American Alloy Fabricators.md
+2026-06-25 12:38:18    HUB created: Anvil Craft Corporation.md
+2026-06-25 12:38:18    HUB created: ASGCO Mfg Inc.md
+2026-06-25 12:38:18    HUB created: ATAS International Inc.md
+2026-06-25 12:38:18    HUB created: Atkore - Philadelphia, PA.md
+2026-06-25 12:38:18    HUB created: AW Mercer.md
+2026-06-25 12:38:18    HUB created: Bangor Steel Corp.md
+2026-06-25 12:38:18    HUB created: BGC, Inc. Water and Wastewater Services Division.md
+2026-06-25 12:38:18    HUB created: Bloomsburg Metal Co. LLC.md
+2026-06-25 12:38:18    HUB created: Brey-Krause Mfg.md
+2026-06-25 12:38:18    HUB created: Chown's Fabrication and Rigging.md
+2026-06-25 12:38:18    HUB created: Craftweld Fabrication.md
+2026-06-25 12:38:18    HUB created: Crystal Metalworks Inc.md
+2026-06-25 12:38:18    HUB created: David J Hohenshilt Welding, LLC.md
+2026-06-25 12:38:18    HUB created: DVM Manufacturing - Norristown, PA.md
+2026-06-25 12:38:18    HUB created: Dynamic Metal Innovations.md
+2026-06-25 12:38:18    HUB created: EC Fence and Ironworks.md
+2026-06-25 12:38:18    HUB created: EC Fence and Ironworks, Inc.md
+2026-06-25 12:38:18    HUB created: EMP Industries.md
+2026-06-25 12:38:18    HUB created: ETC - Environmental Tectonics.md
+2026-06-25 12:38:18    HUB created: EVS Metal - East Stroudsburg, PA.md
+2026-06-25 12:38:18    HUB created: Frank B Clayton Sons Inc.md
+2026-06-25 12:38:18    HUB created: Galaxy Manufacturing Co.md
+2026-06-25 12:38:18    HUB created: Gambone Steel Company, Inc.md
+2026-06-25 12:38:18    HUB created: Garrety Manufacturing.md
+2026-06-25 12:38:18    HUB created: Gerhart.md
+2026-06-25 12:38:18    HUB created: Gottstein Corporation.md
+2026-06-25 12:38:18    HUB created: Gros LP.md
+2026-06-25 12:38:18    HUB created: Haberle Steel, Inc.md
+2026-06-25 12:38:18    HUB created: Hadco Metal Trading Co, LLC - Bensalem, PA.md
+2026-06-25 12:38:18    HUB created: Hale Trailer Brake and Wheel - Allentown, PA.md
+2026-06-25 12:38:18    HUB created: Hanwha Philly Shipyard.md
+2026-06-25 12:38:18    HUB created: Hovus.md
+2026-06-25 12:38:18    HUB created: Human Active Technology.md
+2026-06-25 12:38:18    HUB created: Hygrade Components.md
+2026-06-25 12:38:18    HUB created: IDAC.md
+2026-06-25 12:38:18    HUB created: J.I. Landis Welding and Mechanical, Inc.md
+2026-06-25 12:38:18    HUB created: James Cox and Sons.md
+2026-06-25 12:38:18    HUB created: Jost Iron Works.md
+2026-06-25 12:38:18    HUB created: Kelly Iron Works, Inc.md
+2026-06-25 12:38:18    HUB created: KGM Gaming.md
+2026-06-25 12:38:18    HUB created: Klover Prefab.md
+2026-06-25 12:38:18    HUB created: KLT Group, Inc.md
+2026-06-25 12:38:18    HUB created: KxK Industries LLC.md
+2026-06-25 12:38:18    HUB created: Levan Associates Inc.md
+2026-06-25 12:38:18    HUB created: Lockheed Martin - King of Prussia, PA.md
+2026-06-25 12:38:18    HUB created: McDal Corporation.md
+2026-06-25 12:38:18    HUB created: Michael Addesso Marble and Granite World, Inc.md
+2026-06-25 12:38:18    HUB created: Michelman Steel Enterprises.md
+2026-06-25 12:38:18    HUB created: Mike Kobithen Roofing and Insulation.md
+2026-06-25 12:38:18    HUB created: MJ Nester Equipment Sales LLC.md
+2026-06-25 12:38:18    HUB created: Myers Emergency Power Systems.md
+2026-06-25 12:38:18    HUB created: NC Stauffer and Sons.md
+2026-06-25 12:38:18    HUB created: Penn Steel Fabrication, Inc.md
+2026-06-25 12:38:18    HUB created: Pennsylvania Steel Company - Bensalem, PA.md
+2026-06-25 12:38:18    HUB created: Phoenix Forge.md
+2026-06-25 12:38:18    HUB created: Pocono Metal Craft.md
+2026-06-25 12:38:18    HUB created: Powell's Sales and Service.md
+2026-06-25 12:38:19    HUB created: Prime Sheet Metal Inc.md
+2026-06-25 12:38:19    HUB created: Production Systems Automation (PSA) - Duryea, PA.md
+2026-06-25 12:38:19    HUB created: Prompton Tool, Inc.md
+2026-06-25 12:38:19    HUB created: Reliable Equipment Mfg Co.md
+2026-06-25 12:38:19    HUB created: Rhoads Industries.md
+2026-06-25 12:38:19    HUB created: Rise Construction Enterprises, LLC.md
+2026-06-25 12:38:19    HUB created: RJR Fabrication.md
+2026-06-25 12:38:19    HUB created: Rybnick Mechanical.md
+2026-06-25 12:38:19    HUB created: S + K Iron Works, Inc.md
+2026-06-25 12:38:19    HUB created: S and W Metal Products LLC.md
+2026-06-25 12:38:19    HUB created: Scaletron Industries Inc.md
+2026-06-25 12:38:19    HUB created: Sencillo Systems.md
+2026-06-25 12:38:19    HUB created: SS Industries.md
+2026-06-25 12:38:19    HUB created: State of the Arc Welding and Fabricating LLC.md
+2026-06-25 12:38:19    HUB created: Sutphen East Corporation.md
+2026-06-25 12:38:19    HUB created: Szoke Brothers Inc.md
+2026-06-25 12:38:19    HUB created: Tinsley Design and Fabrication.md
+2026-06-25 12:38:19    HUB created: Todorow Fabrication.md
+2026-06-25 12:38:19    HUB created: TrenchTech, Inc.md
+2026-06-25 12:38:19    HUB created: Trexler Industries.md
+2026-06-25 12:38:19    HUB created: Unique Machine Co.md
+2026-06-25 12:38:19    HUB created: Vulcan Spring and Manufacturing.md
+2026-06-25 12:38:19    HUB created: Wolsky Metal Fabrication.md
+2026-06-25 12:38:19    HUB created: Ziamatic Corporation.md
+2026-06-25 12:38:19  
+2026-06-25 12:38:19  === SUMMARY ===
+2026-06-25 12:38:19  Moved:   123
+2026-06-25 12:38:19  Skipped: 0
+2026-06-25 12:38:19  Errors:  0
+2026-06-25 12:38:19  Log:     C:\Users\Chris\Documents\GitHub\dex\.scripts\migration-log.txt
+2026-06-25 12:38:19  
+2026-06-25 12:38:19  Next steps:
+2026-06-25 12:38:19    1. Run migrate-projects-dry-run.ps1 again to confirm no flat folders remain
+2026-06-25 12:38:19    2. Update pipeline-sync skill to write to Projects/{Account}/{Opp}.md
+2026-06-25 12:38:19    3. Add same_buying_decision_as frontmatter where applicable (separate pass)
+2026-06-25 12:38:19  === DONE ===

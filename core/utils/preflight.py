@@ -46,7 +46,6 @@ def get_error_queue_path() -> Path:
 SERVER_MODULES = {
     "work-mcp": "work_server.py",
     "career-mcp": "career_server.py",
-    "granola-mcp": "granola_server.py",
     "dex-improvements-mcp": "dex_improvements_server.py",
     "dex-analytics": "analytics_server.py",
     "onboarding-mcp": "onboarding_server.py",
@@ -67,7 +66,6 @@ SERVER_LABELS = {
     "work-mcp": "Task Manager",
     "calendar-mcp": "Calendar (remote)",
     "career-mcp": "Career Tracker",
-    "granola-mcp": "Granola (meetings)",
     "dex-improvements-mcp": "Improvements Backlog",
     "dex-analytics": "Analytics",
     "onboarding-mcp": "Onboarding",
@@ -185,8 +183,8 @@ def check_server(server_name: str) -> dict:
 
 def check_http_server(server_name: str) -> dict:
     """Check a remote HTTP MCP server via its /health endpoint."""
-    import urllib.request
     import urllib.error
+    import urllib.request
 
     url = HTTP_SERVERS.get(server_name)
     label = SERVER_LABELS.get(server_name, server_name)

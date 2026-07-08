@@ -16,16 +16,12 @@ Tools:
 import json
 import logging
 import os
-import sys
 from datetime import date, datetime, timedelta, timezone
-from pathlib import Path
-from typing import Optional
-
-import requests
-from icalendar import Calendar
 
 import mcp.server.stdio
 import mcp.types as types
+import requests
+from icalendar import Calendar
 from mcp.server import NotificationOptions, Server
 from mcp.server.models import InitializationOptions
 

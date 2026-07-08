@@ -228,8 +228,8 @@ def calculate_journey_metadata() -> Dict[str, Any]:
             'Quarterly planning', 'Quarterly review', 'Getting started', 'Journaling'
         ],
         'meetings': [
-            'Meeting prep', 'Meeting processing', 'Person page created', 
-            'Person page updated', 'Company page created', 'Granola connected'
+            'Meeting prep', 'Meeting processing', 'Person page created',
+            'Person page updated', 'Company page created'
         ],
         'tasks': [
             'Task created', 'Task completed', 'Task updated', 
@@ -251,7 +251,7 @@ def calculate_journey_metadata() -> Dict[str, Any]:
             'Improvement workshop', 'Idea captured', 'Dex updated', 'Learnings reviewed'
         ],
         'integrations': [
-            'Calendar connected', 'Calendar synced', 'Granola connected',
+            'Calendar connected', 'Calendar synced',
             'Obsidian enabled', 'Pi used', 'ScreenPipe'
         ],
         'ai_config': [

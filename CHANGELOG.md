@@ -7,6 +7,63 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.26.0] - Goal-creation crash fixed, EDA name matching tightened, coverage to 47% (2026-07-07)
+
+Two real defects surfaced by this round of tests, plus the remaining untested infrastructure is now covered.
+
+**What this fixes for you:**
+
+* **Bug fix: creating a quarterly goal no longer crashes on plain-text milestones.** `create_quarterly_goal` declared milestones as `{title: ...}` objects but crashed with a TypeError whenever the assistant passed simple strings like `["Discovery calls"]` — which is the natural way to call it. Both forms are now accepted.
+* **EDA ↔ Salesforce account matching is tighter.** "J.R. Steel" and "JR Steel" now join to the same account: dotted initials merge with their undotted form during name normalization ("A. B. C. Welding" = "ABC Welding"). Previously these silently failed to match, dropping EDA equipment signals from the account score.
+* **The MCP tool surface is now tested end-to-end** (13 tests): list/update task tools, quarterly-goal create/read/status round-trip, the people index + fuzzy lookup, and error paths.
+* **`/health-check`'s backbone is tested** (11 tests for `preflight.py`): config-hash invalidation, the 24-hour recheck policy, per-server checks (ok / missing / syntax error), the cached run flow, and hook output formatting.
+* **All remaining hooks are tested** (12 tests): post-meeting person-page updates (including duplicate protection), career evidence capture with skill-area detection, the daily-plan quick-ref condenser, MCP scope enforcement (ask vs deny), and the vault maintenance report (stale inbox, broken WikiLinks, orphaned person pages).
+* **Coverage floor ratcheted 35% → 40%** (measured 47%).
+
+---
+
+## [1.25.0] - Sales tooling gets tests, one-off scripts archived (2026-07-07)
+
+The custom sales integrations — the code that touches real Salesforce records and drafts real emails — had zero tests, and `.scripts/` was cluttered with 21 finished one-off artifacts (sent outreach batches, completed migrations, stale pipeline snapshots).
+
+**What this fixes for you:**
+
+* **The business logic behind your territory decisions is now pinned by tests.** 41 new Python tests cover the salesforce-mcp helpers (business-day math for task due dates, the lease-expiry urgency buckets behind your Q4 CRITICAL/HIGH goal, the 54/60-month replacement window), the key-account scoring rubric (tier assignment, lifecycle clock, source joining, report rendering), and email-triage helpers (`business_days_since` behind `/service-pulse`, HTML stripping).
+* **The email-drafts dashboard API is tested end-to-end.** 9 HTTP tests spawn the real server against a throwaway queue: editing drafts, the needs_email→queued promotion, push validation (no recipient → 400), path-traversal blocking, and bad-JSON handling. The server now accepts `EMAIL_DRAFTS_DATA_DIR`/`EMAIL_DRAFTS_PORT` env overrides so tests can never touch your live queue.
+* **`.scripts/` is legible again.** 21 dated artifacts moved to `Archive/Script_Artifacts/` with a README explaining what each was — including the June pipeline JSON snapshots, so stale data can't be mistaken for current. Live tools (`sf-pull-sync.py`, `sf-activity-*.py`, the MCP servers) are untouched.
+* **CI runs it all:** new "Sales tooling tests" step (`pytest .scripts/tests/python`).
+
+**Known limitation documented in tests:** account name joining treats "J.R. Steel" and "JR Steel" as different companies (dotted initials normalize to spaced letters). Pinned in a test so any future change is deliberate.
+
+---
+
+## [1.24.0] - Granola integration removed, plus tests for search and the meeting cache (2026-07-07)
+
+Granola was never used in this vault, but its MCP server, background sync automation, skills, and onboarding steps were still installed, checked by health checks, and mentioned throughout the docs — dead surface area that could still fail or confuse.
+
+**What this fixes for you:**
+
+* **Granola is gone.** Removed the Granola MCP server, the 30-minute background sync (`.scripts/meeting-intel/`), the `/granola-setup` and `/process-meetings` skills, the `GRANOLA_API_KEY` env slot, and all Granola steps in onboarding, daily-plan, daily-review, and health-check. Meeting capture now routes through `/log-meeting` (notes → action items → person pages → Salesforce).
+* **Semantic search is now tested.** `core/utils/qmd_query.py` — the shared search interface all four MCP servers use, including the grep fallback that runs when QMD isn't installed — went from 0% coverage to a full suite (14 tests).
+* **The meeting cache builder is now tested.** 9 end-to-end tests cover parsing (frontmatter, sections, wikilink/task-ID stripping), sentiment, follow-up dates, the 90-day prune, incremental mtime skipping, and `--rebuild`.
+
+**Behind the scenes:** the generic transcript pipeline in `core/ritual_intelligence` (used for manual imports) is unchanged — only the Granola-specific ingestion was removed.
+
+---
+
+## [1.23.0] - Test hardening: coverage 32% → 41%, hermetic test runs, and a priority-sync bug fix (2026-07-07)
+
+Running the test suite used to dirty your git tree (date-relative test artifacts landed in the checked-in fixture vault and kept getting committed), large parts of the core sync engine had no tests at all, and two calendar tests failed on any machine without `icalendar` installed.
+
+**What this fixes for you:**
+
+* **Tests no longer touch your repo.** Every pytest run now works on a temp copy of the fixture vault (`core/conftest.py`), so `git status` stays clean after running tests. The previously committed test artifacts were removed from the fixture vault.
+* **Bug fix: task priority now syncs to Related Tasks tables.** `find_tasks_for_page` could never read the `Priority:` sub-line under a task (a `.strip()` ate the tab it was matching on), so person/company pages always showed P2. Found by the new regression tests.
+* **~100 new tests across the riskiest code:** cross-file task status propagation (`work_server`), the destructive Obsidian wikilink migration, onboarding step validation (the email-domain gate), timezone/date accuracy, career evidence parsing, `auto-link-people.cjs` safe zones, and happy-path hook context injection.
+* **CI now runs everything:** vault script tests (`npm run test:scripts`) and both extension vitest suites (machinery-intelligence-platform, mam-email-triage) were added to the pipeline, and the coverage floor was ratcheted from 25% to 35%.
+* **Dependency fix:** `icalendar` is now declared in `requirements.txt` and installed in CI, so the ICS calendar server tests pass on fresh installs.
+
+**Behind the scenes:** `auto-link-people.cjs` now accepts a `vaultRoot` option and exports its pure helpers for testing; CLI behavior is unchanged.
 ## [1.25.0] - Agentic Skill Pattern codified as the default skill design (2026-07-07)
 
 The "script gathers, AI judges" pattern proven in /visit-prep was tribal knowledge — nothing forced future skills to follow it, so new skills could drift back to token-heavy MCP gathering.

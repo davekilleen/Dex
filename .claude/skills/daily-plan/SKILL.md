@@ -46,28 +46,6 @@ Before anything else, check if demo mode is active:
 
 ---
 
-## Step 0.5: Process Unprocessed Meetings
-
-Before gathering context, ensure recent meetings are in the vault by running `/process-meetings`. This pulls any unprocessed meetings from the meeting source (Otter.ai, Granola, etc.), creates meeting notes, updates person/company pages, and extracts tasks — so the daily plan has complete data from yesterday and any earlier gaps.
-
-- If no new meetings are found, continue silently
-- If meetings are processed, note the count and use the extracted context in the plan
-- Do NOT ask for a skill rating after this sub-step — save that for the end of the full plan
-
-## Step 0.6: Dex Inbox Check (Phone Captures)
-
-Check for tasks captured from phone that haven't been triaged:
-
-```
-Use: reminders_list_items(list_name="Dex Inbox")
-```
-
-If items found, triage them before building the plan so task counts are accurate. See Step 5.10a for the full triage flow.
-
-**If empty:** Skip silently.
-
----
-
 ## Step 1: Background Checks (Silent)
 
 Run these silently without user-facing output:
@@ -77,7 +55,6 @@ Run these silently without user-facing output:
 3. **Search index refresh**: Run `qmd update && qmd embed` to refresh vault search index with any overnight changes (meetings processed, files edited, etc.). If `qmd` is not installed, skip silently.
 4. **People index refresh**: Call `build_people_index` from Work MCP. This keeps the People Directory current so person lookups throughout the day are fast. Takes <2 seconds.
 5. **Innovation synthesis** (silent): Call `synthesize_changelog()` and `synthesize_learnings()` from Improvements MCP. These run in background and populate the backlog — results are surfaced in Step 1.5 below.
-6. **Granola check** (silent): Granola meeting sync uses the desktop app's stored credentials automatically. No migration check needed.
 
 ---
 
@@ -715,7 +692,6 @@ The plan works at multiple levels:
 |-------------|------------|------------|
 | Calendar | dex-calendar-mcp | `calendar_get_today`, `calendar_get_events_with_attendees` |
 | Reminders | dex-calendar-mcp | `reminders_list_items`, `reminders_complete_item`, `reminders_create_item`, `reminders_ensure_lists`, `reminders_list_completed`, `reminders_find_and_complete`, `reminders_clear_completed` |
-| Granola | dex-granola-mcp | `get_recent_meetings` |
 | Work | dex-work-mcp | `list_tasks`, `get_week_progress`, `get_meeting_context`, `get_commitments_due`, `analyze_calendar_capacity`, `suggest_task_scheduling` |
 | Email Reply Tracking | retool-email | `get_unreplied_emails` |
 | Salesforce Cases | salesforce | `sf_get_open_cases` |

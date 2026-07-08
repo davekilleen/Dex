@@ -57,10 +57,9 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 from urllib.parse import parse_qs, urlencode, urlparse
 
-import requests
-
 import mcp.server.stdio
 import mcp.types as types
+import requests
 from mcp.server import NotificationOptions, Server
 from mcp.server.models import InitializationOptions
 

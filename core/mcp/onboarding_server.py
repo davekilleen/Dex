@@ -261,41 +261,6 @@ def check_calendar_app() -> Dict[str, Any]:
             "required": False
         }
 
-def check_granola() -> Dict[str, Any]:
-    """Check if Granola is installed (auto-detects latest cache version)"""
-    import re as _re
-
-    def _find_latest(granola_dir):
-        candidates = sorted(
-            granola_dir.glob("cache-v*.json"),
-            key=lambda p: int(_re.search(r'v(\d+)', p.name).group(1))
-            if _re.search(r'v(\d+)', p.name) else 0,
-            reverse=True
-        )
-        for c in candidates:
-            if c.exists():
-                return c
-        return None
-
-    # Check common Granola cache locations
-    if platform.system() == 'Darwin':
-        granola_dir = Path.home() / 'Library' / 'Application Support' / 'Granola'
-    elif platform.system() == 'Windows':
-        appdata = os.getenv('APPDATA') or os.getenv('LOCALAPPDATA')
-        if appdata:
-            granola_dir = Path(appdata) / 'Granola'
-        else:
-            granola_dir = None
-    else:  # Linux
-        granola_dir = Path.home() / '.config' / 'Granola'
-
-    if granola_dir:
-        cache_path = _find_latest(granola_dir)
-        if cache_path:
-            return {"installed": True, "cache_found": True, "path": str(cache_path)}
-
-    return {"installed": False, "optional": True}
-
 def create_para_structure(base_path: Path) -> List[str]:
     """Create PARA folder structure"""
     folders = [
@@ -715,54 +680,6 @@ def create_person_page(contact: Dict, email_domain: str) -> bool:
         logger.error(f"Failed to create person page for {contact.get('name', 'unknown')}: {e}")
         return False
 
-def get_recent_granola_meetings(days: int = 7) -> List[Dict]:
-    """Get recent meetings from Granola"""
-    try:
-        granola_server_path = BASE_DIR / 'core' / 'mcp' / 'granola_server.py'
-        if not granola_server_path.exists():
-            logger.warning("granola_server.py not found")
-            return []
-        
-        # Dynamic import
-        import importlib.util
-        spec = importlib.util.spec_from_file_location("granola_server", granola_server_path)
-        granola_module = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(granola_module)
-        
-        # Get recent meetings
-        from datetime import timedelta
-        cutoff = datetime.now() - timedelta(days=days)
-        meetings = granola_module.get_meetings_since(cutoff)
-        return meetings if meetings else []
-    except Exception as e:
-        logger.warning(f"Failed to get Granola meetings: {e}")
-        return []
-
-def count_unique_people(meetings: List[Dict]) -> int:
-    """Count unique people across meetings"""
-    people = set()
-    for meeting in meetings:
-        for attendee in meeting.get('attendees', []):
-            email = attendee.get('email', '')
-            if email:
-                people.add(email)
-    return len(people)
-
-def count_external_companies(meetings: List[Dict], email_domain: str) -> int:
-    """Count unique external companies based on email domains"""
-    internal_domains = set(d.strip() for d in email_domain.split(','))
-    external_domains = set()
-    
-    for meeting in meetings:
-        for attendee in meeting.get('attendees', []):
-            email = attendee.get('email', '')
-            if '@' in email:
-                domain = email.split('@')[1]
-                if domain not in internal_domains:
-                    external_domains.add(domain)
-    
-    return len(external_domains)
-
 # ============================================================================
 # MCP SERVER SETUP
 # ============================================================================
@@ -824,7 +741,7 @@ async def handle_list_tools() -> list[types.Tool]:
         ),
         types.Tool(
             name="verify_dependencies",
-            description="Check system requirements: Python packages, Calendar.app, Granola",
+            description="Check system requirements: Python packages, Calendar.app",
             inputSchema={
                 "type": "object",
                 "properties": {}
@@ -1133,8 +1050,7 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[types.Text
         elif name == "verify_dependencies":
             deps = {
                 "python_packages": check_python_packages(),
-                "calendar_app": check_calendar_app(),
-                "granola": check_granola()
+                "calendar_app": check_calendar_app()
             }
             
             # Check if all required packages installed
