@@ -61,7 +61,7 @@
 
 ---
 
-## 📋 Tasks
+## 📋 Open Tasks
 
 ### P0 — Must Do This Week
 - [ ] **Call Aaron Fry at Myers EPS** — Cidan Folder status ($526,400) — **Monday A.M.**
@@ -108,7 +108,7 @@ Quick reference for sweep calls:
 
 ## 🏁 End of Week
 
-*Fill in Friday*
+*Fill in Friday evening*
 
 ### Done
 - 

@@ -113,3 +113,11 @@ quarterly_planning:
 
 # Obsidian Integration
 obsidian_mode: true
+
+# AI Model Configuration
+ai_models:
+  offline:
+    enabled: true
+    runner: ollama
+    model: qwen2.5:14b
+    configured_date: 2026-07-05
