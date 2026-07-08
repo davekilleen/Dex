@@ -459,6 +459,7 @@ Skills extend Dex capabilities and are invoked with `/skill-name`. Common skills
 - `/daily-plan`, `/daily-review` - Daily workflow
 - `/week-plan`, `/week-review` - Weekly workflow
 - `/quarter-plan`, `/quarter-review` - Quarterly planning
+- `/triage`, `/meeting-prep`, `/process-meetings`, `/outlook-meeting-invite` - Meetings and inbox
 - `/triage`, `/meeting-prep`, `/log-meeting` - Meetings and inbox
 - `/project-health`, `/product-brief` - Projects
 - `/career-coach`, `/resume-builder` - Career development

@@ -7,6 +7,25 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.27.0] - /outlook-meeting-invite: Create and send calendar invites with Salesforce attendee lookup (2026-07-07)
+
+Before, creating a meeting invite meant manually hunting for attendee emails across Salesforce, person pages, and old emails — then switching to Outlook, adding people by hand, and hoping you didn't miss anyone.
+
+**What this fixes for you:**
+
+* **New `/outlook-meeting-invite` skill.** One command: define the meeting, search Salesforce for attendees by company, extract emails from person pages and vault, confirm the list, pick date/time, and send.
+* **Attendee lookup is smart.** Searches Salesforce account + contacts, falls back to vault person pages, and offers required vs. optional attendee classification.
+* **Reusable scripts:** 
+  - `.scripts/create-meeting-invite.ps1` — PowerShell helper that connects to Outlook COM, creates the meeting item, adds attendees with type resolution, saves as draft or sends immediately.
+  - `.scripts/gather-meeting-data.py` — Deterministic script gathers account details, contact list, and recent communication history from both Salesforce and vault before AI touches it.
+* **Workflow keeps context.** After invite creation, the system auto-creates a meeting note in `Inbox/Meetings/` and can link to related projects/opportunities (future: auto-log to Salesforce activity).
+* **Example for Winholt Equipment:** `Inbox/Meetings/WINHOLT-MEETING-INVITE-EXAMPLE.md` shows the full workflow and how to use it.
+* **Timezone aware.** PowerShell script respects Outlook's timezone handling (Windows → IANA mapping included in calendar-mcp-worker for reference).
+
+Inspired by the email-queue-manager dashboard workflow — same idea of gathering context first, letting the user review, then executing cleanly.
+
+---
+
 ## [1.26.0] - Goal-creation crash fixed, EDA name matching tightened, coverage to 47% (2026-07-07)
 
 Two real defects surfaced by this round of tests, plus the remaining untested infrastructure is now covered.
