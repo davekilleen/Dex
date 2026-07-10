@@ -10,23 +10,15 @@ Quick fixes for common issues.
 
 **Causes & Fixes:**
 
-### 1. Beta not activated
-Check your beta status:
-```
-/pi-status
-```
-
-If Pi isn't enabled, contact the beta coordinator to verify your activation.
-
-### 2. Skills not loaded
+### 1. Skills not loaded
 Pi commands are skills that need to be in place. Check if the directory exists:
 ```
 ls .claude/skills/pi-*
 ```
 
-If missing, the Pi skill files weren't installed. Re-run the beta activation process.
+If missing, the Pi skill files weren't installed. Re-run the Pi setup process.
 
-### 3. Typo in command
+### 2. Typo in command
 Commands are case-sensitive and use hyphens:
 - Correct: `/pi-build`
 - Wrong: `/pi build`, `/Pi-build`, `/pibuild`

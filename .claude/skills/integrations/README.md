@@ -22,7 +22,6 @@ Connect your favorite tools to Dex for richer context in meetings, person pages,
 - "What did Sarah say about the Q1 budget?" → searches Slack
 - Meeting prep includes recent Slack context with attendees
 - Person pages show Slack interaction history
-- Commitment detection finds promises made in threads
 
 ### Google Workspace Integration
 - "What emails am I behind on with VP Sales?" → searches Gmail

@@ -1,7 +1,6 @@
 ---
 name: pi
 description: Route tasks to Pi for comparison testing. Toggle Pi mode or run specific commands through Pi.
-beta_required: pi
 ---
 
 # Pi Integration
@@ -69,10 +68,9 @@ Enable Pi mode for the session.
 **Steps:**
 
 1. Read `System/user-profile.yaml`
-2. Set or update `pi_mode: true` under a `beta` section:
+2. Set or update the top-level `pi_mode` setting:
    ```yaml
-   beta:
-     pi_mode: true
+   pi_mode: true
    ```
 3. Confirm to user:
    ```
@@ -97,7 +95,7 @@ Disable Pi mode.
 **Steps:**
 
 1. Read `System/user-profile.yaml`
-2. Set `pi_mode: false` under `beta` section
+2. Set the top-level `pi_mode: false`
 3. Confirm:
    ```
    ✓ Pi mode disabled
@@ -248,16 +246,6 @@ Or run a custom task:
   /pi "build me a tool that..."
 ```
 
-### Beta Not Activated
-
-If Pi beta not activated:
-
-```
-❌ Pi integration requires beta activation
-
-Run: /beta-activate PILAUNCH2026
-```
-
 ---
 
 ## Environment Detection
@@ -333,5 +321,4 @@ After running a task through Pi:
 ## Related
 
 - `/pi-tools` - View synced Pi extensions
-- `/beta-status` - Check Pi beta activation
-- `System/Beta/pi/README.md` - Pi setup documentation
+- `.claude/reference/beta-templates/pi/README.md` - Pi setup documentation

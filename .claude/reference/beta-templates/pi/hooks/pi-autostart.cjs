@@ -1,16 +1,14 @@
 #!/usr/bin/env node
 /**
- * SessionStart hook: Auto-start Pi when beta activated
+ * SessionStart hook: Auto-start Pi when configured
  *
- * Automatically launches Pi in the background when a Claude Code session starts,
- * if the user has the Pi beta activated in their profile.
+ * Automatically launches Pi in the background when a Claude Code session starts.
  *
  * Checks:
- * 1. Pi beta activated in System/user-profile.yaml (beta.activated.pi: true)
- * 2. Not disabled via PI_AUTOSTART=false env var
- * 3. Not disabled via pi_autostart: false in user-profile.yaml
- * 4. Pi not already running
- * 5. Pi command exists on system
+ * 1. Explicitly enabled via PI_AUTOSTART=true or pi_autostart: true
+ * 2. Not disabled via PI_AUTOSTART=false
+ * 3. Pi not already running
+ * 4. Pi command exists on system
  */
 const fs = require('fs');
 const path = require('path');
@@ -21,57 +19,9 @@ const VAULT_ROOT = process.env.CLAUDE_PROJECT_DIR || process.env.VAULT_PATH || p
 const USER_PROFILE = path.join(VAULT_ROOT, 'System', 'user-profile.yaml');
 const LOG_FILE = path.join(VAULT_ROOT, 'System', '.pi-autostart.log');
 
-/**
- * Simple YAML parser for our specific needs
- * Handles nested keys like beta.activated.pi
- */
-function parseYamlValue(content, keyPath) {
-  const keys = keyPath.split('.');
-  const lines = content.split('\n');
-
-  let currentIndent = 0;
-  let foundPath = [];
-
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-    const trimmed = line.trim();
-
-    // Skip empty lines and comments
-    if (!trimmed || trimmed.startsWith('#')) continue;
-
-    // Calculate indent level (2 spaces per level)
-    const indent = line.search(/\S/);
-    const level = Math.floor(indent / 2);
-
-    // If indent decreased, pop from found path
-    while (foundPath.length > level) {
-      foundPath.pop();
-    }
-
-    // Parse key: value
-    const match = trimmed.match(/^([^:]+):\s*(.*)$/);
-    if (!match) continue;
-
-    const key = match[1].trim();
-    const value = match[2].trim();
-
-    // Update found path
-    foundPath[level] = key;
-
-    // Check if this matches our target path
-    const currentPath = foundPath.slice(0, level + 1).join('.');
-
-    if (currentPath === keyPath) {
-      // Found it! Parse the value
-      if (value === 'true') return true;
-      if (value === 'false') return false;
-      if (value === '') return null;
-      // Remove quotes if present
-      return value.replace(/^["']|["']$/g, '');
-    }
-  }
-
-  return undefined;
+/** Check the one supported profile opt-in without parsing arbitrary YAML. */
+function isPiAutostartEnabled(content) {
+  return content.split('\n').some((line) => /^pi_autostart:\s*true\s*(?:#.*)?$/.test(line));
 }
 
 /**
@@ -129,41 +79,35 @@ function main() {
     return;
   }
 
-  // Check 2: Read user profile
-  if (!fs.existsSync(USER_PROFILE)) {
-    log('User profile not found, skipping Pi autostart');
-    return;
+  // Check 2: Read the profile only when the environment did not opt in
+  if (process.env.PI_AUTOSTART !== 'true') {
+    if (!fs.existsSync(USER_PROFILE)) {
+      log('User profile not found, skipping Pi autostart');
+      return;
+    }
+
+    let profileContent;
+    try {
+      profileContent = fs.readFileSync(USER_PROFILE, 'utf-8');
+    } catch (e) {
+      log(`Failed to read user profile: ${e.message}`);
+      return;
+    }
+
+    // Check 3: Explicitly enabled in the profile
+    if (!isPiAutostartEnabled(profileContent)) {
+      log('Pi autostart is not enabled');
+      return;
+    }
   }
 
-  let profileContent;
-  try {
-    profileContent = fs.readFileSync(USER_PROFILE, 'utf-8');
-  } catch (e) {
-    log(`Failed to read user profile: ${e.message}`);
-    return;
-  }
-
-  // Check 3: Disabled in user profile
-  const piAutostartDisabled = parseYamlValue(profileContent, 'pi_autostart');
-  if (piAutostartDisabled === false) {
-    log('Disabled via pi_autostart: false in user-profile.yaml');
-    return;
-  }
-
-  // Check 4: Pi beta not activated
-  const piBetaActivated = parseYamlValue(profileContent, 'beta.activated.pi');
-  if (piBetaActivated !== true) {
-    log('Pi beta not activated (beta.activated.pi is not true)');
-    return;
-  }
-
-  // Check 5: Pi already running
+  // Check 4: Pi already running
   if (isProcessRunning('pi')) {
     log('Pi is already running');
     return;
   }
 
-  // Check 6: Pi command exists
+  // Check 5: Pi command exists
   if (!commandExists('pi')) {
     log('Pi command not found. Install with: npm install -g @anthropic-ai/claude-code-pi');
     // Output a warning that will be shown to user
@@ -171,7 +115,7 @@ function main() {
       continue: true,
       hookSpecificOutput: {
         hookEventName: "SessionStart",
-        additionalContext: "\n--- Pi Beta ---\nPi autostart enabled but 'pi' command not found.\nInstall: npm install -g @anthropic-ai/claude-code-pi\n---\n"
+        additionalContext: "\n--- Pi ---\nPi autostart enabled but 'pi' command not found.\nInstall: npm install -g @anthropic-ai/claude-code-pi\n---\n"
       }
     }));
     return;

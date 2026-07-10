@@ -667,32 +667,6 @@ The system teaches you progressively. You learn what you need, when you need it.
 
 ---
 
-## Demo Mode
-
-Want to explore without adding your data? Want to show colleagues what's possible before they commit?
-
-Run `/dex-demo on` for pre-populated sample content that demonstrates **all 8 Jobs to Be Done**:
-
-**What's included:**
-- **Career Development System** - Role definition, career ladder (L4→L5), performance reviews, growth goals, evidence library
-- **Full Week of Planning** - Daily plans (Mon-Fri), weekly plan, morning/evening journals, weekly reflection  
-- **Learning & Reflection** - Working preferences, mistake patterns, session learnings, pattern recognition
-- **Company Intelligence** - Acme Corp page aggregating contacts, meetings, and tasks across the organization
-- **Active Projects** - Mobile launch (high-stakes), portal redesign, API partnerships
-- **Meeting Intelligence** - Week of notes with scattered tasks for `/triage` to demonstrate cleanup workflow
-- **System Evolution** - Improvement backlog with 10 AI-ranked ideas, usage tracking, orphaned ideas
-- **People & Relationships** - 5 person pages (internal/external) with meeting history and context
-
-Everything happens in `System/Demo/` - your real vault stays untouched. Run `/dex-demo off` to switch back. Reset demo content anytime with `/dex-demo reset`.
-
-Useful for:
-- Exploring features risk-free before adding real data (see all 8 Jobs in action)
-- Demoing to colleagues - show what AI systems can do beyond chat
-- Driving AI fluency across your team without setup friction
-- Testing new workflows and commands (`/career-coach`, `/dex-backlog`, etc.)
-
----
-
 ## The System That Improves Itself
 
 The system captures learnings and improves over time:

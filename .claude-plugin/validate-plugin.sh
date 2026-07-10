@@ -86,25 +86,61 @@ fi
 echo ""
 echo "3️⃣  Checking MCP servers..."
 
-MCP_SERVERS=(
-    "core/mcp/work_server.py"
-    "core/mcp/calendar_server.py"
-    "core/mcp/career_server.py"
-    "core/mcp/resume_server.py"
-    "core/mcp/onboarding_server.py"
-    "core/mcp/beta_server.py"
-    "core/mcp/dex_improvements_server.py"
-    "core/mcp/commitment_server.py"
-    "core/mcp/granola_server.py"
-)
+if ! PLUGIN_MCP_ENTRIES=$(python3 - <<'PY'
+import json
+from pathlib import Path
 
-for server in "${MCP_SERVERS[@]}"; do
-    if [ ! -f "$server" ]; then
-        error "MCP server not found: $server"
-    else
-        success "$(basename $server)"
+manifest = json.loads(Path(".claude-plugin/plugin.json").read_text(encoding="utf-8"))
+expected = {
+    "work": "core.mcp.work_server",
+    "calendar": "core.mcp.calendar_server",
+    "career": "core.mcp.career_server",
+    "resume": "core.mcp.resume_server",
+    "onboarding": "core.mcp.onboarding_server",
+    "dex-improvements": "core.mcp.dex_improvements_server",
+    "granola": "core.mcp.granola_server",
+}
+servers = manifest.get("mcpServers", {})
+
+for name in sorted(expected.keys() - servers.keys()):
+    print(f"INVALID\t{name}\tMissing required plugin MCP registration")
+for name in sorted(servers.keys() - expected.keys()):
+    print(f"INVALID\t{name}\tUnexpected plugin MCP registration")
+
+for name, server in servers.items():
+    if name not in expected:
+        continue
+    args = server.get("args", [])
+    if len(args) < 2 or args[0] != "-m" or not isinstance(args[1], str) or not args[1].startswith("core.mcp."):
+        print(f"INVALID\t{name}\tExpected Python module args: -m core.mcp.<server>")
+        continue
+    if args[1] != expected[name]:
+        print(f"INVALID\t{name}\tExpected module {expected[name]}, found {args[1]}")
+        continue
+    server_path = args[1].replace(".", "/") + ".py"
+    print(f"SERVER\t{name}\t{server_path}")
+PY
+); then
+    error "Unable to read MCP registrations from plugin.json"
+else
+    PLUGIN_MCP_PATHS=""
+    while IFS=$'\t' read -r entry_type server_name server_path; do
+        [ -z "$entry_type" ] && continue
+        if [ "$entry_type" = "INVALID" ]; then
+            error "Invalid MCP registration '$server_name': $server_path"
+        elif [ ! -f "$server_path" ]; then
+            error "MCP server not found for '$server_name': $server_path"
+        else
+            success "$(basename "$server_path")"
+            PLUGIN_MCP_PATHS="${PLUGIN_MCP_PATHS}${server_path}"$'\n'
+        fi
+    done <<< "$PLUGIN_MCP_ENTRIES"
+
+    DUPLICATE_MCP_PATHS=$(printf '%s' "$PLUGIN_MCP_PATHS" | sed '/^$/d' | sort | uniq -d)
+    if [ -n "$DUPLICATE_MCP_PATHS" ]; then
+        error "Multiple plugin registrations target the same MCP server: $(echo "$DUPLICATE_MCP_PATHS" | tr '\n' ' ')"
     fi
-done
+fi
 
 echo ""
 echo "4️⃣  Checking .gitignore..."

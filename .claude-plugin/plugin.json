@@ -65,26 +65,10 @@
         "VAULT_PATH": "${VAULT_PATH}"
       }
     },
-    "beta": {
-      "type": "stdio",
-      "command": "python",
-      "args": ["-m", "core.mcp.beta_server"],
-      "env": {
-        "VAULT_PATH": "${VAULT_PATH}"
-      }
-    },
     "dex-improvements": {
       "type": "stdio",
       "command": "python",
       "args": ["-m", "core.mcp.dex_improvements_server"],
-      "env": {
-        "VAULT_PATH": "${VAULT_PATH}"
-      }
-    },
-    "commitment": {
-      "type": "stdio",
-      "command": "python",
-      "args": ["-m", "core.mcp.commitment_server"],
       "env": {
         "VAULT_PATH": "${VAULT_PATH}"
       }

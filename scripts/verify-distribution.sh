@@ -51,12 +51,12 @@ USER_FOLDERS=("00-Inbox" "01-Quarter_Goals" "02-Week_Priorities" "03-Tasks" "04-
 for folder in "${USER_FOLDERS[@]}"; do
     if git ls-files --error-unmatch "$folder" 2>/dev/null | head -1 >/dev/null; then
         echo "  ⚠️  WARNING: $folder has tracked files"
-        echo "     These should be in demo mode only: System/Demo/$folder"
+        echo "     User data folders should remain untracked"
         WARNINGS=$((WARNINGS + 1))
     fi
 done
 if [ $WARNINGS -eq 0 ]; then
-    echo "  ✅ No user data folders tracked (or only System/Demo)"
+    echo "  ✅ No user data folders tracked"
 fi
 
 # Check 5: Check for personal identifiable information
@@ -108,16 +108,40 @@ else
     echo "  ✅ Template uses {{VAULT_PATH}} placeholder"
 fi
 
-# Check 9: Count MCP servers
+# Check 9: Every top-level MCP server is registered exactly once
 echo ""
-echo "✓ Verifying MCP server count..."
-MCP_COUNT=$(find core/mcp -name '*_server.py' -o -name 'update_checker.py' | wc -l | tr -d ' ')
-TEMPLATE_COUNT=$(grep -c '{{VAULT_PATH}}/core/mcp/' System/.mcp.json.example)
-if [ "$MCP_COUNT" != "$TEMPLATE_COUNT" ]; then
-    echo "  ⚠️  WARNING: MCP mismatch - $MCP_COUNT servers found, $TEMPLATE_COUNT in template"
-    WARNINGS=$((WARNINGS + 1))
+echo "✓ Verifying MCP server registrations..."
+MCP_FILES=$(find core/mcp -maxdepth 1 \( -name '*_server.py' -o -name 'update_checker.py' \) -print | sort)
+TEMPLATE_FILES=$(python3 - <<'PY'
+import json
+from pathlib import Path
+
+config = json.loads(Path("System/.mcp.json.example").read_text(encoding="utf-8"))
+prefix = "{{VAULT_PATH}}/"
+for server in config.get("mcpServers", {}).values():
+    for arg in server.get("args", []):
+        if isinstance(arg, str) and arg.startswith(prefix + "core/mcp/"):
+            print(arg.removeprefix(prefix))
+PY
+)
+TEMPLATE_FILES=$(printf '%s\n' "$TEMPLATE_FILES" | sort)
+
+if [ "$MCP_FILES" != "$TEMPLATE_FILES" ]; then
+    echo "  ❌ ERROR: MCP server files and template registrations differ"
+    MISSING_REGISTRATIONS=$(comm -23 <(printf '%s\n' "$MCP_FILES") <(printf '%s\n' "$TEMPLATE_FILES"))
+    MISSING_FILES=$(comm -13 <(printf '%s\n' "$MCP_FILES") <(printf '%s\n' "$TEMPLATE_FILES"))
+    if [ -n "$MISSING_REGISTRATIONS" ]; then
+        echo "     Unregistered server files:"
+        echo "$MISSING_REGISTRATIONS" | sed 's/^/       /'
+    fi
+    if [ -n "$MISSING_FILES" ]; then
+        echo "     Missing or duplicate server files referenced by the template:"
+        echo "$MISSING_FILES" | sed 's/^/       /'
+    fi
+    ERRORS=$((ERRORS + 1))
 else
-    echo "  ✅ All $MCP_COUNT MCP servers in template"
+    MCP_COUNT=$(printf '%s\n' "$MCP_FILES" | wc -l | tr -d ' ')
+    echo "  ✅ All $MCP_COUNT MCP server files match the template exactly"
 fi
 
 # Check 10: Personal paths in .mcp.json (if exists)

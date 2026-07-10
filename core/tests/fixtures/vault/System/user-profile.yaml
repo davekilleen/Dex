@@ -5,7 +5,6 @@ company: Dex
 company_size: 1-10
 email_domain: example.com
 work_email: test@example.com
-demo_mode: true
 communication:
   formality: direct
   directness: high
@@ -22,21 +21,11 @@ meeting_intelligence:
   extract_decisions: false
   extract_stakeholder_dynamics: false
   extract_budget_timeline: false
-beta:
-  activated: {}
 analytics:
   enabled: false
   anonymous: true
   visitor_id: fixture
   account_id: fixture
-screenpipe:
-  enabled: false
-  prompted: false
-  features:
-    commitment_detection: false
-    time_audit: false
-    screen_recall: false
-  retention_days: 7
 calendar:
   work_calendar: primary
   calendar_count: 1

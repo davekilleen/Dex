@@ -42,8 +42,7 @@
 - `dex-backlog` - Review improvement ideas
 - `dex-improve` - Workshop improvements
 
-**System/Utility (7):**
-- `dex-demo` - Toggle demo mode
+**System/Utility (6):**
 - `setup` - Initial setup
 - `reset` - Restructure system
 - `prompt-improver` - Improve prompts
@@ -105,7 +104,6 @@ You can safely delete `.claude/commands/` once you've verified all skills work c
 
 All skills are immediately available. Test with:
 - `/daily-plan` - Try a core workflow skill
-- `/dex-demo on` - Try a system control skill
 - `/dex-level-up` - Try a discovery skill
 
 ## Before & After
@@ -127,7 +125,7 @@ All skills are immediately available. Test with:
       SKILL.md (proper YAML frontmatter)
     review/
       SKILL.md
-    ...25 total skills + README
+    ...24 total skills + README
   commands/ (preserved for verification)
 ```
 

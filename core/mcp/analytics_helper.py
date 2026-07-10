@@ -214,14 +214,14 @@ def calculate_journey_metadata() -> Dict[str, Any]:
     
     Returns dict with:
         - days_since_setup: int
-        - feature_adoption_score: int (out of 57)
+        - feature_adoption_score: int (out of 55)
         - journey_stage: str (new/exploring/established/power_user)
         - most_active_area: str
     """
     data = load_usage_log()
     features = data.get('features', {})
     
-    # Count features by area - matches usage_log.md sections (57 total features)
+    # Count features by area - matches usage_log.md sections (55 total features)
     areas = {
         'core_workflows': [
             'Daily planning', 'Daily review', 'Weekly planning', 'Weekly review',
@@ -252,13 +252,13 @@ def calculate_journey_metadata() -> Dict[str, Any]:
         ],
         'integrations': [
             'Calendar connected', 'Calendar synced', 'Granola connected',
-            'Obsidian enabled', 'Pi used', 'ScreenPipe'
+            'Obsidian enabled', 'Pi used'
         ],
         'ai_config': [
             'AI setup', 'Budget cloud', 'Offline mode', 'Smart routing', 'AI status'
         ],
         'advanced': [
-            'Prompt improvement', 'Custom MCP', 'MCP integrated', 'Demo mode'
+            'Prompt improvement', 'Custom MCP', 'MCP integrated'
         ],
     }
     

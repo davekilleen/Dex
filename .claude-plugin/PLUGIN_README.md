@@ -17,16 +17,14 @@ Dex is more than a traditional plugin - it's a complete personal operating syste
 - System improvement tools
 - Content creation assistants
 
-### MCP Servers (9)
+### MCP Servers (7)
 - **work** - Task, priority, and goal management
 - **calendar** - Calendar integration (macOS Calendar.app)
-- **tasks** - Task tracking and completion
 - **career** - Career development and evidence capture
 - **resume** - Resume building and optimization
 - **onboarding** - First-time setup wizard
-- **beta** - Beta feature management
-- **dex-analytics** - Anonymous usage analytics
 - **dex-improvements** - System improvement backlog
+- **granola** - Meeting notes and transcripts
 
 ### Session Hooks
 - Automatic context injection (people, companies)
@@ -109,7 +107,6 @@ The plugin needs to know where your vault is located. This is configured during 
 For full functionality, you can integrate:
 - **Granola** - Meeting recording and transcription
 - **Gmail API** - Newsletter intelligence
-- **ScreenPipe** - Ambient commitment detection (beta)
 - **Calendar.app** (macOS) - Calendar integration
 
 ## Plugin Architecture

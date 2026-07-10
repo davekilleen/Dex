@@ -25,7 +25,7 @@ No manual file copying, no complex setup—just install and run `/setup`.
 
 ### 1. **Plugin Manifest** (`.claude-plugin/plugin.json`)
 - Defines Dex as a Claude Code plugin
-- Configures all 9 MCP servers
+- Configures all 7 MCP servers
 - Specifies Python requirements
 - Ready to publish
 
@@ -276,7 +276,7 @@ Before launching:
 
 ### Technical Assets (Already Existed)
 - ✅ 60+ Skills
-- ✅ 9 MCP Servers
+- ✅ 7 MCP Servers
 - ✅ Session hooks
 - ✅ Python core
 - ✅ Comprehensive docs
@@ -284,7 +284,6 @@ Before launching:
 ### Marketing Assets (Existing)
 - ✅ Vibe PM Podcast Episode 8
 - ✅ LinkedIn blog post
-- ✅ Demo mode capability
 - ✅ Community following
 
 ---

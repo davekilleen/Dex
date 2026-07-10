@@ -42,7 +42,6 @@ When user just says `/xray` with no qualifier:
 | `/xray ai` or `/xray fundamentals` | First principles: context windows, tokens, statelessness |
 | `/xray dex` or `/xray architecture` | How Dex works: CLAUDE.md, hooks, MCPs, skills |
 | `/xray boot` or `/xray session start` | The session startup sequence |
-| `/xray today` | ScreenPipe analysis of your day |
 | `/xray extend` or `/xray customize` | How to customize and build on Dex yourself |
 
 ---
@@ -653,69 +652,6 @@ session can be injected via a hook.
 
 **Ready to create your own customizations?** Try `/xray extend`
 ```
-
----
-
-## MODE: Today (`/xray today`)
-
-**Purpose:** ScreenPipe-powered analysis of the day's activity.
-
-### Prerequisites
-
-First check if ScreenPipe is running. If not:
-
-```markdown
-## 🔬 X-Ray: Today
-
-ScreenPipe isn't running, so I can't analyze your full day.
-
-**To enable day analysis:**
-1. Start ScreenPipe: Run `screenpipe` in terminal
-2. It records your screen activity locally (nothing sent to cloud)
-3. Come back and run `/xray today` again
-
-**What you'll get:**
-- Time breakdown by app
-- Activity patterns
-- "Moments you missed" where Dex could have helped
-```
-
-### If ScreenPipe is running
-
-Query ScreenPipe for today's activity and present:
-
-```markdown
-## 🔬 X-Ray: Today
-
-[Activity summary from ScreenPipe]
-
----
-
-### 🎓 How This Works
-
-**What you just saw was ScreenPipe integration.** Here's what's happening:
-
-1. **ScreenPipe records your screen** - Every few seconds, captures what's visible
-2. **OCR extracts text** - It can "read" what's on screen
-3. **A local database stores it** - SQLite on YOUR machine, not the cloud
-4. **I query that database** - Via ScreenPipe tools
-
-**Privacy model:**
-- Everything stays on YOUR computer
-- No data sent to external servers
-- You control retention
-
-**What this enables:**
-- "What was I doing at 2pm?" → I can look it up
-- "How much time in Slack?" → I can calculate
-- "When did I see that error?" → I can search
-
----
-
-[Continue with activity analysis, patterns, and suggestions]
-```
-
----
 
 ## MODE: How to Extend (`/xray extend`)
 

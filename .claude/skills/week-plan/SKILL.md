@@ -25,12 +25,6 @@ Set priorities and plan the week ahead. Now with **intelligent priority suggesti
 
 ---
 
-## Step 0: Demo Mode Check
-
-Check `System/user-profile.yaml` for `demo_mode`. If true, use demo paths.
-
----
-
 ## Step 1: Determine Target Week
 
 Calculate target week (current or next) based on day of week and user parameter.

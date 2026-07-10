@@ -17,7 +17,7 @@ Tobi Lutke (Shopify CEO) called it the *"Dawn of the age of malleable software."
 
 ### 1. Verify Installation
 
-Pi was installed during beta activation. Verify it's working:
+Verify Pi is installed and working:
 
 ```bash
 pi --version
@@ -59,7 +59,7 @@ This means tools Pi builds can:
 - Look up people pages
 - Query meeting notes
 
-The MCP servers are configured automatically in your Pi settings.
+Configure the Dex MCP servers in your Pi settings before using Dex-backed tools.
 
 ## What to Build with Pi
 
@@ -93,10 +93,9 @@ Pi connects directly to these Dex MCP servers:
 - **work-mcp** — For task/goal/priority operations
 - **calendar-mcp** — For calendar access
 - **career-mcp** — For career development tracking
-- **commitment-mcp** — For commitment detection
 - And all other Dex MCP servers
 
-These are configured automatically during beta activation.
+Add the servers you need to `.pi/config.json`.
 
 ### AGENTS.md
 
@@ -146,7 +145,7 @@ Your feedback shapes this integration. Message Dave directly on WhatsApp with:
 ### 0.1.0 (Current)
 - Initial beta release
 - MCP bridge to Dex task and calendar systems
-- Auto-installation during activation
+- Guided installation and configuration
 
 ---
 

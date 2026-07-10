@@ -28,20 +28,6 @@ $MODE: Optional. "files" | "tasks" | "all". Default: "all"
 
 ---
 
----
-
-## Demo Mode Check
-
-Before executing, check if demo mode is active:
-
-1. Read `System/user-profile.yaml` and check `demo_mode`
-2. **If `demo_mode: true`:**
-   - Display: "Demo Mode Active — Using sample data"
-   - Use `System/Demo/` paths instead of root paths
-   - Write any output to `System/Demo/` subdirectories
-3. **If `demo_mode: false`:** Use normal vault paths
-
-
 ## Step 0: Load Strategic Context & Structure Discovery
 
 Before processing inbox items, load strategic context and build an index of existing entities. This makes triage strategically aware and enables intelligent routing.

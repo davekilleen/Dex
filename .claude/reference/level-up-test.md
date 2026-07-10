@@ -139,7 +139,6 @@ grep "Last dex-level-up prompt" System/usage_log.md
 - [ ] Custom MCP created (/create-mcp)
 - [ ] System improvements (/dex-improve)
 - [ ] Prompt improvement (/prompt-improper)
-- [ ] Demo mode (/dex-demo)
 ```
 
 **Action:** User types `/dex-level-up`
@@ -342,7 +341,6 @@ grep "Daily review" System/usage_log.md
 - [ ] Custom MCP created (/create-mcp)
 - [ ] System improvements (/dex-improve)
 - [ ] Prompt improvement (/prompt-improper)
-- [x] Demo mode (/dex-demo)
 ```
 
 **Action:** User runs `/dex-level-up`
@@ -350,7 +348,7 @@ grep "Daily review" System/usage_log.md
 **Expected Behavior:**
 
 1. Command reads usage log
-2. Counts: 24 of 27 features checked
+2. Counts: 23 of 26 features checked
 3. Recognizes power user status
 4. Shows advanced recommendations:
 

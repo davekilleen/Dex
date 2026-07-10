@@ -220,7 +220,7 @@ If you get stuck during onboarding:
 
 - Learn `/xray` to understand the AI context system
 - Customize your workflow with personal skills
-- Share Dex with your team (demo mode available)
+- Share the workflows that work best with your team
 
 ## Getting Help
 

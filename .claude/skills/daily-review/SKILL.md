@@ -14,12 +14,6 @@ Read `System/user-profile.yaml` → `communication` section and adapt accordingl
 
 ---
 
-## Step 0: Demo Mode Check
-
-Check `System/user-profile.yaml` for `demo_mode`. If true, use demo paths.
-
----
-
 ## Step 1: File Discovery
 
 Find files modified TODAY:
@@ -59,111 +53,6 @@ Read `02-Week_Priorities/Week_Priorities.md` for:
 
 ### From Recent Meetings
 Check `00-Inbox/Meetings/` for meeting notes from today (should now include anything just pulled from the meeting source).
-
-### From ScreenPipe (If Running)
-
-**Check if ScreenPipe is available:**
-```bash
-curl -s http://localhost:3030/health | jq -r '.status' 2>/dev/null
-```
-
-If ScreenPipe is running, gather automatic activity context:
-
-1. **Time Audit** — Query app usage for today:
-   ```
-   Use: screenpipe_time_audit(start_time="YYYY-MM-DDT09:00:00", end_time="YYYY-MM-DDT18:00:00")
-   ```
-
-2. **Activity Summary** — Get narrative of what happened:
-   ```
-   Use: screenpipe_summarize(start_time="YYYY-MM-DDT09:00:00", end_time="YYYY-MM-DDT18:00:00")
-   ```
-
-3. **Surface to User:**
-   > "📺 **Screen Activity Summary** (auto-captured):
-   > 
-   > **Time breakdown:**
-   > - VS Code: 3.2 hours (41%)
-   > - Slack: 1.5 hours (19%)
-   > - Chrome: 2.1 hours (27%)
-   > - Zoom: 1.0 hour (13%)
-   > 
-   > **Activity narrative:**
-   > [Generated summary of the day]
-   > 
-   > **Context switches:** 34 (moderate)
-   > **Longest focus session:** 48 minutes
-   > 
-   > Does this match your sense of the day?"
-
-This provides ground truth for what actually happened vs. what was remembered.
-
-### Commitment Scan (If ScreenPipe Beta Activated & Enabled & Running)
-
-**First, check beta activation:**
-```
-Use: check_beta_enabled(feature="screenpipe")
-```
-
-If beta NOT activated, skip this section entirely.
-
-**Then check if user has opted in:**
-
-Read `System/user-profile.yaml` → `screenpipe.enabled`. If false, skip this section entirely.
-
-**If beta activated AND enabled**, scan for uncommitted asks and promises:
-
-```
-Use: scan_for_commitments(
-    start_time="YYYY-MM-DDT09:00:00",
-    end_time="YYYY-MM-DDT18:00:00",
-    apps=["Slack", "Gmail", "Teams", "Notion"]
-)
-```
-
-Then get pending items:
-```
-Use: get_uncommitted_items(include_dismissed=false)
-```
-
-**Surface to user if items found:**
-
-> "🔔 **Uncommitted Items Detected**
->
-> ScreenPipe noticed these potential commitments today that don't have matching tasks:
->
-> ### Inbound Asks
->
-> **1. Sarah Chen** (Slack, 2:34 PM)
-> > "Can you review the pricing proposal by Friday?"
->
-> 📎 Matches: **Q1 Pricing Project**
-> ⏰ Deadline: Friday
->
-> → [Create task] [Already handled] [Ignore]
->
-> ### Outbound Promises
->
-> **2. You → Tom Baker** (Slack, 4:20 PM)
-> > "I'll send over the competitive analysis tomorrow"
->
-> 📎 Matches: **Acme Deal**
-> ⏰ Deadline: Tomorrow
->
-> → [Create task] [Already handled] [Ignore]
->
-> *2 potential commitments detected. 0 have matching tasks.*"
-
-For each item the user wants to create as a task:
-```
-Use: process_commitment(commitment_id="comm-XXXXXX-XXX", action="create_task")
-Use: create_task(title="...", priority="P2", pillar="...", context="From Slack commitment")
-```
-
-For dismissals:
-```
-Use: process_commitment(commitment_id="comm-XXXXXX-XXX", action="dismiss")
-```
 
 ---
 
@@ -505,24 +394,6 @@ After today:
 
 ---
 
-## 📺 Screen Activity (Auto-Captured)
-
-**Time by App:**
-| App | Time | % |
-|-----|------|---|
-| [App 1] | Xh Xm | X% |
-| [App 2] | Xh Xm | X% |
-
-**Metrics:**
-- Context switches: [X]
-- Longest focus: [X] minutes
-- Deep work ratio: [X]%
-
-**Activity Summary:**
-[Narrative summary from ScreenPipe]
-
----
-
 ## 💡 Insights
 
 - [Key realization or connection]
@@ -594,14 +465,3 @@ Add one line at the end of the review output:
 | Work | dex-work-mcp | `list_tasks`, `get_week_progress`, `get_commitments_due`, `analyze_calendar_capacity` |
 | Calendar | dex-calendar-mcp | `calendar_get_today` |
 | Reminders | dex-calendar-mcp | `reminders_list_completed`, `reminders_find_and_complete`, `reminders_clear_completed`, `reminders_list_items` |
-| Screen Activity | screenpipe-mcp | `screenpipe_time_audit`, `screenpipe_summarize`, `screenpipe_query` |
-
-### ScreenPipe Integration Notes
-
-ScreenPipe provides automatic activity capture. When available:
-- Pre-fills "what you actually did" with ground truth data
-- Surfaces time allocation across apps
-- Identifies communication overhead vs. deep work
-- Detects context-switching patterns
-
-If ScreenPipe is not running, skip the screen activity section gracefully.

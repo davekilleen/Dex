@@ -38,18 +38,7 @@ Let me know:
 
 ---
 
-## Already Have a Beta Code?
+## Using These Templates
 
-Run this in your Dex session:
-
-```
-activate beta: YOUR_CODE_HERE
-```
-
-Or use the command:
-
-```
-/beta-activate YOUR_CODE_HERE
-```
-
-Check your active betas anytime with `/beta-status`.
+The preserved Pi and analytics templates ship with Dex. Follow the README in
+the relevant template directory for setup and configuration.

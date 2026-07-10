@@ -211,7 +211,6 @@ Recommendations:
 - [ ] Custom MCP created (/create-mcp)  ← Only unchecked advanced feature
 - [ ] System improvements (/dex-improve)
 - [ ] Prompt improvement (/prompt-improver)
-- [x] Demo mode (/dex-demo)
 ```
 
 **Expected `/dex-level-up` Output:**

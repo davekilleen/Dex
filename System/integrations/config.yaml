@@ -32,9 +32,6 @@ hooks:
     use_slack: true      # Not used by default  
     use_google: true      # Surface emails needing response
 
-  commitment_detection:
-    use_slack: true       # Detect promises in Slack
-
 # Detection cache (auto-populated by detect.py)
 detected:
   notion: null

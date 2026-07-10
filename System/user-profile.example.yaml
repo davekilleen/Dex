@@ -2,11 +2,6 @@
 #
 # This file stores your identity, role context, and preferences for personalized AI interactions.
 
-# Demo Mode
-# When true, commands read from System/Demo/ instead of real vault
-# Toggle with /demo on or /demo off
-demo_mode: false
-
 # Basic Identity
 name: ""
 role: ""
@@ -138,25 +133,3 @@ integrations:
 analytics:
   # Master switch - analytics on by default. Say "turn off Dex analytics" to opt out.
   enabled: true
-
-# ScreenPipe Configuration
-# Enables ambient work intelligence - Dex learns what you're working on via screen OCR
-# All data stays local on your machine, never sent anywhere
-screenpipe:
-  # Master switch - set to true after opt-in to enable ScreenPipe features
-  enabled: false
-  
-  # Whether user has been asked about ScreenPipe
-  prompted: false
-  
-  # Features to enable when ScreenPipe is running
-  features:
-    # Detect uncommitted asks/promises from apps (Slack, Email, etc.)
-    commitment_detection: true
-    # Show time audit in daily review
-    time_audit: true
-    # Allow screen recall queries ("What was I doing at 2pm?")
-    screen_recall: true
-  
-  # Data retention in days (auto-delete old data)
-  retention_days: 30

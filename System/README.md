@@ -17,7 +17,6 @@ Configuration and system files for Dex.
 
 - **Templates/** — Note templates for consistent formatting
 - **Session_Learnings/** — Daily learning capture from `/review` sessions
-- **Demo/** — Demo mode configuration and sample data
 
 ## What to Edit
 
@@ -27,7 +26,6 @@ Configuration and system files for Dex.
 - `Dex_Backlog.md` — Mark ideas as implemented, add notes
 
 **Don't modify:**
-- Demo/ — Managed by `/dex-demo` command
 - usage_log.md — Auto-updated by system
 - .last-learning-check — Auto-updated by learning prompt system
 - claude-code-state.json — Auto-updated by changelog monitoring

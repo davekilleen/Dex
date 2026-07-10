@@ -51,18 +51,15 @@ core/mcp-premium/
 System/my-customizations.md
 
 # ============================================
-# Beta Features (created on activation)
+# Pi Integration
 # ============================================
 
-# Pi integration (created when user activates Pi beta)
+# Pi runtime files
 .pi/
 # Symlink to pi-extensions/dex (tracked via pi-extensions/)
 !.pi/agent/extensions/dex
 
-# Beta documentation (created on feature activation)
-System/Beta/
-
-# Beta hooks (copied from templates on activation)
+# Pi hooks (copied from templates during setup)
 .claude/hooks/
 # But track core hooks — these ship with Dex
 !.claude/hooks/
@@ -73,7 +70,7 @@ System/Beta/
 !.claude/hooks/tests/
 !.claude/hooks/tests/*.test.cjs
 
-# Beta skills (copied from templates on activation)
+# Pi skills (copied from templates during setup)
 .claude/skills/commitment-extractor/
 .claude/skills/pi-tools/
 .claude/skills/pi-generated/
@@ -149,7 +146,6 @@ System/Work_In_Progress.md
 System/PRDs/
 System/Beta_Communications/
 System/Dex_Backlog.md
-System/Demo/
 System/highlights.json
 System/Innovation_Research/
 

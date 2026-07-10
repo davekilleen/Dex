@@ -242,11 +242,6 @@ Show a brief summary:
 - Key folders created
 - 2-3 suggested first actions based on their role
 
-
-**Optional:** If this is a fresh start, mention:
-
-> "Tip: Want to explore with sample data first? Run `/dex-demo on` to try demo mode with pre-populated content. You can switch back anytime with `/dex-demo off`."
-
 End with: "What would you like to work on first?"
 
 ## For Users with Existing Notes

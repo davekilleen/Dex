@@ -31,20 +31,7 @@ Before executing this command, read `System/user-profile.yaml` → `communicatio
 
 ---
 
-## Step 0: Demo Mode Check
-
-Before anything else, check if demo mode is active:
-
-1. Read `System/user-profile.yaml`
-2. Check `demo_mode` value
-3. **If `demo_mode: true`:**
-   - Display banner: "Demo Mode Active — Using sample data from System/Demo/"
-   - Use demo paths and skip live integrations
-4. **If `demo_mode: false`:** Proceed normally
-
----
-
-## Step 0.5: Process Unprocessed Meetings
+## Step 0: Process Unprocessed Meetings
 
 Before gathering context, ensure recent meetings are in the vault by running `/process-meetings`. This pulls any unprocessed meetings from the meeting source (Otter.ai, Granola, etc.), creates meeting notes, updates person/company pages, and extracts tasks — so the daily plan has complete data from yesterday and any earlier gaps.
 
@@ -52,7 +39,7 @@ Before gathering context, ensure recent meetings are in the vault by running `/p
 - If meetings are processed, note the count and use the extracted context in the plan
 - Do NOT ask for a skill rating after this sub-step — save that for the end of the full plan
 
-## Step 0.6: Dex Inbox Check (Phone Captures)
+## Step 0.5: Dex Inbox Check (Phone Captures)
 
 Check for tasks captured from phone that haven't been triaged:
 

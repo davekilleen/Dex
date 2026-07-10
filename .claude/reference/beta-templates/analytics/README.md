@@ -1,6 +1,6 @@
 # Dex Analytics Beta
 
-Welcome to the Dex Analytics beta! By activating this feature, you're helping Dave understand how people use Dex so he can make it better.
+Welcome to the Dex Analytics beta! By opting in, you're helping Dave understand how people use Dex so he can make it better.
 
 ## What Gets Tracked
 

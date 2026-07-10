@@ -13,7 +13,7 @@
 
 ### Existing Assets (Already Good)
 - [x] 60+ Skills in `.claude/skills/`
-- [x] 9 MCP Servers in `.claude/mcp/` and `core/mcp/`
+- [x] 7 MCP Servers in `.claude/mcp/` and `core/mcp/`
 - [x] Session hooks in `.claude/hooks/`
 - [x] Comprehensive documentation in `06-Resources/Dex_System/`
 - [x] LICENSE file (PolyForm Noncommercial 1.0.0)

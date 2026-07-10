@@ -134,9 +134,6 @@ name: daily-plan
 description: Generate context-aware daily plan with calendar, tasks, and priorities
 ---
 
-## Step 0: Demo Mode Check
-...
-
 ## Step 1: Gather Calendar Context
 ...
 
@@ -148,7 +145,7 @@ Claude reads this file when you type `/daily-plan`, follows the steps, and doesn
 
 ### Role-Specific Skills
 
-Dex has 25 core skills, plus 27 role-specific skills (Product, Sales, Marketing, etc.) stored in `.claude/skills/_available/[role]/[skill-name]/`.
+Dex has 24 core skills, plus 27 role-specific skills (Product, Sales, Marketing, etc.) stored in `.claude/skills/_available/[role]/[skill-name]/`.
 
 **Why separate?** Not everyone needs `/pipeline-health` or `/board-prep`. Skills are discovered via `/dex-level-up` based on your role and installed on demand.
 
@@ -539,7 +536,7 @@ Skills aren't loaded until invoked:
 4. Claude follows the instructions
 5. Skill is unloaded after command completes
 
-**Alternative (bad):** Load all 42 skills at session start = 84K tokens before chat begins.
+**Alternative (bad):** Load all 41 bundled skills at session start = 82K tokens before chat begins.
 
 ---
 
@@ -1201,7 +1198,6 @@ This reference contains:
 
 - **Don't edit canonical files manually:** Use MCP tools to ensure syncing works
 - **Backup regularly:** `git commit` daily (or use `.claude/hooks/session-end.sh` to auto-commit)
-- **Test in demo mode:** Use `System/Demo/` to experiment without touching real data
 - **Document learnings:** Use `System/Session_Learnings/` to capture improvements
 - **Read Pi TUI Reference before TUI work:** See above - mandatory for extension development
 

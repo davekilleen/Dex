@@ -228,10 +228,6 @@ Built specifically for personal knowledge management and productivity workflows 
 - `/ai-setup` - Configure budget cloud models (80% cheaper) and offline mode
 - `/ai-status` - Check your AI configuration and credits
 
-**Ambient Intelligence (Beta):**
-- `/screenpipe-setup` - Enable screen capture for work context *(requires beta activation)*
-- `/screenpipe-disable` - Stop screen capture and optionally delete data
-
 **System Management:**
 - `/enable-semantic-search` - Enable local AI-powered semantic search with smart collection discovery
 - `/xray` - AI education: understand what just happened under the hood, learn how context, MCPs, hooks work

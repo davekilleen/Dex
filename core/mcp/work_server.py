@@ -111,7 +111,6 @@ if _repo_root not in sys.path:
     sys.path.append(_repo_root)
 from core.paths import (
     COMPANIES_DIR,
-    DEMO_DIR,
     GOALS_FILE,
     INBOX_DIR,
     MEETING_CACHE_FILE,
@@ -130,49 +129,24 @@ from core.paths import (
 )
 
 
-def is_demo_mode() -> bool:
-    """Check if demo mode is enabled in user-profile.yaml"""
-    if not USER_PROFILE_FILE.exists() or yaml is None:
-        return False
-    
-    try:
-        content = USER_PROFILE_FILE.read_text()
-        data = yaml.safe_load(content)
-        return bool(data.get('demo_mode', False))
-    except Exception as e:
-        logger.error(f"Error checking demo mode: {e}")
-        return False
-
 def get_tasks_file() -> Path:
-    """Get the appropriate 03-Tasks/Tasks.md file based on demo mode"""
-    if is_demo_mode():
-        return DEMO_DIR / '03-Tasks/Tasks.md'
+    """Get the canonical task backlog file."""
     return TASKS_FILE
 
 def get_pillars_file() -> Path:
-    """Get the appropriate pillars.yaml file based on demo mode"""
-    if is_demo_mode():
-        demo_pillars = DEMO_DIR / 'pillars.yaml'
-        if demo_pillars.exists():
-            return demo_pillars
+    """Get the canonical pillars configuration file."""
     return PILLARS_FILE
 
 def get_week_priorities_file() -> Path:
-    """Get the appropriate Week Priorities file based on demo mode"""
-    if is_demo_mode():
-        return DEMO_DIR / '02-Week_Priorities' / 'Week_Priorities.md'
+    """Get the canonical weekly priorities file."""
     return WEEK_PRIORITIES_FILE
 
 def get_people_dir() -> Path:
-    """Get the appropriate People directory based on demo mode"""
-    if is_demo_mode():
-        return DEMO_DIR / '05-Areas' / 'People'
+    """Get the canonical people directory."""
     return PEOPLE_DIR
 
 def get_meetings_dir() -> Path:
-    """Get the appropriate Meetings directory based on demo mode"""
-    if is_demo_mode():
-        return DEMO_DIR / '00-Inbox' / 'Meetings'
+    """Get the canonical meetings directory."""
     return MEETINGS_DIR
 
 
@@ -1638,8 +1612,6 @@ def parse_quarterly_goals(filepath: Path) -> List[Dict[str, Any]]:
 def get_goal_by_id(goal_id: str) -> Optional[Dict[str, Any]]:
     """Get a specific goal by its ID"""
     goals_file = QUARTER_GOALS_FILE
-    if is_demo_mode():
-        goals_file = DEMO_DIR / '01-Quarter_Goals/Quarter_Goals.md'
     
     goals = parse_quarterly_goals(goals_file)
     for goal in goals:
@@ -1708,8 +1680,6 @@ def calculate_goal_progress(goal_id: str) -> Dict[str, Any]:
 def update_goal_in_file(goal_id: str, updates: Dict[str, Any]) -> bool:
     """Update a goal's fields in 01-Quarter_Goals/Quarter_Goals.md"""
     goals_file = QUARTER_GOALS_FILE
-    if is_demo_mode():
-        goals_file = DEMO_DIR / '01-Quarter_Goals/Quarter_Goals.md'
     
     if not goals_file.exists():
         return False
@@ -1745,8 +1715,6 @@ def update_goal_in_file(goal_id: str, updates: Dict[str, Any]) -> bool:
 def create_quarterly_goal_in_file(goal_data: Dict[str, Any]) -> Dict[str, Any]:
     """Create a new quarterly goal in 01-Quarter_Goals/Quarter_Goals.md"""
     goals_file = QUARTER_GOALS_FILE
-    if is_demo_mode():
-        goals_file = DEMO_DIR / '01-Quarter_Goals/Quarter_Goals.md'
     
     # Ensure file exists
     if not goals_file.exists():
@@ -2199,8 +2167,6 @@ def find_similar_tasks(item: str, existing_tasks: List[Dict[str, Any]]) -> List[
 def migrate_quarterly_goals() -> Dict[str, Any]:
     """Add IDs to existing quarterly goals that don't have them"""
     goals_file = QUARTER_GOALS_FILE
-    if is_demo_mode():
-        goals_file = DEMO_DIR / '01-Quarter_Goals/Quarter_Goals.md'
     
     if not goals_file.exists():
         return {
@@ -4056,8 +4022,6 @@ async def _handle_call_tool_inner(
         
         # Read goals
         goals_file = QUARTER_GOALS_FILE
-        if is_demo_mode():
-            goals_file = DEMO_DIR / '01-Quarter_Goals/Quarter_Goals.md'
         
         goals = parse_quarterly_goals(goals_file)
         
@@ -4170,8 +4134,6 @@ async def _handle_call_tool_inner(
         goal_inference = None
         if not quarterly_goal_id:
             goals_file = QUARTER_GOALS_FILE
-            if is_demo_mode():
-                goals_file = DEMO_DIR / '01-Quarter_Goals/Quarter_Goals.md'
             goals = parse_quarterly_goals(goals_file) if goals_file.exists() else []
             
             if goals:
@@ -4290,8 +4252,6 @@ async def _handle_call_tool_inner(
         
         # ---- ALIGNMENT SUMMARY ----
         goals_file = QUARTER_GOALS_FILE
-        if is_demo_mode():
-            goals_file = DEMO_DIR / '01-Quarter_Goals/Quarter_Goals.md'
         goals = parse_quarterly_goals(goals_file) if goals_file.exists() else []
         quarter_info = get_quarter_info()
 
@@ -4374,8 +4334,6 @@ async def _handle_call_tool_inner(
         
         # Get quarterly goals
         goals_file = QUARTER_GOALS_FILE
-        if is_demo_mode():
-            goals_file = DEMO_DIR / '01-Quarter_Goals/Quarter_Goals.md'
         
         goals = parse_quarterly_goals(goals_file) if goals_file.exists() else []
         
@@ -4428,8 +4386,6 @@ async def _handle_call_tool_inner(
     elif name == "check_goal_alignment":
         # Get all goals, priorities, and tasks
         goals_file = QUARTER_GOALS_FILE
-        if is_demo_mode():
-            goals_file = DEMO_DIR / '01-Quarter_Goals/Quarter_Goals.md'
         
         goals = parse_quarterly_goals(goals_file) if goals_file.exists() else []
         priorities_file = get_week_priorities_file()
@@ -4484,8 +4440,6 @@ async def _handle_call_tool_inner(
         
         # Get quarterly goals
         goals_file = QUARTER_GOALS_FILE
-        if is_demo_mode():
-            goals_file = DEMO_DIR / '01-Quarter_Goals/Quarter_Goals.md'
         
         goals = parse_quarterly_goals(goals_file) if goals_file.exists() else []
         
@@ -4543,8 +4497,6 @@ async def _handle_call_tool_inner(
     elif name == "get_weekly_planning_context":
         # Pre-planning intelligence: goal health + optional priority matching
         goals_file = QUARTER_GOALS_FILE
-        if is_demo_mode():
-            goals_file = DEMO_DIR / '01-Quarter_Goals/Quarter_Goals.md'
 
         goals = parse_quarterly_goals(goals_file) if goals_file.exists() else []
         quarter_info = get_quarter_info()

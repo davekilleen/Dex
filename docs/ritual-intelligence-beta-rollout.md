@@ -1,10 +1,10 @@
-# Ritual Intelligence Beta Rollout
+# Ritual Intelligence Rollout
 
-This document is the rollout handoff for sending Ritual Intelligence to a small beta-tester cohort.
+This document is the rollout handoff for sending Ritual Intelligence to a small tester cohort.
 
 It is split into two parts:
 - `Operator setup` for Dave or whoever is running the rollout
-- `Beta tester handout` that can be copied into a Google Doc, email, or Slack message
+- `Tester handout` that can be copied into a Google Doc, email, or Slack message
 
 ---
 
@@ -12,59 +12,22 @@ It is split into two parts:
 
 ### Recommended rollout model
 
-Use the existing Dex beta activation system rather than a separate build:
+Use the standard `dex-core` release and the built-in
+`observe -> preview -> opt-in` behavior:
 
-1. Ship the same `dex-core` release to everyone.
-2. Add a new beta feature key for Ritual Intelligence.
-3. Give the activation code only to the BT cohort.
-4. Keep Ritual Intelligence behind both:
-   - beta activation
-   - the built-in `observe -> preview -> opt-in` behavior
+1. Ship the same release to everyone.
+2. Invite the tester cohort through direct communications.
+3. Let each tester review the preview and explicitly opt in.
+4. Keep the rollout selective through cohort support and feedback, not a code gate.
 
-This keeps rollout selective without maintaining a separate branch or package.
-
-### Suggested feature key
-
-`ritual_intelligence`
-
-### Suggested activation code
-
-Replace this with your real code before sending:
-
-`DEXRITUAL2026`
-
-### Suggested beta config entry
-
-Add a new feature entry in `.claude/config/beta-features.yaml`:
-
-```yaml
-  ritual_intelligence:
-    name: "Ritual Intelligence"
-    description: "Local-first recurring meeting intelligence for prep, transcript matching, and contact suggestions."
-    version: "0.1.0"
-    status: "active"
-    code_hash: "[sha256 of salt:code]"
-    code_salt: "ritual-intelligence-beta-2026"
-    instructions_file: "System/Beta/ritual-intelligence/README.md"
-    capabilities:
-      - "ritual_preview"
-      - "ritual_confirm"
-      - "ritual_one_off_prep"
-      - "ritual_transcript_matching"
-      - "ritual_contact_suggestions"
-    min_dex_version: "1.0.0"
-    feature_flags:
-      enable_ritual_intelligence: true
-```
+This avoids maintaining a separate branch, package, or activation system.
 
 ### Rollout steps
 
-1. Merge the Ritual Intelligence implementation into the release branch you want BT users on.
-2. Add the Ritual Intelligence beta feature entry to `.claude/config/beta-features.yaml`.
-3. Create or copy user-facing instructions into `System/Beta/ritual-intelligence/README.md`.
-4. Share the activation code only with the BT cohort.
-5. Ask testers to update Dex, activate the feature, and run the test flows below.
-6. Collect feedback for 1-2 weeks before opening it more broadly.
+1. Merge the Ritual Intelligence implementation into the release branch you want testers on.
+2. Share the tester handout below with the cohort.
+3. Ask testers to update Dex, review the preview, opt in, and run the test flows below.
+4. Collect feedback for 1-2 weeks before opening it more broadly.
 
 ### What users will get
 
@@ -153,11 +116,11 @@ But honestly, most of you shouldn't need these. The chat flow handles it.
 
 ## How To Turn It On
 
-1. Make sure you're on the latest version of Dex
-2. Tell Dex: `/beta-activate DEXRITUAL2026`
-3. Tell Dex: `/beta-status` to confirm it's active
+1. Make sure you're on the latest version of Dex.
+2. Run `/daily-plan`.
+3. Review the recurring-meeting preview and opt in to the rituals you want Dex to track.
 
-That's it. Next time you run `/daily-plan`, Dex will start recognising your recurring meetings and ask which ones to track.
+Dex will then start recognising those recurring meetings and preparing the confirmed rituals.
 
 ## Trust and Boundaries
 

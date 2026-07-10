@@ -148,7 +148,6 @@ System/pillars.yaml           # User's strategic pillars
 **On first clone:**
 - `env.example` — Template showing structure (no real keys)
 - `System/.mcp.json.example` — Template with `{{VAULT_PATH}}`
-- Demo data in `System/Demo/` — Sanitized examples only
 
 **Generated during setup:**
 - `.env` — Created if user enables optional features
@@ -199,12 +198,11 @@ Run before pushing to GitHub:
 
 **Current results:**
 - ✅ 0 errors
-- ⚠️ 9 warnings (all safe — see below)
+- ⚠️ Warnings only (all safe — see below)
 
 **Warnings explained:**
-1. **User data folders tracked** — These are demo files in `System/Demo/` (intentional)
-2. **Email addresses found** — Font licenses + documentation examples (safe)
-3. **MCP count mismatch** — Found `task_server.py` (legacy, see cleanup)
+1. **Email addresses found** — Font licenses + documentation examples (safe)
+2. **MCP count mismatch** — Found `task_server.py` (legacy, see cleanup)
 
 ### Recommended Cleanup (Optional)
 
@@ -219,12 +217,7 @@ This is an old version superseded by `work_server.py`. No longer used.
 **2. Clean up Session_Learnings (if contains personal work history)**
 
 ```bash
-# Option A: Remove entirely
 git rm -r System/Session_Learnings/
-
-# Option B: Keep examples
-mkdir System/Demo/Session_Learnings
-# Move sanitized examples there
 ```
 
 **3. Update README placeholders**

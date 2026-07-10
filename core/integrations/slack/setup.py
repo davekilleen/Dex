@@ -138,7 +138,6 @@ auth_type: {auth_type}
 hooks:
   meeting_prep: true      # Pull Slack context for meeting attendees
   person_pages: true      # Show recent Slack mentions on person pages
-  commitment_tracking: true  # Surface promises made in Slack
 
 # Channels to index (empty = all accessible)
 channels: []

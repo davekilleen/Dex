@@ -7,6 +7,19 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.21.0] - Remove Unreachable ScreenPipe, Beta Gates, Commitment Detection, and Demo Mode (2026-07-10)
+
+Dex no longer ships the ScreenPipe integration, beta-gate system, commitment
+detection, or demo mode. The three MCP servers behind those systems were never
+registered in the configuration loaded by users, so none of this code was
+reachable in an installed vault.
+
+This release removes the dead servers together with their setup skills,
+configuration, sample data, documentation, and runtime branches. Analytics
+continues to use its independent `System/user-profile.yaml` consent setting.
+
+---
+
 ## [1.20.1] - Fixes: a false startup alarm, blocked tasks, and the budget model (2026-06-02)
 
 A round of fixes for small things that were quietly getting in the way.

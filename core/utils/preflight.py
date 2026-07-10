@@ -50,10 +50,7 @@ SERVER_MODULES = {
     "dex-analytics": "analytics_server.py",
     "onboarding-mcp": "onboarding_server.py",
     "resume-mcp": "resume_server.py",
-    "beta-mcp": "beta_server.py",
     "update-checker": "update_checker.py",
-    "commitment-mcp": "commitment_server.py",
-    "demo-mode-mcp": "demo_mode_server.py",
 }
 
 # Human-friendly names
@@ -66,10 +63,7 @@ SERVER_LABELS = {
     "dex-analytics": "Analytics",
     "onboarding-mcp": "Onboarding",
     "resume-mcp": "Resume Builder",
-    "beta-mcp": "Beta Features",
     "update-checker": "Update Checker",
-    "commitment-mcp": "Commitment Detection",
-    "demo-mode-mcp": "Demo Mode",
 }
 
 

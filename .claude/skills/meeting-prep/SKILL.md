@@ -215,20 +215,6 @@ If an integration is enabled but the MCP isn't responding:
 
 ---
 
----
-
-## Demo Mode Check
-
-Before executing, check if demo mode is active:
-
-1. Read `System/user-profile.yaml` and check `demo_mode`
-2. **If `demo_mode: true`:**
-   - Display: "Demo Mode Active — Using sample data"
-   - Use `System/Demo/` paths instead of root paths
-   - Write any output to `System/Demo/` subdirectories
-3. **If `demo_mode: false`:** Use normal vault paths
-
-
 ## People Context
 
 ### [Attendee Name]

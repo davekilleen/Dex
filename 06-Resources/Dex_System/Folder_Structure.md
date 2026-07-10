@@ -222,8 +222,7 @@ System/
 ├── user-profile.yaml         # User preferences and settings
 ├── claude-code-state.json    # Tracks last changelog check
 ├── Dex_Backlog.md            # System improvement backlog (AI-ranked)
-├── usage_log.md              # Feature adoption tracking (for /dex-level-up)
-└── Demo/                     # Demo mode sandbox (if enabled)
+└── usage_log.md              # Feature adoption tracking (for /dex-level-up)
 ```
 
 Most users won't edit this directly—Dex manages it. But when you want to adjust strategic direction or preferences, the key files are here.
@@ -318,12 +317,6 @@ Tasks sync bidirectionally with person pages, company pages, and meeting notes v
 New to Dex? Run `/setup` or just ask to start onboarding. The structure will be customized for your role and working style.
 
 The numbered folders (01-, 02-, 03-) appear as you use their respective features. Don't worry if you don't see them immediately—they'll be created when needed.
-
----
-
-## Demo Mode
-
-Want to explore Dex with sample data before adding your own? Run `/dex-demo on` to work with pre-populated demo content for "Alex Chen," a fictional PM at TechCorp. Demo mode creates a sandboxed `System/Demo/` folder so your real vault stays untouched.
 
 ---
 

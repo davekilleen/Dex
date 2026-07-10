@@ -120,7 +120,6 @@ System/pillars.yaml
 - ✅ `env.example` — Template showing structure
 - ✅ `core/mcp/*.py` — MCP server code (no credentials)
 - ✅ Documentation and README
-- ✅ Demo mode files (sanitized examples)
 
 **Never committed:**
 - ❌ `.mcp.json` — Generated, contains user paths
@@ -156,11 +155,6 @@ Before pushing to GitHub:
 - [ ] Run setup wizard: `/setup` in Cursor
 - [ ] Test without Granola installed (graceful degradation)
 - [ ] Test on Windows if supporting (install.sh needs .bat version)
-
-### Demo Mode
-- [ ] Verify `System/Demo/` contains no personal info
-- [ ] Test `/dex-demo` enable/disable
-- [ ] Verify demo data is realistic but generic
 
 ---
 

@@ -176,19 +176,6 @@ Create daily note at `00-Inbox/Daily_Reviews/Daily_Review_[YYYY-MM-DD].md`:
 ```markdown
 ---
 
----
-
-## Demo Mode Check
-
-Before executing, check if demo mode is active:
-
-1. Read `System/user-profile.yaml` and check `demo_mode`
-2. **If `demo_mode: true`:**
-   - Display: "Demo Mode Active — Using sample data"
-   - Use `System/Demo/` paths instead of root paths
-   - Write any output to `System/Demo/` subdirectories
-3. **If `demo_mode: false`:** Use normal vault paths
-
 date: [YYYY-MM-DD]
 type: daily-review
 ---

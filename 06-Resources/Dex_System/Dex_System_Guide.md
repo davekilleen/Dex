@@ -101,75 +101,7 @@ All skills are documented in detail in the **Skills System** section below. Here
 - `/career-coach` — Career reflections and assessments
 - `/dex-level-up` — Discover unused features
 
-See the **Skills System** section below for complete documentation of all 42 core skills + 27 role-specific skills.
-
----
-
-
-## Demo Mode
-
-Demo mode lets you explore Dex with pre-populated sample content without affecting your real vault.
-
-### Commands
-
-| Command | Effect |
-|---------|--------|
-| `/dex-demo on` | Enable demo mode and launch interactive demo selector |
-| `/dex-demo off` | Disable demo mode - use real vault |
-| `/dex-demo menu` | Show demo scenario menu (when demo mode is on) |
-| `/dex-demo status` | Check if demo mode is active |
-| `/dex-demo reset` | Restore demo content to original state |
-
-### Interactive Demo Selector
-
-When you run `/dex-demo on`, you'll see a menu of **12 validated demo scenarios** that showcase different aspects of Dex:
-
-**How it works:**
-1. Run `/dex-demo on` to see Alex Chen persona intro and scenario menu
-2. Enter a number (1-12) to launch that scenario
-3. Follow the guided walkthrough
-4. Return to menu anytime with `/dex-demo menu`
-
-**Scenario categories:**
-- **Daily Workflow (1-4):** Morning journal, daily planning, daily review, inbox triage
-- **People & Context (5-6):** Person lookup, company intelligence
-- **Planning & Review (7-9):** Weekly planning, weekly review, task management
-- **Career Development (10-11):** Career system, career coach
-- **System Evolution (12):** Learning & backlog
-
-See `.claude/reference/demo-scenarios.md` for detailed scenario descriptions.
-
-### Demo Content
-
-Located in `System/Demo/`, includes:
-
-**Demo Persona:** Alex Chen, Senior Product Manager (L4) at TechCorp, working toward L5 promotion
-
-**Sample content:**
-- 3 active projects in various stages (Mobile App Launch, Customer Portal Redesign, API Partner Program)
-- 5 person pages (Jordan Lee, Maya Patel, Sarah Chen, Tom Wilson, Lisa Park)
-- Company page for Acme Corp aggregating contacts, meetings, and tasks
-- Week of meeting notes (Jan 20-24, 2026) with scattered tasks for `/triage`
-- Full week of daily plans, weekly plan, journal entries
-- Pre-populated tasks across P0-P3 priorities with pillar tags
-- Career development system (role, ladder, reviews, goals, evidence)
-- Learning system examples (Working Preferences, Mistake Patterns, Session Learnings)
-- Dex Backlog with 10 ranked improvement ideas
-
-### How Demo Mode Works
-
-When `demo_mode: true` in `System/user-profile.yaml`:
-
-1. **Commands read from `System/Demo/`** instead of root folders
-2. **Writes are sandboxed** to the demo folder
-3. **Work MCP uses demo data** (`System/Demo/03-Tasks/Tasks.md`, `System/Demo/pillars.yaml`)
-4. **Your real vault is untouched**
-
-### Use Cases
-
-1. **Onboarding** - Explore commands before adding your own data
-2. **Demoing to colleagues** - Show the PKM system with realistic data
-3. **Testing** - Try new workflows without risk
+See the **Skills System** section below for complete documentation of all 41 bundled skills + 27 role-specific skills.
 
 ---
 
@@ -787,7 +719,7 @@ Skills in `_available/` are not loaded by default. To install:
 
 Skills are reusable AI workflows invoked with `/skill-name`. All skills follow the [Agent Skills standard](https://agentskills.io) format.
 
-### Core Dex Skills (25)
+### Core Dex Skills (24)
 
 **Daily Workflow:**
 - `/daily-plan` — Context-aware daily planning (integrates calendar, tasks, meetings)
@@ -823,7 +755,6 @@ Skills are reusable AI workflows invoked with `/skill-name`. All skills follow t
 - `/dex-improve` — Workshop an idea into implementation plan
 - `/dex-whats-new` — Check for system improvements (learnings + Claude updates)
 - `/create-mcp` — Create new MCP integration with guided wizard
-- `/dex-demo` — Toggle demo mode on/off/reset
 - `/setup` — Initial onboarding (one-time)
 - `/reset` — Restructure Dex based on role change
 - `/save-insight` — Capture learnings from completed work

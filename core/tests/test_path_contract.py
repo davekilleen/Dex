@@ -41,3 +41,11 @@ def test_write_contract_package_outputs_expected_files(tmp_path: Path):
 
     loaded = json.loads(contract_json.read_text(encoding="utf-8"))
     assert loaded["vault_relative_paths"] == contract["vault_relative_paths"]
+
+
+def test_committed_contract_matches_generator():
+    repo_root = Path(__file__).resolve().parents[2]
+    contract_path = repo_root / "packages" / "dex-contracts" / "dist" / "paths.contract.json"
+
+    committed = json.loads(contract_path.read_text(encoding="utf-8"))
+    assert committed == build_relative_paths_contract()
