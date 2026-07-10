@@ -166,6 +166,26 @@ echo ""
 cd "$VAULT_PATH" && qmd embed --help 2>/dev/null || true
 ```
 
+## Step 4.5: Register the QMD MCP Server
+
+qmd is intentionally NOT pre-registered in `.mcp.json` — a registered server whose binary
+is missing shows the user a failing MCP server every session. Now that qmd is installed,
+add the registration to the vault's `.mcp.json`:
+
+```bash
+python3 - <<'EOF'
+import json, pathlib
+p = pathlib.Path(".mcp.json")
+cfg = json.loads(p.read_text()) if p.exists() else {"mcpServers": {}}
+cfg.setdefault("mcpServers", {})["qmd"] = {"command": "qmd", "args": ["mcp"]}
+p.write_text(json.dumps(cfg, indent=2) + "\n")
+print("qmd registered in .mcp.json")
+EOF
+```
+
+Tell the user to restart their coding harness (Claude Code/Cursor) after setup completes
+so the new MCP server is picked up.
+
 ## Step 5: Smart Collection Discovery (THE CONCIERGE)
 
 This is what makes Dex's semantic search better than generic indexing. Instead of dumping everything into one blob, we analyze the vault and create purpose-built collections.

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+from pathlib import Path
 
 from core.mcp import work_server
 
@@ -132,3 +133,112 @@ def test_check_priority_limits_uses_canonical_backlog_counts(tmp_path, monkeypat
     assert payload["priority_counts"] == {"P2": 1}
     assert payload["alerts"] == []
     assert payload["balanced"] is True
+
+
+def test_update_task_status_everywhere_reports_partial_write_failure(tmp_path, monkeypatch):
+    task_id = "task-20260711-001"
+    first_successful_file = tmp_path / "Tasks.md"
+    failed_file = tmp_path / "Meeting.md"
+    second_successful_file = tmp_path / "Person.md"
+    task_line = f"- [ ] Ship audited fixes ^{task_id}"
+    first_successful_file.write_text(task_line)
+    failed_file.write_text(task_line)
+    second_successful_file.write_text(task_line)
+
+    monkeypatch.setattr(
+        work_server,
+        "find_task_by_id",
+        lambda _task_id: [
+            {
+                "file": str(first_successful_file),
+                "line_number": 1,
+                "title": "Ship audited fixes",
+            },
+            {
+                "file": str(failed_file),
+                "line_number": 1,
+                "title": "Ship audited fixes",
+            },
+            {
+                "file": str(second_successful_file),
+                "line_number": 1,
+                "title": "Ship audited fixes",
+            },
+        ],
+    )
+
+    original_write_text = Path.write_text
+
+    def fail_one_write(path, content, *args, **kwargs):
+        if path == failed_file:
+            raise OSError("disk full")
+        return original_write_text(path, content, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "write_text", fail_one_write)
+
+    result = work_server.update_task_status_everywhere(task_id, completed=True)
+
+    assert result["success"] is False
+    assert result["failed_files"] == [
+        {"file": str(failed_file), "error": "disk full"}
+    ]
+    assert result["updated_files"] == [
+        {"file": str(first_successful_file), "line": 1},
+        {"file": str(second_successful_file), "line": 1},
+    ]
+    assert result["instances_found"] == 3
+    assert result["error"] == (
+        f"task updated in 2 of 3 locations; failures: {failed_file}: disk full"
+    )
+
+
+def test_update_task_status_tool_surfaces_title_match_write_failure(monkeypatch):
+    failure = {
+        "success": False,
+        "task_id": "task-20260711-001",
+        "title": "Ship audited fixes",
+        "status": "completed",
+        "completed_at": "2026-07-11 12:00",
+        "updated_files": [{"file": "/vault/Tasks.md", "line": 1}],
+        "instances_found": 2,
+        "failed_files": [{"file": "/vault/Meeting.md", "error": "disk full"}],
+        "error": (
+            "task updated in 1 of 2 locations; failures: "
+            "/vault/Meeting.md: disk full"
+        ),
+    }
+    monkeypatch.setattr(
+        work_server,
+        "get_all_tasks",
+        lambda: [
+            {
+                "title": "Ship audited fixes",
+                "task_id": "task-20260711-001",
+            }
+        ],
+    )
+    monkeypatch.setattr(
+        work_server,
+        "update_task_status_everywhere",
+        lambda _task_id, _completed: failure.copy(),
+    )
+
+    def fail_if_propagated(*_args, **_kwargs):
+        raise AssertionError("related task sync must not run after a failed write")
+
+    monkeypatch.setattr(
+        work_server,
+        "propagate_task_status_to_refs",
+        fail_if_propagated,
+    )
+
+    payload = _decode_tool_result(
+        asyncio.run(
+            work_server.handle_call_tool(
+                "update_task_status",
+                {"task_title": "audited fixes", "status": "d"},
+            )
+        )
+    )
+
+    assert payload == failure

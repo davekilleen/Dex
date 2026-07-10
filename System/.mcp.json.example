@@ -107,10 +107,6 @@
       "command": "npx",
       "args": ["-y", "slack-mcp"],
       "env": {}
-    },
-    "qmd": {
-      "command": "qmd",
-      "args": ["mcp"]
     }
   }
 }

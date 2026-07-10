@@ -87,7 +87,10 @@ class DexSyncHandler(FileSystemEventHandler):
             try:
                 from core.mcp.work_server import update_task_status_everywhere
                 result = update_task_status_everywhere(task_id, status == 'd')
-                logger.info(f"Synced {task_id} → {status}")
+                if result['success']:
+                    logger.info(f"Synced {task_id} → {status}")
+                else:
+                    logger.error(f"Failed to sync {task_id}: {result['error']}")
             except Exception as e:
                 logger.error(f"Failed to sync {task_id}: {e}")
 
