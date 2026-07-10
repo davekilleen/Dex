@@ -7,10 +7,10 @@ hooks:
   PostToolUse:
     - matcher: Write
       type: command
-      command: "node .Codex/hooks/post-meeting-person-update.cjs"
+      command: "node .claude/hooks/post-meeting-person-update.cjs"
   Stop:
     - type: command
-      command: "node .Codex/hooks/meeting-summary-generator.cjs"
+      command: "node .claude/hooks/meeting-summary-generator.cjs"
 ---
 
 # Process Meetings

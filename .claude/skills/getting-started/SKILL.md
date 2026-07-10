@@ -46,8 +46,8 @@ else:
 Say: "Hold on... analyzing your calendar and meetings. 🔍"
 
 **Execute analysis:**
-1. Call calendar MCP: `get_events_for_week()` 
-2. Call granola MCP: `get_recent_meetings(days=7)`
+1. Call calendar MCP: `calendar_get_events` for the next 7 days 
+2. Call granola MCP: `granola_get_recent_meetings(days_back=7)`
 3. Analyze the data
 
 **Then reveal what you found:**

@@ -97,17 +97,17 @@ Search `00-Inbox/Meetings/` for recent meetings with these attendees:
 
 **This step runs automatically when QMD is installed.** It enriches meeting prep with semantically related vault content that keyword search would miss.
 
-Check if QMD MCP tools are available by calling `qmd_status`. **If available:**
+Check if QMD MCP tools are available by calling the `status` tool (QMD MCP). **If available:**
 
 1. **Semantic search for meeting topic:**
    ```
-   qmd_search(query="$MEETING", limit=5)
+   query(query="$MEETING", limit=5)
    ```
    Look for: related past discussions, relevant decisions, thematic connections — content that shares meaning with the meeting topic but uses different words.
 
 2. **Semantic search for each attendee (beyond their person page):**
    ```
-   qmd_search(query="$ATTENDEE_NAME context discussions decisions", limit=3)
+   query(query="$ATTENDEE_NAME context discussions decisions", limit=3)
    ```
    Look for: contextual references where this person is mentioned by role/title/team (e.g., "the VP of Sales asked about..."), not just by name.
 

@@ -97,6 +97,8 @@ Check for tasks added from phone during the day that weren't triaged in the morn
 Use: reminders_list_items(list_name="Dex Inbox")
 ```
 
+**If the tool is unavailable or errors** (Apple Reminders phone-capture is optional and may not be set up on this machine): skip this step silently — do not surface an error for a feature the user never enabled.
+
 If items found:
 - Surface them: "📱 **Phone captures not yet triaged** (X items in Dex Inbox)"
 - Run the same triage flow as daily-plan Step 5.10a: infer pillar, confirm with user, create task, mark Reminder complete
@@ -462,6 +464,6 @@ Add one line at the end of the review output:
 | Integration | MCP Server | Tools Used |
 |-------------|------------|------------|
 | Meetings | Meeting source MCP (via `/process-meetings today`) | Fetches and processes unprocessed meetings |
-| Work | dex-work-mcp | `list_tasks`, `get_week_progress`, `get_commitments_due`, `analyze_calendar_capacity` |
-| Calendar | dex-calendar-mcp | `calendar_get_today` |
-| Reminders | dex-calendar-mcp | `reminders_list_completed`, `reminders_find_and_complete`, `reminders_clear_completed`, `reminders_list_items` |
+| Work | work-mcp | `list_tasks`, `get_week_progress`, `get_commitments_due`, `analyze_calendar_capacity` |
+| Calendar | calendar-mcp | `calendar_get_today` |
+| Reminders | calendar-mcp | `reminders_list_completed`, `reminders_find_and_complete`, `reminders_clear_completed`, `reminders_list_items` |
