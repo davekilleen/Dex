@@ -396,6 +396,6 @@ After generating the file, provide a summary:
 
 | Integration | MCP Server | Tools Used |
 |-------------|------------|------------|
-| Calendar | dex-calendar-mcp | `calendar_get_events_with_attendees` |
-| Work | dex-work-mcp | `list_tasks`, `get_quarterly_goals`, `get_goal_status`, `create_weekly_priority`, `analyze_calendar_capacity`, `classify_task_effort`, `suggest_task_scheduling`, `get_commitments_due` |
-| Granola | dex-granola-mcp | `get_upcoming_meetings` (optional) |
+| Calendar | calendar-mcp | `calendar_get_events_with_attendees` |
+| Work | work-mcp | `list_tasks`, `get_quarterly_goals`, `get_goal_status`, `create_weekly_priority`, `analyze_calendar_capacity`, `classify_task_effort`, `suggest_task_scheduling`, `get_commitments_due` |
+| Granola | granola-mcp | `granola_get_today_meetings` (optional) |

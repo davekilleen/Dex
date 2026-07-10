@@ -47,6 +47,8 @@ Check for tasks captured from phone that haven't been triaged:
 Use: reminders_list_items(list_name="Dex Inbox")
 ```
 
+**If the tool is unavailable or errors** (Apple Reminders phone-capture is optional and may not be set up on this machine): skip this step silently — do not surface an error for a feature the user never enabled.
+
 If items found, triage them before building the plan so task counts are accurate. See Step 5.10a for the full triage flow.
 
 **If empty:** Skip silently.
@@ -62,7 +64,7 @@ Run these silently without user-facing output:
 3. **Search index refresh**: Run `qmd update && qmd embed` to refresh vault search index with any overnight changes (meetings processed, files edited, etc.). If `qmd` is not installed, skip silently.
 4. **People index refresh**: Call `build_people_index` from Work MCP. This keeps the People Directory current so person lookups throughout the day are fast. Takes <2 seconds.
 5. **Innovation synthesis** (silent): Call `synthesize_changelog()` and `synthesize_learnings()` from Improvements MCP. These run in background and populate the backlog — results are surfaced in Step 1.5 below.
-6. **Granola check** (silent): Granola meeting sync uses the desktop app's stored credentials automatically. No migration check needed.
+6. **Granola check** (silent): Granola sync uses the official API via `GRANOLA_API_KEY` (environment or vault-root `.env`). If no key is configured, skip all Granola steps silently — an unconnected optional integration is not an error.
 
 ---
 
@@ -212,23 +214,23 @@ Match tasks to available time based on effort classification:
 
 **This step runs automatically when QMD is installed via `/enable-semantic-search`.** It adds a semantic search layer on top of the standard context gathering to surface connections that keyword search misses.
 
-Check if QMD MCP tools are available by calling `qmd_status`. **If available:**
+Check if QMD MCP tools are available by calling the `status` tool (QMD MCP). **If available:**
 
 1. **For each meeting today**, run:
    ```
-   qmd_search(query="[meeting topic] [attendee names]", limit=3)
+   query(query="[meeting topic] [attendee names]", limit=3)
    ```
    Surface: past discussions, related decisions, relevant commitments that share **meaning** but not keywords with this meeting. Example: a meeting about "customer onboarding" finds notes about "activation rates" and "time to value".
 
 2. **For each weekly priority that's lagging**, run:
    ```
-   qmd_search(query="[priority description]", limit=3)
+   query(query="[priority description]", limit=3)
    ```
    Surface: vault content that advances or relates to this priority but wouldn't appear in a keyword search. Especially useful for finding forgotten context about stalled work.
 
 3. **Cross-topic connection scan:**
    ```
-   qmd_search(query="[today's key themes combined]", limit=5)
+   query(query="[today's key themes combined]", limit=5)
    ```
    Surface: unexpected connections between today's meetings, tasks, and priorities. This is where semantic search shines — finding that a 2pm customer call relates to a PRD you wrote last month using completely different terminology.
 
@@ -302,6 +304,8 @@ If unhealthy: skip silently (graceful degradation -- no error to user).
 ```
 Use: reminders_list_items(list_name="Dex Inbox")
 ```
+
+**If the tool is unavailable or errors** (Apple Reminders phone-capture is optional and may not be set up on this machine): skip this step silently — do not surface an error for a feature the user never enabled.
 
 If items found, surface:
 
@@ -549,10 +553,10 @@ The plan works at multiple levels:
 
 | Integration | MCP Server | Tools Used |
 |-------------|------------|------------|
-| Calendar | dex-calendar-mcp | `calendar_get_today`, `calendar_get_events_with_attendees` |
-| Reminders | dex-calendar-mcp | `reminders_list_items`, `reminders_complete_item`, `reminders_create_item`, `reminders_ensure_lists`, `reminders_list_completed`, `reminders_find_and_complete`, `reminders_clear_completed` |
-| Granola | dex-granola-mcp | `get_recent_meetings` |
-| Work | dex-work-mcp | `list_tasks`, `get_week_progress`, `get_meeting_context`, `get_commitments_due`, `analyze_calendar_capacity`, `suggest_task_scheduling` |
+| Calendar | calendar-mcp | `calendar_get_today`, `calendar_get_events_with_attendees` |
+| Reminders | calendar-mcp | `reminders_list_items`, `reminders_complete_item`, `reminders_create_item`, `reminders_ensure_lists`, `reminders_list_completed`, `reminders_find_and_complete`, `reminders_clear_completed` |
+| Granola | granola-mcp | `granola_get_recent_meetings` |
+| Work | work-mcp | `list_tasks`, `get_week_progress`, `get_meeting_context`, `get_commitments_due`, `analyze_calendar_capacity`, `suggest_task_scheduling` |
 | Improvements | dex-improvements-mcp | `synthesize_changelog`, `synthesize_learnings`, `list_ideas` |
 | Google Workspace | google-workspace-mcp | Gmail query, email search (if enabled) |
 | Teams | teams-mcp | `teams_list_chats`, `teams_search_messages`, `teams_health_check` (if enabled) |
