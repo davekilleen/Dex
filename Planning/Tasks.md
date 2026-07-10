@@ -1,5 +1,35 @@
 # Tasks
 
+## Monday 7/13 - Confirm Allentown-Area Meetings (ahead of Wed 7/15 trip)
+- [ ] **Call Bryan Crist (GM) — Hale Trailer Brake & Wheel — confirm interest in Wed 7/15 visit** | People/Companies/Hale_Trailer_Brake_Wheel_Allentown_PA.md ^task-20260710-001
+	- Follows outreach email re: Press Brake opp ($126,650, Favorable, 60%). Overdue next-step call was due 11/1 — confirm he still wants to meet in person.
+	- Pillar: Pipeline & Revenue | Priority: P1
+
+- [ ] **Call Shawn Furman (Automation Consultant) — Manufacturing Resource Center — confirm interest in Wed 7/15 visit** | People/Companies/Manufacturing_Resource_Center_Allentown_PA.md ^task-20260710-002
+	- Follows outreach email re: coil feeding line opp ($100,195, Discovery). Target close date already passed — confirm he wants to re-scope in person.
+	- Pillar: Pipeline & Revenue | Priority: P1
+
+- [ ] **Call Colleen Miller / Mike Hahn — SuperHeat Inc (Easton, PA) — confirm interest in Wed 7/15 visit** | People/Companies/SuperHeat_Inc_Easton_PA.md ^task-20260710-003
+	- Follows outreach email re: reconnecting on the ISB quote ("probably higher $ than expected"). Confirm timing works.
+	- Pillar: Account Management | Priority: P2
+
+- [ ] **Call John Svoboda (Owner) — Allentown Steel Fabricating — confirm interest in Wed 7/15 visit** | People/Companies/Allentown_Steel_Fabricating_Co_Inc.md ^task-20260710-004
+	- Follows outreach email re: ongoing used Roundo plate roll search. Confirm he's available to talk in person.
+	- Pillar: Account Management | Priority: P2
+
+- [ ] **Call Dennis Riveron — Pennsylvania Steel Company (Fullerton, PA) — confirm interest in Wed 7/15 visit** | People/Companies/Pennsylvania_Steel_Company_Allentown_PA.md ^task-20260710-005
+	- Account-management touch — Warm-rated existing customer, no recent logged activity at this branch. Confirm a quick stop-in is welcome.
+	- Pillar: Account Management | Priority: P3
+
+- [ ] **Call Steve Szilli — Triangle Tech (Bethlehem, PA) — confirm interest in Wed 7/15 visit** | People/Companies/Triangle_Tech_Bethlehem_PA.md ^task-20260710-006
+	- Follows outreach email re-touching the 2024 Ironworker opp (blocked on grants/exec approval). Check if budget/timing has changed.
+	- Pillar: Pipeline & Revenue | Priority: P3
+
+- [ ] **Call Keith Wenck — Fast Signs (Allentown, PA) — confirm interest in Wed 7/15 visit** | People/Companies/Fast_Signs_Allentown_PA.md ^task-20260710-007
+	- Cold/low-priority touch — only a stale 2017 closed opp on file. Confirm any current interest before adding to the route.
+	- Pillar: Account Management | Priority: P3
+
+
 ## Next Week
 - [ ] **Follow up on open case 00001864 — Standard Shear backgauge binding (PA Steel - Throop, PA)** | People/Companies/Pennsylvania_Steel_Company_Throop_PA.md ^task-20260706-117
 	- High-priority open service case, opened 2026-05-13. Contact: Bill Kovaleski.
