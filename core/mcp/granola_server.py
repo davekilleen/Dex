@@ -124,12 +124,56 @@ def get_api_key() -> Optional[str]:
 # ============================================================================
 
 
+class GranolaAPIError(Exception):
+    """A failed Granola API request, safe to surface through an MCP tool."""
+
+    def __init__(
+        self,
+        status_code: Optional[int] = None,
+        body: str = "",
+        *,
+        reason: str = "",
+    ):
+        self.status_code = status_code
+        self.body = " ".join(body.split())[:200]
+        self.reason = reason
+        super().__init__(self.user_message)
+
+    @property
+    def user_message(self) -> str:
+        if self.status_code is not None:
+            prefix = f"Granola query failed (HTTP {self.status_code})"
+        else:
+            prefix = "Granola query failed"
+
+        if self.status_code == 400:
+            hint = "the connector may need updating."
+        elif self.status_code == 401:
+            hint = "check that the Granola API key is valid."
+        elif self.status_code == 403:
+            hint = "check that the Granola account has API access."
+        elif self.status_code == 404:
+            hint = "the Granola API endpoint may have changed."
+        elif self.status_code == 429:
+            hint = "Granola is rate-limiting requests; try again shortly."
+        elif self.status_code is not None and self.status_code >= 500:
+            hint = "Granola's API is temporarily unavailable."
+        elif self.reason == "network":
+            hint = "check the network connection and try again."
+        else:
+            hint = "the connector may need updating."
+
+        detail = f" Response: {self.body}" if self.body else ""
+        return f"{prefix} — {hint}{detail}"
+
+
 def _api_get(path: str, params: Optional[Dict[str, Any]] = None) -> Optional[Dict[str, Any]]:
     """
     GET a JSON resource from the Granola public API.
 
-    Returns the parsed JSON dict, or None on failure / missing key. Retries once
-    on HTTP 429 with a short backoff (rate limits are undocumented; be gentle).
+    Returns the parsed JSON dict, or None when no API key is configured. Raises
+    GranolaAPIError on request failure. Retries once on HTTP 429 with a short
+    backoff (rate limits are undocumented; be gentle).
     """
     key = get_api_key()
     if not key:
@@ -171,24 +215,24 @@ def _api_get(path: str, params: Optional[Dict[str, Any]] = None) -> Optional[Dic
                 logger.warning("API rate limited (429), retrying after backoff")
                 time.sleep(1.5)
                 continue
+            body = ""
+            try:
+                body = e.read().decode("utf-8", errors="replace")[:200]
+            except Exception:
+                pass
             if e.code == 401:
                 logger.warning("API auth failed (401) — Granola API key may be invalid")
             else:
-                body = ""
-                try:
-                    body = e.read().decode("utf-8")[:200]
-                except Exception:
-                    pass
                 logger.warning(f"API returned {e.code}: {body}")
-            return None
+            raise GranolaAPIError(status_code=e.code, body=body) from e
         except urllib.error.URLError as e:
             logger.warning(f"API request failed: {e}")
-            return None
+            raise GranolaAPIError(body=str(e.reason), reason="network") from e
         except Exception as e:
             logger.warning(f"Unexpected error calling API: {e}")
-            return None
+            raise GranolaAPIError(body=str(e), reason="unexpected") from e
 
-    return None
+    raise GranolaAPIError(body="request retries exhausted", reason="unexpected")
 
 
 def _iter_note_pages(params: Dict[str, Any]):
@@ -198,13 +242,28 @@ def _iter_note_pages(params: Dict[str, Any]):
     page_size, etc.); the cursor is managed here.
     """
     cursor: Optional[str] = None
+    pages_succeeded = 0
     while True:
         page_params = dict(params)
         if cursor:
             page_params["cursor"] = cursor
-        response = _api_get("/v1/notes", page_params)
+        try:
+            response = _api_get("/v1/notes", page_params)
+        except GranolaAPIError as error:
+            if pages_succeeded == 0:
+                raise
+            suffix = "" if pages_succeeded == 1 else "s"
+            logger.warning(
+                "Granola note pagination failed after %d successful page%s; "
+                "returning partial results: %s",
+                pages_succeeded,
+                suffix,
+                error,
+            )
+            return
         if not response:
             return
+        pages_succeeded += 1
         notes = response.get("notes", []) or []
         yield notes
         if not response.get("hasMore"):
@@ -260,8 +319,13 @@ def _parse_iso(value: str) -> Optional[datetime]:
 
 
 def _cutoff_iso(days_back: int) -> str:
-    """Return an ISO datetime `days_back` days ago (UTC), for created_after."""
-    return (datetime.now(timezone.utc) - timedelta(days=days_back)).isoformat()
+    """Return an RFC3339 UTC timestamp `days_back` days ago, for created_after.
+
+    Granola's API rejects the microsecond + numeric-offset form produced by
+    datetime.isoformat(); it wants seconds precision with a Z suffix (issue #79).
+    """
+    dt = datetime.now(timezone.utc) - timedelta(days=days_back)
+    return dt.strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 def _date_only(value: str) -> Optional[str]:
@@ -553,6 +617,15 @@ def _not_connected_response() -> list[types.TextContent]:
     }, indent=2))]
 
 
+def _api_error_response(error: GranolaAPIError) -> list[types.TextContent]:
+    """Return a visible tool failure instead of an ambiguous empty result."""
+    return [types.TextContent(type="text", text=json.dumps({
+        "success": False,
+        "error": error.user_message,
+        "data_source": "official_api",
+    }, indent=2))]
+
+
 @app.call_tool()
 async def handle_call_tool(
     name: str, arguments: dict | None
@@ -582,9 +655,17 @@ async def handle_call_tool(
         return _not_connected_response()
 
     if name == "granola_check_available":
-        # Quick reachability test — fetch a single note page.
-        test_response = _api_get("/v1/notes", {"page_size": 1})
-        api_available = test_response is not None
+        # Exercise the same filtered list path used by real meeting queries.
+        api_error: Optional[GranolaAPIError] = None
+        try:
+            _list_notes(
+                created_after=_cutoff_iso(7),
+                max_notes=1,
+                page_size=1,
+            )
+        except GranolaAPIError as error:
+            api_error = error
+        api_available = api_error is None
 
         result = {
             "available": api_available,
@@ -596,10 +677,11 @@ async def handle_call_tool(
             "data_source": "official_api",
             "message": (
                 "Granola API connected and reachable" if api_available else
-                "Granola API key configured but the API is not reachable "
-                "(check the key is valid and you have a Granola Business plan)."
+                api_error.user_message
             )
         }
+        if api_error is not None:
+            result["error"] = api_error.user_message
 
         return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
 
@@ -607,7 +689,10 @@ async def handle_call_tool(
         days_back = arguments.get("days_back", 7)
         limit = arguments.get("limit", 20)
 
-        meetings = get_recent_meetings(days_back, limit)
+        try:
+            meetings = get_recent_meetings(days_back, limit)
+        except GranolaAPIError as error:
+            return _api_error_response(error)
 
         if not meetings:
             return [types.TextContent(type="text", text=json.dumps({
@@ -637,7 +722,10 @@ async def handle_call_tool(
                 "error": "meeting_id is required"
             }, indent=2))]
 
-        meeting = get_meeting_details(meeting_id)
+        try:
+            meeting = get_meeting_details(meeting_id)
+        except GranolaAPIError as error:
+            return _api_error_response(error)
 
         if not meeting:
             return [types.TextContent(type="text", text=json.dumps({
@@ -665,7 +753,10 @@ async def handle_call_tool(
         days_back = arguments.get("days_back", 30)
         limit = arguments.get("limit", 10)
 
-        meetings = search_meetings(query, days_back, limit)
+        try:
+            meetings = search_meetings(query, days_back, limit)
+        except GranolaAPIError as error:
+            return _api_error_response(error)
 
         result = {
             "success": True,
@@ -679,7 +770,10 @@ async def handle_call_tool(
 
     elif name == "granola_get_today_meetings":
         # Get meetings from the last 1 day, then filter to today.
-        meetings = get_recent_meetings(days_back=1, limit=50)
+        try:
+            meetings = get_recent_meetings(days_back=1, limit=50)
+        except GranolaAPIError as error:
+            return _api_error_response(error)
 
         today = datetime.now().strftime("%Y-%m-%d")
         today_meetings = [
@@ -705,7 +799,13 @@ async def handle_call_tool(
 
         # Default to 6 months for speed, optionally extend to 2 years.
         days_to_fetch = 365 * 2 if extended else 180
-        notes = _list_notes(created_after=_cutoff_iso(days_to_fetch), max_notes=1000)
+        try:
+            notes = _list_notes(
+                created_after=_cutoff_iso(days_to_fetch),
+                max_notes=1000,
+            )
+        except GranolaAPIError as error:
+            return _api_error_response(error)
 
         if not notes:
             return [types.TextContent(type="text", text=json.dumps({
@@ -723,7 +823,10 @@ async def handle_call_tool(
             note_id = note.get("id")
             if not note_id:
                 continue
-            detail = _get_note_detail(note_id, include_transcript=False)
+            try:
+                detail = _get_note_detail(note_id, include_transcript=False)
+            except GranolaAPIError as error:
+                return _api_error_response(error)
             if not detail:
                 continue
             participants = _attendees_from_detail(detail)
