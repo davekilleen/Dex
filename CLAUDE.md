@@ -227,7 +227,7 @@ When the user requests task creation without specifying a pillar:
    - User confirms (yes/sounds good/correct) → Create task with inferred pillar
    - User specifies different pillar → Use their choice
    - Unclear task → Ask which pillar makes most sense
-5. **Call Work MCP**: `work_mcp_create_task` with confirmed pillar
+5. **Call Work MCP**: `create_task` with confirmed pillar
 
 **Inference examples** (match against the user's actual pillars in `System/pillars.yaml` — names below are illustrative only):
 - "Prep demo for Acme Corp" → the pillar whose keywords cover sales/customer/demo work
@@ -503,7 +503,7 @@ Domain matching is configured during onboarding or can be updated manually in `S
 **MCP Server:** `scrapling` (runs via `scrapling mcp`)
 **No API key required.** Local, free, stealth-capable.
 
-**When a user asks to scrape/fetch/extract from a URL, prefer Scrapling MCP tools over WebFetch.**
+**If the `scrapling` MCP server is connected, prefer its tools over WebFetch when a user asks to scrape/fetch/extract from a URL.** Scrapling is not part of the default install — if the server is not connected, use WebFetch (or offer to set Scrapling up, see Setup below) instead of calling tools that are not there.
 
 | Tool | When to Use |
 |------|-------------|

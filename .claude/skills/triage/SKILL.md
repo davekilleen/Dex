@@ -81,25 +81,25 @@ Parse `System/pillars.yaml`:
 
 **This step activates automatically when QMD is installed.** It dramatically improves routing accuracy by matching inbox items to goals, projects, and people by **meaning**, not just keywords.
 
-Check if QMD MCP tools are available by calling `qmd_status`. **If available:**
+Check if QMD MCP tools are available by calling the `status` tool (QMD MCP). **If available:**
 
 After loading strategic context (Step 0), enhance matching with semantic search:
 
 1. **For each inbox item**, run:
    ```
-   qmd_search(query="[item title + first 100 words of content]", limit=5)
+   query(query="[item title + first 100 words of content]", limit=5)
    ```
    This finds vault content related by meaning. "Email about onboarding flow" matches "Q1 goal: improve activation rate" even though they share no keywords.
 
 2. **For task deduplication**, use semantic similarity instead of keyword overlap:
    ```
-   qmd_search(query="[task description]", limit=3)
+   query(query="[task description]", limit=3)
    ```
    Catches semantic duplicates: "Review Q1 metrics" detected as duplicate of "Check quarterly pipeline numbers".
 
 3. **For goal alignment scoring**, run:
    ```
-   qmd_search(query="[item content]", limit=3)
+   query(query="[item content]", limit=3)
    ```
    against quarterly goals and weekly priorities. Items semantically related to active goals get a +25 confidence boost.
 

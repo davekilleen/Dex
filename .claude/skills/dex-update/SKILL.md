@@ -390,7 +390,7 @@ git reset --hard backup-before-v1.3.0
 If breaking_changes was true, check for migration script:
 
 ```bash
-ls core/migrations/v*-to-v*.sh
+ls core/migrations/v*-to-v*.sh 2>/dev/null | grep -v -- '-example'   # templates ending in -example.sh are not migrations
 ```
 
 If found:
@@ -403,7 +403,7 @@ This is safe and automatic.
 
 Run:
 ```bash
-./core/migrations/v1-to-v2.sh --auto
+./core/migrations/<script-found-by-the-check-above>.sh --auto
 ```
 
 Show migration output.
@@ -693,7 +693,7 @@ Nothing was changed. Your Dex is exactly as it was.
 If migration script supports `--auto` flag, run non-interactively:
 
 ```bash
-./core/migrations/v1-to-v2.sh --auto
+./core/migrations/<script-found-by-the-check-above>.sh --auto
 ```
 
 **Migration script must:**
@@ -715,7 +715,7 @@ Don't worry - it's one command and takes 30 seconds.
 
 **In Cursor's terminal (bottom panel), run:**
 
-./core/migrations/v1-to-v2.sh
+./core/migrations/<script-found-by-the-check-above>.sh
 
 **Then come back here when it's done.**
 
