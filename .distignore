@@ -19,9 +19,6 @@ CONTRIBUTING.md
 DISTRIBUTION_READY.md
 scripts/
 
-# TypeScript dev config
-pi-extensions/dex/tsconfig.json
-
 # Issue tracking (worktree artifacts)
 .ao-issue.md
 

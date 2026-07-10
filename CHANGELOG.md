@@ -7,6 +7,17 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.22.0] - Remove Pi integration from the core distributable (2026-07-10)
+
+Dex no longer bundles the Pi coding-agent integration in the core vault. The Pi
+extension code (`pi-extensions/`) and Pi beta templates shipped to every user but
+were not part of the core Dex experience — Pi lives in its own project. This
+release removes them, along with a dangling symlink and the config, ignore, and
+CI references that pointed at them. Pi remains fully supported as a harness in its
+own right; it is simply no longer carried inside the core distributable.
+
+---
+
 ## [1.21.0] - Remove Unreachable ScreenPipe, Beta Gates, Commitment Detection, and Demo Mode (2026-07-10)
 
 Dex no longer ships the ScreenPipe integration, beta-gate system, commitment

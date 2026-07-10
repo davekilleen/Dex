@@ -14,7 +14,7 @@ if [ -z "$CHANGED_FILES" ]; then
 fi
 
 SOURCE_CHANGED="$(printf "%s\n" "$CHANGED_FILES" | \
-  grep -E '^(core/.*\.py|pi-extensions/.*\.(js|cjs|ts)|\.claude/hooks/.*\.(js|cjs))$' | \
+  grep -E '^(core/.*\.py|\.claude/hooks/.*\.(js|cjs))$' | \
   grep -Ev '^(core/tests/|core/mcp/tests/)|(^|/)test_.*\.py$|(^|/).+_test\.py$' || true)"
 
 TEST_CHANGED="$(printf "%s\n" "$CHANGED_FILES" | \
