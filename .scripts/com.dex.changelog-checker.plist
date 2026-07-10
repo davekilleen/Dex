@@ -7,7 +7,7 @@
     
     <key>ProgramArguments</key>
     <array>
-        <string>/usr/local/bin/node</string>
+        <string>{{NODE_PATH}}</string>
         <string>{{VAULT_PATH}}/.scripts/check-anthropic-changelog.cjs</string>
     </array>
     

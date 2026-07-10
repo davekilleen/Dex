@@ -264,9 +264,13 @@ fi
 # Runs preflight health checks (MCP servers, config files, etc.) and displays
 # any queued errors. Silent when everything is healthy (no output = no display).
 if [[ -f "$ONBOARDING_MARKER" ]]; then
-    DEX_CORE_DIR="$CLAUDE_DIR/dex-core"
+    DEX_CORE_DIR="$CLAUDE_DIR"
     if [[ -f "$DEX_CORE_DIR/core/utils/preflight.py" ]]; then
-        HEALTH_OUTPUT=$(cd "$DEX_CORE_DIR" && python3 -c "
+        HEALTH_PYTHON="python3"
+        if [[ -f "$CLAUDE_DIR/.venv/bin/python" ]]; then
+            HEALTH_PYTHON="$CLAUDE_DIR/.venv/bin/python"
+        fi
+        if ! HEALTH_OUTPUT=$(cd "$DEX_CORE_DIR" && "$HEALTH_PYTHON" -c "
 import sys
 sys.path.insert(0, '.')
 from core.utils.preflight import run_preflight, format_output, format_errors
@@ -277,8 +281,9 @@ if preflight:
     print(preflight)
 if errors:
     print(errors)
-" 2>/dev/null)
-        if [[ -n "$HEALTH_OUTPUT" ]]; then
+" 2>/dev/null); then
+            echo "⚠️ Dex health check failed to run (see .claude/hooks/session-start.sh)"
+        elif [[ -n "$HEALTH_OUTPUT" ]]; then
             echo "$HEALTH_OUTPUT"
         fi
     fi
