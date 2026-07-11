@@ -7,6 +7,18 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.31.0] - Dex asks which calendar is yours instead of guessing (2026-07-11)
+
+Empty calendar results were traced back to onboarding guessing a work calendar name that did not match the names Apple Calendar actually exposes.
+
+**What this fixes for you:**
+
+* **You choose from calendars Dex can actually see.** Onboarding shows the exact Calendar.app names and saves your selection instead of constructing one from your email address.
+* **Wrong calendar names are caught during setup.** If a typed name does not match, Dex shows the available calendars and asks again before an empty schedule can surprise you later.
+* **Calendar permissions no longer block onboarding.** Dex explains the one-time macOS setting, lets you try again, or records that you skipped so `/dex-doctor` can confirm the setup later.
+
+---
+
 ## [1.30.0] - Dex now tells you when its background sync has quietly stopped (2026-07-11)
 
 A beta user's meeting sync was dead from February to July with no signal, so Dex now surfaces that silent failure at the start of your next session.
