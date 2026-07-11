@@ -116,6 +116,7 @@ from core.paths import (
     PEOPLE_DIR,
     PEOPLE_INDEX_FILE,
     PILLARS_FILE,
+    PROJECTS_DIR,
     QUARTER_GOALS_FILE,
     SKILL_RATINGS_FILE,
     TASKS_FILE,
@@ -3124,7 +3125,7 @@ async def handle_list_tools() -> list[types.Tool]:
                     "section": {"type": "string", "description": "Which section in 03-Tasks/Tasks.md to add to", "default": "Next Week"},
                     "weekly_priority_id": {"type": "string", "description": "Link to weekly priority (e.g., 'week-2026-W05-p1') - task contributes to this priority"},
                     "due": {"type": "string", "description": "Optional due date in YYYY-MM-DD format"},
-                    "project": {"type": "string", "description": "Optional existing vault-relative project path under 04-Projects/"},
+                    "project": {"type": "string", "description": f"Optional existing vault-relative project path under {PROJECTS_DIR.name}/"},
                     "goal": {"type": "string", "description": "Optional quarterly goal ID (e.g., Q3-2026-goal-2)"},
                     "on_duplicate": {"type": "string", "enum": ["fail", "force"], "default": "fail", "description": "Fail on similar tasks, or force creation past only the similarity check"},
                     "account": {"type": "string", "description": "Path to account page to link"},
@@ -3677,7 +3678,7 @@ async def _handle_call_tool_inner(
             }, indent=2))]
 
         if project:
-            projects_dir = (BASE_DIR / '04-Projects').resolve()
+            projects_dir = (BASE_DIR / PROJECTS_DIR.name).resolve()
             supplied_project = Path(project)
             project_path = (BASE_DIR / supplied_project).resolve()
             project_is_contained = (
@@ -3687,7 +3688,7 @@ async def _handle_call_tool_inner(
             if not project_is_contained:
                 return [types.TextContent(type="text", text=json.dumps({
                     "success": False,
-                    "error": "Project must be a vault-relative file under 04-Projects/."
+                    "error": f"Project must be a vault-relative file under {PROJECTS_DIR.name}/."
                 }, indent=2))]
             if not project_path.is_file():
                 requested_stem = supplied_project.stem.casefold()
