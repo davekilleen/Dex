@@ -1,6 +1,6 @@
 ---
 name: career-coach
-description: Personal career coach with 4 modes: weekly reports, monthly reflections, self-reviews, promotion assessments
+description: "Personal career coach with 4 modes: weekly reports, monthly reflections, self-reviews, promotion assessments"
 context: fork
 hooks:
   PostToolUse:

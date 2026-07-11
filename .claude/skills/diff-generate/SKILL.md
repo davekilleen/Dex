@@ -1,6 +1,6 @@
 ---
 name: diff-generate
-description: Generate a DexDiff methodology document from your vault customisations: package how you use Dex so others can replicate it
+description: "Generate a DexDiff methodology document from your vault customisations: package how you use Dex so others can replicate it"
 ---
 
 ## What This Command Does
