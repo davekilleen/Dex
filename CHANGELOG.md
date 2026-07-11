@@ -7,6 +7,23 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.25.0] - Granola stops silently reporting zero meetings (2026-07-11)
+
+Fixes the bug where Granola showed "connected and ready" while every meeting query
+returned nothing (reported by a beta user with full diagnosis — thank you, Michelle).
+
+**What this fixes for you:**
+
+* **Your meetings come back.** Dex was asking Granola's API with a date format the API
+  rejects; the rejection was swallowed and surfaced as "you have no meetings."
+* **Failures now say so.** If a Granola query fails for any reason, Dex reports
+  "Granola query failed" with the cause — it will never again disguise an error as an
+  empty calendar.
+* **The connection check tells the truth.** It now exercises the same query path real
+  meeting lookups use, so it can't show green while lookups fail.
+
+---
+
 ## [1.24.0] - Honest task completion, opt-in search registration, calendar guidance (2026-07-11)
 
 Final code batch from the dex-core audit.
