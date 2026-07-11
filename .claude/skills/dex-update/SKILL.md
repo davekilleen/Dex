@@ -689,13 +689,15 @@ Run:
 ```bash
 git merge --abort 2>/dev/null || true
 git reset --hard backup-before-v1.3.0
-git clean -fd
+git status --short
 ```
+
+Do not run `git clean` during recovery: untracked files may be the user's unsaved work. Any stray files created by the failed merge are harmless and are listed by `git status` for review.
 
 ```
 ✓ Restored to v1.2.0
 
-Nothing was changed. Your Dex is exactly as it was.
+Tracked Dex files are back to their pre-update state. Your untracked files were left in place to protect your work; any stray merge-created files are harmless and listed above.
 
 [Try update again]
 [Report issue]

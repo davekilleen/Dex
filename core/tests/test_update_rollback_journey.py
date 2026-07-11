@@ -8,6 +8,9 @@ from pathlib import Path
 
 from core.utils.manifest import DEFAULT_MANIFEST, generate_manifest, write_manifest
 
+REPO_ROOT = Path(__file__).resolve().parents[2]
+ROLLBACK_SKILL = REPO_ROOT / ".claude/skills/dex-rollback/SKILL.md"
+
 
 def _git(repo: Path, *args: str) -> str:
     result = subprocess.run(
@@ -44,6 +47,11 @@ def _commit_manifest(repo: Path, message: str) -> None:
     _git(repo, "commit", "--quiet", "-m", message)
 
 
+def _bash_block_after(path: Path, marker: str) -> str:
+    section = path.read_text(encoding="utf-8").split(marker, 1)[1]
+    return section.split("```bash\n", 1)[1].split("\n```", 1)[0]
+
+
 def test_manifest_is_a_deterministic_newline_path_list(tmp_path: Path) -> None:
     repo = tmp_path / "manifest-repo"
     _init_repo(repo)
@@ -53,6 +61,65 @@ def test_manifest_is_a_deterministic_newline_path_list(tmp_path: Path) -> None:
     _git(repo, "commit", "--quiet", "-m", "synthetic tree")
 
     assert generate_manifest(repo, "HEAD") == "a directory/first.txt\nz-last.txt\n"
+
+
+def test_rollback_stops_when_autosave_commit_fails(tmp_path: Path) -> None:
+    vault = tmp_path / "user-vault"
+    _init_repo(vault)
+
+    tracked_file = "04-Projects/current-work.md"
+    _write(vault, tracked_file, "release v1\n")
+    _git(vault, "add", "--", tracked_file)
+    _git(vault, "commit", "--quiet", "-m", "release v1")
+    _git(vault, "tag", "backup-before-v1.3.0")
+
+    _write(vault, tracked_file, "release v2\n")
+    _git(vault, "add", "--", tracked_file)
+    _git(vault, "commit", "--quiet", "-m", "release v2")
+    release_v2_head = _git(vault, "rev-parse", "HEAD")
+
+    edited_content = "release v2\nuser's uncommitted edit\n"
+    staged_new_file = ".claude/skills/private-custom/SKILL.md"
+    staged_new_content = "---\nname: private-custom\n---\n# User work\n"
+    _write(vault, tracked_file, edited_content)
+    _write(vault, staged_new_file, staged_new_content)
+    _git(vault, "add", "--", staged_new_file)
+
+    hooks_dir = tmp_path / "failing-hooks"
+    hooks_dir.mkdir()
+    pre_commit = hooks_dir / "pre-commit"
+    pre_commit.write_text(
+        "#!/bin/sh\necho 'forced pre-commit failure' >&2\nexit 1\n",
+        encoding="utf-8",
+    )
+    pre_commit.chmod(0o755)
+    _git(vault, "config", "core.hooksPath", str(hooks_dir))
+
+    autosave = _bash_block_after(
+        ROLLBACK_SKILL,
+        "Before rolling back, save any uncommitted changes:",
+    )
+    result = subprocess.run(
+        [
+            "bash",
+            "-c",
+            f"{autosave}\n"
+            "git tag before-rollback-c1\n"
+            "git reset --hard backup-before-v1.3.0\n",
+        ],
+        cwd=vault,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode != 0, result.stdout + result.stderr
+    assert _git(vault, "rev-parse", "HEAD") == release_v2_head
+    assert (vault / tracked_file).read_text(encoding="utf-8") == edited_content
+    assert (vault / staged_new_file).read_text(encoding="utf-8") == staged_new_content
+    assert "before-rollback-c1" not in _git(vault, "tag").splitlines()
+    assert _git(vault, "diff", "--cached", "--name-only") == ""
+    assert "Couldn't save your uncommitted changes" in result.stdout + result.stderr
 
 
 def test_update_then_manifest_rollback_preserves_user_customizations(tmp_path: Path) -> None:

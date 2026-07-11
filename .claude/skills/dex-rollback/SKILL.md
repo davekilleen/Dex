@@ -94,6 +94,9 @@ Will restore to: v1.2.0 (last backup)
 **Snapshot the newer release's shipped manifest before saving or resetting anything:**
 
 ```bash
+# Run this and the Step 5 cleanup block with bash or zsh; Step 5 uses process substitution.
+[ -f package.json ] && [ -d .claude ] || { echo "run from the vault root"; exit 1; }
+
 ROLLBACK_RELEASE_REF=""
 for candidate in upstream/release origin/release; do
   candidate_base="$(git merge-base HEAD "$candidate" 2>/dev/null || true)"
@@ -140,11 +143,21 @@ Before rolling back, save any uncommitted changes:
 
 Run:
 ```bash
-git add .
-git commit -m "Auto-save before rollback to v1.2.0" || true
+if ! git add .; then
+  echo "Couldn't prepare your uncommitted changes for saving — rollback stopped to protect them; fix the Git error above, then retry"
+  exit 1
+fi
+
+if git diff --cached --quiet; then
+  echo "Nothing to save; continuing rollback"
+elif ! git commit -m "Auto-save before rollback to v1.2.0"; then
+  git reset
+  echo "Couldn't save your uncommitted changes — rollback stopped to protect them; fix the commit error above, then retry"
+  exit 1
+fi
 ```
 
-Create a "before rollback" tag in case they want to undo the rollback:
+Only after the save succeeds (or Git verifies there is nothing to save), create a "before rollback" tag in case they want to undo the rollback:
 
 ```bash
 git tag before-rollback-$(date +%Y%m%d-%H%M%S)
@@ -182,6 +195,9 @@ This restores all Dex files to the state before update.
 Compare the newer manifest snapshot from Step 3 with the restored release's shipped manifest. `ROLLBACK_STATE_DIR` below is the exact private temp path printed in Step 3:
 
 ```bash
+# Requires bash or zsh because this block uses process substitution.
+[ -f package.json ] && [ -d .claude ] || { echo "run from the vault root"; exit 1; }
+
 ROLLBACK_STATE_DIR="[exact private temp path printed in Step 3]"
 
 rollback_has_symlink_parent() {
