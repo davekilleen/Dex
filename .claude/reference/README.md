@@ -79,5 +79,4 @@ Reference docs should:
 
 ## Related
 
-- **MCP** (`.claude/mcp/`) - MCP server configurations
 - **Core** (`core/`) - Implementation code

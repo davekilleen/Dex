@@ -163,19 +163,6 @@ When the user expresses frustration or wishes during natural conversation, captu
 ### Automatic Person Page Updates
 When significant context about people is shared (role changes, relationships, project involvement), proactively update their person pages without being asked.
 
-### Auto-Link People in Generated Content
-After writing or updating any vault markdown file that mentions people (daily plans, week priorities, tasks, meeting notes), run the auto-link script as a post-processing step:
-
-```bash
-node .scripts/auto-link-people.cjs <file-path>
-```
-
-This converts known people names to `[[Firstname_Lastname|Name]]` WikiLinks using the people-engine registry. It handles full names, safe aliases, and unambiguous first names while skipping existing WikiLinks, frontmatter, and code blocks. The script also detects when a first name appears as part of an unknown full name (e.g., "Jessica Jolly") and avoids false-linking standalone uses of that first name.
-
-For batch processing of key files: `node .scripts/auto-link-people.cjs --today`
-
-The script is also available as a module: `const { autoLinkContent } = require('./.scripts/auto-link-people.cjs');`
-
 ### Communication Adaptation
 
 Adapt your tone and language based on user preferences in `System/user-profile.yaml` → `communication` section:

@@ -422,7 +422,7 @@ If any integrations are already connected, briefly note them so you don't re-off
 
 For each integration the user selects:
 
-1. Run its setup skill: invoke the skill referenced in the integration's `setup` field (e.g., `/todoist-setup`, `/gmail-setup`)
+1. Run its setup skill: invoke the skill referenced in the integration's `setup` field (e.g., `/todoist-setup`, `/google-workspace-setup`)
 2. Wait for the setup skill to complete (each includes auth, config, and verification)
 3. The setup skill shows its **Capability Cascade** at the end (from `integration-patterns.md`):
    - Which existing skills just got smarter

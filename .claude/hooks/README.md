@@ -401,6 +401,5 @@ See [Security Considerations](https://code.claude.com/docs/en/hooks#security-con
 
 ## Related
 
-- **MCP** (`.claude/mcp/`) - External tool integrations
 - **Agents** (`.claude/agents/`) - Multi-step autonomous tasks
 - **Scripts** (`.scripts/`) - Standalone automation tools

@@ -186,7 +186,6 @@ scripts/private/
 !README.md
 !LICENSE
 !CHANGELOG.md
-!.claude-plugin/
 .ant-colony/
 
 # Agent/codex runtime task artifacts — contain local absolute paths, never commit

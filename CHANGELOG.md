@@ -7,6 +7,19 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.26.0] - Dead config purge, people auto-linking paused, integration concierge ships (2026-07-11)
+
+The final batch from the dex-core audit — removing things that looked real but were wired to nothing, and shipping one thing that was real but never left the developer's machine.
+
+**What this changes for you:**
+
+* **The integration concierge actually ships.** The vault scanner that recommends which tools to connect (used by onboarding and `/getting-started`) existed only on the developer's Mac — it was never committed, so the tour silently skipped it for everyone. It's now included, with its setup-skill references corrected.
+* **People auto-linking is paused instead of broken.** Dex's instructions required running a script that was never shipped (issue #46) — erroring on every meeting note and daily plan. The instruction is removed; the real auto-linking feature is queued to be built properly.
+* **Deleted the never-published plugin manifest and a dead MCP config folder** — config that looked authoritative, was read by nothing, and caused the "unreachable servers" class of bug.
+* **Removed a dead installer step and a write-only config file** nothing ever read.
+
+---
+
 ## [1.25.0] - Granola stops silently reporting zero meetings (2026-07-11)
 
 Fixes the bug where Granola showed "connected and ready" while every meeting query
