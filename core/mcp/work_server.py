@@ -33,13 +33,6 @@ import mcp.types as types
 from mcp.server import NotificationOptions, Server
 from mcp.server.models import InitializationOptions
 
-# QMD semantic search (optional - gracefully degrade if not available)
-try:
-    from utils.qmd_query import is_qmd_available, vault_search
-    HAS_QMD = True
-except ImportError:
-    HAS_QMD = False
-
 # Analytics helper (optional - gracefully degrade if not available)
 try:
     from analytics_helper import fire_event as _fire_analytics_event
@@ -56,6 +49,13 @@ logger = logging.getLogger(__name__)
 # Add grandparent directory to path for 'core.utils' imports
 # The script is at core/mcp/work_server.py, so we need to add the vault root
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+
+# QMD semantic search (optional - gracefully degrade if not available)
+try:
+    from core.utils.qmd_query import is_qmd_available, vault_search
+    HAS_QMD = True
+except ImportError:
+    HAS_QMD = False
 
 # Import reference formatter for Obsidian wiki link support
 try:
@@ -75,9 +75,7 @@ except ImportError:
 # Import QMD search index refresh (optional - silently skips if QMD not installed)
 try:
     from core.utils.qmd_indexer import refresh_search_index
-    HAS_QMD = True
 except ImportError:
-    HAS_QMD = False
     def refresh_search_index(): pass
 
 # Health system — error queue and health reporting
