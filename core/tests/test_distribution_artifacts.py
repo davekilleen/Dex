@@ -6,6 +6,7 @@ import io
 import json
 import shutil
 import subprocess
+import sys
 import tarfile
 from pathlib import Path
 
@@ -17,7 +18,10 @@ RELEASE_BUILD_INPUTS = (
     ".github/workflows/ci.yml",
     "requirements.txt",
     "requirements-dev.txt",
+    "core/utils/manifest.py",
+    "core/utils/smoke.py",
     "scripts/build-release.sh",
+    "scripts/generate-manifest.sh",
     "scripts/verify-distribution.sh",
 )
 
@@ -108,8 +112,45 @@ def test_release_branch_strips_dev_files_and_keeps_user_runtime(tmp_path: Path) 
     assert "core/tests/fixtures/vault/has space.md" not in members
 
     assert "core/utils/doctor.py" in members
+    assert "core/utils/manifest.py" in members
+    assert "core/utils/smoke.py" in members
     assert ".claude/skills/dex-update/SKILL.md" in members
     assert ".claude/skills/anthropic-docx/scripts/document.py" in members
+    assert "System/.installed-files.manifest" in members
+
+    manifest = subprocess.run(
+        ["git", "show", "release:System/.installed-files.manifest"],
+        cwd=clone,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.splitlines()
+    assert manifest == sorted(manifest)
+    assert set(manifest) == members
+    assert "core/tests/test_distribution_artifacts.py" not in manifest
+
+    subprocess.run(
+        ["git", "checkout", "--quiet", "release"],
+        cwd=clone,
+        check=True,
+    )
+    smoke_result = subprocess.run(
+        [sys.executable, "core/utils/smoke.py", "--json"],
+        cwd=clone,
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert smoke_result.returncode == 0, smoke_result.stderr or smoke_result.stdout
+    assert json.loads(smoke_result.stdout)["schema_version"] == 1
+    assert subprocess.run(
+        ["git", "status", "--porcelain"],
+        cwd=clone,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout == ""
 
     source_servers = {
         path
