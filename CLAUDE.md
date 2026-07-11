@@ -423,6 +423,7 @@ Skills extend Dex capabilities and are invoked with `/skill-name`. Common skills
 - `/enable-semantic-search` - Enable local AI-powered semantic search with smart collection discovery
 - `/xray` - AI education: understand what just happened under the hood (context, MCPs, hooks)
 - `/dex-level-up`, `/dex-backlog`, `/dex-improve` - System improvements
+- `/dex-doctor` - Full system checkup: finds what's broken, fixes what's safe, guides you through the rest
 - `/dex-update` - Update Dex automatically (shows what's new, updates if confirmed, no technical knowledge needed)
 - `/dex-rollback` - Undo last update if something went wrong
 - `/getting-started` - Interactive post-onboarding tour (adaptive to your setup)

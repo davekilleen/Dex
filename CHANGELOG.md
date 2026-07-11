@@ -7,6 +7,20 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.27.0] - /dex-doctor: a real system checkup that tells the truth (2026-07-11)
+
+Replaces `/health-check` with a rigorous whole-system diagnostic that knows the difference between "off", "broken", "couldn't check", and "fine" — built against the exact failure modes the July 2026 audit uncovered.
+
+**What this fixes for you:**
+
+* **One honest answer to "is my Dex actually working?"** Run `/dex-doctor` and get a clear report: what's healthy, what's broken, what's switched off by choice, and what the doctor itself couldn't verify. Nothing is hidden, nothing is collapsed.
+* **It heals what's safe to heal, silently.** Missing standard folders, a stale `paths.json`, scripts that lost their executable bit — it fixes these before reporting and tells you it did. For riskier fixes (loading a background job, repairing a broken config entry) it proposes one at a time and only acts on your yes.
+* **Background jobs are checked honestly — freshness, not just presence.** The doctor confirms each installed Dex job actually ran recently, says when it last ran if it's stale, and flags a broken interpreter before it's a problem.
+* **Replaces `/health-check`**, which diagnosed Granola by looking at a file the connector never reads and had other stale assumptions. All references now point at `/dex-doctor`.
+* **Deep scan available.** Add the deep scan to contact your live services — Granola API, Calendar, enabled integrations — to confirm the real query paths work, not just that the config looks right.
+
+---
+
 ## [1.26.0] - Cleanup: removed config that did nothing, shipped a missing helper (2026-07-11)
 
 The final batch from the dex-core audit — removing things that looked real but were wired to nothing, and shipping one thing that was real but never left the developer's machine.

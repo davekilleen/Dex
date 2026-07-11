@@ -229,6 +229,7 @@ Built specifically for personal knowledge management and productivity workflows 
 - `/ai-status` - Check your AI configuration and credits
 
 **System Management:**
+- `/dex-doctor` - Full system checkup: verifies every feature honestly, self-heals what's safe, guides you through the rest
 - `/enable-semantic-search` - Enable local AI-powered semantic search with smart collection discovery
 - `/xray` - AI education: understand what just happened under the hood, learn how context, MCPs, hooks work
 - `/prompt-improver` - Transform vague prompts via Anthropic Messages API
