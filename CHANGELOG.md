@@ -7,6 +7,15 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.29.0] - Creating tasks works again (2026-07-11)
+
+Since mid-February, asking Dex to create a task quietly failed with a technical error — every time, for everyone. A code mix-up made the task tool trip over an optional search feature even when that feature wasn't installed, and the existing tests happened to sidestep the exact switch that was broken, so nothing caught it.
+
+**What this fixes for you:**
+
+* **"Create a task to…" actually creates the task.** The error that blocked every task creation — and also broke meeting-context lookups and inbox processing — is gone.
+* **This can't silently break again.** Dex now tests task creation the exact way your vault runs it: starting the real task service and creating, listing, and completing a task end to end. If a future change breaks task creation, the release checks catch it before an update reaches you.
+
 ## [1.28.0] - Installs now contain the Dex features they promise (2026-07-11)
 
 Some install and update paths looked successful while quietly leaving out working parts of Dex, carrying developer-only files, or saving connection settings somewhere Claude Code never reads. This release makes installs complete and checks them through the same journeys you use.
