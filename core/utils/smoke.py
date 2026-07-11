@@ -26,6 +26,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
 
+RUNNER_ROOT = Path(__file__).resolve().parents[2]
+if str(RUNNER_ROOT) in sys.path:
+    sys.path.remove(str(RUNNER_ROOT))
+sys.path.insert(0, str(RUNNER_ROOT))
+
 SCHEMA_VERSION = 1
 GLOBAL_TIMEOUT_SECONDS = 30.0
 VERDICTS = frozenset({"OK", "OFF", "BROKEN", "UNKNOWN"})
@@ -40,6 +45,23 @@ SENSITIVE_CONFIG_KEY = re.compile(
 )
 SAFE_PATH = "/usr/bin:/bin:/usr/sbin:/sbin"
 TRUSTED_GIT_CANDIDATES = (Path("/usr/bin/git"), Path("/bin/git"))
+RUNNER_FALLBACK_RELATIVES = (
+    Path("core/__init__.py"),
+    Path("core/paths.py"),
+    Path("core/utils/__init__.py"),
+    Path("core/utils/smoke.py"),
+    Path("core/utils/validators.py"),
+)
+PARA_PATH_NAMES = (
+    "INBOX_DIR",
+    "QUARTER_GOALS_DIR",
+    "WEEK_PRIORITIES_DIR",
+    "TASKS_DIR",
+    "PROJECTS_DIR",
+    "AREAS_DIR",
+    "RESOURCES_DIR",
+    "ARCHIVES_DIR",
+)
 
 
 def _trusted_git() -> str | None:
@@ -146,6 +168,14 @@ def _roll_up(verdicts: Sequence[str]) -> str:
     return max(verdicts, key=VERDICT_PRIORITY.__getitem__)
 
 
+def _core_path(root: Path, constant_name: str) -> Path:
+    """Retarget one ``core.paths`` constant to an isolated vault root."""
+    from core import paths as core_paths
+
+    configured = getattr(core_paths, constant_name)
+    return root / configured.relative_to(core_paths.VAULT_ROOT)
+
+
 def _is_sensitive_path(path: Path) -> bool:
     return any(
         part.lower() == ".env"
@@ -248,12 +278,8 @@ def _copy_configs(source: Path, vault: Path, *, integrations: bool = True) -> No
             )
 
 
-def _validator_path(release_root: Path | None) -> Path | None:
-    if release_root is not None:
-        release_validator = release_root / "core" / "utils" / "validators.py"
-        if release_validator.is_file() and not release_validator.is_symlink():
-            return release_validator
-    runner_validator = Path(__file__).resolve().parents[2] / "core" / "utils" / "validators.py"
+def _validator_path() -> Path | None:
+    runner_validator = RUNNER_ROOT / "core" / "utils" / "validators.py"
     if runner_validator.is_file() and not runner_validator.is_symlink():
         return runner_validator
     return None
@@ -266,8 +292,8 @@ def _prepare_task_vault(
     release_root: Path | None,
     release_ref: str | None,
 ) -> None:
-    tasks_dir = source / "03-Tasks"
-    tasks_file = tasks_dir / "Tasks.md"
+    tasks_dir = _core_path(source, "TASKS_DIR")
+    tasks_file = _core_path(source, "TASKS_FILE")
     _ensure_safe_source(tasks_dir, source)
     if tasks_dir.is_dir():
         for path in tasks_dir.rglob("*"):
@@ -278,19 +304,12 @@ def _prepare_task_vault(
         if not path.stat().st_mode & (stat.S_IWUSR | stat.S_IWGRP | stat.S_IWOTH):
             raise JourneyPreparationError(f"{path.relative_to(source)} is not writable")
 
-    for directory in (
-        "00-Inbox",
-        "01-Quarter_Goals",
-        "02-Week_Priorities",
-        "04-Projects",
-        "05-Areas",
-        "06-Resources",
-        "07-Archives",
-        "System",
-    ):
-        (vault / directory).mkdir(parents=True, exist_ok=True)
+    for constant_name in PARA_PATH_NAMES:
+        if constant_name != "TASKS_DIR":
+            _core_path(vault, constant_name).mkdir(parents=True, exist_ok=True)
+    _core_path(vault, "SYSTEM_DIR").mkdir(parents=True, exist_ok=True)
     if tasks_dir.is_dir():
-        shutil.copytree(tasks_dir, vault / "03-Tasks")
+        shutil.copytree(tasks_dir, _core_path(vault, "TASKS_DIR"))
     _copy_configs(source, vault, integrations=False)
     reason = _release_execution_reason(repo_root, release_root, release_ref)
     (vault / TASK_PLAN).write_text(
@@ -339,7 +358,7 @@ def _prepare_mcp_vault(
         else:
             runtime_reason = _release_execution_reason(repo_root, release_root, release_ref)
             validator = None
-            expected_validator = _validator_path(release_root)
+            expected_validator = _validator_path()
             if expected_validator is not None and expected_validator.is_file():
                 from core.utils import validators as validator_module
 
@@ -354,7 +373,7 @@ def _prepare_mcp_vault(
                             "name": name,
                             "verdict": "UNKNOWN",
                             "detail": "not executed for safety; structural validation unavailable "
-                            "without a verified release snapshot",
+                            "without a coherent runner snapshot",
                         }
                     )
                     continue
@@ -406,7 +425,7 @@ def _prepare_mcp_vault(
                     {
                         "name": name,
                         "verdict": "EXECUTE",
-                        "script": script.relative_to(release_root).as_posix(),
+                        "script": script.relative_to(repo_root.resolve()).as_posix(),
                     }
                 )
             plan = {"state": "READY", "entries": entries}
@@ -550,21 +569,142 @@ def _block_python_network() -> None:
     socket.gethostbyaddr = no_dns  # type: ignore[assignment]
 
 
-def _materialize_runner(destination: Path) -> Path:
-    """Copy the fixed runner surface away from the writable live checkout."""
-    source_root = Path(__file__).resolve().parents[2]
-    relatives = (
-        Path("core/__init__.py"),
-        Path("core/utils/__init__.py"),
-        Path("core/utils/smoke.py"),
-        Path("core/utils/validators.py"),
+def _tracked_runner_relatives(source_root: Path) -> tuple[Path, ...]:
+    relatives = RUNNER_FALLBACK_RELATIVES
+    command = _git_command(source_root, "ls-files", "-z", "--cached", "--", "core")
+    if command is None:
+        return relatives
+    result = subprocess.run(
+        command,
+        capture_output=True,
+        env=_git_environment(),
+        timeout=3,
+        check=False,
     )
+    if result.returncode != 0:
+        return relatives
+    try:
+        tracked = tuple(Path(raw.decode("utf-8")) for raw in result.stdout.split(b"\0") if raw)
+    except UnicodeDecodeError as exc:
+        raise JourneySafetySkip("tracked runner paths are not valid UTF-8") from exc
+    return tracked or relatives
+
+
+def _open_runner_source(source_root: Path, relative: Path) -> tuple[int, os.stat_result]:
+    no_follow = getattr(os, "O_NOFOLLOW", None)
+    directory_flag = getattr(os, "O_DIRECTORY", None)
+    if no_follow is None or directory_flag is None:
+        raise JourneySafetySkip("safe no-follow runner reads are unavailable")
+    close_on_exec = getattr(os, "O_CLOEXEC", 0)
+    directory_flags = os.O_RDONLY | no_follow | directory_flag | close_on_exec
+    file_flags = os.O_RDONLY | no_follow | close_on_exec
+    directory_fd: int | None = None
+    source_fd: int | None = None
+    try:
+        directory_fd = os.open(source_root, directory_flags)
+        for part in relative.parts[:-1]:
+            child_fd = os.open(part, directory_flags, dir_fd=directory_fd)
+            os.close(directory_fd)
+            directory_fd = child_fd
+        source_fd = os.open(relative.name, file_flags, dir_fd=directory_fd)
+        source_stat = os.fstat(source_fd)
+        if not stat.S_ISREG(source_stat.st_mode):
+            raise JourneySafetySkip(f"tracked runner path is not a regular file: {relative}")
+        return source_fd, source_stat
+    except JourneySafetySkip:
+        if source_fd is not None:
+            os.close(source_fd)
+        raise
+    except OSError as exc:
+        if source_fd is not None:
+            os.close(source_fd)
+        raise JourneySafetySkip(f"tracked runner file could not be opened: {relative}") from exc
+    finally:
+        if directory_fd is not None:
+            os.close(directory_fd)
+
+
+def _copy_runner_file(
+    source_root: Path,
+    relative: Path,
+    destination: Path,
+) -> None:
+    """Copy a regular file through no-follow descriptors."""
+    no_follow = getattr(os, "O_NOFOLLOW", None)
+    if no_follow is None:
+        raise JourneySafetySkip("safe no-follow runner copy is unavailable")
+    close_on_exec = getattr(os, "O_CLOEXEC", 0)
+    source_fd: int | None = None
+    destination_fd: int | None = None
+    try:
+        source_fd, source_stat = _open_runner_source(source_root, relative)
+
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination_fd = os.open(
+            destination,
+            os.O_WRONLY | os.O_CREAT | os.O_EXCL | no_follow | close_on_exec,
+            0o600,
+        )
+        with (
+            os.fdopen(os.dup(source_fd), "rb") as source_handle,
+            os.fdopen(os.dup(destination_fd), "wb") as destination_handle,
+        ):
+            shutil.copyfileobj(source_handle, destination_handle)
+        os.fchmod(destination_fd, stat.S_IMODE(source_stat.st_mode))
+    except OSError as exc:
+        raise JourneySafetySkip(f"tracked runner file could not be copied: {relative}") from exc
+    finally:
+        for descriptor in (destination_fd, source_fd):
+            if descriptor is not None:
+                os.close(descriptor)
+
+
+def _runner_file_matches_source(
+    source_root: Path,
+    relative: Path,
+    runner_root: Path,
+) -> bool:
+    source_fd: int | None = None
+    runner_fd: int | None = None
+    try:
+        source_fd, source_stat = _open_runner_source(source_root, relative)
+        runner_fd, runner_stat = _open_runner_source(runner_root, relative)
+        if stat.S_IMODE(source_stat.st_mode) != stat.S_IMODE(runner_stat.st_mode):
+            return False
+        while True:
+            source_chunk = os.read(source_fd, 1024 * 1024)
+            runner_chunk = os.read(runner_fd, 1024 * 1024)
+            if source_chunk != runner_chunk:
+                return False
+            if not source_chunk:
+                return True
+    finally:
+        for descriptor in (runner_fd, source_fd):
+            if descriptor is not None:
+                os.close(descriptor)
+
+
+def _materialize_runner(destination: Path) -> Path:
+    """Snapshot the installed core generation away from the writable checkout."""
+    source_root = RUNNER_ROOT
+    relatives = tuple(sorted(_tracked_runner_relatives(source_root)))
+
     for relative in relatives:
+        if (
+            relative.is_absolute()
+            or not relative.parts
+            or relative.parts[0] != "core"
+            or any(part in {"", ".", ".."} for part in relative.parts)
+        ):
+            raise JourneySafetySkip(f"tracked runner path is unsafe: {relative}")
         source = source_root / relative
         _ensure_safe_source(source, source_root)
-        target = destination / relative
-        target.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(source, target, follow_symlinks=False)
+        _copy_runner_file(source_root, relative, destination / relative)
+    if tuple(sorted(_tracked_runner_relatives(source_root))) != relatives:
+        raise JourneySafetySkip("tracked runner paths changed during snapshot")
+    for relative in relatives:
+        if not _runner_file_matches_source(source_root, relative, destination):
+            raise JourneySafetySkip(f"tracked runner file changed during snapshot: {relative}")
     return destination
 
 
@@ -627,18 +767,53 @@ def _materialize_release_core(
     return reference, "verified installed release snapshot"
 
 
-def _set_runtime_tree_writable(root: Path, *, writable: bool) -> None:
-    if not root.exists():
+def _set_runtime_path_writable(path: Path, *, writable: bool) -> None:
+    no_follow = getattr(os, "O_NOFOLLOW", None)
+    directory_flag = getattr(os, "O_DIRECTORY", None)
+    if no_follow is None or directory_flag is None:
+        raise JourneySafetySkip("safe no-follow runtime chmod is unavailable")
+    try:
+        path_stat = path.lstat()
+    except FileNotFoundError:
         return
-    directory_mode = 0o755 if writable else 0o555
-    file_write_bit = stat.S_IWUSR if writable else 0
+    if stat.S_ISLNK(path_stat.st_mode):
+        raise JourneySafetySkip(f"runtime tree contains a symlink: {path}")
+    if stat.S_ISDIR(path_stat.st_mode):
+        flags = os.O_RDONLY | no_follow | directory_flag
+        mode = 0o755 if writable else 0o555
+    elif stat.S_ISREG(path_stat.st_mode):
+        flags = os.O_RDONLY | no_follow
+        current_mode = stat.S_IMODE(path_stat.st_mode)
+        mode = (current_mode | stat.S_IWUSR) if writable else (current_mode & ~0o222)
+    else:
+        raise JourneySafetySkip(f"runtime tree contains a non-regular path: {path}")
+    try:
+        descriptor = os.open(path, flags)
+    except OSError as exc:
+        raise JourneySafetySkip(f"runtime tree path could not be opened safely: {path}") from exc
+    try:
+        opened_stat = os.fstat(descriptor)
+        if (
+            opened_stat.st_dev != path_stat.st_dev
+            or opened_stat.st_ino != path_stat.st_ino
+            or stat.S_IFMT(opened_stat.st_mode) != stat.S_IFMT(path_stat.st_mode)
+        ):
+            raise JourneySafetySkip(f"runtime tree path changed during chmod: {path}")
+        os.fchmod(descriptor, mode)
+    finally:
+        os.close(descriptor)
+
+
+def _set_runtime_tree_writable(root: Path, *, writable: bool) -> None:
+    try:
+        root_stat = root.lstat()
+    except FileNotFoundError:
+        return
+    if not stat.S_ISDIR(root_stat.st_mode) or stat.S_ISLNK(root_stat.st_mode):
+        raise JourneySafetySkip(f"runtime tree root is not a regular directory: {root}")
     for path in sorted(root.rglob("*"), key=lambda item: len(item.parts), reverse=writable):
-        if path.is_dir():
-            path.chmod(directory_mode)
-        elif path.is_file():
-            mode = stat.S_IMODE(path.stat().st_mode)
-            path.chmod((mode | file_write_bit) if writable else (mode & ~0o222))
-    root.chmod(directory_mode)
+        _set_runtime_path_writable(path, writable=writable)
+    _set_runtime_path_writable(root, writable=writable)
 
 
 def _create_run_marker(temporary_root: Path) -> tuple[Path, str]:
@@ -683,15 +858,11 @@ def _clean_environment(
     vault: Path,
     home: Path,
     runner_root: Path,
-    release_root: Path | None,
     temporary_root: Path,
     run_token: str,
 ) -> dict[str, str]:
     guard = _install_network_guard(temporary_root)
-    python_paths = [str(guard)]
-    if release_root is not None:
-        python_paths.append(str(release_root))
-    python_paths.append(str(runner_root))
+    python_paths = [str(runner_root), str(guard)]
     for key in ("purelib", "platlib"):
         site_packages = Path(sysconfig.get_paths()[key]).resolve()
         if site_packages.is_dir() and str(site_packages) not in python_paths:
@@ -911,21 +1082,16 @@ def _safe_temporary_parent(source: Path) -> Path:
     raise OSError("no writable system temp directory exists outside the live vault")
 
 
-def run_smoke(
+def _run_smoke_journeys(
     *,
-    vault_root: Path | None = None,
-    repo_root: Path | None = None,
-    journey_definitions: Sequence[JourneyDefinition] = JOURNEYS,
-    global_timeout_seconds: float = GLOBAL_TIMEOUT_SECONDS,
-) -> SmokeRun:
-    """Run each journey in a fresh process and disposable vault copy."""
-    try:
-        source = (vault_root or Path(os.environ.get("VAULT_PATH", Path.cwd()))).resolve()
-        repository = (repo_root or Path(__file__).resolve().parents[2]).resolve()
-        temporary_parent = _safe_temporary_parent(source)
-    except Exception as exc:
-        return _harness_failure_run(journey_definitions, exc)
-    started = time.monotonic()
+    source: Path,
+    repository: Path,
+    temporary_parent: Path,
+    runner_root: Path,
+    journey_definitions: Sequence[JourneyDefinition],
+    global_timeout_seconds: float,
+    started: float,
+) -> tuple[list[dict[str, Any]], bool]:
     results: list[dict[str, Any]] = []
     harness_failed = False
 
@@ -954,7 +1120,6 @@ def run_smoke(
                 home = temporary_root / "home"
                 home.mkdir()
                 marker, run_token = _create_run_marker(temporary_root)
-                runner_root = _materialize_runner(temporary_root / "runner")
                 release_destination = temporary_root / "release"
                 snapshot_budget = min(
                     definition.timeout_seconds - (time.monotonic() - journey_started),
@@ -966,7 +1131,6 @@ def run_smoke(
                     timeout_seconds=max(0.05, snapshot_budget),
                 )
                 release_root = release_destination if release_ref is not None else None
-                _set_runtime_tree_writable(runner_root, writable=False)
                 if release_root is not None:
                     _set_runtime_tree_writable(release_root, writable=False)
                 try:
@@ -974,7 +1138,6 @@ def run_smoke(
                         vault,
                         home,
                         runner_root,
-                        release_root,
                         temporary_root,
                         run_token,
                     )
@@ -1031,7 +1194,6 @@ def run_smoke(
                                 )
                                 harness_failed = harness_failed or failed
                 finally:
-                    _set_runtime_tree_writable(runner_root, writable=True)
                     if release_root is not None:
                         _set_runtime_tree_writable(release_root, writable=True)
         except Exception as exc:
@@ -1046,6 +1208,46 @@ def run_smoke(
                 "duration_ms": max(0, round((time.monotonic() - journey_started) * 1000)),
             }
         )
+    return results, harness_failed
+
+
+def run_smoke(
+    *,
+    vault_root: Path | None = None,
+    repo_root: Path | None = None,
+    journey_definitions: Sequence[JourneyDefinition] = JOURNEYS,
+    global_timeout_seconds: float = GLOBAL_TIMEOUT_SECONDS,
+) -> SmokeRun:
+    """Run isolated journeys against one immutable installed-code snapshot."""
+    try:
+        source = (vault_root or Path(os.environ.get("VAULT_PATH", Path.cwd()))).resolve()
+        repository = (repo_root or Path(__file__).resolve().parents[2]).resolve()
+        temporary_parent = _safe_temporary_parent(source)
+    except Exception as exc:
+        return _harness_failure_run(journey_definitions, exc)
+
+    started = time.monotonic()
+    try:
+        with tempfile.TemporaryDirectory(
+            prefix="dex-smoke-runner-",
+            dir=temporary_parent,
+        ) as temporary:
+            runner_root = _materialize_runner(Path(temporary) / "runner")
+            try:
+                _set_runtime_tree_writable(runner_root, writable=False)
+                results, harness_failed = _run_smoke_journeys(
+                    source=source,
+                    repository=repository,
+                    temporary_parent=temporary_parent,
+                    runner_root=runner_root,
+                    journey_definitions=journey_definitions,
+                    global_timeout_seconds=global_timeout_seconds,
+                    started=started,
+                )
+            finally:
+                _set_runtime_tree_writable(runner_root, writable=True)
+    except Exception as exc:
+        return _harness_failure_run(journey_definitions, exc)
 
     report = {
         "schema_version": SCHEMA_VERSION,
@@ -1062,8 +1264,8 @@ def _load_yaml(path: Path) -> object:
     return yaml.safe_load(path.read_text(encoding="utf-8"))
 
 
-def _journey_configs(vault: Path, release_root: Path) -> dict[str, str]:
-    expected_validator = _validator_path(release_root)
+def _journey_configs(vault: Path, _release_root: Path) -> dict[str, str]:
+    expected_validator = _validator_path()
     if expected_validator is None:
         return {
             "verdict": "UNKNOWN",
@@ -1074,7 +1276,7 @@ def _journey_configs(vault: Path, release_root: Path) -> dict[str, str]:
     if Path(validators.__file__).resolve() != expected_validator.resolve():
         return {
             "verdict": "UNKNOWN",
-            "detail": "configuration validation escaped the verified release snapshot",
+            "detail": "configuration validation escaped the runner snapshot",
         }
 
     checks: tuple[tuple[Path, Callable[[object], list[str]]], ...] = (
@@ -1125,8 +1327,8 @@ def _decode_tool_response(contents: Sequence[object]) -> dict[str, Any]:
     return decoded
 
 
-def _journey_task_lifecycle(vault: Path, release_root: Path) -> dict[str, str]:
-    tasks_file = vault / "03-Tasks" / "Tasks.md"
+def _journey_task_lifecycle(vault: Path, _release_root: Path) -> dict[str, str]:
+    tasks_file = _core_path(vault, "TASKS_FILE")
     tasks_dir = tasks_file.parent
     try:
         plan_path = vault / TASK_PLAN
@@ -1139,18 +1341,18 @@ def _journey_task_lifecycle(vault: Path, release_root: Path) -> dict[str, str]:
                 "verdict": "UNKNOWN",
                 "detail": f"task lifecycle not executed for safety ({reason})",
             }
-        expected_work_server = release_root / "core" / "mcp" / "work_server.py"
+        expected_work_server = RUNNER_ROOT / "core" / "mcp" / "work_server.py"
         if (
-            release_root.is_symlink()
+            RUNNER_ROOT.is_symlink()
             or expected_work_server.is_symlink()
             or not expected_work_server.is_file()
         ):
             return {
                 "verdict": "UNKNOWN",
-                "detail": "task lifecycle not executed for safety (verified work server is unavailable)",
+                "detail": "task lifecycle not executed for safety (runner work server is unavailable)",
             }
         if not tasks_dir.is_dir() or not tasks_file.is_file():
-            return {"verdict": "BROKEN", "detail": "03-Tasks/Tasks.md is missing"}
+            return {"verdict": "BROKEN", "detail": f"{tasks_file.relative_to(vault)} is missing"}
         for path in (tasks_dir, tasks_file):
             if not path.stat().st_mode & (stat.S_IWUSR | stat.S_IWGRP | stat.S_IWOTH):
                 return {"verdict": "BROKEN", "detail": f"{path.relative_to(vault)} is not writable"}
@@ -1164,7 +1366,7 @@ def _journey_task_lifecycle(vault: Path, release_root: Path) -> dict[str, str]:
         if Path(work.__file__).resolve() != expected_work_server.resolve():
             return {
                 "verdict": "UNKNOWN",
-                "detail": "task lifecycle not executed for safety (work server import escaped the release snapshot)",
+                "detail": "task lifecycle not executed for safety (work server import escaped the runner snapshot)",
             }
 
         work.HAS_QMD = False
@@ -1273,6 +1475,19 @@ def _git_tree_paths(repo_root: Path, treeish: str) -> set[str] | None:
         return None
 
 
+def _runner_tree_paths(runner_root: Path) -> set[str] | None:
+    core_root = runner_root / "core"
+    if runner_root.is_symlink() or core_root.is_symlink() or not core_root.is_dir():
+        return None
+    paths = set()
+    for path in core_root.rglob("*"):
+        if path.is_symlink():
+            return None
+        if path.is_file():
+            paths.add(path.relative_to(runner_root).as_posix())
+    return paths
+
+
 def _release_execution_reason(
     repo_root: Path,
     release_root: Path | None,
@@ -1284,30 +1499,35 @@ def _release_execution_reason(
         return "the verified release snapshot is unavailable"
     reference_paths = _git_tree_paths(repo_root, reference)
     head_paths = _git_tree_paths(repo_root, "HEAD")
-    if reference_paths is None or head_paths is None:
+    runner_paths = _runner_tree_paths(RUNNER_ROOT)
+    if reference_paths is None or head_paths is None or runner_paths is None:
         return f"Dex-owned core could not be compared with {reference}"
-    if reference_paths != head_paths:
+    if reference_paths != head_paths or runner_paths != head_paths:
         return f"Dex-owned core differs from {reference}"
     for relative in sorted(reference_paths):
         snapshot = release_root / relative
+        installed = RUNNER_ROOT / relative
         live = repo_root / relative
-        current = repo_root
-        unsafe = False
-        for part in Path(relative).parts:
-            current /= part
-            if current.is_symlink():
-                unsafe = True
-                break
-        if unsafe or snapshot.is_symlink() or not snapshot.is_file() or not live.is_file():
+        unsafe = snapshot.is_symlink()
+        for root in (RUNNER_ROOT, repo_root):
+            current = root
+            for part in Path(relative).parts:
+                current /= part
+                if current.is_symlink():
+                    unsafe = True
+                    break
+        if unsafe or not snapshot.is_file() or not installed.is_file() or not live.is_file():
             return f"Dex-owned core differs from {reference}"
         try:
-            if snapshot.read_bytes() != live.read_bytes():
+            snapshot_bytes = snapshot.read_bytes()
+            if snapshot_bytes != installed.read_bytes() or snapshot_bytes != live.read_bytes():
                 return f"Dex-owned core differs from {reference}"
             snapshot_executable = bool(snapshot.stat().st_mode & 0o111)
+            installed_executable = bool(installed.stat().st_mode & 0o111)
             live_executable = bool(live.stat().st_mode & 0o111)
         except OSError:
             return f"Dex-owned core could not be compared with {reference}"
-        if snapshot_executable != live_executable:
+        if snapshot_executable != installed_executable or snapshot_executable != live_executable:
             return f"Dex-owned core differs from {reference}"
     return None
 
@@ -1394,10 +1614,10 @@ def _safe_owned_server(
     if not safe or release_root is None:
         return None, reason or "verified release snapshot is unavailable"
     relative = Path(os.path.abspath(target)).relative_to(repo_root.resolve())
-    return release_root / relative, ""
+    return repo_root.resolve() / relative, ""
 
 
-def _journey_mcp_startup(vault: Path, release_root: Path) -> dict[str, str]:
+def _journey_mcp_startup(vault: Path, _release_root: Path) -> dict[str, str]:
     plan_path = vault / MCP_PLAN
     if plan_path.is_symlink() or not plan_path.is_file():
         return {"verdict": "UNKNOWN", "detail": "MCP startup plan is unavailable"}
@@ -1417,22 +1637,22 @@ def _journey_mcp_startup(vault: Path, release_root: Path) -> dict[str, str]:
     handshake_deadline = time.monotonic() + 15.0
     handshake = None
     if any(isinstance(entry, Mapping) and entry.get("verdict") == "EXECUTE" for entry in plan["entries"]):
-        expected_handshake = release_root / "core" / "utils" / "mcp_handshake.py"
+        expected_handshake = RUNNER_ROOT / "core" / "utils" / "mcp_handshake.py"
         if (
-            release_root.is_symlink()
+            RUNNER_ROOT.is_symlink()
             or expected_handshake.is_symlink()
             or not expected_handshake.is_file()
         ):
             return {
                 "verdict": "UNKNOWN",
-                "detail": "MCP startup helper is unavailable in the verified release snapshot",
+                "detail": "MCP startup helper is unavailable in the runner snapshot",
             }
         from core.utils import mcp_handshake
 
         if Path(mcp_handshake.__file__).resolve() != expected_handshake.resolve():
             return {
                 "verdict": "UNKNOWN",
-                "detail": "MCP startup helper escaped the verified release snapshot",
+                "detail": "MCP startup helper escaped the runner snapshot",
             }
         handshake = mcp_handshake.mcp_stdio_handshake
     for entry in plan["entries"]:
@@ -1454,17 +1674,17 @@ def _journey_mcp_startup(vault: Path, release_root: Path) -> dict[str, str]:
             details.append(f"{label}: UNKNOWN — invalid internal startup plan")
             continue
         parts = Path(relative_script).parts
-        script = release_root / relative_script
+        script = RUNNER_ROOT / relative_script
         if (
             len(parts) != 3
             or parts[:2] != ("core", "mcp")
             or not parts[2].endswith("_server.py")
-            or release_root.is_symlink()
+            or RUNNER_ROOT.is_symlink()
             or script.is_symlink()
             or not script.is_file()
         ):
             statuses.append("UNKNOWN")
-            details.append(f"{label}: UNKNOWN — verified release server is unavailable")
+            details.append(f"{label}: UNKNOWN — runner server is unavailable")
             continue
 
         handshake_budget = handshake_deadline - time.monotonic()
@@ -1489,7 +1709,7 @@ def _journey_mcp_startup(vault: Path, release_root: Path) -> dict[str, str]:
             continue
         result = handshake(
             [sys.executable, "-S", str(bootstrap), str(script)],
-            cwd=release_root,
+            cwd=RUNNER_ROOT,
             env=os.environ,
             timeout=min(1.5, handshake_budget),
         )
@@ -1505,11 +1725,11 @@ def _journey_mcp_startup(vault: Path, release_root: Path) -> dict[str, str]:
     return {"verdict": _roll_up(statuses), "detail": "; ".join(details)}
 
 
-def _journey_skills(vault: Path, release_root: Path) -> dict[str, str]:
+def _journey_skills(vault: Path, _release_root: Path) -> dict[str, str]:
     skills = sorted((vault / ".claude" / "skills").glob("*/SKILL.md"))
     if not skills:
         return {"verdict": "OFF", "detail": "no skills are installed"}
-    expected_validator = _validator_path(release_root)
+    expected_validator = _validator_path()
     if expected_validator is None:
         return {
             "verdict": "UNKNOWN",
@@ -1520,7 +1740,7 @@ def _journey_skills(vault: Path, release_root: Path) -> dict[str, str]:
     if Path(validators.__file__).resolve() != expected_validator.resolve():
         return {
             "verdict": "UNKNOWN",
-            "detail": "skill validation escaped the verified release snapshot",
+            "detail": "skill validation escaped the runner snapshot",
         }
     errors = []
     for skill in skills:

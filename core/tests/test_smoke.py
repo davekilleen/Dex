@@ -55,7 +55,7 @@ def _definition(journey_id: str, timeout: float = 5.0) -> smoke.JourneyDefinitio
     return smoke.JourneyDefinition(journey_id, timeout)
 
 
-def _release_repo(tmp_path: Path) -> Path:
+def _release_repo(tmp_path: Path, *, release_validators: str | None = None) -> Path:
     repo = tmp_path / "release-repo"
     repo.mkdir()
     shutil.copytree(
@@ -63,6 +63,11 @@ def _release_repo(tmp_path: Path) -> Path:
         repo / "core",
         ignore=shutil.ignore_patterns("__pycache__", "*.pyc"),
     )
+    if release_validators is not None:
+        (repo / "core" / "utils" / "validators.py").write_text(
+            release_validators,
+            encoding="utf-8",
+        )
     subprocess.run(["git", "init", "--quiet"], cwd=repo, check=True)
     subprocess.run(["git", "config", "user.name", "Smoke Test"], cwd=repo, check=True)
     subprocess.run(
@@ -77,6 +82,21 @@ def _release_repo(tmp_path: Path) -> Path:
         cwd=repo,
         check=True,
     )
+    if release_validators is not None:
+        shutil.copy2(
+            REPO_ROOT / "core" / "utils" / "validators.py",
+            repo / "core" / "utils" / "validators.py",
+        )
+        subprocess.run(
+            ["git", "add", "--", "core/utils/validators.py"],
+            cwd=repo,
+            check=True,
+        )
+        subprocess.run(
+            ["git", "commit", "--quiet", "-m", "head fixture"],
+            cwd=repo,
+            check=True,
+        )
     return repo
 
 
@@ -180,6 +200,244 @@ def test_main_exit_one_for_a_broken_journey(tmp_path: Path, capsys) -> None:
 
     assert exit_code == 1
     assert report["summary"] == {"ok": 0, "broken": 1, "unknown": 0, "off": 0}
+
+
+def test_head_runner_generation_stays_coherent_when_release_is_older(tmp_path: Path) -> None:
+    vault = _write_valid_vault(tmp_path)
+    repo = _release_repo(
+        tmp_path,
+        release_validators='"""Older release validator surface."""\n',
+    )
+
+    run = smoke.run_smoke(
+        vault_root=vault,
+        repo_root=repo,
+        journey_definitions=(
+            _definition("configs"),
+            _definition("task_lifecycle", 8.0),
+        ),
+    )
+
+    configs, task_lifecycle = run.report["journeys"]
+    assert run.harness_failed is False
+    assert run.exit_code == 0
+    assert configs["verdict"] == "OK"
+    assert task_lifecycle["verdict"] == "UNKNOWN"
+    assert "Dex-owned core differs from" in task_lifecycle["detail"]
+
+
+def test_release_snapshot_is_absent_from_every_child_pythonpath(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    vault = _write_valid_vault(tmp_path)
+    repo = _release_repo(tmp_path)
+    observed = []
+    original = smoke._run_json_process
+
+    def capture(command, **kwargs):
+        observed.append((list(command), dict(kwargs["env"])))
+        return original(command, **kwargs)
+
+    monkeypatch.setattr(smoke, "_run_json_process", capture)
+
+    run = smoke.run_smoke(
+        vault_root=vault,
+        repo_root=repo,
+        journey_definitions=(_definition("configs"),),
+    )
+
+    assert run.exit_code == 0
+    assert len(observed) == 2
+    for command, env in observed:
+        python_paths = env["PYTHONPATH"].split(os.pathsep)
+        runner_root = Path(command[2]).parents[2]
+        release_root = Path(command[command.index("--release-root") + 1])
+        assert python_paths[0] == str(runner_root)
+        assert str(release_root) not in python_paths
+
+
+def test_runner_materialization_excludes_untracked_core_files(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "source"
+    tracked = source / "core" / "mcp" / "work_server.py"
+    tracked.parent.mkdir(parents=True)
+    tracked.write_text("# tracked runner module\n", encoding="utf-8")
+    (source / "core" / "__init__.py").write_text("", encoding="utf-8")
+    subprocess.run(["git", "init", "--quiet"], cwd=source, check=True)
+    subprocess.run(["git", "config", "user.name", "Smoke Test"], cwd=source, check=True)
+    subprocess.run(
+        ["git", "config", "user.email", "smoke@example.test"],
+        cwd=source,
+        check=True,
+    )
+    subprocess.run(["git", "add", "--", "core"], cwd=source, check=True)
+    subprocess.run(["git", "commit", "--quiet", "-m", "tracked fixture"], cwd=source, check=True)
+    untracked = source / "core" / "mcp" / "__init__.py"
+    untracked.write_text("raise RuntimeError('untracked code executed')\n", encoding="utf-8")
+    monkeypatch.setattr(smoke, "RUNNER_ROOT", source)
+
+    runner = smoke._materialize_runner(tmp_path / "runner")
+
+    assert (runner / "core" / "mcp" / "work_server.py").is_file()
+    assert not (runner / "core" / "mcp" / "__init__.py").exists()
+
+
+def test_runner_symlink_swap_cannot_touch_an_external_file(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "source"
+    tracked = source / "core" / "utils" / "smoke.py"
+    tracked.parent.mkdir(parents=True)
+    tracked.write_text("# tracked runner module\n", encoding="utf-8")
+    (source / "core" / "__init__.py").write_text("", encoding="utf-8")
+    subprocess.run(["git", "init", "--quiet"], cwd=source, check=True)
+    subprocess.run(["git", "config", "user.name", "Smoke Test"], cwd=source, check=True)
+    subprocess.run(
+        ["git", "config", "user.email", "smoke@example.test"],
+        cwd=source,
+        check=True,
+    )
+    subprocess.run(["git", "add", "--", "core"], cwd=source, check=True)
+    subprocess.run(["git", "commit", "--quiet", "-m", "tracked fixture"], cwd=source, check=True)
+    external = tmp_path / "external.py"
+    external.write_text("external content\n", encoding="utf-8")
+    external.chmod(0o600)
+    original_mode = stat.S_IMODE(external.stat().st_mode)
+    original_ensure = smoke._ensure_safe_source
+
+    def swap_after_validation(path: Path, source_root: Path) -> None:
+        original_ensure(path, source_root)
+        if path == tracked:
+            path.unlink()
+            path.symlink_to(external)
+
+    monkeypatch.setattr(smoke, "RUNNER_ROOT", source)
+    monkeypatch.setattr(smoke, "_ensure_safe_source", swap_after_validation)
+
+    try:
+        try:
+            runner = smoke._materialize_runner(tmp_path / "runner")
+            smoke._set_runtime_tree_writable(runner, writable=False)
+        except smoke.JourneySafetySkip:
+            pass
+        assert external.read_text(encoding="utf-8") == "external content\n"
+        assert stat.S_IMODE(external.stat().st_mode) == original_mode
+    finally:
+        external.chmod(original_mode)
+
+
+def test_runner_materialization_rejects_a_mid_copy_checkout_change(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "source"
+    first = source / "core" / "__init__.py"
+    second = source / "core" / "utils" / "validators.py"
+    second.parent.mkdir(parents=True)
+    first.write_text("GENERATION = 'first'\n", encoding="utf-8")
+    second.write_text("VALIDATOR_GENERATION = 'first'\n", encoding="utf-8")
+    subprocess.run(["git", "init", "--quiet"], cwd=source, check=True)
+    subprocess.run(["git", "config", "user.name", "Smoke Test"], cwd=source, check=True)
+    subprocess.run(
+        ["git", "config", "user.email", "smoke@example.test"],
+        cwd=source,
+        check=True,
+    )
+    subprocess.run(["git", "add", "--", "core"], cwd=source, check=True)
+    subprocess.run(["git", "commit", "--quiet", "-m", "tracked fixture"], cwd=source, check=True)
+    original_copy = smoke._copy_runner_file
+
+    def mutate_after_copy(source_root: Path, relative: Path, destination: Path) -> None:
+        original_copy(source_root, relative, destination)
+        if relative == Path("core/__init__.py"):
+            first.write_text("GENERATION = 'second'\n", encoding="utf-8")
+
+    monkeypatch.setattr(smoke, "RUNNER_ROOT", source)
+    monkeypatch.setattr(smoke, "_copy_runner_file", mutate_after_copy)
+
+    try:
+        smoke._materialize_runner(tmp_path / "runner")
+    except smoke.JourneySafetySkip:
+        pass
+    else:
+        raise AssertionError("mixed checkout generations were materialized")
+
+
+def test_release_gate_compares_the_materialized_runner_snapshot(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    vault = _write_valid_vault(tmp_path)
+    repo = _release_repo(tmp_path)
+    original = smoke._materialize_runner
+
+    def materialize_drifted_runner(destination: Path) -> Path:
+        runner = original(destination)
+        work_server = runner / "core" / "mcp" / "work_server.py"
+        work_server.write_text(
+            work_server.read_text(encoding="utf-8") + "\n# runner snapshot drift\n",
+            encoding="utf-8",
+        )
+        return runner
+
+    monkeypatch.setattr(smoke, "_materialize_runner", materialize_drifted_runner)
+
+    run = smoke.run_smoke(
+        vault_root=vault,
+        repo_root=repo,
+        journey_definitions=(_definition("task_lifecycle", 8.0),),
+    )
+
+    result = run.report["journeys"][0]
+    assert run.harness_failed is False
+    assert run.exit_code == 0
+    assert result["verdict"] == "UNKNOWN"
+    assert "Dex-owned core differs from" in result["detail"]
+
+
+def test_all_journeys_share_one_runner_generation(monkeypatch, tmp_path: Path) -> None:
+    vault = _write_valid_vault(tmp_path)
+    skill = vault / ".claude" / "skills" / "weekly-custom" / "SKILL.md"
+    skill.parent.mkdir(parents=True)
+    skill.write_text(
+        "---\nname: weekly-custom\ndescription: Valid smoke fixture.\n---\n",
+        encoding="utf-8",
+    )
+    original = smoke._materialize_runner
+    materializations = 0
+
+    def materialize_generation(destination: Path) -> Path:
+        nonlocal materializations
+        materializations += 1
+        runner = original(destination)
+        if materializations > 1:
+            validators = runner / "core" / "utils" / "validators.py"
+            validators.write_text(
+                validators.read_text(encoding="utf-8")
+                + "\ndef validate_skill_frontmatter(_path):\n"
+                + "    return ['mixed runner generation']\n",
+                encoding="utf-8",
+            )
+        return runner
+
+    monkeypatch.setattr(smoke, "_materialize_runner", materialize_generation)
+
+    run = smoke.run_smoke(
+        vault_root=vault,
+        repo_root=REPO_ROOT,
+        journey_definitions=(
+            _definition("configs"),
+            _definition("skills"),
+        ),
+    )
+
+    assert materializations == 1
+    assert run.harness_failed is False
+    assert [journey["verdict"] for journey in run.report["journeys"]] == ["OK", "OK"]
 
 
 def test_hanging_journey_is_killed_and_returns_exit_two(monkeypatch, tmp_path: Path) -> None:
@@ -472,7 +730,7 @@ def test_mcp_credentials_are_absent_from_child_plan_environment_and_argv(
     tmp_path: Path,
 ) -> None:
     vault = _write_valid_vault(tmp_path)
-    secret = "dex-smoke-secret-7c8d6e"
+    secret = f"dex-smoke-secret-{os.urandom(8).hex()}"
     (vault / ".mcp.json").write_text(
         json.dumps(
             {
