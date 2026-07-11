@@ -131,12 +131,19 @@ function buildRegistry(pathConfig = loadPaths()) {
   const fullNames = new Set();
   const firstTargets = new Map();
   const aliasTargets = new Map();
+  const targetsByFullName = new Map();
 
   for (const filePath of personFiles) {
     const fullName = displayNameFromFile(filePath);
     if (!fullName) continue;
 
     fullNames.add(fullName);
+    if (pathConfig.VAULT_ROOT) {
+      const relativePath = path.relative(pathConfig.VAULT_ROOT, filePath)
+        .split(path.sep)
+        .join('/');
+      targetsByFullName.set(fullName, relativePath.slice(0, -path.extname(relativePath).length));
+    }
     const firstName = fullName.split(/\s+/u)[0];
     addTarget(firstTargets, firstName, fullName);
 
@@ -168,6 +175,7 @@ function buildRegistry(pathConfig = loadPaths()) {
     firstNameToFull,
     ownerName: readOwnerName(pathConfig.USER_PROFILE_FILE),
     aliases,
+    targetsByFullName,
   };
 }
 
@@ -461,6 +469,16 @@ function canonicalWikiTarget(text, range) {
   return target.replace(/_/g, ' ');
 }
 
+function wikiLinkLabel(text, range) {
+  const body = text.slice(range.start + 2, range.end - 2);
+  const separator = body.indexOf('|');
+  return separator === -1 ? '' : body.slice(separator + 1).trim();
+}
+
+function normalizedPersonName(name) {
+  return name.trim().replace(/\s+/gu, ' ').toLowerCase();
+}
+
 function findPoisonedFirstNames(text, registry, protectedRanges) {
   const poisoned = new Set();
   const pattern = /[\p{Lu}][\p{L}\p{M}'’\p{Pd}]*/gu;
@@ -499,10 +517,21 @@ function autoLinkContent(text, registry = buildRegistry()) {
   const inline = findInlineRanges(text, blockRanges);
   const protectedRanges = mergeRanges([...blockRanges, ...inline.ranges]);
   const linkedPeople = new Set();
+  const peopleByReferenceName = new Map();
+
+  for (const fullName of registry.fullNames) {
+    peopleByReferenceName.set(normalizedPersonName(fullName), fullName);
+  }
+  for (const [alias, fullName] of registry.aliases || []) {
+    peopleByReferenceName.set(normalizedPersonName(alias), fullName);
+  }
 
   for (const wikiRange of inline.wikiRanges) {
     const target = canonicalWikiTarget(text, wikiRange);
-    if (registry.fullNames.has(target)) linkedPeople.add(target);
+    const label = wikiLinkLabel(text, wikiRange);
+    const linkedPerson = peopleByReferenceName.get(normalizedPersonName(target))
+      || peopleByReferenceName.get(normalizedPersonName(label));
+    if (linkedPerson) linkedPeople.add(linkedPerson);
   }
 
   const poisoned = findPoisonedFirstNames(text, registry, protectedRanges);
@@ -564,9 +593,12 @@ function autoLinkContent(text, registry = buildRegistry()) {
     if (linkedPeople.has(occurrence.target)) continue;
     if (rangesOverlap(occurrence.start, occurrence.end, replacements)) continue;
 
-    const replacement = occurrence.kind === 'full'
-      ? `[[${occurrence.target}]]`
-      : `[[${occurrence.target}|${occurrence.text}]]`;
+    const linkTarget = registry.targetsByFullName?.get(occurrence.target);
+    const replacement = linkTarget
+      ? `[[${linkTarget}|${occurrence.text}]]`
+      : occurrence.kind === 'full'
+        ? `[[${occurrence.target}]]`
+        : `[[${occurrence.target}|${occurrence.text}]]`;
     replacements.push({
       start: occurrence.start,
       end: occurrence.end,

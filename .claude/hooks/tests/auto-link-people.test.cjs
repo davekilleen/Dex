@@ -16,14 +16,17 @@ function makeRegistry({
   fullNames = [],
   firstNames = [],
   aliases = [],
+  targets,
   ownerName = '',
 } = {}) {
-  return {
+  const registry = {
     fullNames: new Set(fullNames),
     firstNameToFull: new Map(firstNames),
     aliases: new Map(aliases),
     ownerName,
   };
+  if (targets) registry.targetsByFullName = new Map(targets);
+  return registry;
 }
 
 function createVault(t) {
@@ -102,11 +105,12 @@ test('links a full name to its person page', () => {
   const registry = makeRegistry({
     fullNames: ['Sarah Chen'],
     firstNames: [['Sarah', 'Sarah Chen']],
+    targets: [['Sarah Chen', '05-Areas/People/External/Sarah_Chen']],
   });
 
   assert.equal(
     autoLinkContent('Met Sarah Chen today.', registry),
-    'Met [[Sarah Chen]] today.',
+    'Met [[05-Areas/People/External/Sarah_Chen|Sarah Chen]] today.',
   );
 });
 
@@ -116,12 +120,25 @@ test('links an unambiguous alias with its visible text preserved', () => {
     fullNames: ['Grace Brown'],
     firstNames: [['Grace', 'Grace Brown']],
     aliases: [['Alex', 'Grace Brown']],
+    targets: [['Grace Brown', '05-Areas/People/External/Grace_Brown']],
   });
 
   assert.equal(
     autoLinkContent('Alex raised the risk.', registry),
-    '[[Grace Brown|Alex]] raised the risk.',
+    '[[05-Areas/People/External/Grace_Brown|Alex]] raised the risk.',
   );
+});
+
+test('falls back to display-name links when a hand-built registry has no targets', () => {
+  const { autoLinkContent } = loadScript();
+  const registry = makeRegistry({
+    fullNames: ['Sarah Chen', 'Grace Brown'],
+    firstNames: [['Sarah', 'Sarah Chen'], ['Grace', 'Grace Brown']],
+    aliases: [['Alex', 'Grace Brown']],
+  });
+
+  assert.equal(autoLinkContent('Sarah Chen spoke.', registry), '[[Sarah Chen]] spoke.');
+  assert.equal(autoLinkContent('Alex spoke.', registry), '[[Grace Brown|Alex]] spoke.');
 });
 
 test('does not link an ambiguous standalone first name', () => {
@@ -244,6 +261,28 @@ test('an existing wiki-link is untouched and consumes the person link for the fi
   assert.equal(autoLinkContent(input, registry), input);
 });
 
+test('uses an Internal person path and consumes existing links by path basename or alias label', () => {
+  const { autoLinkContent } = loadScript();
+  const registry = makeRegistry({
+    fullNames: ['Morgan Reed'],
+    firstNames: [['Morgan', 'Morgan Reed']],
+    aliases: [['Mo', 'Morgan Reed']],
+    targets: [['Morgan Reed', '05-Areas/People/Internal/Morgan_Reed']],
+  });
+  const input = 'Morgan Reed joined. Morgan followed up.';
+  const once = autoLinkContent(input, registry);
+
+  assert.equal(
+    once,
+    '[[05-Areas/People/Internal/Morgan_Reed|Morgan Reed]] joined. Morgan followed up.',
+  );
+  assert.equal(autoLinkContent(once, registry), once);
+  assert.equal(
+    autoLinkContent('Already [[elsewhere/person|mo]]. Later Morgan Reed spoke.', registry),
+    'Already [[elsewhere/person|mo]]. Later Morgan Reed spoke.',
+  );
+});
+
 test('never links the owner by full name, first name, or alias', () => {
   const { autoLinkContent } = loadScript();
   const registry = makeRegistry({
@@ -322,6 +361,7 @@ test('buildRegistry scans every nested People directory and rejects ambiguous al
   fs.writeFileSync(fixture.userProfileFile, 'name: "Test User"\n');
 
   const registry = buildRegistry({
+    VAULT_ROOT: fixture.vault,
     PEOPLE_DIR: fixture.peopleDir,
     USER_PROFILE_FILE: fixture.userProfileFile,
   });
@@ -334,6 +374,10 @@ test('buildRegistry scans every nested People directory and rejects ambiguous al
   assert.equal(registry.aliases.get('Lex'), 'Alex Smith');
   assert.equal(registry.aliases.has('Saz'), false);
   assert.equal(registry.ownerName, 'Test User');
+  assert.equal(
+    registry.targetsByFullName.get('Sarah Chen'),
+    '05-Areas/People/Community/Founders/Sarah_Chen',
+  );
 });
 
 test('dry-run prints proposed links and writes nothing', (t) => {
@@ -348,7 +392,10 @@ test('dry-run prints proposed links and writes nothing', (t) => {
   assert.equal(result.status, 0, `stdout:\n${result.stdout}\nstderr:\n${result.stderr}`);
   assert.equal(fs.readFileSync(notePath, 'utf-8'), original);
   assert.match(result.stdout, /\[dry-run\]/);
-  assert.match(result.stdout, /\[\[Sarah Chen\]\]/);
+  assert.match(
+    result.stdout,
+    /\[\[05-Areas\/People\/Community\/Sarah_Chen\|Sarah Chen\]\]/,
+  );
 });
 
 test('--today processes only notes in today\'s nested meeting folder', (t) => {
@@ -369,7 +416,10 @@ test('--today processes only notes in today\'s nested meeting folder', (t) => {
   const result = runCli(fixture.vault, ['--today']);
 
   assert.equal(result.status, 0, `stdout:\n${result.stdout}\nstderr:\n${result.stderr}`);
-  assert.equal(fs.readFileSync(todayNote, 'utf-8'), '[[Sarah Chen]] joined.\n');
+  assert.equal(
+    fs.readFileSync(todayNote, 'utf-8'),
+    '[[05-Areas/People/Community/Sarah_Chen|Sarah Chen]] joined.\n',
+  );
   assert.equal(fs.readFileSync(otherNote, 'utf-8'), 'Sarah Chen joined.\n');
   assert.equal(fs.readFileSync(prefixedButNotToday, 'utf-8'), 'Sarah Chen joined.\n');
 });
