@@ -220,18 +220,6 @@ Based on their answers:
    - Role
    - Company (if provided)
    - Meeting intelligence preferences (based on role or their choices)
-5. **Save to `.claude/vault-config.json`**:
-   ```json
-   {
-     "user": {
-       "name": "Their Name",
-       "role": "Product Manager",
-       "companySize": "scaling",
-       "pillars": ["priority1", "priority2", "priority3"]
-     },
-     "createdAt": "2026-01-22"
-   }
-   ```
 
 ### Step 7: Welcome Message
 

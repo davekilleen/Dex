@@ -854,7 +854,12 @@ After completing the main pathway flow (A, B, or C) but before showing the compl
 
 ### How to Run
 
-Derive the recommendations inline — the standalone concierge script is not shipped. Review which integrations are connected (calendar, Granola, task manager) against what the user's setup suggests they would value, and classify the gaps as high-value or moderate-value yourself.
+Execute the integration concierge:
+```bash
+node .claude/hooks/integration-concierge.cjs
+```
+
+Parse the JSON output for `high_value` and `moderate_value` recommendations.
 
 ### Presenting Recommendations
 

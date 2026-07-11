@@ -163,19 +163,6 @@ When the user expresses frustration or wishes during natural conversation, captu
 ### Automatic Person Page Updates
 When significant context about people is shared (role changes, relationships, project involvement), proactively update their person pages without being asked.
 
-### Auto-Link People in Generated Content
-After writing or updating any vault markdown file that mentions people (daily plans, week priorities, tasks, meeting notes), run the auto-link script as a post-processing step:
-
-```bash
-node .scripts/auto-link-people.cjs <file-path>
-```
-
-This converts known people names to `[[Firstname_Lastname|Name]]` WikiLinks using the people-engine registry. It handles full names, safe aliases, and unambiguous first names while skipping existing WikiLinks, frontmatter, and code blocks. The script also detects when a first name appears as part of an unknown full name (e.g., "Jessica Jolly") and avoids false-linking standalone uses of that first name.
-
-For batch processing of key files: `node .scripts/auto-link-people.cjs --today`
-
-The script is also available as a module: `const { autoLinkContent } = require('./.scripts/auto-link-people.cjs');`
-
 ### Communication Adaptation
 
 Adapt your tone and language based on user preferences in `System/user-profile.yaml` → `communication` section:
@@ -355,6 +342,14 @@ Dex continuously learns from usage and external sources through automatic checks
 After making significant system changes (new commands, CLAUDE.md edits, structural changes), update `CHANGELOG.md` before finishing the task.
 
 **No [Unreleased] section.** Everything in the changelog has already been pushed to GitHub — that IS the release. When adding an entry, give it a version number and today's date immediately. The `/dex-push` skill handles versioning at push time.
+
+**How to write an entry (house style).** The changelog is read by non-technical users deciding whether to update. Every entry must pass the "smart friend" test:
+
+- **Headline** = the benefit in plain words, not the mechanism. "Your meetings come back" beats "Fix RFC3339 created_after formatting". No jargon words in headlines (purge, refactor, registry, manifest, MCP, config).
+- Open with one sentence of context: what was frustrating before.
+- Then a **"What this fixes for you:"** bulleted list — each bullet starts with a bolded plain-English outcome, followed by one or two sentences of explanation. Name user-visible behavior ("Dex said X, now it says Y"), never internal function or file names.
+- Technical detail belongs in the PR description and commit message, not here. If a term needs explaining to a non-developer, either explain it in-line in one clause or leave it out.
+- Credit users who reported the issue when they did.
 
 
 ### Context Injection (Silent)

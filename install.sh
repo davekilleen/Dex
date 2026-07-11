@@ -199,17 +199,6 @@ PY
     echo "   MCP servers configured for: $CURRENT_PATH"
 fi
 
-# Sync MCP servers to Cursor and Claude Desktop
-echo ""
-echo "🔄 Syncing MCP servers to AI clients..."
-if [ -f "core/scripts/sync-mcp-configs.sh" ]; then
-    bash core/scripts/sync-mcp-configs.sh --quiet
-    echo "✅ Dex MCP servers synced to Cursor and Claude Desktop"
-else
-    echo "⚠️  Sync script not found - MCP servers may not be available in Cursor/Claude"
-    echo "   You can manually copy .mcp.json entries to your AI client configs"
-fi
-
 # Check for Granola (optional)
 echo ""
 if ls "$HOME/Library/Application Support/Granola/cache-v"*.json 1>/dev/null 2>&1; then
