@@ -8,9 +8,6 @@ hooks:
     - matcher: Write
       type: command
       command: "node .claude/hooks/post-meeting-person-update.cjs"
-  Stop:
-    - type: command
-      command: "node .claude/hooks/meeting-summary-generator.cjs"
 ---
 
 # Process Meetings
@@ -240,7 +237,7 @@ For each meeting with unextracted tasks:
      priority: "P2",  // default, P1 if "urgent" mentioned
      pillar: "{from meeting}",
      people: ["{participants}"],
-     source: "meeting:{meeting-path}"
+     source: "{meeting path}"
    )
    ```
 

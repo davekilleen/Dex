@@ -951,6 +951,17 @@ def build_people_index_data() -> Dict[str, Any]:
     return index
 
 
+def _people_tree_max_mtime() -> float:
+    """Return the newest modification time among People markdown pages."""
+    people_dir = _resolve_people_dir()
+    if not people_dir.exists():
+        return 0.0
+    return max(
+        (person_file.stat().st_mtime for person_file in people_dir.rglob('*.md')),
+        default=0.0,
+    )
+
+
 def lookup_person_data(name: str, company: str = None) -> Dict[str, Any]:
     """Fast person lookup using the index with fuzzy matching."""
 
@@ -962,14 +973,18 @@ def lookup_person_data(name: str, company: str = None) -> Dict[str, Any]:
         except (json.JSONDecodeError, OSError):
             pass
 
-    # Auto-rebuild if index is missing or stale (>24 hours old)
+    # Auto-rebuild if index is missing, older than a person page, or stale (>24h).
     if not index:
         index = build_people_index_data()
     else:
         built_at = index.get('built_at', '')
         try:
             built_dt = datetime.fromisoformat(built_at)
-            if (datetime.now() - built_dt) > timedelta(hours=24):
+            tree_mtime = _people_tree_max_mtime()
+            if built_dt.timestamp() < tree_mtime:
+                logger.info("People index predates a person page, rebuilding...")
+                index = build_people_index_data()
+            elif (datetime.now() - built_dt) > timedelta(hours=24):
                 logger.info("People index is stale (>24h), rebuilding...")
                 index = build_people_index_data()
         except (ValueError, TypeError):
@@ -3092,7 +3107,7 @@ async def handle_list_tools() -> list[types.Tool]:
         ),
         types.Tool(
             name="create_task",
-            description="Create a new task with schema validation. Requires title and pillar alignment. Optionally link to weekly priority, account, or people pages.",
+            description="Create a new task with schema validation. Requires title and pillar alignment. Optionally link to weekly priority, account, people, or source pages.",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -3107,7 +3122,8 @@ async def handle_list_tools() -> list[types.Tool]:
                     "goal": {"type": "string", "description": "Optional quarterly goal ID (e.g., Q3-2026-goal-2)"},
                     "on_duplicate": {"type": "string", "enum": ["fail", "force"], "default": "fail", "description": "Fail on similar tasks, or force creation past only the similarity check"},
                     "account": {"type": "string", "description": "Path to account page to link"},
-                    "people": {"type": "array", "items": {"type": "string"}, "description": "List of paths to people pages to link"}
+                    "people": {"type": "array", "items": {"type": "string"}, "description": "List of paths to people pages to link"},
+                    "source": {"type": "string", "description": "Vault-relative source file path to link"}
                 },
                 "required": ["title", "pillar"]
             }
@@ -3605,6 +3621,9 @@ async def _handle_call_tool_inner(
         on_duplicate = arguments.get('on_duplicate', 'fail')
         account = arguments.get('account', '')
         people = arguments.get('people', [])
+        source = arguments.get('source', '')
+        if source.startswith('meeting:'):
+            source = source[len('meeting:'):]
         
         # Validate pillar
         if pillar not in PILLARS:
@@ -3761,6 +3780,8 @@ async def _handle_call_tool_inner(
             file_refs.append(account if account.endswith('.md') else f"{account}.md")
         for person in people:
             file_refs.append(person if person.endswith('.md') else f"{person}.md")
+        if source:
+            file_refs.append(source if source.endswith('.md') else f"{source}.md")
         
         # Create the task entry with plain file references and task ID
         pillar_name = PILLARS[pillar]['name']
@@ -3826,6 +3847,10 @@ async def _handle_call_tool_inner(
             result_sync = sync_task_refs_for_page(person)
             if result_sync['success']:
                 synced_pages.append(person)
+        if source:
+            result_sync = sync_task_refs_for_page(source)
+            if result_sync['success']:
+                synced_pages.append(source)
         
         # Fire analytics event (silent, best-effort)
         try:
@@ -3849,7 +3874,8 @@ async def _handle_call_tool_inner(
                 "project": project if project else None,
                 "goal": goal if goal else None,
                 "account": account if account else None,
-                "people": people if people else None
+                "people": people if people else None,
+                "source": source if source else None
             },
             "synced_pages": synced_pages,
             "message": f"Task '{title}' created successfully under {section} with ID: {task_id}"
