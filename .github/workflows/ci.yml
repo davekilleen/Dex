@@ -38,6 +38,8 @@ jobs:
       - name: Documentation drift gate
         if: github.event_name == 'pull_request'
         run: bash scripts/check-doc-drift.sh
+      - name: Instructed-tool existence gate
+        run: python scripts/check-instructed-tools.py
       - name: Create vault directories
         run: python -c "from core import paths; from pathlib import Path; [getattr(paths, n).mkdir(parents=True, exist_ok=True) for n in dir(paths) if n.endswith('_DIR') and isinstance(getattr(paths, n), Path)]"
       - name: Generate paths.json
