@@ -15,7 +15,6 @@ from mcp.client.stdio import StdioServerParameters, stdio_client
 
 from core.mcp import work_server
 
-
 REPO_ROOT = Path(__file__).resolve().parents[2]
 TASK_TITLE = "Draft production path regression note"
 
