@@ -343,6 +343,14 @@ After making significant system changes (new commands, CLAUDE.md edits, structur
 
 **No [Unreleased] section.** Everything in the changelog has already been pushed to GitHub — that IS the release. When adding an entry, give it a version number and today's date immediately. The `/dex-push` skill handles versioning at push time.
 
+**How to write an entry (house style).** The changelog is read by non-technical users deciding whether to update. Every entry must pass the "smart friend" test:
+
+- **Headline** = the benefit in plain words, not the mechanism. "Your meetings come back" beats "Fix RFC3339 created_after formatting". No jargon words in headlines (purge, refactor, registry, manifest, MCP, config).
+- Open with one sentence of context: what was frustrating before.
+- Then a **"What this fixes for you:"** bulleted list — each bullet starts with a bolded plain-English outcome, followed by one or two sentences of explanation. Name user-visible behavior ("Dex said X, now it says Y"), never internal function or file names.
+- Technical detail belongs in the PR description and commit message, not here. If a term needs explaining to a non-developer, either explain it in-line in one clause or leave it out.
+- Credit users who reported the issue when they did.
+
 
 ### Context Injection (Silent)
 Person and company context hooks run automatically when reading files:

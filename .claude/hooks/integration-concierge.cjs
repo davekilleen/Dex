@@ -23,8 +23,12 @@
 const fs = require('fs');
 const path = require('path');
 
-const VAULT_ROOT = process.env.CLAUDE_PROJECT_DIR || process.env.VAULT_PATH || path.resolve(__dirname, '../..');
+const { loadPaths } = require('./paths.cjs');
+
+const _paths = loadPaths();
+const VAULT_ROOT = _paths.VAULT_ROOT || process.env.CLAUDE_PROJECT_DIR || process.env.VAULT_PATH || path.resolve(__dirname, '../..');
 const CONFIG_FILE = path.join(VAULT_ROOT, 'System', 'integrations', 'config.yaml');
+const ARCHIVES_BASENAME = path.basename(_paths.ARCHIVES_DIR);
 
 // ---------------------------------------------------------------------------
 // Integration signal definitions
@@ -144,7 +148,7 @@ function scanDirectory(dir, extensions, maxDepth = 3, depth = 0) {
     for (const entry of entries) {
       // Skip hidden dirs, node_modules, archives, System
       if (entry.name.startsWith('.') || entry.name === 'node_modules') continue;
-      if (entry.name === '07-Archives' || entry.name === 'z. Archive') continue;
+      if (entry.name === ARCHIVES_BASENAME || entry.name === 'z. Archive') continue;
 
       const fullPath = path.join(dir, entry.name);
       if (entry.isDirectory()) {
@@ -173,11 +177,11 @@ function scanForSignals() {
 
   // Scan markdown files across the vault
   const scanDirs = [
-    path.join(VAULT_ROOT, '00-Inbox'),
-    path.join(VAULT_ROOT, '04-Projects'),
-    path.join(VAULT_ROOT, '05-Areas'),
-    path.join(VAULT_ROOT, '03-Tasks'),
-    path.join(VAULT_ROOT, '02-Week_Priorities'),
+    _paths.INBOX_DIR,
+    _paths.PROJECTS_DIR,
+    _paths.AREAS_DIR,
+    _paths.TASKS_DIR,
+    _paths.WEEK_PRIORITIES_DIR,
   ];
 
   const files = [];
@@ -262,8 +266,8 @@ function scanForSignals() {
 
   // Email pattern scan (person pages only)
   const peopleDirs = [
-    path.join(VAULT_ROOT, '05-Areas', 'People', 'Internal'),
-    path.join(VAULT_ROOT, '05-Areas', 'People', 'External'),
+    path.join(_paths.PEOPLE_DIR, 'Internal'),
+    path.join(_paths.PEOPLE_DIR, 'External'),
   ];
 
   for (const dir of peopleDirs) {

@@ -7,7 +7,7 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
-## [1.26.0] - Dead config purge, people auto-linking paused, integration concierge ships (2026-07-11)
+## [1.26.0] - Cleanup: removed config that did nothing, shipped a missing helper (2026-07-11)
 
 The final batch from the dex-core audit — removing things that looked real but were wired to nothing, and shipping one thing that was real but never left the developer's machine.
 
