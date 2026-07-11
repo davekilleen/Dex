@@ -88,6 +88,8 @@ lib/
 lib64/
 !.scripts/lib/
 !.scripts/lib/**
+!.scripts/meeting-intel/lib/
+!.scripts/meeting-intel/lib/attendees.cjs
 parts/
 sdist/
 var/
