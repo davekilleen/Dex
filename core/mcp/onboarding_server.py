@@ -392,6 +392,10 @@ def create_user_profile(session_data: Dict) -> bool:
         profile['company'] = data.get('company', '')
         profile['company_size'] = data.get('company_size', '')
         profile['email_domain'] = data.get('email_domain', '')
+
+        if 'calendar' in data:
+            profile['work_email'] = data.get('work_email', '')
+            profile['calendar'] = data['calendar']
         
         # Update Obsidian mode (defaults to false)
         profile['obsidian_mode'] = data.get('obsidian_mode', False)
@@ -837,6 +841,36 @@ async def handle_list_tools() -> list[types.Tool]:
             }
         ),
         types.Tool(
+            name="save_calendar_selection",
+            description="Save the work calendar selected during onboarding, or defer calendar permission setup.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "work_calendar": {
+                        "type": "string",
+                        "description": "Exact work calendar name returned by Calendar.app",
+                        "default": ""
+                    },
+                    "work_email": {
+                        "type": "string",
+                        "description": "Work email when the selected calendar name is an email address",
+                        "default": ""
+                    },
+                    "calendar_count": {
+                        "type": "integer",
+                        "description": "Number of calendars returned by Calendar.app",
+                        "minimum": 0,
+                        "default": 0
+                    },
+                    "skipped": {
+                        "type": "boolean",
+                        "description": "Defer calendar setup until permissions can be checked later",
+                        "default": False
+                    }
+                }
+            }
+        ),
+        types.Tool(
             name="get_onboarding_status",
             description="Get current onboarding progress and completion status",
             inputSchema={
@@ -1116,6 +1150,83 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[types.Text
                 result = create_error_response(f"Invalid step number: {step_number}", suggestion="Step must be 1-6")
             
             return [types.TextContent(type="text", text=json.dumps(result, indent=2, cls=DateTimeEncoder))]
+
+        elif name == "save_calendar_selection":
+            skipped = arguments.get('skipped', False)
+            work_calendar = (arguments.get('work_calendar') or '').strip()
+            work_email = (arguments.get('work_email') or '').strip()
+            calendar_count = arguments.get('calendar_count', 0)
+
+            session = load_session()
+            if not session:
+                result = create_error_response(
+                    "No active session",
+                    suggestion="Call start_onboarding_session first"
+                )
+                return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
+
+            if skipped:
+                calendar = {"permissions_pending": True}
+                session['data'].pop('work_email', None)
+                session['data']['calendar'] = calendar
+                save_session(session)
+                result = create_success_response(
+                    {"calendar": calendar},
+                    "Calendar setup skipped for now. /dex-doctor will pick this up later."
+                )
+                return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
+
+            if not work_calendar:
+                result = create_error_response(
+                    "work_calendar is required unless calendar setup is skipped",
+                    field="work_calendar",
+                    suggestion="Choose a calendar name or set skipped=true"
+                )
+                return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
+
+            verification_note = ""
+            try:
+                from core.mcp.calendar_server import _get_calendar_list_result
+
+                calendar_list = _get_calendar_list_result()
+                if calendar_list.get("success"):
+                    available_calendars = calendar_list["calendars"]
+                    if work_calendar not in available_calendars:
+                        result = create_error_response(
+                            f"Calendar '{work_calendar}' was not found. Available calendars: "
+                            f"{', '.join(available_calendars)}",
+                            field="work_calendar",
+                            suggestion="Choose one of the available calendar names"
+                        )
+                        return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
+                else:
+                    verification_note = (
+                        " Couldn't verify against your live calendars — "
+                        "/dex-doctor will confirm later."
+                    )
+            except Exception:
+                verification_note = (
+                    " Couldn't verify against your live calendars — "
+                    "/dex-doctor will confirm later."
+                )
+
+            calendar = {
+                "work_calendar": work_calendar,
+                "calendar_count": calendar_count,
+                "lazy_load": True,
+            }
+            if work_email:
+                session['data']['work_email'] = work_email
+            else:
+                session['data'].pop('work_email', None)
+            session['data']['calendar'] = calendar
+            save_session(session)
+
+            result = create_success_response(
+                {"work_email": work_email, "calendar": calendar},
+                f"Work calendar saved.{verification_note}"
+            )
+            return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
         
         elif name == "get_onboarding_status":
             session = load_session()
@@ -1260,6 +1371,9 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[types.Text
                     'obsidian_mode': data.get('obsidian_mode', False),
                     'communication': data.get('communication', {})
                 }
+                if 'calendar' in data:
+                    profile_preview['work_email'] = data.get('work_email', '')
+                    profile_preview['calendar'] = data['calendar']
 
                 # Build preview of pillars.yaml content
                 pillars_preview = []
