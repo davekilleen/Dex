@@ -7,6 +7,18 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.34.0] - People in your notes now link themselves — safely (2026-07-11)
+
+People auto-linking was promised but never shipped (issue #46); this release finally delivers it with safeguards that keep links accurate.
+
+**What this fixes for you:**
+
+* **People become connected on their first useful mention.** Full names, unique aliases, and safe unique first names now create backlinks to the right person page without cluttering every mention.
+* **Dex never guesses on ambiguous names.** Shared first names, common English words, and names that could refer to someone unknown stay as plain text.
+* **Your identity and carefully formatted text stay untouched.** Your own name, existing links, note metadata, code, and Markdown links are preserved, and running the feature again adds nothing extra.
+
+---
+
 ## [1.33.0] - 'Off' and 'broken' now mean different things — everywhere (2026-07-11)
 
 Dex could describe an optional feature as broken in one place and merely disconnected in another; this release gives those responses one shared meaning.
