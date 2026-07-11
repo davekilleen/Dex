@@ -23,6 +23,19 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
+# Find Node.js path
+find_node() {
+  if command -v node >/dev/null 2>&1; then
+    command -v node
+  elif [[ -f "/opt/homebrew/bin/node" ]]; then
+    echo "/opt/homebrew/bin/node"
+  elif [[ -f "/usr/local/bin/node" ]]; then
+    echo "/usr/local/bin/node"
+  else
+    echo ""
+  fi
+}
+
 echo "=== Dex Learning Automation Installer ==="
 echo ""
 
@@ -66,20 +79,30 @@ VAULT_ROOT="$(dirname "$SCRIPT_DIR")"
 echo "Vault path: $VAULT_ROOT"
 echo ""
 
+NODE_PATH="$(find_node)"
+
 # Create LaunchAgents directory if it doesn't exist
 mkdir -p "$LAUNCH_AGENTS_DIR"
 
 # Copy plist files WITH path substitution
-sed "s|{{VAULT_PATH}}|$VAULT_ROOT|g" "$SCRIPT_DIR/$CHANGELOG_PLIST" > "$LAUNCH_AGENTS_DIR/$CHANGELOG_PLIST"
+if [[ -n "$NODE_PATH" ]]; then
+  sed -e "s|{{VAULT_PATH}}|$VAULT_ROOT|g" -e "s|{{NODE_PATH}}|$NODE_PATH|g" \
+    "$SCRIPT_DIR/$CHANGELOG_PLIST" > "$LAUNCH_AGENTS_DIR/$CHANGELOG_PLIST"
+  echo -e "${GREEN}✓${NC} Installed changelog checker plist (Node.js: $NODE_PATH)"
+else
+  echo -e "${RED}✗${NC} Node.js not found; skipping changelog checker installation" >&2
+fi
 sed "s|{{VAULT_PATH}}|$VAULT_ROOT|g" "$SCRIPT_DIR/$LEARNING_PLIST" > "$LAUNCH_AGENTS_DIR/$LEARNING_PLIST"
-echo -e "${GREEN}✓${NC} Installed plist files to $LAUNCH_AGENTS_DIR (with your vault path)"
+echo -e "${GREEN}✓${NC} Installed learning review plist to $LAUNCH_AGENTS_DIR (with your vault path)"
 
 # Load changelog checker
-if launchctl list | grep -q "com.dex.changelog-checker"; then
-  launchctl unload "$LAUNCH_AGENTS_DIR/$CHANGELOG_PLIST"
+if [[ -n "$NODE_PATH" ]]; then
+  if launchctl list | grep -q "com.dex.changelog-checker"; then
+    launchctl unload "$LAUNCH_AGENTS_DIR/$CHANGELOG_PLIST"
+  fi
+  launchctl load "$LAUNCH_AGENTS_DIR/$CHANGELOG_PLIST"
+  echo -e "${GREEN}✓${NC} Loaded changelog checker (runs every 6 hours)"
 fi
-launchctl load "$LAUNCH_AGENTS_DIR/$CHANGELOG_PLIST"
-echo -e "${GREEN}✓${NC} Loaded changelog checker (runs every 6 hours)"
 
 # Load learning review
 if launchctl list | grep -q "com.dex.learning-review"; then
@@ -92,7 +115,11 @@ echo ""
 echo -e "${GREEN}Installation complete!${NC}"
 echo ""
 echo "The following background jobs are now active:"
-echo "  • Changelog Checker: Checks for Claude Code updates every 6 hours"
+if [[ -n "$NODE_PATH" ]]; then
+  echo "  • Changelog Checker: Checks for Claude Code updates every 6 hours"
+else
+  echo "  • Changelog Checker: Not installed (Node.js not found)"
+fi
 echo "  • Learning Review: Prompts for learning review daily at 5pm"
 echo ""
 echo "Logs will be written to:"

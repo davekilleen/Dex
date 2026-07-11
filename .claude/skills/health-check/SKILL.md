@@ -231,7 +231,7 @@ For each issue, show the full technical context (this is the one time you show t
 Issue #1: Granola MCP — missing package
 
   Technical error: ModuleNotFoundError: No module named 'granola_server'
-  Server config: dex-granola-mcp in .mcp.json
+  Server config: granola-mcp in .mcp.json
   Last working: 2 days ago
 
   Fix: pip install -e dex-core
@@ -376,7 +376,7 @@ Don't go into fix mode unless asked.
 
 ### Granola Check
 
-Granola meeting sync uses the desktop app's stored credentials automatically. As part of the health check, verify that Granola's credentials file exists (supabase.json in Granola's app data directory). If missing, note that Granola isn't installed or the user isn't signed in.
+Granola sync uses the official Granola API with an API key — there is no local-file fallback. Verify a key is configured: `GRANOLA_API_KEY` in the environment or in the vault-root `.env`. If no key is set, report that Granola isn't connected and point to `/granola-setup`. Do NOT check for `supabase.json` or any Granola desktop-app file — the shipping connector never reads them, so their absence says nothing about whether Granola works.
 
 ---
 

@@ -417,6 +417,7 @@ def update_task_status_everywhere(task_id: str, completed: bool) -> Dict[str, An
         }
     
     updated_files = []
+    failed_files = []
     completion_timestamp = _tz_now().strftime('%Y-%m-%d %H:%M')
     
     for instance in instances:
@@ -455,10 +456,14 @@ def update_task_status_everywhere(task_id: str, completed: bool) -> Dict[str, An
                 })
         except Exception as e:
             logger.error(f"Error updating {instance['file']}: {e}")
+            failed_files.append({
+                'file': instance['file'],
+                'error': str(e)
+            })
             continue
-    
-    return {
-        'success': True,
+
+    result = {
+        'success': len(failed_files) == 0,
         'task_id': task_id,
         'title': instances[0]['title'] if instances else '',
         'status': 'completed' if completed else 'not_completed',
@@ -466,6 +471,19 @@ def update_task_status_everywhere(task_id: str, completed: bool) -> Dict[str, An
         'updated_files': updated_files,
         'instances_found': len(instances)
     }
+
+    if failed_files:
+        failures = '; '.join(
+            f"{failure['file']}: {failure['error']}"
+            for failure in failed_files
+        )
+        result['failed_files'] = failed_files
+        result['error'] = (
+            f"task updated in {len(updated_files)} of {len(instances)} locations; "
+            f"failures: {failures}"
+        )
+
+    return result
 
 def get_pillar_ids() -> List[str]:
     """Get list of valid pillar IDs"""
@@ -3662,6 +3680,9 @@ async def _handle_call_tool_inner(
             # If task has an ID, use the sync function
             if task.get('task_id'):
                 result = update_task_status_everywhere(task['task_id'], completed)
+
+                if not result['success']:
+                    return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
                 
                 # Also sync Related Tasks sections
                 synced_pages = propagate_task_status_to_refs(task['title'], completed)

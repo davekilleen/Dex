@@ -177,6 +177,25 @@ if [ ! -f .mcp.json ]; then
     else
         sed "s|{{VAULT_PATH}}|$CURRENT_PATH|g" System/.mcp.json.example > .mcp.json
     fi
+
+    if command -v qmd &> /dev/null; then
+        "$PYTHON_CMD" - <<'PY'
+import json
+from pathlib import Path
+
+mcp_path = Path(".mcp.json")
+config = json.loads(mcp_path.read_text(encoding="utf-8"))
+config.setdefault("mcpServers", {})["qmd"] = {
+    "command": "qmd",
+    "args": ["mcp"],
+}
+mcp_path.write_text(json.dumps(config, indent=2) + "\n", encoding="utf-8")
+PY
+        echo "   qmd MCP server added"
+    else
+        echo "   semantic search not installed — run /enable-semantic-search to add it later"
+    fi
+
     echo "   MCP servers configured for: $CURRENT_PATH"
 fi
 

@@ -28,6 +28,8 @@ After processing meetings, check for tasks captured from phone that haven't been
 Use: reminders_list_items(list_name="Dex Inbox")
 ```
 
+**If the tool is unavailable or errors** (Apple Reminders phone-capture is optional and may not be set up on this machine): skip this step silently — do not surface an error for a feature the user never enabled.
+
 If items found:
 - Surface them: "📱 **Phone captures not yet triaged** (X items in Dex Inbox)"
 - Run triage flow: infer pillar, confirm with user, create task, mark Reminder complete
@@ -470,8 +472,8 @@ After synthesis:
 
 | Integration | MCP Server | Tools Used |
 |-------------|------------|------------|
-| Work | dex-work-mcp | `list_tasks`, `get_week_progress`, `get_quarterly_goals`, `get_goal_status` |
-| Calendar | dex-calendar-mcp | `calendar_get_events_with_attendees` |
+| Work | work-mcp | `list_tasks`, `get_week_progress`, `get_quarterly_goals`, `get_goal_status` |
+| Calendar | calendar-mcp | `calendar_get_events_with_attendees` |
 | Improvements | dex-improvements-mcp | `list_ideas` |
 | Analytics | dex-analytics | `track_event` |
 

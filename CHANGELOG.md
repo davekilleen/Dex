@@ -7,6 +7,32 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.24.0] - Honest task completion, opt-in search registration, calendar guidance (2026-07-11)
+
+Final code batch from the dex-core audit.
+
+**What this fixes for you:**
+
+* **"Task marked done" now means it.** If updating a completed task failed in some of its locations, Dex used to report success anyway. It now tells you exactly which locations updated and which failed.
+* **No more phantom "failing server" for search you never enabled.** Semantic search (qmd) is no longer pre-registered for everyone; it registers when you actually enable it (`/enable-semantic-search`), or automatically at install if it's already on your machine.
+* **Empty calendar results now explain themselves.** If your configured work calendar doesn't match any real calendar, Dex says so and lists the calendars it can see — instead of silently returning nothing.
+* **The safety guard actually guards.** A shipped protection hook (blocks destructive commands) was never registered, so it never ran. It's now wired in.
+
+---
+
+## [1.23.0] - The health system tells the truth (2026-07-11)
+
+Fixes from the full dex-core audit (every finding independently verified before fixing).
+
+**What this fixes for you:**
+
+* **Dex's per-session health check now actually runs.** It was silently skipped on every real install — it looked for a folder layout that only existed on the developer's machine. Now it runs at session start, stays silent when everything is healthy, and says so if it can't run at all.
+* **The background-job checker no longer looks away from real breakage.** It used to skip system paths entirely, which hid the exact class of failure users hit (a launch agent pointing at a Node.js that isn't there). It now checks the interpreter of every Dex launch agent directly.
+* **The changelog-checker background job works on Apple Silicon.** Its launch agent hardcoded an Intel-only Node.js path, so on modern Macs it failed every 6 hours forever, silently. The installer now detects where Node.js actually is — and refuses to install a job that can't run.
+* **Instructions match reality (shipped in 1.22.x line).** Ten instruction-layer fixes: semantic-search tool names in the daily skills, the Granola health check testing a file the connector never reads, ungated optional Apple Reminders calls, migration-script references to a file that doesn't ship, and more.
+
+---
+
 ## [1.22.0] - Remove Pi integration from the core distributable (2026-07-10)
 
 Dex no longer bundles the Pi coding-agent integration in the core vault. The Pi

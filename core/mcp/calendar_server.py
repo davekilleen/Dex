@@ -32,6 +32,7 @@ import re
 import subprocess
 import sys
 from datetime import date, datetime, timedelta
+from functools import cache
 from pathlib import Path
 from typing import Optional
 
@@ -117,7 +118,6 @@ def get_default_work_calendar() -> str:
 DEFAULT_WORK_CALENDAR = get_default_work_calendar()
 logger.info(f"Default work calendar: {DEFAULT_WORK_CALENDAR}")
 
-
 # Custom JSON encoder for handling date/datetime objects
 class DateTimeEncoder(json.JSONEncoder):
     def default(self, obj):
@@ -167,6 +167,65 @@ def run_shell_script(script_name: str, *args) -> tuple[bool, str]:
         return False, f"Script '{script_name}' timed out after 120 seconds"
     except Exception as e:
         return False, str(e)
+
+
+def _get_calendar_list_result() -> dict:
+    """Return the same calendar-list payload exposed by the MCP tool."""
+    success, output = run_shell_script("calendar_eventkit.py", "list")
+
+    if not success:
+        return {"success": False, "error": output}
+
+    try:
+        calendars = json.loads(output)
+        calendar_names = [calendar["title"] for calendar in calendars]
+        return {
+            "success": True,
+            "calendars": calendar_names,
+            "count": len(calendar_names),
+            "details": calendars,
+        }
+    except json.JSONDecodeError as e:
+        return {"success": False, "error": f"JSON parse error: {e}"}
+
+
+@cache
+def _get_available_calendar_names() -> Optional[list[str]]:
+    """List calendar names once per process for empty-query validation."""
+    try:
+        result = _get_calendar_list_result()
+    except Exception:
+        return None
+
+    if not result.get("success"):
+        return None
+
+    return result["calendars"]
+
+
+def _add_missing_calendar_warning(
+    result: dict,
+    calendar_name: str,
+    *,
+    event_count: int,
+) -> dict:
+    """Warn when an empty query targeted a calendar that does not exist."""
+    if not result.get("success") or event_count != 0:
+        return result
+
+    try:
+        calendar_names = _get_available_calendar_names()
+    except Exception:
+        return result
+
+    if calendar_names is not None and calendar_name not in calendar_names:
+        result["warning"] = (
+            f"Calendar '{calendar_name}' was not found. Available calendars: "
+            f"{calendar_names}. Set calendar.work_calendar in "
+            "System/user-profile.yaml."
+        )
+
+    return result
 
 
 def parse_applescript_list(output: str) -> list[str]:
@@ -581,25 +640,7 @@ async def _handle_call_tool_inner(
     arguments = arguments or {}
 
     if name == "calendar_list_calendars":
-        # Use fast EventKit
-        success, output = run_shell_script("calendar_eventkit.py", "list")
-        
-        if success:
-            try:
-                calendars = json.loads(output)
-                # Extract just the titles for backward compatibility
-                calendar_names = [cal["title"] for cal in calendars]
-                result = {
-                    "success": True,
-                    "calendars": calendar_names,
-                    "count": len(calendar_names),
-                    "details": calendars  # Full details for advanced use
-                }
-            except json.JSONDecodeError as e:
-                result = {"success": False, "error": f"JSON parse error: {e}"}
-        else:
-            result = {"success": False, "error": output}
-        
+        result = _get_calendar_list_result()
         return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
     
     elif name == "calendar_get_events":
@@ -658,7 +699,12 @@ async def _handle_call_tool_inner(
                 result = {"success": False, "error": f"JSON parse error: {e}"}
         else:
             result = {"success": False, "error": output}
-        
+
+        result = _add_missing_calendar_warning(
+            result,
+            calendar_name,
+            event_count=result.get("count", -1),
+        )
         return [types.TextContent(type="text", text=json.dumps(result, indent=2, cls=DateTimeEncoder))]
     
     elif name == "calendar_get_today":
@@ -743,7 +789,12 @@ async def _handle_call_tool_inner(
                 result = {"success": False, "error": f"JSON parse error: {e}"}
         else:
             result = {"success": False, "error": output}
-        
+
+        result = _add_missing_calendar_warning(
+            result,
+            calendar_name,
+            event_count=result.get("count", -1),
+        )
         return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
     
     elif name == "calendar_delete_event":
@@ -777,7 +828,6 @@ async def _handle_call_tool_inner(
             }
         else:
             result = {"success": False, "error": output}
-        
         return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
     
     elif name == "calendar_get_next_event":
@@ -806,7 +856,12 @@ async def _handle_call_tool_inner(
                 result = {"success": False, "error": f"JSON parse error: {e}"}
         else:
             result = {"success": False, "error": output}
-        
+
+        result = _add_missing_calendar_warning(
+            result,
+            calendar_name,
+            event_count=0 if result.get("next_event") is None else 1,
+        )
         return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
     
     elif name == "calendar_get_events_with_attendees":
@@ -857,7 +912,12 @@ async def _handle_call_tool_inner(
                 result = {"success": False, "error": f"JSON parse error: {e}"}
         else:
             result = {"success": False, "error": output}
-        
+
+        result = _add_missing_calendar_warning(
+            result,
+            calendar_name,
+            event_count=result.get("count", -1),
+        )
         return [types.TextContent(type="text", text=json.dumps(result, indent=2, cls=DateTimeEncoder))]
     
     # --- Apple Reminders handlers ---

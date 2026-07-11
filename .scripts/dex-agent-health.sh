@@ -68,16 +68,15 @@ for plist in "$AGENTS_DIR"/com.dex.*.plist "$AGENTS_DIR"/com.claudesidian.*.plis
 
     NAME="$(basename "$plist" .plist)"
 
+    INTERPRETER="$(plutil -extract ProgramArguments.0 raw "$plist" 2>/dev/null || true)"
+
     # Extract all paths from the plist
     PATHS_IN_PLIST=$(grep '<string>' "$plist" | sed 's/.*<string>//;s/<\/string>.*//' | grep "^/" | sort -u)
 
     STALE=false
     STALE_PATH=""
+    INTERPRETER_STALE=false
     for p in $PATHS_IN_PLIST; do
-        # Skip system paths
-        case "$p" in
-            /usr/*|/bin/*|/opt/*) continue ;;
-        esac
         # Check if this path exists
         if [ ! -e "$p" ] && [ ! -e "$(dirname "$p")" ]; then
             STALE=true
@@ -86,9 +85,18 @@ for plist in "$AGENTS_DIR"/com.dex.*.plist "$AGENTS_DIR"/com.claudesidian.*.plis
         fi
     done
 
+    if [ -n "$INTERPRETER" ] && [ ! -x "$INTERPRETER" ]; then
+        INTERPRETER_STALE=true
+        STALE=true
+    fi
+
     if $STALE; then
         echo -e "${RED}✗${NC} $NAME"
-        echo "    Stale path: $STALE_PATH"
+        if $INTERPRETER_STALE; then
+            echo "    Interpreter not found/executable: $INTERPRETER"
+        else
+            echo "    Stale path: $STALE_PATH"
+        fi
         STALE_COUNT=$((STALE_COUNT + 1))
 
         if $FIX_MODE; then

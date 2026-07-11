@@ -47,8 +47,8 @@ else:
 Say: "Hold on... analyzing your calendar and meetings. 🔍"
 
 **Execute analysis:**
-1. Call calendar MCP: `get_events_for_week()` 
-2. Call granola MCP: `get_recent_meetings(days=7)`
+1. Call calendar MCP: `calendar_get_events` for the next 7 days 
+2. Call granola MCP: `granola_get_recent_meetings(days_back=7)`
 3. Analyze the data
 
 **Then reveal what you found:**
@@ -854,12 +854,7 @@ After completing the main pathway flow (A, B, or C) but before showing the compl
 
 ### How to Run
 
-Execute the integration concierge:
-```bash
-node .Codex/hooks/integration-concierge.cjs
-```
-
-Parse the JSON output for `high_value` and `moderate_value` recommendations.
+Derive the recommendations inline — the standalone concierge script is not shipped. Review which integrations are connected (calendar, Granola, task manager) against what the user's setup suggests they would value, and classify the gaps as high-value or moderate-value yourself.
 
 ### Presenting Recommendations
 

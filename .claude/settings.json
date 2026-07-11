@@ -33,6 +33,10 @@
         "hooks": [
           {
             "type": "command",
+            "command": "bash .claude/hooks/dex-safety-guard.sh"
+          },
+          {
+            "type": "command",
             "command": "node .claude/hooks/ensure-mcp-user-scope.cjs"
           }
         ]
