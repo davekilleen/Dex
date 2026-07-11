@@ -226,16 +226,40 @@ fi
 # dirs (.scripts/.claude/core) — prose mentions of a filename are ignored.
 echo ""
 echo "✓ Checking referenced runnable scripts exist..."
+# Keep in sync with core/tests/test_skill_integrity.py MISSING_RUNNABLE_ALLOWLIST.
+MISSING_RUNNABLE_ALLOWLIST=(
+    ".scripts/improve-prompt.cjs"
+    ".scripts/mcp/gmail-mcp.js"
+)
 MISSING_RUN=$(git grep -hoE '(node|bash|sh|python3?)[[:space:]]+(\./)?(\.scripts|\.claude|core)/[A-Za-z0-9_./-]+\.(cjs|js|sh|py)' -- '*.md' 2>/dev/null \
     | grep -oE '(\.scripts|\.claude|core)/[A-Za-z0-9_./-]+\.(cjs|js|sh|py)' \
     | sort -u | while read -r p; do if [ ! -e "$p" ]; then echo "$p"; fi; done || true)
+MISSING_REQUIRED_RUN=""
 if [ -n "$MISSING_RUN" ]; then
-    echo "  ⚠️  WARNING: Docs tell Dex to run scripts that don't exist:"
-    echo "$MISSING_RUN" | sed 's/^/     /'
+    while IFS= read -r p; do
+        ALLOWLISTED=false
+        for allowed in "${MISSING_RUNNABLE_ALLOWLIST[@]}"; do
+            if [ "$p" = "$allowed" ]; then
+                ALLOWLISTED=true
+                break
+            fi
+        done
+        if [ "$ALLOWLISTED" = true ]; then
+            echo "  ℹ️  INFO: Optional referenced script is not shipped: $p"
+        elif [ -z "$MISSING_REQUIRED_RUN" ]; then
+            MISSING_REQUIRED_RUN="$p"
+        else
+            MISSING_REQUIRED_RUN="${MISSING_REQUIRED_RUN}"$'\n'"$p"
+        fi
+    done <<< "$MISSING_RUN"
+fi
+if [ -n "$MISSING_REQUIRED_RUN" ]; then
+    echo "  ❌ ERROR: Docs tell Dex to run scripts that don't exist:"
+    echo "$MISSING_REQUIRED_RUN" | sed 's/^/     /'
     echo "     Either ship the script or remove the instruction."
-    WARNINGS=$((WARNINGS + 1))
+    ERRORS=$((ERRORS + 1))
 else
-    echo "  ✅ All referenced runnable scripts exist"
+    echo "  ✅ All required referenced runnable scripts exist"
 fi
 
 # Check 16: A real release build contains no test suites.

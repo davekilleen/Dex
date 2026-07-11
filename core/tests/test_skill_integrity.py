@@ -19,6 +19,8 @@ RUNNABLE_REFERENCE = re.compile(
     r"(?P<path>(?:[A-Za-z0-9_.-]+/)+[A-Za-z0-9_./-]+\.(?:cjs|js|mjs|sh|py))"
 )
 
+# Keep in sync with Check 15's MISSING_RUNNABLE_ALLOWLIST in
+# scripts/verify-distribution.sh.
 # These are intentionally not distribution-owned implementations:
 # - prompt-improver checks for the optional script and documents two fallbacks.
 # - dex-add-mcp shows a user-managed Gmail MCP command as an example.

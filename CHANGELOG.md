@@ -7,6 +7,18 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.32.0] - Dex can no longer tell you to use tools that don't exist (2026-07-11)
+
+Some instructions could send you looking for a tool or runnable helper that was never included, leaving you stuck at the moment Dex was supposed to help.
+
+**What this fixes for you:**
+
+* **Tool instructions now match what Dex can actually use.** Every release checks each named tool against what Dex ships or deliberately supports through an installed connection, so stale or mistyped names stop the release.
+* **Broken run commands now block a release.** If instructions point to a missing required helper, the release fails instead of passing with a warning; truly optional helpers remain clearly identified.
+* **Skill-creation guidance no longer points to a missing file.** The shipped guidance now points to the skill creator that actually exists.
+
+---
+
 ## [1.31.0] - Dex asks which calendar is yours instead of guessing (2026-07-11)
 
 Empty calendar results were traced back to onboarding guessing a work calendar name that did not match the names Apple Calendar actually exposes.
