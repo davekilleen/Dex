@@ -4,9 +4,11 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import plistlib
+import py_compile
 import re
 import shlex
 import shutil
@@ -28,6 +30,8 @@ from core import paths
 from core.utils import preflight
 
 VERDICTS = frozenset({"OK", "OFF", "BROKEN", "UNKNOWN"})
+DOCTOR_SAFE_PATH = "/usr/bin:/bin:/usr/sbin:/sbin"
+DOCTOR_GIT_CANDIDATES = (Path("/usr/bin/git"), Path("/bin/git"))
 
 
 @dataclass(frozen=True)
@@ -143,6 +147,17 @@ QUICK_CHECKS = (
     CheckDefinition("jobs.loaded", "Background jobs", "_probe_jobs_loaded"),
     CheckDefinition("jobs.fresh", "Background job freshness", "_probe_jobs_fresh"),
     CheckDefinition("preflight.queue", "Preflight health", "_probe_preflight_queue"),
+    CheckDefinition(
+        "customizations.skills",
+        "Skill customizations",
+        "_probe_customization_skills",
+    ),
+    CheckDefinition(
+        "customizations.mcp",
+        "MCP customizations",
+        "_probe_customization_mcp",
+    ),
+    CheckDefinition("core.drift", "Shipped-file drift", "_probe_core_drift"),
     CheckDefinition("doctor.self", "Doctor instruments", "_probe_doctor_self"),
 )
 
@@ -152,6 +167,7 @@ DEEP_CHECKS = (
     CheckDefinition("qmd.live", "Semantic search", "_probe_qmd_live"),
     CheckDefinition("integrations.enabled", "Enabled integrations", "_probe_integrations_enabled"),
     CheckDefinition("mcp.importable", "MCP imports", "_probe_mcp_importable"),
+    CheckDefinition("smoke.journeys", "End-to-end smoke journeys", "_probe_smoke_journeys"),
 )
 
 
@@ -992,6 +1008,496 @@ def _probe_preflight_queue(context: DoctorContext) -> ProbeResult:
     return ProbeResult("OK", "Preflight completed with no server or queued errors")
 
 
+def _display_vault_path(context: DoctorContext, path: Path) -> str:
+    try:
+        return path.relative_to(context.vault_root).as_posix()
+    except ValueError:
+        return str(path)
+
+
+def _unsafe_customization_path(context: DoctorContext, path: Path) -> str | None:
+    """Return why *path* must not be read, without resolving symlinks."""
+    try:
+        relative = path.relative_to(context.vault_root)
+    except ValueError:
+        return "is outside the vault"
+    if any(part in {"", ".", ".."} for part in relative.parts):
+        return "contains an unsafe path component"
+    if any(
+        part.lower() == ".env"
+        or part.lower().startswith(".env.")
+        or "credential" in part.lower()
+        for part in relative.parts
+    ):
+        return "is credential-sensitive"
+    current = context.vault_root
+    for part in relative.parts:
+        current /= part
+        if current.is_symlink():
+            return "is symlinked"
+    return None
+
+
+def _probe_customization_skills(context: DoctorContext) -> ProbeResult:
+    from core.utils.validators import validate_skill_frontmatter
+
+    skills_root = context.vault_root / ".claude" / "skills"
+    root_safety = _unsafe_customization_path(context, skills_root)
+    if root_safety:
+        relative = _display_vault_path(context, skills_root)
+        return ProbeResult(
+            "UNKNOWN",
+            f"{relative} {root_safety} and was not read for safety; fix or remove {relative}",
+        )
+    skill_directories = sorted(
+        (path for path in skills_root.iterdir() if path.is_symlink() or path.is_dir()),
+        key=lambda path: path.name,
+    ) if skills_root.is_dir() else []
+    failures = []
+    safety_findings = []
+    custom_count = 0
+    for skill_directory in skill_directories:
+        skill_path = skill_directory / "SKILL.md"
+        relative = _display_vault_path(context, skill_path)
+        is_custom = skill_directory.name.endswith("-custom")
+        custom_count += int(is_custom)
+        safety_reason = _unsafe_customization_path(context, skill_path)
+        if safety_reason:
+            if is_custom:
+                safety_findings.append(
+                    f"user customization {relative} {safety_reason} and was not read for safety; "
+                    f"fix or remove {relative}"
+                )
+            else:
+                safety_findings.append(
+                    f"shipped skill {relative} {safety_reason} and was not read for safety; "
+                    f"run /dex-update to restore {relative}"
+                )
+            continue
+        errors = validate_skill_frontmatter(skill_path)
+        if not errors:
+            continue
+        issue = "; ".join(_one_line(error) for error in errors)
+        if is_custom:
+            failures.append(
+                f"user customization {relative} is invalid ({issue}); fix or remove {relative}"
+            )
+        else:
+            failures.append(
+                f"shipped skill {relative} is invalid ({issue}); run /dex-update to restore {relative}"
+            )
+
+    findings = [*failures, *safety_findings]
+    if findings:
+        return ProbeResult("BROKEN" if failures else "UNKNOWN", "; ".join(findings))
+    shipped_count = len(skill_directories) - custom_count
+    custom_noun = "customization" if custom_count == 1 else "customizations"
+    shipped_noun = "skill" if shipped_count == 1 else "skills"
+    return ProbeResult(
+        "OK",
+        f"Validated {custom_count} user {custom_noun} and {shipped_count} shipped {shipped_noun}",
+    )
+
+
+def _customization_mcp_source(context: DoctorContext) -> tuple[Path | None, bool]:
+    live_config = _mcp_config_path(context)
+    if live_config.exists() or live_config.is_symlink():
+        return live_config, False
+    shipped_example = context.vault_root / "System" / ".mcp.json.example"
+    if shipped_example.exists() or shipped_example.is_symlink():
+        return shipped_example, True
+    return None, False
+
+
+def _mcp_customization_failure(
+    context: DoctorContext,
+    config_path: Path,
+    issue: str,
+    *,
+    shipped_example: bool,
+) -> ProbeResult:
+    relative = _display_vault_path(context, config_path)
+    if shipped_example:
+        guidance = f"run /dex-update to restore {relative}"
+    else:
+        guidance = f"fix your customization in {relative}"
+    return ProbeResult("BROKEN", f"{relative} is invalid ({issue}); {guidance}")
+
+
+def _probe_customization_mcp(context: DoctorContext) -> ProbeResult:
+    from core.utils.validators import validate_mcp_config
+
+    config_path, shipped_example = _customization_mcp_source(context)
+    if config_path is None:
+        return ProbeResult("OK", "No live MCP configuration is present; 0 custom entries require validation")
+
+    config_safety = _unsafe_customization_path(context, config_path)
+    if config_safety:
+        relative = _display_vault_path(context, config_path)
+        guidance = (
+            f"run /dex-update to restore {relative}"
+            if shipped_example
+            else f"fix your customization in {relative}"
+        )
+        return ProbeResult(
+            "UNKNOWN",
+            f"{relative} {config_safety} and was not read or executed for safety; {guidance}",
+        )
+
+    try:
+        config = json.loads(config_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        return _mcp_customization_failure(
+            context,
+            config_path,
+            _one_line(error),
+            shipped_example=shipped_example,
+        )
+
+    structural_errors = validate_mcp_config(config)
+    if shipped_example:
+        structural_errors = [
+            error for error in structural_errors if "unresolved placeholder" not in error
+        ]
+    if structural_errors:
+        return _mcp_customization_failure(
+            context,
+            config_path,
+            "; ".join(_one_line(error) for error in structural_errors),
+            shipped_example=shipped_example,
+        )
+
+    servers = config["mcpServers"]
+    custom_entries = [
+        (name, entry)
+        for name, entry in servers.items()
+        if isinstance(name, str) and name.startswith("custom-")
+    ]
+    compile_failures = []
+    safety_findings = []
+    with tempfile.TemporaryDirectory(prefix="dex-doctor-mcp-compile-") as temporary:
+        compile_root = Path(temporary)
+        compile_index = 0
+        for name, entry in custom_entries:
+            python_targets = sorted(
+                {
+                    target
+                    for target in _entry_targets(entry, context)
+                    if target.suffix == ".py"
+                },
+                key=str,
+            )
+            for target in python_targets:
+                relative_target = _display_vault_path(context, target)
+                safety_reason = _unsafe_customization_path(context, target)
+                if safety_reason:
+                    safety_findings.append(
+                        f"{name} target {relative_target} {safety_reason} and was not compiled or "
+                        "executed for safety"
+                    )
+                    continue
+                if not target.is_file():
+                    compile_failures.append(f"{name} target {relative_target} is missing")
+                    continue
+                compile_index += 1
+                cfile = compile_root / f"target-{compile_index}.pyc"
+                try:
+                    py_compile.compile(
+                        str(target),
+                        cfile=str(cfile),
+                        doraise=True,
+                    )
+                except (OSError, py_compile.PyCompileError) as error:
+                    compile_failures.append(
+                        f"{name} target {relative_target} does not compile ({_one_line(error)})"
+                    )
+
+    if compile_failures:
+        issues = [*compile_failures, *safety_findings]
+        return _mcp_customization_failure(
+            context,
+            config_path,
+            "; ".join(issues),
+            shipped_example=shipped_example,
+        )
+
+    if safety_findings:
+        relative = _display_vault_path(context, config_path)
+        guidance = (
+            f"run /dex-update to restore {relative}"
+            if shipped_example
+            else f"fix your customization in {relative}"
+        )
+        return ProbeResult(
+            "UNKNOWN",
+            f"{relative} is structurally valid; {'; '.join(safety_findings)}; {guidance}",
+        )
+
+    relative = _display_vault_path(context, config_path)
+    noun = "entry" if len(custom_entries) == 1 else "entries"
+    return ProbeResult(
+        "OK",
+        f"{relative} is structurally valid; {len(custom_entries)} custom MCP {noun} checked and not executed for safety",
+    )
+
+
+def _git_result(context: DoctorContext, *arguments: str) -> subprocess.CompletedProcess[str]:
+    executable = next(
+        (
+            str(candidate)
+            for candidate in DOCTOR_GIT_CANDIDATES
+            if not candidate.is_symlink() and candidate.is_file() and os.access(candidate, os.X_OK)
+        ),
+        None,
+    )
+    if executable is None:
+        return subprocess.CompletedProcess([], 127, "", "trusted system git is unavailable")
+    return subprocess.run(
+        [
+            executable,
+            "-c",
+            "core.fsmonitor=false",
+            "-c",
+            "core.hooksPath=/dev/null",
+            "-c",
+            "core.attributesFile=/dev/null",
+            "-c",
+            "core.excludesFile=/dev/null",
+            "-c",
+            "submodule.recurse=false",
+            "-C",
+            str(context.repo_root),
+            *arguments,
+        ],
+        capture_output=True,
+        env={
+            "GIT_CONFIG_GLOBAL": "/dev/null",
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "GIT_OPTIONAL_LOCKS": "0",
+            "GIT_PAGER": "cat",
+            "GIT_TERMINAL_PROMPT": "0",
+            "HOME": "/var/empty" if Path("/var/empty").is_dir() else "/",
+            "LC_ALL": "C",
+            "PATH": DOCTOR_SAFE_PATH,
+        },
+        text=True,
+        timeout=10,
+        check=False,
+    )
+
+
+def _upstream_release_ref(context: DoctorContext) -> str | None:
+    for candidate in ("refs/remotes/upstream/release", "refs/remotes/origin/release"):
+        result = _git_result(context, "rev-parse", "--verify", "--quiet", f"{candidate}^{{commit}}")
+        if result.returncode == 0:
+            return candidate
+    return None
+
+
+def _git_output_or_raise(result: subprocess.CompletedProcess[str], operation: str) -> str:
+    if result.returncode == 0:
+        return result.stdout
+    detail = _one_line(result.stderr or result.stdout or f"exit {result.returncode}")
+    raise RuntimeError(f"git could not {operation}: {detail}")
+
+
+def _sanctioned_customization_path(relative: str) -> bool:
+    if relative in {"System/user-profile.yaml", "System/pillars.yaml"}:
+        return True
+    parts = relative.split("/")
+    if (
+        len(parts) >= 3
+        and parts[:2] == [".claude", "skills"]
+        and parts[2].endswith("-custom")
+    ):
+        return True
+    return (
+        len(parts) == 3
+        and parts[:2] == ["System", "integrations"]
+        and Path(relative).suffix == ".yaml"
+    )
+
+
+def _git_file(context: DoctorContext, treeish: str, relative: str) -> str | None:
+    result = _git_result(context, "show", f"{treeish}:{relative}")
+    return result.stdout if result.returncode == 0 else None
+
+
+def _working_file(context: DoctorContext, relative: str) -> str | None:
+    path = context.repo_root / relative
+    try:
+        lexical = path.relative_to(context.repo_root)
+    except ValueError:
+        return None
+    if any(
+        part in {"", ".", ".."}
+        or part.lower() == ".env"
+        or part.lower().startswith(".env.")
+        or "credential" in part.lower()
+        for part in lexical.parts
+    ):
+        return None
+    current = context.repo_root
+    for part in lexical.parts:
+        current /= part
+        if current.is_symlink():
+            return None
+    try:
+        return path.read_text(encoding="utf-8")
+    except (OSError, UnicodeError):
+        return None
+
+
+def _strip_user_extensions(text: str) -> str:
+    lines = text.splitlines(keepends=True)
+    start = next(
+        (index for index, line in enumerate(lines) if line.strip() == "## USER_EXTENSIONS_START"),
+        None,
+    )
+    if start is None:
+        return text
+    end = next(
+        (
+            index
+            for index, line in enumerate(lines[start + 1 :], start=start + 1)
+            if line.strip() == "## USER_EXTENSIONS_END"
+        ),
+        None,
+    )
+    if end is None:
+        return text
+    return "".join([*lines[: start + 1], *lines[end:]])
+
+
+def _mcp_without_custom_entries(text: str) -> str | None:
+    try:
+        config = json.loads(text)
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(config, dict) or not isinstance(config.get("mcpServers"), dict):
+        return None
+    normalized = dict(config)
+    normalized["mcpServers"] = {
+        name: entry
+        for name, entry in config["mcpServers"].items()
+        if not isinstance(name, str) or not name.startswith("custom-")
+    }
+    return json.dumps(normalized, sort_keys=True, separators=(",", ":"))
+
+
+def _only_sanctioned_file_changes(
+    context: DoctorContext,
+    baseline: str,
+    relative: str,
+) -> bool:
+    baseline_text = _git_file(context, baseline, relative)
+    working_text = _working_file(context, relative)
+    if baseline_text is None or working_text is None:
+        return False
+    if relative == "CLAUDE.md":
+        return _strip_user_extensions(baseline_text) == _strip_user_extensions(working_text)
+    if relative == ".mcp.json":
+        baseline_config = _mcp_without_custom_entries(baseline_text)
+        working_config = _mcp_without_custom_entries(working_text)
+        return baseline_config is not None and baseline_config == working_config
+    return False
+
+
+def _release_tree_entries(context: DoctorContext, baseline: str) -> dict[str, tuple[str, str]]:
+    output = _git_output_or_raise(
+        _git_result(context, "ls-tree", "-r", "-z", baseline),
+        "list release files",
+    )
+    entries = {}
+    for record in output.split("\0"):
+        if not record:
+            continue
+        metadata, separator, relative = record.partition("\t")
+        fields = metadata.split()
+        if not separator or len(fields) != 3:
+            raise RuntimeError("git returned an invalid release tree entry")
+        mode, object_type, object_id = fields
+        if object_type != "blob":
+            entries[relative] = (mode, "")
+        else:
+            entries[relative] = (mode, object_id)
+    return entries
+
+
+def _worktree_matches_release_blob(
+    context: DoctorContext,
+    relative: str,
+    mode: str,
+    object_id: str,
+) -> bool:
+    parts = Path(relative).parts
+    if not parts or any(
+        part in {"", ".", ".."}
+        or part.lower() == ".env"
+        or part.lower().startswith(".env.")
+        or "credential" in part.lower()
+        for part in parts
+    ):
+        return False
+    current = context.repo_root
+    for part in parts[:-1]:
+        current /= part
+        if current.is_symlink():
+            return False
+    path = context.repo_root / relative
+    try:
+        if mode == "120000":
+            if not path.is_symlink():
+                return False
+            data = os.readlink(path).encode("utf-8")
+        elif mode in {"100644", "100755"}:
+            if path.is_symlink() or not path.is_file():
+                return False
+            data = path.read_bytes()
+            if bool(path.stat().st_mode & 0o111) != (mode == "100755"):
+                return False
+        else:
+            return False
+    except (OSError, UnicodeError):
+        return False
+
+    algorithm = "sha1" if len(object_id) == 40 else "sha256" if len(object_id) == 64 else None
+    if algorithm is None:
+        return False
+    digest = hashlib.new(algorithm)
+    digest.update(f"blob {len(data)}\0".encode("ascii"))
+    digest.update(data)
+    return digest.hexdigest() == object_id
+
+
+def _probe_core_drift(context: DoctorContext) -> ProbeResult:
+    release_ref = _upstream_release_ref(context)
+    if release_ref is None:
+        return ProbeResult("UNKNOWN", "no upstream remote — can't compare")
+
+    merge_base = _git_result(context, "merge-base", "HEAD", release_ref)
+    baseline = merge_base.stdout.strip() if merge_base.returncode == 0 else release_ref
+    release_entries = _release_tree_entries(context, baseline)
+    candidates = sorted(
+        relative
+        for relative, (mode, object_id) in release_entries.items()
+        if not _sanctioned_customization_path(relative)
+        and not _worktree_matches_release_blob(context, relative, mode, object_id)
+    )
+    drifted = [
+        relative
+        for relative in candidates
+        if not _only_sanctioned_file_changes(context, baseline, relative)
+    ]
+    if not drifted:
+        return ProbeResult("OK", "No tracked shipped files differ from the installed release")
+    return ProbeResult(
+        "UNKNOWN",
+        "Modified shipped files: "
+        f"{', '.join(drifted)}; updates may conflict; the doctor can't vouch for modified shipped files",
+    )
+
+
 def _probe_doctor_self(_context: DoctorContext) -> ProbeResult:
     return ProbeResult("OK", "The doctor instrument runner completed")
 
@@ -1379,6 +1885,73 @@ def _probe_mcp_importable(context: DoctorContext) -> ProbeResult:
             Heal(tier=2, action="Reinstall the missing MCP dependencies into the vault .venv.", applied=False),
         )
     return ProbeResult("OK", f"All {len(registered)} registered core MCP servers import in a subprocess")
+
+
+def _probe_smoke_journeys(context: DoctorContext) -> ProbeResult:
+    smoke_path = context.repo_root / "core" / "utils" / "smoke.py"
+    env = {
+        name: os.environ[name]
+        for name in ("PATH", "PYTHONPATH")
+        if name in os.environ
+    }
+    env.update(
+        {
+            "VAULT_PATH": str(context.vault_root),
+            "VAULT_ROOT": str(context.vault_root),
+            "PYTHONDONTWRITEBYTECODE": "1",
+        }
+    )
+    result = subprocess.run(
+        [sys.executable, str(smoke_path), "--json"],
+        cwd=context.vault_root,
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=35,
+        check=False,
+    )
+    if result.returncode == 2:
+        detail = _one_line(result.stderr or result.stdout or "exit 2")
+        raise RuntimeError(f"smoke harness failed: {detail}")
+    if result.returncode not in {0, 1}:
+        detail = _one_line(result.stderr or result.stdout or f"exit {result.returncode}")
+        raise RuntimeError(f"smoke harness returned exit {result.returncode}: {detail}")
+    try:
+        report = json.loads(result.stdout)
+    except json.JSONDecodeError as error:
+        raise RuntimeError(f"smoke harness returned invalid JSON: {_one_line(error)}") from error
+    if not isinstance(report, dict) or report.get("schema_version") != 1:
+        raise RuntimeError("smoke harness returned an unsupported report schema")
+    journeys = report.get("journeys")
+    if not isinstance(journeys, list) or not journeys:
+        raise RuntimeError("smoke harness returned no journeys")
+
+    rendered = []
+    verdicts = []
+    for journey in journeys:
+        if not isinstance(journey, dict):
+            raise RuntimeError("smoke harness returned a malformed journey")
+        journey_id = journey.get("id")
+        verdict = journey.get("verdict")
+        detail = journey.get("detail")
+        if not isinstance(journey_id, str) or verdict not in VERDICTS or not isinstance(detail, str):
+            raise RuntimeError("smoke harness returned a malformed journey")
+        verdicts.append(verdict)
+        rendered.append(f"{journey_id} [{verdict}]: {_one_line(detail)}")
+
+    if "BROKEN" in verdicts:
+        worst = "BROKEN"
+    elif "UNKNOWN" in verdicts:
+        worst = "UNKNOWN"
+    elif "OK" in verdicts:
+        worst = "OK"
+    else:
+        worst = "OFF"
+    if (result.returncode == 1) != (worst == "BROKEN"):
+        raise RuntimeError(
+            f"smoke harness exit {result.returncode} did not match its {worst} journey roll-up"
+        )
+    return ProbeResult(worst, " | ".join(rendered))
 
 
 def main(argv: list[str] | None = None, *, context: DoctorContext | None = None) -> int:
