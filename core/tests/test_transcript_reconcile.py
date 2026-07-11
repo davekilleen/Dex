@@ -180,7 +180,15 @@ def test_confirmed_ritual_brief_uses_previous_transcript_summary():
 
     suggestions = list_ritual_suggestions()
     result = confirm_ritual(suggestions[0]["series_id"], now=upcoming.replace(hour=8))
-    upcoming_note = Path([item["note_path"] for item in result["generated"] if upcoming_str in item["note_path"]][0])
-    rendered = upcoming_note.read_text(encoding="utf-8")
+    raw_path = MEETING_INTEL_DIR / "raw" / "trn-granola-d-Weekly 11.md"
+    summary_path = MEETING_INTEL_DIR / "summaries" / "trn-granola-d-Weekly 11.md"
+    assert raw_path.read_text(encoding="utf-8") == "Decision: ship the update\nAction: share launch notes\n"
+    assert "Decision: ship the update" in summary_path.read_text(encoding="utf-8")
 
-    assert "Transcript continuity: Decision: ship the update" in rendered
+    generated = next(item for item in result["generated"] if upcoming_str in item["note_path"])
+    note_path = Path(generated["note_path"])
+    daily_log_path = Path(generated["daily_log_path"])
+    assert note_path.exists()
+    assert "Transcript continuity: Decision: ship the update" in note_path.read_text(encoding="utf-8")
+    assert daily_log_path.exists()
+    assert f"[[{note_path.name}]]" in daily_log_path.read_text(encoding="utf-8")

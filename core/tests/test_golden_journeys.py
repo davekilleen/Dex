@@ -1,87 +1,259 @@
-"""Golden user-journey continuity tests."""
+"""Golden journeys through the real onboarding and work MCP handlers."""
 
 from __future__ import annotations
 
+import json
+import os
+import re
 import shutil
-from datetime import date
+import subprocess
+import sys
 from pathlib import Path
 
 import yaml
 
+REPO_ROOT = Path(__file__).resolve().parents[2]
 
-def _copy_fixture_vault(fixture_vault: Path, tmp_path: Path) -> Path:
-    target = tmp_path / "vault"
-    shutil.copytree(fixture_vault, target)
-    return target
+ONBOARDING_JOURNEY = r"""
+import asyncio
+import json
+
+from core.mcp import onboarding_server as onboarding
 
 
-def test_golden_journey_onboarding_to_week_review(fixture_vault: Path, tmp_path: Path):
+def decode(contents):
+    return json.loads(contents[0].text)
+
+
+async def call(name, arguments=None):
+    return decode(await onboarding.handle_call_tool(name, arguments or {}))
+
+
+async def main():
+    results = {}
+    results["start"] = await call("start_onboarding_session", {"force_new": True})
+    results["resume"] = await call("start_onboarding_session")
+
+    onboarding.check_python_packages = lambda: {
+        "mcp": {"installed": True},
+        "yaml": {"installed": True},
+        "aiohttp": {"installed": True},
+    }
+    onboarding.check_calendar_app = lambda: {"available": True}
+    onboarding.check_granola = lambda: {"available": True}
+    results["dependencies"] = await call("verify_dependencies")
+
+    step_data = {
+        1: {"name": "Golden User"},
+        2: {"role_number": 1},
+        3: {"company": "Golden Co", "company_size": "startup"},
+        4: {"email_domain": "golden.example"},
+        5: {"pillars": ["Customer", "Product"]},
+        6: {
+            "communication": {
+                "formality": "professional_casual",
+                "directness": "balanced",
+                "career_level": "leadership",
+            },
+            "obsidian_mode": False,
+        },
+    }
+    results["steps"] = [
+        await call("validate_and_save_step", {"step_number": number, "step_data": data})
+        for number, data in step_data.items()
+    ]
+    results["status"] = await call("get_onboarding_status")
+    results["finalize"] = await call("finalize_onboarding")
+    print(json.dumps(results))
+
+
+asyncio.run(main())
+"""
+
+TASK_JOURNEY = r"""
+import asyncio
+import json
+from pathlib import Path
+
+from core.mcp import work_server as work
+
+
+def decode(contents):
+    return json.loads(contents[0].text)
+
+
+async def call(name, arguments=None):
+    return decode(await work.handle_call_tool(name, arguments or {}))
+
+
+async def main():
+    work.HAS_QMD = False
+    work.is_qmd_available = lambda: False
+    work.refresh_search_index = lambda: None
+    work._fire_analytics_event = lambda *_args, **_kwargs: {"fired": False}
+
+    title = "Prepare golden customer renewal brief"
+    person_path = "05-Areas/People/Internal/Alice_Smith"
+    person_file = work.BASE_DIR / f"{person_path}.md"
+    tasks_file = work.BASE_DIR / "03-Tasks" / "Tasks.md"
+
+    initial_summary = await call("get_work_summary")
+    created = await call(
+        "create_task",
+        {
+            "title": title,
+            "pillar": "pillar_1",
+            "priority": "P2",
+            "section": "Next Week",
+            "context": "Use the latest customer evidence.",
+            "people": [person_path],
+        },
+    )
+    created_summary = await call("get_work_summary")
+    person_after_create = person_file.read_text(encoding="utf-8")
+    tasks_after_create = tasks_file.read_text(encoding="utf-8")
+
+    updated = await call(
+        "update_task_status",
+        {"task_id": created["task"]["task_id"], "status": "d"},
+    )
+    completed_summary = await call("get_work_summary")
+    week_progress = await call("get_week_progress")
+
+    print(
+        json.dumps(
+            {
+                "title": title,
+                "person_path": person_path,
+                "initial_summary": initial_summary,
+                "created": created,
+                "created_summary": created_summary,
+                "person_after_create": person_after_create,
+                "tasks_after_create": tasks_after_create,
+                "updated": updated,
+                "completed_summary": completed_summary,
+                "week_progress": week_progress,
+                "person_after_complete": person_file.read_text(encoding="utf-8"),
+                "tasks_after_complete": tasks_file.read_text(encoding="utf-8"),
+            }
+        )
+    )
+
+
+asyncio.run(main())
+"""
+
+
+def _copy_fixture_vault(fixture_vault: Path, tmp_path: Path, *, onboarding: bool = False) -> Path:
+    vault = tmp_path / "vault"
+    shutil.copytree(fixture_vault, vault)
+    if onboarding:
+        shutil.copy2(REPO_ROOT / "CLAUDE.md", vault / "CLAUDE.md")
+        shutil.copy2(REPO_ROOT / "System" / ".mcp.json.example", vault / "System" / ".mcp.json.example")
+    return vault
+
+
+def _run_journey(vault: Path, source: str) -> dict:
+    env = os.environ.copy()
+    env["VAULT_PATH"] = str(vault)
+    env["PYTHONPATH"] = str(REPO_ROOT)
+    result = subprocess.run(
+        [sys.executable, "-c", source],
+        cwd=REPO_ROOT,
+        env=env,
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    return json.loads(result.stdout)
+
+
+def test_golden_onboarding_drives_state_machine_to_real_vault(fixture_vault: Path, tmp_path: Path):
+    vault = _copy_fixture_vault(fixture_vault, tmp_path, onboarding=True)
+
+    journey = _run_journey(vault, ONBOARDING_JOURNEY)
+
+    assert journey["start"]["success"] is True
+    assert journey["resume"]["success"] is True
+    assert journey["start"]["data"]["started_at"] == journey["resume"]["data"]["started_at"]
+    assert journey["resume"]["data"]["completed_steps"] == []
+    assert "Resuming onboarding session" in journey["resume"]["message"]
+    assert journey["dependencies"]["data"]["all_required_installed"] is True
+    assert all(step["success"] for step in journey["steps"])
+    assert journey["status"]["data"]["progress_percent"] == 100.0
+    assert journey["status"]["data"]["ready_to_finalize"] is True
+    assert journey["finalize"]["success"] is True
+    assert journey["finalize"]["data"]["errors"] == []
+
+    for directory in (
+        "00-Inbox",
+        "01-Quarter_Goals",
+        "02-Week_Priorities",
+        "03-Tasks",
+        "04-Projects",
+        "05-Areas",
+        "06-Resources",
+        "07-Archives",
+        "System",
+    ):
+        assert (vault / directory).is_dir(), directory
+    assert (vault / "03-Tasks/Tasks.md").is_file()
+    assert (vault / "02-Week_Priorities/Week_Priorities.md").is_file()
+
+    profile = yaml.safe_load((vault / "System/user-profile.yaml").read_text(encoding="utf-8"))
+    assert profile["name"] == "Golden User"
+    assert profile["role"] == "Product Manager"
+    assert profile["company"] == "Golden Co"
+    assert profile["company_size"] == "startup"
+    assert profile["email_domain"] == "golden.example"
+    assert profile["communication"]["career_level"] == "leadership"
+
+    pillars = yaml.safe_load((vault / "System/pillars.yaml").read_text(encoding="utf-8"))
+    assert [pillar["name"] for pillar in pillars["pillars"]] == ["Customer", "Product"]
+
+    root_config = vault / ".mcp.json"
+    config_text = root_config.read_text(encoding="utf-8")
+    config = json.loads(config_text)
+    assert "{{" not in config_text
+    assert config["mcpServers"]["work-mcp"]["command"] == f"{vault}/.venv/bin/python"
+    assert config["mcpServers"]["work-mcp"]["args"] == [f"{vault}/core/mcp/work_server.py"]
+    assert config["mcpServers"]["work-mcp"]["env"]["VAULT_PATH"] == str(vault)
+    assert not (vault / "System/.mcp.json").exists()
+    assert (vault / "System/.onboarding-complete").is_file()
+    assert not (vault / "System/.onboarding-session.json").exists()
+
+
+def test_golden_task_lifecycle_propagates_and_rolls_up(fixture_vault: Path, tmp_path: Path):
     vault = _copy_fixture_vault(fixture_vault, tmp_path)
 
-    # 1) Onboarding baseline
-    profile = yaml.safe_load((vault / "System/user-profile.yaml").read_text(encoding="utf-8"))
-    pillars = yaml.safe_load((vault / "System/pillars.yaml").read_text(encoding="utf-8"))
-    assert profile["name"] == "Test User"
-    assert "pillars" in pillars
+    journey = _run_journey(vault, TASK_JOURNEY)
 
-    # 2) Task creation
-    task_id = "task-golden-001"
-    tasks_file = vault / "03-Tasks/Tasks.md"
-    task_line = f"- [ ] Prepare partner sync ({task_id}) #P1\\n"
-    tasks_file.write_text(tasks_file.read_text(encoding="utf-8") + task_line, encoding="utf-8")
+    created = journey["created"]
+    updated = journey["updated"]
+    title = journey["title"]
+    task_id = created["task"]["task_id"]
+    assert created["success"] is True
+    assert re.fullmatch(r"task-\d{8}-\d{3}", task_id)
+    assert journey["person_path"] in created["synced_pages"]
+    assert f"^{task_id}" in journey["tasks_after_create"]
+    assert f"| ⏳ | {title} | P2 |" in journey["person_after_create"]
 
-    # 3) Meeting sync
-    today = date.today().isoformat()
-    meeting_file = vault / "00-Inbox/Meetings" / f"{today}-partner-sync.md"
-    meeting_file.write_text(
-        "\\n".join(
-            [
-                f"# Partner Sync — {today}",
-                "",
-                f"- Follow-up task: {task_id}",
-                "- Attendee: Alice Smith",
-            ]
-        ),
-        encoding="utf-8",
+    assert updated["success"] is True
+    assert updated["status"] == "completed"
+    assert updated["instances_found"] == 1
+    assert f"{journey['person_path']}.md" in updated["related_tasks_synced"]
+    assert len(updated["updated_files"]) == 1
+    completed_line = next(
+        line for line in journey["tasks_after_complete"].splitlines() if f"^{task_id}" in line
     )
+    assert completed_line.startswith("- [x]")
+    assert completed_line.index(updated["completed_at"]) > completed_line.index(f"^{task_id}")
+    assert f"| ✅ | {title} | P2 |" in journey["person_after_complete"]
 
-    # 4) Daily plan
-    daily_plan = vault / "00-Inbox/Daily_Plans" / f"{today}.md"
-    daily_plan.write_text(
-        "\\n".join(
-            [
-                f"# Daily Plan — {today}",
-                "",
-                "## Must-do",
-                f"- Finish: {task_id}",
-                f"- Review notes: [[Meetings/{today}-partner-sync]]",
-            ]
-        ),
-        encoding="utf-8",
-    )
-
-    # 5) Week review
-    week_review = vault / "02-Week_Priorities" / "Week_Review.md"
-    week_review.write_text(
-        "\\n".join(
-            [
-                "# Week Review",
-                "",
-                f"- Closed loop from meeting to execution: {task_id}",
-                f"- Source meeting: {meeting_file.name}",
-            ]
-        ),
-        encoding="utf-8",
-    )
-
-    # Continuity assertions
-    tasks_content = tasks_file.read_text(encoding="utf-8")
-    meeting_content = meeting_file.read_text(encoding="utf-8")
-    daily_content = daily_plan.read_text(encoding="utf-8")
-    review_content = week_review.read_text(encoding="utf-8")
-
-    assert task_id in tasks_content
-    assert task_id in meeting_content
-    assert task_id in daily_content
-    assert task_id in review_content
-    assert meeting_file.name in review_content
+    initial_active = journey["initial_summary"]["daily_summary"]["total_tasks"]
+    created_active = journey["created_summary"]["daily_summary"]["total_tasks"]
+    completed_active = journey["completed_summary"]["daily_summary"]["total_tasks"]
+    assert created_active == initial_active + 1
+    assert completed_active == initial_active
+    assert journey["week_progress"]["tasks_completed_this_week"] == 1
