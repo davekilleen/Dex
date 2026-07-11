@@ -376,6 +376,98 @@ def extract_task_id(line: str) -> Optional[str]:
     match = re.search(r'\^(task-\d{8}-\d{3})', line)
     return match.group(1) if match else None
 
+def _is_indented_bullet(line: str) -> bool:
+    """Return whether a line is an indented child bullet of a task."""
+    return bool(re.match(r'^[ \t]+-\s+', line))
+
+def _indent_width(line: str) -> int:
+    """Return indentation width with tabs normalized for hierarchy checks."""
+    match = re.match(r'^[ \t]*', line)
+    return len(match.group(0).expandtabs(4)) if match else 0
+
+def _task_child_lines(lines: List[str], task_index: int) -> List[str]:
+    """Return direct child bullets without borrowing a sibling task's metadata."""
+    task_indent = _indent_width(lines[task_index])
+    descendants = []
+    index = task_index + 1
+    while index < len(lines) and _is_indented_bullet(lines[index]):
+        indent = _indent_width(lines[index])
+        if indent <= task_indent:
+            break
+        descendants.append((indent, lines[index]))
+        index += 1
+    if not descendants:
+        return []
+    direct_indent = min(indent for indent, _line in descendants)
+    return [line for indent, line in descendants if indent == direct_indent]
+
+def _parse_task_metadata(child_lines: List[str], title: str) -> Dict[str, Any]:
+    """Parse additive task metadata, silently ignoring malformed values."""
+    fields: Dict[str, str] = {}
+    for child_line in child_lines:
+        bullet = re.sub(r'^[ \t]+-\s*', '', child_line, count=1)
+        for part in bullet.split('|'):
+            match = re.match(
+                r'^\s*(Pillar|Priority|Weekly priority|Due|Source|Project|Goal)\s*:\s*(.*?)\s*$',
+                part,
+                re.IGNORECASE,
+            )
+            if match:
+                fields[match.group(1).lower()] = match.group(2)
+
+    pillar = guess_pillar(title)
+    stored_pillar = fields.get('pillar')
+    if stored_pillar:
+        stored_pillar_lower = stored_pillar.casefold()
+        pillar = next(
+            (
+                pillar_key
+                for pillar_key, pillar_info in PILLARS.items()
+                if str(pillar_info.get('name', '')).casefold() == stored_pillar_lower
+            ),
+            pillar,
+        )
+
+    priority = fields.get('priority')
+    if priority not in PRIORITIES:
+        priority = None
+
+    weekly_priority_id = None
+    weekly_match = re.fullmatch(
+        r'\[(week-\d{4}-W\d{2}-p\d+)\]', fields.get('weekly priority', '')
+    )
+    if weekly_match:
+        weekly_priority_id = weekly_match.group(1)
+
+    due = fields.get('due')
+    if due and not re.fullmatch(r'\d{4}-\d{2}-\d{2}', due):
+        due = None
+
+    goal = fields.get('goal')
+    if goal and not re.fullmatch(r'Q\d+-\d{4}-goal-\d+', goal):
+        goal = None
+
+    return {
+        'pillar': pillar,
+        'priority': priority,
+        'weekly_priority_id': weekly_priority_id,
+        'due': due,
+        'source': fields.get('source') or None,
+        'project': fields.get('project') or None,
+        'goal': goal,
+    }
+
+def _task_title_from_line(line: str) -> str:
+    """Extract task text while accepting both completion timestamp layouts."""
+    title = re.sub(r'^\s*-\s*\[[x ]\]\s*', '', line, count=1)
+    title = re.sub(r'\s*✅\s*\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}', '', title)
+    title = re.sub(r'\s*\^task-\d{8}-\d{3}\b', '', title)
+    title = title.strip()
+    bold_match = re.match(r'^\*\*(.+?)\*\*(.*)$', title)
+    if bold_match:
+        title = (bold_match.group(1) + bold_match.group(2)).strip()
+    return title
+
 def find_task_by_id(task_id: str) -> List[Dict[str, Any]]:
     """Find all instances of a task ID across all markdown files"""
     instances = []
@@ -388,8 +480,7 @@ def find_task_by_id(task_id: str) -> List[Dict[str, Any]]:
             for i, line in enumerate(lines):
                 if f'^{task_id}' in line and ('- [ ]' in line or '- [x]' in line):
                     # Extract task title
-                    title_match = re.match(r'-\s*\[[x ]\]\s*\*?\*?(.+?)\*?\*?\s*\^', line.strip())
-                    title = title_match.group(1).strip() if title_match else line.strip()
+                    title = _task_title_from_line(line).split('|', 1)[0].strip()
                     
                     instances.append({
                         'file': str(md_file),
@@ -427,23 +518,26 @@ def update_task_status_everywhere(task_id: str, completed: bool) -> Dict[str, An
             line_idx = instance['line_number'] - 1
             old_line = lines[line_idx]
             
-            # Update checkbox and add/remove completion timestamp
+            # Update checkbox and normalize completion metadata around the anchor.
             if completed:
                 new_line = old_line.replace('- [ ]', '- [x]')
-                
-                # Add completion timestamp after task ID if not already present
-                # Remove any existing timestamp first
                 new_line = re.sub(r'\s*✅\s*\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}', '', new_line)
-                
-                # Find position after task ID to insert timestamp
                 task_id_match = re.search(r'\^' + re.escape(task_id), new_line)
                 if task_id_match:
-                    insert_pos = task_id_match.end()
-                    new_line = new_line[:insert_pos] + f' ✅ {completion_timestamp}' + new_line[insert_pos:]
+                    without_anchor = (
+                        new_line[:task_id_match.start()] + new_line[task_id_match.end():]
+                    ).rstrip()
+                    new_line = f'{without_anchor} ✅ {completion_timestamp} ^{task_id}'
             else:
                 # Uncompleting: change checkbox and remove timestamp
                 new_line = old_line.replace('- [x]', '- [ ]')
                 new_line = re.sub(r'\s*✅\s*\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}', '', new_line)
+                task_id_match = re.search(r'\^' + re.escape(task_id), new_line)
+                if task_id_match:
+                    without_anchor = (
+                        new_line[:task_id_match.start()] + new_line[task_id_match.end():]
+                    ).rstrip()
+                    new_line = f'{without_anchor} ^{task_id}'
             
             if new_line != old_line:
                 lines[line_idx] = new_line
@@ -578,6 +672,7 @@ def find_tasks_for_page(page_path: str) -> List[Dict[str, Any]]:
     
     matching_tasks = []
     current_section = None
+    current_section_priority = None
     
     i = 0
     while i < len(lines):
@@ -586,6 +681,7 @@ def find_tasks_for_page(page_path: str) -> List[Dict[str, Any]]:
         # Track section headers
         if line.startswith('# ') or line.startswith('## '):
             current_section = line.lstrip('#').strip()
+            current_section_priority = priority_from_section(current_section)
             i += 1
             continue
         
@@ -606,28 +702,25 @@ def find_tasks_for_page(page_path: str) -> List[Dict[str, Any]]:
             
             if task_mentions_page:
                 # Extract title
-                title_match = re.match(r'-\s*\[[x ]\]\s*\*?\*?(.+?)\*?\*?(?:\s*\|.*)?$', line.strip())
-                title = title_match.group(1).strip() if title_match else line.strip()[6:]
+                title = _task_title_from_line(line)
                 
                 # Clean title of file references for display
                 clean_title = re.sub(r'\s*\|\s*(?:People|Active)/[^\s]+', '', title)
                 clean_title = re.sub(r'\s+\.md\b', '', clean_title)
                 clean_title = re.sub(r'\s*\|.*$', '', clean_title)  # Remove trailing | refs
                 
-                # Look for context/priority in following lines
-                priority = 'P2'
-                j = i + 1
-                while j < len(lines) and lines[j].strip().startswith('\t-'):
-                    if 'Priority:' in lines[j]:
-                        priority_match = re.search(r'Priority:\s*(P[0-3])', lines[j])
-                        if priority_match:
-                            priority = priority_match.group(1)
-                    j += 1
+                metadata = _parse_task_metadata(_task_child_lines(lines, i), clean_title)
+                priority = (
+                    metadata['priority']
+                    or current_section_priority
+                    or guess_priority(clean_title)
+                )
                 
                 matching_tasks.append({
                     'title': clean_title,
                     'completed': completed,
                     'priority': priority,
+                    'pillar': metadata['pillar'],
                     'section': current_section,
                     'line_number': i + 1
                 })
@@ -1021,7 +1114,19 @@ def rebuild_meeting_cache_data() -> Dict[str, Any]:
     if not meetings_dir.exists():
         return {'success': False, 'error': 'No meetings directory found'}
 
-    files = [f for f in meetings_dir.glob('*.md') if f.name != 'README.md']
+    meetings_root = meetings_dir.resolve()
+    files = []
+    for filepath in meetings_dir.rglob('*.md'):
+        relative_path = filepath.relative_to(meetings_dir)
+        if filepath.name == 'README.md' or 'queue' in relative_path.parts[:-1]:
+            continue
+        try:
+            if filepath.is_symlink():
+                continue
+            filepath.resolve().relative_to(meetings_root)
+        except (OSError, ValueError):
+            continue
+        files.append(filepath)
     if not files:
         return {'success': False, 'error': 'No meeting files found'}
 
@@ -1144,7 +1249,8 @@ def _parse_meeting_file_python(content: str, filename: str, rel_path: str) -> Di
             if stripped.startswith('- '):
                 item = stripped[2:].strip()
                 item = re.sub(r'^\[[ x]\]\s*', '', item)
-                item = re.sub(r'\s*\^task-\d{8}-\d{3}\s*$', '', item)
+                item = re.sub(r'\s*✅\s*\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}', '', item)
+                item = re.sub(r'\s*\^task-\d{8}-\d{3}\b', '', item)
                 item = re.sub(r'\[\[[^\]|]*\|([^\]]*)\]\]', r'\1', item)
                 item = re.sub(r'\[\[([^\]]*)\]\]', r'\1', item)
                 item = re.sub(r'\*\*([^*]+)\*\*', r'\1', item)
@@ -1892,21 +1998,22 @@ def find_linked_tasks(priority_id: str) -> List[Dict[str, Any]]:
     
     linked_tasks = []
     for i, line in enumerate(lines):
-        # Look for tasks that mention the priority_id
-        if priority_id in line and ('- [ ]' in line or '- [x]' in line):
-            completed = '- [x]' in line
-            task_id = extract_task_id(line)
-            
-            # Extract title
-            title_match = re.match(r'-\s*\[[x ]\]\s*\*?\*?(.+?)\*?\*?(?:\s*\^task-|\s*\|)', line.strip())
-            title = title_match.group(1).strip() if title_match else line.strip()
-            
-            linked_tasks.append({
-                'task_id': task_id,
-                'title': title,
-                'completed': completed,
-                'line_number': i + 1
-            })
+        if not (line.strip().startswith('- [ ]') or line.strip().startswith('- [x]')):
+            continue
+
+        linked_text = '\n'.join([line, *_task_child_lines(lines, i)])
+        priority_pattern = (
+            rf'(?<![A-Za-z0-9_-]){re.escape(priority_id)}(?![A-Za-z0-9_-])'
+        )
+        if not re.search(priority_pattern, linked_text):
+            continue
+
+        linked_tasks.append({
+            'task_id': extract_task_id(line),
+            'title': _task_title_from_line(line).split('|', 1)[0].strip(),
+            'completed': '- [x]' in line,
+            'line_number': i + 1
+        })
     
     return linked_tasks
 
@@ -2060,9 +2167,8 @@ def parse_tasks_file(filepath: Path) -> List[Dict[str, Any]]:
             # Extract task ID if present
             task_id = extract_task_id(line)
             
-            # Extract task title (remove the checkbox and task ID)
-            title_match = re.match(r'-\s*\[[x ]\]\s*\*?\*?(.+?)\*?\*?(?:\s*\^task-\d{8}-\d{3})?\s*$', line.strip())
-            title = title_match.group(1).strip() if title_match else line.strip()[6:]
+            # Extract task title (remove checkbox, completion mark, and task ID)
+            title = _task_title_from_line(line)
             
             # Clean title - remove file path references for display
             clean_title = re.sub(r'\s*\|\s*(?:People|Active)/[^\s]+', '', title)
@@ -2072,6 +2178,8 @@ def parse_tasks_file(filepath: Path) -> List[Dict[str, Any]]:
             # Determine status
             status = 'd' if completed else 'n'
             
+            metadata = _parse_task_metadata(_task_child_lines(lines, i), clean_title)
+
             tasks.append({
                 'id': task_id or f'temp-{task_counter}',
                 'task_id': task_id,  # The actual ^task-YYYYMMDD-XXX ID
@@ -2082,8 +2190,17 @@ def parse_tasks_file(filepath: Path) -> List[Dict[str, Any]]:
                 'status': status,
                 'line_number': i + 1,
                 'source_file': str(filepath),
-                'pillar': guess_pillar(clean_title),
-                'priority': current_section_priority or guess_priority(clean_title),
+                'pillar': metadata['pillar'],
+                'priority': (
+                    metadata['priority']
+                    or current_section_priority
+                    or guess_priority(clean_title)
+                ),
+                'weekly_priority_id': metadata['weekly_priority_id'],
+                'due': metadata['due'],
+                'source': metadata['source'],
+                'project': metadata['project'],
+                'goal': metadata['goal'],
             })
     
     return tasks
@@ -2096,6 +2213,9 @@ def get_all_tasks() -> List[Dict[str, Any]]:
     if get_tasks_file().exists():
         tasks = parse_tasks_file(get_tasks_file())
         for t in tasks:
+            metadata_source = t.pop('source', None)
+            if metadata_source:
+                t['metadata_source'] = metadata_source
             t['source'] = 'tasks'
         all_tasks.extend(tasks)
     
@@ -2103,6 +2223,9 @@ def get_all_tasks() -> List[Dict[str, Any]]:
     if get_week_priorities_file().exists():
         tasks = parse_tasks_file(get_week_priorities_file())
         for t in tasks:
+            metadata_source = t.pop('source', None)
+            if metadata_source:
+                t['metadata_source'] = metadata_source
             t['source'] = 'week_priorities'
         all_tasks.extend(tasks)
     
@@ -3000,6 +3123,10 @@ async def handle_list_tools() -> list[types.Tool]:
                     "context": {"type": "string", "description": "Additional context or sub-tasks"},
                     "section": {"type": "string", "description": "Which section in 03-Tasks/Tasks.md to add to", "default": "Next Week"},
                     "weekly_priority_id": {"type": "string", "description": "Link to weekly priority (e.g., 'week-2026-W05-p1') - task contributes to this priority"},
+                    "due": {"type": "string", "description": "Optional due date in YYYY-MM-DD format"},
+                    "project": {"type": "string", "description": "Optional existing vault-relative project path under 04-Projects/"},
+                    "goal": {"type": "string", "description": "Optional quarterly goal ID (e.g., Q3-2026-goal-2)"},
+                    "on_duplicate": {"type": "string", "enum": ["fail", "force"], "default": "fail", "description": "Fail on similar tasks, or force creation past only the similarity check"},
                     "account": {"type": "string", "description": "Path to account page to link"},
                     "people": {"type": "array", "items": {"type": "string"}, "description": "List of paths to people pages to link"}
                 },
@@ -3498,6 +3625,10 @@ async def _handle_call_tool_inner(
         context = arguments.get('context', '')
         section = arguments.get('section', 'Next Week')
         weekly_priority_id = arguments.get('weekly_priority_id', '')
+        due = arguments.get('due', '')
+        project = arguments.get('project', '')
+        goal = arguments.get('goal', '')
+        on_duplicate = arguments.get('on_duplicate', 'fail')
         account = arguments.get('account', '')
         people = arguments.get('people', [])
         
@@ -3514,6 +3645,85 @@ async def _handle_call_tool_inner(
                 "success": False,
                 "error": f"Invalid priority '{priority}'. Must be one of: {PRIORITIES}"
             }, indent=2))]
+
+        if on_duplicate not in ('fail', 'force'):
+            return [types.TextContent(type="text", text=json.dumps({
+                "success": False,
+                "error": "Invalid on_duplicate value. Must be one of: ['fail', 'force']"
+            }, indent=2))]
+
+        if weekly_priority_id:
+            weekly_priorities = parse_weekly_priorities(get_week_priorities_file())
+            available_weekly_ids = [
+                weekly.get('priority_id')
+                for weekly in weekly_priorities
+                if weekly.get('priority_id')
+            ]
+            if weekly_priority_id not in available_weekly_ids:
+                available_text = ', '.join(available_weekly_ids) or 'none'
+                return [types.TextContent(type="text", text=json.dumps({
+                    "success": False,
+                    "error": (
+                        f"Unknown weekly priority '{weekly_priority_id}'. "
+                        f"Available weekly priority ids: {available_text}"
+                    ),
+                    "available_weekly_priority_ids": available_weekly_ids,
+                }, indent=2))]
+
+        if due and not re.fullmatch(r'\d{4}-\d{2}-\d{2}', due):
+            return [types.TextContent(type="text", text=json.dumps({
+                "success": False,
+                "error": f"Invalid due date '{due}'. Use YYYY-MM-DD format."
+            }, indent=2))]
+
+        if project:
+            projects_dir = (BASE_DIR / '04-Projects').resolve()
+            supplied_project = Path(project)
+            project_path = (BASE_DIR / supplied_project).resolve()
+            project_is_contained = (
+                not supplied_project.is_absolute()
+                and (project_path == projects_dir or projects_dir in project_path.parents)
+            )
+            if not project_is_contained:
+                return [types.TextContent(type="text", text=json.dumps({
+                    "success": False,
+                    "error": "Project must be a vault-relative file under 04-Projects/."
+                }, indent=2))]
+            if not project_path.is_file():
+                requested_stem = supplied_project.stem.casefold()
+                close_matches = []
+                if projects_dir.exists():
+                    close_matches = sorted(
+                        str(candidate.relative_to(BASE_DIR))
+                        for candidate in projects_dir.rglob('*.md')
+                        if (
+                            requested_stem in candidate.stem.casefold()
+                            or candidate.stem.casefold() in requested_stem
+                        )
+                    )
+                return [types.TextContent(type="text", text=json.dumps({
+                    "success": False,
+                    "error": f"Project file does not exist: {project}",
+                    "close_matches": close_matches,
+                }, indent=2))]
+
+        if goal:
+            quarterly_goals = parse_quarterly_goals(QUARTER_GOALS_FILE)
+            available_goal_ids = [
+                quarterly_goal.get('goal_id')
+                for quarterly_goal in quarterly_goals
+                if quarterly_goal.get('goal_id')
+            ]
+            if goal not in available_goal_ids:
+                available_text = ', '.join(available_goal_ids) or 'none'
+                return [types.TextContent(type="text", text=json.dumps({
+                    "success": False,
+                    "error": (
+                        f"Unknown quarterly goal '{goal}'. "
+                        f"Available goal ids: {available_text}"
+                    ),
+                    "available_goal_ids": available_goal_ids,
+                }, indent=2))]
         
         # Check ambiguity
         if is_ambiguous(title):
@@ -3528,14 +3738,14 @@ async def _handle_call_tool_inner(
         
         # Check for duplicates
         existing_tasks = get_all_tasks()
-        similar = find_similar_tasks(title, existing_tasks)
+        similar = find_similar_tasks(title, existing_tasks) if on_duplicate == 'fail' else []
         if similar:
             return [types.TextContent(type="text", text=json.dumps({
                 "success": False,
                 "error": "Potential duplicate detected",
                 "title": title,
                 "similar_tasks": similar,
-                "suggestion": "Review these similar tasks. If still unique, rephrase the title to be more distinct."
+                "suggestion": "Review these similar tasks. If this is intentionally separate, retry with on_duplicate=force."
             }, indent=2))]
         
         # Check priority limits against the canonical backlog only.
@@ -3543,11 +3753,27 @@ async def _handle_call_tool_inner(
         priority_counts = Counter(t.get('priority', 'P2') for t in active_tasks)
         
         if priority in PRIORITY_LIMITS and priority_counts.get(priority, 0) >= PRIORITY_LIMITS[priority]:
+            occupying_tasks = [
+                {
+                    "title": task.get('title', ''),
+                    "task_id": task.get('task_id') or task.get('id'),
+                }
+                for task in active_tasks
+                if task.get('priority', 'P2') == priority
+            ]
+            occupying_text = ', '.join(
+                f"{task['title']} ({task['task_id']})" for task in occupying_tasks
+            )
             return [types.TextContent(type="text", text=json.dumps({
                 "success": False,
-                "error": f"Priority limit exceeded for {priority}",
+                "error": (
+                    f"Priority limit exceeded for {priority}. Currently occupying "
+                    f"this priority: {occupying_text}. Limits may be newly enforced "
+                    "now that stored priorities are read correctly."
+                ),
                 "current_count": priority_counts.get(priority, 0),
                 "limit": PRIORITY_LIMITS[priority],
+                "occupying_tasks": occupying_tasks,
                 "suggestion": f"You have too many {priority} tasks. Complete or deprioritize some before adding more."
             }, indent=2))]
         
@@ -3575,6 +3801,12 @@ async def _handle_call_tool_inner(
         task_entry += f"\n\t- Pillar: {pillar_name} | Priority: {priority}"
         if weekly_priority_id:
             task_entry += f" | Weekly priority: [{weekly_priority_id}]"
+        if due:
+            task_entry += f" | Due: {due}"
+        if project:
+            task_entry += f" | Project: {project}"
+        if goal:
+            task_entry += f" | Goal: {goal}"
         
         # Add to 03-Tasks/Tasks.md under the appropriate section
         if get_tasks_file().exists():
@@ -3584,10 +3816,19 @@ async def _handle_call_tool_inner(
         
         # Find the section and add the task
         section_header = f"## {section}"
-        if section_header in content:
-            # Add after section header
-            parts = content.split(section_header)
-            new_content = parts[0] + section_header + "\n" + task_entry + "\n" + parts[1]
+        section_match = re.search(
+            rf'(?m)^{re.escape(section_header)}(?=\r?$)', content
+        )
+        if section_match:
+            # Insert after the first exact heading without reconstructing user data.
+            insert_at = section_match.end()
+            new_content = (
+                content[:insert_at]
+                + "\n"
+                + task_entry
+                + "\n"
+                + content[insert_at:]
+            )
         else:
             # Create new section at the top
             lines = content.split('\n')
@@ -3630,6 +3871,9 @@ async def _handle_call_tool_inner(
                 "priority": priority,
                 "section": section,
                 "weekly_priority_id": weekly_priority_id if weekly_priority_id else None,
+                "due": due if due else None,
+                "project": project if project else None,
+                "goal": goal if goal else None,
                 "account": account if account else None,
                 "people": people if people else None
             },

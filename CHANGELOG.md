@@ -7,6 +7,20 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.35.0] - Tasks now remember what you told them (2026-07-11)
+
+When you created a task and confirmed its pillar and priority, Dex wrote them down — and then never read them back, re-guessing both from the task's wording every time it listed your tasks. A P0 could show up as P2 unless its title happened to sound urgent. This release makes task details stick, and adds the fields tasks always needed.
+
+**What this fixes for you:**
+
+* **The priority and pillar you confirm are the ones you see.** Lists, focus suggestions, and limits now read the stored values instead of guessing from the title.
+* **Tasks linked to a weekly priority finally count.** Goal and week progress now include tasks you created through Dex — before, those links were written where nothing could read them, so rollups showed zero.
+* **Tasks can carry a due date, a project, and a quarterly goal.** All optional, all checked when set — an unknown goal or missing project file gets a helpful error listing what's available instead of a silent dead link.
+* **Duplicate detection stops teaching the wrong habit.** When Dex flags a similar task, you can now say "create it anyway" — before, the suggested workaround was to reword the title, which defeated the duplicate check entirely.
+* **A rare data-loss bug is gone.** Adding a task to a section whose heading appeared twice in your task file could silently delete everything after the second heading. Inserts are now safe no matter what your file looks like.
+* **Completed tasks stay clickable in Obsidian.** The completion timestamp used to be written where it broke Obsidian's link-to-this-line feature; it now goes before the link anchor.
+* **Meeting prep sees all your meetings again.** Synced meetings are stored in dated folders that the meeting memory never looked inside — daily plans and meeting prep were blind to them. Both now scan the full folder tree.
+
 ## [1.34.0] - People in your notes now link themselves — safely (2026-07-11)
 
 People auto-linking was promised but never shipped (issue #46); this release finally delivers it with safeguards that keep links accurate.
