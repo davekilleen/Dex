@@ -126,6 +126,7 @@ from core.paths import (
 from core.paths import (
     VAULT_ROOT as BASE_DIR,
 )
+from core.utils.entity_pages import parse_entity_page
 
 
 def get_tasks_file() -> Path:
@@ -821,40 +822,17 @@ def parse_person_page(filepath: Path) -> Dict[str, Any]:
     """Parse a person page and extract key fields"""
     if not filepath.exists():
         return {}
-    
-    content = filepath.read_text()
-    person = {
-        'name': filepath.stem.replace('_', ' '),
+
+    entity = parse_entity_page(filepath)
+    return {
+        'name': entity.get('name') or filepath.stem.replace('_', ' '),
         'filepath': str(filepath),
-        'company': None,
-        'company_page': None,
-        'role': None,
-        'email': None,
-        'last_interaction': None
+        'company': entity.get('company'),
+        'company_page': entity.get('company_page'),
+        'role': entity.get('role'),
+        'email': (entity.get('emails') or [None])[0],
+        'last_interaction': entity.get('last_interaction'),
     }
-    
-    # Parse table fields
-    for line in content.split('\n'):
-        if '**Company**' in line and '|' in line:
-            parts = line.split('|')
-            if len(parts) >= 3:
-                person['company'] = parts[2].strip()
-        elif '**Company Page**' in line and '|' in line:
-            parts = line.split('|')
-            if len(parts) >= 3:
-                person['company_page'] = parts[2].strip()
-        elif '**Role**' in line and '|' in line:
-            parts = line.split('|')
-            if len(parts) >= 3:
-                person['role'] = parts[2].strip()
-        elif '**Email**' in line and '|' in line:
-            parts = line.split('|')
-            if len(parts) >= 3:
-                person['email'] = parts[2].strip()
-        elif '**Last interaction:**' in line:
-            person['last_interaction'] = line.split('**Last interaction:**')[1].strip()
-    
-    return person
 
 def find_people_at_company(company_name: str) -> List[Dict[str, Any]]:
     """Find all people pages that reference a company"""

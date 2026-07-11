@@ -1,0 +1,9 @@
+{
+  "name": "José García",
+  "role": "VP, Product",
+  "company": "Acme & Sons",
+  "emails": ["JOSE@EXAMPLE.COM"],
+  "aliases": ["Pepe"],
+  "location": "external",
+  "notes": "Met at ProductConf."
+}

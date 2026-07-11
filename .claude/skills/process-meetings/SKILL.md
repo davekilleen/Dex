@@ -119,23 +119,30 @@ For each participant in synced meetings:
 
 4. **If page doesn't exist, create it:**
    ```markdown
+   ---
+   type: person
+   name: "{Name}"
+   role: null
+   company: "{company from meeting}"
+   company_page: null
+   emails: ["{lowercased email, if available}"]
+   aliases: []
+   location: {internal|external}
+   last_interaction: {meeting date}
+   ---
    # {Name}
-
-   ## Overview
-
-   | Field | Value |
-   |-------|-------|
-   | **Company** | {company from meeting} |
-   | **Email** | {if available} |
-   | **First Met** | {meeting date} |
-
-   ## Recent Interactions
-
-   - [{Meeting Title}](00-Inbox/Meetings/{date}/{slug}.md) — {date}
 
    ## Notes
 
    *Auto-created from meeting on {date}*
+
+   ## Recent Interactions
+
+   <!-- dex:auto:recent-interactions -->
+   - [{Meeting Title}](00-Inbox/Meetings/{date}/{slug}.md) — {date}
+   <!-- /dex:auto -->
+
+   ## Key Context
    ```
 
 5. **If page exists, add meeting to Recent Interactions:**
@@ -152,23 +159,26 @@ For each unique external company domain:
 
 2. **If doesn't exist, create it:**
    ```markdown
+   ---
+   type: company
+   name: "{Company Name}"
+   domains: ["{lowercased domain}"]
+   website: "{website, if known}"
+   status: "Prospect"
+   ---
    # {Company Name}
-
-   ## Overview
-
-   | Field | Value |
-   |-------|-------|
-   | **Website** | {domain} |
-   | **Stage** | Unknown |
-   | **First Contact** | {date} |
 
    ## Key Contacts
 
+   <!-- dex:auto:key-contacts -->
    - [[05-Areas/People/External/{Person}|{Person}]]
+   <!-- /dex:auto -->
 
    ## Meeting History
 
+   <!-- dex:auto:meeting-history -->
    - [{Meeting Title}](00-Inbox/Meetings/{date}/{slug}.md) — {date}
+   <!-- /dex:auto -->
 
    ## Notes
 

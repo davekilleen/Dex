@@ -17,6 +17,7 @@
  */
 const fs = require('fs');
 const path = require('path');
+const { parseEntityPage } = require('../../.scripts/lib/entity-pages.cjs');
 
 const DEBUG_SKIP = process.env.DEX_HOOK_DEBUG === '1';
 function skip(reason) {
@@ -51,9 +52,9 @@ if (skipExts.includes(ext)) {
 const { loadPaths } = require('./paths.cjs');
 const _paths = loadPaths();
 const VAULT_ROOT = _paths.VAULT_ROOT || process.env.CLAUDE_PROJECT_DIR || process.env.VAULT_PATH || process.cwd();
-const COMPANIES_DIR = _paths.COMPANIES_DIR || path.join(VAULT_ROOT, '05-Areas', 'Companies');
+const COMPANIES_DIR = _paths.COMPANIES_DIR || path.join(_paths.AREAS_DIR, 'Companies');
 // Legacy location for backwards compatibility
-const ACCOUNTS_DIR = path.join(_paths.AREAS_DIR || path.join(VAULT_ROOT, '05-Areas'), 'Accounts');
+const ACCOUNTS_DIR = path.join(_paths.AREAS_DIR, 'Accounts');
 
 // Helper function to recursively scan a directory for company files
 /**
@@ -71,6 +72,7 @@ function scanDir(dirPath, index) {
       if (entry.isDirectory()) {
         scanDir(fullPath, index);
       } else if (entry.name.endsWith('.md')) {
+        if (entry.name.toLowerCase() === 'readme.md') continue;
         const fileName = entry.name.replace('.md', '');
         // Create variations for matching
         const normalizedName = fileName.toLowerCase();
@@ -233,40 +235,16 @@ try {
 function parseCompanyPage(filePath) {
   try {
     const content = fs.readFileSync(filePath, 'utf-8');
-    const fileName = path.basename(filePath, '.md');
+    const entity = parseEntityPage(filePath);
     
     const info = {
-      name: fileName.replace(/_/g, ' ').replace(/-/g, ' '),
-      status: null,
+      name: entity.name || path.basename(filePath, '.md').replace(/_/g, ' ').replace(/-/g, ' '),
+      status: entity.status,
       contacts: [],
       lastMeeting: null,
       openTasks: [],
       context: null
     };
-    
-    // Parse YAML frontmatter
-    if (content.startsWith('---')) {
-      const endMatch = content.slice(3).indexOf('---');
-      if (endMatch !== -1) {
-        const frontmatter = content.slice(3, endMatch + 3);
-        
-        // Extract fields
-        const statusMatch = frontmatter.match(/status:\s*(.+)/);
-        if (statusMatch) info.status = statusMatch[1].trim();
-        
-        const nameMatch = frontmatter.match(/name:\s*(.+)/);
-        if (nameMatch) info.name = nameMatch[1].trim();
-        
-        // Try to find contacts in frontmatter
-        const contactsMatch = frontmatter.match(/contacts:\s*\n((?:\s*-\s*.+\n)+)/);
-        if (contactsMatch) {
-          const contactLines = contactsMatch[1].match(/-\s*(.+)/g);
-          if (contactLines) {
-            info.contacts = contactLines.map(l => l.replace(/^-\s*/, '').trim());
-          }
-        }
-      }
-    }
     
     // Extract open tasks
     const taskRegex = /^- \[ \] (.+)$/gm;

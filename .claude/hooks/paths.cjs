@@ -52,6 +52,11 @@ function loadPaths() {
     PILLARS_FILE: path.join(VAULT_ROOT, 'System', 'pillars.yaml'),
     USER_PROFILE_FILE: path.join(VAULT_ROOT, 'System', 'user-profile.yaml'),
     PEOPLE_INDEX_FILE: path.join(VAULT_ROOT, 'System', 'People_Index.json'),
+    COMPANY_INDEX_FILE: path.join(VAULT_ROOT, 'System', 'Company_Index.json'),
+    DEX_RUNTIME_DIR: path.join(VAULT_ROOT, 'System', '.dex'),
+    CONTACTS_STATE_FILE: path.join(VAULT_ROOT, 'System', '.dex', 'contacts.json'),
+    ENTITY_SUGGESTIONS_FILE: path.join(VAULT_ROOT, 'System', '.dex', 'entity-suggestions.json'),
+    ENTITY_VERIFICATION_FILE: path.join(VAULT_ROOT, 'System', '.dex', 'entity-verification.json'),
   };
 }
 
