@@ -102,6 +102,19 @@ function readOwnerName(profileFile) {
   }
 }
 
+// WikiLinks are an Obsidian convention; plain-markdown vaults keep plain
+// names (mirrors core/utils/reference_formatter.py). Linking is a no-op
+// unless the profile opts in with `obsidian_mode: true`.
+function readObsidianMode(profileFile) {
+  if (!profileFile || !fs.existsSync(profileFile)) return false;
+  try {
+    const profile = fs.readFileSync(profileFile, 'utf-8');
+    return /^obsidian_mode\s*:\s*true\s*(#.*)?$/m.test(profile);
+  } catch (error) {
+    return false;
+  }
+}
+
 function aliasesFromPage(content) {
   const aliases = [];
   const pattern = /\bGoes\s+by\s+["“]([^"”\r\n]+)["”]/giu;
@@ -653,6 +666,10 @@ function runCli() {
   const remaining = args.filter((argument) => argument !== '--dry-run');
   const todayMode = remaining.includes('--today');
   const paths = loadPaths();
+  if (!readObsidianMode(paths.USER_PROFILE_FILE)) {
+    console.log('Auto-link skipped: obsidian_mode is false.');
+    return;
+  }
   const registry = buildRegistry(paths);
   const options = { dryRun, registry, vaultRoot: paths.VAULT_ROOT };
 
@@ -697,4 +714,32 @@ if (require.main === module) {
   }
 }
 
-module.exports = { autoLinkContent, buildRegistry };
+/**
+ * Link person names across a batch of files (used by the background sync).
+ * Gated on obsidian_mode; builds the registry once; never throws per-file —
+ * a bad file is skipped and counted, the rest still link.
+ * Returns { changed, skipped, results }.
+ */
+function autoLinkFiles(files, options = {}) {
+  const paths = loadPaths();
+  if (!readObsidianMode(paths.USER_PROFILE_FILE)) {
+    return { changed: 0, skipped: 'obsidian_mode_off', results: [] };
+  }
+  const registry = buildRegistry(paths);
+  const runOptions = { dryRun: Boolean(options.dryRun), registry, vaultRoot: paths.VAULT_ROOT };
+  const results = [];
+  let changed = 0;
+  for (const filePath of Array.isArray(files) ? files : []) {
+    if (!filePath) continue;
+    try {
+      const result = processFile(filePath, runOptions);
+      results.push(result);
+      if (result.changed) changed += 1;
+    } catch (error) {
+      results.push({ filePath, changed: false, error: error.message });
+    }
+  }
+  return { changed, skipped: null, results };
+}
+
+module.exports = { autoLinkContent, buildRegistry, autoLinkFiles, readObsidianMode };

@@ -37,6 +37,7 @@ const path = require('path');
 const { execSync } = require('child_process');
 const yaml = require('js-yaml');
 const { loadPaths } = require('../../.claude/hooks/paths.cjs');
+const { autoLinkFiles } = require('../auto-link-people.cjs');
 const {
   extractAttendees,
   getInternalDomains,
@@ -1060,6 +1061,17 @@ async function main() {
     updateQueue(processedResults);
     log('\nRunning post-processing...');
     runPostProcessing();
+    if (profile.obsidian_mode) {
+      try {
+        const linked = autoLinkFiles(
+          processedResults.map(result => result.filepath),
+          { profile, vaultRoot: VAULT_ROOT },
+        );
+        log(`Auto-linked people in ${linked.changed} meeting note(s)`);
+      } catch (error) {
+        log(`Auto-link skipped after error: ${error.message}`);
+      }
+    }
   }
 
   // Summary

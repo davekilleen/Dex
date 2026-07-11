@@ -37,7 +37,9 @@ function createVault(t) {
   fs.mkdirSync(peopleDir, { recursive: true });
   fs.mkdirSync(meetingsDir, { recursive: true });
   fs.mkdirSync(systemDir, { recursive: true });
-  fs.writeFileSync(userProfileFile, 'name: Test User\n');
+  // obsidian_mode on: these tests exercise linking behavior; the gate that
+  // no-ops plain-markdown vaults is covered in auto-link-gate.test.cjs.
+  fs.writeFileSync(userProfileFile, 'name: Test User\nobsidian_mode: true\n');
 
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
   return { vault, peopleDir, meetingsDir, userProfileFile };

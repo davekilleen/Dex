@@ -110,11 +110,15 @@ For each participant in synced meetings:
    - If participant email domain matches user's domain → Internal
    - Otherwise → External
 
-3. **Check if person page exists:**
-   - Internal: `05-Areas/People/Internal/{Name}.md`
-   - External: `05-Areas/People/External/{Name}.md`
+3. **Look up the person with the Work MCP `lookup_person` tool.**
+   - If lookup returns `ambiguous: true`, do not create a page. Surface the possible matches to the user.
+   - If a match exists, update that existing page.
 
-4. **If page doesn't exist, create it:**
+4. **If no match exists, call the Work MCP `create_person` tool:**
+   - Pass `name`, `role` when known, `emails` from the meeting's `attendees` block, and `location` from that attendee's `location` field.
+   - Pass the meeting company and a short source note when available.
+
+<!-- What the create_person tool creates (reference only; do not hand-write this template). -->
    ```markdown
    ---
    type: person
@@ -140,7 +144,7 @@ For each participant in synced meetings:
    <!-- /dex:auto -->
 
    ## Key Context
-   ```
+    ```
 
 5. **If page exists, add meeting to Recent Interactions:**
    - Read existing page
