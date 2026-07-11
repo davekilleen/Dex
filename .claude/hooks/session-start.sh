@@ -4,7 +4,7 @@
 # For Dex personal knowledge system
 
 # Prevent duplicate injection (symlinked working directories)
-DEDUP_FILE="/tmp/dex-session-context-dedup"
+DEDUP_FILE="${DEX_SESSION_CONTEXT_DEDUP_FILE:-/tmp/dex-session-context-dedup}"
 NOW=$(date +%s)
 if [[ -f "$DEDUP_FILE" ]]; then
     LAST=$(cat "$DEDUP_FILE" 2>/dev/null || echo "0")
@@ -288,5 +288,44 @@ if errors:
         fi
     fi
 fi
+
+# Background job staleness — keep in sync with core/utils/doctor.py's JOB_FRESHNESS table.
+{
+    DEX_LAUNCH_AGENTS_DIR="${DEX_LAUNCH_AGENTS_DIR:-$HOME/Library/LaunchAgents}"
+    while IFS='|' read -r JOB_NAME JOB_LOG_RELATIVE_PATH JOB_MAX_AGE_SECONDS JOB_EXPECTED_CADENCE JOB_LABEL; do
+        [[ -f "$DEX_LAUNCH_AGENTS_DIR/$JOB_NAME.plist" ]] || continue
+
+        JOB_LOG="$CLAUDE_DIR/$JOB_LOG_RELATIVE_PATH"
+        if [[ ! -f "$JOB_LOG" ]]; then
+            echo "⏰ $JOB_LABEL is installed but has never run — run /dex-doctor to investigate."
+            continue
+        fi
+
+        JOB_MTIME=$(stat -f %m "$JOB_LOG" 2>/dev/null || true)
+        if [[ ! "$JOB_MTIME" =~ ^[0-9]+$ ]]; then
+            JOB_MTIME=$(stat -c %Y "$JOB_LOG" 2>/dev/null || true)
+        fi
+        [[ "$JOB_MTIME" =~ ^[0-9]+$ && "$NOW" =~ ^[0-9]+$ ]] || continue
+
+        JOB_AGE_SECONDS=$(( NOW - JOB_MTIME ))
+        if (( JOB_AGE_SECONDS > JOB_MAX_AGE_SECONDS )); then
+            if (( JOB_AGE_SECONDS < 86400 )); then
+                JOB_AGE=$(( JOB_AGE_SECONDS / 3600 ))
+                JOB_AGE_UNIT="hours"
+            else
+                JOB_AGE=$(( JOB_AGE_SECONDS / 86400 ))
+                JOB_AGE_UNIT="days"
+            fi
+            if (( JOB_AGE == 1 )); then
+                JOB_AGE_UNIT="${JOB_AGE_UNIT%s}"
+            fi
+            echo "⏰ $JOB_LABEL last ran $JOB_AGE $JOB_AGE_UNIT ago (expected every $JOB_EXPECTED_CADENCE) — run /dex-doctor to investigate."
+        fi
+    done <<'EOF'
+com.dex.meeting-intel|.scripts/logs/meeting-intel.log|172800|2 days|Meeting sync
+com.dex.changelog-checker|.scripts/logs/changelog-checker.log|604800|7 days|Claude update watcher
+com.dex.learning-review|.scripts/logs/learning-review.log|604800|7 days|Learning review
+EOF
+} || true
 
 echo "=== End Session Context ==="

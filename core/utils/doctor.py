@@ -117,6 +117,7 @@ PARA_PATH_NAMES = (
     "ARCHIVES_DIR",
 )
 
+# Keep in sync with .claude/hooks/session-start.sh's background-job staleness table.
 JOB_FRESHNESS = {
     "com.dex.meeting-intel": JobFreshness(
         Path(".scripts/logs/meeting-intel.log"),

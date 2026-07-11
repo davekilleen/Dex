@@ -7,6 +7,18 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.30.0] - Dex now tells you when its background sync has quietly stopped (2026-07-11)
+
+A beta user's meeting sync was dead from February to July with no signal, so Dex now surfaces that silent failure at the start of your next session.
+
+**What this fixes for you:**
+
+* **You will know when meeting sync has stopped.** If its background service is installed but has not run recently, Dex tells you at session start and points you to `/dex-doctor`.
+* **A never-started service no longer looks fine.** Dex calls out a configured background sync that has no record of ever running.
+* **Normal sessions stay quiet.** Fresh services, and optional services you have never installed, do not create an alert.
+
+---
+
 ## [1.29.0] - Creating tasks works again (2026-07-11)
 
 Since mid-February, asking Dex to create a task quietly failed with a technical error — every time, for everyone. A code mix-up made the task tool trip over an optional search feature even when that feature wasn't installed, and the existing tests happened to sidestep the exact switch that was broken, so nothing caught it.
@@ -15,6 +27,8 @@ Since mid-February, asking Dex to create a task quietly failed with a technical 
 
 * **"Create a task to…" actually creates the task.** The error that blocked every task creation — and also broke meeting-context lookups and inbox processing — is gone.
 * **This can't silently break again.** Dex now tests task creation the exact way your vault runs it: starting the real task service and creating, listing, and completing a task end to end. If a future change breaks task creation, the release checks catch it before an update reaches you.
+
+---
 
 ## [1.28.0] - Installs now contain the Dex features they promise (2026-07-11)
 
