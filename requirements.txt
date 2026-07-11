@@ -11,10 +11,6 @@ python-dateutil>=2.8.0
 # Web scraping (no API key required)
 scrapling[ai]>=0.4.1
 
-# Testing
-pytest
-ruff
-
 # Optional integrations (uncomment if needed)
 # google-auth>=2.16.0
 # google-auth-oauthlib>=1.0.0

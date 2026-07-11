@@ -1,0 +1,4 @@
+# Dex development and CI requirements
+pytest
+pytest-cov
+ruff

@@ -6,12 +6,15 @@
 
 # Dev tooling configs
 pyproject.toml
+requirements-dev.txt
 vitest.config.mjs
 .husky/
 
 # Test suites
 core/tests/
-.claude/hooks/__tests__/
+core/mcp/tests/
+core/migrations/tests/
+.claude/hooks/tests/
 .scripts/meeting-intel/__tests__/
 
 # Dev scripts and docs

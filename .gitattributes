@@ -3,10 +3,13 @@
 
 .github/               export-ignore
 pyproject.toml          export-ignore
+requirements-dev.txt    export-ignore
 vitest.config.mjs       export-ignore
 .husky/                 export-ignore
 core/tests/             export-ignore
-.claude/hooks/__tests__/ export-ignore
+core/mcp/tests/         export-ignore
+core/migrations/tests/  export-ignore
+.claude/hooks/tests/    export-ignore
 .scripts/meeting-intel/__tests__/ export-ignore
 CONTRIBUTING.md         export-ignore
 DISTRIBUTION_READY.md   export-ignore

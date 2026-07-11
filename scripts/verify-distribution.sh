@@ -238,6 +238,31 @@ else
     echo "  ✅ All referenced runnable scripts exist"
 fi
 
+# Check 16: A real release build contains no test suites.
+echo ""
+echo "✓ Verifying release branch strips all test suites..."
+RELEASE_CHECK_DIR=$(mktemp -d)
+RELEASE_CHECK_REPO="$RELEASE_CHECK_DIR/repo"
+if git clone --local --no-hardlinks --quiet "$PWD" "$RELEASE_CHECK_REPO" \
+    && git -C "$RELEASE_CHECK_REPO" config user.name "Dex Distribution Check" \
+    && git -C "$RELEASE_CHECK_REPO" config user.email "distribution@example.com" \
+    && git -C "$RELEASE_CHECK_REPO" checkout -B main HEAD --quiet \
+    && bash "$RELEASE_CHECK_REPO/scripts/build-release.sh" >/dev/null; then
+    RELEASE_TEST_FILES=$(git -C "$RELEASE_CHECK_REPO" ls-tree -r --name-only release -- \
+        core/tests core/mcp/tests core/migrations/tests .claude/hooks/tests)
+    if [ -n "$RELEASE_TEST_FILES" ]; then
+        echo "  ❌ ERROR: Test files found in generated release branch:"
+        echo "$RELEASE_TEST_FILES" | sed 's/^/     /'
+        ERRORS=$((ERRORS + 1))
+    else
+        echo "  ✅ Generated release branch contains no test suites"
+    fi
+else
+    echo "  ❌ ERROR: Could not build a temporary release branch"
+    ERRORS=$((ERRORS + 1))
+fi
+rm -rf "$RELEASE_CHECK_DIR"
+
 # Summary
 echo ""
 echo "================================="

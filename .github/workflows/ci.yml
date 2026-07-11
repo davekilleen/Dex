@@ -19,7 +19,7 @@ jobs:
           node-version: '20'
       - name: Install Python dependencies
         run: |
-          pip install pytest pytest-cov ruff
+          pip install -r requirements-dev.txt
           pip install mcp pyyaml python-dateutil requests
       - run: npm ci
       - name: Ensure policy scripts are executable

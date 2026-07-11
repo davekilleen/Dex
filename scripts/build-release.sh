@@ -65,11 +65,10 @@ if [ "$DRY_RUN" = true ]; then
     echo "Dry run — files that would be removed from release branch:"
     echo ""
     for pattern in "${PATTERNS[@]}"; do
-        # Use git ls-files to match tracked files
-        matches=$(git ls-files -- "$pattern" 2>/dev/null || true)
-        if [ -n "$matches" ]; then
-            echo "$matches" | sed 's/^/  /'
-        fi
+        # Keep path boundaries intact for spaces and other special characters.
+        while IFS= read -r -d '' match; do
+            printf '  %s\n' "$match"
+        done < <(git ls-files -z -- "$pattern")
     done
     echo ""
     echo "Source: $SOURCE_BRANCH ($(git rev-parse --short $SOURCE_BRANCH))"
@@ -92,34 +91,37 @@ git checkout -B "$RELEASE_BRANCH" "$SOURCE_BRANCH" --quiet
 
 # Remove dev-only files
 REMOVED=0
+MATCHES_FILE=$(mktemp)
+trap 'rm -f "$MATCHES_FILE"' EXIT
 for pattern in "${PATTERNS[@]}"; do
-    matches=$(git ls-files -- "$pattern" 2>/dev/null || true)
-    if [ -n "$matches" ]; then
-        echo "$matches" | xargs git rm -rf --quiet 2>/dev/null || true
-        count=$(echo "$matches" | wc -l | tr -d ' ')
+    git ls-files -z -- "$pattern" > "$MATCHES_FILE"
+    if [ -s "$MATCHES_FILE" ]; then
+        count=0
+        while IFS= read -r -d '' _match; do
+            count=$((count + 1))
+        done < "$MATCHES_FILE"
+        xargs -0 git rm -rf --quiet -- < "$MATCHES_FILE"
         REMOVED=$((REMOVED + count))
     fi
 done
 
-if [ $REMOVED -eq 0 ]; then
+# Remove development-only package metadata that points at stripped files.
+node -e "
+    const fs = require('fs');
+    const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+    delete pkg.devDependencies;
+    if (pkg.scripts) delete pkg.scripts['test:hooks'];
+    fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
+"
+git add -- package.json
+
+if git diff --cached --quiet; then
     echo "Nothing to remove — release branch matches main."
     git checkout - --quiet
     exit 0
 fi
 
-# Remove devDependencies from package.json if present
-if grep -q '"devDependencies"' package.json 2>/dev/null; then
-    # Use node to strip devDependencies cleanly
-    node -e "
-        const pkg = require('./package.json');
-        delete pkg.devDependencies;
-        require('fs').writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
-    "
-    git add package.json
-fi
-
 # Commit the clean state
-git add -A
 git commit -m "$(cat <<EOF
 release: v$PKG_VERSION
 
