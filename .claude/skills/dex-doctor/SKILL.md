@@ -53,10 +53,12 @@ picture as a full one.
 
 Quick mode checks configuration, wiring, and background-job freshness. Deep mode
 additionally contacts live services (Granola API, Calendar via EventKit, enabled
-integrations). Ask:
+integrations) and runs Dex's built-in end-to-end smoke tests (~30s, safe — never
+executes your custom commands). Ask:
 
 > "Quick check done. Want the deep scan too? It contacts your connected services
-> (Granola, Calendar) to prove the real query paths work — takes ~30 seconds."
+> (Granola, Calendar) and runs Dex's built-in end-to-end smoke tests (~30s, safe —
+> never executes your custom commands)."
 
 If yes: run with `--deep` and merge results.
 
@@ -68,6 +70,16 @@ line ("✓ 11 checks healthy").
 
 For each BROKEN item: what it means for the user in one plain sentence (what stopped
 working, since when if known), then the fix path.
+
+If any `customizations.*` check is non-OK, or a smoke journey attributes a non-OK result
+to a user file, render those findings in their own **Your customizations** group. Name the
+exact file and exact fix path on every line — for example, "fix or remove
+`.claude/skills/client-notes-custom/SKILL.md`". Do not mix failures in shipped Dex files
+into this group.
+
+Customization failures are not a reason to roll back or update Dex. Point to the user's
+file and say how to fix or remove it. Only a failure in unmodified, Dex-owned code may
+recommend `/dex-update` or the documented rollback path.
 
 ### Step 4: Heal, tiered
 
