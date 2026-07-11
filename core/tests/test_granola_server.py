@@ -96,6 +96,10 @@ def test_recent_meetings_surfaces_filtered_http_400(monkeypatch):
     assert "HTTP 400" in result["error"]
     assert "connector may need updating" in result["error"]
     assert "invalid created_after" in result["error"]
+    assert result["feature"] == "Granola meeting sync"
+    assert result["feature_status"] == "broken"
+    assert result["user_message"] == result["error"]
+    assert result["data_source"] == "official_api"
 
 
 def test_recent_meetings_surfaces_url_errors(monkeypatch):
@@ -156,6 +160,10 @@ def test_check_available_uses_filtered_probe_and_surfaces_http_400(monkeypatch):
     assert result["available"] is False
     assert result["api"]["status"] == "unavailable"
     assert "HTTP 400" in result["error"]
+    assert result["success"] is False
+    assert result["feature"] == "Granola meeting sync"
+    assert result["feature_status"] == "broken"
+    assert result["user_message"] == result["message"]
 
 
 @pytest.mark.parametrize(

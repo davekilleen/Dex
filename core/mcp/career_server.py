@@ -88,8 +88,11 @@ from core.paths import (
 from core.paths import (
     VAULT_ROOT as BASE_DIR,
 )
+from core.utils.feature_status import feature_status
 
 LADDER_FILE = CAREER_DIR / 'Career_Ladder.md'
+CAREER_EVIDENCE_FEATURE = "Career evidence"
+CAREER_LADDER_FEATURE = "Career ladder"
 
 # Initialize the MCP server
 app = Server("dex-career-mcp")
@@ -286,6 +289,17 @@ async def handle_list_tools() -> list[types.Tool]:
 # TOOL HANDLERS
 # ============================================================================
 
+
+def _feature_response(
+    feature: str,
+    state: str,
+    user_message: str,
+    **extra,
+) -> list[types.TextContent]:
+    payload = feature_status(feature, state, user_message, **extra)
+    return [types.TextContent(type="text", text=json.dumps(payload, indent=2))]
+
+
 @app.call_tool()
 async def handle_call_tool(
     name: str, arguments: dict | None
@@ -348,14 +362,14 @@ async def handle_scan_evidence(arguments: dict) -> list[types.TextContent]:
     """Scan and aggregate evidence files"""
     
     if not EVIDENCE_DIR.exists():
-        return [types.TextContent(
-            type="text",
-            text=json.dumps({
-                "success": False,
-                "error": f"Evidence directory not found: {EVIDENCE_DIR}",
-                "note": "Run /career-setup to initialize your career system"
-            }, indent=2)
-        )]
+        error = f"Evidence directory not found: {EVIDENCE_DIR}"
+        return _feature_response(
+            CAREER_EVIDENCE_FEATURE,
+            "off",
+            error,
+            error=error,
+            note="Run /career-setup to initialize your career system",
+        )
     
     # Parse date range if provided
     date_range_arg = arguments.get('date_range')
@@ -426,26 +440,25 @@ async def handle_parse_ladder(arguments: dict) -> list[types.TextContent]:
     """Parse career ladder file"""
     
     if not LADDER_FILE.exists():
-        return [types.TextContent(
-            type="text",
-            text=json.dumps({
-                "success": False,
-                "error": f"Career ladder file not found: {LADDER_FILE}",
-                "note": "Run /career-setup to create your career ladder"
-            }, indent=2)
-        )]
+        error = f"Career ladder file not found: {LADDER_FILE}"
+        return _feature_response(
+            CAREER_LADDER_FEATURE,
+            "off",
+            error,
+            error=error,
+            note="Run /career-setup to create your career ladder",
+        )
     
     # Parse the ladder
     ladder_data = parse_ladder_file(LADDER_FILE)
     
     if "error" in ladder_data:
-        return [types.TextContent(
-            type="text",
-            text=json.dumps({
-                "success": False,
-                **ladder_data
-            }, indent=2)
-        )]
+        return _feature_response(
+            CAREER_LADDER_FEATURE,
+            "broken",
+            str(ladder_data["error"]),
+            **ladder_data,
+        )
     
     # Add success flag
     ladder_data["success"] = True
@@ -461,36 +474,36 @@ async def handle_analyze_coverage(arguments: dict) -> list[types.TextContent]:
     
     # Check prerequisites
     if not EVIDENCE_DIR.exists():
-        return [types.TextContent(
-            type="text",
-            text=json.dumps({
-                "success": False,
-                "error": "Evidence directory not found",
-                "note": "Run /career-setup to initialize your career system"
-            }, indent=2)
-        )]
+        error = "Evidence directory not found"
+        return _feature_response(
+            CAREER_EVIDENCE_FEATURE,
+            "off",
+            error,
+            error=error,
+            note="Run /career-setup to initialize your career system",
+        )
     
     if not LADDER_FILE.exists():
-        return [types.TextContent(
-            type="text",
-            text=json.dumps({
-                "success": False,
-                "error": "Career ladder file not found",
-                "note": "Run /career-setup to create your career ladder"
-            }, indent=2)
-        )]
+        error = "Career ladder file not found"
+        return _feature_response(
+            CAREER_LADDER_FEATURE,
+            "off",
+            error,
+            error=error,
+            note="Run /career-setup to create your career ladder",
+        )
     
     # Parse ladder
     ladder_data = parse_ladder_file(LADDER_FILE)
     if "error" in ladder_data or not ladder_data.get('competencies'):
-        return [types.TextContent(
-            type="text",
-            text=json.dumps({
-                "success": False,
-                "error": "Failed to parse career ladder or no competencies found",
-                "ladder_data": ladder_data
-            }, indent=2)
-        )]
+        error = "Failed to parse career ladder or no competencies found"
+        return _feature_response(
+            CAREER_LADDER_FEATURE,
+            "broken",
+            error,
+            error=error,
+            ladder_data=ladder_data,
+        )
     
     # Scan evidence (with optional date range filter)
     date_range_arg = arguments.get('date_range')
@@ -560,14 +573,14 @@ async def handle_timeline_analysis(arguments: dict) -> list[types.TextContent]:
     """Analyze evidence timeline and trends"""
     
     if not EVIDENCE_DIR.exists():
-        return [types.TextContent(
-            type="text",
-            text=json.dumps({
-                "success": False,
-                "error": "Evidence directory not found",
-                "note": "Run /career-setup to initialize your career system"
-            }, indent=2)
-        )]
+        error = "Evidence directory not found"
+        return _feature_response(
+            CAREER_EVIDENCE_FEATURE,
+            "off",
+            error,
+            error=error,
+            note="Run /career-setup to initialize your career system",
+        )
     
     # Parse arguments
     period_arg = arguments.get('period', 'last-12-months')

@@ -7,6 +7,19 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.33.0] - 'Off' and 'broken' now mean different things — everywhere (2026-07-11)
+
+Dex could describe an optional feature as broken in one place and merely disconnected in another; this release gives those responses one shared meaning.
+
+**What this fixes for you:**
+
+* **Optional features stay peacefully off.** If you deliberately did not enable or configure something, Dex treats it as healthy, never uses an error tone, and never nags you to fix it.
+* **Real failures stand out.** “Broken” is reserved for a feature that is configured and expected to work but is failing, so genuine problems no longer look like personal setup choices.
+* **Missing software has its own answer.** When a required app, binary, or dependency is absent, Dex says that directly instead of calling the feature broken.
+* **Uncertain checks admit uncertainty.** If a check itself fails, Dex reports that it could not determine the state instead of inventing a diagnosis.
+
+---
+
 ## [1.32.0] - Dex can no longer tell you to use tools that don't exist (2026-07-11)
 
 Some instructions could send you looking for a tool or runnable helper that was never included, leaving you stuck at the moment Dex was supposed to help.

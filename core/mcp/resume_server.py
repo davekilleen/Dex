@@ -108,6 +108,7 @@ from core.paths import (
 from core.paths import (
     VAULT_ROOT as BASE_DIR,
 )
+from core.utils.feature_status import feature_status
 
 # Ensure directories exist
 SESSIONS_DIR.mkdir(parents=True, exist_ok=True)
@@ -820,13 +821,19 @@ async def handle_pull_career_evidence(arguments: dict) -> list[types.TextContent
     
     # Check if Career Evidence exists
     if not EVIDENCE_DIR.exists():
+        error = "Career Evidence directory not found"
         return [types.TextContent(
             type="text",
-            text=json.dumps({
-                "success": False,
-                "error": "Career Evidence directory not found",
-                "note": "Run /career-setup to initialize career system"
-            }, indent=2)
+            text=json.dumps(
+                feature_status(
+                    "Career evidence",
+                    "off",
+                    error,
+                    error=error,
+                    note="Run /career-setup to initialize career system",
+                ),
+                indent=2,
+            )
         )]
     
     # Find relevant evidence
