@@ -338,3 +338,28 @@ def test_load_pillars_coerces_non_string_keywords(tmp_path, monkeypatch):
     # int-coerced keyword must not raise a TypeError on `61 in "..."`.
     monkeypatch.setattr(work_server, "PILLARS", pillars)
     assert work_server.guess_pillar("let's sync on the pipeline") == "sales"
+
+
+def test_empty_keywords_does_not_discard_all_pillars(tmp_path, monkeypatch):
+    """A present-but-empty `keywords:` parses as None; it must load that pillar
+    with no keywords, not raise and fall back to DEFAULT_PILLARS (wiping the
+    user's real pillars)."""
+    pillars_file = tmp_path / "pillars.yaml"
+    pillars_file.write_text(
+        "pillars:\n"
+        "  - id: sales\n"
+        "    name: Sales\n"
+        "    keywords:\n"
+        "  - id: product\n"
+        "    name: Product\n"
+        "    keywords:\n"
+        "      - roadmap\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(work_server, "get_pillars_file", lambda: pillars_file)
+
+    pillars = work_server.load_pillars_from_yaml()
+
+    assert set(pillars) == {"sales", "product"}
+    assert pillars["sales"]["keywords"] == []
+    assert pillars["product"]["keywords"] == ["roadmap"]

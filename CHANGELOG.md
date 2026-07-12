@@ -7,6 +7,17 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.46.0] - Hardening two recent fixes (2026-07-12)
+
+An independent review of this week's safety fixes caught two cases where a fix didn't fully deliver what it promised. Both are now closed.
+
+**What this fixes for you:**
+
+* **Checking a task off directly in your task list now updates everywhere.** A recent change meant that ticking a box straight in `Tasks.md` (rather than through chat or a person page) quietly stopped updating the linked person and meeting pages. Those edits propagate again.
+* **An empty pillar keyword list no longer wipes your pillars.** Leaving a pillar's keywords blank in your settings could quietly reset *all* your pillars to the defaults. A blank list is now handled safely.
+
+---
+
 ## [1.45.0] - Dex can prove your setup still works (2026-07-12)
 
 Dex can now tell you when YOUR customizations break it — and updates prove themselves

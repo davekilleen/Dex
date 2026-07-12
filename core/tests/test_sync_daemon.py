@@ -272,3 +272,37 @@ def test_repeated_failure_uses_the_session_start_error_queue(
     assert queue[0]["source"] == "obsidian-sync"
     assert queue[0]["context"] == {"task_id": task_id, "failures": 3}
     assert task_id in preflight.format_errors()
+
+
+def test_direct_edit_to_canonical_tasks_file_propagates(
+    tmp_path, monkeypatch, sync_daemon
+):
+    """A checkbox toggled directly in Tasks.md must still sync to the mirror
+    pages — the canonical-equality guard would otherwise skip it because the
+    canonical snapshot is read from that same just-saved file."""
+    from core.mcp import work_server
+
+    task_id = "task-20260712-010"
+    canonical_file = tmp_path / "03-Tasks" / "Tasks.md"
+    write_task(canonical_file, task_id, completed=False)
+    monkeypatch.setattr(work_server, "get_tasks_file", lambda: canonical_file)
+
+    updates = []
+    monkeypatch.setattr(
+        work_server,
+        "update_task_status_everywhere",
+        lambda changed_id, completed: updates.append((changed_id, completed))
+        or {"success": True, "task_id": changed_id},
+    )
+
+    handler = sync_daemon.DexSyncHandler(tmp_path)
+    handler.sync_file_tasks(canonical_file)  # startup prime, no propagation
+    assert updates == []
+
+    write_task(canonical_file, task_id, completed=True)  # user checks the box in Tasks.md
+    handler.sync_file_tasks(canonical_file)
+
+    assert updates == [(task_id, True)]
+    # The write-back this triggers is caught by the last-seen guard, not re-pushed.
+    handler.sync_file_tasks(canonical_file)
+    assert updates == [(task_id, True)]

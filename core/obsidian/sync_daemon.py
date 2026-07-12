@@ -126,6 +126,19 @@ class DexSyncHandler(FileSystemEventHandler):
                 if task.get('task_id')
             }
 
+        # When the edit happened in Tasks.md itself, the canonical snapshot was
+        # read from that same just-saved file, so it trivially matches — the
+        # equality guard below would wrongly skip it. A direct Tasks.md edit is
+        # exactly the case that must still propagate to the mirror pages, so we
+        # bypass the equality guard for it (the last_seen guard above already
+        # prevents the write-back it triggers from looping).
+        try:
+            edit_is_canonical_tasks_file = (
+                file_path.resolve() == work_server.get_tasks_file().resolve()
+            )
+        except OSError:
+            edit_is_canonical_tasks_file = False
+
         # Call Work MCP only for a newly observed transition that differs
         # from the canonical backlog.
         for state_key, task_id, completed in changed_states:
@@ -134,7 +147,7 @@ class DexSyncHandler(FileSystemEventHandler):
                 self.last_seen_states[state_key] = completed
                 self._clear_sync_failure(task_id)
                 continue
-            if canonical_states[task_id] == completed:
+            if not edit_is_canonical_tasks_file and canonical_states[task_id] == completed:
                 self.last_seen_states[state_key] = completed
                 self._clear_sync_failure(task_id)
                 continue
