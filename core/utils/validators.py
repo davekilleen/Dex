@@ -13,6 +13,89 @@ import yaml
 PLACEHOLDER_PATTERN = re.compile(r"\{\{[^{}]+\}\}")
 
 
+def validate_user_profile_config(config: object) -> list[str]:
+    """Return minimal schema errors for ``System/user-profile.yaml``."""
+    if not isinstance(config, Mapping):
+        return ["user profile must be a YAML object"]
+
+    errors = []
+    string_fields = ("name", "role", "role_group", "company", "email_domain")
+    for field in string_fields:
+        if field in config and not isinstance(config[field], str):
+            errors.append(f"{field} must be a string")
+    object_fields = (
+        "communication",
+        "meeting_processing",
+        "meeting_intelligence",
+        "journaling",
+        "quarterly_planning",
+        "analytics",
+        "calendar",
+    )
+    for field in object_fields:
+        if field in config and not isinstance(config[field], Mapping):
+            errors.append(f"{field} must be an object")
+    return errors
+
+
+def validate_pillars_config(config: object) -> list[str]:
+    """Return minimal schema errors for ``System/pillars.yaml``."""
+    if not isinstance(config, Mapping):
+        return ["pillars config must be a YAML object"]
+
+    pillars = config.get("pillars")
+    if not isinstance(pillars, list):
+        return ["pillars must be a list"]
+
+    errors = []
+    for index, pillar in enumerate(pillars):
+        label = f"pillars[{index}]"
+        if not isinstance(pillar, Mapping):
+            errors.append(f"{label} must be an object")
+            continue
+        for field in ("id", "name"):
+            value = pillar.get(field)
+            if not isinstance(value, str) or not value.strip():
+                errors.append(f"{label}.{field} must be a non-empty string")
+        if "description" in pillar and not isinstance(pillar["description"], str):
+            errors.append(f"{label}.description must be a string")
+        keywords = pillar.get("keywords", [])
+        if not isinstance(keywords, list) or not all(isinstance(keyword, str) for keyword in keywords):
+            errors.append(f"{label}.keywords must be a list of strings")
+
+    limits = config.get("priority_limits")
+    if limits is not None:
+        if not isinstance(limits, Mapping):
+            errors.append("priority_limits must be an object")
+        else:
+            for priority, limit in limits.items():
+                if priority not in {"P0", "P1", "P2", "P3"}:
+                    errors.append(f"priority_limits contains unknown priority {priority!r}")
+                if not isinstance(limit, int) or isinstance(limit, bool) or limit < 0:
+                    errors.append(f"priority_limits.{priority} must be a non-negative integer")
+    return errors
+
+
+def validate_integration_config(config: object, *, main: bool = False) -> list[str]:
+    """Return minimal schema errors for one ``System/integrations`` YAML file."""
+    if not isinstance(config, Mapping):
+        return ["integration config must be a YAML object"]
+
+    errors = []
+    enabled = config.get("enabled")
+    if main:
+        if enabled is not None and (
+            not isinstance(enabled, Mapping)
+            or not all(isinstance(name, str) and isinstance(value, bool) for name, value in enabled.items())
+        ):
+            errors.append("enabled must be an object of boolean values")
+    elif enabled is not None and not isinstance(enabled, bool):
+        errors.append("enabled must be a boolean")
+    if "hooks" in config and not isinstance(config["hooks"], Mapping):
+        errors.append("hooks must be an object")
+    return errors
+
+
 def validate_skill_frontmatter(path: str | Path) -> list[str]:
     """Return validation errors for one skill's YAML frontmatter."""
     skill_path = Path(path)
@@ -86,9 +169,15 @@ def validate_mcp_config(config: object) -> list[str]:
             errors.append(f"{label}: entry must be an object")
             continue
 
-        command = entry.get("command")
-        if not isinstance(command, str) or not command.strip():
-            errors.append(f"{label}: command must be a non-empty string")
+        remote = entry.get("type") in {"http", "sse", "streamable-http"} or "url" in entry
+        if remote:
+            url = entry.get("url")
+            if not isinstance(url, str) or not url.startswith(("https://", "http://")):
+                errors.append(f"{label}: url must be an http(s) string")
+        else:
+            command = entry.get("command")
+            if not isinstance(command, str) or not command.strip():
+                errors.append(f"{label}: command must be a non-empty string")
         args = entry.get("args", [])
         if not isinstance(args, list) or not all(isinstance(argument, str) for argument in args):
             errors.append(f"{label}: args must be a list of strings")

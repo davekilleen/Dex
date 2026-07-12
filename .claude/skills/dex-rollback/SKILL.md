@@ -92,13 +92,57 @@ Will restore to: v1.2.0 (last backup)
 
 ### Step 3: Save and Protect Current State
 
-Before rolling back, protect all user-owned content. This includes every folder from `00-Inbox/` through `07-Archives/`, because tracked planning files such as tasks, quarterly goals, and weekly priorities would otherwise be replaced by a hard reset.
+**Snapshot the newer release's shipped manifest before saving or resetting anything:**
+
+```bash
+# Run this and the Step 5 cleanup block with bash or zsh; Step 5 uses process substitution.
+[ -f package.json ] && [ -d .claude ] || { echo "run from the vault root"; exit 1; }
+
+ROLLBACK_RELEASE_REF=""
+for candidate in upstream/release origin/release; do
+  candidate_base="$(git merge-base HEAD "$candidate" 2>/dev/null || true)"
+  if [ -n "$candidate_base" ] \
+    && git cat-file -e "$candidate_base:System/.installed-files.manifest" 2>/dev/null; then
+    ROLLBACK_RELEASE_REF="$candidate_base"
+    break
+  fi
+done
+
+if [ -n "$ROLLBACK_RELEASE_REF" ]; then
+  ROLLBACK_STATE_DIR=""
+  if candidate_state_dir="$(mktemp -d "${TMPDIR:-/tmp}/dex-rollback.XXXXXX")" \
+    && chmod 700 "$candidate_state_dir" \
+    && (umask 077
+      git show "$ROLLBACK_RELEASE_REF:System/.installed-files.manifest" \
+        > "$candidate_state_dir/new.manifest" \
+      && printf '%s\n' "$ROLLBACK_RELEASE_REF" > "$candidate_state_dir/new-release"
+    ); then
+    ROLLBACK_STATE_DIR="$candidate_state_dir"
+    printf 'Saved verified newer release state: %q\n' "$ROLLBACK_STATE_DIR"
+  else
+    if [ -n "${candidate_state_dir:-}" ] \
+      && [ -d "$candidate_state_dir" ] \
+      && [ ! -L "$candidate_state_dir" ]; then
+      rm -f -- "$candidate_state_dir/new.manifest" "$candidate_state_dir/new-release"
+      rmdir -- "$candidate_state_dir" 2>/dev/null || true
+    fi
+    echo "Could not safely snapshot the installed release manifest — file cleanup will be skipped"
+  fi
+else
+  ROLLBACK_STATE_DIR=""
+  echo "Could not verify the installed release manifest — file cleanup will be skipped"
+fi
+```
+
+Keep the exact `ROLLBACK_STATE_DIR` value printed above for Step 5 (if commands run in separate shell invocations, substitute that exact value there; never search `/tmp` with a glob). This must happen before `git reset --hard`: after the reset, `HEAD` belongs to the older release. The manifest comes from the installed release commit shared with `upstream/release` (or the legacy `origin/release` fallback), never from the user's working tree or merge commit.
+
+Next, protect all user-owned content. This includes every folder from `00-Inbox/` through `07-Archives/`, because tracked planning files such as tasks, quarterly goals, and weekly priorities would otherwise be replaced by a hard reset.
 
 ```
 💾 Saving current state...
 ```
 
-Run Step 4's single protected shell block. It stashes user data before the auto-save, creates the undo tag only after the save succeeds, performs the reset, restores the tracked snapshot, then reapplies uncommitted and untracked user files.
+Run Step 4's single protected shell block. It snapshots user data before the auto-save. If staging or committing fails, rollback aborts before any tag or reset and reapplies the stash without dropping it. Only a verified save (including a verified nothing-to-save result) may create the undo tag, reset, restore the tracked snapshot, and finally reapply uncommitted and untracked user files.
 
 ---
 
@@ -110,6 +154,7 @@ Run Step 4's single protected shell block. It stashes user data before the auto-
 
 Run this entire block in one shell invocation so the snapshot references cannot be lost between commands:
 ```bash
+ROLLBACK_STATE_DIR="[exact private temp path printed in Step 3]"
 DEX_ROLLBACK_TARGET="backup-before-v1.3.0"
 DEX_USER_DATA_PATHS=(
   "00-Inbox/" "01-Quarter_Goals/" "02-Week_Priorities/" "03-Tasks/"
@@ -127,7 +172,7 @@ DEX_USER_DATA_STASH_PATHS=(
 DEX_USER_DATA_SOURCE=$(git rev-parse HEAD)
 DEX_DATA_STASH_BEFORE=$(git rev-parse -q --verify refs/stash 2>/dev/null || true)
 
-git stash push --include-untracked \
+git stash push --all \
   -m "dex-user-data-before-rollback-$(date +%Y%m%d-%H%M%S)" \
   -- "${DEX_USER_DATA_STASH_PATHS[@]}" || true
 
@@ -140,31 +185,33 @@ else
   DEX_DATA_STASH_OID=""
   if ! git diff --quiet -- "${DEX_USER_DATA_PATHS[@]}" || \
      ! git diff --cached --quiet -- "${DEX_USER_DATA_PATHS[@]}" || \
-     [ -n "$(git ls-files --others --exclude-standard -- "${DEX_USER_DATA_PATHS[@]}")" ]; then
+     [ -n "$(git ls-files --others --exclude-standard -- "${DEX_USER_DATA_PATHS[@]}")" ] || \
+     [ -n "$(git ls-files --others --ignored --exclude-standard -- "${DEX_USER_DATA_PATHS[@]}")" ]; then
     echo "Rollback stopped: changed user data remains outside the snapshot, so no reset ran"
     exit 1
   fi
 fi
 
 if ! git add .; then
-  [ -z "$DEX_DATA_STASH_REF" ] || git stash pop "$DEX_DATA_STASH_REF"
+  [ -z "$DEX_DATA_STASH_OID" ] || git stash apply "$DEX_DATA_STASH_OID"
   echo "Rollback stopped: Git could not prepare the current state, so no reset ran"
   exit 1
 fi
-if ! git diff --cached --quiet && ! git commit -m "Auto-save before rollback to v1.2.0"; then
+if git diff --cached --quiet; then
+  echo "Nothing to save; continuing rollback"
+elif ! git commit -m "Auto-save before rollback to v1.2.0"; then
   git reset
-  [ -z "$DEX_DATA_STASH_REF" ] || git stash pop "$DEX_DATA_STASH_REF"
+  [ -z "$DEX_DATA_STASH_OID" ] || git stash apply "$DEX_DATA_STASH_OID"
   echo "Rollback stopped: Git could not save the current state, so no reset ran"
   exit 1
 fi
 
 DEX_BEFORE_ROLLBACK_TAG="before-rollback-$(date +%Y%m%d-%H%M%S)"
 if ! git tag "$DEX_BEFORE_ROLLBACK_TAG"; then
-  [ -z "$DEX_DATA_STASH_REF" ] || git stash pop "$DEX_DATA_STASH_REF"
+  [ -z "$DEX_DATA_STASH_OID" ] || git stash apply "$DEX_DATA_STASH_OID"
   echo "Rollback stopped: the undo tag could not be created, so no reset ran"
   exit 1
 fi
-cp System/.installed-files.manifest /tmp/dex-new-manifest.txt 2>/dev/null || true
 
 dex_export_user_data_rescue() {
   DEX_RESCUE_DIR="System/rollback-rescue/$(date +%Y%m%d-%H%M%S)-$$"
@@ -243,31 +290,118 @@ This restores Dex files to the state before the update, then restores the user's
 
 **A. Remove files added by the newer version (manifest-based)**
 
-The protected Step 4 block already saved the newer manifest before its reset. Compare it with the restored manifest:
+Compare the newer manifest snapshot from Step 3 with the restored release's shipped manifest. `ROLLBACK_STATE_DIR` below is the exact private temp path printed in Step 3:
 
 ```bash
-if [ -f /tmp/dex-new-manifest.txt ] && [ -f System/.installed-files.manifest ]; then
+# Requires bash or zsh because this block uses process substitution.
+[ -f package.json ] && [ -d .claude ] || { echo "run from the vault root"; exit 1; }
+
+ROLLBACK_STATE_DIR="[exact private temp path printed in Step 3]"
+
+rollback_has_symlink_parent() {
+  local remaining="$1"
+  local prefix=""
+  local component
+  while [ "${remaining#*/}" != "$remaining" ]; do
+    component="${remaining%%/*}"
+    remaining="${remaining#*/}"
+    prefix="${prefix:+$prefix/}$component"
+    [ -L "$prefix" ] && return 0
+  done
+  return 1
+}
+
+ROLLBACK_NEW_RELEASE=""
+ROLLBACK_OLD_RELEASE=""
+if [ -n "$ROLLBACK_STATE_DIR" ] \
+  && [ -d "$ROLLBACK_STATE_DIR" ] \
+  && [ ! -L "$ROLLBACK_STATE_DIR" ] \
+  && [ -f "$ROLLBACK_STATE_DIR/new.manifest" ] \
+  && [ ! -L "$ROLLBACK_STATE_DIR/new.manifest" ] \
+  && [ -f "$ROLLBACK_STATE_DIR/new-release" ] \
+  && [ ! -L "$ROLLBACK_STATE_DIR/new-release" ]; then
+  ROLLBACK_NEW_RELEASE="$(cat "$ROLLBACK_STATE_DIR/new-release")"
+fi
+
+for candidate in upstream/release origin/release; do
+  candidate_base="$(git merge-base HEAD "$candidate" 2>/dev/null || true)"
+  if [ -n "$candidate_base" ] \
+    && git cat-file -e "$candidate_base:System/.installed-files.manifest" 2>/dev/null; then
+    ROLLBACK_OLD_RELEASE="$candidate_base"
+    break
+  fi
+done
+
+if [ -n "$ROLLBACK_NEW_RELEASE" ] \
+  && [ -n "$ROLLBACK_OLD_RELEASE" ] \
+  && git merge-base --is-ancestor "$ROLLBACK_OLD_RELEASE" "$ROLLBACK_NEW_RELEASE" \
+  && git cat-file -e "$ROLLBACK_NEW_RELEASE:System/.installed-files.manifest" 2>/dev/null \
+  && git show "$ROLLBACK_NEW_RELEASE:System/.installed-files.manifest" \
+    | cmp -s - "$ROLLBACK_STATE_DIR/new.manifest"; then
+  (umask 077
+    git show "$ROLLBACK_OLD_RELEASE:System/.installed-files.manifest" \
+      > "$ROLLBACK_STATE_DIR/old.manifest"
+  )
   # Files in new manifest but NOT in restored manifest = added by update
   comm -23 \
-    <(awk '{print $NF}' /tmp/dex-new-manifest.txt | sort) \
-    <(awk '{print $NF}' System/.installed-files.manifest | sort) \
-  | while read -r f; do
+    <(LC_ALL=C sort "$ROLLBACK_STATE_DIR/new.manifest") \
+    <(LC_ALL=C sort "$ROLLBACK_STATE_DIR/old.manifest") \
+  | while IFS= read -r f; do
+      case "/$f/" in
+        *"//"*|*"/./"*|*"/../"*)
+          echo "  Skipped unsafe manifest path: $f"
+          continue
+          ;;
+      esac
       case "$f" in
         00-Inbox/*|01-Quarter_Goals/*|02-Week_Priorities/*|03-Tasks/*|\
         04-Projects/*|05-Areas/*|06-Resources/*|07-Archives/*|\
         System/user-profile.yaml|System/pillars.yaml|System/Session_Learnings/*)
-          echo "  Kept user data: $f"
+          echo "  Preserved restored user data: $f"
           continue
           ;;
       esac
-      [ -f "$f" ] && rm "$f" && echo "  Removed: $f"
+      if git cat-file -e "HEAD:$f" 2>/dev/null; then
+        echo "  Preserved path tracked by the restored state: $f"
+        continue
+      fi
+      if [ -L "$f" ] || rollback_has_symlink_parent "$f"; then
+        echo "  Skipped symlinked path: $f"
+        continue
+      fi
+      if [ ! -f "$f" ]; then
+        continue
+      fi
+      entry="$(git ls-tree "$ROLLBACK_NEW_RELEASE" -- "$f")"
+      metadata="${entry%%$'\t'*}"
+      mode="${metadata%% *}"
+      expected_blob="${metadata##* }"
+      case "$mode" in
+        100644|100755) ;;
+        *) echo "  Skipped non-regular release path: $f"; continue ;;
+      esac
+      actual_blob="$(git hash-object -- "$f" 2>/dev/null || true)"
+      if [ -n "$expected_blob" ] && [ "$actual_blob" = "$expected_blob" ]; then
+        rm -- "$f"
+        echo "  Removed: $f"
+      else
+        echo "  Preserved modified or unverified path: $f"
+      fi
     done
   echo "✓ Cleaned up files added by the update"
 else
-  echo "ℹ️  No manifest found — skipping file cleanup (safe to ignore)"
+  echo "ℹ️  Verified release manifests unavailable — skipping file cleanup (safe to ignore)"
 fi
-rm -f /tmp/dex-new-manifest.txt
+if [ -n "$ROLLBACK_STATE_DIR" ] && [ -d "$ROLLBACK_STATE_DIR" ] && [ ! -L "$ROLLBACK_STATE_DIR" ]; then
+  rm -f -- \
+    "$ROLLBACK_STATE_DIR/new.manifest" \
+    "$ROLLBACK_STATE_DIR/old.manifest" \
+    "$ROLLBACK_STATE_DIR/new-release"
+  rmdir -- "$ROLLBACK_STATE_DIR" 2>/dev/null || true
+fi
 ```
+
+Both inputs are read from immutable release commits. Cleanup explicitly refuses every user-data path restored in Step 4, then also refuses paths tracked by the restored release, symlink traversal, and files that no longer match the newer release blob. The user-data guard runs first, so cleanup can never delete a file the protected restore just wrote, even if its contents happen to match a newer-release blob. **Never regenerate either manifest from the user's working tree:** doing so could misclassify user files as update-added and delete them.
 
 **B. Reinstall dependencies for the restored version**
 
@@ -283,13 +417,7 @@ pip3 install -r core/mcp/requirements.txt
 
 This ensures dependencies match the older version.
 
-**C. Regenerate manifest for the restored version**
-
-```bash
-bash scripts/generate-manifest.sh
-```
-
-**D. Remove migration markers (if exist)**
+**C. Remove migration markers (if exist)**
 
 ```bash
 rm -f .migration-v*-complete
@@ -304,39 +432,56 @@ rm -f .migration-version
 ✓ Rollback complete! Now testing...
 ```
 
-**Quick checks:**
+Run Dex's quick doctor with safe healing, then its isolated end-to-end journeys using the same restored venv interpreter:
 
-1. Verify version in package.json:
-   ```bash
-   cat package.json | grep version
-   ```
-
-2. Check key files:
-   - `03-Tasks/Tasks.md`
-   - `System/user-profile.yaml`
-   - `.claude/skills/daily-plan/SKILL.md`
-
-3. Test user profile loads:
-   ```
-   Read System/user-profile.yaml
-   ```
-
-**If all pass:**
-```
-✅ Rollback successful!
+```bash
+.venv/bin/python core/utils/doctor.py --heal
+.venv/bin/python core/utils/smoke.py --json
 ```
 
-**If issues:**
-```
-⚠️ Rollback completed but found an issue
+Keep and inspect smoke JSON even when it exits `1` for a `BROKEN` journey. Exit `2` is a harness failure and must be reported as `UNKNOWN`. Add the corresponding `summary` counts from both reports and render every bucket:
 
-[Details]
+```
+Verification
+✓ OK: N
+○ OFF: N
+✗ BROKEN: N
+? UNKNOWN: N
+```
+
+`OFF` is informational. If there are no `BROKEN` or `UNKNOWN` results:
+
+```
+✅ Rollback verified successfully!
+```
+
+If a customization is `BROKEN`, name its exact path and do not recommend another rollback or update:
+
+```
+⚠️ Rollback completed, but one of your customizations needs attention
+
+Fix your customization: [exact path]
+[Exact doctor or smoke detail]
+
+Dex will not change releases for a customization problem.
+```
+
+Customization failures include `-custom` skills, `custom-*` MCP entries, the `USER_EXTENSIONS` block, and user-owned YAML/integration files. **Never recommend `/dex-update` or another `/dex-rollback` for these findings.**
+
+If an unmodified Dex-owned file or journey is `BROKEN`, name the exact check and offer the documented update path:
+
+```
+❌ Rollback verification failed in Dex-owned code
+
+[Exact check and detail]
 
 The protected reset keeps a recoverable copy of your user data. You may want to:
 [Report this issue]
-[Try rolling back again]
+[Run /dex-update to return to the newer release]
 [Continue anyway]
 ```
+
+If there are only `UNKNOWN` results, say the rollback completed but could not be fully verified, list each unknown detail, and do not declare verification successful.
 
 ---
 
@@ -396,7 +541,7 @@ DEX_USER_DATA_STASH_PATHS=(
   ":(top)System/user-profile.yaml" ":(top)System/pillars.yaml"
   ":(top,glob)System/Session_Learnings/**"
 )
-git stash push --include-untracked \
+git stash push --all \
   -m "dex-user-data-before-undo-rollback-$(date +%Y%m%d-%H%M%S)" \
   -- "${DEX_USER_DATA_STASH_PATHS[@]}" || true
 DEX_DATA_STASH_AFTER=$(git rev-parse -q --verify refs/stash 2>/dev/null || true)
@@ -408,7 +553,8 @@ else
   DEX_DATA_STASH_OID=""
   if ! git diff --quiet -- "${DEX_USER_DATA_PATHS[@]}" || \
      ! git diff --cached --quiet -- "${DEX_USER_DATA_PATHS[@]}" || \
-     [ -n "$(git ls-files --others --exclude-standard -- "${DEX_USER_DATA_PATHS[@]}")" ]; then
+     [ -n "$(git ls-files --others --exclude-standard -- "${DEX_USER_DATA_PATHS[@]}")" ] || \
+     [ -n "$(git ls-files --others --ignored --exclude-standard -- "${DEX_USER_DATA_PATHS[@]}")" ]; then
     echo "Undo stopped: changed user data remains outside the snapshot, so no reset ran"
     exit 1
   fi
@@ -604,7 +750,7 @@ DEX_USER_DATA_STASH_PATHS=(
   ":(top)System/user-profile.yaml" ":(top)System/pillars.yaml"
   ":(top,glob)System/Session_Learnings/**"
 )
-git stash push --include-untracked \
+git stash push --all \
   -m "dex-user-data-before-version-rollback-$(date +%Y%m%d-%H%M%S)" \
   -- "${DEX_USER_DATA_STASH_PATHS[@]}" || true
 DEX_DATA_STASH_AFTER=$(git rev-parse -q --verify refs/stash 2>/dev/null || true)
@@ -616,7 +762,8 @@ else
   DEX_DATA_STASH_OID=""
   if ! git diff --quiet -- "${DEX_USER_DATA_PATHS[@]}" || \
      ! git diff --cached --quiet -- "${DEX_USER_DATA_PATHS[@]}" || \
-     [ -n "$(git ls-files --others --exclude-standard -- "${DEX_USER_DATA_PATHS[@]}")" ]; then
+     [ -n "$(git ls-files --others --exclude-standard -- "${DEX_USER_DATA_PATHS[@]}")" ] || \
+     [ -n "$(git ls-files --others --ignored --exclude-standard -- "${DEX_USER_DATA_PATHS[@]}")" ]; then
     echo "Rollback stopped: changed user data remains outside the snapshot, so no reset ran"
     exit 1
   fi

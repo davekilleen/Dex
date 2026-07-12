@@ -116,13 +116,24 @@ node -e "
 "
 git add -- package.json
 
+# Generate the installed-files manifest from the exact release index. Stage an
+# empty manifest first so the manifest truthfully includes its own shipped path;
+# replacing its contents does not change the set of paths in the tree.
+MANIFEST="System/.installed-files.manifest"
+mkdir -p "$(dirname "$MANIFEST")"
+: > "$MANIFEST"
+git add -- "$MANIFEST"
+MANIFEST_TREE=$(git write-tree)
+python3 core/utils/manifest.py "$MANIFEST_TREE" --repo-root "$REPO_ROOT" --output "$MANIFEST"
+git add -- "$MANIFEST"
+
 if git diff --cached --quiet; then
     echo "Nothing to remove — release branch matches main."
     git checkout - --quiet
     exit 0
 fi
 
-# Commit the clean state
+# Commit the clean state and its installed-files manifest
 git commit -m "$(cat <<EOF
 release: v$PKG_VERSION
 

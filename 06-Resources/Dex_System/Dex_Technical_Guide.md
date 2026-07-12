@@ -1,7 +1,7 @@
 # Dex Technical Guide
 
 **Version:** 1.0  
-**Last Updated:** January 28, 2026
+**Last Updated:** July 11, 2026
 
 **Audience:** People who want to understand how Dex works under the hood - whether to customize it, contribute to it, or learn from its design patterns.
 
@@ -17,7 +17,8 @@
 6. [Planning Architecture](#planning-architecture)
 7. [Integration Layer](#integration-layer)
 8. [Self-Learning System](#self-learning-system)
-9. [Design Constraints](#design-constraints)
+9. [Testing Doctor](#testing-doctor)
+10. [Design Constraints](#design-constraints)
 
 **Related Guides:**
 - [Cursor Compatibility](Cursor_Compatibility.md) - Working with both Cursor and Claude Code
@@ -1051,6 +1052,28 @@ Ideas requiring unavailable capabilities are rejected with explanation.
 - `/dex-level-up` mentions idea capture capability
 
 **Note:** Effort is intentionally excluded from scoring. With AI coding, implementation is cheap. Focus on value and feasibility.
+
+---
+
+## Testing Doctor
+
+`/dex-doctor` separates four states: working, switched off, broken, and unable to check.
+Its quick scan validates configuration, skills, MCP wiring, and changes to shipped Dex
+files. Its optional deep scan also runs `core/utils/smoke.py`, which exercises config
+loading, a real task lifecycle, MCP startup, skills, and hook structure in isolated
+subprocesses.
+
+The smoke runner copies the minimum vault data into a temporary directory before product
+code is imported. It uses a temporary home, disables analytics, never reads credential or
+`.env` files, redacts secret-like config values before child journeys, never contacts the
+network, and never writes into the live vault. Task and MCP code runs from a read-only
+snapshot of the installed release. Only unmodified Dex-owned local Python MCP servers are
+started. Custom commands, remote or npm
+servers, symlinks, and modified shipped servers are reported structurally and are never
+executed.
+
+Customization failures name the exact user-owned file to fix. Dex only suggests an
+update or rollback for failures in unmodified Dex-owned code.
 
 ---
 

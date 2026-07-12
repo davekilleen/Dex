@@ -42,7 +42,7 @@ function assertEveryHardResetProtectsUserData(document, label) {
   for (const [index, reset] of resets.entries()) {
     const previousResetIndex = index === 0 ? 0 : resets[index - 1].index;
     const nextResetIndex = index + 1 < resets.length ? resets[index + 1].index : document.length;
-    const stashIndex = document.lastIndexOf('git stash push --include-untracked', reset.index);
+    const stashIndex = document.lastIndexOf('git stash push --all', reset.index);
     const popIndex = document.indexOf('git stash pop', reset.index);
 
     assert.ok(
@@ -167,9 +167,31 @@ test('documented shell blocks parse as bash and recovery never cleans untracked 
   }
 });
 
+test('update refuses to continue with a stale backup tag', () => {
+  const backupBlock = bashBlockContaining(UPDATE_SKILL, 'git tag backup-before-v1.3.0');
+  assert.match(backupBlock, /if ! git tag backup-before-v1\.3\.0; then/);
+  assert.match(backupBlock, /exit 1/);
+});
+
 test('rollback manifest cleanup removes newer core files but never user data', (t) => {
   const repo = fs.mkdtempSync(path.join(os.tmpdir(), 'dex-manifest-cleanup-'));
   t.after(() => fs.rmSync(repo, { recursive: true, force: true }));
+
+  runGit(repo, ['init', '-q']);
+  runGit(repo, ['config', 'user.email', 'test@example.com']);
+  runGit(repo, ['config', 'user.name', 'Dex Test']);
+
+  fs.mkdirSync(path.join(repo, '.claude'), { recursive: true });
+  fs.mkdirSync(path.join(repo, 'System'), { recursive: true });
+  fs.writeFileSync(path.join(repo, '.claude', 'keep'), 'old release\n');
+  fs.writeFileSync(path.join(repo, 'package.json'), '{}\n');
+  fs.writeFileSync(
+    path.join(repo, 'System', '.installed-files.manifest'),
+    '.claude/keep\nSystem/.installed-files.manifest\npackage.json\n',
+  );
+  runGit(repo, ['add', '.']);
+  runGit(repo, ['commit', '-qm', 'old release']);
+  const oldRelease = runGit(repo, ['rev-parse', 'HEAD']);
 
   const protectedFiles = [
     '03-Tasks/new-task-data.md',
@@ -183,16 +205,35 @@ test('rollback manifest cleanup removes newer core files but never user data', (
     fs.writeFileSync(filepath, `${relativePath}\n`);
   }
 
-  const newManifest = path.join(repo, 'new-manifest.txt');
-  fs.writeFileSync(
-    newManifest,
-    [...protectedFiles, newerCoreFile].map((relativePath) => `hash  ${relativePath}`).join('\n') + '\n',
-  );
-  const restoredManifest = path.join(repo, 'System', '.installed-files.manifest');
-  fs.writeFileSync(restoredManifest, '# restored version\n');
+  const newManifest = [
+    '.claude/keep',
+    'System/.installed-files.manifest',
+    'package.json',
+    ...protectedFiles,
+    newerCoreFile,
+  ].sort().join('\n') + '\n';
+  fs.writeFileSync(path.join(repo, 'System', '.installed-files.manifest'), newManifest);
+  runGit(repo, ['add', '.']);
+  runGit(repo, ['commit', '-qm', 'new release']);
+  const newRelease = runGit(repo, ['rev-parse', 'HEAD']);
+  runGit(repo, ['update-ref', 'refs/remotes/upstream/release', newRelease]);
+
+  runGit(repo, ['reset', '--hard', oldRelease]);
+  for (const relativePath of [...protectedFiles, newerCoreFile]) {
+    const filepath = path.join(repo, relativePath);
+    fs.mkdirSync(path.dirname(filepath), { recursive: true });
+    fs.writeFileSync(filepath, `${relativePath}\n`);
+  }
+
+  const stateDir = fs.mkdtempSync(path.join(os.tmpdir(), 'dex-rollback-state-'));
+  fs.writeFileSync(path.join(stateDir, 'new.manifest'), newManifest);
+  fs.writeFileSync(path.join(stateDir, 'new-release'), `${newRelease}\n`);
 
   const cleanupBlock = bashBlockContaining(ROLLBACK_SKILL, 'comm -23')
-    .replaceAll('/tmp/dex-new-manifest.txt', newManifest);
+    .replace(
+      'ROLLBACK_STATE_DIR="[exact private temp path printed in Step 3]"',
+      `ROLLBACK_STATE_DIR=${JSON.stringify(stateDir)}`,
+    );
   const result = spawnSync('/bin/bash', ['-c', cleanupBlock], {
     cwd: repo,
     encoding: 'utf-8',
@@ -226,6 +267,8 @@ function setupProtectedResetRepo(t) {
     fs.mkdirSync(path.dirname(filepath), { recursive: true });
     fs.writeFileSync(filepath, 'backup version\n');
   }
+  const rollbackCollision = path.join(repo, '04-Projects', 'old-only.md');
+  fs.writeFileSync(rollbackCollision, 'old release version\n');
   fs.writeFileSync(path.join(repo, 'core.txt'), 'backup core\n');
   fs.writeFileSync(
     path.join(repo, '.gitignore'),
@@ -240,18 +283,20 @@ function setupProtectedResetRepo(t) {
   runGit(repo, ['commit', '-qm', 'backup release']);
   runGit(repo, ['tag', 'backup-before-v1.3.0']);
 
+  fs.rmSync(rollbackCollision);
   for (const filepath of protectedFiles) fs.writeFileSync(filepath, 'committed current version\n');
   fs.writeFileSync(path.join(repo, 'core.txt'), 'newer core\n');
   runGit(repo, ['add', '-f', '.']);
   runGit(repo, ['commit', '-qm', 'current release']);
 
-  return { repo, protectedFiles };
+  return { repo, protectedFiles, rollbackCollision };
 }
 
 test('the primary rollback block preserves committed, uncommitted, and untracked user data', (t) => {
-  const { repo, protectedFiles } = setupProtectedResetRepo(t);
+  const { repo, protectedFiles, rollbackCollision } = setupProtectedResetRepo(t);
 
   for (const filepath of protectedFiles) fs.writeFileSync(filepath, 'latest user version\n');
+  fs.writeFileSync(rollbackCollision, 'ignored user version\n');
   const untrackedResource = path.join(repo, '06-Resources', 'private.md');
   const ignoredProject = path.join(repo, '04-Projects', 'private.md');
   fs.writeFileSync(untrackedResource, 'private resource\n');
@@ -277,6 +322,7 @@ test('the primary rollback block preserves committed, uncommitted, and untracked
   }
   assert.equal(fs.readFileSync(untrackedResource, 'utf-8'), 'private resource\n');
   assert.equal(fs.readFileSync(ignoredProject, 'utf-8'), 'private project\n');
+  assert.equal(fs.readFileSync(rollbackCollision, 'utf-8'), 'ignored user version\n');
   assert.equal(runGit(repo, ['stash', 'list']), '');
 });
 

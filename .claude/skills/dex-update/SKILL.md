@@ -173,8 +173,18 @@ Let me save them before updating.
 
 Run:
 ```bash
-git add .
-git commit -m "Auto-save before Dex update to v1.3.0"
+if ! git add .; then
+  echo "Couldn't prepare your unsaved changes — update stopped before creating a backup tag or changing releases; fix the Git error above, then retry"
+  exit 1
+fi
+
+if git diff --cached --quiet; then
+  echo "Nothing to save; continuing update"
+elif ! git commit -m "Auto-save before Dex update to v1.3.0"; then
+  git reset
+  echo "Couldn't save your changes — update stopped before creating a backup tag or changing releases; fix the commit error above, then retry"
+  exit 1
+fi
 ```
 
 Show:
@@ -186,10 +196,13 @@ Show:
 
 Run:
 ```bash
-git tag backup-before-v1.3.0
+if ! git tag backup-before-v1.3.0; then
+  echo "Update stopped before changing releases: backup-before-v1.3.0 already exists or could not be created; review or remove that tag, then retry"
+  exit 1
+fi
 ```
 
-This creates a snapshot user can revert to if needed.
+This creates a snapshot at the just-verified autosave commit. If the fixed tag is stale or cannot be created, the update stops rather than later resetting to an older attempt.
 
 ---
 
@@ -382,6 +395,9 @@ This is rare, but sometimes updates need manual review.
 
 If restore:
 ```bash
+# Run this protected-reset block with bash or zsh, from the vault root.
+[ -f package.json ] && [ -d .claude ] || { echo "run from the vault root"; exit 1; }
+
 git merge --abort
 DEX_UPDATE_RESET_TARGET="backup-before-v1.3.0"
 DEX_USER_DATA_PATHS=(
@@ -399,7 +415,7 @@ DEX_USER_DATA_STASH_PATHS=(
   ":(top)System/user-profile.yaml" ":(top)System/pillars.yaml"
   ":(top,glob)System/Session_Learnings/**"
 )
-git stash push --include-untracked \
+git stash push --all \
   -m "dex-user-data-before-update-recovery-$(date +%Y%m%d-%H%M%S)" \
   -- "${DEX_USER_DATA_STASH_PATHS[@]}" || true
 DEX_DATA_STASH_AFTER=$(git rev-parse -q --verify refs/stash 2>/dev/null || true)
@@ -411,7 +427,8 @@ else
   DEX_DATA_STASH_OID=""
   if ! git diff --quiet -- "${DEX_USER_DATA_PATHS[@]}" || \
      ! git diff --cached --quiet -- "${DEX_USER_DATA_PATHS[@]}" || \
-     [ -n "$(git ls-files --others --exclude-standard -- "${DEX_USER_DATA_PATHS[@]}")" ]; then
+     [ -n "$(git ls-files --others --exclude-standard -- "${DEX_USER_DATA_PATHS[@]}")" ] || \
+     [ -n "$(git ls-files --others --ignored --exclude-standard -- "${DEX_USER_DATA_PATHS[@]}")" ]; then
     echo "Update recovery stopped: changed user data remains outside the snapshot, so no reset ran"
     exit 1
   fi
@@ -617,39 +634,57 @@ Add to summary if installed: "✓ Enabled automatic meeting sync (runs every 30 
 ✓ Update complete! Now testing...
 ```
 
-**Quick smoke test:**
+Run Dex's quick doctor with safe healing, then its isolated end-to-end journeys. Use the same venv interpreter for both:
 
-1. Check key files exist:
-   - `03-Tasks/Tasks.md`
-   - `System/user-profile.yaml`
-   - `.claude/skills/daily-plan/SKILL.md`
-
-2. Check MCP configuration:
-   - `.mcp.json` exists and is valid JSON
-   - Custom MCP entries (`custom-*`) still present
-
-3. Check CLAUDE.md:
-   - `USER_EXTENSIONS_START/END` markers still present
-
-3. Try loading user profile:
-   - Read `System/user-profile.yaml`
-
-**If all pass:**
-```
-✅ Update successful!
+```bash
+.venv/bin/python core/utils/doctor.py --heal
+.venv/bin/python core/utils/smoke.py --json
 ```
 
-**If something fails:**
+The smoke command exits `1` when a journey is `BROKEN`; keep and inspect its JSON output instead of discarding it. Exit `2` means the smoke harness itself failed and must be reported as `UNKNOWN`.
+
+Add the corresponding `summary` counts from both JSON reports and always render all four buckets:
+
 ```
-⚠️ Update completed but found an issue
+Verification
+✓ OK: N
+○ OFF: N
+✗ BROKEN: N
+? UNKNOWN: N
+```
 
-[Details of what failed]
+`OFF` is informational, not a failure. If there are no `BROKEN` or `UNKNOWN` results:
 
-The pre-update backup and protected user-data snapshot remain available. You may want to:
-[Restore to previous version]
+```
+✅ Update verified successfully!
+```
+
+If a customization is `BROKEN`, name the exact file from the finding and keep the update in place:
+
+```
+⚠️ Update applied, but one of your customizations needs attention
+
+Fix your customization: [exact path]
+[Exact doctor or smoke detail]
+
+Dex will not roll back for a customization problem.
+```
+
+Customization failures include `-custom` skills, `custom-*` MCP entries, the `USER_EXTENSIONS` block, and user-owned YAML/integration files. **Never recommend `/dex-rollback` or `/dex-update` for these findings.**
+
+If an unmodified Dex-owned file or journey is `BROKEN`, the update has not proved itself. Name the failing check and offer the backup path created in Step 3:
+
+```
+❌ Update verification failed in Dex-owned code
+
+[Exact check and detail]
+
+Your data is safe, but you may want to:
+[Restore to previous version] — Run /dex-rollback using backup-before-v1.3.0
 [Report this issue]
-[Continue anyway]
 ```
+
+Do not roll back automatically. If there are only `UNKNOWN` results, say the update was applied but could not be fully verified, list each unknown detail, and do not declare verification successful.
 
 ---
 
@@ -775,6 +810,9 @@ User always has escape hatch:
 
 Run:
 ```bash
+# Requires bash or zsh because the protected paths below are arrays.
+[ -f package.json ] && [ -d .claude ] || { echo "run from the vault root"; exit 1; }
+
 git merge --abort 2>/dev/null || true
 DEX_UPDATE_RESET_TARGET="backup-before-v1.3.0"
 DEX_USER_DATA_PATHS=(
@@ -792,7 +830,7 @@ DEX_USER_DATA_STASH_PATHS=(
   ":(top)System/user-profile.yaml" ":(top)System/pillars.yaml"
   ":(top,glob)System/Session_Learnings/**"
 )
-git stash push --include-untracked \
+git stash push --all \
   -m "dex-user-data-before-update-error-recovery-$(date +%Y%m%d-%H%M%S)" \
   -- "${DEX_USER_DATA_STASH_PATHS[@]}" || true
 DEX_DATA_STASH_AFTER=$(git rev-parse -q --verify refs/stash 2>/dev/null || true)
@@ -804,7 +842,8 @@ else
   DEX_DATA_STASH_OID=""
   if ! git diff --quiet -- "${DEX_USER_DATA_PATHS[@]}" || \
      ! git diff --cached --quiet -- "${DEX_USER_DATA_PATHS[@]}" || \
-     [ -n "$(git ls-files --others --exclude-standard -- "${DEX_USER_DATA_PATHS[@]}")" ]; then
+     [ -n "$(git ls-files --others --exclude-standard -- "${DEX_USER_DATA_PATHS[@]}")" ] || \
+     [ -n "$(git ls-files --others --ignored --exclude-standard -- "${DEX_USER_DATA_PATHS[@]}")" ]; then
     echo "Update recovery stopped: changed user data remains outside the snapshot, so no reset ran"
     exit 1
   fi

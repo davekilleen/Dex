@@ -1,6 +1,7 @@
 # Exclude dev-only files from git archive (ZIP downloads)
 # Mirrors .distignore — keep both in sync
 
+.logs/                export-ignore
 .github/               export-ignore
 pyproject.toml          export-ignore
 requirements-dev.txt    export-ignore

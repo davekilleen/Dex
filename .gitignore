@@ -133,6 +133,8 @@ gmail-credentials.json
 # Session and Runtime Data
 # ============================================
 
+.logs/
+
 # Session learnings (user-specific)
 System/Session_Learnings/
 System/Session_Memory/
@@ -201,3 +203,4 @@ scripts/private/
 # Agent/codex runtime task artifacts — contain local absolute paths, never commit
 .codex-analytics-task.md
 .codex-*-task.md
+System/.doctor-last-run.json

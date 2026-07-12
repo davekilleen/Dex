@@ -28,6 +28,9 @@ QUICK_IDS = [
     "jobs.fresh",
     "preflight.queue",
     "entity.engine",
+    "customizations.skills",
+    "customizations.mcp",
+    "core.drift",
     "doctor.self",
 ]
 
@@ -37,6 +40,7 @@ DEEP_IDS = [
     "qmd.live",
     "integrations.enabled",
     "mcp.importable",
+    "smoke.journeys",
 ]
 
 
@@ -140,6 +144,83 @@ def _tree_snapshot(root):
         mode = stat.S_IMODE(path.stat().st_mode)
         snapshot[relative] = ("dir", mode) if path.is_dir() else ("file", mode, path.read_bytes())
     return snapshot
+
+
+def _write_skill(context, name, *, frontmatter_name=None):
+    skill_path = context.vault_root / ".claude" / "skills" / name / "SKILL.md"
+    skill_path.parent.mkdir(parents=True, exist_ok=True)
+    skill_path.write_text(
+        f"---\nname: {frontmatter_name or name}\ndescription: Test skill\n---\nBody.\n",
+        encoding="utf-8",
+    )
+    return skill_path
+
+
+def _git(repo, *args, check=True):
+    result = subprocess.run(
+        ["git", "-C", str(repo), *args],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if check:
+        result.check_returncode()
+    return result
+
+
+def _drift_context(tmp_path, *, release_ref=True):
+    vault = tmp_path / "drift-vault"
+    vault.mkdir()
+    _git(vault, "init")
+    _git(vault, "config", "user.email", "doctor@example.test")
+    _git(vault, "config", "user.name", "Doctor Test")
+
+    (vault / "core").mkdir()
+    (vault / "core" / "shipped.py").write_text("SHIPPED = 1\n")
+    (vault / "CLAUDE.md").write_text(
+        "# Dex\n\n"
+        "## USER_EXTENSIONS_START\n"
+        "<!-- personal instructions -->\n"
+        "## USER_EXTENSIONS_END\n\n"
+        "Shipped tail.\n"
+    )
+    (vault / ".mcp.json").write_text(
+        json.dumps(
+            {
+                "mcpServers": {
+                    "work-mcp": {
+                        "command": "python",
+                        "args": ["core/mcp/work_server.py"],
+                    }
+                }
+            },
+            indent=2,
+        )
+        + "\n"
+    )
+    integrations = vault / "System" / "integrations"
+    integrations.mkdir(parents=True)
+    (vault / "System" / "user-profile.yaml").write_text("name: Original\n")
+    (vault / "System" / "pillars.yaml").write_text("pillars: []\n")
+    (integrations / "calendar.yaml").write_text("enabled: false\n")
+    _git(
+        vault,
+        "add",
+        "--",
+        ".mcp.json",
+        "CLAUDE.md",
+        "System/integrations/calendar.yaml",
+        "System/pillars.yaml",
+        "System/user-profile.yaml",
+        "core/shipped.py",
+    )
+    _git(vault, "commit", "-m", "release fixture")
+    if release_ref:
+        _git(vault, "update-ref", "refs/remotes/upstream/release", "HEAD")
+
+    home = tmp_path / "drift-home"
+    home.mkdir()
+    return doctor.DoctorContext(vault_root=vault, repo_root=vault, home=home, now=NOW)
 
 
 def test_doctor_collector_module_exists():
@@ -248,8 +329,8 @@ def test_summary_counts_each_exact_verdict(monkeypatch, context):
 
     report = doctor.collect(context=context)
 
-    assert report["summary"] == {"ok": 8, "off": 1, "broken": 1, "unknown": 1}
-    assert report["instruments"]["completed"] == 11
+    assert report["summary"] == {"ok": 11, "off": 1, "broken": 1, "unknown": 1}
+    assert report["instruments"]["completed"] == len(QUICK_IDS)
 
 
 def test_raising_probe_becomes_unknown_and_main_still_returns_valid_json(monkeypatch, context, capsys):
@@ -267,11 +348,57 @@ def test_raising_probe_becomes_unknown_and_main_still_returns_valid_json(monkeyp
     assert _check(report, "vault.configs")["verdict"] == "UNKNOWN"
     assert "probe exploded" in _check(report, "vault.configs")["detail"]
     assert report["instruments"] == {
-        "attempted": 11,
-        "completed": 10,
+        "attempted": len(QUICK_IDS),
+        "completed": len(QUICK_IDS) - 1,
         "failed": [{"id": "vault.configs", "error": "probe exploded"}],
     }
     assert _check(report, "doctor.self")["verdict"] == "BROKEN"
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        ModuleNotFoundError("No module named 'yaml'"),
+        RuntimeError("subprocess failed: ModuleNotFoundError: No module named 'EventKit'"),
+    ],
+)
+def test_missing_optional_packages_have_actionable_unknown_detail(monkeypatch, context, error):
+    _stub_probes(monkeypatch)
+
+    def missing_dependency(_context):
+        raise error
+
+    monkeypatch.setattr(doctor, "_probe_vault_configs", missing_dependency)
+
+    report = doctor.collect(context=context)
+
+    guidance = (
+        "Python packages not installed — run /dex-update (or pip install -r requirements.txt) "
+        "then re-run /dex-doctor"
+    )
+    assert _check(report, "vault.configs")["verdict"] == "UNKNOWN"
+    assert _check(report, "vault.configs")["detail"] == guidance + "."
+    assert report["instruments"]["failed"] == [{"id": "vault.configs", "error": guidance}]
+
+
+def test_probe_owned_unknown_missing_package_detail_is_actionable(monkeypatch, context):
+    _stub_probes(
+        monkeypatch,
+        overrides={
+            "calendar.access": doctor.ProbeResult(
+                "UNKNOWN",
+                "calendar helper failed: ModuleNotFoundError: No module named 'EventKit'",
+            )
+        },
+    )
+
+    report = doctor.collect(deep=True, context=context)
+
+    assert _check(report, "calendar.access")["detail"] == (
+        "Python packages not installed — run /dex-update (or pip install -r requirements.txt) "
+        "then re-run /dex-doctor."
+    )
+    assert report["instruments"]["failed"] == []
 
 
 def test_last_run_write_failure_marks_doctor_self_broken(monkeypatch, context):
@@ -467,8 +594,13 @@ def test_cli_still_emits_json_when_yaml_is_not_importable(tmp_path):
 
     assert result.returncode == 0
     report = json.loads(result.stdout)
-    assert _check(report, "vault.configs")["verdict"] == "UNKNOWN"
-    assert "yaml" in _check(report, "vault.configs")["detail"]
+    guidance = (
+        "Python packages not installed — run /dex-update (or pip install -r requirements.txt) "
+        "then re-run /dex-doctor."
+    )
+    for check_id in ("vault.configs", "customizations.skills", "customizations.mcp"):
+        assert _check(report, check_id)["verdict"] == "UNKNOWN"
+        assert _check(report, check_id)["detail"] == guidance
     assert _check(report, "python.env")["verdict"] == "BROKEN"
 
 
@@ -1045,6 +1177,405 @@ def test_preflight_surfaces_unknown_registered_core_server(monkeypatch, context)
 
     assert result.verdict == "UNKNOWN"
     assert "session-memory" in result.detail
+
+
+def test_customization_skills_validate_user_and_shipped_files(context):
+    custom_skill = _write_skill(context, "notes-custom", frontmatter_name="wrong-name")
+
+    custom_only = doctor._probe_customization_skills(context)
+
+    custom_path = custom_skill.relative_to(context.vault_root).as_posix()
+    assert custom_only.verdict == "BROKEN"
+    assert f"user customization {custom_path}" in custom_only.detail
+    assert f"fix or remove {custom_path}" in custom_only.detail
+    assert "/dex-update" not in custom_only.detail
+
+    shipped_skill = _write_skill(context, "daily-plan", frontmatter_name="wrong-name")
+    mixed = doctor._probe_customization_skills(context)
+
+    shipped_path = shipped_skill.relative_to(context.vault_root).as_posix()
+    assert mixed.verdict == "BROKEN"
+    assert f"shipped skill {shipped_path}" in mixed.detail
+    assert f"run /dex-update to restore {shipped_path}" in mixed.detail
+
+
+def test_customization_skills_are_ok_when_every_frontmatter_is_valid(context):
+    _write_skill(context, "daily-plan")
+    _write_skill(context, "notes-custom")
+
+    result = doctor._probe_customization_skills(context)
+
+    assert result.verdict == "OK"
+    assert "1 user customization" in result.detail
+
+
+def test_customization_skills_do_not_follow_user_symlinks(context, tmp_path):
+    external = tmp_path / "external-skill"
+    external.mkdir()
+    (external / "SKILL.md").write_text(
+        "---\nname: notes-custom\ndescription: Must not be read\n---\n",
+        encoding="utf-8",
+    )
+    skills_root = context.vault_root / ".claude" / "skills"
+    skills_root.mkdir(parents=True)
+    (skills_root / "notes-custom").symlink_to(external, target_is_directory=True)
+
+    result = doctor._probe_customization_skills(context)
+
+    assert result.verdict == "UNKNOWN"
+    assert ".claude/skills/notes-custom/SKILL.md" in result.detail
+    assert "was not read for safety" in result.detail
+    assert "fix or remove" in result.detail
+    assert "/dex-update" not in result.detail
+
+
+def test_customization_mcp_compiles_custom_python_without_running_or_littering(context):
+    sentinel = context.vault_root / "custom-command-ran"
+    target = context.vault_root / "custom-mcp" / "server.py"
+    target.parent.mkdir()
+    target.write_text(
+        "from pathlib import Path\n"
+        f"Path({str(sentinel)!r}).write_text('executed')\n",
+        encoding="utf-8",
+    )
+    _write_mcp_config(
+        context,
+        {
+            "work-mcp": {"command": "python", "args": ["core/mcp/work_server.py"]},
+            "custom-sentinel": {"command": sys.executable, "args": [str(target)]},
+        },
+    )
+
+    result = doctor._probe_customization_mcp(context)
+
+    assert result.verdict == "OK"
+    assert "not executed for safety" in result.detail
+    assert not sentinel.exists()
+    assert not (target.parent / "__pycache__").exists()
+    assert list(target.parent.glob("*.pyc")) == []
+
+
+def test_customization_mcp_reports_compile_and_placeholder_failures_with_exact_paths(context):
+    target = context.vault_root / "custom-mcp" / "broken.py"
+    target.parent.mkdir()
+    target.write_text("if True print('broken')\n", encoding="utf-8")
+    config_path = _write_mcp_config(
+        context,
+        {"custom-broken": {"command": sys.executable, "args": [str(target)]}},
+    )
+
+    compile_failure = doctor._probe_customization_mcp(context)
+
+    relative_target = target.relative_to(context.vault_root).as_posix()
+    assert compile_failure.verdict == "BROKEN"
+    assert relative_target in compile_failure.detail
+    assert ".mcp.json" in compile_failure.detail
+    assert "fix your customization" in compile_failure.detail
+    assert "/dex-update" not in compile_failure.detail
+    assert not (target.parent / "__pycache__").exists()
+
+    config_path.write_text(
+        json.dumps(
+            {
+                "mcpServers": {
+                    "custom-broken": {
+                        "command": "python",
+                        "args": ["{{CUSTOM_SERVER_PATH}}"],
+                    }
+                }
+            }
+        )
+    )
+    placeholder_failure = doctor._probe_customization_mcp(context)
+
+    assert placeholder_failure.verdict == "BROKEN"
+    assert "unresolved placeholder" in placeholder_failure.detail
+    assert ".mcp.json" in placeholder_failure.detail
+
+
+def test_customization_mcp_is_ok_without_custom_entries(context):
+    _write_mcp_config(
+        context,
+        {"work-mcp": {"command": "python", "args": ["core/mcp/work_server.py"]}},
+    )
+
+    result = doctor._probe_customization_mcp(context)
+
+    assert result.verdict == "OK"
+    assert "0 custom" in result.detail
+
+
+def test_customization_mcp_does_not_compile_symlinked_python_target(
+    monkeypatch,
+    context,
+    tmp_path,
+):
+    external = tmp_path / "credentials.py"
+    external.write_text("raise RuntimeError('must not compile')\n", encoding="utf-8")
+    target = context.vault_root / "custom-mcp" / "server.py"
+    target.parent.mkdir()
+    target.symlink_to(external)
+    _write_mcp_config(
+        context,
+        {"custom-notes": {"command": sys.executable, "args": [str(target)]}},
+    )
+    monkeypatch.setattr(
+        doctor.py_compile,
+        "compile",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("compiled unsafe target")),
+    )
+
+    result = doctor._probe_customization_mcp(context)
+
+    assert result.verdict == "UNKNOWN"
+    assert "custom-mcp/server.py" in result.detail
+    assert ".mcp.json" in result.detail
+    assert "not compiled or executed for safety" in result.detail
+    assert "/dex-update" not in result.detail
+
+
+def test_customization_mcp_does_not_read_symlinked_live_config(context, tmp_path):
+    external = tmp_path / "external-mcp.json"
+    external.write_text('{"mcpServers": {}}\n', encoding="utf-8")
+    config = context.vault_root / ".mcp.json"
+    config.symlink_to(external)
+
+    result = doctor._probe_customization_mcp(context)
+
+    assert result.verdict == "UNKNOWN"
+    assert ".mcp.json is symlinked" in result.detail
+    assert "was not read or executed for safety" in result.detail
+
+
+def test_core_drift_is_ok_for_a_clean_release_checkout(tmp_path):
+    drift_context = _drift_context(tmp_path)
+
+    assert doctor._probe_core_drift(drift_context).verdict == "OK"
+
+
+def test_core_drift_never_executes_repo_fsmonitor_or_ambient_git(
+    monkeypatch,
+    tmp_path,
+):
+    drift_context = _drift_context(tmp_path)
+    sentinel = tmp_path / "doctor-user-command-ran"
+    fsmonitor = tmp_path / "fsmonitor.sh"
+    fsmonitor.write_text(
+        f"#!/bin/sh\n/usr/bin/touch {str(sentinel)!r}\nprintf '0\\n'\n",
+        encoding="utf-8",
+    )
+    fsmonitor.chmod(0o755)
+    _git(drift_context.repo_root, "config", "core.fsmonitor", str(fsmonitor))
+    fake_bin = tmp_path / "fake-bin"
+    fake_bin.mkdir()
+    fake_git = fake_bin / "git"
+    fake_git.write_text(
+        f"#!/bin/sh\n/usr/bin/touch {str(sentinel)!r}\nexit 0\n",
+        encoding="utf-8",
+    )
+    fake_git.chmod(0o755)
+    monkeypatch.setenv("PATH", str(fake_bin))
+
+    result = doctor._probe_core_drift(drift_context)
+
+    assert result.verdict == "OK"
+    assert not sentinel.exists()
+
+
+def test_core_drift_lists_modified_shipped_files_without_calling_them_broken(tmp_path):
+    drift_context = _drift_context(tmp_path)
+    shipped = drift_context.vault_root / "core" / "shipped.py"
+    shipped.write_text("SHIPPED = 2\n")
+
+    result = doctor._probe_core_drift(drift_context)
+
+    assert result.verdict == "UNKNOWN"
+    assert "core/shipped.py" in result.detail
+    assert "updates may conflict; the doctor can't vouch for modified shipped files" in result.detail
+    assert result.heal is None
+
+
+def test_core_drift_reports_modified_installed_file_deleted_by_latest_release(tmp_path):
+    drift_context = _drift_context(tmp_path)
+    vault = drift_context.vault_root
+    installed = _git(vault, "rev-parse", "HEAD").stdout.strip()
+
+    _git(vault, "checkout", "-b", "next-release")
+    (vault / "core" / "shipped.py").unlink()
+    _git(vault, "add", "-u", "--", "core/shipped.py")
+    _git(vault, "commit", "-m", "delete shipped file")
+    _git(vault, "update-ref", "refs/remotes/upstream/release", "HEAD")
+    _git(vault, "checkout", "--detach", installed)
+    (vault / "core" / "shipped.py").write_text("SHIPPED = 2\n")
+
+    result = doctor._probe_core_drift(drift_context)
+
+    assert result.verdict == "UNKNOWN"
+    assert "core/shipped.py" in result.detail
+    assert "updates may conflict" in result.detail
+
+
+def test_core_drift_is_unknown_when_no_release_remote_exists(tmp_path):
+    drift_context = _drift_context(tmp_path, release_ref=False)
+
+    result = doctor._probe_core_drift(drift_context)
+
+    assert result.verdict == "UNKNOWN"
+    assert result.detail == "no upstream remote — can't compare"
+
+
+def test_core_drift_ignores_user_extensions_block_only_changes(tmp_path):
+    drift_context = _drift_context(tmp_path)
+    claude = drift_context.vault_root / "CLAUDE.md"
+    claude.write_text(
+        "# Dex\n\n"
+        "## USER_EXTENSIONS_START\n"
+        "Always use my preferred meeting template.\n"
+        "This can span several lines.\n"
+        "## USER_EXTENSIONS_END\n\n"
+        "Shipped tail.\n"
+    )
+
+    assert doctor._probe_core_drift(drift_context).verdict == "OK"
+
+
+def test_core_drift_does_not_read_symlinked_claude_file(monkeypatch, tmp_path):
+    drift_context = _drift_context(tmp_path)
+    claude = drift_context.vault_root / "CLAUDE.md"
+    external = tmp_path / ".env.credentials"
+    external.write_text("TOP_SECRET=must-not-read\n", encoding="utf-8")
+    claude.unlink()
+    claude.symlink_to(external)
+    original_read_text = Path.read_text
+
+    def guarded_read_text(path, *args, **kwargs):
+        if path == claude:
+            raise AssertionError("core.drift followed a symlinked CLAUDE.md")
+        return original_read_text(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_text", guarded_read_text)
+
+    result = doctor._probe_core_drift(drift_context)
+
+    assert result.verdict == "UNKNOWN"
+    assert "CLAUDE.md" in result.detail
+    assert "must-not-read" not in result.detail
+
+
+def test_core_drift_excludes_all_sanctioned_customization_surfaces(tmp_path):
+    drift_context = _drift_context(tmp_path)
+    vault = drift_context.vault_root
+    config = json.loads((vault / ".mcp.json").read_text())
+    config["mcpServers"]["custom-notes"] = {"command": "notes-mcp", "args": []}
+    (vault / ".mcp.json").write_text(json.dumps(config, indent=2) + "\n")
+    (vault / "System" / "user-profile.yaml").write_text("name: Customized\n")
+    (vault / "System" / "pillars.yaml").write_text("pillars: [Health]\n")
+    (vault / "System" / "integrations" / "calendar.yaml").write_text("enabled: true\n")
+
+    assert doctor._probe_core_drift(drift_context).verdict == "OK"
+
+
+def test_core_drift_does_not_hide_shipped_edits_mixed_with_sanctioned_changes(tmp_path):
+    drift_context = _drift_context(tmp_path)
+    vault = drift_context.vault_root
+    config = json.loads((vault / ".mcp.json").read_text())
+    config["mcpServers"]["custom-notes"] = {"command": "notes-mcp", "args": []}
+    (vault / ".mcp.json").write_text(json.dumps(config, indent=2) + "\n")
+    (vault / "CLAUDE.md").write_text(
+        "# Dex changed outside the user block\n\n"
+        "## USER_EXTENSIONS_START\nMy local extension.\n## USER_EXTENSIONS_END\n\n"
+        "Shipped tail.\n"
+    )
+
+    result = doctor._probe_core_drift(drift_context)
+
+    assert result.verdict == "UNKNOWN"
+    assert "CLAUDE.md" in result.detail
+    assert ".mcp.json" not in result.detail
+
+
+def test_smoke_journeys_roll_up_unknown_and_use_the_same_interpreter(monkeypatch, context):
+    payload = {
+        "schema_version": 1,
+        "generated_at": NOW.isoformat(),
+        "journeys": [
+            {"id": "configs", "verdict": "OK", "detail": "configs parse", "duration_ms": 1},
+            {"id": "mcp_startup", "verdict": "UNKNOWN", "detail": "not executed for safety", "duration_ms": 2},
+            {"id": "hooks", "verdict": "OFF", "detail": "no hooks", "duration_ms": 1},
+        ],
+        "summary": {"ok": 1, "broken": 0, "unknown": 1, "off": 1},
+    }
+    observed = {}
+
+    def run(command, **kwargs):
+        observed["command"] = command
+        observed["kwargs"] = kwargs
+        return subprocess.CompletedProcess(command, 0, stdout=json.dumps(payload), stderr="")
+
+    monkeypatch.setattr(doctor.subprocess, "run", run)
+
+    result = doctor._probe_smoke_journeys(context)
+
+    assert result.verdict == "UNKNOWN"
+    assert "configs [OK]: configs parse" in result.detail
+    assert "mcp_startup [UNKNOWN]: not executed for safety" in result.detail
+    assert observed["command"] == [
+        sys.executable,
+        str(context.repo_root / "core" / "utils" / "smoke.py"),
+        "--json",
+    ]
+    assert observed["kwargs"]["env"]["VAULT_PATH"] == str(context.vault_root)
+    assert observed["kwargs"]["cwd"] == context.vault_root
+
+
+def test_smoke_journeys_roll_up_broken_from_exit_one(monkeypatch, context):
+    payload = {
+        "schema_version": 1,
+        "generated_at": NOW.isoformat(),
+        "journeys": [
+            {"id": "task_lifecycle", "verdict": "BROKEN", "detail": "Tasks.md changed", "duration_ms": 3}
+        ],
+        "summary": {"ok": 0, "broken": 1, "unknown": 0, "off": 0},
+    }
+    monkeypatch.setattr(
+        doctor.subprocess,
+        "run",
+        lambda command, **_kwargs: subprocess.CompletedProcess(
+            command,
+            1,
+            stdout=json.dumps(payload),
+            stderr="",
+        ),
+    )
+
+    result = doctor._probe_smoke_journeys(context)
+
+    assert result.verdict == "BROKEN"
+    assert "task_lifecycle" in result.detail
+
+
+def test_smoke_harness_exit_two_becomes_an_unknown_failed_instrument(monkeypatch, context):
+    _stub_probes(monkeypatch, exclude={"smoke.journeys"})
+    monkeypatch.setattr(
+        doctor.subprocess,
+        "run",
+        lambda command, **_kwargs: subprocess.CompletedProcess(
+            command,
+            2,
+            stdout="",
+            stderr="global smoke harness failed",
+        ),
+    )
+
+    report = doctor.collect(deep=True, context=context)
+
+    smoke = _check(report, "smoke.journeys")
+    assert smoke["verdict"] == "UNKNOWN"
+    assert "global smoke harness failed" in smoke["detail"]
+    assert report["instruments"]["failed"] == [
+        {"id": "smoke.journeys", "error": "smoke harness failed: global smoke harness failed"}
+    ]
+    assert _check(report, "doctor.self")["verdict"] == "BROKEN"
 
 
 def test_granola_no_key_is_off_and_api_400_is_broken(monkeypatch, context):

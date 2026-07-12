@@ -98,3 +98,13 @@ def test_mcp_config_path_falls_back_to_legacy_when_root_is_absent(tmp_path, monk
     assert preflight.get_mcp_config_path() == legacy
     assert preflight.get_configured_servers() == ["legacy"]
     assert not (tmp_path / ".mcp.json").exists()
+
+
+def test_preflight_creates_runtime_health_cache_on_demand(tmp_path, monkeypatch):
+    monkeypatch.setenv("VAULT_PATH", str(tmp_path))
+
+    health = preflight.run_preflight()
+
+    health_path = tmp_path / ".logs" / "mcp-health.json"
+    assert health_path.is_file()
+    assert json.loads(health_path.read_text()) == health

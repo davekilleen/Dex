@@ -1,6 +1,9 @@
 # Dev-only files excluded from user distribution
 # Used by scripts/build-release.sh and .gitattributes export-ignore
 
+# Runtime state
+.logs/
+
 # CI / GitHub workflows
 .github/
 

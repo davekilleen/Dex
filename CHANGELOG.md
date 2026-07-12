@@ -7,6 +7,27 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.45.0] - Dex can prove your setup still works (2026-07-12)
+
+Dex can now tell you when YOUR customizations break it — and updates prove themselves
+before declaring success. The checks keep your files and commands safe while separating
+problems in your setup from problems in Dex itself.
+
+**What this fixes for you:**
+
+* **Your custom skills and connections get an exact diagnosis.** `/dex-doctor` names the
+  file that needs attention and tells you to fix or remove that customization, rather
+  than blaming Dex or suggesting an unrelated rollback.
+* **Deep checks exercise real journeys without risking your vault.** Dex loads configs,
+  creates and updates a task, starts only trusted built-in services, and validates skills
+  and hooks in temporary copies. It never runs your custom commands, contacts the network,
+  or writes into your live vault.
+* **Updates and rollbacks verify the result.** Both flows run the doctor and smoke tests
+  before declaring success, and rollback cleanup uses shipped manifests so files you
+  created remain yours.
+* **Changes to shipped Dex files are visible before an update.** The doctor warns which
+  modified files may conflict while leaving sanctioned customization surfaces alone.
+
 ## [1.44.0] - Person pages now get smarter, not just longer (2026-07-12)
 
 The entity engine made pages accumulate facts automatically — meetings, tasks, dates. But accumulation isn't understanding: a page that only grows becomes a log file. The gardener fixes that.
