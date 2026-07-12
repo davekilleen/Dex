@@ -1067,6 +1067,7 @@ def _probe_entity_engine(context: DoctorContext) -> ProbeResult:
         contacts_path = context.core_path("CONTACTS_STATE_FILE")
         suggestions_path = context.core_path("ENTITY_SUGGESTIONS_FILE")
         verification_path = context.core_path("ENTITY_VERIFICATION_FILE")
+        gardener_path = context.core_path("GARDENER_STATE_FILE")
         profile_path = context.core_path("USER_PROFILE_FILE")
         people_dir = context.core_path("PEOPLE_DIR")
         companies_dir = context.core_path("COMPANIES_DIR")
@@ -1075,6 +1076,7 @@ def _probe_entity_engine(context: DoctorContext) -> ProbeResult:
         contacts = json.loads(contacts_path.read_text()) if contacts_path.exists() else {}
         suggestions = json.loads(suggestions_path.read_text()) if suggestions_path.exists() else {}
         verification = json.loads(verification_path.read_text()) if verification_path.exists() else {}
+        gardener = json.loads(gardener_path.read_text()) if gardener_path.exists() else {}
         profile = _load_yaml(profile_path) if profile_path.exists() else {}
         if profile is None:
             profile = {}
@@ -1090,6 +1092,17 @@ def _probe_entity_engine(context: DoctorContext) -> ProbeResult:
         observations = len(contacts.get("observations", {}))
         suggestion_items = suggestions if isinstance(suggestions, list) else suggestions.get("suggestions", [])
         pending = sum(item.get("status") == "suggested" for item in suggestion_items)
+        gardener_pages = gardener.get("pages", {}) if isinstance(gardener, dict) else {}
+        gardener_locked = sum(bool(item.get("locked")) for item in gardener_pages.values())
+        if profile.get("entity_gardener", {}).get("enabled") is False:
+            gardener_label = "off (disabled)"
+        elif not any(os.environ.get(key) for key in ("ANTHROPIC_API_KEY", "OPENAI_API_KEY", "GEMINI_API_KEY")):
+            gardener_label = "off (no LLM key)"
+        else:
+            maintained = sum(bool(item.get("output_hash")) for item in gardener_pages.values())
+            gardener_label = f"on ({maintained} pages maintained)"
+        if gardener_locked:
+            gardener_label += f", {gardener_locked} locked"
 
         unresolved = len(verification.get("unresolved", []))
         generated_at = verification.get("generated_at")
@@ -1128,6 +1141,7 @@ def _probe_entity_engine(context: DoctorContext) -> ProbeResult:
             f"Entity engine tracks {tracked} contacts and {observations} observations; "
             f"creation is {mode_label}; {pending} suggestions pending; last verification "
             f"{verification_label}; {quarantine_label} quarantined pages; people index {index_freshness}"
+            f"; gardener {gardener_label}"
         )
         if unresolved or quarantined_paths:
             return ProbeResult("BROKEN", detail)

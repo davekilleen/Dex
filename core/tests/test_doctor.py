@@ -183,6 +183,28 @@ def test_entity_engine_probe_reports_default_mode_and_stale_verification(context
     assert "stale >48h" in result.detail
 
 
+def test_entity_engine_probe_reports_gardener_statuses(monkeypatch, context):
+    for key in ("ANTHROPIC_API_KEY", "OPENAI_API_KEY", "GEMINI_API_KEY"):
+        monkeypatch.delenv(key, raising=False)
+    _write_entity_probe_files(context)
+    result = doctor._probe_entity_engine(context)
+    assert "gardener off (no LLM key)" in result.detail
+
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+    gardener = context.core_path("GARDENER_STATE_FILE")
+    gardener.write_text(json.dumps({"pages": {
+        "one.md": {"output_hash": "one", "locked": False},
+        "two.md": {"output_hash": "two", "locked": True},
+    }}))
+    result = doctor._probe_entity_engine(context)
+    assert "gardener on (2 pages maintained), 1 locked" in result.detail
+
+    profile = context.core_path("USER_PROFILE_FILE")
+    profile.write_text("entity_creation:\n  mode: auto\nentity_gardener:\n  enabled: false\n")
+    result = doctor._probe_entity_engine(context)
+    assert "gardener off (disabled), 1 locked" in result.detail
+
+
 def test_registry_ids_match_the_approved_spec():
     assert [definition.id for definition in doctor.QUICK_CHECKS] == QUICK_IDS
     assert [definition.id for definition in doctor.DEEP_CHECKS] == DEEP_IDS

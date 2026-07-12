@@ -207,6 +207,7 @@ function replaceMachineRegionInFile(filePath, slug, newContent) {
 }
 
 module.exports = {
+  atomicWrite,
   parseEntityPage, upsertFrontmatter, renderPersonPage, renderCompanyPage,
   replaceMachineRegion, replaceMachineRegionInFile,
 };

@@ -47,7 +47,9 @@ const {
   filterOwner,
 } = require('./lib/attendees.cjs');
 const { processEntityCreation } = require('./lib/entity-creation.cjs');
+const { gardenEntities } = require('./lib/gardener.cjs');
 const { verifyEntities } = require('./verify-entities.cjs');
+const { generateContent, isConfigured } = require('../lib/llm-client.cjs');
 
 // ============================================================================
 // CONFIGURATION
@@ -962,6 +964,18 @@ function runEntityVerification() {
   }
 }
 
+async function runEntityGardener(profile) {
+  if (!isConfigured()
+      || profile.entity_gardener?.enabled === false
+      || profile.meeting_processing?.mode !== 'automatic') return;
+  try {
+    const result = await gardenEntities({ generate: generateContent, limit: 5, log });
+    log(`Gardener: ${result.gardened.length} maintained, ${result.locked} locked, ${result.errors.length} errors`);
+  } catch (error) {
+    log(`Entity gardener skipped after error: ${error.message}`);
+  }
+}
+
 // ============================================================================
 // MAIN
 // ============================================================================
@@ -1004,7 +1018,10 @@ async function main() {
   if (newMeetings === null) {
     // Auth rejected or network failure — already logged a friendly reason.
     log('Could not reach the Granola API this run. Exiting cleanly.');
-    if (!dryRun) runEntityVerification();
+    if (!dryRun) {
+      runEntityVerification();
+      await runEntityGardener(profile);
+    }
     return;
   }
 
@@ -1013,7 +1030,10 @@ async function main() {
   if (newMeetings.length === 0) {
     log('Nothing to process. Exiting.');
     saveState(state);
-    if (!dryRun) runEntityVerification();
+    if (!dryRun) {
+      runEntityVerification();
+      await runEntityGardener(profile);
+    }
     return;
   }
 
@@ -1131,6 +1151,7 @@ async function main() {
   }
 
   runEntityVerification();
+  await runEntityGardener(profile);
 
   // Summary
   log('\n' + '='.repeat(60));
