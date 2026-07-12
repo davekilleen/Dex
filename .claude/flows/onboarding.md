@@ -439,13 +439,22 @@ When you first connect Granola (or later via `/getting-started`), you'll choose:
 Want to connect Granola now with `/granola-setup`, then set up manual or automatic processing?"
 
 **If manual:** 
-1. Update `System/user-profile.yaml` with `meeting_processing: manual`
+1. Update `System/user-profile.yaml` with:
+   ```yaml
+   meeting_processing:
+     mode: manual
+   ```
 2. Say: "✓ Manual processing enabled. Once Granola is connected via `/granola-setup`, run `/process-meetings` or `/getting-started` to process your meetings."
 
 **If automatic:**
 1. Ask which provider (Gemini has free tier)
 2. Get their API key
-3. Update `System/user-profile.yaml` and `.env`
+3. Update `.env` with the provider key and `System/user-profile.yaml` with:
+   ```yaml
+   meeting_processing:
+     mode: automatic
+     api_provider: gemini # or anthropic/openai, matching the user's choice
+   ```
 4. Say: "✓ Automatic processing enabled. I'll sync every 30 minutes. You can still use `/getting-started` for historical data."
 
 ### Analytics Notice (Inform, Don't Ask):
