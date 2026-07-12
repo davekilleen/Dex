@@ -838,7 +838,7 @@ ${notesSection}
 ${transcriptSection}
 
 ---
-*Auto-synced by Dex. Run \`/process-meetings\` to add AI analysis, or set up an LLM key via \`/ai-setup\`.*
+*Auto-synced by Dex. Run \`/process-meetings\` to add AI analysis, or add an LLM API key to \`.env\` for background analysis.*
 `;
 
   fs.writeFileSync(filepath, content);
@@ -1072,7 +1072,7 @@ async function main() {
     } catch (err) {
       if (err.message.includes('No LLM API key') || err.message.includes('not configured')) {
         // No LLM configured — create a basic structured note instead
-        log(`  No LLM available — creating basic note (run /ai-setup to enable AI analysis)`);
+        log(`  No LLM available — creating basic note (add ANTHROPIC_API_KEY, OPENAI_API_KEY, or GEMINI_API_KEY to .env for background analysis)`);
         result = createBasicMeetingNote(meeting, profile);
       } else {
         log(`  Failed: ${err.message}`);

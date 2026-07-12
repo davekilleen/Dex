@@ -248,17 +248,16 @@ def calculate_journey_metadata() -> Dict[str, Any]:
         ],
         'discovery': [
             'Feature discovery', 'What\'s new', 'Backlog review', 
-            'Improvement workshop', 'Idea captured', 'Dex updated', 'Learnings reviewed'
+            'Improvement workshop', 'Idea captured', 'Dex updated', 'Dex rolled back',
+            'Learnings reviewed', 'X-ray transparency'
         ],
         'integrations': [
             'Calendar connected', 'Calendar synced', 'Granola connected',
-            'Obsidian enabled', 'Pi used'
-        ],
-        'ai_config': [
-            'AI setup', 'Budget cloud', 'Offline mode', 'Smart routing', 'AI status'
+            'Obsidian enabled', 'MCP added'
         ],
         'advanced': [
-            'Prompt improvement', 'Custom MCP', 'MCP integrated'
+            'Prompt improvement', 'Custom MCP', 'MCP integrated',
+            'Custom skill created', 'Vault reset', 'Setup re-run'
         ],
     }
     

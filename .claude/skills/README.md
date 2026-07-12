@@ -224,10 +224,6 @@ Built specifically for personal knowledge management and productivity workflows 
 - `/triage` - Organize inbox and extract tasks *(v1.11: tuned for speed)*
 - `/industry-truths` - Define time-horizoned assumptions that ground strategic thinking
 
-**AI Configuration:**
-- `/ai-setup` - Configure budget cloud models (80% cheaper) and offline mode
-- `/ai-status` - Check your AI configuration and credits
-
 **System Management:**
 - `/dex-doctor` - Full system checkup: verifies every feature honestly, self-heals what's safe, guides you through the rest
 - `/enable-semantic-search` - Enable local AI-powered semantic search with smart collection discovery
@@ -240,10 +236,7 @@ Built specifically for personal knowledge management and productivity workflows 
 - `/dex-update` - Update Dex automatically (shows what's new, updates if confirmed, no technical knowledge needed)
 - `/dex-rollback` - Undo last update if something went wrong
 - `/dex-obsidian-setup` - Enable Obsidian integration and migrate vault to wiki links
-- `/integrate-mcp` - Integrate existing MCP servers from Smithery.ai marketplace
-- `/integrate-notion` - Connect Notion for workspace search and meeting context
-- `/integrate-slack` - Connect Slack for conversation search and people context
-- `/integrate-google` - Connect Google Workspace (Gmail, Calendar, Contacts)
+- `/integrate-mcp` - Connect tools such as Notion, Slack, and Google Workspace through MCP servers
 - `/create-mcp` - Create new MCP integrations
 
 ### Anthropic Skills (General-Purpose)

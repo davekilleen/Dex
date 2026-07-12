@@ -148,6 +148,16 @@ Ask: "What's your company email domain? This helps me automatically:
 
 **Purpose:** Optimize calendar queries for performance (45s → 0.3s) by identifying the user's actual work calendar instead of guessing its name.
 
+Detect the host platform first. Run `uname -s` when available; if that command is unavailable, use the runtime-reported operating system.
+
+**On non-macOS platforms (anything other than `Darwin`):**
+
+Say: "Calendar sync is currently available only on macOS, so I'll skip calendar setup on this computer."
+
+Call `save_calendar_selection(skipped=true)`, then continue to Step 5. Do not call `calendar_list_calendars`, show macOS settings guidance, or block onboarding.
+
+**On macOS:**
+
 Call `calendar_list_calendars` from the Calendar MCP to get the calendar names Calendar.app can see.
 
 **If the listing succeeds:**

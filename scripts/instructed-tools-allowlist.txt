@@ -45,3 +45,7 @@ teams_list_chats
 
 # teams_search_messages belongs to the separately installed Microsoft Teams MCP.
 teams_search_messages
+
+# feature_status is a RESPONSE FIELD returned by MCP tools (v1.33.0 contract),
+# not a tool name. Instructed in CLAUDE.md so Claude renders off/broken/unknown correctly.
+feature_status

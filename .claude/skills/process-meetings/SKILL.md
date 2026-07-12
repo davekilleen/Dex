@@ -318,6 +318,8 @@ If `ENTITY_SUGGESTIONS_FILE` contains suggested people, list them and ask: "Want
 
 ## Error Handling
 
+For MCP responses, follow CLAUDE.md's `feature_status` rendering convention before applying these fallbacks.
+
 **If no meetings found:**
 > "No meetings synced in the last 7 days. Make sure:
 > 1. Your Granola API key is connected (run `/granola-setup` if not)

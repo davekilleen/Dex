@@ -146,4 +146,4 @@ def test_connection() -> Tuple[bool, str]:
     # This would require actually running the MCP - for now, just check config
     if is_installed():
         return True, "Notion MCP is configured. Restart Claude Desktop if you haven't already."
-    return False, "Notion MCP is not configured. Run /integrate-notion to set up."
+    return False, "Notion MCP is not configured. Run /integrate-mcp to set up."

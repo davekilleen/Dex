@@ -56,10 +56,10 @@ core/mcp-premium/
 System/my-customizations.md
 
 # ============================================
-# Pi Integration
+# Claude hook tracking
 # ============================================
 
-# Pi hooks (copied from templates during setup)
+# Hooks copied from templates during setup
 .claude/hooks/
 # But track core hooks — these ship with Dex
 !.claude/hooks/
