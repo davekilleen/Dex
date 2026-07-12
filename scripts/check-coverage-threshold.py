@@ -68,12 +68,24 @@ def main() -> int:
         print(f"Total coverage {total:.2f}% is below required {min_total:.2f}%.", file=sys.stderr)
         return 1
 
+    fetch_cmd = ["git", "fetch", "origin", base_ref]
+    if os.environ.get("GITHUB_ACTIONS"):
+        fetch_cmd.append("--depth=1")
     try:
-        run(["git", "fetch", "origin", base_ref, "--depth=1"])
+        run(fetch_cmd)
     except subprocess.CalledProcessError:
         pass
 
-    merge_base = run(["git", "merge-base", "HEAD", f"origin/{base_ref}"])
+    try:
+        merge_base = run(["git", "merge-base", "HEAD", f"origin/{base_ref}"])
+    except subprocess.CalledProcessError:
+        print(
+            "❌ check-coverage-threshold.py: cannot find a common ancestor between HEAD and "
+            f"origin/{base_ref}. Your local history may be shallow — run: "
+            "git fetch --unshallow origin — then retry.",
+            file=sys.stderr,
+        )
+        return 1
     # --diff-filter=ACMR drops deleted (D) files: a deleted module is absent from
     # coverage.json and would otherwise score 0% and fail the gate. Removing code
     # must never fail a coverage gate.

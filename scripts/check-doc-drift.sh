@@ -2,8 +2,15 @@
 set -euo pipefail
 
 BASE_REF="${GITHUB_BASE_REF:-main}"
-git fetch origin "$BASE_REF" --depth=1 >/dev/null 2>&1 || true
-MERGE_BASE="$(git merge-base HEAD "origin/$BASE_REF")"
+if [ -n "${GITHUB_ACTIONS:-}" ]; then
+  git fetch origin "$BASE_REF" --depth=1 >/dev/null 2>&1 || true
+else
+  git fetch origin "$BASE_REF" >/dev/null 2>&1 || true
+fi
+if ! MERGE_BASE="$(git merge-base HEAD "origin/$BASE_REF")"; then
+  echo "❌ check-doc-drift.sh: cannot find a common ancestor between HEAD and origin/$BASE_REF. Your local history may be shallow — run: git fetch --unshallow origin — then retry." >&2
+  exit 1
+fi
 # --diff-filter=ACMR drops deleted (D) files: removing code should not require
 # a doc change.
 CHANGED_FILES="$(git diff --name-only --diff-filter=ACMR "$MERGE_BASE...HEAD")"

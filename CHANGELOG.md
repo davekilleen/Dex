@@ -7,6 +7,15 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.34.1] - Dex's release checks no longer break contributor setups (2026-07-12)
+
+Release checks now preserve your local Git history and explain when they cannot compare it.
+
+**What this fixes for you:**
+
+* **Checks no longer quietly truncate your local Git history.** They now fetch safely when you run them on your machine.
+* **A failed history comparison now explains how to fix it.** Instead of stopping with no output, Dex tells you to unshallow the repository and retry.
+
 ## [1.35.0] - Tasks now remember what you told them (2026-07-11)
 
 When you created a task and confirmed its pillar and priority, Dex wrote them down — and then never read them back, re-guessing both from the task's wording every time it listed your tasks. A P0 could show up as P2 unless its title happened to sound urgent. This release makes task details stick, and adds the fields tasks always needed.
