@@ -46,6 +46,8 @@ from analytics_helper import (
     load_user_profile,
 )
 
+from core.utils.feature_status import feature_status
+
 try:
     import requests
     HAS_REQUESTS = True
@@ -227,10 +229,14 @@ async def _call_tool_inner(name: str, arguments: dict) -> list[TextContent]:
 
     elif name == "test_connection":
         if not HAS_REQUESTS:
-            return [TextContent(type="text", text=json.dumps({
-                "success": False,
-                "error": "requests library not installed. Run: pip install requests"
-            }))]
+            error = "requests library not installed. Run: pip install requests"
+            payload = feature_status(
+                "Usage analytics",
+                "not_installed",
+                error,
+                error=error,
+            )
+            return [TextContent(type="text", text=json.dumps(payload))]
 
         transport = get_analytics_transport()
         if not transport.get("configured"):
@@ -267,18 +273,26 @@ async def _call_tool_inner(name: str, arguments: dict) -> list[TextContent]:
                     "transport_endpoint": transport.get("endpoint"),
                 }))]
             else:
-                return [TextContent(type="text", text=json.dumps({
-                    "success": False,
-                    "status": response.status_code,
-                    "transport_mode": transport.get("mode"),
-                    "transport_endpoint": transport.get("endpoint"),
-                    "body": response.text[:200]
-                }))]
+                message = f"Analytics connection failed (HTTP {response.status_code})."
+                payload = feature_status(
+                    "Usage analytics",
+                    "broken",
+                    message,
+                    status=response.status_code,
+                    transport_mode=transport.get("mode"),
+                    transport_endpoint=transport.get("endpoint"),
+                    body=response.text[:200],
+                )
+                return [TextContent(type="text", text=json.dumps(payload))]
         except Exception as e:
-            return [TextContent(type="text", text=json.dumps({
-                "success": False,
-                "error": str(e)
-            }))]
+            error = str(e)
+            payload = feature_status(
+                "Usage analytics",
+                "broken",
+                error,
+                error=error,
+            )
+            return [TextContent(type="text", text=json.dumps(payload))]
 
     else:
         return [TextContent(type="text", text=json.dumps({"error": f"Unknown tool: {name}"}))]

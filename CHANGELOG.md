@@ -7,7 +7,7 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
-## [1.29.0] - Dex can prove your setup still works (2026-07-11)
+## [1.36.0] - Dex can prove your setup still works (2026-07-12)
 
 Dex can now tell you when YOUR customizations break it — and updates prove themselves
 before declaring success. The checks keep your files and commands safe while separating
@@ -27,6 +27,80 @@ problems in your setup from problems in Dex itself.
   created remain yours.
 * **Changes to shipped Dex files are visible before an update.** The doctor warns which
   modified files may conflict while leaving sanctioned customization surfaces alone.
+
+---
+
+
+
+## [1.34.0] - People in your notes now link themselves — safely (2026-07-11)
+
+People auto-linking was promised but never shipped (issue #46); this release finally delivers it with safeguards that keep links accurate.
+
+**What this fixes for you:**
+
+* **People become connected on their first useful mention.** Full names, unique aliases, and safe unique first names now create backlinks to the right person page without cluttering every mention.
+* **Dex never guesses on ambiguous names.** Shared first names, common English words, and names that could refer to someone unknown stay as plain text.
+* **Your identity and carefully formatted text stay untouched.** Your own name, existing links, note metadata, code, and Markdown links are preserved, and running the feature again adds nothing extra.
+
+---
+
+## [1.33.0] - 'Off' and 'broken' now mean different things — everywhere (2026-07-11)
+
+Dex could describe an optional feature as broken in one place and merely disconnected in another; this release gives those responses one shared meaning.
+
+**What this fixes for you:**
+
+* **Optional features stay peacefully off.** If you deliberately did not enable or configure something, Dex treats it as healthy, never uses an error tone, and never nags you to fix it.
+* **Real failures stand out.** “Broken” is reserved for a feature that is configured and expected to work but is failing, so genuine problems no longer look like personal setup choices.
+* **Missing software has its own answer.** When a required app, binary, or dependency is absent, Dex says that directly instead of calling the feature broken.
+* **Uncertain checks admit uncertainty.** If a check itself fails, Dex reports that it could not determine the state instead of inventing a diagnosis.
+
+---
+
+## [1.32.0] - Dex can no longer tell you to use tools that don't exist (2026-07-11)
+
+Some instructions could send you looking for a tool or runnable helper that was never included, leaving you stuck at the moment Dex was supposed to help.
+
+**What this fixes for you:**
+
+* **Tool instructions now match what Dex can actually use.** Every release checks each named tool against what Dex ships or deliberately supports through an installed connection, so stale or mistyped names stop the release.
+* **Broken run commands now block a release.** If instructions point to a missing required helper, the release fails instead of passing with a warning; truly optional helpers remain clearly identified.
+* **Skill-creation guidance no longer points to a missing file.** The shipped guidance now points to the skill creator that actually exists.
+
+---
+
+## [1.31.0] - Dex asks which calendar is yours instead of guessing (2026-07-11)
+
+Empty calendar results were traced back to onboarding guessing a work calendar name that did not match the names Apple Calendar actually exposes.
+
+**What this fixes for you:**
+
+* **You choose from calendars Dex can actually see.** Onboarding shows the exact Calendar.app names and saves your selection instead of constructing one from your email address.
+* **Wrong calendar names are caught during setup.** If a typed name does not match, Dex shows the available calendars and asks again before an empty schedule can surprise you later.
+* **Calendar permissions no longer block onboarding.** Dex explains the one-time macOS setting, lets you try again, or records that you skipped so `/dex-doctor` can confirm the setup later.
+
+---
+
+## [1.30.0] - Dex now tells you when its background sync has quietly stopped (2026-07-11)
+
+A beta user's meeting sync was dead from February to July with no signal, so Dex now surfaces that silent failure at the start of your next session.
+
+**What this fixes for you:**
+
+* **You will know when meeting sync has stopped.** If its background service is installed but has not run recently, Dex tells you at session start and points you to `/dex-doctor`.
+* **A never-started service no longer looks fine.** Dex calls out a configured background sync that has no record of ever running.
+* **Normal sessions stay quiet.** Fresh services, and optional services you have never installed, do not create an alert.
+
+---
+
+## [1.29.0] - Creating tasks works again (2026-07-11)
+
+Since mid-February, asking Dex to create a task quietly failed with a technical error — every time, for everyone. A code mix-up made the task tool trip over an optional search feature even when that feature wasn't installed, and the existing tests happened to sidestep the exact switch that was broken, so nothing caught it.
+
+**What this fixes for you:**
+
+* **"Create a task to…" actually creates the task.** The error that blocked every task creation — and also broke meeting-context lookups and inbox processing — is gone.
+* **This can't silently break again.** Dex now tests task creation the exact way your vault runs it: starting the real task service and creating, listing, and completing a task end to end. If a future change breaks task creation, the release checks catch it before an update reaches you.
 
 ---
 

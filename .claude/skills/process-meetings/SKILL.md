@@ -239,7 +239,16 @@ For each meeting with unextracted tasks:
    <!-- tasks-extracted: 2026-02-03T10:30:00Z -->
    ```
 
-### Step 6: Summary Report
+### Step 6: Auto-link People in Processed Notes
+
+After finishing edits to each processed meeting note, run this once for every processed note:
+```bash
+node .scripts/auto-link-people.cjs "<note-file>"
+```
+
+Use `node .scripts/auto-link-people.cjs --dry-run "<note-file>"` to preview what would be linked without changing the file.
+
+### Step 7: Summary Report
 
 ```
 ## Meeting Processing Complete ✅

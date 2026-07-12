@@ -194,7 +194,7 @@ When the user shares meeting notes or says they had a meeting:
 4. Suggest follow-ups. Use the `query` tool to search for implicit commitments — soft language like "we should revisit" or "let me think about" that regex might not catch as action items.
 5. If meeting with manager and Career folder exists, extract career development context
 
-**Automation:** When meetings are processed via `/process-meetings`, skill-scoped hooks automatically update person pages with meeting references and extracted context. Manual person page updates are still applied for ad-hoc meeting notes shared outside the skill.
+**Automation:** When meetings are processed via `/process-meetings`, skill-scoped hooks automatically update person pages with meeting references and extracted context. Manual person page updates are still applied for ad-hoc meeting notes shared outside the skill. Person names in processed meeting notes are auto-linked to their person pages by `.scripts/auto-link-people.cjs`; it runs during `/process-meetings` and can also be run manually on any file.
 
 ### Task Creation (Smart Pillar Inference)
 When the user requests task creation without specifying a pillar:

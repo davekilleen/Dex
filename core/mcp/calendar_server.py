@@ -46,6 +46,7 @@ if _repo_root not in sys.path:
     sys.path.append(_repo_root)
 from core.paths import PEOPLE_DIR
 from core.paths import VAULT_ROOT as VAULT_PATH
+from core.utils.feature_status import feature_status
 
 # Health system — error queue and health reporting
 try:
@@ -75,6 +76,8 @@ logger = logging.getLogger(__name__)
 
 # Scripts directory
 SCRIPTS_DIR = Path(__file__).parent / "scripts"
+CALENDAR_FEATURE = "Calendar access"
+REMINDERS_FEATURE = "Reminders access"
 
 # User profile path
 USER_PROFILE_PATH = VAULT_PATH / "System" / "user-profile.yaml"
@@ -169,12 +172,17 @@ def run_shell_script(script_name: str, *args) -> tuple[bool, str]:
         return False, str(e)
 
 
+def _broken_feature_payload(feature: str, error: str) -> dict:
+    """Preserve a legacy Calendar/Reminders error while adding status fields."""
+    return feature_status(feature, "broken", error, error=error)
+
+
 def _get_calendar_list_result() -> dict:
     """Return the same calendar-list payload exposed by the MCP tool."""
     success, output = run_shell_script("calendar_eventkit.py", "list")
 
     if not success:
-        return {"success": False, "error": output}
+        return _broken_feature_payload(CALENDAR_FEATURE, output)
 
     try:
         calendars = json.loads(output)
@@ -186,7 +194,7 @@ def _get_calendar_list_result() -> dict:
             "details": calendars,
         }
     except json.JSONDecodeError as e:
-        return {"success": False, "error": f"JSON parse error: {e}"}
+        return _broken_feature_payload(CALENDAR_FEATURE, f"JSON parse error: {e}")
 
 
 @cache
@@ -696,9 +704,9 @@ async def _handle_call_tool_inner(
                     "count": len(filtered_events)
                 }
             except json.JSONDecodeError as e:
-                result = {"success": False, "error": f"JSON parse error: {e}"}
+                result = _broken_feature_payload(CALENDAR_FEATURE, f"JSON parse error: {e}")
         else:
-            result = {"success": False, "error": output}
+            result = _broken_feature_payload(CALENDAR_FEATURE, output)
 
         result = _add_missing_calendar_warning(
             result,
@@ -755,7 +763,7 @@ async def _handle_call_tool_inner(
                 }
             }
         else:
-            result = {"success": False, "error": output}
+            result = _broken_feature_payload(CALENDAR_FEATURE, output)
         
         return [types.TextContent(type="text", text=json.dumps(result, indent=2, cls=DateTimeEncoder))]
     
@@ -786,9 +794,9 @@ async def _handle_call_tool_inner(
                     "count": len(events)
                 }
             except json.JSONDecodeError as e:
-                result = {"success": False, "error": f"JSON parse error: {e}"}
+                result = _broken_feature_payload(CALENDAR_FEATURE, f"JSON parse error: {e}")
         else:
-            result = {"success": False, "error": output}
+            result = _broken_feature_payload(CALENDAR_FEATURE, output)
 
         result = _add_missing_calendar_warning(
             result,
@@ -827,7 +835,7 @@ async def _handle_call_tool_inner(
                 "message": output
             }
         else:
-            result = {"success": False, "error": output}
+            result = _broken_feature_payload(CALENDAR_FEATURE, output)
         return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
     
     elif name == "calendar_get_next_event":
@@ -853,9 +861,9 @@ async def _handle_call_tool_inner(
                         "next_event": event_data
                     }
             except json.JSONDecodeError as e:
-                result = {"success": False, "error": f"JSON parse error: {e}"}
+                result = _broken_feature_payload(CALENDAR_FEATURE, f"JSON parse error: {e}")
         else:
-            result = {"success": False, "error": output}
+            result = _broken_feature_payload(CALENDAR_FEATURE, output)
 
         result = _add_missing_calendar_warning(
             result,
@@ -909,9 +917,9 @@ async def _handle_call_tool_inner(
                     "count": len(events)
                 }
             except json.JSONDecodeError as e:
-                result = {"success": False, "error": f"JSON parse error: {e}"}
+                result = _broken_feature_payload(CALENDAR_FEATURE, f"JSON parse error: {e}")
         else:
-            result = {"success": False, "error": output}
+            result = _broken_feature_payload(CALENDAR_FEATURE, output)
 
         result = _add_missing_calendar_warning(
             result,
@@ -929,9 +937,9 @@ async def _handle_call_tool_inner(
                 items = json.loads(output)
                 result = {"success": True, "list": list_name, "items": items, "count": len(items)}
             except json.JSONDecodeError as e:
-                result = {"success": False, "error": f"JSON parse error: {e}"}
+                result = _broken_feature_payload(REMINDERS_FEATURE, f"JSON parse error: {e}")
         else:
-            result = {"success": False, "error": output}
+            result = _broken_feature_payload(REMINDERS_FEATURE, output)
         return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
 
     elif name == "reminders_complete_item":
@@ -943,7 +951,7 @@ async def _handle_call_tool_inner(
             except json.JSONDecodeError:
                 result = {"success": True, "message": output}
         else:
-            result = {"success": False, "error": output}
+            result = _broken_feature_payload(REMINDERS_FEATURE, output)
         return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
 
     elif name == "reminders_create_item":
@@ -958,7 +966,7 @@ async def _handle_call_tool_inner(
             except json.JSONDecodeError:
                 result = {"success": True, "message": output}
         else:
-            result = {"success": False, "error": output}
+            result = _broken_feature_payload(REMINDERS_FEATURE, output)
         return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
 
     elif name == "reminders_ensure_lists":
@@ -969,7 +977,7 @@ async def _handle_call_tool_inner(
             except json.JSONDecodeError:
                 result = {"success": True, "message": output}
         else:
-            result = {"success": False, "error": output}
+            result = _broken_feature_payload(REMINDERS_FEATURE, output)
         return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
 
     elif name == "reminders_list_completed":
@@ -980,9 +988,9 @@ async def _handle_call_tool_inner(
                 items = json.loads(output)
                 result = {"success": True, "list": list_name, "items": items, "count": len(items)}
             except json.JSONDecodeError as e:
-                result = {"success": False, "error": f"JSON parse error: {e}"}
+                result = _broken_feature_payload(REMINDERS_FEATURE, f"JSON parse error: {e}")
         else:
-            result = {"success": False, "error": output}
+            result = _broken_feature_payload(REMINDERS_FEATURE, output)
         return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
 
     elif name == "reminders_find_and_complete":
@@ -995,7 +1003,7 @@ async def _handle_call_tool_inner(
             except json.JSONDecodeError:
                 result = {"success": True, "message": output}
         else:
-            result = {"success": False, "error": output}
+            result = _broken_feature_payload(REMINDERS_FEATURE, output)
         return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
 
     elif name == "reminders_clear_completed":
@@ -1007,7 +1015,7 @@ async def _handle_call_tool_inner(
             except json.JSONDecodeError:
                 result = {"success": True, "message": output}
         else:
-            result = {"success": False, "error": output}
+            result = _broken_feature_payload(REMINDERS_FEATURE, output)
         return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
 
     else:

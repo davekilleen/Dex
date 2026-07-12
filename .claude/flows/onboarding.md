@@ -144,89 +144,48 @@ Ask: "What's your company email domain? This helps me automatically:
 
 ---
 
-## Step 4b: Calendar Optimization (Auto-detected)
+## Step 4b: Calendar Selection
 
-**This step is AUTOMATIC - no user input needed unless multiple calendars detected.**
+**Purpose:** Optimize calendar queries for performance (45s → 0.3s) by identifying the user's actual work calendar instead of guessing its name.
 
-**Purpose:** Optimize calendar queries for performance (45s → 0.3s) by identifying the user's work calendar.
+Call `calendar_list_calendars` from the Calendar MCP to get the calendar names Calendar.app can see.
 
-**How to check calendar count:**
+**If the listing succeeds:**
 
-Run this AppleScript to count calendars (launch first to ensure it's queryable):
-```bash
-osascript -e 'launch application "Calendar"' && sleep 1 && osascript -e 'tell application "Calendar" to return count of calendars'
+Say: "Which calendar should I use for your work schedule?"
+
+Present every returned calendar name as a numbered list:
+```
+1. [exact calendar name]
+2. [exact calendar name]
+3. [exact calendar name]
 ```
 
-**If the command fails** (Calendar not installed, permissions denied, etc.):
+The user can reply with a number or type the calendar name. Resolve a number to the exact returned name, then call `save_calendar_selection` from the Onboarding MCP with:
+- `work_calendar`: the exact selected calendar name
+- `calendar_count`: the `count` returned by `calendar_list_calendars`
+- `work_email`: the selected name only when that calendar name is an email address; otherwise omit it
 
-First, check if it's a permissions issue (common on macOS with Cursor/Claude Desktop):
-
-Say: "Your calendar app is installed but your editor doesn't have permission to access it yet. This is a one-time macOS setup:
-
-1. Open **System Settings** → **Privacy & Security** → **Calendars**
-2. Find **Cursor** (or **Claude Desktop**) in the list and turn it **on**
-3. If it's not in the list yet, run this in your terminal inside Cursor: `osascript -e 'tell application \"Calendar\" to get name of calendars'` — macOS will prompt you to allow access
-4. After granting access, come back here and we'll continue
-
-**Can't do this right now?** No problem — calendar features will work once you grant permission later. Moving on!"
-
-- Do NOT skip silently — always explain the permission step
-- Don't block onboarding — let the user continue if they prefer to do it later
-- Store `calendar.permissions_pending: true` in user-profile.yaml if they skip
-
-**If 1-2 calendars:**
-- Skip this step silently
-- Store `calendar.calendar_count: 1` in user-profile.yaml
-- The system will query all calendars (fast enough with just 1-2)
-
-**If 3+ calendars:**
-
-Say: "I noticed you have [X] calendars connected to Apple Calendar. To keep things fast, I'll focus on your work calendar.
-
-**What's your work email address?** (e.g., dave@company.com)
-
-This helps me:
-- Query only your work calendar (much faster)
-- Skip personal calendars, holidays, etc."
-
-**After receiving work email:**
-
-1. Verify the calendar exists:
-```bash
-osascript -e 'tell application "Calendar" to return name of calendars' | grep -i "[work_email]"
+Example:
+```
+save_calendar_selection(
+  work_calendar="user@company.com",
+  work_email="user@company.com",
+  calendar_count=4
+)
 ```
 
-2. If found, store in `System/user-profile.yaml`:
-```yaml
-work_email: "user@company.com"
-calendar:
-  work_calendar: "user@company.com"
-  calendar_count: [X]
-  lazy_load: true
-```
+If the save returns `success: false`, show the available names from its error response and ask the user to choose again. If it succeeds, say: "✓ Got it — I'll use [calendar name] for your work schedule."
 
-3. Say: "✓ Found your work calendar. Calendar queries will be much faster now."
+**If the listing fails or calendar permission is denied:**
 
-**If calendar not found:**
+Say: "macOS hasn't let this terminal app read your calendars yet — open **System Settings** → **Privacy & Security** → **Calendars** and enable the terminal app you're using."
 
-Say: "I couldn't find a calendar matching that email. Your calendars are:
-[list calendar names]
+Offer two choices:
+1. Try again after granting access — call `calendar_list_calendars` again
+2. Skip for now — call `save_calendar_selection(skipped=true)`
 
-Which one is your primary work calendar?"
-
-**If user doesn't want to specify:**
-
-Say: "No problem! I'll query all calendars. Note: This may take 15-45 seconds when you ask about your schedule."
-
-Store:
-```yaml
-calendar:
-  work_calendar: ""
-  calendar_count: [X]
-  lazy_load: true
-```
-
-**Note:** This step doesn't use validate_and_save_step() - it's handled inline. Move directly to Step 5.
+Do not block onboarding when they skip. `/dex-doctor` will confirm the calendar setup later.
 
 ---
 

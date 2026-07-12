@@ -360,6 +360,16 @@ This ensures every task gets a unique, sortable ID that's stable across files.
 
 If interrupted, calling `start_onboarding_session()` resumes from the last completed step.
 
+### How servers report feature status
+
+Dex servers use five shared states so skills and diagnostics describe each feature consistently:
+
+- `ok` — Enabled and working.
+- `off` — Deliberately not enabled or configured by the user. Skills render `off` as healthy, never use an error tone, and never nag.
+- `not_installed` — A required app, binary, or dependency is absent.
+- `broken` — Configured and expected to work, but failing.
+- `unknown` — Dex could not determine the state because the check itself failed.
+
 ### External MCP Integrations
 
 #### Pendo (Optional for Pendo Customers)

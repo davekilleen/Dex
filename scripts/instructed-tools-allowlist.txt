@@ -1,0 +1,47 @@
+# qmd semantic-search MCP tools are installed separately from Dex core.
+query
+status
+get
+multi_get
+
+# Scrapling MCP tools are supplied by the separately installed scraper service.
+scrapling_get
+scrapling_fetch
+scrapling_stealthy_fetch
+scrapling_bulk_get
+
+# html2pptx is a bundled presentation-library helper, not an MCP tool.
+html2pptx
+
+# interpolate is a local animation helper function, not an MCP tool.
+interpolate
+
+# sync_playwright is the Playwright Python API used by the web-testing skill.
+sync_playwright
+
+# load_workbook is the openpyxl API used by the spreadsheet skill.
+load_workbook
+
+# mcp_created is an analytics event name, not a tool reference.
+mcp_created
+
+# mcp_added is an analytics event name, not a tool reference.
+mcp_added
+
+# mcp_integrated is an analytics event name, not a tool reference.
+mcp_integrated
+
+# teams_health_check belongs to the separately installed Microsoft Teams MCP.
+teams_health_check
+
+# teams_authenticate belongs to the separately installed Microsoft Teams MCP.
+teams_authenticate
+
+# teams_list_channels belongs to the separately installed Microsoft Teams MCP.
+teams_list_channels
+
+# teams_list_chats belongs to the separately installed Microsoft Teams MCP.
+teams_list_chats
+
+# teams_search_messages belongs to the separately installed Microsoft Teams MCP.
+teams_search_messages

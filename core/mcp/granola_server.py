@@ -27,6 +27,7 @@ Tools (interface unchanged):
 import json
 import logging
 import os
+import sys
 import time
 import urllib.error
 import urllib.parse
@@ -40,11 +41,17 @@ import mcp.types as types
 from mcp.server import NotificationOptions, Server
 from mcp.server.models import InitializationOptions
 
+_repo_root = str(Path(__file__).parent.parent.parent)
+if _repo_root not in sys.path:
+    sys.path.insert(0, _repo_root)
+from core.utils.feature_status import feature_status
+
 # ============================================================================
 # CONFIGURATION
 # ============================================================================
 
 API_BASE_URL = "https://public-api.granola.ai"
+FEATURE_NAME = "Granola meeting sync"
 
 # Vault paths
 VAULT_PATH = Path(os.environ.get("VAULT_PATH", Path.cwd()))
@@ -610,20 +617,27 @@ async def handle_list_tools() -> list[types.Tool]:
 
 def _not_connected_response() -> list[types.TextContent]:
     """Standard payload returned by every tool when no API key is configured."""
-    return [types.TextContent(type="text", text=json.dumps({
-        "success": False,
-        "connected": False,
-        "message": NOT_CONNECTED_MESSAGE
-    }, indent=2))]
+    payload = feature_status(
+        FEATURE_NAME,
+        "off",
+        NOT_CONNECTED_MESSAGE,
+        connected=False,
+        message=NOT_CONNECTED_MESSAGE,
+    )
+    return [types.TextContent(type="text", text=json.dumps(payload, indent=2))]
 
 
 def _api_error_response(error: GranolaAPIError) -> list[types.TextContent]:
     """Return a visible tool failure instead of an ambiguous empty result."""
-    return [types.TextContent(type="text", text=json.dumps({
-        "success": False,
-        "error": error.user_message,
-        "data_source": "official_api",
-    }, indent=2))]
+    message = error.user_message
+    payload = feature_status(
+        FEATURE_NAME,
+        "broken",
+        message,
+        error=message,
+        data_source="official_api",
+    )
+    return [types.TextContent(type="text", text=json.dumps(payload, indent=2))]
 
 
 @app.call_tool()
@@ -681,7 +695,15 @@ async def handle_call_tool(
             )
         }
         if api_error is not None:
-            result["error"] = api_error.user_message
+            message = result["message"]
+            result["error"] = message
+            result.update(
+                feature_status(
+                    FEATURE_NAME,
+                    "broken",
+                    message,
+                )
+            )
 
         return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
 
