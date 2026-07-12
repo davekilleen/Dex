@@ -38,6 +38,8 @@ const { execSync } = require('child_process');
 const yaml = require('js-yaml');
 const { loadPaths } = require('../../.claude/hooks/paths.cjs');
 const { autoLinkFiles } = require('../auto-link-people.cjs');
+const { getMeetingProcessingMode } = require('./lib/config.cjs');
+const { getGranolaApiKey: readGranolaApiKey } = require('./lib/granola-api-key.cjs');
 const {
   extractAttendees,
   getInternalDomains,
@@ -72,32 +74,7 @@ const GRANOLA_API_BASE = 'https://public-api.granola.ai';
  * Never throws.
  */
 function getGranolaApiKey() {
-  if (process.env.GRANOLA_API_KEY && process.env.GRANOLA_API_KEY.trim()) {
-    return process.env.GRANOLA_API_KEY.trim();
-  }
-
-  try {
-    const envPath = path.join(VAULT_ROOT, '.env');
-    if (!fs.existsSync(envPath)) return null;
-    const raw = fs.readFileSync(envPath, 'utf-8');
-    for (const line of raw.split('\n')) {
-      const trimmed = line.trim();
-      if (!trimmed || trimmed.startsWith('#')) continue;
-      const match = trimmed.match(/^GRANOLA_API_KEY\s*=\s*(.*)$/);
-      if (match) {
-        // Strip optional surrounding quotes and inline whitespace
-        let value = match[1].trim();
-        if ((value.startsWith('"') && value.endsWith('"')) ||
-            (value.startsWith("'") && value.endsWith("'"))) {
-          value = value.slice(1, -1);
-        }
-        return value.trim() || null;
-      }
-    }
-  } catch (e) {
-    // Unreadable .env — treat as not configured rather than failing.
-  }
-  return null;
+  return readGranolaApiKey({ vaultRoot: VAULT_ROOT });
 }
 
 const STATE_FILE = path.join(__dirname, 'processed-meetings.json');
@@ -1055,7 +1032,7 @@ async function main() {
   // Determine processing mode
   // "automatic" = write meeting notes now (default for new users)
   // "manual"    = queue JSON files for /process-meetings command
-  const processingMode = profile.meeting_processing?.mode || 'automatic';
+  const processingMode = getMeetingProcessingMode(profile.meeting_processing);
   log(`\nProcessing mode: ${processingMode}`);
 
   if (processingMode === 'manual') {
@@ -1182,6 +1159,7 @@ module.exports = {
   createBasicMeetingNote,
   createMeetingNote,
   resolveMeetingNoteTarget,
+  getMeetingProcessingMode,
   renderAttendeesYamlBlock,
   renderParticipants,
 };

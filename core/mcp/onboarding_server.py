@@ -63,6 +63,8 @@ from core.paths import (
     VAULT_ROOT as BASE_DIR,
 )
 
+GRANOLA_APP_PATH = Path("/Applications/Granola.app")
+
 # Role definitions for validation
 ROLES = {
     1: ("Product Manager", "product"),
@@ -262,39 +264,21 @@ def check_calendar_app() -> Dict[str, Any]:
         }
 
 def check_granola() -> Dict[str, Any]:
-    """Check if Granola is installed (auto-detects latest cache version)"""
-    import re as _re
+    """Check whether the Granola desktop application is installed."""
+    if platform.system() == 'Darwin' and GRANOLA_APP_PATH.exists():
+        return {
+            "installed": True,
+            "app_found": True,
+            "path": str(GRANOLA_APP_PATH),
+            "setup": "/granola-setup",
+        }
 
-    def _find_latest(granola_dir):
-        candidates = sorted(
-            granola_dir.glob("cache-v*.json"),
-            key=lambda p: int(_re.search(r'v(\d+)', p.name).group(1))
-            if _re.search(r'v(\d+)', p.name) else 0,
-            reverse=True
-        )
-        for c in candidates:
-            if c.exists():
-                return c
-        return None
-
-    # Check common Granola cache locations
-    if platform.system() == 'Darwin':
-        granola_dir = Path.home() / 'Library' / 'Application Support' / 'Granola'
-    elif platform.system() == 'Windows':
-        appdata = os.getenv('APPDATA') or os.getenv('LOCALAPPDATA')
-        if appdata:
-            granola_dir = Path(appdata) / 'Granola'
-        else:
-            granola_dir = None
-    else:  # Linux
-        granola_dir = Path.home() / '.config' / 'Granola'
-
-    if granola_dir:
-        cache_path = _find_latest(granola_dir)
-        if cache_path:
-            return {"installed": True, "cache_found": True, "path": str(cache_path)}
-
-    return {"installed": False, "optional": True}
+    return {
+        "installed": False,
+        "app_found": False,
+        "optional": True,
+        "setup": "/granola-setup",
+    }
 
 def create_para_structure(base_path: Path) -> List[str]:
     """Create PARA folder structure"""

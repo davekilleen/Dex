@@ -8,6 +8,19 @@ All notable changes to Dex will be documented in this file.
 ---
 
 
+## [1.40.0] - Granola setup now tells you the truth (2026-07-12)
+
+Granola could be fully connected while Dex said it was missing, look ready without the key it needed, or ignore your choice to process meetings manually.
+
+**What this fixes for you:**
+
+* **Connected now means ready to sync.** Setup and background-sync checks look for the Granola API key that meeting sync actually uses, so an installed app or an old local file can no longer create a false green light.
+* **Manual processing stays manual.** Choosing manual mode now saves the setting in the right shape, and existing vaults with the older shape remain understood instead of silently switching to automatic processing.
+* **Fresh installs show the real next step.** Dex detects the Granola app without claiming meeting intelligence is already connected, then points you to `/granola-setup` and explains the Business-plan API-key requirement.
+* **Every setup path follows the same model.** Onboarding, updates, analytics, and meeting guidance agree on the official Granola connection, so you no longer get contradictory instructions depending on where you ask.
+
+---
+
 ## [1.39.0] - Your work stays safe and organizes itself (2026-07-12)
 
 ---

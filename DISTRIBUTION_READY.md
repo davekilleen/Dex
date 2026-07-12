@@ -59,7 +59,7 @@ This is the **industry-standard solution** used by:
 |-----|------|---------|----------|
 | work-mcp | `work_server.py` | Task/goal management | Nothing |
 | calendar-mcp | `calendar_server.py` | Calendar integration | macOS Calendar.app |
-| granola-mcp | `granola_server.py` | Meeting processing | Granola app (optional) |
+| granola-mcp | `granola_server.py` | Meeting processing | `GRANOLA_API_KEY` from a Granola Business/Enterprise plan (optional) |
 | career-mcp | `career_server.py` | Career development | Nothing |
 | resume-mcp | `resume_server.py` | Resume building | Nothing |
 | dex-improvements-mcp | `dex_improvements_server.py` | System improvements | Nothing |
@@ -99,16 +99,16 @@ User's Claude Desktop (separate)
 
 **Your install.sh already handles this:**
 ```bash
-# Line 59
-if ls "$HOME/Library/Application Support/Granola/cache-v"*.json 1>/dev/null 2>&1; then
-    echo "✅ Granola detected - meeting intelligence available"
+if [ -d "/Applications/Granola.app" ]; then
+    echo "✅ Granola app detected — run /granola-setup to connect it (needs a Granola Business API key)"
 else
-    echo "ℹ️  Granola not detected - meeting intelligence won't work"
-    echo "   Install Granola from https://granola.ai"
+    echo "ℹ️  Granola app not detected"
+    echo "   Install Granola from https://granola.ai for meeting transcription"
+    echo "   Then run /granola-setup to connect it (needs a Granola Business API key)"
 fi
 ```
 
-**No changes needed.**
+App detection is only an install pointer. Meeting sync itself uses Granola's official public API and reads `GRANOLA_API_KEY` from the environment, then the vault-root `.env`; it never treats local application data as authentication.
 
 ---
 

@@ -199,13 +199,14 @@ PY
     echo "   MCP servers configured for: $CURRENT_PATH"
 fi
 
-# Check for Granola (optional)
+# Check for the optional Granola app. API access is connected separately.
 echo ""
-if ls "$HOME/Library/Application Support/Granola/cache-v"*.json 1>/dev/null 2>&1; then
-    echo "✅ Granola detected - meeting intelligence available"
+if [ -d "/Applications/Granola.app" ]; then
+    echo "✅ Granola app detected — run /granola-setup to connect it (needs a Granola Business API key)"
 else
-    echo "ℹ️  Granola not detected - meeting intelligence won't work"
+    echo "ℹ️  Granola app not detected"
     echo "   Install Granola from https://granola.ai for meeting transcription"
+    echo "   Then run /granola-setup to connect it (needs a Granola Business API key)"
 fi
 
 # Install Python dependencies for Work MCP in a virtual environment
