@@ -1,4 +1,6 @@
-# /integrate-slack - Connect Slack to Dex
+# Slack Integration Setup Guide
+
+Start this setup through `/integrate-mcp`.
 
 ## Purpose
 Guide users through setting up Slack integration with Dex. Supports easy cookie auth (no bot required) or traditional bot token auth.
@@ -112,6 +114,5 @@ fire_event('integration_slack_completed', {
 ```
 
 ## Related Skills
-- `/integrate-notion` - Connect Notion
-- `/integrate-google` - Connect Google Workspace
+- `/integrate-mcp` - Connect another tool
 - `/meeting-prep` - Uses Slack context when available

@@ -1,14 +1,16 @@
-# Productivity Integration Skills
+# Productivity Integration Guides
 
 Connect your favorite tools to Dex for richer context in meetings, person pages, and daily planning.
 
 ## Available Integrations
 
-| Skill | Tool | Auth Complexity | Time |
-|-------|------|-----------------|------|
-| `/integrate-notion` | Notion | ⭐ Easy (token) | 2 min |
-| `/integrate-slack` | Slack | ⭐⭐ Medium | 3 min |
-| `/integrate-google` | Google Workspace | ⭐⭐⭐ Complex (OAuth) | 5 min |
+Start each setup with the shipped `/integrate-mcp` skill.
+
+| Tool | Auth Complexity | Time |
+|------|-----------------|------|
+| Notion | ⭐ Easy (token) | 2 min |
+| Slack | ⭐⭐ Medium | 3 min |
+| Google Workspace | ⭐⭐⭐ Complex (OAuth) | 5 min |
 
 ## What You Get
 
@@ -53,6 +55,6 @@ When you run `/dex-update`, Dex automatically:
 
 ## Related
 
-- `.claude/flows/onboarding.md` — Integration setup during onboarding (Step 9)
+- `.claude/flows/onboarding.md` — Integration setup during onboarding (Step 8)
 - `core/integrations/` — Python modules for detection and setup
 - `06-Resources/Dex_System/Dex_Technical_Guide.md` — Technical details

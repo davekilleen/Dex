@@ -71,22 +71,13 @@
 - [ ] Dex rolled back (`/dex-rollback`)
 - [ ] Learnings reviewed (`/learnings`)
 
-## Integrations (6 features)
+## Integrations (5 features)
 
 - [ ] Calendar connected (via Calendar MCP)
 - [ ] Calendar synced daily
 - [ ] Granola connected (via Granola MCP)
 - [ ] Obsidian enabled (`/dex-obsidian-setup`)
 - [ ] MCP added (`/dex-add-mcp`)
-- [ ] Pi used (`/pi`)
-
-## AI Configuration (5 features)
-
-- [ ] AI setup started (`/ai-setup`)
-- [ ] Budget cloud configured (OpenRouter)
-- [ ] Offline mode configured (Ollama)
-- [ ] Smart routing enabled
-- [ ] AI status checked (`/ai-status`)
 
 ## Advanced (6 features)
 

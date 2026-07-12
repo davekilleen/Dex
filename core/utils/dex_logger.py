@@ -63,7 +63,7 @@ _ERROR_PATTERNS = [
     ("FileNotFoundError", "{source} can't find a required file"),
     ("JSONDecodeError", "{source} got corrupted data — may need a file fix"),
     ("PermissionError", "{source} can't write to a file — check permissions"),
-    ("ANTHROPIC_API_KEY", "API key missing — run /ai-setup"),
+    ("ANTHROPIC_API_KEY", "API key missing — add it to your .env file"),
     ("VAULT_PATH", "Vault path not configured — check your .mcp.json"),
     ("yaml", "{source} can't read config — YAML file may be corrupted"),
     ("TimeoutError", "{source} timed out"),

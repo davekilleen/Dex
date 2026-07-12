@@ -1,7 +1,7 @@
 # Productivity Integrations Build Tracker
 
 **Orchestrator:** Sub-agent coordination via TODOs
-**Status:** 🟢 Building in Parallel
+**Status:** Historical — setup entry points consolidated into `/integrate-mcp`
 **Started:** 2026-02-04
 
 ---
@@ -10,7 +10,7 @@
 
 ### Notion Integration
 - [ ] Test `@notionhq/notion-mcp-server` package
-- [x] Create `/integrate-notion` skill ✓
+- [x] Route Notion setup through `/integrate-mcp` ✓
 - [x] Create detection helper (check existing config) ✓
 - [x] Create setup helper (guided flow) ✓
 - [x] Hook into `/meeting-prep` ✓
@@ -19,7 +19,7 @@
 
 ### Slack Integration
 - [ ] Test `@kazuph/mcp-slack` package
-- [x] Create `/integrate-slack` skill ✓
+- [x] Route Slack setup through `/integrate-mcp` ✓
 - [x] Create detection helper (check existing config) ✓
 - [x] Create setup helper (guided flow) ✓
 - [x] Hook into `/meeting-prep` ✓
@@ -28,7 +28,7 @@
 
 ### Google Integration
 - [ ] Test `mcp-google` package
-- [x] Create `/integrate-google` skill ✓
+- [x] Route Google setup through `/integrate-mcp` ✓
 - [x] Create detection helper (check existing config) ✓
 - [x] Create setup helper (OAuth walkthrough) ✓
 - [x] Hook into `/meeting-prep` ✓
@@ -58,7 +58,7 @@ User Flow:
                            │
          ┌─────────────────┼─────────────────┐
          ▼                 ▼                 ▼
-    /integrate-notion  /integrate-slack  /integrate-google
+      /integrate-mcp    /integrate-mcp    /integrate-mcp
          │                 │                 │
          └─────────────────┼─────────────────┘
                            ▼
@@ -88,7 +88,7 @@ Existing User Flow (/dex-update):
 | Component | Location |
 |-----------|----------|
 | Integration modules | `core/integrations/{notion,slack,google}/` |
-| Skills | `.claude/skills/integrations/` |
+| Setup guides | `.claude/skills/integrations/` |
 | User config | `System/integrations/config.yaml` |
 | Detection helper | `core/integrations/detect.py` |
 | Onboarding step | `.claude/flows/onboarding.md` (new step) |

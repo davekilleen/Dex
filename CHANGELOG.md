@@ -7,6 +7,21 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.42.0] - Dex now tells the truth about what your setup can do (2026-07-12)
+
+Some setup and recovery guidance could promise features that never reached your active Dex, point you to commands that did not exist, or treat an optional choice as a failure.
+
+**What this fixes for you:**
+
+* **Model setup no longer leads you into a dead end.** Dex no longer offers retired budget and offline model switching that only configured Pi, a harness Dex stopped shipping, and it never guesses how much memory your computer has.
+* **Parked meeting experiments stay out of your way.** An unwired ritual beta handout no longer tells testers that `/daily-plan` will surface recurring-meeting previews when that feature is not connected.
+* **Integration prompts now open a command that exists.** Setup and post-update guidance sends you to `/integrate-mcp` for Notion, Slack, and Google Workspace instead of naming commands Dex cannot run.
+* **Calendar onboarding fits your operating system.** macOS users still get the permission steps they need; Windows and Linux users now get a clear explanation that calendar sync is macOS-only and can continue setup without looping on impossible instructions.
+* **Optional features are described consistently.** A feature that is off stays calm and healthy, a missing or broken feature includes the real fix, and an uncertain check simply admits it could not verify the state.
+* **Developer probes no longer clutter your install.** One-off diagnostics and an obsolete launch-agent repair utility are gone; `/dex-doctor` remains the supported place to check background-job health.
+
+---
+
 ## [1.41.0] - Your checkup now tells the truth on a brand-new Dex (2026-07-12)
 
 A fresh install could mistake other Dex products or optional features for failures, miss one of its own services, and inherit integration choices that belonged to the release builder.
@@ -19,7 +34,6 @@ A fresh install could mistake other Dex products or optional features for failur
 * **Checkup totals add up.** Status summaries now use the numbers from the checkup that just ran instead of copying contradictory example totals.
 * **Career features stay quietly optional.** If career tracking is not set up, Dex offers the setup command calmly without an error, a missing-file warning, or a private path from your Mac.
 * **New installs start genuinely clean.** Slack and every related meeting or planning hook begin off, so a new vault no longer inherits someone else's connected-tool state or gets noisy connection warnings.
-
 ---
 
 ## [1.37.0] - Your people and company pages now build themselves (2026-07-12)

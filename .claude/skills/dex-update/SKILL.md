@@ -722,7 +722,7 @@ This update includes integrations for your favorite tools:
 - Meeting prep pulls relevant docs from Notion
 - Person pages show email/Slack history
 
-Run `/integrate-notion`, `/integrate-slack`, or `/integrate-google` to set up.
+Run `/integrate-mcp` to connect any of these tools.
 ```
 
 **If user has integrations that could be upgraded:**
@@ -740,7 +740,7 @@ You have some integrations that could be upgraded to Dex recommended packages:
 
 **Options:**
 1. **Keep existing** — Your current setup works fine
-2. **Upgrade** — Run `/integrate-notion` to switch to recommended
+2. **Upgrade** — Run `/integrate-mcp` to review and switch the connection
 ```
 
 ---

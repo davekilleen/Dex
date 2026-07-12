@@ -198,10 +198,10 @@ Include in prep:
 ```
 
 **Graceful Degradation:**
+For MCP responses, follow CLAUDE.md's `feature_status` rendering convention before applying these fallbacks.
+
 If an integration is enabled but the MCP isn't responding:
-- Skip silently
-- Don't show error to user
-- Continue with vault-only context
+- Render its status using that convention, then continue with vault-only context.
 
 ### Step 4: Compile Prep Brief
 

@@ -54,7 +54,7 @@ def check_new_integrations_available() -> Tuple[bool, str]:
     lines.append("- Meeting prep pulls relevant docs from Notion")
     lines.append("- Person pages show email/Slack history")
     lines.append("")
-    lines.append("Run `/integrate-notion`, `/integrate-slack`, or `/integrate-google` to set up.")
+    lines.append("Run `/integrate-mcp` to connect any of these tools.")
     
     return True, "\n".join(lines)
 
@@ -87,7 +87,7 @@ def check_upgradeable_integrations() -> Tuple[bool, str]:
     
     lines.append("**Options:**")
     lines.append("1. **Keep existing** — Your current setup works fine")
-    lines.append("2. **Upgrade** — Run `/integrate-{service}` to switch to recommended")
+    lines.append("2. **Upgrade** — Run `/integrate-mcp` to review and switch the connection")
     lines.append("")
     
     return True, "\n".join(lines)

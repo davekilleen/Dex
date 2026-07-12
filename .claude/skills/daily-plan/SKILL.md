@@ -536,6 +536,8 @@ This only fires if the user has opted into analytics. No action needed if it ret
 
 ## Graceful Degradation
 
+For MCP responses, follow CLAUDE.md's `feature_status` rendering convention before applying these fallbacks.
+
 The plan works at multiple levels:
 
 ### Full Context (All MCPs available)
