@@ -12,10 +12,6 @@ hooks:
 
 # Process Meetings
 
-> **Note for automatic mode users:** If your `meeting_processing.mode` is `automatic` (the default for new installs), meeting notes are written directly to your vault every 30 minutes — you don't need to run this command. Check `System/user-profile.yaml` to see your mode.
->
-> This command is for **manual mode** users, or to add AI analysis to basic notes created without an LLM key.
-
 Process meetings that have been synced from Granola by the background automation. Updates person pages, extracts tasks, and organizes meeting notes.
 
 ## Background Execution
@@ -45,7 +41,7 @@ Meetings are synced automatically every 30 minutes by a background process. This
 
 ## Pre-flight: Granola Check
 
-Mobile recordings sync automatically as long as Granola is installed and the user is signed in to the desktop app. No separate authentication step needed.
+Granola sync uses the official Granola public API. Desktop and mobile recordings both come through it once your Granola API key is connected. If `GRANOLA_API_KEY` isn't set (checked in the environment, then the `.env` file at the vault root), say: "Granola isn't connected yet — run `/granola-setup` to add your Granola API key (requires a Granola Business plan)." and continue with any meetings already synced.
 
 ---
 
@@ -73,7 +69,7 @@ ls .scripts/meeting-intel/processed-meetings.json
 > Or run `/process-meetings --setup` and I'll do it for you.
 >
 > **Requirements:**
-> - Granola app installed ([granola.ai](https://granola.ai))
+> - A Granola Business plan, with your Granola API key connected via `/granola-setup`
 > - An LLM API key in `.env` (GEMINI_API_KEY, ANTHROPIC_API_KEY, or OPENAI_API_KEY)"
 
 If user runs `--setup`:
@@ -114,30 +110,41 @@ For each participant in synced meetings:
    - If participant email domain matches user's domain → Internal
    - Otherwise → External
 
-3. **Check if person page exists:**
-   - Internal: `05-Areas/People/Internal/{Name}.md`
-   - External: `05-Areas/People/External/{Name}.md`
+3. **Look up the person with the Work MCP `lookup_person` tool.**
+   - If lookup returns `ambiguous: true`, do not create a page. Surface the possible matches to the user.
+   - If a match exists, update that existing page.
 
-4. **If page doesn't exist, create it:**
+4. **If no match exists, call the Work MCP `create_person` tool:**
+   - Pass `name`, `role` when known, `emails` from the meeting's `attendees` block, and `location` from that attendee's `location` field.
+   - Pass the meeting company and a short source note when available.
+
+<!-- What the create_person tool creates (reference only; do not hand-write this template). -->
    ```markdown
+   ---
+   type: person
+   name: "{Name}"
+   role: null
+   company: "{company from meeting}"
+   company_page: null
+   emails: ["{lowercased email, if available}"]
+   aliases: []
+   location: {internal|external}
+   last_interaction: {meeting date}
+   ---
    # {Name}
-
-   ## Overview
-
-   | Field | Value |
-   |-------|-------|
-   | **Company** | {company from meeting} |
-   | **Email** | {if available} |
-   | **First Met** | {meeting date} |
-
-   ## Recent Interactions
-
-   - [{Meeting Title}](00-Inbox/Meetings/{date}/{slug}.md) — {date}
 
    ## Notes
 
    *Auto-created from meeting on {date}*
-   ```
+
+   ## Recent Interactions
+
+   <!-- dex:auto:recent-interactions -->
+   - [{Meeting Title}](00-Inbox/Meetings/{date}/{slug}.md) — {date}
+   <!-- /dex:auto -->
+
+   ## Key Context
+    ```
 
 5. **If page exists, add meeting to Recent Interactions:**
    - Read existing page
@@ -153,23 +160,26 @@ For each unique external company domain:
 
 2. **If doesn't exist, create it:**
    ```markdown
+   ---
+   type: company
+   name: "{Company Name}"
+   domains: ["{lowercased domain}"]
+   website: "{website, if known}"
+   status: "Prospect"
+   ---
    # {Company Name}
-
-   ## Overview
-
-   | Field | Value |
-   |-------|-------|
-   | **Website** | {domain} |
-   | **Stage** | Unknown |
-   | **First Contact** | {date} |
 
    ## Key Contacts
 
+   <!-- dex:auto:key-contacts -->
    - [[05-Areas/People/External/{Person}|{Person}]]
+   <!-- /dex:auto -->
 
    ## Meeting History
 
+   <!-- dex:auto:meeting-history -->
    - [{Meeting Title}](00-Inbox/Meetings/{date}/{slug}.md) — {date}
+   <!-- /dex:auto -->
 
    ## Notes
 
@@ -231,7 +241,7 @@ For each meeting with unextracted tasks:
      priority: "P2",  // default, P1 if "urgent" mentioned
      pillar: "{from meeting}",
      people: ["{participants}"],
-     source: "meeting:{meeting-path}"
+     source: "{meeting path}"
    )
    ```
 
@@ -240,7 +250,25 @@ For each meeting with unextracted tasks:
    <!-- tasks-extracted: 2026-02-03T10:30:00Z -->
    ```
 
-### Step 6: Summary Report
+### Step 6: Auto-link People in Processed Notes
+
+After finishing edits to each processed meeting note, run this once for every processed note:
+```bash
+node .scripts/auto-link-people.cjs "<note-file>"
+```
+
+Use `node .scripts/auto-link-people.cjs --dry-run "<note-file>"` to preview what would be linked without changing the file.
+
+### Step 7: Verify Entity Coverage
+
+Run `node .scripts/meeting-intel/verify-entities.cjs` and show its one-line summary.
+If `ENTITY_SUGGESTIONS_FILE` contains suggested people, list them and ask: "Want me to create these pages? (creates via `create_person`; `dismiss` or `never` also fine)"
+
+- Accepted: call `create_person`, set the suggestion to `accepted`, and set the contact state to `created` with its page path.
+- Dismissed: set the suggestion to `dismissed`.
+- Never: set the suggestion to `suppressed`.
+
+### Step 8: Summary Report
 
 ```
 ## Meeting Processing Complete ✅
@@ -275,7 +303,7 @@ For each meeting with unextracted tasks:
 
 **If no meetings found:**
 > "No meetings synced in the last 7 days. Make sure:
-> 1. Granola is running during your meetings
+> 1. Your Granola API key is connected (run `/granola-setup` if not)
 > 2. Background sync is set up (run `/process-meetings --setup`)
 > 3. Check logs: `.scripts/logs/meeting-intel.stdout.log`"
 
