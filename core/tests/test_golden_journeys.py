@@ -195,6 +195,10 @@ def _run_entity_creation_journey(vault: Path, mode: str) -> dict:
         pytest.skip("Node.js is required for the entity-engine golden journey")
     env = os.environ.copy()
     env["VAULT_PATH"] = str(vault)
+    # CLAUDE_PROJECT_DIR outranks VAULT_PATH in paths.cjs; an inherited value
+    # (e.g. from a Claude Code shell) would silently point the engine at a
+    # different vault, so pin it to the journey vault explicitly.
+    env["CLAUDE_PROJECT_DIR"] = str(vault)
     env["DEX_REPO_ROOT"] = str(REPO_ROOT)
     env["ENTITY_CREATION_MODE"] = mode
     result = subprocess.run(

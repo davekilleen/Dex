@@ -34,14 +34,19 @@ function statePath() {
 function runtimePaths() {
   const configured = loadPaths();
   const overrideRoot = process.env.CLAUDE_PROJECT_DIR || process.env.VAULT_PATH;
-  if (!overrideRoot || path.resolve(overrideRoot) === path.resolve(configured.VAULT_ROOT)) return configured;
+  // Resolve both sides before comparing/remapping: a relative VAULT_PATH in
+  // the environment (as CI exports) yields relative configured paths, which
+  // must be remapped just like absolute ones.
+  const configuredRoot = path.resolve(configured.VAULT_ROOT || process.cwd());
+  if (!overrideRoot || path.resolve(overrideRoot) === configuredRoot) return configured;
+  const root = path.resolve(overrideRoot);
   const remapped = {};
   for (const [key, value] of Object.entries(configured)) {
-    remapped[key] = typeof value === 'string' && path.isAbsolute(value)
-      ? path.join(path.resolve(overrideRoot), path.relative(configured.VAULT_ROOT, value))
+    remapped[key] = typeof value === 'string'
+      ? path.join(root, path.relative(configuredRoot, path.resolve(value)))
       : value;
   }
-  remapped.VAULT_ROOT = path.resolve(overrideRoot);
+  remapped.VAULT_ROOT = root;
   return remapped;
 }
 

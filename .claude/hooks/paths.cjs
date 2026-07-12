@@ -8,7 +8,10 @@
 const fs = require('fs');
 const path = require('path');
 
-const VAULT_ROOT = process.env.CLAUDE_PROJECT_DIR || process.env.VAULT_PATH || process.cwd();
+// Resolve to an absolute path: a relative VAULT_PATH (as CI exports) would
+// otherwise propagate into every derived path and break consumers that
+// compare or remap roots.
+const VAULT_ROOT = path.resolve(process.env.CLAUDE_PROJECT_DIR || process.env.VAULT_PATH || process.cwd());
 
 /**
  * Load vault path constants from core/paths.json, falling back to hardcoded PARA defaults.
