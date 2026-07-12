@@ -640,6 +640,65 @@ function slugify(text) {
     .slice(0, 60);
 }
 
+function readGranolaId(filepath) {
+  try {
+    const content = fs.readFileSync(filepath, 'utf-8');
+    const frontmatterMatch = content.match(/^\uFEFF?---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/);
+    if (!frontmatterMatch) return null;
+
+    const frontmatter = yaml.load(frontmatterMatch[1]);
+    if (!frontmatter || typeof frontmatter !== 'object' || Array.isArray(frontmatter)) {
+      return null;
+    }
+
+    const granolaId = frontmatter.granola_id;
+    return granolaId === undefined || granolaId === null
+      ? null
+      : String(granolaId).trim();
+  } catch (error) {
+    return null;
+  }
+}
+
+function granolaIdFragment(meetingId, length = 8) {
+  const safeId = String(meetingId || '')
+    .replace(/[^a-z0-9_-]+/gi, '')
+    .slice(0, length);
+  return safeId || 'unknown';
+}
+
+function resolveMeetingNoteTarget(meeting, meetingsDir = MEETINGS_DIR) {
+  const date = meeting.createdAt.split('T')[0];
+  const outputDir = path.join(meetingsDir, date);
+  const slug = slugify(meeting.title);
+  const meetingId = String(meeting.id);
+  const baseFilename = `${slug}.md`;
+  const baseFilepath = path.join(outputDir, baseFilename);
+
+  if (!fs.existsSync(baseFilepath) || readGranolaId(baseFilepath) === meetingId) {
+    return { filename: baseFilename, filepath: baseFilepath };
+  }
+
+  const shortFragment = granolaIdFragment(meetingId);
+  const shortFilename = `${slug}-${shortFragment}.md`;
+  const shortFilepath = path.join(outputDir, shortFilename);
+  if (!fs.existsSync(shortFilepath) || readGranolaId(shortFilepath) === meetingId) {
+    return { filename: shortFilename, filepath: shortFilepath };
+  }
+
+  const fullFragment = granolaIdFragment(meetingId, 64);
+  let counter = 1;
+  while (true) {
+    const suffix = counter === 1 ? fullFragment : `${fullFragment}-${counter}`;
+    const filename = `${slug}-${suffix}.md`;
+    const filepath = path.join(outputDir, filename);
+    if (!fs.existsSync(filepath) || readGranolaId(filepath) === meetingId) {
+      return { filename, filepath };
+    }
+    counter += 1;
+  }
+}
+
 function getOwnerFilteredAttendees(meeting, profile) {
   const attendees = Array.isArray(meeting.attendees)
     ? meeting.attendees
@@ -667,18 +726,18 @@ function renderParticipants(attendees, profile) {
   }).join(', ');
 }
 
-function createMeetingNote(meeting, analysis, profile, pillars) {
+function createMeetingNote(meeting, analysis, profile, pillars, options = {}) {
   const date = meeting.createdAt.split('T')[0];
   const time = meeting.createdAt.split('T')[1]?.slice(0, 5) || '00:00';
 
-  const outputDir = path.join(MEETINGS_DIR, date);
+  const meetingsDir = options.meetingsDir || MEETINGS_DIR;
+  const noteLogger = options.logger || log;
+  const outputDir = path.join(meetingsDir, date);
   if (!fs.existsSync(outputDir)) {
     fs.mkdirSync(outputDir, { recursive: true });
   }
 
-  const slug = slugify(meeting.title);
-  const filename = `${slug}.md`;
-  const filepath = path.join(outputDir, filename);
+  const { filename, filepath } = resolveMeetingNoteTarget(meeting, meetingsDir);
 
   // Extract pillar from analysis
   const pillarMatch = analysis.match(/## Pillar Assignment\n\n([^\n]+)/i);
@@ -701,7 +760,7 @@ ${renderAttendeesYamlBlock(filteredAttendees)}
 company: "${meeting.company}"
 pillar: "${pillar}"
 duration: ${meeting.duration || 'unknown'}
-granola_id: ${meeting.id}
+granola_id: ${JSON.stringify(String(meeting.id))}
 processed: ${new Date().toISOString()}
 ---
 
@@ -740,11 +799,11 @@ ${meeting.transcript.slice(0, 5000)}${meeting.transcript.length > 5000 ? '\n\n[T
 `;
 
   fs.writeFileSync(filepath, content);
-  log(`Created meeting note: ${filepath}`);
+  noteLogger(`Created meeting note: ${filepath}`);
 
   return {
     filepath,
-    wikilink: `00-Inbox/Meetings/${date}/${slug}.md`
+    wikilink: `00-Inbox/Meetings/${date}/${filename}`
   };
 }
 
@@ -752,18 +811,18 @@ ${meeting.transcript.slice(0, 5000)}${meeting.transcript.length > 5000 ? '\n\n[T
 // BASIC NOTE (no LLM — fallback for automatic mode when API key not configured)
 // ============================================================================
 
-function createBasicMeetingNote(meeting, profile) {
+function createBasicMeetingNote(meeting, profile, options = {}) {
   const date = meeting.createdAt.split('T')[0];
   const time = meeting.createdAt.split('T')[1]?.slice(0, 5) || '00:00';
 
-  const outputDir = path.join(MEETINGS_DIR, date);
+  const meetingsDir = options.meetingsDir || MEETINGS_DIR;
+  const noteLogger = options.logger || log;
+  const outputDir = path.join(meetingsDir, date);
   if (!fs.existsSync(outputDir)) {
     fs.mkdirSync(outputDir, { recursive: true });
   }
 
-  const slug = slugify(meeting.title);
-  const filename = `${slug}.md`;
-  const filepath = path.join(outputDir, filename);
+  const { filename, filepath } = resolveMeetingNoteTarget(meeting, meetingsDir);
 
   const filteredAttendees = getOwnerFilteredAttendees(meeting, profile);
   const filteredParticipants = filteredAttendees.map(attendee => attendee.name);
@@ -785,7 +844,7 @@ title: "${meeting.title.replace(/"/g, '\\"')}"
 participants: [${filteredParticipants.map(p => `"${p}"`).join(', ')}]
 ${renderAttendeesYamlBlock(filteredAttendees)}
 company: "${meeting.company || ''}"
-granola_id: ${meeting.id}
+granola_id: ${JSON.stringify(String(meeting.id))}
 processed: ${new Date().toISOString()}
 ai_analyzed: false
 ---
@@ -806,11 +865,11 @@ ${transcriptSection}
 `;
 
   fs.writeFileSync(filepath, content);
-  log(`  Created basic note (no LLM): ${filepath}`);
+  noteLogger(`  Created basic note (no LLM): ${filepath}`);
 
   return {
     filepath,
-    wikilink: `00-Inbox/Meetings/${date}/${slug}.md`
+    wikilink: `00-Inbox/Meetings/${date}/${filename}`
   };
 }
 
@@ -1120,6 +1179,9 @@ module.exports = {
   getGranolaApiKey,
   getNewMeetingsFromApi,
   fetchMeetingDetail,
+  createBasicMeetingNote,
+  createMeetingNote,
+  resolveMeetingNoteTarget,
   renderAttendeesYamlBlock,
   renderParticipants,
 };

@@ -13,7 +13,7 @@ description: Safely update Dex with one command (handles everything automaticall
 
 **What it handles:**
 - Downloads updates automatically
-- Protects your data (never touches your notes, tasks, projects)
+- Protects and restores user data before any hard-reset recovery; some files in 00-07 are tracked, so Dex never relies on `.gitignore` for safety
 - Preserves protected user blocks and user-owned MCP entries
 - Resolves conflicts with a guided choice (no manual merge editor)
 - Shows clear progress and confirmation
@@ -80,10 +80,15 @@ Looks like you downloaded Dex as a ZIP file instead of cloning it.
    • 03-Tasks/
    • 04-Projects/
    • 05-Areas/
+   • 06-Resources/ (copy the entire folder, including root-level files)
+   • Then replace 06-Resources/Dex_System/ with the copy from the downloaded Dex so shipped documentation stays current
    • 07-Archives/
-4. Delete old Dex folder
-5. Rename new folder to 'dex'
-6. Open in Cursor
+   • System/Session_Learnings/
+   • .env (if it exists)
+4. Verify those copies exist in the new folder
+5. Delete old Dex folder
+6. Rename new folder to 'dex'
+7. Open in Cursor
 
 [Show detailed guide] — Open step-by-step instructions
 [Cancel] — I'll do this later
@@ -334,7 +339,7 @@ Options:
 **If AskUserQuestion is not available (non-Claude Code):**
 - Use a simple CLI prompt with the same 4 options.
 - Add one-line tradeoffs to each option (what you keep vs lose).
-- If user types an invalid choice, re-prompt once and default to "Use Dex version".
+- If user types an invalid choice, re-prompt once and default to "Keep my version" so an input mistake cannot discard user work.
 
 **If user chooses "Keep both":**
 - MCP: `name` → `name-custom`
@@ -378,8 +383,105 @@ This is rare, but sometimes updates need manual review.
 If restore:
 ```bash
 git merge --abort
-git reset --hard backup-before-v1.3.0
+DEX_UPDATE_RESET_TARGET="backup-before-v1.3.0"
+DEX_USER_DATA_PATHS=(
+  "00-Inbox/" "01-Quarter_Goals/" "02-Week_Priorities/" "03-Tasks/"
+  "04-Projects/" "05-Areas/" "06-Resources/" "07-Archives/"
+  "System/user-profile.yaml" "System/pillars.yaml" "System/Session_Learnings/"
+)
+DEX_USER_DATA_SOURCE=$(git rev-parse HEAD)
+DEX_DATA_STASH_BEFORE=$(git rev-parse -q --verify refs/stash 2>/dev/null || true)
+DEX_USER_DATA_STASH_PATHS=(
+  ":(top,glob)00-Inbox/**" ":(top,glob)01-Quarter_Goals/**"
+  ":(top,glob)02-Week_Priorities/**" ":(top,glob)03-Tasks/**"
+  ":(top,glob)04-Projects/**" ":(top,glob)05-Areas/**"
+  ":(top,glob)06-Resources/**" ":(top,glob)07-Archives/**"
+  ":(top)System/user-profile.yaml" ":(top)System/pillars.yaml"
+  ":(top,glob)System/Session_Learnings/**"
+)
+git stash push --include-untracked \
+  -m "dex-user-data-before-update-recovery-$(date +%Y%m%d-%H%M%S)" \
+  -- "${DEX_USER_DATA_STASH_PATHS[@]}" || true
+DEX_DATA_STASH_AFTER=$(git rev-parse -q --verify refs/stash 2>/dev/null || true)
+if [ -n "$DEX_DATA_STASH_AFTER" ] && [ "$DEX_DATA_STASH_AFTER" != "$DEX_DATA_STASH_BEFORE" ]; then
+  DEX_DATA_STASH_REF='stash@{0}'
+  DEX_DATA_STASH_OID="$DEX_DATA_STASH_AFTER"
+else
+  DEX_DATA_STASH_REF=""
+  DEX_DATA_STASH_OID=""
+  if ! git diff --quiet -- "${DEX_USER_DATA_PATHS[@]}" || \
+     ! git diff --cached --quiet -- "${DEX_USER_DATA_PATHS[@]}" || \
+     [ -n "$(git ls-files --others --exclude-standard -- "${DEX_USER_DATA_PATHS[@]}")" ]; then
+    echo "Update recovery stopped: changed user data remains outside the snapshot, so no reset ran"
+    exit 1
+  fi
+fi
+
+dex_export_user_data_rescue() {
+  DEX_RESCUE_DIR="System/rollback-rescue/$(date +%Y%m%d-%H%M%S)-$$"
+  if ! mkdir -p "$DEX_RESCUE_DIR/committed-before-reset" \
+      "$DEX_RESCUE_DIR/stashed-tracked" "$DEX_RESCUE_DIR/stashed-untracked"; then
+    echo "Automatic rescue export failed: could not create $DEX_RESCUE_DIR"
+    return 1
+  fi
+  DEX_RESCUE_ARCHIVE="$DEX_RESCUE_DIR/.committed.tar"
+  if ! git archive --format=tar -o "$DEX_RESCUE_ARCHIVE" \
+      "$DEX_USER_DATA_SOURCE" -- "${DEX_USER_DATA_PATHS[@]}" || \
+     ! tar -xf "$DEX_RESCUE_ARCHIVE" -C "$DEX_RESCUE_DIR/committed-before-reset"; then
+    echo "Automatic rescue export failed. The committed snapshot remains at $DEX_USER_DATA_SOURCE"
+    return 1
+  fi
+  rm -f "$DEX_RESCUE_ARCHIVE"
+  if [ -n "$DEX_DATA_STASH_OID" ]; then
+    DEX_RESCUE_ARCHIVE="$DEX_RESCUE_DIR/.stashed.tar"
+    if ! git archive --format=tar -o "$DEX_RESCUE_ARCHIVE" \
+        "$DEX_DATA_STASH_OID" -- "${DEX_USER_DATA_PATHS[@]}" || \
+       ! tar -xf "$DEX_RESCUE_ARCHIVE" -C "$DEX_RESCUE_DIR/stashed-tracked"; then
+      echo "Automatic rescue export failed. The latest snapshot remains in $DEX_DATA_STASH_REF ($DEX_DATA_STASH_OID)"
+      return 1
+    fi
+    rm -f "$DEX_RESCUE_ARCHIVE"
+    DEX_UNTRACKED_STASH=$(git rev-parse -q --verify "$DEX_DATA_STASH_OID^3" 2>/dev/null || true)
+    if [ -n "$DEX_UNTRACKED_STASH" ]; then
+      DEX_RESCUE_ARCHIVE="$DEX_RESCUE_DIR/.untracked.tar"
+      if ! git archive --format=tar -o "$DEX_RESCUE_ARCHIVE" "$DEX_UNTRACKED_STASH" || \
+         ! tar -xf "$DEX_RESCUE_ARCHIVE" -C "$DEX_RESCUE_DIR/stashed-untracked"; then
+        echo "Automatic rescue export failed. Untracked data remains in $DEX_DATA_STASH_REF ($DEX_UNTRACKED_STASH)"
+        return 1
+      fi
+      rm -f "$DEX_RESCUE_ARCHIVE"
+    fi
+  fi
+}
+
+if ! git reset --hard "$DEX_UPDATE_RESET_TARGET"; then
+  echo "Update recovery stopped: the reset failed. User data remains at $DEX_USER_DATA_SOURCE and in $DEX_DATA_STASH_REF"
+  exit 1
+fi
+if ! git restore --source="$DEX_USER_DATA_SOURCE" --staged --worktree -- "${DEX_USER_DATA_PATHS[@]}"; then
+  if dex_export_user_data_rescue; then
+    echo "Update recovery stopped: the committed snapshot was exported to $DEX_RESCUE_DIR"
+  else
+    echo "Do not continue: use commit $DEX_USER_DATA_SOURCE and $DEX_DATA_STASH_REF to recover user data"
+  fi
+  exit 2
+fi
+if [ -n "$DEX_DATA_STASH_REF" ] && ! git stash pop "$DEX_DATA_STASH_REF"; then
+  if dex_export_user_data_rescue; then
+    echo "Update recovery stopped for review: both user-data versions are preserved in $DEX_RESCUE_DIR"
+    echo "The latest snapshot also remains in $DEX_DATA_STASH_REF"
+  else
+    echo "Do not continue: the latest snapshot remains in $DEX_DATA_STASH_REF ($DEX_DATA_STASH_OID)"
+  fi
+  exit 2
+fi
+if ! git reset -- "${DEX_USER_DATA_PATHS[@]}"; then
+  echo "User data was restored, but Git could not clear its staged state; review git status before continuing"
+  exit 2
+fi
 ```
+
+Some files in 00-07 are tracked. The recovery therefore restores their pre-reset snapshot explicitly; it does not assume ignore rules make them safe.
 
 ---
 
@@ -539,7 +641,7 @@ Add to summary if installed: "✓ Enabled automatic meeting sync (runs every 30 
 
 [Details of what failed]
 
-Your data is safe, but you may want to:
+The pre-update backup and protected user-data snapshot remain available. You may want to:
 [Restore to previous version]
 [Report this issue]
 [Continue anyway]
@@ -560,9 +662,9 @@ What's new:
 • Meeting intelligence enhancement
 
 Your data:
-✓ All notes preserved
-✓ All tasks preserved
-✓ All customizations preserved
+✓ Note files present after update
+✓ Task files present after update
+✓ Protected customization markers and entries present
 
 [View full changelog]
 [Start using new features]
@@ -579,7 +681,7 @@ Your data:
 🔍 Changes applied:
 • Updated 12 core files
 • Kept 5 of your customized files
-• Protected all your data folders
+• Kept your version of every user-data conflict
 
 [See detailed change list]
 ```
@@ -670,14 +772,111 @@ User always has escape hatch:
 Run:
 ```bash
 git merge --abort 2>/dev/null || true
-git reset --hard backup-before-v1.3.0
-git clean -fd
+DEX_UPDATE_RESET_TARGET="backup-before-v1.3.0"
+DEX_USER_DATA_PATHS=(
+  "00-Inbox/" "01-Quarter_Goals/" "02-Week_Priorities/" "03-Tasks/"
+  "04-Projects/" "05-Areas/" "06-Resources/" "07-Archives/"
+  "System/user-profile.yaml" "System/pillars.yaml" "System/Session_Learnings/"
+)
+DEX_USER_DATA_SOURCE=$(git rev-parse HEAD)
+DEX_DATA_STASH_BEFORE=$(git rev-parse -q --verify refs/stash 2>/dev/null || true)
+DEX_USER_DATA_STASH_PATHS=(
+  ":(top,glob)00-Inbox/**" ":(top,glob)01-Quarter_Goals/**"
+  ":(top,glob)02-Week_Priorities/**" ":(top,glob)03-Tasks/**"
+  ":(top,glob)04-Projects/**" ":(top,glob)05-Areas/**"
+  ":(top,glob)06-Resources/**" ":(top,glob)07-Archives/**"
+  ":(top)System/user-profile.yaml" ":(top)System/pillars.yaml"
+  ":(top,glob)System/Session_Learnings/**"
+)
+git stash push --include-untracked \
+  -m "dex-user-data-before-update-error-recovery-$(date +%Y%m%d-%H%M%S)" \
+  -- "${DEX_USER_DATA_STASH_PATHS[@]}" || true
+DEX_DATA_STASH_AFTER=$(git rev-parse -q --verify refs/stash 2>/dev/null || true)
+if [ -n "$DEX_DATA_STASH_AFTER" ] && [ "$DEX_DATA_STASH_AFTER" != "$DEX_DATA_STASH_BEFORE" ]; then
+  DEX_DATA_STASH_REF='stash@{0}'
+  DEX_DATA_STASH_OID="$DEX_DATA_STASH_AFTER"
+else
+  DEX_DATA_STASH_REF=""
+  DEX_DATA_STASH_OID=""
+  if ! git diff --quiet -- "${DEX_USER_DATA_PATHS[@]}" || \
+     ! git diff --cached --quiet -- "${DEX_USER_DATA_PATHS[@]}" || \
+     [ -n "$(git ls-files --others --exclude-standard -- "${DEX_USER_DATA_PATHS[@]}")" ]; then
+    echo "Update recovery stopped: changed user data remains outside the snapshot, so no reset ran"
+    exit 1
+  fi
+fi
+
+dex_export_user_data_rescue() {
+  DEX_RESCUE_DIR="System/rollback-rescue/$(date +%Y%m%d-%H%M%S)-$$"
+  if ! mkdir -p "$DEX_RESCUE_DIR/committed-before-reset" \
+      "$DEX_RESCUE_DIR/stashed-tracked" "$DEX_RESCUE_DIR/stashed-untracked"; then
+    echo "Automatic rescue export failed: could not create $DEX_RESCUE_DIR"
+    return 1
+  fi
+  DEX_RESCUE_ARCHIVE="$DEX_RESCUE_DIR/.committed.tar"
+  if ! git archive --format=tar -o "$DEX_RESCUE_ARCHIVE" \
+      "$DEX_USER_DATA_SOURCE" -- "${DEX_USER_DATA_PATHS[@]}" || \
+     ! tar -xf "$DEX_RESCUE_ARCHIVE" -C "$DEX_RESCUE_DIR/committed-before-reset"; then
+    echo "Automatic rescue export failed. The committed snapshot remains at $DEX_USER_DATA_SOURCE"
+    return 1
+  fi
+  rm -f "$DEX_RESCUE_ARCHIVE"
+  if [ -n "$DEX_DATA_STASH_OID" ]; then
+    DEX_RESCUE_ARCHIVE="$DEX_RESCUE_DIR/.stashed.tar"
+    if ! git archive --format=tar -o "$DEX_RESCUE_ARCHIVE" \
+        "$DEX_DATA_STASH_OID" -- "${DEX_USER_DATA_PATHS[@]}" || \
+       ! tar -xf "$DEX_RESCUE_ARCHIVE" -C "$DEX_RESCUE_DIR/stashed-tracked"; then
+      echo "Automatic rescue export failed. The latest snapshot remains in $DEX_DATA_STASH_REF ($DEX_DATA_STASH_OID)"
+      return 1
+    fi
+    rm -f "$DEX_RESCUE_ARCHIVE"
+    DEX_UNTRACKED_STASH=$(git rev-parse -q --verify "$DEX_DATA_STASH_OID^3" 2>/dev/null || true)
+    if [ -n "$DEX_UNTRACKED_STASH" ]; then
+      DEX_RESCUE_ARCHIVE="$DEX_RESCUE_DIR/.untracked.tar"
+      if ! git archive --format=tar -o "$DEX_RESCUE_ARCHIVE" "$DEX_UNTRACKED_STASH" || \
+         ! tar -xf "$DEX_RESCUE_ARCHIVE" -C "$DEX_RESCUE_DIR/stashed-untracked"; then
+        echo "Automatic rescue export failed. Untracked data remains in $DEX_DATA_STASH_REF ($DEX_UNTRACKED_STASH)"
+        return 1
+      fi
+      rm -f "$DEX_RESCUE_ARCHIVE"
+    fi
+  fi
+}
+
+if ! git reset --hard "$DEX_UPDATE_RESET_TARGET"; then
+  echo "Update recovery stopped: the reset failed. User data remains at $DEX_USER_DATA_SOURCE and in $DEX_DATA_STASH_REF"
+  exit 1
+fi
+if ! git restore --source="$DEX_USER_DATA_SOURCE" --staged --worktree -- "${DEX_USER_DATA_PATHS[@]}"; then
+  if dex_export_user_data_rescue; then
+    echo "Update recovery stopped: the committed snapshot was exported to $DEX_RESCUE_DIR"
+  else
+    echo "Do not continue: use commit $DEX_USER_DATA_SOURCE and $DEX_DATA_STASH_REF to recover user data"
+  fi
+  exit 2
+fi
+if [ -n "$DEX_DATA_STASH_REF" ] && ! git stash pop "$DEX_DATA_STASH_REF"; then
+  if dex_export_user_data_rescue; then
+    echo "Update recovery stopped for review: both user-data versions are preserved in $DEX_RESCUE_DIR"
+    echo "The latest snapshot also remains in $DEX_DATA_STASH_REF"
+  else
+    echo "Do not continue: the latest snapshot remains in $DEX_DATA_STASH_REF ($DEX_DATA_STASH_OID)"
+  fi
+  exit 2
+fi
+if ! git reset -- "${DEX_USER_DATA_PATHS[@]}"; then
+  echo "User data was restored, but Git could not clear its staged state; review git status before continuing"
+  exit 2
+fi
+git status --short
 ```
+
+Do not run `git clean` during recovery: untracked files may be the user's unsaved work. Any stray files created by the failed update are left in place and listed by `git status` for review.
 
 ```
 ✓ Restored to v1.2.0
 
-Nothing was changed. Your Dex is exactly as it was.
+Tracked Dex files are back to their pre-update state. User data was restored from the protected snapshot, and untracked files were left in place. If the restore needed manual review, the command stopped and printed the timestamped rescue folder instead of showing this success message.
 
 [Try update again]
 [Report issue]
@@ -749,7 +948,10 @@ If automatic updates don't work, you can update manually:
    ✓ 03-Tasks/ (entire folder)
    ✓ 04-Projects/ (entire folder)
    ✓ 05-Areas/ (entire folder)
+   ✓ 06-Resources/ (copy the entire folder, including root-level files)
+   ✓ Then replace 06-Resources/Dex_System/ with the copy from the downloaded Dex so shipped documentation stays current
    ✓ 07-Archives/ (entire folder)
+   ✓ System/Session_Learnings/
    ✓ .env (if it exists)
    ✓ Your `USER_EXTENSIONS` block from `CLAUDE.md`
    ✓ Any custom MCP entries named `custom-*` from `.mcp.json`
@@ -834,7 +1036,8 @@ updates:
 
 **Safe always:**
 - Backup created before any changes
-- User data never at risk (gitignored)
+- Some files in 00-07 are tracked, so hard-reset recovery snapshots and restores all eight data folders explicitly
+- Restore conflicts stop the recovery and keep both versions in a timestamped rescue folder
 - One-command rollback if issues
 - Clear status at every step
 
