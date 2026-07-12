@@ -210,7 +210,10 @@ def load_pillars_from_yaml() -> Dict[str, Dict]:
                 'description': pillar.get('description', ''),
                 # Coerce to str: YAML parses unquoted tokens like 1:1 as ints
                 # (base-60), which would crash guess_pillar's `keyword in text`.
-                'keywords': [str(k) for k in pillar.get('keywords', [])]
+                # `or []` guards a present-but-empty `keywords:` (parses as None),
+                # which would otherwise raise here and discard ALL pillars via the
+                # outer except.
+                'keywords': [str(k) for k in (pillar.get('keywords') or [])]
             }
         
         if not pillars:
