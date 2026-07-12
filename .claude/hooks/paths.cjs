@@ -8,7 +8,10 @@
 const fs = require('fs');
 const path = require('path');
 
-const VAULT_ROOT = process.env.CLAUDE_PROJECT_DIR || process.env.VAULT_PATH || process.cwd();
+// Resolve to an absolute path: a relative VAULT_PATH (as CI exports) would
+// otherwise propagate into every derived path and break consumers that
+// compare or remap roots.
+const VAULT_ROOT = path.resolve(process.env.CLAUDE_PROJECT_DIR || process.env.VAULT_PATH || process.cwd());
 
 /**
  * Load vault path constants from core/paths.json, falling back to hardcoded PARA defaults.
@@ -52,6 +55,11 @@ function loadPaths() {
     PILLARS_FILE: path.join(VAULT_ROOT, 'System', 'pillars.yaml'),
     USER_PROFILE_FILE: path.join(VAULT_ROOT, 'System', 'user-profile.yaml'),
     PEOPLE_INDEX_FILE: path.join(VAULT_ROOT, 'System', 'People_Index.json'),
+    COMPANY_INDEX_FILE: path.join(VAULT_ROOT, 'System', 'Company_Index.json'),
+    DEX_RUNTIME_DIR: path.join(VAULT_ROOT, 'System', '.dex'),
+    CONTACTS_STATE_FILE: path.join(VAULT_ROOT, 'System', '.dex', 'contacts.json'),
+    ENTITY_SUGGESTIONS_FILE: path.join(VAULT_ROOT, 'System', '.dex', 'entity-suggestions.json'),
+    ENTITY_VERIFICATION_FILE: path.join(VAULT_ROOT, 'System', '.dex', 'entity-verification.json'),
   };
 }
 

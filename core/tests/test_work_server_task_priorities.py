@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 from pathlib import Path
 
 from core.mcp import work_server
@@ -92,6 +93,78 @@ def test_create_task_priority_limit_ignores_week_priority_source(tmp_path, monke
 
     assert payload["success"] is True
     assert "Prepare pricing rollout notes for Acme launch" in tasks_file.read_text()
+
+
+def test_create_task_source_is_rendered_and_round_trips(tmp_path, monkeypatch):
+    tasks_file = tmp_path / "03-Tasks" / "Tasks.md"
+    meeting = tmp_path / "00-Inbox" / "Meetings" / "2026-07-10-roadmap.md"
+    tasks_file.parent.mkdir(parents=True)
+    meeting.parent.mkdir(parents=True)
+    tasks_file.write_text("# Tasks\n")
+    meeting.write_text("# Roadmap\n")
+
+    monkeypatch.setattr(work_server, "get_tasks_file", lambda: tasks_file)
+    monkeypatch.setattr(work_server, "get_week_priorities_file", lambda: tmp_path / "missing.md")
+    monkeypatch.setattr(work_server, "BASE_DIR", tmp_path)
+    monkeypatch.setattr(
+        work_server,
+        "PILLARS",
+        {"pillar_1": {"name": "Pillar 1", "description": "", "keywords": []}},
+    )
+    monkeypatch.setattr(work_server, "PRIORITY_LIMITS", {"P0": 3, "P1": 5, "P2": 10})
+    monkeypatch.setattr(work_server, "HAS_QMD", False)
+    monkeypatch.setattr(work_server, "generate_task_id", lambda: "task-20260711-001")
+    monkeypatch.setattr(work_server, "_fire_analytics_event", lambda *args, **kwargs: None)
+
+    source = "00-Inbox/Meetings/2026-07-10-roadmap.md"
+    result = asyncio.run(
+        work_server.handle_call_tool(
+            "create_task",
+            {
+                "title": "Prepare roadmap decisions for leadership review",
+                "pillar": "pillar_1",
+                "source": source,
+            },
+        )
+    )
+    payload = _decode_tool_result(result)
+    task_text = tasks_file.read_text()
+
+    assert payload["success"] is True
+    assert payload["task"]["source"] == source
+    assert source in task_text
+    parsed = work_server.parse_tasks_file(tasks_file)
+    assert len(parsed) == 1
+    assert source in parsed[0]["raw_title"]
+    assert source in work_server.extract_file_refs_from_task(task_text)
+    assert "Prepare roadmap decisions" in meeting.read_text()
+
+    tools = asyncio.run(work_server.handle_list_tools())
+    create_task_tool = next(tool for tool in tools if tool.name == "create_task")
+    assert create_task_tool.inputSchema["properties"]["source"]["type"] == "string"
+
+
+def test_lookup_person_rebuilds_when_people_tree_is_newer(tmp_path, monkeypatch):
+    people_dir = tmp_path / "05-Areas" / "People"
+    person = people_dir / "Internal" / "Alice_Smith.md"
+    index_file = tmp_path / "System" / "People_Index.json"
+    person.parent.mkdir(parents=True)
+    person.write_text("# Alice Smith\n")
+
+    monkeypatch.setattr(work_server, "BASE_DIR", tmp_path)
+    monkeypatch.setattr(work_server, "PEOPLE_INDEX_FILE", index_file)
+    monkeypatch.setattr(work_server, "get_people_dir", lambda: people_dir)
+
+    work_server.build_people_index_data()
+    first_built_at = json.loads(index_file.read_text())["built_at"]
+    future = work_server.datetime.fromisoformat(first_built_at).timestamp() + 2
+    person.write_text("# Alice Smith\n\n## Notes\n\nUpdated.\n")
+    os.utime(person, (future, future))
+
+    work_server.lookup_person_data("Alice Smith")
+    rebuilt_at = json.loads(index_file.read_text())["built_at"]
+
+    assert rebuilt_at > first_built_at
 
 
 def test_check_priority_limits_uses_canonical_backlog_counts(tmp_path, monkeypatch):

@@ -66,7 +66,8 @@ If yes: run with `--deep` and merge results.
 
 Order: **instruments first if anything failed**, then BROKEN, then UNKNOWN, then OFF
 (one compact line each, labelled "off — that's fine"), then healthy collapsed to a single
-line ("✓ 11 checks healthy").
+line ("✓ N checks healthy"). Derive `N` from the current report; never reuse a literal
+count from an example.
 
 For each BROKEN item: what it means for the user in one plain sentence (what stopped
 working, since when if known), then the fix path.
@@ -80,6 +81,11 @@ into this group.
 Customization failures are not a reason to roll back or update Dex. Point to the user's
 file and say how to fix or remove it. Only a failure in unmodified, Dex-owned code may
 recommend `/dex-update` or the documented rollback path.
+
+For the **Entity engine** check, keep the rendering short and plain: say whether entity
+creation is working, off, or needs attention, include the contact/observation counts,
+and call out unresolved verification results or quarantined pages. Mention stale
+verification or a stale/missing People index as a follow-up signal.
 
 ### Step 4: Heal, tiered
 
@@ -97,14 +103,15 @@ recommend `/dex-update` or the documented rollback path.
 
 ```
 🩺 Doctor's summary
-   Fixed automatically: 2
-   Needs your OK:       1  (waiting above)
-   Needs your hands:    1  (steps above)
-   Healthy:             11 · Off (fine): 3 · Couldn't check: 0
+   Fixed automatically: N
+   Needs your OK:       N  (waiting above)
+   Needs your hands:    N  (steps above)
+   Healthy:             N · Off (fine): N · Couldn't check: N
 ```
 
-If everything is healthy: one line — "Everything checks out. 14 checks passed, 3 features
-off by choice." No ceremony.
+Fill every `N` from the current collector result and actions taken. If everything is
+healthy, use one line — "Everything checks out. N checks passed, N features off by
+choice." No ceremony.
 
 ### Step 6: Track usage (silent)
 

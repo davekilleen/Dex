@@ -10,7 +10,10 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
 import yaml
+
+from core.utils.entity_pages import parse_entity_page
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
@@ -143,6 +146,23 @@ async def main():
 asyncio.run(main())
 """
 
+ENTITY_CREATION_JOURNEY = r"""
+const path = require('node:path');
+const { processEntityCreation } = require(
+  path.join(process.env.DEX_REPO_ROOT, '.scripts/meeting-intel/lib/entity-creation.cjs'),
+);
+
+const attendee = { name: 'Jane Doe', email: 'jane@acme.com', location: 'external' };
+const meetings = [
+  { id: 'golden-entity-1', createdAt: '2026-06-01T10:00:00Z', transcript: '', filteredAttendees: [attendee] },
+  { id: 'golden-entity-2', createdAt: '2026-06-08T10:00:00Z', transcript: '', filteredAttendees: [attendee] },
+];
+const profile = { email_domain: 'dex.test', entity_creation: { mode: process.env.ENTITY_CREATION_MODE } };
+const first = processEntityCreation(meetings, profile);
+const second = processEntityCreation(meetings, profile);
+console.log(JSON.stringify({ first, second }));
+"""
+
 
 def _copy_fixture_vault(fixture_vault: Path, tmp_path: Path, *, onboarding: bool = False) -> Path:
     vault = tmp_path / "vault"
@@ -167,6 +187,55 @@ def _run_journey(vault: Path, source: str) -> dict:
         timeout=60,
     )
     return json.loads(result.stdout)
+
+
+def _run_entity_creation_journey(vault: Path, mode: str) -> dict:
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("Node.js is required for the entity-engine golden journey")
+    env = os.environ.copy()
+    env["VAULT_PATH"] = str(vault)
+    # CLAUDE_PROJECT_DIR outranks VAULT_PATH in paths.cjs; an inherited value
+    # (e.g. from a Claude Code shell) would silently point the engine at a
+    # different vault, so pin it to the journey vault explicitly.
+    env["CLAUDE_PROJECT_DIR"] = str(vault)
+    env["DEX_REPO_ROOT"] = str(REPO_ROOT)
+    env["ENTITY_CREATION_MODE"] = mode
+    result = subprocess.run(
+        [node, "-e", ENTITY_CREATION_JOURNEY],
+        cwd=REPO_ROOT,
+        env=env,
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    return json.loads(result.stdout)
+
+
+def _write_entity_profile(vault: Path, mode: str) -> None:
+    profile_path = vault / "System/user-profile.yaml"
+    profile = yaml.safe_load(profile_path.read_text(encoding="utf-8")) or {}
+    profile["email_domain"] = "dex.test"
+    profile["entity_creation"] = {"mode": mode}
+    profile_path.write_text(yaml.safe_dump(profile, sort_keys=False), encoding="utf-8")
+
+
+def _write_synced_entity_meetings(vault: Path) -> None:
+    for meeting_id, date in (("golden-entity-1", "2026-06-01"), ("golden-entity-2", "2026-06-08")):
+        meeting_path = vault / "00-Inbox/Meetings" / date / f"{meeting_id}.md"
+        meeting_path.parent.mkdir(parents=True, exist_ok=True)
+        meeting_path.write_text(
+            "---\n"
+            f"date: {date}\n"
+            "attendees:\n"
+            "  - name: Jane Doe\n"
+            "    email: jane@acme.com\n"
+            "    location: external\n"
+            "---\n"
+            f"# Entity journey {date}\n",
+            encoding="utf-8",
+        )
 
 
 def test_golden_onboarding_drives_state_machine_to_real_vault(fixture_vault: Path, tmp_path: Path):
@@ -257,3 +326,56 @@ def test_golden_task_lifecycle_propagates_and_rolls_up(fixture_vault: Path, tmp_
     assert created_active == initial_active + 1
     assert completed_active == initial_active
     assert journey["week_progress"]["tasks_completed_this_week"] == 1
+
+
+def test_golden_entity_creation_auto_is_idempotent_and_verifies(
+    fixture_vault: Path, tmp_path: Path
+):
+    vault = _copy_fixture_vault(fixture_vault, tmp_path)
+    _write_entity_profile(vault, "auto")
+    _write_synced_entity_meetings(vault)
+
+    journey = _run_entity_creation_journey(vault, "auto")
+
+    assert len(journey["first"]["created"]) == 1
+    assert len(journey["first"]["companies_created"]) == 1
+    assert journey["second"]["created"] == []
+    assert journey["second"]["companies_created"] == []
+
+    person = parse_entity_page(vault / "05-Areas/People/External/Jane_Doe.md")
+    assert person["emails"] == ["jane@acme.com"]
+    assert person["location"] == "external"
+    assert person["quarantined"] is False
+
+    company = parse_entity_page(vault / "05-Areas/Companies/Acme.md")
+    assert company["domains"] == ["acme.com"]
+    assert company["quarantined"] is False
+
+    verification = subprocess.run(
+        [shutil.which("node"), ".scripts/meeting-intel/verify-entities.cjs", "--days", "3650"],
+        cwd=REPO_ROOT,
+        env={**os.environ, "VAULT_PATH": str(vault)},
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    assert verification.returncode == 0, verification.stderr
+    assert "0 unresolved" in verification.stdout
+
+
+def test_golden_entity_creation_suggests_without_pages(fixture_vault: Path, tmp_path: Path):
+    vault = _copy_fixture_vault(fixture_vault, tmp_path)
+    _write_entity_profile(vault, "suggest")
+
+    journey = _run_entity_creation_journey(vault, "suggest")
+
+    assert journey["first"]["created"] == []
+    assert journey["first"]["companies_created"] == []
+    assert not (vault / "05-Areas/People/External/Jane_Doe.md").exists()
+    assert not (vault / "05-Areas/Companies/Acme.md").exists()
+
+    suggestions = json.loads(
+        (vault / "System/.dex/entity-suggestions.json").read_text(encoding="utf-8")
+    )["suggestions"]
+    assert any(item["kind"] == "person" and item["name"] == "Jane Doe" for item in suggestions)

@@ -17,11 +17,13 @@ import logging
 import os
 import re
 import sys
+import unicodedata
 from collections import Counter
 from datetime import date, datetime, timedelta
 from difflib import SequenceMatcher
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+from urllib.parse import urlsplit
 
 try:
     import yaml
@@ -109,6 +111,7 @@ if _repo_root not in sys.path:
     sys.path.append(_repo_root)
 from core.paths import (
     COMPANIES_DIR,
+    COMPANY_INDEX_FILE,
     GOALS_FILE,
     INBOX_DIR,
     MEETING_CACHE_FILE,
@@ -126,6 +129,8 @@ from core.paths import (
 from core.paths import (
     VAULT_ROOT as BASE_DIR,
 )
+from core.utils.company_domains import registrable_domain
+from core.utils.entity_pages import parse_entity_page, render_person_page
 
 
 def get_tasks_file() -> Path:
@@ -147,6 +152,10 @@ def get_people_dir() -> Path:
 def get_meetings_dir() -> Path:
     """Get the canonical meetings directory."""
     return MEETINGS_DIR
+
+def get_companies_dir() -> Path:
+    """Get the canonical Companies directory."""
+    return COMPANIES_DIR
 
 
 # Default pillars (used if pillars.yaml doesn't exist or can't be loaded)
@@ -444,9 +453,15 @@ def _parse_task_metadata(child_lines: List[str], title: str) -> Dict[str, Any]:
     if due and not re.fullmatch(r'\d{4}-\d{2}-\d{2}', due):
         due = None
 
-    goal = fields.get('goal')
-    if goal and not re.fullmatch(r'Q\d+-\d{4}-goal-\d+', goal):
-        goal = None
+    goal = None
+    goal_tentative = False
+    goal_match = re.fullmatch(
+        r'(Q\d+-\d{4}-goal-\d+)(\s+\(\?\))?',
+        fields.get('goal', ''),
+    )
+    if goal_match:
+        goal = goal_match.group(1)
+        goal_tentative = bool(goal_match.group(2))
 
     return {
         'pillar': pillar,
@@ -456,6 +471,7 @@ def _parse_task_metadata(child_lines: List[str], title: str) -> Dict[str, Any]:
         'source': fields.get('source') or None,
         'project': fields.get('project') or None,
         'goal': goal,
+        'goal_tentative': goal_tentative,
     }
 
 def _task_title_from_line(line: str) -> str:
@@ -468,6 +484,101 @@ def _task_title_from_line(line: str) -> str:
     if bold_match:
         title = (bold_match.group(1) + bold_match.group(2)).strip()
     return title
+
+
+def _source_page_path(source: str) -> Optional[Path]:
+    """Resolve a vault-relative source page without allowing vault escape."""
+    supplied = Path(source)
+    if supplied.is_absolute():
+        return None
+
+    base_dir = BASE_DIR.resolve()
+    source_path = (BASE_DIR / supplied).resolve()
+    candidates = [source_path]
+    if not supplied.suffix:
+        candidates.append(source_path.with_suffix('.md'))
+
+    for candidate in candidates:
+        try:
+            candidate.relative_to(base_dir)
+        except ValueError:
+            continue
+        if candidate.is_file():
+            return candidate
+    return None
+
+
+def _line_without_task_anchor(line: str) -> str:
+    """Remove a task anchor for idempotent source-line comparison."""
+    return re.sub(r'\s+\^task-\d{8}-\d{3}\b', '', line).strip()
+
+
+def stamp_task_source_line(source: str, source_line: str,
+                           task_id: str) -> Dict[str, Any]:
+    """Append a task anchor to one exact source checkbox line, best effort."""
+    result = {'attempted': True, 'stamped': False}
+    source_path = _source_page_path(source)
+    if source_path is None:
+        return {
+            **result,
+            'reason': 'source_not_found',
+            'match_count': 0,
+        }
+
+    try:
+        content = source_path.read_text()
+        lines = content.splitlines(keepends=True)
+        target = source_line.strip()
+        exact_matches = []
+        anchored_matches = []
+
+        for index, raw_line in enumerate(lines):
+            line = raw_line.rstrip('\r\n')
+            stripped = line.strip()
+            if not re.match(r'^-\s*\[[ xX]\]', stripped):
+                continue
+            if stripped == target:
+                exact_matches.append(index)
+            elif (
+                not re.search(r'\^task-\d{8}-\d{3}\b', target)
+                and re.search(r'\^task-\d{8}-\d{3}\b', stripped)
+                and _line_without_task_anchor(stripped) == target
+            ):
+                anchored_matches.append(index)
+
+        if len(exact_matches) > 1:
+            return {
+                **result,
+                'reason': 'multiple_matches',
+                'match_count': len(exact_matches),
+            }
+        if len(exact_matches) == 1:
+            match_index = exact_matches[0]
+            matched_line = lines[match_index].rstrip('\r\n')
+            if re.search(r'\^task-\d{8}-\d{3}\b', matched_line):
+                return {**result, 'reason': 'already_anchored'}
+
+            line_ending = lines[match_index][len(matched_line):]
+            lines[match_index] = f'{matched_line} ^{task_id}{line_ending}'
+            source_path.write_text(''.join(lines))
+            return {'attempted': True, 'stamped': True}
+
+        if len(anchored_matches) == 1:
+            return {**result, 'reason': 'already_anchored'}
+        if len(anchored_matches) > 1:
+            return {
+                **result,
+                'reason': 'multiple_matches',
+                'match_count': len(anchored_matches),
+            }
+        return {
+            **result,
+            'reason': 'no_match',
+            'match_count': 0,
+        }
+    except Exception as error:
+        logger.warning("Could not stamp task source line in %s: %s", source_path, error)
+        return {**result, 'reason': 'write_failed'}
 
 def find_task_by_id(task_id: str) -> List[Dict[str, Any]]:
     """Find all instances of a task ID across all markdown files"""
@@ -495,6 +606,44 @@ def find_task_by_id(task_id: str) -> List[Dict[str, Any]]:
             continue
     
     return instances
+
+
+def reusable_source_task_id(source: str, source_line: str) -> Optional[str]:
+    """Reuse a legacy source-only anchor when it has no canonical task yet."""
+    source_path = _source_page_path(source)
+    if source_path is None:
+        return None
+    if get_tasks_file().exists() and source_path == get_tasks_file().resolve():
+        return None
+
+    try:
+        target = source_line.strip()
+        matching_lines = [
+            line.strip()
+            for line in source_path.read_text().splitlines()
+            if line.strip() == target
+            and re.match(r'^-\s*\[[ xX]\]', line.strip())
+        ]
+    except Exception:
+        return None
+    if len(matching_lines) != 1:
+        return None
+
+    task_id = extract_task_id(matching_lines[0])
+    if task_id is None:
+        return None
+
+    instances = find_task_by_id(task_id)
+    if len(instances) != 1:
+        return None
+    instance = instances[0]
+    try:
+        same_source = Path(instance['file']).resolve() == source_path
+    except OSError:
+        return None
+    if not same_source or instance['line_content'].strip() != target:
+        return None
+    return task_id
 
 def update_task_status_everywhere(task_id: str, completed: bool) -> Dict[str, Any]:
     """Update task status for all instances of a task ID across all files"""
@@ -581,6 +730,19 @@ def update_task_status_everywhere(task_id: str, completed: bool) -> Dict[str, An
 def get_pillar_ids() -> List[str]:
     """Get list of valid pillar IDs"""
     return list(PILLARS.keys())
+
+
+def resolve_pillar_id(value: str) -> Optional[str]:
+    """Resolve an exact pillar ID or one unique display name to its ID."""
+    if value in PILLARS:
+        return value
+    value_folded = value.strip().casefold()
+    matches = [
+        pillar_id
+        for pillar_id, pillar in PILLARS.items()
+        if str(pillar.get('name', '')).strip().casefold() == value_folded
+    ]
+    return matches[0] if len(matches) == 1 else None
 
 # ============================================================================
 # AMBIGUITY DETECTION
@@ -732,12 +894,9 @@ def find_tasks_for_page(page_path: str) -> List[Dict[str, Any]]:
 
 def update_related_tasks_section(page_path: str, tasks: List[Dict[str, Any]]) -> bool:
     """Update the Related Tasks section in a page"""
-    filepath = BASE_DIR / page_path
-    if not page_path.endswith('.md'):
-        filepath = BASE_DIR / f"{page_path}.md"
-    
-    if not filepath.exists():
-        logger.warning(f"Page not found: {filepath}")
+    filepath = _source_page_path(page_path)
+    if filepath is None:
+        logger.warning("Page is missing or outside the vault: %s", page_path)
         return False
     
     content = filepath.read_text()
@@ -821,40 +980,17 @@ def parse_person_page(filepath: Path) -> Dict[str, Any]:
     """Parse a person page and extract key fields"""
     if not filepath.exists():
         return {}
-    
-    content = filepath.read_text()
-    person = {
-        'name': filepath.stem.replace('_', ' '),
+
+    entity = parse_entity_page(filepath)
+    return {
+        'name': entity.get('name') or filepath.stem.replace('_', ' '),
         'filepath': str(filepath),
-        'company': None,
-        'company_page': None,
-        'role': None,
-        'email': None,
-        'last_interaction': None
+        'company': entity.get('company'),
+        'company_page': entity.get('company_page'),
+        'role': entity.get('role'),
+        'email': (entity.get('emails') or [None])[0],
+        'last_interaction': entity.get('last_interaction'),
     }
-    
-    # Parse table fields
-    for line in content.split('\n'):
-        if '**Company**' in line and '|' in line:
-            parts = line.split('|')
-            if len(parts) >= 3:
-                person['company'] = parts[2].strip()
-        elif '**Company Page**' in line and '|' in line:
-            parts = line.split('|')
-            if len(parts) >= 3:
-                person['company_page'] = parts[2].strip()
-        elif '**Role**' in line and '|' in line:
-            parts = line.split('|')
-            if len(parts) >= 3:
-                person['role'] = parts[2].strip()
-        elif '**Email**' in line and '|' in line:
-            parts = line.split('|')
-            if len(parts) >= 3:
-                person['email'] = parts[2].strip()
-        elif '**Last interaction:**' in line:
-            person['last_interaction'] = line.split('**Last interaction:**')[1].strip()
-    
-    return person
 
 def find_people_at_company(company_name: str) -> List[Dict[str, Any]]:
     """Find all people pages that reference a company"""
@@ -926,12 +1062,22 @@ def build_people_index_data() -> Dict[str, Any]:
         for person_file in subdir.glob('*.md'):
             if person_file.name == 'README.md':
                 continue
-            person = parse_person_page(person_file)
+            person = parse_entity_page(person_file)
 
             # Determine populated vs stub
             content = person_file.read_text()
-            has_content = bool(person.get('role') or person.get('email') or
+            has_content = bool(person.get('role') or person.get('emails') or
                             '## Meeting' in content or '## Notes' in content)
+
+            aliases = list(person.get('aliases') or [])
+            for line in content.splitlines():
+                match = re.match(r'^\s*(?:\*\*)?Goes by(?::\*\*|\*\*\s*:|\s+)(?:\s*)(.+?)\s*$', line, re.IGNORECASE)
+                if match:
+                    alias = match.group(1).strip()
+                    if alias and alias.casefold() not in {value.casefold() for value in aliases}:
+                        aliases.append(alias)
+
+            person_name = person.get('name') or person_file.stem.replace('_', ' ')
 
             # Extract tags from content
             tags = []
@@ -943,10 +1089,13 @@ def build_people_index_data() -> Dict[str, Any]:
                     break
 
             entries.append({
-                'name': person.get('name', person_file.stem.replace('_', ' ')),
+                'name': person_name,
                 'company': person.get('company'),
                 'role': person.get('role'),
-                'email': person.get('email'),
+                'email': (person.get('emails') or [None])[0],
+                'emails': person.get('emails') or [],
+                'aliases': aliases,
+                'first_name': person_name.split()[0].lower() if person_name.split() else '',
                 'type': subdir_name.lower(),
                 'path': str(person_file.relative_to(BASE_DIR)),
                 'last_interaction': person.get('last_interaction'),
@@ -955,7 +1104,7 @@ def build_people_index_data() -> Dict[str, Any]:
             })
 
     index = {
-        'version': 1,
+        'version': 2,
         'built_at': datetime.now().isoformat(),
         'total': len(entries),
         'by_type': {
@@ -973,6 +1122,79 @@ def build_people_index_data() -> Dict[str, Any]:
     return index
 
 
+def _people_tree_max_mtime() -> float:
+    """Return the newest modification time among People markdown pages."""
+    people_dir = _resolve_people_dir()
+    if not people_dir.exists():
+        return 0.0
+    return max(
+        (person_file.stat().st_mtime for person_file in people_dir.rglob('*.md')),
+        default=0.0,
+    )
+
+
+def build_company_index_data() -> Dict[str, Any]:
+    """Scan company pages and build the canonical lightweight JSON index."""
+    entries = []
+    companies_dir = get_companies_dir()
+    if companies_dir.exists():
+        for company_file in companies_dir.rglob('*.md'):
+            if company_file.name == 'README.md':
+                continue
+            company = parse_entity_page(company_file)
+            entries.append({
+                'name': company.get('name') or company_file.stem.replace('_', ' '),
+                'path': str(company_file.relative_to(BASE_DIR)),
+                'domains': company.get('domains') or [],
+                'website': company.get('website'),
+                'status': company.get('status'),
+            })
+    entries.sort(key=lambda item: (item['name'].casefold(), item['path']))
+    index = {
+        'version': 1,
+        'built_at': datetime.now().isoformat(),
+        'total': len(entries),
+        'companies': entries,
+    }
+    COMPANY_INDEX_FILE.parent.mkdir(parents=True, exist_ok=True)
+    COMPANY_INDEX_FILE.write_text(json.dumps(index, indent=2, cls=DateTimeEncoder) + '\n')
+    return index
+
+
+def _company_tree_max_mtime() -> float:
+    """Return the newest modification time among company markdown pages."""
+    companies_dir = get_companies_dir()
+    if not companies_dir.exists():
+        return 0.0
+    return max(
+        (company_file.stat().st_mtime for company_file in companies_dir.rglob('*.md')),
+        default=0.0,
+    )
+
+
+def find_company_by_domain(domain: str) -> Dict[str, Any] | None:
+    """Find a company by registrable domain, rebuilding an absent or stale index."""
+    index = None
+    if COMPANY_INDEX_FILE.exists():
+        try:
+            index = json.loads(COMPANY_INDEX_FILE.read_text())
+        except (json.JSONDecodeError, OSError):
+            pass
+    if not isinstance(index, dict):
+        index = None
+    try:
+        built_at = datetime.fromisoformat(index.get('built_at', '')) if index else None
+        if not index or index.get('version') != 1 or built_at.timestamp() < _company_tree_max_mtime():
+            index = build_company_index_data()
+    except (ValueError, TypeError):
+        index = build_company_index_data()
+    target = registrable_domain(domain)
+    for company in index.get('companies', []):
+        if target in {registrable_domain(value) for value in company.get('domains', [])}:
+            return company
+    return None
+
+
 def lookup_person_data(name: str, company: str = None) -> Dict[str, Any]:
     """Fast person lookup using the index with fuzzy matching."""
 
@@ -984,51 +1206,450 @@ def lookup_person_data(name: str, company: str = None) -> Dict[str, Any]:
         except (json.JSONDecodeError, OSError):
             pass
 
-    # Auto-rebuild if index is missing or stale (>24 hours old)
-    if not index:
+    # Auto-rebuild if index is missing/old, older than a person page, or stale (>24h).
+    index_version = index.get('version') if isinstance(index, dict) else None
+    if not index or not isinstance(index_version, int) or index_version < 2:
         index = build_people_index_data()
     else:
         built_at = index.get('built_at', '')
         try:
             built_dt = datetime.fromisoformat(built_at)
-            if (datetime.now() - built_dt) > timedelta(hours=24):
+            tree_mtime = _people_tree_max_mtime()
+            if built_dt.timestamp() < tree_mtime:
+                logger.info("People index predates a person page, rebuilding...")
+                index = build_people_index_data()
+            elif (datetime.now() - built_dt) > timedelta(hours=24):
                 logger.info("People index is stale (>24h), rebuilding...")
                 index = build_people_index_data()
         except (ValueError, TypeError):
             index = build_people_index_data()
 
     people = index.get('people', [])
-    name_lower = name.lower()
+    if company:
+        company_lower = company.lower()
+        people = [
+            person for person in people
+            if company_lower in (person.get('company') or '').lower()
+        ]
 
-    matches = []
-    for person in people:
-        person_name = person.get('name', '').lower()
-        # Exact substring match
-        if name_lower in person_name or person_name in name_lower:
-            score = 1.0 if name_lower == person_name else 0.8
-        else:
-            # Fuzzy match using SequenceMatcher
-            score = SequenceMatcher(None, name_lower, person_name).ratio()
+    query = name.strip()
+    query_lower = query.casefold()
+    ambiguous = False
 
-        if score >= 0.5:
-            # Apply company filter if provided
-            if company:
-                person_company = (person.get('company') or '').lower()
-                if company.lower() not in person_company:
-                    continue
+    def scored(candidates: List[Dict[str, Any]], score: float) -> List[Dict[str, Any]]:
+        return [{**person, '_score': score} for person in candidates]
 
-            matches.append({**person, '_score': round(score, 2)})
+    matches: List[Dict[str, Any]] = []
+    if '@' in query:
+        matches = scored([
+            person for person in people
+            if query_lower in {email.casefold() for email in person.get('emails', [])}
+        ], 1.0)
 
-    # Sort by score descending
-    matches.sort(key=lambda m: m['_score'], reverse=True)
+    if not matches:
+        matches = scored([
+            person for person in people
+            if query_lower in {alias.casefold() for alias in person.get('aliases', [])}
+        ], 1.0)
 
-    return {
+    if not matches:
+        matches = scored([
+            person for person in people
+            if query_lower == (person.get('name') or '').casefold()
+        ], 1.0)
+
+    if not matches:
+        first_name_matches = [
+            person for person in people
+            if query_lower == (person.get('first_name') or '').casefold()
+        ]
+        if first_name_matches:
+            matches = scored(first_name_matches, 0.9)
+            ambiguous = len(first_name_matches) > 1
+
+    if not matches:
+        fuzzy_matches = []
+        for person in people:
+            person_name = (person.get('name') or '').casefold()
+            if query_lower in person_name or person_name in query_lower:
+                score = 0.8
+            else:
+                score = SequenceMatcher(None, query_lower, person_name).ratio()
+            if score >= 0.5:
+                fuzzy_matches.append((score, person))
+        fuzzy_matches.sort(key=lambda item: item[0], reverse=True)
+        if len(fuzzy_matches) >= 2 and fuzzy_matches[0][0] - fuzzy_matches[1][0] <= 0.05:
+            ambiguous = True
+        matches = [{**person, '_score': round(score, 2)} for score, person in fuzzy_matches]
+
+    result = {
         'query': name,
         'company_filter': company,
         'matches': matches[:10],
         'total_matches': len(matches),
         'index_age': index.get('built_at'),
     }
+    if ambiguous:
+        result['ambiguous'] = True
+    return result
+
+
+def _looks_like_page_path(value: str) -> bool:
+    """Return whether a supplied entity reference is intended as a page path."""
+    supplied = Path(value)
+    return (
+        supplied.suffix.casefold() == '.md'
+        or supplied.is_absolute()
+        or '/' in value
+        or '\\' in value
+    )
+
+
+def _existing_entity_page_path(value: str, entity_dir: Path) -> Optional[str]:
+    """Return the supplied vault-relative path when it names an entity page."""
+    supplied = Path(value)
+    if supplied.is_absolute():
+        return None
+
+    base_dir = BASE_DIR.resolve()
+    allowed_dir = entity_dir.resolve()
+    candidate = (BASE_DIR / supplied).resolve()
+    candidates = [candidate]
+    if not supplied.suffix:
+        candidates.append(candidate.with_suffix('.md'))
+
+    for page_path in candidates:
+        try:
+            page_path.relative_to(base_dir)
+            page_path.relative_to(allowed_dir)
+        except ValueError:
+            continue
+        if page_path.is_file():
+            return value
+    return None
+
+
+def _relative_entity_page_path(page_path: Path) -> str:
+    """Render an entity page as a vault-relative path when possible."""
+    try:
+        return str(page_path.resolve().relative_to(BASE_DIR.resolve()))
+    except ValueError:
+        return str(page_path)
+
+
+def _close_entity_page_matches(value: str, entity_dir: Path) -> List[str]:
+    """Return deterministic filename matches for a missing entity page."""
+    if not entity_dir.exists():
+        return []
+
+    requested = Path(value).stem.replace('_', ' ').casefold()
+    matches = []
+    for candidate in entity_dir.rglob('*.md'):
+        relative_path = _relative_entity_page_path(candidate)
+        if _existing_entity_page_path(relative_path, entity_dir) is None:
+            continue
+        candidate_name = candidate.stem.replace('_', ' ').casefold()
+        similarity = SequenceMatcher(None, requested, candidate_name).ratio()
+        if (
+            requested in candidate_name
+            or candidate_name in requested
+            or similarity >= 0.5
+        ):
+            matches.append(relative_path)
+    return sorted(set(matches))
+
+
+def _person_resolution_how(query: str, person: Dict[str, Any]) -> str:
+    """Describe which step in lookup_person_data's ladder resolved a person."""
+    query_folded = query.strip().casefold()
+    if '@' in query and query_folded in {
+        value.casefold() for value in person.get('emails', [])
+    }:
+        return 'email'
+    if query_folded in {
+        value.casefold() for value in person.get('aliases', [])
+    }:
+        return 'alias'
+    if query_folded == (person.get('name') or '').casefold():
+        return 'name'
+    if query_folded == (person.get('first_name') or '').casefold():
+        return 'first_name'
+    return 'fuzzy'
+
+
+def resolve_people_links(people: List[str]) -> Dict[str, Any]:
+    """Resolve person paths or names before a task is written."""
+    resolved_people = []
+    links = []
+    people_dir = get_people_dir()
+
+    for raw_value in people:
+        given = str(raw_value).strip()
+        if not given:
+            return {
+                'success': False,
+                'error': 'Person references cannot be empty.',
+                'candidates': [],
+            }
+
+        if _looks_like_page_path(given):
+            resolved_path = _existing_entity_page_path(given, people_dir)
+            if resolved_path is None:
+                return {
+                    'success': False,
+                    'error': f'Person page does not exist: {given}',
+                    'close_matches': _close_entity_page_matches(given, people_dir),
+                }
+            resolved_people.append(resolved_path)
+            links.append({
+                'given': given,
+                'resolved_path': resolved_path,
+                'how': 'path',
+            })
+            continue
+
+        lookup = lookup_person_data(given)
+        matches = [
+            match for match in lookup.get('matches', [])
+            if match.get('path')
+            and _existing_entity_page_path(match['path'], people_dir) is not None
+        ]
+        candidate_paths = sorted({
+            match['path'] for match in matches if match.get('path')
+        })
+        near_tied_matches = (
+            len(matches) > 1
+            and abs(matches[0].get('_score', 0) - matches[1].get('_score', 0)) <= 0.05
+        )
+        if (lookup.get('ambiguous') and len(matches) > 1) or near_tied_matches:
+            return {
+                'success': False,
+                'error': f'Ambiguous person reference: {given}',
+                'candidates': candidate_paths,
+            }
+        if not matches or not matches[0].get('path'):
+            return {
+                'success': False,
+                'error': f'No person page found for: {given}',
+                'candidates': candidate_paths,
+            }
+
+        person = matches[0]
+        resolved_path = person['path']
+        resolved_people.append(resolved_path)
+        links.append({
+            'given': given,
+            'resolved_path': resolved_path,
+            'how': _person_resolution_how(given, person),
+        })
+
+    return {
+        'success': True,
+        'resolved': resolved_people,
+        'links': links,
+    }
+
+
+def _account_domain(value: str) -> Optional[str]:
+    """Extract a hostname from URL, email-domain, or domain account inputs."""
+    supplied = value.strip()
+    if '://' in supplied:
+        return urlsplit(supplied).hostname
+    if '@' in supplied and ' ' not in supplied:
+        return supplied.rsplit('@', 1)[-1].split('/', 1)[0]
+    if re.fullmatch(
+        r'(?:www\.)?[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+(?:/[^\s]*)?',
+        supplied,
+    ):
+        return supplied.split('/', 1)[0]
+    return None
+
+
+def resolve_account_link(account: str) -> Dict[str, Any]:
+    """Resolve an account path, company name, URL, or domain to a company page."""
+    given = account.strip()
+    companies_dir = get_companies_dir()
+    domain = _account_domain(given)
+
+    if domain is None and _looks_like_page_path(given):
+        resolved_path = _existing_entity_page_path(given, companies_dir)
+        if resolved_path is None:
+            return {
+                'success': False,
+                'error': f'Company page does not exist: {given}',
+                'close_matches': _close_entity_page_matches(given, companies_dir),
+            }
+        return {
+            'success': True,
+            'resolved': resolved_path,
+            'link': {
+                'given': given,
+                'resolved_path': resolved_path,
+                'how': 'path',
+            },
+        }
+
+    companies = build_company_index_data().get('companies', [])
+    if domain:
+        target_domain = registrable_domain(domain)
+        matches = [
+            company for company in companies
+            if target_domain in {
+                registrable_domain(value) for value in company.get('domains', [])
+            }
+        ]
+        how = 'domain'
+    else:
+        given_folded = given.casefold()
+        matches = [
+            company for company in companies
+            if given_folded == (company.get('name') or '').casefold()
+        ]
+        how = 'name'
+
+    candidate_paths = sorted({
+        company['path'] for company in matches
+        if company.get('path')
+        and _existing_entity_page_path(company['path'], companies_dir) is not None
+    })
+    if len(candidate_paths) > 1:
+        return {
+            'success': False,
+            'error': f'Ambiguous account reference: {given}',
+            'candidates': candidate_paths,
+        }
+    if not candidate_paths:
+        return {
+            'success': False,
+            'error': f'No company page found for: {given}',
+            'close_matches': _close_entity_page_matches(given, companies_dir),
+        }
+
+    resolved_path = candidate_paths[0]
+    return {
+        'success': True,
+        'resolved': resolved_path,
+        'link': {
+            'given': given,
+            'resolved_path': resolved_path,
+            'how': how,
+        },
+    }
+
+
+def _profile_email_domains() -> set[str]:
+    """Return configured internal email domains from the user profile."""
+    if yaml is None or not USER_PROFILE_FILE.exists():
+        return set()
+    try:
+        profile = yaml.safe_load(USER_PROFILE_FILE.read_text()) or {}
+    except (OSError, yaml.YAMLError):
+        return set()
+    configured = profile.get('email_domain') or ''
+    values = configured if isinstance(configured, list) else str(configured).split(',')
+    return {str(value).strip().lower().lstrip('@') for value in values if str(value).strip()}
+
+
+def create_person_data(
+    name: str,
+    role: str | None = None,
+    company: str | None = None,
+    emails: list[str] | None = None,
+    aliases: list[str] | None = None,
+    location: str | None = None,
+    notes: str | None = None,
+    allow_duplicate: bool = False,
+) -> Dict[str, Any]:
+    """Create a canonical person page without clobbering an existing file."""
+    name = unicodedata.normalize('NFC', (name or '').strip())
+    if not name:
+        return {'success': False, 'error': 'name is required'}
+    if name in {'.', '..'} or '..' in re.split(r'[/\\]+', name):
+        return {'success': False, 'error': f'Invalid person name: {name!r} contains path traversal'}
+
+    clean_emails = list(dict.fromkeys(
+        email.strip().lower() for email in (emails or []) if isinstance(email, str) and email.strip()
+    ))
+    clean_aliases = list(dict.fromkeys(
+        alias.strip() for alias in (aliases or []) if isinstance(alias, str) and alias.strip()
+    ))
+    if location is None:
+        if not clean_emails or not _profile_email_domains():
+            location = 'unknown'
+        else:
+            domain = clean_emails[0].rsplit('@', 1)[-1] if '@' in clean_emails[0] else ''
+            location = 'internal' if domain in _profile_email_domains() else 'external'
+    if location not in {'internal', 'external', 'unknown'}:
+        return {'success': False, 'error': 'location must be internal, external, or unknown'}
+
+    if not allow_duplicate and clean_emails:
+        for email in clean_emails:
+            existing = lookup_person_data(email).get('matches', [])
+            if existing:
+                return {
+                    'success': False,
+                    'error': f"A person with email {email} already exists: {existing[0]['path']}",
+                }
+
+    people_dir = _resolve_people_dir()
+    target_dir = people_dir / ('Internal' if location == 'internal' else 'External')
+    filename_stem = re.sub(r'\s+', '_', name.replace('/', '').replace('\\', ''))
+    if not filename_stem or filename_stem in {'.', '..'}:
+        return {'success': False, 'error': 'Person name does not produce a valid filename'}
+    base_filename = f'{filename_stem}.md'
+    collision_paths = []
+    for subdir in ('Internal', 'External', 'CPO_Network'):
+        directory = people_dir / subdir
+        if directory.exists():
+            collision_paths.extend(
+                child for child in directory.iterdir()
+                if child.is_file() and child.name.casefold() == base_filename.casefold()
+            )
+    collision = bool(collision_paths)
+    if collision and not allow_duplicate:
+        return {
+            'success': False,
+            'error': f'Person filename already exists: {collision_paths[0].relative_to(BASE_DIR)}',
+        }
+
+    if collision:
+        domain = clean_emails[0].rsplit('@', 1)[1] if clean_emails and '@' in clean_emails[0] else '2'
+        safe_suffix = re.sub(r'[^\w.-]+', '_', domain, flags=re.UNICODE).strip('._') or '2'
+        candidate = target_dir / f'{filename_stem}_({safe_suffix}).md'
+        counter = 2
+        while candidate.parent.exists() and any(
+            child.name.casefold() == candidate.name.casefold() for child in candidate.parent.iterdir()
+        ):
+            candidate = target_dir / f'{filename_stem}_({counter}).md'
+            counter += 1
+    else:
+        candidate = target_dir / base_filename
+
+    target_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        candidate.resolve().relative_to(people_dir.resolve())
+    except ValueError:
+        return {'success': False, 'error': 'Refusing to create a person page outside the People directory'}
+
+    page = render_person_page(name, role, company, clean_emails, clean_aliases, location, notes)
+    try:
+        with candidate.open('x', encoding='utf-8', newline='') as handle:
+            handle.write(page)
+    except FileExistsError:
+        return {'success': False, 'error': f'Person page already exists: {candidate.relative_to(BASE_DIR)}'}
+    except OSError as exc:
+        return {'success': False, 'error': f'Could not create person page: {exc}'}
+
+    build_people_index_data()
+    result = {
+        'success': True,
+        'path': str(candidate.relative_to(BASE_DIR)),
+        'location': location,
+        'created': True,
+    }
+    if collision:
+        result['collision'] = True
+    return result
 
 
 # ============================================================================
@@ -2202,6 +2823,7 @@ def parse_tasks_file(filepath: Path) -> List[Dict[str, Any]]:
                 'source': metadata['source'],
                 'project': metadata['project'],
                 'goal': metadata['goal'],
+                'goal_tentative': metadata['goal_tentative'],
             })
     
     return tasks
@@ -3095,6 +3717,14 @@ app = Server("dex-work-mcp")
 async def handle_list_tools() -> list[types.Tool]:
     """List all available tools"""
     pillar_ids = get_pillar_ids()
+    pillar_inputs = list(dict.fromkeys([
+        *pillar_ids,
+        *[
+            str(pillar.get('name', '')).strip()
+            for pillar in PILLARS.values()
+            if str(pillar.get('name', '')).strip()
+        ],
+    ]))
     pillar_description = ", ".join(pillar_ids)
     
     return [
@@ -3114,12 +3744,12 @@ async def handle_list_tools() -> list[types.Tool]:
         ),
         types.Tool(
             name="create_task",
-            description="Create a new task with schema validation. Requires title and pillar alignment. Optionally link to weekly priority, account, or people pages.",
+            description="Create a new task with schema validation. Requires title and pillar alignment. Optionally link to weekly priority, account, people, or source pages.",
             inputSchema={
                 "type": "object",
                 "properties": {
                     "title": {"type": "string", "description": "Task title (be specific, not vague)"},
-                    "pillar": {"type": "string", "enum": pillar_ids, "description": f"Which strategic pillar this supports ({pillar_description})"},
+                    "pillar": {"type": "string", "enum": pillar_inputs, "description": f"Strategic pillar ID or unique display name ({pillar_description})"},
                     "priority": {"type": "string", "enum": ["P0", "P1", "P2", "P3"], "default": "P2"},
                     "context": {"type": "string", "description": "Additional context or sub-tasks"},
                     "section": {"type": "string", "description": "Which section in 03-Tasks/Tasks.md to add to", "default": "Next Week"},
@@ -3128,8 +3758,10 @@ async def handle_list_tools() -> list[types.Tool]:
                     "project": {"type": "string", "description": f"Optional existing vault-relative project path under {PROJECTS_DIR.name}/"},
                     "goal": {"type": "string", "description": "Optional quarterly goal ID (e.g., Q3-2026-goal-2)"},
                     "on_duplicate": {"type": "string", "enum": ["fail", "force"], "default": "fail", "description": "Fail on similar tasks, or force creation past only the similarity check"},
-                    "account": {"type": "string", "description": "Path to account page to link"},
-                    "people": {"type": "array", "items": {"type": "string"}, "description": "List of paths to people pages to link"}
+                    "account": {"type": "string", "description": "Account page path, company name, URL, or domain to resolve and link"},
+                    "people": {"type": "array", "items": {"type": "string"}, "description": "Person page paths or names to resolve and link"},
+                    "source": {"type": "string", "description": "Vault-relative source file path to link"},
+                    "stamp_source_line": {"type": "string", "description": "Exact source checkbox line text to stamp with the created task ID"}
                 },
                 "required": ["title", "pillar"]
             }
@@ -3167,11 +3799,6 @@ async def handle_list_tools() -> list[types.Tool]:
                         "type": "array",
                         "items": {"type": "string"},
                         "description": "List of items to process"
-                    },
-                    "auto_create": {
-                        "type": "boolean",
-                        "description": "Automatically create non-duplicate, non-ambiguous tasks",
-                        "default": False
                     }
                 },
                 "required": ["items"]
@@ -3465,6 +4092,11 @@ async def handle_list_tools() -> list[types.Tool]:
             inputSchema={"type": "object", "properties": {}}
         ),
         types.Tool(
+            name="build_company_index",
+            description="Scan company pages and build System/Company_Index.json.",
+            inputSchema={"type": "object", "properties": {}}
+        ),
+        types.Tool(
             name="lookup_person",
             description="Fast person lookup using the People Directory index. Fuzzy name matching with optional company filter. Falls back to file scan if index doesn't exist.",
             inputSchema={
@@ -3475,6 +4107,28 @@ async def handle_list_tools() -> list[types.Tool]:
                 },
                 "required": ["name"]
             }
+        ),
+        types.Tool(
+            name="create_person",
+            description="Create a canonical person page with duplicate protection and refresh the People index.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string", "description": "Person's full name"},
+                    "role": {"type": "string"},
+                    "company": {"type": "string"},
+                    "emails": {"type": "array", "items": {"type": "string"}},
+                    "aliases": {"type": "array", "items": {"type": "string"}},
+                    "location": {
+                        "type": "string",
+                        "enum": ["internal", "external", "unknown"],
+                        "description": "Computed from the first email and profile email_domain when omitted",
+                    },
+                    "notes": {"type": "string"},
+                    "allow_duplicate": {"type": "boolean", "default": False},
+                },
+                "required": ["name"],
+            },
         ),
         types.Tool(
             name="query_meeting_cache",
@@ -3526,7 +4180,7 @@ WRITE_TOOLS = {
     "sync_task_refs", "create_quarterly_goal", "update_goal_progress",
     "create_weekly_priority", "complete_weekly_priority",
     "process_inbox_with_dedup", "migrate_quarterly_goals", "migrate_weekly_priorities",
-    "build_people_index", "rebuild_meeting_cache", "capture_skill_rating",
+    "build_people_index", "build_company_index", "create_person", "rebuild_meeting_cache", "capture_skill_rating",
 }
 
 @app.call_tool()
@@ -3621,7 +4275,8 @@ async def _handle_call_tool_inner(
     
     elif name == "create_task":
         title = arguments['title']
-        pillar = arguments['pillar']
+        pillar_input = arguments['pillar']
+        pillar = resolve_pillar_id(pillar_input)
         priority = arguments.get('priority', 'P2')
         context = arguments.get('context', '')
         section = arguments.get('section', 'Next Week')
@@ -3630,14 +4285,23 @@ async def _handle_call_tool_inner(
         project = arguments.get('project', '')
         goal = arguments.get('goal', '')
         on_duplicate = arguments.get('on_duplicate', 'fail')
-        account = arguments.get('account', '')
-        people = arguments.get('people', [])
+        account = arguments.get('account', '') or ''
+        people = arguments.get('people', []) or []
+        source = arguments.get('source', '') or ''
+        stamp_source_line = arguments.get('stamp_source_line', '') or ''
+        if source.startswith('meeting:'):
+            source = source[len('meeting:'):]
+        account_link = None
+        people_links = []
+        goal_link = None
+        tentative_link = None
+        goal_tentative = False
         
         # Validate pillar
-        if pillar not in PILLARS:
+        if pillar is None:
             return [types.TextContent(type="text", text=json.dumps({
                 "success": False,
-                "error": f"Invalid pillar '{pillar}'. Must be one of: {list(PILLARS.keys())}"
+                "error": f"Invalid pillar '{pillar_input}'. Must be one of: {list(PILLARS.keys())}"
             }, indent=2))]
         
         # Validate priority
@@ -3725,6 +4389,30 @@ async def _handle_call_tool_inner(
                     ),
                     "available_goal_ids": available_goal_ids,
                 }, indent=2))]
+            goal_link = {
+                'goal_id': goal,
+                'how': 'explicit',
+                'tentative': False,
+            }
+
+        people_resolution = resolve_people_links(people)
+        if not people_resolution['success']:
+            return [types.TextContent(
+                type="text",
+                text=json.dumps(people_resolution, indent=2),
+            )]
+        people = people_resolution['resolved']
+        people_links = people_resolution['links']
+
+        if account:
+            account_resolution = resolve_account_link(account)
+            if not account_resolution['success']:
+                return [types.TextContent(
+                    type="text",
+                    text=json.dumps(account_resolution, indent=2),
+                )]
+            account = account_resolution['resolved']
+            account_link = account_resolution['link']
         
         # Check ambiguity
         if is_ambiguous(title):
@@ -3777,9 +4465,46 @@ async def _handle_call_tool_inner(
                 "occupying_tasks": occupying_tasks,
                 "suggestion": f"You have too many {priority} tasks. Complete or deprioritize some before adding more."
             }, indent=2))]
+
+        if not goal:
+            quarterly_goals = (
+                parse_quarterly_goals(QUARTER_GOALS_FILE)
+                if QUARTER_GOALS_FILE.exists()
+                else []
+            )
+            task_text = ' '.join(part for part in (title, context) if part).strip()
+            candidates = infer_goal_link(task_text, pillar, quarterly_goals)
+            top_candidate = next(
+                (
+                    candidate for candidate in candidates
+                    if candidate.get('goal_id')
+                ),
+                None,
+            )
+            if top_candidate and top_candidate['confidence'] == 'strong':
+                goal = top_candidate['goal_id']
+                goal_link = {
+                    'goal_id': goal,
+                    'how': 'inferred',
+                    'confidence': 'strong',
+                    'tentative': False,
+                }
+            elif top_candidate and top_candidate['confidence'] == 'weak':
+                goal = top_candidate['goal_id']
+                goal_tentative = True
+                tentative_link = {
+                    'goal_id': goal,
+                    'how': 'inferred',
+                    'confidence': 'weak',
+                    'tentative': True,
+                }
         
-        # Generate unique task ID
-        task_id = generate_task_id()
+        # Reuse a unique source-only legacy anchor; otherwise generate a new ID.
+        task_id = (
+            reusable_source_task_id(source, stamp_source_line)
+            if source and stamp_source_line
+            else None
+        ) or generate_task_id()
         
         # Build file references for account/people
         file_refs = []
@@ -3788,6 +4513,8 @@ async def _handle_call_tool_inner(
             file_refs.append(account if account.endswith('.md') else f"{account}.md")
         for person in people:
             file_refs.append(person if person.endswith('.md') else f"{person}.md")
+        if source:
+            file_refs.append(source if source.endswith('.md') else f"{source}.md")
         
         # Create the task entry with plain file references and task ID
         pillar_name = PILLARS[pillar]['name']
@@ -3807,7 +4534,8 @@ async def _handle_call_tool_inner(
         if project:
             task_entry += f" | Project: {project}"
         if goal:
-            task_entry += f" | Goal: {goal}"
+            tentative_marker = ' (?)' if goal_tentative else ''
+            task_entry += f" | Goal: {goal}{tentative_marker}"
         
         # Add to 03-Tasks/Tasks.md under the appropriate section
         if get_tasks_file().exists():
@@ -3842,17 +4570,42 @@ async def _handle_call_tool_inner(
             new_content = '\n'.join(lines)
         
         get_tasks_file().write_text(new_content)
+
+        if stamp_source_line and source:
+            try:
+                stamp_result = stamp_task_source_line(
+                    source,
+                    stamp_source_line,
+                    task_id,
+                )
+            except Exception as error:
+                logger.warning("Could not stamp task source line: %s", error)
+                stamp_result = {
+                    'attempted': True,
+                    'stamped': False,
+                    'reason': 'write_failed',
+                }
+        elif stamp_source_line:
+            stamp_result = {
+                'attempted': False,
+                'stamped': False,
+                'reason': 'source_required',
+            }
+        else:
+            stamp_result = {'attempted': False, 'stamped': False}
         
         # Sync Related Tasks sections in referenced pages
         synced_pages = []
-        if account:
-            result_sync = sync_task_refs_for_page(account)
-            if result_sync['success']:
-                synced_pages.append(account)
-        for person in people:
-            result_sync = sync_task_refs_for_page(person)
-            if result_sync['success']:
-                synced_pages.append(person)
+        referenced_pages = [
+            page for page in (account, *people, source) if page
+        ]
+        for page in referenced_pages:
+            try:
+                result_sync = sync_task_refs_for_page(page)
+                if result_sync['success']:
+                    synced_pages.append(page)
+            except Exception as error:
+                logger.warning("Could not sync task references for %s: %s", page, error)
         
         # Fire analytics event (silent, best-effort)
         try:
@@ -3875,9 +4628,18 @@ async def _handle_call_tool_inner(
                 "due": due if due else None,
                 "project": project if project else None,
                 "goal": goal if goal else None,
+                "goal_tentative": goal_tentative,
                 "account": account if account else None,
-                "people": people if people else None
+                "people": people if people else None,
+                "source": source if source else None
             },
+            "links": {
+                "account": account_link,
+                "people": people_links,
+                "goal": goal_link,
+                "tentative": tentative_link,
+            },
+            "stamp": stamp_result,
             "synced_pages": synced_pages,
             "message": f"Task '{title}' created successfully under {section} with ID: {task_id}"
         }
@@ -4053,7 +4815,6 @@ async def _handle_call_tool_inner(
     
     elif name == "process_inbox_with_dedup":
         items = arguments.get('items', [])
-        auto_create = arguments.get('auto_create', False)
         
         if not items:
             return [types.TextContent(type="text", text=json.dumps({
@@ -4066,7 +4827,6 @@ async def _handle_call_tool_inner(
             "new_tasks": [],
             "potential_duplicates": [],
             "needs_clarification": [],
-            "auto_created": [],
             "summary": {}
         }
         
@@ -4983,10 +5743,32 @@ async def _handle_call_tool_inner(
             'built_at': result['built_at'],
         }, indent=2))]
 
+    elif name == "build_company_index":
+        result = build_company_index_data()
+        return [types.TextContent(type="text", text=json.dumps({
+            'success': True,
+            'total': result['total'],
+            'index_path': str(COMPANY_INDEX_FILE),
+            'built_at': result['built_at'],
+        }, indent=2))]
+
     elif name == "lookup_person":
         person_name = arguments['name']
         company_filter = arguments.get('company')
         result = lookup_person_data(person_name, company_filter)
+        return [types.TextContent(type="text", text=json.dumps(result, indent=2, cls=DateTimeEncoder))]
+
+    elif name == "create_person":
+        result = create_person_data(
+            name=arguments.get('name', ''),
+            role=arguments.get('role'),
+            company=arguments.get('company'),
+            emails=arguments.get('emails'),
+            aliases=arguments.get('aliases'),
+            location=arguments.get('location'),
+            notes=arguments.get('notes'),
+            allow_duplicate=arguments.get('allow_duplicate', False),
+        )
         return [types.TextContent(type="text", text=json.dumps(result, indent=2, cls=DateTimeEncoder))]
 
     elif name == "query_meeting_cache":

@@ -13,7 +13,7 @@ description: Undo the last Dex update if something went wrong
 - System feels unstable
 - Want to go back for any reason
 
-**Safe to use:** Your notes, tasks, and projects are never at risk.
+**Safe to use:** Rollback explicitly snapshots and restores your user-owned files before changing Dex. Some files in 00-07 are tracked by Git, so this protection is required rather than assumed.
 
 ---
 
@@ -75,12 +75,13 @@ Will restore to: v1.2.0 (last backup)
 
 **What happens:**
 ✓ Dex features restored to v1.2.0
-✓ Your notes, tasks, projects stay as they are
+✓ Your latest notes, tasks, projects are snapshotted and restored
 ✓ Any new skills from v1.3.0 will be removed
 
 **This is safe:**
-• Your data folders (00-07) are not affected
-• Your configuration (user-profile, pillars) stays
+• Some files in 00-07 are tracked, so every hard reset protects all eight data folders first
+• Your configuration (user-profile, pillars) is protected in the same snapshot
+• If restoration conflicts, rollback stops and keeps both versions in a timestamped rescue folder
 • You can update again later if you want
 
 [Confirm rollback]
@@ -89,7 +90,7 @@ Will restore to: v1.2.0 (last backup)
 
 ---
 
-### Step 3: Save Current State
+### Step 3: Save and Protect Current State
 
 **Snapshot the newer release's shipped manifest before saving or resetting anything:**
 
@@ -135,37 +136,13 @@ fi
 
 Keep the exact `ROLLBACK_STATE_DIR` value printed above for Step 5 (if commands run in separate shell invocations, substitute that exact value there; never search `/tmp` with a glob). This must happen before `git reset --hard`: after the reset, `HEAD` belongs to the older release. The manifest comes from the installed release commit shared with `upstream/release` (or the legacy `origin/release` fallback), never from the user's working tree or merge commit.
 
-Before rolling back, save any uncommitted changes:
+Next, protect all user-owned content. This includes every folder from `00-Inbox/` through `07-Archives/`, because tracked planning files such as tasks, quarterly goals, and weekly priorities would otherwise be replaced by a hard reset.
 
 ```
 💾 Saving current state...
 ```
 
-Run:
-```bash
-if ! git add .; then
-  echo "Couldn't prepare your uncommitted changes for saving — rollback stopped to protect them; fix the Git error above, then retry"
-  exit 1
-fi
-
-if git diff --cached --quiet; then
-  echo "Nothing to save; continuing rollback"
-elif ! git commit -m "Auto-save before rollback to v1.2.0"; then
-  git reset
-  echo "Couldn't save your uncommitted changes — rollback stopped to protect them; fix the commit error above, then retry"
-  exit 1
-fi
-```
-
-Only after the save succeeds (or Git verifies there is nothing to save), create a "before rollback" tag in case they want to undo the rollback:
-
-```bash
-git tag before-rollback-$(date +%Y%m%d-%H%M%S)
-```
-
-```
-✓ Current state saved
-```
+Run Step 4's single protected shell block. It snapshots user data before the auto-save. If staging or committing fails, rollback aborts before any tag or reset and reapplies the stash without dropping it. Only a verified save (including a verified nothing-to-save result) may create the undo tag, reset, restore the tracked snapshot, and finally reapply uncommitted and untracked user files.
 
 ---
 
@@ -175,16 +152,137 @@ git tag before-rollback-$(date +%Y%m%d-%H%M%S)
 🔄 Rolling back to v1.2.0...
 ```
 
-Run:
+Run this entire block in one shell invocation so the snapshot references cannot be lost between commands:
 ```bash
-git reset --hard backup-before-v1.3.0
+ROLLBACK_STATE_DIR="[exact private temp path printed in Step 3]"
+DEX_ROLLBACK_TARGET="backup-before-v1.3.0"
+DEX_USER_DATA_PATHS=(
+  "00-Inbox/" "01-Quarter_Goals/" "02-Week_Priorities/" "03-Tasks/"
+  "04-Projects/" "05-Areas/" "06-Resources/" "07-Archives/"
+  "System/user-profile.yaml" "System/pillars.yaml" "System/Session_Learnings/"
+)
+DEX_USER_DATA_STASH_PATHS=(
+  ":(top,glob)00-Inbox/**" ":(top,glob)01-Quarter_Goals/**"
+  ":(top,glob)02-Week_Priorities/**" ":(top,glob)03-Tasks/**"
+  ":(top,glob)04-Projects/**" ":(top,glob)05-Areas/**"
+  ":(top,glob)06-Resources/**" ":(top,glob)07-Archives/**"
+  ":(top)System/user-profile.yaml" ":(top)System/pillars.yaml"
+  ":(top,glob)System/Session_Learnings/**"
+)
+DEX_USER_DATA_SOURCE=$(git rev-parse HEAD)
+DEX_DATA_STASH_BEFORE=$(git rev-parse -q --verify refs/stash 2>/dev/null || true)
+
+git stash push --all \
+  -m "dex-user-data-before-rollback-$(date +%Y%m%d-%H%M%S)" \
+  -- "${DEX_USER_DATA_STASH_PATHS[@]}" || true
+
+DEX_DATA_STASH_AFTER=$(git rev-parse -q --verify refs/stash 2>/dev/null || true)
+if [ -n "$DEX_DATA_STASH_AFTER" ] && [ "$DEX_DATA_STASH_AFTER" != "$DEX_DATA_STASH_BEFORE" ]; then
+  DEX_DATA_STASH_REF='stash@{0}'
+  DEX_DATA_STASH_OID="$DEX_DATA_STASH_AFTER"
+else
+  DEX_DATA_STASH_REF=""
+  DEX_DATA_STASH_OID=""
+  if ! git diff --quiet -- "${DEX_USER_DATA_PATHS[@]}" || \
+     ! git diff --cached --quiet -- "${DEX_USER_DATA_PATHS[@]}" || \
+     [ -n "$(git ls-files --others --exclude-standard -- "${DEX_USER_DATA_PATHS[@]}")" ] || \
+     [ -n "$(git ls-files --others --ignored --exclude-standard -- "${DEX_USER_DATA_PATHS[@]}")" ]; then
+    echo "Rollback stopped: changed user data remains outside the snapshot, so no reset ran"
+    exit 1
+  fi
+fi
+
+if ! git add .; then
+  [ -z "$DEX_DATA_STASH_OID" ] || git stash apply "$DEX_DATA_STASH_OID"
+  echo "Rollback stopped: Git could not prepare the current state, so no reset ran"
+  exit 1
+fi
+if git diff --cached --quiet; then
+  echo "Nothing to save; continuing rollback"
+elif ! git commit -m "Auto-save before rollback to v1.2.0"; then
+  git reset
+  [ -z "$DEX_DATA_STASH_OID" ] || git stash apply "$DEX_DATA_STASH_OID"
+  echo "Rollback stopped: Git could not save the current state, so no reset ran"
+  exit 1
+fi
+
+DEX_BEFORE_ROLLBACK_TAG="before-rollback-$(date +%Y%m%d-%H%M%S)"
+if ! git tag "$DEX_BEFORE_ROLLBACK_TAG"; then
+  [ -z "$DEX_DATA_STASH_OID" ] || git stash apply "$DEX_DATA_STASH_OID"
+  echo "Rollback stopped: the undo tag could not be created, so no reset ran"
+  exit 1
+fi
+
+dex_export_user_data_rescue() {
+  DEX_RESCUE_DIR="System/rollback-rescue/$(date +%Y%m%d-%H%M%S)-$$"
+  if ! mkdir -p "$DEX_RESCUE_DIR/committed-before-reset" \
+      "$DEX_RESCUE_DIR/stashed-tracked" "$DEX_RESCUE_DIR/stashed-untracked"; then
+    echo "Automatic rescue export failed: could not create $DEX_RESCUE_DIR"
+    return 1
+  fi
+
+  DEX_RESCUE_ARCHIVE="$DEX_RESCUE_DIR/.committed.tar"
+  if ! git archive --format=tar -o "$DEX_RESCUE_ARCHIVE" \
+      "$DEX_USER_DATA_SOURCE" -- "${DEX_USER_DATA_PATHS[@]}" || \
+     ! tar -xf "$DEX_RESCUE_ARCHIVE" -C "$DEX_RESCUE_DIR/committed-before-reset"; then
+    echo "Automatic rescue export failed. The committed snapshot remains at $DEX_USER_DATA_SOURCE"
+    return 1
+  fi
+  rm -f "$DEX_RESCUE_ARCHIVE"
+
+  if [ -n "$DEX_DATA_STASH_OID" ]; then
+    DEX_RESCUE_ARCHIVE="$DEX_RESCUE_DIR/.stashed.tar"
+    if ! git archive --format=tar -o "$DEX_RESCUE_ARCHIVE" \
+        "$DEX_DATA_STASH_OID" -- "${DEX_USER_DATA_PATHS[@]}" || \
+       ! tar -xf "$DEX_RESCUE_ARCHIVE" -C "$DEX_RESCUE_DIR/stashed-tracked"; then
+      echo "Automatic rescue export failed. The latest snapshot remains in $DEX_DATA_STASH_REF ($DEX_DATA_STASH_OID)"
+      return 1
+    fi
+    rm -f "$DEX_RESCUE_ARCHIVE"
+
+    DEX_UNTRACKED_STASH=$(git rev-parse -q --verify "$DEX_DATA_STASH_OID^3" 2>/dev/null || true)
+    if [ -n "$DEX_UNTRACKED_STASH" ]; then
+      DEX_RESCUE_ARCHIVE="$DEX_RESCUE_DIR/.untracked.tar"
+      if ! git archive --format=tar -o "$DEX_RESCUE_ARCHIVE" "$DEX_UNTRACKED_STASH" || \
+         ! tar -xf "$DEX_RESCUE_ARCHIVE" -C "$DEX_RESCUE_DIR/stashed-untracked"; then
+        echo "Automatic rescue export failed. Untracked data remains in $DEX_DATA_STASH_REF ($DEX_UNTRACKED_STASH)"
+        return 1
+      fi
+      rm -f "$DEX_RESCUE_ARCHIVE"
+    fi
+  fi
+}
+
+if ! git reset --hard "$DEX_ROLLBACK_TARGET"; then
+  echo "Rollback stopped: the reset failed. User data remains at $DEX_USER_DATA_SOURCE and in $DEX_DATA_STASH_REF"
+  exit 1
+fi
+if ! git restore --source="$DEX_USER_DATA_SOURCE" --staged --worktree -- "${DEX_USER_DATA_PATHS[@]}"; then
+  if dex_export_user_data_rescue; then
+    echo "Rollback stopped: the committed snapshot was exported to $DEX_RESCUE_DIR"
+  else
+    echo "Do not continue: use commit $DEX_USER_DATA_SOURCE and $DEX_DATA_STASH_REF to recover user data"
+  fi
+  exit 2
+fi
+if [ -n "$DEX_DATA_STASH_REF" ] && ! git stash pop "$DEX_DATA_STASH_REF"; then
+  if dex_export_user_data_rescue; then
+    echo "Rollback stopped for review: both user-data versions are preserved in $DEX_RESCUE_DIR"
+    echo "The latest snapshot also remains in $DEX_DATA_STASH_REF"
+  else
+    echo "Do not continue: the latest snapshot remains in $DEX_DATA_STASH_REF ($DEX_DATA_STASH_OID)"
+  fi
+  exit 2
+fi
+if ! git reset -- "${DEX_USER_DATA_PATHS[@]}"; then
+  echo "User data was restored, but Git could not clear its staged state; review git status before continuing"
+  exit 2
+fi
 ```
 
-This restores all Dex files to the state before update.
+This restores Dex files to the state before the update, then restores the user's latest tracked, uncommitted, and untracked content.
 
-**Note:** User data folders (00-07) remain untouched because:
-1. They're gitignored (not tracked)
-2. `git reset` only affects tracked files
+**Why the restore is explicit:** Some files in 00-07 are tracked even when their folders also appear in `.gitignore`. A hard reset does affect those files, so safety comes from the snapshot-and-restore sequence above, not from ignore rules.
 
 ---
 
@@ -255,6 +353,14 @@ if [ -n "$ROLLBACK_NEW_RELEASE" ] \
           continue
           ;;
       esac
+      case "$f" in
+        00-Inbox/*|01-Quarter_Goals/*|02-Week_Priorities/*|03-Tasks/*|\
+        04-Projects/*|05-Areas/*|06-Resources/*|07-Archives/*|\
+        System/user-profile.yaml|System/pillars.yaml|System/Session_Learnings/*)
+          echo "  Preserved restored user data: $f"
+          continue
+          ;;
+      esac
       if git cat-file -e "HEAD:$f" 2>/dev/null; then
         echo "  Preserved path tracked by the restored state: $f"
         continue
@@ -295,7 +401,7 @@ if [ -n "$ROLLBACK_STATE_DIR" ] && [ -d "$ROLLBACK_STATE_DIR" ] && [ ! -L "$ROLL
 fi
 ```
 
-Both inputs are read from immutable release commits, and cleanup refuses restored paths, symlink traversal, and files that no longer match the newer release blob. **Never regenerate either manifest from the user's working tree:** doing so could misclassify user files as update-added and delete them.
+Both inputs are read from immutable release commits. Cleanup explicitly refuses every user-data path restored in Step 4, then also refuses paths tracked by the restored release, symlink traversal, and files that no longer match the newer release blob. The user-data guard runs first, so cleanup can never delete a file the protected restore just wrote, even if its contents happen to match a newer-release blob. **Never regenerate either manifest from the user's working tree:** doing so could misclassify user files as update-added and delete them.
 
 **B. Reinstall dependencies for the restored version**
 
@@ -369,7 +475,7 @@ If an unmodified Dex-owned file or journey is `BROKEN`, name the exact check and
 
 [Exact check and detail]
 
-Your data is safe. You may want to:
+The protected reset keeps a recoverable copy of your user data. You may want to:
 [Report this issue]
 [Run /dex-update to return to the newer release]
 [Continue anyway]
@@ -387,7 +493,7 @@ If there are only `UNKNOWN` results, say the rollback completed but could not be
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 Dex restored to: v1.2.0
-Your data: All preserved (notes, tasks, projects)
+Your data: Pre-rollback snapshot restored (notes, tasks, projects)
 
 You're back to the version from before your last update.
 
@@ -419,7 +525,103 @@ If user chooses restore:
 
 ```bash
 RESTORE_TAG=$(git tag | grep before-rollback | tail -1)
-git reset --hard $RESTORE_TAG
+DEX_ROLLBACK_TARGET="$RESTORE_TAG"
+DEX_USER_DATA_PATHS=(
+  "00-Inbox/" "01-Quarter_Goals/" "02-Week_Priorities/" "03-Tasks/"
+  "04-Projects/" "05-Areas/" "06-Resources/" "07-Archives/"
+  "System/user-profile.yaml" "System/pillars.yaml" "System/Session_Learnings/"
+)
+DEX_USER_DATA_SOURCE=$(git rev-parse HEAD)
+DEX_DATA_STASH_BEFORE=$(git rev-parse -q --verify refs/stash 2>/dev/null || true)
+DEX_USER_DATA_STASH_PATHS=(
+  ":(top,glob)00-Inbox/**" ":(top,glob)01-Quarter_Goals/**"
+  ":(top,glob)02-Week_Priorities/**" ":(top,glob)03-Tasks/**"
+  ":(top,glob)04-Projects/**" ":(top,glob)05-Areas/**"
+  ":(top,glob)06-Resources/**" ":(top,glob)07-Archives/**"
+  ":(top)System/user-profile.yaml" ":(top)System/pillars.yaml"
+  ":(top,glob)System/Session_Learnings/**"
+)
+git stash push --all \
+  -m "dex-user-data-before-undo-rollback-$(date +%Y%m%d-%H%M%S)" \
+  -- "${DEX_USER_DATA_STASH_PATHS[@]}" || true
+DEX_DATA_STASH_AFTER=$(git rev-parse -q --verify refs/stash 2>/dev/null || true)
+if [ -n "$DEX_DATA_STASH_AFTER" ] && [ "$DEX_DATA_STASH_AFTER" != "$DEX_DATA_STASH_BEFORE" ]; then
+  DEX_DATA_STASH_REF='stash@{0}'
+  DEX_DATA_STASH_OID="$DEX_DATA_STASH_AFTER"
+else
+  DEX_DATA_STASH_REF=""
+  DEX_DATA_STASH_OID=""
+  if ! git diff --quiet -- "${DEX_USER_DATA_PATHS[@]}" || \
+     ! git diff --cached --quiet -- "${DEX_USER_DATA_PATHS[@]}" || \
+     [ -n "$(git ls-files --others --exclude-standard -- "${DEX_USER_DATA_PATHS[@]}")" ] || \
+     [ -n "$(git ls-files --others --ignored --exclude-standard -- "${DEX_USER_DATA_PATHS[@]}")" ]; then
+    echo "Undo stopped: changed user data remains outside the snapshot, so no reset ran"
+    exit 1
+  fi
+fi
+
+dex_export_user_data_rescue() {
+  DEX_RESCUE_DIR="System/rollback-rescue/$(date +%Y%m%d-%H%M%S)-$$"
+  if ! mkdir -p "$DEX_RESCUE_DIR/committed-before-reset" \
+      "$DEX_RESCUE_DIR/stashed-tracked" "$DEX_RESCUE_DIR/stashed-untracked"; then
+    echo "Automatic rescue export failed: could not create $DEX_RESCUE_DIR"
+    return 1
+  fi
+  DEX_RESCUE_ARCHIVE="$DEX_RESCUE_DIR/.committed.tar"
+  if ! git archive --format=tar -o "$DEX_RESCUE_ARCHIVE" \
+      "$DEX_USER_DATA_SOURCE" -- "${DEX_USER_DATA_PATHS[@]}" || \
+     ! tar -xf "$DEX_RESCUE_ARCHIVE" -C "$DEX_RESCUE_DIR/committed-before-reset"; then
+    echo "Automatic rescue export failed. The committed snapshot remains at $DEX_USER_DATA_SOURCE"
+    return 1
+  fi
+  rm -f "$DEX_RESCUE_ARCHIVE"
+  if [ -n "$DEX_DATA_STASH_OID" ]; then
+    DEX_RESCUE_ARCHIVE="$DEX_RESCUE_DIR/.stashed.tar"
+    if ! git archive --format=tar -o "$DEX_RESCUE_ARCHIVE" \
+        "$DEX_DATA_STASH_OID" -- "${DEX_USER_DATA_PATHS[@]}" || \
+       ! tar -xf "$DEX_RESCUE_ARCHIVE" -C "$DEX_RESCUE_DIR/stashed-tracked"; then
+      echo "Automatic rescue export failed. The latest snapshot remains in $DEX_DATA_STASH_REF ($DEX_DATA_STASH_OID)"
+      return 1
+    fi
+    rm -f "$DEX_RESCUE_ARCHIVE"
+    DEX_UNTRACKED_STASH=$(git rev-parse -q --verify "$DEX_DATA_STASH_OID^3" 2>/dev/null || true)
+    if [ -n "$DEX_UNTRACKED_STASH" ]; then
+      DEX_RESCUE_ARCHIVE="$DEX_RESCUE_DIR/.untracked.tar"
+      if ! git archive --format=tar -o "$DEX_RESCUE_ARCHIVE" "$DEX_UNTRACKED_STASH" || \
+         ! tar -xf "$DEX_RESCUE_ARCHIVE" -C "$DEX_RESCUE_DIR/stashed-untracked"; then
+        echo "Automatic rescue export failed. Untracked data remains in $DEX_DATA_STASH_REF ($DEX_UNTRACKED_STASH)"
+        return 1
+      fi
+      rm -f "$DEX_RESCUE_ARCHIVE"
+    fi
+  fi
+}
+
+if ! git reset --hard "$DEX_ROLLBACK_TARGET"; then
+  echo "Undo stopped: the reset failed. User data remains at $DEX_USER_DATA_SOURCE and in $DEX_DATA_STASH_REF"
+  exit 1
+fi
+if ! git restore --source="$DEX_USER_DATA_SOURCE" --staged --worktree -- "${DEX_USER_DATA_PATHS[@]}"; then
+  if dex_export_user_data_rescue; then
+    echo "Undo stopped: the committed snapshot was exported to $DEX_RESCUE_DIR"
+  else
+    echo "Do not continue: use commit $DEX_USER_DATA_SOURCE and $DEX_DATA_STASH_REF to recover user data"
+  fi
+  exit 2
+fi
+if [ -n "$DEX_DATA_STASH_REF" ] && ! git stash pop "$DEX_DATA_STASH_REF"; then
+  if dex_export_user_data_rescue; then
+    echo "Undo stopped for review: both user-data versions are preserved in $DEX_RESCUE_DIR"
+    echo "The latest snapshot also remains in $DEX_DATA_STASH_REF"
+  else
+    echo "Do not continue: the latest snapshot remains in $DEX_DATA_STASH_REF ($DEX_DATA_STASH_OID)"
+  fi
+  exit 2
+fi
+if ! git reset -- "${DEX_USER_DATA_PATHS[@]}"; then
+  echo "User data was restored, but Git could not clear its staged state; review git status before continuing"
+  exit 2
+fi
 ```
 
 ---
@@ -452,7 +654,10 @@ To restore an older version without Git:
    ✓ 03-Tasks/
    ✓ 04-Projects/
    ✓ 05-Areas/
+   ✓ 06-Resources/ (copy the entire folder, including root-level files)
+   ✓ Then replace 06-Resources/Dex_System/ with the copy from the downloaded Dex so shipped documentation stays current
    ✓ 07-Archives/
+   ✓ System/Session_Learnings/
    ✓ .env (if exists)
 
 3. **Replace folders:**
@@ -479,9 +684,11 @@ To restore an older version without Git:
 - ✓ Core features
 - ✓ Documentation
 
-**What rollback preserves (doesn't touch):**
+**What rollback snapshots and restores:**
 - ✓ Your notes (00-Inbox, 04-Projects, 05-Areas)
 - ✓ Your tasks (03-Tasks/)
+- ✓ Your goals and weekly priorities (01-Quarter_Goals/, 02-Week_Priorities/)
+- ✓ Your resources, learnings, and reviews (06-Resources/)
 - ✓ Your configuration (user-profile, pillars)
 - ✓ Your API keys (.env)
 
@@ -504,11 +711,11 @@ Likely MCP servers need restart:
 
 ### "My tasks look different after rollback"
 
-Your task data is unchanged. What might look different:
+The protected reset restores the task snapshot taken immediately before rollback. What might look different:
 - Task display format (if update changed rendering)
 - Task sorting (if update changed logic)
 
-**Your actual tasks are safe.** Check `03-Tasks/Tasks.md` directly - everything is there.
+**Verify the restored task snapshot:** Check `03-Tasks/Tasks.md` directly. If rollback reported a restore conflict, also check the timestamped `System/rollback-rescue/` folder before continuing.
 
 ### "Can I rollback multiple versions?"
 
@@ -527,7 +734,103 @@ backup-before-v1.3.0
 
 To rollback to specific version:
 ```bash
-git reset --hard backup-before-v1.1.0
+DEX_ROLLBACK_TARGET="backup-before-v1.1.0"
+DEX_USER_DATA_PATHS=(
+  "00-Inbox/" "01-Quarter_Goals/" "02-Week_Priorities/" "03-Tasks/"
+  "04-Projects/" "05-Areas/" "06-Resources/" "07-Archives/"
+  "System/user-profile.yaml" "System/pillars.yaml" "System/Session_Learnings/"
+)
+DEX_USER_DATA_SOURCE=$(git rev-parse HEAD)
+DEX_DATA_STASH_BEFORE=$(git rev-parse -q --verify refs/stash 2>/dev/null || true)
+DEX_USER_DATA_STASH_PATHS=(
+  ":(top,glob)00-Inbox/**" ":(top,glob)01-Quarter_Goals/**"
+  ":(top,glob)02-Week_Priorities/**" ":(top,glob)03-Tasks/**"
+  ":(top,glob)04-Projects/**" ":(top,glob)05-Areas/**"
+  ":(top,glob)06-Resources/**" ":(top,glob)07-Archives/**"
+  ":(top)System/user-profile.yaml" ":(top)System/pillars.yaml"
+  ":(top,glob)System/Session_Learnings/**"
+)
+git stash push --all \
+  -m "dex-user-data-before-version-rollback-$(date +%Y%m%d-%H%M%S)" \
+  -- "${DEX_USER_DATA_STASH_PATHS[@]}" || true
+DEX_DATA_STASH_AFTER=$(git rev-parse -q --verify refs/stash 2>/dev/null || true)
+if [ -n "$DEX_DATA_STASH_AFTER" ] && [ "$DEX_DATA_STASH_AFTER" != "$DEX_DATA_STASH_BEFORE" ]; then
+  DEX_DATA_STASH_REF='stash@{0}'
+  DEX_DATA_STASH_OID="$DEX_DATA_STASH_AFTER"
+else
+  DEX_DATA_STASH_REF=""
+  DEX_DATA_STASH_OID=""
+  if ! git diff --quiet -- "${DEX_USER_DATA_PATHS[@]}" || \
+     ! git diff --cached --quiet -- "${DEX_USER_DATA_PATHS[@]}" || \
+     [ -n "$(git ls-files --others --exclude-standard -- "${DEX_USER_DATA_PATHS[@]}")" ] || \
+     [ -n "$(git ls-files --others --ignored --exclude-standard -- "${DEX_USER_DATA_PATHS[@]}")" ]; then
+    echo "Rollback stopped: changed user data remains outside the snapshot, so no reset ran"
+    exit 1
+  fi
+fi
+
+dex_export_user_data_rescue() {
+  DEX_RESCUE_DIR="System/rollback-rescue/$(date +%Y%m%d-%H%M%S)-$$"
+  if ! mkdir -p "$DEX_RESCUE_DIR/committed-before-reset" \
+      "$DEX_RESCUE_DIR/stashed-tracked" "$DEX_RESCUE_DIR/stashed-untracked"; then
+    echo "Automatic rescue export failed: could not create $DEX_RESCUE_DIR"
+    return 1
+  fi
+  DEX_RESCUE_ARCHIVE="$DEX_RESCUE_DIR/.committed.tar"
+  if ! git archive --format=tar -o "$DEX_RESCUE_ARCHIVE" \
+      "$DEX_USER_DATA_SOURCE" -- "${DEX_USER_DATA_PATHS[@]}" || \
+     ! tar -xf "$DEX_RESCUE_ARCHIVE" -C "$DEX_RESCUE_DIR/committed-before-reset"; then
+    echo "Automatic rescue export failed. The committed snapshot remains at $DEX_USER_DATA_SOURCE"
+    return 1
+  fi
+  rm -f "$DEX_RESCUE_ARCHIVE"
+  if [ -n "$DEX_DATA_STASH_OID" ]; then
+    DEX_RESCUE_ARCHIVE="$DEX_RESCUE_DIR/.stashed.tar"
+    if ! git archive --format=tar -o "$DEX_RESCUE_ARCHIVE" \
+        "$DEX_DATA_STASH_OID" -- "${DEX_USER_DATA_PATHS[@]}" || \
+       ! tar -xf "$DEX_RESCUE_ARCHIVE" -C "$DEX_RESCUE_DIR/stashed-tracked"; then
+      echo "Automatic rescue export failed. The latest snapshot remains in $DEX_DATA_STASH_REF ($DEX_DATA_STASH_OID)"
+      return 1
+    fi
+    rm -f "$DEX_RESCUE_ARCHIVE"
+    DEX_UNTRACKED_STASH=$(git rev-parse -q --verify "$DEX_DATA_STASH_OID^3" 2>/dev/null || true)
+    if [ -n "$DEX_UNTRACKED_STASH" ]; then
+      DEX_RESCUE_ARCHIVE="$DEX_RESCUE_DIR/.untracked.tar"
+      if ! git archive --format=tar -o "$DEX_RESCUE_ARCHIVE" "$DEX_UNTRACKED_STASH" || \
+         ! tar -xf "$DEX_RESCUE_ARCHIVE" -C "$DEX_RESCUE_DIR/stashed-untracked"; then
+        echo "Automatic rescue export failed. Untracked data remains in $DEX_DATA_STASH_REF ($DEX_UNTRACKED_STASH)"
+        return 1
+      fi
+      rm -f "$DEX_RESCUE_ARCHIVE"
+    fi
+  fi
+}
+
+if ! git reset --hard "$DEX_ROLLBACK_TARGET"; then
+  echo "Rollback stopped: the reset failed. User data remains at $DEX_USER_DATA_SOURCE and in $DEX_DATA_STASH_REF"
+  exit 1
+fi
+if ! git restore --source="$DEX_USER_DATA_SOURCE" --staged --worktree -- "${DEX_USER_DATA_PATHS[@]}"; then
+  if dex_export_user_data_rescue; then
+    echo "Rollback stopped: the committed snapshot was exported to $DEX_RESCUE_DIR"
+  else
+    echo "Do not continue: use commit $DEX_USER_DATA_SOURCE and $DEX_DATA_STASH_REF to recover user data"
+  fi
+  exit 2
+fi
+if [ -n "$DEX_DATA_STASH_REF" ] && ! git stash pop "$DEX_DATA_STASH_REF"; then
+  if dex_export_user_data_rescue; then
+    echo "Rollback stopped for review: both user-data versions are preserved in $DEX_RESCUE_DIR"
+    echo "The latest snapshot also remains in $DEX_DATA_STASH_REF"
+  else
+    echo "Do not continue: the latest snapshot remains in $DEX_DATA_STASH_REF ($DEX_DATA_STASH_OID)"
+  fi
+  exit 2
+fi
+if ! git reset -- "${DEX_USER_DATA_PATHS[@]}"; then
+  echo "User data was restored, but Git could not clear its staged state; review git status before continuing"
+  exit 2
+fi
 ```
 
 But easier: tell `/dex-rollback` which version you want, and it handles it.
@@ -572,8 +875,8 @@ But easier: tell `/dex-rollback` which version you want, and it handles it.
 **Rollback should be:**
 - One command away
 - Always available
-- Completely safe
-- No data loss ever
+- Explicit about tracked user data
+- Able to stop safely and keep both versions when restoration conflicts
 
 **User confidence:**
 "I can try updates knowing I can undo them instantly"

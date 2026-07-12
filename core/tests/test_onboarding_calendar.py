@@ -261,6 +261,7 @@ def test_create_user_profile_writes_calendar_selection(onboarding_vault):
         "calendar_count": 4,
         "lazy_load": True,
     }
+    assert profile["entity_creation"] == {"mode": "auto"}
 
 
 def test_create_user_profile_writes_pending_calendar_permissions(onboarding_vault):
@@ -301,3 +302,4 @@ def test_finalize_dry_run_previews_calendar_selection(onboarding_vault):
         "calendar_count": 2,
         "lazy_load": True,
     }
+    assert result["data"]["preview_user_profile"]["entity_creation"] == {"mode": "auto"}

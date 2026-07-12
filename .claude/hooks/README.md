@@ -359,14 +359,7 @@ Some hooks only fire during a specific skill's execution, not globally. These ar
 
 - **Trigger:** PostToolUse (Write matcher)
 - **Skill:** `/process-meetings`
-- **What it does:** After a meeting note is written, extracts person mentions (WikiLinks and plain name patterns) and appends meeting references to their person pages.
-- **Fires:** Only during `/process-meetings`
-
-### meeting-summary-generator.cjs
-
-- **Trigger:** Stop
-- **Skill:** `/process-meetings`
-- **What it does:** Placeholder for future meeting summary generation on completion.
+- **What it does:** After a meeting note is written, extracts attendees (with WikiLink and plain-name fallbacks) and updates recent interactions on existing person pages.
 - **Fires:** Only during `/process-meetings`
 
 ### career-evidence-capture.cjs

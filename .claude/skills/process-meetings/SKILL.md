@@ -8,9 +8,6 @@ hooks:
     - matcher: Write
       type: command
       command: "node .claude/hooks/post-meeting-person-update.cjs"
-  Stop:
-    - type: command
-      command: "node .claude/hooks/meeting-summary-generator.cjs"
 ---
 
 # Process Meetings
@@ -113,30 +110,41 @@ For each participant in synced meetings:
    - If participant email domain matches user's domain → Internal
    - Otherwise → External
 
-3. **Check if person page exists:**
-   - Internal: `05-Areas/People/Internal/{Name}.md`
-   - External: `05-Areas/People/External/{Name}.md`
+3. **Look up the person with the Work MCP `lookup_person` tool.**
+   - If lookup returns `ambiguous: true`, do not create a page. Surface the possible matches to the user.
+   - If a match exists, update that existing page.
 
-4. **If page doesn't exist, create it:**
+4. **If no match exists, call the Work MCP `create_person` tool:**
+   - Pass `name`, `role` when known, `emails` from the meeting's `attendees` block, and `location` from that attendee's `location` field.
+   - Pass the meeting company and a short source note when available.
+
+<!-- What the create_person tool creates (reference only; do not hand-write this template). -->
    ```markdown
+   ---
+   type: person
+   name: "{Name}"
+   role: null
+   company: "{company from meeting}"
+   company_page: null
+   emails: ["{lowercased email, if available}"]
+   aliases: []
+   location: {internal|external}
+   last_interaction: {meeting date}
+   ---
    # {Name}
-
-   ## Overview
-
-   | Field | Value |
-   |-------|-------|
-   | **Company** | {company from meeting} |
-   | **Email** | {if available} |
-   | **First Met** | {meeting date} |
-
-   ## Recent Interactions
-
-   - [{Meeting Title}](00-Inbox/Meetings/{date}/{slug}.md) — {date}
 
    ## Notes
 
    *Auto-created from meeting on {date}*
-   ```
+
+   ## Recent Interactions
+
+   <!-- dex:auto:recent-interactions -->
+   - [{Meeting Title}](00-Inbox/Meetings/{date}/{slug}.md) — {date}
+   <!-- /dex:auto -->
+
+   ## Key Context
+    ```
 
 5. **If page exists, add meeting to Recent Interactions:**
    - Read existing page
@@ -152,23 +160,26 @@ For each unique external company domain:
 
 2. **If doesn't exist, create it:**
    ```markdown
+   ---
+   type: company
+   name: "{Company Name}"
+   domains: ["{lowercased domain}"]
+   website: "{website, if known}"
+   status: "Prospect"
+   ---
    # {Company Name}
-
-   ## Overview
-
-   | Field | Value |
-   |-------|-------|
-   | **Website** | {domain} |
-   | **Stage** | Unknown |
-   | **First Contact** | {date} |
 
    ## Key Contacts
 
+   <!-- dex:auto:key-contacts -->
    - [[05-Areas/People/External/{Person}|{Person}]]
+   <!-- /dex:auto -->
 
    ## Meeting History
 
+   <!-- dex:auto:meeting-history -->
    - [{Meeting Title}](00-Inbox/Meetings/{date}/{slug}.md) — {date}
+   <!-- /dex:auto -->
 
    ## Notes
 
@@ -220,21 +231,38 @@ For each meeting with unextracted tasks:
 1. **Find action items** in the "## Action Items > ### For Me" section
 2. **For each unchecked item** (`- [ ]`):
    - Extract task description
-   - Get task ID (format: `^task-YYYYMMDD-XXX`)
-   - Read pillar from meeting frontmatter
+   - Read pillar from meeting frontmatter, then resolve it to the unique pillar
+     ID in `System/pillars.yaml` by matching either `id` or display `name`
+   - Preserve the exact source checkbox line text for `stamp_source_line`
+   - Let `create_task` generate the task ID and stamp it back onto that line
 
 3. **Create task** using Work MCP:
    ```
    create_task(
      title: "Task description",
      priority: "P2",  // default, P1 if "urgent" mentioned
-     pillar: "{from meeting}",
-     people: ["{participants}"],
-     source: "meeting:{meeting-path}"
+     pillar: "{resolved pillar ID}",
+     people: ["{participant page paths}"],
+     source: "{meeting path}",
+     stamp_source_line: "{exact source checkbox line text}"
    )
    ```
 
-4. **Mark as extracted** by adding comment to meeting note:
+   `people` values must resolve to existing person page paths. Prefer the paths
+   returned by Step 3's `lookup_person`/`create_person` flow; if only a bare
+   participant name is available, pass that name unchanged and let `create_task`
+   resolve it. Never construct or guess a person page path.
+
+4. **Verify every result before marking the meeting extracted:**
+   - Require `success: true` for every `create_task` call.
+   - Require either `stamp.stamped: true`, or `reason: "already_anchored"`
+     with the exact source line's existing anchor equal to the returned
+     `task.task_id`.
+   - If entity resolution or stamping is unresolved, surface the exact failed
+     line and leave the meeting unmarked for reconciliation. Do not blindly
+     retry a task that was created but not stamped.
+
+   Only after every action item is verified, add this comment to the meeting note:
    ```markdown
    <!-- tasks-extracted: 2026-02-03T10:30:00Z -->
    ```
@@ -248,7 +276,16 @@ node .scripts/auto-link-people.cjs "<note-file>"
 
 Use `node .scripts/auto-link-people.cjs --dry-run "<note-file>"` to preview what would be linked without changing the file.
 
-### Step 7: Summary Report
+### Step 7: Verify Entity Coverage
+
+Run `node .scripts/meeting-intel/verify-entities.cjs` and show its one-line summary.
+If `ENTITY_SUGGESTIONS_FILE` contains suggested people, list them and ask: "Want me to create these pages? (creates via `create_person`; `dismiss` or `never` also fine)"
+
+- Accepted: call `create_person`, set the suggestion to `accepted`, and set the contact state to `created` with its page path.
+- Dismissed: set the suggestion to `dismissed`.
+- Never: set the suggestion to `suppressed`.
+
+### Step 8: Summary Report
 
 ```
 ## Meeting Processing Complete ✅

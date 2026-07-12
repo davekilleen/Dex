@@ -17,6 +17,7 @@
  */
 const fs = require('fs');
 const path = require('path');
+const { parseEntityPage } = require('../../.scripts/lib/entity-pages.cjs');
 
 const DEBUG_SKIP = process.env.DEX_HOOK_DEBUG === '1';
 function skip(reason) {
@@ -51,7 +52,7 @@ if (skipExts.includes(ext)) {
 const { loadPaths } = require('./paths.cjs');
 const _paths = loadPaths();
 const VAULT_ROOT = _paths.VAULT_ROOT || process.env.CLAUDE_PROJECT_DIR || process.env.VAULT_PATH || process.cwd();
-const PEOPLE_DIR = _paths.PEOPLE_DIR || path.join(VAULT_ROOT, '05-Areas', 'People');
+const PEOPLE_DIR = _paths.PEOPLE_DIR || path.join(_paths.AREAS_DIR, 'People');
 
 // Build an index of all person names to their files
 /**
@@ -71,6 +72,7 @@ function buildPersonIndex() {
       const files = fs.readdirSync(dirPath);
       for (const file of files) {
         if (!file.endsWith('.md')) continue;
+        if (file.toLowerCase() === 'readme.md') continue;
         
         const fileName = file.replace('.md', '');
         // Create variations for matching
@@ -207,37 +209,15 @@ try {
 function parsePersonPage(filePath) {
   try {
     const content = fs.readFileSync(filePath, 'utf-8');
-    const fileName = path.basename(filePath, '.md');
+    const entity = parseEntityPage(filePath);
     
     const info = {
-      name: fileName.replace(/_/g, ' '),
-      role: null,
-      company: null,
-      lastInteraction: null,
+      name: entity.name || path.basename(filePath, '.md').replace(/_/g, ' '),
+      role: entity.role,
+      company: entity.company,
+      lastInteraction: entity.last_interaction,
       openItems: []
     };
-    
-    // Parse YAML frontmatter
-    if (content.startsWith('---')) {
-      const endMatch = content.slice(3).indexOf('---');
-      if (endMatch !== -1) {
-        const frontmatter = content.slice(3, endMatch + 3);
-        
-        // Extract fields
-        const roleMatch = frontmatter.match(/role:\s*(.+)/);
-        if (roleMatch) info.role = roleMatch[1].trim();
-        
-        const companyMatch = frontmatter.match(/company:\s*(.+)/);
-        if (companyMatch) info.company = companyMatch[1].trim();
-        
-        const lastIntMatch = frontmatter.match(/last_interaction:\s*(.+)/);
-        if (lastIntMatch) info.lastInteraction = lastIntMatch[1].trim();
-        
-        // Get name from frontmatter if available
-        const nameMatch = frontmatter.match(/name:\s*(.+)/);
-        if (nameMatch) info.name = nameMatch[1].trim();
-      }
-    }
     
     // Extract open action items
     const actionItemRegex = /^- \[ \] (.+)$/gm;

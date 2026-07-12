@@ -86,6 +86,10 @@ eggs/
 .eggs/
 lib/
 lib64/
+!.scripts/lib/
+!.scripts/lib/**
+!.scripts/meeting-intel/lib/
+!.scripts/meeting-intel/lib/attendees.cjs
 parts/
 sdist/
 var/
@@ -136,6 +140,7 @@ System/Beta_Communications/
 System/Dex_Backlog.md
 System/highlights.json
 System/Innovation_Research/
+System/.dex/*.json
 
 # Onboarding state
 System/.onboarding/state.json

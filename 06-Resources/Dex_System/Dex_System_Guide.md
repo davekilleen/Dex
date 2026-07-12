@@ -501,6 +501,8 @@ When you're reading any file that mentions people or companies, Dex quietly:
 - Loads recent meeting history, action items, and relationship notes
 - Makes that information available to Claude in the background
 
+This context comes from the real person and company pages in your vault. In Obsidian mode, names in meeting notes are linked to those pages using their actual paths, so a link always opens the page Dex found.
+
 You don't see any headers or popups - it just works. When you ask "What did Sarah and I discuss last week?", Claude already knows because it loaded her context automatically.
 
 **Example:** You open a meeting note from a customer call. The note mentions "Acme Corp." Dex automatically loads the Acme Corp company page, sees you've had 5 meetings with them in the past month, notices there are 3 open action items, and uses that context to help you prepare better.
@@ -585,18 +587,20 @@ Before context isolation, running three or four skills in one session could noti
 
 ---
 
-## Skill Hooks
+## Automated Follow-Up
 
 Some skills now automate follow-up actions that previously required manual steps.
 
-### `/process-meetings` — Auto Person Page Updates
+### `/process-meetings` — People and Company Pages
 
-After processing meetings, Dex automatically updates person pages with meeting references. You no longer need to manually link meetings to the people who attended.
+The background sync keeps a reliable local record of meeting attendees, then uses the same rules every time to decide when a person is worth adding to your vault. Someone becomes eligible after they appear in at least two meetings across at least two weeks, or in at least two meetings where one has a transcript. Attendees without an email are still tracked, but Dex never creates a page for them automatically.
 
-**What happens:**
-- Each attendee's person page gets a reference to the meeting
-- New attendees get person pages created automatically
-- Company pages update when external contacts are involved
+You control what happens next with `entity_creation` in `System/user-profile.yaml`:
+- **`auto`** — create eligible person pages and external company pages automatically. Onboarding selects this for new vaults.
+- **`suggest`** — show eligible pages for your approval in `/daily-plan` and `/process-meetings`. This is the safe default when an existing vault has no setting.
+- **`off`** — keep tracking attendees without creating or suggesting pages.
+
+After every sync, Dex checks that each eligible attendee and company has the expected page or suggestion. `/dex-doctor` includes the same entity-engine check when you want to inspect it yourself. In Obsidian mode, meeting notes also link names to the actual person-page paths.
 
 ### `/career-coach` — Auto Evidence Capture
 
@@ -620,9 +624,9 @@ After creating your daily plan, Dex generates a condensed quickref — a one-gla
 
 ---
 
-## Vault Maintenance
+## Vault Health (`/dex-doctor`)
 
-Ask Dex to "run vault maintenance" at any time for a health check on your vault.
+Run `/dex-doctor` at any time for a plain-English health check of your vault.
 
 ### What It Scans
 
@@ -631,16 +635,17 @@ Ask Dex to "run vault maintenance" at any time for a health check on your vault.
 | **Stale inbox files** | Files sitting in `00-Inbox/` for more than 7 days without being routed |
 | **Broken WikiLinks** | `[[Links]]` that point to pages that don't exist |
 | **Orphaned person pages** | Person pages with no meeting references or recent activity |
+| **Entity engine** | Whether attendee tracking, page creation or suggestions, verification, and indexes are working |
 
 ### How to Use It
 
-Just say "run vault maintenance" in any conversation. Dex will scan and report what it finds, then suggest actions for each issue:
+Run `/dex-doctor` or say "check my vault." Dex will report what it finds and suggest actions for each issue. The entity-engine result also tells you whether creation is automatic, suggestion-only, or off, and flags eligible people or companies that have no page or suggestion.
 
 - Stale inbox files → Route them or archive them
 - Broken links → Fix the link or create the missing page
 - Orphaned person pages → Update them or move to archives
 
-No configuration required. Run it whenever your vault feels messy.
+No configuration is required. Run it whenever your vault feels messy or meeting contacts do not look right.
 
 ---
 
@@ -1009,8 +1014,10 @@ Run `/process-meetings` whenever you want to pull in new meetings. Uses Claude d
 
 **Output:**
 - Meeting notes: `00-Inbox/Meetings/YYYY-MM-DD/meeting-slug.md`
-- Person pages updated with meeting references (Internal/ or External/ based on email domain)
-- Company pages created for external organizations
+- Attendees recorded with names, emails when available, and Internal/External location
+- Eligible person and company pages created in `auto` mode, or offered in `/daily-plan` and `/process-meetings` in `suggest` mode
+- Existing person pages updated with meeting references; Obsidian mode links names to their actual page paths
+- Entity coverage verified after the sync and available in `/dex-doctor`
 - Action items added to `03-Tasks/Tasks.md` (unless `--no-todos` flag used)
 
 #### Historical Data Processing

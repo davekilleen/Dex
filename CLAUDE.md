@@ -163,6 +163,8 @@ When the user expresses frustration or wishes during natural conversation, captu
 ### Automatic Person Page Updates
 When significant context about people is shared (role changes, relationships, project involvement), proactively update their person pages without being asked.
 
+Background meeting sync uses a deterministic entity engine: after a person with an email appears in 2+ meetings across 2+ weeks (or across 2+ meetings with transcript evidence), `entity_creation` controls whether Dex creates pages automatically (`auto`), surfaces them in `/daily-plan` and `/process-meetings` (`suggest`, the default when missing), or only tracks them (`off`); onboarding sets `auto`.
+
 ### Communication Adaptation
 
 Adapt your tone and language based on user preferences in `System/user-profile.yaml` → `communication` section:
@@ -194,7 +196,7 @@ When the user shares meeting notes or says they had a meeting:
 4. Suggest follow-ups. Use the `query` tool to search for implicit commitments — soft language like "we should revisit" or "let me think about" that regex might not catch as action items.
 5. If meeting with manager and Career folder exists, extract career development context
 
-**Automation:** When meetings are processed via `/process-meetings`, skill-scoped hooks automatically update person pages with meeting references and extracted context. Manual person page updates are still applied for ad-hoc meeting notes shared outside the skill. Person names in processed meeting notes are auto-linked to their person pages by `.scripts/auto-link-people.cjs`; it runs during `/process-meetings` and can also be run manually on any file.
+**Automation:** Background sync records attendee emails and locations, runs entity creation, and verifies coverage after every sync; attendees without email remain tracked but are never auto-created. `/process-meetings` can still update existing pages with extracted context, while ad-hoc notes are handled manually. In Obsidian mode, `.scripts/auto-link-people.cjs` links names to the actual person-page paths.
 
 ### Task Creation (Smart Pillar Inference)
 When the user requests task creation without specifying a pillar:

@@ -36,12 +36,31 @@ const fs = require('fs');
 const path = require('path');
 const { execSync } = require('child_process');
 const yaml = require('js-yaml');
+const { loadPaths } = require('../../.claude/hooks/paths.cjs');
+const { autoLinkFiles } = require('../auto-link-people.cjs');
+const {
+  extractAttendees,
+  getInternalDomains,
+  classifyAttendee,
+  filterOwner,
+} = require('./lib/attendees.cjs');
+const { processEntityCreation } = require('./lib/entity-creation.cjs');
+const { verifyEntities } = require('./verify-entities.cjs');
 
 // ============================================================================
 // CONFIGURATION
 // ============================================================================
 
 const VAULT_ROOT = path.resolve(__dirname, '../..');
+// Derive the people folder's vault-relative path from loadPaths()' own
+// (VAULT_ROOT, PEOPLE_DIR) pair: the pair is internally consistent even when
+// the paths library resolves a different root than this script (e.g. a
+// launchd run with no VAULT_PATH and cwd=/), so the relative path stays right.
+const _paths = loadPaths();
+const PEOPLE_REL_PATH = path
+  .relative(_paths.VAULT_ROOT || VAULT_ROOT, _paths.PEOPLE_DIR)
+  .split(path.sep)
+  .join('/');
 
 // Official Granola public REST API
 const GRANOLA_API_BASE = 'https://public-api.granola.ai';
@@ -347,7 +366,7 @@ async function listGranolaNotes(apiKey) {
  * Returns a meeting object, or null on 401 (so the caller can abort) or
  * undefined-equivalent null when the note could not be fetched/mapped.
  */
-async function fetchMeetingDetail(apiKey, noteId) {
+async function fetchMeetingDetail(apiKey, noteId, profile = {}) {
   const { status, data } = await fetchFromGranolaApi(
     apiKey,
     `/v1/notes/${encodeURIComponent(noteId)}${buildQuery({ include: 'transcript' })}`
@@ -371,19 +390,12 @@ async function fetchMeetingDetail(apiKey, noteId) {
     ? data.summary_markdown
     : (data.summary_text || '');
 
-  // Attendees: name (fallback to email) for each attendee.
-  const participants = [];
-  if (Array.isArray(data.attendees)) {
-    for (const attendee of data.attendees) {
-      if (!attendee) continue;
-      const name = (attendee.name && attendee.name.trim()) ? attendee.name.trim() : attendee.email;
-      if (name) participants.push(name);
-    }
-  }
-  // Include the owner if present so creator filtering still works downstream.
-  if (data.owner && (data.owner.name || data.owner.email)) {
-    participants.push(data.owner.name || data.owner.email);
-  }
+  const internalDomains = getInternalDomains(profile);
+  const attendees = extractAttendees(data).map(attendee => ({
+    ...attendee,
+    location: classifyAttendee(attendee, internalDomains),
+  }));
+  const participants = attendees.map(attendee => attendee.name);
 
   const transcript = flattenTranscript(data.transcript);
 
@@ -395,6 +407,8 @@ async function fetchMeetingDetail(apiKey, noteId) {
     notes,
     transcript,
     participants: [...new Set(participants)],
+    attendees,
+    owner: data.owner || null,
     company: extractCompanyFromTitle(title),
     duration: null, // not provided by the public API
     source: 'api'
@@ -413,7 +427,7 @@ async function fetchMeetingDetail(apiKey, noteId) {
  * Returns an array of meeting objects (possibly empty), or null if the API
  * was unavailable / auth was rejected so the caller can exit cleanly.
  */
-async function getNewMeetingsFromApi(apiKey, state, forceToday = false) {
+async function getNewMeetingsFromApi(apiKey, state, forceToday = false, profile = {}) {
   const listed = await listGranolaNotes(apiKey);
   if (listed === null) return null; // auth/network failure already logged
 
@@ -445,7 +459,7 @@ async function getNewMeetingsFromApi(apiKey, state, forceToday = false) {
 
   const newMeetings = [];
   for (const note of toFetch) {
-    const meeting = await fetchMeetingDetail(apiKey, note.id);
+    const meeting = await fetchMeetingDetail(apiKey, note.id, profile);
     if (meeting && meeting.authFailed) return null; // 401 mid-run — abort cleanly
     if (!meeting) continue;
 
@@ -547,7 +561,7 @@ Generate a structured analysis in this exact markdown format:
 ## Action Items
 
 ### For Me
-- [ ] [Specific task] - by [timeframe if mentioned] ^task-${new Date().toISOString().split('T')[0].replace(/-/g, '')}-${generateTaskId()}
+- [ ] [Specific task] - by [timeframe if mentioned]
 
 ### For Others
 - [ ] @[Person]: [Specific task]
@@ -614,14 +628,6 @@ function buildMeetingContent(meeting) {
   return content;
 }
 
-function generateTaskId() {
-  const now = new Date();
-  const ms = now.getMilliseconds();
-  const seconds = now.getSeconds();
-  const num = ((seconds * 1000 + ms) % 999) + 1;
-  return num.toString().padStart(3, '0');
-}
-
 // ============================================================================
 // NOTE GENERATION
 // ============================================================================
@@ -634,30 +640,112 @@ function slugify(text) {
     .slice(0, 60);
 }
 
-function createMeetingNote(meeting, analysis, profile, pillars) {
+function readGranolaId(filepath) {
+  try {
+    const content = fs.readFileSync(filepath, 'utf-8');
+    const frontmatterMatch = content.match(/^\uFEFF?---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/);
+    if (!frontmatterMatch) return null;
+
+    const frontmatter = yaml.load(frontmatterMatch[1]);
+    if (!frontmatter || typeof frontmatter !== 'object' || Array.isArray(frontmatter)) {
+      return null;
+    }
+
+    const granolaId = frontmatter.granola_id;
+    return granolaId === undefined || granolaId === null
+      ? null
+      : String(granolaId).trim();
+  } catch (error) {
+    return null;
+  }
+}
+
+function granolaIdFragment(meetingId, length = 8) {
+  const safeId = String(meetingId || '')
+    .replace(/[^a-z0-9_-]+/gi, '')
+    .slice(0, length);
+  return safeId || 'unknown';
+}
+
+function resolveMeetingNoteTarget(meeting, meetingsDir = MEETINGS_DIR) {
+  const date = meeting.createdAt.split('T')[0];
+  const outputDir = path.join(meetingsDir, date);
+  const slug = slugify(meeting.title);
+  const meetingId = String(meeting.id);
+  const baseFilename = `${slug}.md`;
+  const baseFilepath = path.join(outputDir, baseFilename);
+
+  if (!fs.existsSync(baseFilepath) || readGranolaId(baseFilepath) === meetingId) {
+    return { filename: baseFilename, filepath: baseFilepath };
+  }
+
+  const shortFragment = granolaIdFragment(meetingId);
+  const shortFilename = `${slug}-${shortFragment}.md`;
+  const shortFilepath = path.join(outputDir, shortFilename);
+  if (!fs.existsSync(shortFilepath) || readGranolaId(shortFilepath) === meetingId) {
+    return { filename: shortFilename, filepath: shortFilepath };
+  }
+
+  const fullFragment = granolaIdFragment(meetingId, 64);
+  let counter = 1;
+  while (true) {
+    const suffix = counter === 1 ? fullFragment : `${fullFragment}-${counter}`;
+    const filename = `${slug}-${suffix}.md`;
+    const filepath = path.join(outputDir, filename);
+    if (!fs.existsSync(filepath) || readGranolaId(filepath) === meetingId) {
+      return { filename, filepath };
+    }
+    counter += 1;
+  }
+}
+
+function getOwnerFilteredAttendees(meeting, profile) {
+  const attendees = Array.isArray(meeting.attendees)
+    ? meeting.attendees
+    : (meeting.participants || []).map(name => ({ name, email: null, location: 'unknown' }));
+  return filterOwner(attendees, profile, meeting.owner || {});
+}
+
+function renderAttendeesYamlBlock(attendees) {
+  const serializable = attendees.map(attendee => ({
+    name: attendee.name,
+    email: attendee.email || null,
+    location: attendee.location || 'unknown',
+  }));
+  return yaml.dump({ attendees: serializable }, { noRefs: true, lineWidth: -1 }).trimEnd();
+}
+
+function renderParticipants(attendees, profile) {
+  return attendees.map(attendee => {
+    if (!profile.obsidian_mode || attendee.location === 'unknown') {
+      return attendee.name;
+    }
+    const folder = attendee.location === 'internal' ? 'Internal' : 'External';
+    const filename = attendee.name.replace(/\s+/g, '_');
+    return `[[${PEOPLE_REL_PATH}/${folder}/${filename}|${attendee.name}]]`;
+  }).join(', ');
+}
+
+function createMeetingNote(meeting, analysis, profile, pillars, options = {}) {
   const date = meeting.createdAt.split('T')[0];
   const time = meeting.createdAt.split('T')[1]?.slice(0, 5) || '00:00';
 
-  const outputDir = path.join(MEETINGS_DIR, date);
+  const meetingsDir = options.meetingsDir || MEETINGS_DIR;
+  const noteLogger = options.logger || log;
+  const outputDir = path.join(meetingsDir, date);
   if (!fs.existsSync(outputDir)) {
     fs.mkdirSync(outputDir, { recursive: true });
   }
 
-  const slug = slugify(meeting.title);
-  const filename = `${slug}.md`;
-  const filepath = path.join(outputDir, filename);
+  const { filename, filepath } = resolveMeetingNoteTarget(meeting, meetingsDir);
 
   // Extract pillar from analysis
   const pillarMatch = analysis.match(/## Pillar Assignment\n\n([^\n]+)/i);
   let pillar = pillarMatch ? pillarMatch[1].trim() : pillars[0];
   pillar = pillar.replace(/[\[\]"']/g, '').trim();
 
-  // Filter participants to exclude the owner
-  const ownerName = profile.name || '';
-  const filteredParticipants = meeting.participants.filter(p =>
-    p.toLowerCase() !== ownerName.toLowerCase() &&
-    !p.toLowerCase().includes(ownerName.toLowerCase().split(' ')[0])
-  );
+  const filteredAttendees = getOwnerFilteredAttendees(meeting, profile);
+  const filteredParticipants = filteredAttendees.map(attendee => attendee.name);
 
   const sourceLabel = meeting.source === 'api' ? 'API' : 'Cache';
 
@@ -668,17 +756,18 @@ type: meeting-note
 source: granola
 title: "${meeting.title.replace(/"/g, '\\"')}"
 participants: [${filteredParticipants.map(p => `"${p}"`).join(', ')}]
+${renderAttendeesYamlBlock(filteredAttendees)}
 company: "${meeting.company}"
 pillar: "${pillar}"
 duration: ${meeting.duration || 'unknown'}
-granola_id: ${meeting.id}
+granola_id: ${JSON.stringify(String(meeting.id))}
 processed: ${new Date().toISOString()}
 ---
 
 # ${meeting.title}
 
 **Date:** ${date} ${time}
-**Participants:** ${filteredParticipants.map(p => `05-Areas/People/External/${p.replace(/\s+/g, '_')}.md`).join(', ') || 'Unknown'}
+**Participants:** ${renderParticipants(filteredAttendees, profile) || 'Unknown'}
 ${meeting.company ? `**Company:** 05-Areas/Companies/${meeting.company}.md` : ''}
 
 ---
@@ -710,11 +799,11 @@ ${meeting.transcript.slice(0, 5000)}${meeting.transcript.length > 5000 ? '\n\n[T
 `;
 
   fs.writeFileSync(filepath, content);
-  log(`Created meeting note: ${filepath}`);
+  noteLogger(`Created meeting note: ${filepath}`);
 
   return {
     filepath,
-    wikilink: `00-Inbox/Meetings/${date}/${slug}.md`
+    wikilink: `00-Inbox/Meetings/${date}/${filename}`
   };
 }
 
@@ -722,24 +811,21 @@ ${meeting.transcript.slice(0, 5000)}${meeting.transcript.length > 5000 ? '\n\n[T
 // BASIC NOTE (no LLM — fallback for automatic mode when API key not configured)
 // ============================================================================
 
-function createBasicMeetingNote(meeting, profile) {
+function createBasicMeetingNote(meeting, profile, options = {}) {
   const date = meeting.createdAt.split('T')[0];
   const time = meeting.createdAt.split('T')[1]?.slice(0, 5) || '00:00';
 
-  const outputDir = path.join(MEETINGS_DIR, date);
+  const meetingsDir = options.meetingsDir || MEETINGS_DIR;
+  const noteLogger = options.logger || log;
+  const outputDir = path.join(meetingsDir, date);
   if (!fs.existsSync(outputDir)) {
     fs.mkdirSync(outputDir, { recursive: true });
   }
 
-  const slug = slugify(meeting.title);
-  const filename = `${slug}.md`;
-  const filepath = path.join(outputDir, filename);
+  const { filename, filepath } = resolveMeetingNoteTarget(meeting, meetingsDir);
 
-  const ownerName = profile.name || '';
-  const filteredParticipants = meeting.participants.filter(p =>
-    p.toLowerCase() !== ownerName.toLowerCase() &&
-    !p.toLowerCase().includes(ownerName.toLowerCase().split(' ')[0])
-  );
+  const filteredAttendees = getOwnerFilteredAttendees(meeting, profile);
+  const filteredParticipants = filteredAttendees.map(attendee => attendee.name);
 
   const notesSection = meeting.notes
     ? `## Notes\n\n${meeting.notes}\n`
@@ -756,8 +842,9 @@ type: meeting-note
 source: granola
 title: "${meeting.title.replace(/"/g, '\\"')}"
 participants: [${filteredParticipants.map(p => `"${p}"`).join(', ')}]
+${renderAttendeesYamlBlock(filteredAttendees)}
 company: "${meeting.company || ''}"
-granola_id: ${meeting.id}
+granola_id: ${JSON.stringify(String(meeting.id))}
 processed: ${new Date().toISOString()}
 ai_analyzed: false
 ---
@@ -765,7 +852,7 @@ ai_analyzed: false
 # ${meeting.title}
 
 **Date:** ${date} ${time}
-**Participants:** ${filteredParticipants.join(', ') || 'Unknown'}
+**Participants:** ${renderParticipants(filteredAttendees, profile) || 'Unknown'}
 ${meeting.company ? `**Company:** ${meeting.company}` : ''}
 
 ---
@@ -778,11 +865,11 @@ ${transcriptSection}
 `;
 
   fs.writeFileSync(filepath, content);
-  log(`  Created basic note (no LLM): ${filepath}`);
+  noteLogger(`  Created basic note (no LLM): ${filepath}`);
 
   return {
     filepath,
-    wikilink: `00-Inbox/Meetings/${date}/${slug}.md`
+    wikilink: `00-Inbox/Meetings/${date}/${filename}`
   };
 }
 
@@ -889,6 +976,15 @@ function runPostProcessing() {
   log('Post-processing skipped (handled by MCP tools)');
 }
 
+function runEntityVerification() {
+  try {
+    const result = verifyEntities();
+    log(result.summary);
+  } catch (error) {
+    log(`Entity verification skipped after error: ${error.message}`);
+  }
+}
+
 // ============================================================================
 // MAIN
 // ============================================================================
@@ -906,6 +1002,7 @@ async function main() {
   const apiKey = getGranolaApiKey();
   if (!apiKey) {
     log('Granola not connected — run /granola-setup to add your Granola API key (requires a Granola Business plan).');
+    if (!dryRun) runEntityVerification();
     return; // clean exit (exit 0 via the runner)
   }
 
@@ -925,11 +1022,12 @@ async function main() {
 
   log('\nFetching meetings from the Granola public API...');
 
-  const newMeetings = await getNewMeetingsFromApi(apiKey, state, force);
+  const newMeetings = await getNewMeetingsFromApi(apiKey, state, force, profile);
 
   if (newMeetings === null) {
     // Auth rejected or network failure — already logged a friendly reason.
     log('Could not reach the Granola API this run. Exiting cleanly.');
+    if (!dryRun) runEntityVerification();
     return;
   }
 
@@ -938,6 +1036,7 @@ async function main() {
   if (newMeetings.length === 0) {
     log('Nothing to process. Exiting.');
     saveState(state);
+    if (!dryRun) runEntityVerification();
     return;
   }
 
@@ -967,6 +1066,7 @@ async function main() {
       queueMeetingAsJson(meeting, state);
     }
     saveState(state);
+    runEntityVerification();
     log('\n' + '='.repeat(60));
     log(`SYNC COMPLETE (source: ${dataSource})`);
     log(`Queued: ${newMeetings.length} meetings`);
@@ -1027,7 +1127,33 @@ async function main() {
     updateQueue(processedResults);
     log('\nRunning post-processing...');
     runPostProcessing();
+    if (profile.obsidian_mode) {
+      try {
+        const linked = autoLinkFiles(
+          processedResults.map(result => result.filepath),
+          { profile, vaultRoot: VAULT_ROOT },
+        );
+        log(`Auto-linked people in ${linked.changed} meeting note(s)`);
+      } catch (error) {
+        log(`Auto-link skipped after error: ${error.message}`);
+      }
+    }
+
+    try {
+      processEntityCreation(
+        processedResults.map(result => ({
+          ...result.meeting,
+          filteredAttendees: getOwnerFilteredAttendees(result.meeting, profile),
+        })),
+        profile,
+        message => log(`  ${message}`),
+      );
+    } catch (error) {
+      log(`Entity creation skipped after error: ${error.message}`);
+    }
   }
+
+  runEntityVerification();
 
   // Summary
   log('\n' + '='.repeat(60));
@@ -1048,4 +1174,14 @@ if (require.main === module) {
     });
 }
 
-module.exports = { main, getGranolaApiKey, getNewMeetingsFromApi, fetchMeetingDetail };
+module.exports = {
+  main,
+  getGranolaApiKey,
+  getNewMeetingsFromApi,
+  fetchMeetingDetail,
+  createBasicMeetingNote,
+  createMeetingNote,
+  resolveMeetingNoteTarget,
+  renderAttendeesYamlBlock,
+  renderParticipants,
+};

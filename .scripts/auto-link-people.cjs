@@ -102,6 +102,19 @@ function readOwnerName(profileFile) {
   }
 }
 
+// WikiLinks are an Obsidian convention; plain-markdown vaults keep plain
+// names (mirrors core/utils/reference_formatter.py). Linking is a no-op
+// unless the profile opts in with `obsidian_mode: true`.
+function readObsidianMode(profileFile) {
+  if (!profileFile || !fs.existsSync(profileFile)) return false;
+  try {
+    const profile = fs.readFileSync(profileFile, 'utf-8');
+    return /^obsidian_mode\s*:\s*true\s*(#.*)?$/m.test(profile);
+  } catch (error) {
+    return false;
+  }
+}
+
 function aliasesFromPage(content) {
   const aliases = [];
   const pattern = /\bGoes\s+by\s+["“]([^"”\r\n]+)["”]/giu;
@@ -118,12 +131,19 @@ function buildRegistry(pathConfig = loadPaths()) {
   const fullNames = new Set();
   const firstTargets = new Map();
   const aliasTargets = new Map();
+  const targetsByFullName = new Map();
 
   for (const filePath of personFiles) {
     const fullName = displayNameFromFile(filePath);
     if (!fullName) continue;
 
     fullNames.add(fullName);
+    if (pathConfig.VAULT_ROOT) {
+      const relativePath = path.relative(pathConfig.VAULT_ROOT, filePath)
+        .split(path.sep)
+        .join('/');
+      targetsByFullName.set(fullName, relativePath.slice(0, -path.extname(relativePath).length));
+    }
     const firstName = fullName.split(/\s+/u)[0];
     addTarget(firstTargets, firstName, fullName);
 
@@ -155,6 +175,7 @@ function buildRegistry(pathConfig = loadPaths()) {
     firstNameToFull,
     ownerName: readOwnerName(pathConfig.USER_PROFILE_FILE),
     aliases,
+    targetsByFullName,
   };
 }
 
@@ -448,6 +469,16 @@ function canonicalWikiTarget(text, range) {
   return target.replace(/_/g, ' ');
 }
 
+function wikiLinkLabel(text, range) {
+  const body = text.slice(range.start + 2, range.end - 2);
+  const separator = body.indexOf('|');
+  return separator === -1 ? '' : body.slice(separator + 1).trim();
+}
+
+function normalizedPersonName(name) {
+  return name.trim().replace(/\s+/gu, ' ').toLowerCase();
+}
+
 function findPoisonedFirstNames(text, registry, protectedRanges) {
   const poisoned = new Set();
   const pattern = /[\p{Lu}][\p{L}\p{M}'’\p{Pd}]*/gu;
@@ -486,10 +517,21 @@ function autoLinkContent(text, registry = buildRegistry()) {
   const inline = findInlineRanges(text, blockRanges);
   const protectedRanges = mergeRanges([...blockRanges, ...inline.ranges]);
   const linkedPeople = new Set();
+  const peopleByReferenceName = new Map();
+
+  for (const fullName of registry.fullNames) {
+    peopleByReferenceName.set(normalizedPersonName(fullName), fullName);
+  }
+  for (const [alias, fullName] of registry.aliases || []) {
+    peopleByReferenceName.set(normalizedPersonName(alias), fullName);
+  }
 
   for (const wikiRange of inline.wikiRanges) {
     const target = canonicalWikiTarget(text, wikiRange);
-    if (registry.fullNames.has(target)) linkedPeople.add(target);
+    const label = wikiLinkLabel(text, wikiRange);
+    const linkedPerson = peopleByReferenceName.get(normalizedPersonName(target))
+      || peopleByReferenceName.get(normalizedPersonName(label));
+    if (linkedPerson) linkedPeople.add(linkedPerson);
   }
 
   const poisoned = findPoisonedFirstNames(text, registry, protectedRanges);
@@ -551,9 +593,12 @@ function autoLinkContent(text, registry = buildRegistry()) {
     if (linkedPeople.has(occurrence.target)) continue;
     if (rangesOverlap(occurrence.start, occurrence.end, replacements)) continue;
 
-    const replacement = occurrence.kind === 'full'
-      ? `[[${occurrence.target}]]`
-      : `[[${occurrence.target}|${occurrence.text}]]`;
+    const linkTarget = registry.targetsByFullName?.get(occurrence.target);
+    const replacement = linkTarget
+      ? `[[${linkTarget}|${occurrence.text}]]`
+      : occurrence.kind === 'full'
+        ? `[[${occurrence.target}]]`
+        : `[[${occurrence.target}|${occurrence.text}]]`;
     replacements.push({
       start: occurrence.start,
       end: occurrence.end,
@@ -653,6 +698,10 @@ function runCli() {
   const remaining = args.filter((argument) => argument !== '--dry-run');
   const todayMode = remaining.includes('--today');
   const paths = loadPaths();
+  if (!readObsidianMode(paths.USER_PROFILE_FILE)) {
+    console.log('Auto-link skipped: obsidian_mode is false.');
+    return;
+  }
   const registry = buildRegistry(paths);
   const options = { dryRun, registry, vaultRoot: paths.VAULT_ROOT };
 
@@ -697,4 +746,32 @@ if (require.main === module) {
   }
 }
 
-module.exports = { autoLinkContent, buildRegistry };
+/**
+ * Link person names across a batch of files (used by the background sync).
+ * Gated on obsidian_mode; builds the registry once; never throws per-file —
+ * a bad file is skipped and counted, the rest still link.
+ * Returns { changed, skipped, results }.
+ */
+function autoLinkFiles(files, options = {}) {
+  const paths = loadPaths();
+  if (!readObsidianMode(paths.USER_PROFILE_FILE)) {
+    return { changed: 0, skipped: 'obsidian_mode_off', results: [] };
+  }
+  const registry = buildRegistry(paths);
+  const runOptions = { dryRun: Boolean(options.dryRun), registry, vaultRoot: paths.VAULT_ROOT };
+  const results = [];
+  let changed = 0;
+  for (const filePath of Array.isArray(files) ? files : []) {
+    if (!filePath) continue;
+    try {
+      const result = processFile(filePath, runOptions);
+      results.push(result);
+      if (result.changed) changed += 1;
+    } catch (error) {
+      results.push({ filePath, changed: false, error: error.message });
+    }
+  }
+  return { changed, skipped: null, results };
+}
+
+module.exports = { autoLinkContent, buildRegistry, autoLinkFiles, readObsidianMode };

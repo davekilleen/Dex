@@ -80,6 +80,7 @@ PILLARS_FILE = SYSTEM_DIR / 'pillars.yaml'
 USER_PROFILE_FILE = SYSTEM_DIR / 'user-profile.yaml'
 SKILL_RATINGS_FILE = SYSTEM_DIR / 'Skill_Ratings' / 'ratings.jsonl'
 PEOPLE_INDEX_FILE = SYSTEM_DIR / 'People_Index.json'
+COMPANY_INDEX_FILE = SYSTEM_DIR / 'Company_Index.json'
 MEETING_CACHE_FILE = SYSTEM_DIR / 'Memory' / 'meeting-cache.json'
 SESSION_FILE = SYSTEM_DIR / '.onboarding-session.json'
 MARKER_FILE = SYSTEM_DIR / '.onboarding-complete'
@@ -89,6 +90,9 @@ MCP_CONFIG_EXAMPLE = SYSTEM_DIR / '.mcp.json.example'
 MCP_CONFIG_TARGET = VAULT_ROOT / '.mcp.json'
 OBSIDIAN_SYNC_LOG = SYSTEM_DIR / 'obsidian-sync.log'
 RITUAL_INTELLIGENCE_DB_FILE = DEX_RUNTIME_DIR / 'ritual-intelligence.db'
+CONTACTS_STATE_FILE = DEX_RUNTIME_DIR / 'contacts.json'
+ENTITY_SUGGESTIONS_FILE = DEX_RUNTIME_DIR / 'entity-suggestions.json'
+ENTITY_VERIFICATION_FILE = DEX_RUNTIME_DIR / 'entity-verification.json'
 
 
 def export_json(output_path: str | Path | None = None) -> dict:

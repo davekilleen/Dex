@@ -15,7 +15,10 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 RELEASE_BUILD_INPUTS = (
     ".distignore",
     ".gitattributes",
+    ".gitignore",
     ".github/workflows/ci.yml",
+    ".scripts/lib/tests/entity-pages.test.cjs",
+    "package.json",
     "requirements.txt",
     "requirements-dev.txt",
     "core/utils/manifest.py",
@@ -117,6 +120,7 @@ def test_release_branch_strips_dev_files_and_keeps_user_runtime(tmp_path: Path) 
         "core/mcp/tests/",
         "core/migrations/tests/",
         ".claude/hooks/tests/",
+        ".scripts/lib/tests/",
         "scripts/",
     )
     for prefix in stripped_prefixes:
@@ -190,3 +194,4 @@ def test_release_branch_strips_dev_files_and_keeps_user_runtime(tmp_path: Path) 
         ).stdout
     )
     assert "test:hooks" not in package_json.get("scripts", {})
+    assert "test:scripts" not in package_json.get("scripts", {})

@@ -392,6 +392,7 @@ def create_user_profile(session_data: Dict) -> bool:
         profile['company'] = data.get('company', '')
         profile['company_size'] = data.get('company_size', '')
         profile['email_domain'] = data.get('email_domain', '')
+        profile['entity_creation'] = {'mode': 'auto'}
 
         if 'calendar' in data:
             profile['work_email'] = data.get('work_email', '')
@@ -1369,6 +1370,7 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[types.Text
                     'company_size': data.get('company_size', ''),
                     'email_domain': data.get('email_domain', ''),
                     'obsidian_mode': data.get('obsidian_mode', False),
+                    'entity_creation': {'mode': 'auto'},
                     'communication': data.get('communication', {})
                 }
                 if 'calendar' in data:

@@ -90,6 +90,10 @@ Area = ongoing ("Customer success management")
   - `External/` — Customers, prospects, partners (different email domain)
 - **Companies/** — External organizations you interact with
 
+The background sync tracks everyone it sees, but only people with an email can become pages. After someone appears in at least two meetings across at least two weeks (or has transcript evidence across two meetings), Dex either creates the person page or suggests it, depending on your `entity_creation` mode.
+
+Eligible external email domains can also become company pages. New vaults start in `auto` mode; existing vaults without a setting default to `suggest`, where `/daily-plan` and `/process-meetings` ask before creating anything.
+
 ### Role-Specific Areas
 
 Most users only need the universal areas (People and Companies). You can create additional areas as needed for your workflow.
@@ -228,6 +232,7 @@ System/
 Most users won't edit this directly—Dex manages it. But when you want to adjust strategic direction or preferences, the key files are here.
 
 **Background automation:** Dex also includes scripts in `.scripts/` that run automatically:
+- `meeting-intel/sync-from-granola.cjs` — Syncs meetings, records attendee emails and locations, creates or suggests eligible people and companies, and verifies entity coverage. In Obsidian mode, names link to their actual person pages.
 - `check-anthropic-changelog.cjs` — Checks for Claude updates every 6 hours
 - `learning-review-prompt.sh` — Daily 5pm check for pending learnings
 - These run via macOS Launch Agents and require no user intervention
