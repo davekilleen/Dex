@@ -160,6 +160,7 @@ SHIPPED_LAUNCH_AGENT_LABELS = frozenset(
 QUICK_CHECKS = (
     CheckDefinition("vault.structure", "Vault structure", "_probe_vault_structure"),
     CheckDefinition("vault.configs", "Vault configuration", "_probe_vault_configs"),
+    CheckDefinition("smoke.history", "Nightly smoke results", "_probe_smoke_history"),
     CheckDefinition("mcp.registered", "MCP registration", "_probe_mcp_registered"),
     CheckDefinition("mcp.orphans", "MCP server registration", "_probe_mcp_orphans"),
     CheckDefinition("python.env", "Python environment", "_probe_python_env"),
@@ -2088,6 +2089,172 @@ def _probe_mcp_importable(context: DoctorContext) -> ProbeResult:
             Heal(tier=2, action="Reinstall the missing MCP dependencies into the vault .venv.", applied=False),
         )
     return ProbeResult("OK", f"All {len(registered)} registered core MCP servers import in a subprocess")
+
+
+def _smoke_timestamp(entry: dict[str, Any]) -> datetime | None:
+    value = entry.get("generated_at")
+    if not isinstance(value, str):
+        return None
+    try:
+        timestamp = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if timestamp.tzinfo is None:
+        timestamp = timestamp.replace(tzinfo=timezone.utc)
+    return timestamp.astimezone(timezone.utc)
+
+
+def _valid_smoke_entry(value: object) -> dict[str, Any] | None:
+    if not isinstance(value, dict) or _smoke_timestamp(value) is None:
+        return None
+    journeys = value.get("journeys")
+    summary = value.get("summary")
+    if not isinstance(journeys, list) or not isinstance(summary, dict):
+        return None
+    if not all(
+        isinstance(journey, dict)
+        and isinstance(journey.get("id"), str)
+        and journey.get("verdict") in VERDICTS
+        and isinstance(journey.get("detail"), str)
+        for journey in journeys
+    ):
+        return None
+    if not isinstance(summary.get("broken"), int):
+        return None
+    return value
+
+
+def _read_smoke_history(context: DoctorContext) -> list[dict[str, Any]]:
+    history_path = context.vault_root / "System" / ".dex" / "smoke-history.jsonl"
+    last_run_path = context.vault_root / "System" / ".smoke-last-run.json"
+    history_unreadable = False
+    if history_path.exists():
+        lines = history_path.read_text(encoding="utf-8").splitlines()
+        entries = []
+        for line in lines:
+            try:
+                entry = _valid_smoke_entry(json.loads(line))
+            except (json.JSONDecodeError, TypeError):
+                entry = None
+            if entry is not None:
+                entries.append(entry)
+        if entries:
+            return sorted(entries, key=lambda entry: _smoke_timestamp(entry) or datetime.min)
+        history_unreadable = True
+    if last_run_path.exists():
+        entry = _valid_smoke_entry(json.loads(last_run_path.read_text(encoding="utf-8")))
+        if entry is None:
+            raise ValueError("smoke last-run file is unreadable")
+        return [entry]
+    if history_unreadable:
+        raise ValueError("smoke history contains no readable ledger entries")
+    return []
+
+
+def _smoke_attribution_paths(context: DoctorContext) -> list[Path]:
+    system = context.vault_root / "System"
+    paths_to_check = [
+        system / "user-profile.yaml",
+        system / "pillars.yaml",
+        context.vault_root / ".mcp.json",
+    ]
+    paths_to_check.extend(sorted((system / "integrations").glob("*.yaml")))
+    custom_skills = context.vault_root / ".claude" / "skills"
+    paths_to_check.extend(
+        path
+        for root in sorted(custom_skills.glob("*-custom"))
+        for path in sorted(root.rglob("*"))
+        if path.is_file()
+    )
+    return paths_to_check
+
+
+def _smoke_attribution_name(path: Path, context: DoctorContext) -> str:
+    system = context.vault_root / "System"
+    try:
+        return path.relative_to(system).as_posix()
+    except ValueError:
+        return path.relative_to(context.vault_root).as_posix()
+
+
+def _probe_smoke_history(context: DoctorContext) -> ProbeResult:
+    history_path = context.vault_root / "System" / ".dex" / "smoke-history.jsonl"
+    last_run_path = context.vault_root / "System" / ".smoke-last-run.json"
+    if not history_path.exists() and not last_run_path.exists():
+        return ProbeResult(
+            "OFF",
+            "nightly checks not installed — run .scripts/install-smoke-automation.sh",
+        )
+    try:
+        entries = _read_smoke_history(context)
+    except (OSError, ValueError, json.JSONDecodeError) as error:
+        return ProbeResult("UNKNOWN", f"nightly smoke ledger is unreadable: {_one_line(error)}")
+
+    latest = entries[-1]
+    latest_timestamp = _smoke_timestamp(latest)
+    journeys = latest["journeys"]
+    broken = [journey for journey in journeys if journey["verdict"] == "BROKEN"]
+    unknown = [journey for journey in journeys if journey["verdict"] == "UNKNOWN"]
+    if not broken and not unknown:
+        ok_count = sum(journey["verdict"] == "OK" for journey in journeys)
+        return ProbeResult(
+            "OK",
+            f"last verified {latest_timestamp.isoformat()} ({ok_count} journeys OK)",
+        )
+    if not broken:
+        return ProbeResult(
+            "UNKNOWN",
+            f"last nightly check at {latest_timestamp.isoformat()} was inconclusive",
+        )
+
+    prior_good_index = next(
+        (
+            index
+            for index in range(len(entries) - 2, -1, -1)
+            if entries[index]["summary"].get("broken") == 0
+        ),
+        None,
+    )
+    broken_ids = ", ".join(journey["id"] for journey in broken)
+    if prior_good_index is None:
+        return ProbeResult(
+            "BROKEN",
+            f"{broken_ids} is broken as of {latest_timestamp.isoformat()}; no prior passing nightly run is available for attribution",
+        )
+
+    good_entry = entries[prior_good_index]
+    first_broken = next(
+        entry
+        for entry in entries[prior_good_index + 1 :]
+        if entry["summary"].get("broken", 0) > 0
+    )
+    window_start = _smoke_timestamp(good_entry)
+    window_end = _smoke_timestamp(first_broken)
+    facts = []
+    for path in _smoke_attribution_paths(context):
+        try:
+            modified = datetime.fromtimestamp(path.stat().st_mtime, tz=timezone.utc)
+        except OSError:
+            continue
+        if window_start < modified <= window_end:
+            facts.append(
+                f"{_smoke_attribution_name(path, context)} modified {modified.isoformat()}"
+            )
+    old_version = good_entry.get("dex_version")
+    new_version = first_broken.get("dex_version")
+    if isinstance(old_version, str) and isinstance(new_version, str) and old_version != new_version:
+        facts.append(f"Dex updated from {old_version} to {new_version} in this window")
+
+    detail = (
+        f"{broken_ids} broke between {window_start.isoformat()} and {window_end.isoformat()}. "
+        f"In that window: {'; '.join(facts)}"
+        if facts
+        else (
+            f"{broken_ids} broke between {window_start.isoformat()} and {window_end.isoformat()}; "
+            "nothing obvious changed — run /dex-doctor --deep for the full picture"
+        )
+    )
+    return ProbeResult("BROKEN", detail)
 
 
 def _probe_smoke_journeys(context: DoctorContext) -> ProbeResult:
