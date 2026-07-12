@@ -7,6 +7,25 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.48.0] - Dex now checks itself overnight — and tells you what changed when something breaks (2026-07-12)
+
+Dex's safe release checks used to run only when someone asked for a deep diagnosis or
+prepared a release. A problem that appeared between updates could therefore sit quietly
+until the next manual check.
+
+**What this fixes for you:**
+
+* **Dex checks its core journeys every night.** At 03:15 it safely tests configuration,
+  task creation, built-in services, skills, and hooks in temporary copies without writing
+  into your live vault.
+* **The next session tells you when something broke.** You see the affected journey and
+  its concrete failure, while healthy nights stay silent.
+* **`/dex-doctor` narrows down what changed.** It compares the last passing night with the
+  first broken one and reports only matching configuration edits, custom-skill edits, or
+  a Dex update—without inventing a cause when the evidence is not there.
+* **The evidence stays inspectable.** The latest result and a capped history live as plain
+  JSON files in your vault, with safe atomic writes so half-written reports never surface.
+
 ## [1.47.0] - Release checks stop failing themselves on a technicality (2026-07-12)
 
 The automated checks that run on every proposed change could fail with a confusing "cannot find a common ancestor" error that had nothing to do with the change itself — a self-inflicted glitch in how the checks fetched the project's main line.

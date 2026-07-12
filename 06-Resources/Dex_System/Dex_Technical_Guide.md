@@ -1075,6 +1075,19 @@ executed.
 Customization failures name the exact user-owned file to fix. Dex only suggests an
 update or rollback for failures in unmodified Dex-owned code.
 
+### Nightly self-checks
+
+Run `.scripts/install-smoke-automation.sh` once to install the macOS nightly check. At
+03:15 it exercises Dex's five isolated smoke journeys and records the latest result in
+`System/.smoke-last-run.json`, with up to 120 versioned runs in
+`System/.dex/smoke-history.jsonl`.
+
+When a journey breaks, the next session start names it and points to `/dex-doctor`.
+The daily plan also includes a system-health line only while a broken result is present.
+The doctor's quick `smoke.history` check narrows the change window and reports only
+matching configuration/custom-skill modification times or a Dex version change. The
+automation heartbeat lives at `.scripts/logs/smoke-nightly.log`.
+
 ---
 
 ## Design Constraints

@@ -55,6 +55,25 @@ values before child journeys; executable task and MCP code is loaded only from a
 snapshot of the installed release. If that release cannot be verified, the affected
 journey is `UNKNOWN` instead of falling back to live code.
 
+### Nightly smoke ledger and attribution
+
+The macOS Launch Agent installed by `.scripts/install-smoke-automation.sh` runs the five
+smoke journeys every night at 03:15. Successful worker completion updates the heartbeat
+at `.scripts/logs/smoke-nightly.log`; `/dex-doctor` treats a heartbeat older than 26 hours
+as stale.
+
+Passing `--ledger` leaves the complete latest report at
+`System/.smoke-last-run.json` and appends a versioned entry to
+`System/.dex/smoke-history.jsonl`. History is capped at 120 runs and both files are
+replaced atomically, so readers never observe partial JSON. Plain `--json` runs remain
+read-only.
+
+The quick doctor's `smoke.history` check compares the last passing entry with the first
+broken entry after it. Attribution reports only facts inside that window: modification
+times for profile, pillar, integration, MCP, and custom-skill files, plus a Dex version
+change. When no listed fact changed, the doctor says so and points to the deep check; it
+does not guess at a cause.
+
 ## Testing Doctor Inventory
 
 The quick doctor adds three always-visible checks:
