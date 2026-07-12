@@ -1,13 +1,14 @@
 # Dex Productivity Integrations Config
-# This file tracks which integrations are enabled and their settings
+# This tracked file is a clean-install template. /integrate-mcp populates each
+# user's local integration state when they choose to connect a service.
 
-# Last updated: (auto-updated when integrations change)
-last_updated: '2026-02-04T18:41:25.882536'
+# Last updated: (auto-populated when integrations change)
+last_updated: null
 
 # Enabled integrations
 enabled:
   notion: false
-  slack: true
+  slack: false
   google: false
 
 # Integration-specific settings are stored in separate files:
@@ -18,19 +19,19 @@ enabled:
 # Integration hooks - which Dex features use integrations
 hooks:
   meeting_prep:
-    use_notion: true      # Pull relevant Notion docs
-    use_slack: true       # Pull recent Slack context with attendees
-    use_google: true      # Pull email threads with attendees
+    use_notion: false     # Pull relevant Notion docs
+    use_slack: false      # Pull recent Slack context with attendees
+    use_google: false     # Pull email threads with attendees
   
   person_pages:
-    use_notion: true      # Link Notion pages
-    use_slack: true       # Show Slack mentions
-    use_google: true      # Show email history
+    use_notion: false     # Link Notion pages
+    use_slack: false      # Show Slack mentions
+    use_google: false     # Show email history
   
   daily_plan:
     use_notion: false     # Not used by default
-    use_slack: true      # Not used by default  
-    use_google: true      # Surface emails needing response
+    use_slack: false      # Not used by default
+    use_google: false     # Surface emails needing response
 
 # Detection cache (auto-populated by detect.py)
 detected:

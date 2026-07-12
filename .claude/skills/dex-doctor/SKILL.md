@@ -64,7 +64,9 @@ If yes: run with `--deep` and merge results.
 
 Order: **instruments first if anything failed**, then BROKEN, then UNKNOWN, then OFF
 (one compact line each, labelled "off — that's fine"), then healthy collapsed to a single
-line ("✓ 11 checks healthy").
+line ("✓ N checks healthy"). Fill every displayed count from the collector JSON — use
+the current report's `summary` values and `checks` array rather than a hardcoded quick or
+deep total, because the check registry can change.
 
 For each BROKEN item: what it means for the user in one plain sentence (what stopped
 working, since when if known), then the fix path.
@@ -93,11 +95,12 @@ verification or a stale/missing People index as a follow-up signal.
    Fixed automatically: 2
    Needs your OK:       1  (waiting above)
    Needs your hands:    1  (steps above)
-   Healthy:             11 · Off (fine): 3 · Couldn't check: 0
+   Healthy:             N · Off (fine): M · Couldn't check: U
 ```
 
-If everything is healthy: one line — "Everything checks out. 14 checks passed, 3 features
-off by choice." No ceremony.
+Here `N`, `M`, and `U` come directly from `summary.ok`, `summary.off`, and
+`summary.unknown` in the collector JSON. If everything is healthy: one line — "Everything
+checks out. N checks healthy, M features off by choice." No ceremony.
 
 ### Step 6: Track usage (silent)
 

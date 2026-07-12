@@ -84,6 +84,11 @@ def _decode_tool_result(result):
     return json.loads(result[0].text)
 
 
+CAREER_TRACKING_OFF_MESSAGE = (
+    "Career tracking isn't set up yet — run /career-setup when you want it."
+)
+
+
 def test_granola_without_api_key_reports_off_and_preserves_legacy_keys(monkeypatch):
     monkeypatch.setattr(granola_server, "get_api_key", lambda: None)
 
@@ -156,49 +161,74 @@ def test_reminders_failures_report_broken_and_preserve_error(
     assert payload["error"] == payload["user_message"]
 
 
-def test_missing_career_folder_reports_off_and_preserves_setup_guidance(
+@pytest.mark.parametrize(
+    ("tool_name", "evidence_exists", "expected_feature", "expected_note"),
+    [
+        pytest.param(
+            "scan_evidence",
+            False,
+            "Career evidence",
+            "Run /career-setup to initialize your career system",
+            id="scan-evidence",
+        ),
+        pytest.param(
+            "parse_ladder",
+            False,
+            "Career ladder",
+            "Run /career-setup to create your career ladder",
+            id="parse-ladder",
+        ),
+        pytest.param(
+            "analyze_coverage",
+            False,
+            "Career evidence",
+            "Run /career-setup to initialize your career system",
+            id="analyze-coverage-without-evidence",
+        ),
+        pytest.param(
+            "analyze_coverage",
+            True,
+            "Career ladder",
+            "Run /career-setup to create your career ladder",
+            id="analyze-coverage-without-ladder",
+        ),
+        pytest.param(
+            "timeline_analysis",
+            False,
+            "Career evidence",
+            "Run /career-setup to initialize your career system",
+            id="timeline-analysis",
+        ),
+    ],
+)
+def test_missing_optional_career_files_report_calm_off_state(
     monkeypatch,
     tmp_path,
+    tool_name,
+    evidence_exists,
+    expected_feature,
+    expected_note,
 ):
     career_dir = tmp_path / "vault" / "05-Areas" / "Career"
     evidence_dir = career_dir / "Evidence"
+    ladder_file = career_dir / "Career_Ladder.md"
+    if evidence_exists:
+        evidence_dir.mkdir(parents=True)
     monkeypatch.setattr(career_server, "CAREER_DIR", career_dir)
-    monkeypatch.setattr(career_server, "EVIDENCE_DIR", evidence_dir)
-    monkeypatch.setattr(career_server, "LADDER_FILE", career_dir / "Career_Ladder.md")
-
-    payload = _decode_tool_result(
-        asyncio.run(career_server.handle_call_tool("scan_evidence", {}))
-    )
-
-    assert payload["feature"] == "Career evidence"
-    assert payload["feature_status"] == "off"
-    assert payload["user_message"] == payload["error"]
-    assert payload["success"] is False
-    assert payload["error"] == f"Evidence directory not found: {evidence_dir}"
-    assert payload["note"] == "Run /career-setup to initialize your career system"
-    assert not career_dir.exists()
-
-
-def test_missing_career_ladder_reports_off_and_preserves_setup_guidance(
-    monkeypatch,
-    tmp_path,
-):
-    evidence_dir = tmp_path / "Career" / "Evidence"
-    evidence_dir.mkdir(parents=True)
-    ladder_file = tmp_path / "Career" / "Career_Ladder.md"
     monkeypatch.setattr(career_server, "EVIDENCE_DIR", evidence_dir)
     monkeypatch.setattr(career_server, "LADDER_FILE", ladder_file)
 
     payload = _decode_tool_result(
-        asyncio.run(career_server.handle_call_tool("analyze_coverage", {}))
+        asyncio.run(career_server.handle_call_tool(tool_name, {}))
     )
 
-    assert payload["feature"] == "Career ladder"
+    assert payload["feature"] == expected_feature
     assert payload["feature_status"] == "off"
-    assert payload["user_message"] == payload["error"]
+    assert payload["user_message"] == CAREER_TRACKING_OFF_MESSAGE
     assert payload["success"] is False
-    assert payload["error"] == "Career ladder file not found"
-    assert payload["note"] == "Run /career-setup to create your career ladder"
+    assert "error" not in payload
+    assert str(career_dir) not in json.dumps(payload)
+    assert payload["note"] == expected_note
 
 
 def test_existing_unreadable_career_ladder_reports_broken(monkeypatch, tmp_path):
@@ -244,7 +274,7 @@ def test_career_ladder_without_competencies_reports_broken(monkeypatch, tmp_path
     assert payload["ladder_data"] == ladder_data
 
 
-def test_resume_missing_career_evidence_reports_off_and_preserves_keys(
+def test_resume_missing_career_evidence_reports_calm_off_state(
     monkeypatch,
     tmp_path,
 ):
@@ -277,9 +307,10 @@ def test_resume_missing_career_evidence_reports_off_and_preserves_keys(
 
     assert payload["feature"] == "Career evidence"
     assert payload["feature_status"] == "off"
-    assert payload["user_message"] == payload["error"]
+    assert payload["user_message"] == CAREER_TRACKING_OFF_MESSAGE
     assert payload["success"] is False
-    assert payload["error"] == "Career Evidence directory not found"
+    assert "error" not in payload
+    assert str(tmp_path) not in json.dumps(payload)
     assert payload["note"] == "Run /career-setup to initialize career system"
 
 

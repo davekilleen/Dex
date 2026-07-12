@@ -93,6 +93,9 @@ from core.utils.feature_status import feature_status
 LADDER_FILE = CAREER_DIR / 'Career_Ladder.md'
 CAREER_EVIDENCE_FEATURE = "Career evidence"
 CAREER_LADDER_FEATURE = "Career ladder"
+CAREER_TRACKING_OFF_MESSAGE = (
+    "Career tracking isn't set up yet — run /career-setup when you want it."
+)
 
 # Initialize the MCP server
 app = Server("dex-career-mcp")
@@ -362,12 +365,10 @@ async def handle_scan_evidence(arguments: dict) -> list[types.TextContent]:
     """Scan and aggregate evidence files"""
     
     if not EVIDENCE_DIR.exists():
-        error = f"Evidence directory not found: {EVIDENCE_DIR}"
         return _feature_response(
             CAREER_EVIDENCE_FEATURE,
             "off",
-            error,
-            error=error,
+            CAREER_TRACKING_OFF_MESSAGE,
             note="Run /career-setup to initialize your career system",
         )
     
@@ -440,12 +441,10 @@ async def handle_parse_ladder(arguments: dict) -> list[types.TextContent]:
     """Parse career ladder file"""
     
     if not LADDER_FILE.exists():
-        error = f"Career ladder file not found: {LADDER_FILE}"
         return _feature_response(
             CAREER_LADDER_FEATURE,
             "off",
-            error,
-            error=error,
+            CAREER_TRACKING_OFF_MESSAGE,
             note="Run /career-setup to create your career ladder",
         )
     
@@ -474,22 +473,18 @@ async def handle_analyze_coverage(arguments: dict) -> list[types.TextContent]:
     
     # Check prerequisites
     if not EVIDENCE_DIR.exists():
-        error = "Evidence directory not found"
         return _feature_response(
             CAREER_EVIDENCE_FEATURE,
             "off",
-            error,
-            error=error,
+            CAREER_TRACKING_OFF_MESSAGE,
             note="Run /career-setup to initialize your career system",
         )
     
     if not LADDER_FILE.exists():
-        error = "Career ladder file not found"
         return _feature_response(
             CAREER_LADDER_FEATURE,
             "off",
-            error,
-            error=error,
+            CAREER_TRACKING_OFF_MESSAGE,
             note="Run /career-setup to create your career ladder",
         )
     
@@ -573,12 +568,10 @@ async def handle_timeline_analysis(arguments: dict) -> list[types.TextContent]:
     """Analyze evidence timeline and trends"""
     
     if not EVIDENCE_DIR.exists():
-        error = "Evidence directory not found"
         return _feature_response(
             CAREER_EVIDENCE_FEATURE,
             "off",
-            error,
-            error=error,
+            CAREER_TRACKING_OFF_MESSAGE,
             note="Run /career-setup to initialize your career system",
         )
     

@@ -7,6 +7,22 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.41.0] - Your checkup now tells the truth on a brand-new Dex (2026-07-12)
+
+A fresh install could mistake other Dex products or optional features for failures, miss one of its own services, and inherit integration choices that belonged to the release builder.
+
+**What this fixes for you:**
+
+* **Other Dex products stay out of your checkup.** Background jobs belonging to a different Dex installation are skipped in one quiet note instead of being reported as broken against the wrong vault.
+* **Calendar access tells you exactly what is missing.** Write-only access is now explained as insufficient for reading your calendar, with the right guidance to grant full access; unfamiliar permission states include the value Dex actually received.
+* **Every built-in service is checked.** The session-memory service is included on fresh installs, and an automatic consistency check prevents future services from being registered without being checked.
+* **Checkup totals add up.** Status summaries now use the numbers from the checkup that just ran instead of copying contradictory example totals.
+* **Career features stay quietly optional.** If career tracking is not set up, Dex offers the setup command calmly without an error, a missing-file warning, or a private path from your Mac.
+* **New installs start genuinely clean.** Slack and every related meeting or planning hook begin off, so a new vault no longer inherits someone else's connected-tool state or gets noisy connection warnings.
+
+---
+
+## [1.37.0] - Your people and company pages now build themselves (2026-07-12)
 
 ## [1.40.0] - Granola setup now tells you the truth (2026-07-12)
 

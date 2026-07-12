@@ -9,13 +9,35 @@ actually live at ``<vault>/core/mcp``. These tests pin the corrected path so the
 """
 
 import json
+from pathlib import Path
 
 from core.utils import preflight
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
 def _known_server():
     """Return any registered core server name and its module filename."""
     return next(iter(preflight.SERVER_MODULES.items()))
+
+
+def test_server_modules_match_registered_core_servers():
+    """Every bundled core server in the install template is preflighted."""
+    config = json.loads((REPO_ROOT / "System" / ".mcp.json.example").read_text())
+    registered_core_modules = {}
+
+    for server_name, server_config in config["mcpServers"].items():
+        module_args = [
+            Path(arg).name
+            for arg in server_config.get("args", [])
+            if isinstance(arg, str) and "/core/mcp/" in arg and arg.endswith(".py")
+        ]
+        if not module_args:
+            continue
+        assert len(module_args) == 1, f"{server_name} must register exactly one core server module"
+        registered_core_modules[server_name] = module_args[0]
+
+    assert preflight.SERVER_MODULES == registered_core_modules
 
 
 def test_check_server_finds_module_under_core_mcp(tmp_path, monkeypatch):

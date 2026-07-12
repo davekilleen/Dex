@@ -133,6 +133,16 @@ JOB_FRESHNESS = {
     ),
 }
 
+# Ownership includes every launch agent this repo can install; only some emit freshness logs.
+SHIPPED_LAUNCH_AGENT_LABELS = frozenset(
+    {
+        "com.dex.changelog-checker",
+        "com.dex.learning-review",
+        "com.dex.meeting-intel",
+        "com.dex.obsidian-sync",
+    }
+)
+
 
 QUICK_CHECKS = (
     CheckDefinition("vault.structure", "Vault structure", "_probe_vault_structure"),
@@ -773,6 +783,39 @@ def _plist_strings(value: object) -> Iterator[str]:
             yield from _plist_strings(child)
 
 
+def _plist_owned_by_vault(plist: Path, data: dict[str, Any], context: DoctorContext) -> bool:
+    label = str(data.get("Label") or plist.stem)
+    if label in SHIPPED_LAUNCH_AGENT_LABELS:
+        return True
+    arguments = data.get("ProgramArguments")
+    if not isinstance(arguments, list):
+        return False
+    vault_root = context.vault_root.resolve()
+    for argument in arguments:
+        if not isinstance(argument, str):
+            continue
+        candidate = Path(argument).expanduser()
+        if not candidate.is_absolute():
+            continue
+        try:
+            resolved = candidate.resolve()
+        except OSError:
+            continue
+        if resolved.is_relative_to(vault_root):
+            return True
+    return False
+
+
+def _with_skipped_launch_agents(detail: str, skipped_count: int) -> str:
+    if not skipped_count:
+        return detail
+    if skipped_count == 1:
+        note = "1 Dex launch agent from another Dex product was skipped"
+    else:
+        note = f"{skipped_count} Dex launch agents from other Dex products were skipped"
+    return f"{detail}; {note}"
+
+
 def _plist_configuration_issue(plist: Path, data: dict[str, Any], context: DoctorContext) -> str | None:
     arguments = data.get("ProgramArguments")
     if not isinstance(arguments, list) or not arguments or not isinstance(arguments[0], str):
@@ -866,11 +909,18 @@ def _probe_jobs_loaded(context: DoctorContext) -> ProbeResult:
     issues: list[tuple[int, str]] = []
     unknowns = []
     runtime_labels = []
+    skipped_count = 0
     for plist in plists:
         try:
             data = _plist_data(plist)
         except RuntimeError as error:
-            issues.append((2, _one_line(error)))
+            if plist.stem in SHIPPED_LAUNCH_AGENT_LABELS:
+                issues.append((2, _one_line(error)))
+            else:
+                skipped_count += 1
+            continue
+        if not _plist_owned_by_vault(plist, data, context):
+            skipped_count += 1
             continue
         label = str(data.get("Label") or plist.stem)
         configuration_issue = _plist_configuration_issue(plist, data, context)
@@ -907,6 +957,12 @@ def _probe_jobs_loaded(context: DoctorContext) -> ProbeResult:
                     unknowns.append(f"{label} is loaded but has no observable LastExitStatus")
                 elif status["last_exit_status"] != 0:
                     issues.append((2, f"{label} last exited with status {status['last_exit_status']}"))
+    owned_count = len(plists) - skipped_count
+    if not owned_count:
+        return ProbeResult(
+            "OFF",
+            _with_skipped_launch_agents("No launch agents for this vault are installed", skipped_count),
+        )
     if issues:
         tier = max(issue_tier for issue_tier, _detail in issues)
         action_parts = []
@@ -918,12 +974,21 @@ def _probe_jobs_loaded(context: DoctorContext) -> ProbeResult:
         detail_parts.extend(unknowns)
         return ProbeResult(
             "BROKEN",
-            "; ".join(detail_parts),
+            _with_skipped_launch_agents("; ".join(detail_parts), skipped_count),
             Heal(tier=tier, action="; then ".join(action_parts) + ".", applied=False),
         )
     if unknowns:
-        return ProbeResult("UNKNOWN", "; ".join(unknowns))
-    return ProbeResult("OK", f"All {len(plists)} installed launch agents are loaded with valid interpreters")
+        return ProbeResult(
+            "UNKNOWN",
+            _with_skipped_launch_agents("; ".join(unknowns), skipped_count),
+        )
+    return ProbeResult(
+        "OK",
+        _with_skipped_launch_agents(
+            f"All {owned_count} installed launch agents for this vault are loaded with valid interpreters",
+            skipped_count,
+        ),
+    )
 
 
 def _probe_jobs_fresh(context: DoctorContext) -> ProbeResult:
@@ -1170,7 +1235,13 @@ def _calendar_permission_status(_context: DoctorContext) -> str:
         status = int(result.stdout.strip())
     except ValueError as error:
         raise RuntimeError(f"EventKit returned an invalid authorization status: {combined}") from error
-    return {0: "not_determined", 1: "restricted", 2: "denied", 3: "authorized"}.get(status, "unknown")
+    return {
+        0: "not_determined",
+        1: "restricted",
+        2: "denied",
+        3: "authorized",
+        4: "write_only",
+    }.get(status, f"unknown ({status})")
 
 
 def _calendar_list_result(context: DoctorContext) -> dict[str, Any]:
@@ -1202,6 +1273,16 @@ def _probe_calendar_access(context: DoctorContext) -> ProbeResult:
         return ProbeResult("UNKNOWN", "EventKit calendar access can only be checked on macOS")
     if status == "not_determined" and not configured:
         return ProbeResult("OFF", "Calendar access has never been requested and no work calendar is configured")
+    if status == "write_only":
+        return ProbeResult(
+            "BROKEN",
+            "Calendar permission is write only; Dex needs full calendar access to read calendars",
+            Heal(
+                tier=3,
+                action="Grant Full Calendar Access in System Settings > Privacy & Security > Calendars.",
+                applied=False,
+            ),
+        )
     if status in {"not_determined", "restricted", "denied"}:
         return ProbeResult(
             "BROKEN",

@@ -110,6 +110,10 @@ from core.paths import (
 )
 from core.utils.feature_status import feature_status
 
+CAREER_TRACKING_OFF_MESSAGE = (
+    "Career tracking isn't set up yet — run /career-setup when you want it."
+)
+
 # Ensure directories exist
 SESSIONS_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -821,15 +825,13 @@ async def handle_pull_career_evidence(arguments: dict) -> list[types.TextContent
     
     # Check if Career Evidence exists
     if not EVIDENCE_DIR.exists():
-        error = "Career Evidence directory not found"
         return [types.TextContent(
             type="text",
             text=json.dumps(
                 feature_status(
                     "Career evidence",
                     "off",
-                    error,
-                    error=error,
+                    CAREER_TRACKING_OFF_MESSAGE,
                     note="Run /career-setup to initialize career system",
                 ),
                 indent=2,

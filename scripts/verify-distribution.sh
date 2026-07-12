@@ -144,7 +144,80 @@ else
     echo "  ✅ All $MCP_COUNT MCP server files match the template exactly"
 fi
 
-# Check 10: Personal paths in .mcp.json (if exists)
+# Check 10: Tracked integration templates must not enable personal integrations
+echo ""
+echo "✓ Checking integration templates contain no personal enabled state..."
+INTEGRATION_STATE_VIOLATIONS=$(python3 - <<'PY'
+import re
+import subprocess
+from pathlib import Path
+
+tracked = subprocess.run(
+    ["git", "ls-files", "--", "System/integrations/*.yaml"],
+    check=True,
+    capture_output=True,
+    text=True,
+).stdout.splitlines()
+
+for filename in tracked:
+    enabled_block_indent = None
+    hooks_block_indent = None
+    for line_number, raw_line in enumerate(
+        Path(filename).read_text(encoding="utf-8").splitlines(), start=1
+    ):
+        content = raw_line.split("#", 1)[0].rstrip()
+        if not content.strip() or ":" not in content:
+            continue
+
+        indent = len(content) - len(content.lstrip())
+        key, value = content.lstrip().split(":", 1)
+        key = key.strip()
+        value = value.strip()
+
+        if enabled_block_indent is not None and indent <= enabled_block_indent:
+            enabled_block_indent = None
+        if hooks_block_indent is not None and indent <= hooks_block_indent:
+            hooks_block_indent = None
+
+        normalized = value.strip("'\"").lower()
+        is_true = normalized == "true"
+        inline_true = bool(re.search(r"(?i)(?<![A-Za-z0-9_])true(?![A-Za-z0-9_])", value))
+        enabled_true = bool(
+            re.search(
+                r"(?i)(?:^|[,{\s])['\"]?enabled['\"]?\s*:\s*true(?![A-Za-z0-9_])",
+                content,
+            )
+        )
+        violation = enabled_true or (
+            is_true
+            and (
+                key == "enabled"
+                or enabled_block_indent is not None
+                or hooks_block_indent is not None
+            )
+        )
+        if key in {"enabled", "hooks"} and value and inline_true:
+            violation = True
+
+        if violation:
+            print(f"{filename}:{line_number}:{raw_line}")
+
+        if not value and key == "enabled":
+            enabled_block_indent = indent
+        if not value and key == "hooks":
+            hooks_block_indent = indent
+PY
+)
+if [ -n "$INTEGRATION_STATE_VIOLATIONS" ]; then
+    echo "  ❌ ERROR: Tracked integration templates contain enabled integrations or hooks:"
+    echo "$INTEGRATION_STATE_VIOLATIONS" | sed 's/^/     /'
+    echo "     Keep shipped templates off; /integrate-mcp populates each user's local state."
+    ERRORS=$((ERRORS + 1))
+else
+    echo "  ✅ Tracked integration templates are safely disabled"
+fi
+
+# Check 11: Personal paths in .mcp.json (if exists)
 if [ -f ".mcp.json" ]; then
     echo ""
     echo "✓ Checking local .mcp.json doesn't contain personal paths..."
@@ -153,7 +226,7 @@ if [ -f ".mcp.json" ]; then
     fi
 fi
 
-# Check 11: No hardcoded /Users/ paths in tracked code files
+# Check 12: No hardcoded /Users/ paths in tracked code files
 echo ""
 echo "✓ Checking for hardcoded /Users/ paths in code..."
 HARDCODED_PATHS=$(git ls-files -- '*.py' '*.ts' '*.cjs' '*.sh' | \
@@ -170,7 +243,7 @@ else
     echo "  ✅ No hardcoded /Users/ paths in code"
 fi
 
-# Check 12: package.json version matches CHANGELOG latest
+# Check 13: package.json version matches CHANGELOG latest
 echo ""
 echo "✓ Checking package.json version matches CHANGELOG..."
 PKG_VERSION=$(grep '"version"' package.json | head -1 | sed 's/.*"version": *"\([^"]*\)".*/\1/')
@@ -182,7 +255,7 @@ else
     echo "  ✅ Versions match: $PKG_VERSION"
 fi
 
-# Check 13: All MCP servers in .mcp.json.example exist as files
+# Check 14: All MCP servers in .mcp.json.example exist as files
 echo ""
 echo "✓ Checking MCP server files exist..."
 MCP_MISSING=0
@@ -203,7 +276,7 @@ else
     WARNINGS=$((WARNINGS + 1))
 fi
 
-# Check 14: No hardcoded /Users/ paths in docs/config (.md, .yaml, .json)
+# Check 15: No hardcoded /Users/ paths in docs/config (.md, .yaml, .json)
 # These ship to users and either break installs or leak personal paths.
 echo ""
 echo "✓ Checking for hardcoded /Users/ paths in docs/config..."
@@ -220,7 +293,7 @@ else
     echo "  ✅ No hardcoded /Users/ paths in docs/config"
 fi
 
-# Check 15: Scripts that docs tell Dex to RUN must exist.
+# Check 16: Scripts that docs tell Dex to RUN must exist.
 # Catches "instruction shipped, implementation didn't" (e.g. auto-link-people.cjs).
 # Only matches runnable invocations (node/bash/sh/python <path>) of Dex-owned
 # dirs (.scripts/.claude/core) — prose mentions of a filename are ignored.
@@ -262,7 +335,7 @@ else
     echo "  ✅ All required referenced runnable scripts exist"
 fi
 
-# Check 16: A real release build contains no test suites.
+# Check 17: A real release build contains no test suites.
 echo ""
 echo "✓ Verifying release branch strips all test suites..."
 RELEASE_CHECK_DIR=$(mktemp -d)

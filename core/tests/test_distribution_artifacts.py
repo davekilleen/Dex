@@ -44,15 +44,20 @@ def test_git_archive_keeps_skill_scripts_but_strips_top_level_scripts() -> None:
     assert not any(path == "scripts" or path.startswith("scripts/") for path in members)
 
 
-def _build_release_in_clone(tmp_path: Path) -> tuple[Path, set[str]]:
-    """Build from the current checkout without ever switching its branches."""
-    clone = tmp_path / "release-build"
+def _clone_repo(tmp_path: Path, name: str) -> Path:
+    clone = tmp_path / name
     subprocess.run(
         ["git", "clone", "--local", "--no-hardlinks", "--quiet", str(REPO_ROOT), str(clone)],
         check=True,
     )
     subprocess.run(["git", "config", "user.name", "Dex Tests"], cwd=clone, check=True)
     subprocess.run(["git", "config", "user.email", "tests@example.com"], cwd=clone, check=True)
+    return clone
+
+
+def _build_release_in_clone(tmp_path: Path) -> tuple[Path, set[str]]:
+    """Build from the current checkout without ever switching its branches."""
+    clone = _clone_repo(tmp_path, "release-build")
     subprocess.run(["git", "checkout", "-B", "main", "HEAD"], cwd=clone, check=True, capture_output=True)
 
     # Let this test prove uncommitted changes while developing; once committed,
@@ -140,3 +145,68 @@ def test_release_branch_strips_dev_files_and_keeps_user_runtime(tmp_path: Path) 
     )
     assert "test:hooks" not in package_json.get("scripts", {})
     assert "test:scripts" not in package_json.get("scripts", {})
+
+
+def test_distribution_check_rejects_enabled_integration_templates(tmp_path: Path) -> None:
+    clone = _clone_repo(tmp_path, "integration-template-check")
+
+    shutil.copy2(REPO_ROOT / "scripts/verify-distribution.sh", clone / "scripts/verify-distribution.sh")
+    integrations = clone / "System/integrations"
+    (integrations / "config.yaml").write_text(
+        "enabled:\n  notion: false\nhooks:\n  meeting_prep:\n    use_notion: false\n",
+        encoding="utf-8",
+    )
+    (integrations / "enabled-fixture.yaml").write_text("enabled: true\n", encoding="utf-8")
+    (integrations / "hooks-fixture.yaml").write_text(
+        "enabled: false\nhooks:\n  meeting_prep: true\n",
+        encoding="utf-8",
+    )
+    (integrations / "flow-fixture.yaml").write_text(
+        "slack: {enabled: true}\n",
+        encoding="utf-8",
+    )
+    subprocess.run(
+        [
+            "git",
+            "rm",
+            "--quiet",
+            "--",
+            "System/integrations/slack.yaml",
+            "System/integrations/.sync-state.json",
+        ],
+        cwd=clone,
+        check=True,
+    )
+    subprocess.run(
+        [
+            "git",
+            "add",
+            "-f",
+            "--",
+            "scripts/verify-distribution.sh",
+            "System/integrations/config.yaml",
+            "System/integrations/enabled-fixture.yaml",
+            "System/integrations/flow-fixture.yaml",
+            "System/integrations/hooks-fixture.yaml",
+        ],
+        cwd=clone,
+        check=True,
+    )
+    subprocess.run(
+        ["git", "commit", "--quiet", "-m", "test: add unsafe integration templates"],
+        cwd=clone,
+        check=True,
+    )
+
+    result = subprocess.run(
+        ["bash", "scripts/verify-distribution.sh"],
+        cwd=clone,
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+
+    assert result.returncode == 1
+    assert "enabled-fixture.yaml:1:enabled: true" in result.stdout
+    assert "flow-fixture.yaml:1:slack: {enabled: true}" in result.stdout
+    assert "hooks-fixture.yaml:3:  meeting_prep: true" in result.stdout

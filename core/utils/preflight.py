@@ -55,6 +55,7 @@ SERVER_MODULES = {
     "dex-analytics": "analytics_server.py",
     "onboarding-mcp": "onboarding_server.py",
     "resume-mcp": "resume_server.py",
+    "session-memory": "session_memory_server.py",
     "update-checker": "update_checker.py",
 }
 

@@ -50,6 +50,25 @@ def context(tmp_path):
     return doctor.DoctorContext(vault_root=vault, repo_root=vault, home=home, now=NOW)
 
 
+@pytest.fixture
+def foreign_launch_agents(context):
+    agents = context.home / "Library" / "LaunchAgents"
+    agents.mkdir(parents=True, exist_ok=True)
+    definitions = {
+        "com.dex.research-scan": ".scripts/research-scan.py",
+        "com.dex.other-product": str(
+            context.home.parent / "other-dex-vault" / ".scripts" / "other-product.py"
+        ),
+    }
+    plists = []
+    for label, script in definitions.items():
+        plist = agents / f"{label}.plist"
+        with plist.open("wb") as handle:
+            plistlib.dump({"Label": label, "ProgramArguments": ["/bin/bash", script]}, handle)
+        plists.append(plist)
+    return plists
+
+
 def _check(report, check_id):
     return next(check for check in report["checks"] if check["id"] == check_id)
 
@@ -699,6 +718,53 @@ def test_jobs_loaded_distinguishes_not_installed_from_unloaded(monkeypatch, cont
     assert result.heal.tier == 2
 
 
+def test_jobs_loaded_skips_foreign_product_plists(monkeypatch, context, foreign_launch_agents):
+    monkeypatch.setattr(doctor, "_is_macos", lambda: True)
+
+    result = doctor._probe_jobs_loaded(context)
+
+    assert result.verdict == "OFF"
+    assert result.detail == (
+        "No launch agents for this vault are installed; "
+        "2 Dex launch agents from other Dex products were skipped"
+    )
+    assert "research-scan.py" not in result.detail
+
+
+def test_jobs_loaded_owns_unshipped_label_with_program_path_inside_vault(monkeypatch, context):
+    plist = _write_plist(context, "com.dex.local-job")
+    missing_script = context.vault_root / ".scripts" / "local-job.py"
+    with plist.open("wb") as handle:
+        plistlib.dump(
+            {"Label": "com.dex.local-job", "ProgramArguments": ["/bin/bash", str(missing_script)]},
+            handle,
+        )
+    monkeypatch.setattr(doctor, "_is_macos", lambda: True)
+
+    result = doctor._probe_jobs_loaded(context)
+
+    assert result.verdict == "BROKEN"
+    assert str(missing_script) in result.detail
+
+
+def test_jobs_loaded_owns_repo_shipped_obsidian_agent(monkeypatch, context):
+    plist = _write_plist(context, "com.dex.obsidian-sync")
+    with plist.open("wb") as handle:
+        plistlib.dump(
+            {
+                "Label": "com.dex.obsidian-sync",
+                "ProgramArguments": ["/bin/bash", "core/obsidian/missing-sync-daemon.py"],
+            },
+            handle,
+        )
+    monkeypatch.setattr(doctor, "_is_macos", lambda: True)
+
+    result = doctor._probe_jobs_loaded(context)
+
+    assert result.verdict == "BROKEN"
+    assert "com.dex.obsidian-sync" in result.detail
+
+
 def test_jobs_loaded_checks_interpreter_exit_status_and_healthy_state(monkeypatch, context):
     _write_plist(context, "com.dex.meeting-intel")
     monkeypatch.setattr(doctor, "_is_macos", lambda: True)
@@ -1074,6 +1140,8 @@ def test_calendar_permission_adapter_preserves_eventkit_status(monkeypatch, cont
         ("1\n", "restricted"),
         ("2\n", "denied"),
         ("3\n", "authorized"),
+        ("4\n", "write_only"),
+        ("7\n", "unknown (7)"),
     ):
         monkeypatch.setattr(
             doctor.subprocess,
@@ -1086,6 +1154,42 @@ def test_calendar_permission_adapter_preserves_eventkit_status(monkeypatch, cont
             ),
         )
         assert doctor._calendar_permission_status(context) == expected
+
+
+def test_calendar_write_only_requires_full_access_and_unknown_preserves_raw_status(
+    monkeypatch,
+    context,
+):
+    _write_valid_configs(context, calendar="Team Calendar")
+    monkeypatch.setattr(doctor, "_is_macos", lambda: True)
+    monkeypatch.setattr(
+        doctor,
+        "_calendar_list_result",
+        lambda _context: pytest.fail("non-readable permission states must not query calendars"),
+    )
+
+    def eventkit_status(raw_status):
+        monkeypatch.setattr(
+            doctor.subprocess,
+            "run",
+            lambda command, **_kwargs: subprocess.CompletedProcess(
+                command,
+                0,
+                stdout=f"{raw_status}\n",
+                stderr="",
+            ),
+        )
+
+    eventkit_status(4)
+    write_only = doctor._probe_calendar_access(context)
+    assert write_only.verdict == "BROKEN"
+    assert "write only" in write_only.detail.lower()
+    assert "full calendar access" in write_only.heal.action.lower()
+
+    eventkit_status(7)
+    unknown = doctor._probe_calendar_access(context)
+    assert unknown.verdict == "UNKNOWN"
+    assert "7" in unknown.detail
 
 
 def test_calendar_list_adapter_calls_the_real_mcp_helper(monkeypatch, context):
