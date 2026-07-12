@@ -68,11 +68,12 @@ def main() -> int:
         print(f"Total coverage {total:.2f}% is below required {min_total:.2f}%.", file=sys.stderr)
         return 1
 
-    fetch_cmd = ["git", "fetch", "origin", base_ref]
-    if os.environ.get("GITHUB_ACTIONS"):
-        fetch_cmd.append("--depth=1")
+    # Plain fetch, never --depth=1: the base ref must carry enough ancestry for
+    # the git merge-base below. A --depth=1 fetch grafts the ref with no parents,
+    # so merge-base fails with "no common ancestor". CI checks out at
+    # fetch-depth:0, so a full fetch of one ref is cheap.
     try:
-        run(fetch_cmd)
+        run(["git", "fetch", "origin", base_ref])
     except subprocess.CalledProcessError:
         pass
 

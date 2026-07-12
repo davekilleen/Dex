@@ -7,6 +7,17 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.47.0] - Release checks stop failing themselves on a technicality (2026-07-12)
+
+The automated checks that run on every proposed change could fail with a confusing "cannot find a common ancestor" error that had nothing to do with the change itself — a self-inflicted glitch in how the checks fetched the project's main line.
+
+**What this fixes for you:**
+
+* **Contributor and update checks stop flaking.** The checks now fetch the main line in full instead of a truncated snapshot, so they can always compare your change against it. The earlier partial-fetch was the actual cause of the spurious "no common ancestor" failures — not, as first suspected, anything rewriting the project history.
+* **A guard keeps it from coming back.** A new test fails the build if any check reintroduces the truncated fetch.
+
+---
+
 ## [1.46.0] - Hardening two recent fixes (2026-07-12)
 
 An independent review of this week's safety fixes caught two cases where a fix didn't fully deliver what it promised. Both are now closed.
