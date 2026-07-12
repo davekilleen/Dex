@@ -2,11 +2,12 @@
 set -euo pipefail
 
 BASE_REF="${GITHUB_BASE_REF:-main}"
-if [ -n "${GITHUB_ACTIONS:-}" ]; then
-  git fetch origin "$BASE_REF" --depth=1 >/dev/null 2>&1 || true
-else
-  git fetch origin "$BASE_REF" >/dev/null 2>&1 || true
-fi
+# Plain fetch, never --depth=1: the base ref must carry enough ancestry for the
+# `git merge-base` below. A --depth=1 fetch grafts the ref with no parents, so
+# merge-base can't find the common ancestor and this gate fails with the exact
+# "no common ancestor" error it prints. CI checks out at fetch-depth:0, so a
+# full fetch of one ref is cheap.
+git fetch origin "$BASE_REF" >/dev/null 2>&1 || true
 if ! MERGE_BASE="$(git merge-base HEAD "origin/$BASE_REF")"; then
   echo "❌ check-doc-drift.sh: cannot find a common ancestor between HEAD and origin/$BASE_REF. Your local history may be shallow — run: git fetch --unshallow origin — then retry." >&2
   exit 1
