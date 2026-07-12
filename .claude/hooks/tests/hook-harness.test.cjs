@@ -105,3 +105,55 @@ test('safety guard uses its documented exit 2 contract for blocked commands', (t
   assert.equal(result.status, 2);
   assert.match(result.stdout, /Blocked/);
 });
+
+test('meeting cache builder reads dated folders and skips queue', (t) => {
+  const sandbox = createSandbox(t);
+  const day = new Date().toISOString().slice(0, 10);
+  const meetingsDir = path.join(sandbox.vault, '00-Inbox', 'Meetings');
+  const datedDir = path.join(meetingsDir, day);
+  const queueDir = path.join(datedDir, 'queue');
+  fs.mkdirSync(datedDir, { recursive: true });
+  fs.mkdirSync(queueDir, { recursive: true });
+  fs.writeFileSync(
+    path.join(datedDir, 'customer-sync.md'),
+    [
+      '---',
+      `date: ${day}`,
+      'participants: [Jane Doe]',
+      '---',
+      '# Nested Customer Sync',
+      '',
+      '## Action Items',
+      '',
+      '- [x] Close old loop ^task-20260711-061 ✅ 2026-07-10 08:30',
+      '- [x] Close new loop ✅ 2026-07-10 08:30 ^task-20260711-062',
+      '',
+    ].join('\n'),
+  );
+  fs.writeFileSync(
+    path.join(queueDir, 'must-not-cache.md'),
+    `---\ndate: ${day}\n---\n# Must Not Cache\n`,
+  );
+
+  const hookPath = path.join(HOOKS_DIR, 'meeting-cache-builder.cjs');
+  const result = spawnSync(process.execPath, [hookPath, '--rebuild'], {
+    cwd: sandbox.vault,
+    encoding: 'utf-8',
+    env: minimalEnv(sandbox),
+    timeout: 10_000,
+  });
+
+  assert.equal(
+    result.status,
+    0,
+    `meeting-cache-builder.cjs exited ${result.status}\nstdout:\n${result.stdout}\nstderr:\n${result.stderr}`,
+  );
+  const cachePath = path.join(sandbox.vault, 'System', 'Memory', 'meeting-cache.json');
+  const cache = JSON.parse(fs.readFileSync(cachePath, 'utf-8'));
+  assert.deepEqual(cache.meetings.map((meeting) => meeting.title), ['Nested Customer Sync']);
+  assert.equal(
+    cache.meetings[0].source_file,
+    path.join('00-Inbox', 'Meetings', day, 'customer-sync.md'),
+  );
+  assert.deepEqual(cache.meetings[0].action_items, ['Close old loop', 'Close new loop']);
+});

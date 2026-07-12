@@ -248,7 +248,7 @@ def test_golden_task_lifecycle_propagates_and_rolls_up(fixture_vault: Path, tmp_
         line for line in journey["tasks_after_complete"].splitlines() if f"^{task_id}" in line
     )
     assert completed_line.startswith("- [x]")
-    assert completed_line.index(updated["completed_at"]) > completed_line.index(f"^{task_id}")
+    assert completed_line.index(updated["completed_at"]) < completed_line.index(f"^{task_id}")
     assert f"| ✅ | {title} | P2 |" in journey["person_after_complete"]
 
     initial_active = journey["initial_summary"]["daily_summary"]["total_tasks"]

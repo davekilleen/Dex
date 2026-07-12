@@ -8,7 +8,7 @@
  * Usage: node meeting-cache-builder.cjs [--rebuild]
  *   --rebuild: Reprocess all meetings (not just recent ones)
  *
- * Reads: 00-Inbox/Meetings/*.md
+ * Reads: Markdown files recursively under 00-Inbox/Meetings/ (excluding queue/ subtrees)
  * Writes: System/Memory/meeting-cache.json
  */
 
@@ -101,8 +101,9 @@ function extractSection(content, heading) {
       let item = trimmed.slice(2).trim();
       // Strip checkbox markers: [ ] or [x]
       item = item.replace(/^\[[ x]\]\s*/, "");
-      // Strip task IDs: ^task-XXXXXXXX-XXX
-      item = item.replace(/\s*\^task-\d{8}-\d{3}\s*$/, "");
+      // Strip completion timestamps and task IDs in either stored layout.
+      item = item.replace(/\s*✅\s*\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}/, "");
+      item = item.replace(/\s*\^task-\d{8}-\d{3}\b/, "");
       // Strip WikiLink wrappers: [[path|display]] -> display
       item = item.replace(/\[\[[^\]|]*\|([^\]]*)\]\]/g, "$1");
       item = item.replace(/\[\[([^\]]*)\]\]/g, "$1");
@@ -356,6 +357,20 @@ function pruneOldEntries(cache) {
 // Main
 // ---------------------------------------------------------------------------
 
+function findMeetingFiles(directory) {
+  const files = [];
+  for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+    const entryPath = path.join(directory, entry.name);
+    if (entry.isDirectory()) {
+      if (entry.name === "queue") continue;
+      files.push(...findMeetingFiles(entryPath));
+    } else if (entry.isFile() && entry.name.endsWith(".md") && entry.name !== "README.md") {
+      files.push(entryPath);
+    }
+  }
+  return files;
+}
+
 function main() {
   // Guard: meetings directory must exist
   if (!fs.existsSync(MEETINGS_DIR)) {
@@ -363,10 +378,8 @@ function main() {
     process.exit(0);
   }
 
-  // List meeting markdown files (skip README)
-  const files = fs.readdirSync(MEETINGS_DIR).filter((f) => {
-    return f.endsWith(".md") && f !== "README.md";
-  });
+  // List meeting markdown files recursively (skip README and queue subtrees).
+  const files = findMeetingFiles(MEETINGS_DIR);
 
   if (files.length === 0) {
     process.stderr.write("[meeting-cache] No meeting files found\n");
@@ -388,8 +401,8 @@ function main() {
   let processed = 0;
   let skipped = 0;
 
-  for (const fileName of files) {
-    const filePath = path.join(MEETINGS_DIR, fileName);
+  for (const filePath of files) {
+    const fileName = path.basename(filePath);
     const relativePath = path.relative(VAULT_ROOT, filePath);
 
     // Get file modification time
