@@ -561,7 +561,7 @@ Generate a structured analysis in this exact markdown format:
 ## Action Items
 
 ### For Me
-- [ ] [Specific task] - by [timeframe if mentioned] ^task-${new Date().toISOString().split('T')[0].replace(/-/g, '')}-${generateTaskId()}
+- [ ] [Specific task] - by [timeframe if mentioned]
 
 ### For Others
 - [ ] @[Person]: [Specific task]
@@ -626,14 +626,6 @@ function buildMeetingContent(meeting) {
   }
 
   return content;
-}
-
-function generateTaskId() {
-  const now = new Date();
-  const ms = now.getMilliseconds();
-  const seconds = now.getSeconds();
-  const num = ((seconds * 1000 + ms) % 999) + 1;
-  return num.toString().padStart(3, '0');
 }
 
 // ============================================================================

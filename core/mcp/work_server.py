@@ -23,6 +23,7 @@ from datetime import date, datetime, timedelta
 from difflib import SequenceMatcher
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+from urllib.parse import urlsplit
 
 try:
     import yaml
@@ -452,9 +453,15 @@ def _parse_task_metadata(child_lines: List[str], title: str) -> Dict[str, Any]:
     if due and not re.fullmatch(r'\d{4}-\d{2}-\d{2}', due):
         due = None
 
-    goal = fields.get('goal')
-    if goal and not re.fullmatch(r'Q\d+-\d{4}-goal-\d+', goal):
-        goal = None
+    goal = None
+    goal_tentative = False
+    goal_match = re.fullmatch(
+        r'(Q\d+-\d{4}-goal-\d+)(\s+\(\?\))?',
+        fields.get('goal', ''),
+    )
+    if goal_match:
+        goal = goal_match.group(1)
+        goal_tentative = bool(goal_match.group(2))
 
     return {
         'pillar': pillar,
@@ -464,6 +471,7 @@ def _parse_task_metadata(child_lines: List[str], title: str) -> Dict[str, Any]:
         'source': fields.get('source') or None,
         'project': fields.get('project') or None,
         'goal': goal,
+        'goal_tentative': goal_tentative,
     }
 
 def _task_title_from_line(line: str) -> str:
@@ -476,6 +484,101 @@ def _task_title_from_line(line: str) -> str:
     if bold_match:
         title = (bold_match.group(1) + bold_match.group(2)).strip()
     return title
+
+
+def _source_page_path(source: str) -> Optional[Path]:
+    """Resolve a vault-relative source page without allowing vault escape."""
+    supplied = Path(source)
+    if supplied.is_absolute():
+        return None
+
+    base_dir = BASE_DIR.resolve()
+    source_path = (BASE_DIR / supplied).resolve()
+    candidates = [source_path]
+    if not supplied.suffix:
+        candidates.append(source_path.with_suffix('.md'))
+
+    for candidate in candidates:
+        try:
+            candidate.relative_to(base_dir)
+        except ValueError:
+            continue
+        if candidate.is_file():
+            return candidate
+    return None
+
+
+def _line_without_task_anchor(line: str) -> str:
+    """Remove a task anchor for idempotent source-line comparison."""
+    return re.sub(r'\s+\^task-\d{8}-\d{3}\b', '', line).strip()
+
+
+def stamp_task_source_line(source: str, source_line: str,
+                           task_id: str) -> Dict[str, Any]:
+    """Append a task anchor to one exact source checkbox line, best effort."""
+    result = {'attempted': True, 'stamped': False}
+    source_path = _source_page_path(source)
+    if source_path is None:
+        return {
+            **result,
+            'reason': 'source_not_found',
+            'match_count': 0,
+        }
+
+    try:
+        content = source_path.read_text()
+        lines = content.splitlines(keepends=True)
+        target = source_line.strip()
+        exact_matches = []
+        anchored_matches = []
+
+        for index, raw_line in enumerate(lines):
+            line = raw_line.rstrip('\r\n')
+            stripped = line.strip()
+            if not re.match(r'^-\s*\[[ xX]\]', stripped):
+                continue
+            if stripped == target:
+                exact_matches.append(index)
+            elif (
+                not re.search(r'\^task-\d{8}-\d{3}\b', target)
+                and re.search(r'\^task-\d{8}-\d{3}\b', stripped)
+                and _line_without_task_anchor(stripped) == target
+            ):
+                anchored_matches.append(index)
+
+        if len(exact_matches) > 1:
+            return {
+                **result,
+                'reason': 'multiple_matches',
+                'match_count': len(exact_matches),
+            }
+        if len(exact_matches) == 1:
+            match_index = exact_matches[0]
+            matched_line = lines[match_index].rstrip('\r\n')
+            if re.search(r'\^task-\d{8}-\d{3}\b', matched_line):
+                return {**result, 'reason': 'already_anchored'}
+
+            line_ending = lines[match_index][len(matched_line):]
+            lines[match_index] = f'{matched_line} ^{task_id}{line_ending}'
+            source_path.write_text(''.join(lines))
+            return {'attempted': True, 'stamped': True}
+
+        if len(anchored_matches) == 1:
+            return {**result, 'reason': 'already_anchored'}
+        if len(anchored_matches) > 1:
+            return {
+                **result,
+                'reason': 'multiple_matches',
+                'match_count': len(anchored_matches),
+            }
+        return {
+            **result,
+            'reason': 'no_match',
+            'match_count': 0,
+        }
+    except Exception as error:
+        logger.warning("Could not stamp task source line in %s: %s", source_path, error)
+        return {**result, 'reason': 'write_failed'}
 
 def find_task_by_id(task_id: str) -> List[Dict[str, Any]]:
     """Find all instances of a task ID across all markdown files"""
@@ -503,6 +606,44 @@ def find_task_by_id(task_id: str) -> List[Dict[str, Any]]:
             continue
     
     return instances
+
+
+def reusable_source_task_id(source: str, source_line: str) -> Optional[str]:
+    """Reuse a legacy source-only anchor when it has no canonical task yet."""
+    source_path = _source_page_path(source)
+    if source_path is None:
+        return None
+    if get_tasks_file().exists() and source_path == get_tasks_file().resolve():
+        return None
+
+    try:
+        target = source_line.strip()
+        matching_lines = [
+            line.strip()
+            for line in source_path.read_text().splitlines()
+            if line.strip() == target
+            and re.match(r'^-\s*\[[ xX]\]', line.strip())
+        ]
+    except Exception:
+        return None
+    if len(matching_lines) != 1:
+        return None
+
+    task_id = extract_task_id(matching_lines[0])
+    if task_id is None:
+        return None
+
+    instances = find_task_by_id(task_id)
+    if len(instances) != 1:
+        return None
+    instance = instances[0]
+    try:
+        same_source = Path(instance['file']).resolve() == source_path
+    except OSError:
+        return None
+    if not same_source or instance['line_content'].strip() != target:
+        return None
+    return task_id
 
 def update_task_status_everywhere(task_id: str, completed: bool) -> Dict[str, Any]:
     """Update task status for all instances of a task ID across all files"""
@@ -589,6 +730,19 @@ def update_task_status_everywhere(task_id: str, completed: bool) -> Dict[str, An
 def get_pillar_ids() -> List[str]:
     """Get list of valid pillar IDs"""
     return list(PILLARS.keys())
+
+
+def resolve_pillar_id(value: str) -> Optional[str]:
+    """Resolve an exact pillar ID or one unique display name to its ID."""
+    if value in PILLARS:
+        return value
+    value_folded = value.strip().casefold()
+    matches = [
+        pillar_id
+        for pillar_id, pillar in PILLARS.items()
+        if str(pillar.get('name', '')).strip().casefold() == value_folded
+    ]
+    return matches[0] if len(matches) == 1 else None
 
 # ============================================================================
 # AMBIGUITY DETECTION
@@ -740,12 +894,9 @@ def find_tasks_for_page(page_path: str) -> List[Dict[str, Any]]:
 
 def update_related_tasks_section(page_path: str, tasks: List[Dict[str, Any]]) -> bool:
     """Update the Related Tasks section in a page"""
-    filepath = BASE_DIR / page_path
-    if not page_path.endswith('.md'):
-        filepath = BASE_DIR / f"{page_path}.md"
-    
-    if not filepath.exists():
-        logger.warning(f"Page not found: {filepath}")
+    filepath = _source_page_path(page_path)
+    if filepath is None:
+        logger.warning("Page is missing or outside the vault: %s", page_path)
         return False
     
     content = filepath.read_text()
@@ -1141,6 +1292,249 @@ def lookup_person_data(name: str, company: str = None) -> Dict[str, Any]:
     if ambiguous:
         result['ambiguous'] = True
     return result
+
+
+def _looks_like_page_path(value: str) -> bool:
+    """Return whether a supplied entity reference is intended as a page path."""
+    supplied = Path(value)
+    return (
+        supplied.suffix.casefold() == '.md'
+        or supplied.is_absolute()
+        or '/' in value
+        or '\\' in value
+    )
+
+
+def _existing_entity_page_path(value: str, entity_dir: Path) -> Optional[str]:
+    """Return the supplied vault-relative path when it names an entity page."""
+    supplied = Path(value)
+    if supplied.is_absolute():
+        return None
+
+    base_dir = BASE_DIR.resolve()
+    allowed_dir = entity_dir.resolve()
+    candidate = (BASE_DIR / supplied).resolve()
+    candidates = [candidate]
+    if not supplied.suffix:
+        candidates.append(candidate.with_suffix('.md'))
+
+    for page_path in candidates:
+        try:
+            page_path.relative_to(base_dir)
+            page_path.relative_to(allowed_dir)
+        except ValueError:
+            continue
+        if page_path.is_file():
+            return value
+    return None
+
+
+def _relative_entity_page_path(page_path: Path) -> str:
+    """Render an entity page as a vault-relative path when possible."""
+    try:
+        return str(page_path.resolve().relative_to(BASE_DIR.resolve()))
+    except ValueError:
+        return str(page_path)
+
+
+def _close_entity_page_matches(value: str, entity_dir: Path) -> List[str]:
+    """Return deterministic filename matches for a missing entity page."""
+    if not entity_dir.exists():
+        return []
+
+    requested = Path(value).stem.replace('_', ' ').casefold()
+    matches = []
+    for candidate in entity_dir.rglob('*.md'):
+        relative_path = _relative_entity_page_path(candidate)
+        if _existing_entity_page_path(relative_path, entity_dir) is None:
+            continue
+        candidate_name = candidate.stem.replace('_', ' ').casefold()
+        similarity = SequenceMatcher(None, requested, candidate_name).ratio()
+        if (
+            requested in candidate_name
+            or candidate_name in requested
+            or similarity >= 0.5
+        ):
+            matches.append(relative_path)
+    return sorted(set(matches))
+
+
+def _person_resolution_how(query: str, person: Dict[str, Any]) -> str:
+    """Describe which step in lookup_person_data's ladder resolved a person."""
+    query_folded = query.strip().casefold()
+    if '@' in query and query_folded in {
+        value.casefold() for value in person.get('emails', [])
+    }:
+        return 'email'
+    if query_folded in {
+        value.casefold() for value in person.get('aliases', [])
+    }:
+        return 'alias'
+    if query_folded == (person.get('name') or '').casefold():
+        return 'name'
+    if query_folded == (person.get('first_name') or '').casefold():
+        return 'first_name'
+    return 'fuzzy'
+
+
+def resolve_people_links(people: List[str]) -> Dict[str, Any]:
+    """Resolve person paths or names before a task is written."""
+    resolved_people = []
+    links = []
+    people_dir = get_people_dir()
+
+    for raw_value in people:
+        given = str(raw_value).strip()
+        if not given:
+            return {
+                'success': False,
+                'error': 'Person references cannot be empty.',
+                'candidates': [],
+            }
+
+        if _looks_like_page_path(given):
+            resolved_path = _existing_entity_page_path(given, people_dir)
+            if resolved_path is None:
+                return {
+                    'success': False,
+                    'error': f'Person page does not exist: {given}',
+                    'close_matches': _close_entity_page_matches(given, people_dir),
+                }
+            resolved_people.append(resolved_path)
+            links.append({
+                'given': given,
+                'resolved_path': resolved_path,
+                'how': 'path',
+            })
+            continue
+
+        lookup = lookup_person_data(given)
+        matches = [
+            match for match in lookup.get('matches', [])
+            if match.get('path')
+            and _existing_entity_page_path(match['path'], people_dir) is not None
+        ]
+        candidate_paths = sorted({
+            match['path'] for match in matches if match.get('path')
+        })
+        near_tied_matches = (
+            len(matches) > 1
+            and abs(matches[0].get('_score', 0) - matches[1].get('_score', 0)) <= 0.05
+        )
+        if (lookup.get('ambiguous') and len(matches) > 1) or near_tied_matches:
+            return {
+                'success': False,
+                'error': f'Ambiguous person reference: {given}',
+                'candidates': candidate_paths,
+            }
+        if not matches or not matches[0].get('path'):
+            return {
+                'success': False,
+                'error': f'No person page found for: {given}',
+                'candidates': candidate_paths,
+            }
+
+        person = matches[0]
+        resolved_path = person['path']
+        resolved_people.append(resolved_path)
+        links.append({
+            'given': given,
+            'resolved_path': resolved_path,
+            'how': _person_resolution_how(given, person),
+        })
+
+    return {
+        'success': True,
+        'resolved': resolved_people,
+        'links': links,
+    }
+
+
+def _account_domain(value: str) -> Optional[str]:
+    """Extract a hostname from URL, email-domain, or domain account inputs."""
+    supplied = value.strip()
+    if '://' in supplied:
+        return urlsplit(supplied).hostname
+    if '@' in supplied and ' ' not in supplied:
+        return supplied.rsplit('@', 1)[-1].split('/', 1)[0]
+    if re.fullmatch(
+        r'(?:www\.)?[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+(?:/[^\s]*)?',
+        supplied,
+    ):
+        return supplied.split('/', 1)[0]
+    return None
+
+
+def resolve_account_link(account: str) -> Dict[str, Any]:
+    """Resolve an account path, company name, URL, or domain to a company page."""
+    given = account.strip()
+    companies_dir = get_companies_dir()
+    domain = _account_domain(given)
+
+    if domain is None and _looks_like_page_path(given):
+        resolved_path = _existing_entity_page_path(given, companies_dir)
+        if resolved_path is None:
+            return {
+                'success': False,
+                'error': f'Company page does not exist: {given}',
+                'close_matches': _close_entity_page_matches(given, companies_dir),
+            }
+        return {
+            'success': True,
+            'resolved': resolved_path,
+            'link': {
+                'given': given,
+                'resolved_path': resolved_path,
+                'how': 'path',
+            },
+        }
+
+    companies = build_company_index_data().get('companies', [])
+    if domain:
+        target_domain = registrable_domain(domain)
+        matches = [
+            company for company in companies
+            if target_domain in {
+                registrable_domain(value) for value in company.get('domains', [])
+            }
+        ]
+        how = 'domain'
+    else:
+        given_folded = given.casefold()
+        matches = [
+            company for company in companies
+            if given_folded == (company.get('name') or '').casefold()
+        ]
+        how = 'name'
+
+    candidate_paths = sorted({
+        company['path'] for company in matches
+        if company.get('path')
+        and _existing_entity_page_path(company['path'], companies_dir) is not None
+    })
+    if len(candidate_paths) > 1:
+        return {
+            'success': False,
+            'error': f'Ambiguous account reference: {given}',
+            'candidates': candidate_paths,
+        }
+    if not candidate_paths:
+        return {
+            'success': False,
+            'error': f'No company page found for: {given}',
+            'close_matches': _close_entity_page_matches(given, companies_dir),
+        }
+
+    resolved_path = candidate_paths[0]
+    return {
+        'success': True,
+        'resolved': resolved_path,
+        'link': {
+            'given': given,
+            'resolved_path': resolved_path,
+            'how': how,
+        },
+    }
 
 
 def _profile_email_domains() -> set[str]:
@@ -2429,6 +2823,7 @@ def parse_tasks_file(filepath: Path) -> List[Dict[str, Any]]:
                 'source': metadata['source'],
                 'project': metadata['project'],
                 'goal': metadata['goal'],
+                'goal_tentative': metadata['goal_tentative'],
             })
     
     return tasks
@@ -3322,6 +3717,14 @@ app = Server("dex-work-mcp")
 async def handle_list_tools() -> list[types.Tool]:
     """List all available tools"""
     pillar_ids = get_pillar_ids()
+    pillar_inputs = list(dict.fromkeys([
+        *pillar_ids,
+        *[
+            str(pillar.get('name', '')).strip()
+            for pillar in PILLARS.values()
+            if str(pillar.get('name', '')).strip()
+        ],
+    ]))
     pillar_description = ", ".join(pillar_ids)
     
     return [
@@ -3346,7 +3749,7 @@ async def handle_list_tools() -> list[types.Tool]:
                 "type": "object",
                 "properties": {
                     "title": {"type": "string", "description": "Task title (be specific, not vague)"},
-                    "pillar": {"type": "string", "enum": pillar_ids, "description": f"Which strategic pillar this supports ({pillar_description})"},
+                    "pillar": {"type": "string", "enum": pillar_inputs, "description": f"Strategic pillar ID or unique display name ({pillar_description})"},
                     "priority": {"type": "string", "enum": ["P0", "P1", "P2", "P3"], "default": "P2"},
                     "context": {"type": "string", "description": "Additional context or sub-tasks"},
                     "section": {"type": "string", "description": "Which section in 03-Tasks/Tasks.md to add to", "default": "Next Week"},
@@ -3355,9 +3758,10 @@ async def handle_list_tools() -> list[types.Tool]:
                     "project": {"type": "string", "description": f"Optional existing vault-relative project path under {PROJECTS_DIR.name}/"},
                     "goal": {"type": "string", "description": "Optional quarterly goal ID (e.g., Q3-2026-goal-2)"},
                     "on_duplicate": {"type": "string", "enum": ["fail", "force"], "default": "fail", "description": "Fail on similar tasks, or force creation past only the similarity check"},
-                    "account": {"type": "string", "description": "Path to account page to link"},
-                    "people": {"type": "array", "items": {"type": "string"}, "description": "List of paths to people pages to link"},
-                    "source": {"type": "string", "description": "Vault-relative source file path to link"}
+                    "account": {"type": "string", "description": "Account page path, company name, URL, or domain to resolve and link"},
+                    "people": {"type": "array", "items": {"type": "string"}, "description": "Person page paths or names to resolve and link"},
+                    "source": {"type": "string", "description": "Vault-relative source file path to link"},
+                    "stamp_source_line": {"type": "string", "description": "Exact source checkbox line text to stamp with the created task ID"}
                 },
                 "required": ["title", "pillar"]
             }
@@ -3871,7 +4275,8 @@ async def _handle_call_tool_inner(
     
     elif name == "create_task":
         title = arguments['title']
-        pillar = arguments['pillar']
+        pillar_input = arguments['pillar']
+        pillar = resolve_pillar_id(pillar_input)
         priority = arguments.get('priority', 'P2')
         context = arguments.get('context', '')
         section = arguments.get('section', 'Next Week')
@@ -3880,17 +4285,23 @@ async def _handle_call_tool_inner(
         project = arguments.get('project', '')
         goal = arguments.get('goal', '')
         on_duplicate = arguments.get('on_duplicate', 'fail')
-        account = arguments.get('account', '')
-        people = arguments.get('people', [])
-        source = arguments.get('source', '')
+        account = arguments.get('account', '') or ''
+        people = arguments.get('people', []) or []
+        source = arguments.get('source', '') or ''
+        stamp_source_line = arguments.get('stamp_source_line', '') or ''
         if source.startswith('meeting:'):
             source = source[len('meeting:'):]
+        account_link = None
+        people_links = []
+        goal_link = None
+        tentative_link = None
+        goal_tentative = False
         
         # Validate pillar
-        if pillar not in PILLARS:
+        if pillar is None:
             return [types.TextContent(type="text", text=json.dumps({
                 "success": False,
-                "error": f"Invalid pillar '{pillar}'. Must be one of: {list(PILLARS.keys())}"
+                "error": f"Invalid pillar '{pillar_input}'. Must be one of: {list(PILLARS.keys())}"
             }, indent=2))]
         
         # Validate priority
@@ -3978,6 +4389,30 @@ async def _handle_call_tool_inner(
                     ),
                     "available_goal_ids": available_goal_ids,
                 }, indent=2))]
+            goal_link = {
+                'goal_id': goal,
+                'how': 'explicit',
+                'tentative': False,
+            }
+
+        people_resolution = resolve_people_links(people)
+        if not people_resolution['success']:
+            return [types.TextContent(
+                type="text",
+                text=json.dumps(people_resolution, indent=2),
+            )]
+        people = people_resolution['resolved']
+        people_links = people_resolution['links']
+
+        if account:
+            account_resolution = resolve_account_link(account)
+            if not account_resolution['success']:
+                return [types.TextContent(
+                    type="text",
+                    text=json.dumps(account_resolution, indent=2),
+                )]
+            account = account_resolution['resolved']
+            account_link = account_resolution['link']
         
         # Check ambiguity
         if is_ambiguous(title):
@@ -4030,9 +4465,46 @@ async def _handle_call_tool_inner(
                 "occupying_tasks": occupying_tasks,
                 "suggestion": f"You have too many {priority} tasks. Complete or deprioritize some before adding more."
             }, indent=2))]
+
+        if not goal:
+            quarterly_goals = (
+                parse_quarterly_goals(QUARTER_GOALS_FILE)
+                if QUARTER_GOALS_FILE.exists()
+                else []
+            )
+            task_text = ' '.join(part for part in (title, context) if part).strip()
+            candidates = infer_goal_link(task_text, pillar, quarterly_goals)
+            top_candidate = next(
+                (
+                    candidate for candidate in candidates
+                    if candidate.get('goal_id')
+                ),
+                None,
+            )
+            if top_candidate and top_candidate['confidence'] == 'strong':
+                goal = top_candidate['goal_id']
+                goal_link = {
+                    'goal_id': goal,
+                    'how': 'inferred',
+                    'confidence': 'strong',
+                    'tentative': False,
+                }
+            elif top_candidate and top_candidate['confidence'] == 'weak':
+                goal = top_candidate['goal_id']
+                goal_tentative = True
+                tentative_link = {
+                    'goal_id': goal,
+                    'how': 'inferred',
+                    'confidence': 'weak',
+                    'tentative': True,
+                }
         
-        # Generate unique task ID
-        task_id = generate_task_id()
+        # Reuse a unique source-only legacy anchor; otherwise generate a new ID.
+        task_id = (
+            reusable_source_task_id(source, stamp_source_line)
+            if source and stamp_source_line
+            else None
+        ) or generate_task_id()
         
         # Build file references for account/people
         file_refs = []
@@ -4062,7 +4534,8 @@ async def _handle_call_tool_inner(
         if project:
             task_entry += f" | Project: {project}"
         if goal:
-            task_entry += f" | Goal: {goal}"
+            tentative_marker = ' (?)' if goal_tentative else ''
+            task_entry += f" | Goal: {goal}{tentative_marker}"
         
         # Add to 03-Tasks/Tasks.md under the appropriate section
         if get_tasks_file().exists():
@@ -4097,21 +4570,42 @@ async def _handle_call_tool_inner(
             new_content = '\n'.join(lines)
         
         get_tasks_file().write_text(new_content)
+
+        if stamp_source_line and source:
+            try:
+                stamp_result = stamp_task_source_line(
+                    source,
+                    stamp_source_line,
+                    task_id,
+                )
+            except Exception as error:
+                logger.warning("Could not stamp task source line: %s", error)
+                stamp_result = {
+                    'attempted': True,
+                    'stamped': False,
+                    'reason': 'write_failed',
+                }
+        elif stamp_source_line:
+            stamp_result = {
+                'attempted': False,
+                'stamped': False,
+                'reason': 'source_required',
+            }
+        else:
+            stamp_result = {'attempted': False, 'stamped': False}
         
         # Sync Related Tasks sections in referenced pages
         synced_pages = []
-        if account:
-            result_sync = sync_task_refs_for_page(account)
-            if result_sync['success']:
-                synced_pages.append(account)
-        for person in people:
-            result_sync = sync_task_refs_for_page(person)
-            if result_sync['success']:
-                synced_pages.append(person)
-        if source:
-            result_sync = sync_task_refs_for_page(source)
-            if result_sync['success']:
-                synced_pages.append(source)
+        referenced_pages = [
+            page for page in (account, *people, source) if page
+        ]
+        for page in referenced_pages:
+            try:
+                result_sync = sync_task_refs_for_page(page)
+                if result_sync['success']:
+                    synced_pages.append(page)
+            except Exception as error:
+                logger.warning("Could not sync task references for %s: %s", page, error)
         
         # Fire analytics event (silent, best-effort)
         try:
@@ -4134,10 +4628,18 @@ async def _handle_call_tool_inner(
                 "due": due if due else None,
                 "project": project if project else None,
                 "goal": goal if goal else None,
+                "goal_tentative": goal_tentative,
                 "account": account if account else None,
                 "people": people if people else None,
                 "source": source if source else None
             },
+            "links": {
+                "account": account_link,
+                "people": people_links,
+                "goal": goal_link,
+                "tentative": tentative_link,
+            },
+            "stamp": stamp_result,
             "synced_pages": synced_pages,
             "message": f"Task '{title}' created successfully under {section} with ID: {task_id}"
         }
