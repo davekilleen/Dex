@@ -7,7 +7,7 @@ Process meetings from Granola to extract structured insights, action items, and 
 Meetings sync **automatically in the background** every 30 minutes via the official Granola public API.
 
 ```
-Granola App (desktop + mobile) → Granola Cloud → Official Granola API → Background Sync (every 30 min) → Synced Files → /process-meetings → Person Pages, Tasks
+Granola App (desktop + mobile) → Granola Cloud → Official Granola API → Background Sync (every 30 min) → Meeting notes with attendees → Entity creation + verification → /process-meetings → Context updates, Tasks
 ```
 
 **Key features:** Mobile phone recordings are captured alongside desktop meetings — the official API returns both. Connect once with `/granola-setup` to add your Granola API key; there's no separate per-device setup.
@@ -58,9 +58,13 @@ After setup, `/process-meetings` reads synced files and updates your vault:
 - `--days-back=N` — Override default 7-day lookback
 
 **What gets updated:**
-- Person pages (05-Areas/People/) — meeting references, last interaction dates
-- Company pages (05-Areas/Companies/) — key contacts, meeting history
+- Meeting notes (00-Inbox/Meetings/) — attendee names, emails when available, and Internal/External location in frontmatter
+- Person and company pages (05-Areas/) — deterministically created in `auto` mode or queued in `suggest` mode after qualifying evidence
+- Existing person and company pages — meeting references, last interaction dates, key contacts, and meeting history
+- Entity verification (System/.dex/) — coverage checked after every sync; `/dex-doctor` reports the same engine health
 - Tasks (03-Tasks/Tasks.md) — action items extracted from meetings
+
+People qualify after 2+ meetings across 2+ weeks, or after 2+ meetings where at least one has a transcript. An attendee without an email is tracked but never auto-created. In Obsidian mode, auto-linking points names at the person pages' actual vault paths.
 
 ## What Gets Extracted
 
@@ -85,9 +89,11 @@ meeting_intelligence:
   extract_competitive_intel: true # Competitor mentions
   extract_action_items: true      # Always recommended
   extract_decisions: true         # Always recommended
+entity_creation:
+  mode: auto                      # auto, suggest, or off
 ```
 
-Internal vs external classification uses your `email_domain` setting.
+Internal vs external classification uses your `email_domain` setting. Onboarding writes `auto`; an existing vault with no `entity_creation` setting defaults to `suggest`, whose suggestions appear in `/daily-plan` and `/process-meetings`.
 
 ## Manual Sync (Optional)
 
@@ -145,6 +151,8 @@ node .scripts/meeting-intel/sync-from-granola.cjs --force
 │ Background Sync (launchd, every 30 min)              │
 │  - sync-from-granola.cjs → API fetch + LLM analysis │
 │  - Auth: Bearer GRANOLA_API_KEY (via /granola-setup) │
+│  - Writes attendee frontmatter                       │
+│  - Runs entity creation and verification             │
 │  - No local-file fallback                            │
 └──────────────────────┬──────────────────────────────┘
                        │ LLM extraction (Gemini/Claude/GPT)
@@ -153,6 +161,8 @@ node .scripts/meeting-intel/sync-from-granola.cjs --force
 │ Vault Files                                          │
 │  - 00-Inbox/Meetings/YYYY-MM-DD/slug.md             │
 │  - processed-meetings.json (state)                  │
+│  - System/.dex/contacts.json + verification         │
+│  - Person/company pages or suggestions              │
 └──────────────────────┬──────────────────────────────┘
                        │ /process-meetings
                        ▼

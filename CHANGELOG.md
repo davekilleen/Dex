@@ -7,6 +7,23 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.37.0] - Your people and company pages now build themselves (2026-07-12)
+
+Dex always promised that the people and companies in your work life would organize themselves into pages — but behind the scenes, most of that depended on the AI remembering to do it, and it often quietly didn't. This release replaces hope with machinery.
+
+**What this fixes for you:**
+
+* **People you actually work with get pages automatically.** Once someone shows up in two real meetings across two different weeks (or one with a transcript), Dex creates their page — filed under Internal or External based on their email address, never guessed. One-off intro calls don't clutter your vault, and re-running a sync can never create duplicates.
+* **You choose how hands-off to be.** New setups get fully automatic creation. Existing vaults start in suggest mode: your daily plan says "Dex suggests a page for Jane (2 meetings)" and you say yes, no, or never — "never" is remembered forever. One line in your settings switches modes anytime.
+* **Companies appear from the people you meet.** Meet two people from acme.co.uk and an "Acme" company page exists, with the domain recorded so future contacts attach to it. Personal email services never become companies, and an existing company page always wins over creating a duplicate.
+* **Meeting emails aren't thrown away anymore.** Dex used to fetch each attendee's email address and immediately discard it — which is why colleagues were misfiled as external contacts. Attendee details are now kept with each meeting note, and the everyone-gets-filed-as-External bug is gone.
+* **Pages update themselves after every processed meeting.** The behind-the-scenes step that adds meeting references to person pages had been broken since the day it shipped (it listened on a channel that doesn't exist). It works now: recent meetings, freshness dates, capped and deduplicated — and it only ever touches its own marked sections, never your notes.
+* **Auto-linked names now go somewhere.** The recent auto-linking feature created links that looked right but pointed at pages that didn't exist (clicking made an empty duplicate). Links now open the person's real page, and linking politely stays off unless your vault uses Obsidian-style links.
+* **One page format, four readers reconciled.** Different parts of Dex wrote person pages in four incompatible layouts, so pages created by one feature were invisible to another. There's now a single machine-readable format, every old layout is still understood, and a damaged page is quarantined and reported instead of being overwritten.
+* **You can see it working.** After every sync, a verification pass confirms each attendee ended up somewhere deliberate — page, suggestion, or tracked-for-later — and `/dex-doctor` now has an entity-engine checkup covering all of it, including anything unresolved.
+
+---
+
 ## [1.36.0] - Every promise about tasks is now one Dex keeps (2026-07-12)
 
 A few task features described things that didn't actually happen: the Todoist, Things, and Trello setups promised automatic two-way sync that was never built, the inbox triage helper read planning files from locations that no longer exist, and some flows quietly wrote tasks in a way the rest of the system couldn't track. This release makes every promise honest and every capture path first-class.

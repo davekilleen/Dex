@@ -307,7 +307,9 @@ def test_create_task_schema_adds_owned_fields_without_source():
     properties = create_tool.inputSchema["properties"]
 
     assert {"due", "project", "goal", "on_duplicate"} <= properties.keys()
-    assert "source" not in properties
+    # The entity engine adds an optional `source` file-ref param (meeting <-> task
+    # backlinks); this test froze the schema before that branch merged.
+    assert "source" in properties
     assert properties["on_duplicate"]["enum"] == ["fail", "force"]
     assert properties["on_duplicate"]["default"] == "fail"
 

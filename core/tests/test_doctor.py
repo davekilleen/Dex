@@ -27,6 +27,7 @@ QUICK_IDS = [
     "jobs.loaded",
     "jobs.fresh",
     "preflight.queue",
+    "entity.engine",
     "doctor.self",
 ]
 
@@ -93,6 +94,26 @@ def _write_plist(context, label):
     return plist
 
 
+def _write_entity_probe_files(context, *, mode="auto", unresolved=None):
+    runtime = context.vault_root / "System" / ".dex"
+    runtime.mkdir(parents=True, exist_ok=True)
+    (runtime / "contacts.json").write_text(json.dumps({
+        "contacts": {"one": {}}, "observations": {"m1": {}, "m2": {}},
+    }))
+    (runtime / "entity-suggestions.json").write_text(json.dumps({
+        "suggestions": [{"status": "suggested"}],
+    }))
+    (runtime / "entity-verification.json").write_text(json.dumps({
+        "generated_at": NOW.isoformat(), "unresolved": unresolved or [],
+    }))
+    (context.vault_root / "System" / "user-profile.yaml").write_text(
+        f"entity_creation:\n  mode: {mode}\n"
+    )
+    (context.vault_root / "System" / "People_Index.json").write_text(json.dumps({
+        "built_at": NOW.isoformat(),
+    }))
+
+
 def _tree_snapshot(root):
     snapshot = {}
     for path in sorted(root.rglob("*")):
@@ -104,6 +125,43 @@ def _tree_snapshot(root):
 
 def test_doctor_collector_module_exists():
     assert DOCTOR_PATH.is_file()
+
+
+def test_entity_engine_probe_reports_working_off_broken_and_could_not_check(context):
+    _write_entity_probe_files(context)
+    working = doctor._probe_entity_engine(context)
+    assert working.verdict == "OK"
+    assert "1 contacts and 2 observations" in working.detail
+
+    _write_entity_probe_files(context, mode="off")
+    assert doctor._probe_entity_engine(context).verdict == "OFF"
+
+    _write_entity_probe_files(context, unresolved=[{"domain": "acme.com"}])
+    assert doctor._probe_entity_engine(context).verdict == "BROKEN"
+
+    _write_entity_probe_files(context)
+    person = context.core_path("PEOPLE_DIR") / "Broken.md"
+    person.parent.mkdir(parents=True, exist_ok=True)
+    person.write_text("---\nname: [broken\n---\n# Broken\n")
+    quarantined = doctor._probe_entity_engine(context)
+    assert quarantined.verdict == "BROKEN"
+    assert "Broken.md" in quarantined.detail
+
+    (context.vault_root / "System" / ".dex" / "contacts.json").write_text("{")
+    assert doctor._probe_entity_engine(context).verdict == "UNKNOWN"
+
+
+def test_entity_engine_probe_reports_default_mode_and_stale_verification(context):
+    _write_entity_probe_files(context)
+    (context.vault_root / "System" / "user-profile.yaml").write_text("name: Test\n")
+    verification = context.vault_root / "System" / ".dex" / "entity-verification.json"
+    verification.write_text(json.dumps({
+        "generated_at": (NOW - timedelta(hours=49)).isoformat(), "unresolved": [],
+    }))
+    result = doctor._probe_entity_engine(context)
+    assert result.verdict == "OK"
+    assert "suggest (default — key missing)" in result.detail
+    assert "stale >48h" in result.detail
 
 
 def test_registry_ids_match_the_approved_spec():
@@ -149,8 +207,8 @@ def test_summary_counts_each_exact_verdict(monkeypatch, context):
 
     report = doctor.collect(context=context)
 
-    assert report["summary"] == {"ok": 7, "off": 1, "broken": 1, "unknown": 1}
-    assert report["instruments"]["completed"] == 10
+    assert report["summary"] == {"ok": 8, "off": 1, "broken": 1, "unknown": 1}
+    assert report["instruments"]["completed"] == 11
 
 
 def test_raising_probe_becomes_unknown_and_main_still_returns_valid_json(monkeypatch, context, capsys):
@@ -168,8 +226,8 @@ def test_raising_probe_becomes_unknown_and_main_still_returns_valid_json(monkeyp
     assert _check(report, "vault.configs")["verdict"] == "UNKNOWN"
     assert "probe exploded" in _check(report, "vault.configs")["detail"]
     assert report["instruments"] == {
-        "attempted": 10,
-        "completed": 9,
+        "attempted": 11,
+        "completed": 10,
         "failed": [{"id": "vault.configs", "error": "probe exploded"}],
     }
     assert _check(report, "doctor.self")["verdict"] == "BROKEN"

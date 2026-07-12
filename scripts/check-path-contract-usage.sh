@@ -20,7 +20,7 @@ if [ -z "$CHANGED_FILES" ]; then
   exit 0
 fi
 
-CODE_FILES="$(printf "%s\n" "$CHANGED_FILES" | grep -E '\.(py|ts|js|cjs|sh)$' | grep -Ev '(^|/)tests?/' || true)"
+CODE_FILES="$(printf "%s\n" "$CHANGED_FILES" | grep -E '\.(py|ts|js|cjs|sh)$' | grep -Ev '(^|/)(__tests__|tests?)/' || true)"
 if [ -z "$CODE_FILES" ]; then
   echo "No changed code files for path-contract policy."
   exit 0

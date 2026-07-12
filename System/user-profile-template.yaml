@@ -66,6 +66,11 @@ meeting_processing:
   # API provider for automatic mode: gemini, anthropic, or openai
   api_provider: gemini
 
+# Person-page creation from repeated meeting observations.
+# Options: auto, suggest, off. If omitted, Dex uses suggest for existing vaults.
+entity_creation:
+  mode: auto
+
 # Meeting Intelligence Configuration
 # Controls what gets extracted from your meetings (set during onboarding based on role)
 meeting_intelligence:

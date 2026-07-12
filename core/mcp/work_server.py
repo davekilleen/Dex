@@ -17,6 +17,7 @@ import logging
 import os
 import re
 import sys
+import unicodedata
 from collections import Counter
 from datetime import date, datetime, timedelta
 from difflib import SequenceMatcher
@@ -109,6 +110,7 @@ if _repo_root not in sys.path:
     sys.path.append(_repo_root)
 from core.paths import (
     COMPANIES_DIR,
+    COMPANY_INDEX_FILE,
     GOALS_FILE,
     INBOX_DIR,
     MEETING_CACHE_FILE,
@@ -126,6 +128,8 @@ from core.paths import (
 from core.paths import (
     VAULT_ROOT as BASE_DIR,
 )
+from core.utils.company_domains import registrable_domain
+from core.utils.entity_pages import parse_entity_page, render_person_page
 
 
 def get_tasks_file() -> Path:
@@ -147,6 +151,10 @@ def get_people_dir() -> Path:
 def get_meetings_dir() -> Path:
     """Get the canonical meetings directory."""
     return MEETINGS_DIR
+
+def get_companies_dir() -> Path:
+    """Get the canonical Companies directory."""
+    return COMPANIES_DIR
 
 
 # Default pillars (used if pillars.yaml doesn't exist or can't be loaded)
@@ -821,40 +829,17 @@ def parse_person_page(filepath: Path) -> Dict[str, Any]:
     """Parse a person page and extract key fields"""
     if not filepath.exists():
         return {}
-    
-    content = filepath.read_text()
-    person = {
-        'name': filepath.stem.replace('_', ' '),
+
+    entity = parse_entity_page(filepath)
+    return {
+        'name': entity.get('name') or filepath.stem.replace('_', ' '),
         'filepath': str(filepath),
-        'company': None,
-        'company_page': None,
-        'role': None,
-        'email': None,
-        'last_interaction': None
+        'company': entity.get('company'),
+        'company_page': entity.get('company_page'),
+        'role': entity.get('role'),
+        'email': (entity.get('emails') or [None])[0],
+        'last_interaction': entity.get('last_interaction'),
     }
-    
-    # Parse table fields
-    for line in content.split('\n'):
-        if '**Company**' in line and '|' in line:
-            parts = line.split('|')
-            if len(parts) >= 3:
-                person['company'] = parts[2].strip()
-        elif '**Company Page**' in line and '|' in line:
-            parts = line.split('|')
-            if len(parts) >= 3:
-                person['company_page'] = parts[2].strip()
-        elif '**Role**' in line and '|' in line:
-            parts = line.split('|')
-            if len(parts) >= 3:
-                person['role'] = parts[2].strip()
-        elif '**Email**' in line and '|' in line:
-            parts = line.split('|')
-            if len(parts) >= 3:
-                person['email'] = parts[2].strip()
-        elif '**Last interaction:**' in line:
-            person['last_interaction'] = line.split('**Last interaction:**')[1].strip()
-    
-    return person
 
 def find_people_at_company(company_name: str) -> List[Dict[str, Any]]:
     """Find all people pages that reference a company"""
@@ -926,12 +911,22 @@ def build_people_index_data() -> Dict[str, Any]:
         for person_file in subdir.glob('*.md'):
             if person_file.name == 'README.md':
                 continue
-            person = parse_person_page(person_file)
+            person = parse_entity_page(person_file)
 
             # Determine populated vs stub
             content = person_file.read_text()
-            has_content = bool(person.get('role') or person.get('email') or
+            has_content = bool(person.get('role') or person.get('emails') or
                             '## Meeting' in content or '## Notes' in content)
+
+            aliases = list(person.get('aliases') or [])
+            for line in content.splitlines():
+                match = re.match(r'^\s*(?:\*\*)?Goes by(?::\*\*|\*\*\s*:|\s+)(?:\s*)(.+?)\s*$', line, re.IGNORECASE)
+                if match:
+                    alias = match.group(1).strip()
+                    if alias and alias.casefold() not in {value.casefold() for value in aliases}:
+                        aliases.append(alias)
+
+            person_name = person.get('name') or person_file.stem.replace('_', ' ')
 
             # Extract tags from content
             tags = []
@@ -943,10 +938,13 @@ def build_people_index_data() -> Dict[str, Any]:
                     break
 
             entries.append({
-                'name': person.get('name', person_file.stem.replace('_', ' ')),
+                'name': person_name,
                 'company': person.get('company'),
                 'role': person.get('role'),
-                'email': person.get('email'),
+                'email': (person.get('emails') or [None])[0],
+                'emails': person.get('emails') or [],
+                'aliases': aliases,
+                'first_name': person_name.split()[0].lower() if person_name.split() else '',
                 'type': subdir_name.lower(),
                 'path': str(person_file.relative_to(BASE_DIR)),
                 'last_interaction': person.get('last_interaction'),
@@ -955,7 +953,7 @@ def build_people_index_data() -> Dict[str, Any]:
             })
 
     index = {
-        'version': 1,
+        'version': 2,
         'built_at': datetime.now().isoformat(),
         'total': len(entries),
         'by_type': {
@@ -973,6 +971,79 @@ def build_people_index_data() -> Dict[str, Any]:
     return index
 
 
+def _people_tree_max_mtime() -> float:
+    """Return the newest modification time among People markdown pages."""
+    people_dir = _resolve_people_dir()
+    if not people_dir.exists():
+        return 0.0
+    return max(
+        (person_file.stat().st_mtime for person_file in people_dir.rglob('*.md')),
+        default=0.0,
+    )
+
+
+def build_company_index_data() -> Dict[str, Any]:
+    """Scan company pages and build the canonical lightweight JSON index."""
+    entries = []
+    companies_dir = get_companies_dir()
+    if companies_dir.exists():
+        for company_file in companies_dir.rglob('*.md'):
+            if company_file.name == 'README.md':
+                continue
+            company = parse_entity_page(company_file)
+            entries.append({
+                'name': company.get('name') or company_file.stem.replace('_', ' '),
+                'path': str(company_file.relative_to(BASE_DIR)),
+                'domains': company.get('domains') or [],
+                'website': company.get('website'),
+                'status': company.get('status'),
+            })
+    entries.sort(key=lambda item: (item['name'].casefold(), item['path']))
+    index = {
+        'version': 1,
+        'built_at': datetime.now().isoformat(),
+        'total': len(entries),
+        'companies': entries,
+    }
+    COMPANY_INDEX_FILE.parent.mkdir(parents=True, exist_ok=True)
+    COMPANY_INDEX_FILE.write_text(json.dumps(index, indent=2, cls=DateTimeEncoder) + '\n')
+    return index
+
+
+def _company_tree_max_mtime() -> float:
+    """Return the newest modification time among company markdown pages."""
+    companies_dir = get_companies_dir()
+    if not companies_dir.exists():
+        return 0.0
+    return max(
+        (company_file.stat().st_mtime for company_file in companies_dir.rglob('*.md')),
+        default=0.0,
+    )
+
+
+def find_company_by_domain(domain: str) -> Dict[str, Any] | None:
+    """Find a company by registrable domain, rebuilding an absent or stale index."""
+    index = None
+    if COMPANY_INDEX_FILE.exists():
+        try:
+            index = json.loads(COMPANY_INDEX_FILE.read_text())
+        except (json.JSONDecodeError, OSError):
+            pass
+    if not isinstance(index, dict):
+        index = None
+    try:
+        built_at = datetime.fromisoformat(index.get('built_at', '')) if index else None
+        if not index or index.get('version') != 1 or built_at.timestamp() < _company_tree_max_mtime():
+            index = build_company_index_data()
+    except (ValueError, TypeError):
+        index = build_company_index_data()
+    target = registrable_domain(domain)
+    for company in index.get('companies', []):
+        if target in {registrable_domain(value) for value in company.get('domains', [])}:
+            return company
+    return None
+
+
 def lookup_person_data(name: str, company: str = None) -> Dict[str, Any]:
     """Fast person lookup using the index with fuzzy matching."""
 
@@ -984,51 +1055,207 @@ def lookup_person_data(name: str, company: str = None) -> Dict[str, Any]:
         except (json.JSONDecodeError, OSError):
             pass
 
-    # Auto-rebuild if index is missing or stale (>24 hours old)
-    if not index:
+    # Auto-rebuild if index is missing/old, older than a person page, or stale (>24h).
+    index_version = index.get('version') if isinstance(index, dict) else None
+    if not index or not isinstance(index_version, int) or index_version < 2:
         index = build_people_index_data()
     else:
         built_at = index.get('built_at', '')
         try:
             built_dt = datetime.fromisoformat(built_at)
-            if (datetime.now() - built_dt) > timedelta(hours=24):
+            tree_mtime = _people_tree_max_mtime()
+            if built_dt.timestamp() < tree_mtime:
+                logger.info("People index predates a person page, rebuilding...")
+                index = build_people_index_data()
+            elif (datetime.now() - built_dt) > timedelta(hours=24):
                 logger.info("People index is stale (>24h), rebuilding...")
                 index = build_people_index_data()
         except (ValueError, TypeError):
             index = build_people_index_data()
 
     people = index.get('people', [])
-    name_lower = name.lower()
+    if company:
+        company_lower = company.lower()
+        people = [
+            person for person in people
+            if company_lower in (person.get('company') or '').lower()
+        ]
 
-    matches = []
-    for person in people:
-        person_name = person.get('name', '').lower()
-        # Exact substring match
-        if name_lower in person_name or person_name in name_lower:
-            score = 1.0 if name_lower == person_name else 0.8
-        else:
-            # Fuzzy match using SequenceMatcher
-            score = SequenceMatcher(None, name_lower, person_name).ratio()
+    query = name.strip()
+    query_lower = query.casefold()
+    ambiguous = False
 
-        if score >= 0.5:
-            # Apply company filter if provided
-            if company:
-                person_company = (person.get('company') or '').lower()
-                if company.lower() not in person_company:
-                    continue
+    def scored(candidates: List[Dict[str, Any]], score: float) -> List[Dict[str, Any]]:
+        return [{**person, '_score': score} for person in candidates]
 
-            matches.append({**person, '_score': round(score, 2)})
+    matches: List[Dict[str, Any]] = []
+    if '@' in query:
+        matches = scored([
+            person for person in people
+            if query_lower in {email.casefold() for email in person.get('emails', [])}
+        ], 1.0)
 
-    # Sort by score descending
-    matches.sort(key=lambda m: m['_score'], reverse=True)
+    if not matches:
+        matches = scored([
+            person for person in people
+            if query_lower in {alias.casefold() for alias in person.get('aliases', [])}
+        ], 1.0)
 
-    return {
+    if not matches:
+        matches = scored([
+            person for person in people
+            if query_lower == (person.get('name') or '').casefold()
+        ], 1.0)
+
+    if not matches:
+        first_name_matches = [
+            person for person in people
+            if query_lower == (person.get('first_name') or '').casefold()
+        ]
+        if first_name_matches:
+            matches = scored(first_name_matches, 0.9)
+            ambiguous = len(first_name_matches) > 1
+
+    if not matches:
+        fuzzy_matches = []
+        for person in people:
+            person_name = (person.get('name') or '').casefold()
+            if query_lower in person_name or person_name in query_lower:
+                score = 0.8
+            else:
+                score = SequenceMatcher(None, query_lower, person_name).ratio()
+            if score >= 0.5:
+                fuzzy_matches.append((score, person))
+        fuzzy_matches.sort(key=lambda item: item[0], reverse=True)
+        if len(fuzzy_matches) >= 2 and fuzzy_matches[0][0] - fuzzy_matches[1][0] <= 0.05:
+            ambiguous = True
+        matches = [{**person, '_score': round(score, 2)} for score, person in fuzzy_matches]
+
+    result = {
         'query': name,
         'company_filter': company,
         'matches': matches[:10],
         'total_matches': len(matches),
         'index_age': index.get('built_at'),
     }
+    if ambiguous:
+        result['ambiguous'] = True
+    return result
+
+
+def _profile_email_domains() -> set[str]:
+    """Return configured internal email domains from the user profile."""
+    if yaml is None or not USER_PROFILE_FILE.exists():
+        return set()
+    try:
+        profile = yaml.safe_load(USER_PROFILE_FILE.read_text()) or {}
+    except (OSError, yaml.YAMLError):
+        return set()
+    configured = profile.get('email_domain') or ''
+    values = configured if isinstance(configured, list) else str(configured).split(',')
+    return {str(value).strip().lower().lstrip('@') for value in values if str(value).strip()}
+
+
+def create_person_data(
+    name: str,
+    role: str | None = None,
+    company: str | None = None,
+    emails: list[str] | None = None,
+    aliases: list[str] | None = None,
+    location: str | None = None,
+    notes: str | None = None,
+    allow_duplicate: bool = False,
+) -> Dict[str, Any]:
+    """Create a canonical person page without clobbering an existing file."""
+    name = unicodedata.normalize('NFC', (name or '').strip())
+    if not name:
+        return {'success': False, 'error': 'name is required'}
+    if name in {'.', '..'} or '..' in re.split(r'[/\\]+', name):
+        return {'success': False, 'error': f'Invalid person name: {name!r} contains path traversal'}
+
+    clean_emails = list(dict.fromkeys(
+        email.strip().lower() for email in (emails or []) if isinstance(email, str) and email.strip()
+    ))
+    clean_aliases = list(dict.fromkeys(
+        alias.strip() for alias in (aliases or []) if isinstance(alias, str) and alias.strip()
+    ))
+    if location is None:
+        if not clean_emails or not _profile_email_domains():
+            location = 'unknown'
+        else:
+            domain = clean_emails[0].rsplit('@', 1)[-1] if '@' in clean_emails[0] else ''
+            location = 'internal' if domain in _profile_email_domains() else 'external'
+    if location not in {'internal', 'external', 'unknown'}:
+        return {'success': False, 'error': 'location must be internal, external, or unknown'}
+
+    if not allow_duplicate and clean_emails:
+        for email in clean_emails:
+            existing = lookup_person_data(email).get('matches', [])
+            if existing:
+                return {
+                    'success': False,
+                    'error': f"A person with email {email} already exists: {existing[0]['path']}",
+                }
+
+    people_dir = _resolve_people_dir()
+    target_dir = people_dir / ('Internal' if location == 'internal' else 'External')
+    filename_stem = re.sub(r'\s+', '_', name.replace('/', '').replace('\\', ''))
+    if not filename_stem or filename_stem in {'.', '..'}:
+        return {'success': False, 'error': 'Person name does not produce a valid filename'}
+    base_filename = f'{filename_stem}.md'
+    collision_paths = []
+    for subdir in ('Internal', 'External', 'CPO_Network'):
+        directory = people_dir / subdir
+        if directory.exists():
+            collision_paths.extend(
+                child for child in directory.iterdir()
+                if child.is_file() and child.name.casefold() == base_filename.casefold()
+            )
+    collision = bool(collision_paths)
+    if collision and not allow_duplicate:
+        return {
+            'success': False,
+            'error': f'Person filename already exists: {collision_paths[0].relative_to(BASE_DIR)}',
+        }
+
+    if collision:
+        domain = clean_emails[0].rsplit('@', 1)[1] if clean_emails and '@' in clean_emails[0] else '2'
+        safe_suffix = re.sub(r'[^\w.-]+', '_', domain, flags=re.UNICODE).strip('._') or '2'
+        candidate = target_dir / f'{filename_stem}_({safe_suffix}).md'
+        counter = 2
+        while candidate.parent.exists() and any(
+            child.name.casefold() == candidate.name.casefold() for child in candidate.parent.iterdir()
+        ):
+            candidate = target_dir / f'{filename_stem}_({counter}).md'
+            counter += 1
+    else:
+        candidate = target_dir / base_filename
+
+    target_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        candidate.resolve().relative_to(people_dir.resolve())
+    except ValueError:
+        return {'success': False, 'error': 'Refusing to create a person page outside the People directory'}
+
+    page = render_person_page(name, role, company, clean_emails, clean_aliases, location, notes)
+    try:
+        with candidate.open('x', encoding='utf-8', newline='') as handle:
+            handle.write(page)
+    except FileExistsError:
+        return {'success': False, 'error': f'Person page already exists: {candidate.relative_to(BASE_DIR)}'}
+    except OSError as exc:
+        return {'success': False, 'error': f'Could not create person page: {exc}'}
+
+    build_people_index_data()
+    result = {
+        'success': True,
+        'path': str(candidate.relative_to(BASE_DIR)),
+        'location': location,
+        'created': True,
+    }
+    if collision:
+        result['collision'] = True
+    return result
 
 
 # ============================================================================
@@ -3114,7 +3341,7 @@ async def handle_list_tools() -> list[types.Tool]:
         ),
         types.Tool(
             name="create_task",
-            description="Create a new task with schema validation. Requires title and pillar alignment. Optionally link to weekly priority, account, or people pages.",
+            description="Create a new task with schema validation. Requires title and pillar alignment. Optionally link to weekly priority, account, people, or source pages.",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -3129,7 +3356,8 @@ async def handle_list_tools() -> list[types.Tool]:
                     "goal": {"type": "string", "description": "Optional quarterly goal ID (e.g., Q3-2026-goal-2)"},
                     "on_duplicate": {"type": "string", "enum": ["fail", "force"], "default": "fail", "description": "Fail on similar tasks, or force creation past only the similarity check"},
                     "account": {"type": "string", "description": "Path to account page to link"},
-                    "people": {"type": "array", "items": {"type": "string"}, "description": "List of paths to people pages to link"}
+                    "people": {"type": "array", "items": {"type": "string"}, "description": "List of paths to people pages to link"},
+                    "source": {"type": "string", "description": "Vault-relative source file path to link"}
                 },
                 "required": ["title", "pillar"]
             }
@@ -3460,6 +3688,11 @@ async def handle_list_tools() -> list[types.Tool]:
             inputSchema={"type": "object", "properties": {}}
         ),
         types.Tool(
+            name="build_company_index",
+            description="Scan company pages and build System/Company_Index.json.",
+            inputSchema={"type": "object", "properties": {}}
+        ),
+        types.Tool(
             name="lookup_person",
             description="Fast person lookup using the People Directory index. Fuzzy name matching with optional company filter. Falls back to file scan if index doesn't exist.",
             inputSchema={
@@ -3470,6 +3703,28 @@ async def handle_list_tools() -> list[types.Tool]:
                 },
                 "required": ["name"]
             }
+        ),
+        types.Tool(
+            name="create_person",
+            description="Create a canonical person page with duplicate protection and refresh the People index.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string", "description": "Person's full name"},
+                    "role": {"type": "string"},
+                    "company": {"type": "string"},
+                    "emails": {"type": "array", "items": {"type": "string"}},
+                    "aliases": {"type": "array", "items": {"type": "string"}},
+                    "location": {
+                        "type": "string",
+                        "enum": ["internal", "external", "unknown"],
+                        "description": "Computed from the first email and profile email_domain when omitted",
+                    },
+                    "notes": {"type": "string"},
+                    "allow_duplicate": {"type": "boolean", "default": False},
+                },
+                "required": ["name"],
+            },
         ),
         types.Tool(
             name="query_meeting_cache",
@@ -3521,7 +3776,7 @@ WRITE_TOOLS = {
     "sync_task_refs", "create_quarterly_goal", "update_goal_progress",
     "create_weekly_priority", "complete_weekly_priority",
     "process_inbox_with_dedup", "migrate_quarterly_goals", "migrate_weekly_priorities",
-    "build_people_index", "rebuild_meeting_cache", "capture_skill_rating",
+    "build_people_index", "build_company_index", "create_person", "rebuild_meeting_cache", "capture_skill_rating",
 }
 
 @app.call_tool()
@@ -3627,6 +3882,9 @@ async def _handle_call_tool_inner(
         on_duplicate = arguments.get('on_duplicate', 'fail')
         account = arguments.get('account', '')
         people = arguments.get('people', [])
+        source = arguments.get('source', '')
+        if source.startswith('meeting:'):
+            source = source[len('meeting:'):]
         
         # Validate pillar
         if pillar not in PILLARS:
@@ -3783,6 +4041,8 @@ async def _handle_call_tool_inner(
             file_refs.append(account if account.endswith('.md') else f"{account}.md")
         for person in people:
             file_refs.append(person if person.endswith('.md') else f"{person}.md")
+        if source:
+            file_refs.append(source if source.endswith('.md') else f"{source}.md")
         
         # Create the task entry with plain file references and task ID
         pillar_name = PILLARS[pillar]['name']
@@ -3848,6 +4108,10 @@ async def _handle_call_tool_inner(
             result_sync = sync_task_refs_for_page(person)
             if result_sync['success']:
                 synced_pages.append(person)
+        if source:
+            result_sync = sync_task_refs_for_page(source)
+            if result_sync['success']:
+                synced_pages.append(source)
         
         # Fire analytics event (silent, best-effort)
         try:
@@ -3871,7 +4135,8 @@ async def _handle_call_tool_inner(
                 "project": project if project else None,
                 "goal": goal if goal else None,
                 "account": account if account else None,
-                "people": people if people else None
+                "people": people if people else None,
+                "source": source if source else None
             },
             "synced_pages": synced_pages,
             "message": f"Task '{title}' created successfully under {section} with ID: {task_id}"
@@ -4976,10 +5241,32 @@ async def _handle_call_tool_inner(
             'built_at': result['built_at'],
         }, indent=2))]
 
+    elif name == "build_company_index":
+        result = build_company_index_data()
+        return [types.TextContent(type="text", text=json.dumps({
+            'success': True,
+            'total': result['total'],
+            'index_path': str(COMPANY_INDEX_FILE),
+            'built_at': result['built_at'],
+        }, indent=2))]
+
     elif name == "lookup_person":
         person_name = arguments['name']
         company_filter = arguments.get('company')
         result = lookup_person_data(person_name, company_filter)
+        return [types.TextContent(type="text", text=json.dumps(result, indent=2, cls=DateTimeEncoder))]
+
+    elif name == "create_person":
+        result = create_person_data(
+            name=arguments.get('name', ''),
+            role=arguments.get('role'),
+            company=arguments.get('company'),
+            emails=arguments.get('emails'),
+            aliases=arguments.get('aliases'),
+            location=arguments.get('location'),
+            notes=arguments.get('notes'),
+            allow_duplicate=arguments.get('allow_duplicate', False),
+        )
         return [types.TextContent(type="text", text=json.dumps(result, indent=2, cls=DateTimeEncoder))]
 
     elif name == "query_meeting_cache":

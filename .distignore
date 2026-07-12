@@ -15,6 +15,7 @@ core/tests/
 core/mcp/tests/
 core/migrations/tests/
 .claude/hooks/tests/
+.scripts/lib/tests/
 .scripts/meeting-intel/__tests__/
 
 # Dev scripts and docs

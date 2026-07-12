@@ -29,6 +29,8 @@ jobs:
           test -f docs/testing-governance.md || { echo "Missing required governance document docs/testing-governance.md"; exit 1; }
       - name: Hook harness tests
         run: npm run test:hooks
+      - name: Script library tests
+        run: npm run test:scripts
       - name: Diff-aware test gate
         if: github.event_name == 'pull_request'
         run: bash scripts/check-test-delta.sh
