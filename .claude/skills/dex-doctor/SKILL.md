@@ -69,6 +69,11 @@ line ("✓ 11 checks healthy").
 For each BROKEN item: what it means for the user in one plain sentence (what stopped
 working, since when if known), then the fix path.
 
+For the **Entity engine** check, keep the rendering short and plain: say whether entity
+creation is working, off, or needs attention, include the contact/observation counts,
+and call out unresolved verification results or quarantined pages. Mention stale
+verification or a stale/missing People index as a follow-up signal.
+
 ### Step 4: Heal, tiered
 
 - **Tier 1 (already applied by the collector):** report plainly — "Fixed automatically:

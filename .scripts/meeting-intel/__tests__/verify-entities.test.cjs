@@ -6,6 +6,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const yaml = require('js-yaml');
+const { renderCompanyPage } = require('../../lib/entity-pages.cjs');
 const { contactIdFor, recordObservations } = require('../lib/contacts-state.cjs');
 const { summaryLine, verifyEntities } = require('../verify-entities.cjs');
 
@@ -72,7 +73,7 @@ test('verification resolves every outcome class and writes the report', () => wi
       unverified_identity: 1,
       disabled: 0,
     });
-    assert.match(summary, /^entities: 6 attendees -> .*; \d+ unresolved$/);
+    assert.match(summary, /^entities: 6 attendees -> .*; \d+ unresolved; companies: .*$/);
     const written = JSON.parse(fs.readFileSync(path.join(suggestionDirectory, 'entity-verification.json')));
     assert.equal(written.mode, 'auto');
     assert.equal(written.window_days, 14);
@@ -85,6 +86,7 @@ test('off mode resolves an emailed attendee as disabled', () => withVault(
     writeMeeting(vault, [{ name: 'Disabled Person', email: 'disabled@example.com', location: 'external' }]);
     const { report } = verifyEntities({ now: new Date('2026-06-10T12:00:00Z') });
     assert.equal(report.counts.disabled, 1);
+    assert.equal(report.companies.counts.disabled, 1);
   },
 ));
 
@@ -96,8 +98,9 @@ test('auto mode reports a qualified routable contact without a page as unresolve
     recordObservations('m1', { date: '2026-06-01', hasTranscript: false, attendees: [attendee] });
     recordObservations('m2', { date: '2026-06-08', hasTranscript: false, attendees: [attendee] });
     const { report } = verifyEntities({ days: 14, now: new Date('2026-06-10T12:00:00Z') });
-    assert.equal(report.unresolved.length, 1);
-    assert.match(report.unresolved[0].why, /qualified external contact/);
+    const personUnresolved = report.unresolved.filter(item => item.kind !== 'company');
+    assert.equal(personUnresolved.length, 1);
+    assert.match(personUnresolved[0].why, /qualified external contact/);
   },
 ));
 
@@ -107,5 +110,40 @@ test('summary line has the stable one-line format', () => {
     counts: { page: 8, suggested: 2, dismissed: 0, suppressed: 0, tracking: 1, unverified_identity: 1, disabled: 0 },
     unresolved: [],
   };
-  assert.equal(summaryLine(report), 'entities: 12 attendees -> 8 pages, 2 suggested, 1 tracking, 1 no-email; 0 unresolved');
+  assert.equal(summaryLine(report), 'entities: 12 attendees -> 8 pages, 2 suggested, 1 tracking, 1 no-email; 0 unresolved; companies: 0 pages');
 });
+
+test('company verification reports pages, suggestions, tracking, and auto invariant', () => withVault(
+  { work_email: 'owner@dex.test', entity_creation: { mode: 'auto' } },
+  vault => {
+    const attendees = [
+      { name: 'Acme One', email: 'one@acme.com', location: 'external' },
+      { name: 'Beta One', email: 'one@beta.com', location: 'external' },
+      { name: 'Gamma One', email: 'one@gamma.com', location: 'external' },
+      { name: 'Free Mail', email: 'free@gmail.com', location: 'external' },
+      { name: 'Internal', email: 'inside@dex.test', location: 'internal' },
+    ];
+    writeMeeting(vault, attendees);
+    recordObservations('m1', { date: '2026-06-01', hasTranscript: false, attendees });
+    recordObservations('m2', { date: '2026-06-08', hasTranscript: false, attendees });
+
+    const companies = path.join(vault, '05-Areas', 'Companies');
+    fs.mkdirSync(companies, { recursive: true });
+    fs.writeFileSync(path.join(companies, 'Acme.md'), renderCompanyPage('Acme', ['acme.com']));
+    const runtime = path.join(vault, 'System', '.dex');
+    fs.mkdirSync(runtime, { recursive: true });
+    fs.writeFileSync(path.join(runtime, 'entity-suggestions.json'), JSON.stringify({
+      version: 1,
+      suggestions: [{ id: 'domain:beta.com', kind: 'company', status: 'suggested' }],
+    }));
+
+    const { report, summary } = verifyEntities({ days: 14, now: new Date('2026-06-10T12:00:00Z') });
+    assert.deepEqual(report.companies.counts, { page: 1, suggested: 1, tracking: 1, disabled: 0 });
+    assert.deepEqual(report.companies.domains.map(item => [item.domain, item.outcome]), [
+      ['acme.com', 'page'], ['beta.com', 'suggested'], ['gamma.com', 'tracking'],
+    ]);
+    assert.equal(report.unresolved.filter(item => item.kind === 'company').length, 1);
+    assert.equal(report.unresolved.find(item => item.kind === 'company').domain, 'gamma.com');
+    assert.match(summary, /companies: 1 page, 1 suggested, 1 tracking$/);
+  },
+));

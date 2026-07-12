@@ -110,6 +110,7 @@ if _repo_root not in sys.path:
     sys.path.append(_repo_root)
 from core.paths import (
     COMPANIES_DIR,
+    COMPANY_INDEX_FILE,
     GOALS_FILE,
     INBOX_DIR,
     MEETING_CACHE_FILE,
@@ -127,6 +128,7 @@ from core.paths import (
 from core.paths import (
     VAULT_ROOT as BASE_DIR,
 )
+from core.utils.company_domains import registrable_domain
 from core.utils.entity_pages import parse_entity_page, render_person_page
 
 
@@ -149,6 +151,10 @@ def get_people_dir() -> Path:
 def get_meetings_dir() -> Path:
     """Get the canonical meetings directory."""
     return MEETINGS_DIR
+
+def get_companies_dir() -> Path:
+    """Get the canonical Companies directory."""
+    return COMPANIES_DIR
 
 
 # Default pillars (used if pillars.yaml doesn't exist or can't be loaded)
@@ -974,6 +980,68 @@ def _people_tree_max_mtime() -> float:
         (person_file.stat().st_mtime for person_file in people_dir.rglob('*.md')),
         default=0.0,
     )
+
+
+def build_company_index_data() -> Dict[str, Any]:
+    """Scan company pages and build the canonical lightweight JSON index."""
+    entries = []
+    companies_dir = get_companies_dir()
+    if companies_dir.exists():
+        for company_file in companies_dir.rglob('*.md'):
+            if company_file.name == 'README.md':
+                continue
+            company = parse_entity_page(company_file)
+            entries.append({
+                'name': company.get('name') or company_file.stem.replace('_', ' '),
+                'path': str(company_file.relative_to(BASE_DIR)),
+                'domains': company.get('domains') or [],
+                'website': company.get('website'),
+                'status': company.get('status'),
+            })
+    entries.sort(key=lambda item: (item['name'].casefold(), item['path']))
+    index = {
+        'version': 1,
+        'built_at': datetime.now().isoformat(),
+        'total': len(entries),
+        'companies': entries,
+    }
+    COMPANY_INDEX_FILE.parent.mkdir(parents=True, exist_ok=True)
+    COMPANY_INDEX_FILE.write_text(json.dumps(index, indent=2, cls=DateTimeEncoder) + '\n')
+    return index
+
+
+def _company_tree_max_mtime() -> float:
+    """Return the newest modification time among company markdown pages."""
+    companies_dir = get_companies_dir()
+    if not companies_dir.exists():
+        return 0.0
+    return max(
+        (company_file.stat().st_mtime for company_file in companies_dir.rglob('*.md')),
+        default=0.0,
+    )
+
+
+def find_company_by_domain(domain: str) -> Dict[str, Any] | None:
+    """Find a company by registrable domain, rebuilding an absent or stale index."""
+    index = None
+    if COMPANY_INDEX_FILE.exists():
+        try:
+            index = json.loads(COMPANY_INDEX_FILE.read_text())
+        except (json.JSONDecodeError, OSError):
+            pass
+    if not isinstance(index, dict):
+        index = None
+    try:
+        built_at = datetime.fromisoformat(index.get('built_at', '')) if index else None
+        if not index or index.get('version') != 1 or built_at.timestamp() < _company_tree_max_mtime():
+            index = build_company_index_data()
+    except (ValueError, TypeError):
+        index = build_company_index_data()
+    target = registrable_domain(domain)
+    for company in index.get('companies', []):
+        if target in {registrable_domain(value) for value in company.get('domains', [])}:
+            return company
+    return None
 
 
 def lookup_person_data(name: str, company: str = None) -> Dict[str, Any]:
@@ -3620,6 +3688,11 @@ async def handle_list_tools() -> list[types.Tool]:
             inputSchema={"type": "object", "properties": {}}
         ),
         types.Tool(
+            name="build_company_index",
+            description="Scan company pages and build System/Company_Index.json.",
+            inputSchema={"type": "object", "properties": {}}
+        ),
+        types.Tool(
             name="lookup_person",
             description="Fast person lookup using the People Directory index. Fuzzy name matching with optional company filter. Falls back to file scan if index doesn't exist.",
             inputSchema={
@@ -3703,7 +3776,7 @@ WRITE_TOOLS = {
     "sync_task_refs", "create_quarterly_goal", "update_goal_progress",
     "create_weekly_priority", "complete_weekly_priority",
     "process_inbox_with_dedup", "migrate_quarterly_goals", "migrate_weekly_priorities",
-    "build_people_index", "create_person", "rebuild_meeting_cache", "capture_skill_rating",
+    "build_people_index", "build_company_index", "create_person", "rebuild_meeting_cache", "capture_skill_rating",
 }
 
 @app.call_tool()
@@ -5165,6 +5238,15 @@ async def _handle_call_tool_inner(
             'total': result['total'],
             'by_type': result['by_type'],
             'index_path': str(PEOPLE_INDEX_FILE),
+            'built_at': result['built_at'],
+        }, indent=2))]
+
+    elif name == "build_company_index":
+        result = build_company_index_data()
+        return [types.TextContent(type="text", text=json.dumps({
+            'success': True,
+            'total': result['total'],
+            'index_path': str(COMPANY_INDEX_FILE),
             'built_at': result['built_at'],
         }, indent=2))]
 

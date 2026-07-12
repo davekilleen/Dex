@@ -144,6 +144,7 @@ QUICK_CHECKS = (
     CheckDefinition("jobs.loaded", "Background jobs", "_probe_jobs_loaded"),
     CheckDefinition("jobs.fresh", "Background job freshness", "_probe_jobs_fresh"),
     CheckDefinition("preflight.queue", "Preflight health", "_probe_preflight_queue"),
+    CheckDefinition("entity.engine", "Entity engine", "_probe_entity_engine"),
     CheckDefinition("doctor.self", "Doctor instruments", "_probe_doctor_self"),
 )
 
@@ -991,6 +992,85 @@ def _probe_preflight_queue(context: DoctorContext) -> ProbeResult:
             f"Preflight did not check registered core servers: {', '.join(sorted(unknown_core_servers))}",
         )
     return ProbeResult("OK", "Preflight completed with no server or queued errors")
+
+
+def _probe_entity_engine(context: DoctorContext) -> ProbeResult:
+    """Report entity tracking, creation, verification, quarantine, and index health."""
+    try:
+        from core.utils.entity_pages import parse_entity_page
+
+        contacts_path = context.core_path("CONTACTS_STATE_FILE")
+        suggestions_path = context.core_path("ENTITY_SUGGESTIONS_FILE")
+        verification_path = context.core_path("ENTITY_VERIFICATION_FILE")
+        profile_path = context.core_path("USER_PROFILE_FILE")
+        people_dir = context.core_path("PEOPLE_DIR")
+        companies_dir = context.core_path("COMPANIES_DIR")
+        people_index_path = context.core_path("PEOPLE_INDEX_FILE")
+
+        contacts = json.loads(contacts_path.read_text()) if contacts_path.exists() else {}
+        suggestions = json.loads(suggestions_path.read_text()) if suggestions_path.exists() else {}
+        verification = json.loads(verification_path.read_text()) if verification_path.exists() else {}
+        profile = _load_yaml(profile_path) if profile_path.exists() else {}
+        if profile is None:
+            profile = {}
+        if not isinstance(profile, dict):
+            raise ValueError("user-profile.yaml must contain a mapping")
+
+        raw_mode = profile.get("entity_creation", {}).get("mode")
+        if raw_mode is False:
+            raw_mode = "off"
+        mode = raw_mode if raw_mode in {"auto", "suggest", "off"} else "suggest"
+        mode_label = mode if raw_mode in {"auto", "suggest", "off"} else "suggest (default — key missing)"
+        tracked = len(contacts.get("contacts", {}))
+        observations = len(contacts.get("observations", {}))
+        suggestion_items = suggestions if isinstance(suggestions, list) else suggestions.get("suggestions", [])
+        pending = sum(item.get("status") == "suggested" for item in suggestion_items)
+
+        unresolved = len(verification.get("unresolved", []))
+        generated_at = verification.get("generated_at")
+        stale = False
+        if generated_at:
+            verified_at = datetime.fromisoformat(str(generated_at).replace("Z", "+00:00"))
+            if verified_at.tzinfo is None:
+                verified_at = verified_at.replace(tzinfo=timezone.utc)
+            stale = context.now - verified_at.astimezone(timezone.utc) > timedelta(hours=48)
+
+        quarantined_paths = []
+        for directory in (people_dir, companies_dir):
+            if not directory.exists():
+                continue
+            for page in directory.rglob("*.md"):
+                if page.name != "README.md" and parse_entity_page(page).get("quarantined"):
+                    quarantined_paths.append(str(page.relative_to(context.vault_root)))
+
+        newest_people_mtime = max(
+            (page.stat().st_mtime for page in people_dir.rglob("*.md") if page.name != "README.md"),
+            default=0.0,
+        ) if people_dir.exists() else 0.0
+        index_freshness = "missing"
+        if people_index_path.exists():
+            people_index = json.loads(people_index_path.read_text())
+            built_at = datetime.fromisoformat(str(people_index.get("built_at", "")).replace("Z", "+00:00"))
+            index_freshness = "fresh" if built_at.timestamp() >= newest_people_mtime else "stale"
+
+        verification_label = f"{generated_at or 'never'} / {unresolved} unresolved"
+        if stale:
+            verification_label += " / stale >48h"
+        quarantine_label = str(len(quarantined_paths))
+        if quarantined_paths:
+            quarantine_label += f" ({', '.join(quarantined_paths[:3])})"
+        detail = (
+            f"Entity engine tracks {tracked} contacts and {observations} observations; "
+            f"creation is {mode_label}; {pending} suggestions pending; last verification "
+            f"{verification_label}; {quarantine_label} quarantined pages; people index {index_freshness}"
+        )
+        if unresolved or quarantined_paths:
+            return ProbeResult("BROKEN", detail)
+        if mode == "off":
+            return ProbeResult("OFF", detail)
+        return ProbeResult("OK", detail)
+    except (ImportError, OSError, ValueError, TypeError, json.JSONDecodeError) as error:
+        return ProbeResult("UNKNOWN", f"Entity engine files could not be checked: {_one_line(error)}")
 
 
 def _probe_doctor_self(_context: DoctorContext) -> ProbeResult:

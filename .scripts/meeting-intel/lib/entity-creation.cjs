@@ -2,7 +2,9 @@
 
 const fs = require('fs');
 const path = require('path');
-const { parseEntityPage, renderPersonPage } = require('../../lib/entity-pages.cjs');
+const { parseEntityPage, renderCompanyPage, renderPersonPage } = require('../../lib/entity-pages.cjs');
+const { getInternalDomains } = require('./attendees.cjs');
+const { companyNameFromDomain, isFreemail, registrableDomain } = require('./company-domains.cjs');
 const {
   atomicWrite,
   deriveStats,
@@ -53,6 +55,34 @@ function updateSuggestion(contact, stats, { newEvidence = false } = {}) {
       emails: contact.emails,
       location: contact.location || 'unknown',
       reason: `Seen in ${stats.tracked_meetings} meetings across ${stats.distinct_weeks} weeks`,
+      status: 'suggested',
+      created_at: existing?.created_at || now,
+      updated_at: now,
+    };
+    if (index >= 0) store.suggestions[index] = suggestion;
+    else store.suggestions.push(suggestion);
+    atomicWrite(filePath, store);
+    return { suggestion, changed: JSON.stringify(existing) !== JSON.stringify(suggestion) };
+  });
+}
+
+function updateCompanySuggestion(domain, companyName, contactCount, meetingCount, { newEvidence = false } = {}) {
+  const filePath = runtimePaths().ENTITY_SUGGESTIONS_FILE;
+  return withLock(filePath, () => {
+    const store = loadSuggestions(filePath);
+    const id = `domain:${domain}`;
+    const index = store.suggestions.findIndex(item => item.id === id);
+    const existing = index >= 0 ? store.suggestions[index] : null;
+    if (existing?.status === 'suppressed') return { suggestion: existing, changed: false };
+    if (existing?.status === 'dismissed' && !newEvidence) return { suggestion: existing, changed: false };
+    if (existing?.status === 'suggested' && !newEvidence) return { suggestion: existing, changed: false };
+    const now = new Date().toISOString();
+    const suggestion = {
+      id,
+      kind: 'company',
+      name: companyName,
+      domains: [domain],
+      reason: `${contactCount} contacts across ${meetingCount} meetings`,
       status: 'suggested',
       created_at: existing?.created_at || now,
       updated_at: now,
@@ -130,6 +160,78 @@ function createOrAdoptPerson(contact) {
   return { filePath: targetPath, created: true, adopted: false };
 }
 
+function walkMarkdown(directory) {
+  if (!fs.existsSync(directory)) return [];
+  const files = [];
+  for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+    const filePath = path.join(directory, entry.name);
+    if (entry.isDirectory()) files.push(...walkMarkdown(filePath));
+    else if (entry.isFile() && entry.name.endsWith('.md') && entry.name !== 'README.md') files.push(filePath);
+  }
+  return files;
+}
+
+function companyPageForDomain(domain) {
+  const paths = runtimePaths();
+  const candidates = new Set();
+  try {
+    const index = JSON.parse(fs.readFileSync(paths.COMPANY_INDEX_FILE, 'utf8'));
+    for (const company of Array.isArray(index?.companies) ? index.companies : []) {
+      if ((company.domains || []).map(registrableDomain).includes(domain) && company.path) {
+        candidates.add(path.isAbsolute(company.path) ? company.path : path.join(paths.VAULT_ROOT, company.path));
+      }
+    }
+  } catch (_) { /* an absent or malformed index is advisory only */ }
+  for (const filePath of walkMarkdown(paths.COMPANIES_DIR)) candidates.add(filePath);
+  for (const filePath of candidates) {
+    try {
+      if (parseEntityPage(filePath).domains.map(registrableDomain).includes(domain)) return filePath;
+    } catch (_) { /* scan remains authoritative over stale entries */ }
+  }
+  return null;
+}
+
+function createOrAdoptCompany(domain) {
+  const paths = runtimePaths();
+  const existing = companyPageForDomain(domain);
+  if (existing) return { filePath: existing, created: false, adopted: true };
+  fs.mkdirSync(paths.COMPANIES_DIR, { recursive: true });
+  const name = companyNameFromDomain(domain);
+  const basePath = path.join(paths.COMPANIES_DIR, `${safeFilename(name)}.md`);
+  let targetPath = basePath;
+  if (fs.existsSync(targetPath)) {
+    targetPath = path.join(paths.COMPANIES_DIR, `${safeFilename(name)}_(${safeFilename(domain)}).md`);
+    if (fs.existsSync(targetPath) && parseEntityPage(targetPath).domains.map(registrableDomain).includes(domain)) {
+      return { filePath: targetPath, created: false, adopted: true };
+    }
+  }
+  fs.writeFileSync(targetPath, renderCompanyPage(name, [domain], null, 'Prospect'), { encoding: 'utf8', flag: 'wx' });
+  return { filePath: targetPath, created: true, adopted: false };
+}
+
+function qualifiedCompanyDomains(state, profile) {
+  const internal = new Set(Array.from(getInternalDomains(profile), registrableDomain));
+  const qualifiedIds = new Set(qualifiedContacts(state).map(contact => contact.id));
+  const eligible = new Set(Object.values(state.contacts || {}).filter(contact => {
+    if (contact.location === 'unknown' || !contact.domain) return false;
+    return contact.state === 'created' || qualifiedIds.has(contact.id);
+  }).map(contact => contact.id));
+  const domains = new Map();
+  for (const [meetingId, observation] of Object.entries(state.observations || {})) {
+    const seen = new Set();
+    for (const contactId of observation.contact_ids || []) {
+      const contact = state.contacts[contactId];
+      const domain = registrableDomain(contact?.domain);
+      if (!eligible.has(contactId) || !domain || isFreemail(domain) || internal.has(domain)) continue;
+      if (!domains.has(domain)) domains.set(domain, { contacts: new Set(), meetings: new Set() });
+      domains.get(domain).contacts.add(contactId);
+      seen.add(domain);
+    }
+    for (const domain of seen) domains.get(domain).meetings.add(meetingId);
+  }
+  return [...domains.entries()].filter(([, stats]) => stats.meetings.size >= 2);
+}
+
 function processEntityCreation(meetings, profile = {}, logger = () => {}) {
   const paths = runtimePaths();
   const mode = creationMode(profile);
@@ -152,7 +254,9 @@ function processEntityCreation(meetings, profile = {}, logger = () => {}) {
     }
   }
 
-  if (mode === 'off') return { mode, created: [], suggested: [], errors };
+  if (mode === 'off') return {
+    mode, created: [], suggested: [], companies_created: [], companies_suggested: [], errors,
+  };
 
   const state = loadState(paths.CONTACTS_STATE_FILE);
   const created = [];
@@ -176,14 +280,54 @@ function processEntityCreation(meetings, profile = {}, logger = () => {}) {
       logger(`Could not create or suggest ${contact.name}: ${error.message}`);
     }
   }
-  return { mode, created, suggested, errors };
+  const companiesCreated = [];
+  const companiesSuggested = [];
+  const companyState = loadState(paths.CONTACTS_STATE_FILE);
+  for (const [domain, stats] of qualifiedCompanyDomains(companyState, profile)) {
+    try {
+      const existing = companyPageForDomain(domain);
+      if (existing) {
+        const companyPage = relativeVaultPath(existing, paths.VAULT_ROOT);
+        for (const contactId of stats.contacts) {
+          updateContact(paths.CONTACTS_STATE_FILE, contactId, { company_page: companyPage });
+        }
+        continue;
+      }
+      const companyName = companyNameFromDomain(domain);
+      if (mode === 'auto') {
+        const page = createOrAdoptCompany(domain);
+        const pagePath = relativeVaultPath(page.filePath, paths.VAULT_ROOT);
+        for (const contactId of stats.contacts) {
+          updateContact(paths.CONTACTS_STATE_FILE, contactId, { company_page: pagePath });
+        }
+        companiesCreated.push({ ...page, name: companyName, domain, page_path: pagePath });
+        markSuggestionAccepted(`domain:${domain}`);
+        if (page.created) logger(`Created company page: ${pagePath}`);
+      } else {
+        const result = updateCompanySuggestion(
+          domain, companyName, stats.contacts.size, stats.meetings.size,
+          { newEvidence: [...stats.contacts].some(id => evidenceContacts.has(id)) },
+        );
+        companiesSuggested.push(result.suggestion);
+      }
+    } catch (error) {
+      errors.push({ domain, error: error.message });
+      logger(`Could not create or suggest company ${domain}: ${error.message}`);
+    }
+  }
+  return {
+    mode, created, suggested, companies_created: companiesCreated,
+    companies_suggested: companiesSuggested, errors,
+  };
 }
 
 module.exports = {
   createOrAdoptPerson,
+  createOrAdoptCompany,
   creationMode,
   loadSuggestions,
   markSuggestionAccepted,
   processEntityCreation,
   updateSuggestion,
+  updateCompanySuggestion,
 };

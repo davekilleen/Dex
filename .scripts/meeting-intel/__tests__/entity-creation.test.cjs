@@ -5,7 +5,7 @@ const assert = require('node:assert/strict');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const { parseEntityPage, renderPersonPage } = require('../../lib/entity-pages.cjs');
+const { parseEntityPage, renderCompanyPage, renderPersonPage } = require('../../lib/entity-pages.cjs');
 const { loadState } = require('../lib/contacts-state.cjs');
 const { loadSuggestions, processEntityCreation } = require('../lib/entity-creation.cjs');
 
@@ -27,6 +27,17 @@ function meetings(location = 'external') {
   return [
     { id: 'm1', createdAt: '2026-06-01T10:00:00Z', transcript: '', filteredAttendees: [attendee] },
     { id: 'm2', createdAt: '2026-06-08T10:00:00Z', transcript: '', filteredAttendees: [attendee] },
+  ];
+}
+
+function companyMeetings(domain = 'acme.com', location = 'external') {
+  const attendees = [
+    { name: 'Jane Doe', email: `jane@${domain}`, location },
+    { name: 'John Roe', email: `john@${domain}`, location },
+  ];
+  return [
+    { id: 'm1', createdAt: '2026-06-01T10:00:00Z', transcript: '', filteredAttendees: attendees },
+    { id: 'm2', createdAt: '2026-06-08T10:00:00Z', transcript: '', filteredAttendees: attendees },
   ];
 }
 
@@ -83,3 +94,64 @@ test('matching collision is adopted and a mismatched collision gets a domain suf
     assert.deepEqual(parseEntityPage(result.created[0].filePath).emails, ['jane@acme.com']);
   });
 });
+
+test('auto mode creates a canonical company page from two observed contacts', () => withVault(vault => {
+  const lines = [];
+  const result = processEntityCreation(
+    companyMeetings(), { entity_creation: { mode: 'auto' } }, line => lines.push(line),
+  );
+  assert.equal(result.companies_created.length, 1);
+  const companyPath = path.join(vault, '05-Areas', 'Companies', 'Acme.md');
+  const company = parseEntityPage(companyPath);
+  assert.equal(company.type, 'company');
+  assert.deepEqual(company.domains, ['acme.com']);
+  assert.match(lines.join('\n'), /Created company page:/);
+}));
+
+test('freemail, internal, and unknown-location domains never create companies', () => {
+  withVault(vault => {
+    const result = processEntityCreation(companyMeetings('gmail.com'), { entity_creation: { mode: 'auto' } });
+    assert.equal(result.companies_created.length, 0);
+    assert.equal(fs.existsSync(path.join(vault, '05-Areas', 'Companies')), false);
+  });
+  withVault(() => {
+    const result = processEntityCreation(companyMeetings('dex.test'), {
+      work_email: 'owner@dex.test', entity_creation: { mode: 'auto' },
+    });
+    assert.equal(result.companies_created.length, 0);
+  });
+  withVault(() => {
+    const result = processEntityCreation(companyMeetings('acme.com', 'unknown'), {
+      entity_creation: { mode: 'auto' },
+    });
+    assert.equal(result.companies_created.length, 0);
+  });
+});
+
+test('existing company domain wins and a name collision uses a domain suffix', () => {
+  withVault(vault => {
+    const directory = path.join(vault, '05-Areas', 'Companies');
+    fs.mkdirSync(directory, { recursive: true });
+    fs.writeFileSync(path.join(directory, 'Existing.md'), renderCompanyPage('Existing', ['acme.com']));
+    const result = processEntityCreation(companyMeetings(), { entity_creation: { mode: 'auto' } });
+    assert.equal(result.companies_created.length, 0);
+  });
+  withVault(vault => {
+    const directory = path.join(vault, '05-Areas', 'Companies');
+    fs.mkdirSync(directory, { recursive: true });
+    fs.writeFileSync(path.join(directory, 'Acme.md'), renderCompanyPage('Acme Other', ['other.com']));
+    const result = processEntityCreation(companyMeetings(), { entity_creation: { mode: 'auto' } });
+    assert.equal(path.basename(result.companies_created[0].filePath), 'Acme_(acme.com).md');
+  });
+});
+
+test('suggest mode writes one deduplicated company suggestion', () => withVault(() => {
+  const first = processEntityCreation(companyMeetings(), { entity_creation: { mode: 'suggest' } });
+  const second = processEntityCreation(companyMeetings(), { entity_creation: { mode: 'suggest' } });
+  assert.equal(first.companies_suggested.length, 1);
+  assert.equal(second.companies_suggested.length, 1);
+  const companies = loadSuggestions().suggestions.filter(item => item.kind === 'company');
+  assert.equal(companies.length, 1);
+  assert.deepEqual(companies[0].domains, ['acme.com']);
+  assert.equal(companies[0].reason, '2 contacts across 2 meetings');
+}));

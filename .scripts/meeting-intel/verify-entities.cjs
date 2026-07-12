@@ -6,6 +6,9 @@ const path = require('path');
 const yaml = require('js-yaml');
 const { contactIdFor, deriveStats, loadState, runtimePaths } = require('./lib/contacts-state.cjs');
 const { creationMode, loadSuggestions } = require('./lib/entity-creation.cjs');
+const { getInternalDomains } = require('./lib/attendees.cjs');
+const { isFreemail, registrableDomain } = require('./lib/company-domains.cjs');
+const { parseEntityPage } = require('../lib/entity-pages.cjs');
 
 const OUTCOMES = [
   'page', 'suggested', 'dismissed', 'suppressed', 'tracking',
@@ -61,6 +64,18 @@ function pageExists(contact, attendee, paths) {
   return ['Internal', 'External'].some(folder => fs.existsSync(path.join(paths.PEOPLE_DIR, folder, filename)));
 }
 
+function companyPage(domain, paths) {
+  for (const filePath of walkMarkdown(paths.COMPANIES_DIR)) {
+    if (path.basename(filePath) === 'README.md') continue;
+    try {
+      if (parseEntityPage(filePath).domains.map(registrableDomain).includes(domain)) {
+        return path.relative(paths.VAULT_ROOT, filePath).split(path.sep).join('/');
+      }
+    } catch (_) { /* malformed pages cannot resolve a domain */ }
+  }
+  return null;
+}
+
 function plural(count, singular, pluralForm = `${singular}s`) {
   return count === 1 ? singular : pluralForm;
 }
@@ -76,7 +91,14 @@ function summaryLine(report) {
   if (counts.unverified_identity) parts.push(`${counts.unverified_identity} no-email`);
   if (counts.disabled) parts.push(`${counts.disabled} disabled`);
   if (parts.length === 0) parts.push('0 pages');
-  return `entities: ${report.attendees} attendees -> ${parts.join(', ')}; ${report.unresolved.length} unresolved`;
+  const companyParts = [];
+  const companyCounts = report.companies?.counts || {};
+  if (companyCounts.page) companyParts.push(`${companyCounts.page} ${plural(companyCounts.page, 'page')}`);
+  if (companyCounts.suggested) companyParts.push(`${companyCounts.suggested} suggested`);
+  if (companyCounts.tracking) companyParts.push(`${companyCounts.tracking} tracking`);
+  if (companyCounts.disabled) companyParts.push(`${companyCounts.disabled} disabled`);
+  if (companyParts.length === 0) companyParts.push('0 pages');
+  return `entities: ${report.attendees} attendees -> ${parts.join(', ')}; ${report.unresolved.length} unresolved; companies: ${companyParts.join(', ')}`;
 }
 
 function verifyEntities({ days = 7, now = new Date() } = {}) {
@@ -92,6 +114,8 @@ function verifyEntities({ days = 7, now = new Date() } = {}) {
     loadSuggestions(paths.ENTITY_SUGGESTIONS_FILE).suggestions.map(item => [item.id, item]),
   );
   const identities = new Map();
+  const windowDomains = new Map();
+  const internalDomains = new Set(Array.from(getInternalDomains(profile), registrableDomain));
 
   for (const filePath of walkMarkdown(paths.MEETINGS_DIR)) {
     const data = frontmatter(filePath);
@@ -111,11 +135,62 @@ function verifyEntities({ days = 7, now = new Date() } = {}) {
         location: attendee.location || 'unknown',
         meetings: 1,
       });
+      const rawDomain = typeof attendee.email === 'string' && attendee.email.includes('@')
+        ? attendee.email.trim().toLowerCase().split('@', 2)[1]
+        : null;
+      const domain = registrableDomain(rawDomain);
+      if (domain && !isFreemail(domain) && !internalDomains.has(domain)
+          && attendee.location !== 'internal') {
+        if (!windowDomains.has(domain)) windowDomains.set(domain, { contacts: new Set(), meetings: new Set() });
+        windowDomains.get(domain).contacts.add(key);
+        windowDomains.get(domain).meetings.add(filePath);
+      }
     }
   }
 
   const counts = Object.fromEntries(OUTCOMES.map(outcome => [outcome, 0]));
   const unresolved = [];
+  const companyCounts = { page: 0, suggested: 0, tracking: 0, disabled: 0 };
+  const companyDomains = [];
+  for (const [domain, windowStats] of windowDomains) {
+    const page = companyPage(domain, paths);
+    const suggestion = suggestions.get(`domain:${domain}`);
+    let outcome;
+    if (page) outcome = 'page';
+    else if (mode === 'off') outcome = 'disabled';
+    else if (suggestion?.status === 'suggested') outcome = 'suggested';
+    else outcome = 'tracking';
+    companyCounts[outcome] += 1;
+
+    const observationIds = new Set();
+    const contactIds = new Set();
+    for (const [meetingId, observation] of Object.entries(state.observations || {})) {
+      for (const contactId of observation.contact_ids || []) {
+        const contact = state.contacts[contactId];
+        if (contact?.location !== 'unknown' && registrableDomain(contact?.domain) === domain) {
+          observationIds.add(meetingId);
+          contactIds.add(contactId);
+        }
+      }
+    }
+    const entry = {
+      domain,
+      outcome,
+      contacts: contactIds.size || windowStats.contacts.size,
+      meetings: observationIds.size || windowStats.meetings.size,
+    };
+    if (page) entry.path = page;
+    companyDomains.push(entry);
+    if (mode === 'auto' && observationIds.size >= 2 && !page && !suggestion) {
+      unresolved.push({
+        kind: 'company',
+        domain,
+        meetings: observationIds.size,
+        why: 'qualified company domain has no company page or suggestion',
+      });
+    }
+  }
+
   for (const attendee of identities.values()) {
     const id = attendee.email
       ? state.email_index[attendee.email] || contactIdFor(attendee)
@@ -161,6 +236,7 @@ function verifyEntities({ days = 7, now = new Date() } = {}) {
     window_days: numericDays,
     mode,
     counts,
+    companies: { counts: companyCounts, domains: companyDomains },
     unresolved,
   };
   Object.defineProperty(report, 'attendees', { value: identities.size, enumerable: false });
