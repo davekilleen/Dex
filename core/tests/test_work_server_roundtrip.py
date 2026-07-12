@@ -312,6 +312,50 @@ def test_create_task_schema_adds_owned_fields_without_source():
     assert properties["on_duplicate"]["default"] == "fail"
 
 
+def test_process_inbox_with_dedup_classifies_without_creating_tasks(task_vault):
+    tools = asyncio.run(work_server.handle_list_tools())
+    inbox_tool = next(tool for tool in tools if tool.name == "process_inbox_with_dedup")
+    assert "auto_create" not in inbox_tool.inputSchema["properties"]
+
+    task_vault["tasks"].write_text(
+        "# Tasks\n\n## Next Week\n"
+        "- [ ] Prepare quarterly customer renewal brief ^task-20260711-070\n",
+        encoding="utf-8",
+    )
+    before = task_vault["tasks"].read_text(encoding="utf-8")
+
+    result = _call_tool(
+        "process_inbox_with_dedup",
+        {
+            "items": [
+                "Prepare quarterly customer renewal brief",
+                "Fix bug",
+                "Draft customer onboarding plan for this week",
+            ],
+            "auto_create": True,
+        },
+    )
+
+    assert [entry["item"] for entry in result["potential_duplicates"]] == [
+        "Prepare quarterly customer renewal brief"
+    ]
+    assert [entry["item"] for entry in result["needs_clarification"]] == ["Fix bug"]
+    assert result["new_tasks"] == [
+        {
+            "item": "Draft customer onboarding plan for this week",
+            "suggested_pillar": "pillar_2",
+            "suggested_priority": "P1",
+            "ready_to_create": True,
+        }
+    ]
+    assert result["summary"]["total_items"] == 3
+    assert result["summary"]["new_tasks"] == 1
+    assert result["summary"]["duplicates_found"] == 1
+    assert result["summary"]["needs_clarification"] == 1
+    assert "auto_created" not in result
+    assert task_vault["tasks"].read_text(encoding="utf-8") == before
+
+
 def test_create_task_writes_and_parses_due_project_and_goal(task_vault):
     project = task_vault["root"] / "04-Projects" / "Customer_Renewal.md"
     project.parent.mkdir(parents=True)

@@ -318,10 +318,11 @@ If items found, surface:
 > **Triage these now?** I'll help assign pillars and priorities.
 
 **Triage flow:**
-- Present each item
-- Infer pillar (using existing smart pillar inference)
-- Confirm with user
-- Create task via Work MCP `process_inbox_with_dedup`
+- Run Work MCP `process_inbox_with_dedup` to classify the captured items — it flags
+  duplicates and ambiguous items and suggests a pillar; it does NOT create tasks
+- Present each item, confirm pillar with user (smart pillar inference)
+- Create each confirmed task via Work MCP `create_task` (pass `due`, `people`, or
+  `account` when the captured item mentions them)
 - Mark Reminder as complete via `reminders_complete_item`
 
 **If Dex Inbox is empty:** Skip silently (no "0 items captured" noise).

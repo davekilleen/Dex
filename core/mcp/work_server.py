@@ -3167,11 +3167,6 @@ async def handle_list_tools() -> list[types.Tool]:
                         "type": "array",
                         "items": {"type": "string"},
                         "description": "List of items to process"
-                    },
-                    "auto_create": {
-                        "type": "boolean",
-                        "description": "Automatically create non-duplicate, non-ambiguous tasks",
-                        "default": False
                     }
                 },
                 "required": ["items"]
@@ -4053,7 +4048,6 @@ async def _handle_call_tool_inner(
     
     elif name == "process_inbox_with_dedup":
         items = arguments.get('items', [])
-        auto_create = arguments.get('auto_create', False)
         
         if not items:
             return [types.TextContent(type="text", text=json.dumps({
@@ -4066,7 +4060,6 @@ async def _handle_call_tool_inner(
             "new_tasks": [],
             "potential_duplicates": [],
             "needs_clarification": [],
-            "auto_created": [],
             "summary": {}
         }
         
