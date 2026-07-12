@@ -91,6 +91,7 @@ MCP_CONFIG_TARGET = VAULT_ROOT / '.mcp.json'
 OBSIDIAN_SYNC_LOG = SYSTEM_DIR / 'obsidian-sync.log'
 RITUAL_INTELLIGENCE_DB_FILE = DEX_RUNTIME_DIR / 'ritual-intelligence.db'
 CONTACTS_STATE_FILE = DEX_RUNTIME_DIR / 'contacts.json'
+GARDENER_STATE_FILE = DEX_RUNTIME_DIR / 'gardener.json'
 ENTITY_SUGGESTIONS_FILE = DEX_RUNTIME_DIR / 'entity-suggestions.json'
 ENTITY_VERIFICATION_FILE = DEX_RUNTIME_DIR / 'entity-verification.json'
 

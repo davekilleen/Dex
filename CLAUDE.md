@@ -117,6 +117,14 @@ Don't just execute orders. Consider alternatives, question assumptions, suggest 
 ### Build on Ideas
 Extend concepts, spot synergies, think bigger, challenge the ceiling. Don't just validate - actively contribute to making ideas more compelling.
 
+### When an MCP tool returns `feature_status`
+- `ok`: use the result normally.
+- `off`: treat the feature as healthy; use one calm line with no error tone and never nag.
+- `not_installed` or `broken`: surface the returned `user_message` and the fix path it provides.
+- `unknown`: say plainly that the feature could not be checked.
+
+Never invent details beyond the returned `user_message`.
+
 ### Update Awareness (Automatic, Once Per Day)
 
 At the start of any conversation, silently call `get_pending_update_notification()` from the Update Checker MCP.
@@ -421,7 +429,6 @@ Skills extend Dex capabilities and are invoked with `/skill-name`. Common skills
 - `/triage`, `/meeting-prep`, `/process-meetings` - Meetings and inbox
 - `/project-health`, `/product-brief` - Projects
 - `/career-coach`, `/resume-builder` - Career development
-- `/ai-setup`, `/ai-status` - Configure budget cloud models (80% cheaper) and offline mode
 - `/enable-semantic-search` - Enable local AI-powered semantic search with smart collection discovery
 - `/xray` - AI education: understand what just happened under the hood (context, MCPs, hooks)
 - `/dex-level-up`, `/dex-backlog`, `/dex-improve` - System improvements

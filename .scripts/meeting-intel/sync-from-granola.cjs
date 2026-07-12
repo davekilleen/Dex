@@ -38,6 +38,8 @@ const { execSync } = require('child_process');
 const yaml = require('js-yaml');
 const { loadPaths } = require('../../.claude/hooks/paths.cjs');
 const { autoLinkFiles } = require('../auto-link-people.cjs');
+const { getMeetingProcessingMode } = require('./lib/config.cjs');
+const { getGranolaApiKey: readGranolaApiKey } = require('./lib/granola-api-key.cjs');
 const {
   extractAttendees,
   getInternalDomains,
@@ -45,7 +47,9 @@ const {
   filterOwner,
 } = require('./lib/attendees.cjs');
 const { processEntityCreation } = require('./lib/entity-creation.cjs');
+const { gardenEntities } = require('./lib/gardener.cjs');
 const { verifyEntities } = require('./verify-entities.cjs');
+const { generateContent, isConfigured } = require('../lib/llm-client.cjs');
 
 // ============================================================================
 // CONFIGURATION
@@ -72,32 +76,7 @@ const GRANOLA_API_BASE = 'https://public-api.granola.ai';
  * Never throws.
  */
 function getGranolaApiKey() {
-  if (process.env.GRANOLA_API_KEY && process.env.GRANOLA_API_KEY.trim()) {
-    return process.env.GRANOLA_API_KEY.trim();
-  }
-
-  try {
-    const envPath = path.join(VAULT_ROOT, '.env');
-    if (!fs.existsSync(envPath)) return null;
-    const raw = fs.readFileSync(envPath, 'utf-8');
-    for (const line of raw.split('\n')) {
-      const trimmed = line.trim();
-      if (!trimmed || trimmed.startsWith('#')) continue;
-      const match = trimmed.match(/^GRANOLA_API_KEY\s*=\s*(.*)$/);
-      if (match) {
-        // Strip optional surrounding quotes and inline whitespace
-        let value = match[1].trim();
-        if ((value.startsWith('"') && value.endsWith('"')) ||
-            (value.startsWith("'") && value.endsWith("'"))) {
-          value = value.slice(1, -1);
-        }
-        return value.trim() || null;
-      }
-    }
-  } catch (e) {
-    // Unreadable .env — treat as not configured rather than failing.
-  }
-  return null;
+  return readGranolaApiKey({ vaultRoot: VAULT_ROOT });
 }
 
 const STATE_FILE = path.join(__dirname, 'processed-meetings.json');
@@ -861,7 +840,7 @@ ${notesSection}
 ${transcriptSection}
 
 ---
-*Auto-synced by Dex. Run \`/process-meetings\` to add AI analysis, or set up an LLM key via \`/ai-setup\`.*
+*Auto-synced by Dex. Run \`/process-meetings\` to add AI analysis, or add an LLM API key to \`.env\` for background analysis.*
 `;
 
   fs.writeFileSync(filepath, content);
@@ -985,6 +964,18 @@ function runEntityVerification() {
   }
 }
 
+async function runEntityGardener(profile) {
+  if (!isConfigured()
+      || profile.entity_gardener?.enabled === false
+      || profile.meeting_processing?.mode !== 'automatic') return;
+  try {
+    const result = await gardenEntities({ generate: generateContent, limit: 5, log });
+    log(`Gardener: ${result.gardened.length} maintained, ${result.locked} locked, ${result.errors.length} errors`);
+  } catch (error) {
+    log(`Entity gardener skipped after error: ${error.message}`);
+  }
+}
+
 // ============================================================================
 // MAIN
 // ============================================================================
@@ -1027,7 +1018,10 @@ async function main() {
   if (newMeetings === null) {
     // Auth rejected or network failure — already logged a friendly reason.
     log('Could not reach the Granola API this run. Exiting cleanly.');
-    if (!dryRun) runEntityVerification();
+    if (!dryRun) {
+      runEntityVerification();
+      await runEntityGardener(profile);
+    }
     return;
   }
 
@@ -1036,7 +1030,10 @@ async function main() {
   if (newMeetings.length === 0) {
     log('Nothing to process. Exiting.');
     saveState(state);
-    if (!dryRun) runEntityVerification();
+    if (!dryRun) {
+      runEntityVerification();
+      await runEntityGardener(profile);
+    }
     return;
   }
 
@@ -1055,7 +1052,7 @@ async function main() {
   // Determine processing mode
   // "automatic" = write meeting notes now (default for new users)
   // "manual"    = queue JSON files for /process-meetings command
-  const processingMode = profile.meeting_processing?.mode || 'automatic';
+  const processingMode = getMeetingProcessingMode(profile.meeting_processing);
   log(`\nProcessing mode: ${processingMode}`);
 
   if (processingMode === 'manual') {
@@ -1095,7 +1092,7 @@ async function main() {
     } catch (err) {
       if (err.message.includes('No LLM API key') || err.message.includes('not configured')) {
         // No LLM configured — create a basic structured note instead
-        log(`  No LLM available — creating basic note (run /ai-setup to enable AI analysis)`);
+        log(`  No LLM available — creating basic note (add ANTHROPIC_API_KEY, OPENAI_API_KEY, or GEMINI_API_KEY to .env for background analysis)`);
         result = createBasicMeetingNote(meeting, profile);
       } else {
         log(`  Failed: ${err.message}`);
@@ -1154,6 +1151,7 @@ async function main() {
   }
 
   runEntityVerification();
+  await runEntityGardener(profile);
 
   // Summary
   log('\n' + '='.repeat(60));
@@ -1182,6 +1180,7 @@ module.exports = {
   createBasicMeetingNote,
   createMeetingNote,
   resolveMeetingNoteTarget,
+  getMeetingProcessingMode,
   renderAttendeesYamlBlock,
   renderParticipants,
 };

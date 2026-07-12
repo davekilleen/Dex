@@ -19,6 +19,7 @@
     "ENTITY_SUGGESTIONS_FILE": "System/.dex/entity-suggestions.json",
     "ENTITY_VERIFICATION_FILE": "System/.dex/entity-verification.json",
     "EVIDENCE_DIR": "05-Areas/Career/Evidence",
+    "GARDENER_STATE_FILE": "System/.dex/gardener.json",
     "GOALS_FILE": "GOALS.md",
     "IDEAS_DIR": "00-Inbox/Ideas",
     "INBOX_DIR": "00-Inbox",

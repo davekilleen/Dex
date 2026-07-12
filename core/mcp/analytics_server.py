@@ -59,6 +59,15 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 logger = logging.getLogger(__name__)
 
 
+def _meeting_processing_mode(value):
+    """Return the configured mode from either supported profile shape."""
+    if isinstance(value, str):
+        return value
+    if isinstance(value, dict):
+        return value.get("mode")
+    return None
+
+
 def log_event_locally(event_name: str, properties: dict, visitor_id: str):
     """Log event to local file as backup."""
     log_path = get_vault_path() / 'System' / 'analytics_log.jsonl'
@@ -220,7 +229,7 @@ async def _call_tool_inner(name: str, arguments: dict) -> list[TextContent]:
             "company_size": profile.get("company_size", "unknown"),
             "pillars_count": len(profile.get("pillars", [])),
             "obsidian_enabled": profile.get("obsidian_mode", False),
-            "granola_enabled": profile.get("meeting_processing", {}).get("mode") == "automatic",
+            "granola_enabled": _meeting_processing_mode(profile.get("meeting_processing")) == "automatic",
             **metadata
         }
 

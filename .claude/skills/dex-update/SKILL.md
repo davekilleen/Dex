@@ -600,14 +600,18 @@ Log: "✓ Added N new features to usage_log.md" (or "✓ Usage log up to date" i
 
 Check for automation scripts that need installation. These run silently without prompting.
 
-**Meeting Sync (if Granola detected):**
+**Meeting Sync (when Granola is connected):**
 
 Check if Granola is installed:
 ```bash
-ls "$HOME/Library/Application Support/Granola/cache-v3.json" 2>/dev/null
+[ -d "/Applications/Granola.app" ] && echo "Granola app detected — run /granola-setup to connect it (needs a Granola Business API key)"
 ```
 
-If Granola cache exists AND meeting automation not yet installed:
+Check for `GRANOLA_API_KEY` in the environment, then in the vault-root `.env`, matching the meeting sync worker. App presence does not gate API-backed sync.
+
+If no key is present, do not install the automation. If the app is present, add this to the summary: "Granola app detected — run `/granola-setup` to connect it (needs a Granola Business API key)." If the app is absent, include the https://granola.ai install pointer before the `/granola-setup` guidance.
+
+If the API key is configured and meeting automation is not yet installed:
 ```bash
 # Check if already installed
 launchctl list | grep com.dex.meeting-intel
@@ -753,7 +757,7 @@ This update includes integrations for your favorite tools:
 - Meeting prep pulls relevant docs from Notion
 - Person pages show email/Slack history
 
-Run `/integrate-notion`, `/integrate-slack`, or `/integrate-google` to set up.
+Run `/integrate-mcp` to connect any of these tools.
 ```
 
 **If user has integrations that could be upgraded:**
@@ -771,7 +775,7 @@ You have some integrations that could be upgraded to Dex recommended packages:
 
 **Options:**
 1. **Keep existing** — Your current setup works fine
-2. **Upgrade** — Run `/integrate-notion` to switch to recommended
+2. **Upgrade** — Run `/integrate-mcp` to review and switch the connection
 ```
 
 ---

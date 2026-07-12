@@ -1,4 +1,6 @@
-# /integrate-google - Connect Google Workspace to Dex
+# Google Workspace Integration Setup Guide
+
+Start this setup through `/integrate-mcp`.
 
 ## Purpose
 Guide users through setting up Google Workspace integration (Gmail, Calendar, Contacts) with Dex using OAuth.
@@ -106,7 +108,7 @@ For users intimidated by Google Cloud setup, offer:
 > **Finding Google Cloud setup complex?** 
 >
 > Here are your options:
-> 1. **Skip for now** - You can add Google later with `/integrate-google`
+> 1. **Skip for now** - You can add Google later with `/integrate-mcp`
 > 2. **Follow along** - I'll guide you step by step (takes ~5 min)
 > 3. **Watch a video** - [link to setup walkthrough if available]
 >
@@ -121,6 +123,5 @@ fire_event('integration_google_completed', {
 ```
 
 ## Related Skills
-- `/integrate-notion` - Connect Notion
-- `/integrate-slack` - Connect Slack
+- `/integrate-mcp` - Connect another tool
 - `/meeting-prep` - Uses Google context when available

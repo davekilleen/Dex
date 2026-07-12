@@ -148,6 +148,16 @@ Ask: "What's your company email domain? This helps me automatically:
 
 **Purpose:** Optimize calendar queries for performance (45s → 0.3s) by identifying the user's actual work calendar instead of guessing its name.
 
+Detect the host platform first. Run `uname -s` when available; if that command is unavailable, use the runtime-reported operating system.
+
+**On non-macOS platforms (anything other than `Darwin`):**
+
+Say: "Calendar sync is currently available only on macOS, so I'll skip calendar setup on this computer."
+
+Call `save_calendar_selection(skipped=true)`, then continue to Step 5. Do not call `calendar_list_calendars`, show macOS settings guidance, or block onboarding.
+
+**On macOS:**
+
 Call `calendar_list_calendars` from the Calendar MCP to get the calendar names Calendar.app can see.
 
 **If the listing succeeds:**
@@ -439,13 +449,22 @@ When you first connect Granola (or later via `/getting-started`), you'll choose:
 Want to connect Granola now with `/granola-setup`, then set up manual or automatic processing?"
 
 **If manual:** 
-1. Update `System/user-profile.yaml` with `meeting_processing: manual`
+1. Update `System/user-profile.yaml` with:
+   ```yaml
+   meeting_processing:
+     mode: manual
+   ```
 2. Say: "✓ Manual processing enabled. Once Granola is connected via `/granola-setup`, run `/process-meetings` or `/getting-started` to process your meetings."
 
 **If automatic:**
 1. Ask which provider (Gemini has free tier)
 2. Get their API key
-3. Update `System/user-profile.yaml` and `.env`
+3. Update `.env` with the provider key and `System/user-profile.yaml` with:
+   ```yaml
+   meeting_processing:
+     mode: automatic
+     api_provider: gemini # or anthropic/openai, matching the user's choice
+   ```
 4. Say: "✓ Automatic processing enabled. I'll sync every 30 minutes. You can still use `/getting-started` for historical data."
 
 ### Analytics Notice (Inform, Don't Ask):

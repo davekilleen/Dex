@@ -141,6 +141,16 @@ JOB_FRESHNESS = {
     ),
 }
 
+# Ownership includes every launch agent this repo can install; only some emit freshness logs.
+SHIPPED_LAUNCH_AGENT_LABELS = frozenset(
+    {
+        "com.dex.changelog-checker",
+        "com.dex.learning-review",
+        "com.dex.meeting-intel",
+        "com.dex.obsidian-sync",
+    }
+)
+
 
 QUICK_CHECKS = (
     CheckDefinition("vault.structure", "Vault structure", "_probe_vault_structure"),
@@ -811,6 +821,39 @@ def _plist_strings(value: object) -> Iterator[str]:
             yield from _plist_strings(child)
 
 
+def _plist_owned_by_vault(plist: Path, data: dict[str, Any], context: DoctorContext) -> bool:
+    label = str(data.get("Label") or plist.stem)
+    if label in SHIPPED_LAUNCH_AGENT_LABELS:
+        return True
+    arguments = data.get("ProgramArguments")
+    if not isinstance(arguments, list):
+        return False
+    vault_root = context.vault_root.resolve()
+    for argument in arguments:
+        if not isinstance(argument, str):
+            continue
+        candidate = Path(argument).expanduser()
+        if not candidate.is_absolute():
+            continue
+        try:
+            resolved = candidate.resolve()
+        except OSError:
+            continue
+        if resolved.is_relative_to(vault_root):
+            return True
+    return False
+
+
+def _with_skipped_launch_agents(detail: str, skipped_count: int) -> str:
+    if not skipped_count:
+        return detail
+    if skipped_count == 1:
+        note = "1 Dex launch agent from another Dex product was skipped"
+    else:
+        note = f"{skipped_count} Dex launch agents from other Dex products were skipped"
+    return f"{detail}; {note}"
+
+
 def _plist_configuration_issue(plist: Path, data: dict[str, Any], context: DoctorContext) -> str | None:
     arguments = data.get("ProgramArguments")
     if not isinstance(arguments, list) or not arguments or not isinstance(arguments[0], str):
@@ -904,11 +947,18 @@ def _probe_jobs_loaded(context: DoctorContext) -> ProbeResult:
     issues: list[tuple[int, str]] = []
     unknowns = []
     runtime_labels = []
+    skipped_count = 0
     for plist in plists:
         try:
             data = _plist_data(plist)
         except RuntimeError as error:
-            issues.append((2, _one_line(error)))
+            if plist.stem in SHIPPED_LAUNCH_AGENT_LABELS:
+                issues.append((2, _one_line(error)))
+            else:
+                skipped_count += 1
+            continue
+        if not _plist_owned_by_vault(plist, data, context):
+            skipped_count += 1
             continue
         label = str(data.get("Label") or plist.stem)
         configuration_issue = _plist_configuration_issue(plist, data, context)
@@ -945,6 +995,12 @@ def _probe_jobs_loaded(context: DoctorContext) -> ProbeResult:
                     unknowns.append(f"{label} is loaded but has no observable LastExitStatus")
                 elif status["last_exit_status"] != 0:
                     issues.append((2, f"{label} last exited with status {status['last_exit_status']}"))
+    owned_count = len(plists) - skipped_count
+    if not owned_count:
+        return ProbeResult(
+            "OFF",
+            _with_skipped_launch_agents("No launch agents for this vault are installed", skipped_count),
+        )
     if issues:
         tier = max(issue_tier for issue_tier, _detail in issues)
         action_parts = []
@@ -956,12 +1012,21 @@ def _probe_jobs_loaded(context: DoctorContext) -> ProbeResult:
         detail_parts.extend(unknowns)
         return ProbeResult(
             "BROKEN",
-            "; ".join(detail_parts),
+            _with_skipped_launch_agents("; ".join(detail_parts), skipped_count),
             Heal(tier=tier, action="; then ".join(action_parts) + ".", applied=False),
         )
     if unknowns:
-        return ProbeResult("UNKNOWN", "; ".join(unknowns))
-    return ProbeResult("OK", f"All {len(plists)} installed launch agents are loaded with valid interpreters")
+        return ProbeResult(
+            "UNKNOWN",
+            _with_skipped_launch_agents("; ".join(unknowns), skipped_count),
+        )
+    return ProbeResult(
+        "OK",
+        _with_skipped_launch_agents(
+            f"All {owned_count} installed launch agents for this vault are loaded with valid interpreters",
+            skipped_count,
+        ),
+    )
 
 
 def _probe_jobs_fresh(context: DoctorContext) -> ProbeResult:
@@ -1530,6 +1595,7 @@ def _probe_entity_engine(context: DoctorContext) -> ProbeResult:
         contacts_path = context.core_path("CONTACTS_STATE_FILE")
         suggestions_path = context.core_path("ENTITY_SUGGESTIONS_FILE")
         verification_path = context.core_path("ENTITY_VERIFICATION_FILE")
+        gardener_path = context.core_path("GARDENER_STATE_FILE")
         profile_path = context.core_path("USER_PROFILE_FILE")
         people_dir = context.core_path("PEOPLE_DIR")
         companies_dir = context.core_path("COMPANIES_DIR")
@@ -1538,6 +1604,7 @@ def _probe_entity_engine(context: DoctorContext) -> ProbeResult:
         contacts = json.loads(contacts_path.read_text()) if contacts_path.exists() else {}
         suggestions = json.loads(suggestions_path.read_text()) if suggestions_path.exists() else {}
         verification = json.loads(verification_path.read_text()) if verification_path.exists() else {}
+        gardener = json.loads(gardener_path.read_text()) if gardener_path.exists() else {}
         profile = _load_yaml(profile_path) if profile_path.exists() else {}
         if profile is None:
             profile = {}
@@ -1553,6 +1620,17 @@ def _probe_entity_engine(context: DoctorContext) -> ProbeResult:
         observations = len(contacts.get("observations", {}))
         suggestion_items = suggestions if isinstance(suggestions, list) else suggestions.get("suggestions", [])
         pending = sum(item.get("status") == "suggested" for item in suggestion_items)
+        gardener_pages = gardener.get("pages", {}) if isinstance(gardener, dict) else {}
+        gardener_locked = sum(bool(item.get("locked")) for item in gardener_pages.values())
+        if profile.get("entity_gardener", {}).get("enabled") is False:
+            gardener_label = "off (disabled)"
+        elif not any(os.environ.get(key) for key in ("ANTHROPIC_API_KEY", "OPENAI_API_KEY", "GEMINI_API_KEY")):
+            gardener_label = "off (no LLM key)"
+        else:
+            maintained = sum(bool(item.get("output_hash")) for item in gardener_pages.values())
+            gardener_label = f"on ({maintained} pages maintained)"
+        if gardener_locked:
+            gardener_label += f", {gardener_locked} locked"
 
         unresolved = len(verification.get("unresolved", []))
         generated_at = verification.get("generated_at")
@@ -1591,6 +1669,7 @@ def _probe_entity_engine(context: DoctorContext) -> ProbeResult:
             f"Entity engine tracks {tracked} contacts and {observations} observations; "
             f"creation is {mode_label}; {pending} suggestions pending; last verification "
             f"{verification_label}; {quarantine_label} quarantined pages; people index {index_freshness}"
+            f"; gardener {gardener_label}"
         )
         if unresolved or quarantined_paths:
             return ProbeResult("BROKEN", detail)
@@ -1698,7 +1777,13 @@ def _calendar_permission_status(_context: DoctorContext) -> str:
         status = int(result.stdout.strip())
     except ValueError as error:
         raise RuntimeError(f"EventKit returned an invalid authorization status: {combined}") from error
-    return {0: "not_determined", 1: "restricted", 2: "denied", 3: "authorized"}.get(status, "unknown")
+    return {
+        0: "not_determined",
+        1: "restricted",
+        2: "denied",
+        3: "authorized",
+        4: "write_only",
+    }.get(status, f"unknown ({status})")
 
 
 def _calendar_list_result(context: DoctorContext) -> dict[str, Any]:
@@ -1730,6 +1815,16 @@ def _probe_calendar_access(context: DoctorContext) -> ProbeResult:
         return ProbeResult("UNKNOWN", "EventKit calendar access can only be checked on macOS")
     if status == "not_determined" and not configured:
         return ProbeResult("OFF", "Calendar access has never been requested and no work calendar is configured")
+    if status == "write_only":
+        return ProbeResult(
+            "BROKEN",
+            "Calendar permission is write only; Dex needs full calendar access to read calendars",
+            Heal(
+                tier=3,
+                action="Grant Full Calendar Access in System Settings > Privacy & Security > Calendars.",
+                applied=False,
+            ),
+        )
     if status in {"not_determined", "restricted", "denied"}:
         return ProbeResult(
             "BROKEN",

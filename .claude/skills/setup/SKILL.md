@@ -120,26 +120,33 @@ Ask: "Do you use Granola for meeting transcription?"
 
 **If yes:**
 
-Check if Granola cache exists: `~/Library/Application Support/Granola/cache-v*.json`
+Check whether `/Applications/Granola.app` exists.
 
-If cache not found:
-> "I don't see Granola's cache yet. Make sure you've run at least one meeting with Granola, then we can set this up."
+If the app is present:
+> "Granola app detected — run `/granola-setup` to connect it (needs a Granola Business API key)."
 
-If cache found, ask:
+If the app is absent:
+> "Granola app not detected. Install Granola from https://granola.ai for meeting transcription, then run `/granola-setup` to connect it (needs a Granola Business API key)."
+
+Granola must be connected through `/granola-setup` before either processing mode can fetch meetings. Once connected, ask:
 
 > "Great! Dex can process your Granola meetings to extract summaries, action items, and update person pages.
 >
 > **How would you like to process meetings?**
 >
-> 1. **Manual** (recommended to start) — Run `/process-meetings` whenever you want. Uses Claude directly, no API key needed.
+> 1. **Manual** (recommended to start) — Run `/process-meetings` whenever you want. Uses Claude directly, so no additional LLM API key is needed after Granola is connected.
 >
-> 2. **Automatic** — Runs in the background every 30 minutes, even when Cursor is closed. Requires an API key.
+> 2. **Automatic** — Runs in the background every 30 minutes, even when Cursor is closed. Requires a separate LLM API key.
 >
 > Which do you prefer?"
 
 **If Manual (option 1):**
-- No additional setup needed
-- Update `System/user-profile.yaml` with `meeting_processing: manual`
+- Confirm Granola was connected through `/granola-setup`; no additional LLM setup is needed
+- Update `System/user-profile.yaml` with:
+  ```yaml
+  meeting_processing:
+    mode: manual
+  ```
 - Say: "You're all set! Run `/process-meetings` after your meetings to pull them into Dex."
 
 **If Automatic (option 2):**
@@ -176,8 +183,13 @@ Based on choice:
    > "I've saved your API key to a file called `.env` (a secure place for credentials). The background meeting sync will use this to process your meetings automatically."
 
 5. Run `npm install` to install dependencies
-5. Update `System/user-profile.yaml` with `meeting_processing: automatic` and `meeting_api_provider: [choice]`
-6. Run `.scripts/meeting-intel/install-automation.sh`
+6. Update `System/user-profile.yaml` with:
+   ```yaml
+   meeting_processing:
+     mode: automatic
+     api_provider: [choice]
+   ```
+7. Run `.scripts/meeting-intel/install-automation.sh`
 
 Say: "Automatic processing enabled! Meetings will sync every 30 minutes. You can also run `/process-meetings` anytime."
 

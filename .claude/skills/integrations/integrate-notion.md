@@ -1,4 +1,6 @@
-# /integrate-notion - Connect Notion to Dex
+# Notion Integration Setup Guide
+
+Start this setup through `/integrate-mcp`.
 
 ## Purpose
 Guide users through setting up Notion integration with Dex using the official Notion MCP.
@@ -99,6 +101,5 @@ fire_event('integration_notion_completed', {
 ```
 
 ## Related Skills
-- `/integrate-slack` - Connect Slack
-- `/integrate-google` - Connect Google Workspace
+- `/integrate-mcp` - Connect another tool
 - `/meeting-prep` - Uses Notion context when available

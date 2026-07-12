@@ -315,3 +315,26 @@ def test_update_task_status_tool_surfaces_title_match_write_failure(monkeypatch)
     )
 
     assert payload == failure
+
+
+def test_load_pillars_coerces_non_string_keywords(tmp_path, monkeypatch):
+    """A YAML keyword like `1:1` parses as an int (base-60); guess_pillar must not crash."""
+    pillars_file = tmp_path / "pillars.yaml"
+    pillars_file.write_text(
+        "pillars:\n"
+        "  - id: sales\n"
+        "    name: Sales\n"
+        "    keywords:\n"
+        "      - 1:1\n"
+        "      - pipeline\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(work_server, "get_pillars_file", lambda: pillars_file)
+
+    pillars = work_server.load_pillars_from_yaml()
+
+    assert pillars["sales"]["keywords"] == ["61", "pipeline"]
+    # guess_pillar iterates `keyword in text` over module-level PILLARS — the
+    # int-coerced keyword must not raise a TypeError on `61 in "..."`.
+    monkeypatch.setattr(work_server, "PILLARS", pillars)
+    assert work_server.guess_pillar("let's sync on the pipeline") == "sales"

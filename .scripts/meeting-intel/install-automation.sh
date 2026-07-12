@@ -46,6 +46,10 @@ find_node() {
 
 NODE_PATH=$(find_node)
 
+has_granola_api_key() {
+    [ -n "$NODE_PATH" ] && "$NODE_PATH" "$SCRIPT_DIR/lib/granola-api-key.cjs" "$VAULT_PATH"
+}
+
 # Check status
 if [ "$1" = "--status" ]; then
     echo "Checking status..."
@@ -73,13 +77,11 @@ fi
 # Check Granola authentication
 if [ "$1" = "--auth" ]; then
     echo "Checking Granola authentication..."
-    SUPABASE_JSON="$HOME/Library/Application Support/Granola/supabase.json"
-    if [ -f "$SUPABASE_JSON" ]; then
-        echo -e "${GREEN}✓${NC} Granola credentials found (supabase.json)"
-        echo "  Granola stores auth automatically — no manual setup needed."
+    if has_granola_api_key; then
+        echo -e "${GREEN}✓${NC} Granola API key found"
     else
-        echo -e "${RED}✗${NC} Granola credentials not found."
-        echo "  Open the Granola desktop app and sign in — credentials are created automatically."
+        echo -e "${RED}✗${NC} Granola API key not found."
+        echo "  Run /granola-setup to connect Granola (requires a Granola Business plan)."
     fi
     exit 0
 fi
@@ -120,21 +122,12 @@ if [ ! -f "$VAULT_PATH/.env" ]; then
     echo -e "${YELLOW}!${NC} Warning: .env file not found. Make sure GEMINI_API_KEY (or another LLM key) is set."
 fi
 
-# Check for Granola
-GRANOLA_CACHE=$(ls -1 "$HOME/Library/Application Support/Granola/cache-v"*.json 2>/dev/null | sort -t'v' -k2 -rn | head -1)
-if [ -n "$GRANOLA_CACHE" ]; then
-    echo -e "${GREEN}✓${NC} Granola cache found: $(basename "$GRANOLA_CACHE")"
+# Check the same authentication source the sync worker uses.
+if has_granola_api_key; then
+    echo -e "${GREEN}✓${NC} Granola API key found"
 else
-    echo -e "${YELLOW}!${NC} Granola cache not found. Install Granola and record a meeting first."
-fi
-
-# Check Granola authentication (supabase.json — created automatically by Granola app)
-SUPABASE_JSON="$HOME/Library/Application Support/Granola/supabase.json"
-if [ -f "$SUPABASE_JSON" ]; then
-    echo -e "${GREEN}✓${NC} Granola credentials found (supabase.json)"
-else
-    echo -e "${YELLOW}!${NC} Granola credentials not found. Open Granola desktop app and sign in."
-    echo "    Credentials are stored automatically — no manual auth step needed."
+    echo -e "${YELLOW}!${NC} Granola API key not found."
+    echo "    Run /granola-setup to connect Granola (requires a Granola Business plan)."
 fi
 
 # Write vault-path breadcrumb (used by dex-launcher.sh for resilient path resolution)
@@ -193,14 +186,14 @@ echo -e "${GREEN}Installation complete!${NC}"
 echo ""
 echo "What happens now:"
 echo "  • Meetings sync automatically every 30 minutes"
-echo "  • Syncs via Granola's official MCP (includes mobile recordings)"
+echo "  • Syncs via Granola's official API (includes mobile recordings)"
 echo "  • Also syncs when you log in or wake your laptop"
 echo "  • /process-meetings now reads synced files (no terminal output)"
 echo ""
 echo "Commands:"
 echo "  ./install-automation.sh --status    Check if running"
 echo "  ./install-automation.sh --stop      Disable background sync"
-echo "  ./install-automation.sh --auth      Check Granola credentials"
+echo "  ./install-automation.sh --auth      Check Granola API key"
 echo ""
 echo "Logs:"
 echo "  $LOG_DIR/meeting-intel.stdout.log"

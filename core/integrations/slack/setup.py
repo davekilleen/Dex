@@ -186,4 +186,4 @@ def test_connection() -> Tuple[bool, str]:
     """Test if Slack connection is working."""
     if is_installed():
         return True, "Slack MCP is configured. Restart Claude Desktop if you haven't already."
-    return False, "Slack MCP is not configured. Run /integrate-slack to set up."
+    return False, "Slack MCP is not configured. Run /integrate-mcp to set up."

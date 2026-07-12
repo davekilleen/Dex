@@ -218,7 +218,7 @@ Or everything looks current and you're ready to go?
 I just checked what you have available...
 
 **Calendar:** ✅ Connected
-**Granola:** ✅ Installed
+**Granola:** ✅ Connected
 
 Hold on - let me analyze what's there...
 ```
@@ -542,10 +542,10 @@ I can see your calendar for this week:
 
 I can create person pages for your frequent contacts if you'd like.
 
-**But I notice you don't have Granola** - that's how I process meeting transcripts into action items and insights.
+**But I notice Granola isn't connected** - that's how I process meeting transcripts into action items and insights.
 
 Want help with:
-1. Installing Granola (automatic meeting intelligence)
+1. Connecting Granola — run `/granola-setup` to add your Granola API key (needs a Granola Business plan) for automatic meeting intelligence
 2. Connecting another meeting tool
 3. Or tell me what other tools you use - I'll build integrations
 
@@ -559,7 +559,7 @@ What sounds useful?
 ```
 👋 **Welcome back, [Name]!**
 
-I can see you have Granola installed. Let me check what's available...
+I can see Granola is connected. Let me check what's available...
 
 [Analyze Granola data extent - 6 months by default]
 

@@ -619,7 +619,8 @@ def test_uncompletion_accepts_both_stored_completion_layouts(task_vault, task_li
     )
 
 
-def test_priority_limit_error_names_occupying_tasks_and_new_enforcement(task_vault, monkeypatch):
+def test_over_limit_priority_creates_task_with_warning_not_refusal(task_vault, monkeypatch):
+    """Issue #80: an over-limit priority warns but still creates the task."""
     task_vault["tasks"].write_text(
         "# Tasks\n\n## Next Week\n"
         "- [ ] Existing launch brief ^task-20260711-051\n"
@@ -639,16 +640,33 @@ def test_priority_limit_error_names_occupying_tasks_and_new_enforcement(task_vau
         },
     )
 
-    assert result["success"] is False
-    assert "Existing launch brief" in result["error"]
-    assert "task-20260711-051" in result["error"]
-    assert "Existing evidence review" in result["error"]
-    assert "task-20260711-052" in result["error"]
-    assert "newly enforced" in result["error"].lower()
-    assert result["occupying_tasks"] == [
-        {"title": "Existing launch brief", "task_id": "task-20260711-051"},
-        {"title": "Existing evidence review", "task_id": "task-20260711-052"},
-    ]
+    # The task is created, not refused.
+    assert result["success"] is True
+    assert "Prepare another planning record" in task_vault["tasks"].read_text(encoding="utf-8")
+    # ...but a warning surfaces the over-limit state.
+    warning = result["priority_warning"]
+    assert warning["priority"] == "P1"
+    assert warning["current_count"] == 3
+    assert warning["limit"] == 2
+    assert "guideline is 2" in warning["warning"]
+
+
+def test_within_limit_priority_has_no_warning(task_vault, monkeypatch):
+    task_vault["tasks"].write_text(
+        "# Tasks\n\n## Next Week\n"
+        "- [ ] Existing launch brief ^task-20260711-051\n"
+        "\t- Pillar: Test Pillar | Priority: P1\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(work_server, "PRIORITY_LIMITS", {"P0": 3, "P1": 5, "P2": 10})
+
+    result = _call_tool(
+        "create_task",
+        {"title": "One more planning record", "pillar": "pillar_1", "priority": "P1"},
+    )
+
+    assert result["success"] is True
+    assert "priority_warning" not in result
 
 
 def test_python_meeting_cache_recurses_dated_folders_and_skips_queue(

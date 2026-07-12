@@ -42,7 +42,7 @@ All shipped with Dex in `core/mcp/`:
 |--------|------|---------|-------------------|
 | work-mcp | `work_server.py` | Task/goal management | None (local files) |
 | calendar-mcp | `calendar_server.py` | Calendar integration | macOS Calendar.app |
-| granola-mcp | `granola_server.py` | Meeting processing | Granola cache file (optional) |
+| granola-mcp | `granola_server.py` | Meeting processing | `GRANOLA_API_KEY` from a Granola Business/Enterprise plan (optional) |
 | career-mcp | `career_server.py` | Career development | None (local files) |
 | resume-mcp | `resume_server.py` | Resume building | None (local files) |
 | dex-improvements-mcp | `dex_improvements_server.py` | System improvements | None (local files) |
@@ -60,10 +60,11 @@ These are user-installed separately via Claude Desktop/Cursor settings:
 ### Optional Dependencies
 
 **Granola (meeting transcription):**
-- Install script checks: `~/Library/Application Support/Granola/cache-v*.json`
-- If found: "✅ Granola detected - meeting intelligence available"
-- If not found: "ℹ️ Granola not detected - meeting intelligence won't work"
-- User can install from https://granola.ai
+- Install script checks for `/Applications/Granola.app` only to offer the right next step
+- If found: "✅ Granola app detected — run /granola-setup to connect it (needs a Granola Business API key)"
+- If not found: "ℹ️ Granola app not detected", followed by the https://granola.ai install pointer
+- Meeting sync uses the official Granola public API and reads `GRANOLA_API_KEY` from the environment, then the vault-root `.env`
+- `/granola-setup` connects the API key; local application data is never treated as authentication
 - System works without it — users can paste meeting transcripts manually
 
 **Apple Calendar:**
@@ -71,7 +72,7 @@ These are user-installed separately via Claude Desktop/Cursor settings:
 - Works with any calendar synced to Calendar.app (Google, Outlook, iCloud)
 - macOS only (calendar-mcp gracefully degrades on other platforms)
 
-**Status:** Documentation clear — no changes needed.
+**Status:** Documentation matches the official API connection model.
 
 ---
 

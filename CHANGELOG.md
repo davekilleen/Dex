@@ -7,7 +7,7 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
-## [1.40.0] - Dex can prove your setup still works (2026-07-12)
+## [1.45.0] - Dex can prove your setup still works (2026-07-12)
 
 Dex can now tell you when YOUR customizations break it — and updates prove themselves
 before declaring success. The checks keep your files and commands safe while separating
@@ -27,6 +27,71 @@ problems in your setup from problems in Dex itself.
   created remain yours.
 * **Changes to shipped Dex files are visible before an update.** The doctor warns which
   modified files may conflict while leaving sanctioned customization surfaces alone.
+
+## [1.44.0] - Person pages now get smarter, not just longer (2026-07-12)
+
+The entity engine made pages accumulate facts automatically — meetings, tasks, dates. But accumulation isn't understanding: a page that only grows becomes a log file. The gardener fixes that.
+
+**What this fixes for you:**
+
+* **Every active person page keeps a living summary.** A short "who this person is to you right now" section — role, what you've been meeting about, open threads — distilled from their recent meetings and tasks, refreshed as things change.
+* **It never touches your own writing.** The summary lives in its own clearly marked block. If you ever edit inside that block, Dex takes the hint and permanently stops maintaining that page's summary (and the doctor checkup tells you it did).
+* **Costs stay small and predictable.** At most five pages per sync, each page at most weekly, and only when something new actually happened for that person. It runs only if you already use an AI key for meeting processing, and one settings line (`entity_gardener: enabled: false`) turns it off.
+* **Nothing is written on a bad day.** If the AI returns nothing useful, the page is left exactly as it was — and failures now print the actual reason instead of just an error count.
+
+---
+
+## [1.43.0] - Adding a task never fails just because a priority is busy (2026-07-12)
+
+When a priority level was already full, Dex used to refuse to create the task at all — and that refusal was easy to miss in a wall of terminal text, so the task either vanished or landed at the wrong priority.
+
+**What this fixes for you:**
+
+* **Your task always gets created.** If a priority level is over its guideline, Dex still adds the task there and simply notes that the level is getting crowded — it never silently drops the task or quietly downgrades it.
+* **The nudge is gentle, not a wall.** You see a one-line heads-up with the current count, so you can rebalance when you choose to — not mid-thought.
+* **A pillar keyword like `1:1` no longer breaks task filing.** Certain shorthand written in your pillar settings could crash the step that guesses which pillar a task belongs to; it's now handled safely. Thanks to stevegranshaw for reporting.
+
+---
+
+## [1.42.0] - Dex now tells the truth about what your setup can do (2026-07-12)
+
+Some setup and recovery guidance could promise features that never reached your active Dex, point you to commands that did not exist, or treat an optional choice as a failure.
+
+**What this fixes for you:**
+
+* **Model setup no longer leads you into a dead end.** Dex no longer offers retired budget and offline model switching that only configured Pi, a harness Dex stopped shipping, and it never guesses how much memory your computer has.
+* **Parked meeting experiments stay out of your way.** An unwired ritual beta handout no longer tells testers that `/daily-plan` will surface recurring-meeting previews when that feature is not connected.
+* **Integration prompts now open a command that exists.** Setup and post-update guidance sends you to `/integrate-mcp` for Notion, Slack, and Google Workspace instead of naming commands Dex cannot run.
+* **Calendar onboarding fits your operating system.** macOS users still get the permission steps they need; Windows and Linux users now get a clear explanation that calendar sync is macOS-only and can continue setup without looping on impossible instructions.
+* **Optional features are described consistently.** A feature that is off stays calm and healthy, a missing or broken feature includes the real fix, and an uncertain check simply admits it could not verify the state.
+* **Developer probes no longer clutter your install.** One-off diagnostics and an obsolete launch-agent repair utility are gone; `/dex-doctor` remains the supported place to check background-job health.
+
+---
+
+## [1.41.0] - Your checkup now tells the truth on a brand-new Dex (2026-07-12)
+
+A fresh install could mistake other Dex products or optional features for failures, miss one of its own services, and inherit integration choices that belonged to the release builder.
+
+**What this fixes for you:**
+
+* **Other Dex products stay out of your checkup.** Background jobs belonging to a different Dex installation are skipped in one quiet note instead of being reported as broken against the wrong vault.
+* **Calendar access tells you exactly what is missing.** Write-only access is now explained as insufficient for reading your calendar, with the right guidance to grant full access; unfamiliar permission states include the value Dex actually received.
+* **Every built-in service is checked.** The session-memory service is included on fresh installs, and an automatic consistency check prevents future services from being registered without being checked.
+* **Checkup totals add up.** Status summaries now use the numbers from the checkup that just ran instead of copying contradictory example totals.
+* **Career features stay quietly optional.** If career tracking is not set up, Dex offers the setup command calmly without an error, a missing-file warning, or a private path from your Mac.
+* **New installs start genuinely clean.** Slack and every related meeting or planning hook begin off, so a new vault no longer inherits someone else's connected-tool state or gets noisy connection warnings.
+---
+
+## [1.40.0] - Granola setup now tells you the truth (2026-07-12)
+
+Granola could be fully connected while Dex said it was missing, look ready without the key it needed, or ignore your choice to process meetings manually.
+
+**What this fixes for you:**
+
+* **Connected now means ready to sync.** Setup and background-sync checks look for the Granola API key that meeting sync actually uses, so an installed app or an old local file can no longer create a false green light.
+* **Manual processing stays manual.** Choosing manual mode now saves the setting in the right shape, and existing vaults with the older shape remain understood instead of silently switching to automatic processing.
+* **Fresh installs show the real next step.** Dex detects the Granola app without claiming meeting intelligence is already connected, then points you to `/granola-setup` and explains the Business-plan API-key requirement.
+* **Every setup path follows the same model.** Onboarding, updates, analytics, and meeting guidance agree on the official Granola connection, so you no longer get contradictory instructions depending on where you ask.
 
 ---
 
@@ -49,25 +114,6 @@ Two long-standing gaps closed at once: tasks extracted from meetings finally get
 
 ## [1.37.0] - Your people and company pages now build themselves (2026-07-12)
 
-Dex now protects your current plans and notes through rollbacks, manual moves, meeting sync, and Obsidian file events, while also building reliable pages for the people and companies in your work life.
-
-**What this fixes for you:**
-
-* **Rolling back Dex no longer rolls back your life.** Tasks, quarterly goals, weekly priorities, notes, projects, resources, and learnings are snapshotted before Dex changes version and restored afterward. If two versions cannot be combined cleanly, rollback stops, keeps both copies in a dated rescue folder, and tells you instead of claiming everything is fine.
-* **Manual updates bring every learning with you.** The ZIP instructions now include your resources, meeting intelligence, quarterly reviews, and session learnings — and tell you to verify the copies before deleting the old folder.
-* **Two meetings with the same name both survive.** If Granola records two “Weekly Sync” meetings on the same day, Dex keeps the familiar clean filename for the first and adds a short meeting identifier only to the collision. Reprocessing either meeting updates its own note instead of creating another copy or overwriting the other one.
-* **A file touch can no longer undo a completed task.** Obsidian sync now reacts only to a checkbox that actually changed and disagrees with the main task list. Repeated sync failures appear at session start after the third attempt instead of living only in a log file.
-* **People you actually work with get pages automatically.** Once someone shows up in two real meetings across two different weeks (or one with a transcript), Dex creates their page — filed under Internal or External based on their email address, never guessed. One-off intro calls don't clutter your vault, and re-running a sync can never create duplicates.
-* **You choose how hands-off to be.** New setups get fully automatic creation. Existing vaults start in suggest mode: your daily plan says "Dex suggests a page for Jane (2 meetings)" and you say yes, no, or never — "never" is remembered forever. One line in your settings switches modes anytime.
-* **Companies appear from the people you meet.** Meet two people from acme.co.uk and an "Acme" company page exists, with the domain recorded so future contacts attach to it. Personal email services never become companies, and an existing company page always wins over creating a duplicate.
-* **Meeting emails aren't thrown away anymore.** Dex used to fetch each attendee's email address and immediately discard it — which is why colleagues were misfiled as external contacts. Attendee details are now kept with each meeting note, and the everyone-gets-filed-as-External bug is gone.
-* **Pages update themselves after every processed meeting.** The behind-the-scenes step that adds meeting references to person pages had been broken since the day it shipped (it listened on a channel that doesn't exist). It works now: recent meetings, freshness dates, capped and deduplicated — and it only ever touches its own marked sections, never your notes.
-* **Auto-linked names now go somewhere.** The recent auto-linking feature created links that looked right but pointed at pages that didn't exist (clicking made an empty duplicate). Links now open the person's real page, and linking politely stays off unless your vault uses Obsidian-style links.
-* **One page format, four readers reconciled.** Different parts of Dex wrote person pages in four incompatible layouts, so pages created by one feature were invisible to another. There's now a single machine-readable format, every old layout is still understood, and a damaged page is quarantined and reported instead of being overwritten.
-* **You can see it working.** After every sync, a verification pass confirms each attendee ended up somewhere deliberate — page, suggestion, or tracked-for-later — and `/dex-doctor` now has an entity-engine checkup covering all of it, including anything unresolved.
-
----
-
 ## [1.36.0] - Every promise about tasks is now one Dex keeps (2026-07-12)
 
 A few task features described things that didn't actually happen: the Todoist, Things, and Trello setups promised automatic two-way sync that was never built, the inbox triage helper read planning files from locations that no longer exist, and some flows quietly wrote tasks in a way the rest of the system couldn't track. This release makes every promise honest and every capture path first-class.
@@ -78,15 +124,6 @@ A few task features described things that didn't actually happen: the Todoist, T
 * **Inbox triage reads your real plans again.** `/triage` was reading your weekly priorities and quarterly goals from folders that were reorganized long ago, so its routing suggestions ignored your actual priorities.
 * **Every captured task is now a real task.** Triage and end-of-day follow-ups used to write plain checkboxes into files; those never got a task ID, so completion tracking, duplicate detection, and goal progress couldn't see them. Both now create tasks properly, carrying the person, company, due date, and goal details they learned along the way.
 * **Phone-captured items are handled honestly.** The morning-plan flow claimed one tool both checked and created your captured tasks; it only checked. The instructions now match reality, and the misleading option was removed from the tool itself.
-
-## [1.34.1] - Dex's release checks no longer break contributor setups (2026-07-12)
-
-Release checks now preserve your local Git history and explain when they cannot compare it.
-
-**What this fixes for you:**
-
-* **Checks no longer quietly truncate your local Git history.** They now fetch safely when you run them on your machine.
-* **A failed history comparison now explains how to fix it.** Instead of stopping with no output, Dex tells you to unshallow the repository and retry.
 
 ## [1.35.0] - Tasks now remember what you told them (2026-07-11)
 
@@ -101,6 +138,15 @@ When you created a task and confirmed its pillar and priority, Dex wrote them do
 * **A rare data-loss bug is gone.** Adding a task to a section whose heading appeared twice in your task file could silently delete everything after the second heading. Inserts are now safe no matter what your file looks like.
 * **Completed tasks stay clickable in Obsidian.** The completion timestamp used to be written where it broke Obsidian's link-to-this-line feature; it now goes before the link anchor.
 * **Meeting prep sees all your meetings again.** Synced meetings are stored in dated folders that the meeting memory never looked inside — daily plans and meeting prep were blind to them. Both now scan the full folder tree.
+
+## [1.34.1] - Dex's release checks no longer break contributor setups (2026-07-12)
+
+Release checks now preserve your local Git history and explain when they cannot compare it.
+
+**What this fixes for you:**
+
+* **Checks no longer quietly truncate your local Git history.** They now fetch safely when you run them on your machine.
+* **A failed history comparison now explains how to fix it.** Instead of stopping with no output, Dex tells you to unshallow the repository and retry.
 
 ## [1.34.0] - People in your notes now link themselves — safely (2026-07-11)
 
