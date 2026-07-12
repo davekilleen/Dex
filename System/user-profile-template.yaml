@@ -71,6 +71,10 @@ meeting_processing:
 entity_creation:
   mode: auto
 
+# Background person-summary maintenance; missing key is enabled, explicit false disables.
+entity_gardener:
+  enabled: true
+
 # Meeting Intelligence Configuration
 # Controls what gets extracted from your meetings (set during onboarding based on role)
 meeting_intelligence:

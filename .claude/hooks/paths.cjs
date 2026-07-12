@@ -58,6 +58,7 @@ function loadPaths() {
     COMPANY_INDEX_FILE: path.join(VAULT_ROOT, 'System', 'Company_Index.json'),
     DEX_RUNTIME_DIR: path.join(VAULT_ROOT, 'System', '.dex'),
     CONTACTS_STATE_FILE: path.join(VAULT_ROOT, 'System', '.dex', 'contacts.json'),
+    GARDENER_STATE_FILE: path.join(VAULT_ROOT, 'System', '.dex', 'gardener.json'),
     ENTITY_SUGGESTIONS_FILE: path.join(VAULT_ROOT, 'System', '.dex', 'entity-suggestions.json'),
     ENTITY_VERIFICATION_FILE: path.join(VAULT_ROOT, 'System', '.dex', 'entity-verification.json'),
   };

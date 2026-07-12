@@ -96,6 +96,9 @@ class TestDerivedPaths:
     def test_ritual_intelligence_db_parent_is_runtime_dir(self):
         assert paths.RITUAL_INTELLIGENCE_DB_FILE.parent == paths.DEX_RUNTIME_DIR
 
+    def test_gardener_state_file_parent_is_runtime_dir(self):
+        assert paths.GARDENER_STATE_FILE.parent == paths.DEX_RUNTIME_DIR
+
     def test_mcp_config_target_is_at_vault_root(self):
         assert paths.MCP_CONFIG_TARGET == paths.VAULT_ROOT / ".mcp.json"
 

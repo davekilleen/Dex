@@ -1,0 +1,173 @@
+'use strict';
+
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const crypto = require('crypto');
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
+const yaml = require('js-yaml');
+const { renderPersonPage, replaceMachineRegion } = require('../../lib/entity-pages.cjs');
+const { gardenEntities } = require('../lib/gardener.cjs');
+
+const NOW = new Date('2026-07-12T12:00:00.000Z');
+const BULLETS = '- Product leader at Acme.\n- Discussing the launch plan.';
+
+async function withVault(fn) {
+  const oldVault = process.env.VAULT_PATH;
+  const oldProject = process.env.CLAUDE_PROJECT_DIR;
+  const vault = fs.mkdtempSync(path.join(os.tmpdir(), 'dex-gardener-'));
+  process.env.VAULT_PATH = vault;
+  delete process.env.CLAUDE_PROJECT_DIR;
+  try {
+    return await fn(vault);
+  } finally {
+    if (oldVault === undefined) delete process.env.VAULT_PATH; else process.env.VAULT_PATH = oldVault;
+    if (oldProject === undefined) delete process.env.CLAUDE_PROJECT_DIR; else process.env.CLAUDE_PROJECT_DIR = oldProject;
+    fs.rmSync(vault, { recursive: true, force: true });
+  }
+}
+
+function writePerson(vault, name = 'Jane Doe', options = {}) {
+  const directory = path.join(vault, '05-Areas', 'People', options.location || 'External');
+  fs.mkdirSync(directory, { recursive: true });
+  const filePath = path.join(directory, `${name.replace(/ /g, '_')}.md`);
+  let text = renderPersonPage(name, options.role || 'Product Lead', 'Acme', [`${name.split(' ')[0].toLowerCase()}@acme.com`]);
+  if (options.noHeading) text = text.replace(/\n## Key Context\n/, '\n');
+  if (options.summary !== undefined) {
+    if (!text.includes('dex:auto:context-summary')) {
+      text = text.replace('## Key Context\n', '## Key Context\n\n<!-- dex:auto:context-summary -->\n<!-- /dex:auto -->\n');
+    }
+    text = replaceMachineRegion(text, 'context-summary', options.summary);
+  }
+  if (options.relatedTasks) text += `\n## Related Tasks\n\n${options.relatedTasks}\n`;
+  fs.writeFileSync(filePath, text);
+  return filePath;
+}
+
+function writeMeeting(vault, { date = '2026-07-10', email = 'jane@acme.com', body = 'Launch planning notes.' } = {}) {
+  const directory = path.join(vault, '00-Inbox', 'Meetings', date);
+  fs.mkdirSync(directory, { recursive: true });
+  fs.writeFileSync(path.join(directory, 'launch.md'), `---\n${yaml.dump({
+    title: 'Launch review', date, attendees: [{ name: 'Jane Doe', email, location: 'external' }],
+  })}---\n# Launch review\n\n${body}\n\n## Transcript\n\nDo not include this transcript.\n`);
+}
+
+function statePath(vault) {
+  return path.join(vault, 'System', '.dex', 'gardener.json');
+}
+
+function readState(vault) {
+  return JSON.parse(fs.readFileSync(statePath(vault), 'utf8'));
+}
+
+test('creates the summary region under Key Context and uses meeting signal', () => withVault(async vault => {
+  const page = writePerson(vault);
+  writeMeeting(vault);
+  let prompt;
+  const result = await gardenEntities({ generate: async value => { prompt = value; return BULLETS; }, now: NOW });
+  const text = fs.readFileSync(page, 'utf8');
+  assert.match(text, /## Key Context\n\n<!-- dex:auto:context-summary -->\n- Product leader at Acme\./);
+  assert.match(prompt, /Launch review/);
+  assert.doesNotMatch(prompt, /Do not include this transcript/);
+  assert.equal(result.gardened.length, 1);
+}));
+
+test('appends Key Context when the heading is missing', () => withVault(async vault => {
+  const page = writePerson(vault, 'Jane Doe', { noHeading: true });
+  await gardenEntities({ generate: async () => BULLETS, now: NOW });
+  assert.match(fs.readFileSync(page, 'utf8'), /## Key Context\n\n<!-- dex:auto:context-summary -->/);
+}));
+
+test('respects seven-day cadence and unchanged input hash', () => withVault(async vault => {
+  writePerson(vault);
+  let calls = 0;
+  const generate = async () => { calls += 1; return BULLETS; };
+  await gardenEntities({ generate, now: NOW });
+  await gardenEntities({ generate, now: new Date('2026-07-18T12:00:00Z') });
+  await gardenEntities({ generate, now: new Date('2026-07-20T12:00:00Z') });
+  assert.equal(calls, 1);
+}));
+
+test('user edit inside the region locks the page and it is never rewritten', () => withVault(async vault => {
+  const page = writePerson(vault);
+  await gardenEntities({ generate: async () => BULLETS, now: NOW });
+  fs.writeFileSync(page, replaceMachineRegion(fs.readFileSync(page, 'utf8'), 'context-summary', '- Human edit'));
+  let calls = 0;
+  const run = () => gardenEntities({
+    generate: async () => { calls += 1; return '- Replacement'; },
+    now: new Date('2026-07-25T12:00:00Z'),
+  });
+  const first = await run();
+  await run();
+  assert.equal(calls, 0);
+  assert.equal(first.locked, 1);
+  assert.match(fs.readFileSync(page, 'utf8'), /- Human edit/);
+  const entry = Object.values(readState(vault).pages)[0];
+  assert.equal(entry.locked_reason, 'user-edited');
+}));
+
+test('limit is honored in never-gardened then oldest ordering', () => withVault(async vault => {
+  writePerson(vault, 'Alpha Person');
+  writePerson(vault, 'Beta Person');
+  writePerson(vault, 'Gamma Person');
+  const pages = {
+    '05-Areas/People/External/Alpha_Person.md': { last_gardened: '2026-06-20T00:00:00Z' },
+    '05-Areas/People/External/Beta_Person.md': { last_gardened: '2026-06-01T00:00:00Z' },
+  };
+  fs.mkdirSync(path.dirname(statePath(vault)), { recursive: true });
+  fs.writeFileSync(statePath(vault), JSON.stringify({ version: 1, pages }));
+  const result = await gardenEntities({ generate: async () => BULLETS, now: NOW, limit: 2 });
+  assert.deepEqual(result.gardened, [
+    '05-Areas/People/External/Gamma_Person.md',
+    '05-Areas/People/External/Beta_Person.md',
+  ]);
+}));
+
+test('empty or garbage LLM output skips without changing the page', () => withVault(async vault => {
+  const page = writePerson(vault);
+  const before = fs.readFileSync(page, 'utf8');
+  const result = await gardenEntities({ generate: async () => 'Summary without bullets', now: NOW });
+  assert.equal(result.gardened.length, 0);
+  assert.equal(fs.readFileSync(page, 'utf8'), before);
+  assert.equal(fs.existsSync(statePath(vault)), false);
+}));
+
+test('quarantined pages are skipped', () => withVault(async vault => {
+  const page = writePerson(vault);
+  fs.writeFileSync(page, '---\nname: [broken\n---\n# Broken\n');
+  let called = false;
+  const result = await gardenEntities({ generate: async () => { called = true; return BULLETS; }, now: NOW });
+  assert.equal(called, false);
+  assert.equal(result.skipped, 1);
+}));
+
+test('dry-run reports candidates but writes neither page nor state', () => withVault(async vault => {
+  const page = writePerson(vault);
+  const before = fs.readFileSync(page, 'utf8');
+  const result = await gardenEntities({ generate: async () => BULLETS, now: NOW, dryRun: true });
+  assert.equal(result.gardened.length, 1);
+  assert.equal(fs.readFileSync(page, 'utf8'), before);
+  assert.equal(fs.existsSync(statePath(vault)), false);
+}));
+
+test('signal is capped at 6000 characters', () => withVault(async vault => {
+  const page = writePerson(vault, 'Jane Doe', { relatedTasks: Array(10).fill(`- ${'x'.repeat(900)}`).join('\n') });
+  const recent = `${'y'.repeat(8000)}`;
+  fs.writeFileSync(page, replaceMachineRegion(fs.readFileSync(page, 'utf8'), 'recent-interactions', recent));
+  let prompt;
+  await gardenEntities({ generate: async value => { prompt = value; return BULLETS; }, now: NOW });
+  const signal = prompt.split('\nSIGNAL:\n')[1];
+  assert.equal(signal.length, 6000);
+}));
+
+test('post-processing keeps six bullets and caps each line', () => withVault(async vault => {
+  const page = writePerson(vault);
+  const output = Array(8).fill(`- ${'z'.repeat(250)}`).join('\n');
+  await gardenEntities({ generate: async () => output, now: NOW });
+  const region = fs.readFileSync(page, 'utf8').match(/dex:auto:context-summary -->\n([\s\S]*?)\n<!-- \/dex:auto/)[1];
+  assert.equal(region.split('\n').length, 6);
+  assert.ok(region.split('\n').every(line => line.length === 200));
+  assert.equal(readState(vault).pages['05-Areas/People/External/Jane_Doe.md'].output_hash,
+    crypto.createHash('sha1').update(region).digest('hex'));
+}));
