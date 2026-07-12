@@ -231,21 +231,38 @@ For each meeting with unextracted tasks:
 1. **Find action items** in the "## Action Items > ### For Me" section
 2. **For each unchecked item** (`- [ ]`):
    - Extract task description
-   - Get task ID (format: `^task-YYYYMMDD-XXX`)
-   - Read pillar from meeting frontmatter
+   - Read pillar from meeting frontmatter, then resolve it to the unique pillar
+     ID in `System/pillars.yaml` by matching either `id` or display `name`
+   - Preserve the exact source checkbox line text for `stamp_source_line`
+   - Let `create_task` generate the task ID and stamp it back onto that line
 
 3. **Create task** using Work MCP:
    ```
    create_task(
      title: "Task description",
      priority: "P2",  // default, P1 if "urgent" mentioned
-     pillar: "{from meeting}",
-     people: ["{participants}"],
-     source: "{meeting path}"
+     pillar: "{resolved pillar ID}",
+     people: ["{participant page paths}"],
+     source: "{meeting path}",
+     stamp_source_line: "{exact source checkbox line text}"
    )
    ```
 
-4. **Mark as extracted** by adding comment to meeting note:
+   `people` values must resolve to existing person page paths. Prefer the paths
+   returned by Step 3's `lookup_person`/`create_person` flow; if only a bare
+   participant name is available, pass that name unchanged and let `create_task`
+   resolve it. Never construct or guess a person page path.
+
+4. **Verify every result before marking the meeting extracted:**
+   - Require `success: true` for every `create_task` call.
+   - Require either `stamp.stamped: true`, or `reason: "already_anchored"`
+     with the exact source line's existing anchor equal to the returned
+     `task.task_id`.
+   - If entity resolution or stamping is unresolved, surface the exact failed
+     line and leave the meeting unmarked for reconciliation. Do not blindly
+     retry a task that was created but not stamped.
+
+   Only after every action item is verified, add this comment to the meeting note:
    ```markdown
    <!-- tasks-extracted: 2026-02-03T10:30:00Z -->
    ```

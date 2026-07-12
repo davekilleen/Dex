@@ -7,6 +7,19 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.38.0] - Tasks now connect themselves to your people, companies, and goals (2026-07-12)
+
+Two long-standing gaps closed at once: tasks extracted from meetings finally get real, trackable IDs, and every task you create now links itself to the right person page, company, and quarterly goal — carefully, never by guessing.
+
+**What this fixes for you:**
+
+* **Meeting action items become real tasks with a closed loop.** Before, meeting notes carried made-up task IDs that collided and matched nothing. Now the note gets a plain checkbox, Dex creates the real task, writes the real ID back onto that exact line — and when you complete the task, the checkbox in the meeting note ticks itself too.
+* **Name a person, get the right link.** Say "task about the pricing deck for Sarah" and Dex resolves "Sarah" through your people directory — by email, alias, or name. If two Sarahs match, it asks instead of picking one. It never invents a link to a page that doesn't exist.
+* **Companies resolve from a name, a domain, or even a URL.** "acme.com", "Acme", or a pasted link all find the same company page.
+* **Tasks find their goal.** When a new task clearly serves one of your quarterly goals, it links itself. When the match is only likely, it links with a visible "(?)" you can confirm or clear — uncertain never masquerades as certain.
+* **Old meeting notes heal instead of breaking.** If an old note already carries one of the legacy made-up IDs, Dex adopts it rather than minting a competitor, so nothing you have gets orphaned.
+* **Pillar names just work.** You can pass a pillar by its display name ("Deal Support") or its internal ID — both resolve.
+
 ## [1.37.0] - Your people and company pages now build themselves (2026-07-12)
 
 Dex always promised that the people and companies in your work life would organize themselves into pages — but behind the scenes, most of that depended on the AI remembering to do it, and it often quietly didn't. This release replaces hope with machinery.
