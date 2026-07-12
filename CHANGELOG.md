@@ -38,6 +38,18 @@ A fresh install could mistake other Dex products or optional features for failur
 
 ## [1.37.0] - Your people and company pages now build themselves (2026-07-12)
 
+## [1.43.0] - Adding a task never fails just because a priority is busy (2026-07-12)
+
+When a priority level was already full, Dex used to refuse to create the task at all — and that refusal was easy to miss in a wall of terminal text, so the task either vanished or landed at the wrong priority.
+
+**What this fixes for you:**
+
+* **Your task always gets created.** If a priority level is over its guideline, Dex still adds the task there and simply notes that the level is getting crowded — it never silently drops the task or quietly downgrades it.
+* **The nudge is gentle, not a wall.** You see a one-line heads-up with the current count, so you can rebalance when you choose to — not mid-thought.
+* **A pillar keyword like `1:1` no longer breaks task filing.** Certain shorthand written in your pillar settings could crash the step that guesses which pillar a task belongs to; it's now handled safely. Thanks to stevegranshaw for reporting.
+
+---
+
 ## [1.40.0] - Granola setup now tells you the truth (2026-07-12)
 
 Granola could be fully connected while Dex said it was missing, look ready without the key it needed, or ignore your choice to process meetings manually.

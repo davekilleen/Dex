@@ -208,7 +208,9 @@ def load_pillars_from_yaml() -> Dict[str, Dict]:
             pillars[pillar_id] = {
                 'name': pillar.get('name', pillar_id),
                 'description': pillar.get('description', ''),
-                'keywords': pillar.get('keywords', [])
+                # Coerce to str: YAML parses unquoted tokens like 1:1 as ints
+                # (base-60), which would crash guess_pillar's `keyword in text`.
+                'keywords': [str(k) for k in pillar.get('keywords', [])]
             }
         
         if not pillars:
@@ -4437,34 +4439,29 @@ async def _handle_call_tool_inner(
                 "suggestion": "Review these similar tasks. If this is intentionally separate, retry with on_duplicate=force."
             }, indent=2))]
         
-        # Check priority limits against the canonical backlog only.
+        # Priority limits are a guideline, not a wall. Creating the task always
+        # succeeds; when a bucket is over its limit we attach a warning to the
+        # success payload rather than refusing (issue #80 — a mid-workflow
+        # refusal gets missed in the terminal scroll, silently losing the task
+        # or filing it at the wrong priority). The count reflects state BEFORE
+        # this task is added.
+        priority_warning = None
         active_tasks = active_tasks_for_priority_limits(existing_tasks)
         priority_counts = Counter(t.get('priority', 'P2') for t in active_tasks)
-        
+
         if priority in PRIORITY_LIMITS and priority_counts.get(priority, 0) >= PRIORITY_LIMITS[priority]:
-            occupying_tasks = [
-                {
-                    "title": task.get('title', ''),
-                    "task_id": task.get('task_id') or task.get('id'),
-                }
-                for task in active_tasks
-                if task.get('priority', 'P2') == priority
-            ]
-            occupying_text = ', '.join(
-                f"{task['title']} ({task['task_id']})" for task in occupying_tasks
-            )
-            return [types.TextContent(type="text", text=json.dumps({
-                "success": False,
-                "error": (
-                    f"Priority limit exceeded for {priority}. Currently occupying "
-                    f"this priority: {occupying_text}. Limits may be newly enforced "
-                    "now that stored priorities are read correctly."
+            new_count = priority_counts.get(priority, 0) + 1
+            priority_warning = {
+                "warning": (
+                    f"{priority} now holds {new_count} tasks "
+                    f"(guideline is {PRIORITY_LIMITS[priority]}) — consider "
+                    "completing or demoting one to keep this priority focused."
                 ),
-                "current_count": priority_counts.get(priority, 0),
+                "priority": priority,
+                "current_count": new_count,
                 "limit": PRIORITY_LIMITS[priority],
-                "occupying_tasks": occupying_tasks,
-                "suggestion": f"You have too many {priority} tasks. Complete or deprioritize some before adding more."
-            }, indent=2))]
+                "priority_counts": dict(priority_counts),
+            }
 
         if not goal:
             quarterly_goals = (
@@ -4643,8 +4640,10 @@ async def _handle_call_tool_inner(
             "synced_pages": synced_pages,
             "message": f"Task '{title}' created successfully under {section} with ID: {task_id}"
         }
+        if priority_warning:
+            result["priority_warning"] = priority_warning
         return [types.TextContent(type="text", text=json.dumps(result, indent=2, cls=DateTimeEncoder))]
-    
+
     elif name == "update_task_status":
         task_id = arguments.get('task_id')
         task_title = arguments.get('task_title')
