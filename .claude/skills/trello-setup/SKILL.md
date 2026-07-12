@@ -1,31 +1,33 @@
 ---
 name: trello-setup
-description: Connect Trello to Dex for visual Kanban task sync
+description: Connect Trello so Dex can read your boards and manage cards on request
 manifest:
   id: trello
   auth: api_key_token
-  category: task_sync
+  category: task_access
   mcp_server: mcp-server-trello
   runtime: bun
 ---
 
 # Trello Setup
 
-Connect your Trello boards to Dex so your tasks, projects, and daily plans stay in sync with your Trello Kanban boards.
+Connect your Trello boards so Dex can work with them whenever you ask — check board status, create cards, or move them.
+
+**What this is not (honesty first):** there is no automatic background sync. Dex tasks don't become Trello cards by themselves, and moving a card to Done doesn't automatically update Dex. Everything happens on request, in conversation. If automatic two-way sync matters to you, tell Dex — "I wish Dex synced with Trello automatically" gets it captured on the improvement backlog.
 
 ## What This Enables
 
-Once connected, Dex can:
-- **Task Sync:** Cards created in Dex appear on your Trello board; cards moved to Done in Trello mark tasks complete in Dex
-- **Project Health:** See live board status -- cards by list, blocked items, stale cards
-- **Daily Plan:** Surface Trello cards assigned to you, including overdue items
-- **Meeting Prep:** Know which board has blocked cards to discuss with attendees
+Once connected, you can ask Dex to:
+- **See board status:** cards by list, blocked items, stale cards — "how's the launch board looking?"
+- **Create cards:** "Add a card for the pricing review to the backlog list"
+- **Update from chat:** "Move the onboarding card to Done" (and, if you ask, mark the matching Dex task complete)
+- **Prep with context:** "Which cards are blocked before my 2pm?"
 
 ## Privacy
 
-- Card titles and status sync. No attachments or comments are read unless you ask.
+- Dex reads and writes your boards only when you ask it to
 - Your API key and token stay local on your machine and are gitignored
-- Sync is on-demand (during daily plan or task creation) -- no background polling
+- No attachments or comments are read unless you ask
 - Only boards you explicitly configure are accessed
 
 ## When to Run
@@ -52,8 +54,8 @@ Say:
 ```
 **Let's connect Trello to Dex.**
 
-This links your Trello boards so tasks sync between Dex and Trello.
-Cards move between lists = status updates in Dex. Simple Kanban sync.
+This links your Trello boards so you can ask Dex to check board status,
+create cards, and move them — right from our conversations.
 
 **What you'll need:**
 - A Trello account with at least one board
@@ -181,60 +183,44 @@ Let the user confirm or customize the mapping. Default status list names:
 - Blocked / On Hold / Waiting -> status `b`
 - Done / Complete / Finished -> status `d`
 
-### Step 7: Trust Level
+### Step 7: Save Configuration
 
-Ask about sync behavior:
-
-```
-**How should Dex handle Trello sync?**
-
-1. **Auto-sync** — Cards sync automatically during daily plan and task creation
-2. **Ask each time** — Dex shows you what changed and asks before syncing
-
-Which do you prefer? (Most people choose auto-sync)
-```
-
-### Step 8: Save Configuration
-
-Write to `System/integrations/config.yaml` -- update the trello section:
+Write to `System/integrations/config.yaml` -- update the trello section (the list
+mapping is used when the user asks Dex to file or move cards):
 
 ```yaml
 trello:
   enabled: true
-  task_sync: true
   configured_at: YYYY-MM-DD
   api_key: <user's api key>
   token: <user's token>
   default_board: <board id>
   board_name: <board name>
-  trust_level: auto | ask
   list_mapping:
     backlog: <list id for Backlog>
     in_progress: <list id for In Progress>
     blocked: <list id for Blocked>
     done: <list id for Done>
-  features:
-    task_sync: true
-    project_health: true
-    daily_plan: true
-    meeting_prep: true
 ```
 
 If the file already exists, only update the `trello:` section. Preserve other integration configs.
 
-### Step 9: Confirm
+### Step 8: Confirm
 
 ```
 **Trello is connected!**
 
-Here's what changes now:
+Here's what you can do now:
 
-- **Task Sync** — New Dex tasks appear on your [Board Name] board. Cards completed in Trello mark tasks done in Dex.
-- **Project Health** (`/project-health`) shows live board status -- cards by list, blocked items
-- **Daily Plan** (`/daily-plan`) includes your assigned Trello cards and overdue items
-- **Meeting Prep** (`/meeting-prep`) surfaces blocked cards relevant to attendees
+- **Ask about your board anytime** — "How's the [Board Name] board looking?",
+  "Add a card to the backlog", "Move the onboarding card to Done"
+- **Bring it into planning** — during /daily-plan or /project-health, ask me
+  to include your Trello cards and I will
+- **Meeting prep with context** — ask which cards are blocked before a meeting
 
-**Capability cascade:** These skills now have Trello awareness built in.
+One honest note: there's no automatic background sync — I work with Trello
+when you ask, not on my own. Want automatic two-way sync? Say so and I'll
+capture it on the improvement backlog.
 
 You can adjust settings anytime by running `/trello-setup` again.
 ```
@@ -262,7 +248,7 @@ If the configured board was deleted or renamed:
 
 ### Rate Limiting
 
-Trello allows 100 requests per 10 seconds. This is generous -- you'd only hit it during bulk sync. If you see rate limit errors, wait 10 seconds and retry.
+Trello allows 100 requests per 10 seconds. This is generous -- you'd only hit it when asking Dex to make many changes at once. If you see rate limit errors, wait 10 seconds and retry.
 
 ### Cards Not Syncing
 
@@ -279,9 +265,8 @@ If the user runs `/trello-setup` when already configured:
 
 1. Show current config from `System/integrations/config.yaml`
 2. Offer options:
-   - Change synced board
+   - Change the connected board
    - Update list mapping
-   - Change trust level (auto/ask)
    - Re-authenticate (new API key/token)
    - Add additional boards
    - Disconnect Trello

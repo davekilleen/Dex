@@ -210,10 +210,15 @@ Then prompt:
 
 ### 4.3 Create Follow-Up Tasks
 
-For any follow-ups mentioned:
-- Add to Tasks.md with appropriate priority
-- Link to the person page
-- Add due date if mentioned
+For any follow-ups mentioned, create each one via Work MCP `create_task` — never by
+writing checkboxes into Tasks.md directly (hand-written tasks get no task ID, so
+completion sync, dedup, and goal rollups can't track them). Pass:
+- `pillar` (inferred per the Task Creation flow, confirmed with the user) and `priority`
+- `people`: the page path(s) of who you met (e.g. `05-Areas/People/External/Sarah_Chen.md`)
+  — this keeps the person page's Related Tasks table in sync automatically
+- `account` if the meeting was with a company you track
+- `due` (YYYY-MM-DD) if a date was mentioned
+- `weekly_priority_id` / `goal` if the follow-up clearly serves one
 
 ---
 

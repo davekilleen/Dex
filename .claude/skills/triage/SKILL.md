@@ -36,12 +36,12 @@ Before processing inbox items, load strategic context and build an index of exis
 
 Read these files to understand current priorities:
 
-1. **Week Priorities**: `00-Inbox/Week_Priorities.md`
+1. **Week Priorities**: `02-Week_Priorities/Week_Priorities.md`
    - Extract this week's Top 3 focus items
    - Note any specific projects/people mentioned
    - Capture keywords and themes
 
-2. **Quarterly Goals**: `03-Tasks/Quarterly_Goals.md`
+2. **Quarterly Goals**: `01-Quarter_Goals/Quarter_Goals.md`
    - Extract current quarter's goals
    - Note associated projects and outcomes
    - Capture keywords and themes
@@ -210,11 +210,10 @@ Extract uncompleted tasks from notes and route them appropriately.
 
 4. **Deduplication Check**
 
-   For each task, check against:
-   - `00-Inbox/Weekly_Plans.md`
-   - `03-Tasks/Tasks.md`
-
-   Flag items with >60% similarity to existing tasks.
+   For each task, check against `03-Tasks/Tasks.md`. Flag items with >60% similarity
+   to existing tasks. (The Work MCP `create_task` tool runs its own similarity gate at
+   creation time — this pre-check is so you can show duplicates to the user before
+   proposing a route, not a replacement for the tool's gate.)
 
 5. **Ambiguity Detection**
 
@@ -241,9 +240,16 @@ Extract uncompleted tasks from notes and route them appropriately.
    - Wait for user input
 
 7. **Route with Confirmation**
-   - To Week Priorities: Add to `00-Inbox/Weekly_Plans.md`
-   - To Project: Add to relevant project file
-   - To Person: Add to person page's action items
+   - **Actionable task → Work MCP `create_task`.** Never append task checkboxes to
+     files by hand — hand-written tasks get no task ID, so completion sync, dedup,
+     and goal rollups can't see them. Pass what triage learned: `pillar` (confirmed
+     with the user), `priority`, `due` if a date was mentioned, `weekly_priority_id`
+     if it supports a weekly priority, `people`/`account` page paths for anyone
+     involved, and `project`/`goal` when the item clearly belongs to one. If the
+     tool flags a duplicate the user already reviewed in step 6 and chose "Keep
+     Both", retry with `on_duplicate: "force"`.
+   - To Project: Add non-task context to the relevant project file
+   - To Person: Add non-task context to the person page
    - Skip: Don't process
    - Defer: Leave for later
 

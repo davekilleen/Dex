@@ -7,6 +7,17 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.36.0] - Every promise about tasks is now one Dex keeps (2026-07-12)
+
+A few task features described things that didn't actually happen: the Todoist, Things, and Trello setups promised automatic two-way sync that was never built, the inbox triage helper read planning files from locations that no longer exist, and some flows quietly wrote tasks in a way the rest of the system couldn't track. This release makes every promise honest and every capture path first-class.
+
+**What this fixes for you:**
+
+* **Todoist, Things, and Trello setups now tell the truth.** They connect Dex so you can check, create, and complete tasks in those apps *on request, in conversation* — and they say plainly that there's no automatic background sync. Before, setup walked you through configuring "auto-sync" choices that did nothing.
+* **Inbox triage reads your real plans again.** `/triage` was reading your weekly priorities and quarterly goals from folders that were reorganized long ago, so its routing suggestions ignored your actual priorities.
+* **Every captured task is now a real task.** Triage and end-of-day follow-ups used to write plain checkboxes into files; those never got a task ID, so completion tracking, duplicate detection, and goal progress couldn't see them. Both now create tasks properly, carrying the person, company, due date, and goal details they learned along the way.
+* **Phone-captured items are handled honestly.** The morning-plan flow claimed one tool both checked and created your captured tasks; it only checked. The instructions now match reality, and the misleading option was removed from the tool itself.
+
 ## [1.34.1] - Dex's release checks no longer break contributor setups (2026-07-12)
 
 Release checks now preserve your local Git history and explain when they cannot compare it.
