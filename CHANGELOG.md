@@ -7,6 +7,11 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+
+## [1.39.0] - Your work stays safe and organizes itself (2026-07-12)
+
+---
+
 ## [1.38.0] - Tasks now connect themselves to your people, companies, and goals (2026-07-12)
 
 Two long-standing gaps closed at once: tasks extracted from meetings finally get real, trackable IDs, and every task you create now links itself to the right person page, company, and quarterly goal — carefully, never by guessing.
@@ -22,10 +27,14 @@ Two long-standing gaps closed at once: tasks extracted from meetings finally get
 
 ## [1.37.0] - Your people and company pages now build themselves (2026-07-12)
 
-Dex always promised that the people and companies in your work life would organize themselves into pages — but behind the scenes, most of that depended on the AI remembering to do it, and it often quietly didn't. This release replaces hope with machinery.
+Dex now protects your current plans and notes through rollbacks, manual moves, meeting sync, and Obsidian file events, while also building reliable pages for the people and companies in your work life.
 
 **What this fixes for you:**
 
+* **Rolling back Dex no longer rolls back your life.** Tasks, quarterly goals, weekly priorities, notes, projects, resources, and learnings are snapshotted before Dex changes version and restored afterward. If two versions cannot be combined cleanly, rollback stops, keeps both copies in a dated rescue folder, and tells you instead of claiming everything is fine.
+* **Manual updates bring every learning with you.** The ZIP instructions now include your resources, meeting intelligence, quarterly reviews, and session learnings — and tell you to verify the copies before deleting the old folder.
+* **Two meetings with the same name both survive.** If Granola records two “Weekly Sync” meetings on the same day, Dex keeps the familiar clean filename for the first and adds a short meeting identifier only to the collision. Reprocessing either meeting updates its own note instead of creating another copy or overwriting the other one.
+* **A file touch can no longer undo a completed task.** Obsidian sync now reacts only to a checkbox that actually changed and disagrees with the main task list. Repeated sync failures appear at session start after the third attempt instead of living only in a log file.
 * **People you actually work with get pages automatically.** Once someone shows up in two real meetings across two different weeks (or one with a transcript), Dex creates their page — filed under Internal or External based on their email address, never guessed. One-off intro calls don't clutter your vault, and re-running a sync can never create duplicates.
 * **You choose how hands-off to be.** New setups get fully automatic creation. Existing vaults start in suggest mode: your daily plan says "Dex suggests a page for Jane (2 meetings)" and you say yes, no, or never — "never" is remembered forever. One line in your settings switches modes anytime.
 * **Companies appear from the people you meet.** Meet two people from acme.co.uk and an "Acme" company page exists, with the domain recorded so future contacts attach to it. Personal email services never become companies, and an existing company page always wins over creating a duplicate.
