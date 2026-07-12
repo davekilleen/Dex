@@ -259,7 +259,16 @@ node .scripts/auto-link-people.cjs "<note-file>"
 
 Use `node .scripts/auto-link-people.cjs --dry-run "<note-file>"` to preview what would be linked without changing the file.
 
-### Step 7: Summary Report
+### Step 7: Verify Entity Coverage
+
+Run `node .scripts/meeting-intel/verify-entities.cjs` and show its one-line summary.
+If `ENTITY_SUGGESTIONS_FILE` contains suggested people, list them and ask: "Want me to create these pages? (creates via `create_person`; `dismiss` or `never` also fine)"
+
+- Accepted: call `create_person`, set the suggestion to `accepted`, and set the contact state to `created` with its page path.
+- Dismissed: set the suggestion to `dismissed`.
+- Never: set the suggestion to `suppressed`.
+
+### Step 8: Summary Report
 
 ```
 ## Meeting Processing Complete ✅

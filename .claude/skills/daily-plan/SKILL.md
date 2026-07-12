@@ -181,6 +181,8 @@ Get genuine context, not just attendee names:
 
 ### 5.4 Commitment Tracking (NEW)
 
+Before commitments, read `System/.dex/entity-suggestions.json` (if present). If it has `suggested` entries, add one compact context line: "Dex suggests person pages for: X (N meetings), Y — say the word and I'll create them." This step is read-only.
+
 ```
 Use: get_commitments_due(date_range="today")
 ```

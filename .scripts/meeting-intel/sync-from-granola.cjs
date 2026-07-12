@@ -44,6 +44,8 @@ const {
   classifyAttendee,
   filterOwner,
 } = require('./lib/attendees.cjs');
+const { processEntityCreation } = require('./lib/entity-creation.cjs');
+const { verifyEntities } = require('./verify-entities.cjs');
 
 // ============================================================================
 // CONFIGURATION
@@ -923,6 +925,15 @@ function runPostProcessing() {
   log('Post-processing skipped (handled by MCP tools)');
 }
 
+function runEntityVerification() {
+  try {
+    const result = verifyEntities();
+    log(result.summary);
+  } catch (error) {
+    log(`Entity verification skipped after error: ${error.message}`);
+  }
+}
+
 // ============================================================================
 // MAIN
 // ============================================================================
@@ -940,6 +951,7 @@ async function main() {
   const apiKey = getGranolaApiKey();
   if (!apiKey) {
     log('Granola not connected — run /granola-setup to add your Granola API key (requires a Granola Business plan).');
+    if (!dryRun) runEntityVerification();
     return; // clean exit (exit 0 via the runner)
   }
 
@@ -964,6 +976,7 @@ async function main() {
   if (newMeetings === null) {
     // Auth rejected or network failure — already logged a friendly reason.
     log('Could not reach the Granola API this run. Exiting cleanly.');
+    if (!dryRun) runEntityVerification();
     return;
   }
 
@@ -972,6 +985,7 @@ async function main() {
   if (newMeetings.length === 0) {
     log('Nothing to process. Exiting.');
     saveState(state);
+    if (!dryRun) runEntityVerification();
     return;
   }
 
@@ -1001,6 +1015,7 @@ async function main() {
       queueMeetingAsJson(meeting, state);
     }
     saveState(state);
+    runEntityVerification();
     log('\n' + '='.repeat(60));
     log(`SYNC COMPLETE (source: ${dataSource})`);
     log(`Queued: ${newMeetings.length} meetings`);
@@ -1072,7 +1087,22 @@ async function main() {
         log(`Auto-link skipped after error: ${error.message}`);
       }
     }
+
+    try {
+      processEntityCreation(
+        processedResults.map(result => ({
+          ...result.meeting,
+          filteredAttendees: getOwnerFilteredAttendees(result.meeting, profile),
+        })),
+        profile,
+        message => log(`  ${message}`),
+      );
+    } catch (error) {
+      log(`Entity creation skipped after error: ${error.message}`);
+    }
   }
+
+  runEntityVerification();
 
   // Summary
   log('\n' + '='.repeat(60));

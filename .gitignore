@@ -138,6 +138,7 @@ System/Beta_Communications/
 System/Dex_Backlog.md
 System/highlights.json
 System/Innovation_Research/
+System/.dex/*.json
 
 # Onboarding state
 System/.onboarding/state.json
