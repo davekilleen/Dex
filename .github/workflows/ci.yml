@@ -91,7 +91,15 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           VERSION="$(node -p "require('./package.json').version")"
-          gh release create "v$VERSION" --notes-from-tag || true
+          # Create the release (and its git tag, at this commit) only if absent.
+          # --notes-from-tag needs a pre-existing annotated tag, which the release
+          # process never makes; let gh create the tag and generate notes instead.
+          if ! gh release view "v$VERSION" >/dev/null 2>&1; then
+            gh release create "v$VERSION" \
+              --target "$GITHUB_SHA" \
+              --title "v$VERSION" \
+              --generate-notes
+          fi
           gh release upload "v$VERSION" \
             "dist/dex-vault-bundle-v$VERSION.tar.gz" \
             "dist/dex-vault-bundle-v$VERSION.tar.gz.sha256" \
