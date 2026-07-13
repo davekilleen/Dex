@@ -354,6 +354,45 @@ if git clone --local --no-hardlinks --quiet "$PWD" "$RELEASE_CHECK_REPO" \
     else
         echo "  ✅ Generated release branch contains no test suites"
     fi
+
+    RELEASE_MANIFEST="$RELEASE_CHECK_DIR/installed-files.manifest"
+    git -C "$RELEASE_CHECK_REPO" show release:System/.installed-files.manifest > "$RELEASE_MANIFEST"
+    if node "$RELEASE_CHECK_REPO/core/update/ownership.cjs" --validate "$RELEASE_MANIFEST"; then
+        echo "  ✅ Every generated release path has one ownership class"
+    else
+        echo "  ❌ ERROR: Generated release ownership validation failed"
+        ERRORS=$((ERRORS + 1))
+    fi
+
+    BRIDGE_PATHS=(
+        "01-Quarter_Goals/Quarter_Goals.md"
+        "02-Week_Priorities/Week_Priorities.md"
+        "03-Tasks/Tasks.md"
+    )
+    while IFS= read -r bridge_path; do
+        [ -n "$bridge_path" ] && BRIDGE_PATHS+=("$bridge_path")
+    done < <(git -C "$RELEASE_CHECK_REPO" ls-tree -r --name-only main -- 06-Resources/Dex_System)
+    for bridge_path in "${BRIDGE_PATHS[@]}"; do
+        if ! git -C "$RELEASE_CHECK_REPO" cat-file -e "release:$bridge_path" 2>/dev/null; then
+            echo "  ❌ ERROR: Bridge release path missing: $bridge_path"
+            ERRORS=$((ERRORS + 1))
+        fi
+    done
+
+    RELEASE_MACHINERY=(
+        "core/update/ownership.json"
+        "core/update/apply-update.cjs"
+        "core/migrations/v1-to-v2-brain-vault-split.cjs"
+    )
+    for required_path in "${RELEASE_MACHINERY[@]}"; do
+        if ! git -C "$RELEASE_CHECK_REPO" cat-file -e "release:$required_path" 2>/dev/null; then
+            echo "  ❌ ERROR: Required split release file missing: $required_path"
+            ERRORS=$((ERRORS + 1))
+        fi
+    done
+    if [ $ERRORS -eq 0 ]; then
+        echo "  ✅ Bridge paths and split update machinery remain in the release"
+    fi
 else
     echo "  ❌ ERROR: Could not build a temporary release branch"
     ERRORS=$((ERRORS + 1))

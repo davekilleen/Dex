@@ -57,6 +57,16 @@ jobs:
         run: bash scripts/security-gate.sh
       - name: Ruff linting
         run: ruff check core/
+      - name: Build release for ownership validation
+        run: |
+          RELEASE_VALIDATION_REPO=$(mktemp -d "$RUNNER_TEMP/dex-release-validation.XXXXXX")
+          git clone --local --no-hardlinks --quiet "$GITHUB_WORKSPACE" "$RELEASE_VALIDATION_REPO"
+          git -C "$RELEASE_VALIDATION_REPO" config user.name "Dex CI"
+          git -C "$RELEASE_VALIDATION_REPO" config user.email "ci@dex.local"
+          git -C "$RELEASE_VALIDATION_REPO" checkout -B main "$GITHUB_SHA" --quiet
+          bash "$RELEASE_VALIDATION_REPO/scripts/build-release.sh"
+          git -C "$RELEASE_VALIDATION_REPO" show release:System/.installed-files.manifest > "$RUNNER_TEMP/release-manifest"
+          node core/update/ownership.cjs --validate "$RUNNER_TEMP/release-manifest"
       - name: Distribution safety check
         run: bash scripts/verify-distribution.sh
       - name: Path consistency check

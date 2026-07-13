@@ -142,6 +142,9 @@ def test_release_branch_strips_dev_files_and_keeps_user_runtime(tmp_path: Path) 
     assert "core/utils/doctor.py" in members
     assert "core/utils/manifest.py" in members
     assert "core/utils/smoke.py" in members
+    assert "core/update/ownership.json" in members
+    assert "core/update/apply-update.cjs" in members
+    assert "core/migrations/v1-to-v2-brain-vault-split.cjs" in members
     assert ".claude/skills/dex-update/SKILL.md" in members
     assert ".claude/skills/anthropic-docx/scripts/document.py" in members
     assert "System/.installed-files.manifest" in members
@@ -206,6 +209,31 @@ def test_release_branch_strips_dev_files_and_keeps_user_runtime(tmp_path: Path) 
     assert "test" not in package_json.get("scripts", {})
     assert "test:hooks" not in package_json.get("scripts", {})
     assert "test:scripts" not in package_json.get("scripts", {})
+
+    bridge_paths = {
+        "01-Quarter_Goals/Quarter_Goals.md",
+        "02-Week_Priorities/Week_Priorities.md",
+        "03-Tasks/Tasks.md",
+    }
+    bridge_paths.update(
+        subprocess.run(
+            [
+                "git",
+                "ls-tree",
+                "-r",
+                "--name-only",
+                "main",
+                "--",
+                "06-Resources/Dex_System",
+            ],
+            cwd=clone,
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.splitlines()
+    )
+    assert len(bridge_paths) > 3
+    assert bridge_paths <= members
 
 
 def _prepare_install_runtime(install_root: Path) -> dict[str, str]:
@@ -443,3 +471,42 @@ def test_distribution_check_rejects_enabled_integration_templates(tmp_path: Path
     assert "enabled-fixture.yaml:1:enabled: true" in result.stdout
     assert "flow-fixture.yaml:1:slack: {enabled: true}" in result.stdout
     assert "hooks-fixture.yaml:3:  meeting_prep: true" in result.stdout
+
+
+def test_distribution_check_rejects_a_release_that_strips_bridge_paths(
+    tmp_path: Path,
+) -> None:
+    clone = _clone_repo(tmp_path, "bridge-release-check")
+    shutil.copy2(REPO_ROOT / "scripts/verify-distribution.sh", clone / "scripts/verify-distribution.sh")
+    with (clone / ".distignore").open("a", encoding="utf-8") as distignore:
+        distignore.write("\n03-Tasks/Tasks.md\n")
+    subprocess.run(
+        ["git", "add", "--", ".distignore", "scripts/verify-distribution.sh"],
+        cwd=clone,
+        check=True,
+    )
+    subprocess.run(
+        ["git", "commit", "--quiet", "-m", "test: strip a bridge seed"],
+        cwd=clone,
+        check=True,
+    )
+
+    result = subprocess.run(
+        ["bash", "scripts/verify-distribution.sh"],
+        cwd=clone,
+        capture_output=True,
+        text=True,
+        timeout=90,
+    )
+
+    assert result.returncode == 1
+    assert "Bridge release path missing: 03-Tasks/Tasks.md" in result.stdout
+
+
+def test_ci_validates_the_generated_release_manifest() -> None:
+    workflow = (REPO_ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+
+    assert "Build release for ownership validation" in workflow
+    assert "bash scripts/build-release.sh" in workflow
+    assert "release:System/.installed-files.manifest" in workflow
+    assert "node core/update/ownership.cjs --validate" in workflow
