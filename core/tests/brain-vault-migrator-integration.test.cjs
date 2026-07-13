@@ -175,6 +175,15 @@ test('real migration preserves user bytes and creates two isolated histories', (
   assert.deepEqual(snapshotFiles(vault), preSplitFileSnapshot);
   assert.equal(fs.existsSync(path.join(vault, '.dex')), false);
   assert.equal(fs.existsSync(path.join(vault, 'System', '.dex')), false);
+  assert.equal(fs.existsSync(path.join(vault, 'System', 'backups', 'pre-split')), false);
+
+  const secondCycleSentinel = '# changed after the first restore\n';
+  fs.appendFileSync(path.join(vault, '.gitignore'), secondCycleSentinel);
+  const secondCycleSnapshot = snapshotFiles(vault);
+  migrate(vault, '--auto');
+  migrate(vault, '--restore');
+  assert.deepEqual(snapshotFiles(vault), secondCycleSnapshot);
+  assert.match(fs.readFileSync(path.join(vault, '.gitignore'), 'utf8'), /changed after the first restore/);
 });
 
 test('a journaled stop after P4 resumes through the swap', () => {
@@ -248,6 +257,10 @@ test('ZIP installs and in-progress merges refuse without creating a half-topolog
   assert.match(zipResult.stdout, /No conversion was started/i);
   assert.equal(fs.existsSync(path.join(zipVault, '.git')), false);
   assert.equal(fs.existsSync(path.join(zipVault, '.dex')), false);
+
+  fs.mkdirSync(path.join(zipVault, '.dex', 'brain.git'), { recursive: true });
+  const invalidHalfState = migrate(zipVault, '--auto', { expectedStatus: 1 });
+  assert.match(invalidHalfState.stdout + invalidHalfState.stderr, /incomplete.*archive is missing/i);
 
   const mergingVault = makeFixture('--with-merge-in-progress');
   const mergeResult = migrate(mergingVault, '--auto', { expectedStatus: 1 });

@@ -38,20 +38,50 @@ test('CLAUDE regeneration lifts the legacy extension bytes and removes legacy ma
   assert.doesNotMatch(generated, /USER_EXTENSIONS_(START|END)/);
 });
 
-test('the fsynced journal falls back to its previous complete record after truncation', () => {
+test('the fsynced journal recovers after truncation between every phase pair', () => {
   const migrator = require(MIGRATOR_PATH);
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'dex-migration-journal-'));
-
-  for (let phase = 0; phase <= 9; phase += 1) {
+  for (let phase = 0; phase < 9; phase += 1) {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), `dex-migration-journal-p${phase}-`));
     migrator.writeJournal(root, { schemaVersion: 1, phase: `P${phase}`, nextPhase: phase });
-  }
-  const journalPath = path.join(root, 'System', '.dex', 'migration-v2-state.json');
-  fs.truncateSync(journalPath, 11);
+    migrator.writeJournal(root, {
+      schemaVersion: 1,
+      phase: `P${phase + 1}`,
+      nextPhase: phase + 1,
+    });
+    const journalPath = path.join(root, 'System', '.dex', 'migration-v2-state.json');
+    fs.truncateSync(journalPath, 11);
 
-  const recovered = migrator.readJournal(root);
-  assert.equal(recovered.phase, 'P8');
-  assert.equal(recovered.nextPhase, 8);
-  assert.equal(recovered.recoveredFromPrevious, true);
+    const recovered = migrator.readJournal(root);
+    assert.equal(recovered.phase, `P${phase}`);
+    assert.equal(recovered.nextPhase, phase);
+    assert.equal(recovered.recoveredFromPrevious, true);
+  }
+});
+
+test('the P2 snapshot resumes after a stop between backup files', () => {
+  const migrator = require(MIGRATOR_PATH);
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'dex-migration-snapshot-'));
+  const claudeBytes = Buffer.from('# Dex\n');
+  const ignoreBytes = Buffer.from('.env\n');
+  fs.writeFileSync(path.join(root, 'CLAUDE.md'), claudeBytes);
+  fs.writeFileSync(path.join(root, '.gitignore'), ignoreBytes);
+
+  process.env.DEX_MIGRATION_STOP_AFTER_SNAPSHOT_FILE = 'CLAUDE.md';
+  try {
+    assert.throws(
+      () => migrator.snapshotFiles(root),
+      /Stopped safely while testing P2 snapshot recovery/,
+    );
+  } finally {
+    delete process.env.DEX_MIGRATION_STOP_AFTER_SNAPSHOT_FILE;
+  }
+
+  const manifest = migrator.snapshotFiles(root);
+  const backupRoot = path.join(root, 'System', 'backups', 'pre-split');
+  assert.equal(manifest.entries.find((entry) => entry.path === 'CLAUDE.md').existed, true);
+  assert.deepEqual(fs.readFileSync(path.join(backupRoot, 'files', 'CLAUDE.md')), claudeBytes);
+  assert.deepEqual(fs.readFileSync(path.join(backupRoot, 'files', '.gitignore')), ignoreBytes);
+  assert.ok(fs.existsSync(path.join(backupRoot, 'snapshot.json')));
 });
 
 test('the topology reconciler has an explicit decision for all 16 presence states', () => {

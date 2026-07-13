@@ -414,32 +414,73 @@ function writeReport(root, report) {
   writeFileFsynced(path.join(root, REPORT_RELATIVE), renderReport(report), 0o644);
 }
 
-function snapshotFiles(root) {
+function fileSha256(candidate) {
+  return crypto.createHash('sha256').update(fs.readFileSync(candidate)).digest('hex');
+}
+
+function snapshotFiles(root, migrationId = null) {
   const backupRoot = path.join(root, SNAPSHOT_RELATIVE);
   const manifestPath = path.join(backupRoot, 'snapshot.json');
-  if (exists(manifestPath)) return JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
-
-  const entries = [];
-  for (const relative of SNAPSHOT_PATHS) {
-    const source = path.join(root, relative);
-    const entry = { path: relative, existed: exists(source) };
-    if (entry.existed) {
-      const stat = fs.lstatSync(source);
-      if (!stat.isFile() || stat.isSymbolicLink()) {
-        throw new Error(`P2 cannot safely snapshot ${relative} because it is not a regular file.`);
-      }
-      const destination = path.join(backupRoot, 'files', relative);
-      fs.mkdirSync(path.dirname(destination), { recursive: true });
-      fs.copyFileSync(source, destination, fs.constants.COPYFILE_EXCL);
-      fs.chmodSync(destination, stat.mode & 0o777);
-      entry.mode = stat.mode & 0o777;
-      entry.sha256 = crypto.createHash('sha256').update(fs.readFileSync(source)).digest('hex');
-    }
-    entries.push(entry);
+  const planPath = path.join(backupRoot, '.snapshot-plan.json');
+  if (exists(manifestPath)) {
+    const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+    if (!migrationId || manifest.migrationId === migrationId) return manifest;
+    removePath(backupRoot);
   }
-  const manifest = { schemaVersion: 1, createdAt: new Date().toISOString(), entries };
-  writeFileFsynced(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
-  return manifest;
+
+  let plan;
+  if (exists(planPath)) {
+    plan = JSON.parse(fs.readFileSync(planPath, 'utf8'));
+    if (migrationId && plan.migrationId !== migrationId) {
+      removePath(backupRoot);
+      plan = null;
+    }
+  }
+  if (!plan) {
+    const entries = [];
+    for (const relative of SNAPSHOT_PATHS) {
+      const source = path.join(root, relative);
+      const entry = { path: relative, existed: exists(source) };
+      if (entry.existed) {
+        const stat = fs.lstatSync(source);
+        if (!stat.isFile() || stat.isSymbolicLink()) {
+          throw new Error(`P2 cannot safely snapshot ${relative} because it is not a regular file.`);
+        }
+        entry.mode = stat.mode & 0o777;
+        entry.sha256 = fileSha256(source);
+      }
+      entries.push(entry);
+    }
+    plan = {
+      schemaVersion: 1,
+      migrationId,
+      createdAt: new Date().toISOString(),
+      entries,
+    };
+    writeFileFsynced(planPath, `${JSON.stringify(plan, null, 2)}\n`);
+  }
+
+  for (const entry of plan.entries) {
+    if (!entry.existed) continue;
+    const source = path.join(root, entry.path);
+    const destination = path.join(backupRoot, 'files', entry.path);
+    if (exists(destination)) {
+      if (fileSha256(destination) !== entry.sha256) {
+        throw new Error(`P2 stopped because its partial backup for ${entry.path} did not match the saved plan.`);
+      }
+    } else {
+      if (!exists(source) || fileSha256(source) !== entry.sha256) {
+        throw new Error(`P2 stopped because ${entry.path} changed while its backup was incomplete.`);
+      }
+      writeFileFsynced(destination, fs.readFileSync(source), entry.mode);
+      fs.chmodSync(destination, entry.mode);
+    }
+    if (process.env.DEX_MIGRATION_STOP_AFTER_SNAPSHOT_FILE === entry.path) {
+      throw new Error('Stopped safely while testing P2 snapshot recovery. Run --resume to continue.');
+    }
+  }
+  writeFileFsynced(manifestPath, `${JSON.stringify(plan, null, 2)}\n`);
+  return plan;
 }
 
 function restoreSnapshot(root) {
@@ -638,7 +679,7 @@ function phase1Report(root, state, dryRun = false) {
 
 function phase2SnapshotAndScan(root, state) {
   console.log('P2 snapshot and secret check: saving only the files this migration rewrites.');
-  snapshotFiles(root);
+  snapshotFiles(root, state.startedAt);
   state.analysis.secretFindings = scanForSecrets(root);
   writeReport(root, {
     modifiedBrainPaths: state.analysis.modifiedBrainPaths,
@@ -888,12 +929,16 @@ function restoreMigration(root) {
   writeJournal(root, state);
   restoreGitTopology(root);
   restoreSnapshot(root);
+  removePath(path.join(root, SNAPSHOT_RELATIVE));
   removeMigrationRuntime(root);
   console.log('Restore complete: the pre-split files and Git history are active again.');
   return state;
 }
 
 function dryRun(root) {
+  if (topologyDecision(inspectTopology(root)) === 'invalid') {
+    throw new Error('The migration folders are incomplete and the old Git archive is missing. Dex stopped without guessing; restore the folder from backup.');
+  }
   const state = { schemaVersion: 1, nextPhase: 0, mode: 'dry-run' };
   const p0 = phase0Preflight(root, state);
   if (p0.zip) {
@@ -1041,7 +1086,8 @@ function main(argumentsList = process.argv.slice(2), root = process.cwd()) {
     if (mode === 'status') return statusMigration(root);
     if (mode === 'dry-run') return dryRun(root);
 
-    if (!exists(path.join(root, '.git')) && !exists(path.join(root, '.dex', 'pre-split-archive.git'))) {
+    const startupTopology = inspectTopology(root);
+    if (topologyDecision(startupTopology) === 'zip') {
       if (mode === 'restore') throw new Error('There is no pre-split Git archive to restore.');
       writeReport(root, { zip: true, modifiedBrainPaths: [], remoteNames: [], secretFindings: [] });
       console.log('P0 found a folder downloaded as a ZIP. No conversion was started. Read System/migration-report-v2.md for the safe choices.');
@@ -1076,6 +1122,7 @@ module.exports = {
   readJournal,
   regenerateClaude,
   restoreMigration,
+  snapshotFiles,
   topologyDecision,
   writeJournal,
 };

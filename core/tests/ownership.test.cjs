@@ -107,7 +107,7 @@ test('vault ignore layers protect secrets while keeping user custom skills visib
   }
 
   const excludeLines = ownership.vaultExcludeLines();
-  assert.ok(excludeLines.includes('/core/'));
+  assert.ok(excludeLines.includes('/core/*'));
   assert.ok(excludeLines.includes('/CLAUDE.md'));
   assert.ok(excludeLines.includes('!/.claude/skills/*-custom/**'));
 
@@ -115,11 +115,23 @@ test('vault ignore layers protect secrets while keeping user custom skills visib
   run('git', ['init', '--quiet'], { cwd: tempRoot });
   fs.mkdirSync(path.join(tempRoot, '.claude', 'skills', 'foo-custom'), { recursive: true });
   fs.mkdirSync(path.join(tempRoot, '.claude', 'skills', 'daily-plan'), { recursive: true });
+  fs.mkdirSync(path.join(tempRoot, '.claude', 'skills-custom', 'legacy'), { recursive: true });
+  fs.mkdirSync(path.join(tempRoot, 'core', 'mcp-custom'), { recursive: true });
   fs.writeFileSync(path.join(tempRoot, '.claude', 'skills', 'foo-custom', 'SKILL.md'), 'mine\n');
   fs.writeFileSync(path.join(tempRoot, '.claude', 'skills', 'daily-plan', 'SKILL.md'), 'shipped\n');
+  fs.writeFileSync(path.join(tempRoot, '.claude', 'skills-custom', 'legacy', 'SKILL.md'), 'mine\n');
+  fs.writeFileSync(path.join(tempRoot, 'core', 'mcp-custom', 'server.py'), 'mine\n');
   fs.writeFileSync(path.join(tempRoot, '.git', 'info', 'exclude'), `${excludeLines.join('\n')}\n`);
   run('git', ['check-ignore', '--quiet', '.claude/skills/daily-plan/SKILL.md'], { cwd: tempRoot });
   run('git', ['check-ignore', '--quiet', '.claude/skills/foo-custom/SKILL.md'], {
+    cwd: tempRoot,
+    expectedStatus: 1,
+  });
+  run('git', ['check-ignore', '--quiet', '.claude/skills-custom/legacy/SKILL.md'], {
+    cwd: tempRoot,
+    expectedStatus: 1,
+  });
+  run('git', ['check-ignore', '--quiet', 'core/mcp-custom/server.py'], {
     cwd: tempRoot,
     expectedStatus: 1,
   });

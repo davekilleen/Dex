@@ -75,6 +75,7 @@ function vaultExcludeLines() {
   for (const rule of config.rules) {
     if (!['brain', 'generated', 'runtime'].includes(rule.class)) continue;
     if (rule.prefix === '.claude/') continue;
+    if (rule.prefix === 'core/') continue;
     if (rule.prefix === '.dex/') continue;
     const rendered = `/${rule.prefix}`;
     if (!lines.includes(rendered)) lines.push(rendered);
@@ -86,6 +87,13 @@ function vaultExcludeLines() {
     '/.claude/skills/*',
     '!/.claude/skills/*-custom/',
     '!/.claude/skills/*-custom/**',
+    '!/.claude/skills-custom/',
+    '!/.claude/skills-custom/**',
+    '/core/*',
+    '!/core/mcp-custom/',
+    '!/core/mcp-custom/**',
+    '!/core/mcp-premium/',
+    '!/core/mcp-premium/**',
     '/.dex/',
   );
   return lines;
