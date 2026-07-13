@@ -227,7 +227,6 @@ def test_distribution_check_rejects_enabled_integration_templates(tmp_path: Path
             "--quiet",
             "--",
             "System/integrations/slack.yaml",
-            "System/integrations/.sync-state.json",
         ],
         cwd=clone,
         check=True,

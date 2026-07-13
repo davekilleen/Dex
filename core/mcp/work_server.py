@@ -3814,6 +3814,37 @@ async def handle_list_tools() -> list[types.Tool]:
             },
         ),
         types.Tool(
+            name="sync_external_tasks",
+            description="Sync enabled external task services, or preview the changes without writing.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "services": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                    },
+                    "dry_run": {
+                        "type": "boolean",
+                        "default": False,
+                    },
+                },
+                "required": [],
+            },
+        ),
+        types.Tool(
+            name="record_external_task_mapping",
+            description="Record the external ID for a canonical Dex task and remove its inbound queue item.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "task_id": {"type": "string"},
+                    "service": {"type": "string"},
+                    "external_id": {"type": "string"},
+                },
+                "required": ["task_id", "service", "external_id"],
+            },
+        ),
+        types.Tool(
             name="get_system_status",
             description="Get comprehensive system status: task counts, priority distribution, pillar balance, blocked items",
             inputSchema={"type": "object", "properties": {}}
@@ -4211,6 +4242,7 @@ async def handle_list_tools() -> list[types.Tool]:
 # Tools that write to vault files and should trigger search index refresh
 WRITE_TOOLS = {
     "create_task", "update_task_status", "confirm_goal_link", "create_company", "refresh_company",
+    "sync_external_tasks",
     "sync_task_refs", "create_quarterly_goal", "update_goal_progress",
     "create_weekly_priority", "complete_weekly_priority",
     "process_inbox_with_dedup", "migrate_quarterly_goals", "migrate_weekly_priorities",
@@ -4226,7 +4258,11 @@ async def handle_call_tool(
         result = await _handle_call_tool_inner(name, arguments)
 
         # Refresh QMD search index after any write operation (non-blocking)
-        if name in WRITE_TOOLS:
+        is_dry_run_sync = (
+            name == "sync_external_tasks"
+            and bool((arguments or {}).get("dry_run", False))
+        )
+        if name in WRITE_TOOLS and not is_dry_run_sync:
             refresh_search_index()
 
         return result
@@ -4236,6 +4272,8 @@ async def handle_call_tool(
                 "list_tasks": "Task listing failed",
                 "create_task": "Task creation failed",
                 "update_task_status": "Task status update failed",
+                "sync_external_tasks": "External task sync failed",
+                "record_external_task_mapping": "External task mapping failed",
                 "get_system_status": "System status check failed",
                 "check_priority_limits": "Priority limits check failed",
                 "process_inbox_with_dedup": "Inbox processing failed",
@@ -4891,6 +4929,32 @@ async def _handle_call_tool_inner(
                 "error": "Must provide either task_id or task_title"
             }, indent=2))]
     
+    elif name == "sync_external_tasks":
+        from core.integrations import task_sync
+
+        arguments = arguments or {}
+        result = task_sync.sync_external_tasks(
+            services=arguments.get("services"),
+            dry_run=arguments.get("dry_run", False),
+        )
+        return [types.TextContent(
+            type="text",
+            text=json.dumps(result, indent=2, cls=DateTimeEncoder),
+        )]
+
+    elif name == "record_external_task_mapping":
+        from core.integrations import task_sync
+
+        result = task_sync.record_external_task_mapping(
+            task_id=arguments["task_id"],
+            service=arguments["service"],
+            external_id=arguments["external_id"],
+        )
+        return [types.TextContent(
+            type="text",
+            text=json.dumps(result, indent=2, cls=DateTimeEncoder),
+        )]
+
     elif name == "get_system_status":
         all_tasks = get_all_tasks()
         active_tasks = [t for t in all_tasks if not t.get('completed')]
