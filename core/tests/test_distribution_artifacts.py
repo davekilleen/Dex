@@ -163,7 +163,10 @@ def test_release_branch_strips_dev_files_and_keeps_user_runtime(tmp_path: Path) 
         check=False,
         capture_output=True,
         text=True,
-        timeout=30,
+        # Generous sanity ceiling, not a perf assertion: the smoke run spawns several
+        # subprocess journeys, which can exceed a tight 30s budget on a loaded CI runner
+        # and flake this test even though the run succeeds.
+        timeout=90,
     )
     assert smoke_result.returncode == 0, smoke_result.stderr or smoke_result.stdout
     assert json.loads(smoke_result.stdout)["schema_version"] == 1

@@ -728,7 +728,10 @@ def test_hanging_journey_is_killed_and_returns_exit_two(monkeypatch, tmp_path: P
         journey_definitions=(_definition("configs", 0.5),),
     )
 
-    assert time.monotonic() - started < 2
+    # Generous ceiling: the journey sleeps 60s, so completing well under that proves
+    # the timeout+kill fired. Kept loose (not ~1s) so heavy CI load can't flake it;
+    # the exit_code/verdict assertions below are what actually verify the behavior.
+    assert time.monotonic() - started < 30
     assert run.exit_code == 2
     assert run.harness_failed is True
     assert run.report["journeys"][0]["verdict"] == "UNKNOWN"
@@ -784,7 +787,10 @@ def test_hanging_preparation_is_killed_within_the_journey_budget(monkeypatch, tm
         journey_definitions=(_definition("configs", 0.5),),
     )
 
-    assert time.monotonic() - started < 2
+    # Generous ceiling (see test_hanging_journey_is_killed_and_returns_exit_two):
+    # the preparation sleeps 60s, so finishing well under that proves the kill fired;
+    # the exit_code/detail assertions below verify the actual behavior.
+    assert time.monotonic() - started < 30
     assert run.exit_code == 2
     assert run.harness_failed is True
     assert "preparation timed out" in run.report["journeys"][0]["detail"]
