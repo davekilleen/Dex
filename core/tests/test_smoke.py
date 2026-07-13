@@ -149,8 +149,9 @@ def test_report_schema_exit_zero_and_no_live_write(tmp_path: Path) -> None:
         "mcp_startup",
         "skills",
         "hooks",
+        "update_boundary",
     ]
-    assert run.report["summary"] == {"ok": 2, "broken": 0, "unknown": 1, "off": 2}
+    assert run.report["summary"] == {"ok": 3, "broken": 0, "unknown": 1, "off": 2}
     for journey in run.report["journeys"]:
         assert set(journey) == {"id", "verdict", "detail", "duration_ms"}
         assert journey["verdict"] in smoke.VERDICTS
@@ -186,7 +187,28 @@ def test_fresh_release_without_onboarding_or_python_packages_has_clean_verdicts(
     assert journeys["skills"]["verdict"] == "UNKNOWN"
     assert "Python packages not installed" in journeys["skills"]["detail"]
     assert journeys["hooks"]["verdict"] == "OK"
+    assert journeys["update_boundary"]["verdict"] == "OK"
     assert all("harness failed" not in journey["detail"] for journey in journeys.values())
+
+
+def test_update_boundary_journey_runs_the_real_updater_in_system_temp(tmp_path: Path) -> None:
+    vault = _write_valid_vault(tmp_path)
+    before = _tree_hash(vault)
+
+    run = smoke.run_smoke(
+        vault_root=vault,
+        repo_root=REPO_ROOT,
+        journey_definitions=(_definition("update_boundary", 15.0),),
+        global_timeout_seconds=20.0,
+    )
+
+    result = run.report["journeys"][0]
+    assert run.harness_failed is False
+    assert run.exit_code == 0
+    assert result["verdict"] == "OK"
+    assert "brain path changed" in result["detail"]
+    assert "PARA and deny-boundary bytes stayed untouched" in result["detail"]
+    assert _tree_hash(vault) == before
 
 
 def test_ambient_tmpdir_inside_vault_is_never_used(monkeypatch, tmp_path: Path) -> None:

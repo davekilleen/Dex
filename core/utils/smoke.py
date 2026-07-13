@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import hashlib
 import io
 import json
 import os
@@ -152,6 +153,7 @@ JOURNEYS = (
     JourneyDefinition("mcp_startup", 20.0),
     JourneyDefinition("skills", 5.0),
     JourneyDefinition("hooks", 8.0),
+    JourneyDefinition("update_boundary", 15.0),
 )
 
 
@@ -486,6 +488,163 @@ def _prepare_hooks_vault(source: Path, vault: Path) -> None:
         shutil.copytree(hooks, vault / ".claude" / "hooks", symlinks=True)
 
 
+def _smoke_git(repo: Path, *arguments: str) -> str:
+    command = _git_command(repo, *arguments)
+    if command is None:
+        raise JourneySafetySkip("trusted system Git is unavailable")
+    result = subprocess.run(
+        command,
+        capture_output=True,
+        text=True,
+        env=_git_environment(),
+        timeout=10,
+        check=False,
+    )
+    if result.returncode != 0:
+        raise JourneyPreparationError(
+            f"update-boundary Git setup failed: {_one_line(result.stderr or result.stdout)}"
+        )
+    return result.stdout.strip()
+
+
+def _write_fixture_file(root: Path, relative: str, content: str) -> None:
+    destination = root / relative
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    destination.write_text(content, encoding="utf-8")
+
+
+def _refresh_fixture_manifest(release: Path) -> None:
+    manifest = release / "System" / ".installed-files.manifest"
+    manifest.parent.mkdir(parents=True, exist_ok=True)
+    manifest.write_text("", encoding="utf-8")
+    files = []
+    for candidate in release.rglob("*"):
+        relative = candidate.relative_to(release)
+        if relative.parts and relative.parts[0] == ".git":
+            continue
+        if candidate.is_symlink():
+            raise JourneyPreparationError("update-boundary release fixture contains a symlink")
+        if candidate.is_file():
+            files.append(relative.as_posix())
+    manifest.write_text("".join(f"{relative}\n" for relative in sorted(files)), encoding="utf-8")
+
+
+def _prepare_update_boundary_vault(repository: Path, vault: Path) -> None:
+    release = vault.parent / "update-release-work"
+    release.mkdir()
+
+    required = (
+        Path("core/update/apply-update.cjs"),
+        Path("core/update/ownership.cjs"),
+        Path("core/update/ownership.json"),
+        Path("core/migrations/v1-to-v2-brain-vault-split.cjs"),
+        Path("core/paths.py"),
+    )
+    for relative in required:
+        source = repository / relative
+        if not source.is_file() or source.is_symlink():
+            raise JourneyPreparationError(f"update-boundary fixture needs {relative.as_posix()}")
+        _copy_file(source, release / relative, repository)
+
+    _write_fixture_file(release, "README.md", "# Dex smoke old brain\n")
+    _write_fixture_file(release, "LICENSE", "old shipped license\n")
+    _write_fixture_file(
+        release,
+        "CLAUDE.md",
+        "# Dex smoke template\n\n## USER_EXTENSIONS_START\n## USER_EXTENSIONS_END\n",
+    )
+    _write_fixture_file(
+        release,
+        "System/.mcp.json.example",
+        json.dumps({"mcpServers": {"smoke-mcp": {"command": "{{VAULT_PATH}}/bin/smoke"}}}) + "\n",
+    )
+    _write_fixture_file(release, "03-Tasks/Tasks.md", "# Shipped task seed\n")
+    _write_fixture_file(release, "04-Projects/private.md", "release placeholder\n")
+    _write_fixture_file(
+        release,
+        "package.json",
+        json.dumps({
+            "name": "dex-smoke-update",
+            "version": "2.0.0",
+            "dex": {"vault_schema": 1, "brain_support": ">=2.0.0 <3.0.0"},
+        }) + "\n",
+    )
+    _refresh_fixture_manifest(release)
+    _smoke_git(release, "init", "--quiet")
+    _smoke_git(release, "config", "user.name", "Dex Smoke")
+    _smoke_git(release, "config", "user.email", "smoke@dex.local")
+    _smoke_git(release, "add", "-A")
+    _smoke_git(release, "commit", "--quiet", "-m", "old brain")
+    old_oid = _smoke_git(release, "rev-parse", "HEAD")
+
+    for candidate in release.iterdir():
+        if candidate.name == ".git":
+            continue
+        destination = vault / candidate.name
+        if candidate.is_dir():
+            shutil.copytree(candidate, destination, dirs_exist_ok=True)
+        else:
+            shutil.copy2(candidate, destination)
+    _write_fixture_file(vault, "04-Projects/private.md", "private user project bytes\n")
+    _write_fixture_file(vault, "03-Tasks/Tasks.md", "# Edited user task seed\n")
+    _write_fixture_file(vault, "CLAUDE-custom.md", "Keep this smoke instruction.\n")
+
+    _smoke_git(vault, "init", "--quiet")
+    (vault / ".git" / "dex-vault-v2").write_text('{"role":"vault"}\n', encoding="utf-8")
+    brain = vault / ".dex" / "brain.git"
+    brain.parent.mkdir(parents=True)
+    _smoke_git(vault.parent, "init", "--bare", "--quiet", str(brain))
+    _smoke_git(
+        vault.parent,
+        "-c", "protocol.file.allow=always",
+        f"--git-dir={brain}",
+        "fetch", "--quiet", "--no-tags", str(release),
+        f"+{old_oid}:refs/dex/installed",
+    )
+    _smoke_git(vault.parent, f"--git-dir={brain}", "remote", "add", "origin", "https://github.com/davekilleen/Dex.git")
+    _smoke_git(
+        vault.parent,
+        f"--git-dir={brain}",
+        "config",
+        f"url.{release.as_uri()}.insteadOf",
+        "https://github.com/davekilleen/Dex.git",
+    )
+    (brain / "dex-brain-v2").write_text(
+        json.dumps({"role": "brain", "installed": old_oid}) + "\n",
+        encoding="utf-8",
+    )
+    archive = vault / ".dex" / "pre-split-archive.git"
+    _smoke_git(vault.parent, "init", "--bare", "--quiet", str(archive))
+    _write_fixture_file(archive, "dex-pre-split-v2-archive.json", "{}\n")
+    _write_fixture_file(
+        vault,
+        "System/.dex/topology.json",
+        json.dumps({
+            "topology": "brain-vault-split",
+            "vaultGitDir": ".git",
+            "brainGitDir": ".dex/brain.git",
+            "archiveGitDir": ".dex/pre-split-archive.git",
+            "installedRelease": old_oid,
+        }) + "\n",
+    )
+
+    _write_fixture_file(release, "README.md", "# Dex smoke new brain\n")
+    _write_fixture_file(release, "core/update-boundary-added.cjs", "module.exports = 'updated';\n")
+    _write_fixture_file(release, "04-Projects/private.md", "release tried to replace PARA\n")
+    _write_fixture_file(release, "03-Tasks/Tasks.md", "# New shipped task seed\n")
+    _write_fixture_file(release, ".env-release", "DENIED=release-must-not-write\n")
+    _write_fixture_file(release, "System/credentials/release.txt", "denied credential path\n")
+    (release / "LICENSE").unlink()
+    package_path = release / "package.json"
+    package = json.loads(package_path.read_text(encoding="utf-8"))
+    package["version"] = "2.0.1"
+    package_path.write_text(json.dumps(package) + "\n", encoding="utf-8")
+    _refresh_fixture_manifest(release)
+    _smoke_git(release, "add", "-A")
+    _smoke_git(release, "commit", "--quiet", "-m", "new brain")
+    _smoke_git(release, "tag", "dist-v2.0.1")
+
+
 def _prepare_vault(
     journey_id: str,
     source: Path,
@@ -506,6 +665,8 @@ def _prepare_vault(
             _prepare_skills_vault(source, vault)
         elif journey_id == "hooks":
             _prepare_hooks_vault(source, vault)
+        elif journey_id == "update_boundary":
+            _prepare_update_boundary_vault(repo_root, vault)
         else:
             raise RuntimeError(f"unknown smoke journey {journey_id!r}")
     except (JourneyPreparationError, JourneySafetySkip):
@@ -886,6 +1047,7 @@ def _clean_environment(
         "VAULT_PATH": str(vault),
         "DEX_SMOKE_RUN_TOKEN": run_token,
         "DEX_SMOKE_SERVER_BOOTSTRAP": str(guard / "server_bootstrap.py"),
+        "DEX_UPDATE_PYTHON": sys.executable,
         **({"DEX_SMOKE_NODE": node} if (node := _trusted_node()) is not None else {}),
     }
 
@@ -1959,12 +2121,57 @@ def _journey_hooks(vault: Path, _repo_root: Path) -> dict[str, str]:
     return {"verdict": verdict, "detail": f"structurally validated {len(commands)} hook commands"}
 
 
+def _journey_update_boundary(vault: Path, _release_root: Path) -> dict[str, str]:
+    node = os.environ.get("DEX_SMOKE_NODE") or _trusted_node()
+    if not node:
+        return {"verdict": "UNKNOWN", "detail": "trusted Node.js is unavailable for the update-boundary journey"}
+    para = vault / "04-Projects" / "private.md"
+    seed = vault / "03-Tasks" / "Tasks.md"
+    para_before = hashlib.sha256(para.read_bytes()).hexdigest()
+    seed_before = hashlib.sha256(seed.read_bytes()).hexdigest()
+    updater = vault / "core" / "update" / "apply-update.cjs"
+    result = subprocess.run(
+        [node, str(updater), "--apply", "--target", "dist-v2.0.1"],
+        cwd=vault,
+        capture_output=True,
+        text=True,
+        env=os.environ.copy(),
+        timeout=12,
+        check=False,
+    )
+    if result.returncode != 0:
+        return {
+            "verdict": "BROKEN",
+            "detail": f"real updater failed in its isolated fixture: {_one_line(result.stderr or result.stdout)}",
+        }
+    failures = []
+    if (vault / "README.md").read_text(encoding="utf-8") != "# Dex smoke new brain\n":
+        failures.append("brain README did not change")
+    if not (vault / "core" / "update-boundary-added.cjs").is_file():
+        failures.append("new brain path was not installed")
+    if hashlib.sha256(para.read_bytes()).hexdigest() != para_before:
+        failures.append("PARA bytes changed")
+    if hashlib.sha256(seed.read_bytes()).hexdigest() != seed_before:
+        failures.append("edited seed bytes changed")
+    if (vault / ".env-release").exists():
+        failures.append("denied .env path escaped staging")
+    if (vault / "System" / "credentials" / "release.txt").exists():
+        failures.append("denied credentials path escaped staging")
+    if failures:
+        return {"verdict": "BROKEN", "detail": "; ".join(failures)}
+    return {
+        "verdict": "OK",
+        "detail": "brain path changed while edited seed, PARA and deny-boundary bytes stayed untouched",
+    }
+
+
 INTERNAL_JOURNEYS: dict[str, Callable[[Path, Path], dict[str, str]]] = {
     "configs": _journey_configs,
     "task_lifecycle": _journey_task_lifecycle,
     "mcp_startup": _journey_mcp_startup,
     "skills": _journey_skills,
     "hooks": _journey_hooks,
+    "update_boundary": _journey_update_boundary,
 }
 
 

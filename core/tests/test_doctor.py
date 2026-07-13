@@ -20,6 +20,10 @@ NOW = datetime(2026, 7, 11, 12, 0, tzinfo=timezone.utc)
 QUICK_IDS = [
     "vault.structure",
     "vault.configs",
+    "vault.git",
+    "brain.git",
+    "schema.match",
+    "topology.migration-pending",
     "mcp.registered",
     "mcp.orphans",
     "python.env",
@@ -223,6 +227,132 @@ def _drift_context(tmp_path, *, release_ref=True):
     return doctor.DoctorContext(vault_root=vault, repo_root=vault, home=home, now=NOW)
 
 
+def _post_split_context(tmp_path):
+    vault = tmp_path / "split-vault"
+    release = tmp_path / "split-release"
+    vault.mkdir()
+    release.mkdir()
+
+    _git(release, "init")
+    _git(release, "config", "user.email", "doctor@example.test")
+    _git(release, "config", "user.name", "Doctor Test")
+    (release / "core").mkdir()
+    (release / "core" / "shipped.py").write_text("SHIPPED = 1\n")
+    (release / "core" / "update").mkdir()
+    ownership_config = {
+        "version": 1,
+        "defaultClass": "vault",
+        "rules": [
+            {"prefix": "core/", "class": "brain"},
+            {"prefix": "System/.installed-files.manifest", "class": "brain"},
+            {"prefix": "package.json", "class": "brain"},
+        ],
+    }
+    (release / "core" / "update" / "ownership.json").write_text(json.dumps(ownership_config))
+    (release / "System").mkdir()
+    (release / "System" / ".installed-files.manifest").write_text(
+        "System/.installed-files.manifest\ncore/shipped.py\ncore/update/ownership.json\npackage.json\n"
+    )
+    (release / "package.json").write_text(json.dumps({
+        "version": "2.1.0",
+        "dex": {
+            "vault_schema": 1,
+            "brain_support": ">=2.0.0 <3.0.0",
+        },
+    }))
+    _git(release, "add", ".")
+    _git(release, "commit", "-m", "installed brain")
+    installed = _git(release, "rev-parse", "HEAD").stdout.strip()
+
+    _git(vault, "init")
+    (vault / ".git" / "dex-vault-v2").write_text('{"role":"vault"}\n')
+    (vault / "core" / "update").mkdir(parents=True)
+    (vault / "core" / "shipped.py").write_text("SHIPPED = 1\n")
+    (vault / "core" / "update" / "apply-update.cjs").write_text("// v2 updater\n")
+    (vault / "core" / "update" / "ownership.json").write_text(json.dumps(ownership_config))
+    (vault / "System" / ".dex").mkdir(parents=True)
+    (vault / "System" / ".installed-files.manifest").write_text(
+        (release / "System" / ".installed-files.manifest").read_text()
+    )
+    (vault / "System" / "user-profile.yaml").write_text("vault_schema: 1\n")
+    (vault / "package.json").write_text((release / "package.json").read_text())
+
+    brain = vault / ".dex" / "brain.git"
+    brain.parent.mkdir()
+    subprocess.run(["git", "init", "--bare", "--quiet", str(brain)], check=True)
+    subprocess.run(
+        ["git", f"--git-dir={brain}", "fetch", "--quiet", str(release),
+         f"+{installed}:refs/dex/installed"],
+        check=True,
+    )
+    subprocess.run(
+        ["git", f"--git-dir={brain}", "remote", "add", "origin",
+         "https://github.com/davekilleen/Dex.git"],
+        check=True,
+    )
+    (brain / "dex-brain-v2").write_text(
+        json.dumps({"role": "brain", "installed": installed}) + "\n"
+    )
+    archive = vault / ".dex" / "pre-split-archive.git"
+    subprocess.run(["git", "init", "--bare", "--quiet", str(archive)], check=True)
+    (archive / "dex-pre-split-v2-archive.json").write_text('{}\n')
+    (vault / "System" / ".dex" / "topology.json").write_text(json.dumps({
+        "topology": "brain-vault-split",
+        "vaultGitDir": ".git",
+        "brainGitDir": ".dex/brain.git",
+        "archiveGitDir": ".dex/pre-split-archive.git",
+        "installedRelease": installed,
+    }))
+    home = tmp_path / "split-home"
+    home.mkdir()
+    return doctor.DoctorContext(vault, vault, home, NOW)
+
+
+def test_split_topology_git_and_schema_probes_are_feature_status_compliant(tmp_path):
+    split = _post_split_context(tmp_path)
+
+    assert doctor._probe_vault_git(split).verdict == "OK"
+    brain = doctor._probe_brain_git(split)
+    assert brain.verdict == "OK"
+    assert "one release cycle" in brain.detail
+    assert doctor._probe_schema_match(split).verdict == "OK"
+    assert doctor._probe_migration_pending(split).verdict == "OK"
+
+    (split.vault_root / "System" / "user-profile.yaml").write_text("vault_schema: 2\n")
+    mismatch = doctor._probe_schema_match(split)
+    assert mismatch.verdict == "BROKEN"
+    assert "vault schema 2" in mismatch.detail.lower()
+
+
+def test_migration_pending_is_actionable_when_v2_code_arrives_pre_split(tmp_path):
+    vault = tmp_path / "pending-vault"
+    vault.mkdir()
+    _git(vault, "init")
+    updater = vault / "core" / "update" / "apply-update.cjs"
+    updater.parent.mkdir(parents=True)
+    updater.write_text("// v2 updater\n")
+    home = tmp_path / "pending-home"
+    home.mkdir()
+    pending = doctor.DoctorContext(vault, vault, home, NOW)
+
+    result = doctor._probe_migration_pending(pending)
+
+    assert result.verdict == "BROKEN"
+    assert "run /dex-update" in result.detail
+
+
+def test_post_split_core_drift_uses_brain_installed_ref_not_vault_head(tmp_path):
+    split = _post_split_context(tmp_path)
+
+    assert doctor._probe_core_drift(split).verdict == "OK"
+    (split.vault_root / "core" / "shipped.py").write_text("SHIPPED = 2\n")
+    result = doctor._probe_core_drift(split)
+
+    assert result.verdict == "UNKNOWN"
+    assert "core/shipped.py" in result.detail
+    assert "back" in result.detail.lower()
+
+
 def test_doctor_collector_module_exists():
     assert DOCTOR_PATH.is_file()
 
@@ -309,8 +439,14 @@ def test_json_contract_shape_and_last_run_file(monkeypatch, context, deep, expec
     assert [check["id"] for check in report["checks"]] == expected_ids
     assert report["summary"] == {"ok": len(expected_ids), "off": 0, "broken": 0, "unknown": 0}
     for check in report["checks"]:
-        assert set(check) == {"id", "feature", "verdict", "detail", "heal"}
+        assert set(check) == {
+            "id", "feature", "verdict", "detail", "heal",
+            "success", "feature_status", "user_message",
+        }
         assert check["verdict"] in doctor.VERDICTS
+        assert check["feature_status"] == check["verdict"].lower()
+        assert check["success"] is (check["verdict"] == "OK")
+        assert check["user_message"] == check["detail"]
         assert isinstance(check["detail"], str) and check["detail"]
         assert check["heal"] is None
 
@@ -329,7 +465,7 @@ def test_summary_counts_each_exact_verdict(monkeypatch, context):
 
     report = doctor.collect(context=context)
 
-    assert report["summary"] == {"ok": 11, "off": 1, "broken": 1, "unknown": 1}
+    assert report["summary"] == {"ok": 15, "off": 1, "broken": 1, "unknown": 1}
     assert report["instruments"]["completed"] == len(QUICK_IDS)
 
 
@@ -465,6 +601,9 @@ def test_heal_applies_all_t1_actions_and_leaves_t2_suggestion_untouched(
         "feature": "Vault structure",
         "verdict": "OK",
         "detail": "All standard PARA directories exist after three safe repairs.",
+        "success": True,
+        "feature_status": "ok",
+        "user_message": "All standard PARA directories exist after three safe repairs.",
         "heal": {
             "tier": 1,
             "action": (

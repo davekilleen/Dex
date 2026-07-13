@@ -597,7 +597,9 @@ function regenerateClaude(root, state) {
 function regeneratePaths(root, state) {
   beforeMutation(root, state, 'regenerate core/paths.json');
   assertWorktreeWrite(root, 'core/paths.json');
-  run('python3', [path.join(root, 'core', 'paths.py')], {
+  const vaultPython = path.join(root, '.venv', 'bin', 'python');
+  const python = process.env.DEX_UPDATE_PYTHON || (exists(vaultPython) ? vaultPython : 'python3');
+  run(python, [path.join(root, 'core', 'paths.py')], {
     cwd: root,
     env: { VAULT_PATH: root },
   });
