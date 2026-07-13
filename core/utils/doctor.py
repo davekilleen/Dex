@@ -1220,6 +1220,10 @@ def _mcp_customization_failure(
 
 
 def _probe_customization_mcp(context: DoctorContext) -> ProbeResult:
+    from core.utils.trust_registry import (
+        load_trusted_mcp_registry,
+        snapshot_trusted_mcp,
+    )
     from core.utils.validators import validate_mcp_config
 
     config_path, shipped_example = _customization_mcp_source(context)
@@ -1270,12 +1274,37 @@ def _probe_customization_mcp(context: DoctorContext) -> ProbeResult:
     ]
     compile_failures = []
     safety_findings = []
+    blessed_findings = []
+    trust_registry = load_trusted_mcp_registry(context.vault_root)
     with tempfile.TemporaryDirectory(prefix="dex-doctor-mcp-compile-") as temporary:
         compile_root = Path(temporary)
         compile_index = 0
         for name, entry in custom_entries:
+            if trust_registry.invalid_reason is not None:
+                safety_findings.append(
+                    f"{name} trusted MCP registry is invalid ({trust_registry.invalid_reason})"
+                )
+                continue
+            trusted_target: Path | None = None
+            if name in trust_registry.entries:
+                decision = snapshot_trusted_mcp(
+                    context.vault_root,
+                    name,
+                    entry,
+                    trust_registry,
+                    compile_root / "trusted-snapshots",
+                )
+                if not decision.trusted or decision.snapshot_path is None:
+                    safety_findings.append(f"{name} was not executed: {decision.detail}")
+                    continue
+                trusted_target = decision.snapshot_path
+                blessed_file = trust_registry.entries[name].file
+                blessed_findings.append(
+                    f"{name} is blessed: this runs {blessed_file} with your user permissions "
+                    "(nightly and in deep scans), and trusts whatever it imports"
+                )
             python_targets = sorted(
-                {
+                {trusted_target} if trusted_target is not None else {
                     target
                     for target in _entry_targets(entry, context)
                     if target.suffix == ".py"
@@ -1330,6 +1359,11 @@ def _probe_customization_mcp(context: DoctorContext) -> ProbeResult:
 
     relative = _display_vault_path(context, config_path)
     noun = "entry" if len(custom_entries) == 1 else "entries"
+    if blessed_findings:
+        return ProbeResult(
+            "OK",
+            f"{relative} is structurally valid; {'; '.join(blessed_findings)}",
+        )
     return ProbeResult(
         "OK",
         f"{relative} is structurally valid; {len(custom_entries)} custom MCP {noun} checked and not executed for safety",

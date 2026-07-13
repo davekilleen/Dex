@@ -1,0 +1,10 @@
+# Copy this file to System/trusted-mcps.yaml only for MCP servers you wrote and trust.
+# This runs the named file with your user permissions (nightly and in deep scans),
+# and trusts whatever it imports. Each entry is bound to its exact path and content hash.
+trusted_mcps: {}
+
+# Example after /create-mcp records your explicit consent:
+# trusted_mcps:
+#   custom-example:
+#     file: custom-mcp/example_server.py
+#     sha256: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef

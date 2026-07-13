@@ -56,6 +56,7 @@ RUNNER_FALLBACK_RELATIVES = (
     Path("core/paths.py"),
     Path("core/utils/__init__.py"),
     Path("core/utils/smoke.py"),
+    Path("core/utils/trust_registry.py"),
     Path("core/utils/validators.py"),
 )
 PARA_PATH_NAMES = (
@@ -379,6 +380,8 @@ def _prepare_mcp_vault(
             }
         else:
             runtime_reason = _release_execution_reason(repo_root, release_root, release_ref)
+            trust_registry = None
+            trust_registry_path = source / "System" / "trusted-mcps.yaml"
             validator = None
             expected_validator = _validator_path()
             if expected_validator is not None and expected_validator.is_file():
@@ -414,7 +417,62 @@ def _prepare_mcp_vault(
                         }
                     )
                     continue
-                if custom or remote or not isinstance(entry, Mapping):
+                if custom:
+                    if not (
+                        trust_registry_path.exists() or trust_registry_path.is_symlink()
+                    ):
+                        entries.append(
+                            {"name": name, "verdict": "UNKNOWN", "detail": "not executed for safety"}
+                        )
+                        continue
+                    if trust_registry is None:
+                        from core.utils.trust_registry import (
+                            load_trusted_mcp_registry,
+                            snapshot_trusted_mcp,
+                        )
+
+                        trust_registry = load_trusted_mcp_registry(source)
+                    if trust_registry.invalid_reason is not None:
+                        entries.append(
+                            {
+                                "name": name,
+                                "verdict": "UNKNOWN",
+                                "detail": "trusted MCP registry is invalid "
+                                f"({trust_registry.invalid_reason})",
+                            }
+                        )
+                        continue
+                    if raw_name not in trust_registry.entries:
+                        entries.append(
+                            {"name": name, "verdict": "UNKNOWN", "detail": "not executed for safety"}
+                        )
+                        continue
+                    decision = snapshot_trusted_mcp(
+                        source,
+                        raw_name,
+                        entry,
+                        trust_registry,
+                        vault / ".dex-trusted-mcp-snapshots",
+                    )
+                    if not decision.trusted or decision.snapshot_path is None:
+                        entries.append(
+                            {
+                                "name": name,
+                                "verdict": "UNKNOWN",
+                                "detail": decision.detail,
+                            }
+                        )
+                        continue
+                    entries.append(
+                        {
+                            "name": name,
+                            "verdict": "EXECUTE",
+                            "kind": "trusted-custom",
+                            "script": decision.snapshot_path.relative_to(vault).as_posix(),
+                        }
+                    )
+                    continue
+                if remote or not isinstance(entry, Mapping):
                     entries.append(
                         {"name": name, "verdict": "UNKNOWN", "detail": "not executed for safety"}
                     )
@@ -1669,15 +1727,28 @@ def _journey_mcp_startup(vault: Path, _release_root: Path) -> dict[str, str]:
             details.append(f"{label}: UNKNOWN — invalid internal startup plan")
             continue
         parts = Path(relative_script).parts
-        script = RUNNER_ROOT / relative_script
-        if (
-            len(parts) != 3
-            or parts[:2] != ("core", "mcp")
-            or not parts[2].endswith("_server.py")
-            or RUNNER_ROOT.is_symlink()
-            or script.is_symlink()
-            or not script.is_file()
-        ):
+        trusted_custom = entry.get("kind") == "trusted-custom"
+        if trusted_custom:
+            script = vault / relative_script
+            valid_script = (
+                len(parts) == 2
+                and parts[0] == ".dex-trusted-mcp-snapshots"
+                and parts[1].endswith(".py")
+                and not (vault / parts[0]).is_symlink()
+                and not script.is_symlink()
+                and script.is_file()
+            )
+        else:
+            script = RUNNER_ROOT / relative_script
+            valid_script = (
+                len(parts) == 3
+                and parts[:2] == ("core", "mcp")
+                and parts[2].endswith("_server.py")
+                and not RUNNER_ROOT.is_symlink()
+                and not script.is_symlink()
+                and script.is_file()
+            )
+        if not valid_script:
             statuses.append("UNKNOWN")
             details.append(f"{label}: UNKNOWN — runner server is unavailable")
             continue
