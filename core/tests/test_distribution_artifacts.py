@@ -198,6 +198,7 @@ def test_release_branch_strips_dev_files_and_keeps_user_runtime(tmp_path: Path) 
             text=True,
         ).stdout
     )
+    assert "test" not in package_json.get("scripts", {})
     assert "test:hooks" not in package_json.get("scripts", {})
     assert "test:scripts" not in package_json.get("scripts", {})
 
