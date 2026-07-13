@@ -61,6 +61,7 @@ else
   git -C "$VAULT" config user.name "Long-time Dex User"
   git -C "$VAULT" config user.email "user@dex.local"
   git -C "$VAULT" remote rename origin upstream
+  git -C "$VAULT" remote set-url upstream https://github.com/davekilleen/Dex.git
   git -C "$VAULT" remote add private-backup https://example.invalid/private-dex-vault.git
 fi
 
