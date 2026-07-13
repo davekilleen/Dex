@@ -4908,7 +4908,8 @@ async def _handle_call_tool_inner(
             # Legacy support: task without ID, update only in source file
             else:
                 filepath = Path(task['source_file'])
-                content = filepath.read_text()
+                with filepath.open('r', encoding='utf-8', newline='') as file:
+                    content = file.read()
                 lines = content.split('\n')
                 
                 line_idx = task['line_number'] - 1
@@ -4921,7 +4922,8 @@ async def _handle_call_tool_inner(
                     new_line = old_line.replace('- [x]', '- [ ]')
                 
                 lines[line_idx] = new_line
-                filepath.write_text('\n'.join(lines))
+                with filepath.open('w', encoding='utf-8', newline='') as file:
+                    file.write('\n'.join(lines))
                 
                 # Propagate status change to referenced pages
                 synced_pages = propagate_task_status_to_refs(task['title'], completed)

@@ -131,13 +131,6 @@ def test_legacy_completion_skips_completed_duplicate_and_completes_open_copy(
     ).encode()
 
 
-@pytest.mark.xfail(
-    reason=(
-        "BUG: legacy completion normalizes a CRLF Tasks.md to LF, changing every "
-        "line ending instead of only the intended task line"
-    ),
-    strict=False,
-)
 def test_legacy_completion_preserves_crlf_bytes_outside_target_line(tasks_file: Path):
     before = (
         b"# Tasks\r\n\r\n"
