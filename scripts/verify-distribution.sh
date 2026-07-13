@@ -419,6 +419,7 @@ if git clone --local --no-hardlinks --quiet "$PWD" "$RELEASE_CHECK_REPO" \
         "core/update/owned-lock.cjs"
         "core/update/apply-update.cjs"
         "core/migrations/v1-to-v2-brain-vault-split.cjs"
+        "packages/dex-contracts/dist/paths.contract.json"
     )
     for required_path in "${RELEASE_MACHINERY[@]}"; do
         if ! git -C "$RELEASE_CHECK_REPO" cat-file -e "release:$required_path" 2>/dev/null; then
