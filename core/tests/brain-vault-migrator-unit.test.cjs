@@ -271,6 +271,8 @@ test('release discovery trusts official URLs and refuses contaminated local fall
 
   const ancestorFallback = makeGitFixture();
   git(ancestorFallback, 'branch', 'release', 'HEAD');
+  git(ancestorFallback, 'remote', 'add', 'spoof', 'https://evil.example/github.com/davekilleen/Dex.git');
+  git(ancestorFallback, 'update-ref', 'refs/remotes/spoof/release', 'HEAD');
   fs.writeFileSync(path.join(ancestorFallback, 'mine.txt'), 'personal\n');
   git(ancestorFallback, 'add', 'mine.txt');
   git(ancestorFallback, 'commit', '--quiet', '-m', 'personal work');
@@ -325,4 +327,30 @@ test('restore refuses an unmarked archive without replacing a healthy current re
   assert.equal(git(root, 'rev-parse', 'HEAD'), currentHead);
   assert.ok(fs.existsSync(path.join(root, '.git')));
   assert.ok(fs.existsSync(archive));
+});
+
+test('ZIP and failed-preflight reports preserve a pre-existing user report before writing', () => {
+  const migrator = require(MIGRATOR_PATH);
+  const cases = [
+    { root: fs.mkdtempSync(path.join(os.tmpdir(), 'dex-migration-report-zip-')), expectedStatus: 0 },
+    { root: makeGitFixture(), expectedStatus: 1 },
+  ];
+  for (const { root, expectedStatus } of cases) {
+    const report = path.join(root, 'System', 'migration-report-v2.md');
+    fs.mkdirSync(path.dirname(report), { recursive: true });
+    fs.writeFileSync(report, 'pre-existing user report\n');
+
+    assert.equal(migrator.main(['--auto'], root), expectedStatus);
+
+    const backup = path.join(
+      root,
+      'System',
+      'backups',
+      'pre-split',
+      'files',
+      'System',
+      'migration-report-v2.md',
+    );
+    assert.equal(fs.readFileSync(backup, 'utf8'), 'pre-existing user report\n');
+  }
 });

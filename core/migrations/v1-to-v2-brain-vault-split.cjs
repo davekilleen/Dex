@@ -332,7 +332,7 @@ function availableBytes(root) {
 }
 
 function findReleaseRef(root, gitDirectory) {
-  const officialUrl = /github\.com[:/]davekilleen\/Dex(?:\.git)?\/?$/i;
+  const officialUrl = /^(?:(?:https?|ssh|git):\/\/(?:git@)?github\.com\/|git@github\.com:)davekilleen\/Dex(?:\.git)?\/?$/i;
   for (const remote of safeRemoteNames(root, gitDirectory)) {
     const url = gitDir(root, gitDirectory, ['remote', 'get-url', remote], { allowFailure: true });
     if (url.status !== 0 || !officialUrl.test(url.stdout.trim())) continue;
@@ -467,11 +467,35 @@ function renderReport(report) {
 }
 
 function writeReport(root, report) {
+  ensureReportSnapshot(root);
   writeFileFsynced(path.join(root, REPORT_RELATIVE), renderReport(report), 0o644);
 }
 
 function fileSha256(candidate) {
   return crypto.createHash('sha256').update(fs.readFileSync(candidate)).digest('hex');
+}
+
+function ensureReportSnapshot(root) {
+  const backupRoot = path.join(root, SNAPSHOT_RELATIVE);
+  const manifestPath = path.join(backupRoot, 'snapshot.json');
+  if (exists(manifestPath)) return;
+  const planPath = path.join(backupRoot, '.snapshot-plan.json');
+  if (!exists(planPath)) {
+    snapshotFiles(root, 'preflight');
+    return;
+  }
+
+  const plan = JSON.parse(fs.readFileSync(planPath, 'utf8'));
+  const entry = plan.entries.find((candidate) => candidate.path === REPORT_RELATIVE);
+  if (!entry || !entry.existed) return;
+  const destination = path.join(backupRoot, 'files', REPORT_RELATIVE);
+  if (exists(destination)) return;
+  const source = path.join(root, REPORT_RELATIVE);
+  if (!exists(source) || fileSha256(source) !== entry.sha256) {
+    throw new Error('Dex could not safely preserve the existing migration report before writing a new one. The report was left unchanged.');
+  }
+  writeFileFsynced(destination, fs.readFileSync(source), entry.mode);
+  fs.chmodSync(destination, entry.mode);
 }
 
 function snapshotFiles(root, migrationId = null) {
@@ -482,7 +506,10 @@ function snapshotFiles(root, migrationId = null) {
   if (exists(manifestPath)) {
     const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
     if (!migrationId || manifest.migrationId === migrationId) return manifest;
-    if (manifest.migrationId === 'dry-run' && migrationId !== 'dry-run') {
+    if (
+      ['dry-run', 'preflight'].includes(manifest.migrationId)
+      && !['dry-run', 'preflight'].includes(migrationId)
+    ) {
       const entry = manifest.entries.find((candidate) => candidate.path === REPORT_RELATIVE);
       if (entry) {
         adoptedReport = { entry: { ...entry }, bytes: null };
@@ -665,7 +692,7 @@ function independentVaultInventory(root, heldBackPaths = []) {
   const heldBack = new Set(heldBackPaths);
   return walkVaultFiles(root)
     .filter((relative) => ['vault', 'seed'].includes(ownership.classify(relative)))
-    .filter((relative) => !ownership.isSecretPath(relative))
+    .filter((relative) => !ownership.isVaultIgnoredPath(relative))
     .filter((relative) => !heldBack.has(relative))
     .sort()
     .map((relative) => ({ path: relative, sha256: fileSha256(path.join(root, relative)) }));
@@ -989,9 +1016,25 @@ function phase8Verify(root, state) {
 function phase9Finalize(root, state) {
   const vaultGit = path.join(root, '.git');
   ensureIdentity(root, vaultGit);
+  state.analysis = state.analysis || {};
+  const finalFindings = scanForSecrets(root);
+  const findingKeys = new Set();
+  state.analysis.secretFindings = [
+    ...(state.analysis?.secretFindings || []),
+    ...finalFindings,
+  ].filter((finding) => {
+    const key = `${finding.path}\0${finding.kind}`;
+    if (findingKeys.has(key)) return false;
+    findingKeys.add(key);
+    return true;
+  });
+  state.analysis.heldBackPaths = [
+    ...new Set(state.analysis.secretFindings.map((finding) => finding.path)),
+  ].sort();
+  const finalHeldBack = new Set(finalFindings.map((finding) => finding.path));
   const commitPaths = ['.gitignore', 'CLAUDE-custom.md', 'System/user-profile.yaml']
-    .filter((relative) => exists(path.join(root, relative)));
-  gitDir(root, vaultGit, ['add', '-f', '--', ...commitPaths]);
+    .filter((relative) => exists(path.join(root, relative)) && !finalHeldBack.has(relative));
+  if (commitPaths.length > 0) gitDir(root, vaultGit, ['add', '-f', '--', ...commitPaths]);
   const staged = gitDir(root, vaultGit, ['diff', '--cached', '--quiet'], { allowFailure: true });
   if (staged.status !== 0) {
     gitDir(root, vaultGit, ['commit', '--quiet', '-m', 'Dex vault migration settings']);
@@ -1179,13 +1222,15 @@ function removeMigrationRuntime(root) {
   if (exists(stateDirectory) && fs.readdirSync(stateDirectory).length === 0) fs.rmdirSync(stateDirectory);
 }
 
-function changedVaultPaths(root, gitDirectory) {
+function changedVaultPaths(root, gitDirectory, migrationCommit = null) {
   const paths = new Set();
-  for (const args of [
+  const commands = [
     ['diff', '--name-only', '-z', 'HEAD'],
     ['diff', '--cached', '--name-only', '-z', 'HEAD'],
     ['-c', 'core.excludesFile=/dev/null', 'ls-files', '--others', '--exclude-standard', '-z'],
-  ]) {
+  ];
+  if (migrationCommit) commands.push(['diff', '--name-only', '-z', migrationCommit, 'HEAD']);
+  for (const args of commands) {
     const result = gitDir(root, gitDirectory, args, { encoding: null, allowFailure: true });
     if (result.status !== 0) continue;
     for (const relative of result.stdout.toString('utf8').split('\0').filter(Boolean)) paths.add(relative);
@@ -1208,13 +1253,21 @@ function preflightRestorePreservation(root, state) {
   const backupRelative = path.join('System', 'backups', `pre-restore-${Date.now()}`);
   const backupRoot = path.join(root, backupRelative);
   const scannerPositive = new Set(scanForSecrets(root).map((finding) => finding.path));
-  const changed = new Set(changedVaultPaths(root, vaultGit));
+  const changed = new Set(changedVaultPaths(root, vaultGit, migrationCommit));
   const customPath = path.join(root, 'CLAUDE-custom.md');
   if (
     exists(customPath)
     && state.p6?.customSha256
     && fileSha256(customPath) !== state.p6.customSha256
   ) changed.add('CLAUDE-custom.md');
+
+  const unsafeRestorePaths = [...changed].filter((relative) => (
+    SNAPSHOT_PATHS.includes(relative)
+    && (ownership.isSecretPath(relative) || scannerPositive.has(relative))
+  ));
+  if (unsafeRestorePaths.length > 0) {
+    throw new Error(`Restore stopped before changing ${unsafeRestorePaths.join(', ')} because the changed file may contain secret material and cannot be copied into a backup. Move that content to a safe private location, then run --restore again.`);
+  }
 
   const entries = [];
   for (const relative of [...changed].sort()) {
@@ -1451,7 +1504,7 @@ function main(argumentsList = process.argv.slice(2), root = process.cwd()) {
       releaseLock();
     }
   } catch (error) {
-    if (mutationRootsAreSafe) writeFailureReport(root, error);
+    if (mutationRootsAreSafe && mode !== 'restore') writeFailureReport(root, error);
     console.error(error.message);
     return 1;
   }

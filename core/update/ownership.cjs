@@ -152,6 +152,15 @@ function isSecretPath(input) {
   );
 }
 
+function isVaultIgnoredPath(input) {
+  const parts = slashPath(input).split('/').filter(Boolean).map((part) => part.toLowerCase());
+  return (
+    isSecretPath(input)
+    || parts.some((part) => ['node_modules', '.venv', '.dex'].includes(part))
+    || (parts[0] === '.obsidian' && (parts[1] || '').startsWith('workspace'))
+  );
+}
+
 function isDenied(input, root) {
   if (typeof input !== 'string' || input.length === 0 || input.includes('\0')) return true;
   if (
@@ -278,6 +287,7 @@ module.exports = {
   classify,
   isDenied,
   isSecretPath,
+  isVaultIgnoredPath,
   seedEntries,
   validateConfig,
   validateManifest,

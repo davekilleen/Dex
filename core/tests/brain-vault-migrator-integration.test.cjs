@@ -261,7 +261,9 @@ test('restore archives post-migration commits and dirty restored files before re
   migrate(vault, '--auto');
 
   fs.writeFileSync(path.join(vault, '04-Projects', 'after-migration.md'), 'recoverable commit\n');
+  fs.appendFileSync(path.join(vault, 'System', 'user-profile.yaml'), '\npost_restore_probe: keep-me\n');
   git(vault, 'add', '04-Projects/after-migration.md');
+  git(vault, 'add', 'System/user-profile.yaml');
   git(vault, 'commit', '--quiet', '-m', 'post-migration work');
   const postMigrationCommit = git(vault, 'rev-parse', 'HEAD');
   fs.appendFileSync(path.join(vault, '03-Tasks', 'Tasks.md'), '\nDirty work before restore.\n');
@@ -282,6 +284,22 @@ test('restore archives post-migration commits and dirty restored files before re
   const backup = path.join(backupsRoot, backupName, 'files');
   assert.match(fs.readFileSync(path.join(backup, 'CLAUDE-custom.md'), 'utf8'), /Post-migration custom edit/);
   assert.match(fs.readFileSync(path.join(backup, '03-Tasks', 'Tasks.md'), 'utf8'), /Dirty work before restore/);
+  assert.match(fs.readFileSync(path.join(backup, 'System', 'user-profile.yaml'), 'utf8'), /post_restore_probe/);
+});
+
+test('restore refuses before overwriting dirty custom instructions that cannot enter backups', () => {
+  const vault = makeFixture();
+  migrate(vault, '--auto');
+  const customPath = path.join(vault, 'CLAUDE-custom.md');
+  fs.appendFileSync(customPath, '\nsk-review-fixture-token-that-must-not-be-copied\n');
+  const dirtyBytes = fs.readFileSync(customPath);
+
+  const result = migrate(vault, '--restore', { expectedStatus: 1 });
+  assert.match(result.stdout + result.stderr, /restore stopped.*CLAUDE-custom\.md.*secret/i);
+  assert.deepEqual(fs.readFileSync(customPath), dirtyBytes);
+  assert.ok(fs.existsSync(path.join(vault, '.git', 'dex-vault-v2')));
+  assert.ok(fs.existsSync(path.join(vault, '.dex', 'pre-split-archive.git')));
+  assert.equal(fs.existsSync(path.join(vault, '.dex', 'post-split-archive.git')), false);
 });
 
 test('huge vaults stop at bounded P3 batches and continue with --resume', () => {
@@ -309,6 +327,8 @@ test('P3 captures owned notes despite global and nested Git ignore rules', () =>
   fs.writeFileSync(path.join(vault, '04-Projects', '.gitignore'), 'nested-hidden.md\n');
   fs.writeFileSync(path.join(vault, '04-Projects', 'nested-hidden.md'), 'nested ignore must not win\n');
   fs.writeFileSync(path.join(vault, '04-Projects', 'global-hidden.md'), 'global ignore must not win\n');
+  fs.mkdirSync(path.join(vault, '.obsidian'), { recursive: true });
+  fs.writeFileSync(path.join(vault, '.obsidian', 'workspace.json'), '{"private":"window-state"}\n');
 
   const result = migrate(vault, '--auto', { env: { HOME: globalRoot } });
   assert.match(result.stdout, /P9 finalize complete/);
@@ -319,6 +339,7 @@ test('P3 captures owned notes despite global and nested Git ignore rules', () =>
   ]) {
     assert.equal(git(vault, 'ls-tree', '--name-only', 'HEAD', '--', relative), relative);
   }
+  assert.equal(git(vault, 'ls-tree', '--name-only', 'HEAD', '--', '.obsidian/workspace.json'), '');
 });
 
 test('P8 catches a vault commit truncated to the Git candidate set', () => {
@@ -361,6 +382,15 @@ test('secret paths and scanner-positive JSON are held back from vault history an
     fs.mkdirSync(path.dirname(path.join(vault, relative)), { recursive: true });
     fs.writeFileSync(path.join(vault, relative), content);
   }
+  const claudePath = path.join(vault, 'CLAUDE.md');
+  const claude = fs.readFileSync(claudePath, 'utf8');
+  fs.writeFileSync(
+    claudePath,
+    claude.replace(
+      '## USER_EXTENSIONS_END',
+      'sk-inline-fixture-token-that-must-never-enter-history\n## USER_EXTENSIONS_END',
+    ),
+  );
 
   const result = migrate(vault, '--auto');
   assert.match(result.stdout, /P9 finalize complete/);
@@ -370,6 +400,9 @@ test('secret paths and scanner-positive JSON are held back from vault history an
     assert.equal(git(vault, 'ls-tree', '--name-only', 'HEAD', '--', relative), '', relative);
     assert.match(report, new RegExp(relative.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
   }
+  assert.ok(fs.existsSync(path.join(vault, 'CLAUDE-custom.md')));
+  assert.equal(git(vault, 'ls-tree', '--name-only', 'HEAD', '--', 'CLAUDE-custom.md'), '');
+  assert.match(report, /CLAUDE-custom\.md/);
   assert.match(report, /held back from the initial vault history/i);
 });
 

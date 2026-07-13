@@ -139,6 +139,9 @@ test('vault ignore layers protect secrets while keeping user custom skills visib
   ]) {
     assert.equal(ownership.isSecretPath(secret), true, secret);
   }
+  assert.equal(ownership.isVaultIgnoredPath('.obsidian/workspace.json'), true);
+  assert.equal(ownership.isVaultIgnoredPath('.obsidian/workspace-mobile.json'), true);
+  assert.equal(ownership.isVaultIgnoredPath('.obsidian/plugins.json'), false);
 
   const excludeLines = ownership.vaultExcludeLines();
   assert.ok(excludeLines.includes('/core/*'));
