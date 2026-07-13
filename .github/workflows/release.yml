@@ -41,7 +41,8 @@ jobs:
           fi
           DEX_RELEASE_SOURCE="$GITHUB_SHA" bash scripts/build-release.sh
           RELEASE_ARTIFACT=$(mktemp -d "$RUNNER_TEMP/dex-release-artifact.XXXXXX")
-          git archive release | tar -x -C "$RELEASE_ARTIFACT"
+          git archive --output="$RUNNER_TEMP/release-artifact.tar" release
+          tar -xf "$RUNNER_TEMP/release-artifact.tar" -C "$RELEASE_ARTIFACT"
           node "$RELEASE_ARTIFACT/core/update/ownership.cjs" --validate "$RELEASE_ARTIFACT/System/.installed-files.manifest"
           node -e 'require(process.argv[1]); require(process.argv[2]);' \
             "$RELEASE_ARTIFACT/core/update/apply-update.cjs" \

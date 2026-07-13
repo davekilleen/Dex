@@ -69,7 +69,8 @@ jobs:
           git -C "$RELEASE_VALIDATION_REPO" checkout -B main "$GITHUB_SHA" --quiet
           bash "$RELEASE_VALIDATION_REPO/scripts/build-release.sh" --no-tag
           RELEASE_ARTIFACT=$(mktemp -d "$RUNNER_TEMP/dex-release-artifact.XXXXXX")
-          git -C "$RELEASE_VALIDATION_REPO" archive release | tar -x -C "$RELEASE_ARTIFACT"
+          git -C "$RELEASE_VALIDATION_REPO" archive --output="$RUNNER_TEMP/release-artifact.tar" release
+          tar -xf "$RUNNER_TEMP/release-artifact.tar" -C "$RELEASE_ARTIFACT"
           node "$RELEASE_ARTIFACT/core/update/ownership.cjs" --validate "$RELEASE_ARTIFACT/System/.installed-files.manifest"
           node -e 'require(process.argv[1]); require(process.argv[2]);' \
             "$RELEASE_ARTIFACT/core/update/apply-update.cjs" \

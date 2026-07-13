@@ -624,8 +624,15 @@ def test_ci_validates_the_generated_release_manifest() -> None:
 
     assert "Build release for ownership validation" in workflow
     assert "scripts/build-release.sh\" --no-tag" in workflow
-    assert "archive release" in workflow
+    assert "archive --output=\"$RUNNER_TEMP/release-artifact.tar\" release" in workflow
+    assert "tar -xf \"$RUNNER_TEMP/release-artifact.tar\"" in workflow
     assert 'node "$RELEASE_ARTIFACT/core/update/ownership.cjs" --validate' in workflow
+
+    distribution_check = (REPO_ROOT / "scripts/verify-distribution.sh").read_text(
+        encoding="utf-8"
+    )
+    assert 'archive --output="$RELEASE_ARCHIVE" release' in distribution_check
+    assert 'tar -xf "$RELEASE_ARCHIVE"' in distribution_check
 
 
 def test_release_build_refuses_to_move_an_existing_dist_tag(tmp_path: Path) -> None:

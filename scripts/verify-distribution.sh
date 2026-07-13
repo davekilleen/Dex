@@ -356,8 +356,10 @@ if git clone --local --no-hardlinks --quiet "$PWD" "$RELEASE_CHECK_REPO" \
     fi
 
     RELEASE_ARTIFACT="$RELEASE_CHECK_DIR/artifact"
+    RELEASE_ARCHIVE="$RELEASE_CHECK_DIR/release.tar"
     mkdir -p "$RELEASE_ARTIFACT"
-    if git -C "$RELEASE_CHECK_REPO" archive release | tar -x -C "$RELEASE_ARTIFACT"; then
+    if git -C "$RELEASE_CHECK_REPO" archive --output="$RELEASE_ARCHIVE" release \
+        && tar -xf "$RELEASE_ARCHIVE" -C "$RELEASE_ARTIFACT"; then
         echo "  ✅ Materialized the exact generated release artifact"
     else
         echo "  ❌ ERROR: Could not materialize the generated release artifact"
