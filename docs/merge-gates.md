@@ -6,6 +6,7 @@ Configure GitHub branch protection on `main` to require:
 
 `quality` includes:
 - PR governance enforcement
+- blocking PII / personal-config gate over added PR lines
 - diff-aware test gate
 - path-contract usage gate (changed files)
 - docs drift gate
@@ -16,6 +17,11 @@ Configure GitHub branch protection on `main` to require:
 - security gate
 - large-vault performance budget
 - distribution/path safety checks
+
+The PII gate compares the pull request with its merge base and inspects only added
+lines. It blocks real email addresses, filled-in tracked identity/config files, and
+personal vault content before it can merge. Test fixtures may use fake email addresses,
+but fixture paths are still checked for real-config-shaped additions.
 
 ## Branch Protection Settings
 - Require a pull request before merging.

@@ -1,0 +1,12 @@
+# Approved fake identities used in documentation and fixtures.
+#
+# One case-insensitive shell-style pattern per line. Keep this list limited to
+# unmistakable placeholders; real contributor or customer identities never
+# belong here. The gate also permits noreply@*, *@example.com, *@example.org,
+# *@anthropic.com, and addresses on users.noreply.github.com.
+fixture-*@invalid.test
+placeholder@invalid.test
+# Named identities used by tracked subprocess and meeting-intel test harnesses.
+ada@engines.test
+jane@acme.com
+john@acme.com

@@ -34,6 +34,9 @@ jobs:
       - name: Diff-aware test gate
         if: github.event_name == 'pull_request'
         run: bash scripts/check-test-delta.sh
+      - name: PII and personal-config gate
+        if: github.event_name == 'pull_request'
+        run: bash scripts/check-pii.sh
       - name: Path-contract usage gate
         if: github.event_name == 'pull_request'
         run: bash scripts/check-path-contract-usage.sh

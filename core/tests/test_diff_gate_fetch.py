@@ -20,6 +20,7 @@ SHELL_GATES = [
     "check-path-contract-usage.sh",
     "check-doc-drift.sh",
     "check-test-delta.sh",
+    "check-pii.sh",
 ]
 PY_GATE = "check-coverage-threshold.py"
 

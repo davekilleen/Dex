@@ -43,7 +43,7 @@ That's it. Claude handles the git mechanics. You just describe what you changed 
 
 ### What to avoid
 
-- **Personal data.** Double-check that your real names, companies, emails, and meeting content aren't in the files you're sharing. Ask Claude: "Can you check these files for any personal information before I share them?"
+- **Personal data.** CI enforces this on every pull request by checking newly added lines for real emails, filled-in profile or integration identity, vault content, and other personal configuration. If the PII / personal-config gate fails, remove the named data, restore the tracked placeholder template, or replace examples with an approved fake value from `scripts/pii-allowlist.txt`; the failure prints the exact file and line. You can still ask Claude: "Can you check these files for any personal information before I share them?"
 - **Breaking existing features.** If you're not sure whether your change might affect something else, mention that in your description. Dave would rather know upfront than discover it later.
 
 ---
