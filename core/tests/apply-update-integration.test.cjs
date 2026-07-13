@@ -173,6 +173,12 @@ test('apply, crash-resume, and rollback replace only owned brain files in an age
   assert.equal(history.at(-1).oid, release.oid);
   assert.equal(history.at(-1).previous, previousOid);
   assert.match(history.at(-1).manifestHash, /^[a-f0-9]{64}$/);
+  const heldBack = JSON.parse(fs.readFileSync(path.join(vault, 'System', '.dex', 'held-back-paths.json'), 'utf8'));
+  const machineExclude = fs.readFileSync(path.join(vault, '.git', 'info', 'exclude'), 'utf8');
+  assert.match(machineExclude, /^\/System\/backups\/$/m);
+  for (const relative of heldBack.paths) {
+    assert.match(machineExclude, new RegExp(`^/${relative.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'm'));
+  }
   const mcp = JSON.parse(fs.readFileSync(path.join(vault, '.mcp.json'), 'utf8'));
   assert.ok(mcp.mcpServers['custom-fixture']);
   assert.ok(mcp.mcpServers['work-mcp']);

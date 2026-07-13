@@ -63,6 +63,63 @@ test('enabled hook commits all eligible vault changes locally with fallback iden
   assert.equal(git(root, 'config', '--local', '--get', 'user.email'), 'vault@dex.local');
 });
 
+test('enabled hook holds back persisted, path-secret, backup, and staged content-secret files', (t) => {
+  const hook = require(HOOK_PATH);
+  const root = fixture(t, true);
+  fs.mkdirSync(path.join(root, 'System', '.dex'), { recursive: true });
+  fs.writeFileSync(
+    path.join(root, 'System', '.dex', 'held-back-paths.json'),
+    `${JSON.stringify({ schemaVersion: 1, paths: ['04-Projects/held.md'] })}\n`,
+  );
+  fs.mkdirSync(path.join(root, '04-Projects'), { recursive: true });
+  fs.mkdirSync(path.join(root, 'System', 'backups', 'pre-update-2.0.1'), { recursive: true });
+  fs.writeFileSync(path.join(root, 'safe.md'), 'safe note\n');
+  fs.writeFileSync(path.join(root, '04-Projects', 'held.md'), 'persisted holdback\n');
+  fs.writeFileSync(path.join(root, '.npmrc'), '//registry/:_authToken=secret\n');
+  fs.writeFileSync(path.join(root, 'System', 'backups', 'pre-update-2.0.1', 'README.md'), 'backup bytes\n');
+  fs.writeFileSync(
+    path.join(root, '04-Projects', 'session.md'),
+    '{"access_token":"scanner-positive-fixture-value"}\n',
+  );
+  git(root, 'add', '--', '04-Projects/session.md');
+
+  const result = hook.run({ root, now: new Date('2026-07-13T10:00:00Z') });
+
+  assert.equal(result.feature_status, 'ok');
+  assert.match(result.user_message, /held back|secret/i);
+  assert.equal(git(root, 'show', 'HEAD:safe.md'), 'safe note');
+  for (const relative of [
+    '04-Projects/held.md',
+    '.npmrc',
+    'System/backups/pre-update-2.0.1/README.md',
+    '04-Projects/session.md',
+  ]) {
+    assert.equal(git(root, 'ls-tree', '--name-only', 'HEAD', '--', relative), '', relative);
+  }
+  assert.equal(git(root, 'diff', '--cached', '--name-only'), '');
+});
+
+test('enabled hook disables configured commit hooks and isolated Git config', (t) => {
+  const hook = require(HOOK_PATH);
+  const root = fixture(t, true);
+  const hooks = path.join(root, 'hostile-hooks');
+  const marker = path.join(root, 'post-commit-ran');
+  fs.mkdirSync(hooks);
+  fs.writeFileSync(
+    path.join(hooks, 'post-commit'),
+    `#!/bin/sh\nprintf ran > "${marker}"\n`,
+    { mode: 0o755 },
+  );
+  git(root, 'config', 'core.hooksPath', hooks);
+  fs.writeFileSync(path.join(root, 'local-only.md'), 'never leave through a hook\n');
+
+  const result = hook.run({ root, now: new Date('2026-07-13T10:00:00Z') });
+
+  assert.equal(result.feature_status, 'ok');
+  assert.equal(fs.existsSync(marker), false);
+  assert.equal(git(root, 'show', 'HEAD:local-only.md'), 'never leave through a hook');
+});
+
 test('enabled hook reports a clean vault without creating an empty commit', (t) => {
   const hook = require(HOOK_PATH);
   const root = fixture(t, true);

@@ -7,6 +7,14 @@ const path = require('node:path');
 const config = require('./ownership.json');
 const VALID_CLASSES = new Set(['brain', 'vault', 'seed', 'generated', 'runtime']);
 const PARA_ROOT = /^0[0-7]-/;
+const SECRET_CONTENT_PATTERNS = [
+  /-----BEGIN [A-Z ]*PRIVATE KEY-----/,
+  /\bgh[pousr]_[A-Za-z0-9]{20,}\b/,
+  /\bsk-[A-Za-z0-9_-]{20,}\b/,
+  /\bAKIA[A-Z0-9]{16}\b/,
+  /"(?:access[_-]?token|refresh[_-]?token|client[_-]?secret|api[_-]?key|private[_-]?key)"\s*:\s*"[^"\s]{8,}"/i,
+  /^\s*[A-Z0-9_]*(?:TOKEN|SECRET|PASSWORD|API_KEY|PRIVATE_KEY|CREDENTIAL)[A-Z0-9_]*\s*=\s*\S+/m,
+];
 
 function slashPath(value) {
   return String(value).replaceAll('\\', '/').replace(/^\.\//, '');
@@ -70,7 +78,45 @@ function seedEntries() {
     .sort((left, right) => left.path.localeCompare(right.path));
 }
 
-function vaultExcludeLines() {
+function normalizeHeldBackPaths(paths) {
+  if (!Array.isArray(paths)) return [];
+  return [...new Set(paths.flatMap((input) => {
+    if (typeof input !== 'string' || input.includes('\0')) return [];
+    const candidate = slashPath(input);
+    const parts = candidate.split('/');
+    if (
+      !candidate
+      || candidate.startsWith('/')
+      || /^[A-Za-z]:\//.test(candidate)
+      || parts.some((part) => !part || part === '.' || part === '..')
+    ) return [];
+    return ['vault', 'seed'].includes(classify(candidate)) ? [candidate] : [];
+  }))].sort();
+}
+
+function heldBackExcludeLine(relative) {
+  return `/${relative.replaceAll('\\', '\\\\').replace(/([!#*?\[\]])/g, '\\$1')}`;
+}
+
+function readHeldBackPaths(root) {
+  let state;
+  try {
+    state = JSON.parse(fs.readFileSync(path.join(root, 'System', '.dex', 'held-back-paths.json'), 'utf8'));
+  } catch (error) {
+    if (error.code === 'ENOENT') return [];
+    throw error;
+  }
+  if (state?.schemaVersion !== 1 || !Array.isArray(state.paths)) {
+    throw new Error('Dex held-back path state is invalid. Run /dex-doctor before saving or updating.');
+  }
+  const normalized = normalizeHeldBackPaths(state.paths);
+  if (normalized.length !== state.paths.length) {
+    throw new Error('Dex held-back path state contains an unsafe or duplicate path. Run /dex-doctor before saving or updating.');
+  }
+  return normalized;
+}
+
+function vaultExcludeLines(heldBackPaths = []) {
   const lines = [];
   for (const rule of config.rules) {
     if (!['brain', 'generated', 'runtime'].includes(rule.class)) continue;
@@ -96,6 +142,10 @@ function vaultExcludeLines() {
     '!/core/mcp-premium/**',
     '/.dex/',
   );
+  for (const relative of normalizeHeldBackPaths(heldBackPaths)) {
+    const rendered = heldBackExcludeLine(relative);
+    if (!lines.includes(rendered)) lines.push(rendered);
+  }
   return lines;
 }
 
@@ -150,6 +200,13 @@ function isSecretPath(input) {
     || /^id_rsa(?:[._-].*)?$/i.test(basename)
     || extensionSecret
   );
+}
+
+function containsSecretContent(content) {
+  const source = Buffer.isBuffer(content) ? content : Buffer.from(String(content));
+  if (source.includes(0)) return false;
+  const text = source.toString('utf8');
+  return SECRET_CONTENT_PATTERNS.some((expression) => expression.test(text));
 }
 
 function isVaultIgnoredPath(input) {
@@ -285,9 +342,12 @@ function runValidator(manifestPath) {
 module.exports = {
   brainPaths,
   classify,
+  containsSecretContent,
   isDenied,
   isSecretPath,
   isVaultIgnoredPath,
+  normalizeHeldBackPaths,
+  readHeldBackPaths,
   seedEntries,
   validateConfig,
   validateManifest,

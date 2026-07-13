@@ -404,6 +404,19 @@ test('secret paths and scanner-positive JSON are held back from vault history an
   assert.equal(git(vault, 'ls-tree', '--name-only', 'HEAD', '--', 'CLAUDE-custom.md'), '');
   assert.match(report, /CLAUDE-custom\.md/);
   assert.match(report, /held back from the initial vault history/i);
+  const heldBack = JSON.parse(
+    fs.readFileSync(path.join(vault, 'System', '.dex', 'held-back-paths.json'), 'utf8'),
+  );
+  assert.equal(heldBack.schemaVersion, 1);
+  assert.deepEqual(heldBack.paths, [...new Set(heldBack.paths)].sort());
+  for (const relative of [...secretFiles.keys(), 'CLAUDE-custom.md']) {
+    assert.ok(heldBack.paths.includes(relative), relative);
+  }
+  const machineExclude = fs.readFileSync(path.join(vault, '.git', 'info', 'exclude'), 'utf8');
+  assert.match(machineExclude, /^\/System\/backups\/$/m);
+  for (const relative of heldBack.paths) {
+    assert.match(machineExclude, new RegExp(`^/${relative.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'm'));
+  }
 });
 
 test('ZIP installs and in-progress merges refuse without creating a half-topology', () => {

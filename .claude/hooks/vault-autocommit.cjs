@@ -4,6 +4,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
+const ownership = require('../../core/update/ownership.cjs');
 
 const FEATURE = 'Vault auto-commit';
 
@@ -104,15 +105,21 @@ function acquireSharedLock(root) {
   }
 }
 
-function git(root, args) {
+function git(root, args, options = {}) {
   return spawnSync('git', [
     '-c', 'commit.gpgsign=false',
     '-c', 'core.excludesFile=/dev/null',
+    '-c', 'core.hooksPath=/dev/null',
     '-C', root,
     ...args,
   ], {
-    encoding: 'utf8',
-    env: { ...process.env, GIT_TERMINAL_PROMPT: '0' },
+    encoding: options.encoding === undefined ? 'utf8' : options.encoding,
+    env: {
+      ...process.env,
+      GIT_CONFIG_GLOBAL: '/dev/null',
+      GIT_CONFIG_NOSYSTEM: '1',
+      GIT_TERMINAL_PROMPT: '0',
+    },
   });
 }
 
@@ -135,6 +142,56 @@ function ensureLocalIdentity(root) {
     if (git(root, ['config', '--local', key, value]).status !== 0) return false;
   }
   return true;
+}
+
+function nulPaths(result) {
+  if (result.status !== 0) return null;
+  return result.stdout.toString('utf8').split('\0').filter(Boolean);
+}
+
+function autoCommitExcluded(relative, heldBack) {
+  const portable = String(relative).replaceAll('\\', '/');
+  return (
+    portable === 'System/.dex'
+    || portable.startsWith('System/.dex/')
+    || portable === '.dex'
+    || portable.startsWith('.dex/')
+    || portable === 'System/backups'
+    || portable.startsWith('System/backups/')
+    || ownership.isSecretPath(portable)
+    || heldBack.has(portable)
+  );
+}
+
+function candidateWorktreePaths(root) {
+  const tracked = nulPaths(git(root, ['diff', '--name-only', '-z']));
+  const untracked = nulPaths(git(root, ['ls-files', '--others', '--exclude-standard', '-z']));
+  if (tracked === null || untracked === null) return null;
+  return [...new Set([...tracked, ...untracked])].sort();
+}
+
+function stagedSecretPaths(root, heldBack) {
+  const staged = nulPaths(git(root, ['diff', '--cached', '--name-only', '--diff-filter=ACMR', '-z']));
+  if (staged === null) return null;
+  const rejected = [];
+  for (const relative of staged) {
+    if (autoCommitExcluded(relative, heldBack)) {
+      rejected.push(relative);
+      continue;
+    }
+    const blob = git(root, ['show', `:${relative}`], { encoding: null });
+    if (blob.status !== 0 || ownership.containsSecretContent(blob.stdout)) rejected.push(relative);
+  }
+  return rejected;
+}
+
+function unstagePaths(root, paths) {
+  if (paths.length === 0) return true;
+  const hasHead = git(root, ['rev-parse', '--verify', 'HEAD']).status === 0;
+  const result = hasHead
+    ? git(root, ['restore', '--staged', '--', ...paths])
+    : git(root, ['rm', '--cached', '-r', '--ignore-unmatch', '--', ...paths]);
+  return result.status === 0;
 }
 
 function run(options = {}) {
@@ -170,17 +227,27 @@ function run(options = {}) {
     if (!ensureLocalIdentity(root)) {
       return status('broken', 'Vault auto-commit could not set a local-only commit identity.');
     }
-    const added = git(root, [
-      'add', '-A', '--', '.',
-      ':(exclude)System/.dex/**',
-      ':(exclude).dex/**',
-    ]);
-    if (added.status !== 0) {
+    const heldBack = new Set(ownership.readHeldBackPaths(root));
+    const candidates = candidateWorktreePaths(root);
+    if (candidates === null) {
+      return status('unknown', 'Vault auto-commit could not determine which local files were eligible for a snapshot.');
+    }
+    const eligible = candidates.filter((relative) => !autoCommitExcluded(relative, heldBack));
+    if (eligible.length > 0 && git(root, ['add', '-A', '--', ...eligible]).status !== 0) {
       return status('broken', 'Vault auto-commit could not prepare the local snapshot. Your files are unchanged.');
+    }
+    const rejected = stagedSecretPaths(root, heldBack);
+    if (rejected === null || !unstagePaths(root, rejected)) {
+      return status('broken', 'Vault auto-commit found protected files but could not safely remove them from the pending snapshot.');
     }
     const staged = git(root, ['diff', '--cached', '--quiet']);
     if (staged.status === 0) {
-      return status('ok', 'Your vault was already saved; there were no new changes to commit.');
+      return status(
+        'ok',
+        rejected.length > 0
+          ? `Dex held back ${rejected.length} protected ${rejected.length === 1 ? 'file' : 'files'}; there were no other changes to save.`
+          : 'Your vault was already saved; there were no new changes to commit.',
+      );
     }
     if (staged.status !== 1) {
       return status('unknown', 'Vault auto-commit could not determine whether a local snapshot was needed.');
@@ -190,7 +257,12 @@ function run(options = {}) {
     if (committed.status !== 0) {
       return status('broken', 'Vault auto-commit could not create the local snapshot. Your files remain in the vault.');
     }
-    return status('ok', 'Dex saved this session to your local vault history. No network action was taken.');
+    return status(
+      'ok',
+      rejected.length > 0
+        ? `Dex saved the eligible changes locally and held back ${rejected.length} protected ${rejected.length === 1 ? 'file' : 'files'}. It did not run a push.`
+        : 'Dex saved this session to your local vault history. It did not run a push.',
+    );
   } catch {
     return status('unknown', 'Vault auto-commit could not check this session, so it left the vault alone.');
   } finally {

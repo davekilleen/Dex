@@ -15,6 +15,7 @@ const JOURNAL_RELATIVE = path.join('System', '.dex', 'migration-v2-state.json');
 const LOCK_RELATIVE = path.join('System', '.dex', '.migration-lock');
 const TOPOLOGY_RELATIVE = path.join('System', '.dex', 'topology.json');
 const P3_FILES_RELATIVE = path.join('System', '.dex', 'migration-v2-p3-files.json');
+const HELD_BACK_RELATIVE = path.join('System', '.dex', 'held-back-paths.json');
 const REPORT_RELATIVE = path.join('System', 'migration-report-v2.md');
 const SNAPSHOT_RELATIVE = path.join('System', 'backups', 'pre-split');
 const VAULT_MARKER = 'dex-vault-v2';
@@ -635,20 +636,6 @@ function walkVaultFiles(root) {
 }
 
 function scanForSecrets(root) {
-  const patterns = [
-    { kind: 'private key header', expression: /-----BEGIN [A-Z ]*PRIVATE KEY-----/ },
-    { kind: 'GitHub-style token', expression: /\bgh[pousr]_[A-Za-z0-9]{20,}\b/ },
-    { kind: 'API token', expression: /\bsk-[A-Za-z0-9_-]{20,}\b/ },
-    { kind: 'AWS access key', expression: /\bAKIA[A-Z0-9]{16}\b/ },
-    {
-      kind: 'JSON token or credential',
-      expression: /"(?:access[_-]?token|refresh[_-]?token|client[_-]?secret|api[_-]?key|private[_-]?key)"\s*:\s*"[^"\s]{8,}"/i,
-    },
-    {
-      kind: 'secret-like environment value',
-      expression: /^\s*[A-Z0-9_]*(?:TOKEN|SECRET|PASSWORD|API_KEY|PRIVATE_KEY|CREDENTIAL)[A-Z0-9_]*\s*=\s*\S+/m,
-    },
-  ];
   const findings = [];
   for (const relative of walkVaultFiles(root)) {
     const className = ownership.classify(relative);
@@ -661,19 +648,34 @@ function scanForSecrets(root) {
     if (fs.statSync(absolute).size > 1024 * 1024) continue;
     const bytes = fs.readFileSync(absolute);
     if (bytes.includes(0)) continue;
-    const content = bytes.toString('utf8');
-    for (const pattern of patterns) {
-      if (pattern.expression.test(content)) findings.push({ path: relative, kind: pattern.kind });
-    }
+    if (ownership.containsSecretContent(bytes)) findings.push({ path: relative, kind: 'secret-shaped content' });
   }
   return findings;
+}
+
+function persistHeldBackPaths(root, paths) {
+  const normalized = ownership.normalizeHeldBackPaths(paths);
+  writeFileFsynced(
+    path.join(root, HELD_BACK_RELATIVE),
+    `${JSON.stringify({ schemaVersion: 1, paths: normalized }, null, 2)}\n`,
+  );
+  return normalized;
+}
+
+function writeVaultExcludes(root, gitDirectory, heldBackPaths) {
+  fs.mkdirSync(path.join(gitDirectory, 'info'), { recursive: true });
+  writeFileFsynced(
+    path.join(gitDirectory, 'info', 'exclude'),
+    `${ownership.vaultExcludeLines(heldBackPaths).join('\n')}\n`,
+    0o644,
+  );
 }
 
 function writeGitdirMarker(gitDirectory, marker, payload) {
   writeFileFsynced(path.join(gitDirectory, marker), `${JSON.stringify(payload, null, 2)}\n`);
 }
 
-function initializeVaultGitdir(root, gitDirectory) {
+function initializeVaultGitdir(root, gitDirectory, heldBackPaths = []) {
   if (!exists(gitDirectory)) {
     fs.mkdirSync(path.dirname(gitDirectory), { recursive: true });
     run('git', ['init', '--bare', '--quiet', gitDirectory]);
@@ -683,12 +685,7 @@ function initializeVaultGitdir(root, gitDirectory) {
   ensureIdentity(root, gitDirectory);
   const remotes = safeRemoteNames(root, gitDirectory);
   for (const remote of remotes) gitDir(root, gitDirectory, ['remote', 'remove', remote]);
-  fs.mkdirSync(path.join(gitDirectory, 'info'), { recursive: true });
-  writeFileFsynced(
-    path.join(gitDirectory, 'info', 'exclude'),
-    `${ownership.vaultExcludeLines().join('\n')}\n`,
-    0o644,
-  );
+  writeVaultExcludes(root, gitDirectory, heldBackPaths);
   writeGitdirMarker(gitDirectory, VAULT_MARKER, { schemaVersion: 1, role: 'vault' });
 }
 
@@ -711,7 +708,7 @@ function independentVaultInventory(root, heldBackPaths = []) {
 
 function phase3BuildVault(root, state) {
   const gitDirectory = path.join(root, '.dex', 'vault-staging.git');
-  initializeVaultGitdir(root, gitDirectory);
+  initializeVaultGitdir(root, gitDirectory, state.analysis?.heldBackPaths || []);
   writeFileFsynced(path.join(root, '.gitignore'), ownership.vaultGitignoreContent(), 0o644);
 
   const planPath = path.join(root, P3_FILES_RELATIVE);
@@ -812,7 +809,10 @@ function phase2SnapshotAndScan(root, state) {
   console.log('P2 snapshot and secret check: saving only the files this migration rewrites.');
   snapshotFiles(root, state.startedAt);
   state.analysis.secretFindings = scanForSecrets(root);
-  state.analysis.heldBackPaths = [...new Set(state.analysis.secretFindings.map((finding) => finding.path))].sort();
+  state.analysis.heldBackPaths = persistHeldBackPaths(
+    root,
+    state.analysis.secretFindings.map((finding) => finding.path),
+  );
   writeReport(root, {
     modifiedBrainPaths: state.analysis.modifiedBrainPaths,
     remoteNames: state.preflight.remoteNames,
@@ -1042,6 +1042,8 @@ function phase9Finalize(root, state) {
   state.analysis.heldBackPaths = [
     ...new Set(state.analysis.secretFindings.map((finding) => finding.path)),
   ].sort();
+  state.analysis.heldBackPaths = persistHeldBackPaths(root, state.analysis.heldBackPaths);
+  writeVaultExcludes(root, vaultGit, state.analysis.heldBackPaths);
   const finalHeldBack = new Set(finalFindings.map((finding) => finding.path));
   const commitPaths = ['.gitignore', 'CLAUDE-custom.md', 'System/user-profile.yaml']
     .filter((relative) => exists(path.join(root, relative)) && !finalHeldBack.has(relative));

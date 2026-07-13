@@ -913,7 +913,7 @@ function refreshVaultExclude(root, state) {
       throw new Error('Dex refused to edit vault Git metadata through an unsafe .git/info path.');
     }
   }
-  const content = `${ownership.vaultExcludeLines().join('\n')}\n`;
+  const content = `${ownership.vaultExcludeLines(ownership.readHeldBackPaths(root)).join('\n')}\n`;
   beforeMutation(root, state, 'refresh vault Git excludes');
   writeDirectFile(path.join(root, '.git', 'info', 'exclude'), content, 0o600);
   afterMutation(root, state);

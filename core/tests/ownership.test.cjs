@@ -143,9 +143,11 @@ test('vault ignore layers protect secrets while keeping user custom skills visib
   assert.equal(ownership.isVaultIgnoredPath('.obsidian/workspace-mobile.json'), true);
   assert.equal(ownership.isVaultIgnoredPath('.obsidian/plugins.json'), false);
 
-  const excludeLines = ownership.vaultExcludeLines();
+  const excludeLines = ownership.vaultExcludeLines(['04-Projects/held-back.md']);
   assert.ok(excludeLines.includes('/core/*'));
   assert.ok(excludeLines.includes('/CLAUDE.md'));
+  assert.ok(excludeLines.includes('/System/backups/'));
+  assert.ok(excludeLines.includes('/04-Projects/held-back.md'));
   assert.ok(excludeLines.includes('!/.claude/skills/*-custom/**'));
 
   const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'dex-ownership-excludes-'));
@@ -154,10 +156,14 @@ test('vault ignore layers protect secrets while keeping user custom skills visib
   fs.mkdirSync(path.join(tempRoot, '.claude', 'skills', 'daily-plan'), { recursive: true });
   fs.mkdirSync(path.join(tempRoot, '.claude', 'skills-custom', 'legacy'), { recursive: true });
   fs.mkdirSync(path.join(tempRoot, 'core', 'mcp-custom'), { recursive: true });
+  fs.mkdirSync(path.join(tempRoot, '04-Projects'), { recursive: true });
+  fs.mkdirSync(path.join(tempRoot, 'System', 'backups', 'pre-update-2.0.1'), { recursive: true });
   fs.writeFileSync(path.join(tempRoot, '.claude', 'skills', 'foo-custom', 'SKILL.md'), 'mine\n');
   fs.writeFileSync(path.join(tempRoot, '.claude', 'skills', 'daily-plan', 'SKILL.md'), 'shipped\n');
   fs.writeFileSync(path.join(tempRoot, '.claude', 'skills-custom', 'legacy', 'SKILL.md'), 'mine\n');
   fs.writeFileSync(path.join(tempRoot, 'core', 'mcp-custom', 'server.py'), 'mine\n');
+  fs.writeFileSync(path.join(tempRoot, '04-Projects', 'held-back.md'), 'secret-shaped earlier\n');
+  fs.writeFileSync(path.join(tempRoot, 'System', 'backups', 'pre-update-2.0.1', 'README.md'), 'backup\n');
   fs.writeFileSync(path.join(tempRoot, '.git', 'info', 'exclude'), `${excludeLines.join('\n')}\n`);
   run('git', ['check-ignore', '--quiet', '.claude/skills/daily-plan/SKILL.md'], { cwd: tempRoot });
   run('git', ['check-ignore', '--quiet', '.claude/skills/foo-custom/SKILL.md'], {
@@ -172,6 +178,8 @@ test('vault ignore layers protect secrets while keeping user custom skills visib
     cwd: tempRoot,
     expectedStatus: 1,
   });
+  run('git', ['check-ignore', '--quiet', '04-Projects/held-back.md'], { cwd: tempRoot });
+  run('git', ['check-ignore', '--quiet', 'System/backups/pre-update-2.0.1/README.md'], { cwd: tempRoot });
 
   const seeds = ownership.seedEntries();
   assert.deepEqual(

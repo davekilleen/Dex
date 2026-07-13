@@ -323,7 +323,11 @@ def test_split_topology_git_and_schema_probes_are_feature_status_compliant(tmp_p
     (split.vault_root / "System" / "user-profile.yaml").write_text(
         "vault_schema: 1\nvault:\n  auto_commit: true\n"
     )
-    assert doctor._probe_vault_auto_commit(split).verdict == "OK"
+    enabled = doctor._probe_vault_auto_commit(split)
+    assert enabled.verdict == "OK"
+    assert "disables Git hooks" in enabled.detail
+    assert "does not run push" in enabled.detail
+    assert "never sends" not in enabled.detail
     assert doctor._probe_migration_pending(split).verdict == "OK"
 
     (split.vault_root / "System" / "user-profile.yaml").write_text("vault_schema: 2\n")

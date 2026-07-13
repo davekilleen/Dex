@@ -1561,7 +1561,7 @@ def _probe_vault_auto_commit(context: DoctorContext) -> ProbeResult:
         return ProbeResult("OFF", "Vault auto-commit is off by default; your files still stay in the local vault")
     if _topology_state(context) != "post-split":
         return ProbeResult("BROKEN", "Vault auto-commit is enabled before the split topology is ready — run /dex-update")
-    return ProbeResult("OK", "Vault auto-commit is enabled for local SessionEnd snapshots and never sends them to a remote")
+    return ProbeResult("OK", "Vault auto-commit is enabled for local SessionEnd snapshots; it disables Git hooks and does not run push")
 
 
 def _probe_migration_pending(context: DoctorContext) -> ProbeResult:
