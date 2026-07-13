@@ -35,6 +35,33 @@ function writeMeetingIntelLog(sandbox) {
   return logPath;
 }
 
+function completeOnboarding(sandbox) {
+  const marker = path.join(sandbox.vault, 'System', '.onboarding-complete');
+  fs.mkdirSync(path.dirname(marker), { recursive: true });
+  fs.writeFileSync(marker, '{}\n');
+}
+
+function writeSmokeResult(sandbox, broken) {
+  const resultPath = path.join(sandbox.vault, 'System', '.smoke-last-run.json');
+  fs.mkdirSync(path.dirname(resultPath), { recursive: true });
+  fs.writeFileSync(
+    resultPath,
+    JSON.stringify({
+      schema_version: 1,
+      generated_at: '2026-07-12T03:15:00+00:00',
+      journeys: [
+        {
+          id: 'task_lifecycle',
+          verdict: broken ? 'BROKEN' : 'OK',
+          detail: broken ? 'task creation failed after the config changed' : 'task lifecycle passed',
+          duration_ms: 10,
+        },
+      ],
+      summary: { ok: broken ? 0 : 1, off: 0, broken: broken ? 1 : 0, unknown: 0 },
+    }),
+  );
+}
+
 function runSessionStart(sandbox) {
   const result = spawnSync('/bin/bash', [HOOK_PATH], {
     cwd: sandbox.vault,
@@ -107,4 +134,35 @@ test('session start warns when an installed meeting sync has never run', (t) => 
     stdout,
     /⏰ Meeting sync is installed but has never run — run \/dex-doctor to investigate\./,
   );
+});
+
+test('overnight smoke block is silent when the result file is missing', (t) => {
+  const sandbox = createSandbox(t);
+  completeOnboarding(sandbox);
+
+  const stdout = runSessionStart(sandbox);
+
+  assert.doesNotMatch(stdout, /Overnight check found a problem/);
+});
+
+test('overnight smoke block is silent for a healthy result', (t) => {
+  const sandbox = createSandbox(t);
+  completeOnboarding(sandbox);
+  writeSmokeResult(sandbox, false);
+
+  const stdout = runSessionStart(sandbox);
+
+  assert.doesNotMatch(stdout, /Overnight check found a problem/);
+});
+
+test('overnight smoke block emits broken journey details', (t) => {
+  const sandbox = createSandbox(t);
+  completeOnboarding(sandbox);
+  writeSmokeResult(sandbox, true);
+
+  const stdout = runSessionStart(sandbox);
+
+  assert.match(stdout, /--- 🚨 Overnight check found a problem ---/);
+  assert.match(stdout, /task_lifecycle — task creation failed after the config changed/);
+  assert.match(stdout, /Run \/dex-doctor for diagnosis and the fix\./);
 });

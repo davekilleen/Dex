@@ -32,6 +32,7 @@ if str(RUNNER_ROOT) in sys.path:
 sys.path.insert(0, str(RUNNER_ROOT))
 
 SCHEMA_VERSION = 1
+HISTORY_LIMIT = 120
 GLOBAL_TIMEOUT_SECONDS = 30.0
 VERDICTS = frozenset({"OK", "OFF", "BROKEN", "UNKNOWN"})
 VERDICT_PRIORITY = {"OFF": 0, "OK": 1, "UNKNOWN": 2, "BROKEN": 3}
@@ -1976,6 +1977,56 @@ def _print_human(report: Mapping[str, object]) -> None:
         )
 
 
+def _atomic_write(path: Path, content: str) -> None:
+    """Durably replace one ledger file without exposing partial JSON."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary_path: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            encoding="utf-8",
+            dir=path.parent,
+            prefix=f".{path.name}.",
+            suffix=".tmp",
+            delete=False,
+        ) as handle:
+            temporary_path = Path(handle.name)
+            handle.write(content)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary_path, path)
+    finally:
+        if temporary_path and temporary_path.exists():
+            temporary_path.unlink()
+
+
+def _dex_version(repo_root: Path) -> str:
+    package = json.loads((repo_root / "package.json").read_text(encoding="utf-8"))
+    version = package.get("version")
+    if not isinstance(version, str) or not version:
+        raise ValueError("package.json has no Dex version")
+    return version
+
+
+def _write_ledger(report: Mapping[str, object], vault_root: Path, repo_root: Path) -> None:
+    """Persist the latest report and capped, versioned smoke history."""
+    last_run_path = vault_root / "System" / ".smoke-last-run.json"
+    history_path = vault_root / "System" / ".dex" / "smoke-history.jsonl"
+    entry = dict(report)
+    entry["dex_version"] = _dex_version(repo_root)
+
+    history: list[str] = []
+    try:
+        history = [line for line in history_path.read_text(encoding="utf-8").splitlines() if line]
+    except FileNotFoundError:
+        pass
+    history.append(json.dumps(entry, separators=(",", ":")))
+    history = history[-HISTORY_LIMIT:]
+
+    _atomic_write(last_run_path, json.dumps(report, indent=2) + "\n")
+    _atomic_write(history_path, "\n".join(history) + "\n")
+
+
 def main(
     argv: Sequence[str] | None = None,
     *,
@@ -1985,6 +2036,7 @@ def main(
 ) -> int:
     parser = argparse.ArgumentParser(description="Run Dex's safe, isolated smoke journeys.")
     parser.add_argument("--json", action="store_true", help="emit the versioned JSON report")
+    parser.add_argument("--ledger", action="store_true", help="record the latest run and history")
     parser.add_argument("--_journey", choices=tuple(INTERNAL_JOURNEYS), help=argparse.SUPPRESS)
     parser.add_argument("--_prepare", choices=tuple(INTERNAL_JOURNEYS), help=argparse.SUPPRESS)
     parser.add_argument("--source-root", type=Path, help=argparse.SUPPRESS)
@@ -2048,6 +2100,14 @@ def main(
         repo_root=repo_root,
         journey_definitions=journey_definitions,
     )
+    if args.ledger:
+        source = (vault_root or Path(os.environ.get("VAULT_PATH", Path.cwd()))).resolve()
+        repository = (repo_root or Path(__file__).resolve().parents[2]).resolve()
+        try:
+            _write_ledger(run.report, source, repository)
+        except Exception as exc:
+            print(f"smoke ledger write failed: {_one_line(exc)}", file=sys.stderr)
+            return 2
     if args.json:
         print(json.dumps(run.report, separators=(",", ":")))
     else:

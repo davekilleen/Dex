@@ -37,6 +37,8 @@ System/user-profile.yaml
 System/pillars.yaml
 System/.last-update-check
 System/.update-available
+System/.smoke-last-run.json
+System/.dex/smoke-history.jsonl
 
 # Custom extensions (user-created, never in upstream)
 CLAUDE-custom.md

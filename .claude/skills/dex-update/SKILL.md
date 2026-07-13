@@ -624,6 +624,16 @@ cd .scripts/meeting-intel && ./install-automation.sh 2>/dev/null
 
 Add to summary if installed: "✓ Enabled automatic meeting sync (runs every 30 min)"
 
+**Nightly smoke (reinstall if already installed):**
+
+```bash
+if launchctl list | grep -q com.dex.smoke-nightly; then
+  .scripts/install-smoke-automation.sh 2>/dev/null
+fi
+```
+
+Add to summary if reinstalled: "✓ Updated nightly self-check automation"
+
 **Future automations:** This pattern extends to other background services. Check for the prerequisite (e.g., app installed, API key present), then run the installer silently.
 
 ---

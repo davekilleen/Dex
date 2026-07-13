@@ -20,6 +20,7 @@ NOW = datetime(2026, 7, 11, 12, 0, tzinfo=timezone.utc)
 QUICK_IDS = [
     "vault.structure",
     "vault.configs",
+    "smoke.history",
     "mcp.registered",
     "mcp.orphans",
     "python.env",
@@ -292,6 +293,114 @@ def test_registry_ids_match_the_approved_spec():
     assert doctor.VERDICTS == frozenset({"OK", "OFF", "BROKEN", "UNKNOWN"})
 
 
+def _smoke_entry(timestamp, *, broken=0, version="1.47.0"):
+    verdict = "BROKEN" if broken else "OK"
+    return {
+        "schema_version": 1,
+        "generated_at": timestamp.isoformat(),
+        "dex_version": version,
+        "journeys": [
+            {
+                "id": "task_lifecycle",
+                "verdict": verdict,
+                "detail": "task lifecycle failed" if broken else "task lifecycle passed",
+                "duration_ms": 1,
+            }
+        ],
+        "summary": {"ok": 0 if broken else 1, "off": 0, "broken": broken, "unknown": 0},
+    }
+
+
+def _write_smoke_history(context, *entries, corrupt_prefix=False):
+    path = context.vault_root / "System" / ".dex" / "smoke-history.jsonl"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    lines = (["{not json"] if corrupt_prefix else []) + [json.dumps(entry) for entry in entries]
+    path.write_text("\n".join(lines) + "\n")
+    return path
+
+
+def test_smoke_history_is_off_without_a_ledger(context):
+    result = doctor._probe_smoke_history(context)
+
+    assert result.verdict == "OFF"
+    assert result.detail == "nightly checks not installed — run .scripts/install-smoke-automation.sh"
+
+
+def test_smoke_history_reports_latest_healthy_run(context):
+    _write_smoke_history(context, _smoke_entry(NOW - timedelta(hours=1)))
+
+    result = doctor._probe_smoke_history(context)
+
+    assert result.verdict == "OK"
+    assert result.detail == f"last verified {(NOW - timedelta(hours=1)).isoformat()} (1 journeys OK)"
+
+
+def test_smoke_history_attributes_config_mtime(context):
+    good_at = NOW - timedelta(hours=2)
+    broken_at = NOW - timedelta(hours=1)
+    _write_smoke_history(context, _smoke_entry(good_at), _smoke_entry(broken_at, broken=1))
+    pillars = context.vault_root / "System" / "pillars.yaml"
+    pillars.write_text("pillars: []\n")
+    modified = NOW - timedelta(minutes=90)
+    os.utime(pillars, (modified.timestamp(), modified.timestamp()))
+
+    result = doctor._probe_smoke_history(context)
+
+    assert result.verdict == "BROKEN"
+    assert f"task_lifecycle broke between {good_at.isoformat()} and {broken_at.isoformat()}" in result.detail
+    assert f"pillars.yaml modified {modified.isoformat()}" in result.detail
+
+
+def test_smoke_history_attributes_dex_version_change(context):
+    good_at = NOW - timedelta(hours=2)
+    broken_at = NOW - timedelta(hours=1)
+    _write_smoke_history(
+        context,
+        _smoke_entry(good_at, version="1.46.0"),
+        _smoke_entry(broken_at, broken=1, version="1.47.0"),
+    )
+
+    result = doctor._probe_smoke_history(context)
+
+    assert result.verdict == "BROKEN"
+    assert "Dex updated from 1.46.0 to 1.47.0 in this window" in result.detail
+
+
+def test_smoke_history_skips_corrupt_lines(context):
+    _write_smoke_history(
+        context,
+        _smoke_entry(NOW - timedelta(hours=1)),
+        corrupt_prefix=True,
+    )
+
+    result = doctor._probe_smoke_history(context)
+
+    assert result.verdict == "OK"
+
+
+def test_smoke_history_falls_back_to_valid_last_run_when_all_lines_are_corrupt(context):
+    history = context.vault_root / "System" / ".dex" / "smoke-history.jsonl"
+    history.parent.mkdir(parents=True)
+    history.write_text("{not json\n")
+    last_run = context.vault_root / "System" / ".smoke-last-run.json"
+    last_run.write_text(json.dumps(_smoke_entry(NOW - timedelta(hours=1))))
+
+    result = doctor._probe_smoke_history(context)
+
+    assert result.verdict == "OK"
+
+
+def test_smoke_history_is_unknown_when_whole_ledger_is_unreadable(context):
+    path = context.vault_root / "System" / ".dex" / "smoke-history.jsonl"
+    path.parent.mkdir(parents=True)
+    path.write_text("{not json\n")
+
+    result = doctor._probe_smoke_history(context)
+
+    assert result.verdict == "UNKNOWN"
+    assert "ledger is unreadable" in result.detail
+
+
 @pytest.mark.parametrize("deep,expected_ids", [(False, QUICK_IDS), (True, QUICK_IDS + DEEP_IDS)])
 def test_json_contract_shape_and_last_run_file(monkeypatch, context, deep, expected_ids):
     _stub_probes(monkeypatch)
@@ -329,7 +438,7 @@ def test_summary_counts_each_exact_verdict(monkeypatch, context):
 
     report = doctor.collect(context=context)
 
-    assert report["summary"] == {"ok": 11, "off": 1, "broken": 1, "unknown": 1}
+    assert report["summary"] == {"ok": 12, "off": 1, "broken": 1, "unknown": 1}
     assert report["instruments"]["completed"] == len(QUICK_IDS)
 
 
@@ -1080,6 +1189,7 @@ def test_jobs_loaded_degrades_to_unknown_off_macos(monkeypatch, context):
 @pytest.mark.parametrize(
     ("label", "expected_max_age"),
     [
+        ("com.dex.smoke-nightly", timedelta(hours=26)),
         ("com.dex.meeting-intel", timedelta(hours=48)),
         ("com.dex.changelog-checker", timedelta(days=7)),
         ("com.dex.learning-review", timedelta(days=7)),

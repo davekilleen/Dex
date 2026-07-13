@@ -289,6 +289,30 @@ if errors:
     fi
 fi
 
+# 19. Overnight smoke result — surface only actionable broken journeys.
+SMOKE_LAST_RUN="$CLAUDE_DIR/System/.smoke-last-run.json"
+if [[ -f "$ONBOARDING_MARKER" && -f "$SMOKE_LAST_RUN" ]]; then
+    SMOKE_ALERT=$(python3 -c "
+import json
+try:
+    with open('$SMOKE_LAST_RUN') as handle:
+        report = json.load(handle)
+    if report.get('summary', {}).get('broken', 0) > 0:
+        print('--- 🚨 Overnight check found a problem ---')
+        for journey in report.get('journeys', []):
+            if journey.get('verdict') == 'BROKEN':
+                detail = ' '.join(str(journey.get('detail', 'Unknown problem')).split())[:140]
+                print(f\"{journey.get('id', '?')} — {detail}\")
+        print('Run /dex-doctor for diagnosis and the fix.')
+except Exception:
+    pass
+" 2>/dev/null)
+    if [[ -n "$SMOKE_ALERT" ]]; then
+        echo "$SMOKE_ALERT"
+        echo ""
+    fi
+fi
+
 # Background job staleness — keep in sync with core/utils/doctor.py's JOB_FRESHNESS table.
 {
     DEX_LAUNCH_AGENTS_DIR="${DEX_LAUNCH_AGENTS_DIR:-$HOME/Library/LaunchAgents}"
@@ -322,6 +346,7 @@ fi
             echo "⏰ $JOB_LABEL last ran $JOB_AGE $JOB_AGE_UNIT ago (expected every $JOB_EXPECTED_CADENCE) — run /dex-doctor to investigate."
         fi
     done <<'EOF'
+com.dex.smoke-nightly|.scripts/logs/smoke-nightly.log|93600|26 hours|Nightly smoke
 com.dex.meeting-intel|.scripts/logs/meeting-intel.log|172800|2 days|Meeting sync
 com.dex.changelog-checker|.scripts/logs/changelog-checker.log|604800|7 days|Claude update watcher
 com.dex.learning-review|.scripts/logs/learning-review.log|604800|7 days|Learning review

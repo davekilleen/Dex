@@ -7,7 +7,7 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
-## [1.49.0] - Real Todoist sync — the promise, finally built (2026-07-13)
+## [1.50.0] - Real Todoist sync — the promise, finally built (2026-07-13)
 
 Earlier setups promised automatic two-way Todoist sync that never existed (we removed that promise in 1.36.0). This release builds the real thing, carefully.
 
@@ -21,6 +21,25 @@ Earlier setups promised automatic two-way Todoist sync that never existed (we re
 * **One connector failing never blocks another.** Each service syncs independently; errors are reported per service, and a failed sync never advances its bookmark (so nothing is skipped next time).
 
 Things 3 and Trello sync arrive next on the same engine.
+
+## [1.49.0] - Dex now checks itself overnight — and tells you what changed when something breaks (2026-07-13)
+
+Dex's safe release checks used to run only when someone asked for a deep diagnosis or
+prepared a release. A problem that appeared between updates could therefore sit quietly
+until the next manual check.
+
+**What this fixes for you:**
+
+* **Dex checks its core journeys every night.** At 03:15 it safely tests configuration,
+  task creation, built-in services, skills, and hooks in temporary copies without writing
+  into your live vault.
+* **The next session tells you when something broke.** You see the affected journey and
+  its concrete failure, while healthy nights stay silent.
+* **`/dex-doctor` narrows down what changed.** It compares the last passing night with the
+  first broken one and reports only matching configuration edits, custom-skill edits, or
+  a Dex update—without inventing a cause when the evidence is not there.
+* **The evidence stays inspectable.** The latest result and a capped history live as plain
+  JSON files in your vault, with safe atomic writes so half-written reports never surface.
 
 ## [1.48.0] - Your morning plan now shows what your meetings turned into (2026-07-13)
 

@@ -65,6 +65,7 @@ Run these silently without user-facing output:
 4. **People index refresh**: Call `build_people_index` from Work MCP. This keeps the People Directory current so person lookups throughout the day are fast. Takes <2 seconds.
 5. **Innovation synthesis** (silent): Call `synthesize_changelog()` and `synthesize_learnings()` from Improvements MCP. These run in background and populate the backlog — results are surfaced in Step 1.5 below.
 6. **Granola check** (silent): Granola sync uses the official API via `GRANOLA_API_KEY` (environment or vault-root `.env`). If no key is configured, skip all Granola steps silently — an unconnected optional integration is not an error.
+7. **System health** (silent): Read `System/.smoke-last-run.json` when present and retain any broken-journey context for Step 5.10b.
 
 ---
 
@@ -338,6 +339,7 @@ Also gather:
 - **Work Summary**: Quarterly goals context (if enabled)
 - **People**: Context for meeting attendees
 - **Self-Learning Alerts**: Changelog updates, pending learnings
+- **System health**: Only when the overnight smoke report has `summary.broken > 0`, note that a self-check found a problem and point to `/dex-doctor` for diagnosis
 
 ### 5.11 Meeting-Task Review (NEW)
 

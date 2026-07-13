@@ -12,6 +12,8 @@ import sys
 import time
 from pathlib import Path
 
+import pytest
+
 from core.utils import smoke
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -262,6 +264,86 @@ def test_main_exit_one_for_a_broken_journey(tmp_path: Path, capsys) -> None:
 
     assert exit_code == 1
     assert report["summary"] == {"ok": 0, "broken": 1, "unknown": 0, "off": 0}
+
+
+def test_ledger_writes_latest_and_versioned_history(tmp_path: Path, capsys) -> None:
+    vault = _write_valid_vault(tmp_path)
+
+    exit_code = smoke.main(
+        ["--json", "--ledger"],
+        vault_root=vault,
+        repo_root=REPO_ROOT,
+        journey_definitions=(_definition("configs"),),
+    )
+    emitted = json.loads(capsys.readouterr().out)
+    latest = json.loads((vault / "System" / ".smoke-last-run.json").read_text())
+    history = [
+        json.loads(line)
+        for line in (vault / "System" / ".dex" / "smoke-history.jsonl").read_text().splitlines()
+    ]
+
+    assert exit_code == 0
+    assert latest == emitted
+    expected_version = json.loads((REPO_ROOT / "package.json").read_text())["version"]
+    assert history[0] == {**emitted, "dex_version": expected_version}
+
+
+def test_ledger_history_rotates_at_cap(tmp_path: Path) -> None:
+    vault = _write_valid_vault(tmp_path)
+    history_path = vault / "System" / ".dex" / "smoke-history.jsonl"
+    history_path.parent.mkdir(parents=True)
+    old_entries = [
+        json.dumps({"schema_version": 1, "generated_at": f"old-{index}"})
+        for index in range(smoke.HISTORY_LIMIT)
+    ]
+    history_path.write_text("\n".join(old_entries) + "\n")
+    report = {
+        "schema_version": 1,
+        "generated_at": "new",
+        "journeys": [],
+        "summary": {"ok": 0, "broken": 0, "unknown": 0, "off": 0},
+    }
+
+    smoke._write_ledger(report, vault, REPO_ROOT)
+
+    entries = [json.loads(line) for line in history_path.read_text().splitlines()]
+    assert len(entries) == smoke.HISTORY_LIMIT
+    assert entries[0]["generated_at"] == "old-1"
+    assert entries[-1]["generated_at"] == "new"
+
+
+def test_atomic_ledger_failure_preserves_target_and_removes_temp(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    target = tmp_path / "ledger.json"
+    target.write_text("original\n")
+
+    def fail_replace(_source, _target):
+        raise OSError("simulated replace failure")
+
+    monkeypatch.setattr(smoke.os, "replace", fail_replace)
+    with pytest.raises(OSError, match="simulated replace failure"):
+        smoke._atomic_write(target, "replacement\n")
+
+    assert target.read_text() == "original\n"
+    assert list(tmp_path.glob(".ledger.json.*.tmp")) == []
+
+
+def test_json_without_ledger_writes_nothing(tmp_path: Path, capsys) -> None:
+    vault = _write_valid_vault(tmp_path)
+
+    exit_code = smoke.main(
+        ["--json"],
+        vault_root=vault,
+        repo_root=REPO_ROOT,
+        journey_definitions=(_definition("configs"),),
+    )
+
+    assert exit_code == 0
+    assert json.loads(capsys.readouterr().out)["summary"]["ok"] == 1
+    assert not (vault / "System" / ".smoke-last-run.json").exists()
+    assert not (vault / "System" / ".dex" / "smoke-history.jsonl").exists()
 
 
 def test_head_runner_generation_stays_coherent_when_release_is_older(tmp_path: Path) -> None:
