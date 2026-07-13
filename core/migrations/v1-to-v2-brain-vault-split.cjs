@@ -331,12 +331,11 @@ function availableBytes(root) {
 }
 
 function findReleaseRef(root, gitDirectory) {
-  const candidates = [
-    'refs/remotes/upstream/release',
-    'refs/remotes/origin/release',
-    'refs/heads/release',
-  ];
-  for (const candidate of candidates) {
+  const officialUrl = /github\.com[:/]davekilleen\/Dex(?:\.git)?\/?$/i;
+  for (const remote of safeRemoteNames(root, gitDirectory)) {
+    const url = gitDir(root, gitDirectory, ['remote', 'get-url', remote], { allowFailure: true });
+    if (url.status !== 0 || !officialUrl.test(url.stdout.trim())) continue;
+    const candidate = `refs/remotes/${remote}/release`;
     const result = gitDir(root, gitDirectory, ['rev-parse', '--verify', `${candidate}^{commit}`], {
       allowFailure: true,
     });
@@ -344,7 +343,34 @@ function findReleaseRef(root, gitDirectory) {
       return { ref: candidate, commit: result.stdout.trim() };
     }
   }
-  throw new Error('Dex could not find the installed release reference in the old repository. Restore or fetch upstream/release, then try again.');
+
+  const localRef = 'refs/heads/release';
+  const local = gitDir(root, gitDirectory, ['rev-parse', '--verify', `${localRef}^{commit}`], {
+    allowFailure: true,
+  });
+  if (local.status === 0) {
+    const tip = local.stdout.trim();
+    const head = gitOutput(root, gitDirectory, ['rev-parse', 'HEAD']);
+    const reachesWorkingHead = gitDir(
+      root,
+      gitDirectory,
+      ['merge-base', '--is-ancestor', tip, head],
+      { allowFailure: true },
+    ).status === 0;
+    const backupTags = gitDir(root, gitDirectory, ['tag', '--list', 'backup-before-*'], {
+      allowFailure: true,
+    }).stdout.split(/\r?\n/).filter(Boolean);
+    const containsBackupCommit = backupTags.some((tag) => (
+      gitDir(root, gitDirectory, ['merge-base', '--is-ancestor', tag, tip], {
+        allowFailure: true,
+      }).status === 0
+    ));
+    if (!reachesWorkingHead && !containsBackupCommit) {
+      return { ref: localRef, commit: tip };
+    }
+  }
+
+  throw new Error('Dex could not prove that the local release branch contains only official release history. Restore the official upstream remote, fetch its release branch, then try again.');
 }
 
 function safeRemoteNames(root, gitDirectory) {
@@ -1225,6 +1251,7 @@ module.exports = {
   assertSafeMutationRoots,
   emptyLegacyExtensionBlock,
   extractLegacyExtensions,
+  findReleaseRef,
   inspectTopology,
   main,
   phase6Rematerialize,

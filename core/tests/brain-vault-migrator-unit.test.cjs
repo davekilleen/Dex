@@ -4,6 +4,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
+const { spawnSync } = require('node:child_process');
 const test = require('node:test');
 
 const MIGRATOR_PATH = path.resolve(
@@ -12,6 +13,23 @@ const MIGRATOR_PATH = path.resolve(
   'migrations',
   'v1-to-v2-brain-vault-split.cjs',
 );
+
+function git(root, ...args) {
+  const result = spawnSync('git', args, { cwd: root, encoding: 'utf8' });
+  assert.equal(result.status, 0, `${args.join(' ')}\n${result.stdout}\n${result.stderr}`);
+  return result.stdout.trim();
+}
+
+function makeGitFixture() {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'dex-migration-release-ref-'));
+  git(root, 'init', '--quiet', '--initial-branch=main');
+  git(root, 'config', 'user.name', 'Dex Migration Test');
+  git(root, 'config', 'user.email', 'migration-test@dex.local');
+  fs.writeFileSync(path.join(root, 'base.txt'), 'base\n');
+  git(root, 'add', 'base.txt');
+  git(root, 'commit', '--quiet', '-m', 'base');
+  return root;
+}
 
 test('CLAUDE regeneration lifts the legacy extension bytes and removes legacy markers', () => {
   const migrator = require(MIGRATOR_PATH);
@@ -221,4 +239,51 @@ test('the pre-split snapshot restores a pre-existing migration report', () => {
   migrator.restoreSnapshot(root);
 
   assert.equal(fs.readFileSync(report, 'utf8'), 'my pre-existing report\n');
+});
+
+test('release discovery trusts official URLs and refuses contaminated local fallbacks', () => {
+  const migrator = require(MIGRATOR_PATH);
+
+  const renamedRemote = makeGitFixture();
+  const releaseCommit = git(renamedRemote, 'rev-parse', 'HEAD');
+  git(renamedRemote, 'remote', 'add', 'dex', 'git@github.com:davekilleen/Dex.git');
+  git(renamedRemote, 'update-ref', 'refs/remotes/dex/release', releaseCommit);
+  assert.deepEqual(migrator.findReleaseRef(renamedRemote, path.join(renamedRemote, '.git')), {
+    ref: 'refs/remotes/dex/release',
+    commit: releaseCommit,
+  });
+
+  const ancestorFallback = makeGitFixture();
+  git(ancestorFallback, 'branch', 'release', 'HEAD');
+  fs.writeFileSync(path.join(ancestorFallback, 'mine.txt'), 'personal\n');
+  git(ancestorFallback, 'add', 'mine.txt');
+  git(ancestorFallback, 'commit', '--quiet', '-m', 'personal work');
+  assert.throws(
+    () => migrator.findReleaseRef(ancestorFallback, path.join(ancestorFallback, '.git')),
+    /restore the official upstream remote/i,
+  );
+
+  const backupContaminated = makeGitFixture();
+  git(backupContaminated, 'tag', 'backup-before-v2');
+  git(backupContaminated, 'checkout', '--quiet', '-b', 'release');
+  fs.writeFileSync(path.join(backupContaminated, 'release.txt'), 'release\n');
+  git(backupContaminated, 'add', 'release.txt');
+  git(backupContaminated, 'commit', '--quiet', '-m', 'local release');
+  git(backupContaminated, 'checkout', '--quiet', 'main');
+  assert.throws(
+    () => migrator.findReleaseRef(backupContaminated, path.join(backupContaminated, '.git')),
+    /restore the official upstream remote/i,
+  );
+
+  const safeFallback = makeGitFixture();
+  git(safeFallback, 'checkout', '--quiet', '-b', 'release');
+  fs.writeFileSync(path.join(safeFallback, 'release.txt'), 'release\n');
+  git(safeFallback, 'add', 'release.txt');
+  git(safeFallback, 'commit', '--quiet', '-m', 'clean release');
+  const safeRelease = git(safeFallback, 'rev-parse', 'HEAD');
+  git(safeFallback, 'checkout', '--quiet', 'main');
+  assert.deepEqual(migrator.findReleaseRef(safeFallback, path.join(safeFallback, '.git')), {
+    ref: 'refs/heads/release',
+    commit: safeRelease,
+  });
 });
