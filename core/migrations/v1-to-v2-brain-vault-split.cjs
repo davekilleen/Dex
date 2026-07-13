@@ -26,6 +26,7 @@ const SNAPSHOT_PATHS = [
   'CLAUDE.md',
   '.gitignore',
   'CLAUDE-custom.md',
+  REPORT_RELATIVE,
   'System/user-profile.yaml',
   'package.json',
 ];
@@ -411,6 +412,12 @@ function renderReport(report) {
     '',
     ...(modified.length ? ['### Shipped files with your edits', '', ...modified.map((item) => `- ${item}`), ''] : []),
     ...(findings.length ? ['### Secret-check warnings', '', ...findings.map((item) => `- ${item.path} (${item.kind})`), ''] : []),
+    ...(report.liftedInlineExtensions ? [
+      '### Preserved instruction sources',
+      '',
+      '- CLAUDE-custom.md already existed, so Dex appended the distinct inline USER_EXTENSIONS block under a labelled migration heading.',
+      '',
+    ] : []),
     ...(report.failure ? ['## Why Dex stopped', '', report.failure, ''] : []),
     '## What stays yours',
     '',
@@ -680,6 +687,7 @@ function phase0Preflight(root, state) {
 
 function phase1Report(root, state, dryRun = false) {
   console.log('P1 report: describing the split before anything moves.');
+  snapshotFiles(root, state.startedAt || 'dry-run');
   const oldGitDirectory = path.join(root, '.git');
   const modified = modifiedBrainPaths(root, oldGitDirectory, state.preflight.releaseRef);
   state.analysis = {
@@ -794,20 +802,61 @@ function stampPackageSupport(source) {
   return `${JSON.stringify(packageJson, null, 2)}\n`;
 }
 
-function phase6Rematerialize(root) {
+function mergedCustomInstructions(existingCustom, inlineExtensions) {
+  if (existingCustom === inlineExtensions) {
+    return { content: existingCustom, appended: false };
+  }
+  const heading = '## Lifted from CLAUDE.md during v2 migration';
+  const separator = existingCustom.endsWith('\n') ? '\n' : '\n\n';
+  const liftedSection = `${heading}\n\n${inlineExtensions}`;
+  if (existingCustom.includes(liftedSection)) {
+    return { content: existingCustom, appended: false };
+  }
+  return {
+    content: `${existingCustom}${separator}${liftedSection}`,
+    appended: true,
+  };
+}
+
+function phase6Rematerialize(root, state = {}) {
   console.log('P6 instructions: lifting your extension block into CLAUDE-custom.md.');
   const claudePath = path.join(root, 'CLAUDE.md');
   const customPath = path.join(root, 'CLAUDE-custom.md');
   const legacy = fs.readFileSync(claudePath, 'utf8');
-  let custom;
-  if (exists(customPath)) {
-    custom = fs.readFileSync(customPath, 'utf8');
+  const hasLegacyMarkers = legacy.includes(START_MARKER);
+  let custom = exists(customPath) ? fs.readFileSync(customPath, 'utf8') : null;
+  let appended = false;
+
+  if (!hasLegacyMarkers && custom !== null) {
+    // P6 already completed its destructive-to-markers step before the phase journal advanced.
   } else {
-    custom = extractLegacyExtensions(legacy);
+    const inlineExtensions = extractLegacyExtensions(legacy);
+    if (custom === null) {
+      custom = inlineExtensions;
+    } else {
+      const merged = mergedCustomInstructions(custom, inlineExtensions);
+      custom = merged.content;
+      appended = merged.appended;
+    }
     writeFileFsynced(customPath, custom, 0o644);
+    const template = emptyLegacyExtensionBlock(legacy);
+    writeFileFsynced(claudePath, regenerateClaude(template, custom), 0o644);
   }
-  const template = emptyLegacyExtensionBlock(legacy);
-  writeFileFsynced(claudePath, regenerateClaude(template, custom), 0o644);
+
+  state.analysis = state.analysis || {};
+  if (appended) {
+    state.analysis.liftedInlineExtensions = true;
+    console.log('P6 preserved both instruction sources in CLAUDE-custom.md under a labelled migration heading.');
+  }
+  state.p6 = {
+    liftComplete: true,
+    claudeSha256: fileSha256(claudePath),
+    customSha256: fileSha256(customPath),
+  };
+  if (state.schemaVersion) writeJournal(root, state);
+  if (process.env.DEX_MIGRATION_STOP_DURING_P6 === 'lift-complete') {
+    throw new Error('Stopped safely inside P6 after preserving the lifted instructions. Run --resume to continue.');
+  }
 
   const profilePath = path.join(root, 'System', 'user-profile.yaml');
   if (exists(profilePath)) {
@@ -865,6 +914,7 @@ function phase9Finalize(root, state) {
     modifiedBrainPaths: state.analysis?.modifiedBrainPaths || [],
     remoteNames: state.preflight?.remoteNames || [],
     secretFindings: state.analysis?.secretFindings || [],
+    liftedInlineExtensions: state.analysis?.liftedInlineExtensions || false,
   });
   console.log('P9 finalize complete: your vault and brain now have separate histories.');
 }
@@ -1019,7 +1069,7 @@ function runPhases(root, mode) {
     () => phase3BuildVault(root, state),
     () => phase4BuildBrain(root, state),
     () => phase5Swap(root, state),
-    () => phase6Rematerialize(root),
+    () => phase6Rematerialize(root, state),
     () => phase7ReportOnly(state),
     () => phase8Verify(root, state),
     () => phase9Finalize(root, state),
@@ -1142,9 +1192,11 @@ module.exports = {
   extractLegacyExtensions,
   inspectTopology,
   main,
+  phase6Rematerialize,
   readJournal,
   regenerateClaude,
   restoreMigration,
+  restoreSnapshot,
   snapshotFiles,
   topologyDecision,
   writeJournal,

@@ -203,6 +203,24 @@ test('a journaled stop after P4 resumes through the swap', () => {
   assert.equal(git(vault, 'remote'), '');
 });
 
+test('resume safely re-enters P6 after CLAUDE markers were already stripped', () => {
+  const vault = makeFixture();
+  const stopped = migrate(vault, '--auto', {
+    env: { DEX_MIGRATION_STOP_DURING_P6: 'lift-complete' },
+    expectedStatus: 1,
+  });
+  assert.match(stopped.stdout + stopped.stderr, /stopped safely inside P6/i);
+  assert.doesNotMatch(fs.readFileSync(path.join(vault, 'CLAUDE.md'), 'utf8'), /USER_EXTENSIONS_/);
+  const state = JSON.parse(
+    fs.readFileSync(path.join(vault, 'System', '.dex', 'migration-v2-state.json'), 'utf8'),
+  );
+  assert.equal(state.nextPhase, 6);
+  assert.equal(state.p6.liftComplete, true);
+
+  const resumed = migrate(vault, '--resume');
+  assert.match(resumed.stdout, /P9 finalize complete/);
+});
+
 test('startup reconciliation completes a kill between the two P5 moves', () => {
   const vault = makeFixture();
   const stopped = migrate(vault, '--auto', {

@@ -177,3 +177,48 @@ test('migration refuses every symlinked mutation root before writing through it'
   assert.equal(migrator.main(['--auto'], root), 1);
   assert.deepEqual(fs.readdirSync(outside), []);
 });
+
+test('P6 is replay-safe and preserves distinct custom and inline instructions', () => {
+  const migrator = require(MIGRATOR_PATH);
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'dex-migration-p6-'));
+  fs.mkdirSync(path.join(root, 'System'), { recursive: true });
+  const inline = 'Inline instruction byte-for-byte.  \n';
+  const existingCustom = 'Existing custom instruction.\n';
+  fs.writeFileSync(
+    path.join(root, 'CLAUDE.md'),
+    `# Dex\n\n## USER_EXTENSIONS_START\n${inline}## USER_EXTENSIONS_END\nAfter.\n`,
+  );
+  fs.writeFileSync(path.join(root, 'CLAUDE-custom.md'), existingCustom);
+  fs.writeFileSync(path.join(root, 'System', 'user-profile.yaml'), 'name: Test\n');
+  fs.writeFileSync(path.join(root, 'package.json'), '{"name":"fixture"}\n');
+  const state = { schemaVersion: 1, nextPhase: 6, analysis: {} };
+
+  migrator.phase6Rematerialize(root, state);
+  const firstClaude = fs.readFileSync(path.join(root, 'CLAUDE.md'));
+  const firstCustom = fs.readFileSync(path.join(root, 'CLAUDE-custom.md'), 'utf8');
+  assert.match(firstCustom, /Existing custom instruction/);
+  assert.match(firstCustom, /## Lifted from CLAUDE\.md during v2 migration/);
+  assert.ok(firstCustom.includes(inline));
+  assert.equal(state.p6.liftComplete, true);
+  assert.match(state.p6.claudeSha256, /^[a-f0-9]{64}$/);
+  assert.equal(state.analysis.liftedInlineExtensions, true);
+
+  migrator.writeJournal(root, { ...state, status: 'starting', nextPhase: 6 });
+  assert.doesNotThrow(() => migrator.phase6Rematerialize(root, state));
+  assert.deepEqual(fs.readFileSync(path.join(root, 'CLAUDE.md')), firstClaude);
+  assert.equal(fs.readFileSync(path.join(root, 'CLAUDE-custom.md'), 'utf8'), firstCustom);
+});
+
+test('the pre-split snapshot restores a pre-existing migration report', () => {
+  const migrator = require(MIGRATOR_PATH);
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'dex-migration-report-snapshot-'));
+  const report = path.join(root, 'System', 'migration-report-v2.md');
+  fs.mkdirSync(path.dirname(report), { recursive: true });
+  fs.writeFileSync(report, 'my pre-existing report\n');
+
+  migrator.snapshotFiles(root, 'report-test');
+  fs.writeFileSync(report, 'migration output\n');
+  migrator.restoreSnapshot(root);
+
+  assert.equal(fs.readFileSync(report, 'utf8'), 'my pre-existing report\n');
+});
