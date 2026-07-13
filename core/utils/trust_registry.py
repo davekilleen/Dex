@@ -80,7 +80,7 @@ class TrustedMcpRegistry:
 
 @dataclass(frozen=True)
 class TrustedMcpSnapshot:
-    """A decision plus the only script path recurring checks may execute."""
+    """A decision plus the candidate path recurring checks must re-verify at launch."""
 
     trusted: bool
     detail: str
@@ -242,10 +242,11 @@ def _git_executable() -> Path | None:
 
 def _registry_is_git_tracked(vault_root: Path) -> bool | None:
     """Return tracked, confirmed untracked, or indeterminate for a Git vault."""
-    has_git_metadata = (vault_root / ".git").exists() or (vault_root / ".git").is_symlink()
     executable = _git_executable()
     if executable is None:
-        return None if has_git_metadata else False
+        # A vault with no Git available (for example, a ZIP install) gracefully
+        # degrades to structural-only checks: unverifiable registry consent is ignored.
+        return None
     environment = {
         "GIT_CONFIG_GLOBAL": "/dev/null",
         "GIT_CONFIG_NOSYSTEM": "1",
@@ -275,9 +276,9 @@ def _registry_is_git_tracked(vault_root: Path) -> bool | None:
             check=False,
         )
         if top_level.returncode != 0:
-            return None if has_git_metadata else False
+            return None
         repository = Path(top_level.stdout.strip()).resolve()
-        relative = (vault_root / REGISTRY_RELATIVE).resolve().relative_to(repository).as_posix()
+        relative = (vault_root.resolve() / REGISTRY_RELATIVE).relative_to(repository).as_posix()
         tracked = subprocess.run(
             [*base_command, "ls-files", "--error-unmatch", "--", relative],
             capture_output=True,
@@ -286,7 +287,7 @@ def _registry_is_git_tracked(vault_root: Path) -> bool | None:
             check=False,
         )
     except (OSError, subprocess.SubprocessError, ValueError):
-        return None if has_git_metadata else False
+        return None
     if tracked.returncode == 0:
         return True
     if tracked.returncode == 1:
@@ -603,9 +604,11 @@ def _snapshot_local_python_file(
             os.close(descriptor)
 
     assert destination is not None and actual_hash is not None
+    # This pathname is a launch candidate, not proof that the fd-anchored artifact
+    # still lives there. F2 reopens and re-verifies its identity and hash before exec.
     return TrustedMcpSnapshot(
         True,
-        "trusted local Python snapshot is ready",
+        "trusted local Python snapshot finalized; path requires launch re-verification",
         snapshot_path=destination,
         sha256=actual_hash,
     )

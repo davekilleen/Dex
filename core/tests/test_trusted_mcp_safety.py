@@ -25,7 +25,7 @@ from core.utils.trust_registry import (
 )
 
 
-def _valid_vault(tmp_path: Path) -> Path:
+def _valid_vault(tmp_path: Path, *, initialize_git: bool = True) -> Path:
     vault = tmp_path / "vault"
     (vault / "System" / "integrations").mkdir(parents=True)
     (vault / "custom-mcp").mkdir()
@@ -39,6 +39,8 @@ def _valid_vault(tmp_path: Path) -> Path:
     )
     (vault / "03-Tasks" / "Tasks.md").write_text("# Tasks\n")
     (vault / ".claude" / "settings.json").write_text('{"hooks": {}}\n')
+    if initialize_git:
+        _git(vault, "init", "-b", "main")
     return vault
 
 
@@ -236,8 +238,12 @@ def test_g3_snapshot_finalize_stays_anchored_to_checked_directory_fd(
 
     expected_name = f"custom-dir-fd-{hashlib.sha256(content).hexdigest()}.py"
     assert decision.trusted is True
+    assert decision.detail == (
+        "trusted local Python snapshot finalized; path requires launch re-verification"
+    )
+    assert decision.snapshot_path == snapshot_root / expected_name
     assert (held_directory / expected_name).read_bytes() == content
-    assert not (snapshot_root / expected_name).exists()
+    assert not decision.snapshot_path.exists()
 
 
 def test_g3_eexist_does_not_delete_an_unverifiable_existing_snapshot(
@@ -506,7 +512,6 @@ def test_g1_git_repo_registry_is_invalid_when_git_cannot_be_discovered(
     content = b"pass\n"
     script.write_bytes(content)
     _write_registry(vault, "custom-server", "custom-mcp/server.py", content)
-    (vault / ".git").mkdir()
     original_is_file = Path.is_file
 
     def hide_fhs_git(path: Path) -> bool:
@@ -523,14 +528,98 @@ def test_g1_git_repo_registry_is_invalid_when_git_cannot_be_discovered(
     assert registry.invalid_reason == "could not verify the registry is user-owned"
 
 
-def test_g1_git_repo_with_confirmed_untracked_registry_is_honored(tmp_path: Path) -> None:
-    vault = _valid_vault(tmp_path)
+def _nested_vault_in_git_repo(tmp_path: Path) -> Path:
+    repository = tmp_path / "repository"
+    repository.mkdir()
+    _git(repository, "init", "-b", "main")
+    return _valid_vault(repository, initialize_git=False)
+
+
+def test_g1_nested_vault_registry_is_indeterminate_without_git(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    vault = _nested_vault_in_git_repo(tmp_path)
+    content = b"pass\n"
+    _write_registry(vault, "custom-server", "custom-mcp/server.py", content)
+    monkeypatch.setattr(trust_registry, "_git_executable", lambda: None)
+
+    assert not (vault / ".git").exists()
+    assert trust_registry._registry_is_git_tracked(vault) is None
+    registry = load_trusted_mcp_registry(vault)
+    assert registry.entries == {}
+    assert registry.invalid_reason == "could not verify the registry is user-owned"
+
+
+@pytest.mark.parametrize(
+    "failure",
+    [
+        pytest.param(OSError("git failed"), id="os-error"),
+        pytest.param(
+            subprocess.TimeoutExpired(cmd="git", timeout=2),
+            id="timeout",
+        ),
+    ],
+)
+def test_g1_nested_vault_registry_is_indeterminate_when_git_raises(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    failure: BaseException,
+) -> None:
+    vault = _nested_vault_in_git_repo(tmp_path)
+    content = b"pass\n"
+    _write_registry(vault, "custom-server", "custom-mcp/server.py", content)
+
+    def fail_git(*_args: object, **_kwargs: object) -> object:
+        raise failure
+
+    monkeypatch.setattr(trust_registry.subprocess, "run", fail_git)
+
+    assert trust_registry._registry_is_git_tracked(vault) is None
+    registry = load_trusted_mcp_registry(vault)
+    assert registry.entries == {}
+    assert registry.invalid_reason == "could not verify the registry is user-owned"
+
+
+@pytest.mark.parametrize("failure_stage", ["rev-parse", "ls-files"])
+def test_g1_nested_vault_registry_is_indeterminate_on_git_exit_128(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    failure_stage: str,
+) -> None:
+    vault = _nested_vault_in_git_repo(tmp_path)
+    content = b"pass\n"
+    _write_registry(vault, "custom-server", "custom-mcp/server.py", content)
+
+    def run_git(command: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        if failure_stage == "rev-parse" or "rev-parse" not in command:
+            return subprocess.CompletedProcess(command, 128, stdout="", stderr="failed")
+        return subprocess.CompletedProcess(
+            command,
+            0,
+            stdout=str(tmp_path / "repository") + "\n",
+            stderr="",
+        )
+
+    monkeypatch.setattr(trust_registry.subprocess, "run", run_git)
+
+    assert trust_registry._registry_is_git_tracked(vault) is None
+    registry = load_trusted_mcp_registry(vault)
+    assert registry.entries == {}
+    assert registry.invalid_reason == "could not verify the registry is user-owned"
+
+
+def test_g1_nested_vault_with_confirmed_untracked_registry_is_honored(
+    tmp_path: Path,
+) -> None:
+    vault = _nested_vault_in_git_repo(tmp_path)
     script = vault / "custom-mcp" / "server.py"
     content = b"pass\n"
     script.write_bytes(content)
     _write_registry(vault, "custom-server", "custom-mcp/server.py", content)
-    _git(vault, "init", "-b", "main")
 
+    assert not (vault / ".git").exists()
+    assert trust_registry._registry_is_git_tracked(vault) is False
     registry = load_trusted_mcp_registry(vault)
 
     assert registry.invalid_reason is None
