@@ -64,7 +64,8 @@ function emptyLegacyExtensionBlock(source) {
 
 function regenerateClaude(template, customContent) {
   const block = extensionBlock(template);
-  return `${block.before}${customContent}${block.after}`;
+  const separator = customContent && !customContent.endsWith('\n') ? '\n' : '';
+  return `${block.before}${customContent}${separator}${block.after}`;
 }
 
 function fsyncDirectory(directory) {

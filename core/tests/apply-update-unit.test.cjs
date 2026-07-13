@@ -151,6 +151,22 @@ test('Windows mode normalization is not mistaken for corrupt replacement bytes',
   assert.equal(updater.modesCompatible(0o644, 0o666, 'darwin'), false);
 });
 
+test('trusted path generation does not load or execute release Python', () => {
+  const updater = require(UPDATER_PATH);
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'dex-update-paths-'));
+  fs.mkdirSync(path.join(root, 'core'), { recursive: true });
+  fs.writeFileSync(
+    path.join(root, 'core', 'paths.py'),
+    "raise RuntimeError('target release code executed')\n",
+  );
+
+  const generated = JSON.parse(updater.generatePathsJson(root).toString('utf8'));
+
+  assert.equal(generated.VAULT_ROOT, root);
+  assert.equal(generated.PROJECTS_DIR, path.join(root, '04-Projects'));
+  assert.equal(generated.RITUAL_INTELLIGENCE_DB_FILE, path.join(root, 'System', '.dex', 'ritual-intelligence.db'));
+});
+
 test('direct Git metadata writes use the same locked-file fallback', () => {
   const updater = require(UPDATER_PATH);
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'dex-update-metadata-'));

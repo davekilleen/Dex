@@ -22,6 +22,61 @@ const RESUME_EXIT = 75;
 const OID_PATTERN = /^[a-f0-9]{40}(?:[a-f0-9]{24})?$/i;
 const MANIFEST_HASH_PATTERN = /^[a-f0-9]{64}$/i;
 const RELEASE_TAG_PATTERN = /^dist-v\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/;
+const PATH_EXPORTS = {
+  VAULT_ROOT: '',
+  INBOX_DIR: '00-Inbox',
+  QUARTER_GOALS_DIR: '01-Quarter_Goals',
+  WEEK_PRIORITIES_DIR: '02-Week_Priorities',
+  TASKS_DIR: '03-Tasks',
+  PROJECTS_DIR: '04-Projects',
+  AREAS_DIR: '05-Areas',
+  RESOURCES_DIR: '06-Resources',
+  ARCHIVES_DIR: '07-Archives',
+  MEETINGS_DIR: '00-Inbox/Meetings',
+  IDEAS_DIR: '00-Inbox/Ideas',
+  DAILY_PLANS_DIR: '00-Inbox/Daily_Plans',
+  TRACKED_MEETINGS_DIR: '05-Areas/Meetings',
+  MEETING_DAILY_LOGS_DIR: '05-Areas/Meetings/Daily_Log',
+  LEGACY_MEETINGS_DIR: '00-Inbox/Meetings',
+  TASKS_FILE: '03-Tasks/Tasks.md',
+  QUARTER_GOALS_FILE: '01-Quarter_Goals/Quarter_Goals.md',
+  WEEK_PRIORITIES_FILE: '02-Week_Priorities/Week_Priorities.md',
+  GOALS_FILE: 'GOALS.md',
+  PEOPLE_DIR: '05-Areas/People',
+  COMPANIES_DIR: '05-Areas/Companies',
+  CAREER_DIR: '05-Areas/Career',
+  EVIDENCE_DIR: '05-Areas/Career/Evidence',
+  RESUME_DIR: '05-Areas/Career/Resume',
+  SESSIONS_DIR: '05-Areas/Career/Resume/Sessions',
+  INTEL_DIR: '06-Resources/Intel',
+  MEETING_INTEL_DIR: '06-Resources/Intel/Meeting_Intel',
+  LEARNINGS_DIR: '06-Resources/Learnings',
+  DEXDIFF_DIR: '04-Projects/DexDiff',
+  DEXDIFF_BETA_DIR: '04-Projects/DexDiff/beta',
+  DEXDIFF_DIFFS_DIR: '04-Projects/DexDiff/beta/diffs',
+  DEXDIFF_PROFILE_DRAFTS_DIR: '04-Projects/DexDiff/beta/profile',
+  DEXDIFF_DESIGN_DIR: '04-Projects/DexDiff/design',
+  SYSTEM_DIR: 'System',
+  DEX_RUNTIME_DIR: 'System/.dex',
+  PILLARS_FILE: 'System/pillars.yaml',
+  USER_PROFILE_FILE: 'System/user-profile.yaml',
+  SKILL_RATINGS_FILE: 'System/Skill_Ratings/ratings.jsonl',
+  PEOPLE_INDEX_FILE: 'System/People_Index.json',
+  COMPANY_INDEX_FILE: 'System/Company_Index.json',
+  MEETING_CACHE_FILE: 'System/Memory/meeting-cache.json',
+  SESSION_FILE: 'System/.onboarding-session.json',
+  MARKER_FILE: 'System/.onboarding-complete',
+  USER_PROFILE_TEMPLATE: 'System/user-profile-template.yaml',
+  CLAUDE_MD: 'CLAUDE.md',
+  MCP_CONFIG_EXAMPLE: 'System/.mcp.json.example',
+  MCP_CONFIG_TARGET: '.mcp.json',
+  OBSIDIAN_SYNC_LOG: 'System/obsidian-sync.log',
+  RITUAL_INTELLIGENCE_DB_FILE: 'System/.dex/ritual-intelligence.db',
+  CONTACTS_STATE_FILE: 'System/.dex/contacts.json',
+  GARDENER_STATE_FILE: 'System/.dex/gardener.json',
+  ENTITY_SUGGESTIONS_FILE: 'System/.dex/entity-suggestions.json',
+  ENTITY_VERIFICATION_FILE: 'System/.dex/entity-verification.json',
+};
 
 function exists(candidate) {
   try {
@@ -108,6 +163,31 @@ function assertWorktreeWrite(root, relative) {
 
 function assertRuntimeWrite(root, relative) {
   return assertClassifiedWrite(root, relative, new Set(['runtime']));
+}
+
+function assertSeedCreate(root, relative) {
+  const portable = slashPath(relative);
+  const canonicalSeeds = new Set(ownership.seedEntries().map((entry) => entry.path));
+  if (!canonicalSeeds.has(portable) || ownership.classify(portable) !== 'seed') {
+    throw new Error(`Dex refused non-canonical seed creation at ${portable}.`);
+  }
+  const resolvedRoot = path.resolve(root);
+  const destination = path.resolve(root, portable);
+  if (!destination.startsWith(`${resolvedRoot}${path.sep}`) || exists(destination)) {
+    throw new Error(`Dex refused seed creation at ${portable} because it is not an absent canonical seed.`);
+  }
+  let ancestor = resolvedRoot;
+  for (const part of portable.split('/').slice(0, -1)) {
+    ancestor = path.join(ancestor, part);
+    try {
+      if (fs.lstatSync(ancestor).isSymbolicLink()) {
+        throw new Error(`Dex refused seed creation through symlink ${portable}.`);
+      }
+    } catch (error) {
+      if (error.code !== 'ENOENT') throw error;
+    }
+  }
+  return destination;
 }
 
 function writeOwnedFile(root, relative, content, mode, assertDestinationWrite) {
@@ -229,6 +309,10 @@ function writeWorktreeFile(root, relative, content, mode = 0o600) {
 
 function writeRuntimeFile(root, relative, content, mode = 0o600) {
   writeOwnedFile(root, relative, content, mode, assertRuntimeWrite);
+}
+
+function writeMissingSeed(root, relative, content, mode = 0o600) {
+  writeOwnedFile(root, relative, content, mode, assertSeedCreate);
 }
 
 function removeOwnedPath(root, relative, recursive, assertDestinationWrite) {
@@ -734,7 +818,14 @@ function worktreeMatchesBlob(root, oid, relative) {
   if (expected === null || !exists(destination)) return false;
   assertWorktreeWrite(root, relative);
   if (!fs.lstatSync(destination).isFile()) return false;
-  return fs.readFileSync(destination).equals(expected);
+  const tree = brainGit(root, ['ls-tree', '-z', oid, '--', relative], { encoding: null });
+  const header = tree.stdout.subarray(0, tree.stdout.indexOf(0)).toString('utf8').split('\t', 1)[0];
+  const gitMode = header.split(' ', 1)[0];
+  const expectedMode = gitMode === '100755' ? 0o755 : gitMode === '100644' ? 0o644 : null;
+  const actualMode = fs.statSync(destination).mode & 0o777;
+  return expectedMode !== null
+    && modesCompatible(expectedMode, actualMode)
+    && fs.readFileSync(destination).equals(expected);
 }
 
 function targetVersion(root, oid) {
@@ -909,7 +1000,11 @@ function backupModifiedBrain(root, state) {
   state.backupChecked = state.backupChecked || [];
   state.backedUp = state.backedUp || [];
   const checked = new Set(state.backupChecked);
-  for (const relative of state.targetBrainPaths) {
+  const brainInventory = [...new Set([
+    ...ownership.brainPaths(state.previousManifest),
+    ...state.targetBrainPaths,
+  ])].sort();
+  for (const relative of brainInventory) {
     if (checked.has(relative)) continue;
     const destination = path.join(root, relative);
     if (exists(destination) && !worktreeMatchesBlob(root, state.previousOid, relative)) {
@@ -940,6 +1035,12 @@ function copyStagedFile(root, state, relative) {
   const bytes = fs.readFileSync(source);
   const mode = fs.statSync(source).mode & 0o777;
   writeWorktreeFile(root, relative, bytes, mode);
+}
+
+function copyStagedSeed(root, relative) {
+  const source = path.join(root, STAGING_RELATIVE, relative);
+  if (!fs.lstatSync(source).isFile()) throw new Error(`Staged seed path is not a regular file: ${relative}`);
+  writeMissingSeed(root, relative, fs.readFileSync(source), fs.statSync(source).mode & 0o777);
 }
 
 function swapBrainFiles(root, state) {
@@ -998,7 +1099,7 @@ function seedMissingFiles(root, state) {
     const destination = path.join(root, relative);
     if (!exists(destination)) {
       beforeMutation(root, state, `create missing seed ${relative}`);
-      copyStagedFile(root, state, relative);
+      copyStagedSeed(root, relative);
       afterMutation(root, state);
     }
     state.seeded.push(relative);
@@ -1018,14 +1119,17 @@ function regenerateClaude(root, state) {
 
 function regeneratePaths(root, state) {
   beforeMutation(root, state, 'regenerate core/paths.json');
-  assertWorktreeWrite(root, 'core/paths.json');
-  const vaultPython = path.join(root, '.venv', 'bin', 'python');
-  const python = process.env.DEX_UPDATE_PYTHON || (exists(vaultPython) ? vaultPython : 'python3');
-  run(python, [path.join(root, 'core', 'paths.py')], {
-    cwd: root,
-    env: { VAULT_PATH: root },
-  });
+  writeWorktreeFile(root, 'core/paths.json', generatePathsJson(root), 0o644);
   afterMutation(root, state);
+}
+
+function generatePathsJson(root) {
+  const absoluteRoot = path.resolve(root);
+  const generated = Object.fromEntries(Object.entries(PATH_EXPORTS).map(([name, relative]) => [
+    name,
+    relative ? path.join(absoluteRoot, ...relative.split('/')) : absoluteRoot,
+  ]));
+  return Buffer.from(`${JSON.stringify(generated, null, 2)}\n`);
 }
 
 function substituteVaultPath(value, root) {
@@ -1216,7 +1320,7 @@ function runPhases(root, state) {
     } else if (state.phase === 8) {
       regeneratePaths(root, state);
       refreshVaultExclude(root, state);
-      syncMcpAddOnly(root, state);
+      if (state.mode !== 'rollback') syncMcpAddOnly(root, state);
       state.phase = 9;
       afterMutation(root, state);
     } else if (state.phase === 9) {
@@ -1410,6 +1514,7 @@ function main(argumentsList = process.argv.slice(2), root = process.cwd()) {
 module.exports = {
   acquireLock,
   assertWorktreeWrite,
+  generatePathsJson,
   inspectUpdateTopology,
   isOfficialRemote,
   main,

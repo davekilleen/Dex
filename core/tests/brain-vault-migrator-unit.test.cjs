@@ -56,6 +56,25 @@ test('CLAUDE regeneration lifts the legacy extension bytes and removes legacy ma
   assert.doesNotMatch(generated, /USER_EXTENSIONS_(START|END)/);
 });
 
+test('CLAUDE regeneration separates custom text without changing its bytes on disk', () => {
+  const migrator = require(MIGRATOR_PATH);
+  const template = [
+    '# Dex',
+    '## USER_EXTENSIONS_START',
+    'release placeholder',
+    '## USER_EXTENSIONS_END',
+    '# After custom instructions',
+    '',
+  ].join('\n');
+  const custom = 'Keep this exact final character: café';
+
+  assert.equal(
+    migrator.regenerateClaude(template, custom),
+    '# Dex\nKeep this exact final character: café\n# After custom instructions\n',
+  );
+  assert.equal(custom.endsWith('\n'), false);
+});
+
 test('the fsynced journal recovers after truncation between every phase pair', () => {
   const migrator = require(MIGRATOR_PATH);
   for (let phase = 0; phase < 9; phase += 1) {

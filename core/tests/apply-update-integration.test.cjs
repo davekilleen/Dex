@@ -97,6 +97,15 @@ function fabricateRelease(vault) {
   write(upstream, 'README.md', '# Dex synthetic v2.0.1\n');
   write(
     upstream,
+    'core/paths.py',
+    [
+      'from pathlib import Path',
+      "Path('04-Projects/target-release-code-ran.md').write_text('unsafe\\n')",
+      '',
+    ].join('\n'),
+  );
+  write(
+    upstream,
     'CHANGELOG.md',
     '# Changelog\n\n## [2.0.1] - Synthetic trust fixture\n\nBREAKING: Restart Dex after the update.\n',
   );
@@ -135,12 +144,18 @@ test('apply, crash-resume, and rollback replace only owned brain files in an age
   const taskSeed = path.join(vault, '03-Tasks', 'Tasks.md');
   const custom = path.join(vault, 'CLAUDE-custom.md');
   const paraHash = digest(para);
-  const seedHash = digest(taskSeed);
-  const customBytes = fs.readFileSync(custom);
+  fs.unlinkSync(taskSeed);
+  const customBytes = Buffer.from(fs.readFileSync(custom, 'utf8').replace(/\n$/, ''));
+  fs.writeFileSync(custom, customBytes);
+  const modeDriftPath = path.join(vault, 'install.sh');
+  const installedMode = fs.statSync(modeDriftPath).mode & 0o777;
+  const driftedMode = installedMode === 0o755 ? 0o644 : 0o755;
+  fs.chmodSync(modeDriftPath, driftedMode);
   fs.appendFileSync(path.join(vault, 'COMMERCIAL_LICENSE.md'), '\nUser note on commercial terms.\n');
   const keptDroppedBytes = fs.readFileSync(path.join(vault, 'COMMERCIAL_LICENSE.md'));
 
   const release = fabricateRelease(vault);
+  const targetSeedBytes = fs.readFileSync(path.join(release.upstream, '03-Tasks', 'Tasks.md'));
   const transportEnvironment = fixtureGitEnvironment(path.dirname(vault), release.upstream);
   const checked = command(process.execPath, [UPDATER_PATH, '--check', '--target', release.oid], {
     cwd: vault,
@@ -210,18 +225,35 @@ test('apply, crash-resume, and rollback replace only owned brain files in an age
   assert.match(resumed.stdout, /DEX_DEPENDENCIES npm=[01] pip=[01]/);
 
   assert.equal(digest(para), paraHash);
-  assert.equal(digest(taskSeed), seedHash);
+  assert.deepEqual(fs.readFileSync(taskSeed), targetSeedBytes);
   assert.deepEqual(fs.readFileSync(custom), customBytes);
   assert.equal(fs.readFileSync(path.join(vault, 'README.md'), 'utf8'), '# Dex synthetic v2.0.1\n');
   assert.equal(fs.readFileSync(path.join(vault, 'core', 'update', 'synthetic-added.cjs'), 'utf8'), 'module.exports = "v2.0.1";\n');
   assert.equal(fs.existsSync(path.join(vault, 'LICENSE')), false);
   assert.deepEqual(fs.readFileSync(path.join(vault, 'COMMERCIAL_LICENSE.md')), keptDroppedBytes);
+  assert.equal(fs.existsSync(path.join(vault, '04-Projects', 'target-release-code-ran.md')), false);
+  const generatedPaths = JSON.parse(fs.readFileSync(path.join(vault, 'core', 'paths.json'), 'utf8'));
+  const physicalVault = fs.realpathSync(vault);
+  assert.equal(generatedPaths.VAULT_ROOT, physicalVault);
+  assert.equal(generatedPaths.PROJECTS_DIR, path.join(physicalVault, '04-Projects'));
   assert.deepEqual(fs.readFileSync(custom), customBytes);
-  assert.match(fs.readFileSync(path.join(vault, 'CLAUDE.md'), 'utf8'), /fixture sentinel: café/);
+  const renderedClaude = fs.readFileSync(path.join(vault, 'CLAUDE.md'), 'utf8');
+  assert.match(renderedClaude, /fixture sentinel: café/);
+  assert.doesNotMatch(renderedClaude, /café\.#/);
   assert.equal(fs.existsSync(path.join(vault, 'System', 'update-report.md')), false);
   assert.match(fs.readFileSync(path.join(vault, 'System', '.dex', 'update-report.md'), 'utf8'), /README\.md.*backed up/is);
   const backupReadme = path.join(vault, 'System', 'backups', 'pre-update-2.0.1', 'README.md');
   assert.match(fs.readFileSync(backupReadme, 'utf8'), /Fixture user patch|Another long-time user note/);
+  const backupInstall = path.join(vault, 'System', 'backups', 'pre-update-2.0.1', 'install.sh');
+  assert.equal(fs.statSync(backupInstall).mode & 0o777, driftedMode);
+  const backupDropped = path.join(
+    vault,
+    'System',
+    'backups',
+    'pre-update-2.0.1',
+    'COMMERCIAL_LICENSE.md',
+  );
+  assert.deepEqual(fs.readFileSync(backupDropped), keptDroppedBytes);
   assert.equal(git(vault, `--git-dir=${brain}`, 'rev-parse', 'refs/dex/installed'), release.oid);
   const history = JSON.parse(fs.readFileSync(path.join(vault, 'System', '.dex', 'installed-history.json'), 'utf8'));
   assert.equal(history.at(-1).oid, release.oid);
@@ -274,6 +306,11 @@ test('apply, crash-resume, and rollback replace only owned brain files in an age
   assert.equal(git(vault, `--git-dir=${brain}`, 'rev-parse', 'refs/dex/installed'), release.oid);
   fs.writeFileSync(path.join(vault, 'System', '.dex', 'installed-history.json'), validHistoryBytes);
 
+  const rollbackMcp = JSON.parse(fs.readFileSync(path.join(vault, '.mcp.json'), 'utf8'));
+  delete rollbackMcp.mcpServers['work-mcp'];
+  fs.writeFileSync(path.join(vault, '.mcp.json'), `${JSON.stringify(rollbackMcp, null, 2)}\n`);
+  const rollbackMcpBytes = fs.readFileSync(path.join(vault, '.mcp.json'));
+
   const rolledBack = command(process.execPath, [UPDATER_PATH, '--rollback'], {
     cwd: vault,
     env: transportEnvironment,
@@ -284,6 +321,7 @@ test('apply, crash-resume, and rollback replace only owned brain files in an age
   assert.equal(fs.existsSync(path.join(vault, 'core', 'update', 'synthetic-added.cjs')), false);
   assert.equal(fs.existsSync(path.join(vault, 'LICENSE')), true);
   assert.equal(digest(para), paraHash);
-  assert.equal(digest(taskSeed), seedHash);
+  assert.deepEqual(fs.readFileSync(taskSeed), targetSeedBytes);
   assert.deepEqual(fs.readFileSync(custom), customBytes);
+  assert.deepEqual(fs.readFileSync(path.join(vault, '.mcp.json')), rollbackMcpBytes);
 });
