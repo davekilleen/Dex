@@ -7,42 +7,36 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
-## [1.53.0] - See exactly what Dex checked before a release reached you — a public, honest per-release health page (2026-07-13)
+## [1.54.0] - See exactly what Dex checked before a release reached you — a public, honest per-release health page (2026-07-13)
 
-Dex's release checks were rigorous but invisible once a release reached you. Each successful
-release build now publishes a small public page showing the evidence for that exact version,
-without turning checks that did not run into reassuring green ticks.
+Dex's release checks were rigorous but invisible once a release reached you. Each successful release build now publishes a small public page showing the evidence for that exact version, without turning checks that did not run into reassuring green ticks.
 
-* **The proof is tied to one release.** The page names the package version, source commit,
-  generated release commit, verification time, and workflow run.
-* **Every gate tells the truth.** Checks run by the successful main build are marked passed;
-  pull-request-only checks are explicitly marked not applicable and not run on the release
-  build. Missing evidence stays unknown.
-* **A failed later build cannot rewrite history.** The published page remains labelled as the
-  last successful release build, so it never claims to describe a newer failing `HEAD`.
+* **The proof is tied to one release.** The page names the package version, source commit, generated release commit, verification time, and workflow run.
+* **Every gate tells the truth.** Checks run by the successful main build are marked passed; pull-request-only checks are explicitly marked not applicable and not run on the release build. Missing evidence stays unknown.
+* **A failed later build cannot rewrite history.** The published page remains labelled as the last successful release build, so it never claims to describe a newer failing `HEAD`.
 
 ---
+
+## [1.53.0] - Dex now tells you it can connect to your task apps (2026-07-13)
+
+Dex quietly gained two-way sync with Todoist, Things 3, and Trello — but you'd only have found out during first-run setup, or by already knowing to ask. That's a shame for a feature this useful. Now Dex surfaces it the moment it's relevant.
+
+**What this fixes for you:**
+
+* **Mention your task app and Dex offers to connect it.** Say "I keep my tasks in Trello" or "that's on my Todoist" — or just paste a board link — and Dex offers to set up sync right there, in one light line. Say no and it drops it; no nagging.
+* **Dex notices the tools you already use.** During the getting-started tour and when you run `/dex-level-up`, Dex now scans your notes for signs of the tools you work with (mentions, links) and leads with the ones that actually fit you — "I noticed you mention Things in a few places" — instead of a generic list.
+* **First-time setup leads with what fits you.** Onboarding still offers every integration, but now puts the ones your vault already hints at up top.
+* **They're in the catalog now.** The skills list (`/dex-level-up`, `.claude/skills/README.md`) finally names every connect command — Todoist, Things, Trello, Gmail, Teams, Zoom, Jira, Granola, calendar — so browsing "what can Dex do?" actually shows them.
+* **`/integrate-mcp` points you the right way.** The "connect more tools" command now names the task apps and their built-in setup commands first, instead of sending you to hunt through a marketplace for something Dex already supports natively.
 
 ## [1.52.0] - Your own tools can now be health-checked for real — only when you say so (2026-07-13)
 
 Custom MCP servers used to stay permanently "unknown" because Dex would not execute user code during a check. You can now ask `/create-mcp` for a one-off startup proof and, as a separate default-no choice, trust one exact local Python file for nightly and deep checks.
 
-Custom MCP servers used to stay permanently "unknown" because Dex would not execute user
-code during a check. You can now ask `/create-mcp` for a one-off startup proof and, as a
-separate default-no choice, trust one exact local Python file for nightly and deep checks.
-
-* **Consent is specific and honest.** Dex shows the vault-relative file and SHA-256 first,
-  and says plainly that this runs the file with your user permissions and trusts whatever
-  it imports.
-* **Changed code never inherits old consent.** Name, path, and opened-file hash must all
-  match. Dex hashes and copies from the same no-follow file handle, then starts only that
-  private copy.
-* **Everything else stays structural-only.** Missing or linked files, changed content,
-  invalid registries, extra Python flags, remote servers, npm/npx commands, binaries, and
-  hand-edited ineligible entries are refused with an exact reason.
-* **Your trust choices remain yours.** `System/trusted-mcps.yaml` is gitignored and included
-  in update recovery's user-data preservation list, so an upstream update cannot add or
-  replace consent entries.
+* **Consent is specific and honest.** Dex shows the vault-relative file and SHA-256 first, and says plainly that this runs the file with your user permissions and trusts whatever it imports.
+* **Changed code never inherits old consent.** Name, path, and opened-file hash must all match. Dex hashes and copies from the same no-follow file handle, then starts only that private copy.
+* **Everything else stays structural-only.** Missing or linked files, changed content, invalid registries, extra Python flags, remote servers, npm/npx commands, binaries, and hand-edited ineligible entries are refused with an exact reason.
+* **Your trust choices remain yours.** `System/trusted-mcps.yaml` is gitignored and included in update recovery's user-data preservation list, so an upstream update cannot add or replace consent entries.
 
 ---
 

@@ -21,7 +21,13 @@ Say:
 ```
 **Want to connect more tools to Dex?**
 
-There's a marketplace of 100+ pre-built MCP servers at:
+Some tools have a built-in, guided setup — no marketplace hunting needed:
+• **Task apps:** Todoist (`/todoist-setup`), Things 3 (`/things-setup`), Trello (`/trello-setup`) — two-way task sync
+• **Email & calendar:** Google Workspace (`/google-workspace-setup`), Microsoft Teams (`/ms-teams-setup`)
+• **Meetings:** Granola (`/granola-setup`), Zoom (`/zoom-setup`)
+• **Work tracking:** Jira + Confluence (`/atlassian-setup`)
+
+For anything else, there's a marketplace of 100+ pre-built MCP servers at:
 **[Smithery.ai](https://smithery.ai/servers)**
 
 These are production-ready integrations for:
