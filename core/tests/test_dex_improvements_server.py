@@ -156,13 +156,6 @@ def test_queue_insertion_routes_idea_to_score_band(
     assert parsed["score"] == score
 
 
-@pytest.mark.xfail(
-    reason=(
-        "BUG: insert_idea_into_priority_queue always prepends within a score band, "
-        "so a score-65 idea is placed ahead of an existing score-80 idea"
-    ),
-    strict=False,
-)
 def test_queue_insertion_keeps_descending_score_order_within_band(
     backlog_file: Path,
 ):

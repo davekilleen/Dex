@@ -457,7 +457,37 @@ def insert_idea_into_priority_queue(idea_id: str, title: str, description: str, 
     match = re.search(section_pattern, content)
     if match:
         insert_pos = match.end()
-        new_content = content[:insert_pos] + "\n" + idea_entry + content[insert_pos:]
+        next_section = re.search(r'\n(?:### |---)', content[insert_pos:])
+        section_end = (
+            insert_pos + next_section.start()
+            if next_section
+            else len(content)
+        )
+        section_content = content[insert_pos:section_end]
+        existing_ideas = list(re.finditer(
+            r'^-\s*\*\*\[[^\]]+\]\*\*.*?(?=^-\s*\*\*\[[^\]]+\]\*\*|\Z)',
+            section_content,
+            re.MULTILINE | re.DOTALL,
+        ))
+        for existing_idea in existing_ideas:
+            existing_score = re.search(
+                r'\*\*Score:\*\*\s*(\d+)',
+                existing_idea.group(0),
+            )
+            if existing_score and int(existing_score.group(1)) < score:
+                insert_pos += existing_idea.start()
+                break
+        else:
+            if existing_ideas:
+                insert_pos = section_end
+
+        leading_newline = '\n' if not existing_ideas else ''
+        new_content = (
+            content[:insert_pos]
+            + leading_newline
+            + idea_entry
+            + content[insert_pos:]
+        )
     else:
         fallback = re.search(r'(## Archive|## Summary|---\s*$)', content)
         if fallback:
