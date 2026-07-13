@@ -22,7 +22,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install pytest pytest-cov ruff
+          pip install -r requirements-dev.txt
           pip install mcp pyyaml python-dateutil requests
           npm ci
 
@@ -37,6 +37,9 @@ jobs:
 
       - name: Flaky test detection
         run: bash scripts/detect-flaky-tests.sh
+
+      - name: Property-based fuzz tests
+        run: pytest core/tests/test_fuzz_properties.py -m fuzz -q
 
       - name: Large-vault performance benchmark
         run: python scripts/benchmark_large_vault.py --files 4000 --budget-seconds 8.0

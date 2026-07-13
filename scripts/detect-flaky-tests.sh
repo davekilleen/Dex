@@ -11,11 +11,11 @@ RUN2_FAIL="$REPORT_DIR/run2_failed.txt"
 DIFF_OUT="$REPORT_DIR/flaky_diff.txt"
 
 echo "Running flaky-test detector (pass 1)..."
-pytest core/tests core/mcp/tests core/migrations/tests -q --maxfail=0 >"$RUN1_OUT" 2>&1 || true
+pytest core/tests core/mcp/tests core/migrations/tests -q -m "not fuzz" --maxfail=0 >"$RUN1_OUT" 2>&1 || true
 grep -E '^FAILED ' "$RUN1_OUT" | awk '{print $2}' | sort -u >"$RUN1_FAIL" || true
 
 echo "Running flaky-test detector (pass 2)..."
-pytest core/tests core/mcp/tests core/migrations/tests -q --maxfail=0 >"$RUN2_OUT" 2>&1 || true
+pytest core/tests core/mcp/tests core/migrations/tests -q -m "not fuzz" --maxfail=0 >"$RUN2_OUT" 2>&1 || true
 grep -E '^FAILED ' "$RUN2_OUT" | awk '{print $2}' | sort -u >"$RUN2_FAIL" || true
 
 if diff -u "$RUN1_FAIL" "$RUN2_FAIL" >"$DIFF_OUT"; then

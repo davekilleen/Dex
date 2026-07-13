@@ -179,7 +179,8 @@ async def fetch_latest_release():
 def parse_version(version_str: str) -> tuple[int, int, int]:
     """Parse version string into tuple (major, minor, patch)"""
     version_str = version_str.lstrip('v')
-    parts = version_str.split('.')
+    release = version_str.split('-', 1)[0].split('+', 1)[0]
+    parts = release.split('.')
     
     try:
         major = int(parts[0]) if len(parts) > 0 else 0

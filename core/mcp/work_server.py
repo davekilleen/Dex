@@ -2810,6 +2810,8 @@ def parse_tasks_file(filepath: Path) -> List[Dict[str, Any]]:
             clean_title = re.sub(r'\s*\|\s*(?:People|Active)/[^\s]+', '', title)
             clean_title = re.sub(r'\s+\.md\b', '', clean_title)
             clean_title = re.sub(r'\s*\^task-\d{8}-\d{3}\s*', '', clean_title)  # Remove task ID
+            if not clean_title.strip():
+                continue
             
             # Determine status
             status = 'd' if completed else 'n'

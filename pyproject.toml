@@ -20,3 +20,6 @@ ignore = [
 [tool.pytest.ini_options]
 testpaths = ["core/tests"]
 python_files = ["test_*.py"]
+markers = [
+    "fuzz: slower property-based and large-fixture cases run by nightly quality",
+]
