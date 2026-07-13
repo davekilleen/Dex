@@ -399,6 +399,7 @@ function renderReport(report) {
   const modified = report.modifiedBrainPaths || [];
   const remotes = report.remoteNames || [];
   const findings = report.secretFindings || [];
+  const heldBack = report.heldBackPaths || [...new Set(findings.map((finding) => finding.path))];
   return [
     '# Your Dex brain and vault split',
     '',
@@ -409,9 +410,11 @@ function renderReport(report) {
     `- ${modified.length} shipped ${modified.length === 1 ? 'file has' : 'files have'} your own edits. Dex only listed them; it did not replace them.`,
     `- ${remotes.length} old ${remotes.length === 1 ? 'remote was' : 'remotes were'} found${remotes.length ? ` (${remotes.join(', ')})` : ''}. None will be carried into your private vault repository.`,
     `- The secret check found ${findings.length} possible ${findings.length === 1 ? 'match' : 'matches'} in files eligible for vault history. It never copied the matching text.`,
+    `- ${heldBack.length} ${heldBack.length === 1 ? 'file was' : 'files were'} held back from the initial vault history for review. The files remain in place.`,
     '',
     ...(modified.length ? ['### Shipped files with your edits', '', ...modified.map((item) => `- ${item}`), ''] : []),
     ...(findings.length ? ['### Secret-check warnings', '', ...findings.map((item) => `- ${item.path} (${item.kind})`), ''] : []),
+    ...(heldBack.length ? ['### Held back from the initial vault history', '', ...heldBack.map((item) => `- ${item}`), ''] : []),
     ...(report.liftedInlineExtensions ? [
       '### Preserved instruction sources',
       '',
@@ -529,16 +532,6 @@ function restoreSnapshot(root) {
   }
 }
 
-function secretPath(relative) {
-  const lowerParts = relative.toLowerCase().split('/');
-  return (
-    lowerParts.some((part) => part.startsWith('.env'))
-    || lowerParts.some((part) => part === 'credentials')
-    || lowerParts.some((part) => part.endsWith('token.json') || part.endsWith('credentials.json'))
-    || lowerParts.some((part) => part.endsWith('.key') || part.endsWith('.pem'))
-  );
-}
-
 function walkVaultFiles(root) {
   const files = [];
   const skipped = new Set(['.git', '.dex', 'node_modules', '.venv']);
@@ -563,15 +556,22 @@ function scanForSecrets(root) {
     { kind: 'API token', expression: /\bsk-[A-Za-z0-9_-]{20,}\b/ },
     { kind: 'AWS access key', expression: /\bAKIA[A-Z0-9]{16}\b/ },
     {
+      kind: 'JSON token or credential',
+      expression: /"(?:access[_-]?token|refresh[_-]?token|client[_-]?secret|api[_-]?key|private[_-]?key)"\s*:\s*"[^"\s]{8,}"/i,
+    },
+    {
       kind: 'secret-like environment value',
       expression: /^\s*[A-Z0-9_]*(?:TOKEN|SECRET|PASSWORD|API_KEY|PRIVATE_KEY|CREDENTIAL)[A-Z0-9_]*\s*=\s*\S+/m,
     },
   ];
   const findings = [];
   for (const relative of walkVaultFiles(root)) {
-    if (secretPath(relative)) continue;
     const className = ownership.classify(relative);
     if (!['vault', 'seed'].includes(className)) continue;
+    if (ownership.isSecretPath(relative)) {
+      findings.push({ path: relative, kind: 'secret file path' });
+      continue;
+    }
     const absolute = path.join(root, relative);
     if (fs.statSync(absolute).size > 1024 * 1024) continue;
     const bytes = fs.readFileSync(absolute);
@@ -608,10 +608,20 @@ function initializeVaultGitdir(root, gitDirectory) {
 }
 
 function p3CandidateFiles(root, gitDirectory) {
-  const result = gitDir(root, gitDirectory, ['ls-files', '--others', '--exclude-standard', '-z'], {
+  const result = gitDir(root, gitDirectory, ['-c', 'core.excludesFile=/dev/null', 'ls-files', '--others', '--exclude-standard', '-z'], {
     encoding: null,
   });
   return result.stdout.toString('utf8').split('\0').filter(Boolean).sort();
+}
+
+function independentVaultInventory(root, heldBackPaths = []) {
+  const heldBack = new Set(heldBackPaths);
+  return walkVaultFiles(root)
+    .filter((relative) => ['vault', 'seed'].includes(ownership.classify(relative)))
+    .filter((relative) => !ownership.isSecretPath(relative))
+    .filter((relative) => !heldBack.has(relative))
+    .sort()
+    .map((relative) => ({ path: relative, sha256: fileSha256(path.join(root, relative)) }));
 }
 
 function phase3BuildVault(root, state) {
@@ -620,20 +630,29 @@ function phase3BuildVault(root, state) {
   writeFileFsynced(path.join(root, '.gitignore'), ownership.vaultGitignoreContent(), 0o644);
 
   const planPath = path.join(root, P3_FILES_RELATIVE);
-  let files;
+  let plan;
   if (exists(planPath)) {
-    files = JSON.parse(fs.readFileSync(planPath, 'utf8'));
+    plan = JSON.parse(fs.readFileSync(planPath, 'utf8'));
   } else {
-    files = p3CandidateFiles(root, gitDirectory);
-    writeFileFsynced(planPath, `${JSON.stringify(files, null, 2)}\n`);
+    const heldBackPaths = state.analysis?.heldBackPaths || [];
+    plan = {
+      schemaVersion: 2,
+      gitCandidates: p3CandidateFiles(root, gitDirectory),
+      expected: independentVaultInventory(root, heldBackPaths),
+      heldBackPaths,
+    };
+    writeFileFsynced(planPath, `${JSON.stringify(plan, null, 2)}\n`);
   }
+  const files = Array.isArray(plan) ? plan : plan.expected.map((entry) => entry.path);
   state.p3 = state.p3 || { nextIndex: 0, total: files.length };
   state.p3.total = files.length;
 
   const start = state.p3.nextIndex;
   const end = Math.min(start + P3_BATCH_SIZE, files.length);
   const batch = files.slice(start, end);
-  if (batch.length > 0) gitDir(root, gitDirectory, ['add', '--', ...batch]);
+  if (batch.length > 0) {
+    gitDir(root, gitDirectory, ['-c', 'core.excludesFile=/dev/null', 'add', '-f', '--', ...batch]);
+  }
   state.p3.nextIndex = end;
   console.log(`P3 indexed batch ${start + 1}-${end} of ${files.length}.`);
 
@@ -708,10 +727,12 @@ function phase2SnapshotAndScan(root, state) {
   console.log('P2 snapshot and secret check: saving only the files this migration rewrites.');
   snapshotFiles(root, state.startedAt);
   state.analysis.secretFindings = scanForSecrets(root);
+  state.analysis.heldBackPaths = [...new Set(state.analysis.secretFindings.map((finding) => finding.path))].sort();
   writeReport(root, {
     modifiedBrainPaths: state.analysis.modifiedBrainPaths,
     remoteNames: state.preflight.remoteNames,
     secretFindings: state.analysis.secretFindings,
+    heldBackPaths: state.analysis.heldBackPaths,
   });
 }
 
@@ -886,16 +907,29 @@ function phase8Verify(root, state) {
     throw new Error('P8 could not find both topology markers.');
   }
   const plan = JSON.parse(fs.readFileSync(path.join(root, P3_FILES_RELATIVE), 'utf8'));
-  const treePaths = gitOutput(root, vaultGit, ['ls-tree', '-r', '--name-only', 'HEAD'])
-    .split(/\r?\n/).filter(Boolean);
-  if (treePaths.length !== plan.length) {
-    throw new Error(`P8 expected ${plan.length} files in the initial vault snapshot but found ${treePaths.length}.`);
+  const expectedEntries = Array.isArray(plan)
+    ? plan.map((relative) => ({ path: relative, sha256: null }))
+    : plan.expected;
+  const initialCommit = state.p3?.initialCommit || 'HEAD';
+  const treeOutput = gitDir(root, vaultGit, ['ls-tree', '-r', '-z', initialCommit], { encoding: null })
+    .stdout.toString('utf8');
+  const tree = new Map();
+  for (const record of treeOutput.split('\0').filter(Boolean)) {
+    const separator = record.indexOf('\t');
+    const metadata = record.slice(0, separator).split(/\s+/);
+    tree.set(record.slice(separator + 1), metadata[2]);
   }
-  const rewritten = new Set(SNAPSHOT_PATHS);
-  for (const relative of plan.filter((candidate) => !rewritten.has(candidate)).slice(0, 12)) {
-    const expected = gitDir(root, vaultGit, ['show', `HEAD:${relative}`], { encoding: null }).stdout;
-    const actual = fs.readFileSync(path.join(root, relative));
-    if (!expected.equals(actual)) throw new Error(`P8 byte check failed for ${relative}`);
+  if (tree.size !== expectedEntries.length) {
+    throw new Error(`P8 expected ${expectedEntries.length} files in the initial vault snapshot but found ${tree.size}.`);
+  }
+  for (const entry of expectedEntries) {
+    const oid = tree.get(entry.path);
+    if (!oid) throw new Error(`P8 expected ${entry.path} in the initial vault snapshot, but it was missing.`);
+    if (entry.sha256) {
+      const blob = gitDir(root, vaultGit, ['cat-file', 'blob', oid], { encoding: null }).stdout;
+      const actualSha256 = crypto.createHash('sha256').update(blob).digest('hex');
+      if (actualSha256 !== entry.sha256) throw new Error(`P8 byte check failed for ${entry.path}`);
+    }
   }
 }
 
@@ -914,6 +948,7 @@ function phase9Finalize(root, state) {
     modifiedBrainPaths: state.analysis?.modifiedBrainPaths || [],
     remoteNames: state.preflight?.remoteNames || [],
     secretFindings: state.analysis?.secretFindings || [],
+    heldBackPaths: state.analysis?.heldBackPaths || [],
     liftedInlineExtensions: state.analysis?.liftedInlineExtensions || false,
   });
   console.log('P9 finalize complete: your vault and brain now have separate histories.');

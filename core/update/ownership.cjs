@@ -105,10 +105,19 @@ function vaultGitignoreContent() {
     '.env*',
     '.secrets',
     '.secrets.*',
+    '.npmrc',
+    '**/.npmrc',
+    '.aws/credentials',
+    '**/.aws/credentials',
     '*.key',
     '*.pem',
-    '*token.json',
-    '*credentials.json',
+    '**/*.pfx',
+    '**/*.p12',
+    '**/oauth*.json',
+    '**/*token*.json',
+    '**/*credentials*.json',
+    '**/id_rsa',
+    '**/id_rsa_*',
     'System/credentials/',
     '',
     '# Dependencies and Dex runtime state',
@@ -121,6 +130,26 @@ function vaultGitignoreContent() {
     '.obsidian/workspace*',
     '',
   ].join('\n');
+}
+
+function isSecretPath(input) {
+  const parts = slashPath(input).split('/').filter(Boolean);
+  const lower = parts.map((part) => part.toLowerCase());
+  const basename = lower.at(-1) || '';
+  const extensionSecret = ['.key', '.pem', '.pfx', '.p12'].some(
+    (extension) => basename.endsWith(extension),
+  );
+  return (
+    lower.some((part) => part.startsWith('.env') || part === '.secrets' || part.startsWith('.secrets.'))
+    || basename === '.npmrc'
+    || lower.includes('credentials')
+    || lower.some((part, index) => part === '.aws' && lower[index + 1] === 'credentials')
+    || /^oauth.*\.json$/i.test(basename)
+    || /^.*token.*\.json$/i.test(basename)
+    || /^.*credentials.*\.json$/i.test(basename)
+    || /^id_rsa(?:[._-].*)?$/i.test(basename)
+    || extensionSecret
+  );
 }
 
 function isDenied(input, root) {
@@ -248,6 +277,7 @@ module.exports = {
   brainPaths,
   classify,
   isDenied,
+  isSecretPath,
   seedEntries,
   validateConfig,
   validateManifest,

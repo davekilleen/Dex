@@ -3,6 +3,7 @@
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
 const fs = require('node:fs');
+const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 const test = require('node:test');
@@ -266,6 +267,81 @@ test('huge vaults stop at bounded P3 batches and continue with --resume', () => 
   assert.equal(result.status, 0, result.stdout + result.stderr);
   assert.ok(resumes >= 2, `expected multiple bounded invocations, got ${resumes}`);
   assert.equal(git(vault, 'ls-tree', '-r', '--name-only', 'HEAD', '--', '04-Projects/Huge').split('\n').length, 180);
+});
+
+test('P3 captures owned notes despite global and nested Git ignore rules', () => {
+  const vault = makeFixture();
+  const globalRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'dex-migration-global-ignore-'));
+  const globalIgnore = path.join(globalRoot, 'global-ignore');
+  const globalConfig = path.join(globalRoot, '.gitconfig');
+  fs.writeFileSync(globalIgnore, '*.md\n');
+  command('git', ['config', '--file', globalConfig, 'core.excludesFile', globalIgnore]);
+
+  fs.writeFileSync(path.join(vault, '04-Projects', '.gitignore'), 'nested-hidden.md\n');
+  fs.writeFileSync(path.join(vault, '04-Projects', 'nested-hidden.md'), 'nested ignore must not win\n');
+  fs.writeFileSync(path.join(vault, '04-Projects', 'global-hidden.md'), 'global ignore must not win\n');
+
+  const result = migrate(vault, '--auto', { env: { HOME: globalRoot } });
+  assert.match(result.stdout, /P9 finalize complete/);
+  for (const relative of [
+    '04-Projects/.gitignore',
+    '04-Projects/nested-hidden.md',
+    '04-Projects/global-hidden.md',
+  ]) {
+    assert.equal(git(vault, 'ls-tree', '--name-only', 'HEAD', '--', relative), relative);
+  }
+});
+
+test('P8 catches a vault commit truncated to the Git candidate set', () => {
+  const vault = makeFixture();
+  migrate(vault, '--auto', {
+    env: { DEX_MIGRATION_STOP_AFTER: 'P7' },
+    expectedStatus: 75,
+  });
+  const omitted = '04-Projects/ignored-by-v1.md';
+  git(vault, 'update-index', '--force-remove', '--', omitted);
+  git(vault, 'commit', '--quiet', '-m', 'simulate truncated candidate snapshot');
+
+  const statePath = path.join(vault, 'System', '.dex', 'migration-v2-state.json');
+  const state = JSON.parse(fs.readFileSync(statePath, 'utf8'));
+  state.p3.initialCommit = git(vault, 'rev-parse', 'HEAD');
+  fs.writeFileSync(statePath, `${JSON.stringify(state, null, 2)}\n`);
+
+  const planPath = path.join(vault, 'System', '.dex', 'migration-v2-p3-files.json');
+  const plan = JSON.parse(fs.readFileSync(planPath, 'utf8'));
+  plan.gitCandidates = plan.gitCandidates.filter((relative) => relative !== omitted);
+  fs.writeFileSync(planPath, `${JSON.stringify(plan, null, 2)}\n`);
+
+  const result = migrate(vault, '--resume', { expectedStatus: 1 });
+  assert.match(result.stdout + result.stderr, /P8 expected .* files .* but found/i);
+  assert.ok(fs.existsSync(path.join(vault, omitted)));
+});
+
+test('secret paths and scanner-positive JSON are held back from vault history and reported', () => {
+  const vault = makeFixture();
+  const secretFiles = new Map([
+    ['.npmrc', '//registry.npmjs.org/:_authToken=fixture-token'],
+    ['.aws/credentials', '[default]\naws_secret_access_key=fixture'],
+    ['04-Projects/oauth-client.json', '{"client_secret":"fixture-secret"}\n'],
+    ['04-Projects/account-token-cache.json', '{"value":"fixture"}\n'],
+    ['04-Projects/id_rsa', 'fixture private key bytes\n'],
+    ['04-Projects/certificate.PFX', 'fixture certificate bytes\n'],
+    ['04-Projects/session.json', '{"access_token":"scanner-positive-fixture-value"}\n'],
+  ]);
+  for (const [relative, content] of secretFiles) {
+    fs.mkdirSync(path.dirname(path.join(vault, relative)), { recursive: true });
+    fs.writeFileSync(path.join(vault, relative), content);
+  }
+
+  const result = migrate(vault, '--auto');
+  assert.match(result.stdout, /P9 finalize complete/);
+  const report = fs.readFileSync(path.join(vault, 'System', 'migration-report-v2.md'), 'utf8');
+  for (const relative of secretFiles.keys()) {
+    assert.ok(fs.existsSync(path.join(vault, relative)), relative);
+    assert.equal(git(vault, 'ls-tree', '--name-only', 'HEAD', '--', relative), '', relative);
+    assert.match(report, new RegExp(relative.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+  }
+  assert.match(report, /held back from the initial vault history/i);
 });
 
 test('ZIP installs and in-progress merges refuse without creating a half-topology', () => {

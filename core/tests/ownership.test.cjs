@@ -114,6 +114,12 @@ test('vault ignore layers protect secrets while keeping user custom skills visib
   const gitignore = ownership.vaultGitignoreContent();
   for (const required of [
     '.env*',
+    '.npmrc',
+    '.aws/credentials',
+    '**/oauth*.json',
+    '**/*token*.json',
+    '**/id_rsa',
+    '**/*.pfx',
     'System/credentials/',
     'node_modules/',
     '.venv/',
@@ -121,6 +127,17 @@ test('vault ignore layers protect secrets while keeping user custom skills visib
     '.obsidian/workspace*',
   ]) {
     assert.match(gitignore, new RegExp(required.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+  }
+
+  for (const secret of [
+    '.NPMRC',
+    '.AWS/CREDENTIALS',
+    'nested/OAuth-client.JSON',
+    'nested/access-TOKEN-cache.Json',
+    'keys/ID_RSA',
+    'keys/client.PfX',
+  ]) {
+    assert.equal(ownership.isSecretPath(secret), true, secret);
   }
 
   const excludeLines = ownership.vaultExcludeLines();
