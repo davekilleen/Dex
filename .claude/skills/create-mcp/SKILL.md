@@ -529,14 +529,23 @@ Ask exactly once:
 > permissions, and trusts whatever it imports. The entry's configured `env` is ignored.
 > (yes / no)
 
-On yes, run:
+Only after an explicit yes, issue a fresh token bound to this one entry and pass it to
+the check. The checker consumes and deletes the token before validating or launching
+anything, so it cannot be reused:
 
 ```bash
-./.venv/bin/python core/utils/smoke.py --check-mcp-once custom-[server-name]
+DEX_MCP_ONCE_TOKEN=$(./.venv/bin/python core/utils/smoke.py \
+  --issue-mcp-once-consent custom-[server-name]) || exit 1
+./.venv/bin/python core/utils/smoke.py \
+  --check-mcp-once custom-[server-name] \
+  --consent-token "$DEX_MCP_ONCE_TOKEN"
 ```
 
 Show the command result honestly. A refusal or failed handshake is not permission to try
-another command shape. On no, continue without running anything.
+another command shape or issue another token. On no or an ambiguous answer, do not issue
+a token and continue without running anything. The one-off check always uses a temporary
+vault for both `cwd` and `VAULT_PATH`; it never launches the custom code against the live
+vault as its working directory.
 
 ### Step 5.2: Offer recurring startup checks
 

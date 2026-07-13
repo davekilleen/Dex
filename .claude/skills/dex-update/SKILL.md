@@ -269,14 +269,59 @@ If cancelled:
 🔄 Applying updates...
 ```
 
-**A. Merge updates**
+**A. Capture the user-owned MCP trust registry before the merge**
+
+This is unconditional. `.gitignore` protects only untracked files, so preserve the
+pre-merge state with the shipped guard copied into system temp before upstream can
+change the working tree:
+
+```bash
+DEX_TRUST_GUARD_ROOT=$(mktemp -d "${TMPDIR:-/tmp}/dex-update-trust.XXXXXX") || exit 1
+cp -- .claude/skills/dex-update/scripts/protect_trust_registry.py \
+  "$DEX_TRUST_GUARD_ROOT/protect_trust_registry.py" || exit 1
+python3 "$DEX_TRUST_GUARD_ROOT/protect_trust_registry.py" capture \
+  --repo "$PWD" --state "$DEX_TRUST_GUARD_ROOT/state" || exit 1
+```
+
+**B. Merge updates**
 
 Run:
 ```bash
 git merge upstream/release --no-edit
 ```
 
-**B. Handle merge outcome**
+**C. Reject any tracked registry supplied by upstream**
+
+Run this immediately after the merge command whether the merge was clean or conflicted:
+
+```bash
+python3 "$DEX_TRUST_GUARD_ROOT/protect_trust_registry.py" restore \
+  --repo "$PWD" --state "$DEX_TRUST_GUARD_ROOT/state" || {
+    echo "Update stopped: Dex could not protect your MCP trust registry"
+    exit 1
+  }
+```
+
+If upstream introduced or modified a tracked `System/trusted-mcps.yaml`, the guard
+removes it from the Git index and warns. It restores the user's exact pre-merge file,
+or removes the path entirely if the user never had one. Upstream may **never** supply
+this registry or grant consent, even during a clean merge.
+
+If the merge was clean and the guard staged removal of an upstream registry, record
+that rejection before continuing:
+
+```bash
+if [ ! -f "$(git rev-parse --git-path MERGE_HEAD)" ] && \
+   ! git diff --cached --quiet -- System/trusted-mcps.yaml; then
+  git commit -m "Protect user-owned MCP trust registry" || exit 1
+fi
+```
+
+During a conflicted merge, leave the guard's staged removal in place and include it in
+the normal merge-resolution commit below. Never `git add` the restored, ignored user
+registry.
+
+**D. Handle merge outcome**
 
 **Case 1: Clean merge (no conflicts)**
 ```

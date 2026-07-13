@@ -50,15 +50,19 @@ with a temporary vault and home directory. Its release journeys are:
 - `skills` -> validate shipped and `-custom` skill frontmatter
 - `hooks` -> check presence, executable bits, and syntax without running hooks
 
-The runner has a 30-second global budget, does not contact the network, writes only to
-temporary copies, and executes no user-supplied command unless the user explicitly records
-the exact custom local Python name, vault-relative file, and SHA-256 in
-`System/trusted-mcps.yaml`. It redacts secret-like config values before child journeys and
-ignores each trusted entry's configured `env`. Dex-owned executable task and MCP code is
-loaded only from a read-only snapshot of the installed release. A trusted user script is
-opened component-by-component without following links, hashed and copied from that same
-open descriptor, and only the private copy is executed. If any identity check or release
-verification fails, the affected journey is `UNKNOWN` instead of falling back to live code.
+The runner has a 30-second global budget, writes only to temporary copies, and executes no
+user-supplied command unless the user explicitly records the exact custom local Python name,
+vault-relative file, and SHA-256 in `System/trusted-mcps.yaml`. Python-level network access
+is blocked; blessed/custom code you approve runs with your user permissions and could start
+a subprocess that bypasses that Python monkeypatch. The runner redacts secret-like config
+values before child journeys and ignores each trusted entry's configured `env`. Dex-owned
+executable task and MCP code is loaded only from a read-only snapshot of the installed
+release. A trusted user script is opened component-by-component without following links,
+hashed and copied from each chunk in one pass, and only the private copy is executed. At
+launch, that private file is opened without following links, re-hashed against its
+content-addressed filename, and executed from the verified bytes. If any identity check or
+release verification fails, the affected journey is `UNKNOWN` instead of falling back to
+live code.
 
 ### Nightly smoke ledger and attribution
 

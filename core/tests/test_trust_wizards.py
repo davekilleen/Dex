@@ -12,6 +12,10 @@ def test_create_mcp_offers_one_off_snapshot_check_and_default_no_blessing() -> N
 
     assert "Want me to prove it starts?" in text
     assert "--check-mcp-once" in text
+    assert "--issue-mcp-once-consent" in text
+    assert "--consent-token" in text
+    assert "do not issue" in text
+    assert "temporary vault" in " ".join(text.split())
     assert "runs it once" in text
     assert "with your user permissions" in text
     assert "trusts whatever it imports" in text
@@ -21,6 +25,19 @@ def test_create_mcp_offers_one_off_snapshot_check_and_default_no_blessing() -> N
     assert "vault-relative path" in text
     assert "sha256" in text
     assert "remote, HTTP, npm, npx, and binary entries cannot be blessed" in text
+
+
+def test_dex_update_unconditionally_rejects_an_upstream_trust_registry() -> None:
+    text = (ROOT / ".claude/skills/dex-update/SKILL.md").read_text(encoding="utf-8")
+
+    capture = text.index("protect_trust_registry.py\" capture")
+    merge = text.index("git merge upstream/release --no-edit")
+    restore = text.index("protect_trust_registry.py\" restore")
+
+    assert capture < merge < restore
+    assert "whether the merge was clean or conflicted" in text
+    assert "Upstream may **never** supply" in text
+    assert "removes it from the Git index and warns" in text
 
 
 def test_create_skill_runs_frontmatter_validator_before_confirmation() -> None:

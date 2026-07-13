@@ -8,7 +8,9 @@ import hashlib
 import json
 import os
 import re
+import secrets
 import stat
+import subprocess
 import sys
 import tempfile
 from collections.abc import Callable, Mapping
@@ -192,7 +194,7 @@ def _parse_registry(content: bytes) -> dict[str, TrustedMcpEntry]:
         parsed: Any = yaml.load(text, Loader=_UniqueKeyLoader)
     except TrustRegistryError:
         raise
-    except yaml.YAMLError as exc:
+    except Exception as exc:
         raise TrustRegistryError(f"registry YAML is invalid: {exc}") from exc
 
     if not isinstance(parsed, Mapping) or set(parsed) != {"trusted_mcps"}:
@@ -221,6 +223,84 @@ def _parse_registry(content: bytes) -> dict[str, TrustedMcpEntry]:
     return entries
 
 
+def _registry_is_git_tracked(vault_root: Path) -> bool:
+    executable = next(
+        (
+            candidate
+            for candidate in (Path("/usr/bin/git"), Path("/bin/git"))
+            if not candidate.is_symlink() and candidate.is_file() and os.access(candidate, os.X_OK)
+        ),
+        None,
+    )
+    if executable is None:
+        return False
+    environment = {
+        "GIT_CONFIG_GLOBAL": "/dev/null",
+        "GIT_CONFIG_NOSYSTEM": "1",
+        "GIT_OPTIONAL_LOCKS": "0",
+        "GIT_PAGER": "cat",
+        "GIT_TERMINAL_PROMPT": "0",
+        "HOME": "/var/empty" if Path("/var/empty").is_dir() else "/",
+        "LC_ALL": "C",
+        "PATH": "/usr/bin:/bin:/usr/sbin:/sbin",
+    }
+    base_command = [
+        str(executable),
+        "-c",
+        "core.fsmonitor=false",
+        "-c",
+        "core.hooksPath=/dev/null",
+        "-C",
+        str(vault_root),
+    ]
+    try:
+        top_level = subprocess.run(
+            [*base_command, "rev-parse", "--show-toplevel"],
+            capture_output=True,
+            env=environment,
+            text=True,
+            timeout=2,
+            check=False,
+        )
+        if top_level.returncode != 0:
+            return False
+        repository = Path(top_level.stdout.strip()).resolve()
+        relative = (vault_root / REGISTRY_RELATIVE).resolve().relative_to(repository).as_posix()
+        tracked = subprocess.run(
+            [*base_command, "ls-files", "--error-unmatch", "--", relative],
+            capture_output=True,
+            env=environment,
+            timeout=2,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError, ValueError):
+        return False
+    return tracked.returncode == 0
+
+
+def _require_private_directory(path: Path, *, label: str) -> None:
+    no_follow = getattr(os, "O_NOFOLLOW", None)
+    directory_flag = getattr(os, "O_DIRECTORY", None)
+    if no_follow is None or directory_flag is None:
+        raise TrustRegistryError("safe no-follow directory checks are unavailable")
+    descriptor: int | None = None
+    try:
+        descriptor = os.open(
+            path,
+            os.O_RDONLY | no_follow | directory_flag | getattr(os, "O_CLOEXEC", 0),
+        )
+        opened_stat = os.fstat(descriptor)
+    except OSError as exc:
+        raise TrustRegistryError(f"{label} could not be opened safely: {exc}") from exc
+    finally:
+        if descriptor is not None:
+            os.close(descriptor)
+    if opened_stat.st_uid != os.getuid():
+        raise TrustRegistryError(f"{label} is not owned by the current user")
+    if opened_stat.st_mode & (stat.S_IWGRP | stat.S_IWOTH):
+        raise TrustRegistryError(f"{label} is group- or other-writable")
+
+
 def load_trusted_mcp_registry(vault_root: Path) -> TrustedMcpRegistry:
     """Load the user-owned registry; any rejection makes all entries unavailable."""
     path = vault_root / REGISTRY_RELATIVE
@@ -228,11 +308,19 @@ def load_trusted_mcp_registry(vault_root: Path) -> TrustedMcpRegistry:
         return TrustedMcpRegistry(entries={}, present=False)
     descriptor: int | None = None
     try:
+        if _registry_is_git_tracked(vault_root):
+            raise TrustRegistryError(
+                "registry is git-tracked; upstream files cannot grant consent"
+            )
         descriptor, opened_stat = _open_component_file(
             vault_root,
             REGISTRY_RELATIVE,
             label=REGISTRY_RELATIVE.as_posix(),
         )
+        if opened_stat.st_uid != os.getuid():
+            raise TrustRegistryError("registry is not owned by the current user")
+        if opened_stat.st_mode & (stat.S_IWGRP | stat.S_IWOTH):
+            raise TrustRegistryError("registry is group- or other-writable")
         if opened_stat.st_size > MAX_REGISTRY_BYTES:
             raise TrustRegistryError("registry is larger than 64KB")
         entries = _parse_registry(_read_fd(descriptor, maximum=MAX_REGISTRY_BYTES))
@@ -341,6 +429,7 @@ def _snapshot_local_python_file(
     descriptor: int | None = None
     destination_fd: int | None = None
     destination: Path | None = None
+    temporary_destination: Path | None = None
     try:
         descriptor, _opened_stat = _open_component_file(
             vault_root,
@@ -349,15 +438,29 @@ def _snapshot_local_python_file(
         )
         if after_open is not None:
             after_open(descriptor)
+
+        snapshot_root.mkdir(parents=True, exist_ok=True, mode=0o700)
+        _require_private_directory(snapshot_root, label="snapshot directory")
+        safe_name = re.sub(r"[^A-Za-z0-9_.-]", "_", name)
+        temporary_destination = snapshot_root / f".{safe_name}-{secrets.token_hex(16)}.tmp"
+        destination = temporary_destination
+        flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_CLOEXEC", 0)
+        flags |= getattr(os, "O_NOFOLLOW", 0)
+        destination_fd = os.open(temporary_destination, flags, 0o400)
+
         digest = hashlib.sha256()
-        os.lseek(descriptor, 0, os.SEEK_SET)
         while True:
             chunk = os.read(descriptor, 1024 * 1024)
             if not chunk:
                 break
             digest.update(chunk)
+            view = memoryview(chunk)
+            while view:
+                written = os.write(destination_fd, view)
+                view = view[written:]
         actual_hash = digest.hexdigest()
         if expected_hash is not None and actual_hash != expected_hash:
+            temporary_destination.unlink(missing_ok=True)
             return TrustedMcpSnapshot(
                 False,
                 "changed since you blessed it (content differs) — re-bless via /create-mcp "
@@ -365,30 +468,25 @@ def _snapshot_local_python_file(
                 sha256=actual_hash,
             )
 
-        snapshot_root.mkdir(parents=True, exist_ok=True, mode=0o700)
-        safe_name = re.sub(r"[^A-Za-z0-9_.-]", "_", name)
-        destination = snapshot_root / f"{safe_name}-{actual_hash}.py"
-        flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_CLOEXEC", 0)
-        flags |= getattr(os, "O_NOFOLLOW", 0)
-        destination_fd = os.open(destination, flags, 0o400)
-        os.lseek(descriptor, 0, os.SEEK_SET)
-        while True:
-            chunk = os.read(descriptor, 1024 * 1024)
-            if not chunk:
-                break
-            view = memoryview(chunk)
-            while view:
-                written = os.write(destination_fd, view)
-                view = view[written:]
         os.fsync(destination_fd)
         os.fchmod(destination_fd, 0o400)
+        os.close(destination_fd)
+        destination_fd = None
+        destination = snapshot_root / f"{safe_name}-{actual_hash}.py"
+        os.link(temporary_destination, destination, follow_symlinks=False)
+        temporary_destination.unlink()
+        temporary_destination = None
     except TrustRegistryError as exc:
         if destination is not None:
             destination.unlink(missing_ok=True)
+        if temporary_destination is not None:
+            temporary_destination.unlink(missing_ok=True)
         return TrustedMcpSnapshot(False, str(exc))
     except OSError as exc:
         if destination is not None:
             destination.unlink(missing_ok=True)
+        if temporary_destination is not None:
+            temporary_destination.unlink(missing_ok=True)
         return TrustedMcpSnapshot(False, f"trusted script snapshot failed: {exc}")
     finally:
         if destination_fd is not None:
