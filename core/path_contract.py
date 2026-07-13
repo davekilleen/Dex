@@ -24,8 +24,7 @@ def build_relative_paths_contract() -> dict[str, object]:
     root = paths.VAULT_ROOT
 
     rel_map: dict[str, str] = {}
-    for key in sorted(constants):
-        value = constants[key]
+    for key, value in constants.items():
         if key == "VAULT_ROOT":
             rel_map[key] = "."
             continue

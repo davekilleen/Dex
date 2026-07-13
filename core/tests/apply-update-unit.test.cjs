@@ -7,7 +7,8 @@ const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
 
-const UPDATER_PATH = path.resolve(__dirname, '..', 'update', 'apply-update.cjs');
+const REPO_ROOT = path.resolve(__dirname, '..', '..');
+const UPDATER_PATH = path.join(REPO_ROOT, 'core', 'update', 'apply-update.cjs');
 
 test('official release URLs accept only the Dex repository identity', () => {
   const updater = require(UPDATER_PATH);
@@ -151,7 +152,7 @@ test('Windows mode normalization is not mistaken for corrupt replacement bytes',
   assert.equal(updater.modesCompatible(0o644, 0o666, 'darwin'), false);
 });
 
-test('trusted path generation does not load or execute release Python', () => {
+test('trusted path generation derives Python-compatible bytes from the staged contract', () => {
   const updater = require(UPDATER_PATH);
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'dex-update-paths-'));
   fs.mkdirSync(path.join(root, 'core'), { recursive: true });
@@ -159,12 +160,44 @@ test('trusted path generation does not load or execute release Python', () => {
     path.join(root, 'core', 'paths.py'),
     "raise RuntimeError('target release code executed')\n",
   );
+  const contract = JSON.parse(fs.readFileSync(
+    path.join(REPO_ROOT, 'packages', 'dex-contracts', 'dist', 'paths.contract.json'),
+    'utf8',
+  ));
+  contract.vault_relative_paths.GOALS_FILE = 'Contract-Goals.md';
+  const stagedContract = path.join(
+    root,
+    '.dex',
+    'staging',
+    'packages',
+    'dex-contracts',
+    'dist',
+    'paths.contract.json',
+  );
+  fs.mkdirSync(path.dirname(stagedContract), { recursive: true });
+  fs.writeFileSync(stagedContract, `${JSON.stringify(contract, null, 2)}\n`);
 
-  const generated = JSON.parse(updater.generatePathsJson(root).toString('utf8'));
+  const generatedBytes = updater.generatePathsJson(root).toString('utf8');
+  const generated = JSON.parse(generatedBytes);
+  const python = fs.existsSync(path.join(REPO_ROOT, '.venv', 'bin', 'python'))
+    ? path.join(REPO_ROOT, '.venv', 'bin', 'python')
+    : 'python3';
+  const pythonExport = require('node:child_process').spawnSync(
+    python,
+    ['-c', 'import json; from core.paths import export_json; print(json.dumps(export_json(), indent=2))'],
+    {
+      cwd: REPO_ROOT,
+      encoding: 'utf8',
+      env: { ...process.env, VAULT_PATH: root },
+    },
+  );
+  assert.equal(pythonExport.status, 0, pythonExport.stderr);
+  const expected = JSON.parse(pythonExport.stdout);
+  expected.GOALS_FILE = path.join(root, contract.vault_relative_paths.GOALS_FILE);
 
   assert.equal(generated.VAULT_ROOT, root);
-  assert.equal(generated.PROJECTS_DIR, path.join(root, '04-Projects'));
-  assert.equal(generated.RITUAL_INTELLIGENCE_DB_FILE, path.join(root, 'System', '.dex', 'ritual-intelligence.db'));
+  assert.equal(generated.GOALS_FILE, path.join(root, 'Contract-Goals.md'));
+  assert.equal(generatedBytes, `${JSON.stringify(expected, null, 2)}\n`);
 });
 
 test('direct Git metadata writes use the same locked-file fallback', () => {

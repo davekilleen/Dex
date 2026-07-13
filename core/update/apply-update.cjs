@@ -18,65 +18,11 @@ const TOPOLOGY_RELATIVE = 'System/.dex/topology.json';
 const REPORT_RELATIVE = 'System/.dex/update-report.md';
 const STAGING_RELATIVE = '.dex/staging';
 const MANIFEST_RELATIVE = 'System/.installed-files.manifest';
+const PATH_CONTRACT_RELATIVE = 'packages/dex-contracts/dist/paths.contract.json';
 const RESUME_EXIT = 75;
 const OID_PATTERN = /^[a-f0-9]{40}(?:[a-f0-9]{24})?$/i;
 const MANIFEST_HASH_PATTERN = /^[a-f0-9]{64}$/i;
 const RELEASE_TAG_PATTERN = /^dist-v\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/;
-const PATH_EXPORTS = {
-  VAULT_ROOT: '',
-  INBOX_DIR: '00-Inbox',
-  QUARTER_GOALS_DIR: '01-Quarter_Goals',
-  WEEK_PRIORITIES_DIR: '02-Week_Priorities',
-  TASKS_DIR: '03-Tasks',
-  PROJECTS_DIR: '04-Projects',
-  AREAS_DIR: '05-Areas',
-  RESOURCES_DIR: '06-Resources',
-  ARCHIVES_DIR: '07-Archives',
-  MEETINGS_DIR: '00-Inbox/Meetings',
-  IDEAS_DIR: '00-Inbox/Ideas',
-  DAILY_PLANS_DIR: '00-Inbox/Daily_Plans',
-  TRACKED_MEETINGS_DIR: '05-Areas/Meetings',
-  MEETING_DAILY_LOGS_DIR: '05-Areas/Meetings/Daily_Log',
-  LEGACY_MEETINGS_DIR: '00-Inbox/Meetings',
-  TASKS_FILE: '03-Tasks/Tasks.md',
-  QUARTER_GOALS_FILE: '01-Quarter_Goals/Quarter_Goals.md',
-  WEEK_PRIORITIES_FILE: '02-Week_Priorities/Week_Priorities.md',
-  GOALS_FILE: 'GOALS.md',
-  PEOPLE_DIR: '05-Areas/People',
-  COMPANIES_DIR: '05-Areas/Companies',
-  CAREER_DIR: '05-Areas/Career',
-  EVIDENCE_DIR: '05-Areas/Career/Evidence',
-  RESUME_DIR: '05-Areas/Career/Resume',
-  SESSIONS_DIR: '05-Areas/Career/Resume/Sessions',
-  INTEL_DIR: '06-Resources/Intel',
-  MEETING_INTEL_DIR: '06-Resources/Intel/Meeting_Intel',
-  LEARNINGS_DIR: '06-Resources/Learnings',
-  DEXDIFF_DIR: '04-Projects/DexDiff',
-  DEXDIFF_BETA_DIR: '04-Projects/DexDiff/beta',
-  DEXDIFF_DIFFS_DIR: '04-Projects/DexDiff/beta/diffs',
-  DEXDIFF_PROFILE_DRAFTS_DIR: '04-Projects/DexDiff/beta/profile',
-  DEXDIFF_DESIGN_DIR: '04-Projects/DexDiff/design',
-  SYSTEM_DIR: 'System',
-  DEX_RUNTIME_DIR: 'System/.dex',
-  PILLARS_FILE: 'System/pillars.yaml',
-  USER_PROFILE_FILE: 'System/user-profile.yaml',
-  SKILL_RATINGS_FILE: 'System/Skill_Ratings/ratings.jsonl',
-  PEOPLE_INDEX_FILE: 'System/People_Index.json',
-  COMPANY_INDEX_FILE: 'System/Company_Index.json',
-  MEETING_CACHE_FILE: 'System/Memory/meeting-cache.json',
-  SESSION_FILE: 'System/.onboarding-session.json',
-  MARKER_FILE: 'System/.onboarding-complete',
-  USER_PROFILE_TEMPLATE: 'System/user-profile-template.yaml',
-  CLAUDE_MD: 'CLAUDE.md',
-  MCP_CONFIG_EXAMPLE: 'System/.mcp.json.example',
-  MCP_CONFIG_TARGET: '.mcp.json',
-  OBSIDIAN_SYNC_LOG: 'System/obsidian-sync.log',
-  RITUAL_INTELLIGENCE_DB_FILE: 'System/.dex/ritual-intelligence.db',
-  CONTACTS_STATE_FILE: 'System/.dex/contacts.json',
-  GARDENER_STATE_FILE: 'System/.dex/gardener.json',
-  ENTITY_SUGGESTIONS_FILE: 'System/.dex/entity-suggestions.json',
-  ENTITY_VERIFICATION_FILE: 'System/.dex/entity-verification.json',
-};
 
 function exists(candidate) {
   try {
@@ -1125,9 +1071,17 @@ function regeneratePaths(root, state) {
 
 function generatePathsJson(root) {
   const absoluteRoot = path.resolve(root);
-  const generated = Object.fromEntries(Object.entries(PATH_EXPORTS).map(([name, relative]) => [
+  const stagedContract = path.join(root, STAGING_RELATIVE, ...PATH_CONTRACT_RELATIVE.split('/'));
+  const worktreeContract = path.resolve(__dirname, '..', '..', ...PATH_CONTRACT_RELATIVE.split('/'));
+  const contractPath = exists(stagedContract) ? stagedContract : worktreeContract;
+  const contract = JSON.parse(fs.readFileSync(contractPath, 'utf8'));
+  const relativePaths = contract.vault_relative_paths;
+  if (!relativePaths || typeof relativePaths !== 'object' || Array.isArray(relativePaths)) {
+    throw new Error(`Dex path contract ${contractPath} does not contain vault_relative_paths.`);
+  }
+  const generated = Object.fromEntries(Object.entries(relativePaths).map(([name, relative]) => [
     name,
-    relative ? path.join(absoluteRoot, ...relative.split('/')) : absoluteRoot,
+    path.join(absoluteRoot, ...String(relative).split('/')),
   ]));
   return Buffer.from(`${JSON.stringify(generated, null, 2)}\n`);
 }
