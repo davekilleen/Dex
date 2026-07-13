@@ -478,9 +478,19 @@ function snapshotFiles(root, migrationId = null) {
   const backupRoot = path.join(root, SNAPSHOT_RELATIVE);
   const manifestPath = path.join(backupRoot, 'snapshot.json');
   const planPath = path.join(backupRoot, '.snapshot-plan.json');
+  let adoptedReport = null;
   if (exists(manifestPath)) {
     const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
     if (!migrationId || manifest.migrationId === migrationId) return manifest;
+    if (manifest.migrationId === 'dry-run' && migrationId !== 'dry-run') {
+      const entry = manifest.entries.find((candidate) => candidate.path === REPORT_RELATIVE);
+      if (entry) {
+        adoptedReport = { entry: { ...entry }, bytes: null };
+        if (entry.existed) {
+          adoptedReport.bytes = fs.readFileSync(path.join(backupRoot, 'files', REPORT_RELATIVE));
+        }
+      }
+    }
     removePath(backupRoot);
   }
 
@@ -495,6 +505,10 @@ function snapshotFiles(root, migrationId = null) {
   if (!plan) {
     const entries = [];
     for (const relative of SNAPSHOT_PATHS) {
+      if (relative === REPORT_RELATIVE && adoptedReport) {
+        entries.push(adoptedReport.entry);
+        continue;
+      }
       const source = path.join(root, relative);
       const entry = { path: relative, existed: exists(source) };
       if (entry.existed) {
@@ -514,6 +528,12 @@ function snapshotFiles(root, migrationId = null) {
       entries,
     };
     writeFileFsynced(planPath, `${JSON.stringify(plan, null, 2)}\n`);
+  }
+
+  if (adoptedReport?.entry.existed) {
+    const destination = path.join(backupRoot, 'files', REPORT_RELATIVE);
+    writeFileFsynced(destination, adoptedReport.bytes, adoptedReport.entry.mode);
+    fs.chmodSync(destination, adoptedReport.entry.mode);
   }
 
   for (const entry of plan.entries) {

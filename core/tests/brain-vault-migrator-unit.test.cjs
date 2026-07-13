@@ -241,6 +241,22 @@ test('the pre-split snapshot restores a pre-existing migration report', () => {
   assert.equal(fs.readFileSync(report, 'utf8'), 'my pre-existing report\n');
 });
 
+test('an auto snapshot adopts the original report saved by an earlier dry-run', () => {
+  const migrator = require(MIGRATOR_PATH);
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'dex-migration-report-preview-'));
+  const report = path.join(root, 'System', 'migration-report-v2.md');
+  fs.mkdirSync(path.dirname(report), { recursive: true });
+  fs.writeFileSync(report, 'original user report\n');
+
+  migrator.snapshotFiles(root, 'dry-run');
+  fs.writeFileSync(report, 'generated preview report\n');
+  migrator.snapshotFiles(root, 'real-migration');
+  fs.writeFileSync(report, 'generated final report\n');
+  migrator.restoreSnapshot(root);
+
+  assert.equal(fs.readFileSync(report, 'utf8'), 'original user report\n');
+});
+
 test('release discovery trusts official URLs and refuses contaminated local fallbacks', () => {
   const migrator = require(MIGRATOR_PATH);
 
