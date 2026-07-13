@@ -88,8 +88,22 @@ const PROFILE_FILE = path.join(VAULT_ROOT, 'System', 'user-profile.yaml');
 
 // Minimum content length to consider a meeting worth processing
 const MIN_NOTES_LENGTH = 50;
-// How many days back to look for new meetings
-const LOOKBACK_DAYS = 7;
+// Bound sync recovery so ordinary runs retain today's seven-day window while
+// delayed runs overlap the previous successful sync by one day.
+const DEFAULT_LOOKBACK_DAYS = 7;
+const MAX_LOOKBACK_DAYS = 30;
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+function deriveLookbackDays(state, now = new Date()) {
+  if (!state?.lastSync) return DEFAULT_LOOKBACK_DAYS;
+  const lastSync = new Date(state.lastSync);
+  const current = now instanceof Date ? now : new Date(now);
+  if (Number.isNaN(lastSync.getTime()) || Number.isNaN(current.getTime())) {
+    return DEFAULT_LOOKBACK_DAYS;
+  }
+  const elapsedDays = Math.max(0, Math.ceil((current.getTime() - lastSync.getTime()) / DAY_MS));
+  return Math.min(MAX_LOOKBACK_DAYS, Math.max(DEFAULT_LOOKBACK_DAYS, elapsedDays + 1));
+}
 
 // ============================================================================
 // LOGGING
@@ -295,9 +309,9 @@ function flattenTranscript(transcript) {
  * or null if the API rejected auth / was unreachable so the caller can exit
  * cleanly. List items contain NO summary/attendees/transcript.
  */
-async function listGranolaNotes(apiKey) {
+async function listGranolaNotes(apiKey, lookbackDays = DEFAULT_LOOKBACK_DAYS) {
   const cutoffDate = new Date();
-  cutoffDate.setDate(cutoffDate.getDate() - LOOKBACK_DAYS);
+  cutoffDate.setDate(cutoffDate.getDate() - lookbackDays);
   const createdAfter = cutoffDate.toISOString();
 
   const notes = [];
@@ -407,13 +421,14 @@ async function fetchMeetingDetail(apiKey, noteId, profile = {}) {
  * was unavailable / auth was rejected so the caller can exit cleanly.
  */
 async function getNewMeetingsFromApi(apiKey, state, forceToday = false, profile = {}) {
-  const listed = await listGranolaNotes(apiKey);
+  const lookbackDays = deriveLookbackDays(state);
+  const listed = await listGranolaNotes(apiKey, lookbackDays);
   if (listed === null) return null; // auth/network failure already logged
 
-  log(`  API returned ${listed.length} notes within the last ${LOOKBACK_DAYS} days`);
+  log(`  API returned ${listed.length} notes within the last ${lookbackDays} days`);
 
   const cutoffDate = new Date();
-  cutoffDate.setDate(cutoffDate.getDate() - LOOKBACK_DAYS);
+  cutoffDate.setDate(cutoffDate.getDate() - lookbackDays);
   const today = new Date().toISOString().split('T')[0];
 
   // Decide which listed notes are new and in-window before paying for detail fetches.
@@ -1174,6 +1189,7 @@ if (require.main === module) {
 
 module.exports = {
   main,
+  deriveLookbackDays,
   getGranolaApiKey,
   getNewMeetingsFromApi,
   fetchMeetingDetail,

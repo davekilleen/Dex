@@ -84,3 +84,15 @@ jobs:
         run: bash scripts/build-release.sh
       - name: Push release branch
         run: git push origin release --force
+      - name: Build self-contained vault bundle
+        run: bash scripts/build-vault-bundle.sh
+      - name: Upload vault bundle to versioned GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION="$(node -p "require('./package.json').version")"
+          gh release create "v$VERSION" --notes-from-tag || true
+          gh release upload "v$VERSION" \
+            "dist/dex-vault-bundle-v$VERSION.tar.gz" \
+            "dist/dex-vault-bundle-v$VERSION.tar.gz.sha256" \
+            --clobber

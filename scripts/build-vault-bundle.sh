@@ -1,0 +1,89 @@
+#!/bin/bash
+# Build the self-contained release-shaped vault tree consumed by Dex Desktop.
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+OUTPUT_DIR="${1:-$REPO_ROOT/dist}"
+DISTIGNORE="$REPO_ROOT/.distignore"
+
+if [ ! -f "$DISTIGNORE" ]; then
+  echo "Error: .distignore not found at $DISTIGNORE" >&2
+  exit 1
+fi
+
+VERSION="$(node -p "require('$REPO_ROOT/package.json').version")"
+mkdir -p "$OUTPUT_DIR"
+OUTPUT_DIR="$(cd "$OUTPUT_DIR" && pwd)"
+TARBALL="$OUTPUT_DIR/dex-vault-bundle-v$VERSION.tar.gz"
+CHECKSUM="$TARBALL.sha256"
+STAGING_DIR="$(mktemp -d "${TMPDIR:-/tmp}/dex-vault-bundle.XXXXXX")"
+ALL_FILES="$(mktemp "${TMPDIR:-/tmp}/dex-vault-all.XXXXXX")"
+EXCLUDED_FILES="$(mktemp "${TMPDIR:-/tmp}/dex-vault-excluded.XXXXXX")"
+INCLUDED_FILES="$(mktemp "${TMPDIR:-/tmp}/dex-vault-included.XXXXXX")"
+trap 'rm -rf "$STAGING_DIR" "$ALL_FILES" "$EXCLUDED_FILES" "$INCLUDED_FILES"' EXIT
+
+cd "$REPO_ROOT"
+
+# Match build-release.sh's .distignore removals without copying ignored local
+# files such as .env. Include untracked, non-ignored files so the script is
+# testable before a lane is committed.
+git ls-files --cached --others --exclude-standard | while IFS= read -r file; do
+  [ -e "$file" ] && printf '%s\n' "$file"
+done | LC_ALL=C sort -u > "$ALL_FILES"
+
+: > "$EXCLUDED_FILES"
+while IFS= read -r line; do
+  line="${line%%#*}"
+  line="${line%"${line##*[! ]}"}"
+  line="${line#"${line%%[! ]*}"}"
+  [ -z "$line" ] && continue
+  git ls-files --cached --others --exclude-standard -- "$line" >> "$EXCLUDED_FILES"
+done < "$DISTIGNORE"
+LC_ALL=C sort -u -o "$EXCLUDED_FILES" "$EXCLUDED_FILES"
+comm -23 "$ALL_FILES" "$EXCLUDED_FILES" > "$INCLUDED_FILES"
+
+rsync -a --files-from="$INCLUDED_FILES" ./ "$STAGING_DIR/"
+
+# Keep package metadata identical to the release branch transformation.
+node - "$STAGING_DIR/package.json" <<'NODE'
+const fs = require('node:fs');
+const packagePath = process.argv[2];
+const pkg = JSON.parse(fs.readFileSync(packagePath, 'utf8'));
+delete pkg.devDependencies;
+if (pkg.scripts) delete pkg.scripts['test:hooks'];
+if (pkg.scripts) delete pkg.scripts['test:scripts'];
+fs.writeFileSync(packagePath, `${JSON.stringify(pkg, null, 2)}\n`);
+NODE
+
+# The release manifest describes caller-owned shipped content. Production
+# node_modules is deliberately an artifact addition, not update-managed vault
+# content, so it is excluded from the manifest just as on the release branch.
+mkdir -p "$STAGING_DIR/System"
+(
+  cd "$STAGING_DIR"
+  find . -type f -o -type l
+) | sed 's|^\./||' | grep -v '^System/\.installed-files\.manifest$' | LC_ALL=C sort \
+  > "$STAGING_DIR/System/.installed-files.manifest"
+printf '%s\n' 'System/.installed-files.manifest' >> "$STAGING_DIR/System/.installed-files.manifest"
+LC_ALL=C sort -u -o "$STAGING_DIR/System/.installed-files.manifest" \
+  "$STAGING_DIR/System/.installed-files.manifest"
+
+(
+  cd "$STAGING_DIR"
+  npm ci --omit=dev --ignore-scripts
+)
+
+rm -f "$TARBALL" "$CHECKSUM"
+(
+  cd "$STAGING_DIR"
+  tar -czf "$TARBALL" .
+)
+(
+  cd "$OUTPUT_DIR"
+  shasum -a 256 "$(basename "$TARBALL")" > "$(basename "$CHECKSUM")"
+)
+
+echo "Built $TARBALL"
+echo "Checksum $CHECKSUM"
