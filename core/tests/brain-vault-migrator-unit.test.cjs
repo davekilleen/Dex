@@ -287,3 +287,26 @@ test('release discovery trusts official URLs and refuses contaminated local fall
     commit: safeRelease,
   });
 });
+
+test('restore refuses an unmarked archive without replacing a healthy current repository', () => {
+  const migrator = require(MIGRATOR_PATH);
+  const root = makeGitFixture();
+  const currentHead = git(root, 'rev-parse', 'HEAD');
+  const archive = path.join(root, '.dex', 'pre-split-archive.git');
+  fs.mkdirSync(path.dirname(archive), { recursive: true });
+  git(root, 'clone', '--quiet', '--bare', root, archive);
+  migrator.writeJournal(root, {
+    schemaVersion: 1,
+    startedAt: 'migration-under-test',
+    nextPhase: 5,
+    preflight: { head: currentHead, releaseCommit: currentHead },
+  });
+
+  assert.throws(
+    () => migrator.restoreMigration(root),
+    /archive.*migration marker.*refus/i,
+  );
+  assert.equal(git(root, 'rev-parse', 'HEAD'), currentHead);
+  assert.ok(fs.existsSync(path.join(root, '.git')));
+  assert.ok(fs.existsSync(archive));
+});

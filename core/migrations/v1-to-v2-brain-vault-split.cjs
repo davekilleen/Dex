@@ -19,6 +19,7 @@ const REPORT_RELATIVE = path.join('System', 'migration-report-v2.md');
 const SNAPSHOT_RELATIVE = path.join('System', 'backups', 'pre-split');
 const VAULT_MARKER = 'dex-vault-v2';
 const BRAIN_MARKER = 'dex-brain-v2';
+const ARCHIVE_MARKER = 'dex-pre-split-v2-archive.json';
 const OFFICIAL_REMOTE = 'https://github.com/davekilleen/Dex.git';
 const RESUME_EXIT = 75;
 const P3_BATCH_SIZE = 64;
@@ -816,6 +817,12 @@ function phase5Swap(root, state) {
     return;
   }
   if (!exists(archive)) {
+    writeGitdirMarker(rootGit, ARCHIVE_MARKER, {
+      schemaVersion: 1,
+      migrationId: state.startedAt,
+      preSplitHead: state.preflight.head,
+      releaseCommit: state.preflight.releaseCommit,
+    });
     moveWithFallback(rootGit, archive);
     state.swapStage = 'archive-moved';
     writeJournal(root, state);
@@ -969,6 +976,7 @@ function phase9Finalize(root, state) {
   if (staged.status !== 0) {
     gitDir(root, vaultGit, ['commit', '--quiet', '-m', 'Dex vault migration settings']);
   }
+  state.p9 = { finalCommit: gitOutput(root, vaultGit, ['rev-parse', 'HEAD']) };
   writeReport(root, {
     complete: true,
     modifiedBrainPaths: state.analysis?.modifiedBrainPaths || [],
@@ -980,7 +988,75 @@ function phase9Finalize(root, state) {
   console.log('P9 finalize complete: your vault and brain now have separate histories.');
 }
 
-function restoreGitTopology(root) {
+function archiveValidationError(detail) {
+  return new Error(`The pre-split archive ${detail}, so Dex refused to replace the current Git history. Restore the matching migration archive or contact Dex support; no Git folder was deleted.`);
+}
+
+function validatePreSplitArchive(root, state) {
+  const archive = path.join(root, '.dex', 'pre-split-archive.git');
+  const markerPath = path.join(archive, ARCHIVE_MARKER);
+  if (!exists(markerPath)) {
+    throw archiveValidationError('has no migration marker tied to this migration');
+  }
+  let marker;
+  try {
+    marker = JSON.parse(fs.readFileSync(markerPath, 'utf8'));
+  } catch {
+    throw archiveValidationError('has an unreadable migration marker');
+  }
+  if (
+    !state?.startedAt
+    || marker.migrationId !== state.startedAt
+    || marker.preSplitHead !== state.preflight?.head
+    || marker.releaseCommit !== state.preflight?.releaseCommit
+  ) {
+    throw archiveValidationError('has a migration marker that does not match this migration and its recorded commits');
+  }
+  const fsck = gitDir(root, archive, ['fsck', '--no-progress'], { allowFailure: true });
+  if (fsck.status !== 0) throw archiveValidationError('did not pass git fsck');
+  for (const [label, commit] of [
+    ['pre-split HEAD', marker.preSplitHead],
+    ['recorded release', marker.releaseCommit],
+  ]) {
+    const resolved = gitDir(root, archive, ['rev-parse', '--verify', `${commit}^{commit}`], {
+      allowFailure: true,
+    });
+    if (resolved.status !== 0) throw archiveValidationError(`cannot resolve the ${label} commit`);
+  }
+  return marker;
+}
+
+function uniqueDexPath(root, basename) {
+  const dexRoot = path.join(root, '.dex');
+  fs.mkdirSync(dexRoot, { recursive: true });
+  let candidate = path.join(dexRoot, basename);
+  let suffix = 1;
+  while (exists(candidate)) {
+    candidate = path.join(dexRoot, `${basename.replace(/\.git$/, '')}-${suffix}.git`);
+    suffix += 1;
+  }
+  return candidate;
+}
+
+function renameAtomically(source, destination) {
+  fs.renameSync(source, destination);
+  fsyncDirectory(path.dirname(source));
+  if (path.dirname(destination) !== path.dirname(source)) fsyncDirectory(path.dirname(destination));
+}
+
+function verifyRestoredGitdir(root, state) {
+  const rootGit = path.join(root, '.git');
+  const fsck = gitDir(root, rootGit, ['fsck', '--no-progress'], { allowFailure: true });
+  if (fsck.status !== 0) throw new Error('The restored Git history did not pass git fsck.');
+  for (const commit of [state.preflight.head, state.preflight.releaseCommit]) {
+    const resolved = gitDir(root, rootGit, ['rev-parse', '--verify', `${commit}^{commit}`], {
+      allowFailure: true,
+    });
+    if (resolved.status !== 0) throw new Error(`The restored Git history could not resolve recorded commit ${commit}.`);
+  }
+}
+
+function restoreGitTopology(root, state, preservation = null) {
   const rootGit = path.join(root, '.git');
   const archive = path.join(root, '.dex', 'pre-split-archive.git');
   if (!exists(archive)) {
@@ -989,8 +1065,29 @@ function restoreGitTopology(root) {
     }
     return;
   }
-  if (exists(rootGit)) removePath(rootGit);
-  moveWithFallback(archive, rootGit);
+  validatePreSplitArchive(root, state);
+
+  let quarantined = null;
+  if (exists(rootGit)) {
+    const basename = preservation?.preserveGitdir
+      ? 'post-split-archive.git'
+      : `superseded-${Date.now()}.git`;
+    quarantined = uniqueDexPath(root, basename);
+    renameAtomically(rootGit, quarantined);
+  }
+  try {
+    renameAtomically(archive, rootGit);
+    verifyRestoredGitdir(root, state);
+  } catch (error) {
+    if (exists(rootGit)) {
+      const failed = uniqueDexPath(root, `failed-restore-${Date.now()}.git`);
+      renameAtomically(rootGit, failed);
+    }
+    if (quarantined && exists(quarantined)) renameAtomically(quarantined, rootGit);
+    throw new Error(`Dex could not verify the restored Git history, so it put the previous Git folder back. ${error.message}`);
+  }
+  if (quarantined && !preservation?.preserveGitdir) removePath(quarantined);
+  return { archivedGitdir: preservation?.preserveGitdir ? quarantined : null };
 }
 
 function reconcileTopology(root, state) {
@@ -1000,12 +1097,22 @@ function reconcileTopology(root, state) {
     const rootGit = path.join(root, '.git');
     const staging = path.join(root, '.dex', 'vault-staging.git');
     const archive = path.join(root, '.dex', 'pre-split-archive.git');
+    let superseded = null;
     if (exists(rootGit) && !markerExists(rootGit, VAULT_MARKER)) {
       if (!exists(archive)) throw new Error('Reconciler cannot verify the old Git archive. Run --restore.');
-      removePath(rootGit);
+      superseded = uniqueDexPath(root, `superseded-reconcile-${Date.now()}.git`);
+      renameAtomically(rootGit, superseded);
     }
     if (!exists(rootGit)) moveWithFallback(staging, rootGit);
     else if (exists(staging) && markerExists(rootGit, VAULT_MARKER)) removePath(staging);
+    if (!markerExists(rootGit, VAULT_MARKER)) {
+      if (exists(rootGit)) {
+        renameAtomically(rootGit, uniqueDexPath(root, `failed-reconcile-${Date.now()}.git`));
+      }
+      if (superseded && exists(superseded)) renameAtomically(superseded, rootGit);
+      throw new Error('Reconciler could not verify the prepared vault Git folder. The previous Git folder was preserved.');
+    }
+    if (superseded) removePath(superseded);
     writeTopologySentinel(root, state.preflight?.releaseCommit || null);
     state.nextPhase = Math.max(state.nextPhase || 0, 6);
     state.swapStage = 'vault-active';
@@ -1014,7 +1121,7 @@ function reconcileTopology(root, state) {
     return;
   }
   if (decision === 'restore-archive') {
-    restoreGitTopology(root);
+    restoreGitTopology(root, state);
     state.nextPhase = Math.min(state.nextPhase || 0, 3);
     state.swapStage = 'restored-before-swap';
     writeJournal(root, state);
@@ -1052,15 +1159,98 @@ function removeMigrationRuntime(root) {
   if (exists(stateDirectory) && fs.readdirSync(stateDirectory).length === 0) fs.rmdirSync(stateDirectory);
 }
 
+function changedVaultPaths(root, gitDirectory) {
+  const paths = new Set();
+  for (const args of [
+    ['diff', '--name-only', '-z', 'HEAD'],
+    ['diff', '--cached', '--name-only', '-z', 'HEAD'],
+    ['-c', 'core.excludesFile=/dev/null', 'ls-files', '--others', '--exclude-standard', '-z'],
+  ]) {
+    const result = gitDir(root, gitDirectory, args, { encoding: null, allowFailure: true });
+    if (result.status !== 0) continue;
+    for (const relative of result.stdout.toString('utf8').split('\0').filter(Boolean)) paths.add(relative);
+  }
+  return [...paths].filter((relative) => ['vault', 'seed'].includes(ownership.classify(relative)));
+}
+
+function preflightRestorePreservation(root, state) {
+  const vaultGit = path.join(root, '.git');
+  if (!markerExists(vaultGit, VAULT_MARKER)) return { preserveGitdir: false, dirty: false, diverged: false };
+  const head = gitOutput(root, vaultGit, ['rev-parse', 'HEAD']);
+  const migrationCommit = state.p9?.finalCommit || state.p3?.initialCommit;
+  const status = gitDir(root, vaultGit, ['status', '--porcelain=v1', '-z', '--untracked-files=all'], {
+    encoding: null,
+  }).stdout;
+  const dirty = status.length > 0;
+  const diverged = !migrationCommit || head !== migrationCommit;
+  if (!dirty && !diverged) return { preserveGitdir: false, dirty, diverged };
+
+  const backupRelative = path.join('System', 'backups', `pre-restore-${Date.now()}`);
+  const backupRoot = path.join(root, backupRelative);
+  const scannerPositive = new Set(scanForSecrets(root).map((finding) => finding.path));
+  const changed = new Set(changedVaultPaths(root, vaultGit));
+  const customPath = path.join(root, 'CLAUDE-custom.md');
+  if (
+    exists(customPath)
+    && state.p6?.customSha256
+    && fileSha256(customPath) !== state.p6.customSha256
+  ) changed.add('CLAUDE-custom.md');
+
+  const entries = [];
+  for (const relative of [...changed].sort()) {
+    const source = path.join(root, relative);
+    const entry = { path: relative, existed: exists(source), preserved: false };
+    if (ownership.isSecretPath(relative) || scannerPositive.has(relative)) {
+      entry.reason = 'secret-like file left in place and not copied into a backup';
+    } else if (entry.existed) {
+      const stat = fs.lstatSync(source);
+      if (stat.isFile() && !stat.isSymbolicLink()) {
+        writeFileFsynced(path.join(backupRoot, 'files', relative), fs.readFileSync(source), stat.mode & 0o777);
+        entry.preserved = true;
+        entry.sha256 = fileSha256(source);
+      } else {
+        entry.reason = 'non-regular file left in place and not copied';
+      }
+    }
+    entries.push(entry);
+  }
+  writeFileFsynced(
+    path.join(backupRoot, 'manifest.json'),
+    `${JSON.stringify({
+      schemaVersion: 1,
+      createdAt: new Date().toISOString(),
+      vaultHead: head,
+      migrationCommit,
+      dirty,
+      diverged,
+      entries,
+    }, null, 2)}\n`,
+  );
+  return {
+    preserveGitdir: true,
+    dirty,
+    diverged,
+    backupRelative: backupRelative.split(path.sep).join('/'),
+  };
+}
+
 function restoreMigration(root) {
   const state = readJournal(root) || { nextPhase: 0 };
+  const archive = path.join(root, '.dex', 'pre-split-archive.git');
+  if (exists(archive)) validatePreSplitArchive(root, state);
+  const preservation = preflightRestorePreservation(root, state);
   state.status = 'restoring';
   state.updatedAt = new Date().toISOString();
+  state.restorePreservation = preservation;
   writeJournal(root, state);
-  restoreGitTopology(root);
+  const topologyResult = restoreGitTopology(root, state, preservation);
   restoreSnapshot(root);
   removePath(path.join(root, SNAPSHOT_RELATIVE));
   removeMigrationRuntime(root);
+  if (preservation.preserveGitdir) {
+    const archived = path.relative(root, topologyResult.archivedGitdir).split(path.sep).join('/');
+    console.log(`Restore preserved post-migration work: the live vault Git history is in ${archived}, and changed vault files were copied to ${preservation.backupRelative}/.`);
+  }
   console.log('Restore complete: the pre-split files and Git history are active again.');
   return state;
 }

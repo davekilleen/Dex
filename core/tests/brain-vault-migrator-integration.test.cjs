@@ -255,6 +255,35 @@ test('restore reverses a journaled half-swap before the vault Git folder is acti
   assert.equal(fs.existsSync(path.join(vault, 'System', '.dex')), false);
 });
 
+test('restore archives post-migration commits and dirty restored files before reverting', () => {
+  const vault = makeFixture();
+  const preSplitHead = git(vault, 'rev-parse', 'HEAD');
+  migrate(vault, '--auto');
+
+  fs.writeFileSync(path.join(vault, '04-Projects', 'after-migration.md'), 'recoverable commit\n');
+  git(vault, 'add', '04-Projects/after-migration.md');
+  git(vault, 'commit', '--quiet', '-m', 'post-migration work');
+  const postMigrationCommit = git(vault, 'rev-parse', 'HEAD');
+  fs.appendFileSync(path.join(vault, '03-Tasks', 'Tasks.md'), '\nDirty work before restore.\n');
+  fs.appendFileSync(path.join(vault, 'CLAUDE-custom.md'), '\nPost-migration custom edit.\n');
+
+  const restored = migrate(vault, '--restore');
+  assert.match(restored.stdout, /preserved post-migration work/i);
+  assert.match(restored.stdout, /System\/backups\/pre-restore-/);
+  assert.equal(git(vault, 'rev-parse', 'HEAD'), preSplitHead);
+
+  const archivedGit = path.join(vault, '.dex', 'post-split-archive.git');
+  assert.ok(fs.existsSync(archivedGit));
+  command('git', [`--git-dir=${archivedGit}`, 'cat-file', '-e', `${postMigrationCommit}^{commit}`]);
+
+  const backupsRoot = path.join(vault, 'System', 'backups');
+  const backupName = fs.readdirSync(backupsRoot).find((entry) => entry.startsWith('pre-restore-'));
+  assert.ok(backupName);
+  const backup = path.join(backupsRoot, backupName, 'files');
+  assert.match(fs.readFileSync(path.join(backup, 'CLAUDE-custom.md'), 'utf8'), /Post-migration custom edit/);
+  assert.match(fs.readFileSync(path.join(backup, '03-Tasks', 'Tasks.md'), 'utf8'), /Dirty work before restore/);
+});
+
 test('huge vaults stop at bounded P3 batches and continue with --resume', () => {
   const vault = makeFixture('--huge');
   let result = migrate(vault, '--auto', { expectedStatuses: [0, 75] });
