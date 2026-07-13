@@ -6,10 +6,6 @@
           {
             "type": "command",
             "command": "bash .claude/hooks/session-start.sh"
-          },
-          {
-            "type": "command",
-            "command": "git pull --quiet 2>/dev/null && echo '{\"hookSpecificOutput\":{\"hookEventName\":\"SessionStart\",\"additionalContext\":\"\\n✅ Synced with GitHub (pulled latest changes)\\n\"}}' || echo '{\"hookSpecificOutput\":{\"hookEventName\":\"SessionStart\",\"additionalContext\":\"\\n⚠️  Could not sync with GitHub (check your connection)\\n\"}}'"
           }
         ]
       }

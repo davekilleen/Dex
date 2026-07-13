@@ -3,6 +3,16 @@
 # Injects strategic hierarchy and tactical context
 # For Dex personal knowledge system
 
+CLAUDE_DIR="${CLAUDE_PROJECT_DIR:-$(pwd)}"
+
+# v2 code can arrive before the one-time topology migration. Surface that state
+# without network or Git work so the session can guide the user to /dex-update.
+if [[ -f "$CLAUDE_DIR/core/update/apply-update.cjs" \
+      && -d "$CLAUDE_DIR/.git" \
+      && ! -f "$CLAUDE_DIR/.git/dex-vault-v2" ]]; then
+    echo '{"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"Dex needs a one-time upgrade — run /dex-update"}}'
+fi
+
 # Prevent duplicate injection (symlinked working directories)
 DEDUP_FILE="${DEX_SESSION_CONTEXT_DEDUP_FILE:-/tmp/dex-session-context-dedup}"
 NOW=$(date +%s)
@@ -14,7 +24,6 @@ if [[ -f "$DEDUP_FILE" ]]; then
 fi
 echo "$NOW" > "$DEDUP_FILE"
 
-CLAUDE_DIR="$CLAUDE_PROJECT_DIR"
 PILLARS_FILE="$CLAUDE_DIR/System/pillars.yaml"
 QUARTER_GOALS="$CLAUDE_DIR/01-Quarter_Goals/Quarter_Goals.md"
 WEEK_PRIORITIES="$CLAUDE_DIR/02-Week_Priorities/Week_Priorities.md"
