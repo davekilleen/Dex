@@ -116,6 +116,14 @@ Passing `--ledger` leaves the complete latest report at
 replaced atomically, so readers never observe partial JSON. Plain `--json` runs remain
 read-only.
 
+After the ledger is written, the nightly worker records one health-telemetry attempt locally. A network POST
+is permitted only by the separate exact `**Health telemetry:** opted-in` decision; analytics consent has no
+effect. Privacy tests assert that pending, missing, opted-out, duplicated, unreadable, and malformed decisions
+never reach the POST seam; that the opted-in wire dictionary has only the documented counts-only fields; that
+its install UUID is stable and distinct from analytics identity; and that the dedicated sender never references
+the enriching analytics event helper. Transport gets one synchronous attempt with a short timeout and has no
+retry queue. See `docs/health-telemetry.md` for the complete contract.
+
 The quick doctor's `smoke.history` check compares the last passing entry with the first
 broken entry after it. Attribution reports only facts inside that window: modification
 times for profile, pillar, integration, MCP, and custom-skill files, plus a Dex version
