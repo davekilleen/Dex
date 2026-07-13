@@ -13,6 +13,8 @@ Dex uses repository-enforced quality gates so unsafe changes cannot merge.
 
 ## Required Merge Gates
 - PR governance checklist complete.
+- PII / personal-config gate passes over added pull-request lines.
+- Plain-English PR report identifies touched product areas, connected user journeys, and applicable gates.
 - Diff-aware test gate passes or approved exception label exists.
 - Path-contract usage gate passes for changed files.
 - Documentation drift gate passes or approved exception label exists.
@@ -20,6 +22,20 @@ Dex uses repository-enforced quality gates so unsafe changes cannot merge.
 - Hook harness tests pass.
 - Security gate passes (secret leakage detection).
 - Large-vault performance budget passes.
+
+The PII gate is merge-base-aware and diff-scoped. Fake email addresses under
+`core/tests/fixtures/**` are allowed, but tracked personal-config shapes remain blocked
+there as they are everywhere else. Approved placeholders outside that directory must be
+documented narrowly in `scripts/pii-allowlist.txt`.
+
+The PR report runs only for `pull_request`, never `pull_request_target`. It requests
+comment permission, upserts one marked comment when GitHub grants it, and always writes
+the same report to the job summary so fork token restrictions cannot turn reporting into
+a failed contribution.
+
+Ordinary pull-request tests run with `-m "not fuzz"`. Fast property tests remain in that
+suite; deliberately slow or large cases use `@pytest.mark.fuzz` and run in
+`nightly-quality.yml`.
 
 Release builds also run the shipped smoke runner against an isolated vault. Any
 `BROKEN` journey blocks the release; `UNKNOWN` remains visible without being treated as

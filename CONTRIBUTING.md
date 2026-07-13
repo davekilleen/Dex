@@ -32,6 +32,11 @@ Anything that makes Dex better for someone else:
 
 4. **Your changes appear on GitHub** for review. Dave will take a look, give feedback if needed, and merge it in.
 
+   CI also posts a plain-English report explaining which parts of Dex your files
+   affect, the user journeys connected to them, and the checks that will judge the
+   change. On forked pull requests where GitHub will not allow a bot comment, the
+   same report remains available in the `pr-report` job summary.
+
 That's it. Claude handles the git mechanics. You just describe what you changed and why.
 
 ### What makes a good contribution
@@ -52,10 +57,11 @@ That's it. Claude handles the git mechanics. You just describe what you changed 
 
 When you submit changes:
 
-1. **Dave will review within a few days** — usually faster
-2. **He might ask questions** — not because something's wrong, just to understand your thinking
-3. **He might suggest tweaks** — small adjustments to fit Dex conventions
-4. **He'll merge it** — and credit you in the changelog
+1. **CI checks the change and explains its impact** — personal-data findings name the exact file and line; the PR report translates changed paths into product areas and journeys
+2. **Dave will review within a few days** — usually faster
+3. **He might ask questions** — not because something's wrong, just to understand your thinking
+4. **He might suggest tweaks** — small adjustments to fit Dex conventions
+5. **He'll merge it** — and credit you in the changelog
 
 If your contribution adds a meaningful feature, you'll be mentioned by name in the release notes. Every contribution matters.
 
