@@ -25,7 +25,10 @@ FIXTURE_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/dex-aged-vault.XXXXXX")"
 UPSTREAM="$FIXTURE_ROOT/upstream"
 VAULT="$FIXTURE_ROOT/Dex Vault - Aged"
 
-git clone --local --no-hardlinks --quiet "$REPO_ROOT" "$UPSTREAM"
+# Use Git's local transport instead of the direct object-directory copier. Node's
+# test runner builds several fixtures in parallel; --no-local gives each fixture
+# an independently received object store without touching the network.
+git clone --no-local --quiet "$REPO_ROOT" "$UPSTREAM"
 git -C "$UPSTREAM" checkout -B main HEAD --quiet
 git -C "$UPSTREAM" config user.name "Dex Fixture Builder"
 git -C "$UPSTREAM" config user.email "fixture-builder@dex.local"
@@ -57,7 +60,7 @@ if [ "$NO_GIT" = true ]; then
   git -C "$UPSTREAM" archive --output="$RELEASE_ARCHIVE" release
   tar -xf "$RELEASE_ARCHIVE" -C "$VAULT"
 else
-  git clone --local --no-hardlinks --quiet --branch release "$UPSTREAM" "$VAULT"
+  git clone --no-local --quiet --branch release "$UPSTREAM" "$VAULT"
   git -C "$VAULT" config user.name "Long-time Dex User"
   git -C "$VAULT" config user.email "user@dex.local"
   git -C "$VAULT" remote rename origin upstream
