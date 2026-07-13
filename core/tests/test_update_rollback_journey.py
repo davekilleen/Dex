@@ -47,20 +47,6 @@ def _commit_manifest(repo: Path, message: str) -> None:
     _git(repo, "commit", "--quiet", "-m", message)
 
 
-def _bash_block_after(path: Path, marker: str) -> str:
-    section = path.read_text(encoding="utf-8").split(marker, 1)[1]
-    return section.split("```bash\n", 1)[1].split("\n```", 1)[0]
-
-
-def _bash_block_containing(path: Path, marker: str) -> str:
-    document = path.read_text(encoding="utf-8")
-    for section in document.split("```bash\n")[1:]:
-        block = section.split("\n```", 1)[0]
-        if marker in block:
-            return block
-    raise AssertionError(f"No bash block contains {marker!r}")
-
-
 def test_manifest_is_a_deterministic_newline_path_list(tmp_path: Path) -> None:
     repo = tmp_path / "manifest-repo"
     _init_repo(repo)
@@ -72,62 +58,25 @@ def test_manifest_is_a_deterministic_newline_path_list(tmp_path: Path) -> None:
     assert generate_manifest(repo, "HEAD") == "a directory/first.txt\nz-last.txt\n"
 
 
-def test_rollback_stops_when_autosave_commit_fails(tmp_path: Path) -> None:
-    vault = tmp_path / "user-vault"
-    _init_repo(vault)
+def test_v2_updater_and_rollback_route_no_git_without_legacy_git_mutation(tmp_path: Path) -> None:
+    vault = tmp_path / "zip-vault"
+    vault.mkdir()
+    updater = REPO_ROOT / "core/update/apply-update.cjs"
 
-    tracked_file = "04-Projects/current-work.md"
-    _write(vault, tracked_file, "release v1\n")
-    _git(vault, "add", "--", tracked_file)
-    _git(vault, "commit", "--quiet", "-m", "release v1")
-    _git(vault, "tag", "backup-before-v1.3.0")
-
-    _write(vault, tracked_file, "release v2\n")
-    _git(vault, "add", "--", tracked_file)
-    _git(vault, "commit", "--quiet", "-m", "release v2")
-    release_v2_head = _git(vault, "rev-parse", "HEAD")
-
-    edited_content = "release v2\nuser's uncommitted edit\n"
-    staged_new_file = ".claude/skills/private-custom/SKILL.md"
-    staged_new_content = "---\nname: private-custom\n---\n# User work\n"
-    _write(vault, tracked_file, edited_content)
-    _write(vault, staged_new_file, staged_new_content)
-    _git(vault, "add", "--", staged_new_file)
-
-    hooks_dir = tmp_path / "failing-hooks"
-    hooks_dir.mkdir()
-    pre_commit = hooks_dir / "pre-commit"
-    pre_commit.write_text(
-        "#!/bin/sh\necho 'forced pre-commit failure' >&2\nexit 1\n",
-        encoding="utf-8",
-    )
-    pre_commit.chmod(0o755)
-    _git(vault, "config", "core.hooksPath", str(hooks_dir))
-
-    protected_rollback = _bash_block_containing(
-        ROLLBACK_SKILL,
-        'DEX_ROLLBACK_TARGET="backup-before-v1.3.0"',
-    )
-    result = subprocess.run(
-        [
-            "bash",
-            "-c",
-            protected_rollback,
-        ],
+    status = subprocess.run(
+        ["node", str(updater), "--status"],
         cwd=vault,
         check=False,
         capture_output=True,
         text=True,
     )
 
-    assert result.returncode != 0, result.stdout + result.stderr
-    assert _git(vault, "rev-parse", "HEAD") == release_v2_head
-    assert (vault / tracked_file).read_text(encoding="utf-8") == edited_content
-    assert (vault / staged_new_file).read_text(encoding="utf-8") == staged_new_content
-    assert not any(tag.startswith("before-rollback-") for tag in _git(vault, "tag").splitlines())
-    assert _git(vault, "diff", "--cached", "--name-only") == ""
-    assert "Git could not save the current state" in result.stdout + result.stderr
-    assert "dex-user-data-before-rollback" in _git(vault, "stash", "list")
+    assert status.returncode == 0, status.stdout + status.stderr
+    assert "topology=zip-or-manual" in status.stdout
+    rollback = ROLLBACK_SKILL.read_text(encoding="utf-8")
+    assert "apply-update.cjs --rollback" in rollback
+    assert "v1-to-v2-brain-vault-split.cjs --restore" in rollback
+    assert not any(command in rollback for command in ("git reset", "git stash", "git checkout"))
 
 
 def test_update_then_manifest_rollback_preserves_user_customizations(tmp_path: Path) -> None:

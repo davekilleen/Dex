@@ -60,6 +60,31 @@ test('the update skill is a thin updater/migrator orchestration with explicit re
   assert.match(skill, /ZIP/i);
   assert.match(skill, /convert|conversion/i);
   assert.match(skill, /manual update/i);
+  const manual = skill.split('## ZIP or no-Git installs', 2)[1];
+  for (const owned of [
+    '00-Inbox/',
+    '01-Quarter_Goals/',
+    '02-Week_Priorities/',
+    '03-Tasks/',
+    '04-Projects/',
+    '05-Areas/',
+    '06-Resources/',
+    '07-Archives/',
+    'System/user-profile.yaml',
+    'System/pillars.yaml',
+    'System/Session_Learnings/',
+    'System/Session_Memory/',
+    'CLAUDE-custom.md',
+    '.mcp.json',
+    '.claude/skills/*-custom/',
+    'core/mcp-custom/',
+    '.env*',
+    '.secrets*',
+    '.npmrc',
+    'System/credentials/',
+  ]) {
+    assert.ok(manual.includes(`\`${owned}\``), `ZIP/manual recovery must copy ${owned}`);
+  }
   assert.doesNotMatch(skill, /git (?:pull|merge|reset --hard|clean)/);
 });
 

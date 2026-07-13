@@ -108,6 +108,11 @@ DEX_PYTHON=python3
 
 Report the doctor/smoke verdicts honestly. `UNKNOWN` means a check could not prove its answer; it is not the same as healthy.
 
+Also re-check the two optional integration surfaces after dependency changes:
+
+- If `/Applications/Granola.app` exists, report “Granola app detected” without claiming it is connected. If its API key is missing, point to `/granola-setup`. If the API key is configured and meeting automation is not yet installed, offer that setup separately.
+- If the post-update integration check reports missing or upgradeable connections, route all connection work through `/integrate-mcp`; do not name retired per-service setup commands.
+
 ## 6. Tell the user what happened
 
 Read and summarize:
@@ -122,6 +127,6 @@ Call out backed-up shipped files, files kept because the user's copy differed, d
 Present two choices and wait for the user:
 
 1. **Convert to automatic updates.** Create a separate fresh Dex checkout from the official repository, follow the conversion instructions in `System/migration-report-v2.md`, verify the new brain/vault topology, then keep the old folder until doctor and smoke pass. Never graft a downloaded `.git` directory into the current folder.
-2. **Stay on manual updates.** Download the new Dex ZIP into a separate folder. Copy the complete user-owned set from the old folder: `00-Inbox/` through `07-Archives/`, `System/user-profile.yaml`, `System/pillars.yaml`, `System/Session_Learnings/`, `System/Session_Memory/`, `CLAUDE-custom.md`, `.mcp.json`, every `.claude/skills/*-custom/` folder, `core/mcp-custom/`, and private environment/credential files. Do not copy old shipped `core/`, `.claude` non-custom content, `package.json`, or hidden Git data over the new release. Run doctor and smoke in the new folder before retiring the old one.
+2. **Stay on manual updates.** Download the new Dex ZIP into a separate folder. Copy the complete user-owned set from the old folder: `00-Inbox/`, `01-Quarter_Goals/`, `02-Week_Priorities/`, `03-Tasks/`, `04-Projects/`, `05-Areas/`, `06-Resources/`, `07-Archives/`, `System/user-profile.yaml`, `System/pillars.yaml`, `System/Session_Learnings/`, `System/Session_Memory/`, `CLAUDE-custom.md`, `.mcp.json`, every `.claude/skills/*-custom/` folder, and `core/mcp-custom/`. Copy private files deliberately too: `.env*`, `.secrets*`, `.npmrc`, `System/credentials/`, private keys, OAuth files, and token/credential JSON. Do not copy old shipped `core/`, `.claude` non-custom content, `package.json`, or hidden Git data over the new release. Run doctor and smoke in the new folder before retiring the old one.
 
 If either choice is uncertain, stop with both folders intact. A ZIP update must never create a half-topology.

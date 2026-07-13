@@ -336,6 +336,36 @@ def test_split_topology_git_and_schema_probes_are_feature_status_compliant(tmp_p
     assert "vault schema 2" in mismatch.detail.lower()
 
 
+@pytest.mark.parametrize("drift", ["brain-marker", "topology", "origin", "rewrite"])
+def test_brain_probe_rejects_release_identity_or_origin_disagreement(tmp_path, drift):
+    split = _post_split_context(tmp_path)
+    brain = split.vault_root / ".dex" / "brain.git"
+
+    if drift == "brain-marker":
+        marker = json.loads((brain / "dex-brain-v2").read_text())
+        marker["installed"] = "f" * 40
+        (brain / "dex-brain-v2").write_text(json.dumps(marker) + "\n")
+    elif drift == "topology":
+        sentinel = split.vault_root / "System" / ".dex" / "topology.json"
+        payload = json.loads(sentinel.read_text())
+        payload["installedRelease"] = "e" * 40
+        sentinel.write_text(json.dumps(payload) + "\n")
+    elif drift == "origin":
+        _git(brain, "config", "remote.origin.url", "https://github.com/attacker/Dex.git")
+    else:
+        _git(
+            brain,
+            "config",
+            "url.file:///tmp/untrusted-dex.git.insteadOf",
+            "https://github.com/davekilleen/Dex.git",
+        )
+
+    result = doctor._probe_brain_git(split)
+
+    assert result.verdict == "BROKEN"
+    assert "identity" in result.detail.lower() or "official" in result.detail.lower()
+
+
 def test_migration_pending_is_actionable_when_v2_code_arrives_pre_split(tmp_path):
     vault = tmp_path / "pending-vault"
     vault.mkdir()

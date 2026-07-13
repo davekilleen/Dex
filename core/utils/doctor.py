@@ -1475,6 +1475,44 @@ def _probe_brain_git(context: DoctorContext) -> ProbeResult:
     )
     if installed.returncode != 0:
         return ProbeResult("BROKEN", "The Dex brain history cannot resolve its installed release — run the updater with --resume")
+    installed_oid = installed.stdout.strip().lower()
+    brain_marker = _regular_json(brain / "dex-brain-v2")
+    topology = _regular_json(context.vault_root / "System" / ".dex" / "topology.json")
+    marker_oid = str(brain_marker.get("installed", "")).lower() if brain_marker else ""
+    topology_oid = str(topology.get("installedRelease", "")).lower() if topology else ""
+    if not installed_oid or marker_oid != installed_oid or topology_oid != installed_oid:
+        return ProbeResult(
+            "BROKEN",
+            "The Dex brain release identity disagrees across its installed ref and topology markers — use the updater's --resume recovery",
+        )
+    official_remote = re.compile(
+        r"^(?:https://github\.com/|ssh://git@github\.com/|git@github\.com:)davekilleen/Dex(?:\.git)?/?$",
+        re.IGNORECASE,
+    )
+    configured = _git_result(
+        context,
+        "config",
+        "--get",
+        "remote.origin.url",
+        git_directory=brain,
+    )
+    effective = _git_result(
+        context,
+        "remote",
+        "get-url",
+        "origin",
+        git_directory=brain,
+    )
+    if (
+        configured.returncode != 0
+        or effective.returncode != 0
+        or not official_remote.fullmatch(configured.stdout.strip())
+        or not official_remote.fullmatch(effective.stdout.strip())
+    ):
+        return ProbeResult(
+            "BROKEN",
+            "The Dex brain origin is not the effective official repository — repair the origin or local URL rewrite before updating",
+        )
     integrity = _git_result(context, "fsck", "--no-progress", git_directory=brain)
     if integrity.returncode != 0:
         return ProbeResult("BROKEN", "The Dex brain Git store failed its integrity check — stop updating and get help")
@@ -1484,7 +1522,7 @@ def _probe_brain_git(context: DoctorContext) -> ProbeResult:
         if archive.is_dir() and not archive.is_symlink()
         else " The pre-split restore archive is no longer present."
     )
-    return ProbeResult("OK", f"The Dex brain history is healthy at {installed.stdout.strip()[:12]}.{archive_note}")
+    return ProbeResult("OK", f"The Dex brain history is healthy at {installed_oid[:12]}.{archive_note}")
 
 
 def _parse_semver(value: object) -> tuple[int, int, int] | None:
