@@ -47,7 +47,7 @@ jobs:
       - name: Generate paths.json
         run: python core/paths.py
       - name: Test suites + coverage
-        run: pytest core/tests/ core/mcp/tests/ core/migrations/tests/ -v --cov=core --cov-report=term --cov-report=json:coverage.json --cov-fail-under="${COVERAGE_MIN_TOTAL}"
+        run: pytest core/tests/ core/mcp/tests/ core/migrations/tests/ -v --junitxml=.logs/pytest-report.xml --cov=core --cov-report=term --cov-report=json:coverage.json --cov-fail-under="${COVERAGE_MIN_TOTAL}"
       - name: Touched-file coverage gate
         if: github.event_name == 'pull_request'
         run: python scripts/check-coverage-threshold.py
