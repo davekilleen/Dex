@@ -4864,6 +4864,18 @@ async def _handle_call_tool_inner(
                     "success": False,
                     "error": f"No task found matching '{task_title}'"
                 }, indent=2))]
+
+            exact_matching = [
+                task for task in matching
+                if task['title'].lower() == task_title.lower()
+            ]
+            if exact_matching:
+                matching = exact_matching
+            elif len(matching) > 1:
+                return [types.TextContent(type="text", text=json.dumps({
+                    "success": False,
+                    "error": f"Multiple tasks found matching '{task_title}'"
+                }, indent=2))]
             
             task = matching[0]
             

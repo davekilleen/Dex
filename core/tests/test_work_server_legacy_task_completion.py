@@ -84,13 +84,6 @@ def test_legacy_completion_changes_only_the_exact_task_line(tasks_file: Path):
     ).encode()
 
 
-@pytest.mark.xfail(
-    reason=(
-        "BUG: legacy title lookup uses substring matching and completes an earlier "
-        "longer task instead of the later exact-title task"
-    ),
-    strict=False,
-)
 def test_legacy_completion_prefers_exact_title_over_earlier_substring_match(
     tasks_file: Path,
 ):
