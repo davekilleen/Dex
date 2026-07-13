@@ -64,6 +64,8 @@ test('the hard deny boundary cannot be reclassified into a writable path', () =>
     '.git/objects/abc',
     '.dex/brain.git/config',
     '.dex/vault-staging.git/index',
+    'System/.dex/brain.git/config',
+    'foo/.dex/evil.git/config',
     '00-Inbox/note.md',
     '03-Tasks/Tasks.md',
     '07-Archives/old.md',
@@ -84,6 +86,21 @@ test('the hard deny boundary cannot be reclassified into a writable path', () =>
     assert.equal(ownership.isDenied(candidate), false, candidate);
   }
   assert.equal(ownership.classify('03-Tasks/Tasks.md'), 'seed');
+
+  const protectedReclassifications = [
+    { prefix: '.git/', class: 'brain' },
+    { prefix: '.dex/brain.git/', class: 'brain' },
+    { prefix: '03-Tasks/', class: 'brain' },
+    { prefix: 'System/credentials/', class: 'brain' },
+    { prefix: '.env', class: 'brain' },
+  ];
+  for (const rule of protectedReclassifications) {
+    assert.match(
+      ownership.validateConfig({ defaultClass: 'vault', rules: [rule] }).join('\n'),
+      /protected namespace/,
+      rule.prefix,
+    );
+  }
 
   const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'dex-ownership-symlink-'));
   const outside = fs.mkdtempSync(path.join(os.tmpdir(), 'dex-ownership-outside-'));

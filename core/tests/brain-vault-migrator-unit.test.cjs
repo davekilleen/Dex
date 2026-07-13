@@ -138,3 +138,42 @@ test('the topology reconciler has an explicit decision for all 16 presence state
     'restore-archive',
   );
 });
+
+test('migration refuses every symlinked mutation root before writing through it', () => {
+  const migrator = require(MIGRATOR_PATH);
+  const cases = [
+    ['root', ''],
+    ['System', 'System'],
+    ['.dex', '.dex'],
+    ['System/.dex', path.join('System', '.dex')],
+    ['System/backups', path.join('System', 'backups')],
+  ];
+
+  for (const [label, relative] of cases) {
+    const fixtureParent = fs.mkdtempSync(path.join(os.tmpdir(), 'dex-migration-symlink-'));
+    const outside = fs.mkdtempSync(path.join(os.tmpdir(), 'dex-migration-outside-'));
+    let root = path.join(fixtureParent, 'vault');
+    if (label === 'root') {
+      fs.mkdirSync(path.join(fixtureParent, 'real-vault'));
+      fs.symlinkSync(path.join(fixtureParent, 'real-vault'), root);
+    } else {
+      fs.mkdirSync(root);
+      fs.mkdirSync(path.dirname(path.join(root, relative)), { recursive: true });
+      fs.symlinkSync(outside, path.join(root, relative));
+    }
+
+    assert.throws(
+      () => migrator.assertSafeMutationRoots(root),
+      new RegExp(`${label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}.*symlink`, 'i'),
+    );
+    assert.deepEqual(fs.readdirSync(outside), [], label);
+  }
+
+  const fixtureParent = fs.mkdtempSync(path.join(os.tmpdir(), 'dex-migration-entry-symlink-'));
+  const outside = fs.mkdtempSync(path.join(os.tmpdir(), 'dex-migration-entry-outside-'));
+  const root = path.join(fixtureParent, 'vault');
+  fs.mkdirSync(root);
+  fs.symlinkSync(outside, path.join(root, 'System'));
+  assert.equal(migrator.main(['--auto'], root), 1);
+  assert.deepEqual(fs.readdirSync(outside), []);
+});

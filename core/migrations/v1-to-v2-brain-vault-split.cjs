@@ -146,6 +146,25 @@ function exists(candidate) {
   }
 }
 
+function assertSafeMutationRoots(root) {
+  const checks = [
+    [root, 'root'],
+    [path.join(root, 'System'), 'System'],
+    [path.join(root, '.dex'), '.dex'],
+    [path.join(root, 'System', '.dex'), 'System/.dex'],
+    [path.join(root, 'System', 'backups'), 'System/backups'],
+  ];
+  for (const [candidate, label] of checks) {
+    try {
+      if (fs.lstatSync(candidate).isSymbolicLink()) {
+        throw new Error(`Dex stopped because the migration path ${label} is a symlink. Move the vault to normal folders, then try again.`);
+      }
+    } catch (error) {
+      if (error.code !== 'ENOENT') throw error;
+    }
+  }
+}
+
 function run(command, args, options = {}) {
   const result = spawnSync(command, args, {
     cwd: options.cwd,
@@ -1081,7 +1100,10 @@ function parseMode(argumentsList) {
 
 function main(argumentsList = process.argv.slice(2), root = process.cwd()) {
   let mode;
+  let mutationRootsAreSafe = false;
   try {
+    assertSafeMutationRoots(root);
+    mutationRootsAreSafe = true;
     mode = parseMode(argumentsList);
     if (mode === 'status') return statusMigration(root);
     if (mode === 'dry-run') return dryRun(root);
@@ -1108,13 +1130,14 @@ function main(argumentsList = process.argv.slice(2), root = process.cwd()) {
       releaseLock();
     }
   } catch (error) {
-    writeFailureReport(root, error);
+    if (mutationRootsAreSafe) writeFailureReport(root, error);
     console.error(error.message);
     return 1;
   }
 }
 
 module.exports = {
+  assertSafeMutationRoots,
   emptyLegacyExtensionBlock,
   extractLegacyExtensions,
   inspectTopology,

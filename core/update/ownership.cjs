@@ -135,8 +135,7 @@ function isDenied(input, root) {
   const parts = candidate.split('/');
   if (parts.some((part) => part === '' || part === '.' || part === '..')) return true;
   const lower = parts.map((part) => part.toLowerCase());
-  if (lower.includes('.git')) return true;
-  if (lower[0] === '.dex' && lower.slice(1).some((part) => part.endsWith('.git'))) return true;
+  if (lower.some((part) => part === '.git' || part.endsWith('.git'))) return true;
   if (PARA_ROOT.test(parts[0])) return true;
   if (lower[0] === 'system' && lower[1] === 'credentials') return true;
   if (lower.some((part) => part.startsWith('.env'))) return true;
@@ -154,19 +153,42 @@ function isDenied(input, root) {
   return false;
 }
 
-function validateConfig() {
+function protectedNamespace(prefix) {
+  const candidate = slashPath(prefix);
+  const parts = candidate.split('/').filter(Boolean);
+  const lower = parts.map((part) => part.toLowerCase());
+  return (
+    lower.some((part) => part === '.git' || part.endsWith('.git'))
+    || lower[0] === '.dex'
+    || PARA_ROOT.test(parts[0] || '')
+    || (lower[0] === 'system' && lower[1] === 'credentials')
+    || lower.some((part) => part.startsWith('.env'))
+  );
+}
+
+function validateConfig(candidateConfig = config) {
   const errors = [];
-  if (!VALID_CLASSES.has(config.defaultClass)) {
-    errors.push(`unknown default class: ${config.defaultClass}`);
+  if (!VALID_CLASSES.has(candidateConfig.defaultClass)) {
+    errors.push(`unknown default class: ${candidateConfig.defaultClass}`);
   }
   const seen = new Map();
-  for (const rule of config.rules) {
+  for (const rule of candidateConfig.rules) {
     if (!VALID_CLASSES.has(rule.class)) errors.push(`unknown class for ${rule.prefix}: ${rule.class}`);
     if (path.isAbsolute(rule.prefix) || rule.prefix.includes('..') || rule.prefix.includes('\\')) {
       errors.push(`unsafe ownership prefix: ${rule.prefix}`);
     }
     if (seen.has(rule.prefix) && seen.get(rule.prefix) !== rule.class) {
       errors.push(`ambiguous ownership prefix: ${rule.prefix}`);
+    }
+    const canonicalSeed = config.rules.some(
+      (configured) => configured.prefix === rule.prefix && configured.class === 'seed',
+    );
+    if (
+      protectedNamespace(rule.prefix)
+      && ['brain', 'generated', 'seed'].includes(rule.class)
+      && !canonicalSeed
+    ) {
+      errors.push(`protected namespace cannot be ${rule.class}: ${rule.prefix}`);
     }
     seen.set(rule.prefix, rule.class);
   }
@@ -227,6 +249,7 @@ module.exports = {
   classify,
   isDenied,
   seedEntries,
+  validateConfig,
   validateManifest,
   vaultExcludeLines,
   vaultGitignoreContent,
