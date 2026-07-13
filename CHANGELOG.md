@@ -7,6 +7,17 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.59.0] - Dex stops calling a working feature "broken" just because your machine was slow to start it (2026-07-13)
+
+Dex's health check gave built-in services just 1.5 seconds to wake up. On a slower or busy machine, a service could still be starting normally when Dex labelled it broken. Those services now get a fair eight-second window, with enough room in the overall check for the slower start to finish without changing the usual quick path.
+
+**What this fixes for you:**
+
+* **Slow starts no longer look like failures.** `/dex-doctor` and nightly health checks wait long enough for working built-in services to answer, even when your machine is under load.
+* **Unusually slow setups can choose a longer window.** Set `DEX_MCP_HANDSHAKE_TIMEOUT` to a positive number of seconds when your services genuinely need more than the standard eight seconds; missing or invalid values safely keep the default.
+
+---
+
 ## [1.58.0] - Your tasks and priorities are handled more carefully (2026-07-13)
 
 A coverage review of the code that edits your task and priority files turned up eight ways Dex could quietly mishandle them. All eight are now fixed, each locked in by a test so they can't come back.
