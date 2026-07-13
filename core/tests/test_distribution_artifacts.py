@@ -268,7 +268,11 @@ def test_release_branch_strips_dev_files_and_keeps_user_runtime(tmp_path: Path) 
     assert bridge_paths <= members
 
 
-def _prepare_install_runtime(install_root: Path) -> dict[str, str]:
+def _prepare_install_runtime(
+    install_root: Path,
+    *,
+    include_git: bool = True,
+) -> dict[str, str]:
     fake_bin = install_root.parent / "fake-bin"
     fake_bin.mkdir(exist_ok=True)
     pnpm = fake_bin / "pnpm"
@@ -289,10 +293,18 @@ def _prepare_install_runtime(install_root: Path) -> dict[str, str]:
     )
     python.chmod(0o755)
 
+    runtime_path = f"{fake_bin}{os.pathsep}{os.environ['PATH']}"
+    if not include_git:
+        for command in ("node", "python3", "cut", "grep", "sed"):
+            executable = shutil.which(command)
+            assert executable is not None, command
+            (fake_bin / command).symlink_to(executable)
+        runtime_path = str(fake_bin)
+
     return {
         **os.environ,
         "OSTYPE": "linux-gnu",
-        "PATH": f"{fake_bin}{os.pathsep}{os.environ['PATH']}",
+        "PATH": runtime_path,
     }
 
 
@@ -420,10 +432,10 @@ def test_zip_install_stays_unsplit_and_explains_manual_updates(tmp_path: Path) -
     ).stdout
     with tarfile.open(fileobj=io.BytesIO(archive), mode="r:") as release_archive:
         release_archive.extractall(install_root)
-    env = _prepare_install_runtime(install_root)
+    env = _prepare_install_runtime(install_root, include_git=False)
 
     result = subprocess.run(
-        ["bash", "install.sh"],
+        ["/bin/bash", "install.sh"],
         cwd=install_root,
         env=env,
         capture_output=True,
@@ -432,6 +444,7 @@ def test_zip_install_stays_unsplit_and_explains_manual_updates(tmp_path: Path) -
     )
 
     assert result.returncode == 0, result.stdout + result.stderr
+    assert "Git is not installed" in result.stdout
     assert not (install_root / ".git").exists()
     assert not (install_root / ".dex/brain.git").exists()
     report = (install_root / "System/migration-report-v2.md").read_text(encoding="utf-8")
@@ -535,13 +548,84 @@ def test_distribution_check_rejects_a_release_that_strips_bridge_paths(
     assert "Bridge release path missing: 03-Tasks/Tasks.md" in result.stdout
 
 
+def test_distribution_check_rejects_a_stripped_split_runtime_dependency(
+    tmp_path: Path,
+) -> None:
+    clone = _clone_repo(tmp_path, "split-runtime-check")
+    shutil.copy2(REPO_ROOT / "scripts/verify-distribution.sh", clone / "scripts/verify-distribution.sh")
+    with (clone / ".distignore").open("a", encoding="utf-8") as distignore:
+        distignore.write("\ncore/update/ownership.cjs\n")
+    subprocess.run(
+        ["git", "add", "--", ".distignore", "scripts/verify-distribution.sh"],
+        cwd=clone,
+        check=True,
+    )
+    subprocess.run(
+        ["git", "commit", "--quiet", "-m", "test: strip split runtime dependency"],
+        cwd=clone,
+        check=True,
+    )
+
+    result = subprocess.run(
+        ["bash", "scripts/verify-distribution.sh"],
+        cwd=clone,
+        capture_output=True,
+        text=True,
+        timeout=90,
+    )
+
+    assert result.returncode == 1
+    assert "Required split release file missing: core/update/ownership.cjs" in result.stdout
+
+
+def test_distribution_check_pins_non_seed_and_dex_system_bridge_paths(
+    tmp_path: Path,
+) -> None:
+    clone = _clone_repo(tmp_path, "full-bridge-check")
+    shutil.copy2(REPO_ROOT / "scripts/verify-distribution.sh", clone / "scripts/verify-distribution.sh")
+    subprocess.run(
+        [
+            "git",
+            "rm",
+            "--quiet",
+            "--",
+            "00-Inbox/README.md",
+            "06-Resources/Dex_System/README.md",
+        ],
+        cwd=clone,
+        check=True,
+    )
+    subprocess.run(
+        ["git", "add", "--", "scripts/verify-distribution.sh"],
+        cwd=clone,
+        check=True,
+    )
+    subprocess.run(
+        ["git", "commit", "--quiet", "-m", "test: delete bridge release paths"],
+        cwd=clone,
+        check=True,
+    )
+
+    result = subprocess.run(
+        ["bash", "scripts/verify-distribution.sh"],
+        cwd=clone,
+        capture_output=True,
+        text=True,
+        timeout=90,
+    )
+
+    assert result.returncode == 1
+    assert "Bridge release path missing: 00-Inbox/README.md" in result.stdout
+    assert "Bridge release path missing: 06-Resources/Dex_System/README.md" in result.stdout
+
+
 def test_ci_validates_the_generated_release_manifest() -> None:
     workflow = (REPO_ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
 
     assert "Build release for ownership validation" in workflow
     assert "scripts/build-release.sh\" --no-tag" in workflow
-    assert "release:System/.installed-files.manifest" in workflow
-    assert "node core/update/ownership.cjs --validate" in workflow
+    assert "archive release" in workflow
+    assert 'node "$RELEASE_ARTIFACT/core/update/ownership.cjs" --validate' in workflow
 
 
 def test_release_build_refuses_to_move_an_existing_dist_tag(tmp_path: Path) -> None:
@@ -583,6 +667,43 @@ def test_release_build_refuses_to_move_an_existing_dist_tag(tmp_path: Path) -> N
     ).stdout.strip() == original_dist_oid
 
 
+def test_release_build_reproduces_the_stripped_commit_oid(tmp_path: Path) -> None:
+    clone, _ = _build_release_in_clone(tmp_path)
+    version = json.loads((clone / "package.json").read_text(encoding="utf-8"))["version"]
+    first_oid = subprocess.run(
+        ["git", "rev-parse", "release^{commit}"],
+        cwd=clone,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    subprocess.run(["git", "tag", "--delete", f"dist-v{version}"], cwd=clone, check=True)
+    subprocess.run(["git", "branch", "--delete", "--force", "release"], cwd=clone, check=True)
+    env = {
+        **os.environ,
+        "GIT_AUTHOR_DATE": "2037-01-02T03:04:05Z",
+        "GIT_COMMITTER_DATE": "2037-01-02T03:04:05Z",
+    }
+
+    subprocess.run(
+        ["bash", "scripts/build-release.sh"],
+        cwd=clone,
+        env=env,
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+
+    assert subprocess.run(
+        ["git", "rev-parse", "release^{commit}"],
+        cwd=clone,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip() == first_oid
+
+
 def test_tag_release_workflow_builds_and_pushes_the_stripped_dist_commit() -> None:
     workflow = (REPO_ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
     ci_workflow = (REPO_ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
@@ -590,7 +711,11 @@ def test_tag_release_workflow_builds_and_pushes_the_stripped_dist_commit() -> No
 
     assert "DEX_RELEASE_SOURCE" in workflow
     assert "bash scripts/build-release.sh" in workflow
-    assert "node core/update/ownership.cjs --validate" in workflow
+    assert 'node "$RELEASE_ARTIFACT/core/update/ownership.cjs" --validate' in workflow
     assert 'refs/tags/dist-v${VERSION}' in workflow
     assert "git push origin release" not in ci_workflow
     assert "release workflow" in release_script.lower()
+    assert "workflow_call:" in ci_workflow
+    assert "uses: ./.github/workflows/ci.yml" in workflow
+    assert "needs: quality" in workflow
+    assert "git push --atomic" in workflow

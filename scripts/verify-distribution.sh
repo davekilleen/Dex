@@ -355,23 +355,55 @@ if git clone --local --no-hardlinks --quiet "$PWD" "$RELEASE_CHECK_REPO" \
         echo "  ✅ Generated release branch contains no test suites"
     fi
 
-    RELEASE_MANIFEST="$RELEASE_CHECK_DIR/installed-files.manifest"
-    git -C "$RELEASE_CHECK_REPO" show release:System/.installed-files.manifest > "$RELEASE_MANIFEST"
-    if node "$RELEASE_CHECK_REPO/core/update/ownership.cjs" --validate "$RELEASE_MANIFEST"; then
-        echo "  ✅ Every generated release path has one ownership class"
+    RELEASE_ARTIFACT="$RELEASE_CHECK_DIR/artifact"
+    mkdir -p "$RELEASE_ARTIFACT"
+    if git -C "$RELEASE_CHECK_REPO" archive release | tar -x -C "$RELEASE_ARTIFACT"; then
+        echo "  ✅ Materialized the exact generated release artifact"
     else
-        echo "  ❌ ERROR: Generated release ownership validation failed"
+        echo "  ❌ ERROR: Could not materialize the generated release artifact"
         ERRORS=$((ERRORS + 1))
     fi
 
     BRIDGE_PATHS=(
+        "00-Inbox/Daily_Plans/README.md"
+        "00-Inbox/Ideas/README.md"
+        "00-Inbox/Meetings/README.md"
+        "00-Inbox/README.md"
         "01-Quarter_Goals/Quarter_Goals.md"
         "02-Week_Priorities/Week_Priorities.md"
         "03-Tasks/Tasks.md"
+        "04-Projects/README.md"
+        "05-Areas/Career/Evidence/README.md"
+        "05-Areas/Companies/README.md"
+        "05-Areas/People/External/README.md"
+        "05-Areas/People/Internal/README.md"
+        "05-Areas/People/README.md"
+        "05-Areas/README.md"
+        "06-Resources/Dex_System/Background_Processing_Guide.md"
+        "06-Resources/Dex_System/Calendar_Setup.md"
+        "06-Resources/Dex_System/Dex_Jobs_to_Be_Done.md"
+        "06-Resources/Dex_System/Dex_System_Guide.md"
+        "06-Resources/Dex_System/Dex_Technical_Guide.md"
+        "06-Resources/Dex_System/Distribution_Checklist.md"
+        "06-Resources/Dex_System/Distribution_Strategy.md"
+        "06-Resources/Dex_System/Folder_Structure.md"
+        "06-Resources/Dex_System/Memory_Ownership.md"
+        "06-Resources/Dex_System/Named_Sessions_Guide.md"
+        "06-Resources/Dex_System/Obsidian_Guide.md"
+        "06-Resources/Dex_System/README.md"
+        "06-Resources/Dex_System/Updating_Dex.md"
+        "06-Resources/Intel/.gitkeep"
+        "06-Resources/Intel/Meeting_Intel/.gitkeep"
+        "06-Resources/Learnings/Mistake_Patterns.md"
+        "06-Resources/Learnings/README.md"
+        "06-Resources/Learnings/Working_Preferences.md"
+        "06-Resources/Quarterly_Reviews/README.md"
+        "06-Resources/README.md"
+        "07-Archives/Plans/README.md"
+        "07-Archives/Projects/README.md"
+        "07-Archives/README.md"
+        "07-Archives/Reviews/README.md"
     )
-    while IFS= read -r bridge_path; do
-        [ -n "$bridge_path" ] && BRIDGE_PATHS+=("$bridge_path")
-    done < <(git -C "$RELEASE_CHECK_REPO" ls-tree -r --name-only main -- 06-Resources/Dex_System)
     for bridge_path in "${BRIDGE_PATHS[@]}"; do
         if ! git -C "$RELEASE_CHECK_REPO" cat-file -e "release:$bridge_path" 2>/dev/null; then
             echo "  ❌ ERROR: Bridge release path missing: $bridge_path"
@@ -381,6 +413,8 @@ if git clone --local --no-hardlinks --quiet "$PWD" "$RELEASE_CHECK_REPO" \
 
     RELEASE_MACHINERY=(
         "core/update/ownership.json"
+        "core/update/ownership.cjs"
+        "core/update/owned-lock.cjs"
         "core/update/apply-update.cjs"
         "core/migrations/v1-to-v2-brain-vault-split.cjs"
     )
@@ -390,6 +424,21 @@ if git clone --local --no-hardlinks --quiet "$PWD" "$RELEASE_CHECK_REPO" \
             ERRORS=$((ERRORS + 1))
         fi
     done
+    if node "$RELEASE_ARTIFACT/core/update/ownership.cjs" \
+        --validate "$RELEASE_ARTIFACT/System/.installed-files.manifest"; then
+        echo "  ✅ Every generated release path has one ownership class"
+    else
+        echo "  ❌ ERROR: Generated release ownership validation failed inside the artifact"
+        ERRORS=$((ERRORS + 1))
+    fi
+    if node -e 'require(process.argv[1]); require(process.argv[2]);' \
+        "$RELEASE_ARTIFACT/core/update/apply-update.cjs" \
+        "$RELEASE_ARTIFACT/core/migrations/v1-to-v2-brain-vault-split.cjs"; then
+        echo "  ✅ Split updater and migrator load from the generated artifact"
+    else
+        echo "  ❌ ERROR: Split updater or migrator cannot load from the generated artifact"
+        ERRORS=$((ERRORS + 1))
+    fi
     if [ $ERRORS -eq 0 ]; then
         echo "  ✅ Bridge paths and split update machinery remain in the release"
     fi

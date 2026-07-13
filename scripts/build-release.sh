@@ -85,6 +85,7 @@ fi
 # --- Build release branch ---
 
 SOURCE_SHA=$(git rev-parse "$SOURCE_REF^{commit}")
+SOURCE_DATE=$(git show -s --format=%cI "$SOURCE_SHA")
 PKG_VERSION=$(grep '"version"' package.json | head -1 | sed 's/.*"version": *"\([^"]*\)".*/\1/')
 DIST_TAG="dist-v$PKG_VERSION"
 ORIGINAL_REF=$(git symbolic-ref --quiet --short HEAD || git rev-parse HEAD)
@@ -142,11 +143,18 @@ if git diff --cached --quiet; then
     exit 0
 fi
 
-# Commit the clean state and its installed-files manifest
+# Commit with canonical identity, time, and source-OID wording so independent
+# builders produce the same stripped commit for the same source commit.
+GIT_AUTHOR_NAME="Dex Release Builder" \
+GIT_AUTHOR_EMAIL="release-builder@dex.local" \
+GIT_AUTHOR_DATE="$SOURCE_DATE" \
+GIT_COMMITTER_NAME="Dex Release Builder" \
+GIT_COMMITTER_EMAIL="release-builder@dex.local" \
+GIT_COMMITTER_DATE="$SOURCE_DATE" \
 git commit -m "$(cat <<EOF
 release: v$PKG_VERSION
 
-Clean distribution from $SOURCE_REF (${SOURCE_SHA:0:7}).
+Clean distribution from source commit ${SOURCE_SHA}.
 Dev-only files removed per .distignore ($REMOVED files stripped).
 EOF
 )" --quiet
@@ -166,7 +174,7 @@ if [ "$TAG_RELEASE" = true ]; then
             RELEASE_COMMIT="$EXISTING_DIST_COMMIT"
         fi
     else
-        git tag -a "$DIST_TAG" "$RELEASE_COMMIT" -m "Distributed release v$PKG_VERSION"
+        git tag "$DIST_TAG" "$RELEASE_COMMIT"
     fi
 fi
 

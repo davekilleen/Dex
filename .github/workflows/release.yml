@@ -9,7 +9,11 @@ permissions:
   contents: write
 
 jobs:
+  quality:
+    uses: ./.github/workflows/ci.yml
+
   github-release:
+    needs: quality
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -36,8 +40,12 @@ jobs:
             exit 1
           fi
           DEX_RELEASE_SOURCE="$GITHUB_SHA" bash scripts/build-release.sh
-          git show release:System/.installed-files.manifest > "$RUNNER_TEMP/release-manifest"
-          node core/update/ownership.cjs --validate "$RUNNER_TEMP/release-manifest"
+          RELEASE_ARTIFACT=$(mktemp -d "$RUNNER_TEMP/dex-release-artifact.XXXXXX")
+          git archive release | tar -x -C "$RELEASE_ARTIFACT"
+          node "$RELEASE_ARTIFACT/core/update/ownership.cjs" --validate "$RELEASE_ARTIFACT/System/.installed-files.manifest"
+          node -e 'require(process.argv[1]); require(process.argv[2]);' \
+            "$RELEASE_ARTIFACT/core/update/apply-update.cjs" \
+            "$RELEASE_ARTIFACT/core/migrations/v1-to-v2-brain-vault-split.cjs"
           RELEASE_OID=$(git rev-parse release^{commit})
           DIST_OID=$(git rev-parse "dist-v${VERSION}^{commit}")
           if [ "$RELEASE_OID" != "$DIST_OID" ]; then
@@ -48,8 +56,9 @@ jobs:
       - name: Publish release branch and immutable dist tag
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
-          git push origin release --force
-          git push origin "refs/tags/dist-v${VERSION}"
+          git push --atomic origin \
+            "+refs/heads/release:refs/heads/release" \
+            "refs/tags/dist-v${VERSION}:refs/tags/dist-v${VERSION}"
 
       - name: Extract version from tag
         id: version

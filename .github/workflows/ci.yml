@@ -1,5 +1,8 @@
 name: Dex CI
-on: [push, pull_request]
+on:
+  push:
+  pull_request:
+  workflow_call:
 jobs:
   quality:
     runs-on: macos-latest
@@ -65,8 +68,12 @@ jobs:
           git -C "$RELEASE_VALIDATION_REPO" config user.email "ci@dex.local"
           git -C "$RELEASE_VALIDATION_REPO" checkout -B main "$GITHUB_SHA" --quiet
           bash "$RELEASE_VALIDATION_REPO/scripts/build-release.sh" --no-tag
-          git -C "$RELEASE_VALIDATION_REPO" show release:System/.installed-files.manifest > "$RUNNER_TEMP/release-manifest"
-          node core/update/ownership.cjs --validate "$RUNNER_TEMP/release-manifest"
+          RELEASE_ARTIFACT=$(mktemp -d "$RUNNER_TEMP/dex-release-artifact.XXXXXX")
+          git -C "$RELEASE_VALIDATION_REPO" archive release | tar -x -C "$RELEASE_ARTIFACT"
+          node "$RELEASE_ARTIFACT/core/update/ownership.cjs" --validate "$RELEASE_ARTIFACT/System/.installed-files.manifest"
+          node -e 'require(process.argv[1]); require(process.argv[2]);' \
+            "$RELEASE_ARTIFACT/core/update/apply-update.cjs" \
+            "$RELEASE_ARTIFACT/core/migrations/v1-to-v2-brain-vault-split.cjs"
       - name: Distribution safety check
         run: bash scripts/verify-distribution.sh
       - name: Path consistency check
