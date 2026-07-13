@@ -540,6 +540,7 @@ def _prepare_update_boundary_vault(repository: Path, vault: Path) -> None:
         Path("core/update/ownership.json"),
         Path("core/migrations/v1-to-v2-brain-vault-split.cjs"),
         Path("core/paths.py"),
+        Path("packages/dex-contracts/dist/paths.contract.json"),
     )
     for relative in required:
         source = repository / relative
