@@ -7,6 +7,22 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.58.0] - Your tasks and priorities are handled more carefully (2026-07-13)
+
+A coverage review of the code that edits your task and priority files turned up eight ways Dex could quietly mishandle them. All eight are now fixed, each locked in by a test so they can't come back.
+
+**What this fixes for you:**
+
+* **Completing a task marks the *right* one.** If two tasks had similar wording (one a substring of the other) and no ID, saying "done" could flip the wrong task. Dex now matches the exact task, and refuses to guess when it's genuinely ambiguous rather than picking wrong.
+* **"Done" actually completes an open task.** If an already-completed copy of a task sat above an open one, Dex could report success without ticking the open one. It now finds the open task and completes it.
+* **Your file's line endings are left alone.** Completing a task in a file edited on Windows no longer rewrites every line ending — only the one task line changes.
+* **Checkbox text inside a task title is safe.** A task whose title happened to contain checkbox characters is no longer mangled when completed.
+* **Weekly priorities stay in order.** New "Top 3" priorities are added at the bottom, numbered in sequence — no more entries landing out of order or two items sharing a number.
+* **A fourth priority is handled gracefully.** Adding beyond three no longer corrupts the list; the item is numbered correctly and Dex gently notes that "Top 3" is meant to keep your focus tight.
+* **Backlog ideas rank correctly.** A captured idea now sorts into the right spot by score instead of jumping ahead of higher-scored ones, and marking an idea implemented no longer alters its title.
+
+---
+
 ## [1.57.0] - Catch bad releases across vaults without sharing your content (2026-07-13)
 
 Opt in to help catch bad releases across all vaults — anonymous nightly health counts, no content ever.
