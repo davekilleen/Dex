@@ -18,6 +18,11 @@ email_domain: ""
 # Auto-detected from system if not set. Used for time-of-day greetings and focus time calculations.
 timezone: ""
 
+# Update Channel
+# Additional channels are reserved for a future release.
+updates:
+  channel: stable
+
 # Role Intelligence
 # This section is populated during onboarding based on the role definition
 role_context:

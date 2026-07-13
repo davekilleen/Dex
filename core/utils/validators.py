@@ -31,10 +31,16 @@ def validate_user_profile_config(config: object) -> list[str]:
         "quarterly_planning",
         "analytics",
         "calendar",
+        "updates",
     )
     for field in object_fields:
         if field in config and not isinstance(config[field], Mapping):
             errors.append(f"{field} must be an object")
+    updates = config.get("updates")
+    if isinstance(updates, Mapping) and "channel" in updates:
+        channel = updates["channel"]
+        if not isinstance(channel, str) or channel not in {"stable", "beta"}:
+            errors.append("updates.channel must be stable or beta")
     return errors
 
 

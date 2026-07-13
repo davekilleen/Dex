@@ -7,7 +7,11 @@ from pathlib import Path
 
 import pytest
 
-from core.utils.validators import validate_mcp_config, validate_skill_frontmatter
+from core.utils.validators import (
+    validate_mcp_config,
+    validate_skill_frontmatter,
+    validate_user_profile_config,
+)
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SKILLS_ROOT = REPO_ROOT / ".claude" / "skills"
@@ -99,6 +103,44 @@ def test_validate_mcp_config_accepts_resolved_stdio_entries() -> None:
 
     assert validate_mcp_config(config) == []
     assert validate_mcp_config('{"mcpServers":{"server":{"command":"python","args":[]}}}') == []
+
+
+@pytest.mark.parametrize(
+    "config",
+    [{}, {"updates": {}}, {"updates": {"channel": "stable"}}, {"updates": {"channel": "beta"}}],
+)
+def test_validate_user_profile_accepts_supported_or_absent_update_channel(
+    config: object,
+) -> None:
+    assert validate_user_profile_config(config) == []
+
+
+@pytest.mark.parametrize("channel", ["nightly", "Stable", "", None, 1, True])
+def test_validate_user_profile_warns_for_invalid_update_channel(channel: object) -> None:
+    errors = validate_user_profile_config({"updates": {"channel": channel}})
+
+    assert errors == ["updates.channel must be stable or beta"]
+
+
+def test_validate_user_profile_requires_updates_to_be_an_object() -> None:
+    assert validate_user_profile_config({"updates": "stable"}) == ["updates must be an object"]
+
+
+@pytest.mark.parametrize(
+    "profile_path",
+    [
+        REPO_ROOT / "System" / "user-profile.yaml",
+        REPO_ROOT / "System" / "user-profile-template.yaml",
+        REPO_ROOT / "System" / "user-profile.example.yaml",
+    ],
+    ids=lambda path: path.name,
+)
+def test_shipped_user_profiles_explicitly_default_to_stable(profile_path: Path) -> None:
+    import yaml
+
+    profile = yaml.safe_load(profile_path.read_text(encoding="utf-8"))
+
+    assert profile["updates"] == {"channel": "stable"}
 
 
 @pytest.mark.parametrize(

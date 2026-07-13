@@ -23,6 +23,11 @@ company_size: ""  # options: startup (1-100), scaling (100-1000), enterprise (10
 # Multiple domains: "pendo.io, pendo.com"
 email_domain: ""
 
+# Update Channel
+# Additional channels are reserved for a future release.
+updates:
+  channel: stable
+
 # Communication Preferences
 # How the AI adapts its tone and language when working with you
 communication:
