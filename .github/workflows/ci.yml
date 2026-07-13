@@ -65,6 +65,50 @@ jobs:
       - name: Path consistency check
         run: bash scripts/check-path-consistency.sh
 
+  pr-report:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha }}
+      - name: Render plain-English PR report
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          REPORT_FILE: ${{ runner.temp }}/dex-pr-report.md
+          CHANGED_FILES: ${{ runner.temp }}/dex-pr-files.txt
+        run: |
+          git diff --name-only --diff-filter=ACMRD "$BASE_SHA...HEAD" > "$CHANGED_FILES"
+          python3 scripts/pr_report.py --files-from "$CHANGED_FILES" > "$REPORT_FILE"
+          cat "$REPORT_FILE" >> "$GITHUB_STEP_SUMMARY"
+      # pull_request tokens from forks can be read-only. The report is already in
+      # the job summary, so a denied comment write is informative, never a CI failure.
+      - name: Upsert sticky PR comment when token permissions allow
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPORT_FILE: ${{ runner.temp }}/dex-pr-report.md
+        run: |
+          if COMMENT_ID="$(gh api --paginate "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments" --jq '.[] | select(.user.login == "github-actions[bot]" and (.body | contains("<!-- dex-pr-report -->"))) | .id' | head -n 1)"; then
+            if [ -n "$COMMENT_ID" ]; then
+              if gh api --method PATCH "repos/$GITHUB_REPOSITORY/issues/comments/$COMMENT_ID" --field body=@"$REPORT_FILE" >/dev/null; then
+                echo "Updated the sticky PR report comment."
+              else
+                echo "::warning::The token cannot update PR comments (common for forks); use the job summary report."
+              fi
+            elif gh api --method POST "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments" --field body=@"$REPORT_FILE" >/dev/null; then
+              echo "Created the sticky PR report comment."
+            else
+              echo "::warning::The token cannot create PR comments (common for forks); use the job summary report."
+            fi
+          else
+            echo "::warning::The token cannot read PR comments (common for forks); use the job summary report."
+          fi
+
   build-release:
     needs: quality
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
