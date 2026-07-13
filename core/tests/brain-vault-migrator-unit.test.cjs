@@ -75,6 +75,26 @@ test('CLAUDE regeneration separates custom text without changing its bytes on di
   assert.equal(custom.endsWith('\n'), false);
 });
 
+test('migrator root writes require a positive ownership class or exact migration exception', () => {
+  const migrator = require(MIGRATOR_PATH);
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'dex-migration-write-guard-'));
+
+  assert.throws(
+    () => migrator.assertMigrationWrite(root, path.join(root, 'System', 'user-note.md')),
+    /refused.*vault/i,
+  );
+  assert.throws(
+    () => migrator.assertMigrationWrite(root, path.join(root, '04-Projects', 'user.md')),
+    /refused/i,
+  );
+  assert.doesNotThrow(
+    () => migrator.assertMigrationWrite(root, path.join(root, 'System', '.dex', 'state.json')),
+  );
+  assert.doesNotThrow(
+    () => migrator.assertMigrationWrite(root, path.join(root, 'CLAUDE-custom.md')),
+  );
+});
+
 test('the fsynced journal recovers after truncation between every phase pair', () => {
   const migrator = require(MIGRATOR_PATH);
   for (let phase = 0; phase < 9; phase += 1) {

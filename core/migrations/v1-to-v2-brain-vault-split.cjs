@@ -33,6 +33,11 @@ const SNAPSHOT_PATHS = [
   'System/user-profile.yaml',
   'package.json',
 ];
+const EXPLICIT_MIGRATION_VAULT_WRITES = new Set([
+  '.gitignore',
+  'CLAUDE-custom.md',
+  'System/user-profile.yaml',
+]);
 
 function extensionBlock(source) {
   const startPattern = /^## USER_EXTENSIONS_START[^\r\n]*(?:\r?\n|$)/m;
@@ -93,6 +98,33 @@ function writeFileFsynced(destination, content, mode = 0o600) {
   fsyncDirectory(path.dirname(destination));
 }
 
+function assertMigrationWrite(root, destination) {
+  const resolvedRoot = path.resolve(root);
+  const resolved = path.resolve(destination);
+  const relative = path.relative(resolvedRoot, resolved).split(path.sep).join('/');
+  if (!relative || relative.startsWith('../') || path.isAbsolute(relative)) {
+    throw new Error('Dex migration refused a write outside the vault.');
+  }
+  const className = ownership.classify(relative);
+  const positivelyAuthorized = ['brain', 'generated', 'runtime'].includes(className)
+    || (className === 'vault' && EXPLICIT_MIGRATION_VAULT_WRITES.has(relative));
+  if (!positivelyAuthorized || ownership.isDenied(relative, root)) {
+    throw new Error(`Dex migration refused unauthorized ${className} path ${relative}.`);
+  }
+  try {
+    if (fs.lstatSync(resolved).isSymbolicLink()) {
+      throw new Error(`Dex migration refused symlinked destination ${relative}.`);
+    }
+  } catch (error) {
+    if (error.code !== 'ENOENT') throw error;
+  }
+  return resolved;
+}
+
+function writeMigrationFile(root, destination, content, mode = 0o600) {
+  writeFileFsynced(assertMigrationWrite(root, destination), content, mode);
+}
+
 function journalPath(root) {
   return path.join(root, JOURNAL_RELATIVE);
 }
@@ -103,9 +135,9 @@ function writeJournal(root, state) {
   fs.mkdirSync(path.dirname(destination), { recursive: true });
   if (fs.existsSync(destination)) {
     const current = fs.readFileSync(destination);
-    writeFileFsynced(previous, current);
+    writeMigrationFile(root, previous, current);
   }
-  writeFileFsynced(destination, `${JSON.stringify(state, null, 2)}\n`);
+  writeMigrationFile(root, destination, `${JSON.stringify(state, null, 2)}\n`);
 }
 
 function readJournal(root) {
@@ -448,7 +480,7 @@ function renderReport(report) {
 
 function writeReport(root, report) {
   ensureReportSnapshot(root);
-  writeFileFsynced(path.join(root, REPORT_RELATIVE), renderReport(report), 0o644);
+  writeMigrationFile(root, path.join(root, REPORT_RELATIVE), renderReport(report), 0o644);
 }
 
 function fileSha256(candidate) {
@@ -474,7 +506,7 @@ function ensureReportSnapshot(root) {
   if (!exists(source) || fileSha256(source) !== entry.sha256) {
     throw new Error('Dex could not safely preserve the existing migration report before writing a new one. The report was left unchanged.');
   }
-  writeFileFsynced(destination, fs.readFileSync(source), entry.mode);
+  writeMigrationFile(root, destination, fs.readFileSync(source), entry.mode);
   fs.chmodSync(destination, entry.mode);
 }
 
@@ -534,12 +566,12 @@ function snapshotFiles(root, migrationId = null) {
       createdAt: new Date().toISOString(),
       entries,
     };
-    writeFileFsynced(planPath, `${JSON.stringify(plan, null, 2)}\n`);
+    writeMigrationFile(root, planPath, `${JSON.stringify(plan, null, 2)}\n`);
   }
 
   if (adoptedReport?.entry.existed) {
     const destination = path.join(backupRoot, 'files', REPORT_RELATIVE);
-    writeFileFsynced(destination, adoptedReport.bytes, adoptedReport.entry.mode);
+    writeMigrationFile(root, destination, adoptedReport.bytes, adoptedReport.entry.mode);
     fs.chmodSync(destination, adoptedReport.entry.mode);
   }
 
@@ -555,14 +587,14 @@ function snapshotFiles(root, migrationId = null) {
       if (!exists(source) || fileSha256(source) !== entry.sha256) {
         throw new Error(`P2 stopped because ${entry.path} changed while its backup was incomplete.`);
       }
-      writeFileFsynced(destination, fs.readFileSync(source), entry.mode);
+      writeMigrationFile(root, destination, fs.readFileSync(source), entry.mode);
       fs.chmodSync(destination, entry.mode);
     }
     if (process.env.DEX_MIGRATION_STOP_AFTER_SNAPSHOT_FILE === entry.path) {
       throw new Error('Stopped safely while testing P2 snapshot recovery. Run --resume to continue.');
     }
   }
-  writeFileFsynced(manifestPath, `${JSON.stringify(plan, null, 2)}\n`);
+  writeMigrationFile(root, manifestPath, `${JSON.stringify(plan, null, 2)}\n`);
   return plan;
 }
 
@@ -581,7 +613,7 @@ function restoreSnapshot(root) {
     const bytes = fs.readFileSync(source);
     const digest = crypto.createHash('sha256').update(bytes).digest('hex');
     if (digest !== entry.sha256) throw new Error(`Backup verification failed for ${entry.path}`);
-    writeFileFsynced(destination, bytes, entry.mode);
+    writeMigrationFile(root, destination, bytes, entry.mode);
     fs.chmodSync(destination, entry.mode);
   }
 }
@@ -623,7 +655,8 @@ function scanForSecrets(root) {
 
 function persistHeldBackPaths(root, paths) {
   const normalized = ownership.normalizeHeldBackPaths(paths);
-  writeFileFsynced(
+  writeMigrationFile(
+    root,
     path.join(root, HELD_BACK_RELATIVE),
     `${JSON.stringify({ schemaVersion: 1, paths: normalized }, null, 2)}\n`,
   );
@@ -677,7 +710,7 @@ function independentVaultInventory(root, heldBackPaths = []) {
 function phase3BuildVault(root, state) {
   const gitDirectory = path.join(root, '.dex', 'vault-staging.git');
   initializeVaultGitdir(root, gitDirectory, state.analysis?.heldBackPaths || []);
-  writeFileFsynced(path.join(root, '.gitignore'), ownership.vaultGitignoreContent(), 0o644);
+  writeMigrationFile(root, path.join(root, '.gitignore'), ownership.vaultGitignoreContent(), 0o644);
 
   const planPath = path.join(root, P3_FILES_RELATIVE);
   let plan;
@@ -691,7 +724,7 @@ function phase3BuildVault(root, state) {
       expected: independentVaultInventory(root, heldBackPaths),
       heldBackPaths,
     };
-    writeFileFsynced(planPath, `${JSON.stringify(plan, null, 2)}\n`);
+    writeMigrationFile(root, planPath, `${JSON.stringify(plan, null, 2)}\n`);
   }
   const files = Array.isArray(plan) ? plan : plan.expected.map((entry) => entry.path);
   state.p3 = state.p3 || { nextIndex: 0, total: files.length };
@@ -819,7 +852,8 @@ function phase4BuildBrain(root, state) {
 }
 
 function writeTopologySentinel(root, releaseCommit) {
-  writeFileFsynced(
+  writeMigrationFile(
+    root,
     path.join(root, TOPOLOGY_RELATIVE),
     `${JSON.stringify({
       schemaVersion: 1,
@@ -918,9 +952,9 @@ function phase6Rematerialize(root, state = {}) {
       custom = merged.content;
       appended = merged.appended;
     }
-    writeFileFsynced(customPath, custom, 0o644);
+    writeMigrationFile(root, customPath, custom, 0o644);
     const template = emptyLegacyExtensionBlock(legacy);
-    writeFileFsynced(claudePath, regenerateClaude(template, custom), 0o644);
+    writeMigrationFile(root, claudePath, regenerateClaude(template, custom), 0o644);
   }
 
   state.analysis = state.analysis || {};
@@ -940,11 +974,11 @@ function phase6Rematerialize(root, state = {}) {
 
   const profilePath = path.join(root, 'System', 'user-profile.yaml');
   if (exists(profilePath)) {
-    writeFileFsynced(profilePath, stampVaultSchema(fs.readFileSync(profilePath, 'utf8')), 0o644);
+    writeMigrationFile(root, profilePath, stampVaultSchema(fs.readFileSync(profilePath, 'utf8')), 0o644);
   }
   const packagePath = path.join(root, 'package.json');
   if (exists(packagePath)) {
-    writeFileFsynced(packagePath, stampPackageSupport(fs.readFileSync(packagePath, 'utf8')), 0o644);
+    writeMigrationFile(root, packagePath, stampPackageSupport(fs.readFileSync(packagePath, 'utf8')), 0o644);
   }
 }
 
@@ -1260,7 +1294,7 @@ function preflightRestorePreservation(root, state) {
     } else if (entry.existed) {
       const stat = fs.lstatSync(source);
       if (stat.isFile() && !stat.isSymbolicLink()) {
-        writeFileFsynced(path.join(backupRoot, 'files', relative), fs.readFileSync(source), stat.mode & 0o777);
+        writeMigrationFile(root, path.join(backupRoot, 'files', relative), fs.readFileSync(source), stat.mode & 0o777);
         entry.preserved = true;
         entry.sha256 = fileSha256(source);
       } else {
@@ -1269,7 +1303,8 @@ function preflightRestorePreservation(root, state) {
     }
     entries.push(entry);
   }
-  writeFileFsynced(
+  writeMigrationFile(
+    root,
     path.join(backupRoot, 'manifest.json'),
     `${JSON.stringify({
       schemaVersion: 1,
@@ -1494,6 +1529,7 @@ function main(argumentsList = process.argv.slice(2), root = process.cwd()) {
 
 module.exports = {
   acquireLock,
+  assertMigrationWrite,
   assertSafeMutationRoots,
   emptyLegacyExtensionBlock,
   extractLegacyExtensions,
