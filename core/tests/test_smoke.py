@@ -89,6 +89,99 @@ def _definition(journey_id: str, timeout: float = 5.0) -> smoke.JourneyDefinitio
     return smoke.JourneyDefinition(journey_id, timeout)
 
 
+def test_mcp_handshake_timeout_env_override_changes_effective_timeout(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("DEX_MCP_HANDSHAKE_TIMEOUT", "3.25")
+
+    assert smoke._mcp_handshake_timeout_seconds() == 3.25
+
+
+@pytest.mark.parametrize("value", [None, "", "invalid", "0", "-1", "nan", "inf"])
+def test_mcp_handshake_timeout_invalid_env_falls_back_without_crashing(
+    monkeypatch: pytest.MonkeyPatch,
+    value: str | None,
+) -> None:
+    if value is None:
+        monkeypatch.delenv("DEX_MCP_HANDSHAKE_TIMEOUT", raising=False)
+    else:
+        monkeypatch.setenv("DEX_MCP_HANDSHAKE_TIMEOUT", value)
+
+    assert smoke._mcp_handshake_timeout_seconds() == 8.0
+
+
+def test_mcp_startup_allows_server_taking_three_seconds_to_handshake(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    from core.utils import mcp_handshake
+
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    (vault / smoke.MCP_PLAN).write_text(
+        json.dumps(
+            {
+                "state": "OK",
+                "entries": [
+                    {
+                        "name": "work-mcp",
+                        "verdict": "EXECUTE",
+                        "kind": "builtin",
+                        "script": "core/mcp/work_server.py",
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    bootstrap = smoke._install_network_guard(tmp_path) / "server_bootstrap.py"
+    monkeypatch.setenv("DEX_SMOKE_SERVER_BOOTSTRAP", str(bootstrap))
+    observed_timeouts: list[float] = []
+
+    def simulated_slow_handshake(*_args: object, timeout: float, **_kwargs: object):
+        observed_timeouts.append(timeout)
+        simulated_startup_seconds = 3.23
+        if timeout < simulated_startup_seconds:
+            return mcp_handshake.MCPHandshakeResult(
+                ok=False,
+                response=None,
+                error=f"initialize response timed out after {timeout:g}s",
+                stderr="",
+                returncode=None,
+            )
+        return mcp_handshake.MCPHandshakeResult(
+            ok=True,
+            response={"jsonrpc": "2.0", "id": 1, "result": {}},
+            error=None,
+            stderr="",
+            returncode=0,
+        )
+
+    monkeypatch.setattr(mcp_handshake, "mcp_stdio_handshake", simulated_slow_handshake)
+
+    result = smoke._journey_mcp_startup(vault, tmp_path / "release")
+
+    assert result == {"verdict": "OK", "detail": "work-mcp: OK"}
+    assert observed_timeouts == [smoke.HANDSHAKE_TIMEOUT_SECONDS]
+
+
+def test_mcp_timeout_budget_ordering_invariant() -> None:
+    mcp_startup = next(journey for journey in smoke.JOURNEYS if journey.id == "mcp_startup")
+
+    assert (
+        smoke.GLOBAL_TIMEOUT_SECONDS,
+        mcp_startup.timeout_seconds,
+        smoke.MCP_STARTUP_HANDSHAKE_BUDGET_SECONDS,
+        smoke.HANDSHAKE_TIMEOUT_SECONDS,
+    ) == (60.0, 45.0, 40.0, 8.0)
+    assert (
+        smoke.GLOBAL_TIMEOUT_SECONDS
+        > mcp_startup.timeout_seconds
+        > smoke.MCP_STARTUP_HANDSHAKE_BUDGET_SECONDS
+        > smoke.HANDSHAKE_TIMEOUT_SECONDS
+    )
+
+
 def _release_repo(tmp_path: Path, *, release_validators: str | None = None) -> Path:
     repo = tmp_path / "release-repo"
     repo.mkdir()

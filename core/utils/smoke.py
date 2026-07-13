@@ -33,7 +33,24 @@ sys.path.insert(0, str(RUNNER_ROOT))
 
 SCHEMA_VERSION = 1
 HISTORY_LIMIT = 120
-GLOBAL_TIMEOUT_SECONDS = 30.0
+DEFAULT_MCP_HANDSHAKE_TIMEOUT_SECONDS = 8.0
+
+
+def _mcp_handshake_timeout_seconds() -> float:
+    raw_value = os.environ.get("DEX_MCP_HANDSHAKE_TIMEOUT")
+    try:
+        value = float(raw_value) if raw_value is not None else DEFAULT_MCP_HANDSHAKE_TIMEOUT_SECONDS
+    except (TypeError, ValueError):
+        return DEFAULT_MCP_HANDSHAKE_TIMEOUT_SECONDS
+    if not 0 < value < float("inf"):
+        return DEFAULT_MCP_HANDSHAKE_TIMEOUT_SECONDS
+    return value
+
+
+HANDSHAKE_TIMEOUT_SECONDS = _mcp_handshake_timeout_seconds()
+MCP_STARTUP_HANDSHAKE_BUDGET_SECONDS = 40.0
+MCP_STARTUP_JOURNEY_TIMEOUT_SECONDS = 45.0
+GLOBAL_TIMEOUT_SECONDS = 60.0
 VERDICTS = frozenset({"OK", "OFF", "BROKEN", "UNKNOWN"})
 VERDICT_PRIORITY = {"OFF": 0, "OK": 1, "UNKNOWN": 2, "BROKEN": 3}
 NOT_SET_UP_DETAIL = "not set up yet — complete onboarding first"
@@ -155,7 +172,7 @@ class SmokeRun:
 JOURNEYS = (
     JourneyDefinition("configs", 5.0),
     JourneyDefinition("task_lifecycle", 8.0),
-    JourneyDefinition("mcp_startup", 20.0),
+    JourneyDefinition("mcp_startup", MCP_STARTUP_JOURNEY_TIMEOUT_SECONDS),
     JourneyDefinition("skills", 5.0),
     JourneyDefinition("hooks", 8.0),
 )
@@ -1614,7 +1631,7 @@ def check_custom_mcp_once(
                 ],
                 cwd=isolated_vault,
                 env=env,
-                timeout=1.5,
+                timeout=HANDSHAKE_TIMEOUT_SECONDS,
             )
     except (OSError, TrustRegistryError) as exc:
         return {"verdict": "UNKNOWN", "detail": _one_line(exc)}
@@ -1990,7 +2007,7 @@ def _journey_mcp_startup(vault: Path, _release_root: Path) -> dict[str, str]:
 
     statuses = []
     details = []
-    handshake_deadline = time.monotonic() + 15.0
+    handshake_deadline = time.monotonic() + MCP_STARTUP_HANDSHAKE_BUDGET_SECONDS
     handshake = None
     if any(isinstance(entry, Mapping) and entry.get("verdict") == "EXECUTE" for entry in plan["entries"]):
         expected_handshake = RUNNER_ROOT / "core" / "utils" / "mcp_handshake.py"
@@ -2085,7 +2102,7 @@ def _journey_mcp_startup(vault: Path, _release_root: Path) -> dict[str, str]:
             command,
             cwd=RUNNER_ROOT,
             env=os.environ,
-            timeout=min(1.5, handshake_budget),
+            timeout=min(HANDSHAKE_TIMEOUT_SECONDS, handshake_budget),
         )
         if result.ok:
             statuses.append("OK")
