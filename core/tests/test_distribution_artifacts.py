@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import io
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -18,11 +19,15 @@ RELEASE_BUILD_INPUTS = (
     ".gitignore",
     ".github/workflows/ci.yml",
     ".scripts/lib/tests/entity-pages.test.cjs",
+    "install.sh",
     "package.json",
     "requirements.txt",
     "requirements-dev.txt",
     "core/utils/manifest.py",
     "core/utils/smoke.py",
+    "core/migrations/v1-to-v2-brain-vault-split.cjs",
+    "core/update/ownership.cjs",
+    "core/update/ownership.json",
     "scripts/build-release.sh",
     "scripts/generate-manifest.sh",
     "scripts/verify-distribution.sh",
@@ -201,6 +206,178 @@ def test_release_branch_strips_dev_files_and_keeps_user_runtime(tmp_path: Path) 
     assert "test" not in package_json.get("scripts", {})
     assert "test:hooks" not in package_json.get("scripts", {})
     assert "test:scripts" not in package_json.get("scripts", {})
+
+
+def _prepare_install_runtime(install_root: Path) -> dict[str, str]:
+    fake_bin = install_root.parent / "fake-bin"
+    fake_bin.mkdir(exist_ok=True)
+    pnpm = fake_bin / "pnpm"
+    pnpm.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    pnpm.chmod(0o755)
+
+    venv_bin = install_root / ".venv" / "bin"
+    venv_bin.mkdir(parents=True)
+    pip = venv_bin / "pip"
+    pip.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    pip.chmod(0o755)
+    python = venv_bin / "python"
+    python.write_text(
+        "#!/bin/sh\n"
+        "if [ \"${1:-}\" = \"core/paths.py\" ]; then printf '{}\\n' > core/paths.json; fi\n"
+        "exit 0\n",
+        encoding="utf-8",
+    )
+    python.chmod(0o755)
+
+    return {
+        **os.environ,
+        "OSTYPE": "linux-gnu",
+        "PATH": f"{fake_bin}{os.pathsep}{os.environ['PATH']}",
+    }
+
+
+def _assert_split_install(install_root: Path) -> None:
+    assert (install_root / ".git" / "dex-vault-v2").is_file()
+    assert (install_root / ".dex" / "brain.git" / "dex-brain-v2").is_file()
+    assert (install_root / ".dex" / "pre-split-archive.git").is_dir()
+
+    topology = json.loads(
+        (install_root / "System/.dex/topology.json").read_text(encoding="utf-8")
+    )
+    assert topology["topology"] == "brain-vault-split"
+    installed = subprocess.run(
+        [
+            "git",
+            f"--git-dir={install_root / '.dex/brain.git'}",
+            "rev-parse",
+            "refs/dex/installed",
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    assert installed == topology["installedRelease"]
+    assert subprocess.run(
+        ["git", "remote"],
+        cwd=install_root,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout == ""
+    assert subprocess.run(
+        [
+            "git",
+            f"--git-dir={install_root / '.dex/brain.git'}",
+            "remote",
+            "get-url",
+            "origin",
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip() == "https://github.com/davekilleen/Dex.git"
+    assert "vault_schema: 1" in (
+        install_root / "System/user-profile.yaml"
+    ).read_text(encoding="utf-8")
+    assert "## USER_EXTENSIONS_START" not in (
+        install_root / "CLAUDE.md"
+    ).read_text(encoding="utf-8")
+    assert (install_root / "CLAUDE-custom.md").is_file()
+
+
+def test_fresh_clone_install_converges_to_split_topology_and_reruns_safely(
+    tmp_path: Path,
+) -> None:
+    release_repo, _ = _build_release_in_clone(tmp_path)
+    install_root = tmp_path / "fresh-install"
+    subprocess.run(
+        [
+            "git",
+            "clone",
+            "--local",
+            "--no-hardlinks",
+            "--quiet",
+            "--branch",
+            "release",
+            str(release_repo),
+            str(install_root),
+        ],
+        check=True,
+    )
+    subprocess.run(
+        ["git", "remote", "set-url", "origin", "https://github.com/davekilleen/Dex.git"],
+        cwd=install_root,
+        check=True,
+    )
+    env = _prepare_install_runtime(install_root)
+
+    first = subprocess.run(
+        ["bash", "install.sh"],
+        cwd=install_root,
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=90,
+    )
+    assert first.returncode == 0, first.stdout + first.stderr
+    _assert_split_install(install_root)
+    first_vault_head = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=install_root,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+
+    second = subprocess.run(
+        ["bash", "install.sh"],
+        cwd=install_root,
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=90,
+    )
+    assert second.returncode == 0, second.stdout + second.stderr
+    _assert_split_install(install_root)
+    assert subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=install_root,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip() == first_vault_head
+
+
+def test_zip_install_stays_unsplit_and_explains_manual_updates(tmp_path: Path) -> None:
+    release_repo, _ = _build_release_in_clone(tmp_path)
+    install_root = tmp_path / "zip-install"
+    install_root.mkdir()
+    archive = subprocess.run(
+        ["git", "archive", "release"],
+        cwd=release_repo,
+        check=True,
+        capture_output=True,
+    ).stdout
+    with tarfile.open(fileobj=io.BytesIO(archive), mode="r:") as release_archive:
+        release_archive.extractall(install_root)
+    env = _prepare_install_runtime(install_root)
+
+    result = subprocess.run(
+        ["bash", "install.sh"],
+        cwd=install_root,
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert not (install_root / ".git").exists()
+    assert not (install_root / ".dex/brain.git").exists()
+    report = (install_root / "System/migration-report-v2.md").read_text(encoding="utf-8")
+    assert "downloaded as a ZIP" in report
+    assert "manual-update path" in report
+    assert "automatic updates are unavailable" in result.stdout.lower()
 
 
 def test_distribution_check_rejects_enabled_integration_templates(tmp_path: Path) -> None:

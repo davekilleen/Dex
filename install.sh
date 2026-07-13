@@ -47,22 +47,25 @@ if git remote -v 2>/dev/null | grep -q "davekilleen/[Dd]ex"; then
     git remote rename origin upstream 2>/dev/null || true
 fi
 
-# Check Git first (required for repo operations)
+# Check Git before repository setup. ZIP installs can still install their local
+# dependencies, but they stay on the manual-update path instead of creating a
+# partial brain/vault topology.
+GIT_AVAILABLE=true
 if ! command -v git &> /dev/null; then
-    echo "❌ Git is not installed"
+    GIT_AVAILABLE=false
+    echo "⚠️  Git is not installed"
     echo ""
-    echo "Git is required to clone the repository and manage updates."
+    echo "Dex can install local dependencies, but it cannot enable automatic updates."
     echo ""
     if [[ "$OSTYPE" == "msys" || "$OSTYPE" == "win32" ]]; then
         echo "Download Git for Windows from: https://git-scm.com/download/win"
-        echo "After installing, restart your terminal and run ./install.sh again"
     else
         echo "Download Git from: https://git-scm.com"
-        echo "After installing, restart your terminal and run ./install.sh again"
     fi
-    exit 1
+    echo "After installing Git, use a fresh Git clone to enable automatic updates."
+else
+    echo "✅ Git $(git --version | cut -d' ' -f3)"
 fi
-echo "✅ Git $(git --version | cut -d' ' -f3)"
 
 # Check Node.js
 if ! command -v node &> /dev/null; then
@@ -262,6 +265,50 @@ if [ -n "$PYTHON_CMD" ] && [ -f "$VENV_PYTHON" ]; then
     fi
 else
     WORK_MCP_STATUS="⚠️  Needs attention"
+fi
+
+# Converge Git clones to the v2 brain/vault topology using the same migration
+# implementation as existing installations. The migrator pauses large vaults
+# after bounded batches, so keep resuming until it reaches a terminal state.
+echo ""
+echo "🔀 Separating the Dex brain from your vault..."
+MIGRATOR="core/migrations/v1-to-v2-brain-vault-split.cjs"
+if [ ! -f "$MIGRATOR" ]; then
+    echo "❌ Dex cannot finish the brain/vault setup because the migrator is missing."
+    echo "   Get a complete Dex release and run ./install.sh again."
+    exit 1
+fi
+
+if [ "$GIT_AVAILABLE" = false ] && [ -e .git ]; then
+    echo "⚠️  Dex found Git metadata but cannot inspect it because Git is unavailable."
+    echo "   The brain/vault split was not started; automatic updates are unavailable."
+else
+    MIGRATION_MODE="--auto"
+    while true; do
+        if node "$MIGRATOR" "$MIGRATION_MODE"; then
+            MIGRATION_STATUS=0
+        else
+            MIGRATION_STATUS=$?
+        fi
+        if [ "$MIGRATION_STATUS" -eq 75 ]; then
+            MIGRATION_MODE="--resume"
+            continue
+        fi
+        if [ "$MIGRATION_STATUS" -ne 0 ]; then
+            echo "❌ Dex could not finish the brain/vault split."
+            echo "   Read System/migration-report-v2.md, fix the reported issue, then run ./install.sh again."
+            exit "$MIGRATION_STATUS"
+        fi
+        break
+    done
+
+    if [ -f "System/.dex/topology.json" ] && [ -d ".dex/brain.git" ]; then
+        echo "✅ Your vault and the Dex brain now have separate Git histories"
+    else
+        echo "⚠️  This folder has no Git clone history, so the brain/vault split was not started."
+        echo "   Your files are unchanged, but automatic updates are unavailable."
+        echo "   Read System/migration-report-v2.md for the safe manual-update choices."
+    fi
 fi
 
 # Success
