@@ -151,13 +151,6 @@ def test_legacy_completion_preserves_crlf_bytes_outside_target_line(tasks_file: 
     )
 
 
-@pytest.mark.xfail(
-    reason=(
-        "BUG: legacy completion replaces every '- [ ]' token on the target line, "
-        "including checkbox syntax quoted in the task title"
-    ),
-    strict=False,
-)
 def test_legacy_completion_does_not_rewrite_checkbox_syntax_inside_title(
     tasks_file: Path,
 ):

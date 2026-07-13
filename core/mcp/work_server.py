@@ -4917,9 +4917,9 @@ async def _handle_call_tool_inner(
                 
                 # Update checkbox based on status
                 if new_status == 'd':
-                    new_line = old_line.replace('- [ ]', '- [x]')
+                    new_line = re.sub(r'^(\s*)- \[ \]', r'\1- [x]', old_line, count=1)
                 else:
-                    new_line = old_line.replace('- [x]', '- [ ]')
+                    new_line = re.sub(r'^(\s*)- \[x\]', r'\1- [ ]', old_line, count=1)
                 
                 lines[line_idx] = new_line
                 with filepath.open('w', encoding='utf-8', newline='') as file:
