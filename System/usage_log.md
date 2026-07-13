@@ -113,6 +113,19 @@ Tracks anonymous feature usage tracking to help improve Dex.
 
 ---
 
+## Health Telemetry Consent
+
+Separate, optional nightly fleet-health counts. This setting is independent of analytics.
+
+**Health telemetry:** pending
+
+**Values:**
+- `Health telemetry: opted-in` → Send the counts-only nightly smoke verdict
+- `Health telemetry: opted-out` → Do not send nightly health telemetry
+- `Health telemetry: pending` → Not yet decided; missing or pending means nothing is sent
+
+---
+
 ## Journey Metadata
 
 Auto-calculated metrics (if analytics opted in). Updated when features are used.

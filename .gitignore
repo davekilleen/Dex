@@ -40,6 +40,8 @@ System/.last-update-check
 System/.update-available
 System/.smoke-last-run.json
 System/.dex/smoke-history.jsonl
+System/.dex/health-telemetry-log.jsonl
+System/.dex/telemetry-id
 
 # Custom extensions (user-created, never in upstream)
 CLAUDE-custom.md

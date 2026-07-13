@@ -7,6 +7,19 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.57.0] - Catch bad releases across vaults without sharing your content (2026-07-13)
+
+Opt in to help catch bad releases across all vaults — anonymous nightly health counts, no content ever.
+
+**What this fixes for you:**
+
+* **Bad releases can show up within hours.** If you explicitly opt in, Dex shares one tiny verdict after its nightly self-check so maintainers can see when the same update starts breaking across installations.
+* **Your work never joins the report.** The verdict contains only outcome counts, one fixed check identifier when something is wrong, the Dex version and release channel, and a random installation ID. It never includes names, notes, filenames, paths, or file contents.
+* **This choice is separate and defaults to no.** Existing analytics consent does not enable health sharing. Missing, pending, or malformed consent sends nothing, and you can turn health telemetry on or off in plain language anytime.
+* **You can inspect every attempt locally.** Dex keeps an ignored local line-by-line audit of exactly what it would send, including attempts skipped by consent and requests dropped after a network failure.
+
+---
+
 ## [1.56.0] - Dex notices the apps you actually have installed (2026-07-13)
 
 When Dex suggests connecting a tool, it now leans on real evidence — is the app sitting in your Applications folder? Is the connector already half set up? — instead of just scanning your notes for mentions. A tool you actually have installed is a far better signal than a passing reference to one.

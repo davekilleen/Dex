@@ -6,6 +6,7 @@ import os
 import plistlib
 import shutil
 import subprocess
+import textwrap
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -71,3 +72,71 @@ def test_installer_status_and_uninstall_use_stubbed_launchctl(tmp_path: Path) ->
     subprocess.run(["bash", str(INSTALLER), "--uninstall"], env=env, check=True)
     assert not plist.exists()
     assert str(plist) in calls.read_text()
+
+
+def _nightly_worker_fixture(tmp_path: Path, *, smoke_exit: int) -> tuple[Path, dict[str, str]]:
+    vault = tmp_path / "vault"
+    (vault / "core" / "utils").mkdir(parents=True)
+    (vault / ".scripts").mkdir()
+    (vault / "core" / "utils" / "smoke.py").write_text(
+        textwrap.dedent(
+            f"""
+            import json
+            from pathlib import Path
+
+            report = {{
+                "schema_version": 1,
+                "summary": {{"ok": 4, "broken": {smoke_exit}, "unknown": 0, "off": 0}},
+                "journeys": [],
+            }}
+            target = Path("System/.smoke-last-run.json")
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text(json.dumps(report))
+            raise SystemExit({smoke_exit})
+            """
+        ),
+        encoding="utf-8",
+    )
+    (vault / "core" / "utils" / "health_telemetry.py").write_text(
+        textwrap.dedent(
+            """
+            import json
+            import sys
+            from pathlib import Path
+
+            args = sys.argv[1:]
+            report_path = Path(args[args.index("--report") + 1])
+            assert json.loads(report_path.read_text())["summary"]["ok"] == 4
+            Path("telemetry-called").write_text(" ".join(args))
+            """
+        ),
+        encoding="utf-8",
+    )
+    home = tmp_path / "home"
+    breadcrumb = home / ".config" / "dex" / "vault-path"
+    breadcrumb.parent.mkdir(parents=True)
+    breadcrumb.write_text(str(vault), encoding="utf-8")
+    return vault, {**os.environ, "HOME": str(home)}
+
+
+def test_nightly_worker_sends_latest_ledger_before_success_heartbeat(tmp_path: Path) -> None:
+    vault, env = _nightly_worker_fixture(tmp_path, smoke_exit=0)
+
+    subprocess.run(["bash", str(WORKER)], env=env, check=True)
+
+    call = (vault / "telemetry-called").read_text()
+    assert "--report System/.smoke-last-run.json" in call
+    assert f"--vault {vault}" in call
+    assert f"--repo {vault}" in call
+    assert "--channel stable" in call
+    assert "nightly smoke completed" in (vault / ".scripts" / "logs" / "smoke-nightly.log").read_text()
+
+
+def test_nightly_worker_records_broken_verdict_without_success_heartbeat(tmp_path: Path) -> None:
+    vault, env = _nightly_worker_fixture(tmp_path, smoke_exit=1)
+
+    result = subprocess.run(["bash", str(WORKER)], env=env, check=False)
+
+    assert result.returncode == 1
+    assert (vault / "telemetry-called").exists()
+    assert not (vault / ".scripts" / "logs" / "smoke-nightly.log").exists()

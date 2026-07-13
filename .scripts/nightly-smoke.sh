@@ -20,6 +20,22 @@ else
 fi
 
 cd "$VAULT_PATH"
+set +e
 VAULT_PATH="$VAULT_PATH" "$PYTHON" core/utils/smoke.py --json --ledger
+SMOKE_STATUS=$?
+set -e
+
+if [ -f "System/.smoke-last-run.json" ]; then
+    "$PYTHON" core/utils/health_telemetry.py \
+        --report "System/.smoke-last-run.json" \
+        --vault "$VAULT_PATH" \
+        --repo "$VAULT_PATH" \
+        --channel "stable" >/dev/null 2>&1 || true
+fi
+
+if [ "$SMOKE_STATUS" -ne 0 ]; then
+    exit "$SMOKE_STATUS"
+fi
+
 mkdir -p .scripts/logs
 echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] nightly smoke completed" >> .scripts/logs/smoke-nightly.log

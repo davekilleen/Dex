@@ -414,6 +414,31 @@ When user says anything like:
 2. Update `System/usage_log.md` → `Consent decision: opted-in`
 3. Say: "Done! Analytics is back on. Thanks for helping improve Dex!"
 
+### Health Telemetry Opt-In/Out (Anytime)
+
+Health telemetry is a separate, default-off choice. It sends only anonymous nightly smoke counts and never
+uses analytics consent, analytics identity, profile metadata, names, notes, filenames, or file contents.
+
+When user says anything like:
+- "Share anonymous nightly health counts"
+- "Turn on health telemetry"
+- "Opt in to health telemetry"
+
+**Your response:**
+1. Update `System/usage_log.md` → `**Health telemetry:** opted-in`
+2. Do not change analytics consent or `System/user-profile.yaml`
+3. Say: "Done! Anonymous nightly health counts are on. You can inspect every attempt in `System/.dex/health-telemetry-log.jsonl` or turn them off anytime."
+
+When user says anything like:
+- "Turn off health telemetry"
+- "Stop sharing health counts"
+- "Opt out of health telemetry"
+
+**Your response:**
+1. Update `System/usage_log.md` → `**Health telemetry:** opted-out`
+2. Do not change analytics consent or `System/user-profile.yaml`
+3. Say: "Done! Nightly health telemetry is off. Local smoke checks and their local audit log still run."
+
 ### Skill Rating
 After `/daily-plan`, `/week-plan`, `/meeting-prep`, `/process-meetings`, `/week-review`, `/daily-review` complete, ask "Quick rating (1-5)?" If user responds with a number, call `capture_skill_rating`. If they ignore or move on, don't ask again.
 
