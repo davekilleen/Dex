@@ -7,7 +7,17 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
-## [1.52.0] - Your own tools can now be health-checked for real — only when you say so (2026-07-13)
+## [1.53.0] - Dex now tells you it can connect to your task apps (2026-07-13)
+
+Dex quietly gained two-way sync with Todoist, Things 3, and Trello — but you'd only have found out during first-run setup, or by already knowing to ask. That's a shame for a feature this useful. Now Dex surfaces it the moment it's relevant.
+
+**What this fixes for you:**
+
+* **Mention your task app and Dex offers to connect it.** Say "I keep my tasks in Trello" or "that's on my Todoist" — or just paste a board link — and Dex offers to set up sync right there, in one light line. Say no and it drops it; no nagging.
+* **Dex notices the tools you already use.** During the getting-started tour and when you run `/dex-level-up`, Dex now scans your notes for signs of the tools you work with (mentions, links) and leads with the ones that actually fit you — "I noticed you mention Things in a few places" — instead of a generic list.
+* **First-time setup leads with what fits you.** Onboarding still offers every integration, but now puts the ones your vault already hints at up top.
+* **They're in the catalog now.** The skills list (`/dex-level-up`, `.claude/skills/README.md`) finally names every connect command — Todoist, Things, Trello, Gmail, Teams, Zoom, Jira, Granola, calendar — so browsing "what can Dex do?" actually shows them.
+* **`/integrate-mcp` points you the right way.** The "connect more tools" command now names the task apps and their built-in setup commands first, instead of sending you to hunt through a marketplace for something Dex already supports natively.
 
 Custom MCP servers used to stay permanently "unknown" because Dex would not execute user code during a check. You can now ask `/create-mcp` for a one-off startup proof and, as a separate default-no choice, trust one exact local Python file for nightly and deep checks.
 

@@ -383,6 +383,27 @@ Say: "Now the fun part — let's connect the tools you use day to day."
 
 If any integrations are already connected, briefly note them so you don't re-offer.
 
+### 8b: Personalize with Vault Signals
+
+Before asking which to connect, run the integration concierge — it scans the vault for signals (mentions, links, email domains) of tools the user already works with, so you can lead with what fits them instead of a flat list:
+
+```bash
+node .claude/hooks/integration-concierge.cjs
+```
+
+Parse the JSON for `high_value` and `moderate_value`. If any `high_value` items came back, surface them first, personalized:
+
+```
+Based on what's already in your vault, these look most useful:
+
+- **[shortName]** — I noticed [mentions] references (e.g. [first example file]).
+  [value proposition]. Setup: [setupTime].
+```
+
+Then present the rest of the categorized list from 8a for anything not already surfaced. If the concierge returns no high_value signals (common for a brand-new vault), just use the 8a list as-is — don't mention the scan.
+
+After presenting, set an `integrations_offered` flag in the `.onboarding-complete` marker so `/getting-started` doesn't re-run this discovery.
+
 **Then ask:**
 
 "Which ones would you like to connect? You can always add more later with `/integrate-mcp` or individual setup commands."

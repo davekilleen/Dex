@@ -196,6 +196,22 @@ When the user mentions any of these:
 2. If a key is configured: Granola sync uses the official Granola public API, so desktop and mobile recordings come through the same way — there's nothing phone-specific to set up. Offer to run a sync (`/process-meetings`) and confirm background sync is installed (`cd .scripts/meeting-intel && ./install-automation.sh`).
 3. If no key is configured: tell the user "Granola isn't connected yet — run `/granola-setup` to add your Granola API key (requires a Granola Business plan)." Offer to walk them through it.
 
+### Task App Connections (Natural Language Triggers)
+
+Dex can sync tasks two ways with Todoist, Things 3, and Trello — but most users don't know that unless told. When the user mentions their task app in passing, offer to connect it. Watch for phrases like:
+- "I use Todoist / Things / Trello", "I keep my tasks in [app]", "my [app] board / list"
+- "I track that in Todoist", "that's on my Trello board", "it's in my Things inbox"
+- "can Dex sync with [app]", "does Dex work with [app]", "I wish this synced to [app]"
+- pasted links: `todoist.com`, `trello.com`, `things://`
+
+**Action:**
+1. Check `System/integrations/config.yaml` — if that app is already `enabled: true`, don't re-offer; instead offer to sync ("Want me to sync with [app] now?").
+2. If not connected, offer setup in one light line — no pressure, don't derail what they were doing:
+   > "By the way — I can sync two ways with [app]: new Dex tasks show up there, completions flow both directions, and tasks you make in [app] come back through your daily plan for review. Takes [30 sec–2 min] to connect. Want to? (Run `/[app]-setup` anytime.)"
+3. If yes, run the matching setup skill (`/todoist-setup`, `/things-setup`, `/trello-setup`). If no, drop it — capture nothing, don't nag again this session.
+
+Route by app: Todoist → `/todoist-setup` (any platform), Things 3 → `/things-setup` (macOS only), Trello → `/trello-setup`.
+
 ### Meeting Capture
 When the user shares meeting notes or says they had a meeting:
 1. Extract key points, decisions, and action items
