@@ -84,6 +84,12 @@ test('the hard deny boundary cannot be reclassified into a writable path', () =>
     assert.equal(ownership.isDenied(candidate), false, candidate);
   }
   assert.equal(ownership.classify('03-Tasks/Tasks.md'), 'seed');
+
+  const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'dex-ownership-symlink-'));
+  const outside = fs.mkdtempSync(path.join(os.tmpdir(), 'dex-ownership-outside-'));
+  fs.mkdirSync(path.join(tempRoot, 'core'), { recursive: true });
+  fs.symlinkSync(outside, path.join(tempRoot, 'core', 'linked-parent'));
+  assert.equal(ownership.isDenied('core/linked-parent/file.cjs', tempRoot), true);
 });
 
 test('vault ignore layers protect secrets while keeping user custom skills visible', () => {

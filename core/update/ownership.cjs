@@ -115,7 +115,7 @@ function vaultGitignoreContent() {
   ].join('\n');
 }
 
-function isDenied(input) {
+function isDenied(input, root) {
   if (typeof input !== 'string' || input.length === 0 || input.includes('\0')) return true;
   if (
     input.startsWith('/')
@@ -132,6 +132,17 @@ function isDenied(input) {
   if (PARA_ROOT.test(parts[0])) return true;
   if (lower[0] === 'system' && lower[1] === 'credentials') return true;
   if (lower.some((part) => part.startsWith('.env'))) return true;
+  if (root !== undefined) {
+    let current = path.resolve(root);
+    for (const part of parts.slice(0, -1)) {
+      current = path.join(current, part);
+      try {
+        if (fs.lstatSync(current).isSymbolicLink()) return true;
+      } catch (error) {
+        if (error.code !== 'ENOENT') throw error;
+      }
+    }
+  }
   return false;
 }
 

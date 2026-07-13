@@ -4,6 +4,7 @@
   "rules": [
     { "prefix": ".dex/", "class": "runtime" },
     { "prefix": "System/.dex/", "class": "runtime" },
+    { "prefix": "System/backups/pre-split/", "class": "runtime" },
     { "prefix": "System/.last-learning-check", "class": "runtime" },
     { "prefix": "System/claude-code-state.json", "class": "runtime" },
     { "prefix": "System/integrations/.sync-state.json", "class": "runtime" },
@@ -12,6 +13,7 @@
     { "prefix": ".logs/", "class": "runtime" },
 
     { "prefix": "CLAUDE.md", "class": "generated" },
+    { "prefix": "System/migration-report-v2.md", "class": "generated" },
     { "prefix": "core/paths.json", "class": "generated" },
 
     { "prefix": "01-Quarter_Goals/Quarter_Goals.md", "class": "seed" },
