@@ -95,6 +95,16 @@ async function trelloFetch(endpoint, adapterConfig, options = {}) {
 // ---------------------------------------------------------------------------
 
 async function getListIdForStatus(boardId, status, adapterConfig) {
+  const listMapping = adapterConfig.list_mapping || {};
+  const dexStatusToMapKey = {
+    n: 'backlog',
+    s: 'in_progress',
+    b: 'blocked',
+    d: 'done',
+  };
+  const mapKey = dexStatusToMapKey[status];
+  if (mapKey && listMapping[mapKey]) return listMapping[mapKey];
+
   const lists = await trelloFetch(`/boards/${boardId}/lists`, adapterConfig, {
     params: { filter: 'open' },
   });
@@ -113,7 +123,7 @@ async function getListIdForStatus(boardId, status, adapterConfig) {
 // Transform: Dex task -> Trello card format
 // ---------------------------------------------------------------------------
 
-function toExternal(dexTask) {
+function toExternal(dexTask, adapterConfig = {}) {
   return {
     name: dexTask.title,
     desc: dexTask.context || '',
@@ -150,20 +160,9 @@ function toDex(trelloCard) {
     }
   }
 
-  // Infer pillar from board name or labels
-  let pillar = 'deal_support';
-  if (trelloCard.board?.name) {
-    const boardLower = trelloCard.board.name.toLowerCase();
-    if (boardLower.includes('thought') || boardLower.includes('content') || boardLower.includes('leadership')) {
-      pillar = 'thought_leadership';
-    } else if (boardLower.includes('product') || boardLower.includes('feedback')) {
-      pillar = 'product_feedback';
-    }
-  }
-
   return {
     title: trelloCard.name || 'Untitled card',
-    pillar,
+    pillar: null,
     priority,
     status,
     context: trelloCard.desc || '',
@@ -190,7 +189,9 @@ async function create(externalTask, adapterConfig) {
 
   const params = {
     name: externalTask.name,
-    desc: externalTask.desc || '',
+    desc: `${externalTask.desc || ''}${
+      externalTask._dexTaskId ? `\n\n[dex:${externalTask._dexTaskId}]` : ''
+    }`,
     idList: listId,
     pos: 'top',
   };
@@ -268,12 +269,15 @@ async function getChanges(since, adapterConfig) {
 
     for (const action of actions) {
       if (action.type === 'createCard') {
+        const description = action.data.card?.desc || '';
+        if (description.includes('[dex:')) continue;
+
         changes.push({
           id: action.data.card?.id,
           action: 'created',
           task: {
             name: action.data.card?.name || '',
-            desc: '',
+            desc: description,
             listName: action.data.list?.name || '',
             labels: [],
           },
@@ -281,7 +285,14 @@ async function getChanges(since, adapterConfig) {
       } else if (action.type === 'updateCard' && action.data.listAfter) {
         // Card moved between lists — check if moved to Done
         const listName = (action.data.listAfter.name || '').toLowerCase();
-        if (listName.includes('done') || listName.includes('complete')) {
+        const configuredDoneListId = adapterConfig.list_mapping?.done;
+        const movedToConfiguredDone =
+          configuredDoneListId && action.data.listAfter.id === configuredDoneListId;
+        if (
+          movedToConfiguredDone ||
+          listName.includes('done') ||
+          listName.includes('complete')
+        ) {
           changes.push({
             id: action.data.card?.id,
             action: 'completed',

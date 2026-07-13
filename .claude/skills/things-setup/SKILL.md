@@ -13,7 +13,10 @@ manifest:
 
 Connect Things 3 so Dex can work with your Things tasks whenever you ask. No account needed. Everything stays on your Mac. Works offline.
 
-**What this is not (honesty first):** there is no automatic background sync. Creating a task in Dex does not create it in Things, and completing one in Things does not automatically update Dex. Everything happens on request, in conversation. If automatic two-way sync matters to you, tell Dex — "I wish Dex synced with Things automatically" gets it captured on the improvement backlog.
+**What this enables (on request):** Once connected, say "sync with Things" — Dex pushes new
+tasks to the right Things Area (mapped from your pillars), marks completions via AppleScript,
+and pulls tasks you completed or added to Things Inbox. Everything stays local — no network
+calls, no accounts. Sync runs on demand when you ask.
 
 ## What This Enables
 
@@ -225,12 +228,12 @@ Here's what you can do now:
   Things tasks and I will
 - **Right Area, automatically** — when I file something in Things for you,
   your pillars map to your Things Areas
+- **Sync on demand** — say "sync Dex with Things" and Dex pushes pending tasks, marks
+  completions, and reviews anything new in your Things Inbox
 
 No accounts. No tokens. No expiration. Works offline.
 
-One honest note: there's no automatic background sync — I work with Things
-when you ask, not on my own. Want automatic two-way sync? Say so and I'll
-capture it on the improvement backlog.
+**Sync is on demand** — say "sync with Things" anytime. No background polling.
 ```
 
 ---

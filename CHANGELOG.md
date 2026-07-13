@@ -7,6 +7,19 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.51.0] - Things 3 and Trello sync join the party (2026-07-13)
+
+Real two-way sync landed for Todoist in the last release. This one brings your Mac's Things 3 and your Trello boards onto the same engine — so whichever task app you actually live in, Dex keeps step with it.
+
+**What this fixes for you:**
+
+* **Things 3, fully local, now syncs.** Ask Dex to sync and your pending tasks appear in the right Things Area (mapped from your pillars), the urgent ones land in Today, completions flow both ways, and anything you drop into your Things Inbox comes back for review in your morning plan. No accounts, no network — it all happens on your Mac through Things' own scripting.
+* **Trello boards stay in step.** New Dex tasks become cards in the right list, finishing a task moves its card to Done, and cards you add or move on the board come back to you for review — matched to the exact lists you picked during setup, not guessed from their names.
+* **Tasks from either tool arrive through your review, never behind your back.** Whatever you created in Things or Trello queues up in your daily plan, where you decide what becomes a Dex task — with duplicate checks and pillar linking — instead of it silently appearing in your backlog.
+* **A task title with an apostrophe can't break things anymore.** The Things connection was rebuilt to hand your task text to macOS safely, so quotes, apostrophes, and punctuation in a task name just work instead of causing a failure.
+* **Your pillars, not someone else's.** Both connections now read the Areas and lists from your own setup rather than falling back to a hardcoded set of categories that only fit one person's vault.
+* **Honest setup guides, again.** The Things, Trello, and Todoist setup walkthroughs now describe the sync that genuinely exists — the "coming later" note is gone because it's here.
+
 ## [1.50.0] - Real Todoist sync — the promise, finally built (2026-07-13)
 
 Earlier setups promised automatic two-way Todoist sync that never existed (we removed that promise in 1.36.0). This release builds the real thing, carefully.

@@ -98,6 +98,36 @@ def _enable(sync_vault: dict[str, Path], *services: str) -> None:
     sync_vault["config"].write_text("\n".join(blocks) + "\n", encoding="utf-8")
 
 
+def _install_fake_runner(monkeypatch: pytest.MonkeyPatch, responses: dict) -> list[dict]:
+    calls = []
+    monkeypatch.setattr(task_sync, "_find_node", lambda: "/fake/node")
+
+    def run(command, **kwargs):
+        service, operation = command[-2:]
+        request = json.loads(kwargs["input"])
+        calls.append(
+            {
+                "command": command,
+                "service": service,
+                "operation": operation,
+                "request": request,
+            }
+        )
+        key = (service, operation)
+        if key not in responses:
+            raise AssertionError(f"unexpected adapter call: {service} {operation}")
+        result = responses[key]
+        return task_sync.subprocess.CompletedProcess(
+            args=command,
+            returncode=0,
+            stdout=json.dumps({"ok": True, "result": result}),
+            stderr="",
+        )
+
+    monkeypatch.setattr(task_sync.subprocess, "run", run)
+    return calls
+
+
 def test_first_service_run_creates_baseline_without_adapter_calls(sync_vault, monkeypatch):
     _enable(sync_vault, "todoist")
 
@@ -327,6 +357,263 @@ def test_one_service_error_does_not_block_another(sync_vault, monkeypatch):
     assert task_sync._load_state()["good"]["map"] == {
         "task-20260712-006": "good-external-id"
     }
+
+
+class TestThingsSync:
+    def test_push_create_via_runner_records_mapping(self, sync_vault, monkeypatch):
+        _enable(sync_vault, "things")
+        _write_tasks(
+            sync_vault["tasks"],
+            "- [ ] Launch Things product notes ^task-20260713-101",
+            "\t- Pillar: Product | Priority: P1",
+        )
+        task_sync._write_state(_state(things=_service_state()))
+        monkeypatch.setattr(task_sync.platform, "system", lambda: "Darwin")
+        calls = _install_fake_runner(
+            monkeypatch,
+            {
+                ("things", "create"): "things-opaque-id",
+                ("things", "get_changes"): [],
+            },
+        )
+
+        result = task_sync.sync_external_tasks(services=["things"])
+
+        assert result["things"]["pushed_creates"] == 1
+        assert task_sync._load_state()["things"]["map"] == {
+            "task-20260713-101": "things-opaque-id"
+        }
+        assert [(call["service"], call["operation"]) for call in calls] == [
+            ("things", "create"),
+            ("things", "get_changes"),
+        ]
+        assert calls[0]["request"]["config"]["enabled"] is True
+        assert calls[0]["request"]["args"]["task_id"] == "task-20260713-101"
+        assert calls[1]["request"]["args"] == "2026-07-12T08:00:00+00:00"
+
+    def test_non_darwin_guard_never_calls_runner(self, sync_vault, monkeypatch):
+        _enable(sync_vault, "things")
+        task_sync._write_state(_state(things=_service_state()))
+        before = sync_vault["state"].read_bytes()
+
+        def fail_if_called(*_args, **_kwargs):
+            raise AssertionError("Things runner must not be called off macOS")
+
+        monkeypatch.setattr(task_sync.platform, "system", lambda: "Linux")
+        monkeypatch.setattr(task_sync, "_find_node", fail_if_called)
+        monkeypatch.setattr(task_sync.subprocess, "run", fail_if_called)
+
+        result = task_sync.sync_external_tasks(services=["things"])
+
+        assert result["things"]["pushed_creates"] == 0
+        assert result["things"]["pulled_completes"] == 0
+        assert result["things"]["errors"] == [
+            "things task sync is only available on macOS"
+        ]
+        assert sync_vault["state"].read_bytes() == before
+
+    def test_completed_change_via_runner_updates_linked_dex_task(
+        self, sync_vault, monkeypatch
+    ):
+        _enable(sync_vault, "things")
+        task_id = "task-20260713-102"
+        _write_tasks(sync_vault["tasks"], f"- [ ] Finish Things follow-up ^{task_id}")
+        service_state = _service_state()
+        service_state["map"][task_id] = "things-completed-id"
+        task_sync._write_state(_state(things=service_state))
+        monkeypatch.setattr(task_sync.platform, "system", lambda: "Darwin")
+        calls = _install_fake_runner(
+            monkeypatch,
+            {
+                ("things", "get_changes"): [
+                    {
+                        "id": "things-completed-id",
+                        "action": "completed",
+                        "task": {"title": "Finish Things follow-up"},
+                    }
+                ]
+            },
+        )
+
+        result = task_sync.sync_external_tasks(services=["things"])
+
+        assert result["things"]["pulled_completes"] == 1
+        assert "- [x] Finish Things follow-up" in sync_vault["tasks"].read_text(
+            encoding="utf-8"
+        )
+        assert task_id in task_sync._load_state()["things"]["completed_pushed"]
+        assert [call["operation"] for call in calls] == ["get_changes"]
+
+    def test_created_change_via_runner_queues_once_across_reruns(
+        self, sync_vault, monkeypatch
+    ):
+        _enable(sync_vault, "things")
+        task_sync._write_state(_state(things=_service_state()))
+        monkeypatch.setattr(task_sync.platform, "system", lambda: "Darwin")
+        calls = _install_fake_runner(
+            monkeypatch,
+            {
+                ("things", "get_changes"): [
+                    {
+                        "id": "things-created-id",
+                        "action": "created",
+                        "task": {
+                            "title": "Prepare product demo",
+                            "notes": "Captured in Things Inbox",
+                        },
+                    }
+                ]
+            },
+        )
+
+        first = task_sync.sync_external_tasks(services=["things"])
+        second = task_sync.sync_external_tasks(services=["things"])
+
+        assert first["things"]["inbound_queued"] == 1
+        assert second["things"]["inbound_queued"] == 0
+        assert json.loads(sync_vault["inbound"].read_text(encoding="utf-8")) == [
+            {
+                "service": "things",
+                "external_id": "things-created-id",
+                "title": "Prepare product demo",
+                "raw": {
+                    "title": "Prepare product demo",
+                    "notes": "Captured in Things Inbox",
+                    "pillar": "pillar_1",
+                },
+            }
+        ]
+        assert [call["operation"] for call in calls] == [
+            "get_changes",
+            "get_changes",
+        ]
+
+
+class TestTrelloSync:
+    def test_push_create_via_runner_records_mapping(self, sync_vault, monkeypatch):
+        _enable(sync_vault, "trello")
+        _write_tasks(
+            sync_vault["tasks"],
+            "- [ ] Launch Trello product card ^task-20260713-201",
+            "\t- Pillar: Product | Priority: P1",
+        )
+        task_sync._write_state(_state(trello=_service_state()))
+        calls = _install_fake_runner(
+            monkeypatch,
+            {
+                ("trello", "create"): "trello-opaque-id",
+                ("trello", "get_changes"): [],
+            },
+        )
+
+        result = task_sync.sync_external_tasks(services=["trello"])
+
+        assert result["trello"]["pushed_creates"] == 1
+        assert task_sync._load_state()["trello"]["map"] == {
+            "task-20260713-201": "trello-opaque-id"
+        }
+        assert [(call["service"], call["operation"]) for call in calls] == [
+            ("trello", "create"),
+            ("trello", "get_changes"),
+        ]
+        assert calls[0]["request"]["config"]["api_key"] == "test-token"
+        assert calls[0]["request"]["args"]["task_id"] == "task-20260713-201"
+
+    def test_created_change_via_runner_queues_inbound(self, sync_vault, monkeypatch):
+        _enable(sync_vault, "trello")
+        task_sync._write_state(_state(trello=_service_state()))
+        calls = _install_fake_runner(
+            monkeypatch,
+            {
+                ("trello", "get_changes"): [
+                    {
+                        "id": "trello-created-id",
+                        "action": "created",
+                        "task": {
+                            "name": "Review product launch board",
+                            "listName": "Backlog",
+                            "labels": [],
+                        },
+                    }
+                ]
+            },
+        )
+
+        result = task_sync.sync_external_tasks(services=["trello"])
+
+        assert result["trello"]["inbound_queued"] == 1
+        assert json.loads(sync_vault["inbound"].read_text(encoding="utf-8")) == [
+            {
+                "service": "trello",
+                "external_id": "trello-created-id",
+                "title": "Review product launch board",
+                "raw": {
+                    "name": "Review product launch board",
+                    "listName": "Backlog",
+                    "labels": [],
+                    "pillar": "pillar_1",
+                },
+            }
+        ]
+        assert [call["operation"] for call in calls] == ["get_changes"]
+
+    def test_completed_change_via_runner_updates_linked_dex_task(
+        self, sync_vault, monkeypatch
+    ):
+        _enable(sync_vault, "trello")
+        task_id = "task-20260713-202"
+        _write_tasks(sync_vault["tasks"], f"- [ ] Finish Trello follow-up ^{task_id}")
+        service_state = _service_state()
+        service_state["map"][task_id] = "trello-completed-id"
+        task_sync._write_state(_state(trello=service_state))
+        calls = _install_fake_runner(
+            monkeypatch,
+            {
+                ("trello", "get_changes"): [
+                    {
+                        "id": "trello-completed-id",
+                        "action": "completed",
+                        "task": {"name": "Finish Trello follow-up"},
+                    }
+                ]
+            },
+        )
+
+        result = task_sync.sync_external_tasks(services=["trello"])
+
+        assert result["trello"]["pulled_completes"] == 1
+        assert "- [x] Finish Trello follow-up" in sync_vault["tasks"].read_text(
+            encoding="utf-8"
+        )
+        assert task_id in task_sync._load_state()["trello"]["completed_pushed"]
+        assert [call["operation"] for call in calls] == ["get_changes"]
+
+    def test_push_complete_via_runner_uses_mapped_id_once(
+        self, sync_vault, monkeypatch
+    ):
+        _enable(sync_vault, "trello")
+        task_id = "task-20260713-203"
+        _write_tasks(sync_vault["tasks"], f"- [x] Archive Trello card ^{task_id}")
+        service_state = _service_state()
+        service_state["map"][task_id] = "trello-mapped-complete-id"
+        task_sync._write_state(_state(trello=service_state))
+        calls = _install_fake_runner(
+            monkeypatch,
+            {
+                ("trello", "complete"): None,
+                ("trello", "get_changes"): [],
+            },
+        )
+
+        first = task_sync.sync_external_tasks(services=["trello"])
+        second = task_sync.sync_external_tasks(services=["trello"])
+
+        assert first["trello"]["pushed_completes"] == 1
+        assert second["trello"]["pushed_completes"] == 0
+        complete_calls = [call for call in calls if call["operation"] == "complete"]
+        assert len(complete_calls) == 1
+        assert complete_calls[0]["request"]["args"] == "trello-mapped-complete-id"
+        assert task_id in task_sync._load_state()["trello"]["completed_pushed"]
 
 
 def test_record_mapping_validates_task_updates_state_and_removes_queue_item(sync_vault):

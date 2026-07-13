@@ -20,7 +20,10 @@ integration:
 
 Connect your Todoist account so Dex can work with your Todoist tasks whenever you ask — check what's due, create a task there instead of in Dex, or mark something done.
 
-**What this is not (honesty first):** there is no automatic background sync. Dex tasks don't push themselves to Todoist, and completing a task in Todoist doesn't automatically update Dex. Everything happens on request, in conversation. If automatic two-way sync matters to you, tell Dex — "I wish Dex synced with Todoist automatically" gets it captured on the improvement backlog.
+**What this enables (on request):** Once connected, say "sync with Todoist" — Dex pushes
+new tasks to the right Todoist project, marks completions, and pulls back tasks you completed
+or created in Todoist directly. Sync runs on demand; Dex does not poll Todoist in the
+background without you asking.
 
 ## What This Enables
 
@@ -210,10 +213,10 @@ Read the integration manifest from this skill's frontmatter. Present:
   Todoist", "Mark the invoice task done in Todoist".
 - **Bring it into your planning** — during `/daily-plan` or `/triage`, ask Dex to
   include or route to Todoist and it will.
+- **Sync on demand** — say "sync Dex with Todoist" and new tasks push, completions flow
+  both directions, and tasks you added in Todoist come in for review
 
-One honest note: there's no automatic background sync — Dex works with Todoist
-when you ask, not on its own. If you'd like automatic two-way sync, say so and
-I'll capture it on the improvement backlog.
+**Sync is on demand** — say "sync with Todoist" anytime. Dex doesn't poll in the background.
 ```
 
 ---

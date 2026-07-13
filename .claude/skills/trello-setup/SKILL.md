@@ -13,7 +13,9 @@ manifest:
 
 Connect your Trello boards so Dex can work with them whenever you ask — check board status, create cards, or move them.
 
-**What this is not (honesty first):** there is no automatic background sync. Dex tasks don't become Trello cards by themselves, and moving a card to Done doesn't automatically update Dex. Everything happens on request, in conversation. If automatic two-way sync matters to you, tell Dex — "I wish Dex synced with Trello automatically" gets it captured on the improvement backlog.
+**What this enables (on request):** Once connected, say "sync with Trello" — Dex pushes new
+tasks as cards in the right list (Backlog/In Progress/Blocked/Done), marks completions by
+moving cards to Done, and pulls cards you moved or created in Trello. Sync runs on demand.
 
 ## What This Enables
 
@@ -217,10 +219,10 @@ Here's what you can do now:
 - **Bring it into planning** — during /daily-plan or /project-health, ask me
   to include your Trello cards and I will
 - **Meeting prep with context** — ask which cards are blocked before a meeting
+- **Sync on demand** — say "sync Dex with Trello" and Dex pushes pending tasks, moves
+  completions to Done, and reviews cards you created in Trello
 
-One honest note: there's no automatic background sync — I work with Trello
-when you ask, not on my own. Want automatic two-way sync? Say so and I'll
-capture it on the improvement backlog.
+**Sync is on demand** — say "sync with Trello" anytime. Dex doesn't poll in the background.
 
 You can adjust settings anytime by running `/trello-setup` again.
 ```
@@ -255,7 +257,8 @@ Trello allows 100 requests per 10 seconds. This is generous -- you'd only hit it
 Check:
 - Is the board ID correct in config.yaml?
 - Does the token have write access?
-- Are the list names matching? (List mapping is case-insensitive but names must partially match)
+- Are the list IDs under `list_mapping` still current? Re-run `/trello-setup` if the
+  board's lists were recreated or changed.
 
 ---
 

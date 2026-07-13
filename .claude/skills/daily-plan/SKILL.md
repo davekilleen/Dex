@@ -373,6 +373,37 @@ meeting note each task came from — and `goal_tentative`).
 Skip this entire step silently when nothing qualifies — no "0 tasks from meetings"
 noise.
 
+### 5.12 Inbound External Tasks Review (NEW)
+
+Give the user one place to review tasks that arrived from a connected task app
+(Todoist / Things / Trello) since the last sync. Check
+`System/integrations/inbound-tasks.json`. If it exists and is non-empty:
+
+1. Read each item: `{service, external_id, title, raw}`. The `raw` object contains the
+   service payload and may include notes/description, priority, and an inferred `pillar`.
+2. For each, offer a one-line summary and ask whether to bring it into Dex:
+   ```
+   📥 From [service]: "[title]"
+   Import as a Dex task? (yes / skip / [pillar] [priority])
+   ```
+3. On confirmation (or pillar/priority provided), call `create_task` with:
+   - `title`: from the item
+   - `on_duplicate: "fail"` (skip if already exists)
+   - `pillar`: user-specified, otherwise `raw.pillar` (the sync step fills this in
+     from an automatic pillar guess when inference succeeds). If it is absent, ask the
+     user to choose a valid pillar before calling `create_task`
+   - `priority`: user-specified, otherwise a valid P0-P3 value from `raw` when present
+   - `context`: notes/description/context from `raw` when present
+   - Do not pass the integration name as `source`; `source` is reserved for a
+     vault-relative source page, while the external mapping records provenance
+4. On "skip": leave the item in the queue so it can be reviewed later
+5. Immediately after each successful create, call `record_external_task_mapping` with
+   the returned `task.task_id`, the item's `service`, and its `external_id`. This records
+   the link and removes that item from the inbound queue.
+
+**Silent when empty:** if `inbound-tasks.json` doesn't exist or is empty/`[]`, skip this
+step entirely. Never say "no inbound tasks" — just proceed.
+
 ---
 
 ## Step 6: Synthesis

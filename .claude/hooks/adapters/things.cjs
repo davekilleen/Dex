@@ -19,6 +19,8 @@
  * Rate limit: n/a (local process calls)
  */
 
+const childProcess = require('node:child_process');
+
 // ---------------------------------------------------------------------------
 // Status mapping — Dex status codes -> Things 3 status
 // Things has no in-progress or blocked concept; everything is open or done.
@@ -50,12 +52,12 @@ function pillarToArea(pillar, adapterConfig) {
   const mapping = (adapterConfig && adapterConfig.area_mapping) || {};
   if (mapping[pillar]) return mapping[pillar];
 
-  const defaults = {
-    deal_support: 'Deal Support',
-    thought_leadership: 'Thought Leadership',
-    product_feedback: 'Product Feedback',
-  };
-  return defaults[pillar] || pillar || 'Inbox';
+  if (!pillar) return 'Inbox';
+  return String(pillar)
+    .split('_')
+    .filter(Boolean)
+    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ') || 'Inbox';
 }
 
 function areaToPillar(areaName) {
@@ -63,7 +65,7 @@ function areaToPillar(areaName) {
   if (name.includes('deal') || name.includes('sales') || name.includes('revenue')) return 'deal_support';
   if (name.includes('thought') || name.includes('leadership') || name.includes('content')) return 'thought_leadership';
   if (name.includes('product') || name.includes('feedback')) return 'product_feedback';
-  return 'deal_support'; // Default pillar
+  return null;
 }
 
 // ---------------------------------------------------------------------------
@@ -83,10 +85,10 @@ function tagsToPriority(tags) {
 // Transform: Dex task -> Things 3 task format
 // ---------------------------------------------------------------------------
 
-function toExternal(dexTask) {
+function toExternal(dexTask, adapterConfig = {}) {
   return {
     title: dexTask.title,
-    area: pillarToArea(dexTask.pillar),
+    area: pillarToArea(dexTask.pillar, adapterConfig),
     project: dexTask.week_priority || null,
     list: thingsListForPriority(dexTask.priority),
     notes: formatNotes(dexTask),
@@ -114,8 +116,6 @@ function toDex(thingsTask) {
 // ---------------------------------------------------------------------------
 
 async function create(externalTask, adapterConfig) {
-  const { execSync } = require('child_process');
-
   const params = {
     title: externalTask.title,
     notes: externalTask.notes || '',
@@ -126,10 +126,7 @@ async function create(externalTask, adapterConfig) {
 
   try {
     const script = buildCreateScript(params);
-    const result = execSync(`osascript -e '${script}'`, {
-      encoding: 'utf-8',
-      timeout: 10000,
-    }).trim();
+    const result = runAppleScript(script, 10000);
     // Things returns the task ID on creation
     return result || `things-${Date.now()}`;
   } catch (err) {
@@ -142,13 +139,9 @@ async function create(externalTask, adapterConfig) {
 // ---------------------------------------------------------------------------
 
 async function complete(externalId, adapterConfig) {
-  const { execSync } = require('child_process');
   try {
     const script = `tell application "Things3" to complete to do id "${escapeAS(externalId)}"`;
-    execSync(`osascript -e '${script}'`, {
-      encoding: 'utf-8',
-      timeout: 10000,
-    });
+    runAppleScript(script, 10000);
   } catch (err) {
     throw new Error(`Things 3 complete failed: ${err.message}`);
   }
@@ -160,30 +153,48 @@ async function complete(externalId, adapterConfig) {
 // ---------------------------------------------------------------------------
 
 async function getChanges(since, adapterConfig) {
-  const { execSync } = require('child_process');
   const changes = [];
+  const sinceDate = new Date(since);
+  const sinceTime = sinceDate.getTime();
+  const hasValidSince = Number.isFinite(sinceTime);
+  const sinceDateSetup = hasValidSince ? buildAppleScriptDate('sinceDate', sinceDate) : '';
+  const completionDateCondition = hasValidSince
+    ? 'completedAt is greater than or equal to sinceDate'
+    : 'true';
 
   // 1. Recently completed tasks from Logbook
   try {
     const logbookScript = `
 tell application "Things3"
   set output to ""
+${sinceDateSetup}
   repeat with t in to dos of list "Logbook"
-    set taskId to id of t
-    set taskName to name of t
-    set output to output & taskId & "|||" & taskName & "\\n"
+    if status of t is completed then
+      set completedAt to completion date of t
+      if ${completionDateCondition} then
+        set taskId to id of t
+        set taskName to name of t
+        set completedAtText to (completion date of t as string)
+        set output to output & taskId & "|||" & taskName & "|||" & completedAtText & "\\n"
+      end if
+    end if
   end repeat
   return output
 end tell`;
-    const logbookResult = execSync(`osascript -e '${logbookScript.replace(/'/g, "'\\''")}'`, {
-      encoding: 'utf-8',
-      timeout: 15000,
-    }).trim();
+    const logbookResult = runAppleScript(logbookScript, 15000);
 
     if (logbookResult) {
       for (const line of logbookResult.split('\n')) {
-        const [id, title] = line.split('|||');
+        const [id, title, completedAt] = line.split('|||');
         if (id && title) {
+          const completedTime = Date.parse(completedAt);
+          if (
+            Number.isFinite(sinceTime) &&
+            Number.isFinite(completedTime) &&
+            completedTime < sinceTime
+          ) {
+            continue;
+          }
           changes.push({
             id: id.trim(),
             action: 'completed',
@@ -209,10 +220,7 @@ tell application "Things3"
   end repeat
   return output
 end tell`;
-    const inboxResult = execSync(`osascript -e '${inboxScript.replace(/'/g, "'\\''")}'`, {
-      encoding: 'utf-8',
-      timeout: 15000,
-    }).trim();
+    const inboxResult = runAppleScript(inboxScript, 15000);
 
     if (inboxResult) {
       for (const line of inboxResult.split('\n')) {
@@ -249,23 +257,62 @@ function formatNotes(dexTask) {
   return parts.join('\n');
 }
 
+function buildAppleScriptDate(variableName, date) {
+  const monthNames = [
+    'January',
+    'February',
+    'March',
+    'April',
+    'May',
+    'June',
+    'July',
+    'August',
+    'September',
+    'October',
+    'November',
+    'December',
+  ];
+  const secondsSinceMidnight =
+    date.getHours() * 3600 + date.getMinutes() * 60 + date.getSeconds();
+  return `  set ${variableName} to current date
+  set day of ${variableName} to 1
+  set year of ${variableName} to ${date.getFullYear()}
+  set month of ${variableName} to ${monthNames[date.getMonth()]}
+  set day of ${variableName} to ${date.getDate()}
+  set time of ${variableName} to ${secondsSinceMidnight}`;
+}
+
+function runAppleScript(script, timeout) {
+  const result = childProcess.spawnSync('osascript', ['-e', script], {
+    encoding: 'utf-8',
+    timeout,
+  });
+  if (result.error) throw result.error;
+  if (result.status !== 0) {
+    const detail = String(result.stderr || '').trim();
+    throw new Error(detail || 'osascript failed');
+  }
+  return String(result.stdout || '').trim();
+}
+
 function buildCreateScript(params) {
   let props = `name:"${escapeAS(params.title)}"`;
   if (params.notes) props += `, notes:"${escapeAS(params.notes)}"`;
+  const moveToToday = params.list === 'today' ? '\n  move newTask to list "Today"' : '';
 
   if (params.area) {
     return `tell application "Things3"
-  set newTask to make new to do with properties {${props}} in area "${escapeAS(params.area)}"
+  set newTask to make new to do with properties {${props}} in area "${escapeAS(params.area)}"${moveToToday}
   return id of newTask
 end tell`;
   } else if (params.project) {
     return `tell application "Things3"
-  set newTask to make new to do with properties {${props}} in project "${escapeAS(params.project)}"
+  set newTask to make new to do with properties {${props}} in project "${escapeAS(params.project)}"${moveToToday}
   return id of newTask
 end tell`;
   } else {
     return `tell application "Things3"
-  set newTask to make new to do with properties {${props}}
+  set newTask to make new to do with properties {${props}}${moveToToday}
   return id of newTask
 end tell`;
   }
