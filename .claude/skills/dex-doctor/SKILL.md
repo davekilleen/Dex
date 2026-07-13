@@ -49,6 +49,17 @@ ran completely.
 error, and continue with whatever manual checks you can do — do not present a partial
 picture as a full one.
 
+### Step 1a: Offer anonymous health telemetry once
+
+Read `System/usage_log.md`. Make this offer only when `**Health telemetry:** pending` or the line is missing:
+
+> "Want to help catch bad releases early? Dex can send anonymous nightly health counts — no names, notes, or file contents, ever. Share them? (y/N)"
+
+If the user explicitly says yes, replace the line with `**Health telemetry:** opted-in` (or add it under a
+`## Health Telemetry Consent` heading when missing). If the user says no, skips, or accepts the default,
+record `**Health telemetry:** opted-out`. Once either decision is recorded, do not offer again.
+Never read or change the separate analytics consent while handling this choice.
+
 ### Step 2: Offer the deep scan
 
 Quick mode checks configuration, wiring, and background-job freshness. Deep mode
