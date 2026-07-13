@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import argparse
 import errno
 import hashlib
+import json
 import os
 import re
 import stat
 import sys
+import tempfile
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
@@ -292,14 +295,57 @@ def snapshot_trusted_mcp(
             f"configured file does not match blessed file {trusted_entry.file}",
         )
 
+    return _snapshot_local_python_file(
+        vault_root,
+        name,
+        configured_relative,
+        snapshot_root,
+        expected_hash=trusted_entry.sha256,
+        after_open=after_open,
+    )
+
+
+def snapshot_local_python_mcp(
+    vault_root: Path,
+    name: str,
+    entry: object,
+    snapshot_root: Path,
+    *,
+    after_open: Callable[[int], None] | None = None,
+) -> TrustedMcpSnapshot:
+    """Snapshot one structurally local Python MCP for an explicit one-off check."""
+    try:
+        configured_relative = _local_python_relative(vault_root, entry)
+    except TrustRegistryError as exc:
+        return TrustedMcpSnapshot(False, str(exc))
+    return _snapshot_local_python_file(
+        vault_root,
+        name,
+        configured_relative,
+        snapshot_root,
+        expected_hash=None,
+        after_open=after_open,
+    )
+
+
+def _snapshot_local_python_file(
+    vault_root: Path,
+    name: str,
+    configured_relative: str,
+    snapshot_root: Path,
+    *,
+    expected_hash: str | None,
+    after_open: Callable[[int], None] | None,
+) -> TrustedMcpSnapshot:
+    """Hash and copy a no-follow-opened script without returning to its live path."""
     descriptor: int | None = None
     destination_fd: int | None = None
     destination: Path | None = None
     try:
         descriptor, _opened_stat = _open_component_file(
             vault_root,
-            Path(trusted_entry.file),
-            label=f"{trusted_entry.file} file",
+            Path(configured_relative),
+            label=f"{configured_relative} file",
         )
         if after_open is not None:
             after_open(descriptor)
@@ -311,7 +357,7 @@ def snapshot_trusted_mcp(
                 break
             digest.update(chunk)
         actual_hash = digest.hexdigest()
-        if actual_hash != trusted_entry.sha256:
+        if expected_hash is not None and actual_hash != expected_hash:
             return TrustedMcpSnapshot(
                 False,
                 "changed since you blessed it (content differs) — re-bless via /create-mcp "
@@ -356,3 +402,129 @@ def snapshot_trusted_mcp(
         snapshot_path=destination,
         sha256=actual_hash,
     )
+
+
+def _load_live_mcp_entry(vault_root: Path, name: str) -> object:
+    descriptor: int | None = None
+    try:
+        descriptor, opened_stat = _open_component_file(
+            vault_root,
+            Path(".mcp.json"),
+            label=".mcp.json",
+        )
+        if opened_stat.st_size > 1024 * 1024:
+            raise TrustRegistryError(".mcp.json is larger than 1MB")
+        try:
+            config = json.loads(_read_fd(descriptor, maximum=1024 * 1024))
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise TrustRegistryError(f".mcp.json is invalid: {exc}") from exc
+    finally:
+        if descriptor is not None:
+            os.close(descriptor)
+    if not isinstance(config, Mapping) or not isinstance(config.get("mcpServers"), Mapping):
+        raise TrustRegistryError(".mcp.json must contain an mcpServers mapping")
+    if name not in config["mcpServers"]:
+        raise TrustRegistryError(f".mcp.json has no entry named {name}")
+    return config["mcpServers"][name]
+
+
+def inspect_local_mcp(vault_root: Path, name: str) -> TrustedMcpEntry:
+    """Return the securely opened local entry identity without executing or writing."""
+    entry = _load_live_mcp_entry(vault_root, name)
+    relative = _local_python_relative(vault_root, entry)
+    with tempfile.TemporaryDirectory(prefix="dex-mcp-bless-") as temporary:
+        snapshot = snapshot_local_python_mcp(
+            vault_root,
+            name,
+            entry,
+            Path(temporary),
+        )
+        if not snapshot.trusted or snapshot.sha256 is None:
+            raise TrustRegistryError(snapshot.detail)
+    return TrustedMcpEntry(name=name, file=relative, sha256=snapshot.sha256)
+
+
+def bless_local_mcp(
+    vault_root: Path,
+    name: str,
+    *,
+    expected_sha256: str | None = None,
+) -> TrustedMcpEntry:
+    """Record explicit consent for one exact local Python entry and content hash."""
+    inspected = inspect_local_mcp(vault_root, name)
+    if expected_sha256 is not None and inspected.sha256 != expected_sha256:
+        raise TrustRegistryError("file changed after the consent details were shown; inspect it again")
+    registry = load_trusted_mcp_registry(vault_root)
+    if registry.invalid_reason is not None:
+        raise TrustRegistryError(f"trusted MCP registry is invalid ({registry.invalid_reason})")
+
+    updated = {
+        entry_name: {"file": trusted.file, "sha256": trusted.sha256}
+        for entry_name, trusted in registry.entries.items()
+    }
+    updated[name] = {"file": inspected.file, "sha256": inspected.sha256}
+    content = (
+        "# User-owned trust registry. Dex updates preserve this file verbatim.\n"
+        "# Each entry permits recurring startup checks for these exact bytes only.\n"
+        + yaml.safe_dump({"trusted_mcps": updated}, sort_keys=True)
+    )
+    encoded = content.encode("utf-8")
+    if len(encoded) > MAX_REGISTRY_BYTES:
+        raise TrustRegistryError("updated registry would be larger than 64KB")
+
+    registry_path = vault_root / REGISTRY_RELATIVE
+    if not registry.present:
+        template = vault_root / "System/trusted-mcps.example.yaml"
+        if template.is_symlink() or not template.is_file():
+            raise TrustRegistryError("System/trusted-mcps.example.yaml template is unavailable")
+    registry_path.parent.mkdir(parents=True, exist_ok=True)
+    temporary_path: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="wb",
+            dir=registry_path.parent,
+            prefix=".trusted-mcps.",
+            suffix=".tmp",
+            delete=False,
+        ) as handle:
+            temporary_path = Path(handle.name)
+            handle.write(encoded)
+            handle.flush()
+            os.fsync(handle.fileno())
+            os.fchmod(handle.fileno(), 0o600)
+        os.replace(temporary_path, registry_path)
+    finally:
+        if temporary_path is not None:
+            temporary_path.unlink(missing_ok=True)
+    return inspected
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description="Manage explicit local MCP startup trust.")
+    parser.add_argument("--vault", type=Path, default=Path.cwd())
+    parser.add_argument("--bless-mcp", metavar="CUSTOM_NAME")
+    parser.add_argument("--inspect-mcp", metavar="CUSTOM_NAME")
+    parser.add_argument("--expected-sha256")
+    args = parser.parse_args(argv)
+    if (args.bless_mcp is None) == (args.inspect_mcp is None):
+        parser.error("choose exactly one of --inspect-mcp or --bless-mcp")
+    try:
+        if args.inspect_mcp is not None:
+            trusted = inspect_local_mcp(args.vault.resolve(), args.inspect_mcp)
+        else:
+            trusted = bless_local_mcp(
+                args.vault.resolve(),
+                args.bless_mcp,
+                expected_sha256=args.expected_sha256,
+            )
+    except TrustRegistryError as exc:
+        print(f"Refused: {exc}", file=sys.stderr)
+        return 1
+    print(f"{'Blessed' if args.bless_mcp else 'Local Python entry'}: {trusted.name}")
+    print(f"vault-relative path: {trusted.file}")
+    print(f"sha256: {trusted.sha256}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -1312,8 +1312,12 @@ def _probe_customization_mcp(context: DoctorContext) -> ProbeResult:
                 key=str,
             )
             for target in python_targets:
-                relative_target = _display_vault_path(context, target)
-                safety_reason = _unsafe_customization_path(context, target)
+                if trusted_target is not None:
+                    relative_target = trust_registry.entries[name].file
+                    safety_reason = None
+                else:
+                    relative_target = _display_vault_path(context, target)
+                    safety_reason = _unsafe_customization_path(context, target)
                 if safety_reason:
                     safety_findings.append(
                         f"{name} target {relative_target} {safety_reason} and was not compiled or "

@@ -62,6 +62,13 @@ description: {user's description}
 - Edit `.claude/skills/{name}-custom/SKILL.md` to modify
 ```
 
+### Step 2.5: Validate Frontmatter
+
+Immediately after writing the new `SKILL.md`, run
+`validators.validate_skill_frontmatter` from `core.utils` against that exact file and
+show the validation result before continuing. If it returns errors, fix the generated
+frontmatter and run it again; do not claim the skill is ready until the result is empty.
+
 ### Step 3: Confirm
 
 ```

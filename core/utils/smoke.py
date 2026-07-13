@@ -1325,6 +1325,65 @@ def run_smoke(
     return SmokeRun(report, harness_failed)
 
 
+def check_custom_mcp_once(vault_root: Path, name: str) -> dict[str, str]:
+    """Run one explicitly requested custom local Python startup check from a snapshot."""
+    from core.utils.mcp_handshake import mcp_stdio_handshake
+    from core.utils.trust_registry import TrustRegistryError, snapshot_local_python_mcp
+    from core.utils.validators import validate_mcp_config
+
+    if not name.startswith("custom-"):
+        return {"verdict": "UNKNOWN", "detail": "only custom-* local Python entries can be checked"}
+    config_path = vault_root / ".mcp.json"
+    try:
+        _ensure_safe_source(config_path, vault_root)
+        config = json.loads(config_path.read_text(encoding="utf-8"))
+    except (JourneySafetySkip, OSError, json.JSONDecodeError) as exc:
+        return {"verdict": "UNKNOWN", "detail": f".mcp.json could not be read safely: {_one_line(exc)}"}
+    errors = validate_mcp_config(config)
+    if errors:
+        return {"verdict": "UNKNOWN", "detail": "; ".join(_one_line(error) for error in errors)}
+    entry = config["mcpServers"].get(name)
+    if entry is None:
+        return {"verdict": "UNKNOWN", "detail": f".mcp.json has no entry named {name}"}
+
+    try:
+        parent = _safe_temporary_parent(vault_root)
+        with tempfile.TemporaryDirectory(prefix="dex-mcp-check-once-", dir=parent) as temporary:
+            temporary_root = Path(temporary)
+            snapshot = snapshot_local_python_mcp(
+                vault_root,
+                name,
+                entry,
+                temporary_root / "snapshot",
+            )
+            if not snapshot.trusted or snapshot.snapshot_path is None:
+                return {"verdict": "UNKNOWN", "detail": snapshot.detail}
+            home = temporary_root / "home"
+            home.mkdir()
+            env = _clean_environment(
+                vault_root,
+                home,
+                RUNNER_ROOT,
+                temporary_root,
+                secrets.token_urlsafe(32),
+            )
+            bootstrap = Path(env["DEX_SMOKE_SERVER_BOOTSTRAP"])
+            result = mcp_stdio_handshake(
+                [sys.executable, "-S", str(bootstrap), str(snapshot.snapshot_path)],
+                cwd=vault_root,
+                env=env,
+                timeout=1.5,
+            )
+    except (OSError, TrustRegistryError) as exc:
+        return {"verdict": "UNKNOWN", "detail": _one_line(exc)}
+    if result.ok:
+        return {"verdict": "OK", "detail": f"{name} started from its private snapshot"}
+    return {
+        "verdict": "BROKEN",
+        "detail": f"{name} did not start: {_one_line(result.error or result.stderr)}",
+    }
+
+
 def _load_yaml(path: Path) -> object:
     import yaml
 
@@ -2108,6 +2167,11 @@ def main(
     parser = argparse.ArgumentParser(description="Run Dex's safe, isolated smoke journeys.")
     parser.add_argument("--json", action="store_true", help="emit the versioned JSON report")
     parser.add_argument("--ledger", action="store_true", help="record the latest run and history")
+    parser.add_argument(
+        "--check-mcp-once",
+        metavar="CUSTOM_NAME",
+        help="run one explicitly approved custom local Python startup check",
+    )
     parser.add_argument("--_journey", choices=tuple(INTERNAL_JOURNEYS), help=argparse.SUPPRESS)
     parser.add_argument("--_prepare", choices=tuple(INTERNAL_JOURNEYS), help=argparse.SUPPRESS)
     parser.add_argument("--source-root", type=Path, help=argparse.SUPPRESS)
@@ -2117,6 +2181,12 @@ def main(
     parser.add_argument("--release-ref", help=argparse.SUPPRESS)
     parser.add_argument("--run-marker", type=Path, help=argparse.SUPPRESS)
     args = parser.parse_args(argv)
+
+    if args.check_mcp_once:
+        source = (vault_root or Path(os.environ.get("VAULT_PATH", Path.cwd()))).resolve()
+        result = check_custom_mcp_once(source, args.check_mcp_once)
+        print(f"{result['verdict']}: {result['detail']}")
+        return 0 if result["verdict"] == "OK" else 1
 
     if args._prepare:
         if args.source_root is None or args.vault_root is None:
