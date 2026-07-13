@@ -135,7 +135,28 @@ def test_validate_user_profile_requires_updates_to_be_an_object() -> None:
     ],
     ids=lambda path: path.name,
 )
-def test_shipped_user_profiles_explicitly_default_to_stable(profile_path: Path) -> None:
+def test_shipped_user_profiles_never_default_to_non_stable(profile_path: Path) -> None:
+    # The resolver treats a missing channel as stable, so a shipped profile may omit
+    # the block entirely (the placeholder does — leaving it byte-clean for the PII gate).
+    # What must never happen is a shipped profile silently defaulting to beta/invalid.
+    import yaml
+
+    profile = yaml.safe_load(profile_path.read_text(encoding="utf-8"))
+    channel = (profile.get("updates") or {}).get("channel", "stable")
+    assert channel == "stable"
+
+
+@pytest.mark.parametrize(
+    "profile_path",
+    [
+        REPO_ROOT / "System" / "user-profile-template.yaml",
+        REPO_ROOT / "System" / "user-profile.example.yaml",
+    ],
+    ids=lambda path: path.name,
+)
+def test_profile_templates_document_the_stable_default(profile_path: Path) -> None:
+    # New profiles are seeded from the template/example, so those must carry the
+    # explicit default. The shipped placeholder is exempt (see the test above).
     import yaml
 
     profile = yaml.safe_load(profile_path.read_text(encoding="utf-8"))
