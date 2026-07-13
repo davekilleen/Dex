@@ -859,7 +859,7 @@ Execute the integration concierge — it scans the vault for signals (mentions, 
 node .claude/hooks/integration-concierge.cjs
 ```
 
-Parse the JSON output for `high_value` and `moderate_value` recommendations. Each entry includes `shortName`, `mentions`, `examples` (files where signals appeared), `value`, `setupTime`, and `setup` (the setup skill to run).
+Parse the JSON output for the high_value and moderate_value tiers. Each entry includes `shortName`, `reason` (a ready-to-use plain-English signal — "installed on your Mac", "3 mentions in your notes", "already set up as a connector but not switched on yet"), `value`, `setupTime`, and `setup` (the setup skill to run). Prefer `reason` verbatim — it already names the strongest evidence (an installed app or configured connector outranks a passing mention).
 
 ### Presenting Recommendations
 
@@ -868,8 +868,7 @@ Parse the JSON output for `high_value` and `moderate_value` recommendations. Eac
 For each high_value integration found:
 
 ```
-By the way, I noticed you mention **[shortName]** in a few places
-([mentions] references across files like [first example file]).
+By the way — **[shortName]** ([reason]).
 
 Connecting it would give you: [value proposition]
 

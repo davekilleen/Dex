@@ -385,19 +385,18 @@ If any integrations are already connected, briefly note them so you don't re-off
 
 ### 8b: Personalize with Vault Signals
 
-Before asking which to connect, run the integration concierge — it scans the vault for signals (mentions, links, email domains) of tools the user already works with, so you can lead with what fits them instead of a flat list:
+Before asking which to connect, run the integration concierge — it scans for signals of tools the user already works with (apps installed on their Mac, connectors already configured, and mentions/links in their notes), so you can lead with what fits them instead of a flat list:
 
 ```bash
 node .claude/hooks/integration-concierge.cjs
 ```
 
-Parse the JSON for `high_value` and `moderate_value`. If any `high_value` items came back, surface them first, personalized:
+Parse the JSON for the high_value and moderate_value tiers. Each entry has a `reason` field with a ready-made plain-English signal ("installed on your Mac", "already set up as a connector but not switched on yet", or a mention count). If any high_value items came back, surface them first, personalized:
 
 ```
-Based on what's already in your vault, these look most useful:
+Based on what's already on your machine and in your vault, these look most useful:
 
-- **[shortName]** — I noticed [mentions] references (e.g. [first example file]).
-  [value proposition]. Setup: [setupTime].
+- **[shortName]** — [reason]. [value proposition]. Setup: [setupTime].
 ```
 
 Then present the rest of the categorized list from 8a for anything not already surfaced. If the concierge returns no high_value signals (common for a brand-new vault), just use the 8a list as-is — don't mention the scan.
