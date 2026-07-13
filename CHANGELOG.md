@@ -7,6 +7,19 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.56.0] - Dex notices the apps you actually have installed (2026-07-13)
+
+When Dex suggests connecting a tool, it now leans on real evidence — is the app sitting in your Applications folder? Is the connector already half set up? — instead of just scanning your notes for mentions. A tool you actually have installed is a far better signal than a passing reference to one.
+
+**What this fixes for you:**
+
+* **"Installed on your Mac" beats a guess.** When Dex offers to connect Things, Trello, Todoist, Zoom, or Teams, it now checks whether the app is actually installed and leads with that — so its suggestions feel observant, not random. An installed app is strong enough to surface on its own.
+* **Half-finished setups get noticed.** If a tool's connector is already configured but sync was never switched on, Dex spots the loose end and offers to finish it, rather than treating it as brand new.
+* **Suggestions say why.** Each recommendation now comes with its reason in plain words — "installed on your Mac", "already set up but not switched on yet", or how many times you mentioned it — so you understand where the nudge came from.
+* **Nothing leaves your machine.** The check is a local look at your Applications folder and your own config files — no network calls, and it quietly does nothing on non-Mac systems where those apps don't apply.
+
+---
+
 ## [1.55.0] - Contributing to Dex is now safer (2026-07-13)
 
 Contributing to Dex is now safer — CI catches personal data before it's shared, and tells contributors in plain English what their change touches.
@@ -17,8 +30,6 @@ Contributing to Dex is now safer — CI catches personal data before it's shared
 * **Every contribution gets a product map.** A sticky report translates changed paths into recognizable Dex areas, the user journeys they feed, and the quality gates that apply. Fork contributors still get the identical report in the job summary when GitHub withholds comment permission.
 * **Messy real-world content gets exercised.** Disposable vault fixtures now include unicode and spaced filenames, half-written notes, duplicate task headings, and recoverable malformed YAML, backed by fast property tests and larger nightly fuzz cases.
 * **A loaded machine no longer makes one smoke test look broken.** The release-snapshot MCP assertion gets a generous test budget and one timeout-only retry while Dex's production 1.5-second server-start guarantee stays unchanged.
-
----
 
 ---
 
