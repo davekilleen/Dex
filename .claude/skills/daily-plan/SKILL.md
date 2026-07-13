@@ -339,6 +339,38 @@ Also gather:
 - **People**: Context for meeting attendees
 - **Self-Learning Alerts**: Changelog updates, pending learnings
 
+### 5.11 Meeting-Task Review (NEW)
+
+Give the user one place to review what their meetings turned into. Work from the
+`list_tasks` output already gathered (open tasks include `metadata_source` — the
+meeting note each task came from — and `goal_tentative`).
+
+1. **Recent meeting tasks.** Collect open tasks whose `metadata_source` is set and
+   whose task ID date (`^task-YYYYMMDD-…`) is within the last 3 days. If any,
+   present them compactly under the plan's context:
+
+   > **From your meetings** (3 tasks)
+   > - Send Acme the revised pricing — from *Acme Quarterly Review* (due Jul 15)
+   > - …
+
+2. **Tentative goal links.** Collect open tasks where `goal_tentative` is true.
+   If any, review them in one pass:
+
+   > **2 tasks have a likely goal link marked (?)** — want to confirm them?
+   > 1. "Draft churn playbook" → *Q3-2026-goal-2: Reduce churn to 4%* — keep this link?
+
+   For each answer, call Work MCP `confirm_goal_link(task_id, "confirm")` to keep
+   the link or `confirm_goal_link(task_id, "clear")` to remove it. Never edit the
+   task file by hand for this.
+
+3. **Unprocessed meetings.** If `00-Inbox/Meetings/` has notes with unchecked
+   `### For Me` items and no `tasks-extracted` marker, add one line:
+   "N meetings have unextracted action items — run `/process-meetings` to turn
+   them into tasks."
+
+Skip this entire step silently when nothing qualifies — no "0 tasks from meetings"
+noise.
+
 ---
 
 ## Step 6: Synthesis
