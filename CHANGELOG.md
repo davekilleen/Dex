@@ -7,7 +7,7 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
-## [1.48.0] - Dex now checks itself overnight — and tells you what changed when something breaks (2026-07-12)
+## [1.49.0] - Dex now checks itself overnight — and tells you what changed when something breaks (2026-07-13)
 
 Dex's safe release checks used to run only when someone asked for a deep diagnosis or
 prepared a release. A problem that appeared between updates could therefore sit quietly
@@ -25,6 +25,17 @@ until the next manual check.
   a Dex update—without inventing a cause when the evidence is not there.
 * **The evidence stays inspectable.** The latest result and a capped history live as plain
   JSON files in your vault, with safe atomic writes so half-written reports never surface.
+
+## [1.48.0] - Your morning plan now shows what your meetings turned into (2026-07-13)
+
+Tasks extracted from meetings used to land in your backlog without a moment to review them, and tasks that guessed at a goal link had no way to be confirmed. The daily plan now closes both loops.
+
+**What this fixes for you:**
+
+* **One glance at what your meetings produced.** The daily plan lists tasks created from recent meetings, each with the meeting it came from and its due date — so nothing your meetings generated slips past you.
+* **Likely goal links get a yes or no.** When Dex links a task to a quarterly goal with a "(?)" (meaning "probably, but confirm"), the daily plan walks you through them in one pass — keep the link or clear it, one word each. A new under-the-hood tool makes the answer stick properly, so you never have to edit task files by hand.
+* **Unextracted meetings get a nudge.** If meetings are sitting with action items nobody turned into tasks, the plan says so and points at `/process-meetings`.
+* **Quiet when there's nothing to review.** No "0 tasks from meetings" noise on quiet days.
 
 ## [1.47.0] - Release checks stop failing themselves on a technicality (2026-07-12)
 
