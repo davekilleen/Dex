@@ -158,6 +158,7 @@ QUICK_CHECKS = (
     CheckDefinition("vault.git", "Vault history", "_probe_vault_git"),
     CheckDefinition("brain.git", "Dex brain history", "_probe_brain_git"),
     CheckDefinition("schema.match", "Brain and vault compatibility", "_probe_schema_match"),
+    CheckDefinition("vault.auto-commit", "Vault auto-commit", "_probe_vault_auto_commit"),
     CheckDefinition(
         "topology.migration-pending",
         "Brain/vault topology",
@@ -1542,6 +1543,25 @@ def _probe_schema_match(context: DoctorContext) -> ProbeResult:
             f"Dex brain {version!s} is outside its declared support range {brain_support!s} — run /dex-update",
         )
     return ProbeResult("OK", f"Vault schema {vault_schema!s} matches Dex brain {version!s} ({brain_support})")
+
+
+def _probe_vault_auto_commit(context: DoctorContext) -> ProbeResult:
+    profile_path = context.vault_root / "System" / "user-profile.yaml"
+    if profile_path.is_symlink():
+        return ProbeResult("UNKNOWN", "The doctor will not follow a symlinked user profile to inspect vault auto-commit")
+    try:
+        profile = _load_yaml(profile_path)
+    except FileNotFoundError:
+        profile = {}
+    if not isinstance(profile, dict):
+        return ProbeResult("BROKEN", "Vault auto-commit cannot read System/user-profile.yaml as a mapping")
+    vault = profile.get("vault") if isinstance(profile.get("vault"), dict) else {}
+    enabled = vault.get("auto_commit") is True
+    if not enabled:
+        return ProbeResult("OFF", "Vault auto-commit is off by default; your files still stay in the local vault")
+    if _topology_state(context) != "post-split":
+        return ProbeResult("BROKEN", "Vault auto-commit is enabled before the split topology is ready — run /dex-update")
+    return ProbeResult("OK", "Vault auto-commit is enabled for local SessionEnd snapshots and never sends them to a remote")
 
 
 def _probe_migration_pending(context: DoctorContext) -> ProbeResult:

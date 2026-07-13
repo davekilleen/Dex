@@ -114,3 +114,8 @@ quarterly_planning:
   # Current quarter dates (auto-calculated)
   quarter_start_date: "2026-01-01"
   quarter_end_date: "2026-03-31"
+
+# Optional local vault history snapshots at Claude SessionEnd.
+# Off by default; Dex never sends these commits to a remote.
+vault:
+  auto_commit: false

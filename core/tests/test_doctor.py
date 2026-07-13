@@ -23,6 +23,7 @@ QUICK_IDS = [
     "vault.git",
     "brain.git",
     "schema.match",
+    "vault.auto-commit",
     "topology.migration-pending",
     "mcp.registered",
     "mcp.orphans",
@@ -316,6 +317,13 @@ def test_split_topology_git_and_schema_probes_are_feature_status_compliant(tmp_p
     assert brain.verdict == "OK"
     assert "one release cycle" in brain.detail
     assert doctor._probe_schema_match(split).verdict == "OK"
+    auto_commit = doctor._probe_vault_auto_commit(split)
+    assert auto_commit.verdict == "OFF"
+    assert "off by default" in auto_commit.detail.lower()
+    (split.vault_root / "System" / "user-profile.yaml").write_text(
+        "vault_schema: 1\nvault:\n  auto_commit: true\n"
+    )
+    assert doctor._probe_vault_auto_commit(split).verdict == "OK"
     assert doctor._probe_migration_pending(split).verdict == "OK"
 
     (split.vault_root / "System" / "user-profile.yaml").write_text("vault_schema: 2\n")
@@ -465,7 +473,7 @@ def test_summary_counts_each_exact_verdict(monkeypatch, context):
 
     report = doctor.collect(context=context)
 
-    assert report["summary"] == {"ok": 15, "off": 1, "broken": 1, "unknown": 1}
+    assert report["summary"] == {"ok": 16, "off": 1, "broken": 1, "unknown": 1}
     assert report["instruments"]["completed"] == len(QUICK_IDS)
 
 
