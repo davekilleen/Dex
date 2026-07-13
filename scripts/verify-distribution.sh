@@ -344,7 +344,7 @@ if git clone --local --no-hardlinks --quiet "$PWD" "$RELEASE_CHECK_REPO" \
     && git -C "$RELEASE_CHECK_REPO" config user.name "Dex Distribution Check" \
     && git -C "$RELEASE_CHECK_REPO" config user.email "distribution@example.com" \
     && git -C "$RELEASE_CHECK_REPO" checkout -B main HEAD --quiet \
-    && bash "$RELEASE_CHECK_REPO/scripts/build-release.sh" >/dev/null; then
+    && bash "$RELEASE_CHECK_REPO/scripts/build-release.sh" --no-tag >/dev/null; then
     RELEASE_TEST_FILES=$(git -C "$RELEASE_CHECK_REPO" ls-tree -r --name-only release -- \
         core/tests core/mcp/tests core/migrations/tests .claude/hooks/tests)
     if [ -n "$RELEASE_TEST_FILES" ]; then

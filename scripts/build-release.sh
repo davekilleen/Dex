@@ -2,8 +2,9 @@
 # Build a clean release branch for user distribution.
 #
 # Usage:
-#   ./scripts/build-release.sh          # Build from current main HEAD
+#   ./scripts/build-release.sh           # Build and tag the distributed commit
 #   ./scripts/build-release.sh --dry-run # Show what would be removed
+#   ./scripts/build-release.sh --no-tag  # Build only (CI validation)
 #
 # This reads .distignore and produces a 'release' branch with dev-only
 # files stripped out. Users pull from this branch via /dex-update.
@@ -15,9 +16,14 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 cd "$REPO_ROOT"
 
 DRY_RUN=false
-if [ "${1:-}" = "--dry-run" ]; then
-    DRY_RUN=true
-fi
+TAG_RELEASE=true
+for argument in "$@"; do
+    case "$argument" in
+        --dry-run) DRY_RUN=true ;;
+        --no-tag) TAG_RELEASE=false ;;
+        *) echo "Usage: $0 [--dry-run] [--no-tag]" >&2; exit 2 ;;
+    esac
+done
 
 # --- Validate state ---
 
@@ -27,7 +33,7 @@ if [ ! -f "$DISTIGNORE" ]; then
     exit 1
 fi
 
-SOURCE_BRANCH="main"
+SOURCE_REF="${DEX_RELEASE_SOURCE:-main}"
 RELEASE_BRANCH="release"
 
 # Ensure we're working from a clean state
@@ -37,8 +43,8 @@ if [ -n "$(git status --porcelain)" ]; then
 fi
 
 # Ensure source branch exists
-if ! git rev-parse --verify "$SOURCE_BRANCH" >/dev/null 2>&1; then
-    echo "Error: branch '$SOURCE_BRANCH' not found." >&2
+if ! git rev-parse --verify "$SOURCE_REF^{commit}" >/dev/null 2>&1; then
+    echo "Error: release source '$SOURCE_REF' not found." >&2
     exit 1
 fi
 
@@ -71,23 +77,25 @@ if [ "$DRY_RUN" = true ]; then
         done < <(git ls-files -z -- "$pattern")
     done
     echo ""
-    echo "Source: $SOURCE_BRANCH ($(git rev-parse --short $SOURCE_BRANCH))"
+    echo "Source: $SOURCE_REF ($(git rev-parse --short "$SOURCE_REF"))"
     echo "Target: $RELEASE_BRANCH"
     exit 0
 fi
 
 # --- Build release branch ---
 
-SOURCE_SHA=$(git rev-parse "$SOURCE_BRANCH")
+SOURCE_SHA=$(git rev-parse "$SOURCE_REF^{commit}")
 PKG_VERSION=$(grep '"version"' package.json | head -1 | sed 's/.*"version": *"\([^"]*\)".*/\1/')
+DIST_TAG="dist-v$PKG_VERSION"
+ORIGINAL_REF=$(git symbolic-ref --quiet --short HEAD || git rev-parse HEAD)
 
 echo "Building release branch..."
-echo "  Source: $SOURCE_BRANCH ($SOURCE_SHA)"
+echo "  Source: $SOURCE_REF ($SOURCE_SHA)"
 echo "  Version: v$PKG_VERSION"
 echo ""
 
 # Create or reset release branch to match main
-git checkout -B "$RELEASE_BRANCH" "$SOURCE_BRANCH" --quiet
+git checkout -B "$RELEASE_BRANCH" "$SOURCE_SHA" --quiet
 
 # Remove dev-only files
 REMOVED=0
@@ -138,18 +146,43 @@ fi
 git commit -m "$(cat <<EOF
 release: v$PKG_VERSION
 
-Clean distribution from $SOURCE_BRANCH (${SOURCE_SHA:0:7}).
+Clean distribution from $SOURCE_REF (${SOURCE_SHA:0:7}).
 Dev-only files removed per .distignore ($REMOVED files stripped).
 EOF
 )" --quiet
 
-RELEASE_SHA=$(git rev-parse --short HEAD)
+RELEASE_COMMIT=$(git rev-parse HEAD)
+if [ "$TAG_RELEASE" = true ]; then
+    if EXISTING_DIST_COMMIT=$(git rev-parse --verify "$DIST_TAG^{commit}" 2>/dev/null); then
+        if [ "$EXISTING_DIST_COMMIT" != "$RELEASE_COMMIT" ]; then
+            EXISTING_TREE=$(git rev-parse "$EXISTING_DIST_COMMIT^{tree}")
+            RELEASE_TREE=$(git rev-parse "$RELEASE_COMMIT^{tree}")
+            git checkout "$ORIGINAL_REF" --quiet
+            git branch -f "$RELEASE_BRANCH" "$EXISTING_DIST_COMMIT" >/dev/null
+            if [ "$EXISTING_TREE" != "$RELEASE_TREE" ]; then
+                echo "Error: $DIST_TAG is immutable and already points at different distributed bytes. Bump the package version before building another release." >&2
+                exit 1
+            fi
+            RELEASE_COMMIT="$EXISTING_DIST_COMMIT"
+        fi
+    else
+        git tag -a "$DIST_TAG" "$RELEASE_COMMIT" -m "Distributed release v$PKG_VERSION"
+    fi
+fi
+
+RELEASE_SHA=$(git rev-parse --short "$RELEASE_COMMIT")
 
 echo "Done! Release branch built:"
 echo "  Branch: $RELEASE_BRANCH ($RELEASE_SHA)"
 echo "  Removed: $REMOVED dev-only files"
+if [ "$TAG_RELEASE" = true ]; then
+    echo "  Tag: $DIST_TAG ($RELEASE_SHA)"
+fi
 echo ""
 echo "To publish: git push origin $RELEASE_BRANCH"
 
 # Return to previous branch
-git checkout - --quiet
+if [ "$(git rev-parse HEAD)" != "$(git rev-parse "$ORIGINAL_REF^{commit}")" ] \
+    || [ "$(git symbolic-ref --quiet --short HEAD || true)" != "$ORIGINAL_REF" ]; then
+    git checkout "$ORIGINAL_REF" --quiet
+fi

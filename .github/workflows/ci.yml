@@ -64,33 +64,10 @@ jobs:
           git -C "$RELEASE_VALIDATION_REPO" config user.name "Dex CI"
           git -C "$RELEASE_VALIDATION_REPO" config user.email "ci@dex.local"
           git -C "$RELEASE_VALIDATION_REPO" checkout -B main "$GITHUB_SHA" --quiet
-          bash "$RELEASE_VALIDATION_REPO/scripts/build-release.sh"
+          bash "$RELEASE_VALIDATION_REPO/scripts/build-release.sh" --no-tag
           git -C "$RELEASE_VALIDATION_REPO" show release:System/.installed-files.manifest > "$RUNNER_TEMP/release-manifest"
           node core/update/ownership.cjs --validate "$RUNNER_TEMP/release-manifest"
       - name: Distribution safety check
         run: bash scripts/verify-distribution.sh
       - name: Path consistency check
         run: bash scripts/check-path-consistency.sh
-
-  build-release:
-    needs: quality
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-    runs-on: macos-latest
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-      - run: npm ci
-      - name: Configure git
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-      - name: Build release branch
-        run: bash scripts/build-release.sh
-      - name: Push release branch
-        run: git push origin release --force

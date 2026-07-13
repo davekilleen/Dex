@@ -102,6 +102,13 @@ def _build_release_in_clone(tmp_path: Path) -> tuple[Path, set[str]]:
         cwd=clone,
         check=True,
     )
+    version = json.loads((clone / "package.json").read_text(encoding="utf-8"))["version"]
+    subprocess.run(
+        ["git", "tag", "--delete", f"dist-v{version}"],
+        cwd=clone,
+        check=False,
+        capture_output=True,
+    )
 
     subprocess.run(
         ["bash", "scripts/build-release.sh"],
@@ -209,6 +216,31 @@ def test_release_branch_strips_dev_files_and_keeps_user_runtime(tmp_path: Path) 
     assert "test" not in package_json.get("scripts", {})
     assert "test:hooks" not in package_json.get("scripts", {})
     assert "test:scripts" not in package_json.get("scripts", {})
+
+    version = package_json["version"]
+    release_oid = subprocess.run(
+        ["git", "rev-parse", "release^{commit}"],
+        cwd=clone,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    dist_oid = subprocess.run(
+        ["git", "rev-parse", f"dist-v{version}^{{commit}}"],
+        cwd=clone,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    main_oid = subprocess.run(
+        ["git", "rev-parse", "main^{commit}"],
+        cwd=clone,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    assert dist_oid == release_oid
+    assert dist_oid != main_oid
 
     bridge_paths = {
         "01-Quarter_Goals/Quarter_Goals.md",
@@ -507,6 +539,58 @@ def test_ci_validates_the_generated_release_manifest() -> None:
     workflow = (REPO_ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
 
     assert "Build release for ownership validation" in workflow
-    assert "bash scripts/build-release.sh" in workflow
+    assert "scripts/build-release.sh\" --no-tag" in workflow
     assert "release:System/.installed-files.manifest" in workflow
     assert "node core/update/ownership.cjs --validate" in workflow
+
+
+def test_release_build_refuses_to_move_an_existing_dist_tag(tmp_path: Path) -> None:
+    clone, _ = _build_release_in_clone(tmp_path)
+    version = json.loads((clone / "package.json").read_text(encoding="utf-8"))["version"]
+    tag = f"dist-v{version}"
+    original_dist_oid = subprocess.run(
+        ["git", "rev-parse", f"{tag}^{{commit}}"],
+        cwd=clone,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    with (clone / "install.sh").open("a", encoding="utf-8") as install_script:
+        install_script.write("\n# changed distributed bytes without a version bump\n")
+    subprocess.run(["git", "add", "install.sh"], cwd=clone, check=True)
+    subprocess.run(
+        ["git", "commit", "--quiet", "-m", "test: change same-version release bytes"],
+        cwd=clone,
+        check=True,
+    )
+
+    result = subprocess.run(
+        ["bash", "scripts/build-release.sh"],
+        cwd=clone,
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+
+    assert result.returncode == 1
+    assert "immutable" in (result.stdout + result.stderr).lower()
+    assert subprocess.run(
+        ["git", "rev-parse", f"{tag}^{{commit}}"],
+        cwd=clone,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip() == original_dist_oid
+
+
+def test_tag_release_workflow_builds_and_pushes_the_stripped_dist_commit() -> None:
+    workflow = (REPO_ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
+    ci_workflow = (REPO_ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+    release_script = (REPO_ROOT / "scripts/release.sh").read_text(encoding="utf-8")
+
+    assert "DEX_RELEASE_SOURCE" in workflow
+    assert "bash scripts/build-release.sh" in workflow
+    assert "node core/update/ownership.cjs --validate" in workflow
+    assert 'refs/tags/dist-v${VERSION}' in workflow
+    assert "git push origin release" not in ci_workflow
+    assert "release workflow" in release_script.lower()

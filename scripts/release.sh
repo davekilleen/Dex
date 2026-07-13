@@ -5,7 +5,8 @@
 # Steps:
 #   1. Bump version in package.json
 #   2. Insert dated CHANGELOG header for the new version
-#   3. Commit, tag, and push
+#   3. Commit and create the source tag; the release workflow builds and tags
+#      the stripped distributed commit
 
 set -euo pipefail
 
@@ -76,6 +77,7 @@ git tag -a "$TAG" -m "Release ${TAG}"
 
 echo ""
 echo "Created commit and tag ${TAG}."
+echo "The release workflow will build the stripped release commit and publish dist-v${NEW_VERSION}."
 echo ""
 echo "To publish:"
-echo "  git push origin main --follow-tags"
+echo "  git push origin main ${TAG}"

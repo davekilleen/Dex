@@ -13,6 +13,43 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Build and verify distributed release commit
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          PACKAGE_VERSION=$(node -p "require('./package.json').version")
+          if [ "$VERSION" != "$PACKAGE_VERSION" ]; then
+            echo "Tag $GITHUB_REF_NAME does not match package version $PACKAGE_VERSION." >&2
+            exit 1
+          fi
+          DEX_RELEASE_SOURCE="$GITHUB_SHA" bash scripts/build-release.sh
+          git show release:System/.installed-files.manifest > "$RUNNER_TEMP/release-manifest"
+          node core/update/ownership.cjs --validate "$RUNNER_TEMP/release-manifest"
+          RELEASE_OID=$(git rev-parse release^{commit})
+          DIST_OID=$(git rev-parse "dist-v${VERSION}^{commit}")
+          if [ "$RELEASE_OID" != "$DIST_OID" ]; then
+            echo "The dist tag does not point at the stripped release commit." >&2
+            exit 1
+          fi
+
+      - name: Publish release branch and immutable dist tag
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          git push origin release --force
+          git push origin "refs/tags/dist-v${VERSION}"
 
       - name: Extract version from tag
         id: version
