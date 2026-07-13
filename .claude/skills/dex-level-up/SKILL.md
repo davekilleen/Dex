@@ -188,13 +188,12 @@ Run the integration concierge to find tools the user already works with but hasn
 node .claude/hooks/integration-concierge.cjs
 ```
 
-Parse the JSON output — the high_value tier holds items scoring 5 or higher, moderate_value holds the rest with any signal. Surface up to two, named specifically, with the concrete signal you found:
+Parse the JSON output — the high_value tier holds items scoring 5 or higher, moderate_value holds the rest with any signal. Each entry carries a `reason` field naming the strongest evidence ("installed on your Mac", "already set up as an MCP server but not connected yet", or a mention count). Surface up to two, named specifically, using that reason:
 
 ```markdown
 ## Tools You Could Connect
 
-- **[shortName]** — you reference it [mentions] times (e.g. [first example file]).
-  [value proposition]. Connect with `[setup]` ([setupTime]).
+- **[shortName]** — [reason]. [value proposition]. Connect with `[setup]` ([setupTime]).
 ```
 
 Lead with the high_value items; fall back to a single role-fit moderate_value suggestion only if there are no high_value hits. If nothing scores, don't force it — a generic "run `/integrate-mcp` to connect calendar, email, task apps (Todoist/Things/Trello), and more" line is enough. Keep it to high-signal suggestions only — don't overwhelm.

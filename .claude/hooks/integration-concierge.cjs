@@ -18,9 +18,12 @@
  * - Calendar signatures: "Teams meeting", "Zoom Meeting" in event titles
  * - Email patterns: @gmail.com, @outlook.com in person pages
  * - File patterns: .ics attachments, Jira ticket IDs (PROJ-123)
+ * - Installed macOS app bundles
+ * - Configured MCP servers
  */
 
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
 
 const { loadPaths } = require('./paths.cjs');
@@ -40,6 +43,7 @@ const INTEGRATIONS = {
     name: 'Google Workspace (Gmail + Calendar + Docs)',
     shortName: 'Gmail',
     setup: '/google-workspace-setup',
+    mcpServers: ['google-workspace-mcp'],
     signals: {
       keywords: ['gmail', 'google docs', 'google sheets', 'google drive', 'google calendar', 'google meet'],
       urls: [/gmail\.com/i, /docs\.google\.com/i, /drive\.google\.com/i, /meet\.google\.com/i, /calendar\.google\.com/i],
@@ -55,6 +59,8 @@ const INTEGRATIONS = {
     name: 'Microsoft Teams',
     shortName: 'Teams',
     setup: '/ms-teams-setup',
+    apps: ['Microsoft Teams.app'],
+    mcpServers: ['teams-mcp'],
     signals: {
       keywords: ['microsoft teams', 'teams meeting', 'teams call', 'ms teams'],
       urls: [/teams\.microsoft\.com/i, /teams\.live\.com/i],
@@ -70,6 +76,8 @@ const INTEGRATIONS = {
     name: 'Todoist',
     shortName: 'Todoist',
     setup: '/todoist-setup',
+    apps: ['Todoist.app'],
+    mcpServers: ['todoist-mcp'],
     signals: {
       keywords: ['todoist', 'todoist task', 'todoist project'],
       urls: [/todoist\.com/i, /app\.todoist\.com/i],
@@ -83,6 +91,8 @@ const INTEGRATIONS = {
     name: 'Things 3',
     shortName: 'Things 3',
     setup: '/things-setup',
+    apps: ['Things3.app'],
+    mcpServers: ['things3-mcp'],
     signals: {
       keywords: ['things 3', 'things app', 'things today', 'things inbox'],
       urls: [/things:\/\//i, /culturedcode\.com/i],
@@ -96,6 +106,8 @@ const INTEGRATIONS = {
     name: 'Trello',
     shortName: 'Trello',
     setup: '/trello-setup',
+    apps: ['Trello.app'],
+    mcpServers: ['mcp-server-trello'],
     signals: {
       keywords: ['trello', 'trello board', 'trello card'],
       urls: [/trello\.com/i],
@@ -109,6 +121,8 @@ const INTEGRATIONS = {
     name: 'Zoom',
     shortName: 'Zoom',
     setup: '/zoom-setup',
+    apps: ['zoom.us.app'],
+    mcpServers: ['zoom-mcp'],
     signals: {
       keywords: ['zoom call', 'zoom meeting', 'zoom recording', 'zoom link'],
       urls: [/zoom\.us/i, /zoom\.com/i],
@@ -124,6 +138,7 @@ const INTEGRATIONS = {
     name: 'Atlassian (Jira + Confluence)',
     shortName: 'Jira/Confluence',
     setup: '/atlassian-setup',
+    mcpServers: ['atlassian-mcp'],
     signals: {
       keywords: ['jira', 'confluence', 'atlassian', 'sprint', 'epic', 'jira ticket'],
       urls: [/atlassian\.net/i, /jira\./i, /confluence\./i],
@@ -134,6 +149,102 @@ const INTEGRATIONS = {
     auth: 'OAuth (Atlassian Cloud)',
   },
 };
+
+// ---------------------------------------------------------------------------
+// Environment scanning
+// ---------------------------------------------------------------------------
+
+function scanInstalledApps() {
+  const hasAppDirOverride = process.env.DEX_APP_DIRS !== undefined;
+  if (process.platform !== 'darwin' && !hasAppDirOverride) return {};
+
+  try {
+    const appDirs = hasAppDirOverride
+      ? process.env.DEX_APP_DIRS.split(path.delimiter).filter(Boolean)
+      : ['/Applications', path.join(os.homedir(), 'Applications')];
+    const installedApps = [];
+
+    for (const appDir of appDirs) {
+      try {
+        if (!fs.existsSync(appDir)) continue;
+        for (const basename of fs.readdirSync(appDir)) {
+          if (fs.existsSync(path.join(appDir, basename))) {
+            installedApps.push(basename);
+          }
+        }
+      } catch {
+        // Missing or unreadable app directories are expected — skip silently.
+      }
+    }
+
+    const matches = {};
+    for (const [key, integration] of Object.entries(INTEGRATIONS)) {
+      if (!integration.apps) continue;
+
+      const matchedApps = integration.apps
+        .map(app => installedApps.find(installed => installed.toLowerCase() === app.toLowerCase()))
+        .filter(Boolean);
+      if (matchedApps.length > 0) {
+        matches[key] = [...new Set(matchedApps)];
+      }
+    }
+    return matches;
+  } catch {
+    return {};
+  }
+}
+
+function scanMcpConfig() {
+  try {
+    const configPaths = [
+      path.join(VAULT_ROOT, '.mcp.json'),
+      path.join(VAULT_ROOT, 'System', '.mcp.json'),
+      path.join(VAULT_ROOT, '.claude', 'mcp-servers.json'),
+    ];
+    const configuredServers = [];
+
+    for (const configPath of configPaths) {
+      try {
+        if (!fs.existsSync(configPath)) continue;
+        const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+        if (!config || typeof config !== 'object' || Array.isArray(config)) continue;
+
+        const servers = config.mcpServers
+          && typeof config.mcpServers === 'object'
+          && !Array.isArray(config.mcpServers)
+          ? config.mcpServers
+          : config;
+        for (const serverName of Object.keys(servers)) {
+          if (!configuredServers.some(name => name.toLowerCase() === serverName.toLowerCase())) {
+            configuredServers.push(serverName);
+          }
+        }
+      } catch {
+        // Missing or malformed MCP configs are expected — skip silently.
+      }
+    }
+
+    const matches = {};
+    for (const [key, integration] of Object.entries(INTEGRATIONS)) {
+      if (!integration.mcpServers) continue;
+
+      const matchedServers = configuredServers.filter((configured) => {
+        const configuredName = configured.toLowerCase();
+        return integration.mcpServers.some((server) => {
+          const expectedName = server.toLowerCase();
+          return configuredName === expectedName
+            || configuredName.includes(expectedName);
+        });
+      });
+      if (matchedServers.length > 0) {
+        matches[key] = matchedServers;
+      }
+    }
+    return matches;
+  } catch {
+    return {};
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Vault scanning
@@ -165,13 +276,19 @@ function scanDirectory(dir, extensions, maxDepth = 3, depth = 0) {
 
 function scanForSignals() {
   const results = {};
+  const installedApps = scanInstalledApps();
+  const configuredMcp = scanMcpConfig();
 
   for (const [key, integration] of Object.entries(INTEGRATIONS)) {
+    const matchedApps = installedApps[key] || [];
+    const matchedMcp = configuredMcp[key] || [];
     results[key] = {
       ...integration,
-      score: 0,
+      score: (matchedApps.length > 0 ? 6 : 0) + (matchedMcp.length > 0 ? 4 : 0),
       mentions: 0,
       examples: [],
+      installedApps: matchedApps,
+      configuredMcp: matchedMcp,
     };
   }
 
@@ -381,6 +498,15 @@ function generateRecommendations(signals) {
       score: data.score,
       mentions: data.mentions,
       examples: data.examples,
+      installedApps: data.installedApps,
+      configuredMcp: data.configuredMcp,
+      reason: data.installedApps.length > 0
+        ? 'installed on your Mac'
+        : data.configuredMcp.length > 0
+          ? 'already set up but not switched on yet'
+          : data.mentions > 0
+            ? `${data.mentions} mention${data.mentions === 1 ? '' : 's'} in your notes${data.examples.length > 0 ? ` (e.g. ${data.examples[0]})` : ''}`
+            : 'available to connect',
     };
 
     // Add Granola note to Zoom

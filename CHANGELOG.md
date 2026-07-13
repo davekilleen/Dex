@@ -7,7 +7,7 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
-## [1.56.0] - Catch bad releases across vaults without sharing your content (2026-07-13)
+## [1.57.0] - Catch bad releases across vaults without sharing your content (2026-07-13)
 
 Opt in to help catch bad releases across all vaults — anonymous nightly health counts, no content ever.
 
@@ -17,6 +17,19 @@ Opt in to help catch bad releases across all vaults — anonymous nightly health
 * **Your work never joins the report.** The verdict contains only outcome counts, one fixed check identifier when something is wrong, the Dex version and release channel, and a random installation ID. It never includes names, notes, filenames, paths, or file contents.
 * **This choice is separate and defaults to no.** Existing analytics consent does not enable health sharing. Missing, pending, or malformed consent sends nothing, and you can turn health telemetry on or off in plain language anytime.
 * **You can inspect every attempt locally.** Dex keeps an ignored local line-by-line audit of exactly what it would send, including attempts skipped by consent and requests dropped after a network failure.
+
+---
+
+## [1.56.0] - Dex notices the apps you actually have installed (2026-07-13)
+
+When Dex suggests connecting a tool, it now leans on real evidence — is the app sitting in your Applications folder? Is the connector already half set up? — instead of just scanning your notes for mentions. A tool you actually have installed is a far better signal than a passing reference to one.
+
+**What this fixes for you:**
+
+* **"Installed on your Mac" beats a guess.** When Dex offers to connect Things, Trello, Todoist, Zoom, or Teams, it now checks whether the app is actually installed and leads with that — so its suggestions feel observant, not random. An installed app is strong enough to surface on its own.
+* **Half-finished setups get noticed.** If a tool's connector is already configured but sync was never switched on, Dex spots the loose end and offers to finish it, rather than treating it as brand new.
+* **Suggestions say why.** Each recommendation now comes with its reason in plain words — "installed on your Mac", "already set up but not switched on yet", or how many times you mentioned it — so you understand where the nudge came from.
+* **Nothing leaves your machine.** The check is a local look at your Applications folder and your own config files — no network calls, and it quietly does nothing on non-Mac systems where those apps don't apply.
 
 ---
 
@@ -30,8 +43,6 @@ Contributing to Dex is now safer — CI catches personal data before it's shared
 * **Every contribution gets a product map.** A sticky report translates changed paths into recognizable Dex areas, the user journeys they feed, and the quality gates that apply. Fork contributors still get the identical report in the job summary when GitHub withholds comment permission.
 * **Messy real-world content gets exercised.** Disposable vault fixtures now include unicode and spaced filenames, half-written notes, duplicate task headings, and recoverable malformed YAML, backed by fast property tests and larger nightly fuzz cases.
 * **A loaded machine no longer makes one smoke test look broken.** The release-snapshot MCP assertion gets a generous test budget and one timeout-only retry while Dex's production 1.5-second server-start guarantee stays unchanged.
-
----
 
 ---
 
