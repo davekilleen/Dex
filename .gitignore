@@ -19,6 +19,7 @@ node_modules/
 System/integrations/*.yaml
 !System/integrations/config.yaml
 System/integrations/.sync-state.json
+System/integrations/inbound-tasks.json
 
 # Obsidian
 .obsidian/workspace.json

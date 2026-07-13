@@ -7,6 +7,21 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.49.0] - Real Todoist sync — the promise, finally built (2026-07-13)
+
+Earlier setups promised automatic two-way Todoist sync that never existed (we removed that promise in 1.36.0). This release builds the real thing, carefully.
+
+**What this fixes for you:**
+
+* **Ask Dex to sync, and it actually syncs.** New Dex tasks appear in Todoist (in the right project via your pillar mapping), tasks you complete in Dex get closed in Todoist, and tasks you complete in Todoist get marked done in Dex — with the completion recorded everywhere the task appears.
+* **Tasks created in Todoist arrive through your review, not behind your back.** Inbound tasks queue up for your daily plan, where they're created properly — with duplicate checking and people/goal linking — instead of being silently injected into your backlog.
+* **First sync can't flood anything.** Connecting starts clean from that moment; your existing backlog is never bulk-pushed to Todoist, and Todoist history is never bulk-imported.
+* **Preview before you trust it.** A dry-run mode reports exactly what a sync would do while changing nothing, anywhere.
+* **Built on Todoist's current platform.** The old prototype targeted API versions Todoist shut down in early 2026; this is built and tested against their unified v1 API, including rate-limit handling.
+* **One connector failing never blocks another.** Each service syncs independently; errors are reported per service, and a failed sync never advances its bookmark (so nothing is skipped next time).
+
+Things 3 and Trello sync arrive next on the same engine.
+
 ## [1.48.0] - Your morning plan now shows what your meetings turned into (2026-07-13)
 
 Tasks extracted from meetings used to land in your backlog without a moment to review them, and tasks that guessed at a goal link had no way to be confirmed. The daily plan now closes both loops.
