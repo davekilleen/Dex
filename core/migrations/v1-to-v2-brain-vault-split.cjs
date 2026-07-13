@@ -1199,6 +1199,7 @@ function removeMigrationRuntime(root) {
     '.migration-lock',
     'topology.json',
     'migration-v2-p3-files.json',
+    'held-back-paths.json',
   ]) removePath(path.join(stateDirectory, relative));
   if (exists(stateDirectory) && fs.readdirSync(stateDirectory).length === 0) fs.rmdirSync(stateDirectory);
 }
