@@ -8,6 +8,7 @@ const crypto = require('node:crypto');
 const { spawnSync } = require('node:child_process');
 
 const ownership = require('../update/ownership.cjs');
+const { acquireOwnedLock } = require('../update/owned-lock.cjs');
 
 const START_MARKER = '## USER_EXTENSIONS_START';
 const END_MARKER = '## USER_EXTENSIONS_END';
@@ -267,47 +268,13 @@ function moveWithFallback(source, destination) {
   if (!exists(destination)) throw lastError || new Error(`Could not move ${source}`);
 }
 
-function processIsRunning(pid) {
-  if (!Number.isInteger(pid) || pid <= 0) return false;
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (error) {
-    return error.code === 'EPERM';
-  }
-}
-
 function acquireLock(root) {
   const lock = path.join(root, LOCK_RELATIVE);
-  fs.mkdirSync(path.dirname(lock), { recursive: true });
-  if (exists(lock)) {
-    let holder = null;
-    try {
-      holder = JSON.parse(fs.readFileSync(lock, 'utf8'));
-    } catch {
-      // A malformed lock is treated as stale because an atomic writer never leaves one.
-    }
-    if (holder && processIsRunning(holder.pid)) {
-      throw new Error(`Another Dex migration is still running (process ${holder.pid}). Wait for it to finish, then try again.`);
-    }
-    fs.unlinkSync(lock);
-  }
-  const descriptor = fs.openSync(lock, 'wx', 0o600);
-  try {
-    fs.writeFileSync(descriptor, `${JSON.stringify({ pid: process.pid, startedAt: new Date().toISOString() })}\n`);
-    fs.fsyncSync(descriptor);
-  } finally {
-    fs.closeSync(descriptor);
-  }
-  fsyncDirectory(path.dirname(lock));
-  return () => {
-    if (exists(lock)) fs.unlinkSync(lock);
-    try {
-      fsyncDirectory(path.dirname(lock));
-    } catch {
-      // The restore path may have removed the now-empty journal directory.
-    }
-  };
+  return acquireOwnedLock(
+    lock,
+    'migration',
+    (pid) => `Another Dex migration is still running (process ${pid}). Wait for it to finish, then try again.`,
+  );
 }
 
 function directorySize(root) {
@@ -1524,6 +1491,7 @@ function main(argumentsList = process.argv.slice(2), root = process.cwd()) {
 }
 
 module.exports = {
+  acquireLock,
   assertSafeMutationRoots,
   emptyLegacyExtensionBlock,
   extractLegacyExtensions,

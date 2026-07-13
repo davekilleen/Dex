@@ -248,6 +248,43 @@ test('worktree writes require a positive ownership class and runtime writes stay
   );
 });
 
+test('updater lock recovery and release never unlink a different owner', () => {
+  const updater = require(UPDATER_PATH);
+  const releaseRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'dex-update-lock-release-'));
+  const releaseLock = path.join(releaseRoot, 'System', '.dex', '.migration-lock');
+  const release = updater.acquireLock(releaseRoot);
+  fs.writeFileSync(
+    releaseLock,
+    `${JSON.stringify({ pid: process.pid, kind: 'other', token: 'foreign-release-owner' })}\n`,
+  );
+  release();
+  assert.equal(JSON.parse(fs.readFileSync(releaseLock, 'utf8')).token, 'foreign-release-owner');
+
+  const staleRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'dex-update-lock-stale-'));
+  const staleLock = path.join(staleRoot, 'System', '.dex', '.migration-lock');
+  fs.mkdirSync(path.dirname(staleLock), { recursive: true });
+  fs.writeFileSync(staleLock, `${JSON.stringify({ pid: 2147483647, token: 'stale-owner' })}\n`);
+  const originalOpen = fs.openSync;
+  let reads = 0;
+  fs.openSync = (candidate, flags, ...args) => {
+    if (candidate === staleLock && flags === 'r') {
+      reads += 1;
+      if (reads === 2) {
+        const descriptor = originalOpen(staleLock, 'w', 0o600);
+        fs.writeSync(descriptor, `${JSON.stringify({ pid: process.pid, token: 'race-winner' })}\n`);
+        fs.closeSync(descriptor);
+      }
+    }
+    return originalOpen(candidate, flags, ...args);
+  };
+  try {
+    assert.throws(() => updater.acquireLock(staleRoot), /another Dex migration or update/i);
+  } finally {
+    fs.openSync = originalOpen;
+  }
+  assert.equal(JSON.parse(fs.readFileSync(staleLock, 'utf8')).token, 'race-winner');
+});
+
 test('status identifies migration-pending and post-split topologies', () => {
   const updater = require(UPDATER_PATH);
   const pending = fs.mkdtempSync(path.join(os.tmpdir(), 'dex-update-status-pending-'));

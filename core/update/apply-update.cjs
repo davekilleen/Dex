@@ -7,6 +7,7 @@ const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 
 const ownership = require('./ownership.cjs');
+const { acquireOwnedLock } = require('./owned-lock.cjs');
 const migrator = require('../migrations/v1-to-v2-brain-vault-split.cjs');
 
 const OFFICIAL_REMOTE = 'https://github.com/davekilleen/Dex.git';
@@ -442,49 +443,14 @@ function assertSafeMutationRoots(root) {
   }
 }
 
-function processIsRunning(pid) {
-  if (!Number.isInteger(pid) || pid <= 0) return false;
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (error) {
-    return error.code === 'EPERM';
-  }
-}
-
 function acquireLock(root) {
   const lock = path.join(root, LOCK_RELATIVE);
   assertRuntimeWrite(root, LOCK_RELATIVE);
-  fs.mkdirSync(path.dirname(lock), { recursive: true });
-  if (exists(lock)) {
-    let holder = null;
-    try {
-      holder = JSON.parse(fs.readFileSync(lock, 'utf8'));
-    } catch {
-      // Atomic lock writers do not leave partial files, so malformed locks are stale.
-    }
-    if (holder && processIsRunning(holder.pid)) {
-      throw new Error(`Another Dex migration or update is still running (process ${holder.pid}). Wait for it, then retry.`);
-    }
-    assertRuntimeWrite(root, LOCK_RELATIVE);
-    fs.unlinkSync(lock);
-  }
-  assertRuntimeWrite(root, LOCK_RELATIVE);
-  const descriptor = fs.openSync(lock, 'wx', 0o600);
-  try {
-    fs.writeFileSync(descriptor, `${JSON.stringify({ pid: process.pid, kind: 'update', at: new Date().toISOString() })}\n`);
-    fs.fsyncSync(descriptor);
-  } finally {
-    fs.closeSync(descriptor);
-  }
-  fsyncDirectory(path.dirname(lock));
-  return () => {
-    if (exists(lock)) {
-      assertRuntimeWrite(root, LOCK_RELATIVE);
-      fs.unlinkSync(lock);
-      fsyncDirectory(path.dirname(lock));
-    }
-  };
+  return acquireOwnedLock(
+    lock,
+    'update',
+    (pid) => `Another Dex migration or update is still running (process ${pid}). Wait for it, then retry.`,
+  );
 }
 
 function writeJournal(root, state) {
@@ -1212,6 +1178,7 @@ function main(argumentsList = process.argv.slice(2), root = process.cwd()) {
 }
 
 module.exports = {
+  acquireLock,
   assertWorktreeWrite,
   inspectUpdateTopology,
   isOfficialRemote,
