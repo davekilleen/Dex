@@ -19,6 +19,9 @@ const REPORT_RELATIVE = 'System/.dex/update-report.md';
 const STAGING_RELATIVE = '.dex/staging';
 const MANIFEST_RELATIVE = 'System/.installed-files.manifest';
 const RESUME_EXIT = 75;
+const OID_PATTERN = /^[a-f0-9]{40}(?:[a-f0-9]{24})?$/i;
+const MANIFEST_HASH_PATTERN = /^[a-f0-9]{64}$/i;
+const RELEASE_TAG_PATTERN = /^dist-v\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/;
 
 function exists(candidate) {
   try {
@@ -472,6 +475,66 @@ function readJournal(root) {
   return null;
 }
 
+function safeJournalPath(relative) {
+  return (
+    typeof relative === 'string'
+    && relative.length > 0
+    && !relative.includes('\0')
+    && !relative.includes('\\')
+    && !relative.startsWith('/')
+    && !relative.split('/').some((part) => !part || part === '.' || part === '..')
+  );
+}
+
+function validateJournalState(state) {
+  if (!state || typeof state !== 'object' || Array.isArray(state) || state.schemaVersion !== 1) {
+    throw new Error('Dex update journal has an invalid schema.');
+  }
+  if (!['active', 'waiting-for-migration', 'complete'].includes(state.status)) {
+    throw new Error('Dex update journal has an invalid status.');
+  }
+  if (!['apply', 'rollback'].includes(state.mode) || !Number.isInteger(state.phase) || state.phase < 1 || state.phase > 11) {
+    throw new Error('Dex update journal has an invalid mode or phase.');
+  }
+  for (const [name, value] of [['targetOid', state.targetOid], ['previousOid', state.previousOid]]) {
+    if (value !== null && value !== undefined && !OID_PATTERN.test(value)) {
+      throw new Error(`Dex update journal has an invalid ${name}.`);
+    }
+  }
+  const inventoryNames = [
+    'previousManifest', 'targetManifest', 'targetBrainPaths', 'backupChecked', 'backedUp',
+    'swapped', 'pruneChecked', 'pruned', 'kept', 'seeded', 'mcpAdded',
+  ];
+  for (const name of inventoryNames) {
+    if (state[name] === undefined) continue;
+    if (
+      !Array.isArray(state[name])
+      || state[name].some((relative) => !safeJournalPath(relative))
+      || new Set(state[name]).size !== state[name].length
+    ) throw new Error(`Dex update journal has an invalid ${name} inventory.`);
+  }
+  if (state.targetBrainPaths?.some((relative) => ownership.classify(relative) !== 'brain')) {
+    throw new Error('Dex update journal target brain inventory contains a non-brain path.');
+  }
+  if (state.phase > 1 && !state.targetOid) throw new Error('Dex update journal is missing its target OID.');
+  if (state.targetOid && (state.phase > 1 || state.attestation)) {
+    validateAttestation(state.attestation, 'target release');
+    if (state.attestation.oid.toLowerCase() !== state.targetOid.toLowerCase()) {
+      throw new Error('Dex update journal target attestation does not match targetOid.');
+    }
+  }
+  if (state.previousOid && (state.phase > 1 || state.previousAttestation)) {
+    validateAttestation(state.previousAttestation, 'previous release');
+    if (state.previousAttestation.oid.toLowerCase() !== state.previousOid.toLowerCase()) {
+      throw new Error('Dex update journal previous attestation does not match previousOid.');
+    }
+  }
+  if (state.manifestHash && state.attestation?.manifestHash !== state.manifestHash) {
+    throw new Error('Dex update journal manifest hash does not match its attestation.');
+  }
+  return state;
+}
+
 function beforeMutation(root, state, description) {
   state.pendingMutation = description;
   state.updatedAt = new Date().toISOString();
@@ -561,35 +624,99 @@ function selectLatestStableTag(tags) {
   return stable.sort(compareTags).at(-1);
 }
 
-function resolveAndFetchTarget(root, requested) {
-  const officialUrl = verifyOfficialOrigin(root);
-  let target = requested;
-  if (!target) {
-    const listed = brainGit(root, ['ls-remote', '--refs', '--tags', officialUrl, 'refs/tags/dist-v*']);
-    const tags = listed.stdout.split(/\r?\n/).filter(Boolean).map((line) => line.split(/\s+/)[1])
-      .filter((ref) => ref?.startsWith('refs/tags/dist-v')).map((ref) => ref.slice('refs/tags/'.length));
-    target = selectLatestStableTag(tags);
+function parseOfficialTagListing(source) {
+  const records = new Map();
+  for (const line of String(source).split(/\r?\n/).filter(Boolean)) {
+    const [oid, ref] = line.trim().split(/\s+/, 2);
+    const match = /^refs\/tags\/(dist-v[^{}]+)(\^\{\})?$/.exec(ref || '');
+    if (!OID_PATTERN.test(oid || '') || !match || !RELEASE_TAG_PATTERN.test(match[1])) continue;
+    const current = records.get(match[1]) || { tag: match[1], direct: null, peeled: null };
+    if (match[2]) current.peeled = oid.toLowerCase();
+    else current.direct = oid.toLowerCase();
+    records.set(match[1], current);
   }
-  let destination;
-  if (/^[a-f0-9]{40}(?:[a-f0-9]{24})?$/i.test(target)) {
-    destination = `refs/dex/releases/${target.slice(0, 16)}`;
-    brainGit(root, ['fetch', '--no-tags', officialUrl, `+${target}:${destination}`]);
-  } else {
-    if (!/^dist-v[0-9A-Za-z.+-]+$/.test(target)) {
-      throw new Error('Update targets must be an official dist-v tag or full commit OID.');
-    }
-    destination = `refs/dex/releases/${target}`;
-    brainGit(root, ['fetch', '--no-tags', officialUrl, `+refs/tags/${target}:${destination}`]);
-  }
-  const oid = brainOutput(root, ['rev-parse', '--verify', `${destination}^{commit}`]);
-  if (/^[a-f0-9]{40}(?:[a-f0-9]{24})?$/i.test(target) && oid.toLowerCase() !== target.toLowerCase()) {
-    throw new Error('The official remote did not return the requested release commit.');
-  }
-  return { target, oid };
+  return [...records.values()]
+    .filter((record) => record.peeled || record.direct)
+    .map((record) => ({ tag: record.tag, oid: record.peeled || record.direct }))
+    .sort((left, right) => compareTags(left.tag, right.tag));
 }
 
-function gitObjectExists(root, oid) {
-  return brainGit(root, ['cat-file', '-e', `${oid}^{commit}`], { allowFailure: true }).status === 0;
+function selectOfficialRelease(releases, requested) {
+  if (!Array.isArray(releases) || releases.length === 0) {
+    throw new Error('Dex could not find any official dist-v release tags.');
+  }
+  if (!requested) {
+    const tag = selectLatestStableTag(releases.map((release) => release.tag));
+    return releases.find((release) => release.tag === tag);
+  }
+  if (OID_PATTERN.test(requested)) {
+    const matches = releases.filter((release) => release.oid === requested.toLowerCase());
+    if (matches.length === 0) {
+      throw new Error('That commit is not the peeled commit of an official dist-v release tag.');
+    }
+    return matches.sort((left, right) => compareTags(left.tag, right.tag)).at(-1);
+  }
+  if (!RELEASE_TAG_PATTERN.test(requested)) {
+    throw new Error('Update targets must be an official dist-v tag or its full commit OID.');
+  }
+  const release = releases.find((candidate) => candidate.tag === requested);
+  if (!release) throw new Error(`Dex could not authenticate official release tag ${requested}.`);
+  return release;
+}
+
+function listOfficialReleases(root) {
+  verifyOfficialOrigin(root);
+  const listed = brainGit(root, ['ls-remote', '--tags', OFFICIAL_REMOTE, 'refs/tags/dist-v*']);
+  return parseOfficialTagListing(listed.stdout);
+}
+
+function fetchOfficialRelease(root, release) {
+  const destination = `refs/dex/releases/${release.tag}`;
+  brainGit(root, [
+    'fetch', '--no-tags', OFFICIAL_REMOTE,
+    `+refs/tags/${release.tag}:${destination}`,
+  ]);
+  const oid = brainOutput(root, ['rev-parse', '--verify', `${destination}^{commit}`]).toLowerCase();
+  if (oid !== release.oid.toLowerCase()) {
+    throw new Error(`Official release tag ${release.tag} changed while Dex was verifying it.`);
+  }
+  const manifestHash = crypto.createHash('sha256')
+    .update(readTargetFile(root, oid, MANIFEST_RELATIVE))
+    .digest('hex');
+  return {
+    target: release.tag,
+    tag: release.tag,
+    oid,
+    manifestHash,
+    attestation: { tag: release.tag, oid, manifestHash },
+  };
+}
+
+function resolveAndFetchTarget(root, requested) {
+  return fetchOfficialRelease(root, selectOfficialRelease(listOfficialReleases(root), requested));
+}
+
+function validateAttestation(attestation, label = 'release') {
+  if (
+    !attestation
+    || !RELEASE_TAG_PATTERN.test(attestation.tag || '')
+    || !OID_PATTERN.test(attestation.oid || '')
+    || !MANIFEST_HASH_PATTERN.test(attestation.manifestHash || '')
+  ) throw new Error(`Dex ${label} attestation is invalid.`);
+  return attestation;
+}
+
+function verifyReleaseAttestation(root, attestation, label = 'release') {
+  validateAttestation(attestation, label);
+  const official = selectOfficialRelease(listOfficialReleases(root), attestation.tag);
+  if (official.oid !== attestation.oid.toLowerCase()) {
+    throw new Error(`The official ${label} tag no longer matches its saved attestation.`);
+  }
+  const verified = fetchOfficialRelease(root, official);
+  if (verified.manifestHash !== attestation.manifestHash.toLowerCase()) {
+    throw new Error(`The official ${label} manifest no longer matches its saved attestation.`);
+  }
+  return verified;
 }
 
 function readTargetFile(root, oid, relative, allowMissing = false) {
@@ -617,6 +744,45 @@ function targetVersion(root, oid) {
   } catch {
     return oid.slice(0, 12);
   }
+}
+
+function releaseMetadata(root, verified, installed) {
+  const version = targetVersion(root, verified.oid);
+  const changelogBytes = readTargetFile(root, verified.oid, 'CHANGELOG.md', true);
+  let notes = '';
+  if (changelogBytes !== null) {
+    const changelog = changelogBytes.toString('utf8');
+    const escapedVersion = version.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const heading = new RegExp(`^##\\s+\\[?${escapedVersion}\\]?[^\\n]*$`, 'mi').exec(changelog);
+    if (heading) {
+      const start = heading.index + heading[0].length;
+      const next = /^##\s+/m.exec(changelog.slice(start));
+      notes = changelog.slice(start, next ? start + next.index : undefined).trim();
+    }
+  }
+  let packageBreaking = false;
+  try {
+    const packageJson = JSON.parse(readTargetFile(root, verified.oid, 'package.json').toString('utf8'));
+    packageBreaking = packageJson.dex?.breaking === true;
+  } catch {
+    packageBreaking = false;
+  }
+  const summary = notes
+    .replace(/^#{1,6}\s+/gm, '')
+    .replace(/^[-*]\s+/gm, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 500);
+  return {
+    status: verified.oid === installed ? 'current' : 'available',
+    tag: verified.tag,
+    oid: verified.oid,
+    installed,
+    version,
+    manifestHash: verified.manifestHash,
+    breaking: packageBreaking || /\bBREAKING\b/i.test(notes) ? 1 : 0,
+    summary,
+  };
 }
 
 function safeVersion(value) {
@@ -650,6 +816,9 @@ function stageTarget(root, state) {
   ]);
   const expectedManifest = readTargetFile(root, state.targetOid, MANIFEST_RELATIVE);
   const verified = verifyStagedManifest(path.join(root, STAGING_RELATIVE), expectedManifest);
+  if (verified.manifestHash !== state.attestation.manifestHash) {
+    throw new Error('The staged release manifest does not match its authenticated release attestation.');
+  }
   state.targetManifest = verified.manifestLines;
   state.targetBrainPaths = ownership.brainPaths(verified.manifestLines);
   state.manifestHash = verified.manifestHash;
@@ -664,6 +833,47 @@ function readManifestAt(root, oid) {
   const validation = ownership.validateManifest(lines);
   if (validation.errors.length > 0) throw new Error(`Installed release manifest is invalid: ${validation.errors.join('; ')}`);
   return lines;
+}
+
+function verifyResumableState(root, state) {
+  validateJournalState(state);
+  if (state.phase === 1) return state;
+  const target = verifyReleaseAttestation(root, state.attestation, 'target release');
+  const previous = verifyReleaseAttestation(root, state.previousAttestation, 'previous release');
+  state.targetSpec = target.tag;
+  state.targetOid = target.oid;
+  state.previousOid = previous.oid;
+  state.previousManifest = readManifestAt(root, previous.oid);
+  if (state.phase >= 3 && state.phase <= 9) {
+    const stagingRoot = path.join(root, STAGING_RELATIVE);
+    if (!exists(stagingRoot) || !fs.lstatSync(stagingRoot).isDirectory()) {
+      throw new Error('Dex cannot verify the interrupted release staging. Restore it, then run --resume.');
+    }
+    const expectedManifest = readTargetFile(root, target.oid, MANIFEST_RELATIVE);
+    const verified = verifyStagedManifest(stagingRoot, expectedManifest);
+    if (verified.manifestHash !== target.manifestHash) {
+      throw new Error('Dex interrupted staging no longer matches the authenticated release manifest.');
+    }
+    state.targetManifest = verified.manifestLines;
+    state.targetBrainPaths = ownership.brainPaths(verified.manifestLines);
+    state.manifestHash = verified.manifestHash;
+    state.version = targetVersion(root, target.oid);
+    state.dependencies = dependencySignals(root, previous.oid, target.oid);
+    const targetBrain = new Set(state.targetBrainPaths);
+    const previousBrain = new Set(ownership.brainPaths(state.previousManifest));
+    const brainUnion = new Set([...targetBrain, ...previousBrain]);
+    const dropped = new Set([...previousBrain].filter((relative) => !targetBrain.has(relative)));
+    const seeds = new Set(ownership.seedEntries().map((entry) => entry.path));
+    for (const [name, allowed] of [
+      ['backupChecked', brainUnion], ['backedUp', brainUnion], ['swapped', targetBrain],
+      ['pruneChecked', dropped], ['pruned', dropped], ['kept', dropped], ['seeded', seeds],
+    ]) {
+      if (state[name]?.some((relative) => !allowed.has(relative))) {
+        throw new Error(`Dex update journal ${name} inventory does not match authenticated release staging.`);
+      }
+    }
+  }
+  return state;
 }
 
 function writeReport(root, state, completed = false) {
@@ -941,9 +1151,12 @@ function finalizeInstalledRelease(root, state) {
   const history = readHistory(root);
   const entry = {
     version: state.version,
+    tag: state.attestation.tag,
     oid: state.targetOid,
     manifestHash: state.manifestHash,
     previous: state.previousOid,
+    attestation: state.attestation,
+    previousAttestation: state.previousAttestation,
     at: state.startedAt,
   };
   const duplicate = history.some((item) => item.oid === entry.oid && item.previous === entry.previous && item.at === entry.at);
@@ -961,14 +1174,14 @@ function finalizeInstalledRelease(root, state) {
 function runPhases(root, state) {
   while (state.phase <= 10) {
     if (state.phase === 1) {
-      if (state.mode === 'apply') {
-        const resolved = resolveAndFetchTarget(root, state.targetSpec);
-        state.targetSpec = resolved.target;
-        state.targetOid = resolved.oid;
-      } else if (!gitObjectExists(root, state.targetOid)) {
-        throw new Error('The rollback release is no longer present in the sanitized brain history.');
-      }
       state.previousOid = state.previousOid || brainOutput(root, ['rev-parse', '--verify', 'refs/dex/installed^{commit}']);
+      const resolved = resolveAndFetchTarget(root, state.targetSpec || state.targetOid);
+      const previous = resolveAndFetchTarget(root, state.previousOid);
+      state.targetSpec = resolved.tag;
+      state.targetOid = resolved.oid;
+      state.attestation = resolved.attestation;
+      state.previousOid = previous.oid;
+      state.previousAttestation = previous.attestation;
       if (state.targetOid === state.previousOid) {
         throw new Error('That release is already installed. No files were changed.');
       }
@@ -1125,9 +1338,9 @@ function main(argumentsList = process.argv.slice(2), root = process.cwd()) {
     if (args.mode === 'check') {
       const installed = brainOutput(root, ['rev-parse', '--verify', 'refs/dex/installed^{commit}']);
       const target = resolveAndFetchTarget(root, args.target);
-      console.log(target.oid === installed
-        ? `DEX_UPDATE_CURRENT target=${target.target} oid=${target.oid}`
-        : `DEX_UPDATE_AVAILABLE target=${target.target} oid=${target.oid} installed=${installed}`);
+      const metadata = releaseMetadata(root, target, installed);
+      console.log(`DEX_UPDATE_METADATA ${JSON.stringify(metadata)}`);
+      console.log(metadata.status === 'current' ? 'DEX_UPDATE_CURRENT' : 'DEX_UPDATE_AVAILABLE');
       return 0;
     }
     let state;
@@ -1140,6 +1353,9 @@ function main(argumentsList = process.argv.slice(2), root = process.cwd()) {
         state.status = 'active';
         state.previousOid = brainOutput(root, ['rev-parse', '--verify', 'refs/dex/installed^{commit}']);
         state.pendingMutation = null;
+        writeJournal(root, state);
+      } else {
+        verifyResumableState(root, state);
         writeJournal(root, state);
       }
     } else {
@@ -1154,13 +1370,27 @@ function main(argumentsList = process.argv.slice(2), root = process.cwd()) {
         }
         state = { ...existing, status: 'active', previousOid: installed, pendingMutation: null };
       } else {
+        let targetSpec = args.target;
+        let targetOid = null;
+        let attestation;
+        let previousAttestation;
+        if (args.mode === 'rollback') {
+          const target = resolveAndFetchTarget(root, chooseRollbackTarget(root, args.to));
+          const previous = resolveAndFetchTarget(root, installed);
+          targetSpec = target.tag;
+          targetOid = target.oid;
+          attestation = target.attestation;
+          previousAttestation = previous.attestation;
+        }
         state = {
           schemaVersion: 1,
           status: 'active',
           mode: args.mode,
-          targetSpec: args.target,
-          targetOid: args.mode === 'rollback' ? chooseRollbackTarget(root, args.to) : null,
+          targetSpec,
+          targetOid,
           previousOid: installed,
+          attestation,
+          previousAttestation,
           phase: 1,
           startedAt: new Date().toISOString(),
           pendingMutation: 'initialize update journal',
@@ -1184,7 +1414,10 @@ module.exports = {
   isOfficialRemote,
   main,
   modesCompatible,
+  parseOfficialTagListing,
+  selectOfficialRelease,
   selectLatestStableTag,
+  validateJournalState,
   verifyStagedManifest,
   verifyOfficialOrigin,
   writeWorktreeFile,

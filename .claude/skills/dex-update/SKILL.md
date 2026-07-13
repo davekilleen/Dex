@@ -48,9 +48,11 @@ Run:
 node core/update/apply-update.cjs --check
 ```
 
-If it reports `DEX_UPDATE_CURRENT`, say Dex is already current and stop.
+Parse the single `DEX_UPDATE_METADATA {...}` JSON record. It is authenticated by the updater's exact official `dist-v*` tag fetch and contains `status`, `tag`, `version`, `oid`, `manifestHash`, `breaking`, and `summary`. Never infer the confirmation gate from unverified local files.
 
-If an update is available, show the current and target versions and summarize the release notes in plain English. Keep the BREAKING gate: when the release notes or update metadata mark the release `BREAKING`, explain the practical consequence and get an explicit confirmation before doing anything else. For an ordinary release, ask for a short “Update now?” confirmation.
+If its `status` is `current` (also printed as `DEX_UPDATE_CURRENT`), say Dex is already current and stop.
+
+If an update is available, show the target tag/version and summarize `summary` in plain English. Keep the BREAKING gate operational: when `breaking=1`, explain the practical consequence and get an explicit confirmation before doing anything else. For `breaking=0`, ask for a short “Update now?” confirmation.
 
 ## 3. Apply
 

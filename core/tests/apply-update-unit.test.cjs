@@ -60,6 +60,66 @@ test('automatic release selection ignores prerelease and malformed tags', () => 
   assert.throws(() => updater.selectLatestStableTag(['dist-v2.1.0-rc.1']), /stable/i);
 });
 
+test('official release discovery peels annotated tags and rejects untagged commit OIDs', () => {
+  const updater = require(UPDATER_PATH);
+  const lightweight = '1'.repeat(40);
+  const tagObject = '2'.repeat(40);
+  const annotatedCommit = '3'.repeat(40);
+  const untagged = '4'.repeat(40);
+  const releases = updater.parseOfficialTagListing([
+    `${lightweight}\trefs/tags/dist-v2.0.0`,
+    `${tagObject}\trefs/tags/dist-v2.1.0`,
+    `${annotatedCommit}\trefs/tags/dist-v2.1.0^{}`,
+  ].join('\n'));
+
+  assert.deepEqual(releases, [
+    { tag: 'dist-v2.0.0', oid: lightweight },
+    { tag: 'dist-v2.1.0', oid: annotatedCommit },
+  ]);
+  assert.deepEqual(updater.selectOfficialRelease(releases, annotatedCommit), {
+    tag: 'dist-v2.1.0',
+    oid: annotatedCommit,
+  });
+  assert.throws(() => updater.selectOfficialRelease(releases, untagged), /dist-v.*tag|official release/i);
+});
+
+test('resume journals reject malformed inventories and mismatched attestations', () => {
+  const updater = require(UPDATER_PATH);
+  const oid = 'a'.repeat(40);
+  const manifestHash = 'b'.repeat(64);
+  const base = {
+    schemaVersion: 1,
+    status: 'active',
+    mode: 'apply',
+    targetSpec: 'dist-v2.0.1',
+    targetOid: oid,
+    previousOid: 'c'.repeat(40),
+    phase: 3,
+    startedAt: '2026-07-13T10:00:00.000Z',
+    pendingMutation: null,
+    attestation: { tag: 'dist-v2.0.1', oid, manifestHash },
+    previousAttestation: {
+      tag: 'dist-v2.0.0',
+      oid: 'c'.repeat(40),
+      manifestHash: 'd'.repeat(64),
+    },
+    targetManifest: ['README.md'],
+    targetBrainPaths: ['README.md'],
+  };
+  assert.doesNotThrow(() => updater.validateJournalState(base));
+  assert.throws(
+    () => updater.validateJournalState({ ...base, targetBrainPaths: ['../user.md'] }),
+    /journal|path|inventory/i,
+  );
+  assert.throws(
+    () => updater.validateJournalState({
+      ...base,
+      attestation: { ...base.attestation, oid: 'e'.repeat(40) },
+    }),
+    /attestation|journal/i,
+  );
+});
+
 test('worktree replacement retries Windows locks and verifies fallback bytes', () => {
   const updater = require(UPDATER_PATH);
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'dex-update-replace-'));

@@ -91,8 +91,15 @@ function fabricateRelease(vault) {
   const fixtureRoot = path.dirname(vault);
   const upstream = path.join(fixtureRoot, 'upstream');
   git(upstream, 'checkout', '--quiet', 'release');
+  const previousOid = git(upstream, 'rev-parse', 'HEAD');
+  git(upstream, 'tag', '-f', 'dist-v2.0.0', previousOid);
   write(upstream, 'core/update/synthetic-added.cjs', 'module.exports = "v2.0.1";\n');
   write(upstream, 'README.md', '# Dex synthetic v2.0.1\n');
+  write(
+    upstream,
+    'CHANGELOG.md',
+    '# Changelog\n\n## [2.0.1] - Synthetic trust fixture\n\nBREAKING: Restart Dex after the update.\n',
+  );
   fs.copyFileSync(UPDATER_PATH, path.join(upstream, 'core', 'update', 'apply-update.cjs'));
   fs.unlinkSync(path.join(upstream, 'LICENSE'));
   fs.unlinkSync(path.join(upstream, 'COMMERCIAL_LICENSE.md'));
@@ -104,7 +111,11 @@ function fabricateRelease(vault) {
   refreshManifest(upstream);
   git(upstream, 'commit', '--quiet', '-m', 'release: synthetic v2.0.1');
   git(upstream, 'tag', '-f', 'dist-v2.0.1');
-  return { upstream, oid: git(upstream, 'rev-parse', 'HEAD') };
+  const oid = git(upstream, 'rev-parse', 'HEAD');
+  write(upstream, 'core/update/experimental-only.cjs', 'module.exports = "not released";\n');
+  refreshManifest(upstream);
+  git(upstream, 'commit', '--quiet', '-m', 'experiment: untagged updater commit');
+  return { upstream, oid, experimentalOid: git(upstream, 'rev-parse', 'HEAD') };
 }
 
 function digest(file) {
@@ -131,6 +142,36 @@ test('apply, crash-resume, and rollback replace only owned brain files in an age
 
   const release = fabricateRelease(vault);
   const transportEnvironment = fixtureGitEnvironment(path.dirname(vault), release.upstream);
+  const checked = command(process.execPath, [UPDATER_PATH, '--check', '--target', release.oid], {
+    cwd: vault,
+    env: transportEnvironment,
+    timeout: 240_000,
+  });
+  const metadataLine = checked.stdout.split('\n').find((line) => line.startsWith('DEX_UPDATE_METADATA '));
+  assert.ok(metadataLine, checked.stdout);
+  const metadata = JSON.parse(metadataLine.slice('DEX_UPDATE_METADATA '.length));
+  assert.deepEqual(
+    {
+      status: metadata.status,
+      tag: metadata.tag,
+      oid: metadata.oid,
+      breaking: metadata.breaking,
+    },
+    { status: 'available', tag: 'dist-v2.0.1', oid: release.oid, breaking: 1 },
+  );
+  assert.match(metadata.manifestHash, /^[a-f0-9]{64}$/);
+  assert.match(metadata.summary, /Restart Dex after the update/i);
+  const rejectedUntagged = command(
+    process.execPath,
+    [UPDATER_PATH, '--check', '--target', release.experimentalOid],
+    {
+      cwd: vault,
+      env: transportEnvironment,
+      expectedStatus: 1,
+      timeout: 240_000,
+    },
+  );
+  assert.match(rejectedUntagged.stderr, /not the peeled commit.*official dist-v/i);
   const killed = spawnSync(process.execPath, [UPDATER_PATH, '--apply', '--target', 'dist-v2.0.1'], {
     cwd: vault,
     encoding: 'utf8',
@@ -146,6 +187,19 @@ test('apply, crash-resume, and rollback replace only owned brain files in an age
   const interrupted = JSON.parse(fs.readFileSync(path.join(vault, 'System', '.dex', 'update-state.json'), 'utf8'));
   assert.equal(interrupted.pendingMutation, 'replace brain file README.md');
   assert.equal(fs.readFileSync(path.join(vault, 'README.md'), 'utf8'), '# Dex synthetic v2.0.1\n');
+
+  const journalPath = path.join(vault, 'System', '.dex', 'update-state.json');
+  const journalBeforeDrift = fs.readFileSync(journalPath);
+  git(release.upstream, 'tag', '-f', 'dist-v2.0.1', release.experimentalOid);
+  const refusedDrift = command(process.execPath, [UPDATER_PATH, '--resume'], {
+    cwd: vault,
+    env: transportEnvironment,
+    expectedStatus: 1,
+    timeout: 240_000,
+  });
+  assert.match(refusedDrift.stderr, /attestation|official.*tag/i);
+  assert.deepEqual(fs.readFileSync(journalPath), journalBeforeDrift);
+  git(release.upstream, 'tag', '-f', 'dist-v2.0.1', release.oid);
 
   const resumed = command(process.execPath, [UPDATER_PATH, '--resume'], {
     cwd: vault,
@@ -173,6 +227,12 @@ test('apply, crash-resume, and rollback replace only owned brain files in an age
   assert.equal(history.at(-1).oid, release.oid);
   assert.equal(history.at(-1).previous, previousOid);
   assert.match(history.at(-1).manifestHash, /^[a-f0-9]{64}$/);
+  assert.deepEqual(history.at(-1).attestation, {
+    tag: 'dist-v2.0.1',
+    oid: release.oid,
+    manifestHash: history.at(-1).manifestHash,
+  });
+  assert.equal(history.at(-1).previousAttestation.tag, 'dist-v2.0.0');
   const heldBack = JSON.parse(fs.readFileSync(path.join(vault, 'System', '.dex', 'held-back-paths.json'), 'utf8'));
   const machineExclude = fs.readFileSync(path.join(vault, '.git', 'info', 'exclude'), 'utf8');
   assert.match(machineExclude, /^\/System\/backups\/$/m);
@@ -183,6 +243,36 @@ test('apply, crash-resume, and rollback replace only owned brain files in an age
   assert.ok(mcp.mcpServers['custom-fixture']);
   assert.ok(mcp.mcpServers['work-mcp']);
   assert.equal(JSON.stringify(mcp).includes('{{VAULT_PATH}}'), false);
+
+  git(
+    vault,
+    `--git-dir=${brain}`,
+    '-c',
+    'protocol.file.allow=always',
+    'fetch',
+    release.upstream,
+    `+${release.experimentalOid}:refs/dex/test-evil`,
+  );
+  const validHistoryBytes = fs.readFileSync(path.join(vault, 'System', '.dex', 'installed-history.json'));
+  const poisonedHistory = JSON.parse(validHistoryBytes.toString('utf8'));
+  poisonedHistory.push({ oid: release.oid, previous: release.experimentalOid });
+  fs.writeFileSync(
+    path.join(vault, 'System', '.dex', 'installed-history.json'),
+    `${JSON.stringify(poisonedHistory, null, 2)}\n`,
+  );
+  const rejectedRollback = command(
+    process.execPath,
+    [UPDATER_PATH, '--rollback', '--to', release.experimentalOid],
+    {
+      cwd: vault,
+      env: transportEnvironment,
+      expectedStatus: 1,
+      timeout: 240_000,
+    },
+  );
+  assert.match(rejectedRollback.stderr, /not the peeled commit.*official dist-v/i);
+  assert.equal(git(vault, `--git-dir=${brain}`, 'rev-parse', 'refs/dex/installed'), release.oid);
+  fs.writeFileSync(path.join(vault, 'System', '.dex', 'installed-history.json'), validHistoryBytes);
 
   const rolledBack = command(process.execPath, [UPDATER_PATH, '--rollback'], {
     cwd: vault,

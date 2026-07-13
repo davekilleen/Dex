@@ -41,6 +41,8 @@ test('the update skill is a thin updater/migrator orchestration with explicit re
   const skill = fs.readFileSync(UPDATE_SKILL_PATH, 'utf8');
 
   assert.match(skill, /apply-update\.cjs --check/);
+  assert.match(skill, /DEX_UPDATE_METADATA/);
+  assert.match(skill, /breaking/);
   assert.match(skill, /apply-update\.cjs --apply/);
   assert.match(skill, /BREAKING/);
   assert.match(skill, /confirm/i);

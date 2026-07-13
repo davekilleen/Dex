@@ -535,6 +535,7 @@ def _prepare_update_boundary_vault(repository: Path, vault: Path) -> None:
 
     required = (
         Path("core/update/apply-update.cjs"),
+        Path("core/update/owned-lock.cjs"),
         Path("core/update/ownership.cjs"),
         Path("core/update/ownership.json"),
         Path("core/migrations/v1-to-v2-brain-vault-split.cjs"),
@@ -576,6 +577,7 @@ def _prepare_update_boundary_vault(repository: Path, vault: Path) -> None:
     _smoke_git(release, "add", "-A")
     _smoke_git(release, "commit", "--quiet", "-m", "old brain")
     old_oid = _smoke_git(release, "rev-parse", "HEAD")
+    _smoke_git(release, "tag", "dist-v2.0.0", old_oid)
 
     for candidate in release.iterdir():
         if candidate.name == ".git":
