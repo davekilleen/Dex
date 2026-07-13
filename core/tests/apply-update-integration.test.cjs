@@ -164,7 +164,8 @@ test('apply, crash-resume, and rollback replace only owned brain files in an age
   assert.deepEqual(fs.readFileSync(path.join(vault, 'COMMERCIAL_LICENSE.md')), keptDroppedBytes);
   assert.deepEqual(fs.readFileSync(custom), customBytes);
   assert.match(fs.readFileSync(path.join(vault, 'CLAUDE.md'), 'utf8'), /fixture sentinel: café/);
-  assert.match(fs.readFileSync(path.join(vault, 'System', 'update-report.md'), 'utf8'), /README\.md.*backed up/is);
+  assert.equal(fs.existsSync(path.join(vault, 'System', 'update-report.md')), false);
+  assert.match(fs.readFileSync(path.join(vault, 'System', '.dex', 'update-report.md'), 'utf8'), /README\.md.*backed up/is);
   const backupReadme = path.join(vault, 'System', 'backups', 'pre-update-2.0.1', 'README.md');
   assert.match(fs.readFileSync(backupReadme, 'utf8'), /Fixture user patch|Another long-time user note/);
   assert.equal(git(vault, `--git-dir=${brain}`, 'rev-parse', 'refs/dex/installed'), release.oid);

@@ -14,7 +14,7 @@ const JOURNAL_RELATIVE = 'System/.dex/update-state.json';
 const LOCK_RELATIVE = 'System/.dex/.migration-lock';
 const HISTORY_RELATIVE = 'System/.dex/installed-history.json';
 const TOPOLOGY_RELATIVE = 'System/.dex/topology.json';
-const REPORT_RELATIVE = 'System/update-report.md';
+const REPORT_RELATIVE = 'System/.dex/update-report.md';
 const STAGING_RELATIVE = '.dex/staging';
 const MANIFEST_RELATIVE = 'System/.installed-files.manifest';
 const RESUME_EXIT = 75;
@@ -68,7 +68,7 @@ function modesCompatible(expected, actual, platform = process.platform) {
   return platform === 'win32' || expected === actual;
 }
 
-function assertWorktreeWrite(root, relative) {
+function assertSafePath(root, relative) {
   const portable = slashPath(relative);
   if (ownership.isDenied(portable, root)) {
     throw new Error(`Dex refused to write protected path ${portable}. The update has stopped safely.`);
@@ -89,12 +89,32 @@ function assertWorktreeWrite(root, relative) {
   return destination;
 }
 
-function writeWorktreeFile(root, relative, content, mode = 0o600) {
-  const destination = assertWorktreeWrite(root, relative);
-  assertWorktreeWrite(root, relative);
+function assertClassifiedWrite(root, relative, allowedClasses) {
+  const portable = slashPath(relative);
+  const className = ownership.classify(portable);
+  if (!allowedClasses.has(className)) {
+    throw new Error(`Dex refused to write ${portable} because its ownership class is ${className}.`);
+  }
+  return assertSafePath(root, portable);
+}
+
+function assertWorktreeWrite(root, relative) {
+  return assertClassifiedWrite(root, relative, new Set(['brain', 'generated', 'seed']));
+}
+
+function assertRuntimeWrite(root, relative) {
+  return assertClassifiedWrite(root, relative, new Set(['runtime']));
+}
+
+function writeOwnedFile(root, relative, content, mode, assertDestinationWrite) {
+  const portable = slashPath(relative);
+  const destination = assertDestinationWrite(root, portable);
+  assertDestinationWrite(root, portable);
   fs.mkdirSync(path.dirname(destination), { recursive: true });
-  const temporaryRelative = `${slashPath(relative)}.writing-${process.pid}`;
-  const temporary = assertWorktreeWrite(root, temporaryRelative);
+  const swapKey = crypto.createHash('sha256').update(portable).digest('hex');
+  const temporaryRelative = `${STAGING_RELATIVE}/.swap/${swapKey}.writing-${process.pid}`;
+  const temporary = assertRuntimeWrite(root, temporaryRelative);
+  fs.mkdirSync(path.dirname(temporary), { recursive: true });
   let descriptor;
   try {
     descriptor = fs.openSync(temporary, 'w', mode);
@@ -105,13 +125,12 @@ function writeWorktreeFile(root, relative, content, mode = 0o600) {
     if (descriptor !== undefined) fs.closeSync(descriptor);
   }
   const expected = Buffer.isBuffer(content) ? content : Buffer.from(content);
-  const swapKey = crypto.createHash('sha256').update(slashPath(relative)).digest('hex');
   const quarantineRelative = `${STAGING_RELATIVE}/.swap/${swapKey}.previous`;
   const copyingRelative = `${STAGING_RELATIVE}/.swap/${swapKey}.copying`;
   const intentRelative = `${STAGING_RELATIVE}/.swap/${swapKey}.intent.json`;
-  const quarantine = assertWorktreeWrite(root, quarantineRelative);
-  const copying = assertWorktreeWrite(root, copyingRelative);
-  const intent = assertWorktreeWrite(root, intentRelative);
+  const quarantine = assertRuntimeWrite(root, quarantineRelative);
+  const copying = assertRuntimeWrite(root, copyingRelative);
+  const intent = assertRuntimeWrite(root, intentRelative);
   const expectedHash = crypto.createHash('sha256').update(expected).digest('hex');
 
   function installedFileMatches(bytes, expectedMode) {
@@ -137,29 +156,29 @@ function writeWorktreeFile(root, relative, content, mode = 0o600) {
   }
 
   if (exists(quarantine) && !exists(destination)) {
-    assertWorktreeWrite(root, quarantineRelative);
-    assertWorktreeWrite(root, relative);
+    assertRuntimeWrite(root, quarantineRelative);
+    assertDestinationWrite(root, portable);
     renameWithRetry(quarantine, destination);
-    if (exists(intent)) removeWorktreePath(root, intentRelative);
-    if (exists(copying)) removeWorktreePath(root, copyingRelative);
+    if (exists(intent)) removeRuntimePath(root, intentRelative);
+    if (exists(copying)) removeRuntimePath(root, copyingRelative);
   }
   const previousIntent = readIntent();
   const matchesCurrentWrite = installedFileMatches(expected, mode);
   if (exists(quarantine) && (matchesCurrentWrite || destinationMatchesIntent(previousIntent))) {
-    removeWorktreePath(root, quarantineRelative);
-    if (exists(intent)) removeWorktreePath(root, intentRelative);
+    removeRuntimePath(root, quarantineRelative);
+    if (exists(intent)) removeRuntimePath(root, intentRelative);
     if (matchesCurrentWrite) {
-      removeWorktreePath(root, temporaryRelative);
+      removeRuntimePath(root, temporaryRelative);
       return;
     }
   }
   if (exists(quarantine)) {
     throw new Error(`Dex found an ambiguous interrupted file swap for ${relative}. Run --resume without editing that file.`);
   }
-  if (exists(intent)) removeWorktreePath(root, intentRelative);
+  if (exists(intent)) removeRuntimePath(root, intentRelative);
 
   try {
-    assertWorktreeWrite(root, relative);
+    assertDestinationWrite(root, portable);
     renameWithRetry(temporary, destination);
     if (!installedFileMatches(expected, mode)) throw new Error(`Dex could not verify the replacement bytes for ${relative}.`);
     return;
@@ -170,13 +189,13 @@ function writeWorktreeFile(root, relative, content, mode = 0o600) {
   fs.mkdirSync(path.dirname(quarantine), { recursive: true });
   writeDirectFile(intent, `${JSON.stringify({ sha256: expectedHash, mode })}\n`, 0o600);
   if (exists(destination)) {
-    assertWorktreeWrite(root, relative);
-    assertWorktreeWrite(root, quarantineRelative);
+    assertDestinationWrite(root, portable);
+    assertRuntimeWrite(root, quarantineRelative);
     renameWithRetry(destination, quarantine);
   }
-  if (exists(copying)) removeWorktreePath(root, copyingRelative);
-  assertWorktreeWrite(root, temporaryRelative);
-  assertWorktreeWrite(root, copyingRelative);
+  if (exists(copying)) removeRuntimePath(root, copyingRelative);
+  assertRuntimeWrite(root, temporaryRelative);
+  assertRuntimeWrite(root, copyingRelative);
   fs.copyFileSync(temporary, copying, fs.constants.COPYFILE_EXCL);
   fs.chmodSync(copying, mode);
   let copyingDescriptor;
@@ -186,27 +205,43 @@ function writeWorktreeFile(root, relative, content, mode = 0o600) {
   } finally {
     if (copyingDescriptor !== undefined) fs.closeSync(copyingDescriptor);
   }
-  assertWorktreeWrite(root, copyingRelative);
-  assertWorktreeWrite(root, relative);
+  assertRuntimeWrite(root, copyingRelative);
+  assertDestinationWrite(root, portable);
   renameWithRetry(copying, destination);
   if (!installedFileMatches(expected, mode)) {
     throw new Error(`Dex stopped because the fallback swap for ${relative} did not verify.`);
   }
-  if (process.env.DEX_UPDATE_TEST_THROW_AFTER_FALLBACK_INSTALL === slashPath(relative)) {
+  if (process.env.DEX_UPDATE_TEST_THROW_AFTER_FALLBACK_INSTALL === portable) {
     throw new Error(`Simulated crash after fallback install for ${relative}`);
   }
-  removeWorktreePath(root, temporaryRelative);
-  if (exists(quarantine)) removeWorktreePath(root, quarantineRelative);
-  if (exists(intent)) removeWorktreePath(root, intentRelative);
+  removeRuntimePath(root, temporaryRelative);
+  if (exists(quarantine)) removeRuntimePath(root, quarantineRelative);
+  if (exists(intent)) removeRuntimePath(root, intentRelative);
 }
 
-function removeWorktreePath(root, relative, recursive = false) {
-  const destination = assertWorktreeWrite(root, relative);
+function writeWorktreeFile(root, relative, content, mode = 0o600) {
+  writeOwnedFile(root, relative, content, mode, assertWorktreeWrite);
+}
+
+function writeRuntimeFile(root, relative, content, mode = 0o600) {
+  writeOwnedFile(root, relative, content, mode, assertRuntimeWrite);
+}
+
+function removeOwnedPath(root, relative, recursive, assertDestinationWrite) {
+  const destination = assertDestinationWrite(root, relative);
   if (!exists(destination)) return;
-  assertWorktreeWrite(root, relative);
+  assertDestinationWrite(root, relative);
   if (recursive) fs.rmSync(destination, { recursive: true, force: false });
   else fs.unlinkSync(destination);
   fsyncDirectory(path.dirname(destination));
+}
+
+function removeWorktreePath(root, relative, recursive = false) {
+  removeOwnedPath(root, relative, recursive, assertWorktreeWrite);
+}
+
+function removeRuntimePath(root, relative, recursive = false) {
+  removeOwnedPath(root, relative, recursive, assertRuntimeWrite);
 }
 
 function writeDirectFile(destination, content, mode = 0o600) {
@@ -419,7 +454,7 @@ function processIsRunning(pid) {
 
 function acquireLock(root) {
   const lock = path.join(root, LOCK_RELATIVE);
-  assertWorktreeWrite(root, LOCK_RELATIVE);
+  assertRuntimeWrite(root, LOCK_RELATIVE);
   fs.mkdirSync(path.dirname(lock), { recursive: true });
   if (exists(lock)) {
     let holder = null;
@@ -431,10 +466,10 @@ function acquireLock(root) {
     if (holder && processIsRunning(holder.pid)) {
       throw new Error(`Another Dex migration or update is still running (process ${holder.pid}). Wait for it, then retry.`);
     }
-    assertWorktreeWrite(root, LOCK_RELATIVE);
+    assertRuntimeWrite(root, LOCK_RELATIVE);
     fs.unlinkSync(lock);
   }
-  assertWorktreeWrite(root, LOCK_RELATIVE);
+  assertRuntimeWrite(root, LOCK_RELATIVE);
   const descriptor = fs.openSync(lock, 'wx', 0o600);
   try {
     fs.writeFileSync(descriptor, `${JSON.stringify({ pid: process.pid, kind: 'update', at: new Date().toISOString() })}\n`);
@@ -445,7 +480,7 @@ function acquireLock(root) {
   fsyncDirectory(path.dirname(lock));
   return () => {
     if (exists(lock)) {
-      assertWorktreeWrite(root, LOCK_RELATIVE);
+      assertRuntimeWrite(root, LOCK_RELATIVE);
       fs.unlinkSync(lock);
       fsyncDirectory(path.dirname(lock));
     }
@@ -455,9 +490,9 @@ function acquireLock(root) {
 function writeJournal(root, state) {
   const destination = path.join(root, JOURNAL_RELATIVE);
   if (exists(destination)) {
-    writeWorktreeFile(root, `${JOURNAL_RELATIVE}.previous`, fs.readFileSync(destination));
+    writeRuntimeFile(root, `${JOURNAL_RELATIVE}.previous`, fs.readFileSync(destination));
   }
-  writeWorktreeFile(root, JOURNAL_RELATIVE, `${JSON.stringify(state, null, 2)}\n`);
+  writeRuntimeFile(root, JOURNAL_RELATIVE, `${JSON.stringify(state, null, 2)}\n`);
 }
 
 function readJournal(root) {
@@ -639,8 +674,8 @@ function dependencySignals(root, oldOid, newOid) {
 
 function stageTarget(root, state) {
   beforeMutation(root, state, `stage release ${state.targetOid}`);
-  if (exists(path.join(root, STAGING_RELATIVE))) removeWorktreePath(root, STAGING_RELATIVE, true);
-  assertWorktreeWrite(root, STAGING_RELATIVE);
+  if (exists(path.join(root, STAGING_RELATIVE))) removeRuntimePath(root, STAGING_RELATIVE, true);
+  assertRuntimeWrite(root, STAGING_RELATIVE);
   fs.mkdirSync(path.join(root, STAGING_RELATIVE), { recursive: true });
   brainGit(root, ['read-tree', `${state.targetOid}^{tree}`]);
   brainGit(root, [
@@ -691,7 +726,7 @@ function writeReport(root, state, completed = false) {
     ...(kept.length ? kept.map((relative) => `- ${relative}`) : ['- None']),
     '',
   ];
-  writeWorktreeFile(root, REPORT_RELATIVE, `${lines.join('\n')}\n`);
+  writeRuntimeFile(root, REPORT_RELATIVE, `${lines.join('\n')}\n`);
 }
 
 function backupModifiedBrain(root, state) {
@@ -712,7 +747,7 @@ function backupModifiedBrain(root, state) {
       if (exists(backup) && !fs.readFileSync(backup).equals(bytes)) {
         throw new Error(`Existing update backup differs at ${backupRelative}. Move it aside, then run --resume.`);
       }
-      if (!exists(backup)) writeWorktreeFile(root, backupRelative, bytes, mode);
+      if (!exists(backup)) writeRuntimeFile(root, backupRelative, bytes, mode);
       if (!state.backedUp.includes(relative)) state.backedUp.push(relative);
       afterMutation(root, state);
     }
@@ -826,10 +861,35 @@ function substituteVaultPath(value, root) {
   return value;
 }
 
+function writeMcpAdditions(root, before, after, additions) {
+  const destination = assertSafePath(root, '.mcp.json');
+  if (ownership.classify('.mcp.json') !== 'vault') {
+    throw new Error('Dex refused MCP synchronization because .mcp.json ownership is not vault.');
+  }
+  const expectedNames = new Set(additions);
+  const beforeServers = before.mcpServers && typeof before.mcpServers === 'object' ? before.mcpServers : {};
+  const afterServers = after.mcpServers && typeof after.mcpServers === 'object' ? after.mcpServers : {};
+  for (const [name, entry] of Object.entries(beforeServers)) {
+    if (!Object.hasOwn(afterServers, name) || JSON.stringify(afterServers[name]) !== JSON.stringify(entry)) {
+      throw new Error(`Dex refused MCP synchronization because existing server ${name} changed.`);
+    }
+  }
+  const actualAdditions = Object.keys(afterServers).filter((name) => !Object.hasOwn(beforeServers, name));
+  if (
+    actualAdditions.length !== expectedNames.size
+    || actualAdditions.some((name) => !expectedNames.has(name))
+    || Object.keys(before).some((key) => key !== 'mcpServers' && JSON.stringify(before[key]) !== JSON.stringify(after[key]))
+  ) {
+    throw new Error('Dex refused MCP synchronization because the change was not add-only.');
+  }
+  writeDirectFile(destination, `${JSON.stringify(after, null, 2)}\n`, 0o600);
+}
+
 function syncMcpAddOnly(root, state) {
   const example = JSON.parse(fs.readFileSync(path.join(root, 'System', '.mcp.json.example'), 'utf8'));
   const target = path.join(root, '.mcp.json');
   const current = exists(target) ? JSON.parse(fs.readFileSync(target, 'utf8')) : { mcpServers: {} };
+  const before = JSON.parse(JSON.stringify(current));
   current.mcpServers = current.mcpServers && typeof current.mcpServers === 'object' ? current.mcpServers : {};
   const additions = [];
   for (const [name, entry] of Object.entries(example.mcpServers || {})) {
@@ -840,7 +900,7 @@ function syncMcpAddOnly(root, state) {
   state.mcpAdded = additions;
   if (additions.length > 0 || !exists(target)) {
     beforeMutation(root, state, `add missing MCP servers: ${additions.join(', ') || 'initial config'}`);
-    writeWorktreeFile(root, '.mcp.json', `${JSON.stringify(current, null, 2)}\n`, 0o600);
+    writeMcpAdditions(root, before, current, additions);
     afterMutation(root, state);
   }
 }
@@ -892,7 +952,7 @@ function updateTopologySentinel(root, state) {
   const topologyPath = path.join(root, TOPOLOGY_RELATIVE);
   const topology = JSON.parse(fs.readFileSync(topologyPath, 'utf8'));
   topology.installedRelease = state.targetOid;
-  writeWorktreeFile(root, TOPOLOGY_RELATIVE, `${JSON.stringify(topology, null, 2)}\n`);
+  writeRuntimeFile(root, TOPOLOGY_RELATIVE, `${JSON.stringify(topology, null, 2)}\n`);
 }
 
 function finalizeInstalledRelease(root, state) {
@@ -924,7 +984,7 @@ function finalizeInstalledRelease(root, state) {
   if (!duplicate) {
     beforeMutation(root, state, 'append installed release history');
     history.push(entry);
-    writeWorktreeFile(root, HISTORY_RELATIVE, `${JSON.stringify(history, null, 2)}\n`);
+    writeRuntimeFile(root, HISTORY_RELATIVE, `${JSON.stringify(history, null, 2)}\n`);
     afterMutation(root, state);
   }
   beforeMutation(root, state, 'refresh topology installed release');
@@ -990,7 +1050,7 @@ function runPhases(root, state) {
       afterMutation(root, state);
       if (exists(path.join(root, STAGING_RELATIVE))) {
         beforeMutation(root, state, 'remove verified release staging');
-        removeWorktreePath(root, STAGING_RELATIVE, true);
+        removeRuntimePath(root, STAGING_RELATIVE, true);
         afterMutation(root, state);
       }
       state.status = 'complete';
@@ -1161,6 +1221,7 @@ module.exports = {
   verifyStagedManifest,
   verifyOfficialOrigin,
   writeWorktreeFile,
+  writeRuntimeFile,
   writeDirectFile,
 };
 

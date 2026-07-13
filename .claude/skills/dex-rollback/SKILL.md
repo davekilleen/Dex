@@ -39,7 +39,7 @@ If interrupted, continue only with:
 node core/update/apply-update.cjs --resume
 ```
 
-Then follow the `DEX_DEPENDENCIES` signal exactly as `/dex-update` does, run doctor and smoke, and summarize `System/update-report.md`. Mention backed-up or retained shipped files plainly.
+Then follow the `DEX_DEPENDENCIES` signal exactly as `/dex-update` does, run doctor and smoke, and summarize `System/.dex/update-report.md`. Mention backed-up or retained shipped files plainly.
 
 ## B. Total pre-split restore (temporary bridge option)
 
@@ -68,4 +68,4 @@ Do not manually move `.git`, `.dex/brain.git`, or `.dex/pre-split-archive.git`. 
 - A target OID absent from `System/.dex/installed-history.json`: refuse it.
 - ZIP/no-Git folder: use the manual update/restore guidance in `/dex-update`; do not create a partial repository.
 
-Finish by reporting the exact installed version, doctor/smoke verdicts, and the report path the user can inspect.
+Finish by reporting the exact installed version, doctor/smoke verdicts, and `System/.dex/update-report.md` as the report path the user can inspect.

@@ -4,7 +4,7 @@
   "rules": [
     { "prefix": ".dex/", "class": "runtime" },
     { "prefix": "System/.dex/", "class": "runtime" },
-    { "prefix": "System/backups/pre-split/", "class": "runtime" },
+    { "prefix": "System/backups/", "class": "runtime" },
     { "prefix": "System/.last-learning-check", "class": "runtime" },
     { "prefix": "System/claude-code-state.json", "class": "runtime" },
     { "prefix": "System/integrations/.sync-state.json", "class": "runtime" },

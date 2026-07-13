@@ -111,7 +111,7 @@ Report the doctor/smoke verdicts honestly. `UNKNOWN` means a check could not pro
 Read and summarize:
 
 - `System/migration-report-v2.md` when the one-time split ran.
-- `System/update-report.md` after an update or rollback.
+- `System/.dex/update-report.md` after an update or rollback.
 
 Call out backed-up shipped files, files kept because the user's copy differed, dependency work, and any doctor/smoke follow-up. Use plain English, not a dump of command output.
 

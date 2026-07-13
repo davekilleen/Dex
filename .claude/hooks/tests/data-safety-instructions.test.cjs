@@ -51,7 +51,8 @@ test('the update skill is a thin updater/migrator orchestration with explicit re
   assert.match(skill, /doctor\.py/);
   assert.match(skill, /smoke\.py/);
   assert.match(skill, /System\/migration-report-v2\.md/);
-  assert.match(skill, /System\/update-report\.md/);
+  assert.match(skill, /System\/\.dex\/update-report\.md/);
+  assert.doesNotMatch(skill, /System\/update-report\.md/);
   assert.match(skill, /--resume.*--restore.*--rollback/is);
   assert.match(skill, /never raw Git|never use raw Git/i);
   assert.match(skill, /ZIP/i);
@@ -69,6 +70,7 @@ test('the rollback skill routes each topology to the owning recovery script', ()
   assert.match(skill, /one release cycle/i);
   assert.match(skill, /confirm/i);
   assert.match(skill, /plain English|plain-English/i);
+  assert.match(skill, /System\/\.dex\/update-report\.md/);
   assert.match(skill, /never raw Git|never use raw Git/i);
   assert.doesNotMatch(skill, /git (?:pull|merge|reset --hard|clean)/);
 });

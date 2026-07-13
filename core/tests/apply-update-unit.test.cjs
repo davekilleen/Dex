@@ -170,7 +170,7 @@ test('a crash after fallback install reconciles quarantine before a changing jou
   process.env.DEX_UPDATE_TEST_THROW_AFTER_FALLBACK_INSTALL = relative;
   try {
     assert.throws(
-      () => updater.writeWorktreeFile(root, relative, '{"updatedAt":"first"}\n'),
+      () => updater.writeRuntimeFile(root, relative, '{"updatedAt":"first"}\n'),
       /Simulated crash/,
     );
   } finally {
@@ -179,7 +179,7 @@ test('a crash after fallback install reconciles quarantine before a changing jou
   }
 
   assert.equal(fs.readFileSync(path.join(root, relative), 'utf8'), '{"updatedAt":"first"}\n');
-  updater.writeWorktreeFile(root, relative, '{"updatedAt":"second"}\n');
+  updater.writeRuntimeFile(root, relative, '{"updatedAt":"second"}\n');
   assert.equal(fs.readFileSync(path.join(root, relative), 'utf8'), '{"updatedAt":"second"}\n');
   assert.equal(fs.existsSync(path.join(root, '.dex', 'staging', '.swap')), true);
   assert.deepEqual(fs.readdirSync(path.join(root, '.dex', 'staging', '.swap')), []);
@@ -220,6 +220,32 @@ test('safe worktree writes refuse denied paths and final symlinks', () => {
   fs.mkdirSync(path.join(root, 'core'), { recursive: true });
   fs.symlinkSync(outside, path.join(root, 'core', 'linked.cjs'));
   assert.throws(() => updater.assertWorktreeWrite(root, 'core/linked.cjs'), /symlink/i);
+});
+
+test('worktree writes require a positive ownership class and runtime writes stay separate', () => {
+  const updater = require(UPDATER_PATH);
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'dex-update-positive-write-'));
+  fs.mkdirSync(path.join(root, 'System'), { recursive: true });
+  fs.writeFileSync(path.join(root, 'System', 'update-report.md'), 'user-owned report\n');
+
+  assert.throws(
+    () => updater.writeWorktreeFile(root, 'System/update-report.md', 'user file\n'),
+    /ownership|vault|refused/i,
+  );
+  assert.equal(fs.readFileSync(path.join(root, 'System', 'update-report.md'), 'utf8'), 'user-owned report\n');
+  assert.throws(
+    () => updater.writeWorktreeFile(root, 'System/.dex/update-report.md', 'runtime file\n'),
+    /ownership|runtime|refused/i,
+  );
+  updater.writeRuntimeFile(root, 'System/.dex/update-report.md', 'runtime file\n');
+  assert.equal(
+    fs.readFileSync(path.join(root, 'System', '.dex', 'update-report.md'), 'utf8'),
+    'runtime file\n',
+  );
+  assert.throws(
+    () => updater.writeRuntimeFile(root, 'README.md', 'brain file\n'),
+    /ownership|brain|refused/i,
+  );
 });
 
 test('status identifies migration-pending and post-split topologies', () => {
