@@ -45,6 +45,25 @@ Current coverage thresholds (ratchet baseline):
 - Total coverage >= 15%
 - Touched source files >= 10%
 
+## Public Release Health Page
+
+After the main-branch release build and release-branch push both succeed, CI publishes
+`health.html` through the repository's GitHub Pages site. It is labelled **Last successful
+release build** and follows these honesty rules:
+
+- The page describes one exact package version, source commit, and generated release commit.
+- Its gate matrix distinguishes `passed`, `skipped`, `not-applicable`, and `unknown` evidence.
+- Gates that run only on pull requests are labelled `not run on release build (PR-only)`;
+  they are never presented as passed by a main-push release.
+- Missing JUnit, coverage, provenance, or changelog input stays `unknown` rather than becoming
+  an inferred pass.
+- Publication happens only after the release branch is built and pushed successfully. If a
+  later build fails, the previous page remains available and still describes only its own
+  last green release, not current `HEAD`.
+
+Repository maintainers can enable publication once under **Settings → Pages → GitHub
+Actions**. Until then, the health deployment steps skip cleanly after the release build.
+
 ## Golden User Journeys
 These journeys are release-critical and cannot regress:
 - onboarding -> profile/pillars creation

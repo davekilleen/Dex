@@ -50,7 +50,7 @@ jobs:
       - name: Generate paths.json
         run: python core/paths.py
       - name: Test suites + coverage
-        run: pytest core/tests/ core/mcp/tests/ core/migrations/tests/ -v -m "not fuzz" --cov=core --cov-report=term --cov-report=json:coverage.json --cov-fail-under="${COVERAGE_MIN_TOTAL}"
+        run: pytest core/tests/ core/mcp/tests/ core/migrations/tests/ -v -m "not fuzz" --junitxml=.logs/pytest-report.xml --cov=core --cov-report=term --cov-report=json:coverage.json --cov-fail-under="${COVERAGE_MIN_TOTAL}"
       - name: Touched-file coverage gate
         if: github.event_name == 'pull_request'
         run: python scripts/check-coverage-threshold.py
@@ -64,6 +64,16 @@ jobs:
         run: bash scripts/verify-distribution.sh
       - name: Path consistency check
         run: bash scripts/check-path-consistency.sh
+      - name: Upload release health inputs
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-health-inputs
+          path: |
+            .logs/pytest-report.xml
+            coverage.json
+          if-no-files-found: error
+          retention-days: 1
 
   pr-report:
     if: github.event_name == 'pull_request'
@@ -115,6 +125,8 @@ jobs:
     runs-on: macos-latest
     permissions:
       contents: write
+    outputs:
+      release_sha: ${{ steps.release_build.outputs.release_sha }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -128,7 +140,10 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
       - name: Build release branch
-        run: bash scripts/build-release.sh
+        id: release_build
+        run: |
+          bash scripts/build-release.sh
+          echo "release_sha=$(git rev-parse release)" >> "$GITHUB_OUTPUT"
       - name: Push release branch
         run: git push origin release --force
       - name: Build self-contained vault bundle
@@ -151,3 +166,53 @@ jobs:
             "dist/dex-vault-bundle-v$VERSION.tar.gz" \
             "dist/dex-vault-bundle-v$VERSION.tar.gz.sha256" \
             --clobber
+
+  deploy-health:
+    needs: [quality, build-release]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push' && needs.quality.result == 'success' && needs['build-release'].result == 'success'
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+      contents: read
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Download release health inputs
+        uses: actions/download-artifact@v4
+        with:
+          name: release-health-inputs
+          path: .
+      - name: Build release health page
+        env:
+          SOURCE_SHA: ${{ github.sha }}
+          RELEASE_SHA: ${{ needs['build-release'].outputs.release_sha }}
+        run: |
+          python scripts/build-health-json.py \
+            --source-sha "$SOURCE_SHA" \
+            --release-sha "$RELEASE_SHA" \
+            --workflow-run-url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" \
+            --quality-conclusion success \
+            --output health.json
+          python scripts/render-health-page.py --input health.json --output public/health.html
+      - name: Configure GitHub Pages
+        id: pages
+        continue-on-error: true
+        uses: actions/configure-pages@v5
+      - name: Explain Pages setup skip
+        if: steps.pages.outcome != 'success'
+        run: echo "::notice::Health page not deployed because GitHub Pages is not enabled. Enable Settings → Pages → GitHub Actions."
+      - name: Upload GitHub Pages artifact
+        if: steps.pages.outcome == 'success'
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: public
+      - name: Deploy health page
+        if: steps.pages.outcome == 'success'
+        id: deployment
+        uses: actions/deploy-pages@v4

@@ -213,6 +213,18 @@ Built specifically for personal knowledge management and productivity workflows 
 - `/meeting-prep` - Prepare for meetings *(v1.11: isolated context)*
 - `/process-meetings` - Process Granola meetings *(v1.11: isolated context, auto-updates person pages, background execution)*
 
+**Integrations (Connect Your Tools):**
+- `/todoist-setup` - Connect Todoist for two-way task sync (any platform)
+- `/things-setup` - Connect Things 3 for two-way task sync (macOS, no account, offline)
+- `/trello-setup` - Connect Trello so cards and Dex tasks stay in step
+- `/google-workspace-setup` - Gmail + Calendar + Docs (email digest, follow-up detection)
+- `/ms-teams-setup` - Microsoft Teams chat digest alongside Slack
+- `/zoom-setup` - Zoom recording access and scheduling
+- `/atlassian-setup` - Jira tickets and Confluence docs in daily plans
+- `/granola-setup` - Connect Granola for automatic meeting capture
+- `/calendar-setup` - Connect your calendar
+- `/integrate-mcp` - Browse and connect more tools via the MCP marketplace
+
 **Career Development:**
 - `/career-setup` - Initialize career system
 - `/career-coach` - Career reflections and assessments *(v1.11: isolated context, auto-captures career evidence)*

@@ -182,7 +182,22 @@ If all features of all connected integrations are active, skip this section.
 
 ### Missing Integrations (Not Connected)
 
-If the user has few integrations connected, suggest one or two that fit their role and point them to `/integrate-mcp` to connect tools (calendar, email, Slack, task managers, and more) whenever they're ready. Keep it to high-signal suggestions only — don't overwhelm.
+Run the integration concierge to find tools the user already works with but hasn't connected — it scans the vault for signals (mentions, links, email domains) and ranks them:
+
+```bash
+node .claude/hooks/integration-concierge.cjs
+```
+
+Parse the JSON output — the high_value tier holds items scoring 5 or higher, moderate_value holds the rest with any signal. Surface up to two, named specifically, with the concrete signal you found:
+
+```markdown
+## Tools You Could Connect
+
+- **[shortName]** — you reference it [mentions] times (e.g. [first example file]).
+  [value proposition]. Connect with `[setup]` ([setupTime]).
+```
+
+Lead with the high_value items; fall back to a single role-fit moderate_value suggestion only if there are no high_value hits. If nothing scores, don't force it — a generic "run `/integrate-mcp` to connect calendar, email, task apps (Todoist/Things/Trello), and more" line is enough. Keep it to high-signal suggestions only — don't overwhelm.
 
 ---
 
