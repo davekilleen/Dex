@@ -14,7 +14,7 @@ from pathlib import Path
 
 import pytest
 
-from core.utils import smoke
+from core.utils import release_channel, smoke
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
@@ -87,6 +87,10 @@ def _tree_hash(root: Path) -> str:
 
 def _definition(journey_id: str, timeout: float = 5.0) -> smoke.JourneyDefinition:
     return smoke.JourneyDefinition(journey_id, timeout)
+
+
+def _remote_release_ref(channel: str) -> str:
+    return f"refs/remotes/{release_channel.release_ref_candidates(channel)[0]}"
 
 
 def test_mcp_handshake_timeout_env_override_changes_effective_timeout(
@@ -216,7 +220,7 @@ def _release_repo(tmp_path: Path, *, release_validators: str | None = None) -> P
     subprocess.run(["git", "add", "--", "core"], cwd=repo, check=True)
     subprocess.run(["git", "commit", "--quiet", "-m", "release fixture"], cwd=repo, check=True)
     subprocess.run(
-        ["git", "update-ref", "refs/remotes/upstream/release", "HEAD"],
+        ["git", "update-ref", _remote_release_ref("stable"), "HEAD"],
         cwd=repo,
         check=True,
     )
@@ -236,6 +240,12 @@ def _release_repo(tmp_path: Path, *, release_validators: str | None = None) -> P
             check=True,
         )
     return repo
+
+
+def _write_release_channel(repo: Path, channel: str) -> None:
+    profile = repo / "System" / "user-profile.yaml"
+    profile.parent.mkdir(parents=True, exist_ok=True)
+    profile.write_text(f"updates:\n  channel: {channel}\n", encoding="utf-8")
 
 
 def test_release_repo_fixture_copies_only_git_tracked_source_files(
@@ -586,6 +596,19 @@ def test_release_gate_ignores_untracked_runtime_artifacts(monkeypatch, tmp_path:
     monkeypatch.setattr(smoke, "RUNNER_ROOT", repo)
 
     assert smoke._release_execution_reason(repo, release_root, reference) is None
+
+
+def test_missing_channel_keeps_stable_release_gate_behavior(tmp_path: Path) -> None:
+    repo = _release_repo(tmp_path)
+
+    reference, detail = smoke._materialize_release_core(
+        repo,
+        tmp_path / "stable-release",
+        timeout_seconds=3.0,
+    )
+
+    assert reference is not None
+    assert detail == "verified installed release snapshot"
 
 
 def test_runtime_artifacts_and_untracked_code_do_not_enter_verified_journeys(
@@ -1211,6 +1234,69 @@ def test_task_lifecycle_without_release_ref_never_imports_live_work_server(tmp_p
     assert run.report["journeys"][0]["verdict"] == "UNKNOWN"
     assert "not executed for safety" in run.report["journeys"][0]["detail"]
     assert not sentinel.exists()
+
+
+def test_task_lifecycle_beta_head_matching_beta_release_is_clean(tmp_path: Path) -> None:
+    vault = _write_valid_vault(tmp_path)
+    repo = _release_repo(tmp_path)
+    _write_release_channel(repo, "beta")
+    subprocess.run(
+        ["git", "update-ref", _remote_release_ref("beta"), "HEAD"],
+        cwd=repo,
+        check=True,
+    )
+    subprocess.run(
+        ["git", "update-ref", "-d", _remote_release_ref("stable")],
+        cwd=repo,
+        check=True,
+    )
+
+    run = smoke.run_smoke(
+        vault_root=vault,
+        repo_root=repo,
+        journey_definitions=(_definition("task_lifecycle", 8.0),),
+    )
+
+    assert run.exit_code == 0
+    assert run.report["journeys"][0]["verdict"] == "OK"
+
+
+def test_task_lifecycle_beta_without_beta_ref_is_unknown_and_refuses_execution(
+    tmp_path: Path,
+) -> None:
+    vault = _write_valid_vault(tmp_path)
+    repo = _release_repo(tmp_path)
+    _write_release_channel(repo, "beta")
+
+    run = smoke.run_smoke(
+        vault_root=vault,
+        repo_root=repo,
+        journey_definitions=(_definition("task_lifecycle"),),
+    )
+
+    result = run.report["journeys"][0]
+    assert run.exit_code == 0
+    assert result["verdict"] == "UNKNOWN"
+    assert "beta channel selected but no beta release found — staying on stable is safe" in result["detail"]
+    assert "not executed for safety" in result["detail"]
+
+
+def test_task_lifecycle_invalid_channel_is_unknown_and_refuses_execution(tmp_path: Path) -> None:
+    vault = _write_valid_vault(tmp_path)
+    repo = _release_repo(tmp_path)
+    _write_release_channel(repo, "nightly")
+
+    run = smoke.run_smoke(
+        vault_root=vault,
+        repo_root=repo,
+        journey_definitions=(_definition("task_lifecycle"),),
+    )
+
+    result = run.report["journeys"][0]
+    assert run.exit_code == 0
+    assert result["verdict"] == "UNKNOWN"
+    assert "couldn't verify your update channel" in result["detail"]
+    assert "not executed for safety" in result["detail"]
 
 
 def test_task_lifecycle_runs_verified_release_and_refuses_dependency_drift(tmp_path: Path) -> None:

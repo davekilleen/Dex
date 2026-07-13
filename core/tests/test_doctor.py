@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pytest
 
-from core.utils import doctor
+from core.utils import doctor, release_channel
 
 DOCTOR_PATH = Path(__file__).resolve().parents[1] / "utils" / "doctor.py"
 NOW = datetime(2026, 7, 11, 12, 0, tzinfo=timezone.utc)
@@ -169,7 +169,11 @@ def _git(repo, *args, check=True):
     return result
 
 
-def _drift_context(tmp_path, *, release_ref=True):
+def _remote_release_ref(channel):
+    return f"refs/remotes/{release_channel.release_ref_candidates(channel)[0]}"
+
+
+def _drift_context(tmp_path, *, release_ref=True, channel=None):
     vault = tmp_path / "drift-vault"
     vault.mkdir()
     _git(vault, "init")
@@ -201,7 +205,10 @@ def _drift_context(tmp_path, *, release_ref=True):
     )
     integrations = vault / "System" / "integrations"
     integrations.mkdir(parents=True)
-    (vault / "System" / "user-profile.yaml").write_text("name: Original\n")
+    profile = "name: Original\n"
+    if channel is not None:
+        profile += f"updates:\n  channel: {channel}\n"
+    (vault / "System" / "user-profile.yaml").write_text(profile)
     (vault / "System" / "pillars.yaml").write_text("pillars: []\n")
     (integrations / "calendar.yaml").write_text("enabled: false\n")
     _git(
@@ -217,7 +224,8 @@ def _drift_context(tmp_path, *, release_ref=True):
     )
     _git(vault, "commit", "-m", "release fixture")
     if release_ref:
-        _git(vault, "update-ref", "refs/remotes/upstream/release", "HEAD")
+        available_channel = channel if channel in {"stable", "beta"} else "stable"
+        _git(vault, "update-ref", _remote_release_ref(available_channel), "HEAD")
 
     home = tmp_path / "drift-home"
     home.mkdir()
@@ -1463,6 +1471,41 @@ def test_core_drift_is_ok_for_a_clean_release_checkout(tmp_path):
     assert doctor._probe_core_drift(drift_context).verdict == "OK"
 
 
+def test_core_drift_missing_channel_keeps_stable_release_ref_behavior(tmp_path):
+    drift_context = _drift_context(tmp_path)
+
+    assert doctor._upstream_release_ref(drift_context) == _remote_release_ref("stable")
+    assert doctor._probe_core_drift(drift_context).verdict == "OK"
+
+
+def test_core_drift_is_ok_for_clean_beta_head_against_beta_release(tmp_path):
+    drift_context = _drift_context(tmp_path, channel="beta")
+
+    result = doctor._probe_core_drift(drift_context)
+
+    assert result.verdict == "OK"
+    assert result.detail == "No tracked shipped files differ from the installed release"
+
+
+def test_core_drift_beta_without_beta_ref_is_unknown_and_does_not_use_stable(tmp_path):
+    drift_context = _drift_context(tmp_path, release_ref=False, channel="beta")
+    _git(drift_context.repo_root, "update-ref", _remote_release_ref("stable"), "HEAD")
+
+    result = doctor._probe_core_drift(drift_context)
+
+    assert result.verdict == "UNKNOWN"
+    assert result.detail == "beta channel selected but no beta release found — staying on stable is safe"
+
+
+def test_core_drift_invalid_channel_is_unknown_and_does_not_use_stable(tmp_path):
+    drift_context = _drift_context(tmp_path, channel="nightly")
+
+    result = doctor._probe_core_drift(drift_context)
+
+    assert result.verdict == "UNKNOWN"
+    assert result.detail == "couldn't verify your update channel"
+
+
 def test_core_drift_never_executes_repo_fsmonitor_or_ambient_git(
     monkeypatch,
     tmp_path,
@@ -1514,7 +1557,7 @@ def test_core_drift_reports_modified_installed_file_deleted_by_latest_release(tm
     (vault / "core" / "shipped.py").unlink()
     _git(vault, "add", "-u", "--", "core/shipped.py")
     _git(vault, "commit", "-m", "delete shipped file")
-    _git(vault, "update-ref", "refs/remotes/upstream/release", "HEAD")
+    _git(vault, "update-ref", _remote_release_ref("stable"), "HEAD")
     _git(vault, "checkout", "--detach", installed)
     (vault / "core" / "shipped.py").write_text("SHIPPED = 2\n")
 
