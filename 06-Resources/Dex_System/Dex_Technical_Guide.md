@@ -1063,6 +1063,8 @@ files. Its optional deep scan also runs `core/utils/smoke.py`, which exercises c
 loading, a real task lifecycle, MCP startup, skills, and hook structure in isolated
 subprocesses.
 
+The public proof for the latest successful release build is on the repository's GitHub Pages site at `/health.html`.
+
 The smoke runner copies the minimum vault data into a temporary directory before product
 code is imported. It uses a temporary home, disables analytics, never reads credential or
 `.env` files, redacts secret-like config values before child journeys, never contacts the

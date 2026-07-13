@@ -7,6 +7,22 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.53.0] - See exactly what Dex checked before a release reached you — a public, honest per-release health page (2026-07-13)
+
+Dex's release checks were rigorous but invisible once a release reached you. Each successful
+release build now publishes a small public page showing the evidence for that exact version,
+without turning checks that did not run into reassuring green ticks.
+
+* **The proof is tied to one release.** The page names the package version, source commit,
+  generated release commit, verification time, and workflow run.
+* **Every gate tells the truth.** Checks run by the successful main build are marked passed;
+  pull-request-only checks are explicitly marked not applicable and not run on the release
+  build. Missing evidence stays unknown.
+* **A failed later build cannot rewrite history.** The published page remains labelled as the
+  last successful release build, so it never claims to describe a newer failing `HEAD`.
+
+---
+
 ## [1.52.0] - Your own tools can now be health-checked for real — only when you say so (2026-07-13)
 
 Custom MCP servers used to stay permanently "unknown" because Dex would not execute user code during a check. You can now ask `/create-mcp` for a one-off startup proof and, as a separate default-no choice, trust one exact local Python file for nightly and deep checks.
