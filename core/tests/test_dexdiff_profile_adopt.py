@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import importlib
+import io
 import json
 from pathlib import Path
+import urllib.error
 
 import pytest
 
@@ -117,47 +119,44 @@ def test_validate_profile_bundle_requires_supported_contract_version():
         )
 
 
-class _StubHandler:
-    """Factory for a one-route stub of GET /api/profile-bundle."""
-
-    @staticmethod
-    def build(response_status: int, response_body: str):
-        from http.server import BaseHTTPRequestHandler
-
-        class Handler(BaseHTTPRequestHandler):
-            def do_GET(self):  # noqa: N802 (http.server API)
-                body = response_body.encode("utf-8")
-                self.send_response(response_status)
-                self.send_header("Content-Type", "application/json")
-                self.send_header("Content-Length", str(len(body)))
-                self.end_headers()
-                self.wfile.write(body)
-
-            def log_message(self, *args):  # silence test output
-                pass
-
-        return Handler
-
-
 @pytest.fixture
-def stub_server():
-    """Yield a helper that serves a fixed response on a random local port."""
-    import threading
-    from http.server import HTTPServer
-
-    servers = []
+def stub_server(monkeypatch):
+    """Install a deterministic urllib transport without opening a local port."""
+    base_url = "https://stub.dex.test"
 
     def start(status: int, body: str) -> str:
-        server = HTTPServer(("127.0.0.1", 0), _StubHandler.build(status, body))
-        thread = threading.Thread(target=server.serve_forever, daemon=True)
-        thread.start()
-        servers.append(server)
-        return f"http://127.0.0.1:{server.server_address[1]}"
+        payload = body.encode("utf-8")
 
-    yield start
-    for server in servers:
-        server.shutdown()
-        server.server_close()
+        class Response:
+            def __init__(self):
+                self.status = status
+
+            def read(self):
+                return payload
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_args):
+                return False
+
+        def fake_urlopen(request, timeout):
+            assert request.full_url.startswith(f"{base_url}/api/profile-bundle?handle=")
+            assert timeout > 0
+            if status >= 400:
+                raise urllib.error.HTTPError(
+                    request.full_url,
+                    status,
+                    "stub response",
+                    {},
+                    io.BytesIO(payload),
+                )
+            return Response()
+
+        monkeypatch.setattr(dexdiff_profile_adopt.urllib.request, "urlopen", fake_urlopen)
+        return base_url
+
+    return start
 
 
 def test_fetch_profile_bundle_happy_path(stub_server):

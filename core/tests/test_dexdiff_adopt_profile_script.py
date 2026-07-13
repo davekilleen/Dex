@@ -10,10 +10,9 @@ from __future__ import annotations
 
 import importlib
 import json
+import os
 import subprocess
 import sys
-import threading
-from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 
 import pytest
@@ -43,31 +42,50 @@ def _bundle() -> dict:
 
 
 @pytest.fixture
-def stub_server():
-    servers = []
+def stub_server(monkeypatch, tmp_path):
+    """Inject a deterministic urllib transport into the real subprocess."""
+    transport = tmp_path / "stub-transport"
+    transport.mkdir()
+    (transport / "sitecustomize.py").write_text(
+        """import io
+import os
+import urllib.error
+import urllib.request
+
+_status = int(os.environ["DEXDIFF_TEST_HTTP_STATUS"])
+_payload = os.environ["DEXDIFF_TEST_HTTP_BODY"].encode("utf-8")
+_base = "https://stub.dex.test"
+
+class _Response:
+    status = _status
+    def read(self):
+        return _payload
+    def __enter__(self):
+        return self
+    def __exit__(self, *_args):
+        return False
+
+def _urlopen(request, timeout):
+    assert request.full_url.startswith(f"{_base}/api/profile-bundle?handle=")
+    assert timeout > 0
+    if _status >= 400:
+        raise urllib.error.HTTPError(
+            request.full_url, _status, "stub response", {}, io.BytesIO(_payload)
+        )
+    return _Response()
+
+urllib.request.urlopen = _urlopen
+""",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("PYTHONPATH", str(transport))
 
     def start(status: int, body: str) -> str:
-        class Handler(BaseHTTPRequestHandler):
-            def do_GET(self):  # noqa: N802
-                payload = body.encode("utf-8")
-                self.send_response(status)
-                self.send_header("Content-Type", "application/json")
-                self.send_header("Content-Length", str(len(payload)))
-                self.end_headers()
-                self.wfile.write(payload)
+        monkeypatch.setenv("DEXDIFF_TEST_HTTP_STATUS", str(status))
+        monkeypatch.setenv("DEXDIFF_TEST_HTTP_BODY", body)
+        return "https://stub.dex.test"
 
-            def log_message(self, *args):
-                pass
-
-        server = HTTPServer(("127.0.0.1", 0), Handler)
-        threading.Thread(target=server.serve_forever, daemon=True).start()
-        servers.append(server)
-        return f"http://127.0.0.1:{server.server_address[1]}"
-
-    yield start
-    for server in servers:
-        server.shutdown()
-        server.server_close()
+    return start
 
 
 def _make_vault(tmp_path: Path) -> Path:
@@ -77,7 +95,12 @@ def _make_vault(tmp_path: Path) -> Path:
 
 
 def _run(args: list[str], vault: Path | None, **kwargs):
-    env = dict(kwargs.pop("env", {}))
+    inherited_test_transport = {
+        key: value
+        for key, value in os.environ.items()
+        if key in {"PYTHONPATH", "DEXDIFF_TEST_HTTP_STATUS", "DEXDIFF_TEST_HTTP_BODY"}
+    }
+    env = {**inherited_test_transport, **kwargs.pop("env", {})}
     env.setdefault("PATH", "/usr/bin:/bin")
     if vault is not None:
         env["VAULT_PATH"] = str(vault)
