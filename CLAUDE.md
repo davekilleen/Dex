@@ -55,7 +55,7 @@ For detailed information, see:
 - **Folder structure:** `06-Resources/Dex_System/Folder_Structure.md`
 - **Complete guide:** `06-Resources/Dex_System/Dex_System_Guide.md`
 - **Technical setup:** `06-Resources/Dex_System/Dex_Technical_Guide.md`
-- **Update guide:** `06-Resources/Dex_System/Updating_Dex.md`
+- **Update guide:** `docs/Dex_System/Updating_Dex.md` (or run `/dex-update`)
 - **Skills catalog:** `.claude/skills/README.md` or run `/dex-level-up`
 
 Read these files when users ask about system details, features, or setup.

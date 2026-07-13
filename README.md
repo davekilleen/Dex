@@ -734,7 +734,7 @@ Comprehensive guides included in the repo:
 - [Dex_Technical_Guide.md](06-Resources/Dex_System/Dex_Technical_Guide.md) - Technical deep dive for those who want it
 - [Calendar_Setup.md](06-Resources/Dex_System/Calendar_Setup.md) - Connect Google Calendar to Dex (Mac)
 - [Folder_Structure.md](06-Resources/Dex_System/Folder_Structure.md) - PARA organization explained
-- [Updating_Dex.md](06-Resources/Dex_System/Updating_Dex.md) - How to safely update while preserving customizations
+- [Updating_Dex.md](docs/Dex_System/Updating_Dex.md) - How to safely update while preserving customizations
 
 Start with what you need. Go deeper if you're curious. No forced learning paths.
 
@@ -787,7 +787,7 @@ Updates never touch:
 - Your customizations
 - Your API keys
 
-**For detailed instructions:** See [Updating_Dex.md](06-Resources/Dex_System/Updating_Dex.md)
+**For detailed instructions:** See [Updating_Dex.md](docs/Dex_System/Updating_Dex.md), or run `/dex-update`.
 
 ---
 

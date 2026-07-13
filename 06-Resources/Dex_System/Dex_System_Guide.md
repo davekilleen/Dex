@@ -100,6 +100,7 @@ All skills are documented in detail in the **Skills System** section below. Here
 - `/process-meetings` — Process Granola meetings for insights
 - `/career-coach` — Career reflections and assessments
 - `/dex-level-up` — Discover unused features
+- `/dex-update` — Update Dex without touching your notes; see [Updating Dex](../../docs/Dex_System/Updating_Dex.md)
 
 See the **Skills System** section below for complete documentation of all 41 bundled skills + 27 role-specific skills.
 

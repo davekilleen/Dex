@@ -447,7 +447,7 @@ Track update-related problems:
 
 ## Related Documentation
 
-- **User Guide:** `06-Resources/Dex_System/Updating_Dex.md`
+- **User Guide:** `docs/Dex_System/Updating_Dex.md` (user command: `/dex-update`)
 - **Migration README:** `core/migrations/README.md`
 - **Technical Guide:** `06-Resources/Dex_System/Dex_Technical_Guide.md` (MCP section)
 - **Skills Catalog:** `.claude/skills/README.md`
