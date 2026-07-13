@@ -32,6 +32,37 @@ function git(cwd, ...args) {
   return command('git', args, { cwd }).stdout.trim();
 }
 
+function fixtureGitEnvironment(fixtureRoot, remote) {
+  const wrapperDirectory = path.join(fixtureRoot, 'git-wrapper');
+  fs.mkdirSync(wrapperDirectory, { recursive: true });
+  const wrapper = path.join(wrapperDirectory, 'git');
+  const source = `#!/usr/bin/env node
+'use strict';
+const { spawnSync } = require('node:child_process');
+const args = process.argv.slice(2);
+const commandIndex = args.findIndex((arg) => arg === 'fetch' || arg === 'ls-remote');
+if (commandIndex >= 0 && !(args[commandIndex] === 'ls-remote' && args.includes('--get-url'))) {
+  const originIndex = args.findIndex((arg, index) => (
+    index > commandIndex
+    && (arg === 'origin' || arg === 'https://github.com/davekilleen/Dex.git')
+  ));
+  if (originIndex >= 0) {
+    args[originIndex] = process.env.DEX_UPDATE_FIXTURE_REMOTE;
+    args.unshift('-c', 'protocol.file.allow=always');
+  }
+}
+const result = spawnSync(process.env.DEX_REAL_GIT, args, { stdio: 'inherit', env: process.env });
+if (result.error) throw result.error;
+process.exitCode = result.status === null ? 1 : result.status;
+`;
+  fs.writeFileSync(wrapper, source, { mode: 0o755 });
+  return {
+    PATH: `${wrapperDirectory}${path.delimiter}${process.env.PATH}`,
+    DEX_REAL_GIT: command('/usr/bin/which', ['git']).stdout.trim(),
+    DEX_UPDATE_FIXTURE_REMOTE: remote,
+  };
+}
+
 function makeFixture() {
   const result = command('bash', [FIXTURE_SCRIPT], { timeout: 240_000 });
   const match = result.stdout.match(/Fixture ready: (.+)\n?$/m);
@@ -80,7 +111,7 @@ function digest(file) {
   return crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
 }
 
-test('apply, resume, and rollback replace only owned brain files in an aged migrated vault', { timeout: 300_000 }, () => {
+test('apply, crash-resume, and rollback replace only owned brain files in an aged migrated vault', { timeout: 300_000 }, () => {
   const vault = makeFixture();
   command(process.execPath, [path.join(vault, MIGRATOR_RELATIVE), '--auto'], {
     cwd: vault,
@@ -99,19 +130,26 @@ test('apply, resume, and rollback replace only owned brain files in an aged migr
   const keptDroppedBytes = fs.readFileSync(path.join(vault, 'COMMERCIAL_LICENSE.md'));
 
   const release = fabricateRelease(vault);
-  const localUrl = `file://${release.upstream}`;
-  git(vault, `--git-dir=${brain}`, 'config', `url.${localUrl}.insteadOf`, 'https://github.com/davekilleen/Dex.git');
-
-  const stopped = command(process.execPath, [UPDATER_PATH, '--apply', '--target', 'dist-v2.0.1'], {
+  const transportEnvironment = fixtureGitEnvironment(path.dirname(vault), release.upstream);
+  const killed = spawnSync(process.execPath, [UPDATER_PATH, '--apply', '--target', 'dist-v2.0.1'], {
     cwd: vault,
-    env: { DEX_UPDATE_STOP_AFTER_FILES: '2' },
-    expectedStatus: 75,
+    encoding: 'utf8',
+    env: {
+      ...process.env,
+      ...transportEnvironment,
+      DEX_UPDATE_TEST_SIGKILL_AFTER_MUTATION: 'replace brain file README.md',
+    },
     timeout: 240_000,
   });
-  assert.match(stopped.stdout, /Stopped safely.*--resume/i);
+  assert.equal(killed.status, null, `${killed.stdout}\n${killed.stderr}`);
+  assert.equal(killed.signal, 'SIGKILL');
+  const interrupted = JSON.parse(fs.readFileSync(path.join(vault, 'System', '.dex', 'update-state.json'), 'utf8'));
+  assert.equal(interrupted.pendingMutation, 'replace brain file README.md');
+  assert.equal(fs.readFileSync(path.join(vault, 'README.md'), 'utf8'), '# Dex synthetic v2.0.1\n');
 
   const resumed = command(process.execPath, [UPDATER_PATH, '--resume'], {
     cwd: vault,
+    env: transportEnvironment,
     timeout: 240_000,
   });
   assert.match(resumed.stdout, /DEX_UPDATE_COMPLETE/);
@@ -141,6 +179,7 @@ test('apply, resume, and rollback replace only owned brain files in an aged migr
 
   const rolledBack = command(process.execPath, [UPDATER_PATH, '--rollback'], {
     cwd: vault,
+    env: transportEnvironment,
     timeout: 240_000,
   });
   assert.match(rolledBack.stdout, /DEX_ROLLBACK_COMPLETE/);

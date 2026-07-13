@@ -43,23 +43,65 @@ function regularFileWithoutSymlinkedParents(root, relative) {
 
 function parseVaultAutoCommit(source) {
   const lines = String(source).split(/\r?\n/);
-  let vaultIndent = null;
-  const values = [];
-  for (const line of lines) {
-    if (!line.trim() || line.trimStart().startsWith('#')) continue;
-    const indent = line.match(/^\s*/)[0].length;
-    if (vaultIndent === null) {
-      if (/^vault:\s*(?:#.*)?$/.test(line)) vaultIndent = indent;
-      continue;
+  const blocks = [];
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index];
+    if (!/^vault:\s*(?:#.*)?$/.test(line)) continue;
+    const vaultIndent = line.match(/^\s*/)[0].length;
+    const block = [];
+    for (index += 1; index < lines.length; index += 1) {
+      const child = lines[index];
+      if (!child.trim() || child.trimStart().startsWith('#')) continue;
+      const indent = child.match(/^\s*/)[0].length;
+      if (indent <= vaultIndent) {
+        index -= 1;
+        break;
+      }
+      block.push({ line: child, indent });
     }
-    if (indent <= vaultIndent) {
-      vaultIndent = /^vault:\s*(?:#.*)?$/.test(line) ? indent : null;
-      continue;
-    }
-    const match = /^\s*auto_commit:\s*([^#\s]+)\s*(?:#.*)?$/.exec(line);
-    if (match) values.push(match[1].replace(/^['"]|['"]$/g, '').toLowerCase());
+    blocks.push(block);
   }
+  if (blocks.length !== 1 || blocks[0].length === 0) return false;
+  const directIndent = Math.min(...blocks[0].map((entry) => entry.indent));
+  const values = blocks[0].filter((entry) => entry.indent === directIndent).flatMap((entry) => {
+    const match = /^\s*auto_commit:\s*([^#\s]+)\s*(?:#.*)?$/.exec(entry.line);
+    return match ? [match[1].replace(/^['"]|['"]$/g, '').toLowerCase()] : [];
+  });
   return values.length === 1 && values[0] === 'true';
+}
+
+function acquireSharedLock(root) {
+  const system = path.join(root, 'System');
+  const stateDirectory = path.join(system, '.dex');
+  for (const candidate of [system, stateDirectory]) {
+    if (exists(candidate) && (fs.lstatSync(candidate).isSymbolicLink() || !fs.lstatSync(candidate).isDirectory())) {
+      return null;
+    }
+  }
+  fs.mkdirSync(stateDirectory, { recursive: true });
+  const lock = path.join(stateDirectory, '.migration-lock');
+  const token = `${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  let descriptor;
+  try {
+    descriptor = fs.openSync(lock, 'wx', 0o600);
+    const payload = `${JSON.stringify({ pid: process.pid, kind: 'vault-auto-commit', token, at: new Date().toISOString() })}\n`;
+    fs.writeFileSync(descriptor, payload);
+    fs.fsyncSync(descriptor);
+    fs.closeSync(descriptor);
+    descriptor = undefined;
+    return () => {
+      try {
+        const current = JSON.parse(fs.readFileSync(lock, 'utf8'));
+        if (current.token === token) fs.unlinkSync(lock);
+      } catch {
+        // Another owner or a vanished lock is left alone.
+      }
+    };
+  } catch (error) {
+    if (descriptor !== undefined) fs.closeSync(descriptor);
+    if (error.code === 'EEXIST') return null;
+    throw error;
+  }
 }
 
 function git(root, args) {
@@ -96,6 +138,7 @@ function ensureLocalIdentity(root) {
 }
 
 function run(options = {}) {
+  let releaseLock = null;
   try {
     const root = path.resolve(options.root || process.env.CLAUDE_PROJECT_DIR || process.cwd());
     const profile = regularFileWithoutSymlinkedParents(root, 'System/user-profile.yaml');
@@ -116,16 +159,22 @@ function run(options = {}) {
     if (markerValue?.role !== 'vault') {
       return status('off', 'Vault auto-commit waits until the one-time brain/vault upgrade is complete.');
     }
-    if (exists(path.join(root, 'System', '.dex', '.migration-lock'))) {
+    releaseLock = acquireSharedLock(root);
+    if (!releaseLock) {
       return status('off', 'Vault auto-commit paused because a migration or update is running.');
     }
+    if (typeof options.onLockAcquired === 'function') options.onLockAcquired();
     if (operationInProgress(gitDirectory)) {
       return status('off', 'Vault auto-commit paused because a Git operation is in progress.');
     }
     if (!ensureLocalIdentity(root)) {
       return status('broken', 'Vault auto-commit could not set a local-only commit identity.');
     }
-    const added = git(root, ['add', '-A']);
+    const added = git(root, [
+      'add', '-A', '--', '.',
+      ':(exclude)System/.dex/**',
+      ':(exclude).dex/**',
+    ]);
     if (added.status !== 0) {
       return status('broken', 'Vault auto-commit could not prepare the local snapshot. Your files are unchanged.');
     }
@@ -144,6 +193,8 @@ function run(options = {}) {
     return status('ok', 'Dex saved this session to your local vault history. No network action was taken.');
   } catch {
     return status('unknown', 'Vault auto-commit could not check this session, so it left the vault alone.');
+  } finally {
+    if (releaseLock) releaseLock();
   }
 }
 

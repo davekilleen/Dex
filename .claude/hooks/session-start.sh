@@ -9,8 +9,11 @@ CLAUDE_DIR="${CLAUDE_PROJECT_DIR:-$(pwd)}"
 # without network or Git work so the session can guide the user to /dex-update.
 if [[ -f "$CLAUDE_DIR/core/update/apply-update.cjs" \
       && -d "$CLAUDE_DIR/.git" \
-      && ! -f "$CLAUDE_DIR/.git/dex-vault-v2" ]]; then
-    echo '{"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"Dex needs a one-time upgrade — run /dex-update"}}'
+      && ! -f "$CLAUDE_DIR/.git/dex-vault-v2" \
+      && ! -f "$CLAUDE_DIR/System/.dex/topology.json" ]]; then
+    # SessionStart command stdout is injected as additional context. Keep this
+    # plain text because the rest of this established hook is also plain text.
+    echo 'Dex needs a one-time upgrade — run /dex-update'
 fi
 
 # Prevent duplicate injection (symlinked working directories)

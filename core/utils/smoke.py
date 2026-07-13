@@ -602,13 +602,6 @@ def _prepare_update_boundary_vault(repository: Path, vault: Path) -> None:
         f"+{old_oid}:refs/dex/installed",
     )
     _smoke_git(vault.parent, f"--git-dir={brain}", "remote", "add", "origin", "https://github.com/davekilleen/Dex.git")
-    _smoke_git(
-        vault.parent,
-        f"--git-dir={brain}",
-        "config",
-        f"url.{release.as_uri()}.insteadOf",
-        "https://github.com/davekilleen/Dex.git",
-    )
     (brain / "dex-brain-v2").write_text(
         json.dumps({"role": "brain", "installed": old_oid}) + "\n",
         encoding="utf-8",
@@ -719,6 +712,37 @@ def _install_network_guard(parent: Path) -> Path:
         encoding="utf-8",
     )
     return guard
+
+
+def _install_update_git_wrapper(parent: Path) -> Path:
+    """Route only fixture fetches locally without weakening updater URL checks."""
+    wrapper = parent / "git-wrapper"
+    wrapper.mkdir()
+    executable = wrapper / "git"
+    executable.write_text(
+        f"#!{sys.executable}\n"
+        "import os\n"
+        "import subprocess\n"
+        "import sys\n"
+        "args = sys.argv[1:]\n"
+        "try:\n"
+        "    command_index = next(i for i, arg in enumerate(args) if arg in {'fetch', 'ls-remote'})\n"
+        "except StopIteration:\n"
+        "    command_index = -1\n"
+        "if command_index >= 0 and not (args[command_index] == 'ls-remote' and '--get-url' in args):\n"
+        "    try:\n"
+        "        origin_index = next(i for i, arg in enumerate(args) if i > command_index and arg in {'origin', 'https://github.com/davekilleen/Dex.git'})\n"
+        "    except StopIteration:\n"
+        "        origin_index = -1\n"
+        "    if origin_index >= 0:\n"
+        "        args[origin_index] = os.environ['DEX_UPDATE_FIXTURE_REMOTE']\n"
+        "        args[0:0] = ['-c', 'protocol.file.allow=always']\n"
+        "completed = subprocess.run([os.environ['DEX_REAL_GIT'], *args], env=os.environ)\n"
+        "raise SystemExit(completed.returncode)\n",
+        encoding="utf-8",
+    )
+    executable.chmod(0o700)
+    return wrapper
 
 
 def _block_python_network() -> None:
@@ -1031,6 +1055,10 @@ def _clean_environment(
     run_token: str,
 ) -> dict[str, str]:
     guard = _install_network_guard(temporary_root)
+    git_wrapper = _install_update_git_wrapper(temporary_root)
+    trusted_git = _trusted_git()
+    if trusted_git is None:
+        raise JourneySafetySkip("trusted Git is unavailable for isolated update smoke")
     python_paths = [str(runner_root), str(guard)]
     for key in ("purelib", "platlib"):
         site_packages = Path(sysconfig.get_paths()[key]).resolve()
@@ -1038,7 +1066,7 @@ def _clean_environment(
             python_paths.append(str(site_packages))
     return {
         "HOME": str(home),
-        "PATH": SAFE_PATH,
+        "PATH": f"{git_wrapper}{os.pathsep}{SAFE_PATH}",
         "PYTHONPATH": os.pathsep.join(python_paths),
         "PYTHONDONTWRITEBYTECODE": "1",
         "PYTHONNOUSERSITE": "1",
@@ -1048,6 +1076,8 @@ def _clean_environment(
         "DEX_SMOKE_RUN_TOKEN": run_token,
         "DEX_SMOKE_SERVER_BOOTSTRAP": str(guard / "server_bootstrap.py"),
         "DEX_UPDATE_PYTHON": sys.executable,
+        "DEX_REAL_GIT": trusted_git,
+        "DEX_UPDATE_FIXTURE_REMOTE": str(temporary_root / "update-release-work"),
         **({"DEX_SMOKE_NODE": node} if (node := _trusted_node()) is not None else {}),
     }
 

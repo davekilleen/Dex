@@ -40,6 +40,12 @@ test('vault auto-commit is off unless the nested profile switch is exactly true'
   assert.equal(result.success, false);
   assert.match(result.user_message, /off by default/i);
   assert.equal(git(root, 'for-each-ref', '--format=%(refname)'), '');
+
+  fs.writeFileSync(
+    path.join(root, 'System', 'user-profile.yaml'),
+    'vault:\n  nested:\n    auto_commit: true\n',
+  );
+  assert.equal(hook.run({ root }).feature_status, 'off');
 });
 
 test('enabled hook commits all eligible vault changes locally with fallback identity', (t) => {
@@ -75,7 +81,10 @@ test('migration lock and in-progress Git operations pause auto-commit', (t) => {
   const hook = require(HOOK_PATH);
   const locked = fixture(t, true);
   fs.mkdirSync(path.join(locked, 'System', '.dex'), { recursive: true });
-  fs.writeFileSync(path.join(locked, 'System', '.dex', '.migration-lock'), '{}\n');
+  fs.writeFileSync(
+    path.join(locked, 'System', '.dex', '.migration-lock'),
+    `${JSON.stringify({ pid: process.pid, kind: 'update' })}\n`,
+  );
   fs.writeFileSync(path.join(locked, 'locked.md'), 'not committed\n');
   const lockResult = hook.run({ root: locked });
   assert.equal(lockResult.feature_status, 'off');
@@ -87,6 +96,28 @@ test('migration lock and in-progress Git operations pause auto-commit', (t) => {
   const mergeResult = hook.run({ root: merging });
   assert.equal(mergeResult.feature_status, 'off');
   assert.match(mergeResult.user_message, /Git operation is in progress/i);
+});
+
+test('enabled hook atomically owns the shared migration lock while Git runs', (t) => {
+  const hook = require(HOOK_PATH);
+  const root = fixture(t, true);
+  fs.mkdirSync(path.join(root, 'System', '.dex'), { recursive: true });
+  fs.writeFileSync(path.join(root, 'note.md'), 'serialized snapshot\n');
+  const lock = path.join(root, 'System', '.dex', '.migration-lock');
+  let observed = false;
+
+  const result = hook.run({
+    root,
+    onLockAcquired() {
+      observed = true;
+      assert.equal(fs.existsSync(lock), true);
+      assert.throws(() => fs.openSync(lock, 'wx'), { code: 'EEXIST' });
+    },
+  });
+
+  assert.equal(result.feature_status, 'ok');
+  assert.equal(observed, true);
+  assert.equal(fs.existsSync(lock), false);
 });
 
 test('the hook never pushes and CLI failures silently degrade to feature status', (t) => {

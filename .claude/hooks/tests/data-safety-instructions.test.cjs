@@ -92,7 +92,8 @@ test('session-start emits migration-pending additionalContext only for a pre-spl
   });
   const pending = run('.dedup-pending');
   assert.equal(pending.status, 0, pending.stderr);
-  assert.match(pending.stdout, /"additionalContext":"Dex needs a one-time upgrade — run \/dex-update"/);
+  assert.match(pending.stdout, /^Dex needs a one-time upgrade — run \/dex-update$/m);
+  assert.doesNotMatch(pending.stdout, /hookSpecificOutput|additionalContext/);
 
   fs.writeFileSync(path.join(root, '.git', 'dex-vault-v2'), '{"role":"vault"}\n');
   const split = run('.dedup-split');
@@ -104,6 +105,6 @@ test('the session-start implementation performs only a cheap sentinel check for 
   const source = read('.claude/hooks/session-start.sh');
   assert.match(source, /core\/update\/apply-update\.cjs/);
   assert.match(source, /dex-vault-v2/);
-  assert.match(source, /hookSpecificOutput/);
+  assert.doesNotMatch(source, /hookSpecificOutput|additionalContext/);
   assert.doesNotMatch(source, /\bgit\s+pull\b/);
 });

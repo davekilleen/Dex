@@ -43,6 +43,31 @@ function fsyncDirectory(directory) {
   }
 }
 
+function sleep(milliseconds) {
+  const waitBuffer = new SharedArrayBuffer(4);
+  Atomics.wait(new Int32Array(waitBuffer), 0, 0, milliseconds);
+}
+
+function renameWithRetry(source, destination) {
+  let lastError;
+  for (let attempt = 1; attempt <= 5; attempt += 1) {
+    try {
+      fs.renameSync(source, destination);
+      fsyncDirectory(path.dirname(destination));
+      return;
+    } catch (error) {
+      lastError = error;
+      if (!['EACCES', 'EBUSY', 'EPERM', 'EXDEV'].includes(error.code)) throw error;
+      sleep(attempt * 40);
+    }
+  }
+  throw lastError;
+}
+
+function modesCompatible(expected, actual, platform = process.platform) {
+  return platform === 'win32' || expected === actual;
+}
+
 function assertWorktreeWrite(root, relative) {
   const portable = slashPath(relative);
   if (ownership.isDenied(portable, root)) {
@@ -74,13 +99,105 @@ function writeWorktreeFile(root, relative, content, mode = 0o600) {
   try {
     descriptor = fs.openSync(temporary, 'w', mode);
     fs.writeFileSync(descriptor, content);
+    fs.fchmodSync(descriptor, mode);
     fs.fsyncSync(descriptor);
   } finally {
     if (descriptor !== undefined) fs.closeSync(descriptor);
   }
+  const expected = Buffer.isBuffer(content) ? content : Buffer.from(content);
+  const swapKey = crypto.createHash('sha256').update(slashPath(relative)).digest('hex');
+  const quarantineRelative = `${STAGING_RELATIVE}/.swap/${swapKey}.previous`;
+  const copyingRelative = `${STAGING_RELATIVE}/.swap/${swapKey}.copying`;
+  const intentRelative = `${STAGING_RELATIVE}/.swap/${swapKey}.intent.json`;
+  const quarantine = assertWorktreeWrite(root, quarantineRelative);
+  const copying = assertWorktreeWrite(root, copyingRelative);
+  const intent = assertWorktreeWrite(root, intentRelative);
+  const expectedHash = crypto.createHash('sha256').update(expected).digest('hex');
+
+  function installedFileMatches(bytes, expectedMode) {
+    if (!exists(destination) || fs.lstatSync(destination).isSymbolicLink() || !fs.lstatSync(destination).isFile()) return false;
+    const installedMode = fs.statSync(destination).mode & 0o777;
+    return modesCompatible(expectedMode, installedMode) && fs.readFileSync(destination).equals(bytes);
+  }
+
+  function readIntent() {
+    try {
+      const parsed = JSON.parse(fs.readFileSync(intent, 'utf8'));
+      return parsed?.sha256 && Number.isInteger(parsed.mode) ? parsed : null;
+    } catch {
+      return null;
+    }
+  }
+
+  function destinationMatchesIntent(candidateIntent) {
+    if (!candidateIntent || !exists(destination) || fs.lstatSync(destination).isSymbolicLink() || !fs.lstatSync(destination).isFile()) return false;
+    const installedMode = fs.statSync(destination).mode & 0o777;
+    const installedHash = crypto.createHash('sha256').update(fs.readFileSync(destination)).digest('hex');
+    return modesCompatible(candidateIntent.mode, installedMode) && installedHash === candidateIntent.sha256;
+  }
+
+  if (exists(quarantine) && !exists(destination)) {
+    assertWorktreeWrite(root, quarantineRelative);
+    assertWorktreeWrite(root, relative);
+    renameWithRetry(quarantine, destination);
+    if (exists(intent)) removeWorktreePath(root, intentRelative);
+    if (exists(copying)) removeWorktreePath(root, copyingRelative);
+  }
+  const previousIntent = readIntent();
+  const matchesCurrentWrite = installedFileMatches(expected, mode);
+  if (exists(quarantine) && (matchesCurrentWrite || destinationMatchesIntent(previousIntent))) {
+    removeWorktreePath(root, quarantineRelative);
+    if (exists(intent)) removeWorktreePath(root, intentRelative);
+    if (matchesCurrentWrite) {
+      removeWorktreePath(root, temporaryRelative);
+      return;
+    }
+  }
+  if (exists(quarantine)) {
+    throw new Error(`Dex found an ambiguous interrupted file swap for ${relative}. Run --resume without editing that file.`);
+  }
+  if (exists(intent)) removeWorktreePath(root, intentRelative);
+
+  try {
+    assertWorktreeWrite(root, relative);
+    renameWithRetry(temporary, destination);
+    if (!installedFileMatches(expected, mode)) throw new Error(`Dex could not verify the replacement bytes for ${relative}.`);
+    return;
+  } catch (error) {
+    if (!['EACCES', 'EBUSY', 'EPERM', 'EXDEV'].includes(error.code)) throw error;
+  }
+
+  fs.mkdirSync(path.dirname(quarantine), { recursive: true });
+  writeDirectFile(intent, `${JSON.stringify({ sha256: expectedHash, mode })}\n`, 0o600);
+  if (exists(destination)) {
+    assertWorktreeWrite(root, relative);
+    assertWorktreeWrite(root, quarantineRelative);
+    renameWithRetry(destination, quarantine);
+  }
+  if (exists(copying)) removeWorktreePath(root, copyingRelative);
+  assertWorktreeWrite(root, temporaryRelative);
+  assertWorktreeWrite(root, copyingRelative);
+  fs.copyFileSync(temporary, copying, fs.constants.COPYFILE_EXCL);
+  fs.chmodSync(copying, mode);
+  let copyingDescriptor;
+  try {
+    copyingDescriptor = fs.openSync(copying, 'r');
+    fs.fsyncSync(copyingDescriptor);
+  } finally {
+    if (copyingDescriptor !== undefined) fs.closeSync(copyingDescriptor);
+  }
+  assertWorktreeWrite(root, copyingRelative);
   assertWorktreeWrite(root, relative);
-  fs.renameSync(temporary, destination);
-  fsyncDirectory(path.dirname(destination));
+  renameWithRetry(copying, destination);
+  if (!installedFileMatches(expected, mode)) {
+    throw new Error(`Dex stopped because the fallback swap for ${relative} did not verify.`);
+  }
+  if (process.env.DEX_UPDATE_TEST_THROW_AFTER_FALLBACK_INSTALL === slashPath(relative)) {
+    throw new Error(`Simulated crash after fallback install for ${relative}`);
+  }
+  removeWorktreePath(root, temporaryRelative);
+  if (exists(quarantine)) removeWorktreePath(root, quarantineRelative);
+  if (exists(intent)) removeWorktreePath(root, intentRelative);
 }
 
 function removeWorktreePath(root, relative, recursive = false) {
@@ -94,16 +211,100 @@ function removeWorktreePath(root, relative, recursive = false) {
 
 function writeDirectFile(destination, content, mode = 0o600) {
   fs.mkdirSync(path.dirname(destination), { recursive: true });
+  if (exists(destination) && fs.lstatSync(destination).isSymbolicLink()) {
+    throw new Error(`Dex refused to replace symlinked metadata ${destination}.`);
+  }
   const temporary = `${destination}.writing-${process.pid}`;
+  const quarantine = `${destination}.dex-update-previous`;
+  const copying = `${destination}.dex-update-copying`;
+  const intent = `${destination}.dex-update-intent`;
   let descriptor;
   try {
     descriptor = fs.openSync(temporary, 'w', mode);
     fs.writeFileSync(descriptor, content);
+    fs.fchmodSync(descriptor, mode);
     fs.fsyncSync(descriptor);
   } finally {
     if (descriptor !== undefined) fs.closeSync(descriptor);
   }
-  fs.renameSync(temporary, destination);
+  const expected = Buffer.isBuffer(content) ? content : Buffer.from(content);
+  const expectedHash = crypto.createHash('sha256').update(expected).digest('hex');
+  const destinationMatches = () => (
+    exists(destination)
+    && !fs.lstatSync(destination).isSymbolicLink()
+    && fs.lstatSync(destination).isFile()
+    && modesCompatible(mode, fs.statSync(destination).mode & 0o777)
+    && fs.readFileSync(destination).equals(expected)
+  );
+  const readIntent = () => {
+    try {
+      const parsed = JSON.parse(fs.readFileSync(intent, 'utf8'));
+      return parsed?.sha256 && Number.isInteger(parsed.mode) ? parsed : null;
+    } catch {
+      return null;
+    }
+  };
+  const destinationMatchesIntent = (candidateIntent) => {
+    if (!candidateIntent || !exists(destination) || fs.lstatSync(destination).isSymbolicLink() || !fs.lstatSync(destination).isFile()) return false;
+    const actualHash = crypto.createHash('sha256').update(fs.readFileSync(destination)).digest('hex');
+    return actualHash === candidateIntent.sha256
+      && modesCompatible(candidateIntent.mode, fs.statSync(destination).mode & 0o777);
+  };
+  if (exists(quarantine) && !exists(destination)) {
+    renameWithRetry(quarantine, destination);
+    if (exists(intent)) fs.unlinkSync(intent);
+    if (exists(copying)) fs.unlinkSync(copying);
+  }
+  const matchesCurrentWrite = destinationMatches();
+  if (exists(quarantine) && (matchesCurrentWrite || destinationMatchesIntent(readIntent()))) {
+    fs.unlinkSync(quarantine);
+    if (exists(intent)) fs.unlinkSync(intent);
+    fsyncDirectory(path.dirname(destination));
+    if (matchesCurrentWrite) {
+      if (exists(temporary)) fs.unlinkSync(temporary);
+      return;
+    }
+  }
+  if (exists(quarantine)) {
+    throw new Error(`Dex found an ambiguous interrupted metadata swap for ${destination}. Run --resume.`);
+  }
+  if (exists(intent)) fs.unlinkSync(intent);
+  try {
+    renameWithRetry(temporary, destination);
+    if (!destinationMatches()) throw new Error(`Dex could not verify metadata ${destination}.`);
+    return;
+  } catch (error) {
+    if (!['EACCES', 'EBUSY', 'EPERM', 'EXDEV'].includes(error.code)) throw error;
+  }
+  const intentTemporary = `${intent}.writing-${process.pid}`;
+  let intentDescriptor;
+  try {
+    intentDescriptor = fs.openSync(intentTemporary, 'w', 0o600);
+    fs.writeFileSync(intentDescriptor, `${JSON.stringify({ sha256: expectedHash, mode })}\n`);
+    fs.fsyncSync(intentDescriptor);
+  } finally {
+    if (intentDescriptor !== undefined) fs.closeSync(intentDescriptor);
+  }
+  renameWithRetry(intentTemporary, intent);
+  if (exists(destination)) renameWithRetry(destination, quarantine);
+  if (exists(copying)) fs.unlinkSync(copying);
+  fs.copyFileSync(temporary, copying, fs.constants.COPYFILE_EXCL);
+  fs.chmodSync(copying, mode);
+  let copyingDescriptor;
+  try {
+    copyingDescriptor = fs.openSync(copying, 'r');
+    fs.fsyncSync(copyingDescriptor);
+  } finally {
+    if (copyingDescriptor !== undefined) fs.closeSync(copyingDescriptor);
+  }
+  renameWithRetry(copying, destination);
+  if (!destinationMatches()) throw new Error(`Dex could not verify fallback metadata ${destination}.`);
+  if (process.env.DEX_UPDATE_TEST_THROW_AFTER_DIRECT_FALLBACK === destination) {
+    throw new Error(`Simulated crash after direct fallback install for ${destination}`);
+  }
+  if (exists(temporary)) fs.unlinkSync(temporary);
+  if (exists(quarantine)) fs.unlinkSync(quarantine);
+  if (exists(intent)) fs.unlinkSync(intent);
   fsyncDirectory(path.dirname(destination));
 }
 
@@ -147,7 +348,7 @@ function brainBuffer(root, args, options = {}) {
 }
 
 function isOfficialRemote(url) {
-  return /^(?:(?:https?|ssh|git):\/\/(?:git@)?github\.com\/|git@github\.com:)davekilleen\/Dex(?:\.git)?\/?$/i.test(String(url).trim());
+  return /^(?:https:\/\/github\.com\/|ssh:\/\/git@github\.com\/|git@github\.com:)davekilleen\/Dex(?:\.git)?\/?$/i.test(String(url).trim());
 }
 
 function inspectUpdateTopology(root) {
@@ -325,13 +526,15 @@ function verifyStagedManifest(stagingRoot, expectedManifestBytes) {
 }
 
 function verifyOfficialOrigin(root) {
-  // Read the configured identity, not Git's rewritten transport URL. This keeps
-  // authentication tied to remote.origin.url while still allowing normal local
-  // insteadOf mirrors (used by offline fixtures and some managed networks).
   const urlResult = brainGit(root, ['config', '--get', 'remote.origin.url'], { allowFailure: true });
   const url = urlResult.status === 0 ? urlResult.stdout.trim() : '';
   if (!isOfficialRemote(url)) {
     throw new Error(`Dex refused the update because brain origin is not the official repository (${OFFICIAL_REMOTE}).`);
+  }
+  const effectiveResult = brainGit(root, ['remote', 'get-url', 'origin'], { allowFailure: true });
+  const effective = effectiveResult.status === 0 ? effectiveResult.stdout.trim() : '';
+  if (!isOfficialRemote(effective)) {
+    throw new Error('Dex refused the update because a local Git rule redirected the official release URL. Remove that rewrite, then try again.');
   }
   return url;
 }
@@ -351,26 +554,31 @@ function compareTags(left, right) {
   return left.localeCompare(right);
 }
 
+function selectLatestStableTag(tags) {
+  const stable = tags.filter((tag) => /^dist-v\d+\.\d+\.\d+$/.test(tag));
+  if (stable.length === 0) throw new Error('Dex could not find a stable official dist-vX.Y.Z release tag. Try again when one is published.');
+  return stable.sort(compareTags).at(-1);
+}
+
 function resolveAndFetchTarget(root, requested) {
-  verifyOfficialOrigin(root);
+  const officialUrl = verifyOfficialOrigin(root);
   let target = requested;
   if (!target) {
-    const listed = brainGit(root, ['ls-remote', '--refs', '--tags', 'origin', 'refs/tags/dist-v*']);
+    const listed = brainGit(root, ['ls-remote', '--refs', '--tags', officialUrl, 'refs/tags/dist-v*']);
     const tags = listed.stdout.split(/\r?\n/).filter(Boolean).map((line) => line.split(/\s+/)[1])
       .filter((ref) => ref?.startsWith('refs/tags/dist-v')).map((ref) => ref.slice('refs/tags/'.length));
-    if (tags.length === 0) throw new Error('Dex could not find an official dist-v release tag. Try again when you are online.');
-    target = tags.sort(compareTags).at(-1);
+    target = selectLatestStableTag(tags);
   }
   let destination;
   if (/^[a-f0-9]{40}(?:[a-f0-9]{24})?$/i.test(target)) {
     destination = `refs/dex/releases/${target.slice(0, 16)}`;
-    brainGit(root, ['fetch', '--no-tags', 'origin', `+${target}:${destination}`]);
+    brainGit(root, ['fetch', '--no-tags', officialUrl, `+${target}:${destination}`]);
   } else {
     if (!/^dist-v[0-9A-Za-z.+-]+$/.test(target)) {
       throw new Error('Update targets must be an official dist-v tag or full commit OID.');
     }
     destination = `refs/dex/releases/${target}`;
-    brainGit(root, ['fetch', '--no-tags', 'origin', `+refs/tags/${target}:${destination}`]);
+    brainGit(root, ['fetch', '--no-tags', officialUrl, `+refs/tags/${target}:${destination}`]);
   }
   const oid = brainOutput(root, ['rev-parse', '--verify', `${destination}^{commit}`]);
   if (/^[a-f0-9]{40}(?:[a-f0-9]{24})?$/i.test(target) && oid.toLowerCase() !== target.toLowerCase()) {
@@ -531,6 +739,9 @@ function swapBrainFiles(root, state) {
     if (complete.has(relative)) continue;
     beforeMutation(root, state, `replace brain file ${relative}`);
     copyStagedFile(root, state, relative);
+    if (process.env.DEX_UPDATE_TEST_SIGKILL_AFTER_MUTATION === `replace brain file ${relative}`) {
+      process.kill(process.pid, 'SIGKILL');
+    }
     state.swapped.push(relative);
     afterMutation(root, state);
     if (stopAfter > 0 && state.swapped.length >= stopAfter) {
@@ -945,7 +1156,12 @@ module.exports = {
   inspectUpdateTopology,
   isOfficialRemote,
   main,
+  modesCompatible,
+  selectLatestStableTag,
   verifyStagedManifest,
+  verifyOfficialOrigin,
+  writeWorktreeFile,
+  writeDirectFile,
 };
 
 if (require.main === module) process.exitCode = main();
