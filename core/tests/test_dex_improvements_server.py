@@ -187,13 +187,6 @@ def test_queue_insertion_keeps_descending_score_order_within_band(
     )
 
 
-@pytest.mark.xfail(
-    reason=(
-        "BUG: mark_idea_implemented appends the implementation suffix to the "
-        "stored title, so parsing the archive no longer round-trips the title"
-    ),
-    strict=False,
-)
 def test_mark_implemented_moves_idea_to_archive_without_changing_title(
     backlog_file: Path,
 ):

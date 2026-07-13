@@ -847,7 +847,10 @@ def mark_idea_implemented(idea_id: str, implementation_date: Optional[str] = Non
     
     # Create archive entry
     impl_date = implementation_date or datetime.now().strftime('%Y-%m-%d')
-    archive_entry = f"- **[{idea_id}]** {idea['title']} - *Implemented: {impl_date}*\n"
+    archive_entry = (
+        f"- **[{idea_id}]** {idea['title']}\n"
+        f"  - **Implemented:** {impl_date}\n"
+    )
     
     # Add to archive section
     archive_pattern = r'(## Archive \(Implemented\)\s*\n(?:\s*\*.*?\*\s*\n)?)'
