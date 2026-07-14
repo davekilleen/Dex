@@ -7,6 +7,19 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.61.0] - Internal beta build pipeline and immutable release identities (2026-07-14)
+
+Beta-channel build pipeline (internal): CI can now produce a `release-beta` build and every release gets an immutable tag; no user-visible change yet.
+
+**What this changes today:**
+
+* **Stable builds keep their existing path.** Pushes to `main` still produce the stripped `release` branch and the normal versioned GitHub Release.
+* **Beta builds are ready internally.** Once a `beta` source branch exists, pushes to it can produce `release-beta` with the same stripping and installed-files manifest as stable, without creating a GitHub Release or changing which release is latest.
+* **Every built distribution has a permanent identity.** An annotated tag points to the exact release commit and its manifest, so a later rollback update can find historical release contents even after a release branch is rebuilt.
+* **Beta is not user-selectable yet.** Update, rollback, and channel-switching behavior is unchanged and will ship separately.
+
+---
+
 ## [1.60.0] - Groundwork for opt-in beta updates, with no user-visible change yet (2026-07-13)
 
 Dex now has the internal release-channel plumbing needed for a future opt-in beta. The health check understands which release line an installation belongs to, so future beta users will not get false "couldn't verify" warnings from being compared with stable code.
