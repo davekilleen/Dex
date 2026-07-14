@@ -50,7 +50,14 @@ SENSITIVE_CONFIG_KEY = re.compile(
     re.IGNORECASE,
 )
 SAFE_PATH = "/usr/bin:/bin:/usr/sbin:/sbin"
+STARTUP_PATH = os.environ.get("PATH", os.defpath)
 TRUSTED_GIT_CANDIDATES = (Path("/usr/bin/git"), Path("/bin/git"))
+TRUSTED_NODE_CANDIDATES = (
+    Path("/usr/bin/node"),
+    Path("/usr/local/bin/node"),
+    Path("/opt/homebrew/bin/node"),
+    Path.home() / ".hermes" / "node" / "bin" / "node",
+)
 RUNNER_FALLBACK_RELATIVES = (
     Path("core/__init__.py"),
     Path("core/paths.py"),
@@ -77,16 +84,74 @@ def _trusted_git() -> str | None:
     return None
 
 
-def _trusted_node() -> str | None:
-    candidates = (
-        Path("/usr/bin/node"),
-        Path("/usr/local/bin/node"),
-        Path("/opt/homebrew/bin/node"),
-        Path.home() / ".hermes" / "node" / "bin" / "node",
+def _parent_process_node_candidates() -> tuple[Path, ...]:
+    """Return absolute Node executables found in the current process ancestry."""
+    candidates = []
+    process_id = os.getppid()
+    seen_processes = set()
+    while process_id > 1 and process_id not in seen_processes:
+        seen_processes.add(process_id)
+        proc_root = Path("/proc") / str(process_id)
+        try:
+            executable = proc_root.joinpath("exe").resolve(strict=True)
+            stat_fields = (
+                proc_root.joinpath("stat")
+                .read_text(encoding="utf-8")
+                .rsplit(")", 1)[1]
+                .split()
+            )
+            parent_id = int(stat_fields[1])
+        except (FileNotFoundError, OSError, RuntimeError, ValueError, IndexError):
+            try:
+                result = subprocess.run(
+                    ["/bin/ps", "-p", str(process_id), "-o", "ppid=", "-o", "comm="],
+                    capture_output=True,
+                    text=True,
+                    timeout=1,
+                    check=False,
+                )
+                fields = result.stdout.strip().split(maxsplit=1)
+                parent_id = int(fields[0])
+                executable = Path(fields[1]) if len(fields) == 2 else Path()
+            except (OSError, subprocess.TimeoutExpired, ValueError, IndexError):
+                break
+        if executable.is_absolute() and executable.name in {"node", "nodejs"}:
+            candidates.append(executable)
+        process_id = parent_id
+    return tuple(candidates)
+
+
+def _node_candidates() -> Iterator[Path]:
+    discovered = shutil.which("node", path=STARTUP_PATH)
+    if discovered:
+        yield Path(discovered)
+    yield from _parent_process_node_candidates()
+    yield from TRUSTED_NODE_CANDIDATES
+
+
+def _trusted_node(
+    vault_root: Path | None = None,
+    repo_root: Path | None = None,
+) -> str | None:
+    protected_roots = tuple(
+        root.resolve()
+        for root in (vault_root, repo_root)
+        if root is not None
     )
-    for candidate in candidates:
-        if not candidate.is_symlink() and candidate.is_file() and os.access(candidate, os.X_OK):
-            return str(candidate)
+    seen = set()
+    for candidate in _node_candidates():
+        try:
+            resolved = candidate.resolve(strict=True)
+            target_stat = resolved.stat()
+        except (FileNotFoundError, OSError, RuntimeError):
+            continue
+        if resolved in seen:
+            continue
+        seen.add(resolved)
+        if any(resolved.is_relative_to(root) for root in protected_roots):
+            continue
+        if stat.S_ISREG(target_stat.st_mode) and os.access(resolved, os.X_OK):
+            return str(resolved)
     return None
 
 
@@ -1056,6 +1121,9 @@ def _clean_environment(
     runner_root: Path,
     temporary_root: Path,
     run_token: str,
+    *,
+    source_root: Path,
+    repo_root: Path,
 ) -> dict[str, str]:
     guard = _install_network_guard(temporary_root)
     git_wrapper = _install_update_git_wrapper(temporary_root)
@@ -1081,7 +1149,11 @@ def _clean_environment(
         "DEX_UPDATE_PYTHON": sys.executable,
         "DEX_REAL_GIT": trusted_git,
         "DEX_UPDATE_FIXTURE_REMOTE": str(temporary_root / "update-release-work"),
-        **({"DEX_SMOKE_NODE": node} if (node := _trusted_node()) is not None else {}),
+        **(
+            {"DEX_SMOKE_NODE": node}
+            if (node := _trusted_node(source_root, repo_root)) is not None
+            else {}
+        ),
     }
 
 
@@ -1343,6 +1415,8 @@ def _run_smoke_journeys(
                         runner_root,
                         temporary_root,
                         run_token,
+                        source_root=source,
+                        repo_root=repository,
                     )
                     preparation_budget = min(
                         definition.timeout_seconds - (time.monotonic() - journey_started),
@@ -2155,7 +2229,7 @@ def _journey_hooks(vault: Path, _repo_root: Path) -> dict[str, str]:
 
 
 def _journey_update_boundary(vault: Path, _release_root: Path) -> dict[str, str]:
-    node = os.environ.get("DEX_SMOKE_NODE") or _trusted_node()
+    node = os.environ.get("DEX_SMOKE_NODE") or _trusted_node(vault, RUNNER_ROOT)
     if not node:
         return {"verdict": "UNKNOWN", "detail": "trusted Node.js is unavailable for the update-boundary journey"}
     para = vault / "04-Projects" / "private.md"
@@ -2169,7 +2243,7 @@ def _journey_update_boundary(vault: Path, _release_root: Path) -> dict[str, str]
         capture_output=True,
         text=True,
         env=os.environ.copy(),
-        timeout=12,
+        timeout=24,
         check=False,
     )
     if result.returncode != 0:

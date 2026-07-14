@@ -9,6 +9,7 @@ import shutil
 import stat
 import subprocess
 import sys
+import tempfile
 import time
 from pathlib import Path
 
@@ -130,6 +131,58 @@ def _release_repo(tmp_path: Path, *, release_validators: str | None = None) -> P
             check=True,
         )
     return repo
+
+
+def test_trusted_node_resolves_symlinked_path_candidate(monkeypatch) -> None:
+    with tempfile.TemporaryDirectory(
+        prefix="dex-smoke-node-",
+        dir=tempfile.gettempdir(),
+    ) as temporary:
+        temporary_root = Path(temporary)
+        real_node = temporary_root / "node-real"
+        real_node.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+        real_node.chmod(0o755)
+        resolved_node = real_node.resolve()
+        linked_node = temporary_root / "node"
+        linked_node.symlink_to(real_node)
+        monkeypatch.setattr(
+            smoke.shutil,
+            "which",
+            lambda _executable, *, path: str(linked_node),
+        )
+        monkeypatch.setattr(smoke, "_parent_process_node_candidates", lambda: ())
+        monkeypatch.setattr(smoke, "TRUSTED_NODE_CANDIDATES", ())
+
+        assert smoke._trusted_node() == str(resolved_node)
+
+
+def test_trusted_node_rejects_path_candidate_inside_protected_roots(monkeypatch) -> None:
+    with tempfile.TemporaryDirectory(
+        prefix="dex-smoke-untrusted-node-",
+        dir=tempfile.gettempdir(),
+    ) as temporary:
+        temporary_root = Path(temporary).resolve()
+        vault = temporary_root / "vault"
+        repo = temporary_root / "repo"
+        vault.mkdir()
+        repo.mkdir()
+        monkeypatch.setattr(smoke, "_parent_process_node_candidates", lambda: ())
+        monkeypatch.setattr(smoke, "TRUSTED_NODE_CANDIDATES", ())
+
+        for protected_root in (vault, repo):
+            real_node = protected_root / "bin" / "node-real"
+            real_node.parent.mkdir()
+            real_node.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+            real_node.chmod(0o755)
+            linked_node = temporary_root / f"{protected_root.name}-node"
+            linked_node.symlink_to(real_node)
+            monkeypatch.setattr(
+                smoke.shutil,
+                "which",
+                lambda _executable, *, path: str(linked_node),
+            )
+
+            assert smoke._trusted_node(vault_root=vault, repo_root=repo) is None
 
 
 def test_report_schema_exit_zero_and_no_live_write(tmp_path: Path) -> None:
