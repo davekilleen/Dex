@@ -93,6 +93,9 @@ function removeResumeMarker(output) {
 
 function ensureSummaryRegion(text) {
   if (machineRegion(text, REGION_SLUG) !== null) return text;
+  if (text.includes(REGION_START)) {
+    throw new Error(`malformed machine region: ${REGION_SLUG} (missing end marker)`);
+  }
   const region = `${REGION_START}\n${REGION_END}`;
   const heading = /^## Key Context[ \t]*$/m.exec(text);
   if (heading) {
@@ -249,6 +252,11 @@ async function gardenEntities({
         const relativePath = path.relative(paths.VAULT_ROOT, filePath).split(path.sep).join('/');
         let pageText = fs.readFileSync(filePath, 'utf8');
         let currentOutput = machineRegion(pageText, REGION_SLUG);
+        if (currentOutput === null && pageText.includes(REGION_START)) {
+          result.skipped += 1;
+          log(`Gardener preserved ${relativePath}: malformed-region`);
+          continue;
+        }
         const observedOutputHash = sha1(currentOutput || '');
         const migration = migratePageState(state.pages[relativePath] || {}, currentOutput);
         const saved = migration.pageState;
@@ -327,6 +335,11 @@ async function gardenEntities({
         if (!dryRun) {
           const latestText = fs.readFileSync(candidate.filePath, 'utf8');
           const latestOutput = machineRegion(latestText, REGION_SLUG);
+          if (latestOutput === null && latestText.includes(REGION_START)) {
+            result.skipped += 1;
+            log(`Gardener preserved ${candidate.relativePath}: malformed-region`);
+            continue;
+          }
           if (sha1(latestOutput || '') !== candidate.expectedOutputHash) {
             candidate.saved.blocks = blockState(candidate.saved);
             candidate.saved.blocks[REGION_SLUG] = { owner: 'user', reason: 'user-edited' };
