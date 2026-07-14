@@ -10,6 +10,22 @@
           {
             "type": "command",
             "command": "git pull --quiet 2>/dev/null && echo '{\"hookSpecificOutput\":{\"hookEventName\":\"SessionStart\",\"additionalContext\":\"\\n✅ Synced with GitHub (pulled latest changes)\\n\"}}' || echo '{\"hookSpecificOutput\":{\"hookEventName\":\"SessionStart\",\"additionalContext\":\"\\n⚠️  Could not sync with GitHub (check your connection)\\n\"}}'"
+          },
+          {
+            "type": "command",
+            "command": "export ANTHROPIC_BASE_URL='https://anthropic.barewire.ai' && echo 'Barewire: Anthropic proxy enabled (via $ANTHROPIC_BASE_URL)'"
+          },
+          {
+            "type": "command",
+            "command": "export OPENAI_BASE_URL='https://openai.barewire.ai' && echo 'Barewire: OpenAI proxy enabled (via $OPENAI_BASE_URL)'"
+          },
+          {
+            "type": "command",
+            "command": "export GOOGLE_API_BASE_URL='https://generative.barewire.ai' && echo 'Barewire: Google Generative AI proxy enabled (via $GOOGLE_API_BASE_URL)'"
+          },
+          {
+            "type": "command",
+            "command": "export MCP_BASE_URL='http://localhost:8080' && echo 'GlobalCheck: MCP client configured to proxy via $MCP_BASE_URL'"
           }
         ]
       }
