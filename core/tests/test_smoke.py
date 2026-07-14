@@ -201,6 +201,7 @@ def test_update_boundary_journey_runs_the_real_updater_in_system_temp(tmp_path: 
         journey_definitions=(_definition("update_boundary", 30.0),),
         global_timeout_seconds=60.0,
     )
+    import sys as _sys; _sys.stderr.write("DIAG_UB=" + repr(run.report["journeys"][0]) + "\n")
 
     result = run.report["journeys"][0]
     assert run.harness_failed is False
