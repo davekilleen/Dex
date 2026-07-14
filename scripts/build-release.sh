@@ -173,12 +173,21 @@ EOF
 )" --quiet
 
 RELEASE_SHA=$(git rev-parse --short HEAD)
+# Immutable rollback identity: every distribution commit gets an annotated tag
+# scoped by target branch, dist/<target>/v<version>-<release-short-sha>.
+RELEASE_TAG="dist/$RELEASE_BRANCH/v$PKG_VERSION-$RELEASE_SHA"
+if git show-ref --verify --quiet "refs/tags/$RELEASE_TAG"; then
+    echo "Error: immutable release tag '$RELEASE_TAG' already exists." >&2
+    exit 1
+fi
+git tag -a "$RELEASE_TAG" -m "Dex $RELEASE_BRANCH v$PKG_VERSION ($RELEASE_SHA)"
 
 echo "Done! Release branch built:"
 echo "  Branch: $RELEASE_BRANCH ($RELEASE_SHA)"
+echo "  Tag: $RELEASE_TAG"
 echo "  Removed: $REMOVED dev-only files"
 echo ""
-echo "To publish: git push origin $RELEASE_BRANCH"
+echo "To publish: git push origin $RELEASE_BRANCH && git push origin $RELEASE_TAG"
 
 # Return to previous branch
 git checkout - --quiet

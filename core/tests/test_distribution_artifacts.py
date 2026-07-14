@@ -232,6 +232,28 @@ def test_beta_release_branch_uses_same_stripping_and_manifest(tmp_path: Path) ->
     assert not any(path.startswith("core/tests/") for path in beta_members)
     assert not any(path.startswith("scripts/") for path in beta_members)
     assert set(_release_manifest(clone, "release-beta")) == beta_members
+    beta_version = json.loads((clone / "package.json").read_text(encoding="utf-8"))["version"]
+    beta_short_sha = subprocess.run(
+        ["git", "rev-parse", "--short", "release-beta"],
+        cwd=clone,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    beta_tag = f"dist/release-beta/v{beta_version}-{beta_short_sha}"
+    assert subprocess.run(
+        ["git", "rev-parse", f"{beta_tag}^{{}}"],
+        cwd=clone,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip() == subprocess.run(
+        ["git", "rev-parse", "release-beta"],
+        cwd=clone,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
 
 
 def test_release_build_rejects_invalid_source_and_target_branches(tmp_path: Path) -> None:
@@ -255,6 +277,85 @@ def test_release_build_rejects_invalid_source_and_target_branches(tmp_path: Path
     assert "source and target branches must differ" in same_branch.stderr
     assert missing_source.returncode == 1
     assert "branch 'not-a-branch' not found" in missing_source.stderr
+
+
+def test_release_build_creates_immutable_versioned_tags(tmp_path: Path) -> None:
+    clone, _ = _build_release_in_clone(tmp_path, name="immutable-release-tags")
+    version = json.loads((clone / "package.json").read_text(encoding="utf-8"))["version"]
+    first_release_sha = subprocess.run(
+        ["git", "rev-parse", "release"],
+        cwd=clone,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    first_short_sha = subprocess.run(
+        ["git", "rev-parse", "--short", "release"],
+        cwd=clone,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    first_tag = f"dist/release/v{version}-{first_short_sha}"
+
+    assert subprocess.run(
+        ["git", "cat-file", "-t", first_tag],
+        cwd=clone,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip() == "tag"
+    assert subprocess.run(
+        ["git", "rev-parse", f"{first_tag}^{{}}"],
+        cwd=clone,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip() == first_release_sha
+    assert _release_manifest(clone, first_tag)
+
+    package_path = clone / "package.json"
+    package = json.loads(package_path.read_text(encoding="utf-8"))
+    package["version"] = "99.0.0"
+    package_path.write_text(json.dumps(package, indent=2) + "\n", encoding="utf-8")
+    subprocess.run(["git", "add", "package.json"], cwd=clone, check=True)
+    subprocess.run(
+        ["git", "commit", "--quiet", "-m", "test: bump release version"],
+        cwd=clone,
+        check=True,
+    )
+    subprocess.run(
+        ["bash", "scripts/build-release.sh"],
+        cwd=clone,
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+
+    second_short_sha = subprocess.run(
+        ["git", "rev-parse", "--short", "release"],
+        cwd=clone,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    second_tag = f"dist/release/v99.0.0-{second_short_sha}"
+    assert second_tag != first_tag
+    assert subprocess.run(
+        ["git", "rev-parse", f"{first_tag}^{{}}"],
+        cwd=clone,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip() == first_release_sha
+    assert subprocess.run(
+        ["git", "rev-parse", f"{second_tag}^{{}}"],
+        cwd=clone,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip() != first_release_sha
 
 
 def test_distribution_check_rejects_enabled_integration_templates(tmp_path: Path) -> None:

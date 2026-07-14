@@ -144,8 +144,14 @@ jobs:
         run: |
           bash scripts/build-release.sh
           echo "release_sha=$(git rev-parse release)" >> "$GITHUB_OUTPUT"
-      - name: Push release branch
-        run: git push origin release --force
+          VERSION="$(node -p "require('./package.json').version")"
+          RELEASE_TAG="dist/release/v${VERSION}-$(git rev-parse --short release)"
+          git rev-parse --verify "refs/tags/$RELEASE_TAG"
+          echo "release_tag=$RELEASE_TAG" >> "$GITHUB_OUTPUT"
+      - name: Push release branch and immutable tag
+        run: |
+          git push origin release --force
+          git push origin "${{ steps.release_build.outputs.release_tag }}"
       - name: Build self-contained vault bundle
         run: bash scripts/build-vault-bundle.sh
       - name: Upload vault bundle to versioned GitHub Release
