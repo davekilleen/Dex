@@ -10,6 +10,8 @@ import sys
 import tarfile
 from pathlib import Path
 
+import yaml
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
 RELEASE_BUILD_INPUTS = (
@@ -356,6 +358,19 @@ def test_release_build_creates_immutable_versioned_tags(tmp_path: Path) -> None:
         capture_output=True,
         text=True,
     ).stdout.strip() != first_release_sha
+
+
+def test_beta_release_ci_builds_branch_and_tag_without_github_release() -> None:
+    workflow = yaml.safe_load((REPO_ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8"))
+    beta_job = workflow["jobs"]["build-release-beta"]
+    beta_commands = "\n".join(step.get("run", "") for step in beta_job["steps"])
+
+    assert beta_job["if"] == "github.ref == 'refs/heads/beta' && github.event_name == 'push'"
+    assert beta_job["permissions"] == {"contents": "write"}
+    assert "bash scripts/build-release.sh --source beta --target release-beta" in beta_commands
+    assert "git push origin release-beta --force" in beta_commands
+    assert "git push origin \"${{ steps.release_build.outputs.release_tag }}\"" in beta_commands
+    assert "gh release" not in beta_commands
 
 
 def test_distribution_check_rejects_enabled_integration_templates(tmp_path: Path) -> None:

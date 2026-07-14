@@ -173,6 +173,37 @@ jobs:
             "dist/dex-vault-bundle-v$VERSION.tar.gz.sha256" \
             --clobber
 
+  build-release-beta:
+    needs: quality
+    if: github.ref == 'refs/heads/beta' && github.event_name == 'push'
+    runs-on: macos-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - run: npm ci
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+      - name: Build beta release branch
+        id: release_build
+        run: |
+          bash scripts/build-release.sh --source beta --target release-beta
+          VERSION="$(node -p "require('./package.json').version")"
+          RELEASE_TAG="dist/release-beta/v${VERSION}-$(git rev-parse --short release-beta)"
+          git rev-parse --verify "refs/tags/$RELEASE_TAG"
+          echo "release_tag=$RELEASE_TAG" >> "$GITHUB_OUTPUT"
+      - name: Push beta release branch and immutable tag
+        run: |
+          git push origin release-beta --force
+          git push origin "${{ steps.release_build.outputs.release_tag }}"
+
   deploy-health:
     needs: [quality, build-release]
     if: github.ref == 'refs/heads/main' && github.event_name == 'push' && needs.quality.result == 'success' && needs['build-release'].result == 'success'
