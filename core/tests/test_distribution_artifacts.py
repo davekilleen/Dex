@@ -360,7 +360,7 @@ def test_release_build_creates_immutable_versioned_tags(tmp_path: Path) -> None:
     ).stdout.strip() != first_release_sha
 
 
-def test_beta_release_ci_builds_branch_and_tag_without_github_release() -> None:
+def test_beta_release_ci_builds_branch_and_tag() -> None:
     workflow = yaml.safe_load((REPO_ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8"))
     beta_job = workflow["jobs"]["build-release-beta"]
     beta_commands = "\n".join(step.get("run", "") for step in beta_job["steps"])
@@ -370,7 +370,35 @@ def test_beta_release_ci_builds_branch_and_tag_without_github_release() -> None:
     assert "bash scripts/build-release.sh --source beta --target release-beta" in beta_commands
     assert "git push origin release-beta --force" in beta_commands
     assert "git push origin \"${{ steps.release_build.outputs.release_tag }}\"" in beta_commands
-    assert "gh release" not in beta_commands
+
+
+def test_beta_release_ci_publishes_vault_bundle_only_as_prerelease() -> None:
+    """The beta lane may publish a GitHub release, but only ever as a --prerelease,
+    and must never be able to clobber a stable (non-prerelease) release asset."""
+    workflow = yaml.safe_load((REPO_ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8"))
+    beta_job = workflow["jobs"]["build-release-beta"]
+    beta_commands = "\n".join(step.get("run", "") for step in beta_job["steps"])
+
+    # It builds the same self-contained bundle the stable lane ships.
+    assert "bash scripts/build-vault-bundle.sh" in beta_commands
+    assert "dist/dex-vault-bundle-v$VERSION.tar.gz" in beta_commands
+
+    # Every release creation from the beta lane is a prerelease (keeps it off "latest").
+    assert "gh release create" in beta_commands
+    assert "--prerelease" in beta_commands
+
+    # Guard 1: refuse a non-prerelease (bare X.Y.Z) version so the beta lane can never
+    # target a stable release tag.
+    assert "X.Y.Z-<pre>" in beta_commands or "is not a prerelease" in beta_commands
+    # Guard 2: before clobbering an existing tag, assert it is already a prerelease.
+    assert "isPrerelease" in beta_commands
+    assert "will not clobber it" in beta_commands
+
+    # And the stable lane's own publish must remain a normal (non-prerelease) release.
+    stable_job = workflow["jobs"]["build-release"]
+    stable_commands = "\n".join(step.get("run", "") for step in stable_job["steps"])
+    assert "gh release create" in stable_commands
+    assert "--prerelease" not in stable_commands
 
 
 def test_distribution_check_rejects_enabled_integration_templates(tmp_path: Path) -> None:
