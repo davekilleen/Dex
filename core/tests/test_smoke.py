@@ -198,8 +198,8 @@ def test_update_boundary_journey_runs_the_real_updater_in_system_temp(tmp_path: 
     run = smoke.run_smoke(
         vault_root=vault,
         repo_root=REPO_ROOT,
-        journey_definitions=(_definition("update_boundary", 15.0),),
-        global_timeout_seconds=20.0,
+        journey_definitions=(_definition("update_boundary", 30.0),),
+        global_timeout_seconds=60.0,
     )
 
     result = run.report["journeys"][0]

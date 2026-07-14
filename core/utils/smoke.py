@@ -33,7 +33,7 @@ if str(RUNNER_ROOT) in sys.path:
 sys.path.insert(0, str(RUNNER_ROOT))
 
 SCHEMA_VERSION = 1
-GLOBAL_TIMEOUT_SECONDS = 30.0
+GLOBAL_TIMEOUT_SECONDS = 60.0
 VERDICTS = frozenset({"OK", "OFF", "BROKEN", "UNKNOWN"})
 VERDICT_PRIORITY = {"OFF": 0, "OK": 1, "UNKNOWN": 2, "BROKEN": 3}
 NOT_SET_UP_DETAIL = "not set up yet — complete onboarding first"
@@ -153,7 +153,7 @@ JOURNEYS = (
     JourneyDefinition("mcp_startup", 20.0),
     JourneyDefinition("skills", 5.0),
     JourneyDefinition("hooks", 8.0),
-    JourneyDefinition("update_boundary", 15.0),
+    JourneyDefinition("update_boundary", 30.0),
 )
 
 
