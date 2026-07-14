@@ -72,18 +72,24 @@ def _clone_repo(tmp_path: Path, name: str) -> Path:
     return clone
 
 
-def _build_release_in_clone(tmp_path: Path) -> tuple[Path, set[str]]:
+def _build_release_in_clone(
+    tmp_path: Path,
+    *,
+    source: str = "main",
+    target: str = "release",
+    name: str = "release-build",
+) -> tuple[Path, set[str]]:
     """Build from the current checkout without ever switching its branches."""
-    clone = _clone_repo(tmp_path, "release-build")
+    clone = _clone_repo(tmp_path, name)
     subprocess.run(["git", "checkout", "-B", "main", "HEAD"], cwd=clone, check=True, capture_output=True)
 
     # Let this test prove uncommitted changes while developing; once committed,
     # these copies are identical to the clone's files.
     for relative_path in RELEASE_BUILD_INPUTS:
-        source = REPO_ROOT / relative_path
+        file_source = REPO_ROOT / relative_path
         destination = clone / relative_path
         destination.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(source, destination)
+        shutil.copy2(file_source, destination)
 
     spaced_fixture = clone / "core/tests/fixtures/vault/has space.md"
     spaced_fixture.write_text("release stripping regression\n", encoding="utf-8")
@@ -98,8 +104,13 @@ def _build_release_in_clone(tmp_path: Path) -> tuple[Path, set[str]]:
         check=True,
     )
 
+    command = ["bash", "scripts/build-release.sh"]
+    if (source, target) != ("main", "release"):
+        subprocess.run(["git", "branch", source, "main"], cwd=clone, check=True)
+        command.extend(["--source", source, "--target", target])
+
     subprocess.run(
-        ["bash", "scripts/build-release.sh"],
+        command,
         cwd=clone,
         check=True,
         capture_output=True,
@@ -107,13 +118,23 @@ def _build_release_in_clone(tmp_path: Path) -> tuple[Path, set[str]]:
         timeout=60,
     )
     result = subprocess.run(
-        ["git", "ls-tree", "-r", "--name-only", "release"],
+        ["git", "ls-tree", "-r", "--name-only", target],
         cwd=clone,
         check=True,
         capture_output=True,
         text=True,
     )
     return clone, set(result.stdout.splitlines())
+
+
+def _release_manifest(clone: Path, branch: str) -> list[str]:
+    return subprocess.run(
+        ["git", "show", f"{branch}:System/.installed-files.manifest"],
+        cwd=clone,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.splitlines()
 
 
 def test_release_branch_strips_dev_files_and_keeps_user_runtime(tmp_path: Path) -> None:
@@ -141,13 +162,7 @@ def test_release_branch_strips_dev_files_and_keeps_user_runtime(tmp_path: Path) 
     assert ".claude/skills/anthropic-docx/scripts/document.py" in members
     assert "System/.installed-files.manifest" in members
 
-    manifest = subprocess.run(
-        ["git", "show", "release:System/.installed-files.manifest"],
-        cwd=clone,
-        check=True,
-        capture_output=True,
-        text=True,
-    ).stdout.splitlines()
+    manifest = _release_manifest(clone, "release")
     assert manifest == sorted(manifest)
     assert set(manifest) == members
     assert "core/tests/test_distribution_artifacts.py" not in manifest
@@ -203,6 +218,43 @@ def test_release_branch_strips_dev_files_and_keeps_user_runtime(tmp_path: Path) 
     )
     assert "test:hooks" not in package_json.get("scripts", {})
     assert "test:scripts" not in package_json.get("scripts", {})
+
+
+def test_beta_release_branch_uses_same_stripping_and_manifest(tmp_path: Path) -> None:
+    clone, beta_members = _build_release_in_clone(
+        tmp_path,
+        source="beta",
+        target="release-beta",
+        name="beta-release-build",
+    )
+
+    assert "System/.installed-files.manifest" in beta_members
+    assert not any(path.startswith("core/tests/") for path in beta_members)
+    assert not any(path.startswith("scripts/") for path in beta_members)
+    assert set(_release_manifest(clone, "release-beta")) == beta_members
+
+
+def test_release_build_rejects_invalid_source_and_target_branches(tmp_path: Path) -> None:
+    clone = _clone_repo(tmp_path, "release-build-guards")
+    subprocess.run(["git", "checkout", "-B", "main", "HEAD"], cwd=clone, check=True)
+
+    same_branch = subprocess.run(
+        ["bash", "scripts/build-release.sh", "--source", "main", "--target", "main"],
+        cwd=clone,
+        capture_output=True,
+        text=True,
+    )
+    missing_source = subprocess.run(
+        ["bash", "scripts/build-release.sh", "--source", "not-a-branch"],
+        cwd=clone,
+        capture_output=True,
+        text=True,
+    )
+
+    assert same_branch.returncode == 1
+    assert "source and target branches must differ" in same_branch.stderr
+    assert missing_source.returncode == 1
+    assert "branch 'not-a-branch' not found" in missing_source.stderr
 
 
 def test_distribution_check_rejects_enabled_integration_templates(tmp_path: Path) -> None:

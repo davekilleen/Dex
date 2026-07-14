@@ -4,6 +4,7 @@
 # Usage:
 #   ./scripts/build-release.sh          # Build from current main HEAD
 #   ./scripts/build-release.sh --dry-run # Show what would be removed
+#   ./scripts/build-release.sh --source beta --target release-beta
 #
 # This reads .distignore and produces a 'release' branch with dev-only
 # files stripped out. Users pull from this branch via /dex-update.
@@ -14,10 +15,37 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 cd "$REPO_ROOT"
 
+SOURCE_BRANCH="${DEX_RELEASE_SOURCE:-main}"
+RELEASE_BRANCH="${DEX_RELEASE_TARGET:-release}"
 DRY_RUN=false
-if [ "${1:-}" = "--dry-run" ]; then
-    DRY_RUN=true
-fi
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        --dry-run)
+            DRY_RUN=true
+            shift
+            ;;
+        --source)
+            if [ "$#" -lt 2 ] || [ -z "$2" ]; then
+                echo "Error: --source requires a branch name." >&2
+                exit 1
+            fi
+            SOURCE_BRANCH="$2"
+            shift 2
+            ;;
+        --target)
+            if [ "$#" -lt 2 ] || [ -z "$2" ]; then
+                echo "Error: --target requires a branch name." >&2
+                exit 1
+            fi
+            RELEASE_BRANCH="$2"
+            shift 2
+            ;;
+        *)
+            echo "Error: unknown argument '$1'." >&2
+            exit 1
+            ;;
+    esac
+done
 
 # --- Validate state ---
 
@@ -27,17 +55,19 @@ if [ ! -f "$DISTIGNORE" ]; then
     exit 1
 fi
 
-SOURCE_BRANCH="main"
-RELEASE_BRANCH="release"
-
 # Ensure we're working from a clean state
 if [ -n "$(git status --porcelain)" ]; then
     echo "Error: working tree is dirty. Commit or stash changes first." >&2
     exit 1
 fi
 
+if [ "$SOURCE_BRANCH" = "$RELEASE_BRANCH" ]; then
+    echo "Error: source and target branches must differ ('$SOURCE_BRANCH')." >&2
+    exit 1
+fi
+
 # Ensure source branch exists
-if ! git rev-parse --verify "$SOURCE_BRANCH" >/dev/null 2>&1; then
+if ! git show-ref --verify --quiet "refs/heads/$SOURCE_BRANCH"; then
     echo "Error: branch '$SOURCE_BRANCH' not found." >&2
     exit 1
 fi
@@ -86,7 +116,7 @@ echo "  Source: $SOURCE_BRANCH ($SOURCE_SHA)"
 echo "  Version: v$PKG_VERSION"
 echo ""
 
-# Create or reset release branch to match main
+# Create or reset release branch to match the selected source
 git checkout -B "$RELEASE_BRANCH" "$SOURCE_BRANCH" --quiet
 
 # Remove dev-only files
