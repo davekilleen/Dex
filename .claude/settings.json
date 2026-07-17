@@ -48,6 +48,11 @@
           {
             "type": "command",
             "command": "afplay /System/Library/Sounds/Ping.aiff"
+          },
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/learning-heartbeat.cjs",
+            "statusMessage": "Checking for session learnings worth capturing..."
           }
         ]
       }

@@ -15,12 +15,17 @@
 ## Dex Session Memory (learning-heartbeat)
 **Owns:** Operational decisions, commitments, work patterns, system learnings
 **Examples:** "Agreed to deliver DACH deck by Friday", "Meeting-prep skill needs more account context"
-**How it works today:** Not yet automatic. `SessionEnd` only logs a timestamp/transcript
-pointer to `System/Session_Learnings/`; actual extraction (mistakes, preferences, doc gaps)
-runs as an LLM-reasoning step inside `/review` and `/daily-review`, and only fires when one
-of those is run to completion. A hook alone can't do the judgment call — see
-`Background_Processing_Guide.md` for the planned Stop-hook automation that would close this
-gap and make "learning-heartbeat" live up to its name.
+**How it works:** `.claude/hooks/learning-heartbeat.cjs` (a `Stop` hook) blocks once per
+session per day, when the session looks substantive (>=3 user turns or >=8 tool calls),
+forcing one extra turn where Claude reflects on the session and writes conforming entries
+to `System/Session_Learnings/YYYY-MM-DD.md` using the template in that folder's `README.md`.
+A hook script can't do the judgment call itself — it forces the live session to do it.
+Confirmed safe to run alongside other `Stop` hooks that also use `decision:block` (Claude
+Code surfaces every hook's reason rather than dropping one when multiple fire on the same
+event). Opt-out:
+`System/user-profile.yaml` -> `learning_heartbeat.enabled: false`. `/review` and
+`/daily-review` still work as manual triggers too — the hook just removes the dependency on
+remembering to run them.
 **Dex action:** Filter for operational only (WP-2.1).
 
 ## Dex Vault Search (QMD)

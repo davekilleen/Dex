@@ -8,7 +8,7 @@ System improvements discovered during work sessions.
 
 ## What Goes Here
 
-Meta-feedback about Dex itself, captured during `/review` or `/daily-review`:
+Meta-feedback about Dex itself, captured automatically or during `/review`/`/daily-review`:
 
 - **Mistakes or corrections** — Things that went wrong and how to fix them
 - **Preferences mentioned** — Workflow preferences you shared
@@ -39,9 +39,10 @@ tool — so match it precisely:
 
 ## Workflow
 
-1. **Capture** — Currently requires running `/review` or `/daily-review` to completion; the
-   `SessionEnd` hook alone only logs a timestamp, it doesn't extract learnings (that step
-   needs LLM judgment a hook script can't do on its own).
+1. **Capture** — Automatic: `.claude/hooks/learning-heartbeat.cjs` (a `Stop` hook) briefly
+   pauses substantive sessions, once per session per day, and has Claude reflect and write
+   conforming entries. Opt-out: `System/user-profile.yaml` -> `learning_heartbeat.enabled:
+   false`. `/review` and `/daily-review` still work as manual triggers too.
 2. **Review** — Periodically check pending learnings via `/dex-whats-new`
 3. **Implement** — Fix documentation gaps or system issues
 4. **Update status** — Mark as implemented when done
