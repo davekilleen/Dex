@@ -91,15 +91,66 @@ class CredentialStatusCopy:
 
 def _contained_regular(path: Path, root: Path, *, absent_ok: bool = False) -> bool:
     try:
-        path.relative_to(root)
+        relative = path.relative_to(root)
     except ValueError:
         return False
-    current = root
-    for part in path.relative_to(root).parts:
-        current = current / part
-        if current.exists() and current.is_symlink():
-            return False
-    return (absent_ok and not path.exists() and path.parent.is_dir()) or (path.is_file() and not path.is_symlink())
+    try:
+        parent = _open_directory_chain(root, relative.parts[:-1])
+        try:
+            metadata = os.stat(relative.name, dir_fd=parent, follow_symlinks=False)
+        except FileNotFoundError:
+            return absent_ok
+        finally:
+            os.close(parent)
+    except OSError:
+        return False
+    return stat.S_ISREG(metadata.st_mode) and metadata.st_nlink == 1
+
+
+def _open_directory_chain(root: Path, parts: tuple[str, ...], *, create: bool = False) -> int:
+    """Open a vault-contained directory chain without following any component."""
+    flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0)
+    descriptor = os.open(root, flags)
+    try:
+        for part in parts:
+            if not part or part in {".", ".."} or "/" in part:
+                raise OSError("unsafe contained directory component")
+            try:
+                child = os.open(part, flags, dir_fd=descriptor)
+            except FileNotFoundError:
+                if not create:
+                    raise
+                os.mkdir(part, 0o700, dir_fd=descriptor)
+                os.fsync(descriptor)
+                child = os.open(part, flags, dir_fd=descriptor)
+            os.close(descriptor)
+            descriptor = child
+        return descriptor
+    except BaseException:
+        os.close(descriptor)
+        raise
+
+
+def _read_at(directory: int, name: str) -> bytes:
+    descriptor = os.open(name, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0), dir_fd=directory)
+    with os.fdopen(descriptor, "rb") as handle:
+        return handle.read()
+
+
+def _read_contained(root: Path, relative: Path) -> bytes:
+    parent = _open_directory_chain(root, relative.parts[:-1])
+    try:
+        return _read_at(parent, relative.name)
+    finally:
+        os.close(parent)
+
+
+def _stat_contained(root: Path, relative: Path) -> os.stat_result:
+    parent = _open_directory_chain(root, relative.parts[:-1])
+    try:
+        return os.stat(relative.name, dir_fd=parent, follow_symlinks=False)
+    finally:
+        os.close(parent)
 
 
 def _read_nofollow(path: Path) -> bytes:
@@ -126,46 +177,51 @@ def probe_atomic_migration(vault_root: Path, journal_dir: Path) -> CapabilityRes
     results = {name: False for name in CAPABILITIES}
     config = vault_root / "System" / "integrations" / "config.yaml"
     env_file = vault_root / ".env"
-    journal_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
-    os.chmod(journal_dir, 0o700)
     results["regular-targets"] = _contained_regular(config, vault_root) and _contained_regular(
         env_file, vault_root, absent_ok=True
     )
-    results["no-follow-containment"] = (
-        results["regular-targets"] and journal_dir.is_dir() and not journal_dir.is_symlink()
-    )
-    probe = journal_dir / f".capability-{uuid.uuid4().hex}"
-    replacement = probe.with_name(probe.name + ".replacement")
     try:
-        probe.write_bytes(b"before")
-        os.chmod(probe, 0o600)
-        with probe.open("rb") as handle:
+        relative_journal = journal_dir.relative_to(vault_root)
+        journal_descriptor = _open_directory_chain(vault_root, relative_journal.parts, create=True)
+    except (OSError, ValueError):
+        return CapabilityResult(results)
+    results["no-follow-containment"] = results["regular-targets"]
+    probe = f".capability-{uuid.uuid4().hex}"
+    replacement = probe + ".replacement"
+    rollback = probe + ".rollback"
+    try:
+        for name, data in ((probe, b"before"), (replacement, b"after")):
+            descriptor = os.open(name, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600, dir_fd=journal_descriptor)
+            with os.fdopen(descriptor, "wb") as handle:
+                handle.write(data)
+                handle.flush()
+                os.fsync(handle.fileno())
+        probe_stat = os.stat(probe, dir_fd=journal_descriptor, follow_symlinks=False)
+        replacement_stat = os.stat(replacement, dir_fd=journal_descriptor, follow_symlinks=False)
+        results["journal-readback"] = _read_at(journal_descriptor, probe) == b"before" and stat.S_IMODE(probe_stat.st_mode) == 0o600
+        results["same-directory-temp"] = replacement_stat.st_dev == probe_stat.st_dev
+        os.fsync(journal_descriptor)
+        results["durability"] = True
+        results["precommit-recheck"] = _read_at(journal_descriptor, probe) == b"before"
+        os.replace(replacement, probe, src_dir_fd=journal_descriptor, dst_dir_fd=journal_descriptor)
+        results["atomic-replace"] = _read_at(journal_descriptor, probe) == b"after"
+        results["replacement-readback"] = _read_at(journal_descriptor, probe) == b"after"
+        descriptor = os.open(rollback, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600, dir_fd=journal_descriptor)
+        with os.fdopen(descriptor, "wb") as handle:
+            handle.write(b"before")
+            handle.flush()
             os.fsync(handle.fileno())
-        results["journal-readback"] = probe.read_bytes() == b"before" and stat.S_IMODE(probe.stat().st_mode) == 0o600
-        replacement.write_bytes(b"after")
-        results["same-directory-temp"] = (
-            replacement.parent == probe.parent and replacement.stat().st_dev == probe.stat().st_dev
-        )
-        with replacement.open("rb") as handle:
-            os.fsync(handle.fileno())
-        results["durability"] = _fsync_parent(replacement)
-        before = probe.stat()
-        results["precommit-recheck"] = probe.read_bytes() == b"before" and before.st_mode == probe.stat().st_mode
-        os.replace(replacement, probe)
-        results["atomic-replace"] = probe.read_bytes() == b"after" and not replacement.exists()
-        results["replacement-readback"] = probe.read_bytes() == b"after"
-        rollback = probe.with_name(probe.name + ".rollback")
-        rollback.write_bytes(b"before")
-        os.replace(rollback, probe)
-        results["rollback-readback"] = probe.read_bytes() == b"before"
+        os.replace(rollback, probe, src_dir_fd=journal_descriptor, dst_dir_fd=journal_descriptor)
+        results["rollback-readback"] = _read_at(journal_descriptor, probe) == b"before"
     except OSError:
         pass
     finally:
-        for path in (probe, replacement, probe.with_name(probe.name + ".rollback")):
+        for name in (probe, replacement, rollback):
             try:
-                path.unlink()
+                os.unlink(name, dir_fd=journal_descriptor)
             except FileNotFoundError:
                 pass
+        os.close(journal_descriptor)
     return CapabilityResult(results)
 
 
@@ -232,8 +288,10 @@ def migrate_legacy_credentials(vault_root: Path) -> MigrationResult:
         _validate_exception_registry()
     except ValueError:
         return MigrationResult("refused")
-    config = vault_root / "System" / "integrations" / "config.yaml"
-    config_raw = _read_nofollow(config)
+    try:
+        config_raw = _read_contained(vault_root, Path("System/integrations/config.yaml"))
+    except OSError:
+        return MigrationResult("refused")
     try:
         values, refs = _legacy_values(config_raw)
     except (UnicodeDecodeError, ValueError, yaml.YAMLError):
@@ -261,8 +319,12 @@ def migrate_legacy_credentials(vault_root: Path) -> MigrationResult:
         return MigrationResult(
             "refused", failed_capabilities=tuple(sorted(k for k, v in capability.results.items() if not v))
         )
-    env_path = vault_root / ".env"
-    env_raw = _read_nofollow(env_path) if env_path.exists() else None
+    try:
+        env_raw = _read_contained(vault_root, Path(".env"))
+    except FileNotFoundError:
+        env_raw = None
+    except OSError:
+        return MigrationResult("refused")
     if env_raw:
         existing_values = parse_env_assignments(env_raw)
         for name, value in values.items():
@@ -270,42 +332,90 @@ def migrate_legacy_credentials(vault_root: Path) -> MigrationResult:
                 return MigrationResult("refused")
     expected_config = _replace_yaml_credentials(config_raw, refs)
     journal_id = uuid.uuid4().hex
-    journal = journal_dir / f"{journal_id}.json"
+    journal_name = f"{journal_id}.json"
     record = {
         "schema_version": 1,
         "config": {
             "bytes_hex": config_raw.hex(),
             "sha256": _hash(config_raw),
-            "mode": stat.S_IMODE(config.stat().st_mode),
+            "mode": stat.S_IMODE(_stat_contained(vault_root, Path("System/integrations/config.yaml")).st_mode),
         },
         "env": None
         if env_raw is None
-        else {"bytes_hex": env_raw.hex(), "sha256": _hash(env_raw), "mode": stat.S_IMODE(env_path.stat().st_mode)},
+        else {
+            "bytes_hex": env_raw.hex(),
+            "sha256": _hash(env_raw),
+            "mode": stat.S_IMODE(_stat_contained(vault_root, Path(".env")).st_mode),
+        },
     }
-    descriptor = os.open(journal, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-    with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
-        handle.write(json.dumps(record, sort_keys=True) + "\n")
-        handle.flush()
-        os.fsync(handle.fileno())
-    if not _fsync_parent(journal) or json.loads(_read_nofollow(journal).decode("utf-8")) != record:
+    try:
+        journal_descriptor = _open_directory_chain(
+            vault_root, ("System", ".dex", "adoption", "credential-journals")
+        )
+        try:
+            descriptor = os.open(
+                journal_name, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600, dir_fd=journal_descriptor
+            )
+            with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+                handle.write(json.dumps(record, sort_keys=True) + "\n")
+                handle.flush()
+                os.fsync(handle.fileno())
+            os.fsync(journal_descriptor)
+            if json.loads(_read_at(journal_descriptor, journal_name).decode("utf-8")) != record:
+                return MigrationResult("refused")
+        finally:
+            os.close(journal_descriptor)
+    except OSError:
         return MigrationResult("refused")
-    config_before = (config.stat().st_ino, _hash(_read_nofollow(config)), stat.S_IMODE(config.stat().st_mode))
+    config_descriptor = None
+    try:
+        config_descriptor = _open_directory_chain(vault_root, ("System", "integrations"))
+        config_metadata = os.stat("config.yaml", dir_fd=config_descriptor, follow_symlinks=False)
+        config_before = (
+            config_metadata.st_ino,
+            _hash(_read_at(config_descriptor, "config.yaml")),
+            stat.S_IMODE(config_metadata.st_mode),
+        )
+    except OSError:
+        if config_descriptor is not None:
+            os.close(config_descriptor)
+        return MigrationResult("refused", journal_id)
+    temporary_name = f".config.yaml.{uuid.uuid4().hex}"
     try:
         update_vault_env(vault_root, values)
-        if (config.stat().st_ino, _hash(_read_nofollow(config)), stat.S_IMODE(config.stat().st_mode)) != config_before:
+        current = os.stat("config.yaml", dir_fd=config_descriptor, follow_symlinks=False)
+        if (current.st_ino, _hash(_read_at(config_descriptor, "config.yaml")), stat.S_IMODE(current.st_mode)) != config_before:
             raise OSError("config changed during migration")
-        fd, temporary = tempfile.mkstemp(prefix=".config.yaml.", dir=config.parent)
-        with os.fdopen(fd, "wb") as handle:
+        descriptor = os.open(
+            temporary_name, os.O_WRONLY | os.O_CREAT | os.O_EXCL, record["config"]["mode"], dir_fd=config_descriptor
+        )
+        with os.fdopen(descriptor, "wb") as handle:
             os.fchmod(handle.fileno(), record["config"]["mode"])
             handle.write(expected_config)
             handle.flush()
             os.fsync(handle.fileno())
-        os.replace(temporary, config)
-        if not _fsync_parent(config) or _read_nofollow(config) != expected_config:
+        current_parent = _open_directory_chain(vault_root, ("System", "integrations"))
+        try:
+            if (os.fstat(current_parent).st_dev, os.fstat(current_parent).st_ino) != (
+                os.fstat(config_descriptor).st_dev,
+                os.fstat(config_descriptor).st_ino,
+            ):
+                raise OSError("config parent changed during migration")
+        finally:
+            os.close(current_parent)
+        os.replace(temporary_name, "config.yaml", src_dir_fd=config_descriptor, dst_dir_fd=config_descriptor)
+        os.fsync(config_descriptor)
+        if _read_at(config_descriptor, "config.yaml") != expected_config:
             raise OSError("config readback mismatch")
     except Exception:
         rewind_credential_migration(vault_root, journal_id)
         return MigrationResult("refused", journal_id)
+    finally:
+        try:
+            os.unlink(temporary_name, dir_fd=config_descriptor)
+        except FileNotFoundError:
+            pass
+        os.close(config_descriptor)
     return MigrationResult(
         "partial" if mcp_raw_residual else "migrated-local-config",
         journal_id,
@@ -314,8 +424,15 @@ def migrate_legacy_credentials(vault_root: Path) -> MigrationResult:
 
 
 def rewind_credential_migration(vault_root: Path, journal_id: str) -> MigrationResult:
-    journal = vault_root / "System" / ".dex" / "adoption" / "credential-journals" / f"{journal_id}.json"
-    record = json.loads(_read_nofollow(journal).decode("utf-8"))
+    if not re.fullmatch(r"[0-9a-f]{32}", journal_id):
+        raise ValueError("invalid credential journal id")
+    journal_descriptor = _open_directory_chain(
+        vault_root, ("System", ".dex", "adoption", "credential-journals")
+    )
+    try:
+        record = json.loads(_read_at(journal_descriptor, f"{journal_id}.json").decode("utf-8"))
+    finally:
+        os.close(journal_descriptor)
     for name, entry in (("config", record["config"]), ("env", record["env"])):
         path = vault_root / ("System/integrations/config.yaml" if name == "config" else ".env")
         if entry is None:
@@ -375,8 +492,6 @@ def render_credential_status(
     cleanup = " Setup cleanup is incomplete because `.mcp.json` still contains the revoked value; remove it manually to complete local-config cleanup. Dex did not edit this file."
     if security_state == "remediated":
         security = "Your old key was rotated and is no longer usable. Security is fixed."
-        if active_residual_state == "proven-revoked":
-            security += cleanup
     elif security_state == "rotation-pending" and active_residual_state == "unrevoked-or-unclassified":
         security = "An active `.mcp.json` value may still be usable. Security is not fixed; rotate/revoke it at the provider or remove it manually. Dex did not edit this file."
     elif security_state == "rotation-pending":
@@ -385,8 +500,6 @@ def render_credential_status(
             + ", ".join(evidence)
             + "."
         )
-        if active_residual_state == "proven-revoked":
-            security += cleanup
     else:
         security = (
             "Dex cannot determine security because these evidence categories are unavailable or inconsistent: "
@@ -397,8 +510,8 @@ def render_credential_status(
             security += (
                 " Dex cannot determine whether the active `.mcp.json` value remains usable. Dex did not edit this file."
             )
-        elif active_residual_state == "proven-revoked":
-            security += cleanup
+    if active_residual_state == "proven-revoked":
+        security += cleanup
     history = {
         "history-cleanup-pending": "Copies remain in inspected local Git history. Cleaning them is optional privacy hygiene.",
         "history-clean": "The inspected history scopes are clean: no revoked copies were found.",

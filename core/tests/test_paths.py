@@ -94,8 +94,9 @@ class TestDerivedPaths:
         assert paths.DEX_RUNTIME_DIR.parent == paths.SYSTEM_DIR
 
     def test_history_backups_use_canonical_adoption_path(self):
-        assert paths.ADOPTION_STATE_ROOT == paths.DEX_RUNTIME_DIR / "adoption"
-        assert paths.HISTORY_BACKUPS_ROOT == paths.ADOPTION_STATE_ROOT / "history-backups"
+        other_vault = Path("/synthetic-vault")
+        assert paths.history_backups_root(other_vault) == other_vault / "System/.dex/adoption/history-backups"
+        assert paths.HISTORY_BACKUPS_ROOT == paths.history_backups_root(paths.VAULT_ROOT)
 
     def test_ritual_intelligence_db_parent_is_runtime_dir(self):
         assert paths.RITUAL_INTELLIGENCE_DB_FILE.parent == paths.DEX_RUNTIME_DIR

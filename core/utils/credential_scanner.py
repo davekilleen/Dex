@@ -28,16 +28,6 @@ MAX_OBJECT_BYTES = 64 * 1024 * 1024
 MAX_OBJECTS = 25_000
 MAX_GIT_OUTPUT = 16 * 1024 * 1024
 SCAN_DEADLINE_SECONDS = 30.0
-SCOPES = (
-    "worktree",
-    "index",
-    "git-common-dir",
-    "primary-object-db",
-    "reachable-refs",
-    "stashes",
-    "tags",
-    "selected-archives",
-)
 
 
 @dataclass(frozen=True)
@@ -254,7 +244,8 @@ def scan_credentials(root: Path, needles: tuple[bytes, ...], selected_archives: 
                 raise RuntimeError("object-readback")
             if any(value in data for value in needles):
                 findings.append(_opaque("reachable-refs", str(number).encode()))
-        inspected.update({"primary-object-db", "reachable-refs", "stashes", "tags"})
+        inspected.update({"reachable-refs", "stashes", "tags"})
+        unknown["primary-object-db"] = "unreachable-objects-not-inspected"
     except (OSError, RuntimeError, UnicodeDecodeError, ValueError, subprocess.TimeoutExpired):
         for scope in ("git-common-dir", "primary-object-db", "reachable-refs", "stashes", "tags"):
             unknown.setdefault(scope, "git-metadata-object-or-bound")

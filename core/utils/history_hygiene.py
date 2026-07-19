@@ -17,8 +17,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Callable, Literal
 
-_EPHEMERAL_CREDENTIALS: dict[str, tuple[bytes, ...]] = {}
-_EPHEMERAL_REPOSITORY_STATES: dict[str, dict[str, str]] = {}
+from core.paths import history_backups_root
 
 HistoryResult = Literal[
     "optional-tool-unavailable",
@@ -96,18 +95,18 @@ def _write_restrictive(path: Path, data: bytes) -> None:
     _fsync_dir(path.parent)
 
 
-def _replace_restrictive(path: Path, data: bytes) -> None:
+def _atomic_replace(path: Path, data: bytes, mode: int, error: str) -> None:
     descriptor, temporary = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
     try:
         with os.fdopen(descriptor, "wb") as handle:
-            os.fchmod(handle.fileno(), 0o600)
+            os.fchmod(handle.fileno(), mode)
             handle.write(data)
             handle.flush()
             os.fsync(handle.fileno())
         os.replace(temporary, path)
         _fsync_dir(path.parent)
-        if path.read_bytes() != data or stat.S_IMODE(path.stat().st_mode) != 0o600:
-            raise OSError("restrictive history artifact replacement failed")
+        if path.read_bytes() != data or stat.S_IMODE(path.stat().st_mode) != mode:
+            raise OSError(error)
     finally:
         Path(temporary).unlink(missing_ok=True)
 
@@ -275,24 +274,8 @@ def _object_evidence(root: Path, refs: tuple[str, ...]) -> tuple[bytes, int]:
     return _json_bytes({"object_counts": counts, "estimated_uncompressed_bytes": estimated}), estimated
 
 
-def _restore_file(path: Path, expected: bytes, mode: int) -> None:
-    descriptor, temporary = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
-    try:
-        with os.fdopen(descriptor, "wb") as handle:
-            os.fchmod(handle.fileno(), mode)
-            handle.write(expected)
-            handle.flush()
-            os.fsync(handle.fileno())
-        os.replace(temporary, path)
-        _fsync_dir(path.parent)
-        if path.read_bytes() != expected or stat.S_IMODE(path.stat().st_mode) != mode:
-            raise OSError("Git configuration restoration failed")
-    finally:
-        Path(temporary).unlink(missing_ok=True)
-
-
 def _backup_root(root: Path) -> Path:
-    return root / "System" / ".dex" / "adoption" / "history-backups"
+    return history_backups_root(root)
 
 
 def _sync_file_identity(path: Path) -> tuple[str, int]:
@@ -398,8 +381,7 @@ def prepare_history_cleanup(
             raise OSError("shared recovery cap exceeded")
         created = now().astimezone(UTC)
         tool_sha256, tool_size = _sync_file_identity(tool)
-        repository_state_id = uuid.uuid4().hex
-        _EPHEMERAL_REPOSITORY_STATES[repository_state_id] = _repository_state(root)
+        repository_state = _repository_state(root)
         core = {
             "schema_version": 1,
             "transaction_id": transaction_id,
@@ -413,7 +395,8 @@ def prepare_history_cleanup(
             else {"no_external_backup_acknowledged": True},
             "selected_refs": refs,
             "all_refs": all_refs,
-            "repository_state_id": repository_state_id,
+            "repository_state": repository_state,
+            "credential_count": len(credential_needles),
             "before_object_evidence": {
                 "sha256": _sha(object_evidence),
                 "size": len(object_evidence),
@@ -432,7 +415,6 @@ def prepare_history_cleanup(
         preview_sha = _sha(_json_bytes(core))
         manifest = {**core, "preview_sha256": preview_sha}
         _write_restrictive(transaction / "manifest.json", _json_bytes(manifest))
-        _EPHEMERAL_CREDENTIALS[transaction_id] = credential_needles
         _fsync_dir(transaction)
         return HistoryPreview(
             "prepared",
@@ -465,7 +447,12 @@ def _load_manifest(root: Path, transaction_id: str) -> tuple[Path, dict[str, obj
 def _store_manifest(transaction: Path, manifest: dict[str, object]) -> None:
     unsigned = {key: value for key, value in manifest.items() if key != "preview_sha256"}
     manifest["preview_sha256"] = _sha(_json_bytes(unsigned))
-    _replace_restrictive(transaction / "manifest.json", _json_bytes(manifest))
+    _atomic_replace(
+        transaction / "manifest.json",
+        _json_bytes(manifest),
+        0o600,
+        "restrictive history artifact replacement failed",
+    )
 
 
 def _verify_bundle(root: Path, transaction: Path, manifest: dict[str, object]) -> None:
@@ -521,6 +508,38 @@ def _scan_selected_history(root: Path, refs: tuple[str, ...], needles: tuple[byt
         return "history-scope-unknown"
 
 
+def _selected_history_contains_each(root: Path, refs: tuple[str, ...], needles: tuple[bytes, ...]) -> bool:
+    """Rebind supplied secrets to prepared history without persisting a derived fingerprint."""
+    remaining = set(needles)
+    try:
+        objects = sorted(
+            set(line.split(b" ", 1)[0] for line in _git(root, "rev-list", "--objects", *refs).splitlines())
+        )
+        for oid in objects:
+            if not remaining:
+                return True
+            if _git(root, "cat-file", "-t", oid.decode()).strip() != b"blob":
+                continue
+            data = _git(root, "cat-file", "blob", oid.decode())
+            remaining = {needle for needle in remaining if needle not in data}
+    except (OSError, RuntimeError, UnicodeDecodeError):
+        return False
+    return not remaining
+
+
+def _restore_and_verify_git_config(
+    root: Path,
+    config_path: Path,
+    expected: bytes,
+    mode: int,
+    expected_remotes: bytes,
+) -> None:
+    if not config_path.is_file() or config_path.read_bytes() != expected:
+        _atomic_replace(config_path, expected, mode, "Git configuration restoration failed")
+    if config_path.read_bytes() != expected or _git(root, "remote", "-v") != expected_remotes:
+        raise RuntimeError("remote configuration could not be preserved")
+
+
 def apply_history_cleanup(
     root: Path,
     preview: HistoryPreview,
@@ -539,7 +558,11 @@ def apply_history_cleanup(
     transaction, manifest = _load_manifest(root, preview.transaction_id)
     if manifest["preview_sha256"] != preview.preview_sha256 or manifest["phase"] != "prepared":
         raise ValueError("history preview or phase changed")
-    if _EPHEMERAL_CREDENTIALS.get(preview.transaction_id) != credential_needles:
+    if (
+        len(credential_needles) != manifest["credential_count"]
+        or len(set(credential_needles)) != len(credential_needles)
+        or not _selected_history_contains_each(root, tuple(sorted(manifest["selected_refs"])), credential_needles)
+    ):
         raise ValueError("cleanup credential set changed")
     _, common, objects = _repository_boundaries(root)
     if (
@@ -558,10 +581,9 @@ def apply_history_cleanup(
     selected_refs = tuple(sorted(manifest["selected_refs"]))
     if _refs(root, selected_refs) != manifest["selected_refs"]:
         raise RuntimeError("selected refs changed after preview")
-    repository_state = _EPHEMERAL_REPOSITORY_STATES.get(manifest["repository_state_id"])
+    repository_state = manifest["repository_state"]
     if (
-        repository_state is None
-        or _all_refs(root) != manifest["all_refs"]
+        _all_refs(root) != manifest["all_refs"]
         or _repository_state(root) != repository_state
     ):
         raise RuntimeError("repository state changed after preview")
@@ -599,10 +621,7 @@ def apply_history_cleanup(
         _fsync_dir(transaction)
         if result.returncode:
             raise RuntimeError("git-filter-repo cleanup failed")
-        if not config_path.is_file() or config_path.read_bytes() != config_before:
-            _restore_file(config_path, config_before, config_mode)
-        if config_path.read_bytes() != config_before or _git(root, "remote", "-v") != remotes_before:
-            raise RuntimeError("remote configuration could not be preserved")
+        _restore_and_verify_git_config(root, config_path, config_before, config_mode, remotes_before)
         after_refs = _refs(root, selected_refs)
         if after_refs == manifest["selected_refs"]:
             raise RuntimeError("selected refs were not rewritten")
@@ -633,10 +652,7 @@ def apply_history_cleanup(
     except BaseException:
         _fsync_dir(transaction)
         try:
-            if not config_path.is_file() or config_path.read_bytes() != config_before:
-                _restore_file(config_path, config_before, config_mode)
-            if config_path.read_bytes() != config_before or _git(root, "remote", "-v") != remotes_before:
-                raise RuntimeError("remote configuration could not be preserved")
+            _restore_and_verify_git_config(root, config_path, config_before, config_mode, remotes_before)
         except (OSError, RuntimeError):
             pass
         try:
@@ -699,9 +715,14 @@ def rewind_history_cleanup(root: Path, transaction_id: str) -> HistoryOutcome:
         if artifact["absent"]:
             target.unlink(missing_ok=True)
         else:
-            _restore_file(target, (transaction / name).read_bytes(), artifact["mode"])
-    expected_state = _EPHEMERAL_REPOSITORY_STATES.get(manifest["repository_state_id"])
-    if expected_state is None or _all_refs(root) != manifest["all_refs"] or _repository_state(root) != expected_state:
+            _atomic_replace(
+                target,
+                (transaction / name).read_bytes(),
+                artifact["mode"],
+                "Git configuration restoration failed",
+            )
+    expected_state = manifest["repository_state"]
+    if _all_refs(root) != manifest["all_refs"] or _repository_state(root) != expected_state:
         return HistoryOutcome(
             "recovery-required",
             transaction_id,

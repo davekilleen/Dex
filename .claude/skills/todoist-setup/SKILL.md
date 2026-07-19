@@ -53,7 +53,7 @@ Once connected, you can ask Dex to:
 ### Step 1: Check if Already Connected
 
 1. Check `System/integrations/config.yaml` for a `todoist:` section with `enabled: true`
-2. If enabled, test the connection by listing projects with the stored API key
+2. If enabled, test authentication with the read-only health check
 3. If healthy, skip to **Reconfiguration** section below
 4. If not configured or unhealthy, continue to Step 2
 
@@ -119,17 +119,10 @@ environment:
 python3 -c 'from core.integrations.task_sync import check_service_health; print(check_service_health("todoist"))'
 ```
 
-**If projects load successfully:**
+**If the health result is `{"healthy": True}`:**
 
 ```
-Connected! I can see your Todoist projects:
-
-1. Inbox
-2. Work
-3. Personal
-...
-
-Looking good!
+Connected! Todoist authentication succeeded through the read-only health check.
 ```
 
 **If it fails:**
@@ -153,11 +146,8 @@ Ask the user which Todoist project should receive Dex tasks:
 ```
 **Which Todoist project should Dex tasks go into?**
 
-Your projects:
-1. Inbox
-2. Work
-3. Personal
-...
+The health check does not enumerate projects. Open Todoist locally and enter the exact project
+name you want Dex to use without pasting any credential.
 
 You can pick one default project, or map each Dex pillar to a different project.
 
@@ -239,7 +229,7 @@ Re-run `/todoist-setup` to restore the vault-root `.env` value and tracked refer
 If the user runs `/todoist-setup` when already configured:
 
 1. Check current config from `System/integrations/config.yaml`
-2. Test the existing API key with a project list call
+2. Test the existing API key with the read-only authentication health check
 3. Show the current pillar-to-project mapping
 4. Offer options:
    - Update project mapping

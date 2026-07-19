@@ -77,7 +77,14 @@ DEXDIFF_DESIGN_DIR = DEXDIFF_DIR / 'design'
 SYSTEM_DIR = VAULT_ROOT / 'System'
 DEX_RUNTIME_DIR = SYSTEM_DIR / '.dex'
 ADOPTION_STATE_ROOT = DEX_RUNTIME_DIR / 'adoption'
-HISTORY_BACKUPS_ROOT = ADOPTION_STATE_ROOT / 'history-backups'
+
+
+def history_backups_root(vault_root: Path) -> Path:
+    """Return the canonical optional-history recovery root for any vault."""
+    return vault_root / 'System' / '.dex' / 'adoption' / 'history-backups'
+
+
+HISTORY_BACKUPS_ROOT = history_backups_root(VAULT_ROOT)
 PILLARS_FILE = SYSTEM_DIR / 'pillars.yaml'
 USER_PROFILE_FILE = SYSTEM_DIR / 'user-profile.yaml'
 SKILL_RATINGS_FILE = SYSTEM_DIR / 'Skill_Ratings' / 'ratings.jsonl'

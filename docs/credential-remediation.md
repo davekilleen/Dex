@@ -17,6 +17,11 @@ Migration is refused when legacy credentials still require migration, otherwise 
 `partial`; active residual state is `unrevoked-or-unclassified`, with only the opaque worktree
 scope and reason category reported.
 
+Migration opens every journal-directory component relative to no-follow directory descriptors.
+Missing contained descendants may be created only beneath those descriptors; a symlinked parent
+refuses capability authorization before any probe or credential preimage can be written outside
+the vault.
+
 Migration is authorized per installation only when all live same-directory journal, temporary
 file, durability, replace, identity recheck, readback, rollback, and no-follow containment
 capabilities pass. OS, filesystem, sync, removable/network, or support labels never veto a
@@ -31,14 +36,19 @@ preserving already-staged blobs. It then scans every blob in the exact final tem
 not worktree approximations. It refuses raw Todoist/Trello YAML fields, configured known values,
 active MCP residuals or unsafe MCP state, and values recovered ephemerally from migration journal
 preimages. `.env`, `.mcp.json`, and migration journals remain ignored authorities and are never
-staged. Findings are counts only; values and value-derived fingerprints are not serialized.
+staged. Git uses an absolute trusted executable, sanitized configuration/environment, disabled
+hooks/signing/fsmonitor, and refuses local executable filters, includes, hooks, drivers, textconv,
+or redirected-worktree authority. Findings are counts only; values and value-derived fingerprints
+are not serialized.
 
 Credential scanning is bounded by aggregate file, byte, object, archive-member, Git-output, and
 deadline limits. Worktree/index completion requires every approved file/blob to pass; selected
 archive completion requires every regular member to pass. Git common-dir inspection covers the
 bounded refs, packed-refs, and reflog metadata subscopes. Reachable history includes every object
 reachable from approved heads, tags, stashes, remote-tracking refs, and reflogs—including
-reflog-only commits—but not unrelated unreachable objects. Any skipped, unsafe, unreadable,
+reflog-only commits—but not unrelated unreachable objects. Because unreachable loose or packed
+objects are not enumerated, `primary-object-db` remains explicitly uninspected even when the
+independent `reachable-refs` scope completes. Any skipped, unsafe, unreadable,
 oversized, identity-changing, corrupt, or limit-exceeding input makes the affected scope
 uninspected with an opaque category reason and prevents universal clean wording.
 
@@ -65,15 +75,17 @@ command, argv, process environment, manifest, log, state, or Doctor output.
    `System/.dex/adoption/history-backups/<opaque-transaction-id>/history.bundle`,
    `objects.json`, `git-config.bin`, `index.bin`, and `manifest.json`. The transaction directory
    is mode `0700`; every file is mode `0600`. The bundle covers every restorable ref, while the
-   manifest records every ref plus opaque HEAD/index/worktree/remote state authority. Bundle,
+   manifest records every ref plus non-secret HEAD/index/worktree/remote state evidence. Bundle,
    object, ref, config, and index evidence is read back, fsynced, hash-bound, and checked with
    `git bundle verify` before preparation succeeds. No ref is rewritten during preview.
 4. Apply requires the unchanged preview and exact typed consent
    `CLEAN OPTIONAL HISTORY <opaque-transaction-id>`. It rechecks the tool, topology, bundle,
-   object evidence, all refs, repository state, and ephemeral credential selection before
+   object evidence, all refs, repository state, and the supplied credential count and presence in
+   the verified selected history before
    invoking `git-filter-repo` with only the selected refs. Credential values are supplied through
    an inherited anonymous file descriptor and are never persisted in a replacement file or
-   fingerprint field. Every unselected ref plus HEAD, index, tracked worktree bytes, and Git
+   fingerprint field. Preparation, apply, and rewind may run in separate processes; no
+   process-global map is authority. Every unselected ref plus HEAD, index, tracked worktree bytes, and Git
    remote configuration must remain invariant. Dex does not fetch, push, force-push, or contact a
    provider.
 5. Apply validates every rewritten ref object and rescans the selected history. The only cleanup

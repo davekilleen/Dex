@@ -5,8 +5,10 @@ from __future__ import annotations
 import json
 import os
 import re
+import shutil
 import stat
 import subprocess
+import sys
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
@@ -16,6 +18,12 @@ from core.utils.integration_credentials import inspect_active_mcp_config, read_v
 LEGACY_YAML_FIELD = re.compile(rb"(?m)^\s*(?:api_key|token)\s*:\s*\S+")
 LEGACY_SECTION = re.compile(rb"(?ms)^\s*(?:todoist|trello)\s*:\s*\n(?:[ \t]+.*\n?)*")
 RAW_MCP_FIELD = re.compile(rb'"(?:TODOIST_API_KEY|TRELLO_API_KEY|TRELLO_TOKEN|api_key|token)"\s*:\s*"(?!\$|\{|<)[^"]+"')
+EXECUTABLE_CONFIG = re.compile(
+    rb"(?i)^(?:filter\.|include(?:if)?\.|extensions\.worktreeconfig$|"
+    rb"core\.(?:attributesfile|hookspath|fsmonitor|sshcommand|worktree)|"
+    rb"commit\.gpgsign$|tag\.gpgsign$|gpg\.|user\.signingkey$|diff\..*\.(?:command|textconv)$|"
+    rb"merge\..*\.driver$)"
+)
 
 
 @dataclass(frozen=True)
@@ -24,44 +32,105 @@ class AutosaveResult:
     refused_findings: int = 0
 
 
+def _git_binary() -> str:
+    for candidate in ("/usr/bin/git", "/bin/git", shutil.which("git")):
+        if candidate and Path(candidate).is_file() and not Path(candidate).is_symlink() and os.access(candidate, os.X_OK):
+            return str(Path(candidate).resolve())
+    raise RuntimeError("safe autosave trusted Git is unavailable")
+
+
+def _git_env(index_path: Path | None = None) -> dict[str, str]:
+    executable_dirs = dict.fromkeys(
+        (str(Path(_git_binary()).parent), str(Path(sys.executable).resolve().parent), "/usr/bin", "/bin")
+    )
+    env = {
+        "PATH": os.pathsep.join(executable_dirs),
+        "HOME": os.environ.get("HOME", ""),
+        "SYSTEMROOT": os.environ.get("SYSTEMROOT", ""),
+        "GIT_CONFIG_NOSYSTEM": "1",
+        "GIT_CONFIG_GLOBAL": os.devnull,
+        "GIT_TERMINAL_PROMPT": "0",
+        "GIT_PAGER": "cat",
+        "GIT_OPTIONAL_LOCKS": "0",
+        "GIT_NO_REPLACE_OBJECTS": "1",
+    }
+    if index_path is not None:
+        env["GIT_INDEX_FILE"] = str(index_path)
+    return env
+
+
 def _git(root: Path, *args: str, env: dict[str, str] | None = None, input_data: bytes | None = None) -> bytes:
     result = subprocess.run(
-        ["git", *args], cwd=root, input=input_data, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env
+        [
+            _git_binary(),
+            "-c",
+            "core.hooksPath=/dev/null",
+            "-c",
+            "credential.helper=",
+            "-c",
+            "commit.gpgSign=false",
+            "-c",
+            "tag.gpgSign=false",
+            "-c",
+            "core.fsmonitor=false",
+            *args,
+        ],
+        cwd=root,
+        input=input_data,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        env=env or _git_env(),
     )
     if result.returncode:
         raise RuntimeError("safe autosave Git operation failed")
     return result.stdout
 
 
-def autosave_candidates(root: Path) -> tuple[str, ...]:
+def _reject_executable_git_config(root: Path) -> None:
+    entries = _git(root, "config", "--local", "--no-includes", "--null", "--list").split(b"\0")
+    parsed = [entry.partition(b"\n") for entry in entries if entry]
+    if any(EXECUTABLE_CONFIG.search(name) for name, _, _ in parsed) or any(
+        name.lower() == b"core.bare" and value.lower() not in {b"false", b"no", b"off", b"0"}
+        for name, _, value in parsed
+    ):
+        raise RuntimeError("safe autosave refuses executable local Git configuration")
+
+
+def _autosave_paths(root: Path) -> tuple[tuple[str, ...], tuple[str, ...]]:
     entries = _git(root, "status", "--porcelain=v1", "-z", "--untracked-files=all").split(b"\0")
-    paths: list[str] = []
+    candidates: list[str] = []
+    stage_paths: list[str] = []
     index = 0
     while index < len(entries):
         entry = entries[index]
         index += 1
         if not entry:
             continue
+        if len(entry) < 4 or entry[2:3] != b" ":
+            raise RuntimeError("malformed Git status")
         status, path = entry[:2], entry[3:]
-        if status[:1] in {b"R", b"C"}:
+        related_path = None
+        if status[:1] in {b"R", b"C"} or status[1:2] in {b"R", b"C"}:
             if index >= len(entries):
                 raise RuntimeError("malformed Git status")
+            related_path = entries[index]
             index += 1
         decoded = os.fsdecode(path)
         if (root / decoded).is_symlink():
             raise ValueError("safe autosave refuses symlink candidates")
-        paths.append(decoded)
-    return tuple(sorted(set(paths)))
+        candidates.append(decoded)
+        if status == b"??" or (status[:1] == b" " and status[1:2] != b" "):
+            stage_paths.append(decoded)
+            if related_path:
+                related = os.fsdecode(related_path)
+                if (root / related).is_symlink():
+                    raise ValueError("safe autosave refuses symlink candidates")
+                stage_paths.append(related)
+    return tuple(sorted(set(candidates))), tuple(sorted(set(stage_paths)))
 
 
-def _paths_to_stage(root: Path) -> tuple[str, ...]:
-    paths = []
-    for entry in _git(root, "status", "--porcelain=v1", "-z", "--untracked-files=all").split(b"\0"):
-        if not entry or entry[:1] in {b"R", b"C"}:
-            continue
-        if entry[:2] == b"??" or (entry[:1] == b" " and entry[1:2] != b" "):
-            paths.append(os.fsdecode(entry[3:]))
-    return tuple(sorted(set(paths)))
+def autosave_candidates(root: Path) -> tuple[str, ...]:
+    return _autosave_paths(root)[0]
 
 
 def _authority_needles(root: Path, configured: tuple[bytes, ...]) -> tuple[tuple[bytes, ...], int]:
@@ -137,7 +206,8 @@ def _final_index_findings(root: Path, env: dict[str, str], needles: tuple[bytes,
 
 def safe_autosave_commit(root: Path, credential_needles: tuple[bytes, ...], message: str) -> AutosaveResult:
     """Stage explicit candidates, inspect exact final blobs, commit, and preserve the real index."""
-    candidates = autosave_candidates(root)
+    _reject_executable_git_config(root)
+    candidates, stage_paths = _autosave_paths(root)
     if not candidates:
         return AutosaveResult(())
     git_dir = Path(_git(root, "rev-parse", "--absolute-git-dir").decode().strip())
@@ -152,20 +222,35 @@ def safe_autosave_commit(root: Path, credential_needles: tuple[bytes, ...], mess
     try:
         if original is not None:
             temporary_index.write_bytes(original)
-        env = dict(os.environ)
-        env["GIT_INDEX_FILE"] = str(temporary_index)
-        stage_paths = _paths_to_stage(root)
+        env = _git_env(temporary_index)
         if stage_paths:
             payload = b"\0".join(os.fsencode(path) for path in stage_paths) + b"\0"
             _git(root, "add", "--pathspec-from-file=-", "--pathspec-file-nul", "--", env=env, input_data=payload)
-        if subprocess.run(["git", "diff", "--cached", "--quiet"], cwd=root, env=env).returncode == 0:
+        if subprocess.run(
+            [_git_binary(), "-c", "core.hooksPath=/dev/null", "diff", "--cached", "--quiet"],
+            cwd=root,
+            env=env,
+        ).returncode == 0:
             return AutosaveResult(())
         needles, authority_findings = _authority_needles(root, credential_needles)
         findings = authority_findings + _final_index_findings(root, env, needles)
         if findings:
             return AutosaveResult((), findings)
         committed = subprocess.run(
-            ["git", "commit", "-m", message], cwd=root, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env
+            [
+                _git_binary(),
+                "-c",
+                "core.hooksPath=/dev/null",
+                "-c",
+                "commit.gpgSign=false",
+                "commit",
+                "-m",
+                message,
+            ],
+            cwd=root,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            env=env,
         )
         if committed.returncode:
             raise RuntimeError("safe autosave commit failed")

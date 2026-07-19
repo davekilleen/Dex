@@ -28,7 +28,7 @@ def test_scanner_redacts_paths_values_and_reports_scopes(tmp_path):
     assert "synthetic-secret" not in serialized
     assert "tracked.txt" not in serialized
     assert "selected-archives" in report.inspected_scopes
-    assert not report.uninspected_scopes
+    assert report.uninspected_scopes == ("primary-object-db",)
 
 
 def test_unselected_archives_are_explicitly_uninspected(tmp_path):
@@ -128,3 +128,31 @@ def test_git_metadata_file_bound_makes_git_scopes_uninspected(tmp_path, monkeypa
 
     assert "git-common-dir" in report.uninspected_scopes
     assert "git-common-dir:git-metadata-object-or-bound" in report.uninspected_reasons
+
+
+def test_unreachable_loose_blob_keeps_primary_object_database_uninspected(tmp_path):
+    _git(tmp_path, "init", "-q")
+    secret = b"unreachable-loose-secret"
+    subprocess.run(["git", "hash-object", "-w", "--stdin"], cwd=tmp_path, input=secret, check=True, capture_output=True)
+
+    report = scan_credentials(tmp_path, (secret,))
+
+    assert not report.findings
+    assert "primary-object-db" in report.uninspected_scopes
+    assert "primary-object-db:unreachable-objects-not-inspected" in report.uninspected_reasons
+
+
+def test_reachable_blob_is_found_while_primary_object_database_remains_uninspected(tmp_path):
+    _git(tmp_path, "init", "-q")
+    _git(tmp_path, "config", "user.email", "synthetic@example.invalid")
+    _git(tmp_path, "config", "user.name", "Synthetic")
+    secret = b"reachable-secret"
+    (tmp_path / "secret.txt").write_bytes(secret)
+    _git(tmp_path, "add", "secret.txt")
+    _git(tmp_path, "commit", "-qm", "reachable")
+
+    report = scan_credentials(tmp_path, (secret,))
+
+    assert any(finding.scope == "reachable-refs" for finding in report.findings)
+    assert "reachable-refs" in report.inspected_scopes
+    assert "primary-object-db" in report.uninspected_scopes

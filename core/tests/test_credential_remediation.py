@@ -165,3 +165,30 @@ def test_journal_contains_exact_preimage_but_no_absolute_path(tmp_path):
     assert bytes.fromhex(payload["config"]["bytes_hex"]).endswith(b"synthetic-old-key\r\n")
     assert str(root) not in journal.read_text()
     assert journal.stat().st_mode & 0o777 == 0o600
+
+
+def test_symlinked_journal_parent_refuses_without_writing_outside_vault(tmp_path):
+    root = _vault(tmp_path / "vault")
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    dex_parent = root / "System/.dex"
+    dex_parent.parent.mkdir(exist_ok=True)
+    dex_parent.symlink_to(outside, target_is_directory=True)
+
+    capability = probe_atomic_migration(root, root / "System/.dex/adoption/credential-journals")
+    result = migrate_legacy_credentials(root)
+
+    assert not capability.authorized
+    assert result.state == "refused"
+    assert list(outside.iterdir()) == []
+
+
+def test_real_journal_parent_is_contained_and_authorized(tmp_path):
+    root = _vault(tmp_path)
+    journal_dir = root / "System/.dex/adoption/credential-journals"
+
+    capability = probe_atomic_migration(root, journal_dir)
+
+    assert capability.authorized
+    assert journal_dir.is_dir()
+    assert list(journal_dir.iterdir()) == []

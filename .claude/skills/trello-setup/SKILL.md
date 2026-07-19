@@ -124,8 +124,7 @@ python3 -c 'from core.integrations.task_sync import check_service_health; print(
 
 ```
 **Connection test:**
-- Found [N] boards: [Board Name 1], [Board Name 2], ...
-- API access confirmed
+- Trello authentication succeeded through the read-only health check
 
 Everything looks good!
 ```
@@ -151,12 +150,8 @@ Ask the user which board to sync:
 ```
 **Which Trello board should Dex sync with?**
 
-Here are your boards:
-1. [Board Name 1]
-2. [Board Name 2]
-3. [Board Name 3]
-
-Pick a board (or say "show all" for the full list).
+The health check does not enumerate boards. Open Trello locally and enter the exact board name
+and board ID you want Dex to use without pasting either credential.
 
 You can add more boards later by running `/trello-setup` again.
 ```

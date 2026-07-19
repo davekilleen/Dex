@@ -1,4 +1,5 @@
 import hashlib
+import importlib
 import json
 import os
 import stat
@@ -9,6 +10,7 @@ from pathlib import Path
 
 import pytest
 
+from core.utils import history_hygiene
 from core.utils.history_hygiene import (
     HistoryPreview,
     apply_history_cleanup,
@@ -215,6 +217,44 @@ def test_prepare_creates_verified_restrictive_bundle_and_manifest(tmp_path):
     assert manifest["before_object_evidence"]["sha256"]
     assert manifest["minimum_successful_release_activations_for_deletion"] == 5
     assert _git(tmp_path, "rev-parse", ref) == before
+
+
+def test_prepare_apply_and_rewind_survive_module_restart(tmp_path):
+    ref = _repo(tmp_path)
+    tool = _tool(tmp_path / "git-filter-repo")
+    preview = _prepare(tmp_path, tool, ref)
+
+    restarted = importlib.reload(history_hygiene)
+    outcome = restarted.apply_history_cleanup(
+        tmp_path,
+        restarted.HistoryPreview(preview.state, preview.transaction_id, preview.preview_sha256, preview.guidance),
+        typed_consent=f"CLEAN OPTIONAL HISTORY {preview.transaction_id}",
+        credential_needles=(SECRET,),
+        filter_repo=tool,
+    )
+    assert outcome.state == "history-clean"
+
+    restarted = importlib.reload(history_hygiene)
+    rewind = restarted.rewind_history_cleanup(tmp_path, preview.transaction_id)
+    assert rewind.state == "rewound"
+    assert SECRET in subprocess.run(
+        ["git", "show", f"{ref}:leak.txt"], cwd=tmp_path, check=True, capture_output=True
+    ).stdout
+
+
+def test_apply_rebinds_only_the_prepared_credential_set(tmp_path):
+    ref = _repo(tmp_path)
+    tool = _tool(tmp_path / "git-filter-repo")
+    preview = _prepare(tmp_path, tool, ref)
+
+    with pytest.raises(ValueError, match="credential set changed"):
+        apply_history_cleanup(
+            tmp_path,
+            preview,
+            typed_consent=f"CLEAN OPTIONAL HISTORY {preview.transaction_id}",
+            credential_needles=(b"different-secret",),
+            filter_repo=tool,
+        )
 
 
 def test_preview_consent_manifest_bundle_and_ref_tamper_fail_closed(tmp_path):

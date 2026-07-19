@@ -4,6 +4,7 @@ from pathlib import Path
 
 import pytest
 
+from core.utils import safe_autosave
 from core.utils.safe_autosave import main, safe_autosave_commit
 
 
@@ -128,7 +129,7 @@ def test_safe_autosave_commit_failure_restores_exact_index(tmp_path, monkeypatch
     real_run = subprocess.run
 
     def fail_commit(command, **kwargs):
-        if command[:2] == ["git", "commit"]:
+        if "commit" in command and "-m" in command:
             return subprocess.CompletedProcess(command, 1, b"", b"synthetic failure")
         return real_run(command, **kwargs)
 
@@ -136,3 +137,63 @@ def test_safe_autosave_commit_failure_restores_exact_index(tmp_path, monkeypatch
     with pytest.raises(RuntimeError, match="commit failed"):
         safe_autosave_commit(tmp_path, (b"synthetic-secret",), "synthetic autosave")
     assert index.read_bytes() == before
+
+
+def test_autosave_uses_one_status_snapshot_and_handles_worktree_rename(tmp_path, monkeypatch):
+    _repo(tmp_path)
+    _git(tmp_path, "mv", "kept.txt", "renamed.txt")
+    _git(tmp_path, "reset", "-q")
+    calls = 0
+    real_git = safe_autosave._git
+
+    def count_status(root, *args, **kwargs):
+        nonlocal calls
+        if args[:2] == ("status", "--porcelain=v1"):
+            calls += 1
+        return real_git(root, *args, **kwargs)
+
+    monkeypatch.setattr(safe_autosave, "_git", count_status)
+    result = safe_autosave_commit(tmp_path, (b"synthetic-secret",), "rename autosave")
+
+    assert calls == 1
+    assert result.staged == ("kept.txt", "renamed.txt")
+    assert _git(tmp_path, "show", "HEAD:renamed.txt") == b"before\n"
+
+
+def test_status_parser_consumes_worktree_rename_source_once(tmp_path, monkeypatch):
+    _repo(tmp_path)
+    monkeypatch.setattr(
+        safe_autosave,
+        "_git",
+        lambda *_args, **_kwargs: b" R renamed.txt\0kept.txt\0?? other.txt\0",
+    )
+
+    candidates, stage_paths = safe_autosave._autosave_paths(tmp_path)
+
+    assert candidates == ("other.txt", "renamed.txt")
+    assert stage_paths == ("kept.txt", "other.txt", "renamed.txt")
+
+
+def test_autosave_disables_repository_hooks_and_refuses_executable_filters(tmp_path):
+    _repo(tmp_path)
+    marker = tmp_path.parent / "hostile-hook-ran"
+    hook = tmp_path / ".git/hooks/pre-commit"
+    hook.write_text(f"#!/bin/sh\ntouch '{marker}'\n")
+    hook.chmod(0o755)
+    (tmp_path / "safe.txt").write_text("safe\n")
+
+    assert safe_autosave_commit(tmp_path, (b"synthetic-secret",), "hook-safe autosave").staged == ("safe.txt",)
+    assert not marker.exists()
+
+    _git(tmp_path, "config", "filter.hostile.clean", f"touch '{marker}'")
+    (tmp_path / "another.txt").write_text("safe\n")
+    with pytest.raises(RuntimeError, match="executable local Git configuration"):
+        safe_autosave_commit(tmp_path, (b"synthetic-secret",), "filter refusal")
+    assert not marker.exists()
+
+
+def test_autosave_allows_nonexecutable_local_git_configuration(tmp_path):
+    _repo(tmp_path)
+    _git(tmp_path, "config", "core.autocrlf", "false")
+    (tmp_path / "safe.txt").write_text("safe\n")
+    assert safe_autosave_commit(tmp_path, (b"synthetic-secret",), "benign config").staged == ("safe.txt",)

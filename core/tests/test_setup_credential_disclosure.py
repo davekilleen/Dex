@@ -18,3 +18,6 @@ def test_task_setup_never_requests_chat_secrets_or_uses_unsafe_health_paths(skil
     assert "do not paste" in text
     assert "check_service_health" in text
     assert "adapter-stdin" in text
+    assert "found [n] boards" not in text
+    assert "i can see your todoist projects" not in text
+    assert "authentication succeeded" in text
