@@ -32,6 +32,23 @@ months.
    one item at a time. Tier 3 is always the user's hands. Never delete or overwrite user
    data; never touch credentials.
 
+### Credential scan mode
+
+Credential scanning is local and read-only. Inspect the worktree, index, approved Git
+common directory and primary object database, reachable refs, stashes, tags, and only
+archives the user explicitly selects. Report opaque redacted finding IDs plus explicit
+inspected and uninspected scope categories; never print paths or matched values. Existing
+`.mcp.json` is scan/report-only and remains byte-identical.
+
+Render migration, security, active `.mcp.json` residual, and optional history hygiene as
+separate deterministic states using `render_credential_status`; do not paraphrase it.
+Provider revoke/rotate is always user-driven. Replacement health is read-only and runs
+only after the user explicitly chooses a remediation check. History cleanup is optional
+privacy hygiene, never a current-danger warning or prerequisite. Use only a preinstalled
+`git-filter-repo`, after verified restrictive bundle backup and typed consent; never
+install it, push, or force-push. If migration capability fails, scanning and guidance
+remain available and Doctor names the failed capability with manual move/validation/rewind steps.
+
 ## Execution
 
 ### Step 1: Run the collector (quick mode + safe auto-heals)

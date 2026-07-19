@@ -171,20 +171,14 @@ Dex found unsaved changes in your vault.
 Let me save them before updating.
 ```
 
-Run:
+Run the shipped explicit-candidate, credential-preflight, temporary-index staging helper:
 ```bash
-if ! git add .; then
+if ! python3 -m core.utils.safe_autosave; then
   echo "Couldn't prepare your unsaved changes — update stopped before creating a backup tag or changing releases; fix the Git error above, then retry"
   exit 1
 fi
 
-if git diff --cached --quiet; then
-  echo "Nothing to save; continuing update"
-elif ! git commit -m "Auto-save before Dex update to v1.3.0"; then
-  git reset
-  echo "Couldn't save your changes — update stopped before creating a backup tag or changing releases; fix the commit error above, then retry"
-  exit 1
-fi
+echo "Safe autosave completed"
 ```
 
 Show:

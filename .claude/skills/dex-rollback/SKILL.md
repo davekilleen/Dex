@@ -192,19 +192,12 @@ else
   fi
 fi
 
-if ! git add .; then
+if ! python3 -m core.utils.safe_autosave; then
   [ -z "$DEX_DATA_STASH_OID" ] || git stash apply "$DEX_DATA_STASH_OID"
   echo "Rollback stopped: Git could not prepare the current state, so no reset ran"
   exit 1
 fi
-if git diff --cached --quiet; then
-  echo "Nothing to save; continuing rollback"
-elif ! git commit -m "Auto-save before rollback to v1.2.0"; then
-  git reset
-  [ -z "$DEX_DATA_STASH_OID" ] || git stash apply "$DEX_DATA_STASH_OID"
-  echo "Rollback stopped: Git could not save the current state, so no reset ran"
-  exit 1
-fi
+echo "Safe autosave completed"
 
 DEX_BEFORE_ROLLBACK_TAG="before-rollback-$(date +%Y%m%d-%H%M%S)"
 if ! git tag "$DEX_BEFORE_ROLLBACK_TAG"; then

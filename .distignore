@@ -3,6 +3,8 @@
 
 # Runtime state
 .logs/
+System/.dex/adoption/credential-journals/
+System/.dex/adoption/history-backups/
 
 # CI / GitHub workflows
 .github/

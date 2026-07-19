@@ -24,6 +24,11 @@ if [ -n "$MATCHES" ]; then
 fi
 echo "✅ No high-risk secret patterns detected."
 
+if grep -nE '^[[:space:]]*(api_key|token):[[:space:]]*[^<{[:space:]]' System/integrations/config.yaml; then
+  echo "❌ Raw task credentials are forbidden in tracked integration YAML."
+  exit 1
+fi
+
 if [ "$STRICT_AUDIT" = "1" ]; then
   echo ""
   echo "Running strict dependency audits..."

@@ -249,6 +249,12 @@ function setupProtectedResetRepo(t) {
   const repo = fs.mkdtempSync(path.join(os.tmpdir(), 'dex-protected-reset-'));
   t.after(() => fs.rmSync(repo, { recursive: true, force: true }));
 
+  const utilsDir = path.join(repo, 'core', 'utils');
+  fs.mkdirSync(utilsDir, { recursive: true });
+  for (const moduleName of ['safe_autosave.py', 'integration_credentials.py']) {
+    fs.copyFileSync(path.join(REPO_ROOT, 'core', 'utils', moduleName), path.join(utilsDir, moduleName));
+  }
+
   const protectedFiles = [
     ['00-Inbox/', 'data.md'],
     ['01-Quarter_Goals/', 'Quarter_Goals.md'],

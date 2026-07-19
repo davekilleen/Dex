@@ -5,8 +5,7 @@ manifest:
   id: trello
   auth: api_key_token
   category: task_access
-  mcp_server: mcp-server-trello
-  runtime: bun
+  mcp_server: null
 ---
 
 # Trello Setup
@@ -91,33 +90,12 @@ Walk the user through getting their Trello API key and token:
 
 Wait for the user to provide both values.
 
-### Step 4: Add the MCP Server
+### Step 4: Store Local Credentials
 
-Check the user's MCP configuration. If `mcp-server-trello` is not listed:
-
-1. Explain what we're adding:
-
-```
-I'll add the Trello connector to your Dex configuration.
-This uses mcp-server-trello which runs on Bun for fast performance.
-```
-
-2. Add to the user's `.mcp.json`:
-
-```json
-{
-  "mcp-server-trello": {
-    "command": "bunx",
-    "args": ["-y", "mcp-server-trello"],
-    "env": {
-      "TRELLO_API_KEY": "<user's api key>",
-      "TRELLO_TOKEN": "<user's token>"
-    }
-  }
-}
-```
-
-3. Tell the user the MCP server needs to restart for changes to take effect.
+Write `TRELLO_API_KEY` and `TRELLO_TOKEN` to the vault-root `.env` with mode
+`0600`. Preserve unrelated lines. Never copy either value to `.mcp.json`, tracked
+YAML, commands, or process environment. Existing `.mcp.json` is scan/report-only
+and must remain byte-identical.
 
 ### Step 5: Test the Connection
 
@@ -194,8 +172,8 @@ mapping is used when the user asks Dex to file or move cards):
 trello:
   enabled: true
   configured_at: YYYY-MM-DD
-  api_key: <user's api key>
-  token: <user's token>
+  api_key_env_var: TRELLO_API_KEY
+  token_env_var: TRELLO_TOKEN
   default_board: <board id>
   board_name: <board name>
   list_mapping:
@@ -237,8 +215,7 @@ Trello tokens can be set to expire. If you see auth errors:
 
 1. Go to https://trello.com/power-ups/admin
 2. Generate a new token
-3. Update `System/integrations/config.yaml` with the new token
-4. Restart MCP server
+3. Update `TRELLO_TOKEN` in the vault-root `.env`
 
 ### Board Not Found
 

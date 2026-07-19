@@ -28,6 +28,17 @@ function stubFetch(t, implementation) {
   return calls;
 }
 
+test('health performs only a read-only member identity request', async (t) => {
+  const calls = stubFetch(t, () => jsonResponse({ id: 'member-opaque' }));
+  const adapter = loadAdapter();
+
+  assert.deepEqual(await adapter.health({ api_key: 'key', token: 'token' }), { healthy: true });
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].options.method, 'GET');
+  assert.equal(calls[0].url.pathname, '/1/members/me');
+  assert.equal(calls[0].url.searchParams.get('fields'), 'id');
+});
+
 test('create uses configured list_mapping and embeds the Dex marker', async (t) => {
   const calls = stubFetch(t, ({ url, options }) => {
     if (url.pathname === '/1/cards' && options.method === 'POST') {

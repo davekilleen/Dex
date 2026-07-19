@@ -4,7 +4,7 @@ description: Connect Todoist so Dex can read and update your Todoist tasks on re
 integration:
   id: todoist
   name: Todoist
-  mcp_server: todoist-mcp
+  mcp_server: null
   auth: api_key
   enhances:
     - skill: daily-plan
@@ -36,7 +36,7 @@ Once connected, you can ask Dex to:
 ## Privacy
 
 - Dex reads and writes your Todoist tasks only when you ask it to
-- Your API key stays local on your machine in `System/integrations/config.yaml` (gitignored)
+- Your API key stays local in the ignored vault-root `.env` file. Tracked YAML stores only its variable name.
 - Dex never shares your Todoist data with third parties
 
 ## When to Run
@@ -92,32 +92,11 @@ Paste it here when you have it.
 
 Wait for the user to provide their API key. Validate it's a non-empty string (Todoist API tokens are typically 40-character hex strings).
 
-### Step 4: Add MCP Server to Config
+### Step 4: Store the Local Credential
 
-Check the user's MCP configuration. If `todoist-mcp` is not listed:
-
-1. Explain:
-
-```
-I'll add the Todoist connector to your configuration.
-This lets Dex talk to Todoist using your API token.
-```
-
-2. Add to the user's `.mcp.json` (use the `/dex-add-mcp` skill or manual edit):
-
-```json
-{
-  "todoist-mcp": {
-    "command": "npx",
-    "args": ["-y", "todoist-mcp-server"],
-    "env": {
-      "TODOIST_API_KEY": "<user's API key>"
-    }
-  }
-}
-```
-
-3. Tell the user the MCP server needs to restart for changes to take effect.
+Write `TODOIST_API_KEY=<user's API key>` to the vault-root `.env` with mode `0600`.
+Preserve unrelated lines and never place the value in `.mcp.json`, tracked YAML, a command,
+or process environment. Existing `.mcp.json` is scan/report-only and must remain byte-identical.
 
 ### Step 5: Test the Connection
 
@@ -192,9 +171,8 @@ user asks Dex to file a task in the matching Todoist project.
 todoist:
   enabled: true
   configured_at: YYYY-MM-DD
-  mcp_server: todoist-mcp
   auth_type: api_key
-  api_key: <user's API key>
+  api_key_env_var: TODOIST_API_KEY
   project: <default project name>
   pillar_map:
     [pillar_id]: <Todoist project name>   # one entry per pillar, from pillars.yaml
@@ -237,10 +215,9 @@ Dex only reads Todoist when you ask it to — there is no background sync. Ask
 directly ("what's in Todoist?") and if that errors, re-run `/todoist-setup` to
 check the connection.
 
-### "Todoist MCP not found"
+### "Todoist credential not found"
 
-The connection runs through the Todoist MCP server. Re-run `/todoist-setup` to
-detect and fix configuration.
+Re-run `/todoist-setup` to restore the vault-root `.env` value and tracked reference.
 
 ---
 

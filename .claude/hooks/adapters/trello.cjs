@@ -322,6 +322,11 @@ async function getChanges(since, adapterConfig) {
   return changes;
 }
 
+async function health(adapterConfig) {
+  await trelloFetch('/members/me', adapterConfig, { params: { fields: 'id' } });
+  return { healthy: true };
+}
+
 // ---------------------------------------------------------------------------
 // Export
 // ---------------------------------------------------------------------------
@@ -333,4 +338,5 @@ module.exports = {
   create,
   complete,
   getChanges,
+  health,
 };
