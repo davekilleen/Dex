@@ -36,25 +36,8 @@ git ls-files --cached --others --exclude-standard | while IFS= read -r file; do
   [ -e "$file" ] && printf '%s\n' "$file"
 done | LC_ALL=C sort -u > "$ALL_FILES"
 
-: > "$EXCLUDED_FILES"
-while IFS= read -r line; do
-  line="${line%%#*}"
-  line="${line%"${line##*[! ]}"}"
-  line="${line#"${line%%[! ]*}"}"
-  [ -z "$line" ] && continue
-  if [[ "$line" == */ ]]; then
-    # Do not depend on Git expanding a trailing-slash directory pathspec.
-    # Match directory entries as literal prefixes against the enumerated input
-    # set so .distignore behavior is platform-independent.
-    while IFS= read -r file; do
-      [[ "$file" == "$line"* ]] && printf '%s\n' "$file"
-    done < "$ALL_FILES" >> "$EXCLUDED_FILES"
-  else
-    git ls-files --cached --others --exclude-standard -- "$line" >> "$EXCLUDED_FILES"
-  fi
-done < "$DISTIGNORE"
-LC_ALL=C sort -u -o "$EXCLUDED_FILES" "$EXCLUDED_FILES"
-comm -23 "$ALL_FILES" "$EXCLUDED_FILES" > "$INCLUDED_FILES"
+sh "$REPO_ROOT/scripts/resolve-distignore-files.sh" \
+  "$DISTIGNORE" "$ALL_FILES" "$EXCLUDED_FILES" "$INCLUDED_FILES"
 
 rsync -a --files-from="$INCLUDED_FILES" ./ "$STAGING_DIR/"
 

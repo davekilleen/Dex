@@ -34,6 +34,7 @@ RELEASE_BUILD_INPUTS = (
     "scripts/build-vault-bundle.sh",
     "scripts/check-tau-removal.py",
     "scripts/generate-manifest.sh",
+    "scripts/resolve-distignore-files.sh",
     "scripts/security-gate.sh",
     "scripts/verify-distribution.sh",
 )
@@ -920,6 +921,56 @@ def test_package_and_lock_dependency_guards_have_separate_inverses(
 def test_git_archive_contains_no_tau_release_member() -> None:
     members = _archive_members()
     _assert_tau_absent(members)
+
+
+def test_vault_distignore_directory_rules_resolve_before_staging(tmp_path: Path) -> None:
+    all_files = tmp_path / "all-files"
+    excluded_files = tmp_path / "excluded-files"
+    included_files = tmp_path / "included-files"
+    distignore = tmp_path / ".distignore"
+    all_files.write_text(
+        "core/tests/test_distribution_artifacts.py\n"
+        "core/testsuite/retained.py\n"
+        "safe.txt\n"
+        "scripts-extra/retained.sh\n"
+        "scripts/check-tau-removal.py\n",
+        encoding="utf-8",
+    )
+    distignore.write_text("core/tests/\nscripts/\n", encoding="utf-8")
+    shim_dir = tmp_path / "git-must-not-expand-directories"
+    shim_dir.mkdir()
+    git_shim = shim_dir / "git"
+    git_shim.write_text("#!/bin/sh\nexit 97\n", encoding="utf-8")
+    git_shim.chmod(0o755)
+    environment = os.environ.copy()
+    environment["PATH"] = f"{shim_dir}{os.pathsep}{environment['PATH']}"
+
+    result = subprocess.run(
+        [
+            "sh",
+            "scripts/resolve-distignore-files.sh",
+            str(distignore),
+            str(all_files),
+            str(excluded_files),
+            str(included_files),
+        ],
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+        timeout=30,
+        env=environment,
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert excluded_files.read_text(encoding="utf-8").splitlines() == [
+        "core/tests/test_distribution_artifacts.py",
+        "scripts/check-tau-removal.py",
+    ]
+    assert included_files.read_text(encoding="utf-8").splitlines() == [
+        "core/testsuite/retained.py",
+        "safe.txt",
+        "scripts-extra/retained.sh",
+    ]
 
 
 def test_vault_bundle_tree_manifest_and_archive_contain_no_tau(tmp_path: Path) -> None:
