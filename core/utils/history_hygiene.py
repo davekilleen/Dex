@@ -44,7 +44,6 @@ TRANSACTION_ID = re.compile(r"^[0-9a-f]{32}$")
 PREPARATION_ARTIFACTS = frozenset(
     {"history.bundle", "objects.json", "git-config.bin", "index.bin", "manifest.json"}
 )
-LIFECYCLE_LOCK = ".history-lifecycle.lock"
 
 
 @dataclass(frozen=True)
@@ -344,54 +343,43 @@ class _LoadedTransaction:
 
 @dataclass
 class _HistoryLifecycleLock:
+    root_descriptor: int
     backup_descriptor: int
-    descriptor: int
+
+    def __enter__(self) -> _HistoryLifecycleLock:
+        return self
+
+    def __exit__(self, _type, _value, _traceback) -> None:
+        self.close()
 
     def close(self) -> None:
-        if self.descriptor >= 0:
-            if fcntl is not None:
-                fcntl.flock(self.descriptor, fcntl.LOCK_UN)
-            os.close(self.descriptor)
-            self.descriptor = -1
         if self.backup_descriptor >= 0:
             os.close(self.backup_descriptor)
             self.backup_descriptor = -1
+        if self.root_descriptor >= 0:
+            if fcntl is not None:
+                fcntl.flock(self.root_descriptor, fcntl.LOCK_UN)
+            os.close(self.root_descriptor)
+            self.root_descriptor = -1
 
 
 def _acquire_history_lifecycle_lock(root: Path, *, create: bool) -> _HistoryLifecycleLock:
     if fcntl is None:
         raise RuntimeError("history lifecycle locking is unavailable")
-    backup_descriptor = _open_backup_root(root, create=create)
-    descriptor = None
-    created = False
-    flags = os.O_RDWR | getattr(os, "O_NOFOLLOW", 0)
+    flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0)
+    root_descriptor = os.open(root, flags)
+    backup_descriptor = None
     try:
-        try:
-            descriptor = os.open(LIFECYCLE_LOCK, flags | os.O_CREAT | os.O_EXCL, 0o600, dir_fd=backup_descriptor)
-            created = True
-            os.fsync(backup_descriptor)
-        except FileExistsError:
-            descriptor = os.open(LIFECYCLE_LOCK, flags, dir_fd=backup_descriptor)
-        opened = os.fstat(descriptor)
-        if (
-            not stat.S_ISREG(opened.st_mode)
-            or opened.st_nlink != 1
-            or stat.S_IMODE(opened.st_mode) != 0o600
-        ):
-            raise OSError("unsafe history lifecycle lock")
-        fcntl.flock(descriptor, fcntl.LOCK_EX)
-        current = os.stat(LIFECYCLE_LOCK, dir_fd=backup_descriptor, follow_symlinks=False)
-        if (current.st_dev, current.st_ino) != (opened.st_dev, opened.st_ino):
-            raise OSError("history lifecycle lock identity changed")
-        return _HistoryLifecycleLock(backup_descriptor, descriptor)
+        fcntl.flock(root_descriptor, fcntl.LOCK_EX)
+        backup_descriptor = _open_backup_root(root, create=create)
+        metadata = os.fstat(backup_descriptor)
+        if not stat.S_ISDIR(metadata.st_mode) or stat.S_IMODE(metadata.st_mode) != 0o700:
+            raise OSError("unsafe history backup directory")
+        return _HistoryLifecycleLock(root_descriptor, backup_descriptor)
     except BaseException:
-        if descriptor is not None:
-            os.close(descriptor)
-        if created:
-            with suppress(FileNotFoundError):
-                os.unlink(LIFECYCLE_LOCK, dir_fd=backup_descriptor)
-                os.fsync(backup_descriptor)
-        os.close(backup_descriptor)
+        if backup_descriptor is not None:
+            os.close(backup_descriptor)
+        os.close(root_descriptor)
         raise
 
 def _sync_file_identity(path: Path) -> tuple[str, int]:
@@ -459,17 +447,10 @@ def _remove_unpublished_transaction(backup_descriptor: int, name: str) -> None:
     os.fsync(backup_descriptor)
 
 
-def _prune_incomplete_transactions(root: Path) -> None:
-    try:
-        backup_descriptor = _open_backup_root(root)
-    except FileNotFoundError:
-        return
-    try:
-        for name in sorted(os.listdir(backup_descriptor)):
-            if INCOMPLETE_TRANSACTION.fullmatch(name) or TRANSACTION_ID.fullmatch(name):
-                _remove_unpublished_transaction(backup_descriptor, name)
-    finally:
-        os.close(backup_descriptor)
+def _prune_incomplete_transactions(backup_descriptor: int) -> None:
+    for name in sorted(os.listdir(backup_descriptor)):
+        if INCOMPLETE_TRANSACTION.fullmatch(name) or TRANSACTION_ID.fullmatch(name):
+            _remove_unpublished_transaction(backup_descriptor, name)
 
 
 def prepare_history_cleanup(
@@ -506,9 +487,8 @@ def prepare_history_cleanup(
             None,
             "Optional history privacy cleanup is unavailable because a supported preinstalled git-filter-repo was not found. Security remains fixed; Dex did not install or run anything.",
         )
-    lifecycle_lock = _acquire_history_lifecycle_lock(root, create=True)
-    try:
-        _prune_incomplete_transactions(root)
+    with _acquire_history_lifecycle_lock(root, create=True) as lifecycle_lock:
+        _prune_incomplete_transactions(lifecycle_lock.backup_descriptor)
         _, common, objects = _repository_boundaries(root)
         refs = _refs(root, selected_refs)
         all_refs = _all_refs(root)
@@ -518,57 +498,52 @@ def prepare_history_cleanup(
         free = shutil.disk_usage(root).free
         if used + estimated > SHARED_RECOVERY_CAP_BYTES or free < required:
             raise OSError("insufficient verified recovery space")
-    except BaseException:
-        lifecycle_lock.close()
-        raise
-    transaction_id = uuid.uuid4().hex
-    incomplete_name = f".incomplete-{transaction_id}"
-    backup_descriptor = None
-    transaction_descriptor = None
-    transaction_created = False
-    transaction_published = False
-    try:
-        backup_descriptor = _open_backup_root(root, create=True)
-        os.mkdir(incomplete_name, 0o700, dir_fd=backup_descriptor)
-        transaction_created = True
-        transaction_descriptor = os.open(
-            incomplete_name,
-            os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0),
-            dir_fd=backup_descriptor,
-        )
-        transaction = _fd_path(transaction_descriptor)
-        bundle = transaction / "history.bundle"
-        _git(root, "bundle", "create", str(bundle), *all_refs, pass_fds=(transaction_descriptor,))
-        os.chmod(bundle, 0o600)
-        bundle_sha256, bundle_size = _sync_file_identity(bundle)
-        if not bundle_size or stat.S_IMODE(bundle.stat().st_mode) != 0o600:
-            raise OSError("bundle readback failed")
-        _git(root, "bundle", "verify", str(bundle), pass_fds=(transaction_descriptor,))
-        _write_restrictive(transaction / "objects.json", object_evidence)
-        config_path = Path(_git(root, "rev-parse", "--path-format=absolute", "--git-path", "config").decode().strip())
-        index_path = Path(_git(root, "rev-parse", "--path-format=absolute", "--git-path", "index").decode().strip())
-        recovery_artifacts: dict[str, dict[str, object]] = {}
-        for name, source in (("git-config.bin", config_path), ("index.bin", index_path)):
-            if source.exists():
-                data = source.read_bytes()
-                _write_restrictive(transaction / name, data)
-                recovery_artifacts[name] = {
-                    "absent": False,
-                    "sha256": _sha(data),
-                    "size": len(data),
-                    "mode": stat.S_IMODE(source.stat().st_mode),
-                }
-            else:
-                recovery_artifacts[name] = {"absent": True, "sha256": None, "size": 0, "mode": None}
-        if (
-            _used_recovery_bytes(root) > SHARED_RECOVERY_CAP_BYTES
-            or shutil.disk_usage(transaction).free < MIN_FREE_MARGIN_BYTES
-        ):
-            raise OSError("shared recovery cap exceeded")
-        created = now().astimezone(UTC)
-        tool_sha256, tool_size = _sync_file_identity(tool)
-        repository_state = _repository_state(root)
-        core = {
+        transaction_id = uuid.uuid4().hex
+        incomplete_name = f".incomplete-{transaction_id}"
+        transaction_descriptor = None
+        transaction_created = False
+        transaction_published = False
+        try:
+            os.mkdir(incomplete_name, 0o700, dir_fd=lifecycle_lock.backup_descriptor)
+            transaction_created = True
+            transaction_descriptor = os.open(
+                incomplete_name,
+                os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0),
+                dir_fd=lifecycle_lock.backup_descriptor,
+            )
+            transaction = _fd_path(transaction_descriptor)
+            bundle = transaction / "history.bundle"
+            _git(root, "bundle", "create", str(bundle), *all_refs, pass_fds=(transaction_descriptor,))
+            os.chmod(bundle, 0o600)
+            bundle_sha256, bundle_size = _sync_file_identity(bundle)
+            if not bundle_size or stat.S_IMODE(bundle.stat().st_mode) != 0o600:
+                raise OSError("bundle readback failed")
+            _git(root, "bundle", "verify", str(bundle), pass_fds=(transaction_descriptor,))
+            _write_restrictive(transaction / "objects.json", object_evidence)
+            config_path = Path(_git(root, "rev-parse", "--path-format=absolute", "--git-path", "config").decode().strip())
+            index_path = Path(_git(root, "rev-parse", "--path-format=absolute", "--git-path", "index").decode().strip())
+            recovery_artifacts: dict[str, dict[str, object]] = {}
+            for name, source in (("git-config.bin", config_path), ("index.bin", index_path)):
+                if source.exists():
+                    data = source.read_bytes()
+                    _write_restrictive(transaction / name, data)
+                    recovery_artifacts[name] = {
+                        "absent": False,
+                        "sha256": _sha(data),
+                        "size": len(data),
+                        "mode": stat.S_IMODE(source.stat().st_mode),
+                    }
+                else:
+                    recovery_artifacts[name] = {"absent": True, "sha256": None, "size": 0, "mode": None}
+            if (
+                _used_recovery_bytes(root) > SHARED_RECOVERY_CAP_BYTES
+                or shutil.disk_usage(transaction).free < MIN_FREE_MARGIN_BYTES
+            ):
+                raise OSError("shared recovery cap exceeded")
+            created = now().astimezone(UTC)
+            tool_sha256, tool_size = _sync_file_identity(tool)
+            repository_state = _repository_state(root)
+            core = {
             "schema_version": 1,
             "transaction_id": transaction_id,
             "phase": "prepared",
@@ -598,41 +573,37 @@ def prepare_history_cleanup(
                 "sha256": tool_sha256,
                 "size": tool_size,
             },
-        }
-        preview_sha = _sha(_json_bytes(core))
-        manifest = {**core, "preview_sha256": preview_sha}
-        _write_restrictive(transaction / "manifest.json", _json_bytes(manifest))
-        _fsync_dir(transaction)
-        os.rename(
-            incomplete_name,
-            transaction_id,
-            src_dir_fd=backup_descriptor,
-            dst_dir_fd=backup_descriptor,
-        )
-        transaction_published = True
-        os.fsync(backup_descriptor)
-        return HistoryPreview(
-            "prepared",
-            transaction_id,
-            preview_sha,
-            "Optional privacy cleanup is prepared. Provider rotation is unchanged. Review the selected refs, then type the exact consent shown by Doctor to apply.",
-        )
-    except BaseException:
-        if transaction_descriptor is not None:
-            with suppress(OSError):
-                os.close(transaction_descriptor)
-            transaction_descriptor = None
-        if transaction_created and not transaction_published and backup_descriptor is not None:
-            _remove_unpublished_transaction(backup_descriptor, incomplete_name)
-        raise
-    finally:
-        if transaction_descriptor is not None:
-            with suppress(OSError):
-                os.close(transaction_descriptor)
-        if backup_descriptor is not None:
-            with suppress(OSError):
-                os.close(backup_descriptor)
-        lifecycle_lock.close()
+            }
+            preview_sha = _sha(_json_bytes(core))
+            manifest = {**core, "preview_sha256": preview_sha}
+            _write_restrictive(transaction / "manifest.json", _json_bytes(manifest))
+            _fsync_dir(transaction)
+            os.rename(
+                incomplete_name,
+                transaction_id,
+                src_dir_fd=lifecycle_lock.backup_descriptor,
+                dst_dir_fd=lifecycle_lock.backup_descriptor,
+            )
+            transaction_published = True
+            os.fsync(lifecycle_lock.backup_descriptor)
+            return HistoryPreview(
+                "prepared",
+                transaction_id,
+                preview_sha,
+                "Optional privacy cleanup is prepared. Provider rotation is unchanged. Review the selected refs, then type the exact consent shown by Doctor to apply.",
+            )
+        except BaseException:
+            if transaction_descriptor is not None:
+                with suppress(OSError):
+                    os.close(transaction_descriptor)
+                transaction_descriptor = None
+            if transaction_created and not transaction_published:
+                _remove_unpublished_transaction(lifecycle_lock.backup_descriptor, incomplete_name)
+            raise
+        finally:
+            if transaction_descriptor is not None:
+                with suppress(OSError):
+                    os.close(transaction_descriptor)
 
 
 def _load_manifest(root: Path, transaction_id: str) -> _LoadedTransaction:
@@ -801,14 +772,15 @@ def apply_history_cleanup(
         raise ValueError("a prepared history preview is required")
     if typed_consent != f"CLEAN OPTIONAL HISTORY {preview.transaction_id}":
         raise PermissionError("typed history-cleanup consent did not match")
-    with _load_manifest(root, preview.transaction_id) as loaded_transaction:
-        return _apply_history_cleanup_loaded(
-            root,
-            preview,
-            loaded_transaction,
-            credential_needles=credential_needles,
-            filter_repo=filter_repo,
-        )
+    with _acquire_history_lifecycle_lock(root, create=False):
+        with _load_manifest(root, preview.transaction_id) as loaded_transaction:
+            return _apply_history_cleanup_loaded(
+                root,
+                preview,
+                loaded_transaction,
+                credential_needles=credential_needles,
+                filter_repo=filter_repo,
+            )
 
 
 def _apply_history_cleanup_loaded(
@@ -950,8 +922,9 @@ def _apply_history_cleanup_loaded(
 
 
 def rewind_history_cleanup(root: Path, transaction_id: str) -> HistoryOutcome:
-    with _load_manifest(root, transaction_id) as loaded_transaction:
-        return _rewind_history_cleanup_loaded(root, transaction_id, loaded_transaction)
+    with _acquire_history_lifecycle_lock(root, create=False):
+        with _load_manifest(root, transaction_id) as loaded_transaction:
+            return _rewind_history_cleanup_loaded(root, transaction_id, loaded_transaction)
 
 
 def _rewind_history_cleanup_loaded(
@@ -1029,19 +1002,25 @@ def preview_retention(
 ) -> RetentionPreview:
     if now.utcoffset() is None or successful_release_activations < 0:
         raise ValueError("retention inputs must use an aware time and nonnegative release count")
-    manifests: list[tuple[str, dict[str, object], datetime, datetime]] = []
     try:
-        lifecycle_lock = _acquire_history_lifecycle_lock(root, create=False)
+        lifecycle_context = _acquire_history_lifecycle_lock(root, create=False)
     except FileNotFoundError:
-        transaction_ids = []
-    else:
-        try:
-            _prune_incomplete_transactions(root)
-            transaction_ids = sorted(
-                name for name in os.listdir(lifecycle_lock.backup_descriptor) if TRANSACTION_ID.fullmatch(name)
-            )
-        finally:
-            lifecycle_lock.close()
+        return _preview_retention_locked(root, now, successful_release_activations, ())
+    with lifecycle_context as lifecycle_lock:
+        _prune_incomplete_transactions(lifecycle_lock.backup_descriptor)
+        transaction_ids = tuple(
+            sorted(name for name in os.listdir(lifecycle_lock.backup_descriptor) if TRANSACTION_ID.fullmatch(name))
+        )
+        return _preview_retention_locked(root, now, successful_release_activations, transaction_ids)
+
+
+def _preview_retention_locked(
+    root: Path,
+    now: datetime,
+    successful_release_activations: int,
+    transaction_ids: tuple[str, ...],
+) -> RetentionPreview:
+    manifests: list[tuple[str, dict[str, object], datetime, datetime]] = []
     for transaction_id in transaction_ids:
         try:
             with _load_manifest(root, transaction_id) as loaded_transaction:
@@ -1116,22 +1095,30 @@ def delete_retention_candidates(
     acknowledged_ids: tuple[str, ...],
     exact_set_sha256: str,
 ) -> tuple[str, ...]:
-    current = preview_retention(
-        root,
-        now=datetime.fromisoformat(preview.evaluated_at),
-        successful_release_activations=preview.successful_release_activations,
-    )
-    if current != preview or acknowledged_ids != preview.candidate_ids or exact_set_sha256 != preview.exact_set_sha256:
-        raise PermissionError("retention exact-set acknowledgement changed")
-    if preview.protected_final_id in acknowledged_ids:
-        raise PermissionError("final history bundle is protected")
-    for transaction_id in acknowledged_ids:
-        with _load_manifest(root, transaction_id) as loaded_transaction:
-            manifest = loaded_transaction.manifest
-            assert manifest is not None
-            _verify_bundle(root, loaded_transaction, manifest)
-    backup_descriptor = _open_backup_root(root)
-    try:
+    with _acquire_history_lifecycle_lock(root, create=False) as lifecycle_lock:
+        _prune_incomplete_transactions(lifecycle_lock.backup_descriptor)
+        transaction_ids = tuple(
+            sorted(name for name in os.listdir(lifecycle_lock.backup_descriptor) if TRANSACTION_ID.fullmatch(name))
+        )
+        current = _preview_retention_locked(
+            root,
+            datetime.fromisoformat(preview.evaluated_at),
+            preview.successful_release_activations,
+            transaction_ids,
+        )
+        if (
+            current != preview
+            or acknowledged_ids != preview.candidate_ids
+            or exact_set_sha256 != preview.exact_set_sha256
+        ):
+            raise PermissionError("retention exact-set acknowledgement changed")
+        if preview.protected_final_id in acknowledged_ids:
+            raise PermissionError("final history bundle is protected")
+        for transaction_id in acknowledged_ids:
+            with _load_manifest(root, transaction_id) as loaded_transaction:
+                manifest = loaded_transaction.manifest
+                assert manifest is not None
+                _verify_bundle(root, loaded_transaction, manifest)
         for transaction_id in acknowledged_ids:
             with _load_manifest(root, transaction_id) as loaded_transaction:
                 for name in os.listdir(loaded_transaction.descriptor):
@@ -1139,8 +1126,6 @@ def delete_retention_candidates(
                     if not stat.S_ISREG(metadata.st_mode) or metadata.st_nlink != 1:
                         raise OSError("unsafe history retention artifact")
                     os.unlink(name, dir_fd=loaded_transaction.descriptor)
-            os.rmdir(transaction_id, dir_fd=backup_descriptor)
-        os.fsync(backup_descriptor)
-    finally:
-        os.close(backup_descriptor)
+            os.rmdir(transaction_id, dir_fd=lifecycle_lock.backup_descriptor)
+        os.fsync(lifecycle_lock.backup_descriptor)
     return acknowledged_ids

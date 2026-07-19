@@ -403,7 +403,7 @@ def _descriptor_count() -> int:
 
 
 def _recovery_transactions(backup: Path) -> list[Path]:
-    return sorted(path for path in backup.iterdir() if path.name != history_hygiene.LIFECYCLE_LOCK)
+    return sorted(backup.iterdir())
 
 
 def test_prepare_fd_path_failure_closes_descriptors_and_removes_orphan(tmp_path, monkeypatch):
@@ -585,6 +585,12 @@ def test_removing_lifecycle_serialization_reproduces_active_prune(tmp_path, monk
         def __init__(self, root, create):
             self.backup_descriptor = history_hygiene._open_backup_root(root, create=create)
 
+        def __enter__(self):
+            return self
+
+        def __exit__(self, _type, _value, _traceback):
+            self.close()
+
         def close(self):
             os.close(self.backup_descriptor)
             self.backup_descriptor = -1
@@ -615,14 +621,13 @@ def test_process_death_releases_lifecycle_lock_for_restart(tmp_path):
     child = os.fork()
     if child == 0:
         held = history_hygiene._acquire_history_lifecycle_lock(tmp_path, create=True)
-        assert held.descriptor >= 0
+        assert held.root_descriptor >= 0
         os._exit(81)
 
     _, status = os.waitpid(child, 0)
     assert os.WEXITSTATUS(status) == 81
-    lock = backup / history_hygiene.LIFECYCLE_LOCK
-    assert lock.is_file()
-    assert stat.S_IMODE(lock.stat().st_mode) == 0o600
+    assert backup.is_dir()
+    assert stat.S_IMODE(backup.stat().st_mode) == 0o700
 
     restarted = importlib.reload(history_hygiene)
     preview = restarted.preview_retention(
@@ -633,27 +638,41 @@ def test_process_death_releases_lifecycle_lock_for_restart(tmp_path):
     assert preview.retained_ids == ()
 
 
-@pytest.mark.parametrize("kind", ["symlink", "directory", "mode", "hardlink"])
-def test_hostile_lifecycle_lock_fails_closed(tmp_path, kind):
+def test_replacing_named_lock_file_cannot_split_directory_lock(tmp_path):
+    decoy_name = ".history-lifecycle.lock"
+    first = history_hygiene._acquire_history_lifecycle_lock(tmp_path, create=True)
+    backup = tmp_path / "System/.dex/adoption/history-backups"
+    decoy = backup / decoy_name
+    decoy.write_bytes(b"old")
+    held_decoy = os.open(decoy, os.O_RDONLY)
+    replacement = backup / ".replacement-lock"
+    replacement.write_bytes(b"new")
+    os.replace(replacement, decoy)
+    assert decoy.stat().st_ino != os.fstat(held_decoy).st_ino
+
+    def run_second_lifecycle_operation():
+        return preview_retention(
+            tmp_path,
+            now=datetime.now(UTC),
+            successful_release_activations=0,
+        )
+
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        waiting = executor.submit(run_second_lifecycle_operation)
+        time.sleep(0.1)
+        assert not waiting.done()
+        first.close()
+        assert waiting.result(timeout=10).protected_final_id is None
+    os.close(held_decoy)
+
+
+def test_hostile_backup_directory_mode_fails_closed(tmp_path):
     backup = tmp_path / "System/.dex/adoption/history-backups"
     backup.mkdir(parents=True)
-    lock = backup / history_hygiene.LIFECYCLE_LOCK
-    outside = tmp_path.parent / f"outside-history-lock-{kind}"
-    outside.write_text("preserve")
-    if kind == "symlink":
-        lock.symlink_to(outside)
-    elif kind == "directory":
-        lock.mkdir()
-    elif kind == "mode":
-        lock.write_bytes(b"")
-        lock.chmod(0o644)
-    else:
-        os.link(outside, lock)
+    backup.chmod(0o755)
 
     with pytest.raises(OSError):
         preview_retention(tmp_path, now=datetime.now(UTC), successful_release_activations=0)
-
-    assert outside.read_text() == "preserve"
 
 
 def test_restart_pruning_preserves_published_recovery_and_retention_accounting(tmp_path):
@@ -681,6 +700,7 @@ def test_restart_pruning_preserves_published_recovery_and_retention_accounting(t
 def test_restart_prunes_legacy_manifestless_transaction_orphans(tmp_path, artifact):
     backup = tmp_path / "System/.dex/adoption/history-backups"
     backup.mkdir(parents=True)
+    backup.chmod(0o700)
     orphan = backup / ("d" * 32)
     orphan.mkdir(mode=0o700)
     if artifact:
@@ -705,6 +725,7 @@ def test_restart_pruning_refuses_symlinked_incomplete_transaction(tmp_path):
     sentinel.write_text("preserve")
     backup = tmp_path / "System/.dex/adoption/history-backups"
     backup.mkdir(parents=True)
+    backup.chmod(0o700)
     (backup / (".incomplete-" + "e" * 32)).symlink_to(outside, target_is_directory=True)
 
     restarted = importlib.reload(history_hygiene)

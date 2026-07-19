@@ -3,7 +3,9 @@
 Todoist and Trello raw credentials live only in the ignored vault-root `.env`. The tracked
 `System/integrations/config.yaml` stores `*_env_var` references. Internal task sync resolves
 those references itself and sends values only inside the adapter runner's stdin JSON. Values
-are excluded from argv, process environment, state, queues, results, and logs.
+are excluded from argv, process environment, state, queues, results, and logs. Trello's provider
+transport requires key/token query parameters, but adapter failures discard provider response
+bodies and expose only the HTTP status; request URLs are never included in diagnostics.
 
 Existing `.mcp.json` is scan/report-only and Dex never edits it. Any raw residual keeps local
 migration `partial`. Revocation and rotation remain provider actions performed by the user;
@@ -13,7 +15,9 @@ flow.
 Residual inspection includes both the canonical Todoist/Trello variable names and every exact
 uppercase `api_key_env_var`/`token_env_var` name configured in bounded tracked YAML. Malformed,
 duplicate, or oversized tracked references fail closed before `.mcp.json` can be classified as
-clean. Reference placeholders are not raw values, and `.mcp.json` remains byte-invariant.
+clean. The same YAML file identity and bytes are rechecked after active-config inspection, so a
+reference-name swap cannot produce a false clean result. Reference placeholders are not raw
+values, and `.mcp.json` remains byte-invariant.
 
 Dex inspects `.mcp.json` with `lstat`, a no-follow open, regular-file/single-link/size/readability
 checks, and before/open/after identity comparison. A symlink, hard link, directory, FIFO, device,
@@ -41,7 +45,8 @@ preserving already-staged blobs. It then scans every blob in the exact final tem
 not worktree approximations. It refuses raw Todoist/Trello YAML fields, configured known values,
 active MCP residuals or unsafe MCP state, and values recovered ephemerally from migration journal
 preimages. `.env`, `.mcp.json`, and migration journals remain ignored authorities and are never
-staged. Git uses an absolute trusted executable, sanitized configuration/environment, disabled
+staged; an unignored or already tracked authority makes autosave refuse without changing the real
+index. Git uses an absolute trusted executable, sanitized configuration/environment, disabled
 hooks/signing/fsmonitor, and refuses local executable filters, includes, hooks, drivers, textconv,
 or redirected-worktree authority. Findings are counts only; values and value-derived fingerprints
 are not serialized.
@@ -92,10 +97,11 @@ command, argv, process environment, manifest, log, state, or Doctor output.
    only structurally safe `.incomplete-*` directories; unexpected names, links, or file types fail
    closed. It also prunes structurally safe manifest-less transaction directories left by an
    interrupted older implementation. Published manifest-bearing recovery transactions remain
-   fully accounted and are never pruned this way. Preparation and retention pruning hold the same
-   kernel-released lifecycle lock, opened as a mode-`0600`, single-link regular file beneath the
-   no-follow recovery hierarchy. Concurrent preparation/retention cannot prune active work, and a
-   cancellation or dead process releases ownership without weakening restart cleanup.
+   fully accounted and are never pruned this way. Preparation and retention pruning hold a
+   kernel-released lock on the opened vault-root directory descriptor and mutate through the
+   descriptor-bound mode-`0700` backup directory. Replacing any named lock-file decoy cannot split
+   ownership. Concurrent preparation/retention cannot prune active work, and cancellation or
+   process death releases ownership without weakening restart cleanup.
 4. Apply requires the unchanged preview and exact typed consent
    `CLEAN OPTIONAL HISTORY <opaque-transaction-id>`. It rechecks the tool, topology, bundle,
    object evidence, all refs, repository state, and the supplied credential's exact non-secret

@@ -85,6 +85,32 @@ def test_active_mcp_residual_refuses_without_staging_ignored_authorities(tmp_pat
     assert b".env" not in _git(tmp_path, "ls-files")
 
 
+@pytest.mark.parametrize("authority", [".env", ".mcp.json"])
+def test_unignored_local_authority_is_never_staged_even_when_empty(tmp_path, authority):
+    _repo(tmp_path)
+    (tmp_path / authority).write_text("")
+    before = _git(tmp_path, "write-tree")
+
+    result = safe_autosave_commit(tmp_path, (), "autosave")
+
+    assert result.refused_findings
+    assert _git(tmp_path, "write-tree") == before
+    assert authority.encode() not in _git(tmp_path, "ls-files")
+
+
+def test_pretracked_empty_env_blocks_autosave_without_index_change(tmp_path):
+    _repo(tmp_path)
+    (tmp_path / ".env").write_text("")
+    _git(tmp_path, "add", "-f", ".env")
+    before = _git(tmp_path, "write-tree")
+    (tmp_path / "safe.txt").write_text("safe\n")
+
+    result = safe_autosave_commit(tmp_path, (), "autosave")
+
+    assert result.refused_findings
+    assert _git(tmp_path, "write-tree") == before
+
+
 def test_migration_journal_preimage_is_ephemeral_secret_authority(tmp_path):
     _repo(tmp_path)
     journal_root = tmp_path / "System/.dex/adoption/credential-journals"

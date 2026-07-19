@@ -83,8 +83,8 @@ async function trelloFetch(endpoint, adapterConfig, options = {}) {
   const response = await fetch(url.toString(), fetchOptions);
 
   if (!response.ok) {
-    const text = await response.text();
-    throw new Error(`Trello API ${response.status}: ${text}`);
+    await response.arrayBuffer();
+    throw new Error(`Trello API request failed with status ${response.status}`);
   }
 
   return response.json();

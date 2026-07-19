@@ -1,6 +1,7 @@
 import json
 import os
 import socket
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -68,6 +69,18 @@ def test_custom_configured_env_name_placeholder_is_not_a_raw_residual(tmp_path):
     assert mcp.read_bytes() == before
 
 
+def test_custom_scan_set_is_enablement_independent_and_keeps_canonical_names(tmp_path):
+    root = _vault(tmp_path, b"todoist:\n  enabled: false\n  api_key_env_var: CUSTOM_TODOIST_KEY\n")
+    (root / ".mcp.json").write_text(
+        '{"env":{"CUSTOM_TODOIST_KEY":"${CUSTOM_TODOIST_KEY}","TODOIST_API_KEY":"synthetic-canonical-active"}}'
+    )
+
+    result = migrate_legacy_credentials(root)
+
+    assert result.state == "partial"
+    assert result.active_residual_state == "unrevoked-or-unclassified"
+
+
 @pytest.mark.parametrize(
     "configured_name",
     ["custom_lowercase", "1INVALID", "WITH-DASH", "${CUSTOM_TODOIST_KEY}", "", 7, ["CUSTOM"]],
@@ -113,6 +126,26 @@ def test_atomic_migration_preserves_yaml_bytes_and_exact_rewind(tmp_path):
     assert rewind.state == "rewound"
     assert config.read_bytes() == before
     assert not (root / ".env").exists()
+
+
+@pytest.mark.parametrize(
+    ("posture", "expected"),
+    [("ignored", "migrated-local-config"), ("unignored", "refused"), ("tracked", "refused")],
+)
+def test_git_vault_requires_env_to_be_ignored_and_untracked(tmp_path, posture, expected):
+    root = _vault(tmp_path)
+    subprocess.run(["git", "init", "-q"], cwd=root, check=True)
+    if posture in {"ignored", "tracked"}:
+        (root / ".gitignore").write_text(".env\n")
+    if posture == "tracked":
+        (root / ".env").write_text("TODOIST_API_KEY=synthetic-old-key\n")
+        subprocess.run(["git", "add", "-f", ".env"], cwd=root, check=True)
+
+    result = migrate_legacy_credentials(root)
+
+    assert result.state == expected
+    if expected == "refused":
+        assert b"api_key: synthetic-old-key" in (root / "System/integrations/config.yaml").read_bytes()
 
 
 def test_conflict_symlink_and_mcp_residual_are_honest(tmp_path):
@@ -190,6 +223,54 @@ def test_active_config_identity_race_is_uninspected(tmp_path, monkeypatch):
     assert result.uninspected_reasons == ("active-config-identity-change",)
 
 
+def test_config_reference_snapshot_swap_cannot_return_false_clean(tmp_path, monkeypatch):
+    root = _vault(tmp_path, b"todoist:\n  api_key_env_var: CUSTOM_TODOIST_KEY\n")
+    config = root / "System/integrations/config.yaml"
+    (root / ".mcp.json").write_text("{}")
+    from core.utils.integration_credentials import ActiveConfigInspection
+
+    def inspect_and_swap(_root):
+        replacement = config.with_suffix(".replacement")
+        replacement.write_text("todoist:\n  api_key_env_var: OTHER_TODOIST_KEY\n")
+        replacement.replace(config)
+        return ActiveConfigInspection(b"{}", True)
+
+    monkeypatch.setattr(
+        "core.utils.credential_remediation.inspect_active_mcp_config",
+        inspect_and_swap,
+    )
+
+    result = migrate_legacy_credentials(root)
+
+    assert result.state == "partial"
+    assert result.active_residual_state == "unrevoked-or-unclassified"
+    assert result.uninspected_reasons == ("integration-config-identity-change",)
+
+
+def test_config_snapshot_swap_after_capability_probe_refuses_before_env_write(tmp_path, monkeypatch):
+    root = _vault(tmp_path)
+    config = root / "System/integrations/config.yaml"
+    original_probe = probe_atomic_migration
+
+    def probe_and_swap(vault_root, journal_dir):
+        result = original_probe(vault_root, journal_dir)
+        replacement = config.with_suffix(".replacement")
+        replacement.write_text("todoist:\n  api_key: synthetic-different-key\n")
+        replacement.replace(config)
+        return result
+
+    monkeypatch.setattr(
+        "core.utils.credential_remediation.probe_atomic_migration",
+        probe_and_swap,
+    )
+
+    result = migrate_legacy_credentials(root)
+
+    assert result.state == "refused"
+    assert not (root / ".env").exists()
+    assert b"synthetic-different-key" in config.read_bytes()
+
+
 def test_renderer_exact_copy_and_impossible_combinations():
     status = render_credential_status(
         "partial",
@@ -210,6 +291,16 @@ def test_renderer_exact_copy_and_impossible_combinations():
         "`.mcp.json` still contains the revoked value; remove it manually to complete local-config cleanup. Dex did not edit this file."
     )
     assert status.history == "Copies remain in inspected local Git history. Cleaning them is optional privacy hygiene."
+    active = render_credential_status(
+        "partial",
+        "rotation-pending",
+        "unrevoked-or-unclassified",
+        "history-clean",
+    )
+    assert active.security_and_current_config == (
+        "An active `.mcp.json` value may still be usable. Security is not fixed; rotate/revoke it at the provider "
+        "or remove it manually. Dex did not edit this file."
+    )
     with pytest.raises(ValueError):
         render_credential_status(
             "migrated-local-config", "remediated", "proven-revoked", "history-clean", ("provider-binding",), ()

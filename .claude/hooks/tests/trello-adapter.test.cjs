@@ -39,6 +39,27 @@ test('health performs only a read-only member identity request', async (t) => {
   assert.equal(calls[0].url.searchParams.get('fields'), 'id');
 });
 
+test('provider failures never expose credential-bearing URL or response text', async (t) => {
+  const apiKey = 'synthetic-query-key';
+  const token = 'synthetic-query-token';
+  stubFetch(t, () => new Response(
+    `rejected https://api.trello.test/path?key=${apiKey}&token=${token}`,
+    { status: 401 },
+  ));
+  const adapter = loadAdapter();
+
+  await assert.rejects(
+    adapter.health({ api_key: apiKey, token }),
+    (error) => {
+      assert.equal(error.message, 'Trello API request failed with status 401');
+      assert.equal(error.message.includes(apiKey), false);
+      assert.equal(error.message.includes(token), false);
+      assert.equal(error.message.includes('api.trello.test'), false);
+      return true;
+    },
+  );
+});
+
 test('create uses configured list_mapping and embeds the Dex marker', async (t) => {
   const calls = stubFetch(t, ({ url, options }) => {
     if (url.pathname === '/1/cards' && options.method === 'POST') {

@@ -24,6 +24,8 @@ EXECUTABLE_CONFIG = re.compile(
     rb"commit\.gpgsign$|tag\.gpgsign$|gpg\.|user\.signingkey$|diff\..*\.(?:command|textconv)$|"
     rb"merge\..*\.driver$)"
 )
+LOCAL_AUTHORITY_PATHS = frozenset({b".env", b".mcp.json"})
+LOCAL_AUTHORITY_PREFIXES = (b"System/.dex/adoption/credential-journals/",)
 
 
 @dataclass(frozen=True)
@@ -59,8 +61,13 @@ def _git_env(index_path: Path | None = None) -> dict[str, str]:
     return env
 
 
-def _git(root: Path, *args: str, env: dict[str, str] | None = None, input_data: bytes | None = None) -> bytes:
-    result = subprocess.run(
+def _git_result(
+    root: Path,
+    *args: str,
+    env: dict[str, str] | None = None,
+    input_data: bytes | None = None,
+) -> subprocess.CompletedProcess[bytes]:
+    return subprocess.run(
         [
             _git_binary(),
             "-c",
@@ -81,6 +88,10 @@ def _git(root: Path, *args: str, env: dict[str, str] | None = None, input_data: 
         stderr=subprocess.PIPE,
         env=env or _git_env(),
     )
+
+
+def _git(root: Path, *args: str, env: dict[str, str] | None = None, input_data: bytes | None = None) -> bytes:
+    result = _git_result(root, *args, env=env, input_data=input_data)
     if result.returncode:
         raise RuntimeError("safe autosave Git operation failed")
     return result.stdout
@@ -189,6 +200,9 @@ def _final_index_findings(root: Path, env: dict[str, str], needles: tuple[bytes,
         if len(fields) != 3 or fields[2] != b"0":
             findings += 1
             continue
+        if relative in LOCAL_AUTHORITY_PATHS or relative.startswith(LOCAL_AUTHORITY_PREFIXES):
+            findings += 1
+            continue
         data = _git(root, "cat-file", "blob", fields[1].decode("ascii"), env=env)
         if any(value in data for value in needles):
             findings += 1
@@ -222,32 +236,13 @@ def safe_autosave_commit(root: Path, credential_needles: tuple[bytes, ...], mess
         if stage_paths:
             payload = b"\0".join(os.fsencode(path) for path in stage_paths) + b"\0"
             _git(root, "add", "--pathspec-from-file=-", "--pathspec-file-nul", "--", env=env, input_data=payload)
-        if subprocess.run(
-            [_git_binary(), "-c", "core.hooksPath=/dev/null", "diff", "--cached", "--quiet"],
-            cwd=root,
-            env=env,
-        ).returncode == 0:
+        if _git_result(root, "diff", "--cached", "--quiet", env=env).returncode == 0:
             return AutosaveResult(())
         needles, authority_findings = _authority_needles(root, credential_needles)
         findings = authority_findings + _final_index_findings(root, env, needles)
         if findings:
             return AutosaveResult((), findings)
-        committed = subprocess.run(
-            [
-                _git_binary(),
-                "-c",
-                "core.hooksPath=/dev/null",
-                "-c",
-                "commit.gpgSign=false",
-                "commit",
-                "-m",
-                message,
-            ],
-            cwd=root,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            env=env,
-        )
+        committed = _git_result(root, "commit", "-m", message, env=env)
         if committed.returncode:
             raise RuntimeError("safe autosave commit failed")
         if (index_path.read_bytes() if index_path.exists() else None) != original:

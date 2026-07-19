@@ -264,10 +264,10 @@ def _legacy_values(raw: bytes) -> tuple[dict[str, str], dict[str, str], frozense
     env_names = {env_name for env_name, _ in LEGACY_CREDENTIAL_FIELDS.values()}
     for (service, key), (env_name, ref_name) in LEGACY_CREDENTIAL_FIELDS.items():
         settings = data.get(service)
-        if settings is not None and not isinstance(settings, dict):
-            raise ValueError("integration settings must be an object")
-        if not isinstance(settings, dict):
+        if settings is None:
             continue
+        if not isinstance(settings, dict):
+            raise ValueError("integration settings must be an object")
         if ref_name in settings:
             configured_name = settings[ref_name]
             if not isinstance(configured_name, str) or not re.fullmatch(r"[A-Z][A-Z0-9_]*", configured_name):
@@ -287,6 +287,61 @@ def _active_mcp_raw_residual(raw: bytes, env_names: frozenset[str], legacy_value
         return True
     names = b"|".join(re.escape(name.encode()) for name in sorted(env_names))
     return bool(re.search(rb'"(?:' + names + rb')"\s*:\s*"[^"$<{][^"]*"', raw))
+
+
+def _config_snapshot_unchanged(
+    vault_root: Path,
+    expected_raw: bytes,
+    expected_metadata: os.stat_result,
+) -> bool:
+    try:
+        current_raw, current_metadata = _read_contained(
+            vault_root,
+            Path("System/integrations/config.yaml"),
+            max_bytes=MAX_TRACKED_CONFIG_BYTES,
+        )
+    except OSError:
+        return False
+    return current_raw == expected_raw and (
+        current_metadata.st_dev,
+        current_metadata.st_ino,
+        current_metadata.st_size,
+        stat.S_IMODE(current_metadata.st_mode),
+    ) == (
+        expected_metadata.st_dev,
+        expected_metadata.st_ino,
+        expected_metadata.st_size,
+        stat.S_IMODE(expected_metadata.st_mode),
+    )
+
+
+def _env_storage_is_local_only(vault_root: Path) -> bool:
+    """Require ignored, untracked .env in Git vaults; non-Git vaults remain supported."""
+    from core.utils.safe_autosave import _git as safe_git
+
+    git_marker = vault_root / ".git"
+    try:
+        git_metadata = git_marker.lstat()
+    except FileNotFoundError:
+        return True
+    if not (stat.S_ISDIR(git_metadata.st_mode) or stat.S_ISREG(git_metadata.st_mode)):
+        return False
+    try:
+        if safe_git(vault_root, "rev-parse", "--is-inside-work-tree").strip() != b"true":
+            return False
+    except RuntimeError:
+        return False
+    try:
+        safe_git(vault_root, "ls-files", "--error-unmatch", "--", ".env")
+    except RuntimeError:
+        tracked = False
+    else:
+        tracked = True
+    try:
+        ignored = safe_git(vault_root, "check-ignore", "-q", "--", ".env") == b""
+    except RuntimeError:
+        ignored = False
+    return ignored and not tracked
 
 
 def _replace_yaml_credentials(raw: bytes, refs: dict[str, str]) -> bytes:
@@ -332,11 +387,19 @@ def migrate_legacy_credentials(vault_root: Path) -> MigrationResult:
         )
     except OSError:
         return MigrationResult("refused")
+    config_snapshot_metadata = config_metadata
     try:
         values, refs, env_names = _legacy_values(config_raw)
     except (UnicodeDecodeError, ValueError, yaml.YAMLError):
         return MigrationResult("refused")
     mcp = inspect_active_mcp_config(vault_root)
+    if not _config_snapshot_unchanged(vault_root, config_raw, config_snapshot_metadata):
+        return MigrationResult(
+            "refused" if values else "partial",
+            active_residual_state="unrevoked-or-unclassified",
+            uninspected_scopes=("worktree",),
+            uninspected_reasons=("integration-config-identity-change",),
+        )
     if not mcp.inspected:
         return MigrationResult(
             "refused" if values else "partial",
@@ -351,6 +414,8 @@ def migrate_legacy_credentials(vault_root: Path) -> MigrationResult:
             "partial" if mcp_raw_residual else "not-needed",
             active_residual_state="unrevoked-or-unclassified" if mcp_raw_residual else "none",
         )
+    if not _env_storage_is_local_only(vault_root):
+        return MigrationResult("refused")
     journal_dir = vault_root / "System" / ".dex" / "adoption" / "credential-journals"
     capability = probe_atomic_migration(vault_root, journal_dir)
     if not capability.authorized:
@@ -377,7 +442,7 @@ def migrate_legacy_credentials(vault_root: Path) -> MigrationResult:
         "config": {
             "bytes_hex": config_raw.hex(),
             "sha256": _hash(config_raw),
-            "mode": stat.S_IMODE(config_metadata.st_mode),
+            "mode": stat.S_IMODE(config_snapshot_metadata.st_mode),
         },
         "env": None
         if env_raw is None
@@ -410,6 +475,18 @@ def migrate_legacy_credentials(vault_root: Path) -> MigrationResult:
     try:
         config_descriptor = _open_directory_chain(vault_root, ("System", "integrations"))
         config_bytes, config_metadata = _read_at_with_metadata(config_descriptor, "config.yaml")
+        if config_bytes != config_raw or (
+            config_metadata.st_dev,
+            config_metadata.st_ino,
+            config_metadata.st_size,
+            stat.S_IMODE(config_metadata.st_mode),
+        ) != (
+            config_snapshot_metadata.st_dev,
+            config_snapshot_metadata.st_ino,
+            config_snapshot_metadata.st_size,
+            stat.S_IMODE(config_snapshot_metadata.st_mode),
+        ):
+            raise OSError("config changed after migration inspection")
         config_before = (
             config_metadata.st_ino,
             _hash(config_bytes),
