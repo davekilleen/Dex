@@ -34,6 +34,11 @@ RETENTION_DAYS = 90
 RETENTION_RELEASES = 2
 SUPPORTED_FILTER_REPO = re.compile(r"^(?:2\.(?:3[8-9]|[4-9]\d)\.\d+|[0-9a-f]{7,64})$")
 ALLOWED_REF_PREFIXES = ("refs/heads/", "refs/tags/", "refs/stash/")
+INCOMPLETE_TRANSACTION = re.compile(r"^\.incomplete-([0-9a-f]{32})$")
+TRANSACTION_ID = re.compile(r"^[0-9a-f]{32}$")
+PREPARATION_ARTIFACTS = frozenset(
+    {"history.bundle", "objects.json", "git-config.bin", "index.bin", "manifest.json"}
+)
 
 
 @dataclass(frozen=True)
@@ -365,6 +370,49 @@ def _used_recovery_bytes(root: Path) -> int:
         os.close(adoption)
 
 
+def _remove_unpublished_transaction(backup_descriptor: int, name: str) -> None:
+    incomplete = INCOMPLETE_TRANSACTION.fullmatch(name) is not None
+    if not incomplete and TRANSACTION_ID.fullmatch(name) is None:
+        raise OSError("unsafe unpublished history transaction name")
+    descriptor = os.open(
+        name,
+        os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0),
+        dir_fd=backup_descriptor,
+    )
+    try:
+        entries = os.listdir(descriptor)
+        if not incomplete and "manifest.json" in entries:
+            return
+        if stat.S_IMODE(os.fstat(descriptor).st_mode) != 0o700:
+            raise OSError("unsafe unpublished history transaction")
+        if any(entry not in PREPARATION_ARTIFACTS for entry in entries):
+            raise OSError("unsafe unpublished history transaction")
+        for entry in entries:
+            metadata = os.stat(entry, dir_fd=descriptor, follow_symlinks=False)
+            if not stat.S_ISREG(metadata.st_mode) or metadata.st_nlink != 1:
+                raise OSError("unsafe unpublished history transaction")
+        for entry in entries:
+            os.unlink(entry, dir_fd=descriptor)
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+    os.rmdir(name, dir_fd=backup_descriptor)
+    os.fsync(backup_descriptor)
+
+
+def _prune_incomplete_transactions(root: Path) -> None:
+    try:
+        backup_descriptor = _open_backup_root(root)
+    except FileNotFoundError:
+        return
+    try:
+        for name in sorted(os.listdir(backup_descriptor)):
+            if INCOMPLETE_TRANSACTION.fullmatch(name) or TRANSACTION_ID.fullmatch(name):
+                _remove_unpublished_transaction(backup_descriptor, name)
+    finally:
+        os.close(backup_descriptor)
+
+
 def prepare_history_cleanup(
     root: Path,
     *,
@@ -399,6 +447,7 @@ def prepare_history_cleanup(
             None,
             "Optional history privacy cleanup is unavailable because a supported preinstalled git-filter-repo was not found. Security remains fixed; Dex did not install or run anything.",
         )
+    _prune_incomplete_transactions(root)
     _, common, objects = _repository_boundaries(root)
     refs = _refs(root, selected_refs)
     all_refs = _all_refs(root)
@@ -409,15 +458,17 @@ def prepare_history_cleanup(
     if used + estimated > SHARED_RECOVERY_CAP_BYTES or free < required:
         raise OSError("insufficient verified recovery space")
     transaction_id = uuid.uuid4().hex
+    incomplete_name = f".incomplete-{transaction_id}"
     backup_descriptor = None
     transaction_descriptor = None
     transaction_created = False
+    transaction_published = False
     try:
         backup_descriptor = _open_backup_root(root, create=True)
-        os.mkdir(transaction_id, 0o700, dir_fd=backup_descriptor)
+        os.mkdir(incomplete_name, 0o700, dir_fd=backup_descriptor)
         transaction_created = True
         transaction_descriptor = os.open(
-            transaction_id,
+            incomplete_name,
             os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0),
             dir_fd=backup_descriptor,
         )
@@ -488,19 +539,27 @@ def prepare_history_cleanup(
         manifest = {**core, "preview_sha256": preview_sha}
         _write_restrictive(transaction / "manifest.json", _json_bytes(manifest))
         _fsync_dir(transaction)
+        os.rename(
+            incomplete_name,
+            transaction_id,
+            src_dir_fd=backup_descriptor,
+            dst_dir_fd=backup_descriptor,
+        )
+        transaction_published = True
+        os.fsync(backup_descriptor)
         return HistoryPreview(
             "prepared",
             transaction_id,
             preview_sha,
             "Optional privacy cleanup is prepared. Provider rotation is unchanged. Review the selected refs, then type the exact consent shown by Doctor to apply.",
         )
-    except Exception:
+    except BaseException:
         if transaction_descriptor is not None:
-            for name in os.listdir(transaction_descriptor):
-                with suppress(FileNotFoundError):
-                    os.unlink(name, dir_fd=transaction_descriptor)
-        if transaction_created and backup_descriptor is not None:
-            os.rmdir(transaction_id, dir_fd=backup_descriptor)
+            with suppress(OSError):
+                os.close(transaction_descriptor)
+            transaction_descriptor = None
+        if transaction_created and not transaction_published and backup_descriptor is not None:
+            _remove_unpublished_transaction(backup_descriptor, incomplete_name)
         raise
     finally:
         if transaction_descriptor is not None:
@@ -905,6 +964,7 @@ def preview_retention(
 ) -> RetentionPreview:
     if now.utcoffset() is None or successful_release_activations < 0:
         raise ValueError("retention inputs must use an aware time and nonnegative release count")
+    _prune_incomplete_transactions(root)
     manifests: list[tuple[str, dict[str, object], datetime, datetime]] = []
     backup_descriptor = None
     try:

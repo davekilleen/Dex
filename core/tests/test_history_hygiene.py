@@ -232,6 +232,28 @@ def test_prepare_creates_verified_restrictive_bundle_and_manifest(tmp_path):
     assert manifest["before_object_evidence"]["sha256"]
     assert manifest["minimum_successful_release_activations_for_deletion"] == 5
     assert _git(tmp_path, "rev-parse", ref) == before
+    assert not any(path.name.startswith(".incomplete-") for path in transaction.parent.iterdir())
+
+
+def test_prepare_publishes_only_after_manifest_is_durable(tmp_path, monkeypatch):
+    ref = _repo(tmp_path)
+    tool = _tool(tmp_path / "git-filter-repo")
+    original = history_hygiene._write_restrictive
+    manifest_parent = None
+
+    def observe_manifest(path, data):
+        nonlocal manifest_parent
+        original(path, data)
+        if path.name == "manifest.json":
+            manifest_parent = path.parent.resolve().name
+
+    monkeypatch.setattr(history_hygiene, "_write_restrictive", observe_manifest)
+    preview = _prepare(tmp_path, tool, ref)
+    backup = tmp_path / "System/.dex/adoption/history-backups"
+
+    assert manifest_parent == f".incomplete-{preview.transaction_id}"
+    assert (backup / preview.transaction_id / "manifest.json").is_file()
+    assert not (backup / manifest_parent).exists()
 
 
 def test_loaded_transaction_context_closes_descriptor(tmp_path):
@@ -390,6 +412,140 @@ def test_prepare_fd_path_failure_closes_descriptors_and_removes_orphan(tmp_path,
     assert _descriptor_count() == before
     backup = tmp_path / "System/.dex/adoption/history-backups"
     assert not backup.exists() or list(backup.iterdir()) == []
+
+
+@pytest.mark.parametrize("failure", [KeyboardInterrupt, SystemExit])
+@pytest.mark.parametrize("boundary", ["fd-path", "bundle-created"])
+def test_prepare_cancellation_removes_incomplete_transaction(tmp_path, monkeypatch, failure, boundary):
+    ref = _repo(tmp_path)
+    tool = _tool(tmp_path / "git-filter-repo")
+    before = _descriptor_count()
+
+    if boundary == "fd-path":
+        def interrupt_fd_path(_descriptor):
+            raise failure("cancelled")
+
+        monkeypatch.setattr(history_hygiene, "_fd_path", interrupt_fd_path)
+    else:
+        original_git = history_hygiene._git
+
+        def interrupt_after_bundle(root, *args, **kwargs):
+            result = original_git(root, *args, **kwargs)
+            if args[:2] == ("bundle", "create"):
+                raise failure("cancelled")
+            return result
+
+        monkeypatch.setattr(history_hygiene, "_git", interrupt_after_bundle)
+
+    with pytest.raises(failure, match="cancelled"):
+        _prepare(tmp_path, tool, ref)
+
+    backup = tmp_path / "System/.dex/adoption/history-backups"
+    assert _descriptor_count() == before
+    assert not backup.exists() or list(backup.iterdir()) == []
+
+
+@pytest.mark.skipif(not hasattr(os, "fork"), reason="process-death fault injection requires fork")
+@pytest.mark.parametrize("boundary", ["fd-path", "bundle-created"])
+def test_restart_prunes_process_death_during_incomplete_preparation(tmp_path, boundary):
+    ref = _repo(tmp_path)
+    tool = _tool(tmp_path / "git-filter-repo")
+    original_git = history_hygiene._git
+    child = os.fork()
+    if child == 0:
+        if boundary == "fd-path":
+            history_hygiene._fd_path = lambda _descriptor: os._exit(71)
+        else:
+            def die_after_bundle(root, *args, **kwargs):
+                result = original_git(root, *args, **kwargs)
+                if args[:2] == ("bundle", "create"):
+                    os._exit(72)
+                return result
+
+            history_hygiene._git = die_after_bundle
+        _prepare(tmp_path, tool, ref)
+        os._exit(73)
+
+    _, status = os.waitpid(child, 0)
+    assert os.WEXITSTATUS(status) in {71, 72}
+    backup = tmp_path / "System/.dex/adoption/history-backups"
+    incomplete = list(backup.glob(".incomplete-*"))
+    assert len(incomplete) == 1
+    assert list(incomplete[0].iterdir()) == ([] if boundary == "fd-path" else [incomplete[0] / "history.bundle"])
+
+    restarted = importlib.reload(history_hygiene)
+    retention = restarted.preview_retention(
+        tmp_path,
+        now=datetime.now(UTC),
+        successful_release_activations=0,
+    )
+
+    assert retention.candidate_ids == ()
+    assert retention.protected_final_id is None
+    assert list(backup.iterdir()) == []
+
+
+def test_restart_pruning_preserves_published_recovery_and_retention_accounting(tmp_path):
+    ref = _repo(tmp_path)
+    preview = _prepare(tmp_path, _tool(tmp_path / "git-filter-repo"), ref)
+    backup = tmp_path / "System/.dex/adoption/history-backups"
+    incomplete = backup / (".incomplete-" + "f" * 32)
+    incomplete.mkdir(mode=0o700)
+    (incomplete / "history.bundle").write_bytes(b"partial")
+
+    restarted = importlib.reload(history_hygiene)
+    retention = restarted.preview_retention(
+        tmp_path,
+        now=datetime.now(UTC),
+        successful_release_activations=3,
+    )
+
+    assert not incomplete.exists()
+    assert retention.protected_final_id == preview.transaction_id
+    assert retention.retained_ids == (preview.transaction_id,)
+    assert (backup / preview.transaction_id / "history.bundle").is_file()
+
+
+@pytest.mark.parametrize("artifact", [None, "history.bundle"])
+def test_restart_prunes_legacy_manifestless_transaction_orphans(tmp_path, artifact):
+    backup = tmp_path / "System/.dex/adoption/history-backups"
+    backup.mkdir(parents=True)
+    orphan = backup / ("d" * 32)
+    orphan.mkdir(mode=0o700)
+    if artifact:
+        (orphan / artifact).write_bytes(b"partial bundle")
+
+    restarted = importlib.reload(history_hygiene)
+    retention = restarted.preview_retention(
+        tmp_path,
+        now=datetime.now(UTC),
+        successful_release_activations=0,
+    )
+
+    assert retention.candidate_ids == ()
+    assert retention.protected_final_id is None
+    assert not orphan.exists()
+
+
+def test_restart_pruning_refuses_symlinked_incomplete_transaction(tmp_path):
+    outside = tmp_path.parent / "outside-incomplete-history"
+    outside.mkdir()
+    sentinel = outside / "sentinel"
+    sentinel.write_text("preserve")
+    backup = tmp_path / "System/.dex/adoption/history-backups"
+    backup.mkdir(parents=True)
+    (backup / (".incomplete-" + "e" * 32)).symlink_to(outside, target_is_directory=True)
+
+    restarted = importlib.reload(history_hygiene)
+    with pytest.raises(OSError):
+        restarted.preview_retention(
+            tmp_path,
+            now=datetime.now(UTC),
+            successful_release_activations=0,
+        )
+
+    assert sentinel.read_text() == "preserve"
+    assert list(outside.iterdir()) == [sentinel]
 
 
 def test_load_fd_path_failure_closes_descriptor_repeatedly(tmp_path, monkeypatch):

@@ -71,7 +71,8 @@ command, argv, process environment, manifest, log, state, or Doctor output.
    installs a tool. It refuses linked-worktree/common-dir ambiguity, alternates, shallow or
    promisor repositories, an object database outside the primary common directory, insufficient
    free space including the 1 MiB margin, or projected shared recovery use above 10 GiB.
-3. Preparation writes
+3. Preparation writes under a mode-`0700` `.incomplete-<opaque-transaction-id>` directory,
+   fsyncs and verifies every artifact and the manifest, then atomically publishes it as
    `System/.dex/adoption/history-backups/<opaque-transaction-id>/history.bundle`,
    `objects.json`, `git-config.bin`, `index.bin`, and `manifest.json`. The transaction directory
    is mode `0700`; every file is mode `0600`. The bundle covers every restorable ref, while the
@@ -81,7 +82,12 @@ command, argv, process environment, manifest, log, state, or Doctor output.
    Every recovery-root and transaction-directory component is opened or created relative to
    no-follow directory descriptors. The transaction directory device/inode identity is persisted
    and revalidated after restart; preparation, apply, rewind, retention preview, and deletion do
-   not follow a swapped recovery ancestor.
+   not follow a swapped recovery ancestor. Cancellation removes incomplete preparation state.
+   After process death, the next preparation or retention preview descriptor-relatively prunes
+   only structurally safe `.incomplete-*` directories; unexpected names, links, or file types fail
+   closed. It also prunes structurally safe manifest-less transaction directories left by an
+   interrupted older implementation. Published manifest-bearing recovery transactions remain
+   fully accounted and are never pruned this way.
 4. Apply requires the unchanged preview and exact typed consent
    `CLEAN OPTIONAL HISTORY <opaque-transaction-id>`. It rechecks the tool, topology, bundle,
    object evidence, all refs, repository state, and the supplied credential's exact non-secret
