@@ -17,8 +17,6 @@ from core.utils import update_verifier as update_verifier_module
 from core.utils.update_verifier import (
     CATALOG_PATH,
     MANIFEST_PATH,
-    NOTICE_CAUTION,
-    NOTICE_GUIDANCE,
     PROFILE_PATH,
     STATUS_NONE,
     STATUS_OFFLINE,
@@ -34,6 +32,14 @@ from core.utils.update_verifier import (
     canonical_profile_bytes,
     legacy_profile_bytes,
     parse_profile,
+)
+
+APPROVED_NOTICE_CAUTION = (
+    "A newer Dex release appears to exist, but Dex has not authenticated its publisher. "
+    "Review the exact release/tag before choosing to update."
+)
+APPROVED_NOTICE_GUIDANCE = (
+    "Run /dex-doctor to review this evidence and update guidance. Dex will not update automatically."
 )
 
 
@@ -81,7 +87,9 @@ def _release(
     manifest_mutator=None,
     lightweight: bool = False,
     tag_suffix: str | None = None,
+    catalog_raw_override: bytes | None = None,
     catalog_hash_override: str | None = None,
+    compatibility_raw_override: bytes | None = None,
     compatibility_hash_override: str | None = None,
     omit_catalog: bool = False,
     omit_compatibility: bool = False,
@@ -96,9 +104,17 @@ def _release(
     _write(repo / "README.md", b"synthetic immutable release\n")
 
     compatibility_path = "System/compatibility/runtime.json"
-    compatibility_raw = _canonical({"contract_version": 2, "runtime": "synthetic"})
+    compatibility_raw = (
+        compatibility_raw_override
+        if compatibility_raw_override is not None
+        else _canonical({"contract_version": 2, "runtime": "synthetic"})
+    )
     if profile_name == "catalog-v1":
-        catalog_raw = _canonical({"contract_version": 1, "items": []})
+        catalog_raw = (
+            catalog_raw_override
+            if catalog_raw_override is not None
+            else _canonical({"contract_version": 1, "items": []})
+        )
         if not omit_catalog:
             _write(repo / CATALOG_PATH, catalog_raw)
         if not omit_compatibility:
@@ -197,14 +213,14 @@ def test_legacy_release_notice_has_exact_caution_identity_and_no_positive_trust_
         "release_page": f"https://github.com/davekilleen/Dex/releases/tag/{tag}",
         "notice": "\n".join(
             (
-                NOTICE_CAUTION,
+                APPROVED_NOTICE_CAUTION,
                 "Target version: v1.62.0",
                 f"Immutable tag: {tag}",
                 f"Immutable tag object: {tag_object}",
                 f"Full commit: {commit}",
                 "Evidence profile: legacy-v1",
                 f"Release page: https://github.com/davekilleen/Dex/releases/tag/{tag}",
-                NOTICE_GUIDANCE,
+                APPROVED_NOTICE_GUIDANCE,
             )
         ),
         "publisher_authentication": "unavailable",
@@ -232,6 +248,52 @@ def test_catalog_v1_positive_profile_is_supported_without_implementing_a_catalog
 
     assert result["status"] == STATUS_RELEASE
     assert result["profile"] == "catalog-v1"
+
+
+def test_self_hashed_noncanonical_catalog_is_unknown_without_notice(tmp_path: Path) -> None:
+    vault = _installed_vault(tmp_path / "vault")
+    remote = tmp_path / "remote"
+    _init_repo(remote)
+    noncanonical_catalog = b'{"items":[],"contract_version":1}\n'
+    _release(
+        remote,
+        "1.62.0",
+        profile_name="catalog-v1",
+        catalog_raw_override=noncanonical_catalog,
+    )
+
+    result = _verifier(vault, remote, tmp_path / "state").check()
+
+    assert result == {
+        "status": "UNKNOWN",
+        "should_notify": False,
+        "current_version": "1.61.0",
+        "reason": "evidence-invalid",
+    }
+    assert "notice" not in result
+
+
+def test_self_hashed_noncanonical_compatibility_artifact_is_unknown_without_notice(tmp_path: Path) -> None:
+    vault = _installed_vault(tmp_path / "vault")
+    remote = tmp_path / "remote"
+    _init_repo(remote)
+    noncanonical_compatibility = b'{"runtime":"synthetic","contract_version":2}\n'
+    _release(
+        remote,
+        "1.62.0",
+        profile_name="catalog-v1",
+        compatibility_raw_override=noncanonical_compatibility,
+    )
+
+    result = _verifier(vault, remote, tmp_path / "state").check()
+
+    assert result == {
+        "status": "UNKNOWN",
+        "should_notify": False,
+        "current_version": "1.61.0",
+        "reason": "evidence-invalid",
+    }
+    assert "notice" not in result
 
 
 @pytest.mark.parametrize(
@@ -483,7 +545,7 @@ def test_daily_attempt_exact_release_dedup_and_doctor_redisplay(tmp_path: Path) 
     assert exact["skip_reason"] == "exact-release-notice"
     redisplay = verifier.check(doctor_redisplay=True)
     assert redisplay["status"] == STATUS_RELEASE
-    assert redisplay["notice"].startswith(NOTICE_CAUTION)
+    assert redisplay["notice"].startswith(APPROVED_NOTICE_CAUTION)
 
 
 def test_legacy_notice_is_migrated_to_exact_release_suppression_without_mutating_it(tmp_path: Path) -> None:

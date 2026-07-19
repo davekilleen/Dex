@@ -859,21 +859,15 @@ class UpdateVerifier:
         catalog_raw = self._blob(entries, CATALOG_PATH, max_bytes=MAX_CATALOG_BYTES)
         if _sha256(catalog_raw) != profile.catalog_sha256:
             raise EvidenceError("catalog hash contradicts the declared catalog-v1 profile")
-        try:
-            catalog = json.loads(catalog_raw.decode("utf-8"), object_pairs_hook=_json_pairs)
-        except (UnicodeDecodeError, json.JSONDecodeError, EvidenceError) as error:
-            raise EvidenceError("catalog-v1 catalog is malformed") from error
-        if not isinstance(catalog, dict) or catalog.get("contract_version") != profile.catalog_contract_version:
+        catalog = _load_closed_json(catalog_raw, description="catalog-v1 catalog")
+        if catalog.get("contract_version") != profile.catalog_contract_version:
             raise EvidenceError("catalog contract version contradicts the declared catalog-v1 profile")
         for artifact in profile.compatibility_metadata:
             raw = self._blob(entries, artifact.path, max_bytes=MAX_COMPATIBILITY_BYTES)
             if _sha256(raw) != artifact.sha256:
                 raise EvidenceError("compatibility artifact hash contradicts catalog-v1")
-            try:
-                value = json.loads(raw.decode("utf-8"), object_pairs_hook=_json_pairs)
-            except (UnicodeDecodeError, json.JSONDecodeError, EvidenceError) as error:
-                raise EvidenceError("compatibility artifact is malformed") from error
-            if not isinstance(value, dict) or value.get("contract_version") != artifact.contract_version:
+            value = _load_closed_json(raw, description="compatibility artifact")
+            if value.get("contract_version") != artifact.contract_version:
                 raise EvidenceError("compatibility artifact contract version contradicts catalog-v1")
 
     def _verify_candidate(
