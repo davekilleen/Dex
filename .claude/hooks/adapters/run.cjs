@@ -11,16 +11,59 @@ function emit(payload) {
   process.stdout.write(`${JSON.stringify(payload)}\n`);
 }
 
+function parseAliasObject(source) {
+  const payload = JSON.parse(source);
+  if (!payload || Array.isArray(payload) || typeof payload !== 'object') {
+    throw new Error('Task-sync service aliases must contain an object');
+  }
+  const keys = new Set();
+  let offset = 0;
+  const skipWhitespace = () => {
+    while (/\s/.test(source[offset] || '')) offset += 1;
+  };
+  const readString = () => {
+    skipWhitespace();
+    if (source[offset] !== '"') throw new Error('Task-sync service aliases must map strings to strings');
+    const start = offset;
+    for (offset += 1; offset < source.length; offset += 1) {
+      if (source[offset] === '\\') {
+        offset += 1;
+      } else if (source[offset] === '"') {
+        offset += 1;
+        return JSON.parse(source.slice(start, offset));
+      }
+    }
+    throw new Error('Unterminated string in task-sync service aliases');
+  };
+
+  skipWhitespace();
+  offset += 1; // JSON.parse already proved this is an object.
+  skipWhitespace();
+  while (source[offset] !== '}') {
+    const key = readString();
+    if (keys.has(key)) throw new Error(`Duplicate service alias: ${key}`);
+    keys.add(key);
+    skipWhitespace();
+    if (source[offset] !== ':') throw new Error('Invalid task-sync service aliases');
+    offset += 1;
+    readString();
+    skipWhitespace();
+    if (source[offset] === ',') {
+      offset += 1;
+      continue;
+    }
+    if (source[offset] !== '}') throw new Error('Invalid task-sync service aliases');
+  }
+  return payload;
+}
+
 function loadServiceAliases(aliasesPath = ALIASES_PATH) {
   if (!fs.existsSync(aliasesPath)) return {};
   let payload;
   try {
-    payload = JSON.parse(fs.readFileSync(aliasesPath, 'utf8'));
+    payload = parseAliasObject(fs.readFileSync(aliasesPath, 'utf8'));
   } catch (error) {
     throw new Error(`Invalid task-sync service aliases: ${error.message}`);
-  }
-  if (!payload || Array.isArray(payload) || typeof payload !== 'object') {
-    throw new Error('Task-sync service aliases must contain an object');
   }
   for (const [requested, adapter] of Object.entries(payload)) {
     if (!SERVICE_NAME.test(requested) || typeof adapter !== 'string' || !SERVICE_NAME.test(adapter)) {

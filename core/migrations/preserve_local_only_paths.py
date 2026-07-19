@@ -7,90 +7,44 @@ import argparse
 import hashlib
 import json
 import os
-import shutil
 import stat
 import subprocess
 import tempfile
 from pathlib import Path
 from typing import Any
 
-import yaml
+from core.utils.tracked_ignored import (
+    LOCAL_ONLY_PATHS,
+    TrackedIgnoredError,
+    git_executable,
+    load_exact_policy,
+    query_tracked_ignored,
+    sanitized_git_env,
+)
 
-LOCAL_ONLY_PATHS = (
-    "System/Session_Learnings/2026-01-29.md",
-    "System/Session_Learnings/2026-01-30.md",
-    "System/integrations/slack.yaml",
-)
-APPROVED_TRACKED_ROWS = (
-    "00-Inbox/Daily_Plans/README.md",
-    "00-Inbox/Ideas/README.md",
-    "00-Inbox/Meetings/README.md",
-    "00-Inbox/README.md",
-    "01-Quarter_Goals/Quarter_Goals.md",
-    "02-Week_Priorities/Week_Priorities.md",
-    "03-Tasks/Tasks.md",
-    "04-Projects/README.md",
-    "05-Areas/Career/Evidence/README.md",
-    "05-Areas/Companies/README.md",
-    "05-Areas/People/External/README.md",
-    "05-Areas/People/Internal/README.md",
-    "05-Areas/People/README.md",
-    "05-Areas/README.md",
-    "07-Archives/Plans/README.md",
-    "07-Archives/Projects/README.md",
-    "07-Archives/README.md",
-    "07-Archives/Reviews/README.md",
-    "System/Dex_Backlog.md",
-    "System/Session_Learnings/README.md",
-    "System/pillars.yaml",
-    "System/usage_log.md",
-    "System/user-profile.yaml",
-    "System/Beta_Communications/2026-02-04_hardcoded_paths_fix.md",
-)
-APPROVED_ROWS = tuple(
-    (path, "release-doc" if path.startswith("System/Beta_Communications/") else "intentional-seed")
-    for path in APPROVED_TRACKED_ROWS
-) + tuple((path, "local-only-must-be-untracked") for path in LOCAL_ONLY_PATHS)
 POLICY_RELATIVE = Path("scripts/tracked-ignored-policy.yaml")
 MANIFEST_NAME = "journal.json"
+INDEX_FLAGS = {
+    "0",
+    "8000",
+    "20004000",
+    "2000c000",
+    "40004000",
+    "4000c000",
+    "60004000",
+    "6000c000",
+}
 
 
 class MigrationError(RuntimeError):
     """The exact preservation migration cannot proceed safely."""
 
 
-def _sanitized_git_env() -> dict[str, str]:
-    environment = os.environ.copy()
-    unsafe_exact = {
-        "GIT_ALTERNATE_OBJECT_DIRECTORIES",
-        "GIT_CEILING_DIRECTORIES",
-        "GIT_COMMON_DIR",
-        "GIT_CONFIG_COUNT",
-        "GIT_CONFIG_GLOBAL",
-        "GIT_CONFIG_SYSTEM",
-        "GIT_DIR",
-        "GIT_INDEX_FILE",
-        "GIT_OBJECT_DIRECTORY",
-        "GIT_OPTIONAL_LOCKS",
-        "GIT_WORK_TREE",
-    }
-    for key in tuple(environment):
-        if key in unsafe_exact or key.startswith(("GIT_CONFIG_KEY_", "GIT_CONFIG_VALUE_")):
-            environment.pop(key, None)
-    environment["GIT_CONFIG_NOSYSTEM"] = "1"
-    environment["GIT_CONFIG_GLOBAL"] = os.devnull
-    environment["GIT_LITERAL_PATHSPECS"] = "1"
-    return environment
-
-
 def _git(repo: Path, *arguments: str, input_bytes: bytes | None = None) -> subprocess.CompletedProcess[bytes]:
-    executable = shutil.which("git")
-    if not executable:
-        raise MigrationError("git is unavailable; local-only preservation requires Git")
     try:
         return subprocess.run(
             [
-                executable,
+                git_executable(),
                 "-c",
                 "core.fsmonitor=false",
                 "-c",
@@ -101,7 +55,7 @@ def _git(repo: Path, *arguments: str, input_bytes: bytes | None = None) -> subpr
             ],
             input=input_bytes,
             capture_output=True,
-            env=_sanitized_git_env(),
+            env=sanitized_git_env(),
             timeout=10,
             check=False,
         )
@@ -117,58 +71,45 @@ def _run_git(repo: Path, *arguments: str) -> bytes:
     return result.stdout
 
 
-def _load_policy(repo: Path) -> tuple[set[str], set[str], str]:
-    policy_path = repo / POLICY_RELATIVE
+def _load_policy(repo: Path, policy_path: Path | None = None) -> tuple[set[str], set[str], str]:
     try:
-        policy_bytes = policy_path.read_bytes()
-        payload = yaml.safe_load(policy_bytes)
-    except (OSError, yaml.YAMLError) as error:
-        raise MigrationError(f"could not read exact tracked-ignore policy: {error}") from error
-    rows = payload.get("paths") if isinstance(payload, dict) else None
-    if payload.get("schema_version") != 1 or payload.get("baseline_count") != 27 or not isinstance(rows, list):
-        raise MigrationError("tracked-ignore policy is not the approved 27-row schema")
-    policy_rows: list[tuple[str, str]] = []
-    all_paths: list[str] = []
-    local_paths: list[str] = []
-    for row in rows:
-        if not isinstance(row, dict) or set(row) != {"path", "classification"}:
-            raise MigrationError("tracked-ignore policy contains a malformed row")
-        path = row.get("path")
-        if not isinstance(path, str) or path in all_paths:
-            raise MigrationError("tracked-ignore policy contains an invalid or duplicate path")
-        all_paths.append(path)
-        classification = row.get("classification")
-        if not isinstance(classification, str):
-            raise MigrationError("tracked-ignore policy contains an invalid classification")
-        policy_rows.append((path, classification))
-        if classification == "local-only-must-be-untracked":
-            local_paths.append(path)
-    if tuple(policy_rows) != APPROVED_ROWS or tuple(local_paths) != LOCAL_ONLY_PATHS:
-        raise MigrationError("tracked-ignore policy differs from the exact approved 27 rows")
-    return set(all_paths), set(local_paths), hashlib.sha256(policy_bytes).hexdigest()
+        policy = load_exact_policy(policy_path or repo / POLICY_RELATIVE)
+    except TrackedIgnoredError as error:
+        raise MigrationError(str(error)) from error
+    return policy.paths, policy.local_only_paths, policy.sha256
 
 
 def _query_tracked_ignored(repo: Path) -> set[str]:
-    output = _run_git(repo, "ls-files", "-ci", "--exclude-standard", "-z")
-    return {
-        value.decode("utf-8", "surrogateescape")
-        for value in output.split(b"\0")
-        if value
-    }
+    try:
+        return set(query_tracked_ignored(repo))
+    except TrackedIgnoredError as error:
+        raise MigrationError(str(error)) from error
 
 
 def _index_entry(repo: Path, relative: str) -> dict[str, Any]:
-    output = _run_git(repo, "ls-files", "--stage", "-z", "--", relative)
-    records = [record for record in output.split(b"\0") if record]
-    if not records:
+    output = _run_git(repo, "ls-files", "--stage", "--debug", "--", relative)
+    if not output:
         return {"tracked": False}
-    if len(records) != 1:
+    lines = output.decode("utf-8", "surrogateescape").splitlines()
+    if len(lines) != 6:
         raise MigrationError(f"conflicted index entry requires manual resolution: {relative}")
-    metadata, encoded_path = records[0].split(b"\t", 1)
-    mode, oid, stage = metadata.decode("ascii").split(" ")
-    if encoded_path.decode("utf-8", "surrogateescape") != relative or stage != "0":
+    try:
+        metadata, output_path = lines[0].split("\t", 1)
+        mode, oid, stage = metadata.split(" ")
+        flags = lines[5].rsplit("flags: ", 1)[1]
+    except (IndexError, ValueError) as error:
+        raise MigrationError(f"unexpected index metadata for local-only path: {relative}") from error
+    if output_path != relative or stage != "0" or flags not in INDEX_FLAGS:
         raise MigrationError(f"unexpected index identity for local-only path: {relative}")
-    return {"tracked": True, "mode": mode, "oid": oid, "stage": 0}
+    return {"tracked": True, "mode": mode, "oid": oid, "stage": 0, "flags": flags}
+
+
+def _payload_path(journal_dir: Path, ordinal: int) -> Path:
+    return journal_dir / "payloads" / f"apply-{ordinal}.bin"
+
+
+def _rewind_payload_path(journal_dir: Path, ordinal: int) -> Path:
+    return journal_dir / "payloads" / f"rewind-{ordinal}.bin"
 
 
 def _snapshot_worktree(repo: Path, relative: str, payload: Path) -> dict[str, Any]:
@@ -187,29 +128,7 @@ def _snapshot_worktree(repo: Path, relative: str, payload: Path) -> dict[str, An
         "state": "present",
         "mode": stat.S_IMODE(target_stat.st_mode),
         "sha256": hashlib.sha256(data).hexdigest(),
-        "payload": payload.name,
     }
-
-
-def _current_worktree(repo: Path, relative: str) -> dict[str, Any]:
-    target = repo / relative
-    try:
-        target_stat = target.lstat()
-    except FileNotFoundError:
-        return {"state": "absent"}
-    if not stat.S_ISREG(target_stat.st_mode):
-        raise MigrationError(f"local-only path changed to a non-regular file: {relative}")
-    data = target.read_bytes()
-    return {
-        "state": "present",
-        "mode": stat.S_IMODE(target_stat.st_mode),
-        "sha256": hashlib.sha256(data).hexdigest(),
-    }
-
-
-def _same_worktree(expected: dict[str, Any], actual: dict[str, Any]) -> bool:
-    keys = {"state"} if expected.get("state") == "absent" else {"state", "mode", "sha256"}
-    return all(expected.get(key) == actual.get(key) for key in keys)
 
 
 def _write_journal(journal_dir: Path, payload: dict[str, Any]) -> None:
@@ -228,14 +147,117 @@ def _write_journal(journal_dir: Path, payload: dict[str, Any]) -> None:
             os.unlink(temporary_name)
 
 
+def _reject_duplicate_json_keys(pairs: list[tuple[str, object]]) -> dict[str, object]:
+    payload: dict[str, object] = {}
+    for key, value in pairs:
+        if key in payload:
+            raise MigrationError(f"duplicate preservation journal key: {key}")
+        payload[key] = value
+    return payload
+
+
+def _valid_index_snapshot(value: object) -> bool:
+    if not isinstance(value, dict) or value.get("tracked") not in {True, False}:
+        return False
+    if value["tracked"] is False:
+        return set(value) == {"tracked"}
+    return (
+        set(value) == {"tracked", "mode", "oid", "stage", "flags"}
+        and value.get("mode") in {"100644", "100755"}
+        and isinstance(value.get("oid"), str)
+        and len(value["oid"]) in {40, 64}
+        and all(character in "0123456789abcdef" for character in value["oid"])
+        and value.get("stage") == 0
+        and value.get("flags") in INDEX_FLAGS
+    )
+
+
+def _valid_worktree_snapshot(value: object) -> bool:
+    if not isinstance(value, dict) or value.get("state") not in {"present", "deleted", "absent"}:
+        return False
+    if value["state"] != "present":
+        return set(value) == {"state"}
+    return (
+        set(value) == {"state", "mode", "sha256"}
+        and isinstance(value.get("mode"), int)
+        and 0 <= value["mode"] <= 0o777
+        and isinstance(value.get("sha256"), str)
+        and len(value["sha256"]) == 64
+        and all(character in "0123456789abcdef" for character in value["sha256"])
+    )
+
+
+def _validate_journal(payload: object) -> dict[str, Any]:
+    if not isinstance(payload, dict) or set(payload) != {
+        "schema_version",
+        "policy_sha256",
+        "phase",
+        "entries",
+        "rewind_worktree",
+    }:
+        raise MigrationError("preservation journal has unexpected or missing fields")
+    if payload.get("schema_version") != 1 or payload.get("phase") not in {
+        "captured",
+        "applying",
+        "applied",
+        "rewind-captured",
+        "rewinding-original",
+        "rewinding",
+        "rewound",
+    }:
+        raise MigrationError("preservation journal schema or phase is unsupported")
+    policy_hash = payload.get("policy_sha256")
+    if (
+        not isinstance(policy_hash, str)
+        or len(policy_hash) != 64
+        or any(character not in "0123456789abcdef" for character in policy_hash)
+    ):
+        raise MigrationError("preservation journal policy identity is invalid")
+    entries = payload.get("entries")
+    if not isinstance(entries, list) or len(entries) != len(LOCAL_ONLY_PATHS):
+        raise MigrationError("preservation journal must contain exactly three ordered entries")
+    for ordinal, relative in enumerate(LOCAL_ONLY_PATHS):
+        entry = entries[ordinal]
+        if not isinstance(entry, dict) or set(entry) != {"path", "index", "worktree"}:
+            raise MigrationError("preservation journal entry fields are invalid")
+        if entry.get("path") != relative:
+            raise MigrationError("preservation journal entry identities are not the closed ordered paths")
+        if not _valid_index_snapshot(entry.get("index")):
+            raise MigrationError(f"preservation journal index metadata is invalid at ordinal {ordinal}")
+        if not _valid_worktree_snapshot(entry.get("worktree")):
+            raise MigrationError(f"preservation journal worktree metadata is invalid at ordinal {ordinal}")
+    rewind_worktree = payload.get("rewind_worktree")
+    if rewind_worktree is not None:
+        if not isinstance(rewind_worktree, list) or len(rewind_worktree) != len(LOCAL_ONLY_PATHS):
+            raise MigrationError("preservation journal rewind metadata is invalid")
+        if not all(_valid_worktree_snapshot(value) for value in rewind_worktree):
+            raise MigrationError("preservation journal rewind snapshot metadata is invalid")
+    return payload
+
+
 def _read_journal(journal_dir: Path) -> dict[str, Any]:
+    journal_path = journal_dir / MANIFEST_NAME
     try:
-        payload = json.loads((journal_dir / MANIFEST_NAME).read_text(encoding="utf-8"))
+        journal_stat = journal_path.lstat()
+        if not stat.S_ISREG(journal_stat.st_mode) or stat.S_ISLNK(journal_stat.st_mode):
+            raise MigrationError("preservation journal must be a regular non-symlink file")
+        payload = json.loads(
+            journal_path.read_text(encoding="utf-8"),
+            object_pairs_hook=_reject_duplicate_json_keys,
+        )
     except (OSError, json.JSONDecodeError) as error:
         raise MigrationError(f"could not read preservation journal: {error}") from error
-    if not isinstance(payload, dict) or payload.get("schema_version") != 1:
-        raise MigrationError("preservation journal schema is unsupported")
-    return payload
+    return _validate_journal(payload)
+
+
+def _read_fixed_payload(source: Path, expected_hash: object, relative: str) -> bytes:
+    source_stat = source.lstat()
+    if not stat.S_ISREG(source_stat.st_mode) or stat.S_ISLNK(source_stat.st_mode):
+        raise MigrationError(f"preservation payload is not a regular file: {relative}")
+    data = source.read_bytes()
+    if hashlib.sha256(data).hexdigest() != expected_hash:
+        raise MigrationError(f"preservation payload hash mismatch: {relative}")
+    return data
 
 
 def _create_journal(repo: Path, journal_dir: Path, policy_hash: str) -> dict[str, Any]:
@@ -246,9 +268,7 @@ def _create_journal(repo: Path, journal_dir: Path, policy_hash: str) -> dict[str
     entries = []
     for index, relative in enumerate(LOCAL_ONLY_PATHS):
         index_entry = _index_entry(repo, relative)
-        worktree = _snapshot_worktree(
-            repo, relative, journal_dir / "payloads" / f"apply-{index}.bin"
-        )
+        worktree = _snapshot_worktree(repo, relative, _payload_path(journal_dir, index))
         if worktree["state"] == "absent":
             worktree["state"] = "deleted" if index_entry["tracked"] else "absent"
         entries.append({"path": relative, "index": index_entry, "worktree": worktree})
@@ -256,8 +276,8 @@ def _create_journal(repo: Path, journal_dir: Path, policy_hash: str) -> dict[str
         "schema_version": 1,
         "policy_sha256": policy_hash,
         "phase": "captured",
-        "removed_paths": [],
         "entries": entries,
+        "rewind_worktree": None,
     }
     _write_journal(journal_dir, payload)
     return payload
@@ -277,7 +297,11 @@ def _has_symlink_parent(repo: Path, relative: str) -> bool:
 
 
 def _restore_captured_if_missing(
-    repo: Path, journal_dir: Path, relative: str, snapshot: dict[str, Any]
+    repo: Path,
+    journal_dir: Path,
+    ordinal: int,
+    relative: str,
+    snapshot: dict[str, Any],
 ) -> None:
     """Restore captured bytes only when the release transition removed the file."""
     if snapshot.get("state") != "present":
@@ -293,10 +317,8 @@ def _restore_captured_if_missing(
         return
     if _has_symlink_parent(repo, relative):
         raise MigrationError(f"refusing to restore local-only path through a symlink: {relative}")
-    source = journal_dir / "payloads" / str(snapshot["payload"])
-    data = source.read_bytes()
-    if hashlib.sha256(data).hexdigest() != snapshot.get("sha256"):
-        raise MigrationError(f"preservation payload hash mismatch: {relative}")
+    source = _payload_path(journal_dir, ordinal)
+    data = _read_fixed_payload(source, snapshot.get("sha256"), relative)
     target.parent.mkdir(parents=True, exist_ok=True)
     descriptor, temporary_name = tempfile.mkstemp(prefix=f".{target.name}.", dir=target.parent)
     try:
@@ -311,8 +333,42 @@ def _restore_captured_if_missing(
             os.unlink(temporary_name)
 
 
-def capture(repo: Path, journal_dir: Path) -> dict[str, Any]:
-    policy_paths, _, policy_hash = _load_policy(repo)
+def _restore_exact_worktree(
+    repo: Path,
+    relative: str,
+    snapshot: dict[str, Any],
+    source: Path,
+) -> None:
+    target = repo / relative
+    try:
+        target_stat = target.lstat()
+    except FileNotFoundError:
+        target_stat = None
+    if target_stat is not None and not stat.S_ISREG(target_stat.st_mode):
+        raise MigrationError(f"local-only path changed to a non-regular file: {relative}")
+    if snapshot["state"] != "present":
+        if target_stat is not None:
+            target.unlink()
+        return
+    if _has_symlink_parent(repo, relative):
+        raise MigrationError(f"refusing to restore local-only path through a symlink: {relative}")
+    data = _read_fixed_payload(source, snapshot.get("sha256"), relative)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    descriptor, temporary_name = tempfile.mkstemp(prefix=f".{target.name}.", dir=target.parent)
+    try:
+        with os.fdopen(descriptor, "wb") as handle:
+            handle.write(data)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.chmod(temporary_name, int(snapshot["mode"]))
+        os.replace(temporary_name, target)
+    finally:
+        if os.path.exists(temporary_name):
+            os.unlink(temporary_name)
+
+
+def capture(repo: Path, journal_dir: Path, policy_path: Path | None = None) -> dict[str, Any]:
+    policy_paths, _, policy_hash = _load_policy(repo, policy_path)
     if _query_tracked_ignored(repo) != policy_paths:
         raise MigrationError(
             "live tracked-ignore query differs from the exact 27-row baseline; no preservation journal was created"
@@ -320,18 +376,35 @@ def capture(repo: Path, journal_dir: Path) -> dict[str, Any]:
     return _create_journal(repo, journal_dir, policy_hash)
 
 
-def apply(repo: Path, journal_dir: Path) -> dict[str, Any]:
-    policy_paths, local_paths, policy_hash = _load_policy(repo)
+def capture_rewind(repo: Path, journal_dir: Path, policy_path: Path | None = None) -> dict[str, Any]:
+    journal = _read_journal(journal_dir)
+    policy_paths, local_paths, policy_hash = _load_policy(repo, policy_path)
+    if journal.get("policy_sha256") != policy_hash:
+        raise MigrationError("tracked-ignore policy changed before rewind capture")
+    if journal.get("phase") not in {"applied", "rewind-captured"}:
+        raise MigrationError(f"journal cannot capture rewind from phase: {journal.get('phase')}")
+    if _query_tracked_ignored(repo) != policy_paths - local_paths:
+        raise MigrationError("rewind capture requires the exact approved 24-path state")
+    journal["rewind_worktree"] = [
+        _snapshot_worktree(repo, relative, _rewind_payload_path(journal_dir, ordinal))
+        for ordinal, relative in enumerate(LOCAL_ONLY_PATHS)
+    ]
+    journal["phase"] = "rewind-captured"
+    _write_journal(journal_dir, journal)
+    return journal
+
+
+def apply(repo: Path, journal_dir: Path, policy_path: Path | None = None) -> dict[str, Any]:
     journal_path = journal_dir / MANIFEST_NAME
     if journal_path.exists():
         journal = _read_journal(journal_dir)
-        if journal.get("phase") == "applied":
-            return journal
-        if journal.get("phase") not in {"captured", "applying"}:
+        if journal.get("phase") not in {"captured", "applying", "applied"}:
             raise MigrationError(f"journal cannot resume apply from phase: {journal.get('phase')}")
+        policy_paths, local_paths, policy_hash = _load_policy(repo, policy_path)
         if journal.get("policy_sha256") != policy_hash:
             raise MigrationError("tracked-ignore policy changed after preservation capture")
     else:
+        policy_paths, local_paths, policy_hash = _load_policy(repo, policy_path)
         actual = _query_tracked_ignored(repo)
         if actual != policy_paths:
             raise MigrationError(
@@ -339,57 +412,39 @@ def apply(repo: Path, journal_dir: Path) -> dict[str, Any]:
             )
         journal = _create_journal(repo, journal_dir, policy_hash)
 
-    journal["phase"] = "applying"
-    _write_journal(journal_dir, journal)
-    removed = set(journal.get("removed_paths", []))
     actual = _query_tracked_ignored(repo)
-    actual_removed = local_paths - actual
-    pending_order = [path for path in LOCAL_ONLY_PATHS if path not in removed]
-    allowed_interrupted = removed | ({pending_order[0]} if pending_order else set())
-    allowed_removed_sets = {
-        frozenset(removed),
-        frozenset(allowed_interrupted),
-        frozenset(local_paths),
-    }
-    if actual - policy_paths or frozenset(actual_removed) not in allowed_removed_sets:
+    expected_states = [policy_paths - set(LOCAL_ONLY_PATHS[:count]) for count in range(4)]
+    if actual not in expected_states:
         raise MigrationError("live tracked-ignore query drifted during apply; no broader mutation ran")
-    if actual_removed == local_paths:
-        removed = set(local_paths)
-        journal["removed_paths"] = list(LOCAL_ONLY_PATHS)
-        _write_journal(journal_dir, journal)
-    elif actual_removed != removed:
-        recovered = next(iter(actual_removed - removed))
-        removed.add(recovered)
-        journal["removed_paths"] = [path for path in LOCAL_ONLY_PATHS if path in removed]
+    if journal["phase"] == "applied":
+        if actual != policy_paths - local_paths:
+            raise MigrationError("applied journal does not match the exact approved 24-path state")
+        return journal
+
+    if journal["phase"] == "captured":
+        journal["phase"] = "applying"
         _write_journal(journal_dir, journal)
 
-    for entry in journal["entries"]:
-        relative = entry["path"]
-        if relative in removed:
+    for relative in LOCAL_ONLY_PATHS:
+        if relative not in actual:
             continue
         result = _git(repo, "update-index", "--force-remove", "--", relative)
         if result.returncode != 0:
             detail = result.stderr.decode("utf-8", "replace").strip()
             raise MigrationError(detail or f"could not untrack approved local-only path: {relative}")
-        removed.add(relative)
-        journal["removed_paths"] = [path for path in LOCAL_ONLY_PATHS if path in removed]
-        _write_journal(journal_dir, journal)
+        actual.remove(relative)
 
     expected_after = policy_paths - local_paths
     if _query_tracked_ignored(repo) != expected_after:
         raise MigrationError("post-migration tracked-ignore query is not the exact approved 24-path set")
-    final_snapshots = []
-    for index, entry in enumerate(journal["entries"]):
-        _restore_captured_if_missing(repo, journal_dir, entry["path"], entry["worktree"])
-        final_snapshots.append(
-            {
-                "path": entry["path"],
-                "worktree": _snapshot_worktree(
-                    repo, entry["path"], journal_dir / "payloads" / f"applied-{index}.bin"
-                ),
-            }
+    for ordinal, relative in enumerate(LOCAL_ONLY_PATHS):
+        _restore_captured_if_missing(
+            repo,
+            journal_dir,
+            ordinal,
+            relative,
+            journal["entries"][ordinal]["worktree"],
         )
-    journal["applied_worktree"] = final_snapshots
     journal["phase"] = "applied"
     _write_journal(journal_dir, journal)
     return journal
@@ -398,9 +453,38 @@ def apply(repo: Path, journal_dir: Path) -> dict[str, Any]:
 def _restore_index_entry(repo: Path, relative: str, index_entry: dict[str, Any]) -> None:
     if not index_entry.get("tracked"):
         return
+    removal = _git(repo, "update-index", "--force-remove", "--", relative)
+    if removal.returncode != 0:
+        detail = removal.stderr.decode("utf-8", "replace").strip()
+        raise MigrationError(detail or f"could not clear index entry before restore: {relative}")
+
     oid = str(index_entry["oid"])
-    if set(oid) == {"0"}:
-        result = _git(repo, "add", "--intent-to-add", "--", relative)
+    flags = str(index_entry["flags"])
+    intent_to_add = flags.startswith(("2", "6"))
+    assume_unchanged = flags in {"8000", "2000c000", "4000c000", "6000c000"}
+    skip_worktree = flags.startswith(("4", "6"))
+    if intent_to_add:
+        target = repo / relative
+        try:
+            target_stat = target.lstat()
+        except FileNotFoundError:
+            target_stat = None
+        if target_stat is not None and not stat.S_ISREG(target_stat.st_mode):
+            raise MigrationError(f"local-only path changed to a non-regular file: {relative}")
+        if _has_symlink_parent(repo, relative):
+            raise MigrationError(f"refusing to restore local-only index through a symlink: {relative}")
+        original_mode = stat.S_IMODE(target_stat.st_mode) if target_stat is not None else None
+        try:
+            if target_stat is None:
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_bytes(b"")
+            target.chmod(0o755 if index_entry["mode"] == "100755" else 0o644)
+            result = _git(repo, "add", "-f", "--intent-to-add", "--", relative)
+        finally:
+            if original_mode is None:
+                target.unlink(missing_ok=True)
+            else:
+                target.chmod(original_mode)
     else:
         result = _git(
             repo,
@@ -412,61 +496,82 @@ def _restore_index_entry(repo: Path, relative: str, index_entry: dict[str, Any])
     if result.returncode != 0:
         detail = result.stderr.decode("utf-8", "replace").strip()
         raise MigrationError(detail or f"could not restore index entry: {relative}")
+    flag_commands = []
+    if skip_worktree:
+        flag_commands.append(("update-index", "--skip-worktree", "--", relative))
+    if assume_unchanged:
+        flag_commands.append(("update-index", "--assume-unchanged", "--", relative))
+    for arguments in flag_commands:
+        result = _git(repo, *arguments)
+        if result.returncode != 0:
+            detail = result.stderr.decode("utf-8", "replace").strip()
+            raise MigrationError(detail or f"could not restore index flags: {relative}")
+    restored = _index_entry(repo, relative)
+    if restored != index_entry:
+        raise MigrationError(
+            f"restored index identity does not match captured state: {relative}: {restored!r}"
+        )
 
 
-def rewind(repo: Path, journal_dir: Path) -> dict[str, Any]:
-    policy_paths, local_paths, policy_hash = _load_policy(repo)
+def rewind(repo: Path, journal_dir: Path, policy_path: Path | None = None) -> dict[str, Any]:
     journal = _read_journal(journal_dir)
-    if journal.get("phase") == "rewound":
-        return journal
-    if journal.get("phase") not in {"applied", "rewinding"}:
+    restore_original_worktree = journal.get("phase") in {
+        "captured",
+        "applying",
+        "rewinding-original",
+    }
+    if journal.get("phase") not in {
+        "captured",
+        "applying",
+        "applied",
+        "rewind-captured",
+        "rewinding-original",
+        "rewinding",
+        "rewound",
+    }:
         raise MigrationError(f"journal cannot rewind from phase: {journal.get('phase')}")
+    policy_paths, local_paths, policy_hash = _load_policy(repo, policy_path)
     if journal.get("policy_sha256") != policy_hash:
         raise MigrationError("tracked-ignore policy changed before rewind")
     actual = _query_tracked_ignored(repo)
     expected_after = policy_paths - local_paths
-    restored = set(journal.get("restored_paths", []))
-    if actual - policy_paths or (actual & local_paths) != restored or actual - local_paths != expected_after:
+    if actual - policy_paths or actual - local_paths != expected_after:
         raise MigrationError("live tracked-ignore query drifted before rewind; no index mutation ran")
+    if journal["phase"] == "rewound":
+        if actual != policy_paths:
+            raise MigrationError("rewound journal does not match the exact approved 27-path state")
+        return journal
 
-    if journal.get("phase") == "applied":
-        rewind_snapshots = []
-        for index, relative in enumerate(LOCAL_ONLY_PATHS):
-            rewind_snapshots.append(
-                {
-                    "path": relative,
-                    "worktree": _snapshot_worktree(
-                        repo, relative, journal_dir / "payloads" / f"rewind-{index}.bin"
-                    ),
-                }
-            )
-        journal["rewind_worktree"] = rewind_snapshots
-        journal["restored_paths"] = []
-        journal["phase"] = "rewinding"
+    if journal.get("phase") not in {"rewinding", "rewinding-original"}:
+        journal["phase"] = "rewinding-original" if restore_original_worktree else "rewinding"
         _write_journal(journal_dir, journal)
 
-    restored = set(journal.get("restored_paths", []))
-    by_path = {entry["path"]: entry for entry in journal["entries"]}
-    for relative in LOCAL_ONLY_PATHS:
-        if relative in restored:
+    for ordinal, relative in enumerate(LOCAL_ONLY_PATHS):
+        expected_index = journal["entries"][ordinal]["index"]
+        if _index_entry(repo, relative) == expected_index:
             continue
-        _restore_index_entry(repo, relative, by_path[relative]["index"])
-        restored.add(relative)
-        journal["restored_paths"] = [path for path in LOCAL_ONLY_PATHS if path in restored]
-        _write_journal(journal_dir, journal)
+        _restore_index_entry(repo, relative, expected_index)
+        actual.add(relative)
 
     if _query_tracked_ignored(repo) != policy_paths:
         raise MigrationError("rewind did not restore the exact approved 27-path tracked-ignore set")
-    for snapshot in journal["rewind_worktree"]:
-        if not _same_worktree(snapshot["worktree"], _current_worktree(repo, snapshot["path"])):
-            raise MigrationError(f"rewind changed the current local copy: {snapshot['path']}")
+    snapshots = journal["rewind_worktree"]
+    if snapshots is not None or restore_original_worktree:
+        for ordinal, relative in enumerate(LOCAL_ONLY_PATHS):
+            snapshot = snapshots[ordinal] if snapshots is not None else journal["entries"][ordinal]["worktree"]
+            source = (
+                _rewind_payload_path(journal_dir, ordinal)
+                if snapshots is not None
+                else _payload_path(journal_dir, ordinal)
+            )
+            _restore_exact_worktree(repo, relative, snapshot, source)
     journal["phase"] = "rewound"
     _write_journal(journal_dir, journal)
     return journal
 
 
-def preview(repo: Path) -> dict[str, Any]:
-    policy_paths, local_paths, _ = _load_policy(repo)
+def preview(repo: Path, policy_path: Path | None = None) -> dict[str, Any]:
+    policy_paths, local_paths, _ = _load_policy(repo, policy_path)
     actual = _query_tracked_ignored(repo)
     if actual == policy_paths:
         state = "ready-to-apply"
@@ -479,23 +584,27 @@ def preview(repo: Path) -> dict[str, Any]:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("action", choices=("preview", "capture", "apply", "rewind"))
+    parser.add_argument("action", choices=("preview", "capture", "apply", "capture-rewind", "rewind"))
     parser.add_argument("--repo", type=Path, required=True)
     parser.add_argument("--journal", type=Path)
+    parser.add_argument("--policy", type=Path)
     args = parser.parse_args(argv)
     try:
         repo = args.repo.resolve()
+        policy_path = args.policy.resolve() if args.policy else None
         if args.action == "preview":
-            result = preview(repo)
+            result = preview(repo, policy_path)
         else:
             if args.journal is None:
                 raise MigrationError("--journal is required for capture, apply, and rewind")
             if args.action == "capture":
-                result = capture(repo, args.journal.resolve())
+                result = capture(repo, args.journal.resolve(), policy_path)
             elif args.action == "apply":
-                result = apply(repo, args.journal.resolve())
+                result = apply(repo, args.journal.resolve(), policy_path)
+            elif args.action == "capture-rewind":
+                result = capture_rewind(repo, args.journal.resolve(), policy_path)
             else:
-                result = rewind(repo, args.journal.resolve())
+                result = rewind(repo, args.journal.resolve(), policy_path)
             result = {"ok": True, "phase": result["phase"], "paths": list(LOCAL_ONLY_PATHS)}
     except (MigrationError, OSError, ValueError, json.JSONDecodeError) as error:
         result = {"ok": False, "error": str(error)}

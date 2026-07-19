@@ -269,7 +269,47 @@ If cancelled:
 🔄 Applying updates...
 ```
 
-**A. Capture the user-owned MCP trust registry before the merge**
+**A. Capture the three local-only files before the merge**
+
+This is release-blocking. Copy the trusted migration runtime and closed policy into
+the private durable journal root, then capture before Git can remove tracked files:
+
+```bash
+DEX_LOCAL_ONLY_ROOT="System/.dex/local-only-preservation"
+DEX_LOCAL_ONLY_RUNTIME="$DEX_LOCAL_ONLY_ROOT/runtime"
+DEX_LOCAL_ONLY_JOURNAL="$DEX_LOCAL_ONLY_ROOT/journal"
+umask 077
+mkdir -p "$DEX_LOCAL_ONLY_RUNTIME/core/migrations" "$DEX_LOCAL_ONLY_RUNTIME/core/utils" || exit 1
+chmod 700 "$DEX_LOCAL_ONLY_ROOT" "$DEX_LOCAL_ONLY_RUNTIME" || exit 1
+cp -- core/migrations/preserve_local_only_paths.py \
+  "$DEX_LOCAL_ONLY_RUNTIME/core/migrations/preserve_local_only_paths.py" || exit 1
+cp -- core/utils/tracked_ignored.py \
+  "$DEX_LOCAL_ONLY_RUNTIME/core/utils/tracked_ignored.py" || exit 1
+cp -- scripts/tracked-ignored-policy.yaml \
+  "$DEX_LOCAL_ONLY_RUNTIME/tracked-ignored-policy.yaml" || exit 1
+touch "$DEX_LOCAL_ONLY_RUNTIME/core/__init__.py" \
+  "$DEX_LOCAL_ONLY_RUNTIME/core/migrations/__init__.py" \
+  "$DEX_LOCAL_ONLY_RUNTIME/core/utils/__init__.py" || exit 1
+
+DEX_LOCAL_ONLY_STATE=$(PYTHONPATH="$DEX_LOCAL_ONLY_RUNTIME" python3 \
+  "$DEX_LOCAL_ONLY_RUNTIME/core/migrations/preserve_local_only_paths.py" preview \
+  --repo "$PWD" --policy "$DEX_LOCAL_ONLY_RUNTIME/tracked-ignored-policy.yaml") || exit 1
+case "$DEX_LOCAL_ONLY_STATE" in
+  *'"state": "ready-to-apply"'*)
+    PYTHONPATH="$DEX_LOCAL_ONLY_RUNTIME" python3 \
+      "$DEX_LOCAL_ONLY_RUNTIME/core/migrations/preserve_local_only_paths.py" capture \
+      --repo "$PWD" --journal "$DEX_LOCAL_ONLY_JOURNAL" \
+      --policy "$DEX_LOCAL_ONLY_RUNTIME/tracked-ignored-policy.yaml" || exit 1
+    ;;
+  *'"state": "already-applied"'*) ;;
+  *) echo "Update stopped: local-only path state is not an approved transition"; exit 1 ;;
+esac
+```
+
+The restrictive journal is intentionally retained at the exact path above so a
+later rollback can restore tracking without losing the newest local bytes or mode.
+
+**B. Capture the user-owned MCP trust registry before the merge**
 
 This is unconditional. `.gitignore` protects only untracked files, so preserve the
 pre-merge state with the shipped guard copied into system temp before upstream can
@@ -283,14 +323,34 @@ python3 "$DEX_TRUST_GUARD_ROOT/protect_trust_registry.py" capture \
   --repo "$PWD" --state "$DEX_TRUST_GUARD_ROOT/state" || exit 1
 ```
 
-**B. Merge updates**
+**C. Merge updates**
 
 Run:
 ```bash
 git merge upstream/release --no-edit
 ```
 
-**C. Reject any tracked registry supplied by upstream**
+**D. Apply local-only preservation immediately after the merge**
+
+Run this immediately after the merge command, before conflict handling or any
+other operation can overwrite the working copies:
+
+```bash
+DEX_LOCAL_ONLY_ROOT="System/.dex/local-only-preservation"
+DEX_LOCAL_ONLY_RUNTIME="$DEX_LOCAL_ONLY_ROOT/runtime"
+DEX_LOCAL_ONLY_JOURNAL="$DEX_LOCAL_ONLY_ROOT/journal"
+if [ -f "$DEX_LOCAL_ONLY_JOURNAL/journal.json" ]; then
+  PYTHONPATH="$DEX_LOCAL_ONLY_RUNTIME" python3 \
+    "$DEX_LOCAL_ONLY_RUNTIME/core/migrations/preserve_local_only_paths.py" apply \
+    --repo "$PWD" --journal "$DEX_LOCAL_ONLY_JOURNAL" \
+    --policy "$DEX_LOCAL_ONLY_RUNTIME/tracked-ignored-policy.yaml" || {
+      echo "Update stopped: Dex could not preserve the three local-only files"
+      exit 1
+    }
+fi
+```
+
+**E. Reject any tracked registry supplied by upstream**
 
 Run this immediately after the merge command whether the merge was clean or conflicted:
 
@@ -321,7 +381,7 @@ During a conflicted merge, leave the guard's staged removal in place and include
 the normal merge-resolution commit below. Never `git add` the restored, ignored user
 registry.
 
-**D. Handle merge outcome**
+**F. Handle merge outcome**
 
 **Case 1: Clean merge (no conflicts)**
 ```
@@ -460,6 +520,8 @@ DEX_USER_DATA_STASH_PATHS=(
   ":(top)System/user-profile.yaml" ":(top)System/pillars.yaml"
   ":(top)System/trusted-mcps.yaml"
   ":(top,glob)System/Session_Learnings/**"
+  ":(top,exclude)System/Session_Learnings/2026-01-29.md"
+  ":(top,exclude)System/Session_Learnings/2026-01-30.md"
 )
 git stash push --all \
   -m "dex-user-data-before-update-recovery-$(date +%Y%m%d-%H%M%S)" \
@@ -541,6 +603,15 @@ fi
 if ! git reset -- "${DEX_USER_DATA_PATHS[@]}"; then
   echo "User data was restored, but Git could not clear its staged state; review git status before continuing"
   exit 2
+fi
+DEX_LOCAL_ONLY_ROOT="System/.dex/local-only-preservation"
+DEX_LOCAL_ONLY_RUNTIME="$DEX_LOCAL_ONLY_ROOT/runtime"
+DEX_LOCAL_ONLY_JOURNAL="$DEX_LOCAL_ONLY_ROOT/journal"
+if [ -f "$DEX_LOCAL_ONLY_JOURNAL/journal.json" ]; then
+  PYTHONPATH="$DEX_LOCAL_ONLY_RUNTIME" python3 \
+    "$DEX_LOCAL_ONLY_RUNTIME/core/migrations/preserve_local_only_paths.py" rewind \
+    --repo "$PWD" --journal "$DEX_LOCAL_ONLY_JOURNAL" \
+    --policy "$DEX_LOCAL_ONLY_RUNTIME/tracked-ignored-policy.yaml" || exit 2
 fi
 ```
 
@@ -886,6 +957,8 @@ DEX_USER_DATA_STASH_PATHS=(
   ":(top)System/user-profile.yaml" ":(top)System/pillars.yaml"
   ":(top)System/trusted-mcps.yaml"
   ":(top,glob)System/Session_Learnings/**"
+  ":(top,exclude)System/Session_Learnings/2026-01-29.md"
+  ":(top,exclude)System/Session_Learnings/2026-01-30.md"
 )
 git stash push --all \
   -m "dex-user-data-before-update-error-recovery-$(date +%Y%m%d-%H%M%S)" \
@@ -967,6 +1040,15 @@ fi
 if ! git reset -- "${DEX_USER_DATA_PATHS[@]}"; then
   echo "User data was restored, but Git could not clear its staged state; review git status before continuing"
   exit 2
+fi
+DEX_LOCAL_ONLY_ROOT="System/.dex/local-only-preservation"
+DEX_LOCAL_ONLY_RUNTIME="$DEX_LOCAL_ONLY_ROOT/runtime"
+DEX_LOCAL_ONLY_JOURNAL="$DEX_LOCAL_ONLY_ROOT/journal"
+if [ -f "$DEX_LOCAL_ONLY_JOURNAL/journal.json" ]; then
+  PYTHONPATH="$DEX_LOCAL_ONLY_RUNTIME" python3 \
+    "$DEX_LOCAL_ONLY_RUNTIME/core/migrations/preserve_local_only_paths.py" rewind \
+    --repo "$PWD" --journal "$DEX_LOCAL_ONLY_JOURNAL" \
+    --policy "$DEX_LOCAL_ONLY_RUNTIME/tracked-ignored-policy.yaml" || exit 2
 fi
 git status --short
 ```

@@ -415,6 +415,9 @@ def test_direct_jira_behavior_is_unchanged(sync_vault, monkeypatch):
 @pytest.mark.parametrize(
     "aliases, error",
     [
+        ({"raw": "[]"}, "must contain an object"),
+        ({"raw": '{"atlassian":"jira","atlassian":"cloud"}'}, "duplicate service alias"),
+        ({"atlassian": "atlassian"}, "self-referential"),
         ({"atlassian": "../jira"}, "invalid adapter alias target"),
         ({"atlassian": "jira", "jira": "cloud"}, "must be one hop"),
         ({"atlassian": "jira", "jira": "atlassian"}, "must be one hop"),
@@ -424,7 +427,12 @@ def test_bad_aliases_are_structured_visible_failures(
     sync_vault, monkeypatch, aliases, error
 ):
     _enable(sync_vault, "atlassian")
-    _write_aliases(sync_vault, aliases)
+    if set(aliases) == {"raw"}:
+        (sync_vault["adapters"] / "service-aliases.json").write_text(
+            aliases["raw"], encoding="utf-8"
+        )
+    else:
+        _write_aliases(sync_vault, aliases)
 
     def fail_if_called(*_args, **_kwargs):
         raise AssertionError("invalid alias must fail before adapter execution")

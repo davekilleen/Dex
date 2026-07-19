@@ -156,6 +156,17 @@ Run this entire block in one shell invocation so the snapshot references cannot 
 ```bash
 ROLLBACK_STATE_DIR="[exact private temp path printed in Step 3]"
 DEX_ROLLBACK_TARGET="backup-before-v1.3.0"
+DEX_LOCAL_ONLY_ROOT="System/.dex/local-only-preservation"
+DEX_LOCAL_ONLY_RUNTIME="$DEX_LOCAL_ONLY_ROOT/runtime"
+DEX_LOCAL_ONLY_JOURNAL="$DEX_LOCAL_ONLY_ROOT/journal"
+[ -f "$DEX_LOCAL_ONLY_JOURNAL/journal.json" ] || {
+  echo "Rollback stopped: the private local-only preservation journal is unavailable"
+  exit 1
+}
+PYTHONPATH="$DEX_LOCAL_ONLY_RUNTIME" python3 \
+  "$DEX_LOCAL_ONLY_RUNTIME/core/migrations/preserve_local_only_paths.py" capture-rewind \
+  --repo "$PWD" --journal "$DEX_LOCAL_ONLY_JOURNAL" \
+  --policy "$DEX_LOCAL_ONLY_RUNTIME/tracked-ignored-policy.yaml" || exit 1
 DEX_USER_DATA_PATHS=(
   "00-Inbox/" "01-Quarter_Goals/" "02-Week_Priorities/" "03-Tasks/"
   "04-Projects/" "05-Areas/" "06-Resources/" "07-Archives/"
@@ -168,6 +179,8 @@ DEX_USER_DATA_STASH_PATHS=(
   ":(top,glob)06-Resources/**" ":(top,glob)07-Archives/**"
   ":(top)System/user-profile.yaml" ":(top)System/pillars.yaml"
   ":(top,glob)System/Session_Learnings/**"
+  ":(top,exclude)System/Session_Learnings/2026-01-29.md"
+  ":(top,exclude)System/Session_Learnings/2026-01-30.md"
 )
 DEX_USER_DATA_SOURCE=$(git rev-parse HEAD)
 DEX_DATA_STASH_BEFORE=$(git rev-parse -q --verify refs/stash 2>/dev/null || true)
@@ -278,6 +291,13 @@ if ! git reset -- "${DEX_USER_DATA_PATHS[@]}"; then
   echo "User data was restored, but Git could not clear its staged state; review git status before continuing"
   exit 2
 fi
+PYTHONPATH="$DEX_LOCAL_ONLY_RUNTIME" python3 \
+  "$DEX_LOCAL_ONLY_RUNTIME/core/migrations/preserve_local_only_paths.py" rewind \
+  --repo "$PWD" --journal "$DEX_LOCAL_ONLY_JOURNAL" \
+  --policy "$DEX_LOCAL_ONLY_RUNTIME/tracked-ignored-policy.yaml" || {
+    echo "Rollback stopped: local-only files remain protected in $DEX_LOCAL_ONLY_JOURNAL"
+    exit 2
+  }
 ```
 
 This restores Dex files to the state before the update, then restores the user's latest tracked, uncommitted, and untracked content.
@@ -735,6 +755,13 @@ backup-before-v1.3.0
 To rollback to specific version:
 ```bash
 DEX_ROLLBACK_TARGET="backup-before-v1.1.0"
+DEX_LOCAL_ONLY_ROOT="System/.dex/local-only-preservation"
+DEX_LOCAL_ONLY_RUNTIME="$DEX_LOCAL_ONLY_ROOT/runtime"
+DEX_LOCAL_ONLY_JOURNAL="$DEX_LOCAL_ONLY_ROOT/journal"
+PYTHONPATH="$DEX_LOCAL_ONLY_RUNTIME" python3 \
+  "$DEX_LOCAL_ONLY_RUNTIME/core/migrations/preserve_local_only_paths.py" capture-rewind \
+  --repo "$PWD" --journal "$DEX_LOCAL_ONLY_JOURNAL" \
+  --policy "$DEX_LOCAL_ONLY_RUNTIME/tracked-ignored-policy.yaml" || exit 1
 DEX_USER_DATA_PATHS=(
   "00-Inbox/" "01-Quarter_Goals/" "02-Week_Priorities/" "03-Tasks/"
   "04-Projects/" "05-Areas/" "06-Resources/" "07-Archives/"
@@ -749,6 +776,8 @@ DEX_USER_DATA_STASH_PATHS=(
   ":(top,glob)06-Resources/**" ":(top,glob)07-Archives/**"
   ":(top)System/user-profile.yaml" ":(top)System/pillars.yaml"
   ":(top,glob)System/Session_Learnings/**"
+  ":(top,exclude)System/Session_Learnings/2026-01-29.md"
+  ":(top,exclude)System/Session_Learnings/2026-01-30.md"
 )
 git stash push --all \
   -m "dex-user-data-before-version-rollback-$(date +%Y%m%d-%H%M%S)" \
@@ -831,6 +860,10 @@ if ! git reset -- "${DEX_USER_DATA_PATHS[@]}"; then
   echo "User data was restored, but Git could not clear its staged state; review git status before continuing"
   exit 2
 fi
+PYTHONPATH="$DEX_LOCAL_ONLY_RUNTIME" python3 \
+  "$DEX_LOCAL_ONLY_RUNTIME/core/migrations/preserve_local_only_paths.py" rewind \
+  --repo "$PWD" --journal "$DEX_LOCAL_ONLY_JOURNAL" \
+  --policy "$DEX_LOCAL_ONLY_RUNTIME/tracked-ignored-policy.yaml" || exit 2
 ```
 
 But easier: tell `/dex-rollback` which version you want, and it handles it.

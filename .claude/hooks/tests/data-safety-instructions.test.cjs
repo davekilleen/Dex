@@ -173,6 +173,26 @@ test('update refuses to continue with a stale backup tag', () => {
   assert.match(backupBlock, /exit 1/);
 });
 
+test('update captures local-only state before merge and applies it immediately afterward', () => {
+  const capture = UPDATE_SKILL.indexOf('preserve_local_only_paths.py" capture');
+  const merge = UPDATE_SKILL.indexOf('git merge upstream/release --no-edit');
+  const apply = UPDATE_SKILL.indexOf('preserve_local_only_paths.py" apply');
+  assert.ok(capture !== -1 && capture < merge, 'capture must precede the release merge');
+  assert.ok(apply > merge, 'apply must follow the release merge');
+  assert.match(UPDATE_SKILL, /System\/\.dex\/local-only-preservation/);
+});
+
+test('primary rollback captures newest local-only copies before reset and rewinds afterward', () => {
+  const block = bashBlockContaining(ROLLBACK_SKILL, 'DEX_ROLLBACK_TARGET="backup-before-v1.3.0"');
+  const capture = block.indexOf('preserve_local_only_paths.py" capture-rewind');
+  const reset = block.indexOf('git reset --hard');
+  const rewind = block.indexOf('preserve_local_only_paths.py" rewind');
+  assert.ok(capture !== -1 && capture < reset, 'rewind capture must precede hard reset');
+  assert.ok(rewind > reset, 'rewind must follow hard reset and user-data restoration');
+  assert.match(block, /System\/Session_Learnings\/2026-01-29\.md/);
+  assert.match(block, /System\/Session_Learnings\/2026-01-30\.md/);
+});
+
 test('rollback manifest cleanup removes newer core files but never user data', (t) => {
   const repo = fs.mkdtempSync(path.join(os.tmpdir(), 'dex-manifest-cleanup-'));
   t.after(() => fs.rmSync(repo, { recursive: true, force: true }));
@@ -292,6 +312,27 @@ function setupProtectedResetRepo(t) {
   return { repo, protectedFiles, rollbackCollision };
 }
 
+function rollbackTestEnv(repo) {
+  const journal = path.join(repo, 'System', '.dex', 'local-only-preservation', 'journal');
+  const runtimeScript = path.join(
+    repo,
+    'System',
+    '.dex',
+    'local-only-preservation',
+    'runtime',
+    'core',
+    'migrations',
+    'preserve_local_only_paths.py',
+  );
+  fs.mkdirSync(journal, { recursive: true });
+  fs.mkdirSync(path.dirname(runtimeScript), { recursive: true });
+  fs.writeFileSync(path.join(journal, 'journal.json'), '{}\n');
+  fs.writeFileSync(runtimeScript, '# fixture; intercepted by fake python3\n');
+  const bin = fs.mkdtempSync(path.join(os.tmpdir(), 'dex-fake-python-'));
+  fs.writeFileSync(path.join(bin, 'python3'), '#!/bin/sh\nexit 0\n', { mode: 0o755 });
+  return { ...process.env, PATH: `${bin}:${process.env.PATH}` };
+}
+
 test('the primary rollback block preserves committed, uncommitted, and untracked user data', (t) => {
   const { repo, protectedFiles, rollbackCollision } = setupProtectedResetRepo(t);
 
@@ -309,6 +350,7 @@ test('the primary rollback block preserves committed, uncommitted, and untracked
   const result = spawnSync('/bin/bash', ['-c', rollbackBlock], {
     cwd: repo,
     encoding: 'utf-8',
+    env: rollbackTestEnv(repo),
   });
   assert.equal(
     result.status,
@@ -344,6 +386,7 @@ test('a restore conflict exports both tracked and untracked snapshots and retain
   const result = spawnSync('/bin/bash', ['-c', rollbackBlock], {
     cwd: repo,
     encoding: 'utf-8',
+    env: rollbackTestEnv(repo),
   });
 
   assert.equal(result.status, 2, `stdout:\n${result.stdout}\nstderr:\n${result.stderr}`);

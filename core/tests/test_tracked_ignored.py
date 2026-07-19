@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
 import stat
 import subprocess
 import sys
@@ -79,6 +80,24 @@ def _run_checker(repo: Path, policy: Path = POLICY) -> tuple[int, dict]:
     return result.returncode, json.loads(result.stdout)
 
 
+def _journal_payload(journal: Path) -> dict:
+    return json.loads((journal / migration.MANIFEST_NAME).read_text(encoding="utf-8"))
+
+
+def _write_journal_payload(journal: Path, payload: dict) -> None:
+    (journal / migration.MANIFEST_NAME).write_text(json.dumps(payload) + "\n", encoding="utf-8")
+
+
+def _index_evidence(repo: Path, relative: str) -> tuple[str, str, str]:
+    debug = _git(repo, "ls-files", "--debug", "--", relative).stdout
+    flags = next(line.rsplit("flags: ", 1)[1] for line in debug.splitlines() if "flags: " in line)
+    return (
+        _git(repo, "ls-files", "--stage", "--", relative).stdout,
+        flags,
+        _git(repo, "diff", "--cached", "--name-status", "--", relative).stdout,
+    )
+
+
 def test_repository_policy_is_exact_23_seed_one_release_doc_three_local_only():
     rows = checker.load_policy(POLICY)
     by_class: dict[str, list[str]] = {}
@@ -86,9 +105,7 @@ def test_repository_policy_is_exact_23_seed_one_release_doc_three_local_only():
         by_class.setdefault(row.classification, []).append(row.path)
 
     assert len(by_class["intentional-seed"]) == 23
-    assert by_class["release-doc"] == [
-        "System/Beta_Communications/2026-02-04_hardcoded_paths_fix.md"
-    ]
+    assert by_class["release-doc"] == ["System/Beta_Communications/2026-02-04_hardcoded_paths_fix.md"]
     assert tuple(by_class["local-only-must-be-untracked"]) == migration.LOCAL_ONLY_PATHS
 
 
@@ -102,10 +119,7 @@ def test_checker_fails_until_only_the_exact_three_are_untracked(tracked_ignored_
         }
     ]
 
-    original = {
-        relative: (tracked_ignored_repo / relative).read_bytes()
-        for relative in migration.LOCAL_ONLY_PATHS
-    }
+    original = {relative: (tracked_ignored_repo / relative).read_bytes() for relative in migration.LOCAL_ONLY_PATHS}
     _git(tracked_ignored_repo, "rm", "--cached", "--", *migration.LOCAL_ONLY_PATHS)
 
     after_code, after = _run_checker(tracked_ignored_repo)
@@ -118,14 +132,11 @@ def test_checker_fails_until_only_the_exact_three_are_untracked(tracked_ignored_
         "policy_rows": 27,
     }
     assert {
-        relative: (tracked_ignored_repo / relative).read_bytes()
-        for relative in migration.LOCAL_ONLY_PATHS
+        relative: (tracked_ignored_repo / relative).read_bytes() for relative in migration.LOCAL_ONLY_PATHS
     } == original
 
 
-def test_checker_rejects_unknown_stale_duplicate_and_non_git_states(
-    tracked_ignored_repo, tmp_path
-):
+def test_checker_rejects_unknown_stale_duplicate_and_non_git_states(tracked_ignored_repo, tmp_path):
     _git(tracked_ignored_repo, "rm", "--cached", "--", *migration.LOCAL_ONLY_PATHS)
     unknown = tracked_ignored_repo / "System" / "Session_Learnings" / "Case-É.md"
     unknown.write_text("unknown\n", encoding="utf-8")
@@ -133,9 +144,7 @@ def test_checker_rejects_unknown_stale_duplicate_and_non_git_states(
         handle.write("/System/Session_Learnings/Case-É.md\n")
     _git(tracked_ignored_repo, "add", "-f", "--intent-to-add", str(unknown.relative_to(tracked_ignored_repo)))
     _, result = _run_checker(tracked_ignored_repo)
-    assert result["errors"] == [
-        {"code": "unknown-tracked-ignored", "paths": ["System/Session_Learnings/Case-É.md"]}
-    ]
+    assert result["errors"] == [{"code": "unknown-tracked-ignored", "paths": ["System/Session_Learnings/Case-É.md"]}]
 
     _git(tracked_ignored_repo, "reset", "--", str(unknown.relative_to(tracked_ignored_repo)))
     stale = _policy_rows()[0]["path"]
@@ -154,6 +163,18 @@ def test_checker_rejects_unknown_stale_duplicate_and_non_git_states(
     code, result = _run_checker(tmp_path / "not-a-repo")
     assert code == 1
     assert result["errors"][0]["code"] == "check-failed"
+
+
+@pytest.mark.parametrize("content", ["[]\n", "null\n"])
+def test_non_mapping_policy_roots_fail_with_controlled_errors(tracked_ignored_repo, tmp_path, content):
+    malformed = tmp_path / "malformed.yaml"
+    malformed.write_text(content, encoding="utf-8")
+
+    code, result = _run_checker(tracked_ignored_repo, malformed)
+    assert code == 1
+    assert result["errors"] == [{"code": "check-failed", "detail": "tracked-ignore policy root must be a mapping"}]
+    with pytest.raises(migration.MigrationError, match="root must be a mapping"):
+        migration.capture(tracked_ignored_repo, tmp_path / "journal", malformed)
 
 
 def test_nested_ignore_negation_case_and_unicode_remain_exact(tracked_ignored_repo):
@@ -184,9 +205,7 @@ def test_nested_ignore_negation_case_and_unicode_remain_exact(tracked_ignored_re
     assert _run_checker(tracked_ignored_repo)[0] == 0
 
 
-def test_migration_preserves_modified_deleted_and_modes_then_rewinds_current_copy(
-    tracked_ignored_repo, tmp_path
-):
+def test_migration_preserves_modified_deleted_and_modes_then_rewinds_current_copy(tracked_ignored_repo, tmp_path):
     first, second, third = migration.LOCAL_ONLY_PATHS
     modified = tracked_ignored_repo / first
     deleted = tracked_ignored_repo / second
@@ -206,9 +225,7 @@ def test_migration_preserves_modified_deleted_and_modes_then_rewinds_current_cop
     assert not deleted.exists()
     assert stat.S_IMODE(later_modified.stat().st_mode) == 0o640
     assert set(migration._query_tracked_ignored(tracked_ignored_repo)) == {
-        row["path"]
-        for row in _policy_rows()
-        if row["classification"] != "local-only-must-be-untracked"
+        row["path"] for row in _policy_rows() if row["classification"] != "local-only-must-be-untracked"
     }
     journal_payload = json.loads((journal / migration.MANIFEST_NAME).read_text())
     assert [entry["worktree"]["state"] for entry in journal_payload["entries"]] == [
@@ -231,9 +248,7 @@ def test_migration_preserves_modified_deleted_and_modes_then_rewinds_current_cop
     rewound = migration.rewind(tracked_ignored_repo, journal)
 
     assert rewound["phase"] == "rewound"
-    assert set(migration._query_tracked_ignored(tracked_ignored_repo)) == {
-        row["path"] for row in _policy_rows()
-    }
+    assert set(migration._query_tracked_ignored(tracked_ignored_repo)) == {row["path"] for row in _policy_rows()}
     assert {
         relative: (
             (tracked_ignored_repo / relative).read_bytes(),
@@ -243,9 +258,7 @@ def test_migration_preserves_modified_deleted_and_modes_then_rewinds_current_cop
     } == rewind_expected
 
 
-def test_migration_recovers_interruption_after_one_exact_index_removal(
-    tracked_ignored_repo, tmp_path, monkeypatch
-):
+def test_migration_recovers_interruption_after_one_exact_index_removal(tracked_ignored_repo, tmp_path, monkeypatch):
     journal = tmp_path / "journal"
     original_git = migration._git
     interrupted = False
@@ -267,9 +280,61 @@ def test_migration_recovers_interruption_after_one_exact_index_removal(
     assert _run_checker(tracked_ignored_repo)[0] == 0
 
 
-def test_update_journey_capture_before_release_restores_files_removed_by_release(
-    tracked_ignored_repo, tmp_path
+@pytest.mark.parametrize(
+    "tamper",
+    [
+        lambda payload: payload["entries"][0].__setitem__("path", "../outside"),
+        lambda payload: payload["entries"][0].__setitem__("path", "/absolute"),
+        lambda payload: payload["entries"][0].__setitem__("path", "System/pillars.yaml"),
+        lambda payload: payload["entries"].reverse(),
+        lambda payload: payload["entries"].__setitem__(1, dict(payload["entries"][0])),
+        lambda payload: payload["entries"].pop(),
+        lambda payload: payload["entries"][0]["worktree"].__setitem__("payload", "../../outside"),
+    ],
+    ids=("traversal", "absolute", "other-seed", "reordered", "duplicate", "missing", "payload-name"),
+)
+def test_journal_identity_tampering_fails_before_git_or_repo_file_access(
+    tracked_ignored_repo, tmp_path, monkeypatch, tamper
 ):
+    journal = tmp_path / "journal"
+    migration.capture(tracked_ignored_repo, journal)
+    payload = _journal_payload(journal)
+    tamper(payload)
+    _write_journal_payload(journal, payload)
+
+    monkeypatch.setattr(migration, "_load_policy", lambda *_args, **_kwargs: pytest.fail("policy accessed"))
+    monkeypatch.setattr(migration, "_query_tracked_ignored", lambda *_args: pytest.fail("Git accessed"))
+    with pytest.raises(migration.MigrationError, match="journal"):
+        migration.apply(tracked_ignored_repo, journal)
+
+
+def test_journal_identity_validation_guard_removal_mutation_loses_rejection(
+    tracked_ignored_repo, tmp_path, monkeypatch
+):
+    journal = tmp_path / "journal"
+    migration.capture(tracked_ignored_repo, journal)
+    payload = _journal_payload(journal)
+    payload["entries"][0]["path"] = "../outside"
+    _write_journal_payload(journal, payload)
+    with pytest.raises(migration.MigrationError, match="identities"):
+        migration._read_journal(journal)
+
+    monkeypatch.setattr(migration, "_validate_journal", lambda value: value)
+    assert migration._read_journal(journal)["entries"][0]["path"] == "../outside"
+
+
+def test_journal_rejects_duplicate_json_keys(tracked_ignored_repo, tmp_path):
+    journal = tmp_path / "journal"
+    migration.capture(tracked_ignored_repo, journal)
+    journal_path = journal / migration.MANIFEST_NAME
+    source = journal_path.read_text(encoding="utf-8")
+    journal_path.write_text(source.replace('{\n  "entries"', '{\n  "phase": "applied",\n  "entries"'), encoding="utf-8")
+
+    with pytest.raises(migration.MigrationError, match="duplicate preservation journal key: phase"):
+        migration._read_journal(journal)
+
+
+def test_update_journey_capture_before_release_restores_files_removed_by_release(tracked_ignored_repo, tmp_path):
     first, second, third = migration.LOCAL_ONLY_PATHS
     (tracked_ignored_repo / first).write_bytes(b"current session learning\n")
     (tracked_ignored_repo / first).chmod(0o600)
@@ -297,9 +362,56 @@ def test_update_journey_capture_before_release_restores_files_removed_by_release
     } == expected
 
 
-def test_migration_refuses_live_query_drift_without_broad_mutation(
-    tracked_ignored_repo, tmp_path
-):
+def test_real_fast_forward_and_rollback_preserve_local_only_bytes_modes_and_deletions(tracked_ignored_repo, tmp_path):
+    first, second, third = migration.LOCAL_ONLY_PATHS
+    first_target = tracked_ignored_repo / first
+    second_target = tracked_ignored_repo / second
+    third_target = tracked_ignored_repo / third
+    first_target.write_bytes(b"private learning\r\nwith\x00bytes")
+    third_target.write_bytes(b"private slack config\n")
+    third_target.chmod(0o600)
+    _git(tracked_ignored_repo, "add", "-f", "--", first, third)
+    _git(tracked_ignored_repo, "commit", "-qm", "local base state")
+    base = _git(tracked_ignored_repo, "rev-parse", "HEAD").stdout.strip()
+    _git(tracked_ignored_repo, "rm", "--cached", "--", *migration.LOCAL_ONLY_PATHS)
+    _git(tracked_ignored_repo, "commit", "-qm", "release untracks local-only files")
+    release = _git(tracked_ignored_repo, "rev-parse", "HEAD").stdout.strip()
+    _git(tracked_ignored_repo, "reset", "--hard", base)
+    third_target.chmod(0o600)
+    second_target.unlink()
+    expected = {
+        first: (first_target.read_bytes(), 0o644),
+        third: (third_target.read_bytes(), 0o600),
+    }
+    journal = tmp_path / "journal"
+
+    migration.capture(tracked_ignored_repo, journal)
+    _git(tracked_ignored_repo, "merge", "--ff-only", release)
+    migration.apply(tracked_ignored_repo, journal)
+
+    assert not second_target.exists()
+    assert {
+        relative: (
+            (tracked_ignored_repo / relative).read_bytes(),
+            stat.S_IMODE((tracked_ignored_repo / relative).stat().st_mode),
+        )
+        for relative in (first, third)
+    } == expected
+
+    first_target.write_bytes(b"newest post-update learning\n")
+    third_target.write_bytes(b"newest post-update slack\n")
+    third_target.chmod(0o600)
+    migration.capture_rewind(tracked_ignored_repo, journal)
+    _git(tracked_ignored_repo, "reset", "--hard", base)
+    migration.rewind(tracked_ignored_repo, journal)
+
+    assert first_target.read_bytes() == b"newest post-update learning\n"
+    assert not second_target.exists()
+    assert third_target.read_bytes() == b"newest post-update slack\n"
+    assert stat.S_IMODE(third_target.stat().st_mode) == 0o600
+
+
+def test_migration_refuses_live_query_drift_without_broad_mutation(tracked_ignored_repo, tmp_path):
     unknown = tracked_ignored_repo / "System" / "unexpected-local.md"
     unknown.write_text("unknown\n", encoding="utf-8")
     with (tracked_ignored_repo / ".gitignore").open("a", encoding="utf-8") as handle:
@@ -314,9 +426,7 @@ def test_migration_refuses_live_query_drift_without_broad_mutation(
     assert not (tmp_path / "journal").exists()
 
 
-def test_rewind_restores_staged_index_identity_without_overwriting_newer_worktree_bytes(
-    tracked_ignored_repo, tmp_path
-):
+def test_rewind_restores_staged_index_identity_without_overwriting_newer_worktree_bytes(tracked_ignored_repo, tmp_path):
     relative = migration.LOCAL_ONLY_PATHS[0]
     target = tracked_ignored_repo / relative
     target.write_bytes(b"staged local version\n")
@@ -332,6 +442,108 @@ def test_rewind_restores_staged_index_identity_without_overwriting_newer_worktre
     assert target.read_bytes() == b"newer unstaged local version\n"
 
 
+@pytest.mark.parametrize("index_state", ["regular-staged", "intent-to-add", "assume-unchanged", "skip-worktree"])
+def test_rewind_restores_exact_index_flags_and_cached_diff(tracked_ignored_repo, tmp_path, index_state):
+    relative = migration.LOCAL_ONLY_PATHS[0]
+    target = tracked_ignored_repo / relative
+    if index_state == "regular-staged":
+        target.write_bytes(b"staged identity\n")
+        _git(tracked_ignored_repo, "add", "-f", "--", relative)
+    elif index_state == "intent-to-add":
+        _git(tracked_ignored_repo, "rm", "--cached", "--", relative)
+        _git(tracked_ignored_repo, "add", "-f", "--intent-to-add", "--", relative)
+    elif index_state == "assume-unchanged":
+        _git(tracked_ignored_repo, "update-index", "--assume-unchanged", "--", relative)
+    else:
+        _git(tracked_ignored_repo, "update-index", "--skip-worktree", "--", relative)
+    before = _index_evidence(tracked_ignored_repo, relative)
+    journal = tmp_path / "journal"
+
+    migration.apply(tracked_ignored_repo, journal)
+    migration.rewind(tracked_ignored_repo, journal)
+
+    assert _index_evidence(tracked_ignored_repo, relative) == before
+
+
+def test_interrupted_intent_and_flag_restore_resumes_exactly(tracked_ignored_repo, tmp_path, monkeypatch):
+    relative = migration.LOCAL_ONLY_PATHS[0]
+    _git(tracked_ignored_repo, "rm", "--cached", "--", relative)
+    _git(tracked_ignored_repo, "add", "-f", "--intent-to-add", "--", relative)
+    _git(tracked_ignored_repo, "update-index", "--skip-worktree", "--", relative)
+    _git(tracked_ignored_repo, "update-index", "--assume-unchanged", "--", relative)
+    before = _index_evidence(tracked_ignored_repo, relative)
+    journal = tmp_path / "journal"
+    migration.apply(tracked_ignored_repo, journal)
+    original_git = migration._git
+    interrupted = False
+
+    def interrupt_after_intent(repo, *arguments, **kwargs):
+        nonlocal interrupted
+        result = original_git(repo, *arguments, **kwargs)
+        if not interrupted and arguments[:3] == ("add", "-f", "--intent-to-add"):
+            interrupted = True
+            raise migration.MigrationError("simulated flag restore interruption")
+        return result
+
+    monkeypatch.setattr(migration, "_git", interrupt_after_intent)
+    with pytest.raises(migration.MigrationError, match="flag restore interruption"):
+        migration.rewind(tracked_ignored_repo, journal)
+    monkeypatch.setattr(migration, "_git", original_git)
+
+    assert migration.rewind(tracked_ignored_repo, journal)["phase"] == "rewound"
+    assert _index_evidence(tracked_ignored_repo, relative) == before
+
+
+@pytest.mark.parametrize("fail_after", [1, 2, 3])
+def test_interrupted_rewind_derives_exact_progress_from_live_index(
+    tracked_ignored_repo, tmp_path, monkeypatch, fail_after
+):
+    journal = tmp_path / "journal"
+    migration.apply(tracked_ignored_repo, journal)
+    original_git = migration._git
+    restores = 0
+
+    def interrupt_after_restore(repo, *arguments, **kwargs):
+        nonlocal restores
+        result = original_git(repo, *arguments, **kwargs)
+        if arguments[:2] == ("update-index", "--add"):
+            restores += 1
+            if restores == fail_after:
+                raise migration.MigrationError("simulated rewind interruption")
+        return result
+
+    monkeypatch.setattr(migration, "_git", interrupt_after_restore)
+    with pytest.raises(migration.MigrationError, match="rewind interruption"):
+        migration.rewind(tracked_ignored_repo, journal)
+    monkeypatch.setattr(migration, "_git", original_git)
+
+    assert migration.rewind(tracked_ignored_repo, journal)["phase"] == "rewound"
+    assert migration._query_tracked_ignored(tracked_ignored_repo) == {row["path"] for row in _policy_rows()}
+
+
+def test_rewind_resumes_when_all_index_restores_precede_final_journal_write(
+    tracked_ignored_repo, tmp_path, monkeypatch
+):
+    journal = tmp_path / "journal"
+    migration.apply(tracked_ignored_repo, journal)
+    original_write = migration._write_journal
+    failed = False
+
+    def interrupt_final_write(journal_dir, payload):
+        nonlocal failed
+        if payload["phase"] == "rewound" and not failed:
+            failed = True
+            raise migration.MigrationError("simulated final journal interruption")
+        return original_write(journal_dir, payload)
+
+    monkeypatch.setattr(migration, "_write_journal", interrupt_final_write)
+    with pytest.raises(migration.MigrationError, match="final journal interruption"):
+        migration.rewind(tracked_ignored_repo, journal)
+    monkeypatch.setattr(migration, "_write_journal", original_write)
+
+    assert migration.rewind(tracked_ignored_repo, journal)["phase"] == "rewound"
+
+
 def test_preview_recognizes_absent_files_after_exact_migration(tracked_ignored_repo, tmp_path):
     migration.apply(tracked_ignored_repo, tmp_path / "journal")
     for relative in migration.LOCAL_ONLY_PATHS:
@@ -344,9 +556,7 @@ def test_preview_recognizes_absent_files_after_exact_migration(tracked_ignored_r
     }
 
 
-def test_checker_and_migration_ignore_hostile_git_environment(
-    tracked_ignored_repo, tmp_path, monkeypatch
-):
+def test_checker_and_migration_ignore_hostile_git_environment(tracked_ignored_repo, tmp_path, monkeypatch):
     hostile = tmp_path / "hostile"
     hostile.mkdir()
     _git(hostile, "init", "-q")
@@ -356,8 +566,13 @@ def test_checker_and_migration_ignore_hostile_git_environment(
     monkeypatch.setenv("GIT_CONFIG_COUNT", "1")
     monkeypatch.setenv("GIT_CONFIG_KEY_0", "core.hooksPath")
     monkeypatch.setenv("GIT_CONFIG_VALUE_0", str(hostile / "hooks"))
+    excludes = tmp_path / "hostile-excludes"
+    excludes.write_text("*\n", encoding="utf-8")
+    _git(tracked_ignored_repo, "config", "core.excludesFile", str(excludes))
+    monkeypatch.setenv("GIT_CONFIG_PARAMETERS", f"'core.excludesFile={excludes}'")
 
     assert len(checker.query_tracked_ignored(tracked_ignored_repo)) == 27
     journal = tmp_path / "journal"
     assert migration.apply(tracked_ignored_repo, journal)["phase"] == "applied"
     assert not (hostile / ".git" / "hostile-index").exists()
+    assert "GIT_CONFIG_PARAMETERS" not in checker.query_tracked_ignored.__globals__["sanitized_git_env"]()

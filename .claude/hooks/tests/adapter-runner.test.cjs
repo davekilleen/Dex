@@ -69,6 +69,8 @@ test('alias parser rejects malformed, traversal, chained, and cyclic mappings', 
     const aliases = path.join(temporary, 'aliases.json');
     for (const [payload, pattern] of [
       ['[]', /object/i],
+      ['{"atlassian":"jira","atlassian":"cloud"}', /duplicate/i],
+      ['{"atlassian":"atlassian"}', /self-referential/i],
       ['{"atlassian":"../jira"}', /invalid/i],
       ['{"atlassian":"jira","jira":"cloud"}', /one hop/i],
       ['{"atlassian":"jira","jira":"atlassian"}', /one hop/i],

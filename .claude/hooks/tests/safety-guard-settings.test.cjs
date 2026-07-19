@@ -66,7 +66,12 @@ test('guard blocks Firecrawl and RAG-browser MCPs but allows native WebFetch and
     const result = runGuard(toolName);
     assert.equal(result.status, 2, `${toolName}: ${result.stdout} ${result.stderr}`);
   }
-  for (const toolName of ['WebFetch', 'mcp__scrapling__get']) {
+  for (const toolName of [
+    'WebFetch',
+    'mcp__scrapling__get',
+    'mcp__my_mcp__rag-web-browser-helper',
+    'mcp__my_firecrawl_helper__search',
+  ]) {
     const result = runGuard(toolName);
     assert.equal(result.status, 0, `${toolName}: ${result.stdout} ${result.stderr}`);
   }
@@ -77,7 +82,7 @@ test('blocked-scraper guard-removal mutation loses protection', () => {
   try {
     const mutated = path.join(temporary, 'guard.sh');
     const source = fs.readFileSync(GUARD_PATH, 'utf8');
-    fs.writeFileSync(mutated, source.replace('mcp__firecrawl', 'removed_firecrawl_guard'));
+    fs.writeFileSync(mutated, source.replace('mcp__firecrawl__*', 'removed_firecrawl_guard'));
     assert.equal(runGuard('mcp__firecrawl__firecrawl_scrape', mutated).status, 0);
   } finally {
     fs.rmSync(temporary, { recursive: true, force: true });
