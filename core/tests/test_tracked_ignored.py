@@ -258,6 +258,40 @@ def test_transition_cli_uses_shared_strict_pair_parser(tracked_ignored_repo, tmp
     assert "version does not match package metadata" in capsys.readouterr().out
 
 
+def test_direct_legacy_rewind_rejects_present_malformed_transition_before_policy_or_git(
+    tracked_ignored_repo, tmp_path, monkeypatch, capsys
+):
+    journal = tmp_path / "journal"
+    _prepare_untrack(tracked_ignored_repo, journal)
+    migration.apply(tracked_ignored_repo, journal)
+    migration.capture_rewind(tracked_ignored_repo, journal)
+    transition = tracked_ignored_repo / TRANSITION
+    transition.write_text(
+        json.dumps({"schema_version": 999, "phase": "bootstrap-v1", "release_version": VERSION}) + "\n",
+        encoding="utf-8",
+    )
+    before = _git(tracked_ignored_repo, "ls-files", "--stage").stdout
+
+    monkeypatch.setattr(migration, "_load_policy", lambda *_args, **_kwargs: pytest.fail("policy accessed"))
+    monkeypatch.setattr(migration, "_query_tracked_ignored", lambda *_args: pytest.fail("Git queried"))
+    monkeypatch.setattr(migration, "_git", lambda *_args, **_kwargs: pytest.fail("Git mutated"))
+
+    assert migration.main(
+        [
+            "rewind",
+            "--repo",
+            str(tracked_ignored_repo),
+            "--journal",
+            str(journal),
+            "--target-phase",
+            "bootstrap-legacy",
+        ]
+    ) == 1
+    output = json.loads(capsys.readouterr().out)
+    assert output == {"error": "local-only preservation transition schema or phase is unsupported", "ok": False}
+    assert _git(tracked_ignored_repo, "ls-files", "--stage").stdout == before
+
+
 def test_nested_ignore_negation_case_and_unicode_remain_exact(tracked_ignored_repo):
     _git(tracked_ignored_repo, "rm", "--cached", "--", *migration.LOCAL_ONLY_PATHS)
     _set_transition(tracked_ignored_repo, "untrack-v1")

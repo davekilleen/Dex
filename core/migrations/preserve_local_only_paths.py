@@ -834,13 +834,21 @@ def rewind(
         "rewound",
     }:
         raise MigrationError(f"journal cannot rewind from phase: {journal.get('phase')}")
-    policy_paths, local_paths, policy_hash = _load_policy(repo, policy_path)
     if target_phase == "bootstrap-legacy":
+        transition_path = repo / "System/.local-only-preservation-transition.json"
         try:
-            load_transition(repo)
-        except TrackedIgnoredError:
-            pass
-        else:
+            transition_stat = transition_path.lstat()
+        except FileNotFoundError:
+            transition_stat = None
+        except OSError as error:
+            raise MigrationError(f"could not inspect legacy rewind transition metadata: {error}") from error
+        if transition_stat is not None:
+            if stat.S_ISLNK(transition_stat.st_mode) or not stat.S_ISREG(transition_stat.st_mode):
+                raise MigrationError("legacy rewind transition metadata has invalid type")
+            try:
+                load_transition(repo)
+            except TrackedIgnoredError as error:
+                raise MigrationError(str(error)) from error
             raise MigrationError("legacy rewind target unexpectedly contains transition metadata")
     else:
         try:
@@ -849,6 +857,7 @@ def rewind(
             raise MigrationError(str(error)) from error
         if transition.phase != "bootstrap-v1" or target_phase not in {None, "bootstrap-v1"}:
             raise MigrationError("rewind requires a bootstrap-v1 rollback target")
+    policy_paths, local_paths, policy_hash = _load_policy(repo, policy_path)
     if journal.get("policy_sha256") != policy_hash:
         raise MigrationError("tracked-ignore policy changed before rewind")
     actual = _query_tracked_ignored(repo)
