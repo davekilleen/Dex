@@ -986,23 +986,6 @@ def test_vault_bundle_tree_manifest_and_archive_contain_no_tau(tmp_path: Path) -
     output_dir = tmp_path / "bundle-output"
     environment = os.environ.copy()
     environment["npm_config_offline"] = "true"
-    real_git = shutil.which("git")
-    assert real_git is not None
-    shim_dir = tmp_path / "git-pathspec-shim"
-    shim_dir.mkdir()
-    git_shim = shim_dir / "git"
-    git_shim.write_text(
-        "#!/bin/sh\n"
-        "if [ \"$1\" = ls-files ]; then\n"
-        "  for argument in \"$@\"; do\n"
-        "    case \"$argument\" in */) exit 0 ;; esac\n"
-        "  done\n"
-        "fi\n"
-        f"exec '{real_git}' \"$@\"\n",
-        encoding="utf-8",
-    )
-    git_shim.chmod(0o755)
-    environment["PATH"] = f"{shim_dir}{os.pathsep}{environment['PATH']}"
     build_result = subprocess.run(
         ["bash", "scripts/build-vault-bundle.sh", str(output_dir)],
         cwd=clone,
