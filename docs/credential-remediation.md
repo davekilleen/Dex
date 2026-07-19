@@ -17,7 +17,9 @@ uppercase `api_key_env_var`/`token_env_var` name configured in bounded tracked Y
 duplicate, or oversized tracked references fail closed before `.mcp.json` can be classified as
 clean. The same YAML file identity and bytes are rechecked after active-config inspection, so a
 reference-name swap cannot produce a false clean result. Reference placeholders are not raw
-values, and `.mcp.json` remains byte-invariant.
+values, and `.mcp.json` remains byte-invariant. YAML uses a duplicate-rejecting SafeLoader for
+every mapping level, including escaped-equivalent keys and repeated top-level service mappings;
+later mappings can never hide an earlier custom credential reference.
 
 Dex inspects `.mcp.json` with `lstat`, a no-follow open, regular-file/single-link/size/readability
 checks, and before/open/after identity comparison. A symlink, hard link, directory, FIFO, device,
@@ -98,10 +100,13 @@ command, argv, process environment, manifest, log, state, or Doctor output.
    closed. It also prunes structurally safe manifest-less transaction directories left by an
    interrupted older implementation. Published manifest-bearing recovery transactions remain
    fully accounted and are never pruned this way. Preparation and retention pruning hold a
-   kernel-released lock on the opened vault-root directory descriptor and mutate through the
-   descriptor-bound mode-`0700` backup directory. Replacing any named lock-file decoy cannot split
-   ownership. Concurrent preparation/retention cannot prune active work, and cancellation or
-   process death releases ownership without weakening restart cleanup.
+   kernel-released lock on the opened vault-root directory descriptor. The recovery hierarchy is
+   traversed from that descriptor, and preparation, manifest loading, apply, rewind, retention,
+   and exact-set deletion retain and mutate through the same descriptor-bound mode-`0700` backup
+   directory. Reopening the vault or recovery hierarchy by pathname is not lifecycle authority.
+   Replacing any named lock-file decoy cannot split ownership. Concurrent preparation/retention
+   cannot prune active work, and cancellation or process death releases ownership without
+   weakening restart cleanup.
 4. Apply requires the unchanged preview and exact typed consent
    `CLEAN OPTIONAL HISTORY <opaque-transaction-id>`. It rechecks the tool, topology, bundle,
    object evidence, all refs, repository state, and the supplied credential's exact non-secret

@@ -263,12 +263,93 @@ def test_loaded_transaction_context_closes_descriptor(tmp_path):
     ref = _repo(tmp_path)
     preview = _prepare(tmp_path, _tool(tmp_path / "git-filter-repo"), ref)
 
-    with history_hygiene._load_manifest(tmp_path, preview.transaction_id) as transaction:
-        descriptor = transaction.descriptor
-        assert os.fstat(descriptor)
+    with history_hygiene._acquire_history_lifecycle_lock(tmp_path, create=False) as lifecycle_lock:
+        with history_hygiene._load_manifest(lifecycle_lock.backup_descriptor, preview.transaction_id) as transaction:
+            descriptor = transaction.descriptor
+            assert os.fstat(descriptor)
 
     with pytest.raises(OSError):
         os.fstat(descriptor)
+
+
+def test_pinned_backup_descriptor_survives_recovery_ancestor_rename_and_replacement(tmp_path):
+    ref = _repo(tmp_path)
+    preview = _prepare(tmp_path, _tool(tmp_path / "git-filter-repo"), ref)
+    outside = tmp_path.parent / "outside-pinned-history"
+    outside.mkdir()
+
+    with history_hygiene._acquire_history_lifecycle_lock(tmp_path, create=False) as lifecycle_lock:
+        dex = tmp_path / "System/.dex"
+        preserved = tmp_path / "System/.dex-preserved"
+        dex.rename(preserved)
+        dex.symlink_to(outside, target_is_directory=True)
+
+        with history_hygiene._load_manifest(
+            lifecycle_lock.backup_descriptor,
+            preview.transaction_id,
+        ) as transaction:
+            assert transaction.manifest["transaction_id"] == preview.transaction_id
+            assert str(transaction.path.resolve()).startswith(str(preserved.resolve()))
+
+    assert list(outside.iterdir()) == []
+
+
+def test_pinned_manifest_load_refuses_transaction_unlink_and_replacement(tmp_path):
+    ref = _repo(tmp_path)
+    preview = _prepare(tmp_path, _tool(tmp_path / "git-filter-repo"), ref)
+    backup = tmp_path / "System/.dex/adoption/history-backups"
+    transaction = backup / preview.transaction_id
+    preserved = backup / (preview.transaction_id + "-preserved")
+    outside = tmp_path.parent / "outside-transaction-replacement"
+    outside.mkdir()
+    sentinel = outside / "sentinel"
+    sentinel.write_text("preserve")
+
+    with history_hygiene._acquire_history_lifecycle_lock(tmp_path, create=False) as lifecycle_lock:
+        transaction.rename(preserved)
+        transaction.symlink_to(outside, target_is_directory=True)
+        with pytest.raises(OSError):
+            history_hygiene._load_manifest(
+                lifecycle_lock.backup_descriptor,
+                preview.transaction_id,
+            )
+
+    assert sentinel.read_text() == "preserve"
+    assert list(outside.iterdir()) == [sentinel]
+
+
+def test_path_reopen_mutation_loses_pinned_backup_authority(tmp_path, monkeypatch):
+    root = tmp_path / "vault"
+    root.mkdir()
+    pinned = root / "System/.dex/adoption/history-backups"
+    pinned.mkdir(parents=True, mode=0o700)
+    pinned_inode = pinned.stat().st_ino
+    outside = tmp_path / "replacement-vault"
+    replacement = outside / "System/.dex/adoption/history-backups"
+    replacement.mkdir(parents=True, mode=0o700)
+    replacement_inode = replacement.stat().st_ino
+    root_descriptor = os.open(root, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
+    try:
+        root.rename(tmp_path / "vault-preserved")
+        outside.rename(root)
+        monkeypatch.setattr(
+            history_hygiene,
+            "_open_backup_root_at",
+            lambda _descriptor, *, create=False: history_hygiene._open_directory_chain(
+                root,
+                ("System", ".dex", "adoption", "history-backups"),
+                create=create,
+            ),
+        )
+
+        descriptor = history_hygiene._open_backup_root_at(root_descriptor)
+        try:
+            assert os.fstat(descriptor).st_ino == replacement_inode
+            assert os.fstat(descriptor).st_ino != pinned_inode
+        finally:
+            os.close(descriptor)
+    finally:
+        os.close(root_descriptor)
 
 
 def test_prepare_apply_and_rewind_survive_module_restart(tmp_path):
@@ -430,14 +511,12 @@ def test_prepare_cancellation_removes_incomplete_transaction(tmp_path, monkeypat
 
     if boundary == "fd-path":
         original_fd_path = history_hygiene._fd_path
-        calls = 0
 
         def interrupt_fd_path(descriptor):
-            nonlocal calls
-            calls += 1
-            if calls == 2:
+            path = original_fd_path(descriptor)
+            if path.resolve().name.startswith(".incomplete-"):
                 raise failure("cancelled")
-            return original_fd_path(descriptor)
+            return path
 
         monkeypatch.setattr(history_hygiene, "_fd_path", interrupt_fd_path)
     else:
@@ -469,14 +548,12 @@ def test_restart_prunes_process_death_during_incomplete_preparation(tmp_path, bo
     if child == 0:
         if boundary == "fd-path":
             original_fd_path = history_hygiene._fd_path
-            calls = 0
 
             def die_at_transaction_fd(descriptor):
-                nonlocal calls
-                calls += 1
-                if calls == 2:
+                path = original_fd_path(descriptor)
+                if path.resolve().name.startswith(".incomplete-"):
                     os._exit(71)
-                return original_fd_path(descriptor)
+                return path
 
             history_hygiene._fd_path = die_at_transaction_fd
         else:
@@ -583,7 +660,17 @@ def test_removing_lifecycle_serialization_reproduces_active_prune(tmp_path, monk
 
     class Unlocked:
         def __init__(self, root, create):
-            self.backup_descriptor = history_hygiene._open_backup_root(root, create=create)
+            flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0)
+            self.root_descriptor = os.open(root, flags)
+            try:
+                self.backup_descriptor = history_hygiene._open_backup_root_at(
+                    self.root_descriptor,
+                    create=create,
+                )
+            except BaseException:
+                os.close(self.root_descriptor)
+                self.root_descriptor = -1
+                raise
 
         def __enter__(self):
             return self
@@ -592,8 +679,12 @@ def test_removing_lifecycle_serialization_reproduces_active_prune(tmp_path, monk
             self.close()
 
         def close(self):
-            os.close(self.backup_descriptor)
-            self.backup_descriptor = -1
+            if self.backup_descriptor >= 0:
+                os.close(self.backup_descriptor)
+                self.backup_descriptor = -1
+            if self.root_descriptor >= 0:
+                os.close(self.root_descriptor)
+                self.root_descriptor = -1
 
     monkeypatch.setattr(
         history_hygiene,
@@ -747,8 +838,9 @@ def test_load_fd_path_failure_closes_descriptor_repeatedly(tmp_path, monkeypatch
     monkeypatch.setattr(history_hygiene, "_fd_path", lambda _descriptor: (_ for _ in ()).throw(OSError("fd path")))
 
     for _ in range(5):
-        with pytest.raises(OSError, match="fd path"):
-            history_hygiene._load_manifest(tmp_path, preview.transaction_id)
+        with history_hygiene._acquire_history_lifecycle_lock(tmp_path, create=False) as lifecycle_lock:
+            with pytest.raises(OSError, match="fd path"):
+                history_hygiene._load_manifest(lifecycle_lock.backup_descriptor, preview.transaction_id)
 
     assert _descriptor_count() == before
 

@@ -5,6 +5,7 @@ import subprocess
 from pathlib import Path
 
 import pytest
+import yaml
 
 from core.utils.credential_remediation import (
     CAPABILITIES,
@@ -112,6 +113,65 @@ def test_duplicate_or_oversized_configured_reference_fails_closed(tmp_path):
 
     assert migrate_legacy_credentials(duplicate).state == "refused"
     assert migrate_legacy_credentials(oversized).state == "refused"
+
+
+@pytest.mark.parametrize(
+    ("service", "first_field", "second_field", "custom_name"),
+    [
+        ("todoist", "api_key_env_var", "token_env_var", "CUSTOM_TODOIST_FIRST"),
+        ("trello", "api_key_env_var", "token_env_var", "CUSTOM_TRELLO_FIRST"),
+    ],
+)
+def test_duplicate_top_level_service_mappings_with_different_references_fail_closed(
+    tmp_path,
+    service,
+    first_field,
+    second_field,
+    custom_name,
+):
+    root = _vault(
+        tmp_path,
+        (
+            f"{service}:\n  {first_field}: {custom_name}\n"
+            f"{service}:\n  {second_field}: CUSTOM_SECOND_REFERENCE\n"
+        ).encode(),
+    )
+    mcp = root / ".mcp.json"
+    mcp.write_text(json.dumps({"env": {custom_name: "synthetic-duplicate-hidden-active"}}))
+    before = mcp.read_bytes()
+
+    result = migrate_legacy_credentials(root)
+
+    assert result.state == "refused"
+    assert mcp.read_bytes() == before
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        b"todoist:\n  api_key_env_var: CUSTOM_ONE\n  api_key_env_var: CUSTOM_TWO\n",
+        b'"todo\\u0069st":\n  api_key_env_var: CUSTOM_ONE\ntodoist:\n  token_env_var: CUSTOM_TWO\n',
+        b"trello:\n  nested:\n    duplicate: one\n    duplicate: two\n",
+    ],
+)
+def test_ordinary_escaped_and_nested_duplicate_keys_fail_closed(tmp_path, raw):
+    root = _vault(tmp_path, raw)
+    assert migrate_legacy_credentials(root).state == "refused"
+
+
+def test_permissive_yaml_loader_mutation_reproduces_hidden_custom_residual(tmp_path, monkeypatch):
+    root = _vault(
+        tmp_path,
+        b"todoist:\n  api_key_env_var: CUSTOM_HIDDEN_FIRST\n"
+        b"todoist:\n  token_env_var: CUSTOM_SECOND\n",
+    )
+    (root / ".mcp.json").write_text('{"env":{"CUSTOM_HIDDEN_FIRST":"synthetic-hidden-active"}}')
+    monkeypatch.setattr("core.utils.credential_remediation._UniqueKeyLoader", yaml.SafeLoader)
+
+    result = migrate_legacy_credentials(root)
+
+    assert result.state == "not-needed"
+    assert result.active_residual_state == "none"
 
 
 def test_atomic_migration_preserves_yaml_bytes_and_exact_rewind(tmp_path):

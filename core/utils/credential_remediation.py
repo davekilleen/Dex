@@ -63,6 +63,35 @@ EXCEPTIONS_FILE = Path(__file__).with_name("credential_migration_exceptions.json
 MAX_TRACKED_CONFIG_BYTES = 1024 * 1024
 
 
+class _UniqueKeyLoader(yaml.SafeLoader):
+    pass
+
+
+def _construct_unique_mapping(
+    loader: _UniqueKeyLoader,
+    node: yaml.nodes.MappingNode,
+    deep: bool = False,
+) -> dict[object, object]:
+    loader.flatten_mapping(node)
+    result: dict[object, object] = {}
+    for key_node, value_node in node.value:
+        key = loader.construct_object(key_node, deep=deep)
+        try:
+            duplicate = key in result
+        except TypeError as error:
+            raise ValueError("integration config mapping keys must be scalar") from error
+        if duplicate:
+            raise ValueError("integration config contains duplicate key")
+        result[key] = loader.construct_object(value_node, deep=deep)
+    return result
+
+
+_UniqueKeyLoader.add_constructor(
+    yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG,
+    _construct_unique_mapping,
+)
+
+
 @dataclass(frozen=True)
 class CapabilityResult:
     results: dict[str, bool]
@@ -249,14 +278,7 @@ def _legacy_values(raw: bytes) -> tuple[dict[str, str], dict[str, str], frozense
     text = raw.decode("utf-8")
     if re.search(r"(^|\n)[ \t]*(todoist|trello):[^\n]*[&*]|(^|\n)[ \t]*(api_key|token):[ \t]*[>|]", text):
         raise ValueError("aliases and multiline credential values are refused")
-    # SafeLoader silently accepts duplicate keys; reject credential keys textually.
-    for section in ("todoist", "trello"):
-        block = re.search(rf"(?ms)^(?P<i>[ ]*){section}:\s*\n(?P<body>(?:(?P=i)[ ]+.*\n?)*)", text)
-        if block:
-            for key in ("api_key", "token", "api_key_env_var", "token_env_var"):
-                if len(re.findall(rf"(?m)^\s+{key}\s*:", block.group("body"))) > 1:
-                    raise ValueError("duplicate credential key")
-    data = yaml.safe_load(text) or {}
+    data = yaml.load(text, Loader=_UniqueKeyLoader) or {}
     if not isinstance(data, dict):
         raise ValueError("integration config must be an object")
     values: dict[str, str] = {}
@@ -302,11 +324,20 @@ def _config_snapshot_unchanged(
         )
     except OSError:
         return False
-    return current_raw == expected_raw and (
-        current_metadata.st_dev,
-        current_metadata.st_ino,
-        current_metadata.st_size,
-        stat.S_IMODE(current_metadata.st_mode),
+    return _config_snapshot_matches(current_raw, current_metadata, expected_raw, expected_metadata)
+
+
+def _config_snapshot_matches(
+    raw: bytes,
+    metadata: os.stat_result,
+    expected_raw: bytes,
+    expected_metadata: os.stat_result,
+) -> bool:
+    return raw == expected_raw and (
+        metadata.st_dev,
+        metadata.st_ino,
+        metadata.st_size,
+        stat.S_IMODE(metadata.st_mode),
     ) == (
         expected_metadata.st_dev,
         expected_metadata.st_ino,
@@ -475,16 +506,11 @@ def migrate_legacy_credentials(vault_root: Path) -> MigrationResult:
     try:
         config_descriptor = _open_directory_chain(vault_root, ("System", "integrations"))
         config_bytes, config_metadata = _read_at_with_metadata(config_descriptor, "config.yaml")
-        if config_bytes != config_raw or (
-            config_metadata.st_dev,
-            config_metadata.st_ino,
-            config_metadata.st_size,
-            stat.S_IMODE(config_metadata.st_mode),
-        ) != (
-            config_snapshot_metadata.st_dev,
-            config_snapshot_metadata.st_ino,
-            config_snapshot_metadata.st_size,
-            stat.S_IMODE(config_snapshot_metadata.st_mode),
+        if not _config_snapshot_matches(
+            config_bytes,
+            config_metadata,
+            config_raw,
+            config_snapshot_metadata,
         ):
             raise OSError("config changed after migration inspection")
         config_before = (
