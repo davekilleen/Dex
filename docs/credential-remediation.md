@@ -85,11 +85,11 @@ command, argv, process environment, manifest, log, state, or Doctor output.
 4. Apply requires the unchanged preview and exact typed consent
    `CLEAN OPTIONAL HISTORY <opaque-transaction-id>`. It rechecks the tool, topology, bundle,
    object evidence, all refs, repository state, and the supplied credential's exact non-secret
-   blob-ordinal/byte-offset occurrence coordinates in the unchanged selected history before
+   blob-ordinal/start/end occurrence spans and multiplicity in the unchanged selected history before
    invoking `git-filter-repo` with only the selected refs. Credential values are supplied through
    an inherited anonymous file descriptor and are never persisted in a replacement file or
-   fingerprint field. The occurrence coordinates distinguish same-sized credentials that coexist
-   in selected history without storing either value or a value-derived digest. Preparation,
+   fingerprint field. The closed occurrence spans distinguish prefix-related and same-sized
+   credentials that coexist in selected history without storing any value or value-derived digest. Preparation,
    apply, and rewind may run in separate processes; no
    process-global map is authority. Every unselected ref plus HEAD, index, tracked worktree bytes, and Git
    remote configuration must remain invariant. Dex does not fetch, push, force-push, or contact a

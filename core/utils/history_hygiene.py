@@ -409,16 +409,20 @@ def prepare_history_cleanup(
     if used + estimated > SHARED_RECOVERY_CAP_BYTES or free < required:
         raise OSError("insufficient verified recovery space")
     transaction_id = uuid.uuid4().hex
-    backup_descriptor = _open_backup_root(root, create=True)
-    os.mkdir(transaction_id, 0o700, dir_fd=backup_descriptor)
-    transaction_descriptor = os.open(
-        transaction_id,
-        os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0),
-        dir_fd=backup_descriptor,
-    )
-    transaction = _fd_path(transaction_descriptor)
-    bundle = transaction / "history.bundle"
+    backup_descriptor = None
+    transaction_descriptor = None
+    transaction_created = False
     try:
+        backup_descriptor = _open_backup_root(root, create=True)
+        os.mkdir(transaction_id, 0o700, dir_fd=backup_descriptor)
+        transaction_created = True
+        transaction_descriptor = os.open(
+            transaction_id,
+            os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0),
+            dir_fd=backup_descriptor,
+        )
+        transaction = _fd_path(transaction_descriptor)
+        bundle = transaction / "history.bundle"
         _git(root, "bundle", "create", str(bundle), *all_refs, pass_fds=(transaction_descriptor,))
         os.chmod(bundle, 0o600)
         bundle_sha256, bundle_size = _sync_file_identity(bundle)
@@ -491,21 +495,20 @@ def prepare_history_cleanup(
             "Optional privacy cleanup is prepared. Provider rotation is unchanged. Review the selected refs, then type the exact consent shown by Doctor to apply.",
         )
     except Exception:
-        for name in os.listdir(transaction_descriptor):
-            with suppress(FileNotFoundError):
-                os.unlink(name, dir_fd=transaction_descriptor)
-        os.close(transaction_descriptor)
-        transaction_descriptor = -1
-        os.rmdir(transaction_id, dir_fd=backup_descriptor)
-        os.close(backup_descriptor)
-        backup_descriptor = -1
+        if transaction_descriptor is not None:
+            for name in os.listdir(transaction_descriptor):
+                with suppress(FileNotFoundError):
+                    os.unlink(name, dir_fd=transaction_descriptor)
+        if transaction_created and backup_descriptor is not None:
+            os.rmdir(transaction_id, dir_fd=backup_descriptor)
         raise
     finally:
-        if transaction_descriptor >= 0:
+        if transaction_descriptor is not None:
             with suppress(OSError):
                 os.close(transaction_descriptor)
-        with suppress(OSError):
-            os.close(backup_descriptor)
+        if backup_descriptor is not None:
+            with suppress(OSError):
+                os.close(backup_descriptor)
 
 
 def _load_manifest(root: Path, transaction_id: str) -> _LoadedTransaction:
@@ -520,8 +523,8 @@ def _load_manifest(root: Path, transaction_id: str) -> _LoadedTransaction:
         )
     finally:
         os.close(backup)
-    transaction = _LoadedTransaction(descriptor, _fd_path(descriptor))
     try:
+        transaction = _LoadedTransaction(descriptor, _fd_path(descriptor))
         manifest_path = transaction.path / "manifest.json"
         if manifest_path.is_symlink():
             raise ValueError("unsafe history transaction")
@@ -537,7 +540,7 @@ def _load_manifest(root: Path, transaction_id: str) -> _LoadedTransaction:
         transaction.manifest = manifest
         return transaction
     except BaseException:
-        transaction.close()
+        os.close(descriptor)
         raise
 
 
@@ -611,7 +614,7 @@ def _occurrence_profile(blobs: tuple[bytes, ...], needle: bytes) -> list[list[in
     for blob_index, data in enumerate(blobs):
         start = 0
         while (offset := data.find(needle, start)) >= 0:
-            profile.append([blob_index, offset])
+            profile.append([blob_index, offset, offset + len(needle)])
             start = offset + 1
     return profile
 
@@ -903,12 +906,12 @@ def preview_retention(
     if now.utcoffset() is None or successful_release_activations < 0:
         raise ValueError("retention inputs must use an aware time and nonnegative release count")
     manifests: list[tuple[str, dict[str, object], datetime, datetime]] = []
+    backup_descriptor = None
     try:
         backup_descriptor = _open_backup_root(root)
         transaction_ids = sorted(os.listdir(backup_descriptor))
     except FileNotFoundError:
         transaction_ids = []
-        backup_descriptor = None
     finally:
         if backup_descriptor is not None:
             os.close(backup_descriptor)

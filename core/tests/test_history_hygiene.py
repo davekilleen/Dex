@@ -330,6 +330,94 @@ def test_apply_rebinds_exact_occurrence_coordinates_not_same_sized_history_secre
     assert secret_b in rewritten
 
 
+@pytest.mark.parametrize(
+    ("prepared_secret", "substitute_secret"),
+    [
+        (b"prefix-secret", b"prefix-secret-longer"),
+        (b"prefix-secret-longer", b"prefix-secret"),
+    ],
+)
+def test_apply_rejects_prefix_related_credential_substitution(tmp_path, prepared_secret, substitute_secret):
+    _git(tmp_path, "init", "-q")
+    _git(tmp_path, "config", "user.email", "synthetic@example.invalid")
+    _git(tmp_path, "config", "user.name", "Synthetic")
+    (tmp_path / "leak.txt").write_bytes(b"prefix-secret-longer\n")
+    _git(tmp_path, "add", "leak.txt")
+    _git(tmp_path, "commit", "-qm", "prefix secrets")
+    ref = _git(tmp_path, "symbolic-ref", "HEAD")
+    tool = _tool(tmp_path / "git-filter-repo")
+    preview = prepare_history_cleanup(
+        tmp_path,
+        security_state="remediated",
+        explicit_choice=True,
+        selected_refs=(ref,),
+        credential_needles=(prepared_secret,),
+        successful_release_activations=0,
+        no_external_backup_acknowledged=True,
+        filter_repo=tool,
+    )
+
+    with pytest.raises(ValueError, match="credential set changed"):
+        apply_history_cleanup(
+            tmp_path,
+            preview,
+            typed_consent=f"CLEAN OPTIONAL HISTORY {preview.transaction_id}",
+            credential_needles=(substitute_secret,),
+            filter_repo=tool,
+        )
+
+    manifest = json.loads(
+        (tmp_path / "System/.dex/adoption/history-backups" / preview.transaction_id / "manifest.json").read_text()
+    )
+    spans = manifest["credential_occurrences"][0]
+    assert all(end - start == len(prepared_secret) for _, start, end in spans)
+
+
+def _descriptor_count() -> int:
+    return len(os.listdir("/proc/self/fd"))
+
+
+def test_prepare_fd_path_failure_closes_descriptors_and_removes_orphan(tmp_path, monkeypatch):
+    ref = _repo(tmp_path)
+    tool = _tool(tmp_path / "git-filter-repo")
+    before = _descriptor_count()
+    monkeypatch.setattr(history_hygiene, "_fd_path", lambda _descriptor: (_ for _ in ()).throw(OSError("fd path")))
+
+    for _ in range(5):
+        with pytest.raises(OSError, match="fd path"):
+            _prepare(tmp_path, tool, ref)
+
+    assert _descriptor_count() == before
+    backup = tmp_path / "System/.dex/adoption/history-backups"
+    assert not backup.exists() or list(backup.iterdir()) == []
+
+
+def test_load_fd_path_failure_closes_descriptor_repeatedly(tmp_path, monkeypatch):
+    ref = _repo(tmp_path)
+    preview = _prepare(tmp_path, _tool(tmp_path / "git-filter-repo"), ref)
+    before = _descriptor_count()
+    monkeypatch.setattr(history_hygiene, "_fd_path", lambda _descriptor: (_ for _ in ()).throw(OSError("fd path")))
+
+    for _ in range(5):
+        with pytest.raises(OSError, match="fd path"):
+            history_hygiene._load_manifest(tmp_path, preview.transaction_id)
+
+    assert _descriptor_count() == before
+
+
+def test_retention_symlinked_ancestor_preserves_containment_error(tmp_path):
+    outside = tmp_path.parent / "outside-retention"
+    outside.mkdir()
+    dex = tmp_path / "System/.dex"
+    dex.parent.mkdir()
+    dex.symlink_to(outside, target_is_directory=True)
+
+    with pytest.raises(OSError):
+        preview_retention(tmp_path, now=datetime.now(UTC), successful_release_activations=0)
+
+    assert list(outside.iterdir()) == []
+
+
 def test_preview_consent_manifest_bundle_and_ref_tamper_fail_closed(tmp_path):
     ref = _repo(tmp_path)
     tool = _tool(tmp_path / "git-filter-repo")
