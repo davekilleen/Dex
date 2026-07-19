@@ -159,14 +159,55 @@ DEX_ROLLBACK_TARGET="backup-before-v1.3.0"
 DEX_LOCAL_ONLY_ROOT="System/.dex/local-only-preservation"
 DEX_LOCAL_ONLY_RUNTIME="$DEX_LOCAL_ONLY_ROOT/runtime"
 DEX_LOCAL_ONLY_JOURNAL="$DEX_LOCAL_ONLY_ROOT/journal"
-[ -f "$DEX_LOCAL_ONLY_JOURNAL/journal.json" ] || {
-  echo "Rollback stopped: the private local-only preservation journal is unavailable"
-  exit 1
-}
-PYTHONPATH="$DEX_LOCAL_ONLY_RUNTIME" python3 \
-  "$DEX_LOCAL_ONLY_RUNTIME/core/migrations/preserve_local_only_paths.py" capture-rewind \
-  --repo "$PWD" --journal "$DEX_LOCAL_ONLY_JOURNAL" \
-  --policy "$DEX_LOCAL_ONLY_RUNTIME/tracked-ignored-policy.yaml" || exit 1
+DEX_CURRENT_LOCAL_ONLY_PHASE=$(python3 -c '
+import json
+value = json.load(open("System/.local-only-preservation-transition.json", encoding="utf-8"))
+print(value.get("phase", ""))
+') || exit 1
+DEX_TARGET_LOCAL_ONLY_PHASE=$(git show \
+  "$DEX_ROLLBACK_TARGET:System/.local-only-preservation-transition.json" 2>/dev/null \
+  | python3 -c '
+import json, sys
+value = json.load(sys.stdin)
+if set(value) != {"schema_version", "phase", "release_version"} or value.get("schema_version") != 1:
+    raise SystemExit(1)
+if value.get("phase") not in {"bootstrap-v1", "untrack-v1"}:
+    raise SystemExit(1)
+print(value["phase"])
+' 2>/dev/null || true)
+if [ -z "$DEX_TARGET_LOCAL_ONLY_PHASE" ]; then
+  DEX_TARGET_TRACKED_COUNT=0
+  for DEX_LOCAL_ONLY_PATH in \
+    System/Session_Learnings/2026-01-29.md \
+    System/Session_Learnings/2026-01-30.md \
+    System/integrations/slack.yaml; do
+    git cat-file -e "$DEX_ROLLBACK_TARGET:$DEX_LOCAL_ONLY_PATH" 2>/dev/null \
+      && DEX_TARGET_TRACKED_COUNT=$((DEX_TARGET_TRACKED_COUNT + 1))
+  done
+  case "$DEX_TARGET_TRACKED_COUNT" in
+    3) DEX_TARGET_LOCAL_ONLY_PHASE="bootstrap-legacy" ;;
+    0) DEX_TARGET_LOCAL_ONLY_PHASE="untrack-legacy" ;;
+    *) echo "Rollback stopped: target has a partial local-only transition"; exit 1 ;;
+  esac
+fi
+DEX_LOCAL_ONLY_REWIND_REQUIRED=false
+case "$DEX_CURRENT_LOCAL_ONLY_PHASE:$DEX_TARGET_LOCAL_ONLY_PHASE" in
+  untrack-v1:bootstrap-v1|untrack-v1:bootstrap-legacy)
+    DEX_LOCAL_ONLY_REWIND_REQUIRED=true
+    [ -f "$DEX_LOCAL_ONLY_JOURNAL/journal.json" ] || {
+      echo "Rollback stopped: this target tracks local-only paths but the preservation journal is unavailable"
+      exit 1
+    }
+    PYTHONPATH="$DEX_LOCAL_ONLY_RUNTIME" python3 \
+      "$DEX_LOCAL_ONLY_RUNTIME/core/migrations/preserve_local_only_paths.py" capture-rewind \
+      --repo "$PWD" --journal "$DEX_LOCAL_ONLY_JOURNAL" \
+      --policy "$DEX_LOCAL_ONLY_RUNTIME/tracked-ignored-policy.yaml" || exit 1
+    ;;
+  bootstrap-v1:bootstrap-v1|bootstrap-v1:bootstrap-legacy|\
+  bootstrap-v1:untrack-v1|bootstrap-v1:untrack-legacy|\
+  untrack-v1:untrack-v1|untrack-v1:untrack-legacy) ;;
+  *) echo "Rollback stopped: current and target local-only transitions are unsupported"; exit 1 ;;
+esac
 DEX_USER_DATA_PATHS=(
   "00-Inbox/" "01-Quarter_Goals/" "02-Week_Priorities/" "03-Tasks/"
   "04-Projects/" "05-Areas/" "06-Resources/" "07-Archives/"
@@ -183,6 +224,10 @@ DEX_USER_DATA_STASH_PATHS=(
   ":(top,exclude)System/Session_Learnings/2026-01-30.md"
 )
 DEX_USER_DATA_SOURCE=$(git rev-parse HEAD)
+DEX_INDEX_TREE_BEFORE=$(git write-tree) || {
+  echo "Rollback stopped: Git could not snapshot the original staged state"
+  exit 1
+}
 DEX_DATA_STASH_BEFORE=$(git rev-parse -q --verify refs/stash 2>/dev/null || true)
 
 git stash push --all \
@@ -206,7 +251,8 @@ else
 fi
 
 if ! git add .; then
-  [ -z "$DEX_DATA_STASH_OID" ] || git stash apply "$DEX_DATA_STASH_OID"
+  git read-tree "$DEX_INDEX_TREE_BEFORE"
+  [ -z "$DEX_DATA_STASH_OID" ] || git stash apply --index "$DEX_DATA_STASH_OID"
   echo "Rollback stopped: Git could not prepare the current state, so no reset ran"
   exit 1
 fi
@@ -214,7 +260,8 @@ if git diff --cached --quiet; then
   echo "Nothing to save; continuing rollback"
 elif ! git commit -m "Auto-save before rollback to v1.2.0"; then
   git reset
-  [ -z "$DEX_DATA_STASH_OID" ] || git stash apply "$DEX_DATA_STASH_OID"
+  git read-tree "$DEX_INDEX_TREE_BEFORE"
+  [ -z "$DEX_DATA_STASH_OID" ] || git stash apply --index "$DEX_DATA_STASH_OID"
   echo "Rollback stopped: Git could not save the current state, so no reset ran"
   exit 1
 fi
@@ -291,13 +338,16 @@ if ! git reset -- "${DEX_USER_DATA_PATHS[@]}"; then
   echo "User data was restored, but Git could not clear its staged state; review git status before continuing"
   exit 2
 fi
-PYTHONPATH="$DEX_LOCAL_ONLY_RUNTIME" python3 \
-  "$DEX_LOCAL_ONLY_RUNTIME/core/migrations/preserve_local_only_paths.py" rewind \
-  --repo "$PWD" --journal "$DEX_LOCAL_ONLY_JOURNAL" \
-  --policy "$DEX_LOCAL_ONLY_RUNTIME/tracked-ignored-policy.yaml" || {
-    echo "Rollback stopped: local-only files remain protected in $DEX_LOCAL_ONLY_JOURNAL"
-    exit 2
-  }
+if [ "$DEX_LOCAL_ONLY_REWIND_REQUIRED" = true ]; then
+  PYTHONPATH="$DEX_LOCAL_ONLY_RUNTIME" python3 \
+    "$DEX_LOCAL_ONLY_RUNTIME/core/migrations/preserve_local_only_paths.py" rewind \
+    --repo "$PWD" --journal "$DEX_LOCAL_ONLY_JOURNAL" \
+    --target-phase "$DEX_TARGET_LOCAL_ONLY_PHASE" \
+    --policy "$DEX_LOCAL_ONLY_RUNTIME/tracked-ignored-policy.yaml" || {
+      echo "Rollback stopped: local-only files remain protected in $DEX_LOCAL_ONLY_JOURNAL"
+      exit 2
+    }
+fi
 ```
 
 This restores Dex files to the state before the update, then restores the user's latest tracked, uncommitted, and untracked content.
@@ -758,10 +808,49 @@ DEX_ROLLBACK_TARGET="backup-before-v1.1.0"
 DEX_LOCAL_ONLY_ROOT="System/.dex/local-only-preservation"
 DEX_LOCAL_ONLY_RUNTIME="$DEX_LOCAL_ONLY_ROOT/runtime"
 DEX_LOCAL_ONLY_JOURNAL="$DEX_LOCAL_ONLY_ROOT/journal"
-PYTHONPATH="$DEX_LOCAL_ONLY_RUNTIME" python3 \
-  "$DEX_LOCAL_ONLY_RUNTIME/core/migrations/preserve_local_only_paths.py" capture-rewind \
-  --repo "$PWD" --journal "$DEX_LOCAL_ONLY_JOURNAL" \
-  --policy "$DEX_LOCAL_ONLY_RUNTIME/tracked-ignored-policy.yaml" || exit 1
+DEX_CURRENT_LOCAL_ONLY_PHASE=$(python3 -c '
+import json
+print(json.load(open("System/.local-only-preservation-transition.json", encoding="utf-8")).get("phase", ""))
+' 2>/dev/null || true)
+DEX_TARGET_LOCAL_ONLY_PHASE=$(git show \
+  "$DEX_ROLLBACK_TARGET:System/.local-only-preservation-transition.json" 2>/dev/null \
+  | python3 -c '
+import json, sys
+value = json.load(sys.stdin)
+if set(value) != {"schema_version", "phase", "release_version"} or value.get("schema_version") != 1:
+    raise SystemExit(1)
+if value.get("phase") not in {"bootstrap-v1", "untrack-v1"}:
+    raise SystemExit(1)
+print(value["phase"])
+' 2>/dev/null || true)
+if [ -z "$DEX_TARGET_LOCAL_ONLY_PHASE" ]; then
+  DEX_TARGET_TRACKED_COUNT=0
+  for DEX_LOCAL_ONLY_PATH in \
+    System/Session_Learnings/2026-01-29.md \
+    System/Session_Learnings/2026-01-30.md \
+    System/integrations/slack.yaml; do
+    git cat-file -e "$DEX_ROLLBACK_TARGET:$DEX_LOCAL_ONLY_PATH" 2>/dev/null \
+      && DEX_TARGET_TRACKED_COUNT=$((DEX_TARGET_TRACKED_COUNT + 1))
+  done
+  case "$DEX_TARGET_TRACKED_COUNT" in
+    3) DEX_TARGET_LOCAL_ONLY_PHASE="bootstrap-legacy" ;;
+    0) DEX_TARGET_LOCAL_ONLY_PHASE="untrack-legacy" ;;
+    *) echo "Rollback stopped: target has a partial local-only transition"; exit 1 ;;
+  esac
+fi
+DEX_LOCAL_ONLY_REWIND_REQUIRED=false
+case "$DEX_CURRENT_LOCAL_ONLY_PHASE:$DEX_TARGET_LOCAL_ONLY_PHASE" in
+  untrack-v1:bootstrap-v1|untrack-v1:bootstrap-legacy)
+    DEX_LOCAL_ONLY_REWIND_REQUIRED=true
+    [ -f "$DEX_LOCAL_ONLY_JOURNAL/journal.json" ] || exit 1
+    PYTHONPATH="$DEX_LOCAL_ONLY_RUNTIME" python3 \
+      "$DEX_LOCAL_ONLY_RUNTIME/core/migrations/preserve_local_only_paths.py" capture-rewind \
+      --repo "$PWD" --journal "$DEX_LOCAL_ONLY_JOURNAL" \
+      --policy "$DEX_LOCAL_ONLY_RUNTIME/tracked-ignored-policy.yaml" || exit 1
+    ;;
+  bootstrap-v1:*|untrack-v1:untrack-v1|untrack-v1:untrack-legacy) ;;
+  *) echo "Rollback stopped: current and target local-only transitions are unsupported"; exit 1 ;;
+esac
 DEX_USER_DATA_PATHS=(
   "00-Inbox/" "01-Quarter_Goals/" "02-Week_Priorities/" "03-Tasks/"
   "04-Projects/" "05-Areas/" "06-Resources/" "07-Archives/"
@@ -860,10 +949,13 @@ if ! git reset -- "${DEX_USER_DATA_PATHS[@]}"; then
   echo "User data was restored, but Git could not clear its staged state; review git status before continuing"
   exit 2
 fi
-PYTHONPATH="$DEX_LOCAL_ONLY_RUNTIME" python3 \
-  "$DEX_LOCAL_ONLY_RUNTIME/core/migrations/preserve_local_only_paths.py" rewind \
-  --repo "$PWD" --journal "$DEX_LOCAL_ONLY_JOURNAL" \
-  --policy "$DEX_LOCAL_ONLY_RUNTIME/tracked-ignored-policy.yaml" || exit 2
+if [ "$DEX_LOCAL_ONLY_REWIND_REQUIRED" = true ]; then
+  PYTHONPATH="$DEX_LOCAL_ONLY_RUNTIME" python3 \
+    "$DEX_LOCAL_ONLY_RUNTIME/core/migrations/preserve_local_only_paths.py" rewind \
+    --repo "$PWD" --journal "$DEX_LOCAL_ONLY_JOURNAL" \
+    --target-phase "$DEX_TARGET_LOCAL_ONLY_PHASE" \
+    --policy "$DEX_LOCAL_ONLY_RUNTIME/tracked-ignored-policy.yaml" || exit 2
+fi
 ```
 
 But easier: tell `/dex-rollback` which version you want, and it handles it.

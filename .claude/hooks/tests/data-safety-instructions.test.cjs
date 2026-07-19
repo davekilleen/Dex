@@ -290,6 +290,13 @@ function setupProtectedResetRepo(t) {
   const rollbackCollision = path.join(repo, '04-Projects', 'old-only.md');
   fs.writeFileSync(rollbackCollision, 'old release version\n');
   fs.writeFileSync(path.join(repo, 'core.txt'), 'backup core\n');
+  fs.mkdirSync(path.join(repo, '.claude'), { recursive: true });
+  fs.writeFileSync(path.join(repo, '.claude', 'keep'), 'fixture\n');
+  fs.writeFileSync(path.join(repo, 'package.json'), '{"version":"1.61.0"}\n');
+  fs.writeFileSync(
+    path.join(repo, 'System', '.local-only-preservation-transition.json'),
+    '{"schema_version":1,"phase":"bootstrap-v1","release_version":"1.61.0"}\n',
+  );
   fs.writeFileSync(
     path.join(repo, '.gitignore'),
     ['00-Inbox/', '01-Quarter_Goals/', '02-Week_Priorities/', '03-Tasks/',
@@ -329,7 +336,11 @@ function rollbackTestEnv(repo) {
   fs.writeFileSync(path.join(journal, 'journal.json'), '{}\n');
   fs.writeFileSync(runtimeScript, '# fixture; intercepted by fake python3\n');
   const bin = fs.mkdtempSync(path.join(os.tmpdir(), 'dex-fake-python-'));
-  fs.writeFileSync(path.join(bin, 'python3'), '#!/bin/sh\nexit 0\n', { mode: 0o755 });
+  fs.writeFileSync(
+    path.join(bin, 'python3'),
+    '#!/bin/sh\n[ "$1" != "-c" ] || exec /usr/bin/python3 "$@"\nexit 0\n',
+    { mode: 0o755 },
+  );
   return { ...process.env, PATH: `${bin}:${process.env.PATH}` };
 }
 

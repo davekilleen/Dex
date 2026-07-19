@@ -12,6 +12,8 @@ from core.integrations import task_sync
 from core.mcp import work_server
 from core.paths import TASKS_DIR
 
+REPO_ROOT = Path(__file__).resolve().parents[2]
+
 TEST_PILLARS = {
     "pillar_1": {
         "name": "Product",
@@ -54,6 +56,9 @@ def sync_vault(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Pat
     tasks = tmp_path / TASKS_DIR.name / "Tasks.md"
     integrations.mkdir(parents=True)
     adapters.mkdir(parents=True)
+    (adapters / "run.cjs").write_bytes(
+        (REPO_ROOT / ".claude" / "hooks" / "adapters" / "run.cjs").read_bytes()
+    )
     tasks.parent.mkdir(parents=True)
     _write_tasks(tasks)
 
@@ -109,6 +114,21 @@ def _install_fake_runner(monkeypatch: pytest.MonkeyPatch, responses: dict) -> li
     monkeypatch.setattr(task_sync, "_find_node", lambda: "/fake/node")
 
     def run(command, **kwargs):
+        if command[-2] == "--resolve-adapter":
+            service = command[-1]
+            adapter = "jira" if service == "atlassian" else service
+            return task_sync.subprocess.CompletedProcess(
+                args=command,
+                returncode=0,
+                stdout=json.dumps(
+                    {
+                        "ok": True,
+                        "requested_service": service,
+                        "adapter_service": adapter,
+                    }
+                ),
+                stderr="",
+            )
         service, operation = command[-2:]
         request = json.loads(kwargs["input"])
         calls.append(
@@ -418,7 +438,7 @@ def test_direct_jira_behavior_is_unchanged(sync_vault, monkeypatch):
         ({"raw": "[]"}, "must contain an object"),
         ({"raw": '{"atlassian":"jira","atlassian":"cloud"}'}, "duplicate service alias"),
         ({"atlassian": "atlassian"}, "self-referential"),
-        ({"atlassian": "../jira"}, "invalid adapter alias target"),
+        ({"atlassian": "../jira"}, "invalid adapter alias"),
         ({"atlassian": "jira", "jira": "cloud"}, "must be one hop"),
         ({"atlassian": "jira", "jira": "atlassian"}, "must be one hop"),
     ],
@@ -443,7 +463,7 @@ def test_bad_aliases_are_structured_visible_failures(
 
     assert result["atlassian"]["errors"]
     assert "enabled service 'atlassian'" in result["atlassian"]["errors"][0]
-    assert error in result["atlassian"]["errors"][0]
+    assert error in result["atlassian"]["errors"][0].lower()
 
 
 def test_enabled_adapterless_service_returns_corrective_failure_without_state_write(
@@ -460,8 +480,8 @@ def test_enabled_adapterless_service_returns_corrective_failure_without_state_wr
     result = task_sync.sync_external_tasks(services=["adapterless"])
 
     assert result["adapterless"]["errors"] == [
-        "task-sync adapter unavailable for enabled service 'adapterless': "
-        "expected adapter 'adapterless.cjs'; repair Dex or disable this service"
+        "task-sync adapter configuration error for enabled service 'adapterless': "
+        "Adapter unavailable for requested service 'adapterless': expected 'adapterless.cjs'"
     ]
     assert not sync_vault["state"].exists()
 

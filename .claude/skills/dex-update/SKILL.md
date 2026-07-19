@@ -269,10 +269,12 @@ If cancelled:
 🔄 Applying updates...
 ```
 
-**A. Capture the three local-only files before the merge**
+**A. Inspect the immutable target transition and capture only for the future untrack release**
 
 This is release-blocking. Copy the trusted migration runtime and closed policy into
-the private durable journal root, then capture before Git can remove tracked files:
+the private durable journal root. SR1 itself declares `bootstrap-v1`, keeps all
+three paths tracked, and does not need capture. A later release declaring
+`untrack-v1` must capture before Git can remove tracked files:
 
 ```bash
 DEX_LOCAL_ONLY_ROOT="System/.dex/local-only-preservation"
@@ -285,24 +287,48 @@ cp -- core/migrations/preserve_local_only_paths.py \
   "$DEX_LOCAL_ONLY_RUNTIME/core/migrations/preserve_local_only_paths.py" || exit 1
 cp -- core/utils/tracked_ignored.py \
   "$DEX_LOCAL_ONLY_RUNTIME/core/utils/tracked_ignored.py" || exit 1
-cp -- scripts/tracked-ignored-policy.yaml \
+cp -- core/migrations/tracked-ignored-policy.yaml \
   "$DEX_LOCAL_ONLY_RUNTIME/tracked-ignored-policy.yaml" || exit 1
 touch "$DEX_LOCAL_ONLY_RUNTIME/core/__init__.py" \
   "$DEX_LOCAL_ONLY_RUNTIME/core/migrations/__init__.py" \
   "$DEX_LOCAL_ONLY_RUNTIME/core/utils/__init__.py" || exit 1
 
-DEX_LOCAL_ONLY_STATE=$(PYTHONPATH="$DEX_LOCAL_ONLY_RUNTIME" python3 \
-  "$DEX_LOCAL_ONLY_RUNTIME/core/migrations/preserve_local_only_paths.py" preview \
-  --repo "$PWD" --policy "$DEX_LOCAL_ONLY_RUNTIME/tracked-ignored-policy.yaml") || exit 1
-case "$DEX_LOCAL_ONLY_STATE" in
-  *'"state": "ready-to-apply"'*)
+DEX_TARGET_TRANSITION="$DEX_LOCAL_ONLY_RUNTIME/target-transition.json"
+DEX_TARGET_PACKAGE="$DEX_LOCAL_ONLY_RUNTIME/target-package.json"
+git show upstream/release:System/.local-only-preservation-transition.json \
+  > "$DEX_TARGET_TRANSITION" || exit 1
+git show upstream/release:package.json > "$DEX_TARGET_PACKAGE" || exit 1
+DEX_TARGET_PHASE=$(python3 -c '
+import json, sys
+transition = json.load(open(sys.argv[1], encoding="utf-8"))
+package = json.load(open(sys.argv[2], encoding="utf-8"))
+if set(transition) != {"schema_version", "phase", "release_version"}:
+    raise SystemExit(1)
+if transition["schema_version"] != 1 or transition["phase"] not in {"bootstrap-v1", "untrack-v1"}:
+    raise SystemExit(1)
+if transition["release_version"] != package.get("version"):
+    raise SystemExit(1)
+print(transition["phase"])
+' "$DEX_TARGET_TRANSITION" "$DEX_TARGET_PACKAGE") || exit 1
+
+case "$DEX_TARGET_PHASE" in
+  bootstrap-v1) ;;
+  untrack-v1)
+    DEX_LOCAL_ONLY_STATE=$(PYTHONPATH="$DEX_LOCAL_ONLY_RUNTIME" python3 \
+      "$DEX_LOCAL_ONLY_RUNTIME/core/migrations/preserve_local_only_paths.py" preview \
+      --repo "$PWD" --policy "$DEX_LOCAL_ONLY_RUNTIME/tracked-ignored-policy.yaml") || exit 1
+    case "$DEX_LOCAL_ONLY_STATE" in
+      *'"state": "bootstrap-installed"'*)
     PYTHONPATH="$DEX_LOCAL_ONLY_RUNTIME" python3 \
       "$DEX_LOCAL_ONLY_RUNTIME/core/migrations/preserve_local_only_paths.py" capture \
       --repo "$PWD" --journal "$DEX_LOCAL_ONLY_JOURNAL" \
       --policy "$DEX_LOCAL_ONLY_RUNTIME/tracked-ignored-policy.yaml" || exit 1
+        ;;
+      *'"state": "already-applied"'*) ;;
+      *) echo "Update stopped: local-only path state is not an approved transition"; exit 1 ;;
+    esac
     ;;
-  *'"state": "already-applied"'*) ;;
-  *) echo "Update stopped: local-only path state is not an approved transition"; exit 1 ;;
+  *) echo "Update stopped: target local-only transition is unsupported"; exit 1 ;;
 esac
 ```
 
@@ -339,7 +365,15 @@ other operation can overwrite the working copies:
 DEX_LOCAL_ONLY_ROOT="System/.dex/local-only-preservation"
 DEX_LOCAL_ONLY_RUNTIME="$DEX_LOCAL_ONLY_ROOT/runtime"
 DEX_LOCAL_ONLY_JOURNAL="$DEX_LOCAL_ONLY_ROOT/journal"
-if [ -f "$DEX_LOCAL_ONLY_JOURNAL/journal.json" ]; then
+DEX_LOCAL_ONLY_STATE=$(PYTHONPATH="$DEX_LOCAL_ONLY_RUNTIME" python3 \
+  "$DEX_LOCAL_ONLY_RUNTIME/core/migrations/preserve_local_only_paths.py" preview \
+  --repo "$PWD" --policy "$DEX_LOCAL_ONLY_RUNTIME/tracked-ignored-policy.yaml") || exit 1
+case "$DEX_LOCAL_ONLY_STATE" in
+*'"state": "ready-to-apply"'*)
+  [ -f "$DEX_LOCAL_ONLY_JOURNAL/journal.json" ] || {
+    echo "Update stopped: the pre-merge local-only journal is unavailable"
+    exit 1
+  }
   PYTHONPATH="$DEX_LOCAL_ONLY_RUNTIME" python3 \
     "$DEX_LOCAL_ONLY_RUNTIME/core/migrations/preserve_local_only_paths.py" apply \
     --repo "$PWD" --journal "$DEX_LOCAL_ONLY_JOURNAL" \
@@ -347,7 +381,10 @@ if [ -f "$DEX_LOCAL_ONLY_JOURNAL/journal.json" ]; then
       echo "Update stopped: Dex could not preserve the three local-only files"
       exit 1
     }
-fi
+  ;;
+*'"state": "already-applied"'*|*'"state": "bootstrap-installed"'*) ;;
+*) echo "Update stopped: post-merge local-only state is not approved"; exit 1 ;;
+esac
 ```
 
 **E. Reject any tracked registry supplied by upstream**

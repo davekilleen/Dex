@@ -1,0 +1,18 @@
+# Slack Integration Config
+# Configured: 2026-02-05T14:11:04.866796
+
+enabled: false
+package: slack-mcp-server
+auth_type: cookie
+# Credential stored in Claude Desktop config for security
+
+# Integration hooks
+hooks:
+  meeting_prep: false     # Pull Slack context for meeting attendees
+  person_pages: false     # Show recent Slack mentions on person pages
+
+# Channels to index (empty = all accessible)
+channels: []
+
+# Users to prioritize (empty = all)
+priority_users: []

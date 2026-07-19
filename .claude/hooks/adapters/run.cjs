@@ -88,17 +88,23 @@ function resolveAdapterService(service, aliases = loadServiceAliases()) {
 }
 
 async function main() {
-  const [, , service, operation] = process.argv;
+  const [, , firstArgument, secondArgument] = process.argv;
+  const resolvingOnly = firstArgument === '--resolve-adapter';
+  const service = resolvingOnly ? secondArgument : firstArgument;
+  const operation = resolvingOnly ? undefined : secondArgument;
   const adapterService = resolveAdapterService(service);
-  if (!OPERATIONS.has(operation)) {
-    throw new Error(`Unsupported adapter operation: ${operation || '(missing)'}`);
-  }
-
   const adapterPath = path.join(__dirname, `${adapterService}.cjs`);
   if (path.dirname(adapterPath) !== __dirname || !fs.existsSync(adapterPath)) {
     throw new Error(
       `Adapter unavailable for requested service '${service}': expected '${adapterService}.cjs'`,
     );
+  }
+  if (resolvingOnly) {
+    emit({ ok: true, requested_service: service, adapter_service: adapterService });
+    return;
+  }
+  if (!OPERATIONS.has(operation)) {
+    throw new Error(`Unsupported adapter operation: ${operation || '(missing)'}`);
   }
 
   const input = fs.readFileSync(0, 'utf8').trim();

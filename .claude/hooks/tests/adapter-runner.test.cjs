@@ -17,6 +17,13 @@ function run(service, operation, payload) {
   });
 }
 
+function resolve(service) {
+  return spawnSync(process.execPath, [RUNNER, '--resolve-adapter', service], {
+    encoding: 'utf-8',
+    timeout: 5_000,
+  });
+}
+
 function parseOnlyJsonLine(result) {
   const lines = result.stdout.trim().split('\n');
   assert.equal(lines.length, 1, `garbage stdout: ${result.stdout}`);
@@ -61,6 +68,17 @@ test('atlassian resolves one hop to jira while direct jira behavior remains avai
   assert.equal(jira.ok, false);
   assert.match(atlassian.error, /Atlassian auth not configured/i);
   assert.equal(atlassian.error, jira.error);
+});
+
+test('bounded resolver returns only stable requested and adapter identities', () => {
+  const result = resolve('atlassian');
+  assert.equal(result.status, 0);
+  assert.deepEqual(parseOnlyJsonLine(result), {
+    ok: true,
+    requested_service: 'atlassian',
+    adapter_service: 'jira',
+  });
+  assert.equal(result.stderr, '');
 });
 
 test('alias parser rejects malformed, traversal, chained, and cyclic mappings', () => {

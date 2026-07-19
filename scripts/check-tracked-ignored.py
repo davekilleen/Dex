@@ -16,6 +16,7 @@ from core.utils.tracked_ignored import (
     PolicyRow,
     TrackedIgnoredError,
     load_exact_policy,
+    load_transition,
     query_tracked_ignored,
 )
 
@@ -27,6 +28,7 @@ def load_policy(path: Path) -> tuple[PolicyRow, ...]:
 
 def check(repo: Path, policy_path: Path) -> dict[str, object]:
     rows = load_policy(policy_path)
+    transition = load_transition(repo)
     actual = set(query_tracked_ignored(repo))
     policy_paths = {row.path for row in rows}
     expected_tracked = {row.path for row in rows if row.classification != "local-only-must-be-untracked"}
@@ -36,10 +38,16 @@ def check(repo: Path, policy_path: Path) -> dict[str, object]:
         errors.append({"code": "unknown-tracked-ignored", "paths": unknown})
     if stale := sorted(expected_tracked - actual):
         errors.append({"code": "stale-policy-row", "paths": stale})
-    if still_tracked := sorted(actual & local_only):
+    still_tracked = sorted(actual & local_only)
+    migration_pending = transition.phase == "bootstrap-v1" and set(still_tracked) == local_only
+    if still_tracked and not migration_pending:
         errors.append({"code": "local-only-still-tracked", "paths": still_tracked})
+    if transition.phase == "bootstrap-v1" and not migration_pending:
+        errors.append({"code": "bootstrap-state-mismatch", "paths": still_tracked})
     return {
         "ok": not errors,
+        "status": "migration-pending" if migration_pending and not errors else "clean" if not errors else "blocked",
+        "transition_phase": transition.phase,
         "policy_rows": len(rows),
         "expected_tracked": len(expected_tracked),
         "actual_tracked_ignored": len(actual),
@@ -53,7 +61,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--policy",
         type=Path,
-        default=Path(__file__).with_name("tracked-ignored-policy.yaml"),
+        default=REPO_ROOT / "core" / "migrations" / "tracked-ignored-policy.yaml",
     )
     args = parser.parse_args(argv)
     try:

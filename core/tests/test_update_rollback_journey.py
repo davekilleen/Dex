@@ -78,7 +78,22 @@ def test_rollback_stops_when_autosave_commit_fails(tmp_path: Path) -> None:
 
     tracked_file = "04-Projects/current-work.md"
     _write(vault, tracked_file, "release v1\n")
-    _git(vault, "add", "--", tracked_file)
+    _write(vault, "package.json", json.dumps({"version": "1.61.0"}) + "\n")
+    _write(
+        vault,
+        "System/.local-only-preservation-transition.json",
+        json.dumps({"schema_version": 1, "phase": "bootstrap-v1", "release_version": "1.61.0"}) + "\n",
+    )
+    _write(vault, ".claude/keep", "fixture\n")
+    _git(
+        vault,
+        "add",
+        "--",
+        tracked_file,
+        "package.json",
+        "System/.local-only-preservation-transition.json",
+        ".claude/keep",
+    )
     _git(vault, "commit", "--quiet", "-m", "release v1")
     _git(vault, "tag", "backup-before-v1.3.0")
 
@@ -125,7 +140,7 @@ def test_rollback_stops_when_autosave_commit_fails(tmp_path: Path) -> None:
     assert (vault / tracked_file).read_text(encoding="utf-8") == edited_content
     assert (vault / staged_new_file).read_text(encoding="utf-8") == staged_new_content
     assert not any(tag.startswith("before-rollback-") for tag in _git(vault, "tag").splitlines())
-    assert _git(vault, "diff", "--cached", "--name-only") == ""
+    assert _git(vault, "diff", "--cached", "--name-only") == staged_new_file
     assert "Git could not save the current state" in result.stdout + result.stderr
     assert "dex-user-data-before-rollback" in _git(vault, "stash", "list")
 

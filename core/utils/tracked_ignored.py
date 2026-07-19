@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 import re
 import shutil
@@ -12,6 +13,8 @@ from pathlib import Path, PurePosixPath
 
 import yaml
 
+TRANSITION_RELATIVE = Path("System/.local-only-preservation-transition.json")
+TRANSITION_PHASES = {"bootstrap-v1", "untrack-v1"}
 APPROVED_ROWS = (
     ("00-Inbox/Daily_Plans/README.md", "intentional-seed"),
     ("00-Inbox/Ideas/README.md", "intentional-seed"),
@@ -67,6 +70,42 @@ class ExactPolicy:
     @property
     def local_only_paths(self) -> set[str]:
         return {row.path for row in self.rows if row.classification == "local-only-must-be-untracked"}
+
+
+@dataclass(frozen=True)
+class PreservationTransition:
+    phase: str
+    release_version: str
+
+
+def _reject_duplicate_json_keys(pairs: list[tuple[str, object]]) -> dict[str, object]:
+    payload: dict[str, object] = {}
+    for key, value in pairs:
+        if key in payload:
+            raise TrackedIgnoredError(f"duplicate local-only preservation transition key: {key}")
+        payload[key] = value
+    return payload
+
+
+def load_transition(repo: Path) -> PreservationTransition:
+    try:
+        payload = json.loads(
+            (repo / TRANSITION_RELATIVE).read_text(encoding="utf-8"),
+            object_pairs_hook=_reject_duplicate_json_keys,
+        )
+        package = json.loads((repo / "package.json").read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError, TrackedIgnoredError) as error:
+        if isinstance(error, TrackedIgnoredError):
+            raise
+        raise TrackedIgnoredError(f"could not read local-only preservation transition: {error}") from error
+    if not isinstance(payload, dict) or set(payload) != {"schema_version", "phase", "release_version"}:
+        raise TrackedIgnoredError("local-only preservation transition has unexpected fields")
+    if payload.get("schema_version") != 1 or payload.get("phase") not in TRANSITION_PHASES:
+        raise TrackedIgnoredError("local-only preservation transition schema or phase is unsupported")
+    version = payload.get("release_version")
+    if not isinstance(version, str) or not isinstance(package, dict) or package.get("version") != version:
+        raise TrackedIgnoredError("local-only preservation transition version does not match package metadata")
+    return PreservationTransition(payload["phase"], version)
 
 
 def _safe_repo_path(value: str) -> bool:
