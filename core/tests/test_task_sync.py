@@ -103,12 +103,14 @@ def _enable(sync_vault: dict[str, Path], *services: str) -> None:
             "module.exports = {};\n", encoding="utf-8"
         )
     sync_vault["config"].write_text("\n".join(blocks) + "\n", encoding="utf-8")
-    (sync_vault["root"] / ".env").write_text(
+    env = sync_vault["root"] / ".env"
+    env.write_text(
         "TODOIST_API_KEY=synthetic-todoist-value\n"
         "TRELLO_API_KEY=synthetic-trello-value\n"
         "TRELLO_TOKEN=synthetic-trello-token\n",
         encoding="utf-8",
     )
+    env.chmod(0o600)
 
 
 def _install_fake_runner(monkeypatch: pytest.MonkeyPatch, responses: dict) -> list[dict]:
@@ -139,6 +141,30 @@ def _install_fake_runner(monkeypatch: pytest.MonkeyPatch, responses: dict) -> li
 
     monkeypatch.setattr(task_sync.subprocess, "run", run)
     return calls
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        "todoist:\n  enabled: true\ntodoist:\n  enabled: false\n",
+        "todoist:\n  enabled: true\n  enabled: false\n",
+        '"todo\\u0069st":\n  enabled: true\ntodoist:\n  enabled: false\n',
+        "defaults: &defaults\n  enabled: true\ntodoist: *defaults\n",
+        "defaults: &defaults\n  enabled: true\ntodoist:\n  <<: *defaults\n",
+    ],
+)
+def test_duplicate_alias_and_merge_config_refuses_before_adapter_invocation(sync_vault, monkeypatch, raw):
+    sync_vault["config"].write_text(raw)
+    called = False
+
+    def adapter(*_args, **_kwargs):
+        nonlocal called
+        called = True
+
+    monkeypatch.setattr(task_sync, "_run_adapter", adapter)
+    with pytest.raises(ValueError):
+        task_sync.sync_external_tasks()
+    assert not called
 
 
 def test_first_service_run_creates_baseline_without_adapter_calls(sync_vault, monkeypatch):

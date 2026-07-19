@@ -13,8 +13,6 @@ from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any
 
-import yaml
-
 from core.mcp import work_server
 from core.paths import (
     INBOUND_TASKS_FILE,
@@ -23,6 +21,7 @@ from core.paths import (
     VAULT_ROOT,
 )
 from core.utils.integration_credentials import resolve_service_credentials
+from core.utils.strict_yaml import load_yaml_path
 
 ADAPTERS_DIR = VAULT_ROOT / ".claude" / "hooks" / "adapters"
 _SERVICE_PATTERN = re.compile(r"^[a-z][a-z0-9_-]*$")
@@ -117,7 +116,7 @@ def _write_inbound(items: list[dict[str, Any]]) -> None:
 def _load_config() -> dict[str, Any]:
     if not INTEGRATION_CONFIG_FILE.exists():
         return {}
-    payload = yaml.safe_load(INTEGRATION_CONFIG_FILE.read_text(encoding="utf-8"))
+    payload = load_yaml_path(INTEGRATION_CONFIG_FILE)
     if payload is None:
         return {}
     if not isinstance(payload, dict):

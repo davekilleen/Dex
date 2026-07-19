@@ -78,9 +78,12 @@ SYSTEM_DIR = VAULT_ROOT / 'System'
 DEX_RUNTIME_DIR = SYSTEM_DIR / '.dex'
 
 
+HISTORY_BACKUPS_RELATIVE_PARTS = ('System', '.dex', 'adoption', 'history-backups')
+
+
 def history_backups_root(vault_root: Path) -> Path:
     """Return the canonical optional-history recovery root for any vault."""
-    return vault_root / 'System' / '.dex' / 'adoption' / 'history-backups'
+    return vault_root.joinpath(*HISTORY_BACKUPS_RELATIVE_PARTS)
 
 
 HISTORY_BACKUPS_ROOT = history_backups_root(VAULT_ROOT)

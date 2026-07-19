@@ -1,4 +1,5 @@
 import json
+import os
 import subprocess
 from pathlib import Path
 
@@ -152,17 +153,119 @@ def test_safe_autosave_commit_failure_restores_exact_index(tmp_path, monkeypatch
     if not index.is_absolute():
         index = tmp_path / index
     before = index.read_bytes()
-    real_run = subprocess.run
+    real_git_result = safe_autosave._git_result
 
-    def fail_commit(command, **kwargs):
-        if "commit" in command and "-m" in command:
-            return subprocess.CompletedProcess(command, 1, b"", b"synthetic failure")
-        return real_run(command, **kwargs)
+    def fail_commit(root, *args, **kwargs):
+        if args and args[0] == "commit-tree":
+            return subprocess.CompletedProcess(args, 1, b"", b"synthetic failure")
+        return real_git_result(root, *args, **kwargs)
 
-    monkeypatch.setattr("core.utils.safe_autosave.subprocess.run", fail_commit)
-    with pytest.raises(RuntimeError, match="commit failed"):
+    monkeypatch.setattr(safe_autosave, "_git_result", fail_commit)
+    with pytest.raises(RuntimeError, match="commit-object creation failed"):
         safe_autosave_commit(tmp_path, (b"synthetic-secret",), "synthetic autosave")
     assert index.read_bytes() == before
+
+
+@pytest.mark.parametrize("boundary", ["journal", "index", "cleanup"])
+def test_autosave_publication_fault_restores_exact_head_and_index(tmp_path, monkeypatch, boundary):
+    _repo(tmp_path)
+    (tmp_path / "new.txt").write_text("safe\n")
+    before_head = _git(tmp_path, "rev-parse", "HEAD")
+    index = Path(_git(tmp_path, "rev-parse", "--git-path", "index").decode().strip())
+    if not index.is_absolute():
+        index = tmp_path / index
+    before_index = index.read_bytes()
+
+    if boundary == "journal":
+        real_write = safe_autosave._write_durable
+        calls = 0
+
+        def fail_second_write(path, data):
+            nonlocal calls
+            calls += 1
+            if calls == 2:
+                raise OSError("fault after commit object")
+            return real_write(path, data)
+
+        monkeypatch.setattr(safe_autosave, "_write_durable", fail_second_write)
+    elif boundary == "index":
+        real_replace = safe_autosave.os.replace
+        failed = False
+
+        def fail_index_replace(source, target, *args, **kwargs):
+            nonlocal failed
+            if Path(target) == index and not failed:
+                failed = True
+                raise OSError("fault during index publication")
+            return real_replace(source, target, *args, **kwargs)
+
+        monkeypatch.setattr(safe_autosave.os, "replace", fail_index_replace)
+    else:
+        real_unlink = Path.unlink
+        failed = False
+
+        def fail_backup_cleanup(path, *args, **kwargs):
+            nonlocal failed
+            if path.name == safe_autosave.AUTOSAVE_INDEX_BACKUP and not failed:
+                failed = True
+                raise OSError("fault after index publication")
+            return real_unlink(path, *args, **kwargs)
+
+        monkeypatch.setattr(Path, "unlink", fail_backup_cleanup)
+
+    with pytest.raises(OSError):
+        safe_autosave_commit(tmp_path, (), "autosave")
+    assert _git(tmp_path, "rev-parse", "HEAD") == before_head
+    assert index.read_bytes() == before_index
+
+
+@pytest.mark.skipif(not hasattr(os, "fork"), reason="process-death injection requires fork")
+@pytest.mark.parametrize("boundary", ["after-commit", "before-index", "after-index"])
+def test_restart_recovers_process_death_during_publication(tmp_path, boundary):
+    _repo(tmp_path)
+    (tmp_path / "new.txt").write_text("safe\n")
+    before_head = _git(tmp_path, "rev-parse", "HEAD")
+    index = Path(_git(tmp_path, "rev-parse", "--git-path", "index").decode().strip())
+    if not index.is_absolute():
+        index = tmp_path / index
+    before_index = index.read_bytes()
+    git_dir = Path(_git(tmp_path, "rev-parse", "--absolute-git-dir").decode().strip())
+
+    child = os.fork()
+    if child == 0:
+        if boundary == "after-commit":
+            def die_after_commit(_path, _data):
+                os._exit(80)
+
+            safe_autosave._write_durable = die_after_commit
+        elif boundary == "before-index":
+            real_replace = safe_autosave.os.replace
+
+            def die_before_index(source, target, *args, **kwargs):
+                if Path(target) == index:
+                    os._exit(81)
+                return real_replace(source, target, *args, **kwargs)
+
+            safe_autosave.os.replace = die_before_index
+        else:
+            real_unlink = Path.unlink
+
+            def die_after_index(path, *args, **kwargs):
+                if path.name == safe_autosave.AUTOSAVE_INDEX_BACKUP:
+                    os._exit(82)
+                return real_unlink(path, *args, **kwargs)
+
+            Path.unlink = die_after_index
+        safe_autosave_commit(tmp_path, (), "autosave")
+        os._exit(83)
+
+    _, status = os.waitpid(child, 0)
+    assert os.WEXITSTATUS(status) in {80, 81, 82}
+    safe_autosave._recover_pending_autosave(tmp_path, git_dir, index)
+    assert _git(tmp_path, "rev-parse", "HEAD") == before_head
+    assert index.read_bytes() == before_index
+    assert not (git_dir / safe_autosave.AUTOSAVE_JOURNAL).exists()
+    assert not (git_dir / safe_autosave.AUTOSAVE_INDEX_BACKUP).exists()
 
 
 def test_autosave_uses_one_status_snapshot_and_handles_worktree_rename(tmp_path, monkeypatch):

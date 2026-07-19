@@ -117,14 +117,13 @@ def _mark_retention_eligible(root: Path, preview: HistoryPreview) -> None:
         ) as loaded:
             manifest = loaded.manifest
             assert manifest is not None
-            manifest["phase"] = "applied"
-            manifest["after_refs"] = {ref: rewritten for ref in manifest["selected_refs"]}
-            manifest["after_all_refs"] = {
-                **manifest["all_refs"],
-                **manifest["after_refs"],
-            }
-            manifest["post_cleanup_scan_state"] = "history-clean"
-            manifest.pop("post_cleanup_uninspected_scopes", None)
+            after_refs = {ref: rewritten for ref in manifest["selected_refs"]}
+            after_all_refs = {**manifest["all_refs"], **after_refs}
+            manifest = manifest.begin_apply().record_applied(
+                after_refs,
+                after_all_refs,
+                "history-clean",
+            )
             history_hygiene._store_manifest(loaded.path, manifest)
 
 
@@ -855,6 +854,12 @@ def test_hostile_backup_directory_mode_fails_closed(tmp_path):
         preview_retention(tmp_path, now=datetime.now(UTC), successful_release_activations=0)
 
 
+def test_descriptor_traversal_uses_the_canonical_history_backup_parts():
+    from core import paths
+
+    assert history_hygiene.HISTORY_BACKUPS_RELATIVE_PARTS is paths.HISTORY_BACKUPS_RELATIVE_PARTS
+
+
 def test_restart_pruning_preserves_published_recovery_and_retention_accounting(tmp_path):
     ref = _repo(tmp_path)
     preview = _prepare(tmp_path, _tool(tmp_path / "git-filter-repo"), ref)
@@ -877,7 +882,7 @@ def test_restart_pruning_preserves_published_recovery_and_retention_accounting(t
 
 
 @pytest.mark.parametrize("artifact", [None, "history.bundle"])
-def test_restart_prunes_legacy_manifestless_transaction_orphans(tmp_path, artifact):
+def test_restart_refuses_manifestless_published_transaction_without_deletion(tmp_path, artifact):
     backup = tmp_path / "System/.dex/adoption/history-backups"
     backup.mkdir(parents=True)
     backup.chmod(0o700)
@@ -887,15 +892,14 @@ def test_restart_prunes_legacy_manifestless_transaction_orphans(tmp_path, artifa
         (orphan / artifact).write_bytes(b"partial bundle")
 
     restarted = importlib.reload(history_hygiene)
-    retention = restarted.preview_retention(
-        tmp_path,
-        now=datetime.now(UTC),
-        successful_release_activations=0,
-    )
+    with pytest.raises(OSError, match="missing its manifest"):
+        restarted.preview_retention(
+            tmp_path,
+            now=datetime.now(UTC),
+            successful_release_activations=0,
+        )
 
-    assert retention.candidate_ids == ()
-    assert retention.protected_final_id is None
-    assert not orphan.exists()
+    assert orphan.exists()
 
 
 def test_restart_pruning_refuses_symlinked_incomplete_transaction(tmp_path):
@@ -1371,8 +1375,16 @@ def test_retention_requires_terminal_verified_cleanup_evidence(tmp_path, field, 
             candidate.transaction_id,
         ) as loaded:
             assert loaded.manifest is not None
-            loaded.manifest[field] = value
-            history_hygiene._store_manifest(loaded.path, loaded.manifest)
+            payload = loaded.manifest.to_dict()
+            payload[field] = value
+            unsigned = {key: item for key, item in payload.items() if key != "preview_sha256"}
+            payload["preview_sha256"] = history_hygiene._sha(history_hygiene._json_bytes(unsigned))
+            history_hygiene._atomic_replace(
+                loaded.path / "manifest.json",
+                history_hygiene._json_bytes(payload),
+                0o600,
+                "test manifest mutation failed",
+            )
 
     preview = preview_retention(
         tmp_path,
@@ -1381,7 +1393,10 @@ def test_retention_requires_terminal_verified_cleanup_evidence(tmp_path, field, 
     )
 
     assert preview.candidate_ids == ()
-    assert candidate.transaction_id in preview.retained_ids
+    if field in {"phase", "external_backup"}:
+        assert candidate.transaction_id not in preview.retained_ids
+    else:
+        assert candidate.transaction_id in preview.retained_ids
 
 
 def test_retention_candidate_drift_invalidates_acknowledgement(tmp_path):

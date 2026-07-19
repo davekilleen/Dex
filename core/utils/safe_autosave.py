@@ -2,18 +2,18 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
-import shutil
 import stat
 import subprocess
-import sys
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
 from core.utils.integration_credentials import inspect_active_mcp_config, read_vault_env
+from core.utils.local_git import git_env, git_result, trusted_git_binary
 
 LEGACY_YAML_FIELD = re.compile(rb"(?m)^\s*(?:api_key|token)\s*:\s*\S+")
 LEGACY_SECTION = re.compile(rb"(?ms)^\s*(?:todoist|trello)\s*:\s*\n(?:[ \t]+.*\n?)*")
@@ -34,31 +34,111 @@ class AutosaveResult:
     refused_findings: int = 0
 
 
+AUTOSAVE_JOURNAL = "dex-autosave-recovery.json"
+AUTOSAVE_INDEX_BACKUP = "dex-autosave-index.backup"
+
+
+def _digest(data: bytes | None) -> str:
+    return hashlib.sha256(data if data is not None else b"<absent>").hexdigest()
+
+
+def _write_durable(path: Path, data: bytes) -> None:
+    descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    with os.fdopen(descriptor, "wb") as handle:
+        handle.write(data)
+        handle.flush()
+        os.fsync(handle.fileno())
+    directory = os.open(path.parent, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
+    try:
+        os.fsync(directory)
+    finally:
+        os.close(directory)
+
+
+def _read_recovery_artifact(path: Path, *, max_bytes: int) -> bytes:
+    before = path.lstat()
+    if (
+        not stat.S_ISREG(before.st_mode)
+        or before.st_nlink != 1
+        or stat.S_IMODE(before.st_mode) != 0o600
+        or before.st_size > max_bytes
+    ):
+        raise RuntimeError("safe autosave recovery-required: unsafe recovery artifact")
+    descriptor = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+    try:
+        opened = os.fstat(descriptor)
+        chunks: list[bytes] = []
+        remaining = max_bytes + 1
+        while remaining:
+            chunk = os.read(descriptor, min(1024 * 1024, remaining))
+            if not chunk:
+                break
+            chunks.append(chunk)
+            remaining -= len(chunk)
+        data = b"".join(chunks)
+        after = os.fstat(descriptor)
+    finally:
+        os.close(descriptor)
+    current = path.lstat()
+    identities = {
+        (item.st_dev, item.st_ino, item.st_mode, item.st_nlink, item.st_size, item.st_mtime_ns, item.st_ctime_ns)
+        for item in (before, opened, after, current)
+    }
+    if len(identities) != 1 or len(data) != opened.st_size or len(data) > max_bytes:
+        raise RuntimeError("safe autosave recovery-required: recovery artifact changed")
+    return data
+
+
+def _recover_pending_autosave(root: Path, git_dir: Path, index_path: Path) -> None:
+    """Deterministically restore an interrupted ref/index publication."""
+    journal = git_dir / AUTOSAVE_JOURNAL
+    backup = git_dir / AUTOSAVE_INDEX_BACKUP
+    if not journal.exists():
+        if backup.exists():
+            metadata = backup.lstat()
+            if not stat.S_ISREG(metadata.st_mode) or metadata.st_nlink != 1 or stat.S_IMODE(metadata.st_mode) != 0o600:
+                raise RuntimeError("safe autosave recovery-required: unsafe orphaned index backup")
+            backup.unlink()
+        return
+    try:
+        record = json.loads(_read_recovery_artifact(journal, max_bytes=64 * 1024).decode("utf-8"))
+        original_index = _read_recovery_artifact(backup, max_bytes=64 * 1024 * 1024)
+        if _digest(original_index) != record["original_index_sha256"]:
+            raise RuntimeError("safe autosave recovery-required: corrupt index backup")
+        current_head = _git(root, "rev-parse", "--verify", "HEAD").decode().strip()
+        if current_head == record["target_head"]:
+            update = _git_result(
+                root,
+                "update-ref",
+                "HEAD",
+                record["original_head"],
+                record["target_head"],
+            )
+            if update.returncode:
+                raise RuntimeError("safe autosave recovery-required: HEAD recovery conflict")
+        elif current_head != record["original_head"]:
+            raise RuntimeError("safe autosave recovery-required: HEAD changed independently")
+        current_index = index_path.read_bytes() if index_path.exists() else None
+        if _digest(current_index) not in {record["original_index_sha256"], record["target_index_sha256"]}:
+            raise RuntimeError("safe autosave recovery-required: index changed independently")
+        descriptor, temporary = tempfile.mkstemp(prefix="dex-index-recover-", dir=index_path.parent)
+        with os.fdopen(descriptor, "wb") as handle:
+            handle.write(original_index)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, index_path)
+        backup.unlink()
+        journal.unlink()
+    except (KeyError, OSError, ValueError, json.JSONDecodeError) as error:
+        raise RuntimeError("safe autosave recovery-required: invalid recovery journal") from error
+
+
 def _git_binary() -> str:
-    for candidate in ("/usr/bin/git", "/bin/git", shutil.which("git")):
-        if candidate and Path(candidate).is_file() and not Path(candidate).is_symlink() and os.access(candidate, os.X_OK):
-            return str(Path(candidate).resolve())
-    raise RuntimeError("safe autosave trusted Git is unavailable")
+    return str(trusted_git_binary())
 
 
 def _git_env(index_path: Path | None = None) -> dict[str, str]:
-    executable_dirs = dict.fromkeys(
-        (str(Path(_git_binary()).parent), str(Path(sys.executable).resolve().parent), "/usr/bin", "/bin")
-    )
-    env = {
-        "PATH": os.pathsep.join(executable_dirs),
-        "HOME": os.environ.get("HOME", ""),
-        "SYSTEMROOT": os.environ.get("SYSTEMROOT", ""),
-        "GIT_CONFIG_NOSYSTEM": "1",
-        "GIT_CONFIG_GLOBAL": os.devnull,
-        "GIT_TERMINAL_PROMPT": "0",
-        "GIT_PAGER": "cat",
-        "GIT_OPTIONAL_LOCKS": "0",
-        "GIT_NO_REPLACE_OBJECTS": "1",
-    }
-    if index_path is not None:
-        env["GIT_INDEX_FILE"] = str(index_path)
-    return env
+    return git_env(index_path=index_path)
 
 
 def _git_result(
@@ -67,27 +147,8 @@ def _git_result(
     env: dict[str, str] | None = None,
     input_data: bytes | None = None,
 ) -> subprocess.CompletedProcess[bytes]:
-    return subprocess.run(
-        [
-            _git_binary(),
-            "-c",
-            "core.hooksPath=/dev/null",
-            "-c",
-            "credential.helper=",
-            "-c",
-            "commit.gpgSign=false",
-            "-c",
-            "tag.gpgSign=false",
-            "-c",
-            "core.fsmonitor=false",
-            *args,
-        ],
-        cwd=root,
-        input=input_data,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        env=env or _git_env(),
-    )
+    index_path = Path(env["GIT_INDEX_FILE"]) if env and env.get("GIT_INDEX_FILE") else None
+    return git_result(root, *args, profile="mutation", index_path=index_path, input_data=input_data)
 
 
 def _git(root: Path, *args: str, env: dict[str, str] | None = None, input_data: bytes | None = None) -> bytes:
@@ -215,20 +276,23 @@ def _final_index_findings(root: Path, env: dict[str, str], needles: tuple[bytes,
 
 
 def safe_autosave_commit(root: Path, credential_needles: tuple[bytes, ...], message: str) -> AutosaveResult:
-    """Stage explicit candidates, inspect exact final blobs, commit, and preserve the real index."""
+    """Stage explicit candidates and publish ref/index through recoverable CAS."""
     _reject_executable_git_config(root)
-    candidates, stage_paths = _autosave_paths(root)
-    if not candidates:
-        return AutosaveResult(())
     git_dir = Path(_git(root, "rev-parse", "--absolute-git-dir").decode().strip())
     index_path = Path(_git(root, "rev-parse", "--git-path", "index").decode().strip())
     if not index_path.is_absolute():
         index_path = root / index_path
+    _recover_pending_autosave(root, git_dir, index_path)
+    candidates, stage_paths = _autosave_paths(root)
+    if not candidates:
+        return AutosaveResult(())
     original = index_path.read_bytes() if index_path.exists() else None
     descriptor, temporary = tempfile.mkstemp(prefix="dex-index-", dir=git_dir)
     os.close(descriptor)
     temporary_index = Path(temporary)
-    committed_successfully = False
+    publication_complete = False
+    journal = git_dir / AUTOSAVE_JOURNAL
+    backup = git_dir / AUTOSAVE_INDEX_BACKUP
     try:
         if original is not None:
             temporary_index.write_bytes(original)
@@ -242,18 +306,54 @@ def safe_autosave_commit(root: Path, credential_needles: tuple[bytes, ...], mess
         findings = authority_findings + _final_index_findings(root, env, needles)
         if findings:
             return AutosaveResult((), findings)
-        committed = _git_result(root, "commit", "-m", message, env=env)
+        tree = _git(root, "write-tree", env=env).decode().strip()
+        original_head = _git(root, "rev-parse", "--verify", "HEAD").decode().strip()
+        committed = _git_result(
+            root,
+            "commit-tree",
+            tree,
+            "-p",
+            original_head,
+            env=env,
+            input_data=(message + "\n").encode(),
+        )
         if committed.returncode:
-            raise RuntimeError("safe autosave commit failed")
+            raise RuntimeError("safe autosave commit-object creation failed")
+        target_head = committed.stdout.decode().strip()
         if (index_path.read_bytes() if index_path.exists() else None) != original:
             raise RuntimeError("Git index changed during safe autosave")
+        target_index = temporary_index.read_bytes()
+        if original is None:
+            raise RuntimeError("safe autosave requires an existing real index")
+        _write_durable(backup, original)
+        record = {
+            "schema_version": 1,
+            "original_head": original_head,
+            "target_head": target_head,
+            "original_index_sha256": _digest(original),
+            "target_index_sha256": _digest(target_index),
+        }
+        _write_durable(journal, (json.dumps(record, sort_keys=True) + "\n").encode())
+        published = _git_result(root, "update-ref", "HEAD", target_head, original_head)
+        if published.returncode:
+            raise RuntimeError("safe autosave HEAD compare-and-swap failed")
         os.replace(temporary_index, index_path)
-        committed_successfully = True
+        if _digest(index_path.read_bytes()) != record["target_index_sha256"]:
+            raise RuntimeError("safe autosave index publication readback failed")
+        backup.unlink()
+        journal.unlink()
+        publication_complete = True
         return AutosaveResult(candidates)
+    except BaseException:
+        if journal.exists():
+            _recover_pending_autosave(root, git_dir, index_path)
+        elif backup.exists():
+            backup.unlink()
+        raise
     finally:
         temporary_index.unlink(missing_ok=True)
         current = index_path.read_bytes() if index_path.exists() else None
-        if not committed_successfully and current != original:
+        if not publication_complete and not journal.exists() and current != original:
             if original is None:
                 index_path.unlink(missing_ok=True)
             else:

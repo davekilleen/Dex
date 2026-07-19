@@ -251,7 +251,7 @@ function setupProtectedResetRepo(t) {
 
   const utilsDir = path.join(repo, 'core', 'utils');
   fs.mkdirSync(utilsDir, { recursive: true });
-  for (const moduleName of ['safe_autosave.py', 'integration_credentials.py']) {
+  for (const moduleName of ['safe_autosave.py', 'integration_credentials.py', 'local_git.py']) {
     fs.copyFileSync(path.join(REPO_ROOT, 'core', 'utils', moduleName), path.join(utilsDir, moduleName));
   }
 

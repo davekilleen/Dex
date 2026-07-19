@@ -45,6 +45,8 @@ Once connected, you can ask Dex to:
 ### Step 1: Check if Already Connected
 
 1. Check `System/integrations/config.yaml` for a `trello:` section with `enabled: true`
+   through `core.utils.strict_yaml.load_yaml_path`; refuse duplicate keys, aliases, anchors,
+   or merge mappings before reading or writing any setup field.
 2. If found, skip to **Step 6** (Configure Board Mapping)
 3. If not found, continue to Step 2
 
@@ -104,6 +106,8 @@ Confirm locally that `.env` defines `TRELLO_API_KEY` and `TRELLO_TOKEN` without 
 returning either value. Preserve unrelated lines. Never copy either value to `.mcp.json`,
 tracked YAML, commands, argv, logs, transcript, or process environment. Existing `.mcp.json`
 is scan/report-only and must remain byte-identical.
+Use `python3 -m core.utils.credential_workflow scan` for the redacted authority finding; repair
+permissions/ownership before continuing if it reports an invalid `.env` authority.
 
 Before health, update only the non-secret tracked Trello fields to `enabled: true`,
 `api_key_env_var: TRELLO_API_KEY`, and `token_env_var: TRELLO_TOKEN`; do not add raw `api_key`

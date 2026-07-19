@@ -26,12 +26,24 @@ checks, and before/open/after identity comparison. A symlink, hard link, directo
 socket, unreadable or oversized file, or identity race is never treated as empty or inspected.
 Migration is refused when legacy credentials still require migration, otherwise remains
 `partial`; active residual state is `unrevoked-or-unclassified`, with only the opaque worktree
-scope and reason category reported.
+scope and reason category reported. Integration YAML is parsed through one bounded shared
+authority used by migration, runtime task sync, setup validation, status, and scanning. It
+rejects every duplicate key plus all aliases, anchors, and merge mappings before adapter use.
 
 Migration opens every journal-directory component relative to no-follow directory descriptors.
 Missing contained descendants may be created only beneath those descriptors; a symlinked parent
 refuses capability authorization before any probe or credential preimage can be written outside
 the vault.
+
+Vault `.env` uses one lossless canonical quoted serializer/parser. Accepted non-empty scalar
+bytes—including leading/trailing spaces, literal quotes, backslashes, `#`, and `=`—round-trip
+exactly while the file's existing CRLF or LF convention is preserved. Reads and replacements
+are relative to one pinned no-follow vault descriptor and bind pre-open/open/post-open/current
+device, inode, type, link count, size, mode, and ownership evidence. The file must be one
+current-user-owned regular file with mode `0600`; `0640`, `0644`, wrong-owner, symlink, hard-link,
+and identity-race inputs fail closed with repair guidance. Platforms lacking descriptor-relative
+no-follow directory operations are reported unsupported rather than falling back to pathname
+authority.
 
 Migration is authorized per installation only when all live same-directory journal, temporary
 file, durability, replace, identity recheck, readback, rollback, and no-follow containment
@@ -48,7 +60,10 @@ not worktree approximations. It refuses raw Todoist/Trello YAML fields, configur
 active MCP residuals or unsafe MCP state, and values recovered ephemerally from migration journal
 preimages. `.env`, `.mcp.json`, and migration journals remain ignored authorities and are never
 staged; an unignored or already tracked authority makes autosave refuse without changing the real
-index. Git uses an absolute trusted executable, sanitized configuration/environment, disabled
+index. Autosave creates the commit object without moving `HEAD`, durably journals original and
+target ref/index identities, compare-and-swaps `HEAD`, then publishes the index. Any caught
+failure restores both exactly; process death is recovered deterministically from the restrictive
+Git-directory journal on the next invocation. Git uses an absolute trusted executable, sanitized configuration/environment, disabled
 hooks/signing/fsmonitor, and refuses local executable filters, includes, hooks, drivers, textconv,
 or redirected-worktree authority. Findings are counts only; values and value-derived fingerprints
 are not serialized.
@@ -97,8 +112,8 @@ command, argv, process environment, manifest, log, state, or Doctor output.
    not follow a swapped recovery ancestor. Cancellation removes incomplete preparation state.
    After process death, the next preparation or retention preview descriptor-relatively prunes
    only structurally safe `.incomplete-*` directories; unexpected names, links, or file types fail
-   closed. It also prunes structurally safe manifest-less transaction directories left by an
-   interrupted older implementation. Published manifest-bearing recovery transactions remain
+   closed. A normal transaction ID without a valid closed manifest is corrupt recovery state and
+   fails closed without deletion. Published manifest-bearing recovery transactions remain
    fully accounted and are never pruned this way. Preparation and retention pruning hold a
    kernel-released lock on the opened vault-root directory descriptor. The recovery hierarchy is
    traversed from that descriptor, and preparation, manifest loading, apply, rewind, retention,
@@ -106,7 +121,9 @@ command, argv, process environment, manifest, log, state, or Doctor output.
    directory. Reopening the vault or recovery hierarchy by pathname is not lifecycle authority.
    Replacing any named lock-file decoy cannot split ownership. Concurrent preparation/retention
    cannot prune active work, and cancellation or process death releases ownership without
-   weakening restart cleanup.
+   weakening restart cleanup. A closed `HistoryManifest` owns exact keys, nested artifact/ref
+   validation, canonical hashing/serialization, and only the explicit `begin_apply`,
+   `record_applied`, `record_recovery_required`, and `record_rewound` transitions.
 4. Apply requires the unchanged preview and exact typed consent
    `CLEAN OPTIONAL HISTORY <opaque-transaction-id>`. It rechecks the tool, topology, bundle,
    object evidence, all refs, repository state, and the supplied credential's exact non-secret
@@ -134,7 +151,9 @@ Security copy may say `remediated` only with all five exact categories: old-key 
 to the active old value, replacement present, successful read-only replacement health,
 active-copy classification, and provider binding. A usable or unclassified active copy remains
 impossible with `remediated`; a proven-revoked MCP residual must be bound to that same revoked
-value. Empty or provider-binding-only evidence is rejected before copy construction.
+value. Present, missing, and unavailable evidence have separate typed inputs; unknown states also
+require a named unsupported/unavailable/inconsistent cause. A missing provider-binding check is a
+valid `rotation-pending` reason, while a present provider binding alone cannot prove remediation.
 7. `preview_retention(...)` excludes the newest history recovery bundle and any unverified or
    corrupt bundle. Older bundles become eligible only after both 90 days and two later successful
    release activations, plus the recorded external-backup posture. Deletion requires

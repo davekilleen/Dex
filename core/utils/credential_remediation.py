@@ -10,16 +10,17 @@ import stat
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal
-
-import yaml
+from typing import Callable, Literal
 
 from core.utils.integration_credentials import (
     LEGACY_CREDENTIAL_FIELDS,
     inspect_active_mcp_config,
     parse_env_assignments,
     update_vault_env,
+    updated_env_bytes,
 )
+from core.utils.local_git import git_output
+from core.utils.strict_yaml import load_yaml_bytes
 
 MigrationState = Literal["not-needed", "migrated-local-config", "partial", "refused", "rewound"]
 SecurityState = Literal["remediated", "rotation-pending", "unknown"]
@@ -47,6 +48,7 @@ EVIDENCE_CODES = frozenset(
         "provider-evidence",
     }
 )
+UNKNOWN_CAUSES = frozenset({"unsupported", "unavailable", "inconsistent", "active-residual-unclassified"})
 SCOPE_CATEGORIES = frozenset(
     {
         "worktree",
@@ -61,35 +63,6 @@ SCOPE_CATEGORIES = frozenset(
 )
 EXCEPTIONS_FILE = Path(__file__).with_name("credential_migration_exceptions.json")
 MAX_TRACKED_CONFIG_BYTES = 1024 * 1024
-
-
-class _UniqueKeyLoader(yaml.SafeLoader):
-    pass
-
-
-def _construct_unique_mapping(
-    loader: _UniqueKeyLoader,
-    node: yaml.nodes.MappingNode,
-    deep: bool = False,
-) -> dict[object, object]:
-    loader.flatten_mapping(node)
-    result: dict[object, object] = {}
-    for key_node, value_node in node.value:
-        key = loader.construct_object(key_node, deep=deep)
-        try:
-            duplicate = key in result
-        except TypeError as error:
-            raise ValueError("integration config mapping keys must be scalar") from error
-        if duplicate:
-            raise ValueError("integration config contains duplicate key")
-        result[key] = loader.construct_object(value_node, deep=deep)
-    return result
-
-
-_UniqueKeyLoader.add_constructor(
-    yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG,
-    _construct_unique_mapping,
-)
 
 
 @dataclass(frozen=True)
@@ -116,6 +89,25 @@ class CredentialStatusCopy:
     migration: str
     security_and_current_config: str
     history: str
+
+
+@dataclass(frozen=True)
+class CredentialEvidence:
+    """Typed evidence polarity for deterministic security-state rendering."""
+
+    present: tuple[str, ...] = ()
+    missing: tuple[str, ...] = ()
+    unavailable: tuple[str, ...] = ()
+    unknown_causes: tuple[str, ...] = ()
+
+    def normalized(self) -> "CredentialEvidence":
+        groups = tuple(tuple(sorted(set(group))) for group in (self.present, self.missing, self.unavailable))
+        causes = tuple(sorted(set(self.unknown_causes)))
+        if any(not set(group) <= EVIDENCE_CODES for group in groups) or not set(causes) <= UNKNOWN_CAUSES:
+            raise ValueError("unknown credential evidence category")
+        if set(groups[0]) & set(groups[1]) or set(groups[0]) & set(groups[2]) or set(groups[1]) & set(groups[2]):
+            raise ValueError("credential evidence polarity cannot overlap")
+        return CredentialEvidence(*groups, causes)
 
 
 def _contained_regular(
@@ -203,7 +195,14 @@ def _read_contained(
         os.close(parent)
 
 
-def _atomic_replace_at(directory: int, name: str, data: bytes, mode: int) -> None:
+def _atomic_replace_at(
+    directory: int,
+    name: str,
+    data: bytes,
+    mode: int,
+    *,
+    before_publish: Callable[[os.stat_result], None] | None = None,
+) -> None:
     temporary = f".{name}.{uuid.uuid4().hex}"
     try:
         descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL, mode, dir_fd=directory)
@@ -212,6 +211,8 @@ def _atomic_replace_at(directory: int, name: str, data: bytes, mode: int) -> Non
             handle.write(data)
             handle.flush()
             os.fsync(handle.fileno())
+            if before_publish is not None:
+                before_publish(os.fstat(handle.fileno()))
         os.replace(temporary, name, src_dir_fd=directory, dst_dir_fd=directory)
         os.fsync(directory)
         actual, metadata = _read_at_with_metadata(directory, name)
@@ -292,10 +293,7 @@ def probe_atomic_migration(vault_root: Path, journal_dir: Path) -> CapabilityRes
 
 
 def _legacy_values(raw: bytes) -> tuple[dict[str, str], dict[str, str], frozenset[str]]:
-    text = raw.decode("utf-8")
-    if re.search(r"(^|\n)[ \t]*(todoist|trello):[^\n]*[&*]|(^|\n)[ \t]*(api_key|token):[ \t]*[>|]", text):
-        raise ValueError("aliases and multiline credential values are refused")
-    data = yaml.load(text, Loader=_UniqueKeyLoader) or {}
+    data = load_yaml_bytes(raw, max_bytes=MAX_TRACKED_CONFIG_BYTES) or {}
     if not isinstance(data, dict):
         raise ValueError("integration config must be an object")
     values: dict[str, str] = {}
@@ -365,8 +363,6 @@ def _config_snapshot_matches(
 
 def _env_storage_is_local_only(vault_root: Path) -> bool:
     """Require ignored, untracked .env in Git vaults; non-Git vaults remain supported."""
-    from core.utils.safe_autosave import _git as safe_git
-
     git_marker = vault_root / ".git"
     try:
         git_metadata = git_marker.lstat()
@@ -375,18 +371,18 @@ def _env_storage_is_local_only(vault_root: Path) -> bool:
     if not (stat.S_ISDIR(git_metadata.st_mode) or stat.S_ISREG(git_metadata.st_mode)):
         return False
     try:
-        if safe_git(vault_root, "rev-parse", "--is-inside-work-tree").strip() != b"true":
+        if git_output(vault_root, "rev-parse", "--is-inside-work-tree", profile="read-only").strip() != b"true":
             return False
     except RuntimeError:
         return False
     try:
-        safe_git(vault_root, "ls-files", "--error-unmatch", "--", ".env")
+        git_output(vault_root, "ls-files", "--error-unmatch", "--", ".env", profile="read-only")
     except RuntimeError:
         tracked = False
     else:
         tracked = True
     try:
-        ignored = safe_git(vault_root, "check-ignore", "-q", "--", ".env") == b""
+        ignored = git_output(vault_root, "check-ignore", "-q", "--", ".env", profile="read-only") == b""
     except RuntimeError:
         ignored = False
     return ignored and not tracked
@@ -410,6 +406,36 @@ def _replace_yaml_credentials(raw: bytes, refs: dict[str, str]) -> bytes:
 
 def _hash(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
+
+
+def _postimage_identity(metadata: os.stat_result) -> list[int]:
+    return [
+        metadata.st_dev,
+        metadata.st_ino,
+        metadata.st_mode,
+        metadata.st_nlink,
+        metadata.st_uid,
+        metadata.st_gid,
+        metadata.st_size,
+    ]
+
+
+def _record_postimage(
+    vault_root: Path,
+    journal_name: str,
+    record: dict[str, object],
+    name: str,
+    metadata: os.stat_result,
+) -> None:
+    postimages = record["postimages"]
+    if not isinstance(postimages, dict):
+        raise OSError("invalid credential journal postimage state")
+    postimages[f"{name}_identity"] = _postimage_identity(metadata)
+    descriptor = _open_directory_chain(vault_root, ("System", ".dex", "adoption", "credential-journals"))
+    try:
+        _atomic_replace_at(descriptor, journal_name, (json.dumps(record, sort_keys=True) + "\n").encode(), 0o600)
+    finally:
+        os.close(descriptor)
 
 
 def _validate_exception_registry() -> None:
@@ -438,7 +464,7 @@ def migrate_legacy_credentials(vault_root: Path) -> MigrationResult:
     config_snapshot_metadata = config_metadata
     try:
         values, refs, env_names = _legacy_values(config_raw)
-    except (UnicodeDecodeError, ValueError, yaml.YAMLError):
+    except (UnicodeDecodeError, ValueError):
         return MigrationResult("refused")
     mcp = inspect_active_mcp_config(vault_root)
     if not _config_snapshot_unchanged(vault_root, config_raw, config_snapshot_metadata):
@@ -483,6 +509,7 @@ def migrate_legacy_credentials(vault_root: Path) -> MigrationResult:
             if name in existing_values and existing_values[name] != value:
                 return MigrationResult("refused")
     expected_config = _replace_yaml_credentials(config_raw, refs)
+    expected_env = updated_env_bytes(env_raw or b"", values)
     journal_id = uuid.uuid4().hex
     journal_name = f"{journal_id}.json"
     record = {
@@ -498,6 +525,11 @@ def migrate_legacy_credentials(vault_root: Path) -> MigrationResult:
             "bytes_hex": env_raw.hex(),
             "sha256": _hash(env_raw),
             "mode": stat.S_IMODE(env_metadata.st_mode),
+        },
+        "postimages": {
+            "config_sha256": _hash(expected_config),
+            "env_sha256": _hash(expected_env),
+            "env_mode": 0o600,
         },
     }
     try:
@@ -540,7 +572,13 @@ def migrate_legacy_credentials(vault_root: Path) -> MigrationResult:
             os.close(config_descriptor)
         return MigrationResult("refused", journal_id)
     try:
-        update_vault_env(vault_root, values)
+        update_vault_env(
+            vault_root,
+            values,
+            before_publish=lambda metadata: _record_postimage(
+                vault_root, journal_name, record, "env", metadata
+            ),
+        )
         current_bytes, current = _read_at_with_metadata(config_descriptor, "config.yaml")
         if (current.st_ino, _hash(current_bytes), stat.S_IMODE(current.st_mode)) != config_before:
             raise OSError("config changed during migration")
@@ -553,9 +591,19 @@ def migrate_legacy_credentials(vault_root: Path) -> MigrationResult:
                 raise OSError("config parent changed during migration")
         finally:
             os.close(current_parent)
-        _atomic_replace_at(config_descriptor, "config.yaml", expected_config, record["config"]["mode"])
-    except Exception:
+        _atomic_replace_at(
+            config_descriptor,
+            "config.yaml",
+            expected_config,
+            record["config"]["mode"],
+            before_publish=lambda metadata: _record_postimage(
+                vault_root, journal_name, record, "config", metadata
+            ),
+        )
+    except BaseException as error:
         rewind_credential_migration(vault_root, journal_id)
+        if not isinstance(error, Exception):
+            raise
         return MigrationResult("refused", journal_id)
     finally:
         os.close(config_descriptor)
@@ -583,11 +631,32 @@ def rewind_credential_migration(vault_root: Path, journal_id: str) -> MigrationR
         try:
             if entry is None:
                 try:
-                    os.unlink(target, dir_fd=parent)
+                    current, metadata = _read_at_with_metadata(parent, target)
                 except FileNotFoundError:
-                    pass
+                    continue
+                postimages = record.get("postimages")
+                if (
+                    not isinstance(postimages, dict)
+                    or _hash(current) != postimages.get("env_sha256")
+                    or stat.S_IMODE(metadata.st_mode) != postimages.get("env_mode")
+                    or _postimage_identity(metadata) != postimages.get("env_identity")
+                ):
+                    raise OSError("credential rewind requires an unchanged migration-owned .env postimage")
+                os.unlink(target, dir_fd=parent)
                 os.fsync(parent)
                 continue
+            current, metadata = _read_at_with_metadata(parent, target)
+            postimage_key = "config_sha256" if name == "config" else "env_sha256"
+            postimages = record.get("postimages")
+            postidentity = postimages.get(f"{name}_identity") if isinstance(postimages, dict) else None
+            mutation_owned = (
+                isinstance(postimages, dict)
+                and _hash(current) == postimages.get(postimage_key)
+                and _postimage_identity(metadata) == postidentity
+            )
+            unchanged_preimage = _hash(current) == entry["sha256"] and postidentity is None
+            if not mutation_owned and not unchanged_preimage:
+                raise OSError("credential rewind requires an unchanged migration-owned postimage")
             expected = bytes.fromhex(entry["bytes_hex"])
             if _hash(expected) != entry["sha256"]:
                 raise OSError("credential rewind readback mismatch")
@@ -602,18 +671,30 @@ def render_credential_status(
     security_state: SecurityState,
     active_residual_state: ActiveResidualState,
     history_hygiene_state: HistoryState,
-    evidence_codes: tuple[str, ...] = (),
+    evidence_codes: tuple[str, ...] | CredentialEvidence = (),
     uninspected_scope_categories: tuple[str, ...] = (),
 ) -> CredentialStatusCopy:
-    evidence = tuple(sorted(set(evidence_codes)))
+    if isinstance(evidence_codes, CredentialEvidence):
+        typed_evidence = evidence_codes.normalized()
+    else:
+        legacy = tuple(sorted(set(evidence_codes)))
+        typed_evidence = CredentialEvidence(
+            present=legacy if security_state == "remediated" else (),
+            missing=legacy if security_state == "rotation-pending" else (),
+            unavailable=legacy if security_state == "unknown" else (),
+            unknown_causes=("unavailable",) if security_state == "unknown" and legacy else (),
+        ).normalized()
+    present = typed_evidence.present
+    missing = typed_evidence.missing
+    unavailable = typed_evidence.unavailable
     scopes = tuple(sorted(set(uninspected_scope_categories)))
-    if not set(evidence) <= EVIDENCE_CODES or not set(scopes) <= SCOPE_CATEGORIES:
+    if not set(scopes) <= SCOPE_CATEGORIES:
         raise ValueError("unknown credential evidence category")
     if active_residual_state != "none" and migration_state != "partial":
         raise ValueError("raw MCP residual requires partial migration")
     if security_state == "remediated" and active_residual_state == "unrevoked-or-unclassified":
         raise ValueError("security cannot be fixed with a potentially usable residual")
-    if active_residual_state == "proven-revoked" and "provider-binding" not in evidence:
+    if active_residual_state == "proven-revoked" and "provider-binding" not in present:
         raise ValueError("proven residual requires provider binding evidence")
     required_remediation = {
         "old-key-revocation",
@@ -622,12 +703,18 @@ def render_credential_status(
         "active-copy",
         "provider-binding",
     }
-    if security_state == "remediated" and not required_remediation <= set(evidence):
+    if security_state == "remediated" and (
+        not required_remediation <= set(present) or missing or unavailable or typed_evidence.unknown_causes
+    ):
         raise ValueError("remediated security requires complete bound rotation and replacement evidence")
     residual_supplies_pending_reason = active_residual_state == "unrevoked-or-unclassified"
-    if security_state == "rotation-pending" and not evidence and not residual_supplies_pending_reason:
+    if security_state == "rotation-pending" and (
+        present or unavailable or typed_evidence.unknown_causes or (not missing and not residual_supplies_pending_reason)
+    ):
         raise ValueError("rotation-pending security requires incomplete evidence or an active residual")
-    if security_state == "unknown" and not evidence:
+    if security_state == "unknown" and (
+        present or missing or not unavailable or not typed_evidence.unknown_causes
+    ):
         raise ValueError("unknown security requires unavailable or inconsistent evidence")
     if history_hygiene_state != "history-scope-unknown" and scopes:
         raise ValueError("uninspected scopes require unknown history")
@@ -648,13 +735,13 @@ def render_credential_status(
     elif security_state == "rotation-pending":
         security = (
             "Security is not fixed because these required rotation/replacement checks are incomplete: "
-            + ", ".join(evidence)
+            + ", ".join(missing)
             + "."
         )
     else:
         security = (
             "Dex cannot determine security because these evidence categories are unavailable or inconsistent: "
-            + ", ".join(evidence)
+            + ", ".join(unavailable)
             + "."
         )
         if active_residual_state == "unrevoked-or-unclassified":

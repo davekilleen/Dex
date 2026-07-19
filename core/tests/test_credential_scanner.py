@@ -31,6 +31,17 @@ def test_scanner_redacts_paths_values_and_reports_scopes(tmp_path):
     assert report.uninspected_scopes == ("primary-object-db",)
 
 
+def test_finding_ids_are_random_opaque_and_not_location_digests(tmp_path):
+    _git(tmp_path, "init", "-q")
+    secret = b"synthetic-random-id-secret"
+    (tmp_path / "value.txt").write_bytes(secret)
+    first = scan_credentials(tmp_path, (secret,))
+    second = scan_credentials(tmp_path, (secret,))
+    assert first.findings and second.findings
+    assert {item.opaque_id for item in first.findings}.isdisjoint(item.opaque_id for item in second.findings)
+    assert all(len(item.opaque_id) == 32 for item in first.findings + second.findings)
+
+
 def test_unselected_archives_are_explicitly_uninspected(tmp_path):
     _git(tmp_path, "init", "-q")
     report = scan_credentials(tmp_path, (b"synthetic-value",))

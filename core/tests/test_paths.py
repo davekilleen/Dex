@@ -95,6 +95,12 @@ class TestDerivedPaths:
 
     def test_history_backups_use_canonical_adoption_path(self):
         other_vault = Path("/synthetic-vault")
+        assert paths.HISTORY_BACKUPS_RELATIVE_PARTS == (
+            "System",
+            ".dex",
+            "adoption",
+            "history-backups",
+        )
         assert paths.history_backups_root(other_vault) == other_vault / "System/.dex/adoption/history-backups"
         assert paths.HISTORY_BACKUPS_ROOT == paths.history_backups_root(paths.VAULT_ROOT)
 

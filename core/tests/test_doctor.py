@@ -2085,3 +2085,16 @@ def test_mcp_import_subprocess_uses_an_ephemeral_vault(monkeypatch, context):
 
     assert doctor._mcp_import_check(context, "core.mcp.resume_server", sys.executable) == (True, "exit 0")
     assert not observed["sandbox"].exists()
+
+
+def test_cli_credential_scan_is_reachable_structured_and_redacted(context, capsys):
+    config = context.vault_root / "System/integrations/config.yaml"
+    config.parent.mkdir(parents=True, exist_ok=True)
+    config.write_text("todoist:\n  api_key: synthetic-doctor-value\n")
+
+    assert doctor.main(["--credential-scan"], context=context) == 0
+
+    output = capsys.readouterr().out
+    assert '"action": "scan"' in output
+    assert '"findings"' in output
+    assert "synthetic-doctor-value" not in output

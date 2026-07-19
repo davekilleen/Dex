@@ -53,6 +53,8 @@ Once connected, you can ask Dex to:
 ### Step 1: Check if Already Connected
 
 1. Check `System/integrations/config.yaml` for a `todoist:` section with `enabled: true`
+   through `core.utils.strict_yaml.load_yaml_path`; refuse duplicate keys, aliases, anchors,
+   or merge mappings before reading or writing any setup field.
 2. If enabled, test authentication with the read-only health check
 3. If healthy, skip to **Reconfiguration** section below
 4. If not configured or unhealthy, continue to Step 2
@@ -102,6 +104,8 @@ the token in chat.
 ### Step 4: Store the Local Credential
 
 Confirm locally that `.env` defines `TODOIST_API_KEY` without printing or returning its value.
+Use `python3 -m core.utils.credential_workflow scan` for the redacted authority finding; repair
+permissions/ownership before continuing if it reports an invalid `.env` authority.
 Preserve unrelated lines and never place the value in `.mcp.json`, tracked YAML, a command,
 argv, logs, transcript, or process environment. Existing `.mcp.json` is scan/report-only and
 must remain byte-identical.

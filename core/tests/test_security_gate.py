@@ -19,6 +19,11 @@ def _fixture(tmp_path: Path) -> Path:
     shutil.copy2(source / "security-gate.sh", scripts / "security-gate.sh")
     shutil.copy2(source / "security-scan.py", scripts / "security-scan.py")
     shutil.copy2(source / "security-allowlist.txt", scripts / "security-allowlist.txt")
+    core_utils = root / "core/utils"
+    core_utils.mkdir(parents=True)
+    (root / "core/__init__.py").write_text("")
+    (core_utils / "__init__.py").write_text("")
+    shutil.copy2(Path(__file__).resolve().parents[2] / "core/utils/local_git.py", core_utils / "local_git.py")
     config = root / "System/integrations/config.yaml"
     config.parent.mkdir(parents=True)
     config.write_text("todoist:\n  enabled: false\n")
@@ -55,21 +60,30 @@ def test_security_gate_redacts_values_and_scans_space_and_newline_names(tmp_path
     assert all(set(item) == {"file", "line", "category"} for item in diagnostics)
 
 
-def test_raw_grep_guard_removal_would_disclose_matched_value(tmp_path):
+def test_production_scanner_redaction_mutation_would_disclose_matched_value(tmp_path):
     root = _fixture(tmp_path)
     secret = "ghp_" + "B" * 24
     (root / "space name.txt").write_text(secret + "\n")
     _git(root, "add", ".")
 
+    scanner = root / "scripts/security-scan.py"
+    source = scanner.read_text()
+    source = source.replace(
+        'print(json.dumps({"file": path, "line": line, "category": category}, ensure_ascii=True))',
+        'print(data.decode("utf-8", errors="replace"))',
+    )
+    assert source != scanner.read_text()
+    scanner.write_text(source)
+
     mutated = subprocess.run(
-        ["grep", "-nE", "ghp_[A-Za-z0-9]{20,}", "space name.txt"],
+        ["python3", "scripts/security-scan.py"],
         cwd=root,
         text=True,
         capture_output=True,
         check=False,
     )
 
-    assert mutated.returncode == 0
+    assert mutated.returncode == 1
     assert secret in mutated.stdout
 
 

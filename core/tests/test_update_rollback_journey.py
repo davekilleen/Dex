@@ -11,6 +11,7 @@ from core.utils.manifest import DEFAULT_MANIFEST, generate_manifest, write_manif
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 ROLLBACK_SKILL = REPO_ROOT / ".claude/skills/dex-rollback/SKILL.md"
+UPDATE_SKILL = REPO_ROOT / ".claude/skills/dex-update/SKILL.md"
 
 
 def _git(repo: Path, *args: str) -> str:
@@ -22,6 +23,14 @@ def _git(repo: Path, *args: str) -> str:
         text=True,
     )
     return result.stdout.strip()
+
+
+def test_update_runs_credential_migration_before_status_and_safe_autosave():
+    instructions = UPDATE_SKILL.read_text(encoding="utf-8")
+    migration = instructions.index("python3 -m core.utils.credential_workflow migrate")
+    status = instructions.index("git status --porcelain", migration)
+    autosave = instructions.index("python3 -m core.utils.safe_autosave", status)
+    assert migration < status < autosave
 
 
 def _init_repo(repo: Path) -> None:

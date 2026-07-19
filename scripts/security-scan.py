@@ -7,9 +7,14 @@ import json
 import os
 import re
 import stat
-import subprocess
 import sys
 from pathlib import Path
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from core.utils.local_git import git_output
 
 MAX_TRACKED_FILES = 25_000
 MAX_FILE_BYTES = 8 * 1024 * 1024
@@ -29,16 +34,7 @@ RAW_TASK_CREDENTIAL = re.compile(
 
 
 def _tracked_paths() -> tuple[bytes, ...]:
-    result = subprocess.run(
-        ["git", "ls-files", "-z"],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.DEVNULL,
-        check=False,
-        env={**os.environ, "GIT_CONFIG_GLOBAL": os.devnull, "GIT_CONFIG_NOSYSTEM": "1"},
-    )
-    if result.returncode:
-        raise RuntimeError("tracked-file enumeration failed")
-    paths = tuple(path for path in result.stdout.split(b"\0") if path)
+    paths = tuple(path for path in git_output(Path.cwd(), "ls-files", "-z", profile="read-only").split(b"\0") if path)
     if len(paths) > MAX_TRACKED_FILES:
         raise RuntimeError("tracked-file count exceeded security scan bound")
     return paths

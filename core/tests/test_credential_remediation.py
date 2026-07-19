@@ -11,6 +11,7 @@ import yaml
 from core.utils import credential_remediation
 from core.utils.credential_remediation import (
     CAPABILITIES,
+    CredentialEvidence,
     migrate_legacy_credentials,
     probe_atomic_migration,
     render_credential_status,
@@ -168,7 +169,10 @@ def test_permissive_yaml_loader_mutation_reproduces_hidden_custom_residual(tmp_p
         b"todoist:\n  token_env_var: CUSTOM_SECOND\n",
     )
     (root / ".mcp.json").write_text('{"env":{"CUSTOM_HIDDEN_FIRST":"synthetic-hidden-active"}}')
-    monkeypatch.setattr("core.utils.credential_remediation._UniqueKeyLoader", yaml.SafeLoader)
+    monkeypatch.setattr(
+        "core.utils.credential_remediation.load_yaml_bytes",
+        lambda raw, **_kwargs: yaml.safe_load(raw),
+    )
 
     result = migrate_legacy_credentials(root)
 
@@ -183,9 +187,45 @@ def test_atomic_migration_preserves_yaml_bytes_and_exact_rewind(tmp_path):
     result = migrate_legacy_credentials(root)
     assert result.state == "migrated-local-config"
     assert config.read_bytes() == before.replace(b"api_key: synthetic-old-key", b"api_key_env_var: TODOIST_API_KEY")
-    assert (root / ".env").read_text() == "TODOIST_API_KEY=synthetic-old-key\n"
+    assert (root / ".env").read_text() == 'TODOIST_API_KEY="synthetic-old-key"\n'
     rewind = rewind_credential_migration(root, result.journal_id)
     assert rewind.state == "rewound"
+    assert config.read_bytes() == before
+    assert not (root / ".env").exists()
+
+
+@pytest.mark.parametrize("interruption", [KeyboardInterrupt, SystemExit])
+@pytest.mark.parametrize("boundary", ["before-env", "after-env", "before-config", "after-config"])
+def test_baseexception_at_every_mutation_boundary_rewinds_exactly(tmp_path, monkeypatch, interruption, boundary):
+    root = _vault(tmp_path)
+    config = root / "System/integrations/config.yaml"
+    before = config.read_bytes()
+    real_update = credential_remediation.update_vault_env
+    real_replace = credential_remediation._atomic_replace_at
+
+    if boundary in {"before-env", "after-env"}:
+        def interrupt_env(*args, **kwargs):
+            if boundary == "after-env":
+                real_update(*args, **kwargs)
+            raise interruption()
+
+        monkeypatch.setattr(credential_remediation, "update_vault_env", interrupt_env)
+    else:
+        interrupted = False
+
+        def interrupt_config(directory, name, data, mode, **kwargs):
+            nonlocal interrupted
+            if name != "config.yaml" or interrupted:
+                return real_replace(directory, name, data, mode, **kwargs)
+            interrupted = True
+            if boundary == "after-config":
+                real_replace(directory, name, data, mode, **kwargs)
+            raise interruption()
+
+        monkeypatch.setattr(credential_remediation, "_atomic_replace_at", interrupt_config)
+
+    with pytest.raises(interruption):
+        migrate_legacy_credentials(root)
     assert config.read_bytes() == before
     assert not (root / ".env").exists()
 
@@ -201,6 +241,7 @@ def test_git_vault_requires_env_to_be_ignored_and_untracked(tmp_path, posture, e
         (root / ".gitignore").write_text(".env\n")
     if posture == "tracked":
         (root / ".env").write_text("TODOIST_API_KEY=synthetic-old-key\n")
+        (root / ".env").chmod(0o600)
         subprocess.run(["git", "add", "-f", ".env"], cwd=root, check=True)
 
     result = migrate_legacy_credentials(root)
@@ -213,6 +254,7 @@ def test_git_vault_requires_env_to_be_ignored_and_untracked(tmp_path, posture, e
 def test_conflict_symlink_and_mcp_residual_are_honest(tmp_path):
     root = _vault(tmp_path)
     (root / ".env").write_text("TODOIST_API_KEY=different\n")
+    (root / ".env").chmod(0o600)
     assert migrate_legacy_credentials(root).state == "refused"
     (root / ".env").unlink()
     mcp = root / ".mcp.json"
@@ -402,6 +444,37 @@ def test_pending_and_unknown_status_require_explicit_reason(
             call()
 
 
+def test_typed_evidence_polarity_distinguishes_present_missing_and_unavailable():
+    pending = render_credential_status(
+        "not-needed",
+        "rotation-pending",
+        "none",
+        "history-clean",
+        CredentialEvidence(missing=("provider-binding",)),
+    )
+    assert "incomplete: provider-binding" in pending.security_and_current_config
+    unknown = render_credential_status(
+        "not-needed",
+        "unknown",
+        "none",
+        "history-clean",
+        CredentialEvidence(unavailable=("provider-binding",), unknown_causes=("inconsistent",)),
+    )
+    assert "unavailable or inconsistent: provider-binding" in unknown.security_and_current_config
+    with pytest.raises(ValueError, match="polarity"):
+        render_credential_status(
+            "not-needed",
+            "unknown",
+            "none",
+            "history-clean",
+            CredentialEvidence(
+                present=("provider-binding",),
+                unavailable=("provider-binding",),
+                unknown_causes=("inconsistent",),
+            ),
+        )
+
+
 @pytest.mark.parametrize("history_state", ["history-clean", "history-cleanup-pending"])
 def test_only_unknown_history_accepts_uninspected_scopes(history_state):
     with pytest.raises(ValueError, match="uninspected scopes"):
@@ -513,16 +586,46 @@ def test_rewind_refuses_swapped_integration_parent_without_outside_write(tmp_pat
     assert b"synthetic-old-key" not in b"".join(path.read_bytes() for path in outside.iterdir())
 
 
-def test_rewind_replaces_env_symlink_without_touching_its_target(tmp_path):
+def test_rewind_refuses_replaced_env_symlink_without_touching_its_target(tmp_path):
     root = _vault(tmp_path)
     (root / ".env").write_text("TODOIST_API_KEY=synthetic-old-key\n")
+    (root / ".env").chmod(0o600)
     result = migrate_legacy_credentials(root)
     outside = tmp_path.parent / "outside-env"
     outside.write_text("outside-safe\n")
     (root / ".env").unlink()
     (root / ".env").symlink_to(outside)
 
-    assert rewind_credential_migration(root, result.journal_id).state == "rewound"
-    assert not (root / ".env").is_symlink()
-    assert (root / ".env").read_text() == "TODOIST_API_KEY=synthetic-old-key\n"
+    with pytest.raises(OSError):
+        rewind_credential_migration(root, result.journal_id)
+    assert (root / ".env").is_symlink()
     assert outside.read_text() == "outside-safe\n"
+
+
+@pytest.mark.parametrize("race", ["modify", "replace", "hardlink", "symlink"])
+def test_rewind_never_deletes_or_overwrites_later_env_edits(tmp_path, race):
+    root = _vault(tmp_path)
+    result = migrate_legacy_credentials(root)
+    env = root / ".env"
+    migrated = env.read_bytes()
+    outside = tmp_path.parent / f"outside-{race}"
+    if race == "modify":
+        env.write_bytes(b'TODOIST_API_KEY="later-user-value"\n')
+        env.chmod(0o600)
+    elif race == "replace":
+        replacement = root / ".env.replacement"
+        replacement.write_bytes(migrated)
+        replacement.chmod(0o600)
+        replacement.replace(env)
+    elif race == "hardlink":
+        outside.write_bytes(migrated)
+        env.unlink()
+        os.link(outside, env)
+    else:
+        outside.write_bytes(migrated)
+        env.unlink()
+        env.symlink_to(outside)
+
+    with pytest.raises(OSError):
+        rewind_credential_migration(root, result.journal_id)
+    assert env.exists()

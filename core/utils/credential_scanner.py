@@ -2,19 +2,18 @@
 
 from __future__ import annotations
 
-import hashlib
 import os
 import re
-import shutil
 import stat
-import subprocess
 import tarfile
 import time
+import uuid
 import zipfile
 from dataclasses import dataclass
 from pathlib import Path
 
 from core.utils.integration_credentials import inspect_active_mcp_config
+from core.utils.local_git import git_output
 
 MAX_FILE_BYTES = 8 * 1024 * 1024
 MAX_WORKTREE_BYTES = 64 * 1024 * 1024
@@ -45,46 +44,19 @@ class ScanReport:
 
 
 def _opaque(scope: str, location: bytes) -> Finding:
-    return Finding(scope, hashlib.sha256(scope.encode() + b"\0" + location).hexdigest()[:20])
-
-
-def _git_binary() -> str:
-    for candidate in ("/usr/bin/git", "/bin/git", shutil.which("git")):
-        if candidate and Path(candidate).is_file() and os.access(candidate, os.X_OK):
-            return str(Path(candidate).resolve())
-    raise RuntimeError("sanitized Git unavailable")
+    del location
+    return Finding(scope, uuid.uuid4().hex)
 
 
 def _git(root: Path, *args: str, input_data: bytes | None = None) -> bytes:
-    result = subprocess.run(
-        [
-            _git_binary(),
-            "-c",
-            "core.hooksPath=/dev/null",
-            "-c",
-            "credential.helper=",
-            "-c",
-            "protocol.file.allow=never",
-            *args,
-        ],
-        cwd=root,
-        input=input_data,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
+    return git_output(
+        root,
+        *args,
+        profile="read-only",
+        input_data=input_data,
         timeout=SCAN_DEADLINE_SECONDS,
-        env={
-            "PATH": "/usr/bin:/bin",
-            "GIT_CONFIG_GLOBAL": os.devnull,
-            "GIT_CONFIG_NOSYSTEM": "1",
-            "GIT_TERMINAL_PROMPT": "0",
-            "GIT_PAGER": "cat",
-            "GIT_OPTIONAL_LOCKS": "0",
-            "GIT_NO_REPLACE_OBJECTS": "1",
-        },
+        max_output=MAX_GIT_OUTPUT,
     )
-    if result.returncode or len(result.stdout) > MAX_GIT_OUTPUT:
-        raise RuntimeError("bounded sanitized local Git inspection failed")
-    return result.stdout
 
 
 def _bounded_file(path: Path) -> bytes:
@@ -215,7 +187,7 @@ def scan_credentials(root: Path, needles: tuple[bytes, ...], selected_archives: 
         if mcp.data and any(value in mcp.data for value in needles):
             findings.append(_opaque("worktree", b"active-config"))
         inspected.add("worktree")
-    except (OSError, RuntimeError, subprocess.TimeoutExpired):
+    except (OSError, RuntimeError):
         unknown["worktree"] = "input-unavailable-unsafe-or-bound"
 
     try:
@@ -230,7 +202,7 @@ def scan_credentials(root: Path, needles: tuple[bytes, ...], selected_archives: 
             if any(value in data for value in needles):
                 findings.append(_opaque("index", str(number).encode()))
         inspected.add("index")
-    except (RuntimeError, UnicodeDecodeError, subprocess.TimeoutExpired):
+    except (RuntimeError, UnicodeDecodeError):
         unknown["index"] = "blob-unavailable-or-bound"
 
     try:
@@ -302,7 +274,7 @@ def scan_credentials(root: Path, needles: tuple[bytes, ...], selected_archives: 
                 )
             inspected.add("stashes")
             unknown["primary-object-db"] = "unreachable-objects-not-inspected"
-    except (OSError, RuntimeError, UnicodeDecodeError, ValueError, subprocess.TimeoutExpired):
+    except (OSError, RuntimeError, UnicodeDecodeError, ValueError):
         for scope in ("git-common-dir", "primary-object-db", "reachable-refs", "stashes", "tags"):
             unknown.setdefault(scope, "git-metadata-object-or-bound")
 

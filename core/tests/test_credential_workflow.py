@@ -1,0 +1,71 @@
+"""End-to-end coverage for the reachable credential workflow."""
+
+from __future__ import annotations
+
+import json
+import subprocess
+from pathlib import Path
+
+import pytest
+
+from core.utils.credential_workflow import run_credential_workflow
+from core.utils.integration_credentials import resolve_service_credentials
+
+
+def _legacy_vault(root: Path) -> Path:
+    config = root / "System/integrations/config.yaml"
+    config.parent.mkdir(parents=True)
+    config.write_bytes(b"todoist:\r\n  enabled: true\r\n  api_key: synthetic-workflow-value\r\n")
+    return config
+
+
+def test_real_workflow_migrates_legacy_yaml_preserves_mcp_and_exactly_rewinds(tmp_path):
+    config = _legacy_vault(tmp_path)
+    original = config.read_bytes()
+    mcp = tmp_path / ".mcp.json"
+    mcp.write_bytes(b'{"mcpServers":{"other":{"enabled":true}}}\r\n')
+    mcp_before = mcp.read_bytes()
+
+    migrated = run_credential_workflow(tmp_path, "migrate")
+
+    assert migrated["migration_state"] == "migrated-local-config"
+    assert mcp.read_bytes() == mcp_before
+    env = tmp_path / ".env"
+    assert env.stat().st_mode & 0o777 == 0o600
+    assert b"synthetic-workflow-value" not in config.read_bytes()
+
+    rewound = run_credential_workflow(tmp_path, "rewind", journal_id=str(migrated["journal_id"]))
+    assert rewound["migration_state"] == "rewound"
+    assert config.read_bytes() == original
+    assert not env.exists()
+    assert mcp.read_bytes() == mcp_before
+
+
+def test_scan_output_is_redacted_and_uses_only_opaque_finding_ids(tmp_path):
+    _legacy_vault(tmp_path)
+    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+    report = run_credential_workflow(tmp_path, "scan")
+    rendered = repr(report)
+    assert report["findings"]
+    assert "synthetic-workflow-value" not in rendered
+    assert "config.yaml" not in rendered
+
+
+@pytest.mark.parametrize(
+    "value",
+    [" leading", "trailing ", '"matching quotes"', r"back\\slash", "hash#value", "equals=value"],
+)
+def test_full_crlf_migration_and_runtime_resolution_preserve_exact_scalar(tmp_path, value):
+    config = tmp_path / "System/integrations/config.yaml"
+    config.parent.mkdir(parents=True)
+    config.write_bytes(
+        ("todoist:\r\n  enabled: true\r\n  api_key: " + json.dumps(value) + "\r\n").encode()
+    )
+    migrated = run_credential_workflow(tmp_path, "migrate")
+    assert migrated["migration_state"] == "migrated-local-config"
+    assert resolve_service_credentials(
+        "todoist",
+        {"api_key_env_var": "TODOIST_API_KEY"},
+        tmp_path,
+    ) == {"api_key": value}
+    assert b"\r\n" in config.read_bytes()

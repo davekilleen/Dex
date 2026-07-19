@@ -9,7 +9,6 @@ import re
 import shutil
 import stat
 import subprocess
-import sys
 import tempfile
 import uuid
 from contextlib import suppress
@@ -17,6 +16,9 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Callable, Literal
+
+from core.paths import HISTORY_BACKUPS_RELATIVE_PARTS
+from core.utils.local_git import git_env, git_output, trusted_git_binary
 
 try:
     import fcntl
@@ -45,6 +47,7 @@ PREPARATION_ARTIFACTS = frozenset(
     {"history.bundle", "objects.json", "git-config.bin", "index.bin", "manifest.json"}
 )
 MAX_STATUS_OUTPUT_BYTES = 16 * 1024 * 1024
+HISTORY_BACKUPS_RELATIVE_POSIX = "/".join(HISTORY_BACKUPS_RELATIVE_PARTS)
 
 
 @dataclass(frozen=True)
@@ -72,6 +75,161 @@ class RetentionPreview:
     evaluated_at: str
     successful_release_activations: int
     candidate_bytes: int
+
+
+_MANIFEST_BASE_KEYS = frozenset(
+    {
+        "schema_version", "transaction_id", "phase", "created_at", "minimum_delete_after",
+        "successful_release_activations_at_creation", "minimum_successful_release_activations_for_deletion",
+        "external_backup", "selected_refs", "all_refs", "repository_state", "credential_occurrences",
+        "recovery_directory_identity", "before_object_evidence", "primary_common_dir_identity",
+        "primary_object_db_identity", "bundle", "recovery_artifacts", "filter_repo", "preview_sha256",
+    }
+)
+_MANIFEST_APPLIED_KEYS = frozenset({"after_refs", "after_all_refs", "post_cleanup_scan_state", "post_cleanup_uninspected_scopes"})
+_MANIFEST_RECOVERY_KEYS = frozenset({"after_refs", "after_all_refs", "recovery_guidance"})
+
+
+@dataclass(frozen=True)
+class HistoryManifest:
+    """Closed, phase-aware history transaction model and serializer."""
+
+    _data: dict[str, object]
+
+    @classmethod
+    def create(cls, core: dict[str, object]) -> "HistoryManifest":
+        if "preview_sha256" in core or core.get("phase") != "prepared":
+            raise ValueError("history manifest must begin in prepared phase")
+        unsigned = dict(core)
+        return cls.from_dict({**unsigned, "preview_sha256": _sha(_json_bytes(unsigned))})
+
+    @classmethod
+    def from_dict(cls, value: object) -> "HistoryManifest":
+        if not isinstance(value, dict):
+            raise ValueError("history manifest must be an object")
+        phase = value.get("phase")
+        optional = (
+            frozenset()
+            if phase in {"prepared", "applying"}
+            else _MANIFEST_APPLIED_KEYS
+            if phase in {"applied", "rewound"}
+            else _MANIFEST_RECOVERY_KEYS | _MANIFEST_APPLIED_KEYS
+            if phase == "recovery-required"
+            else None
+        )
+        if optional is None or not _MANIFEST_BASE_KEYS <= value.keys() or not value.keys() <= _MANIFEST_BASE_KEYS | optional:
+            raise ValueError("history manifest changed: invalid phase or keys")
+        if value.get("schema_version") != 1 or not re.fullmatch(r"[0-9a-f]{32}", str(value.get("transaction_id", ""))):
+            raise ValueError("history manifest identity is invalid")
+        for name in ("selected_refs", "all_refs"):
+            refs = value.get(name)
+            if not isinstance(refs, dict) or any(
+                not isinstance(ref, str) or not isinstance(oid, str) or not re.fullmatch(r"[0-9a-f]{40,64}", oid)
+                for ref, oid in refs.items()
+            ):
+                raise ValueError("history manifest refs are invalid")
+        for name, keys in {
+            "bundle": {"sha256", "size", "verified"},
+            "before_object_evidence": {"sha256", "size", "file"},
+            "filter_repo": {"path_identity", "sha256", "size"},
+        }.items():
+            nested = value.get(name)
+            if not isinstance(nested, dict) or set(nested) != keys:
+                raise ValueError(f"history manifest {name} is invalid")
+        external = value.get("external_backup")
+        if not isinstance(external, dict) or set(external) not in (
+            {"verified_evidence_sha256"},
+            {"no_external_backup_acknowledged"},
+        ):
+            raise ValueError("history manifest external backup is invalid")
+        directory_identity = value.get("recovery_directory_identity")
+        if not isinstance(directory_identity, dict) or set(directory_identity) != {"device", "inode"} or not all(
+            isinstance(item, int) for item in directory_identity.values()
+        ):
+            raise ValueError("history manifest recovery directory identity is invalid")
+        repository_state = value.get("repository_state")
+        if not isinstance(repository_state, dict) or set(repository_state) != {
+            "head", "index_sha256", "worktree_sha256", "remote_config_sha256",
+        } or not all(isinstance(item, str) for item in repository_state.values()):
+            raise ValueError("history manifest repository state is invalid")
+        artifacts = value.get("recovery_artifacts")
+        if not isinstance(artifacts, dict) or set(artifacts) != {"git-config.bin", "index.bin"}:
+            raise ValueError("history manifest recovery artifacts are invalid")
+        for artifact in artifacts.values():
+            if not isinstance(artifact, dict) or set(artifact) != {"absent", "sha256", "size", "mode"}:
+                raise ValueError("history manifest recovery artifact is invalid")
+        occurrences = value.get("credential_occurrences")
+        if not isinstance(occurrences, list) or any(
+            not isinstance(profile, list)
+            or any(
+                not isinstance(span, list)
+                or len(span) != 3
+                or any(not isinstance(number, int) or number < 0 for number in span)
+                for span in profile
+            )
+            for profile in occurrences
+        ):
+            raise ValueError("history manifest credential occurrences are invalid")
+        preview = value.get("preview_sha256")
+        unsigned = {key: item for key, item in value.items() if key != "preview_sha256"}
+        if preview != _sha(_json_bytes(unsigned)):
+            raise ValueError("history preview manifest changed")
+        return cls(dict(value))
+
+    def __getitem__(self, key: str) -> object:
+        return self._data[key]
+
+    def get(self, key: str, default: object = None) -> object:
+        return self._data.get(key, default)
+
+    def items(self):
+        return self._data.items()
+
+    def to_dict(self) -> dict[str, object]:
+        return dict(self._data)
+
+    def serialize(self) -> bytes:
+        return _json_bytes(self._data)
+
+    def _transition(self, phase: str, **updates: object) -> "HistoryManifest":
+        unsigned = {key: item for key, item in self._data.items() if key != "preview_sha256"}
+        unsigned.update(updates)
+        unsigned["phase"] = phase
+        return HistoryManifest.from_dict({**unsigned, "preview_sha256": _sha(_json_bytes(unsigned))})
+
+    def begin_apply(self) -> "HistoryManifest":
+        if self["phase"] != "prepared":
+            raise ValueError("history manifest is not prepared")
+        return self._transition("applying")
+
+    def record_applied(
+        self, after_refs: dict[str, str], after_all_refs: dict[str, str], scan_state: str,
+        uninspected_scopes: tuple[str, ...] = (),
+    ) -> "HistoryManifest":
+        if self["phase"] != "applying":
+            raise ValueError("history manifest is not applying")
+        updates: dict[str, object] = {
+            "after_refs": after_refs, "after_all_refs": after_all_refs, "post_cleanup_scan_state": scan_state,
+        }
+        if uninspected_scopes:
+            updates["post_cleanup_uninspected_scopes"] = list(uninspected_scopes)
+        return self._transition("applied", **updates)
+
+    def record_recovery_required(
+        self, guidance: str, after_refs: dict[str, str] | None = None,
+        after_all_refs: dict[str, str] | None = None,
+    ) -> "HistoryManifest":
+        updates: dict[str, object] = {"recovery_guidance": guidance}
+        if after_refs is not None and after_all_refs is not None:
+            updates.update(after_refs=after_refs, after_all_refs=after_all_refs)
+        return self._transition("recovery-required", **updates)
+
+    def record_rewound(self) -> "HistoryManifest":
+        if self["phase"] not in {"applied", "recovery-required"}:
+            raise ValueError("history manifest cannot be rewound")
+        unsigned = {key: item for key, item in self._data.items() if key not in {"preview_sha256", "recovery_guidance"}}
+        unsigned["phase"] = "rewound"
+        return HistoryManifest.from_dict({**unsigned, "preview_sha256": _sha(_json_bytes(unsigned))})
 
 
 def _now() -> datetime:
@@ -133,47 +291,23 @@ def _safe_executable(candidate: Path) -> Path | None:
 
 
 def _git_binary() -> Path:
-    discovered = shutil.which("git")
-    candidates = [Path("/usr/bin/git"), Path("/bin/git")]
-    if discovered:
-        candidates.append(Path(discovered))
-    for candidate in candidates:
-        if path := _safe_executable(candidate):
-            return path
-    raise RuntimeError("absolute Git executable is unavailable or unsafe")
+    return trusted_git_binary()
 
 
 def _git_env() -> dict[str, str]:
-    executable_dirs = dict.fromkeys(
-        (str(_git_binary().parent), str(Path(sys.executable).resolve().parent), "/usr/bin", "/bin")
-    )
-    return {
-        "PATH": os.pathsep.join(executable_dirs),
-        "HOME": os.environ.get("HOME", ""),
-        "SYSTEMROOT": os.environ.get("SYSTEMROOT", ""),
-        "GIT_CONFIG_NOSYSTEM": "1",
-        "GIT_CONFIG_GLOBAL": os.devnull,
-        "GIT_TERMINAL_PROMPT": "0",
-        "GIT_PAGER": "cat",
-        "GIT_OPTIONAL_LOCKS": "0",
-        "GIT_NO_REPLACE_OBJECTS": "1",
-    }
+    return git_env()
 
 
 def _git(root: Path, *args: str, input_data: bytes | None = None, pass_fds: tuple[int, ...] = ()) -> bytes:
-    result = subprocess.run(
-        [str(_git_binary()), "-c", "core.hooksPath=/dev/null", "-c", "credential.helper=", *args],
-        cwd=root,
-        input=input_data,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        check=False,
-        env=_git_env(),
+    mutation_commands = {"bundle", "update-ref"}
+    profile = "mutation" if args and args[0] in mutation_commands else "read-only"
+    return git_output(
+        root,
+        *args,
+        profile=profile,
+        input_data=input_data,
         pass_fds=pass_fds,
     )
-    if result.returncode:
-        raise RuntimeError("sanitized local Git operation failed")
-    return result.stdout
 
 
 def _repository_boundaries(root: Path) -> tuple[Path, Path, Path]:
@@ -251,7 +385,7 @@ def _repository_state(root: Path) -> dict[str, str]:
     for relative in sorted(paths):
         if not relative:
             continue
-        if relative.startswith(b"System/.dex/adoption/history-backups/"):
+        if relative.startswith(os.fsencode(HISTORY_BACKUPS_RELATIVE_POSIX + "/")):
             continue
         path = root / os.fsdecode(relative)
         if path.is_symlink() or not path.is_file():
@@ -280,8 +414,8 @@ def _require_repository_quiescence(root: Path) -> None:
         "--untracked-files=all",
         "--",
         ".",
-        ":(exclude)System/.dex/adoption/history-backups",
-        ":(exclude)System/.dex/adoption/history-backups/**",
+        f":(exclude){HISTORY_BACKUPS_RELATIVE_POSIX}",
+        f":(exclude){HISTORY_BACKUPS_RELATIVE_POSIX}/**",
     )
     if len(status) > MAX_STATUS_OUTPUT_BYTES:
         raise RuntimeError("repository quiescence evidence exceeded its bound")
@@ -345,7 +479,7 @@ def _open_directory_chain(root: Path, parts: tuple[str, ...], *, create: bool = 
 def _open_backup_root_at(root_descriptor: int, *, create: bool = False) -> int:
     return _open_directory_chain_at(
         root_descriptor,
-        ("System", ".dex", "adoption", "history-backups"),
+        HISTORY_BACKUPS_RELATIVE_PARTS,
         create=create,
     )
 
@@ -359,7 +493,7 @@ def _directory_identity(descriptor: int) -> dict[str, int]:
 class _LoadedTransaction:
     descriptor: int
     path: Path
-    manifest: dict[str, object] | None = None
+    manifest: HistoryManifest | None = None
 
     def __enter__(self) -> _LoadedTransaction:
         return self
@@ -451,7 +585,7 @@ def _used_recovery_bytes(root_descriptor: int) -> int:
 
 def _remove_unpublished_transaction(backup_descriptor: int, name: str) -> None:
     incomplete = INCOMPLETE_TRANSACTION.fullmatch(name) is not None
-    if not incomplete and TRANSACTION_ID.fullmatch(name) is None:
+    if not incomplete:
         raise OSError("unsafe unpublished history transaction name")
     descriptor = os.open(
         name,
@@ -460,8 +594,6 @@ def _remove_unpublished_transaction(backup_descriptor: int, name: str) -> None:
     )
     try:
         entries = os.listdir(descriptor)
-        if not incomplete and "manifest.json" in entries:
-            return
         if stat.S_IMODE(os.fstat(descriptor).st_mode) != 0o700:
             raise OSError("unsafe unpublished history transaction")
         if any(entry not in PREPARATION_ARTIFACTS for entry in entries):
@@ -481,8 +613,15 @@ def _remove_unpublished_transaction(backup_descriptor: int, name: str) -> None:
 
 def _prune_incomplete_transactions(backup_descriptor: int) -> None:
     for name in sorted(os.listdir(backup_descriptor)):
-        if INCOMPLETE_TRANSACTION.fullmatch(name) or TRANSACTION_ID.fullmatch(name):
+        if INCOMPLETE_TRANSACTION.fullmatch(name):
             _remove_unpublished_transaction(backup_descriptor, name)
+        elif TRANSACTION_ID.fullmatch(name):
+            descriptor = os.open(name, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0), dir_fd=backup_descriptor)
+            try:
+                if "manifest.json" not in os.listdir(descriptor):
+                    raise OSError("published history transaction is missing its manifest")
+            finally:
+                os.close(descriptor)
 
 
 def prepare_history_cleanup(
@@ -609,9 +748,9 @@ def prepare_history_cleanup(
                 "size": tool_size,
             },
             }
-            preview_sha = _sha(_json_bytes(core))
-            manifest = {**core, "preview_sha256": preview_sha}
-            _write_restrictive(transaction / "manifest.json", _json_bytes(manifest))
+            manifest = HistoryManifest.create(core)
+            preview_sha = str(manifest["preview_sha256"])
+            _write_restrictive(transaction / "manifest.json", manifest.serialize())
             _fsync_dir(transaction)
             os.rename(
                 incomplete_name,
@@ -656,11 +795,7 @@ def _load_manifest(backup_descriptor: int, transaction_id: str) -> _LoadedTransa
             raise ValueError("unsafe history transaction")
         if stat.S_IMODE(os.fstat(descriptor).st_mode) != 0o700 or stat.S_IMODE(manifest_path.stat().st_mode) != 0o600:
             raise PermissionError("history transaction permissions changed")
-        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-        preview_sha = manifest.pop("preview_sha256")
-        if preview_sha != _sha(_json_bytes(manifest)):
-            raise ValueError("history preview manifest changed")
-        manifest["preview_sha256"] = preview_sha
+        manifest = HistoryManifest.from_dict(json.loads(manifest_path.read_text(encoding="utf-8")))
         if manifest.get("recovery_directory_identity") != _directory_identity(descriptor):
             raise ValueError("history recovery directory identity changed")
         transaction.manifest = manifest
@@ -670,18 +805,16 @@ def _load_manifest(backup_descriptor: int, transaction_id: str) -> _LoadedTransa
         raise
 
 
-def _store_manifest(transaction: Path, manifest: dict[str, object]) -> None:
-    unsigned = {key: value for key, value in manifest.items() if key != "preview_sha256"}
-    manifest["preview_sha256"] = _sha(_json_bytes(unsigned))
+def _store_manifest(transaction: Path, manifest: HistoryManifest) -> None:
     _atomic_replace(
         transaction / "manifest.json",
-        _json_bytes(manifest),
+        manifest.serialize(),
         0o600,
         "restrictive history artifact replacement failed",
     )
 
 
-def _verify_bundle(root: Path, transaction: _LoadedTransaction, manifest: dict[str, object]) -> None:
+def _verify_bundle(root: Path, transaction: _LoadedTransaction, manifest: HistoryManifest) -> None:
     transaction_path = transaction.path
     bundle = transaction_path / "history.bundle"
     expected = manifest["bundle"]
@@ -711,7 +844,7 @@ def _verify_restrictive_artifact(path: Path, expected: dict[str, object], error:
         raise OSError(error)
 
 
-def _verify_recovery_artifacts(transaction: Path, manifest: dict[str, object]) -> None:
+def _verify_recovery_artifacts(transaction: Path, manifest: HistoryManifest) -> None:
     expected_evidence = manifest["before_object_evidence"]
     if expected_evidence.get("file") != "objects.json":
         raise OSError("history object evidence path changed")
@@ -869,7 +1002,7 @@ def _apply_history_cleanup_loaded(
     config_mode = stat.S_IMODE(config_path.stat().st_mode)
     remotes_before = _git(root, "remote", "-v")
     lines = b"".join(b"literal:" + item + b"==>***REMOVED REVOKED CREDENTIAL***\n" for item in credential_needles)
-    manifest["phase"] = "applying"
+    manifest = manifest.begin_apply()
     _store_manifest(transaction, manifest)
     try:
         with tempfile.TemporaryFile() as replacement:
@@ -914,13 +1047,13 @@ def _apply_history_cleanup_loaded(
         expected_state["remote_config_sha256"] = _sha(config_before)
         if _repository_state(root) != expected_state:
             raise RuntimeError("HEAD, index, worktree, or remote configuration changed")
-        manifest["phase"] = "applied"
-        manifest["after_refs"] = after_refs
-        manifest["after_all_refs"] = after_all_refs
         state = _scan_selected_history(root, selected_refs, credential_needles)
-        manifest["post_cleanup_scan_state"] = state
-        if state == "history-scope-unknown":
-            manifest["post_cleanup_uninspected_scopes"] = ["selected-refs"]
+        manifest = manifest.record_applied(
+            after_refs,
+            after_all_refs,
+            state,
+            ("selected-refs",) if state == "history-scope-unknown" else (),
+        )
         _store_manifest(transaction, manifest)
         return HistoryOutcome(
             state,
@@ -938,19 +1071,17 @@ def _apply_history_cleanup_loaded(
             current_all_refs = _all_refs(root)
         except (OSError, RuntimeError, ValueError):
             current_refs = None
-        recovery = {
-            **manifest,
-            "phase": "recovery-required",
-            "recovery_guidance": "Do not push. Verify history.bundle, then use the deterministic rewind operation. Provider rotation is not reversed.",
-        }
-        if current_refs is not None:
-            recovery["after_refs"] = current_refs
-            recovery["after_all_refs"] = current_all_refs
+        guidance = "Do not push. Verify history.bundle, then use the deterministic rewind operation. Provider rotation is not reversed."
+        recovery = manifest.record_recovery_required(
+            guidance,
+            current_refs,
+            current_all_refs if current_refs is not None else None,
+        )
         _store_manifest(transaction, recovery)
         return HistoryOutcome(
             "recovery-required",
             preview.transaction_id,
-            guidance=recovery["recovery_guidance"],
+            guidance=guidance,
         )
 
 
@@ -1022,7 +1153,7 @@ def _rewind_history_cleanup_loaded(
             transaction_id,
             guidance="Automatic rewind could not verify exact HEAD, index, worktree, ref, and remote restoration. Do not push; recover from the verified history.bundle and restrictive recovery artifacts manually. Provider rotation is not reversed.",
         )
-    manifest["phase"] = "rewound"
+    manifest = manifest.record_rewound()
     _store_manifest(transaction, manifest)
     return HistoryOutcome(
         "rewound",
@@ -1057,7 +1188,7 @@ def preview_retention(
         )
 
 
-def _history_transaction_is_deletion_eligible(root: Path, manifest: dict[str, object]) -> bool:
+def _history_transaction_is_deletion_eligible(root: Path, manifest: HistoryManifest) -> bool:
     if manifest.get("phase") != "applied" or manifest.get("post_cleanup_scan_state") != "history-clean":
         return False
     if manifest.get("post_cleanup_uninspected_scopes"):
@@ -1102,7 +1233,7 @@ def _preview_retention_locked(
     transaction_ids: tuple[str, ...],
     backup_descriptor: int | None,
 ) -> RetentionPreview:
-    manifests: list[tuple[str, dict[str, object], datetime, datetime]] = []
+    manifests: list[tuple[str, HistoryManifest, datetime, datetime]] = []
     for transaction_id in transaction_ids:
         try:
             assert backup_descriptor is not None

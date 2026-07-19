@@ -159,6 +159,16 @@ What's new:
 
 ### Step 3: Pre-Update Safety Check
 
+Run the deterministic credential migration boundary before checking or autosaving changes. A
+refusal stops the update before any backup tag or release mutation:
+
+```bash
+if ! python3 -m core.utils.credential_workflow migrate; then
+  echo "Credential migration was refused. Run /dex-doctor --credential-status for redacted guidance."
+  exit 1
+fi
+```
+
 **A. Check for uncommitted changes**
 
 Run: `git status --porcelain`
