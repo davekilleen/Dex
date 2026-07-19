@@ -149,20 +149,41 @@ class ReleaseEvidenceProfile:
 
 
 @dataclass(frozen=True)
+class RemoteTagEvidence:
+    tag: str
+    tag_object: str
+
+
+@dataclass(frozen=True)
 class CandidateEvidence:
     version: str
     tag: str
+    tag_object: str
     commit: str
     tree: str
     profile: str
 
     @property
     def identity(self) -> str:
-        return f"{self.version}|{self.tag}|{self.commit}|{self.tree}|{self.profile}"
+        return f"{self.version}|{self.tag}|{self.tag_object}|{self.commit}|{self.tree}|{self.profile}"
 
     @property
-    def legacy_identity(self) -> str:
-        return f"{self.version}|{self.tag}|{self.commit}|{self.profile}"
+    def state_record(self) -> dict[str, str]:
+        return {
+            "commit": self.commit,
+            "profile": self.profile,
+            "tag_object": self.tag_object,
+            "tree": self.tree,
+            "version": self.version,
+        }
+
+
+class TagObjectMovedError(EvidenceError):
+    """A previously observed annotated tag name now advertises a new object."""
+
+
+class TagObjectMismatchError(EvidenceError):
+    """Fetched tag identity differs from the canonical remote advertisement."""
 
 
 @dataclass
@@ -667,7 +688,7 @@ class UpdateVerifier:
             raise EvidenceError("isolated release cache contains alternate object storage")
         GitRunner._bounded_directory_usage(self.cache_path)
 
-    def _remote_release_tags(self) -> tuple[str, ...]:
+    def _remote_release_tags(self) -> tuple[RemoteTagEvidence, ...]:
         raw = self.git.run_plain(
             "-c",
             "credential.helper=",
@@ -683,7 +704,7 @@ class UpdateVerifier:
             network=True,
             max_output_bytes=256 * 1024,
         )
-        tags: list[str] = []
+        tags: list[RemoteTagEvidence] = []
         for line in raw.splitlines():
             try:
                 object_id, raw_ref = line.split(b"\t", 1)
@@ -694,18 +715,23 @@ class UpdateVerifier:
                 "refs/tags/dist/release/"
             ):
                 raise EvidenceError("remote release reference is outside the pinned namespace")
-            tags.append(ref.removeprefix("refs/tags/"))
+            tags.append(
+                RemoteTagEvidence(
+                    tag=ref.removeprefix("refs/tags/"),
+                    tag_object=object_id.decode("ascii"),
+                )
+            )
             if len(tags) > MAX_REMOTE_RELEASE_REFS:
                 raise EvidenceError("remote release reference enumeration exceeded its bound")
-        if len(tags) != len(set(tags)):
+        if len(tags) != len({item.tag for item in tags}):
             raise EvidenceError("remote release reference enumeration is ambiguous")
-        return tuple(sorted(tags))
+        return tuple(sorted(tags, key=lambda item: item.tag))
 
-    def _fetch(self, tags: tuple[str, ...]) -> None:
+    def _fetch(self, tags: tuple[RemoteTagEvidence, ...]) -> None:
         if self.fetch_override is not None:
             self.fetch_override(self.git, self.cache_path, self.remote_url)
             return
-        refspecs = tuple(f"refs/tags/{tag}:refs/tags/{tag}" for tag in tags)
+        refspecs = tuple(f"refs/tags/{item.tag}:refs/tags/{item.tag}" for item in tags)
         if not refspecs:
             return
         self.git.run(
@@ -850,8 +876,29 @@ class UpdateVerifier:
             if not isinstance(value, dict) or value.get("contract_version") != artifact.contract_version:
                 raise EvidenceError("compatibility artifact contract version contradicts catalog-v1")
 
-    def _verify_candidate(self, tag: str, expected_version: str, expected_short: str) -> CandidateEvidence:
-        object_type = self.git.run(self.cache_path, "cat-file", "-t", tag, max_output_bytes=64).decode().strip()
+    def _verify_candidate(
+        self,
+        tag: str,
+        expected_tag_object: str,
+        expected_version: str,
+        expected_short: str,
+    ) -> CandidateEvidence:
+        fetched_tag_object = self.git.run(
+            self.cache_path,
+            "rev-parse",
+            "--verify",
+            f"refs/tags/{tag}",
+            max_output_bytes=128,
+        ).decode("ascii").strip()
+        if fetched_tag_object != expected_tag_object:
+            raise TagObjectMismatchError("fetched annotated tag object differs from remote advertisement")
+        object_type = self.git.run(
+            self.cache_path,
+            "cat-file",
+            "-t",
+            fetched_tag_object,
+            max_output_bytes=64,
+        ).decode().strip()
         if object_type != "tag":
             raise EvidenceError("candidate release tag is not annotated")
         try:
@@ -859,7 +906,7 @@ class UpdateVerifier:
                 self.cache_path,
                 "cat-file",
                 "tag",
-                tag,
+                fetched_tag_object,
                 max_output_bytes=MAX_TAG_OBJECT_BYTES,
             ).decode("utf-8")
         except UnicodeDecodeError as error:
@@ -897,7 +944,7 @@ class UpdateVerifier:
         self._verify_manifest(entries)
         if profile.profile == "catalog-v1":
             self._verify_catalog(profile, entries)
-        return CandidateEvidence(expected_version, tag, commit, tree, profile.profile)
+        return CandidateEvidence(expected_version, tag, fetched_tag_object, commit, tree, profile.profile)
 
     def _legacy_notice_matches(self, candidate: CandidateEvidence, state: dict[str, object]) -> bool:
         if state.get("legacy_notice_migrated") is True:
@@ -919,6 +966,7 @@ class UpdateVerifier:
                 NOTICE_CAUTION,
                 f"Target version: v{candidate.version}",
                 f"Immutable tag: {candidate.tag}",
+                f"Immutable tag object: {candidate.tag_object}",
                 f"Full commit: {candidate.commit}",
                 f"Evidence profile: {candidate.profile}",
                 f"Release page: {CANONICAL_RELEASE_PAGE.format(tag=candidate.tag)}",
@@ -965,6 +1013,46 @@ class UpdateVerifier:
         # authoritative date/status and exact noticed identities instead.
         state.pop("last_attempt_at", None)
         state.pop("last_notice", None)
+        seen_tags = state.get("seen_tags", {})
+        if not isinstance(seen_tags, dict):
+            return
+        legacy_records = {
+            tag: record
+            for tag, record in seen_tags.items()
+            if isinstance(tag, str)
+            and isinstance(record, str)
+            and re.fullmatch(r"[0-9a-f]{40,64}", record)
+        }
+        if not legacy_records:
+            return
+        legacy_seen = state.setdefault("legacy_seen_tags", {})
+        if not isinstance(legacy_seen, dict):
+            raise EvidenceError("legacy seen tag history is invalid")
+        for tag, record in legacy_records.items():
+            legacy_seen.setdefault(tag, record)
+            del seen_tags[tag]
+
+    @staticmethod
+    def _validate_seen_tag_state(seen_tags: object) -> dict[str, object]:
+        if not isinstance(seen_tags, dict):
+            raise EvidenceError("seen tag state is invalid")
+        expected_fields = {"tag_object", "commit", "tree", "version", "profile"}
+        for tag, record in seen_tags.items():
+            match = _TAG_RE.fullmatch(tag) if isinstance(tag, str) else None
+            if match is None or not isinstance(record, dict) or set(record) != expected_fields:
+                raise EvidenceError("seen tag evidence record is invalid")
+            if record.get("version") != match.group("version") or record.get("profile") not in {
+                "legacy-v1",
+                "catalog-v1",
+            }:
+                raise EvidenceError("seen tag evidence record contradicts its identity")
+            if any(
+                not isinstance(record.get(field), str)
+                or re.fullmatch(r"[0-9a-f]{40,64}", record[field]) is None  # type: ignore[arg-type]
+                for field in ("tag_object", "commit", "tree")
+            ):
+                raise EvidenceError("seen tag evidence object identity is invalid")
+        return seen_tags
 
     def _write_state(self, state: dict[str, object]) -> bool:
         try:
@@ -1034,32 +1122,36 @@ class UpdateVerifier:
                 if persistent_cache.exists():
                     self._evidence_cache = persistent_cache
                     self._validate_cache()
-                remote_tags = self._remote_release_tags() if self.fetch_override is None else ()
-                selected_remote_tags: list[str] = []
-                for tag in remote_tags:
-                    match = _TAG_RE.fullmatch(tag)
+                remote_tags = self._remote_release_tags()
+                selected_remote_tags: list[RemoteTagEvidence] = []
+                for remote_tag in remote_tags:
+                    match = _TAG_RE.fullmatch(remote_tag.tag)
                     if match is None:
                         raise EvidenceError("candidate release tag shape is malformed")
                     if SemVer.parse(match.group("version")) > current_semver:
-                        selected_remote_tags.append(tag)
+                        selected_remote_tags.append(remote_tag)
                 if len(selected_remote_tags) > MAX_RELEASE_TAGS:
                     raise EvidenceError("higher release candidate count exceeded its bound")
                 higher: list[CandidateEvidence] = []
-                seen_tags = state.setdefault("seen_tags", {})
-                if not isinstance(seen_tags, dict):
-                    raise EvidenceError("seen tag state is invalid")
+                seen_tags = self._validate_seen_tag_state(state.setdefault("seen_tags", {}))
                 for prior_tag in seen_tags:
                     prior_match = _TAG_RE.fullmatch(prior_tag) if isinstance(prior_tag, str) else None
                     if (
                         prior_match is not None
                         and SemVer.parse(prior_match.group("version")) > current_semver
-                        and self.fetch_override is None
-                        and prior_tag not in remote_tags
+                        and prior_tag not in {item.tag for item in remote_tags}
                     ):
                         raise EvidenceError("previously observed immutable candidate tag disappeared")
+                for remote_tag in selected_remote_tags:
+                    prior_record = seen_tags.get(remote_tag.tag)
+                    if isinstance(prior_record, dict) and prior_record.get("tag_object") != remote_tag.tag_object:
+                        raise TagObjectMovedError("previously observed annotated tag object moved")
                 with self._quarantined_cache():
                     self._fetch(tuple(selected_remote_tags))
                     tags = self._release_tags()
+                    expected_tag_objects = {item.tag: item.tag_object for item in selected_remote_tags}
+                    if set(tags) != set(expected_tag_objects):
+                        raise TagObjectMismatchError("fetched release tags differ from remote advertisement")
                     for tag in tags:
                         match = _TAG_RE.fullmatch(tag)
                         if match is None:
@@ -1067,11 +1159,16 @@ class UpdateVerifier:
                         version = match.group("version")
                         if SemVer.parse(version) <= current_semver:
                             continue
-                        candidate = self._verify_candidate(tag, version, match.group("short"))
-                        prior_commit = seen_tags.get(tag)
-                        if prior_commit is not None and prior_commit != candidate.commit:
-                            raise EvidenceError("immutable candidate tag moved")
-                        seen_tags[tag] = candidate.commit
+                        candidate = self._verify_candidate(
+                            tag,
+                            expected_tag_objects[tag],
+                            version,
+                            match.group("short"),
+                        )
+                        prior_record = seen_tags.get(tag)
+                        if prior_record is not None and prior_record != candidate.state_record:
+                            raise EvidenceError("previously observed candidate evidence contradicts the tag object")
+                        seen_tags[tag] = candidate.state_record
                         higher.append(candidate)
                     self._promote_quarantine()
                 if not higher:
@@ -1097,7 +1194,7 @@ class UpdateVerifier:
                 legacy_suppressed = self._legacy_notice_matches(candidate, state)
                 if legacy_suppressed and candidate.identity not in noticed:
                     noticed.append(candidate.identity)
-                already_noticed = candidate.identity in noticed or candidate.legacy_identity in noticed
+                already_noticed = candidate.identity in noticed
                 if already_noticed and not doctor_redisplay:
                     if not self._record_attempt(state, STATUS_SKIPPED, "exact-release-notice"):
                         return {**result, "reason": "state-write-failed"}
@@ -1118,6 +1215,7 @@ class UpdateVerifier:
                     "current_version": current_version,
                     "version": candidate.version,
                     "tag": candidate.tag,
+                    "tag_object": candidate.tag_object,
                     "commit": candidate.commit,
                     "tree": candidate.tree,
                     "profile": candidate.profile,
@@ -1134,6 +1232,8 @@ class UpdateVerifier:
         except (CancelledError, EvidenceError, OSError, UnicodeError, subprocess.SubprocessError) as error:
             reason = {
                 CancelledError: "cancelled",
+                TagObjectMovedError: "tag-object-moved",
+                TagObjectMismatchError: "tag-object-mismatch",
                 EvidenceError: "evidence-invalid",
                 OSError: "io-error",
                 UnicodeError: "encoding-invalid",

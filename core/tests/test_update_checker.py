@@ -149,6 +149,10 @@ def _release(
     return tag, commit
 
 
+def _tag_object(repo: Path, tag: str) -> str:
+    return _git(repo, "rev-parse", f"refs/tags/{tag}")
+
+
 @pytest.fixture(autouse=True)
 def deny_external_sockets(monkeypatch: pytest.MonkeyPatch):
     def denied_socket(*_args, **_kwargs):
@@ -178,6 +182,7 @@ def test_legacy_release_notice_has_exact_caution_identity_and_no_positive_trust_
 
     result = _verifier(vault, remote, tmp_path / "state", git_runner=runner).check()
     tree = _git(remote, "rev-parse", f"{commit}^{{tree}}")
+    tag_object = _tag_object(remote, tag)
 
     assert result == {
         "status": STATUS_RELEASE,
@@ -185,6 +190,7 @@ def test_legacy_release_notice_has_exact_caution_identity_and_no_positive_trust_
         "current_version": "1.61.0",
         "version": "1.62.0",
         "tag": tag,
+        "tag_object": tag_object,
         "commit": commit,
         "tree": tree,
         "profile": "legacy-v1",
@@ -194,6 +200,7 @@ def test_legacy_release_notice_has_exact_caution_identity_and_no_positive_trust_
                 NOTICE_CAUTION,
                 "Target version: v1.62.0",
                 f"Immutable tag: {tag}",
+                f"Immutable tag object: {tag_object}",
                 f"Full commit: {commit}",
                 "Evidence profile: legacy-v1",
                 f"Release page: https://github.com/davekilleen/Dex/releases/tag/{tag}",
@@ -337,7 +344,8 @@ def test_moved_annotated_tag_is_unknown_and_never_re_notified(tmp_path: Path) ->
     _init_repo(remote)
     tag, _commit = _release(remote, "1.62.0")
     verifier = _verifier(vault, remote, tmp_path / "state")
-    assert verifier.check()["status"] == STATUS_RELEASE
+    first = verifier.check()
+    persisted_before = json.loads((tmp_path / "state/state.json").read_text())
     (remote / "README.md").write_text("moved tag bytes\n")
     _git(remote, "add", "README.md")
     _git(remote, "commit", "--quiet", "-m", "move immutable tag")
@@ -347,6 +355,102 @@ def test_moved_annotated_tag_is_unknown_and_never_re_notified(tmp_path: Path) ->
 
     assert result["status"] == STATUS_UNKNOWN
     assert result["should_notify"] is False
+    assert result["reason"] == "tag-object-moved"
+    assert "notice" not in result
+    persisted_after = json.loads((tmp_path / "state/state.json").read_text())
+    assert persisted_after["noticed_releases"] == persisted_before["noticed_releases"] == [
+        f"{first['version']}|{first['tag']}|{first['tag_object']}|{first['commit']}|{first['tree']}|{first['profile']}"
+    ]
+
+
+def test_reannotated_tag_on_same_commit_is_unknown_and_preserves_prior_notice(tmp_path: Path) -> None:
+    vault = _installed_vault(tmp_path / "vault")
+    remote = tmp_path / "remote"
+    _init_repo(remote)
+    tag, commit = _release(remote, "1.62.0")
+    state = tmp_path / "state"
+    verifier = _verifier(vault, remote, state)
+    first = verifier.check()
+    prior_notices = json.loads((state / "state.json").read_text())["noticed_releases"]
+    old_tag_object = first["tag_object"]
+    _git(remote, "tag", "-d", tag)
+    _git(remote, "tag", "-a", tag, commit, "-m", "re-annotated same release commit")
+    assert _tag_object(remote, tag) != old_tag_object
+
+    result = verifier.check(force=True)
+
+    assert result == {
+        "status": STATUS_UNKNOWN,
+        "should_notify": False,
+        "current_version": "1.61.0",
+        "reason": "tag-object-moved",
+    }
+    persisted = json.loads((state / "state.json").read_text())
+    assert persisted["noticed_releases"] == prior_notices
+    assert persisted["seen_tags"][tag]["tag_object"] == old_tag_object
+
+
+def test_fetch_rejects_tag_object_that_differs_from_remote_enumeration(tmp_path: Path) -> None:
+    vault = _installed_vault(tmp_path / "vault")
+    remote = tmp_path / "remote"
+    _init_repo(remote)
+    tag, commit = _release(remote, "1.62.0")
+    advertised = _tag_object(remote, tag)
+
+    def race_fetch(runner: GitRunner, cache: Path, remote_url: str) -> None:
+        _git(remote, "tag", "-d", tag)
+        _git(remote, "tag", "-a", tag, commit, "-m", "changed after enumeration")
+        assert _tag_object(remote, tag) != advertised
+        runner.run(
+            cache,
+            "fetch",
+            "--quiet",
+            "--no-tags",
+            "--no-write-fetch-head",
+            "--depth=1",
+            "--no-recurse-submodules",
+            remote_url,
+            f"refs/tags/{tag}:refs/tags/{tag}",
+            network=True,
+            max_output_bytes=1024,
+        )
+
+    result = _verifier(vault, remote, tmp_path / "state", fetch_override=race_fetch).check()
+
+    assert result["status"] == STATUS_UNKNOWN
+    assert result["should_notify"] is False
+    assert result["reason"] == "tag-object-mismatch"
+    assert "notice" not in result
+
+
+def test_fetch_rejects_lightweight_substitution_after_annotated_advertisement(tmp_path: Path) -> None:
+    vault = _installed_vault(tmp_path / "vault")
+    remote = tmp_path / "remote"
+    _init_repo(remote)
+    tag, commit = _release(remote, "1.62.0")
+
+    def substitute_fetch(runner: GitRunner, cache: Path, remote_url: str) -> None:
+        _git(remote, "tag", "-d", tag)
+        _git(remote, "tag", tag, commit)
+        runner.run(
+            cache,
+            "fetch",
+            "--quiet",
+            "--no-tags",
+            "--no-write-fetch-head",
+            "--depth=1",
+            "--no-recurse-submodules",
+            remote_url,
+            f"refs/tags/{tag}:refs/tags/{tag}",
+            network=True,
+            max_output_bytes=1024,
+        )
+
+    result = _verifier(vault, remote, tmp_path / "state", fetch_override=substitute_fetch).check()
+
+    assert result["status"] == STATUS_UNKNOWN
+    assert result["should_notify"] is False
+    assert result["reason"] == "tag-object-mismatch"
     assert "notice" not in result
 
 
@@ -542,7 +646,7 @@ def test_unknown_and_state_migration_are_persisted_without_duplicate_cache_field
     assert "last_notice" not in migrated
 
 
-def test_preview_state_legacy_identity_remains_deduplicated_after_tree_identity_upgrade(tmp_path: Path) -> None:
+def test_state_without_tag_object_preserves_history_but_requires_fresh_exact_notice(tmp_path: Path) -> None:
     vault = _installed_vault(tmp_path / "vault")
     remote = tmp_path / "remote"
     _init_repo(remote)
@@ -551,19 +655,31 @@ def test_preview_state_legacy_identity_remains_deduplicated_after_tree_identity_
     verifier = _verifier(vault, remote, state)
     first = verifier.check()
     persisted = json.loads((state / "state.json").read_text())
-    persisted["noticed_releases"] = [
-        f"{first['version']}|{first['tag']}|{first['commit']}|{first['profile']}"
-    ]
+    old_identity = f"{first['version']}|{first['tag']}|{first['commit']}|{first['tree']}|{first['profile']}"
+    persisted["noticed_releases"] = [old_identity]
+    persisted["seen_tags"] = {first["tag"]: first["commit"]}
     persisted["last_attempt_at"] = "obsolete"
     persisted["last_notice"] = {"identity": persisted["noticed_releases"][0]}
     (state / "state.json").write_text(json.dumps(persisted))
 
     result = verifier.check(force=True)
 
-    assert result["status"] == STATUS_SKIPPED
-    assert result["skip_reason"] == "exact-release-notice"
+    assert result["status"] == STATUS_RELEASE
+    assert result["should_notify"] is True
+    assert result["tag_object"] == _tag_object(remote, first["tag"])
     migrated = json.loads((state / "state.json").read_text())
-    assert migrated["noticed_releases"] == persisted["noticed_releases"]
+    assert migrated["noticed_releases"][0] == old_identity
+    assert migrated["noticed_releases"][1] == (
+        f"{result['version']}|{result['tag']}|{result['tag_object']}|{result['commit']}|{result['tree']}|{result['profile']}"
+    )
+    assert migrated["legacy_seen_tags"] == {first["tag"]: first["commit"]}
+    assert migrated["seen_tags"][first["tag"]] == {
+        "commit": result["commit"],
+        "profile": result["profile"],
+        "tag_object": result["tag_object"],
+        "tree": result["tree"],
+        "version": result["version"],
+    }
     assert "last_attempt_at" not in migrated
     assert "last_notice" not in migrated
 
