@@ -76,6 +76,8 @@ DEXDIFF_DESIGN_DIR = DEXDIFF_DIR / 'design'
 # --- System ---
 SYSTEM_DIR = VAULT_ROOT / 'System'
 DEX_RUNTIME_DIR = SYSTEM_DIR / '.dex'
+ADOPTION_STATE_ROOT = DEX_RUNTIME_DIR / 'adoption'
+HISTORY_BACKUPS_ROOT = ADOPTION_STATE_ROOT / 'history-backups'
 PILLARS_FILE = SYSTEM_DIR / 'pillars.yaml'
 USER_PROFILE_FILE = SYSTEM_DIR / 'user-profile.yaml'
 SKILL_RATINGS_FILE = SYSTEM_DIR / 'Skill_Ratings' / 'ratings.jsonl'

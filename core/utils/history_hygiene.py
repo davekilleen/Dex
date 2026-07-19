@@ -1,0 +1,697 @@
+"""Opt-in local Git history privacy hygiene with verified recovery bundles."""
+
+from __future__ import annotations
+
+import hashlib
+import json
+import os
+import re
+import shutil
+import stat
+import subprocess
+import sys
+import tempfile
+import uuid
+from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
+from pathlib import Path
+from typing import Callable, Literal
+
+HistoryResult = Literal[
+    "optional-tool-unavailable",
+    "prepared",
+    "history-clean",
+    "history-cleanup-pending",
+    "history-scope-unknown",
+    "recovery-required",
+    "rewound",
+]
+
+SHARED_RECOVERY_CAP_BYTES = 10 * 1024 * 1024 * 1024
+MIN_FREE_MARGIN_BYTES = 1024 * 1024
+RETENTION_DAYS = 90
+RETENTION_RELEASES = 2
+SUPPORTED_FILTER_REPO = re.compile(r"^(?:2\.(?:3[8-9]|[4-9]\d)\.\d+|[0-9a-f]{7,64})$")
+ALLOWED_REF_PREFIXES = ("refs/heads/", "refs/tags/", "refs/stash/")
+
+
+@dataclass(frozen=True)
+class HistoryPreview:
+    state: HistoryResult
+    transaction_id: str | None
+    preview_sha256: str | None
+    guidance: str
+
+
+@dataclass(frozen=True)
+class HistoryOutcome:
+    state: HistoryResult
+    transaction_id: str
+    uninspected_scopes: tuple[str, ...] = ()
+    guidance: str = ""
+
+
+@dataclass(frozen=True)
+class RetentionPreview:
+    candidate_ids: tuple[str, ...]
+    exact_set_sha256: str
+    protected_final_id: str | None
+    retained_ids: tuple[str, ...]
+    evaluated_at: str
+    successful_release_activations: int
+    candidate_bytes: int
+
+
+def _now() -> datetime:
+    return datetime.now(UTC)
+
+
+def _json_bytes(value: object) -> bytes:
+    return (json.dumps(value, sort_keys=True, separators=(",", ":")) + "\n").encode()
+
+
+def _sha(data: bytes) -> str:
+    return hashlib.sha256(data).hexdigest()
+
+
+def _fsync_dir(path: Path) -> None:
+    descriptor = os.open(path, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+
+
+def _write_restrictive(path: Path, data: bytes) -> None:
+    descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    with os.fdopen(descriptor, "wb") as handle:
+        handle.write(data)
+        handle.flush()
+        os.fsync(handle.fileno())
+    if path.read_bytes() != data or stat.S_IMODE(path.stat().st_mode) != 0o600:
+        raise OSError("restrictive history artifact readback failed")
+    _fsync_dir(path.parent)
+
+
+def _replace_restrictive(path: Path, data: bytes) -> None:
+    descriptor, temporary = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
+    try:
+        with os.fdopen(descriptor, "wb") as handle:
+            os.fchmod(handle.fileno(), 0o600)
+            handle.write(data)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, path)
+        _fsync_dir(path.parent)
+        if path.read_bytes() != data or stat.S_IMODE(path.stat().st_mode) != 0o600:
+            raise OSError("restrictive history artifact replacement failed")
+    finally:
+        Path(temporary).unlink(missing_ok=True)
+
+
+def _safe_executable(candidate: Path) -> Path | None:
+    candidate = candidate.absolute()
+    try:
+        if candidate.is_symlink() or not candidate.is_file() or not os.access(candidate, os.X_OK):
+            return None
+        resolved = candidate.resolve(strict=True)
+    except OSError:
+        return None
+    return resolved
+
+
+def _git_binary() -> Path:
+    discovered = shutil.which("git")
+    candidates = [Path("/usr/bin/git"), Path("/bin/git")]
+    if discovered:
+        candidates.append(Path(discovered))
+    for candidate in candidates:
+        if path := _safe_executable(candidate):
+            return path
+    raise RuntimeError("absolute Git executable is unavailable or unsafe")
+
+
+def _git_env() -> dict[str, str]:
+    executable_dirs = dict.fromkeys(
+        (str(_git_binary().parent), str(Path(sys.executable).resolve().parent), "/usr/bin", "/bin")
+    )
+    return {
+        "PATH": os.pathsep.join(executable_dirs),
+        "HOME": os.environ.get("HOME", ""),
+        "SYSTEMROOT": os.environ.get("SYSTEMROOT", ""),
+        "GIT_CONFIG_NOSYSTEM": "1",
+        "GIT_CONFIG_GLOBAL": os.devnull,
+        "GIT_TERMINAL_PROMPT": "0",
+        "GIT_PAGER": "cat",
+        "GIT_OPTIONAL_LOCKS": "0",
+        "GIT_NO_REPLACE_OBJECTS": "1",
+    }
+
+
+def _git(root: Path, *args: str, input_data: bytes | None = None) -> bytes:
+    result = subprocess.run(
+        [str(_git_binary()), "-c", "core.hooksPath=/dev/null", "-c", "credential.helper=", *args],
+        cwd=root,
+        input=input_data,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=False,
+        env=_git_env(),
+    )
+    if result.returncode:
+        raise RuntimeError("sanitized local Git operation failed")
+    return result.stdout
+
+
+def _repository_boundaries(root: Path) -> tuple[Path, Path, Path]:
+    git_dir = Path(_git(root, "rev-parse", "--path-format=absolute", "--git-dir").decode().strip()).resolve()
+    common = Path(_git(root, "rev-parse", "--path-format=absolute", "--git-common-dir").decode().strip()).resolve()
+    objects = Path(
+        _git(root, "rev-parse", "--path-format=absolute", "--git-path", "objects").decode().strip()
+    ).resolve()
+    if git_dir != common or objects != common / "objects" or not common.is_dir() or not objects.is_dir():
+        raise RuntimeError("history cleanup requires the approved primary common-dir/object database")
+    config = common / "config"
+    if (
+        (objects / "info" / "alternates").exists()
+        or (common / "shallow").exists()
+        or config.is_symlink()
+        or not config.is_file()
+    ):
+        raise RuntimeError("ambiguous Git object topology")
+    if "promisor = true" in config.read_text(encoding="utf-8", errors="ignore").lower():
+        raise RuntimeError("promisor object topology is unsupported")
+    return git_dir, common, objects
+
+
+def resolve_filter_repo(explicit: Path | None = None) -> Path | None:
+    candidate = explicit or (Path(found) if (found := shutil.which("git-filter-repo")) else None)
+    if candidate is None:
+        return None
+    candidate = _safe_executable(candidate)
+    if candidate is None:
+        return None
+    result = subprocess.run(
+        [str(candidate), "--version"],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=False,
+        env=_git_env(),
+    )
+    version = result.stdout.decode("ascii", errors="ignore").strip()
+    return candidate if result.returncode == 0 and SUPPORTED_FILTER_REPO.fullmatch(version) else None
+
+
+def _refs(root: Path, selected_refs: tuple[str, ...]) -> dict[str, str]:
+    if not selected_refs or len(set(selected_refs)) != len(selected_refs):
+        raise ValueError("explicit unique selected refs are required")
+    result: dict[str, str] = {}
+    for ref in sorted(selected_refs):
+        if ref != "refs/stash" and not ref.startswith(ALLOWED_REF_PREFIXES):
+            raise ValueError("unsupported selected ref")
+        _git(root, "check-ref-format", ref)
+        oid = _git(root, "rev-parse", "--verify", ref).decode().strip()
+        if not re.fullmatch(r"[0-9a-f]{40,64}", oid):
+            raise RuntimeError("invalid selected ref identity")
+        result[ref] = oid
+    return result
+
+
+def _object_evidence(root: Path, refs: tuple[str, ...]) -> tuple[bytes, int]:
+    oids = {line.split(b" ", 1)[0] for line in _git(root, "rev-list", "--objects", *refs).splitlines()}
+    oids.update(_git(root, "rev-parse", "--verify", ref).strip() for ref in refs)
+    records = []
+    estimated = 0
+    for raw_oid in sorted(oids):
+        oid = raw_oid.decode()
+        kind = _git(root, "cat-file", "-t", oid).decode().strip()
+        size = _git(root, "cat-file", "-s", oid).decode().strip()
+        estimated += int(size)
+        records.append({"oid": oid, "type": kind, "size": int(size)})
+    return _json_bytes(records), estimated
+
+
+def _restore_file(path: Path, expected: bytes, mode: int) -> None:
+    descriptor, temporary = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
+    try:
+        with os.fdopen(descriptor, "wb") as handle:
+            os.fchmod(handle.fileno(), mode)
+            handle.write(expected)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, path)
+        _fsync_dir(path.parent)
+        if path.read_bytes() != expected or stat.S_IMODE(path.stat().st_mode) != mode:
+            raise OSError("Git configuration restoration failed")
+    finally:
+        Path(temporary).unlink(missing_ok=True)
+
+
+def _backup_root(root: Path) -> Path:
+    return root / "System" / ".dex" / "adoption" / "history-backups"
+
+
+def _sync_file_identity(path: Path) -> tuple[str, int]:
+    descriptor = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+    try:
+        digest = hashlib.sha256()
+        size = 0
+        while chunk := os.read(descriptor, 1024 * 1024):
+            digest.update(chunk)
+            size += len(chunk)
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+    return digest.hexdigest(), size
+
+
+def _used_recovery_bytes(root: Path) -> int:
+    backup_root = _backup_root(root)
+    adoption_root = backup_root.parent
+    total = 0
+    if adoption_root.exists():
+        for path in adoption_root.rglob("*"):
+            if path.is_file() and not path.is_symlink():
+                total += path.stat().st_size
+    return total
+
+
+def prepare_history_cleanup(
+    root: Path,
+    *,
+    security_state: str,
+    explicit_choice: bool,
+    selected_refs: tuple[str, ...],
+    credential_needles: tuple[bytes, ...],
+    successful_release_activations: int,
+    no_external_backup_acknowledged: bool = False,
+    external_backup_evidence: str | None = None,
+    filter_repo: Path | None = None,
+    now: Callable[[], datetime] = _now,
+) -> HistoryPreview:
+    """Prepare a verified recovery bundle; never rewrite history."""
+    if security_state != "remediated" or not explicit_choice:
+        raise PermissionError("optional history preparation requires remediated security and explicit choice")
+    if not credential_needles or any(not item for item in credential_needles):
+        raise ValueError("exact revoked credential bytes are required")
+    if len(set(credential_needles)) != len(credential_needles):
+        raise ValueError("exact revoked credential bytes must be unique")
+    if successful_release_activations < 0:
+        raise ValueError("successful release activations cannot be negative")
+    if not (no_external_backup_acknowledged ^ bool(external_backup_evidence)):
+        raise ValueError("choose no-external-backup acknowledgement or verified external-backup evidence")
+    if external_backup_evidence and not re.fullmatch(r"[0-9a-f]{64}", external_backup_evidence):
+        raise ValueError("verified external-backup evidence must be a SHA-256 identity")
+    tool = resolve_filter_repo(filter_repo)
+    if tool is None:
+        return HistoryPreview(
+            "optional-tool-unavailable",
+            None,
+            None,
+            "Optional history privacy cleanup is unavailable because a supported preinstalled git-filter-repo was not found. Security remains fixed; Dex did not install or run anything.",
+        )
+    _, common, objects = _repository_boundaries(root)
+    refs = _refs(root, selected_refs)
+    object_evidence, estimated = _object_evidence(root, tuple(refs))
+    used = _used_recovery_bytes(root)
+    required = estimated + MIN_FREE_MARGIN_BYTES
+    free = shutil.disk_usage(_backup_root(root).parent if _backup_root(root).parent.exists() else root).free
+    if used + estimated > SHARED_RECOVERY_CAP_BYTES or free < required:
+        raise OSError("insufficient verified recovery space")
+    transaction_id = uuid.uuid4().hex
+    transaction = _backup_root(root) / transaction_id
+    transaction.mkdir(parents=True, mode=0o700)
+    os.chmod(transaction, 0o700)
+    bundle = transaction / "history.bundle"
+    try:
+        _git(root, "bundle", "create", str(bundle), *refs)
+        os.chmod(bundle, 0o600)
+        bundle_sha256, bundle_size = _sync_file_identity(bundle)
+        if not bundle_size or stat.S_IMODE(bundle.stat().st_mode) != 0o600:
+            raise OSError("bundle readback failed")
+        _git(root, "bundle", "verify", str(bundle))
+        _write_restrictive(transaction / "objects.json", object_evidence)
+        if (
+            _used_recovery_bytes(root) > SHARED_RECOVERY_CAP_BYTES
+            or shutil.disk_usage(transaction).free < MIN_FREE_MARGIN_BYTES
+        ):
+            raise OSError("shared recovery cap exceeded")
+        created = now().astimezone(UTC)
+        tool_sha256, tool_size = _sync_file_identity(tool)
+        core = {
+            "schema_version": 1,
+            "transaction_id": transaction_id,
+            "phase": "prepared",
+            "created_at": created.isoformat(),
+            "minimum_delete_after": (created + timedelta(days=RETENTION_DAYS)).isoformat(),
+            "successful_release_activations_at_creation": successful_release_activations,
+            "minimum_successful_release_activations_for_deletion": successful_release_activations + RETENTION_RELEASES,
+            "external_backup": {"verified_evidence_sha256": external_backup_evidence}
+            if external_backup_evidence
+            else {"no_external_backup_acknowledged": True},
+            "selected_refs": refs,
+            "before_object_evidence": {
+                "sha256": _sha(object_evidence),
+                "size": len(object_evidence),
+                "file": "objects.json",
+            },
+            "primary_common_dir_identity": _sha(str(common).encode()),
+            "primary_object_db_identity": _sha(str(objects).encode()),
+            "bundle": {"sha256": bundle_sha256, "size": bundle_size, "verified": True},
+            "credential_sha256": sorted(_sha(item) for item in credential_needles),
+            "filter_repo": {
+                "path_identity": _sha(str(tool).encode()),
+                "sha256": tool_sha256,
+                "size": tool_size,
+            },
+        }
+        preview_sha = _sha(_json_bytes(core))
+        manifest = {**core, "preview_sha256": preview_sha}
+        _write_restrictive(transaction / "manifest.json", _json_bytes(manifest))
+        _fsync_dir(transaction)
+        return HistoryPreview(
+            "prepared",
+            transaction_id,
+            preview_sha,
+            "Optional privacy cleanup is prepared. Provider rotation is unchanged. Review the selected refs, then type the exact consent shown by Doctor to apply.",
+        )
+    except Exception:
+        shutil.rmtree(transaction, ignore_errors=True)
+        raise
+
+
+def _load_manifest(root: Path, transaction_id: str) -> tuple[Path, dict[str, object]]:
+    if not re.fullmatch(r"[0-9a-f]{32}", transaction_id):
+        raise ValueError("invalid history transaction id")
+    transaction = _backup_root(root) / transaction_id
+    manifest_path = transaction / "manifest.json"
+    if transaction.is_symlink() or manifest_path.is_symlink():
+        raise ValueError("unsafe history transaction")
+    if stat.S_IMODE(transaction.stat().st_mode) != 0o700 or stat.S_IMODE(manifest_path.stat().st_mode) != 0o600:
+        raise PermissionError("history transaction permissions changed")
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    preview_sha = manifest.pop("preview_sha256")
+    if preview_sha != _sha(_json_bytes(manifest)):
+        raise ValueError("history preview manifest changed")
+    manifest["preview_sha256"] = preview_sha
+    return transaction, manifest
+
+
+def _store_manifest(transaction: Path, manifest: dict[str, object]) -> None:
+    unsigned = {key: value for key, value in manifest.items() if key != "preview_sha256"}
+    manifest["preview_sha256"] = _sha(_json_bytes(unsigned))
+    _replace_restrictive(transaction / "manifest.json", _json_bytes(manifest))
+
+
+def _verify_bundle(root: Path, transaction: Path, manifest: dict[str, object]) -> None:
+    bundle = transaction / "history.bundle"
+    expected = manifest["bundle"]
+    bundle_sha256, bundle_size = _sync_file_identity(bundle)
+    if (
+        bundle.is_symlink()
+        or stat.S_IMODE(bundle.stat().st_mode) != 0o600
+        or bundle_size != expected["size"]
+        or bundle_sha256 != expected["sha256"]
+    ):
+        raise OSError("history recovery bundle identity changed")
+    _git(root, "bundle", "verify", str(bundle))
+    expected_evidence = manifest["before_object_evidence"]
+    if expected_evidence.get("file") != "objects.json":
+        raise OSError("history object evidence path changed")
+    evidence = transaction / expected_evidence["file"]
+    if (
+        evidence.is_symlink()
+        or stat.S_IMODE(evidence.stat().st_mode) != 0o600
+        or evidence.stat().st_size != expected_evidence["size"]
+        or _sha(evidence.read_bytes()) != expected_evidence["sha256"]
+    ):
+        raise OSError("history object evidence identity changed")
+
+
+def _scan_selected_history(root: Path, refs: tuple[str, ...], needles: tuple[bytes, ...]) -> HistoryResult:
+    try:
+        objects = sorted(
+            set(line.split(b" ", 1)[0] for line in _git(root, "rev-list", "--objects", *refs).splitlines())
+        )
+        for oid in objects:
+            kind = _git(root, "cat-file", "-t", oid.decode()).strip()
+            if kind == b"blob" and any(needle in _git(root, "cat-file", "blob", oid.decode()) for needle in needles):
+                return "history-cleanup-pending"
+        return "history-clean"
+    except (OSError, RuntimeError, UnicodeDecodeError):
+        return "history-scope-unknown"
+
+
+def apply_history_cleanup(
+    root: Path,
+    preview: HistoryPreview,
+    *,
+    typed_consent: str,
+    credential_needles: tuple[bytes, ...],
+    filter_repo: Path | None = None,
+) -> HistoryOutcome:
+    if preview.state != "prepared" or not preview.transaction_id or not preview.preview_sha256:
+        raise ValueError("a prepared history preview is required")
+    if typed_consent != f"CLEAN OPTIONAL HISTORY {preview.transaction_id}":
+        raise PermissionError("typed history-cleanup consent did not match")
+    tool = resolve_filter_repo(filter_repo)
+    if tool is None:
+        raise RuntimeError("supported preinstalled git-filter-repo is no longer available")
+    transaction, manifest = _load_manifest(root, preview.transaction_id)
+    if manifest["preview_sha256"] != preview.preview_sha256 or manifest["phase"] != "prepared":
+        raise ValueError("history preview or phase changed")
+    if sorted(_sha(item) for item in credential_needles) != manifest["credential_sha256"]:
+        raise ValueError("cleanup credential set changed")
+    _, common, objects = _repository_boundaries(root)
+    if (
+        _sha(str(common).encode()) != manifest["primary_common_dir_identity"]
+        or _sha(str(objects).encode()) != manifest["primary_object_db_identity"]
+    ):
+        raise RuntimeError("repository boundaries changed after preview")
+    tool_sha256, tool_size = _sync_file_identity(tool)
+    if manifest["filter_repo"] != {
+        "path_identity": _sha(str(tool).encode()),
+        "sha256": tool_sha256,
+        "size": tool_size,
+    }:
+        raise RuntimeError("git-filter-repo identity changed after preview")
+    _verify_bundle(root, transaction, manifest)
+    selected_refs = tuple(sorted(manifest["selected_refs"]))
+    if _refs(root, selected_refs) != manifest["selected_refs"]:
+        raise RuntimeError("selected refs changed after preview")
+    config_path = Path(_git(root, "rev-parse", "--path-format=absolute", "--git-path", "config").decode().strip())
+    config_before = config_path.read_bytes()
+    config_mode = stat.S_IMODE(config_path.stat().st_mode)
+    remotes_before = _git(root, "remote", "-v")
+    replacement = transaction / "replace-text.txt"
+    lines = b"".join(b"literal:" + item + b"==>***REMOVED REVOKED CREDENTIAL***\n" for item in credential_needles)
+    manifest["phase"] = "applying"
+    _store_manifest(transaction, manifest)
+    try:
+        _write_restrictive(replacement, lines)
+        command = [
+            str(tool),
+            "--force",
+            "--replace-text",
+            str(replacement),
+            "--refs",
+            *selected_refs,
+        ]
+        result = subprocess.run(
+            command,
+            cwd=root,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=False,
+            env=_git_env(),
+        )
+        replacement.unlink(missing_ok=True)
+        _fsync_dir(transaction)
+        if result.returncode:
+            raise RuntimeError("git-filter-repo cleanup failed")
+        if not config_path.is_file() or config_path.read_bytes() != config_before:
+            _restore_file(config_path, config_before, config_mode)
+        if config_path.read_bytes() != config_before or _git(root, "remote", "-v") != remotes_before:
+            raise RuntimeError("remote configuration could not be preserved")
+        after_refs = _refs(root, selected_refs)
+        if after_refs == manifest["selected_refs"]:
+            raise RuntimeError("selected refs were not rewritten")
+        for oid in after_refs.values():
+            _git(root, "cat-file", "-e", f"{oid}^{{object}}")
+        manifest["phase"] = "applied"
+        manifest["after_refs"] = after_refs
+        state = _scan_selected_history(root, selected_refs, credential_needles)
+        manifest["post_cleanup_scan_state"] = state
+        if state == "history-scope-unknown":
+            manifest["post_cleanup_uninspected_scopes"] = ["selected-refs"]
+        _store_manifest(transaction, manifest)
+        return HistoryOutcome(
+            state,
+            preview.transaction_id,
+            uninspected_scopes=("selected-refs",) if state == "history-scope-unknown" else (),
+        )
+    except BaseException:
+        replacement.unlink(missing_ok=True)
+        _fsync_dir(transaction)
+        try:
+            if not config_path.is_file() or config_path.read_bytes() != config_before:
+                _restore_file(config_path, config_before, config_mode)
+            if config_path.read_bytes() != config_before or _git(root, "remote", "-v") != remotes_before:
+                raise RuntimeError("remote configuration could not be preserved")
+        except (OSError, RuntimeError):
+            pass
+        try:
+            current_refs = _refs(root, selected_refs)
+        except (OSError, RuntimeError, ValueError):
+            current_refs = None
+        recovery = {
+            **manifest,
+            "phase": "recovery-required",
+            "recovery_guidance": "Do not push. Verify history.bundle, then use the deterministic rewind operation. Provider rotation is not reversed.",
+        }
+        if current_refs is not None:
+            recovery["after_refs"] = current_refs
+        _store_manifest(transaction, recovery)
+        return HistoryOutcome(
+            "recovery-required",
+            preview.transaction_id,
+            guidance=recovery["recovery_guidance"],
+        )
+
+
+def rewind_history_cleanup(root: Path, transaction_id: str) -> HistoryOutcome:
+    transaction, manifest = _load_manifest(root, transaction_id)
+    _, common, objects = _repository_boundaries(root)
+    if (
+        _sha(str(common).encode()) != manifest["primary_common_dir_identity"]
+        or _sha(str(objects).encode()) != manifest["primary_object_db_identity"]
+    ):
+        raise RuntimeError("repository boundaries changed after preview")
+    _verify_bundle(root, transaction, manifest)
+    if manifest["phase"] not in {"applied", "recovery-required"} or _refs(
+        root, tuple(sorted(manifest["selected_refs"]))
+    ) != manifest.get("after_refs"):
+        return HistoryOutcome(
+            "recovery-required",
+            transaction_id,
+            guidance="Automatic rewind was refused because current refs do not exactly match the recorded post-cleanup refs. Do not push; recover from the verified history.bundle manually. Provider rotation is not reversed.",
+        )
+    bundle = transaction / "history.bundle"
+    unbundled = {}
+    for line in _git(root, "bundle", "unbundle", str(bundle)).decode().splitlines():
+        oid, ref = line.split(" ", 1)
+        unbundled[ref] = oid
+    if any(unbundled.get(ref) != oid for ref, oid in manifest["selected_refs"].items()):
+        raise RuntimeError("bundle ref readback mismatch")
+    updates = ["start\n"]
+    for ref, before_oid in sorted(manifest["selected_refs"].items()):
+        after_oid = manifest["after_refs"][ref]
+        updates.append(f"update {ref} {before_oid} {after_oid}\n")
+    updates.extend(["prepare\n", "commit\n"])
+    _git(root, "update-ref", "--stdin", input_data="".join(updates).encode())
+    manifest["phase"] = "rewound"
+    _store_manifest(transaction, manifest)
+    return HistoryOutcome(
+        "rewound",
+        transaction_id,
+        guidance="Selected refs were restored from the verified local bundle. Provider rotation was not reversed.",
+    )
+
+
+def preview_retention(
+    root: Path,
+    *,
+    now: datetime,
+    successful_release_activations: int,
+) -> RetentionPreview:
+    if now.utcoffset() is None or successful_release_activations < 0:
+        raise ValueError("retention inputs must use an aware time and nonnegative release count")
+    manifests: list[tuple[str, dict[str, object], datetime, datetime]] = []
+    for path in sorted(_backup_root(root).glob("*/manifest.json")):
+        try:
+            transaction_id = path.parent.name
+            _, manifest = _load_manifest(root, transaction_id)
+            _verify_bundle(root, path.parent, manifest)
+            created = datetime.fromisoformat(manifest["created_at"])
+            minimum_delete_after = datetime.fromisoformat(manifest["minimum_delete_after"])
+            if created.utcoffset() is None or minimum_delete_after.utcoffset() is None:
+                raise ValueError("retention manifest times must be aware")
+            if not isinstance(manifest["minimum_successful_release_activations_for_deletion"], int):
+                raise TypeError("retention release count must be an integer")
+            if not isinstance(manifest["external_backup"], dict):
+                raise TypeError("retention backup posture must be an object")
+            manifests.append((transaction_id, manifest, created, minimum_delete_after))
+        except (KeyError, OSError, ValueError, RuntimeError, TypeError, PermissionError, json.JSONDecodeError):
+            continue
+    final_id = max(manifests, key=lambda item: item[2])[0] if manifests else None
+    candidates = tuple(
+        transaction_id
+        for transaction_id, manifest, _, minimum_delete_after in manifests
+        if transaction_id != final_id
+        and now.astimezone(UTC) >= minimum_delete_after.astimezone(UTC)
+        and successful_release_activations >= manifest["minimum_successful_release_activations_for_deletion"]
+        and (
+            manifest["external_backup"].get("no_external_backup_acknowledged") is True
+            or bool(manifest["external_backup"].get("verified_evidence_sha256"))
+        )
+    )
+    retained = tuple(transaction_id for transaction_id, *_ in manifests if transaction_id not in candidates)
+    candidate_bytes = sum(
+        path.stat().st_size
+        for transaction_id in candidates
+        for path in (_backup_root(root) / transaction_id).iterdir()
+        if path.is_file() and not path.is_symlink()
+    )
+    evaluated_at = now.astimezone(UTC).isoformat()
+    exact = _sha(
+        _json_bytes(
+            {
+                "policy_version": 1,
+                "candidate_ids": candidates,
+                "candidate_manifest_sha256": {
+                    transaction_id: manifest["preview_sha256"]
+                    for transaction_id, manifest, *_ in manifests
+                    if transaction_id in candidates
+                },
+                "candidate_bytes": candidate_bytes,
+                "protected_final_id": final_id,
+                "retained_ids": retained,
+                "evaluated_at": evaluated_at,
+                "successful_release_activations": successful_release_activations,
+            }
+        )
+    )
+    return RetentionPreview(
+        candidates,
+        exact,
+        final_id,
+        retained,
+        evaluated_at,
+        successful_release_activations,
+        candidate_bytes,
+    )
+
+
+def delete_retention_candidates(
+    root: Path,
+    preview: RetentionPreview,
+    *,
+    acknowledged_ids: tuple[str, ...],
+    exact_set_sha256: str,
+) -> tuple[str, ...]:
+    current = preview_retention(
+        root,
+        now=datetime.fromisoformat(preview.evaluated_at),
+        successful_release_activations=preview.successful_release_activations,
+    )
+    if current != preview or acknowledged_ids != preview.candidate_ids or exact_set_sha256 != preview.exact_set_sha256:
+        raise PermissionError("retention exact-set acknowledgement changed")
+    if preview.protected_final_id in acknowledged_ids:
+        raise PermissionError("final history bundle is protected")
+    for transaction_id in acknowledged_ids:
+        transaction, manifest = _load_manifest(root, transaction_id)
+        _verify_bundle(root, transaction, manifest)
+    for transaction_id in acknowledged_ids:
+        shutil.rmtree(_backup_root(root) / transaction_id)
+    _fsync_dir(_backup_root(root))
+    return acknowledged_ids

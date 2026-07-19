@@ -49,6 +49,35 @@ privacy hygiene, never a current-danger warning or prerequisite. Use only a prei
 install it, push, or force-push. If migration capability fails, scanning and guidance
 remain available and Doctor names the failed capability with manual move/validation/rewind steps.
 
+For an optional cleanup request, use the in-process contracts in
+`core.utils.history_hygiene`; never interpolate revoked values into a shell command. Run
+`prepare_history_cleanup` only when security is `remediated`, after the user explicitly chooses
+the exact `refs/heads/*`, `refs/tags/*`, or `refs/stash/*` refs and confirms either verified
+external-backup evidence or no-external-backup acknowledgement. Show the returned opaque
+transaction ID, selected refs, recovery-bundle evidence, and this exact consent string:
+
+`CLEAN OPTIONAL HISTORY <transaction-id>`
+
+Call `apply_history_cleanup` only after the user types that string exactly. Preparation must have
+already produced and verified the mode-`0700` transaction directory and mode-`0600`
+`history.bundle`, `objects.json`, and `manifest.json` under
+`System/.dex/adoption/history-backups/<transaction-id>/`, while passing the 10 GiB shared-cap and
+1 MiB free-space margin checks. Apply must preserve Git remote configuration and never fetch,
+push, force-push, install software, or call a provider.
+
+Render the post-cleanup rescan result exactly as `history-clean`,
+`history-cleanup-pending`, or `history-scope-unknown`. If apply is interrupted or reports
+`recovery-required`, lead with “Do not push.” Preserve the bundle and call
+`rewind_history_cleanup` only through its exact-ref guard. If that guard refuses, give the
+returned manual verified-bundle recovery guidance; do not improvise ref updates. Always state
+that history rewind does not reverse provider rotation.
+
+Retention is a separate explicit operation. `preview_retention` protects the newest history
+bundle and selects only verified bundles older than 90 days with two later successful release
+activations and valid backup posture. Call `delete_retention_candidates` only with the unchanged
+candidate tuple and exact-set SHA-256 that the user acknowledged. Never auto-delete or upload a
+recovery bundle.
+
 ## Execution
 
 ### Step 1: Run the collector (quick mode + safe auto-heals)
