@@ -7,6 +7,8 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 TREEISH="${1:-HEAD}"
 
+python3 "$REPO_ROOT/scripts/check-tau-removal.py" --source-root "$REPO_ROOT"
+
 exec python3 "$REPO_ROOT/core/utils/manifest.py" \
   "$TREEISH" \
   --repo-root "$REPO_ROOT" \

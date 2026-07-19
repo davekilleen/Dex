@@ -11,6 +11,11 @@ echo ""
 ERRORS=0
 WARNINGS=0
 
+# Tau removal is a release invariant, not merely a source cleanup.
+if ! python3 scripts/check-tau-removal.py --source-root "$PWD"; then
+    ERRORS=$((ERRORS + 1))
+fi
+
 # Check 1: Verify .mcp.json is not tracked
 echo "✓ Checking .mcp.json is gitignored..."
 if git ls-files --error-unmatch .mcp.json 2>/dev/null; then

@@ -13,6 +13,9 @@ if [ ! -f "$DISTIGNORE" ]; then
   exit 1
 fi
 
+# Reject unsafe source inputs before staging or running npm.
+python3 "$REPO_ROOT/scripts/check-tau-removal.py" --source-root "$REPO_ROOT"
+
 VERSION="$(node -p "require('$REPO_ROOT/package.json').version")"
 mkdir -p "$OUTPUT_DIR"
 OUTPUT_DIR="$(cd "$OUTPUT_DIR" && pwd)"
@@ -70,6 +73,10 @@ printf '%s\n' 'System/.installed-files.manifest' >> "$STAGING_DIR/System/.instal
 LC_ALL=C sort -u -o "$STAGING_DIR/System/.installed-files.manifest" \
   "$STAGING_DIR/System/.installed-files.manifest"
 
+# The staged tree is the release input. Check it before npm can execute or
+# access a registry.
+python3 "$REPO_ROOT/scripts/check-tau-removal.py" --tree "$STAGING_DIR"
+
 (
   cd "$STAGING_DIR"
   npm ci --omit=dev --ignore-scripts
@@ -80,6 +87,7 @@ rm -f "$TARBALL" "$CHECKSUM"
   cd "$STAGING_DIR"
   tar -czf "$TARBALL" .
 )
+python3 "$REPO_ROOT/scripts/check-tau-removal.py" --archive "$TARBALL"
 (
   cd "$OUTPUT_DIR"
   shasum -a 256 "$(basename "$TARBALL")" > "$(basename "$CHECKSUM")"

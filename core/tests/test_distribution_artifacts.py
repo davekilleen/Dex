@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import io
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -20,14 +21,23 @@ RELEASE_BUILD_INPUTS = (
     ".gitignore",
     ".github/workflows/ci.yml",
     ".scripts/lib/tests/entity-pages.test.cjs",
+    "06-Resources/Dex_System/Dex_Technical_Guide.md",
     "package.json",
     "requirements.txt",
     "requirements-dev.txt",
     "core/utils/manifest.py",
     "core/utils/smoke.py",
     "scripts/build-release.sh",
+    "scripts/build-vault-bundle.sh",
+    "scripts/check-tau-removal.py",
     "scripts/generate-manifest.sh",
+    "scripts/security-gate.sh",
     "scripts/verify-distribution.sh",
+)
+
+REMOVED_TAU_PATHS = (
+    "extensions/tau-mirror/README-TAU-MIRROR.md",
+    "extensions/tau-mirror/tau-mirror-integration.ts",
 )
 
 
@@ -74,6 +84,18 @@ def _clone_repo(tmp_path: Path, name: str) -> Path:
     return clone
 
 
+def _sync_release_inputs(clone: Path) -> None:
+    """Copy changed build inputs and mirror removals for pre-commit test runs."""
+    for relative_path in RELEASE_BUILD_INPUTS:
+        file_source = REPO_ROOT / relative_path
+        destination = clone / relative_path
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(file_source, destination)
+    for relative_path in REMOVED_TAU_PATHS:
+        if not (REPO_ROOT / relative_path).exists() and (clone / relative_path).exists():
+            subprocess.run(["git", "rm", "--quiet", "--", relative_path], cwd=clone, check=True)
+
+
 def _build_release_in_clone(
     tmp_path: Path,
     *,
@@ -87,11 +109,7 @@ def _build_release_in_clone(
 
     # Let this test prove uncommitted changes while developing; once committed,
     # these copies are identical to the clone's files.
-    for relative_path in RELEASE_BUILD_INPUTS:
-        file_source = REPO_ROOT / relative_path
-        destination = clone / relative_path
-        destination.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(file_source, destination)
+    _sync_release_inputs(clone)
 
     spaced_fixture = clone / "core/tests/fixtures/vault/has space.md"
     spaced_fixture.write_text("release stripping regression\n", encoding="utf-8")
@@ -129,6 +147,33 @@ def _build_release_in_clone(
     return clone, set(result.stdout.splitlines())
 
 
+def _run_tau_check(repo: Path, *args: str) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        [sys.executable, "scripts/check-tau-removal.py", *args],
+        cwd=repo,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+
+
+def _build_git_archive(repo: Path, treeish: str, output: Path) -> set[str]:
+    with output.open("wb") as archive_file:
+        subprocess.run(
+            ["git", "archive", "--format=tar", treeish],
+            cwd=repo,
+            check=True,
+            stdout=archive_file,
+        )
+    with tarfile.open(output, mode="r:") as archive:
+        return set(archive.getnames())
+
+
+def _assert_tau_absent(paths: set[str] | list[str]) -> None:
+    normalized = [path.lower().removeprefix("./") for path in paths]
+    assert not any("tau-mirror" in path or "tau_mirror" in path for path in normalized)
+
+
 def _release_manifest(clone: Path, branch: str) -> list[str]:
     return subprocess.run(
         ["git", "show", f"{branch}:System/.installed-files.manifest"],
@@ -163,6 +208,14 @@ def test_release_branch_strips_dev_files_and_keeps_user_runtime(tmp_path: Path) 
     assert ".claude/skills/dex-update/SKILL.md" in members
     assert ".claude/skills/anthropic-docx/scripts/document.py" in members
     assert "System/.installed-files.manifest" in members
+    _assert_tau_absent(members)
+
+    tau_check = _run_tau_check(clone, "--repo-root", str(clone), "--git-tree", "release")
+    assert tau_check.returncode == 0, tau_check.stdout + tau_check.stderr
+    release_archive = tmp_path / "stable-release.tar"
+    _assert_tau_absent(_build_git_archive(clone, "release", release_archive))
+    archive_check = _run_tau_check(clone, "--archive", str(release_archive))
+    assert archive_check.returncode == 0, archive_check.stdout + archive_check.stderr
 
     manifest = _release_manifest(clone, "release")
     assert manifest == sorted(manifest)
@@ -234,6 +287,13 @@ def test_beta_release_branch_uses_same_stripping_and_manifest(tmp_path: Path) ->
     assert not any(path.startswith("core/tests/") for path in beta_members)
     assert not any(path.startswith("scripts/") for path in beta_members)
     assert set(_release_manifest(clone, "release-beta")) == beta_members
+    _assert_tau_absent(beta_members)
+    tau_check = _run_tau_check(clone, "--repo-root", str(clone), "--git-tree", "release-beta")
+    assert tau_check.returncode == 0, tau_check.stdout + tau_check.stderr
+    beta_archive = tmp_path / "beta-release.tar"
+    _assert_tau_absent(_build_git_archive(clone, "release-beta", beta_archive))
+    archive_check = _run_tau_check(clone, "--archive", str(beta_archive))
+    assert archive_check.returncode == 0, archive_check.stdout + archive_check.stderr
     beta_version = json.loads((clone / "package.json").read_text(encoding="utf-8"))["version"]
     beta_short_sha = subprocess.run(
         ["git", "rev-parse", "--short", "release-beta"],
@@ -435,3 +495,179 @@ def test_distribution_check_rejects_enabled_integration_templates(tmp_path: Path
     assert "enabled-fixture.yaml:1:enabled: true" in result.stdout
     assert "flow-fixture.yaml:1:slack: {enabled: true}" in result.stdout
     assert "hooks-fixture.yaml:3:  meeting_prep: true" in result.stdout
+
+
+def test_tau_removal_source_package_lock_reference_and_quarantine_contract() -> None:
+    result = _run_tau_check(REPO_ROOT, "--source-root", str(REPO_ROOT))
+    assert result.returncode == 0, result.stdout + result.stderr
+
+    distignore = (REPO_ROOT / ".distignore").read_text(encoding="utf-8").splitlines()
+    assert "extensions/tau-mirror/" in distignore
+    assert not any((REPO_ROOT / "extensions/tau-mirror").glob("**/*"))
+
+
+def test_git_archive_contains_no_tau_release_member() -> None:
+    members = _archive_members()
+    _assert_tau_absent(members)
+
+
+def test_vault_bundle_tree_manifest_and_archive_contain_no_tau(tmp_path: Path) -> None:
+    clone = _clone_repo(tmp_path, "vault-bundle-build")
+    _sync_release_inputs(clone)
+    subprocess.run(["git", "add", "--", *RELEASE_BUILD_INPUTS], cwd=clone, check=True)
+    if subprocess.run(["git", "diff", "--cached", "--quiet"], cwd=clone).returncode != 0:
+        subprocess.run(
+            ["git", "commit", "--quiet", "-m", "test: prepare vault bundle fixture"],
+            cwd=clone,
+            check=True,
+        )
+    output_dir = tmp_path / "bundle-output"
+    environment = os.environ.copy()
+    environment["npm_config_offline"] = "true"
+    build_result = subprocess.run(
+        ["bash", "scripts/build-vault-bundle.sh", str(output_dir)],
+        cwd=clone,
+        capture_output=True,
+        text=True,
+        timeout=120,
+        env=environment,
+    )
+    assert build_result.returncode == 0, build_result.stdout + build_result.stderr
+
+    archive_path = next(output_dir.glob("dex-vault-bundle-v*.tar.gz"))
+    with tarfile.open(archive_path, mode="r:gz") as archive:
+        members = archive.getnames()
+        _assert_tau_absent(members)
+        manifest_member = archive.extractfile("./System/.installed-files.manifest")
+        assert manifest_member is not None
+        manifest = manifest_member.read().decode("utf-8").splitlines()
+    _assert_tau_absent(manifest)
+    tau_check = _run_tau_check(clone, "--archive", str(archive_path))
+    assert tau_check.returncode == 0, tau_check.stdout + tau_check.stderr
+
+
+def _prepare_tau_mutation_clone(tmp_path: Path, name: str) -> Path:
+    clone = _clone_repo(tmp_path, name)
+    _sync_release_inputs(clone)
+    subprocess.run(["git", "add", "--", *RELEASE_BUILD_INPUTS], cwd=clone, check=True)
+    return clone
+
+
+def test_tau_gate_rejects_missing_distignore_quarantine(tmp_path: Path) -> None:
+    clone = _prepare_tau_mutation_clone(tmp_path, "tau-distignore-mutation")
+    distignore = clone / ".distignore"
+    distignore.write_text(
+        distignore.read_text(encoding="utf-8").replace("extensions/tau-mirror/\n", ""),
+        encoding="utf-8",
+    )
+    subprocess.run(["git", "add", ".distignore"], cwd=clone, check=True)
+
+    result = _run_tau_check(clone, "--source-root", str(clone))
+    assert result.returncode == 1
+    assert "missing exact quarantine entry" in result.stdout
+
+
+def test_tau_gate_rejects_reintroduced_source_path_and_release_build_input(tmp_path: Path) -> None:
+    clone = _prepare_tau_mutation_clone(tmp_path, "tau-source-mutation")
+    fixture = clone / "extensions/tau-mirror/loader.ts"
+    fixture.parent.mkdir(parents=True)
+    fixture.write_text("export default {};\n", encoding="utf-8")
+    subprocess.run(["git", "add", str(fixture.relative_to(clone))], cwd=clone, check=True)
+
+    gate = _run_tau_check(clone, "--source-root", str(clone))
+    build = subprocess.run(
+        ["bash", "scripts/build-release.sh"],
+        cwd=clone,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert gate.returncode == 1
+    assert "removed Tau path" in gate.stdout
+    assert build.returncode == 1
+    assert "removed Tau path" in build.stdout
+    assert subprocess.run(
+        ["git", "show-ref", "--verify", "--quiet", "refs/heads/release"], cwd=clone
+    ).returncode == 1
+
+
+def test_tau_gate_rejects_loader_dependency_lan_and_auth_mutations(tmp_path: Path) -> None:
+    fixtures = {
+        "npx-loader.ts": "spawn('npx', ['tau-mirror', '--port', '3001']);\n",
+        "qr-loader.ts": "import qr from 'qrcode-terminal';\n",
+        "pi-loader.ts": "import type { ExtensionAPI } from '@mariozechner/pi-coding-agent';\n",
+        "wildcard-bind.ts": "server.listen(3001, '0.0.0.0');\n",
+        "lan-url.ts": "const interfaces = os.networkInterfaces();\n",
+        "no-auth.md": "Authentication disabled for local access.\n",
+    }
+    for index, (filename, content) in enumerate(fixtures.items()):
+        clone = _prepare_tau_mutation_clone(tmp_path, f"tau-reference-mutation-{index}")
+        fixture = clone / "core/runtime-loaders" / filename
+        fixture.parent.mkdir(parents=True)
+        fixture.write_text(content, encoding="utf-8")
+        subprocess.run(["git", "add", str(fixture.relative_to(clone))], cwd=clone, check=True)
+
+        result = _run_tau_check(clone, "--source-root", str(clone))
+        assert result.returncode == 1, filename
+
+
+def test_tau_gate_rejects_package_and_lock_dependencies(tmp_path: Path) -> None:
+    for index, dependency in enumerate(
+        ("tau-mirror", "qrcode-terminal", "@mariozechner/pi-coding-agent")
+    ):
+        clone = _prepare_tau_mutation_clone(tmp_path, f"tau-dependency-mutation-{index}")
+        package_path = clone / "package.json"
+        package = json.loads(package_path.read_text(encoding="utf-8"))
+        package.setdefault("dependencies", {})[dependency] = "1.0.0"
+        package_path.write_text(json.dumps(package, indent=2) + "\n", encoding="utf-8")
+        lock_path = clone / "package-lock.json"
+        lock = json.loads(lock_path.read_text(encoding="utf-8"))
+        lock.setdefault("packages", {})[f"node_modules/{dependency}"] = {"version": "1.0.0"}
+        lock_path.write_text(json.dumps(lock, indent=2) + "\n", encoding="utf-8")
+        subprocess.run(["git", "add", "package.json", "package-lock.json"], cwd=clone, check=True)
+
+        result = _run_tau_check(clone, "--source-root", str(clone))
+        assert result.returncode == 1, dependency
+        assert "forbidden dependency" in result.stdout
+
+
+def test_tau_gate_rejects_legacy_manifest_and_archive_members(tmp_path: Path) -> None:
+    clone = _prepare_tau_mutation_clone(tmp_path, "tau-manifest-mutation")
+    manifest = clone / "System/.installed-files.manifest"
+    manifest.write_text("extensions/tau-mirror/loader.ts\n", encoding="utf-8")
+    subprocess.run(["git", "add", "-f", str(manifest.relative_to(clone))], cwd=clone, check=True)
+    manifest_result = _run_tau_check(clone, "--source-root", str(clone))
+    assert manifest_result.returncode == 1
+
+    archive_path = tmp_path / "tau-release.tar.gz"
+    payload = b"unsafe release member\n"
+    with tarfile.open(archive_path, mode="w:gz") as archive:
+        member = tarfile.TarInfo("extensions/tau-mirror/loader.ts")
+        member.size = len(payload)
+        archive.addfile(member, io.BytesIO(payload))
+    archive_result = _run_tau_check(clone, "--archive", str(archive_path))
+    assert archive_result.returncode == 1
+    assert "removed Tau path" in archive_result.stdout
+
+
+def test_security_gate_rejects_tau_loader_before_execution(tmp_path: Path) -> None:
+    clone = _prepare_tau_mutation_clone(tmp_path, "tau-security-mutation")
+    sentinel = clone / "tau-executed"
+    fixture = clone / "core/runtime-loaders/unsafe.ts"
+    fixture.parent.mkdir(parents=True)
+    fixture.write_text(
+        "spawn('npx', ['tau-mirror']);\n" f"require('fs').writeFileSync('{sentinel}', 'bad');\n",
+        encoding="utf-8",
+    )
+    subprocess.run(["git", "add", str(fixture.relative_to(clone))], cwd=clone, check=True)
+
+    result = subprocess.run(
+        ["bash", "scripts/security-gate.sh"],
+        cwd=clone,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert result.returncode == 1
+    assert "Tau Mirror npx loader" in result.stdout
+    assert not sentinel.exists()

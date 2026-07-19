@@ -15,6 +15,10 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 cd "$REPO_ROOT"
 
+# Fail before constructing a release if removed Tau code, loaders, dependencies,
+# LAN exposure, or unsupported authentication claims return to source inputs.
+python3 scripts/check-tau-removal.py --source-root "$REPO_ROOT"
+
 SOURCE_BRANCH="${DEX_RELEASE_SOURCE:-main}"
 RELEASE_BRANCH="${DEX_RELEASE_TARGET:-release}"
 DRY_RUN=false
@@ -110,6 +114,9 @@ fi
 
 SOURCE_SHA=$(git rev-parse "$SOURCE_BRANCH")
 PKG_VERSION=$(grep '"version"' package.json | head -1 | sed 's/.*"version": *"\([^"]*\)".*/\1/')
+TAU_CHECKER=$(mktemp)
+cp scripts/check-tau-removal.py "$TAU_CHECKER"
+trap 'rm -f "$TAU_CHECKER"' EXIT
 
 echo "Building release branch..."
 echo "  Source: $SOURCE_BRANCH ($SOURCE_SHA)"
@@ -122,7 +129,7 @@ git checkout -B "$RELEASE_BRANCH" "$SOURCE_BRANCH" --quiet
 # Remove dev-only files
 REMOVED=0
 MATCHES_FILE=$(mktemp)
-trap 'rm -f "$MATCHES_FILE"' EXIT
+trap 'rm -f "$MATCHES_FILE" "$TAU_CHECKER"' EXIT
 for pattern in "${PATTERNS[@]}"; do
     git ls-files -z -- "$pattern" > "$MATCHES_FILE"
     if [ -s "$MATCHES_FILE" ]; then
@@ -171,6 +178,10 @@ Clean distribution from $SOURCE_BRANCH (${SOURCE_SHA:0:7}).
 Dev-only files removed per .distignore ($REMOVED files stripped).
 EOF
 )" --quiet
+
+# Verify the exact committed release tree and generated legacy manifest before
+# creating its immutable tag.
+python3 "$TAU_CHECKER" --repo-root "$REPO_ROOT" --git-tree "$RELEASE_BRANCH"
 
 RELEASE_SHA=$(git rev-parse --short HEAD)
 # Immutable rollback identity: every distribution commit gets an annotated tag
