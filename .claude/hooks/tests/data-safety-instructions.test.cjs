@@ -180,6 +180,7 @@ test('update captures local-only state before merge and applies it immediately a
   assert.ok(capture !== -1 && capture < merge, 'capture must precede the release merge');
   assert.ok(apply > merge, 'apply must follow the release merge');
   assert.match(UPDATE_SKILL, /System\/\.dex\/local-only-preservation/);
+  assert.match(UPDATE_SKILL, /cp -- core\/paths\.py "\$DEX_LOCAL_ONLY_RUNTIME\/core\/paths\.py"/);
 });
 
 test('primary rollback captures newest local-only copies before reset and rewinds afterward', () => {

@@ -128,6 +128,7 @@ def test_rollback_stops_when_autosave_commit_fails(tmp_path: Path) -> None:
         runtime / "core/migrations/preserve_local_only_paths.py",
     )
     shutil.copy2(REPO_ROOT / "core/utils/tracked_ignored.py", runtime / "core/utils/tracked_ignored.py")
+    shutil.copy2(REPO_ROOT / "core/paths.py", runtime / "core/paths.py")
     (runtime / "core/__init__.py").touch()
     (runtime / "core/migrations/__init__.py").touch()
     (runtime / "core/utils/__init__.py").touch()

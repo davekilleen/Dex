@@ -14,6 +14,7 @@ import pytest
 import yaml
 
 from core.migrations import preserve_local_only_paths as migration
+from core.utils.tracked_ignored import APPROVED_ROWS
 
 ROOT = Path(__file__).resolve().parents[2]
 POLICY = ROOT / "core" / "migrations" / "tracked-ignored-policy.yaml"
@@ -123,6 +124,8 @@ def _index_evidence(repo: Path, relative: str) -> tuple[str, str, str]:
 
 def test_repository_policy_is_exact_23_seed_one_release_doc_three_local_only():
     rows = checker.load_policy(POLICY)
+    assert tuple((row.path, row.classification) for row in rows) == APPROVED_ROWS
+
     by_class: dict[str, list[str]] = {}
     for row in rows:
         by_class.setdefault(row.classification, []).append(row.path)

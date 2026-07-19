@@ -287,6 +287,7 @@ cp -- core/migrations/preserve_local_only_paths.py \
   "$DEX_LOCAL_ONLY_RUNTIME/core/migrations/preserve_local_only_paths.py" || exit 1
 cp -- core/utils/tracked_ignored.py \
   "$DEX_LOCAL_ONLY_RUNTIME/core/utils/tracked_ignored.py" || exit 1
+cp -- core/paths.py "$DEX_LOCAL_ONLY_RUNTIME/core/paths.py" || exit 1
 cp -- core/migrations/tracked-ignored-policy.yaml \
   "$DEX_LOCAL_ONLY_RUNTIME/tracked-ignored-policy.yaml" || exit 1
 touch "$DEX_LOCAL_ONLY_RUNTIME/core/__init__.py" \

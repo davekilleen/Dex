@@ -13,27 +13,49 @@ from pathlib import Path, PurePosixPath
 
 import yaml
 
+from core.paths import (
+    ARCHIVES_DIR,
+    AREAS_DIR,
+    COMPANIES_DIR,
+    DAILY_PLANS_DIR,
+    EVIDENCE_DIR,
+    IDEAS_DIR,
+    INBOX_DIR,
+    MEETINGS_DIR,
+    PEOPLE_DIR,
+    PROJECTS_DIR,
+    QUARTER_GOALS_FILE,
+    TASKS_FILE,
+    VAULT_ROOT,
+    WEEK_PRIORITIES_FILE,
+)
+
+
+def _vault_relative(path: Path) -> str:
+    return path.relative_to(VAULT_ROOT).as_posix()
+
+
 TRANSITION_RELATIVE = Path("System/.local-only-preservation-transition.json")
 TRANSITION_PHASES = {"bootstrap-v1", "untrack-v1"}
 APPROVED_ROWS = (
-    ("00-Inbox/Daily_Plans/README.md", "intentional-seed"),
-    ("00-Inbox/Ideas/README.md", "intentional-seed"),
-    ("00-Inbox/Meetings/README.md", "intentional-seed"),
-    ("00-Inbox/README.md", "intentional-seed"),
-    ("01-Quarter_Goals/Quarter_Goals.md", "intentional-seed"),
-    ("02-Week_Priorities/Week_Priorities.md", "intentional-seed"),
-    ("03-Tasks/Tasks.md", "intentional-seed"),
-    ("04-Projects/README.md", "intentional-seed"),
-    ("05-Areas/Career/Evidence/README.md", "intentional-seed"),
-    ("05-Areas/Companies/README.md", "intentional-seed"),
-    ("05-Areas/People/External/README.md", "intentional-seed"),
-    ("05-Areas/People/Internal/README.md", "intentional-seed"),
-    ("05-Areas/People/README.md", "intentional-seed"),
-    ("05-Areas/README.md", "intentional-seed"),
-    ("07-Archives/Plans/README.md", "intentional-seed"),
-    ("07-Archives/Projects/README.md", "intentional-seed"),
-    ("07-Archives/README.md", "intentional-seed"),
-    ("07-Archives/Reviews/README.md", "intentional-seed"),
+    (_vault_relative(DAILY_PLANS_DIR / "README.md"), "intentional-seed"),
+    (_vault_relative(IDEAS_DIR / "README.md"), "intentional-seed"),
+    (_vault_relative(MEETINGS_DIR / "README.md"), "intentional-seed"),
+    (_vault_relative(INBOX_DIR / "README.md"), "intentional-seed"),
+    (_vault_relative(QUARTER_GOALS_FILE), "intentional-seed"),
+    (_vault_relative(WEEK_PRIORITIES_FILE), "intentional-seed"),
+    (_vault_relative(TASKS_FILE), "intentional-seed"),
+    (_vault_relative(PROJECTS_DIR / "README.md"), "intentional-seed"),
+    (_vault_relative(EVIDENCE_DIR / "README.md"), "intentional-seed"),
+    (_vault_relative(COMPANIES_DIR / "README.md"), "intentional-seed"),
+    (_vault_relative(PEOPLE_DIR / "External" / "README.md"), "intentional-seed"),
+    (_vault_relative(PEOPLE_DIR / "Internal" / "README.md"), "intentional-seed"),
+    (_vault_relative(PEOPLE_DIR / "README.md"), "intentional-seed"),
+    (_vault_relative(AREAS_DIR / "README.md"), "intentional-seed"),
+    (_vault_relative(ARCHIVES_DIR / "Plans" / "README.md"), "intentional-seed"),
+    (_vault_relative(ARCHIVES_DIR / "Projects" / "README.md"), "intentional-seed"),
+    (_vault_relative(ARCHIVES_DIR / "README.md"), "intentional-seed"),
+    (_vault_relative(ARCHIVES_DIR / "Reviews" / "README.md"), "intentional-seed"),
     ("System/Dex_Backlog.md", "intentional-seed"),
     ("System/Session_Learnings/README.md", "intentional-seed"),
     ("System/pillars.yaml", "intentional-seed"),
