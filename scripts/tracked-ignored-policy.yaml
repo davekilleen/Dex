@@ -1,0 +1,57 @@
+schema_version: 1
+baseline_count: 27
+paths:
+  - path: 00-Inbox/Daily_Plans/README.md
+    classification: intentional-seed
+  - path: 00-Inbox/Ideas/README.md
+    classification: intentional-seed
+  - path: 00-Inbox/Meetings/README.md
+    classification: intentional-seed
+  - path: 00-Inbox/README.md
+    classification: intentional-seed
+  - path: 01-Quarter_Goals/Quarter_Goals.md
+    classification: intentional-seed
+  - path: 02-Week_Priorities/Week_Priorities.md
+    classification: intentional-seed
+  - path: 03-Tasks/Tasks.md
+    classification: intentional-seed
+  - path: 04-Projects/README.md
+    classification: intentional-seed
+  - path: 05-Areas/Career/Evidence/README.md
+    classification: intentional-seed
+  - path: 05-Areas/Companies/README.md
+    classification: intentional-seed
+  - path: 05-Areas/People/External/README.md
+    classification: intentional-seed
+  - path: 05-Areas/People/Internal/README.md
+    classification: intentional-seed
+  - path: 05-Areas/People/README.md
+    classification: intentional-seed
+  - path: 05-Areas/README.md
+    classification: intentional-seed
+  - path: 07-Archives/Plans/README.md
+    classification: intentional-seed
+  - path: 07-Archives/Projects/README.md
+    classification: intentional-seed
+  - path: 07-Archives/README.md
+    classification: intentional-seed
+  - path: 07-Archives/Reviews/README.md
+    classification: intentional-seed
+  - path: System/Dex_Backlog.md
+    classification: intentional-seed
+  - path: System/Session_Learnings/README.md
+    classification: intentional-seed
+  - path: System/pillars.yaml
+    classification: intentional-seed
+  - path: System/usage_log.md
+    classification: intentional-seed
+  - path: System/user-profile.yaml
+    classification: intentional-seed
+  - path: System/Beta_Communications/2026-02-04_hardcoded_paths_fix.md
+    classification: release-doc
+  - path: System/Session_Learnings/2026-01-29.md
+    classification: local-only-must-be-untracked
+  - path: System/Session_Learnings/2026-01-30.md
+    classification: local-only-must-be-untracked
+  - path: System/integrations/slack.yaml
+    classification: local-only-must-be-untracked

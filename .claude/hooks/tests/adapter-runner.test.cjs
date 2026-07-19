@@ -2,6 +2,10 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const { spawnSync } = require('node:child_process');
 const path = require('node:path');
+const fs = require('node:fs');
+const os = require('node:os');
+
+const { loadServiceAliases, resolveAdapterService } = require('../adapters/run.cjs');
 
 const RUNNER = path.resolve(__dirname, '../adapters/run.cjs');
 
@@ -38,4 +42,52 @@ test('runner turns adapter throws into structured stdout without garbage', () =>
   assert.notEqual(result.status, 0);
   assert.equal(output.ok, false);
   assert.match(output.error, /API key/i);
+});
+
+test('atlassian resolves one hop to jira while direct jira behavior remains available', () => {
+  const atlassian = parseOnlyJsonLine(run('atlassian', 'create', {
+    config: {},
+    args: { title: 'No credentials', task_id: 'task-20260712-011' },
+  }));
+  const jira = parseOnlyJsonLine(run('jira', 'create', {
+    config: {},
+    args: { title: 'No credentials', task_id: 'task-20260712-012' },
+  }));
+
+  assert.equal(resolveAdapterService('atlassian'), 'jira');
+  assert.equal(resolveAdapterService('jira'), 'jira');
+  assert.equal(resolveAdapterService('constructor', {}), 'constructor');
+  assert.equal(atlassian.ok, false);
+  assert.equal(jira.ok, false);
+  assert.match(atlassian.error, /Atlassian auth not configured/i);
+  assert.equal(atlassian.error, jira.error);
+});
+
+test('alias parser rejects malformed, traversal, chained, and cyclic mappings', () => {
+  const temporary = fs.mkdtempSync(path.join(os.tmpdir(), 'dex-adapter-aliases-'));
+  try {
+    const aliases = path.join(temporary, 'aliases.json');
+    for (const [payload, pattern] of [
+      ['[]', /object/i],
+      ['{"atlassian":"../jira"}', /invalid/i],
+      ['{"atlassian":"jira","jira":"cloud"}', /one hop/i],
+      ['{"atlassian":"jira","jira":"atlassian"}', /one hop/i],
+    ]) {
+      fs.writeFileSync(aliases, payload);
+      assert.throws(() => loadServiceAliases(aliases), pattern);
+    }
+  } finally {
+    fs.rmSync(temporary, { recursive: true, force: true });
+  }
+});
+
+test('missing adapter is a single structured corrective failure', () => {
+  const output = parseOnlyJsonLine(run('adapterless', 'get_changes', {
+    config: {},
+    args: '2026-07-12T08:00:00Z',
+  }));
+
+  assert.equal(output.ok, false);
+  assert.match(output.error, /requested service 'adapterless'/i);
+  assert.match(output.error, /expected 'adapterless\.cjs'/i);
 });

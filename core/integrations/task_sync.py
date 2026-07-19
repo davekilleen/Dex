@@ -159,10 +159,55 @@ def _find_node() -> str:
     raise FileNotFoundError("node is required to run task-sync adapters")
 
 
-def _adapter_path(service: str) -> Path | None:
+def _reject_duplicate_json_keys(pairs: list[tuple[str, object]]) -> dict[str, object]:
+    payload: dict[str, object] = {}
+    for key, value in pairs:
+        if key in payload:
+            raise ValueError(f"duplicate service alias: {key}")
+        payload[key] = value
+    return payload
+
+
+def _load_service_aliases() -> dict[str, str]:
+    aliases_path = ADAPTERS_DIR / "service-aliases.json"
+    if not aliases_path.exists():
+        return {}
+    try:
+        payload = json.loads(
+            aliases_path.read_text(encoding="utf-8"),
+            object_pairs_hook=_reject_duplicate_json_keys,
+        )
+    except (OSError, json.JSONDecodeError) as error:
+        raise ValueError(f"invalid task-sync service aliases: {error}") from error
+    if not isinstance(payload, dict):
+        raise ValueError("task-sync service aliases must contain an object")
+
+    aliases: dict[str, str] = {}
+    for requested, adapter in payload.items():
+        if not _SERVICE_PATTERN.fullmatch(requested) or not isinstance(adapter, str):
+            raise ValueError("task-sync service aliases must use safe service names")
+        if not _SERVICE_PATTERN.fullmatch(adapter):
+            raise ValueError(f"invalid adapter alias target for service: {requested}")
+        if requested == adapter:
+            raise ValueError(f"self-referential adapter alias: {requested}")
+        aliases[requested] = adapter
+    chained = sorted(target for target in aliases.values() if target in aliases)
+    if chained:
+        raise ValueError(
+            "task-sync service aliases must be one hop; chained or cyclic target: "
+            f"{chained[0]}"
+        )
+    return aliases
+
+
+def _resolve_adapter_service(service: str) -> str:
     if not _SERVICE_PATTERN.fullmatch(service):
-        return None
-    candidate = ADAPTERS_DIR / f"{service}.cjs"
+        raise ValueError(f"invalid task-sync service name: {service}")
+    return _load_service_aliases().get(service, service)
+
+
+def _adapter_path(adapter_service: str) -> Path | None:
+    candidate = ADAPTERS_DIR / f"{adapter_service}.cjs"
     return candidate if candidate.is_file() else None
 
 
@@ -291,8 +336,19 @@ def sync_external_tasks(
         if service == "things" and platform.system() != "Darwin":
             report["errors"].append("things task sync is only available on macOS")
             continue
-        if _adapter_path(service) is None:
-            report["errors"].append(f"task-sync adapter not found: {service}")
+        try:
+            adapter_service = _resolve_adapter_service(service)
+            adapter_path = _adapter_path(adapter_service)
+        except ValueError as error:
+            report["errors"].append(
+                f"task-sync adapter configuration error for enabled service '{service}': {error}"
+            )
+            continue
+        if adapter_path is None:
+            report["errors"].append(
+                f"task-sync adapter unavailable for enabled service '{service}': "
+                f"expected adapter '{adapter_service}.cjs'; repair Dex or disable this service"
+            )
             continue
 
         if service not in state:
