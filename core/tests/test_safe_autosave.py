@@ -14,7 +14,7 @@ def _git(root: Path, *args: str) -> bytes:
 
 def _repo(tmp_path: Path):
     _git(tmp_path, "init", "-q")
-    _git(tmp_path, "config", "user.email", "synthetic@example.invalid")
+    _git(tmp_path, "config", "user.email", "tests@example.com")
     _git(tmp_path, "config", "user.name", "Synthetic")
     (tmp_path / "kept.txt").write_text("before\n")
     _git(tmp_path, "add", "kept.txt")

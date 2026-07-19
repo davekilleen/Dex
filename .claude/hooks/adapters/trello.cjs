@@ -80,7 +80,12 @@ async function trelloFetch(endpoint, adapterConfig, options = {}) {
     fetchOptions.body = JSON.stringify(options.body);
   }
 
-  const response = await fetch(url.toString(), fetchOptions);
+  let response;
+  try {
+    response = await fetch(url.toString(), fetchOptions);
+  } catch {
+    throw new Error(`Trello API ${fetchOptions.method} transport failed`);
+  }
 
   if (!response.ok) {
     await response.arrayBuffer();

@@ -44,6 +44,7 @@ TRANSACTION_ID = re.compile(r"^[0-9a-f]{32}$")
 PREPARATION_ARTIFACTS = frozenset(
     {"history.bundle", "objects.json", "git-config.bin", "index.bin", "manifest.json"}
 )
+MAX_STATUS_OUTPUT_BYTES = 16 * 1024 * 1024
 
 
 @dataclass(frozen=True)
@@ -268,6 +269,24 @@ def _repository_state(root: Path) -> dict[str, str]:
             ).read_bytes()
         ),
     }
+
+
+def _require_repository_quiescence(root: Path) -> None:
+    status = _git(
+        root,
+        "status",
+        "--porcelain=v1",
+        "-z",
+        "--untracked-files=all",
+        "--",
+        ".",
+        ":(exclude)System/.dex/adoption/history-backups",
+        ":(exclude)System/.dex/adoption/history-backups/**",
+    )
+    if len(status) > MAX_STATUS_OUTPUT_BYTES:
+        raise RuntimeError("repository quiescence evidence exceeded its bound")
+    if status:
+        raise PermissionError("history cleanup requires a clean index and worktree")
 
 
 def _object_evidence(root: Path, refs: tuple[str, ...]) -> tuple[bytes, int]:
@@ -498,11 +517,13 @@ def prepare_history_cleanup(
             "optional-tool-unavailable",
             None,
             None,
-            "Optional history privacy cleanup is unavailable because a supported preinstalled git-filter-repo was not found. Security remains fixed; Dex did not install or run anything.",
+            "Optional history privacy cleanup is unavailable because a supported preinstalled git-filter-repo was not found. Security remains fixed; Dex did not install or run anything. To enable the guided path, install git-filter-repo yourself from its official platform package, verify that `git-filter-repo --version` reports supported version 2.38.0 or newer, then rerun Doctor. Manual advanced path: first create and verify a private local backup, use a separately reviewed offline history-cleaning procedure, and rerun the credential scanner before any publication.",
         )
+    _require_repository_quiescence(root)
     with _acquire_history_lifecycle_lock(root, create=True) as lifecycle_lock:
         pinned_root = _fd_path(lifecycle_lock.root_descriptor)
         _prune_incomplete_transactions(lifecycle_lock.backup_descriptor)
+        _require_repository_quiescence(pinned_root)
         _, common, objects = _repository_boundaries(pinned_root)
         refs = _refs(pinned_root, selected_refs)
         all_refs = _all_refs(pinned_root)
@@ -842,6 +863,7 @@ def _apply_history_cleanup_loaded(
         or _repository_state(root) != repository_state
     ):
         raise RuntimeError("repository state changed after preview")
+    _require_repository_quiescence(root)
     config_path = Path(_git(root, "rev-parse", "--path-format=absolute", "--git-path", "config").decode().strip())
     config_before = config_path.read_bytes()
     config_mode = stat.S_IMODE(config_path.stat().st_mode)
@@ -864,6 +886,7 @@ def _apply_history_cleanup_loaded(
                 "--refs",
                 *selected_refs,
             ]
+            _require_repository_quiescence(root)
             result = subprocess.run(
                 command,
                 cwd=root,
@@ -1034,6 +1057,44 @@ def preview_retention(
         )
 
 
+def _history_transaction_is_deletion_eligible(root: Path, manifest: dict[str, object]) -> bool:
+    if manifest.get("phase") != "applied" or manifest.get("post_cleanup_scan_state") != "history-clean":
+        return False
+    if manifest.get("post_cleanup_uninspected_scopes"):
+        return False
+    before = manifest.get("selected_refs")
+    after = manifest.get("after_refs")
+    after_all = manifest.get("after_all_refs")
+    backup = manifest.get("external_backup")
+    if not all(isinstance(value, dict) for value in (before, after, after_all, backup)):
+        return False
+    assert isinstance(before, dict)
+    assert isinstance(after, dict)
+    assert isinstance(after_all, dict)
+    assert isinstance(backup, dict)
+    if not before or set(before) != set(after):
+        return False
+    if any(
+        not isinstance(after.get(ref), str)
+        or not re.fullmatch(r"[0-9a-f]{40,64}", after[ref])
+        or after[ref] == oid
+        or after_all.get(ref) != after[ref]
+        for ref, oid in before.items()
+    ):
+        return False
+    backup_evidence = backup.get("verified_evidence_sha256")
+    if backup.get("no_external_backup_acknowledged") is not True and not (
+        isinstance(backup_evidence, str) and re.fullmatch(r"[0-9a-f]{64}", backup_evidence)
+    ):
+        return False
+    try:
+        for oid in after.values():
+            _git(root, "cat-file", "-e", f"{oid}^{{object}}")
+    except (OSError, RuntimeError):
+        return False
+    return True
+
+
 def _preview_retention_locked(
     root: Path,
     now: datetime,
@@ -1065,6 +1126,7 @@ def _preview_retention_locked(
         transaction_id
         for transaction_id, manifest, _, minimum_delete_after in manifests
         if transaction_id != final_id
+        and _history_transaction_is_deletion_eligible(root, manifest)
         and now.astimezone(UTC) >= minimum_delete_after.astimezone(UTC)
         and successful_release_activations >= manifest["minimum_successful_release_activations_for_deletion"]
         and (

@@ -578,6 +578,34 @@ def test_runner_materialization_excludes_untracked_core_files(
     assert not (runner / "core" / "mcp" / "evil_server.py").exists()
 
 
+def test_runner_materializes_only_exact_content_verified_sensitive_dependencies(tmp_path: Path) -> None:
+    runner = smoke._materialize_runner(tmp_path / "runner-sensitive")
+    required = {
+        Path("core/utils/credential_migration_exceptions.json"),
+        Path("core/utils/credential_remediation.py"),
+        Path("core/utils/credential_scanner.py"),
+        Path("core/utils/integration_credentials.py"),
+    }
+
+    assert required == smoke.CONTENT_VERIFIED_SENSITIVE_DEPENDENCIES
+    for relative in required:
+        assert (runner / relative).read_bytes() == (REPO_ROOT / relative).read_bytes()
+    assert (runner / "core/utils/release_channel.py").is_file()
+    assert not (runner / "core/tests/test_credential_remediation.py").exists()
+    with pytest.raises(smoke.JourneySafetySkip, match="sensitive"):
+        smoke._ensure_safe_source(
+            REPO_ROOT / "core/utils/another_credential_file.json",
+            REPO_ROOT,
+        )
+
+
+def test_removing_exact_sensitive_dependency_allowlist_breaks_runner_snapshot(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(smoke, "CONTENT_VERIFIED_SENSITIVE_DEPENDENCIES", frozenset())
+
+    with pytest.raises(smoke.JourneySafetySkip, match="credential_migration_exceptions"):
+        smoke._materialize_runner(tmp_path / "runner-without-sensitive-allowlist")
+
+
 def test_release_gate_ignores_untracked_runtime_artifacts(monkeypatch, tmp_path: Path) -> None:
     repo = _release_repo(tmp_path)
     release_root = tmp_path / "release"
@@ -588,6 +616,7 @@ def test_release_gate_ignores_untracked_runtime_artifacts(monkeypatch, tmp_path:
     )
     assert detail == "verified installed release snapshot"
     assert reference is not None
+    assert not (release_root / "core/tests/test_credential_remediation.py").exists()
 
     (repo / "core" / "paths.json").write_text("{}\n", encoding="utf-8")
     cache = repo / "core" / "__pycache__"

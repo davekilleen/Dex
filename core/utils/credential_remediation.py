@@ -118,7 +118,13 @@ class CredentialStatusCopy:
     history: str
 
 
-def _contained_regular(path: Path, root: Path, *, absent_ok: bool = False) -> bool:
+def _contained_regular(
+    path: Path,
+    root: Path,
+    *,
+    absent_ok: bool = False,
+    writable_if_present: bool = False,
+) -> bool:
     try:
         relative = path.relative_to(root)
     except ValueError:
@@ -133,7 +139,11 @@ def _contained_regular(path: Path, root: Path, *, absent_ok: bool = False) -> bo
             os.close(parent)
     except OSError:
         return False
-    return stat.S_ISREG(metadata.st_mode) and metadata.st_nlink == 1
+    return (
+        stat.S_ISREG(metadata.st_mode)
+        and metadata.st_nlink == 1
+        and (not writable_if_present or bool(metadata.st_mode & 0o222))
+    )
 
 
 def _open_directory_chain(root: Path, parts: tuple[str, ...], *, create: bool = False) -> int:
@@ -226,8 +236,15 @@ def probe_atomic_migration(vault_root: Path, journal_dir: Path) -> CapabilityRes
     results = {name: False for name in CAPABILITIES}
     config = vault_root / "System" / "integrations" / "config.yaml"
     env_file = vault_root / ".env"
-    results["regular-targets"] = _contained_regular(config, vault_root) and _contained_regular(
-        env_file, vault_root, absent_ok=True
+    results["regular-targets"] = _contained_regular(
+        config,
+        vault_root,
+        writable_if_present=True,
+    ) and _contained_regular(
+        env_file,
+        vault_root,
+        absent_ok=True,
+        writable_if_present=True,
     )
     try:
         relative_journal = journal_dir.relative_to(vault_root)
@@ -607,8 +624,13 @@ def render_credential_status(
     }
     if security_state == "remediated" and not required_remediation <= set(evidence):
         raise ValueError("remediated security requires complete bound rotation and replacement evidence")
-    if history_hygiene_state == "history-clean" and scopes:
-        raise ValueError("clean history cannot have uninspected scopes")
+    residual_supplies_pending_reason = active_residual_state == "unrevoked-or-unclassified"
+    if security_state == "rotation-pending" and not evidence and not residual_supplies_pending_reason:
+        raise ValueError("rotation-pending security requires incomplete evidence or an active residual")
+    if security_state == "unknown" and not evidence:
+        raise ValueError("unknown security requires unavailable or inconsistent evidence")
+    if history_hygiene_state != "history-scope-unknown" and scopes:
+        raise ValueError("uninspected scopes require unknown history")
     if history_hygiene_state == "history-scope-unknown" and not scopes:
         raise ValueError("unknown history requires named scopes")
     migration = {

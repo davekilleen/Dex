@@ -1,12 +1,14 @@
 import json
 import os
 import socket
+import stat
 import subprocess
 from pathlib import Path
 
 import pytest
 import yaml
 
+from core.utils import credential_remediation
 from core.utils.credential_remediation import (
     CAPABILITIES,
     migrate_legacy_credentials,
@@ -329,6 +331,88 @@ def test_config_snapshot_swap_after_capability_probe_refuses_before_env_write(tm
     assert result.state == "refused"
     assert not (root / ".env").exists()
     assert b"synthetic-different-key" in config.read_bytes()
+
+
+def test_read_only_existing_config_refuses_migration_without_mutation(tmp_path):
+    root = _vault(tmp_path)
+    config = root / "System/integrations/config.yaml"
+    before = config.read_bytes()
+    config.chmod(0o400)
+
+    result = migrate_legacy_credentials(root)
+
+    assert result.state == "refused"
+    assert config.read_bytes() == before
+    assert stat.S_IMODE(config.stat().st_mode) == 0o400
+    assert not (root / ".env").exists()
+
+
+def test_writable_existing_config_is_required_for_capability_authorization(tmp_path, monkeypatch):
+    root = _vault(tmp_path)
+    config = root / "System/integrations/config.yaml"
+    config.chmod(0o400)
+    original = credential_remediation._contained_regular
+    monkeypatch.setattr(
+        credential_remediation,
+        "_contained_regular",
+        lambda path, vault_root, **kwargs: original(
+            path,
+            vault_root,
+            **{key: value for key, value in kwargs.items() if key != "writable_if_present"},
+        ),
+    )
+
+    assert probe_atomic_migration(root, root / "System/.dex/adoption/credential-journals").authorized
+
+
+@pytest.mark.parametrize(
+    ("security_state", "active_residual_state", "evidence_codes", "valid"),
+    [
+        ("rotation-pending", "none", (), False),
+        ("rotation-pending", "none", ("replacement-health",), True),
+        ("rotation-pending", "unrevoked-or-unclassified", (), True),
+        ("unknown", "none", (), False),
+        ("unknown", "none", ("provider-binding",), True),
+        ("unknown", "unrevoked-or-unclassified", (), False),
+        ("unknown", "unrevoked-or-unclassified", ("active-copy",), True),
+    ],
+)
+def test_pending_and_unknown_status_require_explicit_reason(
+    security_state,
+    active_residual_state,
+    evidence_codes,
+    valid,
+):
+    migration_state = "partial" if active_residual_state != "none" else "not-needed"
+
+    def call():
+        return render_credential_status(
+            migration_state,
+            security_state,
+            active_residual_state,
+            "history-cleanup-pending",
+            evidence_codes,
+            (),
+        )
+
+    if valid:
+        assert call().security_and_current_config
+    else:
+        with pytest.raises(ValueError):
+            call()
+
+
+@pytest.mark.parametrize("history_state", ["history-clean", "history-cleanup-pending"])
+def test_only_unknown_history_accepts_uninspected_scopes(history_state):
+    with pytest.raises(ValueError, match="uninspected scopes"):
+        render_credential_status(
+            "not-needed",
+            "rotation-pending",
+            "none",
+            history_state,
+            ("replacement-health",),
+            ("tags",),
+        )
 
 
 def test_renderer_exact_copy_and_impossible_combinations():

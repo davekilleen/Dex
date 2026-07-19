@@ -150,6 +150,42 @@ def _archive_members(path: Path):
         raise ValueError("unsupported-selected-archive")
 
 
+def _scan_git_object_scope(
+    root: Path,
+    scope: str,
+    arguments: tuple[str, ...],
+    needles: tuple[bytes, ...],
+    deadline: float,
+    object_matches: dict[str, bool],
+    object_total: list[int],
+) -> list[Finding]:
+    object_lines = _git(root, "rev-list", "--objects", *arguments).splitlines()
+    findings: list[Finding] = []
+    for number, line in enumerate(object_lines, 1):
+        if time.monotonic() > deadline:
+            raise RuntimeError("object-deadline-bound")
+        oid = line.split(b" ", 1)[0].decode("ascii")
+        matched = object_matches.get(oid)
+        if matched is None:
+            if len(object_matches) >= MAX_OBJECTS:
+                raise RuntimeError("object-count-bound")
+            kind = _git(root, "cat-file", "-t", oid).strip()
+            matched = False
+            if kind == b"blob":
+                size = int(_git(root, "cat-file", "-s", oid))
+                object_total[0] += size
+                if size > MAX_FILE_BYTES or object_total[0] > MAX_OBJECT_BYTES:
+                    raise RuntimeError("object-byte-bound")
+                data = _git(root, "cat-file", "blob", oid)
+                if len(data) != size:
+                    raise RuntimeError("object-readback")
+                matched = any(value in data for value in needles)
+            object_matches[oid] = matched
+        if matched:
+            findings.append(_opaque(scope, str(number).encode()))
+    return findings
+
+
 def scan_credentials(root: Path, needles: tuple[bytes, ...], selected_archives: tuple[Path, ...] = ()) -> ScanReport:
     """Inspect bounded approved subscopes; any skipped input makes its scope uninspected."""
     if not needles or any(not value for value in needles):
@@ -202,10 +238,13 @@ def scan_credentials(root: Path, needles: tuple[bytes, ...], selected_archives: 
         objects = Path(_git(root, "rev-parse", "--path-format=absolute", "--git-path", "objects").decode().strip())
         if objects != common / "objects" or (objects / "info/alternates").exists() or (common / "shallow").exists():
             raise RuntimeError("ambiguous-object-topology")
-        config = _bounded_file(common / "config")
+        config_path = common / "config"
+        config = _bounded_file(config_path)
         if re.search(rb"(?im)^\s*promisor\s*=\s*true\s*$", config):
             raise RuntimeError("promisor-object-topology")
-        metadata_files = [common / "packed-refs"] if (common / "packed-refs").exists() else []
+        metadata_files = [config_path]
+        if (common / "packed-refs").exists():
+            metadata_files.append(common / "packed-refs")
         for metadata_root in (common / "refs", common / "logs"):
             if metadata_root.exists():
                 for path in metadata_root.rglob("*"):
@@ -224,28 +263,45 @@ def scan_credentials(root: Path, needles: tuple[bytes, ...], selected_archives: 
                 findings.append(_opaque("git-common-dir", str(number).encode()))
         inspected.add("git-common-dir")
 
-        object_lines = _git(root, "rev-list", "--objects", "--all", "--reflog").splitlines()
-        if len(object_lines) > MAX_OBJECTS:
-            raise RuntimeError("object-count-bound")
-        object_total = 0
-        for number, line in enumerate(object_lines, 1):
-            if time.monotonic() > deadline:
-                raise RuntimeError("object-deadline-bound")
-            oid = line.split(b" ", 1)[0].decode("ascii")
-            kind = _git(root, "cat-file", "-t", oid).strip()
-            if kind != b"blob":
-                continue
-            size = int(_git(root, "cat-file", "-s", oid))
-            object_total += size
-            if size > MAX_FILE_BYTES or object_total > MAX_OBJECT_BYTES:
-                raise RuntimeError("object-byte-bound")
-            data = _git(root, "cat-file", "blob", oid)
-            if len(data) != size:
-                raise RuntimeError("object-readback")
-            if any(value in data for value in needles):
-                findings.append(_opaque("reachable-refs", str(number).encode()))
-        inspected.update({"reachable-refs", "stashes", "tags"})
-        unknown["primary-object-db"] = "unreachable-objects-not-inspected"
+        replacement_refs = _git(root, "for-each-ref", "--format=%(refname)", "refs/replace").splitlines()
+        if replacement_refs:
+            for scope in ("primary-object-db", "reachable-refs", "stashes", "tags"):
+                unknown[scope] = "replace-ref-topology-unsupported"
+        else:
+            object_scopes = (
+                ("reachable-refs", ("--all", "--reflog")),
+                ("tags", ("--tags",)),
+            )
+            object_matches: dict[str, bool] = {}
+            object_total = [0]
+            for scope, arguments in object_scopes:
+                findings.extend(
+                    _scan_git_object_scope(
+                        root,
+                        scope,
+                        arguments,
+                        needles,
+                        deadline,
+                        object_matches,
+                        object_total,
+                    )
+                )
+                inspected.add(scope)
+            stash = _git(root, "for-each-ref", "--format=%(objectname)", "refs/stash").strip()
+            if stash:
+                findings.extend(
+                    _scan_git_object_scope(
+                        root,
+                        "stashes",
+                        ("refs/stash",),
+                        needles,
+                        deadline,
+                        object_matches,
+                        object_total,
+                    )
+                )
+            inspected.add("stashes")
+            unknown["primary-object-db"] = "unreachable-objects-not-inspected"
     except (OSError, RuntimeError, UnicodeDecodeError, ValueError, subprocess.TimeoutExpired):
         for scope in ("git-common-dir", "primary-object-db", "reachable-refs", "stashes", "tags"):
             unknown.setdefault(scope, "git-metadata-object-or-bound")

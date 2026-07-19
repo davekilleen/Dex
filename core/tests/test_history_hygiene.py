@@ -36,7 +36,7 @@ def _git(root: Path, *args: str, input_data: bytes | None = None) -> str:
 
 def _repo(root: Path) -> str:
     _git(root, "init", "-q")
-    _git(root, "config", "user.email", "synthetic@example.invalid")
+    _git(root, "config", "user.email", "tests@example.com")
     _git(root, "config", "user.name", "Synthetic")
     (root / "leak.txt").write_bytes(b"before " + SECRET + b" after\n")
     _git(root, "add", "leak.txt")
@@ -54,6 +54,8 @@ def _tool(
     mutate_worktree: bool = False,
     mutate_index: bool = False,
 ) -> Path:
+    if (path.parent / ".git").is_dir():
+        path = path.parent.parent / f"{path.parent.name}-{path.name}"
     body = f"""#!/usr/bin/env python3
 import pathlib, subprocess, sys
 if '--version' in sys.argv:
@@ -105,6 +107,27 @@ def _prepare(root: Path, tool: Path, ref: str, **kwargs) -> HistoryPreview:
     )
 
 
+def _mark_retention_eligible(root: Path, preview: HistoryPreview) -> None:
+    tree = _git(root, "write-tree")
+    rewritten = _git(root, "commit-tree", tree, input_data=b"synthetic verified rewrite\n")
+    with history_hygiene._acquire_history_lifecycle_lock(root, create=False) as lifecycle_lock:
+        with history_hygiene._load_manifest(
+            lifecycle_lock.backup_descriptor,
+            preview.transaction_id,
+        ) as loaded:
+            manifest = loaded.manifest
+            assert manifest is not None
+            manifest["phase"] = "applied"
+            manifest["after_refs"] = {ref: rewritten for ref in manifest["selected_refs"]}
+            manifest["after_all_refs"] = {
+                **manifest["all_refs"],
+                **manifest["after_refs"],
+            }
+            manifest["post_cleanup_scan_state"] = "history-clean"
+            manifest.pop("post_cleanup_uninspected_scopes", None)
+            history_hygiene._store_manifest(loaded.path, manifest)
+
+
 def test_absent_or_unsupported_tool_is_optional_guidance_without_writes(tmp_path):
     ref = _repo(tmp_path)
     absent = prepare_history_cleanup(
@@ -119,6 +142,9 @@ def test_absent_or_unsupported_tool_is_optional_guidance_without_writes(tmp_path
     )
     assert absent.state == "optional-tool-unavailable"
     assert "Security remains fixed" in absent.guidance
+    assert "install git-filter-repo yourself" in absent.guidance
+    assert "Manual advanced path" in absent.guidance
+    assert "force-push" not in absent.guidance
     assert not (tmp_path / "System/.dex").exists()
     unsupported = tmp_path / "unsupported"
     unsupported.write_text("#!/bin/sh\necho 1.0.0\n")
@@ -142,6 +168,69 @@ def test_symlinked_recovery_ancestor_refuses_without_outside_bundle_write(tmp_pa
         _prepare(tmp_path, tool, ref)
 
     assert list(outside.iterdir()) == []
+
+
+@pytest.mark.parametrize(
+    "dirty_state",
+    ["staged", "unstaged", "untracked", "intent-to-add", "odd-filename"],
+)
+def test_preparation_requires_complete_clean_repository_state(tmp_path, dirty_state):
+    ref = _repo(tmp_path)
+    tool = _tool(tmp_path / "git-filter-repo")
+    if dirty_state == "staged":
+        (tmp_path / "leak.txt").write_text("staged\n")
+        _git(tmp_path, "add", "leak.txt")
+    elif dirty_state == "unstaged":
+        (tmp_path / "leak.txt").write_text("unstaged\n")
+    elif dirty_state == "intent-to-add":
+        (tmp_path / "intent.txt").write_text("intent\n")
+        _git(tmp_path, "add", "-N", "intent.txt")
+    else:
+        name = "line\nname.txt" if dirty_state == "odd-filename" else "untracked.txt"
+        (tmp_path / name).write_text("untracked\n")
+
+    with pytest.raises(PermissionError, match="clean index and worktree"):
+        _prepare(tmp_path, tool, ref)
+
+    assert not (tmp_path / "System/.dex").exists()
+
+
+def test_removing_quiescence_guard_reproduces_dirty_preparation(tmp_path, monkeypatch):
+    ref = _repo(tmp_path)
+    tool = _tool(tmp_path / "git-filter-repo")
+    (tmp_path / "untracked.txt").write_text("dirty\n")
+    monkeypatch.setattr(history_hygiene, "_require_repository_quiescence", lambda _root: None)
+
+    assert _prepare(tmp_path, tool, ref).state == "prepared"
+
+
+def test_apply_revalidates_quiescence_immediately_before_rewrite(tmp_path, monkeypatch):
+    ref = _repo(tmp_path)
+    tool = _tool(tmp_path / "git-filter-repo")
+    preview = _prepare(tmp_path, tool, ref)
+    before = _git(tmp_path, "rev-parse", ref)
+    original = history_hygiene._require_repository_quiescence
+    calls = 0
+
+    def create_race_after_first_check(root):
+        nonlocal calls
+        original(root)
+        calls += 1
+        if calls == 1:
+            (tmp_path / "race\nfile.txt").write_text("race\n")
+
+    monkeypatch.setattr(history_hygiene, "_require_repository_quiescence", create_race_after_first_check)
+
+    outcome = apply_history_cleanup(
+        tmp_path,
+        preview,
+        typed_consent=f"CLEAN OPTIONAL HISTORY {preview.transaction_id}",
+        credential_needles=(SECRET,),
+        filter_repo=tool,
+    )
+
+    assert outcome.state == "recovery-required"
+    assert _git(tmp_path, "rev-parse", ref) == before
 
 
 def test_preparation_requires_remediation_choice_and_backup_posture(tmp_path):
@@ -394,7 +483,7 @@ def test_apply_rebinds_exact_occurrence_coordinates_not_same_sized_history_secre
     secret_a = b"same-size-secret-A"
     secret_b = b"same-size-secret-B"
     _git(tmp_path, "init", "-q")
-    _git(tmp_path, "config", "user.email", "synthetic@example.invalid")
+    _git(tmp_path, "config", "user.email", "tests@example.com")
     _git(tmp_path, "config", "user.name", "Synthetic")
     (tmp_path / "leak.txt").write_bytes(secret_a + b"\n" + secret_b + b"\n")
     _git(tmp_path, "add", "leak.txt")
@@ -445,7 +534,7 @@ def test_apply_rebinds_exact_occurrence_coordinates_not_same_sized_history_secre
 )
 def test_apply_rejects_prefix_related_credential_substitution(tmp_path, prepared_secret, substitute_secret):
     _git(tmp_path, "init", "-q")
-    _git(tmp_path, "config", "user.email", "synthetic@example.invalid")
+    _git(tmp_path, "config", "user.email", "tests@example.com")
     _git(tmp_path, "config", "user.name", "Synthetic")
     (tmp_path / "leak.txt").write_bytes(b"prefix-secret-longer\n")
     _git(tmp_path, "add", "leak.txt")
@@ -1046,7 +1135,7 @@ def test_shared_recovery_cap_refuses_preparation(tmp_path, monkeypatch):
 
 def test_cleanup_is_local_preserves_remotes_rescans_and_rewinds(tmp_path, monkeypatch):
     ref = _repo(tmp_path)
-    remote = tmp_path / "remote.git"
+    remote = tmp_path.parent / f"{tmp_path.name}-remote.git"
     remote.mkdir()
     _git(remote, "init", "--bare", "-q")
     _git(tmp_path, "remote", "add", "origin", str(remote))
@@ -1079,7 +1168,7 @@ def test_cleanup_is_local_preserves_remotes_rescans_and_rewinds(tmp_path, monkey
 
 def test_cleanup_interruption_preserves_verified_bundle_and_manual_guidance(tmp_path):
     ref = _repo(tmp_path)
-    remote = tmp_path / "remote.git"
+    remote = tmp_path.parent / f"{tmp_path.name}-remote.git"
     remote.mkdir()
     _git(remote, "init", "--bare", "-q")
     _git(tmp_path, "remote", "add", "origin", str(remote))
@@ -1216,6 +1305,8 @@ def test_retention_requires_age_releases_exact_set_and_protects_final_bundle(tmp
     old = datetime(2025, 1, 1, tzinfo=UTC)
     first = _prepare(tmp_path, tool, ref, now=lambda: old)
     second = _prepare(tmp_path, tool, ref, now=lambda: old + timedelta(days=1))
+    _mark_retention_eligible(tmp_path, first)
+    _mark_retention_eligible(tmp_path, second)
     preview = preview_retention(tmp_path, now=old + timedelta(days=100), successful_release_activations=5)
     assert preview.candidate_ids == (first.transaction_id,)
     assert preview.protected_final_id == second.transaction_id
@@ -1237,14 +1328,73 @@ def test_retention_requires_age_releases_exact_set_and_protects_final_bundle(tmp
     assert (tmp_path / "System/.dex/adoption/history-backups" / second.transaction_id).exists()
 
 
+def test_prepared_only_history_transactions_are_never_deletion_candidates(tmp_path):
+    ref = _repo(tmp_path)
+    tool = _tool(tmp_path / "git-filter-repo")
+    old = datetime(2025, 1, 1, tzinfo=UTC)
+    first = _prepare(tmp_path, tool, ref, now=lambda: old)
+    second = _prepare(tmp_path, tool, ref, now=lambda: old + timedelta(days=1))
+
+    preview = preview_retention(
+        tmp_path,
+        now=old + timedelta(days=100),
+        successful_release_activations=5,
+    )
+
+    assert preview.candidate_ids == ()
+    assert preview.protected_final_id == second.transaction_id
+    assert preview.retained_ids == tuple(sorted((first.transaction_id, second.transaction_id)))
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("phase", "prepared"),
+        ("post_cleanup_scan_state", "history-cleanup-pending"),
+        ("post_cleanup_scan_state", "history-scope-unknown"),
+        ("post_cleanup_uninspected_scopes", ["selected-refs"]),
+        ("after_refs", {}),
+        ("external_backup", {}),
+    ],
+)
+def test_retention_requires_terminal_verified_cleanup_evidence(tmp_path, field, value):
+    ref = _repo(tmp_path)
+    tool = _tool(tmp_path / "git-filter-repo")
+    old = datetime(2025, 1, 1, tzinfo=UTC)
+    candidate = _prepare(tmp_path, tool, ref, now=lambda: old)
+    final = _prepare(tmp_path, tool, ref, now=lambda: old + timedelta(days=1))
+    _mark_retention_eligible(tmp_path, candidate)
+    _mark_retention_eligible(tmp_path, final)
+    with history_hygiene._acquire_history_lifecycle_lock(tmp_path, create=False) as lifecycle_lock:
+        with history_hygiene._load_manifest(
+            lifecycle_lock.backup_descriptor,
+            candidate.transaction_id,
+        ) as loaded:
+            assert loaded.manifest is not None
+            loaded.manifest[field] = value
+            history_hygiene._store_manifest(loaded.path, loaded.manifest)
+
+    preview = preview_retention(
+        tmp_path,
+        now=old + timedelta(days=100),
+        successful_release_activations=5,
+    )
+
+    assert preview.candidate_ids == ()
+    assert candidate.transaction_id in preview.retained_ids
+
+
 def test_retention_candidate_drift_invalidates_acknowledgement(tmp_path):
     ref = _repo(tmp_path)
     tool = _tool(tmp_path / "git-filter-repo")
     old = datetime(2025, 1, 1, tzinfo=UTC)
     first = _prepare(tmp_path, tool, ref, now=lambda: old)
-    _prepare(tmp_path, tool, ref, now=lambda: old + timedelta(days=1))
+    second = _prepare(tmp_path, tool, ref, now=lambda: old + timedelta(days=1))
+    _mark_retention_eligible(tmp_path, first)
+    _mark_retention_eligible(tmp_path, second)
     preview = preview_retention(tmp_path, now=old + timedelta(days=100), successful_release_activations=5)
-    _prepare(tmp_path, tool, ref, now=lambda: old + timedelta(days=2))
+    third = _prepare(tmp_path, tool, ref, now=lambda: old + timedelta(days=2))
+    _mark_retention_eligible(tmp_path, third)
     with pytest.raises(PermissionError, match="exact-set"):
         delete_retention_candidates(
             tmp_path,

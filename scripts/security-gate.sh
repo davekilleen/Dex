@@ -4,30 +4,17 @@ set -euo pipefail
 echo "🔐 Security Gate"
 echo "================"
 
-SECRET_PATTERNS='(lin_api_[A-Za-z0-9]{20,}|sk-ant-api[0-9A-Za-z_-]{20,}|sk-ant-[A-Za-z0-9_-]{20,}|ghp_[A-Za-z0-9]{20,}|AKIA[0-9A-Z]{16}|xox[baprs]-[A-Za-z0-9-]{10,}|-----BEGIN (RSA|OPENSSH|EC|DSA) PRIVATE KEY-----)'
 ALLOWLIST_FILE="scripts/security-allowlist.txt"
 STRICT_AUDIT="${SECURITY_STRICT_AUDIT:-0}"
 
-MATCHES=$(git ls-files | xargs grep -nE "$SECRET_PATTERNS" 2>/dev/null || true)
-if [ -n "$MATCHES" ] && [ -f "$ALLOWLIST_FILE" ]; then
-  while IFS= read -r rule; do
-    [ -z "$rule" ] && continue
-    [[ "$rule" =~ ^# ]] && continue
-    MATCHES=$(printf "%s\n" "$MATCHES" | grep -Ev "$rule" || true)
-  done < "$ALLOWLIST_FILE"
-fi
-
-if [ -n "$MATCHES" ]; then
-  echo "❌ Potential secret leakage detected:"
-  printf "%s\n" "$MATCHES" | sed 's/^/  /'
+SCAN_OUTPUT=$(mktemp)
+trap 'rm -f "$SCAN_OUTPUT"' EXIT
+if ! python3 scripts/security-scan.py "$ALLOWLIST_FILE" >"$SCAN_OUTPUT"; then
+  echo "❌ Tracked-file security scan failed:"
+  sed 's/^/  /' "$SCAN_OUTPUT"
   exit 1
 fi
 echo "✅ No high-risk secret patterns detected."
-
-if grep -nE '^[[:space:]]*(api_key|token):[[:space:]]*[^<{[:space:]]' System/integrations/config.yaml; then
-  echo "❌ Raw task credentials are forbidden in tracked integration YAML."
-  exit 1
-fi
 
 if [ "$STRICT_AUDIT" = "1" ]; then
   echo ""

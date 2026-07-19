@@ -60,6 +60,31 @@ test('provider failures never expose credential-bearing URL or response text', a
   );
 });
 
+test('thrown transport failures discard URL, message, headers, and cause details', async (t) => {
+  const apiKey = 'synthetic-thrown-key';
+  const token = 'synthetic-thrown-token';
+  stubFetch(t, ({ url }) => {
+    const error = new Error(`connect failed for ${url.toString()}`, {
+      cause: { authorization: `Bearer ${token}` },
+    });
+    error.headers = { authorization: apiKey };
+    throw error;
+  });
+  const adapter = loadAdapter();
+
+  await assert.rejects(
+    adapter.health({ api_key: apiKey, token }),
+    (error) => {
+      assert.equal(error.message, 'Trello API GET transport failed');
+      assert.equal(error.cause, undefined);
+      assert.equal(error.headers, undefined);
+      assert.equal(JSON.stringify(error).includes(apiKey), false);
+      assert.equal(JSON.stringify(error).includes(token), false);
+      return true;
+    },
+  );
+});
+
 test('create uses configured list_mapping and embeds the Dex marker', async (t) => {
   const calls = stubFetch(t, ({ url, options }) => {
     if (url.pathname === '/1/cards' && options.method === 'POST') {
