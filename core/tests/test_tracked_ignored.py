@@ -72,7 +72,7 @@ def tracked_ignored_repo(tmp_path: Path) -> Path:
     repo = tmp_path / "vault"
     repo.mkdir()
     _git(repo, "init", "-q")
-    _git(repo, "config", "user.email", "fixture@example.invalid")
+    _git(repo, "config", "user.email", "tests@example.com")
     _git(repo, "config", "user.name", "Fixture")
     rows = _policy_rows()
     ignore_lines = []
