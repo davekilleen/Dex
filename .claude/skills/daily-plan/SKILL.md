@@ -59,7 +59,9 @@ If items found, triage them before building the plan so task counts are accurate
 
 Run these silently without user-facing output:
 
-1. **Update check**: `check_for_updates(force=False)` - store notification if available
+1. **Release evidence**: SessionStart already performs the at-most-daily bounded fetch-only check. Read its result;
+   do not start a second network attempt. Surface only its complete `release-appears-available-unverified` notice,
+   verbatim. Keep `no-newer-release-observed-unverified`, `offline`, `UNKNOWN`, and `skipped` silent here.
 2. **Self-learning checks**: Run changelog and learning review scripts if due
 3. **Search index refresh**: Run `qmd update && qmd embed` to refresh vault search index with any overnight changes (meetings processed, files edited, etc.). If `qmd` is not installed, skip silently.
 4. **People index refresh**: Call `build_people_index` from Work MCP. This keeps the People Directory current so person lookups throughout the day are fast. Takes <2 seconds.

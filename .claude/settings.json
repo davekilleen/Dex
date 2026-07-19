@@ -9,7 +9,7 @@
           },
           {
             "type": "command",
-            "command": "git pull --quiet 2>/dev/null && echo '{\"hookSpecificOutput\":{\"hookEventName\":\"SessionStart\",\"additionalContext\":\"\\n✅ Synced with GitHub (pulled latest changes)\\n\"}}' || echo '{\"hookSpecificOutput\":{\"hookEventName\":\"SessionStart\",\"additionalContext\":\"\\n⚠️  Could not sync with GitHub (check your connection)\\n\"}}'"
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/core/utils/update_verifier.py\" --vault \"$CLAUDE_PROJECT_DIR\" --session-start"
           }
         ]
       }

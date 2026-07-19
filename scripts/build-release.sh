@@ -146,6 +146,14 @@ node -e "
 "
 git add -- package.json
 
+# Generate SR1's closed legacy declaration from the exact distribution version.
+# Later catalog-bearing releases replace it; legacy-v1 never needs a catalog.
+PROFILE="System/.release-evidence-profile.json"
+python3 core/utils/update_verifier.py \
+    --write-legacy-profile "$PROFILE" \
+    --release-version "$PKG_VERSION"
+git add -- "$PROFILE"
+
 # Generate the installed-files manifest from the exact release index. Stage an
 # empty manifest first so the manifest truthfully includes its own shipped path;
 # replacing its contents does not change the set of paths in the tree.

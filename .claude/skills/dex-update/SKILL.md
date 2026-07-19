@@ -123,37 +123,42 @@ If upstream exists, continue to Step 2.
 
 ---
 
-### Step 2: Check for Updates
+### Step 2: Check Release Evidence
 
 Call update checker:
 ```
 check_for_updates(force=True)
 ```
 
-**If no updates available:**
-```
-✅ You're already on the latest version (v1.2.0)
+Interpret only the closed status vocabulary:
+- `release-appears-available-unverified`: show the returned notice verbatim, including exact version, immutable tag,
+  full commit, profile, canonical release page, and `/dex-doctor` guidance. This is evidence that a release appears to
+  exist; it is not publisher authentication and does not authorize an update.
+- `no-newer-release-observed-unverified`: say only that no higher release was observed by the bounded check and that
+  this is not a currentness claim.
+- `offline`: the network check could not complete; stop before any update action.
+- `UNKNOWN`: evidence was missing, malformed, contradictory, unsupported, or unverifiable; stop before any update action.
+- `skipped`: dedup suppressed the attempt or notice. Use `/dex-doctor` for an explicit exact-notice redisplay.
 
-No update needed!
+**If no higher release was observed:**
+```
+No higher Dex release was observed by the bounded evidence check. This does not establish that this installation is current.
 ```
 Exit.
 
-**If updates available, show summary:**
+**If a higher release appears to exist, show only the returned caution and identity:**
 ```
-🎁 Dex v1.3.0 is available
-
-You're on: v1.2.0
-Latest: v1.3.0
-
-What's new:
-- Career coach improvements
-- Task deduplication fix  
-- Meeting intelligence enhancement
-
-[View full release notes]
-[Update now]
-[Cancel]
+A newer Dex release appears to exist, but Dex has not authenticated its publisher. Review the exact release/tag before choosing to update.
+Target version: v1.3.0
+Immutable tag: dist/release/v1.3.0-abcdef0
+Full commit: <full commit identity>
+Evidence profile: legacy-v1
+Release page: https://github.com/davekilleen/Dex/releases/tag/dist/release/v1.3.0-abcdef0
+Run /dex-doctor to review this evidence and update guidance. Dex will not update automatically.
 ```
+
+Never say `update available`, `verified`, `safe`, `current`, or `up to date` for this result. Continue only after the
+user separately chooses the existing manual update workflow.
 
 ---
 
@@ -848,9 +853,10 @@ Call `track_event` with event_name `dex_update_completed` and properties:
 
 This only fires if the user has opted into analytics. No action needed if it returns "analytics_disabled".
 
-**Clear update notification:**
+**Release notice state:**
 
-Call `dismiss_update()` from the Update Checker MCP to remove the `System/.update-available` file. This stops the daily update reminder from appearing in future sessions.
+Do not delete or rewrite exact-release notice history. After a successful update, the installed package/profile
+version changes naturally; the evidence checker keeps its once-per-exact-release record.
 
 ---
 
@@ -1098,7 +1104,7 @@ updates:
 
 **User sees in daily plan:**
 ```
-🎁 Dex v1.3.0 is available. Run /dex-whats-new for details.
+A newer Dex release appears to exist, but Dex has not authenticated its publisher. Review the exact release/tag before choosing to update.
 ```
 
 **User runs:**

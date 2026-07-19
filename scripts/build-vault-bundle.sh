@@ -57,6 +57,10 @@ if (pkg.scripts) delete pkg.scripts['test:scripts'];
 fs.writeFileSync(packagePath, `${JSON.stringify(pkg, null, 2)}\n`);
 NODE
 
+python3 "$REPO_ROOT/core/utils/update_verifier.py" \
+  --write-legacy-profile "$STAGING_DIR/System/.release-evidence-profile.json" \
+  --release-version "$VERSION"
+
 # The release manifest describes caller-owned shipped content. Production
 # node_modules is deliberately an artifact addition, not update-managed vault
 # content, so it is excluded from the manifest just as on the release branch.

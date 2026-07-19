@@ -24,8 +24,10 @@ RELEASE_BUILD_INPUTS = (
     "requirements.txt",
     "requirements-dev.txt",
     "core/utils/manifest.py",
+    "core/utils/update_verifier.py",
     "core/utils/smoke.py",
     "scripts/build-release.sh",
+    "scripts/build-vault-bundle.sh",
     "scripts/generate-manifest.sh",
     "scripts/verify-distribution.sh",
 )
@@ -160,14 +162,26 @@ def test_release_branch_strips_dev_files_and_keeps_user_runtime(tmp_path: Path) 
     assert "core/utils/doctor.py" in members
     assert "core/utils/manifest.py" in members
     assert "core/utils/smoke.py" in members
+    assert "core/utils/update_verifier.py" in members
     assert ".claude/skills/dex-update/SKILL.md" in members
     assert ".claude/skills/anthropic-docx/scripts/document.py" in members
     assert "System/.installed-files.manifest" in members
+    assert "System/.release-evidence-profile.json" in members
 
     manifest = _release_manifest(clone, "release")
     assert manifest == sorted(manifest)
     assert set(manifest) == members
     assert "core/tests/test_distribution_artifacts.py" not in manifest
+    profile = json.loads(
+        subprocess.run(
+            ["git", "show", "release:System/.release-evidence-profile.json"],
+            cwd=clone,
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout
+    )
+    assert profile == {"schema_version": 1, "profile": "legacy-v1", "release_version": "1.61.0"}
 
     subprocess.run(
         ["git", "checkout", "--quiet", "release"],
@@ -231,6 +245,7 @@ def test_beta_release_branch_uses_same_stripping_and_manifest(tmp_path: Path) ->
     )
 
     assert "System/.installed-files.manifest" in beta_members
+    assert "System/.release-evidence-profile.json" in beta_members
     assert not any(path.startswith("core/tests/") for path in beta_members)
     assert not any(path.startswith("scripts/") for path in beta_members)
     assert set(_release_manifest(clone, "release-beta")) == beta_members
