@@ -10,7 +10,7 @@ TREEISH="${1:-HEAD}"
 # Validate the exact requested tree before the manifest writer can touch output.
 python3 "$REPO_ROOT/scripts/check-tau-removal.py" \
   --repo-root "$REPO_ROOT" \
-  --git-tree "$TREEISH"
+  --git-source "$TREEISH"
 
 exec python3 "$REPO_ROOT/core/utils/manifest.py" \
   "$TREEISH" \

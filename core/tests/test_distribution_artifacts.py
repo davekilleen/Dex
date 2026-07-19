@@ -544,17 +544,54 @@ def test_release_build_uses_selected_source_distignore_contract(tmp_path: Path) 
     ).returncode == 1
 
 
+def test_manifest_accepts_safe_head_source_tree(tmp_path: Path) -> None:
+    clone = _clone_repo(tmp_path, "safe-manifest-treeish")
+    subprocess.run(["git", "checkout", "-B", "main", "HEAD"], cwd=clone, check=True)
+    _commit_release_inputs_if_changed(clone)
+
+    result = subprocess.run(
+        ["bash", "scripts/generate-manifest.sh", "HEAD"],
+        cwd=clone,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    manifest = (clone / "System/.installed-files.manifest").read_text(
+        encoding="utf-8"
+    ).splitlines()
+    expected = subprocess.run(
+        ["git", "ls-tree", "-r", "--name-only", "HEAD"],
+        cwd=clone,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.splitlines()
+    assert manifest == sorted(expected)
+
+
+@pytest.mark.parametrize("mutation", ("path", "dependency"))
 def test_manifest_rejects_unsafe_requested_tree_without_output_or_ref_mutation(
-    tmp_path: Path,
+    tmp_path: Path, mutation: str
 ) -> None:
-    clone = _clone_repo(tmp_path, "unsafe-manifest-treeish")
+    clone = _clone_repo(tmp_path, f"unsafe-manifest-treeish-{mutation}")
     subprocess.run(["git", "checkout", "-B", "main", "HEAD"], cwd=clone, check=True)
     _commit_release_inputs_if_changed(clone)
     subprocess.run(["git", "checkout", "-b", "unsafe-manifest"], cwd=clone, check=True)
-    unsafe = clone / "extensions/tau-mirror-loader.bin"
-    unsafe.parent.mkdir(parents=True, exist_ok=True)
-    unsafe.write_bytes(b"safe payload\n")
-    subprocess.run(["git", "add", str(unsafe.relative_to(clone))], cwd=clone, check=True)
+    if mutation == "path":
+        unsafe = clone / "extensions/tau-mirror-loader.bin"
+        unsafe.parent.mkdir(parents=True, exist_ok=True)
+        unsafe.write_bytes(b"safe payload\n")
+        subprocess.run(["git", "add", str(unsafe.relative_to(clone))], cwd=clone, check=True)
+        expected_violation = "removed Tau path"
+    else:
+        package_path = clone / "package.json"
+        package = json.loads(package_path.read_text(encoding="utf-8"))
+        package.setdefault("dependencies", {})["qrcode-terminal"] = "1.0.0"
+        package_path.write_text(json.dumps(package, indent=2) + "\n", encoding="utf-8")
+        subprocess.run(["git", "add", "package.json"], cwd=clone, check=True)
+        expected_violation = "forbidden dependency qrcode-terminal"
     subprocess.run(
         ["git", "commit", "--quiet", "-m", "test: unsafe manifest tree"],
         cwd=clone,
@@ -577,7 +614,7 @@ def test_manifest_rejects_unsafe_requested_tree_without_output_or_ref_mutation(
     )
 
     assert result.returncode == 1
-    assert "removed Tau path" in result.stdout
+    assert expected_violation in result.stdout
     assert manifest.read_bytes() == before_manifest
     assert subprocess.run(
         ["git", "show-ref"], cwd=clone, check=True, capture_output=True
