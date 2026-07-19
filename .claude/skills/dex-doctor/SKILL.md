@@ -65,6 +65,14 @@ already produced and verified the mode-`0700` transaction directory and mode-`06
 1 MiB free-space margin checks. Apply must preserve Git remote configuration and never fetch,
 push, force-push, install software, or call a provider.
 
+The verified bundle and manifest cover every restorable ref, not only selected refs, and include
+restrictive config/index recovery artifacts plus opaque HEAD/index/tracked-worktree/remote state
+authority. Apply still passes only the explicitly selected refs to `git-filter-repo`. Any changed
+unselected branch, tag, stash, remote-tracking, replace, notes, backup, or other ref—or any HEAD,
+index, tracked-worktree, or remote-config collateral—must return `recovery-required`, never a
+clean result. Credential equality is memory-only; no value-derived digest or replacement file may
+be persisted.
+
 Render the post-cleanup rescan result exactly as `history-clean`,
 `history-cleanup-pending`, or `history-scope-unknown`. If apply is interrupted or reports
 `recovery-required`, lead with “Do not push.” Preserve the bundle and call

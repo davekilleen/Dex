@@ -35,3 +35,12 @@ def test_duplicate_env_name_is_refused(tmp_path):
     (tmp_path / ".env").write_text("TODOIST_API_KEY=one\nTODOIST_API_KEY=two\n")
     with pytest.raises(ValueError, match="duplicate"):
         read_vault_env(tmp_path)
+
+
+def test_update_rejects_duplicate_assignments_before_mutation(tmp_path):
+    path = tmp_path / ".env"
+    original = b"TODOIST_API_KEY=one\nTODOIST_API_KEY=two\n"
+    path.write_bytes(original)
+    with pytest.raises(ValueError, match="duplicate"):
+        update_vault_env(tmp_path, {"TODOIST_API_KEY": "replacement"})
+    assert path.read_bytes() == original

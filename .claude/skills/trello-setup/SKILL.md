@@ -85,23 +85,41 @@ Walk the user through getting their Trello API key and token:
 2. Authorize the app when prompted
 3. Copy the token that appears
 
-**Paste your API key and token when ready.**
+Do not paste either value into this conversation. Open the ignored vault-root `.env` in your
+local editor and replace these placeholders directly:
+
+`TRELLO_API_KEY=<paste key locally here>`
+`TRELLO_TOKEN=<paste token locally here>`
+
+Save the file with mode `0600`, then reply only `saved`. Dex must never echo, read aloud,
+log, or include either value in a command, argv, or process environment.
 ```
 
-Wait for the user to provide both values.
+Wait only for the non-secret `saved` confirmation. Never ask the user to provide or validate
+either value in chat.
 
 ### Step 4: Store Local Credentials
 
-Write `TRELLO_API_KEY` and `TRELLO_TOKEN` to the vault-root `.env` with mode
-`0600`. Preserve unrelated lines. Never copy either value to `.mcp.json`, tracked
-YAML, commands, or process environment. Existing `.mcp.json` is scan/report-only
-and must remain byte-identical.
+Confirm locally that `.env` defines `TRELLO_API_KEY` and `TRELLO_TOKEN` without printing or
+returning either value. Preserve unrelated lines. Never copy either value to `.mcp.json`,
+tracked YAML, commands, argv, logs, transcript, or process environment. Existing `.mcp.json`
+is scan/report-only and must remain byte-identical.
+
+Before health, update only the non-secret tracked Trello fields to `enabled: true`,
+`api_key_env_var: TRELLO_API_KEY`, and `token_env_var: TRELLO_TOKEN`; do not add raw `api_key`
+or `token` fields.
 
 ### Step 5: Test the Connection
 
-Run a quick test to confirm everything works:
+Run a quick test through only Dex's sanitized Python-to-adapter-stdin read-only health path.
+It resolves `.env` internally and performs Trello `GET /members/me?fields=id`; never test
+through an ambient or external MCP:
 
-1. List the user's boards via the Trello MCP
+```bash
+python3 -c 'from core.integrations.task_sync import check_service_health; print(check_service_health("trello"))'
+```
+
+1. Confirm the returned health result
 2. Show a brief summary:
 
 ```

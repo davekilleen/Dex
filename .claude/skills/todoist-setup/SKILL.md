@@ -76,7 +76,7 @@ right from our conversations.
 
 Wait for confirmation.
 
-### Step 3: Get the API Key
+### Step 3: Enter the API Key Locally
 
 Guide the user:
 
@@ -87,23 +87,36 @@ To get your Todoist API token:
 2. Go to **Settings** → **Integrations** → **Developer**
 3. Copy the **API token** shown there
 
-Paste it here when you have it.
+Do not paste the token into this conversation. Open the ignored vault-root `.env` in your
+local editor and replace the placeholder in this line directly:
+
+`TODOIST_API_KEY=<paste token locally here>`
+
+Save the file with mode `0600`, then reply only `saved`. Dex must never echo, read aloud,
+log, or include the value in a command, argv, or process environment.
 ```
 
-Wait for the user to provide their API key. Validate it's a non-empty string (Todoist API tokens are typically 40-character hex strings).
+Wait only for the non-secret `saved` confirmation. Never ask the user to provide or validate
+the token in chat.
 
 ### Step 4: Store the Local Credential
 
-Write `TODOIST_API_KEY=<user's API key>` to the vault-root `.env` with mode `0600`.
+Confirm locally that `.env` defines `TODOIST_API_KEY` without printing or returning its value.
 Preserve unrelated lines and never place the value in `.mcp.json`, tracked YAML, a command,
-or process environment. Existing `.mcp.json` is scan/report-only and must remain byte-identical.
+argv, logs, transcript, or process environment. Existing `.mcp.json` is scan/report-only and
+must remain byte-identical.
+
+Before health, update only the non-secret tracked Todoist fields to `enabled: true` and
+`api_key_env_var: TODOIST_API_KEY`; do not add an `api_key` field.
 
 ### Step 5: Test the Connection
 
-Use the API key to list projects as a connectivity test. Run a curl or use the MCP server:
+Use only Dex's sanitized Python-to-adapter-stdin read-only health path. It resolves `.env`
+internally and performs Todoist `GET /projects`; it does not put the token in the command or
+environment:
 
 ```bash
-curl -s -H "Authorization: Bearer $API_KEY" https://api.todoist.com/api/v1/projects
+python3 -c 'from core.integrations.task_sync import check_service_health; print(check_service_health("todoist"))'
 ```
 
 **If projects load successfully:**

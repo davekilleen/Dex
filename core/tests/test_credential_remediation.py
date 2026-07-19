@@ -1,4 +1,6 @@
 import json
+import os
+import socket
 from pathlib import Path
 
 import pytest
@@ -58,13 +60,82 @@ def test_conflict_symlink_and_mcp_residual_are_honest(tmp_path):
     assert mcp.read_bytes() == before
 
 
+@pytest.mark.parametrize("external", [False, True])
+def test_symlinked_mcp_is_partial_or_refused_and_explicitly_uninspected(tmp_path, external):
+    root = _vault(tmp_path, b"todoist:\n  api_key_env_var: TODOIST_API_KEY\n")
+    target = (tmp_path.parent / "outside-mcp.json") if external else (root / "inside-mcp.json")
+    target.write_text('{"env":{"TODOIST_API_KEY":"outside-value"}}')
+    (root / ".mcp.json").symlink_to(target)
+    result = migrate_legacy_credentials(root)
+    assert result.state == "partial"
+    assert result.active_residual_state == "unrevoked-or-unclassified"
+    assert result.uninspected_scopes == ("worktree",)
+    assert result.uninspected_reasons == ("unsafe-active-config",)
+
+
+def test_nonregular_and_hardlinked_mcp_fail_closed(tmp_path):
+    root = _vault(tmp_path, b"todoist:\n  api_key_env_var: TODOIST_API_KEY\n")
+    os.mkfifo(root / ".mcp.json")
+    assert migrate_legacy_credentials(root).state == "partial"
+    (root / ".mcp.json").unlink()
+    source = root / "mcp-source"
+    source.write_text("{}")
+    os.link(source, root / ".mcp.json")
+    assert migrate_legacy_credentials(root).active_residual_state == "unrevoked-or-unclassified"
+
+
+@pytest.mark.parametrize("kind", ["directory", "unreadable", "oversized", "socket"])
+def test_other_unsafe_active_config_types_fail_closed(tmp_path, kind):
+    root = _vault(tmp_path, b"todoist:\n  api_key_env_var: TODOIST_API_KEY\n")
+    path = root / ".mcp.json"
+    listener = None
+    if kind == "directory":
+        path.mkdir()
+    elif kind == "unreadable":
+        path.write_text("{}")
+        path.chmod(0)
+    elif kind == "oversized":
+        path.write_bytes(b"x" * (1024 * 1024 + 1))
+    else:
+        listener = socket.socket(socket.AF_UNIX)
+        listener.bind(str(path))
+    try:
+        result = migrate_legacy_credentials(root)
+        assert result.state == "partial"
+        assert result.active_residual_state == "unrevoked-or-unclassified"
+        assert result.uninspected_scopes == ("worktree",)
+    finally:
+        if listener:
+            listener.close()
+
+
+def test_active_config_identity_race_is_uninspected(tmp_path, monkeypatch):
+    root = _vault(tmp_path, b"todoist:\n  api_key_env_var: TODOIST_API_KEY\n")
+    (root / ".mcp.json").write_text("{}")
+    from core.utils.integration_credentials import ActiveConfigInspection
+
+    monkeypatch.setattr(
+        "core.utils.credential_remediation.inspect_active_mcp_config",
+        lambda _: ActiveConfigInspection(None, False, "active-config-identity-change"),
+    )
+    result = migrate_legacy_credentials(root)
+    assert result.state == "partial"
+    assert result.uninspected_reasons == ("active-config-identity-change",)
+
+
 def test_renderer_exact_copy_and_impossible_combinations():
     status = render_credential_status(
         "partial",
         "remediated",
         "proven-revoked",
         "history-cleanup-pending",
-        ("provider-binding",),
+        (
+            "old-key-revocation",
+            "replacement-present",
+            "replacement-health",
+            "active-copy",
+            "provider-binding",
+        ),
         (),
     )
     assert status.security_and_current_config == (
@@ -78,6 +149,10 @@ def test_renderer_exact_copy_and_impossible_combinations():
         )
     with pytest.raises(ValueError):
         render_credential_status("partial", "remediated", "unrevoked-or-unclassified", "history-clean", (), ())
+    with pytest.raises(ValueError, match="complete bound"):
+        render_credential_status("not-needed", "remediated", "none", "history-clean", (), ())
+    with pytest.raises(ValueError, match="complete bound"):
+        render_credential_status("not-needed", "remediated", "none", "history-clean", ("provider-binding",), ())
     with pytest.raises(ValueError):
         render_credential_status("not-needed", "unknown", "none", "history-scope-unknown", (), ())
 

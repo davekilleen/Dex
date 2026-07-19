@@ -15,7 +15,12 @@ from typing import Literal
 
 import yaml
 
-from core.utils.integration_credentials import update_vault_env
+from core.utils.integration_credentials import (
+    LEGACY_CREDENTIAL_FIELDS,
+    inspect_active_mcp_config,
+    parse_env_assignments,
+    update_vault_env,
+)
 
 MigrationState = Literal["not-needed", "migrated-local-config", "partial", "refused", "rewound"]
 SecurityState = Literal["remediated", "rotation-pending", "unknown"]
@@ -55,6 +60,7 @@ SCOPE_CATEGORIES = frozenset(
         "selected-archives",
     }
 )
+EXCEPTIONS_FILE = Path(__file__).with_name("credential_migration_exceptions.json")
 
 
 @dataclass(frozen=True)
@@ -71,6 +77,9 @@ class MigrationResult:
     state: MigrationState
     journal_id: str | None = None
     failed_capabilities: tuple[str, ...] = ()
+    active_residual_state: ActiveResidualState = "none"
+    uninspected_scopes: tuple[str, ...] = ()
+    uninspected_reasons: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -176,12 +185,7 @@ def _legacy_values(raw: bytes) -> tuple[dict[str, str], dict[str, str]]:
         raise ValueError("integration config must be an object")
     values: dict[str, str] = {}
     refs: dict[str, str] = {}
-    mapping = {
-        ("todoist", "api_key"): ("TODOIST_API_KEY", "api_key_env_var"),
-        ("trello", "api_key"): ("TRELLO_API_KEY", "api_key_env_var"),
-        ("trello", "token"): ("TRELLO_TOKEN", "token_env_var"),
-    }
-    for (service, key), (env_name, ref_name) in mapping.items():
+    for (service, key), (env_name, ref_name) in LEGACY_CREDENTIAL_FIELDS.items():
         settings = data.get(service)
         if not isinstance(settings, dict) or key not in settings:
             continue
@@ -200,7 +204,7 @@ def _replace_yaml_credentials(raw: bytes, refs: dict[str, str]) -> bytes:
         pattern = rf"(?ms)(^[ ]*{section}:\s*\n(?:(?:[ ]+.*\n)*?))([ ]+){key}:([^\r\n]*)(\r?\n|$)"
         text, count = re.subn(
             pattern,
-            rf"\1\2{ref_name}: { {'todoist.api_key': 'TODOIST_API_KEY', 'trello.api_key': 'TRELLO_API_KEY', 'trello.token': 'TRELLO_TOKEN'}[dotted] }\4",
+            rf"\1\2{ref_name}: {LEGACY_CREDENTIAL_FIELDS[(section, key)][0]}\4",
             text,
             count=1,
         )
@@ -213,20 +217,44 @@ def _hash(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
+def _validate_exception_registry() -> None:
+    """Fail closed until a separately implemented exact exception matcher is shipped."""
+    try:
+        payload = json.loads(_read_nofollow(EXCEPTIONS_FILE).decode("utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
+        raise ValueError("credential migration exception registry is unavailable") from error
+    if payload != {"schema_version": 1, "exceptions": []}:
+        raise ValueError("credential migration exception registry contains unsupported authority")
+
+
 def migrate_legacy_credentials(vault_root: Path) -> MigrationResult:
+    try:
+        _validate_exception_registry()
+    except ValueError:
+        return MigrationResult("refused")
     config = vault_root / "System" / "integrations" / "config.yaml"
     config_raw = _read_nofollow(config)
     try:
         values, refs = _legacy_values(config_raw)
     except (UnicodeDecodeError, ValueError, yaml.YAMLError):
         return MigrationResult("refused")
-    mcp_path = vault_root / ".mcp.json"
-    mcp_raw = _read_nofollow(mcp_path) if mcp_path.exists() and not mcp_path.is_symlink() else b""
+    mcp = inspect_active_mcp_config(vault_root)
+    if not mcp.inspected:
+        return MigrationResult(
+            "refused" if values else "partial",
+            active_residual_state="unrevoked-or-unclassified",
+            uninspected_scopes=("worktree",),
+            uninspected_reasons=(mcp.reason or "unsafe-active-config",),
+        )
+    mcp_raw = mcp.data or b""
     mcp_raw_residual = any(value.encode() in mcp_raw for value in values.values()) or bool(
         re.search(rb'"(?:TODOIST_API_KEY|TRELLO_API_KEY|TRELLO_TOKEN)"\s*:\s*"[^"$<{][^"]*"', mcp_raw)
     )
     if not values:
-        return MigrationResult("partial" if mcp_raw_residual else "not-needed")
+        return MigrationResult(
+            "partial" if mcp_raw_residual else "not-needed",
+            active_residual_state="unrevoked-or-unclassified" if mcp_raw_residual else "none",
+        )
     journal_dir = vault_root / "System" / ".dex" / "adoption" / "credential-journals"
     capability = probe_atomic_migration(vault_root, journal_dir)
     if not capability.authorized:
@@ -236,10 +264,9 @@ def migrate_legacy_credentials(vault_root: Path) -> MigrationResult:
     env_path = vault_root / ".env"
     env_raw = _read_nofollow(env_path) if env_path.exists() else None
     if env_raw:
-        existing = env_raw.decode("utf-8", errors="strict")
+        existing_values = parse_env_assignments(env_raw)
         for name, value in values.items():
-            match = re.search(rf"(?m)^(?:export\s+)?{name}\s*=([^\r\n]*)$", existing)
-            if match and match.group(1).strip(" '\"") != value:
+            if name in existing_values and existing_values[name] != value:
                 return MigrationResult("refused")
     expected_config = _replace_yaml_credentials(config_raw, refs)
     journal_id = uuid.uuid4().hex
@@ -279,7 +306,11 @@ def migrate_legacy_credentials(vault_root: Path) -> MigrationResult:
     except Exception:
         rewind_credential_migration(vault_root, journal_id)
         return MigrationResult("refused", journal_id)
-    return MigrationResult("partial" if mcp_raw_residual else "migrated-local-config", journal_id)
+    return MigrationResult(
+        "partial" if mcp_raw_residual else "migrated-local-config",
+        journal_id,
+        active_residual_state="unrevoked-or-unclassified" if mcp_raw_residual else "none",
+    )
 
 
 def rewind_credential_migration(vault_root: Path, journal_id: str) -> MigrationResult:
@@ -321,6 +352,15 @@ def render_credential_status(
         raise ValueError("security cannot be fixed with a potentially usable residual")
     if active_residual_state == "proven-revoked" and "provider-binding" not in evidence:
         raise ValueError("proven residual requires provider binding evidence")
+    required_remediation = {
+        "old-key-revocation",
+        "replacement-present",
+        "replacement-health",
+        "active-copy",
+        "provider-binding",
+    }
+    if security_state == "remediated" and not required_remediation <= set(evidence):
+        raise ValueError("remediated security requires complete bound rotation and replacement evidence")
     if history_hygiene_state == "history-clean" and scopes:
         raise ValueError("clean history cannot have uninspected scopes")
     if history_hygiene_state == "history-scope-unknown" and not scopes:

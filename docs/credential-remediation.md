@@ -10,10 +10,37 @@ migration `partial`. Revocation and rotation remain provider actions performed b
 Dex may run a read-only replacement health check only in an explicitly requested remediation
 flow.
 
+Dex inspects `.mcp.json` with `lstat`, a no-follow open, regular-file/single-link/size/readability
+checks, and before/open/after identity comparison. A symlink, hard link, directory, FIFO, device,
+socket, unreadable or oversized file, or identity race is never treated as empty or inspected.
+Migration is refused when legacy credentials still require migration, otherwise remains
+`partial`; active residual state is `unrevoked-or-unclassified`, with only the opaque worktree
+scope and reason category reported.
+
 Migration is authorized per installation only when all live same-directory journal, temporary
 file, durability, replace, identity recheck, readback, rollback, and no-follow containment
 capabilities pass. OS, filesystem, sync, removable/network, or support labels never veto a
 pass. Failure refuses only migration; scan and manual guidance remain available.
+
+`credential_migration_exceptions.json` is read and closed at runtime. SR1 supports only the
+owner-approved empty registry; malformed or non-empty authority fails migration closed until an
+exact evidence-bound matcher is separately implemented and reviewed.
+
+Safe autosave first stages only explicit unstaged/untracked candidates into a temporary index,
+preserving already-staged blobs. It then scans every blob in the exact final temporary index,
+not worktree approximations. It refuses raw Todoist/Trello YAML fields, configured known values,
+active MCP residuals or unsafe MCP state, and values recovered ephemerally from migration journal
+preimages. `.env`, `.mcp.json`, and migration journals remain ignored authorities and are never
+staged. Findings are counts only; values and value-derived fingerprints are not serialized.
+
+Credential scanning is bounded by aggregate file, byte, object, archive-member, Git-output, and
+deadline limits. Worktree/index completion requires every approved file/blob to pass; selected
+archive completion requires every regular member to pass. Git common-dir inspection covers the
+bounded refs, packed-refs, and reflog metadata subscopes. Reachable history includes every object
+reachable from approved heads, tags, stashes, remote-tracking refs, and reflogs—including
+reflog-only commits—but not unrelated unreachable objects. Any skipped, unsafe, unreadable,
+oversized, identity-changing, corrupt, or limit-exceeding input makes the affected scope
+uninspected with an opaque category reason and prevents universal clean wording.
 
 History cleanup is optional privacy hygiene. It requires an explicit choice, a restrictive
 verified local bundle, typed consent, and a preinstalled supported `git-filter-repo`. Dex never
@@ -36,23 +63,35 @@ command, argv, process environment, manifest, log, state, or Doctor output.
    free space including the 1 MiB margin, or projected shared recovery use above 10 GiB.
 3. Preparation writes
    `System/.dex/adoption/history-backups/<opaque-transaction-id>/history.bundle`,
-   `objects.json`, and `manifest.json`. The transaction directory is mode `0700`; every file is
-   mode `0600`. Bundle/object/ref identities are read back, fsynced, hash-bound, and checked with
+   `objects.json`, `git-config.bin`, `index.bin`, and `manifest.json`. The transaction directory
+   is mode `0700`; every file is mode `0600`. The bundle covers every restorable ref, while the
+   manifest records every ref plus opaque HEAD/index/worktree/remote state authority. Bundle,
+   object, ref, config, and index evidence is read back, fsynced, hash-bound, and checked with
    `git bundle verify` before preparation succeeds. No ref is rewritten during preview.
 4. Apply requires the unchanged preview and exact typed consent
    `CLEAN OPTIONAL HISTORY <opaque-transaction-id>`. It rechecks the tool, topology, bundle,
-   object evidence, selected refs, and credential selection before invoking `git-filter-repo`
-   with only the selected refs. Git remote configuration is restored byte-for-byte if the tool
-   changes it. Dex does not fetch, push, force-push, or contact a provider.
+   object evidence, all refs, repository state, and ephemeral credential selection before
+   invoking `git-filter-repo` with only the selected refs. Credential values are supplied through
+   an inherited anonymous file descriptor and are never persisted in a replacement file or
+   fingerprint field. Every unselected ref plus HEAD, index, tracked worktree bytes, and Git
+   remote configuration must remain invariant. Dex does not fetch, push, force-push, or contact a
+   provider.
 5. Apply validates every rewritten ref object and rescans the selected history. The only cleanup
    results are `history-clean`, `history-cleanup-pending`, and `history-scope-unknown`. These are
    privacy-hygiene results and never change or reverse provider rotation.
 6. The durable manifest enters `applying` before rewrite. A failure records
    `recovery-required`, preserves the verified bundle, and says not to push. Automatic
-   `rewind_history_cleanup(...)` proceeds only when current selected refs exactly equal the
-   recorded post-attempt refs; otherwise it fails closed with exact manual bundle-recovery
-   guidance. Rewind uses local bundle objects and transactional `git update-ref`; it never uses
-   fetch and never claims to reverse provider rotation.
+   `rewind_history_cleanup(...)` proceeds only when every current ref exactly equals the recorded
+   post-attempt set. It restores every original ref, deletes collateral refs transactionally, and
+   restores restrictive config/index artifacts. Any unverified HEAD/index/worktree/remote result
+   fails closed with exact manual bundle-recovery guidance. Rewind never uses fetch and never
+   claims to reverse provider rotation.
+
+Security copy may say `remediated` only with all five exact categories: old-key revocation bound
+to the active old value, replacement present, successful read-only replacement health,
+active-copy classification, and provider binding. A usable or unclassified active copy remains
+impossible with `remediated`; a proven-revoked MCP residual must be bound to that same revoked
+value. Empty or provider-binding-only evidence is rejected before copy construction.
 7. `preview_retention(...)` excludes the newest history recovery bundle and any unverified or
    corrupt bundle. Older bundles become eligible only after both 90 days and two later successful
    release activations, plus the recorded external-backup posture. Deletion requires

@@ -39,7 +39,16 @@ def _repo(root: Path) -> str:
     return _git(root, "symbolic-ref", "HEAD")
 
 
-def _tool(path: Path, *, fail: bool = False, mutate_remote: bool = False) -> Path:
+def _tool(
+    path: Path,
+    *,
+    fail: bool = False,
+    mutate_remote: bool = False,
+    mutate_unselected_ref: bool = False,
+    collateral_ref: str = "refs/tags/collateral-tag",
+    mutate_worktree: bool = False,
+    mutate_index: bool = False,
+) -> Path:
     body = f"""#!/usr/bin/env python3
 import pathlib, subprocess, sys
 if '--version' in sys.argv:
@@ -62,6 +71,13 @@ for ref in refs:
     git('update-ref', ref, commit, git('rev-parse', ref).decode())
 if {mutate_remote!r}:
     subprocess.run(['git', 'remote', 'remove', 'origin'], check=True)
+if {mutate_unselected_ref!r}:
+    git('update-ref', {collateral_ref!r}, git('rev-parse', refs[0]).decode())
+if {mutate_worktree!r}:
+    pathlib.Path('collateral-worktree.txt').write_text('changed by tool')
+if {mutate_index!r}:
+    pathlib.Path('collateral-index.txt').write_text('changed by tool')
+    git('add', 'collateral-index.txt')
 if {fail!r}:
     raise SystemExit(9)
 """
@@ -404,6 +420,76 @@ def test_cleanup_interruption_preserves_verified_bundle_and_manual_guidance(tmp_
     assert bundle.exists()
     assert json.loads((bundle.parent / "manifest.json").read_text())["phase"] == "recovery-required"
     assert rewind_history_cleanup(tmp_path, preview.transaction_id).state == "rewound"
+
+
+@pytest.mark.parametrize("interrupted", [False, True])
+@pytest.mark.parametrize(
+    "collateral_ref",
+    [
+        "refs/tags/collateral-tag",
+        "refs/remotes/origin/collateral",
+        "refs/replace/1111111111111111111111111111111111111111",
+        "refs/notes/collateral",
+        "refs/backup/collateral",
+    ],
+)
+def test_collateral_unselected_ref_mutation_never_reports_clean_and_is_rewound(tmp_path, interrupted, collateral_ref):
+    ref = _repo(tmp_path)
+    original = _git(tmp_path, "rev-parse", ref)
+    _git(tmp_path, "tag", "preserved-tag")
+    tool = _tool(
+        tmp_path / "git-filter-repo",
+        fail=interrupted,
+        mutate_unselected_ref=True,
+        collateral_ref=collateral_ref,
+    )
+    preview = _prepare(tmp_path, tool, ref)
+    outcome = apply_history_cleanup(
+        tmp_path,
+        preview,
+        typed_consent=f"CLEAN OPTIONAL HISTORY {preview.transaction_id}",
+        credential_needles=(SECRET,),
+        filter_repo=tool,
+    )
+    assert outcome.state == "recovery-required"
+    assert rewind_history_cleanup(tmp_path, preview.transaction_id).state == "rewound"
+    assert _git(tmp_path, "rev-parse", ref) == original
+    assert _git(tmp_path, "rev-parse", "refs/tags/preserved-tag") == original
+    assert subprocess.run(["git", "show-ref", "--verify", "--quiet", collateral_ref], cwd=tmp_path).returncode
+
+
+def test_history_metadata_contains_no_raw_credential_or_direct_fingerprint(tmp_path):
+    ref = _repo(tmp_path)
+    tool = _tool(tmp_path / "git-filter-repo")
+    preview = _prepare(tmp_path, tool, ref)
+    transaction = tmp_path / "System/.dex/adoption/history-backups" / preview.transaction_id
+    forbidden = {SECRET, hashlib.sha256(SECRET).hexdigest().encode(), hashlib.sha1(SECRET).hexdigest().encode()}
+    for artifact in (transaction / "manifest.json", transaction / "objects.json"):
+        data = artifact.read_bytes()
+        assert not any(value in data for value in forbidden)
+    assert "credential_sha256" not in (transaction / "manifest.json").read_text()
+
+
+@pytest.mark.parametrize("surface", ["worktree", "index"])
+def test_collateral_worktree_or_index_mutation_fails_closed(tmp_path, surface):
+    ref = _repo(tmp_path)
+    tool = _tool(
+        tmp_path / "git-filter-repo",
+        mutate_worktree=surface == "worktree",
+        mutate_index=surface == "index",
+    )
+    preview = _prepare(tmp_path, tool, ref)
+    outcome = apply_history_cleanup(
+        tmp_path,
+        preview,
+        typed_consent=f"CLEAN OPTIONAL HISTORY {preview.transaction_id}",
+        credential_needles=(SECRET,),
+        filter_repo=tool,
+    )
+    assert outcome.state == "recovery-required"
+    rewind = rewind_history_cleanup(tmp_path, preview.transaction_id)
+    assert rewind.state == "recovery-required"
+    assert "Do not push" in rewind.guidance
 
 
 def test_rewind_ref_mismatch_fails_closed_with_verified_bundle(tmp_path):

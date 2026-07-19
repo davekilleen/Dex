@@ -17,6 +17,9 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Callable, Literal
 
+_EPHEMERAL_CREDENTIALS: dict[str, tuple[bytes, ...]] = {}
+_EPHEMERAL_REPOSITORY_STATES: dict[str, dict[str, str]] = {}
+
 HistoryResult = Literal[
     "optional-tool-unavailable",
     "prepared",
@@ -217,18 +220,59 @@ def _refs(root: Path, selected_refs: tuple[str, ...]) -> dict[str, str]:
     return result
 
 
+def _all_refs(root: Path) -> dict[str, str]:
+    result: dict[str, str] = {}
+    for line in _git(root, "for-each-ref", "--format=%(refname) %(objectname)").decode().splitlines():
+        ref, oid = line.split(" ", 1)
+        if not re.fullmatch(r"refs/[^\x00-\x20~^:?*\\]+", ref) or not re.fullmatch(r"[0-9a-f]{40,64}", oid):
+            raise RuntimeError("invalid repository ref evidence")
+        result[ref] = oid
+    if not result:
+        raise RuntimeError("history cleanup requires restorable refs")
+    return dict(sorted(result.items()))
+
+
+def _repository_state(root: Path) -> dict[str, str]:
+    index = Path(_git(root, "rev-parse", "--path-format=absolute", "--git-path", "index").decode().strip())
+    index_identity = _sha(index.read_bytes()) if index.exists() else "absent"
+    worktree = hashlib.sha256()
+    paths = set(_git(root, "ls-files", "-z").split(b"\0"))
+    paths.update(_git(root, "ls-files", "--others", "--exclude-standard", "-z").split(b"\0"))
+    for relative in sorted(paths):
+        if not relative:
+            continue
+        if relative.startswith(b"System/.dex/adoption/history-backups/"):
+            continue
+        path = root / os.fsdecode(relative)
+        if path.is_symlink() or not path.is_file():
+            raise RuntimeError("tracked worktree state is unsafe")
+        worktree.update(relative)
+        worktree.update(b"\0")
+        worktree.update(path.read_bytes())
+    return {
+        "head": _git(root, "symbolic-ref", "-q", "HEAD").decode().strip(),
+        "index_sha256": index_identity,
+        "worktree_sha256": worktree.hexdigest(),
+        "remote_config_sha256": _sha(
+            Path(
+                _git(root, "rev-parse", "--path-format=absolute", "--git-path", "config").decode().strip()
+            ).read_bytes()
+        ),
+    }
+
+
 def _object_evidence(root: Path, refs: tuple[str, ...]) -> tuple[bytes, int]:
     oids = {line.split(b" ", 1)[0] for line in _git(root, "rev-list", "--objects", *refs).splitlines()}
     oids.update(_git(root, "rev-parse", "--verify", ref).strip() for ref in refs)
-    records = []
+    counts: dict[str, int] = {}
     estimated = 0
     for raw_oid in sorted(oids):
         oid = raw_oid.decode()
         kind = _git(root, "cat-file", "-t", oid).decode().strip()
         size = _git(root, "cat-file", "-s", oid).decode().strip()
         estimated += int(size)
-        records.append({"oid": oid, "type": kind, "size": int(size)})
-    return _json_bytes(records), estimated
+        counts[kind] = counts.get(kind, 0) + 1
+    return _json_bytes({"object_counts": counts, "estimated_uncompressed_bytes": estimated}), estimated
 
 
 def _restore_file(path: Path, expected: bytes, mode: int) -> None:
@@ -312,7 +356,8 @@ def prepare_history_cleanup(
         )
     _, common, objects = _repository_boundaries(root)
     refs = _refs(root, selected_refs)
-    object_evidence, estimated = _object_evidence(root, tuple(refs))
+    all_refs = _all_refs(root)
+    object_evidence, estimated = _object_evidence(root, tuple(all_refs))
     used = _used_recovery_bytes(root)
     required = estimated + MIN_FREE_MARGIN_BYTES
     free = shutil.disk_usage(_backup_root(root).parent if _backup_root(root).parent.exists() else root).free
@@ -324,13 +369,28 @@ def prepare_history_cleanup(
     os.chmod(transaction, 0o700)
     bundle = transaction / "history.bundle"
     try:
-        _git(root, "bundle", "create", str(bundle), *refs)
+        _git(root, "bundle", "create", str(bundle), *all_refs)
         os.chmod(bundle, 0o600)
         bundle_sha256, bundle_size = _sync_file_identity(bundle)
         if not bundle_size or stat.S_IMODE(bundle.stat().st_mode) != 0o600:
             raise OSError("bundle readback failed")
         _git(root, "bundle", "verify", str(bundle))
         _write_restrictive(transaction / "objects.json", object_evidence)
+        config_path = Path(_git(root, "rev-parse", "--path-format=absolute", "--git-path", "config").decode().strip())
+        index_path = Path(_git(root, "rev-parse", "--path-format=absolute", "--git-path", "index").decode().strip())
+        recovery_artifacts: dict[str, dict[str, object]] = {}
+        for name, source in (("git-config.bin", config_path), ("index.bin", index_path)):
+            if source.exists():
+                data = source.read_bytes()
+                _write_restrictive(transaction / name, data)
+                recovery_artifacts[name] = {
+                    "absent": False,
+                    "sha256": _sha(data),
+                    "size": len(data),
+                    "mode": stat.S_IMODE(source.stat().st_mode),
+                }
+            else:
+                recovery_artifacts[name] = {"absent": True, "sha256": None, "size": 0, "mode": None}
         if (
             _used_recovery_bytes(root) > SHARED_RECOVERY_CAP_BYTES
             or shutil.disk_usage(transaction).free < MIN_FREE_MARGIN_BYTES
@@ -338,6 +398,8 @@ def prepare_history_cleanup(
             raise OSError("shared recovery cap exceeded")
         created = now().astimezone(UTC)
         tool_sha256, tool_size = _sync_file_identity(tool)
+        repository_state_id = uuid.uuid4().hex
+        _EPHEMERAL_REPOSITORY_STATES[repository_state_id] = _repository_state(root)
         core = {
             "schema_version": 1,
             "transaction_id": transaction_id,
@@ -350,6 +412,8 @@ def prepare_history_cleanup(
             if external_backup_evidence
             else {"no_external_backup_acknowledged": True},
             "selected_refs": refs,
+            "all_refs": all_refs,
+            "repository_state_id": repository_state_id,
             "before_object_evidence": {
                 "sha256": _sha(object_evidence),
                 "size": len(object_evidence),
@@ -358,7 +422,7 @@ def prepare_history_cleanup(
             "primary_common_dir_identity": _sha(str(common).encode()),
             "primary_object_db_identity": _sha(str(objects).encode()),
             "bundle": {"sha256": bundle_sha256, "size": bundle_size, "verified": True},
-            "credential_sha256": sorted(_sha(item) for item in credential_needles),
+            "recovery_artifacts": recovery_artifacts,
             "filter_repo": {
                 "path_identity": _sha(str(tool).encode()),
                 "sha256": tool_sha256,
@@ -368,6 +432,7 @@ def prepare_history_cleanup(
         preview_sha = _sha(_json_bytes(core))
         manifest = {**core, "preview_sha256": preview_sha}
         _write_restrictive(transaction / "manifest.json", _json_bytes(manifest))
+        _EPHEMERAL_CREDENTIALS[transaction_id] = credential_needles
         _fsync_dir(transaction)
         return HistoryPreview(
             "prepared",
@@ -426,6 +491,20 @@ def _verify_bundle(root: Path, transaction: Path, manifest: dict[str, object]) -
         or _sha(evidence.read_bytes()) != expected_evidence["sha256"]
     ):
         raise OSError("history object evidence identity changed")
+    for name in ("git-config.bin", "index.bin"):
+        expected_artifact = manifest["recovery_artifacts"][name]
+        artifact = transaction / name
+        if expected_artifact["absent"]:
+            if artifact.exists():
+                raise OSError("history recovery artifact identity changed")
+            continue
+        if (
+            artifact.is_symlink()
+            or stat.S_IMODE(artifact.stat().st_mode) != 0o600
+            or artifact.stat().st_size != expected_artifact["size"]
+            or _sha(artifact.read_bytes()) != expected_artifact["sha256"]
+        ):
+            raise OSError("history recovery artifact identity changed")
 
 
 def _scan_selected_history(root: Path, refs: tuple[str, ...], needles: tuple[bytes, ...]) -> HistoryResult:
@@ -460,7 +539,7 @@ def apply_history_cleanup(
     transaction, manifest = _load_manifest(root, preview.transaction_id)
     if manifest["preview_sha256"] != preview.preview_sha256 or manifest["phase"] != "prepared":
         raise ValueError("history preview or phase changed")
-    if sorted(_sha(item) for item in credential_needles) != manifest["credential_sha256"]:
+    if _EPHEMERAL_CREDENTIALS.get(preview.transaction_id) != credential_needles:
         raise ValueError("cleanup credential set changed")
     _, common, objects = _repository_boundaries(root)
     if (
@@ -479,33 +558,44 @@ def apply_history_cleanup(
     selected_refs = tuple(sorted(manifest["selected_refs"]))
     if _refs(root, selected_refs) != manifest["selected_refs"]:
         raise RuntimeError("selected refs changed after preview")
+    repository_state = _EPHEMERAL_REPOSITORY_STATES.get(manifest["repository_state_id"])
+    if (
+        repository_state is None
+        or _all_refs(root) != manifest["all_refs"]
+        or _repository_state(root) != repository_state
+    ):
+        raise RuntimeError("repository state changed after preview")
     config_path = Path(_git(root, "rev-parse", "--path-format=absolute", "--git-path", "config").decode().strip())
     config_before = config_path.read_bytes()
     config_mode = stat.S_IMODE(config_path.stat().st_mode)
     remotes_before = _git(root, "remote", "-v")
-    replacement = transaction / "replace-text.txt"
     lines = b"".join(b"literal:" + item + b"==>***REMOVED REVOKED CREDENTIAL***\n" for item in credential_needles)
     manifest["phase"] = "applying"
     _store_manifest(transaction, manifest)
     try:
-        _write_restrictive(replacement, lines)
-        command = [
-            str(tool),
-            "--force",
-            "--replace-text",
-            str(replacement),
-            "--refs",
-            *selected_refs,
-        ]
-        result = subprocess.run(
-            command,
-            cwd=root,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            check=False,
-            env=_git_env(),
-        )
-        replacement.unlink(missing_ok=True)
+        with tempfile.TemporaryFile() as replacement:
+            replacement.write(lines)
+            replacement.flush()
+            os.fsync(replacement.fileno())
+            replacement.seek(0)
+            descriptor_path = f"/dev/fd/{replacement.fileno()}"
+            command = [
+                str(tool),
+                "--force",
+                "--replace-text",
+                descriptor_path,
+                "--refs",
+                *selected_refs,
+            ]
+            result = subprocess.run(
+                command,
+                cwd=root,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                check=False,
+                env=_git_env(),
+                pass_fds=(replacement.fileno(),),
+            )
         _fsync_dir(transaction)
         if result.returncode:
             raise RuntimeError("git-filter-repo cleanup failed")
@@ -518,8 +608,18 @@ def apply_history_cleanup(
             raise RuntimeError("selected refs were not rewritten")
         for oid in after_refs.values():
             _git(root, "cat-file", "-e", f"{oid}^{{object}}")
+        after_all_refs = _all_refs(root)
+        if {ref: oid for ref, oid in after_all_refs.items() if ref not in selected_refs} != {
+            ref: oid for ref, oid in manifest["all_refs"].items() if ref not in selected_refs
+        }:
+            raise RuntimeError("unselected refs changed during history cleanup")
+        expected_state = dict(repository_state)
+        expected_state["remote_config_sha256"] = _sha(config_before)
+        if _repository_state(root) != expected_state:
+            raise RuntimeError("HEAD, index, worktree, or remote configuration changed")
         manifest["phase"] = "applied"
         manifest["after_refs"] = after_refs
+        manifest["after_all_refs"] = after_all_refs
         state = _scan_selected_history(root, selected_refs, credential_needles)
         manifest["post_cleanup_scan_state"] = state
         if state == "history-scope-unknown":
@@ -531,7 +631,6 @@ def apply_history_cleanup(
             uninspected_scopes=("selected-refs",) if state == "history-scope-unknown" else (),
         )
     except BaseException:
-        replacement.unlink(missing_ok=True)
         _fsync_dir(transaction)
         try:
             if not config_path.is_file() or config_path.read_bytes() != config_before:
@@ -542,6 +641,7 @@ def apply_history_cleanup(
             pass
         try:
             current_refs = _refs(root, selected_refs)
+            current_all_refs = _all_refs(root)
         except (OSError, RuntimeError, ValueError):
             current_refs = None
         recovery = {
@@ -551,6 +651,7 @@ def apply_history_cleanup(
         }
         if current_refs is not None:
             recovery["after_refs"] = current_refs
+            recovery["after_all_refs"] = current_all_refs
         _store_manifest(transaction, recovery)
         return HistoryOutcome(
             "recovery-required",
@@ -568,9 +669,7 @@ def rewind_history_cleanup(root: Path, transaction_id: str) -> HistoryOutcome:
     ):
         raise RuntimeError("repository boundaries changed after preview")
     _verify_bundle(root, transaction, manifest)
-    if manifest["phase"] not in {"applied", "recovery-required"} or _refs(
-        root, tuple(sorted(manifest["selected_refs"]))
-    ) != manifest.get("after_refs"):
+    if manifest["phase"] not in {"applied", "recovery-required"} or _all_refs(root) != manifest.get("after_all_refs"):
         return HistoryOutcome(
             "recovery-required",
             transaction_id,
@@ -581,14 +680,33 @@ def rewind_history_cleanup(root: Path, transaction_id: str) -> HistoryOutcome:
     for line in _git(root, "bundle", "unbundle", str(bundle)).decode().splitlines():
         oid, ref = line.split(" ", 1)
         unbundled[ref] = oid
-    if any(unbundled.get(ref) != oid for ref, oid in manifest["selected_refs"].items()):
+    if any(unbundled.get(ref) != oid for ref, oid in manifest["all_refs"].items()):
         raise RuntimeError("bundle ref readback mismatch")
     updates = ["start\n"]
-    for ref, before_oid in sorted(manifest["selected_refs"].items()):
-        after_oid = manifest["after_refs"][ref]
+    current = manifest["after_all_refs"]
+    for ref, before_oid in sorted(manifest["all_refs"].items()):
+        after_oid = current[ref]
         updates.append(f"update {ref} {before_oid} {after_oid}\n")
+    for ref, after_oid in sorted(current.items()):
+        if ref not in manifest["all_refs"]:
+            updates.append(f"delete {ref} {after_oid}\n")
     updates.extend(["prepare\n", "commit\n"])
     _git(root, "update-ref", "--stdin", input_data="".join(updates).encode())
+    config_path = Path(_git(root, "rev-parse", "--path-format=absolute", "--git-path", "config").decode().strip())
+    index_path = Path(_git(root, "rev-parse", "--path-format=absolute", "--git-path", "index").decode().strip())
+    for name, target in (("git-config.bin", config_path), ("index.bin", index_path)):
+        artifact = manifest["recovery_artifacts"][name]
+        if artifact["absent"]:
+            target.unlink(missing_ok=True)
+        else:
+            _restore_file(target, (transaction / name).read_bytes(), artifact["mode"])
+    expected_state = _EPHEMERAL_REPOSITORY_STATES.get(manifest["repository_state_id"])
+    if expected_state is None or _all_refs(root) != manifest["all_refs"] or _repository_state(root) != expected_state:
+        return HistoryOutcome(
+            "recovery-required",
+            transaction_id,
+            guidance="Automatic rewind could not verify exact HEAD, index, worktree, ref, and remote restoration. Do not push; recover from the verified history.bundle and restrictive recovery artifacts manually. Provider rotation is not reversed.",
+        )
     manifest["phase"] = "rewound"
     _store_manifest(transaction, manifest)
     return HistoryOutcome(

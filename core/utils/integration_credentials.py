@@ -9,7 +9,9 @@ from __future__ import annotations
 
 import os
 import re
+import stat
 import tempfile
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -18,18 +20,69 @@ _SERVICE_FIELDS = {
     "todoist": {"api_key": "api_key_env_var"},
     "trello": {"api_key": "api_key_env_var", "token": "token_env_var"},
 }
+LEGACY_CREDENTIAL_FIELDS = {
+    ("todoist", "api_key"): ("TODOIST_API_KEY", "api_key_env_var"),
+    ("trello", "api_key"): ("TRELLO_API_KEY", "api_key_env_var"),
+    ("trello", "token"): ("TRELLO_TOKEN", "token_env_var"),
+}
+MAX_ACTIVE_CONFIG_BYTES = 1024 * 1024
 
 
-def read_vault_env(vault_root: Path) -> dict[str, str]:
-    """Parse a conservative dotenv subset without expanding ambient values."""
-    path = vault_root / ".env"
-    if not path.exists():
-        return {}
-    if path.is_symlink() or not path.is_file():
-        raise ValueError("vault .env must be a regular file")
+@dataclass(frozen=True)
+class ActiveConfigInspection:
+    data: bytes | None
+    inspected: bool
+    reason: str | None = None
+
+
+def inspect_active_mcp_config(vault_root: Path) -> ActiveConfigInspection:
+    """Read the active MCP config once without following or trusting aliases."""
+    path = vault_root / ".mcp.json"
+    try:
+        metadata = path.lstat()
+    except FileNotFoundError:
+        return ActiveConfigInspection(b"", True)
+    if not stat.S_ISREG(metadata.st_mode) or metadata.st_nlink != 1 or metadata.st_size > MAX_ACTIVE_CONFIG_BYTES:
+        return ActiveConfigInspection(None, False, "unsafe-active-config")
+    if metadata.st_mode & 0o444 == 0:
+        return ActiveConfigInspection(None, False, "unreadable-active-config")
+    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0)
+    try:
+        descriptor = os.open(path, flags)
+        try:
+            opened = os.fstat(descriptor)
+            if (
+                not stat.S_ISREG(opened.st_mode)
+                or opened.st_nlink != 1
+                or (opened.st_dev, opened.st_ino, opened.st_size)
+                != (metadata.st_dev, metadata.st_ino, metadata.st_size)
+            ):
+                return ActiveConfigInspection(None, False, "active-config-identity-change")
+            data = os.read(descriptor, MAX_ACTIVE_CONFIG_BYTES + 1)
+            after = os.fstat(descriptor)
+        finally:
+            os.close(descriptor)
+    except OSError:
+        return ActiveConfigInspection(None, False, "unreadable-active-config")
+    try:
+        current = path.lstat()
+    except OSError:
+        return ActiveConfigInspection(None, False, "active-config-identity-change")
+    if (
+        len(data) > MAX_ACTIVE_CONFIG_BYTES
+        or len(data) != opened.st_size
+        or (after.st_dev, after.st_ino, after.st_size) != (opened.st_dev, opened.st_ino, opened.st_size)
+        or (current.st_dev, current.st_ino, current.st_size) != (opened.st_dev, opened.st_ino, opened.st_size)
+    ):
+        return ActiveConfigInspection(None, False, "active-config-identity-change")
+    return ActiveConfigInspection(data, True)
+
+
+def parse_env_assignments(raw: bytes) -> dict[str, str]:
+    """Parse the one strict dotenv assignment subset used by all credential paths."""
     values: dict[str, str] = {}
-    for number, raw in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
-        line = raw.strip()
+    for number, raw_line in enumerate(raw.decode("utf-8").splitlines(), 1):
+        line = raw_line.strip()
         if not line or line.startswith("#"):
             continue
         if line.startswith("export "):
@@ -47,6 +100,25 @@ def read_vault_env(vault_root: Path) -> dict[str, str]:
             raise ValueError(f"multiline .env value on line {number}")
         values[name] = value
     return values
+
+
+def read_vault_env(vault_root: Path) -> dict[str, str]:
+    """Parse a conservative dotenv subset without expanding ambient values."""
+    path = vault_root / ".env"
+    try:
+        metadata = path.lstat()
+    except FileNotFoundError:
+        return {}
+    if not stat.S_ISREG(metadata.st_mode) or metadata.st_nlink != 1:
+        raise ValueError("vault .env must be a regular file")
+    descriptor = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+    try:
+        raw = os.read(descriptor, 8 * 1024 * 1024 + 1)
+    finally:
+        os.close(descriptor)
+    if len(raw) > 8 * 1024 * 1024:
+        raise ValueError("vault .env exceeds the local credential bound")
+    return parse_env_assignments(raw)
 
 
 def resolve_service_credentials(service: str, settings: dict[str, Any], vault_root: Path) -> dict[str, str]:
@@ -73,9 +145,14 @@ def update_vault_env(vault_root: Path, updates: dict[str, str]) -> None:
         if not _NAME.fullmatch(name) or not value or any(c in value for c in "\r\n"):
             raise ValueError("invalid .env update")
     path = vault_root / ".env"
-    if path.exists() and (path.is_symlink() or not path.is_file()):
+    try:
+        metadata = path.lstat()
+    except FileNotFoundError:
+        metadata = None
+    if metadata is not None and (not stat.S_ISREG(metadata.st_mode) or metadata.st_nlink != 1):
         raise ValueError("vault .env must be a regular file")
-    original = path.read_bytes() if path.exists() else b""
+    original = path.read_bytes() if metadata is not None else b""
+    parse_env_assignments(original)
     newline = b"\r\n" if b"\r\n" in original else b"\n"
     lines = original.splitlines()
     remaining = dict(updates)
