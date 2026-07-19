@@ -12,6 +12,7 @@ import subprocess
 import sys
 import tempfile
 import uuid
+from contextlib import suppress
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -150,7 +151,7 @@ def _git_env() -> dict[str, str]:
     }
 
 
-def _git(root: Path, *args: str, input_data: bytes | None = None) -> bytes:
+def _git(root: Path, *args: str, input_data: bytes | None = None, pass_fds: tuple[int, ...] = ()) -> bytes:
     result = subprocess.run(
         [str(_git_binary()), "-c", "core.hooksPath=/dev/null", "-c", "credential.helper=", *args],
         cwd=root,
@@ -159,6 +160,7 @@ def _git(root: Path, *args: str, input_data: bytes | None = None) -> bytes:
         stderr=subprocess.PIPE,
         check=False,
         env=_git_env(),
+        pass_fds=pass_fds,
     )
     if result.returncode:
         raise RuntimeError("sanitized local Git operation failed")
@@ -278,6 +280,60 @@ def _backup_root(root: Path) -> Path:
     return history_backups_root(root)
 
 
+def _fd_path(descriptor: int) -> Path:
+    for root in (Path("/proc/self/fd"), Path("/dev/fd")):
+        if root.is_dir():
+            return root / str(descriptor)
+    raise OSError("descriptor paths are unavailable")
+
+
+def _open_directory_chain(root: Path, parts: tuple[str, ...], *, create: bool = False) -> int:
+    flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0)
+    descriptor = os.open(root, flags)
+    try:
+        for part in parts:
+            if not part or part in {".", ".."} or "/" in part:
+                raise OSError("unsafe recovery directory component")
+            try:
+                child = os.open(part, flags, dir_fd=descriptor)
+            except FileNotFoundError:
+                if not create:
+                    raise
+                os.mkdir(part, 0o700, dir_fd=descriptor)
+                os.fsync(descriptor)
+                child = os.open(part, flags, dir_fd=descriptor)
+            os.close(descriptor)
+            descriptor = child
+        return descriptor
+    except BaseException:
+        os.close(descriptor)
+        raise
+
+
+def _open_backup_root(root: Path, *, create: bool = False) -> int:
+    return _open_directory_chain(root, ("System", ".dex", "adoption", "history-backups"), create=create)
+
+
+def _directory_identity(descriptor: int) -> dict[str, int]:
+    metadata = os.fstat(descriptor)
+    return {"device": metadata.st_dev, "inode": metadata.st_ino}
+
+
+@dataclass
+class _LoadedTransaction:
+    descriptor: int
+    path: Path
+
+    def close(self) -> None:
+        if self.descriptor >= 0:
+            os.close(self.descriptor)
+            self.descriptor = -1
+
+    def __del__(self) -> None:
+        with suppress(OSError):
+            self.close()
+
+
 def _sync_file_identity(path: Path) -> tuple[str, int]:
     descriptor = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
     try:
@@ -293,14 +349,24 @@ def _sync_file_identity(path: Path) -> tuple[str, int]:
 
 
 def _used_recovery_bytes(root: Path) -> int:
-    backup_root = _backup_root(root)
-    adoption_root = backup_root.parent
+    try:
+        adoption = _open_directory_chain(root, ("System", ".dex", "adoption"))
+    except FileNotFoundError:
+        return 0
     total = 0
-    if adoption_root.exists():
-        for path in adoption_root.rglob("*"):
-            if path.is_file() and not path.is_symlink():
-                total += path.stat().st_size
-    return total
+    try:
+        for current, directories, files in os.walk(_fd_path(adoption), followlinks=False):
+            if any((Path(current) / name).is_symlink() for name in directories):
+                raise OSError("unsafe recovery capacity input")
+            for name in files:
+                path = Path(current) / name
+                metadata = path.lstat()
+                if not stat.S_ISREG(metadata.st_mode) or metadata.st_nlink != 1:
+                    raise OSError("unsafe recovery capacity input")
+                total += metadata.st_size
+        return total
+    finally:
+        os.close(adoption)
 
 
 def prepare_history_cleanup(
@@ -343,21 +409,26 @@ def prepare_history_cleanup(
     object_evidence, estimated = _object_evidence(root, tuple(all_refs))
     used = _used_recovery_bytes(root)
     required = estimated + MIN_FREE_MARGIN_BYTES
-    free = shutil.disk_usage(_backup_root(root).parent if _backup_root(root).parent.exists() else root).free
+    free = shutil.disk_usage(root).free
     if used + estimated > SHARED_RECOVERY_CAP_BYTES or free < required:
         raise OSError("insufficient verified recovery space")
     transaction_id = uuid.uuid4().hex
-    transaction = _backup_root(root) / transaction_id
-    transaction.mkdir(parents=True, mode=0o700)
-    os.chmod(transaction, 0o700)
+    backup_descriptor = _open_backup_root(root, create=True)
+    os.mkdir(transaction_id, 0o700, dir_fd=backup_descriptor)
+    transaction_descriptor = os.open(
+        transaction_id,
+        os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0),
+        dir_fd=backup_descriptor,
+    )
+    transaction = _fd_path(transaction_descriptor)
     bundle = transaction / "history.bundle"
     try:
-        _git(root, "bundle", "create", str(bundle), *all_refs)
+        _git(root, "bundle", "create", str(bundle), *all_refs, pass_fds=(transaction_descriptor,))
         os.chmod(bundle, 0o600)
         bundle_sha256, bundle_size = _sync_file_identity(bundle)
         if not bundle_size or stat.S_IMODE(bundle.stat().st_mode) != 0o600:
             raise OSError("bundle readback failed")
-        _git(root, "bundle", "verify", str(bundle))
+        _git(root, "bundle", "verify", str(bundle), pass_fds=(transaction_descriptor,))
         _write_restrictive(transaction / "objects.json", object_evidence)
         config_path = Path(_git(root, "rev-parse", "--path-format=absolute", "--git-path", "config").decode().strip())
         index_path = Path(_git(root, "rev-parse", "--path-format=absolute", "--git-path", "index").decode().strip())
@@ -396,7 +467,8 @@ def prepare_history_cleanup(
             "selected_refs": refs,
             "all_refs": all_refs,
             "repository_state": repository_state,
-            "credential_count": len(credential_needles),
+            "credential_occurrences": _credential_occurrences(root, tuple(refs), credential_needles),
+            "recovery_directory_identity": _directory_identity(transaction_descriptor),
             "before_object_evidence": {
                 "sha256": _sha(object_evidence),
                 "size": len(object_evidence),
@@ -423,24 +495,53 @@ def prepare_history_cleanup(
             "Optional privacy cleanup is prepared. Provider rotation is unchanged. Review the selected refs, then type the exact consent shown by Doctor to apply.",
         )
     except Exception:
-        shutil.rmtree(transaction, ignore_errors=True)
+        for name in os.listdir(transaction_descriptor):
+            with suppress(FileNotFoundError):
+                os.unlink(name, dir_fd=transaction_descriptor)
+        os.close(transaction_descriptor)
+        transaction_descriptor = -1
+        os.rmdir(transaction_id, dir_fd=backup_descriptor)
+        os.close(backup_descriptor)
+        backup_descriptor = -1
         raise
+    finally:
+        if transaction_descriptor >= 0:
+            with suppress(OSError):
+                os.close(transaction_descriptor)
+        with suppress(OSError):
+            os.close(backup_descriptor)
 
 
-def _load_manifest(root: Path, transaction_id: str) -> tuple[Path, dict[str, object]]:
+def _load_manifest(root: Path, transaction_id: str) -> tuple[_LoadedTransaction, dict[str, object]]:
     if not re.fullmatch(r"[0-9a-f]{32}", transaction_id):
         raise ValueError("invalid history transaction id")
-    transaction = _backup_root(root) / transaction_id
-    manifest_path = transaction / "manifest.json"
-    if transaction.is_symlink() or manifest_path.is_symlink():
+    backup = _open_backup_root(root)
+    try:
+        descriptor = os.open(
+            transaction_id,
+            os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0),
+            dir_fd=backup,
+        )
+    finally:
+        os.close(backup)
+    transaction = _LoadedTransaction(descriptor, _fd_path(descriptor))
+    transaction_path = transaction.path
+    manifest_path = transaction_path / "manifest.json"
+    if manifest_path.is_symlink():
+        transaction.close()
         raise ValueError("unsafe history transaction")
-    if stat.S_IMODE(transaction.stat().st_mode) != 0o700 or stat.S_IMODE(manifest_path.stat().st_mode) != 0o600:
+    if stat.S_IMODE(os.fstat(descriptor).st_mode) != 0o700 or stat.S_IMODE(manifest_path.stat().st_mode) != 0o600:
+        transaction.close()
         raise PermissionError("history transaction permissions changed")
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     preview_sha = manifest.pop("preview_sha256")
     if preview_sha != _sha(_json_bytes(manifest)):
+        transaction.close()
         raise ValueError("history preview manifest changed")
     manifest["preview_sha256"] = preview_sha
+    if manifest.get("recovery_directory_identity") != _directory_identity(descriptor):
+        transaction.close()
+        raise ValueError("history recovery directory identity changed")
     return transaction, manifest
 
 
@@ -466,65 +567,89 @@ def _verify_bundle(root: Path, transaction: Path, manifest: dict[str, object]) -
         or bundle_sha256 != expected["sha256"]
     ):
         raise OSError("history recovery bundle identity changed")
-    _git(root, "bundle", "verify", str(bundle))
+    _git(root, "bundle", "verify", str(bundle), pass_fds=(int(transaction.name),))
+    _verify_recovery_artifacts(transaction, manifest)
+
+
+def _verify_restrictive_artifact(path: Path, expected: dict[str, object], error: str) -> None:
+    if expected.get("absent") is True:
+        if path.exists():
+            raise OSError(error)
+        return
+    if (
+        path.is_symlink()
+        or stat.S_IMODE(path.stat().st_mode) != 0o600
+        or path.stat().st_size != expected["size"]
+        or _sha(path.read_bytes()) != expected["sha256"]
+    ):
+        raise OSError(error)
+
+
+def _verify_recovery_artifacts(transaction: Path, manifest: dict[str, object]) -> None:
     expected_evidence = manifest["before_object_evidence"]
     if expected_evidence.get("file") != "objects.json":
         raise OSError("history object evidence path changed")
-    evidence = transaction / expected_evidence["file"]
-    if (
-        evidence.is_symlink()
-        or stat.S_IMODE(evidence.stat().st_mode) != 0o600
-        or evidence.stat().st_size != expected_evidence["size"]
-        or _sha(evidence.read_bytes()) != expected_evidence["sha256"]
-    ):
-        raise OSError("history object evidence identity changed")
+    _verify_restrictive_artifact(
+        transaction / expected_evidence["file"],
+        expected_evidence,
+        "history object evidence identity changed",
+    )
     for name in ("git-config.bin", "index.bin"):
-        expected_artifact = manifest["recovery_artifacts"][name]
-        artifact = transaction / name
-        if expected_artifact["absent"]:
-            if artifact.exists():
-                raise OSError("history recovery artifact identity changed")
-            continue
-        if (
-            artifact.is_symlink()
-            or stat.S_IMODE(artifact.stat().st_mode) != 0o600
-            or artifact.stat().st_size != expected_artifact["size"]
-            or _sha(artifact.read_bytes()) != expected_artifact["sha256"]
-        ):
-            raise OSError("history recovery artifact identity changed")
+        _verify_restrictive_artifact(
+            transaction / name,
+            manifest["recovery_artifacts"][name],
+            "history recovery artifact identity changed",
+        )
+
+
+def _selected_history_blobs(root: Path, refs: tuple[str, ...]):
+    objects = sorted(set(line.split(b" ", 1)[0] for line in _git(root, "rev-list", "--objects", *refs).splitlines()))
+    for oid in objects:
+        if _git(root, "cat-file", "-t", oid.decode()).strip() == b"blob":
+            yield _git(root, "cat-file", "blob", oid.decode())
+
+
+def _occurrence_profile(blobs: tuple[bytes, ...], needle: bytes) -> list[list[int]]:
+    profile: list[list[int]] = []
+    for blob_index, data in enumerate(blobs):
+        start = 0
+        while (offset := data.find(needle, start)) >= 0:
+            profile.append([blob_index, offset])
+            start = offset + 1
+    return profile
+
+
+def _credential_occurrences(
+    root: Path, refs: tuple[str, ...], needles: tuple[bytes, ...]
+) -> list[list[list[int]]]:
+    blobs = tuple(_selected_history_blobs(root, refs))
+    profiles = [_occurrence_profile(blobs, needle) for needle in needles]
+    if any(not profile for profile in profiles):
+        raise ValueError("each selected credential must occur in prepared history")
+    return sorted(profiles)
 
 
 def _scan_selected_history(root: Path, refs: tuple[str, ...], needles: tuple[bytes, ...]) -> HistoryResult:
     try:
-        objects = sorted(
-            set(line.split(b" ", 1)[0] for line in _git(root, "rev-list", "--objects", *refs).splitlines())
-        )
-        for oid in objects:
-            kind = _git(root, "cat-file", "-t", oid.decode()).strip()
-            if kind == b"blob" and any(needle in _git(root, "cat-file", "blob", oid.decode()) for needle in needles):
+        for data in _selected_history_blobs(root, refs):
+            if any(needle in data for needle in needles):
                 return "history-cleanup-pending"
         return "history-clean"
     except (OSError, RuntimeError, UnicodeDecodeError):
         return "history-scope-unknown"
 
 
-def _selected_history_contains_each(root: Path, refs: tuple[str, ...], needles: tuple[bytes, ...]) -> bool:
-    """Rebind supplied secrets to prepared history without persisting a derived fingerprint."""
-    remaining = set(needles)
+def _selected_history_matches_occurrences(
+    root: Path,
+    refs: tuple[str, ...],
+    needles: tuple[bytes, ...],
+    expected: list[list[list[int]]],
+) -> bool:
+    """Rebind supplied secrets to exact prepared coordinates without persisting a value digest."""
     try:
-        objects = sorted(
-            set(line.split(b" ", 1)[0] for line in _git(root, "rev-list", "--objects", *refs).splitlines())
-        )
-        for oid in objects:
-            if not remaining:
-                return True
-            if _git(root, "cat-file", "-t", oid.decode()).strip() != b"blob":
-                continue
-            data = _git(root, "cat-file", "blob", oid.decode())
-            remaining = {needle for needle in remaining if needle not in data}
-    except (OSError, RuntimeError, UnicodeDecodeError):
+        return _credential_occurrences(root, refs, needles) == expected
+    except (OSError, RuntimeError, UnicodeDecodeError, ValueError):
         return False
-    return not remaining
 
 
 def _restore_and_verify_git_config(
@@ -555,13 +680,18 @@ def apply_history_cleanup(
     tool = resolve_filter_repo(filter_repo)
     if tool is None:
         raise RuntimeError("supported preinstalled git-filter-repo is no longer available")
-    transaction, manifest = _load_manifest(root, preview.transaction_id)
+    loaded_transaction, manifest = _load_manifest(root, preview.transaction_id)
+    transaction = loaded_transaction.path
     if manifest["preview_sha256"] != preview.preview_sha256 or manifest["phase"] != "prepared":
         raise ValueError("history preview or phase changed")
     if (
-        len(credential_needles) != manifest["credential_count"]
-        or len(set(credential_needles)) != len(credential_needles)
-        or not _selected_history_contains_each(root, tuple(sorted(manifest["selected_refs"])), credential_needles)
+        len(set(credential_needles)) != len(credential_needles)
+        or not _selected_history_matches_occurrences(
+            root,
+            tuple(sorted(manifest["selected_refs"])),
+            credential_needles,
+            manifest["credential_occurrences"],
+        )
     ):
         raise ValueError("cleanup credential set changed")
     _, common, objects = _repository_boundaries(root)
@@ -677,7 +807,8 @@ def apply_history_cleanup(
 
 
 def rewind_history_cleanup(root: Path, transaction_id: str) -> HistoryOutcome:
-    transaction, manifest = _load_manifest(root, transaction_id)
+    loaded_transaction, manifest = _load_manifest(root, transaction_id)
+    transaction = loaded_transaction.path
     _, common, objects = _repository_boundaries(root)
     if (
         _sha(str(common).encode()) != manifest["primary_common_dir_identity"]
@@ -693,7 +824,9 @@ def rewind_history_cleanup(root: Path, transaction_id: str) -> HistoryOutcome:
         )
     bundle = transaction / "history.bundle"
     unbundled = {}
-    for line in _git(root, "bundle", "unbundle", str(bundle)).decode().splitlines():
+    for line in _git(
+        root, "bundle", "unbundle", str(bundle), pass_fds=(loaded_transaction.descriptor,)
+    ).decode().splitlines():
         oid, ref = line.split(" ", 1)
         unbundled[ref] = oid
     if any(unbundled.get(ref) != oid for ref, oid in manifest["all_refs"].items()):
@@ -746,11 +879,19 @@ def preview_retention(
     if now.utcoffset() is None or successful_release_activations < 0:
         raise ValueError("retention inputs must use an aware time and nonnegative release count")
     manifests: list[tuple[str, dict[str, object], datetime, datetime]] = []
-    for path in sorted(_backup_root(root).glob("*/manifest.json")):
+    try:
+        backup_descriptor = _open_backup_root(root)
+        transaction_ids = sorted(os.listdir(backup_descriptor))
+    except FileNotFoundError:
+        transaction_ids = []
+        backup_descriptor = None
+    finally:
+        if backup_descriptor is not None:
+            os.close(backup_descriptor)
+    for transaction_id in transaction_ids:
         try:
-            transaction_id = path.parent.name
-            _, manifest = _load_manifest(root, transaction_id)
-            _verify_bundle(root, path.parent, manifest)
+            loaded_transaction, manifest = _load_manifest(root, transaction_id)
+            _verify_bundle(root, loaded_transaction.path, manifest)
             created = datetime.fromisoformat(manifest["created_at"])
             minimum_delete_after = datetime.fromisoformat(manifest["minimum_delete_after"])
             if created.utcoffset() is None or minimum_delete_after.utcoffset() is None:
@@ -760,6 +901,7 @@ def preview_retention(
             if not isinstance(manifest["external_backup"], dict):
                 raise TypeError("retention backup posture must be an object")
             manifests.append((transaction_id, manifest, created, minimum_delete_after))
+            loaded_transaction.close()
         except (KeyError, OSError, ValueError, RuntimeError, TypeError, PermissionError, json.JSONDecodeError):
             continue
     final_id = max(manifests, key=lambda item: item[2])[0] if manifests else None
@@ -775,12 +917,16 @@ def preview_retention(
         )
     )
     retained = tuple(transaction_id for transaction_id, *_ in manifests if transaction_id not in candidates)
-    candidate_bytes = sum(
-        path.stat().st_size
-        for transaction_id in candidates
-        for path in (_backup_root(root) / transaction_id).iterdir()
-        if path.is_file() and not path.is_symlink()
-    )
+    candidate_bytes = 0
+    for transaction_id in candidates:
+        loaded_transaction, _ = _load_manifest(root, transaction_id)
+        try:
+            for name in os.listdir(loaded_transaction.descriptor):
+                metadata = os.stat(name, dir_fd=loaded_transaction.descriptor, follow_symlinks=False)
+                if stat.S_ISREG(metadata.st_mode) and metadata.st_nlink == 1:
+                    candidate_bytes += metadata.st_size
+        finally:
+            loaded_transaction.close()
     evaluated_at = now.astimezone(UTC).isoformat()
     exact = _sha(
         _json_bytes(
@@ -828,9 +974,25 @@ def delete_retention_candidates(
     if preview.protected_final_id in acknowledged_ids:
         raise PermissionError("final history bundle is protected")
     for transaction_id in acknowledged_ids:
-        transaction, manifest = _load_manifest(root, transaction_id)
-        _verify_bundle(root, transaction, manifest)
-    for transaction_id in acknowledged_ids:
-        shutil.rmtree(_backup_root(root) / transaction_id)
-    _fsync_dir(_backup_root(root))
+        loaded_transaction, manifest = _load_manifest(root, transaction_id)
+        try:
+            _verify_bundle(root, loaded_transaction.path, manifest)
+        finally:
+            loaded_transaction.close()
+    backup_descriptor = _open_backup_root(root)
+    try:
+        for transaction_id in acknowledged_ids:
+            loaded_transaction, _ = _load_manifest(root, transaction_id)
+            try:
+                for name in os.listdir(loaded_transaction.descriptor):
+                    metadata = os.stat(name, dir_fd=loaded_transaction.descriptor, follow_symlinks=False)
+                    if not stat.S_ISREG(metadata.st_mode) or metadata.st_nlink != 1:
+                        raise OSError("unsafe history retention artifact")
+                    os.unlink(name, dir_fd=loaded_transaction.descriptor)
+            finally:
+                loaded_transaction.close()
+            os.rmdir(transaction_id, dir_fd=backup_descriptor)
+        os.fsync(backup_descriptor)
+    finally:
+        os.close(backup_descriptor)
     return acknowledged_ids

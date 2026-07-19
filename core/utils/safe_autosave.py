@@ -129,10 +129,6 @@ def _autosave_paths(root: Path) -> tuple[tuple[str, ...], tuple[str, ...]]:
     return tuple(sorted(set(candidates))), tuple(sorted(set(stage_paths)))
 
 
-def autosave_candidates(root: Path) -> tuple[str, ...]:
-    return _autosave_paths(root)[0]
-
-
 def _authority_needles(root: Path, configured: tuple[bytes, ...]) -> tuple[tuple[bytes, ...], int]:
     values = {value for value in configured if value}
     findings = 0

@@ -126,6 +126,21 @@ def test_absent_or_unsupported_tool_is_optional_guidance_without_writes(tmp_path
     assert _prepare(tmp_path, symlink, ref).state == "optional-tool-unavailable"
 
 
+def test_symlinked_recovery_ancestor_refuses_without_outside_bundle_write(tmp_path):
+    ref = _repo(tmp_path)
+    tool = _tool(tmp_path / "git-filter-repo")
+    outside = tmp_path.parent / "outside-history"
+    outside.mkdir()
+    dex = tmp_path / "System/.dex"
+    dex.parent.mkdir()
+    dex.symlink_to(outside, target_is_directory=True)
+
+    with pytest.raises(OSError):
+        _prepare(tmp_path, tool, ref)
+
+    assert list(outside.iterdir()) == []
+
+
 def test_preparation_requires_remediation_choice_and_backup_posture(tmp_path):
     ref = _repo(tmp_path)
     tool = _tool(tmp_path / "git-filter-repo")
@@ -257,6 +272,52 @@ def test_apply_rebinds_only_the_prepared_credential_set(tmp_path):
         )
 
 
+def test_apply_rebinds_exact_occurrence_coordinates_not_same_sized_history_secret(tmp_path):
+    secret_a = b"same-size-secret-A"
+    secret_b = b"same-size-secret-B"
+    _git(tmp_path, "init", "-q")
+    _git(tmp_path, "config", "user.email", "synthetic@example.invalid")
+    _git(tmp_path, "config", "user.name", "Synthetic")
+    (tmp_path / "leak.txt").write_bytes(secret_a + b"\n" + secret_b + b"\n")
+    _git(tmp_path, "add", "leak.txt")
+    _git(tmp_path, "commit", "-qm", "two secrets")
+    ref = _git(tmp_path, "symbolic-ref", "HEAD")
+    tool = _tool(tmp_path / "git-filter-repo")
+    preview = prepare_history_cleanup(
+        tmp_path,
+        security_state="remediated",
+        explicit_choice=True,
+        selected_refs=(ref,),
+        credential_needles=(secret_a,),
+        successful_release_activations=0,
+        no_external_backup_acknowledged=True,
+        filter_repo=tool,
+    )
+
+    with pytest.raises(ValueError, match="credential set changed"):
+        apply_history_cleanup(
+            tmp_path,
+            preview,
+            typed_consent=f"CLEAN OPTIONAL HISTORY {preview.transaction_id}",
+            credential_needles=(secret_b,),
+            filter_repo=tool,
+        )
+
+    outcome = apply_history_cleanup(
+        tmp_path,
+        preview,
+        typed_consent=f"CLEAN OPTIONAL HISTORY {preview.transaction_id}",
+        credential_needles=(secret_a,),
+        filter_repo=tool,
+    )
+    assert outcome.state == "history-clean"
+    rewritten = subprocess.run(
+        ["git", "show", f"{ref}:leak.txt"], cwd=tmp_path, check=True, capture_output=True
+    ).stdout
+    assert secret_a not in rewritten
+    assert secret_b in rewritten
+
+
 def test_preview_consent_manifest_bundle_and_ref_tamper_fail_closed(tmp_path):
     ref = _repo(tmp_path)
     tool = _tool(tmp_path / "git-filter-repo")
@@ -356,6 +417,46 @@ def test_object_evidence_corruption_and_permissions_are_refused(tmp_path, mutati
             credential_needles=(SECRET,),
             filter_repo=tool,
         )
+
+
+@pytest.mark.parametrize("name", ["git-config.bin", "index.bin"])
+def test_restrictive_recovery_artifact_corruption_is_refused(tmp_path, name):
+    ref = _repo(tmp_path)
+    tool = _tool(tmp_path / "git-filter-repo")
+    preview = _prepare(tmp_path, tool, ref)
+    artifact = tmp_path / "System/.dex/adoption/history-backups" / preview.transaction_id / name
+    artifact.write_bytes(artifact.read_bytes() + b"corrupt")
+
+    with pytest.raises(OSError, match="recovery artifact identity"):
+        apply_history_cleanup(
+            tmp_path,
+            preview,
+            typed_consent=f"CLEAN OPTIONAL HISTORY {preview.transaction_id}",
+            credential_needles=(SECRET,),
+            filter_repo=tool,
+        )
+
+
+def test_apply_refuses_recovery_ancestor_swapped_after_prepare(tmp_path):
+    ref = _repo(tmp_path)
+    tool = _tool(tmp_path / "git-filter-repo")
+    preview = _prepare(tmp_path, tool, ref)
+    dex = tmp_path / "System/.dex"
+    dex.rename(tmp_path / "System/.dex-preserved")
+    outside = tmp_path.parent / "outside-history-apply"
+    outside.mkdir()
+    dex.symlink_to(outside, target_is_directory=True)
+
+    with pytest.raises(OSError):
+        apply_history_cleanup(
+            tmp_path,
+            preview,
+            typed_consent=f"CLEAN OPTIONAL HISTORY {preview.transaction_id}",
+            credential_needles=(SECRET,),
+            filter_repo=tool,
+        )
+
+    assert list(outside.iterdir()) == []
 
 
 def test_git_bundle_verify_failure_is_refused_even_when_manifest_identity_matches(tmp_path):

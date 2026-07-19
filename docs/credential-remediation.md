@@ -78,13 +78,19 @@ command, argv, process environment, manifest, log, state, or Doctor output.
    manifest records every ref plus non-secret HEAD/index/worktree/remote state evidence. Bundle,
    object, ref, config, and index evidence is read back, fsynced, hash-bound, and checked with
    `git bundle verify` before preparation succeeds. No ref is rewritten during preview.
+   Every recovery-root and transaction-directory component is opened or created relative to
+   no-follow directory descriptors. The transaction directory device/inode identity is persisted
+   and revalidated after restart; preparation, apply, rewind, retention preview, and deletion do
+   not follow a swapped recovery ancestor.
 4. Apply requires the unchanged preview and exact typed consent
    `CLEAN OPTIONAL HISTORY <opaque-transaction-id>`. It rechecks the tool, topology, bundle,
-   object evidence, all refs, repository state, and the supplied credential count and presence in
-   the verified selected history before
+   object evidence, all refs, repository state, and the supplied credential's exact non-secret
+   blob-ordinal/byte-offset occurrence coordinates in the unchanged selected history before
    invoking `git-filter-repo` with only the selected refs. Credential values are supplied through
    an inherited anonymous file descriptor and are never persisted in a replacement file or
-   fingerprint field. Preparation, apply, and rewind may run in separate processes; no
+   fingerprint field. The occurrence coordinates distinguish same-sized credentials that coexist
+   in selected history without storing either value or a value-derived digest. Preparation,
+   apply, and rewind may run in separate processes; no
    process-global map is authority. Every unselected ref plus HEAD, index, tracked worktree bytes, and Git
    remote configuration must remain invariant. Dex does not fetch, push, force-push, or contact a
    provider.

@@ -7,7 +7,6 @@ import json
 import os
 import re
 import stat
-import tempfile
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
@@ -131,26 +130,53 @@ def _open_directory_chain(root: Path, parts: tuple[str, ...], *, create: bool = 
         raise
 
 
-def _read_at(directory: int, name: str) -> bytes:
+def _read_at_with_metadata(directory: int, name: str) -> tuple[bytes, os.stat_result]:
     descriptor = os.open(name, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0), dir_fd=directory)
     with os.fdopen(descriptor, "rb") as handle:
-        return handle.read()
+        before = os.fstat(handle.fileno())
+        data = handle.read()
+        after = os.fstat(handle.fileno())
+    if (
+        not stat.S_ISREG(before.st_mode)
+        or before.st_nlink != 1
+        or (before.st_dev, before.st_ino, before.st_size) != (after.st_dev, after.st_ino, after.st_size)
+        or len(data) != before.st_size
+    ):
+        raise OSError("contained file identity changed")
+    return data, before
 
 
-def _read_contained(root: Path, relative: Path) -> bytes:
+def _read_at(directory: int, name: str) -> bytes:
+    return _read_at_with_metadata(directory, name)[0]
+
+
+def _read_contained(root: Path, relative: Path) -> tuple[bytes, os.stat_result]:
     parent = _open_directory_chain(root, relative.parts[:-1])
     try:
-        return _read_at(parent, relative.name)
+        return _read_at_with_metadata(parent, relative.name)
     finally:
         os.close(parent)
 
 
-def _stat_contained(root: Path, relative: Path) -> os.stat_result:
-    parent = _open_directory_chain(root, relative.parts[:-1])
+def _atomic_replace_at(directory: int, name: str, data: bytes, mode: int) -> None:
+    temporary = f".{name}.{uuid.uuid4().hex}"
     try:
-        return os.stat(relative.name, dir_fd=parent, follow_symlinks=False)
+        descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL, mode, dir_fd=directory)
+        with os.fdopen(descriptor, "wb") as handle:
+            os.fchmod(handle.fileno(), mode)
+            handle.write(data)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, name, src_dir_fd=directory, dst_dir_fd=directory)
+        os.fsync(directory)
+        actual, metadata = _read_at_with_metadata(directory, name)
+        if actual != data or stat.S_IMODE(metadata.st_mode) != mode:
+            raise OSError("credential replacement readback mismatch")
     finally:
-        os.close(parent)
+        try:
+            os.unlink(temporary, dir_fd=directory)
+        except FileNotFoundError:
+            pass
 
 
 def _read_nofollow(path: Path) -> bytes:
@@ -158,18 +184,6 @@ def _read_nofollow(path: Path) -> bytes:
     descriptor = os.open(path, flags)
     with os.fdopen(descriptor, "rb") as handle:
         return handle.read()
-
-
-def _fsync_parent(path: Path) -> bool:
-    try:
-        descriptor = os.open(path.parent, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
-        try:
-            os.fsync(descriptor)
-        finally:
-            os.close(descriptor)
-        return True
-    except OSError:
-        return False
 
 
 def probe_atomic_migration(vault_root: Path, journal_dir: Path) -> CapabilityResult:
@@ -289,7 +303,7 @@ def migrate_legacy_credentials(vault_root: Path) -> MigrationResult:
     except ValueError:
         return MigrationResult("refused")
     try:
-        config_raw = _read_contained(vault_root, Path("System/integrations/config.yaml"))
+        config_raw, config_metadata = _read_contained(vault_root, Path("System/integrations/config.yaml"))
     except OSError:
         return MigrationResult("refused")
     try:
@@ -320,9 +334,10 @@ def migrate_legacy_credentials(vault_root: Path) -> MigrationResult:
             "refused", failed_capabilities=tuple(sorted(k for k, v in capability.results.items() if not v))
         )
     try:
-        env_raw = _read_contained(vault_root, Path(".env"))
+        env_raw, env_metadata = _read_contained(vault_root, Path(".env"))
     except FileNotFoundError:
         env_raw = None
+        env_metadata = None
     except OSError:
         return MigrationResult("refused")
     if env_raw:
@@ -338,14 +353,14 @@ def migrate_legacy_credentials(vault_root: Path) -> MigrationResult:
         "config": {
             "bytes_hex": config_raw.hex(),
             "sha256": _hash(config_raw),
-            "mode": stat.S_IMODE(_stat_contained(vault_root, Path("System/integrations/config.yaml")).st_mode),
+            "mode": stat.S_IMODE(config_metadata.st_mode),
         },
         "env": None
         if env_raw is None
         else {
             "bytes_hex": env_raw.hex(),
             "sha256": _hash(env_raw),
-            "mode": stat.S_IMODE(_stat_contained(vault_root, Path(".env")).st_mode),
+            "mode": stat.S_IMODE(env_metadata.st_mode),
         },
     }
     try:
@@ -380,20 +395,11 @@ def migrate_legacy_credentials(vault_root: Path) -> MigrationResult:
         if config_descriptor is not None:
             os.close(config_descriptor)
         return MigrationResult("refused", journal_id)
-    temporary_name = f".config.yaml.{uuid.uuid4().hex}"
     try:
         update_vault_env(vault_root, values)
         current = os.stat("config.yaml", dir_fd=config_descriptor, follow_symlinks=False)
         if (current.st_ino, _hash(_read_at(config_descriptor, "config.yaml")), stat.S_IMODE(current.st_mode)) != config_before:
             raise OSError("config changed during migration")
-        descriptor = os.open(
-            temporary_name, os.O_WRONLY | os.O_CREAT | os.O_EXCL, record["config"]["mode"], dir_fd=config_descriptor
-        )
-        with os.fdopen(descriptor, "wb") as handle:
-            os.fchmod(handle.fileno(), record["config"]["mode"])
-            handle.write(expected_config)
-            handle.flush()
-            os.fsync(handle.fileno())
         current_parent = _open_directory_chain(vault_root, ("System", "integrations"))
         try:
             if (os.fstat(current_parent).st_dev, os.fstat(current_parent).st_ino) != (
@@ -403,18 +409,11 @@ def migrate_legacy_credentials(vault_root: Path) -> MigrationResult:
                 raise OSError("config parent changed during migration")
         finally:
             os.close(current_parent)
-        os.replace(temporary_name, "config.yaml", src_dir_fd=config_descriptor, dst_dir_fd=config_descriptor)
-        os.fsync(config_descriptor)
-        if _read_at(config_descriptor, "config.yaml") != expected_config:
-            raise OSError("config readback mismatch")
+        _atomic_replace_at(config_descriptor, "config.yaml", expected_config, record["config"]["mode"])
     except Exception:
         rewind_credential_migration(vault_root, journal_id)
         return MigrationResult("refused", journal_id)
     finally:
-        try:
-            os.unlink(temporary_name, dir_fd=config_descriptor)
-        except FileNotFoundError:
-            pass
         os.close(config_descriptor)
     return MigrationResult(
         "partial" if mcp_raw_residual else "migrated-local-config",
@@ -434,20 +433,23 @@ def rewind_credential_migration(vault_root: Path, journal_id: str) -> MigrationR
     finally:
         os.close(journal_descriptor)
     for name, entry in (("config", record["config"]), ("env", record["env"])):
-        path = vault_root / ("System/integrations/config.yaml" if name == "config" else ".env")
-        if entry is None:
-            path.unlink(missing_ok=True)
-            continue
-        expected = bytes.fromhex(entry["bytes_hex"])
-        fd, temporary = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
-        with os.fdopen(fd, "wb") as handle:
-            os.fchmod(handle.fileno(), entry["mode"])
-            handle.write(expected)
-            handle.flush()
-            os.fsync(handle.fileno())
-        os.replace(temporary, path)
-        if not _fsync_parent(path) or _read_nofollow(path) != expected or _hash(expected) != entry["sha256"]:
-            raise OSError("credential rewind readback mismatch")
+        parts = ("System", "integrations") if name == "config" else ()
+        target = "config.yaml" if name == "config" else ".env"
+        parent = _open_directory_chain(vault_root, parts)
+        try:
+            if entry is None:
+                try:
+                    os.unlink(target, dir_fd=parent)
+                except FileNotFoundError:
+                    pass
+                os.fsync(parent)
+                continue
+            expected = bytes.fromhex(entry["bytes_hex"])
+            if _hash(expected) != entry["sha256"]:
+                raise OSError("credential rewind readback mismatch")
+            _atomic_replace_at(parent, target, expected, entry["mode"])
+        finally:
+            os.close(parent)
     return MigrationResult("rewound", journal_id)
 
 

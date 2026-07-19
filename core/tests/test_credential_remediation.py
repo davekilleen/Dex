@@ -192,3 +192,35 @@ def test_real_journal_parent_is_contained_and_authorized(tmp_path):
     assert capability.authorized
     assert journal_dir.is_dir()
     assert list(journal_dir.iterdir()) == []
+
+
+def test_rewind_refuses_swapped_integration_parent_without_outside_write(tmp_path):
+    root = _vault(tmp_path / "vault")
+    result = migrate_legacy_credentials(root)
+    integrations = root / "System/integrations"
+    preserved = root / "System/integrations-preserved"
+    integrations.rename(preserved)
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    integrations.symlink_to(outside, target_is_directory=True)
+
+    with pytest.raises(OSError):
+        rewind_credential_migration(root, result.journal_id)
+
+    assert list(outside.iterdir()) == []
+    assert b"synthetic-old-key" not in b"".join(path.read_bytes() for path in outside.iterdir())
+
+
+def test_rewind_replaces_env_symlink_without_touching_its_target(tmp_path):
+    root = _vault(tmp_path)
+    (root / ".env").write_text("TODOIST_API_KEY=synthetic-old-key\n")
+    result = migrate_legacy_credentials(root)
+    outside = tmp_path.parent / "outside-env"
+    outside.write_text("outside-safe\n")
+    (root / ".env").unlink()
+    (root / ".env").symlink_to(outside)
+
+    assert rewind_credential_migration(root, result.journal_id).state == "rewound"
+    assert not (root / ".env").is_symlink()
+    assert (root / ".env").read_text() == "TODOIST_API_KEY=synthetic-old-key\n"
+    assert outside.read_text() == "outside-safe\n"
