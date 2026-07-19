@@ -10,6 +10,11 @@ migration `partial`. Revocation and rotation remain provider actions performed b
 Dex may run a read-only replacement health check only in an explicitly requested remediation
 flow.
 
+Residual inspection includes both the canonical Todoist/Trello variable names and every exact
+uppercase `api_key_env_var`/`token_env_var` name configured in bounded tracked YAML. Malformed,
+duplicate, or oversized tracked references fail closed before `.mcp.json` can be classified as
+clean. Reference placeholders are not raw values, and `.mcp.json` remains byte-invariant.
+
 Dex inspects `.mcp.json` with `lstat`, a no-follow open, regular-file/single-link/size/readability
 checks, and before/open/after identity comparison. A symlink, hard link, directory, FIFO, device,
 socket, unreadable or oversized file, or identity race is never treated as empty or inspected.
@@ -87,7 +92,10 @@ command, argv, process environment, manifest, log, state, or Doctor output.
    only structurally safe `.incomplete-*` directories; unexpected names, links, or file types fail
    closed. It also prunes structurally safe manifest-less transaction directories left by an
    interrupted older implementation. Published manifest-bearing recovery transactions remain
-   fully accounted and are never pruned this way.
+   fully accounted and are never pruned this way. Preparation and retention pruning hold the same
+   kernel-released lifecycle lock, opened as a mode-`0600`, single-link regular file beneath the
+   no-follow recovery hierarchy. Concurrent preparation/retention cannot prune active work, and a
+   cancellation or dead process releases ownership without weakening restart cleanup.
 4. Apply requires the unchanged preview and exact typed consent
    `CLEAN OPTIONAL HISTORY <opaque-transaction-id>`. It rechecks the tool, topology, bundle,
    object evidence, all refs, repository state, and the supplied credential's exact non-secret

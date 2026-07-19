@@ -18,6 +18,11 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Callable, Literal
 
+try:
+    import fcntl
+except ImportError:  # pragma: no cover - history cleanup already requires Unix descriptor passing
+    fcntl = None
+
 HistoryResult = Literal[
     "optional-tool-unavailable",
     "prepared",
@@ -39,6 +44,7 @@ TRANSACTION_ID = re.compile(r"^[0-9a-f]{32}$")
 PREPARATION_ARTIFACTS = frozenset(
     {"history.bundle", "objects.json", "git-config.bin", "index.bin", "manifest.json"}
 )
+LIFECYCLE_LOCK = ".history-lifecycle.lock"
 
 
 @dataclass(frozen=True)
@@ -335,6 +341,59 @@ class _LoadedTransaction:
             os.close(self.descriptor)
             self.descriptor = -1
 
+
+@dataclass
+class _HistoryLifecycleLock:
+    backup_descriptor: int
+    descriptor: int
+
+    def close(self) -> None:
+        if self.descriptor >= 0:
+            if fcntl is not None:
+                fcntl.flock(self.descriptor, fcntl.LOCK_UN)
+            os.close(self.descriptor)
+            self.descriptor = -1
+        if self.backup_descriptor >= 0:
+            os.close(self.backup_descriptor)
+            self.backup_descriptor = -1
+
+
+def _acquire_history_lifecycle_lock(root: Path, *, create: bool) -> _HistoryLifecycleLock:
+    if fcntl is None:
+        raise RuntimeError("history lifecycle locking is unavailable")
+    backup_descriptor = _open_backup_root(root, create=create)
+    descriptor = None
+    created = False
+    flags = os.O_RDWR | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        try:
+            descriptor = os.open(LIFECYCLE_LOCK, flags | os.O_CREAT | os.O_EXCL, 0o600, dir_fd=backup_descriptor)
+            created = True
+            os.fsync(backup_descriptor)
+        except FileExistsError:
+            descriptor = os.open(LIFECYCLE_LOCK, flags, dir_fd=backup_descriptor)
+        opened = os.fstat(descriptor)
+        if (
+            not stat.S_ISREG(opened.st_mode)
+            or opened.st_nlink != 1
+            or stat.S_IMODE(opened.st_mode) != 0o600
+        ):
+            raise OSError("unsafe history lifecycle lock")
+        fcntl.flock(descriptor, fcntl.LOCK_EX)
+        current = os.stat(LIFECYCLE_LOCK, dir_fd=backup_descriptor, follow_symlinks=False)
+        if (current.st_dev, current.st_ino) != (opened.st_dev, opened.st_ino):
+            raise OSError("history lifecycle lock identity changed")
+        return _HistoryLifecycleLock(backup_descriptor, descriptor)
+    except BaseException:
+        if descriptor is not None:
+            os.close(descriptor)
+        if created:
+            with suppress(FileNotFoundError):
+                os.unlink(LIFECYCLE_LOCK, dir_fd=backup_descriptor)
+                os.fsync(backup_descriptor)
+        os.close(backup_descriptor)
+        raise
+
 def _sync_file_identity(path: Path) -> tuple[str, int]:
     descriptor = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
     try:
@@ -447,16 +506,21 @@ def prepare_history_cleanup(
             None,
             "Optional history privacy cleanup is unavailable because a supported preinstalled git-filter-repo was not found. Security remains fixed; Dex did not install or run anything.",
         )
-    _prune_incomplete_transactions(root)
-    _, common, objects = _repository_boundaries(root)
-    refs = _refs(root, selected_refs)
-    all_refs = _all_refs(root)
-    object_evidence, estimated = _object_evidence(root, tuple(all_refs))
-    used = _used_recovery_bytes(root)
-    required = estimated + MIN_FREE_MARGIN_BYTES
-    free = shutil.disk_usage(root).free
-    if used + estimated > SHARED_RECOVERY_CAP_BYTES or free < required:
-        raise OSError("insufficient verified recovery space")
+    lifecycle_lock = _acquire_history_lifecycle_lock(root, create=True)
+    try:
+        _prune_incomplete_transactions(root)
+        _, common, objects = _repository_boundaries(root)
+        refs = _refs(root, selected_refs)
+        all_refs = _all_refs(root)
+        object_evidence, estimated = _object_evidence(root, tuple(all_refs))
+        used = _used_recovery_bytes(root)
+        required = estimated + MIN_FREE_MARGIN_BYTES
+        free = shutil.disk_usage(root).free
+        if used + estimated > SHARED_RECOVERY_CAP_BYTES or free < required:
+            raise OSError("insufficient verified recovery space")
+    except BaseException:
+        lifecycle_lock.close()
+        raise
     transaction_id = uuid.uuid4().hex
     incomplete_name = f".incomplete-{transaction_id}"
     backup_descriptor = None
@@ -568,6 +632,7 @@ def prepare_history_cleanup(
         if backup_descriptor is not None:
             with suppress(OSError):
                 os.close(backup_descriptor)
+        lifecycle_lock.close()
 
 
 def _load_manifest(root: Path, transaction_id: str) -> _LoadedTransaction:
@@ -964,17 +1029,19 @@ def preview_retention(
 ) -> RetentionPreview:
     if now.utcoffset() is None or successful_release_activations < 0:
         raise ValueError("retention inputs must use an aware time and nonnegative release count")
-    _prune_incomplete_transactions(root)
     manifests: list[tuple[str, dict[str, object], datetime, datetime]] = []
-    backup_descriptor = None
     try:
-        backup_descriptor = _open_backup_root(root)
-        transaction_ids = sorted(os.listdir(backup_descriptor))
+        lifecycle_lock = _acquire_history_lifecycle_lock(root, create=False)
     except FileNotFoundError:
         transaction_ids = []
-    finally:
-        if backup_descriptor is not None:
-            os.close(backup_descriptor)
+    else:
+        try:
+            _prune_incomplete_transactions(root)
+            transaction_ids = sorted(
+                name for name in os.listdir(lifecycle_lock.backup_descriptor) if TRANSACTION_ID.fullmatch(name)
+            )
+        finally:
+            lifecycle_lock.close()
     for transaction_id in transaction_ids:
         try:
             with _load_manifest(root, transaction_id) as loaded_transaction:

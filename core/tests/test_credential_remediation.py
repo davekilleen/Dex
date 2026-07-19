@@ -34,6 +34,73 @@ def test_not_needed_creates_no_migration_state(tmp_path):
     assert not (root / "System/.dex").exists()
 
 
+@pytest.mark.parametrize("reference_field", ["api_key_env_var", "token_env_var"])
+def test_custom_configured_env_name_detects_active_mcp_residual_without_editing(tmp_path, reference_field):
+    service = "todoist" if reference_field == "api_key_env_var" else "trello"
+    custom_name = "CUSTOM_TODOIST_KEY" if service == "todoist" else "CUSTOM_TRELLO_TOKEN"
+    root = _vault(
+        tmp_path,
+        f"{service}:\n  enabled: true\n  {reference_field}: {custom_name}\n".encode(),
+    )
+    mcp = root / ".mcp.json"
+    mcp.write_text(
+        json.dumps({"mcpServers": {service: {"env": {custom_name: "synthetic-custom-active"}}}})
+    )
+    before = mcp.read_bytes()
+
+    result = migrate_legacy_credentials(root)
+
+    assert result.state == "partial"
+    assert result.active_residual_state == "unrevoked-or-unclassified"
+    assert mcp.read_bytes() == before
+
+
+def test_custom_configured_env_name_placeholder_is_not_a_raw_residual(tmp_path):
+    root = _vault(tmp_path, b"todoist:\n  enabled: true\n  api_key_env_var: CUSTOM_TODOIST_KEY\n")
+    mcp = root / ".mcp.json"
+    mcp.write_text('{"mcpServers":{"todoist":{"env":{"CUSTOM_TODOIST_KEY":"${CUSTOM_TODOIST_KEY}"}}}}')
+    before = mcp.read_bytes()
+
+    result = migrate_legacy_credentials(root)
+
+    assert result.state == "not-needed"
+    assert result.active_residual_state == "none"
+    assert mcp.read_bytes() == before
+
+
+@pytest.mark.parametrize(
+    "configured_name",
+    ["custom_lowercase", "1INVALID", "WITH-DASH", "${CUSTOM_TODOIST_KEY}", "", 7, ["CUSTOM"]],
+)
+def test_malformed_configured_env_reference_fails_closed(tmp_path, configured_name):
+    root = _vault(
+        tmp_path,
+        ("todoist:\n  enabled: true\n  api_key_env_var: " + json.dumps(configured_name) + "\n").encode(),
+    )
+    mcp = root / ".mcp.json"
+    mcp.write_text('{"mcpServers":{"todoist":{"env":{"TODOIST_API_KEY":"synthetic-active"}}}}')
+    before = mcp.read_bytes()
+
+    result = migrate_legacy_credentials(root)
+
+    assert result.state == "refused"
+    assert mcp.read_bytes() == before
+
+
+def test_duplicate_or_oversized_configured_reference_fails_closed(tmp_path):
+    duplicate = _vault(
+        tmp_path / "duplicate",
+        b"todoist:\n  api_key_env_var: CUSTOM_ONE\n  api_key_env_var: CUSTOM_TWO\n",
+    )
+    oversized = _vault(
+        tmp_path / "oversized",
+        b"todoist:\n  api_key_env_var: CUSTOM_TODOIST_KEY\n#" + b"x" * (1024 * 1024),
+    )
+
+    assert migrate_legacy_credentials(duplicate).state == "refused"
+    assert migrate_legacy_credentials(oversized).state == "refused"
+
+
 def test_atomic_migration_preserves_yaml_bytes_and_exact_rewind(tmp_path):
     root = _vault(tmp_path)
     config = root / "System/integrations/config.yaml"

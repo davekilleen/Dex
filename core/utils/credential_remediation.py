@@ -60,6 +60,7 @@ SCOPE_CATEGORIES = frozenset(
     }
 )
 EXCEPTIONS_FILE = Path(__file__).with_name("credential_migration_exceptions.json")
+MAX_TRACKED_CONFIG_BYTES = 1024 * 1024
 
 
 @dataclass(frozen=True)
@@ -130,15 +131,18 @@ def _open_directory_chain(root: Path, parts: tuple[str, ...], *, create: bool = 
         raise
 
 
-def _read_at_with_metadata(directory: int, name: str) -> tuple[bytes, os.stat_result]:
+def _read_at_with_metadata(
+    directory: int, name: str, *, max_bytes: int | None = None
+) -> tuple[bytes, os.stat_result]:
     descriptor = os.open(name, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0), dir_fd=directory)
     with os.fdopen(descriptor, "rb") as handle:
         before = os.fstat(handle.fileno())
-        data = handle.read()
+        data = handle.read() if max_bytes is None else handle.read(max_bytes + 1)
         after = os.fstat(handle.fileno())
     if (
         not stat.S_ISREG(before.st_mode)
         or before.st_nlink != 1
+        or (max_bytes is not None and (before.st_size > max_bytes or len(data) > max_bytes))
         or (before.st_dev, before.st_ino, before.st_size) != (after.st_dev, after.st_ino, after.st_size)
         or len(data) != before.st_size
     ):
@@ -150,10 +154,12 @@ def _read_at(directory: int, name: str) -> bytes:
     return _read_at_with_metadata(directory, name)[0]
 
 
-def _read_contained(root: Path, relative: Path) -> tuple[bytes, os.stat_result]:
+def _read_contained(
+    root: Path, relative: Path, *, max_bytes: int | None = None
+) -> tuple[bytes, os.stat_result]:
     parent = _open_directory_chain(root, relative.parts[:-1])
     try:
-        return _read_at_with_metadata(parent, relative.name)
+        return _read_at_with_metadata(parent, relative.name, max_bytes=max_bytes)
     finally:
         os.close(parent)
 
@@ -239,7 +245,7 @@ def probe_atomic_migration(vault_root: Path, journal_dir: Path) -> CapabilityRes
     return CapabilityResult(results)
 
 
-def _legacy_values(raw: bytes) -> tuple[dict[str, str], dict[str, str]]:
+def _legacy_values(raw: bytes) -> tuple[dict[str, str], dict[str, str], frozenset[str]]:
     text = raw.decode("utf-8")
     if re.search(r"(^|\n)[ \t]*(todoist|trello):[^\n]*[&*]|(^|\n)[ \t]*(api_key|token):[ \t]*[>|]", text):
         raise ValueError("aliases and multiline credential values are refused")
@@ -247,7 +253,7 @@ def _legacy_values(raw: bytes) -> tuple[dict[str, str], dict[str, str]]:
     for section in ("todoist", "trello"):
         block = re.search(rf"(?ms)^(?P<i>[ ]*){section}:\s*\n(?P<body>(?:(?P=i)[ ]+.*\n?)*)", text)
         if block:
-            for key in ("api_key", "token"):
+            for key in ("api_key", "token", "api_key_env_var", "token_env_var"):
                 if len(re.findall(rf"(?m)^\s+{key}\s*:", block.group("body"))) > 1:
                     raise ValueError("duplicate credential key")
     data = yaml.safe_load(text) or {}
@@ -255,16 +261,32 @@ def _legacy_values(raw: bytes) -> tuple[dict[str, str], dict[str, str]]:
         raise ValueError("integration config must be an object")
     values: dict[str, str] = {}
     refs: dict[str, str] = {}
+    env_names = {env_name for env_name, _ in LEGACY_CREDENTIAL_FIELDS.values()}
     for (service, key), (env_name, ref_name) in LEGACY_CREDENTIAL_FIELDS.items():
         settings = data.get(service)
-        if not isinstance(settings, dict) or key not in settings:
+        if settings is not None and not isinstance(settings, dict):
+            raise ValueError("integration settings must be an object")
+        if not isinstance(settings, dict):
             continue
-        value = settings[key]
-        if not isinstance(value, str) or not value or "\n" in value:
-            raise ValueError("legacy credential must be an unambiguous scalar")
-        values[env_name] = value
-        refs[f"{service}.{key}"] = ref_name
-    return values, refs
+        if ref_name in settings:
+            configured_name = settings[ref_name]
+            if not isinstance(configured_name, str) or not re.fullmatch(r"[A-Z][A-Z0-9_]*", configured_name):
+                raise ValueError("credential environment reference must be an uppercase variable name")
+            env_names.add(configured_name)
+        if key in settings:
+            value = settings[key]
+            if not isinstance(value, str) or not value or "\n" in value:
+                raise ValueError("legacy credential must be an unambiguous scalar")
+            values[env_name] = value
+            refs[f"{service}.{key}"] = ref_name
+    return values, refs, frozenset(env_names)
+
+
+def _active_mcp_raw_residual(raw: bytes, env_names: frozenset[str], legacy_values: dict[str, str]) -> bool:
+    if any(value.encode() in raw for value in legacy_values.values()):
+        return True
+    names = b"|".join(re.escape(name.encode()) for name in sorted(env_names))
+    return bool(re.search(rb'"(?:' + names + rb')"\s*:\s*"[^"$<{][^"]*"', raw))
 
 
 def _replace_yaml_credentials(raw: bytes, refs: dict[str, str]) -> bytes:
@@ -303,11 +325,15 @@ def migrate_legacy_credentials(vault_root: Path) -> MigrationResult:
     except ValueError:
         return MigrationResult("refused")
     try:
-        config_raw, config_metadata = _read_contained(vault_root, Path("System/integrations/config.yaml"))
+        config_raw, config_metadata = _read_contained(
+            vault_root,
+            Path("System/integrations/config.yaml"),
+            max_bytes=MAX_TRACKED_CONFIG_BYTES,
+        )
     except OSError:
         return MigrationResult("refused")
     try:
-        values, refs = _legacy_values(config_raw)
+        values, refs, env_names = _legacy_values(config_raw)
     except (UnicodeDecodeError, ValueError, yaml.YAMLError):
         return MigrationResult("refused")
     mcp = inspect_active_mcp_config(vault_root)
@@ -319,9 +345,7 @@ def migrate_legacy_credentials(vault_root: Path) -> MigrationResult:
             uninspected_reasons=(mcp.reason or "unsafe-active-config",),
         )
     mcp_raw = mcp.data or b""
-    mcp_raw_residual = any(value.encode() in mcp_raw for value in values.values()) or bool(
-        re.search(rb'"(?:TODOIST_API_KEY|TRELLO_API_KEY|TRELLO_TOKEN)"\s*:\s*"[^"$<{][^"]*"', mcp_raw)
-    )
+    mcp_raw_residual = _active_mcp_raw_residual(mcp_raw, env_names, values)
     if not values:
         return MigrationResult(
             "partial" if mcp_raw_residual else "not-needed",

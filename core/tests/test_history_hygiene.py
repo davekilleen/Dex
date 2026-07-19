@@ -4,6 +4,9 @@ import json
 import os
 import stat
 import subprocess
+import threading
+import time
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -399,6 +402,10 @@ def _descriptor_count() -> int:
     return len(os.listdir("/proc/self/fd"))
 
 
+def _recovery_transactions(backup: Path) -> list[Path]:
+    return sorted(path for path in backup.iterdir() if path.name != history_hygiene.LIFECYCLE_LOCK)
+
+
 def test_prepare_fd_path_failure_closes_descriptors_and_removes_orphan(tmp_path, monkeypatch):
     ref = _repo(tmp_path)
     tool = _tool(tmp_path / "git-filter-repo")
@@ -411,7 +418,7 @@ def test_prepare_fd_path_failure_closes_descriptors_and_removes_orphan(tmp_path,
 
     assert _descriptor_count() == before
     backup = tmp_path / "System/.dex/adoption/history-backups"
-    assert not backup.exists() or list(backup.iterdir()) == []
+    assert not backup.exists() or _recovery_transactions(backup) == []
 
 
 @pytest.mark.parametrize("failure", [KeyboardInterrupt, SystemExit])
@@ -422,8 +429,15 @@ def test_prepare_cancellation_removes_incomplete_transaction(tmp_path, monkeypat
     before = _descriptor_count()
 
     if boundary == "fd-path":
-        def interrupt_fd_path(_descriptor):
-            raise failure("cancelled")
+        original_fd_path = history_hygiene._fd_path
+        calls = 0
+
+        def interrupt_fd_path(descriptor):
+            nonlocal calls
+            calls += 1
+            if calls == 2:
+                raise failure("cancelled")
+            return original_fd_path(descriptor)
 
         monkeypatch.setattr(history_hygiene, "_fd_path", interrupt_fd_path)
     else:
@@ -442,7 +456,7 @@ def test_prepare_cancellation_removes_incomplete_transaction(tmp_path, monkeypat
 
     backup = tmp_path / "System/.dex/adoption/history-backups"
     assert _descriptor_count() == before
-    assert not backup.exists() or list(backup.iterdir()) == []
+    assert not backup.exists() or _recovery_transactions(backup) == []
 
 
 @pytest.mark.skipif(not hasattr(os, "fork"), reason="process-death fault injection requires fork")
@@ -454,7 +468,17 @@ def test_restart_prunes_process_death_during_incomplete_preparation(tmp_path, bo
     child = os.fork()
     if child == 0:
         if boundary == "fd-path":
-            history_hygiene._fd_path = lambda _descriptor: os._exit(71)
+            original_fd_path = history_hygiene._fd_path
+            calls = 0
+
+            def die_at_transaction_fd(descriptor):
+                nonlocal calls
+                calls += 1
+                if calls == 2:
+                    os._exit(71)
+                return original_fd_path(descriptor)
+
+            history_hygiene._fd_path = die_at_transaction_fd
         else:
             def die_after_bundle(root, *args, **kwargs):
                 result = original_git(root, *args, **kwargs)
@@ -482,7 +506,154 @@ def test_restart_prunes_process_death_during_incomplete_preparation(tmp_path, bo
 
     assert retention.candidate_ids == ()
     assert retention.protected_final_id is None
-    assert list(backup.iterdir()) == []
+    assert _recovery_transactions(backup) == []
+
+
+def _pause_first_bundle(monkeypatch):
+    reached = threading.Event()
+    release = threading.Event()
+    original_git = history_hygiene._git
+    guard = threading.Lock()
+    paused = False
+
+    def pause(root, *args, **kwargs):
+        nonlocal paused
+        result = original_git(root, *args, **kwargs)
+        if args[:2] == ("bundle", "create"):
+            with guard:
+                should_pause = not paused
+                paused = True
+            if should_pause:
+                reached.set()
+                assert release.wait(10)
+        return result
+
+    monkeypatch.setattr(history_hygiene, "_git", pause)
+    return reached, release
+
+
+def test_concurrent_retention_waits_for_active_preparation(tmp_path, monkeypatch):
+    ref = _repo(tmp_path)
+    tool = _tool(tmp_path / "git-filter-repo")
+    reached, release = _pause_first_bundle(monkeypatch)
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        preparing = executor.submit(_prepare, tmp_path, tool, ref)
+        assert reached.wait(10)
+        retaining = executor.submit(
+            preview_retention,
+            tmp_path,
+            now=datetime.now(UTC),
+            successful_release_activations=3,
+        )
+        time.sleep(0.1)
+        assert not retaining.done()
+        release.set()
+        prepared = preparing.result(timeout=10)
+        retention = retaining.result(timeout=10)
+
+    assert retention.protected_final_id == prepared.transaction_id
+    assert retention.retained_ids == (prepared.transaction_id,)
+
+
+def test_concurrent_preparations_are_serialized(tmp_path, monkeypatch):
+    ref = _repo(tmp_path)
+    tool = _tool(tmp_path / "git-filter-repo")
+    reached, release = _pause_first_bundle(monkeypatch)
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        first = executor.submit(_prepare, tmp_path, tool, ref)
+        assert reached.wait(10)
+        second = executor.submit(_prepare, tmp_path, tool, ref)
+        time.sleep(0.1)
+        assert not second.done()
+        backup = tmp_path / "System/.dex/adoption/history-backups"
+        assert len(list(backup.glob(".incomplete-*"))) == 1
+        release.set()
+        previews = (first.result(timeout=10), second.result(timeout=10))
+
+    assert len({preview.transaction_id for preview in previews}) == 2
+    assert not list(backup.glob(".incomplete-*"))
+
+
+def test_removing_lifecycle_serialization_reproduces_active_prune(tmp_path, monkeypatch):
+    ref = _repo(tmp_path)
+    tool = _tool(tmp_path / "git-filter-repo")
+    reached, release = _pause_first_bundle(monkeypatch)
+
+    class Unlocked:
+        def __init__(self, root, create):
+            self.backup_descriptor = history_hygiene._open_backup_root(root, create=create)
+
+        def close(self):
+            os.close(self.backup_descriptor)
+            self.backup_descriptor = -1
+
+    monkeypatch.setattr(
+        history_hygiene,
+        "_acquire_history_lifecycle_lock",
+        lambda root, *, create: Unlocked(root, create),
+    )
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        preparing = executor.submit(_prepare, tmp_path, tool, ref)
+        assert reached.wait(10)
+        retention = executor.submit(
+            preview_retention,
+            tmp_path,
+            now=datetime.now(UTC),
+            successful_release_activations=0,
+        )
+        retention.result(timeout=10)
+        release.set()
+        with pytest.raises(OSError):
+            preparing.result(timeout=10)
+
+
+@pytest.mark.skipif(not hasattr(os, "fork"), reason="process-death fault injection requires fork")
+def test_process_death_releases_lifecycle_lock_for_restart(tmp_path):
+    backup = tmp_path / "System/.dex/adoption/history-backups"
+    child = os.fork()
+    if child == 0:
+        held = history_hygiene._acquire_history_lifecycle_lock(tmp_path, create=True)
+        assert held.descriptor >= 0
+        os._exit(81)
+
+    _, status = os.waitpid(child, 0)
+    assert os.WEXITSTATUS(status) == 81
+    lock = backup / history_hygiene.LIFECYCLE_LOCK
+    assert lock.is_file()
+    assert stat.S_IMODE(lock.stat().st_mode) == 0o600
+
+    restarted = importlib.reload(history_hygiene)
+    preview = restarted.preview_retention(
+        tmp_path,
+        now=datetime.now(UTC),
+        successful_release_activations=0,
+    )
+    assert preview.retained_ids == ()
+
+
+@pytest.mark.parametrize("kind", ["symlink", "directory", "mode", "hardlink"])
+def test_hostile_lifecycle_lock_fails_closed(tmp_path, kind):
+    backup = tmp_path / "System/.dex/adoption/history-backups"
+    backup.mkdir(parents=True)
+    lock = backup / history_hygiene.LIFECYCLE_LOCK
+    outside = tmp_path.parent / f"outside-history-lock-{kind}"
+    outside.write_text("preserve")
+    if kind == "symlink":
+        lock.symlink_to(outside)
+    elif kind == "directory":
+        lock.mkdir()
+    elif kind == "mode":
+        lock.write_bytes(b"")
+        lock.chmod(0o644)
+    else:
+        os.link(outside, lock)
+
+    with pytest.raises(OSError):
+        preview_retention(tmp_path, now=datetime.now(UTC), successful_release_activations=0)
+
+    assert outside.read_text() == "preserve"
 
 
 def test_restart_pruning_preserves_published_recovery_and_retention_accounting(tmp_path):
