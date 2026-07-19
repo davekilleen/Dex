@@ -294,7 +294,28 @@ def _identity(path_stat: os.stat_result) -> tuple[int, int]:
     return path_stat.st_dev, path_stat.st_ino
 
 
+def _lexical_absolute(path: Path) -> Path:
+    return Path(os.path.abspath(os.fspath(path)))
+
+
+def _prevalidate_journal_ancestors(journal_dir: Path) -> None:
+    if not journal_dir.is_absolute():
+        raise MigrationError("preservation journal path must be lexically absolute")
+    current = journal_dir.parent
+    while True:
+        try:
+            current_stat = current.lstat()
+        except OSError as error:
+            raise MigrationError(f"preservation storage ancestor is unavailable: {current}") from error
+        if stat.S_ISLNK(current_stat.st_mode) or not stat.S_ISDIR(current_stat.st_mode):
+            raise MigrationError(f"preservation storage ancestor has invalid type: {current}")
+        if current == current.parent:
+            break
+        current = current.parent
+
+
 def _prevalidate_journal_container(journal_dir: Path) -> dict[Path, tuple[int, int]]:
+    _prevalidate_journal_ancestors(journal_dir)
     parent = journal_dir.parent
     paths = {
         parent: _require_private_path(parent, directory=True),
@@ -327,13 +348,7 @@ def _prevalidate_journal_storage(
             value = rewind_snapshot[ordinal]
             expected[_rewind_payload_path(journal_dir, ordinal)] = (value["sha256"], value["size"], relative)
     actual = set(payload_dir.iterdir())
-    pending_rewind = {_rewind_payload_path(journal_dir, ordinal) for ordinal in range(len(LOCAL_ONLY_PATHS))}
-    allowed_pending = (
-        pending_rewind
-        if journal["phase"] == "applied" and journal["rewind_worktree"] is None
-        else set()
-    )
-    if not set(expected).issubset(actual) or actual - set(expected) - allowed_pending:
+    if actual != set(expected):
         raise MigrationError("preservation payload set is missing or contains unexpected files")
     for payload_path, (expected_hash, expected_size, relative) in expected.items():
         payload_stat = _require_private_path(payload_path, directory=False)
@@ -342,8 +357,6 @@ def _prevalidate_journal_storage(
             raise MigrationError(f"preservation payload size mismatch: {relative}")
         if hashlib.sha256(data).hexdigest() != expected_hash:
             raise MigrationError(f"preservation payload hash mismatch: {relative}")
-    for pending_path in actual & allowed_pending:
-        _require_private_path(pending_path, directory=False)
     expected_identities = dict(identities)
     expected_identities[journal_dir] = _identity(root_before)
     expected_identities[payload_dir] = _identity(payload_before)
@@ -362,6 +375,7 @@ def _create_journal_generation(
     policy_hash: str,
     source_version: str,
 ) -> tuple[Path, dict[str, Any]]:
+    _prevalidate_journal_ancestors(journal_dir)
     generation = _generation_path(journal_dir)
     _require_private_path(journal_dir.parent, directory=True)
     generation.mkdir(mode=0o700, exist_ok=False)
@@ -401,6 +415,36 @@ def _publish_generation(journal_dir: Path, generation: Path, existing: dict[str,
         raise
     if _identity(journal_dir.parent.lstat()) != _identity(parent_before):
         raise MigrationError("preservation storage parent identity changed during generation publish")
+
+
+def _create_rewind_generation(
+    repo: Path,
+    journal_dir: Path,
+    journal: dict[str, Any],
+) -> tuple[Path, dict[str, Any]]:
+    _prevalidate_journal_ancestors(journal_dir)
+    generation = _generation_path(journal_dir)
+    generation.mkdir(mode=0o700, exist_ok=False)
+    (generation / "payloads").mkdir(mode=0o700)
+    for ordinal, relative in enumerate(LOCAL_ONLY_PATHS):
+        snapshot = journal["entries"][ordinal]["worktree"]
+        if snapshot["state"] != "present":
+            continue
+        data = _read_fixed_payload(_payload_path(journal_dir, ordinal), snapshot["sha256"], relative)
+        destination = _payload_path(generation, ordinal)
+        destination.write_bytes(data)
+        destination.chmod(0o600)
+
+    rewind_worktree = [
+        _snapshot_worktree(repo, relative, _rewind_payload_path(generation, ordinal))
+        for ordinal, relative in enumerate(LOCAL_ONLY_PATHS)
+    ]
+    replacement = dict(journal)
+    replacement["rewind_worktree"] = rewind_worktree
+    replacement["phase"] = "rewind-captured"
+    _write_journal(generation, replacement)
+    _read_journal(generation)
+    return generation, replacement
 
 
 def _has_symlink_parent(repo: Path, relative: str) -> bool:
@@ -524,13 +568,9 @@ def capture_rewind(repo: Path, journal_dir: Path, policy_path: Path | None = Non
         raise MigrationError(f"journal cannot capture rewind from phase: {journal.get('phase')}")
     if _query_tracked_ignored(repo) != policy_paths - local_paths:
         raise MigrationError("rewind capture requires the exact approved 24-path state")
-    journal["rewind_worktree"] = [
-        _snapshot_worktree(repo, relative, _rewind_payload_path(journal_dir, ordinal))
-        for ordinal, relative in enumerate(LOCAL_ONLY_PATHS)
-    ]
-    journal["phase"] = "rewind-captured"
-    _write_journal(journal_dir, journal)
-    return journal
+    generation, _ = _create_rewind_generation(repo, journal_dir, journal)
+    _publish_generation(journal_dir, generation, journal)
+    return _read_journal(journal_dir)
 
 
 def apply(repo: Path, journal_dir: Path, policy_path: Path | None = None) -> dict[str, Any]:
@@ -772,14 +812,16 @@ def main(argv: list[str] | None = None) -> int:
         else:
             if args.journal is None:
                 raise MigrationError("--journal is required for capture, apply, and rewind")
+            journal_dir = _lexical_absolute(args.journal)
+            _prevalidate_journal_ancestors(journal_dir)
             if args.action == "capture":
-                result = capture(repo, args.journal.resolve(), policy_path)
+                result = capture(repo, journal_dir, policy_path)
             elif args.action == "apply":
-                result = apply(repo, args.journal.resolve(), policy_path)
+                result = apply(repo, journal_dir, policy_path)
             elif args.action == "capture-rewind":
-                result = capture_rewind(repo, args.journal.resolve(), policy_path)
+                result = capture_rewind(repo, journal_dir, policy_path)
             else:
-                result = rewind(repo, args.journal.resolve(), policy_path, args.target_phase)
+                result = rewind(repo, journal_dir, policy_path, args.target_phase)
             result = {"ok": True, "phase": result["phase"], "paths": list(LOCAL_ONLY_PATHS)}
     except (MigrationError, TrackedIgnoredError, OSError, ValueError, json.JSONDecodeError) as error:
         result = {"ok": False, "error": str(error)}

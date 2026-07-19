@@ -462,6 +462,39 @@ def test_symlinked_journal_root_fails_before_policy_or_git(tracked_ignored_repo,
         migration.apply(tracked_ignored_repo, journal)
 
 
+@pytest.mark.parametrize("symlink_part", ["root", "parent", "payloads"])
+def test_cli_rejects_journal_symlinks_before_policy_or_git(
+    tracked_ignored_repo, tmp_path, monkeypatch, capsys, symlink_part
+):
+    parent = tmp_path / "private-parent"
+    parent.mkdir(mode=0o700)
+    journal = parent / "journal"
+    migration.capture(tracked_ignored_repo, journal)
+    _set_transition(tracked_ignored_repo, "untrack-v1")
+    if symlink_part == "root":
+        real = parent / "real-journal"
+        journal.rename(real)
+        journal.symlink_to(real, target_is_directory=True)
+    elif symlink_part == "parent":
+        real = tmp_path / "real-parent"
+        parent.rename(real)
+        parent.symlink_to(real, target_is_directory=True)
+    else:
+        payloads = journal / "payloads"
+        real = journal / "real-payloads"
+        payloads.rename(real)
+        payloads.symlink_to(real, target_is_directory=True)
+
+    monkeypatch.setattr(migration, "_load_policy", lambda *_args, **_kwargs: pytest.fail("policy accessed"))
+    monkeypatch.setattr(migration, "_query_tracked_ignored", lambda *_args: pytest.fail("Git queried"))
+    monkeypatch.setattr(migration, "_git", lambda *_args, **_kwargs: pytest.fail("Git mutated"))
+
+    assert migration.main(
+        ["apply", "--repo", str(tracked_ignored_repo), "--journal", str(journal)]
+    ) == 1
+    assert "preservation storage" in capsys.readouterr().out
+
+
 def test_closed_rewound_journal_recaptures_to_opaque_archive(tracked_ignored_repo, tmp_path):
     journal = tmp_path / "journal"
     _prepare_untrack(tracked_ignored_repo, journal)
@@ -571,7 +604,7 @@ def test_recapture_retries_after_kill_between_archive_and_generation_publish(tra
     assert migration._read_journal(archive)["phase"] == "rewound"
 
 
-def test_capture_rewind_resumes_closed_pending_payload_set_and_rewinds_inverse(
+def test_capture_rewind_retries_atomic_generation_after_present_to_deleted_change(
     tracked_ignored_repo, tmp_path, monkeypatch
 ):
     journal = tmp_path / "journal"
@@ -600,17 +633,82 @@ def test_capture_rewind_resumes_closed_pending_payload_set_and_rewinds_inverse(
         migration.capture_rewind(tracked_ignored_repo, journal)
     assert migration._read_journal(journal)["phase"] == "applied"
 
+    first = tracked_ignored_repo / migration.LOCAL_ONLY_PATHS[0]
+    first.unlink()
+    expected.pop(migration.LOCAL_ONLY_PATHS[0])
+
     monkeypatch.setattr(migration, "_snapshot_worktree", original_snapshot)
-    assert migration.capture_rewind(tracked_ignored_repo, journal)["phase"] == "rewind-captured"
+    captured = migration.capture_rewind(tracked_ignored_repo, journal)
+    assert captured["phase"] == "rewind-captured"
+    assert captured["rewind_worktree"][0] == {"state": "absent"}
+    assert migration._read_journal(journal) == captured
     _set_transition(tracked_ignored_repo, "bootstrap-v1")
     assert migration.rewind(tracked_ignored_repo, journal)["phase"] == "rewound"
+    assert not first.exists()
     assert {
         relative: (
             (tracked_ignored_repo / relative).read_bytes(),
             stat.S_IMODE((tracked_ignored_repo / relative).stat().st_mode),
         )
-        for relative in migration.LOCAL_ONLY_PATHS
+        for relative in expected
     } == expected
+
+
+def test_rewind_recapture_interruption_keeps_prior_generation_readable_and_retryable(
+    tracked_ignored_repo, tmp_path, monkeypatch
+):
+    journal = tmp_path / "journal"
+    _prepare_untrack(tracked_ignored_repo, journal)
+    migration.apply(tracked_ignored_repo, journal)
+    first = tracked_ignored_repo / migration.LOCAL_ONLY_PATHS[0]
+    first.write_bytes(b"first rewind generation\n")
+    prior = migration.capture_rewind(tracked_ignored_repo, journal)
+    prior_payload = migration._rewind_payload_path(journal, 0).read_bytes()
+    first.write_bytes(b"second rewind generation\n")
+    original_snapshot = migration._snapshot_worktree
+
+    def interrupt_recapture(repo, relative, payload):
+        original_snapshot(repo, relative, payload)
+        raise migration.MigrationError("simulated rewind recapture interruption")
+
+    monkeypatch.setattr(migration, "_snapshot_worktree", interrupt_recapture)
+    with pytest.raises(migration.MigrationError, match="rewind recapture interruption"):
+        migration.capture_rewind(tracked_ignored_repo, journal)
+
+    assert migration._read_journal(journal) == prior
+    assert migration._rewind_payload_path(journal, 0).read_bytes() == prior_payload
+
+    monkeypatch.setattr(migration, "_snapshot_worktree", original_snapshot)
+    replacement = migration.capture_rewind(tracked_ignored_repo, journal)
+    assert replacement["phase"] == "rewind-captured"
+    assert migration._rewind_payload_path(journal, 0).read_bytes() == b"second rewind generation\n"
+    assert migration._read_journal(journal) == replacement
+
+
+def test_rewind_recapture_publish_failure_restores_prior_generation(
+    tracked_ignored_repo, tmp_path, monkeypatch
+):
+    journal = tmp_path / "journal"
+    _prepare_untrack(tracked_ignored_repo, journal)
+    migration.apply(tracked_ignored_repo, journal)
+    prior = migration.capture_rewind(tracked_ignored_repo, journal)
+    first = tracked_ignored_repo / migration.LOCAL_ONLY_PATHS[0]
+    first.write_bytes(b"replacement rewind bytes\n")
+    original_replace = migration.os.replace
+    interrupted = False
+
+    def interrupt_publish(source, destination):
+        nonlocal interrupted
+        if not interrupted and Path(source).name.startswith(".journal-generation-") and Path(destination) == journal:
+            interrupted = True
+            raise OSError("simulated rewind generation publish failure")
+        return original_replace(source, destination)
+
+    monkeypatch.setattr(migration.os, "replace", interrupt_publish)
+    with pytest.raises(OSError, match="rewind generation publish failure"):
+        migration.capture_rewind(tracked_ignored_repo, journal)
+
+    assert migration._read_journal(journal) == prior
 
 
 def test_bootstrap_apply_is_non_mutating_and_reports_installed_state(tracked_ignored_repo, tmp_path):
