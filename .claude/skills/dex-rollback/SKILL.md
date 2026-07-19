@@ -159,23 +159,21 @@ DEX_ROLLBACK_TARGET="backup-before-v1.3.0"
 DEX_LOCAL_ONLY_ROOT="System/.dex/local-only-preservation"
 DEX_LOCAL_ONLY_RUNTIME="$DEX_LOCAL_ONLY_ROOT/runtime"
 DEX_LOCAL_ONLY_JOURNAL="$DEX_LOCAL_ONLY_ROOT/journal"
-DEX_CURRENT_LOCAL_ONLY_PHASE=$(python3 -c '
-import json
-value = json.load(open("System/.local-only-preservation-transition.json", encoding="utf-8"))
-print(value.get("phase", ""))
-') || exit 1
-DEX_TARGET_LOCAL_ONLY_PHASE=$(git show \
-  "$DEX_ROLLBACK_TARGET:System/.local-only-preservation-transition.json" 2>/dev/null \
-  | python3 -c '
-import json, sys
-value = json.load(sys.stdin)
-if set(value) != {"schema_version", "phase", "release_version"} or value.get("schema_version") != 1:
-    raise SystemExit(1)
-if value.get("phase") not in {"bootstrap-v1", "untrack-v1"}:
-    raise SystemExit(1)
-print(value["phase"])
-' 2>/dev/null || true)
-if [ -z "$DEX_TARGET_LOCAL_ONLY_PHASE" ]; then
+DEX_CURRENT_LOCAL_ONLY_PHASE=$(PYTHONPATH="$DEX_LOCAL_ONLY_RUNTIME" python3 \
+  "$DEX_LOCAL_ONLY_RUNTIME/core/migrations/preserve_local_only_paths.py" transition \
+  --repo "$PWD") || exit 1
+DEX_TARGET_TRANSITION="$DEX_LOCAL_ONLY_RUNTIME/rollback-target-transition.json"
+DEX_TARGET_PACKAGE="$DEX_LOCAL_ONLY_RUNTIME/rollback-target-package.json"
+if git cat-file -e \
+  "$DEX_ROLLBACK_TARGET:System/.local-only-preservation-transition.json" 2>/dev/null; then
+  git show "$DEX_ROLLBACK_TARGET:System/.local-only-preservation-transition.json" \
+    > "$DEX_TARGET_TRANSITION" || exit 1
+  git show "$DEX_ROLLBACK_TARGET:package.json" > "$DEX_TARGET_PACKAGE" || exit 1
+  DEX_TARGET_LOCAL_ONLY_PHASE=$(PYTHONPATH="$DEX_LOCAL_ONLY_RUNTIME" python3 \
+    "$DEX_LOCAL_ONLY_RUNTIME/core/migrations/preserve_local_only_paths.py" transition \
+    --repo "$PWD" --transition "$DEX_TARGET_TRANSITION" \
+    --package "$DEX_TARGET_PACKAGE") || exit 1
+else
   DEX_TARGET_TRACKED_COUNT=0
   for DEX_LOCAL_ONLY_PATH in \
     System/Session_Learnings/2026-01-29.md \
@@ -808,22 +806,21 @@ DEX_ROLLBACK_TARGET="backup-before-v1.1.0"
 DEX_LOCAL_ONLY_ROOT="System/.dex/local-only-preservation"
 DEX_LOCAL_ONLY_RUNTIME="$DEX_LOCAL_ONLY_ROOT/runtime"
 DEX_LOCAL_ONLY_JOURNAL="$DEX_LOCAL_ONLY_ROOT/journal"
-DEX_CURRENT_LOCAL_ONLY_PHASE=$(python3 -c '
-import json
-print(json.load(open("System/.local-only-preservation-transition.json", encoding="utf-8")).get("phase", ""))
-' 2>/dev/null || true)
-DEX_TARGET_LOCAL_ONLY_PHASE=$(git show \
-  "$DEX_ROLLBACK_TARGET:System/.local-only-preservation-transition.json" 2>/dev/null \
-  | python3 -c '
-import json, sys
-value = json.load(sys.stdin)
-if set(value) != {"schema_version", "phase", "release_version"} or value.get("schema_version") != 1:
-    raise SystemExit(1)
-if value.get("phase") not in {"bootstrap-v1", "untrack-v1"}:
-    raise SystemExit(1)
-print(value["phase"])
-' 2>/dev/null || true)
-if [ -z "$DEX_TARGET_LOCAL_ONLY_PHASE" ]; then
+DEX_CURRENT_LOCAL_ONLY_PHASE=$(PYTHONPATH="$DEX_LOCAL_ONLY_RUNTIME" python3 \
+  "$DEX_LOCAL_ONLY_RUNTIME/core/migrations/preserve_local_only_paths.py" transition \
+  --repo "$PWD") || exit 1
+DEX_TARGET_TRANSITION="$DEX_LOCAL_ONLY_RUNTIME/rollback-target-transition.json"
+DEX_TARGET_PACKAGE="$DEX_LOCAL_ONLY_RUNTIME/rollback-target-package.json"
+if git cat-file -e \
+  "$DEX_ROLLBACK_TARGET:System/.local-only-preservation-transition.json" 2>/dev/null; then
+  git show "$DEX_ROLLBACK_TARGET:System/.local-only-preservation-transition.json" \
+    > "$DEX_TARGET_TRANSITION" || exit 1
+  git show "$DEX_ROLLBACK_TARGET:package.json" > "$DEX_TARGET_PACKAGE" || exit 1
+  DEX_TARGET_LOCAL_ONLY_PHASE=$(PYTHONPATH="$DEX_LOCAL_ONLY_RUNTIME" python3 \
+    "$DEX_LOCAL_ONLY_RUNTIME/core/migrations/preserve_local_only_paths.py" transition \
+    --repo "$PWD" --transition "$DEX_TARGET_TRANSITION" \
+    --package "$DEX_TARGET_PACKAGE") || exit 1
+else
   DEX_TARGET_TRACKED_COUNT=0
   for DEX_LOCAL_ONLY_PATH in \
     System/Session_Learnings/2026-01-29.md \

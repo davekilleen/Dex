@@ -298,18 +298,10 @@ DEX_TARGET_PACKAGE="$DEX_LOCAL_ONLY_RUNTIME/target-package.json"
 git show upstream/release:System/.local-only-preservation-transition.json \
   > "$DEX_TARGET_TRANSITION" || exit 1
 git show upstream/release:package.json > "$DEX_TARGET_PACKAGE" || exit 1
-DEX_TARGET_PHASE=$(python3 -c '
-import json, sys
-transition = json.load(open(sys.argv[1], encoding="utf-8"))
-package = json.load(open(sys.argv[2], encoding="utf-8"))
-if set(transition) != {"schema_version", "phase", "release_version"}:
-    raise SystemExit(1)
-if transition["schema_version"] != 1 or transition["phase"] not in {"bootstrap-v1", "untrack-v1"}:
-    raise SystemExit(1)
-if transition["release_version"] != package.get("version"):
-    raise SystemExit(1)
-print(transition["phase"])
-' "$DEX_TARGET_TRANSITION" "$DEX_TARGET_PACKAGE") || exit 1
+DEX_TARGET_PHASE=$(PYTHONPATH="$DEX_LOCAL_ONLY_RUNTIME" python3 \
+  "$DEX_LOCAL_ONLY_RUNTIME/core/migrations/preserve_local_only_paths.py" transition \
+  --repo "$PWD" --transition "$DEX_TARGET_TRANSITION" \
+  --package "$DEX_TARGET_PACKAGE") || exit 1
 
 case "$DEX_TARGET_PHASE" in
   bootstrap-v1) ;;
@@ -644,11 +636,44 @@ fi
 DEX_LOCAL_ONLY_ROOT="System/.dex/local-only-preservation"
 DEX_LOCAL_ONLY_RUNTIME="$DEX_LOCAL_ONLY_ROOT/runtime"
 DEX_LOCAL_ONLY_JOURNAL="$DEX_LOCAL_ONLY_ROOT/journal"
+DEX_RESET_TRANSITION="$DEX_LOCAL_ONLY_RUNTIME/recovery-target-transition.json"
+DEX_RESET_PACKAGE="$DEX_LOCAL_ONLY_RUNTIME/recovery-target-package.json"
+if git cat-file -e \
+  "$DEX_UPDATE_RESET_TARGET:System/.local-only-preservation-transition.json" 2>/dev/null; then
+  git show "$DEX_UPDATE_RESET_TARGET:System/.local-only-preservation-transition.json" \
+    > "$DEX_RESET_TRANSITION" || exit 2
+  git show "$DEX_UPDATE_RESET_TARGET:package.json" > "$DEX_RESET_PACKAGE" || exit 2
+  DEX_UPDATE_RESET_PHASE=$(PYTHONPATH="$DEX_LOCAL_ONLY_RUNTIME" python3 \
+    "$DEX_LOCAL_ONLY_RUNTIME/core/migrations/preserve_local_only_paths.py" transition \
+    --repo "$PWD" --transition "$DEX_RESET_TRANSITION" \
+    --package "$DEX_RESET_PACKAGE") || exit 2
+else
+  DEX_RESET_TRACKED_COUNT=0
+  for DEX_LOCAL_ONLY_PATH in \
+    System/Session_Learnings/2026-01-29.md \
+    System/Session_Learnings/2026-01-30.md \
+    System/integrations/slack.yaml; do
+    git cat-file -e "$DEX_UPDATE_RESET_TARGET:$DEX_LOCAL_ONLY_PATH" 2>/dev/null \
+      && DEX_RESET_TRACKED_COUNT=$((DEX_RESET_TRACKED_COUNT + 1))
+  done
+  case "$DEX_RESET_TRACKED_COUNT" in
+    3) DEX_UPDATE_RESET_PHASE="bootstrap-legacy" ;;
+    0) DEX_UPDATE_RESET_PHASE="untrack-legacy" ;;
+    *) echo "Update recovery stopped: reset target has a partial local-only transition"; exit 2 ;;
+  esac
+fi
 if [ -f "$DEX_LOCAL_ONLY_JOURNAL/journal.json" ]; then
-  PYTHONPATH="$DEX_LOCAL_ONLY_RUNTIME" python3 \
-    "$DEX_LOCAL_ONLY_RUNTIME/core/migrations/preserve_local_only_paths.py" rewind \
-    --repo "$PWD" --journal "$DEX_LOCAL_ONLY_JOURNAL" \
-    --policy "$DEX_LOCAL_ONLY_RUNTIME/tracked-ignored-policy.yaml" || exit 2
+  case "$DEX_UPDATE_RESET_PHASE" in
+    bootstrap-v1|bootstrap-legacy)
+      PYTHONPATH="$DEX_LOCAL_ONLY_RUNTIME" python3 \
+        "$DEX_LOCAL_ONLY_RUNTIME/core/migrations/preserve_local_only_paths.py" rewind \
+        --repo "$PWD" --journal "$DEX_LOCAL_ONLY_JOURNAL" \
+        --policy "$DEX_LOCAL_ONLY_RUNTIME/tracked-ignored-policy.yaml" \
+        --target-phase "$DEX_UPDATE_RESET_PHASE" || exit 2
+      ;;
+    untrack-v1|untrack-legacy) ;;
+    *) echo "Update recovery stopped: reset target transition is unsupported"; exit 2 ;;
+  esac
 fi
 ```
 
@@ -1081,11 +1106,44 @@ fi
 DEX_LOCAL_ONLY_ROOT="System/.dex/local-only-preservation"
 DEX_LOCAL_ONLY_RUNTIME="$DEX_LOCAL_ONLY_ROOT/runtime"
 DEX_LOCAL_ONLY_JOURNAL="$DEX_LOCAL_ONLY_ROOT/journal"
+DEX_RESET_TRANSITION="$DEX_LOCAL_ONLY_RUNTIME/recovery-target-transition.json"
+DEX_RESET_PACKAGE="$DEX_LOCAL_ONLY_RUNTIME/recovery-target-package.json"
+if git cat-file -e \
+  "$DEX_UPDATE_RESET_TARGET:System/.local-only-preservation-transition.json" 2>/dev/null; then
+  git show "$DEX_UPDATE_RESET_TARGET:System/.local-only-preservation-transition.json" \
+    > "$DEX_RESET_TRANSITION" || exit 2
+  git show "$DEX_UPDATE_RESET_TARGET:package.json" > "$DEX_RESET_PACKAGE" || exit 2
+  DEX_UPDATE_RESET_PHASE=$(PYTHONPATH="$DEX_LOCAL_ONLY_RUNTIME" python3 \
+    "$DEX_LOCAL_ONLY_RUNTIME/core/migrations/preserve_local_only_paths.py" transition \
+    --repo "$PWD" --transition "$DEX_RESET_TRANSITION" \
+    --package "$DEX_RESET_PACKAGE") || exit 2
+else
+  DEX_RESET_TRACKED_COUNT=0
+  for DEX_LOCAL_ONLY_PATH in \
+    System/Session_Learnings/2026-01-29.md \
+    System/Session_Learnings/2026-01-30.md \
+    System/integrations/slack.yaml; do
+    git cat-file -e "$DEX_UPDATE_RESET_TARGET:$DEX_LOCAL_ONLY_PATH" 2>/dev/null \
+      && DEX_RESET_TRACKED_COUNT=$((DEX_RESET_TRACKED_COUNT + 1))
+  done
+  case "$DEX_RESET_TRACKED_COUNT" in
+    3) DEX_UPDATE_RESET_PHASE="bootstrap-legacy" ;;
+    0) DEX_UPDATE_RESET_PHASE="untrack-legacy" ;;
+    *) echo "Update recovery stopped: reset target has a partial local-only transition"; exit 2 ;;
+  esac
+fi
 if [ -f "$DEX_LOCAL_ONLY_JOURNAL/journal.json" ]; then
-  PYTHONPATH="$DEX_LOCAL_ONLY_RUNTIME" python3 \
-    "$DEX_LOCAL_ONLY_RUNTIME/core/migrations/preserve_local_only_paths.py" rewind \
-    --repo "$PWD" --journal "$DEX_LOCAL_ONLY_JOURNAL" \
-    --policy "$DEX_LOCAL_ONLY_RUNTIME/tracked-ignored-policy.yaml" || exit 2
+  case "$DEX_UPDATE_RESET_PHASE" in
+    bootstrap-v1|bootstrap-legacy)
+      PYTHONPATH="$DEX_LOCAL_ONLY_RUNTIME" python3 \
+        "$DEX_LOCAL_ONLY_RUNTIME/core/migrations/preserve_local_only_paths.py" rewind \
+        --repo "$PWD" --journal "$DEX_LOCAL_ONLY_JOURNAL" \
+        --policy "$DEX_LOCAL_ONLY_RUNTIME/tracked-ignored-policy.yaml" \
+        --target-phase "$DEX_UPDATE_RESET_PHASE" || exit 2
+      ;;
+    untrack-v1|untrack-legacy) ;;
+    *) echo "Update recovery stopped: reset target transition is unsupported"; exit 2 ;;
+  esac
 fi
 git status --short
 ```

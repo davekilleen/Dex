@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -118,6 +119,18 @@ def test_rollback_stops_when_autosave_commit_fails(tmp_path: Path) -> None:
     )
     pre_commit.chmod(0o755)
     _git(vault, "config", "core.hooksPath", str(hooks_dir))
+
+    runtime = vault / "System/.dex/local-only-preservation/runtime"
+    (runtime / "core/migrations").mkdir(parents=True)
+    (runtime / "core/utils").mkdir(parents=True)
+    shutil.copy2(
+        REPO_ROOT / "core/migrations/preserve_local_only_paths.py",
+        runtime / "core/migrations/preserve_local_only_paths.py",
+    )
+    shutil.copy2(REPO_ROOT / "core/utils/tracked_ignored.py", runtime / "core/utils/tracked_ignored.py")
+    (runtime / "core/__init__.py").touch()
+    (runtime / "core/migrations/__init__.py").touch()
+    (runtime / "core/utils/__init__.py").touch()
 
     protected_rollback = _bash_block_containing(
         ROLLBACK_SKILL,

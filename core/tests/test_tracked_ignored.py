@@ -207,6 +207,57 @@ def test_non_mapping_policy_roots_fail_with_controlled_errors(tracked_ignored_re
         migration.capture(tracked_ignored_repo, tmp_path / "journal", malformed)
 
 
+def test_transition_cli_uses_shared_strict_pair_parser(tracked_ignored_repo, tmp_path, capsys):
+    transition = tmp_path / "target-transition.json"
+    package = tmp_path / "target-package.json"
+    transition.write_text(
+        '{"schema_version":1,"phase":"untrack-v1","release_version":"2.0.0"}\n',
+        encoding="utf-8",
+    )
+    package.write_text('{"version":"2.0.0"}\n', encoding="utf-8")
+
+    assert migration.main(
+        [
+            "transition",
+            "--repo",
+            str(tracked_ignored_repo),
+            "--transition",
+            str(transition),
+            "--package",
+            str(package),
+        ]
+    ) == 0
+    assert capsys.readouterr().out == "untrack-v1\n"
+
+    package.write_text('{"version":"2.0.0","version":"2.0.0"}\n', encoding="utf-8")
+    assert migration.main(
+        [
+            "transition",
+            "--repo",
+            str(tracked_ignored_repo),
+            "--transition",
+            str(transition),
+            "--package",
+            str(package),
+        ]
+    ) == 1
+    assert "duplicate local-only preservation transition key: version" in capsys.readouterr().out
+
+    package.write_text('{"version":"2.0.1"}\n', encoding="utf-8")
+    assert migration.main(
+        [
+            "transition",
+            "--repo",
+            str(tracked_ignored_repo),
+            "--transition",
+            str(transition),
+            "--package",
+            str(package),
+        ]
+    ) == 1
+    assert "version does not match package metadata" in capsys.readouterr().out
+
+
 def test_nested_ignore_negation_case_and_unicode_remain_exact(tracked_ignored_repo):
     _git(tracked_ignored_repo, "rm", "--cached", "--", *migration.LOCAL_ONLY_PATHS)
     _set_transition(tracked_ignored_repo, "untrack-v1")
@@ -424,6 +475,142 @@ def test_closed_rewound_journal_recaptures_to_opaque_archive(tracked_ignored_rep
     assert len(archives) == 1
     assert len(archives[0].name) == len("archive-") + 32
     assert _journal_payload(archives[0])["phase"] == "rewound"
+
+
+def test_initial_capture_interruption_never_publishes_incomplete_generation(
+    tracked_ignored_repo, tmp_path, monkeypatch
+):
+    journal = tmp_path / "journal"
+    original_snapshot = migration._snapshot_worktree
+    snapshots = 0
+
+    def interrupt_generation(repo, relative, payload):
+        nonlocal snapshots
+        result = original_snapshot(repo, relative, payload)
+        snapshots += 1
+        if snapshots == 2:
+            raise migration.MigrationError("simulated initial generation interruption")
+        return result
+
+    monkeypatch.setattr(migration, "_snapshot_worktree", interrupt_generation)
+    with pytest.raises(migration.MigrationError, match="initial generation interruption"):
+        migration.capture(tracked_ignored_repo, journal)
+    assert not journal.exists()
+
+    monkeypatch.setattr(migration, "_snapshot_worktree", original_snapshot)
+    assert migration.capture(tracked_ignored_repo, journal)["phase"] == "captured"
+    assert migration._read_journal(journal)["phase"] == "captured"
+
+
+def test_recapture_build_interruption_retains_rewound_generation(
+    tracked_ignored_repo, tmp_path, monkeypatch
+):
+    journal = tmp_path / "journal"
+    _prepare_untrack(tracked_ignored_repo, journal)
+    migration.apply(tracked_ignored_repo, journal)
+    _rewind(tracked_ignored_repo, journal)
+    original_snapshot = migration._snapshot_worktree
+
+    def interrupt_generation(repo, relative, payload):
+        original_snapshot(repo, relative, payload)
+        raise migration.MigrationError("simulated recapture generation interruption")
+
+    monkeypatch.setattr(migration, "_snapshot_worktree", interrupt_generation)
+    with pytest.raises(migration.MigrationError, match="recapture generation interruption"):
+        migration.capture(tracked_ignored_repo, journal)
+
+    assert migration._read_journal(journal)["phase"] == "rewound"
+    assert not list(tmp_path.glob("archive-*"))
+
+
+def test_recapture_publish_failure_restores_old_generation(tracked_ignored_repo, tmp_path, monkeypatch):
+    journal = tmp_path / "journal"
+    _prepare_untrack(tracked_ignored_repo, journal)
+    migration.apply(tracked_ignored_repo, journal)
+    _rewind(tracked_ignored_repo, journal)
+    original_replace = migration.os.replace
+    interrupted = False
+
+    def interrupt_publish(source, destination):
+        nonlocal interrupted
+        if not interrupted and Path(source).name.startswith(".journal-generation-") and Path(destination) == journal:
+            interrupted = True
+            raise OSError("simulated atomic publish interruption")
+        return original_replace(source, destination)
+
+    monkeypatch.setattr(migration.os, "replace", interrupt_publish)
+    with pytest.raises(OSError, match="atomic publish interruption"):
+        migration.capture(tracked_ignored_repo, journal)
+
+    assert migration._read_journal(journal)["phase"] == "rewound"
+    assert not list(tmp_path.glob("archive-*"))
+
+
+def test_recapture_retries_after_kill_between_archive_and_generation_publish(tracked_ignored_repo, tmp_path):
+    journal = tmp_path / "journal"
+    _prepare_untrack(tracked_ignored_repo, journal)
+    migration.apply(tracked_ignored_repo, journal)
+    _rewind(tracked_ignored_repo, journal)
+    _, _, policy_hash = migration._load_policy(tracked_ignored_repo)
+    generation, _ = migration._create_journal_generation(
+        tracked_ignored_repo,
+        journal,
+        policy_hash,
+        VERSION,
+    )
+    archive = tmp_path / "archive-00000000000000000000000000000000"
+
+    # Exact on-disk state left by a kill after retaining the old generation but
+    # before the validated replacement generation reaches the canonical path.
+    os.replace(journal, archive)
+    assert not journal.exists()
+    assert migration._read_journal(generation)["phase"] == "captured"
+
+    assert migration.capture(tracked_ignored_repo, journal)["phase"] == "captured"
+    assert migration._read_journal(journal)["phase"] == "captured"
+    assert migration._read_journal(archive)["phase"] == "rewound"
+
+
+def test_capture_rewind_resumes_closed_pending_payload_set_and_rewinds_inverse(
+    tracked_ignored_repo, tmp_path, monkeypatch
+):
+    journal = tmp_path / "journal"
+    _prepare_untrack(tracked_ignored_repo, journal)
+    migration.apply(tracked_ignored_repo, journal)
+    expected = {}
+    for ordinal, relative in enumerate(migration.LOCAL_ONLY_PATHS):
+        target = tracked_ignored_repo / relative
+        target.write_bytes(f"post-update-{ordinal}\n".encode())
+        target.chmod(0o600 + ordinal)
+        expected[relative] = (target.read_bytes(), stat.S_IMODE(target.stat().st_mode))
+
+    original_snapshot = migration._snapshot_worktree
+    snapshots = 0
+
+    def interrupt_pending_rewind(repo, relative, payload):
+        nonlocal snapshots
+        result = original_snapshot(repo, relative, payload)
+        snapshots += 1
+        if snapshots == 2:
+            raise migration.MigrationError("simulated rewind capture interruption")
+        return result
+
+    monkeypatch.setattr(migration, "_snapshot_worktree", interrupt_pending_rewind)
+    with pytest.raises(migration.MigrationError, match="rewind capture interruption"):
+        migration.capture_rewind(tracked_ignored_repo, journal)
+    assert migration._read_journal(journal)["phase"] == "applied"
+
+    monkeypatch.setattr(migration, "_snapshot_worktree", original_snapshot)
+    assert migration.capture_rewind(tracked_ignored_repo, journal)["phase"] == "rewind-captured"
+    _set_transition(tracked_ignored_repo, "bootstrap-v1")
+    assert migration.rewind(tracked_ignored_repo, journal)["phase"] == "rewound"
+    assert {
+        relative: (
+            (tracked_ignored_repo / relative).read_bytes(),
+            stat.S_IMODE((tracked_ignored_repo / relative).stat().st_mode),
+        )
+        for relative in migration.LOCAL_ONLY_PATHS
+    } == expected
 
 
 def test_bootstrap_apply_is_non_mutating_and_reports_installed_state(tracked_ignored_repo, tmp_path):

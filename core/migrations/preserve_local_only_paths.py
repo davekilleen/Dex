@@ -20,6 +20,7 @@ from core.utils.tracked_ignored import (
     git_executable,
     load_exact_policy,
     load_transition,
+    load_transition_pair,
     query_tracked_ignored,
     sanitized_git_env,
 )
@@ -326,7 +327,13 @@ def _prevalidate_journal_storage(
             value = rewind_snapshot[ordinal]
             expected[_rewind_payload_path(journal_dir, ordinal)] = (value["sha256"], value["size"], relative)
     actual = set(payload_dir.iterdir())
-    if actual != set(expected):
+    pending_rewind = {_rewind_payload_path(journal_dir, ordinal) for ordinal in range(len(LOCAL_ONLY_PATHS))}
+    allowed_pending = (
+        pending_rewind
+        if journal["phase"] == "applied" and journal["rewind_worktree"] is None
+        else set()
+    )
+    if not set(expected).issubset(actual) or actual - set(expected) - allowed_pending:
         raise MigrationError("preservation payload set is missing or contains unexpected files")
     for payload_path, (expected_hash, expected_size, relative) in expected.items():
         payload_stat = _require_private_path(payload_path, directory=False)
@@ -335,6 +342,8 @@ def _prevalidate_journal_storage(
             raise MigrationError(f"preservation payload size mismatch: {relative}")
         if hashlib.sha256(data).hexdigest() != expected_hash:
             raise MigrationError(f"preservation payload hash mismatch: {relative}")
+    for pending_path in actual & allowed_pending:
+        _require_private_path(pending_path, directory=False)
     expected_identities = dict(identities)
     expected_identities[journal_dir] = _identity(root_before)
     expected_identities[payload_dir] = _identity(payload_before)
@@ -343,24 +352,27 @@ def _prevalidate_journal_storage(
             raise MigrationError("preservation storage identity changed during validation")
 
 
-def _create_journal(
+def _generation_path(journal_dir: Path) -> Path:
+    return journal_dir.with_name(f".{journal_dir.name}-generation-{uuid.uuid4().hex}")
+
+
+def _create_journal_generation(
     repo: Path,
     journal_dir: Path,
     policy_hash: str,
     source_version: str,
-) -> dict[str, Any]:
-    try:
-        journal_dir.mkdir(mode=0o700, parents=True, exist_ok=False)
-    except FileExistsError as error:
-        raise MigrationError("journal already exists but has no resumable manifest") from error
-    (journal_dir / "payloads").mkdir(mode=0o700)
+) -> tuple[Path, dict[str, Any]]:
+    generation = _generation_path(journal_dir)
+    _require_private_path(journal_dir.parent, directory=True)
+    generation.mkdir(mode=0o700, exist_ok=False)
+    (generation / "payloads").mkdir(mode=0o700)
     entries = []
     for index, relative in enumerate(LOCAL_ONLY_PATHS):
         index_entry = _index_entry(repo, relative)
         assert index_entry is not None
-        worktree = _snapshot_worktree(repo, relative, _payload_path(journal_dir, index))
+        worktree = _snapshot_worktree(repo, relative, _payload_path(generation, index))
         if worktree["state"] == "absent":
-            worktree["state"] = "deleted" if index_entry["tracked"] else "absent"
+            worktree["state"] = "deleted"
         entries.append({"path": relative, "index": index_entry, "worktree": worktree})
     payload: dict[str, Any] = {
         "schema_version": 1,
@@ -370,8 +382,25 @@ def _create_journal(
         "entries": entries,
         "rewind_worktree": None,
     }
-    _write_journal(journal_dir, payload)
-    return payload
+    _write_journal(generation, payload)
+    _read_journal(generation)
+    return generation, payload
+
+
+def _publish_generation(journal_dir: Path, generation: Path, existing: dict[str, Any] | None) -> None:
+    parent_before = _require_private_path(journal_dir.parent, directory=True)
+    archive: Path | None = None
+    if existing is not None:
+        archive = journal_dir.with_name(f"archive-{uuid.uuid4().hex}")
+        os.replace(journal_dir, archive)
+    try:
+        os.replace(generation, journal_dir)
+    except BaseException:
+        if archive is not None and not journal_dir.exists():
+            os.replace(archive, journal_dir)
+        raise
+    if _identity(journal_dir.parent.lstat()) != _identity(parent_before):
+        raise MigrationError("preservation storage parent identity changed during generation publish")
 
 
 def _has_symlink_parent(repo: Path, relative: str) -> bool:
@@ -475,13 +504,9 @@ def capture(repo: Path, journal_dir: Path, policy_path: Path | None = None) -> d
         raise MigrationError(
             "live tracked-ignore query differs from the exact 27-row baseline; no preservation journal was created"
         )
-    if existing is not None:
-        parent_before = _require_private_path(journal_dir.parent, directory=True)
-        archive = journal_dir.with_name(f"archive-{uuid.uuid4().hex}")
-        os.replace(journal_dir, archive)
-        if _identity(journal_dir.parent.lstat()) != _identity(parent_before):
-            raise MigrationError("preservation storage parent identity changed during recapture")
-    return _create_journal(repo, journal_dir, policy_hash, transition.release_version)
+    generation, payload = _create_journal_generation(repo, journal_dir, policy_hash, transition.release_version)
+    _publish_generation(journal_dir, generation, existing)
+    return payload
 
 
 def capture_rewind(repo: Path, journal_dir: Path, policy_path: Path | None = None) -> dict[str, Any]:
@@ -722,15 +747,26 @@ def preview(repo: Path, policy_path: Path | None = None) -> dict[str, Any]:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("action", choices=("preview", "capture", "apply", "capture-rewind", "rewind"))
+    parser.add_argument(
+        "action", choices=("transition", "preview", "capture", "apply", "capture-rewind", "rewind")
+    )
     parser.add_argument("--repo", type=Path, required=True)
     parser.add_argument("--journal", type=Path)
     parser.add_argument("--policy", type=Path)
+    parser.add_argument("--transition", type=Path)
+    parser.add_argument("--package", type=Path)
     parser.add_argument("--target-phase", choices=("bootstrap-v1", "bootstrap-legacy"))
     args = parser.parse_args(argv)
     try:
         repo = args.repo.resolve()
         policy_path = args.policy.resolve() if args.policy else None
+        if args.action == "transition":
+            transition = load_transition_pair(
+                args.transition.resolve() if args.transition else repo / "System/.local-only-preservation-transition.json",
+                args.package.resolve() if args.package else repo / "package.json",
+            )
+            print(transition.phase)
+            return 0
         if args.action == "preview":
             result = preview(repo, policy_path)
         else:
@@ -745,7 +781,7 @@ def main(argv: list[str] | None = None) -> int:
             else:
                 result = rewind(repo, args.journal.resolve(), policy_path, args.target_phase)
             result = {"ok": True, "phase": result["phase"], "paths": list(LOCAL_ONLY_PATHS)}
-    except (MigrationError, OSError, ValueError, json.JSONDecodeError) as error:
+    except (MigrationError, TrackedIgnoredError, OSError, ValueError, json.JSONDecodeError) as error:
         result = {"ok": False, "error": str(error)}
     print(json.dumps(result, sort_keys=True))
     return 0 if result.get("ok") else 1

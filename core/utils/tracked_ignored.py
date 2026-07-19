@@ -87,13 +87,16 @@ def _reject_duplicate_json_keys(pairs: list[tuple[str, object]]) -> dict[str, ob
     return payload
 
 
-def load_transition(repo: Path) -> PreservationTransition:
+def load_transition_pair(transition_path: Path, package_path: Path) -> PreservationTransition:
     try:
         payload = json.loads(
-            (repo / TRANSITION_RELATIVE).read_text(encoding="utf-8"),
+            transition_path.read_text(encoding="utf-8"),
             object_pairs_hook=_reject_duplicate_json_keys,
         )
-        package = json.loads((repo / "package.json").read_text(encoding="utf-8"))
+        package = json.loads(
+            package_path.read_text(encoding="utf-8"),
+            object_pairs_hook=_reject_duplicate_json_keys,
+        )
     except (OSError, json.JSONDecodeError, TrackedIgnoredError) as error:
         if isinstance(error, TrackedIgnoredError):
             raise
@@ -106,6 +109,10 @@ def load_transition(repo: Path) -> PreservationTransition:
     if not isinstance(version, str) or not isinstance(package, dict) or package.get("version") != version:
         raise TrackedIgnoredError("local-only preservation transition version does not match package metadata")
     return PreservationTransition(payload["phase"], version)
+
+
+def load_transition(repo: Path) -> PreservationTransition:
+    return load_transition_pair(repo / TRANSITION_RELATIVE, repo / "package.json")
 
 
 def _safe_repo_path(value: str) -> bool:
