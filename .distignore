@@ -11,6 +11,7 @@ extensions/tau-mirror/
 .github/
 
 # Dev tooling configs
+.gitattributes
 pyproject.toml
 requirements-dev.txt
 vitest.config.mjs

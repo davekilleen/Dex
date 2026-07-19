@@ -129,7 +129,7 @@ def _check_files(files: Iterable[tuple[str, bytes]], *, source: bool) -> list[st
         for dependency in sorted(dependencies & FORBIDDEN_DEPENDENCIES):
             violations.append(f"{path}: forbidden dependency {dependency}")
 
-        if _is_source_content_excluded(path) or lower_path.startswith("node_modules/"):
+        if (source and _is_source_content_excluded(path)) or lower_path.startswith("node_modules/"):
             continue
         if b"\0" in content:
             continue

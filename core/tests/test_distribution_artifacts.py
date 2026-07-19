@@ -11,6 +11,7 @@ import sys
 import tarfile
 from pathlib import Path
 
+import pytest
 import yaml
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -34,12 +35,6 @@ RELEASE_BUILD_INPUTS = (
     "scripts/security-gate.sh",
     "scripts/verify-distribution.sh",
 )
-
-REMOVED_TAU_PATHS = (
-    "extensions/tau-mirror/README-TAU-MIRROR.md",
-    "extensions/tau-mirror/tau-mirror-integration.ts",
-)
-
 
 def _archive_members() -> set[str]:
     """Return paths from the archive users receive from the current checkout."""
@@ -85,15 +80,12 @@ def _clone_repo(tmp_path: Path, name: str) -> Path:
 
 
 def _sync_release_inputs(clone: Path) -> None:
-    """Copy changed build inputs and mirror removals for pre-commit test runs."""
+    """Copy changed build inputs for pre-commit test runs."""
     for relative_path in RELEASE_BUILD_INPUTS:
         file_source = REPO_ROOT / relative_path
         destination = clone / relative_path
         destination.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(file_source, destination)
-    for relative_path in REMOVED_TAU_PATHS:
-        if not (REPO_ROOT / relative_path).exists() and (clone / relative_path).exists():
-            subprocess.run(["git", "rm", "--quiet", "--", relative_path], cwd=clone, check=True)
 
 
 def _build_release_in_clone(
@@ -174,6 +166,30 @@ def _assert_tau_absent(paths: set[str] | list[str]) -> None:
     assert not any("tau-mirror" in path or "tau_mirror" in path for path in normalized)
 
 
+def _assert_tau_absent_from_release_artifacts(
+    clone: Path, treeish: str, archive_path: Path
+) -> None:
+    tree_members = set(
+        subprocess.run(
+            ["git", "ls-tree", "-r", "--name-only", treeish],
+            cwd=clone,
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.splitlines()
+    )
+    _assert_tau_absent(tree_members)
+    tree_check = _run_tau_check(
+        clone, "--repo-root", str(clone), "--git-tree", treeish
+    )
+    assert tree_check.returncode == 0, tree_check.stdout + tree_check.stderr
+
+    archive_members = _build_git_archive(clone, treeish, archive_path)
+    _assert_tau_absent(archive_members)
+    archive_check = _run_tau_check(clone, "--archive", str(archive_path))
+    assert archive_check.returncode == 0, archive_check.stdout + archive_check.stderr
+
+
 def _release_manifest(clone: Path, branch: str) -> list[str]:
     return subprocess.run(
         ["git", "show", f"{branch}:System/.installed-files.manifest"],
@@ -208,14 +224,9 @@ def test_release_branch_strips_dev_files_and_keeps_user_runtime(tmp_path: Path) 
     assert ".claude/skills/dex-update/SKILL.md" in members
     assert ".claude/skills/anthropic-docx/scripts/document.py" in members
     assert "System/.installed-files.manifest" in members
-    _assert_tau_absent(members)
-
-    tau_check = _run_tau_check(clone, "--repo-root", str(clone), "--git-tree", "release")
-    assert tau_check.returncode == 0, tau_check.stdout + tau_check.stderr
-    release_archive = tmp_path / "stable-release.tar"
-    _assert_tau_absent(_build_git_archive(clone, "release", release_archive))
-    archive_check = _run_tau_check(clone, "--archive", str(release_archive))
-    assert archive_check.returncode == 0, archive_check.stdout + archive_check.stderr
+    _assert_tau_absent_from_release_artifacts(
+        clone, "release", tmp_path / "stable-release.tar"
+    )
 
     manifest = _release_manifest(clone, "release")
     assert manifest == sorted(manifest)
@@ -287,13 +298,9 @@ def test_beta_release_branch_uses_same_stripping_and_manifest(tmp_path: Path) ->
     assert not any(path.startswith("core/tests/") for path in beta_members)
     assert not any(path.startswith("scripts/") for path in beta_members)
     assert set(_release_manifest(clone, "release-beta")) == beta_members
-    _assert_tau_absent(beta_members)
-    tau_check = _run_tau_check(clone, "--repo-root", str(clone), "--git-tree", "release-beta")
-    assert tau_check.returncode == 0, tau_check.stdout + tau_check.stderr
-    beta_archive = tmp_path / "beta-release.tar"
-    _assert_tau_absent(_build_git_archive(clone, "release-beta", beta_archive))
-    archive_check = _run_tau_check(clone, "--archive", str(beta_archive))
-    assert archive_check.returncode == 0, archive_check.stdout + archive_check.stderr
+    _assert_tau_absent_from_release_artifacts(
+        clone, "release-beta", tmp_path / "beta-release.tar"
+    )
     beta_version = json.loads((clone / "package.json").read_text(encoding="utf-8"))["version"]
     beta_short_sha = subprocess.run(
         ["git", "rev-parse", "--short", "release-beta"],
@@ -591,44 +598,58 @@ def test_tau_gate_rejects_reintroduced_source_path_and_release_build_input(tmp_p
     ).returncode == 1
 
 
-def test_tau_gate_rejects_loader_dependency_lan_and_auth_mutations(tmp_path: Path) -> None:
-    fixtures = {
-        "npx-loader.ts": "spawn('npx', ['tau-mirror', '--port', '3001']);\n",
-        "qr-loader.ts": "import qr from 'qrcode-terminal';\n",
-        "pi-loader.ts": "import type { ExtensionAPI } from '@mariozechner/pi-coding-agent';\n",
-        "wildcard-bind.ts": "server.listen(3001, '0.0.0.0');\n",
-        "lan-url.ts": "const interfaces = os.networkInterfaces();\n",
-        "no-auth.md": "Authentication disabled for local access.\n",
-    }
-    for index, (filename, content) in enumerate(fixtures.items()):
-        clone = _prepare_tau_mutation_clone(tmp_path, f"tau-reference-mutation-{index}")
-        fixture = clone / "core/runtime-loaders" / filename
-        fixture.parent.mkdir(parents=True)
-        fixture.write_text(content, encoding="utf-8")
-        subprocess.run(["git", "add", str(fixture.relative_to(clone))], cwd=clone, check=True)
+@pytest.mark.parametrize(
+    ("filename", "content"),
+    (
+        ("npx-loader.ts", "spawn('npx', ['tau-mirror', '--port', '3001']);\n"),
+        ("qr-loader.ts", "import qr from 'qrcode-terminal';\n"),
+        (
+            "pi-loader.ts",
+            "import type { ExtensionAPI } from '@mariozechner/pi-coding-agent';\n",
+        ),
+        ("wildcard-bind.ts", "server.listen(3001, '0.0.0.0');\n"),
+        ("lan-url.ts", "const interfaces = os.networkInterfaces();\n"),
+        ("no-auth.md", "Authentication disabled for local access.\n"),
+    ),
+    ids=("npx-loader", "qr-dependency", "pi-dependency", "wildcard-bind", "lan-url", "no-auth"),
+)
+def test_tau_gate_rejects_loader_dependency_lan_and_auth_mutations(
+    tmp_path: Path, filename: str, content: str
+) -> None:
+    clone = _prepare_tau_mutation_clone(tmp_path, f"tau-reference-mutation-{filename}")
+    fixture = clone / "core/runtime-loaders" / filename
+    fixture.parent.mkdir(parents=True)
+    fixture.write_text(content, encoding="utf-8")
+    subprocess.run(["git", "add", str(fixture.relative_to(clone))], cwd=clone, check=True)
 
-        result = _run_tau_check(clone, "--source-root", str(clone))
-        assert result.returncode == 1, filename
+    result = _run_tau_check(clone, "--source-root", str(clone))
+    assert result.returncode == 1
 
 
-def test_tau_gate_rejects_package_and_lock_dependencies(tmp_path: Path) -> None:
-    for index, dependency in enumerate(
-        ("tau-mirror", "qrcode-terminal", "@mariozechner/pi-coding-agent")
-    ):
-        clone = _prepare_tau_mutation_clone(tmp_path, f"tau-dependency-mutation-{index}")
-        package_path = clone / "package.json"
-        package = json.loads(package_path.read_text(encoding="utf-8"))
-        package.setdefault("dependencies", {})[dependency] = "1.0.0"
-        package_path.write_text(json.dumps(package, indent=2) + "\n", encoding="utf-8")
-        lock_path = clone / "package-lock.json"
-        lock = json.loads(lock_path.read_text(encoding="utf-8"))
-        lock.setdefault("packages", {})[f"node_modules/{dependency}"] = {"version": "1.0.0"}
-        lock_path.write_text(json.dumps(lock, indent=2) + "\n", encoding="utf-8")
-        subprocess.run(["git", "add", "package.json", "package-lock.json"], cwd=clone, check=True)
+@pytest.mark.parametrize(
+    "dependency",
+    ("tau-mirror", "qrcode-terminal", "@mariozechner/pi-coding-agent"),
+    ids=("tau-mirror", "qrcode-terminal", "pi-coding-agent"),
+)
+def test_tau_gate_rejects_package_and_lock_dependencies(
+    tmp_path: Path, dependency: str
+) -> None:
+    clone = _prepare_tau_mutation_clone(
+        tmp_path, f"tau-dependency-mutation-{dependency.replace('/', '-')}"
+    )
+    package_path = clone / "package.json"
+    package = json.loads(package_path.read_text(encoding="utf-8"))
+    package.setdefault("dependencies", {})[dependency] = "1.0.0"
+    package_path.write_text(json.dumps(package, indent=2) + "\n", encoding="utf-8")
+    lock_path = clone / "package-lock.json"
+    lock = json.loads(lock_path.read_text(encoding="utf-8"))
+    lock.setdefault("packages", {})[f"node_modules/{dependency}"] = {"version": "1.0.0"}
+    lock_path.write_text(json.dumps(lock, indent=2) + "\n", encoding="utf-8")
+    subprocess.run(["git", "add", "package.json", "package-lock.json"], cwd=clone, check=True)
 
-        result = _run_tau_check(clone, "--source-root", str(clone))
-        assert result.returncode == 1, dependency
-        assert "forbidden dependency" in result.stdout
+    result = _run_tau_check(clone, "--source-root", str(clone))
+    assert result.returncode == 1
+    assert "forbidden dependency" in result.stdout
 
 
 def test_tau_gate_rejects_legacy_manifest_and_archive_members(tmp_path: Path) -> None:
