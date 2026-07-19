@@ -935,6 +935,23 @@ def test_vault_bundle_tree_manifest_and_archive_contain_no_tau(tmp_path: Path) -
     output_dir = tmp_path / "bundle-output"
     environment = os.environ.copy()
     environment["npm_config_offline"] = "true"
+    real_git = shutil.which("git")
+    assert real_git is not None
+    shim_dir = tmp_path / "git-pathspec-shim"
+    shim_dir.mkdir()
+    git_shim = shim_dir / "git"
+    git_shim.write_text(
+        "#!/bin/sh\n"
+        "if [ \"$1\" = ls-files ]; then\n"
+        "  for argument in \"$@\"; do\n"
+        "    case \"$argument\" in */) exit 0 ;; esac\n"
+        "  done\n"
+        "fi\n"
+        f"exec '{real_git}' \"$@\"\n",
+        encoding="utf-8",
+    )
+    git_shim.chmod(0o755)
+    environment["PATH"] = f"{shim_dir}{os.pathsep}{environment['PATH']}"
     build_result = subprocess.run(
         ["bash", "scripts/build-vault-bundle.sh", str(output_dir)],
         cwd=clone,
@@ -955,7 +972,10 @@ def test_vault_bundle_tree_manifest_and_archive_contain_no_tau(tmp_path: Path) -
     _assert_tau_absent(manifest)
     archive_files = _tar_files(archive_path)
     _assert_tau_absent_from_files(archive_files)
-    assert ".gitattributes" not in {path.removeprefix("./") for path, _ in archive_files}
+    archive_paths = {path.removeprefix("./") for path, _ in archive_files}
+    assert ".gitattributes" not in archive_paths
+    assert not any(path.startswith("core/tests/") for path in archive_paths)
+    assert not any(path.startswith("scripts/") for path in archive_paths)
     tau_check = _run_tau_check(clone, "--archive", str(archive_path))
     assert tau_check.returncode == 0, tau_check.stdout + tau_check.stderr
 
