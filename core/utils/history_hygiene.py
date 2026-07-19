@@ -18,8 +18,6 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Callable, Literal
 
-from core.paths import history_backups_root
-
 HistoryResult = Literal[
     "optional-tool-unavailable",
     "prepared",
@@ -276,10 +274,6 @@ def _object_evidence(root: Path, refs: tuple[str, ...]) -> tuple[bytes, int]:
     return _json_bytes({"object_counts": counts, "estimated_uncompressed_bytes": estimated}), estimated
 
 
-def _backup_root(root: Path) -> Path:
-    return history_backups_root(root)
-
-
 def _fd_path(descriptor: int) -> Path:
     for root in (Path("/proc/self/fd"), Path("/dev/fd")):
         if root.is_dir():
@@ -323,16 +317,18 @@ def _directory_identity(descriptor: int) -> dict[str, int]:
 class _LoadedTransaction:
     descriptor: int
     path: Path
+    manifest: dict[str, object] | None = None
+
+    def __enter__(self) -> _LoadedTransaction:
+        return self
+
+    def __exit__(self, _type, _value, _traceback) -> None:
+        self.close()
 
     def close(self) -> None:
         if self.descriptor >= 0:
             os.close(self.descriptor)
             self.descriptor = -1
-
-    def __del__(self) -> None:
-        with suppress(OSError):
-            self.close()
-
 
 def _sync_file_identity(path: Path) -> tuple[str, int]:
     descriptor = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
@@ -512,7 +508,7 @@ def prepare_history_cleanup(
             os.close(backup_descriptor)
 
 
-def _load_manifest(root: Path, transaction_id: str) -> tuple[_LoadedTransaction, dict[str, object]]:
+def _load_manifest(root: Path, transaction_id: str) -> _LoadedTransaction:
     if not re.fullmatch(r"[0-9a-f]{32}", transaction_id):
         raise ValueError("invalid history transaction id")
     backup = _open_backup_root(root)
@@ -525,24 +521,24 @@ def _load_manifest(root: Path, transaction_id: str) -> tuple[_LoadedTransaction,
     finally:
         os.close(backup)
     transaction = _LoadedTransaction(descriptor, _fd_path(descriptor))
-    transaction_path = transaction.path
-    manifest_path = transaction_path / "manifest.json"
-    if manifest_path.is_symlink():
+    try:
+        manifest_path = transaction.path / "manifest.json"
+        if manifest_path.is_symlink():
+            raise ValueError("unsafe history transaction")
+        if stat.S_IMODE(os.fstat(descriptor).st_mode) != 0o700 or stat.S_IMODE(manifest_path.stat().st_mode) != 0o600:
+            raise PermissionError("history transaction permissions changed")
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        preview_sha = manifest.pop("preview_sha256")
+        if preview_sha != _sha(_json_bytes(manifest)):
+            raise ValueError("history preview manifest changed")
+        manifest["preview_sha256"] = preview_sha
+        if manifest.get("recovery_directory_identity") != _directory_identity(descriptor):
+            raise ValueError("history recovery directory identity changed")
+        transaction.manifest = manifest
+        return transaction
+    except BaseException:
         transaction.close()
-        raise ValueError("unsafe history transaction")
-    if stat.S_IMODE(os.fstat(descriptor).st_mode) != 0o700 or stat.S_IMODE(manifest_path.stat().st_mode) != 0o600:
-        transaction.close()
-        raise PermissionError("history transaction permissions changed")
-    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    preview_sha = manifest.pop("preview_sha256")
-    if preview_sha != _sha(_json_bytes(manifest)):
-        transaction.close()
-        raise ValueError("history preview manifest changed")
-    manifest["preview_sha256"] = preview_sha
-    if manifest.get("recovery_directory_identity") != _directory_identity(descriptor):
-        transaction.close()
-        raise ValueError("history recovery directory identity changed")
-    return transaction, manifest
+        raise
 
 
 def _store_manifest(transaction: Path, manifest: dict[str, object]) -> None:
@@ -556,8 +552,9 @@ def _store_manifest(transaction: Path, manifest: dict[str, object]) -> None:
     )
 
 
-def _verify_bundle(root: Path, transaction: Path, manifest: dict[str, object]) -> None:
-    bundle = transaction / "history.bundle"
+def _verify_bundle(root: Path, transaction: _LoadedTransaction, manifest: dict[str, object]) -> None:
+    transaction_path = transaction.path
+    bundle = transaction_path / "history.bundle"
     expected = manifest["bundle"]
     bundle_sha256, bundle_size = _sync_file_identity(bundle)
     if (
@@ -567,8 +564,8 @@ def _verify_bundle(root: Path, transaction: Path, manifest: dict[str, object]) -
         or bundle_sha256 != expected["sha256"]
     ):
         raise OSError("history recovery bundle identity changed")
-    _git(root, "bundle", "verify", str(bundle), pass_fds=(int(transaction.name),))
-    _verify_recovery_artifacts(transaction, manifest)
+    _git(root, "bundle", "verify", str(bundle), pass_fds=(transaction.descriptor,))
+    _verify_recovery_artifacts(transaction_path, manifest)
 
 
 def _verify_restrictive_artifact(path: Path, expected: dict[str, object], error: str) -> None:
@@ -677,10 +674,29 @@ def apply_history_cleanup(
         raise ValueError("a prepared history preview is required")
     if typed_consent != f"CLEAN OPTIONAL HISTORY {preview.transaction_id}":
         raise PermissionError("typed history-cleanup consent did not match")
+    with _load_manifest(root, preview.transaction_id) as loaded_transaction:
+        return _apply_history_cleanup_loaded(
+            root,
+            preview,
+            loaded_transaction,
+            credential_needles=credential_needles,
+            filter_repo=filter_repo,
+        )
+
+
+def _apply_history_cleanup_loaded(
+    root: Path,
+    preview: HistoryPreview,
+    loaded_transaction: _LoadedTransaction,
+    *,
+    credential_needles: tuple[bytes, ...],
+    filter_repo: Path | None,
+) -> HistoryOutcome:
     tool = resolve_filter_repo(filter_repo)
     if tool is None:
         raise RuntimeError("supported preinstalled git-filter-repo is no longer available")
-    loaded_transaction, manifest = _load_manifest(root, preview.transaction_id)
+    manifest = loaded_transaction.manifest
+    assert manifest is not None
     transaction = loaded_transaction.path
     if manifest["preview_sha256"] != preview.preview_sha256 or manifest["phase"] != "prepared":
         raise ValueError("history preview or phase changed")
@@ -707,7 +723,7 @@ def apply_history_cleanup(
         "size": tool_size,
     }:
         raise RuntimeError("git-filter-repo identity changed after preview")
-    _verify_bundle(root, transaction, manifest)
+    _verify_bundle(root, loaded_transaction, manifest)
     selected_refs = tuple(sorted(manifest["selected_refs"]))
     if _refs(root, selected_refs) != manifest["selected_refs"]:
         raise RuntimeError("selected refs changed after preview")
@@ -807,7 +823,15 @@ def apply_history_cleanup(
 
 
 def rewind_history_cleanup(root: Path, transaction_id: str) -> HistoryOutcome:
-    loaded_transaction, manifest = _load_manifest(root, transaction_id)
+    with _load_manifest(root, transaction_id) as loaded_transaction:
+        return _rewind_history_cleanup_loaded(root, transaction_id, loaded_transaction)
+
+
+def _rewind_history_cleanup_loaded(
+    root: Path, transaction_id: str, loaded_transaction: _LoadedTransaction
+) -> HistoryOutcome:
+    manifest = loaded_transaction.manifest
+    assert manifest is not None
     transaction = loaded_transaction.path
     _, common, objects = _repository_boundaries(root)
     if (
@@ -815,7 +839,7 @@ def rewind_history_cleanup(root: Path, transaction_id: str) -> HistoryOutcome:
         or _sha(str(objects).encode()) != manifest["primary_object_db_identity"]
     ):
         raise RuntimeError("repository boundaries changed after preview")
-    _verify_bundle(root, transaction, manifest)
+    _verify_bundle(root, loaded_transaction, manifest)
     if manifest["phase"] not in {"applied", "recovery-required"} or _all_refs(root) != manifest.get("after_all_refs"):
         return HistoryOutcome(
             "recovery-required",
@@ -890,18 +914,19 @@ def preview_retention(
             os.close(backup_descriptor)
     for transaction_id in transaction_ids:
         try:
-            loaded_transaction, manifest = _load_manifest(root, transaction_id)
-            _verify_bundle(root, loaded_transaction.path, manifest)
-            created = datetime.fromisoformat(manifest["created_at"])
-            minimum_delete_after = datetime.fromisoformat(manifest["minimum_delete_after"])
-            if created.utcoffset() is None or minimum_delete_after.utcoffset() is None:
-                raise ValueError("retention manifest times must be aware")
-            if not isinstance(manifest["minimum_successful_release_activations_for_deletion"], int):
-                raise TypeError("retention release count must be an integer")
-            if not isinstance(manifest["external_backup"], dict):
-                raise TypeError("retention backup posture must be an object")
-            manifests.append((transaction_id, manifest, created, minimum_delete_after))
-            loaded_transaction.close()
+            with _load_manifest(root, transaction_id) as loaded_transaction:
+                manifest = loaded_transaction.manifest
+                assert manifest is not None
+                _verify_bundle(root, loaded_transaction, manifest)
+                created = datetime.fromisoformat(manifest["created_at"])
+                minimum_delete_after = datetime.fromisoformat(manifest["minimum_delete_after"])
+                if created.utcoffset() is None or minimum_delete_after.utcoffset() is None:
+                    raise ValueError("retention manifest times must be aware")
+                if not isinstance(manifest["minimum_successful_release_activations_for_deletion"], int):
+                    raise TypeError("retention release count must be an integer")
+                if not isinstance(manifest["external_backup"], dict):
+                    raise TypeError("retention backup posture must be an object")
+                manifests.append((transaction_id, manifest, created, minimum_delete_after))
         except (KeyError, OSError, ValueError, RuntimeError, TypeError, PermissionError, json.JSONDecodeError):
             continue
     final_id = max(manifests, key=lambda item: item[2])[0] if manifests else None
@@ -919,14 +944,11 @@ def preview_retention(
     retained = tuple(transaction_id for transaction_id, *_ in manifests if transaction_id not in candidates)
     candidate_bytes = 0
     for transaction_id in candidates:
-        loaded_transaction, _ = _load_manifest(root, transaction_id)
-        try:
+        with _load_manifest(root, transaction_id) as loaded_transaction:
             for name in os.listdir(loaded_transaction.descriptor):
                 metadata = os.stat(name, dir_fd=loaded_transaction.descriptor, follow_symlinks=False)
                 if stat.S_ISREG(metadata.st_mode) and metadata.st_nlink == 1:
                     candidate_bytes += metadata.st_size
-        finally:
-            loaded_transaction.close()
     evaluated_at = now.astimezone(UTC).isoformat()
     exact = _sha(
         _json_bytes(
@@ -974,23 +996,19 @@ def delete_retention_candidates(
     if preview.protected_final_id in acknowledged_ids:
         raise PermissionError("final history bundle is protected")
     for transaction_id in acknowledged_ids:
-        loaded_transaction, manifest = _load_manifest(root, transaction_id)
-        try:
-            _verify_bundle(root, loaded_transaction.path, manifest)
-        finally:
-            loaded_transaction.close()
+        with _load_manifest(root, transaction_id) as loaded_transaction:
+            manifest = loaded_transaction.manifest
+            assert manifest is not None
+            _verify_bundle(root, loaded_transaction, manifest)
     backup_descriptor = _open_backup_root(root)
     try:
         for transaction_id in acknowledged_ids:
-            loaded_transaction, _ = _load_manifest(root, transaction_id)
-            try:
+            with _load_manifest(root, transaction_id) as loaded_transaction:
                 for name in os.listdir(loaded_transaction.descriptor):
                     metadata = os.stat(name, dir_fd=loaded_transaction.descriptor, follow_symlinks=False)
                     if not stat.S_ISREG(metadata.st_mode) or metadata.st_nlink != 1:
                         raise OSError("unsafe history retention artifact")
                     os.unlink(name, dir_fd=loaded_transaction.descriptor)
-            finally:
-                loaded_transaction.close()
             os.rmdir(transaction_id, dir_fd=backup_descriptor)
         os.fsync(backup_descriptor)
     finally:

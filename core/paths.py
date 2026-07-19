@@ -76,7 +76,6 @@ DEXDIFF_DESIGN_DIR = DEXDIFF_DIR / 'design'
 # --- System ---
 SYSTEM_DIR = VAULT_ROOT / 'System'
 DEX_RUNTIME_DIR = SYSTEM_DIR / '.dex'
-ADOPTION_STATE_ROOT = DEX_RUNTIME_DIR / 'adoption'
 
 
 def history_backups_root(vault_root: Path) -> Path:

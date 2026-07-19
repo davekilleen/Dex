@@ -234,6 +234,18 @@ def test_prepare_creates_verified_restrictive_bundle_and_manifest(tmp_path):
     assert _git(tmp_path, "rev-parse", ref) == before
 
 
+def test_loaded_transaction_context_closes_descriptor(tmp_path):
+    ref = _repo(tmp_path)
+    preview = _prepare(tmp_path, _tool(tmp_path / "git-filter-repo"), ref)
+
+    with history_hygiene._load_manifest(tmp_path, preview.transaction_id) as transaction:
+        descriptor = transaction.descriptor
+        assert os.fstat(descriptor)
+
+    with pytest.raises(OSError):
+        os.fstat(descriptor)
+
+
 def test_prepare_apply_and_rewind_survive_module_restart(tmp_path):
     ref = _repo(tmp_path)
     tool = _tool(tmp_path / "git-filter-repo")

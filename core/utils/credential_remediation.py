@@ -385,10 +385,10 @@ def migrate_legacy_credentials(vault_root: Path) -> MigrationResult:
     config_descriptor = None
     try:
         config_descriptor = _open_directory_chain(vault_root, ("System", "integrations"))
-        config_metadata = os.stat("config.yaml", dir_fd=config_descriptor, follow_symlinks=False)
+        config_bytes, config_metadata = _read_at_with_metadata(config_descriptor, "config.yaml")
         config_before = (
             config_metadata.st_ino,
-            _hash(_read_at(config_descriptor, "config.yaml")),
+            _hash(config_bytes),
             stat.S_IMODE(config_metadata.st_mode),
         )
     except OSError:
@@ -397,8 +397,8 @@ def migrate_legacy_credentials(vault_root: Path) -> MigrationResult:
         return MigrationResult("refused", journal_id)
     try:
         update_vault_env(vault_root, values)
-        current = os.stat("config.yaml", dir_fd=config_descriptor, follow_symlinks=False)
-        if (current.st_ino, _hash(_read_at(config_descriptor, "config.yaml")), stat.S_IMODE(current.st_mode)) != config_before:
+        current_bytes, current = _read_at_with_metadata(config_descriptor, "config.yaml")
+        if (current.st_ino, _hash(current_bytes), stat.S_IMODE(current.st_mode)) != config_before:
             raise OSError("config changed during migration")
         current_parent = _open_directory_chain(vault_root, ("System", "integrations"))
         try:
