@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import importlib.util
 import io
 import json
 import os
@@ -10,6 +11,7 @@ import subprocess
 import sys
 import tarfile
 from pathlib import Path
+from types import ModuleType
 
 import pytest
 import yaml
@@ -35,6 +37,15 @@ RELEASE_BUILD_INPUTS = (
     "scripts/security-gate.sh",
     "scripts/verify-distribution.sh",
 )
+
+
+def _load_tau_checker() -> ModuleType:
+    path = REPO_ROOT / "scripts/check-tau-removal.py"
+    spec = importlib.util.spec_from_file_location("check_tau_removal", path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 def _archive_members() -> set[str]:
     """Return paths from the archive users receive from the current checkout."""
@@ -86,6 +97,17 @@ def _sync_release_inputs(clone: Path) -> None:
         destination = clone / relative_path
         destination.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(file_source, destination)
+
+
+def _commit_release_inputs_if_changed(clone: Path) -> None:
+    _sync_release_inputs(clone)
+    subprocess.run(["git", "add", "--", *RELEASE_BUILD_INPUTS], cwd=clone, check=True)
+    if subprocess.run(["git", "diff", "--cached", "--quiet"], cwd=clone).returncode != 0:
+        subprocess.run(
+            ["git", "commit", "--quiet", "-m", "test: sync release build inputs"],
+            cwd=clone,
+            check=True,
+        )
 
 
 def _build_release_in_clone(
@@ -149,6 +171,15 @@ def _run_tau_check(repo: Path, *args: str) -> subprocess.CompletedProcess[str]:
     )
 
 
+def _write_tar(
+    archive_path: Path, members: list[tuple[tarfile.TarInfo, bytes]]
+) -> None:
+    with tarfile.open(archive_path, mode="w") as archive:
+        for member, payload in members:
+            member.size = len(payload) if member.isfile() else 0
+            archive.addfile(member, io.BytesIO(payload) if member.isfile() else None)
+
+
 def _build_git_archive(repo: Path, treeish: str, output: Path) -> set[str]:
     with output.open("wb") as archive_file:
         subprocess.run(
@@ -159,6 +190,32 @@ def _build_git_archive(repo: Path, treeish: str, output: Path) -> set[str]:
         )
     with tarfile.open(output, mode="r:") as archive:
         return set(archive.getnames())
+
+
+def _git_tree_files(repo: Path, treeish: str) -> list[tuple[str, bytes]]:
+    checker = _load_tau_checker()
+    files, violations = checker._git_tree(repo, treeish)
+    assert violations == []
+    return files
+
+
+def _tar_files(archive_path: Path) -> list[tuple[str, bytes]]:
+    checker = _load_tau_checker()
+    files, violations = checker._archive_tree(archive_path)
+    assert violations == []
+    return files
+
+
+def _assert_tau_absent_from_files(files: list[tuple[str, bytes]]) -> None:
+    checker = _load_tau_checker()
+    assert checker._check_files(files, source=False) == []
+    assert all(not checker._contains_tau_identity(path) for path, _ in files)
+    for _, content in files:
+        try:
+            text = content.decode("utf-8")
+        except UnicodeDecodeError:
+            continue
+        assert not checker._contains_tau_identity(text)
 
 
 def _assert_tau_absent(paths: set[str] | list[str]) -> None:
@@ -179,6 +236,9 @@ def _assert_tau_absent_from_release_artifacts(
         ).stdout.splitlines()
     )
     _assert_tau_absent(tree_members)
+    tree_files = _git_tree_files(clone, treeish)
+    _assert_tau_absent_from_files(tree_files)
+    assert ".gitattributes" not in {path for path, _ in tree_files}
     tree_check = _run_tau_check(
         clone, "--repo-root", str(clone), "--git-tree", treeish
     )
@@ -186,6 +246,7 @@ def _assert_tau_absent_from_release_artifacts(
 
     archive_members = _build_git_archive(clone, treeish, archive_path)
     _assert_tau_absent(archive_members)
+    _assert_tau_absent_from_files(_tar_files(archive_path))
     archive_check = _run_tau_check(clone, "--archive", str(archive_path))
     assert archive_check.returncode == 0, archive_check.stdout + archive_check.stderr
 
@@ -346,6 +407,181 @@ def test_release_build_rejects_invalid_source_and_target_branches(tmp_path: Path
     assert "source and target branches must differ" in same_branch.stderr
     assert missing_source.returncode == 1
     assert "branch 'not-a-branch' not found" in missing_source.stderr
+
+
+def test_release_build_rejects_unsafe_selected_source_before_creating_ref(
+    tmp_path: Path,
+) -> None:
+    clone = _clone_repo(tmp_path, "unsafe-selected-source")
+    subprocess.run(["git", "checkout", "-B", "main", "HEAD"], cwd=clone, check=True)
+    _commit_release_inputs_if_changed(clone)
+    subprocess.run(["git", "checkout", "-b", "unsafe-source"], cwd=clone, check=True)
+    unsafe = clone / ".github/unsafe-selected-source.md"
+    unsafe.write_text("load tau-mirror here\n", encoding="utf-8")
+    subprocess.run(["git", "add", str(unsafe.relative_to(clone))], cwd=clone, check=True)
+    subprocess.run(
+        ["git", "commit", "--quiet", "-m", "test: unsafe selected source"],
+        cwd=clone,
+        check=True,
+    )
+    subprocess.run(["git", "checkout", "main"], cwd=clone, check=True)
+
+    result = subprocess.run(
+        [
+            "bash",
+            "scripts/build-release.sh",
+            "--source",
+            "unsafe-source",
+            "--target",
+            "release-unsafe",
+        ],
+        cwd=clone,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+
+    assert result.returncode == 1
+    assert "Tau Mirror reference" in result.stdout
+    assert subprocess.run(
+        ["git", "show-ref", "--verify", "--quiet", "refs/heads/release-unsafe"],
+        cwd=clone,
+    ).returncode == 1
+    assert subprocess.run(
+        ["git", "tag", "--list", "dist/release-unsafe/*"],
+        cwd=clone,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout == ""
+
+
+def test_release_build_uses_safe_selected_source_despite_unsafe_current_checkout(
+    tmp_path: Path,
+) -> None:
+    clone = _clone_repo(tmp_path, "safe-selected-source")
+    subprocess.run(["git", "checkout", "-B", "main", "HEAD"], cwd=clone, check=True)
+    _commit_release_inputs_if_changed(clone)
+    subprocess.run(["git", "branch", "safe-source", "HEAD"], cwd=clone, check=True)
+    subprocess.run(["git", "checkout", "-b", "unsafe-current"], cwd=clone, check=True)
+    unsafe = clone / "docs/unsafe-current.md"
+    unsafe.write_text("load tau-mirror here\n", encoding="utf-8")
+    subprocess.run(["git", "add", str(unsafe.relative_to(clone))], cwd=clone, check=True)
+    subprocess.run(
+        ["git", "commit", "--quiet", "-m", "test: unrelated unsafe checkout"],
+        cwd=clone,
+        check=True,
+    )
+
+    result = subprocess.run(
+        [
+            "bash",
+            "scripts/build-release.sh",
+            "--source",
+            "safe-source",
+            "--target",
+            "release-safe",
+        ],
+        cwd=clone,
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert subprocess.run(
+        ["git", "show-ref", "--verify", "--quiet", "refs/heads/release-safe"],
+        cwd=clone,
+    ).returncode == 0
+    release_members = subprocess.run(
+        ["git", "ls-tree", "-r", "--name-only", "release-safe"],
+        cwd=clone,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.splitlines()
+    assert "docs/unsafe-current.md" not in release_members
+
+
+def test_release_build_uses_selected_source_distignore_contract(tmp_path: Path) -> None:
+    clone = _clone_repo(tmp_path, "selected-source-distignore")
+    subprocess.run(["git", "checkout", "-B", "main", "HEAD"], cwd=clone, check=True)
+    _commit_release_inputs_if_changed(clone)
+    subprocess.run(["git", "checkout", "-b", "unsafe-distignore"], cwd=clone, check=True)
+    distignore = clone / ".distignore"
+    distignore.write_text(
+        distignore.read_text(encoding="utf-8").replace("extensions/tau-mirror/\n", ""),
+        encoding="utf-8",
+    )
+    subprocess.run(["git", "add", ".distignore"], cwd=clone, check=True)
+    subprocess.run(
+        ["git", "commit", "--quiet", "-m", "test: unsafe selected distignore"],
+        cwd=clone,
+        check=True,
+    )
+    subprocess.run(["git", "checkout", "main"], cwd=clone, check=True)
+
+    result = subprocess.run(
+        [
+            "bash",
+            "scripts/build-release.sh",
+            "--source",
+            "unsafe-distignore",
+            "--target",
+            "release-distignore",
+        ],
+        cwd=clone,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+
+    assert result.returncode == 1
+    assert "missing exact quarantine entry" in result.stdout
+    assert subprocess.run(
+        ["git", "show-ref", "--verify", "--quiet", "refs/heads/release-distignore"],
+        cwd=clone,
+    ).returncode == 1
+
+
+def test_manifest_rejects_unsafe_requested_tree_without_output_or_ref_mutation(
+    tmp_path: Path,
+) -> None:
+    clone = _clone_repo(tmp_path, "unsafe-manifest-treeish")
+    subprocess.run(["git", "checkout", "-B", "main", "HEAD"], cwd=clone, check=True)
+    _commit_release_inputs_if_changed(clone)
+    subprocess.run(["git", "checkout", "-b", "unsafe-manifest"], cwd=clone, check=True)
+    unsafe = clone / "extensions/tau-mirror-loader.bin"
+    unsafe.parent.mkdir(parents=True, exist_ok=True)
+    unsafe.write_bytes(b"safe payload\n")
+    subprocess.run(["git", "add", str(unsafe.relative_to(clone))], cwd=clone, check=True)
+    subprocess.run(
+        ["git", "commit", "--quiet", "-m", "test: unsafe manifest tree"],
+        cwd=clone,
+        check=True,
+    )
+    subprocess.run(["git", "checkout", "main"], cwd=clone, check=True)
+    manifest = clone / "System/.installed-files.manifest"
+    manifest.write_bytes(b"preserve-existing-output\n")
+    before_manifest = manifest.read_bytes()
+    before_refs = subprocess.run(
+        ["git", "show-ref"], cwd=clone, check=True, capture_output=True
+    ).stdout
+
+    result = subprocess.run(
+        ["bash", "scripts/generate-manifest.sh", "unsafe-manifest"],
+        cwd=clone,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+
+    assert result.returncode == 1
+    assert "removed Tau path" in result.stdout
+    assert manifest.read_bytes() == before_manifest
+    assert subprocess.run(
+        ["git", "show-ref"], cwd=clone, check=True, capture_output=True
+    ).stdout == before_refs
 
 
 def test_release_build_creates_immutable_versioned_tags(tmp_path: Path) -> None:
@@ -513,6 +749,137 @@ def test_tau_removal_source_package_lock_reference_and_quarantine_contract() -> 
     assert not any((REPO_ROOT / "extensions/tau-mirror").glob("**/*"))
 
 
+@pytest.mark.parametrize(
+    "path",
+    (
+        "extensions/tau-mirror/loader.ts",
+        "extensions/tau-mirror-loader.ts",
+        "extensions/loader-tau_mirror.bin",
+    ),
+    ids=("exact-directory", "loader-suffix", "loader-prefix"),
+)
+def test_tau_path_rule_has_an_isolated_inverse(path: str) -> None:
+    checker = _load_tau_checker()
+    fixture = [(path, b"")]
+
+    assert checker._check_files(
+        fixture, source=False, text_rules=(), forbidden_dependencies=set()
+    )
+    assert checker._check_files(
+        fixture,
+        source=False,
+        identity_checker=None,
+        text_rules=(),
+        forbidden_dependencies=set(),
+    ) == []
+
+
+@pytest.mark.parametrize(
+    "reference",
+    ("tau-mirror", "tau_mirror", "tauMirror"),
+    ids=("kebab", "snake", "camel"),
+)
+def test_tau_reference_formats_use_canonical_identity_with_inverse(reference: str) -> None:
+    checker = _load_tau_checker()
+    fixture = [("runtime/safe-name.txt", reference.encode())]
+
+    assert checker._check_files(
+        fixture, source=False, text_rules=(), forbidden_dependencies=set()
+    ) == ["runtime/safe-name.txt: Tau Mirror reference"]
+    assert checker._check_files(
+        fixture,
+        source=False,
+        identity_checker=None,
+        text_rules=(),
+        forbidden_dependencies=set(),
+    ) == []
+
+
+@pytest.mark.parametrize("value", ("taumirror", "tau-mirroring", "taut-mirror"))
+def test_tau_identity_avoids_substring_false_positives(value: str) -> None:
+    checker = _load_tau_checker()
+
+    assert not checker._contains_tau_identity(value)
+
+
+@pytest.mark.parametrize(
+    ("rule_name", "content"),
+    (
+        ("Tau Mirror npx loader", "spawn('npx', ['tau-mirror']);\n"),
+        ("removed QR dependency", "import 'qrcode-terminal';\n"),
+        (
+            "removed Pi coding-agent dependency",
+            "import '@mariozechner/pi-coding-agent';\n",
+        ),
+        ("wildcard network bind", "server.listen(3001, '0.0.0.0');\n"),
+        ("wildcard host argument", "serve --host=0.0.0.0\n"),
+        ("LAN address discovery", "os.networkInterfaces();\n"),
+        ("unsupported no-authentication claim", "Authentication disabled.\n"),
+    ),
+    ids=(
+        "npx-loader",
+        "qr-reference",
+        "pi-reference",
+        "wildcard-bind",
+        "wildcard-host",
+        "lan-discovery",
+        "auth-claim",
+    ),
+)
+def test_each_text_rule_has_an_isolated_inverse(rule_name: str, content: str) -> None:
+    checker = _load_tau_checker()
+    rule = next(rule for rule in checker.TEXT_RULES if rule[0] == rule_name)
+    fixture = [("runtime/safe-name.txt", content.encode())]
+
+    assert checker._check_files(
+        fixture,
+        source=False,
+        identity_checker=None,
+        text_rules=(rule,),
+        forbidden_dependencies=set(),
+    )
+    assert checker._check_files(
+        fixture,
+        source=False,
+        identity_checker=None,
+        text_rules=(),
+        forbidden_dependencies=set(),
+    ) == []
+
+
+@pytest.mark.parametrize(
+    ("manifest_path", "document"),
+    (
+        ("package.json", {"dependencies": {"tau-mirror": "1.0.0"}}),
+        (
+            "package-lock.json",
+            {"packages": {"node_modules/tau-mirror": {"version": "1.0.0"}}},
+        ),
+    ),
+    ids=("package-json", "package-lock"),
+)
+def test_package_and_lock_dependency_guards_have_separate_inverses(
+    manifest_path: str, document: dict[str, object]
+) -> None:
+    checker = _load_tau_checker()
+    fixture = [(manifest_path, json.dumps(document).encode())]
+
+    assert checker._check_files(
+        fixture,
+        source=False,
+        identity_checker=None,
+        text_rules=(),
+        forbidden_dependencies={"tau-mirror"},
+    )
+    assert checker._check_files(
+        fixture,
+        source=False,
+        identity_checker=None,
+        text_rules=(),
+        forbidden_dependencies=set(),
+    ) == []
+
+
 def test_git_archive_contains_no_tau_release_member() -> None:
     members = _archive_members()
     _assert_tau_absent(members)
@@ -549,12 +916,224 @@ def test_vault_bundle_tree_manifest_and_archive_contain_no_tau(tmp_path: Path) -
         assert manifest_member is not None
         manifest = manifest_member.read().decode("utf-8").splitlines()
     _assert_tau_absent(manifest)
+    archive_files = _tar_files(archive_path)
+    _assert_tau_absent_from_files(archive_files)
+    assert ".gitattributes" not in {path.removeprefix("./") for path, _ in archive_files}
     tau_check = _run_tau_check(clone, "--archive", str(archive_path))
     assert tau_check.returncode == 0, tau_check.stdout + tau_check.stderr
 
 
+def test_tree_mode_rejects_tau_member_independently(tmp_path: Path) -> None:
+    tree = tmp_path / "tree"
+    fixture = tree / "extensions/tau-mirror/loader.ts"
+    fixture.parent.mkdir(parents=True)
+    fixture.write_text("safe content\n", encoding="utf-8")
+
+    result = _run_tau_check(REPO_ROOT, "--tree", str(tree))
+
+    assert result.returncode == 1
+    assert "removed Tau path" in result.stdout
+
+
+def test_tree_mode_allows_trusted_symlink_above_controlled_root(tmp_path: Path) -> None:
+    real_parent = tmp_path / "real-parent"
+    tree = real_parent / "tree"
+    tree.mkdir(parents=True)
+    (tree / "safe.txt").write_text("safe\n", encoding="utf-8")
+    alias_parent = tmp_path / "alias-parent"
+    alias_parent.symlink_to(real_parent, target_is_directory=True)
+
+    result = _run_tau_check(REPO_ROOT, "--tree", str(alias_parent / "tree"))
+
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_tree_mode_rejects_internal_symlink_and_rule_inverse(tmp_path: Path) -> None:
+    checker = _load_tau_checker()
+    tree = tmp_path / "tree"
+    tree.mkdir()
+    (tree / "target.txt").write_text("safe\n", encoding="utf-8")
+    (tree / "internal-link").symlink_to("target.txt")
+
+    _, violations = checker._filesystem_tree(tree)
+    _, without_symlink_rule = checker._filesystem_files(tree, reject_symlinks=False)
+
+    assert any("distribution symlink is forbidden" in item for item in violations)
+    assert without_symlink_rule == []
+
+
+def test_tree_mode_rejects_escaping_symlink_with_canonical_containment(
+    tmp_path: Path,
+) -> None:
+    checker = _load_tau_checker()
+    tree = tmp_path / "tree"
+    tree.mkdir()
+    outside = tmp_path / "outside.txt"
+    outside.write_text("controlled fixture\n", encoding="utf-8")
+    (tree / "escape").symlink_to(outside)
+
+    _, violations = checker._filesystem_files(tree, reject_symlinks=False)
+    _, without_containment = checker._filesystem_files(
+        tree, reject_symlinks=False, enforce_canonical=False
+    )
+
+    assert any("escaping or unresolved" in item for item in violations)
+    assert without_containment == []
+
+
+def test_tree_mode_rejects_special_file(tmp_path: Path) -> None:
+    tree = tmp_path / "tree"
+    tree.mkdir()
+    os.mkfifo(tree / "pipe")
+
+    result = _run_tau_check(REPO_ROOT, "--tree", str(tree))
+
+    assert result.returncode == 1
+    assert "unsafe tree special-file type" in result.stdout
+
+
+@pytest.mark.parametrize(
+    ("case_name", "members", "expected"),
+    (
+        (
+            "absolute-member",
+            ((tarfile.TarInfo("/absolute.txt"), b"safe\n"),),
+            "absolute path",
+        ),
+        (
+            "traversal-member",
+            ((tarfile.TarInfo("../../outside.txt"), b"safe\n"),),
+            "traversal component",
+        ),
+        (
+            "duplicate-normalization",
+            (
+                (tarfile.TarInfo("safe/file.txt"), b"one\n"),
+                (tarfile.TarInfo("./safe/file.txt"), b"two\n"),
+            ),
+            "duplicate normalized archive path",
+        ),
+        (
+            "absolute-link-name",
+            ((tarfile.TarInfo("/link"), b""),),
+            "absolute path",
+        ),
+        (
+            "special-file",
+            ((tarfile.TarInfo("pipe"), b""),),
+            "unsafe archive special-file type",
+        ),
+    ),
+    ids=(
+        "absolute-member",
+        "traversal-member",
+        "duplicate-normalization",
+        "absolute-link-name",
+        "special-file",
+    ),
+)
+def test_archive_mode_rejects_hostile_members(
+    tmp_path: Path,
+    case_name: str,
+    members: tuple[tuple[tarfile.TarInfo, bytes], ...],
+    expected: str,
+) -> None:
+    archive_path = tmp_path / f"{case_name}.tar"
+    if case_name == "absolute-link-name":
+        members[0][0].type = tarfile.SYMTYPE
+        members[0][0].linkname = "safe-target"
+    elif case_name == "special-file":
+        members[0][0].type = tarfile.FIFOTYPE
+    _write_tar(archive_path, list(members))
+
+    result = _run_tau_check(REPO_ROOT, "--archive", str(archive_path))
+
+    assert result.returncode == 1
+    assert expected in result.stdout
+
+
+@pytest.mark.parametrize(
+    ("linkname", "expected"),
+    (("/etc/passwd", "absolute path"), ("../../outside", "traversal component")),
+    ids=("absolute-target", "traversal-target"),
+)
+def test_archive_mode_rejects_unsafe_link_targets(
+    tmp_path: Path, linkname: str, expected: str
+) -> None:
+    link = tarfile.TarInfo("safe-link")
+    link.type = tarfile.SYMTYPE
+    link.linkname = linkname
+    archive_path = tmp_path / "unsafe-link.tar"
+    _write_tar(archive_path, [(link, b"")])
+
+    result = _run_tau_check(REPO_ROOT, "--archive", str(archive_path))
+
+    assert result.returncode == 1
+    assert "distribution archive link is forbidden" in result.stdout
+    assert expected in result.stdout
+
+
+def test_archive_mode_rejects_internal_symlink_and_rule_inverse(tmp_path: Path) -> None:
+    checker = _load_tau_checker()
+    target = tarfile.TarInfo("target.txt")
+    link = tarfile.TarInfo("internal-link")
+    link.type = tarfile.SYMTYPE
+    link.linkname = "target.txt"
+    archive_path = tmp_path / "internal-link.tar"
+    _write_tar(archive_path, [(target, b"safe\n"), (link, b"")])
+
+    _, violations = checker._archive_tree(archive_path)
+    _, without_link_rule = checker._archive_tree(archive_path, reject_links=False)
+
+    assert any("distribution archive link is forbidden" in item for item in violations)
+    assert without_link_rule == []
+
+
+def test_archive_path_containment_guard_has_an_inverse(tmp_path: Path) -> None:
+    checker = _load_tau_checker()
+    member = tarfile.TarInfo("../../outside.txt")
+    archive_path = tmp_path / "path-containment-inverse.tar"
+    _write_tar(archive_path, [(member, b"controlled fixture\n")])
+
+    _, violations = checker._archive_tree(archive_path)
+
+    def permissive_normalizer(raw_path: str, *, allow_root: bool = False) -> str:
+        del allow_root
+        return raw_path.replace("../", "").lstrip("/")
+
+    _, without_containment = checker._archive_tree(
+        archive_path, normalize_path=permissive_normalizer
+    )
+
+    assert any("unsafe archive path" in item for item in violations)
+    assert without_containment == []
+
+
+def test_archive_duplicate_and_special_guards_have_inverses(tmp_path: Path) -> None:
+    checker = _load_tau_checker()
+    first = tarfile.TarInfo("safe/file.txt")
+    duplicate = tarfile.TarInfo("./safe/file.txt")
+    special = tarfile.TarInfo("pipe")
+    special.type = tarfile.FIFOTYPE
+    archive_path = tmp_path / "guard-inverses.tar"
+    _write_tar(
+        archive_path,
+        [(first, b"one\n"), (duplicate, b"two\n"), (special, b"")],
+    )
+
+    _, violations = checker._archive_tree(archive_path)
+    _, without_guards = checker._archive_tree(
+        archive_path, reject_duplicates=False, reject_special=False
+    )
+
+    assert any("duplicate normalized archive path" in item for item in violations)
+    assert any("unsafe archive special-file type" in item for item in violations)
+    assert without_guards == []
+
+
 def _prepare_tau_mutation_clone(tmp_path: Path, name: str) -> Path:
     clone = _clone_repo(tmp_path, name)
+    subprocess.run(["git", "checkout", "-B", "main", "HEAD"], cwd=clone, check=True)
     _sync_release_inputs(clone)
     subprocess.run(["git", "add", "--", *RELEASE_BUILD_INPUTS], cwd=clone, check=True)
     return clone
@@ -580,6 +1159,11 @@ def test_tau_gate_rejects_reintroduced_source_path_and_release_build_input(tmp_p
     fixture.parent.mkdir(parents=True)
     fixture.write_text("export default {};\n", encoding="utf-8")
     subprocess.run(["git", "add", str(fixture.relative_to(clone))], cwd=clone, check=True)
+    subprocess.run(
+        ["git", "commit", "--quiet", "-m", "test: reintroduce unsafe Tau source"],
+        cwd=clone,
+        check=True,
+    )
 
     gate = _run_tau_check(clone, "--source-root", str(clone))
     build = subprocess.run(
@@ -627,32 +1211,49 @@ def test_tau_gate_rejects_loader_dependency_lan_and_auth_mutations(
 
 
 @pytest.mark.parametrize(
-    "dependency",
-    ("tau-mirror", "qrcode-terminal", "@mariozechner/pi-coding-agent"),
-    ids=("tau-mirror", "qrcode-terminal", "pi-coding-agent"),
+    ("manifest_path", "dependency"),
+    tuple(
+        (manifest_path, dependency)
+        for manifest_path in ("package.json", "package-lock.json")
+        for dependency in (
+            "tau-mirror",
+            "qrcode-terminal",
+            "@mariozechner/pi-coding-agent",
+        )
+    ),
+    ids=(
+        "package-tau-mirror",
+        "package-qrcode-terminal",
+        "package-pi-coding-agent",
+        "lock-tau-mirror",
+        "lock-qrcode-terminal",
+        "lock-pi-coding-agent",
+    ),
 )
 def test_tau_gate_rejects_package_and_lock_dependencies(
-    tmp_path: Path, dependency: str
+    tmp_path: Path, manifest_path: str, dependency: str
 ) -> None:
     clone = _prepare_tau_mutation_clone(
-        tmp_path, f"tau-dependency-mutation-{dependency.replace('/', '-')}"
+        tmp_path,
+        f"tau-dependency-mutation-{manifest_path}-{dependency.replace('/', '-')}",
     )
-    package_path = clone / "package.json"
-    package = json.loads(package_path.read_text(encoding="utf-8"))
-    package.setdefault("dependencies", {})[dependency] = "1.0.0"
-    package_path.write_text(json.dumps(package, indent=2) + "\n", encoding="utf-8")
-    lock_path = clone / "package-lock.json"
-    lock = json.loads(lock_path.read_text(encoding="utf-8"))
-    lock.setdefault("packages", {})[f"node_modules/{dependency}"] = {"version": "1.0.0"}
-    lock_path.write_text(json.dumps(lock, indent=2) + "\n", encoding="utf-8")
-    subprocess.run(["git", "add", "package.json", "package-lock.json"], cwd=clone, check=True)
+    manifest = clone / manifest_path
+    document = json.loads(manifest.read_text(encoding="utf-8"))
+    if manifest_path == "package.json":
+        document.setdefault("dependencies", {})[dependency] = "1.0.0"
+    else:
+        document.setdefault("packages", {})[f"node_modules/{dependency}"] = {
+            "version": "1.0.0"
+        }
+    manifest.write_text(json.dumps(document, indent=2) + "\n", encoding="utf-8")
+    subprocess.run(["git", "add", manifest_path], cwd=clone, check=True)
 
     result = _run_tau_check(clone, "--source-root", str(clone))
     assert result.returncode == 1
     assert "forbidden dependency" in result.stdout
 
 
-def test_tau_gate_rejects_legacy_manifest_and_archive_members(tmp_path: Path) -> None:
+def test_tau_gate_rejects_legacy_manifest_member(tmp_path: Path) -> None:
     clone = _prepare_tau_mutation_clone(tmp_path, "tau-manifest-mutation")
     manifest = clone / "System/.installed-files.manifest"
     manifest.write_text("extensions/tau-mirror/loader.ts\n", encoding="utf-8")
@@ -660,10 +1261,24 @@ def test_tau_gate_rejects_legacy_manifest_and_archive_members(tmp_path: Path) ->
     manifest_result = _run_tau_check(clone, "--source-root", str(clone))
     assert manifest_result.returncode == 1
 
+
+@pytest.mark.parametrize(
+    "member_name",
+    (
+        "extensions/tau-mirror/loader.ts",
+        "extensions/tau-mirror-loader.bin",
+        "extensions/loader-tau_mirror.bin",
+    ),
+    ids=("exact-directory", "loader-suffix", "loader-prefix"),
+)
+def test_tau_gate_rejects_archive_member(tmp_path: Path, member_name: str) -> None:
+    clone = _prepare_tau_mutation_clone(
+        tmp_path, f"tau-archive-mutation-{Path(member_name).name}"
+    )
     archive_path = tmp_path / "tau-release.tar.gz"
     payload = b"unsafe release member\n"
     with tarfile.open(archive_path, mode="w:gz") as archive:
-        member = tarfile.TarInfo("extensions/tau-mirror/loader.ts")
+        member = tarfile.TarInfo(member_name)
         member.size = len(payload)
         archive.addfile(member, io.BytesIO(payload))
     archive_result = _run_tau_check(clone, "--archive", str(archive_path))
@@ -671,24 +1286,35 @@ def test_tau_gate_rejects_legacy_manifest_and_archive_members(tmp_path: Path) ->
     assert "removed Tau path" in archive_result.stdout
 
 
-def test_security_gate_rejects_tau_loader_before_execution(tmp_path: Path) -> None:
-    clone = _prepare_tau_mutation_clone(tmp_path, "tau-security-mutation")
-    sentinel = clone / "tau-executed"
+def test_vault_build_rejects_tau_before_build_package_or_archive_commands(
+    tmp_path: Path,
+) -> None:
+    clone = _prepare_tau_mutation_clone(tmp_path, "tau-build-order-mutation")
     fixture = clone / "core/runtime-loaders/unsafe.ts"
     fixture.parent.mkdir(parents=True)
-    fixture.write_text(
-        "spawn('npx', ['tau-mirror']);\n" f"require('fs').writeFileSync('{sentinel}', 'bad');\n",
-        encoding="utf-8",
-    )
+    fixture.write_text("spawn('npx', ['tau-mirror']);\n", encoding="utf-8")
     subprocess.run(["git", "add", str(fixture.relative_to(clone))], cwd=clone, check=True)
 
+    spy_dir = tmp_path / "command-spies"
+    spy_dir.mkdir()
+    sentinel = tmp_path / "build-command-ran"
+    for command in ("node", "rsync", "npm", "tar"):
+        spy = spy_dir / command
+        spy.write_text(f"#!/bin/sh\ntouch '{sentinel}'\nexit 99\n", encoding="utf-8")
+        spy.chmod(0o755)
+    environment = os.environ.copy()
+    environment["PATH"] = f"{spy_dir}{os.pathsep}{environment['PATH']}"
+    output_dir = tmp_path / "blocked-output"
+
     result = subprocess.run(
-        ["bash", "scripts/security-gate.sh"],
+        ["bash", "scripts/build-vault-bundle.sh", str(output_dir)],
         cwd=clone,
         capture_output=True,
         text=True,
         timeout=30,
+        env=environment,
     )
     assert result.returncode == 1
     assert "Tau Mirror npx loader" in result.stdout
     assert not sentinel.exists()
+    assert not output_dir.exists()

@@ -81,6 +81,10 @@ python3 "$REPO_ROOT/scripts/check-tau-removal.py" --tree "$STAGING_DIR"
   cd "$STAGING_DIR"
   npm ci --omit=dev --ignore-scripts
 )
+# npm creates command shims as symlinks. Dex does not execute dependency CLIs
+# from the vault bundle, so remove them rather than weakening the no-symlink
+# distribution contract.
+rm -rf "$STAGING_DIR/node_modules/.bin"
 
 rm -f "$TARBALL" "$CHECKSUM"
 (

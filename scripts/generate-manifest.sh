@@ -7,7 +7,10 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 TREEISH="${1:-HEAD}"
 
-python3 "$REPO_ROOT/scripts/check-tau-removal.py" --source-root "$REPO_ROOT"
+# Validate the exact requested tree before the manifest writer can touch output.
+python3 "$REPO_ROOT/scripts/check-tau-removal.py" \
+  --repo-root "$REPO_ROOT" \
+  --git-tree "$TREEISH"
 
 exec python3 "$REPO_ROOT/core/utils/manifest.py" \
   "$TREEISH" \
