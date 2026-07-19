@@ -62,9 +62,19 @@ _FORBIDDEN_GIT_ENV_NAMES = {
     "NO_PROXY",
     "SSH_AUTH_SOCK",
 }
+SESSION_WALL_CLOCK_SECONDS = 10.0
+MAX_AGGREGATE_OUTPUT_BYTES = 64 * 1024 * 1024
 MAX_GIT_OUTPUT_BYTES = 32 * 1024 * 1024
-MAX_RELEASE_TAGS = 256
+MAX_REMOTE_RELEASE_REFS = 128
+# Normal operation has one higher stable target. Thirty-two preserves ample
+# overlap for skipped releases and same-version ambiguity checks while keeping
+# adversarial tag fan-out within the single SessionStart deadline/disk budget.
+MAX_RELEASE_TAGS = 32
 MAX_RELEASE_TREE_ENTRIES = 100_000
+MAX_RELEASE_TREE_PATH_BYTES = 16 * 1024 * 1024
+MAX_QUARANTINE_BYTES = 128 * 1024 * 1024
+MAX_QUARANTINE_FILES = 20_000
+MAX_QUARANTINE_OBJECTS = 20_000
 MAX_STATE_BYTES = 1024 * 1024
 MAX_PROFILE_BYTES = 64 * 1024
 MAX_PACKAGE_BYTES = 1024 * 1024
@@ -148,7 +158,33 @@ class CandidateEvidence:
 
     @property
     def identity(self) -> str:
+        return f"{self.version}|{self.tag}|{self.commit}|{self.tree}|{self.profile}"
+
+    @property
+    def legacy_identity(self) -> str:
         return f"{self.version}|{self.tag}|{self.commit}|{self.profile}"
+
+
+@dataclass
+class ExecutionBudget:
+    deadline: float
+    output_bytes_remaining: int = MAX_AGGREGATE_OUTPUT_BYTES
+    monitored_path: Path | None = None
+
+    @classmethod
+    def start(cls, seconds: float = SESSION_WALL_CLOCK_SECONDS) -> "ExecutionBudget":
+        return cls(time.monotonic() + seconds, MAX_AGGREGATE_OUTPUT_BYTES)
+
+    def check_deadline(self, *, network: bool = False) -> None:
+        if time.monotonic() >= self.deadline:
+            if network:
+                raise OfflineError("bounded canonical operation exceeded the session deadline")
+            raise EvidenceError("release evidence check exceeded the session deadline")
+
+    def consume_output(self, count: int) -> None:
+        self.output_bytes_remaining -= count
+        if self.output_bytes_remaining < 0:
+            raise EvidenceError("aggregate Git evidence output exceeded its bound")
 
 
 def _json_pairs(pairs: list[tuple[str, object]]) -> dict[str, object]:
@@ -326,6 +362,29 @@ class GitRunner:
         self.cancelled = cancelled or (lambda: False)
         self.allowed_protocol = allowed_protocol
         self.command_observer = command_observer
+        self.budget: ExecutionBudget | None = None
+
+    def use_budget(self, budget: ExecutionBudget) -> None:
+        self.budget = budget
+
+    @staticmethod
+    def _bounded_directory_usage(path: Path) -> tuple[int, int]:
+        total_bytes = 0
+        total_files = 0
+        for root, directories, files in os.walk(path, followlinks=False):
+            if any((Path(root) / name).is_symlink() for name in directories):
+                raise EvidenceError("release quarantine contains a symlinked directory")
+            total_files += len(files)
+            if total_files > MAX_QUARANTINE_FILES:
+                raise EvidenceError("release quarantine file count exceeded its bound")
+            for name in files:
+                item = Path(root) / name
+                if item.is_symlink():
+                    raise EvidenceError("release quarantine contains a symlinked file")
+                total_bytes += item.stat().st_size
+                if total_bytes > MAX_QUARANTINE_BYTES:
+                    raise EvidenceError("release quarantine bytes exceeded their bound")
+        return total_bytes, total_files
 
     def _execute(
         self,
@@ -336,6 +395,8 @@ class GitRunner:
     ) -> bytes:
         if self.cancelled():
             raise CancelledError("release evidence check cancelled")
+        budget = self.budget or ExecutionBudget.start(self.timeout_seconds)
+        budget.check_deadline(network=network)
         if self.command_observer is not None:
             self.command_observer(command)
         with tempfile.TemporaryFile() as stdout_file, tempfile.TemporaryFile() as stderr_file:
@@ -346,21 +407,40 @@ class GitRunner:
                 stderr=stderr_file,
                 env=_sanitized_git_environment(),
             )
-            deadline = time.monotonic() + self.timeout_seconds
             while process.poll() is None:
                 if self.cancelled():
                     process.kill()
                     process.wait()
                     raise CancelledError("release evidence check cancelled")
-                if time.monotonic() >= deadline:
+                stdout_size = os.fstat(stdout_file.fileno()).st_size
+                stderr_size = os.fstat(stderr_file.fileno()).st_size
+                if stdout_size > max_output_bytes or stderr_size > 64 * 1024:
+                    process.kill()
+                    process.wait()
+                    raise EvidenceError("Git evidence output exceeded its command bound")
+                if stdout_size + stderr_size > budget.output_bytes_remaining:
+                    process.kill()
+                    process.wait()
+                    raise EvidenceError("aggregate Git evidence output exceeded its bound")
+                if budget.monitored_path is not None and budget.monitored_path.exists():
+                    try:
+                        self._bounded_directory_usage(budget.monitored_path)
+                    except EvidenceError:
+                        process.kill()
+                        process.wait()
+                        raise
+                if time.monotonic() >= budget.deadline:
                     process.kill()
                     process.wait()
                     if network:
                         raise OfflineError("bounded canonical fetch timed out")
                     raise EvidenceError("bounded Git evidence command timed out")
                 time.sleep(0.01)
+            budget.check_deadline(network=network)
             stderr_file.seek(0)
             stderr = stderr_file.read(64 * 1024 + 1)
+            stdout_size = os.fstat(stdout_file.fileno()).st_size
+            budget.consume_output(stdout_size + len(stderr))
             if process.returncode != 0:
                 detail = stderr[: 64 * 1024].decode("utf-8", errors="replace").strip()
                 if network and any(marker in detail.lower() for marker in _OFFLINE_MARKERS):
@@ -372,9 +452,14 @@ class GitRunner:
                 raise EvidenceError("Git evidence output exceeded its bound")
             return stdout
 
-    def run_plain(self, *args: str, max_output_bytes: int = MAX_GIT_OUTPUT_BYTES) -> bytes:
+    def run_plain(
+        self,
+        *args: str,
+        network: bool = False,
+        max_output_bytes: int = MAX_GIT_OUTPUT_BYTES,
+    ) -> bytes:
         command = (str(self.git_path), *args)
-        return self._execute(command, max_output_bytes=max_output_bytes)
+        return self._execute(command, network=network, max_output_bytes=max_output_bytes)
 
     def run(
         self,
@@ -443,10 +528,12 @@ def _atomic_write_json(path: Path, value: dict[str, object]) -> None:
 
 
 @contextmanager
-def _state_lock(state_root: Path, *, timeout_seconds: float = 2.0):
+def _state_lock(state_root: Path, *, timeout_seconds: float = 2.0, absolute_deadline: float | None = None):
     state_root.mkdir(parents=True, exist_ok=True, mode=0o700)
     lock_path = state_root / "state.lock"
     deadline = time.monotonic() + timeout_seconds
+    if absolute_deadline is not None:
+        deadline = min(deadline, absolute_deadline)
     descriptor: int | None = None
     while descriptor is None:
         try:
@@ -469,7 +556,11 @@ def _read_state(path: Path) -> dict[str, object]:
     try:
         if path.is_symlink() or not path.is_file() or path.stat().st_size > MAX_STATE_BYTES:
             raise EvidenceError("update awareness state is not a bounded regular file")
-        value = json.loads(path.read_text(encoding="utf-8"), object_pairs_hook=_json_pairs)
+        with path.open("rb") as handle:
+            raw = handle.read(MAX_STATE_BYTES + 1)
+        if len(raw) > MAX_STATE_BYTES:
+            raise EvidenceError("update awareness state exceeded its bound")
+        value = json.loads(raw.decode("utf-8"), object_pairs_hook=_json_pairs)
     except (OSError, UnicodeError, json.JSONDecodeError, EvidenceError) as error:
         raise EvidenceError("update awareness state is corrupt") from error
     if not isinstance(value, dict) or value.get("schema_version") != 1:
@@ -493,6 +584,7 @@ class UpdateVerifier:
         now: Callable[[], datetime] | None = None,
         authenticator: PublisherAuthenticator | None = None,
         fetch_override: Callable[[GitRunner, Path, str], None] | None = None,
+        wall_clock_seconds: float = SESSION_WALL_CLOCK_SECONDS,
     ) -> None:
         self.vault_root = vault_root.resolve()
         self.state_root = (state_root or _default_state_root(self.vault_root)).resolve()
@@ -503,6 +595,9 @@ class UpdateVerifier:
         self.now = now or (lambda: datetime.now(timezone.utc))
         self.authenticator = authenticator or NoPublisherAuthenticator()
         self.fetch_override = fetch_override
+        self.wall_clock_seconds = wall_clock_seconds
+        self._evidence_cache = self.state_root / "objects.git"
+        self._budget: ExecutionBudget | None = None
 
     @property
     def state_path(self) -> Path:
@@ -510,22 +605,40 @@ class UpdateVerifier:
 
     @property
     def cache_path(self) -> Path:
-        return self.state_root / "objects.git"
+        return self._evidence_cache
+
+    @staticmethod
+    def _bounded_regular_file(path: Path, *, max_bytes: int, description: str) -> bytes:
+        try:
+            if path.is_symlink() or not path.is_file():
+                raise EvidenceError(f"{description} is not a regular file")
+            size = path.stat().st_size
+            if size < 0 or size > max_bytes:
+                raise EvidenceError(f"{description} exceeded its bound")
+            raw = path.read_bytes()
+        except OSError as error:
+            raise EvidenceError(f"{description} is unreadable") from error
+        if len(raw) != size:
+            raise EvidenceError(f"{description} changed while being read")
+        return raw
 
     def _current_version(self) -> str:
         try:
-            package = json.loads((self.vault_root / "package.json").read_text(encoding="utf-8"))
-        except (OSError, UnicodeError, json.JSONDecodeError) as error:
+            package_raw = self._bounded_regular_file(
+                self.vault_root / "package.json",
+                max_bytes=MAX_PACKAGE_BYTES,
+                description="installed package.json",
+            )
+            package = json.loads(package_raw.decode("utf-8"), object_pairs_hook=_json_pairs)
+        except (UnicodeError, json.JSONDecodeError, EvidenceError) as error:
             raise EvidenceError("installed package version is unreadable") from error
         version = package.get("version") if isinstance(package, dict) else None
         SemVer.parse(version)
-        try:
-            installed_profile = self.vault_root / PROFILE_PATH
-            if installed_profile.is_symlink() or not installed_profile.is_file():
-                raise EvidenceError("installed release evidence profile is not a regular file")
-            profile_raw = installed_profile.read_bytes()
-        except OSError as error:
-            raise EvidenceError("installed release evidence profile is unreadable") from error
+        profile_raw = self._bounded_regular_file(
+            self.vault_root / PROFILE_PATH,
+            max_bytes=MAX_PROFILE_BYTES,
+            description="installed release evidence profile",
+        )
         parse_profile(profile_raw, expected_version=version)
         return version
 
@@ -547,14 +660,53 @@ class UpdateVerifier:
             raise EvidenceError("isolated release cache metadata is malformed")
         if any(path.is_symlink() or not path.is_dir() for path in required_dir_paths):
             raise EvidenceError("isolated release cache storage is malformed")
-        if (self.cache_path / "config").read_bytes() != _CACHE_CONFIG:
+        config_path = self.cache_path / "config"
+        if config_path.stat().st_size > 1024 or config_path.read_bytes() != _CACHE_CONFIG:
             raise EvidenceError("isolated release cache configuration was modified")
         if (self.cache_path / "objects" / "info" / "alternates").exists():
             raise EvidenceError("isolated release cache contains alternate object storage")
+        GitRunner._bounded_directory_usage(self.cache_path)
 
-    def _fetch(self) -> None:
+    def _remote_release_tags(self) -> tuple[str, ...]:
+        raw = self.git.run_plain(
+            "-c",
+            "credential.helper=",
+            "-c",
+            "protocol.allow=never",
+            "-c",
+            f"protocol.{self.git.allowed_protocol}.allow=always",
+            "ls-remote",
+            "--refs",
+            "--tags",
+            self.remote_url,
+            "refs/tags/dist/release/*",
+            network=True,
+            max_output_bytes=256 * 1024,
+        )
+        tags: list[str] = []
+        for line in raw.splitlines():
+            try:
+                object_id, raw_ref = line.split(b"\t", 1)
+                ref = raw_ref.decode("utf-8")
+            except (ValueError, UnicodeDecodeError) as error:
+                raise EvidenceError("remote release reference is malformed") from error
+            if re.fullmatch(rb"[0-9a-f]{40,64}", object_id) is None or not ref.startswith(
+                "refs/tags/dist/release/"
+            ):
+                raise EvidenceError("remote release reference is outside the pinned namespace")
+            tags.append(ref.removeprefix("refs/tags/"))
+            if len(tags) > MAX_REMOTE_RELEASE_REFS:
+                raise EvidenceError("remote release reference enumeration exceeded its bound")
+        if len(tags) != len(set(tags)):
+            raise EvidenceError("remote release reference enumeration is ambiguous")
+        return tuple(sorted(tags))
+
+    def _fetch(self, tags: tuple[str, ...]) -> None:
         if self.fetch_override is not None:
             self.fetch_override(self.git, self.cache_path, self.remote_url)
+            return
+        refspecs = tuple(f"refs/tags/{tag}:refs/tags/{tag}" for tag in tags)
+        if not refspecs:
             return
         self.git.run(
             self.cache_path,
@@ -562,38 +714,43 @@ class UpdateVerifier:
             "--quiet",
             "--no-tags",
             "--no-write-fetch-head",
-            "--prune",
+            "--depth=1",
+            "--no-recurse-submodules",
             self.remote_url,
-            "refs/tags/dist/release/*:refs/tags/dist/release/*",
+            *refspecs,
             network=True,
             max_output_bytes=1024,
         )
         self._validate_cache()
+        count_raw = self.git.run(
+            self.cache_path,
+            "count-objects",
+            "-v",
+            max_output_bytes=4096,
+        ).decode("ascii")
+        counts = {}
+        for line in count_raw.splitlines():
+            if ": " in line:
+                key, value = line.split(": ", 1)
+                if value.isdigit():
+                    counts[key] = int(value)
+        if counts.get("count", 0) + counts.get("in-pack", 0) > MAX_QUARANTINE_OBJECTS:
+            raise EvidenceError("release quarantine object count exceeded its bound")
 
     def _release_tags(self) -> tuple[str, ...]:
-        all_refs_raw = self.git.run(
+        raw = self.git.run(
             self.cache_path,
             "for-each-ref",
             "--format=%(refname)",
             max_output_bytes=256 * 1024,
         )
         try:
-            all_refs = tuple(line for line in all_refs_raw.decode("utf-8").splitlines() if line)
+            refs = tuple(line for line in raw.decode("utf-8").splitlines() if line)
         except UnicodeDecodeError as error:
             raise EvidenceError("release references are not UTF-8") from error
-        if any(not ref.startswith("refs/tags/dist/release/") for ref in all_refs):
+        if any(not ref.startswith("refs/tags/dist/release/") for ref in refs):
             raise EvidenceError("isolated release cache contains an unexpected reference")
-        raw = self.git.run(
-            self.cache_path,
-            "for-each-ref",
-            "--format=%(refname:strip=2)",
-            "refs/tags/dist/release",
-            max_output_bytes=256 * 1024,
-        )
-        try:
-            tags = tuple(line for line in raw.decode("utf-8").splitlines() if line)
-        except UnicodeDecodeError as error:
-            raise EvidenceError("release tag names are not UTF-8") from error
+        tags = tuple(ref.removeprefix("refs/tags/") for ref in refs)
         if len(tags) != len(set(tags)):
             raise EvidenceError("release tag enumeration is ambiguous")
         if len(tags) > MAX_RELEASE_TAGS:
@@ -612,6 +769,7 @@ class UpdateVerifier:
             max_output_bytes=MAX_GIT_OUTPUT_BYTES,
         )
         entries: dict[str, tuple[str, str]] = {}
+        path_bytes = 0
         for record in raw.split(b"\0"):
             if not record:
                 continue
@@ -624,8 +782,11 @@ class UpdateVerifier:
             if path in entries or object_type != "blob" or mode not in {"100644", "100755", "120000"}:
                 raise EvidenceError("release tree is ambiguous or contains unsupported entries")
             entries[path] = (mode, object_id)
+            path_bytes += len(raw_path)
             if len(entries) > MAX_RELEASE_TREE_ENTRIES:
                 raise EvidenceError("release tree entry count exceeded its bound")
+            if path_bytes > MAX_RELEASE_TREE_PATH_BYTES:
+                raise EvidenceError("release tree path bytes exceeded their bound")
         return tree, entries
 
     def _blob(
@@ -765,37 +926,124 @@ class UpdateVerifier:
             )
         )
 
+    @contextmanager
+    def _quarantined_cache(self):
+        self.state_root.mkdir(parents=True, exist_ok=True, mode=0o700)
+        quarantine = Path(tempfile.mkdtemp(prefix="objects-quarantine.", dir=self.state_root)) / "objects.git"
+        original_cache = self._evidence_cache
+        self._evidence_cache = quarantine
+        if self._budget is not None:
+            self._budget.monitored_path = quarantine.parent
+        try:
+            self._initialize_cache()
+            yield
+        finally:
+            self._evidence_cache = original_cache
+            if self._budget is not None:
+                self._budget.monitored_path = None
+            shutil.rmtree(quarantine.parent, ignore_errors=True)
+
+    def _promote_quarantine(self) -> None:
+        quarantine = self.cache_path
+        persistent = self.state_root / "objects.git"
+        backup = self.state_root / "objects.previous.git"
+        shutil.rmtree(backup, ignore_errors=True)
+        if persistent.exists():
+            os.replace(persistent, backup)
+        try:
+            os.replace(quarantine, persistent)
+        except Exception:
+            if backup.exists() and not persistent.exists():
+                os.replace(backup, persistent)
+            raise
+        finally:
+            shutil.rmtree(backup, ignore_errors=True)
+
+    @staticmethod
+    def _migrate_state(state: dict[str, object]) -> None:
+        # These SR1-preview fields were never read by a tool/API. Preserve the
+        # authoritative date/status and exact noticed identities instead.
+        state.pop("last_attempt_at", None)
+        state.pop("last_notice", None)
+
+    def _write_state(self, state: dict[str, object]) -> bool:
+        try:
+            _atomic_write_json(self.state_path, state)
+        except OSError:
+            return False
+        return True
+
+    def _record_attempt(self, state: dict[str, object], status: str, reason: str | None = None) -> bool:
+        state["last_status"] = status
+        if reason is None:
+            state.pop("last_reason", None)
+        else:
+            state["last_reason"] = reason
+        return self._write_state(state)
+
+    def _persist_failure(self, *, today: str, status: str, reason: str) -> bool:
+        try:
+            with _state_lock(self.state_root, timeout_seconds=0.2):
+                try:
+                    current = _read_state(self.state_path)
+                except EvidenceError:
+                    current = {"schema_version": 1, "noticed_releases": [], "seen_tags": {}}
+                self._migrate_state(current)
+                current["last_attempt_date"] = today
+                return self._record_attempt(current, status, reason)
+        except (EvidenceError, OSError):
+            return False
+
     def check(self, *, force: bool = False, doctor_redisplay: bool = False) -> dict[str, object]:
         today = self.now().date().isoformat()
         result: dict[str, object] = {"status": STATUS_UNKNOWN, "should_notify": False}
+        state: dict[str, object] | None = None
+        self._budget = ExecutionBudget.start(self.wall_clock_seconds)
+        self.git.use_budget(self._budget)
         try:
-            with _state_lock(self.state_root):
+            with _state_lock(
+                self.state_root,
+                absolute_deadline=self._budget.deadline if self._budget is not None else None,
+            ):
                 try:
                     state = _read_state(self.state_path)
                 except EvidenceError:
-                    _atomic_write_json(
-                        self.state_path,
-                        {
-                            "schema_version": 1,
-                            "noticed_releases": [],
-                            "seen_tags": {},
-                            "last_attempt_date": today,
-                            "recovered_from_corrupt_state": True,
-                        },
-                    )
+                    state = {
+                        "schema_version": 1,
+                        "noticed_releases": [],
+                        "seen_tags": {},
+                        "last_attempt_date": today,
+                        "last_status": STATUS_UNKNOWN,
+                        "last_reason": "state-corrupt",
+                        "recovered_from_corrupt_state": True,
+                    }
+                    if not self._write_state(state):
+                        return {**result, "reason": "state-write-failed"}
                     return {**result, "reason": "state-corrupt"}
+                self._migrate_state(state)
                 if not (force or doctor_redisplay) and state.get("last_attempt_date") == today:
                     return {"status": STATUS_SKIPPED, "should_notify": False, "skip_reason": "daily-attempt"}
                 state["last_attempt_date"] = today
-                state["last_attempt_at"] = self.now().astimezone(timezone.utc).isoformat()
-                _atomic_write_json(self.state_path, state)
+                if not self._write_state(state):
+                    return {**result, "reason": "state-write-failed"}
 
                 current_version = self._current_version()
                 current_semver = SemVer.parse(current_version)
                 result["current_version"] = current_version
-                self._initialize_cache()
-                self._fetch()
-                tags = self._release_tags()
+                persistent_cache = self.state_root / "objects.git"
+                if persistent_cache.exists():
+                    self._evidence_cache = persistent_cache
+                    self._validate_cache()
+                remote_tags = self._remote_release_tags() if self.fetch_override is None else ()
+                selected_remote_tags: list[str] = []
+                for tag in remote_tags:
+                    match = _TAG_RE.fullmatch(tag)
+                    if match is None:
+                        raise EvidenceError("candidate release tag shape is malformed")
+                    if SemVer.parse(match.group("version")) > current_semver:
+                        selected_remote_tags.append(tag)
+                if len(selected_remote_tags) > MAX_RELEASE_TAGS:
+                    raise EvidenceError("higher release candidate count exceeded its bound")
                 higher: list[CandidateEvidence] = []
                 seen_tags = state.setdefault("seen_tags", {})
                 if not isinstance(seen_tags, dict):
@@ -805,25 +1053,30 @@ class UpdateVerifier:
                     if (
                         prior_match is not None
                         and SemVer.parse(prior_match.group("version")) > current_semver
-                        and prior_tag not in tags
+                        and self.fetch_override is None
+                        and prior_tag not in remote_tags
                     ):
                         raise EvidenceError("previously observed immutable candidate tag disappeared")
-                for tag in tags:
-                    match = _TAG_RE.fullmatch(tag)
-                    if match is None:
-                        raise EvidenceError("candidate release tag shape is malformed")
-                    version = match.group("version")
-                    if SemVer.parse(version) <= current_semver:
-                        continue
-                    candidate = self._verify_candidate(tag, version, match.group("short"))
-                    prior_commit = seen_tags.get(tag)
-                    if prior_commit is not None and prior_commit != candidate.commit:
-                        raise EvidenceError("immutable candidate tag moved")
-                    seen_tags[tag] = candidate.commit
-                    higher.append(candidate)
+                with self._quarantined_cache():
+                    self._fetch(tuple(selected_remote_tags))
+                    tags = self._release_tags()
+                    for tag in tags:
+                        match = _TAG_RE.fullmatch(tag)
+                        if match is None:
+                            raise EvidenceError("candidate release tag shape is malformed")
+                        version = match.group("version")
+                        if SemVer.parse(version) <= current_semver:
+                            continue
+                        candidate = self._verify_candidate(tag, version, match.group("short"))
+                        prior_commit = seen_tags.get(tag)
+                        if prior_commit is not None and prior_commit != candidate.commit:
+                            raise EvidenceError("immutable candidate tag moved")
+                        seen_tags[tag] = candidate.commit
+                        higher.append(candidate)
+                    self._promote_quarantine()
                 if not higher:
-                    state["last_status"] = STATUS_NONE
-                    _atomic_write_json(self.state_path, state)
+                    if not self._record_attempt(state, STATUS_NONE):
+                        return {**result, "reason": "state-write-failed"}
                     return {
                         "status": STATUS_NONE,
                         "should_notify": False,
@@ -844,29 +1097,21 @@ class UpdateVerifier:
                 legacy_suppressed = self._legacy_notice_matches(candidate, state)
                 if legacy_suppressed and candidate.identity not in noticed:
                     noticed.append(candidate.identity)
-                if candidate.identity in noticed and not doctor_redisplay:
-                    state["last_status"] = STATUS_SKIPPED
-                    _atomic_write_json(self.state_path, state)
+                already_noticed = candidate.identity in noticed or candidate.legacy_identity in noticed
+                if already_noticed and not doctor_redisplay:
+                    if not self._record_attempt(state, STATUS_SKIPPED, "exact-release-notice"):
+                        return {**result, "reason": "state-write-failed"}
                     return {
                         "status": STATUS_SKIPPED,
                         "should_notify": False,
                         "skip_reason": "legacy-notice" if legacy_suppressed else "exact-release-notice",
                         "current_version": current_version,
                     }
-                if candidate.identity not in noticed:
+                if not already_noticed:
                     noticed.append(candidate.identity)
                 notice = self._notice(candidate)
-                state["last_status"] = STATUS_RELEASE
-                state["last_notice"] = {
-                    "identity": candidate.identity,
-                    "version": candidate.version,
-                    "tag": candidate.tag,
-                    "commit": candidate.commit,
-                    "profile": candidate.profile,
-                    "release_page": CANONICAL_RELEASE_PAGE.format(tag=candidate.tag),
-                    "notice": notice,
-                }
-                _atomic_write_json(self.state_path, state)
+                if not self._record_attempt(state, STATUS_RELEASE):
+                    return {**result, "reason": "state-write-failed"}
                 return {
                     "status": STATUS_RELEASE,
                     "should_notify": True,
@@ -874,15 +1119,32 @@ class UpdateVerifier:
                     "version": candidate.version,
                     "tag": candidate.tag,
                     "commit": candidate.commit,
+                    "tree": candidate.tree,
                     "profile": candidate.profile,
                     "release_page": CANONICAL_RELEASE_PAGE.format(tag=candidate.tag),
                     "notice": notice,
                     "publisher_authentication": "unavailable",
                 }
         except OfflineError:
-            return {**result, "status": STATUS_OFFLINE, "reason": "network-unavailable"}
+            reason = "network-unavailable"
+            if not self._persist_failure(today=today, status=STATUS_OFFLINE, reason=reason):
+                reason = "state-write-failed"
+                return {**result, "reason": reason}
+            return {**result, "status": STATUS_OFFLINE, "reason": reason}
         except (CancelledError, EvidenceError, OSError, UnicodeError, subprocess.SubprocessError) as error:
-            return {**result, "reason": type(error).__name__}
+            reason = {
+                CancelledError: "cancelled",
+                EvidenceError: "evidence-invalid",
+                OSError: "io-error",
+                UnicodeError: "encoding-invalid",
+                subprocess.SubprocessError: "subprocess-failed",
+            }.get(type(error), "evidence-invalid")
+            if not self._persist_failure(today=today, status=STATUS_UNKNOWN, reason=reason):
+                reason = "state-write-failed"
+            return {**result, "reason": reason}
+        finally:
+            self._budget = None
+            self.git.budget = None
 
 
 def _session_start_output(result: dict[str, object]) -> None:

@@ -109,15 +109,45 @@ fi
 # --- Build release branch ---
 
 SOURCE_SHA=$(git rev-parse "$SOURCE_BRANCH")
-PKG_VERSION=$(grep '"version"' package.json | head -1 | sed 's/.*"version": *"\([^"]*\)".*/\1/')
+SOURCE_PACKAGE_SIZE=$(git cat-file -s "$SOURCE_SHA:package.json" 2>/dev/null || true)
+if ! [[ "$SOURCE_PACKAGE_SIZE" =~ ^[0-9]+$ ]] || [ "$SOURCE_PACKAGE_SIZE" -gt 1048576 ]; then
+    echo "Error: selected source package.json is missing or exceeds 1 MiB." >&2
+    exit 1
+fi
+if ! PKG_VERSION=$(git show "$SOURCE_SHA:package.json" | python3 -c '
+import json, re, sys
+def _unique(pairs):
+    result = {}
+    for key, item in pairs:
+        if key in result:
+            raise ValueError(f"duplicate key: {key}")
+        result[key] = item
+    return result
+
+raw = sys.stdin.buffer.read(1048577)
+if len(raw) > 1048576:
+    raise SystemExit("selected package.json exceeds 1 MiB")
+try:
+    value = json.loads(raw.decode("utf-8"), object_pairs_hook=lambda pairs: _unique(pairs))
+except Exception as error:
+    raise SystemExit(f"selected package.json is invalid: {error}")
+version = value.get("version") if isinstance(value, dict) else None
+if not isinstance(version, str) or re.fullmatch(r"(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)", version) is None:
+    raise SystemExit("selected package.json version is not canonical semver")
+print(version)
+' 2>&1); then
+    echo "Error: $PKG_VERSION" >&2
+    exit 1
+fi
 
 echo "Building release branch..."
 echo "  Source: $SOURCE_BRANCH ($SOURCE_SHA)"
 echo "  Version: v$PKG_VERSION"
 echo ""
 
-# Create or reset release branch to match the selected source
-git checkout -B "$RELEASE_BRANCH" "$SOURCE_BRANCH" --quiet
+# Create or reset release branch to the immutable source identity validated
+# above, even if the source branch moves while this build is running.
+git checkout -B "$RELEASE_BRANCH" "$SOURCE_SHA" --quiet
 
 # Remove dev-only files
 REMOVED=0

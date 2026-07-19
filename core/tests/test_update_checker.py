@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-import os
+import shutil
 import socket
 import subprocess
 from datetime import datetime, timezone
@@ -12,6 +12,7 @@ from pathlib import Path
 
 import pytest
 
+from core.mcp import update_checker as update_checker_module
 from core.utils import update_verifier as update_verifier_module
 from core.utils.update_verifier import (
     CATALOG_PATH,
@@ -88,7 +89,7 @@ def _release(
     for child in tuple(repo.iterdir()):
         if child.name != ".git":
             if child.is_dir():
-                subprocess.run(["rm", "-rf", str(child)], check=True)
+                shutil.rmtree(child)
             else:
                 child.unlink()
     _write(repo / "package.json", _canonical({"name": "dex", "version": package_version or version}))
@@ -176,6 +177,7 @@ def test_legacy_release_notice_has_exact_caution_identity_and_no_positive_trust_
     runner = GitRunner(allowed_protocol="file", command_observer=commands.append)
 
     result = _verifier(vault, remote, tmp_path / "state", git_runner=runner).check()
+    tree = _git(remote, "rev-parse", f"{commit}^{{tree}}")
 
     assert result == {
         "status": STATUS_RELEASE,
@@ -184,6 +186,7 @@ def test_legacy_release_notice_has_exact_caution_identity_and_no_positive_trust_
         "version": "1.62.0",
         "tag": tag,
         "commit": commit,
+        "tree": tree,
         "profile": "legacy-v1",
         "release_page": f"https://github.com/davekilleen/Dex/releases/tag/{tag}",
         "notice": "\n".join(
@@ -206,6 +209,7 @@ def test_legacy_release_notice_has_exact_caution_identity_and_no_positive_trust_
     assert "up to date" not in notice_lower
     assert "verified" not in notice_lower
     assert all(Path(command[0]).is_absolute() for command in commands)
+    assert sum("for-each-ref" in command for command in commands) == 1
     joined_commands = "\n".join(" ".join(command) for command in commands)
     for forbidden in (" pull ", " merge ", " reset ", " checkout ", " add ", " commit ", " push ", " remote "):
         assert forbidden not in f" {joined_commands} "
@@ -476,6 +480,175 @@ def test_isolated_cache_configuration_poisoning_fails_closed(tmp_path: Path) -> 
     assert result["status"] == STATUS_UNKNOWN
     assert result["should_notify"] is False
     assert "notice" not in result
+
+
+def test_failure_state_replaces_stale_release_status_and_same_day_skip_preserves_it(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    vault = _installed_vault(tmp_path / "vault")
+    remote = tmp_path / "remote"
+    _init_repo(remote)
+    _release(remote, "1.62.0")
+    state = tmp_path / "state"
+    verifier = _verifier(vault, remote, state)
+    assert verifier.check()["status"] == STATUS_RELEASE
+
+    def offline(*_args):
+        raise OfflineError("synthetic network unavailable")
+
+    assert _verifier(vault, remote, state, fetch_override=offline).check(force=True)["status"] == STATUS_OFFLINE
+    persisted = json.loads((state / "state.json").read_text())
+    assert persisted["last_status"] == STATUS_OFFLINE
+    assert persisted["last_reason"] == "network-unavailable"
+    assert persisted["noticed_releases"]
+    skipped = verifier.check()
+    assert skipped["status"] == STATUS_SKIPPED
+    monkeypatch.setattr(update_checker_module, "_default_state_root", lambda _vault: state)
+    monkeypatch.setenv("VAULT_PATH", str(vault))
+    coroutine = update_checker_module.get_update_status()
+    with pytest.raises(StopIteration) as completed:
+        coroutine.send(None)
+    status = completed.value.value
+    assert status["status"] == STATUS_OFFLINE
+
+
+def test_unknown_and_state_migration_are_persisted_without_duplicate_cache_fields(tmp_path: Path) -> None:
+    vault = _installed_vault(tmp_path / "vault")
+    remote = tmp_path / "remote"
+    _init_repo(remote)
+    _release(remote, "1.62.0")
+    state = tmp_path / "state"
+    verifier = _verifier(vault, remote, state)
+    assert verifier.check()["status"] == STATUS_RELEASE
+    persisted = json.loads((state / "state.json").read_text())
+    persisted["last_attempt_at"] = "obsolete"
+    persisted["last_notice"] = {"obsolete": True}
+    (state / "state.json").write_text(json.dumps(persisted))
+    (remote / PROFILE_PATH).write_text("not-json")
+    _git(remote, "add", PROFILE_PATH)
+    _git(remote, "commit", "--quiet", "-m", "malformed higher release")
+    short = _git(remote, "rev-parse", "--short", "HEAD")
+    _git(remote, "tag", "-a", f"dist/release/v1.63.0-{short}", "-m", "malformed")
+
+    result = verifier.check(force=True)
+
+    assert result["status"] == STATUS_UNKNOWN
+    migrated = json.loads((state / "state.json").read_text())
+    assert migrated["last_status"] == STATUS_UNKNOWN
+    assert migrated["last_reason"] == "evidence-invalid"
+    assert migrated["noticed_releases"]
+    assert "last_attempt_at" not in migrated
+    assert "last_notice" not in migrated
+
+
+def test_preview_state_legacy_identity_remains_deduplicated_after_tree_identity_upgrade(tmp_path: Path) -> None:
+    vault = _installed_vault(tmp_path / "vault")
+    remote = tmp_path / "remote"
+    _init_repo(remote)
+    _release(remote, "1.62.0")
+    state = tmp_path / "state"
+    verifier = _verifier(vault, remote, state)
+    first = verifier.check()
+    persisted = json.loads((state / "state.json").read_text())
+    persisted["noticed_releases"] = [
+        f"{first['version']}|{first['tag']}|{first['commit']}|{first['profile']}"
+    ]
+    persisted["last_attempt_at"] = "obsolete"
+    persisted["last_notice"] = {"identity": persisted["noticed_releases"][0]}
+    (state / "state.json").write_text(json.dumps(persisted))
+
+    result = verifier.check(force=True)
+
+    assert result["status"] == STATUS_SKIPPED
+    assert result["skip_reason"] == "exact-release-notice"
+    migrated = json.loads((state / "state.json").read_text())
+    assert migrated["noticed_releases"] == persisted["noticed_releases"]
+    assert "last_attempt_at" not in migrated
+    assert "last_notice" not in migrated
+
+
+def test_state_write_failure_returns_unknown_without_destroying_prior_notice(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    vault = _installed_vault(tmp_path / "vault")
+    remote = tmp_path / "remote"
+    _init_repo(remote)
+    _release(remote, "1.62.0")
+    state = tmp_path / "state"
+    verifier = _verifier(vault, remote, state)
+    assert verifier.check()["status"] == STATUS_RELEASE
+    before = (state / "state.json").read_bytes()
+
+    def fail_write(*_args, **_kwargs):
+        raise OSError("synthetic write failure")
+
+    monkeypatch.setattr(update_verifier_module, "_atomic_write_json", fail_write)
+    result = verifier.check(force=True)
+
+    assert result == {"status": STATUS_UNKNOWN, "should_notify": False, "reason": "state-write-failed"}
+    assert (state / "state.json").read_bytes() == before
+
+
+def test_aggregate_deadline_candidate_bound_quarantine_limit_and_cleanup(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    vault = _installed_vault(tmp_path / "vault")
+    remote = tmp_path / "remote"
+    _init_repo(remote)
+    _release(remote, "1.62.0")
+    for index in range(update_verifier_module.MAX_RELEASE_TAGS):
+        _git(remote, "tag", "-a", f"dist/release/v2.0.{index}-{_git(remote, 'rev-parse', '--short', 'HEAD')}", "-m", "many")
+    many_state = tmp_path / "many-state"
+    many = _verifier(vault, remote, many_state).check()
+    assert many["status"] == STATUS_UNKNOWN
+    assert not list(many_state.glob("objects-quarantine.*"))
+
+    bounded_remote = tmp_path / "bounded-remote"
+    _init_repo(bounded_remote)
+    _release(bounded_remote, "1.62.0")
+    monkeypatch.setattr(update_verifier_module, "MAX_QUARANTINE_BYTES", 1024)
+    bounded_state = tmp_path / "bounded-state"
+    bounded = _verifier(vault, bounded_remote, bounded_state).check()
+    assert bounded["status"] == STATUS_UNKNOWN
+    assert not list(bounded_state.glob("objects-quarantine.*"))
+    monkeypatch.setattr(update_verifier_module, "MAX_QUARANTINE_BYTES", 128 * 1024 * 1024)
+
+    slow_runner = GitRunner(allowed_protocol="file", command_observer=lambda _command: __import__("time").sleep(0.03))
+    deadline_state = tmp_path / "deadline-state"
+    deadline = _verifier(
+        vault,
+        bounded_remote,
+        deadline_state,
+        git_runner=slow_runner,
+        wall_clock_seconds=0.05,
+    ).check()
+    assert deadline["status"] in {STATUS_OFFLINE, STATUS_UNKNOWN}
+    assert not list(deadline_state.glob("objects-quarantine.*"))
+
+    monkeypatch.setattr(update_verifier_module, "MAX_AGGREGATE_OUTPUT_BYTES", 1)
+    output_state = tmp_path / "output-state"
+    output = _verifier(vault, bounded_remote, output_state).check()
+    assert output["status"] == STATUS_UNKNOWN
+    assert not list(output_state.glob("objects-quarantine.*"))
+
+
+@pytest.mark.parametrize("relative_path", ["package.json", PROFILE_PATH])
+def test_oversized_installed_evidence_fails_before_network(tmp_path: Path, relative_path: str) -> None:
+    vault = _installed_vault(tmp_path / "vault")
+    (vault / relative_path).write_bytes(b"x" * (1024 * 1024 + 1))
+    remote = tmp_path / "remote"
+    _init_repo(remote)
+    _release(remote, "1.62.0")
+    commands: list[tuple[str, ...]] = []
+    runner = GitRunner(allowed_protocol="file", command_observer=commands.append)
+
+    result = _verifier(vault, remote, tmp_path / "state", git_runner=runner).check()
+
+    assert result["status"] == STATUS_UNKNOWN
+    assert not any("ls-remote" in command or "fetch" in command for command in commands)
 
 
 @pytest.mark.parametrize("bound_name", ["MAX_RELEASE_TAGS", "MAX_PROFILE_BYTES"])
