@@ -592,6 +592,7 @@ def test_recapture_retries_after_kill_between_archive_and_generation_publish(tra
         VERSION,
     )
     archive = tmp_path / "archive-00000000000000000000000000000000"
+    migration._write_publication_intent(journal, generation, archive)
 
     # Exact on-disk state left by a kill after retaining the old generation but
     # before the validated replacement generation reaches the canonical path.
@@ -602,6 +603,34 @@ def test_recapture_retries_after_kill_between_archive_and_generation_publish(tra
     assert migration.capture(tracked_ignored_repo, journal)["phase"] == "captured"
     assert migration._read_journal(journal)["phase"] == "captured"
     assert migration._read_journal(archive)["phase"] == "rewound"
+
+
+def test_capture_rewind_recovers_process_death_between_publication_renames(
+    tracked_ignored_repo, tmp_path
+):
+    journal = tmp_path / "journal"
+    _prepare_untrack(tracked_ignored_repo, journal)
+    migration.apply(tracked_ignored_repo, journal)
+    first = tracked_ignored_repo / migration.LOCAL_ONLY_PATHS[0]
+    first.write_bytes(b"captured before process death\n")
+    prior = migration._read_journal(journal)
+    generation, replacement = migration._create_rewind_generation(tracked_ignored_repo, journal, prior)
+    archive = tmp_path / "archive-11111111111111111111111111111111"
+    migration._write_publication_intent(journal, generation, archive)
+
+    # Exact durable state after SIGKILL/power loss between canonical -> archive
+    # and validated generation -> canonical.
+    os.replace(journal, archive)
+    assert not journal.exists()
+    assert migration._read_journal(archive) == prior
+    assert migration._read_journal(generation) == replacement
+
+    recovered = migration.capture_rewind(tracked_ignored_repo, journal)
+
+    assert recovered["phase"] == "rewind-captured"
+    assert migration._read_journal(journal) == recovered
+    assert migration._read_journal(archive) == prior
+    assert not migration._publication_intent_path(journal).exists()
 
 
 def test_capture_rewind_retries_atomic_generation_after_present_to_deleted_change(

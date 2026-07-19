@@ -192,10 +192,6 @@ DEX_LOCAL_ONLY_REWIND_REQUIRED=false
 case "$DEX_CURRENT_LOCAL_ONLY_PHASE:$DEX_TARGET_LOCAL_ONLY_PHASE" in
   untrack-v1:bootstrap-v1|untrack-v1:bootstrap-legacy)
     DEX_LOCAL_ONLY_REWIND_REQUIRED=true
-    [ -f "$DEX_LOCAL_ONLY_JOURNAL/journal.json" ] || {
-      echo "Rollback stopped: this target tracks local-only paths but the preservation journal is unavailable"
-      exit 1
-    }
     PYTHONPATH="$DEX_LOCAL_ONLY_RUNTIME" python3 \
       "$DEX_LOCAL_ONLY_RUNTIME/core/migrations/preserve_local_only_paths.py" capture-rewind \
       --repo "$PWD" --journal "$DEX_LOCAL_ONLY_JOURNAL" \
@@ -839,7 +835,6 @@ DEX_LOCAL_ONLY_REWIND_REQUIRED=false
 case "$DEX_CURRENT_LOCAL_ONLY_PHASE:$DEX_TARGET_LOCAL_ONLY_PHASE" in
   untrack-v1:bootstrap-v1|untrack-v1:bootstrap-legacy)
     DEX_LOCAL_ONLY_REWIND_REQUIRED=true
-    [ -f "$DEX_LOCAL_ONLY_JOURNAL/journal.json" ] || exit 1
     PYTHONPATH="$DEX_LOCAL_ONLY_RUNTIME" python3 \
       "$DEX_LOCAL_ONLY_RUNTIME/core/migrations/preserve_local_only_paths.py" capture-rewind \
       --repo "$PWD" --journal "$DEX_LOCAL_ONLY_JOURNAL" \

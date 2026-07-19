@@ -27,6 +27,7 @@ from core.utils.tracked_ignored import (
 
 POLICY_RELATIVE = Path("core/migrations/tracked-ignored-policy.yaml")
 MANIFEST_NAME = "journal.json"
+PUBLICATION_SCHEMA_VERSION = 1
 INDEX_FLAGS = {
     "0",
     "8000",
@@ -151,6 +152,14 @@ def _write_journal(journal_dir: Path, payload: dict[str, Any]) -> None:
     finally:
         if os.path.exists(temporary_name):
             os.unlink(temporary_name)
+
+
+def _fsync_directory(path: Path) -> None:
+    descriptor = os.open(path, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
 
 
 def _reject_duplicate_json_keys(pairs: list[tuple[str, object]]) -> dict[str, object]:
@@ -369,6 +378,105 @@ def _generation_path(journal_dir: Path) -> Path:
     return journal_dir.with_name(f".{journal_dir.name}-generation-{uuid.uuid4().hex}")
 
 
+def _publication_intent_path(journal_dir: Path) -> Path:
+    return journal_dir.with_name(f".{journal_dir.name}-publication.json")
+
+
+def _write_publication_intent(journal_dir: Path, generation: Path, archive: Path | None) -> None:
+    intent_path = _publication_intent_path(journal_dir)
+    descriptor, temporary_name = tempfile.mkstemp(prefix=f".{journal_dir.name}-publication.", dir=journal_dir.parent)
+    payload = {
+        "schema_version": PUBLICATION_SCHEMA_VERSION,
+        "generation": generation.name,
+        "archive": archive.name if archive is not None else None,
+    }
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+            json.dump(payload, handle, sort_keys=True)
+            handle.write("\n")
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.chmod(temporary_name, 0o600)
+        os.replace(temporary_name, intent_path)
+        _fsync_directory(journal_dir.parent)
+    finally:
+        if os.path.exists(temporary_name):
+            os.unlink(temporary_name)
+
+
+def _read_publication_intent(journal_dir: Path) -> tuple[Path, Path | None] | None:
+    intent_path = _publication_intent_path(journal_dir)
+    if not intent_path.exists() and not intent_path.is_symlink():
+        return None
+    _require_private_path(intent_path, directory=False)
+    try:
+        payload = json.loads(
+            intent_path.read_text(encoding="utf-8"),
+            object_pairs_hook=_reject_duplicate_json_keys,
+        )
+    except (OSError, json.JSONDecodeError) as error:
+        raise MigrationError(f"could not read preservation publication intent: {error}") from error
+    if not isinstance(payload, dict) or set(payload) != {"schema_version", "generation", "archive"}:
+        raise MigrationError("preservation publication intent has unexpected fields")
+    generation_name = payload.get("generation")
+    archive_name = payload.get("archive")
+    generation_prefix = f".{journal_dir.name}-generation-"
+    if (
+        payload.get("schema_version") != PUBLICATION_SCHEMA_VERSION
+        or not isinstance(generation_name, str)
+        or not generation_name.startswith(generation_prefix)
+        or len(generation_name) != len(generation_prefix) + 32
+        or any(character not in "0123456789abcdef" for character in generation_name[-32:])
+    ):
+        raise MigrationError("preservation publication intent generation is invalid")
+    if archive_name is not None and (
+        not isinstance(archive_name, str)
+        or not archive_name.startswith("archive-")
+        or len(archive_name) != len("archive-") + 32
+        or any(character not in "0123456789abcdef" for character in archive_name[-32:])
+    ):
+        raise MigrationError("preservation publication intent archive is invalid")
+    return journal_dir.with_name(generation_name), journal_dir.with_name(archive_name) if archive_name else None
+
+
+def _finish_publication_recovery(journal_dir: Path) -> bool:
+    intent = _read_publication_intent(journal_dir)
+    if intent is None:
+        return False
+    generation, archive = intent
+    canonical_exists = journal_dir.exists() or journal_dir.is_symlink()
+    generation_exists = generation.exists() or generation.is_symlink()
+    archive_exists = archive is not None and (archive.exists() or archive.is_symlink())
+
+    if canonical_exists and not generation_exists:
+        _read_journal(journal_dir)
+    elif generation_exists:
+        _read_journal(generation)
+        if canonical_exists:
+            _read_journal(journal_dir)
+            if archive is None or archive_exists:
+                raise MigrationError("preservation publication recovery state is ambiguous")
+            os.replace(journal_dir, archive)
+            _fsync_directory(journal_dir.parent)
+        elif archive is not None:
+            if not archive_exists:
+                raise MigrationError("preservation publication recovery archive is missing")
+            _read_journal(archive)
+        os.replace(generation, journal_dir)
+        _fsync_directory(journal_dir.parent)
+        _read_journal(journal_dir)
+    elif not canonical_exists and archive_exists and archive is not None:
+        _read_journal(archive)
+        os.replace(archive, journal_dir)
+        _fsync_directory(journal_dir.parent)
+        _read_journal(journal_dir)
+    else:
+        raise MigrationError("preservation publication recovery has no valid canonical generation")
+    _publication_intent_path(journal_dir).unlink()
+    _fsync_directory(journal_dir.parent)
+    return True
+
+
 def _create_journal_generation(
     repo: Path,
     journal_dir: Path,
@@ -403,16 +511,23 @@ def _create_journal_generation(
 
 def _publish_generation(journal_dir: Path, generation: Path, existing: dict[str, Any] | None) -> None:
     parent_before = _require_private_path(journal_dir.parent, directory=True)
-    archive: Path | None = None
-    if existing is not None:
-        archive = journal_dir.with_name(f"archive-{uuid.uuid4().hex}")
-        os.replace(journal_dir, archive)
+    archive = journal_dir.with_name(f"archive-{uuid.uuid4().hex}") if existing is not None else None
+    _write_publication_intent(journal_dir, generation, archive)
     try:
+        if archive is not None:
+            os.replace(journal_dir, archive)
+            _fsync_directory(journal_dir.parent)
         os.replace(generation, journal_dir)
+        _fsync_directory(journal_dir.parent)
     except BaseException:
         if archive is not None and not journal_dir.exists():
             os.replace(archive, journal_dir)
+            _fsync_directory(journal_dir.parent)
+        _publication_intent_path(journal_dir).unlink(missing_ok=True)
+        _fsync_directory(journal_dir.parent)
         raise
+    _publication_intent_path(journal_dir).unlink()
+    _fsync_directory(journal_dir.parent)
     if _identity(journal_dir.parent.lstat()) != _identity(parent_before):
         raise MigrationError("preservation storage parent identity changed during generation publish")
 
@@ -532,9 +647,12 @@ def _restore_exact_worktree(
 
 
 def capture(repo: Path, journal_dir: Path, policy_path: Path | None = None) -> dict[str, Any]:
+    recovered = _finish_publication_recovery(journal_dir)
     existing: dict[str, Any] | None = None
     if journal_dir.exists() or journal_dir.is_symlink():
         existing = _read_journal(journal_dir)
+        if recovered and existing.get("phase") == "captured":
+            return existing
         if existing.get("phase") != "rewound":
             raise MigrationError(f"journal cannot recapture from phase: {existing.get('phase')}")
     policy_paths, _, policy_hash = _load_policy(repo, policy_path)
@@ -554,6 +672,7 @@ def capture(repo: Path, journal_dir: Path, policy_path: Path | None = None) -> d
 
 
 def capture_rewind(repo: Path, journal_dir: Path, policy_path: Path | None = None) -> dict[str, Any]:
+    _finish_publication_recovery(journal_dir)
     journal = _read_journal(journal_dir)
     policy_paths, local_paths, policy_hash = _load_policy(repo, policy_path)
     try:
@@ -574,6 +693,7 @@ def capture_rewind(repo: Path, journal_dir: Path, policy_path: Path | None = Non
 
 
 def apply(repo: Path, journal_dir: Path, policy_path: Path | None = None) -> dict[str, Any]:
+    _finish_publication_recovery(journal_dir)
     journal_path = journal_dir / MANIFEST_NAME
     if journal_path.exists():
         journal = _read_journal(journal_dir)
@@ -697,6 +817,7 @@ def rewind(
     policy_path: Path | None = None,
     target_phase: str | None = None,
 ) -> dict[str, Any]:
+    _finish_publication_recovery(journal_dir)
     journal = _read_journal(journal_dir)
     restore_original_worktree = journal.get("phase") in {
         "captured",

@@ -191,6 +191,7 @@ test('primary rollback captures newest local-only copies before reset and rewind
   assert.ok(rewind > reset, 'rewind must follow hard reset and user-data restoration');
   assert.match(block, /System\/Session_Learnings\/2026-01-29\.md/);
   assert.match(block, /System\/Session_Learnings\/2026-01-30\.md/);
+  assert.doesNotMatch(block, /\[ -f "\$DEX_LOCAL_ONLY_JOURNAL\/journal\.json" \]/);
 });
 
 test('rollback manifest cleanup removes newer core files but never user data', (t) => {
