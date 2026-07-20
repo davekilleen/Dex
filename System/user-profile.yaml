@@ -116,8 +116,21 @@ journaling:
   # Weekly journal: patterns and synthesis
   weekly: false
 
+# Optional capability rooms. Meetings, people, and tasks are the always-on spine
+# and intentionally have no switch here.
+capabilities:
+  career:
+    enabled: false
+  companies:
+    enabled: false
+  quarter_goals:
+    enabled: false
+
 # Quarterly Planning Configuration
 # Controls whether you use quarterly goal setting
+# Legacy compatibility: when capabilities.quarter_goals is absent, Dex reads
+# quarterly_planning.enabled once as a fallback. New writes use the capability
+# key and keep this legacy switch aligned; the migration never runs in reverse.
 quarterly_planning:
   # Whether quarterly planning is enabled
   enabled: false

@@ -61,6 +61,10 @@ core/mcp-premium/
 05-Areas/
 07-Archives/
 
+# Shipped optional-room starters are brain assets, not user PARA content.
+!.claude/skills/_available/capabilities/
+!.claude/skills/_available/capabilities/**
+
 # User customization notes
 System/my-customizations.md
 

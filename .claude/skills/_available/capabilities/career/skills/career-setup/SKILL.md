@@ -6,7 +6,7 @@ disable-model-invocation: true
 
 ## Purpose
 
-Initialize your Career Development system in Dex. Captures your job description, career ladder, latest review, and long-term growth goals to create a foundation for ongoing career coaching.
+Initialize the enabled Career room in Dex. Captures your job description, career ladder, latest review, and long-term growth goals to create a foundation for ongoing career coaching.
 
 ## Usage
 
