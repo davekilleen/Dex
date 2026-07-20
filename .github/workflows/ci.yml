@@ -6,6 +6,9 @@ on:
     branches: [main, beta]
     tags: ['v*']
   pull_request:
+  # Merge queue: CI validates the QUEUED BATCH exactly as it will land on main,
+  # then everything in the batch merges together on one green run.
+  merge_group:
 # A superseded push to the same PR/branch cancels its stale in-flight run.
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
