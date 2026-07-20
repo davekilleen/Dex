@@ -26,16 +26,15 @@ except:
 TOOL_LOWER=$(echo "$TOOL_NAME" | tr '[:upper:]' '[:lower:]')
 
 # === MCP TOOL PREFERENCE GUARDS ===
-# Scrapling is the default scraper. Block Firecrawl/WebFetch/Apify RAG browser.
+# Scrapling is the preferred configured scraper. Block unsafe scraper MCPs while
+# leaving native WebFetch available as the fallback when Scrapling is absent.
 
-BLOCKED_SCRAPERS="firecrawl_scrape firecrawl_search firecrawl_crawl firecrawl_map firecrawl_extract firecrawl_batch_scrape firecrawl_deep_research firecrawl_generate_llmstxt webfetch rag-web-browser rag_web_browser"
-
-for scraper in $BLOCKED_SCRAPERS; do
-    if echo "$TOOL_LOWER" | grep -q "$scraper"; then
+case "$TOOL_LOWER" in
+    mcp__firecrawl__*|mcp__rag-web-browser__*|mcp__rag_web_browser__*)
         echo "WRONG SCRAPER: Scrapling is the configured default. Use scrapling get/fetch/stealthy_fetch instead of $TOOL_NAME."
         exit 2
-    fi
-done
+        ;;
+esac
 
 # Nothing further to check for non-Bash tools
 if [ -z "$COMMAND" ]; then
