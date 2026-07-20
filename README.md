@@ -502,7 +502,7 @@ Eight jobs that happen reliably every day:
 | **Start Each Day Focused** | One command gives you three priorities. Heavy meeting day? Drops to two. Won't let you overcommit. |
 | **Never Miss a Commitment** | Promises made in meetings extracted automatically. Three days old? Flagged. You can't forget. |
 | **Track Relationships** | Before any call: what you discussed last time, open items, what they care about. Never walk in cold. |
-| **Accelerate Career Growth** | Captures evidence automatically. Feedback from 1:1s, achievements, skills growth. Review-ready when you need it. |
+| **Accelerate Career Growth** | Surfaces evidence as you work and saves what you approve. Feedback from 1:1s, achievements, skills growth. Review-ready when you need it. |
 | **Manage Tasks Reliably** | Work MCP syncs tasks with unique IDs across all files. Check off once, updates everywhere. Deduplication prevents doubles. Priority limits stop overcommit. Strategic alignment required. |
 | **Reflect & Improve** | Captures mistakes → rules. Learns preferences. Each session makes the next better. |
 | **Keep Projects Moving** | Auto-detects stalls (12+ days no update). Surfaces blockers. You know what needs attention. |
@@ -522,7 +522,7 @@ Out of the box, working immediately:
 - **Role-based setup** - 31 roles from CEO to IC, scaffolds appropriate folder structure and workflows. Onboarding MCP enforces validation (email domain required for Internal/External person routing) with session resume capability
 - **Meeting intelligence** - Process transcripts into structured notes with action items auto-synced. Works with Granola MCP (included), or paste transcripts from any source - system recognizes and processes them
 - **Task management with unique IDs (Work MCP)** - Tasks sync everywhere automatically (meeting notes, person pages, project files). Check off once, updates everywhere. Deduplication prevents doubles. Priority limits stop overcommit.
-- **Career development coach** - Captures evidence automatically, prepares reviews, assesses promotion readiness
+- **Career development coach** - Surfaces evidence as you work (you approve what's saved), prepares reviews, assesses promotion readiness
 - **Person & company pages** - Relationship context for individuals + organization-level rollups (contacts, meetings, tasks)
 - **Compound learning** - Captures preferences and mistakes. Every session makes the next one better.
 - **Self-upgrading system** - Checks for new Claude Code features daily. When detected, explains what they mean for YOUR system and suggests implementations. Like having a concierge who reads release notes you'll never read.
@@ -574,14 +574,16 @@ One decision instead of many. Immediate filing.
 
 Great work happens daily, but evidence disappears. Review time becomes a scramble to remember what you accomplished.
 
-Run `/career-setup` once (job description, career ladder, recent review, growth goals). From that point forward, Dex automatically captures career evidence:
+Run `/career-setup` once (job description, career ladder, recent review, growth goals — and optionally your manager's email). From that point forward, Dex surfaces career evidence as you work and asks before saving it:
 
-| When | What Gets Captured |
+| When | What Dex Surfaces |
 |------|-------------------|
-| Daily reviews | Achievements worth saving for promotion discussions |
-| Manager 1:1s (via Granola) | Feedback and development context |
-| Project completions | Impact and skills demonstrated |
-| Weekly reviews | Work tagged with career skills |
+| Daily reviews | The day's achievements worth saving for promotion discussions |
+| Weekly reviews | Completed goals and projects finished this week |
+| Manager 1:1s (via Granola) | Feedback from 1:1s — if you set your manager's email |
+| Career coaching | Metric-backed achievements, detected as you talk |
+
+Every one of these *prompts* you — evidence lands in your folder because you approved it, not behind your back.
 
 ### Your Personal Career Coach
 

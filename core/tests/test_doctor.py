@@ -29,6 +29,7 @@ QUICK_IDS = [
     "jobs.fresh",
     "preflight.queue",
     "entity.engine",
+    "career.evidence",
     "customizations.skills",
     "customizations.mcp",
     "core.drift",
@@ -295,6 +296,73 @@ def test_entity_engine_probe_reports_gardener_statuses(monkeypatch, context):
     assert "gardener off (disabled), 1 locked" in result.detail
 
 
+def _write_career_probe_files(context, *, hook=True, setup_age_days=1, evidence=1):
+    career = context.core_path("CAREER_DIR")
+    evidence_dir = career / "Evidence"
+    if evidence_dir.exists():
+        shutil.rmtree(evidence_dir)
+    evidence_dir.mkdir(parents=True, exist_ok=True)
+    for index in range(evidence):
+        (evidence_dir / f"achievement-{index}.md").write_text("# win\n")
+    (evidence_dir / "README.md").write_text("# Career Evidence\n")
+
+    ladder = career / "Career_Ladder.md"
+    ladder.write_text("# Ladder\n")
+    setup_time = (NOW - timedelta(days=setup_age_days)).timestamp()
+    os.utime(ladder, (setup_time, setup_time))
+
+    profile = context.core_path("USER_PROFILE_FILE")
+    profile.parent.mkdir(parents=True, exist_ok=True)
+    profile.write_text("name: Test\n")
+    os.utime(profile, (setup_time, setup_time))
+
+    hook_path = context.vault_root / doctor.CAREER_EVIDENCE_HOOK
+    if hook:
+        hook_path.parent.mkdir(parents=True, exist_ok=True)
+        hook_path.write_text("// hook\n")
+    elif hook_path.exists():
+        hook_path.unlink()
+
+
+def test_career_evidence_probe_reports_working_off_broken_and_could_not_check(context):
+    # OFF — no Career folder at all.
+    assert doctor._probe_career_evidence(context).verdict == "OFF"
+
+    # OK — set up recently, hook present, evidence exists.
+    _write_career_probe_files(context)
+    working = doctor._probe_career_evidence(context)
+    assert working.verdict == "OK"
+    assert "1 evidence files" in working.detail
+
+    # BROKEN — the one real capture hook is missing.
+    _write_career_probe_files(context, hook=False)
+    missing_hook = doctor._probe_career_evidence(context)
+    assert missing_hook.verdict == "BROKEN"
+    assert "hook is missing" in missing_hook.detail
+
+    # BROKEN — old setup that has never produced any evidence.
+    _write_career_probe_files(context, setup_age_days=90, evidence=0)
+    stale = doctor._probe_career_evidence(context)
+    assert stale.verdict == "BROKEN"
+    assert "no evidence has ever been captured" in stale.detail
+
+    # OK — old setup but evidence exists is fine.
+    _write_career_probe_files(context, setup_age_days=90, evidence=2)
+    assert doctor._probe_career_evidence(context).verdict == "OK"
+
+
+def test_career_evidence_probe_reports_could_not_check(monkeypatch, context):
+    _write_career_probe_files(context)
+
+    def boom(_self, _name):
+        raise OSError("simulated filesystem failure")
+
+    monkeypatch.setattr(doctor.DoctorContext, "core_path", boom)
+    result = doctor._probe_career_evidence(context)
+    assert result.verdict == "UNKNOWN"
+    assert "could not be checked" in result.detail
+
+
 def test_registry_ids_match_the_approved_spec():
     assert [definition.id for definition in doctor.QUICK_CHECKS] == QUICK_IDS
     assert [definition.id for definition in doctor.DEEP_CHECKS] == DEEP_IDS
@@ -446,7 +514,7 @@ def test_summary_counts_each_exact_verdict(monkeypatch, context):
 
     report = doctor.collect(context=context)
 
-    assert report["summary"] == {"ok": 12, "off": 1, "broken": 1, "unknown": 1}
+    assert report["summary"] == {"ok": 13, "off": 1, "broken": 1, "unknown": 1}
     assert report["instruments"]["completed"] == len(QUICK_IDS)
 
 

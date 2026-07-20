@@ -283,15 +283,17 @@ When the user says they completed a task (any phrasing):
 - Don't require exact task title - use fuzzy matching on keywords
 
 ### Career Evidence Capture
-If `05-Areas/Career/` folder exists, the system automatically captures career development evidence:
-- **During `/daily-review`**: Prompt for achievements worth capturing for career growth
-- **During `/career-coach`**: Achievements with quantifiable metrics are auto-detected and captured as evidence without manual prompting
-- **From Granola meetings**: Extract feedback and development discussions from manager 1:1s
-- **Project completions**: Suggest capturing impact and skills demonstrated
+If `05-Areas/Career/` folder exists, Dex surfaces career development evidence as you work
+and **prompts before saving** — nothing is written to the Evidence folder without the
+user's say-so:
+- **During `/daily-review`**: Prompt for the day's achievements worth capturing (only if something clears the bar)
+- **During `/week-review`**: Scan completed goals/priorities (via Career MCP `scan_work_for_evidence`) and projects archived to `07-Archives/Projects/` this week, offer the strongest as evidence
+- **From manager 1:1s** (via `/process-meetings`): If `career.manager_email` is set in `System/user-profile.yaml` and a synced meeting is a 1:1 with that manager, scan the notes for feedback and offer to capture it. Off unless a manager is configured (set via `/career-setup`).
+- **During `/career-coach`**: Achievements with quantifiable metrics are auto-detected during coaching sessions
 - **Skill tracking**: Tag tasks/goals with `# Career: [skill]` to track skill development over time. **If QMD is available**, the Career MCP also detects skill demonstration *without* explicit tags — semantically matching achievements to competencies (e.g., a task about "designing the API migration strategy" matches the "System Design" competency even without a `# Career: System Design` tag).
-- **Weekly reviews**: Scan for completed work tagged with career skills, prompt evidence capture
 - **Ad-hoc**: When user says "capture this for career evidence", save to appropriate folder
 - Evidence accumulates in `05-Areas/Career/Evidence/` for reviews and promotion discussions
+- `/dex-doctor` includes a `career.evidence` check that flags if the capture hook is missing or setup is stale with no evidence ever captured
 
 ### Person Pages
 Maintain pages for people the user interacts with:

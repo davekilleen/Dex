@@ -47,6 +47,7 @@ If items found:
 
 ### 2. Project Activity
 - `04-Projects/**/*.md` — Modified this week
+- `07-Archives/Projects/` — Folders that arrived here this week (a project moving here is Dex's "project finished" signal — used for career evidence)
 
 ### 3. Meetings & People
 - `00-Inbox/Meetings/*.md` — Meeting notes from this week
@@ -399,6 +400,40 @@ Based on this week's progress:
 *Weekly completion: X of 3 priorities*
 *Task completion: X%*
 ```
+
+---
+
+## Career Evidence Scan (If Career System Enabled)
+
+**Only run this if `05-Areas/Career/` exists.** If it doesn't, skip silently — the user
+hasn't set up the Career system (`/career-setup`). This populates the "🏆 Career Evidence"
+section of the output above.
+
+Find work from this week worth keeping for reviews and promotions:
+
+1. **Completed goals & priorities:** Call `scan_work_for_evidence(impact_level: "high")`
+   from Career MCP. It returns completed quarterly goals and priorities (≥80% done, or
+   tagged with career metadata) as high-impact candidates for evidence. Focus on ones that
+   were finished or moved substantially *this week*.
+2. **Finished projects:** List `07-Archives/Projects/` for folders with an mtime in the
+   last 7 days (a project archived this week = a completed project). Read each one's
+   `README.md` for objective, outcome, and stakeholders.
+3. **Merge and rank** the candidates; surface at most the top 3–4 (don't dump everything).
+
+Feed the results into the "🏆 Career Evidence" output section, then offer to save:
+
+> "A few things from this week look worth keeping for your career evidence:
+> - **Shipped the pricing migration** — demonstrates delivery under deadline
+> - **Closed out Project Juno** (archived Tuesday) — cross-team migration, stakeholder mgmt
+>
+> Want me to save any of these to `05-Areas/Career/Evidence/`?"
+
+- For a goal/priority the user picks: call `generate_evidence_from_work(work_id, work_type)`
+  from Career MCP (it writes the evidence file from the work item's metadata).
+- For an archived project the user picks: write an evidence file to
+  `05-Areas/Career/Evidence/Achievements/` using the
+  `System/Templates/Career_Evidence_Achievement.md` format, drawing from the project README.
+- If nothing clears the bar, or the user declines: skip silently, don't re-ask.
 
 ---
 

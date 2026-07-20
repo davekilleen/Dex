@@ -76,16 +76,30 @@ Please share:
 2. Your job description (copy/paste from your company's JD, or just describe it in your own words)
 3. Your team/department
 4. Key responsibilities
+5. Your manager's name and work email (optional)
 
 You can be as detailed or brief as you like — whatever helps paint the picture.
 ```
 
-After they respond, **acknowledge and summarize**:
+**Why the manager's email?** It's how Dex recognises your 1:1s during `/process-meetings`
+and pulls manager feedback into your career evidence automatically. It's optional — the
+other capture channels work without it — but without it, manager-1:1 feedback extraction
+stays off.
+
+After they respond, **acknowledge and summarize**. If they gave a manager name/email,
+write it to `System/user-profile.yaml` under the `career:` block (create the block if it's
+missing — see `System/user-profile.example.yaml` for the shape):
+
+```yaml
+career:
+  manager_name: "[NAME]"
+  manager_email: "[EMAIL]"
+```
 
 ```markdown
 Got it. So you're a [ROLE] on the [TEAM], focused on [SUMMARY OF RESPONSIBILITIES].
 
-✓ Role captured.
+✓ Role captured.[ Manager saved — I'll watch for your 1:1s.]
 
 Next up: your career ladder.
 ```
@@ -470,7 +484,8 @@ This folder captures evidence of your professional growth — achievements, feed
 
 ## How This Works
 
-As you work, Dex automatically captures evidence that supports your career progression:
+Dex surfaces evidence as you work and asks before saving it — so this folder fills up
+without you having to remember to document things:
 
 - **Achievements/**: Major wins, successful projects, measurable impact
 - **Feedback_Received/**: Praise from colleagues, stakeholders, manager feedback
@@ -478,12 +493,16 @@ As you work, Dex automatically captures evidence that supports your career progr
 
 ---
 
-## When Evidence Gets Captured
+## When Evidence Gets Surfaced
 
-1. **During `/review`**: End-of-day reflections prompt for notable achievements
-2. **From Granola meetings**: Feedback and discussions with your manager are extracted
-3. **Project completions**: When you finish projects, you'll be asked if there's career evidence worth noting
-4. **Ad-hoc**: Just tell me "capture this for my career evidence" and I'll add it
+1. **During `/daily-review`**: End-of-day reflections prompt for notable achievements
+2. **During `/week-review`**: Completed goals and projects are scanned and offered as evidence
+3. **From manager 1:1s** (via Granola): When a 1:1 with your configured manager is
+   processed, feedback in the notes is offered for capture
+4. **During `/career-coach`**: Achievements with metrics are detected as you talk
+5. **Ad-hoc**: Just tell me "capture this for my career evidence" and I'll add it
+
+Each of these *prompts* you — nothing is written to this folder without your say-so.
 
 ---
 
@@ -503,7 +522,7 @@ As you work, Dex automatically captures evidence that supports your career progr
 
 ---
 
-**This system is most powerful when it captures evidence passively as you work. Don't worry about manual updates — Dex handles it.**
+**This system is most powerful when you let Dex surface evidence as you work — it spots the moments worth keeping and offers them, so you approve rather than author.**
 ```
 
 ---
@@ -540,12 +559,12 @@ Run `/career-coach` anytime you want to:
 3. **Prepare for reviews** — Build self-assessment from accumulated evidence
 4. **Assess promotion readiness** — Gap analysis against career ladder
 
-### Automatic Capture
+### Evidence Capture (Prompted)
 
-As you use Dex:
-- **Meetings with your manager** (via Granola) → Feedback automatically extracted
-- **Daily reviews** (`/review`) → Achievements captured as career evidence
-- **Project completions** → Impact and skills demonstrated are saved
+As you use Dex, it surfaces evidence and asks before saving:
+- **Manager 1:1s** (via Granola, if you set a manager email) → feedback in the notes is offered for capture
+- **`/daily-review`** → prompts you for achievements worth keeping
+- **`/week-review`** → scans completed goals and archived projects, offers them as evidence
 
 ### Quarterly Career Check-ins
 
@@ -612,10 +631,10 @@ For now, I'll create the folder structure and you can update files when you're r
 
 After running `/career-setup` once:
 
-1. **Career folder exists** → Dex knows to capture career evidence during daily work
-2. **Granola integration** → Manager 1:1s are flagged for feedback extraction
-3. **Review prompts** → End-of-day reviews ask about achievements worth capturing
-4. **Project completions** → Prompt to add impact to career evidence
+1. **Career folder exists** → `/daily-review` and `/week-review` start surfacing career evidence
+2. **Manager email set** → `/process-meetings` recognises your 1:1s and offers to capture feedback
+3. **Review prompts** → `/daily-review` asks about achievements; `/week-review` scans completed work
+4. **Project completions** → when a project is archived, `/week-review` offers to capture its impact
 
 ---
 

@@ -7,6 +7,20 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.63.0] - Your career wins actually get captured now (2026-07-20)
+
+Dex has always promised to quietly build up a record of your best work — achievements, feedback from your manager, projects you finished — so that when review or promotion time comes, you're not scrambling to remember what you did. It turns out most of that was only ever a promise: the setup created the folder and told you evidence would be captured, but four of the five ways it was supposed to happen did nothing at all. Only evidence you captured *during* a career-coaching session was ever saved. This release makes the rest real.
+
+**What this fixes for you:**
+
+* **Your daily review now asks about wins worth keeping.** At the end of the day, if you shipped something, hit a number, or solved a hard problem, Dex offers to save it to your career evidence — one prompt, only when something genuinely clears the bar, never nagging.
+* **Your weekly review looks back for evidence you'd forget.** It scans the goals and priorities you completed and the projects you finished that week, and offers the strongest few for your record — so a big win in a busy week doesn't just evaporate.
+* **Feedback from your manager 1:1s gets captured.** Tell Dex your manager's email once (during `/career-setup`), and when it processes a 1:1 with them, it reads the notes for feedback and offers to save it. If you don't set a manager, this stays off — no guessing about who your boss is.
+* **Nothing is saved behind your back.** Every one of these *asks first*. Evidence lands in your folder because you said yes, not because Dex decided for you. The old setup text that claimed "don't worry about manual updates — Dex handles it" was rewritten to match what actually happens.
+* **`/dex-doctor` can now tell you if this is broken.** A new check flags the case where your career system is set up but has silently captured nothing — the exact failure this release fixes — so it can't quietly rot again.
+
+---
+
 ## [1.62.0] - Your integration keys stay private, and Dex never updates itself behind your back (2026-07-20)
 
 This release is a safety floor: a set of fixes that protect your private information and put you back in control of when Dex changes. Before this, a few things could happen quietly in the background that you'd never have chosen — this closes them.

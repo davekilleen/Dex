@@ -169,6 +169,7 @@ QUICK_CHECKS = (
     CheckDefinition("jobs.fresh", "Background job freshness", "_probe_jobs_fresh"),
     CheckDefinition("preflight.queue", "Preflight health", "_probe_preflight_queue"),
     CheckDefinition("entity.engine", "Entity engine", "_probe_entity_engine"),
+    CheckDefinition("career.evidence", "Career evidence capture", "_probe_career_evidence"),
     CheckDefinition(
         "customizations.skills",
         "Skill customizations",
@@ -1732,6 +1733,70 @@ def _probe_entity_engine(context: DoctorContext) -> ProbeResult:
         return ProbeResult("OK", detail)
     except (ImportError, OSError, ValueError, TypeError, json.JSONDecodeError) as error:
         return ProbeResult("UNKNOWN", f"Entity engine files could not be checked: {_one_line(error)}")
+
+
+CAREER_EVIDENCE_HOOK = Path(".claude/hooks/career-evidence-capture.cjs")
+CAREER_SETUP_STALE_AFTER = timedelta(days=60)
+
+
+def _probe_career_evidence(context: DoctorContext) -> ProbeResult:
+    """Report whether career evidence capture is set up and actually producing evidence.
+
+    Filesystem-only by design: it verifies the one real capture mechanism (the
+    /career-coach PostToolUse hook) exists, and flags long-term total inactivity —
+    a Career folder that was set up long ago but has never accumulated any evidence.
+    It deliberately does not judge whether evidence *should* exist for specific
+    completed work; that is /career-coach's job, not a smoke check.
+    """
+    try:
+        career_dir = context.core_path("CAREER_DIR")
+        if not career_dir.exists():
+            return ProbeResult("OFF", "Career system not set up (no 05-Areas/Career/ folder)")
+
+        evidence_dir = context.core_path("EVIDENCE_DIR")
+        evidence_count = 0
+        if evidence_dir.exists():
+            evidence_count = sum(
+                1
+                for path in evidence_dir.rglob("*.md")
+                if path.name != "README.md"
+            )
+
+        hook_path = context.vault_root / CAREER_EVIDENCE_HOOK
+        if not hook_path.is_file():
+            return ProbeResult(
+                "BROKEN",
+                "The /career-coach evidence-capture hook is missing "
+                f"({CAREER_EVIDENCE_HOOK}) — no capture channel can fire; "
+                f"{evidence_count} evidence files present",
+            )
+
+        ladder_path = career_dir / "Career_Ladder.md"
+        profile_path = context.core_path("USER_PROFILE_FILE")
+        setup_mtimes = [
+            path.stat().st_mtime
+            for path in (ladder_path, profile_path)
+            if path.exists()
+        ]
+        setup_age_known = bool(setup_mtimes)
+        stale_setup = False
+        if setup_age_known:
+            newest_setup = datetime.fromtimestamp(max(setup_mtimes), tz=timezone.utc)
+            stale_setup = context.now - newest_setup > CAREER_SETUP_STALE_AFTER
+
+        detail = (
+            f"Career system set up; capture hook present; {evidence_count} evidence files"
+        )
+        if stale_setup and evidence_count == 0:
+            return ProbeResult(
+                "BROKEN",
+                f"{detail}; setup is over {CAREER_SETUP_STALE_AFTER.days} days old but no "
+                "evidence has ever been captured — capture may be silently failing "
+                "(run /career-coach or /week-review to confirm)",
+            )
+        return ProbeResult("OK", detail)
+    except (OSError, ValueError, TypeError) as error:
+        return ProbeResult("UNKNOWN", f"Career evidence files could not be checked: {_one_line(error)}")
 
 
 def _probe_doctor_self(_context: DoctorContext) -> ProbeResult:

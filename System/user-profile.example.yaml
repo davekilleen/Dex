@@ -58,6 +58,16 @@ communication:
   # Coaching style preference (for career coaching)
   coaching_style: "collaborative"  # options: encouraging, collaborative, challenging
 
+# Career Configuration
+# Optional. Populated by /career-setup. Powers automatic career evidence capture
+# (see CLAUDE.md → "Career Evidence Capture"). Leave blank to skip manager-1:1
+# feedback extraction — the other capture channels still work without it.
+career:
+  # Who your manager is. Used to recognise 1:1s in /process-meetings and pull
+  # feedback into your career evidence. Email is the reliable match; name is a fallback.
+  manager_name: ""
+  manager_email: ""
+
 # Strategic Pillars
 # Defined during onboarding, sync'd with System/pillars.yaml
 pillars: []

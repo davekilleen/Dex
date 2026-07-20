@@ -152,6 +152,39 @@ For each participant in synced meetings:
    - Keep max 20 entries (remove oldest if needed)
    - Update "Last Interaction" in frontmatter
 
+### Step 3.5: Manager 1:1 Feedback Capture (If Career System Enabled)
+
+**Only run this if `05-Areas/Career/` exists AND `System/user-profile.yaml` has a
+`career.manager_email` (or `career.manager_name`) set.** If either is missing, skip
+silently — this channel is opt-in via `/career-setup` and is off by default.
+
+For each synced meeting, decide if it's a manager 1:1:
+1. Read `career.manager_email` / `career.manager_name` from `System/user-profile.yaml`.
+2. A meeting qualifies as a 1:1 only if it has **exactly two attendees** and the other
+   attendee's email matches `career.manager_email` (fall back to a name match against
+   `career.manager_name` only when no attendee emails are present).
+
+> **Known limitation:** this heuristic can misfire on a genuine 2-person sync that happens
+> to be with your manager, and misses 1:1s folded into a larger recurring meeting. That's
+> acceptable — it only ever *offers* to save evidence, never writes silently.
+
+For a qualifying 1:1, scan the meeting notes/transcript for feedback-shaped content —
+praise, constructive criticism, development suggestions, or recognition of impact. Use the
+same marker approach as the `/career-coach` capture hook (percentages, "delivered/achieved/
+improved/led", "feedback", "great work", "area to develop"); **if QMD is available**, also
+run `qmd query "feedback on my work / areas to improve"` against the note to catch feedback
+that doesn't use obvious markers. If QMD is unavailable, the marker scan alone is fine.
+
+If feedback is found, offer to capture it (don't auto-save):
+
+> "Your 1:1 with [Manager] had some feedback worth keeping: *'[short quote]'*. Save it to
+> your career evidence?"
+
+- If yes: write to `05-Areas/Career/Evidence/Feedback_Received/` using the
+  `System/Templates/Career_Evidence_Feedback.md` format (date, source meeting, the
+  feedback, and what it implies for development).
+- If no feedback is found, or the user declines: skip silently, don't re-ask.
+
 ### Step 4: Update Company Pages
 
 For each unique external company domain:
