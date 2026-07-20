@@ -27,6 +27,7 @@ except ImportError:  # pragma: no cover - history cleanup already requires Unix 
 
 HistoryResult = Literal[
     "optional-tool-unavailable",
+    "optional-platform-unsupported",
     "prepared",
     "history-clean",
     "history-cleanup-pending",
@@ -440,6 +441,33 @@ def _fd_path(descriptor: int) -> Path:
     raise OSError("descriptor paths are unavailable")
 
 
+def _directory_fd_substrate_available() -> bool:
+    """Functionally probe whether a directory fd can be reopened by derived path.
+
+    The engine pins the vault root by opening it as a directory descriptor and then
+    re-deriving a path to it via ``_fd_path`` (Linux ``/proc/self/fd`` or, as a fallback,
+    ``/dev/fd``). Linux ``/proc/self/fd/<n>`` resolves back to the directory; macOS
+    ``/dev/fd/<n>`` for a *directory* descriptor fails ``ENOTDIR``. Probe the real runtime
+    behaviour rather than trusting ``sys.platform`` so exotic setups (a ``/proc``-less
+    Linux, a restricted container) are judged by what actually works, and fail closed on
+    any error. Performs no writes.
+    """
+    flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)
+    try:
+        descriptor = os.open(tempfile.gettempdir(), flags)
+    except OSError:
+        return False
+    try:
+        reopened = os.open(_fd_path(descriptor), flags)
+    except OSError:
+        return False
+    else:
+        os.close(reopened)
+        return True
+    finally:
+        os.close(descriptor)
+
+
 def _open_directory_chain_at(parent_descriptor: int, parts: tuple[str, ...], *, create: bool = False) -> int:
     flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0)
     descriptor = os.dup(parent_descriptor)
@@ -632,8 +660,15 @@ def prepare_history_cleanup(
     external_backup_evidence: str | None = None,
     filter_repo: Path | None = None,
     now: Callable[[], datetime] = _now,
+    substrate_probe: Callable[[], bool] = _directory_fd_substrate_available,
 ) -> HistoryPreview:
-    """Prepare a verified recovery bundle; never rewrite history."""
+    """Prepare a verified recovery bundle; never rewrite history.
+
+    ``substrate_probe`` is an explicit override hook for the directory-fd platform gate.
+    Production callers rely on the default functional probe; tests that shim the fd
+    substrate can inject ``lambda: True`` to exercise the deep engine, or ``lambda: False``
+    to deterministically drive the unsupported-platform refusal on any host.
+    """
     if security_state != "remediated" or not explicit_choice:
         raise PermissionError("optional history preparation requires remediated security and explicit choice")
     if not credential_needles or any(not item for item in credential_needles):
@@ -655,6 +690,13 @@ def prepare_history_cleanup(
             "Optional history privacy cleanup is unavailable because a supported preinstalled git-filter-repo was not found. Security remains fixed; Dex did not install or run anything. To enable the guided path, install git-filter-repo yourself from its official platform package, verify that `git-filter-repo --version` reports supported version 2.38.0 or newer, then rerun Doctor. Manual advanced path: first create and verify a private local backup, use a separately reviewed offline history-cleaning procedure, and rerun the credential scanner before any publication.",
         )
     _require_repository_quiescence(root)
+    if not substrate_probe():
+        return HistoryPreview(
+            "optional-platform-unsupported",
+            None,
+            None,
+            "Optional history privacy cleanup is unavailable on this system because the guided path requires an inode-pinned directory file-descriptor substrate (Linux `/proc/self/fd`) that this platform does not provide. Security remains fixed; Dex did not install, run, or change anything, and left your repository and its history untouched. To use the guided path, run it on Linux (a native Linux machine, WSL2, or a Linux container that exposes `/proc`). Manual advanced path: on any platform, first create and verify a private local backup, use a separately reviewed offline history-cleaning procedure, and rerun the credential scanner before any publication. Even after a successful cleanup, a revoked value can remain locally recoverable until you also expire local backups and run repository garbage collection.",
+        )
     with _acquire_history_lifecycle_lock(root, create=True) as lifecycle_lock:
         pinned_root = _fd_path(lifecycle_lock.root_descriptor)
         _prune_incomplete_transactions(lifecycle_lock.backup_descriptor)

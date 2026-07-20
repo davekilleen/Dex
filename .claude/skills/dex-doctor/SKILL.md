@@ -58,6 +58,13 @@ transaction ID, selected refs, recovery-bundle evidence, and this exact consent 
 
 `CLEAN OPTIONAL HISTORY <transaction-id>`
 
+If `prepare_history_cleanup` returns `optional-tool-unavailable` or
+`optional-platform-unsupported`, surface its `guidance` verbatim and stop; both are calm honest
+states, never a current-danger warning. `optional-platform-unsupported` means this operating
+system lacks the directory file-descriptor substrate the guided path needs (it runs on Linux,
+including WSL2 or a Linux container; macOS is not supported). No recovery state was created; offer
+the manual advanced path and note that history cleanup is optional privacy hygiene.
+
 Call `apply_history_cleanup` only after the user types that string exactly. Preparation must have
 already produced and verified the mode-`0700` transaction directory and mode-`0600`
 `history.bundle`, `objects.json`, and `manifest.json` under
