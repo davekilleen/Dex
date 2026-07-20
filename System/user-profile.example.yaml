@@ -107,6 +107,13 @@ journaling:
   # Weekly journal: patterns and synthesis
   weekly: false
 
+# Learning Heartbeat
+# When a session looks substantive, Dex briefly pauses at the end to capture
+# learnings automatically (System/Session_Learnings/) instead of requiring you to
+# run /review or /daily-review yourself. At most once per session per day.
+learning_heartbeat:
+  enabled: true
+
 # Quarterly Planning Configuration
 # Controls whether you use quarterly goal setting
 quarterly_planning:

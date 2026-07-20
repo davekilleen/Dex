@@ -13,7 +13,10 @@
 
 CLAUDE_DIR="$CLAUDE_PROJECT_DIR"
 SESSION_LEARNINGS_DIR="$CLAUDE_DIR/System/Session_Learnings"
-TRANSCRIPT_PATH="$1"  # Passed as argument by Claude Code
+
+# Claude Code delivers hook data as JSON on stdin, not as $1 or an env var.
+HOOK_INPUT=$(cat)
+TRANSCRIPT_PATH=$(echo "$HOOK_INPUT" | jq -r '.transcript_path // empty' 2>/dev/null)
 
 # Ensure session learnings directory exists
 mkdir -p "$SESSION_LEARNINGS_DIR"
