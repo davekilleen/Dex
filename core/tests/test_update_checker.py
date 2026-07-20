@@ -178,6 +178,15 @@ def deny_external_sockets(monkeypatch: pytest.MonkeyPatch):
 
 
 def _verifier(vault: Path, remote: Path, state: Path, **kwargs) -> UpdateVerifier:
+    # The production 10s SessionStart budget is a real wall-clock deadline
+    # (ExecutionBudget uses time.monotonic(), not the injected `now`). Under load
+    # — e.g. a slow CI runner, or right after the heavy distribution-artifact
+    # clones + `npm ci` — a git evidence command can be SIGKILLed at that deadline,
+    # surfacing as a generic EvidenceError ("evidence-invalid") and making these
+    # tests non-hermetic and order-dependent. Pin a generous budget so evidence
+    # validation is never killed by real time; tests that specifically exercise
+    # the deadline pass their own wall_clock_seconds, which setdefault preserves.
+    kwargs.setdefault("wall_clock_seconds", 3600.0)
     return UpdateVerifier(
         vault,
         state_root=state,
