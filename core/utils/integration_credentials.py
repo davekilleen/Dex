@@ -11,6 +11,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
 
+import yaml
+
 from core.utils.strict_yaml import load_yaml_bytes
 
 _NAME = re.compile(r"^[A-Z][A-Z0-9_]*$")
@@ -146,7 +148,10 @@ def mcp_credential_key_names(config_raw: bytes | None) -> frozenset[str]:
         return frozenset(names)
     try:
         document = load_yaml_bytes(config_raw, max_bytes=MAX_ACTIVE_CONFIG_BYTES)
-    except (ValueError, UnicodeDecodeError):
+    except (ValueError, UnicodeDecodeError, yaml.YAMLError):
+        # yaml.YAMLError (ParserError/ScannerError on broken YAML) is NOT a ValueError;
+        # catch it here so a malformed config.yaml falls back to the canonical name set
+        # rather than raising an uncaught parser error up the residual path.
         return frozenset(names)
     if isinstance(document, dict):
         for (service, _key), (_env_name, ref_name) in LEGACY_CREDENTIAL_FIELDS.items():

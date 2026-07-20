@@ -3,6 +3,7 @@ from pathlib import Path
 import pytest
 
 from core.utils.integration_credentials import (
+    mcp_credential_key_names,
     parse_env_assignments,
     read_vault_env,
     resolve_service_credentials,
@@ -103,3 +104,21 @@ def test_runtime_rejects_linked_env_authority(tmp_path, link_kind):
         env.hardlink_to(source)
     with pytest.raises((OSError, ValueError)):
         read_vault_env(tmp_path)
+
+
+@pytest.mark.parametrize(
+    "malformed",
+    [
+        b"todoist:\n  api_key_env_var: [unbalanced\n : : :\n",  # ParserError
+        b"todoist:\n\tapi_key_env_var: TABS\n",                  # ScannerError (tab indent)
+        b'todoist:\n  api_key_env_var: "unterminated\n',          # ScannerError
+    ],
+)
+def test_mcp_credential_key_names_survives_malformed_yaml(malformed):
+    """A syntactically-broken config.yaml raises yaml.YAMLError (a ParserError/ScannerError,
+    NOT a ValueError) from load_yaml_bytes. mcp_credential_key_names must fail safe to the
+    canonical name set rather than let the parser error crash the residual path."""
+    names = mcp_credential_key_names(malformed)
+    assert {"TODOIST_API_KEY", "TRELLO_API_KEY", "TRELLO_TOKEN", "api_key", "token"} <= names
+    # No configured-custom name could be extracted from unparseable YAML.
+    assert names == frozenset({"TODOIST_API_KEY", "TRELLO_API_KEY", "TRELLO_TOKEN", "api_key", "token"})

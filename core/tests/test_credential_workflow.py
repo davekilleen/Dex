@@ -110,3 +110,46 @@ def test_scan_and_status_share_the_same_typed_snapshot_authority(tmp_path, monke
     assert run_credential_workflow(tmp_path, "scan")["findings"] == 0
     assert run_credential_workflow(tmp_path, "status")["migration_state"] == "partial"
     assert calls == [tmp_path, tmp_path]
+
+
+def _reference_vault(root: Path) -> None:
+    config = root / "System/integrations/config.yaml"
+    config.parent.mkdir(parents=True)
+    config.write_bytes(b"todoist:\n  enabled: true\n  api_key_env_var: TODOIST_API_KEY\n")
+
+
+@pytest.mark.parametrize("action", ["status", "scan", "migrate"])
+def test_cli_refuses_malformed_config_yaml_without_crashing(tmp_path, capsys, action):
+    """A syntactically-broken config.yaml raises yaml.YAMLError (not a ValueError) deep in
+    the parse. The reachable CLI must emit the structured {"status": "refused"} rather than
+    crash with a traceback."""
+    config = tmp_path / "System/integrations/config.yaml"
+    config.parent.mkdir(parents=True)
+    config.write_bytes(b"todoist:\n  api_key_env_var: [unbalanced\n : : :\n")
+    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+
+    exit_code = credential_workflow.main([action, "--vault", str(tmp_path)])
+
+    assert exit_code == 2
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["status"] == "refused"
+    assert payload["action"] == action
+
+
+@pytest.mark.parametrize("env_present", [False, True])
+def test_scan_echoes_uninspected_worktree_for_unparseable_mcp(tmp_path, env_present):
+    """Honesty symmetry with status/migrate: when the shared inspection could not classify
+    a scope (an unparseable .mcp.json), scan must surface the same uninspected scope so a
+    needle-clean scan is never read as a clean verdict. Covers both the empty-needle branch
+    (no .env) and the report branch (a .env supplies needles)."""
+    _reference_vault(tmp_path)
+    (tmp_path / ".mcp.json").write_text('{ not valid json "TODOIST_API_KEY": rawsecret ')
+    if env_present:
+        (tmp_path / ".env").write_text('TODOIST_API_KEY="current-live-key"\n')
+        (tmp_path / ".env").chmod(0o600)
+    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+
+    scan = run_credential_workflow(tmp_path, "scan")
+
+    assert "worktree" in scan["uninspected_scopes"]
+    assert "unparseable-active-config" in scan["uninspected_reasons"]

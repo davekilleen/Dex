@@ -7,6 +7,8 @@ import json
 from pathlib import Path
 from typing import Literal
 
+import yaml
+
 from core.utils.credential_remediation import (
     CredentialEvidence,
     MigrationResult,
@@ -33,6 +35,14 @@ def _migration_json(result: MigrationResult) -> dict[str, object]:
     }
 
 
+def _ordered_union(first: tuple[str, ...], second: tuple[str, ...]) -> list[str]:
+    merged = list(first)
+    for item in second:
+        if item not in merged:
+            merged.append(item)
+    return merged
+
+
 def _scan(vault_root: Path) -> dict[str, object]:
     needles: set[bytes] = set()
     inspection = inspect_credential_migration(vault_root)
@@ -40,6 +50,11 @@ def _scan(vault_root: Path) -> dict[str, object]:
         raise ValueError("integration config exceeds scan bound")
     if inspection.config_raw is not None and inspection.values is None:
         raise ValueError("integration config could not be inspected safely")
+    # Worktree scopes the shared inspection could not classify (e.g. an unparseable
+    # .mcp.json) must surface in scan too, so a needle-clean scan is never read as a clean
+    # verdict when a scope was actually uninspected.
+    config_uninspected_scopes = tuple(inspection.result.uninspected_scopes)
+    config_uninspected_reasons = tuple(inspection.result.uninspected_reasons)
     needles.update(value.encode("utf-8") for value in (inspection.values or {}).values())
     try:
         needles.update(value.encode("utf-8") for value in read_vault_env(vault_root).values())
@@ -55,8 +70,8 @@ def _scan(vault_root: Path) -> dict[str, object]:
         return {
             "findings": 0,
             "inspected_scopes": [],
-            "uninspected_scopes": [],
-            "uninspected_reasons": [],
+            "uninspected_scopes": list(config_uninspected_scopes),
+            "uninspected_reasons": list(config_uninspected_reasons),
             "env_authority": authority_json,
         }
     report = scan_credentials(vault_root, tuple(sorted(needles)))
@@ -65,8 +80,8 @@ def _scan(vault_root: Path) -> dict[str, object]:
         "finding_ids": [finding.opaque_id for finding in report.findings],
         "finding_scopes": [finding.scope for finding in report.findings],
         "inspected_scopes": list(report.inspected_scopes),
-        "uninspected_scopes": list(report.uninspected_scopes),
-        "uninspected_reasons": list(report.uninspected_reasons),
+        "uninspected_scopes": _ordered_union(report.uninspected_scopes, config_uninspected_scopes),
+        "uninspected_reasons": _ordered_union(report.uninspected_reasons, config_uninspected_reasons),
         "env_authority": authority_json,
     }
 
@@ -113,7 +128,9 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     try:
         result = run_credential_workflow(args.vault, args.action, journal_id=args.journal_id)
-    except (OSError, UnicodeDecodeError, ValueError) as error:
+    except (OSError, UnicodeDecodeError, ValueError, yaml.YAMLError) as error:
+        # yaml.YAMLError (broken config.yaml) is not a ValueError; catch it so the CLI
+        # emits the structured {"status": "refused"} instead of crashing with a traceback.
         print(json.dumps({"action": args.action, "error": type(error).__name__, "status": "refused"}, sort_keys=True))
         return 2
     print(json.dumps(result, sort_keys=True))
