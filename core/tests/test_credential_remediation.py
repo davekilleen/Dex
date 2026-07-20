@@ -1105,6 +1105,66 @@ def _migrated_journal_payload(tmp_path: Path) -> tuple[Path, dict[str, object]]:
     return path, json.loads(path.read_text())
 
 
+def _parse_payload(payload: dict) -> credential_remediation.CredentialJournal:
+    return credential_remediation.CredentialJournal.parse(
+        (json.dumps(payload, sort_keys=True) + "\n").encode()
+    )
+
+
+# --- PublicationState cross-field invariants (CredentialTarget.__post_init__ /
+# mark_prepared). These invariants are live at runtime through the journal-parse
+# path but were previously unpaired: mutating them out left every test green. Each
+# test below tampers a real migrated journal so that ONLY the named invariant gates
+# the parse (migration phase set to "publishing" where a non-published target would
+# otherwise trip the journal-level fully_published guard first), and each is proven
+# red-when-removed. ---
+
+
+def test_pending_target_with_publication_identity_is_rejected(tmp_path):
+    """pending-no-authority: a pending target must carry no published identity."""
+    _, payload = _migrated_journal_payload(tmp_path)
+    payload["migration"]["phase"] = "publishing"
+    # env is published with an identity; relabel it pending while keeping that identity.
+    payload["postimages"]["env_publication_state"] = "pending"
+    with pytest.raises(OSError, match="pending credential target has publication authority"):
+        _parse_payload(payload)
+
+
+def test_published_target_without_identity_is_rejected(tmp_path):
+    """published-needs-identity: a published target must carry its postimage identity."""
+    _, payload = _migrated_journal_payload(tmp_path)
+    payload["postimages"]["env_identity"] = None
+    with pytest.raises(OSError, match="published credential target has invalid authority"):
+        _parse_payload(payload)
+
+
+def test_prepared_target_missing_prepared_name_is_rejected(tmp_path):
+    """prepared-needs-fields: a prepared target must carry name + prepared identity."""
+    _, payload = _migrated_journal_payload(tmp_path)
+    payload["migration"]["phase"] = "publishing"
+    postimages = payload["postimages"]
+    # Build a valid prepared config target, then drop its prepared_name.
+    postimages["config_publication_state"] = "prepared"
+    postimages["config_prepared_name"] = ".config.yaml." + "0" * 32
+    postimages["config_prepared_identity"] = list(postimages["config_identity"])
+    postimages["config_identity"] = None
+    postimages["config_prepared_name"] = None
+    with pytest.raises(OSError, match="prepared credential target has invalid authority"):
+        _parse_payload(payload)
+
+
+def test_mark_prepared_refuses_a_non_pending_target(tmp_path):
+    """mark_prepared-needs-pending: a published target cannot transition to prepared."""
+    path, _ = _migrated_journal_payload(tmp_path)
+    journal = credential_remediation.CredentialJournal.parse(path.read_bytes())
+    assert journal.config.publication_state == "published"
+    # A valid temporary name + real metadata so ONLY the pending-state guard can gate.
+    valid_temporary = ".config.yaml." + "0" * 32
+    metadata = path.stat()
+    with pytest.raises(OSError, match="invalid credential target prepare transition"):
+        journal.config.mark_prepared(valid_temporary, metadata)
+
+
 @pytest.mark.parametrize("section", ["config", "env"])
 @pytest.mark.parametrize("field", ["mode", "uid", "gid"])
 @pytest.mark.parametrize("malformed", ["1", True, False, 1.0, None, -1, 1 << 80])
