@@ -190,7 +190,8 @@ else
 fi
 DEX_LOCAL_ONLY_REWIND_REQUIRED=false
 case "$DEX_CURRENT_LOCAL_ONLY_PHASE:$DEX_TARGET_LOCAL_ONLY_PHASE" in
-  untrack-v1:bootstrap-v1|untrack-v1:bootstrap-legacy)
+  untrack-v1:bootstrap-v1|untrack-v1:bootstrap-legacy|\
+  untrack-v2:bootstrap-v1|untrack-v2:bootstrap-v2|untrack-v2:bootstrap-legacy)
     DEX_LOCAL_ONLY_REWIND_REQUIRED=true
     PYTHONPATH="$DEX_LOCAL_ONLY_RUNTIME" python3 \
       "$DEX_LOCAL_ONLY_RUNTIME/core/migrations/preserve_local_only_paths.py" capture-rewind \
@@ -199,7 +200,8 @@ case "$DEX_CURRENT_LOCAL_ONLY_PHASE:$DEX_TARGET_LOCAL_ONLY_PHASE" in
     ;;
   bootstrap-v1:bootstrap-v1|bootstrap-v1:bootstrap-legacy|\
   bootstrap-v1:untrack-v1|bootstrap-v1:untrack-legacy|\
-  untrack-v1:untrack-v1|untrack-v1:untrack-legacy) ;;
+  bootstrap-v2:*|untrack-v1:untrack-v1|untrack-v1:untrack-legacy|\
+  untrack-v2:untrack-v1|untrack-v2:untrack-v2|untrack-v2:untrack-legacy) ;;
   *) echo "Rollback stopped: current and target local-only transitions are unsupported"; exit 1 ;;
 esac
 DEX_USER_DATA_PATHS=(
@@ -820,14 +822,17 @@ else
 fi
 DEX_LOCAL_ONLY_REWIND_REQUIRED=false
 case "$DEX_CURRENT_LOCAL_ONLY_PHASE:$DEX_TARGET_LOCAL_ONLY_PHASE" in
-  untrack-v1:bootstrap-v1|untrack-v1:bootstrap-legacy)
+  untrack-v1:bootstrap-v1|untrack-v1:bootstrap-legacy|\
+  untrack-v2:bootstrap-v1|untrack-v2:bootstrap-v2|untrack-v2:bootstrap-legacy)
     DEX_LOCAL_ONLY_REWIND_REQUIRED=true
     PYTHONPATH="$DEX_LOCAL_ONLY_RUNTIME" python3 \
       "$DEX_LOCAL_ONLY_RUNTIME/core/migrations/preserve_local_only_paths.py" capture-rewind \
       --repo "$PWD" --journal "$DEX_LOCAL_ONLY_JOURNAL" \
       --policy "$DEX_LOCAL_ONLY_RUNTIME/tracked-ignored-policy.yaml" || exit 1
     ;;
-  bootstrap-v1:*|untrack-v1:untrack-v1|untrack-v1:untrack-legacy) ;;
+  bootstrap-v1:*|bootstrap-v2:*|\
+  untrack-v1:untrack-v1|untrack-v1:untrack-legacy|\
+  untrack-v2:untrack-v1|untrack-v2:untrack-v2|untrack-v2:untrack-legacy) ;;
   *) echo "Rollback stopped: current and target local-only transitions are unsupported"; exit 1 ;;
 esac
 DEX_USER_DATA_PATHS=(

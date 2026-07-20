@@ -580,11 +580,26 @@ def test_release_script_regenerates_profile_for_bumped_version(tmp_path: Path) -
     for relative_path in (
         "scripts/release.sh",
         "scripts/generate-manifest.sh",
+        "core/migrations/preserve_local_only_paths.py",
+        "core/utils/tracked_ignored.py",
+        "core/paths.py",
         "core/utils/manifest.py",
         "core/utils/update_verifier.py",
     ):
         shutil.copy2(REPO_ROOT / relative_path, clone / relative_path)
-    subprocess.run(["git", "add", "--", "scripts", "core/utils"], cwd=clone, check=True)
+    subprocess.run(
+        [
+            "git",
+            "add",
+            "--",
+            "scripts",
+            "core/utils",
+            "core/migrations/preserve_local_only_paths.py",
+            "core/paths.py",
+        ],
+        cwd=clone,
+        check=True,
+    )
     subprocess.run(
         ["git", "commit", "--quiet", "--allow-empty", "-m", "test: current release scripts"],
         cwd=clone,
@@ -608,8 +623,10 @@ def test_release_script_regenerates_profile_for_bumped_version(tmp_path: Path) -
 
     package = _git_json(clone, "HEAD:package.json")
     profile = _git_json(clone, "HEAD:System/.release-evidence-profile.json")
+    transition = _git_json(clone, "HEAD:System/.local-only-preservation-transition.json")
     assert package["version"] == bumped
     assert profile == {"profile": "legacy-v1", "release_version": bumped, "schema_version": 1}
+    assert transition == {"schema_version": 1, "phase": "bootstrap-v1", "release_version": bumped}
     assert "System/.release-evidence-profile.json" in _release_manifest(clone, "HEAD")
     assert subprocess.run(
         ["git", "rev-parse", f"v{bumped}^{{}}"], cwd=clone, check=True, capture_output=True, text=True

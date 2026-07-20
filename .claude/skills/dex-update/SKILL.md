@@ -280,10 +280,11 @@ If cancelled:
 
 **A. Inspect the immutable target transition and capture only for the future untrack release**
 
-This is release-blocking. Copy the trusted migration runtime and closed policy into
-the private durable journal root. SR1 itself declares `bootstrap-v1`, keeps all
-three paths tracked, and does not need capture. A later release declaring
-`untrack-v1` must capture before Git can remove tracked files:
+This is release-blocking. Copy the trusted migration runtime and dual-baseline policy
+into the private durable journal root. The bridge release declares `bootstrap-v1`,
+keeps all three historical paths tracked, and installs support for the future
+`untrack-v2` boundary. Any untrack target must capture before Git can remove tracked
+files:
 
 ```bash
 DEX_LOCAL_ONLY_ROOT="System/.dex/local-only-preservation"
@@ -314,8 +315,8 @@ DEX_TARGET_PHASE=$(PYTHONPATH="$DEX_LOCAL_ONLY_RUNTIME" python3 \
   --package "$DEX_TARGET_PACKAGE") || exit 1
 
 case "$DEX_TARGET_PHASE" in
-  bootstrap-v1) ;;
-  untrack-v1)
+  bootstrap-v1|bootstrap-v2) ;;
+  untrack-v1|untrack-v2)
     DEX_LOCAL_ONLY_STATE=$(PYTHONPATH="$DEX_LOCAL_ONLY_RUNTIME" python3 \
       "$DEX_LOCAL_ONLY_RUNTIME/core/migrations/preserve_local_only_paths.py" preview \
       --repo "$PWD" --policy "$DEX_LOCAL_ONLY_RUNTIME/tracked-ignored-policy.yaml") || exit 1
@@ -380,7 +381,7 @@ case "$DEX_LOCAL_ONLY_STATE" in
     "$DEX_LOCAL_ONLY_RUNTIME/core/migrations/preserve_local_only_paths.py" apply \
     --repo "$PWD" --journal "$DEX_LOCAL_ONLY_JOURNAL" \
     --policy "$DEX_LOCAL_ONLY_RUNTIME/tracked-ignored-policy.yaml" || {
-      echo "Update stopped: Dex could not preserve the three local-only files"
+      echo "Update stopped: Dex could not preserve the approved local-only files"
       exit 1
     }
   ;;
@@ -674,14 +675,14 @@ else
 fi
 if [ -f "$DEX_LOCAL_ONLY_JOURNAL/journal.json" ]; then
   case "$DEX_UPDATE_RESET_PHASE" in
-    bootstrap-v1|bootstrap-legacy)
+    bootstrap-v1|bootstrap-v2|bootstrap-legacy)
       PYTHONPATH="$DEX_LOCAL_ONLY_RUNTIME" python3 \
         "$DEX_LOCAL_ONLY_RUNTIME/core/migrations/preserve_local_only_paths.py" rewind \
         --repo "$PWD" --journal "$DEX_LOCAL_ONLY_JOURNAL" \
         --policy "$DEX_LOCAL_ONLY_RUNTIME/tracked-ignored-policy.yaml" \
         --target-phase "$DEX_UPDATE_RESET_PHASE" || exit 2
       ;;
-    untrack-v1|untrack-legacy) ;;
+    untrack-v1|untrack-v2|untrack-legacy) ;;
     *) echo "Update recovery stopped: reset target transition is unsupported"; exit 2 ;;
   esac
 fi
@@ -1156,14 +1157,14 @@ else
 fi
 if [ -f "$DEX_LOCAL_ONLY_JOURNAL/journal.json" ]; then
   case "$DEX_UPDATE_RESET_PHASE" in
-    bootstrap-v1|bootstrap-legacy)
+    bootstrap-v1|bootstrap-v2|bootstrap-legacy)
       PYTHONPATH="$DEX_LOCAL_ONLY_RUNTIME" python3 \
         "$DEX_LOCAL_ONLY_RUNTIME/core/migrations/preserve_local_only_paths.py" rewind \
         --repo "$PWD" --journal "$DEX_LOCAL_ONLY_JOURNAL" \
         --policy "$DEX_LOCAL_ONLY_RUNTIME/tracked-ignored-policy.yaml" \
         --target-phase "$DEX_UPDATE_RESET_PHASE" || exit 2
       ;;
-    untrack-v1|untrack-legacy) ;;
+    untrack-v1|untrack-v2|untrack-legacy) ;;
     *) echo "Update recovery stopped: reset target transition is unsupported"; exit 2 ;;
   esac
 fi

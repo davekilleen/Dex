@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Preserve and untrack only Dex's three approved local-only paths."""
+"""Preserve and untrack Dex's versioned, closed local-only path baselines."""
 
 from __future__ import annotations
 
@@ -15,11 +15,15 @@ from pathlib import Path
 from typing import Any
 
 from core.utils.tracked_ignored import (
-    LOCAL_ONLY_PATHS,
+    BASELINE_LOCAL_ONLY_PATHS,
+    LOCAL_ONLY_PATHS,  # noqa: F401 — re-exported; tests and callers use this module's name
+    ExactPolicy,
+    PreservationTransition,
     TrackedIgnoredError,
     git_executable,
     load_exact_policy,
     load_transition,
+    load_transition_metadata,
     load_transition_pair,
     query_tracked_ignored,
     sanitized_git_env,
@@ -28,6 +32,8 @@ from core.utils.tracked_ignored import (
 POLICY_RELATIVE = Path("core/migrations/tracked-ignored-policy.yaml")
 MANIFEST_NAME = "journal.json"
 PUBLICATION_SCHEMA_VERSION = 1
+LEGACY_V1_POLICY_SHA256 = "4d7d0b4940afd1e0b0891801f75db2dce925ea6893cde82176aa0abe5b4c1872"
+JOURNAL_PATHS_BY_SCHEMA = BASELINE_LOCAL_ONLY_PATHS
 INDEX_FLAGS = {
     "0",
     "8000",
@@ -75,12 +81,30 @@ def _run_git(repo: Path, *arguments: str) -> bytes:
     return result.stdout
 
 
-def _load_policy(repo: Path, policy_path: Path | None = None) -> tuple[set[str], set[str], str]:
+def _load_policy(repo: Path, policy_path: Path | None = None) -> ExactPolicy:
     try:
-        policy = load_exact_policy(policy_path or repo / POLICY_RELATIVE)
+        return load_exact_policy(policy_path or repo / POLICY_RELATIVE)
     except TrackedIgnoredError as error:
         raise MigrationError(str(error)) from error
-    return policy.paths, policy.local_only_paths, policy.sha256
+
+
+def _baseline_sets(
+    policy: ExactPolicy, transition: PreservationTransition
+) -> tuple[set[str], set[str]]:
+    rows = policy.rows_for(transition.baseline_version)
+    paths = {row.path for row in rows}
+    local_only = {
+        row.path for row in rows if row.classification == "local-only-must-be-untracked"
+    }
+    return paths, local_only
+
+
+def _bootstrap_phase(baseline_version: int) -> str:
+    return f"bootstrap-v{baseline_version}"
+
+
+def _untrack_phase(baseline_version: int) -> str:
+    return f"untrack-v{baseline_version}"
 
 
 def _query_tracked_ignored(repo: Path) -> set[str]:
@@ -202,6 +226,14 @@ def _valid_worktree_snapshot(value: object) -> bool:
     )
 
 
+def _journal_paths(payload: dict[str, Any]) -> tuple[str, ...]:
+    schema_version = payload.get("schema_version")
+    try:
+        return JOURNAL_PATHS_BY_SCHEMA[schema_version]
+    except (KeyError, TypeError) as error:
+        raise MigrationError("preservation journal schema or phase is unsupported") from error
+
+
 def _validate_journal(payload: object) -> dict[str, Any]:
     if not isinstance(payload, dict) or set(payload) != {
         "schema_version",
@@ -212,7 +244,8 @@ def _validate_journal(payload: object) -> dict[str, Any]:
         "rewind_worktree",
     }:
         raise MigrationError("preservation journal has unexpected or missing fields")
-    if payload.get("schema_version") != 1 or payload.get("phase") not in {
+    schema_version = payload.get("schema_version")
+    if schema_version not in JOURNAL_PATHS_BY_SCHEMA or payload.get("phase") not in {
         "captured",
         "applying",
         "applied",
@@ -222,11 +255,12 @@ def _validate_journal(payload: object) -> dict[str, Any]:
         "rewound",
     }:
         raise MigrationError("preservation journal schema or phase is unsupported")
+    expected_paths = JOURNAL_PATHS_BY_SCHEMA[schema_version]
     source_transition = payload.get("source_transition")
     if (
         not isinstance(source_transition, dict)
         or set(source_transition) != {"phase", "release_version"}
-        or source_transition.get("phase") != "bootstrap-v1"
+        or source_transition.get("phase") != _bootstrap_phase(schema_version)
         or not isinstance(source_transition.get("release_version"), str)
         or not source_transition["release_version"]
     ):
@@ -239,9 +273,12 @@ def _validate_journal(payload: object) -> dict[str, Any]:
     ):
         raise MigrationError("preservation journal policy identity is invalid")
     entries = payload.get("entries")
-    if not isinstance(entries, list) or len(entries) != len(LOCAL_ONLY_PATHS):
-        raise MigrationError("preservation journal must contain exactly three ordered entries")
-    for ordinal, relative in enumerate(LOCAL_ONLY_PATHS):
+    if not isinstance(entries, list) or len(entries) != len(expected_paths):
+        raise MigrationError(
+            f"preservation journal schema v{schema_version} must contain exactly "
+            f"{len(expected_paths)} ordered entries"
+        )
+    for ordinal, relative in enumerate(expected_paths):
         entry = entries[ordinal]
         if not isinstance(entry, dict) or set(entry) != {"path", "index", "worktree"}:
             raise MigrationError("preservation journal entry fields are invalid")
@@ -253,7 +290,7 @@ def _validate_journal(payload: object) -> dict[str, Any]:
             raise MigrationError(f"preservation journal worktree metadata is invalid at ordinal {ordinal}")
     rewind_worktree = payload.get("rewind_worktree")
     if rewind_worktree is not None:
-        if not isinstance(rewind_worktree, list) or len(rewind_worktree) != len(LOCAL_ONLY_PATHS):
+        if not isinstance(rewind_worktree, list) or len(rewind_worktree) != len(expected_paths):
             raise MigrationError("preservation journal rewind metadata is invalid")
         if not all(_valid_worktree_snapshot(value) for value in rewind_worktree):
             raise MigrationError("preservation journal rewind snapshot metadata is invalid")
@@ -348,7 +385,7 @@ def _prevalidate_journal_storage(
     payload_dir = journal_dir / "payloads"
     payload_before = _require_private_path(payload_dir, directory=True)
     expected: dict[Path, tuple[object, object, str]] = {}
-    for ordinal, relative in enumerate(LOCAL_ONLY_PATHS):
+    for ordinal, relative in enumerate(_journal_paths(journal)):
         snapshot = journal["entries"][ordinal]["worktree"]
         if snapshot["state"] == "present":
             expected[_payload_path(journal_dir, ordinal)] = (snapshot["sha256"], snapshot["size"], relative)
@@ -481,7 +518,7 @@ def _create_journal_generation(
     repo: Path,
     journal_dir: Path,
     policy_hash: str,
-    source_version: str,
+    transition: PreservationTransition,
 ) -> tuple[Path, dict[str, Any]]:
     _prevalidate_journal_ancestors(journal_dir)
     generation = _generation_path(journal_dir)
@@ -489,7 +526,8 @@ def _create_journal_generation(
     generation.mkdir(mode=0o700, exist_ok=False)
     (generation / "payloads").mkdir(mode=0o700)
     entries = []
-    for index, relative in enumerate(LOCAL_ONLY_PATHS):
+    journal_paths = JOURNAL_PATHS_BY_SCHEMA[transition.baseline_version]
+    for index, relative in enumerate(journal_paths):
         index_entry = _index_entry(repo, relative)
         assert index_entry is not None
         worktree = _snapshot_worktree(repo, relative, _payload_path(generation, index))
@@ -497,9 +535,12 @@ def _create_journal_generation(
             worktree["state"] = "deleted"
         entries.append({"path": relative, "index": index_entry, "worktree": worktree})
     payload: dict[str, Any] = {
-        "schema_version": 1,
+        "schema_version": transition.baseline_version,
         "policy_sha256": policy_hash,
-        "source_transition": {"phase": "bootstrap-v1", "release_version": source_version},
+        "source_transition": {
+            "phase": transition.phase,
+            "release_version": transition.release_version,
+        },
         "phase": "captured",
         "entries": entries,
         "rewind_worktree": None,
@@ -541,7 +582,8 @@ def _create_rewind_generation(
     generation = _generation_path(journal_dir)
     generation.mkdir(mode=0o700, exist_ok=False)
     (generation / "payloads").mkdir(mode=0o700)
-    for ordinal, relative in enumerate(LOCAL_ONLY_PATHS):
+    journal_paths = _journal_paths(journal)
+    for ordinal, relative in enumerate(journal_paths):
         snapshot = journal["entries"][ordinal]["worktree"]
         if snapshot["state"] != "present":
             continue
@@ -552,7 +594,7 @@ def _create_rewind_generation(
 
     rewind_worktree = [
         _snapshot_worktree(repo, relative, _rewind_payload_path(generation, ordinal))
-        for ordinal, relative in enumerate(LOCAL_ONLY_PATHS)
+        for ordinal, relative in enumerate(journal_paths)
     ]
     replacement = dict(journal)
     replacement["rewind_worktree"] = rewind_worktree
@@ -646,6 +688,24 @@ def _restore_exact_worktree(
             os.unlink(temporary_name)
 
 
+def _journal_policy_is_compatible(journal: dict[str, Any], policy: ExactPolicy) -> bool:
+    if journal.get("policy_sha256") == policy.sha256:
+        return True
+    return (
+        journal.get("schema_version") == 1
+        and journal.get("policy_sha256") == LEGACY_V1_POLICY_SHA256
+        and 1 in dict(policy.baselines)
+    )
+
+
+def _journal_can_target(journal: dict[str, Any], transition: PreservationTransition) -> bool:
+    return (journal.get("schema_version"), transition.baseline_version) in {
+        (1, 1),
+        (1, 2),
+        (2, 2),
+    }
+
+
 def capture(repo: Path, journal_dir: Path, policy_path: Path | None = None) -> dict[str, Any]:
     recovered = _finish_publication_recovery(journal_dir)
     existing: dict[str, Any] | None = None
@@ -655,18 +715,22 @@ def capture(repo: Path, journal_dir: Path, policy_path: Path | None = None) -> d
             return existing
         if existing.get("phase") != "rewound":
             raise MigrationError(f"journal cannot recapture from phase: {existing.get('phase')}")
-    policy_paths, _, policy_hash = _load_policy(repo, policy_path)
+    policy = _load_policy(repo, policy_path)
     try:
         transition = load_transition(repo)
     except TrackedIgnoredError as error:
         raise MigrationError(str(error)) from error
-    if transition.phase != "bootstrap-v1":
-        raise MigrationError("capture requires bootstrap-v1 transition metadata")
+    if transition.phase != _bootstrap_phase(transition.baseline_version):
+        raise MigrationError("capture requires bootstrap transition metadata")
+    if policy.baseline_version != transition.baseline_version:
+        raise MigrationError("capture policy active baseline does not match transition metadata")
+    policy_paths, _ = _baseline_sets(policy, transition)
     if _query_tracked_ignored(repo) != policy_paths:
         raise MigrationError(
-            "live tracked-ignore query differs from the exact 27-row baseline; no preservation journal was created"
+            f"live tracked-ignore query differs from the exact {len(policy_paths)}-row baseline; "
+            "no preservation journal was created"
         )
-    generation, payload = _create_journal_generation(repo, journal_dir, policy_hash, transition.release_version)
+    generation, payload = _create_journal_generation(repo, journal_dir, policy.sha256, transition)
     _publish_generation(journal_dir, generation, existing)
     return payload
 
@@ -674,19 +738,24 @@ def capture(repo: Path, journal_dir: Path, policy_path: Path | None = None) -> d
 def capture_rewind(repo: Path, journal_dir: Path, policy_path: Path | None = None) -> dict[str, Any]:
     _finish_publication_recovery(journal_dir)
     journal = _read_journal(journal_dir)
-    policy_paths, local_paths, policy_hash = _load_policy(repo, policy_path)
+    policy = _load_policy(repo, policy_path)
     try:
         transition = load_transition(repo)
     except TrackedIgnoredError as error:
         raise MigrationError(str(error)) from error
-    if transition.phase != "untrack-v1":
-        raise MigrationError("rewind capture requires untrack-v1 transition metadata")
-    if journal.get("policy_sha256") != policy_hash:
+    if transition.phase != _untrack_phase(transition.baseline_version):
+        raise MigrationError("rewind capture requires untrack transition metadata")
+    if not _journal_can_target(journal, transition):
+        raise MigrationError("journal schema cannot represent the current transition baseline")
+    if not _journal_policy_is_compatible(journal, policy):
         raise MigrationError("tracked-ignore policy changed before rewind capture")
     if journal.get("phase") not in {"applied", "rewind-captured"}:
         raise MigrationError(f"journal cannot capture rewind from phase: {journal.get('phase')}")
+    policy_paths, local_paths = _baseline_sets(policy, transition)
     if _query_tracked_ignored(repo) != policy_paths - local_paths:
-        raise MigrationError("rewind capture requires the exact approved 24-path state")
+        raise MigrationError(
+            f"rewind capture requires the exact approved {len(policy_paths - local_paths)}-path state"
+        )
     generation, _ = _create_rewind_generation(repo, journal_dir, journal)
     _publish_generation(journal_dir, generation, journal)
     return _read_journal(journal_dir)
@@ -699,8 +768,8 @@ def apply(repo: Path, journal_dir: Path, policy_path: Path | None = None) -> dic
         journal = _read_journal(journal_dir)
         if journal.get("phase") not in {"captured", "applying", "applied"}:
             raise MigrationError(f"journal cannot resume apply from phase: {journal.get('phase')}")
-        policy_paths, local_paths, policy_hash = _load_policy(repo, policy_path)
-        if journal.get("policy_sha256") != policy_hash:
+        policy = _load_policy(repo, policy_path)
+        if not _journal_policy_is_compatible(journal, policy):
             raise MigrationError("tracked-ignore policy changed after preservation capture")
     else:
         raise MigrationError("apply requires the bootstrap journal captured before the release merge")
@@ -709,23 +778,31 @@ def apply(repo: Path, journal_dir: Path, policy_path: Path | None = None) -> dic
         transition = load_transition(repo)
     except TrackedIgnoredError as error:
         raise MigrationError(str(error)) from error
-    if transition.phase != "untrack-v1":
-        raise MigrationError("apply requires untrack-v1 transition metadata; bootstrap remains tracked")
+    if transition.phase != _untrack_phase(transition.baseline_version):
+        raise MigrationError("apply requires untrack transition metadata; bootstrap remains tracked")
+    if not _journal_can_target(journal, transition):
+        raise MigrationError("journal schema cannot represent the target transition baseline")
+    policy_paths, local_paths = _baseline_sets(policy, transition)
 
     actual = _query_tracked_ignored(repo)
-    expected_states = [policy_paths - set(LOCAL_ONLY_PATHS[:count]) for count in range(4)]
+    target_local_paths = BASELINE_LOCAL_ONLY_PATHS[transition.baseline_version]
+    expected_states = [
+        policy_paths - set(target_local_paths[:count]) for count in range(len(target_local_paths) + 1)
+    ]
     if actual not in expected_states:
         raise MigrationError("live tracked-ignore query drifted during apply; no broader mutation ran")
     if journal["phase"] == "applied":
         if actual != policy_paths - local_paths:
-            raise MigrationError("applied journal does not match the exact approved 24-path state")
+            raise MigrationError(
+                f"applied journal does not match the exact approved {len(policy_paths - local_paths)}-path state"
+            )
         return journal
 
     if journal["phase"] == "captured":
         journal["phase"] = "applying"
         _write_journal(journal_dir, journal)
 
-    for relative in LOCAL_ONLY_PATHS:
+    for relative in target_local_paths:
         if relative not in actual:
             continue
         result = _git(repo, "update-index", "--force-remove", "--", relative)
@@ -736,8 +813,11 @@ def apply(repo: Path, journal_dir: Path, policy_path: Path | None = None) -> dic
 
     expected_after = policy_paths - local_paths
     if _query_tracked_ignored(repo) != expected_after:
-        raise MigrationError("post-migration tracked-ignore query is not the exact approved 24-path set")
-    for ordinal, relative in enumerate(LOCAL_ONLY_PATHS):
+        raise MigrationError(
+            f"post-migration tracked-ignore query is not the exact approved "
+            f"{len(expected_after)}-path set"
+        )
+    for ordinal, relative in enumerate(_journal_paths(journal)):
         _restore_captured_if_missing(
             repo,
             journal_dir,
@@ -855,36 +935,48 @@ def rewind(
             transition = load_transition(repo)
         except TrackedIgnoredError as error:
             raise MigrationError(str(error)) from error
-        if transition.phase != "bootstrap-v1" or target_phase not in {None, "bootstrap-v1"}:
-            raise MigrationError("rewind requires a bootstrap-v1 rollback target")
-    policy_paths, local_paths, policy_hash = _load_policy(repo, policy_path)
-    if journal.get("policy_sha256") != policy_hash:
+        expected_bootstrap = _bootstrap_phase(transition.baseline_version)
+        if transition.phase != expected_bootstrap or target_phase not in {None, expected_bootstrap}:
+            raise MigrationError("rewind requires a bootstrap rollback target")
+        if not _journal_can_target(journal, transition):
+            raise MigrationError("journal schema does not match the rollback target baseline")
+    policy = _load_policy(repo, policy_path)
+    if not _journal_policy_is_compatible(journal, policy):
         raise MigrationError("tracked-ignore policy changed before rewind")
+    if target_phase == "bootstrap-legacy":
+        transition = PreservationTransition(1, 1, "bootstrap-v1", journal["source_transition"]["release_version"])
+    policy_paths, local_paths = _baseline_sets(policy, transition)
     actual = _query_tracked_ignored(repo)
     expected_after = policy_paths - local_paths
     if actual - policy_paths or actual - local_paths != expected_after:
         raise MigrationError("live tracked-ignore query drifted before rewind; no index mutation ran")
     if journal["phase"] == "rewound":
         if actual != policy_paths:
-            raise MigrationError("rewound journal does not match the exact approved 27-path state")
+            raise MigrationError(
+                f"rewound journal does not match the exact approved {len(policy_paths)}-path state"
+            )
         return journal
 
     if journal.get("phase") not in {"rewinding", "rewinding-original"}:
         journal["phase"] = "rewinding-original" if restore_original_worktree else "rewinding"
         _write_journal(journal_dir, journal)
 
-    for ordinal, relative in enumerate(LOCAL_ONLY_PATHS):
-        expected_index = journal["entries"][ordinal]["index"]
+    journal_paths = _journal_paths(journal)
+    entries_by_path = {entry["path"]: entry for entry in journal["entries"]}
+    for relative in BASELINE_LOCAL_ONLY_PATHS[transition.baseline_version]:
+        expected_index = entries_by_path[relative]["index"]
         if _index_entry(repo, relative, required=False) == expected_index:
             continue
         _restore_index_entry(repo, relative, expected_index)
         actual.add(relative)
 
     if _query_tracked_ignored(repo) != policy_paths:
-        raise MigrationError("rewind did not restore the exact approved 27-path tracked-ignore set")
+        raise MigrationError(
+            f"rewind did not restore the exact approved {len(policy_paths)}-path tracked-ignore set"
+        )
     snapshots = journal["rewind_worktree"]
     if snapshots is not None or restore_original_worktree:
-        for ordinal, relative in enumerate(LOCAL_ONLY_PATHS):
+        for ordinal, relative in enumerate(journal_paths):
             snapshot = snapshots[ordinal] if snapshots is not None else journal["entries"][ordinal]["worktree"]
             source = (
                 _rewind_payload_path(journal_dir, ordinal)
@@ -898,34 +990,73 @@ def rewind(
 
 
 def preview(repo: Path, policy_path: Path | None = None) -> dict[str, Any]:
-    policy_paths, local_paths, _ = _load_policy(repo, policy_path)
+    policy = _load_policy(repo, policy_path)
     try:
         transition = load_transition(repo)
     except TrackedIgnoredError as error:
         raise MigrationError(str(error)) from error
+    policy_paths, local_paths = _baseline_sets(policy, transition)
     actual = _query_tracked_ignored(repo)
-    if transition.phase == "bootstrap-v1" and actual == policy_paths:
+    if transition.phase == _bootstrap_phase(transition.baseline_version) and actual == policy_paths:
         state = "bootstrap-installed"
-    elif transition.phase == "untrack-v1" and actual == policy_paths:
+    elif transition.phase == _untrack_phase(transition.baseline_version) and actual == policy_paths:
         state = "ready-to-apply"
-    elif transition.phase == "untrack-v1" and actual == policy_paths - local_paths:
+    elif transition.phase == _untrack_phase(transition.baseline_version) and actual == policy_paths - local_paths:
         state = "already-applied"
     else:
         state = "blocked-query-mismatch"
     return {"ok": state != "blocked-query-mismatch", "state": state, "actual_count": len(actual)}
 
 
+def stamp_transition(repo: Path) -> dict[str, Any]:
+    transition_path = repo / "System/.local-only-preservation-transition.json"
+    package_path = repo / "package.json"
+    try:
+        transition = load_transition_metadata(transition_path)
+        package = json.loads(
+            package_path.read_text(encoding="utf-8"),
+            object_pairs_hook=_reject_duplicate_json_keys,
+        )
+    except (OSError, json.JSONDecodeError, TrackedIgnoredError) as error:
+        raise MigrationError(f"could not stamp local-only preservation transition: {error}") from error
+    version = package.get("version") if isinstance(package, dict) else None
+    if not isinstance(version, str) or not version:
+        raise MigrationError("package metadata has no release version to stamp")
+    payload: dict[str, Any] = {
+        "schema_version": transition.schema_version,
+    }
+    if transition.schema_version == 2:
+        payload["baseline_version"] = transition.baseline_version
+    payload.update({"phase": transition.phase, "release_version": version})
+    descriptor, temporary_name = tempfile.mkstemp(prefix=".local-only-transition.", dir=transition_path.parent)
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+            json.dump(payload, handle, indent=2)
+            handle.write("\n")
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.chmod(temporary_name, 0o644)
+        os.replace(temporary_name, transition_path)
+        _fsync_directory(transition_path.parent)
+    finally:
+        if os.path.exists(temporary_name):
+            os.unlink(temporary_name)
+    load_transition_pair(transition_path, package_path)
+    return {"ok": True, "phase": transition.phase, "release_version": version}
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
-        "action", choices=("transition", "preview", "capture", "apply", "capture-rewind", "rewind")
+        "action",
+        choices=("transition", "stamp-transition", "preview", "capture", "apply", "capture-rewind", "rewind"),
     )
     parser.add_argument("--repo", type=Path, required=True)
     parser.add_argument("--journal", type=Path)
     parser.add_argument("--policy", type=Path)
     parser.add_argument("--transition", type=Path)
     parser.add_argument("--package", type=Path)
-    parser.add_argument("--target-phase", choices=("bootstrap-v1", "bootstrap-legacy"))
+    parser.add_argument("--target-phase", choices=("bootstrap-v1", "bootstrap-v2", "bootstrap-legacy"))
     args = parser.parse_args(argv)
     try:
         repo = args.repo.resolve()
@@ -937,11 +1068,13 @@ def main(argv: list[str] | None = None) -> int:
             )
             print(transition.phase)
             return 0
-        if args.action == "preview":
+        if args.action == "stamp-transition":
+            result = stamp_transition(repo)
+        elif args.action == "preview":
             result = preview(repo, policy_path)
         else:
             if args.journal is None:
-                raise MigrationError("--journal is required for capture, apply, and rewind")
+                raise MigrationError("--journal is required for capture, apply, capture-rewind, and rewind")
             journal_dir = _lexical_absolute(args.journal)
             _prevalidate_journal_ancestors(journal_dir)
             if args.action == "capture":
@@ -952,7 +1085,7 @@ def main(argv: list[str] | None = None) -> int:
                 result = capture_rewind(repo, journal_dir, policy_path)
             else:
                 result = rewind(repo, journal_dir, policy_path, args.target_phase)
-            result = {"ok": True, "phase": result["phase"], "paths": list(LOCAL_ONLY_PATHS)}
+            result = {"ok": True, "phase": result["phase"], "paths": list(_journal_paths(result))}
     except (MigrationError, TrackedIgnoredError, OSError, ValueError, json.JSONDecodeError) as error:
         result = {"ok": False, "error": str(error)}
     print(json.dumps(result, sort_keys=True))

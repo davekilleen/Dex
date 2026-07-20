@@ -4,14 +4,20 @@ from __future__ import annotations
 
 import json
 import shutil
+import stat
 import subprocess
 from pathlib import Path
 
+import yaml
+
+from core.migrations import preserve_local_only_paths as preservation
 from core.utils.manifest import DEFAULT_MANIFEST, generate_manifest, write_manifest
+from core.utils.tracked_ignored import RETIRED_FOUNDER_PATHS, load_exact_policy
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 ROLLBACK_SKILL = REPO_ROOT / ".claude/skills/dex-rollback/SKILL.md"
 UPDATE_SKILL = REPO_ROOT / ".claude/skills/dex-update/SKILL.md"
+POLICY = REPO_ROOT / "core/migrations/tracked-ignored-policy.yaml"
 
 
 def _git(repo: Path, *args: str) -> str:
@@ -31,6 +37,44 @@ def test_update_runs_credential_migration_before_status_and_safe_autosave():
     status = instructions.index("git status --porcelain", migration)
     autosave = instructions.index("python3 -m core.utils.safe_autosave", status)
     assert migration < status < autosave
+
+
+def test_update_and_duplicated_rollback_flows_recognize_the_v2_boundary() -> None:
+    update = UPDATE_SKILL.read_text(encoding="utf-8")
+    rollback = ROLLBACK_SKILL.read_text(encoding="utf-8")
+
+    assert "untrack-v1|untrack-v2)" in update
+    assert update.count("bootstrap-v1|bootstrap-v2|bootstrap-legacy)") == 2
+    assert update.count("untrack-v1|untrack-v2|untrack-legacy)") == 2
+    assert rollback.count("untrack-v2:bootstrap-v1") == 2
+    assert rollback.count("bootstrap-v2:*") == 2
+
+
+def test_release_cut_stamps_transition_metadata_from_the_bumped_package(tmp_path: Path, capsys) -> None:
+    repo = tmp_path / "release-cut"
+    _write(repo, "package.json", json.dumps({"version": "1.63.0"}) + "\n")
+    _write(
+        repo,
+        "System/.local-only-preservation-transition.json",
+        json.dumps({"schema_version": 1, "phase": "bootstrap-v1", "release_version": "1.62.0"})
+        + "\n",
+    )
+
+    assert preservation.main(["stamp-transition", "--repo", str(repo)]) == 0
+    assert json.loads(capsys.readouterr().out) == {
+        "ok": True,
+        "phase": "bootstrap-v1",
+        "release_version": "1.63.0",
+    }
+    assert json.loads(
+        (repo / "System/.local-only-preservation-transition.json").read_text(encoding="utf-8")
+    ) == {"schema_version": 1, "phase": "bootstrap-v1", "release_version": "1.63.0"}
+
+    release_script = (REPO_ROOT / "scripts/release.sh").read_text(encoding="utf-8")
+    stamp = release_script.index("core.migrations.preserve_local_only_paths stamp-transition")
+    manifest = release_script.index("bash scripts/generate-manifest.sh")
+    assert stamp < manifest
+    assert "System/.local-only-preservation-transition.json" in release_script.split("git add", 1)[1]
 
 
 def _init_repo(repo: Path) -> None:
@@ -57,6 +101,40 @@ def _commit_manifest(repo: Path, message: str) -> None:
     _git(repo, "commit", "--quiet", "-m", message)
 
 
+def _write_transition(repo: Path, phase: str, version: str = "1.62.0") -> None:
+    schema_version = 2 if phase.endswith("-v2") else 1
+    payload = {"schema_version": schema_version, "phase": phase, "release_version": version}
+    if schema_version == 2:
+        payload["baseline_version"] = 2
+    _write(repo, "package.json", json.dumps({"version": version}) + "\n")
+    _write(repo, "System/.local-only-preservation-transition.json", json.dumps(payload) + "\n")
+
+
+def _seed_bridge_baseline(repo: Path) -> None:
+    _init_repo(repo)
+    policy = load_exact_policy(POLICY)
+    ignored = []
+    for index, row in enumerate(policy.rows):
+        _write(repo, row.path, f"bridge-{index}\n")
+        ignored.append(f"/{row.path}")
+    fixture_policy = repo / preservation.POLICY_RELATIVE
+    fixture_policy.parent.mkdir(parents=True, exist_ok=True)
+    fixture_policy.write_bytes(POLICY.read_bytes())
+    _write_transition(repo, "bootstrap-v1")
+    _write(repo, ".gitignore", "\n".join(ignored) + "\n")
+    _git(
+        repo,
+        "add",
+        "--",
+        ".gitignore",
+        "package.json",
+        "System/.local-only-preservation-transition.json",
+        preservation.POLICY_RELATIVE.as_posix(),
+    )
+    _git(repo, "add", "-f", "--", *[row.path for row in policy.rows])
+    _git(repo, "commit", "--quiet", "-m", "bridge baseline")
+
+
 def _bash_block_after(path: Path, marker: str) -> str:
     section = path.read_text(encoding="utf-8").split(marker, 1)[1]
     return section.split("```bash\n", 1)[1].split("\n```", 1)[0]
@@ -69,6 +147,71 @@ def _bash_block_containing(path: Path, marker: str) -> str:
         if marker in block:
             return block
     raise AssertionError(f"No bash block contains {marker!r}")
+
+
+def test_bridge_update_and_cross_boundary_rollback_restore_byte_exact_learning_state(tmp_path: Path) -> None:
+    repo = tmp_path / "bridge-vault"
+    _seed_bridge_baseline(repo)
+    bridge_commit = _git(repo, "rev-parse", "HEAD")
+    bridge_policy = tmp_path / "bridge-policy.yaml"
+    bridge_policy.write_bytes(POLICY.read_bytes())
+    first, second, slack = preservation.LOCAL_ONLY_PATHS
+    first_target = repo / first
+    second_target = repo / second
+    slack_target = repo / slack
+    first_target.write_bytes(b"user learning before deletion\r\nwith\x00bytes")
+    first_target.chmod(0o600)
+    second_target.unlink()
+    slack_target.write_bytes(b"user Slack before future baseline\n")
+    slack_target.chmod(0o640)
+    journal = tmp_path / "preservation-journal"
+
+    captured = preservation.capture(repo, journal, bridge_policy)
+    assert captured["schema_version"] == 1
+    assert len(captured["entries"]) == 3
+
+    _git(repo, "rm", "-f", "--", *sorted(RETIRED_FOUNDER_PATHS))
+    future_policy = yaml.safe_load(POLICY.read_text(encoding="utf-8"))
+    future_policy["active_baseline_version"] = 2
+    (repo / preservation.POLICY_RELATIVE).write_text(
+        yaml.safe_dump(future_policy, sort_keys=False), encoding="utf-8"
+    )
+    _write_transition(repo, "untrack-v2", "1.63.0")
+    _git(
+        repo,
+        "add",
+        "--",
+        "package.json",
+        "System/.local-only-preservation-transition.json",
+        preservation.POLICY_RELATIVE.as_posix(),
+    )
+    _git(repo, "commit", "--quiet", "-m", "future 24-row baseline")
+
+    assert preservation.preview(repo, bridge_policy) == {
+        "ok": True,
+        "state": "ready-to-apply",
+        "actual_count": 24,
+    }
+    assert preservation.apply(repo, journal, bridge_policy)["phase"] == "applied"
+    assert first_target.read_bytes() == b"user learning before deletion\r\nwith\x00bytes"
+    assert stat.S_IMODE(first_target.stat().st_mode) == 0o600
+    assert not second_target.exists()
+
+    first_target.write_bytes(b"newest learning after deletion\x00")
+    first_target.chmod(0o640)
+    slack_target.write_bytes(b"newest Slack after deletion\r\n")
+    slack_target.chmod(0o600)
+    preservation.capture_rewind(repo, journal, bridge_policy)
+    _git(repo, "reset", "--hard", bridge_commit)
+
+    assert preservation.rewind(repo, journal, bridge_policy)["phase"] == "rewound"
+    assert first_target.read_bytes() == b"newest learning after deletion\x00"
+    assert stat.S_IMODE(first_target.stat().st_mode) == 0o640
+    assert not second_target.exists()
+    assert slack_target.read_bytes() == b"newest Slack after deletion\r\n"
+    assert stat.S_IMODE(slack_target.stat().st_mode) == 0o600
+    assert len(preservation._query_tracked_ignored(repo)) == 27
+    assert (repo / "System/Beta_Communications/2026-02-04_hardcoded_paths_fix.md").is_file()
 
 
 def test_manifest_is_a_deterministic_newline_path_list(tmp_path: Path) -> None:
