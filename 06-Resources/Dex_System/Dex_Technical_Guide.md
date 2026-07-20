@@ -1260,8 +1260,6 @@ This reference contains:
 - API quick reference
 - Working code examples
 
-**Official Pi docs:** `/opt/homebrew/lib/node_modules/@mariozechner/pi-coding-agent/docs/tui.md`
-
 **Why this matters:** Pi TUI has strict rules. Skipping the reference leads to crashes and wasted debugging time.
 
 ### Best Practices

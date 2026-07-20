@@ -13,6 +13,9 @@ if [ ! -f "$DISTIGNORE" ]; then
   exit 1
 fi
 
+# Reject unsafe source inputs before staging or running npm.
+python3 "$REPO_ROOT/scripts/check-tau-removal.py" --source-root "$REPO_ROOT"
+
 VERSION="$(node -p "require('$REPO_ROOT/package.json').version")"
 mkdir -p "$OUTPUT_DIR"
 OUTPUT_DIR="$(cd "$OUTPUT_DIR" && pwd)"
@@ -33,16 +36,8 @@ git ls-files --cached --others --exclude-standard | while IFS= read -r file; do
   [ -e "$file" ] && printf '%s\n' "$file"
 done | LC_ALL=C sort -u > "$ALL_FILES"
 
-: > "$EXCLUDED_FILES"
-while IFS= read -r line; do
-  line="${line%%#*}"
-  line="${line%"${line##*[! ]}"}"
-  line="${line#"${line%%[! ]*}"}"
-  [ -z "$line" ] && continue
-  git ls-files --cached --others --exclude-standard -- "$line" >> "$EXCLUDED_FILES"
-done < "$DISTIGNORE"
-LC_ALL=C sort -u -o "$EXCLUDED_FILES" "$EXCLUDED_FILES"
-comm -23 "$ALL_FILES" "$EXCLUDED_FILES" > "$INCLUDED_FILES"
+sh "$REPO_ROOT/scripts/resolve-distignore-files.sh" \
+  "$DISTIGNORE" "$ALL_FILES" "$EXCLUDED_FILES" "$INCLUDED_FILES"
 
 rsync -a --files-from="$INCLUDED_FILES" ./ "$STAGING_DIR/"
 
@@ -76,10 +71,18 @@ printf '%s\n' 'System/.installed-files.manifest' >> "$STAGING_DIR/System/.instal
 LC_ALL=C sort -u -o "$STAGING_DIR/System/.installed-files.manifest" \
   "$STAGING_DIR/System/.installed-files.manifest"
 
+# The staged tree is the release input. Check it before npm can execute or
+# access a registry.
+python3 "$REPO_ROOT/scripts/check-tau-removal.py" --tree "$STAGING_DIR"
+
 (
   cd "$STAGING_DIR"
   npm ci --omit=dev --ignore-scripts
 )
+# npm creates command shims as symlinks. Dex does not execute dependency CLIs
+# from the vault bundle, so remove them rather than weakening the no-symlink
+# distribution contract.
+rm -rf "$STAGING_DIR/node_modules/.bin"
 
 rm -f "$TARBALL" "$CHECKSUM"
 (
@@ -90,6 +93,7 @@ rm -f "$TARBALL" "$CHECKSUM"
   # belt-and-braces for any stray on-disk macOS metadata, matching the manifest.
   COPYFILE_DISABLE=1 tar --exclude='._*' --exclude='.DS_Store' -czf "$TARBALL" .
 )
+python3 "$REPO_ROOT/scripts/check-tau-removal.py" --archive "$TARBALL"
 (
   cd "$OUTPUT_DIR"
   shasum -a 256 "$(basename "$TARBALL")" > "$(basename "$CHECKSUM")"
