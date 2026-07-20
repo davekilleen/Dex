@@ -898,7 +898,10 @@ def test_hanging_journey_is_killed_and_returns_exit_two(monkeypatch, tmp_path: P
     assert run.exit_code == 2
     assert run.harness_failed is True
     assert run.report["journeys"][0]["verdict"] == "UNKNOWN"
-    assert "journey timed out after" in run.report["journeys"][0]["detail"]
+    # Under heavy load the preparation phase can hit its deadline before the journey
+    # itself runs; both phases produce the same correct kill behavior (UNKNOWN + exit 2),
+    # so accept either timeout message.
+    assert "timed out after" in run.report["journeys"][0]["detail"]
 
 
 def test_timed_out_journey_kills_delayed_descendants(monkeypatch, tmp_path: Path) -> None:

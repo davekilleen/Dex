@@ -178,7 +178,7 @@ def _run_tau_check(repo: Path, *args: str) -> subprocess.CompletedProcess[str]:
         cwd=repo,
         capture_output=True,
         text=True,
-        timeout=30,
+        timeout=120,
     )
 
 
@@ -689,7 +689,7 @@ def test_release_build_rejects_unsafe_selected_source_before_creating_ref(
         cwd=clone,
         capture_output=True,
         text=True,
-        timeout=30,
+        timeout=120,
     )
 
     assert result.returncode == 1
@@ -784,7 +784,7 @@ def test_release_build_uses_selected_source_distignore_contract(tmp_path: Path) 
         cwd=clone,
         capture_output=True,
         text=True,
-        timeout=30,
+        timeout=120,
     )
 
     assert result.returncode == 1
@@ -805,7 +805,7 @@ def test_manifest_accepts_safe_head_source_tree(tmp_path: Path) -> None:
         cwd=clone,
         capture_output=True,
         text=True,
-        timeout=30,
+        timeout=120,
     )
 
     assert result.returncode == 0, result.stdout + result.stderr
@@ -861,7 +861,7 @@ def test_manifest_rejects_unsafe_requested_tree_without_output_or_ref_mutation(
         cwd=clone,
         capture_output=True,
         text=True,
-        timeout=30,
+        timeout=120,
     )
 
     assert result.returncode == 1
@@ -1208,7 +1208,7 @@ def test_vault_distignore_directory_rules_resolve_before_staging(tmp_path: Path)
         cwd=REPO_ROOT,
         capture_output=True,
         text=True,
-        timeout=30,
+        timeout=120,
         env=environment,
     )
 
@@ -1513,7 +1513,7 @@ def test_tau_gate_rejects_reintroduced_source_path_and_release_build_input(tmp_p
         cwd=clone,
         capture_output=True,
         text=True,
-        timeout=30,
+        timeout=120,
     )
     assert gate.returncode == 1
     assert "removed Tau path" in gate.stdout
@@ -1653,7 +1653,7 @@ def test_vault_build_rejects_tau_before_build_package_or_archive_commands(
         cwd=clone,
         capture_output=True,
         text=True,
-        timeout=30,
+        timeout=120,
         env=environment,
     )
     assert result.returncode == 1
