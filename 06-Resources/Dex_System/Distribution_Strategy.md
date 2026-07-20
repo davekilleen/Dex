@@ -60,7 +60,7 @@ These files/folders are in `.gitignore` so updates never touch them:
 # User configuration
 System/user-profile.yaml
 System/pillars.yaml
-System/.last-update-check
+System/.last-update-check                # Legacy checker state; new evidence state is outside the worktree
 
 # Custom extensions
 CLAUDE-custom.md                     # User prompt overrides
@@ -345,26 +345,29 @@ git merge upstream/release
 **File:** `core/mcp/update_checker.py`
 
 **Tools:**
-- `check_for_updates(force=bool)` - Main update check
-- `get_changelog_from_github(version=str)` - Fetch CHANGELOG
-- `get_update_status()` - Current version status
+- `check_for_updates(force=bool, doctor_redisplay=bool)` - bounded immutable release-evidence check
+- `get_update_status()` - local attempt status without a network request or currentness claim
 
-**API Calls:**
-- GitHub API: `https://api.github.com/repos/davekilleen/dex/releases/latest`
-- Rate limit friendly: 7-day interval, respects 304 Not Modified
+**Evidence transport:**
+- Pinned canonical HTTPS Git URL only
+- Isolated bare cache; sanitized absolute Git; bounded timeout and cancellation
+- Immutable annotated `dist/release/v<semver>-<short-sha>` tags
+- Closed candidate profile from tagged `System/.release-evidence-profile.json`
+- Exact tag/package/full-commit/tree/installed-files-manifest agreement
+- No GitHub latest-release API and no separate changelog fetch
 
 **State:**
-- Last check time: `System/.last-update-check`
-- Current version: `package.json` → `version` field
+- Atomic daily-attempt and once-per-exact-release dedup outside the vault worktree
+- Current version and installed profile: `package.json` plus `System/.release-evidence-profile.json`
 
 ### Integration with `/daily-plan`
 
 **Step 1** in daily-plan skill:
 ```yaml
-1. Call check_for_updates(force=False)
-2. If update_available: store notification
-3. Continue silently (don't wait for user)
-4. At Step 7 (output): prepend notification if present
+1. Reuse SessionStart's bounded daily result; do not start another request
+2. Surface only the complete `release-appears-available-unverified` notice
+3. Keep `no-newer-release-observed-unverified`, `offline`, `UNKNOWN`, and `skipped` silent
+4. Never claim publisher authentication, verification, safety, or currentness
 ```
 
 **Silent operation:** No "Checking for updates..." message, no blocking.

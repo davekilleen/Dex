@@ -38,6 +38,7 @@ RELEASE_BUILD_INPUTS = (
     "core/migrations/tracked-ignored-policy.yaml",
     "core/utils/tracked_ignored.py",
     "core/utils/manifest.py",
+    "core/utils/update_verifier.py",
     "core/utils/smoke.py",
     "scripts/build-release.sh",
     "scripts/build-vault-bundle.sh",
@@ -271,6 +272,18 @@ def _release_manifest(clone: Path, branch: str) -> list[str]:
     ).stdout.splitlines()
 
 
+def _git_json(clone: Path, revision_path: str) -> dict[str, object]:
+    return json.loads(
+        subprocess.run(
+            ["git", "show", revision_path],
+            cwd=clone,
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout
+    )
+
+
 def test_release_branch_strips_dev_files_and_keeps_user_runtime(tmp_path: Path) -> None:
     clone, members = _build_release_in_clone(tmp_path)
 
@@ -292,10 +305,12 @@ def test_release_branch_strips_dev_files_and_keeps_user_runtime(tmp_path: Path) 
     assert "core/utils/doctor.py" in members
     assert "core/utils/manifest.py" in members
     assert "core/utils/smoke.py" in members
+    assert "core/utils/update_verifier.py" in members
     assert ".claude/skills/dex-update/SKILL.md" in members
     assert ".claude/skills/dex-rollback/SKILL.md" in members
     assert ".claude/skills/anthropic-docx/scripts/document.py" in members
     assert "System/.installed-files.manifest" in members
+    assert "System/.release-evidence-profile.json" in members
     assert "System/.local-only-preservation-transition.json" in members
     assert "core/migrations/preserve_local_only_paths.py" in members
     assert "core/migrations/tracked-ignored-policy.yaml" in members
@@ -311,6 +326,16 @@ def test_release_branch_strips_dev_files_and_keeps_user_runtime(tmp_path: Path) 
     assert manifest == sorted(manifest)
     assert set(manifest) == members
     assert "core/tests/test_distribution_artifacts.py" not in manifest
+    profile = json.loads(
+        subprocess.run(
+            ["git", "show", "release:System/.release-evidence-profile.json"],
+            cwd=clone,
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout
+    )
+    assert profile == {"schema_version": 1, "profile": "legacy-v1", "release_version": "1.61.0"}
 
     subprocess.run(
         ["git", "checkout", "--quiet", "release"],
@@ -374,13 +399,14 @@ def test_beta_release_branch_uses_same_stripping_and_manifest(tmp_path: Path) ->
     )
 
     assert "System/.installed-files.manifest" in beta_members
+    assert "System/.release-evidence-profile.json" in beta_members
     assert not any(path.startswith("core/tests/") for path in beta_members)
     assert not any(path.startswith("scripts/") for path in beta_members)
     assert set(_release_manifest(clone, "release-beta")) == beta_members
     _assert_tau_absent_from_release_artifacts(
         clone, "release-beta", tmp_path / "beta-release.tar"
     )
-    beta_version = json.loads((clone / "package.json").read_text(encoding="utf-8"))["version"]
+    beta_version = _git_json(clone, "release-beta:package.json")["version"]
     beta_short_sha = subprocess.run(
         ["git", "rev-parse", "--short", "release-beta"],
         cwd=clone,
@@ -404,6 +430,200 @@ def test_beta_release_branch_uses_same_stripping_and_manifest(tmp_path: Path) ->
     ).stdout.strip()
 
 
+def test_release_build_uses_selected_source_version_for_tree_profile_manifest_and_tag(tmp_path: Path) -> None:
+    clone = _clone_repo(tmp_path, "selected-source-version")
+    subprocess.run(["git", "checkout", "-B", "main", "HEAD"], cwd=clone, check=True, capture_output=True)
+    for relative_path in RELEASE_BUILD_INPUTS:
+        destination = clone / relative_path
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(REPO_ROOT / relative_path, destination)
+    subprocess.run(["git", "add", "-f", "--", *RELEASE_BUILD_INPUTS], cwd=clone, check=True)
+    subprocess.run(
+        ["git", "commit", "--quiet", "--allow-empty", "-m", "test: current builder"], cwd=clone, check=True
+    )
+    subprocess.run(["git", "checkout", "-b", "selected"], cwd=clone, check=True, capture_output=True)
+    selected_package = json.loads((clone / "package.json").read_text())
+    selected_package["version"] = "2.3.4"
+    (clone / "package.json").write_text(json.dumps(selected_package, indent=2) + "\n")
+    subprocess.run(["git", "add", "package.json"], cwd=clone, check=True)
+    subprocess.run(["git", "commit", "--quiet", "-m", "selected v2.3.4"], cwd=clone, check=True)
+    subprocess.run(["git", "checkout", "main"], cwd=clone, check=True, capture_output=True)
+    current_package = json.loads((clone / "package.json").read_text())
+    current_package["version"] = "9.8.7"
+    (clone / "package.json").write_text(json.dumps(current_package, indent=2) + "\n")
+    subprocess.run(["git", "add", "package.json"], cwd=clone, check=True)
+    subprocess.run(["git", "commit", "--quiet", "-m", "current v9.8.7"], cwd=clone, check=True)
+
+    subprocess.run(
+        ["bash", "scripts/build-release.sh", "--source", "selected", "--target", "release-selected"],
+        cwd=clone,
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+
+    assert _git_json(clone, "release-selected:package.json")["version"] == "2.3.4"
+    assert _git_json(clone, "release-selected:System/.release-evidence-profile.json")["release_version"] == "2.3.4"
+    members = set(
+        subprocess.run(
+            ["git", "ls-tree", "-r", "--name-only", "release-selected"],
+            cwd=clone,
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.splitlines()
+    )
+    assert set(_release_manifest(clone, "release-selected")) == members
+    short = subprocess.run(
+        ["git", "rev-parse", "--short", "release-selected"],
+        cwd=clone,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    tag = f"dist/release-selected/v2.3.4-{short}"
+    assert subprocess.run(
+        ["git", "rev-parse", f"{tag}^{{}}"], cwd=clone, check=True, capture_output=True, text=True
+    ).stdout.strip() == subprocess.run(
+        ["git", "rev-parse", "release-selected"], cwd=clone, check=True, capture_output=True, text=True
+    ).stdout.strip()
+    assert not subprocess.run(
+        ["git", "tag", "--list", "dist/release-selected/v9.8.7-*"],
+        cwd=clone,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout
+
+
+def test_release_build_rejects_malformed_selected_package_before_creating_refs(tmp_path: Path) -> None:
+    clone = _clone_repo(tmp_path, "malformed-selected-source")
+    subprocess.run(["git", "checkout", "-B", "main", "HEAD"], cwd=clone, check=True, capture_output=True)
+    for relative_path in RELEASE_BUILD_INPUTS:
+        destination = clone / relative_path
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(REPO_ROOT / relative_path, destination)
+    subprocess.run(["git", "add", "-f", "--", *RELEASE_BUILD_INPUTS], cwd=clone, check=True)
+    subprocess.run(
+        ["git", "commit", "--quiet", "--allow-empty", "-m", "test: current builder"], cwd=clone, check=True
+    )
+    subprocess.run(["git", "checkout", "-b", "malformed"], cwd=clone, check=True, capture_output=True)
+    (clone / "package.json").write_text('{"version":"2.0.0","version":"3.0.0"}\n')
+    subprocess.run(["git", "add", "package.json"], cwd=clone, check=True)
+    subprocess.run(["git", "commit", "--quiet", "-m", "malformed package"], cwd=clone, check=True)
+    subprocess.run(["git", "checkout", "main"], cwd=clone, check=True, capture_output=True)
+
+    result = subprocess.run(
+        ["bash", "scripts/build-release.sh", "--source", "malformed", "--target", "release-malformed"],
+        cwd=clone,
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+
+    assert result.returncode == 1
+    assert "selected package.json is invalid" in result.stderr
+    assert subprocess.run(
+        ["git", "show-ref", "--verify", "--quiet", "refs/heads/release-malformed"], cwd=clone
+    ).returncode == 1
+    assert not subprocess.run(
+        ["git", "tag", "--list", "dist/release-malformed/*"], cwd=clone, capture_output=True, text=True
+    ).stdout
+
+
+def test_raw_vault_bundle_has_package_profile_manifest_agreement(tmp_path: Path) -> None:
+    clone = _clone_repo(tmp_path, "raw-vault-bundle")
+    for relative_path in RELEASE_BUILD_INPUTS:
+        destination = clone / relative_path
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(REPO_ROOT / relative_path, destination)
+    # Prove the builder regenerates the declaration rather than copying stale bytes.
+    (clone / "System/.release-evidence-profile.json").write_text(
+        json.dumps({"profile": "legacy-v1", "release_version": "0.0.1", "schema_version": 1}, indent=2) + "\n"
+    )
+    output = tmp_path / "bundle-output"
+    subprocess.run(
+        ["bash", "scripts/build-vault-bundle.sh", str(output)],
+        cwd=clone,
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
+    archive_path = next(output.glob("dex-vault-bundle-v*.tar.gz"))
+    with tarfile.open(archive_path, "r:gz") as archive:
+        package = json.load(archive.extractfile("./package.json"))
+        profile = json.load(archive.extractfile("./System/.release-evidence-profile.json"))
+        manifest = archive.extractfile("./System/.installed-files.manifest").read().decode().splitlines()
+        shipped = {
+            member.name.removeprefix("./")
+            for member in archive.getmembers()
+            if member.isfile() or member.issym()
+            if not member.name.removeprefix("./").startswith("node_modules/")
+        }
+    assert package["version"] == profile["release_version"]
+    assert profile["profile"] == "legacy-v1"
+    assert manifest == sorted(set(manifest))
+    assert set(manifest) == shipped
+
+
+def test_release_script_regenerates_profile_for_bumped_version(tmp_path: Path) -> None:
+    clone = _clone_repo(tmp_path, "release-script-profile")
+    for relative_path in (
+        "scripts/release.sh",
+        "scripts/generate-manifest.sh",
+        "core/utils/manifest.py",
+        "core/utils/update_verifier.py",
+    ):
+        shutil.copy2(REPO_ROOT / relative_path, clone / relative_path)
+    subprocess.run(["git", "add", "--", "scripts", "core/utils"], cwd=clone, check=True)
+    subprocess.run(
+        ["git", "commit", "--quiet", "--allow-empty", "-m", "test: current release scripts"],
+        cwd=clone,
+        check=True,
+    )
+
+    subprocess.run(
+        ["bash", "scripts/release.sh", "patch"],
+        cwd=clone,
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+
+    package = _git_json(clone, "HEAD:package.json")
+    profile = _git_json(clone, "HEAD:System/.release-evidence-profile.json")
+    assert package["version"] == "1.61.1"
+    assert profile == {"profile": "legacy-v1", "release_version": "1.61.1", "schema_version": 1}
+    assert "System/.release-evidence-profile.json" in _release_manifest(clone, "HEAD")
+    assert subprocess.run(
+        ["git", "rev-parse", "v1.61.1^{}"], cwd=clone, check=True, capture_output=True, text=True
+    ).stdout.strip() == subprocess.run(
+        ["git", "rev-parse", "HEAD"], cwd=clone, check=True, capture_output=True, text=True
+    ).stdout.strip()
+
+
+def test_every_release_path_invokes_legacy_profile_generation() -> None:
+    expected = {
+        "scripts/build-release.sh": (
+            "--write-legacy-profile \"$PROFILE\"",
+            "--release-version \"$PKG_VERSION\"",
+        ),
+        "scripts/build-vault-bundle.sh": (
+            '--write-legacy-profile "$STAGING_DIR/System/.release-evidence-profile.json"',
+            '--release-version "$VERSION"',
+        ),
+        "scripts/release.sh": (
+            "--write-legacy-profile System/.release-evidence-profile.json",
+            '--release-version "$NEW_VERSION"',
+        ),
+    }
+    for relative_path, required_lines in expected.items():
+        source = (REPO_ROOT / relative_path).read_text(encoding="utf-8")
+        for required_line in required_lines:
+            assert source.count(required_line) == 1, (relative_path, required_line)
 def test_release_build_rejects_invalid_source_and_target_branches(tmp_path: Path) -> None:
     clone = _clone_repo(tmp_path, "release-build-guards")
     subprocess.run(["git", "checkout", "-B", "main", "HEAD"], cwd=clone, check=True)

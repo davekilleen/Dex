@@ -52,13 +52,19 @@ if (pkg.scripts) delete pkg.scripts['test:scripts'];
 fs.writeFileSync(packagePath, `${JSON.stringify(pkg, null, 2)}\n`);
 NODE
 
+python3 "$REPO_ROOT/core/utils/update_verifier.py" \
+  --write-legacy-profile "$STAGING_DIR/System/.release-evidence-profile.json" \
+  --release-version "$VERSION"
+
 # The release manifest describes caller-owned shipped content. Production
 # node_modules is deliberately an artifact addition, not update-managed vault
 # content, so it is excluded from the manifest just as on the release branch.
 mkdir -p "$STAGING_DIR/System"
 (
   cd "$STAGING_DIR"
-  find . -type f -o -type l
+  # Ignore macOS metadata junk (AppleDouble ._* forks, .DS_Store) so the manifest
+  # stays in agreement with the archive, which is likewise stripped of it below.
+  find . \( -type f -o -type l \) ! -name '._*' ! -name '.DS_Store'
 ) | sed 's|^\./||' | grep -v '^System/\.installed-files\.manifest$' | LC_ALL=C sort \
   > "$STAGING_DIR/System/.installed-files.manifest"
 printf '%s\n' 'System/.installed-files.manifest' >> "$STAGING_DIR/System/.installed-files.manifest"
@@ -81,7 +87,11 @@ rm -rf "$STAGING_DIR/node_modules/.bin"
 rm -f "$TARBALL" "$CHECKSUM"
 (
   cd "$STAGING_DIR"
-  tar -czf "$TARBALL" .
+  # COPYFILE_DISABLE=1 stops macOS bsdtar from synthesizing AppleDouble ._*
+  # entries from extended attributes (they are not real files on disk, so the
+  # find-based manifest above never lists them). The --exclude flags are
+  # belt-and-braces for any stray on-disk macOS metadata, matching the manifest.
+  COPYFILE_DISABLE=1 tar --exclude='._*' --exclude='.DS_Store' -czf "$TARBALL" .
 )
 python3 "$REPO_ROOT/scripts/check-tau-removal.py" --archive "$TARBALL"
 (
