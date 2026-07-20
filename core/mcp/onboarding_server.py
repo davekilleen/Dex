@@ -1278,7 +1278,9 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[types.Text
                 result = create_error_response("No active session", suggestion="Call start_onboarding_session first")
                 return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
             
-            required_steps = list(range(1, ONBOARDING_STEPS + 1))
+            # Step 7 (optional rooms) is skippable: every room defaults OFF, so an
+            # unanswered step means the safe default, never a blocker.
+            required_steps = [s for s in range(1, ONBOARDING_STEPS + 1) if s != 7]
             completed = session['completed_steps']
             missing = [s for s in required_steps if s not in completed]
             
@@ -1292,7 +1294,8 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[types.Text
                 7: "Optional Rooms",
             }
             
-            progress = len(completed) / len(required_steps) * 100
+            completed_required = [s for s in completed if s in required_steps]
+            progress = len(completed_required) / len(required_steps) * 100
             
             status = {
                 "completed_steps": completed,
@@ -1342,7 +1345,9 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[types.Text
                 return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
 
             # Verify all required steps completed
-            required_steps = list(range(1, ONBOARDING_STEPS + 1))
+            # Step 7 (optional rooms) is skippable: every room defaults OFF, so an
+            # unanswered step means the safe default, never a blocker.
+            required_steps = [s for s in range(1, ONBOARDING_STEPS + 1) if s != 7]
             completed = session['completed_steps']
             missing = [s for s in required_steps if s not in completed]
 

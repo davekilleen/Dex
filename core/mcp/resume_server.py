@@ -466,7 +466,12 @@ async def handle_call_tool(
     
     arguments = arguments or {}
 
-    if not capability_rooms.enabled("career", profile_path=USER_PROFILE_FILE):
+    known_tools = {tool.name for tool in await handle_list_tools()}
+    # Gate only tools this server actually serves: an unknown tool name must
+    # still get the explicit unknown-tool error, room state notwithstanding.
+    if name in known_tools and not capability_rooms.enabled(
+        "career", profile_path=USER_PROFILE_FILE
+    ):
         payload = feature_status(
             "Career room",
             "off",
