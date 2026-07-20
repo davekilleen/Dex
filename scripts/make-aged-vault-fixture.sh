@@ -33,7 +33,7 @@ VAULT="$FIXTURE_ROOT/Dex Vault - Aged"
 git clone --no-local --quiet "$REPO_ROOT" "$UPSTREAM"
 git -C "$UPSTREAM" checkout -B main HEAD --quiet
 git -C "$UPSTREAM" config user.name "Dex Fixture Builder"
-git -C "$UPSTREAM" config user.email "fixture-builder@dex.local"
+git -C "$UPSTREAM" config user.email "fixture-builder@example.com"
 
 # Include the live migrator even while it is still uncommitted in this worktree.
 # The contract, tracked-ignore policy, and transition metadata come from v1.63.
@@ -61,7 +61,7 @@ if [ "$NO_GIT" = true ]; then
 else
   git clone --no-local --quiet --branch release "$UPSTREAM" "$VAULT"
   git -C "$VAULT" config user.name "Long-time Dex User"
-  git -C "$VAULT" config user.email "user@dex.local"
+  git -C "$VAULT" config user.email "user@example.com"
   git -C "$VAULT" remote rename origin upstream
   git -C "$VAULT" remote set-url upstream https://github.com/davekilleen/Dex.git
   git -C "$VAULT" remote add private-backup https://example.invalid/private-dex-vault.git

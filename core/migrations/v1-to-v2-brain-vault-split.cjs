@@ -503,7 +503,7 @@ function ensureIdentity(root, gitDirectory) {
   }
   const email = gitDir(root, gitDirectory, ['config', '--get', 'user.email'], { allowFailure: true });
   if (email.status !== 0 || !email.stdout.trim()) {
-    gitDir(root, gitDirectory, ['config', 'user.email', 'vault@dex.local']);
+    gitDir(root, gitDirectory, ['config', 'user.email', 'vault@example.com']);
   }
 }
 
