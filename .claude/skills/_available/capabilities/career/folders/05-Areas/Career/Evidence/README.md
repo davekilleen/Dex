@@ -8,4 +8,4 @@ Examples:
 - customer/team feedback
 - performance evidence
 
-This directory is part of the core vault path contract and must exist.
+This directory is provisioned only when the Career room is enabled.

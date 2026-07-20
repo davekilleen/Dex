@@ -69,7 +69,13 @@ test('accept person creates a page, marks contact created, and accepts suggestio
 }));
 
 test('accept company creates a page and accepts the company suggestion', () => withVault(vault => {
-  processEntityCreation(companyMeetings(), { entity_creation: { mode: 'suggest' } });
+  const profile = {
+    entity_creation: { mode: 'suggest' }, capabilities: { companies: { enabled: true } },
+  };
+  const profilePath = path.join(vault, 'System', 'user-profile.yaml');
+  fs.mkdirSync(path.dirname(profilePath), { recursive: true });
+  fs.writeFileSync(profilePath, 'capabilities:\n  companies:\n    enabled: true\n');
+  processEntityCreation(companyMeetings(), profile);
   const suggestion = listSuggestions().find(item => item.kind === 'company');
   const result = acceptSuggestion(suggestion.id);
   assert.equal(result.page_path, '05-Areas/Companies/Acme.md');

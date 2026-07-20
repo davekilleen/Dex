@@ -1,5 +1,15 @@
 name: Dex CI
-on: [push, pull_request]
+# Push runs cover main (and release automation); PRs get exactly ONE run via
+# the pull_request event instead of the former duplicated push+PR pair.
+on:
+  push:
+    branches: [main, beta]
+    tags: ['v*']
+  pull_request:
+# A superseded push to the same PR/branch cancels its stale in-flight run.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 jobs:
   quality:
     runs-on: macos-latest

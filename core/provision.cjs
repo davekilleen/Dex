@@ -3,13 +3,18 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
-const yaml = require(path.join(__dirname, '..', 'node_modules', 'js-yaml'));
+const yaml = require('js-yaml');
 const contract = require('./provision-contract.json');
+const portableContract = require('../packages/dex-contracts/dist/portable-vault.contract.json');
 
 const PROFILE_KEYS = new Set([
   'name', 'role', 'company', 'company_size', 'email_domain', 'work_email',
-  'obsidian_mode', 'pillars', 'communication',
+  'obsidian_mode', 'pillars', 'communication', 'capabilities',
 ]);
+
+const CAPABILITY_CATALOG = path.join(
+  __dirname, '..', '.claude', 'skills', '_available', 'capabilities',
+);
 
 function parseArgs(argv) {
   const options = { adopt: false, dryRun: false, json: false };
@@ -129,6 +134,19 @@ function loadProfileOverlay(profilePath) {
   if (overlay.communication !== undefined && (
     !overlay.communication || typeof overlay.communication !== 'object' || Array.isArray(overlay.communication)
   )) throw new Error('Profile JSON communication must be an object');
+  if (overlay.capabilities !== undefined) {
+    if (!overlay.capabilities || typeof overlay.capabilities !== 'object' || Array.isArray(overlay.capabilities)) {
+      throw new Error('Profile JSON capabilities must be an object');
+    }
+    for (const [room, state] of Object.entries(overlay.capabilities)) {
+      if (!Object.prototype.hasOwnProperty.call(portableContract.capabilities || {}, room)) {
+        throw new Error(`Unknown capability room: ${room}`);
+      }
+      if (!state || typeof state !== 'object' || Array.isArray(state) || typeof state.enabled !== 'boolean') {
+        throw new Error(`Profile JSON capabilities.${room}.enabled must be true or false`);
+      }
+    }
+  }
   return overlay;
 }
 
@@ -137,10 +155,90 @@ function buildFreshProfile(template, overlay) {
   for (const [key, value] of Object.entries(overlay)) {
     if (key === 'communication') {
       profile.communication = { ...(profile.communication || {}), ...value };
+    } else if (key === 'capabilities') {
+      profile.capabilities = { ...(profile.capabilities || {}) };
+      for (const [room, state] of Object.entries(value)) {
+        profile.capabilities[room] = {
+          ...(profile.capabilities[room] || {}),
+          ...state,
+        };
+      }
     } else profile[key] = value;
   }
   profile.entity_creation = { mode: 'auto' };
+  for (const [room, definition] of Object.entries(portableContract.capabilities || {})) {
+    const explicit = overlay.capabilities?.[room]?.enabled;
+    if (typeof explicit === 'boolean' && typeof definition.config === 'string') {
+      profile[definition.config] = { ...(profile[definition.config] || {}), enabled: explicit };
+    }
+  }
   return profile;
+}
+
+function capabilityEnabled(profile, room, definition) {
+  const explicit = profile?.capabilities?.[room]?.enabled;
+  if (typeof explicit === 'boolean') return explicit;
+  if (typeof definition.config === 'string') {
+    const legacy = profile?.[definition.config]?.enabled;
+    if (typeof legacy === 'boolean') return legacy;
+  }
+  return definition.default_enabled === true;
+}
+
+function copyMissing(source, target, reporter, dryRun) {
+  if (!fs.existsSync(source)) return;
+  const stat = fs.statSync(source);
+  if (stat.isDirectory()) {
+    ensureDirectory(target, reporter, dryRun);
+    for (const entry of fs.readdirSync(source)) {
+      copyMissing(path.join(source, entry), path.join(target, entry), reporter, dryRun);
+    }
+  } else if (!fs.existsSync(target)) {
+    if (!dryRun) {
+      fs.mkdirSync(path.dirname(target), { recursive: true });
+      fs.copyFileSync(source, target);
+    }
+    reporter.created(target);
+  } else reporter.skipped(target);
+}
+
+function reconcileCapabilities(vaultRoot, profile, reporter, dryRun) {
+  for (const [room, definition] of Object.entries(portableContract.capabilities || {})) {
+    const roomEnabled = capabilityEnabled(profile, room, definition);
+    const roomSource = path.join(CAPABILITY_CATALOG, room);
+    if (roomEnabled) {
+      for (const relativeFolder of definition.folders || []) {
+        const target = path.join(vaultRoot, ...relativeFolder.split('/'));
+        ensureDirectory(target, reporter, dryRun);
+        copyMissing(
+          path.join(roomSource, 'folders', ...relativeFolder.split('/')),
+          target,
+          reporter,
+          dryRun,
+        );
+      }
+      for (const skill of definition.skills || []) {
+        const source = path.join(roomSource, 'skills', skill);
+        const target = path.join(vaultRoot, '.claude', 'skills', skill);
+        if (!fs.existsSync(source)) throw new Error(`Dormant skill is missing for ${room}: ${skill}`);
+        if (!dryRun) {
+          fs.rmSync(target, { recursive: true, force: true });
+          fs.cpSync(source, target, { recursive: true });
+        }
+        reporter.created(target);
+      }
+    } else {
+      // Room folders contain user content and are never deleted. Only release-owned
+      // active skill copies are hidden when a room is switched off.
+      for (const skill of definition.skills || []) {
+        const target = path.join(vaultRoot, '.claude', 'skills', skill);
+        if (fs.existsSync(target)) {
+          if (!dryRun) fs.rmSync(target, { recursive: true, force: true });
+          reporter.skipped(target);
+        }
+      }
+    }
+  }
 }
 
 function pillarName(pillar) {
@@ -255,6 +353,11 @@ function provision(options) {
         // flipped to auto-create. Only fresh provisions opt into auto.
         const gapDefaults = structuredClone(freshProfile);
         delete gapDefaults.entity_creation;
+        for (const [room, definition] of Object.entries(portableContract.capabilities || {})) {
+          if (!profile.capabilities?.[room] && typeof definition.config === 'string') {
+            gapDefaults.capabilities[room].enabled = capabilityEnabled(profile, room, definition);
+          }
+        }
         if (deepFillMissing(profile, gapDefaults)) {
           writeIfChanged(profilePath, yaml.dump(profile, { sortKeys: false, lineWidth: -1 }), reporter, options.dryRun);
         } else reporter.skipped(profilePath);
@@ -271,6 +374,8 @@ function provision(options) {
     for (const relativePath of contract.para_directories) {
       ensureDirectory(path.join(vaultRoot, ...relativePath.split('/')), reporter, options.dryRun);
     }
+
+    reconcileCapabilities(vaultRoot, profile, reporter, options.dryRun);
 
     const tasksPath = path.join(vaultRoot, ...contract.seed_files.tasks.split('/'));
     writeIfMissing(tasksPath, tasksContent(profile.pillars), reporter, options.dryRun);
@@ -373,5 +478,6 @@ module.exports = {
   parseArgs,
   pathExports,
   provision,
+  reconcileCapabilities,
   updateClaudeContent,
 };

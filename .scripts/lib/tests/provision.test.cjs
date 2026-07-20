@@ -6,7 +6,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
-const yaml = require('../../../node_modules/js-yaml');
+const yaml = require('js-yaml');
 
 const repoRoot = path.resolve(__dirname, '../../..');
 const provisionScript = path.join(repoRoot, 'core', 'provision.cjs');
@@ -94,6 +94,14 @@ test('fresh provision creates the full profile, seeds, MCP config, paths, and by
     assert.equal(profile.communication.formality, 'formal');
     assert.equal(profile.communication.detail_level, 'concise');
     assert.equal(profile.ignored_key, undefined);
+    assert.deepEqual(profile.capabilities, {
+      career: { enabled: false },
+      companies: { enabled: false },
+      quarter_goals: { enabled: false },
+    });
+    assert.equal(fs.existsSync(path.join(vault, '05-Areas', 'Career')), false);
+    assert.equal(fs.existsSync(path.join(vault, '05-Areas', 'Companies')), false);
+    assert.equal(fs.existsSync(path.join(vault, '01-Quarter_Goals')), false);
 
     const pillars = yaml.load(fs.readFileSync(path.join(vault, 'System', 'pillars.yaml'), 'utf8'));
     assert.deepEqual(pillars.pillars[0], {
@@ -117,6 +125,67 @@ test('fresh provision creates the full profile, seeds, MCP config, paths, and by
     assert.equal(second.status, 0, second.stderr);
     assert.deepEqual(second.summary.created, []);
     assert.deepEqual(fileSnapshot(vault), before);
+  });
+});
+
+test('fresh provision surfaces only the selected capability rooms', () => {
+  withVault(vault => {
+    const profilePath = path.join(vault, 'desktop-profile.json');
+    fs.writeFileSync(profilePath, JSON.stringify({
+      capabilities: {
+        career: { enabled: true },
+        companies: { enabled: false },
+        quarter_goals: { enabled: false },
+      },
+    }));
+
+    const result = runProvision(vault, ['--profile', profilePath]);
+
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(fs.existsSync(path.join(vault, '05-Areas', 'Career', 'Evidence', 'README.md')), true);
+    for (const skill of ['career-setup', 'career-coach', 'resume-builder']) {
+      assert.equal(fs.existsSync(path.join(vault, '.claude', 'skills', skill, 'SKILL.md')), true);
+    }
+    assert.equal(fs.existsSync(path.join(vault, '05-Areas', 'Companies')), false);
+    assert.equal(fs.existsSync(path.join(vault, '01-Quarter_Goals')), false);
+  });
+});
+
+test('fresh provision fills omitted capability rooms from template defaults', () => {
+  withVault(vault => {
+    const profilePath = path.join(vault, 'desktop-profile.json');
+    fs.writeFileSync(profilePath, JSON.stringify({
+      capabilities: { career: { enabled: true } },
+    }));
+
+    const result = runProvision(vault, ['--profile', profilePath]);
+
+    assert.equal(result.status, 0, result.stderr);
+    const profile = yaml.load(fs.readFileSync(path.join(vault, 'System', 'user-profile.yaml'), 'utf8'));
+    assert.deepEqual(profile.capabilities, {
+      career: { enabled: true },
+      companies: { enabled: false },
+      quarter_goals: { enabled: false },
+    });
+  });
+});
+
+test('adopt migrates the legacy quarterly switch forward before provisioning', () => {
+  withVault(vault => {
+    fs.writeFileSync(
+      path.join(vault, 'System', 'user-profile.yaml'),
+      'name: Existing\nquarterly_planning:\n  enabled: true\n  q1_start_month: 4\n',
+    );
+
+    const result = runProvision(vault, ['--adopt']);
+
+    assert.equal(result.status, 0, result.stderr);
+    const profile = yaml.load(fs.readFileSync(path.join(vault, 'System', 'user-profile.yaml'), 'utf8'));
+    assert.equal(profile.capabilities.quarter_goals.enabled, true);
+    assert.equal(profile.quarterly_planning.q1_start_month, 4);
+    assert.equal(fs.existsSync(path.join(vault, '01-Quarter_Goals', 'Quarter_Goals.md')), true);
+    assert.equal(fs.existsSync(path.join(vault, '.claude', 'skills', 'quarter-plan', 'SKILL.md')), true);
+    assert.equal(fs.existsSync(path.join(vault, '.claude', 'skills', 'quarter-review', 'SKILL.md')), true);
   });
 });
 
