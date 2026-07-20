@@ -559,6 +559,56 @@ def test_renderer_exact_copy_and_impossible_combinations():
         )
 
 
+def test_remediated_status_with_live_unrevoked_residual_is_refused_as_overclaim():
+    """Paired inverse test for the over-claim guard (audit §5 P2 / guard 8).
+
+    render_credential_status raises when a caller claims security="remediated"
+    while a live `.mcp.json` residual is still "unrevoked-or-unclassified" — a
+    "fixed, but a usable key may remain" contradiction the status vocabulary must
+    never emit.
+
+    Red-when-removed proof: the evidence below is *complete* remediation evidence
+    (all five required categories present; no missing/unavailable/unknown causes),
+    so the downstream "remediated security requires complete bound rotation and
+    replacement evidence" guard does NOT fire on it. The ONLY thing that rejects
+    this call is the over-claim guard itself. Delete
+    `if security_state == "remediated" and active_residual_state ==
+    "unrevoked-or-unclassified": raise ...` and this test fails (no exception is
+    raised); restore it and the test passes.
+
+    The prior coverage (`test_renderer_exact_copy_and_impossible_combinations`,
+    the `CredentialEvidence()` case) could not prove this: with empty evidence the
+    completeness guard also raised, so removing the over-claim guard left the test
+    green. This is why a dedicated complete-evidence inverse test is required.
+
+    render_credential_status / CredentialEvidence are the public construction path
+    (both are module-level exports used throughout this file). Reaching this exact
+    combination via the CLI workflow is defense-in-depth: inspect_credential_migration
+    never yields security="remediated" alongside a live residual (a live residual
+    forces rotation-pending/unknown), so the guard protects an input the CLI cannot
+    currently produce — which is precisely why it needs its own test rather than
+    an end-to-end one.
+    """
+    complete_remediation_evidence = CredentialEvidence(
+        present=(
+            "old-key-revocation",
+            "replacement-present",
+            "replacement-health",
+            "active-copy",
+            "provider-binding",
+        )
+    )
+    with pytest.raises(ValueError, match="potentially usable residual"):
+        render_credential_status(
+            "partial",
+            "remediated",
+            "unrevoked-or-unclassified",
+            "history-clean",
+            complete_remediation_evidence,
+            (),
+        )
+
+
 def test_journal_contains_exact_preimage_but_no_absolute_path(tmp_path):
     root = _vault(tmp_path)
     result = migrate_legacy_credentials(root)
