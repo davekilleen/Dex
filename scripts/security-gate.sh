@@ -4,14 +4,23 @@ set -euo pipefail
 echo "🔐 Security Gate"
 echo "================"
 
+PYTHON=""
+for candidate in /usr/bin/python3 /bin/python3; do
+  if [ -x "$candidate" ]; then
+    PYTHON="$candidate"
+    break
+  fi
+done
+if [ -z "$PYTHON" ]; then
+  echo "❌ Tracked-file security scan failed closed: trusted Python is unavailable." >&2
+  exit 1
+fi
+
 ALLOWLIST_FILE="scripts/security-allowlist.txt"
 STRICT_AUDIT="${SECURITY_STRICT_AUDIT:-0}"
 
-SCAN_OUTPUT=$(mktemp)
-trap 'rm -f "$SCAN_OUTPUT"' EXIT
-if ! python3 scripts/security-scan.py "$ALLOWLIST_FILE" >"$SCAN_OUTPUT"; then
-  echo "❌ Tracked-file security scan failed:"
-  sed 's/^/  /' "$SCAN_OUTPUT"
+if ! "$PYTHON" -I scripts/security-scan.py "$ALLOWLIST_FILE"; then
+  echo "❌ Tracked-file security scan failed." >&2
   exit 1
 fi
 echo "✅ No high-risk secret patterns detected."
@@ -19,15 +28,17 @@ echo "✅ No high-risk secret patterns detected."
 if [ "$STRICT_AUDIT" = "1" ]; then
   echo ""
   echo "Running strict dependency audits..."
-  if command -v pip-audit >/dev/null 2>&1; then
-    pip-audit --progress-spinner off
-  else
+  if ! "$PYTHON" -I -m pip_audit --progress-spinner off; then
     echo "❌ SECURITY_STRICT_AUDIT=1 but pip-audit is unavailable."
     exit 1
   fi
 
-  if command -v npm >/dev/null 2>&1 && [ -f package-lock.json ]; then
-    npm audit --omit=dev --audit-level=high
+  if [ -f package-lock.json ]; then
+    if [ ! -x /usr/bin/npm ]; then
+      echo "❌ SECURITY_STRICT_AUDIT=1 but trusted npm is unavailable."
+      exit 1
+    fi
+    /usr/bin/npm audit --omit=dev --audit-level=high
   fi
 else
   echo ""

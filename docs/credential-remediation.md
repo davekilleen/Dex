@@ -35,6 +35,13 @@ Missing contained descendants may be created only beneath those descriptors; a s
 refuses capability authorization before any probe or credential preimage can be written outside
 the vault.
 
+Credential rewind read-only prevalidates the journal, both pinned target parents, both complete
+preimages, and the exact migration-owned config and `.env` postimages before changing either
+target. It durably records publication state, publishes local-only `.env` state before tracked
+YAML, and restores both migrated postimages after any caught boundary fault. A process-stopped
+publication remains explicitly recoverable; the next rewind invocation first resolves it back to
+the no-raw-YAML migrated state before retrying.
+
 Vault `.env` uses one lossless canonical quoted serializer/parser. Accepted non-empty scalar
 bytes—including leading/trailing spaces, literal quotes, backslashes, `#`, and `=`—round-trip
 exactly while the file's existing CRLF or LF convention is preserved. Reads and replacements
@@ -67,6 +74,11 @@ Git-directory journal on the next invocation. Git uses an absolute trusted execu
 hooks/signing/fsmonitor, and refuses local executable filters, includes, hooks, drivers, textconv,
 or redirected-worktree authority. Findings are counts only; values and value-derived fingerprints
 are not serialized.
+
+The tracked-file security gate hands off only to an absolute system Python in isolated mode and
+the scanner resolves Git through the shared absolute trusted-Git policy. The wrapper uses no
+ambient `python3`, `git`, `mktemp`, `sed`, or cleanup utility whose `PATH` replacement could forge
+a clean verdict; absence of the trusted interpreter fails closed.
 
 Credential scanning is bounded by aggregate file, byte, object, archive-member, Git-output, and
 deadline limits. Worktree/index completion requires every approved file/blob to pass; selected

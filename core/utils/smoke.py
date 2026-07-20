@@ -88,6 +88,7 @@ CONTENT_VERIFIED_SENSITIVE_DEPENDENCIES = frozenset(
         Path("core/utils/credential_migration_exceptions.json"),
         Path("core/utils/credential_remediation.py"),
         Path("core/utils/credential_scanner.py"),
+        Path("core/utils/credential_workflow.py"),
         Path("core/utils/integration_credentials.py"),
     }
 )

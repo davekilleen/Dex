@@ -202,12 +202,15 @@ def _atomic_replace_at(
     mode: int,
     *,
     before_publish: Callable[[os.stat_result], None] | None = None,
+    owner: tuple[int, int] | None = None,
 ) -> None:
     temporary = f".{name}.{uuid.uuid4().hex}"
     try:
         descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL, mode, dir_fd=directory)
         with os.fdopen(descriptor, "wb") as handle:
             os.fchmod(handle.fileno(), mode)
+            if owner is not None and hasattr(os, "fchown"):
+                os.fchown(handle.fileno(), *owner)
             handle.write(data)
             handle.flush()
             os.fsync(handle.fileno())
@@ -216,7 +219,11 @@ def _atomic_replace_at(
         os.replace(temporary, name, src_dir_fd=directory, dst_dir_fd=directory)
         os.fsync(directory)
         actual, metadata = _read_at_with_metadata(directory, name)
-        if actual != data or stat.S_IMODE(metadata.st_mode) != mode:
+        if (
+            actual != data
+            or stat.S_IMODE(metadata.st_mode) != mode
+            or (owner is not None and (metadata.st_uid, metadata.st_gid) != owner)
+        ):
             raise OSError("credential replacement readback mismatch")
     finally:
         try:
@@ -518,6 +525,8 @@ def migrate_legacy_credentials(vault_root: Path) -> MigrationResult:
             "bytes_hex": config_raw.hex(),
             "sha256": _hash(config_raw),
             "mode": stat.S_IMODE(config_snapshot_metadata.st_mode),
+            "uid": config_snapshot_metadata.st_uid,
+            "gid": config_snapshot_metadata.st_gid,
         },
         "env": None
         if env_raw is None
@@ -525,10 +534,15 @@ def migrate_legacy_credentials(vault_root: Path) -> MigrationResult:
             "bytes_hex": env_raw.hex(),
             "sha256": _hash(env_raw),
             "mode": stat.S_IMODE(env_metadata.st_mode),
+            "uid": env_metadata.st_uid,
+            "gid": env_metadata.st_gid,
         },
         "postimages": {
             "config_sha256": _hash(expected_config),
+            "config_bytes_hex": expected_config.hex(),
+            "config_mode": stat.S_IMODE(config_snapshot_metadata.st_mode),
             "env_sha256": _hash(expected_env),
+            "env_bytes_hex": expected_env.hex(),
             "env_mode": 0o600,
         },
     }
@@ -614,55 +628,300 @@ def migrate_legacy_credentials(vault_root: Path) -> MigrationResult:
     )
 
 
+def _journal_image(entry: object, *, optional: bool = False) -> tuple[bytes, int, tuple[int, int]] | None:
+    if entry is None and optional:
+        return None
+    if not isinstance(entry, dict) or set(entry) != {"bytes_hex", "sha256", "mode", "uid", "gid"}:
+        raise OSError("invalid credential journal preimage")
+    try:
+        data = bytes.fromhex(entry["bytes_hex"])
+        mode = int(entry["mode"])
+        owner = (int(entry["uid"]), int(entry["gid"]))
+    except (TypeError, ValueError) as error:
+        raise OSError("invalid credential journal preimage") from error
+    if (
+        _hash(data) != entry["sha256"]
+        or not 0 <= mode <= 0o777
+        or min(owner) < 0
+        or not _owner_restorable(owner)
+    ):
+        raise OSError("invalid credential journal preimage")
+    return data, mode, owner
+
+
+def _owner_restorable(owner: tuple[int, int]) -> bool:
+    if not all(hasattr(os, name) for name in ("geteuid", "getegid", "getgroups")):
+        return True
+    effective_uid = os.geteuid()
+    if effective_uid == 0:
+        return True
+    return owner[0] == effective_uid and owner[1] in {os.getegid(), *os.getgroups()}
+
+
+def _rewind_images(record: object) -> dict[str, tuple[bytes, int, tuple[int, int]] | None]:
+    if not isinstance(record, dict) or record.get("schema_version") != 1:
+        raise OSError("invalid credential journal")
+    config_pre = _journal_image(record.get("config"))
+    env_pre = _journal_image(record.get("env"), optional=True)
+    postimages = record.get("postimages")
+    if not isinstance(postimages, dict):
+        raise OSError("invalid credential journal postimages")
+    try:
+        config_post = bytes.fromhex(postimages["config_bytes_hex"])
+        env_post = bytes.fromhex(postimages["env_bytes_hex"])
+        config_mode = int(postimages["config_mode"])
+        env_mode = int(postimages["env_mode"])
+        config_identity = postimages.get("config_identity")
+        env_identity = postimages.get("env_identity")
+    except (KeyError, TypeError, ValueError) as error:
+        raise OSError("invalid credential journal postimages") from error
+    if (
+        _hash(config_post) != postimages.get("config_sha256")
+        or _hash(env_post) != postimages.get("env_sha256")
+        or (config_identity is not None and (not isinstance(config_identity, list) or len(config_identity) != 7))
+        or (env_identity is not None and (not isinstance(env_identity, list) or len(env_identity) != 7))
+        or (config_identity is not None and config_mode != stat.S_IMODE(config_identity[2]))
+        or env_mode != 0o600
+        or (env_identity is not None and env_mode != stat.S_IMODE(env_identity[2]))
+    ):
+        raise OSError("invalid credential journal postimages")
+    assert config_pre is not None
+    config_owner = (
+        (config_identity[4], config_identity[5])
+        if config_identity is not None
+        else config_pre[2]
+    )
+    env_owner = (
+        (env_identity[4], env_identity[5])
+        if env_identity is not None
+        else (env_pre[2] if env_pre is not None else config_pre[2])
+    )
+    return {
+        "config_pre": config_pre,
+        "env_pre": env_pre,
+        "config_post": (config_post, config_mode, config_owner),
+        "env_post": (env_post, env_mode, env_owner),
+    }
+
+
+def _require_image(
+    parent: int,
+    target: str,
+    image: tuple[bytes, int, tuple[int, int]],
+    *,
+    identity: object | None = None,
+) -> None:
+    data, metadata = _read_at_with_metadata(parent, target)
+    expected, mode, owner = image
+    if (
+        data != expected
+        or stat.S_IMODE(metadata.st_mode) != mode
+        or (metadata.st_uid, metadata.st_gid) != owner
+        or (identity is not None and _postimage_identity(metadata) != identity)
+    ):
+        raise OSError("credential rewind requires an unchanged migration-owned postimage")
+
+
+def _store_rewind_journal(directory: int, name: str, record: dict[str, object]) -> None:
+    _atomic_replace_at(directory, name, (json.dumps(record, sort_keys=True) + "\n").encode(), 0o600)
+
+
+def _restore_rewind_postimages(
+    config_parent: int,
+    env_parent: int,
+    images: dict[str, tuple[bytes, int, tuple[int, int]] | None],
+) -> None:
+    """Resolve an interrupted rewind back to the secret-safe migrated state."""
+    for name, parent, target in (
+        ("config", config_parent, "config.yaml"),
+        ("env", env_parent, ".env"),
+    ):
+        post = images[f"{name}_post"]
+        pre = images[f"{name}_pre"]
+        assert post is not None
+        try:
+            current, metadata = _read_at_with_metadata(parent, target)
+        except FileNotFoundError:
+            if pre is not None or name == "config":
+                raise OSError("credential rewind recovery-required: target disappeared") from None
+        else:
+            current_image = (current, stat.S_IMODE(metadata.st_mode), (metadata.st_uid, metadata.st_gid))
+            if current_image != post and (pre is None or current_image != pre):
+                raise OSError("credential rewind recovery-required: target changed independently")
+            if current_image == post:
+                continue
+        _atomic_replace_at(parent, target, post[0], post[1], owner=post[2])
+
+
+def _refresh_postimage_identities(
+    config_parent: int,
+    env_parent: int,
+    images: dict[str, tuple[bytes, int, tuple[int, int]] | None],
+    postimages: dict[str, object],
+) -> None:
+    for name, parent, target in (
+        ("config", config_parent, "config.yaml"),
+        ("env", env_parent, ".env"),
+    ):
+        post = images[f"{name}_post"]
+        assert post is not None
+        data, metadata = _read_at_with_metadata(parent, target)
+        if (
+            data != post[0]
+            or stat.S_IMODE(metadata.st_mode) != post[1]
+            or (metadata.st_uid, metadata.st_gid) != post[2]
+        ):
+            raise OSError("credential rewind recovery-required: postimage readback mismatch")
+        postimages[f"{name}_identity"] = _postimage_identity(metadata)
+
+
+def _finish_incomplete_migration_rollback(
+    config_parent: int,
+    env_parent: int,
+    images: dict[str, tuple[bytes, int, tuple[int, int]] | None],
+    postimages: dict[str, object],
+) -> None:
+    """Restore migration preimages when publication never reached both targets."""
+    config_pre = images["config_pre"]
+    env_pre = images["env_pre"]
+    config_post = images["config_post"]
+    env_post = images["env_post"]
+    assert config_pre is not None and config_post is not None and env_post is not None
+    for name, parent, target, pre, post in (
+        ("config", config_parent, "config.yaml", config_pre, config_post),
+        ("env", env_parent, ".env", env_pre, env_post),
+    ):
+        identity = postimages.get(f"{name}_identity")
+        if identity is not None:
+            _require_image(parent, target, post, identity=identity)
+        elif pre is None:
+            try:
+                os.stat(target, dir_fd=parent, follow_symlinks=False)
+            except FileNotFoundError:
+                pass
+            else:
+                raise OSError("credential migration rollback target appeared") from None
+        else:
+            _require_image(parent, target, pre)
+    if postimages.get("env_identity") is not None:
+        if env_pre is None:
+            os.unlink(".env", dir_fd=env_parent)
+            os.fsync(env_parent)
+        else:
+            _atomic_replace_at(env_parent, ".env", env_pre[0], env_pre[1], owner=env_pre[2])
+    if postimages.get("config_identity") is not None:
+        _atomic_replace_at(
+            config_parent, "config.yaml", config_pre[0], config_pre[1], owner=config_pre[2]
+        )
+
+
 def rewind_credential_migration(vault_root: Path, journal_id: str) -> MigrationResult:
     if not re.fullmatch(r"[0-9a-f]{32}", journal_id):
         raise ValueError("invalid credential journal id")
-    journal_descriptor = _open_directory_chain(
+    journal_name = f"{journal_id}.json"
+    root_before = vault_root.lstat()
+    journal_parent = _open_directory_chain(
         vault_root, ("System", ".dex", "adoption", "credential-journals")
     )
     try:
-        record = json.loads(_read_at(journal_descriptor, f"{journal_id}.json").decode("utf-8"))
-    finally:
-        os.close(journal_descriptor)
-    for name, entry in (("config", record["config"]), ("env", record["env"])):
-        parts = ("System", "integrations") if name == "config" else ()
-        target = "config.yaml" if name == "config" else ".env"
-        parent = _open_directory_chain(vault_root, parts)
-        try:
-            if entry is None:
+        config_parent = _open_directory_chain(vault_root, ("System", "integrations"))
+    except BaseException:
+        os.close(journal_parent)
+        raise
+    try:
+        env_parent = _open_directory_chain(vault_root, ())
+    except BaseException:
+        os.close(config_parent)
+        os.close(journal_parent)
+        raise
+    try:
+        root_after = vault_root.lstat()
+        opened_root = os.fstat(env_parent)
+        root_identities = {
+            (item.st_dev, item.st_ino, item.st_mode, item.st_uid, item.st_gid)
+            for item in (root_before, root_after, opened_root)
+        }
+        if len(root_identities) != 1:
+            raise OSError("credential rewind vault root identity changed")
+        journal_raw, journal_metadata = _read_at_with_metadata(journal_parent, journal_name)
+        if (
+            stat.S_IMODE(journal_metadata.st_mode) != 0o600
+            or not _owner_restorable((journal_metadata.st_uid, journal_metadata.st_gid))
+        ):
+            raise OSError("unsafe credential rewind journal authority")
+        record = json.loads(journal_raw.decode("utf-8"))
+        images = _rewind_images(record)
+        postimages = record["postimages"]
+        assert isinstance(postimages, dict)
+        if postimages.get("config_identity") is None or postimages.get("env_identity") is None:
+            _finish_incomplete_migration_rollback(config_parent, env_parent, images, postimages)
+            return MigrationResult("rewound", journal_id)
+        if record.get("rewind") == {"phase": "rewound"}:
+            config_pre = images["config_pre"]
+            assert config_pre is not None
+            _require_image(config_parent, "config.yaml", config_pre)
+            env_pre = images["env_pre"]
+            if env_pre is None:
                 try:
-                    current, metadata = _read_at_with_metadata(parent, target)
+                    os.stat(".env", dir_fd=env_parent, follow_symlinks=False)
                 except FileNotFoundError:
-                    continue
-                postimages = record.get("postimages")
-                if (
-                    not isinstance(postimages, dict)
-                    or _hash(current) != postimages.get("env_sha256")
-                    or stat.S_IMODE(metadata.st_mode) != postimages.get("env_mode")
-                    or _postimage_identity(metadata) != postimages.get("env_identity")
-                ):
-                    raise OSError("credential rewind requires an unchanged migration-owned .env postimage")
-                os.unlink(target, dir_fd=parent)
-                os.fsync(parent)
-                continue
-            current, metadata = _read_at_with_metadata(parent, target)
-            postimage_key = "config_sha256" if name == "config" else "env_sha256"
-            postimages = record.get("postimages")
-            postidentity = postimages.get(f"{name}_identity") if isinstance(postimages, dict) else None
-            mutation_owned = (
-                isinstance(postimages, dict)
-                and _hash(current) == postimages.get(postimage_key)
-                and _postimage_identity(metadata) == postidentity
+                    pass
+                else:
+                    raise OSError("credential rewind preimage changed after completion") from None
+            else:
+                _require_image(env_parent, ".env", env_pre)
+            return MigrationResult("rewound", journal_id)
+        if record.get("rewind") == {"phase": "publishing"}:
+            _restore_rewind_postimages(config_parent, env_parent, images)
+            _refresh_postimage_identities(
+                config_parent, env_parent, images, postimages
             )
-            unchanged_preimage = _hash(current) == entry["sha256"] and postidentity is None
-            if not mutation_owned and not unchanged_preimage:
-                raise OSError("credential rewind requires an unchanged migration-owned postimage")
-            expected = bytes.fromhex(entry["bytes_hex"])
-            if _hash(expected) != entry["sha256"]:
-                raise OSError("credential rewind readback mismatch")
-            _atomic_replace_at(parent, target, expected, entry["mode"])
-        finally:
-            os.close(parent)
+            record["rewind"] = {"phase": "ready"}
+            _store_rewind_journal(journal_parent, journal_name, record)
+        elif record.get("rewind") not in (None, {"phase": "ready"}):
+            raise OSError("invalid credential rewind phase")
+
+        config_post = images["config_post"]
+        env_post = images["env_post"]
+        assert config_post is not None and env_post is not None
+        # Complete read-only prevalidation of both pinned targets precedes any target mutation.
+        _require_image(
+            config_parent, "config.yaml", config_post, identity=postimages["config_identity"]
+        )
+        _require_image(env_parent, ".env", env_post, identity=postimages["env_identity"])
+        config_pre = images["config_pre"]
+        assert config_pre is not None
+        env_pre = images["env_pre"]
+        record["rewind"] = {"phase": "publishing"}
+        _store_rewind_journal(journal_parent, journal_name, record)
+        try:
+            # Publish local-only state first; tracked raw YAML is the final boundary.
+            _require_image(env_parent, ".env", env_post, identity=postimages["env_identity"])
+            if env_pre is None:
+                os.unlink(".env", dir_fd=env_parent)
+                os.fsync(env_parent)
+            else:
+                _atomic_replace_at(env_parent, ".env", env_pre[0], env_pre[1], owner=env_pre[2])
+            _require_image(
+                config_parent, "config.yaml", config_post, identity=postimages["config_identity"]
+            )
+            _atomic_replace_at(
+                config_parent, "config.yaml", config_pre[0], config_pre[1], owner=config_pre[2]
+            )
+            record["rewind"] = {"phase": "rewound"}
+            _store_rewind_journal(journal_parent, journal_name, record)
+        except BaseException:
+            _restore_rewind_postimages(config_parent, env_parent, images)
+            _refresh_postimage_identities(
+                config_parent, env_parent, images, postimages
+            )
+            record["rewind"] = {"phase": "ready"}
+            _store_rewind_journal(journal_parent, journal_name, record)
+            raise
+    finally:
+        os.close(env_parent)
+        os.close(config_parent)
+        os.close(journal_parent)
     return MigrationResult("rewound", journal_id)
 
 

@@ -600,9 +600,12 @@ def test_rewind_refuses_replaced_env_symlink_without_touching_its_target(tmp_pat
         rewind_credential_migration(root, result.journal_id)
     assert (root / ".env").is_symlink()
     assert outside.read_text() == "outside-safe\n"
+    config = (root / "System/integrations/config.yaml").read_bytes()
+    assert b"api_key_env_var: TODOIST_API_KEY" in config
+    assert b"api_key: synthetic-old-key" not in config
 
 
-@pytest.mark.parametrize("race", ["modify", "replace", "hardlink", "symlink"])
+@pytest.mark.parametrize("race", ["modify", "replace", "hardlink", "symlink", "later-created"])
 def test_rewind_never_deletes_or_overwrites_later_env_edits(tmp_path, race):
     root = _vault(tmp_path)
     result = migrate_legacy_credentials(root)
@@ -621,11 +624,94 @@ def test_rewind_never_deletes_or_overwrites_later_env_edits(tmp_path, race):
         outside.write_bytes(migrated)
         env.unlink()
         os.link(outside, env)
-    else:
+    elif race == "symlink":
         outside.write_bytes(migrated)
         env.unlink()
         env.symlink_to(outside)
+    else:
+        env.unlink()
+        env.write_bytes(b'LATER_CREATED="must-survive"\n')
+        env.chmod(0o600)
 
     with pytest.raises(OSError):
         rewind_credential_migration(root, result.journal_id)
     assert env.exists()
+    config = (root / "System/integrations/config.yaml").read_bytes()
+    assert b"api_key_env_var: TODOIST_API_KEY" in config
+    assert b"api_key: synthetic-old-key" not in config
+
+
+@pytest.mark.parametrize("boundary", ["before-env", "after-env", "before-config", "after-config"])
+def test_rewind_fault_between_publications_restores_all_migrated_postimages(
+    tmp_path, monkeypatch, boundary
+):
+    root = _vault(tmp_path)
+    env = root / ".env"
+    env.write_text("PRESERVED=before\n")
+    env.chmod(0o600)
+    result = migrate_legacy_credentials(root)
+    config = root / "System/integrations/config.yaml"
+    migrated_config = config.read_bytes()
+    migrated_env = env.read_bytes()
+    real_replace = credential_remediation._atomic_replace_at
+    interrupted = False
+
+    def fault(directory, name, data, mode, **kwargs):
+        nonlocal interrupted
+        selected = (boundary.endswith("env") and name == ".env") or (
+            boundary.endswith("config") and name == "config.yaml"
+        )
+        if not selected or interrupted:
+            return real_replace(directory, name, data, mode, **kwargs)
+        interrupted = True
+        if boundary.startswith("after"):
+            real_replace(directory, name, data, mode, **kwargs)
+        raise OSError(f"injected {boundary} rewind fault")
+
+    monkeypatch.setattr(credential_remediation, "_atomic_replace_at", fault)
+    with pytest.raises(OSError, match="injected"):
+        rewind_credential_migration(root, result.journal_id)
+
+    assert config.read_bytes() == migrated_config
+    assert env.read_bytes() == migrated_env
+    assert b"api_key: synthetic-old-key" not in migrated_config
+    journal = root / "System/.dex/adoption/credential-journals" / f"{result.journal_id}.json"
+    assert json.loads(journal.read_text())["rewind"] == {"phase": "ready"}
+
+
+def test_rewind_restart_resolves_explicit_interrupted_state_before_retry(tmp_path):
+    root = _vault(tmp_path)
+    result = migrate_legacy_credentials(root)
+    config = root / "System/integrations/config.yaml"
+    migrated_config = config.read_bytes()
+    journal = root / "System/.dex/adoption/credential-journals" / f"{result.journal_id}.json"
+    record = json.loads(journal.read_text())
+    config.write_bytes(bytes.fromhex(record["config"]["bytes_hex"]))
+    config.chmod(record["config"]["mode"])
+    record["rewind"] = {"phase": "publishing"}
+    journal.write_text(json.dumps(record, sort_keys=True) + "\n")
+    journal.chmod(0o600)
+
+    rewind = rewind_credential_migration(root, result.journal_id)
+
+    assert rewind.state == "rewound"
+    assert config.read_bytes() != migrated_config
+    assert config.read_bytes() == bytes.fromhex(record["config"]["bytes_hex"])
+    assert not (root / ".env").exists()
+
+
+def test_rewind_prevalidation_guard_removal_recreates_rejected_raw_yaml_mutant(
+    tmp_path, monkeypatch
+):
+    root = _vault(tmp_path)
+    result = migrate_legacy_credentials(root)
+    env = root / ".env"
+    env.write_bytes(b'LATER_CREATED="must-survive"\n')
+    env.chmod(0o600)
+
+    monkeypatch.setattr(credential_remediation, "_require_image", lambda *args, **kwargs: None)
+    rewind = rewind_credential_migration(root, result.journal_id)
+
+    assert rewind.state == "rewound"
+    assert b"api_key: synthetic-old-key" in (root / "System/integrations/config.yaml").read_bytes()
+    assert not env.exists()

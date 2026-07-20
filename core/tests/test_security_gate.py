@@ -30,14 +30,14 @@ def _fixture(tmp_path: Path) -> Path:
     return root
 
 
-def _run(root: Path) -> subprocess.CompletedProcess[str]:
+def _run(root: Path, *, env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
-        ["bash", "scripts/security-gate.sh"],
+        ["/bin/bash", "scripts/security-gate.sh"],
         cwd=root,
         text=True,
         capture_output=True,
         check=False,
-        env={**os.environ, "SECURITY_STRICT_AUDIT": "0"},
+        env={**os.environ, "SECURITY_STRICT_AUDIT": "0", **(env or {})},
     )
 
 
@@ -104,4 +104,52 @@ def test_security_gate_refuses_tracked_file_parent_symlink_without_reading_targe
 
     assert result.returncode != 0
     assert "failed closed" in (result.stdout + result.stderr).lower()
+    assert secret not in result.stdout + result.stderr
+
+
+def _hostile_path(tmp_path: Path) -> Path:
+    hostile = tmp_path / "hostile-bin"
+    hostile.mkdir()
+    for name in ("python3", "git", "mktemp", "sed", "rm", "cat", "npm", "pip-audit"):
+        shim = hostile / name
+        shim.write_text("#!/bin/sh\nexit 0\n")
+        shim.chmod(0o755)
+    return hostile
+
+
+def test_real_security_gate_ignores_hostile_utility_path_and_finds_secret(tmp_path):
+    root = _fixture(tmp_path)
+    secret = "ghp_" + "D" * 24
+    (root / "tracked-secret.txt").write_text(secret + "\n")
+    _git(root, "add", ".")
+    hostile = _hostile_path(tmp_path)
+
+    result = _run(root, env={"PATH": f"{hostile}:{os.environ['PATH']}"})
+
+    assert result.returncode != 0
+    combined = result.stdout + result.stderr
+    assert secret not in combined
+    assert "github-token" in combined
+    assert "Security gate passed" not in combined
+
+
+def test_ambient_python_guard_removal_mutant_falsely_reports_tracked_secret_clean(tmp_path):
+    root = _fixture(tmp_path)
+    secret = "ghp_" + "E" * 24
+    (root / "tracked-secret.txt").write_text(secret + "\n")
+    _git(root, "add", ".")
+    hostile = _hostile_path(tmp_path)
+    gate = root / "scripts/security-gate.sh"
+    source = gate.read_text()
+    mutated = source.replace(
+        '"$PYTHON" -I scripts/security-scan.py "$ALLOWLIST_FILE"',
+        'python3 scripts/security-scan.py "$ALLOWLIST_FILE"',
+    )
+    assert mutated != source
+    gate.write_text(mutated)
+
+    result = _run(root, env={"PATH": f"{hostile}:{os.environ['PATH']}"})
+
+    assert result.returncode == 0
+    assert "Security gate passed" in result.stdout
     assert secret not in result.stdout + result.stderr
