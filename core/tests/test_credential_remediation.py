@@ -200,29 +200,14 @@ def test_baseexception_at_every_mutation_boundary_rewinds_exactly(tmp_path, monk
     root = _vault(tmp_path)
     config = root / "System/integrations/config.yaml"
     before = config.read_bytes()
-    real_update = credential_remediation.update_vault_env
-    real_replace = credential_remediation._atomic_replace_at
+    selected_target = "env" if boundary.endswith("env") else "config"
+    selected_phase = "before-prepared-record" if boundary.startswith("before") else "after-readback"
 
-    if boundary in {"before-env", "after-env"}:
-        def interrupt_env(*args, **kwargs):
-            if boundary == "after-env":
-                real_update(*args, **kwargs)
+    def interrupt(phase, target):
+        if (phase, target) == (selected_phase, selected_target):
             raise interruption()
 
-        monkeypatch.setattr(credential_remediation, "update_vault_env", interrupt_env)
-    else:
-        interrupted = False
-
-        def interrupt_config(directory, name, data, mode, **kwargs):
-            nonlocal interrupted
-            if name != "config.yaml" or interrupted:
-                return real_replace(directory, name, data, mode, **kwargs)
-            interrupted = True
-            if boundary == "after-config":
-                real_replace(directory, name, data, mode, **kwargs)
-            raise interruption()
-
-        monkeypatch.setattr(credential_remediation, "_atomic_replace_at", interrupt_config)
+    monkeypatch.setattr(credential_remediation, "_migration_fault", interrupt)
 
     with pytest.raises(interruption):
         migrate_legacy_credentials(root)
@@ -262,6 +247,18 @@ def test_conflict_symlink_and_mcp_residual_are_honest(tmp_path):
     before = mcp.read_bytes()
     assert migrate_legacy_credentials(root).state == "partial"
     assert mcp.read_bytes() == before
+
+
+def test_existing_env_requires_owner_only_authority_before_migration(tmp_path):
+    root = _vault(tmp_path)
+    env = root / ".env"
+    env.write_text("PRESERVED=value\n")
+    env.chmod(0o644)
+    before = (root / "System/integrations/config.yaml").read_bytes()
+
+    assert migrate_legacy_credentials(root).state == "refused"
+    assert (root / "System/integrations/config.yaml").read_bytes() == before
+    assert env.read_text() == "PRESERVED=value\n"
 
 
 @pytest.mark.parametrize("external", [False, True])
@@ -408,7 +405,7 @@ def test_writable_existing_config_is_required_for_capability_authorization(tmp_p
 
 
 @pytest.mark.parametrize(
-    ("security_state", "active_residual_state", "evidence_codes", "valid"),
+    ("security_state", "active_residual_state", "evidence_categories", "valid"),
     [
         ("rotation-pending", "none", (), False),
         ("rotation-pending", "none", ("replacement-health",), True),
@@ -422,18 +419,26 @@ def test_writable_existing_config_is_required_for_capability_authorization(tmp_p
 def test_pending_and_unknown_status_require_explicit_reason(
     security_state,
     active_residual_state,
-    evidence_codes,
+    evidence_categories,
     valid,
 ):
     migration_state = "partial" if active_residual_state != "none" else "not-needed"
 
     def call():
+        evidence = (
+            CredentialEvidence(missing=evidence_categories)
+            if security_state == "rotation-pending"
+            else CredentialEvidence(
+                unavailable=evidence_categories,
+                unknown_causes=("unavailable",) if evidence_categories else (),
+            )
+        )
         return render_credential_status(
             migration_state,
             security_state,
             active_residual_state,
             "history-cleanup-pending",
-            evidence_codes,
+            evidence,
             (),
         )
 
@@ -475,6 +480,17 @@ def test_typed_evidence_polarity_distinguishes_present_missing_and_unavailable()
         )
 
 
+def test_status_renderer_rejects_removed_tuple_evidence_compatibility():
+    with pytest.raises(TypeError, match="typed evidence"):
+        render_credential_status(
+            "not-needed",
+            "rotation-pending",
+            "none",
+            "history-clean",
+            ("replacement-health",),  # type: ignore[arg-type]
+        )
+
+
 @pytest.mark.parametrize("history_state", ["history-clean", "history-cleanup-pending"])
 def test_only_unknown_history_accepts_uninspected_scopes(history_state):
     with pytest.raises(ValueError, match="uninspected scopes"):
@@ -483,7 +499,7 @@ def test_only_unknown_history_accepts_uninspected_scopes(history_state):
             "rotation-pending",
             "none",
             history_state,
-            ("replacement-health",),
+            CredentialEvidence(missing=("replacement-health",)),
             ("tags",),
         )
 
@@ -494,12 +510,14 @@ def test_renderer_exact_copy_and_impossible_combinations():
         "remediated",
         "proven-revoked",
         "history-cleanup-pending",
-        (
-            "old-key-revocation",
-            "replacement-present",
-            "replacement-health",
-            "active-copy",
-            "provider-binding",
+        CredentialEvidence(
+            present=(
+                "old-key-revocation",
+                "replacement-present",
+                "replacement-health",
+                "active-copy",
+                "provider-binding",
+            )
         ),
         (),
     )
@@ -513,6 +531,7 @@ def test_renderer_exact_copy_and_impossible_combinations():
         "rotation-pending",
         "unrevoked-or-unclassified",
         "history-clean",
+        CredentialEvidence(),
     )
     assert active.security_and_current_config == (
         "An active `.mcp.json` value may still be usable. Security is not fixed; rotate/revoke it at the provider "
@@ -520,16 +539,24 @@ def test_renderer_exact_copy_and_impossible_combinations():
     )
     with pytest.raises(ValueError):
         render_credential_status(
-            "migrated-local-config", "remediated", "proven-revoked", "history-clean", ("provider-binding",), ()
+            "migrated-local-config", "remediated", "proven-revoked", "history-clean",
+            CredentialEvidence(present=("provider-binding",)), ()
         )
     with pytest.raises(ValueError):
-        render_credential_status("partial", "remediated", "unrevoked-or-unclassified", "history-clean", (), ())
+        render_credential_status(
+            "partial", "remediated", "unrevoked-or-unclassified", "history-clean", CredentialEvidence(), ()
+        )
     with pytest.raises(ValueError, match="complete bound"):
-        render_credential_status("not-needed", "remediated", "none", "history-clean", (), ())
+        render_credential_status("not-needed", "remediated", "none", "history-clean", CredentialEvidence(), ())
     with pytest.raises(ValueError, match="complete bound"):
-        render_credential_status("not-needed", "remediated", "none", "history-clean", ("provider-binding",), ())
+        render_credential_status(
+            "not-needed", "remediated", "none", "history-clean",
+            CredentialEvidence(present=("provider-binding",)), ()
+        )
     with pytest.raises(ValueError):
-        render_credential_status("not-needed", "unknown", "none", "history-scope-unknown", (), ())
+        render_credential_status(
+            "not-needed", "unknown", "none", "history-scope-unknown", CredentialEvidence(), ()
+        )
 
 
 def test_journal_contains_exact_preimage_but_no_absolute_path(tmp_path):
@@ -540,6 +567,7 @@ def test_journal_contains_exact_preimage_but_no_absolute_path(tmp_path):
     assert bytes.fromhex(payload["config"]["bytes_hex"]).endswith(b"synthetic-old-key\r\n")
     assert set(payload) == credential_remediation.CredentialJournal.TOP_LEVEL_KEYS
     assert set(payload["postimages"]) == credential_remediation.CredentialJournal.POSTIMAGE_KEYS
+    assert payload["migration"] == {"phase": "migrated"}
     assert payload["rewind"] == {"phase": "ready"}
     assert credential_remediation.CredentialJournal.parse(journal.read_bytes()).serialize() == journal.read_bytes()
     assert str(root) not in journal.read_text()
@@ -569,9 +597,11 @@ def test_closed_credential_journal_owns_valid_rewind_transitions(tmp_path):
     "mutation",
     [
         lambda value: value.pop("rewind"),
+        lambda value: value.pop("migration"),
         lambda value: value.update(extra=True),
         lambda value: value["rewind"].update(extra=True),
         lambda value: value["rewind"].update(phase="rewound"),
+        lambda value: value["migration"].update(phase="completed"),
         lambda value: value["postimages"].update(extra=True),
         lambda value: value["config"].update(extra=True),
     ],
@@ -790,3 +820,372 @@ def test_rewind_prevalidation_guard_removal_recreates_rejected_raw_yaml_mutant(
     assert rewind.state == "rewound"
     assert b"api_key: synthetic-old-key" in (root / "System/integrations/config.yaml").read_bytes()
     assert not env.exists()
+
+
+def _only_journal(root: Path) -> tuple[str, Path]:
+    paths = list((root / "System/.dex/adoption/credential-journals").glob("*.json"))
+    assert len(paths) == 1
+    return paths[0].stem, paths[0]
+
+
+@pytest.mark.skipif(not hasattr(os, "fork"), reason="requires forked process-death injection")
+@pytest.mark.parametrize(
+    ("boundary", "target"),
+    [
+        ("before-prepared-record", "config"),
+        ("after-prepared-record", "config"),
+        ("after-replace", "config"),
+        ("after-readback", "config"),
+        ("between-targets", "env"),
+        ("before-prepared-record", "env"),
+        ("after-prepared-record", "env"),
+        ("after-replace", "env"),
+        ("after-readback", "env"),
+        ("after-targets", "all"),
+    ],
+)
+def test_restart_recovers_process_death_at_every_initial_publication_boundary(
+    tmp_path, monkeypatch, boundary, target
+):
+    root = _vault(tmp_path)
+    config = root / "System/integrations/config.yaml"
+    before = config.read_bytes()
+
+    def die(phase, selected_target):
+        if (phase, selected_target) == (boundary, target):
+            os._exit(91)
+
+    monkeypatch.setattr(credential_remediation, "_migration_fault", die)
+    child = os.fork()
+    if child == 0:
+        migrate_legacy_credentials(root)
+        os._exit(92)
+    _, status = os.waitpid(child, 0)
+    assert os.waitstatus_to_exitcode(status) == 91
+    monkeypatch.setattr(credential_remediation, "_migration_fault", lambda *_: None)
+    journal_id, _ = _only_journal(root)
+
+    assert rewind_credential_migration(root, journal_id).state == "rewound"
+    assert config.read_bytes() == before
+    assert not (root / ".env").exists()
+    assert not list(root.glob(".env.*"))
+    assert not list((root / "System/integrations").glob(".config.yaml.*"))
+
+
+@pytest.mark.skipif(not hasattr(os, "fork"), reason="requires forked process-death injection")
+@pytest.mark.parametrize(
+    ("boundary", "target"),
+    [
+        ("rollback-after-phase", "all"),
+        ("rollback-before-target", "env"),
+        ("rollback-after-target", "env"),
+        ("rollback-after-journal", "env"),
+        ("rollback-before-target", "config"),
+        ("rollback-after-replace", "config"),
+        ("rollback-after-readback", "config"),
+        ("rollback-after-target", "config"),
+        ("rollback-after-journal", "config"),
+    ],
+)
+def test_restart_recovers_process_death_throughout_initial_migration_rollback(
+    tmp_path, monkeypatch, boundary, target
+):
+    root = _vault(tmp_path)
+    config = root / "System/integrations/config.yaml"
+    before = config.read_bytes()
+
+    def stop_between(phase, selected_target):
+        if (phase, selected_target) == ("between-targets", "env"):
+            os._exit(93)
+
+    monkeypatch.setattr(credential_remediation, "_migration_fault", stop_between)
+    child = os.fork()
+    if child == 0:
+        migrate_legacy_credentials(root)
+        os._exit(94)
+    _, status = os.waitpid(child, 0)
+    assert os.waitstatus_to_exitcode(status) == 93
+    journal_id, _ = _only_journal(root)
+
+    def die_during_rollback(phase, selected_target):
+        if (phase, selected_target) == (boundary, target):
+            os._exit(95)
+
+    monkeypatch.setattr(credential_remediation, "_migration_fault", die_during_rollback)
+    child = os.fork()
+    if child == 0:
+        rewind_credential_migration(root, journal_id)
+        os._exit(96)
+    _, status = os.waitpid(child, 0)
+    assert os.waitstatus_to_exitcode(status) == 95
+    monkeypatch.setattr(credential_remediation, "_migration_fault", lambda *_: None)
+
+    assert rewind_credential_migration(root, journal_id).state == "rewound"
+    assert config.read_bytes() == before
+    assert not (root / ".env").exists()
+
+
+@pytest.mark.skipif(not hasattr(os, "fork"), reason="requires forked process-death injection")
+def test_restart_recovers_death_after_env_unlink_before_rollback_directory_fsync(
+    tmp_path, monkeypatch
+):
+    root = _vault(tmp_path)
+    before = (root / "System/integrations/config.yaml").read_bytes()
+
+    def stop_after_env_readback(phase, target):
+        if (phase, target) == ("after-readback", "env"):
+            os._exit(97)
+
+    monkeypatch.setattr(credential_remediation, "_migration_fault", stop_after_env_readback)
+    child = os.fork()
+    if child == 0:
+        migrate_legacy_credentials(root)
+        os._exit(98)
+    _, status = os.waitpid(child, 0)
+    assert os.waitstatus_to_exitcode(status) == 97
+    journal_id, _ = _only_journal(root)
+
+    def stop_after_unlink(phase, target):
+        if (phase, target) == ("rollback-after-unlink", "env"):
+            os._exit(99)
+
+    monkeypatch.setattr(credential_remediation, "_migration_fault", stop_after_unlink)
+    child = os.fork()
+    if child == 0:
+        rewind_credential_migration(root, journal_id)
+        os._exit(100)
+    _, status = os.waitpid(child, 0)
+    assert os.waitstatus_to_exitcode(status) == 99
+    monkeypatch.setattr(credential_remediation, "_migration_fault", lambda *_: None)
+
+    assert rewind_credential_migration(root, journal_id).state == "rewound"
+    assert (root / "System/integrations/config.yaml").read_bytes() == before
+    assert not (root / ".env").exists()
+
+
+def test_prepared_temporary_identity_is_not_named_postimage_authority(tmp_path, monkeypatch):
+    root = _vault(tmp_path)
+
+    def interrupt(phase, target):
+        if (phase, target) == ("after-prepared-record", "env"):
+            raise OSError("prepared-only")
+
+    # Bypass caught rollback once so the exact prepared journal can be inspected.
+    monkeypatch.setattr(credential_remediation, "_migration_fault", interrupt)
+    monkeypatch.setattr(
+        credential_remediation,
+        "_recover_migration_journal",
+        lambda *_: (_ for _ in ()).throw(OSError("hold")),
+    )
+    result = migrate_legacy_credentials(root)
+    _, journal_path = _only_journal(root)
+    journal = credential_remediation.CredentialJournal.parse(journal_path.read_bytes())
+    assert result.state == "refused"
+    assert journal.config.publication_state == "published"
+    assert journal.env.publication_state == "prepared"
+    assert not journal.fully_published
+    assert journal.env.postimage.identity is None
+
+    # This reproduces the removed model: temporary identity is falsely promoted
+    # to named-target authority. Recovery then fails closed on the still-raw YAML.
+    payload = json.loads(journal_path.read_text())
+    postimages = payload["postimages"]
+    postimages["env_publication_state"] = "published"
+    postimages["env_identity"] = postimages["env_prepared_identity"]
+    postimages["env_prepared_identity"] = None
+    postimages["env_prepared_name"] = None
+    journal_path.write_text(json.dumps(payload, sort_keys=True) + "\n")
+    journal_path.chmod(0o600)
+    with pytest.raises(OSError):
+        rewind_credential_migration(root, result.journal_id)
+
+
+def _migrated_journal_payload(tmp_path: Path) -> tuple[Path, dict[str, object]]:
+    root = _vault(tmp_path)
+    result = migrate_legacy_credentials(root)
+    path = root / "System/.dex/adoption/credential-journals" / f"{result.journal_id}.json"
+    return path, json.loads(path.read_text())
+
+
+@pytest.mark.parametrize("section", ["config", "env"])
+@pytest.mark.parametrize("field", ["mode", "uid", "gid"])
+@pytest.mark.parametrize("malformed", ["1", True, False, 1.0, None, -1, 1 << 80])
+def test_journal_rejects_noncanonical_preimage_numeric_fields(tmp_path, section, field, malformed):
+    path, payload = _migrated_journal_payload(tmp_path)
+    if payload[section] is None:
+        postimages = payload["postimages"]
+        payload[section] = {
+            "bytes_hex": postimages["env_bytes_hex"],
+            "sha256": postimages["env_sha256"],
+            "mode": 0o600,
+            "uid": postimages["env_uid"],
+            "gid": postimages["env_gid"],
+        }
+    payload[section][field] = malformed
+    with pytest.raises(OSError):
+        credential_remediation.CredentialJournal.parse(
+            (json.dumps(payload, sort_keys=True) + "\n").encode()
+        )
+
+
+@pytest.mark.parametrize("section", ["config", "env"])
+@pytest.mark.parametrize("field", ["mode", "uid", "gid"])
+@pytest.mark.parametrize("malformed", ["1", True, False, 1.0, None, -1, 1 << 80])
+def test_journal_rejects_noncanonical_postimage_numeric_fields(tmp_path, section, field, malformed):
+    _, payload = _migrated_journal_payload(tmp_path)
+    payload["postimages"][f"{section}_{field}"] = malformed
+    with pytest.raises(OSError):
+        credential_remediation.CredentialJournal.parse(
+            (json.dumps(payload, sort_keys=True) + "\n").encode()
+        )
+
+
+@pytest.mark.parametrize("index", range(7))
+@pytest.mark.parametrize("malformed", ["1", True, False, 1.0, None, -1, 1 << 80])
+def test_journal_rejects_noncanonical_identity_numeric_fields(tmp_path, index, malformed):
+    _, payload = _migrated_journal_payload(tmp_path)
+    payload["postimages"]["config_identity"][index] = malformed
+    with pytest.raises(OSError):
+        credential_remediation.CredentialJournal.parse(
+            (json.dumps(payload, sort_keys=True) + "\n").encode()
+        )
+
+
+@pytest.mark.parametrize(
+    ("field", "malformed"),
+    [
+        ("bytes_hex", None),
+        ("bytes_hex", 17),
+        ("bytes_hex", "0"),
+        ("bytes_hex", "zz"),
+        ("bytes_hex", "AA"),
+        ("sha256", None),
+        ("sha256", 17),
+        ("sha256", "0" * 63),
+        ("sha256", "A" * 64),
+        ("sha256", "0" * 64),
+    ],
+)
+def test_journal_rejects_noncanonical_preimage_bytes_and_hash(tmp_path, field, malformed):
+    _, payload = _migrated_journal_payload(tmp_path)
+    payload["config"][field] = malformed
+    with pytest.raises(OSError):
+        credential_remediation.CredentialJournal.parse(
+            (json.dumps(payload, sort_keys=True) + "\n").encode()
+        )
+
+
+def test_permissive_numeric_parser_mutant_reaches_rewind(tmp_path, monkeypatch):
+    root = _vault(tmp_path)
+    result = migrate_legacy_credentials(root)
+    path = root / "System/.dex/adoption/credential-journals" / f"{result.journal_id}.json"
+    payload = json.loads(path.read_text())
+    payload["postimages"]["config_identity"][1] = str(
+        payload["postimages"]["config_identity"][1]
+    )
+    malformed = (json.dumps(payload, sort_keys=True) + "\n").encode()
+    with pytest.raises(OSError):
+        credential_remediation.CredentialJournal.parse(malformed)
+    path.write_bytes(malformed)
+    path.chmod(0o600)
+
+    monkeypatch.setattr(
+        credential_remediation,
+        "_exact_int",
+        lambda value, maximum=credential_remediation.MAX_IDENTITY_VALUE: int(value),
+    )
+    assert rewind_credential_migration(root, result.journal_id).state == "rewound"
+
+
+def test_migration_consumes_the_public_typed_inspection_authority_once(tmp_path, monkeypatch):
+    root = _vault(tmp_path)
+    real_inspect = credential_remediation.inspect_credential_migration
+    calls = []
+
+    def inspect(vault_root):
+        calls.append(vault_root)
+        return real_inspect(vault_root)
+
+    monkeypatch.setattr(credential_remediation, "inspect_credential_migration", inspect)
+
+    assert migrate_legacy_credentials(root).state == "migrated-local-config"
+    assert calls == [root]
+
+
+def test_typed_inspection_snapshot_mappings_are_read_only(tmp_path):
+    inspection = credential_remediation.inspect_credential_migration(_vault(tmp_path))
+    with pytest.raises(TypeError):
+        inspection.values["TODOIST_API_KEY"] = "changed"  # type: ignore[index]
+    with pytest.raises(TypeError):
+        inspection.refs["todoist.api_key"] = "changed"  # type: ignore[index]
+
+
+@pytest.mark.parametrize("section", ["config", "env"])
+@pytest.mark.parametrize(
+    ("field", "malformed"),
+    [
+        ("bytes_hex", None),
+        ("bytes_hex", 17),
+        ("bytes_hex", "0"),
+        ("bytes_hex", "zz"),
+        ("bytes_hex", "AA"),
+        ("sha256", None),
+        ("sha256", 17),
+        ("sha256", "0" * 63),
+        ("sha256", "A" * 64),
+        ("sha256", "0" * 64),
+    ],
+)
+def test_journal_rejects_noncanonical_postimage_bytes_and_hash(tmp_path, section, field, malformed):
+    _, payload = _migrated_journal_payload(tmp_path)
+    payload["postimages"][f"{section}_{field}"] = malformed
+    with pytest.raises(OSError):
+        credential_remediation.CredentialJournal.parse(
+            (json.dumps(payload, sort_keys=True) + "\n").encode()
+        )
+
+
+@pytest.mark.parametrize("section", ["config", "env"])
+@pytest.mark.parametrize("index", range(7))
+def test_every_named_identity_integer_requires_an_exact_json_integer(tmp_path, section, index):
+    _, payload = _migrated_journal_payload(tmp_path)
+    payload["postimages"][f"{section}_identity"][index] = str(
+        payload["postimages"][f"{section}_identity"][index]
+    )
+    with pytest.raises(OSError):
+        credential_remediation.CredentialJournal.parse(
+            (json.dumps(payload, sort_keys=True) + "\n").encode()
+        )
+
+
+@pytest.mark.parametrize("index", range(7))
+def test_every_prepared_identity_integer_requires_an_exact_json_integer(tmp_path, index):
+    _, payload = _migrated_journal_payload(tmp_path)
+    postimages = payload["postimages"]
+    postimages["config_publication_state"] = "prepared"
+    postimages["config_prepared_name"] = ".config.yaml." + "0" * 32
+    postimages["config_prepared_identity"] = list(postimages["config_identity"])
+    postimages["config_identity"] = None
+    postimages["config_prepared_identity"][index] = str(
+        postimages["config_prepared_identity"][index]
+    )
+    with pytest.raises(OSError):
+        credential_remediation.CredentialJournal.parse(
+            (json.dumps(payload, sort_keys=True) + "\n").encode()
+        )
+
+
+@pytest.mark.parametrize("mutation", ["directory-mode", "multiple-links", "wrong-size"])
+def test_journal_rejects_impossible_identity_semantics(tmp_path, mutation):
+    _, payload = _migrated_journal_payload(tmp_path)
+    identity = payload["postimages"]["config_identity"]
+    if mutation == "directory-mode":
+        identity[2] = stat.S_IFDIR | 0o600
+    elif mutation == "multiple-links":
+        identity[3] = 2
+    else:
+        identity[6] += 1
+    with pytest.raises(OSError):
+        credential_remediation.CredentialJournal.parse(
+            (json.dumps(payload, sort_keys=True) + "\n").encode()
+        )

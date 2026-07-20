@@ -8,15 +8,17 @@ import os
 import re
 import stat
 import uuid
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
+from types import MappingProxyType
 from typing import Callable, Literal
 
 from core.utils.integration_credentials import (
     LEGACY_CREDENTIAL_FIELDS,
+    MAX_ENV_BYTES,
     inspect_active_mcp_config,
     parse_env_assignments,
-    update_vault_env,
     updated_env_bytes,
 )
 from core.utils.local_git import git_output
@@ -85,6 +87,26 @@ class MigrationResult:
 
 
 @dataclass(frozen=True)
+class CredentialMigrationInspection:
+    """One pinned, read-only authority shared by status and migration."""
+
+    result: MigrationResult
+    config_raw: bytes | None = None
+    config_metadata: os.stat_result | None = None
+    values: Mapping[str, str] | None = None
+    refs: Mapping[str, str] | None = None
+    env_names: frozenset[str] = frozenset()
+    mcp_raw: bytes = b""
+    mcp_raw_residual: bool = False
+
+    def __post_init__(self) -> None:
+        if self.values is not None:
+            object.__setattr__(self, "values", MappingProxyType(dict(self.values)))
+        if self.refs is not None:
+            object.__setattr__(self, "refs", MappingProxyType(dict(self.refs)))
+
+
+@dataclass(frozen=True)
 class CredentialStatusCopy:
     migration: str
     security_and_current_config: str
@@ -111,6 +133,38 @@ class CredentialEvidence:
 
 
 RewindPhase = Literal["ready", "publishing", "recovery", "completed"]
+MigrationPhase = Literal["publishing", "rollback", "migrated", "rolled-back"]
+PublicationState = Literal["pending", "prepared", "published"]
+MAX_IDENTITY_VALUE = (1 << 63) - 1
+MAX_MODE_VALUE = 0o777
+SHA256_HEX = re.compile(r"^[0-9a-f]{64}$")
+HEX_BYTES = re.compile(r"^(?:[0-9a-f]{2})*$")
+TEMP_NAME = re.compile(r"^\.(?:config\.yaml|env)\.[0-9a-f]{32}$")
+
+
+def _exact_int(value: object, *, maximum: int = MAX_IDENTITY_VALUE) -> int:
+    if type(value) is not int or not 0 <= value <= maximum:
+        raise OSError("invalid credential journal integer")
+    return value
+
+
+def _exact_hex(value: object, *, expected_bytes: int | None = None) -> bytes:
+    if (
+        type(value) is not str
+        or not HEX_BYTES.fullmatch(value)
+        or (expected_bytes is not None and len(value) != expected_bytes * 2)
+    ):
+        raise OSError("invalid credential journal hex value")
+    try:
+        data = bytes.fromhex(value)
+    except ValueError as error:
+        raise OSError("invalid credential journal hex value") from error
+    return data
+
+
+def _exact_sha256(value: object, data: bytes) -> None:
+    if type(value) is not str or not SHA256_HEX.fullmatch(value) or value != _hash(data):
+        raise OSError("invalid credential journal SHA-256")
 
 
 @dataclass(frozen=True)
@@ -134,10 +188,14 @@ class FileIdentity:
     def parse(cls, value: object, *, optional: bool = False) -> "FileIdentity | None":
         if value is None and optional:
             return None
-        if not isinstance(value, list) or len(value) != 7 or not all(isinstance(item, int) for item in value):
+        if not isinstance(value, list) or len(value) != 7:
             raise OSError("invalid credential journal file identity")
-        identity = cls(*value)
-        if min(identity.device, identity.inode, identity.mode, identity.links, identity.uid, identity.gid, identity.size) < 0:
+        identity = cls(
+            _exact_int(value[0]), _exact_int(value[1]), _exact_int(value[2]),
+            _exact_int(value[3]), _exact_int(value[4]), _exact_int(value[5]),
+            _exact_int(value[6]),
+        )
+        if identity.links != 1 or not stat.S_ISREG(identity.mode):
             raise OSError("invalid credential journal file identity")
         return identity
 
@@ -159,18 +217,14 @@ class CredentialImage:
             return None
         if not isinstance(value, dict) or set(value) != {"bytes_hex", "sha256", "mode", "uid", "gid"}:
             raise OSError("invalid credential journal preimage")
-        try:
-            image = cls(
-                bytes.fromhex(value["bytes_hex"]), int(value["mode"]),
-                int(value["uid"]), int(value["gid"]),
-            )
-        except (TypeError, ValueError) as error:
-            raise OSError("invalid credential journal preimage") from error
+        data = _exact_hex(value["bytes_hex"])
+        _exact_sha256(value["sha256"], data)
+        image = cls(
+            data, _exact_int(value["mode"], maximum=MAX_MODE_VALUE),
+            _exact_int(value["uid"]), _exact_int(value["gid"]),
+        )
         if (
-            _hash(image.data) != value["sha256"]
-            or not 0 <= image.mode <= 0o777
-            or min(image.uid, image.gid) < 0
-            or not _owner_restorable(image.owner)
+            not _owner_restorable(image.owner)
         ):
             raise OSError("invalid credential journal preimage")
         return image
@@ -212,6 +266,9 @@ class CredentialTarget:
     filename: str
     preimage: CredentialImage | None
     postimage: CredentialImage
+    publication_state: PublicationState = "pending"
+    prepared_name: str | None = None
+    prepared_identity: FileIdentity | None = None
 
     AUTHORITIES = {
         "config": (("System", "integrations"), "config.yaml"),
@@ -236,27 +293,106 @@ class CredentialTarget:
             raise OSError("credential journal requires a config preimage")
         if self.name == "env" and self.postimage.mode != 0o600:
             raise OSError("credential journal requires a restrictive env postimage")
+        if self.name == "config" and self.preimage is not None and (
+            not self.preimage.mode & 0o200
+            or self.postimage.mode != self.preimage.mode
+            or self.postimage.owner != self.preimage.owner
+        ):
+            raise OSError("credential journal config images have impossible authority")
+        if self.name == "env" and self.preimage is not None and (
+            self.preimage.mode != 0o600 or self.preimage.owner != self.postimage.owner
+        ):
+            raise OSError("credential journal env images have impossible authority")
+        maximum_bytes = MAX_TRACKED_CONFIG_BYTES if self.name == "config" else MAX_ENV_BYTES
+        if len(self.postimage.data) > maximum_bytes or (
+            self.preimage is not None and len(self.preimage.data) > maximum_bytes
+        ):
+            raise OSError("credential journal image exceeds its target bound")
+        if self.publication_state == "pending" and (
+            self.prepared_name is not None or self.prepared_identity is not None or self.postimage.identity is not None
+        ):
+            raise OSError("pending credential target has publication authority")
+        if self.publication_state == "prepared" and (
+            self.prepared_name is None or self.prepared_identity is None or self.postimage.identity is not None
+        ):
+            raise OSError("prepared credential target has invalid authority")
+        if self.publication_state == "published" and (
+            self.prepared_name is not None or self.prepared_identity is not None or self.postimage.identity is None
+        ):
+            raise OSError("published credential target has invalid authority")
+        authority = self.prepared_identity if self.publication_state == "prepared" else self.postimage.identity
+        if authority is not None and (
+            stat.S_IMODE(authority.mode) != self.postimage.mode
+            or authority.uid != self.postimage.uid
+            or authority.gid != self.postimage.gid
+            or authority.size != len(self.postimage.data)
+        ):
+            raise OSError("credential target publication identity does not match its postimage")
+
+    def mark_prepared(self, temporary: str, metadata: os.stat_result) -> None:
+        if self.publication_state != "pending" or not TEMP_NAME.fullmatch(temporary):
+            raise OSError("invalid credential target prepare transition")
+        prepared = self.postimage.with_identity(metadata).identity
+        if prepared is None:  # pragma: no cover
+            raise OSError("missing credential prepared identity")
+        self.publication_state = "prepared"
+        self.prepared_name = temporary
+        self.prepared_identity = prepared
+
+    def mark_published(self, metadata: os.stat_result) -> None:
+        if self.publication_state != "prepared":
+            raise OSError("invalid credential target publish transition")
+        published = self.postimage.with_identity(metadata)
+        if published.identity != self.prepared_identity:
+            raise OSError("named credential postimage does not match prepared inode")
+        self.postimage = published
+        self.publication_state = "published"
+        self.prepared_name = None
+        self.prepared_identity = None
+
+    def reset_publication(self) -> None:
+        self.publication_state = "pending"
+        self.prepared_name = None
+        self.prepared_identity = None
+        self.postimage = CredentialImage(
+            self.postimage.data, self.postimage.mode, self.postimage.uid, self.postimage.gid
+        )
 
 
 @dataclass
 class CredentialJournal:
     config: CredentialTarget
     env: CredentialTarget
+    _migration_phase: MigrationPhase = "publishing"
     _phase: RewindPhase = "ready"
 
-    TOP_LEVEL_KEYS = frozenset({"schema_version", "config", "env", "postimages", "rewind"})
+    TOP_LEVEL_KEYS = frozenset({"schema_version", "config", "env", "postimages", "migration", "rewind"})
     POSTIMAGE_KEYS = frozenset(
         {
             "config_bytes_hex", "config_sha256", "config_mode", "config_uid", "config_gid",
             "config_identity", "env_bytes_hex", "env_sha256", "env_mode", "env_uid", "env_gid",
-            "env_identity",
+            "env_identity", "config_publication_state", "config_prepared_name",
+            "config_prepared_identity", "env_publication_state", "env_prepared_name",
+            "env_prepared_identity",
         }
     )
     PHASES = frozenset({"ready", "publishing", "recovery", "completed"})
+    MIGRATION_PHASES = frozenset({"publishing", "rollback", "migrated", "rolled-back"})
 
     def __post_init__(self) -> None:
-        if self.config.name != "config" or self.env.name != "env" or self._phase not in self.PHASES:
+        if (
+            self.config.name != "config" or self.env.name != "env"
+            or self._phase not in self.PHASES or self._migration_phase not in self.MIGRATION_PHASES
+        ):
             raise OSError("invalid credential journal model")
+        if self._migration_phase == "migrated" and not self.fully_published:
+            raise OSError("migrated credential journal requires both published targets")
+        if self._migration_phase == "rolled-back" and any(
+            target.publication_state != "pending" for target in self.targets
+        ):
+            raise OSError("rolled-back credential journal retains publication authority")
+        if self._phase != "ready" and self._migration_phase != "migrated":
+            raise OSError("credential rewind state requires a completed migration")
 
     @classmethod
     def create(
@@ -278,11 +414,22 @@ class CredentialJournal:
             value = json.loads(raw.decode("utf-8"))
         except (UnicodeDecodeError, json.JSONDecodeError) as error:
             raise OSError("invalid credential journal") from error
-        if not isinstance(value, dict) or set(value) != cls.TOP_LEVEL_KEYS or value.get("schema_version") != 1:
+        if (
+            not isinstance(value, dict)
+            or set(value) != cls.TOP_LEVEL_KEYS
+            or type(value.get("schema_version")) is not int
+            or value.get("schema_version") != 1
+        ):
             raise OSError("invalid credential journal")
         rewind = value.get("rewind")
         if not isinstance(rewind, dict) or set(rewind) != {"phase"} or rewind.get("phase") not in cls.PHASES:
             raise OSError("invalid credential rewind phase")
+        migration = value.get("migration")
+        if (
+            not isinstance(migration, dict) or set(migration) != {"phase"}
+            or migration.get("phase") not in cls.MIGRATION_PHASES
+        ):
+            raise OSError("invalid credential migration phase")
         postimages = value.get("postimages")
         if not isinstance(postimages, dict) or set(postimages) != cls.POSTIMAGE_KEYS:
             raise OSError("invalid credential journal postimages")
@@ -290,30 +437,39 @@ class CredentialJournal:
         env_pre = CredentialImage.parse_preimage(value.get("env"), optional=True)
         if config_pre is None:  # pragma: no cover - nonoptional parser already rejects this
             raise OSError("invalid credential journal config preimage")
-        config_post = cls._parse_postimage(postimages, "config")
-        env_post = cls._parse_postimage(postimages, "env")
+        config_post, config_state = cls._parse_postimage(postimages, "config")
+        env_post, env_state = cls._parse_postimage(postimages, "env")
         return cls(
-            CredentialTarget.create("config", config_pre, config_post),
-            CredentialTarget.create("env", env_pre, env_post),
+            CredentialTarget(
+                "config", ("System", "integrations"), "config.yaml", config_pre, config_post, *config_state
+            ),
+            CredentialTarget("env", (), ".env", env_pre, env_post, *env_state),
+            migration["phase"],
             rewind["phase"],
         )
 
     @staticmethod
-    def _parse_postimage(value: dict[str, object], name: str) -> CredentialImage:
-        try:
-            data = bytes.fromhex(value[f"{name}_bytes_hex"])
-            image = CredentialImage(
-                data, int(value[f"{name}_mode"]), int(value[f"{name}_uid"]),
-                int(value[f"{name}_gid"]),
-                FileIdentity.parse(value[f"{name}_identity"], optional=True),
-            )
-        except (TypeError, ValueError) as error:
-            raise OSError("invalid credential journal postimages") from error
+    def _parse_postimage(
+        value: dict[str, object], name: str
+    ) -> tuple[CredentialImage, tuple[PublicationState, str | None, FileIdentity | None]]:
+        data = _exact_hex(value[f"{name}_bytes_hex"])
+        _exact_sha256(value[f"{name}_sha256"], data)
+        state = value[f"{name}_publication_state"]
+        if type(state) is not str or state not in {"pending", "prepared", "published"}:
+            raise OSError("invalid credential target publication state")
+        prepared_name = value[f"{name}_prepared_name"]
+        if prepared_name is not None and (type(prepared_name) is not str or not TEMP_NAME.fullmatch(prepared_name)):
+            raise OSError("invalid credential prepared artifact name")
+        image = CredentialImage(
+            data, _exact_int(value[f"{name}_mode"], maximum=MAX_MODE_VALUE),
+            _exact_int(value[f"{name}_uid"]), _exact_int(value[f"{name}_gid"]),
+            FileIdentity.parse(value[f"{name}_identity"], optional=True),
+        )
+        prepared_identity = FileIdentity.parse(
+            value[f"{name}_prepared_identity"], optional=True
+        )
         if (
-            _hash(data) != value[f"{name}_sha256"]
-            or not 0 <= image.mode <= 0o777
-            or min(image.uid, image.gid) < 0
-            or not _owner_restorable(image.owner)
+            not _owner_restorable(image.owner)
             or (image.identity is not None and (
                 stat.S_IMODE(image.identity.mode) != image.mode
                 or image.identity.uid != image.uid
@@ -323,7 +479,7 @@ class CredentialJournal:
             ))
         ):
             raise OSError("invalid credential journal postimages")
-        return image
+        return image, (state, prepared_name, prepared_identity)
 
     @property
     def targets(self) -> tuple[CredentialTarget, CredentialTarget]:
@@ -334,15 +490,40 @@ class CredentialJournal:
         return self._phase
 
     @property
+    def migration_phase(self) -> MigrationPhase:
+        return self._migration_phase
+
+    @property
     def fully_published(self) -> bool:
-        return all(target.postimage.identity is not None for target in self.targets)
+        return all(target.publication_state == "published" for target in self.targets)
 
     def target(self, name: Literal["config", "env"]) -> CredentialTarget:
         return self.config if name == "config" else self.env
 
-    def record_postimage(self, name: Literal["config", "env"], metadata: os.stat_result) -> None:
-        target = self.target(name)
-        target.postimage = target.postimage.with_identity(metadata)
+    def record_prepared(
+        self, name: Literal["config", "env"], temporary: str, metadata: os.stat_result
+    ) -> None:
+        self.target(name).mark_prepared(temporary, metadata)
+
+    def record_published(self, name: Literal["config", "env"], metadata: os.stat_result) -> None:
+        self.target(name).mark_published(metadata)
+
+    def begin_migration_rollback(self) -> None:
+        if self._migration_phase not in {"publishing", "rollback"}:
+            raise OSError("invalid credential migration rollback transition")
+        self._migration_phase = "rollback"
+
+    def finish_migration_rollback(self) -> None:
+        if self._migration_phase != "rollback":
+            raise OSError("invalid credential migration rollback completion")
+        for target in self.targets:
+            target.reset_publication()
+        self._migration_phase = "rolled-back"
+
+    def complete_migration(self) -> None:
+        if self._migration_phase != "publishing" or not self.fully_published:
+            raise OSError("credential migration is not fully published")
+        self._migration_phase = "migrated"
 
     def begin_publication(self) -> None:
         self._transition("ready", "publishing")
@@ -373,6 +554,11 @@ class CredentialJournal:
                     f"{target.name}_uid": image.uid,
                     f"{target.name}_gid": image.gid,
                     f"{target.name}_identity": image.identity.json() if image.identity else None,
+                    f"{target.name}_publication_state": target.publication_state,
+                    f"{target.name}_prepared_name": target.prepared_name,
+                    f"{target.name}_prepared_identity": (
+                        target.prepared_identity.json() if target.prepared_identity else None
+                    ),
                 }
             )
         value = {
@@ -380,6 +566,7 @@ class CredentialJournal:
             "config": self.config.preimage.preimage_json() if self.config.preimage else None,
             "env": self.env.preimage.preimage_json() if self.env.preimage else None,
             "postimages": postimages,
+            "migration": {"phase": self._migration_phase},
             "rewind": {"phase": self._phase},
         }
         return (json.dumps(value, sort_keys=True) + "\n").encode("utf-8")
@@ -477,6 +664,8 @@ def _atomic_replace_at(
     mode: int,
     *,
     before_publish: Callable[[os.stat_result], None] | None = None,
+    after_replace: Callable[[], None] | None = None,
+    after_readback: Callable[[], None] | None = None,
     owner: tuple[int, int] | None = None,
 ) -> None:
     temporary = f".{name}.{uuid.uuid4().hex}"
@@ -492,6 +681,8 @@ def _atomic_replace_at(
             if before_publish is not None:
                 before_publish(os.fstat(handle.fileno()))
         os.replace(temporary, name, src_dir_fd=directory, dst_dir_fd=directory)
+        if after_replace is not None:
+            after_replace()
         os.fsync(directory)
         actual, metadata = _read_at_with_metadata(directory, name)
         if (
@@ -500,6 +691,8 @@ def _atomic_replace_at(
             or (owner is not None and (metadata.st_uid, metadata.st_gid) != owner)
         ):
             raise OSError("credential replacement readback mismatch")
+        if after_readback is not None:
+            after_readback()
     finally:
         try:
             os.unlink(temporary, dir_fd=directory)
@@ -601,11 +794,61 @@ def _legacy_values(raw: bytes) -> tuple[dict[str, str], dict[str, str], frozense
     return values, refs, frozenset(env_names)
 
 
-def _active_mcp_raw_residual(raw: bytes, env_names: frozenset[str], legacy_values: dict[str, str]) -> bool:
+def _active_mcp_raw_residual(raw: bytes, env_names: frozenset[str], legacy_values: Mapping[str, str]) -> bool:
     if any(value.encode() in raw for value in legacy_values.values()):
         return True
     names = b"|".join(re.escape(name.encode()) for name in sorted(env_names))
     return bool(re.search(rb'"(?:' + names + rb')"\s*:\s*"[^"$<{][^"]*"', raw))
+
+
+def inspect_credential_migration(vault_root: Path) -> CredentialMigrationInspection:
+    """Inspect the exact config/MCP snapshot without creating migration state."""
+    try:
+        config_raw, config_metadata = _read_contained(
+            vault_root,
+            Path("System/integrations/config.yaml"),
+            max_bytes=MAX_TRACKED_CONFIG_BYTES,
+        )
+    except FileNotFoundError:
+        return CredentialMigrationInspection(MigrationResult("not-needed"))
+    except OSError:
+        return CredentialMigrationInspection(MigrationResult("refused"))
+    try:
+        values, refs, env_names = _legacy_values(config_raw)
+    except (UnicodeDecodeError, ValueError):
+        return CredentialMigrationInspection(
+            MigrationResult("refused"), config_raw=config_raw, config_metadata=config_metadata
+        )
+    mcp = inspect_active_mcp_config(vault_root)
+    if not _config_snapshot_unchanged(vault_root, config_raw, config_metadata):
+        result = MigrationResult(
+            "refused" if values else "partial",
+            active_residual_state="unrevoked-or-unclassified",
+            uninspected_scopes=("worktree",),
+            uninspected_reasons=("integration-config-identity-change",),
+        )
+        return CredentialMigrationInspection(
+            result, config_raw, config_metadata, values, refs, env_names
+        )
+    if not mcp.inspected:
+        result = MigrationResult(
+            "refused" if values else "partial",
+            active_residual_state="unrevoked-or-unclassified",
+            uninspected_scopes=("worktree",),
+            uninspected_reasons=(mcp.reason or "unsafe-active-config",),
+        )
+        return CredentialMigrationInspection(
+            result, config_raw, config_metadata, values, refs, env_names
+        )
+    mcp_raw = mcp.data or b""
+    residual = _active_mcp_raw_residual(mcp_raw, env_names, values)
+    result = MigrationResult(
+        "refused" if values else ("partial" if residual else "not-needed"),
+        active_residual_state="unrevoked-or-unclassified" if residual else "none",
+    )
+    return CredentialMigrationInspection(
+        result, config_raw, config_metadata, values, refs, env_names, mcp_raw, residual
+    )
 
 
 def _config_snapshot_unchanged(
@@ -670,7 +913,7 @@ def _env_storage_is_local_only(vault_root: Path) -> bool:
     return ignored and not tracked
 
 
-def _replace_yaml_credentials(raw: bytes, refs: dict[str, str]) -> bytes:
+def _replace_yaml_credentials(raw: bytes, refs: Mapping[str, str]) -> bytes:
     text = raw.decode("utf-8")
     for dotted, ref_name in refs.items():
         section, key = dotted.split(".")
@@ -694,19 +937,68 @@ def _store_credential_journal(directory: int, name: str, journal: CredentialJour
     _atomic_replace_at(directory, name, journal.serialize(), 0o600)
 
 
-def _record_postimage(
-    vault_root: Path,
+def _migration_fault(boundary: str, target: str) -> None:
+    """Test seam for exact process-death boundaries; production is a no-op."""
+
+
+def _migration_temp_name(target: CredentialTarget, journal_name: str) -> str:
+    prefix = target.filename if target.filename.startswith(".") else f".{target.filename}"
+    return f"{prefix}.{journal_name[:-5]}"
+
+
+def _publish_migration_target(
+    opened: "_OpenedCredentialTarget",
+    journal_parent: int,
     journal_name: str,
     journal: CredentialJournal,
-    name: Literal["config", "env"],
-    metadata: os.stat_result,
+    expected_preimage_identity: FileIdentity | None,
 ) -> None:
-    journal.record_postimage(name, metadata)
-    descriptor = _open_directory_chain(vault_root, ("System", ".dex", "adoption", "credential-journals"))
+    target = opened.target
+    temporary = _migration_temp_name(target, journal_name)
+    prepared_recorded = False
     try:
-        _store_credential_journal(descriptor, journal_name, journal)
+        descriptor = os.open(
+            temporary,
+            os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0),
+            target.postimage.mode,
+            dir_fd=opened.parent,
+        )
+        with os.fdopen(descriptor, "wb") as handle:
+            os.fchmod(handle.fileno(), target.postimage.mode)
+            if hasattr(os, "fchown"):
+                os.fchown(handle.fileno(), *target.postimage.owner)
+            handle.write(target.postimage.data)
+            handle.flush()
+            os.fsync(handle.fileno())
+            prepared_metadata = os.fstat(handle.fileno())
+            target.postimage.with_identity(prepared_metadata)
+            _migration_fault("before-prepared-record", target.name)
+            journal.record_prepared(target.name, temporary, prepared_metadata)
+            _store_credential_journal(journal_parent, journal_name, journal)
+            prepared_recorded = True
+            _migration_fault("after-prepared-record", target.name)
+        current = _optional_image(opened, target.filename)
+        if expected_preimage_identity is None:
+            if current is not None:
+                raise OSError("credential migration target appeared before publication")
+        elif current is None or current[1] != expected_preimage_identity:
+            raise OSError("credential migration target identity changed before publication")
+        os.replace(temporary, target.filename, src_dir_fd=opened.parent, dst_dir_fd=opened.parent)
+        _migration_fault("after-replace", target.name)
+        os.fsync(opened.parent)
+        actual, published_metadata = _read_at_with_metadata(opened.parent, target.filename)
+        if actual != target.postimage.data:
+            raise OSError("credential migration replacement readback mismatch")
+        target.postimage.with_identity(published_metadata)
+        _migration_fault("after-readback", target.name)
+        journal.record_published(target.name, published_metadata)
+        _store_credential_journal(journal_parent, journal_name, journal)
     finally:
-        os.close(descriptor)
+        if not prepared_recorded:
+            try:
+                os.unlink(temporary, dir_fd=opened.parent)
+            except FileNotFoundError:
+                pass
 
 
 def _validate_exception_registry() -> None:
@@ -725,40 +1017,20 @@ def migrate_legacy_credentials(vault_root: Path) -> MigrationResult:
     except ValueError:
         return MigrationResult("refused")
     try:
-        config_raw, config_metadata = _read_contained(
-            vault_root,
-            Path("System/integrations/config.yaml"),
-            max_bytes=MAX_TRACKED_CONFIG_BYTES,
-        )
+        _recover_pending_migration_journals(vault_root)
     except OSError:
         return MigrationResult("refused")
-    config_snapshot_metadata = config_metadata
-    try:
-        values, refs, env_names = _legacy_values(config_raw)
-    except (UnicodeDecodeError, ValueError):
-        return MigrationResult("refused")
-    mcp = inspect_active_mcp_config(vault_root)
-    if not _config_snapshot_unchanged(vault_root, config_raw, config_snapshot_metadata):
-        return MigrationResult(
-            "refused" if values else "partial",
-            active_residual_state="unrevoked-or-unclassified",
-            uninspected_scopes=("worktree",),
-            uninspected_reasons=("integration-config-identity-change",),
-        )
-    if not mcp.inspected:
-        return MigrationResult(
-            "refused" if values else "partial",
-            active_residual_state="unrevoked-or-unclassified",
-            uninspected_scopes=("worktree",),
-            uninspected_reasons=(mcp.reason or "unsafe-active-config",),
-        )
-    mcp_raw = mcp.data or b""
-    mcp_raw_residual = _active_mcp_raw_residual(mcp_raw, env_names, values)
+    inspection = inspect_credential_migration(vault_root)
+    values = inspection.values or {}
     if not values:
-        return MigrationResult(
-            "partial" if mcp_raw_residual else "not-needed",
-            active_residual_state="unrevoked-or-unclassified" if mcp_raw_residual else "none",
-        )
+        return inspection.result
+    if inspection.result.uninspected_scopes:
+        return inspection.result
+    config_raw = inspection.config_raw
+    config_snapshot_metadata = inspection.config_metadata
+    refs = inspection.refs
+    if config_raw is None or config_snapshot_metadata is None or refs is None:
+        return MigrationResult("refused")
     if not _env_storage_is_local_only(vault_root):
         return MigrationResult("refused")
     journal_dir = vault_root / "System" / ".dex" / "adoption" / "credential-journals"
@@ -773,6 +1045,11 @@ def migrate_legacy_credentials(vault_root: Path) -> MigrationResult:
         env_raw = None
         env_metadata = None
     except OSError:
+        return MigrationResult("refused")
+    if env_metadata is not None and (
+        stat.S_IMODE(env_metadata.st_mode) != 0o600
+        or (hasattr(os, "getuid") and env_metadata.st_uid != os.getuid())
+    ):
         return MigrationResult("refused")
     if env_raw:
         existing_values = parse_env_assignments(env_raw)
@@ -803,29 +1080,31 @@ def migrate_legacy_credentials(vault_root: Path) -> MigrationResult:
         config_postimage=CredentialImage(expected_config, config_preimage.mode, *config_preimage.owner),
         env_postimage=CredentialImage(expected_env, 0o600, *env_owner),
     )
+    journal_descriptor: int | None = None
+    opened_targets: tuple[_OpenedCredentialTarget, ...] = ()
     try:
         journal_descriptor = _open_directory_chain(
             vault_root, ("System", ".dex", "adoption", "credential-journals")
         )
-        try:
-            descriptor = os.open(
-                journal_name, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600, dir_fd=journal_descriptor
-            )
-            with os.fdopen(descriptor, "wb") as handle:
-                handle.write(journal.serialize())
-                handle.flush()
-                os.fsync(handle.fileno())
-            os.fsync(journal_descriptor)
-            if CredentialJournal.parse(_read_at(journal_descriptor, journal_name)).serialize() != journal.serialize():
-                return MigrationResult("refused")
-        finally:
+        descriptor = os.open(
+            journal_name, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600, dir_fd=journal_descriptor
+        )
+        with os.fdopen(descriptor, "wb") as handle:
+            handle.write(journal.serialize())
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.fsync(journal_descriptor)
+        if CredentialJournal.parse(_read_at(journal_descriptor, journal_name)).serialize() != journal.serialize():
             os.close(journal_descriptor)
+            return MigrationResult("refused")
     except OSError:
+        if journal_descriptor is not None:
+            os.close(journal_descriptor)
         return MigrationResult("refused")
-    config_descriptor = None
     try:
-        config_descriptor = _open_directory_chain(vault_root, ("System", "integrations"))
-        config_bytes, config_metadata = _read_at_with_metadata(config_descriptor, "config.yaml")
+        opened_targets = _open_credential_targets(vault_root, journal)
+        config_opened, env_opened = opened_targets
+        config_bytes, config_metadata = _read_at_with_metadata(config_opened.parent, "config.yaml")
         if not _config_snapshot_matches(
             config_bytes,
             config_metadata,
@@ -833,55 +1112,52 @@ def migrate_legacy_credentials(vault_root: Path) -> MigrationResult:
             config_snapshot_metadata,
         ):
             raise OSError("config changed after migration inspection")
-        config_before = (
-            config_metadata.st_ino,
-            _hash(config_bytes),
-            stat.S_IMODE(config_metadata.st_mode),
+        _require_target_parent_current(vault_root, config_opened)
+        _publish_migration_target(
+            config_opened,
+            journal_descriptor,
+            journal_name,
+            journal,
+            FileIdentity.from_metadata(config_snapshot_metadata),
         )
-    except OSError:
-        if config_descriptor is not None:
-            os.close(config_descriptor)
-        return MigrationResult("refused", journal_id)
-    try:
-        update_vault_env(
-            vault_root,
-            values,
-            before_publish=lambda metadata: _record_postimage(
-                vault_root, journal_name, journal, "env", metadata
-            ),
+        _migration_fault("between-targets", "env")
+        _require_target_parent_current(vault_root, env_opened)
+        _publish_migration_target(
+            env_opened,
+            journal_descriptor,
+            journal_name,
+            journal,
+            FileIdentity.from_metadata(env_metadata) if env_metadata is not None else None,
         )
-        current_bytes, current = _read_at_with_metadata(config_descriptor, "config.yaml")
-        if (current.st_ino, _hash(current_bytes), stat.S_IMODE(current.st_mode)) != config_before:
-            raise OSError("config changed during migration")
-        current_parent = _open_directory_chain(vault_root, ("System", "integrations"))
-        try:
-            if (os.fstat(current_parent).st_dev, os.fstat(current_parent).st_ino) != (
-                os.fstat(config_descriptor).st_dev,
-                os.fstat(config_descriptor).st_ino,
-            ):
-                raise OSError("config parent changed during migration")
-        finally:
-            os.close(current_parent)
-        _atomic_replace_at(
-            config_descriptor,
-            "config.yaml",
-            expected_config,
-            journal.config.preimage.mode,
-            before_publish=lambda metadata: _record_postimage(
-                vault_root, journal_name, journal, "config", metadata
-            ),
-        )
+        _migration_fault("after-targets", "all")
+        journal.complete_migration()
+        _store_credential_journal(journal_descriptor, journal_name, journal)
     except BaseException as error:
-        rewind_credential_migration(vault_root, journal_id)
+        for opened in reversed(opened_targets):
+            opened.close()
+        opened_targets = ()
+        os.close(journal_descriptor)
+        journal_descriptor = None
+        try:
+            _recover_migration_journal(vault_root, journal_id)
+        except OSError:
+            if not isinstance(error, Exception):
+                raise
+            return MigrationResult("refused", journal_id)
         if not isinstance(error, Exception):
             raise
         return MigrationResult("refused", journal_id)
     finally:
-        os.close(config_descriptor)
+        for opened in reversed(opened_targets):
+            opened.close()
+        if journal_descriptor is not None:
+            os.close(journal_descriptor)
     return MigrationResult(
-        "partial" if mcp_raw_residual else "migrated-local-config",
+        "partial" if inspection.mcp_raw_residual else "migrated-local-config",
         journal_id,
-        active_residual_state="unrevoked-or-unclassified" if mcp_raw_residual else "none",
+        active_residual_state=(
+            "unrevoked-or-unclassified" if inspection.mcp_raw_residual else "none"
+        ),
     )
 
 
@@ -921,6 +1197,20 @@ def _open_credential_targets(
     return opened[0], opened[1]
 
 
+def _require_target_parent_current(vault_root: Path, opened: _OpenedCredentialTarget) -> None:
+    current = _open_directory_chain(vault_root, opened.target.parent_parts)
+    try:
+        expected_metadata = os.fstat(opened.parent)
+        current_metadata = os.fstat(current)
+        if (expected_metadata.st_dev, expected_metadata.st_ino) != (
+            current_metadata.st_dev,
+            current_metadata.st_ino,
+        ):
+            raise OSError("credential target parent changed during migration")
+    finally:
+        os.close(current)
+
+
 def _require_image(
     opened: _OpenedCredentialTarget,
     image: CredentialImage,
@@ -943,13 +1233,28 @@ def _require_image(
         raise OSError("credential rewind requires an unchanged migration-owned postimage")
 
 
-def _publish_image(opened: _OpenedCredentialTarget, image: CredentialImage) -> None:
+def _publish_image(
+    opened: _OpenedCredentialTarget,
+    image: CredentialImage,
+    *,
+    migration_fault_target: str | None = None,
+) -> None:
     _atomic_replace_at(
         opened.parent,
         opened.target.filename,
         image.data,
         image.mode,
         owner=image.owner,
+        after_replace=(
+            lambda: _migration_fault("rollback-after-replace", migration_fault_target)
+            if migration_fault_target is not None
+            else None
+        ),
+        after_readback=(
+            lambda: _migration_fault("rollback-after-readback", migration_fault_target)
+            if migration_fault_target is not None
+            else None
+        ),
     )
 
 
@@ -992,33 +1297,169 @@ def _refresh_postimage_identities(opened_targets: tuple[_OpenedCredentialTarget,
         opened.target.postimage = image.with_identity(metadata)
 
 
-def _finish_incomplete_migration_rollback(
-    opened_targets: tuple[_OpenedCredentialTarget, ...],
+def _optional_image(opened: _OpenedCredentialTarget, name: str) -> tuple[CredentialImage, FileIdentity] | None:
+    try:
+        data, metadata = _read_at_with_metadata(opened.parent, name)
+    except FileNotFoundError:
+        return None
+    image = CredentialImage(data, stat.S_IMODE(metadata.st_mode), metadata.st_uid, metadata.st_gid)
+    return image, FileIdentity.from_metadata(metadata)
+
+
+def _require_named_preimage(opened: _OpenedCredentialTarget) -> None:
+    if opened.target.preimage is None:
+        if _optional_image(opened, opened.target.filename) is not None:
+            raise OSError("credential migration recovery-required: absent preimage target appeared")
+        return
+    _require_image(opened, opened.target.preimage)
+
+
+def _named_is_preimage(opened: _OpenedCredentialTarget) -> bool:
+    current = _optional_image(opened, opened.target.filename)
+    preimage = opened.target.preimage
+    if preimage is None:
+        return current is None
+    return current is not None and current[0].same_contents(preimage)
+
+
+def _remove_prepared_artifact(
+    opened: _OpenedCredentialTarget,
+    name: str,
+    expected_identity: FileIdentity | None,
 ) -> None:
-    """Restore migration preimages when publication never reached both targets."""
-    for opened in opened_targets:
-        target = opened.target
-        if target.postimage.identity is not None:
-            _require_image(opened, target.postimage, require_identity=True)
-        elif target.preimage is None:
-            try:
-                os.stat(target.filename, dir_fd=opened.parent, follow_symlinks=False)
-            except FileNotFoundError:
-                pass
-            else:
-                raise OSError("credential migration rollback target appeared") from None
+    artifact = _optional_image(opened, name)
+    if artifact is None:
+        return
+    image, identity = artifact
+    if not image.same_contents(opened.target.postimage) or (
+        expected_identity is not None and identity != expected_identity
+    ):
+        raise OSError("credential migration recovery-required: prepared artifact changed independently")
+    os.unlink(name, dir_fd=opened.parent)
+    os.fsync(opened.parent)
+
+
+def _rollback_migration_target(
+    opened: _OpenedCredentialTarget,
+    journal_parent: int,
+    journal_name: str,
+    journal: CredentialJournal,
+) -> None:
+    target = opened.target
+    _migration_fault("rollback-before-target", target.name)
+    temporary = target.prepared_name or _migration_temp_name(target, journal_name)
+    if journal.migration_phase == "rollback" and _named_is_preimage(opened):
+        _remove_prepared_artifact(opened, temporary, target.prepared_identity)
+    elif target.publication_state == "pending":
+        _require_named_preimage(opened)
+        _remove_prepared_artifact(opened, temporary, None)
+    elif target.publication_state == "prepared":
+        artifact = _optional_image(opened, temporary)
+        if artifact is not None:
+            _require_named_preimage(opened)
+            _remove_prepared_artifact(opened, temporary, target.prepared_identity)
         else:
-            _require_image(opened, target.preimage)
-    # Local-only state is restored before tracked configuration.
-    for opened in reversed(opened_targets):
-        target = opened.target
-        if target.postimage.identity is None:
-            continue
+            current = _optional_image(opened, target.filename)
+            if (
+                current is None
+                or not current[0].same_contents(target.postimage)
+                or current[1] != target.prepared_identity
+            ):
+                raise OSError("credential migration recovery-required: prepared target has no exact authority")
+            if target.preimage is None:
+                os.unlink(target.filename, dir_fd=opened.parent)
+                _migration_fault("rollback-after-unlink", target.name)
+                os.fsync(opened.parent)
+            else:
+                _publish_image(
+                    opened, target.preimage, migration_fault_target=target.name
+                )
+    else:
+        _require_image(opened, target.postimage, require_identity=True)
         if target.preimage is None:
             os.unlink(target.filename, dir_fd=opened.parent)
+            _migration_fault("rollback-after-unlink", target.name)
             os.fsync(opened.parent)
         else:
-            _publish_image(opened, target.preimage)
+            _publish_image(opened, target.preimage, migration_fault_target=target.name)
+    _migration_fault("rollback-after-target", target.name)
+    target.reset_publication()
+    _store_credential_journal(journal_parent, journal_name, journal)
+    _migration_fault("rollback-after-journal", target.name)
+
+
+def _finish_incomplete_migration_rollback(
+    journal_parent: int,
+    journal_name: str,
+    journal: CredentialJournal,
+    opened_targets: tuple[_OpenedCredentialTarget, ...],
+) -> None:
+    """Restore both exact preimages with durable per-target rollback progress."""
+    if journal.migration_phase == "publishing":
+        journal.begin_migration_rollback()
+        _store_credential_journal(journal_parent, journal_name, journal)
+        _migration_fault("rollback-after-phase", "all")
+    elif journal.migration_phase != "rollback":
+        raise OSError("invalid incomplete credential migration phase")
+    # Local-only state is removed before raw tracked configuration is restored.
+    for opened in reversed(opened_targets):
+        _rollback_migration_target(opened, journal_parent, journal_name, journal)
+    journal.finish_migration_rollback()
+    _store_credential_journal(journal_parent, journal_name, journal)
+
+
+def _recover_migration_journal(vault_root: Path, journal_id: str) -> None:
+    journal_name = f"{journal_id}.json"
+    root_before = vault_root.lstat()
+    journal_parent = _open_directory_chain(
+        vault_root, ("System", ".dex", "adoption", "credential-journals")
+    )
+    opened_targets: tuple[_OpenedCredentialTarget, ...] = ()
+    try:
+        raw, metadata = _read_at_with_metadata(journal_parent, journal_name)
+        if stat.S_IMODE(metadata.st_mode) != 0o600 or not _owner_restorable(
+            (metadata.st_uid, metadata.st_gid)
+        ):
+            raise OSError("unsafe credential migration journal authority")
+        journal = CredentialJournal.parse(raw)
+        if journal.migration_phase in {"migrated", "rolled-back"}:
+            return
+        opened_targets = _open_credential_targets(vault_root, journal)
+        env_root = next(item for item in opened_targets if item.target.name == "env")
+        root_after = vault_root.lstat()
+        opened_root = os.fstat(env_root.parent)
+        if len({
+            (item.st_dev, item.st_ino, item.st_mode, item.st_uid, item.st_gid)
+            for item in (root_before, root_after, opened_root)
+        }) != 1:
+            raise OSError("credential migration recovery vault root identity changed")
+        if journal.migration_phase == "publishing" and journal.fully_published:
+            journal.complete_migration()
+            _store_credential_journal(journal_parent, journal_name, journal)
+            return
+        _finish_incomplete_migration_rollback(
+            journal_parent, journal_name, journal, opened_targets
+        )
+    finally:
+        for opened in reversed(opened_targets):
+            opened.close()
+        os.close(journal_parent)
+
+
+def _recover_pending_migration_journals(vault_root: Path) -> None:
+    try:
+        journal_parent = _open_directory_chain(
+            vault_root, ("System", ".dex", "adoption", "credential-journals")
+        )
+    except FileNotFoundError:
+        return
+    try:
+        names = tuple(os.listdir(journal_parent))
+    finally:
+        os.close(journal_parent)
+    for name in sorted(names):
+        if re.fullmatch(r"[0-9a-f]{32}\.json", name):
+            _recover_migration_journal(vault_root, name[:-5])
 
 
 def _verify_completed_rewind(opened_targets: tuple[_OpenedCredentialTarget, ...]) -> None:
@@ -1078,11 +1519,22 @@ def rewind_credential_migration(vault_root: Path, journal_id: str) -> MigrationR
         if len(root_identities) != 1:
             raise OSError("credential rewind vault root identity changed")
 
-        if not journal.fully_published:
+        if journal.migration_phase in {"publishing", "rollback"}:
             if journal.phase != "ready":
                 raise OSError("incomplete credential migration has invalid rewind phase")
-            _finish_incomplete_migration_rollback(opened_targets)
+            if journal.migration_phase == "publishing" and journal.fully_published:
+                journal.complete_migration()
+                _store_credential_journal(journal_parent, journal_name, journal)
+            else:
+                _finish_incomplete_migration_rollback(
+                    journal_parent, journal_name, journal, opened_targets
+                )
+                return MigrationResult("rewound", journal_id)
+        if journal.migration_phase == "rolled-back":
+            _verify_completed_rewind(opened_targets)
             return MigrationResult("rewound", journal_id)
+        if journal.migration_phase != "migrated" or not journal.fully_published:
+            raise OSError("credential rewind requires a completed migration")
         if journal.phase == "completed":
             _verify_completed_rewind(opened_targets)
             return MigrationResult("rewound", journal_id)
@@ -1127,19 +1579,12 @@ def render_credential_status(
     security_state: SecurityState,
     active_residual_state: ActiveResidualState,
     history_hygiene_state: HistoryState,
-    evidence_codes: tuple[str, ...] | CredentialEvidence = (),
+    evidence: CredentialEvidence,
     uninspected_scope_categories: tuple[str, ...] = (),
 ) -> CredentialStatusCopy:
-    if isinstance(evidence_codes, CredentialEvidence):
-        typed_evidence = evidence_codes.normalized()
-    else:
-        legacy = tuple(sorted(set(evidence_codes)))
-        typed_evidence = CredentialEvidence(
-            present=legacy if security_state == "remediated" else (),
-            missing=legacy if security_state == "rotation-pending" else (),
-            unavailable=legacy if security_state == "unknown" else (),
-            unknown_causes=("unavailable",) if security_state == "unknown" and legacy else (),
-        ).normalized()
+    if not isinstance(evidence, CredentialEvidence):
+        raise TypeError("credential status requires typed evidence")
+    typed_evidence = evidence.normalized()
     present = typed_evidence.present
     missing = typed_evidence.missing
     unavailable = typed_evidence.unavailable

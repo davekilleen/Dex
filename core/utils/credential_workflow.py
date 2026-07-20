@@ -10,8 +10,7 @@ from typing import Literal
 from core.utils.credential_remediation import (
     CredentialEvidence,
     MigrationResult,
-    _active_mcp_raw_residual,
-    _legacy_values,
+    inspect_credential_migration,
     migrate_legacy_credentials,
     render_credential_status,
     rewind_credential_migration,
@@ -36,13 +35,12 @@ def _migration_json(result: MigrationResult) -> dict[str, object]:
 
 def _scan(vault_root: Path) -> dict[str, object]:
     needles: set[bytes] = set()
-    config = vault_root / "System/integrations/config.yaml"
-    if config.exists():
-        raw = config.read_bytes()
-        if len(raw) > DEFAULT_MAX_YAML_BYTES:
-            raise ValueError("integration config exceeds scan bound")
-        values, _, _ = _legacy_values(raw)
-        needles.update(value.encode("utf-8") for value in values.values())
+    inspection = inspect_credential_migration(vault_root)
+    if inspection.config_raw is not None and len(inspection.config_raw) > DEFAULT_MAX_YAML_BYTES:
+        raise ValueError("integration config exceeds scan bound")
+    if inspection.config_raw is not None and inspection.values is None:
+        raise ValueError("integration config could not be inspected safely")
+    needles.update(value.encode("utf-8") for value in (inspection.values or {}).values())
     try:
         needles.update(value.encode("utf-8") for value in read_vault_env(vault_root).values())
     except (OSError, UnicodeDecodeError, ValueError):
@@ -73,32 +71,6 @@ def _scan(vault_root: Path) -> dict[str, object]:
     }
 
 
-def _inspect_migration(vault_root: Path) -> MigrationResult:
-    """Derive a conservative read-only migration state without writing."""
-    config = vault_root / "System/integrations/config.yaml"
-    if not config.exists():
-        return MigrationResult("not-needed")
-    raw = config.read_bytes()
-    values, _, env_names = _legacy_values(raw)
-    from core.utils.integration_credentials import inspect_active_mcp_config
-
-    mcp = inspect_active_mcp_config(vault_root)
-    if not mcp.inspected:
-        return MigrationResult(
-            "partial" if not values else "refused",
-            active_residual_state="unrevoked-or-unclassified",
-            uninspected_scopes=("worktree",),
-            uninspected_reasons=(mcp.reason or "unsafe-active-config",),
-        )
-    residual = _active_mcp_raw_residual(mcp.data or b"", env_names, values)
-    if values:
-        return MigrationResult("refused", active_residual_state="unrevoked-or-unclassified" if residual else "none")
-    return MigrationResult(
-        "partial" if residual else "not-needed",
-        active_residual_state="unrevoked-or-unclassified" if residual else "none",
-    )
-
-
 def run_credential_workflow(
     vault_root: Path,
     action: WorkflowAction,
@@ -114,7 +86,7 @@ def run_credential_workflow(
         if journal_id is None:
             raise ValueError("rewind requires a journal id")
         return {"action": action, **_migration_json(rewind_credential_migration(vault_root, journal_id))}
-    migration = _inspect_migration(vault_root)
+    migration = inspect_credential_migration(vault_root).result
     active = migration.active_residual_state
     security = "rotation-pending" if active == "unrevoked-or-unclassified" else "unknown"
     evidence = (

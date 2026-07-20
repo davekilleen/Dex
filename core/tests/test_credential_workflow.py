@@ -8,6 +8,8 @@ from pathlib import Path
 
 import pytest
 
+from core.utils import credential_workflow
+from core.utils.credential_remediation import CredentialMigrationInspection, MigrationResult
 from core.utils.credential_workflow import run_credential_workflow
 from core.utils.integration_credentials import resolve_service_credentials
 
@@ -69,3 +71,42 @@ def test_full_crlf_migration_and_runtime_resolution_preserve_exact_scalar(tmp_pa
         tmp_path,
     ) == {"api_key": value}
     assert b"\r\n" in config.read_bytes()
+
+
+def test_status_consumes_the_shared_remediation_inspection_authority(tmp_path, monkeypatch):
+    calls = []
+    inspection = CredentialMigrationInspection(MigrationResult("not-needed"))
+
+    def inspect(root):
+        calls.append(root)
+        return inspection
+
+    monkeypatch.setattr(credential_workflow, "inspect_credential_migration", inspect)
+
+    result = run_credential_workflow(tmp_path, "status")
+
+    assert calls == [tmp_path]
+    assert result["migration_state"] == inspection.result.state
+
+
+def test_scan_and_status_share_the_same_typed_snapshot_authority(tmp_path, monkeypatch):
+    calls = []
+    inspection = CredentialMigrationInspection(
+        MigrationResult("partial", active_residual_state="unrevoked-or-unclassified"),
+        values={"TODOIST_API_KEY": "synthetic-shared-snapshot"},
+    )
+
+    def inspect(root):
+        calls.append(root)
+        return inspection
+
+    monkeypatch.setattr(credential_workflow, "inspect_credential_migration", inspect)
+    monkeypatch.setattr(credential_workflow, "scan_credentials", lambda *_: type(
+        "Report",
+        (),
+        {"findings": (), "inspected_scopes": (), "uninspected_scopes": (), "uninspected_reasons": ()},
+    )())
+
+    assert run_credential_workflow(tmp_path, "scan")["findings"] == 0
+    assert run_credential_workflow(tmp_path, "status")["migration_state"] == "partial"
+    assert calls == [tmp_path, tmp_path]
