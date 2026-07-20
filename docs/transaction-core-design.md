@@ -16,7 +16,7 @@ core's lock file and journal directory so the two can never run concurrently.
 | File | Role |
 |---|---|
 | `core/transaction/__init__.py` | Public API |
-| `core/transaction/lock.py` | Owner-safe lock (port of #141 `owned-lock.cjs` semantics: fsynced create-exclusive, PID+start-token liveness, inode+bytes pinned remove-if-unchanged) |
+| `core/transaction/lock.py` | Owner-safe lock (port of #141 `owned-lock.cjs` semantics: fsynced create-exclusive, PID-liveness via signal 0 — NOTE: a recycled PID can make a stale lock look live until that process exits, same as the CJS source — inode+bytes pinned remove-if-unchanged) |
 | `core/transaction/journal.py` | Append-only fsynced journal (schema_version 1, one JSON line per entry, parent-dir fsync after append; torn tails detected and truncated on recovery) |
 | `core/transaction/snapshot.py` | Content snapshot of a write-plan's target paths (byte-exact copies + mode bits under `System/.dex/tx/<id>/snapshot/`, manifest with sha256) |
 | `core/transaction/engine.py` | `Transaction` orchestration: plan → snapshot → apply → verify → commit, `resume()`, `rollback()` |
@@ -35,9 +35,12 @@ tx = Transaction.begin(vault_root, plan)   # plan: [(path, action, content_sourc
 tx.rollback()   # any time before/after commit: byte-exact restore from
                 # snapshot (including deleting files the tx created), fsynced,
                 # journaled ROLLED-BACK.
-Transaction.resume(vault_root)  # after crash: reads journal, either completes
-                                # the apply (if snapshot complete) or rolls
-                                # back (if not) — never leaves a half-state.
+Transaction.resume(vault_root)  # after crash: ALWAYS rolls back any
+                                # non-committed transaction (no roll-forward;
+                                # an interrupted update is undone, and the
+                                # caller simply re-runs it) — never a half-state.
+                                # One corrupt journal is quarantined per-tx,
+                                # never fatal to the sweep.
 ```
 
 ## Invariants (each carries a red-when-removed or fault-injection test)
@@ -50,8 +53,9 @@ Transaction.resume(vault_root)  # after crash: reads journal, either completes
 3. **Atomic per-file apply.** Temp file in target's directory + rename;
    parent fsync. Interrupted rename → resume converges.
 4. **Exact undo.** rollback() restores byte-identical content + mode for every
-   target, and removes created files/dirs it introduced. Verified by tree-hash
-   comparison in tests.
+   target, removes files it verifiably wrote (journal APPLIED records — a file
+   a CONCURRENT writer created in the window is never deleted), and prunes
+   empty directories the apply introduced.
 5. **Single writer.** Second Transaction.begin() under a live lock → clean
    refusal; stale lock (dead PID, pinned inode+bytes) → safe takeover.
    (Port the #141 lock tests' semantics.)
@@ -73,7 +77,10 @@ never mixed). Seams: after-lock, mid-snapshot, after-snapshot, mid-apply
 - No release/catalog semantics (what to write comes from callers; PR-3+).
 - No folder-paths remapping (documented contract limitation; consumers
   canonicalize).
-- No retention policy beyond "keep the last transaction's snapshot" (the
-  cathedral's retention rules come with the catalog phases).
+- Retention implemented lean per the owner decision (2026-07-20): commit
+  keeps the newest 3 COMMITTED transactions' snapshots and prunes older ones;
+  the fuller size-cap/acknowledgement policy comes with the catalog phases.
+- Symlinked PARENT directories inside a vault are not defended against (the
+  final target is refused if symlinked); the contract assumes canonical paths.
 - The migrator's own CJS journal stays as-is inside PR-2; it only shares the
   LOCK (one mutator at a time across engines).

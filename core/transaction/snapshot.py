@@ -161,12 +161,18 @@ class Snapshot:
             )
         return entries
 
-    def restore(self, vault_root: Path) -> list[str]:
+    def restore(
+        self, vault_root: Path, *, created_deletions: set[str] | None = None
+    ) -> list[str]:
         """Byte-exact restore of every captured target; returns restored paths.
 
-        Files the transaction created (existed=False) are removed. Every
-        stored blob is verified against its manifest sha before it is copied
-        back — a damaged snapshot store fails closed.
+        Files absent at capture time are removed ONLY when the caller confirms
+        the transaction actually wrote them (``created_deletions``): the vault
+        is live, and a file the USER created in the window must never be
+        deleted by someone else's rollback. ``None`` means "the caller applied
+        everything" (legacy behavior). Every stored blob is verified against
+        its manifest sha before it is copied back — a damaged snapshot store
+        fails closed.
         """
         vault = Path(vault_root)
         entries = self.read_manifest()
@@ -194,8 +200,20 @@ class Snapshot:
                 os.replace(temporary, target)
                 _fsync_directory(target.parent)
             else:
-                if target.is_symlink() or target.exists():
+                transaction_wrote_it = (
+                    created_deletions is None or entry.relative in created_deletions
+                )
+                if transaction_wrote_it and (target.is_symlink() or target.exists()):
                     target.unlink()
                     _fsync_directory(target.parent)
+                    # Remove now-empty parent directories the apply created,
+                    # stopping at the first non-empty (or the vault root).
+                    parent = target.parent
+                    while parent != vault and parent.is_dir():
+                        try:
+                            parent.rmdir()
+                        except OSError:
+                            break
+                        parent = parent.parent
             restored.append(entry.relative)
         return restored

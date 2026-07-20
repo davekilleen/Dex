@@ -32,7 +32,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from core import portable_contract
-from core.transaction.journal import Journal
+from core.transaction.journal import Journal, JournalCorruptError
 from core.transaction.lock import acquire_owned_lock
 from core.transaction.snapshot import Snapshot
 
@@ -85,8 +85,21 @@ class Transaction:
         if not plan:
             raise TransactionError("a transaction needs at least one plan entry")
 
+        # Target modes are bounded: no setuid/setgid/sticky, no bits beyond
+        # permissions. A buggy or hostile plan must not mint a 4777 file.
+        for entry in plan:
+            if entry.mode & ~0o777:
+                raise PlanRejected(
+                    f"{entry.relative}: mode {oct(entry.mode)} carries special "
+                    "bits; only permission bits up to 0o777 are allowed"
+                )
+
         # All-or-nothing authorization BEFORE the lock: one disallowed entry
-        # rejects the plan with nothing acquired and nothing written.
+        # rejects the plan with nothing acquired and nothing written. For
+        # write-if-absent entries this check is provisional — it is repeated
+        # UNDER the lock at apply time, because the vault is a live directory
+        # (the user, Obsidian, background sync) and a seed file appearing in
+        # the window must win.
         rejections = []
         for entry in plan:
             target = Path(vault_root) / entry.relative
@@ -163,6 +176,20 @@ class Transaction:
         assert self._plan is not None
         self.journal.append("APPLY-START")
         for index, entry in enumerate(self._plan):
+            # F1 guard: the begin()-time authorization was provisional for
+            # write-if-absent paths. The vault is live — if the user (or any
+            # non-transaction writer) created this file since, THEIR file
+            # wins and the whole transaction aborts (all-or-nothing), rolling
+            # back anything already applied.
+            verdict = portable_contract.update_write_verdict(
+                entry.relative, exists=(self.vault_root / entry.relative).exists()
+            )
+            if not verdict.allowed:
+                raise PlanRejected(
+                    f"{entry.relative} appeared in the vault after authorization "
+                    f"[{verdict.action}]; the existing file wins and the "
+                    "transaction aborts"
+                )
             self._apply_one(index, entry.relative, entry.mode)
             self.journal.append("APPLIED", {"index": index, "relative": entry.relative})
             _stop_seam(f"mid-apply:{index}")
@@ -198,11 +225,18 @@ class Transaction:
                     f"verification failed for {entry.relative}: applied bytes do "
                     "not match the plan"
                 )
+            actual_mode = target.stat().st_mode & 0o777
+            if actual_mode != entry.mode:
+                raise TransactionError(
+                    f"verification failed for {entry.relative}: applied mode "
+                    f"{oct(actual_mode)} does not match planned {oct(entry.mode)}"
+                )
         self.journal.append("VERIFY-DONE")
 
     def _commit_phase(self) -> dict:
         self.journal.append("COMMITTED")
         _stop_seam("after-commit-record")
+        self._prune_committed(keep=3)
         result = {
             "tx_id": self.tx_id,
             "committed": True,
@@ -214,20 +248,86 @@ class Transaction:
             self._release = None
         return result
 
+    def _prune_committed(self, *, keep: int) -> None:
+        """Retention (owner decision, lean): keep the newest ``keep`` COMMITTED
+        transactions' snapshots for undo; delete older COMMITTED ones. Only
+        transactions that verifiably reached COMMITTED are ever pruned —
+        anything unreadable or unfinished is left for resume()."""
+        tx_root = self.vault_root / TX_ROOT_RELATIVE
+        committed: list[Path] = []
+        for candidate in sorted(tx_root.iterdir()):
+            if not candidate.is_dir():
+                continue
+            try:
+                events = {
+                    entry.event
+                    for entry in Journal(candidate / "journal.jsonl").read()
+                }
+            except JournalCorruptError:
+                continue
+            if "COMMITTED" in events:
+                committed.append(candidate)
+        for stale in committed[:-keep] if keep else committed:
+            shutil.rmtree(stale, ignore_errors=True)
+
     # -- recovery / undo -------------------------------------------------------
 
+    def _applied_relatives(self, entries) -> set[str]:
+        return {
+            entry.payload.get("relative")
+            for entry in entries
+            if entry.event == "APPLIED" and entry.payload.get("relative")
+        }
+
     def rollback(self) -> dict:
-        """Byte-exact restore from the snapshot; journaled; releases the lock."""
-        events = {entry.event for entry in self.journal.read()}
+        """Byte-exact restore from the snapshot; journaled; releases the lock.
+
+        Robust against a corrupt journal: recovery proceeds best-effort from
+        the snapshot manifest (assuming everything was applied — the safe
+        over-approximation for restoring PRE-EXISTING files, and creations
+        are then deleted only if present). The lock is always released.
+        """
+        try:
+            entries = self.journal.read()
+            events = {entry.event for entry in entries}
+            applied = self._applied_relatives(entries)
+            journal_ok = True
+        except JournalCorruptError:
+            events = set()
+            applied = set()
+            journal_ok = False
         restored: list[str] = []
-        if "SNAPSHOT-DONE" in events:
-            restored = self.snapshot.restore(self.vault_root)
-        # Before SNAPSHOT-DONE nothing was mutated, so nothing to restore.
-        self.journal.append("ROLLED-BACK", {"restored": restored})
-        if self._release is not None:
-            self._release()
-            self._release = None
-        return {"tx_id": self.tx_id, "committed": False, "restored": restored}
+        try:
+            if journal_ok:
+                if "SNAPSHOT-DONE" in events:
+                    restored = self.snapshot.restore(
+                        self.vault_root, created_deletions=applied
+                    )
+                # Before SNAPSHOT-DONE nothing was mutated: nothing to restore.
+            else:
+                # Journal unreadable: if a valid snapshot manifest exists,
+                # restore pre-existing files from it (never wrong — it holds
+                # their exact prior bytes). Files absent at capture are left
+                # alone: with no journal we cannot know who created them, and
+                # deleting a user's file is the one unforgivable outcome.
+                try:
+                    restored = self.snapshot.restore(
+                        self.vault_root, created_deletions=set()
+                    )
+                except Exception:
+                    restored = []
+            if journal_ok:
+                self.journal.append("ROLLED-BACK", {"restored": restored})
+        finally:
+            if self._release is not None:
+                self._release()
+                self._release = None
+        return {
+            "tx_id": self.tx_id,
+            "committed": False,
+            "restored": restored,
+            "journal_ok": journal_ok,
+        }
 
     @classmethod
     def resume(cls, vault_root: Path) -> list[dict]:
@@ -247,21 +347,37 @@ class Transaction:
             if not tx_dir.is_dir():
                 continue
             tx = cls(root, tx_dir.name, _resumed=True)
-            events = {entry.event for entry in tx.journal.read()}
-            if not events or "ROLLED-BACK" in events:
-                continue  # empty shell or already recovered
-            if "COMMITTED" in events:
-                # Work is fully applied and verified; a crash after the
-                # commit record only lost the lock release (the lock is
-                # stale-recovered by its own liveness machinery). Nothing
-                # to converge.
-                continue
-            lock_release = acquire_owned_lock(root, f"resume:{tx_dir.name}")
+            # One damaged transaction must never strand the recovery of the
+            # others: each is handled independently and a corrupt journal is
+            # quarantined (best-effort restore inside rollback), not fatal.
             try:
-                tx._release = None  # rollback() must not double-release
-                outcome = tx.rollback()
-                outcome["resumed"] = True
-                outcomes.append(outcome)
-            finally:
-                lock_release()
+                try:
+                    events = {entry.event for entry in tx.journal.read()}
+                except JournalCorruptError:
+                    events = None  # unreadable — rollback handles best-effort
+                if events is not None:
+                    if not events or "ROLLED-BACK" in events:
+                        continue  # empty shell or already recovered
+                    if "COMMITTED" in events:
+                        # Fully applied and verified; a crash after the commit
+                        # record only lost the lock release, which the lock's
+                        # own liveness machinery recovers. Nothing to converge.
+                        continue
+                lock_release = acquire_owned_lock(root, f"resume:{tx_dir.name}")
+                try:
+                    tx._release = None  # rollback() must not double-release
+                    outcome = tx.rollback()
+                    outcome["resumed"] = True
+                    outcomes.append(outcome)
+                finally:
+                    lock_release()
+            except Exception as error:  # noqa: BLE001 — quarantine, keep sweeping
+                outcomes.append(
+                    {
+                        "tx_id": tx_dir.name,
+                        "committed": False,
+                        "resumed": True,
+                        "quarantined": str(error),
+                    }
+                )
         return outcomes

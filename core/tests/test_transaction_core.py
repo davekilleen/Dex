@@ -330,3 +330,130 @@ def test_resume_is_idempotent(tmp_path: Path) -> None:
     second = Transaction.resume(vault)
     assert len(first) == 1
     assert second == []
+
+
+# ---------------------------------------------------------------------------
+# Adversarial-review fixes (F1-F5, F9), each pinned
+# ---------------------------------------------------------------------------
+
+def test_seed_created_mid_window_wins_and_aborts_transaction(tmp_path: Path) -> None:
+    """F1: a seed file appearing AFTER authorization (user, Obsidian, background
+    sync) must survive — the transaction aborts and rolls back, and the user's
+    file is untouched by the rollback."""
+    vault = _vault(tmp_path)
+    tx = Transaction.begin(
+        vault,
+        [
+            PlanEntry("System/.installed-files.manifest", b"regen\n"),
+            PlanEntry("03-Tasks/Tasks.md", b"SEED CLOBBER\n"),
+        ],
+    )
+    # Simulate a concurrent writer creating the seed inside the window.
+    (vault / "03-Tasks").mkdir()
+    (vault / "03-Tasks/Tasks.md").write_text("USER'S PRECIOUS TASKS")
+    with pytest.raises(PlanRejected):
+        tx.run()
+    assert (vault / "03-Tasks/Tasks.md").read_text() == "USER'S PRECIOUS TASKS"
+    # The already-applied manifest entry was rolled back too (all-or-nothing).
+    assert not (vault / "System/.installed-files.manifest").exists()
+
+
+def test_resume_quarantines_a_corrupt_journal_and_recovers_the_rest(
+    tmp_path: Path,
+) -> None:
+    """F2: one poisoned journal must not strand recovery of other transactions."""
+    vault = _vault(tmp_path)
+    (vault / "System/.installed-files.manifest").write_bytes(b"old\n")
+    env = dict(os.environ, DEX_TX_TEST_STOP_AFTER="after-apply")
+    subprocess.run(
+        [sys.executable, "-c", _WORKER, str(vault), str(REPO_ROOT)],
+        env=env,
+        capture_output=True,
+        timeout=60,
+    )
+    # Plant a corrupt transaction that sorts FIRST.
+    poison = vault / "System/.dex/tx/00000000T000000-poison"
+    poison.mkdir(parents=True)
+    journal = Journal(poison / "journal.jsonl")
+    journal.append("BEGIN")
+    tampered = journal.path.read_bytes().replace(b'"event":"BEGIN"', b'"event":"XEGIN"')
+    journal.path.write_bytes(tampered)
+
+    outcomes = Transaction.resume(vault)
+
+    by_id = {outcome["tx_id"]: outcome for outcome in outcomes}
+    assert any("poison" in tx_id for tx_id in by_id)  # quarantined, not fatal
+    real = [o for o in outcomes if "poison" not in o["tx_id"]]
+    assert len(real) == 1 and real[0]["resumed"] is True
+    assert (vault / "System/.installed-files.manifest").read_bytes() == b"old\n"
+
+
+def test_rollback_removes_directories_the_transaction_created(tmp_path: Path) -> None:
+    """F3: rollback removes empty directories the apply created."""
+    vault = _vault(tmp_path)
+    tx = Transaction.begin(
+        vault, [PlanEntry("System/Templates/New/Deep/t.md", b"x\n")]
+    )
+    tx._snapshot_phase()
+    tx._apply_phase()
+    tx.rollback()
+    assert not (vault / "System/Templates/New/Deep").exists()
+    assert not (vault / "System/Templates/New").exists()
+    assert not (vault / "System/Templates").exists()
+    assert (vault / "System").exists()  # pre-existing dirs stay
+
+
+def test_rollback_never_deletes_a_user_created_file_without_applied_record(
+    tmp_path: Path,
+) -> None:
+    """F1 companion: rollback deletes a created-class file ONLY when the
+    journal proves the transaction wrote it."""
+    vault = _vault(tmp_path)
+    tx = Transaction.begin(vault, [PlanEntry("03-Tasks/Tasks.md", b"seed\n")])
+    tx._snapshot_phase()  # captured existed=False
+    # A concurrent writer creates the file; the transaction never applies it.
+    (vault / "03-Tasks").mkdir()
+    (vault / "03-Tasks/Tasks.md").write_text("USER FILE")
+    tx.rollback()
+    assert (vault / "03-Tasks/Tasks.md").read_text() == "USER FILE"
+
+
+def test_special_mode_bits_are_rejected(tmp_path: Path) -> None:
+    """F5: no setuid/setgid/sticky or non-permission bits."""
+    vault = _vault(tmp_path)
+    with pytest.raises(PlanRejected):
+        Transaction.begin(
+            vault, [PlanEntry("System/.installed-files.manifest", b"x", mode=0o4777)]
+        )
+
+
+def test_verify_checks_mode_as_well_as_bytes(tmp_path: Path) -> None:
+    """F9: a mode mismatch after apply fails verification and rolls back."""
+    vault = _vault(tmp_path)
+    tx = Transaction.begin(
+        vault, [PlanEntry("System/.installed-files.manifest", b"x\n", mode=0o600)]
+    )
+    original_verify = tx._verify_phase
+
+    def sabotage_then_verify() -> None:
+        os.chmod(vault / "System/.installed-files.manifest", 0o644)
+        original_verify()
+
+    tx._verify_phase = sabotage_then_verify
+    with pytest.raises(Exception):
+        tx.run()
+    assert not (vault / "System/.installed-files.manifest").exists()  # rolled back
+
+
+def test_commit_prunes_to_last_three_snapshots(tmp_path: Path) -> None:
+    """F4: retention (owner decision, lean) — keep the newest 3 committed
+    transactions' snapshots, prune older ones."""
+    vault = _vault(tmp_path)
+    for index in range(5):
+        Transaction.begin(
+            vault,
+            [PlanEntry("System/.installed-files.manifest", f"gen {index}\n".encode())],
+        ).run()
+    tx_root = vault / "System/.dex/tx"
+    remaining = [p for p in tx_root.iterdir() if p.is_dir()]
+    assert len(remaining) == 3
