@@ -67,7 +67,9 @@ python3 "$REPO_ROOT/core/utils/update_verifier.py" \
 mkdir -p "$STAGING_DIR/System"
 (
   cd "$STAGING_DIR"
-  find . -type f -o -type l
+  # Ignore macOS metadata junk (AppleDouble ._* forks, .DS_Store) so the manifest
+  # stays in agreement with the archive, which is likewise stripped of it below.
+  find . \( -type f -o -type l \) ! -name '._*' ! -name '.DS_Store'
 ) | sed 's|^\./||' | grep -v '^System/\.installed-files\.manifest$' | LC_ALL=C sort \
   > "$STAGING_DIR/System/.installed-files.manifest"
 printf '%s\n' 'System/.installed-files.manifest' >> "$STAGING_DIR/System/.installed-files.manifest"
@@ -82,7 +84,11 @@ LC_ALL=C sort -u -o "$STAGING_DIR/System/.installed-files.manifest" \
 rm -f "$TARBALL" "$CHECKSUM"
 (
   cd "$STAGING_DIR"
-  tar -czf "$TARBALL" .
+  # COPYFILE_DISABLE=1 stops macOS bsdtar from synthesizing AppleDouble ._*
+  # entries from extended attributes (they are not real files on disk, so the
+  # find-based manifest above never lists them). The --exclude flags are
+  # belt-and-braces for any stray on-disk macOS metadata, matching the manifest.
+  COPYFILE_DISABLE=1 tar --exclude='._*' --exclude='.DS_Store' -czf "$TARBALL" .
 )
 (
   cd "$OUTPUT_DIR"
