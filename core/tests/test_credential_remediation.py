@@ -286,7 +286,7 @@ def test_nonregular_and_hardlinked_mcp_fail_closed(tmp_path):
 
 
 @pytest.mark.parametrize("kind", ["directory", "unreadable", "oversized", "socket"])
-def test_other_unsafe_active_config_types_fail_closed(tmp_path, kind):
+def test_other_unsafe_active_config_types_fail_closed(tmp_path, kind, monkeypatch):
     root = _vault(tmp_path, b"todoist:\n  api_key_env_var: TODOIST_API_KEY\n")
     path = root / ".mcp.json"
     listener = None
@@ -299,7 +299,14 @@ def test_other_unsafe_active_config_types_fail_closed(tmp_path, kind):
         path.write_bytes(b"x" * (1024 * 1024 + 1))
     else:
         listener = socket.socket(socket.AF_UNIX)
-        listener.bind(str(path))
+        # AF_UNIX sun_path is capped near 104 bytes (macOS); pytest's absolute
+        # tmp_path routinely exceeds it, so binding str(path) raised a spurious
+        # "AF_UNIX path too long" env artifact unrelated to the guard under test.
+        # Bind a short *relative* name from inside the vault root: the socket file
+        # still lands at root/.mcp.json (what migration inspects) while sun_path
+        # stays tiny. monkeypatch.chdir auto-restores cwd, keeping this hermetic.
+        monkeypatch.chdir(root)
+        listener.bind(path.name)
     try:
         result = migrate_legacy_credentials(root)
         assert result.state == "partial"
