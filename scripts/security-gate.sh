@@ -16,8 +16,6 @@ if [ -z "$PYTHON" ]; then
   exit 1
 fi
 
-"$PYTHON" -I scripts/check-tau-removal.py --source-root "$PWD"
-
 ALLOWLIST_FILE="scripts/security-allowlist.txt"
 STRICT_AUDIT="${SECURITY_STRICT_AUDIT:-0}"
 
@@ -26,6 +24,8 @@ if ! "$PYTHON" -I scripts/security-scan.py "$ALLOWLIST_FILE"; then
   exit 1
 fi
 echo "✅ No high-risk secret patterns detected."
+
+"$PYTHON" -I scripts/check-tau-removal.py --source-root "$PWD"
 
 if [ "$STRICT_AUDIT" = "1" ]; then
   echo ""

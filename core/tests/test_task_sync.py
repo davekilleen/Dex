@@ -832,6 +832,21 @@ def test_credentials_travel_only_in_stdin_and_are_redacted(sync_vault, monkeypat
     monkeypatch.setattr(task_sync, "_find_node", lambda: "/fake/node")
 
     def run(command, **kwargs):
+        if "--resolve-adapter" in command:
+            # Adapter-alias preflight: identity resolution, carries no credential stdin.
+            service = command[command.index("--resolve-adapter") + 1]
+            return task_sync.subprocess.CompletedProcess(
+                command,
+                0,
+                json.dumps(
+                    {
+                        "ok": True,
+                        "requested_service": service,
+                        "adapter_service": service,
+                    }
+                ),
+                "",
+            )
         observed.update(command=command, kwargs=kwargs)
         secret = json.loads(kwargs["input"])["config"]["api_key"]
         return task_sync.subprocess.CompletedProcess(

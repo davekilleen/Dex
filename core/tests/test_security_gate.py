@@ -19,6 +19,10 @@ def _fixture(tmp_path: Path) -> Path:
     shutil.copy2(source / "security-gate.sh", scripts / "security-gate.sh")
     shutil.copy2(source / "security-scan.py", scripts / "security-scan.py")
     shutil.copy2(source / "security-allowlist.txt", scripts / "security-allowlist.txt")
+    # The gate also runs the tau-removal check; provision it plus a valid .distignore
+    # so the full merged gate executes end-to-end in the fixture.
+    shutil.copy2(source / "check-tau-removal.py", scripts / "check-tau-removal.py")
+    (root / ".distignore").write_text("extensions/tau-mirror/\n")
     core_utils = root / "core/utils"
     core_utils.mkdir(parents=True)
     (root / "core/__init__.py").write_text("")
