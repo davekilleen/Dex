@@ -667,6 +667,37 @@ def test_prepare_fd_path_failure_closes_descriptors_and_removes_orphan(tmp_path,
 
 
 @requires_directory_fd_substrate
+def test_prepare_fd_path_failure_after_transaction_creation_removes_orphan(tmp_path, monkeypatch):
+    # The sibling test above throws _fd_path at the FIRST (pre-transaction) call, so
+    # transaction_created stays False and its "no orphan" assertion holds trivially — the
+    # orphan-removal branch (history_hygiene: `_remove_unpublished_transaction`) is never
+    # reached. Here _fd_path fails only AFTER the incomplete transaction directory exists
+    # (its resolved name starts with ".incomplete-"), so the except-branch must actively
+    # remove the orphaned transaction. Red-when-removed: skipping that removal leaves the
+    # ".incomplete-*" directory behind and this assertion fails. (/proc-only — skips on
+    # substrate-less hosts via the marker above.)
+    ref = _repo(tmp_path)
+    tool = _tool(tmp_path / "git-filter-repo")
+    before = _descriptor_count()
+    original_fd_path = history_hygiene._fd_path
+
+    def fail_after_transaction(descriptor):
+        path = original_fd_path(descriptor)
+        if path.resolve().name.startswith(".incomplete-"):
+            raise OSError("fd path after transaction")
+        return path
+
+    monkeypatch.setattr(history_hygiene, "_fd_path", fail_after_transaction)
+
+    with pytest.raises(OSError, match="fd path after transaction"):
+        _prepare(tmp_path, tool, ref, substrate_probe=lambda: True)
+
+    assert _descriptor_count() == before
+    backup = tmp_path / "System/.dex/adoption/history-backups"
+    assert not backup.exists() or _recovery_transactions(backup) == []
+
+
+@requires_directory_fd_substrate
 @pytest.mark.parametrize("failure", [KeyboardInterrupt, SystemExit])
 @pytest.mark.parametrize("boundary", ["fd-path", "bundle-created"])
 def test_prepare_cancellation_removes_incomplete_transaction(tmp_path, monkeypatch, failure, boundary):
