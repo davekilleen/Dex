@@ -154,6 +154,50 @@ def test_absent_or_unsupported_tool_is_optional_guidance_without_writes(tmp_path
     assert _prepare(tmp_path, symlink, ref).state == "optional-tool-unavailable"
 
 
+def test_unsupported_directory_fd_platform_degrades_without_writes(tmp_path, monkeypatch):
+    # A platform whose directory-fd substrate cannot be reopened by derived path
+    # (e.g. macOS /dev/fd/<n> for a directory -> ENOTDIR) must refuse up front with an
+    # honest state instead of crashing mid-transaction. Forced via the probe hook so the
+    # test is deterministic on macOS AND Linux. Any use of _fd_path below the gate would
+    # raise here, proving the gate short-circuits before the crashing substrate is touched.
+    ref = _repo(tmp_path)
+    tool = _tool(tmp_path / "git-filter-repo")
+    monkeypatch.setattr(
+        history_hygiene,
+        "_fd_path",
+        lambda _descriptor: (_ for _ in ()).throw(AssertionError("gate must precede _fd_path")),
+    )
+
+    preview = _prepare(tmp_path, tool, ref, substrate_probe=lambda: False)
+
+    assert preview.state == "optional-platform-unsupported"
+    assert preview.transaction_id is None
+    assert preview.preview_sha256 is None
+    assert "Security remains fixed" in preview.guidance
+    assert "Manual advanced path" in preview.guidance
+    assert "did not install, run, or change anything" in preview.guidance
+    # No lock, transaction, or recovery-dir state may exist after an unsupported refusal.
+    assert not (tmp_path / "System/.dex").exists()
+
+
+def test_supported_substrate_override_reaches_deep_engine(tmp_path):
+    # The explicit override hook lets a supported substrate proceed past the gate; on a
+    # real /proc host this prepares, and the point here is only that the gate itself does
+    # not block when the probe reports support.
+    ref = _repo(tmp_path)
+    tool = _tool(tmp_path / "git-filter-repo")
+    if not history_hygiene._directory_fd_substrate_available():
+        pytest.skip("host lacks the directory-fd substrate the deep engine requires")
+    assert _prepare(tmp_path, tool, ref, substrate_probe=lambda: True).state == "prepared"
+
+
+def test_directory_fd_substrate_probe_returns_bool_without_writes(tmp_path):
+    before = sorted(tmp_path.iterdir())
+    result = history_hygiene._directory_fd_substrate_available()
+    assert isinstance(result, bool)
+    assert sorted(tmp_path.iterdir()) == before
+
+
 def test_symlinked_recovery_ancestor_refuses_without_outside_bundle_write(tmp_path):
     ref = _repo(tmp_path)
     tool = _tool(tmp_path / "git-filter-repo")

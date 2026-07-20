@@ -180,3 +180,18 @@ If no supported preinstalled `git-filter-repo` is available, preparation returns
 `optional-tool-unavailable` without creating recovery state. Security remains fixed; the user may
 separately install a supported tool and request a new preview, or leave history unchanged without
 an ongoing-danger warning.
+
+The guided path also requires an operating-system substrate that can reopen a directory file
+descriptor by a derived path (Linux `/proc/self/fd`), which is used to pin the vault root against
+rename races for the whole transaction. macOS `/dev/fd` cannot reopen a *directory* descriptor, so
+the guided path is unavailable there. Preparation probes this substrate functionally up front
+(not by platform name, so `/proc`-less or containerized hosts are judged by what actually works)
+and, when it is absent, returns `optional-platform-unsupported` before any lock, transaction, or
+recovery directory is created — no exception and no writes. Security remains fixed; the guided path
+runs on Linux (including WSL2 or a Linux container that exposes `/proc`), and the manual advanced
+path (verify a private local backup, run a separately reviewed offline history-cleaning procedure,
+rerun the credential scanner before publication) is available on any platform. Even after a
+successful cleanup the revoked value can remain locally recoverable — in the retained recovery
+bundle and in unreachable/reflog objects — until local backups expire and repository garbage
+collection runs; because remediation already required the provider key to be revoked, that residual
+is a dead value, but the guided path never claims a secret is fully gone from disk.
