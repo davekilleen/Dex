@@ -178,6 +178,16 @@ def deny_external_sockets(monkeypatch: pytest.MonkeyPatch):
 
 
 def _verifier(vault: Path, remote: Path, state: Path, **kwargs) -> UpdateVerifier:
+    # These tests drive real Git subprocesses (init/fetch/for-each-ref) under the
+    # verifier's shared wall-clock budget. The production default
+    # (SESSION_WALL_CLOCK_SECONDS = 10s) is a security bound, but on a loaded
+    # macOS CI runner real Git can intermittently exceed it, which surfaces as a
+    # deadline EvidenceError collapsed to the generic "evidence-invalid" reason
+    # and flakes tests that expect a positive release result. Give the test
+    # verifier a generous budget by default so timing on the runner never races
+    # the assertion; tests that specifically exercise the deadline pass their own
+    # (smaller) wall_clock_seconds, which still overrides this default.
+    kwargs.setdefault("wall_clock_seconds", 120.0)
     return UpdateVerifier(
         vault,
         state_root=state,
