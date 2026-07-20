@@ -14,7 +14,11 @@ import pytest
 import yaml
 
 from core.migrations import preserve_local_only_paths as migration
-from core.utils.tracked_ignored import APPROVED_ROWS
+from core.utils.tracked_ignored import (
+    APPROVED_ROWS,
+    BASELINE_ROWS,
+    FUTURE_LOCAL_ONLY_PATHS,
+)
 
 ROOT = Path(__file__).resolve().parents[2]
 POLICY = ROOT / "core" / "migrations" / "tracked-ignored-policy.yaml"
@@ -44,16 +48,28 @@ def _git(repo: Path, *args: str, check: bool = True) -> subprocess.CompletedProc
     )
 
 
-def _policy_rows(policy: Path = POLICY) -> list[dict[str, str]]:
-    return yaml.safe_load(policy.read_text(encoding="utf-8"))["paths"]
+def _policy_rows(policy: Path = POLICY, baseline_version: int | None = None) -> list[dict[str, str]]:
+    payload = yaml.safe_load(policy.read_text(encoding="utf-8"))
+    if payload["schema_version"] == 1:
+        return payload["paths"]
+    selected = baseline_version or payload["active_baseline_version"]
+    return next(
+        baseline["paths"]
+        for baseline in payload["baselines"]
+        if baseline["baseline_version"] == selected
+    )
 
 
 def _set_transition(repo: Path, phase: str) -> None:
     (repo / "package.json").write_text(json.dumps({"version": VERSION}) + "\n", encoding="utf-8")
     target = repo / TRANSITION
     target.parent.mkdir(parents=True, exist_ok=True)
+    schema_version = 2 if phase.endswith("-v2") else 1
+    payload = {"schema_version": schema_version, "phase": phase, "release_version": VERSION}
+    if schema_version == 2:
+        payload["baseline_version"] = 2
     target.write_text(
-        json.dumps({"schema_version": 1, "phase": phase, "release_version": VERSION}) + "\n",
+        json.dumps(payload) + "\n",
         encoding="utf-8",
     )
 
@@ -94,6 +110,34 @@ def tracked_ignored_repo(tmp_path: Path) -> Path:
     return repo
 
 
+@pytest.fixture
+def future_tracked_ignored_repo(tmp_path: Path) -> Path:
+    repo = tmp_path / "future-vault"
+    repo.mkdir()
+    _git(repo, "init", "-q")
+    _git(repo, "config", "user.email", "tests@example.com")
+    _git(repo, "config", "user.name", "Fixture")
+    rows = _policy_rows(POLICY, 2)
+    ignore_lines = []
+    for index, row in enumerate(rows):
+        relative = row["path"]
+        target = repo / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(f"future-fixture-{index}\n".encode())
+        ignore_lines.append(f"/{relative}")
+    fixture_policy = repo / migration.POLICY_RELATIVE
+    fixture_policy.parent.mkdir(parents=True, exist_ok=True)
+    policy_payload = yaml.safe_load(POLICY.read_text(encoding="utf-8"))
+    policy_payload["active_baseline_version"] = 2
+    fixture_policy.write_text(yaml.safe_dump(policy_payload, sort_keys=False), encoding="utf-8")
+    _set_transition(repo, "bootstrap-v2")
+    (repo / ".gitignore").write_text("\n".join(ignore_lines) + "\n", encoding="utf-8")
+    _git(repo, "add", ".gitignore", "package.json", TRANSITION.as_posix(), migration.POLICY_RELATIVE.as_posix())
+    _git(repo, "add", "-f", "--", *[row["path"] for row in rows])
+    _git(repo, "commit", "-qm", "future baseline")
+    return repo
+
+
 def _run_checker(repo: Path, policy: Path = POLICY) -> tuple[int, dict]:
     result = subprocess.run(
         [sys.executable, str(CHECKER), "--repo", str(repo), "--policy", str(policy)],
@@ -122,9 +166,13 @@ def _index_evidence(repo: Path, relative: str) -> tuple[str, str, str]:
     )
 
 
-def test_repository_policy_is_exact_23_seed_one_release_doc_three_local_only():
+def test_repository_policy_carries_exact_current_and_future_baselines():
     rows = checker.load_policy(POLICY)
     assert tuple((row.path, row.classification) for row in rows) == APPROVED_ROWS
+    assert tuple((row.path, row.classification) for row in rows) == BASELINE_ROWS[1]
+    assert tuple(
+        (row["path"], row["classification"]) for row in _policy_rows(POLICY, 2)
+    ) == BASELINE_ROWS[2]
 
     by_class: dict[str, list[str]] = {}
     for row in rows:
@@ -133,6 +181,67 @@ def test_repository_policy_is_exact_23_seed_one_release_doc_three_local_only():
     assert len(by_class["intentional-seed"]) == 23
     assert by_class["release-doc"] == ["System/Beta_Communications/2026-02-04_hardcoded_paths_fix.md"]
     assert tuple(by_class["local-only-must-be-untracked"]) == migration.LOCAL_ONLY_PATHS
+    assert len(BASELINE_ROWS[2]) == 24
+    assert FUTURE_LOCAL_ONLY_PATHS == ("System/integrations/slack.yaml",)
+
+
+def test_v1_journal_remains_the_historical_three_entry_schema(tracked_ignored_repo, tmp_path):
+    journal = tmp_path / "journal-v1"
+
+    captured = migration.capture(tracked_ignored_repo, journal)
+
+    assert captured["schema_version"] == 1
+    assert [entry["path"] for entry in captured["entries"]] == list(migration.LOCAL_ONLY_PATHS)
+    assert migration._read_journal(journal) == captured
+
+    captured["policy_sha256"] = migration.LEGACY_V1_POLICY_SHA256
+    _write_journal_payload(journal, captured)
+    _git(tracked_ignored_repo, "rm", "--cached", "--", *migration.LOCAL_ONLY_PATHS)
+    _set_transition(tracked_ignored_repo, "untrack-v1")
+    assert migration.apply(tracked_ignored_repo, journal)["phase"] == "applied"
+
+
+def test_future_v2_journal_round_trips_the_one_entry_baseline(future_tracked_ignored_repo, tmp_path):
+    journal = tmp_path / "journal-v2"
+    relative = FUTURE_LOCAL_ONLY_PATHS[0]
+    target = future_tracked_ignored_repo / relative
+    target.write_bytes(b"future local Slack bytes\r\n")
+    target.chmod(0o600)
+
+    captured = migration.capture(future_tracked_ignored_repo, journal)
+    assert captured["schema_version"] == 2
+    assert [entry["path"] for entry in captured["entries"]] == [relative]
+
+    _git(future_tracked_ignored_repo, "rm", "--cached", "--", relative)
+    _set_transition(future_tracked_ignored_repo, "untrack-v2")
+    assert migration.apply(future_tracked_ignored_repo, journal)["phase"] == "applied"
+    assert target.read_bytes() == b"future local Slack bytes\r\n"
+    assert stat.S_IMODE(target.stat().st_mode) == 0o600
+
+    target.write_bytes(b"newest future Slack bytes\x00")
+    migration.capture_rewind(future_tracked_ignored_repo, journal)
+    _set_transition(future_tracked_ignored_repo, "bootstrap-v2")
+    assert migration.rewind(future_tracked_ignored_repo, journal)["phase"] == "rewound"
+    assert target.read_bytes() == b"newest future Slack bytes\x00"
+
+
+def test_unknown_journal_schema_is_rejected_before_git_access(
+    future_tracked_ignored_repo, tmp_path, monkeypatch
+):
+    journal = tmp_path / "journal-v2"
+    migration.capture(future_tracked_ignored_repo, journal)
+    payload = _journal_payload(journal)
+    payload["schema_version"] = 999
+    _write_journal_payload(journal, payload)
+    monkeypatch.setattr(migration, "_git", lambda *_args, **_kwargs: pytest.fail("Git accessed"))
+    monkeypatch.setattr(
+        migration,
+        "_query_tracked_ignored",
+        lambda *_args, **_kwargs: pytest.fail("tracked-ignore query accessed"),
+    )
+
+    with pytest.raises(migration.MigrationError, match="journal schema or phase is unsupported"):
+        migration.apply(future_tracked_ignored_repo, journal)
 
 
 def test_checker_reports_bootstrap_pending_then_future_untrack_clean(tracked_ignored_repo):
@@ -187,7 +296,7 @@ def test_checker_rejects_unknown_stale_duplicate_and_non_git_states(tracked_igno
 
     duplicate_policy = tmp_path / "duplicate.yaml"
     payload = yaml.safe_load(POLICY.read_text(encoding="utf-8"))
-    payload["paths"][-1] = dict(payload["paths"][0])
+    payload["baselines"][0]["paths"][-1] = dict(payload["baselines"][0]["paths"][0])
     duplicate_policy.write_text(yaml.safe_dump(payload, sort_keys=False), encoding="utf-8")
     code, result = _run_checker(tracked_ignored_repo, duplicate_policy)
     assert code == 1
@@ -669,12 +778,12 @@ def test_recapture_retries_after_kill_between_archive_and_generation_publish(tra
     _prepare_untrack(tracked_ignored_repo, journal)
     migration.apply(tracked_ignored_repo, journal)
     _rewind(tracked_ignored_repo, journal)
-    _, _, policy_hash = migration._load_policy(tracked_ignored_repo)
+    policy = migration._load_policy(tracked_ignored_repo)
     generation, _ = migration._create_journal_generation(
         tracked_ignored_repo,
         journal,
-        policy_hash,
-        VERSION,
+        policy.sha256,
+        migration.load_transition(tracked_ignored_repo),
     )
     archive = tmp_path / "archive-00000000000000000000000000000000"
     migration._write_publication_intent(journal, generation, archive)

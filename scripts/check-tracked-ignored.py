@@ -27,8 +27,11 @@ def load_policy(path: Path) -> tuple[PolicyRow, ...]:
 
 
 def check(repo: Path, policy_path: Path) -> dict[str, object]:
-    rows = load_policy(policy_path)
+    policy = load_exact_policy(policy_path)
+    rows = policy.rows
     transition = load_transition(repo)
+    if transition.baseline_version != policy.baseline_version:
+        raise TrackedIgnoredError("tracked-ignore policy active baseline does not match transition metadata")
     actual = set(query_tracked_ignored(repo))
     policy_paths = {row.path for row in rows}
     expected_tracked = {row.path for row in rows if row.classification != "local-only-must-be-untracked"}
@@ -39,10 +42,11 @@ def check(repo: Path, policy_path: Path) -> dict[str, object]:
     if stale := sorted(expected_tracked - actual):
         errors.append({"code": "stale-policy-row", "paths": stale})
     still_tracked = sorted(actual & local_only)
-    migration_pending = transition.phase == "bootstrap-v1" and set(still_tracked) == local_only
+    bootstrap_phase = f"bootstrap-v{transition.baseline_version}"
+    migration_pending = transition.phase == bootstrap_phase and set(still_tracked) == local_only
     if still_tracked and not migration_pending:
         errors.append({"code": "local-only-still-tracked", "paths": still_tracked})
-    if transition.phase == "bootstrap-v1" and not migration_pending:
+    if transition.phase == bootstrap_phase and not migration_pending:
         errors.append({"code": "bootstrap-state-mismatch", "paths": still_tracked})
     return {
         "ok": not errors,
