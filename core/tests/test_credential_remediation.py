@@ -86,6 +86,47 @@ def test_custom_scan_set_is_enablement_independent_and_keeps_canonical_names(tmp
 
 
 @pytest.mark.parametrize(
+    "raw_value",
+    [
+        "$abc123raw",  # starts with $ but is not a ${VAR} reference
+        "{abc123raw",  # starts with { — old first-char exclusion skipped it
+        "<abc123raw",  # starts with < but has no closing > (not a <placeholder>)
+        "${CUSTOM_TODOIST_KEY}tail",  # ${VAR} prefix but a live raw tail follows
+    ],
+)
+def test_bracket_or_dollar_prefixed_raw_value_is_flagged_not_masqueraded_as_reference(
+    tmp_path, raw_value
+):
+    """A raw secret whose first byte is $/</{ must NOT dodge residual detection.
+
+    The old detector excluded any value whose first char was in [\"$<{], so a live
+    raw value starting with one of those bytes reported clean. A reference is now
+    recognised ONLY by a full ${VAR}/<placeholder> template match, so these evasion
+    shapes fail safe as residual.
+    """
+    root = _vault(tmp_path, b"todoist:\n  enabled: true\n  api_key_env_var: CUSTOM_TODOIST_KEY\n")
+    mcp = root / ".mcp.json"
+    mcp.write_text(json.dumps({"mcpServers": {"todoist": {"env": {"CUSTOM_TODOIST_KEY": raw_value}}}}))
+    before = mcp.read_bytes()
+
+    result = migrate_legacy_credentials(root)
+
+    assert result.state == "partial"
+    assert result.active_residual_state == "unrevoked-or-unclassified"
+    assert mcp.read_bytes() == before  # .mcp.json remains report-only, never edited
+
+
+def test_genuine_placeholder_and_var_references_stay_clean(tmp_path):
+    """The tightened detector must not raise false residuals on real reference configs."""
+    root = _vault(tmp_path, b"todoist:\n  enabled: true\n  api_key_env_var: CUSTOM_TODOIST_KEY\n")
+    mcp = root / ".mcp.json"
+    for reference in ("${CUSTOM_TODOIST_KEY}", "<your-todoist-key>"):
+        mcp.write_text(json.dumps({"mcpServers": {"todoist": {"env": {"CUSTOM_TODOIST_KEY": reference}}}}))
+        result = migrate_legacy_credentials(root)
+        assert result.active_residual_state == "none", reference
+
+
+@pytest.mark.parametrize(
     "configured_name",
     ["custom_lowercase", "1INVALID", "WITH-DASH", "${CUSTOM_TODOIST_KEY}", "", 7, ["CUSTOM"]],
 )

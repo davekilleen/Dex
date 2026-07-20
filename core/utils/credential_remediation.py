@@ -794,11 +794,23 @@ def _legacy_values(raw: bytes) -> tuple[dict[str, str], dict[str, str], frozense
     return values, refs, frozenset(env_names)
 
 
+_MCP_REFERENCE_TEMPLATE = re.compile(rb"\$\{[A-Z_][A-Z0-9_]*\}|<[^>]*>")
+
+
 def _active_mcp_raw_residual(raw: bytes, env_names: frozenset[str], legacy_values: Mapping[str, str]) -> bool:
     if any(value.encode() in raw for value in legacy_values.values()):
         return True
     names = b"|".join(re.escape(name.encode()) for name in sorted(env_names))
-    return bool(re.search(rb'"(?:' + names + rb')"\s*:\s*"[^"$<{][^"]*"', raw))
+    if not names:
+        return False
+    # A value under a target env-var name is a safe *reference* only when it fully
+    # matches a ${VAR} ref or a <placeholder>. Any other value is a raw residual.
+    # Fails safe: an unrecognised shape — including $/</{-prefixed raw secrets the
+    # old first-char exclusion silently skipped — is flagged, never cleared.
+    for match in re.finditer(rb'"(?:' + names + rb')"\s*:\s*"([^"]*)"', raw):
+        if not _MCP_REFERENCE_TEMPLATE.fullmatch(match.group(1)):
+            return True
+    return False
 
 
 def inspect_credential_migration(vault_root: Path) -> CredentialMigrationInspection:
