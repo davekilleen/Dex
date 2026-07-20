@@ -31,8 +31,6 @@ RELEASE_BUILD_INPUTS = (
     ".claude/skills/dex-update/SKILL.md",
     ".claude/skills/dex-rollback/SKILL.md",
     "System/.local-only-preservation-transition.json",
-    "System/Session_Learnings/2026-01-29.md",
-    "System/Session_Learnings/2026-01-30.md",
     "System/integrations/slack.yaml",
     "core/migrations/preserve_local_only_paths.py",
     "core/migrations/tracked-ignored-policy.yaml",
@@ -47,6 +45,12 @@ RELEASE_BUILD_INPUTS = (
     "scripts/resolve-distignore-files.sh",
     "scripts/security-gate.sh",
     "scripts/verify-distribution.sh",
+)
+
+RELEASE_BUILD_ABSENT = (
+    "System/Beta_Communications/2026-02-04_hardcoded_paths_fix.md",
+    "System/Session_Learnings/2026-01-29.md",
+    "System/Session_Learnings/2026-01-30.md",
 )
 
 
@@ -108,6 +112,20 @@ def _sync_release_inputs(clone: Path) -> None:
         destination = clone / relative_path
         destination.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(file_source, destination)
+    for relative_path in RELEASE_BUILD_ABSENT:
+        (clone / relative_path).unlink(missing_ok=True)
+    tracked_absent = [
+        relative_path
+        for relative_path in RELEASE_BUILD_ABSENT
+        if subprocess.run(
+            ["git", "ls-files", "--error-unmatch", "--", relative_path],
+            cwd=clone,
+            capture_output=True,
+        ).returncode
+        == 0
+    ]
+    if tracked_absent:
+        subprocess.run(["git", "add", "-u", "--", *tracked_absent], cwd=clone, check=True)
 
 
 def _commit_release_inputs_if_changed(clone: Path) -> None:
@@ -284,7 +302,7 @@ def _git_json(clone: Path, revision_path: str) -> dict[str, object]:
     )
 
 
-def test_release_branch_strips_dev_files_and_keeps_user_runtime(tmp_path: Path) -> None:
+def test_release_branch_strips_dev_and_retired_founder_files(tmp_path: Path) -> None:
     clone, members = _build_release_in_clone(tmp_path)
 
     stripped_prefixes = (
@@ -315,8 +333,9 @@ def test_release_branch_strips_dev_files_and_keeps_user_runtime(tmp_path: Path) 
     assert "core/migrations/preserve_local_only_paths.py" in members
     assert "core/migrations/tracked-ignored-policy.yaml" in members
     assert "core/utils/tracked_ignored.py" in members
-    assert "System/Session_Learnings/2026-01-29.md" in members
-    assert "System/Session_Learnings/2026-01-30.md" in members
+    assert "System/Beta_Communications/2026-02-04_hardcoded_paths_fix.md" not in members
+    assert "System/Session_Learnings/2026-01-29.md" not in members
+    assert "System/Session_Learnings/2026-01-30.md" not in members
     assert "System/integrations/slack.yaml" in members
     _assert_tau_absent_from_release_artifacts(
         clone, "release", tmp_path / "stable-release.tar"
@@ -626,7 +645,12 @@ def test_release_script_regenerates_profile_for_bumped_version(tmp_path: Path) -
     transition = _git_json(clone, "HEAD:System/.local-only-preservation-transition.json")
     assert package["version"] == bumped
     assert profile == {"profile": "legacy-v1", "release_version": bumped, "schema_version": 1}
-    assert transition == {"schema_version": 1, "phase": "bootstrap-v1", "release_version": bumped}
+    assert transition == {
+        "schema_version": 2,
+        "baseline_version": 2,
+        "phase": "bootstrap-v2",
+        "release_version": bumped,
+    }
     assert "System/.release-evidence-profile.json" in _release_manifest(clone, "HEAD")
     assert subprocess.run(
         ["git", "rev-parse", f"v{bumped}^{{}}"], cwd=clone, check=True, capture_output=True, text=True

@@ -1,5 +1,6 @@
 {
-  "schema_version": 1,
-  "phase": "bootstrap-v1",
+  "schema_version": 2,
+  "baseline_version": 2,
+  "phase": "bootstrap-v2",
   "release_version": "1.63.0"
 }

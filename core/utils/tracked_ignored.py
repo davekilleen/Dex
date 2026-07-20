@@ -34,7 +34,8 @@ def _vault_relative(path: Path) -> str:
 
 
 TRANSITION_RELATIVE = Path("System/.local-only-preservation-transition.json")
-APPROVED_ROWS = (
+# Schema v1 is a permanent compatibility baseline for old journals and rollback.
+V1_APPROVED_ROWS = (
     (_vault_relative(DAILY_PLANS_DIR / "README.md"), "intentional-seed"),
     (_vault_relative(IDEAS_DIR / "README.md"), "intentional-seed"),
     (_vault_relative(MEETINGS_DIR / "README.md"), "intentional-seed"),
@@ -70,13 +71,21 @@ RETIRED_FOUNDER_PATHS = frozenset(
         "System/Session_Learnings/2026-01-30.md",
     }
 )
-FUTURE_APPROVED_ROWS = tuple(row for row in APPROVED_ROWS if row[0] not in RETIRED_FOUNDER_PATHS)
-BASELINE_ROWS = {1: APPROVED_ROWS, 2: FUTURE_APPROVED_ROWS}
-LOCAL_ONLY_PATHS = tuple(path for path, kind in APPROVED_ROWS if kind == "local-only-must-be-untracked")
-FUTURE_LOCAL_ONLY_PATHS = tuple(
-    path for path, kind in FUTURE_APPROVED_ROWS if kind == "local-only-must-be-untracked"
+V2_APPROVED_ROWS = tuple(row for row in V1_APPROVED_ROWS if row[0] not in RETIRED_FOUNDER_PATHS)
+BASELINE_ROWS = {1: V1_APPROVED_ROWS, 2: V2_APPROVED_ROWS}
+ACTIVE_BASELINE_VERSION = 2
+APPROVED_ROWS = BASELINE_ROWS[ACTIVE_BASELINE_VERSION]
+FUTURE_APPROVED_ROWS = V2_APPROVED_ROWS  # compatibility alias for bridge-era callers
+V1_LOCAL_ONLY_PATHS = tuple(
+    path for path, kind in V1_APPROVED_ROWS if kind == "local-only-must-be-untracked"
 )
-BASELINE_LOCAL_ONLY_PATHS = {1: LOCAL_ONLY_PATHS, 2: FUTURE_LOCAL_ONLY_PATHS}
+V2_LOCAL_ONLY_PATHS = tuple(
+    path for path, kind in V2_APPROVED_ROWS if kind == "local-only-must-be-untracked"
+)
+LOCAL_ONLY_PATHS = V1_LOCAL_ONLY_PATHS  # journal schema v1 compatibility
+FUTURE_LOCAL_ONLY_PATHS = V2_LOCAL_ONLY_PATHS  # bridge-era compatibility alias
+BASELINE_LOCAL_ONLY_PATHS = {1: V1_LOCAL_ONLY_PATHS, 2: V2_LOCAL_ONLY_PATHS}
+ACTIVE_LOCAL_ONLY_PATHS = BASELINE_LOCAL_ONLY_PATHS[ACTIVE_BASELINE_VERSION]
 TRANSITION_PHASES = {
     1: {"bootstrap-v1", "untrack-v1"},
     2: {"bootstrap-v2", "untrack-v2"},
@@ -236,9 +245,9 @@ def load_exact_policy(path: Path) -> ExactPolicy:
             raise TrackedIgnoredError(
                 "tracked-ignore policy must contain only schema_version, baseline_count, and paths"
             )
-        if payload.get("baseline_count") != len(APPROVED_ROWS):
+        if payload.get("baseline_count") != len(V1_APPROVED_ROWS):
             raise TrackedIgnoredError("tracked-ignore policy must contain the exact 27-row baseline")
-        rows = _parse_policy_rows(payload.get("paths"), APPROVED_ROWS)
+        rows = _parse_policy_rows(payload.get("paths"), V1_APPROVED_ROWS)
         baselines = ((1, rows),)
         active = 1
     elif schema_version == 2:

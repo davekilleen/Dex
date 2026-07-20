@@ -509,13 +509,6 @@
       "ownership": "generated"
     },
     {
-      "id": "brain-beta-communications",
-      "path": "System/Beta_Communications",
-      "kind": "dir",
-      "ownership": "brain",
-      "note": "release-doc per the SR1 tracked-ignore baseline; candidate for deletion in the baseline-reduction follow-up"
-    },
-    {
       "id": "seed-dex-backlog",
       "path": "System/Dex_Backlog.md",
       "kind": "file",
@@ -539,7 +532,13 @@
       "path": "System/Session_Learnings",
       "kind": "dir",
       "ownership": "runtime",
-      "note": "user-machine session state; three legacy files remain tracked under the SR1 27-row tracked-ignore baseline pending the baseline-reduction follow-up"
+      "note": "user-machine session state; only the shipped README is release content"
+    },
+    {
+      "id": "seed-session-learnings-readme",
+      "path": "System/Session_Learnings/README.md",
+      "kind": "file",
+      "ownership": "seed"
     },
     {
       "id": "runtime-session-memory",
