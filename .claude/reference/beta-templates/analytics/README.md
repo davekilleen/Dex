@@ -1,6 +1,6 @@
 # Dex Analytics Beta
 
-Welcome to the Dex Analytics beta! By opting in, you're helping Dave understand how people use Dex so he can make it better.
+Welcome to the Dex Analytics beta! By opting in, you're helping the Dex maintainers understand how people use Dex so they can make it better.
 
 ## What Gets Tracked
 
@@ -73,7 +73,7 @@ To opt in after opting out:
 
 ## Questions?
 
-This is a beta feature. If you have questions or concerns, reach out to Dave directly.
+This is a beta feature. If you have questions or concerns, open an issue in the Dex repository.
 
 ---
 

@@ -1,6 +1,6 @@
-# Staging: fixes to apply in Dave's Vault (NOT dex-core product code)
+# Staging: fixes to apply in the user's Vault (NOT dex-core product code)
 
-This directory holds corrected copies of files whose live home is Dave's
+This directory holds corrected copies of files whose live home is the user's
 private Vault, not dex-core. They are staged here because the build agent
 works read-only against the Vault. The orchestrator applies them vault-side
 during go-live (see the funnel go-live checklist in

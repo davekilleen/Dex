@@ -19,8 +19,8 @@ company: ""
 company_size: ""  # options: startup (1-100), scaling (100-1000), enterprise (1000-10000), large_enterprise (10000+)
 
 # Your company email domain (used to identify internal vs external people)
-# Example: "pendo.io" (without @)
-# Multiple domains: "pendo.io, pendo.com"
+# Example: "acme.com" (without @)
+# Multiple domains: "acme.com, acme.io"
 email_domain: ""
 
 # Communication Preferences
@@ -108,9 +108,10 @@ quarterly_planning:
   # Common: 1 (calendar year), 2 (some fiscal years), 4 (many fiscal years)
   q1_start_month: 1
   
-  # Current quarter (auto-calculated by system)
-  current_quarter: "Q1 2026"
+  # Current quarter — derived at runtime from q1_start_month.
+  # Ship empty so no frozen quarter is distributed; the system fills this in.
+  current_quarter: ""
   
-  # Current quarter dates (auto-calculated)
-  quarter_start_date: "2026-01-01"
-  quarter_end_date: "2026-03-31"
+  # Current quarter dates — derived at runtime; ship empty (see above).
+  quarter_start_date: ""
+  quarter_end_date: ""

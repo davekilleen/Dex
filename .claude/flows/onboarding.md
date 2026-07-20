@@ -128,8 +128,7 @@ Ask: "What's your company email domain? This helps me automatically:
 - Create company pages for external organizations you meet with"
 
 **Example format:**
-- "pendo.io" (without the @)
-- "acme.com"
+- "acme.com" (without the @)
 - Multiple domains: "acme.com, acme.io"
 
 **Store in** `System/user-profile.yaml` as `email_domain` field.
@@ -431,7 +430,7 @@ Say: "A couple more optional add-ons:
 
 - **Journaling** — Daily/weekly reflection prompts (2-3 min/day)
 - **Granola** — Automatic meeting processing (if you use it)
-- **Pendo** — Product analytics integration (if you're a Pendo customer)
+- **External MCPs** — e.g. product analytics like Pendo, added via `/integrate-mcp` (if you use one)
 - **Background Learning** — Automatic checks for new Claude features and pending learnings (macOS only)
 
 Want to set up any of these now, or skip and discover them later?"
@@ -508,54 +507,19 @@ Then:
 
 ---
 
-### Pendo MCP Setup (if selected - for Pendo customers):
+### External MCP Setup (if selected):
 
-Ask: "Are you a Pendo customer? Pendo's MCP integration gives you:
-- Guide performance tracking (in-app messages, onboarding flows)
-- Feature adoption metrics
-- Visitor and account engagement data
-- Product usage insights
+Dex works with any hosted or local MCP server your AI client supports. These are
+optional and are **not** shipped with Dex. Product-analytics servers such as Pendo
+are one example among many.
 
-**What you'll need:**
-- Pendo subscription with MCP enabled (admin must enable in Settings → Subscription Settings → AI Features)
-- Your Pendo login credentials for OAuth
+Say: "You can connect any external MCP with `/integrate-mcp`, or add it directly in
+your AI client's own MCP config and authenticate per the vendor's instructions. For
+product analytics like Pendo, follow the vendor's MCP documentation and use their
+regional OAuth endpoint."
 
-Want to connect Pendo now?"
-
-**If yes:**
-1. Say: "I'll guide you through adding Pendo's hosted MCP server."
-2. Ask: "Which AI client are you using? (Cursor/Claude Desktop/Claude Code/ChatGPT/Gemini CLI/Windsurf/Other)"
-3. Based on their answer, provide specific setup instructions:
-
-**For Cursor:**
-```
-1. Go to Cursor → Settings → Cursor Settings
-2. In Tools & MCP, select "+ New MCP Server"
-3. Add this configuration to your mcp.json:
-
-{
-  "mcpServers": {
-    "pendo": {
-      "url": "https://app.pendo.io/mcp/v0/shttp"
-    }
-  }
-}
-
-4. Select "Connect" and sign in with your Pendo credentials
-5. Allow Cursor to access your Pendo subscription
-```
-
-**For Claude Desktop:**
-- Admin must first add Pendo connector in Admin Settings → Connectors
-- Then users can connect via Settings → Connectors → Pendo → Connect
-
-**For other clients:** Provide the regional URL (US: `https://app.pendo.io/mcp/v0/shttp`) and OAuth instructions.
-
-4. Update `System/user-profile.yaml` with `pendo_mcp_enabled: true` to track that it's configured
-5. Say: "✓ Pendo MCP configured! Once you authenticate, you can query product analytics. Try asking about guide performance or feature adoption."
-
-**If no:**
-Say: "No problem! You can connect Pendo MCP later. Full instructions: https://support.pendo.io/hc/en-us/articles/41102236924955"
+If the user connects one, you can record it in `System/user-profile.yaml` (for
+example, `pendo_mcp_enabled: true`) so Dex knows it's available.
 
 ### Background Learning Setup (if selected, macOS only):
 

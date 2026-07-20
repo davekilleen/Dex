@@ -241,7 +241,7 @@ This ensures every task gets a unique, sortable ID that's stable across files.
 
 **Why this matters:** Task IDs are how we maintain relationships. When a meeting note says "^task-20260128-001", Dex can find that task in `03-Tasks/Tasks.md` AND on the person page AND link back to the meeting.
 
-#### 2. **Calendar MCP** (`user-dave-calendar-mcp`)
+#### 2. **Calendar MCP** (`calendar-mcp`)
 
 **Purpose:** Read-only access to Apple Calendar for meeting context.
 
@@ -372,45 +372,12 @@ Dex servers use five shared states so skills and diagnostics describe each featu
 
 ### External MCP Integrations
 
-#### Pendo (Optional for Pendo Customers)
-
-**Type:** Hosted external MCP server (not shipped with Dex)
-
-**Purpose:** Product analytics for Pendo customers - track guide performance, feature adoption, visitor/account engagement.
-
-**Setup:**
-1. Admin must enable in Pendo: Settings → Subscription Settings → AI Features → Pendo MCP Server
-2. Add to AI client config (Cursor example):
-```json
-{
-  "mcpServers": {
-    "pendo": {
-      "url": "https://app.pendo.io/mcp/v0/shttp"
-    }
-  }
-}
-```
-3. Authenticate with OAuth using Pendo login credentials
-
-**Regional URLs:**
-- US: `https://app.pendo.io/mcp/v0/shttp`
-- US1: `https://us1.app.pendo.io/mcp/v0/shttp`
-- EU: `https://app.eu.pendo.io/mcp/v0/shttp`
-- Japan: `https://app.jpn.pendo.io/mcp/v0/shttp`
-- Australia: `https://app.au.pendo.io/mcp/v0/shttp`
-
-**Available tools:**
-- Visitor and account metadata
-- Page, Feature, and Track Event analytics
-- Event-level aggregation queries
-- Activity and engagement patterns
-
-**Use cases:**
-- "What's our top performing guide this month?"
-- "Which accounts are most active in the last 30 days?"
-- "How many users adopted the new dashboard feature?"
-
-**Documentation:** https://support.pendo.io/hc/en-us/articles/41102236924955
+Dex works with any hosted or local MCP server your AI client supports. These are
+optional, are **not** shipped with Dex, and are added in your AI client's own MCP
+config and authenticated per the vendor's instructions. Examples include
+product-analytics servers (e.g. Pendo, for teams that use it), issue trackers, and
+documentation tools. Follow each vendor's MCP documentation for setup, OAuth, and
+regional endpoints.
 
 ### MCP Development Pattern
 
@@ -739,7 +706,7 @@ Tasks use three tag types:
 **Goal:** Surface today's meetings in daily plan with context about attendees.
 
 **Tech stack:**
-- **Calendar MCP** (`user-dave-calendar-mcp`)
+- **Calendar MCP** (`calendar-mcp`)
 - **Apple Calendar.app** (syncs Google Calendar accounts locally)
 
 **Flow:**
