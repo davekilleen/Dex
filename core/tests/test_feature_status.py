@@ -212,11 +212,18 @@ def test_missing_optional_career_files_report_calm_off_state(
     career_dir = tmp_path / "vault" / "05-Areas" / "Career"
     evidence_dir = career_dir / "Evidence"
     ladder_file = career_dir / "Career_Ladder.md"
+    profile_file = tmp_path / "vault" / "System" / "user-profile.yaml"
+    profile_file.parent.mkdir(parents=True, exist_ok=True)
+    profile_file.write_text(
+        "capabilities:\n  career:\n    enabled: true\n",
+        encoding="utf-8",
+    )
     if evidence_exists:
         evidence_dir.mkdir(parents=True)
     monkeypatch.setattr(career_server, "CAREER_DIR", career_dir)
     monkeypatch.setattr(career_server, "EVIDENCE_DIR", evidence_dir)
     monkeypatch.setattr(career_server, "LADDER_FILE", ladder_file)
+    monkeypatch.setattr(career_server, "USER_PROFILE_FILE", profile_file)
 
     payload = _decode_tool_result(
         asyncio.run(career_server.handle_call_tool(tool_name, {}))
@@ -234,7 +241,11 @@ def test_missing_optional_career_files_report_calm_off_state(
 def test_existing_unreadable_career_ladder_reports_broken(monkeypatch, tmp_path):
     ladder_file = tmp_path / "Career_Ladder.md"
     ladder_file.write_text("not a valid ladder")
+    profile_file = tmp_path / "System" / "user-profile.yaml"
+    profile_file.parent.mkdir(parents=True)
+    profile_file.write_text("capabilities:\n  career:\n    enabled: true\n")
     monkeypatch.setattr(career_server, "LADDER_FILE", ladder_file)
+    monkeypatch.setattr(career_server, "USER_PROFILE_FILE", profile_file)
     monkeypatch.setattr(
         career_server,
         "parse_ladder_file",
@@ -258,8 +269,12 @@ def test_career_ladder_without_competencies_reports_broken(monkeypatch, tmp_path
     ladder_file = tmp_path / "Career" / "Career_Ladder.md"
     ladder_file.write_text("# Career ladder")
     ladder_data = {"competencies": [], "competency_count": 0}
+    profile_file = tmp_path / "System" / "user-profile.yaml"
+    profile_file.parent.mkdir(parents=True)
+    profile_file.write_text("capabilities:\n  career:\n    enabled: true\n")
     monkeypatch.setattr(career_server, "EVIDENCE_DIR", evidence_dir)
     monkeypatch.setattr(career_server, "LADDER_FILE", ladder_file)
+    monkeypatch.setattr(career_server, "USER_PROFILE_FILE", profile_file)
     monkeypatch.setattr(career_server, "parse_ladder_file", lambda _path: ladder_data)
 
     payload = _decode_tool_result(

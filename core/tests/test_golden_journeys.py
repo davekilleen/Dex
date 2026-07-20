@@ -60,6 +60,13 @@ async def main():
             },
             "obsidian_mode": False,
         },
+        7: {
+            "capabilities": {
+                "career": True,
+                "companies": True,
+                "quarter_goals": True,
+            }
+        },
     }
     results["steps"] = [
         await call("validate_and_save_step", {"step_number": number, "step_data": data})
@@ -219,6 +226,10 @@ def _write_entity_profile(vault: Path, mode: str) -> None:
     profile["email_domain"] = "dex.test"
     profile["entity_creation"] = {"mode": mode}
     profile_path.write_text(yaml.safe_dump(profile, sort_keys=False), encoding="utf-8")
+    # The entity fixture models an ACTIVE, already-onboarded vault; the marker
+    # engages the legacy capability bridge (rooms keep their pre-rooms status
+    # quo) that background company creation depends on.
+    (vault / "System" / ".onboarding-complete").write_text("{}\n", encoding="utf-8")
 
 
 def _write_synced_entity_meetings(vault: Path) -> None:

@@ -14,16 +14,13 @@ Set 3-5 strategic goals for the quarter. Runs at the start of each quarter (or m
 
 ---
 
-## Step 0: Check if Quarterly Planning is Enabled
+## Step 0: Confirm the Quarter Goals room is enabled
 
 Read `System/user-profile.yaml`:
 
-1. Check `quarterly_planning.enabled` value
-2. **If `false` or missing:**
-   - Display: "Quarterly planning is currently disabled. Would you like to enable it?"
-   - If yes → Run onboarding questions (Step 0.5), then continue
-   - If no → End command
-3. **If `true`:** Continue to Step 1
+1. Check `capabilities.quarter_goals.enabled`; only when that key is absent, honor legacy `quarterly_planning.enabled`.
+2. **If disabled:** Explain that the room can be enabled with `/manage-capabilities`, then end.
+3. **If enabled:** Continue to Step 0.5 when fiscal-quarter setup is still needed; otherwise continue to Step 1.
 
 ---
 

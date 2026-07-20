@@ -32,6 +32,7 @@ def validate_user_profile_config(config: object) -> list[str]:
         "analytics",
         "calendar",
         "updates",
+        "capabilities",
     )
     for field in object_fields:
         if field in config and not isinstance(config[field], Mapping):
@@ -41,6 +42,19 @@ def validate_user_profile_config(config: object) -> list[str]:
         channel = updates["channel"]
         if not isinstance(channel, str) or channel not in {"stable", "beta"}:
             errors.append("updates.channel must be stable or beta")
+    capabilities = config.get("capabilities")
+    if isinstance(capabilities, Mapping):
+        from core.capabilities import room_ids
+
+        declared = set(room_ids())
+        for room, state in capabilities.items():
+            if room not in declared:
+                errors.append(f"capabilities contains unknown room {room!r}")
+                continue
+            if not isinstance(state, Mapping):
+                errors.append(f"capabilities.{room} must be an object")
+            elif not isinstance(state.get("enabled"), bool):
+                errors.append(f"capabilities.{room}.enabled must be true or false")
     return errors
 
 
