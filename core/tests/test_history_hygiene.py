@@ -625,9 +625,12 @@ def test_prepare_fd_path_failure_closes_descriptors_and_removes_orphan(tmp_path,
     before = _descriptor_count()
     monkeypatch.setattr(history_hygiene, "_fd_path", lambda _descriptor: (_ for _ in ()).throw(OSError("fd path")))
 
+    # Bypass the up-front platform gate (whose default probe also calls _fd_path and would
+    # swallow this OSError) so the DEEP post-lock _fd_path-failure branch is exercised: it must
+    # raise, close every descriptor, and remove the orphaned incomplete transaction.
     for _ in range(5):
         with pytest.raises(OSError, match="fd path"):
-            _prepare(tmp_path, tool, ref)
+            _prepare(tmp_path, tool, ref, substrate_probe=lambda: True)
 
     assert _descriptor_count() == before
     backup = tmp_path / "System/.dex/adoption/history-backups"
