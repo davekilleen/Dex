@@ -7,6 +7,20 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.62.0] - Your integration keys stay private, and Dex never updates itself behind your back (2026-07-20)
+
+This release is a safety floor: a set of fixes that protect your private information and put you back in control of when Dex changes. Before this, a few things could happen quietly in the background that you'd never have chosen — this closes them.
+
+**What this fixes for you:**
+
+* **Your integration keys are kept out of files that get shared.** When you connect a tool like Todoist or Trello, that connection uses a secret key. Before, that key could end up sitting in a file that gets saved into your vault's history — where it could be exposed if you ever shared or backed up your vault. Dex now moves those keys into a private, local-only spot, and if it ever finds a real key left in the open it tells you to rotate (replace) it.
+* **Dex's own safety scan can no longer give a false "all clear."** Dex checks your files for exposed secrets before they're saved. The old check could be fooled by a secret that was written in a slightly unusual way and would wrongly report everything was clean. The new check reads your configuration properly and can't be tricked that way — and if it can't be sure, it says so instead of guessing "safe."
+* **Dex never updates itself without asking.** Before, Dex could quietly pull down and apply changes to itself in the background when you started a session. Now it only *notices* that a newer version exists and mentions it — nothing changes until you decide to update. Your Dex stays exactly as it is until you say otherwise.
+* **Your own files survive an update.** Files and settings that live only on your machine are now preserved when you update or roll back, instead of risking being overwritten.
+* **Task syncing to Atlassian/Jira works reliably again**, and an unsafe bundled add-on was removed from what Dex distributes.
+
+---
+
 ## [1.61.0] - Internal beta build pipeline and immutable release identities (2026-07-14)
 
 Beta-channel build pipeline (internal): CI can now produce a `release-beta` build and every release gets an immutable tag; no user-visible change yet.
