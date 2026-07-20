@@ -264,8 +264,12 @@ def test_toggle_refuses_to_overwrite_a_malformed_existing_profile(
 
 def test_reconcile_refreshes_enabled_skills_after_a_brain_update(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     vault = _fake_vault(tmp_path)
+    # The planted catalog plays the role of the brain (the real repo catalog
+    # would otherwise shadow it — brain-first sourcing).
+    monkeypatch.setattr(capabilities, "REPO_ROOT", vault)
     profile_path = _profile(vault / "System/user-profile.yaml", career=True)
     stale = vault / ".claude/skills/career-setup/SKILL.md"
     stale.parent.mkdir(parents=True, exist_ok=True)
@@ -282,8 +286,10 @@ def test_reconcile_refreshes_enabled_skills_after_a_brain_update(
 
 def test_enable_preflights_dormant_assets_before_changing_profile_or_folders(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     vault = _fake_vault(tmp_path)
+    monkeypatch.setattr(capabilities, "REPO_ROOT", vault)
     profile_path = _profile(vault / "System/user-profile.yaml", career=False)
     missing = vault / ".claude/skills/_available/capabilities/career/skills/career-coach"
     shutil.rmtree(missing)

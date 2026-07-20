@@ -32,6 +32,24 @@ function capabilityEnabled(profile, room) {
     const legacy = profile?.[definition.config]?.enabled;
     if (typeof legacy === 'boolean') return legacy;
   }
+  // Legacy bridge (mirrors core/capabilities.py migrate_legacy_room_state):
+  // vaults onboarded before rooms existed had every room's surfaces active,
+  // so an onboarded profile with NO capabilities state keeps its status quo
+  // until the one-time migration stamps explicit answers. Without this,
+  // background company creation silently stops for months-old installs.
+  const onboardingMarker = path.join(
+    runtimePaths().VAULT_ROOT || process.cwd(),
+    'System',
+    '.onboarding-complete',
+  );
+  if (
+    profile
+    && typeof profile === 'object'
+    && !('capabilities' in profile)
+    && fs.existsSync(onboardingMarker)
+  ) {
+    return true;
+  }
   return definition.default_enabled === true;
 }
 

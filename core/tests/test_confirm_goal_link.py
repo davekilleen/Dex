@@ -52,6 +52,11 @@ def tasks_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     path.write_text("# Tasks\n", encoding="utf-8")
 
     monkeypatch.setattr(work_server, "get_tasks_file", lambda: path)
+    # These tests exercise goal-link logic in isolation; room gating has its
+    # own dedicated coverage (test_capabilities / test_feature_status).
+    monkeypatch.setattr(
+        work_server.capability_rooms, "enabled", lambda room, **kwargs: True
+    )
     monkeypatch.setattr(work_server, "PILLARS", TEST_PILLARS)
     monkeypatch.setattr(work_server, "refresh_search_index", lambda: None)
 

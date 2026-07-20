@@ -139,17 +139,31 @@ def _copy_missing(source: Path, target: Path, created: list[str], vault_root: Pa
         created.append(target.relative_to(vault_root).as_posix())
 
 
+def _dormant_root(room: str, vault_root: Path) -> Path:
+    """The room's dormant assets ship with the BRAIN (the installed code
+    tree): skills are release-owned, and sourcing them from the code install
+    means a vault can never shadow a shipped dormant skill. In today's
+    combined layout the two roots coincide; under the Brain/Vault split the
+    brain remains the correct source. A vault-local catalog is honored ONLY
+    when the brain does not ship that room at all (test fixtures, dev
+    vaults) — whenever the brain has the room, the brain wins."""
+    brain = REPO_ROOT / DORMANT_CATALOG / room
+    if brain.is_dir():
+        return brain
+    return _within(vault_root, (DORMANT_CATALOG / room).as_posix())
+
+
 def _preflight_room_assets(
     root: Path,
     room: str,
     surfaces: Mapping[str, Any],
 ) -> Path:
-    dormant = _within(root, (DORMANT_CATALOG / room).as_posix())
+    dormant = _dormant_root(room, root)
     for skill in surfaces.get("skills", []):
         source = dormant / "skills" / str(skill)
         if not source.is_dir():
             raise CapabilityError(
-                f"Dormant skill is missing for {room}: {source.relative_to(root)}"
+                f"Dormant skill is missing for {room}: {source}"
             )
     return dormant
 
@@ -169,7 +183,7 @@ def reconcile_room(
     dormant = (
         _preflight_room_assets(root, room, surfaces)
         if room_enabled
-        else _within(root, (DORMANT_CATALOG / room).as_posix())
+        else _dormant_root(room, root)
     )
     created: list[str] = []
     surfaced: list[str] = []
