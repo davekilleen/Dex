@@ -335,7 +335,14 @@ def test_release_branch_strips_dev_files_and_keeps_user_runtime(tmp_path: Path) 
             text=True,
         ).stdout
     )
-    assert profile == {"schema_version": 1, "profile": "legacy-v1", "release_version": "1.61.0"}
+    # The release tree carries the source's own version — derive it rather than
+    # hardcoding, so cutting a release doesn't break this test.
+    source_version = _git_json(clone, "main:package.json")["version"]
+    assert profile == {
+        "schema_version": 1,
+        "profile": "legacy-v1",
+        "release_version": source_version,
+    }
 
     subprocess.run(
         ["git", "checkout", "--quiet", "release"],
@@ -584,6 +591,12 @@ def test_release_script_regenerates_profile_for_bumped_version(tmp_path: Path) -
         check=True,
     )
 
+    # Derive the expected bump from the clone's current version rather than
+    # hardcoding it — a hardcoded number breaks this test on every release cut.
+    before = _git_json(clone, "HEAD:package.json")["version"]
+    major, minor, patch = (int(part) for part in before.split("."))
+    bumped = f"{major}.{minor}.{patch + 1}"
+
     subprocess.run(
         ["bash", "scripts/release.sh", "patch"],
         cwd=clone,
@@ -595,11 +608,11 @@ def test_release_script_regenerates_profile_for_bumped_version(tmp_path: Path) -
 
     package = _git_json(clone, "HEAD:package.json")
     profile = _git_json(clone, "HEAD:System/.release-evidence-profile.json")
-    assert package["version"] == "1.61.1"
-    assert profile == {"profile": "legacy-v1", "release_version": "1.61.1", "schema_version": 1}
+    assert package["version"] == bumped
+    assert profile == {"profile": "legacy-v1", "release_version": bumped, "schema_version": 1}
     assert "System/.release-evidence-profile.json" in _release_manifest(clone, "HEAD")
     assert subprocess.run(
-        ["git", "rev-parse", "v1.61.1^{}"], cwd=clone, check=True, capture_output=True, text=True
+        ["git", "rev-parse", f"v{bumped}^{{}}"], cwd=clone, check=True, capture_output=True, text=True
     ).stdout.strip() == subprocess.run(
         ["git", "rev-parse", "HEAD"], cwd=clone, check=True, capture_output=True, text=True
     ).stdout.strip()
