@@ -7,6 +7,19 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.63.0] - Dex now fits itself to you, and the groundwork for worry-free updates is in (2026-07-20)
+
+Until now, every Dex install came fully furnished — career coaching, company pages, quarterly goals — whether or not that matched your work life. And under the hood, updates relied on care rather than guarantees.
+
+**What this changes for you:**
+
+* **Dex asks what your work life looks like.** New setups keep the core — meetings, people, and tasks — always on, then ask three quick yes/no questions: do you want a Career room, a Companies room, a Quarterly Goals room? Say no to any of them and they simply don't exist in your vault — no empty folders about a job you don't have. You can switch any room on or off later, and switching one off never deletes anything you wrote.
+* **If you already use those features, nothing changes.** Existing setups keep every room exactly as it is today.
+* **The foundations for worry-free updates are now in place.** Dex now has a single rulebook that says, for every file, whether it belongs to Dex or to you — and a new update engine that backs up before touching anything, verifies its work, and can undo it exactly. If an update is ever interrupted mid-way — even by a crash — your files end up either completely untouched or completely updated, never half-done. You'll feel this fully in upcoming releases as updating becomes a one-command, one-click-undo experience.
+* **The last of the founder's own files are on their way out.** Earlier versions shipped with a few of the maker's personal notes mixed in. Most were removed in this release, and the machinery to remove the final few safely — without disturbing anyone's update history — ships here too.
+
+---
+
 ## [1.62.0] - Your integration keys stay private, and Dex never updates itself behind your back (2026-07-20)
 
 This release is a safety floor: a set of fixes that protect your private information and put you back in control of when Dex changes. Before this, a few things could happen quietly in the background that you'd never have chosen — this closes them.

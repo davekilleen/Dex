@@ -194,6 +194,14 @@
 .claude/settings.json
 .claude/skills/MIGRATION_SUMMARY.md
 .claude/skills/README.md
+.claude/skills/_available/capabilities/career/folders/05-Areas/Career/Evidence/README.md
+.claude/skills/_available/capabilities/career/skills/career-coach/SKILL.md
+.claude/skills/_available/capabilities/career/skills/career-setup/SKILL.md
+.claude/skills/_available/capabilities/career/skills/resume-builder/SKILL.md
+.claude/skills/_available/capabilities/companies/folders/05-Areas/Companies/README.md
+.claude/skills/_available/capabilities/quarter_goals/folders/01-Quarter_Goals/Quarter_Goals.md
+.claude/skills/_available/capabilities/quarter_goals/skills/quarter-plan/SKILL.md
+.claude/skills/_available/capabilities/quarter_goals/skills/quarter-review/SKILL.md
 .claude/skills/_available/customer-success/expansion-opportunities/SKILL.md
 .claude/skills/_available/customer-success/health-score/SKILL.md
 .claude/skills/_available/customer-success/renewal-prep/SKILL.md
@@ -499,8 +507,6 @@
 .claude/skills/anthropic-xlsx/recalc.py
 .claude/skills/atlassian-setup/SKILL.md
 .claude/skills/calendar-setup/SKILL.md
-.claude/skills/career-coach/SKILL.md
-.claude/skills/career-setup/SKILL.md
 .claude/skills/create-mcp/SKILL.md
 .claude/skills/create-skill/SKILL.md
 .claude/skills/daily-plan/SKILL.md
@@ -535,16 +541,14 @@
 .claude/skills/integrations/integrate-notion.md
 .claude/skills/integrations/integrate-slack.md
 .claude/skills/journal/SKILL.md
+.claude/skills/manage-capabilities/SKILL.md
 .claude/skills/meeting-prep/SKILL.md
 .claude/skills/ms-teams-setup/SKILL.md
 .claude/skills/process-meetings/SKILL.md
 .claude/skills/product-brief/SKILL.md
 .claude/skills/project-health/SKILL.md
 .claude/skills/prompt-improver/SKILL.md
-.claude/skills/quarter-plan/SKILL.md
-.claude/skills/quarter-review/SKILL.md
 .claude/skills/reset/SKILL.md
-.claude/skills/resume-builder/SKILL.md
 .claude/skills/review/SKILL.md
 .claude/skills/save-insight/SKILL.md
 .claude/skills/scrape/SKILL.md
@@ -610,12 +614,9 @@
 00-Inbox/Ideas/README.md
 00-Inbox/Meetings/README.md
 00-Inbox/README.md
-01-Quarter_Goals/Quarter_Goals.md
 02-Week_Priorities/Week_Priorities.md
 03-Tasks/Tasks.md
 04-Projects/README.md
-05-Areas/Career/Evidence/README.md
-05-Areas/Companies/README.md
 05-Areas/People/External/README.md
 05-Areas/People/Internal/README.md
 05-Areas/People/README.md
@@ -677,6 +678,7 @@ System/usage_log.md
 System/user-profile-template.yaml
 System/user-profile.yaml
 core/__init__.py
+core/capabilities.py
 core/data/freemail_domains.json
 core/data/multi_part_tlds.json
 core/dexdiff_profile_adopt.py
@@ -732,6 +734,7 @@ core/obsidian/migrate_to_wikilinks.py
 core/obsidian/sync_daemon.py
 core/path_contract.py
 core/paths.py
+core/portable_contract.py
 core/provision-contract.json
 core/provision.cjs
 core/ritual_intelligence/__init__.py
@@ -822,6 +825,7 @@ core/tests/support/__init__.py
 core/tests/support/vault_builder.py
 core/tests/test_calendar_eventkit_script.py
 core/tests/test_calendar_server.py
+core/tests/test_capabilities.py
 core/tests/test_company_domains.py
 core/tests/test_company_index.py
 core/tests/test_confirm_goal_link.py
@@ -866,6 +870,7 @@ core/tests/test_path_contract.py
 core/tests/test_paths.py
 core/tests/test_people_index_v2.py
 core/tests/test_pii_gate.py
+core/tests/test_portable_contract.py
 core/tests/test_pr_report.py
 core/tests/test_preflight_paths.py
 core/tests/test_provision_parity.py
@@ -883,6 +888,7 @@ core/tests/test_smoke_automation.py
 core/tests/test_sync_daemon.py
 core/tests/test_task_sync.py
 core/tests/test_tracked_ignored.py
+core/tests/test_transaction_core.py
 core/tests/test_transcript_reconcile.py
 core/tests/test_trust_wizards.py
 core/tests/test_trusted_mcp_safety.py
@@ -894,6 +900,11 @@ core/tests/test_work_server_production_paths.py
 core/tests/test_work_server_roundtrip.py
 core/tests/test_work_server_task_priorities.py
 core/tests/test_work_server_weekly_priority_creation.py
+core/transaction/__init__.py
+core/transaction/engine.py
+core/transaction/journal.py
+core/transaction/lock.py
+core/transaction/snapshot.py
 core/utils/__init__.py
 core/utils/company_domains.py
 core/utils/credential_migration_exceptions.json
@@ -932,6 +943,7 @@ docs/dex-doctor-spec.md
 docs/dexdiff-runtime-boundary.md
 docs/health-telemetry.md
 docs/merge-gates.md
+docs/portable-vault-contract-design.md
 docs/release-channels-build-infrastructure.md
 docs/solutions/architecture-patterns/trust-engine-and-verification-methodology.md
 docs/superpowers/plans/2026-07-12-task-sync-bridge.md
@@ -939,6 +951,7 @@ docs/superpowers/specs/2026-05-15-dex-web-design.md
 docs/support/upgrade-platform-matrix.md
 docs/testing-governance.md
 docs/testing-hardening-merge-runbook.md
+docs/transaction-core-design.md
 env.example
 install.sh
 package-lock.json
@@ -949,6 +962,8 @@ packages/dex-contracts/dist/index.d.ts
 packages/dex-contracts/dist/index.js
 packages/dex-contracts/dist/paths.contract.json
 packages/dex-contracts/dist/paths.schema.json
+packages/dex-contracts/dist/portable-vault.contract.json
+packages/dex-contracts/dist/portable-vault.schema.json
 packages/dex-contracts/package.json
 pyproject.toml
 requirements-dev.txt
@@ -965,6 +980,8 @@ scripts/check-instructed-tools.py
 scripts/check-path-consistency.sh
 scripts/check-path-contract-usage.sh
 scripts/check-pii.sh
+scripts/check-portable-contract.py
+scripts/check-portable-contract.sh
 scripts/check-tau-removal.py
 scripts/check-test-delta.sh
 scripts/check-tracked-ignored.py
@@ -973,6 +990,7 @@ scripts/detect-flaky-tests.sh
 scripts/founder-content-allowlist.txt
 scripts/generate-manifest.sh
 scripts/generate-path-contracts.py
+scripts/generate-portable-contract.py
 scripts/instructed-tools-allowlist.txt
 scripts/pii-allowlist.txt
 scripts/pii_gate.py
