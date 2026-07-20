@@ -21,7 +21,6 @@
     "EVIDENCE_DIR": "05-Areas/Career/Evidence",
     "GARDENER_STATE_FILE": "System/.dex/gardener.json",
     "GOALS_FILE": "GOALS.md",
-    "HISTORY_BACKUPS_ROOT": "System/.dex/adoption/history-backups",
     "IDEAS_DIR": "00-Inbox/Ideas",
     "INBOUND_TASKS_FILE": "System/integrations/inbound-tasks.json",
     "INBOX_DIR": "00-Inbox",

@@ -94,15 +94,18 @@ class TestDerivedPaths:
         assert paths.DEX_RUNTIME_DIR.parent == paths.SYSTEM_DIR
 
     def test_history_backups_use_canonical_adoption_path(self):
-        other_vault = Path("/synthetic-vault")
         assert paths.HISTORY_BACKUPS_RELATIVE_PARTS == (
             "System",
             ".dex",
             "adoption",
             "history-backups",
         )
-        assert paths.history_backups_root(other_vault) == other_vault / "System/.dex/adoption/history-backups"
-        assert paths.HISTORY_BACKUPS_ROOT == paths.history_backups_root(paths.VAULT_ROOT)
+        assert not hasattr(paths, "history_backups_root")
+        assert not hasattr(paths, "HISTORY_BACKUPS_ROOT")
+        contract = json.loads(
+            (Path(__file__).resolve().parents[2] / "packages/dex-contracts/dist/paths.contract.json").read_text()
+        )
+        assert "HISTORY_BACKUPS_ROOT" not in contract["vault_relative_paths"]
 
     def test_ritual_intelligence_db_parent_is_runtime_dir(self):
         assert paths.RITUAL_INTELLIGENCE_DB_FILE.parent == paths.DEX_RUNTIME_DIR

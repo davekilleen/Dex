@@ -110,6 +110,281 @@ class CredentialEvidence:
         return CredentialEvidence(*groups, causes)
 
 
+RewindPhase = Literal["ready", "publishing", "recovery", "completed"]
+
+
+@dataclass(frozen=True)
+class FileIdentity:
+    device: int
+    inode: int
+    mode: int
+    links: int
+    uid: int
+    gid: int
+    size: int
+
+    @classmethod
+    def from_metadata(cls, metadata: os.stat_result) -> "FileIdentity":
+        return cls(
+            metadata.st_dev, metadata.st_ino, metadata.st_mode, metadata.st_nlink,
+            metadata.st_uid, metadata.st_gid, metadata.st_size,
+        )
+
+    @classmethod
+    def parse(cls, value: object, *, optional: bool = False) -> "FileIdentity | None":
+        if value is None and optional:
+            return None
+        if not isinstance(value, list) or len(value) != 7 or not all(isinstance(item, int) for item in value):
+            raise OSError("invalid credential journal file identity")
+        identity = cls(*value)
+        if min(identity.device, identity.inode, identity.mode, identity.links, identity.uid, identity.gid, identity.size) < 0:
+            raise OSError("invalid credential journal file identity")
+        return identity
+
+    def json(self) -> list[int]:
+        return [self.device, self.inode, self.mode, self.links, self.uid, self.gid, self.size]
+
+
+@dataclass(frozen=True)
+class CredentialImage:
+    data: bytes
+    mode: int
+    uid: int
+    gid: int
+    identity: FileIdentity | None = None
+
+    @classmethod
+    def parse_preimage(cls, value: object, *, optional: bool = False) -> "CredentialImage | None":
+        if value is None and optional:
+            return None
+        if not isinstance(value, dict) or set(value) != {"bytes_hex", "sha256", "mode", "uid", "gid"}:
+            raise OSError("invalid credential journal preimage")
+        try:
+            image = cls(
+                bytes.fromhex(value["bytes_hex"]), int(value["mode"]),
+                int(value["uid"]), int(value["gid"]),
+            )
+        except (TypeError, ValueError) as error:
+            raise OSError("invalid credential journal preimage") from error
+        if (
+            _hash(image.data) != value["sha256"]
+            or not 0 <= image.mode <= 0o777
+            or min(image.uid, image.gid) < 0
+            or not _owner_restorable(image.owner)
+        ):
+            raise OSError("invalid credential journal preimage")
+        return image
+
+    @property
+    def owner(self) -> tuple[int, int]:
+        return self.uid, self.gid
+
+    def preimage_json(self) -> dict[str, object]:
+        return {
+            "bytes_hex": self.data.hex(), "sha256": _hash(self.data), "mode": self.mode,
+            "uid": self.uid, "gid": self.gid,
+        }
+
+    def with_identity(self, metadata: os.stat_result) -> "CredentialImage":
+        identity = FileIdentity.from_metadata(metadata)
+        if (
+            stat.S_IMODE(identity.mode) != self.mode
+            or identity.uid != self.uid
+            or identity.gid != self.gid
+            or identity.size != len(self.data)
+            or identity.links != 1
+        ):
+            raise OSError("credential journal postimage identity mismatch")
+        return CredentialImage(self.data, self.mode, self.uid, self.gid, identity)
+
+    def same_contents(self, other: "CredentialImage | None") -> bool:
+        return other is not None and (
+            self.data, self.mode, self.uid, self.gid
+        ) == (
+            other.data, other.mode, other.uid, other.gid
+        )
+
+
+@dataclass
+class CredentialTarget:
+    name: Literal["config", "env"]
+    parent_parts: tuple[str, ...]
+    filename: str
+    preimage: CredentialImage | None
+    postimage: CredentialImage
+
+    AUTHORITIES = {
+        "config": (("System", "integrations"), "config.yaml"),
+        "env": ((), ".env"),
+    }
+
+    @classmethod
+    def create(
+        cls,
+        name: Literal["config", "env"],
+        preimage: CredentialImage | None,
+        postimage: CredentialImage,
+    ) -> "CredentialTarget":
+        parent_parts, filename = cls.AUTHORITIES[name]
+        return cls(name, parent_parts, filename, preimage, postimage)
+
+    def __post_init__(self) -> None:
+        authority = self.AUTHORITIES.get(self.name)
+        if authority != (self.parent_parts, self.filename):
+            raise OSError("invalid credential journal target authority")
+        if self.name == "config" and self.preimage is None:
+            raise OSError("credential journal requires a config preimage")
+        if self.name == "env" and self.postimage.mode != 0o600:
+            raise OSError("credential journal requires a restrictive env postimage")
+
+
+@dataclass
+class CredentialJournal:
+    config: CredentialTarget
+    env: CredentialTarget
+    _phase: RewindPhase = "ready"
+
+    TOP_LEVEL_KEYS = frozenset({"schema_version", "config", "env", "postimages", "rewind"})
+    POSTIMAGE_KEYS = frozenset(
+        {
+            "config_bytes_hex", "config_sha256", "config_mode", "config_uid", "config_gid",
+            "config_identity", "env_bytes_hex", "env_sha256", "env_mode", "env_uid", "env_gid",
+            "env_identity",
+        }
+    )
+    PHASES = frozenset({"ready", "publishing", "recovery", "completed"})
+
+    def __post_init__(self) -> None:
+        if self.config.name != "config" or self.env.name != "env" or self._phase not in self.PHASES:
+            raise OSError("invalid credential journal model")
+
+    @classmethod
+    def create(
+        cls,
+        *,
+        config_preimage: CredentialImage,
+        env_preimage: CredentialImage | None,
+        config_postimage: CredentialImage,
+        env_postimage: CredentialImage,
+    ) -> "CredentialJournal":
+        return cls(
+            CredentialTarget.create("config", config_preimage, config_postimage),
+            CredentialTarget.create("env", env_preimage, env_postimage),
+        )
+
+    @classmethod
+    def parse(cls, raw: bytes) -> "CredentialJournal":
+        try:
+            value = json.loads(raw.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError) as error:
+            raise OSError("invalid credential journal") from error
+        if not isinstance(value, dict) or set(value) != cls.TOP_LEVEL_KEYS or value.get("schema_version") != 1:
+            raise OSError("invalid credential journal")
+        rewind = value.get("rewind")
+        if not isinstance(rewind, dict) or set(rewind) != {"phase"} or rewind.get("phase") not in cls.PHASES:
+            raise OSError("invalid credential rewind phase")
+        postimages = value.get("postimages")
+        if not isinstance(postimages, dict) or set(postimages) != cls.POSTIMAGE_KEYS:
+            raise OSError("invalid credential journal postimages")
+        config_pre = CredentialImage.parse_preimage(value.get("config"))
+        env_pre = CredentialImage.parse_preimage(value.get("env"), optional=True)
+        if config_pre is None:  # pragma: no cover - nonoptional parser already rejects this
+            raise OSError("invalid credential journal config preimage")
+        config_post = cls._parse_postimage(postimages, "config")
+        env_post = cls._parse_postimage(postimages, "env")
+        return cls(
+            CredentialTarget.create("config", config_pre, config_post),
+            CredentialTarget.create("env", env_pre, env_post),
+            rewind["phase"],
+        )
+
+    @staticmethod
+    def _parse_postimage(value: dict[str, object], name: str) -> CredentialImage:
+        try:
+            data = bytes.fromhex(value[f"{name}_bytes_hex"])
+            image = CredentialImage(
+                data, int(value[f"{name}_mode"]), int(value[f"{name}_uid"]),
+                int(value[f"{name}_gid"]),
+                FileIdentity.parse(value[f"{name}_identity"], optional=True),
+            )
+        except (TypeError, ValueError) as error:
+            raise OSError("invalid credential journal postimages") from error
+        if (
+            _hash(data) != value[f"{name}_sha256"]
+            or not 0 <= image.mode <= 0o777
+            or min(image.uid, image.gid) < 0
+            or not _owner_restorable(image.owner)
+            or (image.identity is not None and (
+                stat.S_IMODE(image.identity.mode) != image.mode
+                or image.identity.uid != image.uid
+                or image.identity.gid != image.gid
+                or image.identity.size != len(image.data)
+                or image.identity.links != 1
+            ))
+        ):
+            raise OSError("invalid credential journal postimages")
+        return image
+
+    @property
+    def targets(self) -> tuple[CredentialTarget, CredentialTarget]:
+        return self.config, self.env
+
+    @property
+    def phase(self) -> RewindPhase:
+        return self._phase
+
+    @property
+    def fully_published(self) -> bool:
+        return all(target.postimage.identity is not None for target in self.targets)
+
+    def target(self, name: Literal["config", "env"]) -> CredentialTarget:
+        return self.config if name == "config" else self.env
+
+    def record_postimage(self, name: Literal["config", "env"], metadata: os.stat_result) -> None:
+        target = self.target(name)
+        target.postimage = target.postimage.with_identity(metadata)
+
+    def begin_publication(self) -> None:
+        self._transition("ready", "publishing")
+
+    def begin_recovery(self) -> None:
+        self._transition("publishing", "recovery")
+
+    def finish_recovery(self) -> None:
+        self._transition("recovery", "ready")
+
+    def complete(self) -> None:
+        self._transition("publishing", "completed")
+
+    def _transition(self, expected: RewindPhase, target: RewindPhase) -> None:
+        if self._phase != expected:
+            raise OSError("invalid credential rewind transition")
+        self._phase = target
+
+    def serialize(self) -> bytes:
+        postimages: dict[str, object] = {}
+        for target in self.targets:
+            image = target.postimage
+            postimages.update(
+                {
+                    f"{target.name}_bytes_hex": image.data.hex(),
+                    f"{target.name}_sha256": _hash(image.data),
+                    f"{target.name}_mode": image.mode,
+                    f"{target.name}_uid": image.uid,
+                    f"{target.name}_gid": image.gid,
+                    f"{target.name}_identity": image.identity.json() if image.identity else None,
+                }
+            )
+        value = {
+            "schema_version": 1,
+            "config": self.config.preimage.preimage_json() if self.config.preimage else None,
+            "env": self.env.preimage.preimage_json() if self.env.preimage else None,
+            "postimages": postimages,
+            "rewind": {"phase": self._phase},
+        }
+        return (json.dumps(value, sort_keys=True) + "\n").encode("utf-8")
+
+
 def _contained_regular(
     path: Path,
     root: Path,
@@ -415,32 +690,21 @@ def _hash(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
-def _postimage_identity(metadata: os.stat_result) -> list[int]:
-    return [
-        metadata.st_dev,
-        metadata.st_ino,
-        metadata.st_mode,
-        metadata.st_nlink,
-        metadata.st_uid,
-        metadata.st_gid,
-        metadata.st_size,
-    ]
+def _store_credential_journal(directory: int, name: str, journal: CredentialJournal) -> None:
+    _atomic_replace_at(directory, name, journal.serialize(), 0o600)
 
 
 def _record_postimage(
     vault_root: Path,
     journal_name: str,
-    record: dict[str, object],
-    name: str,
+    journal: CredentialJournal,
+    name: Literal["config", "env"],
     metadata: os.stat_result,
 ) -> None:
-    postimages = record["postimages"]
-    if not isinstance(postimages, dict):
-        raise OSError("invalid credential journal postimage state")
-    postimages[f"{name}_identity"] = _postimage_identity(metadata)
+    journal.record_postimage(name, metadata)
     descriptor = _open_directory_chain(vault_root, ("System", ".dex", "adoption", "credential-journals"))
     try:
-        _atomic_replace_at(descriptor, journal_name, (json.dumps(record, sort_keys=True) + "\n").encode(), 0o600)
+        _store_credential_journal(descriptor, journal_name, journal)
     finally:
         os.close(descriptor)
 
@@ -519,33 +783,26 @@ def migrate_legacy_credentials(vault_root: Path) -> MigrationResult:
     expected_env = updated_env_bytes(env_raw or b"", values)
     journal_id = uuid.uuid4().hex
     journal_name = f"{journal_id}.json"
-    record = {
-        "schema_version": 1,
-        "config": {
-            "bytes_hex": config_raw.hex(),
-            "sha256": _hash(config_raw),
-            "mode": stat.S_IMODE(config_snapshot_metadata.st_mode),
-            "uid": config_snapshot_metadata.st_uid,
-            "gid": config_snapshot_metadata.st_gid,
-        },
-        "env": None
-        if env_raw is None
-        else {
-            "bytes_hex": env_raw.hex(),
-            "sha256": _hash(env_raw),
-            "mode": stat.S_IMODE(env_metadata.st_mode),
-            "uid": env_metadata.st_uid,
-            "gid": env_metadata.st_gid,
-        },
-        "postimages": {
-            "config_sha256": _hash(expected_config),
-            "config_bytes_hex": expected_config.hex(),
-            "config_mode": stat.S_IMODE(config_snapshot_metadata.st_mode),
-            "env_sha256": _hash(expected_env),
-            "env_bytes_hex": expected_env.hex(),
-            "env_mode": 0o600,
-        },
-    }
+    config_preimage = CredentialImage(
+        config_raw, stat.S_IMODE(config_snapshot_metadata.st_mode),
+        config_snapshot_metadata.st_uid, config_snapshot_metadata.st_gid,
+    )
+    env_preimage = (
+        None
+        if env_raw is None or env_metadata is None
+        else CredentialImage(
+            env_raw, stat.S_IMODE(env_metadata.st_mode), env_metadata.st_uid, env_metadata.st_gid,
+        )
+    )
+    env_owner = env_preimage.owner if env_preimage else config_preimage.owner
+    if hasattr(os, "getuid") and hasattr(os, "getgid"):
+        env_owner = os.getuid(), os.getgid()
+    journal = CredentialJournal.create(
+        config_preimage=config_preimage,
+        env_preimage=env_preimage,
+        config_postimage=CredentialImage(expected_config, config_preimage.mode, *config_preimage.owner),
+        env_postimage=CredentialImage(expected_env, 0o600, *env_owner),
+    )
     try:
         journal_descriptor = _open_directory_chain(
             vault_root, ("System", ".dex", "adoption", "credential-journals")
@@ -554,12 +811,12 @@ def migrate_legacy_credentials(vault_root: Path) -> MigrationResult:
             descriptor = os.open(
                 journal_name, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600, dir_fd=journal_descriptor
             )
-            with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
-                handle.write(json.dumps(record, sort_keys=True) + "\n")
+            with os.fdopen(descriptor, "wb") as handle:
+                handle.write(journal.serialize())
                 handle.flush()
                 os.fsync(handle.fileno())
             os.fsync(journal_descriptor)
-            if json.loads(_read_at(journal_descriptor, journal_name).decode("utf-8")) != record:
+            if CredentialJournal.parse(_read_at(journal_descriptor, journal_name)).serialize() != journal.serialize():
                 return MigrationResult("refused")
         finally:
             os.close(journal_descriptor)
@@ -590,7 +847,7 @@ def migrate_legacy_credentials(vault_root: Path) -> MigrationResult:
             vault_root,
             values,
             before_publish=lambda metadata: _record_postimage(
-                vault_root, journal_name, record, "env", metadata
+                vault_root, journal_name, journal, "env", metadata
             ),
         )
         current_bytes, current = _read_at_with_metadata(config_descriptor, "config.yaml")
@@ -609,9 +866,9 @@ def migrate_legacy_credentials(vault_root: Path) -> MigrationResult:
             config_descriptor,
             "config.yaml",
             expected_config,
-            record["config"]["mode"],
+            journal.config.preimage.mode,
             before_publish=lambda metadata: _record_postimage(
-                vault_root, journal_name, record, "config", metadata
+                vault_root, journal_name, journal, "config", metadata
             ),
         )
     except BaseException as error:
@@ -628,27 +885,6 @@ def migrate_legacy_credentials(vault_root: Path) -> MigrationResult:
     )
 
 
-def _journal_image(entry: object, *, optional: bool = False) -> tuple[bytes, int, tuple[int, int]] | None:
-    if entry is None and optional:
-        return None
-    if not isinstance(entry, dict) or set(entry) != {"bytes_hex", "sha256", "mode", "uid", "gid"}:
-        raise OSError("invalid credential journal preimage")
-    try:
-        data = bytes.fromhex(entry["bytes_hex"])
-        mode = int(entry["mode"])
-        owner = (int(entry["uid"]), int(entry["gid"]))
-    except (TypeError, ValueError) as error:
-        raise OSError("invalid credential journal preimage") from error
-    if (
-        _hash(data) != entry["sha256"]
-        or not 0 <= mode <= 0o777
-        or min(owner) < 0
-        or not _owner_restorable(owner)
-    ):
-        raise OSError("invalid credential journal preimage")
-    return data, mode, owner
-
-
 def _owner_restorable(owner: tuple[int, int]) -> bool:
     if not all(hasattr(os, name) for name in ("geteuid", "getegid", "getgroups")):
         return True
@@ -658,161 +894,160 @@ def _owner_restorable(owner: tuple[int, int]) -> bool:
     return owner[0] == effective_uid and owner[1] in {os.getegid(), *os.getgroups()}
 
 
-def _rewind_images(record: object) -> dict[str, tuple[bytes, int, tuple[int, int]] | None]:
-    if not isinstance(record, dict) or record.get("schema_version") != 1:
-        raise OSError("invalid credential journal")
-    config_pre = _journal_image(record.get("config"))
-    env_pre = _journal_image(record.get("env"), optional=True)
-    postimages = record.get("postimages")
-    if not isinstance(postimages, dict):
-        raise OSError("invalid credential journal postimages")
+@dataclass
+class _OpenedCredentialTarget:
+    target: CredentialTarget
+    parent: int
+
+    def close(self) -> None:
+        os.close(self.parent)
+
+
+def _open_credential_targets(
+    vault_root: Path, journal: CredentialJournal
+) -> tuple[_OpenedCredentialTarget, _OpenedCredentialTarget]:
+    opened: list[_OpenedCredentialTarget] = []
     try:
-        config_post = bytes.fromhex(postimages["config_bytes_hex"])
-        env_post = bytes.fromhex(postimages["env_bytes_hex"])
-        config_mode = int(postimages["config_mode"])
-        env_mode = int(postimages["env_mode"])
-        config_identity = postimages.get("config_identity")
-        env_identity = postimages.get("env_identity")
-    except (KeyError, TypeError, ValueError) as error:
-        raise OSError("invalid credential journal postimages") from error
-    if (
-        _hash(config_post) != postimages.get("config_sha256")
-        or _hash(env_post) != postimages.get("env_sha256")
-        or (config_identity is not None and (not isinstance(config_identity, list) or len(config_identity) != 7))
-        or (env_identity is not None and (not isinstance(env_identity, list) or len(env_identity) != 7))
-        or (config_identity is not None and config_mode != stat.S_IMODE(config_identity[2]))
-        or env_mode != 0o600
-        or (env_identity is not None and env_mode != stat.S_IMODE(env_identity[2]))
-    ):
-        raise OSError("invalid credential journal postimages")
-    assert config_pre is not None
-    config_owner = (
-        (config_identity[4], config_identity[5])
-        if config_identity is not None
-        else config_pre[2]
-    )
-    env_owner = (
-        (env_identity[4], env_identity[5])
-        if env_identity is not None
-        else (env_pre[2] if env_pre is not None else config_pre[2])
-    )
-    return {
-        "config_pre": config_pre,
-        "env_pre": env_pre,
-        "config_post": (config_post, config_mode, config_owner),
-        "env_post": (env_post, env_mode, env_owner),
-    }
+        for target in journal.targets:
+            opened.append(
+                _OpenedCredentialTarget(
+                    target, _open_directory_chain(vault_root, target.parent_parts)
+                )
+            )
+    except BaseException:
+        for item in reversed(opened):
+            item.close()
+        raise
+    return opened[0], opened[1]
 
 
 def _require_image(
-    parent: int,
-    target: str,
-    image: tuple[bytes, int, tuple[int, int]],
+    opened: _OpenedCredentialTarget,
+    image: CredentialImage,
     *,
-    identity: object | None = None,
+    require_identity: bool = False,
 ) -> None:
-    data, metadata = _read_at_with_metadata(parent, target)
-    expected, mode, owner = image
+    data, metadata = _read_at_with_metadata(opened.parent, opened.target.filename)
     if (
-        data != expected
-        or stat.S_IMODE(metadata.st_mode) != mode
-        or (metadata.st_uid, metadata.st_gid) != owner
-        or (identity is not None and _postimage_identity(metadata) != identity)
+        data != image.data
+        or stat.S_IMODE(metadata.st_mode) != image.mode
+        or (metadata.st_uid, metadata.st_gid) != image.owner
+        or (
+            require_identity
+            and (
+                image.identity is None
+                or FileIdentity.from_metadata(metadata) != image.identity
+            )
+        )
     ):
         raise OSError("credential rewind requires an unchanged migration-owned postimage")
 
 
-def _store_rewind_journal(directory: int, name: str, record: dict[str, object]) -> None:
-    _atomic_replace_at(directory, name, (json.dumps(record, sort_keys=True) + "\n").encode(), 0o600)
+def _publish_image(opened: _OpenedCredentialTarget, image: CredentialImage) -> None:
+    _atomic_replace_at(
+        opened.parent,
+        opened.target.filename,
+        image.data,
+        image.mode,
+        owner=image.owner,
+    )
 
 
-def _restore_rewind_postimages(
-    config_parent: int,
-    env_parent: int,
-    images: dict[str, tuple[bytes, int, tuple[int, int]] | None],
-) -> None:
+def _restore_rewind_postimages(opened_targets: tuple[_OpenedCredentialTarget, ...]) -> None:
     """Resolve an interrupted rewind back to the secret-safe migrated state."""
-    for name, parent, target in (
-        ("config", config_parent, "config.yaml"),
-        ("env", env_parent, ".env"),
-    ):
-        post = images[f"{name}_post"]
-        pre = images[f"{name}_pre"]
-        assert post is not None
+    for opened in opened_targets:
+        target = opened.target
         try:
-            current, metadata = _read_at_with_metadata(parent, target)
+            current, metadata = _read_at_with_metadata(opened.parent, target.filename)
         except FileNotFoundError:
-            if pre is not None or name == "config":
+            if target.preimage is not None or target.name == "config":
                 raise OSError("credential rewind recovery-required: target disappeared") from None
         else:
-            current_image = (current, stat.S_IMODE(metadata.st_mode), (metadata.st_uid, metadata.st_gid))
-            if current_image != post and (pre is None or current_image != pre):
+            current_image = CredentialImage(
+                current,
+                stat.S_IMODE(metadata.st_mode),
+                metadata.st_uid,
+                metadata.st_gid,
+            )
+            if (
+                not current_image.same_contents(target.postimage)
+                and not current_image.same_contents(target.preimage)
+            ):
                 raise OSError("credential rewind recovery-required: target changed independently")
-            if current_image == post:
+            if current_image.same_contents(target.postimage):
                 continue
-        _atomic_replace_at(parent, target, post[0], post[1], owner=post[2])
+        _publish_image(opened, target.postimage)
 
 
-def _refresh_postimage_identities(
-    config_parent: int,
-    env_parent: int,
-    images: dict[str, tuple[bytes, int, tuple[int, int]] | None],
-    postimages: dict[str, object],
-) -> None:
-    for name, parent, target in (
-        ("config", config_parent, "config.yaml"),
-        ("env", env_parent, ".env"),
-    ):
-        post = images[f"{name}_post"]
-        assert post is not None
-        data, metadata = _read_at_with_metadata(parent, target)
+def _refresh_postimage_identities(opened_targets: tuple[_OpenedCredentialTarget, ...]) -> None:
+    for opened in opened_targets:
+        data, metadata = _read_at_with_metadata(opened.parent, opened.target.filename)
+        image = opened.target.postimage
         if (
-            data != post[0]
-            or stat.S_IMODE(metadata.st_mode) != post[1]
-            or (metadata.st_uid, metadata.st_gid) != post[2]
+            data != image.data
+            or stat.S_IMODE(metadata.st_mode) != image.mode
+            or (metadata.st_uid, metadata.st_gid) != image.owner
         ):
             raise OSError("credential rewind recovery-required: postimage readback mismatch")
-        postimages[f"{name}_identity"] = _postimage_identity(metadata)
+        opened.target.postimage = image.with_identity(metadata)
 
 
 def _finish_incomplete_migration_rollback(
-    config_parent: int,
-    env_parent: int,
-    images: dict[str, tuple[bytes, int, tuple[int, int]] | None],
-    postimages: dict[str, object],
+    opened_targets: tuple[_OpenedCredentialTarget, ...],
 ) -> None:
     """Restore migration preimages when publication never reached both targets."""
-    config_pre = images["config_pre"]
-    env_pre = images["env_pre"]
-    config_post = images["config_post"]
-    env_post = images["env_post"]
-    assert config_pre is not None and config_post is not None and env_post is not None
-    for name, parent, target, pre, post in (
-        ("config", config_parent, "config.yaml", config_pre, config_post),
-        ("env", env_parent, ".env", env_pre, env_post),
-    ):
-        identity = postimages.get(f"{name}_identity")
-        if identity is not None:
-            _require_image(parent, target, post, identity=identity)
-        elif pre is None:
+    for opened in opened_targets:
+        target = opened.target
+        if target.postimage.identity is not None:
+            _require_image(opened, target.postimage, require_identity=True)
+        elif target.preimage is None:
             try:
-                os.stat(target, dir_fd=parent, follow_symlinks=False)
+                os.stat(target.filename, dir_fd=opened.parent, follow_symlinks=False)
             except FileNotFoundError:
                 pass
             else:
                 raise OSError("credential migration rollback target appeared") from None
         else:
-            _require_image(parent, target, pre)
-    if postimages.get("env_identity") is not None:
-        if env_pre is None:
-            os.unlink(".env", dir_fd=env_parent)
-            os.fsync(env_parent)
+            _require_image(opened, target.preimage)
+    # Local-only state is restored before tracked configuration.
+    for opened in reversed(opened_targets):
+        target = opened.target
+        if target.postimage.identity is None:
+            continue
+        if target.preimage is None:
+            os.unlink(target.filename, dir_fd=opened.parent)
+            os.fsync(opened.parent)
         else:
-            _atomic_replace_at(env_parent, ".env", env_pre[0], env_pre[1], owner=env_pre[2])
-    if postimages.get("config_identity") is not None:
-        _atomic_replace_at(
-            config_parent, "config.yaml", config_pre[0], config_pre[1], owner=config_pre[2]
-        )
+            _publish_image(opened, target.preimage)
+
+
+def _verify_completed_rewind(opened_targets: tuple[_OpenedCredentialTarget, ...]) -> None:
+    for opened in opened_targets:
+        preimage = opened.target.preimage
+        if preimage is None:
+            try:
+                os.stat(opened.target.filename, dir_fd=opened.parent, follow_symlinks=False)
+            except FileNotFoundError:
+                continue
+            raise OSError("credential rewind preimage changed after completion")
+        _require_image(opened, preimage)
+
+
+def _recover_rewind_publication(
+    journal_parent: int,
+    journal_name: str,
+    journal: CredentialJournal,
+    opened_targets: tuple[_OpenedCredentialTarget, ...],
+) -> None:
+    if journal.phase == "publishing":
+        journal.begin_recovery()
+        _store_credential_journal(journal_parent, journal_name, journal)
+    elif journal.phase != "recovery":
+        raise OSError("invalid credential rewind recovery phase")
+    _restore_rewind_postimages(opened_targets)
+    _refresh_postimage_identities(opened_targets)
+    journal.finish_recovery()
+    _store_credential_journal(journal_parent, journal_name, journal)
 
 
 def rewind_credential_migration(vault_root: Path, journal_id: str) -> MigrationResult:
@@ -823,104 +1058,66 @@ def rewind_credential_migration(vault_root: Path, journal_id: str) -> MigrationR
     journal_parent = _open_directory_chain(
         vault_root, ("System", ".dex", "adoption", "credential-journals")
     )
+    opened_targets: tuple[_OpenedCredentialTarget, ...] = ()
     try:
-        config_parent = _open_directory_chain(vault_root, ("System", "integrations"))
-    except BaseException:
-        os.close(journal_parent)
-        raise
-    try:
-        env_parent = _open_directory_chain(vault_root, ())
-    except BaseException:
-        os.close(config_parent)
-        os.close(journal_parent)
-        raise
-    try:
-        root_after = vault_root.lstat()
-        opened_root = os.fstat(env_parent)
-        root_identities = {
-            (item.st_dev, item.st_ino, item.st_mode, item.st_uid, item.st_gid)
-            for item in (root_before, root_after, opened_root)
-        }
-        if len(root_identities) != 1:
-            raise OSError("credential rewind vault root identity changed")
         journal_raw, journal_metadata = _read_at_with_metadata(journal_parent, journal_name)
         if (
             stat.S_IMODE(journal_metadata.st_mode) != 0o600
             or not _owner_restorable((journal_metadata.st_uid, journal_metadata.st_gid))
         ):
             raise OSError("unsafe credential rewind journal authority")
-        record = json.loads(journal_raw.decode("utf-8"))
-        images = _rewind_images(record)
-        postimages = record["postimages"]
-        assert isinstance(postimages, dict)
-        if postimages.get("config_identity") is None or postimages.get("env_identity") is None:
-            _finish_incomplete_migration_rollback(config_parent, env_parent, images, postimages)
+        journal = CredentialJournal.parse(journal_raw)
+        opened_targets = _open_credential_targets(vault_root, journal)
+        env_root = next(item for item in opened_targets if item.target.name == "env")
+        root_after = vault_root.lstat()
+        opened_root = os.fstat(env_root.parent)
+        root_identities = {
+            (item.st_dev, item.st_ino, item.st_mode, item.st_uid, item.st_gid)
+            for item in (root_before, root_after, opened_root)
+        }
+        if len(root_identities) != 1:
+            raise OSError("credential rewind vault root identity changed")
+
+        if not journal.fully_published:
+            if journal.phase != "ready":
+                raise OSError("incomplete credential migration has invalid rewind phase")
+            _finish_incomplete_migration_rollback(opened_targets)
             return MigrationResult("rewound", journal_id)
-        if record.get("rewind") == {"phase": "rewound"}:
-            config_pre = images["config_pre"]
-            assert config_pre is not None
-            _require_image(config_parent, "config.yaml", config_pre)
-            env_pre = images["env_pre"]
-            if env_pre is None:
-                try:
-                    os.stat(".env", dir_fd=env_parent, follow_symlinks=False)
-                except FileNotFoundError:
-                    pass
-                else:
-                    raise OSError("credential rewind preimage changed after completion") from None
-            else:
-                _require_image(env_parent, ".env", env_pre)
+        if journal.phase == "completed":
+            _verify_completed_rewind(opened_targets)
             return MigrationResult("rewound", journal_id)
-        if record.get("rewind") == {"phase": "publishing"}:
-            _restore_rewind_postimages(config_parent, env_parent, images)
-            _refresh_postimage_identities(
-                config_parent, env_parent, images, postimages
+        if journal.phase in {"publishing", "recovery"}:
+            _recover_rewind_publication(
+                journal_parent, journal_name, journal, opened_targets
             )
-            record["rewind"] = {"phase": "ready"}
-            _store_rewind_journal(journal_parent, journal_name, record)
-        elif record.get("rewind") not in (None, {"phase": "ready"}):
+        if journal.phase != "ready":
             raise OSError("invalid credential rewind phase")
 
-        config_post = images["config_post"]
-        env_post = images["env_post"]
-        assert config_post is not None and env_post is not None
-        # Complete read-only prevalidation of both pinned targets precedes any target mutation.
-        _require_image(
-            config_parent, "config.yaml", config_post, identity=postimages["config_identity"]
-        )
-        _require_image(env_parent, ".env", env_post, identity=postimages["env_identity"])
-        config_pre = images["config_pre"]
-        assert config_pre is not None
-        env_pre = images["env_pre"]
-        record["rewind"] = {"phase": "publishing"}
-        _store_rewind_journal(journal_parent, journal_name, record)
+        # Complete read-only prevalidation of both pinned targets precedes mutation.
+        for opened in opened_targets:
+            _require_image(opened, opened.target.postimage, require_identity=True)
+        journal.begin_publication()
+        _store_credential_journal(journal_parent, journal_name, journal)
         try:
             # Publish local-only state first; tracked raw YAML is the final boundary.
-            _require_image(env_parent, ".env", env_post, identity=postimages["env_identity"])
-            if env_pre is None:
-                os.unlink(".env", dir_fd=env_parent)
-                os.fsync(env_parent)
-            else:
-                _atomic_replace_at(env_parent, ".env", env_pre[0], env_pre[1], owner=env_pre[2])
-            _require_image(
-                config_parent, "config.yaml", config_post, identity=postimages["config_identity"]
-            )
-            _atomic_replace_at(
-                config_parent, "config.yaml", config_pre[0], config_pre[1], owner=config_pre[2]
-            )
-            record["rewind"] = {"phase": "rewound"}
-            _store_rewind_journal(journal_parent, journal_name, record)
+            for opened in reversed(opened_targets):
+                _require_image(opened, opened.target.postimage, require_identity=True)
+                preimage = opened.target.preimage
+                if preimage is None:
+                    os.unlink(opened.target.filename, dir_fd=opened.parent)
+                    os.fsync(opened.parent)
+                else:
+                    _publish_image(opened, preimage)
+            journal.complete()
+            _store_credential_journal(journal_parent, journal_name, journal)
         except BaseException:
-            _restore_rewind_postimages(config_parent, env_parent, images)
-            _refresh_postimage_identities(
-                config_parent, env_parent, images, postimages
+            _recover_rewind_publication(
+                journal_parent, journal_name, journal, opened_targets
             )
-            record["rewind"] = {"phase": "ready"}
-            _store_rewind_journal(journal_parent, journal_name, record)
             raise
     finally:
-        os.close(env_parent)
-        os.close(config_parent)
+        for opened in reversed(opened_targets):
+            opened.close()
         os.close(journal_parent)
     return MigrationResult("rewound", journal_id)
 

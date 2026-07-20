@@ -37,7 +37,11 @@ the vault.
 
 Credential rewind read-only prevalidates the journal, both pinned target parents, both complete
 preimages, and the exact migration-owned config and `.env` postimages before changing either
-target. It durably records publication state, publishes local-only `.env` state before tracked
+target. One closed typed journal model validates exact top-level, target-image, identity, and
+phase keys, initializes every new journal to `ready`, and owns only the explicit
+`ready → publishing → completed` and `publishing → recovery → ready` transitions. Missing or
+unknown phase state is corrupt rather than inferred. It durably records publication state,
+publishes local-only `.env` state before tracked
 YAML, and restores both migrated postimages after any caught boundary fault. A process-stopped
 publication remains explicitly recoverable; the next rewind invocation first resolves it back to
 the no-raw-YAML migrated state before retrying.

@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from core.utils.integration_credentials import inspect_active_mcp_config, read_vault_env
-from core.utils.local_git import git_env, git_result, trusted_git_binary
+from core.utils.local_git import git_env, git_result
 
 LEGACY_YAML_FIELD = re.compile(rb"(?m)^\s*(?:api_key|token)\s*:\s*\S+")
 LEGACY_SECTION = re.compile(rb"(?ms)^\s*(?:todoist|trello)\s*:\s*\n(?:[ \t]+.*\n?)*")
@@ -131,10 +131,6 @@ def _recover_pending_autosave(root: Path, git_dir: Path, index_path: Path) -> No
         journal.unlink()
     except (KeyError, OSError, ValueError, json.JSONDecodeError) as error:
         raise RuntimeError("safe autosave recovery-required: invalid recovery journal") from error
-
-
-def _git_binary() -> str:
-    return str(trusted_git_binary())
 
 
 def _git_env(index_path: Path | None = None) -> dict[str, str]:

@@ -538,8 +538,82 @@ def test_journal_contains_exact_preimage_but_no_absolute_path(tmp_path):
     journal = root / "System/.dex/adoption/credential-journals" / f"{result.journal_id}.json"
     payload = json.loads(journal.read_text())
     assert bytes.fromhex(payload["config"]["bytes_hex"]).endswith(b"synthetic-old-key\r\n")
+    assert set(payload) == credential_remediation.CredentialJournal.TOP_LEVEL_KEYS
+    assert set(payload["postimages"]) == credential_remediation.CredentialJournal.POSTIMAGE_KEYS
+    assert payload["rewind"] == {"phase": "ready"}
+    assert credential_remediation.CredentialJournal.parse(journal.read_bytes()).serialize() == journal.read_bytes()
     assert str(root) not in journal.read_text()
     assert journal.stat().st_mode & 0o777 == 0o600
+
+
+def test_closed_credential_journal_owns_valid_rewind_transitions(tmp_path):
+    root = _vault(tmp_path)
+    result = migrate_legacy_credentials(root)
+    journal_path = root / "System/.dex/adoption/credential-journals" / f"{result.journal_id}.json"
+    journal = credential_remediation.CredentialJournal.parse(journal_path.read_bytes())
+
+    journal.begin_publication()
+    assert journal.phase == "publishing"
+    journal.begin_recovery()
+    assert journal.phase == "recovery"
+    journal.finish_recovery()
+    assert journal.phase == "ready"
+    journal.begin_publication()
+    journal.complete()
+    assert journal.phase == "completed"
+    with pytest.raises(OSError, match="transition"):
+        journal.begin_publication()
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        lambda value: value.pop("rewind"),
+        lambda value: value.update(extra=True),
+        lambda value: value["rewind"].update(extra=True),
+        lambda value: value["rewind"].update(phase="rewound"),
+        lambda value: value["postimages"].update(extra=True),
+        lambda value: value["config"].update(extra=True),
+    ],
+)
+def test_closed_credential_journal_rejects_missing_unknown_and_legacy_state(tmp_path, mutation):
+    root = _vault(tmp_path)
+    result = migrate_legacy_credentials(root)
+    journal_path = root / "System/.dex/adoption/credential-journals" / f"{result.journal_id}.json"
+    value = json.loads(journal_path.read_text())
+    mutation(value)
+
+    with pytest.raises(OSError):
+        credential_remediation.CredentialJournal.parse(
+            (json.dumps(value, sort_keys=True) + "\n").encode()
+        )
+
+
+def test_missing_rewind_guard_bypass_mutant_would_accept_corrupt_journal(tmp_path, monkeypatch):
+    root = _vault(tmp_path)
+    result = migrate_legacy_credentials(root)
+    config = root / "System/integrations/config.yaml"
+    migrated = config.read_bytes()
+    journal_path = root / "System/.dex/adoption/credential-journals" / f"{result.journal_id}.json"
+    value = json.loads(journal_path.read_text())
+    value.pop("rewind")
+    journal_path.write_text(json.dumps(value, sort_keys=True) + "\n")
+    journal_path.chmod(0o600)
+
+    with pytest.raises(OSError):
+        rewind_credential_migration(root, result.journal_id)
+    assert config.read_bytes() == migrated
+
+    real_parse = credential_remediation.CredentialJournal.parse
+
+    def permissive_parse(raw):
+        legacy = json.loads(raw)
+        legacy["rewind"] = {"phase": "ready"}
+        return real_parse((json.dumps(legacy, sort_keys=True) + "\n").encode())
+
+    monkeypatch.setattr(credential_remediation.CredentialJournal, "parse", permissive_parse)
+    assert rewind_credential_migration(root, result.journal_id).state == "rewound"
+    assert b"api_key: synthetic-old-key" in config.read_bytes()
 
 
 def test_symlinked_journal_parent_refuses_without_writing_outside_vault(tmp_path):
@@ -679,7 +753,8 @@ def test_rewind_fault_between_publications_restores_all_migrated_postimages(
     assert json.loads(journal.read_text())["rewind"] == {"phase": "ready"}
 
 
-def test_rewind_restart_resolves_explicit_interrupted_state_before_retry(tmp_path):
+@pytest.mark.parametrize("phase", ["publishing", "recovery"])
+def test_rewind_restart_resolves_explicit_interrupted_state_before_retry(tmp_path, phase):
     root = _vault(tmp_path)
     result = migrate_legacy_credentials(root)
     config = root / "System/integrations/config.yaml"
@@ -688,7 +763,7 @@ def test_rewind_restart_resolves_explicit_interrupted_state_before_retry(tmp_pat
     record = json.loads(journal.read_text())
     config.write_bytes(bytes.fromhex(record["config"]["bytes_hex"]))
     config.chmod(record["config"]["mode"])
-    record["rewind"] = {"phase": "publishing"}
+    record["rewind"] = {"phase": phase}
     journal.write_text(json.dumps(record, sort_keys=True) + "\n")
     journal.chmod(0o600)
 

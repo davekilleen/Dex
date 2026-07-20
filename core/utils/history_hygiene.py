@@ -18,7 +18,7 @@ from pathlib import Path
 from typing import Callable, Literal
 
 from core.paths import HISTORY_BACKUPS_RELATIVE_PARTS
-from core.utils.local_git import git_env, git_output, trusted_git_binary
+from core.utils.local_git import git_env, git_output
 
 try:
     import fcntl
@@ -288,10 +288,6 @@ def _safe_executable(candidate: Path) -> Path | None:
     except OSError:
         return None
     return resolved
-
-
-def _git_binary() -> Path:
-    return trusted_git_binary()
 
 
 def _git_env() -> dict[str, str]:

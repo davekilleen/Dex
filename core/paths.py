@@ -79,14 +79,6 @@ DEX_RUNTIME_DIR = SYSTEM_DIR / '.dex'
 
 
 HISTORY_BACKUPS_RELATIVE_PARTS = ('System', '.dex', 'adoption', 'history-backups')
-
-
-def history_backups_root(vault_root: Path) -> Path:
-    """Return the canonical optional-history recovery root for any vault."""
-    return vault_root.joinpath(*HISTORY_BACKUPS_RELATIVE_PARTS)
-
-
-HISTORY_BACKUPS_ROOT = history_backups_root(VAULT_ROOT)
 PILLARS_FILE = SYSTEM_DIR / 'pillars.yaml'
 USER_PROFILE_FILE = SYSTEM_DIR / 'user-profile.yaml'
 SKILL_RATINGS_FILE = SYSTEM_DIR / 'Skill_Ratings' / 'ratings.jsonl'
