@@ -1,9 +1,12 @@
+import os
 import stat
 import subprocess
 import zipfile
 from pathlib import Path
 
-from core.utils.credential_scanner import scan_credentials
+import pytest
+
+from core.utils.credential_scanner import _bounded_file, scan_credentials
 
 
 def _git(root: Path, *args: str):
@@ -252,3 +255,28 @@ def test_replace_refs_make_object_attribution_explicitly_unknown(tmp_path):
 
     assert {"reachable-refs", "tags", "stashes"} <= set(report.uninspected_scopes)
     assert "reachable-refs:replace-ref-topology-unsupported" in report.uninspected_reasons
+
+
+@pytest.mark.parametrize("needles", [(), (b"",), (b"real", b"")])
+def test_scanner_rejects_empty_or_missing_needles(tmp_path, needles):
+    """scan_credentials must refuse an empty needle set or any empty needle rather than
+    silently scanning for nothing and reporting a false-clean (0 findings). Paired to the
+    empty-needle guard (credential_scanner.py: `raise ValueError`). A real repo is present
+    so that removing the guard yields a clean report (the false-clean), not an incidental
+    git error — making the red-when-removed unambiguous."""
+    _git(tmp_path, "init", "-q")
+    (tmp_path / "file.txt").write_text("content\n")
+    with pytest.raises(ValueError, match="non-empty exact credential bytes"):
+        scan_credentials(tmp_path, needles)
+
+
+def test_bounded_file_refuses_hardlinked_file(tmp_path):
+    """_bounded_file must refuse a multiply-linked (nlink != 1) regular file: a hardlink
+    can alias a file outside the approved scope. Paired to the regular/nlink/size guard
+    in _bounded_file (the nlink==1 refusal is otherwise untested)."""
+    original = tmp_path / "original.txt"
+    original.write_bytes(b"synthetic-secret-body")
+    os.link(original, tmp_path / "hardlink.txt")  # nlink now 2 on both names
+    assert original.stat().st_nlink == 2
+    with pytest.raises(OSError, match="unsafe-or-oversized-file"):
+        _bounded_file(original)
