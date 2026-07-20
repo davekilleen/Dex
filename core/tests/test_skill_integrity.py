@@ -131,7 +131,6 @@ def test_validate_user_profile_requires_updates_to_be_an_object() -> None:
     [
         REPO_ROOT / "System" / "user-profile.yaml",
         REPO_ROOT / "System" / "user-profile-template.yaml",
-        REPO_ROOT / "System" / "user-profile.example.yaml",
     ],
     ids=lambda path: path.name,
 )
@@ -150,7 +149,6 @@ def test_shipped_user_profiles_never_default_to_non_stable(profile_path: Path) -
     "profile_path",
     [
         REPO_ROOT / "System" / "user-profile-template.yaml",
-        REPO_ROOT / "System" / "user-profile.example.yaml",
     ],
     ids=lambda path: path.name,
 )

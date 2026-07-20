@@ -52,8 +52,8 @@ That's it. Takes about 30 seconds.
 
 Big thanks to the community members who reported these issues. Your feedback caught something my testing missed — because I was only testing on... my machine.
 
-Lesson learned: test on machines that don't have "dave" in the path. 
+Lesson learned: test on machines whose home directory differs from the developer's. 
 
 Keep the feedback coming. You're making Dex better for everyone.
 
-— Dave
+— The Dex team

@@ -379,7 +379,7 @@ If account plan already exists:
 # Account Plan: Acme Corp
 
 **Plan date:** 2026-01-28
-**Account owner:** Dave
+**Account owner:** You
 **Annual value:** $180,000
 **Renewal date:** July 15, 2026
 
@@ -486,7 +486,7 @@ If account plan already exists:
   - Build relationship with CTO Jennifer
   - Technical demo for engineering use cases
   - Integration with their GitHub/Jira setup
-- **Owner:** Dave
+- **Owner:** You
 - **Timeline:** Target close by end of Q1
 
 **2. Analytics Module Upgrade**
@@ -497,7 +497,7 @@ If account plan already exists:
   - Show new dashboard capabilities
   - ROI case for time savings
   - Budget approval from Tom (CFO)
-- **Owner:** Dave
+- **Owner:** You
 - **Timeline:** Proposal by Feb 10
 
 ### Medium-term (2-3 Quarters)
@@ -521,7 +521,7 @@ If account plan already exists:
   - Build relationship with Jennifer (CTO) now
   - Strengthen relationship with Tom (CFO) via ROI storytelling
   - Secure multi-year renewal before July
-- **Owner:** Dave
+- **Owner:** You
 - **Status:** In progress (Jennifer intro scheduled via Sarah)
 
 **2. Reporting pain point unaddressed**
@@ -529,7 +529,7 @@ If account plan already exists:
 - **Severity:** Low (currently) → Medium (if unaddressed)
 - **Evidence:** Mentioned 3x in past month, called "frustrating"
 - **Mitigation:** Analytics upgrade proposal, show real-time dashboard solution
-- **Owner:** Dave
+- **Owner:** You
 - **Status:** Planned (proposal in works)
 
 ### Risk Indicators to Monitor
@@ -620,14 +620,14 @@ If account plan already exists:
 ## 📝 Next Actions
 
 **Immediate (This Week):**
-- [ ] Confirm Feb 2 coffee with Jennifer - Dave - Jan 29
-- [ ] Build Analytics upgrade ROI deck - Dave - Feb 1
+- [ ] Confirm Feb 2 coffee with Jennifer - You - Jan 29
+- [ ] Build Analytics upgrade ROI deck - You - Feb 1
 
 **Short-term (This Month):**
-- [ ] Jennifer meeting - Dave - Feb 2
-- [ ] Dashboard demo - Dave - Feb 8
-- [ ] Engineering technical demo - Dave - Feb 9
-- [ ] CFO ROI presentation - Dave - Feb 12
+- [ ] Jennifer meeting - You - Feb 2
+- [ ] Dashboard demo - You - Feb 8
+- [ ] Engineering technical demo - You - Feb 9
+- [ ] CFO ROI presentation - You - Feb 12
 
 **Review date:** April 1 (after Q1 initiatives complete)
 ```

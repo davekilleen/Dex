@@ -272,7 +272,7 @@ SessionStart runs the bounded verifier → one higher immutable candidate passes
 | Onboarding | `onboarding_server.py` | Built-in |
 | Update Checker | `update_checker.py` | Built-in |
 | Dex Improvements | `dex_improvements_server.py` | Built-in |
-| Pendo | Hosted (OAuth) | External (optional) |
+| External MCPs (e.g. product analytics like Pendo) | Hosted (OAuth) | External (optional) |
 
 ### Setting Up Integrations
 
@@ -289,7 +289,7 @@ See `System/.mcp.json.example` for a complete config with all built-in servers:
 - `update_checker.py` - GitHub update detection
 
 **External integrations (optional):**
-- Pendo MCP - Hosted by Pendo with OAuth (https://support.pendo.io/hc/en-us/articles/41102236924955)
+- Any hosted or local MCP server your AI client supports, added in the client's own MCP config and authenticated per the vendor. Product-analytics servers such as Pendo (for teams that use it) are one example.
 
 Example config:
 

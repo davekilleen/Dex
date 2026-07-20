@@ -297,7 +297,24 @@ def test_report_schema_exit_zero_and_no_live_write(tmp_path: Path) -> None:
         "skills",
         "hooks",
     ]
-    assert run.report["summary"] == {"ok": 2, "broken": 0, "unknown": 1, "off": 2}
+    verdicts = {journey["id"]: journey["verdict"] for journey in run.report["journeys"]}
+    assert verdicts["configs"] == "OK"
+    assert verdicts["mcp_startup"] == "OK"  # empty .mcp.json → OK regardless of the execution gate
+    assert verdicts["skills"] == "OFF"
+    assert verdicts["hooks"] == "OFF"
+    # task_lifecycle executes real code only when HEAD's Dex-owned core matches the
+    # installed release ref; otherwise the safety gate reports UNKNOWN. Both are
+    # correct — which one occurs depends on repo state (it flips on every release
+    # cut, when the release ref is rebuilt to match main), so derive the expected
+    # summary instead of hardcoding one state.
+    assert verdicts["task_lifecycle"] in {"OK", "UNKNOWN"}
+    executed = verdicts["task_lifecycle"] == "OK"
+    assert run.report["summary"] == {
+        "ok": 3 if executed else 2,
+        "broken": 0,
+        "unknown": 0 if executed else 1,
+        "off": 2,
+    }
     for journey in run.report["journeys"]:
         assert set(journey) == {"id", "verdict", "detail", "duration_ms"}
         assert journey["verdict"] in smoke.VERDICTS
@@ -881,7 +898,11 @@ def test_hanging_journey_is_killed_and_returns_exit_two(monkeypatch, tmp_path: P
     assert run.exit_code == 2
     assert run.harness_failed is True
     assert run.report["journeys"][0]["verdict"] == "UNKNOWN"
-    assert "journey timed out after" in run.report["journeys"][0]["detail"]
+    # The deadline can fire in the journey itself ("<label> timed out after Xs") or in
+    # its preparation phase ("journey timed out during preparation") — which one wins
+    # depends on host load. Both are the same correct kill behavior (UNKNOWN + exit 2),
+    # so assert the shared core of the message.
+    assert "timed out" in run.report["journeys"][0]["detail"]
 
 
 def test_timed_out_journey_kills_delayed_descendants(monkeypatch, tmp_path: Path) -> None:

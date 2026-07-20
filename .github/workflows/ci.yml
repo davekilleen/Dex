@@ -60,6 +60,8 @@ jobs:
         run: bash scripts/security-gate.sh
       - name: Portable-vault contract gate
         run: bash scripts/check-portable-contract.sh
+      - name: Founder-content gate
+        run: bash scripts/check-founder-content.sh
       - name: Ruff linting
         run: ruff check core/
       - name: Distribution safety check
