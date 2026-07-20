@@ -276,6 +276,30 @@ Get user confirmation before adding.
 
 ---
 
+## Step 8.5: Career Evidence Prompt (If Career System Enabled)
+
+**Only run this if `05-Areas/Career/` exists.** If it doesn't, skip this step silently —
+the user hasn't set up the Career system (`/career-setup`).
+
+Look at today's accomplishments (from Step 5) and learnings for anything that would matter
+at review or promotion time — a shipped project, measurable impact, a hard problem solved,
+positive feedback received, a skill demonstrably stretched. If nothing today clears that
+bar, skip silently — don't manufacture a prompt.
+
+If something does, offer it (don't auto-save):
+
+> "One for your career evidence: today you [specific achievement — e.g. 'shipped the
+> pricing migration two weeks early']. Want me to save it to `05-Areas/Career/Evidence/`?
+> (I'll note the impact and skills it demonstrates.)"
+
+- If yes: write an evidence file to `05-Areas/Career/Evidence/Achievements/` using the
+  `System/Templates/Career_Evidence_Achievement.md` format (date, what you did, impact,
+  skills demonstrated).
+- If no or no response: drop it, don't re-ask.
+- Surface at most one per review — pick the single strongest item.
+
+---
+
 ## Step 9: Tomorrow's Setup
 
 Based on:
