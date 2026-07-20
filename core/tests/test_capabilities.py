@@ -13,7 +13,6 @@ import yaml
 from core import capabilities
 from core.mcp import career_server, resume_server, work_server
 
-
 REPO_ROOT = Path(__file__).resolve().parents[2]
 CONTRACT_PATH = REPO_ROOT / "packages/dex-contracts/dist/portable-vault.contract.json"
 ROOM_SKILLS = {
@@ -385,3 +384,62 @@ def test_setup_reconciles_rooms_without_creating_companies_directly() -> None:
 
     assert "core/capabilities.py\" --reconcile" in setup
     assert "- `05-Areas/Companies/`" not in setup
+
+
+def test_legacy_onboarded_vault_keeps_all_rooms_on(tmp_path):
+    """Review finding #1: a vault onboarded before rooms existed must keep its
+    status quo (everything on) — never be silently reset to fresh defaults."""
+    from core import capabilities
+
+    vault = _fake_vault(tmp_path)
+    (vault / "System").mkdir(parents=True, exist_ok=True)
+    (vault / "System" / ".onboarding-complete").write_text("{}\n", encoding="utf-8")
+    (vault / "System" / "user-profile.yaml").write_text(
+        "name: Legacy User\nquarterly_planning:\n  enabled: false\n",
+        encoding="utf-8",
+    )
+
+    seeded = capabilities.migrate_legacy_room_state(vault)
+
+    assert sorted(seeded) == ["career", "companies", "quarter_goals"]
+    for room in ("career", "companies", "quarter_goals"):
+        assert capabilities.enabled(
+            room, profile_path=vault / "System" / "user-profile.yaml"
+        ) is True
+    # Idempotent: a second run seeds nothing.
+    assert capabilities.migrate_legacy_room_state(vault) == []
+
+
+def test_fresh_unonboarded_vault_is_never_migrated(tmp_path):
+    from core import capabilities
+
+    vault = _fake_vault(tmp_path)
+    (vault / "System").mkdir(parents=True, exist_ok=True)
+    assert capabilities.migrate_legacy_room_state(vault) == []
+
+
+def test_toggle_preserves_profile_comments(tmp_path):
+    """Review finding #2: enabling a room must not strip the user's profile
+    comments — only the enabled lines may change."""
+    from core import capabilities
+
+    vault = _fake_vault(tmp_path)
+    (vault / "System").mkdir(parents=True, exist_ok=True)
+    profile = vault / "System" / "user-profile.yaml"
+    profile.write_text(
+        "# Your name (used to identify you in meetings)\n"
+        "name: \"\"\n"
+        "\n"
+        "# Quarterly planning preferences\n"
+        "quarterly_planning:\n"
+        "  enabled: false  # switch on for OKR workflows\n",
+        encoding="utf-8",
+    )
+
+    capabilities.set_enabled("quarter_goals", True, vault_root=vault, profile_path=profile)
+
+    text = profile.read_text(encoding="utf-8")
+    assert "# Your name (used to identify you in meetings)" in text
+    assert "# Quarterly planning preferences" in text
+    assert "# switch on for OKR workflows" in text
+    assert capabilities.enabled("quarter_goals", profile_path=profile) is True

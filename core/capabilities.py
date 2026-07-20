@@ -18,7 +18,6 @@ from typing import Any, Mapping
 
 import yaml
 
-
 REPO_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_CONTRACT_PATH = (
     REPO_ROOT / "packages/dex-contracts/dist/portable-vault.contract.json"
@@ -212,15 +211,60 @@ def reconcile_room(
     }
 
 
+def migrate_legacy_room_state(
+    vault_root: Path | str,
+    *,
+    profile_path: Path | str | None = None,
+    contract_path: Path | str | None = None,
+) -> list[str]:
+    """One-time bridge for vaults onboarded before capability rooms existed.
+
+    Before rooms shipped, every install had all three rooms' surfaces active —
+    so the faithful migration for an ALREADY-ONBOARDED vault whose profile has
+    no ``capabilities`` key is to seed every room ``enabled: true``, preserving
+    the user's status quo. Fresh installs write explicit room answers at
+    onboarding and are never touched here. Returns the rooms seeded (empty
+    when no migration was needed). Runs before any reconcile on the upgrade
+    path so a months-long Career user is never silently switched off.
+    """
+    root = Path(vault_root).resolve()
+    profile_file = Path(profile_path or root / "System/user-profile.yaml")
+    onboarded = (root / "System" / ".onboarding-complete").exists()
+    if not onboarded:
+        return []
+    profile = _read_profile(profile_file, strict=True)
+    if isinstance(profile.get("capabilities"), Mapping):
+        return []  # already migrated or freshly onboarded with explicit answers
+    seeded: list[str] = []
+    for room in room_ids(contract_path=contract_path):
+        set_enabled(
+            room,
+            True,
+            vault_root=root,
+            profile_path=profile_file,
+            contract_path=contract_path,
+        )
+        seeded.append(room)
+    return seeded
+
+
 def reconcile_all(
     vault_root: Path | str,
     *,
     profile_path: Path | str | None = None,
     contract_path: Path | str | None = None,
 ) -> list[dict[str, Any]]:
-    """Reconcile every contract-declared room against the current profile."""
+    """Reconcile every contract-declared room against the current profile.
+
+    Runs the legacy migration first: an already-onboarded vault with no
+    ``capabilities`` state keeps all rooms on (its pre-rooms status quo)
+    rather than being silently reset to the fresh-install defaults.
+    """
     root = Path(vault_root).resolve()
     profile = Path(profile_path or root / "System/user-profile.yaml")
+    migrate_legacy_room_state(
+        root, profile_path=profile, contract_path=contract_path
+    )
     return [
         reconcile_room(
             room,
@@ -232,9 +276,8 @@ def reconcile_all(
     ]
 
 
-def _atomic_yaml_write(path: Path, value: dict[str, Any]) -> None:
+def _atomic_text_write(path: Path, content: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    content = yaml.safe_dump(value, sort_keys=False, allow_unicode=True)
     file_descriptor, temporary_name = tempfile.mkstemp(
         prefix=f".{path.name}.", suffix=".tmp", dir=path.parent
     )
@@ -248,6 +291,68 @@ def _atomic_yaml_write(path: Path, value: dict[str, Any]) -> None:
         except FileNotFoundError:
             pass
         raise
+
+
+def _set_block_enabled(text: str, block_key: str, room: str | None, value: bool) -> str:
+    """Surgically set ``<block_key>.enabled`` (or ``<block_key>.<room>.enabled``)
+    in YAML text, preserving every other byte — comments included.
+
+    Assumes the two-space indentation our shipped profiles use. The caller
+    validates the result by re-parsing before anything touches disk.
+    """
+    rendered = "true" if value else "false"
+    lines = text.splitlines(keepends=True)
+    newline = "\n"
+
+    def block_bounds(key: str, indent: str, start: int, end: int) -> tuple[int, int] | None:
+        opened = None
+        for index in range(start, end):
+            stripped = lines[index].rstrip("\n")
+            if stripped.startswith(f"{indent}{key}:"):
+                opened = index
+                continue
+            if opened is not None:
+                # Block ends at the first line at same-or-lower indentation
+                # that is not blank/comment continuation.
+                if stripped and not stripped.startswith(indent + " ") and not stripped.lstrip().startswith("#"):
+                    return opened, index
+        return (opened, end) if opened is not None else None
+
+    top = block_bounds(block_key, "", 0, len(lines))
+    if top is None:
+        # Append a fresh block at EOF.
+        suffix = "" if (not lines or lines[-1].endswith("\n")) else newline
+        if room is None:
+            addition = f"{suffix}{block_key}:{newline}  enabled: {rendered}{newline}"
+        else:
+            addition = (
+                f"{suffix}{block_key}:{newline}  {room}:{newline}"
+                f"    enabled: {rendered}{newline}"
+            )
+        return text + addition
+
+    start, end = top
+    if room is not None:
+        inner = block_bounds(room, "  ", start + 1, end)
+        if inner is None:
+            addition = f"  {room}:{newline}    enabled: {rendered}{newline}"
+            lines.insert(start + 1, addition)
+            return "".join(lines)
+        start, end = inner
+        target_indent = "    "
+    else:
+        target_indent = "  "
+
+    for index in range(start + 1, end):
+        stripped = lines[index].rstrip("\n")
+        if stripped.lstrip().startswith("enabled:") and stripped.startswith(target_indent):
+            comment = ""
+            if "#" in stripped:
+                comment = "  #" + stripped.split("#", 1)[1]
+            lines[index] = f"{target_indent}enabled: {rendered}{comment}{newline}"
+            return "".join(lines)
+    lines.insert(start + 1, f"{target_indent}enabled: {rendered}{newline}")
+    return "".join(lines)
 
 
 def set_enabled(
@@ -269,26 +374,39 @@ def set_enabled(
         _preflight_room_assets(root, room, surfaces)
     profile_file = Path(profile_path or root / "System/user-profile.yaml")
     # Reads may fail safely to "off", but mutations must never replace malformed
-    # or unreadable user state with an empty profile.
-    profile = _read_profile(profile_file, strict=True)
-    capabilities = profile.setdefault("capabilities", {})
-    if not isinstance(capabilities, dict):
-        raise CapabilityError("profile capabilities must be an object")
-    state = capabilities.setdefault(room, {})
-    if not isinstance(state, dict):
-        state = {}
-        capabilities[room] = state
-    state["enabled"] = room_enabled
+    # or unreadable user state with an empty profile. strict=True raises on
+    # unreadable YAML before any edit is attempted.
+    _read_profile(profile_file, strict=True)
+    original = (
+        profile_file.read_text(encoding="utf-8") if profile_file.exists() else ""
+    )
 
+    # Surgical line edits: only the enabled flags change; every other byte of
+    # the user's profile — comments and formatting included — is preserved.
+    updated = _set_block_enabled(original, "capabilities", room, room_enabled)
     legacy_config = surfaces.get("config")
     if isinstance(legacy_config, str):
-        legacy = profile.setdefault(legacy_config, {})
-        if not isinstance(legacy, dict):
-            legacy = {}
-            profile[legacy_config] = legacy
-        legacy["enabled"] = room_enabled
+        updated = _set_block_enabled(updated, legacy_config, None, room_enabled)
 
-    _atomic_yaml_write(profile_file, profile)
+    # Validate the surgical result BEFORE it touches disk: it must parse, and
+    # it must read back exactly the state we intended. Anything else refuses.
+    try:
+        reparsed = yaml.safe_load(updated) or {}
+    except yaml.YAMLError as exc:
+        raise CapabilityError(
+            "profile edit produced invalid YAML; refusing to write"
+        ) from exc
+    room_state = (
+        reparsed.get("capabilities", {}).get(room, {})
+        if isinstance(reparsed.get("capabilities"), Mapping)
+        else {}
+    )
+    if not isinstance(room_state, Mapping) or room_state.get("enabled") is not room_enabled:
+        raise CapabilityError(
+            "profile edit did not produce the intended room state; refusing to write"
+        )
+
+    _atomic_text_write(profile_file, updated)
     return reconcile_room(
         room,
         room_enabled,
