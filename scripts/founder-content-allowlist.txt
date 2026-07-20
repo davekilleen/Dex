@@ -62,6 +62,8 @@
 ^install\.sh:.*:cursor$
 # .cursor/rules/... path listed in the installed-files manifest
 ^System/\.installed-files\.manifest:.*:cursor$
+# the ownership contract classifies the .cursor config dir by its literal path
+^packages/dex-contracts/dist/portable-vault\.contract\.json:.*:cursor$
 
 # --- The gate and its own allowlist reference the tokens by construction ---
 ^scripts/check-founder-content\.py:.*:(dave|killeen|pendo|cursor)$
