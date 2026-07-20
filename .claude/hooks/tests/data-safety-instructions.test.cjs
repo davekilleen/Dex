@@ -418,8 +418,8 @@ test('update recovery skips rewind for validated untracked reset targets', () =>
   assert.equal(recoveryBlocks.length, 2);
   for (const block of recoveryBlocks) {
     assert.match(block, /preserve_local_only_paths\.py" transition/);
-    assert.match(block, /bootstrap-v1\|bootstrap-legacy\)[\s\S]*preserve_local_only_paths\.py" rewind/);
-    assert.match(block, /untrack-v1\|untrack-legacy\) ;;/);
+    assert.match(block, /bootstrap-v1\|bootstrap-v2\|bootstrap-legacy\)[\s\S]*preserve_local_only_paths\.py" rewind/);
+    assert.match(block, /untrack-v1\|untrack-v2\|untrack-legacy\) ;;/);
   }
 });
 
