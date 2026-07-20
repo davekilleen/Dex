@@ -69,11 +69,16 @@ rm -f CHANGELOG.md.bak
 python3 core/utils/update_verifier.py \
   --write-legacy-profile System/.release-evidence-profile.json \
   --release-version "$NEW_VERSION"
+VAULT_PATH="$PWD" python3 -m core.migrations.preserve_local_only_paths stamp-transition \
+  --repo "$PWD"
 bash scripts/generate-manifest.sh
 
 # --- Commit, tag, push --------------------------------------------------------
 
-git add package.json package-lock.json CHANGELOG.md System/.release-evidence-profile.json System/.installed-files.manifest
+git add package.json package-lock.json CHANGELOG.md \
+  System/.release-evidence-profile.json \
+  System/.local-only-preservation-transition.json \
+  System/.installed-files.manifest
 git commit -m "release: v${NEW_VERSION}"
 git tag -a "$TAG" -m "Release ${TAG}"
 
