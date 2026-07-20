@@ -297,7 +297,24 @@ def test_report_schema_exit_zero_and_no_live_write(tmp_path: Path) -> None:
         "skills",
         "hooks",
     ]
-    assert run.report["summary"] == {"ok": 2, "broken": 0, "unknown": 1, "off": 2}
+    verdicts = {journey["id"]: journey["verdict"] for journey in run.report["journeys"]}
+    assert verdicts["configs"] == "OK"
+    assert verdicts["mcp_startup"] == "OK"  # empty .mcp.json → OK regardless of the execution gate
+    assert verdicts["skills"] == "OFF"
+    assert verdicts["hooks"] == "OFF"
+    # task_lifecycle executes real code only when HEAD's Dex-owned core matches the
+    # installed release ref; otherwise the safety gate reports UNKNOWN. Both are
+    # correct — which one occurs depends on repo state (it flips on every release
+    # cut, when the release ref is rebuilt to match main), so derive the expected
+    # summary instead of hardcoding one state.
+    assert verdicts["task_lifecycle"] in {"OK", "UNKNOWN"}
+    executed = verdicts["task_lifecycle"] == "OK"
+    assert run.report["summary"] == {
+        "ok": 3 if executed else 2,
+        "broken": 0,
+        "unknown": 0 if executed else 1,
+        "off": 2,
+    }
     for journey in run.report["journeys"]:
         assert set(journey) == {"id", "verdict", "detail", "duration_ms"}
         assert journey["verdict"] in smoke.VERDICTS
