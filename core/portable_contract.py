@@ -393,6 +393,105 @@ def release_forbidden(paths: Iterable[str]) -> list[str]:
     return forbidden
 
 
+def build_contract_schema() -> dict[str, object]:
+    """JSON Schema validating the committed contract document."""
+    return {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "$id": "https://dex/contracts/portable-vault.schema.json",
+        "title": "Dex Portable Vault Ownership Contract",
+        "type": "object",
+        "additionalProperties": False,
+        "required": [
+            "contract_version",
+            "source",
+            "vault_schema_supported",
+            "ownership_classes",
+            "hard_deny",
+            "vault_regions",
+            "rules",
+            "capabilities",
+        ],
+        "properties": {
+            "contract_version": {"type": "integer", "minimum": 1},
+            "source": {"const": "core/portable_contract.py"},
+            "vault_schema_supported": {"type": "string", "minLength": 1},
+            "ownership_classes": {
+                "type": "array",
+                "items": {"enum": list(OWNERSHIP_CLASSES)},
+                "minItems": 5,
+                "maxItems": 5,
+                "uniqueItems": True,
+            },
+            "hard_deny": {
+                "type": "array",
+                "items": {"type": "string", "minLength": 1},
+                "minItems": 1,
+                "uniqueItems": True,
+            },
+            "vault_regions": {
+                "type": "array",
+                "items": {"type": "string", "minLength": 1},
+                "minItems": 1,
+                "uniqueItems": True,
+            },
+            "rules": {
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                    "type": "object",
+                    "additionalProperties": False,
+                    "required": ["id", "path", "kind", "ownership"],
+                    "properties": {
+                        "id": {"type": "string", "pattern": "^[a-z0-9-]+$"},
+                        "path": {"type": "string", "minLength": 1},
+                        "kind": {"enum": ["file", "dir"]},
+                        "ownership": {"enum": list(OWNERSHIP_CLASSES)},
+                        "note": {"type": "string", "minLength": 1},
+                    },
+                },
+            },
+            "capabilities": {
+                "type": "object",
+                "additionalProperties": {
+                    "type": "object",
+                    "additionalProperties": False,
+                    "required": ["default_enabled", "folders"],
+                    "properties": {
+                        "default_enabled": {"type": "boolean"},
+                        "folders": {
+                            "type": "array",
+                            "items": {"type": "string", "minLength": 1},
+                            "minItems": 1,
+                        },
+                        "skills": {"type": "array", "items": {"type": "string"}},
+                        "mcp": {"type": "array", "items": {"type": "string"}},
+                        "features": {"type": "array", "items": {"type": "string"}},
+                        "config": {"type": "string", "minLength": 1},
+                    },
+                },
+            },
+        },
+    }
+
+
+def write_contract_package(dist_dir) -> dict[str, object]:
+    """Write the generated contract + schema into ``dist_dir`` (committed)."""
+    import json
+    from pathlib import Path
+
+    dist = Path(dist_dir)
+    dist.mkdir(parents=True, exist_ok=True)
+    document = build_contract_document()
+    (dist / "portable-vault.contract.json").write_text(
+        json.dumps(document, indent=2, sort_keys=False) + "\n", encoding="utf-8"
+    )
+    (dist / "portable-vault.schema.json").write_text(
+        json.dumps(build_contract_schema(), indent=2, sort_keys=False) + "\n",
+        encoding="utf-8",
+    )
+    return document
+
+
 def build_contract_document() -> dict[str, object]:
     """The deterministic JSON view committed to packages/dex-contracts/dist."""
     return {
