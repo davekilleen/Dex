@@ -40,6 +40,15 @@
             "command": "node .claude/hooks/ensure-mcp-user-scope.cjs"
           }
         ]
+      },
+      {
+        "matcher": "mcp__.*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash .claude/hooks/dex-safety-guard.sh"
+          }
+        ]
       }
     ],
     "Stop": [

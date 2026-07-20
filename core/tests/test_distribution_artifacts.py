@@ -28,6 +28,15 @@ RELEASE_BUILD_INPUTS = (
     "package.json",
     "requirements.txt",
     "requirements-dev.txt",
+    ".claude/skills/dex-update/SKILL.md",
+    ".claude/skills/dex-rollback/SKILL.md",
+    "System/.local-only-preservation-transition.json",
+    "System/Session_Learnings/2026-01-29.md",
+    "System/Session_Learnings/2026-01-30.md",
+    "System/integrations/slack.yaml",
+    "core/migrations/preserve_local_only_paths.py",
+    "core/migrations/tracked-ignored-policy.yaml",
+    "core/utils/tracked_ignored.py",
     "core/utils/manifest.py",
     "core/utils/smoke.py",
     "scripts/build-release.sh",
@@ -102,7 +111,7 @@ def _sync_release_inputs(clone: Path) -> None:
 
 def _commit_release_inputs_if_changed(clone: Path) -> None:
     _sync_release_inputs(clone)
-    subprocess.run(["git", "add", "--", *RELEASE_BUILD_INPUTS], cwd=clone, check=True)
+    subprocess.run(["git", "add", "-f", "--", *RELEASE_BUILD_INPUTS], cwd=clone, check=True)
     if subprocess.run(["git", "diff", "--cached", "--quiet"], cwd=clone).returncode != 0:
         subprocess.run(
             ["git", "commit", "--quiet", "-m", "test: sync release build inputs"],
@@ -129,7 +138,7 @@ def _build_release_in_clone(
     spaced_fixture = clone / "core/tests/fixtures/vault/has space.md"
     spaced_fixture.write_text("release stripping regression\n", encoding="utf-8")
     subprocess.run(
-        ["git", "add", "--", *RELEASE_BUILD_INPUTS, str(spaced_fixture.relative_to(clone))],
+        ["git", "add", "-f", "--", *RELEASE_BUILD_INPUTS, str(spaced_fixture.relative_to(clone))],
         cwd=clone,
         check=True,
     )
@@ -284,8 +293,16 @@ def test_release_branch_strips_dev_files_and_keeps_user_runtime(tmp_path: Path) 
     assert "core/utils/manifest.py" in members
     assert "core/utils/smoke.py" in members
     assert ".claude/skills/dex-update/SKILL.md" in members
+    assert ".claude/skills/dex-rollback/SKILL.md" in members
     assert ".claude/skills/anthropic-docx/scripts/document.py" in members
     assert "System/.installed-files.manifest" in members
+    assert "System/.local-only-preservation-transition.json" in members
+    assert "core/migrations/preserve_local_only_paths.py" in members
+    assert "core/migrations/tracked-ignored-policy.yaml" in members
+    assert "core/utils/tracked_ignored.py" in members
+    assert "System/Session_Learnings/2026-01-29.md" in members
+    assert "System/Session_Learnings/2026-01-30.md" in members
+    assert "System/integrations/slack.yaml" in members
     _assert_tau_absent_from_release_artifacts(
         clone, "release", tmp_path / "stable-release.tar"
     )
@@ -737,6 +754,7 @@ def test_distribution_check_rejects_enabled_integration_templates(tmp_path: Path
             "git",
             "rm",
             "--quiet",
+            "--ignore-unmatch",
             "--",
             "System/integrations/slack.yaml",
         ],
@@ -976,7 +994,7 @@ def test_vault_distignore_directory_rules_resolve_before_staging(tmp_path: Path)
 def test_vault_bundle_tree_manifest_and_archive_contain_no_tau(tmp_path: Path) -> None:
     clone = _clone_repo(tmp_path, "vault-bundle-build")
     _sync_release_inputs(clone)
-    subprocess.run(["git", "add", "--", *RELEASE_BUILD_INPUTS], cwd=clone, check=True)
+    subprocess.run(["git", "add", "-f", "--", *RELEASE_BUILD_INPUTS], cwd=clone, check=True)
     if subprocess.run(["git", "diff", "--cached", "--quiet"], cwd=clone).returncode != 0:
         subprocess.run(
             ["git", "commit", "--quiet", "-m", "test: prepare vault bundle fixture"],
@@ -1226,7 +1244,7 @@ def _prepare_tau_mutation_clone(tmp_path: Path, name: str) -> Path:
     clone = _clone_repo(tmp_path, name)
     subprocess.run(["git", "checkout", "-B", "main", "HEAD"], cwd=clone, check=True)
     _sync_release_inputs(clone)
-    subprocess.run(["git", "add", "--", *RELEASE_BUILD_INPUTS], cwd=clone, check=True)
+    subprocess.run(["git", "add", "-f", "--", *RELEASE_BUILD_INPUTS], cwd=clone, check=True)
     return clone
 
 
