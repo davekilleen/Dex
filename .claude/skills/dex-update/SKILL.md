@@ -825,6 +825,17 @@ Add to summary if reinstalled: "✓ Updated nightly self-check automation"
 
 **Future automations:** This pattern extends to other background services. Check for the prerequisite (e.g., app installed, API key present), then run the installer silently.
 
+**F. Reconcile optional rooms (Automatic)**
+
+The update replaces release-owned skills. Refresh the active skill copies for
+rooms the user has enabled, and keep disabled room skills dormant:
+
+```bash
+"$PWD/.venv/bin/python" "$PWD/core/capabilities.py" --reconcile --vault "$PWD"
+```
+
+This never deletes or moves user content inside room folders.
+
 ---
 
 ### Step 8: Verification

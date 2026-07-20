@@ -10,7 +10,7 @@ Guide new users through setup in a friendly ~5 minute conversation. Keep it simp
 - The MCP tracks completion and validates each step
 - Session state enables resume if interrupted
 
-**After each step (1-6):** Call `validate_and_save_step(step_number=X, step_data={...})` before proceeding. If validation fails, show the error and retry the step.
+**After each step (1-7):** Call `validate_and_save_step(step_number=X, step_data={...})` before proceeding. If validation fails, show the error and retry the step.
 
 ### Platform Detection (do this once, before Step 1)
 
@@ -125,7 +125,7 @@ Present options using your detected platform tool:
 
 Ask: "What's your company email domain? This helps me automatically:
 - Identify internal colleagues vs external contacts
-- Create company pages for external organizations you meet with"
+- Create company pages for external organizations you meet with, if you switch on the Companies room"
 
 **Example format:**
 - "acme.com" (without the @)
@@ -316,10 +316,69 @@ Present options using your detected platform tool:
 
 ---
 
-## Step 7: Generate Structure
+## Step 7: Choose Optional Rooms
+
+Say: "Dex's meetings, people, and tasks spine is always on. I can also add three optional rooms now. All three start off unless you say yes."
+
+Present these three plain yes/no questions using your detected platform tool:
+
+```json
+{
+  "questions": [
+    {
+      "id": "career",
+      "prompt": "Add a Career room for growth evidence, coaching, and resumes?",
+      "allow_multiple": false,
+      "options": [
+        {"id": "yes", "label": "Yes"},
+        {"id": "no", "label": "No"}
+      ]
+    },
+    {
+      "id": "companies",
+      "prompt": "Add a Companies room for organization and account pages?",
+      "allow_multiple": false,
+      "options": [
+        {"id": "yes", "label": "Yes"},
+        {"id": "no", "label": "No"}
+      ]
+    },
+    {
+      "id": "quarter_goals",
+      "prompt": "Add a Quarter Goals room for 3-month planning and reviews?",
+      "allow_multiple": false,
+      "options": [
+        {"id": "yes", "label": "Yes"},
+        {"id": "no", "label": "No"}
+      ]
+    }
+  ]
+}
+```
+
+Map each `yes` to `true` and each `no` to `false`. Then call:
+
+```text
+validate_and_save_step(
+  step_number=7,
+  step_data={
+    "capabilities": {
+      "career": true/false,
+      "companies": true/false,
+      "quarter_goals": true/false
+    }
+  }
+)
+```
+
+Say: "You can change these later with `/manage-capabilities`. Turning a room off never deletes its notes; it only hides that room's skills and stops new room content from being created."
+
+---
+
+## Step 8: Generate Structure
 
 **BEFORE PROCEEDING - MCP Validation:**
-1. Call `get_onboarding_status()` to verify all required steps (1-6) are completed
+1. Call `get_onboarding_status()` to verify all required steps (1-7) are completed
 2. If Step 4 (email_domain) missing, STOP and go back - the MCP will block finalization
 3. Call `verify_dependencies()` to check Python packages and Calendar.app
 4. Show any missing dependencies with installation instructions (if any)
@@ -328,7 +387,7 @@ Say: "Perfect! I'm creating your workspace now. Here's what you're getting:
 
 **Dex uses the PARA method:**
 - **04-Projects/** — Time-bound work with clear outcomes
-- **05-Areas/** — Ongoing responsibilities (People/, Career/, plus role-specific areas)
+- **05-Areas/** — Ongoing responsibilities (People/ is always on; Career/ and Companies/ appear only if selected)
 - **06-Resources/** — Reference material (learnings, quarterly reviews, system docs)
 - **07-Archives/** — Historical records (plans, reviews, completed projects)
 - **00-Inbox/** — Capture zone (meetings, ideas, notes)
@@ -340,12 +399,13 @@ This separates active work from reference material and keeps your capture zone l
 Call `finalize_onboarding()` from onboarding-mcp. This single call handles:
 1. Pre-check: Verify all steps completed (especially Step 4!)
 2. Create PARA folder structure (04-Projects/, 05-Areas/, etc.)
-3. Create initial files (03-Tasks/Tasks.md, 02-Week_Priorities/Week_Priorities.md)
+3. Create initial spine files (03-Tasks/Tasks.md, 02-Week_Priorities/Week_Priorities.md)
 4. Write System/user-profile.yaml from session data
 5. Write System/pillars.yaml from pillars
 6. Update CLAUDE.md User Profile section
 7. Setup root .mcp.json (replace {{VAULT_PATH}} automatically)
-8. Delete session file on success
+8. Provision folders and skills only for the optional rooms selected in Step 7
+9. Delete session file on success
 
 The MCP returns a summary of what was created (folders, files, configs).
 
@@ -353,7 +413,7 @@ The MCP returns a summary of what was created (folders, files, configs).
 
 Show the summary from the MCP response.
 
-## Step 8: Connect Your Tools (Integration Discovery)
+## Step 9: Connect Your Tools (Integration Discovery)
 
 Help the user connect the tools they use. Present the available integrations by category and let them choose — keep it light.
 
@@ -539,7 +599,7 @@ Ask: "Install background automation?"
 **If no:**
 Say: "No problem! Self-learning checks will still run inline during session start and `/daily-plan`. You can install later with `bash .scripts/install-learning-automation.sh`"
 
-## Step 9: Completion & Phase 2 Bridge
+## Step 10: Completion & Phase 2 Bridge
 
 ### Cursor Version Check (If Cursor Detected)
 
@@ -596,9 +656,9 @@ This takes about 2 minutes and shows you what Dex can really do.
 
 ---
 
-## Step 10: Phase 2 - Getting Started (Optional but Recommended)
+## Step 11: Phase 2 - Getting Started (Optional but Recommended)
 
-**Trigger:** Either immediately after Step 9, OR at next session start if vault is < 7 days old.
+**Trigger:** Either immediately after Step 10, OR at next session start if vault is < 7 days old.
 
 **Purpose:** Transform "I have a system, now what?" into immediate value and confidence. This is where the **dramatic reveal** happens - analyzing their calendar/Granola data and showing what Dex built automatically.
 
@@ -625,7 +685,9 @@ What would you like to work on first?"
 
 **If user wants to continue setup:**
 
-Say: "Want to set up quarterly goals? These are 3-5 specific outcomes over 3 months that advance your pillars."
+If the user enabled the Quarter Goals room, say: "Want to set up your first quarterly goals? These are 3-5 specific outcomes over 3 months that advance your pillars."
+
+If the Quarter Goals room is off, do not ask this follow-up and do not create `01-Quarter_Goals/`.
 
 **If yes:**
 

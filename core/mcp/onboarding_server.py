@@ -49,6 +49,7 @@ class DateTimeEncoder(json.JSONEncoder):
 _repo_root = str(Path(__file__).parent.parent.parent)
 if _repo_root not in sys.path:
     sys.path.append(_repo_root)
+from core import capabilities as capability_rooms
 from core.paths import (
     CLAUDE_MD,
     MARKER_FILE,
@@ -64,6 +65,10 @@ from core.paths import (
 )
 
 GRANOLA_APP_PATH = Path("/Applications/Granola.app")
+ONBOARDING_STEPS = 7
+PROVISION_CONTRACT = json.loads(
+    (Path(__file__).parent.parent / "provision-contract.json").read_text(encoding="utf-8")
+)
 
 # Role definitions for validation
 ROLES = {
@@ -280,25 +285,21 @@ def check_granola() -> Dict[str, Any]:
         "setup": "/granola-setup",
     }
 
-def create_para_structure(base_path: Path) -> List[str]:
-    """Create PARA folder structure"""
-    folders = [
-        "04-Projects",
-        "05-Areas/People/Internal",
-        "05-Areas/People/External",
-        "05-Areas/Companies",
-        "00-Inbox/Meetings",
-        "00-Inbox/Ideas",
-        "06-Resources/Learnings",
-        "06-Resources/Quarterly_Reviews",
-        "07-Archives/04-Projects",
-        "07-Archives/Plans",
-        "07-Archives/Reviews",
-        "System/Templates",
-        "01-Quarter_Goals",
-        "03-Tasks",
-        "02-Week_Priorities"
-    ]
+def _provision_folders(capability_states: Dict[str, bool] | None = None) -> List[str]:
+    folders = list(PROVISION_CONTRACT["para_directories"])
+    states = capability_states or {}
+    for room in capability_rooms.room_ids():
+        if states.get(room, False) is True:
+            folders.extend(capability_rooms.surfaces_for(room).get("folders", []))
+    return list(dict.fromkeys(folders))
+
+
+def create_para_structure(
+    base_path: Path,
+    capability_states: Dict[str, bool] | None = None,
+) -> List[str]:
+    """Create the always-on spine plus explicitly selected room folders."""
+    folders = _provision_folders(capability_states)
     
     created = []
     for folder in folders:
@@ -377,6 +378,20 @@ def create_user_profile(session_data: Dict) -> bool:
         profile['company_size'] = data.get('company_size', '')
         profile['email_domain'] = data.get('email_domain', '')
         profile['entity_creation'] = {'mode': 'auto'}
+
+        selected = data.get('capabilities', {})
+        profile['capabilities'] = {
+            room: {'enabled': selected.get(room, False) is True}
+            for room in capability_rooms.room_ids()
+        }
+        # One-way compatibility write: the new room state is authoritative, but
+        # any contract-declared legacy config reader stays aligned.
+        for room in capability_rooms.room_ids():
+            legacy_config = capability_rooms.surfaces_for(room).get('config')
+            if isinstance(legacy_config, str):
+                profile.setdefault(legacy_config, {})['enabled'] = profile[
+                    'capabilities'
+                ][room]['enabled']
 
         if 'calendar' in data:
             profile['work_email'] = data.get('work_email', '')
@@ -813,9 +828,9 @@ async def handle_list_tools() -> list[types.Tool]:
                 "properties": {
                     "step_number": {
                         "type": "integer",
-                        "description": "Step number (1-6)",
+                        "description": "Step number (1-7)",
                         "minimum": 1,
-                        "maximum": 6
+                        "maximum": 7
                     },
                     "step_data": {
                         "type": "object",
@@ -921,7 +936,7 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[types.Text
             if session and not force_new:
                 result = create_success_response(
                     session,
-                    f"Resuming onboarding session. Completed steps: {len(session['completed_steps'])}/6"
+                    f"Resuming onboarding session. Completed steps: {len(session['completed_steps'])}/{ONBOARDING_STEPS}"
                 )
             else:
                 if session and force_new:
@@ -941,7 +956,7 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[types.Text
             step_data = arguments.get('step_data', {})
             
             if not step_number or not isinstance(step_number, int):
-                result = create_error_response("Invalid step_number", suggestion="Provide step_number as integer 1-6")
+                result = create_error_response("Invalid step_number", suggestion="Provide step_number as integer 1-7")
                 return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
             
             session = load_session()
@@ -1130,9 +1145,52 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[types.Text
                 session['current_step'] = 7
                 save_session(session)
                 result = create_success_response({"step": 6, "completed": True}, "Step 6 complete")
+
+            # Step 7: Optional capability rooms (all default off)
+            elif step_number == 7:
+                supplied = step_data.get('capabilities', {})
+                if not isinstance(supplied, dict):
+                    result = create_error_response(
+                        "Capabilities must be an object",
+                        step=7,
+                        field="capabilities",
+                        suggestion="Answer yes or no for each optional room",
+                    )
+                else:
+                    selected = {}
+                    invalid_field = None
+                    declared_rooms = set(capability_rooms.room_ids())
+                    unknown_rooms = sorted(set(supplied) - declared_rooms)
+                    if unknown_rooms:
+                        invalid_field = f"capabilities.{unknown_rooms[0]}"
+                    for room in capability_rooms.room_ids():
+                        if invalid_field:
+                            break
+                        value = supplied.get(room, False)
+                        if not isinstance(value, bool):
+                            invalid_field = f"capabilities.{room}"
+                            break
+                        selected[room] = value
+                    if invalid_field:
+                        result = create_error_response(
+                            f"{invalid_field} must be true or false",
+                            step=7,
+                            field=invalid_field,
+                            suggestion="Answer yes or no for this room",
+                        )
+                    else:
+                        session['data']['capabilities'] = selected
+                        if step_number not in session['completed_steps']:
+                            session['completed_steps'].append(step_number)
+                        session['current_step'] = 8
+                        save_session(session)
+                        result = create_success_response(
+                            {"step": 7, "completed": True, "capabilities": selected},
+                            "Step 7 complete",
+                        )
             
             else:
-                result = create_error_response(f"Invalid step number: {step_number}", suggestion="Step must be 1-6")
+                result = create_error_response(f"Invalid step number: {step_number}", suggestion="Step must be 1-7")
             
             return [types.TextContent(type="text", text=json.dumps(result, indent=2, cls=DateTimeEncoder))]
 
@@ -1220,7 +1278,9 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[types.Text
                 result = create_error_response("No active session", suggestion="Call start_onboarding_session first")
                 return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
             
-            required_steps = [1, 2, 3, 4, 5, 6]
+            # Step 7 (optional rooms) is skippable: every room defaults OFF, so an
+            # unanswered step means the safe default, never a blocker.
+            required_steps = [s for s in range(1, ONBOARDING_STEPS + 1) if s != 7]
             completed = session['completed_steps']
             missing = [s for s in required_steps if s not in completed]
             
@@ -1230,10 +1290,12 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[types.Text
                 3: "Company Size",
                 4: "Email Domain (CRITICAL)",
                 5: "Strategic Pillars",
-                6: "Communication Preferences"
+                6: "Communication Preferences",
+                7: "Optional Rooms",
             }
             
-            progress = len(completed) / len(required_steps) * 100
+            completed_required = [s for s in completed if s in required_steps]
+            progress = len(completed_required) / len(required_steps) * 100
             
             status = {
                 "completed_steps": completed,
@@ -1283,12 +1345,18 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[types.Text
                 return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
 
             # Verify all required steps completed
-            required_steps = [1, 2, 3, 4, 5, 6]
+            # Step 7 (optional rooms) is skippable: every room defaults OFF, so an
+            # unanswered step means the safe default, never a blocker.
+            required_steps = [s for s in range(1, ONBOARDING_STEPS + 1) if s != 7]
             completed = session['completed_steps']
             missing = [s for s in required_steps if s not in completed]
 
             if missing:
-                step_names = {1: "Name", 2: "Role", 3: "Company Size", 4: "Email Domain", 5: "Pillars", 6: "Communication"}
+                step_names = {
+                    1: "Name", 2: "Role", 3: "Company Size",
+                    4: "Email Domain", 5: "Pillars", 6: "Communication",
+                    7: "Optional Rooms",
+                }
                 result = create_error_response(
                     f"Cannot finalize: missing steps {missing}",
                     suggestion=f"Complete these steps first: {', '.join(step_names[s] for s in missing)}"
@@ -1310,13 +1378,8 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[types.Text
                 logger.info("Finalize (DRY RUN) - previewing what would be created")
 
                 # Compute folders that would be created
-                para_folders = [
-                    "04-Projects", "05-Areas/People/Internal", "05-Areas/People/External",
-                    "05-Areas/Companies", "00-Inbox/Meetings", "00-Inbox/Ideas",
-                    "06-Resources/Learnings", "06-Resources/Quarterly_Reviews",
-                    "07-Archives/04-Projects", "07-Archives/Plans", "07-Archives/Reviews",
-                    "System/Templates", "01-Quarter_Goals", "03-Tasks", "02-Week_Priorities"
-                ]
+                selected_capabilities = session['data'].get('capabilities', {})
+                para_folders = _provision_folders(selected_capabilities)
                 would_create_folders = [f for f in para_folders if not (BASE_DIR / f).exists()]
                 already_exist_folders = [f for f in para_folders if (BASE_DIR / f).exists()]
 
@@ -1355,7 +1418,11 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[types.Text
                     'email_domain': data.get('email_domain', ''),
                     'obsidian_mode': data.get('obsidian_mode', False),
                     'entity_creation': {'mode': 'auto'},
-                    'communication': data.get('communication', {})
+                    'communication': data.get('communication', {}),
+                    'capabilities': {
+                        room: {'enabled': selected_capabilities.get(room, False) is True}
+                        for room in capability_rooms.room_ids()
+                    },
                 }
                 if 'calendar' in data:
                     profile_preview['work_email'] = data.get('work_email', '')
@@ -1411,7 +1478,8 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[types.Text
             try:
                 # 1. Create PARA structure
                 logger.info("Creating PARA folder structure")
-                folders = create_para_structure(BASE_DIR)
+                selected_capabilities = session['data'].get('capabilities', {})
+                folders = create_para_structure(BASE_DIR, selected_capabilities)
                 summary['folders_created'] = folders
 
                 # 2. Create initial files
@@ -1425,6 +1493,15 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[types.Text
                     summary['files_created'].append('System/user-profile.yaml')
                 else:
                     summary['errors'].append("Could not create user-profile.yaml")
+
+                # 3b. Surface only the selected rooms. Disabled room folders are
+                # never deleted; their release-owned skill copies are hidden.
+                if not summary['errors']:
+                    room_results = capability_rooms.reconcile_all(
+                        BASE_DIR,
+                        profile_path=USER_PROFILE_FILE,
+                    )
+                    summary['capabilities'] = room_results
 
                 # 4. Create pillars.yaml
                 logger.info("Creating pillars.yaml")

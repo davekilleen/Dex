@@ -18,9 +18,9 @@ Review and synthesize the quarter that just ended. Evaluates goal completion, ca
 
 Read `System/user-profile.yaml`:
 
-1. Check `quarterly_planning.enabled` value
+1. Check `capabilities.quarter_goals.enabled`; only when that key is absent, honor legacy `quarterly_planning.enabled`.
 2. **If `false`:**
-   - Display: "Quarterly planning is disabled. Enable it first with `/quarter-plan`"
+   - Display: "The Quarter Goals room is off. Enable it with `/manage-capabilities` when you want it."
    - End command
 3. **If `true`:** Continue to Step 1
 
