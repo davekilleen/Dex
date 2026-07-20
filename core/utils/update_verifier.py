@@ -400,9 +400,18 @@ class GitRunner:
                 raise EvidenceError("release quarantine file count exceeded its bound")
             for name in files:
                 item = Path(root) / name
-                if item.is_symlink():
-                    raise EvidenceError("release quarantine contains a symlinked file")
-                total_bytes += item.stat().st_size
+                try:
+                    if item.is_symlink():
+                        raise EvidenceError("release quarantine contains a symlinked file")
+                    total_bytes += item.stat().st_size
+                except FileNotFoundError:
+                    # This runs as a live disk-usage guard WHILE git writes the
+                    # cache: git constantly creates and renames/removes temporary
+                    # objects, so a file enumerated by os.walk can vanish before we
+                    # stat it. A file that no longer exists consumes no disk, so
+                    # skip it. The byte/file bounds and symlink rejection still hold
+                    # for every file that is actually present.
+                    continue
                 if total_bytes > MAX_QUARANTINE_BYTES:
                     raise EvidenceError("release quarantine bytes exceeded their bound")
         return total_bytes, total_files

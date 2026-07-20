@@ -437,7 +437,7 @@ def test_release_build_uses_selected_source_version_for_tree_profile_manifest_an
         destination = clone / relative_path
         destination.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(REPO_ROOT / relative_path, destination)
-    subprocess.run(["git", "add", "--", *RELEASE_BUILD_INPUTS], cwd=clone, check=True)
+    subprocess.run(["git", "add", "-f", "--", *RELEASE_BUILD_INPUTS], cwd=clone, check=True)
     subprocess.run(
         ["git", "commit", "--quiet", "--allow-empty", "-m", "test: current builder"], cwd=clone, check=True
     )
@@ -504,7 +504,7 @@ def test_release_build_rejects_malformed_selected_package_before_creating_refs(t
         destination = clone / relative_path
         destination.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(REPO_ROOT / relative_path, destination)
-    subprocess.run(["git", "add", "--", *RELEASE_BUILD_INPUTS], cwd=clone, check=True)
+    subprocess.run(["git", "add", "-f", "--", *RELEASE_BUILD_INPUTS], cwd=clone, check=True)
     subprocess.run(
         ["git", "commit", "--quiet", "--allow-empty", "-m", "test: current builder"], cwd=clone, check=True
     )
