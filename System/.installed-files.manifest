@@ -651,13 +651,13 @@ CONTRIBUTING.md
 DISTRIBUTION_READY.md
 LICENSE
 README.md
+System/.installed-files.manifest
 System/.last-learning-check
 System/.local-only-preservation-transition.json
 System/.mcp.json.example
 System/.release-evidence-profile.json
 System/Beta_Communications/2026-02-04_hardcoded_paths_fix.md
 System/Dex_Backlog.md
-System/Dex_Ideas.md
 System/README.md
 System/Session_Learnings/2026-01-29.md
 System/Session_Learnings/2026-01-30.md
@@ -675,7 +675,6 @@ System/pillars.yaml
 System/trusted-mcps.example.yaml
 System/usage_log.md
 System/user-profile-template.yaml
-System/user-profile.example.yaml
 System/user-profile.yaml
 core/__init__.py
 core/data/freemail_domains.json
@@ -841,6 +840,7 @@ core/tests/test_doctor.py
 core/tests/test_entity_pages.py
 core/tests/test_feature_status.py
 core/tests/test_fixture_vault.py
+core/tests/test_founder_content_gate.py
 core/tests/test_fuzz_properties.py
 core/tests/test_golden_journeys.py
 core/tests/test_granola_configuration_truth.py
@@ -959,6 +959,8 @@ scripts/build-release.sh
 scripts/build-vault-bundle.sh
 scripts/check-coverage-threshold.py
 scripts/check-doc-drift.sh
+scripts/check-founder-content.py
+scripts/check-founder-content.sh
 scripts/check-instructed-tools.py
 scripts/check-path-consistency.sh
 scripts/check-path-contract-usage.sh
@@ -968,6 +970,7 @@ scripts/check-test-delta.sh
 scripts/check-tracked-ignored.py
 scripts/configure-branch-protection.sh
 scripts/detect-flaky-tests.sh
+scripts/founder-content-allowlist.txt
 scripts/generate-manifest.sh
 scripts/generate-path-contracts.py
 scripts/instructed-tools-allowlist.txt

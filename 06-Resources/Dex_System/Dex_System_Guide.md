@@ -940,9 +940,11 @@ Dex includes seven custom MCP servers in `core/mcp/`:
 
 ### Optional External Integrations
 
-| MCP Server | What It Does | Setup |
-|------------|--------------|-------|
-| **Pendo** (hosted) | Product analytics for Pendo customers - guide performance, feature adoption, engagement tracking | OAuth via Pendo. Enable in onboarding or add to AI client config. Details: https://support.pendo.io/hc/en-us/articles/41102236924955 |
+Dex also works with any external hosted or local MCP server your AI client supports.
+These are optional, are not shipped with Dex, and are added in your AI client's own MCP
+config and authenticated per the vendor. Product-analytics servers such as Pendo (for
+teams that use it) are one example; follow the vendor's MCP documentation for setup and
+regional endpoints.
 
 ### Calendar MCP Tools
 

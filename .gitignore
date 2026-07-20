@@ -198,7 +198,6 @@ scripts/private/
 # ============================================
 
 # These are needed for new users
-!System/user-profile.example.yaml
 !System/pillars.example.yaml
 !.claude/
 !core/
