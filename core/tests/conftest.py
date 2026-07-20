@@ -10,8 +10,16 @@ import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SOURCE_FIXTURE_VAULT = Path(__file__).resolve().parent / "fixtures" / "vault"
-_RUNTIME_DIRECTORY = tempfile.TemporaryDirectory(prefix="dex-pytest-vault-")
-RUNTIME_FIXTURE_VAULT = Path(_RUNTIME_DIRECTORY.name) / "vault"
+# The shared runtime vault must survive tests that os.fork() (e.g. the
+# history-hygiene death-injection suite). A forked child can hit an unhandled
+# exception instead of os._exit(), unwind into a rogue interpreter, and reach
+# normal shutdown — at which point a tempfile.TemporaryDirectory finalizer would
+# delete this vault out from under the still-running parent, corrupting every
+# later path-contract test. mkdtemp() registers no such finalizer, so the tree
+# is removed only by the explicit, PID-guarded pytest_unconfigure below.
+_CREATOR_PID = os.getpid()
+_RUNTIME_ROOT = Path(tempfile.mkdtemp(prefix="dex-pytest-vault-"))
+RUNTIME_FIXTURE_VAULT = _RUNTIME_ROOT / "vault"
 shutil.copytree(SOURCE_FIXTURE_VAULT, RUNTIME_FIXTURE_VAULT)
 
 # core.paths binds VAULT_PATH when test modules import it, so force the
@@ -55,5 +63,11 @@ def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
 
 
 def pytest_unconfigure(config: pytest.Config) -> None:
-    """Remove the disposable session vault after all plugins finish."""
-    _RUNTIME_DIRECTORY.cleanup()
+    """Remove the disposable session vault after all plugins finish.
+
+    Guarded by the creator PID so a forked child that reaches this hook during
+    its own shutdown cannot delete the vault the parent session still depends on.
+    """
+    if os.getpid() != _CREATOR_PID:
+        return
+    shutil.rmtree(_RUNTIME_ROOT, ignore_errors=True)

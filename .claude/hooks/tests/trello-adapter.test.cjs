@@ -28,6 +28,63 @@ function stubFetch(t, implementation) {
   return calls;
 }
 
+test('health performs only a read-only member identity request', async (t) => {
+  const calls = stubFetch(t, () => jsonResponse({ id: 'member-opaque' }));
+  const adapter = loadAdapter();
+
+  assert.deepEqual(await adapter.health({ api_key: 'key', token: 'token' }), { healthy: true });
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].options.method, 'GET');
+  assert.equal(calls[0].url.pathname, '/1/members/me');
+  assert.equal(calls[0].url.searchParams.get('fields'), 'id');
+});
+
+test('provider failures never expose credential-bearing URL or response text', async (t) => {
+  const apiKey = 'synthetic-query-key';
+  const token = 'synthetic-query-token';
+  stubFetch(t, () => new Response(
+    `rejected https://api.trello.test/path?key=${apiKey}&token=${token}`,
+    { status: 401 },
+  ));
+  const adapter = loadAdapter();
+
+  await assert.rejects(
+    adapter.health({ api_key: apiKey, token }),
+    (error) => {
+      assert.equal(error.message, 'Trello API request failed with status 401');
+      assert.equal(error.message.includes(apiKey), false);
+      assert.equal(error.message.includes(token), false);
+      assert.equal(error.message.includes('api.trello.test'), false);
+      return true;
+    },
+  );
+});
+
+test('thrown transport failures discard URL, message, headers, and cause details', async (t) => {
+  const apiKey = 'synthetic-thrown-key';
+  const token = 'synthetic-thrown-token';
+  stubFetch(t, ({ url }) => {
+    const error = new Error(`connect failed for ${url.toString()}`, {
+      cause: { authorization: `Bearer ${token}` },
+    });
+    error.headers = { authorization: apiKey };
+    throw error;
+  });
+  const adapter = loadAdapter();
+
+  await assert.rejects(
+    adapter.health({ api_key: apiKey, token }),
+    (error) => {
+      assert.equal(error.message, 'Trello API GET transport failed');
+      assert.equal(error.cause, undefined);
+      assert.equal(error.headers, undefined);
+      assert.equal(JSON.stringify(error).includes(apiKey), false);
+      assert.equal(JSON.stringify(error).includes(token), false);
+      return true;
+    },
+  );
+});
+
 test('create uses configured list_mapping and embeds the Dex marker', async (t) => {
   const calls = stubFetch(t, ({ url, options }) => {
     if (url.pathname === '/1/cards' && options.method === 'POST') {

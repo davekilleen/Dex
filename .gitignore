@@ -42,6 +42,8 @@ System/.smoke-last-run.json
 System/.dex/smoke-history.jsonl
 System/.dex/health-telemetry-log.jsonl
 System/.dex/telemetry-id
+System/.dex/adoption/credential-journals/
+System/.dex/adoption/history-backups/
 System/.dex/local-only-preservation/
 
 # Custom extensions (user-created, never in upstream)

@@ -80,11 +80,16 @@ async function trelloFetch(endpoint, adapterConfig, options = {}) {
     fetchOptions.body = JSON.stringify(options.body);
   }
 
-  const response = await fetch(url.toString(), fetchOptions);
+  let response;
+  try {
+    response = await fetch(url.toString(), fetchOptions);
+  } catch {
+    throw new Error(`Trello API ${fetchOptions.method} transport failed`);
+  }
 
   if (!response.ok) {
-    const text = await response.text();
-    throw new Error(`Trello API ${response.status}: ${text}`);
+    await response.arrayBuffer();
+    throw new Error(`Trello API request failed with status ${response.status}`);
   }
 
   return response.json();
@@ -322,6 +327,11 @@ async function getChanges(since, adapterConfig) {
   return changes;
 }
 
+async function health(adapterConfig) {
+  await trelloFetch('/members/me', adapterConfig, { params: { fields: 'id' } });
+  return { healthy: true };
+}
+
 // ---------------------------------------------------------------------------
 // Export
 // ---------------------------------------------------------------------------
@@ -333,4 +343,5 @@ module.exports = {
   create,
   complete,
   getChanges,
+  health,
 };

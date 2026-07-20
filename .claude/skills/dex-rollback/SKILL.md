@@ -218,10 +218,6 @@ DEX_USER_DATA_STASH_PATHS=(
   ":(top,exclude)System/Session_Learnings/2026-01-30.md"
 )
 DEX_USER_DATA_SOURCE=$(git rev-parse HEAD)
-DEX_INDEX_TREE_BEFORE=$(git write-tree) || {
-  echo "Rollback stopped: Git could not snapshot the original staged state"
-  exit 1
-}
 DEX_DATA_STASH_BEFORE=$(git rev-parse -q --verify refs/stash 2>/dev/null || true)
 
 git stash push --all \
@@ -244,21 +240,12 @@ else
   fi
 fi
 
-if ! git add .; then
-  git read-tree "$DEX_INDEX_TREE_BEFORE"
-  [ -z "$DEX_DATA_STASH_OID" ] || git stash apply --index "$DEX_DATA_STASH_OID"
+if ! python3 -m core.utils.safe_autosave; then
+  [ -z "$DEX_DATA_STASH_OID" ] || git stash apply "$DEX_DATA_STASH_OID"
   echo "Rollback stopped: Git could not prepare the current state, so no reset ran"
   exit 1
 fi
-if git diff --cached --quiet; then
-  echo "Nothing to save; continuing rollback"
-elif ! git commit -m "Auto-save before rollback to v1.2.0"; then
-  git reset
-  git read-tree "$DEX_INDEX_TREE_BEFORE"
-  [ -z "$DEX_DATA_STASH_OID" ] || git stash apply --index "$DEX_DATA_STASH_OID"
-  echo "Rollback stopped: Git could not save the current state, so no reset ran"
-  exit 1
-fi
+echo "Safe autosave completed"
 
 DEX_BEFORE_ROLLBACK_TAG="before-rollback-$(date +%Y%m%d-%H%M%S)"
 if ! git tag "$DEX_BEFORE_ROLLBACK_TAG"; then

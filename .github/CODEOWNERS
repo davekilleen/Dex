@@ -7,3 +7,4 @@ core/mcp/ @davekilleen
 scripts/ @davekilleen
 System/PRDs/ @davekilleen
 docs/ @davekilleen
+core/utils/credential_migration_exceptions.json @davekilleen

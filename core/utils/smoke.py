@@ -78,9 +78,19 @@ RUNNER_FALLBACK_RELATIVES = (
     Path("core/__init__.py"),
     Path("core/paths.py"),
     Path("core/utils/__init__.py"),
+    Path("core/utils/release_channel.py"),
     Path("core/utils/smoke.py"),
     Path("core/utils/trust_registry.py"),
     Path("core/utils/validators.py"),
+)
+CONTENT_VERIFIED_SENSITIVE_DEPENDENCIES = frozenset(
+    {
+        Path("core/utils/credential_migration_exceptions.json"),
+        Path("core/utils/credential_remediation.py"),
+        Path("core/utils/credential_scanner.py"),
+        Path("core/utils/credential_workflow.py"),
+        Path("core/utils/integration_credentials.py"),
+    }
 )
 PARA_PATH_NAMES = (
     "INBOX_DIR",
@@ -219,12 +229,21 @@ def _is_sensitive_path(path: Path) -> bool:
     )
 
 
+def _is_runner_runtime_path(path: str | Path) -> bool:
+    relative = Path(path).as_posix()
+    return not (
+        relative.startswith("core/tests/")
+        or relative.startswith("core/mcp/tests/")
+        or relative.startswith("core/migrations/tests/")
+    )
+
+
 def _ensure_safe_source(path: Path, source_root: Path) -> None:
     try:
         relative = path.relative_to(source_root)
     except ValueError as exc:
         raise JourneySafetySkip(f"refused to read path outside the vault: {path}") from exc
-    if _is_sensitive_path(relative):
+    if _is_sensitive_path(relative) and relative not in CONTENT_VERIFIED_SENSITIVE_DEPENDENCIES:
         raise JourneySafetySkip(f"{relative} is sensitive and was only checked for existence")
     current = source_root
     for part in relative.parts:
@@ -733,7 +752,12 @@ def _tracked_runner_relatives(source_root: Path) -> tuple[Path, ...]:
     tracked = _git_tree_paths(source_root, "HEAD")
     if tracked is None:
         return relatives
-    return tuple(Path(relative) for relative in sorted(tracked)) or relatives
+    runtime_paths = tuple(
+        Path(relative)
+        for relative in sorted(tracked)
+        if _is_runner_runtime_path(relative)
+    )
+    return runtime_paths or relatives
 
 
 def _open_runner_source(source_root: Path, relative: Path) -> tuple[int, os.stat_result]:
@@ -885,12 +909,17 @@ def _materialize_release_core(
         with tarfile.open(fileobj=io.BytesIO(result.stdout), mode="r:") as archive:
             for member in archive.getmembers():
                 parts = Path(member.name).parts
+                if not _is_runner_runtime_path(member.name):
+                    continue
                 if (
                     not parts
                     or parts[0] != "core"
                     or Path(member.name).is_absolute()
                     or any(part in {"", ".", ".."} for part in parts)
-                    or _is_sensitive_path(Path(member.name))
+                    or (
+                        _is_sensitive_path(Path(member.name))
+                        and Path(member.name) not in CONTENT_VERIFIED_SENSITIVE_DEPENDENCIES
+                    )
                 ):
                     raise JourneySafetySkip(f"release archive contains unsafe path {member.name!r}")
                 target = destination.joinpath(*parts)
@@ -1888,6 +1917,8 @@ def _release_execution_reason(
     head_paths = _git_tree_paths(repo_root, "HEAD")
     if reference_paths is None or head_paths is None:
         return f"Dex-owned core could not be compared with {reference}"
+    reference_paths = frozenset(path for path in reference_paths if _is_runner_runtime_path(path))
+    head_paths = frozenset(path for path in head_paths if _is_runner_runtime_path(path))
     if reference_paths != head_paths:
         return f"Dex-owned core differs from {reference}"
     for relative in sorted(reference_paths):

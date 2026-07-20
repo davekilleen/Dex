@@ -3,7 +3,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 
-const OPERATIONS = new Set(['create', 'complete', 'get_changes']);
+const OPERATIONS = new Set(['create', 'complete', 'get_changes', 'health']);
 const SERVICE_NAME = /^[a-z][a-z0-9_-]*$/;
 const ALIASES_PATH = path.join(__dirname, 'service-aliases.json');
 
@@ -127,7 +127,7 @@ async function main() {
       throw new Error(`Adapter ${adapterService} does not export complete`);
     }
     result = await adapter.complete(args, config);
-  } else {
+  } else if (operation === 'get_changes') {
     if (typeof adapter.getChanges !== 'function') {
       throw new Error(`Adapter ${adapterService} does not export getChanges`);
     }
@@ -135,6 +135,11 @@ async function main() {
     result = Array.isArray(changes)
       ? changes.filter((change) => change && ['created', 'completed'].includes(change.action))
       : [];
+  } else {
+    if (typeof adapter.health !== 'function') {
+      throw new Error(`Adapter ${service} does not export health`);
+    }
+    result = await adapter.health(config);
   }
 
   emit({ ok: true, result });

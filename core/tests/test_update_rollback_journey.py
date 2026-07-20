@@ -11,6 +11,7 @@ from core.utils.manifest import DEFAULT_MANIFEST, generate_manifest, write_manif
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 ROLLBACK_SKILL = REPO_ROOT / ".claude/skills/dex-rollback/SKILL.md"
+UPDATE_SKILL = REPO_ROOT / ".claude/skills/dex-update/SKILL.md"
 
 
 def _git(repo: Path, *args: str) -> str:
@@ -22,6 +23,14 @@ def _git(repo: Path, *args: str) -> str:
         text=True,
     )
     return result.stdout.strip()
+
+
+def test_update_runs_credential_migration_before_status_and_safe_autosave():
+    instructions = UPDATE_SKILL.read_text(encoding="utf-8")
+    migration = instructions.index("python3 -m core.utils.credential_workflow migrate")
+    status = instructions.index("git status --porcelain", migration)
+    autosave = instructions.index("python3 -m core.utils.safe_autosave", status)
+    assert migration < status < autosave
 
 
 def _init_repo(repo: Path) -> None:
@@ -76,6 +85,12 @@ def test_manifest_is_a_deterministic_newline_path_list(tmp_path: Path) -> None:
 def test_rollback_stops_when_autosave_commit_fails(tmp_path: Path) -> None:
     vault = tmp_path / "user-vault"
     _init_repo(vault)
+    (vault / "core/utils").mkdir(parents=True)
+    shutil.copy2(REPO_ROOT / "core/utils/safe_autosave.py", vault / "core/utils/safe_autosave.py")
+    shutil.copy2(
+        REPO_ROOT / "core/utils/integration_credentials.py",
+        vault / "core/utils/integration_credentials.py",
+    )
 
     tracked_file = "04-Projects/current-work.md"
     _write(vault, tracked_file, "release v1\n")
@@ -155,7 +170,7 @@ def test_rollback_stops_when_autosave_commit_fails(tmp_path: Path) -> None:
     assert (vault / staged_new_file).read_text(encoding="utf-8") == staged_new_content
     assert not any(tag.startswith("before-rollback-") for tag in _git(vault, "tag").splitlines())
     assert _git(vault, "diff", "--cached", "--name-only") == staged_new_file
-    assert "Git could not save the current state" in result.stdout + result.stderr
+    assert "Git could not prepare the current state" in result.stdout + result.stderr
     assert "dex-user-data-before-rollback" in _git(vault, "stash", "list")
 
 

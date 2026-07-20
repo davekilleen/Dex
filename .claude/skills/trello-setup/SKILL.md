@@ -5,8 +5,7 @@ manifest:
   id: trello
   auth: api_key_token
   category: task_access
-  mcp_server: mcp-server-trello
-  runtime: bun
+  mcp_server: null
 ---
 
 # Trello Setup
@@ -46,6 +45,8 @@ Once connected, you can ask Dex to:
 ### Step 1: Check if Already Connected
 
 1. Check `System/integrations/config.yaml` for a `trello:` section with `enabled: true`
+   through `core.utils.strict_yaml.load_yaml_path`; refuse duplicate keys, aliases, anchors,
+   or merge mappings before reading or writing any setup field.
 2. If found, skip to **Step 6** (Configure Board Mapping)
 3. If not found, continue to Step 2
 
@@ -86,50 +87,48 @@ Walk the user through getting their Trello API key and token:
 2. Authorize the app when prompted
 3. Copy the token that appears
 
-**Paste your API key and token when ready.**
+Do not paste either value into this conversation. Open the ignored vault-root `.env` in your
+local editor and replace these placeholders directly:
+
+`TRELLO_API_KEY=<paste key locally here>`
+`TRELLO_TOKEN=<paste token locally here>`
+
+Save the file with mode `0600`, then reply only `saved`. Dex must never echo, read aloud,
+log, or include either value in a command, argv, or process environment.
 ```
 
-Wait for the user to provide both values.
+Wait only for the non-secret `saved` confirmation. Never ask the user to provide or validate
+either value in chat.
 
-### Step 4: Add the MCP Server
+### Step 4: Store Local Credentials
 
-Check the user's MCP configuration. If `mcp-server-trello` is not listed:
+Confirm locally that `.env` defines `TRELLO_API_KEY` and `TRELLO_TOKEN` without printing or
+returning either value. Preserve unrelated lines. Never copy either value to `.mcp.json`,
+tracked YAML, commands, argv, logs, transcript, or process environment. Existing `.mcp.json`
+is scan/report-only and must remain byte-identical.
+Use `python3 -m core.utils.credential_workflow scan` for the redacted authority finding; repair
+permissions/ownership before continuing if it reports an invalid `.env` authority.
 
-1. Explain what we're adding:
-
-```
-I'll add the Trello connector to your Dex configuration.
-This uses mcp-server-trello which runs on Bun for fast performance.
-```
-
-2. Add to the user's `.mcp.json`:
-
-```json
-{
-  "mcp-server-trello": {
-    "command": "bunx",
-    "args": ["-y", "mcp-server-trello"],
-    "env": {
-      "TRELLO_API_KEY": "<user's api key>",
-      "TRELLO_TOKEN": "<user's token>"
-    }
-  }
-}
-```
-
-3. Tell the user the MCP server needs to restart for changes to take effect.
+Before health, update only the non-secret tracked Trello fields to `enabled: true`,
+`api_key_env_var: TRELLO_API_KEY`, and `token_env_var: TRELLO_TOKEN`; do not add raw `api_key`
+or `token` fields.
 
 ### Step 5: Test the Connection
 
-Run a quick test to confirm everything works:
+Run a quick test through only Dex's sanitized Python-to-adapter-stdin read-only health path.
+It resolves `.env` internally and performs Trello `GET /members/me?fields=id`; never test
+through an ambient or external MCP:
 
-1. List the user's boards via the Trello MCP
+```bash
+python3 -c 'from core.integrations.task_sync import check_service_health; print(check_service_health("trello"))'
+```
+
+1. Confirm the returned health result
 2. Show a brief summary:
 
 ```
 **Connection test:**
-- Found [N] boards: [Board Name 1], [Board Name 2], ...
-- API access confirmed
+- Trello authentication succeeded through the read-only health check
 
 Everything looks good!
 ```
@@ -155,12 +154,8 @@ Ask the user which board to sync:
 ```
 **Which Trello board should Dex sync with?**
 
-Here are your boards:
-1. [Board Name 1]
-2. [Board Name 2]
-3. [Board Name 3]
-
-Pick a board (or say "show all" for the full list).
+The health check does not enumerate boards. Open Trello locally and enter the exact board name
+and board ID you want Dex to use without pasting either credential.
 
 You can add more boards later by running `/trello-setup` again.
 ```
@@ -194,8 +189,8 @@ mapping is used when the user asks Dex to file or move cards):
 trello:
   enabled: true
   configured_at: YYYY-MM-DD
-  api_key: <user's api key>
-  token: <user's token>
+  api_key_env_var: TRELLO_API_KEY
+  token_env_var: TRELLO_TOKEN
   default_board: <board id>
   board_name: <board name>
   list_mapping:
@@ -237,8 +232,7 @@ Trello tokens can be set to expire. If you see auth errors:
 
 1. Go to https://trello.com/power-ups/admin
 2. Generate a new token
-3. Update `System/integrations/config.yaml` with the new token
-4. Restart MCP server
+3. Update `TRELLO_TOKEN` in the vault-root `.env`
 
 ### Board Not Found
 

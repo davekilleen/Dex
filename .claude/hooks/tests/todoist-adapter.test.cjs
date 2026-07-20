@@ -31,6 +31,18 @@ function json(response, status, payload, headers = {}) {
   response.end(JSON.stringify(payload));
 }
 
+test('health performs only a read-only projects request', async (t) => {
+  const requests = [];
+  const apiBase = await startStub(t, (request, response) => {
+    requests.push({ method: request.method, url: request.url });
+    json(response, 200, { results: [], next_cursor: null });
+  });
+  const adapter = loadAdapter();
+
+  assert.deepEqual(await adapter.health({ api_key: 'test-token', api_base: apiBase }), { healthy: true });
+  assert.deepEqual(requests, [{ method: 'GET', url: '/api/v1/projects' }]);
+});
+
 test('create embeds the Dex marker and resolves project, priority, and due date', async (t) => {
   let postedTask = null;
   const apiBase = await startStub(t, async (request, response) => {

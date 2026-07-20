@@ -220,9 +220,9 @@ def _is_missing_package_error(value: object, detail: str | None = None) -> bool:
 
 def _load_yaml(path: Path) -> object:
     """Load YAML lazily so a broken venv can still produce a doctor report."""
-    import yaml
+    from core.utils.strict_yaml import load_yaml_path
 
-    return yaml.safe_load(path.read_text())
+    return load_yaml_path(path)
 
 
 def _result_json(definition: CheckDefinition, result: ProbeResult) -> dict[str, Any]:
@@ -2376,9 +2376,30 @@ def main(argv: list[str] | None = None, *, context: DoctorContext | None = None)
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--deep", action="store_true", help="Run live service probes.")
     parser.add_argument("--heal", action="store_true", help="Apply safe Tier-1 repairs before checking.")
+    parser.add_argument("--credential-scan", action="store_true", help="Run the bounded local credential scan.")
+    parser.add_argument("--credential-migrate", action="store_true", help="Run safe local credential migration.")
+    parser.add_argument("--credential-status", action="store_true", help="Render deterministic credential status.")
+    parser.add_argument("--credential-rewind", metavar="JOURNAL_ID", help="Rewind one credential migration journal.")
     args = parser.parse_args(argv)
 
     try:
+        credential_actions = [
+            ("scan", args.credential_scan, None),
+            ("migrate", args.credential_migrate, None),
+            ("status", args.credential_status, None),
+            ("rewind", args.credential_rewind is not None, args.credential_rewind),
+        ]
+        selected = [item for item in credential_actions if item[1]]
+        if len(selected) > 1:
+            parser.error("choose only one credential workflow action")
+        if selected:
+            from core.utils.credential_workflow import run_credential_workflow
+
+            action, _, journal_id = selected[0]
+            root = context.vault_root if context is not None else paths.VAULT_ROOT
+            credential_report = run_credential_workflow(root, action, journal_id=journal_id)
+            print(json.dumps(credential_report, indent=2))
+            return 2 if credential_report.get("migration_state") == "refused" and action != "status" else 0
         report = collect(deep=args.deep, heal=args.heal, context=context)
         output = json.dumps(report, indent=2)
     except Exception as error:

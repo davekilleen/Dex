@@ -38,3 +38,13 @@ detected:
   notion: null
   slack: null
   google: null
+
+# Task-sync credentials are raw only in the ignored vault-root .env file.
+todoist:
+  enabled: false
+  api_key_env_var: TODOIST_API_KEY
+
+trello:
+  enabled: false
+  api_key_env_var: TRELLO_API_KEY
+  token_env_var: TRELLO_TOKEN

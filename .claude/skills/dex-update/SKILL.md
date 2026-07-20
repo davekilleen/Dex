@@ -164,6 +164,16 @@ user separately chooses the existing manual update workflow.
 
 ### Step 3: Pre-Update Safety Check
 
+Run the deterministic credential migration boundary before checking or autosaving changes. A
+refusal stops the update before any backup tag or release mutation:
+
+```bash
+if ! python3 -m core.utils.credential_workflow migrate; then
+  echo "Credential migration was refused. Run /dex-doctor --credential-status for redacted guidance."
+  exit 1
+fi
+```
+
 **A. Check for uncommitted changes**
 
 Run: `git status --porcelain`
@@ -176,20 +186,14 @@ Dex found unsaved changes in your vault.
 Let me save them before updating.
 ```
 
-Run:
+Run the shipped explicit-candidate, credential-preflight, temporary-index staging helper:
 ```bash
-if ! git add .; then
+if ! python3 -m core.utils.safe_autosave; then
   echo "Couldn't prepare your unsaved changes — update stopped before creating a backup tag or changing releases; fix the Git error above, then retry"
   exit 1
 fi
 
-if git diff --cached --quiet; then
-  echo "Nothing to save; continuing update"
-elif ! git commit -m "Auto-save before Dex update to v1.3.0"; then
-  git reset
-  echo "Couldn't save your changes — update stopped before creating a backup tag or changing releases; fix the commit error above, then retry"
-  exit 1
-fi
+echo "Safe autosave completed"
 ```
 
 Show:

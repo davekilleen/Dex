@@ -70,6 +70,7 @@ def sync_vault(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Pat
     monkeypatch.setattr(task_sync, "TASK_SYNC_STATE_FILE", state)
     monkeypatch.setattr(task_sync, "INBOUND_TASKS_FILE", inbound)
     monkeypatch.setattr(task_sync, "ADAPTERS_DIR", adapters)
+    monkeypatch.setattr(task_sync, "VAULT_ROOT", tmp_path)
     monkeypatch.setattr(work_server, "BASE_DIR", tmp_path)
     monkeypatch.setattr(work_server, "get_tasks_file", lambda: tasks)
     monkeypatch.setattr(work_server, "PILLARS", TEST_PILLARS)
@@ -92,15 +93,29 @@ def _enable(sync_vault: dict[str, Path], *services: str) -> None:
             [
                 f"{service}:",
                 "  enabled: true",
-                "  api_key: test-token",
+                "  api_key_env_var: TODOIST_API_KEY"
+                if service == "todoist"
+                else "  api_key_env_var: TRELLO_API_KEY"
+                if service == "trello"
+                else "  local: true",
                 "  pillar_map:",
                 "    pillar_1: Product",
             ]
         )
+        if service == "trello":
+            blocks.append("  token_env_var: TRELLO_TOKEN")
         (sync_vault["adapters"] / f"{service}.cjs").write_text(
             "module.exports = {};\n", encoding="utf-8"
         )
     sync_vault["config"].write_text("\n".join(blocks) + "\n", encoding="utf-8")
+    env = sync_vault["root"] / ".env"
+    env.write_text(
+        "TODOIST_API_KEY=synthetic-todoist-value\n"
+        "TRELLO_API_KEY=synthetic-trello-value\n"
+        "TRELLO_TOKEN=synthetic-trello-token\n",
+        encoding="utf-8",
+    )
+    env.chmod(0o600)
 
 
 def _write_aliases(sync_vault: dict[str, Path], payload: object) -> None:
@@ -152,6 +167,30 @@ def _install_fake_runner(monkeypatch: pytest.MonkeyPatch, responses: dict) -> li
 
     monkeypatch.setattr(task_sync.subprocess, "run", run)
     return calls
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        "todoist:\n  enabled: true\ntodoist:\n  enabled: false\n",
+        "todoist:\n  enabled: true\n  enabled: false\n",
+        '"todo\\u0069st":\n  enabled: true\ntodoist:\n  enabled: false\n',
+        "defaults: &defaults\n  enabled: true\ntodoist: *defaults\n",
+        "defaults: &defaults\n  enabled: true\ntodoist:\n  <<: *defaults\n",
+    ],
+)
+def test_duplicate_alias_and_merge_config_refuses_before_adapter_invocation(sync_vault, monkeypatch, raw):
+    sync_vault["config"].write_text(raw)
+    called = False
+
+    def adapter(*_args, **_kwargs):
+        nonlocal called
+        called = True
+
+    monkeypatch.setattr(task_sync, "_run_adapter", adapter)
+    with pytest.raises(ValueError):
+        task_sync.sync_external_tasks()
+    assert not called
 
 
 def test_first_service_run_creates_baseline_without_adapter_calls(sync_vault, monkeypatch):
@@ -643,7 +682,7 @@ class TestTrelloSync:
             ("trello", "create"),
             ("trello", "get_changes"),
         ]
-        assert calls[0]["request"]["config"]["api_key"] == "test-token"
+        assert calls[0]["request"]["config"]["api_key"] == "synthetic-trello-value"
         assert calls[0]["request"]["args"]["task_id"] == "task-20260713-201"
 
     def test_created_change_via_runner_queues_inbound(self, sync_vault, monkeypatch):
@@ -784,6 +823,57 @@ def test_atomic_state_round_trip_leaves_no_temporary_files(sync_vault):
 
     assert task_sync._load_state() == payload
     assert not list(sync_vault["integrations"].glob("*.tmp"))
+
+
+def test_credentials_travel_only_in_stdin_and_are_redacted(sync_vault, monkeypatch):
+    _enable(sync_vault, "todoist")
+    task_sync._write_state(_state(todoist=_service_state()))
+    observed = {}
+    monkeypatch.setattr(task_sync, "_find_node", lambda: "/fake/node")
+
+    def run(command, **kwargs):
+        if "--resolve-adapter" in command:
+            # Adapter-alias preflight: identity resolution, carries no credential stdin.
+            service = command[command.index("--resolve-adapter") + 1]
+            return task_sync.subprocess.CompletedProcess(
+                command,
+                0,
+                json.dumps(
+                    {
+                        "ok": True,
+                        "requested_service": service,
+                        "adapter_service": service,
+                    }
+                ),
+                "",
+            )
+        observed.update(command=command, kwargs=kwargs)
+        secret = json.loads(kwargs["input"])["config"]["api_key"]
+        return task_sync.subprocess.CompletedProcess(
+            command,
+            1,
+            json.dumps({"ok": False, "error": f"provider rejected {secret}"}),
+            "",
+        )
+
+    monkeypatch.setattr(task_sync.subprocess, "run", run)
+    result = task_sync.sync_external_tasks()
+    secret = "synthetic-todoist-value"
+    assert secret in observed["kwargs"]["input"]
+    assert all(secret not in str(value) for value in observed["command"])
+    assert secret not in observed["kwargs"]["env"].values()
+    assert result["todoist"]["errors"] == ["provider rejected [REDACTED]"]
+    assert secret not in sync_vault["state"].read_text()
+
+
+def test_health_is_read_only_explicit_and_redacted(sync_vault, monkeypatch):
+    _enable(sync_vault, "trello")
+    calls = _install_fake_runner(
+        monkeypatch, {("trello", "health"): {"healthy": True}}
+    )
+    assert task_sync.check_service_health("trello") == {"healthy": True}
+    assert calls[0]["operation"] == "health"
+    assert calls[0]["request"]["args"] is None
 
 
 def test_work_mcp_exposes_task_sync_tool_schemas():
