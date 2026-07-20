@@ -25,6 +25,22 @@ from core.utils.history_hygiene import (
 
 SECRET = b"synthetic-secret-history-value"
 
+# The guided-history deep engine (prepare/apply/rewind/retention) is only exercisable
+# where an inode-pinned directory file-descriptor substrate exists — Linux /proc/self/fd,
+# and some tests additionally read /proc/self/fd directly. On a host without it (e.g.
+# plain macOS) these tests cannot run and previously failed loudly, which could mask a
+# real macOS regression. Skip them via the same functional probe the engine's platform
+# gate uses (NOT a bare sys.platform check, so a /proc-capable macOS/Linux still runs
+# them). The platform-GATE tests below are deliberately left unmarked: they must run
+# everywhere to assert the graceful macOS refusal.
+requires_directory_fd_substrate = pytest.mark.skipif(
+    not history_hygiene._directory_fd_substrate_available(),
+    reason=(
+        "guided-history deep engine requires a directory-fd substrate "
+        "(Linux /proc/self/fd) unavailable on this host; platform-gate tests still run"
+    ),
+)
+
 
 def _git(root: Path, *args: str, input_data: bytes | None = None) -> str:
     return (
@@ -238,6 +254,7 @@ def test_preparation_requires_complete_clean_repository_state(tmp_path, dirty_st
     assert not (tmp_path / "System/.dex").exists()
 
 
+@requires_directory_fd_substrate
 def test_removing_quiescence_guard_reproduces_dirty_preparation(tmp_path, monkeypatch):
     ref = _repo(tmp_path)
     tool = _tool(tmp_path / "git-filter-repo")
@@ -247,6 +264,7 @@ def test_removing_quiescence_guard_reproduces_dirty_preparation(tmp_path, monkey
     assert _prepare(tmp_path, tool, ref).state == "prepared"
 
 
+@requires_directory_fd_substrate
 def test_apply_revalidates_quiescence_immediately_before_rewrite(tmp_path, monkeypatch):
     ref = _repo(tmp_path)
     tool = _tool(tmp_path / "git-filter-repo")
@@ -313,6 +331,7 @@ def test_preparation_requires_remediation_choice_and_backup_posture(tmp_path):
         )
 
 
+@requires_directory_fd_substrate
 def test_preparation_requires_exact_unique_local_ref_scopes(tmp_path):
     ref = _repo(tmp_path)
     tool = _tool(tmp_path / "git-filter-repo")
@@ -351,6 +370,7 @@ def test_preparation_requires_exact_unique_local_ref_scopes(tmp_path):
         )
 
 
+@requires_directory_fd_substrate
 def test_prepare_creates_verified_restrictive_bundle_and_manifest(tmp_path):
     ref = _repo(tmp_path)
     before = _git(tmp_path, "rev-parse", ref)
@@ -370,6 +390,7 @@ def test_prepare_creates_verified_restrictive_bundle_and_manifest(tmp_path):
     assert not any(path.name.startswith(".incomplete-") for path in transaction.parent.iterdir())
 
 
+@requires_directory_fd_substrate
 def test_prepare_publishes_only_after_manifest_is_durable(tmp_path, monkeypatch):
     ref = _repo(tmp_path)
     tool = _tool(tmp_path / "git-filter-repo")
@@ -391,6 +412,7 @@ def test_prepare_publishes_only_after_manifest_is_durable(tmp_path, monkeypatch)
     assert not (backup / manifest_parent).exists()
 
 
+@requires_directory_fd_substrate
 def test_loaded_transaction_context_closes_descriptor(tmp_path):
     ref = _repo(tmp_path)
     preview = _prepare(tmp_path, _tool(tmp_path / "git-filter-repo"), ref)
@@ -404,6 +426,7 @@ def test_loaded_transaction_context_closes_descriptor(tmp_path):
         os.fstat(descriptor)
 
 
+@requires_directory_fd_substrate
 def test_pinned_backup_descriptor_survives_recovery_ancestor_rename_and_replacement(tmp_path):
     ref = _repo(tmp_path)
     preview = _prepare(tmp_path, _tool(tmp_path / "git-filter-repo"), ref)
@@ -426,6 +449,7 @@ def test_pinned_backup_descriptor_survives_recovery_ancestor_rename_and_replacem
     assert list(outside.iterdir()) == []
 
 
+@requires_directory_fd_substrate
 def test_pinned_manifest_load_refuses_transaction_unlink_and_replacement(tmp_path):
     ref = _repo(tmp_path)
     preview = _prepare(tmp_path, _tool(tmp_path / "git-filter-repo"), ref)
@@ -484,6 +508,7 @@ def test_path_reopen_mutation_loses_pinned_backup_authority(tmp_path, monkeypatc
         os.close(root_descriptor)
 
 
+@requires_directory_fd_substrate
 def test_prepare_apply_and_rewind_survive_module_restart(tmp_path):
     ref = _repo(tmp_path)
     tool = _tool(tmp_path / "git-filter-repo")
@@ -507,6 +532,7 @@ def test_prepare_apply_and_rewind_survive_module_restart(tmp_path):
     ).stdout
 
 
+@requires_directory_fd_substrate
 def test_apply_rebinds_only_the_prepared_credential_set(tmp_path):
     ref = _repo(tmp_path)
     tool = _tool(tmp_path / "git-filter-repo")
@@ -522,6 +548,7 @@ def test_apply_rebinds_only_the_prepared_credential_set(tmp_path):
         )
 
 
+@requires_directory_fd_substrate
 def test_apply_rebinds_exact_occurrence_coordinates_not_same_sized_history_secret(tmp_path):
     secret_a = b"same-size-secret-A"
     secret_b = b"same-size-secret-B"
@@ -575,6 +602,7 @@ def test_apply_rebinds_exact_occurrence_coordinates_not_same_sized_history_secre
         (b"prefix-secret-longer", b"prefix-secret"),
     ],
 )
+@requires_directory_fd_substrate
 def test_apply_rejects_prefix_related_credential_substitution(tmp_path, prepared_secret, substitute_secret):
     _git(tmp_path, "init", "-q")
     _git(tmp_path, "config", "user.email", "tests@example.com")
@@ -619,6 +647,7 @@ def _recovery_transactions(backup: Path) -> list[Path]:
     return sorted(backup.iterdir())
 
 
+@requires_directory_fd_substrate
 def test_prepare_fd_path_failure_closes_descriptors_and_removes_orphan(tmp_path, monkeypatch):
     ref = _repo(tmp_path)
     tool = _tool(tmp_path / "git-filter-repo")
@@ -637,6 +666,7 @@ def test_prepare_fd_path_failure_closes_descriptors_and_removes_orphan(tmp_path,
     assert not backup.exists() or _recovery_transactions(backup) == []
 
 
+@requires_directory_fd_substrate
 @pytest.mark.parametrize("failure", [KeyboardInterrupt, SystemExit])
 @pytest.mark.parametrize("boundary", ["fd-path", "bundle-created"])
 def test_prepare_cancellation_removes_incomplete_transaction(tmp_path, monkeypatch, failure, boundary):
@@ -673,6 +703,7 @@ def test_prepare_cancellation_removes_incomplete_transaction(tmp_path, monkeypat
     assert not backup.exists() or _recovery_transactions(backup) == []
 
 
+@requires_directory_fd_substrate
 @pytest.mark.skipif(not hasattr(os, "fork"), reason="process-death fault injection requires fork")
 @pytest.mark.parametrize("boundary", ["fd-path", "bundle-created"])
 def test_restart_prunes_process_death_during_incomplete_preparation(tmp_path, boundary):
@@ -744,6 +775,7 @@ def _pause_first_bundle(monkeypatch):
     return reached, release
 
 
+@requires_directory_fd_substrate
 def test_concurrent_retention_waits_for_active_preparation(tmp_path, monkeypatch):
     ref = _repo(tmp_path)
     tool = _tool(tmp_path / "git-filter-repo")
@@ -768,6 +800,7 @@ def test_concurrent_retention_waits_for_active_preparation(tmp_path, monkeypatch
     assert retention.retained_ids == (prepared.transaction_id,)
 
 
+@requires_directory_fd_substrate
 def test_concurrent_preparations_are_serialized(tmp_path, monkeypatch):
     ref = _repo(tmp_path)
     tool = _tool(tmp_path / "git-filter-repo")
@@ -788,6 +821,7 @@ def test_concurrent_preparations_are_serialized(tmp_path, monkeypatch):
     assert not list(backup.glob(".incomplete-*"))
 
 
+@requires_directory_fd_substrate
 def test_removing_lifecycle_serialization_reproduces_active_prune(tmp_path, monkeypatch):
     ref = _repo(tmp_path)
     tool = _tool(tmp_path / "git-filter-repo")
@@ -907,6 +941,7 @@ def test_descriptor_traversal_uses_the_canonical_history_backup_parts():
     assert history_hygiene.HISTORY_BACKUPS_RELATIVE_PARTS is paths.HISTORY_BACKUPS_RELATIVE_PARTS
 
 
+@requires_directory_fd_substrate
 def test_restart_pruning_preserves_published_recovery_and_retention_accounting(tmp_path):
     ref = _repo(tmp_path)
     preview = _prepare(tmp_path, _tool(tmp_path / "git-filter-repo"), ref)
@@ -971,6 +1006,7 @@ def test_restart_pruning_refuses_symlinked_incomplete_transaction(tmp_path):
     assert list(outside.iterdir()) == [sentinel]
 
 
+@requires_directory_fd_substrate
 def test_load_fd_path_failure_closes_descriptor_repeatedly(tmp_path, monkeypatch):
     ref = _repo(tmp_path)
     preview = _prepare(tmp_path, _tool(tmp_path / "git-filter-repo"), ref)
@@ -998,6 +1034,7 @@ def test_retention_symlinked_ancestor_preserves_containment_error(tmp_path):
     assert list(outside.iterdir()) == []
 
 
+@requires_directory_fd_substrate
 def test_preview_consent_manifest_bundle_and_ref_tamper_fail_closed(tmp_path):
     ref = _repo(tmp_path)
     tool = _tool(tmp_path / "git-filter-repo")
@@ -1017,6 +1054,7 @@ def test_preview_consent_manifest_bundle_and_ref_tamper_fail_closed(tmp_path):
         )
 
 
+@requires_directory_fd_substrate
 def test_selected_ref_mismatch_after_preview_is_refused(tmp_path):
     ref = _repo(tmp_path)
     tool = _tool(tmp_path / "git-filter-repo")
@@ -1034,6 +1072,7 @@ def test_selected_ref_mismatch_after_preview_is_refused(tmp_path):
         )
 
 
+@requires_directory_fd_substrate
 def test_tool_identity_mismatch_after_preview_is_refused(tmp_path):
     ref = _repo(tmp_path)
     tool = _tool(tmp_path / "git-filter-repo")
@@ -1049,6 +1088,7 @@ def test_tool_identity_mismatch_after_preview_is_refused(tmp_path):
         )
 
 
+@requires_directory_fd_substrate
 def test_ambiguous_object_topology_refuses_preparation(tmp_path):
     ref = _repo(tmp_path)
     tool = _tool(tmp_path / "git-filter-repo")
@@ -1059,6 +1099,7 @@ def test_ambiguous_object_topology_refuses_preparation(tmp_path):
         _prepare(tmp_path, tool, ref)
 
 
+@requires_directory_fd_substrate
 @pytest.mark.parametrize("mutation", ["corrupt", "mode"])
 def test_bundle_corruption_and_permissions_are_refused(tmp_path, mutation):
     ref = _repo(tmp_path)
@@ -1079,6 +1120,7 @@ def test_bundle_corruption_and_permissions_are_refused(tmp_path, mutation):
         )
 
 
+@requires_directory_fd_substrate
 @pytest.mark.parametrize("mutation", ["corrupt", "mode"])
 def test_object_evidence_corruption_and_permissions_are_refused(tmp_path, mutation):
     ref = _repo(tmp_path)
@@ -1099,6 +1141,7 @@ def test_object_evidence_corruption_and_permissions_are_refused(tmp_path, mutati
         )
 
 
+@requires_directory_fd_substrate
 @pytest.mark.parametrize("name", ["git-config.bin", "index.bin"])
 def test_restrictive_recovery_artifact_corruption_is_refused(tmp_path, name):
     ref = _repo(tmp_path)
@@ -1117,6 +1160,7 @@ def test_restrictive_recovery_artifact_corruption_is_refused(tmp_path, name):
         )
 
 
+@requires_directory_fd_substrate
 def test_apply_refuses_recovery_ancestor_swapped_after_prepare(tmp_path):
     ref = _repo(tmp_path)
     tool = _tool(tmp_path / "git-filter-repo")
@@ -1139,6 +1183,7 @@ def test_apply_refuses_recovery_ancestor_swapped_after_prepare(tmp_path):
     assert list(outside.iterdir()) == []
 
 
+@requires_directory_fd_substrate
 def test_git_bundle_verify_failure_is_refused_even_when_manifest_identity_matches(tmp_path):
     ref = _repo(tmp_path)
     tool = _tool(tmp_path / "git-filter-repo")
@@ -1166,6 +1211,7 @@ def test_git_bundle_verify_failure_is_refused_even_when_manifest_identity_matche
         )
 
 
+@requires_directory_fd_substrate
 def test_verified_space_and_shared_cap_refuse_preparation(tmp_path, monkeypatch):
     ref = _repo(tmp_path)
     tool = _tool(tmp_path / "git-filter-repo")
@@ -1176,6 +1222,7 @@ def test_verified_space_and_shared_cap_refuse_preparation(tmp_path, monkeypatch)
         _prepare(tmp_path, tool, ref)
 
 
+@requires_directory_fd_substrate
 def test_shared_recovery_cap_refuses_preparation(tmp_path, monkeypatch):
     ref = _repo(tmp_path)
     tool = _tool(tmp_path / "git-filter-repo")
@@ -1184,6 +1231,7 @@ def test_shared_recovery_cap_refuses_preparation(tmp_path, monkeypatch):
         _prepare(tmp_path, tool, ref)
 
 
+@requires_directory_fd_substrate
 def test_cleanup_is_local_preserves_remotes_rescans_and_rewinds(tmp_path, monkeypatch):
     ref = _repo(tmp_path)
     remote = tmp_path.parent / f"{tmp_path.name}-remote.git"
@@ -1217,6 +1265,7 @@ def test_cleanup_is_local_preserves_remotes_rescans_and_rewinds(tmp_path, monkey
     assert SECRET in _git(tmp_path, "show", f"{ref}:leak.txt").encode()
 
 
+@requires_directory_fd_substrate
 def test_cleanup_interruption_preserves_verified_bundle_and_manual_guidance(tmp_path):
     ref = _repo(tmp_path)
     remote = tmp_path.parent / f"{tmp_path.name}-remote.git"
@@ -1254,6 +1303,7 @@ def test_cleanup_interruption_preserves_verified_bundle_and_manual_guidance(tmp_
         "refs/backup/collateral",
     ],
 )
+@requires_directory_fd_substrate
 def test_collateral_unselected_ref_mutation_never_reports_clean_and_is_rewound(tmp_path, interrupted, collateral_ref):
     ref = _repo(tmp_path)
     original = _git(tmp_path, "rev-parse", ref)
@@ -1279,6 +1329,7 @@ def test_collateral_unselected_ref_mutation_never_reports_clean_and_is_rewound(t
     assert subprocess.run(["git", "show-ref", "--verify", "--quiet", collateral_ref], cwd=tmp_path).returncode
 
 
+@requires_directory_fd_substrate
 def test_history_metadata_contains_no_raw_credential_or_direct_fingerprint(tmp_path):
     ref = _repo(tmp_path)
     tool = _tool(tmp_path / "git-filter-repo")
@@ -1291,6 +1342,7 @@ def test_history_metadata_contains_no_raw_credential_or_direct_fingerprint(tmp_p
     assert "credential_sha256" not in (transaction / "manifest.json").read_text()
 
 
+@requires_directory_fd_substrate
 @pytest.mark.parametrize("surface", ["worktree", "index"])
 def test_collateral_worktree_or_index_mutation_fails_closed(tmp_path, surface):
     ref = _repo(tmp_path)
@@ -1313,6 +1365,7 @@ def test_collateral_worktree_or_index_mutation_fails_closed(tmp_path, surface):
     assert "Do not push" in rewind.guidance
 
 
+@requires_directory_fd_substrate
 def test_rewind_ref_mismatch_fails_closed_with_verified_bundle(tmp_path):
     ref = _repo(tmp_path)
     tool = _tool(tmp_path / "git-filter-repo")
@@ -1333,6 +1386,7 @@ def test_rewind_ref_mismatch_fails_closed_with_verified_bundle(tmp_path):
     assert "recover from the verified history.bundle manually" in rewind.guidance
 
 
+@requires_directory_fd_substrate
 @pytest.mark.parametrize("scan_state", ["history-cleanup-pending", "history-scope-unknown"])
 def test_rescan_pending_and_unknown_are_honest(tmp_path, monkeypatch, scan_state):
     ref = _repo(tmp_path)
@@ -1350,6 +1404,7 @@ def test_rescan_pending_and_unknown_are_honest(tmp_path, monkeypatch, scan_state
     assert outcome.uninspected_scopes == (("selected-refs",) if scan_state == "history-scope-unknown" else ())
 
 
+@requires_directory_fd_substrate
 def test_retention_requires_age_releases_exact_set_and_protects_final_bundle(tmp_path):
     ref = _repo(tmp_path)
     tool = _tool(tmp_path / "git-filter-repo")
@@ -1379,6 +1434,7 @@ def test_retention_requires_age_releases_exact_set_and_protects_final_bundle(tmp
     assert (tmp_path / "System/.dex/adoption/history-backups" / second.transaction_id).exists()
 
 
+@requires_directory_fd_substrate
 def test_prepared_only_history_transactions_are_never_deletion_candidates(tmp_path):
     ref = _repo(tmp_path)
     tool = _tool(tmp_path / "git-filter-repo")
@@ -1408,6 +1464,7 @@ def test_prepared_only_history_transactions_are_never_deletion_candidates(tmp_pa
         ("external_backup", {}),
     ],
 )
+@requires_directory_fd_substrate
 def test_retention_requires_terminal_verified_cleanup_evidence(tmp_path, field, value):
     ref = _repo(tmp_path)
     tool = _tool(tmp_path / "git-filter-repo")
@@ -1446,6 +1503,7 @@ def test_retention_requires_terminal_verified_cleanup_evidence(tmp_path, field, 
         assert candidate.transaction_id in preview.retained_ids
 
 
+@requires_directory_fd_substrate
 def test_retention_candidate_drift_invalidates_acknowledgement(tmp_path):
     ref = _repo(tmp_path)
     tool = _tool(tmp_path / "git-filter-repo")
