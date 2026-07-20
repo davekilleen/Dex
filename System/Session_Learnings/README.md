@@ -1,23 +1,37 @@
 # Session Learnings
 
+> Note: this directory is gitignored (see `.gitignore`) except for this README — it's
+> grandfathered in from before that rule was added, and intentionally kept as the canonical
+> schema reference below. Don't delete it as part of a gitignore cleanup.
+
 System improvements discovered during work sessions.
 
 ## What Goes Here
 
-Meta-feedback about Dex itself, captured during `/review`:
+Meta-feedback about Dex itself, captured during `/review` or `/daily-review`:
 
 - **Mistakes or corrections** — Things that went wrong and how to fix them
 - **Preferences mentioned** — Workflow preferences you shared
 - **Documentation gaps** — Places where docs were unclear or missing
 - **Workflow inefficiencies** — Friction points discovered
 
-## Format
+## Format (exact — other tools parse this)
 
-Each learning includes:
-- **What happened** — Specific situation
-- **Why it matters** — Impact on system/workflow
-- **Suggested fix** — Specific action with file paths
-- **Status** — pending, implemented, or won't-fix
+`mcp__dex-improvements-mcp__synthesize_learnings` parses entries by this literal markdown
+shape (`## HH:MM - Title`, `**Field:**` labels, a `**Status:** pending` value, blocks
+separated by `\n---\n`). Entries that don't match this exactly are silently skipped by that
+tool — so match it precisely:
+
+```markdown
+## HH:MM - [Short title]
+
+**What happened:** [Specific situation]
+**Why it matters:** [Impact on system/workflow]
+**Suggested fix:** [Specific action, with file paths if applicable]
+**Status:** pending
+
+---
+```
 
 ## Naming Convention
 
@@ -25,7 +39,9 @@ Each learning includes:
 
 ## Workflow
 
-1. **Capture** — Happens automatically during `/review` (daily review)
+1. **Capture** — Currently requires running `/review` or `/daily-review` to completion; the
+   `SessionEnd` hook alone only logs a timestamp, it doesn't extract learnings (that step
+   needs LLM judgment a hook script can't do on its own).
 2. **Review** — Periodically check pending learnings via `/dex-whats-new`
 3. **Implement** — Fix documentation gaps or system issues
 4. **Update status** — Mark as implemented when done

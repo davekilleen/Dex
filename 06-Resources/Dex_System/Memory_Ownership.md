@@ -15,7 +15,12 @@
 ## Dex Session Memory (learning-heartbeat)
 **Owns:** Operational decisions, commitments, work patterns, system learnings
 **Examples:** "Agreed to deliver DACH deck by Friday", "Meeting-prep skill needs more account context"
-**How it works:** Captured at session Stop, stored in System/Session_Learnings/
+**How it works today:** Not yet automatic. `SessionEnd` only logs a timestamp/transcript
+pointer to `System/Session_Learnings/`; actual extraction (mistakes, preferences, doc gaps)
+runs as an LLM-reasoning step inside `/review` and `/daily-review`, and only fires when one
+of those is run to completion. A hook alone can't do the judgment call — see
+`Background_Processing_Guide.md` for the planned Stop-hook automation that would close this
+gap and make "learning-heartbeat" live up to its name.
 **Dex action:** Filter for operational only (WP-2.1).
 
 ## Dex Vault Search (QMD)

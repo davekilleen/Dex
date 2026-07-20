@@ -105,18 +105,9 @@ Before asking the user anything, reflect on today's session and automatically ex
    - Were there repetitive manual steps?
    - Opportunities for automation?
 
-**For each learning identified, write to `00-Inbox/Session_Learnings/YYYY-MM-DD.md`:**
-
-```markdown
-## HH:MM - [Short title]
-
-**What happened:** [Specific situation from today's session]
-**Why it matters:** [Impact on workflows/system]
-**Suggested fix:** [Specific action with file paths if applicable]
-**Status:** pending
-
----
-```
+**For each learning identified, write to `System/Session_Learnings/YYYY-MM-DD.md`, following the
+exact template in `System/Session_Learnings/README.md`** (the format matters — other tools parse
+these entries by their exact markdown shape).
 
 **Then ask the user:** "I captured [N] learnings from today's session. Anything else you'd like to add?"
 
