@@ -143,16 +143,34 @@ def test_json_escaped_credential_key_name_with_raw_value_is_flagged(tmp_path):
     assert mcp.read_bytes() == before
 
 
-def test_unparseable_active_mcp_config_fails_closed_as_residual(tmp_path):
-    """A safe regular .mcp.json whose content is not valid JSON must fail closed
-    (unknown residual), never be reported silently clean."""
+def test_unparseable_active_mcp_config_fails_closed_as_unknown_scope(tmp_path):
+    """A safe regular .mcp.json whose content is not valid JSON cannot be classified: it
+    must fail closed by surfacing the worktree as UNKNOWN (uninspected) — never silently
+    clean, and not asserted as a definite residual either."""
     root = _vault(tmp_path, b"todoist:\n  enabled: true\n  api_key_env_var: TODOIST_API_KEY\n")
     (root / ".mcp.json").write_text('{ this is not valid json "TODOIST_API_KEY": rawsecret ')
 
     result = migrate_legacy_credentials(root)
 
-    assert result.state == "partial"
+    assert result.state == "partial"  # never "not-needed" (never silently clean)
     assert result.active_residual_state == "unrevoked-or-unclassified"
+    assert "worktree" in result.uninspected_scopes
+    assert "unparseable-active-config" in result.uninspected_reasons
+
+
+def test_reference_with_escaped_key_name_is_not_false_flagged(tmp_path):
+    """A genuine ${VAR} reference under a JSON-escaped key name must stay clean — the
+    structural decode must not over-flag legitimate escaped-key reference configs."""
+    root = _vault(tmp_path, b"todoist:\n  enabled: true\n  api_key_env_var: TODOIST_API_KEY\n")
+    # "TODOIST_API_KEY" (escaped) mapped to a real ${VAR} reference.
+    (root / ".mcp.json").write_text(
+        '{"mcpServers":{"todoist":{"env":{"\\u0054ODOIST_API_KEY":"${TODOIST_API_KEY}"}}}}'
+    )
+
+    result = migrate_legacy_credentials(root)
+
+    assert result.state == "not-needed"
+    assert result.active_residual_state == "none"
 
 
 def test_end_to_end_reference_config_with_mcp_only_raw_secret_reports_residual(tmp_path):

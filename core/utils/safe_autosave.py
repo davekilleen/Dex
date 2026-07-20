@@ -245,10 +245,13 @@ def _authority_needles(root: Path, configured: tuple[bytes, ...]) -> tuple[tuple
     mcp = inspect_active_mcp_config(root)
     if not mcp.inspected:
         findings += 1
-    elif mcp.data and active_mcp_raw_residual(
-        mcp.data, mcp_credential_key_names(_read_optional_config_bytes(root))
-    ):
-        findings += 1
+    elif mcp.data:
+        key_names = mcp_credential_key_names(_read_optional_config_bytes(root))
+        try:
+            if active_mcp_raw_residual(mcp.data, key_names):
+                findings += 1
+        except ValueError:
+            findings += 1  # unparseable active .mcp.json → fail closed, refuse autosave
     if mcp.data and any(value in mcp.data for value in values):
         findings += 1
     return tuple(values), findings

@@ -109,6 +109,22 @@ def test_active_mcp_residual_detects_custom_name_and_prefixed_raw_value(tmp_path
     assert b".mcp.json" not in _git(tmp_path, "ls-files")
 
 
+def test_active_mcp_unparseable_config_refuses_autosave(tmp_path):
+    """A safe/regular but unparseable .mcp.json cannot be classified; safe_autosave must
+    fail closed and refuse rather than proceed as if clean."""
+    _repo(tmp_path)
+    (tmp_path / ".gitignore").write_text(".env\n.mcp.json\nSystem/.dex/\n")
+    _git(tmp_path, "add", ".gitignore")
+    _git(tmp_path, "commit", "-qm", "ignore authorities")
+    (tmp_path / ".mcp.json").write_text('{ not valid json "TODOIST_API_KEY": rawsecret ')
+    (tmp_path / "safe.txt").write_text("safe\n")
+
+    result = safe_autosave_commit(tmp_path, (), "autosave")
+
+    assert result.refused_findings
+    assert b".mcp.json" not in _git(tmp_path, "ls-files")
+
+
 @pytest.mark.parametrize("authority", [".env", ".mcp.json"])
 def test_unignored_local_authority_is_never_staged_even_when_empty(tmp_path, authority):
     _repo(tmp_path)

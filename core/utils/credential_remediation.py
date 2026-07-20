@@ -844,7 +844,21 @@ def inspect_credential_migration(vault_root: Path) -> CredentialMigrationInspect
             result, config_raw, config_metadata, values, refs, env_names
         )
     mcp_raw = mcp.data or b""
-    residual = _active_mcp_raw_residual(mcp_raw, env_names, values)
+    try:
+        residual = _active_mcp_raw_residual(mcp_raw, env_names, values)
+    except ValueError:
+        # A safe/regular but unparseable .mcp.json cannot be classified. Fail closed by
+        # surfacing the worktree as UNKNOWN (uninspected) rather than clean OR a definite
+        # residual — honest and never silently clean.
+        result = MigrationResult(
+            "refused" if values else "partial",
+            active_residual_state="unrevoked-or-unclassified",
+            uninspected_scopes=("worktree",),
+            uninspected_reasons=("unparseable-active-config",),
+        )
+        return CredentialMigrationInspection(
+            result, config_raw, config_metadata, values, refs, env_names
+        )
     result = MigrationResult(
         "refused" if values else ("partial" if residual else "not-needed"),
         active_residual_state="unrevoked-or-unclassified" if residual else "none",

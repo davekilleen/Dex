@@ -120,16 +120,18 @@ def active_mcp_raw_residual(raw: bytes, key_names: frozenset[str]) -> bool:
     to its real name before comparison — then walks it, flagging any string value under a
     credential key name that is not a bare ``${VAR}`` / ``<placeholder>`` reference. This
     replaces a byte-level regex that both excluded any value starting with ``$``/``<``/``{``
-    and never saw escaped key names. Fails closed: a non-empty but unparseable document is
-    reported as an unknown residual, never silently clean. Empty/whitespace (no active
-    config) is clean.
+    and never saw escaped key names. Empty/whitespace (no active config) is clean.
+
+    Fails closed for the ambiguous case: a non-empty but unparseable document raises
+    ``ValueError`` so the caller can surface the scope as UNKNOWN (never silently clean),
+    rather than being asserted either clean or definitely-residual.
     """
     if not raw.strip():
         return False
     try:
         document = json.loads(raw.decode("utf-8"))
-    except (UnicodeDecodeError, json.JSONDecodeError):
-        return True
+    except (UnicodeDecodeError, json.JSONDecodeError) as error:
+        raise ValueError("unparseable active mcp config") from error
     return _document_has_raw_residual(document, key_names)
 
 
