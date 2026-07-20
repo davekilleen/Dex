@@ -81,6 +81,7 @@ class DateTimeEncoder(json.JSONEncoder):
 _repo_root = str(Path(__file__).parent.parent.parent)
 if _repo_root not in sys.path:
     sys.path.append(_repo_root)
+from core import capabilities as capability_rooms
 from core.paths import (
     CAREER_DIR,
     EVIDENCE_DIR,
@@ -90,7 +91,6 @@ from core.paths import (
     VAULT_ROOT as BASE_DIR,
 )
 from core.utils.feature_status import feature_status
-from core import capabilities as capability_rooms
 
 LADDER_FILE = CAREER_DIR / 'Career_Ladder.md'
 CAREER_EVIDENCE_FEATURE = "Career evidence"

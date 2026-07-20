@@ -109,6 +109,7 @@ class DateTimeEncoder(json.JSONEncoder):
 _repo_root = str(Path(__file__).parent.parent.parent)
 if _repo_root not in sys.path:
     sys.path.append(_repo_root)
+from core import capabilities as capability_rooms
 from core.paths import (
     COMPANIES_DIR,
     COMPANY_INDEX_FILE,
@@ -132,7 +133,6 @@ from core.paths import (
 from core.utils.company_domains import registrable_domain
 from core.utils.entity_pages import parse_entity_page, render_person_page
 from core.utils.feature_status import feature_status
-from core import capabilities as capability_rooms
 
 
 def get_tasks_file() -> Path:

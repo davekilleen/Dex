@@ -100,6 +100,7 @@ class EnhancedJSONEncoder(json.JSONEncoder):
 _repo_root = str(Path(__file__).parent.parent.parent)
 if _repo_root not in sys.path:
     sys.path.append(_repo_root)
+from core import capabilities as capability_rooms
 from core.paths import (
     EVIDENCE_DIR,
     RESUME_DIR,
@@ -110,7 +111,6 @@ from core.paths import (
     VAULT_ROOT as BASE_DIR,
 )
 from core.utils.feature_status import feature_status
-from core import capabilities as capability_rooms
 
 CAREER_TRACKING_OFF_MESSAGE = (
     "Career tracking isn't set up yet — run /career-setup when you want it."

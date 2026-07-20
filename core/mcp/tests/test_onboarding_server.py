@@ -7,10 +7,10 @@ placeholder/comment-key server filtering adopted from community PR #38.
 Run with: pytest core/mcp/tests/test_onboarding_server.py -v
 """
 
-import json
-import sys
 import asyncio
+import json
 import shutil
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 

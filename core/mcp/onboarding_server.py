@@ -49,6 +49,7 @@ class DateTimeEncoder(json.JSONEncoder):
 _repo_root = str(Path(__file__).parent.parent.parent)
 if _repo_root not in sys.path:
     sys.path.append(_repo_root)
+from core import capabilities as capability_rooms
 from core.paths import (
     CLAUDE_MD,
     MARKER_FILE,
@@ -62,7 +63,6 @@ from core.paths import (
 from core.paths import (
     VAULT_ROOT as BASE_DIR,
 )
-from core import capabilities as capability_rooms
 
 GRANOLA_APP_PATH = Path("/Applications/Granola.app")
 ONBOARDING_STEPS = 7
