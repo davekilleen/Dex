@@ -49,12 +49,6 @@ done
 
 # --- Validate state ---
 
-DISTIGNORE="$REPO_ROOT/.distignore"
-if [ ! -f "$DISTIGNORE" ]; then
-    echo "Error: .distignore not found at $DISTIGNORE" >&2
-    exit 1
-fi
-
 # Ensure we're working from a clean state
 if [ -n "$(git status --porcelain)" ]; then
     echo "Error: working tree is dirty. Commit or stash changes first." >&2
@@ -71,6 +65,20 @@ if ! git show-ref --verify --quiet "refs/heads/$SOURCE_BRANCH"; then
     echo "Error: branch '$SOURCE_BRANCH' not found." >&2
     exit 1
 fi
+
+# Validate the selected source tree, not whichever branch happens to be checked
+# out. This happens before creating/resetting any release ref.
+python3 scripts/check-tau-removal.py --repo-root "$REPO_ROOT" --git-source "$SOURCE_BRANCH"
+
+DISTIGNORE=$(mktemp)
+TAU_CHECKER=$(mktemp)
+MATCHES_FILE=$(mktemp)
+trap 'rm -f "$DISTIGNORE" "$TAU_CHECKER" "$MATCHES_FILE"' EXIT
+if ! git show "$SOURCE_BRANCH:.distignore" > "$DISTIGNORE"; then
+    echo "Error: .distignore not found in selected source '$SOURCE_BRANCH'." >&2
+    exit 1
+fi
+cp scripts/check-tau-removal.py "$TAU_CHECKER"
 
 # --- Parse .distignore ---
 
@@ -98,7 +106,7 @@ if [ "$DRY_RUN" = true ]; then
         # Keep path boundaries intact for spaces and other special characters.
         while IFS= read -r -d '' match; do
             printf '  %s\n' "$match"
-        done < <(git ls-files -z -- "$pattern")
+        done < <(git ls-tree -r -z --name-only "$SOURCE_BRANCH" -- "$pattern")
     done
     echo ""
     echo "Source: $SOURCE_BRANCH ($(git rev-parse --short $SOURCE_BRANCH))"
@@ -109,7 +117,7 @@ fi
 # --- Build release branch ---
 
 SOURCE_SHA=$(git rev-parse "$SOURCE_BRANCH")
-PKG_VERSION=$(grep '"version"' package.json | head -1 | sed 's/.*"version": *"\([^"]*\)".*/\1/')
+PKG_VERSION=$(git show "$SOURCE_BRANCH:package.json" | grep '"version"' | head -1 | sed 's/.*"version": *"\([^"]*\)".*/\1/')
 
 echo "Building release branch..."
 echo "  Source: $SOURCE_BRANCH ($SOURCE_SHA)"
@@ -121,8 +129,6 @@ git checkout -B "$RELEASE_BRANCH" "$SOURCE_BRANCH" --quiet
 
 # Remove dev-only files
 REMOVED=0
-MATCHES_FILE=$(mktemp)
-trap 'rm -f "$MATCHES_FILE"' EXIT
 for pattern in "${PATTERNS[@]}"; do
     git ls-files -z -- "$pattern" > "$MATCHES_FILE"
     if [ -s "$MATCHES_FILE" ]; then
@@ -171,6 +177,10 @@ Clean distribution from $SOURCE_BRANCH (${SOURCE_SHA:0:7}).
 Dev-only files removed per .distignore ($REMOVED files stripped).
 EOF
 )" --quiet
+
+# Verify the exact committed release tree and generated legacy manifest before
+# creating its immutable tag.
+python3 "$TAU_CHECKER" --repo-root "$REPO_ROOT" --git-tree "$RELEASE_BRANCH"
 
 RELEASE_SHA=$(git rev-parse --short HEAD)
 # Immutable rollback identity: every distribution commit gets an annotated tag
