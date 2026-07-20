@@ -4,6 +4,8 @@ set -euo pipefail
 echo "🔐 Security Gate"
 echo "================"
 
+python3 scripts/check-tau-removal.py --source-root "$PWD"
+
 SECRET_PATTERNS='(lin_api_[A-Za-z0-9]{20,}|sk-ant-api[0-9A-Za-z_-]{20,}|sk-ant-[A-Za-z0-9_-]{20,}|ghp_[A-Za-z0-9]{20,}|AKIA[0-9A-Z]{16}|xox[baprs]-[A-Za-z0-9-]{10,}|-----BEGIN (RSA|OPENSSH|EC|DSA) PRIVATE KEY-----)'
 ALLOWLIST_FILE="scripts/security-allowlist.txt"
 STRICT_AUDIT="${SECURITY_STRICT_AUDIT:-0}"
