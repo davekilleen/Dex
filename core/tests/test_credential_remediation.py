@@ -117,13 +117,64 @@ def test_bracket_or_dollar_prefixed_raw_value_is_flagged_not_masqueraded_as_refe
 
 
 def test_genuine_placeholder_and_var_references_stay_clean(tmp_path):
-    """The tightened detector must not raise false residuals on real reference configs."""
+    """The structural detector must not raise false residuals on real reference configs."""
     root = _vault(tmp_path, b"todoist:\n  enabled: true\n  api_key_env_var: CUSTOM_TODOIST_KEY\n")
     mcp = root / ".mcp.json"
-    for reference in ("${CUSTOM_TODOIST_KEY}", "<your-todoist-key>"):
+    for reference in ("${CUSTOM_TODOIST_KEY}", "<your-todoist-key>", "${TODOIST_API_KEY}", "<placeholder>"):
         mcp.write_text(json.dumps({"mcpServers": {"todoist": {"env": {"CUSTOM_TODOIST_KEY": reference}}}}))
         result = migrate_legacy_credentials(root)
         assert result.active_residual_state == "none", reference
+
+
+def test_json_escaped_credential_key_name_with_raw_value_is_flagged(tmp_path):
+    """The worse evasion: a JSON-escaped KEY name decodes to a real credential key, so a
+    normal-shaped raw value under it stays live. A byte-level name match never saw the
+    escaped key; structural JSON parsing decodes it and flags the raw value."""
+    root = _vault(tmp_path, b"todoist:\n  enabled: true\n  api_key_env_var: TODOIST_API_KEY\n")
+    mcp = root / ".mcp.json"
+    # "TODOIST_API_KEY" decodes to "TODOIST_API_KEY"; value is a normal raw secret.
+    mcp.write_text('{"mcpServers":{"todoist":{"env":{"\\u0054ODOIST_API_KEY":"abc123rawsecret"}}}}')
+    before = mcp.read_bytes()
+
+    result = migrate_legacy_credentials(root)
+
+    assert result.state == "partial"
+    assert result.active_residual_state == "unrevoked-or-unclassified"
+    assert mcp.read_bytes() == before
+
+
+def test_unparseable_active_mcp_config_fails_closed_as_residual(tmp_path):
+    """A safe regular .mcp.json whose content is not valid JSON must fail closed
+    (unknown residual), never be reported silently clean."""
+    root = _vault(tmp_path, b"todoist:\n  enabled: true\n  api_key_env_var: TODOIST_API_KEY\n")
+    (root / ".mcp.json").write_text('{ this is not valid json "TODOIST_API_KEY": rawsecret ')
+
+    result = migrate_legacy_credentials(root)
+
+    assert result.state == "partial"
+    assert result.active_residual_state == "unrevoked-or-unclassified"
+
+
+def test_end_to_end_reference_config_with_mcp_only_raw_secret_reports_residual(tmp_path):
+    """Reviewer's demonstrated false-clean, end-to-end through the workflow: config in
+    reference form + .env holding the current key + .mcp.json carrying a DIFFERENT raw
+    secret under an escaped/$-prefixed shape. Status previously returned
+    not-needed/none; it must now report a residual."""
+    from core.utils.credential_workflow import run_credential_workflow
+
+    root = _vault(tmp_path, b"todoist:\n  enabled: true\n  api_key_env_var: TODOIST_API_KEY\n")
+    (root / ".env").write_text('TODOIST_API_KEY="current-live-key-value"\n')
+    (root / ".env").chmod(0o600)
+    # Two evasion shapes, values distinct from .env so the needle scanner cannot see them.
+    (root / ".mcp.json").write_text(
+        '{"mcpServers":{"todoist":{"env":{"\\u0054ODOIST_API_KEY":"escaped-key-raw-secret"}},'
+        '"trello":{"env":{"TRELLO_API_KEY":"$dollar-prefixed-raw-secret"}}}}'
+    )
+
+    status = run_credential_workflow(root, "status")
+
+    assert status["migration_state"] == "partial"
+    assert status["active_residual_state"] == "unrevoked-or-unclassified"
 
 
 @pytest.mark.parametrize(

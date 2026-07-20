@@ -11,6 +11,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
 
+from core.utils.strict_yaml import load_yaml_bytes
+
 _NAME = re.compile(r"^[A-Z][A-Z0-9_]*$")
 _NAME_BYTES = re.compile(rb"^[A-Z][A-Z0-9_]*$")
 _SERVICE_FIELDS = {
@@ -81,6 +83,77 @@ def inspect_active_mcp_config(vault_root: Path) -> ActiveConfigInspection:
     ):
         return ActiveConfigInspection(None, False, "active-config-identity-change")
     return ActiveConfigInspection(data, True)
+
+
+_MCP_REFERENCE_TEMPLATE = re.compile(r"\$\{[A-Z_][A-Z0-9_]*\}|<[^>]*>")
+
+
+def mcp_value_is_reference(value: str) -> bool:
+    """A ``.mcp.json`` value is a safe *reference* only if it is exactly a ``${VAR}``
+    environment reference or a ``<placeholder>`` — never a raw literal."""
+    return bool(_MCP_REFERENCE_TEMPLATE.fullmatch(value))
+
+
+def _document_has_raw_residual(node: Any, key_names: frozenset[str]) -> bool:
+    if isinstance(node, dict):
+        for key, value in node.items():
+            if (
+                isinstance(key, str)
+                and key in key_names
+                and isinstance(value, str)
+                and value
+                and not mcp_value_is_reference(value)
+            ):
+                return True
+            if _document_has_raw_residual(value, key_names):
+                return True
+        return False
+    if isinstance(node, list):
+        return any(_document_has_raw_residual(item, key_names) for item in node)
+    return False
+
+
+def active_mcp_raw_residual(raw: bytes, key_names: frozenset[str]) -> bool:
+    """Structurally detect a live raw credential in ``.mcp.json``.
+
+    JSON-parses the document — so an escaped key name (``\\u0054ODOIST_API_KEY``) decodes
+    to its real name before comparison — then walks it, flagging any string value under a
+    credential key name that is not a bare ``${VAR}`` / ``<placeholder>`` reference. This
+    replaces a byte-level regex that both excluded any value starting with ``$``/``<``/``{``
+    and never saw escaped key names. Fails closed: a non-empty but unparseable document is
+    reported as an unknown residual, never silently clean. Empty/whitespace (no active
+    config) is clean.
+    """
+    if not raw.strip():
+        return False
+    try:
+        document = json.loads(raw.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        return True
+    return _document_has_raw_residual(document, key_names)
+
+
+def mcp_credential_key_names(config_raw: bytes | None) -> frozenset[str]:
+    """Key names whose ``.mcp.json`` values are treated as credentials: the canonical
+    env-var names, the raw YAML field names (``api_key``/``token``), and any custom
+    env-var names configured via ``api_key_env_var``/``token_env_var``. Fails safe — on
+    any config parse problem the canonical + literal set is still returned (never fewer).
+    """
+    names = {env_name for env_name, _ in LEGACY_CREDENTIAL_FIELDS.values()} | {"api_key", "token"}
+    if not config_raw:
+        return frozenset(names)
+    try:
+        document = load_yaml_bytes(config_raw, max_bytes=MAX_ACTIVE_CONFIG_BYTES)
+    except (ValueError, UnicodeDecodeError):
+        return frozenset(names)
+    if isinstance(document, dict):
+        for (service, _key), (_env_name, ref_name) in LEGACY_CREDENTIAL_FIELDS.items():
+            settings = document.get(service)
+            if isinstance(settings, dict):
+                configured = settings.get(ref_name)
+                if isinstance(configured, str) and _NAME.fullmatch(configured):
+                    names.add(configured)
+    return frozenset(names)
 
 
 def _decode_env_value(raw: bytes, number: int) -> str:

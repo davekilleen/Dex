@@ -12,12 +12,17 @@ import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
-from core.utils.integration_credentials import inspect_active_mcp_config, read_vault_env
+from core.utils.integration_credentials import (
+    MAX_ACTIVE_CONFIG_BYTES,
+    active_mcp_raw_residual,
+    inspect_active_mcp_config,
+    mcp_credential_key_names,
+    read_vault_env,
+)
 from core.utils.local_git import git_env, git_result
 
 LEGACY_YAML_FIELD = re.compile(rb"(?m)^\s*(?:api_key|token)\s*:\s*\S+")
 LEGACY_SECTION = re.compile(rb"(?ms)^\s*(?:todoist|trello)\s*:\s*\n(?:[ \t]+.*\n?)*")
-RAW_MCP_FIELD = re.compile(rb'"(?:TODOIST_API_KEY|TRELLO_API_KEY|TRELLO_TOKEN|api_key|token)"\s*:\s*"(?!\$|\{|<)[^"]+"')
 EXECUTABLE_CONFIG = re.compile(
     rb"(?i)^(?:filter\.|include(?:if)?\.|extensions\.worktreeconfig$|"
     rb"core\.(?:attributesfile|hookspath|fsmonitor|sshcommand|worktree)|"
@@ -240,11 +245,35 @@ def _authority_needles(root: Path, configured: tuple[bytes, ...]) -> tuple[tuple
     mcp = inspect_active_mcp_config(root)
     if not mcp.inspected:
         findings += 1
-    elif mcp.data and RAW_MCP_FIELD.search(mcp.data):
+    elif mcp.data and active_mcp_raw_residual(
+        mcp.data, mcp_credential_key_names(_read_optional_config_bytes(root))
+    ):
         findings += 1
     if mcp.data and any(value in mcp.data for value in values):
         findings += 1
     return tuple(values), findings
+
+
+def _read_optional_config_bytes(root: Path) -> bytes | None:
+    """Best-effort read of the integration config so the raw-residual key-name set can
+    include configured custom env-var names. Fails safe: any unsafe/unreadable file
+    yields None, and the residual detector falls back to the canonical key-name set."""
+    path = root / "System/integrations/config.yaml"
+    try:
+        metadata = path.lstat()
+        if (
+            not stat.S_ISREG(metadata.st_mode)
+            or metadata.st_nlink != 1
+            or metadata.st_size > MAX_ACTIVE_CONFIG_BYTES
+        ):
+            return None
+        descriptor = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+        try:
+            return os.read(descriptor, MAX_ACTIVE_CONFIG_BYTES + 1)
+        finally:
+            os.close(descriptor)
+    except OSError:
+        return None
 
 
 def _final_index_findings(root: Path, env: dict[str, str], needles: tuple[bytes, ...]) -> int:

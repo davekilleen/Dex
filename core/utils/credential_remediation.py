@@ -17,6 +17,7 @@ from typing import Callable, Literal
 from core.utils.integration_credentials import (
     LEGACY_CREDENTIAL_FIELDS,
     MAX_ENV_BYTES,
+    active_mcp_raw_residual,
     inspect_active_mcp_config,
     parse_env_assignments,
     updated_env_bytes,
@@ -794,23 +795,13 @@ def _legacy_values(raw: bytes) -> tuple[dict[str, str], dict[str, str], frozense
     return values, refs, frozenset(env_names)
 
 
-_MCP_REFERENCE_TEMPLATE = re.compile(rb"\$\{[A-Z_][A-Z0-9_]*\}|<[^>]*>")
-
-
 def _active_mcp_raw_residual(raw: bytes, env_names: frozenset[str], legacy_values: Mapping[str, str]) -> bool:
+    # A pre-migration legacy value that literally survives in .mcp.json is always residual.
     if any(value.encode() in raw for value in legacy_values.values()):
         return True
-    names = b"|".join(re.escape(name.encode()) for name in sorted(env_names))
-    if not names:
-        return False
-    # A value under a target env-var name is a safe *reference* only when it fully
-    # matches a ${VAR} ref or a <placeholder>. Any other value is a raw residual.
-    # Fails safe: an unrecognised shape — including $/</{-prefixed raw secrets the
-    # old first-char exclusion silently skipped — is flagged, never cleared.
-    for match in re.finditer(rb'"(?:' + names + rb')"\s*:\s*"([^"]*)"', raw):
-        if not _MCP_REFERENCE_TEMPLATE.fullmatch(match.group(1)):
-            return True
-    return False
+    # Otherwise classify structurally: JSON-parse and inspect each value under a
+    # credential env-var name (env_names is the canonical ∪ configured-custom superset).
+    return active_mcp_raw_residual(raw, env_names)
 
 
 def inspect_credential_migration(vault_root: Path) -> CredentialMigrationInspection:

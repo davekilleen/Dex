@@ -86,6 +86,29 @@ def test_active_mcp_residual_refuses_without_staging_ignored_authorities(tmp_pat
     assert b".env" not in _git(tmp_path, "ls-files")
 
 
+def test_active_mcp_residual_detects_custom_name_and_prefixed_raw_value(tmp_path):
+    """safe_autosave's raw-residual check must use the configured-custom env-var-name
+    superset AND structural classification. A raw secret under a CUSTOM name with a
+    $-prefixed value evaded the old fixed-name, first-char-excluding byte regex on both
+    counts; the residual detector must still refuse the autosave. .mcp.json is never
+    staged (report-only), so this is a reporting-side finding, not a commit."""
+    _repo(tmp_path)
+    (tmp_path / ".gitignore").write_text(".env\n.mcp.json\nSystem/.dex/\n")
+    _git(tmp_path, "add", ".gitignore")
+    _git(tmp_path, "commit", "-qm", "ignore authorities")
+    config = tmp_path / "System/integrations/config.yaml"
+    config.parent.mkdir(parents=True)
+    config.write_text("todoist:\n  enabled: true\n  api_key_env_var: CUSTOM_TODOIST_KEY\n")
+    # Custom name (outside the old fixed set) + $-prefixed value (old first-char skip).
+    (tmp_path / ".mcp.json").write_text('{"env":{"CUSTOM_TODOIST_KEY":"$raw-active-secret"}}')
+    (tmp_path / "safe.txt").write_text("safe\n")
+
+    result = safe_autosave_commit(tmp_path, (), "autosave")
+
+    assert result.refused_findings
+    assert b".mcp.json" not in _git(tmp_path, "ls-files")
+
+
 @pytest.mark.parametrize("authority", [".env", ".mcp.json"])
 def test_unignored_local_authority_is_never_staged_even_when_empty(tmp_path, authority):
     _repo(tmp_path)
