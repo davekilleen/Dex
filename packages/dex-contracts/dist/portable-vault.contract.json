@@ -9,6 +9,13 @@
     "generated",
     "runtime"
   ],
+  "mutation_policy": {
+    "brain": "replace",
+    "generated": "regenerate",
+    "runtime": "never",
+    "seed": "write-if-absent",
+    "vault": "never"
+  },
   "hard_deny": [
     ".env",
     ".env.*",
@@ -246,11 +253,82 @@
       "note": "fully user-owned per Vault_Contract \u00a710.1; the brain docs still shipped under 06-Resources/Dex_System carry their own brain rule until they relocate to docs/"
     },
     {
-      "id": "brain-docs-legacy",
-      "path": "06-Resources/Dex_System",
-      "kind": "dir",
-      "ownership": "brain",
-      "note": "system docs shipped inside a vault region; relocate to docs/ per Vault_Contract \u00a710.1 \u2014 until then updates may replace them"
+      "id": "brain-doc-background-processing",
+      "path": "06-Resources/Dex_System/Background_Processing_Guide.md",
+      "kind": "file",
+      "ownership": "brain"
+    },
+    {
+      "id": "brain-doc-calendar-setup",
+      "path": "06-Resources/Dex_System/Calendar_Setup.md",
+      "kind": "file",
+      "ownership": "brain"
+    },
+    {
+      "id": "brain-doc-jobs-to-be-done",
+      "path": "06-Resources/Dex_System/Dex_Jobs_to_Be_Done.md",
+      "kind": "file",
+      "ownership": "brain"
+    },
+    {
+      "id": "brain-doc-system-guide",
+      "path": "06-Resources/Dex_System/Dex_System_Guide.md",
+      "kind": "file",
+      "ownership": "brain"
+    },
+    {
+      "id": "brain-doc-technical-guide",
+      "path": "06-Resources/Dex_System/Dex_Technical_Guide.md",
+      "kind": "file",
+      "ownership": "brain"
+    },
+    {
+      "id": "brain-doc-distribution-checklist",
+      "path": "06-Resources/Dex_System/Distribution_Checklist.md",
+      "kind": "file",
+      "ownership": "brain"
+    },
+    {
+      "id": "brain-doc-distribution-strategy",
+      "path": "06-Resources/Dex_System/Distribution_Strategy.md",
+      "kind": "file",
+      "ownership": "brain"
+    },
+    {
+      "id": "brain-doc-folder-structure",
+      "path": "06-Resources/Dex_System/Folder_Structure.md",
+      "kind": "file",
+      "ownership": "brain"
+    },
+    {
+      "id": "brain-doc-memory-ownership",
+      "path": "06-Resources/Dex_System/Memory_Ownership.md",
+      "kind": "file",
+      "ownership": "brain"
+    },
+    {
+      "id": "brain-doc-named-sessions",
+      "path": "06-Resources/Dex_System/Named_Sessions_Guide.md",
+      "kind": "file",
+      "ownership": "brain"
+    },
+    {
+      "id": "brain-doc-obsidian-guide",
+      "path": "06-Resources/Dex_System/Obsidian_Guide.md",
+      "kind": "file",
+      "ownership": "brain"
+    },
+    {
+      "id": "brain-doc-dex-system-readme",
+      "path": "06-Resources/Dex_System/README.md",
+      "kind": "file",
+      "ownership": "brain"
+    },
+    {
+      "id": "brain-doc-updating-dex",
+      "path": "06-Resources/Dex_System/Updating_Dex.md",
+      "kind": "file",
+      "ownership": "brain"
     },
     {
       "id": "seed-intel-gitkeep",

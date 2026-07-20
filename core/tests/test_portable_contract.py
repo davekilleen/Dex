@@ -78,11 +78,69 @@ def test_resolution_semantics(path: str, ownership: str, denied: bool) -> None:
 def test_exact_seed_beats_region_and_specificity_orders_directories() -> None:
     # Exact starter file wins over its vault region.
     assert portable_contract.resolve("03-Tasks/Tasks.md").rule_id == "seed-tasks-file"
-    # Deeper directory rule wins over the shallower region.
+    # Shipped system docs are enumerated file-by-file as brain…
     assert (
         portable_contract.resolve("06-Resources/Dex_System/README.md").rule_id
-        == "brain-docs-legacy"
+        == "brain-doc-dex-system-readme"
     )
+
+
+def test_user_file_next_to_shipped_docs_is_vault_not_brain() -> None:
+    """Review finding #1: a user's own note under 06-Resources/Dex_System/
+    must fall through to the vault region — an update may never clobber it."""
+    resolution = portable_contract.resolve("06-Resources/Dex_System/my-notes.md")
+    assert resolution.ownership == "vault"
+    assert resolution.rule_id == "vault-resources"
+    verdict = portable_contract.update_write_verdict(
+        "06-Resources/Dex_System/my-notes.md", exists=True
+    )
+    assert verdict.allowed is False
+
+
+def test_deny_check_is_case_folded_for_macos() -> None:
+    """Review finding #4: APFS is case-insensitive; odd-case secrets must deny."""
+    for path in ("secret.PEM", ".ENV", "System/Credentials/x.json", "a/B.KEY"):
+        assert portable_contract.is_denied(path), path
+        assert portable_contract.resolve(path).denied is True, path
+
+
+def test_mutation_policy_travels_in_the_document() -> None:
+    document = portable_contract.build_contract_document()
+    assert document["mutation_policy"] == {
+        "brain": "replace",
+        "generated": "regenerate",
+        "runtime": "never",
+        "seed": "write-if-absent",
+        "vault": "never",
+    }
+
+
+@pytest.mark.parametrize(
+    ("path", "exists", "allowed", "action"),
+    [
+        ("core/utils/doctor.py", True, True, "replace"),
+        ("03-Tasks/Tasks.md", False, True, "write-if-absent"),
+        ("03-Tasks/Tasks.md", True, False, "write-if-absent"),  # user file wins
+        ("System/.installed-files.manifest", True, True, "regenerate"),
+        ("04-Projects/My_Project/notes.md", True, False, "never"),
+        ("System/Session_Learnings/2026-05-01.md", False, False, "never"),
+        (".env", False, False, "deny"),
+        ("totally/unknown/path.xyz", False, False, "unclassified-never-write"),
+    ],
+)
+def test_update_write_verdict(path: str, exists: bool, allowed: bool, action: str) -> None:
+    verdict = portable_contract.update_write_verdict(path, exists=exists)
+    assert verdict.allowed is allowed
+    assert verdict.action == action
+
+
+def test_legacy_shipped_runtime_surfaces_the_baseline_debt() -> None:
+    debt = portable_contract.legacy_shipped_runtime(_tracked_paths())
+    # The SR1 tracked-ignore baseline's known runtime files ship today; the
+    # baseline-reduction follow-up retires them. This test pins the debt so it
+    # can only shrink deliberately.
+    assert "System/usage_log.md" in debt
+    assert any(path.startswith("System/Session_Learnings/") for path in debt)
 
 
 def test_traversal_and_empty_paths_are_rejected() -> None:

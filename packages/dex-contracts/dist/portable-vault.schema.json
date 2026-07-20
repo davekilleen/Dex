@@ -9,6 +9,7 @@
     "source",
     "vault_schema_supported",
     "ownership_classes",
+    "mutation_policy",
     "hard_deny",
     "vault_regions",
     "rules",
@@ -25,6 +26,59 @@
     "vault_schema_supported": {
       "type": "string",
       "minLength": 1
+    },
+    "mutation_policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "brain",
+        "vault",
+        "seed",
+        "generated",
+        "runtime"
+      ],
+      "properties": {
+        "brain": {
+          "enum": [
+            "replace",
+            "write-if-absent",
+            "regenerate",
+            "never"
+          ]
+        },
+        "vault": {
+          "enum": [
+            "replace",
+            "write-if-absent",
+            "regenerate",
+            "never"
+          ]
+        },
+        "seed": {
+          "enum": [
+            "replace",
+            "write-if-absent",
+            "regenerate",
+            "never"
+          ]
+        },
+        "generated": {
+          "enum": [
+            "replace",
+            "write-if-absent",
+            "regenerate",
+            "never"
+          ]
+        },
+        "runtime": {
+          "enum": [
+            "replace",
+            "write-if-absent",
+            "regenerate",
+            "never"
+          ]
+        }
+      }
     },
     "ownership_classes": {
       "type": "array",

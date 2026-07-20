@@ -38,7 +38,13 @@ def _tracked_paths() -> list[str]:
 
 
 def _check_schema(document: dict, schema: dict) -> list[str]:
-    """Minimal structural validation — enough to catch a malformed document."""
+    """Minimal structural validation — enough to catch a malformed document.
+
+    Belt-and-braces by design: the drift check (committed == regenerated)
+    already guarantees structural validity for anything generated from source;
+    this catches a hand-edited committed document on the path where drift
+    detection itself is broken, and gives external consumers a checked shape.
+    """
     problems: list[str] = []
     for key in schema.get("required", []):
         if key not in document:

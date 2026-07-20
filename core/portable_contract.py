@@ -21,6 +21,13 @@ directory prefix; longer prefix beats shorter). Every tracked repo path MUST
 resolve — ``scripts/check-portable-contract.sh`` fails CI otherwise — so adding
 a new top-level path to the repo requires a deliberate classification here.
 
+LIMITATION — folder remapping (Vault_Contract §2a): classification assumes the
+DEFAULT PARA layout. A user may remap folders via ``System/folder-paths.yaml``;
+consumers scanning a real installed vault MUST canonicalize remapped paths back
+to their semantic defaults before resolving, or treat them as unclassified.
+The fail-safe is :func:`update_write_verdict`: an unclassified path is NEVER
+written. Native ``folder_map`` support lands with the first consumer (PR-1).
+
 Design notes live in ``docs/portable-vault-contract-design.md``.
 """
 
@@ -114,9 +121,37 @@ RULES: tuple[Rule, ...] = (
        "shipped Obsidian defaults; a user's live workspace state is untracked"),
     _r("brain-github", ".github", "dir", "brain"),
     _r("brain-docs", "docs", "dir", "brain"),
-    _r("brain-docs-legacy", "06-Resources/Dex_System", "dir", "brain",
-       "system docs shipped inside a vault region; relocate to docs/ per "
-       "Vault_Contract §10.1 — until then updates may replace them"),
+    # System docs shipped inside the user's Resources region: enumerated file by
+    # file (mirroring the PARA seed pattern) so a USER note or edit added under
+    # 06-Resources/Dex_System/ falls through to the vault region rule and can
+    # never be clobbered by an update. Relocate to docs/ per Vault_Contract
+    # §10.1; until then updates may replace exactly these shipped files.
+    _r("brain-doc-background-processing",
+       "06-Resources/Dex_System/Background_Processing_Guide.md", "file", "brain"),
+    _r("brain-doc-calendar-setup", "06-Resources/Dex_System/Calendar_Setup.md",
+       "file", "brain"),
+    _r("brain-doc-jobs-to-be-done", "06-Resources/Dex_System/Dex_Jobs_to_Be_Done.md",
+       "file", "brain"),
+    _r("brain-doc-system-guide", "06-Resources/Dex_System/Dex_System_Guide.md",
+       "file", "brain"),
+    _r("brain-doc-technical-guide", "06-Resources/Dex_System/Dex_Technical_Guide.md",
+       "file", "brain"),
+    _r("brain-doc-distribution-checklist",
+       "06-Resources/Dex_System/Distribution_Checklist.md", "file", "brain"),
+    _r("brain-doc-distribution-strategy",
+       "06-Resources/Dex_System/Distribution_Strategy.md", "file", "brain"),
+    _r("brain-doc-folder-structure", "06-Resources/Dex_System/Folder_Structure.md",
+       "file", "brain"),
+    _r("brain-doc-memory-ownership", "06-Resources/Dex_System/Memory_Ownership.md",
+       "file", "brain"),
+    _r("brain-doc-named-sessions", "06-Resources/Dex_System/Named_Sessions_Guide.md",
+       "file", "brain"),
+    _r("brain-doc-obsidian-guide", "06-Resources/Dex_System/Obsidian_Guide.md",
+       "file", "brain"),
+    _r("brain-doc-dex-system-readme", "06-Resources/Dex_System/README.md",
+       "file", "brain"),
+    _r("brain-doc-updating-dex", "06-Resources/Dex_System/Updating_Dex.md",
+       "file", "brain"),
     _r("brain-staging", "staging", "dir", "brain",
        "dev-only staging scaffolding; excluded from releases"),
     _r("brain-claude-md", "CLAUDE.md", "file", "brain",
@@ -296,6 +331,20 @@ CAPABILITIES: dict[str, dict[str, object]] = {
 }
 
 
+# ---------------------------------------------------------------------------
+# Mutation policy: what an UPDATE ENGINE may do to a path of each class. This
+# is the single class→verb mapping every consumer (migrator, updater, repair)
+# must use instead of re-deriving it from prose. It travels in the frozen JSON.
+# ---------------------------------------------------------------------------
+MUTATION_POLICY: dict[str, str] = {
+    "brain": "replace",           # replaced wholesale from the release
+    "seed": "write-if-absent",    # seeded once; an existing user file always wins
+    "generated": "regenerate",    # machine-derived; safe to rewrite
+    "vault": "never",             # the user's; updates never write
+    "runtime": "never",           # local machine state; updates never write
+}
+
+
 @dataclass(frozen=True)
 class Resolution:
     """The contract's answer for one path."""
@@ -304,6 +353,55 @@ class Resolution:
     ownership: str
     rule_id: str
     denied: bool
+
+
+@dataclass(frozen=True)
+class WriteVerdict:
+    """The consumer-facing answer to "may an update write this path?".
+
+    ``allowed`` is the final word. ``action`` explains it: one of
+    ``replace`` / ``write-if-absent`` / ``regenerate`` (allowed, modulo
+    ``exists`` for seeds), ``never`` (owner forbids), ``deny`` (hard-deny
+    list), or ``unclassified-never-write`` (the fail-safe: a path the contract
+    cannot classify must never be written — surface it for review instead).
+    """
+
+    path: str
+    allowed: bool
+    action: str
+    ownership: str | None
+    rule_id: str | None
+
+
+def update_write_verdict(path: str, *, exists: bool) -> WriteVerdict:
+    """May an update engine write ``path``? The ONLY sanctioned write check.
+
+    NOTE (folder remapping): classification assumes the DEFAULT PARA layout.
+    Vault_Contract §2a lets users remap folders via ``System/folder-paths.yaml``
+    — consumers running against a real installed vault MUST canonicalize
+    remapped paths back to their semantic defaults before calling, or treat
+    them as unclassified. Unclassified paths fail safe: never written.
+    """
+    try:
+        resolution = resolve(path)
+    except ContractViolation:
+        return WriteVerdict(str(path), False, "unclassified-never-write", None, None)
+    if resolution.denied:
+        return WriteVerdict(
+            resolution.path, False, "deny", resolution.ownership, resolution.rule_id
+        )
+    action = MUTATION_POLICY[resolution.ownership]
+    if action == "never":
+        return WriteVerdict(
+            resolution.path, False, "never", resolution.ownership, resolution.rule_id
+        )
+    if action == "write-if-absent" and exists:
+        return WriteVerdict(
+            resolution.path, False, action, resolution.ownership, resolution.rule_id
+        )
+    return WriteVerdict(
+        resolution.path, True, action, resolution.ownership, resolution.rule_id
+    )
 
 
 class ContractViolation(ValueError):
@@ -320,10 +418,16 @@ def _normalize(path: str) -> str:
 
 
 def is_denied(path: str) -> bool:
-    """True when the hard-deny list vetoes any write to ``path``."""
-    candidate = _normalize(path)
+    """True when the hard-deny list vetoes any write to ``path``.
+
+    Matching is case-folded: the primary install target (macOS/APFS) is
+    case-insensitive, so ``MyKey.PEM`` is physically the same secret class as
+    ``*.pem`` and must not slip through on spelling.
+    """
+    candidate = _normalize(path).lower()
     segments = candidate.split("/")
-    for pattern in HARD_DENY_PATTERNS:
+    for raw_pattern in HARD_DENY_PATTERNS:
+        pattern = raw_pattern.lower()
         if fnmatch.fnmatch(candidate, pattern):
             return True
         if "/" not in pattern and any(
@@ -377,13 +481,15 @@ def unclassified(paths: Iterable[str]) -> list[str]:
 
 
 def release_forbidden(paths: Iterable[str]) -> list[str]:
-    """Paths that must never appear in a release write-plan.
+    """Paths that must never appear in a release: ``vault`` content and
+    anything hard-denied.
 
-    A release ships ``brain``/``seed``/``generated`` artifacts. ``vault`` and
-    ``runtime`` content — and anything hard-denied — must never be written by
-    a release. (Legacy-tracked runtime files are reported too: they are the
-    debt the baseline-reduction follow-up retires, and listing them keeps the
-    debt visible rather than grandfathered.)
+    Legacy-tracked ``runtime`` files are deliberately NOT failed here: they DO
+    ship today under the SR1 tracked-ignore baseline, and turning the gate red
+    on known, journalled debt would block every build. They are surfaced
+    explicitly by :func:`legacy_shipped_runtime` instead, so the
+    baseline-reduction follow-up has a visible, testable target rather than a
+    silently blessed one.
     """
     forbidden: list[str] = []
     for path in paths:
@@ -391,6 +497,20 @@ def release_forbidden(paths: Iterable[str]) -> list[str]:
         if resolution.denied or resolution.ownership == "vault":
             forbidden.append(resolution.path)
     return forbidden
+
+
+def legacy_shipped_runtime(paths: Iterable[str]) -> list[str]:
+    """Tracked ``runtime``-class paths — debt for the baseline-reduction PR.
+
+    ``runtime`` means "never shipped", so anything this returns for the repo
+    tree is a standing contradiction the SR1 baseline currently grandfathers
+    (session-learning files, usage log, legacy state markers).
+    """
+    return [
+        resolution.path
+        for resolution in (resolve(path) for path in paths)
+        if resolution.ownership == "runtime"
+    ]
 
 
 def build_contract_schema() -> dict[str, object]:
@@ -406,6 +526,7 @@ def build_contract_schema() -> dict[str, object]:
             "source",
             "vault_schema_supported",
             "ownership_classes",
+            "mutation_policy",
             "hard_deny",
             "vault_regions",
             "rules",
@@ -415,6 +536,22 @@ def build_contract_schema() -> dict[str, object]:
             "contract_version": {"type": "integer", "minimum": 1},
             "source": {"const": "core/portable_contract.py"},
             "vault_schema_supported": {"type": "string", "minLength": 1},
+            "mutation_policy": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": list(OWNERSHIP_CLASSES),
+                "properties": {
+                    ownership: {
+                        "enum": [
+                            "replace",
+                            "write-if-absent",
+                            "regenerate",
+                            "never",
+                        ]
+                    }
+                    for ownership in OWNERSHIP_CLASSES
+                },
+            },
             "ownership_classes": {
                 "type": "array",
                 "items": {"enum": list(OWNERSHIP_CLASSES)},
@@ -499,6 +636,7 @@ def build_contract_document() -> dict[str, object]:
         "source": "core/portable_contract.py",
         "vault_schema_supported": VAULT_SCHEMA_SUPPORTED,
         "ownership_classes": list(OWNERSHIP_CLASSES),
+        "mutation_policy": dict(sorted(MUTATION_POLICY.items())),
         "hard_deny": list(HARD_DENY_PATTERNS),
         "vault_regions": list(VAULT_REGIONS),
         "rules": [
