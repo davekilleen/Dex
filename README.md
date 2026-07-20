@@ -746,13 +746,19 @@ These guides live in your vault after setup.
 
 **Get updates with one command - no technical knowledge needed.**
 
-### Automatic Notifications
+### Automatic Release Awareness
 
-Dex checks for updates every 7 days during `/daily-plan`:
+At most once daily, Claude Code's SessionStart hook performs a bounded fetch-only evidence check. It does not pull,
+merge, install, or update Dex. When every integrity/consistency check selected by a higher release's immutable profile
+agrees, Dex says:
 
 ```
-🎁 Dex v1.3.0 is available. Run /dex-update to see what's new and update.
+A newer Dex release appears to exist, but Dex has not authenticated its publisher. Review the exact release/tag before choosing to update.
 ```
+
+The full notice includes the exact version, immutable tag, full commit, evidence profile, canonical release page, and
+`/dex-doctor` guidance. Missing or conflicting evidence produces no release notice. Seeing no higher release is not a
+claim that the installation is current.
 
 ### Update in One Command
 

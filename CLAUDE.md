@@ -125,25 +125,28 @@ Extend concepts, spot synergies, think bigger, challenge the ceiling. Don't just
 
 Never invent details beyond the returned `user_message`.
 
-### Update Awareness (Automatic, Once Per Day)
+### Release Awareness (Automatic, Bounded)
 
-At the start of any conversation, silently call `get_pending_update_notification()` from the Update Checker MCP.
+The SessionStart hook performs one bounded daily fetch-only evidence attempt against Dex's pinned canonical HTTPS
+repository. It uses an isolated bare cache and never pulls, merges, resets, stages, installs, changes HEAD, or updates
+automatically.
 
-**If `should_notify` is True:**
-1. At the end of your first substantive response, add a brief one-liner:
-   ```
-   *Dex vX.Y.Z is available (you're on vA.B.C). Run `/dex-update` when you're ready.*
-   ```
-2. Immediately call `mark_update_notified()` so the user won't be reminded again today.
-3. If `breaking_changes` is true, add: `*This is a major update — check release notes first.*`
+Only the `release-appears-available-unverified` state creates a notice. Preserve the hook's complete notice verbatim;
+it contains this required caution plus exact version, immutable tag, full commit, selected evidence profile, canonical
+release page, and `/dex-doctor` guidance:
 
-**If `should_notify` is False:** Say nothing. The user has already been notified today or there's no update.
+> A newer Dex release appears to exist, but Dex has not authenticated its publisher. Review the exact release/tag before choosing to update.
 
-**Rules:**
-- Never block the user's request to show the update notice — always answer their question first, then append the notice
-- One notification per calendar day, no matter how many chats they open
-- After `/dex-update` succeeds, the notification file is cleared automatically
-- If the MCP call fails (network, server not running), skip silently — never error on update checks
+Other states are silent during normal conversation:
+- `no-newer-release-observed-unverified` means only that the bounded evidence check observed no higher release. It is
+  not a currentness claim.
+- `offline` means the bounded network operation was unavailable.
+- `UNKNOWN` means evidence was missing, malformed, contradictory, unsupported, or unverifiable.
+- `skipped` means daily-attempt or exact-release notice dedup applied.
+
+Never shorten the notice to “update available,” and never describe release awareness as authenticated, verified,
+safe, current, or up to date. The notice appears at most once per exact release identity unless `/dex-doctor`
+explicitly requests redisplay. Uncertain evidence never clears an earlier exact notice.
 
 ### Proactive Improvement Capture (Innovation Concierge)
 
@@ -357,7 +360,7 @@ This happens during `/review` - you don't need to capture learnings silently dur
 
 Dex continuously learns from usage and external sources through automatic checks:
 - Monitors Anthropic changelog for new Claude features (every 6h)
-- Checks for Dex system updates from GitHub (every 7 days during `/daily-plan`)
+- Checks bounded release evidence from the pinned Dex repository (at most daily)
 - Tracks pending learnings in `System/Session_Learnings/` (daily)
 - Surfaces alerts during session start and `/daily-plan`
 - Pattern recognition during weekly reviews

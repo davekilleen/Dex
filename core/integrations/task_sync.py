@@ -159,10 +159,42 @@ def _find_node() -> str:
     raise FileNotFoundError("node is required to run task-sync adapters")
 
 
-def _adapter_path(service: str) -> Path | None:
+def _resolve_adapter_service(service: str) -> str:
     if not _SERVICE_PATTERN.fullmatch(service):
-        return None
-    candidate = ADAPTERS_DIR / f"{service}.cjs"
+        raise ValueError(f"invalid task-sync service name: {service}")
+    runner = ADAPTERS_DIR / "run.cjs"
+    try:
+        result = subprocess.run(
+            [_find_node(), str(runner), "--resolve-adapter", service],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=False,
+            cwd=VAULT_ROOT,
+        )
+    except (OSError, subprocess.SubprocessError) as error:
+        raise ValueError(f"adapter alias preflight failed: {error}") from error
+    if len(result.stdout.encode("utf-8")) > 4096:
+        raise ValueError("adapter alias preflight returned oversized output")
+    try:
+        payload = json.loads(result.stdout.strip())
+    except json.JSONDecodeError as error:
+        raise ValueError("adapter alias preflight returned invalid JSON") from error
+    if not isinstance(payload, dict) or payload.get("ok") is not True:
+        detail = payload.get("error") if isinstance(payload, dict) else None
+        raise ValueError(str(detail or "adapter alias preflight failed"))
+    if set(payload) != {"ok", "requested_service", "adapter_service"}:
+        raise ValueError("adapter alias preflight returned unexpected fields")
+    adapter = payload.get("adapter_service")
+    if payload.get("requested_service") != service or not isinstance(adapter, str):
+        raise ValueError("adapter alias preflight returned a mismatched identity")
+    if not _SERVICE_PATTERN.fullmatch(adapter):
+        raise ValueError("adapter alias preflight returned an unsafe adapter identity")
+    return adapter
+
+
+def _adapter_path(adapter_service: str) -> Path | None:
+    candidate = ADAPTERS_DIR / f"{adapter_service}.cjs"
     return candidate if candidate.is_file() else None
 
 
@@ -329,8 +361,19 @@ def sync_external_tasks(
         if service == "things" and platform.system() != "Darwin":
             report["errors"].append("things task sync is only available on macOS")
             continue
-        if _adapter_path(service) is None:
-            report["errors"].append(f"task-sync adapter not found: {service}")
+        try:
+            adapter_service = _resolve_adapter_service(service)
+            adapter_path = _adapter_path(adapter_service)
+        except ValueError as error:
+            report["errors"].append(
+                f"task-sync adapter configuration error for enabled service '{service}': {error}"
+            )
+            continue
+        if adapter_path is None:
+            report["errors"].append(
+                f"task-sync adapter unavailable for enabled service '{service}': "
+                f"expected adapter '{adapter_service}.cjs'; repair Dex or disable this service"
+            )
             continue
 
         if service not in state:

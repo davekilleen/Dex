@@ -16,6 +16,8 @@ if [ -z "$PYTHON" ]; then
   exit 1
 fi
 
+"$PYTHON" -I scripts/check-tau-removal.py --source-root "$PWD"
+
 ALLOWLIST_FILE="scripts/security-allowlist.txt"
 STRICT_AUDIT="${SECURITY_STRICT_AUDIT:-0}"
 

@@ -173,6 +173,28 @@ test('update refuses to continue with a stale backup tag', () => {
   assert.match(backupBlock, /exit 1/);
 });
 
+test('update captures local-only state before merge and applies it immediately afterward', () => {
+  const capture = UPDATE_SKILL.indexOf('preserve_local_only_paths.py" capture');
+  const merge = UPDATE_SKILL.indexOf('git merge upstream/release --no-edit');
+  const apply = UPDATE_SKILL.indexOf('preserve_local_only_paths.py" apply');
+  assert.ok(capture !== -1 && capture < merge, 'capture must precede the release merge');
+  assert.ok(apply > merge, 'apply must follow the release merge');
+  assert.match(UPDATE_SKILL, /System\/\.dex\/local-only-preservation/);
+  assert.match(UPDATE_SKILL, /cp -- core\/paths\.py "\$DEX_LOCAL_ONLY_RUNTIME\/core\/paths\.py"/);
+});
+
+test('primary rollback captures newest local-only copies before reset and rewinds afterward', () => {
+  const block = bashBlockContaining(ROLLBACK_SKILL, 'DEX_ROLLBACK_TARGET="backup-before-v1.3.0"');
+  const capture = block.indexOf('preserve_local_only_paths.py" capture-rewind');
+  const reset = block.indexOf('git reset --hard');
+  const rewind = block.indexOf('preserve_local_only_paths.py" rewind');
+  assert.ok(capture !== -1 && capture < reset, 'rewind capture must precede hard reset');
+  assert.ok(rewind > reset, 'rewind must follow hard reset and user-data restoration');
+  assert.match(block, /System\/Session_Learnings\/2026-01-29\.md/);
+  assert.match(block, /System\/Session_Learnings\/2026-01-30\.md/);
+  assert.doesNotMatch(block, /\[ -f "\$DEX_LOCAL_ONLY_JOURNAL\/journal\.json" \]/);
+});
+
 test('rollback manifest cleanup removes newer core files but never user data', (t) => {
   const repo = fs.mkdtempSync(path.join(os.tmpdir(), 'dex-manifest-cleanup-'));
   t.after(() => fs.rmSync(repo, { recursive: true, force: true }));
@@ -276,6 +298,14 @@ function setupProtectedResetRepo(t) {
   const rollbackCollision = path.join(repo, '04-Projects', 'old-only.md');
   fs.writeFileSync(rollbackCollision, 'old release version\n');
   fs.writeFileSync(path.join(repo, 'core.txt'), 'backup core\n');
+  fs.mkdirSync(path.join(repo, '.claude'), { recursive: true });
+  fs.writeFileSync(path.join(repo, '.claude', 'keep'), 'fixture\n');
+  fs.writeFileSync(path.join(repo, 'package.json'), '{"version":"1.61.0"}\n');
+  fs.writeFileSync(path.join(repo, 'System', 'trusted-mcps.yaml'), 'trusted_mcps: {}\n');
+  fs.writeFileSync(
+    path.join(repo, 'System', '.local-only-preservation-transition.json'),
+    '{"schema_version":1,"phase":"bootstrap-v1","release_version":"1.61.0"}\n',
+  );
   fs.writeFileSync(
     path.join(repo, '.gitignore'),
     ['00-Inbox/', '01-Quarter_Goals/', '02-Week_Priorities/', '03-Tasks/',
@@ -298,6 +328,128 @@ function setupProtectedResetRepo(t) {
   return { repo, protectedFiles, rollbackCollision };
 }
 
+function rollbackTestEnv(repo) {
+  const journal = path.join(repo, 'System', '.dex', 'local-only-preservation', 'journal');
+  const runtimeScript = path.join(
+    repo,
+    'System',
+    '.dex',
+    'local-only-preservation',
+    'runtime',
+    'core',
+    'migrations',
+    'preserve_local_only_paths.py',
+  );
+  fs.mkdirSync(journal, { recursive: true });
+  fs.mkdirSync(path.dirname(runtimeScript), { recursive: true });
+  fs.writeFileSync(path.join(journal, 'journal.json'), '{}\n');
+  fs.writeFileSync(runtimeScript, '# fixture; intercepted by fake python3\n');
+  const bin = fs.mkdtempSync(path.join(os.tmpdir(), 'dex-fake-python-'));
+  fs.writeFileSync(
+    path.join(bin, 'python3'),
+    `#!/usr/bin/python3
+import json, os, sys
+if len(sys.argv) > 2 and os.environ.get('DEX_TEST_ACTION_LOG'):
+    with open(os.environ['DEX_TEST_ACTION_LOG'], 'a', encoding='utf-8') as handle:
+        handle.write(sys.argv[2] + '\\n')
+if len(sys.argv) > 1 and sys.argv[1] == '-c':
+    os.execv('/usr/bin/python3', ['/usr/bin/python3', *sys.argv[1:]])
+if len(sys.argv) > 2 and sys.argv[2] == 'transition':
+    args = sys.argv[3:]
+    repo = args[args.index('--repo') + 1]
+    transition_path = args[args.index('--transition') + 1] if '--transition' in args else os.path.join(repo, 'System/.local-only-preservation-transition.json')
+    package_path = args[args.index('--package') + 1] if '--package' in args else os.path.join(repo, 'package.json')
+    transition = json.load(open(transition_path, encoding='utf-8'))
+    package = json.load(open(package_path, encoding='utf-8'))
+    if set(transition) != {'schema_version', 'phase', 'release_version'} or transition['schema_version'] != 1:
+        raise SystemExit(1)
+    if transition['phase'] not in {'bootstrap-v1', 'untrack-v1'} or transition['release_version'] != package.get('version'):
+        raise SystemExit(1)
+    print(transition['phase'])
+raise SystemExit(0)
+`,
+    { mode: 0o755 },
+  );
+  return { ...process.env, PATH: `${bin}:${process.env.PATH}` };
+}
+
+test('rollback validates present target transition metadata and only falls back when absent', () => {
+  for (const marker of [
+    'DEX_ROLLBACK_TARGET="backup-before-v1.3.0"',
+    'DEX_ROLLBACK_TARGET="backup-before-v1.1.0"',
+  ]) {
+    const block = bashBlockContaining(ROLLBACK_SKILL, marker);
+    assert.match(block, /git cat-file -e[\s\S]*System\/\.local-only-preservation-transition\.json/);
+    assert.match(block, /preserve_local_only_paths\.py" transition/);
+    assert.match(block, /--transition "\$DEX_TARGET_TRANSITION"/);
+    assert.match(block, /--package "\$DEX_TARGET_PACKAGE"/);
+    assert.doesNotMatch(block, /local-only-preservation-transition\.json"[^\n]*\| python3/);
+  }
+});
+
+test('rollback blocks malformed present target metadata instead of classifying it as legacy', (t) => {
+  const { repo } = setupProtectedResetRepo(t);
+  const current = runGit(repo, ['rev-parse', 'HEAD']);
+  runGit(repo, ['checkout', '-q', 'backup-before-v1.3.0']);
+  fs.writeFileSync(
+    path.join(repo, 'System', '.local-only-preservation-transition.json'),
+    '{"schema_version":999,"phase":"bootstrap-v1","release_version":"1.61.0"}\n',
+  );
+  runGit(repo, ['add', '-f', 'System/.local-only-preservation-transition.json']);
+  runGit(repo, ['commit', '-qm', 'malformed transition target']);
+  runGit(repo, ['tag', '-f', 'backup-before-v1.3.0']);
+  runGit(repo, ['checkout', '-q', current]);
+
+  const block = bashBlockContaining(ROLLBACK_SKILL, 'DEX_ROLLBACK_TARGET="backup-before-v1.3.0"');
+  const result = spawnSync('/bin/bash', ['-c', block], {
+    cwd: repo,
+    encoding: 'utf-8',
+    env: rollbackTestEnv(repo),
+  });
+
+  assert.notEqual(result.status, 0, result.stdout + result.stderr);
+  assert.equal(runGit(repo, ['rev-parse', 'HEAD']), current);
+});
+
+test('update recovery skips rewind for validated untracked reset targets', () => {
+  const recoveryBlocks = bashBlocks(UPDATE_SKILL).filter((block) =>
+    block.includes('DEX_UPDATE_RESET_TARGET="backup-before-v1.3.0"'),
+  );
+  assert.equal(recoveryBlocks.length, 2);
+  for (const block of recoveryBlocks) {
+    assert.match(block, /preserve_local_only_paths\.py" transition/);
+    assert.match(block, /bootstrap-v1\|bootstrap-legacy\)[\s\S]*preserve_local_only_paths\.py" rewind/);
+    assert.match(block, /untrack-v1\|untrack-legacy\) ;;/);
+  }
+});
+
+test('failed update recovery with an applied journal skips rewind when backup stays untracked', (t) => {
+  const { repo } = setupProtectedResetRepo(t);
+  fs.writeFileSync(
+    path.join(repo, 'System', '.local-only-preservation-transition.json'),
+    '{"schema_version":1,"phase":"untrack-v1","release_version":"1.61.0"}\n',
+  );
+  runGit(repo, ['add', '-f', 'System/.local-only-preservation-transition.json']);
+  runGit(repo, ['commit', '-qm', 'installed untrack transition']);
+  runGit(repo, ['tag', '-f', 'backup-before-v1.3.0']);
+  fs.writeFileSync(path.join(repo, 'core.txt'), 'failed update core\n');
+  runGit(repo, ['add', 'core.txt']);
+  runGit(repo, ['commit', '-qm', 'failed update state']);
+
+  const actionLog = path.join(repo, 'migration-actions.log');
+  const env = rollbackTestEnv(repo);
+  env.DEX_TEST_ACTION_LOG = actionLog;
+  const block = bashBlockContaining(UPDATE_SKILL, 'DEX_UPDATE_RESET_TARGET="backup-before-v1.3.0"');
+  const result = spawnSync('/bin/bash', ['-c', block], { cwd: repo, encoding: 'utf-8', env });
+
+  assert.equal(result.status, 0, result.stdout + result.stderr);
+  assert.deepEqual(fs.readFileSync(actionLog, 'utf-8').trim().split('\n'), ['transition']);
+  assert.equal(
+    JSON.parse(fs.readFileSync(path.join(repo, 'System/.local-only-preservation-transition.json'), 'utf-8')).phase,
+    'untrack-v1',
+  );
+});
+
 test('the primary rollback block preserves committed, uncommitted, and untracked user data', (t) => {
   const { repo, protectedFiles, rollbackCollision } = setupProtectedResetRepo(t);
 
@@ -315,6 +467,7 @@ test('the primary rollback block preserves committed, uncommitted, and untracked
   const result = spawnSync('/bin/bash', ['-c', rollbackBlock], {
     cwd: repo,
     encoding: 'utf-8',
+    env: rollbackTestEnv(repo),
   });
   assert.equal(
     result.status,
@@ -350,6 +503,7 @@ test('a restore conflict exports both tracked and untracked snapshots and retain
   const result = spawnSync('/bin/bash', ['-c', rollbackBlock], {
     cwd: repo,
     encoding: 'utf-8',
+    env: rollbackTestEnv(repo),
   });
 
   assert.equal(result.status, 2, `stdout:\n${result.stdout}\nstderr:\n${result.stderr}`);

@@ -12,6 +12,8 @@ from core.integrations import task_sync
 from core.mcp import work_server
 from core.paths import TASKS_DIR
 
+REPO_ROOT = Path(__file__).resolve().parents[2]
+
 TEST_PILLARS = {
     "pillar_1": {
         "name": "Product",
@@ -54,6 +56,9 @@ def sync_vault(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Pat
     tasks = tmp_path / TASKS_DIR.name / "Tasks.md"
     integrations.mkdir(parents=True)
     adapters.mkdir(parents=True)
+    (adapters / "run.cjs").write_bytes(
+        (REPO_ROOT / ".claude" / "hooks" / "adapters" / "run.cjs").read_bytes()
+    )
     tasks.parent.mkdir(parents=True)
     _write_tasks(tasks)
 
@@ -113,11 +118,32 @@ def _enable(sync_vault: dict[str, Path], *services: str) -> None:
     env.chmod(0o600)
 
 
+def _write_aliases(sync_vault: dict[str, Path], payload: object) -> None:
+    (sync_vault["adapters"] / "service-aliases.json").write_text(
+        json.dumps(payload) + "\n", encoding="utf-8"
+    )
+
+
 def _install_fake_runner(monkeypatch: pytest.MonkeyPatch, responses: dict) -> list[dict]:
     calls = []
     monkeypatch.setattr(task_sync, "_find_node", lambda: "/fake/node")
 
     def run(command, **kwargs):
+        if command[-2] == "--resolve-adapter":
+            service = command[-1]
+            adapter = "jira" if service == "atlassian" else service
+            return task_sync.subprocess.CompletedProcess(
+                args=command,
+                returncode=0,
+                stdout=json.dumps(
+                    {
+                        "ok": True,
+                        "requested_service": service,
+                        "adapter_service": adapter,
+                    }
+                ),
+                stderr="",
+            )
         service, operation = command[-2:]
         request = json.loads(kwargs["input"])
         calls.append(
@@ -396,6 +422,107 @@ def test_one_service_error_does_not_block_another(sync_vault, monkeypatch):
     assert task_sync._load_state()["good"]["map"] == {
         "task-20260712-006": "good-external-id"
     }
+
+
+def test_atlassian_alias_keeps_stable_config_state_result_and_inbound_identity(
+    sync_vault, monkeypatch
+):
+    _enable(sync_vault, "atlassian")
+    (sync_vault["adapters"] / "atlassian.cjs").unlink()
+    (sync_vault["adapters"] / "jira.cjs").write_text(
+        "module.exports = {};\n", encoding="utf-8"
+    )
+    _write_aliases(sync_vault, {"atlassian": "jira"})
+    task_sync._write_state(_state(atlassian=_service_state()))
+    calls = _install_fake_runner(
+        monkeypatch,
+        {
+            ("atlassian", "get_changes"): [
+                {
+                    "id": "jira-created-id",
+                    "action": "created",
+                    "task": {"title": "Review Jira issue"},
+                }
+            ]
+        },
+    )
+
+    result = task_sync.sync_external_tasks(services=["atlassian"])
+
+    assert set(result) == {"atlassian"}
+    assert set(task_sync._load_state()) == {"atlassian"}
+    assert calls[0]["service"] == "atlassian"
+    assert calls[0]["request"]["config"]["enabled"] is True
+    assert json.loads(sync_vault["inbound"].read_text(encoding="utf-8"))[0][
+        "service"
+    ] == "atlassian"
+
+
+def test_direct_jira_behavior_is_unchanged(sync_vault, monkeypatch):
+    _enable(sync_vault, "jira")
+    _write_aliases(sync_vault, {"atlassian": "jira"})
+    task_sync._write_state(_state(jira=_service_state()))
+    calls = _install_fake_runner(monkeypatch, {("jira", "get_changes"): []})
+
+    result = task_sync.sync_external_tasks(services=["jira"])
+
+    assert result["jira"]["errors"] == []
+    assert calls[0]["service"] == "jira"
+    assert set(task_sync._load_state()) == {"jira"}
+
+
+@pytest.mark.parametrize(
+    "aliases, error",
+    [
+        ({"raw": "[]"}, "must contain an object"),
+        ({"raw": '{"atlassian":"jira","atlassian":"cloud"}'}, "duplicate service alias"),
+        ({"atlassian": "atlassian"}, "self-referential"),
+        ({"atlassian": "../jira"}, "invalid adapter alias"),
+        ({"atlassian": "jira", "jira": "cloud"}, "must be one hop"),
+        ({"atlassian": "jira", "jira": "atlassian"}, "must be one hop"),
+    ],
+)
+def test_bad_aliases_are_structured_visible_failures(
+    sync_vault, monkeypatch, aliases, error
+):
+    _enable(sync_vault, "atlassian")
+    if set(aliases) == {"raw"}:
+        (sync_vault["adapters"] / "service-aliases.json").write_text(
+            aliases["raw"], encoding="utf-8"
+        )
+    else:
+        _write_aliases(sync_vault, aliases)
+
+    def fail_if_called(*_args, **_kwargs):
+        raise AssertionError("invalid alias must fail before adapter execution")
+
+    monkeypatch.setattr(task_sync, "_run_adapter", fail_if_called)
+
+    result = task_sync.sync_external_tasks(services=["atlassian"])
+
+    assert result["atlassian"]["errors"]
+    assert "enabled service 'atlassian'" in result["atlassian"]["errors"][0]
+    assert error in result["atlassian"]["errors"][0].lower()
+
+
+def test_enabled_adapterless_service_returns_corrective_failure_without_state_write(
+    sync_vault, monkeypatch
+):
+    _enable(sync_vault, "adapterless")
+    (sync_vault["adapters"] / "adapterless.cjs").unlink()
+
+    def fail_if_called(*_args, **_kwargs):
+        raise AssertionError("missing adapter must not be silent or execute the runner")
+
+    monkeypatch.setattr(task_sync, "_run_adapter", fail_if_called)
+
+    result = task_sync.sync_external_tasks(services=["adapterless"])
+
+    assert result["adapterless"]["errors"] == [
+        "task-sync adapter configuration error for enabled service 'adapterless': "
+        "Adapter unavailable for requested service 'adapterless': expected 'adapterless.cjs'"
+    ]
+    assert not sync_vault["state"].exists()
 
 
 class TestThingsSync:
