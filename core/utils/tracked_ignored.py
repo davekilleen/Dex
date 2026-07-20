@@ -11,8 +11,6 @@ import subprocess
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
-import yaml
-
 from core.paths import (
     ARCHIVES_DIR,
     AREAS_DIR,
@@ -147,6 +145,8 @@ def _safe_repo_path(value: str) -> bool:
 
 
 def load_exact_policy(path: Path) -> ExactPolicy:
+    import yaml  # lazy: only YAML-parsing paths need pyyaml; JSON-only callers must not require it
+
     try:
         policy_bytes = path.read_bytes()
         payload = yaml.safe_load(policy_bytes)

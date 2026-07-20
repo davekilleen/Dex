@@ -261,6 +261,54 @@ def test_transition_cli_uses_shared_strict_pair_parser(tracked_ignored_repo, tmp
     assert "version does not match package metadata" in capsys.readouterr().out
 
 
+# Program run in a subprocess whose interpreter is forced to lack pyyaml. It reproduces the
+# production dex-update preflight, which runs `python3 ... transition` with a BARE python3 that
+# may not have pyyaml (post-venv-migration installs). The JSON-only transition action must not
+# require pyyaml: yaml is imported lazily inside load_exact_policy, which transition never calls.
+_NO_PYYAML_TRANSITION_PROGRAM = """
+import sys
+
+
+class _BlockYaml:
+    def find_spec(self, name, path=None, target=None):
+        if name == "yaml" or name.startswith("yaml."):
+            raise ImportError("No module named 'yaml' (blocked to reproduce bare python3)")
+        return None
+
+
+sys.meta_path.insert(0, _BlockYaml())
+
+try:
+    import yaml  # noqa: F401
+except ImportError:
+    pass
+else:
+    raise SystemExit("yaml was importable; the no-pyyaml precondition is not met")
+
+from core.migrations import preserve_local_only_paths as migration
+
+repo = sys.argv[1]
+code = migration.main(["transition", "--repo", repo])
+sys.exit(0 if code == 0 else 3)
+"""
+
+
+def test_transition_action_succeeds_without_pyyaml(tracked_ignored_repo):
+    """dex-update's preflight runs the JSON-only `transition` action with a bare python3 that
+    may lack pyyaml; it must not import yaml at module load or the whole update aborts (#148)."""
+    env = dict(os.environ)
+    env["PYTHONPATH"] = os.pathsep.join(filter(None, [str(ROOT), env.get("PYTHONPATH", "")]))
+    result = subprocess.run(
+        [sys.executable, "-c", _NO_PYYAML_TRANSITION_PROGRAM, str(tracked_ignored_repo)],
+        capture_output=True,
+        text=True,
+        check=False,
+        env=env,
+    )
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip().splitlines()[-1] == "bootstrap-v1"
+
+
 def test_direct_legacy_rewind_rejects_present_malformed_transition_before_policy_or_git(
     tracked_ignored_repo, tmp_path, monkeypatch, capsys
 ):
