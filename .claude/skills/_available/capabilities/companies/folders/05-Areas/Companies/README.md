@@ -7,4 +7,4 @@ Use this directory for:
 - account strategy notes
 - relationship and opportunity context
 
-This directory is part of the core vault path contract and must exist.
+This directory is provisioned only when the Companies room is enabled.

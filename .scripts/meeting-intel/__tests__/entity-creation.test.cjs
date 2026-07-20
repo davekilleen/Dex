@@ -98,7 +98,9 @@ test('matching collision is adopted and a mismatched collision gets a domain suf
 test('auto mode creates a canonical company page from two observed contacts', () => withVault(vault => {
   const lines = [];
   const result = processEntityCreation(
-    companyMeetings(), { entity_creation: { mode: 'auto' } }, line => lines.push(line),
+    companyMeetings(), {
+      entity_creation: { mode: 'auto' }, capabilities: { companies: { enabled: true } },
+    }, line => lines.push(line),
   );
   assert.equal(result.companies_created.length, 1);
   const companyPath = path.join(vault, '05-Areas', 'Companies', 'Acme.md');
@@ -110,19 +112,22 @@ test('auto mode creates a canonical company page from two observed contacts', ()
 
 test('freemail, internal, and unknown-location domains never create companies', () => {
   withVault(vault => {
-    const result = processEntityCreation(companyMeetings('gmail.com'), { entity_creation: { mode: 'auto' } });
+    const result = processEntityCreation(companyMeetings('gmail.com'), {
+      entity_creation: { mode: 'auto' }, capabilities: { companies: { enabled: true } },
+    });
     assert.equal(result.companies_created.length, 0);
     assert.equal(fs.existsSync(path.join(vault, '05-Areas', 'Companies')), false);
   });
   withVault(() => {
     const result = processEntityCreation(companyMeetings('dex.test'), {
       work_email: 'owner@dex.test', entity_creation: { mode: 'auto' },
+      capabilities: { companies: { enabled: true } },
     });
     assert.equal(result.companies_created.length, 0);
   });
   withVault(() => {
     const result = processEntityCreation(companyMeetings('acme.com', 'unknown'), {
-      entity_creation: { mode: 'auto' },
+      entity_creation: { mode: 'auto' }, capabilities: { companies: { enabled: true } },
     });
     assert.equal(result.companies_created.length, 0);
   });
@@ -133,25 +138,40 @@ test('existing company domain wins and a name collision uses a domain suffix', (
     const directory = path.join(vault, '05-Areas', 'Companies');
     fs.mkdirSync(directory, { recursive: true });
     fs.writeFileSync(path.join(directory, 'Existing.md'), renderCompanyPage('Existing', ['acme.com']));
-    const result = processEntityCreation(companyMeetings(), { entity_creation: { mode: 'auto' } });
+    const result = processEntityCreation(companyMeetings(), {
+      entity_creation: { mode: 'auto' }, capabilities: { companies: { enabled: true } },
+    });
     assert.equal(result.companies_created.length, 0);
   });
   withVault(vault => {
     const directory = path.join(vault, '05-Areas', 'Companies');
     fs.mkdirSync(directory, { recursive: true });
     fs.writeFileSync(path.join(directory, 'Acme.md'), renderCompanyPage('Acme Other', ['other.com']));
-    const result = processEntityCreation(companyMeetings(), { entity_creation: { mode: 'auto' } });
+    const result = processEntityCreation(companyMeetings(), {
+      entity_creation: { mode: 'auto' }, capabilities: { companies: { enabled: true } },
+    });
     assert.equal(path.basename(result.companies_created[0].filePath), 'Acme_(acme.com).md');
   });
 });
 
 test('suggest mode writes one deduplicated company suggestion', () => withVault(() => {
-  const first = processEntityCreation(companyMeetings(), { entity_creation: { mode: 'suggest' } });
-  const second = processEntityCreation(companyMeetings(), { entity_creation: { mode: 'suggest' } });
+  const profile = {
+    entity_creation: { mode: 'suggest' }, capabilities: { companies: { enabled: true } },
+  };
+  const first = processEntityCreation(companyMeetings(), profile);
+  const second = processEntityCreation(companyMeetings(), profile);
   assert.equal(first.companies_suggested.length, 1);
   assert.equal(second.companies_suggested.length, 1);
   const companies = loadSuggestions().suggestions.filter(item => item.kind === 'company');
   assert.equal(companies.length, 1);
   assert.deepEqual(companies[0].domains, ['acme.com']);
   assert.equal(companies[0].reason, '2 contacts across 2 meetings');
+}));
+
+test('companies room off records people but neither creates nor suggests companies', () => withVault(vault => {
+  const result = processEntityCreation(companyMeetings(), { entity_creation: { mode: 'auto' } });
+  assert.equal(result.created.length, 2);
+  assert.deepEqual(result.companies_created, []);
+  assert.deepEqual(result.companies_suggested, []);
+  assert.equal(fs.existsSync(path.join(vault, '05-Areas', 'Companies')), false);
 }));

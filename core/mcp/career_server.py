@@ -84,17 +84,22 @@ if _repo_root not in sys.path:
 from core.paths import (
     CAREER_DIR,
     EVIDENCE_DIR,
+    USER_PROFILE_FILE,
 )
 from core.paths import (
     VAULT_ROOT as BASE_DIR,
 )
 from core.utils.feature_status import feature_status
+from core import capabilities as capability_rooms
 
 LADDER_FILE = CAREER_DIR / 'Career_Ladder.md'
 CAREER_EVIDENCE_FEATURE = "Career evidence"
 CAREER_LADDER_FEATURE = "Career ladder"
 CAREER_TRACKING_OFF_MESSAGE = (
     "Career tracking isn't set up yet — run /career-setup when you want it."
+)
+CAREER_ROOM_OFF_MESSAGE = (
+    "The Career room is off. Turn it on with /manage-capabilities when you want it."
 )
 
 # Initialize the MCP server
@@ -310,6 +315,13 @@ async def handle_call_tool(
     """Handle tool calls"""
     
     arguments = arguments or {}
+
+    if not capability_rooms.enabled("career", profile_path=USER_PROFILE_FILE):
+        return _feature_response(
+            "Career room",
+            "off",
+            CAREER_ROOM_OFF_MESSAGE,
+        )
     
     try:
         if name == "scan_evidence":

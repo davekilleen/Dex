@@ -131,6 +131,8 @@ from core.paths import (
 )
 from core.utils.company_domains import registrable_domain
 from core.utils.entity_pages import parse_entity_page, render_person_page
+from core.utils.feature_status import feature_status
+from core import capabilities as capability_rooms
 
 
 def get_tasks_file() -> Path:
@@ -2093,6 +2095,13 @@ def create_company_page(name: str, website: str = '', industry: str = '',
                        size: str = '', stage: str = 'Prospect', 
                        domains: List[str] = None) -> Dict[str, Any]:
     """Create a new company page from template"""
+
+    if not capability_rooms.enabled("companies", profile_path=USER_PROFILE_FILE):
+        return feature_status(
+            "Companies room",
+            "off",
+            "The Companies room is off. Turn it on with /manage-capabilities when you want it.",
+        )
     
     # Ensure directory exists
     COMPANIES_DIR.mkdir(parents=True, exist_ok=True)
@@ -2472,6 +2481,12 @@ def update_goal_in_file(goal_id: str, updates: Dict[str, Any]) -> bool:
 
 def create_quarterly_goal_in_file(goal_data: Dict[str, Any]) -> Dict[str, Any]:
     """Create a new quarterly goal in 01-Quarter_Goals/Quarter_Goals.md"""
+    if not capability_rooms.enabled("quarter_goals", profile_path=USER_PROFILE_FILE):
+        return feature_status(
+            "Quarter Goals room",
+            "off",
+            "The Quarter Goals room is off. Turn it on with /manage-capabilities when you want it.",
+        )
     goals_file = QUARTER_GOALS_FILE
     
     # Ensure file exists
@@ -4251,12 +4266,42 @@ WRITE_TOOLS = {
     "build_people_index", "build_company_index", "create_person", "rebuild_meeting_cache", "capture_skill_rating",
 }
 
+CAPABILITY_TOOL_ROOMS = {
+    "companies": {
+        "refresh_company", "list_companies", "create_company", "build_company_index",
+    },
+    "quarter_goals": {
+        "confirm_goal_link", "create_quarterly_goal", "get_quarterly_goals",
+        "get_goal_status", "update_goal_progress", "check_goal_alignment",
+        "get_quarter_velocity", "migrate_quarterly_goals",
+        "get_weekly_planning_context",
+    },
+}
+
+
+def _capability_tool_off(name: str) -> Dict[str, Any] | None:
+    """Return the standard off payload before a room tool can read or write."""
+    for room, tools in CAPABILITY_TOOL_ROOMS.items():
+        if name in tools and not capability_rooms.enabled(
+            room, profile_path=USER_PROFILE_FILE
+        ):
+            label = room.replace("_", " ").title()
+            return feature_status(
+                f"{label} room",
+                "off",
+                f"The {label} room is off. Turn it on with /manage-capabilities when you want it.",
+            )
+    return None
+
 @app.call_tool()
 async def handle_call_tool(
     name: str, arguments: dict | None
 ) -> list[types.TextContent | types.ImageContent | types.EmbeddedResource]:
     """Handle tool calls"""
     try:
+        room_off = _capability_tool_off(name)
+        if room_off is not None:
+            return [types.TextContent(type="text", text=json.dumps(room_off, indent=2))]
         result = await _handle_call_tool_inner(name, arguments)
 
         # Refresh QMD search index after any write operation (non-blocking)
@@ -5599,14 +5644,28 @@ async def _handle_call_tool_inner(
         return [types.TextContent(type="text", text=json.dumps(result, indent=2, cls=DateTimeEncoder))]
     
     elif name == "get_work_summary":
-        # Get current quarter info
-        quarter_info = get_quarter_info()
-        quarter = quarter_info['quarter']
-        
-        # Get quarterly goals
-        goals_file = QUARTER_GOALS_FILE
-        
-        goals = parse_quarterly_goals(goals_file) if goals_file.exists() else []
+        quarter_room_enabled = capability_rooms.enabled(
+            "quarter_goals", profile_path=USER_PROFILE_FILE
+        )
+        if quarter_room_enabled:
+            quarter_info = get_quarter_info()
+            quarter = quarter_info['quarter']
+            goals_file = QUARTER_GOALS_FILE
+            goals = parse_quarterly_goals(goals_file) if goals_file.exists() else []
+            quarterly_summary = {
+                "total_goals": len(goals),
+                "avg_progress": sum(g['progress'] for g in goals) / len(goals) if goals else 0,
+                "goals": goals,
+            }
+        else:
+            quarter_info = None
+            quarter = None
+            goals = []
+            quarterly_summary = feature_status(
+                "Quarter Goals room",
+                "off",
+                "The Quarter Goals room is off. Turn it on with /manage-capabilities when you want it.",
+            )
         
         # Get weekly priorities
         priorities_file = get_week_priorities_file()
@@ -5636,11 +5695,7 @@ async def _handle_call_tool_inner(
         result = {
             "quarter": quarter,
             "quarter_info": quarter_info,
-            "quarterly_summary": {
-                "total_goals": len(goals),
-                "avg_progress": sum(g['progress'] for g in goals) / len(goals) if goals else 0,
-                "goals": goals
-            },
+            "quarterly_summary": quarterly_summary,
             "weekly_summary": {
                 "total_priorities": len(priorities),
                 "completed": sum(1 for p in priorities if p.get('completed')),

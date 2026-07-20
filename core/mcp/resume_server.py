@@ -104,18 +104,20 @@ from core.paths import (
     EVIDENCE_DIR,
     RESUME_DIR,
     SESSIONS_DIR,
+    USER_PROFILE_FILE,
 )
 from core.paths import (
     VAULT_ROOT as BASE_DIR,
 )
 from core.utils.feature_status import feature_status
+from core import capabilities as capability_rooms
 
 CAREER_TRACKING_OFF_MESSAGE = (
     "Career tracking isn't set up yet — run /career-setup when you want it."
 )
-
-# Ensure directories exist
-SESSIONS_DIR.mkdir(parents=True, exist_ok=True)
+CAREER_ROOM_OFF_MESSAGE = (
+    "The Career room is off. Turn it on with /manage-capabilities when you want it."
+)
 
 # In-memory session storage
 sessions: Dict[str, ResumeSession] = {}
@@ -137,6 +139,7 @@ def generate_session_id() -> str:
 def auto_save_session(session: ResumeSession):
     """Automatically save session to disk after state changes."""
     session.last_modified = datetime.now().isoformat()
+    SESSIONS_DIR.mkdir(parents=True, exist_ok=True)
     
     session_file = SESSIONS_DIR / f"{session.session_id}.json"
     
@@ -462,6 +465,14 @@ async def handle_call_tool(
     """Handle tool calls"""
     
     arguments = arguments or {}
+
+    if not capability_rooms.enabled("career", profile_path=USER_PROFILE_FILE):
+        payload = feature_status(
+            "Career room",
+            "off",
+            CAREER_ROOM_OFF_MESSAGE,
+        )
+        return [types.TextContent(type="text", text=json.dumps(payload, indent=2))]
     
     try:
         if name == "start_session":

@@ -2,6 +2,8 @@
 
 const fs = require('fs');
 const path = require('path');
+const yaml = require('js-yaml');
+const portableContract = require('../../../packages/dex-contracts/dist/portable-vault.contract.json');
 const { parseEntityPage, renderCompanyPage, renderPersonPage } = require('../../lib/entity-pages.cjs');
 const { getInternalDomains } = require('./attendees.cjs');
 const { companyNameFromDomain, isFreemail, registrableDomain } = require('./company-domains.cjs');
@@ -19,6 +21,28 @@ const {
 function creationMode(profile) {
   const mode = profile?.entity_creation?.mode;
   return ['auto', 'suggest', 'off'].includes(mode) ? mode : 'suggest';
+}
+
+function capabilityEnabled(profile, room) {
+  const definition = portableContract.capabilities?.[room];
+  if (!definition) return false;
+  const explicit = profile?.capabilities?.[room]?.enabled;
+  if (typeof explicit === 'boolean') return explicit;
+  if (typeof definition.config === 'string') {
+    const legacy = profile?.[definition.config]?.enabled;
+    if (typeof legacy === 'boolean') return legacy;
+  }
+  return definition.default_enabled === true;
+}
+
+function loadProfile() {
+  try {
+    const profilePath = runtimePaths().USER_PROFILE_FILE;
+    const parsed = yaml.load(fs.readFileSync(profilePath, 'utf8'));
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+  } catch (_) {
+    return {};
+  }
 }
 
 function emptySuggestions() {
@@ -191,7 +215,10 @@ function companyPageForDomain(domain) {
   return null;
 }
 
-function createOrAdoptCompany(domain) {
+function createOrAdoptCompany(domain, profile = null) {
+  if (!capabilityEnabled(profile || loadProfile(), 'companies')) {
+    throw new Error('Companies room is off');
+  }
   const paths = runtimePaths();
   const existing = companyPageForDomain(domain);
   if (existing) return { filePath: existing, created: false, adopted: true };
@@ -282,6 +309,12 @@ function processEntityCreation(meetings, profile = {}, logger = () => {}) {
   }
   const companiesCreated = [];
   const companiesSuggested = [];
+  if (!capabilityEnabled(profile, 'companies')) {
+    return {
+      mode, created, suggested, companies_created: companiesCreated,
+      companies_suggested: companiesSuggested, errors,
+    };
+  }
   const companyState = loadState(paths.CONTACTS_STATE_FILE);
   for (const [domain, stats] of qualifiedCompanyDomains(companyState, profile)) {
     try {
@@ -295,7 +328,7 @@ function processEntityCreation(meetings, profile = {}, logger = () => {}) {
       }
       const companyName = companyNameFromDomain(domain);
       if (mode === 'auto') {
-        const page = createOrAdoptCompany(domain);
+        const page = createOrAdoptCompany(domain, profile);
         const pagePath = relativeVaultPath(page.filePath, paths.VAULT_ROOT);
         for (const contactId of stats.contacts) {
           updateContact(paths.CONTACTS_STATE_FILE, contactId, { company_page: pagePath });
@@ -324,6 +357,7 @@ function processEntityCreation(meetings, profile = {}, logger = () => {}) {
 module.exports = {
   createOrAdoptPerson,
   createOrAdoptCompany,
+  capabilityEnabled,
   creationMode,
   loadSuggestions,
   markSuggestionAccepted,
