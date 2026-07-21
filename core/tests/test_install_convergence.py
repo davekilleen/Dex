@@ -7,7 +7,6 @@ import shutil
 import subprocess
 from pathlib import Path
 
-
 REPO_ROOT = Path(__file__).resolve().parents[2]
 MIGRATOR = "core/migrations/v1-to-v2-brain-vault-split.cjs"
 

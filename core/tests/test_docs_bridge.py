@@ -6,7 +6,6 @@ from pathlib import Path
 
 from core import portable_contract
 
-
 REPO_ROOT = Path(__file__).resolve().parents[2]
 BRIDGE_GUIDES = (
     "Background_Processing_Guide.md",
