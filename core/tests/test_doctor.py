@@ -1,5 +1,6 @@
 """Contract tests for the /dex-doctor collector."""
 
+import hashlib
 import json
 import os
 import plistlib
@@ -12,6 +13,8 @@ from pathlib import Path
 
 import pytest
 
+from core.lifecycle.catalog import with_catalog_identity
+from core.tests.lifecycle_test_helpers import SOURCE_COMMIT, write_file, write_manifest
 from core.utils import doctor, release_channel
 
 DOCTOR_PATH = Path(__file__).resolve().parents[1] / "utils" / "doctor.py"
@@ -24,6 +27,8 @@ QUICK_IDS = [
     "brain.git",
     "vault.auto-commit",
     "topology.migration-pending",
+    "release.catalog",
+    "adoption.plan",
     "smoke.history",
     "mcp.registered",
     "mcp.orphans",
@@ -140,6 +145,51 @@ def _write_entity_probe_files(context, *, mode="auto", unresolved=None):
     (context.vault_root / "System" / "People_Index.json").write_text(json.dumps({
         "built_at": NOW.isoformat(),
     }))
+
+
+def _write_release_catalog(context, *, content=b"release skill\n"):
+    item_path = ".claude/skills/fixture-item/SKILL.md"
+    manifest = write_manifest(context.vault_root, [item_path])
+    write_file(context.vault_root, item_path, content)
+    document = with_catalog_identity(
+        {
+            "catalog_version": 1,
+            "release": {
+                "version": "1.64.0",
+                "channel": "release",
+                "immutable_distribution_tag": "dist/release/v1.64.0-0123456",
+                "source_commit": SOURCE_COMMIT,
+                "manifest": {
+                    "path": "System/.installed-files.manifest",
+                    "sha256": hashlib.sha256(manifest).hexdigest(),
+                },
+            },
+            "items": [
+                {
+                    "id": "fixture-item",
+                    "kind": "skill",
+                    "version": "1.0.0",
+                    "files": [
+                        {
+                            "path": item_path,
+                            "sha256": hashlib.sha256(content).hexdigest(),
+                            "ownership_class": "brain",
+                        }
+                    ],
+                    "dependencies": [],
+                    "capabilities": [],
+                    "rewind": {
+                        "acknowledgement_required": True,
+                        "token": "rewind:fixture-item@1.0.0",
+                    },
+                }
+            ],
+            "integrity": {"catalog_sha256": "0" * 64, "signatures": []},
+        }
+    )
+    path = context.vault_root / "System/.release-catalog.json"
+    path.write_text(json.dumps(document), encoding="utf-8")
+    return path
 
 
 def _tree_snapshot(root):
@@ -303,6 +353,88 @@ def test_registry_ids_match_the_approved_spec():
     assert [definition.id for definition in doctor.QUICK_CHECKS] == QUICK_IDS
     assert [definition.id for definition in doctor.DEEP_CHECKS] == DEEP_IDS
     assert doctor.VERDICTS == frozenset({"OK", "OFF", "BROKEN", "UNKNOWN"})
+
+
+def test_release_catalog_probe_is_calmly_off_for_older_installs(context):
+    result = doctor._probe_release_catalog(context)
+
+    assert result.verdict == "OFF"
+    assert "normal for older Dex releases" in result.detail
+
+
+def test_release_catalog_probe_reports_valid_version_without_writing(context):
+    _write_release_catalog(context)
+    before = _tree_snapshot(context.vault_root)
+
+    result = doctor._probe_release_catalog(context)
+
+    assert result.verdict == "OK"
+    assert "1.64.0" in result.detail
+    assert _tree_snapshot(context.vault_root) == before
+
+
+def test_release_catalog_probe_reports_corruption_as_broken(context):
+    path = context.vault_root / "System/.release-catalog.json"
+    path.write_text("{not json", encoding="utf-8")
+
+    result = doctor._probe_release_catalog(context)
+
+    assert result.verdict == "BROKEN"
+    assert "cannot be parsed" in result.detail
+
+
+def test_release_catalog_probe_reports_non_utf8_corruption_as_broken(context):
+    path = context.vault_root / "System/.release-catalog.json"
+    path.write_bytes(b"\xff")
+
+    result = doctor._probe_release_catalog(context)
+
+    assert result.verdict == "BROKEN"
+    assert "codec can't decode" in result.detail
+
+
+def test_adoption_plan_probe_summarizes_valid_catalog_in_memory(context):
+    _write_release_catalog(context)
+    before = _tree_snapshot(context.vault_root)
+
+    result = doctor._probe_adoption_plan(context)
+
+    assert result.verdict == "OK"
+    assert result.detail == "1 adoptable / 0 adopted / 0 conflicts"
+    assert _tree_snapshot(context.vault_root) == before
+
+
+def test_adoption_plan_probe_is_off_without_a_release_catalog(context):
+    result = doctor._probe_adoption_plan(context)
+
+    assert result.verdict == "OFF"
+    assert "older Dex release" in result.detail
+
+
+def test_adoption_plan_probe_maps_internal_failures_to_unknown(monkeypatch, context):
+    _write_release_catalog(context)
+
+    def explode(*_args, **_kwargs):
+        raise RuntimeError("inventory exploded")
+
+    monkeypatch.setattr(doctor, "build_inventory", explode)
+
+    result = doctor._probe_adoption_plan(context)
+
+    assert result.verdict == "UNKNOWN"
+    assert "inventory exploded" in result.detail
+
+
+def test_corrupt_catalog_never_raises_out_of_doctor(monkeypatch, context):
+    (context.vault_root / "System/.release-catalog.json").write_text(
+        "{not json", encoding="utf-8"
+    )
+    _stub_probes(monkeypatch, exclude={"release.catalog", "adoption.plan"})
+
+    report = doctor.collect(context=context)
+
+    assert _check(report, "release.catalog")["verdict"] == "BROKEN"
+    assert _check(report, "adoption.plan")["verdict"] == "UNKNOWN"
 
 
 def _write_split_topology(context, *, installed: str = "a" * 40) -> Path:

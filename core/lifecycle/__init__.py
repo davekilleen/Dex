@@ -5,5 +5,14 @@ plans. Mutation remains owned by :mod:`core.transaction` in later chunks.
 """
 
 from core.lifecycle.model import AdoptionState, CatalogItem, ReleaseCatalog
+from core.lifecycle.plan import AdoptionPlan, AdoptionPlanItem, PlannedAction, build_adoption_plan
 
-__all__ = ["AdoptionState", "CatalogItem", "ReleaseCatalog"]
+__all__ = [
+    "AdoptionPlan",
+    "AdoptionPlanItem",
+    "AdoptionState",
+    "CatalogItem",
+    "PlannedAction",
+    "ReleaseCatalog",
+    "build_adoption_plan",
+]

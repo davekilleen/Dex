@@ -27,6 +27,9 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from core import paths, portable_contract
+from core.lifecycle.catalog import CatalogError, load_catalog
+from core.lifecycle.inventory import build_inventory
+from core.lifecycle.plan import build_adoption_plan
 from core.utils import preflight, release_channel
 
 VERDICTS = frozenset({"OK", "OFF", "BROKEN", "UNKNOWN"})
@@ -36,6 +39,7 @@ MISSING_PACKAGES_DETAIL = (
     "Python packages not installed — run /dex-update (or pip install -r requirements.txt) "
     "then re-run /dex-doctor"
 )
+RELEASE_CATALOG_PATH = "System/.release-catalog.json"
 
 
 @dataclass(frozen=True)
@@ -168,6 +172,8 @@ QUICK_CHECKS = (
         "Brain/vault topology",
         "_probe_migration_pending",
     ),
+    CheckDefinition("release.catalog", "Release catalog", "_probe_release_catalog"),
+    CheckDefinition("adoption.plan", "Adoption plan", "_probe_adoption_plan"),
     CheckDefinition("smoke.history", "Nightly smoke results", "_probe_smoke_history"),
     CheckDefinition("mcp.registered", "MCP registration", "_probe_mcp_registered"),
     CheckDefinition("mcp.orphans", "MCP server registration", "_probe_mcp_orphans"),
@@ -524,6 +530,50 @@ def _probe_vault_configs(context: DoctorContext) -> ProbeResult:
             Heal(tier=3, action="Repair the named configuration file by hand.", applied=False),
         )
     return ProbeResult("OK", "user-profile.yaml, pillars.yaml, and .claude/settings.json all parse")
+
+
+def _release_catalog_path(context: DoctorContext) -> Path:
+    return context.vault_root / RELEASE_CATALOG_PATH
+
+
+def _probe_release_catalog(context: DoctorContext) -> ProbeResult:
+    """Validate the installed release catalog without changing the vault."""
+    catalog_path = _release_catalog_path(context)
+    if not os.path.lexists(catalog_path):
+        return ProbeResult(
+            "OFF",
+            "No release catalog is installed; this is normal for older Dex releases",
+        )
+    try:
+        catalog = load_catalog(catalog_path, release_root=context.vault_root)
+    except (CatalogError, UnicodeError) as error:
+        return ProbeResult("BROKEN", f"The installed release catalog is invalid: {_one_line(error)}")
+    return ProbeResult(
+        "OK",
+        f"Release catalog {catalog.release.version} is valid ({len(catalog.items)} items)",
+    )
+
+
+def _probe_adoption_plan(context: DoctorContext) -> ProbeResult:
+    """Build and summarize the adoption plan entirely in memory."""
+    catalog_path = _release_catalog_path(context)
+    if not os.path.lexists(catalog_path):
+        return ProbeResult(
+            "OFF",
+            "Adoption planning is unavailable on this older Dex release because no release catalog is installed",
+        )
+    try:
+        catalog = load_catalog(catalog_path, release_root=context.vault_root)
+        inventory = build_inventory(context.vault_root, catalog=catalog)
+        plan = build_adoption_plan(catalog, inventory)
+        counts = plan.counts
+        return ProbeResult(
+            "OK",
+            f"{counts['adopt']} adoptable / {counts['already-adopted']} adopted / "
+            f"{counts['conflict']} conflicts",
+        )
+    except Exception as error:
+        return ProbeResult("UNKNOWN", f"The adoption plan could not be built: {_one_line(error)}")
 
 
 def _mcp_config_path(context: DoctorContext) -> Path:
