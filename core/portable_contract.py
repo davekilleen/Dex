@@ -265,6 +265,8 @@ RULES: tuple[Rule, ...] = (
        "legacy-tracked runtime marker"),
     _r("runtime-adoption-receipts", "System/.dex/adoptions", "dir", "runtime",
        "post-commit lifecycle receipts; local runtime evidence, never shipped"),
+    _r("runtime-lifecycle-ledger", "System/.dex/ledger", "dir", "runtime",
+       "immutable local lifecycle events and rebuildable state; never shipped or updated"),
     _r("runtime-dex-dir", "System/.dex", "dir", "runtime"),
     _r("runtime-onboarding", "System/.onboarding", "dir", "runtime"),
     _r("runtime-onboarding-marker", "System/.onboarding-complete", "file", "runtime"),

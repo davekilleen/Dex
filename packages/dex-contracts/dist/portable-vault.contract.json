@@ -472,6 +472,13 @@
       "note": "post-commit lifecycle receipts; local runtime evidence, never shipped"
     },
     {
+      "id": "runtime-lifecycle-ledger",
+      "path": "System/.dex/ledger",
+      "kind": "dir",
+      "ownership": "runtime",
+      "note": "immutable local lifecycle events and rebuildable state; never shipped or updated"
+    },
+    {
       "id": "generated-manifest",
       "path": "System/.installed-files.manifest",
       "kind": "file",
