@@ -45,6 +45,7 @@ System/.dex/telemetry-id
 System/.dex/adoption/credential-journals/
 System/.dex/adoption/history-backups/
 System/.dex/local-only-preservation/
+System/.dex/lifecycle/
 
 # Custom extensions (user-created, never in upstream)
 CLAUDE-custom.md
@@ -151,6 +152,7 @@ gmail-credentials.json
 # Session learnings (user-specific)
 System/Session_Learnings/
 System/Session_Memory/
+System/.dex-sessions.db*
 System/usage_log.md
 System/Work_In_Progress.md
 System/PRDs/
