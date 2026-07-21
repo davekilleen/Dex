@@ -7,6 +7,23 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.66.0] - Every change Dex makes can now be undone — and your databases are protected too (2026-07-21)
+
+This morning's release gave Dex full sight of what an update would change. This one adds the hands: Dex can now apply those changes safely, and take any of them back.
+
+**What this changes for you:**
+
+* **Nothing is applied without a double-check.** Before writing anything, Dex shows exactly what will change and gets an approval bound to that exact list. At the moment of writing, it re-checks everything from scratch — if anything on disk moved in between, it refuses and asks again rather than guessing.
+* **Every change comes with an undo.** Each applied change produces a receipt, and Dex can restore things to exactly how they were — byte for byte. If you've edited a file since, Dex refuses to undo over your edit and tells you which file, instead of destroying your work.
+* **A crash can never leave you half-changed.** Pull the plug at any instant during an apply or an undo and you end up either fully done or exactly where you started. This was independently attack-tested at every possible interruption point.
+* **Databases get real protection.** Some tools keep your data in database files that can be silently corrupted by naive copying. Dex now backs these up the one safe way, verifies the result, and — after a security reviewer proved a subtle power-loss risk — restores them in an order that no crash timing can corrupt.
+* **A heads-up if your vault lives in Dropbox, iCloud, or OneDrive.** Sync services can corrupt databases mid-write, so Dex now asks before backing up a database inside one.
+* **Honest housekeeping.** Dex keeps the last three undo points (about the last three changes), warns if they ever grow past ~2GB of disk, and tells you plainly when something is too old to undo.
+
+Every piece of this release passed an independent adversarial security review before merging.
+
+---
+
 ## [1.65.0] - Dex now knows exactly what an update would change — before it changes anything (2026-07-21)
 
 Until now, updating Dex meant trusting that the new version and your vault would get along. This release gives Dex full sight before any future update touches anything.
