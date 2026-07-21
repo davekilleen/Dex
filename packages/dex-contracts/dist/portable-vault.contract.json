@@ -513,7 +513,7 @@
       "path": "System/Beta_Communications",
       "kind": "dir",
       "ownership": "brain",
-      "note": "release-doc per the SR1 tracked-ignore baseline; candidate for deletion in the baseline-reduction follow-up"
+      "note": "release-doc retained until the schema-2 baseline-reduction follow-up"
     },
     {
       "id": "seed-dex-backlog",
@@ -539,7 +539,13 @@
       "path": "System/Session_Learnings",
       "kind": "dir",
       "ownership": "runtime",
-      "note": "user-machine session state; three legacy files remain tracked under the SR1 27-row tracked-ignore baseline pending the baseline-reduction follow-up"
+      "note": "user-machine session state; historical learning files become local-only in the untrack-v1 transition, while the shipped README remains a seed"
+    },
+    {
+      "id": "seed-session-learnings-readme",
+      "path": "System/Session_Learnings/README.md",
+      "kind": "file",
+      "ownership": "seed"
     },
     {
       "id": "runtime-session-memory",

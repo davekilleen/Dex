@@ -31,9 +31,7 @@ RELEASE_BUILD_INPUTS = (
     ".claude/skills/dex-update/SKILL.md",
     ".claude/skills/dex-rollback/SKILL.md",
     "System/.local-only-preservation-transition.json",
-    "System/Session_Learnings/2026-01-29.md",
-    "System/Session_Learnings/2026-01-30.md",
-    "System/integrations/slack.yaml",
+    "System/Beta_Communications/2026-02-04_hardcoded_paths_fix.md",
     "core/migrations/preserve_local_only_paths.py",
     "core/migrations/tracked-ignored-policy.yaml",
     "core/utils/tracked_ignored.py",
@@ -47,6 +45,12 @@ RELEASE_BUILD_INPUTS = (
     "scripts/resolve-distignore-files.sh",
     "scripts/security-gate.sh",
     "scripts/verify-distribution.sh",
+)
+
+RELEASE_BUILD_ABSENT = (
+    "System/Session_Learnings/2026-01-29.md",
+    "System/Session_Learnings/2026-01-30.md",
+    "System/integrations/slack.yaml",
 )
 
 
@@ -108,6 +112,20 @@ def _sync_release_inputs(clone: Path) -> None:
         destination = clone / relative_path
         destination.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(file_source, destination)
+    for relative_path in RELEASE_BUILD_ABSENT:
+        (clone / relative_path).unlink(missing_ok=True)
+    tracked_absent = [
+        relative_path
+        for relative_path in RELEASE_BUILD_ABSENT
+        if subprocess.run(
+            ["git", "ls-files", "--error-unmatch", "--", relative_path],
+            cwd=clone,
+            capture_output=True,
+        ).returncode
+        == 0
+    ]
+    if tracked_absent:
+        subprocess.run(["git", "add", "-u", "--", *tracked_absent], cwd=clone, check=True)
 
 
 def _commit_release_inputs_if_changed(clone: Path) -> None:
@@ -284,7 +302,7 @@ def _git_json(clone: Path, revision_path: str) -> dict[str, object]:
     )
 
 
-def test_release_branch_strips_dev_files_and_keeps_user_runtime(tmp_path: Path) -> None:
+def test_release_branch_strips_dev_files_and_untracks_v1_local_only_files(tmp_path: Path) -> None:
     clone, members = _build_release_in_clone(tmp_path)
 
     stripped_prefixes = (
@@ -315,9 +333,10 @@ def test_release_branch_strips_dev_files_and_keeps_user_runtime(tmp_path: Path) 
     assert "core/migrations/preserve_local_only_paths.py" in members
     assert "core/migrations/tracked-ignored-policy.yaml" in members
     assert "core/utils/tracked_ignored.py" in members
-    assert "System/Session_Learnings/2026-01-29.md" in members
-    assert "System/Session_Learnings/2026-01-30.md" in members
-    assert "System/integrations/slack.yaml" in members
+    assert "System/Beta_Communications/2026-02-04_hardcoded_paths_fix.md" in members
+    assert "System/Session_Learnings/2026-01-29.md" not in members
+    assert "System/Session_Learnings/2026-01-30.md" not in members
+    assert "System/integrations/slack.yaml" not in members
     _assert_tau_absent_from_release_artifacts(
         clone, "release", tmp_path / "stable-release.tar"
     )
@@ -440,11 +459,8 @@ def test_beta_release_branch_uses_same_stripping_and_manifest(tmp_path: Path) ->
 def test_release_build_uses_selected_source_version_for_tree_profile_manifest_and_tag(tmp_path: Path) -> None:
     clone = _clone_repo(tmp_path, "selected-source-version")
     subprocess.run(["git", "checkout", "-B", "main", "HEAD"], cwd=clone, check=True, capture_output=True)
-    for relative_path in RELEASE_BUILD_INPUTS:
-        destination = clone / relative_path
-        destination.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(REPO_ROOT / relative_path, destination)
-    subprocess.run(["git", "add", "-f", "--", *RELEASE_BUILD_INPUTS], cwd=clone, check=True)
+    _sync_release_inputs(clone)
+    subprocess.run(["git", "add", "-A"], cwd=clone, check=True)
     subprocess.run(
         ["git", "commit", "--quiet", "--allow-empty", "-m", "test: current builder"], cwd=clone, check=True
     )
@@ -507,11 +523,8 @@ def test_release_build_uses_selected_source_version_for_tree_profile_manifest_an
 def test_release_build_rejects_malformed_selected_package_before_creating_refs(tmp_path: Path) -> None:
     clone = _clone_repo(tmp_path, "malformed-selected-source")
     subprocess.run(["git", "checkout", "-B", "main", "HEAD"], cwd=clone, check=True, capture_output=True)
-    for relative_path in RELEASE_BUILD_INPUTS:
-        destination = clone / relative_path
-        destination.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(REPO_ROOT / relative_path, destination)
-    subprocess.run(["git", "add", "-f", "--", *RELEASE_BUILD_INPUTS], cwd=clone, check=True)
+    _sync_release_inputs(clone)
+    subprocess.run(["git", "add", "-A"], cwd=clone, check=True)
     subprocess.run(
         ["git", "commit", "--quiet", "--allow-empty", "-m", "test: current builder"], cwd=clone, check=True
     )
@@ -541,10 +554,7 @@ def test_release_build_rejects_malformed_selected_package_before_creating_refs(t
 
 def test_raw_vault_bundle_has_package_profile_manifest_agreement(tmp_path: Path) -> None:
     clone = _clone_repo(tmp_path, "raw-vault-bundle")
-    for relative_path in RELEASE_BUILD_INPUTS:
-        destination = clone / relative_path
-        destination.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(REPO_ROOT / relative_path, destination)
+    _sync_release_inputs(clone)
     # Prove the builder regenerates the declaration rather than copying stale bytes.
     (clone / "System/.release-evidence-profile.json").write_text(
         json.dumps({"profile": "legacy-v1", "release_version": "0.0.1", "schema_version": 1}, indent=2) + "\n"
@@ -577,6 +587,7 @@ def test_raw_vault_bundle_has_package_profile_manifest_agreement(tmp_path: Path)
 
 def test_release_script_regenerates_profile_for_bumped_version(tmp_path: Path) -> None:
     clone = _clone_repo(tmp_path, "release-script-profile")
+    _sync_release_inputs(clone)
     for relative_path in (
         "scripts/release.sh",
         "scripts/generate-manifest.sh",
@@ -587,19 +598,7 @@ def test_release_script_regenerates_profile_for_bumped_version(tmp_path: Path) -
         "core/utils/update_verifier.py",
     ):
         shutil.copy2(REPO_ROOT / relative_path, clone / relative_path)
-    subprocess.run(
-        [
-            "git",
-            "add",
-            "--",
-            "scripts",
-            "core/utils",
-            "core/migrations/preserve_local_only_paths.py",
-            "core/paths.py",
-        ],
-        cwd=clone,
-        check=True,
-    )
+    subprocess.run(["git", "add", "-A"], cwd=clone, check=True)
     subprocess.run(
         ["git", "commit", "--quiet", "--allow-empty", "-m", "test: current release scripts"],
         cwd=clone,
@@ -626,7 +625,7 @@ def test_release_script_regenerates_profile_for_bumped_version(tmp_path: Path) -
     transition = _git_json(clone, "HEAD:System/.local-only-preservation-transition.json")
     assert package["version"] == bumped
     assert profile == {"profile": "legacy-v1", "release_version": bumped, "schema_version": 1}
-    assert transition == {"schema_version": 1, "phase": "bootstrap-v1", "release_version": bumped}
+    assert transition == {"schema_version": 1, "phase": "untrack-v1", "release_version": bumped}
     assert "System/.release-evidence-profile.json" in _release_manifest(clone, "HEAD")
     assert subprocess.run(
         ["git", "rev-parse", f"v{bumped}^{{}}"], cwd=clone, check=True, capture_output=True, text=True
