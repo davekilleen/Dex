@@ -719,13 +719,13 @@ Tasks use three tag types:
      {
        "title": "API Review",
        "start": "2026-01-28T10:00:00",
-       "attendees": ["john@company.com", "maya@company.com"]
+       "attendees": ["john@example.com", "maya@example.com"]
      }
    ]
    ```
 4. Skill cross-references attendees with person pages:
-   - `john@company.com` → `05-Areas/People/Internal/John_Doe.md`
-   - `maya@company.com` → `05-Areas/People/Internal/Maya_Patel.md`
+   - `john@example.com` → `05-Areas/People/Internal/John_Doe.md`
+   - `maya@example.com` → `05-Areas/People/Internal/Maya_Patel.md`
 5. Skill reads person pages, extracts context:
    - John: Tech Lead, last 1:1 was about API architecture
    - Maya: Designer, working on onboarding flow redesign

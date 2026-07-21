@@ -53,7 +53,7 @@ The first time Cursor tries to read your calendar, macOS may show a popup: **"Cu
 
 ## Optional: Tell Dex which calendar is "work"
 
-If you have several calendars and want Dex to focus on one (e.g. your work calendar) for faster answers, you can set it in **System/user-profile.yaml** under a `calendar` section with `work_calendar: "your.email@company.com"` (use the exact name as it appears in the Calendar app). You can skip this—Dex will still show your events without it.
+If you have several calendars and want Dex to focus on one (e.g. your work calendar) for faster answers, you can set it in **System/user-profile.yaml** under a `calendar` section with `work_calendar: "your.email@example.com"` (use the exact name as it appears in the Calendar app). You can skip this—Dex will still show your events without it.
 
 ---
 
