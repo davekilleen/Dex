@@ -264,6 +264,46 @@ else
     WORK_MCP_STATUS="⚠️  Needs attention"
 fi
 
+# Converge Git clones to the split Brain/Vault topology through the migration
+# engine that also handles existing installs. A bounded migration may ask to
+# resume, so keep routing back to that engine until it reaches a terminal state.
+echo ""
+echo "🔀 Separating the Dex brain from your vault..."
+MIGRATOR="core/migrations/v1-to-v2-brain-vault-split.cjs"
+if [ ! -f "$MIGRATOR" ]; then
+    echo "❌ Dex cannot finish the brain/vault setup because the migrator is missing."
+    echo "   Get a complete Dex release and run ./install.sh again."
+    exit 1
+fi
+
+MIGRATION_MODE="--auto"
+while true; do
+    if node "$MIGRATOR" "$MIGRATION_MODE"; then
+        MIGRATION_STATUS=0
+    else
+        MIGRATION_STATUS=$?
+    fi
+
+    if [ "$MIGRATION_STATUS" -eq 75 ]; then
+        MIGRATION_MODE="--resume"
+        continue
+    fi
+    if [ "$MIGRATION_STATUS" -ne 0 ]; then
+        echo "❌ Dex could not finish the brain/vault split."
+        echo "   Read System/migration-report-v2.md, fix the reported issue, then run ./install.sh again."
+        exit "$MIGRATION_STATUS"
+    fi
+    break
+done
+
+if [ -f "System/.dex/topology.json" ] && [ -d ".dex/brain.git" ]; then
+    echo "✅ Your vault and the Dex brain now have separate Git histories"
+else
+    echo "⚠️  This folder has no Git clone history, so the brain/vault split was not started."
+    echo "   Your files are unchanged, and Dex will keep using the combined layout."
+    echo "   Read System/migration-report-v2.md for the safe manual-update choices."
+fi
+
 # Success
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"

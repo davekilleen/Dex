@@ -67,6 +67,13 @@ else
   git -C "$VAULT" remote add private-backup https://example.invalid/private-dex-vault.git
 fi
 
+# Post-retirement releases no longer track slack.yaml; a real aged vault has it
+# as LOCAL user state (preserved by the untrack capture). Model that.
+if [ ! -f "$VAULT/System/integrations/slack.yaml" ]; then
+  mkdir -p "$VAULT/System/integrations"
+  printf 'enabled: false\nchannels: []\n' > "$VAULT/System/integrations/slack.yaml"
+fi
+
 mkdir -p \
   "$VAULT/04-Projects" \
   "$VAULT/05-Areas/People/External" \
