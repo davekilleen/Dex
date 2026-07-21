@@ -20,6 +20,8 @@ import shutil
 from dataclasses import dataclass
 from pathlib import Path
 
+from core.path_safety import unsafe_existing_parent
+
 MANIFEST_NAME = "manifest.json"
 
 
@@ -77,6 +79,20 @@ class Snapshot:
         restore onto) the wrong object.
         """
         vault = Path(vault_root)
+        try:
+            manifest_relative = (self.root / MANIFEST_NAME).relative_to(vault)
+        except ValueError:
+            manifest_relative = None
+        if manifest_relative is not None:
+            unsafe_parent = unsafe_existing_parent(
+                vault,
+                manifest_relative.as_posix(),
+            )
+            if unsafe_parent is not None:
+                raise SnapshotError(
+                    f"refusing unsafe snapshot path {manifest_relative.parent.as_posix()}: "
+                    f"{unsafe_parent}"
+                )
         self.root.mkdir(parents=True, exist_ok=True, mode=0o700)
         entries: list[SnapshotEntry] = []
         for index, relative in enumerate(relatives):
@@ -180,6 +196,9 @@ class Snapshot:
         for index, entry in enumerate(entries):
             if restore_relatives is not None and entry.relative not in restore_relatives:
                 continue
+            unsafe_parent = unsafe_existing_parent(vault, entry.relative)
+            if unsafe_parent is not None:
+                raise SnapshotError(f"refusing to restore {entry.relative}: {unsafe_parent}")
             target = vault / entry.relative
             if entry.existed:
                 store = self.root / _store_name(index)

@@ -20,7 +20,7 @@ from pathlib import Path
 
 import pytest
 
-from core.transaction.engine import PlanEntry, PlanRejected, Transaction
+from core.transaction.engine import PlanEntry, PlanRejected, Transaction, TransactionError
 from core.transaction.journal import Journal, JournalCorruptError
 from core.transaction.lock import LockBusyError, acquire_owned_lock
 from core.transaction.snapshot import Snapshot, SnapshotError
@@ -184,6 +184,22 @@ def test_engine_happy_path_commits_and_reports(tmp_path: Path) -> None:
     ).run()
     assert result["committed"] is True
     assert (vault / "03-Tasks/Tasks.md").read_bytes() == b"# Tasks\n"
+
+
+def test_engine_refuses_symlinked_transaction_infrastructure(tmp_path: Path) -> None:
+    vault = tmp_path / "vault"
+    (vault / "System").mkdir(parents=True)
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (vault / "System" / ".dex").symlink_to(outside, target_is_directory=True)
+
+    with pytest.raises(TransactionError, match=r"System/\.dex"):
+        Transaction.begin(
+            vault,
+            [PlanEntry("System/.installed-files.manifest", b"new manifest\n")],
+        ).run()
+
+    assert list(outside.iterdir()) == []
 
 
 def test_engine_rejects_seed_overwrite_vault_deny_and_unclassified(
