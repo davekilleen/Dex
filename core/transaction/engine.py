@@ -35,6 +35,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from core import portable_contract
+from core.path_safety import unsafe_existing_parent
 from core.transaction.journal import Journal, JournalCorruptError
 from core.transaction.lock import acquire_owned_lock
 from core.transaction.snapshot import Snapshot
@@ -75,6 +76,20 @@ class PlanEntry:
 def _stop_seam(seam: str) -> None:
     if os.environ.get("DEX_TX_TEST_STOP_AFTER") == seam:
         os._exit(137)
+
+
+def _unsafe_infrastructure_directory(vault_root: Path, directory: Path) -> str | None:
+    try:
+        relative = directory.relative_to(vault_root)
+    except ValueError:
+        return f"path resolves outside the vault: {directory}"
+    unsafe_parent = unsafe_existing_parent(
+        vault_root,
+        (relative / ".path-safety-check").as_posix(),
+    )
+    if unsafe_parent is None:
+        return None
+    return f"{relative.as_posix()}: {unsafe_parent}"
 
 
 class Transaction:
@@ -131,6 +146,10 @@ class Transaction:
         rejections = []
         for entry in plan:
             target = Path(vault_root) / entry.relative
+            unsafe_parent = unsafe_existing_parent(Path(vault_root), entry.relative)
+            if unsafe_parent is not None:
+                rejections.append(f"{entry.relative} [{unsafe_parent}]")
+                continue
             verdict = portable_contract.update_write_verdict(entry.relative, exists=target.exists())
             if not verdict.allowed:
                 rejections.append(f"{entry.relative} [{verdict.action}]")
@@ -139,8 +158,18 @@ class Transaction:
 
         tx = cls(vault_root, time.strftime("%Y%m%dT%H%M%S-") + uuid.uuid4().hex[:8])
         tx._plan = list(plan)
+        unsafe_directory = _unsafe_infrastructure_directory(tx.vault_root, tx.tx_dir)
+        if unsafe_directory is not None:
+            raise TransactionError(
+                f"refusing unsafe transaction directory {unsafe_directory}"
+            )
         tx._release = acquire_owned_lock(tx.vault_root, f"transaction:{tx.tx_id}")
         try:
+            unsafe_directory = _unsafe_infrastructure_directory(tx.vault_root, tx.tx_dir)
+            if unsafe_directory is not None:
+                raise TransactionError(
+                    f"refusing unsafe transaction directory {unsafe_directory}"
+                )
             tx.tx_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
             tx.journal.append(
                 "BEGIN",
@@ -162,6 +191,11 @@ class Transaction:
             # The intended content must survive a crash for resume to finish
             # the apply: stage it in the tx dir before anything mutates.
             staged = tx.tx_dir / "staged"
+            unsafe_directory = _unsafe_infrastructure_directory(tx.vault_root, staged)
+            if unsafe_directory is not None:
+                raise TransactionError(
+                    f"refusing unsafe staging directory {unsafe_directory}"
+                )
             staged.mkdir(mode=0o700, exist_ok=True)
             for index, entry in enumerate(plan):
                 if entry.content is None:
@@ -204,6 +238,9 @@ class Transaction:
         assert self._plan is not None
         self.journal.append("SNAPSHOT-START")
         for entry in self._plan:
+            unsafe_parent = unsafe_existing_parent(self.vault_root, entry.relative)
+            if unsafe_parent is not None:
+                raise PlanRejected(f"{entry.relative}: {unsafe_parent}")
             if entry.expected_current_sha256 is None:
                 continue
             target = self.vault_root / entry.relative
@@ -226,6 +263,9 @@ class Transaction:
         assert self._plan is not None
         self.journal.append("APPLY-START")
         for index, entry in enumerate(self._plan):
+            unsafe_parent = unsafe_existing_parent(self.vault_root, entry.relative)
+            if unsafe_parent is not None:
+                raise PlanRejected(f"{entry.relative}: {unsafe_parent}")
             # F1 guard: the begin()-time authorization was provisional for
             # write-if-absent paths. The vault is live — if the user (or any
             # non-transaction writer) created this file since, THEIR file
@@ -446,6 +486,11 @@ class Transaction:
         root = Path(vault_root).resolve()
         outcomes: list[dict] = []
         tx_root = root / TX_ROOT_RELATIVE
+        unsafe_directory = _unsafe_infrastructure_directory(root, tx_root)
+        if unsafe_directory is not None:
+            raise TransactionError(
+                f"refusing unsafe transaction root {unsafe_directory}"
+            )
         if not tx_root.is_dir():
             return outcomes
         for tx_dir in sorted(tx_root.iterdir()):

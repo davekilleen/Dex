@@ -3,6 +3,9 @@ name: Nightly Quality
 on:
   schedule:
     - cron: "0 3 * * *"
+  push:
+    tags:
+      - "v*-rc*"
   workflow_dispatch:
 
 jobs:
@@ -53,3 +56,39 @@ jobs:
         with:
           name: nightly-quality-artifacts
           path: .logs/flaky/
+
+  adoption-gates:
+    name: Adoption journey + 100k performance gate
+    runs-on: macos-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+          cache: pip
+          cache-dependency-path: requirements-dev.txt
+
+      - name: Install Python dependencies
+        run: |
+          pip install -r requirements-dev.txt
+          pip install mcp pyyaml python-dateutil requests
+
+      - name: Messy-vault adoption journey
+        run: |
+          mkdir -p .logs/adoption-gates
+          pytest core/tests/test_adoption_messy_vault_journey.py -q \
+            --junitxml=.logs/adoption-gates/messy-vault-junit.xml
+
+      - name: 100k-file adoption performance budget
+        run: |
+          python scripts/benchmark_adoption_engine.py --files 100000 \
+            | tee .logs/adoption-gates/benchmark-100k.json
+
+      - name: Upload adoption gate evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: adoption-gate-evidence
+          path: .logs/adoption-gates/
+          if-no-files-found: warn

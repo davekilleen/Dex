@@ -28,6 +28,7 @@ from core.lifecycle.filesystem import (
 from core.lifecycle.machine_state import MachineStateReport, probe_machine_state
 from core.lifecycle.model import ReleaseCatalog
 from core.lifecycle.secrets import assert_no_denied_metadata, redact_document
+from core.path_safety import unsafe_existing_parent
 
 FOLDER_MAP_PATH = "System/folder-paths.yaml"
 MAX_FOLDER_MAP_BYTES = 256 * 1024
@@ -335,6 +336,13 @@ def build_inventory(
             continue
         actual = folder_map.materialize(expected_path)
         ownership, rule, denied, write_allowed, write_action = _contract_facts(expected_path, exists=False)
+        unsafe_parent = unsafe_existing_parent(root, actual)
+        release_state = "stock-missing"
+        if unsafe_parent is not None:
+            write_allowed = False
+            write_action = "unsafe-parent"
+            release_state = "unknown"
+            errors.append(f"{actual}: {unsafe_parent}; refusing missing-path write evidence")
         entries.append(
             InventoryEntry(
                 actual,
@@ -343,7 +351,7 @@ def build_inventory(
                 ownership,
                 rule,
                 denied,
-                "stock-missing",
+                release_state,
                 write_allowed,
                 write_action,
                 redacted=denied,

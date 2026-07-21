@@ -26,8 +26,14 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
+from core.path_safety import unsafe_existing_parent
+
 LOCK_RELATIVE = Path("System") / ".dex" / "mutation.lock"
 _MAX_ACQUIRE_ATTEMPTS = 32
+
+
+class LockError(RuntimeError):
+    """The mutation lock path is unsafe."""
 
 
 class LockBusyError(RuntimeError):
@@ -128,7 +134,14 @@ def acquire_owned_lock(vault_root: Path, kind: str):
     Raises :class:`LockBusyError` when a live process holds it and
     :class:`LockContentionError` when ownership churns for 32 attempts.
     """
-    lock = Path(vault_root) / LOCK_RELATIVE
+    root = Path(vault_root).resolve()
+    unsafe_parent = unsafe_existing_parent(root, LOCK_RELATIVE.as_posix())
+    if unsafe_parent is not None:
+        raise LockError(
+            f"refusing unsafe mutation lock path {LOCK_RELATIVE.as_posix()}: "
+            f"{unsafe_parent}"
+        )
+    lock = root / LOCK_RELATIVE
     lock.parent.mkdir(parents=True, exist_ok=True)
     token = secrets.token_hex(24)
 
