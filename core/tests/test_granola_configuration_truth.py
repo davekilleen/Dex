@@ -171,6 +171,8 @@ def test_no_live_code_or_instructions_use_legacy_granola_local_auth() -> None:
         Path(".claude/skills/granola-setup/SKILL.md"),
         Path(".scripts/meeting-intel/sync-from-granola.cjs"),
         Path("06-Resources/Dex_System/Dex_Technical_Guide.md"),
+        # Byte-for-byte bridge copy of the guide above (ratified docs relocation).
+        Path("docs/Dex_System/Dex_Technical_Guide.md"),
     }
     excluded_parts = {".git", "node_modules", "plugins", "ritual_intelligence", "tests"}
     markers = ("cache" + "-v", "supabase" + ".json")
