@@ -136,11 +136,10 @@ def test_update_write_verdict(path: str, exists: bool, allowed: bool, action: st
 
 def test_legacy_shipped_runtime_surfaces_the_baseline_debt() -> None:
     debt = portable_contract.legacy_shipped_runtime(_tracked_paths())
-    # The SR1 tracked-ignore baseline's known runtime files ship today; the
-    # baseline-reduction follow-up retires them. This test pins the debt so it
-    # can only shrink deliberately.
+    # Runtime debt still exists, but untrack-v1 no longer ships personal
+    # Session_Learnings entries.
     assert "System/usage_log.md" in debt
-    assert any(path.startswith("System/Session_Learnings/") for path in debt)
+    assert not any(path.startswith("System/Session_Learnings/") for path in debt)
 
 
 def test_traversal_and_empty_paths_are_rejected() -> None:

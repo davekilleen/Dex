@@ -174,8 +174,7 @@ RULES: tuple[Rule, ...] = (
     _r("brain-gitattributes", ".gitattributes", "file", "brain"),
     _r("brain-distignore", ".distignore", "file", "brain"),
     _r("brain-beta-communications", "System/Beta_Communications", "dir", "brain",
-       "release-doc per the SR1 tracked-ignore baseline; candidate for deletion "
-       "in the baseline-reduction follow-up"),
+       "release-doc retained until the schema-2 baseline-reduction follow-up"),
     _r("brain-system-readme", "System/README.md", "file", "brain"),
 
     # --- seed: shipped once, then the user's; update writes only if absent -
@@ -197,6 +196,7 @@ RULES: tuple[Rule, ...] = (
        "SR1 #150: tracked reference-schema templates carrying env-var references; "
        "installed if absent, never overwritten once user-owned"),
     _r("seed-dex-backlog", "System/Dex_Backlog.md", "file", "seed"),
+    _r("seed-session-learnings-readme", "System/Session_Learnings/README.md", "file", "seed"),
     _r("seed-dex-ideas", "System/Dex_Ideas.md", "file", "seed",
        "legacy duplicate of Dex_Backlog.md; removal in flight (portability hygiene PR)"),
     # PARA starters: the EXACT shipped scaffolding files, enumerated one by one.
@@ -253,8 +253,8 @@ RULES: tuple[Rule, ...] = (
 
     # --- runtime: local machine state ---------------------------------------
     _r("runtime-session-learnings", "System/Session_Learnings", "dir", "runtime",
-       "user-machine session state; three legacy files remain tracked under the "
-       "SR1 27-row tracked-ignore baseline pending the baseline-reduction follow-up"),
+       "user-machine session state; historical learning files become local-only in "
+       "the untrack-v1 transition, while the shipped README remains a seed"),
     _r("runtime-session-memory", "System/Session_Memory", "dir", "runtime"),
     _r("runtime-usage-log", "System/usage_log.md", "file", "runtime",
        "shipped blank starter, then per-machine usage state; legacy-tracked"),
@@ -484,12 +484,11 @@ def release_forbidden(paths: Iterable[str]) -> list[str]:
     """Paths that must never appear in a release: ``vault`` content and
     anything hard-denied.
 
-    Legacy-tracked ``runtime`` files are deliberately NOT failed here: they DO
-    ship today under the SR1 tracked-ignore baseline, and turning the gate red
-    on known, journalled debt would block every build. They are surfaced
-    explicitly by :func:`legacy_shipped_runtime` instead, so the
-    baseline-reduction follow-up has a visible, testable target rather than a
-    silently blessed one.
+    Legacy-tracked ``runtime`` files are deliberately NOT failed here: a small
+    set still ships during the v1 transition, and turning the gate red on known,
+    journalled debt would block every build. They are surfaced explicitly by
+    :func:`legacy_shipped_runtime` instead, so the remaining runtime debt stays
+    visible and testable rather than silently blessed.
     """
     forbidden: list[str] = []
     for path in paths:
@@ -500,11 +499,11 @@ def release_forbidden(paths: Iterable[str]) -> list[str]:
 
 
 def legacy_shipped_runtime(paths: Iterable[str]) -> list[str]:
-    """Tracked ``runtime``-class paths — debt for the baseline-reduction PR.
+    """Tracked ``runtime``-class paths — remaining baseline debt.
 
     ``runtime`` means "never shipped", so anything this returns for the repo
-    tree is a standing contradiction the SR1 baseline currently grandfathers
-    (session-learning files, usage log, legacy state markers).
+    tree is a standing contradiction the transition baseline currently
+    grandfathers (usage log and legacy state markers).
     """
     return [
         resolution.path
