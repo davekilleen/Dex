@@ -18,6 +18,25 @@ import yaml
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
+DOCS_BRIDGE_PATHS = tuple(
+    f"docs/Dex_System/{filename}"
+    for filename in (
+        "Background_Processing_Guide.md",
+        "Calendar_Setup.md",
+        "Dex_Jobs_to_Be_Done.md",
+        "Dex_System_Guide.md",
+        "Dex_Technical_Guide.md",
+        "Distribution_Checklist.md",
+        "Distribution_Strategy.md",
+        "Folder_Structure.md",
+        "Memory_Ownership.md",
+        "Named_Sessions_Guide.md",
+        "Obsidian_Guide.md",
+        "README.md",
+        "Updating_Dex.md",
+    )
+)
+
 RELEASE_BUILD_INPUTS = (
     ".distignore",
     ".gitattributes",
@@ -25,6 +44,7 @@ RELEASE_BUILD_INPUTS = (
     ".github/workflows/ci.yml",
     ".scripts/lib/tests/entity-pages.test.cjs",
     "06-Resources/Dex_System/Dex_Technical_Guide.md",
+    *DOCS_BRIDGE_PATHS,
     "package.json",
     "requirements.txt",
     "requirements-dev.txt",
@@ -337,6 +357,8 @@ def test_release_branch_strips_dev_files_and_untracks_v1_local_only_files(tmp_pa
     assert "System/Session_Learnings/2026-01-29.md" not in members
     assert "System/Session_Learnings/2026-01-30.md" not in members
     assert "System/integrations/slack.yaml" not in members
+    for bridge_path in DOCS_BRIDGE_PATHS:
+        assert bridge_path in members
     _assert_tau_absent_from_release_artifacts(
         clone, "release", tmp_path / "stable-release.tar"
     )
