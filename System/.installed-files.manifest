@@ -37,6 +37,8 @@
 .claude/hooks/tests/things-adapter.test.cjs
 .claude/hooks/tests/todoist-adapter.test.cjs
 .claude/hooks/tests/trello-adapter.test.cjs
+.claude/hooks/tests/vault-autocommit.test.cjs
+.claude/hooks/vault-autocommit.cjs
 .claude/plugins/compound-engineering/.claude-plugin/plugin.json
 .claude/plugins/compound-engineering/CHANGELOG.md
 .claude/plugins/compound-engineering/CLAUDE.md
@@ -688,6 +690,11 @@ core/integrations/notion/setup.py
 core/integrations/post_update_check.py
 core/integrations/slack/setup.py
 core/integrations/task_sync.py
+core/lifecycle/__init__.py
+core/lifecycle/catalog.py
+core/lifecycle/handlers.py
+core/lifecycle/model.py
+core/lifecycle/schemas/release-catalog-v1.schema.json
 core/mcp/CAREER_MCP_README.md
 core/mcp/analytics_helper.py
 core/mcp/analytics_server.py
@@ -723,6 +730,7 @@ core/migrations/preserve_local_only_paths.py
 core/migrations/tests/__init__.py
 core/migrations/tests/test_migrate_v1_to_v2.py
 core/migrations/tracked-ignored-policy.yaml
+core/migrations/v1-to-v2-brain-vault-split.cjs
 core/migrations/v1-to-v2-example.sh
 core/obsidian/__init__.py
 core/obsidian/generate_obsidian_config.py
@@ -757,6 +765,8 @@ core/ritual_intelligence/transcript_ingest.py
 core/ritual_intelligence/transcript_reconcile.py
 core/ritual_intelligence/transcript_store.py
 core/tests/__init__.py
+core/tests/brain-vault-migrator-integration.test.cjs
+core/tests/brain-vault-migrator-unit.test.cjs
 core/tests/conftest.py
 core/tests/fixtures/entity_pages/01-frontmatter-only.expected.json
 core/tests/fixtures/entity_pages/01-frontmatter-only.md
@@ -820,6 +830,7 @@ core/tests/fixtures/vault/System/user-profile-template.yaml
 core/tests/fixtures/vault/System/user-profile.yaml
 core/tests/support/__init__.py
 core/tests/support/vault_builder.py
+core/tests/test_apply_update.py
 core/tests/test_calendar_eventkit_script.py
 core/tests/test_calendar_server.py
 core/tests/test_capabilities.py
@@ -837,6 +848,7 @@ core/tests/test_dexdiff_profile_adopt.py
 core/tests/test_dexdiff_publish_diff_script.py
 core/tests/test_diff_gate_fetch.py
 core/tests/test_distribution_artifacts.py
+core/tests/test_docs_bridge.py
 core/tests/test_doctor.py
 core/tests/test_entity_pages.py
 core/tests/test_feature_status.py
@@ -851,6 +863,7 @@ core/tests/test_health_telemetry.py
 core/tests/test_health_telemetry_consent_ux.py
 core/tests/test_health_telemetry_privacy.py
 core/tests/test_history_hygiene.py
+core/tests/test_install_convergence.py
 core/tests/test_instructed_tools_gate.py
 core/tests/test_instruction_honesty.py
 core/tests/test_integration_credentials.py
@@ -872,6 +885,7 @@ core/tests/test_pr_report.py
 core/tests/test_preflight_paths.py
 core/tests/test_provision_parity.py
 core/tests/test_qmd_query_grep_fallback.py
+core/tests/test_release_catalog.py
 core/tests/test_release_channel.py
 core/tests/test_ritual_intelligence_entrypoints.py
 core/tests/test_ritual_intelligence_runtime.py
@@ -882,6 +896,7 @@ core/tests/test_setup_credential_disclosure.py
 core/tests/test_skill_integrity.py
 core/tests/test_smoke.py
 core/tests/test_smoke_automation.py
+core/tests/test_split_probe_regression.py
 core/tests/test_sync_daemon.py
 core/tests/test_task_sync.py
 core/tests/test_tracked_ignored.py
@@ -902,6 +917,8 @@ core/transaction/engine.py
 core/transaction/journal.py
 core/transaction/lock.py
 core/transaction/snapshot.py
+core/update/__init__.py
+core/update/apply_update.py
 core/utils/__init__.py
 core/utils/company_domains.py
 core/utils/credential_migration_exceptions.json
@@ -932,6 +949,19 @@ core/utils/tracked_ignored.py
 core/utils/trust_registry.py
 core/utils/update_verifier.py
 core/utils/validators.py
+docs/Dex_System/Background_Processing_Guide.md
+docs/Dex_System/Calendar_Setup.md
+docs/Dex_System/Dex_Jobs_to_Be_Done.md
+docs/Dex_System/Dex_System_Guide.md
+docs/Dex_System/Dex_Technical_Guide.md
+docs/Dex_System/Distribution_Checklist.md
+docs/Dex_System/Distribution_Strategy.md
+docs/Dex_System/Folder_Structure.md
+docs/Dex_System/Memory_Ownership.md
+docs/Dex_System/Named_Sessions_Guide.md
+docs/Dex_System/Obsidian_Guide.md
+docs/Dex_System/README.md
+docs/Dex_System/Updating_Dex.md
 docs/FAQ-DRAFT.md
 docs/analytics-proxy.md
 docs/calendar-performance.md
@@ -989,6 +1019,7 @@ scripts/generate-manifest.sh
 scripts/generate-path-contracts.py
 scripts/generate-portable-contract.py
 scripts/instructed-tools-allowlist.txt
+scripts/make-aged-vault-fixture.sh
 scripts/pii-allowlist.txt
 scripts/pii_gate.py
 scripts/pr_report.py

@@ -7,6 +7,19 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.64.0] - Updates that can't hurt your files, and the last cleanup of the maker's leftovers (2026-07-21)
+
+This release finishes two stories that began yesterday: making Dex updates fundamentally safe, and getting the last of the maker's own files out of your install.
+
+**What this changes for you:**
+
+* **Updates now run through a protected engine.** For vaults on the new layout, updating no longer mixes Dex's changes into your files the old way. Instead: Dex backs everything up, applies the new version, checks its own work, and can undo the whole thing exactly. If your machine crashes mid-update, you end up either fully updated or exactly where you started — never in between.
+* **Your vault can become fully yours.** New machinery (not yet switched on by default) can separate Dex's code from your content entirely, so your notes live in their own private, versioned space that updates physically cannot touch — with a practice run first and one command to change your mind.
+* **A few old files from the maker's setup are being retired the safe way.** If you ever edited them, your copies are preserved exactly; nothing of yours is touched.
+* **Fresh installs land in the right shape automatically**, with plain-English guidance if anything needs a decision.
+
+---
+
 ## [1.62.0] - Your integration keys stay private, and Dex never updates itself behind your back (2026-07-20)
 
 This release is a safety floor: a set of fixes that protect your private information and put you back in control of when Dex changes. Before this, a few things could happen quietly in the background that you'd never have chosen — this closes them.
