@@ -7,6 +7,22 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.67.0] - Three new leadership tools, and a full, honest history of every change Dex makes (2026-07-22)
+
+The safe-update machinery from the last two releases now has a face you can actually use — plus the first three tools built to run through it end to end.
+
+**What this changes for you:**
+
+* **Three new tools for leading, not just organizing.** `/decision-log` captures a real decision — the context, the options you weighed, why you chose, and when to revisit — so it doesn't evaporate into a meeting. `/delegate-check` shows what you've handed to other people, where each one stands, and who needs a nudge. `/weekly-reflection` is a two-minute prompt on what gave you energy and what drained it, separate from your metrics review.
+* **Dex Doctor now shows updates in plain groups.** When there's anything to update, you see it sorted into five simple buckets: new and safe, needs your review, preserved as-is, something to continue or undo, and your receipts. The wording can vary, but the facts underneath — what changed, what's yours, what can be undone — are always exact.
+* **A complete, tamper-evident history of every change.** Dex keeps a running log of everything it installs, adopts, or undoes in your vault. If any past entry is altered or a file goes missing, Dex notices and tells you how to repair it — and an ordinary crash mid-write now heals itself instead of getting stuck.
+* **Dex stops quietly editing your Mac's background settings.** When your vault moves, Dex used to silently rewrite system startup files. Now it just tells you what it noticed and points you to `/dex-doctor` to fix it safely — nothing on your machine changes without you.
+* **Proven against a deliberately broken vault.** Everything above was stress-tested against a vault packed with every nasty edge case at once — corrupted files, broken shortcuts, interrupted updates — and had to come through without changing a single thing it wasn't asked to.
+
+Every part of this release passed an independent security review before shipping.
+
+---
+
 ## [1.66.0] - Every change Dex makes can now be undone — and your databases are protected too (2026-07-21)
 
 This morning's release gave Dex full sight of what an update would change. This one adds the hands: Dex can now apply those changes safely, and take any of them back.
