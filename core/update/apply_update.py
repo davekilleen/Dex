@@ -128,9 +128,7 @@ def _tree_entries(vault_root: Path, brain_git: Path, commit: str) -> tuple[TreeE
         except (ValueError, UnicodeDecodeError) as error:
             raise ReleaseVerificationError("release tree contains a malformed entry") from error
         if relative in seen or object_type != "blob" or raw_mode not in {"100644", "100755"}:
-            raise ReleaseVerificationError(
-                "release tree is ambiguous or contains a symlink/unsupported entry"
-            )
+            raise ReleaseVerificationError("release tree is ambiguous or contains a symlink/unsupported entry")
         seen.add(relative)
         entries.append(TreeEntry(relative, 0o755 if raw_mode == "100755" else 0o644, object_id))
     return tuple(sorted(entries, key=lambda entry: entry.path))
@@ -158,12 +156,7 @@ def _verify_manifest(
     except UnicodeDecodeError as error:
         raise ReleaseVerificationError("release manifest is not UTF-8") from error
     paths = source.splitlines()
-    if (
-        not source.endswith("\n")
-        or "\r" in source
-        or paths != sorted(set(paths))
-        or set(paths) != set(by_path)
-    ):
+    if not source.endswith("\n") or "\r" in source or paths != sorted(set(paths)) or set(paths) != set(by_path):
         raise ReleaseVerificationError("release manifest contradicts the exact release tree")
 
 
@@ -220,9 +213,7 @@ def verify_release_ref(
         raise ReleaseVerificationError("release ref is not an immutable dist/release/v* tag")
     if not re.fullmatch(r"[0-9a-f]{40,64}", tag_object):
         raise ReleaseVerificationError("release tag object identity is malformed")
-    if not re.fullmatch(r"[0-9a-f]{40,64}", commit) or not re.fullmatch(
-        r"[0-9a-f]{40,64}", tree
-    ):
+    if not re.fullmatch(r"[0-9a-f]{40,64}", commit) or not re.fullmatch(r"[0-9a-f]{40,64}", tree):
         raise ReleaseVerificationError("release commit/tree identity is malformed")
 
     actual_tag_object = _brain_text(root, brain_git, "rev-parse", "--verify", f"refs/tags/{tag}")
@@ -264,9 +255,7 @@ def verify_release_ref(
         except RuntimeError:
             continue
     if not channel_commits or commit not in channel_commits:
-        raise ReleaseVerificationError(
-            f"immutable release is not the pinned target of the {channel} channel"
-        )
+        raise ReleaseVerificationError(f"immutable release is not the pinned target of the {channel} channel")
 
     entries = _tree_entries(root, brain_git, commit)
     _verify_manifest(root, brain_git, entries)
@@ -327,6 +316,9 @@ def build_update_plan(vault_root: Path, release: VerifiedReleaseRef) -> UpdatePl
         if verdict.ownership == "brain":
             target_brain.add(entry.path)
         if not verdict.allowed:
+            untouched.append(entry.path)
+            continue
+        if _matches_entry(root, entry, release.brain_git):
             untouched.append(entry.path)
             continue
         content = _blob(root, release.brain_git, entry.object_id)
@@ -437,18 +429,14 @@ def apply_verified_release(vault_root: Path, release: VerifiedReleaseRef) -> dic
     if previous_commit == release.commit:
         raise UpdateError("that immutable release is already installed")
     plan = build_update_plan(root, release)
-    if not plan.entries:
-        raise UpdateError("verified release produced no authorized file changes")
-    transaction = Transaction.begin(root, list(plan.entries))
-    transaction_result = transaction.run()
-    try:
-        _finalize_release_metadata(root, release, previous_commit)
-    except BaseException:
-        # COMMITTED retains the exact snapshot for undo. Release identity is
-        # part of the updater's success boundary, so a failed pin must not
-        # leave target bytes installed under the previous release identity.
-        transaction.rollback()
-        raise
+    transaction = Transaction.begin(root, list(plan.entries), allow_empty=True)
+    transaction_result = transaction.run(
+        before_commit=lambda: _finalize_release_metadata(
+            root,
+            release,
+            previous_commit,
+        )
+    )
     return {
         **transaction_result,
         "tag": release.tag,

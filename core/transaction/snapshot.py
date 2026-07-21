@@ -84,9 +84,7 @@ class Snapshot:
             if target.is_symlink():
                 raise SnapshotError(f"refusing to snapshot a symlink: {relative}")
             if target.is_dir():
-                raise SnapshotError(
-                    f"plans operate on files, not directories: {relative}"
-                )
+                raise SnapshotError(f"plans operate on files, not directories: {relative}")
             if target.exists():
                 store = self.root / _store_name(index)
                 shutil.copyfile(target, store)
@@ -97,9 +95,7 @@ class Snapshot:
                 # and we must not proceed on a torn snapshot.
                 source_digest, _ = _sha256(target)
                 if digest != source_digest:
-                    raise SnapshotError(
-                        f"target changed while being snapshotted: {relative}"
-                    )
+                    raise SnapshotError(f"target changed while being snapshotted: {relative}")
                 descriptor = os.open(store, os.O_RDONLY)
                 try:
                     os.fsync(descriptor)
@@ -144,9 +140,7 @@ class Snapshot:
             raise SnapshotError("snapshot manifest is missing") from error
         except (json.JSONDecodeError, UnicodeDecodeError) as error:
             raise SnapshotError("snapshot manifest is unreadable") from error
-        if payload.get("schema_version") != 1 or not isinstance(
-            payload.get("entries"), list
-        ):
+        if payload.get("schema_version") != 1 or not isinstance(payload.get("entries"), list):
             raise SnapshotError("snapshot manifest has an unsupported shape")
         entries = []
         for raw in payload["entries"]:
@@ -162,30 +156,37 @@ class Snapshot:
         return entries
 
     def restore(
-        self, vault_root: Path, *, created_deletions: set[str] | None = None
+        self,
+        vault_root: Path,
+        *,
+        created_deletions: set[str] | None = None,
+        restore_relatives: set[str] | None = None,
     ) -> list[str]:
         """Byte-exact restore of every captured target; returns restored paths.
 
         Files absent at capture time are removed ONLY when the caller confirms
         the transaction actually wrote them (``created_deletions``): the vault
         is live, and a file the USER created in the window must never be
-        deleted by someone else's rollback. ``None`` means "the caller applied
-        everything" (legacy behavior). Every stored blob is verified against
-        its manifest sha before it is copied back — a damaged snapshot store
-        fails closed.
+        deleted by someone else's rollback. ``restore_relatives`` can narrow
+        restoration to entries the journal says the transaction attempted;
+        this preserves a live file that changed after snapshot but before its
+        apply. ``None`` means "restore everything" (legacy behavior). Every
+        stored blob is verified against its manifest sha before it is copied
+        back — a damaged snapshot store fails closed.
         """
         vault = Path(vault_root)
         entries = self.read_manifest()
         restored: list[str] = []
         for index, entry in enumerate(entries):
+            if restore_relatives is not None and entry.relative not in restore_relatives:
+                continue
             target = vault / entry.relative
             if entry.existed:
                 store = self.root / _store_name(index)
                 digest, size = _sha256(store)
                 if digest != entry.sha256 or size != entry.size:
                     raise SnapshotError(
-                        f"snapshot store is damaged for {entry.relative}; "
-                        "refusing to restore wrong bytes"
+                        f"snapshot store is damaged for {entry.relative}; refusing to restore wrong bytes"
                     )
                 target.parent.mkdir(parents=True, exist_ok=True)
                 temporary = target.parent / f".{target.name}.tx-restore"
@@ -200,9 +201,7 @@ class Snapshot:
                 os.replace(temporary, target)
                 _fsync_directory(target.parent)
             else:
-                transaction_wrote_it = (
-                    created_deletions is None or entry.relative in created_deletions
-                )
+                transaction_wrote_it = created_deletions is None or entry.relative in created_deletions
                 if transaction_wrote_it and (target.is_symlink() or target.exists()):
                     target.unlink()
                     _fsync_directory(target.parent)

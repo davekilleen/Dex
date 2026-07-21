@@ -5,11 +5,14 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
 
 from core.update import apply_update
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
 def _git(repo: Path, *args: str) -> str:
@@ -74,9 +77,7 @@ def split_release_fixture(tmp_path: Path) -> dict[str, object]:
     _write(release, "04-Projects/private.md", b"release tried to replace user notes\n")
     _write(release, "System/.dex/release-runtime.json", b'{"new":true}\n')
     (release / "core/obsolete.py").unlink()
-    target_tag, target_tag_object, target_commit, target_tree = _commit_release(
-        release, "1.64.0"
-    )
+    target_tag, target_tag_object, target_commit, target_tree = _commit_release(release, "1.64.0")
 
     vault = tmp_path / "vault"
     vault.mkdir()
@@ -198,12 +199,15 @@ def test_apply_update_replaces_brain_prunes_unchanged_and_preserves_user_owned_p
     marker = json.loads((vault / ".dex/brain.git/dex-brain-v2").read_text())
     assert topology["installedRelease"] == target_commit
     assert marker["installed"] == target_commit
-    assert subprocess.run(
-        ["git", f"--git-dir={split_release_fixture['brain']}", "rev-parse", "refs/dex/installed"],
-        check=True,
-        capture_output=True,
-        text=True,
-    ).stdout.strip() == target_commit
+    assert (
+        subprocess.run(
+            ["git", f"--git-dir={split_release_fixture['brain']}", "rev-parse", "refs/dex/installed"],
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+        == target_commit
+    )
 
 
 def test_apply_update_verification_failure_restores_every_release_file(
@@ -239,15 +243,17 @@ def test_apply_update_verification_failure_restores_every_release_file(
     assert json.loads((vault / "System/.dex/topology.json").read_text())["installedRelease"] == old_commit
 
 
-def test_release_pinning_failure_rolls_back_the_committed_file_transaction(
+def test_release_pinning_failure_rolls_back_file_transaction_under_lock(
     monkeypatch: pytest.MonkeyPatch,
     split_release_fixture: dict[str, object],
 ) -> None:
     vault = split_release_fixture["vault"]
     before_readme = (vault / "README.md").read_bytes()
     before_obsolete = (vault / "core/obsolete.py").read_bytes()
+    lock = vault / "System/.dex/mutation.lock"
 
     def fail_release_pin(*_args: object, **_kwargs: object) -> None:
+        assert lock.is_file(), "release identity finalization must run under the transaction lock"
         raise RuntimeError("simulated release pin failure")
 
     monkeypatch.setattr(apply_update, "_finalize_release_metadata", fail_release_pin)
@@ -258,3 +264,96 @@ def test_release_pinning_failure_rolls_back_the_committed_file_transaction(
     assert (vault / "README.md").read_bytes() == before_readme
     assert (vault / "core/obsolete.py").read_bytes() == before_obsolete
     assert not (vault / "core/new.py").exists()
+
+
+def test_crash_between_apply_and_release_identity_finalize_converges(
+    split_release_fixture: dict[str, object],
+) -> None:
+    vault = split_release_fixture["vault"]
+    tag, tag_object, target_commit, tree = split_release_fixture["target"]
+    _, _, old_commit, _ = split_release_fixture["old"]
+    before = {relative: (vault / relative).read_bytes() for relative in ("README.md", "core/obsolete.py")}
+    worker = """
+import sys
+from pathlib import Path
+from core.update.apply_update import apply_verified_release, verify_release_ref
+vault = Path(sys.argv[1])
+release = verify_release_ref(
+    vault,
+    tag=sys.argv[2],
+    tag_object=sys.argv[3],
+    commit=sys.argv[4],
+    tree=sys.argv[5],
+)
+apply_verified_release(vault, release)
+"""
+    process = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            worker,
+            str(vault),
+            tag,
+            tag_object,
+            target_commit,
+            tree,
+        ],
+        cwd=REPO_ROOT,
+        env=dict(os.environ, DEX_TX_TEST_STOP_AFTER="before-finalize"),
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+
+    assert process.returncode == 137, process.stderr[-500:]
+    outcomes = apply_update.Transaction.resume(vault)
+
+    assert len(outcomes) == 1 and outcomes[0]["resumed"] is True
+    assert (vault / "README.md").read_bytes() == before["README.md"]
+    assert (vault / "core/obsolete.py").read_bytes() == before["core/obsolete.py"]
+    assert not (vault / "core/new.py").exists()
+    assert json.loads((vault / "System/.dex/topology.json").read_text())["installedRelease"] == old_commit
+    assert json.loads((vault / ".dex/brain.git/dex-brain-v2").read_text())["installed"] == old_commit
+    assert _git(vault / ".dex/brain.git", "rev-parse", "refs/dex/installed") == old_commit
+
+
+def test_update_plan_skips_release_entries_that_already_match_bytes_and_mode(
+    split_release_fixture: dict[str, object],
+) -> None:
+    vault = split_release_fixture["vault"]
+    release = _verified(split_release_fixture)
+    (vault / "README.md").write_bytes(b"new brain\n")
+    (vault / "README.md").chmod(0o644)
+
+    plan = apply_update.build_update_plan(vault, release)
+
+    assert "README.md" not in {entry.relative for entry in plan.entries}
+    assert "README.md" not in plan.replaced
+
+
+def test_apply_update_can_finalize_when_every_release_mutation_already_matches(
+    split_release_fixture: dict[str, object],
+) -> None:
+    vault = split_release_fixture["vault"]
+    release = _verified(split_release_fixture)
+    for entry in release.entries:
+        target = vault / entry.path
+        verdict = apply_update.portable_contract.update_write_verdict(
+            entry.path,
+            exists=target.exists(),
+        )
+        if not verdict.allowed:
+            continue
+        content = subprocess.run(
+            ["git", f"--git-dir={release.brain_git}", "show", f"{release.commit}:{entry.path}"],
+            check=True,
+            capture_output=True,
+        ).stdout
+        _write(vault, entry.path, content, entry.mode)
+    (vault / "core/obsolete.py").unlink()
+
+    result = apply_update.apply_verified_release(vault, release)
+
+    assert result["committed"] is True
+    assert result["targets"] == []
+    assert _git(vault / ".dex/brain.git", "rev-parse", "refs/dex/installed") == release.commit

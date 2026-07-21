@@ -1,6 +1,10 @@
 #!/usr/bin/env node
 'use strict';
 
+// Fail-safe lock policy: any existing mutation.lock, including a stale lock
+// left by a crashed updater, pauses auto-commit until recovery removes it.
+// This hook never takes over a stale lock and never risks racing a vault mutation.
+
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
@@ -144,7 +148,6 @@ function classify(contract, input) {
 
 function containsSecretContent(content) {
   const source = Buffer.isBuffer(content) ? content : Buffer.from(String(content));
-  if (source.includes(0)) return false;
   const text = source.toString('utf8');
   return SECRET_CONTENT_PATTERNS.some((expression) => expression.test(text));
 }

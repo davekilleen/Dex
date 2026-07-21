@@ -17,8 +17,9 @@ repair) to mutate a vault. Its guarantees, each fault-injection tested:
 
 Test seams: setting ``DEX_TX_TEST_STOP_AFTER`` to one of
 ``after-begin | after-snapshot | mid-apply:<index> | after-apply |
-after-verify | after-commit-record`` makes the engine ``os._exit(137)`` at
-that exact point, so tests can assert recovery from every crash window.
+after-verify | before-finalize | after-commit-record`` makes the engine
+``os._exit(137)`` at that exact point, so tests can assert recovery from every
+crash window.
 """
 
 from __future__ import annotations
@@ -29,6 +30,7 @@ import re
 import shutil
 import time
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -91,9 +93,15 @@ class Transaction:
     # -- lifecycle -----------------------------------------------------------
 
     @classmethod
-    def begin(cls, vault_root: Path, plan: list[PlanEntry]) -> "Transaction":
+    def begin(
+        cls,
+        vault_root: Path,
+        plan: list[PlanEntry],
+        *,
+        allow_empty: bool = False,
+    ) -> "Transaction":
         """Authorize the whole plan, take the lock, journal BEGIN."""
-        if not plan:
+        if not plan and not allow_empty:
             raise TransactionError("a transaction needs at least one plan entry")
 
         # Target modes are bounded: no setuid/setgid/sticky, no bits beyond
@@ -105,13 +113,14 @@ class Transaction:
                     "bits; only permission bits up to 0o777 are allowed"
                 )
             if entry.expected_current_sha256 is not None and (
-                entry.content is not None
-                or not re.fullmatch(r"[0-9a-f]{64}", entry.expected_current_sha256)
+                entry.content is not None or not re.fullmatch(r"[0-9a-f]{64}", entry.expected_current_sha256)
             ):
                 raise PlanRejected(
                     f"{entry.relative}: current-content preconditions are valid only for "
                     "deletions and must be a lowercase sha256"
                 )
+            if entry.content is None and entry.expected_current_sha256 is None:
+                raise PlanRejected(f"{entry.relative}: deletions require expected_current_sha256")
 
         # All-or-nothing authorization BEFORE the lock: one disallowed entry
         # rejects the plan with nothing acquired and nothing written. For
@@ -122,15 +131,11 @@ class Transaction:
         rejections = []
         for entry in plan:
             target = Path(vault_root) / entry.relative
-            verdict = portable_contract.update_write_verdict(
-                entry.relative, exists=target.exists()
-            )
+            verdict = portable_contract.update_write_verdict(entry.relative, exists=target.exists())
             if not verdict.allowed:
                 rejections.append(f"{entry.relative} [{verdict.action}]")
         if rejections:
-            raise PlanRejected(
-                "the ownership contract forbids writing: " + ", ".join(rejections)
-            )
+            raise PlanRejected("the ownership contract forbids writing: " + ", ".join(rejections))
 
         tx = cls(vault_root, time.strftime("%Y%m%dT%H%M%S-") + uuid.uuid4().hex[:8])
         tx._plan = list(plan)
@@ -171,8 +176,13 @@ class Transaction:
         _stop_seam("after-begin")
         return tx
 
-    def run(self) -> dict:
-        """snapshot → apply → verify → commit. Rolls back on any failure."""
+    def run(self, *, before_commit: Callable[[], None] | None = None) -> dict:
+        """snapshot → apply → verify → finalize → commit.
+
+        ``before_commit`` runs while the mutation lock is still held and before
+        COMMITTED is journaled. Any failure therefore uses the normal locked
+        rollback path instead of compensating after transaction success.
+        """
         try:
             self._snapshot_phase()
             _stop_seam("after-snapshot")
@@ -180,6 +190,9 @@ class Transaction:
             _stop_seam("after-apply")
             self._verify_phase()
             _stop_seam("after-verify")
+            if before_commit is not None:
+                _stop_seam("before-finalize")
+                before_commit()
             return self._commit_phase()
         except BaseException:
             self.rollback()
@@ -199,17 +212,14 @@ class Transaction:
             if (
                 target.is_symlink()
                 or not target.is_file()
-                or hashlib.sha256(target.read_bytes()).hexdigest()
-                != entry.expected_current_sha256
+                or hashlib.sha256(target.read_bytes()).hexdigest() != entry.expected_current_sha256
                 or target.stat().st_mode & 0o777 != entry.mode
             ):
                 raise PlanRejected(
                     f"{entry.relative} changed after the mutation plan was built; "
                     "the existing file wins and the transaction aborts"
                 )
-        self.snapshot.capture(
-            self.vault_root, [entry.relative for entry in self._plan]
-        )
+        self.snapshot.capture(self.vault_root, [entry.relative for entry in self._plan])
         self.journal.append("SNAPSHOT-DONE")
 
     def _apply_phase(self) -> None:
@@ -230,10 +240,42 @@ class Transaction:
                     f"[{verdict.action}]; the existing file wins and the "
                     "transaction aborts"
                 )
-            self._apply_one(index, entry)
+            if entry.content is None:
+                self._verify_deletion_precondition(
+                    entry,
+                    changed_when="after the mutation snapshot",
+                )
+            self.journal.append("APPLYING", {"index": index, "relative": entry.relative})
+            try:
+                self._apply_one(index, entry)
+            except PlanRejected:
+                self.journal.append(
+                    "NOT-APPLIED",
+                    {"index": index, "relative": entry.relative},
+                )
+                raise
             self.journal.append("APPLIED", {"index": index, "relative": entry.relative})
             _stop_seam(f"mid-apply:{index}")
         self.journal.append("APPLY-DONE")
+
+    def _verify_deletion_precondition(
+        self,
+        entry: PlanEntry,
+        *,
+        changed_when: str,
+    ) -> None:
+        target = self.vault_root / entry.relative
+        if not target.exists():
+            return
+        if (
+            target.is_symlink()
+            or not target.is_file()
+            or hashlib.sha256(target.read_bytes()).hexdigest() != entry.expected_current_sha256
+            or target.stat().st_mode & 0o777 != entry.mode
+        ):
+            raise PlanRejected(
+                f"{entry.relative} changed {changed_when}; the existing file wins and the transaction aborts"
+            )
 
     def _apply_one(self, index: int, entry: PlanEntry) -> None:
         relative = entry.relative
@@ -241,6 +283,10 @@ class Transaction:
         if entry.content is None:
             if target.is_symlink() or target.is_dir():
                 raise TransactionError(f"refusing to delete a non-file target: {relative}")
+            self._verify_deletion_precondition(
+                entry,
+                changed_when="after the mutation snapshot",
+            )
             try:
                 target.unlink()
             except FileNotFoundError:
@@ -277,16 +323,11 @@ class Transaction:
             target = self.vault_root / entry.relative
             if entry.content is None:
                 if target.is_symlink() or target.exists():
-                    raise TransactionError(
-                        f"verification failed for {entry.relative}: deleted target still exists"
-                    )
+                    raise TransactionError(f"verification failed for {entry.relative}: deleted target still exists")
                 continue
             digest = hashlib.sha256(target.read_bytes()).hexdigest()
             if digest != entry.sha256():
-                raise TransactionError(
-                    f"verification failed for {entry.relative}: applied bytes do "
-                    "not match the plan"
-                )
+                raise TransactionError(f"verification failed for {entry.relative}: applied bytes do not match the plan")
             actual_mode = target.stat().st_mode & 0o777
             if actual_mode != entry.mode:
                 raise TransactionError(
@@ -321,10 +362,7 @@ class Transaction:
             if not candidate.is_dir():
                 continue
             try:
-                events = {
-                    entry.event
-                    for entry in Journal(candidate / "journal.jsonl").read()
-                }
+                events = {entry.event for entry in Journal(candidate / "journal.jsonl").read()}
             except JournalCorruptError:
                 continue
             if "COMMITTED" in events:
@@ -335,11 +373,16 @@ class Transaction:
     # -- recovery / undo -------------------------------------------------------
 
     def _applied_relatives(self, entries) -> set[str]:
-        return {
-            entry.payload.get("relative")
-            for entry in entries
-            if entry.event == "APPLIED" and entry.payload.get("relative")
-        }
+        applied: set[str] = set()
+        for entry in entries:
+            relative = entry.payload.get("relative")
+            if not relative:
+                continue
+            if entry.event in {"APPLYING", "APPLIED"}:
+                applied.add(relative)
+            elif entry.event == "NOT-APPLIED":
+                applied.discard(relative)
+        return applied
 
     def rollback(self) -> dict:
         """Byte-exact restore from the snapshot; journaled; releases the lock.
@@ -363,7 +406,9 @@ class Transaction:
             if journal_ok:
                 if "SNAPSHOT-DONE" in events:
                     restored = self.snapshot.restore(
-                        self.vault_root, created_deletions=applied
+                        self.vault_root,
+                        created_deletions=applied,
+                        restore_relatives=applied,
                     )
                 # Before SNAPSHOT-DONE nothing was mutated: nothing to restore.
             else:
@@ -373,9 +418,7 @@ class Transaction:
                 # alone: with no journal we cannot know who created them, and
                 # deleting a user's file is the one unforgivable outcome.
                 try:
-                    restored = self.snapshot.restore(
-                        self.vault_root, created_deletions=set()
-                    )
+                    restored = self.snapshot.restore(self.vault_root, created_deletions=set())
                 except Exception:
                     restored = []
             if journal_ok:

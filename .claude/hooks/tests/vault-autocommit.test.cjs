@@ -105,6 +105,23 @@ test('enabled hook holds back contract-denied paths and staged content secrets',
   assert.equal(git(root, 'diff', '--cached', '--name-only'), '');
 });
 
+test('enabled hook scans NUL-containing buffers for secret content', (t) => {
+  const hook = require(HOOK_PATH);
+  const root = fixture(t, true);
+  fs.mkdirSync(path.join(root, '04-Projects'), { recursive: true });
+  fs.writeFileSync(
+    path.join(root, '04-Projects', 'binary-note.bin'),
+    Buffer.from('safe-prefix\0{"access_token":"scanner-positive-fixture-value"}\n'),
+  );
+
+  const result = hook.run({ root, now: new Date('2026-07-13T10:00:00Z') });
+
+  assert.equal(result.feature_status, 'ok');
+  assert.match(result.user_message, /held back|protected/i);
+  assert.equal(git(root, 'ls-tree', '--name-only', 'HEAD', '--', '04-Projects/binary-note.bin'), '');
+  assert.equal(git(root, 'diff', '--cached', '--name-only'), '');
+});
+
 test('enabled hook disables commit hooks and never pushes', (t) => {
   const hook = require(HOOK_PATH);
   const root = fixture(t, true);
