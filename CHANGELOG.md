@@ -7,6 +7,21 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.65.0] - Dex now knows exactly what an update would change — before it changes anything (2026-07-21)
+
+Until now, updating Dex meant trusting that the new version and your vault would get along. This release gives Dex full sight before any future update touches anything.
+
+**What this changes for you:**
+
+* **Every release now carries a complete packing list.** Each new version of Dex ships with an exact inventory of what's inside, and the release build fails if that list is ever incomplete — so "what's in this update?" always has a precise answer.
+* **Dex can now read your vault like a map — without touching it.** It can tell what came from Dex, what you've customized (so updates will respect it), what's yours alone, and what it doesn't recognize. Anything unrecognized is reported honestly instead of guessed at.
+* **You'll be able to skip parts of an update safely.** The planning engine guarantees that saying "not this one" to any piece never changes what happens to the rest — each piece is decided completely on its own.
+* **`/dex-doctor` gained two new checks** that report on all of the above, in the same honest working / off / broken / couldn't-check language as everything else.
+
+This completes the "look, don't touch" phase of the update-safety program. Next up: applying updates through this map, with automatic backups and one-command undo.
+
+---
+
 ## [1.64.0] - Updates that can't hurt your files, and the last cleanup of the maker's leftovers (2026-07-21)
 
 This release finishes two stories that began yesterday: making Dex updates fundamentally safe, and getting the last of the maker's own files out of your install.
