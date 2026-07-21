@@ -54,6 +54,14 @@ class AdoptionRewindError(RuntimeError):
     """An adoption rewind was refused or failed without a partial result."""
 
 
+class LifecycleLedgerPersistenceError(RuntimeError):
+    """A committed lifecycle transaction was not recorded in the ledger.
+
+    Callers must not blanket-catch this error: the filesystem transaction has
+    already committed and the user must be told how to repair its ledger.
+    """
+
+
 def _refuse(message: str) -> AdoptionExecutionError:
     return AdoptionExecutionError(f"adoption refused: {message}")
 
@@ -800,7 +808,7 @@ def rewind_adoption(
         ) from error
 
     rewind_transaction_id = result["tx_id"]
-    return RewindReceipt.from_dict(
+    rewind_receipt = RewindReceipt.from_dict(
         {
             "rewind_receipt_version": REWIND_RECEIPT_VERSION,
             "adoption_transaction_id": validated.transaction_id,
@@ -814,6 +822,21 @@ def rewind_adoption(
             "files_restored": [entry.to_dict() for entry in restored],
         }
     )
+    # Boundary: the rewind transaction is already COMMITTED.  The transaction
+    # journal is authoritative, so a later ledger failure is reported loudly
+    # but must never trigger an attempted rollback of the committed rewind.
+    try:
+        from core.lifecycle.ledger import LedgerError, record_rewind
+
+        record_rewind(root, rewind_receipt)
+    except (LedgerError, OSError) as error:
+        raise LifecycleLedgerPersistenceError(
+            f"rewind {rewind_transaction_id} committed, but its lifecycle ledger refresh "
+            f"did not complete; its event may already be durable and the transaction journal "
+            f"is authoritative: {error}. Run 'python3 -m core.lifecycle.cli --vault-root "
+            f"{root} rebuild-state' to repair the lifecycle ledger"
+        ) from error
+    return rewind_receipt
 
 
 def _rebuild_requested_plan(catalog, inventory, requested: tuple[str, ...]) -> AdoptionPlan:
@@ -995,6 +1018,24 @@ def execute_adoption(
             f"adoption {transaction_id} committed, but its receipt could not be "
             f"persisted; the transaction journal is authoritative: {error}"
         ) from error
+    # Boundary: adoption and receipt persistence are already durable.  Ledger
+    # projection is post-commit evidence; failure is loud and never rolls back
+    # the transaction whose fsynced journal remains authoritative.
+    try:
+        from core.lifecycle.ledger import LedgerError, record_adoption
+
+        record_adoption(
+            root,
+            receipt,
+            {item.item_id: item.item_version for item in rebuilt.items},
+        )
+    except (LedgerError, OSError) as error:
+        raise LifecycleLedgerPersistenceError(
+            f"adoption {transaction_id} committed, but its lifecycle ledger refresh did not "
+            f"complete; its event may already be durable and the transaction journal is "
+            f"authoritative: {error}. Run 'python3 -m core.lifecycle.cli --vault-root "
+            f"{root} rebuild-state' to repair the lifecycle ledger"
+        ) from error
     return receipt
 
 
@@ -1003,6 +1044,7 @@ __all__ = [
     "AdoptionReceipt",
     "AdoptionReceiptPersistenceError",
     "AdoptionRewindError",
+    "LifecycleLedgerPersistenceError",
     "ReceiptFile",
     "RewindReceipt",
     "RewindReceiptFile",
