@@ -26,6 +26,18 @@ def test_relative_contract_values_are_not_absolute_paths():
     assert not absolute, f"Expected vault-relative paths, got absolutes: {absolute}"
 
 
+def test_lifecycle_and_session_memory_paths_are_exported():
+    rel_map = build_relative_paths_contract()["vault_relative_paths"]
+
+    assert {
+        "LIFECYCLE_DIR": "System/.dex/lifecycle",
+        "LEDGER_DIR": "System/.dex/lifecycle/ledger",
+        "LEDGER_EVENTS_DIR": "System/.dex/lifecycle/ledger/events",
+        "LIFECYCLE_STATE_FILE": "System/.dex/lifecycle/state.json",
+        "SESSION_MEMORY_DB_FILE": "System/.dex-sessions.db",
+    }.items() <= rel_map.items()
+
+
 def test_write_contract_package_outputs_expected_files(tmp_path: Path):
     contract = write_contract_package(tmp_path)
 
