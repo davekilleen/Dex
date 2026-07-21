@@ -1,0 +1,118 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dex/contracts/release-catalog-v1.schema.json",
+  "title": "Dex Release Catalog v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["catalog_version", "release", "items", "integrity"],
+  "properties": {
+    "catalog_version": {"const": 1},
+    "release": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["version", "channel", "immutable_distribution_tag", "source_commit", "manifest"],
+      "properties": {
+        "version": {
+          "type": "string",
+          "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(-(0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*)(\\.(0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*))*)?(\\+[0-9A-Za-z-]+(\\.[0-9A-Za-z-]+)*)?$"
+        },
+        "channel": {"enum": ["release", "release-beta"]},
+        "immutable_distribution_tag": {
+          "type": "string",
+          "pattern": "^dist/release(-beta)?/v[^/]+-[0-9a-f]{7,40}$"
+        },
+        "source_commit": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+        "manifest": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["path", "sha256"],
+          "properties": {
+            "path": {"const": "System/.installed-files.manifest"},
+            "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+          }
+        }
+      }
+    },
+    "items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "kind", "version", "files", "dependencies", "capabilities", "rewind"],
+        "properties": {
+          "id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9.-]*$"},
+          "kind": {"type": "string", "pattern": "^[a-z0-9][a-z0-9.-]*$"},
+          "version": {
+            "type": "string",
+            "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(-(0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*)(\\.(0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*))*)?(\\+[0-9A-Za-z-]+(\\.[0-9A-Za-z-]+)*)?$"
+          },
+          "files": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["path", "sha256", "ownership_class"],
+              "properties": {
+                "path": {"type": "string", "minLength": 1},
+                "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+                "ownership_class": {"enum": ["brain", "vault", "seed", "generated", "runtime"]}
+              }
+            }
+          },
+          "dependencies": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["item_id", "version"],
+              "properties": {
+                "item_id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9.-]*$"},
+                "version": {
+                  "type": "string",
+                  "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(-(0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*)(\\.(0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*))*)?(\\+[0-9A-Za-z-]+(\\.[0-9A-Za-z-]+)*)?$"
+                }
+              }
+            }
+          },
+          "capabilities": {
+            "type": "array",
+            "uniqueItems": true,
+            "items": {"type": "string", "pattern": "^[a-z0-9][a-z0-9.-]*$"}
+          },
+          "rewind": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["acknowledgement_required", "token"],
+            "properties": {
+              "acknowledgement_required": {"const": true},
+              "token": {"type": "string", "pattern": "^rewind:[a-z0-9][a-z0-9.-]*@[0-9A-Za-z.+-]+$"}
+            }
+          }
+        }
+      }
+    },
+    "integrity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["catalog_sha256", "signatures"],
+      "properties": {
+        "catalog_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "signatures": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["algorithm", "key_id", "signed_sha256", "value"],
+            "properties": {
+              "algorithm": {"const": "ed25519"},
+              "key_id": {"type": "string", "minLength": 1},
+              "signed_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+              "value": {"type": "string", "minLength": 1}
+            }
+          }
+        }
+      }
+    }
+  }
+}
