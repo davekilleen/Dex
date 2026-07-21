@@ -41,6 +41,23 @@ def test_update_runs_credential_migration_before_status_and_safe_autosave():
     assert migration < status < autosave
 
 
+def test_update_skill_routes_split_topology_to_transaction_updater_without_merge() -> None:
+    update = UPDATE_SKILL.read_text(encoding="utf-8")
+    start = update.index("### Split-topology route")
+    end = update.index("### Step 3: Pre-Update Safety Check")
+    split = update[start:end]
+
+    assert "core.update.apply_update" in split
+    assert "dist/release/v" in split
+    assert "--tag-object" in split
+    assert "--commit" in split
+    assert "--tree" in split
+    assert "release-beta" in split
+    assert "System/.dex/mutation.lock" in split
+    assert "git merge" not in split
+    assert "Combined topology continues to Step 3" in split
+
+
 def test_update_and_duplicated_rollback_flows_recognize_both_baselines() -> None:
     update = UPDATE_SKILL.read_text(encoding="utf-8")
     rollback = ROLLBACK_SKILL.read_text(encoding="utf-8")

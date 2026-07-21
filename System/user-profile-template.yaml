@@ -23,6 +23,10 @@ timezone: ""
 updates:
   channel: stable
 
+# Optional local Git snapshots after the brain/vault split. This never pushes.
+vault:
+  auto_commit: false
+
 # Role Intelligence
 # This section is populated during onboarding based on the role definition
 role_context:
