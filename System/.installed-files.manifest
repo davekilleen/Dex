@@ -513,6 +513,8 @@
 .claude/skills/create-skill/SKILL.md
 .claude/skills/daily-plan/SKILL.md
 .claude/skills/daily-review/SKILL.md
+.claude/skills/decision-log/SKILL.md
+.claude/skills/delegate-check/SKILL.md
 .claude/skills/dex-add-mcp/SKILL.md
 .claude/skills/dex-backlog/SKILL.md
 .claude/skills/dex-doctor/SKILL.md
@@ -561,6 +563,7 @@
 .claude/skills/triage/SKILL.md
 .claude/skills/week-plan/SKILL.md
 .claude/skills/week-review/SKILL.md
+.claude/skills/weekly-reflection/SKILL.md
 .claude/skills/xray/SKILL.md
 .claude/skills/zoom-setup/SKILL.md
 .cursor/rules/search-routing.mdc
@@ -693,13 +696,17 @@ core/integrations/task_sync.py
 core/lifecycle/__init__.py
 core/lifecycle/catalog.py
 core/lifecycle/catalog/README.md
+core/lifecycle/catalog/official-capabilities.json
+core/lifecycle/cli.py
 core/lifecycle/customizations.py
 core/lifecycle/engine.py
 core/lifecycle/filesystem.py
 core/lifecycle/handlers.py
 core/lifecycle/inventory.py
+core/lifecycle/ledger.py
 core/lifecycle/machine_state.py
 core/lifecycle/model.py
+core/lifecycle/performance-budget-v1.json
 core/lifecycle/plan.py
 core/lifecycle/preview.py
 core/lifecycle/retention.py
@@ -750,6 +757,7 @@ core/obsidian/install_sync_daemon.sh
 core/obsidian/migrate_to_wikilinks.py
 core/obsidian/sync_daemon.py
 core/path_contract.py
+core/path_safety.py
 core/paths.py
 core/portable_contract.py
 core/provision-contract.json
@@ -843,9 +851,14 @@ core/tests/fixtures/vault/System/user-profile.yaml
 core/tests/lifecycle_test_helpers.py
 core/tests/support/__init__.py
 core/tests/support/vault_builder.py
+core/tests/test_adoption_cli.py
 core/tests/test_adoption_diff.py
+core/tests/test_adoption_doctor_journey.py
+core/tests/test_adoption_effective_behavior.py
 core/tests/test_adoption_inventory.py
+core/tests/test_adoption_ledger.py
 core/tests/test_adoption_machine_state.py
+core/tests/test_adoption_messy_vault_journey.py
 core/tests/test_adoption_plan.py
 core/tests/test_adoption_redaction.py
 core/tests/test_adoption_retention.py
@@ -937,6 +950,7 @@ core/tests/test_work_server_production_paths.py
 core/tests/test_work_server_roundtrip.py
 core/tests/test_work_server_task_priorities.py
 core/tests/test_work_server_weekly_priority_creation.py
+core/tests/vault_observed_writes.py
 core/transaction/__init__.py
 core/transaction/engine.py
 core/transaction/journal.py
@@ -1021,6 +1035,7 @@ packages/dex-contracts/package.json
 pyproject.toml
 requirements-dev.txt
 requirements.txt
+scripts/benchmark_adoption_engine.py
 scripts/benchmark_large_vault.py
 scripts/build-health-json.py
 scripts/build-release.sh
