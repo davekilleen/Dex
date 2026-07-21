@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import importlib.util
 import io
 import json
@@ -54,14 +55,20 @@ RELEASE_BUILD_INPUTS = (
     "System/Beta_Communications/2026-02-04_hardcoded_paths_fix.md",
     "core/migrations/preserve_local_only_paths.py",
     "core/migrations/tracked-ignored-policy.yaml",
+    "core/lifecycle/catalog/README.md",
+    "core/lifecycle/schemas/release-catalog-v1.schema.json",
+    "core/portable_contract.py",
     "core/utils/tracked_ignored.py",
     "core/utils/manifest.py",
     "core/utils/update_verifier.py",
     "core/utils/smoke.py",
+    "packages/dex-contracts/dist/release-catalog-v1.schema.json",
     "scripts/build-release.sh",
     "scripts/build-vault-bundle.sh",
+    "scripts/check-catalog-coverage.py",
     "scripts/check-tau-removal.py",
     "scripts/generate-manifest.sh",
+    "scripts/generate-release-catalog.py",
     "scripts/resolve-distignore-files.sh",
     "scripts/security-gate.sh",
     "scripts/verify-distribution.sh",
@@ -348,6 +355,7 @@ def test_release_branch_strips_dev_files_and_untracks_v1_local_only_files(tmp_pa
     assert ".claude/skills/dex-rollback/SKILL.md" in members
     assert ".claude/skills/anthropic-docx/scripts/document.py" in members
     assert "System/.installed-files.manifest" in members
+    assert "System/.release-catalog.json" in members
     assert "System/.release-evidence-profile.json" in members
     assert "System/.local-only-preservation-transition.json" in members
     assert "core/migrations/preserve_local_only_paths.py" in members
@@ -367,6 +375,26 @@ def test_release_branch_strips_dev_files_and_untracks_v1_local_only_files(tmp_pa
     assert manifest == sorted(manifest)
     assert set(manifest) == members
     assert "core/tests/test_distribution_artifacts.py" not in manifest
+    catalog = _git_json(clone, "release:System/.release-catalog.json")
+    package = _git_json(clone, "release:package.json")
+    source_commit = subprocess.run(
+        ["git", "rev-parse", "release^"],
+        cwd=clone,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    manifest_bytes = subprocess.run(
+        ["git", "show", "release:System/.installed-files.manifest"],
+        cwd=clone,
+        check=True,
+        capture_output=True,
+    ).stdout
+    assert catalog["catalog_version"] == 1
+    assert catalog["items"] == []
+    assert catalog["release"]["version"] == package["version"]
+    assert catalog["release"]["source_commit"] == source_commit
+    assert catalog["release"]["manifest"]["sha256"] == hashlib.sha256(manifest_bytes).hexdigest()
     profile = json.loads(
         subprocess.run(
             ["git", "show", "release:System/.release-evidence-profile.json"],

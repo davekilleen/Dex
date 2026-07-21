@@ -12,6 +12,7 @@
       "default": "./dist/index.js"
     },
     "./paths": "./dist/paths.contract.json",
+    "./release-catalog-schema": "./dist/release-catalog-v1.schema.json",
     "./schema": "./dist/paths.schema.json"
   },
   "files": [
