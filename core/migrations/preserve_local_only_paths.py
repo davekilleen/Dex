@@ -706,16 +706,6 @@ def _journal_can_target(journal: dict[str, Any], transition: PreservationTransit
     }
 
 
-def _is_bootstrap_baseline_promotion(
-    journal: dict[str, Any], transition: PreservationTransition
-) -> bool:
-    """A v1 capture may cross the one approved v1 -> v2 bootstrap boundary."""
-    return (
-        (journal.get("schema_version"), transition.baseline_version) == (1, 2)
-        and transition.phase == _bootstrap_phase(transition.baseline_version)
-    )
-
-
 def capture(repo: Path, journal_dir: Path, policy_path: Path | None = None) -> dict[str, Any]:
     recovered = _finish_publication_recovery(journal_dir)
     existing: dict[str, Any] | None = None
@@ -753,9 +743,8 @@ def capture_rewind(repo: Path, journal_dir: Path, policy_path: Path | None = Non
         transition = load_transition(repo)
     except TrackedIgnoredError as error:
         raise MigrationError(str(error)) from error
-    bootstrap_promotion = _is_bootstrap_baseline_promotion(journal, transition)
-    if transition.phase != _untrack_phase(transition.baseline_version) and not bootstrap_promotion:
-        raise MigrationError("rewind capture requires an applied untrack or baseline promotion")
+    if transition.phase != _untrack_phase(transition.baseline_version):
+        raise MigrationError("rewind capture requires untrack transition metadata")
     if not _journal_can_target(journal, transition):
         raise MigrationError("journal schema cannot represent the current transition baseline")
     if not _journal_policy_is_compatible(journal, policy):
@@ -763,10 +752,9 @@ def capture_rewind(repo: Path, journal_dir: Path, policy_path: Path | None = Non
     if journal.get("phase") not in {"applied", "rewind-captured"}:
         raise MigrationError(f"journal cannot capture rewind from phase: {journal.get('phase')}")
     policy_paths, local_paths = _baseline_sets(policy, transition)
-    expected_tracked = policy_paths if bootstrap_promotion else policy_paths - local_paths
-    if _query_tracked_ignored(repo) != expected_tracked:
+    if _query_tracked_ignored(repo) != policy_paths - local_paths:
         raise MigrationError(
-            f"rewind capture requires the exact approved {len(expected_tracked)}-path state"
+            f"rewind capture requires the exact approved {len(policy_paths - local_paths)}-path state"
         )
     generation, _ = _create_rewind_generation(repo, journal_dir, journal)
     _publish_generation(journal_dir, generation, journal)
@@ -790,44 +778,27 @@ def apply(repo: Path, journal_dir: Path, policy_path: Path | None = None) -> dic
         transition = load_transition(repo)
     except TrackedIgnoredError as error:
         raise MigrationError(str(error)) from error
-    bootstrap_promotion = _is_bootstrap_baseline_promotion(journal, transition)
-    if transition.phase != _untrack_phase(transition.baseline_version) and not bootstrap_promotion:
-        raise MigrationError(
-            "apply requires untrack metadata or the approved v1-to-v2 promotion; "
-            "bootstrap remains tracked"
-        )
+    if transition.phase != _untrack_phase(transition.baseline_version):
+        raise MigrationError("apply requires untrack transition metadata; bootstrap remains tracked")
     if not _journal_can_target(journal, transition):
         raise MigrationError("journal schema cannot represent the target transition baseline")
     policy_paths, local_paths = _baseline_sets(policy, transition)
 
     actual = _query_tracked_ignored(repo)
-    target_local_paths = () if bootstrap_promotion else BASELINE_LOCAL_ONLY_PATHS[transition.baseline_version]
-    expected_states = (
-        [policy_paths]
-        if bootstrap_promotion
-        else [
-            policy_paths - set(target_local_paths[:count])
-            for count in range(len(target_local_paths) + 1)
-        ]
-    )
+    target_local_paths = BASELINE_LOCAL_ONLY_PATHS[transition.baseline_version]
+    expected_states = [
+        policy_paths - set(target_local_paths[:count]) for count in range(len(target_local_paths) + 1)
+    ]
     if actual not in expected_states:
         raise MigrationError("live tracked-ignore query drifted during apply; no broader mutation ran")
-    expected_after = policy_paths if bootstrap_promotion else policy_paths - local_paths
     if journal["phase"] == "applied":
-        if actual == expected_after:
-            return journal
-        continuing_v1_journal_into_v2_untrack = (
-            journal.get("schema_version") == 1
-            and transition.baseline_version == 2
-            and transition.phase == "untrack-v2"
-            and actual == policy_paths
-        )
-        if not continuing_v1_journal_into_v2_untrack:
+        if actual != policy_paths - local_paths:
             raise MigrationError(
-                f"applied journal does not match the exact approved {len(expected_after)}-path state"
+                f"applied journal does not match the exact approved {len(policy_paths - local_paths)}-path state"
             )
+        return journal
 
-    if journal["phase"] in {"captured", "applied"}:
+    if journal["phase"] == "captured":
         journal["phase"] = "applying"
         _write_journal(journal_dir, journal)
 
@@ -840,6 +811,7 @@ def apply(repo: Path, journal_dir: Path, policy_path: Path | None = None) -> dic
             raise MigrationError(detail or f"could not untrack approved local-only path: {relative}")
         actual.remove(relative)
 
+    expected_after = policy_paths - local_paths
     if _query_tracked_ignored(repo) != expected_after:
         raise MigrationError(
             f"post-migration tracked-ignore query is not the exact approved "

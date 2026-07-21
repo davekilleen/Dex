@@ -173,6 +173,8 @@ RULES: tuple[Rule, ...] = (
     _r("brain-gitignore", ".gitignore", "file", "brain"),
     _r("brain-gitattributes", ".gitattributes", "file", "brain"),
     _r("brain-distignore", ".distignore", "file", "brain"),
+    _r("brain-beta-communications", "System/Beta_Communications", "dir", "brain",
+       "release-doc retained until the schema-2 baseline-reduction follow-up"),
     _r("brain-system-readme", "System/README.md", "file", "brain"),
 
     # --- seed: shipped once, then the user's; update writes only if absent -
@@ -251,7 +253,8 @@ RULES: tuple[Rule, ...] = (
 
     # --- runtime: local machine state ---------------------------------------
     _r("runtime-session-learnings", "System/Session_Learnings", "dir", "runtime",
-       "user-machine session state; only the shipped README is release content"),
+       "user-machine session state; historical learning files become local-only in "
+       "the untrack-v1 transition, while the shipped README remains a seed"),
     _r("runtime-session-memory", "System/Session_Memory", "dir", "runtime"),
     _r("runtime-usage-log", "System/usage_log.md", "file", "runtime",
        "shipped blank starter, then per-machine usage state; legacy-tracked"),
@@ -482,11 +485,10 @@ def release_forbidden(paths: Iterable[str]) -> list[str]:
     anything hard-denied.
 
     Legacy-tracked ``runtime`` files are deliberately NOT failed here: a small
-    set still ships under the v2 tracked-ignore baseline, and turning the gate
-    red on known, journalled debt would block every build. They are surfaced
-    explicitly by :func:`legacy_shipped_runtime` instead, so the
-    remaining runtime debt stays visible and testable rather than silently
-    blessed.
+    set still ships during the v1 transition, and turning the gate red on known,
+    journalled debt would block every build. They are surfaced explicitly by
+    :func:`legacy_shipped_runtime` instead, so the remaining runtime debt stays
+    visible and testable rather than silently blessed.
     """
     forbidden: list[str] = []
     for path in paths:
@@ -500,8 +502,8 @@ def legacy_shipped_runtime(paths: Iterable[str]) -> list[str]:
     """Tracked ``runtime``-class paths — remaining baseline debt.
 
     ``runtime`` means "never shipped", so anything this returns for the repo
-    tree is a standing contradiction the active baseline currently grandfathers
-    (usage log and legacy state markers).
+    tree is a standing contradiction the transition baseline currently
+    grandfathers (usage log and legacy state markers).
     """
     return [
         resolution.path

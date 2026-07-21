@@ -657,6 +657,7 @@ System/.last-learning-check
 System/.local-only-preservation-transition.json
 System/.mcp.json.example
 System/.release-evidence-profile.json
+System/Beta_Communications/2026-02-04_hardcoded_paths_fix.md
 System/Dex_Backlog.md
 System/README.md
 System/Session_Learnings/README.md
@@ -667,7 +668,6 @@ System/Templates/Person_Page.md
 System/Templates/README.md
 System/claude-code-state.json
 System/integrations/config.yaml
-System/integrations/slack.yaml
 System/pillars.example.yaml
 System/pillars.yaml
 System/trusted-mcps.example.yaml

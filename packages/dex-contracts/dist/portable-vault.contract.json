@@ -509,6 +509,13 @@
       "ownership": "generated"
     },
     {
+      "id": "brain-beta-communications",
+      "path": "System/Beta_Communications",
+      "kind": "dir",
+      "ownership": "brain",
+      "note": "release-doc retained until the schema-2 baseline-reduction follow-up"
+    },
+    {
       "id": "seed-dex-backlog",
       "path": "System/Dex_Backlog.md",
       "kind": "file",
@@ -532,7 +539,7 @@
       "path": "System/Session_Learnings",
       "kind": "dir",
       "ownership": "runtime",
-      "note": "user-machine session state; only the shipped README is release content"
+      "note": "user-machine session state; historical learning files become local-only in the untrack-v1 transition, while the shipped README remains a seed"
     },
     {
       "id": "seed-session-learnings-readme",

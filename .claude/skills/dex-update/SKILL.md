@@ -278,13 +278,13 @@ If cancelled:
 🔄 Applying updates...
 ```
 
-**A. Inspect the immutable target transition and capture before any baseline boundary**
+**A. Inspect the immutable target transition and capture only for the future untrack release**
 
 This is release-blocking. Copy the trusted migration runtime and dual-baseline policy
-into the private durable journal root. The v1.63 bridge declares `bootstrap-v1`;
-the v2 baseline release declares `bootstrap-v2` and deletes the retired founder
-paths. Capture before that v1-to-v2 boundary, or before an untrack target, so Git
-cannot remove locally modified files without a byte-exact journal:
+into the private durable journal root. The bridge release declares `bootstrap-v1`,
+keeps all three historical paths tracked, and installs support for the future
+`untrack-v2` boundary. Any untrack target must capture before Git can remove tracked
+files:
 
 ```bash
 DEX_LOCAL_ONLY_ROOT="System/.dex/local-only-preservation"
@@ -313,32 +313,9 @@ DEX_TARGET_PHASE=$(PYTHONPATH="$DEX_LOCAL_ONLY_RUNTIME" python3 \
   "$DEX_LOCAL_ONLY_RUNTIME/core/migrations/preserve_local_only_paths.py" transition \
   --repo "$PWD" --transition "$DEX_TARGET_TRANSITION" \
   --package "$DEX_TARGET_PACKAGE") || exit 1
-DEX_CURRENT_PHASE=$(PYTHONPATH="$DEX_LOCAL_ONLY_RUNTIME" python3 \
-  "$DEX_LOCAL_ONLY_RUNTIME/core/migrations/preserve_local_only_paths.py" transition \
-  --repo "$PWD") || exit 1
 
 case "$DEX_TARGET_PHASE" in
-  bootstrap-v1) ;;
-  bootstrap-v2)
-    case "$DEX_CURRENT_PHASE" in
-      bootstrap-v1)
-        DEX_LOCAL_ONLY_STATE=$(PYTHONPATH="$DEX_LOCAL_ONLY_RUNTIME" python3 \
-          "$DEX_LOCAL_ONLY_RUNTIME/core/migrations/preserve_local_only_paths.py" preview \
-          --repo "$PWD" --policy "$DEX_LOCAL_ONLY_RUNTIME/tracked-ignored-policy.yaml") || exit 1
-        case "$DEX_LOCAL_ONLY_STATE" in
-          *'"state": "bootstrap-installed"'*)
-            PYTHONPATH="$DEX_LOCAL_ONLY_RUNTIME" python3 \
-              "$DEX_LOCAL_ONLY_RUNTIME/core/migrations/preserve_local_only_paths.py" capture \
-              --repo "$PWD" --journal "$DEX_LOCAL_ONLY_JOURNAL" \
-              --policy "$DEX_LOCAL_ONLY_RUNTIME/tracked-ignored-policy.yaml" || exit 1
-            ;;
-          *) echo "Update stopped: the v1 baseline is not in its exact bridge state"; exit 1 ;;
-        esac
-        ;;
-      bootstrap-v2) ;;
-      *) echo "Update stopped: install v1.63.0 before crossing to the v2 baseline"; exit 1 ;;
-    esac
-    ;;
+  bootstrap-v1|bootstrap-v2) ;;
   untrack-v1|untrack-v2)
     DEX_LOCAL_ONLY_STATE=$(PYTHONPATH="$DEX_LOCAL_ONLY_RUNTIME" python3 \
       "$DEX_LOCAL_ONLY_RUNTIME/core/migrations/preserve_local_only_paths.py" preview \
@@ -354,7 +331,7 @@ case "$DEX_TARGET_PHASE" in
       *) echo "Update stopped: local-only path state is not an approved transition"; exit 1 ;;
     esac
     ;;
-  *) echo "Update stopped: this Dex version cannot safely install the target. Update to v1.63.0 first, then run /dex-update again"; exit 1 ;;
+  *) echo "Update stopped: target local-only transition is unsupported"; exit 1 ;;
 esac
 ```
 
@@ -394,9 +371,6 @@ DEX_LOCAL_ONLY_JOURNAL="$DEX_LOCAL_ONLY_ROOT/journal"
 DEX_LOCAL_ONLY_STATE=$(PYTHONPATH="$DEX_LOCAL_ONLY_RUNTIME" python3 \
   "$DEX_LOCAL_ONLY_RUNTIME/core/migrations/preserve_local_only_paths.py" preview \
   --repo "$PWD" --policy "$DEX_LOCAL_ONLY_RUNTIME/tracked-ignored-policy.yaml") || exit 1
-DEX_CURRENT_PHASE=$(PYTHONPATH="$DEX_LOCAL_ONLY_RUNTIME" python3 \
-  "$DEX_LOCAL_ONLY_RUNTIME/core/migrations/preserve_local_only_paths.py" transition \
-  --repo "$PWD") || exit 1
 case "$DEX_LOCAL_ONLY_STATE" in
 *'"state": "ready-to-apply"'*)
   [ -f "$DEX_LOCAL_ONLY_JOURNAL/journal.json" ] || {
@@ -411,19 +385,7 @@ case "$DEX_LOCAL_ONLY_STATE" in
       exit 1
     }
   ;;
-*'"state": "bootstrap-installed"'*)
-  if [ "$DEX_CURRENT_PHASE" = "bootstrap-v2" ] && \
-     [ -f "$DEX_LOCAL_ONLY_JOURNAL/journal.json" ]; then
-    PYTHONPATH="$DEX_LOCAL_ONLY_RUNTIME" python3 \
-      "$DEX_LOCAL_ONLY_RUNTIME/core/migrations/preserve_local_only_paths.py" apply \
-      --repo "$PWD" --journal "$DEX_LOCAL_ONLY_JOURNAL" \
-      --policy "$DEX_LOCAL_ONLY_RUNTIME/tracked-ignored-policy.yaml" || {
-        echo "Update stopped: Dex could not finish the v2 baseline promotion"
-        exit 1
-      }
-  fi
-  ;;
-*'"state": "already-applied"'*) ;;
+*'"state": "already-applied"'*|*'"state": "bootstrap-installed"'*) ;;
 *) echo "Update stopped: post-merge local-only state is not approved"; exit 1 ;;
 esac
 ```

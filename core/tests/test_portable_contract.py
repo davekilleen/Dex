@@ -136,7 +136,7 @@ def test_update_write_verdict(path: str, exists: bool, allowed: bool, action: st
 
 def test_legacy_shipped_runtime_surfaces_the_baseline_debt() -> None:
     debt = portable_contract.legacy_shipped_runtime(_tracked_paths())
-    # Runtime debt still exists, but the v2 baseline no longer ships personal
+    # Runtime debt still exists, but untrack-v1 no longer ships personal
     # Session_Learnings entries.
     assert "System/usage_log.md" in debt
     assert not any(path.startswith("System/Session_Learnings/") for path in debt)
