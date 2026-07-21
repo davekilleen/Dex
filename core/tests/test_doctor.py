@@ -621,7 +621,14 @@ def test_json_contract_shape_and_last_run_file(monkeypatch, context, deep, expec
 
     report = doctor.collect(deep=deep, context=context)
 
-    assert set(report) == {"generated_at", "mode", "instruments", "checks", "summary"}
+    assert set(report) == {
+        "generated_at",
+        "mode",
+        "instruments",
+        "checks",
+        "summary",
+        "adoption",
+    }
     assert report["generated_at"] == NOW.isoformat()
     assert report["mode"] == ("deep" if deep else "quick")
     assert report["instruments"] == {

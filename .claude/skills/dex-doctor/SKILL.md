@@ -148,6 +148,47 @@ creation is working, off, or needs attention, include the contact/observation co
 and call out unresolved verification results or quarantined pages. Mention stale
 verification or a stale/missing People index as a follow-up signal.
 
+### Step 3a: Render the adoption section
+
+Read the collector's top-level `adoption` object and render its `groups` in the exact
+order returned. It always contains these five groups: `new-and-safe`,
+`needs-your-review`, `preserved-for-now`, `continue-or-recover`, and
+`receipts-and-rewind`.
+
+Authority fields are not prose. Render every item id, item version, action, status,
+verdict, count, transaction id, reason, path, and `rewindable` boolean verbatim. Never
+change an action or verdict, combine authority records, infer a missing record, or hide
+a zero count. The collector's `surface` line is the only field that may be rephrased.
+Keep that rephrasing to one plain-English line per group in this register:
+"Here's exactly what this changes for you" and, for recovery, "I found an interrupted
+update — resume or undo?"
+
+`needs-your-review` normally contains `conflict` actions. If the deterministic planner
+returns `action: unknown`, keep that item and its reasons in this group verbatim, render
+the group's `UNKNOWN` verdict, and say the evidence needs rechecking; never silently
+drop it or translate it into a conflict.
+
+If `adoption.verdict` is `OFF`, say calmly that adoption reporting is off because no
+release catalog is installed. If it is `UNKNOWN`, say what could not be verified and
+do not turn empty authority arrays into proposed actions. For ledger recovery, reproduce
+`continue-or-recover.ledger.repair_command` exactly; this is the existing
+`python3 -m core.lifecycle.cli --vault-root <vault> rebuild-state` command, not a prompt
+to improvise ledger repair.
+
+Never offer an action the engine does not expose. An interrupted transaction may be
+described only from its returned transaction authority; do not call `Transaction.resume`
+while rendering Doctor. A receipt is rewindable only when the collector says
+`rewindable: true` and `rewind_verdict: OK`. Rewind only through the existing
+receipt-backed lifecycle flow:
+load that exact receipt, derive its exact acknowledgement with the
+rewind-acknowledgement helper in the Python lifecycle engine
+(core/lifecycle/engine.py), then perform the rewind through that same engine
+module's receipt-backed rewind function. There is no lifecycle rewind
+shell command, so do not invent one. If `rewindable: false` with `rewind_verdict: OK`,
+say the retained snapshot was pruned. If `rewind_verdict: UNKNOWN`, say the receipt,
+current bytes, committed journal, or snapshot could not be verified. In both cases, do
+not offer rewind.
+
 ### Step 4: Heal, tiered
 
 - **Tier 1 (already applied by the collector):** report plainly — "Fixed automatically:

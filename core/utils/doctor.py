@@ -27,9 +27,14 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from core import paths, portable_contract
+from core.lifecycle import engine as lifecycle_engine
+from core.lifecycle import ledger as lifecycle_ledger
 from core.lifecycle.catalog import CatalogError, load_catalog
 from core.lifecycle.inventory import build_inventory
-from core.lifecycle.plan import build_adoption_plan
+from core.lifecycle.model import ITEM_ID, SEMVER, AdoptionState
+from core.lifecycle.plan import PlannedAction, ReasonCode, build_adoption_plan
+from core.transaction.engine import TX_ROOT_RELATIVE
+from core.transaction.journal import Journal, JournalCorruptError
 from core.utils import preflight, release_channel
 
 VERDICTS = frozenset({"OK", "OFF", "BROKEN", "UNKNOWN"})
@@ -40,6 +45,31 @@ MISSING_PACKAGES_DETAIL = (
     "then re-run /dex-doctor"
 )
 RELEASE_CATALOG_PATH = "System/.release-catalog.json"
+ADOPTION_REPORT_VERSION = 1
+ADOPTION_GROUP_IDS = (
+    "new-and-safe",
+    "needs-your-review",
+    "preserved-for-now",
+    "continue-or-recover",
+    "receipts-and-rewind",
+)
+ADOPTION_ACTIONS = frozenset(action.value for action in PlannedAction)
+ADOPTION_STATUSES = frozenset(state.value for state in AdoptionState)
+ADOPTION_REASON_CODES = frozenset(reason.value for reason in ReasonCode)
+
+
+def _validate_authority_item(item_id: object, item_version: object) -> None:
+    if not isinstance(item_id, str) or ITEM_ID.fullmatch(item_id) is None:
+        raise ValueError("Adoption authority item_id is not canonical")
+    if item_version is not None and (
+        not isinstance(item_version, str) or SEMVER.fullmatch(item_version) is None
+    ):
+        raise ValueError("Adoption authority item_version is not strict SemVer")
+
+
+def _validate_surface(surface: object) -> None:
+    if not isinstance(surface, str) or not surface.strip():
+        raise ValueError("Adoption group surface must be a non-empty string")
 
 
 @dataclass(frozen=True)
@@ -116,6 +146,399 @@ class DoctorContext:
     @property
     def launch_agents_dir(self) -> Path:
         return self.home / "Library" / "LaunchAgents"
+
+
+@dataclass(frozen=True)
+class AdoptionItem:
+    """One catalog item and its planner-owned action."""
+
+    item_id: str
+    item_version: str | None
+    action: str
+
+    def __post_init__(self) -> None:
+        _validate_authority_item(self.item_id, self.item_version)
+        if self.action not in ADOPTION_ACTIONS:
+            raise ValueError(f"Invalid adoption authority action: {self.action!r}")
+
+    def to_dict(self) -> dict[str, object]:
+        return asdict(self)
+
+
+@dataclass(frozen=True)
+class AdoptionReviewFile:
+    """One conflict path and the planner-owned reason for reviewing it."""
+
+    path: str
+    reason: str
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.path, str) or not self.path:
+            raise ValueError("Adoption review path must be a non-empty string")
+        if self.reason not in ADOPTION_REASON_CODES:
+            raise ValueError(f"Invalid adoption review reason: {self.reason!r}")
+
+    def to_dict(self) -> dict[str, str]:
+        return asdict(self)
+
+
+@dataclass(frozen=True)
+class AdoptionReviewItem:
+    """One conflicted catalog item with item- and path-level reasons."""
+
+    item_id: str
+    item_version: str
+    action: str
+    reasons: tuple[str, ...]
+    files: tuple[AdoptionReviewFile, ...]
+
+    def __post_init__(self) -> None:
+        _validate_authority_item(self.item_id, self.item_version)
+        if self.action not in {
+            PlannedAction.CONFLICT.value,
+            PlannedAction.UNKNOWN.value,
+        }:
+            raise ValueError(f"Invalid review authority action: {self.action!r}")
+        if (
+            not isinstance(self.reasons, tuple)
+            or not self.reasons
+            or any(reason not in ADOPTION_REASON_CODES for reason in self.reasons)
+        ):
+            raise ValueError("Adoption review reasons use an invalid authority value")
+        if not isinstance(self.files, tuple) or any(
+            type(entry) is not AdoptionReviewFile for entry in self.files
+        ):
+            raise ValueError("Adoption review files must be AdoptionReviewFile records")
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "item_id": self.item_id,
+            "item_version": self.item_version,
+            "action": self.action,
+            "reasons": list(self.reasons),
+            "files": [entry.to_dict() for entry in self.files],
+        }
+
+
+@dataclass(frozen=True)
+class PreservedCustomization:
+    """One customized installed file that adoption will preserve."""
+
+    path: str
+    state: str
+    reason: str
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.path, str) or not self.path:
+            raise ValueError("Preserved customization path must be a non-empty string")
+        if self.state != "stock-modified":
+            raise ValueError("Preserved customization state must be stock-modified")
+        if not isinstance(self.reason, str) or not self.reason:
+            raise ValueError("Preserved customization reason must be a non-empty string")
+
+    def to_dict(self) -> dict[str, str]:
+        return asdict(self)
+
+
+@dataclass(frozen=True)
+class InterruptedTransaction:
+    """Read-only recovery evidence mirroring Transaction.resume classification."""
+
+    tx_id: str
+    verdict: str
+    last_event: str | None
+    snapshot_present: bool
+
+    def __post_init__(self) -> None:
+        if lifecycle_engine.TRANSACTION_ID.fullmatch(self.tx_id) is None:
+            raise ValueError("Interrupted transaction id is not canonical")
+        if self.verdict not in {"BROKEN", "UNKNOWN"}:
+            raise ValueError(f"Invalid interrupted-transaction verdict: {self.verdict}")
+        if self.last_event is not None and not isinstance(self.last_event, str):
+            raise ValueError("Interrupted transaction last_event must be a string or null")
+        if type(self.snapshot_present) is not bool:
+            raise ValueError("Interrupted transaction snapshot_present must be a boolean")
+
+    def to_dict(self) -> dict[str, object]:
+        return asdict(self)
+
+
+@dataclass(frozen=True)
+class LedgerRecovery:
+    """A ledger error and the ledger-owned command that can repair its state."""
+
+    verdict: str
+    incomplete_publication: bool
+    repair_command: str
+    detail: str
+
+    def __post_init__(self) -> None:
+        if self.verdict != "UNKNOWN":
+            raise ValueError(f"Invalid ledger recovery verdict: {self.verdict}")
+        if type(self.incomplete_publication) is not bool:
+            raise ValueError("Ledger incomplete_publication must be a boolean")
+        if not isinstance(self.repair_command, str) or not self.repair_command:
+            raise ValueError("Ledger repair_command must be a non-empty string")
+        if not isinstance(self.detail, str) or not self.detail:
+            raise ValueError("Ledger recovery detail must be a non-empty string")
+
+    def to_dict(self) -> dict[str, object]:
+        return asdict(self)
+
+
+@dataclass(frozen=True)
+class AdoptionReceiptSummary:
+    """Current ledger receipt authority plus snapshot-retention evidence."""
+
+    item_id: str
+    item_version: str
+    status: str
+    transaction_id: str
+    when: str
+    rewindable: bool
+    rewind_verdict: str
+
+    def __post_init__(self) -> None:
+        _validate_authority_item(self.item_id, self.item_version)
+        if self.status not in ADOPTION_STATUSES:
+            raise ValueError(f"Invalid adoption receipt status: {self.status!r}")
+        if lifecycle_engine.TRANSACTION_ID.fullmatch(self.transaction_id) is None:
+            raise ValueError("Adoption receipt transaction_id is not canonical")
+        if not isinstance(self.when, str) or not self.when:
+            raise ValueError("Adoption receipt when must be a non-empty string")
+        if type(self.rewindable) is not bool:
+            raise ValueError("Adoption receipt rewindable must be a boolean")
+        if self.rewind_verdict not in {"OK", "UNKNOWN"}:
+            raise ValueError("Adoption receipt rewind_verdict must be OK or UNKNOWN")
+        if self.rewindable and self.rewind_verdict != "OK":
+            raise ValueError("A rewindable receipt must have rewind_verdict OK")
+
+    def to_dict(self) -> dict[str, object]:
+        return asdict(self)
+
+
+@dataclass(frozen=True)
+class NewAndSafeGroup:
+    id: str
+    verdict: str
+    count: int
+    items: tuple[AdoptionItem, ...]
+    surface: str
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "id": self.id,
+            "verdict": self.verdict,
+            "count": self.count,
+            "items": [item.to_dict() for item in self.items],
+            "surface": self.surface,
+        }
+
+
+@dataclass(frozen=True)
+class NeedsReviewGroup:
+    id: str
+    verdict: str
+    count: int
+    items: tuple[AdoptionReviewItem, ...]
+    surface: str
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "id": self.id,
+            "verdict": self.verdict,
+            "count": self.count,
+            "items": [item.to_dict() for item in self.items],
+            "surface": self.surface,
+        }
+
+
+@dataclass(frozen=True)
+class PreservedForNowGroup:
+    id: str
+    verdict: str
+    count: int
+    held_back_items: tuple[AdoptionItem, ...]
+    customized_files: tuple[PreservedCustomization, ...]
+    surface: str
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "id": self.id,
+            "verdict": self.verdict,
+            "count": self.count,
+            "held_back_items": [item.to_dict() for item in self.held_back_items],
+            "customized_files": [entry.to_dict() for entry in self.customized_files],
+            "surface": self.surface,
+        }
+
+
+@dataclass(frozen=True)
+class ContinueOrRecoverGroup:
+    id: str
+    verdict: str
+    count: int
+    transactions: tuple[InterruptedTransaction, ...]
+    ledger: LedgerRecovery | None
+    inspection_error: str | None
+    surface: str
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "id": self.id,
+            "verdict": self.verdict,
+            "count": self.count,
+            "transactions": [entry.to_dict() for entry in self.transactions],
+            "ledger": self.ledger.to_dict() if self.ledger else None,
+            "inspection_error": self.inspection_error,
+            "surface": self.surface,
+        }
+
+
+@dataclass(frozen=True)
+class ReceiptsAndRewindGroup:
+    id: str
+    verdict: str
+    count: int
+    receipts: tuple[AdoptionReceiptSummary, ...]
+    surface: str
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "id": self.id,
+            "verdict": self.verdict,
+            "count": self.count,
+            "receipts": [entry.to_dict() for entry in self.receipts],
+            "surface": self.surface,
+        }
+
+
+AdoptionGroup = (
+    NewAndSafeGroup
+    | NeedsReviewGroup
+    | PreservedForNowGroup
+    | ContinueOrRecoverGroup
+    | ReceiptsAndRewindGroup
+)
+
+
+@dataclass(frozen=True)
+class AdoptionReport:
+    """Strict authority/surface contract for Doctor's adoption section.
+
+    All item ids, actions, verdicts, counts, transaction ids, statuses, and
+    rewindable booleans are deterministic authority emitted here. Renderers
+    may paraphrase only each group's ``surface`` line; they must reproduce all
+    other fields verbatim and must never infer, promote, or suppress actions.
+    """
+
+    report_version: int
+    verdict: str
+    groups: tuple[AdoptionGroup, ...]
+
+    def __post_init__(self) -> None:
+        if self.report_version != ADOPTION_REPORT_VERSION:
+            raise ValueError("Unsupported adoption report version")
+        if self.verdict not in VERDICTS:
+            raise ValueError(f"Invalid adoption report verdict: {self.verdict}")
+        if not isinstance(self.groups, tuple):
+            raise ValueError("Adoption report groups must be a tuple")
+        expected_types = (
+            NewAndSafeGroup,
+            NeedsReviewGroup,
+            PreservedForNowGroup,
+            ContinueOrRecoverGroup,
+            ReceiptsAndRewindGroup,
+        )
+        if tuple(type(group) for group in self.groups) != expected_types:
+            raise ValueError("Adoption report group types must match the exact contract")
+        if tuple(group.id for group in self.groups) != ADOPTION_GROUP_IDS:
+            raise ValueError("Adoption report must contain the exact five ordered groups")
+        for group in self.groups:
+            if group.verdict not in VERDICTS:
+                raise ValueError(f"Invalid adoption group verdict: {group.verdict}")
+            if type(group.count) is not int or group.count < 0:
+                raise ValueError("Adoption group count must be a non-negative integer")
+            _validate_surface(group.surface)
+        new_group, review_group, preserved_group, recovery_group, receipt_group = self.groups
+        if not isinstance(new_group.items, tuple) or any(
+            type(item) is not AdoptionItem for item in new_group.items
+        ):
+            raise ValueError("new-and-safe items must be AdoptionItem records")
+        if any(item.action != PlannedAction.ADOPT.value for item in new_group.items):
+            raise ValueError("new-and-safe items must have action adopt")
+        if not isinstance(review_group.items, tuple) or any(
+            type(item) is not AdoptionReviewItem for item in review_group.items
+        ):
+            raise ValueError("needs-your-review items must be AdoptionReviewItem records")
+        if not isinstance(preserved_group.held_back_items, tuple) or any(
+            type(item) is not AdoptionItem for item in preserved_group.held_back_items
+        ):
+            raise ValueError("preserved held-back items must be AdoptionItem records")
+        if any(
+            item.action != PlannedAction.SKIP_HELD_BACK.value
+            for item in preserved_group.held_back_items
+        ):
+            raise ValueError("preserved held-back items must have action skip-held-back")
+        if not isinstance(preserved_group.customized_files, tuple) or any(
+            type(item) is not PreservedCustomization
+            for item in preserved_group.customized_files
+        ):
+            raise ValueError("preserved customized files must be strict authority records")
+        if not isinstance(recovery_group.transactions, tuple) or any(
+            type(item) is not InterruptedTransaction
+            for item in recovery_group.transactions
+        ):
+            raise ValueError("recovery transactions must be strict authority records")
+        if recovery_group.ledger is not None and type(recovery_group.ledger) is not LedgerRecovery:
+            raise ValueError("recovery ledger must be a LedgerRecovery record or null")
+        if recovery_group.inspection_error is not None and not isinstance(
+            recovery_group.inspection_error, str
+        ):
+            raise ValueError("recovery inspection_error must be a string or null")
+        if not isinstance(receipt_group.receipts, tuple) or any(
+            type(item) is not AdoptionReceiptSummary for item in receipt_group.receipts
+        ):
+            raise ValueError("receipt summaries must be strict authority records")
+        if any(
+            item.status != AdoptionState.ADOPTED.value
+            for item in receipt_group.receipts
+        ):
+            raise ValueError("receipt summaries must have status adopted")
+        expected_counts = (
+            len(new_group.items),
+            len(review_group.items),
+            len(preserved_group.held_back_items) + len(preserved_group.customized_files),
+            len(recovery_group.transactions)
+            + int(recovery_group.ledger is not None)
+            + int(recovery_group.inspection_error is not None),
+            len(receipt_group.receipts),
+        )
+        if tuple(group.count for group in self.groups) != expected_counts:
+            raise ValueError("Adoption report group count does not match authority records")
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "report_version": self.report_version,
+            "verdict": self.verdict,
+            "groups": [group.to_dict() for group in self.groups],
+        }
+
+
+def canonical_adoption_report_bytes(report: AdoptionReport) -> bytes:
+    """Return canonical JSON bytes for the strict Doctor adoption report."""
+    if not isinstance(report, AdoptionReport):
+        raise TypeError("report must be an AdoptionReport")
+    return (
+        json.dumps(
+            report.to_dict(),
+            ensure_ascii=False,
+            allow_nan=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        + "\n"
+    ).encode("utf-8")
 
 
 PARA_PATH_NAMES = (
@@ -442,6 +865,7 @@ def collect(
     results["doctor.self"] = self_result
 
     checks = [_result_json(definition, results[definition.id]) for definition in definitions]
+    adoption = collect_adoption_report(context)
     report = {
         "generated_at": context.now.isoformat(),
         "mode": "deep" if deep else "quick",
@@ -452,6 +876,7 @@ def collect(
         },
         "checks": checks,
         "summary": _summary(checks),
+        "adoption": adoption.to_dict(),
     }
 
     try:
@@ -534,6 +959,384 @@ def _probe_vault_configs(context: DoctorContext) -> ProbeResult:
 
 def _release_catalog_path(context: DoctorContext) -> Path:
     return context.vault_root / RELEASE_CATALOG_PATH
+
+
+def _empty_adoption_report(
+    verdict: str,
+    surface: str,
+    *,
+    transactions: tuple[InterruptedTransaction, ...] = (),
+    ledger: LedgerRecovery | None = None,
+    inspection_error: str | None = None,
+) -> AdoptionReport:
+    recovery_count = len(transactions) + int(ledger is not None) + int(inspection_error is not None)
+    recovery_surface = (
+        _recovery_surface(transactions, ledger, inspection_error)
+        if recovery_count
+        else surface
+    )
+    return AdoptionReport(
+        ADOPTION_REPORT_VERSION,
+        verdict,
+        (
+            NewAndSafeGroup("new-and-safe", verdict, 0, (), surface),
+            NeedsReviewGroup("needs-your-review", verdict, 0, (), surface),
+            PreservedForNowGroup("preserved-for-now", verdict, 0, (), (), surface),
+            ContinueOrRecoverGroup(
+                "continue-or-recover",
+                verdict,
+                recovery_count,
+                transactions,
+                ledger,
+                inspection_error,
+                recovery_surface,
+            ),
+            ReceiptsAndRewindGroup("receipts-and-rewind", verdict, 0, (), surface),
+        ),
+    )
+
+
+def _inspect_interrupted_transactions(
+    context: DoctorContext,
+) -> tuple[tuple[InterruptedTransaction, ...], str | None]:
+    """Classify transaction journals like ``Transaction.resume`` without resuming.
+
+    This deliberately does not instantiate a mutating recovery flow or acquire
+    the mutation lock. It only reads journals and snapshot-directory presence.
+    """
+    tx_root = context.vault_root / TX_ROOT_RELATIVE
+    if not os.path.lexists(tx_root):
+        return (), None
+    if tx_root.is_symlink() or not tx_root.is_dir():
+        return (), f"Transaction store is unsafe or not a directory: {tx_root}"
+
+    interrupted: list[InterruptedTransaction] = []
+    inspection_errors: list[str] = []
+    try:
+        candidates = sorted(tx_root.iterdir(), key=lambda candidate: candidate.name)
+    except OSError as error:
+        return (), f"Transaction store could not be inspected: {_one_line(error)}"
+    for tx_dir in candidates:
+        if lifecycle_engine.TRANSACTION_ID.fullmatch(tx_dir.name) is None:
+            inspection_errors.append(
+                f"Transaction store contains a non-canonical entry: {tx_dir.name}"
+            )
+            continue
+        if tx_dir.is_symlink() or not tx_dir.is_dir():
+            interrupted.append(
+                InterruptedTransaction(tx_dir.name, "UNKNOWN", None, False)
+            )
+            continue
+        try:
+            entries = Journal(tx_dir / "journal.jsonl").read()
+        except (JournalCorruptError, OSError):
+            interrupted.append(
+                InterruptedTransaction(
+                    tx_dir.name,
+                    "UNKNOWN",
+                    None,
+                    _safe_snapshot_present(tx_dir / "snapshot"),
+                )
+            )
+            continue
+        events = {entry.event for entry in entries}
+        if not entries or "ROLLED-BACK" in events or "COMMITTED" in events:
+            continue
+        interrupted.append(
+            InterruptedTransaction(
+                tx_dir.name,
+                "BROKEN",
+                entries[-1].event,
+                _safe_snapshot_present(tx_dir / "snapshot"),
+            )
+        )
+    return tuple(interrupted), "; ".join(inspection_errors) or None
+
+
+def _safe_snapshot_present(path: Path) -> bool:
+    return not path.is_symlink() and path.is_dir()
+
+
+def _receipt_rewind_evidence(
+    context: DoctorContext,
+    transaction_id: str,
+    item_id: str,
+) -> tuple[bool, str]:
+    """Run the rewind engine's complete read-only eligibility preflight."""
+    snapshot_root = context.vault_root / TX_ROOT_RELATIVE / transaction_id / "snapshot"
+    if not os.path.lexists(snapshot_root):
+        return False, "OK"
+    if snapshot_root.is_symlink() or not snapshot_root.is_dir():
+        return False, "UNKNOWN"
+    try:
+        receipt = lifecycle_engine.load_adoption_receipt(
+            context.vault_root,
+            transaction_id,
+        )
+        if item_id not in receipt.items_adopted:
+            return False, "UNKNOWN"
+        current_modes, drifted = lifecycle_engine._current_adopted_modes(
+            context.vault_root,
+            receipt,
+        )
+        if drifted:
+            return False, "UNKNOWN"
+        lifecycle_engine._verify_adoption_commit(context.vault_root, receipt)
+        lifecycle_engine._snapshot_rewind_plan(
+            context.vault_root,
+            receipt,
+            current_modes,
+        )
+    except Exception:
+        return False, "UNKNOWN"
+    return True, "OK"
+
+
+def _receipt_when(transaction_id: str) -> str:
+    """Expose the transaction id's zone-less local timestamp without guessing a zone."""
+    try:
+        return datetime.strptime(transaction_id[:15], "%Y%m%dT%H%M%S").isoformat()
+    except ValueError:
+        return transaction_id[:15]
+
+
+def _ledger_recovery(context: DoctorContext, error: Exception) -> LedgerRecovery:
+    detail = _one_line(error)
+    return LedgerRecovery(
+        "UNKNOWN",
+        "publication is incomplete" in detail,
+        lifecycle_ledger._repair_command(context.vault_root),
+        detail,
+    )
+
+
+def _recovery_surface(
+    transactions: tuple[InterruptedTransaction, ...],
+    ledger: LedgerRecovery | None,
+    inspection_error: str | None,
+) -> str:
+    parts: list[str] = []
+    if transactions:
+        parts.append("I found an interrupted update — resume or undo?")
+    if ledger is not None:
+        parts.append(f"Ledger history is UNKNOWN; run {ledger.repair_command}.")
+    if inspection_error is not None:
+        parts.append("Transaction recovery evidence could not be checked safely.")
+    return " ".join(parts) or "No interrupted update or ledger recovery is waiting."
+
+
+def collect_adoption_report(context: DoctorContext) -> AdoptionReport:
+    """Collect Doctor's deterministic five-group adoption section, read-only.
+
+    This collector never resumes transactions, repairs ledger publication, or
+    writes caches. Its authority/surface non-alteration contract is documented
+    on :class:`AdoptionReport` and in ``docs/dex-doctor-spec.md``.
+    """
+    catalog_path = _release_catalog_path(context)
+    if not os.path.lexists(catalog_path):
+        return _empty_adoption_report(
+            "OFF",
+            "Adoption reporting is off because no release catalog is installed.",
+        )
+
+    transactions, inspection_error = _inspect_interrupted_transactions(context)
+    try:
+        catalog = load_catalog(catalog_path, release_root=context.vault_root)
+    except (CatalogError, UnicodeError) as error:
+        return _empty_adoption_report(
+            "BROKEN",
+            f"Adoption reporting is unavailable because the release catalog is invalid: {_one_line(error)}.",
+            transactions=transactions,
+            inspection_error=inspection_error,
+        )
+    except Exception as error:
+        return _empty_adoption_report(
+            "UNKNOWN",
+            f"Adoption reporting could not inspect the release catalog: {_one_line(error)}.",
+            transactions=transactions,
+            inspection_error=inspection_error,
+        )
+
+    try:
+        inventory = build_inventory(context.vault_root, catalog=catalog)
+    except Exception as error:
+        return _empty_adoption_report(
+            "UNKNOWN",
+            f"Adoption reporting could not build the read-only inventory: {_one_line(error)}.",
+            transactions=transactions,
+            inspection_error=inspection_error,
+        )
+
+    ledger_recovery: LedgerRecovery | None = None
+    try:
+        ledger_state = lifecycle_ledger.project_state(context.vault_root)
+    except (lifecycle_ledger.LedgerError, OSError) as error:
+        ledger_recovery = _ledger_recovery(context, error)
+        return _empty_adoption_report(
+            "UNKNOWN",
+            "Adoption actions are withheld until lifecycle history is verified.",
+            transactions=transactions,
+            ledger=ledger_recovery,
+            inspection_error=inspection_error,
+        )
+    except Exception as error:
+        ledger_recovery = _ledger_recovery(context, error)
+        return _empty_adoption_report(
+            "UNKNOWN",
+            "Adoption actions are withheld until lifecycle history is verified.",
+            transactions=transactions,
+            ledger=ledger_recovery,
+            inspection_error=inspection_error,
+        )
+
+    catalog_ids = {item.id for item in catalog.items}
+    adopted = ledger_state["adopted"]
+    held_back = set(ledger_state["held_back"])
+    assert isinstance(adopted, dict)
+    try:
+        plan = build_adoption_plan(
+            catalog,
+            inventory,
+            adoption_states={
+                item_id: AdoptionState.ADOPTED
+                for item_id in adopted
+                if item_id in catalog_ids
+            },
+            held_back=frozenset(held_back & catalog_ids),
+        )
+    except Exception as error:
+        return _empty_adoption_report(
+            "UNKNOWN",
+            f"Adoption actions are withheld because the plan is UNKNOWN: {_one_line(error)}.",
+            transactions=transactions,
+            inspection_error=inspection_error,
+        )
+
+    new_items = tuple(
+        AdoptionItem(item.item_id, item.item_version, item.action.value)
+        for item in plan.items
+        if item.action is PlannedAction.ADOPT
+    )
+    review_items = tuple(
+        AdoptionReviewItem(
+            item.item_id,
+            item.item_version,
+            item.action.value,
+            tuple(reason.code.value for reason in item.reasons),
+            tuple(
+                AdoptionReviewFile(path, reason.code.value)
+                for reason in item.reasons
+                for path in reason.paths
+            ),
+        )
+        for item in plan.items
+        if item.action in {PlannedAction.CONFLICT, PlannedAction.UNKNOWN}
+    )
+    held_items = tuple(
+        AdoptionItem(item.item_id, item.item_version, item.action.value)
+        for item in plan.items
+        if item.action is PlannedAction.SKIP_HELD_BACK
+    )
+    held_catalog_ids = {item.item_id for item in held_items}
+    held_items += tuple(
+        AdoptionItem(item_id, None, PlannedAction.SKIP_HELD_BACK.value)
+        for item_id in sorted(held_back - held_catalog_ids)
+    )
+    customized_files = tuple(
+        PreservedCustomization(entry.path, entry.state, entry.reason)
+        for entry in inventory.customizations.divergences
+        if entry.state == "stock-modified"
+    )
+
+    receipt_summaries: list[AdoptionReceiptSummary] = []
+    for item_id, entry in sorted(
+        adopted.items(),
+        key=lambda pair: (str(pair[1]["tx_id"]), pair[0]),
+        reverse=True,
+    ):
+        transaction_id = str(entry["tx_id"])
+        rewindable, rewind_verdict = _receipt_rewind_evidence(
+            context,
+            transaction_id,
+            item_id,
+        )
+        receipt_summaries.append(
+            AdoptionReceiptSummary(
+                item_id,
+                str(entry["version"]),
+                AdoptionState.ADOPTED.value,
+                transaction_id,
+                _receipt_when(transaction_id),
+                rewindable,
+                rewind_verdict,
+            )
+        )
+    receipts = tuple(receipt_summaries)
+
+    recovery_verdict = (
+        "UNKNOWN"
+        if inspection_error is not None or any(tx.verdict == "UNKNOWN" for tx in transactions)
+        else "BROKEN" if transactions else "OK"
+    )
+    review_verdict = (
+        "UNKNOWN"
+        if any(item.action is PlannedAction.UNKNOWN for item in plan.items)
+        else "OK"
+    )
+    receipts_verdict = (
+        "UNKNOWN"
+        if any(receipt.rewind_verdict == "UNKNOWN" for receipt in receipts)
+        else "OK"
+    )
+    report_verdict = (
+        "UNKNOWN"
+        if "UNKNOWN" in {recovery_verdict, review_verdict, receipts_verdict}
+        else "BROKEN" if recovery_verdict == "BROKEN" else "OK"
+    )
+    return AdoptionReport(
+        ADOPTION_REPORT_VERSION,
+        report_verdict,
+        (
+            NewAndSafeGroup(
+                "new-and-safe",
+                "OK",
+                len(new_items),
+                new_items,
+                f"Here's exactly what this changes for you: {len(new_items)} item(s) are new and safe to adopt.",
+            ),
+            NeedsReviewGroup(
+                "needs-your-review",
+                review_verdict,
+                len(review_items),
+                review_items,
+                f"{len(review_items)} item(s) need your review because installed files differ from the release or could not be verified.",
+            ),
+            PreservedForNowGroup(
+                "preserved-for-now",
+                "OK",
+                len(held_items) + len(customized_files),
+                held_items,
+                customized_files,
+                f"{len(held_items)} held-back item(s) and {len(customized_files)} customized file(s) are preserved for now.",
+            ),
+            ContinueOrRecoverGroup(
+                "continue-or-recover",
+                recovery_verdict,
+                len(transactions) + int(inspection_error is not None),
+                transactions,
+                None,
+                inspection_error,
+                _recovery_surface(transactions, None, inspection_error),
+            ),
+            ReceiptsAndRewindGroup(
+                "receipts-and-rewind",
+                receipts_verdict,
+                len(receipts),
+                receipts,
+                f"{len(receipts)} adopted item receipt record(s); {sum(entry.rewindable for entry in receipts)} pass the receipt-backed rewind preflight.",
+            ),
+        ),
+    )
 
 
 def _probe_release_catalog(context: DoctorContext) -> ProbeResult:
