@@ -48,6 +48,21 @@ function migrate(vault, mode, options = {}) {
   });
 }
 
+function killMigration(vault, point) {
+  const result = spawnSync(
+    process.execPath,
+    [path.join(vault, MIGRATOR_RELATIVE), '--auto'],
+    {
+      cwd: vault,
+      encoding: 'utf8',
+      env: { ...process.env, DEX_MIGRATION_SIGKILL_AT: point },
+      timeout: 120_000,
+    },
+  );
+  assert.equal(result.signal, 'SIGKILL', `${point}\n${result.stdout}\n${result.stderr}`);
+  return result;
+}
+
 function git(vault, ...args) {
   return command('git', args, { cwd: vault }).stdout.trim();
 }
@@ -309,6 +324,24 @@ test('resume safely re-enters P6 after CLAUDE markers were already stripped', ()
   assert.match(resumed.stdout, /P9 finalize complete/);
 });
 
+test('post-swap failures say files are safe and --restore returns exactly to the old setup', () => {
+  const vault = makeFixture();
+  const before = snapshotFiles(vault);
+  const result = migrate(vault, '--auto', {
+    env: { DEX_MIGRATION_STOP_DURING_P6: 'lift-complete' },
+    expectedStatus: 1,
+  });
+  const recovery = /Your files are safe\. Run this migrator with --restore to return everything to exactly how it was\./;
+
+  assert.match(result.stderr, recovery);
+  assert.match(
+    fs.readFileSync(path.join(vault, 'System', 'migration-report-v2.md'), 'utf8'),
+    recovery,
+  );
+  migrate(vault, '--restore');
+  assert.deepEqual(snapshotFiles(vault), before);
+});
+
 test('startup reconciliation completes a kill between the two P5 moves', () => {
   const vault = makeFixture();
   const stopped = migrate(vault, '--auto', {
@@ -340,6 +373,25 @@ test('restore reverses a journaled half-swap before the vault Git folder is acti
   assert.ok(fs.existsSync(path.join(vault, '.git')));
   assert.equal(fs.existsSync(path.join(vault, '.dex')), false);
   assert.equal(fs.existsSync(path.join(vault, 'System', '.dex')), false);
+});
+
+test('SIGKILL at P3 batch, P5 archive, and P5 rename recovers with --resume and --restore', { timeout: 300_000 }, () => {
+  for (const point of ['P3-batch', 'P5-archive', 'P5-rename']) {
+    for (const recoveryMode of ['--resume', '--restore']) {
+      const vault = makeFixture();
+      const before = snapshotFiles(vault);
+      killMigration(vault, point);
+
+      if (recoveryMode === '--resume') {
+        const resumed = migrate(vault, recoveryMode);
+        assert.match(resumed.stdout, /P9 finalize complete/, `${point} resume`);
+        migrate(vault, '--restore');
+      } else {
+        migrate(vault, recoveryMode);
+      }
+      assert.deepEqual(snapshotFiles(vault), before, `${point} ${recoveryMode}`);
+    }
+  }
 });
 
 test('restore archives post-migration commits and dirty restored files before reverting', () => {
@@ -450,8 +502,108 @@ test('P8 catches a vault commit truncated to the Git candidate set', () => {
   fs.writeFileSync(planPath, `${JSON.stringify(plan, null, 2)}\n`);
 
   const result = migrate(vault, '--resume', { expectedStatus: 1 });
-  assert.match(result.stdout + result.stderr, /P8 expected .* files .* but found/i);
+  assert.match(result.stdout + result.stderr, /P8.*initial vault snapshot.*(staged|missing|differ)/i);
   assert.ok(fs.existsSync(path.join(vault, omitted)));
+});
+
+test("P8 verifies Git's staged inventory instead of stale planned counts", () => {
+  const vault = makeFixture();
+  migrate(vault, '--auto', {
+    env: { DEX_MIGRATION_STOP_AFTER: 'P3' },
+    expectedStatus: 75,
+  });
+  const planPath = path.join(vault, 'System', '.dex', 'migration-v2-p3-files.json');
+  const plan = JSON.parse(fs.readFileSync(planPath, 'utf8'));
+  plan.expected.push({ path: '04-Projects/case-collision-shadow.md', sha256: '0'.repeat(64) });
+  fs.writeFileSync(planPath, `${JSON.stringify(plan, null, 2)}\n`);
+
+  const resumed = migrate(vault, '--resume');
+
+  assert.match(resumed.stdout, /P9 finalize complete/);
+  assert.equal(git(vault, 'ls-tree', '--name-only', 'HEAD', '--', '04-Projects/case-collision-shadow.md'), '');
+});
+
+test('embedded project repositories stay untouched, are disclosed, and complete --auto', () => {
+  const vault = makeFixture();
+  const project = path.join(vault, '04-Projects', 'myclone');
+  fs.mkdirSync(project, { recursive: true });
+  command('git', ['init', '--quiet', '--initial-branch=main'], { cwd: project });
+  command('git', ['config', 'user.name', 'Nested Project Fixture'], { cwd: project });
+  command('git', ['config', 'user.email', 'nested-project@example.com'], { cwd: project });
+  fs.writeFileSync(path.join(project, 'file.md'), '# Nested project history\n');
+  command('git', ['add', 'file.md'], { cwd: project });
+  command('git', ['commit', '--quiet', '-m', 'nested project history'], { cwd: project });
+  const nestedHead = command('git', ['rev-parse', 'HEAD'], { cwd: project }).stdout.trim();
+  const nestedBytes = fs.readFileSync(path.join(project, 'file.md'));
+
+  migrate(vault, '--dry-run');
+  let report = fs.readFileSync(path.join(vault, 'System', 'migration-report-v2.md'), 'utf8');
+  assert.match(
+    report,
+    /your project 04-Projects\/myclone has its own version history and stays untouched; Dex will not version it/i,
+  );
+  assert.doesNotMatch(report, /Planned vault history[\s\S]*- 04-Projects\/myclone\/file\.md/i);
+
+  const result = migrate(vault, '--auto');
+  assert.match(result.stdout, /P9 finalize complete/);
+  assert.deepEqual(fs.readFileSync(path.join(project, 'file.md')), nestedBytes);
+  assert.equal(command('git', ['rev-parse', 'HEAD'], { cwd: project }).stdout.trim(), nestedHead);
+  assert.equal(git(vault, 'ls-tree', '-r', '--name-only', 'HEAD', '--', '04-Projects/myclone'), '');
+  report = fs.readFileSync(path.join(vault, 'System', 'migration-report-v2.md'), 'utf8');
+  assert.match(report, /your project 04-Projects\/myclone has its own version history and stays untouched; Dex will not version it/i);
+});
+
+test('markerless CLAUDE.md completes --auto without inventing custom instructions', () => {
+  const vault = makeFixture();
+  const claudePath = path.join(vault, 'CLAUDE.md');
+  const source = fs.readFileSync(claudePath, 'utf8');
+  const markerless = source.replace(
+    /## USER_EXTENSIONS_START\n[\s\S]*?## USER_EXTENSIONS_END\n?/,
+    '',
+  );
+  fs.writeFileSync(claudePath, markerless);
+
+  const result = migrate(vault, '--auto');
+
+  assert.match(result.stdout, /P6.*nothing to lift/i);
+  assert.match(result.stdout, /P9 finalize complete/);
+  assert.equal(fs.readFileSync(claudePath, 'utf8'), markerless);
+  assert.equal(fs.existsSync(path.join(vault, 'CLAUDE-custom.md')), false);
+});
+
+test('malformed CLAUDE markers are refused in P0 before topology changes', () => {
+  const vault = makeFixture();
+  const claudePath = path.join(vault, 'CLAUDE.md');
+  fs.writeFileSync(
+    claudePath,
+    fs.readFileSync(claudePath, 'utf8').replace('## USER_EXTENSIONS_END', ''),
+  );
+
+  const result = migrate(vault, '--auto', { expectedStatus: 1 });
+
+  assert.match(result.stdout + result.stderr, /P0.*CLAUDE\.md.*USER_EXTENSIONS.*markers/i);
+  assert.equal(fs.existsSync(path.join(vault, '.dex', 'brain.git')), false);
+  assert.equal(fs.existsSync(path.join(vault, '.dex', 'pre-split-archive.git')), false);
+});
+
+test('root files and unknown top-level directories are included as user content and reported', () => {
+  const vault = makeFixture();
+  const relatives = ['root-note.md', 'my-custom-dir/sub/a.md'];
+  for (const relative of relatives) {
+    fs.mkdirSync(path.dirname(path.join(vault, relative)), { recursive: true });
+    fs.writeFileSync(path.join(vault, relative), `User content: ${relative}\n`);
+  }
+
+  migrate(vault, '--dry-run');
+  const report = fs.readFileSync(path.join(vault, 'System', 'migration-report-v2.md'), 'utf8');
+  assert.match(report, /Files outside Dex's standard folders are treated as your content and included in your private vault history\./i);
+  for (const relative of relatives) assert.match(report, new RegExp(`- ${relative.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'm'));
+
+  const result = migrate(vault, '--auto');
+  assert.match(result.stdout, /P9 finalize complete/);
+  for (const relative of relatives) {
+    assert.equal(git(vault, 'ls-tree', '--name-only', 'HEAD', '--', relative), relative);
+  }
 });
 
 test('secret paths and scanner-positive JSON are held back from vault history and reported', () => {

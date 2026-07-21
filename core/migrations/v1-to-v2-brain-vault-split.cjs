@@ -21,6 +21,8 @@ const ARCHIVE_MARKER = 'dex-pre-split-v2-archive.json';
 const OFFICIAL_REMOTE = 'https://github.com/davekilleen/Dex.git';
 const RESUME_EXIT = 75;
 const P3_BATCH_SIZE = 64;
+const PARA_REGIONS = ['04-Projects', '05-Areas', '06-Resources', '07-Archives'];
+const POST_SWAP_RECOVERY = 'Your files are safe. Run this migrator with --restore to return everything to exactly how it was.';
 const SNAPSHOT_PATHS = [
   'CLAUDE.md',
   'CLAUDE-custom.md',
@@ -154,6 +156,19 @@ function loadPortableContract(contractPath = path.resolve(__dirname, '..', '..',
     return { path: candidate, ownership: best.ownership, ruleId: best.id, denied };
   }
 
+  for (const region of document.vault_regions) {
+    const resolution = resolve(region);
+    if (!resolution || resolution.denied || resolution.ownership !== 'vault') {
+      throw new Error(`Portable vault contract vault_regions entry ${region} must resolve to vault ownership.`);
+    }
+  }
+  for (const region of PARA_REGIONS) {
+    const resolution = resolve(region);
+    if (resolution?.ownership === 'brain') {
+      throw new Error(`Portable vault contract PARA directory ${region} must never resolve to brain ownership.`);
+    }
+  }
+
   return { ...document, contractPath, isDenied, resolve };
 }
 
@@ -281,6 +296,17 @@ function extensionBlock(source) {
     endLine: end[0],
     after: source.slice(endIndex + end[0].length),
   };
+}
+
+function claudeMarkerState(source) {
+  const starts = source.match(/^## USER_EXTENSIONS_START[^\r\n]*(?:\r?$)/gm) || [];
+  const ends = source.match(/^## USER_EXTENSIONS_END[^\r\n]*(?:\r?$)/gm) || [];
+  if (starts.length === 0 && ends.length === 0) return 'markerless';
+  if (starts.length !== 1 || ends.length !== 1) {
+    throw new Error('CLAUDE.md needs either one complete USER_EXTENSIONS marker pair or no markers.');
+  }
+  extensionBlock(source);
+  return 'marked';
 }
 
 function extractLegacyExtensions(source) {
@@ -797,6 +823,8 @@ function renderReport(report) {
   const heldBack = report.heldBackPaths || [...new Set(findings.map((finding) => finding.path))];
   const brainFiles = report.brainFiles || [];
   const vaultFiles = report.vaultFiles || [];
+  const unclassifiedVaultFiles = report.unclassifiedVaultFiles || [];
+  const embeddedRepositories = report.embeddedRepositories || [];
   const skippedPaths = report.skippedPaths || [];
   const capabilityRooms = report.capabilityRooms || [];
   return [
@@ -810,6 +838,7 @@ function renderReport(report) {
     `- ${remotes.length} old ${remotes.length === 1 ? 'remote was' : 'remotes were'} found${remotes.length ? ` (${remotes.join(', ')})` : ''}. None will be carried into your private vault repository.`,
     `- The secret check found ${findings.length} possible ${findings.length === 1 ? 'match' : 'matches'} in files eligible for vault history. It never copied the matching text.`,
     `- ${heldBack.length} ${heldBack.length === 1 ? 'file was' : 'files were'} held back from the initial vault history for review. The files remain in place.`,
+    `- ${embeddedRepositories.length === 1 ? '1 project has its' : `${embeddedRepositories.length} projects have their`} own version history and will stay untouched.`,
     `- Tracked-ignore baseline ${report.baselineVersion || 'unknown'} (${report.transitionPhase || 'unknown transition'}) was read from the installed v1.63 policy.`,
     `- DEX_VAULT will be set to ${report.vaultRoot || '(the current vault root)'}.`,
     '',
@@ -821,7 +850,11 @@ function renderReport(report) {
     ...(brainFiles.length ? [''] : []),
     '## Planned vault history',
     '',
-    `${vaultFiles.length} user/seed ${vaultFiles.length === 1 ? 'file is' : 'files are'} assigned to the private vault history.`,
+    `${vaultFiles.length} user-content/seed ${vaultFiles.length === 1 ? 'file is' : 'files are'} assigned to the private vault history.`,
+    ...(unclassifiedVaultFiles.length ? [
+      '',
+      "Files outside Dex's standard folders are treated as your content and included in your private vault history.",
+    ] : []),
     '',
     ...vaultFiles.map((item) => `- ${item}`),
     ...(vaultFiles.length ? [''] : []),
@@ -1018,7 +1051,12 @@ function restoreSnapshot(root) {
 function walkVaultEntries(root, contract = portableContract()) {
   const files = [];
   const symlinks = [];
+  const embeddedRepositories = [];
   function visit(directory, relativeDirectory) {
+    if (relativeDirectory && exists(path.join(directory, '.git'))) {
+      embeddedRepositories.push(relativeDirectory);
+      return;
+    }
     for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
       const relative = relativeDirectory ? `${relativeDirectory}/${entry.name}` : entry.name;
       if (
@@ -1040,7 +1078,11 @@ function walkVaultEntries(root, contract = portableContract()) {
     }
   }
   visit(root, '');
-  return { files: files.sort(), symlinks: symlinks.sort() };
+  return {
+    files: files.sort(),
+    symlinks: symlinks.sort(),
+    embeddedRepositories: embeddedRepositories.sort(),
+  };
 }
 
 function resolveOrNull(contract, relative) {
@@ -1049,6 +1091,12 @@ function resolveOrNull(contract, relative) {
   } catch {
     return null;
   }
+}
+
+function belongsInVaultHistory(contract, relative) {
+  if (relative === REPORT_RELATIVE.split(path.sep).join('/')) return false;
+  const resolution = resolveOrNull(contract, relative);
+  return !resolution || ['vault', 'seed'].includes(resolution.ownership);
 }
 
 function containsSecretContent(content) {
@@ -1077,9 +1125,8 @@ function isSecretLikePath(relative, contract = portableContract()) {
 function scanForSecrets(root, contract = portableContract()) {
   const findings = [];
   for (const relative of walkVaultEntries(root).files) {
-    const resolution = resolveOrNull(contract, relative);
     if (
-      !['vault', 'seed'].includes(resolution?.ownership)
+      !belongsInVaultHistory(contract, relative)
       && !isSecretLikePath(relative, contract)
     ) continue;
     if (isSecretLikePath(relative, contract)) {
@@ -1107,7 +1154,8 @@ function normalizeHeldBackPaths(paths, contract = portableContract()) {
     }
     const resolution = resolveOrNull(contract, relative);
     if (
-      (resolution && ['vault', 'seed'].includes(resolution.ownership))
+      !resolution
+      || ['vault', 'seed'].includes(resolution.ownership)
       || isSecretLikePath(relative, contract)
     ) normalized.push(relative);
   }
@@ -1129,7 +1177,7 @@ function excludeLine(relative, directory = false) {
   return `/${escaped}${directory ? '/' : ''}`;
 }
 
-function vaultExcludeLines(contract, trackedIgnore, heldBackPaths = []) {
+function vaultExcludeLines(contract, trackedIgnore, heldBackPaths = [], embeddedRepositories = []) {
   const lines = new Set([
     '/.dex/',
     '/System/backups/',
@@ -1168,16 +1216,23 @@ function vaultExcludeLines(contract, trackedIgnore, heldBackPaths = []) {
   }
   for (const relative of trackedIgnore.localOnlyPaths) lines.add(excludeLine(relative));
   for (const relative of normalizeHeldBackPaths(heldBackPaths, contract)) lines.add(excludeLine(relative));
+  for (const relative of embeddedRepositories) lines.add(excludeLine(relative, true));
   return [...lines];
 }
 
-function writeVaultExcludes(root, gitDirectory, heldBackPaths, trackedIgnore = null) {
+function writeVaultExcludes(
+  root,
+  gitDirectory,
+  heldBackPaths,
+  trackedIgnore = null,
+  embeddedRepositories = [],
+) {
   const contract = portableContract();
   const baseline = trackedIgnore || loadTrackedIgnoreState(root);
   fs.mkdirSync(path.join(gitDirectory, 'info'), { recursive: true });
   writeFileFsynced(
     path.join(gitDirectory, 'info', 'exclude'),
-    `${vaultExcludeLines(contract, baseline, heldBackPaths).join('\n')}\n`,
+    `${vaultExcludeLines(contract, baseline, heldBackPaths, embeddedRepositories).join('\n')}\n`,
     0o644,
   );
 }
@@ -1186,7 +1241,13 @@ function writeGitdirMarker(gitDirectory, marker, payload) {
   writeFileFsynced(path.join(gitDirectory, marker), `${JSON.stringify(payload, null, 2)}\n`);
 }
 
-function initializeVaultGitdir(root, gitDirectory, heldBackPaths = [], trackedIgnore = null) {
+function initializeVaultGitdir(
+  root,
+  gitDirectory,
+  heldBackPaths = [],
+  trackedIgnore = null,
+  embeddedRepositories = [],
+) {
   if (!exists(gitDirectory)) {
     fs.mkdirSync(path.dirname(gitDirectory), { recursive: true });
     run('git', ['init', '--bare', '--quiet', gitDirectory]);
@@ -1196,7 +1257,7 @@ function initializeVaultGitdir(root, gitDirectory, heldBackPaths = [], trackedIg
   ensureIdentity(root, gitDirectory);
   const remotes = safeRemoteNames(root, gitDirectory);
   for (const remote of remotes) gitDir(root, gitDirectory, ['remote', 'remove', remote]);
-  writeVaultExcludes(root, gitDirectory, heldBackPaths, trackedIgnore);
+  writeVaultExcludes(root, gitDirectory, heldBackPaths, trackedIgnore, embeddedRepositories);
   writeGitdirMarker(gitDirectory, VAULT_MARKER, { schemaVersion: 1, role: 'vault' });
 }
 
@@ -1206,7 +1267,7 @@ function independentVaultInventory(root, heldBackPaths = [], trackedIgnore = nul
   const heldBack = new Set(heldBackPaths);
   const localOnly = new Set(baseline.localOnlyPaths);
   return walkVaultEntries(root).files
-    .filter((relative) => ['vault', 'seed'].includes(resolveOrNull(contract, relative)?.ownership))
+    .filter((relative) => belongsInVaultHistory(contract, relative))
     .filter((relative) => !isSecretLikePath(relative, contract))
     .filter((relative) => !localOnly.has(relative))
     .filter((relative) => !heldBack.has(relative))
@@ -1275,15 +1336,23 @@ function analyzeMigrationPlan(root) {
   const scannerPositive = new Set(secretFindings.map((finding) => finding.path));
   const brainFiles = [];
   const vaultFiles = [];
+  const unclassifiedVaultFiles = [];
   const skippedPaths = entries.symlinks.map((relative) => ({
     path: relative,
     reason: 'symlink refused; migration will not follow it',
   }));
+  skippedPaths.push(...entries.embeddedRepositories.map((relative) => ({
+    path: relative,
+    reason: `your project ${relative} has its own version history and stays untouched; Dex will not version it`,
+  })));
   for (const relative of entries.files) {
     const resolution = resolveOrNull(contract, relative);
-    if (!resolution) {
-      skippedPaths.push({ path: relative, reason: 'unclassified by the portable vault contract' });
-    } else if (resolution.denied || isSecretLikePath(relative, contract)) {
+    if (relative === REPORT_RELATIVE.split(path.sep).join('/')) {
+      skippedPaths.push({
+        path: relative,
+        reason: 'Dex migration report; generated locally and not part of vault history',
+      });
+    } else if (resolution?.denied || isSecretLikePath(relative, contract)) {
       skippedPaths.push({ path: relative, reason: 'hard-denied secret path' });
     } else if (localOnly.has(relative)) {
       skippedPaths.push({
@@ -1292,6 +1361,9 @@ function analyzeMigrationPlan(root) {
       });
     } else if (scannerPositive.has(relative)) {
       skippedPaths.push({ path: relative, reason: 'secret-shaped content held back for review' });
+    } else if (!resolution) {
+      vaultFiles.push(relative);
+      unclassifiedVaultFiles.push(relative);
     } else if (['vault', 'seed'].includes(resolution.ownership)) {
       vaultFiles.push(relative);
     } else if (resolution.ownership === 'brain') {
@@ -1303,6 +1375,7 @@ function analyzeMigrationPlan(root) {
   return {
     brainFiles: brainFiles.sort(),
     vaultFiles: vaultFiles.sort(),
+    unclassifiedVaultFiles: unclassifiedVaultFiles.sort(),
     skippedPaths: skippedPaths.sort((left, right) => left.path.localeCompare(right.path)),
     secretFindings,
     capabilityRooms: capabilityRoomState(root, contract),
@@ -1310,13 +1383,40 @@ function analyzeMigrationPlan(root) {
     transitionPhase: trackedIgnore.transition.phase,
     vaultRoot: path.resolve(root),
     symlinkPaths: entries.symlinks,
+    embeddedRepositories: entries.embeddedRepositories,
   };
+}
+
+function stagedVaultInventory(root, gitDirectory) {
+  const output = gitDir(root, gitDirectory, ['ls-files', '--stage', '-z'], { encoding: null })
+    .stdout.toString('utf8');
+  const entries = [];
+  for (const record of output.split('\0').filter(Boolean)) {
+    const separator = record.indexOf('\t');
+    const [mode, oid, stage] = record.slice(0, separator).split(/\s+/);
+    if (stage !== '0') throw new Error('P3 found an unresolved index entry while building vault history.');
+    const relative = record.slice(separator + 1);
+    const blob = gitDir(root, gitDirectory, ['cat-file', 'blob', oid], { encoding: null }).stdout;
+    entries.push({
+      path: relative,
+      mode,
+      oid,
+      sha256: crypto.createHash('sha256').update(blob).digest('hex'),
+    });
+  }
+  return entries.sort((left, right) => left.path.localeCompare(right.path));
 }
 
 function phase3BuildVault(root, state) {
   const gitDirectory = path.join(root, '.dex', 'vault-staging.git');
   const trackedIgnore = loadTrackedIgnoreState(root);
-  initializeVaultGitdir(root, gitDirectory, state.analysis?.heldBackPaths || [], trackedIgnore);
+  initializeVaultGitdir(
+    root,
+    gitDirectory,
+    state.analysis?.heldBackPaths || [],
+    trackedIgnore,
+    state.analysis?.embeddedRepositories || [],
+  );
 
   const planPath = path.join(root, P3_FILES_RELATIVE);
   let plan;
@@ -1326,7 +1426,7 @@ function phase3BuildVault(root, state) {
     const heldBackPaths = state.analysis?.heldBackPaths || [];
     const expected = independentVaultInventory(root, heldBackPaths, trackedIgnore);
     plan = {
-      schemaVersion: 3,
+      schemaVersion: 4,
       gitCandidates: expected.map((entry) => entry.path),
       expected,
       heldBackPaths,
@@ -1334,7 +1434,16 @@ function phase3BuildVault(root, state) {
     };
     writeMigrationFile(root, planPath, `${JSON.stringify(plan, null, 2)}\n`);
   }
-  const files = Array.isArray(plan) ? plan : plan.expected.map((entry) => entry.path);
+  if (Array.isArray(plan)) {
+    plan = {
+      schemaVersion: 4,
+      gitCandidates: plan,
+      expected: plan.map((relative) => ({ path: relative, sha256: null })),
+      heldBackPaths: [],
+      trackedIgnoreBaseline: trackedIgnore.baselineVersion,
+    };
+  }
+  const files = plan.expected.map((entry) => entry.path);
   state.p3 = state.p3 || { nextIndex: 0, total: files.length };
   state.p3.total = files.length;
 
@@ -1344,16 +1453,46 @@ function phase3BuildVault(root, state) {
   if (batch.length > 0) {
     gitDir(root, gitDirectory, ['-c', 'core.excludesFile=/dev/null', 'add', '-f', '--', ...batch]);
   }
+  if (process.env.DEX_MIGRATION_SIGKILL_AT === 'P3-batch') process.kill(process.pid, 'SIGKILL');
   state.p3.nextIndex = end;
   console.log(`P3 indexed batch ${start + 1}-${end} of ${files.length}.`);
 
   if (end < files.length) return { needsResume: true };
+  plan.staged = stagedVaultInventory(root, gitDirectory);
+  const stagedPaths = new Set(plan.staged.map((entry) => entry.path));
+  const expectedPaths = new Set(plan.expected.map((entry) => entry.path));
+  const unexpectedPaths = plan.staged
+    .map((entry) => entry.path)
+    .filter((relative) => !expectedPaths.has(relative));
+  if (unexpectedPaths.length > 0) {
+    throw new Error(`P3 found unexpected staged paths and stopped before the Git swap: ${unexpectedPaths.join(', ')}`);
+  }
+  const reconciledPaths = plan.expected
+    .map((entry) => entry.path)
+    .filter((relative) => !stagedPaths.has(relative));
+  plan.reconciledPaths = reconciledPaths;
+  writeMigrationFile(root, planPath, `${JSON.stringify(plan, null, 2)}\n`);
+  if (reconciledPaths.length > 0) {
+    state.analysis.reconciledPaths = reconciledPaths;
+    const reconciled = new Set(reconciledPaths);
+    state.analysis.vaultFiles = (state.analysis.vaultFiles || [])
+      .filter((relative) => !reconciled.has(relative));
+    state.analysis.unclassifiedVaultFiles = (state.analysis.unclassifiedVaultFiles || [])
+      .filter((relative) => !reconciled.has(relative));
+    state.analysis.skippedPaths = [
+      ...(state.analysis.skippedPaths || []),
+      ...reconciledPaths.map((relative) => ({
+        path: relative,
+        reason: 'Git could not stage this path as a distinct file; it stays untouched and was not promised in vault history',
+      })),
+    ].sort((left, right) => left.path.localeCompare(right.path));
+  }
   const head = gitDir(root, gitDirectory, ['rev-parse', '--verify', 'HEAD'], { allowFailure: true });
   if (head.status !== 0) {
     gitDir(root, gitDirectory, ['commit', '--quiet', '-m', 'Your vault — everything here is yours']);
   }
   state.p3.initialCommit = gitOutput(root, gitDirectory, ['rev-parse', 'HEAD']);
-  console.log(`P3 vault snapshot complete with ${files.length} files.`);
+  console.log(`P3 vault snapshot complete with ${plan.staged.length} files Git actually staged.`);
   return { needsResume: false };
 }
 
@@ -1366,6 +1505,15 @@ function phase0Preflight(root, state) {
   if (mergeInProgress(root)) {
     throw new Error('P0 stopped because a Git operation is in progress. Please finish or abort the merge, rebase, or cherry-pick, then run the migration again.');
   }
+  const claudePath = path.join(root, 'CLAUDE.md');
+  if (!exists(claudePath)) throw new Error('P0 needs CLAUDE.md to validate the instruction migration before any Git folders change.');
+  let claudeMarkers;
+  try {
+    claudeMarkers = claudeMarkerState(fs.readFileSync(claudePath, 'utf8'));
+  } catch (error) {
+    throw new Error(`P0 stopped because CLAUDE.md has invalid USER_EXTENSIONS markers: ${error.message}`);
+  }
+  const embeddedRepositories = walkVaultEntries(root).embeddedRepositories;
   fs.accessSync(root, fs.constants.R_OK | fs.constants.W_OK);
   const vaultBytes = directorySize(root);
   const freeBytes = availableBytes(root);
@@ -1391,6 +1539,8 @@ function phase0Preflight(root, state) {
     releaseCommit: release.commit,
     vaultBytes,
     freeBytes,
+    claudeMarkers,
+    embeddedRepositories,
   };
   return { zip: false };
 }
@@ -1494,6 +1644,7 @@ function phase5Swap(root, state) {
       releaseCommit: state.preflight.releaseCommit,
     });
     moveWithFallback(rootGit, archive);
+    if (process.env.DEX_MIGRATION_SIGKILL_AT === 'P5-archive') process.kill(process.pid, 'SIGKILL');
     state.swapStage = 'archive-moved';
     writeJournal(root, state);
     if (process.env.DEX_MIGRATION_STOP_DURING_P5 === 'archive-moved') {
@@ -1501,6 +1652,7 @@ function phase5Swap(root, state) {
     }
   }
   if (!exists(rootGit)) moveWithFallback(staging, rootGit);
+  if (process.env.DEX_MIGRATION_SIGKILL_AT === 'P5-rename') process.kill(process.pid, 'SIGKILL');
   if (!markerExists(rootGit, VAULT_MARKER)) {
     throw new Error('P5 stopped because the new root Git folder has no vault marker. Run --restore.');
   }
@@ -1537,12 +1689,12 @@ function phase6Rematerialize(root, state = {}) {
   const claudePath = path.join(root, 'CLAUDE.md');
   const customPath = path.join(root, 'CLAUDE-custom.md');
   const legacy = fs.readFileSync(claudePath, 'utf8');
-  const hasLegacyMarkers = legacy.includes(START_MARKER);
+  const markerState = claudeMarkerState(legacy);
   let custom = exists(customPath) ? fs.readFileSync(customPath, 'utf8') : null;
   let appended = false;
 
-  if (!hasLegacyMarkers && custom !== null) {
-    // P6 already completed its destructive-to-markers step before the phase journal advanced.
+  if (markerState === 'markerless') {
+    console.log('P6 instructions: CLAUDE.md has no extension markers, so there is nothing to lift.');
   } else {
     const inlineExtensions = extractLegacyExtensions(legacy);
     if (custom === null) {
@@ -1565,7 +1717,7 @@ function phase6Rematerialize(root, state = {}) {
   state.p6 = {
     liftComplete: true,
     claudeSha256: fileSha256(claudePath),
-    customSha256: fileSha256(customPath),
+    customSha256: exists(customPath) ? fileSha256(customPath) : null,
   };
   if (state.schemaVersion) writeJournal(root, state);
   if (process.env.DEX_MIGRATION_STOP_DURING_P6 === 'lift-complete') {
@@ -1598,7 +1750,7 @@ function phase8Verify(root, state) {
   const plan = JSON.parse(fs.readFileSync(path.join(root, P3_FILES_RELATIVE), 'utf8'));
   const expectedEntries = Array.isArray(plan)
     ? plan.map((relative) => ({ path: relative, sha256: null }))
-    : plan.expected;
+    : (plan.staged || plan.expected);
   const initialCommit = state.p3?.initialCommit || 'HEAD';
   const treeOutput = gitDir(root, vaultGit, ['ls-tree', '-r', '-z', initialCommit], { encoding: null })
     .stdout.toString('utf8');
@@ -1609,11 +1761,11 @@ function phase8Verify(root, state) {
     tree.set(record.slice(separator + 1), metadata[2]);
   }
   if (tree.size !== expectedEntries.length) {
-    throw new Error(`P8 expected ${expectedEntries.length} files in the initial vault snapshot but found ${tree.size}.`);
+    throw new Error(`P8 initial vault snapshot differed from what Git staged in P3: staged ${expectedEntries.length} files but committed ${tree.size}.`);
   }
   for (const entry of expectedEntries) {
     const oid = tree.get(entry.path);
-    if (!oid) throw new Error(`P8 expected ${entry.path} in the initial vault snapshot, but it was missing.`);
+    if (!oid) throw new Error(`P8 initial vault snapshot was missing ${entry.path}, which Git staged in P3.`);
     if (entry.sha256) {
       const blob = gitDir(root, vaultGit, ['cat-file', 'blob', oid], { encoding: null }).stdout;
       const actualSha256 = crypto.createHash('sha256').update(blob).digest('hex');
@@ -1641,7 +1793,13 @@ function phase9Finalize(root, state) {
     ...new Set(state.analysis.secretFindings.map((finding) => finding.path)),
   ].sort();
   state.analysis.heldBackPaths = persistHeldBackPaths(root, state.analysis.heldBackPaths);
-  writeVaultExcludes(root, vaultGit, state.analysis.heldBackPaths);
+  writeVaultExcludes(
+    root,
+    vaultGit,
+    state.analysis.heldBackPaths,
+    null,
+    state.analysis.embeddedRepositories || [],
+  );
   const finalHeldBack = new Set(finalFindings.map((finding) => finding.path));
   const commitPaths = ['CLAUDE-custom.md', 'System/user-profile.yaml']
     .filter((relative) => exists(path.join(root, relative)) && !finalHeldBack.has(relative));
@@ -1852,9 +2010,8 @@ function changedVaultPaths(root, gitDirectory, migrationCommit = null) {
     if (error.code !== 'ENOENT') throw error;
   }
   for (const relative of walkVaultEntries(root, contract).files) {
-    const resolution = resolveOrNull(contract, relative);
     if (
-      !['vault', 'seed'].includes(resolution?.ownership)
+      !belongsInVaultHistory(contract, relative)
       || baselineLocalOnly.has(relative)
       || heldBack.has(relative)
       || isSecretLikePath(relative, contract)
@@ -1867,9 +2024,7 @@ function changedVaultPaths(root, gitDirectory, migrationCommit = null) {
     );
     if (tracked.status !== 0) paths.add(relative);
   }
-  return [...paths].filter((relative) => (
-    ['vault', 'seed'].includes(resolveOrNull(contract, relative)?.ownership)
-  ));
+  return [...paths].filter((relative) => belongsInVaultHistory(contract, relative));
 }
 
 function preflightRestorePreservation(root, state) {
@@ -1878,6 +2033,12 @@ function preflightRestorePreservation(root, state) {
   const head = gitOutput(root, vaultGit, ['rev-parse', 'HEAD']);
   const migrationCommit = state.p9?.finalCommit || state.p3?.initialCommit;
   const changed = new Set(changedVaultPaths(root, vaultGit, migrationCommit));
+  const customPath = path.join(root, 'CLAUDE-custom.md');
+  if (
+    state.p6?.customSha256
+    && exists(customPath)
+    && fileSha256(customPath) === state.p6.customSha256
+  ) changed.delete('CLAUDE-custom.md');
   const dirty = changed.size > 0;
   const diverged = !migrationCommit || head !== migrationCommit;
   if (!dirty && !diverged) return { preserveGitdir: false, dirty, diverged };
@@ -1885,7 +2046,6 @@ function preflightRestorePreservation(root, state) {
   const backupRelative = path.join('System', 'backups', `pre-restore-${Date.now()}`);
   const backupRoot = path.join(root, backupRelative);
   const scannerPositive = new Set(scanForSecrets(root).map((finding) => finding.path));
-  const customPath = path.join(root, 'CLAUDE-custom.md');
   if (
     exists(customPath)
     && state.p6?.customSha256
@@ -2092,6 +2252,14 @@ function writeFailureReport(root, error) {
   }
 }
 
+function failureForUser(root, error) {
+  const archive = path.join(root, '.dex', 'pre-split-archive.git');
+  if (!markerExists(archive, ARCHIVE_MARKER) || error.message.includes(POST_SWAP_RECOVERY)) {
+    return error;
+  }
+  return new Error(`${error.message}\n\n${POST_SWAP_RECOVERY}`);
+}
+
 function parseMode(argumentsList) {
   if (argumentsList.length === 0) return 'dry-run';
   if (argumentsList.length !== 1) throw new Error('Use one mode: --dry-run, --auto, --resume, --restore, or --status.');
@@ -2141,8 +2309,9 @@ function main(argumentsList = process.argv.slice(2), root = process.cwd()) {
       }
       return runPhases(root, mode);
     } catch (error) {
-      if (mode !== 'restore') writeFailureReport(root, error);
-      throw error;
+      const userError = mode === 'restore' ? error : failureForUser(root, error);
+      if (mode !== 'restore') writeFailureReport(root, userError);
+      throw userError;
     } finally {
       releaseLock();
     }

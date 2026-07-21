@@ -171,6 +171,30 @@ test('contract loader requires every migrator authorization surface', () => {
   }
 });
 
+test('contract loader rejects vault regions and PARA directories that resolve to brain', () => {
+  const migrator = require(MIGRATOR_PATH);
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'dex-migration-contract-semantics-'));
+  const source = JSON.parse(fs.readFileSync(CONTRACT_PATH, 'utf8'));
+
+  const vaultRegionPath = path.join(root, 'vault-region.json');
+  source.rules.find((rule) => rule.path === '00-Inbox').ownership = 'brain';
+  fs.writeFileSync(vaultRegionPath, `${JSON.stringify(source, null, 2)}\n`);
+  assert.throws(
+    () => migrator.loadPortableContract(vaultRegionPath),
+    /vault_regions.*00-Inbox.*vault ownership/i,
+  );
+
+  const paraSource = JSON.parse(fs.readFileSync(CONTRACT_PATH, 'utf8'));
+  const paraPath = path.join(root, 'para.json');
+  paraSource.vault_regions = paraSource.vault_regions.filter((region) => region !== '04-Projects');
+  paraSource.rules.find((rule) => rule.path === '04-Projects').ownership = 'brain';
+  fs.writeFileSync(paraPath, `${JSON.stringify(paraSource, null, 2)}\n`);
+  assert.throws(
+    () => migrator.loadPortableContract(paraPath),
+    /PARA.*04-Projects.*brain/i,
+  );
+});
+
 test('tracked-ignore state is read from the active policy and transition', () => {
   const migrator = require(MIGRATOR_PATH);
   const state = migrator.loadTrackedIgnoreState(REPO_ROOT);
@@ -453,6 +477,23 @@ test('P6 is replay-safe and preserves distinct custom and inline instructions', 
   assert.doesNotThrow(() => migrator.phase6Rematerialize(root, state));
   assert.deepEqual(fs.readFileSync(path.join(root, 'CLAUDE.md')), firstClaude);
   assert.equal(fs.readFileSync(path.join(root, 'CLAUDE-custom.md'), 'utf8'), firstCustom);
+});
+
+test('P6 treats a markerless CLAUDE.md as nothing to lift', () => {
+  const migrator = require(MIGRATOR_PATH);
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'dex-migration-p6-markerless-'));
+  const claude = '# Dex\n\nNo inline user extensions live here.\n';
+  fs.mkdirSync(path.join(root, 'System'), { recursive: true });
+  fs.writeFileSync(path.join(root, 'CLAUDE.md'), claude);
+  fs.writeFileSync(path.join(root, 'System', 'user-profile.yaml'), 'name: Test\n');
+  const state = { schemaVersion: 1, nextPhase: 6, analysis: {} };
+
+  assert.doesNotThrow(() => migrator.phase6Rematerialize(root, state));
+  assert.equal(fs.readFileSync(path.join(root, 'CLAUDE.md'), 'utf8'), claude);
+  assert.equal(fs.existsSync(path.join(root, 'CLAUDE-custom.md')), false);
+  assert.equal(state.p6.liftComplete, true);
+  assert.equal(state.p6.customSha256, null);
+  assert.match(fs.readFileSync(path.join(root, 'System', 'user-profile.yaml'), 'utf8'), /^vault_schema: 1$/m);
 });
 
 test('the pre-split snapshot restores a pre-existing migration report', () => {
