@@ -239,7 +239,7 @@ function operationInProgress(gitDirectory) {
 }
 
 function ensureLocalIdentity(root) {
-  for (const [key, value] of [['user.name', 'Dex Vault'], ['user.email', 'vault@dex.local']]) {
+  for (const [key, value] of [['user.name', 'Dex Vault'], ['user.email', 'vault@example.com']]) {
     const current = git(root, ['config', '--local', '--get', key]);
     if (current.status === 0 && current.stdout.trim()) continue;
     if (git(root, ['config', '--local', key, value]).status !== 0) return false;

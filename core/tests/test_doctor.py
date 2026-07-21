@@ -181,7 +181,7 @@ def _drift_context(tmp_path, *, release_ref=True, channel=None):
     vault = tmp_path / "drift-vault"
     vault.mkdir()
     _git(vault, "init")
-    _git(vault, "config", "user.email", "doctor@example.test")
+    _git(vault, "config", "user.email", "doctor@example.com")
     _git(vault, "config", "user.name", "Doctor Test")
 
     (vault / "core").mkdir()
@@ -312,7 +312,7 @@ def _write_split_topology(context, *, installed: str = "a" * 40) -> Path:
     brain.parent.mkdir(parents=True)
     subprocess.run(["git", "init", "--bare", "--quiet", str(brain)], check=True)
     _git(context.vault_root, "config", "user.name", "Doctor Test")
-    _git(context.vault_root, "config", "user.email", "doctor@example.test")
+    _git(context.vault_root, "config", "user.email", "doctor@example.com")
     (context.vault_root / "README.md").write_text("brain\n")
     _git(context.vault_root, "add", "README.md")
     _git(context.vault_root, "commit", "--quiet", "-m", "brain")

@@ -60,7 +60,7 @@ def split_release_fixture(tmp_path: Path) -> dict[str, object]:
     release.mkdir()
     _git(release, "init", "--quiet")
     _git(release, "config", "user.name", "Dex Update Tests")
-    _git(release, "config", "user.email", "update@example.test")
+    _git(release, "config", "user.email", "update@example.com")
     _write(release, "README.md", b"old brain\n")
     _write(release, "core/obsolete.py", b"OLD = True\n", 0o755)
     _write(release, "03-Tasks/Tasks.md", b"# shipped seed\n")
