@@ -465,6 +465,13 @@
       "ownership": "runtime"
     },
     {
+      "id": "runtime-adoption-receipts",
+      "path": "System/.dex/adoptions",
+      "kind": "dir",
+      "ownership": "runtime",
+      "note": "post-commit lifecycle receipts; local runtime evidence, never shipped"
+    },
+    {
       "id": "generated-manifest",
       "path": "System/.installed-files.manifest",
       "kind": "file",

@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import hashlib
 import hmac
 import json
+import os
 import posixpath
 import re
+import secrets
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
@@ -29,9 +32,13 @@ from core.lifecycle.preview import (
     canonical_adoption_preview_bytes,
 )
 from core.transaction.engine import PlanEntry, PlanRejected, Transaction, TransactionError
+from core.transaction.journal import Journal, JournalCorruptError
+from core.transaction.snapshot import Snapshot, SnapshotEntry, SnapshotError
 
 RECEIPT_VERSION = 1
+REWIND_RECEIPT_VERSION = 1
 CATALOG_RELATIVE = "System/.release-catalog.json"
+ADOPTION_RECEIPTS_RELATIVE = Path("System") / ".dex" / "adoptions"
 TRANSACTION_ID = re.compile(r"^[0-9]{8}T[0-9]{6}-[0-9a-f]{8}$")
 
 
@@ -39,8 +46,20 @@ class AdoptionExecutionError(RuntimeError):
     """Adoption refused or failed without a partial lifecycle result."""
 
 
+class AdoptionReceiptPersistenceError(RuntimeError):
+    """The adoption committed, but its convenience receipt was not persisted."""
+
+
+class AdoptionRewindError(RuntimeError):
+    """An adoption rewind was refused or failed without a partial result."""
+
+
 def _refuse(message: str) -> AdoptionExecutionError:
     return AdoptionExecutionError(f"adoption refused: {message}")
+
+
+def _rewind_refuse(message: str) -> AdoptionRewindError:
+    return AdoptionRewindError(f"rewind refused: {message}")
 
 
 def _mapping(value: object, context: str) -> Mapping[str, Any]:
@@ -227,6 +246,576 @@ def canonical_adoption_receipt_bytes(receipt: AdoptionReceipt) -> bytes:
         raise _refuse(f"receipt cannot be serialized canonically: {error}") from error
 
 
+@dataclass(frozen=True)
+class RewindReceiptFile:
+    """The exact pre-adoption state restored for one adopted path."""
+
+    item_id: str
+    path: str
+    existed_before_adoption: bool
+    restored_sha256: str | None
+    byte_size: int | None
+    mode: int | None
+
+    @classmethod
+    def from_dict(cls, raw: object) -> "RewindReceiptFile":
+        value = _mapping(raw, "rewind receipt file")
+        _closed_fields(
+            value,
+            required={
+                "item_id",
+                "path",
+                "existed_before_adoption",
+                "restored_sha256",
+                "byte_size",
+                "mode",
+            },
+            context="rewind receipt file",
+        )
+        item_id = _string(value["item_id"], "rewind receipt file item_id")
+        if ITEM_ID.fullmatch(item_id) is None:
+            raise _refuse("rewind receipt file item_id is not canonical")
+        existed = value["existed_before_adoption"]
+        if type(existed) is not bool:
+            raise _refuse("rewind receipt file existed_before_adoption must be a boolean")
+        if existed:
+            digest = _sha256(
+                value["restored_sha256"], "rewind receipt file restored_sha256"
+            )
+            byte_size = value["byte_size"]
+            mode = value["mode"]
+            if type(byte_size) is not int or byte_size < 0:
+                raise _refuse(
+                    "rewind receipt file byte_size must be a non-negative integer"
+                )
+            if type(mode) is not int or mode < 0 or mode > 0o777:
+                raise _refuse("rewind receipt file mode must be permission bits up to 0o777")
+        else:
+            if any(
+                value[field] is not None
+                for field in ("restored_sha256", "byte_size", "mode")
+            ):
+                raise _refuse(
+                    "rewind receipt file absent state needs null hash, size, and mode"
+                )
+            digest = None
+            byte_size = None
+            mode = None
+        return cls(
+            item_id,
+            _relative_path(value["path"], "rewind receipt file path"),
+            existed,
+            digest,
+            byte_size,
+            mode,
+        )
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "item_id": self.item_id,
+            "path": self.path,
+            "existed_before_adoption": self.existed_before_adoption,
+            "restored_sha256": self.restored_sha256,
+            "byte_size": self.byte_size,
+            "mode": self.mode,
+        }
+
+
+@dataclass(frozen=True)
+class RewindReceipt:
+    """Strict evidence that one adoption was rewound in a new transaction."""
+
+    rewind_receipt_version: int
+    adoption_transaction_id: str
+    rewind_transaction_id: str
+    snapshot_ref: str
+    source_receipt_sha256: str
+    files_restored: tuple[RewindReceiptFile, ...]
+
+    @classmethod
+    def from_dict(cls, raw: object) -> "RewindReceipt":
+        value = _mapping(raw, "rewind receipt")
+        _closed_fields(
+            value,
+            required={
+                "rewind_receipt_version",
+                "adoption_transaction_id",
+                "rewind_transaction_id",
+                "snapshot_ref",
+                "source_receipt_sha256",
+                "files_restored",
+            },
+            context="rewind receipt",
+        )
+        if (
+            type(value["rewind_receipt_version"]) is not int
+            or value["rewind_receipt_version"] != REWIND_RECEIPT_VERSION
+        ):
+            raise _refuse(
+                f"rewind_receipt_version must be exactly {REWIND_RECEIPT_VERSION}"
+            )
+        adoption_id = _string(
+            value["adoption_transaction_id"],
+            "rewind receipt adoption_transaction_id",
+        )
+        rewind_id = _string(
+            value["rewind_transaction_id"], "rewind receipt rewind_transaction_id"
+        )
+        if TRANSACTION_ID.fullmatch(adoption_id) is None:
+            raise _refuse("rewind receipt adoption_transaction_id is not canonical")
+        if TRANSACTION_ID.fullmatch(rewind_id) is None:
+            raise _refuse("rewind receipt rewind_transaction_id is not canonical")
+        if adoption_id == rewind_id:
+            raise _refuse("rewind receipt transaction ids must be distinct")
+        snapshot_ref = _relative_path(
+            value["snapshot_ref"], "rewind receipt snapshot_ref"
+        )
+        if snapshot_ref != f"System/.dex/tx/{rewind_id}/snapshot":
+            raise _refuse(
+                "rewind receipt snapshot_ref does not match its rewind_transaction_id"
+            )
+        raw_files = value["files_restored"]
+        if not isinstance(raw_files, list) or not raw_files:
+            raise _refuse("rewind receipt needs at least one restored file")
+        files = tuple(RewindReceiptFile.from_dict(entry) for entry in raw_files)
+        if files != tuple(sorted(files, key=lambda entry: (entry.path, entry.item_id))):
+            raise _refuse("rewind receipt files must be sorted by path")
+        if len({entry.path for entry in files}) != len(files):
+            raise _refuse("rewind receipt repeats a restored path")
+        return cls(
+            REWIND_RECEIPT_VERSION,
+            adoption_id,
+            rewind_id,
+            snapshot_ref,
+            _sha256(
+                value["source_receipt_sha256"],
+                "rewind receipt source_receipt_sha256",
+            ),
+            files,
+        )
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "rewind_receipt_version": self.rewind_receipt_version,
+            "adoption_transaction_id": self.adoption_transaction_id,
+            "rewind_transaction_id": self.rewind_transaction_id,
+            "snapshot_ref": self.snapshot_ref,
+            "source_receipt_sha256": self.source_receipt_sha256,
+            "files_restored": [entry.to_dict() for entry in self.files_restored],
+        }
+
+
+def canonical_rewind_receipt_bytes(receipt: RewindReceipt) -> bytes:
+    if not isinstance(receipt, RewindReceipt):
+        raise _rewind_refuse("rewind receipt must be a RewindReceipt")
+    try:
+        validated = RewindReceipt.from_dict(receipt.to_dict())
+        return (
+            json.dumps(
+                validated.to_dict(),
+                ensure_ascii=False,
+                allow_nan=False,
+                sort_keys=True,
+                separators=(",", ":"),
+            )
+            + "\n"
+        ).encode("utf-8")
+    except AdoptionExecutionError as error:
+        raise _rewind_refuse(str(error).removeprefix("adoption refused: ")) from error
+    except (TypeError, ValueError) as error:
+        raise _rewind_refuse(
+            f"rewind receipt cannot be serialized canonically: {error}"
+        ) from error
+
+
+def _validated_adoption_receipt(raw: object) -> AdoptionReceipt:
+    try:
+        document = raw.to_dict() if isinstance(raw, AdoptionReceipt) else raw
+        return AdoptionReceipt.from_dict(document)
+    except AdoptionExecutionError as error:
+        raise _rewind_refuse(
+            f"receipt is invalid: {str(error).removeprefix('adoption refused: ')}"
+        ) from error
+    except (AttributeError, TypeError, ValueError) as error:
+        raise _rewind_refuse(f"receipt is invalid: {error}") from error
+
+
+def rewind_acknowledgement_token(receipt: object) -> str:
+    """Bind rewind acknowledgement to the exact adoption id and sorted paths."""
+    validated = _validated_adoption_receipt(receipt)
+    payload = {
+        "rewind": validated.transaction_id,
+        "files": sorted(entry.path for entry in validated.files_written),
+    }
+    canonical = (
+        json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+        + "\n"
+    ).encode("utf-8")
+    return hashlib.sha256(canonical).hexdigest()
+
+
+def _fsync_directory(directory: Path) -> None:
+    descriptor = os.open(directory, os.O_RDONLY)
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+
+
+def _receipt_path(vault_root: Path, transaction_id: str) -> Path:
+    if TRANSACTION_ID.fullmatch(transaction_id) is None:
+        raise _rewind_refuse("receipt transaction_id is not canonical")
+    return (
+        Path(vault_root)
+        / ADOPTION_RECEIPTS_RELATIVE
+        / f"{transaction_id}.receipt.json"
+    )
+
+
+def _persist_adoption_receipt(vault_root: Path, receipt: AdoptionReceipt) -> None:
+    """Atomically persist post-commit runtime evidence.
+
+    This deliberately happens after the adoption transaction commits because
+    the receipt describes that outcome. A process crash between COMMITTED and
+    this write leaves a committed-but-unreceipted adoption; the fsynced
+    transaction journal remains the authority for what happened.
+    """
+    target = _receipt_path(vault_root, receipt.transaction_id)
+    root = Path(vault_root)
+    directory = target.parent
+    for component in (root / "System", root / "System/.dex", directory):
+        if component.is_symlink() or (component.exists() and not component.is_dir()):
+            raise AdoptionReceiptPersistenceError(
+                f"adoption {receipt.transaction_id} committed, but its receipt path "
+                f"is unsafe: {component}"
+            )
+    directory.mkdir(parents=True, exist_ok=True, mode=0o700)
+    os.chmod(directory, 0o700)
+    temporary = directory / (
+        f".{target.name}.tmp-{os.getpid()}-{secrets.token_hex(8)}"
+    )
+    data = canonical_adoption_receipt_bytes(receipt)
+    descriptor = None
+    try:
+        descriptor = os.open(
+            temporary,
+            os.O_WRONLY | os.O_CREAT | os.O_EXCL,
+            0o600,
+        )
+        view = memoryview(data)
+        while view:
+            written = os.write(descriptor, view)
+            view = view[written:]
+        os.fsync(descriptor)
+        os.close(descriptor)
+        descriptor = None
+        os.replace(temporary, target)
+        os.chmod(target, 0o600)
+        _fsync_directory(directory)
+    except BaseException:
+        if descriptor is not None:
+            os.close(descriptor)
+        try:
+            temporary.unlink()
+        except FileNotFoundError:
+            pass
+        raise
+
+
+def load_adoption_receipt(vault_root: Path, transaction_id: str) -> AdoptionReceipt:
+    """Load one canonical persisted receipt through the strict receipt parser."""
+    path = _receipt_path(vault_root, transaction_id)
+    if path.is_symlink() or not path.is_file():
+        raise _rewind_refuse(f"receipt file is missing or unsafe: {path}")
+    try:
+        raw = path.read_bytes()
+        document = json.loads(raw.decode("utf-8"))
+        receipt = AdoptionReceipt.from_dict(document)
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
+        raise _rewind_refuse(f"receipt file is unreadable: {error}") from error
+    except AdoptionExecutionError as error:
+        raise _rewind_refuse(
+            f"receipt file is invalid: {str(error).removeprefix('adoption refused: ')}"
+        ) from error
+    if receipt.transaction_id != transaction_id:
+        raise _rewind_refuse("receipt file transaction_id does not match its filename")
+    if not hmac.compare_digest(raw, canonical_adoption_receipt_bytes(receipt)):
+        raise _rewind_refuse("receipt file is valid JSON but not canonical")
+    return receipt
+
+
+def _sha256_file(path: Path) -> tuple[str, int]:
+    digest = hashlib.sha256()
+    size = 0
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1 << 20), b""):
+            digest.update(chunk)
+            size += len(chunk)
+    return digest.hexdigest(), size
+
+
+def _current_adopted_modes(
+    root: Path, receipt: AdoptionReceipt
+) -> tuple[dict[str, int], tuple[str, ...]]:
+    modes: dict[str, int] = {}
+    drifted: list[str] = []
+    for entry in receipt.files_written:
+        target = root / entry.path
+        if target.is_symlink() or not target.is_file():
+            drifted.append(entry.path)
+            continue
+        digest, size = _sha256_file(target)
+        if digest != entry.sha256 or size != entry.byte_size:
+            drifted.append(entry.path)
+            continue
+        modes[entry.path] = target.stat().st_mode & 0o777
+    return modes, tuple(sorted(drifted))
+
+
+def _drift_refusal(drifted: tuple[str, ...]) -> AdoptionRewindError:
+    return _rewind_refuse(
+        "files changed after adoption and were left untouched: "
+        f"{', '.join(drifted)}. Keep those edits or restore the adopted bytes, "
+        "then request a new rewind."
+    )
+
+
+def _verify_adoption_commit(root: Path, receipt: AdoptionReceipt) -> None:
+    journal = (root / receipt.snapshot_ref).parent / "journal.jsonl"
+    try:
+        entries = Journal(journal).read()
+    except JournalCorruptError as error:
+        raise _rewind_refuse(
+            "the adoption transaction journal is damaged; no files were changed"
+        ) from error
+    events = [entry.event for entry in entries]
+    begins = [entry for entry in entries if entry.event == "BEGIN"]
+    if (
+        events.count("COMMITTED") != 1
+        or "ROLLED-BACK" in events
+        or len(begins) != 1
+        or begins[0].payload.get("tx_id") != receipt.transaction_id
+    ):
+        raise _rewind_refuse(
+            "the receipt does not point to a verifiably committed adoption; "
+            "no files were changed"
+        )
+
+
+def _snapshot_rewind_plan(
+    root: Path,
+    receipt: AdoptionReceipt,
+    current_modes: dict[str, int],
+) -> tuple[list[PlanEntry], tuple[RewindReceiptFile, ...]]:
+    snapshot_root = root / receipt.snapshot_ref
+    manifest_path = snapshot_root / "manifest.json"
+    if manifest_path.is_symlink() or not manifest_path.is_file():
+        raise _rewind_refuse(
+            "the adoption snapshot manifest is damaged; no files were changed"
+        )
+    snapshot = Snapshot(snapshot_root)
+    try:
+        manifest = snapshot.read_manifest()
+    except (SnapshotError, KeyError, TypeError, ValueError) as error:
+        raise _rewind_refuse(
+            f"the adoption snapshot manifest is damaged; no files were changed ({error})"
+        ) from error
+
+    receipt_by_path = {entry.path: entry for entry in receipt.files_written}
+    try:
+        manifest_paths = [
+            _relative_path(entry.relative, "adoption snapshot path")
+            for entry in manifest
+        ]
+    except (AdoptionExecutionError, AttributeError, TypeError, ValueError) as error:
+        raise _rewind_refuse(
+            f"the adoption snapshot manifest is damaged; no files were changed ({error})"
+        ) from error
+    if (
+        len(manifest_paths) != len(set(manifest_paths))
+        or set(manifest_paths) != set(receipt_by_path)
+    ):
+        raise _rewind_refuse(
+            "the adoption snapshot does not exactly match the receipt; no files were changed"
+        )
+
+    plan: list[PlanEntry] = []
+    restored: list[RewindReceiptFile] = []
+    for index, snapshot_entry in enumerate(manifest):
+        receipt_file = receipt_by_path[snapshot_entry.relative]
+        if type(snapshot_entry.existed) is not bool:
+            raise _rewind_refuse(
+                f"the adoption snapshot is damaged for {snapshot_entry.relative}; "
+                "no files were changed"
+            )
+        if snapshot_entry.existed:
+            if not _valid_existing_snapshot_entry(snapshot_entry):
+                raise _rewind_refuse(
+                    f"the adoption snapshot is damaged for {snapshot_entry.relative}; "
+                    "no files were changed"
+                )
+            blob = snapshot_root / f"{index:06d}.bin"
+            if blob.is_symlink() or not blob.is_file():
+                raise _rewind_refuse(
+                    f"the adoption snapshot is damaged for {snapshot_entry.relative}; "
+                    "no files were changed"
+                )
+            content = blob.read_bytes()
+            if (
+                len(content) != snapshot_entry.size
+                or hashlib.sha256(content).hexdigest() != snapshot_entry.sha256
+            ):
+                raise _rewind_refuse(
+                    f"the adoption snapshot is damaged for {snapshot_entry.relative}; "
+                    "no files were changed"
+                )
+            plan.append(
+                PlanEntry(snapshot_entry.relative, content, mode=snapshot_entry.mode)
+            )
+            restored.append(
+                RewindReceiptFile(
+                    receipt_file.item_id,
+                    snapshot_entry.relative,
+                    True,
+                    snapshot_entry.sha256,
+                    snapshot_entry.size,
+                    snapshot_entry.mode,
+                )
+            )
+        else:
+            if any(
+                value is not None
+                for value in (
+                    snapshot_entry.mode,
+                    snapshot_entry.sha256,
+                    snapshot_entry.size,
+                )
+            ):
+                raise _rewind_refuse(
+                    f"the adoption snapshot is damaged for {snapshot_entry.relative}; "
+                    "no files were changed"
+                )
+            plan.append(
+                PlanEntry(
+                    snapshot_entry.relative,
+                    None,
+                    mode=current_modes[snapshot_entry.relative],
+                    expected_current_sha256=receipt_file.sha256,
+                )
+            )
+            restored.append(
+                RewindReceiptFile(
+                    receipt_file.item_id,
+                    snapshot_entry.relative,
+                    False,
+                    None,
+                    None,
+                    None,
+                )
+            )
+    return plan, tuple(sorted(restored, key=lambda entry: (entry.path, entry.item_id)))
+
+
+def _valid_existing_snapshot_entry(entry: SnapshotEntry) -> bool:
+    return bool(
+        type(entry.relative) is str
+        and entry.relative
+        and type(entry.mode) is int
+        and 0 <= entry.mode <= 0o777
+        and type(entry.sha256) is str
+        and HEX_SHA256.fullmatch(entry.sha256)
+        and type(entry.size) is int
+        and entry.size >= 0
+    )
+
+
+def rewind_adoption(
+    vault_root: Path,
+    receipt: object,
+    acknowledgement_token: str | None = None,
+) -> RewindReceipt:
+    """Restore one adoption's pre-state through a new crash-safe transaction."""
+    validated = _validated_adoption_receipt(receipt)
+    root = Path(vault_root)
+
+    current_modes, drifted = _current_adopted_modes(root, validated)
+    if drifted:
+        raise _drift_refusal(drifted)
+
+    expected_token = rewind_acknowledgement_token(validated)
+    if not isinstance(acknowledgement_token, str) or not hmac.compare_digest(
+        acknowledgement_token, expected_token
+    ):
+        raise _rewind_refuse(
+            "acknowledgement token does not match the exact adoption id and file list; "
+            "show the rewind preview again and retry"
+        )
+
+    snapshot_root = root / validated.snapshot_ref
+    if snapshot_root.is_symlink() or not snapshot_root.is_dir():
+        raise _rewind_refuse(
+            "the adoption snapshot is no longer available under keep-last-3 retention; "
+            "this adoption can no longer be rewound"
+        )
+    _verify_adoption_commit(root, validated)
+    plan, restored = _snapshot_rewind_plan(root, validated, current_modes)
+
+    try:
+        transaction = Transaction.begin(root, plan)
+
+        def verify_no_late_drift() -> None:
+            """Bind the rewind to the state captured by its transaction.
+
+            This closes drift between the initial hash pass and snapshot
+            capture: rollback restores those later user bytes. As in C1, the
+            trusted transaction core cannot detect a non-transaction writer
+            that ignores the mutation lock after snapshot capture and races a
+            write PlanEntry's atomic replace; that inherited residual window
+            remains documented rather than hidden.
+            """
+            captured = {
+                entry.relative: entry for entry in transaction.snapshot.read_manifest()
+            }
+            late_drift = tuple(
+                sorted(
+                    entry.path
+                    for entry in validated.files_written
+                    if entry.path not in captured
+                    or not captured[entry.path].existed
+                    or captured[entry.path].sha256 != entry.sha256
+                    or captured[entry.path].size != entry.byte_size
+                )
+            )
+            if late_drift:
+                raise _drift_refusal(late_drift)
+
+        result = transaction.run(before_commit=verify_no_late_drift)
+    except PlanRejected as error:
+        raise _rewind_refuse(
+            f"the ownership contract rejected the complete rewind: {error}"
+        ) from error
+    except (SnapshotError, TransactionError) as error:
+        raise _rewind_refuse(
+            f"the rewind transaction could not complete safely: {error}"
+        ) from error
+
+    rewind_transaction_id = result["tx_id"]
+    return RewindReceipt.from_dict(
+        {
+            "rewind_receipt_version": REWIND_RECEIPT_VERSION,
+            "adoption_transaction_id": validated.transaction_id,
+            "rewind_transaction_id": rewind_transaction_id,
+            "snapshot_ref": (
+                f"System/.dex/tx/{rewind_transaction_id}/snapshot"
+            ),
+            "source_receipt_sha256": hashlib.sha256(
+                canonical_adoption_receipt_bytes(validated)
+            ).hexdigest(),
+            "files_restored": [entry.to_dict() for entry in restored],
+        }
+    )
+
+
 def _rebuild_requested_plan(catalog, inventory, requested: tuple[str, ...]) -> AdoptionPlan:
     by_id = {item.id: item for item in catalog.items}
     rebuilt_items = []
@@ -274,7 +863,13 @@ def execute_adoption(
     approved_token: str,
     payload_loader: PayloadLoader,
 ) -> AdoptionReceipt:
-    """Re-prove an approved preview, then execute all writes in one transaction."""
+    """Re-prove an approved preview, execute it, then persist its receipt.
+
+    Receipt persistence is intentionally after COMMITTED because the receipt
+    records the transaction outcome. A crash in that narrow window leaves a
+    committed-but-unreceipted adoption; the transaction journal remains the
+    durable source of truth and no adoption bytes are rolled back or guessed.
+    """
     if not isinstance(preview, AdoptionPreview):
         raise _refuse("preview must be an AdoptionPreview")
     if not isinstance(approved_token, str) or not hmac.compare_digest(
@@ -381,7 +976,7 @@ def execute_adoption(
         )
     )
     transaction_id = result["tx_id"]
-    return AdoptionReceipt(
+    receipt = AdoptionReceipt(
         RECEIPT_VERSION,
         requested,
         files,
@@ -391,12 +986,30 @@ def execute_adoption(
         rebuilt.inventory_sha256,
         rebuilt.sha256,
     )
+    try:
+        _persist_adoption_receipt(root, receipt)
+    except AdoptionReceiptPersistenceError:
+        raise
+    except (OSError, AdoptionExecutionError) as error:
+        raise AdoptionReceiptPersistenceError(
+            f"adoption {transaction_id} committed, but its receipt could not be "
+            f"persisted; the transaction journal is authoritative: {error}"
+        ) from error
+    return receipt
 
 
 __all__ = [
     "AdoptionExecutionError",
     "AdoptionReceipt",
+    "AdoptionReceiptPersistenceError",
+    "AdoptionRewindError",
     "ReceiptFile",
+    "RewindReceipt",
+    "RewindReceiptFile",
     "canonical_adoption_receipt_bytes",
+    "canonical_rewind_receipt_bytes",
     "execute_adoption",
+    "load_adoption_receipt",
+    "rewind_acknowledgement_token",
+    "rewind_adoption",
 ]
