@@ -1,0 +1,47 @@
+{
+  "catalog_source_version": 1,
+  "items": [
+    {
+      "id": "decision-log",
+      "kind": "skill",
+      "version": "1.0.0",
+      "files": [
+        {
+          "path": ".claude/skills/decision-log/SKILL.md",
+          "sha256": "ba989a5a1030c4963e7d0d2a7fc123be28bbde93befc2a027bc29049d758d4c5",
+          "byte_size": 4156
+        }
+      ],
+      "dependencies": [],
+      "capabilities": []
+    },
+    {
+      "id": "delegate-check",
+      "kind": "skill",
+      "version": "1.0.0",
+      "files": [
+        {
+          "path": ".claude/skills/delegate-check/SKILL.md",
+          "sha256": "6676ef8da895359dc9ce1336e7d0d5174c0bf2cb156e1bbce3899f67ee58e784",
+          "byte_size": 3917
+        }
+      ],
+      "dependencies": [],
+      "capabilities": []
+    },
+    {
+      "id": "weekly-reflection",
+      "kind": "skill",
+      "version": "1.0.0",
+      "files": [
+        {
+          "path": ".claude/skills/weekly-reflection/SKILL.md",
+          "sha256": "e9a78100ffc7612dfb8fa45d7bd2d5aa4ef1a8d73652b639ad3f17c57bcfb233",
+          "byte_size": 3393
+        }
+      ],
+      "dependencies": [],
+      "capabilities": []
+    }
+  ]
+}

@@ -950,33 +950,58 @@ def execute_adoption(
         transaction = Transaction.begin(root, entries)
 
         def verify_approval_binding() -> None:
-            """Catch pre-snapshot drift, with one inherited residual window.
+            """Catch pre-snapshot drift, including approved file absence.
 
-            If a target changes after the final preview rebuild but before
-            snapshot capture, the snapshot records those newer bytes; comparing
-            it with the approved catalog bytes catches the drift and rollback
-            restores the newer bytes. A non-transaction writer that changes a
-            target after snapshot capture but before ``_apply_one`` is not
-            caught: apply overwrites the edit with the approved stock bytes,
-            this comparison still sees snapshot(stock) == catalog, and the
-            adoption commits. That sub-millisecond window is inherited from the
-            trusted transaction core because write PlanEntry objects cannot set
-            ``expected_current_sha256``.
+            A target may be either the exact stock file or safely absent when
+            the approved plan creates an additive item. If it changes after the
+            final preview rebuild but before snapshot capture, rollback restores
+            those later bytes or that later absence. The transaction core's
+            documented post-snapshot residual race remains unchanged.
             """
             if not hmac.compare_digest(approved_token, rebuilt.sha256):
                 raise _refuse("approval binding changed before commit")
             snapshot_by_path = {
                 entry.relative: entry for entry in transaction.snapshot.read_manifest()
             }
+            inventory_by_path = {
+                entry.canonical_path: entry
+                for entry in current_inventory.entries
+                if entry.canonical_path
+                in {
+                    write.path
+                    for preview_item in rebuilt.items
+                    for write in preview_item.writes
+                }
+            }
             for item in rebuilt.items:
                 for write in item.writes:
                     captured = snapshot_by_path.get(write.path)
-                    if (
-                        captured is None
-                        or not captured.existed
-                        or captured.sha256 != write.new_sha256
-                        or captured.size != write.byte_size
-                    ):
+                    evidence = inventory_by_path.get(write.path)
+                    approved_absence = bool(
+                        evidence is not None
+                        and evidence.kind == "missing"
+                        and evidence.release_state == "stock-missing"
+                        and evidence.write_allowed
+                    )
+                    captured_matches = bool(
+                        captured is not None
+                        and (
+                            (
+                                approved_absence
+                                and not captured.existed
+                                and captured.sha256 is None
+                                and captured.size is None
+                                and captured.mode is None
+                            )
+                            or (
+                                not approved_absence
+                                and captured.existed
+                                and captured.sha256 == write.new_sha256
+                                and captured.size == write.byte_size
+                            )
+                        )
+                    )
+                    if not captured_matches:
                         raise _refuse(
                             f"requested file {write.path} changed after final preview rebuild; "
                             "the transaction will restore the newer bytes"

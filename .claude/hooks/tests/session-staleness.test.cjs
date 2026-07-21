@@ -41,6 +41,21 @@ function completeOnboarding(sandbox) {
   fs.writeFileSync(marker, '{}\n');
 }
 
+function installMovedVaultConflict(sandbox, plistName) {
+  const oldVault = path.join(path.dirname(sandbox.vault), 'old-vault');
+  const breadcrumb = path.join(sandbox.home, '.config', 'dex', 'vault-path');
+  const launchAgents = path.join(sandbox.home, 'Library', 'LaunchAgents');
+  const plist = path.join(launchAgents, plistName);
+  fs.mkdirSync(path.dirname(breadcrumb), { recursive: true });
+  fs.mkdirSync(launchAgents, { recursive: true });
+  fs.writeFileSync(breadcrumb, `${oldVault}\n`);
+  fs.writeFileSync(
+    plist,
+    `<plist><string>${oldVault}/.scripts/dex-launcher.sh</string></plist>\n`,
+  );
+  return { oldVault, breadcrumb, plist, plistBytes: fs.readFileSync(plist) };
+}
+
 function writeSmokeResult(sandbox, broken) {
   const resultPath = path.join(sandbox.vault, 'System', '.smoke-last-run.json');
   fs.mkdirSync(path.dirname(resultPath), { recursive: true });
@@ -165,4 +180,33 @@ test('overnight smoke block emits broken journey details', (t) => {
   assert.match(stdout, /--- 🚨 Overnight check found a problem ---/);
   assert.match(stdout, /task_lifecycle — task creation failed after the config changed/);
   assert.match(stdout, /Run \/dex-doctor for diagnosis and the fix\./);
+});
+
+for (const plistName of ['com.dex.meeting-intel.plist', 'com.claudesidian.learning.plist']) {
+  test(`session start reports but never changes moved-vault conflict in ${plistName}`, (t) => {
+    const sandbox = createSandbox(t);
+    completeOnboarding(sandbox);
+    const conflict = installMovedVaultConflict(sandbox, plistName);
+
+    const stdout = runSessionStart(sandbox);
+
+    assert.match(
+      stdout,
+      /Dex found a background job that still points to this vault's old location — run \/dex-doctor to fix this safely\./,
+    );
+    assert.deepEqual(fs.readFileSync(conflict.plist), conflict.plistBytes);
+    assert.equal(fs.readFileSync(conflict.breadcrumb, 'utf8'), `${conflict.oldVault}\n`);
+  });
+}
+
+test('session start stays silent when no plist points to the stored former vault', (t) => {
+  const sandbox = createSandbox(t);
+  completeOnboarding(sandbox);
+  const conflict = installMovedVaultConflict(sandbox, 'com.dex.meeting-intel.plist');
+  fs.writeFileSync(conflict.plist, '<plist><string>/another/vault</string></plist>\n');
+
+  const stdout = runSessionStart(sandbox);
+
+  assert.doesNotMatch(stdout, /still points to this vault's old location/);
+  assert.equal(fs.readFileSync(conflict.breadcrumb, 'utf8'), `${conflict.oldVault}\n`);
 });

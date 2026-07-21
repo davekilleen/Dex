@@ -34,7 +34,13 @@ def _catalog_fixture(tmp_path: Path) -> tuple[Path, Path, bytes]:
                         "id": "decision-log",
                         "kind": "skill",
                         "version": "1.0.0",
-                        "files": [".claude/skills/decision-log/SKILL.md"],
+                        "files": [
+                            {
+                                "path": ".claude/skills/decision-log/SKILL.md",
+                                "sha256": hashlib.sha256(item_bytes).hexdigest(),
+                                "byte_size": len(item_bytes),
+                            }
+                        ],
                         "dependencies": [],
                         "capabilities": [],
                     }
@@ -143,6 +149,35 @@ def test_catalog_coverage_gate_fails_closed_when_an_item_file_is_removed(
     )
     assert red.returncode == 1
     assert "missing catalog file" in red.stderr
+
+
+def test_release_catalog_generation_rejects_stale_source_file_pins(
+    tmp_path: Path,
+) -> None:
+    release_root, item_path, _manifest_bytes = _catalog_fixture(tmp_path)
+    item_path.write_bytes(b"# changed after the registry was reviewed\n")
+
+    result = _generate(release_root)
+
+    assert result.returncode == 1
+    assert "does not match its declared sha256 or byte_size" in result.stderr
+
+
+def test_release_catalog_generation_rejects_duplicate_ids_across_fragments(
+    tmp_path: Path,
+) -> None:
+    release_root, _item_path, _manifest_bytes = _catalog_fixture(tmp_path)
+    source_dir = release_root / "core/lifecycle/catalog"
+    first_source = source_dir / "test-items.json"
+    second_source = source_dir / "more-items.json"
+    second_source.write_bytes(first_source.read_bytes())
+
+    result = _generate(release_root)
+
+    assert result.returncode == 1
+    assert "duplicate catalog item id 'decision-log'" in result.stderr
+    assert str(first_source) in result.stderr
+    assert str(second_source) in result.stderr
 
 
 def test_distributed_release_catalog_schema_matches_b1_source() -> None:

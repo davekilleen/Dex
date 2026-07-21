@@ -26,6 +26,7 @@ SCHEMA_SOURCE = Path("core/lifecycle/schemas/release-catalog-v1.schema.json")
 SCHEMA_DISTRIBUTION = Path("packages/dex-contracts/dist/release-catalog-v1.schema.json")
 SOURCE_VERSION = 1
 FULL_COMMIT = re.compile(r"^[0-9a-f]{40}$")
+HEX_SHA256 = re.compile(r"^[0-9a-f]{64}$")
 SHIPPABLE_OWNERSHIP = frozenset({"brain", "seed", "generated"})
 
 
@@ -100,6 +101,7 @@ def _source_items(release_root: Path, portable_contract: object) -> list[dict[st
         raise CatalogGenerationError(f"publisher catalog source is missing: {CATALOG_SOURCE_DIR}")
 
     items: list[dict[str, object]] = []
+    seen_item_sources: dict[str, Path] = {}
     for source_path in sorted(source_dir.glob("*.json")):
         raw = _mapping(_closed_json(source_path), context=str(source_path))
         _exact_fields(
@@ -120,16 +122,51 @@ def _source_items(release_root: Path, portable_contract: object) -> list[dict[st
                 {"id", "kind", "version", "files", "dependencies", "capabilities"},
                 context=context,
             )
+            item_id = item["id"]
+            if isinstance(item_id, str):
+                previous_source = seen_item_sources.get(item_id)
+                if previous_source is not None:
+                    raise CatalogGenerationError(
+                        f"duplicate catalog item id {item_id!r} in "
+                        f"{previous_source} and {source_path}"
+                    )
+                seen_item_sources[item_id] = source_path
             files = item["files"]
             if not isinstance(files, list) or not files:
                 raise CatalogGenerationError(f"{context} files must be a non-empty array")
             generated_files = []
-            for file_index, raw_path in enumerate(files):
+            for file_index, raw_file in enumerate(files):
+                file_context = f"{context} file {file_index}"
+                declared_file = _mapping(raw_file, context=file_context)
+                _exact_fields(
+                    declared_file,
+                    {"path", "sha256", "byte_size"},
+                    context=file_context,
+                )
                 path, absolute = _release_path(
                     release_root,
-                    raw_path,
-                    context=f"{context} file {file_index}",
+                    declared_file["path"],
+                    context=f"{file_context} path",
                 )
+                declared_sha256 = declared_file["sha256"]
+                if (
+                    not isinstance(declared_sha256, str)
+                    or HEX_SHA256.fullmatch(declared_sha256) is None
+                ):
+                    raise CatalogGenerationError(
+                        f"{file_context} sha256 must be a lowercase sha256 digest"
+                    )
+                declared_size = declared_file["byte_size"]
+                if type(declared_size) is not int or declared_size < 0:
+                    raise CatalogGenerationError(
+                        f"{file_context} byte_size must be a non-negative integer"
+                    )
+                actual_sha256 = _sha256(absolute)
+                actual_size = absolute.stat().st_size
+                if actual_sha256 != declared_sha256 or actual_size != declared_size:
+                    raise CatalogGenerationError(
+                        f"{file_context} does not match its declared sha256 or byte_size"
+                    )
                 try:
                     resolution = portable_contract.resolve(path)
                 except portable_contract.ContractViolation as error:
@@ -143,11 +180,10 @@ def _source_items(release_root: Path, portable_contract: object) -> list[dict[st
                 generated_files.append(
                     {
                         "path": path,
-                        "sha256": _sha256(absolute),
+                        "sha256": actual_sha256,
                         "ownership_class": resolution.ownership,
                     }
                 )
-            item_id = item["id"]
             version = item["version"]
             items.append(
                 {

@@ -366,6 +366,7 @@ def plan_catalog_item(
         ReasonCode.RELEASE_FILES_MODIFIED: set(),
         ReasonCode.RELEASE_FILES_MISSING: set(),
     }
+    safely_creatable: set[str] = set()
     unknown_paths: set[str] = set()
     for path, entries in by_path.items():
         if len(entries) != 1:
@@ -375,7 +376,10 @@ def plan_catalog_item(
         if state == "stock-modified":
             conflict_paths[ReasonCode.RELEASE_FILES_MODIFIED].add(path)
         elif state == "stock-missing":
-            conflict_paths[ReasonCode.RELEASE_FILES_MISSING].add(path)
+            if entries[0].write_allowed:
+                safely_creatable.add(path)
+            else:
+                conflict_paths[ReasonCode.RELEASE_FILES_MISSING].add(path)
         elif state != "stock-unmodified":
             unknown_paths.add(path)
     for divergence in evidence.divergences:
@@ -384,7 +388,10 @@ def plan_catalog_item(
         if divergence.state == "stock-modified":
             conflict_paths[ReasonCode.RELEASE_FILES_MODIFIED].add(divergence.canonical_path)
         elif divergence.state == "stock-missing":
-            conflict_paths[ReasonCode.RELEASE_FILES_MISSING].add(divergence.canonical_path)
+            if divergence.canonical_path not in safely_creatable:
+                conflict_paths[ReasonCode.RELEASE_FILES_MISSING].add(
+                    divergence.canonical_path
+                )
         else:
             unknown_paths.add(divergence.canonical_path)
 
