@@ -60,6 +60,7 @@ python3 "$REPO_ROOT/core/utils/update_verifier.py" \
 # node_modules is deliberately an artifact addition, not update-managed vault
 # content, so it is excluded from the manifest just as on the release branch.
 mkdir -p "$STAGING_DIR/System"
+: > "$STAGING_DIR/System/.release-catalog.json"
 (
   cd "$STAGING_DIR"
   # Ignore macOS metadata junk (AppleDouble ._* forks, .DS_Store) so the manifest
@@ -70,6 +71,13 @@ mkdir -p "$STAGING_DIR/System"
 printf '%s\n' 'System/.installed-files.manifest' >> "$STAGING_DIR/System/.installed-files.manifest"
 LC_ALL=C sort -u -o "$STAGING_DIR/System/.installed-files.manifest" \
   "$STAGING_DIR/System/.installed-files.manifest"
+
+SOURCE_COMMIT="$(git rev-parse HEAD)"
+python3 "$REPO_ROOT/scripts/generate-release-catalog.py" \
+  --release-root "$STAGING_DIR" \
+  --channel release \
+  --source-commit "$SOURCE_COMMIT"
+python3 "$REPO_ROOT/scripts/check-catalog-coverage.py" --release-root "$STAGING_DIR"
 
 # The staged tree is the release input. Check it before npm can execute or
 # access a registry.

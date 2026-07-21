@@ -72,8 +72,10 @@ python3 scripts/check-tau-removal.py --repo-root "$REPO_ROOT" --git-source "$SOU
 
 DISTIGNORE=$(mktemp)
 TAU_CHECKER=$(mktemp)
+CATALOG_GENERATOR=$(mktemp)
+CATALOG_COVERAGE_CHECKER=$(mktemp)
 MATCHES_FILE=$(mktemp)
-trap 'rm -f "$DISTIGNORE" "$TAU_CHECKER" "$MATCHES_FILE"' EXIT
+trap 'rm -f "$DISTIGNORE" "$TAU_CHECKER" "$CATALOG_GENERATOR" "$CATALOG_COVERAGE_CHECKER" "$MATCHES_FILE"' EXIT
 if ! git show "$SOURCE_BRANCH:.distignore" > "$DISTIGNORE"; then
     echo "Error: .distignore not found in selected source '$SOURCE_BRANCH'." >&2
     exit 1
@@ -117,6 +119,8 @@ fi
 # --- Build release branch ---
 
 SOURCE_SHA=$(git rev-parse "$SOURCE_BRANCH")
+git show "$SOURCE_SHA:scripts/generate-release-catalog.py" > "$CATALOG_GENERATOR"
+git show "$SOURCE_SHA:scripts/check-catalog-coverage.py" > "$CATALOG_COVERAGE_CHECKER"
 SOURCE_PACKAGE_SIZE=$(git cat-file -s "$SOURCE_SHA:package.json" 2>/dev/null || true)
 if ! [[ "$SOURCE_PACKAGE_SIZE" =~ ^[0-9]+$ ]] || [ "$SOURCE_PACKAGE_SIZE" -gt 1048576 ]; then
     echo "Error: selected source package.json is missing or exceeds 1 MiB." >&2
@@ -190,16 +194,30 @@ python3 core/utils/update_verifier.py \
     --release-version "$PKG_VERSION"
 git add -- "$PROFILE"
 
-# Generate the installed-files manifest from the exact release index. Stage an
-# empty manifest first so the manifest truthfully includes its own shipped path;
-# replacing its contents does not change the set of paths in the tree.
+# Generate the installed-files manifest from the exact release index. Stage the
+# generated manifest and catalog paths first so the manifest truthfully includes
+# both; replacing their contents does not change the set of shipped paths.
 MANIFEST="System/.installed-files.manifest"
+CATALOG="System/.release-catalog.json"
 mkdir -p "$(dirname "$MANIFEST")"
 : > "$MANIFEST"
-git add -- "$MANIFEST"
+: > "$CATALOG"
+git add -- "$MANIFEST" "$CATALOG"
 MANIFEST_TREE=$(git write-tree)
 python3 core/utils/manifest.py "$MANIFEST_TREE" --repo-root "$REPO_ROOT" --output "$MANIFEST"
-git add -- "$MANIFEST"
+
+# B1 supports stable and beta catalog identities. Custom target names used by
+# local verification retain stable catalog semantics.
+CATALOG_CHANNEL="release"
+if [ "$RELEASE_BRANCH" = "release-beta" ]; then
+    CATALOG_CHANNEL="release-beta"
+fi
+python3 "$CATALOG_GENERATOR" \
+    --release-root "$REPO_ROOT" \
+    --channel "$CATALOG_CHANNEL" \
+    --source-commit "$SOURCE_SHA"
+python3 "$CATALOG_COVERAGE_CHECKER" --release-root "$REPO_ROOT"
+git add -- "$MANIFEST" "$CATALOG" packages/dex-contracts/dist/release-catalog-v1.schema.json
 
 if git diff --cached --quiet; then
     echo "Nothing to remove — release branch matches main."
@@ -207,7 +225,7 @@ if git diff --cached --quiet; then
     exit 0
 fi
 
-# Commit the clean state and its installed-files manifest
+# Commit the clean state, installed-files manifest, and release catalog.
 git commit -m "$(cat <<EOF
 release: v$PKG_VERSION
 

@@ -503,6 +503,12 @@
       "ownership": "runtime"
     },
     {
+      "id": "generated-release-catalog",
+      "path": "System/.release-catalog.json",
+      "kind": "file",
+      "ownership": "generated"
+    },
+    {
       "id": "generated-evidence-profile",
       "path": "System/.release-evidence-profile.json",
       "kind": "file",
