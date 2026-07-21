@@ -692,9 +692,17 @@ core/integrations/slack/setup.py
 core/integrations/task_sync.py
 core/lifecycle/__init__.py
 core/lifecycle/catalog.py
+core/lifecycle/catalog/README.md
+core/lifecycle/customizations.py
+core/lifecycle/filesystem.py
 core/lifecycle/handlers.py
+core/lifecycle/inventory.py
+core/lifecycle/machine_state.py
 core/lifecycle/model.py
+core/lifecycle/plan.py
+core/lifecycle/runtime_evidence.py
 core/lifecycle/schemas/release-catalog-v1.schema.json
+core/lifecycle/secrets.py
 core/mcp/CAREER_MCP_README.md
 core/mcp/analytics_helper.py
 core/mcp/analytics_server.py
@@ -828,8 +836,16 @@ core/tests/fixtures/vault/System/Skill_Ratings/ratings.jsonl
 core/tests/fixtures/vault/System/pillars.yaml
 core/tests/fixtures/vault/System/user-profile-template.yaml
 core/tests/fixtures/vault/System/user-profile.yaml
+core/tests/lifecycle_test_helpers.py
 core/tests/support/__init__.py
 core/tests/support/vault_builder.py
+core/tests/test_adoption_diff.py
+core/tests/test_adoption_inventory.py
+core/tests/test_adoption_machine_state.py
+core/tests/test_adoption_plan.py
+core/tests/test_adoption_redaction.py
+core/tests/test_adoption_rule_mutations.py
+core/tests/test_adoption_runtime_evidence.py
 core/tests/test_apply_update.py
 core/tests/test_calendar_eventkit_script.py
 core/tests/test_calendar_server.py
@@ -886,6 +902,7 @@ core/tests/test_preflight_paths.py
 core/tests/test_provision_parity.py
 core/tests/test_qmd_query_grep_fallback.py
 core/tests/test_release_catalog.py
+core/tests/test_release_catalog_generation.py
 core/tests/test_release_channel.py
 core/tests/test_ritual_intelligence_entrypoints.py
 core/tests/test_ritual_intelligence_runtime.py
@@ -991,6 +1008,7 @@ packages/dex-contracts/dist/paths.contract.json
 packages/dex-contracts/dist/paths.schema.json
 packages/dex-contracts/dist/portable-vault.contract.json
 packages/dex-contracts/dist/portable-vault.schema.json
+packages/dex-contracts/dist/release-catalog-v1.schema.json
 packages/dex-contracts/package.json
 pyproject.toml
 requirements-dev.txt
@@ -999,6 +1017,7 @@ scripts/benchmark_large_vault.py
 scripts/build-health-json.py
 scripts/build-release.sh
 scripts/build-vault-bundle.sh
+scripts/check-catalog-coverage.py
 scripts/check-coverage-threshold.py
 scripts/check-doc-drift.sh
 scripts/check-founder-content.py
@@ -1018,6 +1037,7 @@ scripts/founder-content-allowlist.txt
 scripts/generate-manifest.sh
 scripts/generate-path-contracts.py
 scripts/generate-portable-contract.py
+scripts/generate-release-catalog.py
 scripts/instructed-tools-allowlist.txt
 scripts/make-aged-vault-fixture.sh
 scripts/pii-allowlist.txt
