@@ -10,8 +10,10 @@ gate carries a red-when-removed proof.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
+import stat
 import subprocess
 import sys
 from pathlib import Path
@@ -242,6 +244,54 @@ def test_engine_verify_failure_rolls_back_byte_exact(tmp_path: Path) -> None:
     with pytest.raises(Exception):
         tx.run()
     assert target.read_bytes() == b"old manifest\n"
+
+
+def test_engine_delete_entry_commits_and_rolls_back_byte_exact(tmp_path: Path) -> None:
+    """Updater removals use the same snapshot/apply/verify/undo path as writes."""
+    vault = _vault(tmp_path)
+    target = vault / "README.md"
+    target.write_bytes(b"old shipped bytes\r\nwith\x00data")
+    os.chmod(target, 0o640)
+
+    deleted = Transaction.begin(vault, [PlanEntry("README.md", None)]).run()
+
+    assert deleted["committed"] is True
+    assert not target.exists()
+
+    target.write_bytes(b"restorable shipped bytes\n")
+    os.chmod(target, 0o600)
+    tx = Transaction.begin(vault, [PlanEntry("README.md", None)])
+    original_verify = tx._verify_phase
+
+    def verify_then_fail() -> None:
+        original_verify()
+        raise RuntimeError("simulated updater verification failure")
+
+    tx._verify_phase = verify_then_fail
+    with pytest.raises(RuntimeError, match="simulated updater"):
+        tx.run()
+
+    assert target.read_bytes() == b"restorable shipped bytes\n"
+    assert stat.S_IMODE(target.stat().st_mode) == 0o600
+
+
+def test_engine_delete_precondition_preserves_a_file_changed_after_planning(
+    tmp_path: Path,
+) -> None:
+    vault = _vault(tmp_path)
+    target = vault / "README.md"
+    target.write_bytes(b"unchanged shipped bytes\n")
+    expected = hashlib.sha256(target.read_bytes()).hexdigest()
+    tx = Transaction.begin(
+        vault,
+        [PlanEntry("README.md", None, 0o644, expected_current_sha256=expected)],
+    )
+    target.write_bytes(b"user changed this after planning\n")
+
+    with pytest.raises(PlanRejected, match="changed after the mutation plan"):
+        tx.run()
+
+    assert target.read_bytes() == b"user changed this after planning\n"
 
 
 def test_engine_holds_the_single_mutator_lock(tmp_path: Path) -> None:

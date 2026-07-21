@@ -182,6 +182,7 @@ class SmokeRun:
 
 
 JOURNEYS = (
+    JourneyDefinition("topology", 5.0),
     JourneyDefinition("configs", 5.0),
     JourneyDefinition("task_lifecycle", 8.0),
     JourneyDefinition("mcp_startup", MCP_STARTUP_JOURNEY_TIMEOUT_SECONDS),
@@ -587,6 +588,80 @@ def _prepare_hooks_vault(source: Path, vault: Path) -> None:
         shutil.copytree(hooks, vault / ".claude" / "hooks", symlinks=True)
 
 
+def _topology_json(path: Path) -> dict[str, Any] | None:
+    try:
+        if path.is_symlink() or not path.is_file():
+            return None
+        value = json.loads(path.read_text(encoding="utf-8"))
+        return value if isinstance(value, dict) else None
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        return None
+
+
+def _topology_state(vault: Path) -> str:
+    topology = _topology_json(vault / "System/.dex/topology.json")
+    vault_marker = _topology_json(vault / ".git/dex-vault-v2")
+    brain_marker = _topology_json(vault / ".dex/brain.git/dex-brain-v2")
+    if topology and topology.get("topology") == "brain-vault-split":
+        installed = topology.get("installedRelease")
+        environment = topology.get("environment")
+        wired_vault = environment.get("DEX_VAULT") if isinstance(environment, dict) else None
+        try:
+            vault_wiring_matches = (
+                isinstance(wired_vault, str) and Path(wired_vault).resolve() == vault.resolve()
+            )
+        except (OSError, RuntimeError):
+            vault_wiring_matches = False
+        if (
+            topology.get("vaultGitDir") == ".git"
+            and topology.get("brainGitDir") == ".dex/brain.git"
+            and vault_wiring_matches
+            and (vault / ".git").is_dir()
+            and not (vault / ".git").is_symlink()
+            and (vault / ".dex/brain.git").is_dir()
+            and not (vault / ".dex/brain.git").is_symlink()
+            and vault_marker
+            and vault_marker.get("role") == "vault"
+            and brain_marker
+            and brain_marker.get("role") == "brain"
+            and isinstance(installed, str)
+            and installed
+            and brain_marker.get("installed") == installed
+        ):
+            return "split"
+        return "invalid"
+    return "combined" if (vault / ".git").exists() else "manual"
+
+
+def _prepare_topology_vault(source: Path, vault: Path) -> None:
+    state = _topology_state(source)
+    if state == "split":
+        topology = _topology_json(source / "System/.dex/topology.json")
+        vault_marker = _topology_json(source / ".git/dex-vault-v2")
+        brain_marker = _topology_json(source / ".dex/brain.git/dex-brain-v2")
+        assert topology is not None and vault_marker is not None and brain_marker is not None
+        topology = {
+            **topology,
+            "environment": {"DEX_VAULT": str(vault.resolve())},
+        }
+        for relative, value in (
+            ("System/.dex/topology.json", topology),
+            (".git/dex-vault-v2", vault_marker),
+            (".dex/brain.git/dex-brain-v2", brain_marker),
+        ):
+            destination = vault / relative
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            destination.write_text(json.dumps(value) + "\n", encoding="utf-8")
+    elif state == "invalid":
+        topology = _topology_json(source / "System/.dex/topology.json")
+        if topology is not None:
+            destination = vault / "System/.dex/topology.json"
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            destination.write_text(json.dumps(topology) + "\n", encoding="utf-8")
+    elif state == "combined":
+        (vault / ".git").mkdir()
+
+
 def _prepare_vault(
     journey_id: str,
     source: Path,
@@ -597,7 +672,9 @@ def _prepare_vault(
 ) -> None:
     vault.mkdir(parents=True)
     try:
-        if journey_id == "configs":
+        if journey_id == "topology":
+            _prepare_topology_vault(source, vault)
+        elif journey_id == "configs":
             _copy_configs(source, vault)
         elif journey_id == "task_lifecycle":
             _prepare_task_vault(source, repo_root, vault, release_root, release_ref)
@@ -1052,6 +1129,8 @@ def _clean_environment(
         "PYTHONUNBUFFERED": "1",
         "TMPDIR": str(temporary_root),
         "VAULT_PATH": str(vault),
+        "VAULT_ROOT": str(vault),
+        "DEX_VAULT": str(vault),
         "DEX_SMOKE_RUN_TOKEN": run_token,
         "DEX_SMOKE_SERVER_BOOTSTRAP": str(guard / "server_bootstrap.py"),
         **({"DEX_SMOKE_NODE": node} if (node := _trusted_node()) is not None else {}),
@@ -2404,7 +2483,38 @@ def _journey_hooks(vault: Path, _repo_root: Path) -> dict[str, str]:
     return {"verdict": verdict, "detail": f"structurally validated {len(commands)} hook commands"}
 
 
+def _journey_topology(vault: Path, _repo_root: Path) -> dict[str, str]:
+    for variable in ("VAULT_PATH", "VAULT_ROOT", "DEX_VAULT"):
+        configured = os.environ.get(variable)
+        if configured is None or Path(configured).resolve() != vault.resolve():
+            return {
+                "verdict": "BROKEN",
+                "detail": f"{variable} is not wired to the isolated vault",
+            }
+    state = _topology_state(vault)
+    if state == "split":
+        return {
+            "verdict": "OK",
+            "detail": "split topology markers and vault environment wiring agree",
+        }
+    if state == "combined":
+        return {
+            "verdict": "OK",
+            "detail": "combined topology is intact and remains on the merge updater path",
+        }
+    if state == "manual":
+        return {
+            "verdict": "OFF",
+            "detail": "ZIP/manual topology has no Git layout to validate",
+        }
+    return {
+        "verdict": "BROKEN",
+        "detail": "split topology markers disagree; use updater or migrator recovery",
+    }
+
+
 INTERNAL_JOURNEYS: dict[str, Callable[[Path, Path], dict[str, str]]] = {
+    "topology": _journey_topology,
     "configs": _journey_configs,
     "task_lifecycle": _journey_task_lifecycle,
     "mcp_startup": _journey_mcp_startup,

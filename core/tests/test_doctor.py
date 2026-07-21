@@ -20,6 +20,10 @@ NOW = datetime(2026, 7, 11, 12, 0, tzinfo=timezone.utc)
 QUICK_IDS = [
     "vault.structure",
     "vault.configs",
+    "vault.git",
+    "brain.git",
+    "vault.auto-commit",
+    "topology.migration-pending",
     "smoke.history",
     "mcp.registered",
     "mcp.orphans",
@@ -301,6 +305,76 @@ def test_registry_ids_match_the_approved_spec():
     assert doctor.VERDICTS == frozenset({"OK", "OFF", "BROKEN", "UNKNOWN"})
 
 
+def _write_split_topology(context, *, installed: str = "a" * 40) -> Path:
+    _git(context.vault_root, "init", "--quiet")
+    (context.vault_root / ".git/dex-vault-v2").write_text('{"role":"vault"}\n')
+    brain = context.vault_root / ".dex/brain.git"
+    brain.parent.mkdir(parents=True)
+    subprocess.run(["git", "init", "--bare", "--quiet", str(brain)], check=True)
+    _git(context.vault_root, "config", "user.name", "Doctor Test")
+    _git(context.vault_root, "config", "user.email", "doctor@example.test")
+    (context.vault_root / "README.md").write_text("brain\n")
+    _git(context.vault_root, "add", "README.md")
+    _git(context.vault_root, "commit", "--quiet", "-m", "brain")
+    commit = _git(context.vault_root, "rev-parse", "HEAD").stdout.strip()
+    subprocess.run(
+        ["git", f"--git-dir={brain}", "fetch", "--quiet", str(context.vault_root), f"+{commit}:refs/dex/installed"],
+        check=True,
+    )
+    subprocess.run(
+        ["git", f"--git-dir={brain}", "remote", "add", "origin", "https://github.com/davekilleen/Dex.git"],
+        check=True,
+    )
+    (brain / "dex-brain-v2").write_text(
+        json.dumps({"role": "brain", "installed": commit}) + "\n"
+    )
+    topology = context.vault_root / "System/.dex/topology.json"
+    topology.parent.mkdir(parents=True, exist_ok=True)
+    topology.write_text(
+        json.dumps(
+            {
+                "topology": "brain-vault-split",
+                "vaultGitDir": ".git",
+                "brainGitDir": ".dex/brain.git",
+                "installedRelease": commit,
+                "environment": {"DEX_VAULT": str(context.vault_root.resolve())},
+            }
+        )
+        + "\n"
+    )
+    return brain
+
+
+def test_topology_probe_distinguishes_combined_split_and_invalid(context):
+    (context.vault_root / ".git").mkdir()
+    assert doctor._topology_state(context) == "combined"
+    assert doctor._probe_migration_pending(context).verdict == "OFF"
+
+    shutil.rmtree(context.vault_root / ".git")
+    _write_split_topology(context)
+    assert doctor._topology_state(context) == "post-split"
+    assert doctor._probe_migration_pending(context).verdict == "OK"
+
+    (context.vault_root / ".dex/brain.git/dex-brain-v2").unlink()
+    assert doctor._topology_state(context) == "invalid-split"
+    assert doctor._probe_migration_pending(context).verdict == "BROKEN"
+
+
+def test_split_brain_install_probe_checks_ref_markers_origin_and_integrity(context):
+    brain = _write_split_topology(context)
+
+    healthy = doctor._probe_brain_git(context)
+
+    assert healthy.verdict == "OK"
+    assert "brain history is healthy" in healthy.detail
+    marker = json.loads((brain / "dex-brain-v2").read_text())
+    marker["installed"] = "0" * 40
+    (brain / "dex-brain-v2").write_text(json.dumps(marker) + "\n")
+    broken = doctor._probe_brain_git(context)
+    assert broken.verdict == "BROKEN"
+    assert "disagrees" in broken.detail
+
+
 def _smoke_entry(timestamp, *, broken=0, version="1.47.0"):
     verdict = "BROKEN" if broken else "OK"
     return {
@@ -446,7 +520,12 @@ def test_summary_counts_each_exact_verdict(monkeypatch, context):
 
     report = doctor.collect(context=context)
 
-    assert report["summary"] == {"ok": 12, "off": 1, "broken": 1, "unknown": 1}
+    assert report["summary"] == {
+        "ok": len(doctor.QUICK_CHECKS) - 3,
+        "off": 1,
+        "broken": 1,
+        "unknown": 1,
+    }
     assert report["instruments"]["completed"] == len(QUICK_IDS)
 
 

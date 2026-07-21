@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+import re
 import shutil
 import time
 import uuid
@@ -49,14 +50,24 @@ class PlanRejected(TransactionError):
 
 @dataclass(frozen=True)
 class PlanEntry:
-    """One intended write: put ``content`` at vault-relative ``relative``."""
+    """One intended mutation at vault-relative ``relative``.
+
+    ``content=None`` is an authorized deletion. Deletions use the same
+    snapshot/apply/verify/rollback lifecycle as replacements, so an updater
+    can prune a retired brain file without opening a second mutation path.
+    """
 
     relative: str
-    content: bytes
+    content: bytes | None
     mode: int = 0o644
+    expected_current_sha256: str | None = None
 
-    def sha256(self) -> str:
-        return hashlib.sha256(self.content).hexdigest()
+    def sha256(self) -> str | None:
+        return hashlib.sha256(self.content).hexdigest() if self.content is not None else None
+
+    @property
+    def operation(self) -> str:
+        return "delete" if self.content is None else "write"
 
 
 def _stop_seam(seam: str) -> None:
@@ -93,6 +104,14 @@ class Transaction:
                     f"{entry.relative}: mode {oct(entry.mode)} carries special "
                     "bits; only permission bits up to 0o777 are allowed"
                 )
+            if entry.expected_current_sha256 is not None and (
+                entry.content is not None
+                or not re.fullmatch(r"[0-9a-f]{64}", entry.expected_current_sha256)
+            ):
+                raise PlanRejected(
+                    f"{entry.relative}: current-content preconditions are valid only for "
+                    "deletions and must be a lowercase sha256"
+                )
 
         # All-or-nothing authorization BEFORE the lock: one disallowed entry
         # rejects the plan with nothing acquired and nothing written. For
@@ -125,9 +144,11 @@ class Transaction:
                     "plan": [
                         {
                             "relative": entry.relative,
+                            "operation": entry.operation,
                             "sha256": entry.sha256(),
                             "mode": entry.mode,
-                            "size": len(entry.content),
+                            "size": len(entry.content) if entry.content is not None else None,
+                            "expected_current_sha256": entry.expected_current_sha256,
                         }
                         for entry in plan
                     ],
@@ -138,6 +159,8 @@ class Transaction:
             staged = tx.tx_dir / "staged"
             staged.mkdir(mode=0o700, exist_ok=True)
             for index, entry in enumerate(plan):
+                if entry.content is None:
+                    continue
                 blob = staged / f"{index:06d}.bin"
                 blob.write_bytes(entry.content)
                 os.chmod(blob, 0o600)
@@ -167,6 +190,23 @@ class Transaction:
     def _snapshot_phase(self) -> None:
         assert self._plan is not None
         self.journal.append("SNAPSHOT-START")
+        for entry in self._plan:
+            if entry.expected_current_sha256 is None:
+                continue
+            target = self.vault_root / entry.relative
+            if not target.exists():
+                continue
+            if (
+                target.is_symlink()
+                or not target.is_file()
+                or hashlib.sha256(target.read_bytes()).hexdigest()
+                != entry.expected_current_sha256
+                or target.stat().st_mode & 0o777 != entry.mode
+            ):
+                raise PlanRejected(
+                    f"{entry.relative} changed after the mutation plan was built; "
+                    "the existing file wins and the transaction aborts"
+                )
         self.snapshot.capture(
             self.vault_root, [entry.relative for entry in self._plan]
         )
@@ -190,18 +230,34 @@ class Transaction:
                     f"[{verdict.action}]; the existing file wins and the "
                     "transaction aborts"
                 )
-            self._apply_one(index, entry.relative, entry.mode)
+            self._apply_one(index, entry)
             self.journal.append("APPLIED", {"index": index, "relative": entry.relative})
             _stop_seam(f"mid-apply:{index}")
         self.journal.append("APPLY-DONE")
 
-    def _apply_one(self, index: int, relative: str, mode: int) -> None:
-        staged = self.tx_dir / "staged" / f"{index:06d}.bin"
+    def _apply_one(self, index: int, entry: PlanEntry) -> None:
+        relative = entry.relative
         target = self.vault_root / relative
+        if entry.content is None:
+            if target.is_symlink() or target.is_dir():
+                raise TransactionError(f"refusing to delete a non-file target: {relative}")
+            try:
+                target.unlink()
+            except FileNotFoundError:
+                pass
+            else:
+                directory = os.open(target.parent, os.O_RDONLY)
+                try:
+                    os.fsync(directory)
+                finally:
+                    os.close(directory)
+            return
+
+        staged = self.tx_dir / "staged" / f"{index:06d}.bin"
         target.parent.mkdir(parents=True, exist_ok=True)
         temporary = target.parent / f".{target.name}.tx-{self.tx_id}"
         shutil.copyfile(staged, temporary)
-        os.chmod(temporary, mode)
+        os.chmod(temporary, entry.mode)
         descriptor = os.open(temporary, os.O_RDONLY)
         try:
             os.fsync(descriptor)
@@ -219,6 +275,12 @@ class Transaction:
         self.journal.append("VERIFY-START")
         for entry in self._plan:
             target = self.vault_root / entry.relative
+            if entry.content is None:
+                if target.is_symlink() or target.exists():
+                    raise TransactionError(
+                        f"verification failed for {entry.relative}: deleted target still exists"
+                    )
+                continue
             digest = hashlib.sha256(target.read_bytes()).hexdigest()
             if digest != entry.sha256():
                 raise TransactionError(
