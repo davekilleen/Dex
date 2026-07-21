@@ -10,8 +10,10 @@ gate carries a red-when-removed proof.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
+import stat
 import subprocess
 import sys
 from pathlib import Path
@@ -36,17 +38,14 @@ def _tree_state(vault: Path, relatives: list[str]) -> dict:
     state = {}
     for relative in relatives:
         path = vault / relative
-        state[relative] = (
-            (path.read_bytes(), path.stat().st_mode & 0o7777)
-            if path.exists()
-            else None
-        )
+        state[relative] = (path.read_bytes(), path.stat().st_mode & 0o7777) if path.exists() else None
     return state
 
 
 # ---------------------------------------------------------------------------
 # Lock
 # ---------------------------------------------------------------------------
+
 
 def test_lock_busy_refusal_release_and_stale_takeover(tmp_path: Path) -> None:
     vault = _vault(tmp_path)
@@ -79,6 +78,7 @@ def test_lock_release_after_takeover_is_a_noop(tmp_path: Path) -> None:
 # ---------------------------------------------------------------------------
 # Journal
 # ---------------------------------------------------------------------------
+
 
 def test_journal_round_trip_and_sequence(tmp_path: Path) -> None:
     journal = Journal(tmp_path / "j.jsonl")
@@ -123,6 +123,7 @@ def test_journal_interior_tamper_fails_closed(tmp_path: Path) -> None:
 # ---------------------------------------------------------------------------
 # Snapshot
 # ---------------------------------------------------------------------------
+
 
 def test_snapshot_restore_is_byte_and_mode_exact_and_deletes_created(
     tmp_path: Path,
@@ -171,6 +172,7 @@ def test_snapshot_refuses_symlinks_and_directories(tmp_path: Path) -> None:
 # Engine semantics
 # ---------------------------------------------------------------------------
 
+
 def test_engine_happy_path_commits_and_reports(tmp_path: Path) -> None:
     vault = _vault(tmp_path)
     result = Transaction.begin(
@@ -210,9 +212,7 @@ def test_engine_rejects_seed_overwrite_vault_deny_and_unclassified(
     assert not (vault / "System/.installed-files.manifest").exists()
 
 
-def test_engine_authorization_gate_is_load_bearing(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_engine_authorization_gate_is_load_bearing(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Red-when-removed: neuter the contract verdict and the engine happily
     writes into user content — proving the gate is what stands between an
     update and the user's files."""
@@ -242,6 +242,103 @@ def test_engine_verify_failure_rolls_back_byte_exact(tmp_path: Path) -> None:
     with pytest.raises(Exception):
         tx.run()
     assert target.read_bytes() == b"old manifest\n"
+
+
+def test_engine_delete_entry_commits_and_rolls_back_byte_exact(tmp_path: Path) -> None:
+    """Updater removals use the same snapshot/apply/verify/undo path as writes."""
+    vault = _vault(tmp_path)
+    target = vault / "README.md"
+    target.write_bytes(b"old shipped bytes\r\nwith\x00data")
+    os.chmod(target, 0o640)
+
+    original_sha = hashlib.sha256(target.read_bytes()).hexdigest()
+    deleted = Transaction.begin(
+        vault,
+        [PlanEntry("README.md", None, 0o640, expected_current_sha256=original_sha)],
+    ).run()
+
+    assert deleted["committed"] is True
+    assert not target.exists()
+
+    target.write_bytes(b"restorable shipped bytes\n")
+    os.chmod(target, 0o600)
+    restorable_sha = hashlib.sha256(target.read_bytes()).hexdigest()
+    tx = Transaction.begin(
+        vault,
+        [PlanEntry("README.md", None, 0o600, expected_current_sha256=restorable_sha)],
+    )
+    original_verify = tx._verify_phase
+
+    def verify_then_fail() -> None:
+        original_verify()
+        raise RuntimeError("simulated updater verification failure")
+
+    tx._verify_phase = verify_then_fail
+    with pytest.raises(RuntimeError, match="simulated updater"):
+        tx.run()
+
+    assert target.read_bytes() == b"restorable shipped bytes\n"
+    assert stat.S_IMODE(target.stat().st_mode) == 0o600
+
+
+def test_engine_rejects_deletion_without_current_content_precondition(
+    tmp_path: Path,
+) -> None:
+    vault = _vault(tmp_path)
+    target = vault / "README.md"
+    target.write_bytes(b"shipped bytes\n")
+
+    with pytest.raises(PlanRejected, match="deletions require"):
+        Transaction.begin(vault, [PlanEntry("README.md", None)])
+
+    assert target.read_bytes() == b"shipped bytes\n"
+
+
+def test_engine_delete_precondition_preserves_a_file_changed_after_planning(
+    tmp_path: Path,
+) -> None:
+    vault = _vault(tmp_path)
+    target = vault / "README.md"
+    target.write_bytes(b"unchanged shipped bytes\n")
+    expected = hashlib.sha256(target.read_bytes()).hexdigest()
+    tx = Transaction.begin(
+        vault,
+        [PlanEntry("README.md", None, 0o644, expected_current_sha256=expected)],
+    )
+    target.write_bytes(b"user changed this after planning\n")
+
+    with pytest.raises(PlanRejected, match="changed after the mutation plan"):
+        tx.run()
+
+    assert target.read_bytes() == b"user changed this after planning\n"
+
+
+def test_engine_rechecks_deletion_content_immediately_before_unlink(
+    tmp_path: Path,
+) -> None:
+    vault = _vault(tmp_path)
+    target = vault / "README.md"
+    target.write_bytes(b"shipped bytes\n")
+    expected = hashlib.sha256(target.read_bytes()).hexdigest()
+    tx = Transaction.begin(
+        vault,
+        [PlanEntry("README.md", None, 0o644, expected_current_sha256=expected)],
+    )
+    tx._snapshot_phase()
+    original_append = tx.journal.append
+
+    def change_after_apply_intent(event: str, payload=None) -> None:
+        original_append(event, payload)
+        if event == "APPLYING":
+            target.write_bytes(b"changed immediately before unlink\n")
+
+    tx.journal.append = change_after_apply_intent
+
+    with pytest.raises(PlanRejected, match="changed after the mutation snapshot"):
+        tx._apply_phase()
+    tx.rollback()
+
+    assert target.read_bytes() == b"changed immediately before unlink\n"
 
 
 def test_engine_holds_the_single_mutator_lock(tmp_path: Path) -> None:
@@ -312,9 +409,7 @@ def test_crash_at_every_seam_converges(seam: str, tmp_path: Path) -> None:
         assert len(outcomes) == 1 and outcomes[0]["resumed"] is True
 
     # Either way the vault must be immediately usable again.
-    Transaction.begin(
-        vault, [PlanEntry("System/.installed-files.manifest", b"post-recovery\n")]
-    ).run()
+    Transaction.begin(vault, [PlanEntry("System/.installed-files.manifest", b"post-recovery\n")]).run()
 
 
 def test_resume_is_idempotent(tmp_path: Path) -> None:
@@ -335,6 +430,7 @@ def test_resume_is_idempotent(tmp_path: Path) -> None:
 # ---------------------------------------------------------------------------
 # Adversarial-review fixes (F1-F5, F9), each pinned
 # ---------------------------------------------------------------------------
+
 
 def test_seed_created_mid_window_wins_and_aborts_transaction(tmp_path: Path) -> None:
     """F1: a seed file appearing AFTER authorization (user, Obsidian, background
@@ -391,9 +487,7 @@ def test_resume_quarantines_a_corrupt_journal_and_recovers_the_rest(
 def test_rollback_removes_directories_the_transaction_created(tmp_path: Path) -> None:
     """F3: rollback removes empty directories the apply created."""
     vault = _vault(tmp_path)
-    tx = Transaction.begin(
-        vault, [PlanEntry("System/Templates/New/Deep/t.md", b"x\n")]
-    )
+    tx = Transaction.begin(vault, [PlanEntry("System/Templates/New/Deep/t.md", b"x\n")])
     tx._snapshot_phase()
     tx._apply_phase()
     tx.rollback()
@@ -422,17 +516,13 @@ def test_special_mode_bits_are_rejected(tmp_path: Path) -> None:
     """F5: no setuid/setgid/sticky or non-permission bits."""
     vault = _vault(tmp_path)
     with pytest.raises(PlanRejected):
-        Transaction.begin(
-            vault, [PlanEntry("System/.installed-files.manifest", b"x", mode=0o4777)]
-        )
+        Transaction.begin(vault, [PlanEntry("System/.installed-files.manifest", b"x", mode=0o4777)])
 
 
 def test_verify_checks_mode_as_well_as_bytes(tmp_path: Path) -> None:
     """F9: a mode mismatch after apply fails verification and rolls back."""
     vault = _vault(tmp_path)
-    tx = Transaction.begin(
-        vault, [PlanEntry("System/.installed-files.manifest", b"x\n", mode=0o600)]
-    )
+    tx = Transaction.begin(vault, [PlanEntry("System/.installed-files.manifest", b"x\n", mode=0o600)])
     original_verify = tx._verify_phase
 
     def sabotage_then_verify() -> None:

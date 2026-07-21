@@ -93,6 +93,57 @@ def _remote_release_ref(channel: str) -> str:
     return f"refs/remotes/{release_channel.release_ref_candidates(channel)[0]}"
 
 
+def test_topology_journey_checks_combined_split_and_vault_environment(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    combined = tmp_path / "combined"
+    (combined / ".git").mkdir(parents=True)
+    monkeypatch.setenv("VAULT_PATH", str(combined))
+    monkeypatch.setenv("VAULT_ROOT", str(combined))
+    monkeypatch.setenv("DEX_VAULT", str(combined))
+    result = smoke._journey_topology(combined, tmp_path)
+    assert result["verdict"] == "OK"
+    assert "combined topology" in result["detail"]
+
+    split = tmp_path / "split"
+    (split / ".git").mkdir(parents=True)
+    (split / ".dex/brain.git").mkdir(parents=True)
+    (split / "System/.dex").mkdir(parents=True)
+    (split / ".git/dex-vault-v2").write_text('{"role":"vault"}\n')
+    (split / ".dex/brain.git/dex-brain-v2").write_text(
+        '{"role":"brain","installed":"abc"}\n'
+    )
+    (split / "System/.dex/topology.json").write_text(
+        '{"topology":"brain-vault-split","vaultGitDir":".git",'
+        '"brainGitDir":".dex/brain.git","installedRelease":"abc",'
+        f'"environment":{{"DEX_VAULT":{json.dumps(str(split.resolve()))}}}}}\n'
+    )
+    monkeypatch.setenv("VAULT_PATH", str(split))
+    monkeypatch.setenv("VAULT_ROOT", str(split))
+    monkeypatch.setenv("DEX_VAULT", str(split))
+    result = smoke._journey_topology(split, tmp_path)
+    assert result["verdict"] == "OK"
+    assert "split topology" in result["detail"]
+
+    monkeypatch.setenv("VAULT_ROOT", str(combined))
+    result = smoke._journey_topology(split, tmp_path)
+    assert result["verdict"] == "BROKEN"
+    assert "VAULT_ROOT" in result["detail"]
+
+    monkeypatch.setenv("VAULT_ROOT", str(split))
+    monkeypatch.setenv("DEX_VAULT", str(combined))
+    result = smoke._journey_topology(split, tmp_path)
+    assert result["verdict"] == "BROKEN"
+    assert "DEX_VAULT" in result["detail"]
+
+
+def test_smoke_registry_adds_topology_without_losing_shipped_journeys() -> None:
+    ids = {definition.id for definition in smoke.JOURNEYS}
+    assert {"configs", "task_lifecycle", "mcp_startup", "skills", "hooks"} <= ids
+    assert "topology" in ids
+
+
 def test_mcp_handshake_timeout_env_override_changes_effective_timeout(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -291,6 +342,7 @@ def test_report_schema_exit_zero_and_no_live_write(tmp_path: Path) -> None:
     assert run.report["schema_version"] == 1
     assert run.report["generated_at"].endswith("+00:00")
     assert [journey["id"] for journey in run.report["journeys"]] == [
+        "topology",
         "configs",
         "task_lifecycle",
         "mcp_startup",
@@ -298,6 +350,7 @@ def test_report_schema_exit_zero_and_no_live_write(tmp_path: Path) -> None:
         "hooks",
     ]
     verdicts = {journey["id"]: journey["verdict"] for journey in run.report["journeys"]}
+    assert verdicts["topology"] == "OFF"
     assert verdicts["configs"] == "OK"
     assert verdicts["mcp_startup"] == "OK"  # empty .mcp.json → OK regardless of the execution gate
     assert verdicts["skills"] == "OFF"
@@ -313,7 +366,7 @@ def test_report_schema_exit_zero_and_no_live_write(tmp_path: Path) -> None:
         "ok": 3 if executed else 2,
         "broken": 0,
         "unknown": 0 if executed else 1,
-        "off": 2,
+        "off": 3,
     }
     for journey in run.report["journeys"]:
         assert set(journey) == {"id", "verdict", "detail", "duration_ms"}

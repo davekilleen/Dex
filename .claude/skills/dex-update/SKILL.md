@@ -60,6 +60,67 @@ If user skips, exit gracefully.
 
 **B. Check current setup**
 
+Detect the installed topology before inspecting or renaming remotes. This is a
+closed structural check: a declared split with incomplete markers stops rather
+than falling through to the combined Git workflow.
+
+```bash
+DEX_UPDATE_TOPOLOGY=$(python3 - <<'PY'
+import json
+from pathlib import Path
+
+root = Path.cwd()
+def regular_json(relative):
+    candidate = root / relative
+    try:
+        if candidate.is_symlink() or not candidate.is_file():
+            return None
+        value = json.loads(candidate.read_text(encoding="utf-8"))
+        return value if isinstance(value, dict) else None
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        return None
+
+topology = regular_json("System/.dex/topology.json")
+vault_marker = regular_json(".git/dex-vault-v2")
+brain_marker = regular_json(".dex/brain.git/dex-brain-v2")
+if topology and topology.get("topology") == "brain-vault-split":
+    environment = topology.get("environment")
+    valid = (
+        topology.get("vaultGitDir") == ".git"
+        and topology.get("brainGitDir") == ".dex/brain.git"
+        and (root / ".git").is_dir()
+        and not (root / ".git").is_symlink()
+        and (root / ".dex/brain.git").is_dir()
+        and not (root / ".dex/brain.git").is_symlink()
+        and vault_marker and vault_marker.get("role") == "vault"
+        and brain_marker and brain_marker.get("role") == "brain"
+        and isinstance(environment, dict)
+        and isinstance(environment.get("DEX_VAULT"), str)
+        and environment["DEX_VAULT"]
+        and Path(environment["DEX_VAULT"]).resolve() == root.resolve()
+    )
+    print("split" if valid else "invalid-split")
+elif (root / ".git").exists():
+    print("combined")
+else:
+    print("manual")
+PY
+) || exit 1
+
+case "$DEX_UPDATE_TOPOLOGY" in
+  split|combined|manual) ;;
+  invalid-split)
+    echo "Update stopped: the brain/vault topology markers disagree. Run /dex-doctor and use updater/migrator recovery; do not use raw Git recovery."
+    exit 1
+    ;;
+  *) echo "Update stopped: Dex could not classify this installation topology"; exit 1 ;;
+esac
+```
+
+If this prints `split`, do not rename the vault repository's remotes. Continue
+to Step 2, then use the split route below. `combined` keeps the existing remote
+setup and merge workflow. `manual` uses Scenario 1.
+
 Run: `git remote -v`
 
 **Scenario 1: Downloaded as ZIP (no Git)**
@@ -159,6 +220,86 @@ Run /dex-doctor to review this evidence and update guidance. Dex will not update
 
 Never say `update available`, `verified`, `safe`, `current`, or `up to date` for this result. Continue only after the
 user separately chooses the existing manual update workflow.
+
+---
+
+### Split-topology route
+
+When `DEX_UPDATE_TOPOLOGY` is `split`, the vault and Dex brain have separate
+histories. Do not run the backup-tag or merge workflow in Steps 3-6. Preserve
+the exact evidence fields returned by Step 2 (`tag`, `tag_object`, `commit`,
+and `tree`), validate their closed shapes, fetch only that immutable tag plus
+the configured channel branch into `.dex/brain.git`, and let the Python
+transaction updater replace only contract-authorized brain/generated files
+and absent seeds.
+
+```bash
+# Set these from the exact structured Step 2 response; never infer or shorten them.
+DEX_RELEASE_TAG='<exact dist/release/v tag>'
+DEX_RELEASE_TAG_OBJECT='<exact full tag object>'
+DEX_RELEASE_COMMIT='<exact full commit>'
+DEX_RELEASE_TREE='<exact full tree>'
+
+case "$DEX_RELEASE_TAG" in
+  dist/release/v[0-9]*.[0-9]*.[0-9]*-[0-9a-f]*) ;;
+  *) echo "Update stopped: immutable release tag shape is invalid"; exit 1 ;;
+esac
+for DEX_RELEASE_IDENTITY in \
+  "$DEX_RELEASE_TAG_OBJECT" "$DEX_RELEASE_COMMIT" "$DEX_RELEASE_TREE"; do
+  case "$DEX_RELEASE_IDENTITY" in
+    *[!0-9a-f]*|'') echo "Update stopped: immutable release identity is invalid"; exit 1 ;;
+  esac
+  [ "${#DEX_RELEASE_IDENTITY}" -ge 40 ] && [ "${#DEX_RELEASE_IDENTITY}" -le 64 ] || {
+    echo "Update stopped: immutable release identity length is invalid"
+    exit 1
+  }
+done
+
+if ! python3 -m core.utils.credential_workflow migrate; then
+  echo "Credential migration was refused. Run /dex-doctor --credential-status for redacted guidance."
+  exit 1
+fi
+
+DEX_UPDATE_CHANNEL=$(python3 - <<'PY'
+from core.utils.release_channel import read_channel
+print(read_channel('.'))
+PY
+) || exit 1
+case "$DEX_UPDATE_CHANNEL" in
+  stable) DEX_RELEASE_BRANCH=release ;;
+  beta) DEX_RELEASE_BRANCH=release-beta ;;
+  *) echo "Update stopped: the configured update channel is invalid"; exit 1 ;;
+esac
+
+DEX_BRAIN_ORIGIN=$(git --git-dir=.dex/brain.git config --get remote.origin.url) || exit 1
+DEX_BRAIN_EFFECTIVE=$(git --git-dir=.dex/brain.git remote get-url origin) || exit 1
+case "$DEX_BRAIN_ORIGIN|$DEX_BRAIN_EFFECTIVE" in
+  https://github.com/davekilleen/Dex.git\|https://github.com/davekilleen/Dex.git|\
+  https://github.com/davekilleen/Dex\|https://github.com/davekilleen/Dex) ;;
+  *) echo "Update stopped: the Dex brain origin is not the effective official repository"; exit 1 ;;
+esac
+
+git --git-dir=.dex/brain.git fetch --no-tags origin \
+  "+refs/heads/$DEX_RELEASE_BRANCH:refs/remotes/origin/$DEX_RELEASE_BRANCH" \
+  "refs/tags/$DEX_RELEASE_TAG:refs/tags/$DEX_RELEASE_TAG" || exit 1
+
+python3 -m core.update.apply_update \
+  --vault "$PWD" \
+  --tag "$DEX_RELEASE_TAG" \
+  --tag-object "$DEX_RELEASE_TAG_OBJECT" \
+  --commit "$DEX_RELEASE_COMMIT" \
+  --tree "$DEX_RELEASE_TREE" || exit 1
+```
+
+The service re-checks the immutable annotated tag, full commit/tree, selected
+stable or beta channel, official brain origin, topology markers, and
+`System/.dex/mutation.lock` before it commits. Its transaction snapshot is the
+exact undo record for replaced and pruned brain files. Vault/runtime paths and
+existing seeds are not in the mutation plan.
+
+After a successful split update, continue at Step 7 for dependencies and
+outcome verification. Combined topology continues to Step 3 and uses today's
+merge flow unchanged.
 
 ---
 

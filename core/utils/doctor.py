@@ -26,7 +26,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from core import paths
+from core import paths, portable_contract
 from core.utils import preflight, release_channel
 
 VERDICTS = frozenset({"OK", "OFF", "BROKEN", "UNKNOWN"})
@@ -160,6 +160,14 @@ SHIPPED_LAUNCH_AGENT_LABELS = frozenset(
 QUICK_CHECKS = (
     CheckDefinition("vault.structure", "Vault structure", "_probe_vault_structure"),
     CheckDefinition("vault.configs", "Vault configuration", "_probe_vault_configs"),
+    CheckDefinition("vault.git", "Vault history", "_probe_vault_git"),
+    CheckDefinition("brain.git", "Dex brain history", "_probe_brain_git"),
+    CheckDefinition("vault.auto-commit", "Vault auto-commit", "_probe_vault_auto_commit"),
+    CheckDefinition(
+        "topology.migration-pending",
+        "Brain/vault topology",
+        "_probe_migration_pending",
+    ),
     CheckDefinition("smoke.history", "Nightly smoke results", "_probe_smoke_history"),
     CheckDefinition("mcp.registered", "MCP registration", "_probe_mcp_registered"),
     CheckDefinition("mcp.orphans", "MCP server registration", "_probe_mcp_orphans"),
@@ -843,7 +851,7 @@ def _plist_owned_by_vault(plist: Path, data: dict[str, Any], context: DoctorCont
             continue
         try:
             resolved = candidate.resolve()
-        except OSError:
+        except (OSError, RuntimeError):
             continue
         if resolved.is_relative_to(vault_root):
             return True
@@ -1374,7 +1382,11 @@ def _probe_customization_mcp(context: DoctorContext) -> ProbeResult:
     )
 
 
-def _git_result(context: DoctorContext, *arguments: str) -> subprocess.CompletedProcess[str]:
+def _git_result(
+    context: DoctorContext,
+    *arguments: str,
+    git_directory: Path | None = None,
+) -> subprocess.CompletedProcess[str]:
     executable = next(
         (
             str(candidate)
@@ -1400,6 +1412,7 @@ def _git_result(context: DoctorContext, *arguments: str) -> subprocess.Completed
             "submodule.recurse=false",
             "-C",
             str(context.repo_root),
+            *([f"--git-dir={git_directory}"] if git_directory is not None else []),
             *arguments,
         ],
         capture_output=True,
@@ -1416,6 +1429,244 @@ def _git_result(context: DoctorContext, *arguments: str) -> subprocess.Completed
         text=True,
         timeout=10,
         check=False,
+    )
+
+
+def _regular_json(path: Path) -> dict[str, Any] | None:
+    try:
+        if path.is_symlink() or not path.is_file():
+            return None
+        value = json.loads(path.read_text(encoding="utf-8"))
+        return value if isinstance(value, dict) else None
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        return None
+
+
+def _topology_state(context: DoctorContext) -> str:
+    vault_git = context.vault_root / ".git"
+    brain_git = context.vault_root / ".dex/brain.git"
+    topology = _regular_json(context.vault_root / "System/.dex/topology.json")
+    vault_marker = _regular_json(vault_git / "dex-vault-v2")
+    brain_marker = _regular_json(brain_git / "dex-brain-v2")
+    if topology and topology.get("topology") == "brain-vault-split":
+        environment = topology.get("environment")
+        wired_vault = environment.get("DEX_VAULT") if isinstance(environment, dict) else None
+        try:
+            vault_wiring_matches = (
+                isinstance(wired_vault, str)
+                and Path(wired_vault).resolve() == context.vault_root.resolve()
+            )
+        except OSError:
+            vault_wiring_matches = False
+        if (
+            topology.get("vaultGitDir") == ".git"
+            and topology.get("brainGitDir") == ".dex/brain.git"
+            and vault_wiring_matches
+            and vault_git.is_dir()
+            and not vault_git.is_symlink()
+            and brain_git.is_dir()
+            and not brain_git.is_symlink()
+            and vault_marker
+            and vault_marker.get("role") == "vault"
+            and brain_marker
+            and brain_marker.get("role") == "brain"
+        ):
+            return "post-split"
+        return "invalid-split"
+    migration_state = _regular_json(
+        context.vault_root / "System/.dex/migration-v2-state.json"
+    )
+    if migration_state and migration_state.get("status") != "complete":
+        return "migration-in-progress"
+    if any(
+        candidate.exists()
+        for candidate in (
+            context.vault_root / ".dex/pre-split-archive.git",
+            context.vault_root / ".dex/vault-staging.git",
+        )
+    ):
+        return "migration-in-progress"
+    migrator = context.vault_root / "core/migrations/v1-to-v2-brain-vault-split.cjs"
+    if vault_git.exists() and migrator.is_file() and not migrator.is_symlink():
+        return "migration-pending"
+    if not vault_git.exists():
+        return "zip-or-manual"
+    return "combined"
+
+
+def _probe_vault_git(context: DoctorContext) -> ProbeResult:
+    topology = _topology_state(context)
+    if topology != "post-split":
+        if topology == "invalid-split":
+            return ProbeResult(
+                "BROKEN",
+                "The split topology marker exists, but the vault Git marker is missing or invalid — use /dex-update recovery",
+            )
+        return ProbeResult(
+            "OFF",
+            "The separate vault history is not active; the topology check reports the current layout",
+        )
+    git_directory = context.vault_root / ".git"
+    healthy = _git_result(
+        context, "rev-parse", "--git-dir", git_directory=git_directory
+    )
+    if healthy.returncode != 0:
+        return ProbeResult(
+            "BROKEN",
+            "The vault Git repository cannot be opened — your files remain on disk, but history needs repair",
+        )
+    integrity = _git_result(
+        context, "fsck", "--no-progress", git_directory=git_directory
+    )
+    if integrity.returncode != 0:
+        return ProbeResult(
+            "BROKEN",
+            "The vault Git repository failed its integrity check — do not push it; repair the local history",
+        )
+    remotes = _git_result(context, "remote", git_directory=git_directory)
+    remote_count = (
+        len([line for line in remotes.stdout.splitlines() if line.strip()])
+        if remotes.returncode == 0
+        else 0
+    )
+    suffix = (
+        "no private backup remote configured"
+        if remote_count == 0
+        else f"{remote_count} private backup remote(s) configured"
+    )
+    return ProbeResult("OK", f"The local vault history is healthy; {suffix}")
+
+
+def _probe_brain_git(context: DoctorContext) -> ProbeResult:
+    topology_state = _topology_state(context)
+    if topology_state != "post-split":
+        if topology_state == "invalid-split":
+            return ProbeResult(
+                "BROKEN",
+                "The split topology marker exists, but the brain Git marker is missing or invalid — use the updater recovery path",
+            )
+        return ProbeResult("OFF", "The separate Dex brain history is not active")
+    brain = context.vault_root / ".dex/brain.git"
+    installed = _git_result(
+        context,
+        "rev-parse",
+        "--verify",
+        "refs/dex/installed^{commit}",
+        git_directory=brain,
+    )
+    if installed.returncode != 0:
+        return ProbeResult(
+            "BROKEN",
+            "The Dex brain history cannot resolve its installed release — rerun /dex-update",
+        )
+    installed_oid = installed.stdout.strip().lower()
+    brain_marker = _regular_json(brain / "dex-brain-v2")
+    topology = _regular_json(context.vault_root / "System/.dex/topology.json")
+    marker_oid = str(brain_marker.get("installed", "")).lower() if brain_marker else ""
+    topology_oid = str(topology.get("installedRelease", "")).lower() if topology else ""
+    if not installed_oid or marker_oid != installed_oid or topology_oid != installed_oid:
+        return ProbeResult(
+            "BROKEN",
+            "The Dex brain release identity disagrees across its installed ref and topology markers — rerun /dex-update",
+        )
+    configured = _git_result(
+        context, "config", "--get", "remote.origin.url", git_directory=brain
+    )
+    effective = _git_result(
+        context, "remote", "get-url", "origin", git_directory=brain
+    )
+    official = re.compile(
+        r"^(?:https://github\.com/|ssh://git@github\.com/|git@github\.com:)"
+        r"davekilleen/Dex(?:\.git)?/?$",
+        re.IGNORECASE,
+    )
+    if (
+        configured.returncode != 0
+        or effective.returncode != 0
+        or not official.fullmatch(configured.stdout.strip())
+        or not official.fullmatch(effective.stdout.strip())
+    ):
+        return ProbeResult(
+            "BROKEN",
+            "The Dex brain origin is not the effective official repository — repair it before updating",
+        )
+    integrity = _git_result(context, "fsck", "--no-progress", git_directory=brain)
+    if integrity.returncode != 0:
+        return ProbeResult(
+            "BROKEN",
+            "The Dex brain Git store failed its integrity check — stop updating and repair it",
+        )
+    archive = context.vault_root / ".dex/pre-split-archive.git"
+    archive_note = (
+        " The pre-split restore archive is still present."
+        if archive.is_dir() and not archive.is_symlink()
+        else ""
+    )
+    return ProbeResult(
+        "OK",
+        f"The Dex brain history is healthy at {installed_oid[:12]}.{archive_note}",
+    )
+
+
+def _probe_vault_auto_commit(context: DoctorContext) -> ProbeResult:
+    profile_path = context.vault_root / "System/user-profile.yaml"
+    if profile_path.is_symlink():
+        return ProbeResult(
+            "UNKNOWN",
+            "The doctor will not follow a symlinked profile to inspect vault auto-commit",
+        )
+    try:
+        profile = _load_yaml(profile_path)
+    except FileNotFoundError:
+        profile = {}
+    if not isinstance(profile, dict):
+        return ProbeResult(
+            "BROKEN", "Vault auto-commit cannot read user-profile.yaml as a mapping"
+        )
+    vault_settings = profile.get("vault")
+    enabled = (
+        isinstance(vault_settings, dict)
+        and vault_settings.get("auto_commit") is True
+    )
+    if not enabled:
+        return ProbeResult(
+            "OFF", "Vault auto-commit is off by default; local files remain untouched"
+        )
+    if _topology_state(context) != "post-split":
+        return ProbeResult(
+            "BROKEN",
+            "Vault auto-commit is enabled before the split topology is ready — run /dex-update",
+        )
+    return ProbeResult(
+        "OK", "Vault auto-commit is enabled for local snapshots and never pushes"
+    )
+
+
+def _probe_migration_pending(context: DoctorContext) -> ProbeResult:
+    topology = _topology_state(context)
+    if topology == "post-split":
+        return ProbeResult("OK", "The brain/vault split is complete")
+    if topology == "migration-pending":
+        return ProbeResult(
+            "BROKEN",
+            "Dex needs its one-time brain/vault upgrade — run /dex-update; notes stay in place",
+        )
+    if topology == "migration-in-progress":
+        return ProbeResult(
+            "BROKEN",
+            "The one-time upgrade is incomplete — run /dex-update so recovery can resume",
+        )
+    if topology == "invalid-split":
+        return ProbeResult(
+            "BROKEN",
+            "The split topology markers or DEX_VAULT wiring disagree — use updater or migrator recovery, never raw Git",
+        )
+    if topology == "zip-or-manual":
+        return ProbeResult(
+            "OFF", "This ZIP/manual install has no Git topology; use the manual update path"
+        )
+    return ProbeResult(
+        "OFF", "This is the older combined topology; updates keep using the merge path"
     )
 
 
@@ -1453,8 +1704,19 @@ def _sanctioned_customization_path(relative: str) -> bool:
     )
 
 
-def _git_file(context: DoctorContext, treeish: str, relative: str) -> str | None:
-    result = _git_result(context, "show", f"{treeish}:{relative}")
+def _git_file(
+    context: DoctorContext,
+    treeish: str,
+    relative: str,
+    *,
+    git_directory: Path | None = None,
+) -> str | None:
+    result = _git_result(
+        context,
+        "show",
+        f"{treeish}:{relative}",
+        git_directory=git_directory,
+    )
     return result.stdout if result.returncode == 0 else None
 
 
@@ -1538,9 +1800,21 @@ def _only_sanctioned_file_changes(
     return False
 
 
-def _release_tree_entries(context: DoctorContext, baseline: str) -> dict[str, tuple[str, str]]:
+def _release_tree_entries(
+    context: DoctorContext,
+    baseline: str,
+    *,
+    git_directory: Path | None = None,
+) -> dict[str, tuple[str, str]]:
     output = _git_output_or_raise(
-        _git_result(context, "ls-tree", "-r", "-z", baseline),
+        _git_result(
+            context,
+            "ls-tree",
+            "-r",
+            "-z",
+            baseline,
+            git_directory=git_directory,
+        ),
         "list release files",
     )
     entries = {}
@@ -1605,7 +1879,72 @@ def _worktree_matches_release_blob(
     return digest.hexdigest() == object_id
 
 
+def _brain_paths_from_installed_release(
+    context: DoctorContext,
+    baseline: str,
+    brain: Path,
+) -> set[str]:
+    manifest = _git_file(
+        context,
+        baseline,
+        "System/.installed-files.manifest",
+        git_directory=brain,
+    )
+    if manifest is None:
+        raise RuntimeError("installed brain release is missing its manifest")
+    paths: set[str] = set()
+    for relative in manifest.splitlines():
+        try:
+            resolution = portable_contract.resolve(relative)
+        except portable_contract.ContractViolation as error:
+            raise RuntimeError(
+                f"installed brain release has an unclassified path: {relative}"
+            ) from error
+        if resolution.ownership == "brain":
+            paths.add(relative)
+    return paths
+
+
 def _probe_core_drift(context: DoctorContext) -> ProbeResult:
+    if _topology_state(context) == "post-split":
+        brain = context.vault_root / ".dex/brain.git"
+        baseline = "refs/dex/installed"
+        installed = _git_result(
+            context,
+            "rev-parse",
+            "--verify",
+            f"{baseline}^{{commit}}",
+            git_directory=brain,
+        )
+        if installed.returncode != 0:
+            return ProbeResult(
+                "UNKNOWN",
+                "the brain Git store cannot resolve refs/dex/installed — rerun /dex-update",
+            )
+        release_entries = _release_tree_entries(
+            context, baseline, git_directory=brain
+        )
+        brain_paths = _brain_paths_from_installed_release(context, baseline, brain)
+        drifted = sorted(
+            relative
+            for relative in brain_paths
+            if relative in release_entries
+            and not _worktree_matches_release_blob(
+                context,
+                relative,
+                *release_entries[relative],
+            )
+        )
+        if not drifted:
+            return ProbeResult(
+                "OK", "No shipped brain files differ from refs/dex/installed"
+            )
+        return ProbeResult(
+            "UNKNOWN",
+            "Modified shipped brain files: "
+            f"{', '.join(drifted)}; the updater snapshots them before replacement",
+        )
+
     channel = release_channel.read_channel(context.vault_root)
     release_ref = _upstream_release_ref(context, channel)
     if release_ref is None:
