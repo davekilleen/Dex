@@ -180,9 +180,10 @@ described only from its returned transaction authority; do not call `Transaction
 while rendering Doctor. A receipt is rewindable only when the collector says
 `rewindable: true` and `rewind_verdict: OK`. Rewind only through the existing
 receipt-backed lifecycle flow:
-load that exact receipt, derive its exact acknowledgement with
-`rewind_acknowledgement_token(receipt)`, then call
-`rewind_adoption(vault_root, receipt, acknowledgement)`. There is no lifecycle rewind
+load that exact receipt, derive its exact acknowledgement with the
+rewind-acknowledgement helper in the Python lifecycle engine
+(core/lifecycle/engine.py), then perform the rewind through that same engine
+module's receipt-backed rewind function. There is no lifecycle rewind
 shell command, so do not invent one. If `rewindable: false` with `rewind_verdict: OK`,
 say the retained snapshot was pruned. If `rewind_verdict: UNKNOWN`, say the receipt,
 current bytes, committed journal, or snapshot could not be verified. In both cases, do
