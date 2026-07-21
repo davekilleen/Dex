@@ -14,7 +14,13 @@ Each source file is a closed document:
       "id": "decision-log",
       "kind": "skill",
       "version": "1.0.0",
-      "files": [".claude/skills/decision-log/SKILL.md"],
+      "files": [
+        {
+          "path": ".claude/skills/decision-log/SKILL.md",
+          "sha256": "<exact lowercase sha256>",
+          "byte_size": 1234
+        }
+      ],
       "dependencies": [],
       "capabilities": []
     }
@@ -22,6 +28,8 @@ Each source file is a closed document:
 }
 ```
 
-The generator derives hashes, ownership classes, and rewind tokens from the
-exact release tree. B2 intentionally ships no items; the first official item
-declarations land in D3.
+The publisher declaration pins each file's exact hash and byte size. The
+generator rejects stale pins, derives ownership classes and rewind tokens from
+the exact release tree, and validates the emitted items through the v1 model
+and schema. The first official item declarations live in
+`official-capabilities.json`.

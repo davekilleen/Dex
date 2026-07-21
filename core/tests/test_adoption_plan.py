@@ -14,6 +14,7 @@ from core.lifecycle.model import AdoptionState, ReleaseCatalog
 from core.lifecycle.plan import (
     AdoptionPlan,
     AdoptionPlanError,
+    ReasonCode,
     build_adoption_plan,
     canonical_adoption_plan_bytes,
 )
@@ -113,15 +114,41 @@ def test_plan_classifies_each_catalog_item_from_its_own_evidence(tmp_path: Path)
     assert by_id["conflict"].reasons[0].paths == (
         ".claude/skills/conflict/SKILL.md",
     )
-    assert by_id["missing"].action == "conflict"
+    assert by_id["missing"].action == "adopt"
+    assert by_id["missing"].reasons[0].code == "release-files-ready"
     assert by_id["unknown"].action == "unknown"
     assert plan.counts == {
-        "adopt": 1,
+        "adopt": 2,
         "already-adopted": 1,
         "skip-held-back": 1,
-        "conflict": 2,
+        "conflict": 1,
         "unknown": 1,
     }
+
+
+def test_stock_missing_never_write_path_is_a_release_files_missing_conflict(
+    tmp_path: Path,
+) -> None:
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    path = "04-Projects/Private/notes.md"
+    expected = b"release must not create user content\n"
+    manifest = write_manifest(vault, [path])
+    raw_catalog = _catalog(manifest, {"protected": expected}).to_dict()
+    raw_catalog["items"][0]["files"][0].update(
+        {"path": path, "ownership_class": "vault"}
+    )
+    catalog = ReleaseCatalog.from_dict(raw_catalog)
+    inventory = build_inventory(vault, catalog=catalog)
+
+    entry = next(entry for entry in inventory.entries if entry.canonical_path == path)
+    assert entry.release_state == "stock-missing"
+    assert entry.write_allowed is False
+
+    planned = _items_by_id(build_adoption_plan(catalog, inventory))["protected"]
+    assert planned.action == "conflict"
+    assert planned.reasons[0].code is ReasonCode.RELEASE_FILES_MISSING
+    assert planned.reasons[0].paths == (path,)
 
 
 def test_no_recorded_adoption_state_means_nothing_is_already_adopted(tmp_path: Path) -> None:

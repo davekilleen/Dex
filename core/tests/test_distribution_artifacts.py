@@ -391,7 +391,13 @@ def test_release_branch_strips_dev_files_and_untracks_v1_local_only_files(tmp_pa
         capture_output=True,
     ).stdout
     assert catalog["catalog_version"] == 1
-    assert catalog["items"] == []
+    official_registry = json.loads(
+        (REPO_ROOT / "core/lifecycle/catalog/official-capabilities.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    expected_item_ids = sorted(item["id"] for item in official_registry["items"])
+    assert sorted(item["id"] for item in catalog["items"]) == expected_item_ids
     assert catalog["release"]["version"] == package["version"]
     assert catalog["release"]["source_commit"] == source_commit
     assert catalog["release"]["manifest"]["sha256"] == hashlib.sha256(manifest_bytes).hexdigest()
