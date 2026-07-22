@@ -59,6 +59,8 @@ jobs:
       - name: Documentation drift gate
         if: github.event_name == 'pull_request'
         run: bash scripts/check-doc-drift.sh
+      - name: Architecture inventory drift gate
+        run: bash scripts/check-architecture-inventory.sh
       - name: Instructed-tool existence gate
         run: python scripts/check-instructed-tools.py
       - name: Create vault directories

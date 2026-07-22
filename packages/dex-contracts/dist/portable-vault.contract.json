@@ -706,6 +706,13 @@
       "ownership": "brain"
     },
     {
+      "id": "generated-architecture-inventory",
+      "path": "docs/architecture/INVENTORY.md",
+      "kind": "file",
+      "ownership": "generated",
+      "note": "code-derived grounding document; drift is CI-gated"
+    },
+    {
       "id": "seed-env-example",
       "path": "env.example",
       "kind": "file",
