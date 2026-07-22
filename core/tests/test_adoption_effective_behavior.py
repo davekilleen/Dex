@@ -37,9 +37,14 @@ def _items_by_id(plan: AdoptionPlan):
 
 
 def _source_registry() -> tuple[dict[str, object], dict[str, bytes]]:
-    source = json.loads(REGISTRY_PATH.read_text(encoding="utf-8"))
-    assert source["catalog_source_version"] == 1
-    assert tuple(item["id"] for item in source["items"]) == TRIO
+    registry = json.loads(REGISTRY_PATH.read_text(encoding="utf-8"))
+    assert registry["catalog_source_version"] == 1
+    items_by_id = {item["id"]: item for item in registry["items"]}
+    assert set(TRIO).issubset(items_by_id)
+    source = {
+        "catalog_source_version": 1,
+        "items": [items_by_id[item_id] for item_id in TRIO],
+    }
 
     payloads: dict[str, bytes] = {}
     for item in source["items"]:

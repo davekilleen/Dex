@@ -7,6 +7,7 @@ import argparse
 import hashlib
 import json
 import os
+import posixpath
 import re
 import subprocess
 import sys
@@ -73,18 +74,31 @@ def _exact_fields(value: Mapping[str, object], expected: set[str], *, context: s
         raise CatalogGenerationError(f"{context} fields are not closed ({'; '.join(details)})")
 
 
-def _release_path(release_root: Path, raw_path: object, *, context: str) -> tuple[str, Path]:
+def _relative_path(raw_path: object, *, context: str) -> str:
     if not isinstance(raw_path, str) or not raw_path:
         raise CatalogGenerationError(f"{context} must be a non-empty path string")
     if "\\" in raw_path or "\n" in raw_path or "\r" in raw_path:
         raise CatalogGenerationError(f"{context} is not a canonical POSIX path: {raw_path!r}")
-    candidate = release_root / raw_path
+    normalized = posixpath.normpath(raw_path)
+    if (
+        normalized != raw_path
+        or normalized in ("", ".", "..")
+        or normalized.startswith("/")
+        or normalized.startswith("../")
+    ):
+        raise CatalogGenerationError(f"{context} is not a canonical POSIX path: {raw_path!r}")
+    return raw_path
+
+
+def _release_path(release_root: Path, raw_path: object, *, context: str) -> tuple[str, Path]:
+    relative = _relative_path(raw_path, context=context)
+    candidate = release_root / relative
     resolved = candidate.resolve(strict=False)
     if not resolved.is_relative_to(release_root):
-        raise CatalogGenerationError(f"{context} escapes the release root: {raw_path!r}")
+        raise CatalogGenerationError(f"{context} escapes the release root: {relative!r}")
     if candidate.is_symlink() or not candidate.is_file():
-        raise CatalogGenerationError(f"{context} is missing or not a regular file: {raw_path}")
-    return raw_path, candidate
+        raise CatalogGenerationError(f"{context} is missing or not a regular file: {relative}")
+    return relative, candidate
 
 
 def _sha256(path: Path) -> str:
@@ -145,15 +159,22 @@ def _source_items(release_root: Path, portable_contract: object) -> list[dict[st
             for file_index, raw_file in enumerate(files):
                 file_context = f"{context} file {file_index}"
                 declared_file = _mapping(raw_file, context=file_context)
-                _exact_fields(
-                    declared_file,
+                file_fields = set(declared_file)
+                if file_fields not in (
                     {"path", "sha256", "byte_size"},
-                    context=file_context,
-                )
-                path, absolute = _release_path(
-                    release_root,
+                    {"path", "source_path", "sha256", "byte_size"},
+                ):
+                    raise CatalogGenerationError(
+                        f"{file_context} fields are not closed"
+                    )
+                path = _relative_path(
                     declared_file["path"],
                     context=f"{file_context} path",
+                )
+                _source_path, absolute = _release_path(
+                    release_root,
+                    declared_file.get("source_path", path),
+                    context=f"{file_context} source_path",
                 )
                 declared_sha256 = declared_file["sha256"]
                 if (
