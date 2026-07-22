@@ -204,7 +204,8 @@ mkdir -p "$(dirname "$MANIFEST")"
 : > "$CATALOG"
 git add -- "$MANIFEST" "$CATALOG"
 MANIFEST_TREE=$(git write-tree)
-python3 core/utils/manifest.py "$MANIFEST_TREE" --repo-root "$REPO_ROOT" --output "$MANIFEST"
+python3 core/utils/manifest.py "$MANIFEST_TREE" --repo-root "$REPO_ROOT" --output "$MANIFEST" \
+    --require-lifecycle-contracts
 
 # B1 supports stable and beta catalog identities. Custom target names used by
 # local verification retain stable catalog semantics.

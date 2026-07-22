@@ -71,6 +71,9 @@ mkdir -p "$STAGING_DIR/System"
 printf '%s\n' 'System/.installed-files.manifest' >> "$STAGING_DIR/System/.installed-files.manifest"
 LC_ALL=C sort -u -o "$STAGING_DIR/System/.installed-files.manifest" \
   "$STAGING_DIR/System/.installed-files.manifest"
+python3 "$REPO_ROOT/core/utils/manifest.py" \
+  --validate-file "$STAGING_DIR/System/.installed-files.manifest" \
+  --require-lifecycle-contracts
 
 SOURCE_COMMIT="$(git rev-parse HEAD)"
 python3 "$REPO_ROOT/scripts/generate-release-catalog.py" \

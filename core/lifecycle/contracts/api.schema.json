@@ -1,0 +1,274 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dex/contracts/lifecycle-api-v1.schema.json",
+  "title": "Dex Frozen Lifecycle Service API v1",
+  "description": "Changing a frozen operation signature or shape requires an API version bump and a compatibility bridge.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["api_version", "x-operations"],
+  "properties": {
+    "api_version": {"const": "1.0.0"},
+    "x-operations": {"type": "object"}
+  },
+  "x-operations": {
+    "build_inventory_and_plan": {
+      "request": {"$ref": "#/$defs/vaultRequest"},
+      "response": {"$ref": "#/$defs/inventoryPlanResponse"}
+    },
+    "build_and_preview_adoption": {
+      "request": {"$ref": "#/$defs/previewRequest"},
+      "response": {"$ref": "#/$defs/previewResponse"}
+    },
+    "execute_approved_adoption": {
+      "request": {"$ref": "#/$defs/executeRequest"},
+      "response": {"$ref": "#/$defs/executeResponse"}
+    },
+    "rewind_adoption_by_receipt": {
+      "request": {"$ref": "#/$defs/rewindRequest"},
+      "response": {"$ref": "#/$defs/rewindResponse"}
+    },
+    "read_lifecycle_state": {
+      "request": {"$ref": "#/$defs/vaultRequest"},
+      "response": {"$ref": "#/$defs/stateResponse"}
+    }
+  },
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "path": {"type": "string", "minLength": 1},
+    "itemId": {"type": "string", "pattern": "^[a-z0-9][a-z0-9.-]*$"},
+    "apiEnvelope": {
+      "type": "object",
+      "required": ["api_version"],
+      "properties": {"api_version": {"const": "1.0.0"}}
+    },
+    "vaultRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["vault_root"],
+      "properties": {"vault_root": {"$ref": "#/$defs/path"}}
+    },
+    "previewRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["vault_root", "release_root", "requested_item_ids"],
+      "properties": {
+        "vault_root": {"$ref": "#/$defs/path"},
+        "release_root": {"$ref": "#/$defs/path"},
+        "requested_item_ids": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/itemId"}
+        }
+      }
+    },
+    "inventory": {
+      "type": "object",
+      "required": ["inventory_version", "complete", "entries", "inventory_sha256"],
+      "properties": {
+        "inventory_version": {"const": 1},
+        "complete": {"type": "boolean"},
+        "entries": {"type": "array"},
+        "inventory_sha256": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "plan": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["plan_version", "release_version", "catalog_sha256", "items", "counts"],
+      "properties": {
+        "plan_version": {"const": 1},
+        "release_version": {"type": "string", "minLength": 1},
+        "catalog_sha256": {"$ref": "#/$defs/sha256"},
+        "items": {"type": "array"},
+        "counts": {"type": "object"}
+      }
+    },
+    "inventoryPlanResponse": {
+      "allOf": [
+        {"$ref": "#/$defs/apiEnvelope"},
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["api_version", "inventory", "plan"],
+          "properties": {
+            "api_version": {"const": "1.0.0"},
+            "inventory": {"$ref": "#/$defs/inventory"},
+            "plan": {"$ref": "#/$defs/plan"}
+          }
+        }
+      ]
+    },
+    "previewWrite": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "new_sha256", "byte_size"],
+      "properties": {
+        "path": {"$ref": "#/$defs/path"},
+        "new_sha256": {"$ref": "#/$defs/sha256"},
+        "byte_size": {"type": "integer", "minimum": 0}
+      }
+    },
+    "preview": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["preview_version", "catalog_sha256", "inventory_sha256", "items"],
+      "properties": {
+        "preview_version": {"const": 1},
+        "catalog_sha256": {"$ref": "#/$defs/sha256"},
+        "inventory_sha256": {"$ref": "#/$defs/sha256"},
+        "items": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["item_id", "item_version", "action", "writes"],
+            "properties": {
+              "item_id": {"$ref": "#/$defs/itemId"},
+              "item_version": {"type": "string", "minLength": 1},
+              "action": {"const": "adopt"},
+              "writes": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/previewWrite"}}
+            }
+          }
+        }
+      }
+    },
+    "previewResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["api_version", "preview", "approval_token"],
+      "properties": {
+        "api_version": {"const": "1.0.0"},
+        "preview": {"$ref": "#/$defs/preview"},
+        "approval_token": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "executeRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["vault_root", "release_root", "preview", "approved_token"],
+      "properties": {
+        "vault_root": {"$ref": "#/$defs/path"},
+        "release_root": {"$ref": "#/$defs/path"},
+        "preview": {"$ref": "#/$defs/preview"},
+        "approved_token": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "receiptFile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["item_id", "path", "sha256", "byte_size"],
+      "properties": {
+        "item_id": {"$ref": "#/$defs/itemId"},
+        "path": {"$ref": "#/$defs/path"},
+        "sha256": {"$ref": "#/$defs/sha256"},
+        "byte_size": {"type": "integer", "minimum": 0}
+      }
+    },
+    "adoptionReceipt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["receipt_version", "items_adopted", "files_written", "transaction_id", "snapshot_ref", "catalog_sha256", "inventory_sha256", "preview_sha256"],
+      "properties": {
+        "receipt_version": {"const": 1},
+        "items_adopted": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/itemId"}},
+        "files_written": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/receiptFile"}},
+        "transaction_id": {"type": "string", "pattern": "^[0-9]{8}T[0-9]{6}-[0-9a-f]{8}$"},
+        "snapshot_ref": {"$ref": "#/$defs/path"},
+        "catalog_sha256": {"$ref": "#/$defs/sha256"},
+        "inventory_sha256": {"$ref": "#/$defs/sha256"},
+        "preview_sha256": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "executeResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["api_version", "receipt", "rewind_acknowledgement_token"],
+      "properties": {
+        "api_version": {"const": "1.0.0"},
+        "receipt": {"$ref": "#/$defs/adoptionReceipt"},
+        "rewind_acknowledgement_token": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "rewindRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["vault_root", "receipt", "acknowledgement_token"],
+      "properties": {
+        "vault_root": {"$ref": "#/$defs/path"},
+        "receipt": {"$ref": "#/$defs/adoptionReceipt"},
+        "acknowledgement_token": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "rewindFile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["item_id", "path", "existed_before_adoption", "restored_sha256", "byte_size", "mode"],
+      "properties": {
+        "item_id": {"$ref": "#/$defs/itemId"},
+        "path": {"$ref": "#/$defs/path"},
+        "existed_before_adoption": {"type": "boolean"},
+        "restored_sha256": {"anyOf": [{"$ref": "#/$defs/sha256"}, {"type": "null"}]},
+        "byte_size": {"anyOf": [{"type": "integer", "minimum": 0}, {"type": "null"}]},
+        "mode": {"anyOf": [{"type": "integer", "minimum": 0, "maximum": 511}, {"type": "null"}]}
+      }
+    },
+    "rewindReceipt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["rewind_receipt_version", "adoption_transaction_id", "rewind_transaction_id", "snapshot_ref", "source_receipt_sha256", "files_restored"],
+      "properties": {
+        "rewind_receipt_version": {"const": 1},
+        "adoption_transaction_id": {"type": "string"},
+        "rewind_transaction_id": {"type": "string"},
+        "snapshot_ref": {"$ref": "#/$defs/path"},
+        "source_receipt_sha256": {"$ref": "#/$defs/sha256"},
+        "files_restored": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/rewindFile"}}
+      }
+    },
+    "rewindResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["api_version", "rewind_receipt"],
+      "properties": {
+        "api_version": {"const": "1.0.0"},
+        "rewind_receipt": {"$ref": "#/$defs/rewindReceipt"}
+      }
+    },
+    "ledgerState": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ledger_version", "install_id", "adopted", "held_back", "last_seq", "last_event_sha256"],
+      "properties": {
+        "ledger_version": {"const": 1},
+        "install_id": {"anyOf": [{"type": "string", "format": "uuid"}, {"type": "null"}]},
+        "adopted": {"type": "object"},
+        "held_back": {"type": "array", "items": {"$ref": "#/$defs/itemId"}},
+        "last_seq": {"type": "integer", "minimum": 0},
+        "last_event_sha256": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "retention": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["total_bytes", "committed_snapshot_count", "warning", "warning_threshold_bytes"],
+      "properties": {
+        "total_bytes": {"type": "integer", "minimum": 0},
+        "committed_snapshot_count": {"type": "integer", "minimum": 0},
+        "warning": {"type": "boolean"},
+        "warning_threshold_bytes": {"type": "integer", "minimum": 1}
+      }
+    },
+    "stateResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["api_version", "ledger_state", "retention"],
+      "properties": {
+        "api_version": {"const": "1.0.0"},
+        "ledger_state": {"$ref": "#/$defs/ledgerState"},
+        "retention": {"$ref": "#/$defs/retention"}
+      }
+    }
+  }
+}

@@ -102,7 +102,14 @@ def _source_items(release_root: Path, portable_contract: object) -> list[dict[st
 
     items: list[dict[str, object]] = []
     seen_item_sources: dict[str, Path] = {}
-    for source_path in sorted(source_dir.glob("*.json")):
+    # Preserve arbitrary publisher fragment names while excluding the one
+    # shipped metadata document that has its own closed bridge model.
+    sources = (
+        path
+        for path in source_dir.glob("*.json")
+        if path.name != "bridge-release.json"
+    )
+    for source_path in sorted(sources):
         raw = _mapping(_closed_json(source_path), context=str(source_path))
         _exact_fields(
             raw,
