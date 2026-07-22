@@ -30,6 +30,7 @@
 .claude/hooks/tests/context-injectors.test.cjs
 .claude/hooks/tests/data-safety-instructions.test.cjs
 .claude/hooks/tests/hook-harness.test.cjs
+.claude/hooks/tests/input-contract.test.cjs
 .claude/hooks/tests/integration-concierge.test.cjs
 .claude/hooks/tests/post-meeting-person-update.test.cjs
 .claude/hooks/tests/safety-guard-settings.test.cjs
@@ -1081,7 +1082,4 @@ scripts/security-allowlist.txt
 scripts/security-gate.sh
 scripts/security-scan.py
 scripts/verify-distribution.sh
-staging/vault-fixes/README.md
-staging/vault-fixes/delight-capture.cjs
-staging/vault-fixes/test-delight-capture.cjs
 uv.lock
