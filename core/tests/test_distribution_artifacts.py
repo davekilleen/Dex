@@ -56,13 +56,20 @@ RELEASE_BUILD_INPUTS = (
     "core/migrations/preserve_local_only_paths.py",
     "core/migrations/tracked-ignored-policy.yaml",
     "core/lifecycle/catalog/README.md",
+    "core/lifecycle/catalog/bridge-release.json",
+    "core/lifecycle/bridge.py",
+    "core/lifecycle/contracts/api.schema.json",
+    "core/lifecycle/service.py",
     "core/lifecycle/schemas/release-catalog-v1.schema.json",
     "core/portable_contract.py",
+    "core/transaction/engine.py",
+    "core/transaction/journal.py",
     "core/utils/tracked_ignored.py",
     "core/utils/manifest.py",
     "core/utils/update_verifier.py",
     "core/utils/smoke.py",
     "packages/dex-contracts/dist/release-catalog-v1.schema.json",
+    "packages/dex-contracts/dist/portable-vault.contract.json",
     "scripts/build-release.sh",
     "scripts/build-vault-bundle.sh",
     "scripts/check-catalog-coverage.py",
@@ -99,6 +106,22 @@ def _archive_members() -> set[str]:
     )
     with tarfile.open(fileobj=io.BytesIO(result.stdout), mode="r:") as archive:
         return set(archive.getnames())
+
+
+def test_release_builders_gate_frozen_lifecycle_contract_artifacts() -> None:
+    from core.utils.manifest import REQUIRED_LIFECYCLE_RELEASE_PATHS
+
+    assert REQUIRED_LIFECYCLE_RELEASE_PATHS == (
+        "core/lifecycle/bridge.py",
+        "core/lifecycle/catalog/bridge-release.json",
+        "core/lifecycle/contracts/api.schema.json",
+        "core/lifecycle/service.py",
+        "core/portable_contract.py",
+        "packages/dex-contracts/dist/portable-vault.contract.json",
+    )
+    for script_name in ("build-release.sh", "build-vault-bundle.sh"):
+        script = (REPO_ROOT / "scripts" / script_name).read_text(encoding="utf-8")
+        assert "--require-lifecycle-contracts" in script
 
 
 def test_git_archive_keeps_skill_scripts_but_strips_top_level_scripts() -> None:
@@ -357,6 +380,11 @@ def test_release_branch_strips_dev_files_and_untracks_v1_local_only_files(tmp_pa
     assert "System/.installed-files.manifest" in members
     assert "System/.release-catalog.json" in members
     assert "System/.release-evidence-profile.json" in members
+    assert "core/lifecycle/catalog/bridge-release.json" in members
+    assert "core/lifecycle/contracts/api.schema.json" in members
+    assert "core/lifecycle/service.py" in members
+    assert "core/lifecycle/bridge.py" in members
+    assert "System/.dex/lifecycle/activation.json" not in members
     assert "System/.local-only-preservation-transition.json" in members
     assert "core/migrations/preserve_local_only_paths.py" in members
     assert "core/migrations/tracked-ignored-policy.yaml" in members
@@ -375,8 +403,14 @@ def test_release_branch_strips_dev_files_and_untracks_v1_local_only_files(tmp_pa
     assert manifest == sorted(manifest)
     assert set(manifest) == members
     assert "core/tests/test_distribution_artifacts.py" not in manifest
+    assert "core/lifecycle/catalog/bridge-release.json" in manifest
+    assert "core/lifecycle/contracts/api.schema.json" in manifest
+    assert "System/.dex/lifecycle/activation.json" not in manifest
     catalog = _git_json(clone, "release:System/.release-catalog.json")
     package = _git_json(clone, "release:package.json")
+    bridge_release = _git_json(
+        clone, "release:core/lifecycle/catalog/bridge-release.json"
+    )
     source_commit = subprocess.run(
         ["git", "rev-parse", "release^"],
         cwd=clone,
@@ -399,6 +433,11 @@ def test_release_branch_strips_dev_files_and_untracks_v1_local_only_files(tmp_pa
     expected_item_ids = sorted(item["id"] for item in official_registry["items"])
     assert sorted(item["id"] for item in catalog["items"]) == expected_item_ids
     assert catalog["release"]["version"] == package["version"]
+    assert bridge_release == json.loads(
+        (REPO_ROOT / "core/lifecycle/catalog/bridge-release.json").read_text(
+            encoding="utf-8"
+        )
+    )
     assert catalog["release"]["source_commit"] == source_commit
     assert catalog["release"]["manifest"]["sha256"] == hashlib.sha256(manifest_bytes).hexdigest()
     profile = json.loads(
@@ -1326,11 +1365,33 @@ def test_vault_bundle_tree_manifest_and_archive_contain_no_tau(tmp_path: Path) -
         manifest_member = archive.extractfile("./System/.installed-files.manifest")
         assert manifest_member is not None
         manifest = manifest_member.read().decode("utf-8").splitlines()
+        assert "core/lifecycle/catalog/bridge-release.json" in {
+            member.removeprefix("./") for member in members
+        }
+        assert "core/lifecycle/contracts/api.schema.json" in {
+            member.removeprefix("./") for member in members
+        }
+        assert "System/.dex/lifecycle/activation.json" not in {
+            member.removeprefix("./") for member in members
+        }
+        assert "core/lifecycle/catalog/bridge-release.json" in manifest
+        assert "core/lifecycle/contracts/api.schema.json" in manifest
+        assert "System/.dex/lifecycle/activation.json" not in manifest
+        bridge_member = archive.extractfile(
+            "./core/lifecycle/catalog/bridge-release.json"
+        )
+        assert bridge_member is not None
+        bridge_release = json.loads(bridge_member.read())
     _assert_tau_absent(manifest)
     archive_files = _tar_files(archive_path)
     _assert_tau_absent_from_files(archive_files)
     archive_paths = {path.removeprefix("./") for path, _ in archive_files}
     assert ".gitattributes" not in archive_paths
+    assert bridge_release == json.loads(
+        (REPO_ROOT / "core/lifecycle/catalog/bridge-release.json").read_text(
+            encoding="utf-8"
+        )
+    )
     assert not any(path.startswith("core/tests/") for path in archive_paths)
     assert not any(path.startswith("scripts/") for path in archive_paths)
     tau_check = _run_tau_check(clone, "--archive", str(archive_path))

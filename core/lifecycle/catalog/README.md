@@ -1,8 +1,9 @@
 # Release catalog item declarations
 
 This is the publisher-owned source of truth for lifecycle catalog items. The
-release builder reads every `*.json` file here in filename order and emits the
-canonical `System/.release-catalog.json` through the B1 model and schema.
+release builder reads every JSON file here in filename order, except the
+separately modeled `bridge-release.json`, and emits the canonical
+`System/.release-catalog.json` through the B1 model and schema.
 
 Each source file is a closed document:
 

@@ -36,7 +36,7 @@ from pathlib import Path
 
 from core import portable_contract
 from core.path_safety import unsafe_existing_parent
-from core.transaction.journal import Journal, JournalCorruptError
+from core.transaction.journal import Journal, JournalCorruptError, JournalSchemaError
 from core.transaction.lock import acquire_owned_lock
 from core.transaction.snapshot import Snapshot
 
@@ -501,8 +501,12 @@ class Transaction:
             # others: each is handled independently and a corrupt journal is
             # quarantined (best-effort restore inside rollback), not fatal.
             try:
+                rollback_only = False
                 try:
                     events = {entry.event for entry in tx.journal.read()}
+                except JournalSchemaError:
+                    events = None
+                    rollback_only = True
                 except JournalCorruptError:
                     events = None  # unreadable — rollback handles best-effort
                 if events is not None:
@@ -518,6 +522,8 @@ class Transaction:
                     tx._release = None  # rollback() must not double-release
                     outcome = tx.rollback()
                     outcome["resumed"] = True
+                    if rollback_only:
+                        outcome["rollback_only"] = True
                     outcomes.append(outcome)
                 finally:
                     lock_release()

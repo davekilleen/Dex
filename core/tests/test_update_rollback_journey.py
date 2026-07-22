@@ -12,7 +12,12 @@ from pathlib import Path
 
 import yaml
 
+from core.lifecycle import engine as lifecycle_engine
+from core.lifecycle import service as lifecycle_service
+from core.lifecycle.bridge import ACTIVATION_RELATIVE
 from core.migrations import preserve_local_only_paths as preservation
+from core.tests.test_adoption_transaction import _setup as setup_adoption_release
+from core.tests.test_lifecycle_bridge import _write_bridge_release
 from core.utils.manifest import DEFAULT_MANIFEST, generate_manifest, write_manifest
 from core.utils.tracked_ignored import load_exact_policy, load_transition
 
@@ -56,6 +61,43 @@ def test_update_skill_routes_split_topology_to_transaction_updater_without_merge
     assert "System/.dex/mutation.lock" in split
     assert "git merge" not in split
     assert "Combined topology continues to Step 3" in split
+
+
+def test_legacy_updater_can_deliver_bridge_release_then_hand_off_without_invoking_engine(
+    tmp_path: Path, monkeypatch
+) -> None:
+    (tmp_path / "release-fixture").mkdir()
+    release, _document, _catalog, _inventory, _plan, _loader = setup_adoption_release(
+        tmp_path / "release-fixture", item_ids=("alpha",)
+    )
+    _write_bridge_release(release)
+    vault = tmp_path / "old-updated-vault"
+    delivered = (
+        "System/.installed-files.manifest",
+        "System/.release-catalog.json",
+        ".claude/skills/alpha/SKILL.md",
+        "core/lifecycle/catalog/bridge-release.json",
+    )
+    calls: list[str] = []
+
+    def forbidden_execute(*_args, **_kwargs):
+        calls.append("execute_adoption")
+        raise AssertionError("the legacy delivery phase invoked the lifecycle engine")
+
+    monkeypatch.setattr(lifecycle_engine, "execute_adoption", forbidden_execute)
+    for relative in delivered:
+        destination = vault / relative
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(release / relative, destination)
+
+    assert calls == []
+    assert not (vault / ACTIVATION_RELATIVE).exists()
+
+    response = lifecycle_service.build_inventory_and_plan(vault)
+
+    assert response["api_version"] == lifecycle_service.api_version
+    assert (vault / ACTIVATION_RELATIVE).is_file()
+    assert calls == []
 
 
 def test_update_and_duplicated_rollback_flows_recognize_both_baselines() -> None:

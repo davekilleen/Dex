@@ -22,11 +22,21 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
+PREVIOUS_SCHEMA_VERSION = 1
+RESUMABLE_SCHEMA_VERSIONS = frozenset({PREVIOUS_SCHEMA_VERSION, SCHEMA_VERSION})
 
 
 class JournalCorruptError(RuntimeError):
     """The journal has damage that cannot be attributed to a torn tail."""
+
+
+class JournalSchemaError(JournalCorruptError):
+    """The journal is intact but outside the current+previous resume window."""
+
+    def __init__(self, schema_version: object, path: Path) -> None:
+        self.schema_version = schema_version
+        super().__init__(f"journal has an unsupported schema {schema_version!r}: {path}")
 
 
 @dataclass(frozen=True)
@@ -168,10 +178,9 @@ class Journal:
             raise JournalCorruptError(
                 f"journal line {index + 1} is not an object: {self.path}"
             )
-        if record.get("schema_version") != SCHEMA_VERSION:
-            raise JournalCorruptError(
-                f"journal line {index + 1} has an unsupported schema: {self.path}"
-            )
+        schema_version = record.get("schema_version")
+        if type(schema_version) is not int or schema_version not in RESUMABLE_SCHEMA_VERSIONS:
+            raise JournalSchemaError(schema_version, self.path)
         if record.get("sha") != _entry_sha(record):
             raise JournalCorruptError(
                 f"journal line {index + 1} fails its integrity hash: {self.path}"

@@ -267,6 +267,8 @@ RULES: tuple[Rule, ...] = (
        "post-commit lifecycle receipts; local runtime evidence, never shipped"),
     _r("runtime-lifecycle-ledger", "System/.dex/ledger", "dir", "runtime",
        "immutable local lifecycle events and rebuildable state; never shipped or updated"),
+    _r("runtime-lifecycle-activation", "System/.dex/lifecycle/activation.json", "file", "runtime",
+       "old-engine bridge baseline marker; created locally on first lifecycle-engine run, never shipped"),
     _r("runtime-dex-dir", "System/.dex", "dir", "runtime"),
     _r("runtime-onboarding", "System/.onboarding", "dir", "runtime"),
     _r("runtime-onboarding-marker", "System/.onboarding-complete", "file", "runtime"),

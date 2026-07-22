@@ -479,6 +479,13 @@
       "note": "immutable local lifecycle events and rebuildable state; never shipped or updated"
     },
     {
+      "id": "runtime-lifecycle-activation",
+      "path": "System/.dex/lifecycle/activation.json",
+      "kind": "file",
+      "ownership": "runtime",
+      "note": "old-engine bridge baseline marker; created locally on first lifecycle-engine run, never shipped"
+    },
+    {
       "id": "generated-manifest",
       "path": "System/.installed-files.manifest",
       "kind": "file",
