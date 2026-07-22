@@ -10,6 +10,10 @@
           {
             "type": "command",
             "command": "python3 \"$CLAUDE_PROJECT_DIR/core/utils/update_verifier.py\" --vault \"$CLAUDE_PROJECT_DIR\" --session-start"
+          },
+          {
+            "type": "command",
+            "command": "bash .claude/hooks/dex-core-orientation.sh"
           }
         ]
       }

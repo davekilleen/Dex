@@ -31,6 +31,7 @@ core/migrations/tests/
 CONTRIBUTING.md
 DISTRIBUTION_READY.md
 scripts/
+.claude/skills/dex-orient/
 
 # Issue tracking (worktree artifacts)
 .ao-issue.md
