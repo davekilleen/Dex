@@ -1,6 +1,6 @@
 <!-- GENERATED FILE — DO NOT EDIT BY HAND. -->
 <!-- Generator: scripts/generate-architecture-inventory.py -->
-<!-- Content SHA-256: dec7170bf1b86c67fd0fdfb2afcc9610cd2d6674728718f268d808b6d9da9307 -->
+<!-- Content SHA-256: f59ab7941080bd2916ddeb884c8c98086a31ec11d3ef3971d9a03d181c3e103d -->
 
 # Architecture Inventory
 
@@ -24,7 +24,7 @@ This inventory is derived only from repository code and shipped skill files.
 
 ## Skills
 
-**Skill count:** 68<br>
+**Skill count:** 69<br>
 **Discoverability-risk count:** 53
 
 A description has a trigger when its frontmatter contains the word `when` or `whenever` (case-insensitive). Length is measured in characters.
@@ -61,6 +61,7 @@ A description has a trigger when its frontmatter contains the word `when` or `wh
 | `dex-improve` | `.claude/skills/dex-improve/SKILL.md` | Workshop an improvement idea into implementation plan | 53 | **discoverability-risk** |
 | `dex-level-up` | `.claude/skills/dex-level-up/SKILL.md` | Discover unused Dex features based on your usage patterns | 57 | **discoverability-risk** |
 | `dex-obsidian-setup` | `.claude/skills/dex-obsidian-setup/SKILL.md` | Enable Obsidian integration and migrate existing vault to wiki links | 68 | **discoverability-risk** |
+| `dex-orient` | `.claude/skills/dex-orient/SKILL.md` | Orient in the Dex Core codebase: prints the released version, what's merged-but-not-released, and where the architecture map + inventory live. Use at the start of any dex-core development or investigation, or whenever you're unsure what's shipped vs built-locally vs prototype. | 277 | when |
 | `dex-rollback` | `.claude/skills/dex-rollback/SKILL.md` | Rewind one receipt-backed Dex adoption through the frozen lifecycle service | 75 | **discoverability-risk** |
 | `dex-update` | `.claude/skills/dex-update/SKILL.md` | Preview and safely adopt Dex updates through the frozen lifecycle service | 73 | **discoverability-risk** |
 | `dex-whats-new` | `.claude/skills/dex-whats-new/SKILL.md` | Check for system improvements (learnings + Claude updates) | 58 | **discoverability-risk** |
