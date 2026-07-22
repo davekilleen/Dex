@@ -48,7 +48,6 @@ LIVE_AI_GUIDANCE = (
 )
 
 LIVE_INTEGRATION_GUIDANCE = (
-    ".claude/skills/dex-update/SKILL.md",
     ".claude/skills/README.md",
     ".claude/skills/integrations/README.md",
     ".claude/skills/integrations/integrate-notion.md",

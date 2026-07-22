@@ -486,6 +486,13 @@
       "note": "old-engine bridge baseline marker; created locally on first lifecycle-engine run, never shipped"
     },
     {
+      "id": "generated-doctor-last-run",
+      "path": "System/.doctor-last-run.json",
+      "kind": "file",
+      "ownership": "generated",
+      "note": "Doctor's rendered cache; every refresh is transaction-owned"
+    },
+    {
       "id": "generated-manifest",
       "path": "System/.installed-files.manifest",
       "kind": "file",
@@ -522,6 +529,13 @@
       "path": "System/.onboarding-complete",
       "kind": "file",
       "ownership": "runtime"
+    },
+    {
+      "id": "runtime-onboarding-session",
+      "path": "System/.onboarding-session.json",
+      "kind": "file",
+      "ownership": "runtime",
+      "note": "pre-engine onboarding scratch; deleted by receipt-declared finalization"
     },
     {
       "id": "generated-release-catalog",

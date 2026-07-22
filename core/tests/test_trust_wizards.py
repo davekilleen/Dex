@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from core import portable_contract
+
 ROOT = Path(__file__).resolve().parents[2]
 
 
@@ -39,16 +41,24 @@ def test_one_off_consent_claims_are_honest_about_same_user_programs() -> None:
 
 
 def test_dex_update_unconditionally_rejects_an_upstream_trust_registry() -> None:
+    trust_registry = "System/trusted-mcps.yaml"
+    resolution = portable_contract.resolve(trust_registry)
+
+    assert resolution.ownership == "vault"
+    assert resolution.rule_id == "vault-trusted-mcps"
+    for exists in (False, True):
+        verdict = portable_contract.update_write_verdict(
+            trust_registry, exists=exists
+        )
+        assert verdict.allowed is False
+        assert verdict.action == "never"
+
     text = (ROOT / ".claude/skills/dex-update/SKILL.md").read_text(encoding="utf-8")
 
-    capture = text.index("protect_trust_registry.py\" capture")
-    merge = text.index("git merge upstream/release --no-edit")
-    restore = text.index("protect_trust_registry.py\" restore")
-
-    assert capture < merge < restore
-    assert "whether the merge was clean or conflicted" in text
-    assert "Upstream may **never** supply" in text
-    assert "removes it from the Git index and warns" in text
+    assert "Every lifecycle operation goes through `core.lifecycle.service`" in text
+    assert "an unsafe path" in text
+    assert "refreshed by the authorized lifecycle plan" in text
+    assert "The lifecycle service owns every mutation." in text
 
 
 def test_create_skill_runs_frontmatter_validator_before_confirmation() -> None:
