@@ -694,10 +694,13 @@ core/integrations/post_update_check.py
 core/integrations/slack/setup.py
 core/integrations/task_sync.py
 core/lifecycle/__init__.py
+core/lifecycle/bridge.py
 core/lifecycle/catalog.py
 core/lifecycle/catalog/README.md
+core/lifecycle/catalog/bridge-release.json
 core/lifecycle/catalog/official-capabilities.json
 core/lifecycle/cli.py
+core/lifecycle/contracts/api.schema.json
 core/lifecycle/customizations.py
 core/lifecycle/engine.py
 core/lifecycle/filesystem.py
@@ -713,6 +716,7 @@ core/lifecycle/retention.py
 core/lifecycle/runtime_evidence.py
 core/lifecycle/schemas/release-catalog-v1.schema.json
 core/lifecycle/secrets.py
+core/lifecycle/service.py
 core/lifecycle/sqlite_snapshot.py
 core/mcp/CAREER_MCP_README.md
 core/mcp/analytics_helper.py
@@ -905,7 +909,11 @@ core/tests/test_instructed_tools_gate.py
 core/tests/test_instruction_honesty.py
 core/tests/test_integration_credentials.py
 core/tests/test_large_vault_performance.py
+core/tests/test_lifecycle_bridge.py
+core/tests/test_lifecycle_official_capabilities.py
+core/tests/test_lifecycle_service_contract.py
 core/tests/test_local_git.py
+core/tests/test_manifest_lifecycle_paths.py
 core/tests/test_manual_note_match.py
 core/tests/test_mcp_servers.py
 core/tests/test_mcp_stdio_startup.py
