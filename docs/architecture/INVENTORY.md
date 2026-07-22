@@ -1,6 +1,6 @@
 <!-- GENERATED FILE — DO NOT EDIT BY HAND. -->
 <!-- Generator: scripts/generate-architecture-inventory.py -->
-<!-- Content SHA-256: f59ab7941080bd2916ddeb884c8c98086a31ec11d3ef3971d9a03d181c3e103d -->
+<!-- Content SHA-256: ebc3c4465ca7835ad36c8fc2add606b5cf0501f2c3478715fb185bd5b56c96d0 -->
 
 # Architecture Inventory
 
@@ -24,7 +24,7 @@ This inventory is derived only from repository code and shipped skill files.
 
 ## Skills
 
-**Skill count:** 69<br>
+**Skill count:** 70<br>
 **Discoverability-risk count:** 53
 
 A description has a trigger when its frontmatter contains the word `when` or `whenever` (case-insensitive). Length is measured in characters.
@@ -91,6 +91,7 @@ A description has a trigger when its frontmatter contains the word `when` or `wh
 | `save-insight` | `.claude/skills/save-insight/SKILL.md` | Capture learnings from completed work for future reference | 58 | **discoverability-risk** |
 | `scrape` | `.claude/skills/scrape/SKILL.md` | Scrape web pages using Scrapling MCP — stealth fetching, anti-bot bypass, CSS selectors. No API key needed. | 107 | **discoverability-risk** |
 | `setup` | `.claude/skills/setup/SKILL.md` | Initial Dex system setup and onboarding | 39 | **discoverability-risk** |
+| `skill-score` | `.claude/skills/skill-score/SKILL.md` | Grade a Dex skill against the shape-aware quality rubric and report a ship/revise/no verdict with the exact fixes. Use when you finish writing or editing a skill, when create-skill hands off a new package, before shipping a first-party skill, or when the user asks "is this skill any good / will it fire / score my skill". Also use proactively right after any SKILL.md is created or its description changes. Not for authoring a new skill from scratch (use create-skill) or fixing broken YAML frontmatter alone (create-skill's validator does that); skill-score judges architecture and routing, not just format. | 609 | when |
 | `things-setup` | `.claude/skills/things-setup/SKILL.md` | Connect Things 3 so Dex can read and update your Things tasks on request | 72 | **discoverability-risk** |
 | `todoist-setup` | `.claude/skills/todoist-setup/SKILL.md` | Connect Todoist so Dex can read and update your Todoist tasks on request | 72 | **discoverability-risk** |
 | `trello-setup` | `.claude/skills/trello-setup/SKILL.md` | Connect Trello so Dex can read your boards and manage cards on request | 70 | **discoverability-risk** |
