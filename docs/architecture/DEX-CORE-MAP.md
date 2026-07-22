@@ -1,6 +1,6 @@
 # Dex Core — Architecture Map
 
-> **Purpose.** The authoritative, human-readable "how Dex Core hangs together" doc. Load this before working in `dex-core` so you start from what actually exists, not stale assumptions. Repo: `/Users/dave.killeen/dex/product/dex-core`.
+> **Purpose.** The authoritative, human-readable "how Dex Core hangs together" doc. Load this before working in the `dex-core` repo so you start from what actually exists, not stale assumptions.
 >
 > **Status vocabulary.** `SHIPPED` = in a released version tag. `LOCAL` = merged on `main`, not yet in a release tag. `PROTOTYPE` = built, not verified against live/real use. `PLANNED` = designed, not built.
 >
