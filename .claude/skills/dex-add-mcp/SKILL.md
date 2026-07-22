@@ -1,6 +1,6 @@
 ---
 name: dex-add-mcp
-description: Add an MCP server using Dex-safe scope (user by default)
+description: "Add a known MCP server to config using Dex-safe user scope. Use when the user has server details in hand and says 'add this MCP', 'register this server'. Not for discovering/installing from a marketplace; use `integrate-mcp`. Not for building one; use `create-mcp`."
 ---
 
 ## Purpose

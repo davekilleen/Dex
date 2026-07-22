@@ -1,6 +1,6 @@
 ---
 name: todoist-setup
-description: Connect Todoist so Dex can read and update your Todoist tasks on request
+description: "Connect Todoist so Dex reads and updates your Todoist tasks two ways. Use when the user says 'I use Todoist', 'sync Todoist', or pastes a todoist.com link. Not for Things 3 (`things-setup`) or Trello (`trello-setup`); not for Jira tickets (`atlassian-setup`)."
 integration:
   id: todoist
   name: Todoist

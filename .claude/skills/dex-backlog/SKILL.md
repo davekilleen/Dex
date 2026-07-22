@@ -1,6 +1,6 @@
 ---
 name: dex-backlog
-description: AI-powered ranking of Dex system improvement ideas
+description: "Show the AI-ranked backlog of Dex system-improvement ideas. Use when the user says 'show my Dex ideas', 'what's in the backlog', 'what should we build next'. Not for workshopping one idea into a plan; use `dex-improve`. Not for discovering existing features; use `dex-level-up`."
 ---
 
 ## What This Command Does

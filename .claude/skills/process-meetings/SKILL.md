@@ -1,6 +1,6 @@
 ---
 name: process-meetings
-description: Process synced Granola meetings to update person pages, extract tasks, and organize meeting notes
+description: "Turn synced meetings into updated person pages, extracted tasks and organized notes. Use when the user says 'process my meetings', 'catch up my notes', or after Granola/Otter syncs. Also use proactively when unprocessed meetings exist. Not for prepping an upcoming meeting; use `meeting-prep`."
 model_hint: balanced
 context: fork
 hooks:

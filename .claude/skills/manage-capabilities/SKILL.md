@@ -1,6 +1,6 @@
 ---
 name: manage-capabilities
-description: Turn optional Dex rooms on or off without deleting user content
+description: "Turn optional Dex rooms/features on or off without deleting any content. Use when the user says 'turn off X', 'enable the career room', 'hide a feature I don't use'. Not for diagnosing breakage; use `dex-doctor`. Not for a full role restructure; use `reset`."
 disable-model-invocation: true
 ---
 

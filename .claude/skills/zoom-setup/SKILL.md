@@ -1,6 +1,6 @@
 ---
 name: zoom-setup
-description: Connect Zoom to Dex for meeting recordings, scheduling, and transcript context
+description: "Connect Zoom for meeting recordings, scheduling and transcript context. Use when the user says 'connect Zoom', 'pull my Zoom recordings'. Not for Granola-sourced notes; use `granola-setup`. Not for Teams; use `ms-teams-setup`."
 integration:
   id: zoom
   name: Zoom

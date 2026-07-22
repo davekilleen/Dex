@@ -1,6 +1,6 @@
 ---
 name: dex-update
-description: Preview and safely adopt Dex updates through the frozen lifecycle service
+description: "Preview and safely adopt a Dex update through the receipt-backed lifecycle (look → back up → apply → verify → rewindable). Use when the user says 'update Dex', 'install the new version', or a release notice appeared. Not for undoing an update; use `dex-rollback`. Not just seeing what changed; use `dex-whats-new`."
 ---
 
 # Dex Update

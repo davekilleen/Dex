@@ -1,6 +1,6 @@
 ---
 name: prompt-improver
-description: Transform vague prompts into rich, structured prompts with automatic fallback
+description: "Rewrite a vague prompt into a rich, structured one, with automatic fallback. Use when the user says 'improve this prompt', 'make this prompt better', or hands over a thin instruction. Not for creating a reusable skill; use `create-skill`."
 ---
 
 ## Purpose

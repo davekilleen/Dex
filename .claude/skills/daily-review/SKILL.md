@@ -1,6 +1,6 @@
 ---
 name: daily-review
-description: End of day review with learning capture, daily plan completion tracking, and meeting follow-up surfacing.
+description: "Close out the day: what got done vs planned, meeting follow-ups, learnings, and tomorrow's focus. Use when the user says 'review my day', 'wrap up', 'end of day', or it's evening. Also use proactively when the day's work is clearly done. Not for setting up the morning; use `daily-plan`."
 context: fork
 ---
 
