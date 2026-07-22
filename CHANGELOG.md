@@ -7,6 +7,21 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.68.0] - Every way Dex changes your vault now goes through one safe door (2026-07-22)
+
+For months, different parts of Dex changed your files in different ways — installing, updating, undoing, fixing itself. This release routes every one of them through the single protected engine built over the last week, and gives you a whole shelf of new role-specific tools you can turn on safely.
+
+**What this changes for you:**
+
+* **One safe door for every change.** Installing Dex, updating it, adding a feature, letting Dex Doctor fix something, or undoing an update — all of it now goes through the same engine that shows you exactly what will change, backs it up first, and can undo it. There are no longer any side paths that quietly edit your files a different way.
+* **New tools, turned on the safe way.** Two dozen role-specific tools that shipped quietly inside Dex — for sales, product, and engineering work (things like account planning, roadmap reviews, and tracking technical debt) — can now be switched on through `/dex-level-up`. Turning one on shows you exactly what it adds and can be undone, and it will never overwrite a tool you've customized yourself.
+* **Turning on a feature can never clobber your own version.** If you've already made your own tool with the same name, Dex sees the difference and refuses rather than replacing your work — it asks you instead.
+* **A smooth bridge from older versions.** If you're updating from an earlier Dex, this release carries you onto the new safe engine cleanly, resuming safely even if a previous update was interrupted.
+
+This is the release where the "updates that can't hurt your files" promise becomes true everywhere, not just in the newest parts. Every piece passed an independent security review before shipping.
+
+---
+
 ## [1.67.0] - Three new leadership tools, and a full, honest history of every change Dex makes (2026-07-22)
 
 The safe-update machinery from the last two releases now has a face you can actually use — plus the first three tools built to run through it end to end.
