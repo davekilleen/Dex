@@ -18,6 +18,7 @@ Each source file is a closed document:
       "files": [
         {
           "path": ".claude/skills/decision-log/SKILL.md",
+          "source_path": ".claude/skills/decision-log/SKILL.md",
           "sha256": "<exact lowercase sha256>",
           "byte_size": 1234
         }
@@ -29,8 +30,12 @@ Each source file is a closed document:
 }
 ```
 
-The publisher declaration pins each file's exact hash and byte size. The
-generator rejects stale pins, derives ownership classes and rewind tokens from
-the exact release tree, and validates the emitted items through the v1 model
-and schema. The first official item declarations live in
+`path` is the active transaction target. Optional `source_path` is the
+release-shipped payload whose exact bytes adoption writes there; when omitted,
+it defaults to `path`. The paths are identical for files that ship active,
+while optional capabilities can remain dormant until an approved adoption. The
+publisher declaration pins each payload's exact hash and byte size. The
+generator rejects stale pins, derives target ownership classes and rewind
+tokens from the exact release tree, and validates the emitted items through the
+v1 model and schema. The first official item declarations live in
 `official-capabilities.json`.

@@ -20,7 +20,7 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 
 from core import portable_contract
-from core.lifecycle.catalog import load_catalog
+from core.lifecycle.catalog import load_catalog, load_catalog_payload_sources
 from core.lifecycle.engine import (
     AdoptionReceipt,
     execute_adoption,
@@ -230,9 +230,11 @@ def _inventory_and_plan_models(vault_root: str | Path):
 
 def _release_payload_loader(release_root: str | Path):
     root = Path(release_root)
+    sources = load_catalog_payload_sources(root)
 
     def load(relative: str) -> bytes:
-        return bounded_read(root, relative)
+        mapping = sources.get(relative)
+        return bounded_read(root, relative if mapping is None else mapping.source_path)
 
     return load
 

@@ -5,15 +5,21 @@ from __future__ import annotations
 import copy
 import hashlib
 import json
+import posixpath
 import re
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Mapping
 
+from core.lifecycle.filesystem import FilesystemInspectionError, bounded_read
 from core.lifecycle.model import CatalogError, CatalogModelError, ReleaseCatalog
 
 SCHEMA_PATH = Path(__file__).with_name("schemas") / "release-catalog-v1.schema.json"
 SCHEMA_DRAFT = "https://json-schema.org/draft/2020-12/schema"
 SCHEMA_ID = "https://dex/contracts/release-catalog-v1.schema.json"
+CATALOG_SOURCE_DIR = Path("core/lifecycle/catalog")
+BRIDGE_SOURCE_NAME = "bridge-release.json"
+MAX_CATALOG_SOURCE_BYTES = 4 * 1024 * 1024
 _SUPPORTED_SCHEMA_KEYWORDS = {
     "$id",
     "$schema",
@@ -43,6 +49,15 @@ class CatalogParseError(CatalogError):
 
 class CatalogIdentityError(CatalogError):
     """A hash or release identity cannot be proved."""
+
+
+@dataclass(frozen=True)
+class CatalogPayloadSource:
+    """Publisher-only mapping from an active catalog target to shipped bytes."""
+
+    source_path: str
+    sha256: str
+    byte_size: int
 
 
 def _fail(error_type: type[CatalogError], message: str) -> None:
@@ -183,6 +198,109 @@ def _canonical_bytes(value: object) -> bytes:
         _fail(CatalogParseError, f"catalog cannot be serialized canonically: {error}")
 
 
+def _catalog_source_relative_path(value: object, context: str) -> str:
+    if not isinstance(value, str) or not value or "\\" in value:
+        _fail(CatalogParseError, f"{context} is not a canonical release-relative path")
+    normalized = posixpath.normpath(value)
+    if (
+        normalized != value
+        or normalized in ("", ".", "..")
+        or normalized.startswith("/")
+        or normalized.startswith("../")
+    ):
+        _fail(CatalogParseError, f"{context} is not a canonical release-relative path")
+    return value
+
+
+def load_catalog_payload_sources(release_root: Path) -> dict[str, CatalogPayloadSource]:
+    """Load every publisher fragment using the same source/target rules as generation."""
+    root = Path(release_root).resolve()
+    source_dir = root / CATALOG_SOURCE_DIR
+    if not source_dir.exists():
+        return {}
+    if source_dir.is_symlink() or not source_dir.is_dir():
+        _fail(CatalogParseError, "publisher catalog source directory is missing or unsafe")
+    sources: dict[str, CatalogPayloadSource] = {}
+    for source_file in sorted(source_dir.glob("*.json")):
+        if source_file.name == BRIDGE_SOURCE_NAME:
+            continue
+        if source_file.is_symlink() or not source_file.is_file():
+            _fail(CatalogParseError, f"catalog source {source_file.name} is unsafe")
+        relative_source = source_file.relative_to(root).as_posix()
+        try:
+            raw_bytes = bounded_read(
+                root,
+                relative_source,
+                max_bytes=MAX_CATALOG_SOURCE_BYTES,
+            )
+        except FilesystemInspectionError as error:
+            _fail(CatalogParseError, f"cannot read catalog source {source_file.name}: {error}")
+        try:
+            raw_text = raw_bytes.decode("utf-8")
+        except UnicodeDecodeError as error:
+            _fail(CatalogParseError, f"catalog source {source_file.name} is not UTF-8: {error}")
+        raw = _strict_json_loads(
+            raw_text,
+            error_type=CatalogParseError,
+            context=f"catalog source {source_file.name}",
+        )
+        if (
+            not isinstance(raw, Mapping)
+            or set(raw) != {"catalog_source_version", "items"}
+            or raw.get("catalog_source_version") != 1
+            or not isinstance(raw.get("items"), list)
+        ):
+            _fail(CatalogParseError, f"catalog source {source_file.name} has an unsupported shape")
+        for item in raw["items"]:
+            if not isinstance(item, Mapping) or not isinstance(item.get("files"), list):
+                _fail(CatalogParseError, f"catalog source {source_file.name} has a malformed item")
+            for declared_file in item["files"]:
+                if not isinstance(declared_file, Mapping):
+                    _fail(
+                        CatalogParseError,
+                        f"catalog source {source_file.name} has a malformed file",
+                    )
+                file_fields = set(declared_file)
+                if file_fields not in (
+                    {"path", "sha256", "byte_size"},
+                    {"path", "source_path", "sha256", "byte_size"},
+                ):
+                    _fail(
+                        CatalogParseError,
+                        f"catalog source {source_file.name} has non-closed file fields",
+                    )
+                target = _catalog_source_relative_path(
+                    declared_file.get("path"),
+                    f"catalog source {source_file.name} target",
+                )
+                source = _catalog_source_relative_path(
+                    declared_file.get("source_path", target),
+                    f"catalog source {source_file.name} payload",
+                )
+                expected_hash = declared_file.get("sha256")
+                byte_size = declared_file.get("byte_size")
+                if not isinstance(expected_hash, str) or re.fullmatch(
+                    r"[0-9a-f]{64}", expected_hash
+                ) is None:
+                    _fail(
+                        CatalogParseError,
+                        f"catalog source {source_file.name} has an invalid payload hash",
+                    )
+                if type(byte_size) is not int or byte_size < 0:
+                    _fail(
+                        CatalogParseError,
+                        f"catalog source {source_file.name} has an invalid payload size",
+                    )
+                mapping = CatalogPayloadSource(source, expected_hash, byte_size)
+                previous = sources.setdefault(target, mapping)
+                if previous != mapping:
+                    _fail(
+                        CatalogParseError,
+                        f"catalog target has conflicting payload sources: {target}",
+                    )
+    return sources
+
+
 def canonical_identity_bytes(document: Mapping[str, object]) -> bytes:
     """Canonical bytes covered by catalog_sha256 (integrity envelope excluded)."""
     payload = {key: value for key, value in document.items() if key != "integrity"}
@@ -270,12 +388,14 @@ def load_catalog(path: Path, *, release_root: Path) -> ReleaseCatalog:
 __all__ = [
     "CatalogError",
     "CatalogIdentityError",
+    "CatalogPayloadSource",
     "CatalogParseError",
     "CatalogSchemaError",
     "canonical_catalog_bytes",
     "canonical_identity_bytes",
     "compute_catalog_sha256",
     "load_catalog",
+    "load_catalog_payload_sources",
     "load_catalog_schema",
     "loads_catalog",
     "validate_catalog_document",

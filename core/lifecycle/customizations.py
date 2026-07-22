@@ -8,7 +8,7 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import Mapping, Protocol
 
-from core.lifecycle.catalog import CatalogError, loads_catalog
+from core.lifecycle.catalog import CatalogError, load_catalog_payload_sources, loads_catalog
 from core.lifecycle.filesystem import FilesystemInspectionError, bounded_read, normalize_relative_path
 from core.lifecycle.model import ReleaseCatalog
 
@@ -155,8 +155,43 @@ def load_release_baseline(
                 for item in selected_catalog.items
                 for file in item.files
             }
-            if not set(catalog_hashes).issubset(manifest_paths):
-                errors.append("catalog names files absent from the installed release manifest")
+            absent_targets = set(catalog_hashes) - manifest_paths
+            unresolved_targets: set[str] = set()
+            if absent_targets:
+                try:
+                    payload_sources = load_catalog_payload_sources(root)
+                except CatalogError as error:
+                    errors.append(str(error))
+                    payload_sources = {}
+                for target in absent_targets:
+                    mapping = payload_sources.get(target)
+                    if (
+                        mapping is None
+                        or mapping.source_path not in manifest_paths
+                        or mapping.sha256 != catalog_hashes[target]
+                    ):
+                        unresolved_targets.add(target)
+                        continue
+                    try:
+                        payload = bounded_read(
+                            root,
+                            mapping.source_path,
+                            max_bytes=MAX_CATALOG_BYTES,
+                        )
+                    except FilesystemInspectionError as error:
+                        errors.append(str(error))
+                        unresolved_targets.add(target)
+                        continue
+                    if (
+                        len(payload) != mapping.byte_size
+                        or hashlib.sha256(payload).hexdigest() != catalog_hashes[target]
+                    ):
+                        unresolved_targets.add(target)
+            if unresolved_targets:
+                errors.append(
+                    "catalog names files absent from the installed release manifest "
+                    "without a verified dormant payload source"
+                )
             else:
                 expected_hashes = MappingProxyType(dict(sorted(catalog_hashes.items())))
                 release_version = selected_catalog.release.version

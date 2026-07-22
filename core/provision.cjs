@@ -353,6 +353,7 @@ import sys
 from pathlib import Path
 
 from core.lifecycle import service
+from core.lifecycle.catalog import load_catalog_payload_sources
 
 vault = Path(sys.argv[1])
 catalog = vault / "System/.release-catalog.json"
@@ -361,10 +362,21 @@ if not catalog.is_file():
     raise SystemExit(0)
 
 inventory = service.build_inventory_and_plan(vault)
+payload_sources = load_catalog_payload_sources(vault)
+optional_targets = {
+    target
+    for target, mapping in payload_sources.items()
+    if mapping.source_path != target
+}
 requested = sorted(
     item["item_id"]
     for item in inventory["plan"]["items"]
     if item["action"] == "adopt"
+    and not any(
+        path in optional_targets
+        for reason in item["reasons"]
+        for path in reason["paths"]
+    )
 )
 receipt = None
 if requested:

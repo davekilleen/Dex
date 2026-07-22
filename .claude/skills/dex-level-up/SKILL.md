@@ -122,20 +122,24 @@ Say:
 - **"tell me more about [skill-name]"** to learn more before installing
 ```
 
-### Installation Workflow
+### Official Capability Adoption
 
-When user says "install [skill]" or "install all":
+When the user says "install [skill]" or "install all", keep acting as a concierge and renderer. Every adoption goes through `core.lifecycle.service` version 1.0.0; this skill never writes, moves, or installs capability files itself.
 
-1. **Verify skill exists** in `.claude/skills/_available/[role_group]/[skill-name]/`
-2. **Copy skill folder:**
-   ```bash
-   cp -r .claude/skills/_available/[role_group]/[skill-name]/ .claude/skills/[skill-name]/
-   ```
-3. **Confirm to user:** "✓ Installed `/[skill-name]` - try it now!"
-4. **Update usage log:** Add the skill to the "Role-Specific Skills" section in `System/usage_log.md` (see Step 5 for format)
-5. **If installing multiple:** Show progress for each skill
+1. Ask `build_inventory_and_plan` for the verified catalog plan. A dormant role skill is eligible only when its exact item id appears in that official plan. A skill from `.claude/skills-custom/`, another user-created location, or an unregistered source is not an official catalog item and must not be adopted through this route.
+2. Render the catalog result in the same five-group order used by Dex Doctor and Dex Update, even when a group is empty:
+   1. **New and safe to adopt** — action `adopt`
+   2. **Needs your review** — action `conflict`; name the files Dex preserved
+   3. **Held back by you** — action `skip-held-back`
+   4. **Could not be proved** — action `unknown`; say no change will be made
+   5. **Already yours** — action `already-adopted`, with its receipt-backed state
+3. For the selected official item ids, ask `build_and_preview_adoption` for the exact preview and approval token. For "install all", request only the eligible official items the user was shown; a held-back or unproved item never changes the others.
+4. Show the item name and version, every proposed file, whether each file is new or refreshed, and that vault-owned user files are outside the write set. Explain that the complete approved set will be one crash-safe transaction with a receipt that can support an exact rewind.
+5. Ask one direct confirmation: “Adopt this exact capability preview?” An earlier request to install is not approval of a later concrete file list. If the preview or evidence changes, render the refusal and request a fresh preview instead of working around it.
+6. Only after explicit confirmation, pass the unchanged preview and token to `execute_approved_adoption`. Do not synthesize, shorten, or reuse either value.
+7. Ask `read_lifecycle_state` for the verified post-adoption state. Render the returned receipt: adopted items, transaction identifier, every receipt-declared file, snapshot reference, rewind acknowledgement availability, and any retention warning. Confirm installation only when the service returned a committed receipt and the refreshed state reports the item as adopted.
 
-**Important:** Only copy the skill folder itself (not the parent role_group folder). The skill should end up at `.claude/skills/[skill-name]/SKILL.md`, not `.claude/skills/[role_group]/[skill-name]/SKILL.md`.
+If the service refuses, explain why in ordinary language and stop with the vault untouched. There is no manual fallback. In a fresh session, normal presence-based skill discovery resolves the adopted capability from its service-written path; do not hand-wire activation, edit capability configuration, or create a second installation path.
 
 ---
 
@@ -281,7 +285,7 @@ When user tries a recommended feature, silently update `System/usage_log.md` by 
 - User creates person page → Check person page box
 - User creates project → Check project tracking box
 - Work MCP tools used → Check task boxes
-- **User installs role-specific skill** → Check "Installed" box in Role-Specific Skills section
+- **A lifecycle receipt proves a role-specific skill was adopted** → Check "Installed" box in Role-Specific Skills section
 - **User runs role-specific skill** → Check "Used" box in Role-Specific Skills section
 
 **Update method:**
@@ -290,7 +294,7 @@ When user tries a recommended feature, silently update `System/usage_log.md` by 
 
 **Role-Specific Skills Tracking:**
 
-When user installs a role-specific skill, add it to `System/usage_log.md` if the "Role-Specific Skills" section doesn't exist:
+After the lifecycle receipt proves a role-specific skill was adopted, add it to `System/usage_log.md` if the "Role-Specific Skills" section doesn't exist. The usage log records what happened; it is never installation authority:
 
 ```markdown
 ## Role-Specific Skills
