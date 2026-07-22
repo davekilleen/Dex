@@ -49,7 +49,7 @@ def test_inventory_detects_known_tool_and_skill(tmp_path: Path) -> None:
     assert "`dex-work-mcp`" in inventory
     assert "`create_task`" in inventory
     assert "`daily-plan`" in inventory
-    assert "Generate context-aware daily plan" in inventory
+    assert "Build today's plan from calendar" in inventory
 
 
 def test_drift_gate_fails_when_inventory_copy_is_stale(tmp_path: Path) -> None:
