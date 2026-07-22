@@ -1,6 +1,6 @@
 ---
 name: trello-setup
-description: Connect Trello so Dex can read your boards and manage cards on request
+description: "Connect Trello so Dex reads your boards and manages cards. Use when the user says 'I use Trello', 'my Trello board', or pastes a trello.com link. Not for Todoist (`todoist-setup`) or Things (`things-setup`)."
 manifest:
   id: trello
   auth: api_key_token

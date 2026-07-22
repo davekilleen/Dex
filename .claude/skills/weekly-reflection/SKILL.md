@@ -1,6 +1,6 @@
 ---
 name: weekly-reflection
-description: A short guided reflection on what energized you, what drained you, and one thing to change next week.
+description: "A short guided reflection on what energized you, what drained you, and one change for next week. Use when the user wants to reflect on how work *felt*, not what got done — 'reflect on my week', 'what's draining me'. Not for progress-and-goals tracking; use `week-review`."
 context: fork
 ---
 

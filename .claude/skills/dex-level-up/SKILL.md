@@ -1,6 +1,6 @@
 ---
 name: dex-level-up
-description: Discover unused Dex features based on your usage patterns
+description: "Surface Dex features the user isn't using yet, based on their usage patterns. Use when the user says 'what am I missing', 'show me new features', 'level up my Dex'. Not for diagnosing what's broken; use `dex-doctor`. Not for what changed in a release; use `dex-whats-new`."
 ---
 
 ## Purpose

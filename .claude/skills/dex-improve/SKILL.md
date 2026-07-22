@@ -1,6 +1,6 @@
 ---
 name: dex-improve
-description: Workshop an improvement idea into implementation plan
+description: "Workshop one improvement idea into an implementation plan. Use when the user says 'let's flesh out idea-X', 'turn this into a plan', 'improve Dex's Y'. Not for ranking the whole backlog; use `dex-backlog`. Not for a PRD for the user's own product; use `product-brief`."
 ---
 
 ## What This Command Does

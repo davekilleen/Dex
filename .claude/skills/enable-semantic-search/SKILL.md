@@ -1,6 +1,6 @@
 ---
 name: enable-semantic-search
-description: Enable local AI-powered semantic search with smart collection discovery
+description: "Turn on local AI-powered semantic (meaning-based) search over the vault, with smart collection discovery. Use when the user says 'enable semantic search', 'search by meaning', 'set up QMD', or search keeps missing obvious matches. Not for scraping the web; use `scrape`."
 ---
 
 # Enable Semantic Search

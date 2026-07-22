@@ -1,6 +1,6 @@
 ---
 name: setup
-description: Initial Dex system setup and onboarding
+description: "Run first-time Dex onboarding: build the vault structure, capture the user profile and configure MCPs. Use when `04-Projects/` doesn't exist yet or the user says 'set up Dex', 'start onboarding'. Not for the post-onboarding tour; use `getting-started`. Not for a mid-life role change; use `reset`."
 model_hint: fast
 disable-model-invocation: true
 ---

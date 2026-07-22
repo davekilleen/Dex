@@ -1,6 +1,6 @@
 ---
 name: diff-generate
-description: "Generate a DexDiff methodology document from your vault customisations: package how you use Dex so others can replicate it"
+description: "Package one workflow — how you use Dex for a specific job — into a shareable DexDiff methodology doc. Use when the user says 'share how I do X', 'package this workflow'. Not for packaging your *entire* system; use `diff-profile`. Not for adopting someone else's; use `diff-adopt`."
 ---
 
 ## What This Command Does

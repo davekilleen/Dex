@@ -1,6 +1,6 @@
 ---
 name: ms-teams-setup
-description: Connect Microsoft Teams to Dex for cross-channel context awareness
+description: "Connect Microsoft Teams for cross-channel context awareness. Use when the user says 'connect Teams', 'hook up Microsoft'. Not for Google email/calendar; use `google-workspace-setup`."
 integration:
   id: teams
   name: Microsoft Teams

@@ -1,6 +1,6 @@
 ---
 name: week-review
-description: Review week's progress with concrete accomplishments (not fake percentages), pattern detection, and goal tracking.
+description: "Review the week with concrete accomplishments (not fake percentages), pattern detection and goal tracking. Use when the user says 'how was my week', 'week review', or it's Friday/end of week. Also use proactively when a week's priorities are largely resolved. Not for planning the coming week; use `week-plan`."
 context: fork
 ---
 

@@ -1,6 +1,6 @@
 ---
 name: diff-adopt
-description: Adopt a DexDiff methodology — guided onboarding that reads a workflow description, adapts it to your role and vault, and walks you through setup
+description: "Adopt one shared DexDiff methodology — reads a workflow description, adapts it to your role and vault, and walks you through setup. Use when the user says 'adopt this workflow', 'set me up like this doc'. Not for a full published profile by handle; use `diff-adopt-profile`."
 ---
 
 ## What This Command Does

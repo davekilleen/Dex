@@ -1,6 +1,6 @@
 ---
 name: google-workspace-setup
-description: Connect Google Workspace (Gmail, Calendar, Docs) to Dex for email-aware planning and meeting prep
+description: "Connect Google Workspace (Gmail, Calendar, Docs) for email-aware planning and meeting prep. Use when the user says 'connect Gmail/Google', 'hook up my work email'. Not for local macOS calendar speed only; use `calendar-setup`. Not for Microsoft; use `ms-teams-setup`."
 integration:
   id: google-workspace
   name: Google Workspace

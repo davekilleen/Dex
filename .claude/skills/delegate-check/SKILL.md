@@ -1,6 +1,6 @@
 ---
 name: delegate-check
-description: Review open delegations — what you handed off, to whom, its status, and the next useful nudge.
+description: "Review open delegations — what you handed off, to whom, its status, and the next useful nudge. Use when the user says 'what did I delegate', 'who owes me', 'check my handoffs', 'follow up with someone'. Not for prepping a meeting; use meeting-prep."
 context: fork
 ---
 

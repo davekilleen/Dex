@@ -1,6 +1,6 @@
 ---
 name: create-mcp
-description: Create new MCP integration with guided wizard
+description: "Build a brand-new MCP integration from scratch with a guided wizard. Use when the user wants Dex to talk to a tool that has no existing server — 'build an integration for X', 'Dex can't connect to Y yet'. Not for installing an MCP that already exists; use `integrate-mcp`. Not for a prompt-only workflow with no external tool; use `create-skill`."
 ---
 
 ## What This Command Does

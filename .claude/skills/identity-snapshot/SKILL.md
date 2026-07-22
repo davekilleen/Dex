@@ -1,6 +1,6 @@
 ---
 name: identity-snapshot
-description: Generate a living identity model from existing Dex data — working patterns, decision tendencies, quality preferences, and growth areas.
+description: "Generate a living profile of the user's working patterns, decision tendencies and quality preferences from their Dex data. Use when the user says 'what are my patterns', 'how do I work', or during `week-review`. Also use proactively when the model (older than 7 days) is stale. Not for planning a week; use `week-plan`."
 ---
 
 # Identity Snapshot

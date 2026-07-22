@@ -1,6 +1,6 @@
 ---
 name: diff-remove
-description: Remove a previously adopted DexDiff workflow — deletes generated skills and config, leaves your data untouched
+description: "Remove a previously adopted DexDiff workflow — deletes its generated skills and config, leaves your data untouched. Use when the user says 'remove that workflow', 'undo the adoption'. Not for listing what's installed; use `diff-list`."
 ---
 
 ## What This Command Does

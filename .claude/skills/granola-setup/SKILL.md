@@ -1,6 +1,6 @@
 ---
 name: granola-setup
-description: Connect Granola to Dex via Granola's official API for automatic meeting sync and transcripts
+description: "Connect Granola via its official API for automatic meeting sync and transcripts. Use when the user says 'connect Granola', 'my meetings aren't syncing', 'set up meeting notes'. Not for Zoom recordings; use `zoom-setup`. Not for processing meetings already synced; use `process-meetings`."
 integration:
   id: granola
   name: Granola

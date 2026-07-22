@@ -1,6 +1,6 @@
 ---
 name: dex-rollback
-description: Rewind one receipt-backed Dex adoption through the frozen lifecycle service
+description: "Rewind one receipt-backed Dex adoption through the frozen lifecycle service. Use when the user says 'undo the update', 'go back', 'that broke something after updating'. Not for applying an update; use `dex-update`."
 ---
 
 # Dex Rollback

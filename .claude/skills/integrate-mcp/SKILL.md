@@ -1,6 +1,6 @@
 ---
 name: integrate-mcp
-description: Integrate existing MCP servers from Smithery.ai or GitHub repositories
+description: "Install and wire up an existing MCP server from Smithery.ai or a GitHub repo. Use when the user names a tool that already has a server — 'add the Notion MCP', 'install this Smithery server'. Not for building a new integration from nothing; use `create-mcp`. Not for adding one already-known server safely; use `dex-add-mcp`."
 ---
 
 ## Purpose

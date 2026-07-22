@@ -1,6 +1,6 @@
 ---
 name: dex-doctor
-description: Rigorous whole-system checkup — verifies every Dex feature honestly (working / off / broken / couldn't-check), self-heals what is provably safe, and guides the user only where Dex cannot fix itself. Replaces /health-check.
+description: "Whole-system checkup: verifies every Dex feature honestly (working/off/broken/couldn't-check), self-heals what's provably safe, guides the rest. Use when the user says 'is Dex healthy', 'something's broken', 'check my setup', 'run diagnostics'. Not for discovering unused *features*; use `dex-level-up`. Not for applying an update; use `dex-update`."
 ---
 
 # /dex-doctor — Full System Checkup

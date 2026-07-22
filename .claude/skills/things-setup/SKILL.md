@@ -1,6 +1,6 @@
 ---
 name: things-setup
-description: Connect Things 3 so Dex can read and update your Things tasks on request
+description: "Connect Things 3 (macOS only) so Dex reads and updates your Things tasks. Use when the user says 'I use Things', 'sync my Things inbox', or pastes a `things://` link. Not for Todoist (`todoist-setup`) or Trello (`trello-setup`)."
 manifest:
   id: things
   auth: none

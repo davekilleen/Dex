@@ -1,6 +1,6 @@
 ---
 name: dex-obsidian-setup
-description: Enable Obsidian integration and migrate existing vault to wiki links
+description: "Turn on Obsidian mode and migrate the vault to wiki links. Use when the user says 'I use Obsidian', 'enable wiki links', 'make this work in Obsidian'. Not for connecting an external tool/API; use `create-mcp`/`integrate-mcp`."
 ---
 
 ## Purpose
