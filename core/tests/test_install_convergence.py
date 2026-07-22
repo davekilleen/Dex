@@ -120,7 +120,9 @@ def test_fresh_git_install_routes_bounded_migration_through_auto_then_resume(tmp
     result, calls = _run_install(tmp_path, "resume")
 
     assert result.returncode == 0, result.stdout + result.stderr
-    assert calls == [f"{MIGRATOR} --auto", f"{MIGRATOR} --resume"]
+    assert "--install-config-only --json" in calls[0]
+    assert calls[1:3] == [f"{MIGRATOR} --auto", f"{MIGRATOR} --resume"]
+    assert calls[3].endswith("--adopt --lifecycle-only")
     assert "Separating the Dex brain from your vault" in result.stdout
     assert "separate Git histories" in result.stdout
     assert "Dex installation complete" in result.stdout
@@ -130,7 +132,9 @@ def test_already_split_install_is_safe_and_keeps_normal_setup_working(tmp_path: 
     result, calls = _run_install(tmp_path, "post-split")
 
     assert result.returncode == 0, result.stdout + result.stderr
-    assert calls == [f"{MIGRATOR} --auto"]
+    assert "--install-config-only --json" in calls[0]
+    assert calls[1] == f"{MIGRATOR} --auto"
+    assert calls[2].endswith("--adopt --lifecycle-only")
     assert "separate Git histories" in result.stdout
     assert "Dex installation complete" in result.stdout
 
@@ -139,7 +143,9 @@ def test_zip_combined_layout_finishes_install_without_claiming_a_split(tmp_path:
     result, calls = _run_install(tmp_path, "zip")
 
     assert result.returncode == 0, result.stdout + result.stderr
-    assert calls == [f"{MIGRATOR} --auto"]
+    assert "--install-config-only --json" in calls[0]
+    assert calls[1] == f"{MIGRATOR} --auto"
+    assert calls[2].endswith("--adopt --lifecycle-only")
     assert "no Git clone history" in result.stdout
     assert "Your files are unchanged" in result.stdout
     assert "Dex installation complete" in result.stdout
@@ -149,7 +155,8 @@ def test_migration_failure_stops_install_with_plain_english_recovery(tmp_path: P
     result, calls = _run_install(tmp_path, "failure")
 
     assert result.returncode == 42
-    assert calls == [f"{MIGRATOR} --auto"]
+    assert "--install-config-only --json" in calls[0]
+    assert calls[1] == f"{MIGRATOR} --auto"
     assert "could not finish the brain/vault split" in result.stdout
     assert "migration-report-v2.md" in result.stdout
     assert "Dex installation complete" not in result.stdout

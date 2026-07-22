@@ -20,14 +20,10 @@ import platform
 import re
 import subprocess
 import sys
+import tempfile
 from datetime import date, datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
-
-try:
-    import yaml
-except ImportError:
-    yaml = None
 
 import mcp.server.stdio
 import mcp.types as types
@@ -51,14 +47,9 @@ if _repo_root not in sys.path:
     sys.path.append(_repo_root)
 from core import capabilities as capability_rooms
 from core.paths import (
-    CLAUDE_MD,
     MARKER_FILE,
     MCP_CONFIG_EXAMPLE,
-    MCP_CONFIG_TARGET,
-    PILLARS_FILE,
     SESSION_FILE,
-    USER_PROFILE_FILE,
-    USER_PROFILE_TEMPLATE,
 )
 from core.paths import (
     VAULT_ROOT as BASE_DIR,
@@ -294,246 +285,76 @@ def _provision_folders(capability_states: Dict[str, bool] | None = None) -> List
     return list(dict.fromkeys(folders))
 
 
-def create_para_structure(
-    base_path: Path,
-    capability_states: Dict[str, bool] | None = None,
-) -> List[str]:
-    """Create the always-on spine plus explicitly selected room folders."""
-    folders = _provision_folders(capability_states)
-    
-    created = []
-    for folder in folders:
-        folder_path = base_path / folder
-        if not folder_path.exists():
-            folder_path.mkdir(parents=True, exist_ok=True)
-            created.append(folder)
-    
-    return created
-
-def create_initial_files(base_path: Path, session_data: Dict) -> List[str]:
-    """Create initial state files"""
-    created = []
-    
-    # Create Tasks.md
-    tasks_file = base_path / '03-Tasks' / 'Tasks.md'
-    if not tasks_file.exists():
-        tasks_content = """# Tasks
-
-## Instructions
-- Tasks are organized by pillar and priority
-- Use task IDs (^task-YYYYMMDD-XXX) for cross-file sync
-- Priorities: P0 (urgent), P1 (important), P2 (normal), P3 (low)
-
----
-
-"""
-        # Add pillar sections
-        for pillar in session_data['data'].get('pillars', []):
-            pillar_id = pillar.lower().replace(' ', '-')
-            tasks_content += f"## {pillar} #{pillar_id}\n\n"
-        
-        tasks_file.write_text(tasks_content)
-        created.append('03-Tasks/Tasks.md')
-    
-    # Create Week_Priorities.md
-    priorities_file = base_path / '02-Week_Priorities' / 'Week_Priorities.md'
-    if not priorities_file.exists():
-        priorities_content = """# Week Priorities
-
-*Updated: Week of [date]*
-
-## This Week's Focus
-
-### Top 3 Priorities
-
-1. 
-2. 
-3. 
-
----
-
-"""
-        priorities_file.write_text(priorities_content)
-        created.append('02-Week_Priorities/Week_Priorities.md')
-    
-    return created
-
-def create_user_profile(session_data: Dict) -> bool:
-    """Create user-profile.yaml from session data"""
+def _finalize_through_provisioner(session: Dict) -> Dict[str, Any]:
+    """Collect onboarding inputs and let the sanctioned provisioner mutate."""
+    data = dict(session["data"])
+    data["pillars"] = [
+        {"name": pillar, "description": ""}
+        for pillar in data.get("pillars", [])
+    ]
+    selected = data.get("capabilities", {})
+    data["capabilities"] = {
+        room: {"enabled": selected.get(room, False) is True}
+        for room in capability_rooms.room_ids()
+    }
+    profile_path: Path | None = None
     try:
-        # Load template
-        if not USER_PROFILE_TEMPLATE.exists():
-            logger.error("user-profile-template.yaml not found")
-            return False
-        
-        with open(USER_PROFILE_TEMPLATE, 'r') as f:
-            profile = yaml.safe_load(f) if yaml else {}
-        
-        # Update with session data
-        data = session_data['data']
-        profile['name'] = data.get('name', '')
-        profile['role'] = data.get('role', '')
-        profile['role_group'] = data.get('role_group', '')
-        profile['company'] = data.get('company', '')
-        profile['company_size'] = data.get('company_size', '')
-        profile['email_domain'] = data.get('email_domain', '')
-        profile['entity_creation'] = {'mode': 'auto'}
-
-        selected = data.get('capabilities', {})
-        profile['capabilities'] = {
-            room: {'enabled': selected.get(room, False) is True}
-            for room in capability_rooms.room_ids()
-        }
-        # One-way compatibility write: the new room state is authoritative, but
-        # any contract-declared legacy config reader stays aligned.
-        for room in capability_rooms.room_ids():
-            legacy_config = capability_rooms.surfaces_for(room).get('config')
-            if isinstance(legacy_config, str):
-                profile.setdefault(legacy_config, {})['enabled'] = profile[
-                    'capabilities'
-                ][room]['enabled']
-
-        if 'calendar' in data:
-            profile['work_email'] = data.get('work_email', '')
-            profile['calendar'] = data['calendar']
-        
-        # Update Obsidian mode (defaults to false)
-        profile['obsidian_mode'] = data.get('obsidian_mode', False)
-        
-        # Update communication preferences
-        comm = data.get('communication', {})
-        if 'communication' not in profile:
-            profile['communication'] = {}
-        profile['communication']['formality'] = comm.get('formality', 'professional_casual')
-        profile['communication']['directness'] = comm.get('directness', 'balanced')
-        profile['communication']['career_level'] = comm.get('career_level', 'mid')
-        profile['communication']['coaching_style'] = comm.get('coaching_style', 'collaborative')
-        
-        # Save
-        with open(USER_PROFILE_FILE, 'w') as f:
-            yaml.dump(profile, f, default_flow_style=False, sort_keys=False)
-        
-        return True
-    except Exception as e:
-        logger.error(f"Error creating user profile: {e}")
-        return False
-
-def create_pillars_file(pillars: List[str]) -> bool:
-    """Create pillars.yaml from pillar list"""
-    try:
-        pillars_data = {"pillars": []}
-        
-        for pillar in pillars:
-            pillar_id = pillar.lower().replace(' ', '-').replace('_', '-')
-            pillars_data["pillars"].append({
-                "id": pillar_id,
-                "name": pillar,
-                "description": ""
-            })
-        
-        with open(PILLARS_FILE, 'w') as f:
-            yaml.dump(pillars_data, f, default_flow_style=False, sort_keys=False)
-        
-        return True
-    except Exception as e:
-        logger.error(f"Error creating pillars file: {e}")
-        return False
-
-def update_claude_md(session_data: Dict) -> bool:
-    """Update CLAUDE.md User Profile section"""
-    try:
-        if not CLAUDE_MD.exists():
-            logger.error("CLAUDE.md not found")
-            return False
-        
-        content = CLAUDE_MD.read_text()
-        data = session_data['data']
-        
-        # Find and replace User Profile section
-        profile_section = f"""## User Profile
-
-<!-- Updated during onboarding -->
-**Name:** {data.get('name', 'Not configured')}
-**Role:** {data.get('role', 'Not configured')}
-**Company Size:** {data.get('company_size', 'Not configured')}
-**Working Style:** {data.get('communication', {}).get('formality', 'Not configured')}
-**Pillars:**
-"""
-        for pillar in data.get('pillars', []):
-            profile_section += f"- {pillar}\n"
-        
-        # Replace between "## User Profile" and next "---"
-        pattern = r'## User Profile.*?---'
-        replacement = profile_section + "\n---"
-        content = re.sub(pattern, replacement, content, flags=re.DOTALL)
-        
-        CLAUDE_MD.write_text(content)
-        return True
-    except Exception as e:
-        logger.error(f"Error updating CLAUDE.md: {e}")
-        return False
-
-def setup_mcp_config(vault_path: Path) -> tuple[bool, Optional[str]]:
-    """Setup .mcp.json by replacing {{VAULT_PATH}} in example"""
-    try:
-        if not MCP_CONFIG_EXAMPLE.exists():
-            return False, ".mcp.json.example not found"
-        
-        # Read example
-        with open(MCP_CONFIG_EXAMPLE, 'r') as f:
-            config_content = f.read()
-        
-        # Replace {{VAULT_PATH}} with actual path
-        config_content = config_content.replace('{{VAULT_PATH}}', str(vault_path))
-        
-        # Validate JSON and filter placeholder servers
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            encoding="utf-8",
+            prefix="dex-onboarding-profile-",
+            suffix=".json",
+            delete=False,
+        ) as profile:
+            profile_path = Path(profile.name)
+            json.dump(data, profile, cls=DateTimeEncoder)
+            profile.write("\n")
+        provisioner = Path(__file__).parent.parent / "provision.cjs"
+        node = os.environ.get("DEX_PROVISION_NODE", "node")
+        completed = subprocess.run(
+            [
+                node,
+                str(provisioner),
+                "--path",
+                str(BASE_DIR),
+                "--profile",
+                str(profile_path),
+                "--onboard",
+                "--session-file",
+                str(SESSION_FILE),
+                "--json",
+            ],
+            cwd=Path(__file__).parent.parent.parent,
+            capture_output=True,
+            text=True,
+            timeout=120,
+            check=False,
+            env={**os.environ, "DEX_LIFECYCLE_PYTHON": sys.executable},
+        )
         try:
-            config = json.loads(config_content)
-        except json.JSONDecodeError as e:
-            return False, f"Invalid JSON after substitution: {e}"
-
-        # Remove servers with unresolved placeholder credentials or comment keys
-        if 'mcpServers' in config:
-            placeholder_re = re.compile(r'\{\{.*?\}\}')
-            to_remove = [
-                name for name, cfg in config['mcpServers'].items()
-                if name.startswith('_') or any(
-                    placeholder_re.search(str(v))
-                    for v in cfg.get('env', {}).values()
-                )
-            ]
-            for name in to_remove:
-                del config['mcpServers'][name]
-
-        # Preserve user-added MCPs when onboarding writes the canonical root
-        # config. Existing entries win, including entries with shipped names.
-        if MCP_CONFIG_TARGET.exists():
-            try:
-                existing_config = json.loads(MCP_CONFIG_TARGET.read_text())
-            except json.JSONDecodeError as e:
-                return False, f"Existing .mcp.json is invalid JSON: {e}"
-
-            if not isinstance(existing_config, dict):
-                return False, "Existing .mcp.json must contain a JSON object"
-
-            existing_servers = existing_config.get('mcpServers')
-            if existing_servers is None:
-                existing_servers = {}
-                existing_config['mcpServers'] = existing_servers
-            elif not isinstance(existing_servers, dict):
-                return False, "Existing .mcp.json mcpServers must contain a JSON object"
-
-            for server_name, server_config in config.get('mcpServers', {}).items():
-                existing_servers.setdefault(server_name, server_config)
-            config = existing_config
-        
-        # Write to target
-        with open(MCP_CONFIG_TARGET, 'w') as f:
-            json.dump(config, f, indent=2)
-        
-        return True, None
-    except Exception as e:
-        return False, str(e)
+            receipt = json.loads(completed.stdout)
+        except json.JSONDecodeError as error:
+            raise RuntimeError("Provisioner returned an invalid receipt") from error
+        if completed.returncode != 0 or receipt.get("ok") is not True:
+            detail = "; ".join(receipt.get("errors", [])) or completed.stderr.strip()
+            raise RuntimeError(detail or "Provisioner refused onboarding")
+        created = receipt.get("created", [])
+        folders = [relative for relative in created if (BASE_DIR / relative).is_dir()]
+        files = [relative for relative in created if (BASE_DIR / relative).is_file()]
+        return {
+            "executor": "core/provision.cjs",
+            "lifecycle_executor": receipt.get("lifecycle_executor"),
+            "folders_created": folders,
+            "files_created": files,
+            "configs_updated": [
+                relative for relative in ("CLAUDE.md", ".mcp.json") if relative in created
+            ],
+            "errors": [],
+            "receipt": receipt,
+        }
+    finally:
+        if profile_path is not None:
+            profile_path.unlink(missing_ok=True)
 
 # ============================================================================
 # PRE-ANALYSIS HELPER FUNCTIONS
@@ -661,19 +482,6 @@ Based on your calendar and pillars, here are suggested priorities:
     
     return content
 
-def write_weekly_plan(content: str) -> bool:
-    """Write weekly plan to file"""
-    try:
-        week_priorities_dir = BASE_DIR / '02-Week_Priorities'
-        week_priorities_dir.mkdir(parents=True, exist_ok=True)
-        
-        week_file = week_priorities_dir / 'Week_Priorities.md'
-        week_file.write_text(content)
-        return True
-    except Exception as e:
-        logger.error(f"Failed to write weekly plan: {e}")
-        return False
-
 def get_frequent_attendees(events: List[Dict], limit: int = 3) -> List[Dict]:
     """Get most frequent meeting attendees"""
     attendee_data = {}
@@ -694,52 +502,6 @@ def get_frequent_attendees(events: List[Dict], limit: int = 3) -> List[Dict]:
     # Sort by count and return top N
     sorted_attendees = sorted(attendee_data.values(), key=lambda x: x['count'], reverse=True)
     return sorted_attendees[:limit]
-
-def create_person_page(contact: Dict, email_domain: str) -> bool:
-    """Create a person page, routing to Internal or External based on email domain"""
-    try:
-        email = contact['email']
-        name = contact['name']
-        
-        # Determine if internal or external
-        contact_domain = email.split('@')[1] if '@' in email else ''
-        is_internal = contact_domain in email_domain.split(',')
-        
-        # Create appropriate folder
-        folder = 'Internal' if is_internal else 'External'
-        from core.paths import PEOPLE_DIR
-        people_dir = PEOPLE_DIR / folder
-        people_dir.mkdir(parents=True, exist_ok=True)
-        
-        # Create person page
-        person_file_name = name.replace(' ', '_') + '.md'
-        person_file = people_dir / person_file_name
-        
-        # Don't overwrite existing
-        if person_file.exists():
-            return False
-        
-        content = f"""# {name}
-
-**Email:** {email}
-**Type:** {'Internal' if is_internal else 'External'}
-
-## Context
-
-*Automatically created during onboarding as a frequent meeting contact*
-
-## Meeting History
-
-## Action Items
-
-## Notes
-"""
-        
-        person_file.write_text(content)
-        return True
-    except Exception as e:
-        logger.error(f"Failed to create person page for {contact.get('name', 'unknown')}: {e}")
-        return False
 
 def get_recent_granola_meetings(days: int = 7) -> List[Dict]:
     """Get recent meetings from Granola"""
@@ -1476,77 +1238,12 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[types.Text
             }
 
             try:
-                # 1. Create PARA structure
-                logger.info("Creating PARA folder structure")
-                selected_capabilities = session['data'].get('capabilities', {})
-                folders = create_para_structure(BASE_DIR, selected_capabilities)
-                summary['folders_created'] = folders
-
-                # 2. Create initial files
-                logger.info("Creating initial files")
-                files = create_initial_files(BASE_DIR, session)
-                summary['files_created'].extend(files)
-
-                # 3. Create user-profile.yaml
-                logger.info("Creating user-profile.yaml")
-                if yaml and create_user_profile(session):
-                    summary['files_created'].append('System/user-profile.yaml')
-                else:
-                    summary['errors'].append("Could not create user-profile.yaml")
-
-                # 3b. Surface only the selected rooms. Disabled room folders are
-                # never deleted; their release-owned skill copies are hidden.
-                if not summary['errors']:
-                    room_results = capability_rooms.reconcile_all(
-                        BASE_DIR,
-                        profile_path=USER_PROFILE_FILE,
-                    )
-                    summary['capabilities'] = room_results
-
-                # 4. Create pillars.yaml
-                logger.info("Creating pillars.yaml")
-                if yaml and create_pillars_file(session['data']['pillars']):
-                    summary['files_created'].append('System/pillars.yaml')
-                else:
-                    summary['errors'].append("Could not create pillars.yaml")
-
-                # 5. Update CLAUDE.md
-                logger.info("Updating CLAUDE.md")
-                if update_claude_md(session):
-                    summary['configs_updated'].append('CLAUDE.md')
-                else:
-                    summary['errors'].append("Could not update CLAUDE.md")
-
-                # 6. Setup MCP config
-                logger.info("Setting up .mcp.json")
-                success, error = setup_mcp_config(BASE_DIR)
-                if success:
-                    summary['configs_updated'].append('.mcp.json')
-                else:
-                    summary['errors'].append(f"MCP config error: {error}")
-
-                # 7. Create completion marker
-                logger.info("Creating completion marker")
-                marker_data = {
-                    "completed_at": datetime.now().isoformat(),
-                    "user_name": session['data']['name'],
-                    "role": session['data']['role'],
-                    "email_domain": session['data'].get('email_domain', ''),
-                    "has_pillars": len(session['data'].get('pillars', [])) > 0,
-                    "phase2_completed": False,
-                    "pre_analysis_deferred": True  # Analysis moved to /getting-started for performance
-                }
-                MARKER_FILE.write_text(json.dumps(marker_data, indent=2, cls=DateTimeEncoder))
-                logger.info("Completion marker created")
-
-                # 8. Delete session file
-                if SESSION_FILE.exists():
-                    SESSION_FILE.unlink()
-                    logger.info("Deleted session file")
+                logger.info("Routing onboarding finalization through the provision contract")
+                summary = _finalize_through_provisioner(session)
 
                 result = create_success_response(
                     summary,
-                    f"Onboarding complete! Created {len(folders)} folders, {len(summary['files_created'])} files"
+                    f"Onboarding complete! Created {len(summary['folders_created'])} folders, {len(summary['files_created'])} files"
                 )
                 
             except Exception as e:

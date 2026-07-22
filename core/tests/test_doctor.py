@@ -789,38 +789,30 @@ def test_heal_applies_all_t1_actions_and_leaves_t2_suggestion_untouched(
     report = doctor.collect(heal=True, context=test_context)
     after = _tree_snapshot(vault)
 
-    assert (vault / "00-Inbox").is_dir()
+    assert not (vault / "00-Inbox").exists()
     paths_json = json.loads((vault / "core" / "paths.json").read_text())
     assert paths_json["VAULT_ROOT"] == str(vault)
     assert script.stat().st_mode & stat.S_IXUSR
     assert mcp_config.read_text() == original_mcp
     assert not missing_target.exists()
-    assert _check(report, "vault.structure") == {
-        "id": "vault.structure",
-        "feature": "Vault structure",
-        "verdict": "OK",
-        "detail": "All standard PARA directories exist after three safe repairs.",
-        "heal": {
-            "tier": 1,
-            "action": (
-                "Created 00-Inbox; regenerated core/paths.json; "
-                "restored executable permission on .scripts/repo-tool.sh."
-            ),
-            "applied": True,
-        },
+    structure = _check(report, "vault.structure")
+    assert structure["verdict"] == "BROKEN"
+    assert "Missing standard PARA directories: 00-Inbox" in structure["detail"]
+    assert structure["heal"] == {
+        "tier": 1,
+        "action": (
+            "regenerated core/paths.json; restored executable permission on "
+            ".scripts/repo-tool.sh."
+        ),
+        "applied": True,
     }
     assert _check(report, "mcp.registered")["heal"] == {
         "tier": 2,
         "action": "Repair the missing MCP target.",
         "applied": False,
     }
-    allowed_new_paths = {
-        "00-Inbox",
-        "System/.doctor-last-run.json",
-        "core/paths.json",
-    }
-    assert set(after) - set(before) <= allowed_new_paths
-    assert {"00-Inbox", "core/paths.json"} <= set(after) - set(before)
+    assert "core/paths.json" in set(after) - set(before)
+    assert "00-Inbox" not in set(after)
     assert set(before) - set(after) == set()
     assert {path for path in before if before[path] != after[path]} == {".scripts/repo-tool.sh"}
 
@@ -841,6 +833,41 @@ def test_quick_mode_does_not_apply_t1_without_heal(monkeypatch, context):
     assert not script.stat().st_mode & stat.S_IXUSR
 
 
+def test_t1_authorized_repairs_preview_and_execute_through_lifecycle_service(
+    monkeypatch, context
+):
+    for name in doctor.PARA_PATH_NAMES:
+        context.core_path(name).mkdir(parents=True, exist_ok=True)
+    script = context.vault_root / ".scripts" / "repair-me.sh"
+    script.parent.mkdir(parents=True, exist_ok=True)
+    script.write_text("#!/bin/sh\n")
+    script.chmod(0o644)
+    monkeypatch.setattr(doctor, "_repo_shipped_executables", lambda _context: [script])
+
+    calls = []
+    real_execute = doctor.lifecycle_service._execute_approved_transaction
+
+    def recording_execute(*args, **kwargs):
+        calls.append((args, kwargs))
+        return real_execute(*args, **kwargs)
+
+    monkeypatch.setattr(
+        doctor.lifecycle_service,
+        "_execute_approved_transaction",
+        recording_execute,
+    )
+
+    actions, errors = doctor._apply_t1_heals(context)
+
+    assert errors == []
+    assert "regenerated core/paths.json" in actions
+    assert any("restored executable permission" in action for action in actions)
+    assert len(calls) == 1
+    assert calls[0][1]["purpose"] == "doctor-tier-1"
+    assert (context.vault_root / "core/paths.json").is_file()
+    assert script.stat().st_mode & stat.S_IXUSR
+
+
 def test_partial_t1_failure_reports_applied_actions_and_breaks_doctor_self(monkeypatch, context):
     _stub_probes(monkeypatch, exclude={"vault.structure"})
 
@@ -852,14 +879,13 @@ def test_partial_t1_failure_reports_applied_actions_and_breaks_doctor_self(monke
     report = doctor.collect(heal=True, context=context)
 
     structure = _check(report, "vault.structure")
-    assert structure["verdict"] == "OK"
+    assert structure["verdict"] == "BROKEN"
     assert structure["heal"]["applied"] is True
-    assert "Created 00-Inbox" in structure["heal"]["action"]
     assert "regenerated core/paths.json" in structure["heal"]["action"]
     assert _check(report, "doctor.self")["verdict"] == "BROKEN"
-    assert report["instruments"]["failed"] == [
-        {"id": "doctor.self", "error": "Executable-mode heal failed: git mode inspection failed"}
-    ]
+    assert report["instruments"]["failed"][0]["id"] == "doctor.self"
+    assert "Directory repair requires user action" in report["instruments"]["failed"][0]["error"]
+    assert "Executable-mode heal failed: git mode inspection failed" in report["instruments"]["failed"][0]["error"]
 
 
 def test_heal_does_not_overwrite_a_raising_structure_probe_with_ok(monkeypatch, context):

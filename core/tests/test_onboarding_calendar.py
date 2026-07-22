@@ -2,16 +2,11 @@ from __future__ import annotations
 
 import asyncio
 import json
-import shutil
 from pathlib import Path
 
 import pytest
-import yaml
 
 from core.mcp import calendar_server, onboarding_server
-
-REPO_ROOT = Path(__file__).resolve().parents[2]
-
 
 def _decode_tool_result(result):
     return json.loads(result[0].text)
@@ -29,21 +24,12 @@ def onboarding_vault(tmp_path, monkeypatch) -> Path:
     system_dir = vault / "System"
     system_dir.mkdir(parents=True)
 
-    profile_template = system_dir / "user-profile-template.yaml"
-    shutil.copy2(REPO_ROOT / "System" / "user-profile-template.yaml", profile_template)
-
     monkeypatch.setattr(onboarding_server, "BASE_DIR", vault)
     monkeypatch.setattr(
         onboarding_server,
         "SESSION_FILE",
         system_dir / ".onboarding-session.json",
     )
-    monkeypatch.setattr(
-        onboarding_server,
-        "USER_PROFILE_FILE",
-        system_dir / "user-profile.yaml",
-    )
-    monkeypatch.setattr(onboarding_server, "USER_PROFILE_TEMPLATE", profile_template)
     return vault
 
 
@@ -237,43 +223,6 @@ def test_save_calendar_selection_is_registered():
     tools = asyncio.run(onboarding_server.handle_list_tools())
 
     assert "save_calendar_selection" in {tool.name for tool in tools}
-
-
-def test_create_user_profile_writes_calendar_selection(onboarding_vault):
-    session = onboarding_server.create_new_session()
-    session["data"] = {
-        "work_email": "dave@dex.ai",
-        "calendar": {
-            "work_calendar": "dave@dex.ai",
-            "calendar_count": 4,
-            "lazy_load": True,
-        },
-    }
-
-    assert onboarding_server.create_user_profile(session) is True
-
-    profile = yaml.safe_load(
-        (onboarding_vault / "System" / "user-profile.yaml").read_text()
-    )
-    assert profile["work_email"] == "dave@dex.ai"
-    assert profile["calendar"] == {
-        "work_calendar": "dave@dex.ai",
-        "calendar_count": 4,
-        "lazy_load": True,
-    }
-    assert profile["entity_creation"] == {"mode": "auto"}
-
-
-def test_create_user_profile_writes_pending_calendar_permissions(onboarding_vault):
-    session = onboarding_server.create_new_session()
-    session["data"] = {"calendar": {"permissions_pending": True}}
-
-    assert onboarding_server.create_user_profile(session) is True
-
-    profile = yaml.safe_load(
-        (onboarding_vault / "System" / "user-profile.yaml").read_text()
-    )
-    assert profile["calendar"] == {"permissions_pending": True}
 
 
 def test_finalize_dry_run_previews_calendar_selection(onboarding_vault):

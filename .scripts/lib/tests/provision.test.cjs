@@ -28,16 +28,41 @@ function makeReleaseTree({ claude = true } = {}) {
   return vault;
 }
 
-function runProvision(vault, args = []) {
+function runProvision(vault, args = [], env = {}) {
   const result = childProcess.spawnSync(
     process.execPath,
     [provisionScript, '--path', vault, ...args, '--json'],
-    { encoding: 'utf8' },
+    { encoding: 'utf8', env: { ...process.env, ...env } },
   );
   let summary = null;
   try { summary = JSON.parse(result.stdout); } catch (_) { /* asserted by caller */ }
   return { ...result, summary };
 }
+
+test('adopt invokes the frozen lifecycle service adapter before sanctioned provisioning', () => {
+  withVault(vault => {
+    const fakePython = path.join(vault, 'fake-lifecycle-python');
+    fs.writeFileSync(
+      fakePython,
+      '#!/bin/sh\nprintf \'{"ok":true,"api_version":"1.0.0","previewed":[],"receipt":null}\\n\'\n',
+    );
+    fs.chmodSync(fakePython, 0o755);
+
+    const result = runProvision(
+      vault,
+      ['--adopt'],
+      { DEX_LIFECYCLE_PYTHON: fakePython },
+    );
+
+    assert.equal(result.status, 0, result.stderr);
+    assert.deepEqual(result.summary.lifecycle_executor, {
+      ok: true,
+      api_version: '1.0.0',
+      previewed: [],
+      receipt: null,
+    });
+  });
+});
 
 function fileSnapshot(root) {
   const result = {};

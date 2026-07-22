@@ -38,29 +38,20 @@ def _git(repo: Path, *args: str) -> str:
     return result.stdout.strip()
 
 
-def test_update_runs_credential_migration_before_status_and_safe_autosave():
+def test_update_skill_delegates_all_mutation_instead_of_running_legacy_helpers():
     instructions = UPDATE_SKILL.read_text(encoding="utf-8")
-    migration = instructions.index("python3 -m core.utils.credential_workflow migrate")
-    status = instructions.index("git status --porcelain", migration)
-    autosave = instructions.index("python3 -m core.utils.safe_autosave", status)
-    assert migration < status < autosave
+    assert "credential_workflow migrate" not in instructions
+    assert "safe_autosave" not in instructions
+    assert "build_inventory_and_plan" in instructions
+    assert "execute_approved_adoption" in instructions
 
 
-def test_update_skill_routes_split_topology_to_transaction_updater_without_merge() -> None:
+def test_update_skill_routes_every_topology_to_the_frozen_service() -> None:
     update = UPDATE_SKILL.read_text(encoding="utf-8")
-    start = update.index("### Split-topology route")
-    end = update.index("### Step 3: Pre-Update Safety Check")
-    split = update[start:end]
-
-    assert "core.update.apply_update" in split
-    assert "dist/release/v" in split
-    assert "--tag-object" in split
-    assert "--commit" in split
-    assert "--tree" in split
-    assert "release-beta" in split
-    assert "System/.dex/mutation.lock" in split
-    assert "git merge" not in split
-    assert "Combined topology continues to Step 3" in split
+    assert "core.lifecycle.service" in update
+    assert "build_and_preview_adoption" in update
+    assert "execute_approved_adoption" in update
+    assert "git merge" not in update.lower()
 
 
 def test_legacy_updater_can_deliver_bridge_release_then_hand_off_without_invoking_engine(
@@ -100,15 +91,16 @@ def test_legacy_updater_can_deliver_bridge_release_then_hand_off_without_invokin
     assert calls == []
 
 
-def test_update_and_duplicated_rollback_flows_recognize_both_baselines() -> None:
+def test_update_and_rollback_renderers_do_not_duplicate_baseline_mutation_logic() -> None:
     update = UPDATE_SKILL.read_text(encoding="utf-8")
     rollback = ROLLBACK_SKILL.read_text(encoding="utf-8")
 
-    assert "untrack-v1|untrack-v2)" in update
-    assert update.count("bootstrap-v1|bootstrap-v2|bootstrap-legacy)") == 2
-    assert update.count("untrack-v1|untrack-v2|untrack-legacy)") == 2
-    assert rollback.count("untrack-v2:bootstrap-v1") == 2
-    assert rollback.count("bootstrap-v2:*") == 2
+    for instructions in (update, rollback):
+        assert "bootstrap-v1" not in instructions
+        assert "untrack-v1" not in instructions
+    assert "read_lifecycle_state" in update
+    assert "read_lifecycle_state" in rollback
+    assert "rewind_adoption_by_receipt" in rollback
 
 
 def test_release_cut_stamps_transition_metadata_from_the_bumped_package(tmp_path: Path, capsys) -> None:
@@ -476,96 +468,12 @@ def test_manifest_is_a_deterministic_newline_path_list(tmp_path: Path) -> None:
     assert generate_manifest(repo, "HEAD") == "a directory/first.txt\nz-last.txt\n"
 
 
-def test_rollback_stops_when_autosave_commit_fails(tmp_path: Path) -> None:
-    vault = tmp_path / "user-vault"
-    _init_repo(vault)
-    (vault / "core/utils").mkdir(parents=True)
-    shutil.copy2(REPO_ROOT / "core/utils/safe_autosave.py", vault / "core/utils/safe_autosave.py")
-    shutil.copy2(
-        REPO_ROOT / "core/utils/integration_credentials.py",
-        vault / "core/utils/integration_credentials.py",
-    )
-
-    tracked_file = "04-Projects/current-work.md"
-    _write(vault, tracked_file, "release v1\n")
-    _write(vault, "package.json", json.dumps({"version": "1.61.0"}) + "\n")
-    _write(
-        vault,
-        "System/.local-only-preservation-transition.json",
-        json.dumps({"schema_version": 1, "phase": "bootstrap-v1", "release_version": "1.61.0"}) + "\n",
-    )
-    _write(vault, ".claude/keep", "fixture\n")
-    _git(
-        vault,
-        "add",
-        "--",
-        tracked_file,
-        "package.json",
-        "System/.local-only-preservation-transition.json",
-        ".claude/keep",
-    )
-    _git(vault, "commit", "--quiet", "-m", "release v1")
-    _git(vault, "tag", "backup-before-v1.3.0")
-
-    _write(vault, tracked_file, "release v2\n")
-    _git(vault, "add", "--", tracked_file)
-    _git(vault, "commit", "--quiet", "-m", "release v2")
-    release_v2_head = _git(vault, "rev-parse", "HEAD")
-
-    edited_content = "release v2\nuser's uncommitted edit\n"
-    staged_new_file = ".claude/skills/private-custom/SKILL.md"
-    staged_new_content = "---\nname: private-custom\n---\n# User work\n"
-    _write(vault, tracked_file, edited_content)
-    _write(vault, staged_new_file, staged_new_content)
-    _git(vault, "add", "--", staged_new_file)
-
-    hooks_dir = tmp_path / "failing-hooks"
-    hooks_dir.mkdir()
-    pre_commit = hooks_dir / "pre-commit"
-    pre_commit.write_text(
-        "#!/bin/sh\necho 'forced pre-commit failure' >&2\nexit 1\n",
-        encoding="utf-8",
-    )
-    pre_commit.chmod(0o755)
-    _git(vault, "config", "core.hooksPath", str(hooks_dir))
-
-    runtime = vault / "System/.dex/local-only-preservation/runtime"
-    (runtime / "core/migrations").mkdir(parents=True)
-    (runtime / "core/utils").mkdir(parents=True)
-    shutil.copy2(
-        REPO_ROOT / "core/migrations/preserve_local_only_paths.py",
-        runtime / "core/migrations/preserve_local_only_paths.py",
-    )
-    shutil.copy2(REPO_ROOT / "core/utils/tracked_ignored.py", runtime / "core/utils/tracked_ignored.py")
-    shutil.copy2(REPO_ROOT / "core/paths.py", runtime / "core/paths.py")
-    (runtime / "core/__init__.py").touch()
-    (runtime / "core/migrations/__init__.py").touch()
-    (runtime / "core/utils/__init__.py").touch()
-
-    protected_rollback = _bash_block_containing(
-        ROLLBACK_SKILL,
-        'DEX_ROLLBACK_TARGET="backup-before-v1.3.0"',
-    )
-    result = subprocess.run(
-        [
-            "bash",
-            "-c",
-            protected_rollback,
-        ],
-        cwd=vault,
-        check=False,
-        capture_output=True,
-        text=True,
-    )
-
-    assert result.returncode != 0, result.stdout + result.stderr
-    assert _git(vault, "rev-parse", "HEAD") == release_v2_head
-    assert (vault / tracked_file).read_text(encoding="utf-8") == edited_content
-    assert (vault / staged_new_file).read_text(encoding="utf-8") == staged_new_content
-    assert not any(tag.startswith("before-rollback-") for tag in _git(vault, "tag").splitlines())
-    assert _git(vault, "diff", "--cached", "--name-only") == staged_new_file
-    assert "Git could not prepare the current state" in result.stdout + result.stderr
-    assert "dex-user-data-before-rollback" in _git(vault, "stash", "list")
+def test_rollback_skill_has_no_legacy_autosave_or_source_control_fallback() -> None:
+    rollback = ROLLBACK_SKILL.read_text(encoding="utf-8")
+    assert "safe_autosave" not in rollback
+    assert "backup-before" not in rollback
+    assert "git stash" not in rollback.lower()
+    assert "rewind_adoption_by_receipt" in rollback
 
 
 def test_update_then_manifest_rollback_preserves_user_customizations(tmp_path: Path) -> None:

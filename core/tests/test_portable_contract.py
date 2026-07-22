@@ -66,6 +66,7 @@ def _tracked_paths() -> list[str]:
         ("System/.installed-files.manifest", "generated", False),
         ("packages/dex-contracts/dist/paths.contract.json", "generated", False),
         ("System/.dex/gardener.json", "runtime", False),
+        ("System/.onboarding-session.json", "runtime", False),
         ("System/Session_Learnings/2026-05-01.md", "runtime", False),
     ],
 )
@@ -124,6 +125,7 @@ def test_mutation_policy_travels_in_the_document() -> None:
         ("System/.installed-files.manifest", True, True, "regenerate"),
         ("04-Projects/My_Project/notes.md", True, False, "never"),
         ("System/Session_Learnings/2026-05-01.md", False, False, "never"),
+        ("System/.onboarding-session.json", False, False, "never"),
         (".env", False, False, "deny"),
         ("totally/unknown/path.xyz", False, False, "unclassified-never-write"),
     ],

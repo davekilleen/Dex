@@ -29,11 +29,12 @@ if str(REPO_ROOT) not in sys.path:
 from core import paths, portable_contract
 from core.lifecycle import engine as lifecycle_engine
 from core.lifecycle import ledger as lifecycle_ledger
+from core.lifecycle import service as lifecycle_service
 from core.lifecycle.catalog import CatalogError, load_catalog
 from core.lifecycle.inventory import build_inventory
 from core.lifecycle.model import ITEM_ID, SEMVER, AdoptionState
 from core.lifecycle.plan import PlannedAction, ReasonCode, build_adoption_plan
-from core.transaction.engine import TX_ROOT_RELATIVE
+from core.transaction.engine import TX_ROOT_RELATIVE, PlanEntry
 from core.transaction.journal import Journal, JournalCorruptError
 from core.utils import preflight, release_channel
 
@@ -722,22 +723,20 @@ def _repo_shipped_executables(context: DoctorContext) -> list[Path]:
 
 
 def _apply_t1_heals(context: DoctorContext) -> tuple[list[str], list[str]]:
-    """Apply the collector's safe, idempotent repair set."""
+    """Preview and apply contract-authorized Tier-1 repairs through the service."""
     actions: list[str] = []
     errors: list[str] = []
+    planned: list[PlanEntry] = []
+    planned_paths_export = False
+    planned_executables: list[str] = []
 
     missing_directories = [context.core_path(name) for name in PARA_PATH_NAMES if not context.core_path(name).is_dir()]
     if missing_directories:
-        created = []
-        for directory in missing_directories:
-            try:
-                directory.mkdir(parents=True, exist_ok=True)
-                created.append(directory)
-            except OSError as error:
-                errors.append(f"Directory heal failed for {directory.name}: {_one_line(error)}")
-        if created:
-            names = ", ".join(directory.name for directory in created)
-            actions.append(f"Created {names}")
+        names = ", ".join(directory.name for directory in missing_directories)
+        errors.append(
+            "Directory repair requires user action because empty directories are not "
+            f"receipt-declared transaction writes: {names}"
+        )
 
     try:
         expected_paths = _paths_export_for(context)
@@ -747,13 +746,23 @@ def _apply_t1_heals(context: DoctorContext) -> tuple[list[str], list[str]]:
         except (FileNotFoundError, json.JSONDecodeError, OSError):
             pass
         if current_paths != expected_paths:
-            context.paths_json_path.parent.mkdir(parents=True, exist_ok=True)
-            context.paths_json_path.write_text(json.dumps(expected_paths, indent=2) + "\n")
-            actions.append("regenerated core/paths.json")
+            relative = context.paths_json_path.relative_to(context.vault_root).as_posix()
+            mode = (
+                context.paths_json_path.stat().st_mode & 0o777
+                if context.paths_json_path.is_file()
+                else 0o644
+            )
+            planned.append(
+                PlanEntry(
+                    relative,
+                    (json.dumps(expected_paths, indent=2) + "\n").encode("utf-8"),
+                    mode=mode,
+                )
+            )
+            planned_paths_export = True
     except Exception as error:
         errors.append(f"Path-export heal failed: {_one_line(error)}")
 
-    restored = []
     try:
         shipped_executables = _repo_shipped_executables(context)
     except Exception as error:
@@ -763,40 +772,71 @@ def _apply_t1_heals(context: DoctorContext) -> tuple[list[str], list[str]]:
         try:
             if not script.is_file() or script.stat().st_mode & 0o111:
                 continue
-            script.chmod(script.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
             try:
-                restored.append(str(script.relative_to(context.repo_root)))
+                relative = script.relative_to(context.vault_root).as_posix()
             except ValueError:
-                restored.append(str(script))
+                errors.append(
+                    f"Executable-mode repair requires user action outside the vault: {script}"
+                )
+                continue
+            planned.append(
+                PlanEntry(
+                    relative,
+                    script.read_bytes(),
+                    mode=(script.stat().st_mode & 0o777) | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH,
+                )
+            )
+            planned_executables.append(relative)
         except OSError as error:
             errors.append(f"Executable-mode heal failed for {script}: {_one_line(error)}")
-    if restored:
-        noun = "permission" if len(restored) == 1 else "permissions"
-        actions.append(f"restored executable {noun} on {', '.join(restored)}")
+
+    if planned:
+        try:
+            preview = lifecycle_service._preview_transaction(
+                context.vault_root,
+                planned,
+                purpose="doctor-tier-1",
+            )
+            lifecycle_service._execute_approved_transaction(
+                context.vault_root,
+                planned,
+                purpose="doctor-tier-1",
+                approved_token=str(preview["approval_token"]),
+            )
+        except Exception as error:
+            errors.append(f"Tier-1 transaction failed: {_one_line(error)}")
+        else:
+            if planned_paths_export:
+                actions.append("regenerated core/paths.json")
+            if planned_executables:
+                noun = "permission" if len(planned_executables) == 1 else "permissions"
+                actions.append(
+                    f"restored executable {noun} on {', '.join(planned_executables)}"
+                )
 
     return actions, errors
 
 
 def _write_last_run(report: dict[str, Any], context: DoctorContext) -> None:
-    serialized = json.dumps(report, indent=2) + "\n"
-    temporary_path: Path | None = None
-    try:
-        with tempfile.NamedTemporaryFile(
-            mode="w",
-            encoding="utf-8",
-            dir=context.last_run_path.parent,
-            prefix=".doctor-last-run.",
-            suffix=".tmp",
-            delete=False,
-        ) as handle:
-            temporary_path = Path(handle.name)
-            handle.write(serialized)
-            handle.flush()
-            os.fsync(handle.fileno())
-        os.replace(temporary_path, context.last_run_path)
-    finally:
-        if temporary_path and temporary_path.exists():
-            temporary_path.unlink()
+    relative = context.last_run_path.relative_to(context.vault_root).as_posix()
+    plan = [
+        PlanEntry(
+            relative,
+            (json.dumps(report, indent=2) + "\n").encode("utf-8"),
+            mode=0o600,
+        )
+    ]
+    preview = lifecycle_service._preview_transaction(
+        context.vault_root,
+        plan,
+        purpose="doctor-report",
+    )
+    lifecycle_service._execute_approved_transaction(
+        context.vault_root,
+        plan,
+        purpose="doctor-report",
+        approved_token=str(preview["approval_token"]),
+    )
 
 
 def collect(
