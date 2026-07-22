@@ -8,6 +8,7 @@ import pytest
 
 from core.mcp import calendar_server, onboarding_server
 
+
 def _decode_tool_result(result):
     return json.loads(result[0].text)
 
