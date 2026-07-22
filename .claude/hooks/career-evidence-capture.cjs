@@ -6,6 +6,11 @@
  */
 const fs = require('fs');
 const path = require('path');
+const { loadPaths } = require('./paths.cjs');
+
+const _paths = loadPaths();
+// Canonical career-folder segment, derived from the path contract (no raw PARA literals)
+const CAREER_SEGMENT = path.relative(_paths.VAULT_ROOT, _paths.CAREER_DIR);
 
 function main() {
   // Read hook context from stdin, per the Claude Code hook contract
@@ -13,7 +18,7 @@ function main() {
   const filePath = input?.tool_input?.file_path || input?.toolInput?.file_path || '';
 
   // Only act on Career directory files
-  if (!filePath.includes('05-Areas/Career') && !filePath.includes('Career/')) {
+  if (!filePath.includes(CAREER_SEGMENT)) {
     process.exit(0);
   }
 
@@ -76,8 +81,7 @@ function main() {
   }
 
   // Append to Evidence Log
-  const vaultRoot = process.env.CLAUDE_PROJECT_DIR || path.resolve(__dirname, '../..');
-  const evidenceLogPath = path.join(vaultRoot, '05-Areas/Career/Evidence_Log.md');
+  const evidenceLogPath = path.join(_paths.CAREER_DIR, 'Evidence_Log.md');
 
   // Create log if it doesn't exist
   if (!fs.existsSync(evidenceLogPath)) {
