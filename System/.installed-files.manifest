@@ -14,6 +14,7 @@
 .claude/hooks/career-evidence-capture.cjs
 .claude/hooks/company-context-injector.cjs
 .claude/hooks/daily-plan-quick-ref.cjs
+.claude/hooks/dex-core-orientation.sh
 .claude/hooks/dex-safety-guard.sh
 .claude/hooks/ensure-mcp-user-scope.cjs
 .claude/hooks/integration-concierge.cjs
@@ -522,6 +523,7 @@
 .claude/skills/dex-improve/SKILL.md
 .claude/skills/dex-level-up/SKILL.md
 .claude/skills/dex-obsidian-setup/SKILL.md
+.claude/skills/dex-orient/SKILL.md
 .claude/skills/dex-rollback/SKILL.md
 .claude/skills/dex-update/SKILL.md
 .claude/skills/dex-update/scripts/protect_trust_registry.py
@@ -558,6 +560,9 @@
 .claude/skills/save-insight/SKILL.md
 .claude/skills/scrape/SKILL.md
 .claude/skills/setup/SKILL.md
+.claude/skills/skill-score/SKILL.md
+.claude/skills/skill-score/evals/trigger-cases.yaml
+.claude/skills/skill-score/scripts/score_skill.py
 .claude/skills/things-setup/SKILL.md
 .claude/skills/todoist-setup/SKILL.md
 .claude/skills/trello-setup/SKILL.md
@@ -873,6 +878,7 @@ core/tests/test_adoption_runtime_evidence.py
 core/tests/test_adoption_sqlite_snapshot.py
 core/tests/test_adoption_transaction.py
 core/tests/test_apply_update.py
+core/tests/test_architecture_inventory.py
 core/tests/test_calendar_eventkit_script.py
 core/tests/test_calendar_server.py
 core/tests/test_capabilities.py
@@ -885,6 +891,7 @@ core/tests/test_credential_remediation.py
 core/tests/test_credential_scanner.py
 core/tests/test_credential_workflow.py
 core/tests/test_dex_improvements_server.py
+core/tests/test_dex_state.py
 core/tests/test_dexdiff_adopt_profile_script.py
 core/tests/test_dexdiff_profile_adopt.py
 core/tests/test_dexdiff_publish_diff_script.py
@@ -1012,6 +1019,9 @@ docs/Dex_System/README.md
 docs/Dex_System/Updating_Dex.md
 docs/FAQ-DRAFT.md
 docs/analytics-proxy.md
+docs/architecture/DEX-CORE-MAP.md
+docs/architecture/INVENTORY.md
+docs/architecture/STATE.md
 docs/calendar-performance.md
 docs/credential-remediation.md
 docs/dex-doctor-spec.md
@@ -1049,6 +1059,7 @@ scripts/benchmark_large_vault.py
 scripts/build-health-json.py
 scripts/build-release.sh
 scripts/build-vault-bundle.sh
+scripts/check-architecture-inventory.sh
 scripts/check-catalog-coverage.py
 scripts/check-coverage-threshold.py
 scripts/check-doc-drift.sh
@@ -1065,7 +1076,9 @@ scripts/check-test-delta.sh
 scripts/check-tracked-ignored.py
 scripts/configure-branch-protection.sh
 scripts/detect-flaky-tests.sh
+scripts/dex_state.py
 scripts/founder-content-allowlist.txt
+scripts/generate-architecture-inventory.py
 scripts/generate-manifest.sh
 scripts/generate-path-contracts.py
 scripts/generate-portable-contract.py

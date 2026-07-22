@@ -7,6 +7,20 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.69.0] - Dex picks the right tool more often — and stops confusing similar ones (2026-07-22)
+
+Before, if you said "clean up my inbox" or "prep me for my 2pm," Dex sometimes didn't reach for the right built-in command, because those commands didn't clearly spell out *when* to use them.
+
+**What this fixes for you:**
+
+- **The right command fires when you ask.** We rewrote how 49 of Dex's built-in commands describe themselves, so everyday phrasing — "plan my week," "clean up my inbox," "connect my calendar" — reliably lands on the right one. Several commands that previously wouldn't trigger on their own now do.
+
+- **No more confusing the twins.** Similar commands — planning your day vs reviewing it, or connecting Todoist vs Things vs Trello — now clearly point at each other, so Dex stops picking the wrong one.
+
+- **Your career wins get captured again.** A behind-the-scenes step during career coaching that quietly stopped working — logging your achievements — is fixed.
+
+- **New commands stay good.** Added a built-in quality check so any new command (yours or ours) gets graded on whether it'll actually fire and behave safely before it ships.
+
 ## [1.68.0] - Every way Dex changes your vault now goes through one safe door (2026-07-22)
 
 For months, different parts of Dex changed your files in different ways — installing, updating, undoing, fixing itself. This release routes every one of them through the single protected engine built over the last week, and gives you a whole shelf of new role-specific tools you can turn on safely.
