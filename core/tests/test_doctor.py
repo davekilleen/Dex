@@ -336,17 +336,23 @@ def test_entity_engine_probe_reports_gardener_statuses(monkeypatch, context):
 
     monkeypatch.setenv("OPENAI_API_KEY", "test-key")
     gardener = context.core_path("GARDENER_STATE_FILE")
-    gardener.write_text(json.dumps({"pages": {
-        "one.md": {"output_hash": "one", "locked": False},
-        "two.md": {"output_hash": "two", "locked": True},
+    gardener.write_text(json.dumps({"version": 2, "pages": {
+        "one.md": {"output_hash": "one", "blocks": {"context-summary": {"owner": "dex"}}},
+        "two.md": {"output_hash": "two", "blocks": {"context-summary": {"owner": "user"}}},
     }}))
     result = doctor._probe_entity_engine(context)
-    assert "gardener on (2 pages maintained), 1 locked" in result.detail
+    assert "gardener on (2 pages maintained), 1 user-owned summary" in result.detail
 
     profile = context.core_path("USER_PROFILE_FILE")
     profile.write_text("entity_creation:\n  mode: auto\nentity_gardener:\n  enabled: false\n")
     result = doctor._probe_entity_engine(context)
-    assert "gardener off (disabled), 1 locked" in result.detail
+    assert "gardener off (disabled), 1 user-owned summary" in result.detail
+
+    gardener.write_text(json.dumps({"version": 1, "pages": {
+        "legacy.md": {"output_hash": "old", "locked": True, "locked_reason": "user-edited"},
+    }}))
+    result = doctor._probe_entity_engine(context)
+    assert "1 legacy lock pending migration" in result.detail
 
 
 def test_registry_ids_match_the_approved_spec():
