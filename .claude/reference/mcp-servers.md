@@ -199,7 +199,7 @@ You want to capture improvement ideas from any context (during reviews, while pl
 - **Backlog statistics** - View ideas by category, priority, and implementation status
 
 **Real-world example:**  
-During `/review`, you realize: "I keep forgetting to check task dependencies. We should auto-suggest blocked-by relationships."
+During `/daily-review`, you realize: "I keep forgetting to check task dependencies. We should auto-suggest blocked-by relationships."
 
 You mention this → Dex Improvements MCP:
 1. Generates ID `idea-042`

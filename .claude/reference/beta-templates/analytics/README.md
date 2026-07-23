@@ -25,7 +25,7 @@ Welcome to the Dex Analytics beta! By opting in, you're helping the Dex maintain
 
 ## How It Works
 
-1. **Consent prompt:** During your next planning session (`/daily-plan`, `/review`, etc.), you'll be asked once if you want to help improve Dex
+1. **Consent prompt:** During your next planning session (`/daily-plan`, `/daily-review`, etc.), you'll be asked once if you want to help improve Dex
 2. **Your choice:** Say yes to help, or no thanks — Dex works exactly the same either way
 3. **Event firing:** If you opt in, anonymous feature usage events are sent through your configured analytics transport
 

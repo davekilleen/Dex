@@ -143,7 +143,7 @@ The best skills solve **your** specific problems. Don't build generic tools - bu
 ## What Goes Here
 
 Skill definition files (`SKILL.md` format) that:
-- Define user-invoked commands (e.g., `/daily-plan`, `/review`)
+- Define user-invoked commands (e.g., `/daily-plan`, `/daily-review`)
 - Orchestrate tools and workflows
 - Provide interactive guidance
 - Execute single-purpose tasks

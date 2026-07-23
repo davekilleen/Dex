@@ -9,7 +9,7 @@
 ## Core Workflows (8 features)
 
 - [ ] Daily planning (`/daily-plan`)
-- [ ] Daily review (`/review` or `/daily-review`)
+- [ ] Daily review (`/daily-review`)
 - [ ] Weekly planning (`/week-plan`)
 - [ ] Weekly review (`/week-review`)
 - [ ] Quarterly planning (`/quarter-plan`)
