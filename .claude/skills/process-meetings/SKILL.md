@@ -218,6 +218,12 @@ If available, enhance meeting processing with meaning-based intelligence:
    ```
    Find if they've been mentioned in other meetings/notes, even if they weren't a direct participant.
 
+**Deterministic soft-commitment pass (always runs):** Independently of QMD
+availability, run the `detect_soft_commitments` Work-MCP tool over each meeting's
+discussion notes. Add matches to the action-items list marked
+"*(soft commitment — confirm before creating)*" so Step 5 confirms, creates, and
+reads back every task ID. QMD is the semantic complement; NEVER auto-create.
+
 **Integration:**
 - Add implicit commitments to the action items list with a note: "*(detected — not explicitly stated)*"
 - Add project links to meeting frontmatter
