@@ -16,7 +16,7 @@ Configuration and system files for Dex.
 ## Subfolders
 
 - **Templates/** — Note templates for consistent formatting
-- **Session_Learnings/** — Daily learning capture from `/review` sessions
+- **Session_Learnings/** — Daily learning capture from `/daily-review` sessions
 
 ## What to Edit
 

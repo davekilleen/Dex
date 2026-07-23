@@ -323,7 +323,7 @@ Current Claude Code features to track:
 
 | Feature | What It Does | Dex Potential |
 |---------|--------------|---------------|
-| **Commands** | User-triggered workflows | `/plan`, `/review`, etc. |
+| **Commands** | User-triggered workflows | `/plan`, `/daily-review`, etc. |
 | **Skills** | Reusable behaviors, always loaded | Person lookup, writing style |
 | **Hooks** | Auto-triggers at events | Session start, file changes |
 | **Sub-agents** | Parallel workers, isolated context | Research, analysis |
