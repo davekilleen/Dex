@@ -14,7 +14,9 @@ import json
 import os
 import sqlite3
 import time
+from collections.abc import Sequence
 from dataclasses import dataclass
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
@@ -26,6 +28,17 @@ _HEX = frozenset("0123456789abcdef")
 _DEFAULT_BACKUP_TIMEOUT_SECONDS = 5.0
 _BACKUP_PAGES = 256
 _BACKUP_SLEEP_SECONDS = 0.01
+_SYNC_MARKER_SCHEMA_VERSION = 1
+_SYNC_MARKER_DATA_PATH = Path(__file__).resolve().parents[1] / "data" / "sync-folder-markers.json"
+_SYNC_MARKER_KINDS = frozenset(
+    {
+        "path-segment",
+        "cloudstorage-provider",
+        "child",
+        "paired-children",
+        "icloud-materialization",
+    }
+)
 
 
 class SQLiteSnapshotError(RuntimeError):
@@ -67,27 +80,97 @@ class _SyncMarker:
     values: tuple[str, ...]
 
 
-# The table is deliberately declarative so later providers can be added without
-# changing snapshot policy. Specific OneDrive signals precede the generic
-# CloudStorage provider directory.
-SYNC_MARKERS = (
-    _SyncMarker("OneDrive", "path-segment", ("onedrive", "onedrive - ")),
-    _SyncMarker(
-        "OneDrive",
-        "paired-children",
-        ("desktop.ini", ".849C9593-D756-4E56-8D6E-42412F2A707B"),
-    ),
-    _SyncMarker("Dropbox", "child", (".dropbox", ".dropbox.cache")),
-    _SyncMarker("a cloud-synced folder", "cloudstorage-provider", ("library", "cloudstorage")),
-    _SyncMarker("iCloud Drive", "icloud-materialization", (".icloud",)),
-)
+def _sync_marker_data_error(message: str) -> RuntimeError:
+    return RuntimeError(f"Could not safely read sync-folder marker data: {message}")
 
-_CLOUDSTORAGE_PROVIDER_PREFIXES = (
-    ("dropbox", "Dropbox"),
-    ("googledrive", "GoogleDrive"),
-    ("onedrive", "OneDrive"),
-    ("box", "Box"),
-)
+
+def _ascii_marker(value: object, context: str) -> str:
+    if not isinstance(value, str) or not value or not value.isascii():
+        raise _sync_marker_data_error(f"{context} must be a non-empty ASCII string")
+    return value
+
+
+def _load_sync_folder_markers(
+    data_path: Path = _SYNC_MARKER_DATA_PATH,
+) -> tuple[tuple[_SyncMarker, ...], tuple[tuple[str, str], ...]]:
+    try:
+        document = json.loads(Path(data_path).read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as error:
+        raise _sync_marker_data_error(f"{data_path}: {error}") from error
+    if (
+        not isinstance(document, dict)
+        or set(document) != {"schema_version", "markers", "cloudstorage_provider_prefixes"}
+        or document.get("schema_version") != _SYNC_MARKER_SCHEMA_VERSION
+        or not isinstance(document.get("markers"), list)
+        or not document["markers"]
+        or not isinstance(document.get("cloudstorage_provider_prefixes"), list)
+    ):
+        raise _sync_marker_data_error(f"{data_path} has an unsupported schema or shape")
+
+    markers: list[_SyncMarker] = []
+    for index, marker in enumerate(document["markers"]):
+        if (
+            not isinstance(marker, dict)
+            or set(marker) != {"provider", "kind", "values"}
+            or not isinstance(marker.get("provider"), str)
+            or not marker["provider"]
+            or marker.get("kind") not in _SYNC_MARKER_KINDS
+            or not isinstance(marker.get("values"), list)
+            or not marker["values"]
+        ):
+            raise _sync_marker_data_error(f"{data_path} marker {index} is invalid")
+        values = tuple(
+            _ascii_marker(value, f"marker {index} value {value_index}")
+            for value_index, value in enumerate(marker["values"])
+        )
+        if marker["kind"] == "path-segment" and len(values) != 2:
+            raise _sync_marker_data_error(
+                f"{data_path} path-segment marker {index} needs exactly two values"
+            )
+        if marker["kind"] == "icloud-materialization" and values != (".icloud",):
+            raise _sync_marker_data_error(f"{data_path} iCloud marker {index} is invalid")
+        markers.append(_SyncMarker(marker["provider"], marker["kind"], values))
+
+    provider_prefixes: list[tuple[str, str]] = []
+    for index, entry in enumerate(document["cloudstorage_provider_prefixes"]):
+        if (
+            not isinstance(entry, dict)
+            or set(entry) != {"prefix", "provider"}
+            or not isinstance(entry.get("provider"), str)
+            or not entry["provider"]
+        ):
+            raise _sync_marker_data_error(
+                f"{data_path} CloudStorage prefix {index} is invalid"
+            )
+        provider_prefixes.append(
+            (
+                _ascii_marker(entry.get("prefix"), f"CloudStorage prefix {index}"),
+                entry["provider"],
+            )
+        )
+    return tuple(markers), tuple(provider_prefixes)
+
+
+@lru_cache(maxsize=1)
+def _sync_folder_marker_data() -> tuple[
+    tuple[_SyncMarker, ...],
+    tuple[tuple[str, str], ...],
+]:
+    return _load_sync_folder_markers()
+
+
+class _LazySyncMarkers(Sequence[_SyncMarker]):
+    """Compatibility view that does not read marker data during module import."""
+
+    def __getitem__(self, index: int | slice) -> _SyncMarker | tuple[_SyncMarker, ...]:
+        return _sync_folder_marker_data()[0][index]
+
+    def __len__(self) -> int:
+        return len(_sync_folder_marker_data()[0])
+
+
+# Keep the existing public name without restoring import-time file I/O.
+SYNC_MARKERS: Sequence[_SyncMarker] = _LazySyncMarkers()
 
 
 def _ancestors(path: Path) -> tuple[Path, ...]:
@@ -102,7 +185,11 @@ def _child_names(directory: Path) -> frozenset[str]:
         return frozenset()
 
 
-def _cloudstorage_provider(folded_parts: tuple[str, ...], sequence: tuple[str, ...]) -> str | None:
+def _cloudstorage_provider(
+    folded_parts: tuple[str, ...],
+    sequence: tuple[str, ...],
+    provider_prefixes: tuple[tuple[str, str], ...],
+) -> str | None:
     width = len(sequence)
     for index in range(len(folded_parts)):
         if folded_parts[index : index + width] != sequence:
@@ -111,7 +198,7 @@ def _cloudstorage_provider(folded_parts: tuple[str, ...], sequence: tuple[str, .
         if provider_index >= len(folded_parts):
             return "a cloud-synced folder"
         provider_directory = folded_parts[provider_index]
-        for prefix, provider in _CLOUDSTORAGE_PROVIDER_PREFIXES:
+        for prefix, provider in provider_prefixes:
             if provider_directory.startswith(prefix):
                 return provider
         return "a cloud-synced folder"
@@ -131,15 +218,16 @@ def detect_sync_folder(path: Path) -> str | None:
     ancestors = _ancestors(Path(path))
     folded_parts = tuple(part.casefold() for part in Path(path).absolute().parts)
     names_by_directory: dict[Path, frozenset[str]] = {}
+    markers, provider_prefixes = _sync_folder_marker_data()
 
-    for marker in SYNC_MARKERS:
+    for marker in markers:
         if marker.kind == "path-segment":
             exact, tenant_prefix = marker.values
             if any(part == exact or part.startswith(tenant_prefix) for part in folded_parts):
                 return marker.provider
             continue
         if marker.kind == "cloudstorage-provider":
-            provider = _cloudstorage_provider(folded_parts, marker.values)
+            provider = _cloudstorage_provider(folded_parts, marker.values, provider_prefixes)
             if provider is not None:
                 return provider
             continue
