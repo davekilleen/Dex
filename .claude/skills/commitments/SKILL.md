@@ -19,7 +19,7 @@ Governing rule: **do not rebuild the data layer.** The Work MCP already ships th
 
 Call `get_commitments_due(date_range=$RANGE)`. It returns `commitments_due_today`, `commitments_due_this_week`, and `commitments_no_date` — each item carries `commitment`, `due_date`, `source` (the meeting file or person page), and, for person-page items, `to_person`.
 
-If `get_commitments_due` returns a `feature_status` other than `ok`, follow the standard contract (surface the tool's `user_message`; never invent a result). If it errors or the Work MCP is unavailable, say so plainly and stop — do not fabricate a commitments list.
+If `get_commitments_due` returns a `feature_status` other than `ok`, follow the standard contract (surface the user-facing message it returns; never invent a result). If it errors or the Work MCP is unavailable, say so plainly and stop — do not fabricate a commitments list.
 
 **Optional enrichment (degrades silently):** if ScreenPipe is active and opted-in, you may also fold in the `commitment-scan` (agent skill) results as an extra source. If ScreenPipe is absent — the normal case — skip it entirely and say nothing about it. The shipped skill must never depend on the beta.
 

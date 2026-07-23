@@ -34,7 +34,7 @@ def test_daily_review_still_exists_as_canonical() -> None:
 
 def test_alias_description_names_daily_review_as_the_target() -> None:
     fm = REVIEW.read_text(encoding="utf-8").split("---\n", 2)[1]
-    desc = next(l for l in fm.splitlines() if l.startswith("description:")).lower()
+    desc = next(line for line in fm.splitlines() if line.startswith("description:")).lower()
     assert "daily-review" in desc
     # Has a when-trigger (users typing /review) so it is not a discoverability-risk.
     assert "when the user" in desc
