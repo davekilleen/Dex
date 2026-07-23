@@ -1,10 +1,8 @@
 #!/usr/bin/env node
 'use strict';
 /**
- * dex-call.cjs — the generic "floor": make an authenticated request to ANY connected app,
- * using a fresh token + the catalog's auth scheme. The always-available fallback beneath the
- * rich per-app Printing Press CLIs (see CONSUMPTION-LAYER.md): every connected app works
- * through this the instant it's connected; a built pp-<service> CLI is the upgrade.
+ * dex-call.cjs — the generic "floor": make an authenticated request to any connected app,
+ * using a fresh token + the catalog's auth scheme.
  *
  *   node dex-call.cjs <service> [METHOD] <path|url> \
  *        [--query k=v]… [--header "K: V"]… [--body '<json>' | --body-file <f>] [--status] [--raw]

@@ -4,7 +4,7 @@
  * to make an authenticated request: { kind, baseUrl, headers, query }.
  *
  * Shared by get-token.cjs (the accessor other runtimes read) and dex-call.cjs (the generic
- * "floor" caller), so per-provider auth is rendered in exactly one place. See CONSUMPTION-LAYER.md.
+ * caller), so per-provider auth is rendered in exactly one place.
  */
 
 const health = require('./health.cjs');

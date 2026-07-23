@@ -4,7 +4,6 @@
  * Catalog-hybrid: provider config from Nango's open-source catalog (@nangohq/providers),
  * runtime + on-device encrypted token store owned by Dex. No Docker, no relay, no cloud.
  *
- * See: System/PRDs/dex-integrations-suite.md § Decision Reopened (2026-06-01).
  */
 
 const catalog = require('./catalog.cjs');
