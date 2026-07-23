@@ -132,6 +132,7 @@ from core.paths import (
 from core.paths import (
     VAULT_ROOT as BASE_DIR,
 )
+from core.soft_promise import detect_soft_promises
 from core.utils.company_domains import registrable_domain
 from core.utils.entity_pages import parse_entity_page, render_person_page
 from core.utils.feature_status import feature_status
@@ -3977,6 +3978,20 @@ async def handle_list_tools() -> list[types.Tool]:
             }
         ),
         types.Tool(
+            name="detect_soft_commitments",
+            description="Detect soft/implicit commitments in a block of text (a chat message or meeting notes) — 'I'll follow up', 'let me get back to you', 'we should revisit' — and return candidates with any stated person and due date. Detection only; never creates tasks. The single shared detector behind the live capture hook and process-meetings.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "text": {
+                        "type": "string",
+                        "description": "Text to scan for soft commitments",
+                    }
+                },
+                "required": ["text"],
+            },
+        ),
+        types.Tool(
             name="classify_task_effort",
             description="Classify a task's effort level (quick: 15-30min, medium: 1-2hrs, deep_work: 2-4hrs) based on keywords and patterns.",
             inputSchema={
@@ -5790,6 +5805,12 @@ async def _handle_call_tool_inner(
         date_range = arguments.get('date_range', 'today') if arguments else 'today'
         
         result = get_commitments_due_data(date_range)
+        return [types.TextContent(type="text", text=json.dumps(result, indent=2, cls=DateTimeEncoder))]
+
+    elif name == "detect_soft_commitments":
+        text = arguments.get("text", "")
+        candidates = detect_soft_promises(text)
+        result = {"candidates": candidates, "count": len(candidates)}
         return [types.TextContent(type="text", text=json.dumps(result, indent=2, cls=DateTimeEncoder))]
     
     elif name == "classify_task_effort":
