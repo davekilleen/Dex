@@ -27,7 +27,9 @@ PERSON_FIELDS = (
     "last_interaction",
 )
 COMPANY_FIELDS = ("type", "name", "domains", "website", "status")
-CANONICAL_FIELDS = frozenset(PERSON_FIELDS + COMPANY_FIELDS)
+CANONICAL_FIELD_ORDER = tuple(dict.fromkeys(PERSON_FIELDS + COMPANY_FIELDS))
+CANONICAL_FIELDS = frozenset(CANONICAL_FIELD_ORDER)
+V2_FIELDS = frozenset({"dex_pinned", "dex_last_written", "last_touched", "touches"})
 _LIST_FIELDS = frozenset({"emails", "aliases", "domains"})
 _SCALAR_FIELDS = CANONICAL_FIELDS - _LIST_FIELDS
 _FIELD_LABELS = {
@@ -104,6 +106,14 @@ def _normalise_field(key: str, value: Any) -> Any:
     if key == "last_interaction" and value and not re.fullmatch(r"\d{4}-\d{2}-\d{2}", value):
         return None
     return value
+
+
+def _normalise_v2_field(key: str, value: Any) -> Any:
+    if key in {"dex_pinned", "dex_last_written"}:
+        return dict(value) if isinstance(value, dict) else None
+    if key == "touches":
+        return list(value) if isinstance(value, list) else None
+    return _normalise_scalar(value)
 
 
 def _legacy_fields(body: str) -> tuple[dict[str, Any], dict[str, Any], list[str]]:
@@ -232,26 +242,138 @@ def _atomic_write(path: Path, text: str) -> None:
 
 
 def upsert_frontmatter(path: str | Path, fields: dict[str, Any], *, dry_run: bool = False) -> bool:
-    """Merge canonical fields into frontmatter while preserving unknown keys."""
+    """Merge Dex fields while preserving user-owned canonical values and unknown keys."""
     page_path = Path(path)
-    original = page_path.read_text(encoding="utf-8-sig")
+    raw_original = page_path.read_text(encoding="utf-8")
+    bom = "\ufeff" if raw_original.startswith("\ufeff") else ""
+    original = raw_original[len(bom) :]
     parsed, body, _had_frontmatter, quarantined = _split_frontmatter(original)
     if quarantined:
         return False
     merged = dict(parsed or {})
-    for key, value in fields.items():
-        if key in CANONICAL_FIELDS:
-            if value is None and key in _SCALAR_FIELDS:
-                merged[key] = None
+
+    had_pins = isinstance(merged.get("dex_pinned"), dict)
+    had_last_written = isinstance(merged.get("dex_last_written"), dict)
+    pinned = dict(merged["dex_pinned"]) if had_pins else {}
+    last_written = (
+        dict(merged["dex_last_written"]) if had_last_written else {}
+    )
+    ownership_enabled = had_pins or had_last_written or any(key in fields for key in V2_FIELDS)
+
+    supplied_pins = _normalise_v2_field("dex_pinned", fields.get("dex_pinned"))
+    if supplied_pins is not None:
+        pinned.update(
+            (key, value)
+            for key, value in supplied_pins.items()
+            if key in CANONICAL_FIELDS and _normalise_scalar(value)
+        )
+    supplied_last_written = _normalise_v2_field(
+        "dex_last_written", fields.get("dex_last_written")
+    )
+    if supplied_last_written is not None:
+        for key, value in supplied_last_written.items():
+            if key not in CANONICAL_FIELDS:
                 continue
             normalised = _normalise_field(key, value)
-            if normalised is not None:
-                merged[key] = normalised
+            if normalised is not None or (value is None and key in _SCALAR_FIELDS):
+                last_written[key] = normalised
+
+    pipe, inline, _formats = _legacy_fields(body)
+
+    def explicit_current_value(key: str) -> Any:
+        candidates = []
+        if parsed is not None and key in parsed:
+            candidates.append(parsed[key])
+        if key in pipe:
+            candidates.append(pipe[key])
+        if key in inline:
+            candidates.append(inline[key])
+        for candidate in candidates:
+            normalised = _normalise_field(key, candidate)
+            if normalised is not None or (candidate is None and key in _SCALAR_FIELDS):
+                return normalised
+        return [] if key in _LIST_FIELDS else None
+
+    effective_current = {
+        key: explicit_current_value(key) for key in CANONICAL_FIELD_ORDER
+    }
+    effective_current["type"] = _infer_type(page_path, effective_current)
+    if effective_current["type"] and not effective_current["name"]:
+        heading = re.search(r"^#\s+(.+?)\s*$", body, re.MULTILINE)
+        effective_current["name"] = (
+            heading.group(1).strip() if heading else page_path.stem.replace("_", " ")
+        )
+
+    def current_value(key: str) -> Any:
+        return effective_current[key]
+
+    def has_nonempty_raw_value(key: str) -> bool:
+        candidates = []
+        if parsed is not None and key in parsed:
+            candidates.append(parsed[key])
+        if key in pipe:
+            candidates.append(pipe[key])
+        if key in inline:
+            candidates.append(inline[key])
+        for candidate in candidates:
+            if candidate is None:
+                continue
+            if isinstance(candidate, str) and not candidate.strip():
+                continue
+            if isinstance(candidate, (dict, list)) and not candidate:
+                continue
+            return True
+        return False
+
+    implicit_bootstrap = (
+        ownership_enabled
+        and not had_pins
+        and not had_last_written
+        and supplied_last_written is None
+    )
+    if implicit_bootstrap:
+        for key in CANONICAL_FIELD_ORDER:
+            if has_nonempty_raw_value(key):
+                pinned.setdefault(key, "user")
+
+    for key, previous in last_written.items():
+        if key not in CANONICAL_FIELDS or key in pinned:
+            continue
+        normalised_previous = _normalise_field(key, previous)
+        if normalised_previous is None and not (previous is None and key in _SCALAR_FIELDS):
+            continue
+        if current_value(key) != normalised_previous:
+            pinned[key] = "user"
+
+    for key, value in fields.items():
+        if key not in CANONICAL_FIELDS or key in pinned:
+            continue
+        if value is None and key in _SCALAR_FIELDS:
+            merged[key] = None
+            if ownership_enabled:
+                last_written[key] = None
+            continue
+        normalised = _normalise_field(key, value)
+        if normalised is not None:
+            merged[key] = normalised
+            if ownership_enabled:
+                last_written[key] = normalised
+
+    for key in ("last_touched", "touches"):
+        if key not in fields:
+            continue
+        normalised = _normalise_v2_field(key, fields[key])
+        if normalised is not None:
+            merged[key] = normalised
+    if ownership_enabled:
+        merged["dex_pinned"] = pinned
+        merged["dex_last_written"] = last_written
+
     dumped = yaml.safe_dump(
         _yaml_safe(merged), allow_unicode=True, sort_keys=False, default_flow_style=False
     ).rstrip()
-    updated = f"---\n{dumped}\n---\n{body}"
-    if updated == original:
+    updated = f"{bom}---\n{dumped}\n---\n{body}"
+    if updated == raw_original:
         return False
     if dry_run:
         return True
@@ -278,6 +400,9 @@ def render_person_page(
     notes: str | None = None,
 ) -> str:
     """Render a canonical person page."""
+    clean_emails = _string_list(emails, lowercase=True)
+    clean_aliases = _string_list(aliases)
+    clean_location = location if location in {"internal", "external", "unknown"} else "unknown"
     fields = [
         "---",
         "type: person",
@@ -285,10 +410,21 @@ def render_person_page(
         f"role: {_quoted(role) if role else 'null'}",
         f"company: {_quoted(company) if company else 'null'}",
         "company_page: null",
-        f"emails: {_string_list(emails, lowercase=True)}",
-        f"aliases: {_string_list(aliases)}",
-        f"location: {location if location in {'internal', 'external', 'unknown'} else 'unknown'}",
+        f"emails: {clean_emails}",
+        f"aliases: {clean_aliases}",
+        f"location: {clean_location}",
         "last_interaction: null",
+        "dex_pinned: {}",
+        "dex_last_written:",
+        "  type: person",
+        f"  name: {_quoted(name)}",
+        f"  role: {_quoted(role) if role else 'null'}",
+        f"  company: {_quoted(company) if company else 'null'}",
+        "  company_page: null",
+        f"  emails: {clean_emails}",
+        f"  aliases: {clean_aliases}",
+        f"  location: {clean_location}",
+        "  last_interaction: null",
         "---",
         f"# {name}",
         "",
@@ -305,6 +441,15 @@ def render_person_page(
         "",
         "## Key Context",
         "",
+        "## Relationships",
+        "",
+        "<!-- dex:auto:relationships -->",
+        "<!-- /dex:auto -->",
+        "",
+        "## Update Log",
+        "",
+        "<!-- dex:auto:update-log -->",
+        "<!-- /dex:auto -->",
     ])
     return "\n".join(fields) + "\n"
 
@@ -316,14 +461,22 @@ def render_company_page(
     status: str = "Prospect",
 ) -> str:
     """Render a canonical company page."""
+    clean_domains = _string_list(domains, lowercase=True)
     return "\n".join(
         [
             "---",
             "type: company",
             f"name: {_quoted(name)}",
-            f"domains: {_string_list(domains, lowercase=True)}",
+            f"domains: {clean_domains}",
             f"website: {_quoted(website) if website else 'null'}",
             f"status: {_quoted(status)}",
+            "dex_pinned: {}",
+            "dex_last_written:",
+            "  type: company",
+            f"  name: {_quoted(name)}",
+            f"  domains: {clean_domains}",
+            f"  website: {_quoted(website) if website else 'null'}",
+            f"  status: {_quoted(status)}",
             "---",
             f"# {name}",
             "",
@@ -339,6 +492,15 @@ def render_company_page(
             "",
             "## Notes",
             "",
+            "## Relationships",
+            "",
+            "<!-- dex:auto:relationships -->",
+            "<!-- /dex:auto -->",
+            "",
+            "## Update Log",
+            "",
+            "<!-- dex:auto:update-log -->",
+            "<!-- /dex:auto -->",
             "",
         ]
     )

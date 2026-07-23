@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import subprocess
 from pathlib import Path
 
 import yaml
@@ -16,6 +17,7 @@ from core.utils.entity_pages import (
 )
 
 FIXTURES = Path(__file__).parent / "fixtures" / "entity_pages"
+ROOT = Path(__file__).parents[2]
 
 
 def test_parse_golden_fixtures() -> None:
@@ -45,8 +47,173 @@ def test_upsert_preserves_unknown_keys_and_is_idempotent(tmp_path: Path) -> None
     assert frontmatter["custom"] == "keep"
     assert frontmatter["emails"] == ["loud@example.com"]
     assert "ignored" not in frontmatter
+    assert "dex_pinned" not in frontmatter
+    assert "dex_last_written" not in frontmatter
     assert page.read_text(encoding="utf-8").endswith("---\n\n# Human body\n")
     assert page.stat().st_mode & 0o777 == 0o640
+
+
+def test_upsert_list_fields_are_byte_identical_across_twins(tmp_path: Path) -> None:
+    original = "---\ncustom: keep\n---\n# Entity\n"
+    fields = {
+        "emails": ["A@EXAMPLE.COM"],
+        "aliases": ["Alias"],
+        "domains": ["EXAMPLE.COM"],
+    }
+    python_page = tmp_path / "python.md"
+    javascript_page = tmp_path / "javascript.md"
+    python_page.write_text(original, encoding="utf-8")
+    javascript_page.write_text(original, encoding="utf-8")
+
+    assert upsert_frontmatter(python_page, fields)
+    subprocess.run(
+        [
+            "node",
+            "-e",
+            (
+                "const { upsertFrontmatter } = require(process.argv[1]);"
+                "upsertFrontmatter(process.argv[2], JSON.parse(process.argv[3]));"
+            ),
+            str(ROOT / ".scripts" / "lib" / "entity-pages.cjs"),
+            str(javascript_page),
+            json.dumps(fields),
+        ],
+        cwd=ROOT,
+        check=True,
+    )
+
+    assert javascript_page.read_bytes() == python_page.read_bytes()
+
+
+def test_upsert_pins_diverged_field_and_keeps_other_fields_live(tmp_path: Path) -> None:
+    page = tmp_path / "Person.md"
+    page.write_text(
+        "---\n"
+        "type: person\n"
+        "name: Jane Doe\n"
+        "role: User-authored role\n"
+        "company: Old Co\n"
+        "dex_last_written:\n"
+        "  type: person\n"
+        "  name: Jane Doe\n"
+        "  role: Dex role\n"
+        "  company: Old Co\n"
+        "---\n"
+        "# Jane Doe\n",
+        encoding="utf-8",
+    )
+
+    fields = {
+        "role": "New Dex role",
+        "company": "New Co",
+        "last_touched": "2026-07-22T12:00:00Z",
+        "touches": [{"ts": "2026-07-22T12:00:00Z", "type": "meeting"}],
+    }
+    assert upsert_frontmatter(page, fields)
+    first = page.read_bytes()
+    frontmatter = yaml.safe_load(page.read_text(encoding="utf-8").split("---", 2)[1])
+    assert frontmatter["role"] == "User-authored role"
+    assert frontmatter["dex_pinned"] == {"role": "user"}
+    assert frontmatter["dex_last_written"]["role"] == "Dex role"
+    assert frontmatter["company"] == "New Co"
+    assert frontmatter["dex_last_written"]["company"] == "New Co"
+    assert frontmatter["last_touched"] == "2026-07-22T12:00:00Z"
+    assert frontmatter["touches"] == [{"ts": "2026-07-22T12:00:00Z", "type": "meeting"}]
+
+    assert not upsert_frontmatter(page, fields)
+    assert page.read_bytes() == first
+
+
+def test_upsert_never_overwrites_explicitly_pinned_field(tmp_path: Path) -> None:
+    page = tmp_path / "Person.md"
+    page.write_text(
+        "---\nrole: Founder\ncompany: Old Co\ndex_pinned: {role: user}\n---\n# Person\n",
+        encoding="utf-8",
+    )
+    assert upsert_frontmatter(page, {"role": "CEO", "company": "New Co"})
+    frontmatter = yaml.safe_load(page.read_text(encoding="utf-8").split("---", 2)[1])
+    assert frontmatter["role"] == "Founder"
+    assert frontmatter["company"] == "New Co"
+
+
+def test_upsert_preserves_malformed_v2_metadata_without_enabling_ownership(tmp_path: Path) -> None:
+    page = tmp_path / "Person.md"
+    page.write_text(
+        "---\ncompany: Old Co\ndex_pinned: [role]\n---\n# Person\n", encoding="utf-8"
+    )
+    assert upsert_frontmatter(page, {"company": "New Co"})
+    frontmatter = yaml.safe_load(page.read_text(encoding="utf-8").split("---", 2)[1])
+    assert frontmatter["company"] == "New Co"
+    assert frontmatter["dex_pinned"] == ["role"]
+    assert "dex_last_written" not in frontmatter
+
+
+def test_first_v2_write_conservatively_pins_legacy_facts(tmp_path: Path) -> None:
+    page = tmp_path / "Legacy.md"
+    page.write_text(
+        "# User Name\n\n**Role:** User-authored role\n**Company:** Old Co\n", encoding="utf-8"
+    )
+    fields = {
+        "type": "person",
+        "name": "Incoming Name",
+        "role": "Incoming role",
+        "company": "New Co",
+        "last_touched": "2026-07-22T12:00:00Z",
+    }
+    assert upsert_frontmatter(page, fields)
+    frontmatter = yaml.safe_load(page.read_text(encoding="utf-8").split("---", 2)[1])
+    assert frontmatter["dex_pinned"] == {
+        "role": "user",
+        "company": "user",
+    }
+    assert parse_entity_page(page)["name"] == "Incoming Name"
+    assert parse_entity_page(page)["type"] == "person"
+    assert parse_entity_page(page)["role"] == "User-authored role"
+    assert parse_entity_page(page)["company"] == "Old Co"
+    assert frontmatter["last_touched"] == "2026-07-22T12:00:00Z"
+    first = page.read_bytes()
+    assert not upsert_frontmatter(page, fields)
+    assert page.read_bytes() == first
+
+
+def test_first_v2_write_pins_nonempty_raw_values_before_canonical_validation(
+    tmp_path: Path,
+) -> None:
+    cases = (
+        (
+            "location",
+            "---\nlocation: London\n---\n# Person\n",
+            {"location": "external", "last_touched": "2026-07-22T12:00:00Z"},
+            "London",
+        ),
+        (
+            "last_interaction",
+            "# Person\n\n**Last interaction:** last summer\n",
+            {"last_interaction": "2026-07-22", "last_touched": "2026-07-22T12:00:00Z"},
+            "**Last interaction:** last summer",
+        ),
+        (
+            "type",
+            "# Person\n\n| **type** | colleague |\n",
+            {"type": "person", "last_touched": "2026-07-22T12:00:00Z"},
+            "| **type** | colleague |",
+        ),
+    )
+
+    for field, original, fields, raw_value in cases:
+        page = tmp_path / f"Legacy-{field}.md"
+        page.write_text(original, encoding="utf-8")
+
+        assert upsert_frontmatter(page, fields)
+        updated = page.read_text(encoding="utf-8")
+        frontmatter = yaml.safe_load(updated.split("---", 2)[1])
+
+        assert frontmatter["dex_pinned"][field] == "user"
+        if field == "location":
+            assert frontmatter[field] == raw_value
+        else:
+            assert field not in frontmatter
+            assert raw_value in updated
 
 
 def test_upsert_dry_run_reports_change_without_writing(tmp_path: Path) -> None:
@@ -55,6 +222,32 @@ def test_upsert_dry_run_reports_change_without_writing(tmp_path: Path) -> None:
     original = page.read_bytes()
     assert upsert_frontmatter(page, {"type": "person", "name": "Person"}, dry_run=True)
     assert page.read_bytes() == original
+
+
+def test_upsert_legacy_empty_and_bom_pages_are_safe_and_idempotent(tmp_path: Path) -> None:
+    legacy = tmp_path / "Legacy.md"
+    legacy_body = "# Legacy\n\n**Role:** Human-authored role\n"
+    legacy.write_text(legacy_body, encoding="utf-8")
+    assert upsert_frontmatter(legacy, {"type": "person", "name": "Legacy"})
+    assert legacy.read_text(encoding="utf-8").endswith(legacy_body)
+    legacy_first = legacy.read_bytes()
+    assert not upsert_frontmatter(legacy, {"type": "person", "name": "Legacy"})
+    assert legacy.read_bytes() == legacy_first
+
+    empty = tmp_path / "Empty.md"
+    empty.write_bytes(b"")
+    assert upsert_frontmatter(empty, {"type": "person", "name": "Empty"})
+    empty_first = empty.read_bytes()
+    assert not upsert_frontmatter(empty, {"type": "person", "name": "Empty"})
+    assert empty.read_bytes() == empty_first
+
+    bom = tmp_path / "Bom.md"
+    bom.write_bytes(b"\xef\xbb\xbf---\nname: Old\n---\n# Old\n")
+    assert upsert_frontmatter(bom, {"type": "person", "name": "New"})
+    assert bom.read_bytes().startswith(b"\xef\xbb\xbf")
+    bom_first = bom.read_bytes()
+    assert not upsert_frontmatter(bom, {"type": "person", "name": "New"})
+    assert bom.read_bytes() == bom_first
 
 
 def test_existing_python_consumers_delegate_to_shared_contract(tmp_path: Path) -> None:
@@ -101,6 +294,10 @@ def test_render_golden_parity() -> None:
     assert render_company_page(**company_input) == (FIXTURES / "render-company.expected.md").read_text(
         encoding="utf-8"
     )
+    person = render_person_page(**person_input)
+    company = render_company_page(**company_input)
+    assert person.index("## Relationships") < person.index("## Update Log")
+    assert company.index("## Relationships") < company.index("## Update Log")
 
 
 def test_replace_machine_region_and_atomic_file_write(tmp_path: Path) -> None:

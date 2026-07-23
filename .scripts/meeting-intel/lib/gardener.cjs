@@ -18,6 +18,7 @@ const {
 const REGION_SLUG = 'context-summary';
 const REGION_START = `<!-- dex:auto:${REGION_SLUG} -->`;
 const REGION_END = '<!-- /dex:auto -->';
+const RESUME_MARKER = '<!-- dex:resume:context-summary -->';
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 const SIGNAL_LIMIT = 6000;
 
@@ -26,14 +27,14 @@ function sha1(value) {
 }
 
 function emptyState() {
-  return { version: 1, pages: {} };
+  return { version: 2, pages: {} };
 }
 
 function loadGardenerState(filePath) {
   try {
     const candidate = JSON.parse(fs.readFileSync(filePath, 'utf8'));
     return {
-      version: 1,
+      version: 2,
       pages: candidate && typeof candidate.pages === 'object' && candidate.pages ? candidate.pages : {},
     };
   } catch (error) {
@@ -58,6 +59,36 @@ function machineRegion(text, slug) {
   const endIndex = text.indexOf(REGION_END, contentStart);
   if (endIndex < 0) return null;
   return text.slice(contentStart, endIndex).replace(/^[\r\n]+|[\r\n]+$/g, '');
+}
+
+function blockState(pageState) {
+  return pageState.blocks && typeof pageState.blocks === 'object' && !Array.isArray(pageState.blocks)
+    ? { ...pageState.blocks }
+    : {};
+}
+
+function migratePageState(pageState, currentOutput) {
+  const next = { ...pageState, blocks: blockState(pageState) };
+  let migrated = false;
+  if (Object.hasOwn(next, 'locked') || Object.hasOwn(next, 'locked_reason')) {
+    const changedFromDex = Object.hasOwn(next, 'output_hash')
+      && sha1(currentOutput || '') !== next.output_hash;
+    if (next.locked && (next.locked_reason === 'user-edited' || changedFromDex)) {
+      next.blocks[REGION_SLUG] = { owner: 'user', reason: 'user-edited' };
+    }
+    delete next.locked;
+    delete next.locked_reason;
+    migrated = true;
+  }
+  return { pageState: next, migrated };
+}
+
+function removeResumeMarker(output) {
+  return String(output || '')
+    .split(/\r?\n/)
+    .filter(line => line.trim() !== RESUME_MARKER)
+    .join('\n')
+    .replace(/^[\r\n]+|[\r\n]+$/g, '');
 }
 
 function ensureSummaryRegion(text) {
@@ -200,7 +231,7 @@ async function gardenEntities({
   dryRun = false,
   log = () => {},
 } = {}) {
-  const result = { gardened: [], skipped: 0, locked: 0, errors: [] };
+  const result = { gardened: [], skipped: 0, preserved: 0, migrated: 0, errors: [] };
   try {
     if (typeof generate !== 'function') throw new Error('generate must be a function');
     const paths = runtimePaths();
@@ -216,20 +247,46 @@ async function gardenEntities({
         const entity = parseEntityPage(filePath);
         if (entity.quarantined) { result.skipped += 1; continue; }
         const relativePath = path.relative(paths.VAULT_ROOT, filePath).split(path.sep).join('/');
-        const saved = state.pages[relativePath] || {};
-        if (saved.locked) { result.locked += 1; result.skipped += 1; continue; }
-        const pageText = fs.readFileSync(filePath, 'utf8');
-        const currentOutput = machineRegion(pageText, REGION_SLUG);
-        if (currentOutput?.trim() && sha1(currentOutput) !== saved.output_hash) {
-          saved.locked = true;
-          saved.locked_reason = 'user-edited';
+        let pageText = fs.readFileSync(filePath, 'utf8');
+        let currentOutput = machineRegion(pageText, REGION_SLUG);
+        const observedOutputHash = sha1(currentOutput || '');
+        const migration = migratePageState(state.pages[relativePath] || {}, currentOutput);
+        const saved = migration.pageState;
+        if (migration.migrated) result.migrated += 1;
+
+        let stateChanged = migration.migrated;
+        let owner = saved.blocks[REGION_SLUG]?.owner;
+        const resumeRequested = Boolean(currentOutput?.includes(RESUME_MARKER));
+        if (resumeRequested) {
+          currentOutput = removeResumeMarker(currentOutput);
+          pageText = replaceMachineRegion(pageText, REGION_SLUG, currentOutput);
+          saved.blocks[REGION_SLUG] = { owner: 'dex' };
+          saved.output_hash = sha1(currentOutput);
+          delete saved.last_gardened;
+          delete saved.input_hash;
+          owner = 'dex';
+          stateChanged = true;
+          log(`Gardener resumed ${relativePath}: ${REGION_SLUG}`);
+        }
+
+        const outputChanged = Object.hasOwn(saved, 'output_hash')
+          ? sha1(currentOutput || '') !== saved.output_hash
+          : Boolean(currentOutput?.trim());
+        if (owner !== 'user' && outputChanged) {
+          saved.blocks[REGION_SLUG] = { owner: 'user', reason: 'user-edited' };
+          owner = 'user';
+          stateChanged = true;
+        }
+        if (owner === 'user') {
           state.pages[relativePath] = saved;
-          if (!dryRun) savePageState(paths.GARDENER_STATE_FILE, relativePath, saved);
-          result.locked += 1;
+          if (!dryRun && stateChanged) savePageState(paths.GARDENER_STATE_FILE, relativePath, saved);
+          result.preserved += 1;
           result.skipped += 1;
-          log(`Gardener locked ${relativePath}: user-edited`);
+          log(`Gardener preserved ${relativePath}: user-owned ${REGION_SLUG}`);
           continue;
         }
+        state.pages[relativePath] = saved;
+        if (!dryRun && stateChanged) savePageState(paths.GARDENER_STATE_FILE, relativePath, saved);
         const signal = buildSignal(entity, pageText, meetings);
         const inputHash = sha1(signal);
         const lastGardened = saved.last_gardened ? new Date(saved.last_gardened) : null;
@@ -238,7 +295,16 @@ async function gardenEntities({
           continue;
         }
         if (saved.input_hash === inputHash) { result.skipped += 1; continue; }
-        candidates.push({ filePath, relativePath, pageText, signal, inputHash, saved });
+        candidates.push({
+          filePath,
+          relativePath,
+          pageText,
+          signal,
+          inputHash,
+          expectedOutputHash: observedOutputHash,
+          resumeOutput: resumeRequested ? currentOutput : null,
+          saved,
+        });
       } catch (error) {
         result.errors.push({ page: filePath, error: error.message });
       }
@@ -261,24 +327,29 @@ async function gardenEntities({
         if (!dryRun) {
           const latestText = fs.readFileSync(candidate.filePath, 'utf8');
           const latestOutput = machineRegion(latestText, REGION_SLUG);
-          if (latestOutput?.trim() && sha1(latestOutput) !== candidate.saved.output_hash) {
-            candidate.saved.locked = true;
-            candidate.saved.locked_reason = 'user-edited';
+          if (sha1(latestOutput || '') !== candidate.expectedOutputHash) {
+            candidate.saved.blocks = blockState(candidate.saved);
+            candidate.saved.blocks[REGION_SLUG] = { owner: 'user', reason: 'user-edited' };
             savePageState(paths.GARDENER_STATE_FILE, candidate.relativePath, candidate.saved);
-            result.locked += 1;
+            result.preserved += 1;
             result.skipped += 1;
-            log(`Gardener locked ${candidate.relativePath}: user-edited`);
+            log(`Gardener preserved ${candidate.relativePath}: user-owned ${REGION_SLUG}`);
             continue;
           }
-          const withRegion = ensureSummaryRegion(latestText);
+          const resumedText = candidate.resumeOutput === null
+            ? latestText
+            : replaceMachineRegion(latestText, REGION_SLUG, candidate.resumeOutput);
+          const withRegion = ensureSummaryRegion(resumedText);
           atomicWritePage(candidate.filePath, replaceMachineRegion(withRegion, REGION_SLUG, output));
           const nextState = {
             ...candidate.saved,
             last_gardened: nowDate.toISOString(),
             input_hash: candidate.inputHash,
             output_hash: sha1(output),
-            locked: false,
-            locked_reason: null,
+            blocks: {
+              ...blockState(candidate.saved),
+              [REGION_SLUG]: { owner: 'dex' },
+            },
           };
           savePageState(paths.GARDENER_STATE_FILE, candidate.relativePath, nextState);
         }
