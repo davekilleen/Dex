@@ -4,6 +4,7 @@ import json
 import subprocess
 from pathlib import Path
 
+import pytest
 import yaml
 
 from core import entity_maintenance
@@ -251,8 +252,13 @@ def test_upsert_legacy_empty_and_bom_pages_are_safe_and_idempotent(tmp_path: Pat
 
 
 def test_existing_python_consumers_delegate_to_shared_contract(tmp_path: Path) -> None:
+    import core.entity_engine as entity_engine
+    import core.utils.entity_pages as entity_pages_shim
     from core.mcp.work_server import parse_person_page
     from core.utils.page_generators import generate_person_page
+
+    assert entity_pages_shim.mutate_page is entity_engine.mutate_page
+    assert entity_pages_shim.render_person_page is entity_engine.render_person_page
 
     legacy = tmp_path / "Legacy_Person.md"
     legacy.write_text(
@@ -311,6 +317,15 @@ def test_replace_machine_region_and_atomic_file_write(tmp_path: Path) -> None:
     assert page.read_text(encoding="utf-8") == expected
     assert not list(tmp_path.glob("*.tmp"))
     assert not list(tmp_path.glob(".*.tmp"))
+
+
+def test_compatibility_writers_raise_when_page_is_missing(tmp_path: Path) -> None:
+    missing = tmp_path / "missing.md"
+
+    with pytest.raises(FileNotFoundError):
+        upsert_frontmatter(missing, {"type": "person"})
+    with pytest.raises(FileNotFoundError):
+        replace_machine_region_in_file(missing, "items", "new")
 
 
 def test_upsert_atomic_write_leaves_no_temp_files(tmp_path: Path) -> None:

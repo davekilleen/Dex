@@ -110,6 +110,7 @@ _repo_root = str(Path(__file__).parent.parent.parent)
 if _repo_root not in sys.path:
     sys.path.append(_repo_root)
 from core import capabilities as capability_rooms
+from core.entity_engine import create_page_if_absent
 from core.paths import (
     COMPANIES_DIR,
     COMPANY_INDEX_FILE,
@@ -1649,12 +1650,17 @@ def create_person_data(
 
     page = render_person_page(name, role, company, clean_emails, clean_aliases, location, notes)
     try:
-        with candidate.open('x', encoding='utf-8', newline='') as handle:
-            handle.write(page)
-    except FileExistsError:
-        return {'success': False, 'error': f'Person page already exists: {candidate.relative_to(BASE_DIR)}'}
+        created = create_page_if_absent(
+            candidate,
+            page,
+            allowed_root=people_dir,
+        )
     except OSError as exc:
         return {'success': False, 'error': f'Could not create person page: {exc}'}
+    if created.status == 'exists':
+        return {'success': False, 'error': f'Person page already exists: {candidate.relative_to(BASE_DIR)}'}
+    if created.status != 'created':
+        return {'success': False, 'error': f'Refusing unsafe person page path: {candidate}'}
 
     build_people_index_data()
     result = {
@@ -2192,7 +2198,27 @@ def create_company_page(name: str, website: str = '', industry: str = '',
 *Updated: {timestamp}*
 """
     
-    filepath.write_text(content)
+    try:
+        created = create_page_if_absent(
+            filepath,
+            content,
+            allowed_root=COMPANIES_DIR,
+        )
+    except OSError as exc:
+        return {
+            'success': False,
+            'error': f'Could not create company page: {exc}',
+        }
+    if created.status == 'exists':
+        return {
+            'success': False,
+            'error': f'Company page already exists: {filepath}',
+        }
+    if created.status != 'created':
+        return {
+            'success': False,
+            'error': f'Refusing unsafe company page path: {filepath}',
+        }
     
     return {
         'success': True,
