@@ -1,6 +1,6 @@
 <!-- GENERATED FILE — DO NOT EDIT BY HAND. -->
 <!-- Generator: scripts/generate-architecture-inventory.py -->
-<!-- Content SHA-256: 168326306605fbdf30b5d10f07a6dbe8d0e8fb90dc6abbdf9e31838ec0ab9d49 -->
+<!-- Content SHA-256: 0b2017be7015ef13c6f3837f8d13ef1cce2f4d37717dd891487805921b659d8b -->
 
 # Architecture Inventory
 
@@ -24,7 +24,7 @@ This inventory is derived only from repository code and shipped skill files.
 
 ## Skills
 
-**Skill count:** 71<br>
+**Skill count:** 72<br>
 **Discoverability-risk count:** 4
 
 A description has a trigger when its frontmatter contains the word `when` or `whenever` (case-insensitive). Length is measured in characters.
@@ -87,6 +87,7 @@ A description has a trigger when its frontmatter contains the word `when` or `wh
 | `product-brief` | `.claude/skills/product-brief/SKILL.md` | Extract a product idea through guided questions and generate a PRD. Use when the user says 'write a PRD', 'spec this feature', 'turn this idea into a brief'. Not for a non-product initiative like hiring or partnerships (use `initiative-kickoff` once shipped); not for checking existing projects' status (use `project-health`). | 326 | when |
 | `project-health` | `.claude/skills/project-health/SKILL.md` | Scan active projects for status, blockers and next actions. Use when the user says 'how are my projects', 'what's stuck', 'project status'. Also use proactively when projects have gone quiet. Not for writing a spec for a new product idea; use `product-brief`. | 259 | when |
 | `prompt-improver` | `.claude/skills/prompt-improver/SKILL.md` | Rewrite a vague prompt into a rich, structured one, with automatic fallback. Use when the user says 'improve this prompt', 'make this prompt better', or hands over a thin instruction. Not for creating a reusable skill; use `create-skill`. | 238 | when |
+| `relationship-radar` | `.claude/skills/relationship-radar/SKILL.md` | Spot the relationships going cold — people you were in regular contact with and haven't touched in a while, and important contacts who are slipping — ranked by how stale each has become, so you can reconnect before it costs you. Use when the user says 'who should I reach out to', 'who am I losing touch with', 'who's going cold', 'who needs attention', or during a weekly review. Also use proactively when someone important hasn't come up in a long time. Not for prepping a specific upcoming meeting; use `meeting-prep`. Not for specific promises you owe people; use `commitments`. | 582 | when |
 | `reset` | `.claude/skills/reset/SKILL.md` | Restructure an existing Dex vault for a new role or changed preferences, without losing data. Use when the user says 'I changed jobs', 'restructure my Dex', 'my role is different now'. Not for first-time setup; use `setup`. Not for just toggling one feature; use `manage-capabilities`. | 285 | when |
 | `review` | `.claude/skills/review/SKILL.md` | End of day review with learning capture. Integrates with evening journaling if enabled. | 87 | **discoverability-risk** |
 | `save-insight` | `.claude/skills/save-insight/SKILL.md` | Capture a reusable learning from completed work so future similar work is easier. Use when the user says 'save this learning', 'capture this insight', or finishes something tricky. Also use proactively after non-routine work. Not for recording a *decision* and its rationale; use `decision-log`. | 295 | when |
@@ -109,7 +110,7 @@ References are exact tool-name matches in skill bodies (frontmatter excluded). U
 
 | Server | Referencing skill count | Surface status | Skills (referenced tools) |
 | --- | ---: | --- | --- |
-| `dex-analytics` | 26 | **over-surfaced** | `create-mcp` (`track_event`); `create-skill` (`track_event`); `daily-plan` (`track_event`); `daily-review` (`track_event`); `dex-add-mcp` (`track_event`); `dex-backlog` (`track_event`); `dex-improve` (`track_event`); `dex-level-up` (`track_event`); `dex-obsidian-setup` (`track_event`); `dex-whats-new` (`track_event`); `getting-started` (`track_event`); `initiative-kickoff` (`track_event`); `integrate-mcp` (`track_event`); `journal` (`track_event`); `meeting-prep` (`track_event`); `process-meetings` (`track_event`); `product-brief` (`track_event`); `project-health` (`track_event`); `prompt-improver` (`track_event`); `reset` (`track_event`); `review` (`track_event`); `save-insight` (`track_event`); `triage` (`track_event`); `week-plan` (`track_event`); `week-review` (`track_event`); `xray` (`track_event`) |
+| `dex-analytics` | 27 | **over-surfaced** | `create-mcp` (`track_event`); `create-skill` (`track_event`); `daily-plan` (`track_event`); `daily-review` (`track_event`); `dex-add-mcp` (`track_event`); `dex-backlog` (`track_event`); `dex-improve` (`track_event`); `dex-level-up` (`track_event`); `dex-obsidian-setup` (`track_event`); `dex-whats-new` (`track_event`); `getting-started` (`track_event`); `initiative-kickoff` (`track_event`); `integrate-mcp` (`track_event`); `journal` (`track_event`); `meeting-prep` (`track_event`); `process-meetings` (`track_event`); `product-brief` (`track_event`); `project-health` (`track_event`); `prompt-improver` (`track_event`); `relationship-radar` (`track_event`); `reset` (`track_event`); `review` (`track_event`); `save-insight` (`track_event`); `triage` (`track_event`); `week-plan` (`track_event`); `week-review` (`track_event`); `xray` (`track_event`) |
 | `dex-calendar-mcp` | 5 | normal | `daily-plan` (`calendar_get_events_with_attendees`, `calendar_get_today`, `reminders_clear_completed`, `reminders_complete_item`, `reminders_create_item`, `reminders_ensure_lists`, `reminders_find_and_complete`, `reminders_list_completed`, `reminders_list_items`); `daily-review` (`calendar_get_today`, `reminders_clear_completed`, `reminders_find_and_complete`, `reminders_list_completed`, `reminders_list_items`); `getting-started` (`calendar_get_events`); `week-plan` (`calendar_get_events_with_attendees`); `week-review` (`calendar_get_events_with_attendees`, `reminders_list_items`) |
 | `dex-career-mcp` | 0 | **under-surfaced** | — |
 | `dex-granola-mcp` | 4 | normal | `daily-plan` (`granola_get_recent_meetings`); `getting-started` (`granola_check_available`, `granola_get_recent_meetings`); `week-plan` (`granola_get_today_meetings`); `zoom-setup` (`granola_check_available`) |
@@ -117,7 +118,7 @@ References are exact tool-name matches in skill bodies (frontmatter excluded). U
 | `dex-onboarding-mcp` | 1 | normal | `getting-started` (`check_onboarding_complete`) |
 | `dex-resume-mcp` | 0 | **under-surfaced** | — |
 | `dex-session-memory` | 0 | **under-surfaced** | — |
-| `dex-work-mcp` | 8 | normal | `create-mcp` (`create_task`, `list_tasks`); `daily-plan` (`analyze_calendar_capacity`, `build_people_index`, `confirm_goal_link`, `create_task`, `get_commitments_due`, `get_meeting_context`, `get_week_progress`, `list_tasks`, `process_inbox_with_dedup`, `record_external_task_mapping`, `suggest_task_scheduling`, `update_task_status`); `daily-review` (`analyze_calendar_capacity`, `create_task`, `get_commitments_due`, `get_meeting_context`, `get_skill_ratings`, `get_week_progress`, `list_tasks`, `update_task_status`); `initiative-kickoff` (`confirm_goal_link`, `create_task`, `get_quarterly_goals`, `lookup_person`); `process-meetings` (`create_person`, `create_task`, `lookup_person`); `triage` (`create_task`); `week-plan` (`analyze_calendar_capacity`, `classify_task_effort`, `create_weekly_priority`, `get_commitments_due`, `get_goal_status`, `get_quarterly_goals`, `list_tasks`, `suggest_task_scheduling`); `week-review` (`get_goal_status`, `get_quarterly_goals`, `get_skill_ratings`, `get_week_progress`, `list_tasks`) |
+| `dex-work-mcp` | 9 | normal | `create-mcp` (`create_task`, `list_tasks`); `daily-plan` (`analyze_calendar_capacity`, `build_people_index`, `confirm_goal_link`, `create_task`, `get_commitments_due`, `get_meeting_context`, `get_week_progress`, `list_tasks`, `process_inbox_with_dedup`, `record_external_task_mapping`, `suggest_task_scheduling`, `update_task_status`); `daily-review` (`analyze_calendar_capacity`, `create_task`, `get_commitments_due`, `get_meeting_context`, `get_skill_ratings`, `get_week_progress`, `list_tasks`, `update_task_status`); `initiative-kickoff` (`confirm_goal_link`, `create_task`, `get_quarterly_goals`, `lookup_person`); `process-meetings` (`create_person`, `create_task`, `lookup_person`); `relationship-radar` (`build_people_index`, `create_task`); `triage` (`create_task`); `week-plan` (`analyze_calendar_capacity`, `classify_task_effort`, `create_weekly_priority`, `get_commitments_due`, `get_goal_status`, `get_quarterly_goals`, `list_tasks`, `suggest_task_scheduling`); `week-review` (`get_goal_status`, `get_quarterly_goals`, `get_skill_ratings`, `get_week_progress`, `list_tasks`) |
 
 ### Under-surfaced servers
 
@@ -127,7 +128,7 @@ References are exact tool-name matches in skill bodies (frontmatter excluded). U
 
 ### Over-surfaced servers
 
-- `dex-analytics` — 26 skills reference its tools.
+- `dex-analytics` — 27 skills reference its tools.
 
 ## Portable ownership classes
 
