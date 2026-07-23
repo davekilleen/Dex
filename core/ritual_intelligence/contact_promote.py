@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 
+from core.entity_engine import create_page_if_absent
 from core.paths import PEOPLE_DIR
 from core.utils.page_generators import generate_person_page
 
@@ -37,7 +38,17 @@ def create_contact_page(conn, contact_id: str) -> dict:
         email=contact["email"],
         notes="Created from a Ritual Intelligence contact suggestion.",
     )
-    page_path.write_text(content, encoding="utf-8")
+    created = create_page_if_absent(
+        page_path,
+        content,
+        allowed_root=PEOPLE_DIR,
+    )
+    if created.status != "created":
+        return {
+            "status": created.status,
+            "contact_id": contact_id,
+            "page_path": str(page_path),
+        }
     conn.execute(
         "UPDATE contacts SET page_path = ?, updated_at = ? WHERE id = ?",
         (str(page_path), utc_now(), contact_id),
