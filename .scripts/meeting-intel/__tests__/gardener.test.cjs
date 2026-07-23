@@ -7,7 +7,11 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const yaml = require('js-yaml');
-const { renderPersonPage, replaceMachineRegion } = require('../../lib/entity-pages.cjs');
+const {
+  renderPersonPage,
+  replaceMachineRegion,
+  upsertFrontmatter,
+} = require('../../lib/entity-pages.cjs');
 const { gardenEntities } = require('../lib/gardener.cjs');
 
 const NOW = new Date('2026-07-12T12:00:00.000Z');
@@ -79,6 +83,70 @@ test('appends Key Context when the heading is missing', () => withVault(async va
   assert.match(fs.readFileSync(page, 'utf8'), /## Key Context\n\n<!-- dex:auto:context-summary -->/);
 }));
 
+test('orphaned summary marker skips without changing user prose', () => withVault(async vault => {
+  const page = writePerson(vault, 'Jane Doe', { noHeading: true });
+  const before = `${fs.readFileSync(page, 'utf8')}<!-- dex:auto:context-summary -->\nMy irreplaceable notes.\nAnother hand-written detail.\n`;
+  fs.writeFileSync(page, before);
+  let calls = 0;
+  const messages = [];
+  const result = await gardenEntities({
+    generate: async () => { calls += 1; return BULLETS; },
+    now: NOW,
+    log: message => messages.push(message),
+  });
+  const after = fs.readFileSync(page, 'utf8');
+  assert.equal(after, before);
+  assert.doesNotMatch(after, /Product leader at Acme/);
+  assert.equal(calls, 0);
+  assert.deepEqual(result.gardened, []);
+  assert.equal(result.skipped, 1);
+  assert.deepEqual(result.errors, []);
+  assert.match(messages[0], /malformed-region/);
+}));
+
+test('replaceMachineRegion refuses to span an orphaned marker into a later region', () => {
+  const text = [
+    '<!-- dex:auto:context-summary -->',
+    'My irreplaceable notes.',
+    '<!-- dex:auto:context-summary -->',
+    '- Existing summary',
+    '<!-- /dex:auto -->',
+  ].join('\n');
+  assert.throws(
+    () => replaceMachineRegion(text, 'context-summary', BULLETS),
+    /malformed machine region: context-summary/,
+  );
+});
+
+test('replaceMachineRegion throws when its end marker is missing', () => {
+  const text = '<!-- dex:auto:context-summary -->\nMy irreplaceable notes.\n';
+  assert.throws(
+    () => replaceMachineRegion(text, 'context-summary', BULLETS),
+    /malformed machine region: context-summary \(missing end marker\)/,
+  );
+});
+
+test('replaceMachineRegion preserves replacement-dollar sequences literally', () => {
+  const text = [
+    'Before',
+    '<!-- dex:auto:context-summary -->',
+    '- Old summary',
+    '<!-- /dex:auto -->',
+    'After',
+  ].join('\n');
+  const content = '- Costs $& and $` and $\' literally';
+  assert.equal(
+    replaceMachineRegion(text, 'context-summary', content),
+    [
+      'Before',
+      '<!-- dex:auto:context-summary -->',
+      content,
+      '<!-- /dex:auto -->',
+      'After',
+    ].join('\n'),
+  );
+});
+
 test('respects seven-day cadence and unchanged input hash', () => withVault(async vault => {
   writePerson(vault);
   let calls = 0;
@@ -89,10 +157,12 @@ test('respects seven-day cadence and unchanged input hash', () => withVault(asyn
   assert.equal(calls, 1);
 }));
 
-test('user edit inside the region locks the page and it is never rewritten', () => withVault(async vault => {
+test('user-edited summary becomes block-owned while facts and other blocks stay live', () => withVault(async vault => {
   const page = writePerson(vault);
   await gardenEntities({ generate: async () => BULLETS, now: NOW });
-  fs.writeFileSync(page, replaceMachineRegion(fs.readFileSync(page, 'utf8'), 'context-summary', '- Human edit'));
+  let text = replaceMachineRegion(fs.readFileSync(page, 'utf8'), 'context-summary', '- Human edit');
+  text = replaceMachineRegion(text, 'update-log', '- Existing log entry');
+  fs.writeFileSync(page, text);
   let calls = 0;
   const run = () => gardenEntities({
     generate: async () => { calls += 1; return '- Replacement'; },
@@ -101,10 +171,111 @@ test('user edit inside the region locks the page and it is never rewritten', () 
   const first = await run();
   await run();
   assert.equal(calls, 0);
-  assert.equal(first.locked, 1);
+  assert.equal(first.preserved, 1);
   assert.match(fs.readFileSync(page, 'utf8'), /- Human edit/);
+  assert.match(fs.readFileSync(page, 'utf8'), /- Existing log entry/);
   const entry = Object.values(readState(vault).pages)[0];
-  assert.equal(entry.locked_reason, 'user-edited');
+  assert.equal(entry.blocks['context-summary'].owner, 'user');
+  assert.equal(Object.hasOwn(entry, 'locked'), false);
+
+  assert.equal(upsertFrontmatter(page, { company: 'New Co' }), true);
+  fs.writeFileSync(page, replaceMachineRegion(fs.readFileSync(page, 'utf8'), 'update-log', '- New log entry'));
+  assert.match(fs.readFileSync(page, 'utf8'), /company: New Co/);
+  assert.match(fs.readFileSync(page, 'utf8'), /- New log entry/);
+  assert.match(fs.readFileSync(page, 'utf8'), /- Human edit/);
+}));
+
+test('migrates an old locked page to summary ownership without losing content', () => withVault(async vault => {
+  const page = writePerson(vault);
+  await gardenEntities({ generate: async () => BULLETS, now: NOW });
+  const originalState = readState(vault);
+  const relativePath = '05-Areas/People/External/Jane_Doe.md';
+  fs.writeFileSync(page, replaceMachineRegion(fs.readFileSync(page, 'utf8'), 'context-summary', '- Human edit'));
+  fs.writeFileSync(statePath(vault), JSON.stringify({
+    version: 1,
+    pages: {
+      [relativePath]: {
+        ...originalState.pages[relativePath],
+        locked: true,
+        locked_reason: 'user-edited',
+      },
+    },
+  }));
+
+  let calls = 0;
+  const run = () => gardenEntities({
+    generate: async () => { calls += 1; return '- Replacement'; },
+    now: new Date('2026-07-25T12:00:00Z'),
+  });
+  const result = await run();
+  assert.equal(calls, 0);
+  assert.equal(result.migrated, 1);
+  assert.match(fs.readFileSync(page, 'utf8'), /- Human edit/);
+  const migrated = readState(vault);
+  assert.equal(migrated.version, 2);
+  assert.equal(migrated.pages[relativePath].blocks['context-summary'].owner, 'user');
+  assert.equal(Object.hasOwn(migrated.pages[relativePath], 'locked'), false);
+
+  const firstState = fs.readFileSync(statePath(vault));
+  await run();
+  assert.deepEqual(fs.readFileSync(statePath(vault)), firstState);
+  assert.match(fs.readFileSync(page, 'utf8'), /- Human edit/);
+}));
+
+test('resume marker hands a user-owned summary back to Dex', () => withVault(async vault => {
+  const page = writePerson(vault);
+  await gardenEntities({ generate: async () => BULLETS, now: NOW });
+  fs.writeFileSync(page, replaceMachineRegion(fs.readFileSync(page, 'utf8'), 'context-summary', '- Human edit'));
+  await gardenEntities({ generate: async () => '- Ignored', now: new Date('2026-07-25T12:00:00Z') });
+
+  const handBack = '- Human edit\n<!-- dex:resume:context-summary -->';
+  fs.writeFileSync(page, replaceMachineRegion(fs.readFileSync(page, 'utf8'), 'context-summary', handBack));
+  let calls = 0;
+  const result = await gardenEntities({
+    generate: async () => { calls += 1; return '- Dex owns this again'; },
+    now: new Date('2026-08-02T12:00:00Z'),
+  });
+  assert.equal(calls, 1);
+  assert.equal(result.gardened.length, 1);
+  const text = fs.readFileSync(page, 'utf8');
+  assert.match(text, /- Dex owns this again/);
+  assert.doesNotMatch(text, /dex:resume:context-summary/);
+  const entry = Object.values(readState(vault).pages)[0];
+  assert.equal(entry.blocks['context-summary'].owner, 'dex');
+}));
+
+test('resume marker preserves a concurrent edit outside the summary block', () => withVault(async vault => {
+  const page = writePerson(vault);
+  await gardenEntities({ generate: async () => BULLETS, now: NOW });
+  fs.writeFileSync(page, replaceMachineRegion(fs.readFileSync(page, 'utf8'), 'context-summary', '- Human edit'));
+  await gardenEntities({ generate: async () => '- Ignored', now: new Date('2026-07-25T12:00:00Z') });
+  const handBack = '- Human edit\n<!-- dex:resume:context-summary -->';
+  fs.writeFileSync(page, replaceMachineRegion(fs.readFileSync(page, 'utf8'), 'context-summary', handBack));
+
+  const originalRead = fs.readFileSync;
+  let pageReads = 0;
+  fs.readFileSync = function readWithConcurrentEdit(filePath, ...args) {
+    const value = originalRead.call(this, filePath, ...args);
+    if (filePath === page && typeof value === 'string') {
+      pageReads += 1;
+      if (pageReads === 2) {
+        fs.writeFileSync(page, value.replace('## Notes\n', '## Notes\n\nConcurrent user note.\n'));
+      }
+    }
+    return value;
+  };
+  try {
+    await gardenEntities({
+      generate: async () => '- Dex owns this again',
+      now: new Date('2026-08-02T12:00:00Z'),
+    });
+  } finally {
+    fs.readFileSync = originalRead;
+  }
+
+  const text = fs.readFileSync(page, 'utf8');
+  assert.match(text, /Concurrent user note\./);
+  assert.match(text, /- Dex owns this again/);
 }));
 
 test('limit is honored in never-gardened then oldest ordering', () => withVault(async vault => {

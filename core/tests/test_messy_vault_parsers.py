@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import sqlite3
 from datetime import datetime, timedelta, timezone
 
+from core.entity_engine import index as entity_index
 from core.mcp import work_server
 from core.mcp.update_checker import parse_version
 from core.ritual_intelligence.models import NormalizedAttendee, NormalizedCalendarEvent, TranscriptArtifact
@@ -94,7 +96,10 @@ def test_vault_builder_unicode_content_survives_ritual_matching(tmp_path, monkey
     assert suggestions[0]["title"].strip()
 
 
-def test_vault_builder_malformed_frontmatter_survives_people_index(tmp_path, monkeypatch):
+def test_vault_builder_malformed_frontmatter_is_quarantined_but_findable(
+    tmp_path,
+    monkeypatch,
+):
     vault = build_messy_vault(tmp_path, file_count=5)
     monkeypatch.setattr(work_server, "BASE_DIR", vault.root)
     monkeypatch.setattr(work_server, "PEOPLE_INDEX_FILE", vault.people_index)
@@ -105,9 +110,22 @@ def test_vault_builder_malformed_frontmatter_survives_people_index(tmp_path, mon
     assert index["total"] >= 2
     assert index["people"]
     assert all(person["name"] and person["path"].endswith(".md") for person in index["people"])
-    recovered = next(person for person in index["people"] if person["name"] == "Recovered Person")
-    assert recovered["email"] == "recovered@example.com"
-    assert "Malformed YAML" in recovered["path"]
+    quarantined_entry = next(
+        person
+        for person in index["people"]
+        if person["name"] == "Malformed YAML – 東京"
+    )
+    assert quarantined_entry["status"] == "quarantined"
+    assert quarantined_entry["email"] is None
+    assert quarantined_entry["emails"] == []
+    assert quarantined_entry["aliases"] == []
+    with sqlite3.connect(entity_index.database_path(vault.root)) as connection:
+        quarantined = connection.execute(
+            "SELECT path FROM source_files WHERE quarantined = 1"
+        ).fetchall()
+    assert quarantined == [
+        ("05-Areas/People/External/Malformed YAML – 東京.md",)
+    ]
 
 
 def test_parse_version_accepts_release_prerelease_forms():

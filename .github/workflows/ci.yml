@@ -225,6 +225,41 @@ jobs:
         run: |
           git push origin release-beta --force
           git push origin "${{ steps.release_build.outputs.release_tag }}"
+      - name: Build self-contained vault bundle
+        run: bash scripts/build-vault-bundle.sh
+      - name: Publish beta vault bundle as a GitHub prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION="$(node -p "require('./package.json').version")"
+          # SAFETY: the beta lane must never be able to touch a stable release asset.
+          # Guard 1 — refuse unless this is a prerelease version (X.Y.Z-<pre>, e.g.
+          # 1.62.0-beta.1). A bare X.Y.Z is a stable version; publishing it from the
+          # beta branch could collide with — and clobber — a real stable release.
+          if ! printf '%s' "$VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+-[0-9A-Za-z.]+$'; then
+            echo "Refusing: beta version '$VERSION' is not a prerelease (expected X.Y.Z-<pre>, e.g. 1.62.0-beta.1)." >&2
+            echo "The beta branch must carry a prerelease version so it can never overwrite a stable release." >&2
+            exit 1
+          fi
+          # Guard 2 — if a release with this tag already exists, it MUST already be a
+          # prerelease before we upload/clobber. Never overwrite a promoted/stable release.
+          if gh release view "v$VERSION" >/dev/null 2>&1; then
+            IS_PRERELEASE="$(gh release view "v$VERSION" --json isPrerelease -q .isPrerelease)"
+            if [ "$IS_PRERELEASE" != "true" ]; then
+              echo "Refusing: release v$VERSION exists but is not a prerelease; the beta lane will not clobber it." >&2
+              exit 1
+            fi
+          else
+            gh release create "v$VERSION" \
+              --target "$GITHUB_SHA" \
+              --title "v$VERSION" \
+              --prerelease \
+              --generate-notes
+          fi
+          gh release upload "v$VERSION" \
+            "dist/dex-vault-bundle-v$VERSION.tar.gz" \
+            "dist/dex-vault-bundle-v$VERSION.tar.gz.sha256" \
+            --clobber
 
   deploy-health:
     needs: [quality, build-release]

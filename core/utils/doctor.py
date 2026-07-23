@@ -2907,7 +2907,12 @@ def _probe_entity_engine(context: DoctorContext) -> ProbeResult:
         suggestion_items = suggestions if isinstance(suggestions, list) else suggestions.get("suggestions", [])
         pending = sum(item.get("status") == "suggested" for item in suggestion_items)
         gardener_pages = gardener.get("pages", {}) if isinstance(gardener, dict) else {}
-        gardener_locked = sum(bool(item.get("locked")) for item in gardener_pages.values())
+        gardener_legacy_locked = sum(bool(item.get("locked")) for item in gardener_pages.values())
+        gardener_user_owned = sum(
+            item.get("blocks", {}).get("context-summary", {}).get("owner") == "user"
+            for item in gardener_pages.values()
+            if isinstance(item, dict) and isinstance(item.get("blocks", {}), dict)
+        )
         if profile.get("entity_gardener", {}).get("enabled") is False:
             gardener_label = "off (disabled)"
         elif not any(os.environ.get(key) for key in ("ANTHROPIC_API_KEY", "OPENAI_API_KEY", "GEMINI_API_KEY")):
@@ -2915,8 +2920,12 @@ def _probe_entity_engine(context: DoctorContext) -> ProbeResult:
         else:
             maintained = sum(bool(item.get("output_hash")) for item in gardener_pages.values())
             gardener_label = f"on ({maintained} pages maintained)"
-        if gardener_locked:
-            gardener_label += f", {gardener_locked} locked"
+        if gardener_user_owned:
+            label = "user-owned summary" if gardener_user_owned == 1 else "user-owned summaries"
+            gardener_label += f", {gardener_user_owned} {label}"
+        if gardener_legacy_locked:
+            label = "legacy lock" if gardener_legacy_locked == 1 else "legacy locks"
+            gardener_label += f", {gardener_legacy_locked} {label} pending migration"
 
         unresolved = len(verification.get("unresolved", []))
         generated_at = verification.get("generated_at")
