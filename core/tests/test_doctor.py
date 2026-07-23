@@ -1,5 +1,6 @@
 """Contract tests for the /dex-doctor collector."""
 
+import hashlib
 import json
 import os
 import plistlib
@@ -12,6 +13,8 @@ from pathlib import Path
 
 import pytest
 
+from core.lifecycle.catalog import with_catalog_identity
+from core.tests.lifecycle_test_helpers import SOURCE_COMMIT, write_file, write_manifest
 from core.utils import doctor, release_channel
 
 DOCTOR_PATH = Path(__file__).resolve().parents[1] / "utils" / "doctor.py"
@@ -20,6 +23,12 @@ NOW = datetime(2026, 7, 11, 12, 0, tzinfo=timezone.utc)
 QUICK_IDS = [
     "vault.structure",
     "vault.configs",
+    "vault.git",
+    "brain.git",
+    "vault.auto-commit",
+    "topology.migration-pending",
+    "release.catalog",
+    "adoption.plan",
     "smoke.history",
     "mcp.registered",
     "mcp.orphans",
@@ -138,6 +147,51 @@ def _write_entity_probe_files(context, *, mode="auto", unresolved=None):
     }))
 
 
+def _write_release_catalog(context, *, content=b"release skill\n"):
+    item_path = ".claude/skills/fixture-item/SKILL.md"
+    manifest = write_manifest(context.vault_root, [item_path])
+    write_file(context.vault_root, item_path, content)
+    document = with_catalog_identity(
+        {
+            "catalog_version": 1,
+            "release": {
+                "version": "1.64.0",
+                "channel": "release",
+                "immutable_distribution_tag": "dist/release/v1.64.0-0123456",
+                "source_commit": SOURCE_COMMIT,
+                "manifest": {
+                    "path": "System/.installed-files.manifest",
+                    "sha256": hashlib.sha256(manifest).hexdigest(),
+                },
+            },
+            "items": [
+                {
+                    "id": "fixture-item",
+                    "kind": "skill",
+                    "version": "1.0.0",
+                    "files": [
+                        {
+                            "path": item_path,
+                            "sha256": hashlib.sha256(content).hexdigest(),
+                            "ownership_class": "brain",
+                        }
+                    ],
+                    "dependencies": [],
+                    "capabilities": [],
+                    "rewind": {
+                        "acknowledgement_required": True,
+                        "token": "rewind:fixture-item@1.0.0",
+                    },
+                }
+            ],
+            "integrity": {"catalog_sha256": "0" * 64, "signatures": []},
+        }
+    )
+    path = context.vault_root / "System/.release-catalog.json"
+    path.write_text(json.dumps(document), encoding="utf-8")
+    return path
+
+
 def _tree_snapshot(root):
     snapshot = {}
     for path in sorted(root.rglob("*")):
@@ -177,7 +231,7 @@ def _drift_context(tmp_path, *, release_ref=True, channel=None):
     vault = tmp_path / "drift-vault"
     vault.mkdir()
     _git(vault, "init")
-    _git(vault, "config", "user.email", "doctor@example.test")
+    _git(vault, "config", "user.email", "doctor@example.com")
     _git(vault, "config", "user.name", "Doctor Test")
 
     (vault / "core").mkdir()
@@ -282,23 +336,181 @@ def test_entity_engine_probe_reports_gardener_statuses(monkeypatch, context):
 
     monkeypatch.setenv("OPENAI_API_KEY", "test-key")
     gardener = context.core_path("GARDENER_STATE_FILE")
-    gardener.write_text(json.dumps({"pages": {
-        "one.md": {"output_hash": "one", "locked": False},
-        "two.md": {"output_hash": "two", "locked": True},
+    gardener.write_text(json.dumps({"version": 2, "pages": {
+        "one.md": {"output_hash": "one", "blocks": {"context-summary": {"owner": "dex"}}},
+        "two.md": {"output_hash": "two", "blocks": {"context-summary": {"owner": "user"}}},
     }}))
     result = doctor._probe_entity_engine(context)
-    assert "gardener on (2 pages maintained), 1 locked" in result.detail
+    assert "gardener on (2 pages maintained), 1 user-owned summary" in result.detail
 
     profile = context.core_path("USER_PROFILE_FILE")
     profile.write_text("entity_creation:\n  mode: auto\nentity_gardener:\n  enabled: false\n")
     result = doctor._probe_entity_engine(context)
-    assert "gardener off (disabled), 1 locked" in result.detail
+    assert "gardener off (disabled), 1 user-owned summary" in result.detail
+
+    gardener.write_text(json.dumps({"version": 1, "pages": {
+        "legacy.md": {"output_hash": "old", "locked": True, "locked_reason": "user-edited"},
+    }}))
+    result = doctor._probe_entity_engine(context)
+    assert "1 legacy lock pending migration" in result.detail
 
 
 def test_registry_ids_match_the_approved_spec():
     assert [definition.id for definition in doctor.QUICK_CHECKS] == QUICK_IDS
     assert [definition.id for definition in doctor.DEEP_CHECKS] == DEEP_IDS
     assert doctor.VERDICTS == frozenset({"OK", "OFF", "BROKEN", "UNKNOWN"})
+
+
+def test_release_catalog_probe_is_calmly_off_for_older_installs(context):
+    result = doctor._probe_release_catalog(context)
+
+    assert result.verdict == "OFF"
+    assert "normal for older Dex releases" in result.detail
+
+
+def test_release_catalog_probe_reports_valid_version_without_writing(context):
+    _write_release_catalog(context)
+    before = _tree_snapshot(context.vault_root)
+
+    result = doctor._probe_release_catalog(context)
+
+    assert result.verdict == "OK"
+    assert "1.64.0" in result.detail
+    assert _tree_snapshot(context.vault_root) == before
+
+
+def test_release_catalog_probe_reports_corruption_as_broken(context):
+    path = context.vault_root / "System/.release-catalog.json"
+    path.write_text("{not json", encoding="utf-8")
+
+    result = doctor._probe_release_catalog(context)
+
+    assert result.verdict == "BROKEN"
+    assert "cannot be parsed" in result.detail
+
+
+def test_release_catalog_probe_reports_non_utf8_corruption_as_broken(context):
+    path = context.vault_root / "System/.release-catalog.json"
+    path.write_bytes(b"\xff")
+
+    result = doctor._probe_release_catalog(context)
+
+    assert result.verdict == "BROKEN"
+    assert "codec can't decode" in result.detail
+
+
+def test_adoption_plan_probe_summarizes_valid_catalog_in_memory(context):
+    _write_release_catalog(context)
+    before = _tree_snapshot(context.vault_root)
+
+    result = doctor._probe_adoption_plan(context)
+
+    assert result.verdict == "OK"
+    assert result.detail == "1 adoptable / 0 adopted / 0 conflicts"
+    assert _tree_snapshot(context.vault_root) == before
+
+
+def test_adoption_plan_probe_is_off_without_a_release_catalog(context):
+    result = doctor._probe_adoption_plan(context)
+
+    assert result.verdict == "OFF"
+    assert "older Dex release" in result.detail
+
+
+def test_adoption_plan_probe_maps_internal_failures_to_unknown(monkeypatch, context):
+    _write_release_catalog(context)
+
+    def explode(*_args, **_kwargs):
+        raise RuntimeError("inventory exploded")
+
+    monkeypatch.setattr(doctor, "build_inventory", explode)
+
+    result = doctor._probe_adoption_plan(context)
+
+    assert result.verdict == "UNKNOWN"
+    assert "inventory exploded" in result.detail
+
+
+def test_corrupt_catalog_never_raises_out_of_doctor(monkeypatch, context):
+    (context.vault_root / "System/.release-catalog.json").write_text(
+        "{not json", encoding="utf-8"
+    )
+    _stub_probes(monkeypatch, exclude={"release.catalog", "adoption.plan"})
+
+    report = doctor.collect(context=context)
+
+    assert _check(report, "release.catalog")["verdict"] == "BROKEN"
+    assert _check(report, "adoption.plan")["verdict"] == "UNKNOWN"
+
+
+def _write_split_topology(context, *, installed: str = "a" * 40) -> Path:
+    _git(context.vault_root, "init", "--quiet")
+    (context.vault_root / ".git/dex-vault-v2").write_text('{"role":"vault"}\n')
+    brain = context.vault_root / ".dex/brain.git"
+    brain.parent.mkdir(parents=True)
+    subprocess.run(["git", "init", "--bare", "--quiet", str(brain)], check=True)
+    _git(context.vault_root, "config", "user.name", "Doctor Test")
+    _git(context.vault_root, "config", "user.email", "doctor@example.com")
+    (context.vault_root / "README.md").write_text("brain\n")
+    _git(context.vault_root, "add", "README.md")
+    _git(context.vault_root, "commit", "--quiet", "-m", "brain")
+    commit = _git(context.vault_root, "rev-parse", "HEAD").stdout.strip()
+    subprocess.run(
+        ["git", f"--git-dir={brain}", "fetch", "--quiet", str(context.vault_root), f"+{commit}:refs/dex/installed"],
+        check=True,
+    )
+    subprocess.run(
+        ["git", f"--git-dir={brain}", "remote", "add", "origin", "https://github.com/davekilleen/Dex.git"],
+        check=True,
+    )
+    (brain / "dex-brain-v2").write_text(
+        json.dumps({"role": "brain", "installed": commit}) + "\n"
+    )
+    topology = context.vault_root / "System/.dex/topology.json"
+    topology.parent.mkdir(parents=True, exist_ok=True)
+    topology.write_text(
+        json.dumps(
+            {
+                "topology": "brain-vault-split",
+                "vaultGitDir": ".git",
+                "brainGitDir": ".dex/brain.git",
+                "installedRelease": commit,
+                "environment": {"DEX_VAULT": str(context.vault_root.resolve())},
+            }
+        )
+        + "\n"
+    )
+    return brain
+
+
+def test_topology_probe_distinguishes_combined_split_and_invalid(context):
+    (context.vault_root / ".git").mkdir()
+    assert doctor._topology_state(context) == "combined"
+    assert doctor._probe_migration_pending(context).verdict == "OFF"
+
+    shutil.rmtree(context.vault_root / ".git")
+    _write_split_topology(context)
+    assert doctor._topology_state(context) == "post-split"
+    assert doctor._probe_migration_pending(context).verdict == "OK"
+
+    (context.vault_root / ".dex/brain.git/dex-brain-v2").unlink()
+    assert doctor._topology_state(context) == "invalid-split"
+    assert doctor._probe_migration_pending(context).verdict == "BROKEN"
+
+
+def test_split_brain_install_probe_checks_ref_markers_origin_and_integrity(context):
+    brain = _write_split_topology(context)
+
+    healthy = doctor._probe_brain_git(context)
+
+    assert healthy.verdict == "OK"
+    assert "brain history is healthy" in healthy.detail
+    marker = json.loads((brain / "dex-brain-v2").read_text())
+    marker["installed"] = "0" * 40
+    (brain / "dex-brain-v2").write_text(json.dumps(marker) + "\n")
+    broken = doctor._probe_brain_git(context)
+    assert broken.verdict == "BROKEN"
+    assert "disagrees" in broken.detail
 
 
 def _smoke_entry(timestamp, *, broken=0, version="1.47.0"):
@@ -415,7 +627,14 @@ def test_json_contract_shape_and_last_run_file(monkeypatch, context, deep, expec
 
     report = doctor.collect(deep=deep, context=context)
 
-    assert set(report) == {"generated_at", "mode", "instruments", "checks", "summary"}
+    assert set(report) == {
+        "generated_at",
+        "mode",
+        "instruments",
+        "checks",
+        "summary",
+        "adoption",
+    }
     assert report["generated_at"] == NOW.isoformat()
     assert report["mode"] == ("deep" if deep else "quick")
     assert report["instruments"] == {
@@ -446,7 +665,12 @@ def test_summary_counts_each_exact_verdict(monkeypatch, context):
 
     report = doctor.collect(context=context)
 
-    assert report["summary"] == {"ok": 12, "off": 1, "broken": 1, "unknown": 1}
+    assert report["summary"] == {
+        "ok": len(doctor.QUICK_CHECKS) - 3,
+        "off": 1,
+        "broken": 1,
+        "unknown": 1,
+    }
     assert report["instruments"]["completed"] == len(QUICK_IDS)
 
 
@@ -571,38 +795,30 @@ def test_heal_applies_all_t1_actions_and_leaves_t2_suggestion_untouched(
     report = doctor.collect(heal=True, context=test_context)
     after = _tree_snapshot(vault)
 
-    assert (vault / "00-Inbox").is_dir()
+    assert not (vault / "00-Inbox").exists()
     paths_json = json.loads((vault / "core" / "paths.json").read_text())
     assert paths_json["VAULT_ROOT"] == str(vault)
     assert script.stat().st_mode & stat.S_IXUSR
     assert mcp_config.read_text() == original_mcp
     assert not missing_target.exists()
-    assert _check(report, "vault.structure") == {
-        "id": "vault.structure",
-        "feature": "Vault structure",
-        "verdict": "OK",
-        "detail": "All standard PARA directories exist after three safe repairs.",
-        "heal": {
-            "tier": 1,
-            "action": (
-                "Created 00-Inbox; regenerated core/paths.json; "
-                "restored executable permission on .scripts/repo-tool.sh."
-            ),
-            "applied": True,
-        },
+    structure = _check(report, "vault.structure")
+    assert structure["verdict"] == "BROKEN"
+    assert "Missing standard PARA directories: 00-Inbox" in structure["detail"]
+    assert structure["heal"] == {
+        "tier": 1,
+        "action": (
+            "regenerated core/paths.json; restored executable permission on "
+            ".scripts/repo-tool.sh."
+        ),
+        "applied": True,
     }
     assert _check(report, "mcp.registered")["heal"] == {
         "tier": 2,
         "action": "Repair the missing MCP target.",
         "applied": False,
     }
-    allowed_new_paths = {
-        "00-Inbox",
-        "System/.doctor-last-run.json",
-        "core/paths.json",
-    }
-    assert set(after) - set(before) <= allowed_new_paths
-    assert {"00-Inbox", "core/paths.json"} <= set(after) - set(before)
+    assert "core/paths.json" in set(after) - set(before)
+    assert "00-Inbox" not in set(after)
     assert set(before) - set(after) == set()
     assert {path for path in before if before[path] != after[path]} == {".scripts/repo-tool.sh"}
 
@@ -623,6 +839,41 @@ def test_quick_mode_does_not_apply_t1_without_heal(monkeypatch, context):
     assert not script.stat().st_mode & stat.S_IXUSR
 
 
+def test_t1_authorized_repairs_preview_and_execute_through_lifecycle_service(
+    monkeypatch, context
+):
+    for name in doctor.PARA_PATH_NAMES:
+        context.core_path(name).mkdir(parents=True, exist_ok=True)
+    script = context.vault_root / ".scripts" / "repair-me.sh"
+    script.parent.mkdir(parents=True, exist_ok=True)
+    script.write_text("#!/bin/sh\n")
+    script.chmod(0o644)
+    monkeypatch.setattr(doctor, "_repo_shipped_executables", lambda _context: [script])
+
+    calls = []
+    real_execute = doctor.lifecycle_service._execute_approved_transaction
+
+    def recording_execute(*args, **kwargs):
+        calls.append((args, kwargs))
+        return real_execute(*args, **kwargs)
+
+    monkeypatch.setattr(
+        doctor.lifecycle_service,
+        "_execute_approved_transaction",
+        recording_execute,
+    )
+
+    actions, errors = doctor._apply_t1_heals(context)
+
+    assert errors == []
+    assert "regenerated core/paths.json" in actions
+    assert any("restored executable permission" in action for action in actions)
+    assert len(calls) == 1
+    assert calls[0][1]["purpose"] == "doctor-tier-1"
+    assert (context.vault_root / "core/paths.json").is_file()
+    assert script.stat().st_mode & stat.S_IXUSR
+
+
 def test_partial_t1_failure_reports_applied_actions_and_breaks_doctor_self(monkeypatch, context):
     _stub_probes(monkeypatch, exclude={"vault.structure"})
 
@@ -634,14 +885,13 @@ def test_partial_t1_failure_reports_applied_actions_and_breaks_doctor_self(monke
     report = doctor.collect(heal=True, context=context)
 
     structure = _check(report, "vault.structure")
-    assert structure["verdict"] == "OK"
+    assert structure["verdict"] == "BROKEN"
     assert structure["heal"]["applied"] is True
-    assert "Created 00-Inbox" in structure["heal"]["action"]
     assert "regenerated core/paths.json" in structure["heal"]["action"]
     assert _check(report, "doctor.self")["verdict"] == "BROKEN"
-    assert report["instruments"]["failed"] == [
-        {"id": "doctor.self", "error": "Executable-mode heal failed: git mode inspection failed"}
-    ]
+    assert report["instruments"]["failed"][0]["id"] == "doctor.self"
+    assert "Directory repair requires user action" in report["instruments"]["failed"][0]["error"]
+    assert "Executable-mode heal failed: git mode inspection failed" in report["instruments"]["failed"][0]["error"]
 
 
 def test_heal_does_not_overwrite_a_raising_structure_probe_with_ok(monkeypatch, context):
@@ -2085,3 +2335,16 @@ def test_mcp_import_subprocess_uses_an_ephemeral_vault(monkeypatch, context):
 
     assert doctor._mcp_import_check(context, "core.mcp.resume_server", sys.executable) == (True, "exit 0")
     assert not observed["sandbox"].exists()
+
+
+def test_cli_credential_scan_is_reachable_structured_and_redacted(context, capsys):
+    config = context.vault_root / "System/integrations/config.yaml"
+    config.parent.mkdir(parents=True, exist_ok=True)
+    config.write_text("todoist:\n  api_key: synthetic-doctor-value\n")
+
+    assert doctor.main(["--credential-scan"], context=context) == 0
+
+    output = capsys.readouterr().out
+    assert '"action": "scan"' in output
+    assert '"findings"' in output
+    assert "synthetic-doctor-value" not in output

@@ -1,0 +1,12 @@
+{
+  "budget_version": 1,
+  "files": 100000,
+  "machine_class_note": "Calibrated 2026-07-21 on a MacBook Pro (Mac17,8), Apple M5 Pro 18-core, 48 GB RAM, using ../creds-venv Python 3.14; each seconds budget is the observed 100k stage time plus 30% headroom.",
+  "seconds": {
+    "adoption_and_rewind": 5.718049,
+    "build_adoption_plan": 0.00288,
+    "build_inventory": 5.580281,
+    "collect_adoption_report": 5.7281,
+    "total_measured": 17.029311
+  }
+}

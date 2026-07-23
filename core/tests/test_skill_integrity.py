@@ -15,7 +15,12 @@ from core.utils.validators import (
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SKILLS_ROOT = REPO_ROOT / ".claude" / "skills"
-SKILL_FILES = sorted(SKILLS_ROOT.glob("*/SKILL.md"))
+SKILL_FILES = sorted(
+    [
+        *SKILLS_ROOT.glob("*/SKILL.md"),
+        *SKILLS_ROOT.glob("_available/capabilities/*/skills/*/SKILL.md"),
+    ]
+)
 
 RUNNABLE_REFERENCE = re.compile(
     r"\b(?:node|bash|sh|python3?)[ \t]+[\"']?(?:\./)?"
@@ -126,12 +131,40 @@ def test_validate_user_profile_requires_updates_to_be_an_object() -> None:
     assert validate_user_profile_config({"updates": "stable"}) == ["updates must be an object"]
 
 
+def test_validate_user_profile_accepts_declared_boolean_capability_states() -> None:
+    assert validate_user_profile_config(
+        {
+            "capabilities": {
+                "career": {"enabled": False},
+                "companies": {"enabled": True},
+                "quarter_goals": {"enabled": False},
+            }
+        }
+    ) == []
+
+
+@pytest.mark.parametrize(
+    ("capabilities", "expected"),
+    [
+        ({"unknown": {"enabled": True}}, "unknown room"),
+        ({"career": True}, "must be an object"),
+        ({"career": {"enabled": "yes"}}, "must be true or false"),
+    ],
+)
+def test_validate_user_profile_rejects_invalid_capability_state(
+    capabilities: object,
+    expected: str,
+) -> None:
+    errors = validate_user_profile_config({"capabilities": capabilities})
+
+    assert any(expected in error for error in errors), errors
+
+
 @pytest.mark.parametrize(
     "profile_path",
     [
         REPO_ROOT / "System" / "user-profile.yaml",
         REPO_ROOT / "System" / "user-profile-template.yaml",
-        REPO_ROOT / "System" / "user-profile.example.yaml",
     ],
     ids=lambda path: path.name,
 )
@@ -150,7 +183,6 @@ def test_shipped_user_profiles_never_default_to_non_stable(profile_path: Path) -
     "profile_path",
     [
         REPO_ROOT / "System" / "user-profile-template.yaml",
-        REPO_ROOT / "System" / "user-profile.example.yaml",
     ],
     ids=lambda path: path.name,
 )

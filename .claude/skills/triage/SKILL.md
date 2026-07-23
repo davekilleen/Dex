@@ -1,6 +1,6 @@
 ---
 name: triage
-description: Strategically route orphaned files and extract scattered tasks
+description: "Route orphaned inbox files and pull scattered `- [ ]` tasks into the right project/person/goal using current priorities. Use when the user says 'clean up my inbox', 'triage', 'sort out these notes'. Also use proactively when `00-Inbox/` is piling up. Not for updating notes from meetings; use `process-meetings`."
 model_hint: fast
 ---
 

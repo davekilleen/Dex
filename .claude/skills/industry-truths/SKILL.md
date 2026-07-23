@@ -1,6 +1,6 @@
 ---
 name: industry-truths
-description: Define time-horizoned assumptions about your industry/domain that ground strategic thinking and prevent building on quicksand
+description: "Define time-horizoned assumptions about your industry (today / 6mo / 12mo) that ground strategic thinking. Use when the user is making roadmap, positioning or investment calls, or says 'what am I assuming about the market'. Also use proactively before a big strategic recommendation. Not for capturing a single decision; use `decision-log`."
 context: fork
 ---
 

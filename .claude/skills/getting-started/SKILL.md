@@ -1,6 +1,6 @@
 ---
 name: getting-started
-description: Interactive post-onboarding tour with adaptive pathways based on available data
+description: "Interactive post-onboarding tour that adapts to whatever data exists (calendar, Granola, or none). Use right after onboarding, or when the user says 'show me around', 'how do I start'. Also use proactively when the vault is < 7 days old. Not for the initial setup itself; use `setup`."
 ---
 
 ## Purpose

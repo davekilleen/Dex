@@ -305,7 +305,7 @@ Offer to help with next steps:
 
 **Date:** 2026-01-28
 **Decision:** Go - Q1 Priority
-**Owner:** Dave (CPO)
+**Owner:** You
 
 ---
 

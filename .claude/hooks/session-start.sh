@@ -29,7 +29,8 @@ echo ""
 echo "📅 Today: $(date '+%A, %B %d, %Y')"
 echo ""
 
-# Silent self-healing: ensure vault-path breadcrumb and launch agents stay in sync
+# Detect launch agents that still point to this vault's former location.
+# Doctor owns the repair; session start remains read-only for these machine files.
 VAULT_BREADCRUMB="$HOME/.config/dex/vault-path"
 if [[ -f "$ONBOARDING_MARKER" ]]; then
     STORED_VAULT=""
@@ -37,19 +38,18 @@ if [[ -f "$ONBOARDING_MARKER" ]]; then
         STORED_VAULT=$(tr -d '[:space:]' < "$VAULT_BREADCRUMB")
     fi
     if [[ "$STORED_VAULT" != "$CLAUDE_DIR" ]]; then
-        # Vault has moved — update breadcrumb and fix all launch agents
-        mkdir -p "$HOME/.config/dex"
-        echo "$CLAUDE_DIR" > "$VAULT_BREADCRUMB"
         if [[ -n "$STORED_VAULT" ]]; then
+            PLIST_PATH_CONFLICT="false"
             for plist in "$HOME/Library/LaunchAgents"/com.dex.*.plist "$HOME/Library/LaunchAgents"/com.claudesidian.*.plist; do
                 [[ -f "$plist" ]] || continue
-                if grep -q "$STORED_VAULT" "$plist" 2>/dev/null; then
-                    AGENT_NAME=$(basename "$plist" .plist)
-                    launchctl unload "$plist" 2>/dev/null || true
-                    sed -i '' "s|$STORED_VAULT|$CLAUDE_DIR|g" "$plist"
-                    launchctl load "$plist" 2>/dev/null || true
+                if grep -Fq -- "$STORED_VAULT" "$plist" 2>/dev/null; then
+                    PLIST_PATH_CONFLICT="true"
+                    break
                 fi
             done
+            if [[ "$PLIST_PATH_CONFLICT" == "true" ]]; then
+                echo "Dex found a background job that still points to this vault's old location — run /dex-doctor to fix this safely."
+            fi
         fi
     fi
 fi

@@ -1,6 +1,6 @@
 ---
 name: meeting-prep
-description: Prepare for meetings by gathering attendee context and related topics
+description: "Prepare for a specific upcoming meeting by gathering attendee context, history and related topics. Use when the user says 'prep me for my meeting with X', 'what do I need for the 2pm', or before a calendar event. Also use proactively when a meeting is imminent. Not for writing up a meeting that already happened; use `process-meetings`."
 context: fork
 ---
 

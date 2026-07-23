@@ -1,6 +1,6 @@
 ---
 name: setup
-description: Initial Dex system setup and onboarding
+description: "Run first-time Dex onboarding: build the vault structure, capture the user profile and configure MCPs. Use when `04-Projects/` doesn't exist yet or the user says 'set up Dex', 'start onboarding'. Not for the post-onboarding tour; use `getting-started`. Not for a mid-life role change; use `reset`."
 model_hint: fast
 disable-model-invocation: true
 ---
@@ -209,7 +209,6 @@ Based on their answers:
    - `04-Projects/`
    - `05-Areas/People/Internal/`
    - `05-Areas/People/External/`
-   - `05-Areas/Companies/`
    - `06-Resources/Learnings/`
    - `06-Resources/Quarterly_Reviews/`
    - `System/Templates/`
@@ -218,6 +217,13 @@ Based on their answers:
    - `07-Archives/Reviews/`
    - `00-Inbox/Meetings/`
    - `00-Inbox/Ideas/`
+
+   Do not create optional room folders directly. Reconcile the contract-backed
+   room state after the spine folders are ready:
+
+   ```bash
+   "$VAULT_PATH/.venv/bin/python" "$VAULT_PATH/core/capabilities.py" --reconcile --vault "$VAULT_PATH"
+   ```
    - `01-Quarter_Goals/` (optional)
    - `03-Tasks/`
    - `02-Week_Priorities/`

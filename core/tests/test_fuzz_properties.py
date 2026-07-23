@@ -1,18 +1,38 @@
 from __future__ import annotations
 
+import copy
 import json
+import random
 import subprocess
 import tempfile
 from pathlib import Path
 
 import pytest
 
-hypothesis = pytest.importorskip("hypothesis")
-from hypothesis import given, settings  # noqa: E402
-from hypothesis import strategies as st
+try:
+    from hypothesis import given, settings
+    from hypothesis import strategies as st
+except ModuleNotFoundError:
+    class _MissingStrategy:
+        def filter(self, _predicate):
+            return self
 
+    class _MissingStrategies:
+        def __getattr__(self, _name):
+            return lambda *args, **kwargs: _MissingStrategy()
+
+    def given(**_strategies):
+        return pytest.mark.skip(reason="hypothesis is not installed in this test environment")
+
+    def settings(*_args, **_kwargs):
+        return lambda function: function
+
+    st = _MissingStrategies()
+
+from core.lifecycle.catalog import CatalogError, loads_catalog, with_catalog_identity
 from core.mcp import work_server
 from core.mcp.update_checker import parse_version
+from core.tests.test_release_catalog import MANIFEST_BYTES, valid_document
 from core.utils.manifest import ManifestError, generate_manifest
 from core.utils.validators import validate_skill_frontmatter
 
@@ -105,3 +125,31 @@ def test_skill_frontmatter_accepts_valid_unicode_descriptions(skill_name: str, d
         )
 
         assert validate_skill_frontmatter(skill) == []
+
+
+@pytest.mark.fuzz
+def test_release_catalog_random_invalid_mutations_never_parse_silently():
+    """E3: deterministic bounded mutations must all fail closed."""
+    rng = random.Random(0xCA7A10B1)
+    mutations = (
+        lambda d: d.update({f"unknown_{rng.randrange(1_000_000)}": True}),
+        lambda d: d.pop(rng.choice(tuple(d))),
+        lambda d: d.update({"catalog_version": rng.choice((0, 2, 99, "1"))}),
+        lambda d: d["release"].update({"source_commit": f"{rng.randrange(10**8):08d}"}),
+        lambda d: d["release"]["manifest"].update({"sha256": "x" * rng.randrange(1, 63)}),
+        lambda d: d["items"][0].update({"kind": rng.choice((None, 1, [], {}))}),
+        lambda d: d["items"][0]["files"][0].update({"ownership_class": "user-ish"}),
+        lambda d: d["items"][0]["rewind"].update({"token": f"guess-{rng.randrange(999)}"}),
+        lambda d: d["integrity"].update({"catalog_sha256": "0" * 63}),
+    )
+
+    for _ in range(180):
+        document = copy.deepcopy(valid_document())
+        rng.choice(mutations)(document)
+        # Recompute identity for structural/model mutations so the parser has
+        # to reject the mutation itself rather than merely noticing stale hash.
+        integrity = document.get("integrity")
+        if isinstance(integrity, dict) and len(integrity.get("catalog_sha256", "")) == 64:
+            document = with_catalog_identity(document)
+        with pytest.raises(CatalogError, match="UNKNOWN"):
+            loads_catalog(json.dumps(document), manifest_bytes=MANIFEST_BYTES)

@@ -3,9 +3,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
-const os = require('node:os');
 const path = require('node:path');
-const { spawnSync } = require('node:child_process');
 
 const REPO_ROOT = path.resolve(__dirname, '../../..');
 const ROLLBACK_SKILL = fs.readFileSync(
@@ -17,6 +15,13 @@ const UPDATE_SKILL = fs.readFileSync(
   'utf-8',
 );
 
+const SKILLS = [
+  ['dex-rollback', ROLLBACK_SKILL],
+  ['dex-update', UPDATE_SKILL],
+];
+
+// These are user-owned data roots. Lifecycle renderers must never turn any of
+// them into a target for a direct write, restore, copy, or delete instruction.
 const USER_DATA_PATHS = [
   '00-Inbox/',
   '01-Quarter_Goals/',
@@ -28,340 +33,201 @@ const USER_DATA_PATHS = [
   '07-Archives/',
 ];
 
-const MANUAL_RESOURCE_COPY = '06-Resources/ (copy the entire folder, including root-level files)';
-const MANUAL_RESOURCE_RESTORE = 'replace 06-Resources/Dex_System/ with the copy from the downloaded Dex';
+const RAW_OPERATION_PATTERNS = [
+  ['raw Git command', /\bgit\s+(?:add|apply|archive|branch|checkout|cherry-pick|clean|clone|commit|fetch|filter-branch|init|log|merge|mv|pull|push|rebase|reset|restore|revert|rm|show|stash|switch|tag|worktree)\b/i],
+  ['raw file mutation command', /\b(?:rm|rmdir|unlink|shred|mv|cp|rsync|touch|truncate|tee|dd)\s+[^\n]+/i],
+  ['find -delete bulk removal', /\bfind\b[^\n]*\s-delete\b/i],
+  ['in-place sed mutation', /\bsed\s+[^\n]*(?:-i(?:\b|[^\s]*)|--in-place(?:\b|=[^\s]+))/i],
+  ['shell output redirection', /^(?!\s*>)[^\n]*>{1,2}\s*[^\s>]/im],
+];
 
-function executableResetMatches(document) {
-  return [...document.matchAll(/^(?:if ! )?git reset --hard\s+.+$/gm)];
+const MANUAL_RESTORE_PATTERNS = [
+  ['folder-copy restore', /\bcopy\b[^\n]*(?:folder|folders|vault|06-Resources|(?:old|previous|current)\s+Dex)/i],
+  ['manual folder restore', /^(?=[^\n]*\b(?:copy|restore|replace|move|transfer)\b)(?=[^\n]*\b(?:folder|folders|vault)\b)(?=[^\n]*\b(?:from|into|with)\b)[^\n]+$/im],
+  ['cross-install copy source', /\bfrom\s+(?:the\s+)?(?:old|previous|current)\s+Dex\b/i],
+  ['resources replacement', /\breplace\s+`?06-Resources(?:\/Dex_System\/?)?`?/i],
+];
+
+const RAW_WRITE_OR_DELETE_TARGET = /\b(?:rm|rmdir|unlink|shred|mv|cp|rsync|touch|truncate|tee|dd)\b|\b(?:copy|move|delete|remove|replace|restore|overwrite|rewrite|edit)\b|\bsed\b[^\n]*(?:-i|--in-place)|\bfind\b[^\n]*-delete|\bgit\s+(?:checkout|clean|merge|pull|reset|restore|revert|rm|switch)\b|^(?!\s*>)[^\n]*>{1,2}\s*[^\s>]/i;
+
+const ROLLBACK_SERVICE_OPERATIONS = new Set([
+  'read_lifecycle_state',
+  'rewind_adoption_by_receipt',
+]);
+const UPDATE_SERVICE_OPERATIONS = new Set([
+  'build_inventory_and_plan',
+  'build_and_preview_adoption',
+  'execute_approved_adoption',
+  'read_lifecycle_state',
+]);
+
+function assertInOrder(document, needles, label) {
+  let cursor = 0;
+  for (const needle of needles) {
+    const index = document.indexOf(needle, cursor);
+    assert.notEqual(index, -1, `${label} is missing or misorders: ${needle}`);
+    cursor = index + needle.length;
+  }
 }
 
-function assertEveryHardResetProtectsUserData(document, label) {
-  const resets = executableResetMatches(document);
-  assert.ok(resets.length > 0, `${label} must contain at least one hard reset`);
+function matchingGuard(document, patterns) {
+  return patterns.find(([, pattern]) => pattern.test(document));
+}
 
-  for (const [index, reset] of resets.entries()) {
-    const previousResetIndex = index === 0 ? 0 : resets[index - 1].index;
-    const nextResetIndex = index + 1 < resets.length ? resets[index + 1].index : document.length;
-    const stashIndex = document.lastIndexOf('git stash push --all', reset.index);
-    const popIndex = document.indexOf('git stash pop', reset.index);
+function serviceOperations(document) {
+  return new Set(document.match(/\b[a-z][a-z0-9]*(?:_[a-z0-9]+)+\b/g) || []);
+}
 
-    assert.ok(
-      stashIndex > previousResetIndex,
-      `${label} reset ${reset[0]} must create its own user-data stash first`,
-    );
-    assert.ok(
-      popIndex > reset.index && popIndex < nextResetIndex,
-      `${label} reset ${reset[0]} must restore its own user-data stash afterward`,
-    );
+function assertOnlyServiceOperations(document, allowedOperations, label) {
+  const unexpected = [...serviceOperations(document)]
+    .filter((operation) => !allowedOperations.has(operation))
+    .sort();
+  assert.deepEqual(unexpected, [], `${label} contains unapproved lifecycle operations`);
+}
 
-    const protectedBlock = document.slice(previousResetIndex, popIndex);
+test('sacred user-data roots are never direct mutation targets', () => {
+  for (const [label, document] of SKILLS) {
     for (const userPath of USER_DATA_PATHS) {
-      assert.ok(
-        protectedBlock.includes(userPath),
-        `${label} reset ${reset[0]} does not protect ${userPath}`,
-      );
-    }
-
-    const recoveryBlock = document.slice(stashIndex, nextResetIndex);
-    assert.match(
-      recoveryBlock,
-      /System\/rollback-rescue\//,
-      `${label} reset ${reset[0]} needs a timestamped conflict-rescue branch`,
-    );
-  }
-}
-
-function sectionBetween(document, start, end) {
-  const startIndex = document.indexOf(start);
-  const endIndex = document.indexOf(end, startIndex + start.length);
-  assert.notEqual(startIndex, -1, `missing manual-copy section start: ${start}`);
-  assert.notEqual(endIndex, -1, `missing manual-copy section end: ${end}`);
-  return document.slice(startIndex, endIndex);
-}
-
-function bashBlocks(document) {
-  return [...document.matchAll(/```bash\n([\s\S]*?)```/g)].map((match) => match[1]);
-}
-
-function bashBlockContaining(document, needle) {
-  const block = bashBlocks(document).find((candidate) => candidate.includes(needle));
-  assert.ok(block, `missing bash block containing ${needle}`);
-  return block;
-}
-
-function runGit(cwd, args) {
-  const result = spawnSync('git', args, { cwd, encoding: 'utf-8' });
-  assert.equal(result.status, 0, `git ${args.join(' ')} failed:\n${result.stderr}`);
-  return result.stdout.trim();
-}
-
-test('every hard reset snapshots and restores all user data with conflict rescue', () => {
-  assertEveryHardResetProtectsUserData(ROLLBACK_SKILL, 'dex-rollback');
-  assertEveryHardResetProtectsUserData(UPDATE_SKILL, 'dex-update');
-});
-
-test('rollback and update explain that tracked planning files require protection', () => {
-  for (const [label, document] of [
-    ['dex-rollback', ROLLBACK_SKILL],
-    ['dex-update', UPDATE_SKILL],
-  ]) {
-    assert.match(document, /some files in 00-07 are tracked/i, `${label} must state the tracked-data truth`);
-    assert.doesNotMatch(document, /they(?:'|’)re gitignored \(not tracked\)/i);
-    assert.doesNotMatch(document, /data folders \(00-07\) are not affected/i);
-    assert.doesNotMatch(document, /user data never at risk \(gitignored\)/i);
-  }
-
-  assert.doesNotMatch(ROLLBACK_SKILL, /notes, tasks, projects stay as they are/i);
-  assert.doesNotMatch(ROLLBACK_SKILL, /no data loss ever/i);
-  assert.doesNotMatch(UPDATE_SKILL, /never touches your notes, tasks, projects/i);
-  assert.doesNotMatch(UPDATE_SKILL, /exactly as it was/i);
-});
-
-test('every manual copy list includes the full resources tree and session learnings', () => {
-  const manualLists = [
-    sectionBetween(UPDATE_SKILL, '3. Copy these folders', '[Show detailed guide]'),
-    sectionBetween(UPDATE_SKILL, 'From OLD Dex folder', "3. **DON'T copy:**"),
-    sectionBetween(ROLLBACK_SKILL, 'From CURRENT Dex', '3. **Replace folders:**'),
-  ];
-
-  for (const manualList of manualLists) {
-    assert.ok(manualList.includes(MANUAL_RESOURCE_COPY), 'manual copy list omits the full 06-Resources tree');
-    assert.ok(
-      manualList.includes(MANUAL_RESOURCE_RESTORE),
-      'manual copy list does not restore the downloaded Dex_System docs',
-    );
-    assert.ok(manualList.includes('System/Session_Learnings/'));
-  }
-});
-
-test('documented shell blocks parse as bash and recovery never cleans untracked work', () => {
-  for (const [label, document] of [
-    ['dex-rollback', ROLLBACK_SKILL],
-    ['dex-update', UPDATE_SKILL],
-  ]) {
-    const destructiveBlocks = bashBlocks(document).filter((block) => block.includes('git reset --hard'));
-    for (const [index, block] of destructiveBlocks.entries()) {
-      const parsed = spawnSync('/bin/bash', ['-n'], { input: block, encoding: 'utf-8' });
+      const targetedMutation = document
+        .split('\n')
+        .find((line) => line.includes(userPath) && RAW_WRITE_OR_DELETE_TARGET.test(line));
       assert.equal(
-        parsed.status,
-        0,
-        `${label} protected-reset bash block ${index + 1} is invalid:\n${parsed.stderr}`,
-      );
-      assert.doesNotMatch(
-        block,
-        /^git (?:reset --hard|restore --source=)/gm,
-        `${label} protected-reset bash block ${index + 1} has an unchecked reset/restore`,
-      );
-      assert.doesNotMatch(
-        block,
-        /^\s*git archive/gm,
-        `${label} protected-reset bash block ${index + 1} has an unchecked rescue export`,
-      );
-      assert.match(
-        block,
-        /Automatic rescue export failed/,
-        `${label} protected-reset bash block ${index + 1} needs an honest rescue failure branch`,
+        targetedMutation,
+        undefined,
+        `${label} must never target sacred user data ${userPath} with a raw mutation: ${targetedMutation}`,
       );
     }
-    assert.doesNotMatch(document, /^git clean\s+-[^\n]*f[^\n]*d/gm);
   }
 });
 
-test('update refuses to continue with a stale backup tag', () => {
-  const backupBlock = bashBlockContaining(UPDATE_SKILL, 'git tag backup-before-v1.3.0');
-  assert.match(backupBlock, /if ! git tag backup-before-v1\.3\.0; then/);
-  assert.match(backupBlock, /exit 1/);
-});
-
-test('rollback manifest cleanup removes newer core files but never user data', (t) => {
-  const repo = fs.mkdtempSync(path.join(os.tmpdir(), 'dex-manifest-cleanup-'));
-  t.after(() => fs.rmSync(repo, { recursive: true, force: true }));
-
-  runGit(repo, ['init', '-q']);
-  runGit(repo, ['config', 'user.email', 'test@example.com']);
-  runGit(repo, ['config', 'user.name', 'Dex Test']);
-
-  fs.mkdirSync(path.join(repo, '.claude'), { recursive: true });
-  fs.mkdirSync(path.join(repo, 'System'), { recursive: true });
-  fs.writeFileSync(path.join(repo, '.claude', 'keep'), 'old release\n');
-  fs.writeFileSync(path.join(repo, 'package.json'), '{}\n');
-  fs.writeFileSync(
-    path.join(repo, 'System', '.installed-files.manifest'),
-    '.claude/keep\nSystem/.installed-files.manifest\npackage.json\n',
-  );
-  runGit(repo, ['add', '.']);
-  runGit(repo, ['commit', '-qm', 'old release']);
-  const oldRelease = runGit(repo, ['rev-parse', 'HEAD']);
-
-  const protectedFiles = [
-    '03-Tasks/new-task-data.md',
-    '06-Resources/root-reference.md',
-    'System/Session_Learnings/new-learning.md',
-  ];
-  const newerCoreFile = 'core/new-feature.py';
-  for (const relativePath of [...protectedFiles, newerCoreFile]) {
-    const filepath = path.join(repo, relativePath);
-    fs.mkdirSync(path.dirname(filepath), { recursive: true });
-    fs.writeFileSync(filepath, `${relativePath}\n`);
-  }
-
-  const newManifest = [
-    '.claude/keep',
-    'System/.installed-files.manifest',
-    'package.json',
-    ...protectedFiles,
-    newerCoreFile,
-  ].sort().join('\n') + '\n';
-  fs.writeFileSync(path.join(repo, 'System', '.installed-files.manifest'), newManifest);
-  runGit(repo, ['add', '.']);
-  runGit(repo, ['commit', '-qm', 'new release']);
-  const newRelease = runGit(repo, ['rev-parse', 'HEAD']);
-  runGit(repo, ['update-ref', 'refs/remotes/upstream/release', newRelease]);
-
-  runGit(repo, ['reset', '--hard', oldRelease]);
-  for (const relativePath of [...protectedFiles, newerCoreFile]) {
-    const filepath = path.join(repo, relativePath);
-    fs.mkdirSync(path.dirname(filepath), { recursive: true });
-    fs.writeFileSync(filepath, `${relativePath}\n`);
-  }
-
-  const stateDir = fs.mkdtempSync(path.join(os.tmpdir(), 'dex-rollback-state-'));
-  fs.writeFileSync(path.join(stateDir, 'new.manifest'), newManifest);
-  fs.writeFileSync(path.join(stateDir, 'new-release'), `${newRelease}\n`);
-
-  const cleanupBlock = bashBlockContaining(ROLLBACK_SKILL, 'comm -23')
-    .replace(
-      'ROLLBACK_STATE_DIR="[exact private temp path printed in Step 3]"',
-      `ROLLBACK_STATE_DIR=${JSON.stringify(stateDir)}`,
+test('pure renderer skills contain no raw destructive or vault mutation mechanism', () => {
+  for (const [label, document] of SKILLS) {
+    for (const [operation, pattern] of RAW_OPERATION_PATTERNS) {
+      assert.doesNotMatch(document, pattern, `${label} must not contain ${operation}`);
+    }
+    assert.doesNotMatch(
+      document,
+      /```(?:bash|sh|shell)\b/i,
+      `${label} is a renderer and must not embed executable shell instructions`,
     );
-  const result = spawnSync('/bin/bash', ['-c', cleanupBlock], {
-    cwd: repo,
-    encoding: 'utf-8',
-  });
-  assert.equal(result.status, 0, result.stderr);
-  assert.equal(fs.existsSync(path.join(repo, newerCoreFile)), false);
-  for (const relativePath of protectedFiles) {
-    assert.equal(fs.existsSync(path.join(repo, relativePath)), true, relativePath);
   }
 });
 
-function setupProtectedResetRepo(t) {
-  const repo = fs.mkdtempSync(path.join(os.tmpdir(), 'dex-protected-reset-'));
-  t.after(() => fs.rmSync(repo, { recursive: true, force: true }));
-
-  const protectedFiles = [
-    ['00-Inbox/', 'data.md'],
-    ['01-Quarter_Goals/', 'Quarter_Goals.md'],
-    ['02-Week_Priorities/', 'Week_Priorities.md'],
-    ['03-Tasks/', 'Tasks.md'],
-    ['04-Projects/', 'data.md'],
-    ['05-Areas/', 'data.md'],
-    ['06-Resources/', 'data.md'],
-    ['07-Archives/', 'data.md'],
-    ['System/', 'user-profile.yaml'],
-    ['System/', 'pillars.yaml'],
-    ['System/Session_Learnings/', 'learning.md'],
-  ].map(([directory, filename]) => path.join(repo, directory, filename));
-
-  for (const filepath of protectedFiles) {
-    fs.mkdirSync(path.dirname(filepath), { recursive: true });
-    fs.writeFileSync(filepath, 'backup version\n');
+test('raw-operation guard catches alternate destructive instructions without flagging prose', () => {
+  for (const instruction of [
+    'git reset --hard HEAD~1',
+    'Use git revert when the receipt refuses.',
+    'rm -r "$VAULT_ROOT"',
+    'cp -r "$OLD_VAULT" "$VAULT_ROOT"',
+    'sed -i.bak s/old/new/ "$VAULT_ROOT/file.md"',
+    'printf content > "$VAULT_ROOT/custom.md"',
+    'Run awk \'{print}\' input > "$VAULT_ROOT/custom.md" to write the vault.',
+  ]) {
+    assert.ok(matchingGuard(instruction, RAW_OPERATION_PATTERNS), `guard missed: ${instruction}`);
   }
-  const rollbackCollision = path.join(repo, '04-Projects', 'old-only.md');
-  fs.writeFileSync(rollbackCollision, 'old release version\n');
-  fs.writeFileSync(path.join(repo, 'core.txt'), 'backup core\n');
-  fs.writeFileSync(
-    path.join(repo, '.gitignore'),
-    ['00-Inbox/', '01-Quarter_Goals/', '02-Week_Priorities/', '03-Tasks/',
-      '04-Projects/', '05-Areas/', '07-Archives/'].join('\n') + '\n',
-  );
-
-  runGit(repo, ['init', '-q']);
-  runGit(repo, ['config', 'user.email', 'test@example.com']);
-  runGit(repo, ['config', 'user.name', 'Dex Test']);
-  runGit(repo, ['add', '-f', '.']);
-  runGit(repo, ['commit', '-qm', 'backup release']);
-  runGit(repo, ['tag', 'backup-before-v1.3.0']);
-
-  fs.rmSync(rollbackCollision);
-  for (const filepath of protectedFiles) fs.writeFileSync(filepath, 'committed current version\n');
-  fs.writeFileSync(path.join(repo, 'core.txt'), 'newer core\n');
-  runGit(repo, ['add', '-f', '.']);
-  runGit(repo, ['commit', '-qm', 'current release']);
-
-  return { repo, protectedFiles, rollbackCollision };
-}
-
-test('the primary rollback block preserves committed, uncommitted, and untracked user data', (t) => {
-  const { repo, protectedFiles, rollbackCollision } = setupProtectedResetRepo(t);
-
-  for (const filepath of protectedFiles) fs.writeFileSync(filepath, 'latest user version\n');
-  fs.writeFileSync(rollbackCollision, 'ignored user version\n');
-  const untrackedResource = path.join(repo, '06-Resources', 'private.md');
-  const ignoredProject = path.join(repo, '04-Projects', 'private.md');
-  fs.writeFileSync(untrackedResource, 'private resource\n');
-  fs.writeFileSync(ignoredProject, 'private project\n');
-
-  const rollbackBlock = bashBlockContaining(
-    ROLLBACK_SKILL,
-    'DEX_ROLLBACK_TARGET="backup-before-v1.3.0"',
-  );
-  const result = spawnSync('/bin/bash', ['-c', rollbackBlock], {
-    cwd: repo,
-    encoding: 'utf-8',
-  });
   assert.equal(
-    result.status,
-    0,
-    `protected rollback failed\nstdout:\n${result.stdout}\nstderr:\n${result.stderr}`,
+    matchingGuard('> 00-Inbox/ remains untouched.', RAW_OPERATION_PATTERNS),
+    undefined,
+    'a Markdown blockquote is not a shell redirect',
   );
-
-  assert.equal(fs.readFileSync(path.join(repo, 'core.txt'), 'utf-8'), 'backup core\n');
-  for (const filepath of protectedFiles) {
-    assert.equal(fs.readFileSync(filepath, 'utf-8'), 'latest user version\n', filepath);
-  }
-  assert.equal(fs.readFileSync(untrackedResource, 'utf-8'), 'private resource\n');
-  assert.equal(fs.readFileSync(ignoredProject, 'utf-8'), 'private project\n');
-  assert.equal(fs.readFileSync(rollbackCollision, 'utf-8'), 'ignored user version\n');
-  assert.equal(runGit(repo, ['stash', 'list']), '');
+  assert.equal(
+    matchingGuard('Never use Git history as a substitute for a lifecycle receipt.', RAW_OPERATION_PATTERNS),
+    undefined,
+    'source-control boundary prose is not a Git command',
+  );
 });
 
-test('a restore conflict exports both tracked and untracked snapshots and retains the stash', (t) => {
-  const { repo, protectedFiles } = setupProtectedResetRepo(t);
+test('manual folder-copy and resources-replacement restore procedures cannot return', () => {
+  for (const [label, document] of SKILLS) {
+    const forbiddenRestore = matchingGuard(document, MANUAL_RESTORE_PATTERNS);
+    assert.equal(
+      forbiddenRestore,
+      undefined,
+      `${label} must not prescribe ${forbiddenRestore?.[0]}`,
+    );
+  }
+});
 
-  for (const filepath of protectedFiles) fs.writeFileSync(filepath, 'latest user version\n');
-  const untrackedResource = path.join(repo, '06-Resources', 'private.md');
-  fs.writeFileSync(untrackedResource, 'private resource\n');
+test('manual-restore guard catches alternate cross-install folder procedures', () => {
+  for (const instruction of [
+    '3. Copy these folders from OLD Dex.',
+    'Copy each folder from previous Dex into the current vault.',
+    'Replace 06-Resources/Dex_System/ with the downloaded copy.',
+    'Restore every folder from the downloaded Dex into the vault.',
+    'Replace every folder in the vault with files from the downloaded release.',
+  ]) {
+    assert.ok(matchingGuard(instruction, MANUAL_RESTORE_PATTERNS), `guard missed: ${instruction}`);
+  }
+});
 
-  const popNeedle = 'if [ -n "$DEX_DATA_STASH_REF" ] && ! git stash pop "$DEX_DATA_STASH_REF"; then';
-  const rollbackBlock = bashBlockContaining(
+test('rollback routes its only mutation through receipt-backed lifecycle rewind', () => {
+  assertOnlyServiceOperations(ROLLBACK_SKILL, ROLLBACK_SERVICE_OPERATIONS, 'dex-rollback');
+  assert.match(ROLLBACK_SKILL, /Every rewind goes through `core\.lifecycle\.service` version 1\.0\.0\./);
+  assert.match(
     ROLLBACK_SKILL,
-    'DEX_ROLLBACK_TARGET="backup-before-v1.3.0"',
-  ).replace(
-    popNeedle,
-    `printf 'concurrent edit\\n' > 03-Tasks/Tasks.md\n${popNeedle}`,
+    /The only mutation operation this skill may request is `rewind_adoption_by_receipt`\./,
   );
-  const result = spawnSync('/bin/bash', ['-c', rollbackBlock], {
-    cwd: repo,
-    encoding: 'utf-8',
-  });
+  assert.match(ROLLBACK_SKILL, /There is no manual fallback and no file-by-file workaround\./);
+  assert.match(ROLLBACK_SKILL, /The lifecycle service owns the mutation\./);
 
-  assert.equal(result.status, 2, `stdout:\n${result.stdout}\nstderr:\n${result.stderr}`);
-  const rescueRoot = path.join(repo, 'System', 'rollback-rescue');
-  const rescueDirs = fs.readdirSync(rescueRoot);
-  assert.equal(rescueDirs.length, 1);
-  const rescueDir = path.join(rescueRoot, rescueDirs[0]);
-  assert.equal(
-    fs.readFileSync(path.join(rescueDir, 'committed-before-reset', '03-Tasks', 'Tasks.md'), 'utf-8'),
-    'committed current version\n',
+  assertInOrder(ROLLBACK_SKILL, [
+    '1. Ask `read_lifecycle_state`',
+    '4. Show the receipt’s transaction identifier and complete file list.',
+    '5. Ask for explicit confirmation of that exact adoption and file list.',
+    '6. Pass the unchanged adoption receipt and its exact acknowledgement token to `rewind_adoption_by_receipt`.',
+    '7. Ask `read_lifecycle_state` again',
+  ], 'rollback lifecycle route');
+});
+
+test('rollback boundaries preserve user data and refuse post-adoption drift', () => {
+  assert.match(ROLLBACK_SKILL, /Never perform or recommend raw vault file operations\./);
+  assert.match(ROLLBACK_SKILL, /Never use source-control history as a substitute for a lifecycle receipt\./);
+  assert.match(
+    ROLLBACK_SKILL,
+    /Never overwrite a file that changed after adoption; render the refusal and route the decision back to the user\./,
   );
-  assert.equal(
-    fs.readFileSync(path.join(rescueDir, 'stashed-tracked', '03-Tasks', 'Tasks.md'), 'utf-8'),
-    'latest user version\n',
+  assert.match(
+    ROLLBACK_SKILL,
+    /leave later user changes untouched by refusing if receipt-owned files drifted/,
   );
-  assert.equal(
-    fs.readFileSync(path.join(rescueDir, 'stashed-untracked', '06-Resources', 'private.md'), 'utf-8'),
-    'private resource\n',
+  assert.match(
+    ROLLBACK_SKILL,
+    /If the snapshot has aged out, a file changed after adoption,[\s\S]*stop\. Explain that no files were changed\./,
   );
-  assert.match(runGit(repo, ['stash', 'list']), /dex-user-data-before-rollback/);
+  assert.match(ROLLBACK_SKILL, /restore the exact pre-adoption bytes for files that existed/);
+  assert.match(ROLLBACK_SKILL, /remove only files that this receipt proves the adoption created/);
+});
+
+test('update mutation follows the immutable preview, approval, execute service route', () => {
+  assertOnlyServiceOperations(UPDATE_SKILL, UPDATE_SERVICE_OPERATIONS, 'dex-update');
+  assert.match(
+    UPDATE_SKILL,
+    /Every lifecycle operation goes through `core\.lifecycle\.service` version 1\.0\.0\./,
+  );
+  assert.match(UPDATE_SKILL, /Execution requires an explicit yes to that exact preview\./);
+  assert.match(UPDATE_SKILL, /Pass the unchanged preview and token to `execute_approved_adoption`\./);
+  assert.match(UPDATE_SKILL, /The lifecycle service owns every mutation\./);
+
+  assertInOrder(UPDATE_SKILL, [
+    '1. Ask `build_inventory_and_plan`',
+    '3. After the user chooses items, ask `build_and_preview_adoption`',
+    '4. Show every proposed file from that preview. Execution requires an explicit yes to that exact preview.',
+    '5. Pass the unchanged preview and token to `execute_approved_adoption`.',
+    '6. Ask `read_lifecycle_state`',
+  ], 'update preview-approval-execute route');
+});
+
+test('update explicitly forbids raw vault writes and leaves refused content untouched', () => {
+  assert.match(
+    UPDATE_SKILL,
+    /it never edits, copies, renames, deletes, or merges vault files itself\./i,
+  );
+  assert.match(UPDATE_SKILL, /Never perform a raw vault write\./);
+  assert.match(UPDATE_SKILL, /Never instruct the user to move files around as part of an update\./);
+  assert.match(UPDATE_SKILL, /Do not fall back to direct file operations, Git mutation, an update script/);
+  assert.match(
+    UPDATE_SKILL,
+    /If the service reports UNKNOWN, conflict, changed evidence, an unsafe path, or a rejected transaction, stop\.[\s\S]*leave the vault untouched\./,
+  );
+  assert.match(UPDATE_SKILL, /Your own content was not part of the write set\./);
 });

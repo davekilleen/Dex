@@ -12,6 +12,8 @@ from core.integrations import task_sync
 from core.mcp import work_server
 from core.paths import TASKS_DIR
 
+REPO_ROOT = Path(__file__).resolve().parents[2]
+
 TEST_PILLARS = {
     "pillar_1": {
         "name": "Product",
@@ -54,6 +56,9 @@ def sync_vault(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Pat
     tasks = tmp_path / TASKS_DIR.name / "Tasks.md"
     integrations.mkdir(parents=True)
     adapters.mkdir(parents=True)
+    (adapters / "run.cjs").write_bytes(
+        (REPO_ROOT / ".claude" / "hooks" / "adapters" / "run.cjs").read_bytes()
+    )
     tasks.parent.mkdir(parents=True)
     _write_tasks(tasks)
 
@@ -65,6 +70,7 @@ def sync_vault(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Pat
     monkeypatch.setattr(task_sync, "TASK_SYNC_STATE_FILE", state)
     monkeypatch.setattr(task_sync, "INBOUND_TASKS_FILE", inbound)
     monkeypatch.setattr(task_sync, "ADAPTERS_DIR", adapters)
+    monkeypatch.setattr(task_sync, "VAULT_ROOT", tmp_path)
     monkeypatch.setattr(work_server, "BASE_DIR", tmp_path)
     monkeypatch.setattr(work_server, "get_tasks_file", lambda: tasks)
     monkeypatch.setattr(work_server, "PILLARS", TEST_PILLARS)
@@ -87,15 +93,35 @@ def _enable(sync_vault: dict[str, Path], *services: str) -> None:
             [
                 f"{service}:",
                 "  enabled: true",
-                "  api_key: test-token",
+                "  api_key_env_var: TODOIST_API_KEY"
+                if service == "todoist"
+                else "  api_key_env_var: TRELLO_API_KEY"
+                if service == "trello"
+                else "  local: true",
                 "  pillar_map:",
                 "    pillar_1: Product",
             ]
         )
+        if service == "trello":
+            blocks.append("  token_env_var: TRELLO_TOKEN")
         (sync_vault["adapters"] / f"{service}.cjs").write_text(
             "module.exports = {};\n", encoding="utf-8"
         )
     sync_vault["config"].write_text("\n".join(blocks) + "\n", encoding="utf-8")
+    env = sync_vault["root"] / ".env"
+    env.write_text(
+        "TODOIST_API_KEY=synthetic-todoist-value\n"
+        "TRELLO_API_KEY=synthetic-trello-value\n"
+        "TRELLO_TOKEN=synthetic-trello-token\n",
+        encoding="utf-8",
+    )
+    env.chmod(0o600)
+
+
+def _write_aliases(sync_vault: dict[str, Path], payload: object) -> None:
+    (sync_vault["adapters"] / "service-aliases.json").write_text(
+        json.dumps(payload) + "\n", encoding="utf-8"
+    )
 
 
 def _install_fake_runner(monkeypatch: pytest.MonkeyPatch, responses: dict) -> list[dict]:
@@ -103,6 +129,21 @@ def _install_fake_runner(monkeypatch: pytest.MonkeyPatch, responses: dict) -> li
     monkeypatch.setattr(task_sync, "_find_node", lambda: "/fake/node")
 
     def run(command, **kwargs):
+        if command[-2] == "--resolve-adapter":
+            service = command[-1]
+            adapter = "jira" if service == "atlassian" else service
+            return task_sync.subprocess.CompletedProcess(
+                args=command,
+                returncode=0,
+                stdout=json.dumps(
+                    {
+                        "ok": True,
+                        "requested_service": service,
+                        "adapter_service": adapter,
+                    }
+                ),
+                stderr="",
+            )
         service, operation = command[-2:]
         request = json.loads(kwargs["input"])
         calls.append(
@@ -126,6 +167,30 @@ def _install_fake_runner(monkeypatch: pytest.MonkeyPatch, responses: dict) -> li
 
     monkeypatch.setattr(task_sync.subprocess, "run", run)
     return calls
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        "todoist:\n  enabled: true\ntodoist:\n  enabled: false\n",
+        "todoist:\n  enabled: true\n  enabled: false\n",
+        '"todo\\u0069st":\n  enabled: true\ntodoist:\n  enabled: false\n',
+        "defaults: &defaults\n  enabled: true\ntodoist: *defaults\n",
+        "defaults: &defaults\n  enabled: true\ntodoist:\n  <<: *defaults\n",
+    ],
+)
+def test_duplicate_alias_and_merge_config_refuses_before_adapter_invocation(sync_vault, monkeypatch, raw):
+    sync_vault["config"].write_text(raw)
+    called = False
+
+    def adapter(*_args, **_kwargs):
+        nonlocal called
+        called = True
+
+    monkeypatch.setattr(task_sync, "_run_adapter", adapter)
+    with pytest.raises(ValueError):
+        task_sync.sync_external_tasks()
+    assert not called
 
 
 def test_first_service_run_creates_baseline_without_adapter_calls(sync_vault, monkeypatch):
@@ -359,6 +424,107 @@ def test_one_service_error_does_not_block_another(sync_vault, monkeypatch):
     }
 
 
+def test_atlassian_alias_keeps_stable_config_state_result_and_inbound_identity(
+    sync_vault, monkeypatch
+):
+    _enable(sync_vault, "atlassian")
+    (sync_vault["adapters"] / "atlassian.cjs").unlink()
+    (sync_vault["adapters"] / "jira.cjs").write_text(
+        "module.exports = {};\n", encoding="utf-8"
+    )
+    _write_aliases(sync_vault, {"atlassian": "jira"})
+    task_sync._write_state(_state(atlassian=_service_state()))
+    calls = _install_fake_runner(
+        monkeypatch,
+        {
+            ("atlassian", "get_changes"): [
+                {
+                    "id": "jira-created-id",
+                    "action": "created",
+                    "task": {"title": "Review Jira issue"},
+                }
+            ]
+        },
+    )
+
+    result = task_sync.sync_external_tasks(services=["atlassian"])
+
+    assert set(result) == {"atlassian"}
+    assert set(task_sync._load_state()) == {"atlassian"}
+    assert calls[0]["service"] == "atlassian"
+    assert calls[0]["request"]["config"]["enabled"] is True
+    assert json.loads(sync_vault["inbound"].read_text(encoding="utf-8"))[0][
+        "service"
+    ] == "atlassian"
+
+
+def test_direct_jira_behavior_is_unchanged(sync_vault, monkeypatch):
+    _enable(sync_vault, "jira")
+    _write_aliases(sync_vault, {"atlassian": "jira"})
+    task_sync._write_state(_state(jira=_service_state()))
+    calls = _install_fake_runner(monkeypatch, {("jira", "get_changes"): []})
+
+    result = task_sync.sync_external_tasks(services=["jira"])
+
+    assert result["jira"]["errors"] == []
+    assert calls[0]["service"] == "jira"
+    assert set(task_sync._load_state()) == {"jira"}
+
+
+@pytest.mark.parametrize(
+    "aliases, error",
+    [
+        ({"raw": "[]"}, "must contain an object"),
+        ({"raw": '{"atlassian":"jira","atlassian":"cloud"}'}, "duplicate service alias"),
+        ({"atlassian": "atlassian"}, "self-referential"),
+        ({"atlassian": "../jira"}, "invalid adapter alias"),
+        ({"atlassian": "jira", "jira": "cloud"}, "must be one hop"),
+        ({"atlassian": "jira", "jira": "atlassian"}, "must be one hop"),
+    ],
+)
+def test_bad_aliases_are_structured_visible_failures(
+    sync_vault, monkeypatch, aliases, error
+):
+    _enable(sync_vault, "atlassian")
+    if set(aliases) == {"raw"}:
+        (sync_vault["adapters"] / "service-aliases.json").write_text(
+            aliases["raw"], encoding="utf-8"
+        )
+    else:
+        _write_aliases(sync_vault, aliases)
+
+    def fail_if_called(*_args, **_kwargs):
+        raise AssertionError("invalid alias must fail before adapter execution")
+
+    monkeypatch.setattr(task_sync, "_run_adapter", fail_if_called)
+
+    result = task_sync.sync_external_tasks(services=["atlassian"])
+
+    assert result["atlassian"]["errors"]
+    assert "enabled service 'atlassian'" in result["atlassian"]["errors"][0]
+    assert error in result["atlassian"]["errors"][0].lower()
+
+
+def test_enabled_adapterless_service_returns_corrective_failure_without_state_write(
+    sync_vault, monkeypatch
+):
+    _enable(sync_vault, "adapterless")
+    (sync_vault["adapters"] / "adapterless.cjs").unlink()
+
+    def fail_if_called(*_args, **_kwargs):
+        raise AssertionError("missing adapter must not be silent or execute the runner")
+
+    monkeypatch.setattr(task_sync, "_run_adapter", fail_if_called)
+
+    result = task_sync.sync_external_tasks(services=["adapterless"])
+
+    assert result["adapterless"]["errors"] == [
+        "task-sync adapter configuration error for enabled service 'adapterless': "
+        "Adapter unavailable for requested service 'adapterless': expected 'adapterless.cjs'"
+    ]
+    assert not sync_vault["state"].exists()
+
+
 class TestThingsSync:
     def test_push_create_via_runner_records_mapping(self, sync_vault, monkeypatch):
         _enable(sync_vault, "things")
@@ -516,7 +682,7 @@ class TestTrelloSync:
             ("trello", "create"),
             ("trello", "get_changes"),
         ]
-        assert calls[0]["request"]["config"]["api_key"] == "test-token"
+        assert calls[0]["request"]["config"]["api_key"] == "synthetic-trello-value"
         assert calls[0]["request"]["args"]["task_id"] == "task-20260713-201"
 
     def test_created_change_via_runner_queues_inbound(self, sync_vault, monkeypatch):
@@ -657,6 +823,57 @@ def test_atomic_state_round_trip_leaves_no_temporary_files(sync_vault):
 
     assert task_sync._load_state() == payload
     assert not list(sync_vault["integrations"].glob("*.tmp"))
+
+
+def test_credentials_travel_only_in_stdin_and_are_redacted(sync_vault, monkeypatch):
+    _enable(sync_vault, "todoist")
+    task_sync._write_state(_state(todoist=_service_state()))
+    observed = {}
+    monkeypatch.setattr(task_sync, "_find_node", lambda: "/fake/node")
+
+    def run(command, **kwargs):
+        if "--resolve-adapter" in command:
+            # Adapter-alias preflight: identity resolution, carries no credential stdin.
+            service = command[command.index("--resolve-adapter") + 1]
+            return task_sync.subprocess.CompletedProcess(
+                command,
+                0,
+                json.dumps(
+                    {
+                        "ok": True,
+                        "requested_service": service,
+                        "adapter_service": service,
+                    }
+                ),
+                "",
+            )
+        observed.update(command=command, kwargs=kwargs)
+        secret = json.loads(kwargs["input"])["config"]["api_key"]
+        return task_sync.subprocess.CompletedProcess(
+            command,
+            1,
+            json.dumps({"ok": False, "error": f"provider rejected {secret}"}),
+            "",
+        )
+
+    monkeypatch.setattr(task_sync.subprocess, "run", run)
+    result = task_sync.sync_external_tasks()
+    secret = "synthetic-todoist-value"
+    assert secret in observed["kwargs"]["input"]
+    assert all(secret not in str(value) for value in observed["command"])
+    assert secret not in observed["kwargs"]["env"].values()
+    assert result["todoist"]["errors"] == ["provider rejected [REDACTED]"]
+    assert secret not in sync_vault["state"].read_text()
+
+
+def test_health_is_read_only_explicit_and_redacted(sync_vault, monkeypatch):
+    _enable(sync_vault, "trello")
+    calls = _install_fake_runner(
+        monkeypatch, {("trello", "health"): {"healthy": True}}
+    )
+    assert task_sync.check_service_health("trello") == {"healthy": True}
+    assert calls[0]["operation"] == "health"
+    assert calls[0]["request"]["args"] is None
 
 
 def test_work_mcp_exposes_task_sync_tool_schemas():

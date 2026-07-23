@@ -26,7 +26,16 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from core import paths
+from core import paths, portable_contract
+from core.lifecycle import engine as lifecycle_engine
+from core.lifecycle import ledger as lifecycle_ledger
+from core.lifecycle import service as lifecycle_service
+from core.lifecycle.catalog import CatalogError, load_catalog
+from core.lifecycle.inventory import build_inventory
+from core.lifecycle.model import ITEM_ID, SEMVER, AdoptionState
+from core.lifecycle.plan import PlannedAction, ReasonCode, build_adoption_plan
+from core.transaction.engine import TX_ROOT_RELATIVE, PlanEntry
+from core.transaction.journal import Journal, JournalCorruptError
 from core.utils import preflight, release_channel
 
 VERDICTS = frozenset({"OK", "OFF", "BROKEN", "UNKNOWN"})
@@ -36,6 +45,32 @@ MISSING_PACKAGES_DETAIL = (
     "Python packages not installed — run /dex-update (or pip install -r requirements.txt) "
     "then re-run /dex-doctor"
 )
+RELEASE_CATALOG_PATH = "System/.release-catalog.json"
+ADOPTION_REPORT_VERSION = 1
+ADOPTION_GROUP_IDS = (
+    "new-and-safe",
+    "needs-your-review",
+    "preserved-for-now",
+    "continue-or-recover",
+    "receipts-and-rewind",
+)
+ADOPTION_ACTIONS = frozenset(action.value for action in PlannedAction)
+ADOPTION_STATUSES = frozenset(state.value for state in AdoptionState)
+ADOPTION_REASON_CODES = frozenset(reason.value for reason in ReasonCode)
+
+
+def _validate_authority_item(item_id: object, item_version: object) -> None:
+    if not isinstance(item_id, str) or ITEM_ID.fullmatch(item_id) is None:
+        raise ValueError("Adoption authority item_id is not canonical")
+    if item_version is not None and (
+        not isinstance(item_version, str) or SEMVER.fullmatch(item_version) is None
+    ):
+        raise ValueError("Adoption authority item_version is not strict SemVer")
+
+
+def _validate_surface(surface: object) -> None:
+    if not isinstance(surface, str) or not surface.strip():
+        raise ValueError("Adoption group surface must be a non-empty string")
 
 
 @dataclass(frozen=True)
@@ -114,6 +149,399 @@ class DoctorContext:
         return self.home / "Library" / "LaunchAgents"
 
 
+@dataclass(frozen=True)
+class AdoptionItem:
+    """One catalog item and its planner-owned action."""
+
+    item_id: str
+    item_version: str | None
+    action: str
+
+    def __post_init__(self) -> None:
+        _validate_authority_item(self.item_id, self.item_version)
+        if self.action not in ADOPTION_ACTIONS:
+            raise ValueError(f"Invalid adoption authority action: {self.action!r}")
+
+    def to_dict(self) -> dict[str, object]:
+        return asdict(self)
+
+
+@dataclass(frozen=True)
+class AdoptionReviewFile:
+    """One conflict path and the planner-owned reason for reviewing it."""
+
+    path: str
+    reason: str
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.path, str) or not self.path:
+            raise ValueError("Adoption review path must be a non-empty string")
+        if self.reason not in ADOPTION_REASON_CODES:
+            raise ValueError(f"Invalid adoption review reason: {self.reason!r}")
+
+    def to_dict(self) -> dict[str, str]:
+        return asdict(self)
+
+
+@dataclass(frozen=True)
+class AdoptionReviewItem:
+    """One conflicted catalog item with item- and path-level reasons."""
+
+    item_id: str
+    item_version: str
+    action: str
+    reasons: tuple[str, ...]
+    files: tuple[AdoptionReviewFile, ...]
+
+    def __post_init__(self) -> None:
+        _validate_authority_item(self.item_id, self.item_version)
+        if self.action not in {
+            PlannedAction.CONFLICT.value,
+            PlannedAction.UNKNOWN.value,
+        }:
+            raise ValueError(f"Invalid review authority action: {self.action!r}")
+        if (
+            not isinstance(self.reasons, tuple)
+            or not self.reasons
+            or any(reason not in ADOPTION_REASON_CODES for reason in self.reasons)
+        ):
+            raise ValueError("Adoption review reasons use an invalid authority value")
+        if not isinstance(self.files, tuple) or any(
+            type(entry) is not AdoptionReviewFile for entry in self.files
+        ):
+            raise ValueError("Adoption review files must be AdoptionReviewFile records")
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "item_id": self.item_id,
+            "item_version": self.item_version,
+            "action": self.action,
+            "reasons": list(self.reasons),
+            "files": [entry.to_dict() for entry in self.files],
+        }
+
+
+@dataclass(frozen=True)
+class PreservedCustomization:
+    """One customized installed file that adoption will preserve."""
+
+    path: str
+    state: str
+    reason: str
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.path, str) or not self.path:
+            raise ValueError("Preserved customization path must be a non-empty string")
+        if self.state != "stock-modified":
+            raise ValueError("Preserved customization state must be stock-modified")
+        if not isinstance(self.reason, str) or not self.reason:
+            raise ValueError("Preserved customization reason must be a non-empty string")
+
+    def to_dict(self) -> dict[str, str]:
+        return asdict(self)
+
+
+@dataclass(frozen=True)
+class InterruptedTransaction:
+    """Read-only recovery evidence mirroring Transaction.resume classification."""
+
+    tx_id: str
+    verdict: str
+    last_event: str | None
+    snapshot_present: bool
+
+    def __post_init__(self) -> None:
+        if lifecycle_engine.TRANSACTION_ID.fullmatch(self.tx_id) is None:
+            raise ValueError("Interrupted transaction id is not canonical")
+        if self.verdict not in {"BROKEN", "UNKNOWN"}:
+            raise ValueError(f"Invalid interrupted-transaction verdict: {self.verdict}")
+        if self.last_event is not None and not isinstance(self.last_event, str):
+            raise ValueError("Interrupted transaction last_event must be a string or null")
+        if type(self.snapshot_present) is not bool:
+            raise ValueError("Interrupted transaction snapshot_present must be a boolean")
+
+    def to_dict(self) -> dict[str, object]:
+        return asdict(self)
+
+
+@dataclass(frozen=True)
+class LedgerRecovery:
+    """A ledger error and the ledger-owned command that can repair its state."""
+
+    verdict: str
+    incomplete_publication: bool
+    repair_command: str
+    detail: str
+
+    def __post_init__(self) -> None:
+        if self.verdict != "UNKNOWN":
+            raise ValueError(f"Invalid ledger recovery verdict: {self.verdict}")
+        if type(self.incomplete_publication) is not bool:
+            raise ValueError("Ledger incomplete_publication must be a boolean")
+        if not isinstance(self.repair_command, str) or not self.repair_command:
+            raise ValueError("Ledger repair_command must be a non-empty string")
+        if not isinstance(self.detail, str) or not self.detail:
+            raise ValueError("Ledger recovery detail must be a non-empty string")
+
+    def to_dict(self) -> dict[str, object]:
+        return asdict(self)
+
+
+@dataclass(frozen=True)
+class AdoptionReceiptSummary:
+    """Current ledger receipt authority plus snapshot-retention evidence."""
+
+    item_id: str
+    item_version: str
+    status: str
+    transaction_id: str
+    when: str
+    rewindable: bool
+    rewind_verdict: str
+
+    def __post_init__(self) -> None:
+        _validate_authority_item(self.item_id, self.item_version)
+        if self.status not in ADOPTION_STATUSES:
+            raise ValueError(f"Invalid adoption receipt status: {self.status!r}")
+        if lifecycle_engine.TRANSACTION_ID.fullmatch(self.transaction_id) is None:
+            raise ValueError("Adoption receipt transaction_id is not canonical")
+        if not isinstance(self.when, str) or not self.when:
+            raise ValueError("Adoption receipt when must be a non-empty string")
+        if type(self.rewindable) is not bool:
+            raise ValueError("Adoption receipt rewindable must be a boolean")
+        if self.rewind_verdict not in {"OK", "UNKNOWN"}:
+            raise ValueError("Adoption receipt rewind_verdict must be OK or UNKNOWN")
+        if self.rewindable and self.rewind_verdict != "OK":
+            raise ValueError("A rewindable receipt must have rewind_verdict OK")
+
+    def to_dict(self) -> dict[str, object]:
+        return asdict(self)
+
+
+@dataclass(frozen=True)
+class NewAndSafeGroup:
+    id: str
+    verdict: str
+    count: int
+    items: tuple[AdoptionItem, ...]
+    surface: str
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "id": self.id,
+            "verdict": self.verdict,
+            "count": self.count,
+            "items": [item.to_dict() for item in self.items],
+            "surface": self.surface,
+        }
+
+
+@dataclass(frozen=True)
+class NeedsReviewGroup:
+    id: str
+    verdict: str
+    count: int
+    items: tuple[AdoptionReviewItem, ...]
+    surface: str
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "id": self.id,
+            "verdict": self.verdict,
+            "count": self.count,
+            "items": [item.to_dict() for item in self.items],
+            "surface": self.surface,
+        }
+
+
+@dataclass(frozen=True)
+class PreservedForNowGroup:
+    id: str
+    verdict: str
+    count: int
+    held_back_items: tuple[AdoptionItem, ...]
+    customized_files: tuple[PreservedCustomization, ...]
+    surface: str
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "id": self.id,
+            "verdict": self.verdict,
+            "count": self.count,
+            "held_back_items": [item.to_dict() for item in self.held_back_items],
+            "customized_files": [entry.to_dict() for entry in self.customized_files],
+            "surface": self.surface,
+        }
+
+
+@dataclass(frozen=True)
+class ContinueOrRecoverGroup:
+    id: str
+    verdict: str
+    count: int
+    transactions: tuple[InterruptedTransaction, ...]
+    ledger: LedgerRecovery | None
+    inspection_error: str | None
+    surface: str
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "id": self.id,
+            "verdict": self.verdict,
+            "count": self.count,
+            "transactions": [entry.to_dict() for entry in self.transactions],
+            "ledger": self.ledger.to_dict() if self.ledger else None,
+            "inspection_error": self.inspection_error,
+            "surface": self.surface,
+        }
+
+
+@dataclass(frozen=True)
+class ReceiptsAndRewindGroup:
+    id: str
+    verdict: str
+    count: int
+    receipts: tuple[AdoptionReceiptSummary, ...]
+    surface: str
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "id": self.id,
+            "verdict": self.verdict,
+            "count": self.count,
+            "receipts": [entry.to_dict() for entry in self.receipts],
+            "surface": self.surface,
+        }
+
+
+AdoptionGroup = (
+    NewAndSafeGroup
+    | NeedsReviewGroup
+    | PreservedForNowGroup
+    | ContinueOrRecoverGroup
+    | ReceiptsAndRewindGroup
+)
+
+
+@dataclass(frozen=True)
+class AdoptionReport:
+    """Strict authority/surface contract for Doctor's adoption section.
+
+    All item ids, actions, verdicts, counts, transaction ids, statuses, and
+    rewindable booleans are deterministic authority emitted here. Renderers
+    may paraphrase only each group's ``surface`` line; they must reproduce all
+    other fields verbatim and must never infer, promote, or suppress actions.
+    """
+
+    report_version: int
+    verdict: str
+    groups: tuple[AdoptionGroup, ...]
+
+    def __post_init__(self) -> None:
+        if self.report_version != ADOPTION_REPORT_VERSION:
+            raise ValueError("Unsupported adoption report version")
+        if self.verdict not in VERDICTS:
+            raise ValueError(f"Invalid adoption report verdict: {self.verdict}")
+        if not isinstance(self.groups, tuple):
+            raise ValueError("Adoption report groups must be a tuple")
+        expected_types = (
+            NewAndSafeGroup,
+            NeedsReviewGroup,
+            PreservedForNowGroup,
+            ContinueOrRecoverGroup,
+            ReceiptsAndRewindGroup,
+        )
+        if tuple(type(group) for group in self.groups) != expected_types:
+            raise ValueError("Adoption report group types must match the exact contract")
+        if tuple(group.id for group in self.groups) != ADOPTION_GROUP_IDS:
+            raise ValueError("Adoption report must contain the exact five ordered groups")
+        for group in self.groups:
+            if group.verdict not in VERDICTS:
+                raise ValueError(f"Invalid adoption group verdict: {group.verdict}")
+            if type(group.count) is not int or group.count < 0:
+                raise ValueError("Adoption group count must be a non-negative integer")
+            _validate_surface(group.surface)
+        new_group, review_group, preserved_group, recovery_group, receipt_group = self.groups
+        if not isinstance(new_group.items, tuple) or any(
+            type(item) is not AdoptionItem for item in new_group.items
+        ):
+            raise ValueError("new-and-safe items must be AdoptionItem records")
+        if any(item.action != PlannedAction.ADOPT.value for item in new_group.items):
+            raise ValueError("new-and-safe items must have action adopt")
+        if not isinstance(review_group.items, tuple) or any(
+            type(item) is not AdoptionReviewItem for item in review_group.items
+        ):
+            raise ValueError("needs-your-review items must be AdoptionReviewItem records")
+        if not isinstance(preserved_group.held_back_items, tuple) or any(
+            type(item) is not AdoptionItem for item in preserved_group.held_back_items
+        ):
+            raise ValueError("preserved held-back items must be AdoptionItem records")
+        if any(
+            item.action != PlannedAction.SKIP_HELD_BACK.value
+            for item in preserved_group.held_back_items
+        ):
+            raise ValueError("preserved held-back items must have action skip-held-back")
+        if not isinstance(preserved_group.customized_files, tuple) or any(
+            type(item) is not PreservedCustomization
+            for item in preserved_group.customized_files
+        ):
+            raise ValueError("preserved customized files must be strict authority records")
+        if not isinstance(recovery_group.transactions, tuple) or any(
+            type(item) is not InterruptedTransaction
+            for item in recovery_group.transactions
+        ):
+            raise ValueError("recovery transactions must be strict authority records")
+        if recovery_group.ledger is not None and type(recovery_group.ledger) is not LedgerRecovery:
+            raise ValueError("recovery ledger must be a LedgerRecovery record or null")
+        if recovery_group.inspection_error is not None and not isinstance(
+            recovery_group.inspection_error, str
+        ):
+            raise ValueError("recovery inspection_error must be a string or null")
+        if not isinstance(receipt_group.receipts, tuple) or any(
+            type(item) is not AdoptionReceiptSummary for item in receipt_group.receipts
+        ):
+            raise ValueError("receipt summaries must be strict authority records")
+        if any(
+            item.status != AdoptionState.ADOPTED.value
+            for item in receipt_group.receipts
+        ):
+            raise ValueError("receipt summaries must have status adopted")
+        expected_counts = (
+            len(new_group.items),
+            len(review_group.items),
+            len(preserved_group.held_back_items) + len(preserved_group.customized_files),
+            len(recovery_group.transactions)
+            + int(recovery_group.ledger is not None)
+            + int(recovery_group.inspection_error is not None),
+            len(receipt_group.receipts),
+        )
+        if tuple(group.count for group in self.groups) != expected_counts:
+            raise ValueError("Adoption report group count does not match authority records")
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "report_version": self.report_version,
+            "verdict": self.verdict,
+            "groups": [group.to_dict() for group in self.groups],
+        }
+
+
+def canonical_adoption_report_bytes(report: AdoptionReport) -> bytes:
+    """Return canonical JSON bytes for the strict Doctor adoption report."""
+    if not isinstance(report, AdoptionReport):
+        raise TypeError("report must be an AdoptionReport")
+    return (
+        json.dumps(
+            report.to_dict(),
+            ensure_ascii=False,
+            allow_nan=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        + "\n"
+    ).encode("utf-8")
+
+
 PARA_PATH_NAMES = (
     "INBOX_DIR",
     "QUARTER_GOALS_DIR",
@@ -160,6 +588,16 @@ SHIPPED_LAUNCH_AGENT_LABELS = frozenset(
 QUICK_CHECKS = (
     CheckDefinition("vault.structure", "Vault structure", "_probe_vault_structure"),
     CheckDefinition("vault.configs", "Vault configuration", "_probe_vault_configs"),
+    CheckDefinition("vault.git", "Vault history", "_probe_vault_git"),
+    CheckDefinition("brain.git", "Dex brain history", "_probe_brain_git"),
+    CheckDefinition("vault.auto-commit", "Vault auto-commit", "_probe_vault_auto_commit"),
+    CheckDefinition(
+        "topology.migration-pending",
+        "Brain/vault topology",
+        "_probe_migration_pending",
+    ),
+    CheckDefinition("release.catalog", "Release catalog", "_probe_release_catalog"),
+    CheckDefinition("adoption.plan", "Adoption plan", "_probe_adoption_plan"),
     CheckDefinition("smoke.history", "Nightly smoke results", "_probe_smoke_history"),
     CheckDefinition("mcp.registered", "MCP registration", "_probe_mcp_registered"),
     CheckDefinition("mcp.orphans", "MCP server registration", "_probe_mcp_orphans"),
@@ -220,9 +658,9 @@ def _is_missing_package_error(value: object, detail: str | None = None) -> bool:
 
 def _load_yaml(path: Path) -> object:
     """Load YAML lazily so a broken venv can still produce a doctor report."""
-    import yaml
+    from core.utils.strict_yaml import load_yaml_path
 
-    return yaml.safe_load(path.read_text())
+    return load_yaml_path(path)
 
 
 def _result_json(definition: CheckDefinition, result: ProbeResult) -> dict[str, Any]:
@@ -285,22 +723,20 @@ def _repo_shipped_executables(context: DoctorContext) -> list[Path]:
 
 
 def _apply_t1_heals(context: DoctorContext) -> tuple[list[str], list[str]]:
-    """Apply the collector's safe, idempotent repair set."""
+    """Preview and apply contract-authorized Tier-1 repairs through the service."""
     actions: list[str] = []
     errors: list[str] = []
+    planned: list[PlanEntry] = []
+    planned_paths_export = False
+    planned_executables: list[str] = []
 
     missing_directories = [context.core_path(name) for name in PARA_PATH_NAMES if not context.core_path(name).is_dir()]
     if missing_directories:
-        created = []
-        for directory in missing_directories:
-            try:
-                directory.mkdir(parents=True, exist_ok=True)
-                created.append(directory)
-            except OSError as error:
-                errors.append(f"Directory heal failed for {directory.name}: {_one_line(error)}")
-        if created:
-            names = ", ".join(directory.name for directory in created)
-            actions.append(f"Created {names}")
+        names = ", ".join(directory.name for directory in missing_directories)
+        errors.append(
+            "Directory repair requires user action because empty directories are not "
+            f"receipt-declared transaction writes: {names}"
+        )
 
     try:
         expected_paths = _paths_export_for(context)
@@ -310,13 +746,23 @@ def _apply_t1_heals(context: DoctorContext) -> tuple[list[str], list[str]]:
         except (FileNotFoundError, json.JSONDecodeError, OSError):
             pass
         if current_paths != expected_paths:
-            context.paths_json_path.parent.mkdir(parents=True, exist_ok=True)
-            context.paths_json_path.write_text(json.dumps(expected_paths, indent=2) + "\n")
-            actions.append("regenerated core/paths.json")
+            relative = context.paths_json_path.relative_to(context.vault_root).as_posix()
+            mode = (
+                context.paths_json_path.stat().st_mode & 0o777
+                if context.paths_json_path.is_file()
+                else 0o644
+            )
+            planned.append(
+                PlanEntry(
+                    relative,
+                    (json.dumps(expected_paths, indent=2) + "\n").encode("utf-8"),
+                    mode=mode,
+                )
+            )
+            planned_paths_export = True
     except Exception as error:
         errors.append(f"Path-export heal failed: {_one_line(error)}")
 
-    restored = []
     try:
         shipped_executables = _repo_shipped_executables(context)
     except Exception as error:
@@ -326,40 +772,71 @@ def _apply_t1_heals(context: DoctorContext) -> tuple[list[str], list[str]]:
         try:
             if not script.is_file() or script.stat().st_mode & 0o111:
                 continue
-            script.chmod(script.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
             try:
-                restored.append(str(script.relative_to(context.repo_root)))
+                relative = script.relative_to(context.vault_root).as_posix()
             except ValueError:
-                restored.append(str(script))
+                errors.append(
+                    f"Executable-mode repair requires user action outside the vault: {script}"
+                )
+                continue
+            planned.append(
+                PlanEntry(
+                    relative,
+                    script.read_bytes(),
+                    mode=(script.stat().st_mode & 0o777) | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH,
+                )
+            )
+            planned_executables.append(relative)
         except OSError as error:
             errors.append(f"Executable-mode heal failed for {script}: {_one_line(error)}")
-    if restored:
-        noun = "permission" if len(restored) == 1 else "permissions"
-        actions.append(f"restored executable {noun} on {', '.join(restored)}")
+
+    if planned:
+        try:
+            preview = lifecycle_service._preview_transaction(
+                context.vault_root,
+                planned,
+                purpose="doctor-tier-1",
+            )
+            lifecycle_service._execute_approved_transaction(
+                context.vault_root,
+                planned,
+                purpose="doctor-tier-1",
+                approved_token=str(preview["approval_token"]),
+            )
+        except Exception as error:
+            errors.append(f"Tier-1 transaction failed: {_one_line(error)}")
+        else:
+            if planned_paths_export:
+                actions.append("regenerated core/paths.json")
+            if planned_executables:
+                noun = "permission" if len(planned_executables) == 1 else "permissions"
+                actions.append(
+                    f"restored executable {noun} on {', '.join(planned_executables)}"
+                )
 
     return actions, errors
 
 
 def _write_last_run(report: dict[str, Any], context: DoctorContext) -> None:
-    serialized = json.dumps(report, indent=2) + "\n"
-    temporary_path: Path | None = None
-    try:
-        with tempfile.NamedTemporaryFile(
-            mode="w",
-            encoding="utf-8",
-            dir=context.last_run_path.parent,
-            prefix=".doctor-last-run.",
-            suffix=".tmp",
-            delete=False,
-        ) as handle:
-            temporary_path = Path(handle.name)
-            handle.write(serialized)
-            handle.flush()
-            os.fsync(handle.fileno())
-        os.replace(temporary_path, context.last_run_path)
-    finally:
-        if temporary_path and temporary_path.exists():
-            temporary_path.unlink()
+    relative = context.last_run_path.relative_to(context.vault_root).as_posix()
+    plan = [
+        PlanEntry(
+            relative,
+            (json.dumps(report, indent=2) + "\n").encode("utf-8"),
+            mode=0o600,
+        )
+    ]
+    preview = lifecycle_service._preview_transaction(
+        context.vault_root,
+        plan,
+        purpose="doctor-report",
+    )
+    lifecycle_service._execute_approved_transaction(
+        context.vault_root,
+        plan,
+        purpose="doctor-report",
+        approved_token=str(preview["approval_token"]),
+    )
 
 
 def collect(
@@ -428,6 +905,7 @@ def collect(
     results["doctor.self"] = self_result
 
     checks = [_result_json(definition, results[definition.id]) for definition in definitions]
+    adoption = collect_adoption_report(context)
     report = {
         "generated_at": context.now.isoformat(),
         "mode": "deep" if deep else "quick",
@@ -438,6 +916,7 @@ def collect(
         },
         "checks": checks,
         "summary": _summary(checks),
+        "adoption": adoption.to_dict(),
     }
 
     try:
@@ -516,6 +995,428 @@ def _probe_vault_configs(context: DoctorContext) -> ProbeResult:
             Heal(tier=3, action="Repair the named configuration file by hand.", applied=False),
         )
     return ProbeResult("OK", "user-profile.yaml, pillars.yaml, and .claude/settings.json all parse")
+
+
+def _release_catalog_path(context: DoctorContext) -> Path:
+    return context.vault_root / RELEASE_CATALOG_PATH
+
+
+def _empty_adoption_report(
+    verdict: str,
+    surface: str,
+    *,
+    transactions: tuple[InterruptedTransaction, ...] = (),
+    ledger: LedgerRecovery | None = None,
+    inspection_error: str | None = None,
+) -> AdoptionReport:
+    recovery_count = len(transactions) + int(ledger is not None) + int(inspection_error is not None)
+    recovery_surface = (
+        _recovery_surface(transactions, ledger, inspection_error)
+        if recovery_count
+        else surface
+    )
+    return AdoptionReport(
+        ADOPTION_REPORT_VERSION,
+        verdict,
+        (
+            NewAndSafeGroup("new-and-safe", verdict, 0, (), surface),
+            NeedsReviewGroup("needs-your-review", verdict, 0, (), surface),
+            PreservedForNowGroup("preserved-for-now", verdict, 0, (), (), surface),
+            ContinueOrRecoverGroup(
+                "continue-or-recover",
+                verdict,
+                recovery_count,
+                transactions,
+                ledger,
+                inspection_error,
+                recovery_surface,
+            ),
+            ReceiptsAndRewindGroup("receipts-and-rewind", verdict, 0, (), surface),
+        ),
+    )
+
+
+def _inspect_interrupted_transactions(
+    context: DoctorContext,
+) -> tuple[tuple[InterruptedTransaction, ...], str | None]:
+    """Classify transaction journals like ``Transaction.resume`` without resuming.
+
+    This deliberately does not instantiate a mutating recovery flow or acquire
+    the mutation lock. It only reads journals and snapshot-directory presence.
+    """
+    tx_root = context.vault_root / TX_ROOT_RELATIVE
+    if not os.path.lexists(tx_root):
+        return (), None
+    if tx_root.is_symlink() or not tx_root.is_dir():
+        return (), f"Transaction store is unsafe or not a directory: {tx_root}"
+
+    interrupted: list[InterruptedTransaction] = []
+    inspection_errors: list[str] = []
+    try:
+        candidates = sorted(tx_root.iterdir(), key=lambda candidate: candidate.name)
+    except OSError as error:
+        return (), f"Transaction store could not be inspected: {_one_line(error)}"
+    for tx_dir in candidates:
+        if lifecycle_engine.TRANSACTION_ID.fullmatch(tx_dir.name) is None:
+            inspection_errors.append(
+                f"Transaction store contains a non-canonical entry: {tx_dir.name}"
+            )
+            continue
+        if tx_dir.is_symlink() or not tx_dir.is_dir():
+            interrupted.append(
+                InterruptedTransaction(tx_dir.name, "UNKNOWN", None, False)
+            )
+            continue
+        try:
+            entries = Journal(tx_dir / "journal.jsonl").read()
+        except (JournalCorruptError, OSError):
+            interrupted.append(
+                InterruptedTransaction(
+                    tx_dir.name,
+                    "UNKNOWN",
+                    None,
+                    _safe_snapshot_present(tx_dir / "snapshot"),
+                )
+            )
+            continue
+        events = {entry.event for entry in entries}
+        if not entries or "ROLLED-BACK" in events or "COMMITTED" in events:
+            continue
+        interrupted.append(
+            InterruptedTransaction(
+                tx_dir.name,
+                "BROKEN",
+                entries[-1].event,
+                _safe_snapshot_present(tx_dir / "snapshot"),
+            )
+        )
+    return tuple(interrupted), "; ".join(inspection_errors) or None
+
+
+def _safe_snapshot_present(path: Path) -> bool:
+    return not path.is_symlink() and path.is_dir()
+
+
+def _receipt_rewind_evidence(
+    context: DoctorContext,
+    transaction_id: str,
+    item_id: str,
+) -> tuple[bool, str]:
+    """Run the rewind engine's complete read-only eligibility preflight."""
+    snapshot_root = context.vault_root / TX_ROOT_RELATIVE / transaction_id / "snapshot"
+    if not os.path.lexists(snapshot_root):
+        return False, "OK"
+    if snapshot_root.is_symlink() or not snapshot_root.is_dir():
+        return False, "UNKNOWN"
+    try:
+        receipt = lifecycle_engine.load_adoption_receipt(
+            context.vault_root,
+            transaction_id,
+        )
+        if item_id not in receipt.items_adopted:
+            return False, "UNKNOWN"
+        current_modes, drifted = lifecycle_engine._current_adopted_modes(
+            context.vault_root,
+            receipt,
+        )
+        if drifted:
+            return False, "UNKNOWN"
+        lifecycle_engine._verify_adoption_commit(context.vault_root, receipt)
+        lifecycle_engine._snapshot_rewind_plan(
+            context.vault_root,
+            receipt,
+            current_modes,
+        )
+    except Exception:
+        return False, "UNKNOWN"
+    return True, "OK"
+
+
+def _receipt_when(transaction_id: str) -> str:
+    """Expose the transaction id's zone-less local timestamp without guessing a zone."""
+    try:
+        return datetime.strptime(transaction_id[:15], "%Y%m%dT%H%M%S").isoformat()
+    except ValueError:
+        return transaction_id[:15]
+
+
+def _ledger_recovery(context: DoctorContext, error: Exception) -> LedgerRecovery:
+    detail = _one_line(error)
+    return LedgerRecovery(
+        "UNKNOWN",
+        "publication is incomplete" in detail,
+        lifecycle_ledger._repair_command(context.vault_root),
+        detail,
+    )
+
+
+def _recovery_surface(
+    transactions: tuple[InterruptedTransaction, ...],
+    ledger: LedgerRecovery | None,
+    inspection_error: str | None,
+) -> str:
+    parts: list[str] = []
+    if transactions:
+        parts.append("I found an interrupted update — resume or undo?")
+    if ledger is not None:
+        parts.append(f"Ledger history is UNKNOWN; run {ledger.repair_command}.")
+    if inspection_error is not None:
+        parts.append("Transaction recovery evidence could not be checked safely.")
+    return " ".join(parts) or "No interrupted update or ledger recovery is waiting."
+
+
+def collect_adoption_report(context: DoctorContext) -> AdoptionReport:
+    """Collect Doctor's deterministic five-group adoption section, read-only.
+
+    This collector never resumes transactions, repairs ledger publication, or
+    writes caches. Its authority/surface non-alteration contract is documented
+    on :class:`AdoptionReport` and in ``docs/dex-doctor-spec.md``.
+    """
+    catalog_path = _release_catalog_path(context)
+    if not os.path.lexists(catalog_path):
+        return _empty_adoption_report(
+            "OFF",
+            "Adoption reporting is off because no release catalog is installed.",
+        )
+
+    transactions, inspection_error = _inspect_interrupted_transactions(context)
+    try:
+        catalog = load_catalog(catalog_path, release_root=context.vault_root)
+    except (CatalogError, UnicodeError) as error:
+        return _empty_adoption_report(
+            "BROKEN",
+            f"Adoption reporting is unavailable because the release catalog is invalid: {_one_line(error)}.",
+            transactions=transactions,
+            inspection_error=inspection_error,
+        )
+    except Exception as error:
+        return _empty_adoption_report(
+            "UNKNOWN",
+            f"Adoption reporting could not inspect the release catalog: {_one_line(error)}.",
+            transactions=transactions,
+            inspection_error=inspection_error,
+        )
+
+    try:
+        inventory = build_inventory(context.vault_root, catalog=catalog)
+    except Exception as error:
+        return _empty_adoption_report(
+            "UNKNOWN",
+            f"Adoption reporting could not build the read-only inventory: {_one_line(error)}.",
+            transactions=transactions,
+            inspection_error=inspection_error,
+        )
+
+    ledger_recovery: LedgerRecovery | None = None
+    try:
+        ledger_state = lifecycle_ledger.project_state(context.vault_root)
+    except (lifecycle_ledger.LedgerError, OSError) as error:
+        ledger_recovery = _ledger_recovery(context, error)
+        return _empty_adoption_report(
+            "UNKNOWN",
+            "Adoption actions are withheld until lifecycle history is verified.",
+            transactions=transactions,
+            ledger=ledger_recovery,
+            inspection_error=inspection_error,
+        )
+    except Exception as error:
+        ledger_recovery = _ledger_recovery(context, error)
+        return _empty_adoption_report(
+            "UNKNOWN",
+            "Adoption actions are withheld until lifecycle history is verified.",
+            transactions=transactions,
+            ledger=ledger_recovery,
+            inspection_error=inspection_error,
+        )
+
+    catalog_ids = {item.id for item in catalog.items}
+    adopted = ledger_state["adopted"]
+    held_back = set(ledger_state["held_back"])
+    assert isinstance(adopted, dict)
+    try:
+        plan = build_adoption_plan(
+            catalog,
+            inventory,
+            adoption_states={
+                item_id: AdoptionState.ADOPTED
+                for item_id in adopted
+                if item_id in catalog_ids
+            },
+            held_back=frozenset(held_back & catalog_ids),
+        )
+    except Exception as error:
+        return _empty_adoption_report(
+            "UNKNOWN",
+            f"Adoption actions are withheld because the plan is UNKNOWN: {_one_line(error)}.",
+            transactions=transactions,
+            inspection_error=inspection_error,
+        )
+
+    new_items = tuple(
+        AdoptionItem(item.item_id, item.item_version, item.action.value)
+        for item in plan.items
+        if item.action is PlannedAction.ADOPT
+    )
+    review_items = tuple(
+        AdoptionReviewItem(
+            item.item_id,
+            item.item_version,
+            item.action.value,
+            tuple(reason.code.value for reason in item.reasons),
+            tuple(
+                AdoptionReviewFile(path, reason.code.value)
+                for reason in item.reasons
+                for path in reason.paths
+            ),
+        )
+        for item in plan.items
+        if item.action in {PlannedAction.CONFLICT, PlannedAction.UNKNOWN}
+    )
+    held_items = tuple(
+        AdoptionItem(item.item_id, item.item_version, item.action.value)
+        for item in plan.items
+        if item.action is PlannedAction.SKIP_HELD_BACK
+    )
+    held_catalog_ids = {item.item_id for item in held_items}
+    held_items += tuple(
+        AdoptionItem(item_id, None, PlannedAction.SKIP_HELD_BACK.value)
+        for item_id in sorted(held_back - held_catalog_ids)
+    )
+    customized_files = tuple(
+        PreservedCustomization(entry.path, entry.state, entry.reason)
+        for entry in inventory.customizations.divergences
+        if entry.state == "stock-modified"
+    )
+
+    receipt_summaries: list[AdoptionReceiptSummary] = []
+    for item_id, entry in sorted(
+        adopted.items(),
+        key=lambda pair: (str(pair[1]["tx_id"]), pair[0]),
+        reverse=True,
+    ):
+        transaction_id = str(entry["tx_id"])
+        rewindable, rewind_verdict = _receipt_rewind_evidence(
+            context,
+            transaction_id,
+            item_id,
+        )
+        receipt_summaries.append(
+            AdoptionReceiptSummary(
+                item_id,
+                str(entry["version"]),
+                AdoptionState.ADOPTED.value,
+                transaction_id,
+                _receipt_when(transaction_id),
+                rewindable,
+                rewind_verdict,
+            )
+        )
+    receipts = tuple(receipt_summaries)
+
+    recovery_verdict = (
+        "UNKNOWN"
+        if inspection_error is not None or any(tx.verdict == "UNKNOWN" for tx in transactions)
+        else "BROKEN" if transactions else "OK"
+    )
+    review_verdict = (
+        "UNKNOWN"
+        if any(item.action is PlannedAction.UNKNOWN for item in plan.items)
+        else "OK"
+    )
+    receipts_verdict = (
+        "UNKNOWN"
+        if any(receipt.rewind_verdict == "UNKNOWN" for receipt in receipts)
+        else "OK"
+    )
+    report_verdict = (
+        "UNKNOWN"
+        if "UNKNOWN" in {recovery_verdict, review_verdict, receipts_verdict}
+        else "BROKEN" if recovery_verdict == "BROKEN" else "OK"
+    )
+    return AdoptionReport(
+        ADOPTION_REPORT_VERSION,
+        report_verdict,
+        (
+            NewAndSafeGroup(
+                "new-and-safe",
+                "OK",
+                len(new_items),
+                new_items,
+                f"Here's exactly what this changes for you: {len(new_items)} item(s) are new and safe to adopt.",
+            ),
+            NeedsReviewGroup(
+                "needs-your-review",
+                review_verdict,
+                len(review_items),
+                review_items,
+                f"{len(review_items)} item(s) need your review because installed files differ from the release or could not be verified.",
+            ),
+            PreservedForNowGroup(
+                "preserved-for-now",
+                "OK",
+                len(held_items) + len(customized_files),
+                held_items,
+                customized_files,
+                f"{len(held_items)} held-back item(s) and {len(customized_files)} customized file(s) are preserved for now.",
+            ),
+            ContinueOrRecoverGroup(
+                "continue-or-recover",
+                recovery_verdict,
+                len(transactions) + int(inspection_error is not None),
+                transactions,
+                None,
+                inspection_error,
+                _recovery_surface(transactions, None, inspection_error),
+            ),
+            ReceiptsAndRewindGroup(
+                "receipts-and-rewind",
+                receipts_verdict,
+                len(receipts),
+                receipts,
+                f"{len(receipts)} adopted item receipt record(s); {sum(entry.rewindable for entry in receipts)} pass the receipt-backed rewind preflight.",
+            ),
+        ),
+    )
+
+
+def _probe_release_catalog(context: DoctorContext) -> ProbeResult:
+    """Validate the installed release catalog without changing the vault."""
+    catalog_path = _release_catalog_path(context)
+    if not os.path.lexists(catalog_path):
+        return ProbeResult(
+            "OFF",
+            "No release catalog is installed; this is normal for older Dex releases",
+        )
+    try:
+        catalog = load_catalog(catalog_path, release_root=context.vault_root)
+    except (CatalogError, UnicodeError) as error:
+        return ProbeResult("BROKEN", f"The installed release catalog is invalid: {_one_line(error)}")
+    return ProbeResult(
+        "OK",
+        f"Release catalog {catalog.release.version} is valid ({len(catalog.items)} items)",
+    )
+
+
+def _probe_adoption_plan(context: DoctorContext) -> ProbeResult:
+    """Build and summarize the adoption plan entirely in memory."""
+    catalog_path = _release_catalog_path(context)
+    if not os.path.lexists(catalog_path):
+        return ProbeResult(
+            "OFF",
+            "Adoption planning is unavailable on this older Dex release because no release catalog is installed",
+        )
+    try:
+        catalog = load_catalog(catalog_path, release_root=context.vault_root)
+        inventory = build_inventory(context.vault_root, catalog=catalog)
+        plan = build_adoption_plan(catalog, inventory)
+        counts = plan.counts
+        return ProbeResult(
+            "OK",
+            f"{counts['adopt']} adoptable / {counts['already-adopted']} adopted / "
+            f"{counts['conflict']} conflicts",
+        )
+    except Exception as error:
+        return ProbeResult("UNKNOWN", f"The adoption plan could not be built: {_one_line(error)}")
 
 
 def _mcp_config_path(context: DoctorContext) -> Path:
@@ -843,7 +1744,7 @@ def _plist_owned_by_vault(plist: Path, data: dict[str, Any], context: DoctorCont
             continue
         try:
             resolved = candidate.resolve()
-        except OSError:
+        except (OSError, RuntimeError):
             continue
         if resolved.is_relative_to(vault_root):
             return True
@@ -1374,7 +2275,11 @@ def _probe_customization_mcp(context: DoctorContext) -> ProbeResult:
     )
 
 
-def _git_result(context: DoctorContext, *arguments: str) -> subprocess.CompletedProcess[str]:
+def _git_result(
+    context: DoctorContext,
+    *arguments: str,
+    git_directory: Path | None = None,
+) -> subprocess.CompletedProcess[str]:
     executable = next(
         (
             str(candidate)
@@ -1400,6 +2305,7 @@ def _git_result(context: DoctorContext, *arguments: str) -> subprocess.Completed
             "submodule.recurse=false",
             "-C",
             str(context.repo_root),
+            *([f"--git-dir={git_directory}"] if git_directory is not None else []),
             *arguments,
         ],
         capture_output=True,
@@ -1416,6 +2322,244 @@ def _git_result(context: DoctorContext, *arguments: str) -> subprocess.Completed
         text=True,
         timeout=10,
         check=False,
+    )
+
+
+def _regular_json(path: Path) -> dict[str, Any] | None:
+    try:
+        if path.is_symlink() or not path.is_file():
+            return None
+        value = json.loads(path.read_text(encoding="utf-8"))
+        return value if isinstance(value, dict) else None
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        return None
+
+
+def _topology_state(context: DoctorContext) -> str:
+    vault_git = context.vault_root / ".git"
+    brain_git = context.vault_root / ".dex/brain.git"
+    topology = _regular_json(context.vault_root / "System/.dex/topology.json")
+    vault_marker = _regular_json(vault_git / "dex-vault-v2")
+    brain_marker = _regular_json(brain_git / "dex-brain-v2")
+    if topology and topology.get("topology") == "brain-vault-split":
+        environment = topology.get("environment")
+        wired_vault = environment.get("DEX_VAULT") if isinstance(environment, dict) else None
+        try:
+            vault_wiring_matches = (
+                isinstance(wired_vault, str)
+                and Path(wired_vault).resolve() == context.vault_root.resolve()
+            )
+        except OSError:
+            vault_wiring_matches = False
+        if (
+            topology.get("vaultGitDir") == ".git"
+            and topology.get("brainGitDir") == ".dex/brain.git"
+            and vault_wiring_matches
+            and vault_git.is_dir()
+            and not vault_git.is_symlink()
+            and brain_git.is_dir()
+            and not brain_git.is_symlink()
+            and vault_marker
+            and vault_marker.get("role") == "vault"
+            and brain_marker
+            and brain_marker.get("role") == "brain"
+        ):
+            return "post-split"
+        return "invalid-split"
+    migration_state = _regular_json(
+        context.vault_root / "System/.dex/migration-v2-state.json"
+    )
+    if migration_state and migration_state.get("status") != "complete":
+        return "migration-in-progress"
+    if any(
+        candidate.exists()
+        for candidate in (
+            context.vault_root / ".dex/pre-split-archive.git",
+            context.vault_root / ".dex/vault-staging.git",
+        )
+    ):
+        return "migration-in-progress"
+    migrator = context.vault_root / "core/migrations/v1-to-v2-brain-vault-split.cjs"
+    if vault_git.exists() and migrator.is_file() and not migrator.is_symlink():
+        return "migration-pending"
+    if not vault_git.exists():
+        return "zip-or-manual"
+    return "combined"
+
+
+def _probe_vault_git(context: DoctorContext) -> ProbeResult:
+    topology = _topology_state(context)
+    if topology != "post-split":
+        if topology == "invalid-split":
+            return ProbeResult(
+                "BROKEN",
+                "The split topology marker exists, but the vault Git marker is missing or invalid — use /dex-update recovery",
+            )
+        return ProbeResult(
+            "OFF",
+            "The separate vault history is not active; the topology check reports the current layout",
+        )
+    git_directory = context.vault_root / ".git"
+    healthy = _git_result(
+        context, "rev-parse", "--git-dir", git_directory=git_directory
+    )
+    if healthy.returncode != 0:
+        return ProbeResult(
+            "BROKEN",
+            "The vault Git repository cannot be opened — your files remain on disk, but history needs repair",
+        )
+    integrity = _git_result(
+        context, "fsck", "--no-progress", git_directory=git_directory
+    )
+    if integrity.returncode != 0:
+        return ProbeResult(
+            "BROKEN",
+            "The vault Git repository failed its integrity check — do not push it; repair the local history",
+        )
+    remotes = _git_result(context, "remote", git_directory=git_directory)
+    remote_count = (
+        len([line for line in remotes.stdout.splitlines() if line.strip()])
+        if remotes.returncode == 0
+        else 0
+    )
+    suffix = (
+        "no private backup remote configured"
+        if remote_count == 0
+        else f"{remote_count} private backup remote(s) configured"
+    )
+    return ProbeResult("OK", f"The local vault history is healthy; {suffix}")
+
+
+def _probe_brain_git(context: DoctorContext) -> ProbeResult:
+    topology_state = _topology_state(context)
+    if topology_state != "post-split":
+        if topology_state == "invalid-split":
+            return ProbeResult(
+                "BROKEN",
+                "The split topology marker exists, but the brain Git marker is missing or invalid — use the updater recovery path",
+            )
+        return ProbeResult("OFF", "The separate Dex brain history is not active")
+    brain = context.vault_root / ".dex/brain.git"
+    installed = _git_result(
+        context,
+        "rev-parse",
+        "--verify",
+        "refs/dex/installed^{commit}",
+        git_directory=brain,
+    )
+    if installed.returncode != 0:
+        return ProbeResult(
+            "BROKEN",
+            "The Dex brain history cannot resolve its installed release — rerun /dex-update",
+        )
+    installed_oid = installed.stdout.strip().lower()
+    brain_marker = _regular_json(brain / "dex-brain-v2")
+    topology = _regular_json(context.vault_root / "System/.dex/topology.json")
+    marker_oid = str(brain_marker.get("installed", "")).lower() if brain_marker else ""
+    topology_oid = str(topology.get("installedRelease", "")).lower() if topology else ""
+    if not installed_oid or marker_oid != installed_oid or topology_oid != installed_oid:
+        return ProbeResult(
+            "BROKEN",
+            "The Dex brain release identity disagrees across its installed ref and topology markers — rerun /dex-update",
+        )
+    configured = _git_result(
+        context, "config", "--get", "remote.origin.url", git_directory=brain
+    )
+    effective = _git_result(
+        context, "remote", "get-url", "origin", git_directory=brain
+    )
+    official = re.compile(
+        r"^(?:https://github\.com/|ssh://git@github\.com/|git@github\.com:)"
+        r"davekilleen/Dex(?:\.git)?/?$",
+        re.IGNORECASE,
+    )
+    if (
+        configured.returncode != 0
+        or effective.returncode != 0
+        or not official.fullmatch(configured.stdout.strip())
+        or not official.fullmatch(effective.stdout.strip())
+    ):
+        return ProbeResult(
+            "BROKEN",
+            "The Dex brain origin is not the effective official repository — repair it before updating",
+        )
+    integrity = _git_result(context, "fsck", "--no-progress", git_directory=brain)
+    if integrity.returncode != 0:
+        return ProbeResult(
+            "BROKEN",
+            "The Dex brain Git store failed its integrity check — stop updating and repair it",
+        )
+    archive = context.vault_root / ".dex/pre-split-archive.git"
+    archive_note = (
+        " The pre-split restore archive is still present."
+        if archive.is_dir() and not archive.is_symlink()
+        else ""
+    )
+    return ProbeResult(
+        "OK",
+        f"The Dex brain history is healthy at {installed_oid[:12]}.{archive_note}",
+    )
+
+
+def _probe_vault_auto_commit(context: DoctorContext) -> ProbeResult:
+    profile_path = context.vault_root / "System/user-profile.yaml"
+    if profile_path.is_symlink():
+        return ProbeResult(
+            "UNKNOWN",
+            "The doctor will not follow a symlinked profile to inspect vault auto-commit",
+        )
+    try:
+        profile = _load_yaml(profile_path)
+    except FileNotFoundError:
+        profile = {}
+    if not isinstance(profile, dict):
+        return ProbeResult(
+            "BROKEN", "Vault auto-commit cannot read user-profile.yaml as a mapping"
+        )
+    vault_settings = profile.get("vault")
+    enabled = (
+        isinstance(vault_settings, dict)
+        and vault_settings.get("auto_commit") is True
+    )
+    if not enabled:
+        return ProbeResult(
+            "OFF", "Vault auto-commit is off by default; local files remain untouched"
+        )
+    if _topology_state(context) != "post-split":
+        return ProbeResult(
+            "BROKEN",
+            "Vault auto-commit is enabled before the split topology is ready — run /dex-update",
+        )
+    return ProbeResult(
+        "OK", "Vault auto-commit is enabled for local snapshots and never pushes"
+    )
+
+
+def _probe_migration_pending(context: DoctorContext) -> ProbeResult:
+    topology = _topology_state(context)
+    if topology == "post-split":
+        return ProbeResult("OK", "The brain/vault split is complete")
+    if topology == "migration-pending":
+        return ProbeResult(
+            "BROKEN",
+            "Dex needs its one-time brain/vault upgrade — run /dex-update; notes stay in place",
+        )
+    if topology == "migration-in-progress":
+        return ProbeResult(
+            "BROKEN",
+            "The one-time upgrade is incomplete — run /dex-update so recovery can resume",
+        )
+    if topology == "invalid-split":
+        return ProbeResult(
+            "BROKEN",
+            "The split topology markers or DEX_VAULT wiring disagree — use updater or migrator recovery, never raw Git",
+        )
+    if topology == "zip-or-manual":
+        return ProbeResult(
+            "OFF", "This ZIP/manual install has no Git topology; use the manual update path"
+        )
+    return ProbeResult(
+        "OFF", "This is the older combined topology; updates keep using the merge path"
     )
 
 
@@ -1453,8 +2597,19 @@ def _sanctioned_customization_path(relative: str) -> bool:
     )
 
 
-def _git_file(context: DoctorContext, treeish: str, relative: str) -> str | None:
-    result = _git_result(context, "show", f"{treeish}:{relative}")
+def _git_file(
+    context: DoctorContext,
+    treeish: str,
+    relative: str,
+    *,
+    git_directory: Path | None = None,
+) -> str | None:
+    result = _git_result(
+        context,
+        "show",
+        f"{treeish}:{relative}",
+        git_directory=git_directory,
+    )
     return result.stdout if result.returncode == 0 else None
 
 
@@ -1538,9 +2693,21 @@ def _only_sanctioned_file_changes(
     return False
 
 
-def _release_tree_entries(context: DoctorContext, baseline: str) -> dict[str, tuple[str, str]]:
+def _release_tree_entries(
+    context: DoctorContext,
+    baseline: str,
+    *,
+    git_directory: Path | None = None,
+) -> dict[str, tuple[str, str]]:
     output = _git_output_or_raise(
-        _git_result(context, "ls-tree", "-r", "-z", baseline),
+        _git_result(
+            context,
+            "ls-tree",
+            "-r",
+            "-z",
+            baseline,
+            git_directory=git_directory,
+        ),
         "list release files",
     )
     entries = {}
@@ -1605,7 +2772,72 @@ def _worktree_matches_release_blob(
     return digest.hexdigest() == object_id
 
 
+def _brain_paths_from_installed_release(
+    context: DoctorContext,
+    baseline: str,
+    brain: Path,
+) -> set[str]:
+    manifest = _git_file(
+        context,
+        baseline,
+        "System/.installed-files.manifest",
+        git_directory=brain,
+    )
+    if manifest is None:
+        raise RuntimeError("installed brain release is missing its manifest")
+    paths: set[str] = set()
+    for relative in manifest.splitlines():
+        try:
+            resolution = portable_contract.resolve(relative)
+        except portable_contract.ContractViolation as error:
+            raise RuntimeError(
+                f"installed brain release has an unclassified path: {relative}"
+            ) from error
+        if resolution.ownership == "brain":
+            paths.add(relative)
+    return paths
+
+
 def _probe_core_drift(context: DoctorContext) -> ProbeResult:
+    if _topology_state(context) == "post-split":
+        brain = context.vault_root / ".dex/brain.git"
+        baseline = "refs/dex/installed"
+        installed = _git_result(
+            context,
+            "rev-parse",
+            "--verify",
+            f"{baseline}^{{commit}}",
+            git_directory=brain,
+        )
+        if installed.returncode != 0:
+            return ProbeResult(
+                "UNKNOWN",
+                "the brain Git store cannot resolve refs/dex/installed — rerun /dex-update",
+            )
+        release_entries = _release_tree_entries(
+            context, baseline, git_directory=brain
+        )
+        brain_paths = _brain_paths_from_installed_release(context, baseline, brain)
+        drifted = sorted(
+            relative
+            for relative in brain_paths
+            if relative in release_entries
+            and not _worktree_matches_release_blob(
+                context,
+                relative,
+                *release_entries[relative],
+            )
+        )
+        if not drifted:
+            return ProbeResult(
+                "OK", "No shipped brain files differ from refs/dex/installed"
+            )
+        return ProbeResult(
+            "UNKNOWN",
+            "Modified shipped brain files: "
+            f"{', '.join(drifted)}; the updater snapshots them before replacement",
+        )
+
     channel = release_channel.read_channel(context.vault_root)
     release_ref = _upstream_release_ref(context, channel)
     if release_ref is None:
@@ -1675,7 +2907,12 @@ def _probe_entity_engine(context: DoctorContext) -> ProbeResult:
         suggestion_items = suggestions if isinstance(suggestions, list) else suggestions.get("suggestions", [])
         pending = sum(item.get("status") == "suggested" for item in suggestion_items)
         gardener_pages = gardener.get("pages", {}) if isinstance(gardener, dict) else {}
-        gardener_locked = sum(bool(item.get("locked")) for item in gardener_pages.values())
+        gardener_legacy_locked = sum(bool(item.get("locked")) for item in gardener_pages.values())
+        gardener_user_owned = sum(
+            item.get("blocks", {}).get("context-summary", {}).get("owner") == "user"
+            for item in gardener_pages.values()
+            if isinstance(item, dict) and isinstance(item.get("blocks", {}), dict)
+        )
         if profile.get("entity_gardener", {}).get("enabled") is False:
             gardener_label = "off (disabled)"
         elif not any(os.environ.get(key) for key in ("ANTHROPIC_API_KEY", "OPENAI_API_KEY", "GEMINI_API_KEY")):
@@ -1683,8 +2920,12 @@ def _probe_entity_engine(context: DoctorContext) -> ProbeResult:
         else:
             maintained = sum(bool(item.get("output_hash")) for item in gardener_pages.values())
             gardener_label = f"on ({maintained} pages maintained)"
-        if gardener_locked:
-            gardener_label += f", {gardener_locked} locked"
+        if gardener_user_owned:
+            label = "user-owned summary" if gardener_user_owned == 1 else "user-owned summaries"
+            gardener_label += f", {gardener_user_owned} {label}"
+        if gardener_legacy_locked:
+            label = "legacy lock" if gardener_legacy_locked == 1 else "legacy locks"
+            gardener_label += f", {gardener_legacy_locked} {label} pending migration"
 
         unresolved = len(verification.get("unresolved", []))
         generated_at = verification.get("generated_at")
@@ -2376,9 +3617,30 @@ def main(argv: list[str] | None = None, *, context: DoctorContext | None = None)
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--deep", action="store_true", help="Run live service probes.")
     parser.add_argument("--heal", action="store_true", help="Apply safe Tier-1 repairs before checking.")
+    parser.add_argument("--credential-scan", action="store_true", help="Run the bounded local credential scan.")
+    parser.add_argument("--credential-migrate", action="store_true", help="Run safe local credential migration.")
+    parser.add_argument("--credential-status", action="store_true", help="Render deterministic credential status.")
+    parser.add_argument("--credential-rewind", metavar="JOURNAL_ID", help="Rewind one credential migration journal.")
     args = parser.parse_args(argv)
 
     try:
+        credential_actions = [
+            ("scan", args.credential_scan, None),
+            ("migrate", args.credential_migrate, None),
+            ("status", args.credential_status, None),
+            ("rewind", args.credential_rewind is not None, args.credential_rewind),
+        ]
+        selected = [item for item in credential_actions if item[1]]
+        if len(selected) > 1:
+            parser.error("choose only one credential workflow action")
+        if selected:
+            from core.utils.credential_workflow import run_credential_workflow
+
+            action, _, journal_id = selected[0]
+            root = context.vault_root if context is not None else paths.VAULT_ROOT
+            credential_report = run_credential_workflow(root, action, journal_id=journal_id)
+            print(json.dumps(credential_report, indent=2))
+            return 2 if credential_report.get("migration_state") == "refused" and action != "status" else 0
         report = collect(deep=args.deep, heal=args.heal, context=context)
         output = json.dumps(report, indent=2)
     except Exception as error:

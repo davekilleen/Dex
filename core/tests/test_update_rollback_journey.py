@@ -3,13 +3,28 @@
 from __future__ import annotations
 
 import json
+import os
+import shutil
+import stat
 import subprocess
+import sys
 from pathlib import Path
 
+import yaml
+
+from core.lifecycle import engine as lifecycle_engine
+from core.lifecycle import service as lifecycle_service
+from core.lifecycle.bridge import ACTIVATION_RELATIVE
+from core.migrations import preserve_local_only_paths as preservation
+from core.tests.test_adoption_transaction import _setup as setup_adoption_release
+from core.tests.test_lifecycle_bridge import _write_bridge_release
 from core.utils.manifest import DEFAULT_MANIFEST, generate_manifest, write_manifest
+from core.utils.tracked_ignored import load_exact_policy, load_transition
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 ROLLBACK_SKILL = REPO_ROOT / ".claude/skills/dex-rollback/SKILL.md"
+UPDATE_SKILL = REPO_ROOT / ".claude/skills/dex-update/SKILL.md"
+POLICY = REPO_ROOT / "core/migrations/tracked-ignored-policy.yaml"
 
 
 def _git(repo: Path, *args: str) -> str:
@@ -21,6 +36,98 @@ def _git(repo: Path, *args: str) -> str:
         text=True,
     )
     return result.stdout.strip()
+
+
+def test_update_skill_delegates_all_mutation_instead_of_running_legacy_helpers():
+    instructions = UPDATE_SKILL.read_text(encoding="utf-8")
+    assert "credential_workflow migrate" not in instructions
+    assert "safe_autosave" not in instructions
+    assert "build_inventory_and_plan" in instructions
+    assert "execute_approved_adoption" in instructions
+
+
+def test_update_skill_routes_every_topology_to_the_frozen_service() -> None:
+    update = UPDATE_SKILL.read_text(encoding="utf-8")
+    assert "core.lifecycle.service" in update
+    assert "build_and_preview_adoption" in update
+    assert "execute_approved_adoption" in update
+    assert "git merge" not in update.lower()
+
+
+def test_legacy_updater_can_deliver_bridge_release_then_hand_off_without_invoking_engine(
+    tmp_path: Path, monkeypatch
+) -> None:
+    (tmp_path / "release-fixture").mkdir()
+    release, _document, _catalog, _inventory, _plan, _loader = setup_adoption_release(
+        tmp_path / "release-fixture", item_ids=("alpha",)
+    )
+    _write_bridge_release(release)
+    vault = tmp_path / "old-updated-vault"
+    delivered = (
+        "System/.installed-files.manifest",
+        "System/.release-catalog.json",
+        ".claude/skills/alpha/SKILL.md",
+        "core/lifecycle/catalog/bridge-release.json",
+    )
+    calls: list[str] = []
+
+    def forbidden_execute(*_args, **_kwargs):
+        calls.append("execute_adoption")
+        raise AssertionError("the legacy delivery phase invoked the lifecycle engine")
+
+    monkeypatch.setattr(lifecycle_engine, "execute_adoption", forbidden_execute)
+    for relative in delivered:
+        destination = vault / relative
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(release / relative, destination)
+
+    assert calls == []
+    assert not (vault / ACTIVATION_RELATIVE).exists()
+
+    response = lifecycle_service.build_inventory_and_plan(vault)
+
+    assert response["api_version"] == lifecycle_service.api_version
+    assert (vault / ACTIVATION_RELATIVE).is_file()
+    assert calls == []
+
+
+def test_update_and_rollback_renderers_do_not_duplicate_baseline_mutation_logic() -> None:
+    update = UPDATE_SKILL.read_text(encoding="utf-8")
+    rollback = ROLLBACK_SKILL.read_text(encoding="utf-8")
+
+    for instructions in (update, rollback):
+        assert "bootstrap-v1" not in instructions
+        assert "untrack-v1" not in instructions
+    assert "read_lifecycle_state" in update
+    assert "read_lifecycle_state" in rollback
+    assert "rewind_adoption_by_receipt" in rollback
+
+
+def test_release_cut_stamps_transition_metadata_from_the_bumped_package(tmp_path: Path, capsys) -> None:
+    repo = tmp_path / "release-cut"
+    _write(repo, "package.json", json.dumps({"version": "1.63.0"}) + "\n")
+    _write(
+        repo,
+        "System/.local-only-preservation-transition.json",
+        json.dumps({"schema_version": 1, "phase": "untrack-v1", "release_version": "1.62.0"})
+        + "\n",
+    )
+
+    assert preservation.main(["stamp-transition", "--repo", str(repo)]) == 0
+    assert json.loads(capsys.readouterr().out) == {
+        "ok": True,
+        "phase": "untrack-v1",
+        "release_version": "1.63.0",
+    }
+    assert json.loads(
+        (repo / "System/.local-only-preservation-transition.json").read_text(encoding="utf-8")
+    ) == {"schema_version": 1, "phase": "untrack-v1", "release_version": "1.63.0"}
+
+    release_script = (REPO_ROOT / "scripts/release.sh").read_text(encoding="utf-8")
+    stamp = release_script.index("core.migrations.preserve_local_only_paths stamp-transition")
+    manifest = release_script.index("bash scripts/generate-manifest.sh")
+    assert stamp < manifest
+    assert "System/.local-only-preservation-transition.json" in release_script.split("git add", 1)[1]
 
 
 def _init_repo(repo: Path) -> None:
@@ -47,9 +154,119 @@ def _commit_manifest(repo: Path, message: str) -> None:
     _git(repo, "commit", "--quiet", "-m", message)
 
 
-def _bash_block_after(path: Path, marker: str) -> str:
-    section = path.read_text(encoding="utf-8").split(marker, 1)[1]
+PINNED_RUNTIME_PATHS = (
+    ".gitignore",
+    ".claude/skills/dex-update/SKILL.md",
+    "package.json",
+    "System/.local-only-preservation-transition.json",
+    "core/migrations/preserve_local_only_paths.py",
+    "core/migrations/tracked-ignored-policy.yaml",
+    "core/utils/tracked_ignored.py",
+    "core/paths.py",
+)
+
+
+def _git_show(revision: str, relative: str) -> bytes:
+    return subprocess.run(
+        ["git", "show", f"{revision}:{relative}"],
+        cwd=REPO_ROOT,
+        check=True,
+        capture_output=True,
+    ).stdout
+
+
+def _git_show_or_fixture(revision: str, relative: str) -> bytes:
+    result = subprocess.run(
+        ["git", "show", f"{revision}:{relative}"],
+        cwd=REPO_ROOT,
+        check=False,
+        capture_output=True,
+    )
+    return result.stdout if result.returncode == 0 else f"fixture for {relative}\n".encode()
+
+
+def _write_bytes(repo: Path, relative: str, content: bytes) -> None:
+    destination = repo / relative
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    destination.write_bytes(content)
+
+
+def _policy_paths(policy_bytes: bytes) -> tuple[str, ...]:
+    payload = yaml.safe_load(policy_bytes)
+    if payload["schema_version"] == 1:
+        rows = payload["paths"]
+    else:
+        active = payload["active_baseline_version"]
+        rows = next(
+            baseline["paths"]
+            for baseline in payload["baselines"]
+            if baseline["baseline_version"] == active
+        )
+    return tuple(row["path"] for row in rows)
+
+
+def _seed_pinned_install(repo: Path, release: str) -> tuple[str, tuple[str, ...]]:
+    _init_repo(repo)
+    pinned = {relative: _git_show(release, relative) for relative in PINNED_RUNTIME_PATHS}
+    policy_paths = _policy_paths(pinned["core/migrations/tracked-ignored-policy.yaml"])
+    for relative, content in pinned.items():
+        _write_bytes(repo, relative, content)
+    for relative in policy_paths:
+        _write_bytes(repo, relative, _git_show_or_fixture(release, relative))
+    _git(repo, "add", "--", *PINNED_RUNTIME_PATHS)
+    _git(repo, "add", "-f", "--", *policy_paths)
+    _git(repo, "commit", "--quiet", "-m", f"installed {release}")
+    return _git(repo, "rev-parse", "HEAD"), policy_paths
+
+
+def _create_untrack_target(repo: Path, installed_commit: str) -> str:
+    _git(repo, "checkout", "--quiet", "-b", "release-target", installed_commit)
+    _git(repo, "rm", "-f", "--", *preservation.LOCAL_ONLY_PATHS)
+    _write_bytes(repo, preservation.POLICY_RELATIVE.as_posix(), POLICY.read_bytes())
+    package = json.loads((repo / "package.json").read_text(encoding="utf-8"))
+    package["version"] = "1.64.0"
+    _write(repo, "package.json", json.dumps(package, indent=2) + "\n")
+    _write(
+        repo,
+        "System/.local-only-preservation-transition.json",
+        json.dumps(
+            {"schema_version": 1, "phase": "untrack-v1", "release_version": "1.64.0"},
+            indent=2,
+        )
+        + "\n",
+    )
+    _git(
+        repo,
+        "add",
+        "--",
+        "package.json",
+        "System/.local-only-preservation-transition.json",
+        preservation.POLICY_RELATIVE.as_posix(),
+    )
+    _git(repo, "commit", "--quiet", "-m", "untrack-v1 target")
+    target_commit = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "checkout", "--quiet", "-b", "installed", installed_commit)
+    _git(repo, "update-ref", "refs/remotes/upstream/release", target_commit)
+    return target_commit
+
+
+def _pinned_update_block(release: str, marker: str) -> str:
+    document = _git_show(release, ".claude/skills/dex-update/SKILL.md").decode()
+    section = document.split(marker, 1)[1]
     return section.split("```bash\n", 1)[1].split("\n```", 1)[0]
+
+
+def _run_bash(repo: Path, block: str) -> subprocess.CompletedProcess[str]:
+    environment = os.environ.copy()
+    environment["PATH"] = f"{Path(sys.executable).parent}{os.pathsep}{environment['PATH']}"
+    return subprocess.run(
+        ["bash", "-c", block],
+        cwd=repo,
+        env=environment,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
 
 
 def _bash_block_containing(path: Path, marker: str) -> str:
@@ -59,6 +276,185 @@ def _bash_block_containing(path: Path, marker: str) -> str:
         if marker in block:
             return block
     raise AssertionError(f"No bash block contains {marker!r}")
+
+
+def test_v162_skip_to_untrack_v1_stops_before_merge_or_mutation(tmp_path: Path) -> None:
+    repo = tmp_path / "v162-vault"
+    installed_commit, _ = _seed_pinned_install(repo, "v1.62.0")
+    _create_untrack_target(repo, installed_commit)
+    before = _git(repo, "status", "--porcelain=v1")
+
+    capture_block = _pinned_update_block(
+        "v1.62.0", "**A. Inspect the immutable target transition"
+    )
+    result = _run_bash(repo, capture_block)
+
+    assert result.returncode != 0
+    runtime = repo / "System/.dex/local-only-preservation/runtime"
+    preview_env = os.environ.copy()
+    preview_env["PYTHONPATH"] = str(runtime)
+    preview = subprocess.run(
+        [
+            sys.executable,
+            str(runtime / "core/migrations/preserve_local_only_paths.py"),
+            "preview",
+            "--repo",
+            str(repo),
+            "--policy",
+            str(runtime / "tracked-ignored-policy.yaml"),
+        ],
+        cwd=repo,
+        env=preview_env,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert preview.returncode != 0
+    assert "version does not match package metadata" in preview.stdout
+    assert not (repo / "System/.dex/local-only-preservation/journal/journal.json").exists()
+    assert _git(repo, "rev-parse", "HEAD") == installed_commit
+    assert _git(repo, "status", "--porcelain=v1") == before
+    for relative in preservation.LOCAL_ONLY_PATHS:
+        assert _git(repo, "ls-files", "--error-unmatch", "--", relative) == relative
+
+
+def test_v163_shipped_update_captures_real_untrack_hop_and_rollback_restores_tracking(
+    tmp_path: Path,
+) -> None:
+    target_policy = load_exact_policy(POLICY)
+    target_transition = load_transition(REPO_ROOT)
+    assert target_policy.baseline_version == 1
+    assert target_transition.schema_version == 1
+    assert target_transition.baseline_version == 1
+    assert target_transition.phase == "untrack-v1"
+    assert (REPO_ROOT / "System/Beta_Communications/2026-02-04_hardcoded_paths_fix.md").is_file()
+    assert all(not (REPO_ROOT / relative).exists() for relative in preservation.LOCAL_ONLY_PATHS)
+
+    repo = tmp_path / "v163-vault"
+    installed_commit, policy_paths = _seed_pinned_install(repo, "v1.63.0")
+    _create_untrack_target(repo, installed_commit)
+    original_bytes = {
+        preservation.LOCAL_ONLY_PATHS[0]: b"edited learning one\r\nwith\x00bytes",
+        preservation.LOCAL_ONLY_PATHS[1]: b"edited learning two\n",
+        preservation.LOCAL_ONLY_PATHS[2]: b"edited local Slack config\r\n",
+    }
+    original_modes = {
+        preservation.LOCAL_ONLY_PATHS[0]: 0o600,
+        preservation.LOCAL_ONLY_PATHS[1]: 0o640,
+        preservation.LOCAL_ONLY_PATHS[2]: 0o600,
+    }
+    for relative, content in original_bytes.items():
+        target = repo / relative
+        target.write_bytes(content)
+        target.chmod(original_modes[relative])
+    _git(repo, "add", "-f", "--", *preservation.LOCAL_ONLY_PATHS)
+    _git(repo, "commit", "--quiet", "-m", "user edits before update")
+    rollback_commit = _git(repo, "rev-parse", "HEAD")
+
+    capture_block = _pinned_update_block(
+        "v1.63.0", "**A. Inspect the immutable target transition"
+    )
+    captured = _run_bash(repo, capture_block)
+    assert captured.returncode == 0, captured.stdout + captured.stderr
+
+    journal = repo / "System/.dex/local-only-preservation/journal"
+    journal_payload = json.loads((journal / preservation.MANIFEST_NAME).read_text(encoding="utf-8"))
+    assert journal_payload["phase"] == "captured"
+    assert [entry["path"] for entry in journal_payload["entries"]] == list(
+        preservation.LOCAL_ONLY_PATHS
+    )
+    for ordinal, relative in enumerate(preservation.LOCAL_ONLY_PATHS):
+        assert (journal / "payloads" / f"apply-{ordinal}.bin").read_bytes() == original_bytes[relative]
+
+    merged = subprocess.run(
+        ["git", "merge", "upstream/release", "--no-edit"],
+        cwd=repo,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert merged.returncode != 0
+    assert set(_git(repo, "diff", "--name-only", "--diff-filter=U").splitlines()) == set(
+        preservation.LOCAL_ONLY_PATHS
+    )
+
+    apply_block = _pinned_update_block(
+        "v1.63.0", "**D. Apply local-only preservation immediately after the merge**"
+    )
+    applied = _run_bash(repo, apply_block)
+    assert applied.returncode == 0, applied.stdout + applied.stderr
+    assert _git(repo, "diff", "--name-only", "--diff-filter=U") == ""
+    _git(repo, "commit", "--quiet", "--no-edit")
+
+    assert json.loads(
+        (journal / preservation.MANIFEST_NAME).read_text(encoding="utf-8")
+    )["phase"] == "applied"
+    for relative, content in original_bytes.items():
+        target = repo / relative
+        assert target.read_bytes() == content
+        assert stat.S_IMODE(target.stat().st_mode) == original_modes[relative]
+        assert subprocess.run(
+            ["git", "ls-files", "--error-unmatch", "--", relative],
+            cwd=repo,
+            capture_output=True,
+        ).returncode != 0
+
+    newest_bytes = {
+        relative: content + b"\nnewest local bytes" for relative, content in original_bytes.items()
+    }
+    for relative, content in newest_bytes.items():
+        (repo / relative).write_bytes(content)
+
+    runtime = repo / "System/.dex/local-only-preservation/runtime"
+    runtime_env = os.environ.copy()
+    runtime_env["PYTHONPATH"] = str(runtime)
+    capture_rewind = subprocess.run(
+        [
+            sys.executable,
+            str(runtime / "core/migrations/preserve_local_only_paths.py"),
+            "capture-rewind",
+            "--repo",
+            str(repo),
+            "--journal",
+            str(journal),
+            "--policy",
+            str(runtime / "tracked-ignored-policy.yaml"),
+        ],
+        cwd=repo,
+        env=runtime_env,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert capture_rewind.returncode == 0, capture_rewind.stdout + capture_rewind.stderr
+    _git(repo, "reset", "--hard", rollback_commit)
+    rewind = subprocess.run(
+        [
+            sys.executable,
+            str(runtime / "core/migrations/preserve_local_only_paths.py"),
+            "rewind",
+            "--repo",
+            str(repo),
+            "--journal",
+            str(journal),
+            "--policy",
+            str(runtime / "tracked-ignored-policy.yaml"),
+            "--target-phase",
+            "bootstrap-v1",
+        ],
+        cwd=repo,
+        env=runtime_env,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert rewind.returncode == 0, rewind.stdout + rewind.stderr
+    assert len(
+        _git(repo, "ls-files", "-ci", "--exclude-standard").splitlines()
+    ) == len(policy_paths)
+    for relative, content in newest_bytes.items():
+        assert (repo / relative).read_bytes() == content
+        assert _git(repo, "ls-files", "--error-unmatch", "--", relative) == relative
 
 
 def test_manifest_is_a_deterministic_newline_path_list(tmp_path: Path) -> None:
@@ -72,62 +468,12 @@ def test_manifest_is_a_deterministic_newline_path_list(tmp_path: Path) -> None:
     assert generate_manifest(repo, "HEAD") == "a directory/first.txt\nz-last.txt\n"
 
 
-def test_rollback_stops_when_autosave_commit_fails(tmp_path: Path) -> None:
-    vault = tmp_path / "user-vault"
-    _init_repo(vault)
-
-    tracked_file = "04-Projects/current-work.md"
-    _write(vault, tracked_file, "release v1\n")
-    _git(vault, "add", "--", tracked_file)
-    _git(vault, "commit", "--quiet", "-m", "release v1")
-    _git(vault, "tag", "backup-before-v1.3.0")
-
-    _write(vault, tracked_file, "release v2\n")
-    _git(vault, "add", "--", tracked_file)
-    _git(vault, "commit", "--quiet", "-m", "release v2")
-    release_v2_head = _git(vault, "rev-parse", "HEAD")
-
-    edited_content = "release v2\nuser's uncommitted edit\n"
-    staged_new_file = ".claude/skills/private-custom/SKILL.md"
-    staged_new_content = "---\nname: private-custom\n---\n# User work\n"
-    _write(vault, tracked_file, edited_content)
-    _write(vault, staged_new_file, staged_new_content)
-    _git(vault, "add", "--", staged_new_file)
-
-    hooks_dir = tmp_path / "failing-hooks"
-    hooks_dir.mkdir()
-    pre_commit = hooks_dir / "pre-commit"
-    pre_commit.write_text(
-        "#!/bin/sh\necho 'forced pre-commit failure' >&2\nexit 1\n",
-        encoding="utf-8",
-    )
-    pre_commit.chmod(0o755)
-    _git(vault, "config", "core.hooksPath", str(hooks_dir))
-
-    protected_rollback = _bash_block_containing(
-        ROLLBACK_SKILL,
-        'DEX_ROLLBACK_TARGET="backup-before-v1.3.0"',
-    )
-    result = subprocess.run(
-        [
-            "bash",
-            "-c",
-            protected_rollback,
-        ],
-        cwd=vault,
-        check=False,
-        capture_output=True,
-        text=True,
-    )
-
-    assert result.returncode != 0, result.stdout + result.stderr
-    assert _git(vault, "rev-parse", "HEAD") == release_v2_head
-    assert (vault / tracked_file).read_text(encoding="utf-8") == edited_content
-    assert (vault / staged_new_file).read_text(encoding="utf-8") == staged_new_content
-    assert not any(tag.startswith("before-rollback-") for tag in _git(vault, "tag").splitlines())
-    assert _git(vault, "diff", "--cached", "--name-only") == ""
-    assert "Git could not save the current state" in result.stdout + result.stderr
-    assert "dex-user-data-before-rollback" in _git(vault, "stash", "list")
+def test_rollback_skill_has_no_legacy_autosave_or_source_control_fallback() -> None:
+    rollback = ROLLBACK_SKILL.read_text(encoding="utf-8")
+    assert "safe_autosave" not in rollback
+    assert "backup-before" not in rollback
+    assert "git stash" not in rollback.lower()
+    assert "rewind_adoption_by_receipt" in rollback
 
 
 def test_update_then_manifest_rollback_preserves_user_customizations(tmp_path: Path) -> None:

@@ -1,6 +1,6 @@
 ---
 name: dex-whats-new
-description: Check for system improvements (learnings + Claude updates)
+description: "Show recent system improvements — captured learnings plus new Claude capabilities. Use when the user says 'what's new', 'any updates to how Dex works'. Not for previewing and applying a version update; use `dex-update`. Not for unused existing features; use `dex-level-up`."
 ---
 
 Check for improvements to your Dex system from TWO sources:

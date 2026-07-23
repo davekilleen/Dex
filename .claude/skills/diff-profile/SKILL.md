@@ -1,6 +1,6 @@
 ---
 name: diff-profile
-description: Generate a full DexDiff profile — package your entire system so others can replicate how you use Dex
+description: "Package your entire Dex system into a shareable DexDiff profile so others can replicate how you work. Use when the user says 'share my whole setup', 'publish my profile'. Not for a single workflow; use `diff-generate`. Not for adopting a whole profile; use `diff-adopt-profile`."
 ---
 
 ## What This Command Does

@@ -1,6 +1,6 @@
 ---
 name: dex-doctor
-description: Rigorous whole-system checkup — verifies every Dex feature honestly (working / off / broken / couldn't-check), self-heals what is provably safe, and guides the user only where Dex cannot fix itself. Replaces /health-check.
+description: "Whole-system checkup: verifies every Dex feature honestly (working/off/broken/couldn't-check), self-heals what's provably safe, guides the rest. Use when the user says 'is Dex healthy', 'something's broken', 'check my setup', 'run diagnostics'. Not for discovering unused *features*; use `dex-level-up`. Not for applying an update; use `dex-update`."
 ---
 
 # /dex-doctor — Full System Checkup
@@ -31,6 +31,67 @@ months.
 4. **Heal conservatively.** Tier 1 only automatically. Tier 2 only after an explicit yes,
    one item at a time. Tier 3 is always the user's hands. Never delete or overwrite user
    data; never touch credentials.
+
+### Credential scan mode
+
+Credential scanning is local and read-only. Inspect the worktree, index, approved Git
+common directory and primary object database, reachable refs, stashes, tags, and only
+archives the user explicitly selects. Report opaque redacted finding IDs plus explicit
+inspected and uninspected scope categories; never print paths or matched values. Existing
+`.mcp.json` is scan/report-only and remains byte-identical.
+
+Render migration, security, active `.mcp.json` residual, and optional history hygiene as
+separate deterministic states using `render_credential_status`; do not paraphrase it.
+Provider revoke/rotate is always user-driven. Replacement health is read-only and runs
+only after the user explicitly chooses a remediation check. History cleanup is optional
+privacy hygiene, never a current-danger warning or prerequisite. Use only a preinstalled
+`git-filter-repo`, after verified restrictive bundle backup and typed consent; never
+install it, push, or force-push. If migration capability fails, scanning and guidance
+remain available and Doctor names the failed capability with manual move/validation/rewind steps.
+
+For an optional cleanup request, use the in-process contracts in
+`core.utils.history_hygiene`; never interpolate revoked values into a shell command. Run
+`prepare_history_cleanup` only when security is `remediated`, after the user explicitly chooses
+the exact `refs/heads/*`, `refs/tags/*`, or `refs/stash/*` refs and confirms either verified
+external-backup evidence or no-external-backup acknowledgement. Show the returned opaque
+transaction ID, selected refs, recovery-bundle evidence, and this exact consent string:
+
+`CLEAN OPTIONAL HISTORY <transaction-id>`
+
+If `prepare_history_cleanup` returns `optional-tool-unavailable` or
+`optional-platform-unsupported`, surface its `guidance` verbatim and stop; both are calm honest
+states, never a current-danger warning. `optional-platform-unsupported` means this operating
+system lacks the directory file-descriptor substrate the guided path needs (it runs on Linux,
+including WSL2 or a Linux container; macOS is not supported). No recovery state was created; offer
+the manual advanced path and note that history cleanup is optional privacy hygiene.
+
+Call `apply_history_cleanup` only after the user types that string exactly. Preparation must have
+already produced and verified the mode-`0700` transaction directory and mode-`0600`
+`history.bundle`, `objects.json`, and `manifest.json` under
+`System/.dex/adoption/history-backups/<transaction-id>/`, while passing the 10 GiB shared-cap and
+1 MiB free-space margin checks. Apply must preserve Git remote configuration and never fetch,
+push, force-push, install software, or call a provider.
+
+The verified bundle and manifest cover every restorable ref, not only selected refs, and include
+restrictive config/index recovery artifacts plus opaque HEAD/index/tracked-worktree/remote state
+authority. Apply still passes only the explicitly selected refs to `git-filter-repo`. Any changed
+unselected branch, tag, stash, remote-tracking, replace, notes, backup, or other ref—or any HEAD,
+index, tracked-worktree, or remote-config collateral—must return `recovery-required`, never a
+clean result. Credential equality is memory-only; no value-derived digest or replacement file may
+be persisted.
+
+Render the post-cleanup rescan result exactly as `history-clean`,
+`history-cleanup-pending`, or `history-scope-unknown`. If apply is interrupted or reports
+`recovery-required`, lead with “Do not push.” Preserve the bundle and call
+`rewind_history_cleanup` only through its exact-ref guard. If that guard refuses, give the
+returned manual verified-bundle recovery guidance; do not improvise ref updates. Always state
+that history rewind does not reverse provider rotation.
+
+Retention is a separate explicit operation. `preview_retention` protects the newest history
+bundle and selects only verified bundles older than 90 days with two later successful release
+activations and valid backup posture. Call `delete_retention_candidates` only with the unchanged
+candidate tuple and exact-set SHA-256 that the user acknowledged. Never auto-delete or upload a
+recovery bundle.
 
 ## Execution
 
@@ -86,6 +147,47 @@ For the **Entity engine** check, keep the rendering short and plain: say whether
 creation is working, off, or needs attention, include the contact/observation counts,
 and call out unresolved verification results or quarantined pages. Mention stale
 verification or a stale/missing People index as a follow-up signal.
+
+### Step 3a: Render the adoption section
+
+Read the collector's top-level `adoption` object and render its `groups` in the exact
+order returned. It always contains these five groups: `new-and-safe`,
+`needs-your-review`, `preserved-for-now`, `continue-or-recover`, and
+`receipts-and-rewind`.
+
+Authority fields are not prose. Render every item id, item version, action, status,
+verdict, count, transaction id, reason, path, and `rewindable` boolean verbatim. Never
+change an action or verdict, combine authority records, infer a missing record, or hide
+a zero count. The collector's `surface` line is the only field that may be rephrased.
+Keep that rephrasing to one plain-English line per group in this register:
+"Here's exactly what this changes for you" and, for recovery, "I found an interrupted
+update — resume or undo?"
+
+`needs-your-review` normally contains `conflict` actions. If the deterministic planner
+returns `action: unknown`, keep that item and its reasons in this group verbatim, render
+the group's `UNKNOWN` verdict, and say the evidence needs rechecking; never silently
+drop it or translate it into a conflict.
+
+If `adoption.verdict` is `OFF`, say calmly that adoption reporting is off because no
+release catalog is installed. If it is `UNKNOWN`, say what could not be verified and
+do not turn empty authority arrays into proposed actions. For ledger recovery, reproduce
+`continue-or-recover.ledger.repair_command` exactly; this is the existing
+`python3 -m core.lifecycle.cli --vault-root <vault> rebuild-state` command, not a prompt
+to improvise ledger repair.
+
+Never offer an action the engine does not expose. An interrupted transaction may be
+described only from its returned transaction authority; do not call `Transaction.resume`
+while rendering Doctor. A receipt is rewindable only when the collector says
+`rewindable: true` and `rewind_verdict: OK`. Rewind only through the existing
+receipt-backed lifecycle flow:
+load that exact receipt, derive its exact acknowledgement with the
+rewind-acknowledgement helper in the Python lifecycle engine
+(core/lifecycle/engine.py), then perform the rewind through that same engine
+module's receipt-backed rewind function. There is no lifecycle rewind
+shell command, so do not invent one. If `rewindable: false` with `rewind_verdict: OK`,
+say the retained snapshot was pruned. If `rewind_verdict: UNKNOWN`, say the receipt,
+current bytes, committed journal, or snapshot could not be verified. In both cases, do
+not offer rewind.
 
 ### Step 4: Heal, tiered
 

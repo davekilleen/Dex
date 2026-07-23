@@ -1,6 +1,6 @@
 ---
 name: daily-plan
-description: Generate context-aware daily plan with calendar, tasks, and priorities. Includes midweek awareness, meeting intelligence, commitment tracking, and smart scheduling suggestions.
+description: "Build today's plan from calendar, tasks, priorities and commitments, with smart scheduling suggestions. Use when the user says 'plan my day', 'what's on today', 'help me focus', or starts the morning. Also use proactively at the first session of the day. Not for reviewing a finished day; use `daily-review`."
 model_routing:
   default: balanced
   steps:
@@ -59,7 +59,9 @@ If items found, triage them before building the plan so task counts are accurate
 
 Run these silently without user-facing output:
 
-1. **Update check**: `check_for_updates(force=False)` - store notification if available
+1. **Release evidence**: SessionStart already performs the at-most-daily bounded fetch-only check. Read its result;
+   do not start a second network attempt. Surface only its complete `release-appears-available-unverified` notice,
+   verbatim. Keep `no-newer-release-observed-unverified`, `offline`, `UNKNOWN`, and `skipped` silent here.
 2. **Self-learning checks**: Run changelog and learning review scripts if due
 3. **Search index refresh**: Run `qmd update && qmd embed` to refresh vault search index with any overnight changes (meetings processed, files edited, etc.). If `qmd` is not installed, skip silently.
 4. **People index refresh**: Call `build_people_index` from Work MCP. This keeps the People Directory current so person lookups throughout the day are fast. Takes <2 seconds.

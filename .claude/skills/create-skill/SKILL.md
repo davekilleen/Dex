@@ -1,6 +1,6 @@
 ---
 name: create-skill
-description: Create a custom skill that's protected from Dex updates. Automatically appends -custom to ensure your skill is never overwritten.
+description: "Create a new skill — a reusable `/command` workflow. For a skill the user builds for themselves, saves it as `-custom` (protected from updates) and coaches (never blocks) the quality bar. Use when the user says 'make a skill', 'I want a /command for X'. Not for connecting an external tool; use `create-mcp`. After creating, hand off to `skill-score`."
 ---
 
 # Create Custom Skill

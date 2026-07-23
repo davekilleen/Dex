@@ -1,0 +1,829 @@
+{
+  "contract_version": 1,
+  "source": "core/portable_contract.py",
+  "vault_schema_supported": ">=1 <2",
+  "ownership_classes": [
+    "brain",
+    "vault",
+    "seed",
+    "generated",
+    "runtime"
+  ],
+  "mutation_policy": {
+    "brain": "replace",
+    "generated": "regenerate",
+    "runtime": "never",
+    "seed": "write-if-absent",
+    "vault": "never"
+  },
+  "hard_deny": [
+    ".env",
+    ".env.*",
+    ".git",
+    ".git/*",
+    "System/credentials",
+    "System/credentials/*",
+    "*token.json",
+    "*.key",
+    "*.pem"
+  ],
+  "vault_regions": [
+    "00-Inbox",
+    "01-Quarter_Goals",
+    "02-Week_Priorities",
+    "03-Tasks",
+    "04-Projects",
+    "05-Areas",
+    "06-Resources",
+    "07-Archives"
+  ],
+  "rules": [
+    {
+      "id": "brain-agents",
+      "path": ".agents",
+      "kind": "dir",
+      "ownership": "brain"
+    },
+    {
+      "id": "brain-claude",
+      "path": ".claude",
+      "kind": "dir",
+      "ownership": "brain",
+      "note": "shipped skills/hooks/flows; user skills belong in .claude/skills-custom/ (vault)"
+    },
+    {
+      "id": "vault-skills-custom",
+      "path": ".claude/skills-custom",
+      "kind": "dir",
+      "ownership": "vault"
+    },
+    {
+      "id": "brain-cursor",
+      "path": ".cursor",
+      "kind": "dir",
+      "ownership": "brain"
+    },
+    {
+      "id": "brain-distignore",
+      "path": ".distignore",
+      "kind": "file",
+      "ownership": "brain"
+    },
+    {
+      "id": "vault-env",
+      "path": ".env",
+      "kind": "file",
+      "ownership": "vault",
+      "note": "raw secret authority (SR1 #150 model)"
+    },
+    {
+      "id": "brain-gitattributes",
+      "path": ".gitattributes",
+      "kind": "file",
+      "ownership": "brain"
+    },
+    {
+      "id": "brain-github",
+      "path": ".github",
+      "kind": "dir",
+      "ownership": "brain"
+    },
+    {
+      "id": "brain-gitignore",
+      "path": ".gitignore",
+      "kind": "file",
+      "ownership": "brain"
+    },
+    {
+      "id": "runtime-logs",
+      "path": ".logs",
+      "kind": "dir",
+      "ownership": "runtime"
+    },
+    {
+      "id": "vault-mcp-json",
+      "path": ".mcp.json",
+      "kind": "file",
+      "ownership": "vault",
+      "note": "REPORT-ONLY: SR1 #150's structural residual detector owns it; no engine may rewrite it"
+    },
+    {
+      "id": "brain-obsidian",
+      "path": ".obsidian",
+      "kind": "dir",
+      "ownership": "brain",
+      "note": "shipped Obsidian defaults; a user's live workspace state is untracked"
+    },
+    {
+      "id": "brain-dot-scripts",
+      "path": ".scripts",
+      "kind": "dir",
+      "ownership": "brain"
+    },
+    {
+      "id": "vault-inbox",
+      "path": "00-Inbox",
+      "kind": "dir",
+      "ownership": "vault"
+    },
+    {
+      "id": "seed-inbox-daily-plans-readme",
+      "path": "00-Inbox/Daily_Plans/README.md",
+      "kind": "file",
+      "ownership": "seed"
+    },
+    {
+      "id": "seed-inbox-ideas-readme",
+      "path": "00-Inbox/Ideas/README.md",
+      "kind": "file",
+      "ownership": "seed"
+    },
+    {
+      "id": "seed-inbox-meetings-readme",
+      "path": "00-Inbox/Meetings/README.md",
+      "kind": "file",
+      "ownership": "seed"
+    },
+    {
+      "id": "seed-inbox-readme",
+      "path": "00-Inbox/README.md",
+      "kind": "file",
+      "ownership": "seed"
+    },
+    {
+      "id": "vault-quarter-goals",
+      "path": "01-Quarter_Goals",
+      "kind": "dir",
+      "ownership": "vault",
+      "note": "capability-gated room (quarter_goals); absence is a valid state"
+    },
+    {
+      "id": "seed-quarter-goals-file",
+      "path": "01-Quarter_Goals/Quarter_Goals.md",
+      "kind": "file",
+      "ownership": "seed",
+      "note": "capability-gated room (quarter_goals)"
+    },
+    {
+      "id": "vault-week-priorities",
+      "path": "02-Week_Priorities",
+      "kind": "dir",
+      "ownership": "vault"
+    },
+    {
+      "id": "seed-week-priorities-file",
+      "path": "02-Week_Priorities/Week_Priorities.md",
+      "kind": "file",
+      "ownership": "seed"
+    },
+    {
+      "id": "vault-tasks",
+      "path": "03-Tasks",
+      "kind": "dir",
+      "ownership": "vault"
+    },
+    {
+      "id": "seed-tasks-file",
+      "path": "03-Tasks/Tasks.md",
+      "kind": "file",
+      "ownership": "seed"
+    },
+    {
+      "id": "vault-projects",
+      "path": "04-Projects",
+      "kind": "dir",
+      "ownership": "vault"
+    },
+    {
+      "id": "seed-projects-readme",
+      "path": "04-Projects/README.md",
+      "kind": "file",
+      "ownership": "seed"
+    },
+    {
+      "id": "vault-areas",
+      "path": "05-Areas",
+      "kind": "dir",
+      "ownership": "vault",
+      "note": "Career and Companies subtrees are capability-gated rooms; absence is a valid state"
+    },
+    {
+      "id": "seed-career-evidence-readme",
+      "path": "05-Areas/Career/Evidence/README.md",
+      "kind": "file",
+      "ownership": "seed",
+      "note": "capability-gated room (career)"
+    },
+    {
+      "id": "seed-companies-readme",
+      "path": "05-Areas/Companies/README.md",
+      "kind": "file",
+      "ownership": "seed",
+      "note": "capability-gated room (companies)"
+    },
+    {
+      "id": "seed-people-external-readme",
+      "path": "05-Areas/People/External/README.md",
+      "kind": "file",
+      "ownership": "seed"
+    },
+    {
+      "id": "seed-people-internal-readme",
+      "path": "05-Areas/People/Internal/README.md",
+      "kind": "file",
+      "ownership": "seed"
+    },
+    {
+      "id": "seed-people-readme",
+      "path": "05-Areas/People/README.md",
+      "kind": "file",
+      "ownership": "seed"
+    },
+    {
+      "id": "seed-areas-readme",
+      "path": "05-Areas/README.md",
+      "kind": "file",
+      "ownership": "seed"
+    },
+    {
+      "id": "vault-resources",
+      "path": "06-Resources",
+      "kind": "dir",
+      "ownership": "vault",
+      "note": "fully user-owned per Vault_Contract \u00a710.1; the brain docs still shipped under 06-Resources/Dex_System carry their own brain rule until they relocate to docs/"
+    },
+    {
+      "id": "brain-doc-background-processing",
+      "path": "06-Resources/Dex_System/Background_Processing_Guide.md",
+      "kind": "file",
+      "ownership": "brain"
+    },
+    {
+      "id": "brain-doc-calendar-setup",
+      "path": "06-Resources/Dex_System/Calendar_Setup.md",
+      "kind": "file",
+      "ownership": "brain"
+    },
+    {
+      "id": "brain-doc-jobs-to-be-done",
+      "path": "06-Resources/Dex_System/Dex_Jobs_to_Be_Done.md",
+      "kind": "file",
+      "ownership": "brain"
+    },
+    {
+      "id": "brain-doc-system-guide",
+      "path": "06-Resources/Dex_System/Dex_System_Guide.md",
+      "kind": "file",
+      "ownership": "brain"
+    },
+    {
+      "id": "brain-doc-technical-guide",
+      "path": "06-Resources/Dex_System/Dex_Technical_Guide.md",
+      "kind": "file",
+      "ownership": "brain"
+    },
+    {
+      "id": "brain-doc-distribution-checklist",
+      "path": "06-Resources/Dex_System/Distribution_Checklist.md",
+      "kind": "file",
+      "ownership": "brain"
+    },
+    {
+      "id": "brain-doc-distribution-strategy",
+      "path": "06-Resources/Dex_System/Distribution_Strategy.md",
+      "kind": "file",
+      "ownership": "brain"
+    },
+    {
+      "id": "brain-doc-folder-structure",
+      "path": "06-Resources/Dex_System/Folder_Structure.md",
+      "kind": "file",
+      "ownership": "brain"
+    },
+    {
+      "id": "brain-doc-memory-ownership",
+      "path": "06-Resources/Dex_System/Memory_Ownership.md",
+      "kind": "file",
+      "ownership": "brain"
+    },
+    {
+      "id": "brain-doc-named-sessions",
+      "path": "06-Resources/Dex_System/Named_Sessions_Guide.md",
+      "kind": "file",
+      "ownership": "brain"
+    },
+    {
+      "id": "brain-doc-obsidian-guide",
+      "path": "06-Resources/Dex_System/Obsidian_Guide.md",
+      "kind": "file",
+      "ownership": "brain"
+    },
+    {
+      "id": "brain-doc-dex-system-readme",
+      "path": "06-Resources/Dex_System/README.md",
+      "kind": "file",
+      "ownership": "brain"
+    },
+    {
+      "id": "brain-doc-updating-dex",
+      "path": "06-Resources/Dex_System/Updating_Dex.md",
+      "kind": "file",
+      "ownership": "brain"
+    },
+    {
+      "id": "seed-intel-gitkeep",
+      "path": "06-Resources/Intel/.gitkeep",
+      "kind": "file",
+      "ownership": "seed"
+    },
+    {
+      "id": "seed-meeting-intel-gitkeep",
+      "path": "06-Resources/Intel/Meeting_Intel/.gitkeep",
+      "kind": "file",
+      "ownership": "seed"
+    },
+    {
+      "id": "seed-mistake-patterns",
+      "path": "06-Resources/Learnings/Mistake_Patterns.md",
+      "kind": "file",
+      "ownership": "seed"
+    },
+    {
+      "id": "seed-learnings-readme",
+      "path": "06-Resources/Learnings/README.md",
+      "kind": "file",
+      "ownership": "seed"
+    },
+    {
+      "id": "seed-working-preferences",
+      "path": "06-Resources/Learnings/Working_Preferences.md",
+      "kind": "file",
+      "ownership": "seed"
+    },
+    {
+      "id": "seed-quarterly-reviews-readme",
+      "path": "06-Resources/Quarterly_Reviews/README.md",
+      "kind": "file",
+      "ownership": "seed"
+    },
+    {
+      "id": "seed-resources-readme",
+      "path": "06-Resources/README.md",
+      "kind": "file",
+      "ownership": "seed"
+    },
+    {
+      "id": "vault-archives",
+      "path": "07-Archives",
+      "kind": "dir",
+      "ownership": "vault"
+    },
+    {
+      "id": "seed-archives-plans-readme",
+      "path": "07-Archives/Plans/README.md",
+      "kind": "file",
+      "ownership": "seed"
+    },
+    {
+      "id": "seed-archives-projects-readme",
+      "path": "07-Archives/Projects/README.md",
+      "kind": "file",
+      "ownership": "seed"
+    },
+    {
+      "id": "seed-archives-readme",
+      "path": "07-Archives/README.md",
+      "kind": "file",
+      "ownership": "seed"
+    },
+    {
+      "id": "seed-archives-reviews-readme",
+      "path": "07-Archives/Reviews/README.md",
+      "kind": "file",
+      "ownership": "seed"
+    },
+    {
+      "id": "brain-agents-md",
+      "path": "AGENTS.md",
+      "kind": "file",
+      "ownership": "brain"
+    },
+    {
+      "id": "brain-changelog",
+      "path": "CHANGELOG.md",
+      "kind": "file",
+      "ownership": "brain"
+    },
+    {
+      "id": "vault-claude-custom",
+      "path": "CLAUDE-custom.md",
+      "kind": "file",
+      "ownership": "vault",
+      "note": "the one canonical home for user instructions (Vault_Contract \u00a75)"
+    },
+    {
+      "id": "brain-claude-md",
+      "path": "CLAUDE.md",
+      "kind": "file",
+      "ownership": "brain",
+      "note": "pure brain per Vault_Contract \u00a75; user instructions live in CLAUDE-custom.md"
+    },
+    {
+      "id": "brain-commercial-license",
+      "path": "COMMERCIAL_LICENSE.md",
+      "kind": "file",
+      "ownership": "brain"
+    },
+    {
+      "id": "brain-contributing",
+      "path": "CONTRIBUTING.md",
+      "kind": "file",
+      "ownership": "brain"
+    },
+    {
+      "id": "brain-distribution-ready",
+      "path": "DISTRIBUTION_READY.md",
+      "kind": "file",
+      "ownership": "brain"
+    },
+    {
+      "id": "brain-license",
+      "path": "LICENSE",
+      "kind": "file",
+      "ownership": "brain"
+    },
+    {
+      "id": "brain-readme",
+      "path": "README.md",
+      "kind": "file",
+      "ownership": "brain"
+    },
+    {
+      "id": "runtime-dex-dir",
+      "path": "System/.dex",
+      "kind": "dir",
+      "ownership": "runtime"
+    },
+    {
+      "id": "runtime-adoption-receipts",
+      "path": "System/.dex/adoptions",
+      "kind": "dir",
+      "ownership": "runtime",
+      "note": "post-commit lifecycle receipts; local runtime evidence, never shipped"
+    },
+    {
+      "id": "runtime-lifecycle-ledger",
+      "path": "System/.dex/ledger",
+      "kind": "dir",
+      "ownership": "runtime",
+      "note": "immutable local lifecycle events and rebuildable state; never shipped or updated"
+    },
+    {
+      "id": "runtime-lifecycle-activation",
+      "path": "System/.dex/lifecycle/activation.json",
+      "kind": "file",
+      "ownership": "runtime",
+      "note": "old-engine bridge baseline marker; created locally on first lifecycle-engine run, never shipped"
+    },
+    {
+      "id": "generated-doctor-last-run",
+      "path": "System/.doctor-last-run.json",
+      "kind": "file",
+      "ownership": "generated",
+      "note": "Doctor's rendered cache; every refresh is transaction-owned"
+    },
+    {
+      "id": "generated-manifest",
+      "path": "System/.installed-files.manifest",
+      "kind": "file",
+      "ownership": "generated"
+    },
+    {
+      "id": "runtime-last-learning-check",
+      "path": "System/.last-learning-check",
+      "kind": "file",
+      "ownership": "runtime",
+      "note": "legacy-tracked runtime marker"
+    },
+    {
+      "id": "generated-local-only-transition",
+      "path": "System/.local-only-preservation-transition.json",
+      "kind": "file",
+      "ownership": "generated",
+      "note": "SR1 #148 phase marker; owned by the local-only preservation machinery"
+    },
+    {
+      "id": "seed-mcp-example",
+      "path": "System/.mcp.json.example",
+      "kind": "file",
+      "ownership": "seed"
+    },
+    {
+      "id": "runtime-onboarding",
+      "path": "System/.onboarding",
+      "kind": "dir",
+      "ownership": "runtime"
+    },
+    {
+      "id": "runtime-onboarding-marker",
+      "path": "System/.onboarding-complete",
+      "kind": "file",
+      "ownership": "runtime"
+    },
+    {
+      "id": "runtime-onboarding-session",
+      "path": "System/.onboarding-session.json",
+      "kind": "file",
+      "ownership": "runtime",
+      "note": "pre-engine onboarding scratch; deleted by receipt-declared finalization"
+    },
+    {
+      "id": "generated-release-catalog",
+      "path": "System/.release-catalog.json",
+      "kind": "file",
+      "ownership": "generated"
+    },
+    {
+      "id": "generated-evidence-profile",
+      "path": "System/.release-evidence-profile.json",
+      "kind": "file",
+      "ownership": "generated"
+    },
+    {
+      "id": "brain-beta-communications",
+      "path": "System/Beta_Communications",
+      "kind": "dir",
+      "ownership": "brain",
+      "note": "release-doc retained until the schema-2 baseline-reduction follow-up"
+    },
+    {
+      "id": "seed-dex-backlog",
+      "path": "System/Dex_Backlog.md",
+      "kind": "file",
+      "ownership": "seed"
+    },
+    {
+      "id": "seed-dex-ideas",
+      "path": "System/Dex_Ideas.md",
+      "kind": "file",
+      "ownership": "seed",
+      "note": "legacy duplicate of Dex_Backlog.md; removal in flight (portability hygiene PR)"
+    },
+    {
+      "id": "brain-system-readme",
+      "path": "System/README.md",
+      "kind": "file",
+      "ownership": "brain"
+    },
+    {
+      "id": "runtime-session-learnings",
+      "path": "System/Session_Learnings",
+      "kind": "dir",
+      "ownership": "runtime",
+      "note": "user-machine session state; historical learning files become local-only in the untrack-v1 transition, while the shipped README remains a seed"
+    },
+    {
+      "id": "seed-session-learnings-readme",
+      "path": "System/Session_Learnings/README.md",
+      "kind": "file",
+      "ownership": "seed"
+    },
+    {
+      "id": "runtime-session-memory",
+      "path": "System/Session_Memory",
+      "kind": "dir",
+      "ownership": "runtime"
+    },
+    {
+      "id": "seed-templates",
+      "path": "System/Templates",
+      "kind": "dir",
+      "ownership": "seed"
+    },
+    {
+      "id": "runtime-claude-state",
+      "path": "System/claude-code-state.json",
+      "kind": "file",
+      "ownership": "runtime",
+      "note": "legacy-tracked runtime state"
+    },
+    {
+      "id": "vault-credentials",
+      "path": "System/credentials",
+      "kind": "dir",
+      "ownership": "vault",
+      "note": "secrets; hard-denied"
+    },
+    {
+      "id": "vault-folder-paths",
+      "path": "System/folder-paths.yaml",
+      "kind": "file",
+      "ownership": "vault",
+      "note": "the user's folder remapping (Vault_Contract \u00a72a); vault-owned, travels with content"
+    },
+    {
+      "id": "seed-integrations",
+      "path": "System/integrations",
+      "kind": "dir",
+      "ownership": "seed",
+      "note": "SR1 #150: tracked reference-schema templates carrying env-var references; installed if absent, never overwritten once user-owned"
+    },
+    {
+      "id": "seed-pillars-example",
+      "path": "System/pillars.example.yaml",
+      "kind": "file",
+      "ownership": "seed"
+    },
+    {
+      "id": "seed-pillars-live",
+      "path": "System/pillars.yaml",
+      "kind": "file",
+      "ownership": "seed",
+      "note": "shipped empty; user pillar registry \u2014 never overwritten"
+    },
+    {
+      "id": "seed-trusted-mcps-example",
+      "path": "System/trusted-mcps.example.yaml",
+      "kind": "file",
+      "ownership": "seed"
+    },
+    {
+      "id": "vault-trusted-mcps",
+      "path": "System/trusted-mcps.yaml",
+      "kind": "file",
+      "ownership": "vault"
+    },
+    {
+      "id": "runtime-usage-log",
+      "path": "System/usage_log.md",
+      "kind": "file",
+      "ownership": "runtime",
+      "note": "shipped blank starter, then per-machine usage state; legacy-tracked"
+    },
+    {
+      "id": "seed-user-profile-template",
+      "path": "System/user-profile-template.yaml",
+      "kind": "file",
+      "ownership": "seed",
+      "note": "canonical shipped template (the ratified doc names user-profile.example.yaml; the repo consolidated on -template \u2014 deliberate deviation)"
+    },
+    {
+      "id": "seed-user-profile-example",
+      "path": "System/user-profile.example.yaml",
+      "kind": "file",
+      "ownership": "seed",
+      "note": "legacy duplicate template; removal in flight (portability hygiene PR)"
+    },
+    {
+      "id": "seed-user-profile-live",
+      "path": "System/user-profile.yaml",
+      "kind": "file",
+      "ownership": "seed",
+      "note": "shipped blank; user VALUES live here (Vault_Contract \u00a72c) \u2014 never overwritten"
+    },
+    {
+      "id": "brain-core",
+      "path": "core",
+      "kind": "dir",
+      "ownership": "brain"
+    },
+    {
+      "id": "vault-mcp-custom",
+      "path": "core/mcp-custom",
+      "kind": "dir",
+      "ownership": "vault"
+    },
+    {
+      "id": "vault-mcp-premium",
+      "path": "core/mcp-premium",
+      "kind": "dir",
+      "ownership": "vault"
+    },
+    {
+      "id": "brain-docs",
+      "path": "docs",
+      "kind": "dir",
+      "ownership": "brain"
+    },
+    {
+      "id": "generated-architecture-inventory",
+      "path": "docs/architecture/INVENTORY.md",
+      "kind": "file",
+      "ownership": "generated",
+      "note": "code-derived grounding document; drift is CI-gated"
+    },
+    {
+      "id": "seed-env-example",
+      "path": "env.example",
+      "kind": "file",
+      "ownership": "seed"
+    },
+    {
+      "id": "brain-install",
+      "path": "install.sh",
+      "kind": "file",
+      "ownership": "brain"
+    },
+    {
+      "id": "brain-package-lock",
+      "path": "package-lock.json",
+      "kind": "file",
+      "ownership": "brain"
+    },
+    {
+      "id": "brain-package-json",
+      "path": "package.json",
+      "kind": "file",
+      "ownership": "brain"
+    },
+    {
+      "id": "brain-packages",
+      "path": "packages",
+      "kind": "dir",
+      "ownership": "brain",
+      "note": "package sources are brain; the committed dist/ views are generated (below)"
+    },
+    {
+      "id": "generated-contracts-dist",
+      "path": "packages/dex-contracts/dist",
+      "kind": "dir",
+      "ownership": "generated",
+      "note": "committed for cross-repo consumption; regenerated by scripts/generate-*.py; drift is CI-gated"
+    },
+    {
+      "id": "brain-pyproject",
+      "path": "pyproject.toml",
+      "kind": "file",
+      "ownership": "brain"
+    },
+    {
+      "id": "brain-requirements-dev",
+      "path": "requirements-dev.txt",
+      "kind": "file",
+      "ownership": "brain"
+    },
+    {
+      "id": "brain-requirements",
+      "path": "requirements.txt",
+      "kind": "file",
+      "ownership": "brain"
+    },
+    {
+      "id": "brain-scripts",
+      "path": "scripts",
+      "kind": "dir",
+      "ownership": "brain"
+    },
+    {
+      "id": "brain-staging",
+      "path": "staging",
+      "kind": "dir",
+      "ownership": "brain",
+      "note": "dev-only staging scaffolding; excluded from releases"
+    },
+    {
+      "id": "brain-uv-lock",
+      "path": "uv.lock",
+      "kind": "file",
+      "ownership": "brain"
+    }
+  ],
+  "capabilities": {
+    "career": {
+      "default_enabled": false,
+      "folders": [
+        "05-Areas/Career"
+      ],
+      "mcp": [
+        "career_server",
+        "resume_server"
+      ],
+      "skills": [
+        "career-setup",
+        "career-coach",
+        "resume-builder"
+      ]
+    },
+    "companies": {
+      "default_enabled": false,
+      "features": [
+        "entity-engine.company-pages"
+      ],
+      "folders": [
+        "05-Areas/Companies"
+      ],
+      "skills": []
+    },
+    "quarter_goals": {
+      "config": "quarterly_planning",
+      "default_enabled": false,
+      "folders": [
+        "01-Quarter_Goals"
+      ],
+      "skills": [
+        "quarter-plan",
+        "quarter-review"
+      ]
+    }
+  }
+}

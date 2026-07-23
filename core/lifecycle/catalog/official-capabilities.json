@@ -1,0 +1,410 @@
+{
+  "catalog_source_version": 1,
+  "items": [
+    {
+      "id": "account-plan",
+      "kind": "skill",
+      "version": "1.0.0",
+      "files": [
+        {
+          "path": ".claude/skills/account-plan/SKILL.md",
+          "source_path": ".claude/skills/_available/sales/account-plan/SKILL.md",
+          "sha256": "5741035e8058bb03c493a8142b8cfaead2dabfa87c577b434af975e9fc8cf748",
+          "byte_size": 16887
+        }
+      ],
+      "dependencies": [],
+      "capabilities": []
+    },
+    {
+      "id": "architecture-decision",
+      "kind": "skill",
+      "version": "1.0.0",
+      "files": [
+        {
+          "path": ".claude/skills/architecture-decision/SKILL.md",
+          "source_path": ".claude/skills/_available/engineering/architecture-decision/SKILL.md",
+          "sha256": "224a77de107cef78b4ed1c086a8ac398491eda587446fe1d7514cb0ac02ec8d2",
+          "byte_size": 1582
+        }
+      ],
+      "dependencies": [],
+      "capabilities": []
+    },
+    {
+      "id": "audience-intel",
+      "kind": "skill",
+      "version": "1.0.0",
+      "files": [
+        {
+          "path": ".claude/skills/audience-intel/SKILL.md",
+          "source_path": ".claude/skills/_available/marketing/audience-intel/SKILL.md",
+          "sha256": "255608611cfe38e8b9473f81968e9111aee3da925e8364d04044a59ea1b23614",
+          "byte_size": 2298
+        }
+      ],
+      "dependencies": [],
+      "capabilities": []
+    },
+    {
+      "id": "board-prep",
+      "kind": "skill",
+      "version": "1.0.0",
+      "files": [
+        {
+          "path": ".claude/skills/board-prep/SKILL.md",
+          "source_path": ".claude/skills/_available/finance/board-prep/SKILL.md",
+          "sha256": "326ad016417d4eb062b7b300d179bf8ee5e82e6ae43837cd603cebe270f58769",
+          "byte_size": 1646
+        }
+      ],
+      "dependencies": [],
+      "capabilities": []
+    },
+    {
+      "id": "call-prep",
+      "kind": "skill",
+      "version": "1.0.0",
+      "files": [
+        {
+          "path": ".claude/skills/call-prep/SKILL.md",
+          "source_path": ".claude/skills/_available/sales/call-prep/SKILL.md",
+          "sha256": "21dd0e701d1abcf5c0f6039870774edc22e0bb6fc69040ebf3feb7d4e031e848",
+          "byte_size": 10028
+        }
+      ],
+      "dependencies": [],
+      "capabilities": []
+    },
+    {
+      "id": "campaign-review",
+      "kind": "skill",
+      "version": "1.0.0",
+      "files": [
+        {
+          "path": ".claude/skills/campaign-review/SKILL.md",
+          "source_path": ".claude/skills/_available/marketing/campaign-review/SKILL.md",
+          "sha256": "34d95833064668b8f7254bc77852f0fa30d63bff56df8d719c8604f526d45dac",
+          "byte_size": 1921
+        }
+      ],
+      "dependencies": [],
+      "capabilities": []
+    },
+    {
+      "id": "close-status",
+      "kind": "skill",
+      "version": "1.0.0",
+      "files": [
+        {
+          "path": ".claude/skills/close-status/SKILL.md",
+          "source_path": ".claude/skills/_available/finance/close-status/SKILL.md",
+          "sha256": "82d8d0b7c0ad9517fcd698d6c4333c3bc7b1483f6eea1e75249ed89d9b9d74e3",
+          "byte_size": 1634
+        }
+      ],
+      "dependencies": [],
+      "capabilities": []
+    },
+    {
+      "id": "content-calendar",
+      "kind": "skill",
+      "version": "1.0.0",
+      "files": [
+        {
+          "path": ".claude/skills/content-calendar/SKILL.md",
+          "source_path": ".claude/skills/_available/marketing/content-calendar/SKILL.md",
+          "sha256": "cd138c89b6b707b591b85a6722fdea7329dcc8de7c0bd0fdb0453767717e0844",
+          "byte_size": 2237
+        }
+      ],
+      "dependencies": [],
+      "capabilities": []
+    },
+    {
+      "id": "customer-intel",
+      "kind": "skill",
+      "version": "1.0.0",
+      "files": [
+        {
+          "path": ".claude/skills/customer-intel/SKILL.md",
+          "source_path": ".claude/skills/_available/product/customer-intel/SKILL.md",
+          "sha256": "17044af6bbca334e3bbd9d9618dd7046e895dcaeecb8c97c5c531d1707be60c2",
+          "byte_size": 9283
+        }
+      ],
+      "dependencies": [],
+      "capabilities": []
+    },
+    {
+      "id": "deal-review",
+      "kind": "skill",
+      "version": "1.0.0",
+      "files": [
+        {
+          "path": ".claude/skills/deal-review/SKILL.md",
+          "source_path": ".claude/skills/_available/sales/deal-review/SKILL.md",
+          "sha256": "dde132385c6a12ca46626d78b32fdc1459000213b5b816870209bed9d4a0676b",
+          "byte_size": 9137
+        }
+      ],
+      "dependencies": [],
+      "capabilities": []
+    },
+    {
+      "id": "decision-log",
+      "kind": "skill",
+      "version": "1.0.0",
+      "files": [
+        {
+          "path": ".claude/skills/decision-log/SKILL.md",
+          "source_path": ".claude/skills/decision-log/SKILL.md",
+          "sha256": "ba989a5a1030c4963e7d0d2a7fc123be28bbde93befc2a027bc29049d758d4c5",
+          "byte_size": 4156
+        }
+      ],
+      "dependencies": [],
+      "capabilities": []
+    },
+    {
+      "id": "delegate-check",
+      "kind": "skill",
+      "version": "1.0.0",
+      "files": [
+        {
+          "path": ".claude/skills/delegate-check/SKILL.md",
+          "source_path": ".claude/skills/delegate-check/SKILL.md",
+          "sha256": "3c1cc1ff18b6653969c2475d6e33b3cadb37db17c4de96e06865f78c4ba5b234",
+          "byte_size": 4073
+        }
+      ],
+      "dependencies": [],
+      "capabilities": []
+    },
+    {
+      "id": "design-review",
+      "kind": "skill",
+      "version": "1.0.0",
+      "files": [
+        {
+          "path": ".claude/skills/design-review/SKILL.md",
+          "source_path": ".claude/skills/_available/design/design-review/SKILL.md",
+          "sha256": "27d5a384b010304fc7d7cc3fa60b7eb14e2bd2733338336208b48f7611d1761d",
+          "byte_size": 1475
+        }
+      ],
+      "dependencies": [],
+      "capabilities": []
+    },
+    {
+      "id": "design-system-audit",
+      "kind": "skill",
+      "version": "1.0.0",
+      "files": [
+        {
+          "path": ".claude/skills/design-system-audit/SKILL.md",
+          "source_path": ".claude/skills/_available/design/design-system-audit/SKILL.md",
+          "sha256": "6c1c52ceef63edd05fe8681e73aff44bfc79822a74149197c23dba93bcacd83b",
+          "byte_size": 1733
+        }
+      ],
+      "dependencies": [],
+      "capabilities": []
+    },
+    {
+      "id": "expansion-opportunities",
+      "kind": "skill",
+      "version": "1.0.0",
+      "files": [
+        {
+          "path": ".claude/skills/expansion-opportunities/SKILL.md",
+          "source_path": ".claude/skills/_available/customer-success/expansion-opportunities/SKILL.md",
+          "sha256": "7a71196c1caad7d31402132a94a0b817218f378b1d75d443d3aec92a8bced7c5",
+          "byte_size": 1772
+        }
+      ],
+      "dependencies": [],
+      "capabilities": []
+    },
+    {
+      "id": "feature-decision",
+      "kind": "skill",
+      "version": "1.0.0",
+      "files": [
+        {
+          "path": ".claude/skills/feature-decision/SKILL.md",
+          "source_path": ".claude/skills/_available/product/feature-decision/SKILL.md",
+          "sha256": "4c7437da128023401a69ff87d09bceb394280573c9529a82fc4407e6aca4881b",
+          "byte_size": 10212
+        }
+      ],
+      "dependencies": [],
+      "capabilities": []
+    },
+    {
+      "id": "health-score",
+      "kind": "skill",
+      "version": "1.0.0",
+      "files": [
+        {
+          "path": ".claude/skills/health-score/SKILL.md",
+          "source_path": ".claude/skills/_available/customer-success/health-score/SKILL.md",
+          "sha256": "700e527217246b2d22d183ceb3d422312fa07f82ae584a88560db7a8eeab6513",
+          "byte_size": 1719
+        }
+      ],
+      "dependencies": [],
+      "capabilities": []
+    },
+    {
+      "id": "incident-review",
+      "kind": "skill",
+      "version": "1.0.0",
+      "files": [
+        {
+          "path": ".claude/skills/incident-review/SKILL.md",
+          "source_path": ".claude/skills/_available/engineering/incident-review/SKILL.md",
+          "sha256": "83aeca994eb11d70fbf41bd7d4c5f3c485143dce8f396e827d1b975a811800ea",
+          "byte_size": 1615
+        }
+      ],
+      "dependencies": [],
+      "capabilities": []
+    },
+    {
+      "id": "messaging-audit",
+      "kind": "skill",
+      "version": "1.0.0",
+      "files": [
+        {
+          "path": ".claude/skills/messaging-audit/SKILL.md",
+          "source_path": ".claude/skills/_available/marketing/messaging-audit/SKILL.md",
+          "sha256": "5a75324289c9644db64379c042d4e8dd6221bb919804d52f326bb42d67e9a71e",
+          "byte_size": 1994
+        }
+      ],
+      "dependencies": [],
+      "capabilities": []
+    },
+    {
+      "id": "metrics-review",
+      "kind": "skill",
+      "version": "1.0.0",
+      "files": [
+        {
+          "path": ".claude/skills/metrics-review/SKILL.md",
+          "source_path": ".claude/skills/_available/operations/metrics-review/SKILL.md",
+          "sha256": "7418bcaf1a3c1be58c3b9e87e795663936cef5ed4cc13d715f689725c3e9e294",
+          "byte_size": 1465
+        }
+      ],
+      "dependencies": [],
+      "capabilities": []
+    },
+    {
+      "id": "pipeline-health",
+      "kind": "skill",
+      "version": "1.0.0",
+      "files": [
+        {
+          "path": ".claude/skills/pipeline-health/SKILL.md",
+          "source_path": ".claude/skills/_available/sales/pipeline-health/SKILL.md",
+          "sha256": "2c9995562b29cbcddcf437fdada9e15bb44666ab8f01ff5c8ce7d871835da70f",
+          "byte_size": 12405
+        }
+      ],
+      "dependencies": [],
+      "capabilities": []
+    },
+    {
+      "id": "process-audit",
+      "kind": "skill",
+      "version": "1.0.0",
+      "files": [
+        {
+          "path": ".claude/skills/process-audit/SKILL.md",
+          "source_path": ".claude/skills/_available/operations/process-audit/SKILL.md",
+          "sha256": "a6a41aaed55f5ad8b6fde57a00a64c01b10785cb8df7499b50cdcd5c064d65c7",
+          "byte_size": 1563
+        }
+      ],
+      "dependencies": [],
+      "capabilities": []
+    },
+    {
+      "id": "renewal-prep",
+      "kind": "skill",
+      "version": "1.0.0",
+      "files": [
+        {
+          "path": ".claude/skills/renewal-prep/SKILL.md",
+          "source_path": ".claude/skills/_available/customer-success/renewal-prep/SKILL.md",
+          "sha256": "e8b268486490d9e06ede5af731f349dadcb1c9cafe58df9fae53f7986a1aaf8c",
+          "byte_size": 1641
+        }
+      ],
+      "dependencies": [],
+      "capabilities": []
+    },
+    {
+      "id": "roadmap",
+      "kind": "skill",
+      "version": "1.0.0",
+      "files": [
+        {
+          "path": ".claude/skills/roadmap/SKILL.md",
+          "source_path": ".claude/skills/_available/product/roadmap/SKILL.md",
+          "sha256": "9e47f39c616d7ff627598615f32036cfdc10967fb20735ab5ae99173546e3fdc",
+          "byte_size": 6090
+        }
+      ],
+      "dependencies": [],
+      "capabilities": []
+    },
+    {
+      "id": "tech-debt",
+      "kind": "skill",
+      "version": "1.0.0",
+      "files": [
+        {
+          "path": ".claude/skills/tech-debt/SKILL.md",
+          "source_path": ".claude/skills/_available/engineering/tech-debt/SKILL.md",
+          "sha256": "d6d4dd86034418384254ba76cdb99af4c15ef11de4c8acca4c42beb22f8e9886",
+          "byte_size": 1797
+        }
+      ],
+      "dependencies": [],
+      "capabilities": []
+    },
+    {
+      "id": "variance-analysis",
+      "kind": "skill",
+      "version": "1.0.0",
+      "files": [
+        {
+          "path": ".claude/skills/variance-analysis/SKILL.md",
+          "source_path": ".claude/skills/_available/finance/variance-analysis/SKILL.md",
+          "sha256": "a241836b9162057cb647135e47f1e269d723d67e2312d22e4ea10fd1a63f84c3",
+          "byte_size": 1615
+        }
+      ],
+      "dependencies": [],
+      "capabilities": []
+    },
+    {
+      "id": "weekly-reflection",
+      "kind": "skill",
+      "version": "1.0.0",
+      "files": [
+        {
+          "path": ".claude/skills/weekly-reflection/SKILL.md",
+          "source_path": ".claude/skills/weekly-reflection/SKILL.md",
+          "sha256": "5fedf671cad93fc6c1a36caf4970efd1059f5d2b7b31216e025ef06cad303589",
+          "byte_size": 3567
+        }
+      ],
+      "dependencies": [],
+      "capabilities": []
+    }
+  ]
+}

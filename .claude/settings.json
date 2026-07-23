@@ -9,7 +9,11 @@
           },
           {
             "type": "command",
-            "command": "git pull --quiet 2>/dev/null && echo '{\"hookSpecificOutput\":{\"hookEventName\":\"SessionStart\",\"additionalContext\":\"\\n✅ Synced with GitHub (pulled latest changes)\\n\"}}' || echo '{\"hookSpecificOutput\":{\"hookEventName\":\"SessionStart\",\"additionalContext\":\"\\n⚠️  Could not sync with GitHub (check your connection)\\n\"}}'"
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/core/utils/update_verifier.py\" --vault \"$CLAUDE_PROJECT_DIR\" --session-start"
+          },
+          {
+            "type": "command",
+            "command": "bash .claude/hooks/dex-core-orientation.sh"
           }
         ]
       }
@@ -38,6 +42,15 @@
           {
             "type": "command",
             "command": "node .claude/hooks/ensure-mcp-user-scope.cjs"
+          }
+        ]
+      },
+      {
+        "matcher": "mcp__.*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash .claude/hooks/dex-safety-guard.sh"
           }
         ]
       }
@@ -69,6 +82,10 @@
           {
             "type": "command",
             "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/session-end.sh \"$transcript_path\""
+          },
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/vault-autocommit.cjs"
           }
         ]
       }

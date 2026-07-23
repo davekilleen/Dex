@@ -76,6 +76,13 @@ DEXDIFF_DESIGN_DIR = DEXDIFF_DIR / 'design'
 # --- System ---
 SYSTEM_DIR = VAULT_ROOT / 'System'
 DEX_RUNTIME_DIR = SYSTEM_DIR / '.dex'
+LIFECYCLE_DIR = DEX_RUNTIME_DIR / 'lifecycle'
+LEDGER_DIR = LIFECYCLE_DIR / 'ledger'
+LEDGER_EVENTS_DIR = LEDGER_DIR / 'events'
+LIFECYCLE_STATE_FILE = LIFECYCLE_DIR / 'state.json'
+
+
+HISTORY_BACKUPS_RELATIVE_PARTS = ('System', '.dex', 'adoption', 'history-backups')
 PILLARS_FILE = SYSTEM_DIR / 'pillars.yaml'
 USER_PROFILE_FILE = SYSTEM_DIR / 'user-profile.yaml'
 SKILL_RATINGS_FILE = SYSTEM_DIR / 'Skill_Ratings' / 'ratings.jsonl'
@@ -92,6 +99,7 @@ CLAUDE_MD = VAULT_ROOT / 'CLAUDE.md'
 MCP_CONFIG_EXAMPLE = SYSTEM_DIR / '.mcp.json.example'
 MCP_CONFIG_TARGET = VAULT_ROOT / '.mcp.json'
 OBSIDIAN_SYNC_LOG = SYSTEM_DIR / 'obsidian-sync.log'
+SESSION_MEMORY_DB_FILE = SYSTEM_DIR / '.dex-sessions.db'
 RITUAL_INTELLIGENCE_DB_FILE = DEX_RUNTIME_DIR / 'ritual-intelligence.db'
 CONTACTS_STATE_FILE = DEX_RUNTIME_DIR / 'contacts.json'
 GARDENER_STATE_FILE = DEX_RUNTIME_DIR / 'gardener.json'

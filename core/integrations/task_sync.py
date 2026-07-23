@@ -13,8 +13,6 @@ from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any
 
-import yaml
-
 from core.mcp import work_server
 from core.paths import (
     INBOUND_TASKS_FILE,
@@ -22,6 +20,8 @@ from core.paths import (
     TASK_SYNC_STATE_FILE,
     VAULT_ROOT,
 )
+from core.utils.integration_credentials import resolve_service_credentials
+from core.utils.strict_yaml import load_yaml_path
 
 ADAPTERS_DIR = VAULT_ROOT / ".claude" / "hooks" / "adapters"
 _SERVICE_PATTERN = re.compile(r"^[a-z][a-z0-9_-]*$")
@@ -116,7 +116,7 @@ def _write_inbound(items: list[dict[str, Any]]) -> None:
 def _load_config() -> dict[str, Any]:
     if not INTEGRATION_CONFIG_FILE.exists():
         return {}
-    payload = yaml.safe_load(INTEGRATION_CONFIG_FILE.read_text(encoding="utf-8"))
+    payload = load_yaml_path(INTEGRATION_CONFIG_FILE)
     if payload is None:
         return {}
     if not isinstance(payload, dict):
@@ -159,10 +159,42 @@ def _find_node() -> str:
     raise FileNotFoundError("node is required to run task-sync adapters")
 
 
-def _adapter_path(service: str) -> Path | None:
+def _resolve_adapter_service(service: str) -> str:
     if not _SERVICE_PATTERN.fullmatch(service):
-        return None
-    candidate = ADAPTERS_DIR / f"{service}.cjs"
+        raise ValueError(f"invalid task-sync service name: {service}")
+    runner = ADAPTERS_DIR / "run.cjs"
+    try:
+        result = subprocess.run(
+            [_find_node(), str(runner), "--resolve-adapter", service],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=False,
+            cwd=VAULT_ROOT,
+        )
+    except (OSError, subprocess.SubprocessError) as error:
+        raise ValueError(f"adapter alias preflight failed: {error}") from error
+    if len(result.stdout.encode("utf-8")) > 4096:
+        raise ValueError("adapter alias preflight returned oversized output")
+    try:
+        payload = json.loads(result.stdout.strip())
+    except json.JSONDecodeError as error:
+        raise ValueError("adapter alias preflight returned invalid JSON") from error
+    if not isinstance(payload, dict) or payload.get("ok") is not True:
+        detail = payload.get("error") if isinstance(payload, dict) else None
+        raise ValueError(str(detail or "adapter alias preflight failed"))
+    if set(payload) != {"ok", "requested_service", "adapter_service"}:
+        raise ValueError("adapter alias preflight returned unexpected fields")
+    adapter = payload.get("adapter_service")
+    if payload.get("requested_service") != service or not isinstance(adapter, str):
+        raise ValueError("adapter alias preflight returned a mismatched identity")
+    if not _SERVICE_PATTERN.fullmatch(adapter):
+        raise ValueError("adapter alias preflight returned an unsafe adapter identity")
+    return adapter
+
+
+def _adapter_path(adapter_service: str) -> Path | None:
+    candidate = ADAPTERS_DIR / f"{adapter_service}.cjs"
     return candidate if candidate.is_file() else None
 
 
@@ -182,6 +214,11 @@ def _run_adapter(
         timeout=30,
         check=False,
         cwd=VAULT_ROOT,
+        env={
+            "PATH": os.environ.get("PATH", ""),
+            "HOME": os.environ.get("HOME", ""),
+            "SYSTEMROOT": os.environ.get("SYSTEMROOT", ""),
+        },
     )
     try:
         payload = json.loads(result.stdout.strip())
@@ -191,6 +228,39 @@ def _run_adapter(
         detail = payload.get("error") if isinstance(payload, dict) else None
         raise RuntimeError(str(detail or "task-sync adapter operation failed"))
     return payload.get("result")
+
+
+def _runtime_settings(
+    service: str, settings: dict[str, Any]
+) -> tuple[dict[str, Any], tuple[str, ...]]:
+    """Return ephemeral adapter settings and exact values that must be redacted."""
+    credentials = resolve_service_credentials(service, settings, VAULT_ROOT)
+    runtime = dict(settings)
+    runtime.update(credentials)
+    return runtime, tuple(credentials.values())
+
+
+def _redact_error(error: Exception, secrets: tuple[str, ...]) -> str:
+    message = str(error)
+    for secret in secrets:
+        message = message.replace(secret, "[REDACTED]")
+    return message
+
+
+def check_service_health(service: str) -> dict[str, object]:
+    """Run one explicit read-only replacement health check."""
+    settings = _enabled_services(_load_config()).get(service)
+    if settings is None:
+        return {"healthy": False, "error": "service is not enabled"}
+    secrets: tuple[str, ...] = ()
+    try:
+        runtime_settings, secrets = _runtime_settings(service, settings)
+        result = _run_adapter(service, "health", runtime_settings, None)
+        if not isinstance(result, dict) or result.get("healthy") is not True:
+            raise RuntimeError("adapter health response was not healthy")
+        return {"healthy": True}
+    except Exception as error:
+        return {"healthy": False, "error": _redact_error(error, secrets)}
 
 
 def _canonical_tasks() -> list[dict[str, Any]]:
@@ -291,8 +361,19 @@ def sync_external_tasks(
         if service == "things" and platform.system() != "Darwin":
             report["errors"].append("things task sync is only available on macOS")
             continue
-        if _adapter_path(service) is None:
-            report["errors"].append(f"task-sync adapter not found: {service}")
+        try:
+            adapter_service = _resolve_adapter_service(service)
+            adapter_path = _adapter_path(adapter_service)
+        except ValueError as error:
+            report["errors"].append(
+                f"task-sync adapter configuration error for enabled service '{service}': {error}"
+            )
+            continue
+        if adapter_path is None:
+            report["errors"].append(
+                f"task-sync adapter unavailable for enabled service '{service}': "
+                f"expected adapter '{adapter_service}.cjs'; repair Dex or disable this service"
+            )
             continue
 
         if service not in state:
@@ -307,7 +388,9 @@ def sync_external_tasks(
         previous_cursor = service_state["last_sync"]
         cycle_cursor = _now_iso()
 
+        secrets: tuple[str, ...] = ()
         try:
+            runtime_settings, secrets = _runtime_settings(service, settings)
             tasks = _canonical_tasks()
             baseline_date = _sync_cursor_date(previous_cursor)
             mapping = service_state["map"]
@@ -327,7 +410,7 @@ def sync_external_tasks(
                 if dry_run:
                     report["pushed_creates"] += 1
                     continue
-                external_id = _run_adapter(service, "create", settings, task)
+                external_id = _run_adapter(service, "create", runtime_settings, task)
                 if external_id is None:
                     raise RuntimeError(f"{service} create returned no external ID")
                 mapping[str(task_id)] = str(external_id)
@@ -345,13 +428,17 @@ def sync_external_tasks(
                 if dry_run:
                     report["pushed_completes"] += 1
                     continue
-                _run_adapter(service, "complete", settings, str(mapping[str(task_id)]))
+                _run_adapter(
+                    service, "complete", runtime_settings, str(mapping[str(task_id)])
+                )
                 completed_pushed.add(str(task_id))
                 service_state["completed_pushed"] = sorted(completed_pushed)
                 _write_state(state)
                 report["pushed_completes"] += 1
 
-            changes = _run_adapter(service, "get_changes", settings, str(previous_cursor))
+            changes = _run_adapter(
+                service, "get_changes", runtime_settings, str(previous_cursor)
+            )
             if changes is None:
                 changes = []
             if not isinstance(changes, list):
@@ -429,7 +516,7 @@ def sync_external_tasks(
                 service_state["last_sync"] = cycle_cursor
                 _write_state(state)
         except Exception as error:
-            report["errors"].append(str(error))
+            report["errors"].append(_redact_error(error, secrets))
 
     return results
 

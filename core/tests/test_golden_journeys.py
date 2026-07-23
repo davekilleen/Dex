@@ -8,20 +8,244 @@ import re
 import shutil
 import subprocess
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
 import yaml
 
+from core.lifecycle import service as lifecycle_service
+from core.tests.test_adoption_messy_vault_journey import (
+    _created_ancestors,
+    _transaction_paths,
+)
+from core.tests.test_adoption_transaction import _setup as setup_adoption_release
+from core.tests.test_lifecycle_bridge import _write_bridge_release
+from core.tests.vault_observed_writes import assert_observed_writes, snapshot_vault
+from core.utils import doctor
 from core.utils.entity_pages import parse_entity_page
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
+
+
+def test_service_owned_repair_crosses_transaction_and_declares_every_write(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """E5: Doctor's Tier-1 repair has no vault write outside its receipt."""
+    vault = tmp_path / "repair-vault"
+    (vault / "System").mkdir(parents=True)
+    (vault / "core").mkdir()
+    home = tmp_path / "home"
+    home.mkdir()
+    context = doctor.DoctorContext(
+        vault_root=vault,
+        repo_root=vault,
+        home=home,
+        now=datetime(2026, 7, 22, tzinfo=timezone.utc),
+    )
+    for name in doctor.PARA_PATH_NAMES:
+        context.core_path(name).mkdir(parents=True, exist_ok=True)
+    script = vault / ".scripts/repair-me.sh"
+    script.parent.mkdir()
+    script.write_text("#!/bin/sh\n", encoding="utf-8")
+    script.chmod(0o644)
+    monkeypatch.setattr(doctor, "_repo_shipped_executables", lambda _context: [script])
+
+    receipts: list[dict[str, object]] = []
+    real_execute = doctor.lifecycle_service._execute_approved_transaction
+
+    def record_execute(*args, **kwargs):
+        response = real_execute(*args, **kwargs)
+        receipts.append(response["receipt"])
+        return response
+
+    monkeypatch.setattr(
+        doctor.lifecycle_service,
+        "_execute_approved_transaction",
+        record_execute,
+    )
+
+    before = snapshot_vault(vault)
+    actions, errors = doctor._apply_t1_heals(context)
+    after = snapshot_vault(vault)
+
+    assert errors == []
+    assert "regenerated core/paths.json" in actions
+    assert any("restored executable permission" in action for action in actions)
+    assert len(receipts) == 1
+    receipt = receipts[0]
+    assert receipt["purpose"] == "doctor-tier-1"
+    assert [entry["path"] for entry in receipt["files_written"]] == [
+        ".scripts/repair-me.sh",
+        "core/paths.json",
+    ]
+    assert receipt["transaction_id"]
+    changed = assert_observed_writes(before, after, set(receipt["declared_paths"]))
+    assert {".scripts/repair-me.sh", "core/paths.json"} <= changed
+    assert any(path.startswith("System/.dex/tx/") for path in changed)
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")
+def test_fresh_install_bootstrap_is_provision_receipt_declared(tmp_path: Path) -> None:
+    """E5: the legitimate pre-engine bootstrap is bounded by its contract receipt."""
+    vault = tmp_path / "fresh-vault"
+    (vault / "System").mkdir(parents=True)
+    (vault / "core").mkdir()
+    (vault / ".scripts").mkdir()
+    for source, relative in (
+        (REPO_ROOT / "System/.mcp.json.example", "System/.mcp.json.example"),
+        (
+            REPO_ROOT / "System/user-profile-template.yaml",
+            "System/user-profile-template.yaml",
+        ),
+        (REPO_ROOT / "core/paths.py", "core/paths.py"),
+        (REPO_ROOT / "package.json", "package.json"),
+        (REPO_ROOT / "CLAUDE.md", "CLAUDE.md"),
+    ):
+        shutil.copy2(source, vault / relative)
+    profile = tmp_path / "fresh-profile.json"
+    profile.write_text(
+        json.dumps(
+            {
+                "name": "Fresh User",
+                "work_email": "fresh@example.com",
+                "pillars": [{"name": "Build"}],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    before = snapshot_vault(vault)
+    completed = subprocess.run(
+        [
+            "node",
+            str(REPO_ROOT / "core/provision.cjs"),
+            "--path",
+            str(vault),
+            "--profile",
+            str(profile),
+            "--json",
+        ],
+        cwd=REPO_ROOT,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert completed.returncode == 0, completed.stderr
+    summary = json.loads(completed.stdout)
+    receipt = summary["mutation_receipt"]
+    assert receipt["executor"] == "provision-contract-bootstrap"
+    assert receipt["lifecycle_transaction_id"] is None
+    assert_observed_writes(before, snapshot_vault(vault), set(receipt["declared_paths"]))
+
+
+def test_update_and_rollback_skills_are_service_renderers_without_raw_mutation() -> None:
+    update = (REPO_ROOT / ".claude/skills/dex-update/SKILL.md").read_text(encoding="utf-8")
+    rollback = (REPO_ROOT / ".claude/skills/dex-rollback/SKILL.md").read_text(
+        encoding="utf-8"
+    )
+
+    for operation in (
+        "build_inventory_and_plan",
+        "build_and_preview_adoption",
+        "execute_approved_adoption",
+        "read_lifecycle_state",
+    ):
+        assert operation in update
+    for operation in ("read_lifecycle_state", "rewind_adoption_by_receipt"):
+        assert operation in rollback
+    for instructions in (update, rollback):
+        lowered = instructions.lower()
+        for forbidden in (
+            "cp -r",
+            "sed -i",
+            "git merge",
+            "git reset",
+            "shutil.copy",
+            ".write_text(",
+            ".write_bytes(",
+        ):
+            assert forbidden not in lowered
+
+
+def test_upgrade_and_rollback_cross_frozen_service_with_receipt_only_writes(
+    tmp_path: Path,
+) -> None:
+    """E5/E10: service adoption and rewind exactly match receipt-derived writes."""
+    (tmp_path / "release-fixture").mkdir()
+    release, _document, _catalog, _inventory, _plan, _loader = setup_adoption_release(
+        tmp_path / "release-fixture",
+        item_ids=("alpha",),
+    )
+    _write_bridge_release(release)
+    vault = tmp_path / "installed-vault"
+    shutil.copytree(release, vault)
+    target = ".claude/skills/alpha/SKILL.md"
+    (vault / target).unlink()
+
+    inventory = lifecycle_service.build_inventory_and_plan(vault)
+    assert inventory["plan"]["items"][0]["action"] == "adopt"
+
+    before_upgrade = snapshot_vault(vault)
+    preview = lifecycle_service.build_and_preview_adoption(vault, release, ("alpha",))
+    executed = lifecycle_service.execute_approved_adoption(
+        vault,
+        release,
+        preview["preview"],
+        preview["approval_token"],
+    )
+    receipt = executed["receipt"]
+    tx_id = receipt["transaction_id"]
+    receipt_path = f"System/.dex/adoptions/{tx_id}.receipt.json"
+    upgrade_declared = {
+        target,
+        receipt_path,
+        "System/.dex/ledger/.write.lock",
+        "System/.dex/ledger/events/00000001-install-registered.json",
+        "System/.dex/ledger/events/00000002-adoption-recorded.json",
+        "System/.dex/ledger/commitments/00000001.sha256",
+        "System/.dex/ledger/commitments/00000002.sha256",
+        "System/.dex/ledger/state.json",
+    }
+    upgrade_declared |= _transaction_paths(
+        tx_id,
+        writes_payload=True,
+        snapshot_blob=False,
+    )
+    for path in tuple(upgrade_declared):
+        upgrade_declared |= _created_ancestors(path, before_upgrade)
+    assert_observed_writes(before_upgrade, snapshot_vault(vault), upgrade_declared)
+
+    before_rollback = snapshot_vault(vault)
+    rewound = lifecycle_service.rewind_adoption_by_receipt(
+        vault,
+        receipt,
+        executed["rewind_acknowledgement_token"],
+    )["rewind_receipt"]
+    rewind_tx_id = rewound["rewind_transaction_id"]
+    rollback_declared = {
+        target,
+        "System/.dex/ledger/events/00000003-rewind-recorded.json",
+        "System/.dex/ledger/commitments/00000003.sha256",
+        "System/.dex/ledger/state.json",
+    }
+    rollback_declared |= _transaction_paths(
+        rewind_tx_id,
+        writes_payload=False,
+        snapshot_blob=True,
+    )
+    for path in tuple(rollback_declared):
+        rollback_declared |= _created_ancestors(path, before_rollback)
+    assert_observed_writes(before_rollback, snapshot_vault(vault), rollback_declared)
+    assert not (vault / target).exists()
 
 ONBOARDING_JOURNEY = r"""
 import asyncio
 import json
 
 from core.mcp import onboarding_server as onboarding
+from core.tests.vault_observed_writes import changed_vault_paths, snapshot_vault
 
 
 def decode(contents):
@@ -60,13 +284,24 @@ async def main():
             },
             "obsidian_mode": False,
         },
+        7: {
+            "capabilities": {
+                "career": True,
+                "companies": True,
+                "quarter_goals": True,
+            }
+        },
     }
     results["steps"] = [
         await call("validate_and_save_step", {"step_number": number, "step_data": data})
         for number, data in step_data.items()
     ]
     results["status"] = await call("get_onboarding_status")
+    before_finalize = snapshot_vault(onboarding.BASE_DIR)
     results["finalize"] = await call("finalize_onboarding")
+    results["finalize_observed"] = sorted(
+        changed_vault_paths(before_finalize, snapshot_vault(onboarding.BASE_DIR))
+    )
     print(json.dumps(results))
 
 
@@ -170,6 +405,10 @@ def _copy_fixture_vault(fixture_vault: Path, tmp_path: Path, *, onboarding: bool
     if onboarding:
         shutil.copy2(REPO_ROOT / "CLAUDE.md", vault / "CLAUDE.md")
         shutil.copy2(REPO_ROOT / "System" / ".mcp.json.example", vault / "System" / ".mcp.json.example")
+        (vault / "core").mkdir(exist_ok=True)
+        shutil.copy2(REPO_ROOT / "core" / "paths.py", vault / "core" / "paths.py")
+        shutil.copy2(REPO_ROOT / "package.json", vault / "package.json")
+        (vault / ".scripts").mkdir()
     return vault
 
 
@@ -219,6 +458,10 @@ def _write_entity_profile(vault: Path, mode: str) -> None:
     profile["email_domain"] = "dex.test"
     profile["entity_creation"] = {"mode": mode}
     profile_path.write_text(yaml.safe_dump(profile, sort_keys=False), encoding="utf-8")
+    # The entity fixture models an ACTIVE, already-onboarded vault; the marker
+    # engages the legacy capability bridge (rooms keep their pre-rooms status
+    # quo) that background company creation depends on.
+    (vault / "System" / ".onboarding-complete").write_text("{}\n", encoding="utf-8")
 
 
 def _write_synced_entity_meetings(vault: Path) -> None:
@@ -254,6 +497,10 @@ def test_golden_onboarding_drives_state_machine_to_real_vault(fixture_vault: Pat
     assert journey["status"]["data"]["ready_to_finalize"] is True
     assert journey["finalize"]["success"] is True
     assert journey["finalize"]["data"]["errors"] == []
+    assert journey["finalize"]["data"]["executor"] == "core/provision.cjs"
+    assert journey["finalize_observed"] == journey["finalize"]["data"]["receipt"][
+        "mutation_receipt"
+    ]["declared_paths"]
 
     for directory in (
         "00-Inbox",

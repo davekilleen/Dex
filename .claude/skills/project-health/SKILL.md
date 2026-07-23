@@ -1,6 +1,6 @@
 ---
 name: project-health
-description: Scan active projects for status, blockers, and next steps
+description: "Scan active projects for status, blockers and next actions. Use when the user says 'how are my projects', 'what's stuck', 'project status'. Also use proactively when projects have gone quiet. Not for writing a spec for a new product idea; use `product-brief`."
 ---
 
 Quick scan of all active projects to see what's stalled, blocked, or needs attention.

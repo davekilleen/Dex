@@ -2,6 +2,7 @@
 # Mirrors .distignore — keep both in sync
 
 .logs/                export-ignore
+extensions/tau-mirror/ export-ignore
 .github/               export-ignore
 pyproject.toml          export-ignore
 requirements-dev.txt    export-ignore
@@ -15,6 +16,7 @@ core/migrations/tests/  export-ignore
 CONTRIBUTING.md         export-ignore
 DISTRIBUTION_READY.md   export-ignore
 /scripts/               export-ignore
+.claude/skills/dex-orient/ export-ignore
 .ao-issue.md            export-ignore
 .distignore             export-ignore
 .gitattributes          export-ignore

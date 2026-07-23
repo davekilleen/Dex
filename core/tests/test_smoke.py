@@ -93,6 +93,57 @@ def _remote_release_ref(channel: str) -> str:
     return f"refs/remotes/{release_channel.release_ref_candidates(channel)[0]}"
 
 
+def test_topology_journey_checks_combined_split_and_vault_environment(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    combined = tmp_path / "combined"
+    (combined / ".git").mkdir(parents=True)
+    monkeypatch.setenv("VAULT_PATH", str(combined))
+    monkeypatch.setenv("VAULT_ROOT", str(combined))
+    monkeypatch.setenv("DEX_VAULT", str(combined))
+    result = smoke._journey_topology(combined, tmp_path)
+    assert result["verdict"] == "OK"
+    assert "combined topology" in result["detail"]
+
+    split = tmp_path / "split"
+    (split / ".git").mkdir(parents=True)
+    (split / ".dex/brain.git").mkdir(parents=True)
+    (split / "System/.dex").mkdir(parents=True)
+    (split / ".git/dex-vault-v2").write_text('{"role":"vault"}\n')
+    (split / ".dex/brain.git/dex-brain-v2").write_text(
+        '{"role":"brain","installed":"abc"}\n'
+    )
+    (split / "System/.dex/topology.json").write_text(
+        '{"topology":"brain-vault-split","vaultGitDir":".git",'
+        '"brainGitDir":".dex/brain.git","installedRelease":"abc",'
+        f'"environment":{{"DEX_VAULT":{json.dumps(str(split.resolve()))}}}}}\n'
+    )
+    monkeypatch.setenv("VAULT_PATH", str(split))
+    monkeypatch.setenv("VAULT_ROOT", str(split))
+    monkeypatch.setenv("DEX_VAULT", str(split))
+    result = smoke._journey_topology(split, tmp_path)
+    assert result["verdict"] == "OK"
+    assert "split topology" in result["detail"]
+
+    monkeypatch.setenv("VAULT_ROOT", str(combined))
+    result = smoke._journey_topology(split, tmp_path)
+    assert result["verdict"] == "BROKEN"
+    assert "VAULT_ROOT" in result["detail"]
+
+    monkeypatch.setenv("VAULT_ROOT", str(split))
+    monkeypatch.setenv("DEX_VAULT", str(combined))
+    result = smoke._journey_topology(split, tmp_path)
+    assert result["verdict"] == "BROKEN"
+    assert "DEX_VAULT" in result["detail"]
+
+
+def test_smoke_registry_adds_topology_without_losing_shipped_journeys() -> None:
+    ids = {definition.id for definition in smoke.JOURNEYS}
+    assert {"configs", "task_lifecycle", "mcp_startup", "skills", "hooks"} <= ids
+    assert "topology" in ids
+
+
 def test_mcp_handshake_timeout_env_override_changes_effective_timeout(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -291,13 +342,32 @@ def test_report_schema_exit_zero_and_no_live_write(tmp_path: Path) -> None:
     assert run.report["schema_version"] == 1
     assert run.report["generated_at"].endswith("+00:00")
     assert [journey["id"] for journey in run.report["journeys"]] == [
+        "topology",
         "configs",
         "task_lifecycle",
         "mcp_startup",
         "skills",
         "hooks",
     ]
-    assert run.report["summary"] == {"ok": 2, "broken": 0, "unknown": 1, "off": 2}
+    verdicts = {journey["id"]: journey["verdict"] for journey in run.report["journeys"]}
+    assert verdicts["topology"] == "OFF"
+    assert verdicts["configs"] == "OK"
+    assert verdicts["mcp_startup"] == "OK"  # empty .mcp.json → OK regardless of the execution gate
+    assert verdicts["skills"] == "OFF"
+    assert verdicts["hooks"] == "OFF"
+    # task_lifecycle executes real code only when HEAD's Dex-owned core matches the
+    # installed release ref; otherwise the safety gate reports UNKNOWN. Both are
+    # correct — which one occurs depends on repo state (it flips on every release
+    # cut, when the release ref is rebuilt to match main), so derive the expected
+    # summary instead of hardcoding one state.
+    assert verdicts["task_lifecycle"] in {"OK", "UNKNOWN"}
+    executed = verdicts["task_lifecycle"] == "OK"
+    assert run.report["summary"] == {
+        "ok": 3 if executed else 2,
+        "broken": 0,
+        "unknown": 0 if executed else 1,
+        "off": 3,
+    }
     for journey in run.report["journeys"]:
         assert set(journey) == {"id", "verdict", "detail", "duration_ms"}
         assert journey["verdict"] in smoke.VERDICTS
@@ -578,6 +648,35 @@ def test_runner_materialization_excludes_untracked_core_files(
     assert not (runner / "core" / "mcp" / "evil_server.py").exists()
 
 
+def test_runner_materializes_only_exact_content_verified_sensitive_dependencies(tmp_path: Path) -> None:
+    runner = smoke._materialize_runner(tmp_path / "runner-sensitive")
+    required = {
+        Path("core/utils/credential_migration_exceptions.json"),
+        Path("core/utils/credential_remediation.py"),
+        Path("core/utils/credential_scanner.py"),
+        Path("core/utils/credential_workflow.py"),
+        Path("core/utils/integration_credentials.py"),
+    }
+
+    assert required == smoke.CONTENT_VERIFIED_SENSITIVE_DEPENDENCIES
+    for relative in required:
+        assert (runner / relative).read_bytes() == (REPO_ROOT / relative).read_bytes()
+    assert (runner / "core/utils/release_channel.py").is_file()
+    assert not (runner / "core/tests/test_credential_remediation.py").exists()
+    with pytest.raises(smoke.JourneySafetySkip, match="sensitive"):
+        smoke._ensure_safe_source(
+            REPO_ROOT / "core/utils/another_credential_file.json",
+            REPO_ROOT,
+        )
+
+
+def test_removing_exact_sensitive_dependency_allowlist_breaks_runner_snapshot(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(smoke, "CONTENT_VERIFIED_SENSITIVE_DEPENDENCIES", frozenset())
+
+    with pytest.raises(smoke.JourneySafetySkip, match="credential_migration_exceptions"):
+        smoke._materialize_runner(tmp_path / "runner-without-sensitive-allowlist")
+
+
 def test_release_gate_ignores_untracked_runtime_artifacts(monkeypatch, tmp_path: Path) -> None:
     repo = _release_repo(tmp_path)
     release_root = tmp_path / "release"
@@ -588,6 +687,7 @@ def test_release_gate_ignores_untracked_runtime_artifacts(monkeypatch, tmp_path:
     )
     assert detail == "verified installed release snapshot"
     assert reference is not None
+    assert not (release_root / "core/tests/test_credential_remediation.py").exists()
 
     (repo / "core" / "paths.json").write_text("{}\n", encoding="utf-8")
     cache = repo / "core" / "__pycache__"
@@ -851,7 +951,11 @@ def test_hanging_journey_is_killed_and_returns_exit_two(monkeypatch, tmp_path: P
     assert run.exit_code == 2
     assert run.harness_failed is True
     assert run.report["journeys"][0]["verdict"] == "UNKNOWN"
-    assert "journey timed out after" in run.report["journeys"][0]["detail"]
+    # The deadline can fire in the journey itself ("<label> timed out after Xs") or in
+    # its preparation phase ("journey timed out during preparation") — which one wins
+    # depends on host load. Both are the same correct kill behavior (UNKNOWN + exit 2),
+    # so assert the shared core of the message.
+    assert "timed out" in run.report["journeys"][0]["detail"]
 
 
 def test_timed_out_journey_kills_delayed_descendants(monkeypatch, tmp_path: Path) -> None:

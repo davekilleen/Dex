@@ -146,3 +146,48 @@ stub all external probes.
 
 One PR: collector + tests + skill + `/health-check` deletion + reference repoints +
 CHANGELOG (house style) + version bump. Ships as v1.27.0 via the normal release pipeline.
+
+## Adoption, holdback, and recovery section (D2)
+
+Doctor's additive `adoption` section is a deterministic, read-only report. Shell and
+skills collect inputs and render; they never own lifecycle mutation. The collector emits
+canonical JSON from a frozen `AdoptionReport` with exactly five ordered groups:
+
+1. `new-and-safe` — catalog items whose planner action is `adopt`.
+2. `needs-your-review` — items whose action is `conflict`, with planner reason codes
+   and per-file reason/path pairs. Planner `unknown` items are retained here verbatim
+   and make the group/report `UNKNOWN`; unprovable authority never disappears.
+3. `preserved-for-now` — ledger-held items plus `stock-modified` files preserved from
+   the `CustomizationReport`.
+4. `continue-or-recover` — unfinished transaction journals found by read-only,
+   `Transaction.resume`-style classification, transaction-inspection errors, and
+   incomplete or invalid ledger publication.
+5. `receipts-and-rewind` — current ledger adoption receipts: item, version,
+   transaction-id-derived local time, `rewind_verdict`, and whether the canonical
+   receipt, current bytes, committed journal, and retained snapshot all pass the
+   engine's read-only rewind preflight (`rewindable: true`). A cleanly absent snapshot
+   is pruned (`false` with `rewind_verdict: OK`); invalid evidence is `UNKNOWN`.
+
+Every group has `id`, `verdict`, `count`, authority records, and one fixed `surface`
+line. Authority includes item ids and versions, actions, statuses, verdicts, counts,
+paths, reasons, transaction ids, and rewindable booleans. A renderer reproduces these
+verbatim. It may paraphrase only `surface`, as one plain-English sentence; it never
+upgrades, downgrades, merges, omits, infers, or manufactures authority.
+
+The fixed adoption-status vocabulary is `applied` / `adopted` / `rewound` /
+`held-for-review` / `customization-review-required` /
+`external-reconciliation-pending` / `needs-recheck` / `skipped-by-user` /
+`failed-rolled-back`. Planner actions such as `adopt`, `conflict`, and
+`skip-held-back` are also rendered exactly, never translated into a new status.
+
+Degradation uses Doctor's existing vocabulary: `OFF` when no catalog is installed;
+`BROKEN` for an invalid catalog or unfinished transaction; `UNKNOWN` when ledger or
+transaction evidence cannot be verified; otherwise `OK`. Unknown ledger evidence
+withholds unprovable adoption actions and carries the ledger-owned
+`python3 -m core.lifecycle.cli --vault-root <vault> rebuild-state` command.
+
+The collector never resumes, rolls back, rebuilds, quarantines, creates locks, or writes
+a cache. The renderer may name only mechanisms the engine exposes: ledger
+`rebuild-state`, read-only transaction evidence, and the exact receipt-backed
+`rewind_adoption` flow when `rewindable` is true. It never invents a rewind CLI or
+offers rewind after snapshot pruning.

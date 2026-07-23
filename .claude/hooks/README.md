@@ -1,398 +1,68 @@
-# Hooks
+# Claude Code hooks
 
-**Purpose:** User-defined shell commands that execute at various points in Claude Code's lifecycle.
+These hooks provide deterministic lifecycle behavior for Claude Code. Cursor does not run Claude Code hooks.
 
-**Status:** ⚠️ **Claude Code Only** - Hooks currently only work in Claude Code desktop/CLI, not in Cursor.
+The wiring sources of truth are:
 
-**Documentation:** [Claude Code Hooks Guide](https://code.claude.com/docs/en/hooks-guide)
+- Repository-wide hooks: [`.claude/settings.json`](../settings.json)
+- Skill-scoped hooks: each skill's `hooks` frontmatter
+- Direct callers: the scripts and workflows named below
 
----
+Claude Code sends hook-event JSON on standard input. Any `.cjs` hook that consumes that payload must parse stdin file descriptor 0 and fail open when the payload is absent or invalid. The contract is enforced by `tests/input-contract.test.cjs`; `CLAUDE_HOOK_*` environment variables are not hook-payload inputs.
 
-## Important: Claude Code vs Cursor
+## Repository-wide wiring
 
-**How sessions end:**
+These commands are wired in `.claude/settings.json` and run independently of any skill.
 
-| Environment | How Sessions End | Hooks That Work |
-|-------------|------------------|-----------------|
-| **Claude Code** | Graceful shutdown via `exit` command or proper quit | All hooks including SessionStart/SessionEnd |
-| **Cursor** | Closing window terminates process immediately | None - no hook system currently |
+| Event | Matcher | Command | Purpose |
+|---|---|---|---|
+| `SessionStart` | all | `bash .claude/hooks/session-start.sh` | Inject the current Dex session context. |
+| `SessionStart` | all | `python3 "$CLAUDE_PROJECT_DIR/core/utils/update_verifier.py" --vault "$CLAUDE_PROJECT_DIR" --session-start` | Perform the bounded release-evidence check. |
+| `PreToolUse` | `Read` | `node .claude/hooks/person-context-injector.cjs` | Inject matching person context before a file read. |
+| `PreToolUse` | `Read` | `node .claude/hooks/company-context-injector.cjs` | Inject matching company context before a file read. |
+| `PreToolUse` | `Bash` | `bash .claude/hooks/dex-safety-guard.sh` | Block unsafe shell commands and redirect disallowed MCP usage. |
+| `PreToolUse` | `Bash` | `node .claude/hooks/ensure-mcp-user-scope.cjs` | Require an explicit scope for `claude mcp add`. |
+| `PreToolUse` | `mcp__.*` | `bash .claude/hooks/dex-safety-guard.sh` | Apply the MCP safety rules before MCP calls. |
+| `SessionEnd` | all | `"$CLAUDE_PROJECT_DIR"/.claude/hooks/session-end.sh "$transcript_path"` | Record the session-end marker and transcript reference. |
+| `SessionEnd` | all | `node "$CLAUDE_PROJECT_DIR"/.claude/hooks/vault-autocommit.cjs` | Safely checkpoint eligible vault changes when no mutation is active. |
 
-**Key difference:** When you close Cursor's window, the process terminates instantly with no opportunity for cleanup code to run. SessionEnd and SessionStart hooks require a proper shutdown sequence that only exists in Claude Code.
+Settings also uses the macOS system ping for `Stop` and permission/elicitation `Notification` events. Those entries do not invoke repository hook files.
 
-**For Cursor users:** Use explicit commands like `/daily-review` before closing, or wait for potential future hook support.
+## Skill-scoped wiring
 
----
+These hooks are declared in skill frontmatter and exist only while that skill runs.
 
-## What Are Hooks?
+| Skill | Event | Matcher | Hook | Purpose |
+|---|---|---|---|---|
+| `/process-meetings` | `PostToolUse` | `Write` | `post-meeting-person-update.cjs` | Update recent interactions on existing person pages after a meeting note is written. |
+| `/daily-plan` | `Stop` | all | `daily-plan-quick-ref.cjs` | Generate `00-Inbox/Daily_Prep/YYYY-MM-DD-quickref.md` from the daily plan. |
+| `/career-coach` | `PostToolUse` | `Write` | `career-evidence-capture.cjs` | Append metric- or outcome-bearing career evidence to the Career Evidence Log. |
 
-**Hooks** are automatic scripts that run when specific events happen in Claude Code. Think of them as "if this happens, then do that" rules.
+`post-meeting-person-update.cjs` and `career-evidence-capture.cjs` are not global `PostToolUse` hooks.
 
-**Simple example:**
-- **Event:** You finish a conversation with Claude
-- **Hook:** Automatically save what you learned to your learnings file
+## Direct and script callers
 
-Instead of asking Claude to remember to do something (which it might forget), hooks make it happen automatically every time.
+These files are not registered as repository-wide lifecycle hooks.
 
-**Technical note:** Hooks are shell scripts (bash, Python, etc.) that execute at lifecycle events, providing deterministic behavior rather than relying on LLM decisions.
+| File | Caller | Purpose |
+|---|---|---|
+| `meeting-cache-builder.cjs` | Work MCP meeting-cache workflow | Build `System/Memory/meeting-cache.json`. Work MCP exposes `rebuild_meeting_cache`; its missing-cache guidance also names the standalone Node command. |
+| `integration-concierge.cjs` | Onboarding, `/getting-started`, and `/dex-level-up` | Scan the vault for integration signals and return ranked recommendations. |
+| `maintenance.cjs` | Manual: `node .claude/hooks/maintenance.cjs` | Report stale inbox files, broken WikiLinks, orphaned person pages, and old agent memory. |
 
-### Complete List of Hook Events
+`paths.cjs` and `adapters/` are shared support code, not lifecycle hooks.
 
-| Hook Event | When It Fires | Can Block? |
-|-----------|---------------|------------|
-| **PreToolUse** | Before Claude calls any tool (Read, Edit, Shell, etc.) | Yes - can prevent tool execution |
-| **PostToolUse** | After a tool call completes | No |
-| **PermissionRequest** | When a permission dialog is shown to user | Yes - can auto-allow or auto-deny |
-| **UserPromptSubmit** | When user submits a prompt, before Claude processes it | No |
-| **Notification** | When Claude Code sends a notification (needs input, etc.) | No |
-| **Stop** | When Claude Code finishes responding | No |
-| **SubagentStop** | When a subagent task completes | No |
-| **PreCompact** | Before Claude Code compacts conversation context | No |
-| **SessionStart** | When Claude Code starts a new or resumed session | No |
-| **SessionEnd** | When Claude Code session ends | No |
-| **Setup** | When invoked with `--init`, `--init-only`, or `--maintenance` | No |
+## Removed observation layer
 
-### Real Examples: Traditional vs Hooks
+The ambient-intelligence observation layer is intentionally removed. There are no observation hook files, settings entries, skill hooks, launchd triggers, or observation state paths in the product tree. Reintroducing it requires a new explicit design and wiring review.
 
-#### Example 1: Automatic Learning Capture
+## Testing
 
-**Traditional workflow (manual):**
-1. You finish your work session
-2. You forget to capture what you learned
-3. Tomorrow you make the same mistakes
-4. Insights are lost forever
+Run the hook contract and context-injector tests with:
 
-**With SessionEnd hook in Claude Code (automatic):**
-1. You exit Claude Code gracefully (via `exit` command or proper shutdown)
-2. SessionEnd hook fires automatically before process terminates
-3. Hook extracts session learnings and saves them
-4. Learnings written to `Session_Learnings/YYYY-MM-DD.md`
-5. Next week, `/week-review` pulls these for synthesis
-
-**Note for Cursor users:** SessionEnd hooks don't work in Cursor because closing the window terminates the process immediately. Instead, use the `/daily-review` command before closing, or use the Stop hook (fires when Claude finishes responding).
-
-#### Example 2: Never Forget to Review Your Day
-
-**Traditional workflow (manual):**
-1. End of day arrives
-2. You're tired and skip your daily review
-3. You forget what you accomplished
-4. Your weekly planning has no data to work with
-
-**With Stop hook (automatic):**
-1. Claude finishes responding to your last request
-2. If it's after 6pm and no review exists today
-3. Hook reminds you: "🌅 End of day - run `/daily-review`?"
-4. You either review now or consciously skip it
-5. Never accidentally forget
-
-#### Example 3: Desktop Notifications When You're Needed
-
-**Traditional workflow (manual):**
-1. You ask Claude to process 20 meeting notes
-2. You switch to Slack to work
-3. Claude finishes but you don't notice for 15 minutes
-4. You check back repeatedly (wasted attention)
-
-**With Notification hook (automatic):**
-1. You ask Claude to process meetings
-2. You switch to other work confidently
-3. Processing completes
-4. Desktop notification: "✅ Dex finished - 20 meetings processed"
-5. You return exactly when needed
-
-#### Example 4: Protected System Files
-
-**Traditional workflow (manual):**
-1. You tell Claude "don't edit 03-Tasks/Tasks.md directly, use the Work MCP"
-2. During a complex workflow, Claude accidentally edits 03-Tasks/Tasks.md
-3. The file format breaks
-4. You have to manually fix it
-
-**With PreToolUse hook (automatic):**
-1. Claude tries to edit `03-Tasks/Tasks.md` directly
-2. PreToolUse hook fires before the edit
-3. Hook blocks the operation: "Use Work MCP tools instead"
-4. Claude sees the message and uses proper tool
-5. Your task system stays consistent
-
-### Hooks vs Skills vs Agents
-
-| Aspect | Hooks | Skills | Agents |
-|--------|-------|--------|--------|
-| **Trigger** | Automatic event-driven shell commands | Manual `/command` invocation | Claude delegates complex tasks |
-| **Visibility** | Silent background operation | Explicit user action | Returns summary |
-| **Environment** | Claude Code only | Cursor + Claude Code | Cursor + Claude Code |
-| **Language** | Bash, Python, any shell script | Markdown instructions | Markdown instructions |
-| **Use case** | Enforce rules (format, validate, block) | User workflows | Multi-step analysis |
-| **Example** | Auto-format code after edits | `/daily-plan` command | `project-health` scan |
-
----
-
-## Configuration
-
-Hooks are configured in `~/.claude/settings.json` or `.claude/settings.json` (project-level).
-
-**Basic structure:**
-
-```json
-{
-  "hooks": {
-    "EventName": [
-      {
-        "matcher": "ToolName",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "your-shell-command-here"
-          }
-        ]
-      }
-    ]
-  }
-}
-```
-
-**Matchers:**
-- Use exact tool name: `"Bash"`, `"Edit"`, `"Write"`
-- Use multiple: `"Edit|Write"`
-- Match all tools: `"*"`
-- Empty string for event hooks without tools (SessionStart, Notification, etc.)
-
-**Hook receives JSON input via stdin:**
-
-```json
-{
-  "tool_use": { "name": "Bash", "id": "..." },
-  "tool_input": { "command": "ls -la", "description": "List files" },
-  "tool_result": { ... }  // Only in PostToolUse
-}
-```
-
-**Exit codes:**
-- `0` - Success, continue
-- `1` - Failure (logged)
-- `2` - Block the operation (PreToolUse only)
-
----
-
-## Practical Examples for Dex
-
-### 1. End-of-Day Reminder (Stop Hook)
-
-Reminds you to run your daily review if it's evening and you haven't done it yet. Uses **Stop** hook which fires when Claude finishes responding (works in both Claude Code and potentially future Cursor support).
-
-```json
-{
-  "hooks": {
-    "Stop": [
-      {
-        "matcher": "",
-        "hooks": [
-          {
-            "type": "command",
-            "command": ".claude/hooks/review-reminder.sh"
-          }
-        ]
-      }
-    ]
-  }
-}
-```
-
-`review-reminder.sh`:
 ```bash
-#!/bin/bash
-# Remind to review if it's evening and no review exists
-hour=$(date +%H)
-today=$(date +%Y-%m-%d)
-
-if [ $hour -ge 17 ] && [ ! -f "00-Inbox/Daily_Reviews/${today}.md" ]; then
-  echo "🌅 End of day - consider running /review to capture today's wins"
-fi
+node .claude/hooks/tests/input-contract.test.cjs
+node .claude/hooks/tests/context-injectors.test.cjs
 ```
 
-**Why Stop instead of SessionEnd?** Stop hooks fire when Claude finishes any response, so they work during active sessions. SessionEnd only fires during graceful shutdown of Claude Code (not when closing Cursor window).
-
-### 2. Desktop Notifications
-
-Get notified when Claude Code needs your input, so you can work elsewhere.
-
-```json
-{
-  "hooks": {
-    "Notification": [
-      {
-        "matcher": "",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "osascript -e 'display notification \"Dex needs your input\" with title \"Dex\"'"
-          }
-        ]
-      }
-    ]
-  }
-}
-```
-
-### 3. Protect Your Core System Files
-
-Prevents accidental edits to critical files that should only be modified through specific tools.
-
-```json
-{
-  "hooks": {
-    "PreToolUse": [
-      {
-        "matcher": "Edit|Write",
-        "hooks": [
-          {
-            "type": "command",
-            "command": ".claude/hooks/protect-files.sh"
-          }
-        ]
-      }
-    ]
-  }
-}
-```
-
-`protect-files.sh`:
-```bash
-#!/bin/bash
-# Block direct edits to files that should use MCP tools
-file_path=$(jq -r '.tool_input.file_path // ""' | cat)
-
-if [[ "$file_path" == *"03-Tasks/Tasks.md"* ]]; then
-  echo "❌ Use Work MCP tools to modify 03-Tasks/Tasks.md (keeps task IDs in sync)"
-  exit 2  # Exit code 2 blocks the operation
-fi
-
-exit 0  # Allow other files
-```
-
-### 4. Session End Logging (SessionEnd Hook - Claude Code Only)
-
-**⚠️ Claude Code Only** - This example only works in Claude Code desktop/CLI with proper shutdown.
-
-Logs session end timestamp when you exit Claude Code gracefully (via `exit` command or proper shutdown sequence). Does NOT work when closing Cursor window because the process terminates immediately.
-
-**Note:** This hook only logs timestamps. Actual learning extraction happens via `/daily-review` command, which intelligently scans the session for patterns, mistakes, and improvements.
-
-```json
-{
-  "hooks": {
-    "SessionEnd": [
-      {
-        "matcher": "",
-        "hooks": [
-          {
-            "type": "command",
-            "command": ".claude/hooks/session-end.sh"
-          }
-        ]
-      }
-    ]
-  }
-}
-```
-
-`session-end.sh`:
-```bash
-#!/bin/bash
-# Log session end time - runs during graceful Claude Code shutdown
-date=$(date +%Y-%m-%d)
-time=$(date +%H:%M)
-mkdir -p "00-Inbox/Session_Learnings"
-echo "Session ended at ${time}" >> "00-Inbox/Session_Learnings/${date}.md"
-```
-
-**For Cursor users:** Use `/daily-review` command manually before closing, or use Stop hooks (Example 1) which fire when Claude finishes responding.
-
-### 5. Morning Greeting (SessionStart Hook - Claude Code Only)
-
-**⚠️ Claude Code Only** - Welcomes you when starting a new Claude Code session. Does not work in Cursor (no SessionStart event).
-
-```json
-{
-  "hooks": {
-    "SessionStart": [
-      {
-        "matcher": "",
-        "hooks": [
-          {
-            "type": "command",
-            "command": ".claude/hooks/morning-greeting.sh"
-          }
-        ]
-      }
-    ]
-  }
-}
-```
-
-`morning-greeting.sh`:
-```bash
-#!/bin/bash
-# Friendly morning greeting with planning reminder
-hour=$(date +%H)
-today=$(date +%Y-%m-%d)
-
-if [ $hour -lt 12 ] && [ ! -f "00-Inbox/Daily_Plans/${today}.md" ]; then
-  echo "☀️ Good morning! Run /daily-plan when you're ready to start your day"
-fi
-```
-
-**For Cursor users:** No direct equivalent - you'll need to remember to run `/daily-plan` manually when starting your day.
-
----
-
-## Skill-Scoped Hooks
-
-Some hooks only fire during a specific skill's execution, not globally. These are defined in a skill's frontmatter and are only active while that skill is running.
-
-**Why this matters:** A hook that updates person pages after writing meeting notes should only fire during `/process-meetings`, not every time a file is written. Skill-scoped hooks prevent unwanted side effects.
-
-**Current skill-scoped hooks:**
-
-### post-meeting-person-update.cjs
-
-- **Trigger:** PostToolUse (Write matcher)
-- **Skill:** `/process-meetings`
-- **What it does:** After a meeting note is written, extracts attendees (with WikiLink and plain-name fallbacks) and updates recent interactions on existing person pages.
-- **Fires:** Only during `/process-meetings`
-
-### career-evidence-capture.cjs
-
-- **Trigger:** PostToolUse (Write matcher)
-- **Skill:** `/career-coach`
-- **What it does:** Detects achievement markers (percentages, metrics, outcomes) in career files and auto-logs to the Career Evidence Log.
-- **Fires:** Only during `/career-coach`
-
-### daily-plan-quick-ref.cjs
-
-- **Trigger:** Stop
-- **Skill:** `/daily-plan`
-- **What it does:** Generates a condensed quickref file (<50 lines) from the daily plan — top focus items, key meetings, time blocks.
-- **Output:** `00-Inbox/Daily_Prep/YYYY-MM-DD-quickref.md`
-
-## Utility Hooks
-
-### maintenance.cjs
-
-- **Trigger:** Manual (`node .claude/hooks/maintenance.cjs`) or ask Dex to "run vault maintenance"
-- **What it does:** Vault health checks — stale inbox files (>30 days), broken WikiLinks, orphaned person pages, agent memory cleanup (>90 days).
-- **Output:** Health report to stdout
-
----
-
-## Security Warning
-
-⚠️ **Hooks run automatically with your current environment credentials.** Always review hook code before adding it. Malicious hooks can exfiltrate data.
-
-See [Security Considerations](https://code.claude.com/docs/en/hooks#security-considerations) in official docs.
-
-## Related
-
-- **Agents** (`.claude/agents/`) - Multi-step autonomous tasks
-- **Scripts** (`.scripts/`) - Standalone automation tools
+Hooks run with the user's current environment credentials. Review hook code and wiring before adding or changing a registration. See the [Claude Code hooks guide](https://code.claude.com/docs/en/hooks-guide) for the platform contract.

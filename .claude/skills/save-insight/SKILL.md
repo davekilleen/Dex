@@ -1,6 +1,6 @@
 ---
 name: save-insight
-description: Capture learnings from completed work for future reference
+description: "Capture a reusable learning from completed work so future similar work is easier. Use when the user says 'save this learning', 'capture this insight', or finishes something tricky. Also use proactively after non-routine work. Not for recording a *decision* and its rationale; use `decision-log`."
 ---
 
 Capture what you learned from completing work. This is the "compound" step—making future similar work easier.

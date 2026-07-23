@@ -1,6 +1,6 @@
 ---
 name: xray
-description: Understand what just happened under the hood - learn AI by seeing it in action
+description: "Explain what just happened under the hood — the context, MCP tools, and hooks behind Dex's last response — as AI education. Use when the user says 'how did you do that', 'what just happened', 'explain the mechanics'. Not for a system health check; use `dex-doctor`."
 ---
 
 # /xray - The AI Education Experience

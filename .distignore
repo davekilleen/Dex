@@ -3,11 +3,17 @@
 
 # Runtime state
 .logs/
+System/.dex/adoption/credential-journals/
+System/.dex/adoption/history-backups/
+
+# Removed unsafe extension (quarantine against accidental reintroduction)
+extensions/tau-mirror/
 
 # CI / GitHub workflows
 .github/
 
 # Dev tooling configs
+.gitattributes
 pyproject.toml
 requirements-dev.txt
 vitest.config.mjs
@@ -25,6 +31,7 @@ core/migrations/tests/
 CONTRIBUTING.md
 DISTRIBUTION_READY.md
 scripts/
+.claude/skills/dex-orient/
 
 # Issue tracking (worktree artifacts)
 .ao-issue.md

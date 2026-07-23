@@ -7,6 +7,110 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.69.0] - Dex picks the right tool more often — and stops confusing similar ones (2026-07-22)
+
+Before, if you said "clean up my inbox" or "prep me for my 2pm," Dex sometimes didn't reach for the right built-in command, because those commands didn't clearly spell out *when* to use them.
+
+**What this fixes for you:**
+
+- **The right command fires when you ask.** We rewrote how 49 of Dex's built-in commands describe themselves, so everyday phrasing — "plan my week," "clean up my inbox," "connect my calendar" — reliably lands on the right one. Several commands that previously wouldn't trigger on their own now do.
+
+- **No more confusing the twins.** Similar commands — planning your day vs reviewing it, or connecting Todoist vs Things vs Trello — now clearly point at each other, so Dex stops picking the wrong one.
+
+- **Your career wins get captured again.** A behind-the-scenes step during career coaching that quietly stopped working — logging your achievements — is fixed.
+
+- **New commands stay good.** Added a built-in quality check so any new command (yours or ours) gets graded on whether it'll actually fire and behave safely before it ships.
+
+## [1.68.0] - Every way Dex changes your vault now goes through one safe door (2026-07-22)
+
+For months, different parts of Dex changed your files in different ways — installing, updating, undoing, fixing itself. This release routes every one of them through the single protected engine built over the last week, and gives you a whole shelf of new role-specific tools you can turn on safely.
+
+**What this changes for you:**
+
+* **One safe door for every change.** Installing Dex, updating it, adding a feature, letting Dex Doctor fix something, or undoing an update — all of it now goes through the same engine that shows you exactly what will change, backs it up first, and can undo it. There are no longer any side paths that quietly edit your files a different way.
+* **New tools, turned on the safe way.** Two dozen role-specific tools that shipped quietly inside Dex — for sales, product, and engineering work (things like account planning, roadmap reviews, and tracking technical debt) — can now be switched on through `/dex-level-up`. Turning one on shows you exactly what it adds and can be undone, and it will never overwrite a tool you've customized yourself.
+* **Turning on a feature can never clobber your own version.** If you've already made your own tool with the same name, Dex sees the difference and refuses rather than replacing your work — it asks you instead.
+* **A smooth bridge from older versions.** If you're updating from an earlier Dex, this release carries you onto the new safe engine cleanly, resuming safely even if a previous update was interrupted.
+
+This is the release where the "updates that can't hurt your files" promise becomes true everywhere, not just in the newest parts. Every piece passed an independent security review before shipping.
+
+---
+
+## [1.67.0] - Three new leadership tools, and a full, honest history of every change Dex makes (2026-07-22)
+
+The safe-update machinery from the last two releases now has a face you can actually use — plus the first three tools built to run through it end to end.
+
+**What this changes for you:**
+
+* **Three new tools for leading, not just organizing.** `/decision-log` captures a real decision — the context, the options you weighed, why you chose, and when to revisit — so it doesn't evaporate into a meeting. `/delegate-check` shows what you've handed to other people, where each one stands, and who needs a nudge. `/weekly-reflection` is a two-minute prompt on what gave you energy and what drained it, separate from your metrics review.
+* **Dex Doctor now shows updates in plain groups.** When there's anything to update, you see it sorted into five simple buckets: new and safe, needs your review, preserved as-is, something to continue or undo, and your receipts. The wording can vary, but the facts underneath — what changed, what's yours, what can be undone — are always exact.
+* **A complete, tamper-evident history of every change.** Dex keeps a running log of everything it installs, adopts, or undoes in your vault. If any past entry is altered or a file goes missing, Dex notices and tells you how to repair it — and an ordinary crash mid-write now heals itself instead of getting stuck.
+* **Dex stops quietly editing your Mac's background settings.** When your vault moves, Dex used to silently rewrite system startup files. Now it just tells you what it noticed and points you to `/dex-doctor` to fix it safely — nothing on your machine changes without you.
+* **Proven against a deliberately broken vault.** Everything above was stress-tested against a vault packed with every nasty edge case at once — corrupted files, broken shortcuts, interrupted updates — and had to come through without changing a single thing it wasn't asked to.
+
+Every part of this release passed an independent security review before shipping.
+
+---
+
+## [1.66.0] - Every change Dex makes can now be undone — and your databases are protected too (2026-07-21)
+
+This morning's release gave Dex full sight of what an update would change. This one adds the hands: Dex can now apply those changes safely, and take any of them back.
+
+**What this changes for you:**
+
+* **Nothing is applied without a double-check.** Before writing anything, Dex shows exactly what will change and gets an approval bound to that exact list. At the moment of writing, it re-checks everything from scratch — if anything on disk moved in between, it refuses and asks again rather than guessing.
+* **Every change comes with an undo.** Each applied change produces a receipt, and Dex can restore things to exactly how they were — byte for byte. If you've edited a file since, Dex refuses to undo over your edit and tells you which file, instead of destroying your work.
+* **A crash can never leave you half-changed.** Pull the plug at any instant during an apply or an undo and you end up either fully done or exactly where you started. This was independently attack-tested at every possible interruption point.
+* **Databases get real protection.** Some tools keep your data in database files that can be silently corrupted by naive copying. Dex now backs these up the one safe way, verifies the result, and — after a security reviewer proved a subtle power-loss risk — restores them in an order that no crash timing can corrupt.
+* **A heads-up if your vault lives in Dropbox, iCloud, or OneDrive.** Sync services can corrupt databases mid-write, so Dex now asks before backing up a database inside one.
+* **Honest housekeeping.** Dex keeps the last three undo points (about the last three changes), warns if they ever grow past ~2GB of disk, and tells you plainly when something is too old to undo.
+
+Every piece of this release passed an independent adversarial security review before merging.
+
+---
+
+## [1.65.0] - Dex now knows exactly what an update would change — before it changes anything (2026-07-21)
+
+Until now, updating Dex meant trusting that the new version and your vault would get along. This release gives Dex full sight before any future update touches anything.
+
+**What this changes for you:**
+
+* **Every release now carries a complete packing list.** Each new version of Dex ships with an exact inventory of what's inside, and the release build fails if that list is ever incomplete — so "what's in this update?" always has a precise answer.
+* **Dex can now read your vault like a map — without touching it.** It can tell what came from Dex, what you've customized (so updates will respect it), what's yours alone, and what it doesn't recognize. Anything unrecognized is reported honestly instead of guessed at.
+* **You'll be able to skip parts of an update safely.** The planning engine guarantees that saying "not this one" to any piece never changes what happens to the rest — each piece is decided completely on its own.
+* **`/dex-doctor` gained two new checks** that report on all of the above, in the same honest working / off / broken / couldn't-check language as everything else.
+
+This completes the "look, don't touch" phase of the update-safety program. Next up: applying updates through this map, with automatic backups and one-command undo.
+
+---
+
+## [1.64.0] - Updates that can't hurt your files, and the last cleanup of the maker's leftovers (2026-07-21)
+
+This release finishes two stories that began yesterday: making Dex updates fundamentally safe, and getting the last of the maker's own files out of your install.
+
+**What this changes for you:**
+
+* **Updates now run through a protected engine.** For vaults on the new layout, updating no longer mixes Dex's changes into your files the old way. Instead: Dex backs everything up, applies the new version, checks its own work, and can undo the whole thing exactly. If your machine crashes mid-update, you end up either fully updated or exactly where you started — never in between.
+* **Your vault can become fully yours.** New machinery (not yet switched on by default) can separate Dex's code from your content entirely, so your notes live in their own private, versioned space that updates physically cannot touch — with a practice run first and one command to change your mind.
+* **A few old files from the maker's setup are being retired the safe way.** If you ever edited them, your copies are preserved exactly; nothing of yours is touched.
+* **Fresh installs land in the right shape automatically**, with plain-English guidance if anything needs a decision.
+
+---
+
+## [1.62.0] - Your integration keys stay private, and Dex never updates itself behind your back (2026-07-20)
+
+This release is a safety floor: a set of fixes that protect your private information and put you back in control of when Dex changes. Before this, a few things could happen quietly in the background that you'd never have chosen — this closes them.
+
+**What this fixes for you:**
+
+* **Your integration keys are kept out of files that get shared.** When you connect a tool like Todoist or Trello, that connection uses a secret key. Before, that key could end up sitting in a file that gets saved into your vault's history — where it could be exposed if you ever shared or backed up your vault. Dex now moves those keys into a private, local-only spot, and if it ever finds a real key left in the open it tells you to rotate (replace) it.
+* **Dex's own safety scan can no longer give a false "all clear."** Dex checks your files for exposed secrets before they're saved. The old check could be fooled by a secret that was written in a slightly unusual way and would wrongly report everything was clean. The new check reads your configuration properly and can't be tricked that way — and if it can't be sure, it says so instead of guessing "safe."
+* **Dex never updates itself without asking.** Before, Dex could quietly pull down and apply changes to itself in the background when you started a session. Now it only *notices* that a newer version exists and mentions it — nothing changes until you decide to update. Your Dex stays exactly as it is until you say otherwise.
+* **Your own files survive an update.** Files and settings that live only on your machine are now preserved when you update or roll back, instead of risking being overwritten.
+* **Task syncing to Atlassian/Jira works reliably again**, and an unsafe bundled add-on was removed from what Dex distributes.
+
+---
+
 ## [1.61.0] - Internal beta build pipeline and immutable release identities (2026-07-14)
 
 Beta-channel build pipeline (internal): CI can now produce a `release-beta` build and every release gets an immutable tag; no user-visible change yet.

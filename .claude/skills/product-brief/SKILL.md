@@ -1,6 +1,6 @@
 ---
 name: product-brief
-description: Extract product ideas through guided questions and generate PRD
+description: "Extract a product idea through guided questions and generate a PRD. Use when the user says 'write a PRD', 'spec this feature', 'turn this idea into a brief'. Not for a non-product initiative like hiring or partnerships (use `initiative-kickoff` once shipped); not for checking existing projects' status (use `project-health`)."
 ---
 
 ## Purpose

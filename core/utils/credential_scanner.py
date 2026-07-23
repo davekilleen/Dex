@@ -1,0 +1,301 @@
+"""Bounded local credential scanner with honest scope completion."""
+
+from __future__ import annotations
+
+import os
+import re
+import stat
+import tarfile
+import time
+import uuid
+import zipfile
+from dataclasses import dataclass
+from pathlib import Path
+
+from core.utils.integration_credentials import inspect_active_mcp_config
+from core.utils.local_git import git_output
+
+MAX_FILE_BYTES = 8 * 1024 * 1024
+MAX_WORKTREE_BYTES = 64 * 1024 * 1024
+MAX_WORKTREE_FILES = 10_000
+MAX_GIT_METADATA_BYTES = 64 * 1024 * 1024
+MAX_GIT_METADATA_FILES = 10_000
+MAX_ARCHIVE_MEMBER = 8 * 1024 * 1024
+MAX_ARCHIVE_TOTAL = 64 * 1024 * 1024
+MAX_ARCHIVE_MEMBERS = 10_000
+MAX_OBJECT_BYTES = 64 * 1024 * 1024
+MAX_OBJECTS = 25_000
+MAX_GIT_OUTPUT = 16 * 1024 * 1024
+SCAN_DEADLINE_SECONDS = 30.0
+
+
+@dataclass(frozen=True)
+class Finding:
+    scope: str
+    opaque_id: str
+
+
+@dataclass(frozen=True)
+class ScanReport:
+    findings: tuple[Finding, ...]
+    inspected_scopes: tuple[str, ...]
+    uninspected_scopes: tuple[str, ...]
+    uninspected_reasons: tuple[str, ...] = ()
+
+
+def _opaque(scope: str, location: bytes) -> Finding:
+    del location
+    return Finding(scope, uuid.uuid4().hex)
+
+
+def _git(root: Path, *args: str, input_data: bytes | None = None) -> bytes:
+    return git_output(
+        root,
+        *args,
+        profile="read-only",
+        input_data=input_data,
+        timeout=SCAN_DEADLINE_SECONDS,
+        max_output=MAX_GIT_OUTPUT,
+    )
+
+
+def _bounded_file(path: Path) -> bytes:
+    metadata = path.lstat()
+    if not stat.S_ISREG(metadata.st_mode) or metadata.st_nlink != 1 or metadata.st_size > MAX_FILE_BYTES:
+        raise OSError("unsafe-or-oversized-file")
+    if metadata.st_mode & 0o444 == 0:
+        raise OSError("unreadable-file")
+    descriptor = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+    try:
+        opened = os.fstat(descriptor)
+        data = os.read(descriptor, MAX_FILE_BYTES + 1)
+        after = os.fstat(descriptor)
+    finally:
+        os.close(descriptor)
+    current = path.lstat()
+    identities = {(item.st_dev, item.st_ino, item.st_size) for item in (metadata, opened, after, current)}
+    if len(identities) != 1 or len(data) > MAX_FILE_BYTES:
+        raise OSError("identity-changing-file")
+    return data
+
+
+def _archive_members(path: Path):
+    total = count = 0
+    if zipfile.is_zipfile(path):
+        with zipfile.ZipFile(path) as archive:
+            infos = archive.infolist()
+            for info in infos:
+                if info.is_dir():
+                    continue
+                mode = info.external_attr >> 16
+                file_type = stat.S_IFMT(mode)
+                if file_type not in {0, stat.S_IFREG}:
+                    raise ValueError("selected-archive-nonregular")
+                count += 1
+                total += info.file_size
+                if count > MAX_ARCHIVE_MEMBERS or info.file_size > MAX_ARCHIVE_MEMBER or total > MAX_ARCHIVE_TOTAL:
+                    raise ValueError("selected-archive-bound")
+                with archive.open(info) as handle:
+                    data = handle.read(MAX_ARCHIVE_MEMBER + 1)
+                if len(data) != info.file_size:
+                    raise ValueError("selected-archive-member-readback")
+                yield str(count).encode(), data
+    elif tarfile.is_tarfile(path):
+        with tarfile.open(path, "r:*") as archive:
+            for info in archive:
+                if not info.isfile():
+                    if info.issym() or info.islnk():
+                        raise ValueError("selected-archive-nonregular")
+                    continue
+                count += 1
+                total += info.size
+                if count > MAX_ARCHIVE_MEMBERS or info.size > MAX_ARCHIVE_MEMBER or total > MAX_ARCHIVE_TOTAL:
+                    raise ValueError("selected-archive-bound")
+                handle = archive.extractfile(info)
+                if handle is None:
+                    raise ValueError("selected-archive-member-unreadable")
+                data = handle.read(MAX_ARCHIVE_MEMBER + 1)
+                if len(data) != info.size:
+                    raise ValueError("selected-archive-member-readback")
+                yield str(count).encode(), data
+    else:
+        raise ValueError("unsupported-selected-archive")
+
+
+def _scan_git_object_scope(
+    root: Path,
+    scope: str,
+    arguments: tuple[str, ...],
+    needles: tuple[bytes, ...],
+    deadline: float,
+    object_matches: dict[str, bool],
+    object_total: list[int],
+) -> list[Finding]:
+    object_lines = _git(root, "rev-list", "--objects", *arguments).splitlines()
+    findings: list[Finding] = []
+    for number, line in enumerate(object_lines, 1):
+        if time.monotonic() > deadline:
+            raise RuntimeError("object-deadline-bound")
+        oid = line.split(b" ", 1)[0].decode("ascii")
+        matched = object_matches.get(oid)
+        if matched is None:
+            if len(object_matches) >= MAX_OBJECTS:
+                raise RuntimeError("object-count-bound")
+            kind = _git(root, "cat-file", "-t", oid).strip()
+            matched = False
+            if kind == b"blob":
+                size = int(_git(root, "cat-file", "-s", oid))
+                object_total[0] += size
+                if size > MAX_FILE_BYTES or object_total[0] > MAX_OBJECT_BYTES:
+                    raise RuntimeError("object-byte-bound")
+                data = _git(root, "cat-file", "blob", oid)
+                if len(data) != size:
+                    raise RuntimeError("object-readback")
+                matched = any(value in data for value in needles)
+            object_matches[oid] = matched
+        if matched:
+            findings.append(_opaque(scope, str(number).encode()))
+    return findings
+
+
+def scan_credentials(root: Path, needles: tuple[bytes, ...], selected_archives: tuple[Path, ...] = ()) -> ScanReport:
+    """Inspect bounded approved subscopes; any skipped input makes its scope uninspected."""
+    if not needles or any(not value for value in needles):
+        raise ValueError("scanner requires non-empty exact credential bytes")
+    deadline = time.monotonic() + SCAN_DEADLINE_SECONDS
+    findings: list[Finding] = []
+    inspected: set[str] = set()
+    unknown: dict[str, str] = {}
+    tracked: set[bytes] = set()
+
+    try:
+        tracked = set(_git(root, "ls-files", "-z").split(b"\0")) - {b""}
+        others = set(_git(root, "ls-files", "--others", "--exclude-standard", "-z").split(b"\0")) - {b""}
+        total = 0
+        for number, relative in enumerate(sorted(tracked | others), 1):
+            if number > MAX_WORKTREE_FILES or time.monotonic() > deadline:
+                raise OSError("worktree-bound")
+            data = _bounded_file(root / os.fsdecode(relative))
+            total += len(data)
+            if total > MAX_WORKTREE_BYTES:
+                raise OSError("worktree-bound")
+            if any(value in data for value in needles):
+                findings.append(_opaque("worktree", str(number).encode()))
+        mcp = inspect_active_mcp_config(root)
+        if not mcp.inspected:
+            raise OSError(mcp.reason or "unsafe-active-config")
+        if mcp.data and any(value in mcp.data for value in needles):
+            findings.append(_opaque("worktree", b"active-config"))
+        inspected.add("worktree")
+    except (OSError, RuntimeError):
+        unknown["worktree"] = "input-unavailable-unsafe-or-bound"
+
+    try:
+        total = 0
+        for number, item in enumerate(sorted(tracked), 1):
+            if number > MAX_WORKTREE_FILES or time.monotonic() > deadline:
+                raise RuntimeError("index-bound")
+            data = _git(root, "show", ":" + item.decode("utf-8"))
+            total += len(data)
+            if len(data) > MAX_FILE_BYTES or total > MAX_WORKTREE_BYTES:
+                raise RuntimeError("index-bound")
+            if any(value in data for value in needles):
+                findings.append(_opaque("index", str(number).encode()))
+        inspected.add("index")
+    except (RuntimeError, UnicodeDecodeError):
+        unknown["index"] = "blob-unavailable-or-bound"
+
+    try:
+        common = Path(_git(root, "rev-parse", "--path-format=absolute", "--git-common-dir").decode().strip())
+        objects = Path(_git(root, "rev-parse", "--path-format=absolute", "--git-path", "objects").decode().strip())
+        if objects != common / "objects" or (objects / "info/alternates").exists() or (common / "shallow").exists():
+            raise RuntimeError("ambiguous-object-topology")
+        config_path = common / "config"
+        config = _bounded_file(config_path)
+        if re.search(rb"(?im)^\s*promisor\s*=\s*true\s*$", config):
+            raise RuntimeError("promisor-object-topology")
+        metadata_files = [config_path]
+        if (common / "packed-refs").exists():
+            metadata_files.append(common / "packed-refs")
+        for metadata_root in (common / "refs", common / "logs"):
+            if metadata_root.exists():
+                for path in metadata_root.rglob("*"):
+                    if path.is_dir() and not path.is_symlink():
+                        continue
+                    metadata_files.append(path)
+        metadata_total = 0
+        for number, path in enumerate(sorted(metadata_files), 1):
+            if number > MAX_GIT_METADATA_FILES or time.monotonic() > deadline:
+                raise OSError("git-metadata-bound")
+            data = _bounded_file(path)
+            metadata_total += len(data)
+            if metadata_total > MAX_GIT_METADATA_BYTES:
+                raise OSError("git-metadata-bound")
+            if any(value in data for value in needles):
+                findings.append(_opaque("git-common-dir", str(number).encode()))
+        inspected.add("git-common-dir")
+
+        replacement_refs = _git(root, "for-each-ref", "--format=%(refname)", "refs/replace").splitlines()
+        if replacement_refs:
+            for scope in ("primary-object-db", "reachable-refs", "stashes", "tags"):
+                unknown[scope] = "replace-ref-topology-unsupported"
+        else:
+            object_scopes = (
+                ("reachable-refs", ("--all", "--reflog")),
+                ("tags", ("--tags",)),
+            )
+            object_matches: dict[str, bool] = {}
+            object_total = [0]
+            for scope, arguments in object_scopes:
+                findings.extend(
+                    _scan_git_object_scope(
+                        root,
+                        scope,
+                        arguments,
+                        needles,
+                        deadline,
+                        object_matches,
+                        object_total,
+                    )
+                )
+                inspected.add(scope)
+            stash = _git(root, "for-each-ref", "--format=%(objectname)", "refs/stash").strip()
+            if stash:
+                findings.extend(
+                    _scan_git_object_scope(
+                        root,
+                        "stashes",
+                        ("refs/stash",),
+                        needles,
+                        deadline,
+                        object_matches,
+                        object_total,
+                    )
+                )
+            inspected.add("stashes")
+            unknown["primary-object-db"] = "unreachable-objects-not-inspected"
+    except (OSError, RuntimeError, UnicodeDecodeError, ValueError):
+        for scope in ("git-common-dir", "primary-object-db", "reachable-refs", "stashes", "tags"):
+            unknown.setdefault(scope, "git-metadata-object-or-bound")
+
+    if selected_archives:
+        try:
+            for archive_number, archive in enumerate(selected_archives, 1):
+                if time.monotonic() > deadline:
+                    raise ValueError("selected-archive-deadline")
+                _bounded_file(archive)
+                for member, data in _archive_members(archive):
+                    if any(value in data for value in needles):
+                        findings.append(_opaque("selected-archives", f"{archive_number}:".encode() + member))
+            inspected.add("selected-archives")
+        except (OSError, RuntimeError, ValueError, tarfile.TarError, zipfile.BadZipFile):
+            unknown["selected-archives"] = "archive-input-member-or-bound"
+    else:
+        unknown["selected-archives"] = "not-selected"
+
+    return ScanReport(
+        tuple(sorted(set(findings), key=lambda finding: (finding.scope, finding.opaque_id))),
+        tuple(sorted(inspected - unknown.keys())),
+        tuple(sorted(unknown)),
+        tuple(f"{scope}:{unknown[scope]}" for scope in sorted(unknown)),
+    )

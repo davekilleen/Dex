@@ -1,6 +1,6 @@
 ---
 name: scrape
-description: Scrape web pages using Scrapling MCP — stealth fetching, anti-bot bypass, CSS selectors. No API key needed.
+description: "Scrape web pages via Scrapling — stealth fetching, anti-bot bypass, CSS selectors, no API key. Use when the user says 'scrape', 'pull data from this URL', 'extract from this site'. Not for meaning-based search of the user's own vault; use `enable-semantic-search`."
 ---
 
 # scrape

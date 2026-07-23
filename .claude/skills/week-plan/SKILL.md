@@ -1,6 +1,6 @@
 ---
 name: week-plan
-description: Set weekly priorities and plan the week ahead with intelligent suggestions based on goals, calendar shape, and task effort.
+description: "Set the week's priorities against goals, calendar shape and task effort. Use when the user says 'plan my week', 'what should I focus on this week', or on Monday. Also use proactively at the first session of a new week. Not for reviewing the week just past; use `week-review`."
 context: fork
 ---
 

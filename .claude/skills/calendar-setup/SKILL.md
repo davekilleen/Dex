@@ -1,6 +1,6 @@
 ---
 name: calendar-setup
-description: Grant Python calendar access for 30x faster calendar queries (30s → <1s)
+description: "Grant Python calendar access for ~30x faster calendar queries. Use when the user says 'connect my calendar', 'calendar is slow', 'set up calendar access'. Not for connecting Google Workspace as a whole; use `google-workspace-setup`."
 ---
 
 # Calendar Setup - Enable Fast Queries

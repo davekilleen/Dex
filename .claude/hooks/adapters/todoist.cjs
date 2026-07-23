@@ -279,10 +279,16 @@ async function getChanges(sinceIso, adapterConfig) {
   return changes;
 }
 
+async function health(adapterConfig) {
+  await fetchPages('/projects', adapterConfig, 'results');
+  return { healthy: true };
+}
+
 module.exports = {
   toExternal,
   toDex,
   create,
   complete,
   getChanges,
+  health,
 };

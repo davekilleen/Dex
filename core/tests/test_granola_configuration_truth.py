@@ -92,17 +92,17 @@ def test_meeting_intel_auth_points_missing_keys_to_granola_setup(tmp_path: Path)
 
 def test_install_and_setup_instructions_detect_the_app_without_claiming_connection() -> None:
     install_text = (REPO_ROOT / "install.sh").read_text(encoding="utf-8")
-    setup_text = (REPO_ROOT / ".claude" / "skills" / "setup" / "SKILL.md").read_text(encoding="utf-8")
-    update_text = (REPO_ROOT / ".claude" / "skills" / "dex-update" / "SKILL.md").read_text(encoding="utf-8")
+    setup_text = (
+        REPO_ROOT / ".claude" / "skills" / "setup" / "SKILL.md"
+    ).read_text(encoding="utf-8")
 
-    for text in (install_text, setup_text, update_text):
+    for text in (install_text, setup_text):
         assert "/Applications/Granola.app" in text
         assert "Granola app detected" in text
         assert "/granola-setup" in text
+        assert "If the app is present, the API key is configured" not in text
 
     assert "needs a Granola Business API key" in install_text
-    assert "If the API key is configured and meeting automation is not yet installed" in update_text
-    assert "If the app is present, the API key is configured" not in update_text
 
 
 def test_onboarding_granola_detection_checks_the_application(monkeypatch, tmp_path: Path) -> None:
@@ -171,7 +171,8 @@ def test_no_live_code_or_instructions_use_legacy_granola_local_auth() -> None:
         Path(".claude/skills/granola-setup/SKILL.md"),
         Path(".scripts/meeting-intel/sync-from-granola.cjs"),
         Path("06-Resources/Dex_System/Dex_Technical_Guide.md"),
-        Path("System/Session_Learnings/2026-01-30.md"),
+        # Byte-for-byte bridge copy of the guide above (ratified docs relocation).
+        Path("docs/Dex_System/Dex_Technical_Guide.md"),
     }
     excluded_parts = {".git", "node_modules", "plugins", "ritual_intelligence", "tests"}
     markers = ("cache" + "-v", "supabase" + ".json")

@@ -78,9 +78,19 @@ RUNNER_FALLBACK_RELATIVES = (
     Path("core/__init__.py"),
     Path("core/paths.py"),
     Path("core/utils/__init__.py"),
+    Path("core/utils/release_channel.py"),
     Path("core/utils/smoke.py"),
     Path("core/utils/trust_registry.py"),
     Path("core/utils/validators.py"),
+)
+CONTENT_VERIFIED_SENSITIVE_DEPENDENCIES = frozenset(
+    {
+        Path("core/utils/credential_migration_exceptions.json"),
+        Path("core/utils/credential_remediation.py"),
+        Path("core/utils/credential_scanner.py"),
+        Path("core/utils/credential_workflow.py"),
+        Path("core/utils/integration_credentials.py"),
+    }
 )
 PARA_PATH_NAMES = (
     "INBOX_DIR",
@@ -172,6 +182,7 @@ class SmokeRun:
 
 
 JOURNEYS = (
+    JourneyDefinition("topology", 5.0),
     JourneyDefinition("configs", 5.0),
     JourneyDefinition("task_lifecycle", 8.0),
     JourneyDefinition("mcp_startup", MCP_STARTUP_JOURNEY_TIMEOUT_SECONDS),
@@ -219,12 +230,21 @@ def _is_sensitive_path(path: Path) -> bool:
     )
 
 
+def _is_runner_runtime_path(path: str | Path) -> bool:
+    relative = Path(path).as_posix()
+    return not (
+        relative.startswith("core/tests/")
+        or relative.startswith("core/mcp/tests/")
+        or relative.startswith("core/migrations/tests/")
+    )
+
+
 def _ensure_safe_source(path: Path, source_root: Path) -> None:
     try:
         relative = path.relative_to(source_root)
     except ValueError as exc:
         raise JourneySafetySkip(f"refused to read path outside the vault: {path}") from exc
-    if _is_sensitive_path(relative):
+    if _is_sensitive_path(relative) and relative not in CONTENT_VERIFIED_SENSITIVE_DEPENDENCIES:
         raise JourneySafetySkip(f"{relative} is sensitive and was only checked for existence")
     current = source_root
     for part in relative.parts:
@@ -568,6 +588,80 @@ def _prepare_hooks_vault(source: Path, vault: Path) -> None:
         shutil.copytree(hooks, vault / ".claude" / "hooks", symlinks=True)
 
 
+def _topology_json(path: Path) -> dict[str, Any] | None:
+    try:
+        if path.is_symlink() or not path.is_file():
+            return None
+        value = json.loads(path.read_text(encoding="utf-8"))
+        return value if isinstance(value, dict) else None
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        return None
+
+
+def _topology_state(vault: Path) -> str:
+    topology = _topology_json(vault / "System/.dex/topology.json")
+    vault_marker = _topology_json(vault / ".git/dex-vault-v2")
+    brain_marker = _topology_json(vault / ".dex/brain.git/dex-brain-v2")
+    if topology and topology.get("topology") == "brain-vault-split":
+        installed = topology.get("installedRelease")
+        environment = topology.get("environment")
+        wired_vault = environment.get("DEX_VAULT") if isinstance(environment, dict) else None
+        try:
+            vault_wiring_matches = (
+                isinstance(wired_vault, str) and Path(wired_vault).resolve() == vault.resolve()
+            )
+        except (OSError, RuntimeError):
+            vault_wiring_matches = False
+        if (
+            topology.get("vaultGitDir") == ".git"
+            and topology.get("brainGitDir") == ".dex/brain.git"
+            and vault_wiring_matches
+            and (vault / ".git").is_dir()
+            and not (vault / ".git").is_symlink()
+            and (vault / ".dex/brain.git").is_dir()
+            and not (vault / ".dex/brain.git").is_symlink()
+            and vault_marker
+            and vault_marker.get("role") == "vault"
+            and brain_marker
+            and brain_marker.get("role") == "brain"
+            and isinstance(installed, str)
+            and installed
+            and brain_marker.get("installed") == installed
+        ):
+            return "split"
+        return "invalid"
+    return "combined" if (vault / ".git").exists() else "manual"
+
+
+def _prepare_topology_vault(source: Path, vault: Path) -> None:
+    state = _topology_state(source)
+    if state == "split":
+        topology = _topology_json(source / "System/.dex/topology.json")
+        vault_marker = _topology_json(source / ".git/dex-vault-v2")
+        brain_marker = _topology_json(source / ".dex/brain.git/dex-brain-v2")
+        assert topology is not None and vault_marker is not None and brain_marker is not None
+        topology = {
+            **topology,
+            "environment": {"DEX_VAULT": str(vault.resolve())},
+        }
+        for relative, value in (
+            ("System/.dex/topology.json", topology),
+            (".git/dex-vault-v2", vault_marker),
+            (".dex/brain.git/dex-brain-v2", brain_marker),
+        ):
+            destination = vault / relative
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            destination.write_text(json.dumps(value) + "\n", encoding="utf-8")
+    elif state == "invalid":
+        topology = _topology_json(source / "System/.dex/topology.json")
+        if topology is not None:
+            destination = vault / "System/.dex/topology.json"
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            destination.write_text(json.dumps(topology) + "\n", encoding="utf-8")
+    elif state == "combined":
+        (vault / ".git").mkdir()
+
+
 def _prepare_vault(
     journey_id: str,
     source: Path,
@@ -578,7 +672,9 @@ def _prepare_vault(
 ) -> None:
     vault.mkdir(parents=True)
     try:
-        if journey_id == "configs":
+        if journey_id == "topology":
+            _prepare_topology_vault(source, vault)
+        elif journey_id == "configs":
             _copy_configs(source, vault)
         elif journey_id == "task_lifecycle":
             _prepare_task_vault(source, repo_root, vault, release_root, release_ref)
@@ -733,7 +829,12 @@ def _tracked_runner_relatives(source_root: Path) -> tuple[Path, ...]:
     tracked = _git_tree_paths(source_root, "HEAD")
     if tracked is None:
         return relatives
-    return tuple(Path(relative) for relative in sorted(tracked)) or relatives
+    runtime_paths = tuple(
+        Path(relative)
+        for relative in sorted(tracked)
+        if _is_runner_runtime_path(relative)
+    )
+    return runtime_paths or relatives
 
 
 def _open_runner_source(source_root: Path, relative: Path) -> tuple[int, os.stat_result]:
@@ -885,12 +986,17 @@ def _materialize_release_core(
         with tarfile.open(fileobj=io.BytesIO(result.stdout), mode="r:") as archive:
             for member in archive.getmembers():
                 parts = Path(member.name).parts
+                if not _is_runner_runtime_path(member.name):
+                    continue
                 if (
                     not parts
                     or parts[0] != "core"
                     or Path(member.name).is_absolute()
                     or any(part in {"", ".", ".."} for part in parts)
-                    or _is_sensitive_path(Path(member.name))
+                    or (
+                        _is_sensitive_path(Path(member.name))
+                        and Path(member.name) not in CONTENT_VERIFIED_SENSITIVE_DEPENDENCIES
+                    )
                 ):
                     raise JourneySafetySkip(f"release archive contains unsafe path {member.name!r}")
                 target = destination.joinpath(*parts)
@@ -1023,6 +1129,8 @@ def _clean_environment(
         "PYTHONUNBUFFERED": "1",
         "TMPDIR": str(temporary_root),
         "VAULT_PATH": str(vault),
+        "VAULT_ROOT": str(vault),
+        "DEX_VAULT": str(vault),
         "DEX_SMOKE_RUN_TOKEN": run_token,
         "DEX_SMOKE_SERVER_BOOTSTRAP": str(guard / "server_bootstrap.py"),
         **({"DEX_SMOKE_NODE": node} if (node := _trusted_node()) is not None else {}),
@@ -1888,6 +1996,8 @@ def _release_execution_reason(
     head_paths = _git_tree_paths(repo_root, "HEAD")
     if reference_paths is None or head_paths is None:
         return f"Dex-owned core could not be compared with {reference}"
+    reference_paths = frozenset(path for path in reference_paths if _is_runner_runtime_path(path))
+    head_paths = frozenset(path for path in head_paths if _is_runner_runtime_path(path))
     if reference_paths != head_paths:
         return f"Dex-owned core differs from {reference}"
     for relative in sorted(reference_paths):
@@ -2373,7 +2483,38 @@ def _journey_hooks(vault: Path, _repo_root: Path) -> dict[str, str]:
     return {"verdict": verdict, "detail": f"structurally validated {len(commands)} hook commands"}
 
 
+def _journey_topology(vault: Path, _repo_root: Path) -> dict[str, str]:
+    for variable in ("VAULT_PATH", "VAULT_ROOT", "DEX_VAULT"):
+        configured = os.environ.get(variable)
+        if configured is None or Path(configured).resolve() != vault.resolve():
+            return {
+                "verdict": "BROKEN",
+                "detail": f"{variable} is not wired to the isolated vault",
+            }
+    state = _topology_state(vault)
+    if state == "split":
+        return {
+            "verdict": "OK",
+            "detail": "split topology markers and vault environment wiring agree",
+        }
+    if state == "combined":
+        return {
+            "verdict": "OK",
+            "detail": "combined topology is intact and remains on the merge updater path",
+        }
+    if state == "manual":
+        return {
+            "verdict": "OFF",
+            "detail": "ZIP/manual topology has no Git layout to validate",
+        }
+    return {
+        "verdict": "BROKEN",
+        "detail": "split topology markers disagree; use updater or migrator recovery",
+    }
+
+
 INTERNAL_JOURNEYS: dict[str, Callable[[Path, Path], dict[str, str]]] = {
+    "topology": _journey_topology,
     "configs": _journey_configs,
     "task_lifecycle": _journey_task_lifecycle,
     "mcp_startup": _journey_mcp_startup,

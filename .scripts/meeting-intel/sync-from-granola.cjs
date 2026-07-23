@@ -985,7 +985,7 @@ async function runEntityGardener(profile) {
       || profile.meeting_processing?.mode !== 'automatic') return;
   try {
     const result = await gardenEntities({ generate: generateContent, limit: 5, log });
-    log(`Gardener: ${result.gardened.length} maintained, ${result.locked} locked, ${result.errors.length} errors`);
+    log(`Gardener: ${result.gardened.length} maintained, ${result.preserved} user-owned summaries, ${result.errors.length} errors`);
   } catch (error) {
     log(`Entity gardener skipped after error: ${error.message}`);
   }

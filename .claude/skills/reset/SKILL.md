@@ -1,6 +1,6 @@
 ---
 name: reset
-description: Restructure Dex system based on new role or preferences
+description: "Restructure an existing Dex vault for a new role or changed preferences, without losing data. Use when the user says 'I changed jobs', 'restructure my Dex', 'my role is different now'. Not for first-time setup; use `setup`. Not for just toggling one feature; use `manage-capabilities`."
 disable-model-invocation: true
 ---
 

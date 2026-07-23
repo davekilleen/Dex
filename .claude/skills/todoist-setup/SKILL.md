@@ -1,10 +1,10 @@
 ---
 name: todoist-setup
-description: Connect Todoist so Dex can read and update your Todoist tasks on request
+description: "Connect Todoist so Dex reads and updates your Todoist tasks two ways. Use when the user says 'I use Todoist', 'sync Todoist', or pastes a todoist.com link. Not for Things 3 (`things-setup`) or Trello (`trello-setup`); not for Jira tickets (`atlassian-setup`)."
 integration:
   id: todoist
   name: Todoist
-  mcp_server: todoist-mcp
+  mcp_server: null
   auth: api_key
   enhances:
     - skill: daily-plan
@@ -36,7 +36,7 @@ Once connected, you can ask Dex to:
 ## Privacy
 
 - Dex reads and writes your Todoist tasks only when you ask it to
-- Your API key stays local on your machine in `System/integrations/config.yaml` (gitignored)
+- Your API key stays local in the ignored vault-root `.env` file. Tracked YAML stores only its variable name.
 - Dex never shares your Todoist data with third parties
 
 ## When to Run
@@ -53,7 +53,9 @@ Once connected, you can ask Dex to:
 ### Step 1: Check if Already Connected
 
 1. Check `System/integrations/config.yaml` for a `todoist:` section with `enabled: true`
-2. If enabled, test the connection by listing projects with the stored API key
+   through `core.utils.strict_yaml.load_yaml_path`; refuse duplicate keys, aliases, anchors,
+   or merge mappings before reading or writing any setup field.
+2. If enabled, test authentication with the read-only health check
 3. If healthy, skip to **Reconfiguration** section below
 4. If not configured or unhealthy, continue to Step 2
 
@@ -76,7 +78,7 @@ right from our conversations.
 
 Wait for confirmation.
 
-### Step 3: Get the API Key
+### Step 3: Enter the API Key Locally
 
 Guide the user:
 
@@ -87,57 +89,44 @@ To get your Todoist API token:
 2. Go to **Settings** → **Integrations** → **Developer**
 3. Copy the **API token** shown there
 
-Paste it here when you have it.
+Do not paste the token into this conversation. Open the ignored vault-root `.env` in your
+local editor and replace the placeholder in this line directly:
+
+`TODOIST_API_KEY=<paste token locally here>`
+
+Save the file with mode `0600`, then reply only `saved`. Dex must never echo, read aloud,
+log, or include the value in a command, argv, or process environment.
 ```
 
-Wait for the user to provide their API key. Validate it's a non-empty string (Todoist API tokens are typically 40-character hex strings).
+Wait only for the non-secret `saved` confirmation. Never ask the user to provide or validate
+the token in chat.
 
-### Step 4: Add MCP Server to Config
+### Step 4: Store the Local Credential
 
-Check the user's MCP configuration. If `todoist-mcp` is not listed:
+Confirm locally that `.env` defines `TODOIST_API_KEY` without printing or returning its value.
+Use `python3 -m core.utils.credential_workflow scan` for the redacted authority finding; repair
+permissions/ownership before continuing if it reports an invalid `.env` authority.
+Preserve unrelated lines and never place the value in `.mcp.json`, tracked YAML, a command,
+argv, logs, transcript, or process environment. Existing `.mcp.json` is scan/report-only and
+must remain byte-identical.
 
-1. Explain:
-
-```
-I'll add the Todoist connector to your configuration.
-This lets Dex talk to Todoist using your API token.
-```
-
-2. Add to the user's `.mcp.json` (use the `/dex-add-mcp` skill or manual edit):
-
-```json
-{
-  "todoist-mcp": {
-    "command": "npx",
-    "args": ["-y", "todoist-mcp-server"],
-    "env": {
-      "TODOIST_API_KEY": "<user's API key>"
-    }
-  }
-}
-```
-
-3. Tell the user the MCP server needs to restart for changes to take effect.
+Before health, update only the non-secret tracked Todoist fields to `enabled: true` and
+`api_key_env_var: TODOIST_API_KEY`; do not add an `api_key` field.
 
 ### Step 5: Test the Connection
 
-Use the API key to list projects as a connectivity test. Run a curl or use the MCP server:
+Use only Dex's sanitized Python-to-adapter-stdin read-only health path. It resolves `.env`
+internally and performs Todoist `GET /projects`; it does not put the token in the command or
+environment:
 
 ```bash
-curl -s -H "Authorization: Bearer $API_KEY" https://api.todoist.com/api/v1/projects
+python3 -c 'from core.integrations.task_sync import check_service_health; print(check_service_health("todoist"))'
 ```
 
-**If projects load successfully:**
+**If the health result is `{"healthy": True}`:**
 
 ```
-Connected! I can see your Todoist projects:
-
-1. Inbox
-2. Work
-3. Personal
-...
-
-Looking good!
+Connected! Todoist authentication succeeded through the read-only health check.
 ```
 
 **If it fails:**
@@ -161,11 +150,8 @@ Ask the user which Todoist project should receive Dex tasks:
 ```
 **Which Todoist project should Dex tasks go into?**
 
-Your projects:
-1. Inbox
-2. Work
-3. Personal
-...
+The health check does not enumerate projects. Open Todoist locally and enter the exact project
+name you want Dex to use without pasting any credential.
 
 You can pick one default project, or map each Dex pillar to a different project.
 
@@ -192,9 +178,8 @@ user asks Dex to file a task in the matching Todoist project.
 todoist:
   enabled: true
   configured_at: YYYY-MM-DD
-  mcp_server: todoist-mcp
   auth_type: api_key
-  api_key: <user's API key>
+  api_key_env_var: TODOIST_API_KEY
   project: <default project name>
   pillar_map:
     [pillar_id]: <Todoist project name>   # one entry per pillar, from pillars.yaml
@@ -237,10 +222,9 @@ Dex only reads Todoist when you ask it to — there is no background sync. Ask
 directly ("what's in Todoist?") and if that errors, re-run `/todoist-setup` to
 check the connection.
 
-### "Todoist MCP not found"
+### "Todoist credential not found"
 
-The connection runs through the Todoist MCP server. Re-run `/todoist-setup` to
-detect and fix configuration.
+Re-run `/todoist-setup` to restore the vault-root `.env` value and tracked reference.
 
 ---
 
@@ -249,7 +233,7 @@ detect and fix configuration.
 If the user runs `/todoist-setup` when already configured:
 
 1. Check current config from `System/integrations/config.yaml`
-2. Test the existing API key with a project list call
+2. Test the existing API key with the read-only authentication health check
 3. Show the current pillar-to-project mapping
 4. Offer options:
    - Update project mapping

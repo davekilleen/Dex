@@ -11,6 +11,11 @@ echo ""
 ERRORS=0
 WARNINGS=0
 
+# Tau removal is a release invariant, not merely a source cleanup.
+if ! python3 scripts/check-tau-removal.py --source-root "$PWD"; then
+    ERRORS=$((ERRORS + 1))
+fi
+
 # Check 1: Verify .mcp.json is not tracked
 echo "✓ Checking .mcp.json is gitignored..."
 if git ls-files --error-unmatch .mcp.json 2>/dev/null; then
@@ -344,7 +349,9 @@ if git clone --local --no-hardlinks --quiet "$PWD" "$RELEASE_CHECK_REPO" \
     && git -C "$RELEASE_CHECK_REPO" config user.name "Dex Distribution Check" \
     && git -C "$RELEASE_CHECK_REPO" config user.email "distribution@example.com" \
     && git -C "$RELEASE_CHECK_REPO" checkout -B main HEAD --quiet \
-    && bash "$RELEASE_CHECK_REPO/scripts/build-release.sh" >/dev/null; then
+    && bash "$RELEASE_CHECK_REPO/scripts/build-release.sh" >/dev/null \
+    && git -C "$RELEASE_CHECK_REPO" checkout release --quiet \
+    && python3 scripts/check-catalog-coverage.py --release-root "$RELEASE_CHECK_REPO" >/dev/null; then
     RELEASE_TEST_FILES=$(git -C "$RELEASE_CHECK_REPO" ls-tree -r --name-only release -- \
         core/tests core/mcp/tests core/migrations/tests .claude/hooks/tests)
     if [ -n "$RELEASE_TEST_FILES" ]; then

@@ -49,12 +49,6 @@ done
 
 # --- Validate state ---
 
-DISTIGNORE="$REPO_ROOT/.distignore"
-if [ ! -f "$DISTIGNORE" ]; then
-    echo "Error: .distignore not found at $DISTIGNORE" >&2
-    exit 1
-fi
-
 # Ensure we're working from a clean state
 if [ -n "$(git status --porcelain)" ]; then
     echo "Error: working tree is dirty. Commit or stash changes first." >&2
@@ -71,6 +65,22 @@ if ! git show-ref --verify --quiet "refs/heads/$SOURCE_BRANCH"; then
     echo "Error: branch '$SOURCE_BRANCH' not found." >&2
     exit 1
 fi
+
+# Validate the selected source tree, not whichever branch happens to be checked
+# out. This happens before creating/resetting any release ref.
+python3 scripts/check-tau-removal.py --repo-root "$REPO_ROOT" --git-source "$SOURCE_BRANCH"
+
+DISTIGNORE=$(mktemp)
+TAU_CHECKER=$(mktemp)
+CATALOG_GENERATOR=$(mktemp)
+CATALOG_COVERAGE_CHECKER=$(mktemp)
+MATCHES_FILE=$(mktemp)
+trap 'rm -f "$DISTIGNORE" "$TAU_CHECKER" "$CATALOG_GENERATOR" "$CATALOG_COVERAGE_CHECKER" "$MATCHES_FILE"' EXIT
+if ! git show "$SOURCE_BRANCH:.distignore" > "$DISTIGNORE"; then
+    echo "Error: .distignore not found in selected source '$SOURCE_BRANCH'." >&2
+    exit 1
+fi
+cp scripts/check-tau-removal.py "$TAU_CHECKER"
 
 # --- Parse .distignore ---
 
@@ -98,7 +108,7 @@ if [ "$DRY_RUN" = true ]; then
         # Keep path boundaries intact for spaces and other special characters.
         while IFS= read -r -d '' match; do
             printf '  %s\n' "$match"
-        done < <(git ls-files -z -- "$pattern")
+        done < <(git ls-tree -r -z --name-only "$SOURCE_BRANCH" -- "$pattern")
     done
     echo ""
     echo "Source: $SOURCE_BRANCH ($(git rev-parse --short $SOURCE_BRANCH))"
@@ -109,20 +119,50 @@ fi
 # --- Build release branch ---
 
 SOURCE_SHA=$(git rev-parse "$SOURCE_BRANCH")
-PKG_VERSION=$(grep '"version"' package.json | head -1 | sed 's/.*"version": *"\([^"]*\)".*/\1/')
+git show "$SOURCE_SHA:scripts/generate-release-catalog.py" > "$CATALOG_GENERATOR"
+git show "$SOURCE_SHA:scripts/check-catalog-coverage.py" > "$CATALOG_COVERAGE_CHECKER"
+SOURCE_PACKAGE_SIZE=$(git cat-file -s "$SOURCE_SHA:package.json" 2>/dev/null || true)
+if ! [[ "$SOURCE_PACKAGE_SIZE" =~ ^[0-9]+$ ]] || [ "$SOURCE_PACKAGE_SIZE" -gt 1048576 ]; then
+    echo "Error: selected source package.json is missing or exceeds 1 MiB." >&2
+    exit 1
+fi
+if ! PKG_VERSION=$(git show "$SOURCE_SHA:package.json" | python3 -c '
+import json, re, sys
+def _unique(pairs):
+    result = {}
+    for key, item in pairs:
+        if key in result:
+            raise ValueError(f"duplicate key: {key}")
+        result[key] = item
+    return result
+
+raw = sys.stdin.buffer.read(1048577)
+if len(raw) > 1048576:
+    raise SystemExit("selected package.json exceeds 1 MiB")
+try:
+    value = json.loads(raw.decode("utf-8"), object_pairs_hook=lambda pairs: _unique(pairs))
+except Exception as error:
+    raise SystemExit(f"selected package.json is invalid: {error}")
+version = value.get("version") if isinstance(value, dict) else None
+if not isinstance(version, str) or re.fullmatch(r"(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)", version) is None:
+    raise SystemExit("selected package.json version is not canonical semver")
+print(version)
+' 2>&1); then
+    echo "Error: $PKG_VERSION" >&2
+    exit 1
+fi
 
 echo "Building release branch..."
 echo "  Source: $SOURCE_BRANCH ($SOURCE_SHA)"
 echo "  Version: v$PKG_VERSION"
 echo ""
 
-# Create or reset release branch to match the selected source
-git checkout -B "$RELEASE_BRANCH" "$SOURCE_BRANCH" --quiet
+# Create or reset release branch to the immutable source identity validated
+# above, even if the source branch moves while this build is running.
+git checkout -B "$RELEASE_BRANCH" "$SOURCE_SHA" --quiet
 
 # Remove dev-only files
 REMOVED=0
-MATCHES_FILE=$(mktemp)
-trap 'rm -f "$MATCHES_FILE"' EXIT
 for pattern in "${PATTERNS[@]}"; do
     git ls-files -z -- "$pattern" > "$MATCHES_FILE"
     if [ -s "$MATCHES_FILE" ]; then
@@ -146,16 +186,39 @@ node -e "
 "
 git add -- package.json
 
-# Generate the installed-files manifest from the exact release index. Stage an
-# empty manifest first so the manifest truthfully includes its own shipped path;
-# replacing its contents does not change the set of paths in the tree.
+# Generate SR1's closed legacy declaration from the exact distribution version.
+# Later catalog-bearing releases replace it; legacy-v1 never needs a catalog.
+PROFILE="System/.release-evidence-profile.json"
+python3 core/utils/update_verifier.py \
+    --write-legacy-profile "$PROFILE" \
+    --release-version "$PKG_VERSION"
+git add -- "$PROFILE"
+
+# Generate the installed-files manifest from the exact release index. Stage the
+# generated manifest and catalog paths first so the manifest truthfully includes
+# both; replacing their contents does not change the set of shipped paths.
 MANIFEST="System/.installed-files.manifest"
+CATALOG="System/.release-catalog.json"
 mkdir -p "$(dirname "$MANIFEST")"
 : > "$MANIFEST"
-git add -- "$MANIFEST"
+: > "$CATALOG"
+git add -- "$MANIFEST" "$CATALOG"
 MANIFEST_TREE=$(git write-tree)
-python3 core/utils/manifest.py "$MANIFEST_TREE" --repo-root "$REPO_ROOT" --output "$MANIFEST"
-git add -- "$MANIFEST"
+python3 core/utils/manifest.py "$MANIFEST_TREE" --repo-root "$REPO_ROOT" --output "$MANIFEST" \
+    --require-lifecycle-contracts
+
+# B1 supports stable and beta catalog identities. Custom target names used by
+# local verification retain stable catalog semantics.
+CATALOG_CHANNEL="release"
+if [ "$RELEASE_BRANCH" = "release-beta" ]; then
+    CATALOG_CHANNEL="release-beta"
+fi
+python3 "$CATALOG_GENERATOR" \
+    --release-root "$REPO_ROOT" \
+    --channel "$CATALOG_CHANNEL" \
+    --source-commit "$SOURCE_SHA"
+python3 "$CATALOG_COVERAGE_CHECKER" --release-root "$REPO_ROOT"
+git add -- "$MANIFEST" "$CATALOG" packages/dex-contracts/dist/release-catalog-v1.schema.json
 
 if git diff --cached --quiet; then
     echo "Nothing to remove — release branch matches main."
@@ -163,7 +226,7 @@ if git diff --cached --quiet; then
     exit 0
 fi
 
-# Commit the clean state and its installed-files manifest
+# Commit the clean state, installed-files manifest, and release catalog.
 git commit -m "$(cat <<EOF
 release: v$PKG_VERSION
 
@@ -171,6 +234,10 @@ Clean distribution from $SOURCE_BRANCH (${SOURCE_SHA:0:7}).
 Dev-only files removed per .distignore ($REMOVED files stripped).
 EOF
 )" --quiet
+
+# Verify the exact committed release tree and generated legacy manifest before
+# creating its immutable tag.
+python3 "$TAU_CHECKER" --repo-root "$REPO_ROOT" --git-tree "$RELEASE_BRANCH"
 
 RELEASE_SHA=$(git rev-parse --short HEAD)
 # Immutable rollback identity: every distribution commit gets an annotated tag

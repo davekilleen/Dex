@@ -1,0 +1,539 @@
+"""The transaction engine: plan → authorize → snapshot → apply → verify → commit.
+
+One Transaction is the ONLY sanctioned way for an engine (updater, migrator,
+repair) to mutate a vault. Its guarantees, each fault-injection tested:
+
+1. Every plan entry is authorized by the ownership contract
+   (``portable_contract.update_write_verdict``) BEFORE any write — one
+   disallowed entry aborts the whole transaction (all-or-nothing gate).
+2. Nothing is mutated before its snapshot is journaled and fsynced.
+3. Applies are atomic per file (temp + rename in the target's directory).
+4. ``rollback()`` restores byte-identical state, deleting files the
+   transaction created.
+5. One mutator per vault (the shared owner lock).
+6. Every state transition is journaled BEFORE it takes effect; after a crash
+   ``Transaction.resume`` completes or rolls back from the journal alone —
+   never a half-state.
+
+Test seams: setting ``DEX_TX_TEST_STOP_AFTER`` to one of
+``after-begin | after-snapshot | mid-apply:<index> | after-apply |
+after-verify | before-finalize | after-commit-record`` makes the engine
+``os._exit(137)`` at that exact point, so tests can assert recovery from every
+crash window.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import os
+import re
+import shutil
+import time
+import uuid
+from collections.abc import Callable
+from dataclasses import dataclass
+from pathlib import Path
+
+from core import portable_contract
+from core.path_safety import unsafe_existing_parent
+from core.transaction.journal import Journal, JournalCorruptError, JournalSchemaError
+from core.transaction.lock import acquire_owned_lock
+from core.transaction.snapshot import Snapshot
+
+TX_ROOT_RELATIVE = Path("System") / ".dex" / "tx"
+
+
+class TransactionError(RuntimeError):
+    """The transaction could not proceed safely."""
+
+
+class PlanRejected(TransactionError):
+    """At least one plan entry is not authorized by the ownership contract."""
+
+
+@dataclass(frozen=True)
+class PlanEntry:
+    """One intended mutation at vault-relative ``relative``.
+
+    ``content=None`` is an authorized deletion. Deletions use the same
+    snapshot/apply/verify/rollback lifecycle as replacements, so an updater
+    can prune a retired brain file without opening a second mutation path.
+    """
+
+    relative: str
+    content: bytes | None
+    mode: int = 0o644
+    expected_current_sha256: str | None = None
+
+    def sha256(self) -> str | None:
+        return hashlib.sha256(self.content).hexdigest() if self.content is not None else None
+
+    @property
+    def operation(self) -> str:
+        return "delete" if self.content is None else "write"
+
+
+def _stop_seam(seam: str) -> None:
+    if os.environ.get("DEX_TX_TEST_STOP_AFTER") == seam:
+        os._exit(137)
+
+
+def _unsafe_infrastructure_directory(vault_root: Path, directory: Path) -> str | None:
+    try:
+        relative = directory.relative_to(vault_root)
+    except ValueError:
+        return f"path resolves outside the vault: {directory}"
+    unsafe_parent = unsafe_existing_parent(
+        vault_root,
+        (relative / ".path-safety-check").as_posix(),
+    )
+    if unsafe_parent is None:
+        return None
+    return f"{relative.as_posix()}: {unsafe_parent}"
+
+
+class Transaction:
+    """A single crash-safe mutation of one vault."""
+
+    def __init__(self, vault_root: Path, tx_id: str, *, _resumed: bool = False) -> None:
+        self.vault_root = Path(vault_root).resolve()
+        self.tx_id = tx_id
+        self.tx_dir = self.vault_root / TX_ROOT_RELATIVE / tx_id
+        self.journal = Journal(self.tx_dir / "journal.jsonl")
+        self.snapshot = Snapshot(self.tx_dir / "snapshot")
+        self._release = None
+        self._plan: list[PlanEntry] | None = None
+        self._resumed = _resumed
+
+    # -- lifecycle -----------------------------------------------------------
+
+    @classmethod
+    def begin(
+        cls,
+        vault_root: Path,
+        plan: list[PlanEntry],
+        *,
+        allow_empty: bool = False,
+    ) -> "Transaction":
+        """Authorize the whole plan, take the lock, journal BEGIN."""
+        if not plan and not allow_empty:
+            raise TransactionError("a transaction needs at least one plan entry")
+
+        # Target modes are bounded: no setuid/setgid/sticky, no bits beyond
+        # permissions. A buggy or hostile plan must not mint a 4777 file.
+        for entry in plan:
+            if entry.mode & ~0o777:
+                raise PlanRejected(
+                    f"{entry.relative}: mode {oct(entry.mode)} carries special "
+                    "bits; only permission bits up to 0o777 are allowed"
+                )
+            if entry.expected_current_sha256 is not None and (
+                entry.content is not None or not re.fullmatch(r"[0-9a-f]{64}", entry.expected_current_sha256)
+            ):
+                raise PlanRejected(
+                    f"{entry.relative}: current-content preconditions are valid only for "
+                    "deletions and must be a lowercase sha256"
+                )
+            if entry.content is None and entry.expected_current_sha256 is None:
+                raise PlanRejected(f"{entry.relative}: deletions require expected_current_sha256")
+
+        # All-or-nothing authorization BEFORE the lock: one disallowed entry
+        # rejects the plan with nothing acquired and nothing written. For
+        # write-if-absent entries this check is provisional — it is repeated
+        # UNDER the lock at apply time, because the vault is a live directory
+        # (the user, Obsidian, background sync) and a seed file appearing in
+        # the window must win.
+        rejections = []
+        for entry in plan:
+            target = Path(vault_root) / entry.relative
+            unsafe_parent = unsafe_existing_parent(Path(vault_root), entry.relative)
+            if unsafe_parent is not None:
+                rejections.append(f"{entry.relative} [{unsafe_parent}]")
+                continue
+            verdict = portable_contract.update_write_verdict(entry.relative, exists=target.exists())
+            if not verdict.allowed:
+                rejections.append(f"{entry.relative} [{verdict.action}]")
+        if rejections:
+            raise PlanRejected("the ownership contract forbids writing: " + ", ".join(rejections))
+
+        tx = cls(vault_root, time.strftime("%Y%m%dT%H%M%S-") + uuid.uuid4().hex[:8])
+        tx._plan = list(plan)
+        unsafe_directory = _unsafe_infrastructure_directory(tx.vault_root, tx.tx_dir)
+        if unsafe_directory is not None:
+            raise TransactionError(
+                f"refusing unsafe transaction directory {unsafe_directory}"
+            )
+        tx._release = acquire_owned_lock(tx.vault_root, f"transaction:{tx.tx_id}")
+        try:
+            unsafe_directory = _unsafe_infrastructure_directory(tx.vault_root, tx.tx_dir)
+            if unsafe_directory is not None:
+                raise TransactionError(
+                    f"refusing unsafe transaction directory {unsafe_directory}"
+                )
+            tx.tx_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
+            tx.journal.append(
+                "BEGIN",
+                {
+                    "tx_id": tx.tx_id,
+                    "plan": [
+                        {
+                            "relative": entry.relative,
+                            "operation": entry.operation,
+                            "sha256": entry.sha256(),
+                            "mode": entry.mode,
+                            "size": len(entry.content) if entry.content is not None else None,
+                            "expected_current_sha256": entry.expected_current_sha256,
+                        }
+                        for entry in plan
+                    ],
+                },
+            )
+            # The intended content must survive a crash for resume to finish
+            # the apply: stage it in the tx dir before anything mutates.
+            staged = tx.tx_dir / "staged"
+            unsafe_directory = _unsafe_infrastructure_directory(tx.vault_root, staged)
+            if unsafe_directory is not None:
+                raise TransactionError(
+                    f"refusing unsafe staging directory {unsafe_directory}"
+                )
+            staged.mkdir(mode=0o700, exist_ok=True)
+            for index, entry in enumerate(plan):
+                if entry.content is None:
+                    continue
+                blob = staged / f"{index:06d}.bin"
+                blob.write_bytes(entry.content)
+                os.chmod(blob, 0o600)
+            tx.journal.append("STAGED")
+        except BaseException:
+            tx._release()
+            raise
+        _stop_seam("after-begin")
+        return tx
+
+    def run(self, *, before_commit: Callable[[], None] | None = None) -> dict:
+        """snapshot → apply → verify → finalize → commit.
+
+        ``before_commit`` runs while the mutation lock is still held and before
+        COMMITTED is journaled. Any failure therefore uses the normal locked
+        rollback path instead of compensating after transaction success.
+        """
+        try:
+            self._snapshot_phase()
+            _stop_seam("after-snapshot")
+            self._apply_phase()
+            _stop_seam("after-apply")
+            self._verify_phase()
+            _stop_seam("after-verify")
+            if before_commit is not None:
+                _stop_seam("before-finalize")
+                before_commit()
+            return self._commit_phase()
+        except BaseException:
+            self.rollback()
+            raise
+
+    # -- phases ---------------------------------------------------------------
+
+    def _snapshot_phase(self) -> None:
+        assert self._plan is not None
+        self.journal.append("SNAPSHOT-START")
+        for entry in self._plan:
+            unsafe_parent = unsafe_existing_parent(self.vault_root, entry.relative)
+            if unsafe_parent is not None:
+                raise PlanRejected(f"{entry.relative}: {unsafe_parent}")
+            if entry.expected_current_sha256 is None:
+                continue
+            target = self.vault_root / entry.relative
+            if not target.exists():
+                continue
+            if (
+                target.is_symlink()
+                or not target.is_file()
+                or hashlib.sha256(target.read_bytes()).hexdigest() != entry.expected_current_sha256
+                or target.stat().st_mode & 0o777 != entry.mode
+            ):
+                raise PlanRejected(
+                    f"{entry.relative} changed after the mutation plan was built; "
+                    "the existing file wins and the transaction aborts"
+                )
+        self.snapshot.capture(self.vault_root, [entry.relative for entry in self._plan])
+        self.journal.append("SNAPSHOT-DONE")
+
+    def _apply_phase(self) -> None:
+        assert self._plan is not None
+        self.journal.append("APPLY-START")
+        for index, entry in enumerate(self._plan):
+            unsafe_parent = unsafe_existing_parent(self.vault_root, entry.relative)
+            if unsafe_parent is not None:
+                raise PlanRejected(f"{entry.relative}: {unsafe_parent}")
+            # F1 guard: the begin()-time authorization was provisional for
+            # write-if-absent paths. The vault is live — if the user (or any
+            # non-transaction writer) created this file since, THEIR file
+            # wins and the whole transaction aborts (all-or-nothing), rolling
+            # back anything already applied.
+            verdict = portable_contract.update_write_verdict(
+                entry.relative, exists=(self.vault_root / entry.relative).exists()
+            )
+            if not verdict.allowed:
+                raise PlanRejected(
+                    f"{entry.relative} appeared in the vault after authorization "
+                    f"[{verdict.action}]; the existing file wins and the "
+                    "transaction aborts"
+                )
+            if entry.content is None:
+                self._verify_deletion_precondition(
+                    entry,
+                    changed_when="after the mutation snapshot",
+                )
+            self.journal.append("APPLYING", {"index": index, "relative": entry.relative})
+            try:
+                self._apply_one(index, entry)
+            except PlanRejected:
+                self.journal.append(
+                    "NOT-APPLIED",
+                    {"index": index, "relative": entry.relative},
+                )
+                raise
+            self.journal.append("APPLIED", {"index": index, "relative": entry.relative})
+            _stop_seam(f"mid-apply:{index}")
+        self.journal.append("APPLY-DONE")
+
+    def _verify_deletion_precondition(
+        self,
+        entry: PlanEntry,
+        *,
+        changed_when: str,
+    ) -> None:
+        target = self.vault_root / entry.relative
+        if not target.exists():
+            return
+        if (
+            target.is_symlink()
+            or not target.is_file()
+            or hashlib.sha256(target.read_bytes()).hexdigest() != entry.expected_current_sha256
+            or target.stat().st_mode & 0o777 != entry.mode
+        ):
+            raise PlanRejected(
+                f"{entry.relative} changed {changed_when}; the existing file wins and the transaction aborts"
+            )
+
+    def _apply_one(self, index: int, entry: PlanEntry) -> None:
+        relative = entry.relative
+        target = self.vault_root / relative
+        if entry.content is None:
+            if target.is_symlink() or target.is_dir():
+                raise TransactionError(f"refusing to delete a non-file target: {relative}")
+            self._verify_deletion_precondition(
+                entry,
+                changed_when="after the mutation snapshot",
+            )
+            try:
+                target.unlink()
+            except FileNotFoundError:
+                pass
+            else:
+                directory = os.open(target.parent, os.O_RDONLY)
+                try:
+                    os.fsync(directory)
+                finally:
+                    os.close(directory)
+            return
+
+        staged = self.tx_dir / "staged" / f"{index:06d}.bin"
+        target.parent.mkdir(parents=True, exist_ok=True)
+        temporary = target.parent / f".{target.name}.tx-{self.tx_id}"
+        shutil.copyfile(staged, temporary)
+        os.chmod(temporary, entry.mode)
+        descriptor = os.open(temporary, os.O_RDONLY)
+        try:
+            os.fsync(descriptor)
+        finally:
+            os.close(descriptor)
+        os.replace(temporary, target)
+        directory = os.open(target.parent, os.O_RDONLY)
+        try:
+            os.fsync(directory)
+        finally:
+            os.close(directory)
+
+    def _verify_phase(self) -> None:
+        assert self._plan is not None
+        self.journal.append("VERIFY-START")
+        for entry in self._plan:
+            target = self.vault_root / entry.relative
+            if entry.content is None:
+                if target.is_symlink() or target.exists():
+                    raise TransactionError(f"verification failed for {entry.relative}: deleted target still exists")
+                continue
+            digest = hashlib.sha256(target.read_bytes()).hexdigest()
+            if digest != entry.sha256():
+                raise TransactionError(f"verification failed for {entry.relative}: applied bytes do not match the plan")
+            actual_mode = target.stat().st_mode & 0o777
+            if actual_mode != entry.mode:
+                raise TransactionError(
+                    f"verification failed for {entry.relative}: applied mode "
+                    f"{oct(actual_mode)} does not match planned {oct(entry.mode)}"
+                )
+        self.journal.append("VERIFY-DONE")
+
+    def _commit_phase(self) -> dict:
+        self.journal.append("COMMITTED")
+        _stop_seam("after-commit-record")
+        self._prune_committed(keep=3)
+        result = {
+            "tx_id": self.tx_id,
+            "committed": True,
+            "targets": [entry.relative for entry in self._plan or []],
+            "snapshot_dir": str(self.tx_dir / "snapshot"),
+        }
+        if self._release is not None:
+            self._release()
+            self._release = None
+        return result
+
+    def _prune_committed(self, *, keep: int) -> None:
+        """Retention (owner decision, lean): keep the newest ``keep`` COMMITTED
+        transactions' snapshots for undo; delete older COMMITTED ones. Only
+        transactions that verifiably reached COMMITTED are ever pruned —
+        anything unreadable or unfinished is left for resume()."""
+        tx_root = self.vault_root / TX_ROOT_RELATIVE
+        committed: list[Path] = []
+        for candidate in sorted(tx_root.iterdir()):
+            if not candidate.is_dir():
+                continue
+            try:
+                events = {entry.event for entry in Journal(candidate / "journal.jsonl").read()}
+            except JournalCorruptError:
+                continue
+            if "COMMITTED" in events:
+                committed.append(candidate)
+        for stale in committed[:-keep] if keep else committed:
+            shutil.rmtree(stale, ignore_errors=True)
+
+    # -- recovery / undo -------------------------------------------------------
+
+    def _applied_relatives(self, entries) -> set[str]:
+        applied: set[str] = set()
+        for entry in entries:
+            relative = entry.payload.get("relative")
+            if not relative:
+                continue
+            if entry.event in {"APPLYING", "APPLIED"}:
+                applied.add(relative)
+            elif entry.event == "NOT-APPLIED":
+                applied.discard(relative)
+        return applied
+
+    def rollback(self) -> dict:
+        """Byte-exact restore from the snapshot; journaled; releases the lock.
+
+        Robust against a corrupt journal: recovery proceeds best-effort from
+        the snapshot manifest (assuming everything was applied — the safe
+        over-approximation for restoring PRE-EXISTING files, and creations
+        are then deleted only if present). The lock is always released.
+        """
+        try:
+            entries = self.journal.read()
+            events = {entry.event for entry in entries}
+            applied = self._applied_relatives(entries)
+            journal_ok = True
+        except JournalCorruptError:
+            events = set()
+            applied = set()
+            journal_ok = False
+        restored: list[str] = []
+        try:
+            if journal_ok:
+                if "SNAPSHOT-DONE" in events:
+                    restored = self.snapshot.restore(
+                        self.vault_root,
+                        created_deletions=applied,
+                        restore_relatives=applied,
+                    )
+                # Before SNAPSHOT-DONE nothing was mutated: nothing to restore.
+            else:
+                # Journal unreadable: if a valid snapshot manifest exists,
+                # restore pre-existing files from it (never wrong — it holds
+                # their exact prior bytes). Files absent at capture are left
+                # alone: with no journal we cannot know who created them, and
+                # deleting a user's file is the one unforgivable outcome.
+                try:
+                    restored = self.snapshot.restore(self.vault_root, created_deletions=set())
+                except Exception:
+                    restored = []
+            if journal_ok:
+                self.journal.append("ROLLED-BACK", {"restored": restored})
+        finally:
+            if self._release is not None:
+                self._release()
+                self._release = None
+        return {
+            "tx_id": self.tx_id,
+            "committed": False,
+            "restored": restored,
+            "journal_ok": journal_ok,
+        }
+
+    @classmethod
+    def resume(cls, vault_root: Path) -> list[dict]:
+        """Recover every unfinished transaction under the vault's tx root.
+
+        Reads each journal and converges: a transaction that reached
+        SNAPSHOT-DONE but not COMMITTED is rolled back (byte-identical);
+        one that recorded COMMITTED merely has its lock/lifecycle finished.
+        Never leaves a half-state.
+        """
+        root = Path(vault_root).resolve()
+        outcomes: list[dict] = []
+        tx_root = root / TX_ROOT_RELATIVE
+        unsafe_directory = _unsafe_infrastructure_directory(root, tx_root)
+        if unsafe_directory is not None:
+            raise TransactionError(
+                f"refusing unsafe transaction root {unsafe_directory}"
+            )
+        if not tx_root.is_dir():
+            return outcomes
+        for tx_dir in sorted(tx_root.iterdir()):
+            if not tx_dir.is_dir():
+                continue
+            tx = cls(root, tx_dir.name, _resumed=True)
+            # One damaged transaction must never strand the recovery of the
+            # others: each is handled independently and a corrupt journal is
+            # quarantined (best-effort restore inside rollback), not fatal.
+            try:
+                rollback_only = False
+                try:
+                    events = {entry.event for entry in tx.journal.read()}
+                except JournalSchemaError:
+                    events = None
+                    rollback_only = True
+                except JournalCorruptError:
+                    events = None  # unreadable — rollback handles best-effort
+                if events is not None:
+                    if not events or "ROLLED-BACK" in events:
+                        continue  # empty shell or already recovered
+                    if "COMMITTED" in events:
+                        # Fully applied and verified; a crash after the commit
+                        # record only lost the lock release, which the lock's
+                        # own liveness machinery recovers. Nothing to converge.
+                        continue
+                lock_release = acquire_owned_lock(root, f"resume:{tx_dir.name}")
+                try:
+                    tx._release = None  # rollback() must not double-release
+                    outcome = tx.rollback()
+                    outcome["resumed"] = True
+                    if rollback_only:
+                        outcome["rollback_only"] = True
+                    outcomes.append(outcome)
+                finally:
+                    lock_release()
+            except Exception as error:  # noqa: BLE001 — quarantine, keep sweeping
+                outcomes.append(
+                    {
+                        "tx_id": tx_dir.name,
+                        "committed": False,
+                        "resumed": True,
+                        "quarantined": str(error),
+                    }
+                )
+        return outcomes

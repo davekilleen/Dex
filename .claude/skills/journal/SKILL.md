@@ -1,6 +1,6 @@
 ---
 name: journal
-description: Toggle journaling or start a journal entry (morning/evening/weekly)
+description: "Toggle journaling or start a morning/evening/weekly journal entry. Use when the user says 'journal', 'morning pages', 'evening reflection'. Also use proactively when a journaling-enabled user starts/ends the day. Not for a structured end-of-day work review; use `daily-review`."
 ---
 
 ## Purpose
