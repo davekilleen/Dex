@@ -83,6 +83,70 @@ test('appends Key Context when the heading is missing', () => withVault(async va
   assert.match(fs.readFileSync(page, 'utf8'), /## Key Context\n\n<!-- dex:auto:context-summary -->/);
 }));
 
+test('orphaned summary marker skips without changing user prose', () => withVault(async vault => {
+  const page = writePerson(vault, 'Jane Doe', { noHeading: true });
+  const before = `${fs.readFileSync(page, 'utf8')}<!-- dex:auto:context-summary -->\nMy irreplaceable notes.\nAnother hand-written detail.\n`;
+  fs.writeFileSync(page, before);
+  let calls = 0;
+  const messages = [];
+  const result = await gardenEntities({
+    generate: async () => { calls += 1; return BULLETS; },
+    now: NOW,
+    log: message => messages.push(message),
+  });
+  const after = fs.readFileSync(page, 'utf8');
+  assert.equal(after, before);
+  assert.doesNotMatch(after, /Product leader at Acme/);
+  assert.equal(calls, 0);
+  assert.deepEqual(result.gardened, []);
+  assert.equal(result.skipped, 1);
+  assert.deepEqual(result.errors, []);
+  assert.match(messages[0], /malformed-region/);
+}));
+
+test('replaceMachineRegion refuses to span an orphaned marker into a later region', () => {
+  const text = [
+    '<!-- dex:auto:context-summary -->',
+    'My irreplaceable notes.',
+    '<!-- dex:auto:context-summary -->',
+    '- Existing summary',
+    '<!-- /dex:auto -->',
+  ].join('\n');
+  assert.throws(
+    () => replaceMachineRegion(text, 'context-summary', BULLETS),
+    /malformed machine region: context-summary/,
+  );
+});
+
+test('replaceMachineRegion throws when its end marker is missing', () => {
+  const text = '<!-- dex:auto:context-summary -->\nMy irreplaceable notes.\n';
+  assert.throws(
+    () => replaceMachineRegion(text, 'context-summary', BULLETS),
+    /malformed machine region: context-summary \(missing end marker\)/,
+  );
+});
+
+test('replaceMachineRegion preserves replacement-dollar sequences literally', () => {
+  const text = [
+    'Before',
+    '<!-- dex:auto:context-summary -->',
+    '- Old summary',
+    '<!-- /dex:auto -->',
+    'After',
+  ].join('\n');
+  const content = '- Costs $& and $` and $\' literally';
+  assert.equal(
+    replaceMachineRegion(text, 'context-summary', content),
+    [
+      'Before',
+      '<!-- dex:auto:context-summary -->',
+      content,
+      '<!-- /dex:auto -->',
+      'After',
+    ].join('\n'),
+  );
+});
+
 test('respects seven-day cadence and unchanged input hash', () => withVault(async vault => {
   writePerson(vault);
   let calls = 0;
