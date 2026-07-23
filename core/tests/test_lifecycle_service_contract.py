@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import re
+import shutil
 from collections.abc import Mapping
 from pathlib import Path
 
@@ -99,6 +100,8 @@ def test_frozen_service_inputs_and_outputs_conform_to_schema(tmp_path: Path) -> 
         tmp_path, item_ids=("alpha",)
     )
     _write_bridge_release(vault)
+    release_root = tmp_path / "release"
+    shutil.copytree(vault, release_root)
     schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
     assert schema["$schema"] == "https://json-schema.org/draft/2020-12/schema"
 
@@ -114,11 +117,11 @@ def test_frozen_service_inputs_and_outputs_conform_to_schema(tmp_path: Path) -> 
 
     preview_request = {
         "vault_root": str(vault),
-        "release_root": str(vault),
+        "release_root": str(release_root),
         "requested_item_ids": ["alpha"],
     }
     preview_response = service.build_and_preview_adoption(
-        vault, vault, ("alpha",)
+        vault, release_root, ("alpha",)
     )
     _assert_conforms(
         schema,
@@ -129,13 +132,13 @@ def test_frozen_service_inputs_and_outputs_conform_to_schema(tmp_path: Path) -> 
 
     execute_request = {
         "vault_root": str(vault),
-        "release_root": str(vault),
+        "release_root": str(release_root),
         "preview": preview_response["preview"],
         "approved_token": preview_response["approval_token"],
     }
     execute_response = service.execute_approved_adoption(
         vault,
-        vault,
+        release_root,
         preview_response["preview"],
         preview_response["approval_token"],
     )
@@ -164,6 +167,63 @@ def test_frozen_service_inputs_and_outputs_conform_to_schema(tmp_path: Path) -> 
         rewind_response,
     )
 
+    conflict_path = ".claude/skills/alpha/SKILL.md"
+    (vault / conflict_path).write_bytes(b"# alpha\n\nMy local instructions.\n")
+    resolutions = [{"item_id": "alpha", "strategy": "keep-both"}]
+    conflict_preview_request = {
+        "vault_root": str(vault),
+        "release_root": str(release_root),
+        "resolutions": resolutions,
+    }
+    conflict_preview_response = service.build_and_preview_conflict_resolution(
+        vault,
+        release_root,
+        resolutions,
+    )
+    _assert_conforms(
+        schema,
+        "build_and_preview_conflict_resolution",
+        conflict_preview_request,
+        conflict_preview_response,
+    )
+
+    conflict_execute_request = {
+        "vault_root": str(vault),
+        "release_root": str(release_root),
+        "preview": conflict_preview_response["preview"],
+        "approved_token": conflict_preview_response["approval_token"],
+    }
+    conflict_execute_response = service.execute_approved_conflict_resolution(
+        vault,
+        release_root,
+        conflict_preview_response["preview"],
+        conflict_preview_response["approval_token"],
+    )
+    _assert_conforms(
+        schema,
+        "execute_approved_conflict_resolution",
+        conflict_execute_request,
+        conflict_execute_response,
+    )
+
+    conflict_receipt = conflict_execute_response["receipt"]
+    conflict_rewind_request = {
+        "vault_root": str(vault),
+        "receipt": conflict_receipt,
+        "acknowledgement_token": rewind_acknowledgement_token(conflict_receipt),
+    }
+    conflict_rewind_response = service.rewind_adoption_by_receipt(
+        vault,
+        conflict_receipt,
+        conflict_rewind_request["acknowledgement_token"],
+    )
+    _assert_conforms(
+        schema,
+        "rewind_adoption_by_receipt",
+        conflict_rewind_request,
+        conflict_rewind_response,
+    )
+
     state_request = {"vault_root": str(vault)}
     state_response = service.read_lifecycle_state(vault)
     _assert_conforms(
@@ -189,6 +249,8 @@ def test_public_surface_requires_a_version_bump_and_bridge_to_change() -> None:
         "execute_approved_adoption",
         "rewind_adoption_by_receipt",
         "read_lifecycle_state",
+        "build_and_preview_conflict_resolution",
+        "execute_approved_conflict_resolution",
     ]
     assert "version bump" in service.__doc__.lower()
     assert "bridge" in service.__doc__.lower()
