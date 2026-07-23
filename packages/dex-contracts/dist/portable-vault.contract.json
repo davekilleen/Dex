@@ -688,6 +688,13 @@
       "ownership": "brain"
     },
     {
+      "id": "brain-sync-folder-markers",
+      "path": "core/data/sync-folder-markers.json",
+      "kind": "file",
+      "ownership": "brain",
+      "note": "shared release-owned sync-provider table consumed by Python and CommonJS"
+    },
+    {
       "id": "vault-mcp-custom",
       "path": "core/mcp-custom",
       "kind": "dir",

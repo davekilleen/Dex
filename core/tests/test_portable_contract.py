@@ -221,6 +221,14 @@ def test_rule_ids_are_unique_and_document_is_deterministic() -> None:
     )
 
 
+def test_sync_folder_marker_data_is_explicitly_release_owned() -> None:
+    resolution = portable_contract.resolve("core/data/sync-folder-markers.json")
+
+    assert resolution is not None
+    assert resolution.rule_id == "brain-sync-folder-markers"
+    assert resolution.ownership == "brain"
+
+
 # ---------------------------------------------------------------------------
 # The gate script: red-when-removed proofs in an isolated fixture repo
 # ---------------------------------------------------------------------------

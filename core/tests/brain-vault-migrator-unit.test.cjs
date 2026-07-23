@@ -51,6 +51,49 @@ function addV163MigrationMetadata(root) {
   }
 }
 
+test('synced-folder override composes with conversion modes without weakening one-mode parsing', () => {
+  const migrator = require(MIGRATOR_PATH);
+
+  assert.deepEqual(migrator.parseArguments([]), {
+    mode: 'dry-run',
+    allowSyncedFolder: false,
+  });
+  for (const [flag, mode] of [
+    ['--dry-run', 'dry-run'],
+    ['--auto', 'auto'],
+    ['--resume', 'resume'],
+  ]) {
+    assert.deepEqual(migrator.parseArguments([flag, '--allow-synced-folder']), {
+      mode,
+      allowSyncedFolder: true,
+    });
+    assert.deepEqual(migrator.parseArguments(['--allow-synced-folder', flag]), {
+      mode,
+      allowSyncedFolder: true,
+    });
+  }
+  assert.throws(
+    () => migrator.parseArguments(['--auto', '--resume', '--allow-synced-folder']),
+    /one mode/i,
+  );
+  assert.throws(
+    () => migrator.parseArguments(['--status', '--allow-synced-folder']),
+    /only.*dry-run.*auto.*resume/i,
+  );
+  assert.throws(
+    () => migrator.parseArguments(['--restore', '--allow-synced-folder']),
+    /only.*dry-run.*auto.*resume/i,
+  );
+  assert.deepEqual(migrator.parseArguments(['--status']), {
+    mode: 'status',
+    allowSyncedFolder: false,
+  });
+  assert.deepEqual(migrator.parseArguments(['--restore']), {
+    mode: 'restore',
+    allowSyncedFolder: false,
+  });
+});
+
 test('CLAUDE regeneration lifts the legacy extension bytes and removes legacy markers', () => {
   const migrator = require(MIGRATOR_PATH);
   const legacy = [
