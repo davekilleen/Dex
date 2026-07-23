@@ -111,6 +111,7 @@ if _repo_root not in sys.path:
     sys.path.append(_repo_root)
 from core import capabilities as capability_rooms
 from core.entity_engine import create_page_if_absent
+from core.entity_engine import index as entity_index
 from core.paths import (
     COMPANIES_DIR,
     COMPANY_INDEX_FILE,
@@ -1066,249 +1067,81 @@ def _resolve_people_dir() -> Path:
     return get_people_dir()
 
 
-def build_people_index_data() -> Dict[str, Any]:
-    """Scan all person pages and build a lightweight JSON index."""
-    people_dir = _resolve_people_dir()
-    entries = []
+# Vault-relative fallbacks derived from the canonical core.paths constants
+# (computed at import time, when BASE_DIR == VAULT_ROOT). Using these instead of
+# raw PARA string literals keeps the path-contract gate satisfied while preserving
+# the BASE_DIR-relative redirect that monkeypatched tests rely on.
+_PEOPLE_DIR_REL = PEOPLE_DIR.relative_to(BASE_DIR)
+_COMPANIES_DIR_REL = COMPANIES_DIR.relative_to(BASE_DIR)
+_PEOPLE_INDEX_FILE_REL = PEOPLE_INDEX_FILE.relative_to(BASE_DIR)
+_COMPANY_INDEX_FILE_REL = COMPANY_INDEX_FILE.relative_to(BASE_DIR)
 
-    for subdir_name in ['Internal', 'External', 'CPO_Network']:
-        subdir = people_dir / subdir_name
-        if not subdir.exists():
-            continue
 
-        for person_file in subdir.glob('*.md'):
-            if person_file.name == 'README.md':
-                continue
-            person = parse_entity_page(person_file)
+def _index_path(candidate: Path, fallback: Path) -> Path:
+    """Keep monkeypatched test/runtime paths inside the active vault root."""
+    try:
+        candidate.resolve().relative_to(BASE_DIR.resolve())
+    except ValueError:
+        return BASE_DIR / fallback
+    return candidate
 
-            # Determine populated vs stub
-            content = person_file.read_text()
-            has_content = bool(person.get('role') or person.get('emails') or
-                            '## Meeting' in content or '## Notes' in content)
 
-            aliases = list(person.get('aliases') or [])
-            for line in content.splitlines():
-                match = re.match(r'^\s*(?:\*\*)?Goes by(?::\*\*|\*\*\s*:|\s+)(?:\s*)(.+?)\s*$', line, re.IGNORECASE)
-                if match:
-                    alias = match.group(1).strip()
-                    if alias and alias.casefold() not in {value.casefold() for value in aliases}:
-                        aliases.append(alias)
-
-            person_name = person.get('name') or person_file.stem.replace('_', ' ')
-
-            # Extract tags from content
-            tags = []
-            for line in content.split('\n'):
-                if '**Tags**' in line and '|' in line:
-                    parts = line.split('|')
-                    if len(parts) >= 3:
-                        tags = [t.strip() for t in parts[2].strip().split(',') if t.strip()]
-                    break
-
-            entries.append({
-                'name': person_name,
-                'company': person.get('company'),
-                'role': person.get('role'),
-                'email': (person.get('emails') or [None])[0],
-                'emails': person.get('emails') or [],
-                'aliases': aliases,
-                'first_name': person_name.split()[0].lower() if person_name.split() else '',
-                'type': subdir_name.lower(),
-                'path': str(person_file.relative_to(BASE_DIR)),
-                'last_interaction': person.get('last_interaction'),
-                'tags': tags,
-                'status': 'populated' if has_content else 'stub',
-            })
-
-    index = {
-        'version': 2,
-        'built_at': datetime.now().isoformat(),
-        'total': len(entries),
-        'by_type': {
-            'internal': sum(1 for e in entries if e['type'] == 'internal'),
-            'external': sum(1 for e in entries if e['type'] == 'external'),
-            'cpo_network': sum(1 for e in entries if e['type'] == 'cpo_network'),
-        },
-        'people': entries,
+def _entity_index_kwargs() -> Dict[str, Path]:
+    return {
+        'people_dir': _index_path(
+            _resolve_people_dir(),
+            _PEOPLE_DIR_REL,
+        ),
+        'companies_dir': _index_path(
+            get_companies_dir(),
+            _COMPANIES_DIR_REL,
+        ),
+        'people_index_path': _index_path(
+            PEOPLE_INDEX_FILE,
+            _PEOPLE_INDEX_FILE_REL,
+        ),
+        'company_index_path': _index_path(
+            COMPANY_INDEX_FILE,
+            _COMPANY_INDEX_FILE_REL,
+        ),
     }
 
-    # Write to file
-    PEOPLE_INDEX_FILE.parent.mkdir(parents=True, exist_ok=True)
-    PEOPLE_INDEX_FILE.write_text(json.dumps(index, indent=2, cls=DateTimeEncoder) + '\n')
 
-    return index
-
-
-def _people_tree_max_mtime() -> float:
-    """Return the newest modification time among People markdown pages."""
-    people_dir = _resolve_people_dir()
-    if not people_dir.exists():
-        return 0.0
-    return max(
-        (person_file.stat().st_mtime for person_file in people_dir.rglob('*.md')),
-        default=0.0,
+def build_people_index_data() -> Dict[str, Any]:
+    """Reconcile SQLite and return its People_Index compatibility export."""
+    return entity_index.people_index_data(
+        BASE_DIR,
+        force=True,
+        **_entity_index_kwargs(),
     )
 
 
 def build_company_index_data() -> Dict[str, Any]:
-    """Scan company pages and build the canonical lightweight JSON index."""
-    entries = []
-    companies_dir = get_companies_dir()
-    if companies_dir.exists():
-        for company_file in companies_dir.rglob('*.md'):
-            if company_file.name == 'README.md':
-                continue
-            company = parse_entity_page(company_file)
-            entries.append({
-                'name': company.get('name') or company_file.stem.replace('_', ' '),
-                'path': str(company_file.relative_to(BASE_DIR)),
-                'domains': company.get('domains') or [],
-                'website': company.get('website'),
-                'status': company.get('status'),
-            })
-    entries.sort(key=lambda item: (item['name'].casefold(), item['path']))
-    index = {
-        'version': 1,
-        'built_at': datetime.now().isoformat(),
-        'total': len(entries),
-        'companies': entries,
-    }
-    COMPANY_INDEX_FILE.parent.mkdir(parents=True, exist_ok=True)
-    COMPANY_INDEX_FILE.write_text(json.dumps(index, indent=2, cls=DateTimeEncoder) + '\n')
-    return index
-
-
-def _company_tree_max_mtime() -> float:
-    """Return the newest modification time among company markdown pages."""
-    companies_dir = get_companies_dir()
-    if not companies_dir.exists():
-        return 0.0
-    return max(
-        (company_file.stat().st_mtime for company_file in companies_dir.rglob('*.md')),
-        default=0.0,
+    """Reconcile SQLite and return its Company_Index compatibility export."""
+    return entity_index.company_index_data(
+        BASE_DIR,
+        force=True,
+        **_entity_index_kwargs(),
     )
 
 
 def find_company_by_domain(domain: str) -> Dict[str, Any] | None:
-    """Find a company by registrable domain, rebuilding an absent or stale index."""
-    index = None
-    if COMPANY_INDEX_FILE.exists():
-        try:
-            index = json.loads(COMPANY_INDEX_FILE.read_text())
-        except (json.JSONDecodeError, OSError):
-            pass
-    if not isinstance(index, dict):
-        index = None
-    try:
-        built_at = datetime.fromisoformat(index.get('built_at', '')) if index else None
-        if not index or index.get('version') != 1 or built_at.timestamp() < _company_tree_max_mtime():
-            index = build_company_index_data()
-    except (ValueError, TypeError):
-        index = build_company_index_data()
-    target = registrable_domain(domain)
-    for company in index.get('companies', []):
-        if target in {registrable_domain(value) for value in company.get('domains', [])}:
-            return company
-    return None
+    """Find a company by registrable domain in the disposable SQLite index."""
+    return entity_index.find_company_by_domain(
+        BASE_DIR,
+        domain,
+        **_entity_index_kwargs(),
+    )
 
 
 def lookup_person_data(name: str, company: str = None) -> Dict[str, Any]:
-    """Fast person lookup using the index with fuzzy matching."""
-
-    # Try reading the index file
-    index = None
-    if PEOPLE_INDEX_FILE.exists():
-        try:
-            index = json.loads(PEOPLE_INDEX_FILE.read_text())
-        except (json.JSONDecodeError, OSError):
-            pass
-
-    # Auto-rebuild if index is missing/old, older than a person page, or stale (>24h).
-    index_version = index.get('version') if isinstance(index, dict) else None
-    if not index or not isinstance(index_version, int) or index_version < 2:
-        index = build_people_index_data()
-    else:
-        built_at = index.get('built_at', '')
-        try:
-            built_dt = datetime.fromisoformat(built_at)
-            tree_mtime = _people_tree_max_mtime()
-            if built_dt.timestamp() < tree_mtime:
-                logger.info("People index predates a person page, rebuilding...")
-                index = build_people_index_data()
-            elif (datetime.now() - built_dt) > timedelta(hours=24):
-                logger.info("People index is stale (>24h), rebuilding...")
-                index = build_people_index_data()
-        except (ValueError, TypeError):
-            index = build_people_index_data()
-
-    people = index.get('people', [])
-    if company:
-        company_lower = company.lower()
-        people = [
-            person for person in people
-            if company_lower in (person.get('company') or '').lower()
-        ]
-
-    query = name.strip()
-    query_lower = query.casefold()
-    ambiguous = False
-
-    def scored(candidates: List[Dict[str, Any]], score: float) -> List[Dict[str, Any]]:
-        return [{**person, '_score': score} for person in candidates]
-
-    matches: List[Dict[str, Any]] = []
-    if '@' in query:
-        matches = scored([
-            person for person in people
-            if query_lower in {email.casefold() for email in person.get('emails', [])}
-        ], 1.0)
-
-    if not matches:
-        matches = scored([
-            person for person in people
-            if query_lower in {alias.casefold() for alias in person.get('aliases', [])}
-        ], 1.0)
-
-    if not matches:
-        matches = scored([
-            person for person in people
-            if query_lower == (person.get('name') or '').casefold()
-        ], 1.0)
-
-    if not matches:
-        first_name_matches = [
-            person for person in people
-            if query_lower == (person.get('first_name') or '').casefold()
-        ]
-        if first_name_matches:
-            matches = scored(first_name_matches, 0.9)
-            ambiguous = len(first_name_matches) > 1
-
-    if not matches:
-        fuzzy_matches = []
-        for person in people:
-            person_name = (person.get('name') or '').casefold()
-            if query_lower in person_name or person_name in query_lower:
-                score = 0.8
-            else:
-                score = SequenceMatcher(None, query_lower, person_name).ratio()
-            if score >= 0.5:
-                fuzzy_matches.append((score, person))
-        fuzzy_matches.sort(key=lambda item: item[0], reverse=True)
-        if len(fuzzy_matches) >= 2 and fuzzy_matches[0][0] - fuzzy_matches[1][0] <= 0.05:
-            ambiguous = True
-        matches = [{**person, '_score': round(score, 2)} for score, person in fuzzy_matches]
-
-    result = {
-        'query': name,
-        'company_filter': company,
-        'matches': matches[:10],
-        'total_matches': len(matches),
-        'index_age': index.get('built_at'),
-    }
-    if ambiguous:
-        result['ambiguous'] = True
-    return result
+    """Fast person lookup using reconciled SQLite rows and legacy scoring."""
+    return entity_index.lookup_person(
+        BASE_DIR,
+        name,
+        company,
+        **_entity_index_kwargs(),
+    )
 
 
 def _looks_like_page_path(value: str) -> bool:
