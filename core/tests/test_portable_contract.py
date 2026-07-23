@@ -40,7 +40,7 @@ def _tracked_paths() -> list[str]:
         # brain
         ("core/utils/doctor.py", "brain", False),
         (".claude/skills/daily-plan/SKILL.md", "brain", False),
-        ("CLAUDE.md", "brain", False),
+        ("CLAUDE.md", "generated", False),
         ("06-Resources/Dex_System/Dex_System_Guide.md", "brain", False),
         # seed: exact starters only
         ("03-Tasks/Tasks.md", "seed", False),

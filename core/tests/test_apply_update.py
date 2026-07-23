@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import json
 import os
 import subprocess
@@ -65,6 +66,11 @@ def split_release_fixture(tmp_path: Path) -> dict[str, object]:
     _git(release, "config", "user.name", "Dex Update Tests")
     _git(release, "config", "user.email", "update@example.com")
     _write(release, "README.md", b"old brain\n")
+    _write(
+        release,
+        "CLAUDE.md",
+        b"# Old instructions\n\n## USER_EXTENSIONS_START\n## USER_EXTENSIONS_END\n\nOld footer.\n",
+    )
     _write(release, "core/obsolete.py", b"OLD = True\n", 0o755)
     _write(release, "03-Tasks/Tasks.md", b"# shipped seed\n")
     _write(release, "04-Projects/private.md", b"release placeholder\n")
@@ -72,6 +78,12 @@ def split_release_fixture(tmp_path: Path) -> dict[str, object]:
     old_tag, old_tag_object, old_commit, old_tree = _commit_release(release, "1.63.0")
 
     _write(release, "README.md", b"new brain\n")
+    _write(
+        release,
+        "CLAUDE.md",
+        b"# New instructions\n\n## USER_EXTENSIONS_START trailing text\r\n"
+        b"## USER_EXTENSIONS_END trailing text\r\n\r\nNew footer.\n",
+    )
     _write(release, "core/new.py", b"NEW = True\n")
     _write(release, "03-Tasks/Tasks.md", b"# changed shipped seed\n")
     _write(release, "04-Projects/private.md", b"release tried to replace user notes\n")
@@ -83,6 +95,7 @@ def split_release_fixture(tmp_path: Path) -> dict[str, object]:
     vault.mkdir()
     for relative in (
         "README.md",
+        "CLAUDE.md",
         "core/obsolete.py",
         "03-Tasks/Tasks.md",
         "04-Projects/private.md",
@@ -142,6 +155,7 @@ def split_release_fixture(tmp_path: Path) -> dict[str, object]:
         ).encode(),
     )
     return {
+        "release": release,
         "vault": vault,
         "brain": brain,
         "old": (old_tag, old_tag_object, old_commit, old_tree),
@@ -158,6 +172,27 @@ def _verified(fixture: dict[str, object]) -> apply_update.VerifiedReleaseRef:
         commit=commit,
         tree=tree,
     )
+
+
+def _retarget_release(
+    fixture: dict[str, object],
+    relative: str,
+    content: bytes,
+    version: str = "1.65.0",
+) -> None:
+    release = fixture["release"]
+    _write(release, relative, content)
+    target = _commit_release(release, version)
+    _, _, commit, _ = target
+    _git(
+        fixture["brain"],
+        "fetch",
+        "--quiet",
+        "--tags",
+        str(release),
+        f"+{commit}:refs/remotes/upstream/release",
+    )
+    fixture["target"] = target
 
 
 def test_verified_release_is_pinned_to_immutable_tag_and_channel(
@@ -208,6 +243,189 @@ def test_apply_update_replaces_brain_prunes_unchanged_and_preserves_user_owned_p
         ).stdout.strip()
         == target_commit
     )
+
+
+def test_apply_update_keeps_personal_instructions_when_release_template_changes(
+    split_release_fixture: dict[str, object],
+) -> None:
+    vault = split_release_fixture["vault"]
+    custom = b"Always explain decisions plainly."
+    _write(vault, "CLAUDE-custom.md", custom)
+    _write(
+        vault,
+        "CLAUDE.md",
+        b"# Old instructions\n\nAlways explain decisions plainly.\n\nOld footer.\n",
+    )
+
+    result = apply_update.apply_verified_release(vault, _verified(split_release_fixture))
+
+    assert result["committed"] is True
+    assert (vault / "CLAUDE.md").read_bytes() == (
+        b"# New instructions\n\nAlways explain decisions plainly.\n\r\nNew footer.\n"
+    )
+    assert "CLAUDE.md" in result["regenerated"]
+
+
+@pytest.mark.parametrize(
+    "malformed_template",
+    [
+        b"# Broken release\n\nNo markers.\n",
+        b"# Broken release\n\n## USER_EXTENSIONS_END\n## USER_EXTENSIONS_START\n",
+        (
+            b"## USER_EXTENSIONS_START\n## USER_EXTENSIONS_END\n"
+            b"## USER_EXTENSIONS_START\n## USER_EXTENSIONS_END\n"
+        ),
+    ],
+)
+def test_malformed_claude_template_is_kept_and_current_file_is_untouched(
+    split_release_fixture: dict[str, object],
+    malformed_template: bytes,
+) -> None:
+    vault = split_release_fixture["vault"]
+    current = b"# Current instructions\n\nNever lose this personal block.\n"
+    _write(vault, "CLAUDE-custom.md", b"Never lose this personal block.\n")
+    _write(vault, "CLAUDE.md", current)
+    _retarget_release(
+        split_release_fixture,
+        "CLAUDE.md",
+        malformed_template,
+    )
+
+    result = apply_update.apply_verified_release(vault, _verified(split_release_fixture))
+
+    assert (vault / "CLAUDE.md").read_bytes() == current
+    assert "CLAUDE.md" in result["kept"]
+    assert "marker" in result["kept_reasons"]["CLAUDE.md"].lower()
+
+
+def test_update_plan_compares_current_claude_against_composed_bytes(
+    split_release_fixture: dict[str, object],
+) -> None:
+    vault = split_release_fixture["vault"]
+    custom = b"Personal instruction without a trailing newline."
+    _write(vault, "CLAUDE-custom.md", custom)
+    release = _verified(split_release_fixture)
+    release_entry = next(entry for entry in release.entries if entry.path == "CLAUDE.md")
+    release_blob = apply_update._blob(vault, release.brain_git, release_entry.object_id)
+    _write(vault, "CLAUDE.md", apply_update._regenerate_claude(release_blob, custom))
+
+    plan = apply_update.build_update_plan(vault, release)
+
+    assert "CLAUDE.md" not in {entry.relative for entry in plan.entries}
+    assert "CLAUDE.md" not in plan.regenerated
+    assert "CLAUDE.md" in plan.untouched
+
+
+@pytest.mark.parametrize("empty_custom_file", [False, True])
+def test_absent_or_empty_custom_instructions_use_release_template_as_is(
+    split_release_fixture: dict[str, object],
+    empty_custom_file: bool,
+) -> None:
+    vault = split_release_fixture["vault"]
+    if empty_custom_file:
+        _write(vault, "CLAUDE-custom.md", b"")
+    release = _verified(split_release_fixture)
+    release_entry = next(entry for entry in release.entries if entry.path == "CLAUDE.md")
+    release_blob = apply_update._blob(vault, release.brain_git, release_entry.object_id)
+
+    apply_update.apply_verified_release(vault, release)
+
+    assert (vault / "CLAUDE.md").read_bytes() == release_blob
+
+
+@pytest.mark.parametrize("unsafe_custom", ["directory", "symlink"])
+def test_non_regular_custom_instructions_keep_current_claude_file(
+    split_release_fixture: dict[str, object],
+    unsafe_custom: str,
+) -> None:
+    vault = split_release_fixture["vault"]
+    current = (vault / "CLAUDE.md").read_bytes()
+    custom = vault / "CLAUDE-custom.md"
+    if unsafe_custom == "directory":
+        custom.mkdir()
+    else:
+        _write(vault, "custom-target.md", b"must not be followed\n")
+        custom.symlink_to(vault / "custom-target.md")
+
+    result = apply_update.apply_verified_release(vault, _verified(split_release_fixture))
+
+    assert (vault / "CLAUDE.md").read_bytes() == current
+    assert result["kept_reasons"]["CLAUDE.md"] == (
+        "CLAUDE-custom.md is not a regular file"
+    )
+
+
+def test_unreadable_custom_instructions_keep_current_claude_file(
+    monkeypatch: pytest.MonkeyPatch,
+    split_release_fixture: dict[str, object],
+) -> None:
+    vault = split_release_fixture["vault"]
+    current = (vault / "CLAUDE.md").read_bytes()
+    custom = vault / "CLAUDE-custom.md"
+    _write(vault, "CLAUDE-custom.md", b"private instructions\n")
+    original_read_bytes = Path.read_bytes
+
+    def unreadable(path: Path) -> bytes:
+        if path == custom:
+            raise PermissionError("simulated unreadable custom file")
+        return original_read_bytes(path)
+
+    monkeypatch.setattr(Path, "read_bytes", unreadable)
+
+    result = apply_update.apply_verified_release(vault, _verified(split_release_fixture))
+
+    assert (vault / "CLAUDE.md").read_bytes() == current
+    assert result["kept_reasons"]["CLAUDE.md"] == "CLAUDE-custom.md is unreadable"
+
+
+@pytest.mark.parametrize(
+    ("template", "custom"),
+    [
+        (
+            b"# Dex\n\n## USER_EXTENSIONS_START\n## USER_EXTENSIONS_END\nAfter.\n",
+            b"",
+        ),
+        (
+            b"# Dex\n\n## USER_EXTENSIONS_START trailing\n## USER_EXTENSIONS_END\nAfter.\n",
+            b"Personal instruction.",
+        ),
+        (
+            b"# Dex\r\n\r\n## USER_EXTENSIONS_START\r\n## USER_EXTENSIONS_END\r\nAfter.\r\n",
+            b"First.\r\nSecond.\r\n",
+        ),
+        (
+            b"# Dex\n## USER_EXTENSIONS_START\n## USER_EXTENSIONS_END\nAfter.\n",
+            b"Text that looks like a marker:\n## USER_EXTENSIONS_END\nKeep it.\n",
+        ),
+    ],
+)
+def test_python_claude_regeneration_is_byte_identical_to_cjs(
+    template: bytes,
+    custom: bytes,
+) -> None:
+    script = """
+const fs = require('fs');
+const migrator = require('./core/migrations/v1-to-v2-brain-vault-split.cjs');
+const input = JSON.parse(fs.readFileSync(0, 'utf8'));
+const template = Buffer.from(input.template, 'base64').toString('utf8');
+const custom = Buffer.from(input.custom, 'base64').toString('utf8');
+process.stdout.write(Buffer.from(migrator.regenerateClaude(template, custom), 'utf8'));
+"""
+    payload = json.dumps(
+        {
+            "template": base64.b64encode(template).decode("ascii"),
+            "custom": base64.b64encode(custom).decode("ascii"),
+        }
+    ).encode()
+    expected = subprocess.run(
+        ["node", "-e", script],
+        cwd=REPO_ROOT,
+        input=payload,
+        check=True,
+        capture_output=True,
+    ).stdout
+
+    assert apply_update._regenerate_claude(template, custom) == expected
 
 
 def test_apply_update_verification_failure_restores_every_release_file(

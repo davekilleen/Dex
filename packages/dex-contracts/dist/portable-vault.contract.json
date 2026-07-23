@@ -422,11 +422,11 @@
       "note": "the one canonical home for user instructions (Vault_Contract \u00a75)"
     },
     {
-      "id": "brain-claude-md",
+      "id": "generated-claude-md",
       "path": "CLAUDE.md",
       "kind": "file",
-      "ownership": "brain",
-      "note": "pure brain per Vault_Contract \u00a75; user instructions live in CLAUDE-custom.md"
+      "ownership": "generated",
+      "note": "composed from the shipped template plus vault-owned CLAUDE-custom.md"
     },
     {
       "id": "brain-commercial-license",
