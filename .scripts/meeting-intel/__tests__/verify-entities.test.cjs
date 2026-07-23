@@ -113,6 +113,49 @@ test('summary line has the stable one-line format', () => {
   assert.equal(summaryLine(report), 'entities: 12 attendees -> 8 pages, 2 suggested, 1 tracking, 1 no-email; 0 unresolved; companies: 0 pages');
 });
 
+test('dead letters make entity verification observably broken with a fix path', () => withVault(
+  { entity_creation: { mode: 'auto' } },
+  vault => {
+    const runtime = path.join(vault, 'System', '.dex');
+    fs.mkdirSync(runtime, { recursive: true });
+    fs.writeFileSync(
+      path.join(runtime, 'entity-dead-letter.jsonl'),
+      `{"dead_letter_id":\n${JSON.stringify({
+        dead_letter_id: 'example-dead-letter',
+        meeting_id: 'meeting-1',
+        meeting_ids: ['meeting-1'],
+        op_type: 'mutate',
+        entity_path: path.join(
+          vault,
+          '05-Areas',
+          'People',
+          'External',
+          'Jane_Example.md',
+        ),
+        entity_identity: {
+          kind: 'person',
+          name: 'Jane Example',
+          emails: ['jane@example.com'],
+        },
+        reason: 'target page missing',
+      })}\n`,
+    );
+
+    const result = verifyEntities({
+      now: new Date('2026-06-10T12:00:00Z'),
+    });
+
+    assert.equal(result.feature_status, 'broken');
+    assert.equal(result.success, false);
+    assert.match(result.user_message, /1 entity write/i);
+    assert.match(result.user_message, /System\/\.dex\/entity-dead-letter\.jsonl/);
+    assert.match(result.user_message, /\/dex-doctor/);
+    assert.match(result.user_message, /re-queue/i);
+    assert.equal(result.report.dead_letter_count, 1);
+    assert.match(result.summary, /1 entity write failed permanently/i);
+  },
+));
+
 test('company verification reports pages, suggestions, tracking, and auto invariant', () => withVault(
   { work_email: 'owner@dex.test', entity_creation: { mode: 'auto' } },
   vault => {

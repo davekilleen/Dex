@@ -63,6 +63,43 @@ def test_composite_mutation_uses_one_atomic_replace(
     assert "User-authored note." in text
 
 
+def test_composite_mutation_can_preserve_a_legacy_body_rewrite(
+    tmp_path: Path,
+) -> None:
+    page = tmp_path / "Legacy.md"
+    page.write_text(
+        "---\n"
+        "type: person\n"
+        "name: Legacy Person\n"
+        "last_interaction: 2026-01-01\n"
+        "dex_pinned: {}\n"
+        "dex_last_written: {last_interaction: 2026-01-01}\n"
+        "---\n"
+        "# Legacy Person\n\n"
+        "## Meetings\n\n"
+        "- Older meeting\n",
+        encoding="utf-8",
+    )
+    replacement = page.read_text(encoding="utf-8").replace(
+        "## Meetings\n",
+        "## Meetings\n"
+        "- [Roadmap](00-Inbox/Meetings/roadmap.md) — 2026-07-10\n",
+    )
+
+    result = mutate_page(
+        page,
+        fingerprint_page(page),
+        replacement_content=replacement,
+        field_changes={"last_interaction": "2026-07-10"},
+    )
+
+    assert result.status == "updated"
+    text = page.read_text(encoding="utf-8")
+    assert "last_interaction: '2026-07-10'" in text
+    assert "- [Roadmap](00-Inbox/Meetings/roadmap.md) — 2026-07-10" in text
+    assert "- Older meeting" in text
+
+
 def test_fingerprint_mismatch_returns_conflict_without_clobber(
     tmp_path: Path, monkeypatch
 ) -> None:

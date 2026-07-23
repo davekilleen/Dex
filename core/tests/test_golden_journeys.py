@@ -440,6 +440,11 @@ def _run_entity_creation_journey(vault: Path, mode: str) -> dict:
     env["CLAUDE_PROJECT_DIR"] = str(vault)
     env["DEX_REPO_ROOT"] = str(REPO_ROOT)
     env["ENTITY_CREATION_MODE"] = mode
+    # The bridge routes entity writes through the Python engine, which needs a
+    # resolvable interpreter. A real vault carries its own .venv (the fixture's
+    # work-mcp command points at {vault}/.venv/bin/python); the tmp copy has none,
+    # so pin DEX_PYTHON to the interpreter running this suite (it has the deps).
+    env["DEX_PYTHON"] = sys.executable
     result = subprocess.run(
         [node, "-e", ENTITY_CREATION_JOURNEY],
         cwd=REPO_ROOT,

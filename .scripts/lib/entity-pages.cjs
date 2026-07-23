@@ -148,12 +148,11 @@ function atomicWrite(filePath, text) {
   }
 }
 
-function upsertFrontmatter(filePath, fields) {
-  const rawOriginal = fs.readFileSync(filePath, 'utf8');
+function mergeFrontmatterText(filePath, rawOriginal, fields) {
   const bom = rawOriginal.charCodeAt(0) === 0xfeff ? '\ufeff' : '';
   const original = bom ? rawOriginal.slice(1) : rawOriginal;
   const split = splitFrontmatter(original);
-  if (split.quarantined) return false;
+  if (split.quarantined) return null;
   const merged = { ...(split.frontmatter || {}) };
 
   const hadPins = Boolean(merged.dex_pinned && !Array.isArray(merged.dex_pinned)
@@ -257,7 +256,13 @@ function upsertFrontmatter(filePath, fields) {
     noRefs: true, noCompatMode: true, noArrayIndent: true, lineWidth: -1, sortKeys: false,
   }).trimEnd();
   const updated = `${bom}---\n${dumped}\n---\n${split.body}`;
-  if (updated === rawOriginal) return false;
+  return updated;
+}
+
+function upsertFrontmatter(filePath, fields) {
+  const original = fs.readFileSync(filePath, 'utf8');
+  const updated = mergeFrontmatterText(filePath, original, fields);
+  if (updated === null || updated === original) return false;
   atomicWrite(filePath, updated);
   return true;
 }
@@ -333,6 +338,6 @@ function replaceMachineRegionInFile(filePath, slug, newContent) {
 
 module.exports = {
   atomicWrite,
-  parseEntityPage, upsertFrontmatter, renderPersonPage, renderCompanyPage,
+  mergeFrontmatterText, parseEntityPage, upsertFrontmatter, renderPersonPage, renderCompanyPage,
   replaceMachineRegion, replaceMachineRegionInFile,
 };

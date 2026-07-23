@@ -149,6 +149,7 @@ def _build_mutation(
     page_path: Path,
     original_bytes: bytes,
     *,
+    replacement_content: str | None,
     field_changes: Mapping[str, Any] | None,
     ensure_regions: Iterable[str] | None,
     region_projections: Mapping[str, str] | None,
@@ -160,7 +161,9 @@ def _build_mutation(
     if quarantined:
         return None, True
 
-    updated = text
+    updated = text if replacement_content is None else replacement_content
+    if updated.startswith("\ufeff"):
+        updated = updated[1:]
     if field_changes:
         merged = merge_frontmatter_text(page_path, updated, field_changes)
         if merged is None:
@@ -181,6 +184,7 @@ def mutate_page(
     path: str | Path,
     base_fingerprint: str,
     *,
+    replacement_content: str | None = None,
     field_changes: Mapping[str, Any] | None = None,
     ensure_regions: Iterable[str] | None = None,
     region_projections: Mapping[str, str] | None = None,
@@ -206,6 +210,7 @@ def mutate_page(
     updated_bytes, quarantined = _build_mutation(
         page_path,
         original_bytes,
+        replacement_content=replacement_content,
         field_changes=field_changes,
         ensure_regions=ensure_regions,
         region_projections=region_projections,
@@ -269,6 +274,7 @@ def upsert_frontmatter(
         updated, quarantined = _build_mutation(
             page_path,
             original_bytes,
+            replacement_content=None,
             field_changes=fields,
             ensure_regions=None,
             region_projections=None,

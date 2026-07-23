@@ -9,9 +9,13 @@ const path = require('path');
 const yaml = require('js-yaml');
 const {
   parseEntityPage,
-  replaceMachineRegionInFile,
-  upsertFrontmatter,
 } = require('../../.scripts/lib/entity-pages.cjs');
+const {
+  flushEntityOps,
+} = require('../../.scripts/lib/entity-engine-client.cjs');
+const {
+  identityForEntity,
+} = require('../../.scripts/lib/entity-identity.cjs');
 const { loadPaths } = require('./paths.cjs');
 
 const DEBUG_SKIP = process.env.DEX_HOOK_DEBUG === '1';
@@ -113,20 +117,6 @@ function meetingTitle(metadata) {
   return heading ? heading[1].trim() : path.basename(filePath, '.md').replace(/_/g, ' ');
 }
 
-function appendLegacyInteraction(personPath, line) {
-  const original = fs.readFileSync(personPath, 'utf8');
-  const headings = [/^## Recent Interactions\s*$/m, /^## Recent Meetings\s*$/m, /^## Meetings\s*$/m];
-  for (const heading of headings) {
-    const match = heading.exec(original);
-    if (!match) continue;
-    const insertion = match.index + match[0].length;
-    const suffix = original.slice(insertion);
-    fs.writeFileSync(personPath, `${original.slice(0, insertion)}\n${line}${suffix.startsWith('\n') ? '' : '\n'}${suffix}`);
-    return;
-  }
-  fs.writeFileSync(personPath, `${original.replace(/\s*$/, '')}\n\n${line}\n`);
-}
-
 const metadata = frontmatter(content);
 const extracted = attendeeNames(metadata);
 const names = extracted.length > 0 ? extracted : wikilinkNames(content);
@@ -137,6 +127,7 @@ const relativeMeetingPath = path.relative(vaultRoot, filePath).split(path.sep).j
 const date = meetingDate(metadata);
 const interaction = `- [${meetingTitle(metadata)}](${relativeMeetingPath}) — ${date}`;
 const seen = new Set();
+const ops = [];
 
 try {
   for (const name of fallbackNames) {
@@ -155,26 +146,26 @@ try {
     if (original.includes(relativeMeetingPath)) continue;
     const entity = parseEntityPage(personPath);
     if (entity.quarantined) continue;
-
-    if (original.includes('<!-- dex:auto:recent-interactions -->')) {
-      const region = /<!-- dex:auto:recent-interactions -->\r?\n?([\s\S]*?)<!-- \/dex:auto -->/.exec(original);
-      const existing = region
-        ? region[1].split(/\r?\n/).map((line) => line.trim()).filter((line) => line.startsWith('- '))
-        : [];
-      const newestFirst = [interaction, ...existing].sort((left, right) => {
-        const leftDate = left.match(/\d{4}-\d{2}-\d{2}\s*$/)?.[0] || '';
-        const rightDate = right.match(/\d{4}-\d{2}-\d{2}\s*$/)?.[0] || '';
-        return rightDate.localeCompare(leftDate);
-      });
-      replaceMachineRegionInFile(personPath, 'recent-interactions', newestFirst.slice(0, 20).join('\n'));
-    } else {
-      appendLegacyInteraction(personPath, interaction);
-    }
-
-    if (!entity.last_interaction || date > entity.last_interaction) {
-      upsertFrontmatter(personPath, { last_interaction: date });
-    }
+    ops.push({
+      op: 'mutate',
+      path: personPath,
+      entity_identity: identityForEntity(entity),
+      intent: {
+        kind: 'hook-interaction',
+        interaction: {
+          path: relativeMeetingPath,
+          line: interaction,
+          date,
+        },
+      },
+    });
   }
+  const write = flushEntityOps({
+    vaultRoot,
+    ops,
+    scope: 'hook',
+  });
+  if (!write.ok) skip(`entity-write-pending:${write.error || 'retry queued'}`);
 } catch (error) {
   skip(`unexpected-error:${error.message}`);
 }

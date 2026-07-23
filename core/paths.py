@@ -104,6 +104,7 @@ RITUAL_INTELLIGENCE_DB_FILE = DEX_RUNTIME_DIR / 'ritual-intelligence.db'
 CONTACTS_STATE_FILE = DEX_RUNTIME_DIR / 'contacts.json'
 GARDENER_STATE_FILE = DEX_RUNTIME_DIR / 'gardener.json'
 ENTITY_SUGGESTIONS_FILE = DEX_RUNTIME_DIR / 'entity-suggestions.json'
+ENTITY_PENDING_FILE = DEX_RUNTIME_DIR / 'entity-pending.json'
 ENTITY_VERIFICATION_FILE = DEX_RUNTIME_DIR / 'entity-verification.json'
 
 

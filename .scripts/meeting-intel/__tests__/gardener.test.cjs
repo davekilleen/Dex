@@ -12,6 +12,7 @@ const {
   replaceMachineRegion,
   upsertFrontmatter,
 } = require('../../lib/entity-pages.cjs');
+const { installEntityEngineStub } = require('../../lib/tests/entity-engine-test-helper.cjs');
 const { gardenEntities } = require('../lib/gardener.cjs');
 
 const NOW = new Date('2026-07-12T12:00:00.000Z');
@@ -20,14 +21,17 @@ const BULLETS = '- Product leader at Acme.\n- Discussing the launch plan.';
 async function withVault(fn) {
   const oldVault = process.env.VAULT_PATH;
   const oldProject = process.env.CLAUDE_PROJECT_DIR;
+  const oldPython = process.env.DEX_PYTHON;
   const vault = fs.mkdtempSync(path.join(os.tmpdir(), 'dex-gardener-'));
   process.env.VAULT_PATH = vault;
+  process.env.DEX_PYTHON = installEntityEngineStub(vault);
   delete process.env.CLAUDE_PROJECT_DIR;
   try {
     return await fn(vault);
   } finally {
     if (oldVault === undefined) delete process.env.VAULT_PATH; else process.env.VAULT_PATH = oldVault;
     if (oldProject === undefined) delete process.env.CLAUDE_PROJECT_DIR; else process.env.CLAUDE_PROJECT_DIR = oldProject;
+    if (oldPython === undefined) delete process.env.DEX_PYTHON; else process.env.DEX_PYTHON = oldPython;
     fs.rmSync(vault, { recursive: true, force: true });
   }
 }
@@ -75,6 +79,34 @@ test('creates the summary region under Key Context and uses meeting signal', () 
   assert.match(prompt, /Launch review/);
   assert.doesNotMatch(prompt, /Do not include this transcript/);
   assert.equal(result.gardened.length, 1);
+}));
+
+test('an unavailable engine queues the summary and the next run replays it', () => withVault(async vault => {
+  const page = writePerson(vault);
+  const original = fs.readFileSync(page, 'utf8');
+  const configuredPython = process.env.DEX_PYTHON;
+  process.env.DEX_PYTHON = '/definitely/missing/dex-python';
+  const failed = await gardenEntities({ generate: async () => BULLETS, now: NOW });
+  assert.equal(failed.gardened.length, 0);
+  assert.equal(fs.readFileSync(page, 'utf8'), original);
+  const pendingPath = path.join(vault, 'System', '.dex', 'entity-pending.json');
+  assert.equal(JSON.parse(fs.readFileSync(pendingPath, 'utf8')).batches[0].scope, 'gardener');
+
+  process.env.DEX_PYTHON = configuredPython;
+  try {
+    let calls = 0;
+    const replayed = await gardenEntities({
+      generate: async () => { calls += 1; return '- Must not regenerate'; },
+      now: new Date(NOW.getTime() + (24 * 60 * 60 * 1000)),
+    });
+    assert.equal(calls, 0);
+    assert.equal(replayed.gardened.length, 1);
+    assert.match(fs.readFileSync(page, 'utf8'), /- Product leader at Acme\./);
+    assert.equal(fs.existsSync(pendingPath), false);
+  } finally {
+    if (configuredPython === undefined) delete process.env.DEX_PYTHON;
+    else process.env.DEX_PYTHON = configuredPython;
+  }
 }));
 
 test('appends Key Context when the heading is missing', () => withVault(async vault => {
