@@ -105,6 +105,35 @@ def test_monthly_cadence_extends_cold_threshold_but_not_indefinitely():
     assert at_one_hundred_days["temperature"] == "cold"
 
 
+def test_duplicate_same_date_engagements_do_not_change_count_or_cadence():
+    deduped = [
+        touch("2026-03-24", source_id="monthly-1"),
+        touch("2026-04-23", source_id="monthly-2"),
+        touch("2026-05-23", source_id="monthly-3"),
+    ]
+    duplicated = [
+        deduped[0],
+        touch("2026-03-24", source_id="duplicate-1"),
+        touch("2026-03-24", source_id="duplicate-2"),
+        *deduped[1:],
+    ]
+
+    expected = classify_temperature(
+        deduped,
+        entity_type="person",
+        now=date(2026, 6, 12),
+    )
+    actual = classify_temperature(
+        duplicated,
+        entity_type="person",
+        now=date(2026, 6, 12),
+    )
+
+    assert actual["engagement_count"] == expected["engagement_count"] == 3
+    assert actual["cadence_days"] == expected["cadence_days"] == 30
+    assert actual["temperature"] == expected["temperature"]
+
+
 def test_company_stays_warm_longer_than_person():
     touches = [touch("2026-07-03")]
 

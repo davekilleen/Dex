@@ -46,6 +46,8 @@ jobs:
       - name: Hook harness tests
         run: npm run test:hooks
       - name: Script library tests
+        env:
+          DEX_PYTHON: python3
         run: npm run test:scripts
       - name: Diff-aware test gate
         if: github.event_name == 'pull_request'

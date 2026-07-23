@@ -53,23 +53,61 @@ function atAttempt(attempt) {
 }
 
 function resolveRealPython() {
-  const candidates = [
-    process.env.DEX_TEST_PYTHON,
-    process.env.DEX_PYTHON,
-    path.join(REPO_ROOT, '.venv', 'bin', 'python'),
-    path.join(REPO_ROOT, '..', 'clean-venv', 'bin', 'python'),
-    'python3',
-  ].filter(Boolean);
-  for (const candidate of candidates) {
-    const probe = childProcess.spawnSync(
-      candidate,
-      ['-c', 'import sys, yaml; print(sys.executable)'],
-      { encoding: 'utf8' },
+  const explicit = process.env.DEX_TEST_PYTHON || process.env.DEX_PYTHON;
+  if (!explicit) {
+    throw new Error(
+      'DEX_PYTHON not set — JS↔Python parity guard cannot run '
+      + '(set DEX_PYTHON to a python with PyYAML)',
     );
-    if (probe.status === 0) return probe.stdout.trim();
   }
-  throw new Error('No Python interpreter with PyYAML is available for parity tests');
+  const probe = childProcess.spawnSync(
+    explicit,
+    ['-c', 'import yaml'],
+    { encoding: 'utf8' },
+  );
+  if (probe.status !== 0) {
+    throw new Error(
+      `Explicit parity interpreter ${explicit} cannot import PyYAML`,
+    );
+  }
+  return explicit;
 }
+
+test('parity guard requires an explicit Python interpreter', () => {
+  const oldTestPython = process.env.DEX_TEST_PYTHON;
+  const oldPython = process.env.DEX_PYTHON;
+  delete process.env.DEX_TEST_PYTHON;
+  delete process.env.DEX_PYTHON;
+  try {
+    assert.throws(
+      () => resolveRealPython(),
+      /DEX_PYTHON not set — JS↔Python parity guard cannot run/,
+    );
+  } finally {
+    if (oldTestPython === undefined) delete process.env.DEX_TEST_PYTHON;
+    else process.env.DEX_TEST_PYTHON = oldTestPython;
+    if (oldPython === undefined) delete process.env.DEX_PYTHON;
+    else process.env.DEX_PYTHON = oldPython;
+  }
+});
+
+test('parity guard names an explicit interpreter that lacks PyYAML', (t) => {
+  const { vault } = makeVault(t);
+  const incapable = path.join(vault, 'python-without-pyyaml');
+  fs.writeFileSync(incapable, '#!/bin/sh\nexit 1\n');
+  fs.chmodSync(incapable, 0o755);
+  const oldTestPython = process.env.DEX_TEST_PYTHON;
+  process.env.DEX_TEST_PYTHON = incapable;
+  try {
+    assert.throws(
+      () => resolveRealPython(),
+      error => error.message.includes(incapable) && /PyYAML/.test(error.message),
+    );
+  } finally {
+    if (oldTestPython === undefined) delete process.env.DEX_TEST_PYTHON;
+    else process.env.DEX_TEST_PYTHON = oldTestPython;
+  }
+});
 
 function realCliSpawn(command, args, options) {
   return childProcess.spawnSync(command, args, {

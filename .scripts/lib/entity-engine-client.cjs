@@ -357,7 +357,9 @@ function materializeHookIntent(operation, latest, intent) {
     type: 'meeting',
     direction: 'none',
     source: {
-      id: path.basename(interaction.path, '.md'),
+      id: typeof interaction.source_id === 'string' && interaction.source_id.trim()
+        ? interaction.source_id.trim()
+        : path.basename(interaction.path, '.md'),
       title: titleMatch?.[1]?.trim() || path.basename(interaction.path, '.md'),
     },
   };

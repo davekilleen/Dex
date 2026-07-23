@@ -265,6 +265,50 @@ def test_frontmatter_touches_project_idempotently_and_cascade_on_delete(
         assert connection.execute("SELECT COUNT(*) FROM touches").fetchone() == (0,)
 
 
+def test_schema_version_drift_rebuilds_touches_from_frontmatter(
+    entity_vault: dict[str, Path],
+) -> None:
+    person = _write_person(entity_vault)
+    original = person.read_text(encoding="utf-8")
+    frontmatter = yaml.safe_load(original.split("---", 2)[1])
+    frontmatter["touches"] = [
+        {
+            "ts": "2026-07-20",
+            "type": "meeting",
+            "direction": "none",
+            "source": {"id": "meeting-1", "title": "Planning"},
+        }
+    ]
+    body = original.split("---", 2)[2]
+    person.write_text(
+        f"---\n{yaml.safe_dump(frontmatter, sort_keys=False).rstrip()}\n---{body}",
+        encoding="utf-8",
+    )
+
+    entity_index.build_from_vault(entity_vault["root"], **_kwargs(entity_vault))
+    db_path = entity_index.database_path(entity_vault["root"])
+    with entity_index.connect(db_path) as connection:
+        connection.execute("DELETE FROM touches")
+        connection.execute(
+            "UPDATE meta SET value = '0' WHERE key = 'schema_version'"
+        )
+
+    result = entity_index.reconcile(
+        entity_vault["root"],
+        debounce_seconds=60,
+        **_kwargs(entity_vault),
+    )
+
+    assert result == {"added": 1, "changed": 0, "removed": 0}
+    with entity_index.connect(db_path) as connection:
+        assert connection.execute(
+            "SELECT value FROM meta WHERE key = 'schema_version'"
+        ).fetchone() == (entity_index.SCHEMA_VERSION,)
+        assert connection.execute(
+            "SELECT ts, source FROM touches"
+        ).fetchall() == [("2026-07-20", "meeting-1")]
+
+
 def test_neighbors_derives_inverse_without_storing_a_second_edge(
     entity_vault: dict[str, Path],
 ) -> None:

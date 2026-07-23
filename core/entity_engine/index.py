@@ -712,6 +712,30 @@ def reconcile(
     """Reconcile the materialized view using a complete path-set diff."""
     root = Path(vault_root)
     db_path = database_path(root)
+    rebuild = False
+    if db_path.exists():
+        try:
+            with closing(connect(db_path)) as connection:
+                has_meta = connection.execute(
+                    """
+                    SELECT 1 FROM sqlite_master
+                    WHERE type = 'table' AND name = 'meta'
+                    """
+                ).fetchone()
+                version = (
+                    connection.execute(
+                        "SELECT value FROM meta WHERE key = 'schema_version'"
+                    ).fetchone()
+                    if has_meta
+                    else None
+                )
+                rebuild = version is None or version[0] != SCHEMA_VERSION
+        except sqlite3.Error as error:
+            if not _is_corruption(error):
+                raise
+            rebuild = True
+    if rebuild:
+        remove_database(db_path)
     sources = _scan_sources(
         root,
         people_dir=people_dir,

@@ -11,6 +11,9 @@ const {
 const {
   parseEntityPage,
 } = require('../../../.scripts/lib/entity-pages.cjs');
+const {
+  processEntityCreation,
+} = require('../../../.scripts/meeting-intel/lib/entity-creation.cjs');
 
 const HOOK = path.resolve(__dirname, '../post-meeting-person-update.cjs');
 
@@ -61,12 +64,13 @@ function personPage(name, region = true) {
   ].join('\n');
 }
 
-function meetingNote(vault, name = 'roadmap.md') {
+function meetingNote(vault, name = 'roadmap.md', granolaId = null) {
   const meeting = path.join(vault, '00-Inbox', 'Meetings', name);
   fs.writeFileSync(meeting, [
     '---',
     'title: Roadmap Review',
     'date: 2026-07-10',
+    ...(granolaId ? [`granola_id: ${granolaId}`] : []),
     'attendees:',
     '  - name: Alice Smith',
     '    email: alice@example.com',
@@ -122,6 +126,49 @@ test('a second run is idempotent', (t) => {
   assert.equal(fs.readFileSync(person, 'utf8'), once);
 });
 
+test('batch and hook paths deduplicate a Granola meeting touch', (t) => {
+  const vault = createVault(t);
+  const person = path.join(vault, '05-Areas/People/Internal/Alice_Smith.md');
+  fs.writeFileSync(person, personPage('Alice Smith'));
+  const oldVault = process.env.VAULT_PATH;
+  const oldProject = process.env.CLAUDE_PROJECT_DIR;
+  const oldPython = process.env.DEX_PYTHON;
+  process.env.VAULT_PATH = vault;
+  delete process.env.CLAUDE_PROJECT_DIR;
+  process.env.DEX_PYTHON = path.join(vault, 'entity-engine-test-python');
+  t.after(() => {
+    if (oldVault === undefined) delete process.env.VAULT_PATH;
+    else process.env.VAULT_PATH = oldVault;
+    if (oldProject === undefined) delete process.env.CLAUDE_PROJECT_DIR;
+    else process.env.CLAUDE_PROJECT_DIR = oldProject;
+    if (oldPython === undefined) delete process.env.DEX_PYTHON;
+    else process.env.DEX_PYTHON = oldPython;
+  });
+  const granolaId = 'granola-meeting-123';
+  const batch = [{
+    id: granolaId,
+    title: 'Roadmap Review',
+    createdAt: '2026-07-10T10:00:00Z',
+    filteredAttendees: [{
+      name: 'Alice Smith',
+      email: 'alice@example.com',
+      location: 'internal',
+    }],
+  }];
+
+  processEntityCreation(batch, { entity_creation: { mode: 'off' } });
+  const meeting = meetingNote(vault, 'roadmap.md', granolaId);
+  assert.equal(runHook(vault, { tool_input: { file_path: meeting } }).status, 0);
+
+  const updated = fs.readFileSync(person, 'utf8');
+  assert.equal(parseEntityPage(person).touches.length, 1);
+  assert.equal(parseEntityPage(person).touches[0].source.id, granolaId);
+  assert.equal(
+    (updated.match(/meeting · two-way — Roadmap Review \[granola-meeting-123\]/g) || []).length,
+    1,
+  );
+});
+
 test('an unavailable engine leaves the page unchanged and persists a retry', (t) => {
   const vault = createVault(t);
   const person = path.join(vault, '05-Areas/People/Internal/Alice_Smith.md');
@@ -165,6 +212,7 @@ test('a deferred interaction rematerializes after a page edit and then lands', (
       path: '00-Inbox/Meetings/roadmap.md',
       line: '- [Roadmap Review](00-Inbox/Meetings/roadmap.md) — 2026-07-10',
       date: '2026-07-10',
+      source_id: 'roadmap',
     },
   });
   assert.equal(Object.hasOwn(pending.batches[0].ops[0], 'base_fingerprint'), false);

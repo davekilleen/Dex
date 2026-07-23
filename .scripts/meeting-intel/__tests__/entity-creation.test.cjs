@@ -6,9 +6,11 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { parseEntityPage, renderCompanyPage, renderPersonPage } = require('../../lib/entity-pages.cjs');
+const { flushEntityOps } = require('../../lib/entity-engine-client.cjs');
 const { installEntityEngineStub } = require('../../lib/tests/entity-engine-test-helper.cjs');
 const { loadState } = require('../lib/contacts-state.cjs');
 const { loadSuggestions, processEntityCreation } = require('../lib/entity-creation.cjs');
+const { beginEntityPhase, reconcileEntityPhases } = require('../lib/entity-phase.cjs');
 
 function withVault(fn, { python = null } = {}) {
   const oldVault = process.env.VAULT_PATH;
@@ -329,6 +331,58 @@ test('batch sync logs idempotent person and company touches without fabricating 
   assert.deepEqual(second.companies_created, []);
   assert.deepEqual(fs.readFileSync(personPath), personOnce);
   assert.deepEqual(fs.readFileSync(companyPath), companyOnce);
+}));
+
+test('a permanent touch failure is returned and makes the meeting phase terminal', () => withVault(vault => {
+  const page = path.join(vault, '05-Areas', 'People', 'External', 'Touch_Failure.md');
+  fs.mkdirSync(path.dirname(page), { recursive: true });
+  fs.writeFileSync(
+    page,
+    renderPersonPage(
+      'Touch Failure',
+      null,
+      null,
+      ['touch-failure@example.org'],
+      [],
+      'external',
+    ),
+  );
+  const invalidTouch = {
+    op: 'mutate',
+    path: page,
+    intent: {
+      kind: 'touch-log',
+      touches: [],
+    },
+  };
+  for (let attempt = 1; attempt <= 4; attempt += 1) {
+    flushEntityOps({
+      vaultRoot: vault,
+      ops: attempt === 1 ? [invalidTouch] : [],
+      meetingIds: attempt === 1 ? ['m1'] : [],
+      scope: 'touch',
+      now: new Date(Date.UTC(2026, 6, attempt)),
+    });
+  }
+
+  const result = processEntityCreation(
+    meetings(),
+    { entity_creation: { mode: 'auto' } },
+    () => {},
+    { now: new Date('2026-07-05T00:00:00.000Z') },
+  );
+
+  assert.equal(result.created.length, 1);
+  assert.equal(result.entity_write.ok, true);
+  assert.equal(result.entity_write.dead_lettered_ops.length, 1);
+  assert.equal(result.entity_write.dead_lettered_ops[0].scope, 'touch');
+  assert.match(result.errors[0].error, /failed permanently/i);
+
+  const state = { processedMeetings: {} };
+  beginEntityPhase(state, [{ id: 'm1' }]);
+  reconcileEntityPhases(state, result.entity_write);
+  assert.equal(state.processedMeetings.m1.entity_phase, 'failed');
+  assert.equal(state.processedMeetings.m1.entity_terminal, true);
 }));
 
 test('freemail, internal, and unknown-location domains never create companies', () => {

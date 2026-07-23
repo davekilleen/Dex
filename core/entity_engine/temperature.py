@@ -57,11 +57,11 @@ def classify_temperature(
         if isinstance(touch, Mapping)
         if (touch_date := _as_date(touch.get("ts"))) is not None
     ]
-    engagement_dates = sorted(
+    engagement_dates = sorted({
         touch_date
         for touch_date, touch in dated_touches
         if _is_engagement(touch)
-    )
+    })
     last_touch_date = max(
         (touch_date for touch_date, _touch in dated_touches),
         default=None,

@@ -661,6 +661,10 @@ function processEntityCreation(
     });
     logger(writeMessage);
   }
+  entityWrite.dead_lettered_ops = [
+    ...(entityWrite.dead_lettered_ops || []),
+    ...(touchWrite.dead_lettered_ops || []),
+  ];
   entityWrite.completed_meeting_ids = [...new Set([
     ...(entityWrite.completed_meeting_ids || []),
     ...(entityWrite.completed_batches || [])
