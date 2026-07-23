@@ -6,12 +6,12 @@
  *
  *   node connect.cjs connect <provider> [--scopes a,b,c] [--as <alias>] [--default]
  *                                                           run OAuth, store token (--as = 2nd account)
- *   node connect.cjs set-key <provider> [--key <s> | --username <u> --password <p>] [--as <alias>] [--default]
- *                                                           paste-a-key (Class B); reads stdin by default
- *   node connect.cjs register-app <provider> [--client-id ID --client-secret SECRET]
- *                                                           save an OAuth app's creds (else reads stdin: id\nsecret)
+ *   node connect.cjs set-key <provider> [--username <u>] [--as <alias>] [--default]
+ *                                                           paste-a-key (Class B); secret via stdin only
+ *   node connect.cjs register-app <provider> [--client-id ID]
+ *                                                           save an OAuth app; secret via stdin only
  *   node connect.cjs status                                 health sweep (monitor view)
- *   node connect.cjs refresh <conn>                         force a refresh now
+ *   node connect.cjs refresh <conn> [--force]               refresh if needed; --force always calls provider
  *   node connect.cjs disconnect <conn>                      delete local token (conn = provider or provider:alias)
  *   node connect.cjs providers [filter] [--keys]            list OAuth (or paste-a-key) providers
  *   node connect.cjs describe <provider>                    show what's needed to connect it
@@ -45,6 +45,14 @@ function openBrowser(url) {
 }
 
 async function cmdConnect(provider, flags) {
+  if (!provider) throw new Error('Usage: node connect.cjs connect <provider> [--scopes a,b,c] [--as <alias>]');
+  const providerConfig = catalog.getProviderConfig(provider);
+  if (!providerConfig.supported) {
+    throw new Error(`'${provider}' is not connectable yet: ${providerConfig.reason} It remains available to browse in providers.`);
+  }
+  if (!providerConfig.verified) {
+    console.log('Unverified provider — advanced tier, expect quirks.');
+  }
   // Multi-account: `--as <alias>` connects a second account (provider:alias); bare = the default.
   const { connId, alias } = store.parseConnectionId(flags.as ? `${provider}:${flags.as}` : provider);
   const app = store.getOAuthApp(provider); // OAuth app is shared across a provider's accounts
@@ -61,7 +69,6 @@ async function cmdConnect(provider, flags) {
     process.exit(1);
   }
   const scopes = catalog.normalizeScopes(provider, flags.scopes ? flags.scopes.split(',') : []);
-  const providerConfig = catalog.getProviderConfig(provider);
 
   const cb = await oauth.startCallbackServer();
   const { url, codeVerifier, state } = oauth.buildAuthorizationUrl(providerConfig, {
@@ -74,8 +81,7 @@ async function cmdConnect(provider, flags) {
   console.log(`(If it doesn't open, visit:)\n${url}\n`);
   openBrowser(url);
 
-  const { code, state: returnedState } = await cb.waitForCode();
-  if (returnedState !== state) throw new Error('OAuth state mismatch — possible CSRF, aborting.');
+  const { code } = await cb.waitForCode({ expectedState: state });
 
   const token = await oauth.exchangeCodeForToken(providerConfig, {
     code,
@@ -92,20 +98,19 @@ async function cmdConnect(provider, flags) {
 /**
  * Register a provider's OAuth app (client id + secret) WITHOUT the user opening any file.
  * The /connect skill drives this conversationally: it asks for each value and pipes it here.
- * Reads `--client-id` / `--client-secret` flags, else stdin (one per line: id then secret).
+ * Reads the client id from `--client-id` or stdin. The secret always comes from
+ * stdin so it never appears in process listings or shell history.
  * Public clients (PKCE, no secret) pass an empty secret.
  */
 function cmdRegisterApp(provider, flags) {
-  if (!provider) throw new Error('Usage: node connect.cjs register-app <provider> [--client-id ID --client-secret SECRET]');
-  let clientId = flags['client-id'];
-  let clientSecret = flags['client-secret'];
-  // Fill any missing value from stdin (read fd 0 ONCE): line 1 = client id, line 2 = secret
-  // (blank ok for public/PKCE clients).
-  if (clientId === undefined || clientSecret === undefined) {
-    const piped = (readStdin() || '').split(/\r?\n/).map((s) => s.trim());
-    if (clientId === undefined) clientId = piped[0] || '';
-    if (clientSecret === undefined) clientSecret = piped[1] !== undefined ? piped[1] : '';
+  if (!provider) throw new Error('Usage: node connect.cjs register-app <provider> [--client-id ID] (secret via stdin)');
+  if (flags['client-secret'] !== undefined) {
+    throw new Error('--client-secret is not accepted; pipe the client secret on stdin.');
   }
+  let clientId = flags['client-id'];
+  const piped = (readStdin() || '').split(/\r?\n/).map((s) => s.trim());
+  const clientSecret = clientId === undefined ? piped[1] || '' : piped[0] || '';
+  if (clientId === undefined) clientId = piped[0] || '';
   if (!clientId) throw new Error(`No client id provided for '${provider}'. Pass --client-id or pipe it on stdin.`);
   store.setOAuthApp(provider, { clientId, clientSecret: clientSecret || '' });
   console.log(`✅ Registered OAuth app for ${provider} (saved to ${store.credentialsDir()}/oauth-apps.json). Now: node connect.cjs connect ${provider}`);
@@ -223,7 +228,10 @@ async function probeKey(service, descriptor, secret) {
 }
 
 async function cmdSetKey(service, flags) {
-  if (!service) throw new Error('Usage: node connect.cjs set-key <provider> [--key <secret> | --username <u> --password <p>] [--<field> <value> …] [--no-probe]');
+  if (!service) throw new Error('Usage: node connect.cjs set-key <provider> [--username <u>] [--<field> <value> …] [--no-probe] (secret via stdin)');
+  if (flags.key !== undefined || flags.password !== undefined) {
+    throw new Error('Secret flags are not accepted; pipe the API key or password on stdin.');
+  }
   // Connection details: explicit --connectionConfig JSON, plus any required field passed
   // as its own flag (e.g. `--subdomain acme` for Zendesk — friendlier than JSON).
   // Multi-account: the positional is a provider (optionally provider:alias); `--as` adds an alias.
@@ -241,6 +249,9 @@ async function cmdSetKey(service, flags) {
     }
   }
   const descriptor = catalog.getProviderConfig(provider, connectionConfig);
+  if (!descriptor.supported) {
+    throw new Error(`'${provider}' is not connectable yet: ${descriptor.reason} It remains available to browse in providers.`);
+  }
   if (!catalog.KEY_MODES.has(descriptor.authMode)) {
     throw new Error(`'${provider}' uses ${descriptor.authMode} (OAuth) — use: node connect.cjs connect ${provider}`);
   }
@@ -259,25 +270,28 @@ async function cmdSetKey(service, flags) {
     throw new Error(
       `${descriptor.displayName} needs connection detail${missing.length > 1 ? 's' : ''}: ${missing.join(', ')}.\n` +
         `${lines.join('\n')}\n` +
-        `e.g. node connect.cjs set-key ${provider} --key <secret> ${missing.map((f) => `--${f} <value>`).join(' ')}`
+        `e.g. printf '%s\\n' '<secret>' | node connect.cjs set-key ${provider} ${missing.map((f) => `--${f} <value>`).join(' ')}`
     );
   }
 
   let secret;
   if (descriptor.authMode === 'BASIC') {
     const username = flags.username;
-    const password = flags.password !== undefined ? flags.password : readStdin();
-    if (!username || !password) throw new Error('BASIC auth needs --username and --password (password may be piped on stdin).');
+    const password = readStdin();
+    if (!username || !password) throw new Error('BASIC auth needs --username and a password piped on stdin.');
     secret = { username, password };
   } else {
-    const apiKey = flags.key !== undefined ? flags.key : readStdin();
-    if (!apiKey) throw new Error('No key provided. Pipe it on stdin or pass --key <secret>.');
+    const apiKey = readStdin();
+    if (!apiKey) throw new Error('No key provided. Pipe it on stdin.');
     secret = { apiKey };
   }
   if (Object.keys(connectionConfig).length) secret.connectionConfig = connectionConfig;
 
   store.saveApiKey(connId, secret, { provider: descriptor.id, authMode: descriptor.authMode });
   if (flags.default) store.setDefault(provider, alias);
+  if (!descriptor.verified) {
+    console.log('Unverified provider — advanced tier, expect quirks.');
+  }
 
   const probe = flags['no-probe'] === undefined && flags.probe !== 'false' ? await probeKey(connId, descriptor, secret) : 'skipped';
   const note = probe === 'ok' ? ' Verified live.' : probe === 'failed' ? ' (probe failed — marked needs_reauth)' : '';
@@ -314,11 +328,12 @@ function cmdStatus() {
   console.log('');
 }
 
-async function cmdRefresh(service) {
+async function cmdRefresh(service, flags = {}) {
+  if (!service) throw new Error('Usage: node connect.cjs refresh <conn> [--force]');
   // No token material in output, not even a prefix: logs and transcripts of this
   // command must stay credential-free. get-token is the sanctioned accessor.
-  await health.ensureFreshToken(service);
-  console.log(`✅ ${service}: token valid (refreshed if needed).`);
+  await health.refreshToken(service, { force: flags.force !== undefined });
+  console.log(`✅ ${service}: token valid (${flags.force !== undefined ? 'forced refresh complete' : 'refreshed if needed'}).`);
 }
 
 function cmdProviders(filter, flags = {}) {
@@ -327,7 +342,10 @@ function cmdProviders(filter, flags = {}) {
   const filtered = filter ? list.filter((p) => (p.id + ' ' + p.displayName).toLowerCase().includes(filter.toLowerCase())) : list;
   const label = keys ? 'paste-a-key providers' : 'OAuth providers';
   console.log(`\n${filtered.length} ${label}${filter ? ` matching "${filter}"` : ''} (of ${list.length}):\n`);
-  for (const p of filtered.slice(0, 60)) console.log(`  ${p.id.padEnd(28)} ${p.displayName}  [${p.authMode}]`);
+  for (const p of filtered.slice(0, 60)) {
+    const tier = p.supported === false ? '; browse-only' : p.verified ? '; verified' : '; advanced';
+    console.log(`  ${p.id.padEnd(28)} ${p.displayName}  [${p.authMode}${tier}]`);
+  }
   if (filtered.length > 60) console.log(`  …and ${filtered.length - 60} more`);
   console.log('');
 }
@@ -339,10 +357,12 @@ function cmdDescribe(service) {
   const isKey = catalog.KEY_MODES.has(descriptor.authMode);
   const required = isKey ? catalog.requiredConnectionConfig(service) : [];
   console.log(`\n${descriptor.displayName}  [${descriptor.authMode}]  (${descriptor.id})`);
-  if (!isKey) {
+  if (!descriptor.supported) {
+    console.log(`  Connect:      browse-only — ${descriptor.reason}`);
+  } else if (!isKey) {
     console.log(`  Connect:      node connect.cjs connect ${descriptor.id}`);
   } else {
-    console.log(`  Connect:      node connect.cjs set-key ${descriptor.id} --key <secret>${required.map((f) => ` --${f} <value>`).join('')}`);
+    console.log(`  Connect:      pipe the secret to: node connect.cjs set-key ${descriptor.id}${required.map((f) => ` --${f} <value>`).join('')}`);
   }
   // Show the RAW base template (e.g. https://${connectionConfig.subdomain}.zendesk.com) so the
   // field's role is obvious — descriptor.proxyBaseUrl is resolved against empty config here and
@@ -389,6 +409,7 @@ function cmdAuthUrl(provider, flags) {
   const app = store.getOAuthApp(provider) || { clientId: 'YOUR_CLIENT_ID' };
   const scopes = catalog.normalizeScopes(provider, flags.scopes ? flags.scopes.split(',') : []);
   const providerConfig = catalog.getProviderConfig(provider);
+  if (!providerConfig.supported) throw new Error(`'${provider}' is browse-only: ${providerConfig.reason}`);
   const { url, state, codeVerifier } = oauth.buildAuthorizationUrl(providerConfig, {
     clientId: app.clientId,
     scopes,
@@ -415,7 +436,7 @@ async function main() {
         cmdStatus();
         break;
       case 'refresh':
-        await cmdRefresh(positional[0]);
+        await cmdRefresh(positional[0], flags);
         break;
       case 'disconnect':
         store.deleteToken(positional[0]);
@@ -443,4 +464,4 @@ async function main() {
 }
 
 if (require.main === module) main();
-module.exports = { main, buildProbeTarget, classifyProbeStatus, probeKey };
+module.exports = { main, buildProbeTarget, classifyProbeStatus, probeKey, cmdRefresh };

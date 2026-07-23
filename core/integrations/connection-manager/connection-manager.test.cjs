@@ -322,7 +322,8 @@ test('cli: set-key on a host-scoped provider FAILS without the field (no dead co
   const field = catalog.requiredConnectionConfig(FIELD_PROV.id)[0];
   let err;
   try {
-    execFileSync('node', [path.join(DIR, 'connect.cjs'), 'set-key', FIELD_PROV.id, '--key', 'k', '--no-probe'], {
+    execFileSync('node', [path.join(DIR, 'connect.cjs'), 'set-key', FIELD_PROV.id, '--no-probe'], {
+      input: 'k\n',
       env: childEnv,
       stdio: 'pipe',
     });
@@ -345,8 +346,8 @@ test('cli: set-key with --<field> resolves the templated base_url end-to-end', {
   const field = catalog.requiredConnectionConfig(FIELD_PROV.id)[0];
   execFileSync(
     'node',
-    [path.join(DIR, 'connect.cjs'), 'set-key', FIELD_PROV.id, '--key', 'sek', `--${field}`, 'acme', '--no-probe'],
-    { env: childEnv }
+    [path.join(DIR, 'connect.cjs'), 'set-key', FIELD_PROV.id, `--${field}`, 'acme', '--no-probe'],
+    { env: childEnv, input: 'sek\n' }
   );
   const json = JSON.parse(execFileSync('node', [path.join(DIR, 'get-token.cjs'), FIELD_PROV.id], { env: childEnv }).toString());
   assert.equal(json.kind, 'api_key');
@@ -362,7 +363,8 @@ test('cli: coverage reports reachable + generic-probeable counts', () => {
 
 test('cli: default-on probe never blocks the save (null-target provider stays green, offline)', { skip: NULL_TARGET_PROV ? false : 'no null-target provider' }, () => {
   // No --no-probe here: the probe runs, but buildProbeTarget is null → skipped → zero network.
-  const out = execFileSync('node', [path.join(DIR, 'connect.cjs'), 'set-key', NULL_TARGET_PROV.id, '--key', 'k'], {
+  const out = execFileSync('node', [path.join(DIR, 'connect.cjs'), 'set-key', NULL_TARGET_PROV.id], {
+    input: 'k\n',
     env: childEnv,
   }).toString();
   assert.match(out, /Stored/, 'set-key should report success even when the probe is skipped');
@@ -477,9 +479,10 @@ test('cli: set-key --as adds a second paste-key account without clobbering the f
 
 // ---- get-token output contract (low) ----------------------------------------
 
-test('cli: get-token OAuth no-flag returns full JSON with access_token (locks pp-gmail contract)', () => {
+test('cli: get-token OAuth no-flag returns the least-privilege access token record', () => {
   store.saveToken('oauth-contract', { access_token: 'AT', refresh_token: 'RT', expires_at: Date.now() + 3600_000, scope: 'a b' }, { provider: 'google' });
   const json = JSON.parse(execFileSync('node', [path.join(DIR, 'get-token.cjs'), 'oauth-contract'], { env: childEnv }).toString());
   assert.equal(json.access_token, 'AT', 'OAuth no-flag output must contain access_token');
+  assert.equal(json.refresh_token, undefined, 'OAuth no-flag output must not expose refresh_token');
   store.deleteToken('oauth-contract');
 });

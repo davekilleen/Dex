@@ -125,6 +125,7 @@ const _inFlight = new Map();
 
 /**
  * Return a valid access token for `service`, refreshing if expired/expiring.
+ * With { force:true }, perform the provider refresh even when the token is fresh.
  * On refresh failure (e.g. revoked refresh token) marks the connection
  * needs_reauth and throws — the caller surfaces a "Reconnect" prompt.
  *
@@ -134,7 +135,7 @@ const _inFlight = new Map();
  * winner's stored token instead of burning the refresh token a second time
  * (providers with refresh-token rotation invalidate one side otherwise).
  */
-async function ensureFreshToken(service) {
+async function refreshToken(service, { force = false } = {}) {
   const connId = store.resolveConnId(service);
   let token;
   try {
@@ -161,7 +162,7 @@ async function ensureFreshToken(service) {
   if (isKeyBased(reg0, token)) return token.apiKey || token.password || null;
 
   const h = connectionHealth(connId);
-  if (h.status === 'connected') return token.access_token;
+  if (!force && h.status === 'connected') return token.access_token;
 
   if (!token.refresh_token) {
     store.upsertConnection(connId, { status: 'needs_reauth', error: 'no_refresh_token' });
@@ -176,7 +177,7 @@ async function ensureFreshToken(service) {
         // Double-check under the lock: another process may have refreshed while
         // we waited. If the stored token is fresh now, use it: no network call.
         const current = store.loadToken(connId) || token;
-        if (connectionHealth(connId).status === 'connected') return current.access_token;
+        if (!force && connectionHealth(connId).status === 'connected') return current.access_token;
 
         const reg = store.readRegistry()[connId] || {};
         const provider = reg.provider || store.parseConnectionId(connId).provider;
@@ -211,4 +212,8 @@ async function ensureFreshToken(service) {
   return promise;
 }
 
-module.exports = { connectionHealth, allConnectionsHealth, ensureFreshToken, EXPIRY_SKEW_MS };
+async function ensureFreshToken(service) {
+  return refreshToken(service);
+}
+
+module.exports = { connectionHealth, allConnectionsHealth, ensureFreshToken, refreshToken, EXPIRY_SKEW_MS };

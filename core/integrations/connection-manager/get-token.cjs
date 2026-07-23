@@ -9,8 +9,8 @@
  *       ["node", "get-token.cjs", "google", "--access-token-only"]))
  *
  * Output asymmetry (by auth class):
- *   OAuth, no flag      → full token JSON (contains `access_token`, refresh_token, expiry…).
- *                         pp-gmail and other consumers rely on `access_token` being present.
+ *   OAuth, no flag      → least-privilege JSON { access_token, expires_at }.
+ *   OAuth, --full       → full stored token JSON, including refresh_token.
  *   Class-B, no flag    → request envelope { kind:'api_key', baseUrl, headers, query } with the
  *                         auth scheme already rendered (NOT the raw key).
  *   any, --access-token-only → the raw bearer token (OAuth) or raw secret (Class-B).
@@ -26,8 +26,9 @@ const { apiKeyContext } = require('./auth-context.cjs');
 async function main() {
   const service = process.argv[2];
   const accessOnly = process.argv.includes('--access-token-only');
+  const full = process.argv.includes('--full');
   if (!service) {
-    console.error('Usage: node get-token.cjs <service> [--access-token-only]');
+    console.error('Usage: node get-token.cjs <service> [--full | --access-token-only]');
     process.exit(1);
   }
   let token;
@@ -68,7 +69,10 @@ async function main() {
     if (accessOnly) {
       process.stdout.write(accessToken);
     } else {
-      process.stdout.write(JSON.stringify(store.loadToken(service)));
+      const fresh = store.loadToken(service);
+      process.stdout.write(
+        JSON.stringify(full ? fresh : { access_token: fresh.access_token, expires_at: fresh.expires_at || null })
+      );
     }
   } catch (err) {
     if (err.needsReauth) {

@@ -28,13 +28,16 @@ function makePkce() {
 
 // ---- Localhost callback server ---------------------------------------------
 
-function listenOnFirstFreePort(ports) {
+function listenOnFirstFreePort(ports, createServer) {
   return new Promise((resolve, reject) => {
     const tryPort = (i) => {
       if (i >= ports.length) return reject(new Error(`No free port in ${ports[0]}..${ports[ports.length - 1]}`));
-      const server = http.createServer();
-      server.once('error', () => tryPort(i + 1));
-      server.listen(ports[i], '127.0.0.1', () => resolve({ server, port: ports[i] }));
+      const server = createServer();
+      server.once('error', (err) => {
+        if (err && err.code === 'EADDRINUSE') tryPort(i + 1);
+        else reject(err);
+      });
+      server.listen(ports[i], '127.0.0.1', () => resolve({ server, port: server.address().port }));
     };
     tryPort(0);
   });
@@ -45,8 +48,13 @@ function listenOnFirstFreePort(ports) {
  *   { redirectUri, waitForCode(): Promise<{code,state}>, close() }
  * waitForCode resolves when the provider redirects back with ?code=...&state=...
  */
-async function startCallbackServer({ ports = CALLBACK_PORTS, path = '/callback' } = {}) {
-  const { server, port } = await listenOnFirstFreePort(ports);
+async function startCallbackServer({
+  ports = CALLBACK_PORTS,
+  path = '/callback',
+  timeoutMs = 5 * 60 * 1000,
+  createServer = () => http.createServer(),
+} = {}) {
+  const { server, port } = await listenOnFirstFreePort(ports, createServer);
   // Loopback host literal in the redirect_uri. Defaults to 127.0.0.1 (what Google's
   // desktop client is registered with). Salesforce rejects http://127.0.0.1 callbacks
   // ("Cannot be an HTTP URL") and only allows 'localhost', so set
@@ -55,12 +63,12 @@ async function startCallbackServer({ ports = CALLBACK_PORTS, path = '/callback' 
   const host = process.env.DEX_OAUTH_CALLBACK_HOST || '127.0.0.1';
   const redirectUri = `http://${host}:${port}${path}`;
 
-  const waitForCode = () =>
+  const waitForCode = ({ expectedState } = {}) =>
     new Promise((resolve, reject) => {
       const timeout = setTimeout(() => {
         server.close();
-        reject(new Error('OAuth callback timed out after 5 minutes.'));
-      }, 5 * 60 * 1000);
+        reject(new Error(`OAuth callback timed out after ${timeoutMs}ms.`));
+      }, timeoutMs);
 
       server.on('request', (req, res) => {
         const url = new URL(req.url, redirectUri);
@@ -71,20 +79,24 @@ async function startCallbackServer({ ports = CALLBACK_PORTS, path = '/callback' 
         const error = url.searchParams.get('error');
         const code = url.searchParams.get('code');
         const state = url.searchParams.get('state');
-        res.writeHead(200, { 'Content-Type': 'text/html' });
+        const stateMismatch = expectedState !== undefined && state !== expectedState;
+        res.writeHead(stateMismatch ? 400 : 200, { 'Content-Type': 'text/html' });
         res.end(
-          error
+          stateMismatch
+            ? '<html><body style="font-family:system-ui;padding:3rem;text-align:center"><h2>Connection aborted</h2><p>OAuth state mismatch.</p></body></html>'
+            : error
             ? `<html><body style="font-family:system-ui;padding:3rem;text-align:center"><h2>Connection failed</h2><p>${error}</p><p>You can close this tab and return to Dex.</p></body></html>`
             : `<html><body style="font-family:system-ui;padding:3rem;text-align:center"><h2>✅ Connected</h2><p>You can close this tab and return to Dex.</p></body></html>`
         );
         clearTimeout(timeout);
         server.close();
-        if (error) reject(new Error(`Provider returned error: ${error}`));
+        if (stateMismatch) reject(new Error('OAuth state mismatch — possible CSRF, aborting.'));
+        else if (error) reject(new Error(`Provider returned error: ${error}`));
         else resolve({ code, state });
       });
     });
 
-  return { redirectUri, waitForCode, close: () => server.close() };
+  return { redirectUri, waitForCode, close: () => server.listening && server.close() };
 }
 
 // ---- Authorization URL ------------------------------------------------------
@@ -162,10 +174,17 @@ async function postToken(providerConfig, body, headers) {
   return json;
 }
 
-function normalizeToken(json, previous = {}) {
+function valueAtPath(value, dottedPath) {
+  if (!dottedPath) return undefined;
+  return String(dottedPath)
+    .split('.')
+    .reduce((current, key) => (current && typeof current === 'object' ? current[key] : undefined), value);
+}
+
+function normalizeToken(json, previous = {}, providerConfig = {}) {
   const expiresInMs = json.expires_in ? Number(json.expires_in) * 1000 : null;
   return {
-    access_token: json.access_token,
+    access_token: valueAtPath(json, providerConfig.alternateAccessTokenResponsePath) || json.access_token,
     // Some providers don't return a new refresh_token on refresh — keep the old one.
     refresh_token: json.refresh_token || previous.refresh_token || null,
     token_type: json.token_type || 'Bearer',
@@ -191,7 +210,7 @@ async function exchangeCodeForToken(providerConfig, { code, codeVerifier, client
   };
   if (codeVerifier) body.code_verifier = codeVerifier;
   const headers = buildTokenAuth(providerConfig, clientId, clientSecret, body);
-  return normalizeToken(await postToken(providerConfig, body, headers));
+  return normalizeToken(await postToken(providerConfig, body, headers), {}, providerConfig);
 }
 
 /** Refresh an access token. Returns a normalized token (preserving refresh_token if unchanged). */
@@ -203,7 +222,7 @@ async function refreshAccessToken(providerConfig, { refreshToken, clientId, clie
   };
   const headers = buildTokenAuth(providerConfig, clientId, clientSecret, body);
   const tokenUrl = providerConfig.refreshUrl || providerConfig.tokenUrl;
-  return normalizeToken(await postToken({ ...providerConfig, tokenUrl }, body, headers), previous);
+  return normalizeToken(await postToken({ ...providerConfig, tokenUrl }, body, headers), previous, providerConfig);
 }
 
 module.exports = {

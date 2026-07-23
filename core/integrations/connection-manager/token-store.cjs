@@ -6,7 +6,7 @@
  * Layout (under {DEX_VAULT}/System/credentials/, which is gitignored):
  *   tokens/<connId>.json    AES-256-GCM envelope { v, iv, tag, data } (base64)
  *   connections.json        plaintext registry: status/scopes/timestamps (NO secrets)
- *   oauth-apps.json         your own OAuth client id/secret per provider (gitignored)
+ *   oauth-apps.json         plaintext client ids + encrypted client-secret envelopes
  *   .dex-cm.key             fallback encryption key (0600) if OS keychain unavailable
  *   .gitignore              auto-written ('*') so a git-tracked vault never commits secrets
  *
@@ -134,17 +134,17 @@ function writeKeyFile(keyB64) {
  * orphan every saved token while everything looked fine).
  */
 class KeyLossError extends Error {
-  constructor(tokenCount, keyFoundButInvalid) {
-    const n = `${tokenCount} saved connection${tokenCount === 1 ? '' : 's'}`;
+  constructor(credentialCount, keyFoundButInvalid) {
+    const n = `${credentialCount} saved encrypted credential${credentialCount === 1 ? '' : 's'}`;
     super(
       `Dex's encryption key is ${keyFoundButInvalid ? 'unreadable' : 'missing'} but ${n} exist. ` +
-        'Saved tokens cannot be unlocked without it, so those connections need to be reconnected. ' +
+        'Saved credentials cannot be unlocked without it, so those connections need to be reconnected. ' +
         'Dex will not create a replacement key on its own; reconnecting any tool issues a fresh key ' +
-        'and preserves the old token files as *.keyloss-* for inspection.'
+        'and preserves the old encrypted files as *.keyloss-* for inspection.'
     );
     this.name = 'KeyLossError';
     this.code = 'DEX_CM_KEY_LOST';
-    this.tokenCount = tokenCount;
+    this.credentialCount = credentialCount;
   }
 }
 
@@ -172,7 +172,18 @@ function getKey() {
     return found;
   }
   const tokenCount = listTokenFiles().length;
-  if (tokenCount > 0) throw new KeyLossError(tokenCount, Boolean(found) || lookupFailed);
+  let encryptedAppFileCount = 0;
+  const appsPath = oauthAppsPath();
+  if (fs.existsSync(appsPath)) {
+    try {
+      const apps = JSON.parse(fs.readFileSync(appsPath, 'utf8'));
+      encryptedAppFileCount = Object.values(apps).some((app) => app && app.clientSecret && app.clientSecret.v) ? 1 : 0;
+    } catch {
+      /* a corrupt app registry is not evidence that the missing key protected it */
+    }
+  }
+  const credentialCount = tokenCount + encryptedAppFileCount;
+  if (credentialCount > 0) throw new KeyLossError(credentialCount, Boolean(found) || lookupFailed);
   const key = crypto.randomBytes(32);
   const b64 = key.toString('base64');
   if (!storeKeyInMacKeychain(b64)) writeKeyFile(b64);
@@ -195,6 +206,8 @@ function recoverFromKeyLoss() {
     for (const f of files) quarantineFile(path.join(credentialsDir(), 'tokens', f), 'keyloss');
     const keyPath = path.join(credentialsDir(), '.dex-cm.key');
     if (fs.existsSync(keyPath)) quarantineFile(keyPath, 'keyloss');
+    const appsPath = oauthAppsPath();
+    if (fs.existsSync(appsPath)) quarantineFile(appsPath, 'keyloss');
     const reg = readRegistry();
     let stamped = 0;
     for (const k of Object.keys(reg)) {
@@ -214,9 +227,9 @@ function recoverFromKeyLoss() {
  * connection, print why once) and then proceeds with a fresh key, instead of
  * leaving the user wedged or doing anything silently.
  */
-function encryptForSave(plaintext) {
+function encryptForSave(plaintext, aad) {
   try {
-    return encrypt(plaintext);
+    return encrypt(plaintext, aad);
   } catch (err) {
     if (err && err.code === 'DEX_CM_KEY_LOST') {
       const n = recoverFromKeyLoss();
@@ -225,7 +238,7 @@ function encryptForSave(plaintext) {
           'cannot be unlocked and need reconnecting (their token files were preserved as *.keyloss-*). ' +
           'Run: node connect.cjs status'
       );
-      return encrypt(plaintext);
+      return encrypt(plaintext, aad);
     }
     throw err;
   }
@@ -266,16 +279,28 @@ function withRefreshLock(connId, fn) {
 
 // ---- Encrypt / decrypt ------------------------------------------------------
 
-function encrypt(plaintext) {
-  const iv = crypto.randomBytes(12);
-  const cipher = crypto.createCipheriv('aes-256-gcm', getKey(), iv);
-  const data = Buffer.concat([cipher.update(plaintext, 'utf8'), cipher.final()]);
-  const tag = cipher.getAuthTag();
-  return { v: 1, iv: iv.toString('base64'), tag: tag.toString('base64'), data: data.toString('base64') };
+class EnvelopeBindingError extends Error {
+  constructor() {
+    super('Encrypted credential belongs to a different account.');
+    this.name = 'EnvelopeBindingError';
+    this.code = 'DEX_CM_ENVELOPE_BINDING';
+  }
 }
 
-function decrypt(envelope) {
+function encrypt(plaintext, aad = '') {
+  const iv = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv('aes-256-gcm', getKey(), iv);
+  cipher.setAAD(Buffer.from(aad, 'utf8'));
+  const data = Buffer.concat([cipher.update(plaintext, 'utf8'), cipher.final()]);
+  const tag = cipher.getAuthTag();
+  return { v: 2, aad, iv: iv.toString('base64'), tag: tag.toString('base64'), data: data.toString('base64') };
+}
+
+function decrypt(envelope, aad = '') {
+  if (!envelope || envelope.v !== 2) throw new Error('Unsupported encrypted credential envelope version.');
+  if (envelope.aad !== aad) throw new EnvelopeBindingError();
   const decipher = crypto.createDecipheriv('aes-256-gcm', getKey(), Buffer.from(envelope.iv, 'base64'));
+  decipher.setAAD(Buffer.from(aad, 'utf8'));
   decipher.setAuthTag(Buffer.from(envelope.tag, 'base64'));
   const out = Buffer.concat([decipher.update(Buffer.from(envelope.data, 'base64')), decipher.final()]);
   return out.toString('utf8');
@@ -340,7 +365,7 @@ function saveToken(connId, token, meta = {}) {
   const parsed = parseConnectionId(connId);
   // Encrypt BEFORE touching the registry: if the key is lost this triggers the
   // loud recovery first, so the entry we then upsert stays 'connected'.
-  const envelope = JSON.stringify(encryptForSave(JSON.stringify(token)), null, 2);
+  const envelope = JSON.stringify(encryptForSave(JSON.stringify(token), `token:${connId}`), null, 2);
   return withStoreLock(() => {
     const fields = {
       provider: meta.provider || parsed.provider,
@@ -375,7 +400,7 @@ function saveToken(connId, token, meta = {}) {
 function saveApiKey(service, secretObj, meta = {}) {
   const stored = { kind: 'api_key', ...secretObj, obtained_at: Date.now() };
   const parsed = parseConnectionId(service);
-  const envelope = JSON.stringify(encryptForSave(JSON.stringify(stored)), null, 2); // key-loss recovery before registry writes; see saveToken
+  const envelope = JSON.stringify(encryptForSave(JSON.stringify(stored), `token:${service}`), null, 2); // key-loss recovery before registry writes; see saveToken
   return withStoreLock(() => {
     const fields = {
       provider: meta.provider || parsed.provider,
@@ -438,18 +463,19 @@ function loadToken(id) {
   if (!fs.existsSync(p)) return null;
   try {
     const envelope = JSON.parse(fs.readFileSync(p, 'utf8'));
-    return JSON.parse(decrypt(envelope));
+    return JSON.parse(decrypt(envelope, `token:${connId}`));
   } catch (err) {
     // Key loss is store-wide, not a damaged file: keep the (intact) token file
     // where it is and surface the explicit state to the caller instead.
     if (err && err.code === 'DEX_CM_KEY_LOST') throw err;
     withStoreLock(() => {
-      const quarantined = quarantineFile(p, 'corrupt');
+      const bindingMismatch = err && err.code === 'DEX_CM_ENVELOPE_BINDING';
+      const quarantined = quarantineFile(p, bindingMismatch ? 'mismatch' : 'corrupt');
       const existing = readRegistry()[connId] || {};
       upsertConnection(connId, {
         provider: existing.provider || parseConnectionId(connId).provider,
         status: 'needs_reauth',
-        error: 'token_file_corrupt',
+        error: bindingMismatch ? 'token_envelope_account_mismatch' : 'token_file_corrupt',
         corruptedAt: nowIso(),
         ...(quarantined ? { corruptFile: quarantined } : {}),
       });
@@ -565,18 +591,19 @@ function rebuildRegistryFromTokens(reason, quarantinedName) {
     const base = { service: parsed.connId, provider: parsed.provider, ...(parsed.alias ? { alias: parsed.alias } : {}) };
     let token;
     try {
-      token = JSON.parse(decrypt(JSON.parse(fs.readFileSync(fp, 'utf8'))));
+      token = JSON.parse(decrypt(JSON.parse(fs.readFileSync(fp, 'utf8')), `token:${parsed.connId}`));
     } catch (err) {
       unreadable++;
       if (err && err.code === 'DEX_CM_KEY_LOST') {
         // The key is gone, not the file: keep the file untouched and mark the state.
         rebuilt[parsed.connId] = { ...base, status: 'needs_reauth', error: 'encryption_key_lost', recoveredAt: nowIso() };
       } else {
-        const q = quarantineFile(fp, 'corrupt');
+        const bindingMismatch = err && err.code === 'DEX_CM_ENVELOPE_BINDING';
+        const q = quarantineFile(fp, bindingMismatch ? 'mismatch' : 'corrupt');
         rebuilt[parsed.connId] = {
           ...base,
           status: 'needs_reauth',
-          error: 'token_file_corrupt',
+          error: bindingMismatch ? 'token_envelope_account_mismatch' : 'token_file_corrupt',
           corruptedAt: nowIso(),
           ...(q ? { corruptFile: q } : {}),
         };
@@ -670,7 +697,12 @@ function getOAuthApp(provider) {
   const p = oauthAppsPath();
   if (!fs.existsSync(p)) return null;
   const apps = JSON.parse(fs.readFileSync(p, 'utf8'));
-  return apps[provider] || null;
+  const app = apps[provider];
+  if (!app) return null;
+  return {
+    clientId: app.clientId,
+    clientSecret: decrypt(app.clientSecret, `oauth-app:${provider}`),
+  };
 }
 
 /**
@@ -682,12 +714,13 @@ function getOAuthApp(provider) {
 function setOAuthApp(provider, { clientId, clientSecret = '' }) {
   if (!clientId) throw new Error('setOAuthApp requires a clientId.');
   ensureDir(credentialsDir());
+  const encryptedSecret = encryptForSave(clientSecret, `oauth-app:${provider}`);
   return withStoreLock(() => {
     const p = oauthAppsPath();
     const apps = fs.existsSync(p) ? JSON.parse(fs.readFileSync(p, 'utf8')) : {};
-    apps[provider] = { clientId, clientSecret };
+    apps[provider] = { clientId, clientSecret: encryptedSecret };
     writeFileAtomic(p, JSON.stringify(apps, null, 2), { mode: 0o600 });
-    return apps[provider];
+    return { clientId, clientSecret };
   });
 }
 
@@ -718,5 +751,6 @@ module.exports = {
   encrypt,
   decrypt,
   KeyLossError,
+  EnvelopeBindingError,
   recoverFromKeyLoss,
 };
