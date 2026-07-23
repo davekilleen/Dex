@@ -319,6 +319,26 @@ test('batch sync logs idempotent person and company touches without fabricating 
   assert.deepEqual(parseEntityPage(companyPath).touches, expectedTouches);
   assert.equal(parseEntityPage(personPath).last_touched, '2026-06-08');
   assert.equal(parseEntityPage(companyPath).last_touched, '2026-06-08');
+  assert.deepEqual(parseEntityPage(personPath).relationships, [
+    {
+      type: 'works_at',
+      target: '[[Example]]',
+      status: 'suggested',
+      source: { kind: 'domain-match', id: 'example.com' },
+      date: '2026-06-01',
+    },
+    {
+      type: 'related_to',
+      target: '[[John Roe]]',
+      status: 'suggested',
+      source: { kind: 'co-attendance', id: 'touch-meeting-1' },
+      date: '2026-06-01',
+    },
+  ]);
+  assert.match(
+    fs.readFileSync(personPath, 'utf8'),
+    /- 2026-06-01 — relationship · works_at — \[\[Example\]\]/,
+  );
   assert.equal(
     fs.existsSync(path.join(vault, '05-Areas', 'People', 'External', 'No_Email.md')),
     false,

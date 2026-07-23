@@ -8,7 +8,14 @@ const CANONICAL_FIELDS = new Set([
   'type', 'name', 'role', 'company', 'company_page', 'emails', 'aliases',
   'location', 'last_interaction', 'domains', 'website', 'status',
 ]);
-const V2_FIELDS = new Set(['dex_pinned', 'dex_last_written', 'last_touched', 'touches']);
+const RELATIONSHIP_TYPES = [
+  'works_at', 'reports_to', 'part_of', 'stakeholder_on', 'deal_with', 'related_to',
+];
+const RELATIONSHIP_STATUSES = new Set(['suggested', 'confirmed']);
+const OWNED_FIELDS = new Set([...CANONICAL_FIELDS, 'relationships']);
+const V2_FIELDS = new Set([
+  'dex_pinned', 'dex_last_written', 'last_touched', 'touches', 'relationships',
+]);
 const LIST_FIELDS = new Set(['emails', 'aliases', 'domains']);
 const LABELS = {
   type: 'type', name: 'name', role: 'role', company: 'company',
@@ -41,12 +48,68 @@ function normaliseList(value, lowercase = false) {
 }
 
 function normaliseField(key, value) {
+  if (key === 'relationships') return normaliseRelationships(value);
   if (LIST_FIELDS.has(key)) return normaliseList(value, key === 'emails' || key === 'domains');
   value = normaliseScalar(value);
   if (key === 'type') return value === 'person' || value === 'company' ? value : null;
   if (key === 'location') return ['internal', 'external', 'unknown'].includes(value) ? value : null;
   if (key === 'last_interaction' && value && !/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
   return value;
+}
+
+function normaliseRelationships(value, strict = false) {
+  const invalid = (message) => {
+    if (strict) throw new Error(message);
+    return null;
+  };
+  if (value === null || value === undefined) return null;
+  if (!Array.isArray(value)) return invalid('relationships must be a list');
+  const result = [];
+  for (const entry of value) {
+    if (!entry || Array.isArray(entry) || typeof entry !== 'object') {
+      invalid('relationship entries must be objects');
+      continue;
+    }
+    const type = normaliseScalar(entry.type);
+    if (!RELATIONSHIP_TYPES.includes(type)) {
+      invalid(`unknown relationship type: ${type || '<missing>'}`);
+      continue;
+    }
+    const target = normaliseScalar(entry.target);
+    if (!target) {
+      invalid('relationship target must be a non-empty string');
+      continue;
+    }
+    const status = normaliseScalar(entry.status);
+    if (!RELATIONSHIP_STATUSES.has(status)) {
+      invalid(`invalid relationship status: ${status || '<missing>'}`);
+      continue;
+    }
+    const source = entry.source;
+    if (!source || Array.isArray(source) || typeof source !== 'object') {
+      invalid('relationship source must be an object');
+      continue;
+    }
+    const sourceKind = normaliseScalar(source.kind);
+    const sourceId = normaliseScalar(source.id);
+    if (!sourceKind || !sourceId) {
+      invalid('relationship source requires kind and id');
+      continue;
+    }
+    const date = normaliseScalar(entry.date);
+    if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      invalid('relationship date must be YYYY-MM-DD');
+      continue;
+    }
+    result.push({
+      type,
+      target,
+      status,
+      source: normaliseYamlValue(source),
+      date,
+    });
+  }
+  return result;
 }
 
 function normaliseYamlValue(value) {
@@ -67,6 +130,7 @@ function normaliseV2Field(key, value) {
     return value && !Array.isArray(value) && typeof value === 'object' ? { ...value } : null;
   }
   if (key === 'touches') return Array.isArray(value) ? normaliseYamlValue(value) : null;
+  if (key === 'relationships') return normaliseRelationships(value);
   return normaliseScalar(value);
 }
 
@@ -144,8 +208,10 @@ function parseEntityPage(filePath) {
   if (split.frontmatter && !split.quarantined) {
     const touches = normaliseV2Field('touches', split.frontmatter.touches);
     const lastTouched = normaliseV2Field('last_touched', split.frontmatter.last_touched);
+    const relationships = normaliseV2Field('relationships', split.frontmatter.relationships);
     if (touches !== null) result.touches = touches;
     if (lastTouched !== null) result.last_touched = lastTouched;
+    if (relationships !== null) result.relationships = relationships;
   }
   result.type = inferType(filePath, result);
   if (result.type && !result.name) {
@@ -215,11 +281,11 @@ function renderUpdateLog({
   for (const relationship of relationshipProvenance || []) {
     if (!relationship || typeof relationship !== 'object') continue;
     const timestamp = displayScalar(
-      relationship.recorded_at || relationship.ts,
+      relationship.recorded_at || relationship.ts || relationship.date,
     );
     const relationType = displayScalar(relationship.type);
     const target = displayScalar(
-      relationship.target || relationship.target_path,
+      relationship.target || relationship.target_path || relationship.target_ref,
     );
     if (!timestamp || !relationType || !target) continue;
     let line = `- ${timestamp.slice(0, 10)} — relationship · ${relationType} — ${target}`;
@@ -245,6 +311,44 @@ function renderUpdateLog({
     compareStrings(left[0], right[0]) || compareStrings(left[1], right[1])
   ));
   return entries.map(([_timestamp, line]) => line).join('\n');
+}
+
+function renderRelationships(relationships = null) {
+  const normalised = normaliseRelationships([...(relationships || [])], true);
+  const rank = new Map(RELATIONSHIP_TYPES.map((type, index) => [type, index]));
+  normalised.sort((left, right) => (
+    rank.get(left.type) - rank.get(right.type)
+    || compareStrings(left.target.toLowerCase(), right.target.toLowerCase())
+    || compareStrings(left.target, right.target)
+    || compareStrings(left.status, right.status)
+    || compareStrings(left.date, right.date)
+    || compareStrings(
+      JSON.stringify(stableObject(left.source)),
+      JSON.stringify(stableObject(right.source)),
+    )
+  ));
+  const groups = [];
+  for (const type of RELATIONSHIP_TYPES) {
+    const rows = normalised.filter(relationship => relationship.type === type);
+    if (rows.length === 0) continue;
+    groups.push([
+      `### ${type}`,
+      ...rows.map(relationship => (
+        `- ${relationship.target}${relationship.status === 'suggested' ? ' (suggested)' : ''}`
+      )),
+    ].join('\n'));
+  }
+  return groups.join('\n\n');
+}
+
+function stableObject(value) {
+  if (Array.isArray(value)) return value.map(stableObject);
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.keys(value).sort().map(key => [key, stableObject(value[key])]),
+    );
+  }
+  return value;
 }
 
 function atomicWrite(filePath, text) {
@@ -279,13 +383,13 @@ function mergeFrontmatterText(filePath, rawOriginal, fields) {
   const suppliedPins = normaliseV2Field('dex_pinned', fields.dex_pinned);
   if (suppliedPins) {
     for (const [key, value] of Object.entries(suppliedPins)) {
-      if (CANONICAL_FIELDS.has(key) && normaliseScalar(value)) pinned[key] = value;
+      if (OWNED_FIELDS.has(key) && normaliseScalar(value)) pinned[key] = value;
     }
   }
   const suppliedLastWritten = normaliseV2Field('dex_last_written', fields.dex_last_written);
   if (suppliedLastWritten) {
     for (const [key, candidate] of Object.entries(suppliedLastWritten)) {
-      if (!CANONICAL_FIELDS.has(key)) continue;
+      if (!OWNED_FIELDS.has(key)) continue;
       const value = normaliseField(key, candidate);
       if (value !== null || (candidate === null && !LIST_FIELDS.has(key))) lastWritten[key] = value;
     }
@@ -305,6 +409,9 @@ function mergeFrontmatterText(filePath, rawOriginal, fields) {
   };
   const effectiveCurrent = {};
   for (const key of CANONICAL_FIELDS) effectiveCurrent[key] = explicitCurrentValue(key);
+  effectiveCurrent.relationships = normaliseRelationships(
+    split.frontmatter?.relationships,
+  ) || [];
   effectiveCurrent.type = inferType(filePath, effectiveCurrent);
   if (effectiveCurrent.type && !effectiveCurrent.name) {
     const heading = /^#\s+(.+?)\s*$/m.exec(split.body);
@@ -331,25 +438,27 @@ function mergeFrontmatterText(filePath, rawOriginal, fields) {
   const implicitBootstrap = ownershipEnabled && !hadPins && !hadLastWritten
     && suppliedLastWritten === null;
   if (implicitBootstrap) {
-    for (const key of CANONICAL_FIELDS) {
+    for (const key of OWNED_FIELDS) {
       if (hasNonemptyRawValue(key) && !Object.hasOwn(pinned, key)) pinned[key] = 'user';
     }
   }
   for (const [key, previous] of Object.entries(lastWritten)) {
-    if (!CANONICAL_FIELDS.has(key) || Object.hasOwn(pinned, key)) continue;
+    if (!OWNED_FIELDS.has(key) || Object.hasOwn(pinned, key)) continue;
     const normalisedPrevious = normaliseField(key, previous);
     if (normalisedPrevious === null && !(previous === null && !LIST_FIELDS.has(key))) continue;
     if (JSON.stringify(currentValue(key)) !== JSON.stringify(normalisedPrevious)) pinned[key] = 'user';
   }
 
   for (const [key, candidate] of Object.entries(fields)) {
-    if (!CANONICAL_FIELDS.has(key) || Object.hasOwn(pinned, key)) continue;
+    if (!OWNED_FIELDS.has(key) || Object.hasOwn(pinned, key)) continue;
     if (candidate === null && !LIST_FIELDS.has(key)) {
       merged[key] = null;
       if (ownershipEnabled) lastWritten[key] = null;
       continue;
     }
-    const value = normaliseField(key, candidate);
+    const value = key === 'relationships'
+      ? normaliseRelationships(candidate, true)
+      : normaliseField(key, candidate);
     if (value !== null) {
       merged[key] = value;
       if (ownershipEnabled) lastWritten[key] = value;
@@ -449,8 +558,10 @@ function replaceMachineRegionInFile(filePath, slug, newContent) {
 }
 
 module.exports = {
+  RELATIONSHIP_TYPES,
   atomicWrite,
   mergeFrontmatterText, parseEntityPage, readFrontmatterField, renderUpdateLog,
+  renderRelationships,
   upsertFrontmatter, renderPersonPage, renderCompanyPage,
   replaceMachineRegion, replaceMachineRegionInFile,
 };

@@ -10,8 +10,8 @@ from pathlib import Path
 
 import pytest
 
-from core.entity_engine import cli
 import core.entity_engine.contract as entity_contract
+from core.entity_engine import cli
 from core.entity_engine.contract import render_update_log
 
 

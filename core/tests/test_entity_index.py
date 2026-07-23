@@ -350,6 +350,9 @@ def test_frontmatter_relationships_project_edges_and_power_neighbors(
             "date": "2026-07-21",
         },
     ]
+    frontmatter["relationships"].append(
+        dict(frontmatter["relationships"][-1])
+    )
     body = original.split("---", 2)[2]
     alice.write_text(
         f"---\n{yaml.safe_dump(frontmatter, sort_keys=False).rstrip()}\n---{body}",

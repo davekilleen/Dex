@@ -9,9 +9,11 @@ const { loadPaths } = require('../../.claude/hooks/paths.cjs');
 const { resolveDexPythonStatus } = require('./dex-python.cjs');
 const { resolveEntityPath } = require('./entity-identity.cjs');
 const {
+  RELATIONSHIP_TYPES,
   mergeFrontmatterText,
   parseEntityPage,
   readFrontmatterField,
+  renderRelationships,
   renderUpdateLog,
   replaceMachineRegion,
 } = require('./entity-pages.cjs');
@@ -504,6 +506,107 @@ function materializeTouchIntent(operation, latest, intent) {
   return materialized;
 }
 
+function regionContent(text, slug) {
+  const match = new RegExp(
+    `<!-- dex:auto:${escapeRegExp(slug)} -->\\r?\\n?([\\s\\S]*?)<!-- \\/dex:auto -->`,
+  ).exec(text);
+  return match ? match[1].replace(/^[\r\n]+|[\r\n]+$/g, '') : '';
+}
+
+function materializeRelationshipIntent(operation, latest, intent) {
+  const candidates = intent.relationships;
+  const valid = Array.isArray(candidates)
+    && candidates.length > 0
+    && candidates.every(relationship => (
+      relationship
+      && !Array.isArray(relationship)
+      && typeof relationship === 'object'
+      && RELATIONSHIP_TYPES.includes(relationship.type)
+      && typeof relationship.target_ref === 'string'
+      && relationship.target_ref.trim()
+      && relationship.confidence === 'suggested'
+      && relationship.source
+      && !Array.isArray(relationship.source)
+      && typeof relationship.source === 'object'
+      && typeof relationship.source.kind === 'string'
+      && relationship.source.kind.trim()
+      && typeof relationship.source.id === 'string'
+      && relationship.source.id.trim()
+      && /^\d{4}-\d{2}-\d{2}$/.test(relationship.source.date || '')
+    ));
+  if (!valid) {
+    throw new Error(`Invalid relationship mutation intent for ${operation.path}`);
+  }
+
+  const incoming = candidates.map(relationship => ({
+    type: relationship.type,
+    target: relationship.target_ref.trim(),
+    status: 'suggested',
+    source: {
+      kind: relationship.source.kind.trim(),
+      id: relationship.source.id.trim(),
+    },
+    date: relationship.source.date,
+  }));
+  const current = readFrontmatterField(latest, 'relationships') || [];
+  const byEdge = new Map();
+  for (const relationship of [...current, ...incoming]) {
+    const key = `${relationship.type}\0${relationship.target.toLowerCase()}`;
+    if (!byEdge.has(key)) byEdge.set(key, relationship);
+  }
+  const rank = new Map(RELATIONSHIP_TYPES.map((type, index) => [type, index]));
+  const proposed = [...byEdge.values()].sort((left, right) => (
+    rank.get(left.type) - rank.get(right.type)
+    || compareStrings(left.target.toLowerCase(), right.target.toLowerCase())
+    || compareStrings(left.target, right.target)
+    || compareStrings(left.date, right.date)
+  ));
+
+  const preview = mergeFrontmatterText(
+    operation.path,
+    latest,
+    { relationships: proposed },
+  );
+  const effective = preview === null
+    ? []
+    : (readFrontmatterField(preview, 'relationships') || []);
+  const provenance = renderUpdateLog({
+    relationshipProvenance: effective.map(relationship => ({
+      date: relationship.date,
+      type: relationship.type,
+      target_ref: relationship.target,
+    })),
+  });
+  const updateLines = [...new Set([
+    ...regionContent(latest, 'update-log').split(/\r?\n/),
+    ...provenance.split(/\r?\n/),
+  ].filter(Boolean))].sort(compareStrings);
+  const relationshipsProjection = renderRelationships(effective);
+  const materialized = {
+    op: 'mutate',
+    path: operation.path,
+    base_fingerprint: fingerprintText(latest),
+    field_changes: { relationships: proposed },
+    ensure_regions: ['relationships', 'update-log'],
+    region_projections: {
+      relationships: relationshipsProjection,
+      'update-log': updateLines.join('\n'),
+    },
+  };
+  if (preview !== null) {
+    let target = ensureRegion(preview, 'relationships');
+    target = ensureRegion(target, 'update-log');
+    target = replaceMachineRegion(
+      target,
+      'relationships',
+      relationshipsProjection,
+    );
+    target = replaceMachineRegion(target, 'update-log', updateLines.join('\n'));
+    materialized.target_fingerprint = fingerprintText(target);
+  }
+  return materialized;
+}
+
 function materializeOperation(operation, vaultRoot) {
   if (operation.op === 'create') {
     return { operation, materialized: operation };
@@ -553,6 +656,16 @@ function materializeOperation(operation, vaultRoot) {
     return {
       operation: effective,
       materialized: materializeTouchIntent(effective, latest, effective.intent),
+    };
+  }
+  if (effective.intent.kind === 'relationship') {
+    return {
+      operation: effective,
+      materialized: materializeRelationshipIntent(
+        effective,
+        latest,
+        effective.intent,
+      ),
     };
   }
   throw new Error(`Unsupported mutation intent: ${effective.intent.kind}`);
@@ -746,7 +859,7 @@ function requeueDeadLetters(vaultRoot) {
 
 function materializationFailureClass(error) {
   const message = error instanceof Error ? error.message : String(error);
-  return /^(Invalid hook mutation intent|Invalid gardener mutation intent|Invalid touch-log mutation intent|Unsupported mutation intent|Mutation operation has no declarative intent)/.test(
+  return /^(Invalid hook mutation intent|Invalid gardener mutation intent|Invalid touch-log mutation intent|Invalid relationship mutation intent|Unsupported mutation intent|Mutation operation has no declarative intent)/.test(
     message,
   )
     ? 'permanent'

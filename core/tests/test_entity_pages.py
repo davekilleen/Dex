@@ -7,8 +7,8 @@ from pathlib import Path
 import pytest
 import yaml
 
-from core import entity_maintenance
 import core.entity_engine.contract as entity_contract
+from core import entity_maintenance
 from core.entity_engine.contract import render_update_log
 from core.utils.entity_pages import (
     parse_entity_page,

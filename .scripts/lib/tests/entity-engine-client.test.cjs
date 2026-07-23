@@ -127,6 +127,10 @@ function touchIntent(touches) {
   return { kind: 'touch-log', touches };
 }
 
+function relationshipIntent(relationships) {
+  return { kind: 'relationship', relationships };
+}
+
 function appendLegacyInteraction(original, line) {
   const heading = /^## Meetings\s*$/m.exec(original);
   const insertion = heading.index + heading[0].length;
@@ -491,6 +495,104 @@ test('touch-log materializes as one composite CAS write and is idempotent', (t) 
   assert.equal(second.ok, true, second.error);
   assert.deepEqual(fs.readFileSync(page), firstBytes);
   assert.deepEqual(parseEntityPage(page).touches, [touch]);
+});
+
+test('relationship intent materializes one suggested composite write and is idempotent', (t) => {
+  const { vault } = makeVault(t);
+  const page = path.join(vault, '05-Areas', 'People', 'External', 'Jane_Example.md');
+  fs.mkdirSync(path.dirname(page), { recursive: true });
+  fs.writeFileSync(page, renderPersonPage(
+    'Jane Example',
+    'Engineer',
+    'Acme',
+    ['jane@example.com'],
+    [],
+    'external',
+  ));
+  const operation = {
+    op: 'mutate',
+    path: page,
+    intent: relationshipIntent([{
+      type: 'works_at',
+      target_id: '05-Areas/Companies/Acme.md',
+      target_ref: '[[Acme]]',
+      source: {
+        kind: 'domain-match',
+        id: 'acme.com',
+        date: '2026-07-23',
+      },
+      confidence: 'suggested',
+    }]),
+  };
+
+  const first = runRealParityMutation(vault, operation);
+  assert.equal(first.ok, true, first.error);
+  const firstBytes = fs.readFileSync(page);
+  assert.deepEqual(parseEntityPage(page).relationships, [{
+    type: 'works_at',
+    target: '[[Acme]]',
+    status: 'suggested',
+    source: { kind: 'domain-match', id: 'acme.com' },
+    date: '2026-07-23',
+  }]);
+  assert.match(
+    firstBytes.toString(),
+    /### works_at\n- \[\[Acme\]\] \(suggested\)/,
+  );
+  assert.match(
+    firstBytes.toString(),
+    /- 2026-07-23 — relationship · works_at — \[\[Acme\]\]/,
+  );
+
+  const second = runRealParityMutation(vault, operation);
+  assert.equal(second.ok, true, second.error);
+  assert.deepEqual(fs.readFileSync(page), firstBytes);
+});
+
+test('relationship intent rejects unknown types and non-suggested machine writes', (t) => {
+  const { vault, python } = makeVault(t);
+  const page = path.join(vault, '05-Areas', 'People', 'External', 'Jane_Example.md');
+  fs.mkdirSync(path.dirname(page), { recursive: true });
+  fs.writeFileSync(page, renderPersonPage(
+    'Jane Example', null, null, ['jane@example.org'], [], 'external',
+  ));
+  const base = {
+    target_ref: '[[Acme]]',
+    source: {
+      kind: 'domain-match',
+      id: 'acme.com',
+      date: '2026-07-23',
+    },
+  };
+
+  for (const relationship of [
+    { ...base, type: 'invented_relation', confidence: 'suggested' },
+    { ...base, type: 'works_at', confidence: 'confirmed' },
+  ]) {
+    const result = flushEntityOps({
+      vaultRoot: vault,
+      ops: [{
+        op: 'mutate',
+        path: page,
+        intent: relationshipIntent([relationship]),
+      }],
+      scope: 'relationship',
+      env: { DEX_PYTHON: python },
+      spawnSync: () => {
+        throw new Error('the CLI must not run for an invalid relationship intent');
+      },
+    });
+    assert.equal(result.ok, false);
+  }
+  const pending = JSON.parse(fs.readFileSync(pendingStorePath(vault), 'utf8'));
+  assert.equal(pending.batches.length, 2);
+  for (const batch of pending.batches) {
+    assert.equal(batch.ops[0].permanent_attempts, 1);
+    assert.match(
+      batch.ops[0].last_error,
+      /Invalid relationship mutation intent/,
+    );
+  }
 });
 
 test('touch-log ensures update-log on a legacy page before the composite write', (t) => {
