@@ -48,7 +48,7 @@ For each conflicted file, explain that the user changed it and the update carrie
 - **Keep both** — “Put the new release version live and save your version beside it as `{name}-custom`, where it stays invocable. The whole change remains rewindable.” Offer this only for a modified skill file. A missing file has nothing to preserve.
 - **Compare** — “Show the differences first. Nothing is written.” Read the current and verified release byte sources, render a concise inline diff, then offer the same four choices again. For a large file, summarize the changed regions instead of dumping the whole file.
 
-Collect one `take-theirs` or `keep-both` strategy for each item the user wants resolved. Leave Keep mine items out of the request. Pass only those selected strategies to `build_and_preview_conflict_resolution` as `{item_id, strategy}` objects.
+Collect one `take-theirs` or `keep-both` strategy for each item the user wants resolved. Leave Keep mine items out of the request. Pass only those selected strategies to `build_and_preview_conflict_resolution`, one object per item to resolve, each naming that item and its chosen strategy.
 
 The resolution preview is a separate approval boundary. Show every write exactly as returned, including its path, `release` or `preserved` source, SHA-256, and byte size. Explain which canonical file becomes live and which `-custom` sidecar preserves the user's bytes. Ask: “Apply this exact resolution?” Only an explicit yes to that unchanged preview and approval token permits `execute_approved_conflict_resolution`.
 
