@@ -25,6 +25,7 @@ jobs:
         with:
           fetch-depth: 0
       - uses: actions/setup-python@v5
+        id: setup-python
         with:
           python-version: '3.12'
           cache: pip
@@ -47,7 +48,10 @@ jobs:
         run: npm run test:hooks
       - name: Script library tests
         env:
-          DEX_PYTHON: python3
+          # dex-python.cjs requires an ABSOLUTE interpreter path (rejects bare
+          # names like `python3`); setup-python's python-path output is absolute
+          # and the `pip install pyyaml` step above targets that same interpreter.
+          DEX_PYTHON: ${{ steps.setup-python.outputs.python-path }}
         run: npm run test:scripts
       - name: Diff-aware test gate
         if: github.event_name == 'pull_request'
