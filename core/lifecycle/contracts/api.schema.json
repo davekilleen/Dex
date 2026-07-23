@@ -30,12 +30,28 @@
     "read_lifecycle_state": {
       "request": {"$ref": "#/$defs/vaultRequest"},
       "response": {"$ref": "#/$defs/stateResponse"}
+    },
+    "build_and_preview_conflict_resolution": {
+      "request": {"$ref": "#/$defs/resolutionsRequest"},
+      "response": {"$ref": "#/$defs/conflictPreviewResponse"}
+    },
+    "execute_approved_conflict_resolution": {
+      "request": {"$ref": "#/$defs/conflictExecuteRequest"},
+      "response": {"$ref": "#/$defs/executeResponse"}
     }
   },
   "$defs": {
     "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
     "path": {"type": "string", "minLength": 1},
     "itemId": {"type": "string", "pattern": "^[a-z0-9][a-z0-9.-]*$"},
+    "resolutionStrategy": {
+      "type": "string",
+      "enum": ["take-theirs", "keep-both"]
+    },
+    "resolutionSource": {
+      "type": "string",
+      "enum": ["release", "preserved"]
+    },
     "apiEnvelope": {
       "type": "object",
       "required": ["api_version"],
@@ -152,6 +168,91 @@
         "vault_root": {"$ref": "#/$defs/path"},
         "release_root": {"$ref": "#/$defs/path"},
         "preview": {"$ref": "#/$defs/preview"},
+        "approved_token": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "resolutionWrite": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "new_sha256", "byte_size", "source"],
+      "properties": {
+        "path": {"$ref": "#/$defs/path"},
+        "new_sha256": {"$ref": "#/$defs/sha256"},
+        "byte_size": {"type": "integer", "minimum": 0},
+        "source": {"$ref": "#/$defs/resolutionSource"}
+      }
+    },
+    "resolutionItem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["item_id", "item_version", "strategy", "writes"],
+      "properties": {
+        "item_id": {"$ref": "#/$defs/itemId"},
+        "item_version": {"type": "string", "minLength": 1},
+        "strategy": {"$ref": "#/$defs/resolutionStrategy"},
+        "writes": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"$ref": "#/$defs/resolutionWrite"}
+        }
+      }
+    },
+    "conflictResolutionPreview": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["resolution_preview_version", "catalog_sha256", "inventory_sha256", "items"],
+      "properties": {
+        "resolution_preview_version": {"const": 1},
+        "catalog_sha256": {"$ref": "#/$defs/sha256"},
+        "inventory_sha256": {"$ref": "#/$defs/sha256"},
+        "items": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"$ref": "#/$defs/resolutionItem"}
+        }
+      }
+    },
+    "resolutionsRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["vault_root", "release_root", "resolutions"],
+      "properties": {
+        "vault_root": {"$ref": "#/$defs/path"},
+        "release_root": {"$ref": "#/$defs/path"},
+        "resolutions": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["item_id", "strategy"],
+            "properties": {
+              "item_id": {"$ref": "#/$defs/itemId"},
+              "strategy": {"$ref": "#/$defs/resolutionStrategy"}
+            }
+          }
+        }
+      }
+    },
+    "conflictPreviewResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["api_version", "preview", "approval_token"],
+      "properties": {
+        "api_version": {"const": "1.0.0"},
+        "preview": {"$ref": "#/$defs/conflictResolutionPreview"},
+        "approval_token": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "conflictExecuteRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["vault_root", "release_root", "preview", "approved_token"],
+      "properties": {
+        "vault_root": {"$ref": "#/$defs/path"},
+        "release_root": {"$ref": "#/$defs/path"},
+        "preview": {"$ref": "#/$defs/conflictResolutionPreview"},
         "approved_token": {"$ref": "#/$defs/sha256"}
       }
     },

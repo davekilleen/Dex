@@ -15,12 +15,21 @@ from pathlib import Path
 from typing import Any
 
 from core.lifecycle.catalog import CatalogError, load_catalog
+from core.lifecycle.conflict import (
+    ConflictResolutionPreview,
+    ConflictResolutionPreviewError,
+    CurrentBytesLoader,
+    build_conflict_resolution_preview,
+    canonical_conflict_resolution_preview_bytes,
+    sidecar_path,
+)
 from core.lifecycle.inventory import build_inventory
 from core.lifecycle.model import HEX_SHA256, ITEM_ID, ReleaseCatalog
 from core.lifecycle.plan import (
     PLAN_VERSION,
     AdoptionPlan,
     PlannedAction,
+    ReasonCode,
     isolate_item_evidence,
     plan_catalog_item,
 )
@@ -1064,6 +1073,304 @@ def execute_adoption(
     return receipt
 
 
+def _rebuild_requested_conflict_plan(
+    catalog: ReleaseCatalog,
+    inventory,
+    requested: tuple[str, ...],
+) -> AdoptionPlan:
+    by_id = {item.id: item for item in catalog.items}
+    rebuilt_items = []
+    for item_id in requested:
+        item = by_id.get(item_id)
+        if item is None:
+            raise _refuse(f"requested item {item_id} is no longer in the catalog")
+        planned = plan_catalog_item(
+            item,
+            isolate_item_evidence(item, inventory, inventory.customizations),
+        )
+        if planned.action is not PlannedAction.CONFLICT:
+            raise _refuse(
+                f"item {item_id} planned action changed from conflict to "
+                f"{planned.action.value} since preview; review the current plan"
+            )
+        rebuilt_items.append(planned)
+    return AdoptionPlan(
+        PLAN_VERSION,
+        catalog.release.version,
+        catalog.integrity.catalog_sha256,
+        tuple(rebuilt_items),
+    )
+
+
+def execute_conflict_resolution(
+    vault_root: Path,
+    preview: ConflictResolutionPreview,
+    approved_token: str,
+    payload_loader: PayloadLoader,
+    current_bytes_loader: CurrentBytesLoader,
+) -> AdoptionReceipt:
+    """Re-prove and atomically execute explicit conflict-resolution choices."""
+    if not isinstance(preview, ConflictResolutionPreview):
+        raise _refuse("preview must be a ConflictResolutionPreview")
+    if not isinstance(approved_token, str) or not hmac.compare_digest(
+        approved_token, preview.sha256
+    ):
+        raise _refuse("approval token does not match the exact canonical preview")
+    if not callable(payload_loader):
+        raise _refuse("payload_loader must be callable")
+    if not callable(current_bytes_loader):
+        raise _refuse("current_bytes_loader must be callable")
+
+    root = Path(vault_root)
+    try:
+        current_catalog = load_catalog(root / CATALOG_RELATIVE, release_root=root)
+    except CatalogError as error:
+        raise _refuse(f"current catalog could not be verified: {error}") from error
+    if current_catalog.integrity.catalog_sha256 != preview.catalog_sha256:
+        raise _refuse("catalog changed since preview; build and approve a fresh preview")
+
+    requested = tuple(item.item_id for item in preview.items)
+    current_inventory = build_inventory(
+        root,
+        catalog=_catalog_inventory_scope(current_catalog, requested),
+    )
+    current_plan = _rebuild_requested_conflict_plan(
+        current_catalog,
+        current_inventory,
+        requested,
+    )
+    payload_cache: dict[str, bytes] = {}
+    current_cache: dict[str, bytes] = {}
+
+    def cached_payload_loader(path: str) -> bytes:
+        if path not in payload_cache:
+            payload_cache[path] = payload_loader(path)
+        return payload_cache[path]
+
+    def cached_current_loader(path: str) -> bytes:
+        if path not in current_cache:
+            current_cache[path] = current_bytes_loader(path)
+        return current_cache[path]
+
+    resolutions = [
+        {"item_id": item.item_id, "strategy": item.strategy}
+        for item in preview.items
+    ]
+    try:
+        rebuilt = build_conflict_resolution_preview(
+            current_catalog,
+            current_inventory,
+            current_plan,
+            resolutions,
+            cached_payload_loader,
+            cached_current_loader,
+        )
+    except ConflictResolutionPreviewError as error:
+        raise _refuse(
+            f"current conflict preview could not be rebuilt: {error}"
+        ) from error
+    if canonical_conflict_resolution_preview_bytes(
+        rebuilt
+    ) != canonical_conflict_resolution_preview_bytes(preview):
+        if rebuilt.inventory_sha256 != preview.inventory_sha256:
+            raise _refuse(
+                "requested file inventory changed since preview; "
+                "build and approve a fresh preview"
+            )
+        raise _refuse(
+            "rebuilt conflict preview differs from the approved preview; "
+            "approve a fresh preview"
+        )
+
+    preserved_writes = [
+        write
+        for item in rebuilt.items
+        for write in item.writes
+        if write.source == "preserved"
+    ]
+    # write-if-absent for the preserved sidecar is enforced HERE, in engine
+    # logic, not by the ownership contract: the sidecar resolves to a brain
+    # (replace) path, so the Transaction's own update_write_verdict would
+    # permit an overwrite. This pre-check plus the before_commit
+    # snapshot-absence check below are the only guards. A non-transaction
+    # writer that creates this exact path in the narrow window between snapshot
+    # capture and the atomic replace is still not detected here — the same
+    # documented post-snapshot residual race the adoption path carries, but
+    # without a contract backstop; making the sidecar contract-owned (so the
+    # contract itself vetoes an overwrite) is the tracked -custom follow-up.
+    for write in preserved_writes:
+        target = root / write.path
+        if target.exists() or target.is_symlink():
+            custom_name = Path(write.path).parts[2]
+            raise _refuse(
+                f"you already have a {custom_name}; "
+                "choose keep-mine or take-theirs"
+            )
+
+    preserved_sources: dict[str, str] = {}
+    planned_by_id = {item.item_id: item for item in current_plan.items}
+    for item in rebuilt.items:
+        if not any(write.source == "preserved" for write in item.writes):
+            continue
+        planned = planned_by_id[item.item_id]
+        modified_paths = {
+            path
+            for reason in planned.reasons
+            if reason.code is ReasonCode.RELEASE_FILES_MODIFIED
+            for path in reason.paths
+        }
+        for canonical_path in modified_paths:
+            preserved_sources[sidecar_path(canonical_path)] = canonical_path
+
+    entries: list[PlanEntry] = []
+    for item in rebuilt.items:
+        for write in item.writes:
+            if write.source == "release":
+                content = payload_cache[write.path]
+            else:
+                content = current_cache[preserved_sources[write.path]]
+            entries.append(PlanEntry(write.path, content))
+
+    inventory_by_path = {
+        entry.canonical_path: entry
+        for entry in current_inventory.entries
+        if entry.canonical_path
+        in {
+            write.path
+            for item in rebuilt.items
+            for write in item.writes
+            if write.source == "release"
+        }
+    }
+
+    try:
+        transaction = Transaction.begin(root, entries)
+
+        def verify_approval_binding() -> None:
+            """Bind approval to captured canonical bytes and sidecar absence."""
+            if not hmac.compare_digest(approved_token, rebuilt.sha256):
+                raise _refuse("approval binding changed before commit")
+            snapshot_by_path = {
+                entry.relative: entry
+                for entry in transaction.snapshot.read_manifest()
+            }
+            for item in rebuilt.items:
+                for write in item.writes:
+                    captured = snapshot_by_path.get(write.path)
+                    if write.source == "preserved":
+                        captured_absent = bool(
+                            captured is not None
+                            and not captured.existed
+                            and captured.sha256 is None
+                            and captured.size is None
+                            and captured.mode is None
+                        )
+                        if not captured_absent:
+                            raise _refuse(
+                                f"preservation path {write.path} appeared after "
+                                "final preview rebuild; the transaction will "
+                                "restore the existing bytes"
+                            )
+                        continue
+
+                    evidence = inventory_by_path.get(write.path)
+                    if evidence is None:
+                        raise _refuse(
+                            f"requested file {write.path} has no current inventory evidence"
+                        )
+                    approved_absence = (
+                        evidence.kind == "missing"
+                        and evidence.release_state == "stock-missing"
+                    )
+                    captured_matches = bool(
+                        captured is not None
+                        and (
+                            (
+                                approved_absence
+                                and not captured.existed
+                                and captured.sha256 is None
+                                and captured.size is None
+                                and captured.mode is None
+                            )
+                            or (
+                                not approved_absence
+                                and captured.existed
+                                and captured.sha256 == evidence.sha256
+                                and captured.size == evidence.size
+                            )
+                        )
+                    )
+                    if not captured_matches:
+                        raise _refuse(
+                            f"requested file {write.path} changed after final "
+                            "preview rebuild; the transaction will restore "
+                            "the newer bytes"
+                        )
+
+        result = transaction.run(before_commit=verify_approval_binding)
+    except PlanRejected as error:
+        raise _refuse(
+            "the ownership contract rejected the complete conflict resolution: "
+            f"{error}"
+        ) from error
+    except TransactionError as error:
+        raise _refuse(
+            f"the conflict-resolution transaction could not complete safely: {error}"
+        ) from error
+
+    files = tuple(
+        sorted(
+            (
+                ReceiptFile(
+                    item.item_id,
+                    write.path,
+                    write.new_sha256,
+                    write.byte_size,
+                )
+                for item in rebuilt.items
+                for write in item.writes
+            ),
+            key=lambda entry: (entry.path, entry.item_id),
+        )
+    )
+    transaction_id = result["tx_id"]
+    receipt = AdoptionReceipt(
+        RECEIPT_VERSION,
+        tuple(sorted(set(requested))),
+        files,
+        transaction_id,
+        f"System/.dex/tx/{transaction_id}/snapshot",
+        rebuilt.catalog_sha256,
+        rebuilt.inventory_sha256,
+        rebuilt.sha256,
+    )
+    try:
+        _persist_adoption_receipt(root, receipt)
+    except AdoptionReceiptPersistenceError:
+        raise
+    except (OSError, AdoptionExecutionError) as error:
+        raise AdoptionReceiptPersistenceError(
+            f"adoption {transaction_id} committed, but its receipt could not be "
+            f"persisted; the transaction journal is authoritative: {error}"
+        ) from error
+    try:
+        from core.lifecycle.ledger import LedgerError, record_adoption
+
+        record_adoption(
+            root,
+            receipt,
+            {item.item_id: item.item_version for item in rebuilt.items},
+        )
+    except (LedgerError, OSError) as error:
+        raise LifecycleLedgerPersistenceError(
+            f"adoption {transaction_id} committed, but its lifecycle ledger refresh did not "
+            f"complete; its event may already be durable and the transaction journal is "
+            f"authoritative: {error}. Run 'python3 -m core.lifecycle.cli --vault-root "
+            f"{root} rebuild-state' to repair the lifecycle ledger"
+        ) from error
+    return receipt
+
+
 __all__ = [
     "AdoptionExecutionError",
     "AdoptionReceipt",
@@ -1076,6 +1383,7 @@ __all__ = [
     "canonical_adoption_receipt_bytes",
     "canonical_rewind_receipt_bytes",
     "execute_adoption",
+    "execute_conflict_resolution",
     "load_adoption_receipt",
     "rewind_acknowledgement_token",
     "rewind_adoption",

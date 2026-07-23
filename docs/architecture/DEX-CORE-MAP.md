@@ -35,9 +35,9 @@
 **What it is.** The single protected path through which Dex changes a user's vault: installing, updating, adopting a feature, self-healing via Doctor, or undoing. The user-facing promise (v1.68 changelog): "one safe door for every change" — preview what changes, back it up, apply, verify, write a receipt, and be able to rewind exactly.
 
 **Where it lives.** `core/lifecycle/`:
-- `service.py` — the **frozen public API v1** (`api_version = "1.0.0"`). Sole sanctioned entry point; contains no policy, composes catalog/inventory/plan/ledger/retention for reads and delegates mutations to `engine.py`.
+- `service.py` — the **frozen public API v1** (`api_version = "1.0.0"`). Sole sanctioned entry point; contains no policy, composes catalog/inventory/plan/ledger/retention for reads and delegates mutations to `engine.py`. Its additive conflict path is `build_and_preview_conflict_resolution` → `execute_approved_conflict_resolution`; the original five operation shapes remain unchanged.
 - `engine.py` (42 KB) — the mutation engine; delegates every write to `core/transaction` + `core/portable_contract`.
-- `plan.py` / `preview.py` — build the per-item adoption plan and the human preview (each item decided independently so "skip this one" can't affect the rest — v1.65 guarantee).
+- `plan.py` / `preview.py` / `conflict.py` — build the per-item adoption plan and canonical approval previews (each item decided independently so "skip this one" can't affect the rest — v1.65 guarantee). Conflict resolution can take the release version or atomically keep both for skills: the release becomes canonical while the user's edited bytes are preserved at `.claude/skills/{name}-custom/`; the ordinary adoption receipt makes either choice rewindable.
 - `inventory.py` — reads a vault "like a map without touching it": classifies what's Dex's, what's customized, what's the user's, what's unrecognized.
 - `ledger.py` (40 KB) — the **tamper-evident receipt ledger** under `System/.dex/ledger`; detects altered/missing entries and self-heals torn writes (v1.67).
 - `sqlite_snapshot.py` — safe backup of SQLite DBs (the v1.66 "databases get real protection" + power-loss-safe restore order).
