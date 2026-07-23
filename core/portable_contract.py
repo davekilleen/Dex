@@ -108,6 +108,13 @@ def _r(rule_id: str, path: str, kind: str, ownership: str, note: str = "") -> Ru
 # ---------------------------------------------------------------------------
 RULES: tuple[Rule, ...] = (
     # --- brain: engine + shipped surface, replaced wholesale on update -----
+    _r(
+        "brain-sync-folder-markers",
+        "core/data/sync-folder-markers.json",
+        "file",
+        "brain",
+        "shared release-owned sync-provider table consumed by Python and CommonJS",
+    ),
     _r("brain-core", "core", "dir", "brain"),
     _r("brain-scripts", "scripts", "dir", "brain"),
     _r("brain-dot-scripts", ".scripts", "dir", "brain"),

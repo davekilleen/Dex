@@ -5,6 +5,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
 const { spawnSync } = require('node:child_process');
+const { detectSyncFolder } = require('./sync-folder-detector.cjs');
 
 const START_MARKER = '## USER_EXTENSIONS_START';
 const END_MARKER = '## USER_EXTENSIONS_END';
@@ -827,6 +828,7 @@ function renderReport(report) {
   const embeddedRepositories = report.embeddedRepositories || [];
   const skippedPaths = report.skippedPaths || [];
   const capabilityRooms = report.capabilityRooms || [];
+  const syncFolder = report.syncFolder || null;
   return [
     '# Your Dex brain and vault split',
     '',
@@ -841,6 +843,12 @@ function renderReport(report) {
     `- ${embeddedRepositories.length === 1 ? '1 project has its' : `${embeddedRepositories.length} projects have their`} own version history and will stay untouched.`,
     `- Tracked-ignore baseline ${report.baselineVersion || 'unknown'} (${report.transitionPhase || 'unknown transition'}) was read from the installed v1.63 policy.`,
     `- DEX_VAULT will be set to ${report.vaultRoot || '(the current vault root)'}.`,
+    ...(syncFolder ? [
+      `- Dex detected that this vault is inside ${syncFolder.provider}.`,
+      syncFolder.allowedByOverride
+        ? '- The synced-folder safety override was used (--allow-synced-folder), so this risk is recorded after conversion.'
+        : '- No synced-folder safety override was used. A real conversion will refuse until you move the Dex folder outside the synced folder, pause syncing, or explicitly accept the risk.',
+    ] : []),
     '',
     '## Planned brain history',
     '',
@@ -1496,7 +1504,16 @@ function phase3BuildVault(root, state) {
   return { needsResume: false };
 }
 
-function phase0Preflight(root, state) {
+function syncFolderRefusal(provider) {
+  return new Error(
+    `P0 stopped because this Dex folder is inside ${provider}. `
+    + 'Converting it while syncing is active is unsafe because the sync app can copy files while Dex rebuilds the vault. '
+    + 'Move the Dex folder outside the synced folder, or pause syncing until the conversion finishes. '
+    + 'To accept this risk explicitly, run again with --allow-synced-folder.',
+  );
+}
+
+function phase0Preflight(root, state, options = {}) {
   console.log('P0 preflight: checking that this vault is ready.');
   if (!exists(path.join(root, '.git'))) return { zip: true };
   if (!fs.lstatSync(path.join(root, '.git')).isDirectory()) {
@@ -1542,6 +1559,19 @@ function phase0Preflight(root, state) {
     claudeMarkers,
     embeddedRepositories,
   };
+  const syncProvider = detectSyncFolder(root);
+  if (syncProvider !== null) {
+    const allowedByOverride = Boolean(
+      options.allowSyncedFolder || state.syncFolder?.allowedByOverride === true,
+    );
+    state.syncFolder = {
+      provider: syncProvider,
+      allowedByOverride,
+    };
+    if (!allowedByOverride && !options.previewOnly) {
+      throw syncFolderRefusal(syncProvider);
+    }
+  }
   return { zip: false };
 }
 
@@ -1560,6 +1590,7 @@ function phase1Report(root, state, dryRun = false) {
     ...state.analysis,
     dryRun,
     remoteNames: state.preflight.remoteNames,
+    syncFolder: state.syncFolder,
   });
 }
 
@@ -1577,6 +1608,7 @@ function phase2SnapshotAndScan(root, state) {
   writeReport(root, {
     ...state.analysis,
     remoteNames: state.preflight.remoteNames,
+    syncFolder: state.syncFolder,
   });
 }
 
@@ -1813,6 +1845,7 @@ function phase9Finalize(root, state) {
     ...state.analysis,
     complete: true,
     remoteNames: state.preflight?.remoteNames || [],
+    syncFolder: state.syncFolder,
   });
   console.log('P9 finalize complete: your vault and brain now have separate histories.');
 }
@@ -2120,12 +2153,22 @@ function restoreMigration(root) {
   return state;
 }
 
-function dryRun(root) {
+function dryRun(root, options = {}) {
   if (topologyDecision(inspectTopology(root)) === 'invalid') {
     throw new Error('The migration folders are incomplete and the old Git archive is missing. Dex stopped without guessing; restore the folder from backup.');
   }
   const state = { schemaVersion: 1, nextPhase: 0, mode: 'dry-run' };
-  const p0 = phase0Preflight(root, state);
+  const syncProvider = options.syncProvider ?? detectSyncFolder(root);
+  if (syncProvider !== null) {
+    state.syncFolder = {
+      provider: syncProvider,
+      allowedByOverride: Boolean(options.allowSyncedFolder),
+    };
+  }
+  const p0 = phase0Preflight(root, state, {
+    allowSyncedFolder: options.allowSyncedFolder,
+    previewOnly: true,
+  });
   if (p0.zip) {
     writeReport(root, {
       ...analyzeMigrationPlan(root),
@@ -2133,6 +2176,7 @@ function dryRun(root) {
       dryRun: true,
       modifiedBrainPaths: [],
       remoteNames: [],
+      syncFolder: state.syncFolder,
     });
     console.log('P0 found a folder downloaded as a ZIP. No conversion was started. Read System/migration-report-v2.md for the safe choices.');
     return 0;
@@ -2157,7 +2201,7 @@ function journalAfterPhase(root, state, phase) {
   writeJournal(root, state);
 }
 
-function runPhases(root, mode) {
+function runPhases(root, mode, options = {}) {
   let state = readJournal(root);
   if (mode === 'resume' && !state) {
     throw new Error('There is no saved migration to resume. Run --dry-run first, then --auto when you are ready.');
@@ -2175,10 +2219,18 @@ function runPhases(root, mode) {
       startedAt: new Date().toISOString(),
     };
   }
+  if (options.syncProvider !== null && options.syncProvider !== undefined) {
+    state.syncFolder = {
+      provider: options.syncProvider,
+      allowedByOverride: Boolean(options.allowSyncedFolder),
+    };
+  }
 
   reconcileTopology(root, state);
   const phases = [
-    () => phase0Preflight(root, state),
+    () => phase0Preflight(root, state, {
+      allowSyncedFolder: options.allowSyncedFolder,
+    }),
     () => phase1Report(root, state, false),
     () => phase2SnapshotAndScan(root, state),
     () => phase3BuildVault(root, state),
@@ -2199,6 +2251,7 @@ function runPhases(root, mode) {
         zip: true,
         modifiedBrainPaths: [],
         remoteNames: [],
+        syncFolder: state.syncFolder,
       });
       console.log('P0 found a folder downloaded as a ZIP. No conversion was started. Read System/migration-report-v2.md for the safe choices.');
       return 0;
@@ -2260,33 +2313,61 @@ function failureForUser(root, error) {
   return new Error(`${error.message}\n\n${POST_SWAP_RECOVERY}`);
 }
 
-function parseMode(argumentsList) {
-  if (argumentsList.length === 0) return 'dry-run';
-  if (argumentsList.length !== 1) throw new Error('Use one mode: --dry-run, --auto, --resume, --restore, or --status.');
-  const value = argumentsList[0];
-  if (value === '--auto=false') return 'dry-run';
+function parseArguments(argumentsList) {
   const modes = new Map([
     ['--dry-run', 'dry-run'],
+    ['--auto=false', 'dry-run'],
     ['--auto', 'auto'],
     ['--resume', 'resume'],
     ['--restore', 'restore'],
     ['--status', 'status'],
   ]);
-  if (!modes.has(value)) throw new Error('Use one mode: --dry-run, --auto, --resume, --restore, or --status.');
-  return modes.get(value);
+  const allowSyncedFolder = argumentsList.includes('--allow-synced-folder');
+  const modeArguments = argumentsList.filter((value) => value !== '--allow-synced-folder');
+  if (modeArguments.length > 1) {
+    throw new Error('Use one mode: --dry-run, --auto, --resume, --restore, or --status.');
+  }
+  const value = modeArguments[0];
+  if (value !== undefined && !modes.has(value)) {
+    throw new Error('Use one mode: --dry-run, --auto, --resume, --restore, or --status.');
+  }
+  const mode = value === undefined ? 'dry-run' : modes.get(value);
+  if (allowSyncedFolder && !['dry-run', 'auto', 'resume'].includes(mode)) {
+    throw new Error('--allow-synced-folder may only be used with --dry-run, --auto, or --resume.');
+  }
+  return { mode, allowSyncedFolder };
 }
 
 function main(argumentsList = process.argv.slice(2), root = process.cwd()) {
   let mode;
   try {
     assertSafeMutationRoots(root);
-    mode = parseMode(argumentsList);
+    const parsed = parseArguments(argumentsList);
+    mode = parsed.mode;
     process.env.DEX_VAULT = path.resolve(root);
     if (mode === 'status') return statusMigration(root);
+    const syncProvider = mode === 'restore' ? null : detectSyncFolder(root);
+    const rememberedSyncOverride = (
+      mode === 'resume'
+      && readJournal(root)?.syncFolder?.allowedByOverride === true
+    );
+    const allowSyncedFolder = parsed.allowSyncedFolder || rememberedSyncOverride;
+    if (
+      syncProvider !== null
+      && ['auto', 'resume'].includes(mode)
+      && !allowSyncedFolder
+    ) {
+      throw syncFolderRefusal(syncProvider);
+    }
 
     const releaseLock = acquireLock(root);
     try {
-      if (mode === 'dry-run') return dryRun(root);
+      if (mode === 'dry-run') {
+        return dryRun(root, {
+          allowSyncedFolder,
+          syncProvider,
+        });
+      }
 
       const startupTopology = inspectTopology(root);
       if (topologyDecision(startupTopology) === 'zip') {
@@ -2296,6 +2377,10 @@ function main(argumentsList = process.argv.slice(2), root = process.cwd()) {
           zip: true,
           modifiedBrainPaths: [],
           remoteNames: [],
+          syncFolder: syncProvider === null ? null : {
+            provider: syncProvider,
+            allowedByOverride: allowSyncedFolder,
+          },
         });
         console.log('P0 found a folder downloaded as a ZIP. No conversion was started. Read System/migration-report-v2.md for the safe choices.');
         return 0;
@@ -2307,7 +2392,10 @@ function main(argumentsList = process.argv.slice(2), root = process.cwd()) {
         restoreMigration(root);
         return 0;
       }
-      return runPhases(root, mode);
+      return runPhases(root, mode, {
+        allowSyncedFolder,
+        syncProvider,
+      });
     } catch (error) {
       const userError = mode === 'restore' ? error : failureForUser(root, error);
       if (mode !== 'restore') writeFailureReport(root, userError);
@@ -2332,6 +2420,7 @@ module.exports = {
   loadPortableContract,
   loadTrackedIgnoreState,
   main,
+  parseArguments,
   phase6Rematerialize,
   readJournal,
   regenerateClaude,
