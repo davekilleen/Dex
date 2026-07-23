@@ -7,6 +7,40 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.70.0] — 🛟 Your own words stay safe, and Dex finds people properly again (2026-07-23)
+
+Two things in this one: a rare but unrecoverable way your writing could be overwritten, closed for good — and a rebuild of how Dex looks people up, which was quietly getting slower and occasionally turning up people who no longer exist.
+
+### 🛟 Your own words on a person page can't be overwritten
+
+Dex keeps a short summary at the top of each person's page and refreshes it as things change. It has always been careful to stay inside its own marked-off section and leave your writing alone — but there was one way that could go wrong. If the marker closing off that section ever went missing (two machines syncing the same page at once can do it), the next refresh would carry on past where it should have stopped and replace everything below with the summary, including anything you had written yourself. It happened in an instant, and there was no getting it back.
+
+**What this fixes for you:**
+
+* **Dex now stops rather than guesses.** If the marked-off section on a page looks wrong in any way, Dex leaves that page completely alone and moves on to the next one, instead of writing into it and hoping for the best.
+* **Three separate checks, not one.** The problem is caught when Dex first reads the page, again just before it writes, and once more inside the writing itself — so one missed check can't let it slip through.
+* **Nothing else changes.** Pages that look perfectly normal — which is all of them, for almost everyone — are handled exactly as before.
+
+I went looking for this deliberately, by attacking my own code to find ways it could destroy someone's work. The odds of hitting it were slim, but you would never have got those notes back, so it was worth fixing on its own.
+
+### 🔎 Finding a person got faster — and stopped turning up ghosts
+
+Every time you asked Dex about someone, it read its way through a single list of everyone you know. That worked fine at first and got slower as your world grew. Worse, the list could fall out of step with reality: delete or rename someone's page and they could keep appearing in searches, pointing at a page that wasn't there any more.
+
+Dex now keeps a small, disposable index built from your actual pages, and rebuilds it whenever anything changes.
+
+**What this fixes for you:**
+
+* **People you've deleted actually disappear.** Removing or renaming someone's page now removes them from search, instead of leaving a ghost behind that points nowhere.
+* **Looking someone up stays quick as your world grows.** Dex no longer re-reads an ever-growing list every single time you ask about someone.
+* **Your notes are still the only thing that counts.** The index is disposable — Dex can throw it away and rebuild it from your pages at any moment. It never travels between your machines, so two computers can't end up disagreeing about it.
+* **A small typo no longer makes someone vanish.** A formatting mistake at the top of a person's page used to drop them out of search entirely. They now stay findable by name, with only the unreliable details left blank rather than guessed at.
+* **Two things at once no longer breaks a search.** If Dex happens to be updating the index at the exact moment you ask about someone, your question waits a moment and falls back to the last good copy, rather than failing.
+
+**Behind the scenes:** the test version of Dex now publishes its own vault package, the same way the stable version does.
+
+---
+
 ## [1.69.0] — 🎯 Dex picks the right tool more often — and stops confusing similar ones (2026-07-22)
 
 Before, if you said "clean up my inbox" or "prep me for my 2pm," Dex sometimes didn't reach for the right built-in skill, because those skills didn't clearly spell out *when* to use them.
