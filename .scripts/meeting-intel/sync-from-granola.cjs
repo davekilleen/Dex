@@ -34,7 +34,7 @@
 
 const fs = require('fs');
 const path = require('path');
-const { execSync } = require('child_process');
+const { execSync, spawnSync } = require('child_process');
 const yaml = require('js-yaml');
 const { loadPaths } = require('../../.claude/hooks/paths.cjs');
 const { autoLinkFiles } = require('../auto-link-people.cjs');
@@ -42,6 +42,7 @@ const {
   loadDeadLetters,
   requeueDeadLetters,
 } = require('../lib/entity-engine-client.cjs');
+const { resolveDexPythonStatus } = require('../lib/dex-python.cjs');
 const { getMeetingProcessingMode } = require('./lib/config.cjs');
 const { getGranolaApiKey: readGranolaApiKey } = require('./lib/granola-api-key.cjs');
 const {
@@ -1016,6 +1017,51 @@ async function runEntityGardener(profile) {
   }
 }
 
+function refreshEntityCoolingFeed(vaultRoot = VAULT_ROOT, {
+  env = process.env,
+  spawnSync: spawn = spawnSync,
+  logger = log,
+} = {}) {
+  try {
+    const root = path.resolve(vaultRoot);
+    const pythonStatus = resolveDexPythonStatus(root, env, spawn);
+    if (!pythonStatus.path) throw new Error(pythonStatus.user_message);
+    const execution = spawn(
+      pythonStatus.path,
+      ['-m', 'core.entity_engine.cooling'],
+      {
+        cwd: root,
+        encoding: 'utf8',
+        env: {
+          ...env,
+          VAULT_PATH: root,
+          PYTHONPATH: [env.DEX_REPO_ROOT, root, env.PYTHONPATH]
+            .filter(Boolean)
+            .join(path.delimiter),
+        },
+        timeout: 30_000,
+        maxBuffer: 1024 * 1024,
+      },
+    );
+    if (execution.error || execution.status !== 0 || execution.signal) {
+      const signal = execution.signal ? ` (signal ${execution.signal})` : '';
+      throw execution.error || new Error(
+        String(execution.stderr || '').trim()
+          || `cooling CLI exited ${execution.status}${signal}`,
+      );
+    }
+    return { ok: true };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    try {
+      logger(`Cooling feed refresh skipped after error: ${message}`);
+    } catch (_) {
+      // Refresh is non-fatal even when the sync logger itself is unavailable.
+    }
+    return { ok: false, error: message };
+  }
+}
+
 // ============================================================================
 // MAIN
 // ============================================================================
@@ -1043,6 +1089,7 @@ async function main() {
       const state = loadState();
       retryPendingEntityWork(state, profile);
       runEntityVerification();
+      refreshEntityCoolingFeed();
     }
     return; // clean exit (exit 0 via the runner)
   }
@@ -1072,6 +1119,7 @@ async function main() {
       retryPendingEntityWork(state, profile);
       runEntityVerification();
       await runEntityGardener(profile);
+      refreshEntityCoolingFeed();
     }
     return;
   }
@@ -1085,6 +1133,7 @@ async function main() {
     if (!dryRun) {
       runEntityVerification();
       await runEntityGardener(profile);
+      refreshEntityCoolingFeed();
     }
     return;
   }
@@ -1117,6 +1166,7 @@ async function main() {
     retryPendingEntityWork(state, profile);
     saveState(state);
     runEntityVerification();
+    refreshEntityCoolingFeed();
     log('\n' + '='.repeat(60));
     log(`SYNC COMPLETE (source: ${dataSource})`);
     log(`Queued: ${newMeetings.length} meetings`);
@@ -1202,6 +1252,7 @@ async function main() {
 
   runEntityVerification();
   await runEntityGardener(profile);
+  refreshEntityCoolingFeed();
 
   // Summary
   log('\n' + '='.repeat(60));
@@ -1234,6 +1285,7 @@ module.exports = {
   getMeetingProcessingMode,
   renderAttendeesYamlBlock,
   renderParticipants,
+  refreshEntityCoolingFeed,
   retryDeadLetteredEntityWork,
   retryPendingEntityWork,
 };

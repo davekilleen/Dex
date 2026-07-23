@@ -98,6 +98,8 @@ def _empty_result() -> dict[str, Any]:
         "domains": [],
         "website": None,
         "status": None,
+        "touches": [],
+        "last_touched": None,
         "quarantined": False,
         "source_formats": [],
     }
@@ -143,7 +145,7 @@ def _normalise_v2_field(key: str, value: Any) -> Any:
     if key in {"dex_pinned", "dex_last_written"}:
         return dict(value) if isinstance(value, dict) else None
     if key == "touches":
-        return list(value) if isinstance(value, list) else None
+        return _yaml_safe(value) if isinstance(value, list) else None
     return _normalise_scalar(value)
 
 
@@ -248,6 +250,16 @@ def parse_entity_page(path: str | Path) -> dict[str, Any]:
             if value is not None:
                 result[key] = value
                 break
+
+    if frontmatter is not None and not quarantined:
+        touches = _normalise_v2_field("touches", frontmatter.get("touches"))
+        last_touched = _normalise_v2_field(
+            "last_touched", frontmatter.get("last_touched")
+        )
+        if touches is not None:
+            result["touches"] = touches
+        if last_touched is not None:
+            result["last_touched"] = last_touched
 
     result["type"] = _infer_type(page_path, result)
     if result["type"] and not result["name"]:

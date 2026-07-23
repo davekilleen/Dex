@@ -65,12 +65,9 @@ test('auto mode creates one canonical external page and reruns create nothing', 
   const first = processEntityCreation(meetings(), { entity_creation: { mode: 'auto' } });
   assert.equal(first.created.length, 1);
   const pagePath = path.join(vault, first.created[0].page_path);
-  assert.equal(
-    fs.readFileSync(pagePath, 'utf8'),
-    renderPersonPage('Jane Doe', null, null, ['jane@acme.com'], [], 'external'),
-  );
   assert.deepEqual(parseEntityPage(pagePath).emails, ['jane@acme.com']);
   assert.equal(parseEntityPage(pagePath).location, 'external');
+  assert.equal(parseEntityPage(pagePath).touches.length, 2);
   assert.equal(processEntityCreation(meetings(), { entity_creation: { mode: 'auto' } }).created.length, 0);
 }));
 
@@ -268,6 +265,70 @@ test('auto mode creates a canonical company page from two observed contacts', ()
   assert.equal(company.type, 'company');
   assert.deepEqual(company.domains, ['acme.com']);
   assert.match(lines.join('\n'), /Created company page:/);
+}));
+
+test('batch sync logs idempotent person and company touches without fabricating no-email attendees', () => withVault(vault => {
+  const attendees = [
+    { name: 'Jane Doe', email: 'jane@example.com', location: 'external' },
+    { name: 'John Roe', email: 'john@example.com', location: 'external' },
+    { name: 'No Email', location: 'external' },
+  ];
+  const batch = [
+    {
+      id: 'touch-meeting-1',
+      title: 'Roadmap Review',
+      createdAt: '2026-06-01T10:00:00Z',
+      transcript: '',
+      filteredAttendees: attendees,
+    },
+    {
+      id: 'touch-meeting-2',
+      createdAt: '2026-06-08T10:00:00Z',
+      transcript: '',
+      filteredAttendees: attendees,
+    },
+  ];
+  const profile = {
+    entity_creation: { mode: 'auto' },
+    capabilities: { companies: { enabled: true } },
+  };
+
+  const first = processEntityCreation(batch, profile);
+  assert.equal(first.created.length, 2);
+  assert.equal(first.companies_created.length, 1);
+
+  const personPath = path.join(vault, '05-Areas', 'People', 'External', 'Jane_Doe.md');
+  const companyPath = path.join(vault, '05-Areas', 'Companies', 'Example.md');
+  const expectedTouches = [
+    {
+      ts: '2026-06-01',
+      type: 'meeting',
+      direction: 'none',
+      source: { id: 'touch-meeting-1', title: 'Roadmap Review' },
+    },
+    {
+      ts: '2026-06-08',
+      type: 'meeting',
+      direction: 'none',
+      source: { id: 'touch-meeting-2', title: 'Meeting 2026-06-08' },
+    },
+  ];
+  assert.deepEqual(parseEntityPage(personPath).touches, expectedTouches);
+  assert.deepEqual(parseEntityPage(companyPath).touches, expectedTouches);
+  assert.equal(parseEntityPage(personPath).last_touched, '2026-06-08');
+  assert.equal(parseEntityPage(companyPath).last_touched, '2026-06-08');
+  assert.equal(
+    fs.existsSync(path.join(vault, '05-Areas', 'People', 'External', 'No_Email.md')),
+    false,
+  );
+
+  const personOnce = fs.readFileSync(personPath);
+  const companyOnce = fs.readFileSync(companyPath);
+  const second = processEntityCreation(batch, profile);
+  assert.deepEqual(second.created, []);
+  assert.deepEqual(second.companies_created, []);
+  assert.deepEqual(fs.readFileSync(personPath), personOnce);
+  assert.deepEqual(fs.readFileSync(companyPath), companyOnce);
 }));
 
 test('freemail, internal, and unknown-location domains never create companies', () => {

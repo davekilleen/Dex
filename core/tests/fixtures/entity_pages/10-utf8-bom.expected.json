@@ -1,1 +1,1 @@
-{"type":"person","name":"BOM Person","role":null,"company":null,"company_page":null,"emails":["bom@example.com"],"aliases":[],"location":"unknown","last_interaction":null,"domains":[],"website":null,"status":null,"quarantined":false,"source_formats":["frontmatter"]}
+{"type":"person","name":"BOM Person","role":null,"company":null,"company_page":null,"emails":["bom@example.com"],"aliases":[],"location":"unknown","last_interaction":null,"domains":[],"website":null,"status":null,"touches":[],"last_touched":null,"quarantined":false,"source_formats":["frontmatter"]}

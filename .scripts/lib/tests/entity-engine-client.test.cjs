@@ -17,6 +17,7 @@ const {
 } = require('../entity-engine-client.cjs');
 const {
   mergeFrontmatterText,
+  parseEntityPage,
   renderPersonPage,
   replaceMachineRegion,
 } = require('../entity-pages.cjs');
@@ -82,6 +83,10 @@ function hookIntent(relativePath, line, date) {
     kind: 'hook-interaction',
     interaction: { path: relativePath, line, date },
   };
+}
+
+function touchIntent(touches) {
+  return { kind: 'touch-log', touches };
 }
 
 function appendLegacyInteraction(original, line) {
@@ -185,10 +190,25 @@ test('real Python hook-region bytes equal the JS-computed target', (t) => {
   const relativePath = '00-Inbox/Meetings/roadmap.md';
   const line = '- [Roadmap Review](00-Inbox/Meetings/roadmap.md) — 2026-07-10';
   const withInteraction = replaceMachineRegion(original, 'recent-interactions', line);
+  const touch = {
+    ts: '2026-07-10',
+    type: 'meeting',
+    direction: 'none',
+    source: { id: 'roadmap', title: 'Roadmap Review' },
+  };
   const expected = mergeFrontmatterText(
     page,
     withInteraction,
-    { last_interaction: '2026-07-10' },
+    {
+      last_interaction: '2026-07-10',
+      touches: [touch],
+      last_touched: '2026-07-10',
+    },
+  );
+  const expectedComposite = replaceMachineRegion(
+    expected,
+    'update-log',
+    '- 2026-07-10 — meeting · two-way — Roadmap Review [roadmap]',
   );
 
   const result = runRealParityMutation(vault, {
@@ -198,7 +218,8 @@ test('real Python hook-region bytes equal the JS-computed target', (t) => {
   });
 
   assert.equal(result.ok, true, result.error);
-  assert.deepEqual(fs.readFileSync(page), Buffer.from(expected, 'utf8'));
+  assert.deepEqual(fs.readFileSync(page), Buffer.from(expectedComposite, 'utf8'));
+  assert.deepEqual(parseEntityPage(page).touches, [touch]);
 });
 
 test('real Python hook-legacy bytes equal the JS-computed target', (t) => {
@@ -222,11 +243,6 @@ test('real Python hook-legacy bytes equal the JS-computed target', (t) => {
   const relativePath = '00-Inbox/Meetings/roadmap.md';
   const line = '- [Roadmap Review](00-Inbox/Meetings/roadmap.md) — 2026-07-10';
   const replacement = appendLegacyInteraction(original, line);
-  const expected = mergeFrontmatterText(
-    page,
-    replacement,
-    { last_interaction: '2026-07-10' },
-  );
 
   const result = runRealParityMutation(vault, {
     op: 'mutate',
@@ -235,7 +251,130 @@ test('real Python hook-legacy bytes equal the JS-computed target', (t) => {
   });
 
   assert.equal(result.ok, true, result.error);
-  assert.deepEqual(fs.readFileSync(page), Buffer.from(expected, 'utf8'));
+  const updated = fs.readFileSync(page, 'utf8');
+  assert.match(updated, /## Meetings\n\n- \[Roadmap Review\]/);
+  assert.match(updated, /<!-- dex:auto:update-log -->/);
+  assert.match(updated, /Roadmap Review \[roadmap\]/);
+  assert.deepEqual(parseEntityPage(page).touches, [{
+    ts: '2026-07-10',
+    type: 'meeting',
+    direction: 'none',
+    source: { id: 'roadmap', title: 'Roadmap Review' },
+  }]);
+});
+
+test('hook interactions leave quarantined pages untouched in both page layouts', (t) => {
+  const { vault, python } = makeVault(t);
+  const layouts = [
+    [
+      '---',
+      'type: person',
+      'name: [malformed',
+      '---',
+      '# Managed Example',
+      '',
+      '## Recent Interactions',
+      '',
+      '<!-- dex:auto:recent-interactions -->',
+      '<!-- /dex:auto -->',
+      '',
+    ].join('\n'),
+    [
+      '---',
+      'type: person',
+      'name: [malformed',
+      '---',
+      '# Legacy Example',
+      '',
+      '## Meetings',
+      '',
+    ].join('\n'),
+  ];
+  let spawned = 0;
+
+  for (const [index, original] of layouts.entries()) {
+    const page = path.join(
+      vault,
+      '05-Areas',
+      'People',
+      'External',
+      `Malformed_${index}.md`,
+    );
+    fs.mkdirSync(path.dirname(page), { recursive: true });
+    fs.writeFileSync(page, original);
+
+    const result = flushEntityOps({
+      vaultRoot: vault,
+      ops: [{
+        op: 'mutate',
+        path: page,
+        intent: hookIntent(
+          '00-Inbox/Meetings/roadmap.md',
+          '- [Roadmap Review](00-Inbox/Meetings/roadmap.md) — 2026-07-10',
+          '2026-07-10',
+        ),
+      }],
+      scope: `quarantined-${index}`,
+      env: { DEX_PYTHON: python },
+      spawnSync: (_command, _args, options) => {
+        spawned += 1;
+        const request = JSON.parse(options.input);
+        assert.equal(request.ops[0].target_fingerprint, undefined);
+        return {
+          status: 0,
+          stderr: '',
+          stdout: JSON.stringify({
+            results: [{
+              path: page,
+              status: 'quarantined',
+              fingerprint: crypto.createHash('sha256').update(original).digest('hex'),
+            }],
+          }),
+        };
+      },
+    });
+
+    assert.equal(result.error, undefined);
+    assert.equal(fs.readFileSync(page, 'utf8'), original);
+    assert.doesNotMatch(fs.readFileSync(page, 'utf8'), /dex:auto:update-log/);
+  }
+
+  assert.equal(spawned, 2);
+});
+
+test('hook interaction followed by sync touch deduplicates the same meeting', (t) => {
+  const { vault } = makeVault(t);
+  const page = path.join(vault, '05-Areas', 'People', 'External', 'Jane_Example.md');
+  fs.mkdirSync(path.dirname(page), { recursive: true });
+  fs.writeFileSync(page, renderPersonPage(
+    'Jane Example', null, null, ['jane@example.org'], [], 'external',
+  ));
+  const touch = {
+    ts: '2026-07-10',
+    type: 'meeting',
+    direction: 'none',
+    source: { id: 'roadmap', title: 'Roadmap Review' },
+  };
+
+  const hook = runRealParityMutation(vault, {
+    op: 'mutate',
+    path: page,
+    intent: hookIntent(
+      '00-Inbox/Meetings/roadmap.md',
+      '- [Roadmap Review](00-Inbox/Meetings/roadmap.md) — 2026-07-10',
+      '2026-07-10',
+    ),
+  });
+  assert.equal(hook.ok, true, hook.error);
+  assert.deepEqual(parseEntityPage(page).touches, [touch]);
+
+  const sync = runRealParityMutation(vault, {
+    op: 'mutate',
+    path: page,
+    intent: touchIntent([touch]),
+  });
+  assert.equal(sync.ok, true, sync.error);
+  assert.deepEqual(parseEntityPage(page).touches, [touch]);
 });
 
 test('real Python gardener bytes equal the JS-computed target', (t) => {
@@ -270,6 +409,150 @@ test('real Python gardener bytes equal the JS-computed target', (t) => {
 
   assert.equal(result.ok, true, result.error);
   assert.deepEqual(fs.readFileSync(page), Buffer.from(expected, 'utf8'));
+});
+
+test('touch-log materializes as one composite CAS write and is idempotent', (t) => {
+  const { vault } = makeVault(t);
+  const page = path.join(vault, '05-Areas', 'People', 'External', 'Jane_Example.md');
+  fs.mkdirSync(path.dirname(page), { recursive: true });
+  fs.writeFileSync(page, renderPersonPage(
+    'Jane Example',
+    'Engineer',
+    'Acme',
+    ['jane@example.com'],
+    [],
+    'external',
+  ));
+  const touch = {
+    ts: '2026-07-10',
+    type: 'meeting',
+    direction: 'none',
+    source: { id: 'meeting-1', title: 'Roadmap Review' },
+    nature: 'Reviewed the launch plan.',
+  };
+  const operation = {
+    op: 'mutate',
+    path: page,
+    entity_identity: {
+      kind: 'person',
+      name: 'Jane Example',
+      emails: ['jane@example.com'],
+    },
+    intent: touchIntent([touch]),
+  };
+
+  const first = runRealParityMutation(vault, operation);
+  assert.equal(first.ok, true, first.error);
+  const firstBytes = fs.readFileSync(page);
+  const firstParsed = parseEntityPage(page);
+  assert.deepEqual(firstParsed.touches, [touch]);
+  assert.equal(firstParsed.last_touched, '2026-07-10');
+  assert.match(firstBytes.toString(), /meeting · two-way — Roadmap Review \[meeting-1\]/);
+
+  const second = runRealParityMutation(vault, operation);
+  assert.equal(second.ok, true, second.error);
+  assert.deepEqual(fs.readFileSync(page), firstBytes);
+  assert.deepEqual(parseEntityPage(page).touches, [touch]);
+});
+
+test('touch-log ensures update-log on a legacy page before the composite write', (t) => {
+  const { vault } = makeVault(t);
+  const page = path.join(vault, '05-Areas', 'People', 'External', 'Legacy.md');
+  fs.mkdirSync(path.dirname(page), { recursive: true });
+  fs.writeFileSync(page, '# Legacy\n\n**Role:** Engineer\n');
+  const touch = {
+    ts: '2026-07-11',
+    type: 'mention',
+    source: { id: 'meeting-2', title: 'Launch Review' },
+  };
+
+  const result = runRealParityMutation(vault, {
+    op: 'mutate',
+    path: page,
+    intent: touchIntent([touch]),
+  });
+
+  assert.equal(result.ok, true, result.error);
+  const updated = fs.readFileSync(page, 'utf8');
+  assert.match(updated, /<!-- dex:auto:update-log -->/);
+  assert.match(updated, /mention · mention — Launch Review \[meeting-2\]/);
+  assert.deepEqual(parseEntityPage(page).touches, [touch]);
+});
+
+test('touch-log deduplicates an existing unquoted YAML date', (t) => {
+  const { vault } = makeVault(t);
+  const page = path.join(vault, '05-Areas', 'People', 'External', 'Existing.md');
+  fs.mkdirSync(path.dirname(page), { recursive: true });
+  fs.writeFileSync(page, [
+    '---',
+    'type: person',
+    'name: Existing',
+    'touches:',
+    '  - ts: 2026-07-12',
+    '    type: meeting',
+    '    direction: none',
+    '    source: {id: meeting-3, title: Existing Meeting}',
+    'last_touched: 2026-07-12',
+    '---',
+    '# Existing',
+    '',
+    '## Update Log',
+    '',
+    '<!-- dex:auto:update-log -->',
+    '- 2026-07-12 — meeting · two-way — Existing Meeting [meeting-3]',
+    '<!-- /dex:auto -->',
+    '',
+  ].join('\n'));
+  const touch = {
+    ts: '2026-07-12',
+    type: 'meeting',
+    direction: 'none',
+    source: { id: 'meeting-3', title: 'Existing Meeting' },
+  };
+
+  const result = runRealParityMutation(vault, {
+    op: 'mutate',
+    path: page,
+    intent: touchIntent([touch]),
+  });
+
+  assert.equal(result.ok, true, result.error);
+  const parsed = parseEntityPage(page);
+  assert.deepEqual(parsed.touches, [touch]);
+  assert.equal(parsed.last_touched, '2026-07-12');
+});
+
+test('invalid touch-log intent is classified as permanent', (t) => {
+  const { vault, python } = makeVault(t);
+  const page = path.join(vault, '05-Areas', 'People', 'External', 'Jane_Example.md');
+  fs.mkdirSync(path.dirname(page), { recursive: true });
+  fs.writeFileSync(page, renderPersonPage(
+    'Jane Example', null, null, ['jane@example.org'], [], 'external',
+  ));
+
+  const result = flushEntityOps({
+    vaultRoot: vault,
+    ops: [{
+      op: 'mutate',
+      path: page,
+      intent: touchIntent([{
+        ts: '2026-07-10T10:00:00Z',
+        type: 'email',
+        source: {},
+      }]),
+    }],
+    scope: 'touch',
+    env: { DEX_PYTHON: python },
+    spawnSync: () => {
+      throw new Error('the CLI must not run for an invalid touch intent');
+    },
+  });
+
+  assert.equal(result.ok, false);
+  const pending = JSON.parse(fs.readFileSync(pendingStorePath(vault), 'utf8'));
+  assert.equal(pending.batches[0].ops[0].permanent_attempts, 1);
+  assert.equal(pending.batches[0].ops[0].transient_attempts, 0);
+  assert.match(pending.batches[0].ops[0].last_error, /Invalid touch-log mutation intent/);
 });
 
 test('a TOCTOU conflict stays pending and rematerializes from the next page bytes', (t) => {

@@ -14,6 +14,8 @@ from pathlib import Path
 import pytest
 import yaml
 
+from core.entity_engine import cooling
+from core.entity_engine.contract import render_person_page
 from core.lifecycle import service as lifecycle_service
 from core.tests.test_adoption_messy_vault_journey import (
     _created_ancestors,
@@ -382,20 +384,26 @@ asyncio.run(main())
 """
 
 ENTITY_CREATION_JOURNEY = r"""
+const fs = require('node:fs');
 const path = require('node:path');
 const { processEntityCreation } = require(
   path.join(process.env.DEX_REPO_ROOT, '.scripts/meeting-intel/lib/entity-creation.cjs'),
 );
 
-const attendee = { name: 'Jane Doe', email: 'jane@acme.com', location: 'external' };
+const attendee = { name: 'Jane Doe', email: 'jane@example.com', location: 'external' };
 const meetings = [
   { id: 'golden-entity-1', createdAt: '2026-06-01T10:00:00Z', transcript: '', filteredAttendees: [attendee] },
   { id: 'golden-entity-2', createdAt: '2026-06-08T10:00:00Z', transcript: '', filteredAttendees: [attendee] },
 ];
 const profile = { email_domain: 'dex.test', entity_creation: { mode: process.env.ENTITY_CREATION_MODE } };
+const personPath = path.join(
+  process.env.VAULT_PATH, '05-Areas', 'People', 'External', 'Jane_Doe.md',
+);
 const first = processEntityCreation(meetings, profile);
+const personAfterFirst = fs.existsSync(personPath) ? fs.readFileSync(personPath, 'utf8') : null;
 const second = processEntityCreation(meetings, profile);
-console.log(JSON.stringify({ first, second }));
+const personAfterSecond = fs.existsSync(personPath) ? fs.readFileSync(personPath, 'utf8') : null;
+console.log(JSON.stringify({ first, second, personAfterFirst, personAfterSecond }));
 """
 
 
@@ -444,7 +452,7 @@ def _run_entity_creation_journey(vault: Path, mode: str) -> dict:
     # resolvable interpreter. A real vault carries its own .venv (the fixture's
     # work-mcp command points at {vault}/.venv/bin/python); the tmp copy has none,
     # so pin DEX_PYTHON to the interpreter running this suite (it has the deps).
-    env["DEX_PYTHON"] = sys.executable
+    env["DEX_PYTHON"] = os.environ.get("DEX_PYTHON", sys.executable)
     result = subprocess.run(
         [node, "-e", ENTITY_CREATION_JOURNEY],
         cwd=REPO_ROOT,
@@ -478,7 +486,7 @@ def _write_synced_entity_meetings(vault: Path) -> None:
             f"date: {date}\n"
             "attendees:\n"
             "  - name: Jane Doe\n"
-            "    email: jane@acme.com\n"
+            "    email: jane@example.com\n"
             "    location: external\n"
             "---\n"
             f"# Entity journey {date}\n",
@@ -595,13 +603,68 @@ def test_golden_entity_creation_auto_is_idempotent_and_verifies(
     assert journey["second"]["companies_created"] == []
 
     person = parse_entity_page(vault / "05-Areas/People/External/Jane_Doe.md")
-    assert person["emails"] == ["jane@acme.com"]
+    assert person["emails"] == ["jane@example.com"]
     assert person["location"] == "external"
     assert person["quarantined"] is False
+    assert person["touches"] == [
+        {
+            "ts": "2026-06-01",
+            "type": "meeting",
+            "direction": "none",
+            "source": {
+                "id": "golden-entity-1",
+                "title": "Meeting 2026-06-01",
+            },
+        },
+        {
+            "ts": "2026-06-08",
+            "type": "meeting",
+            "direction": "none",
+            "source": {
+                "id": "golden-entity-2",
+                "title": "Meeting 2026-06-08",
+            },
+        },
+    ]
+    assert all(
+        re.fullmatch(r"\d{4}-\d{2}-\d{2}", touch["ts"])
+        for touch in person["touches"]
+    )
+    assert person["last_touched"] == "2026-06-08"
+    update_log = re.search(
+        r"<!-- dex:auto:update-log -->\n(.*?)\n<!-- /dex:auto -->",
+        journey["personAfterFirst"],
+        re.DOTALL,
+    )
+    assert update_log is not None
+    assert update_log.group(1).splitlines() == [
+        "- 2026-06-01 — meeting · two-way — Meeting 2026-06-01 [golden-entity-1]",
+        "- 2026-06-08 — meeting · two-way — Meeting 2026-06-08 [golden-entity-2]",
+    ]
+    assert journey["personAfterSecond"] == journey["personAfterFirst"]
 
-    company = parse_entity_page(vault / "05-Areas/Companies/Acme.md")
-    assert company["domains"] == ["acme.com"]
+    company = parse_entity_page(vault / "05-Areas/Companies/Example.md")
+    assert company["domains"] == ["example.com"]
     assert company["quarantined"] is False
+
+    zero_touch_path = vault / "05-Areas/People/External/Zero_Touch.md"
+    zero_touch_path.write_text(
+        render_person_page(
+            "Zero Touch",
+            emails=["zero@example.org"],
+            location="external",
+        ),
+        encoding="utf-8",
+    )
+    cooling_result = cooling.cooling_report(
+        vault,
+        now=datetime(2027, 1, 1, tzinfo=timezone.utc),
+        people_dir=vault / "05-Areas/People",
+        companies_dir=vault / "05-Areas/Companies",
+    )
+    cold_names = {item["name"] for item in cooling_result["cold"]}
+    assert "Jane Doe" in cold_names
+    assert "Zero Touch" not in cold_names
 
     verification = subprocess.run(
         [shutil.which("node"), ".scripts/meeting-intel/verify-entities.cjs", "--days", "3650"],

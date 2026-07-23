@@ -450,6 +450,51 @@ def _project_source(
         "INSERT OR IGNORE INTO node_keys(node_id, kind, value) VALUES (?, ?, ?)",
         [(source.relative_path, kind, value) for kind, value in keys],
     )
+    touch_rows = []
+    for touch in parsed.get("touches") or []:
+        if not isinstance(touch, dict):
+            continue
+        timestamp = touch.get("ts")
+        touch_type = touch.get("type")
+        direction = touch.get("direction")
+        nature = touch.get("nature")
+        if any(
+            isinstance(value, (dict, list))
+            for value in (timestamp, touch_type, direction, nature)
+        ):
+            continue
+        if not timestamp or not touch_type:
+            continue
+        timestamp = str(timestamp)
+        touch_type = str(touch_type)
+        direction = str(direction) if direction is not None else None
+        nature = str(nature) if nature is not None else None
+        touch_source = touch.get("source")
+        if isinstance(touch_source, dict):
+            touch_source = touch_source.get("id")
+            if touch_source is not None:
+                touch_source = str(touch_source)
+        elif touch_source is not None:
+            touch_source = str(touch_source)
+        touch_rows.append(
+            (
+                source.relative_path,
+                timestamp,
+                touch_type,
+                direction,
+                touch_source,
+                nature,
+                source.relative_path,
+            )
+        )
+    connection.executemany(
+        """
+        INSERT OR IGNORE INTO touches(
+            node_id, ts, touch_type, direction, source, nature, source_path
+        ) VALUES (?, ?, ?, ?, ?, ?, ?)
+        """,
+        touch_rows,
+    )
 
 
 def _initialize_schema(connection: sqlite3.Connection) -> None:

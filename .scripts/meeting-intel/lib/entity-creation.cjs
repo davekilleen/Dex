@@ -5,7 +5,7 @@ const path = require('path');
 const yaml = require('js-yaml');
 const portableContract = require('../../../packages/dex-contracts/dist/portable-vault.contract.json');
 const { parseEntityPage, renderCompanyPage, renderPersonPage } = require('../../lib/entity-pages.cjs');
-const { resolveEntityPath } = require('../../lib/entity-identity.cjs');
+const { identityForEntity, resolveEntityPath } = require('../../lib/entity-identity.cjs');
 const {
   fingerprintText,
   flushEntityOps,
@@ -343,6 +343,117 @@ function qualifiedCompanyDomains(state, profile) {
   return [...domains.entries()].filter(([, stats]) => stats.meetings.size >= 2);
 }
 
+function meetingAttendees(meeting) {
+  return Array.isArray(meeting?.filteredAttendees)
+    ? meeting.filteredAttendees
+    : (Array.isArray(meeting?.attendees) ? meeting.attendees : []);
+}
+
+function buildTouchOperations(
+  meetings,
+  profile,
+  created,
+  companiesCreated,
+  creationEffects,
+  paths,
+) {
+  const internalDomains = new Set(
+    Array.from(getInternalDomains(profile), registrableDomain).filter(Boolean),
+  );
+  const createdPeopleByEmail = new Map();
+  const createdPeopleByName = new Map();
+  for (const page of created) {
+    for (const email of page.contact?.emails || []) {
+      createdPeopleByEmail.set(String(email).trim().toLowerCase(), page.filePath);
+    }
+    const name = String(page.contact?.name || '').trim().toLowerCase();
+    if (name) createdPeopleByName.set(name, page.filePath);
+  }
+  const createdCompaniesByDomain = new Map(
+    companiesCreated.map(page => [registrableDomain(page.domain), page.filePath]),
+  );
+  const confirmedCreationPaths = new Set([
+    ...created.map(page => page.filePath),
+    ...companiesCreated.map(page => page.filePath),
+  ]);
+  const unconfirmedCreationPaths = new Set(
+    creationEffects
+      .map(effect => effect.file_path)
+      .filter(filePath => !confirmedCreationPaths.has(filePath)),
+  );
+  const grouped = new Map();
+
+  function addTouch(filePath, touch) {
+    if (!filePath || unconfirmedCreationPaths.has(filePath) || !fs.existsSync(filePath)) return;
+    let entity;
+    try {
+      entity = parseEntityPage(filePath);
+    } catch (_) {
+      return;
+    }
+    const entityIdentity = identityForEntity(entity);
+    if (!entityIdentity || entity.quarantined) return;
+    if (!grouped.has(filePath)) {
+      grouped.set(filePath, { entityIdentity, touches: [] });
+    }
+    grouped.get(filePath).touches.push(touch);
+  }
+
+  for (const meeting of Array.isArray(meetings) ? meetings : []) {
+    const date = String(meeting?.createdAt || meeting?.date || '').slice(0, 10);
+    if (!meeting?.id || !/^\d{4}-\d{2}-\d{2}$/.test(date)) continue;
+    const touch = {
+      ts: date,
+      type: 'meeting',
+      direction: 'none',
+      source: {
+        id: meeting.id,
+        title: meeting.title || `Meeting ${date}`,
+      },
+    };
+    const touchedPeople = new Set();
+    const touchedCompanies = new Set();
+    for (const attendee of meetingAttendees(meeting)) {
+      const name = String(attendee?.name || '').trim();
+      if (!name) continue;
+      const email = typeof attendee?.email === 'string'
+        ? attendee.email.trim().toLowerCase()
+        : '';
+      const personPath = createdPeopleByEmail.get(email)
+        || createdPeopleByName.get(name.toLowerCase())
+        || resolveEntityPath(paths.VAULT_ROOT, {
+          kind: 'person',
+          name,
+          emails: email ? [email] : [],
+        });
+      if (personPath && !touchedPeople.has(personPath)) {
+        touchedPeople.add(personPath);
+        addTouch(personPath, touch);
+      }
+
+      if (attendee?.location !== 'external' || !email.includes('@')) continue;
+      const domain = registrableDomain(email.split('@', 2)[1]);
+      if (!domain || isFreemail(domain) || internalDomains.has(domain)) continue;
+      const companyPath = createdCompaniesByDomain.get(domain)
+        || companyPageForDomain(domain);
+      if (companyPath && !touchedCompanies.has(companyPath)) {
+        touchedCompanies.add(companyPath);
+        addTouch(companyPath, touch);
+      }
+    }
+  }
+
+  return [...grouped.entries()].map(([filePath, entry]) => ({
+    op: 'mutate',
+    path: filePath,
+    entity_identity: entry.entityIdentity,
+    intent: {
+      kind: 'touch-log',
+      touches: entry.touches,
+    },
+  }));
+}
+
 function processEntityCreation(
   meetings,
   profile = {},
@@ -523,6 +634,40 @@ function processEntityCreation(
     });
     logger(writeMessage);
   }
+  const touchOps = buildTouchOperations(
+    meetings,
+    profile,
+    created,
+    companiesCreated,
+    effects,
+    paths,
+  );
+  const touchWrite = flushEntityOps({
+    vaultRoot: paths.VAULT_ROOT,
+    ops: touchOps,
+    meetingIds,
+    scope: 'touch',
+    scopes: ['touch'],
+    metadata: { source: 'meeting-intel' },
+    now,
+  });
+  if (!touchWrite.ok) {
+    const writeMessage = entityWriteMessage(touchWrite)
+      || 'Entity touch writes remain pending';
+    errors.push({
+      entity_write: true,
+      scope: 'touch',
+      error: writeMessage,
+    });
+    logger(writeMessage);
+  }
+  entityWrite.completed_meeting_ids = [...new Set([
+    ...(entityWrite.completed_meeting_ids || []),
+    ...(entityWrite.completed_batches || [])
+      .filter(batch => batch.scope === 'creation')
+      .flatMap(batch => batch.meeting_ids || []),
+    ...(touchWrite.completed_meeting_ids || []),
+  ])].sort();
   return {
     mode, created, suggested, companies_created: companiesCreated,
     companies_suggested: companiesSuggested, errors, entity_write: entityWrite,

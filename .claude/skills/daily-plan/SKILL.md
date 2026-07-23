@@ -186,6 +186,8 @@ Get genuine context, not just attendee names:
 
 Before commitments, read `System/.dex/entity-suggestions.json` (if present). If it has `suggested` entries, add one compact context line: "Dex suggests person pages for: X (N meetings), Y — say the word and I'll create them." This step is read-only.
 
+Also read `System/.dex/entity-cooling.json` when it is present and fresh. If its consequential `cold` list is non-empty, surface it as one compact "❄️ Going cold" line in `## ⚠️ Heads Up`; degrade silently when the feed is absent or empty, and never widen this into a vault-wide people dump.
+
 ```
 Use: get_commitments_due(date_range="today")
 ```
@@ -546,6 +548,7 @@ integrations_used: [calendar, tasks, people, work-intelligence]
 
 ## ⚠️ Heads Up
 
+- {{❄️ Going cold: consequential people/accounts from the cooling feed, when present}}
 - {{Warning about lagging weekly priority}}
 - {{Commitment due today}}
 - {{Back-to-back meetings}}

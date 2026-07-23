@@ -8,6 +8,9 @@ const path = require('node:path');
 const {
   installEntityEngineStub,
 } = require('../../../.scripts/lib/tests/entity-engine-test-helper.cjs');
+const {
+  parseEntityPage,
+} = require('../../../.scripts/lib/entity-pages.cjs');
 
 const HOOK = path.resolve(__dirname, '../post-meeting-person-update.cjs');
 
@@ -87,6 +90,13 @@ test('attendees update an existing machine region and last_interaction', (t) => 
   const updated = fs.readFileSync(person, 'utf8');
   assert.match(updated, /last_interaction: '2026-07-10'/);
   assert.match(updated, /\[Roadmap Review\]\(00-Inbox\/Meetings\/roadmap\.md\) — 2026-07-10/);
+  assert.deepEqual(parseEntityPage(person).touches, [{
+    ts: '2026-07-10',
+    type: 'meeting',
+    direction: 'none',
+    source: { id: 'roadmap', title: 'Roadmap Review' },
+  }]);
+  assert.match(updated, /meeting · two-way — Roadmap Review \[roadmap\]/);
 });
 
 test('legacy page receives the interaction under its existing heading', (t) => {

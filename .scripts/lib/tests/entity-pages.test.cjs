@@ -8,6 +8,8 @@ const path = require('path');
 const yaml = require('js-yaml');
 const {
   parseEntityPage,
+  readFrontmatterField,
+  renderUpdateLog,
   upsertFrontmatter,
   renderPersonPage,
   renderCompanyPage,
@@ -25,6 +27,87 @@ test('parse golden fixtures', () => {
     const expected = JSON.parse(fs.readFileSync(expectedPath, 'utf8'));
     assert.deepEqual(parseEntityPage(path.join(FIXTURES, name)), expected, name);
   }
+});
+
+test('parseEntityPage reads touches only from valid frontmatter', t => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'entity-pages-'));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const page = path.join(dir, 'Touched.md');
+  const touches = [{
+    ts: '2026-07-22',
+    type: 'meeting',
+    direction: 'none',
+    source: { id: 'meeting-1', title: 'Roadmap' },
+  }];
+  fs.writeFileSync(page, [
+    '---',
+    'type: person',
+    `touches: ${JSON.stringify(touches)}`,
+    'last_touched: 2026-07-22',
+    '---',
+    '# Touched',
+    '',
+  ].join('\n'));
+  assert.deepEqual(parseEntityPage(page).touches, touches);
+  assert.equal(parseEntityPage(page).last_touched, '2026-07-22');
+  assert.deepEqual(readFrontmatterField(fs.readFileSync(page, 'utf8'), 'touches'), touches);
+
+  const unquoted = path.join(dir, 'Unquoted.md');
+  fs.writeFileSync(unquoted, [
+    '---', 'type: person', 'touches:', '  - ts: 2026-07-22',
+    '    type: meeting', '    source: {id: meeting-1}',
+    'last_touched: 2026-07-22', '---', '# Unquoted', '',
+  ].join('\n'));
+  assert.equal(parseEntityPage(unquoted).touches[0].ts, '2026-07-22');
+  assert.equal(readFrontmatterField(
+    fs.readFileSync(unquoted, 'utf8'), 'touches',
+  )[0].ts, '2026-07-22');
+
+  const malformed = path.join(dir, 'Malformed.md');
+  fs.writeFileSync(malformed, [
+    '---', 'type: person', 'touches: nope', 'last_touched: [bad]', '---',
+    '# Malformed', '', '**Touches:** legacy must be ignored', '',
+  ].join('\n'));
+  assert.deepEqual(parseEntityPage(malformed).touches, []);
+  assert.equal(parseEntityPage(malformed).last_touched, null);
+  assert.deepEqual(readFrontmatterField(fs.readFileSync(malformed, 'utf8'), 'touches'), []);
+});
+
+test('renderUpdateLog matches the canonical golden bytes deterministically', () => {
+  const input = {
+    touches: [{
+      ts: '2026-07-22T10:00:00Z',
+      type: 'meeting',
+      direction: 'none',
+      source: { id: 'meeting-2', title: 'Roadmap' },
+    }],
+    relationshipProvenance: [{
+      recorded_at: '2026-07-21T09:00:00Z',
+      type: 'reports_to',
+      target: '05-Areas/People/Internal/Alex.md',
+      source: { id: 'meeting-1', title: 'Weekly 1:1' },
+    }],
+    creationMetadata: {
+      created_at: '2026-07-20T08:00:00Z',
+      source: { id: 'ritual', title: 'Ritual Intelligence' },
+    },
+  };
+  const expected = [
+    '- 2026-07-20 — created — Ritual Intelligence [ritual]',
+    '- 2026-07-21 — relationship · reports_to — 05-Areas/People/Internal/Alex.md — Weekly 1:1 [meeting-1]',
+    '- 2026-07-22 — meeting · two-way — Roadmap [meeting-2]',
+  ].join('\n');
+  assert.equal(renderUpdateLog(input), expected);
+  assert.equal(renderUpdateLog({ ...input, touches: [...input.touches].reverse() }), expected);
+  assert.equal(renderUpdateLog({
+    touches: [{
+      ts: '2026-07-23',
+      type: 'meeting',
+      direction: 'none',
+      source: { id: ' meeting  3 ', title: ' Product\n review ' },
+      nature: ' Agreed\n  next steps. ',
+    }],
+  }), '- 2026-07-23 — meeting · two-way — Product review [meeting 3] — Agreed next steps.');
 });
 
 test('upsert preserves unknown keys, is idempotent, and leaves no temp files', t => {
