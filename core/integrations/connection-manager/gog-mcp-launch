@@ -1,0 +1,52 @@
+#!/usr/bin/env bash
+#
+# gog-mcp-launch — launcher for `gog mcp` on no-shell surfaces.
+#
+# Same token-injection design as dex-google: fetch a fresh Google access token
+# from the connection-manager and hand it to gog via $GOG_ACCESS_TOKEN, then
+# launch the gog MCP server (read-only by default). Use this only where there's
+# no shell to drive the dex-google CLI (dex-desktop / mobile / cloud); prefer
+# dex-google everywhere a shell exists. The token is passed via the environment,
+# never on the command line or stdout. NOTE: launch-time injection only — a
+# long-lived MCP process won't pick up a refreshed token without a restart.
+#
+set -euo pipefail
+
+# Resolve the directory this script lives in (handles symlinks).
+SOURCE="${BASH_SOURCE[0]}"
+while [ -h "$SOURCE" ]; do
+  TARGET="$(readlink "$SOURCE")"
+  case "$TARGET" in
+    /*) SOURCE="$TARGET" ;;
+    *)  SOURCE="$(cd -P "$(dirname "$SOURCE")" >/dev/null 2>&1 && pwd)/$TARGET" ;;
+  esac
+done
+DIR="$(cd -P "$(dirname "$SOURCE")" >/dev/null 2>&1 && pwd)"
+
+# gogcli must be installed; the launcher only detects its absence.
+if ! command -v gog >/dev/null 2>&1; then
+  echo "gogcli not installed — run: brew install openclaw/tap/gogcli" >&2
+  exit 1
+fi
+
+# Fetch a fresh access token. Capture rc without tripping `set -e`.
+TOKEN="$(node "$DIR/get-token.cjs" google --access-token-only)" && rc=0 || rc=$?
+
+case "$rc" in
+  0)
+    export GOG_ACCESS_TOKEN="$TOKEN"
+    exec gog mcp
+    ;;
+  2)
+    echo "Google isn't connected. Run /connect google" >&2
+    exit 2
+    ;;
+  3)
+    echo "Google needs reconnecting. Run /connect google" >&2
+    exit 3
+    ;;
+  *)
+    echo "Token error" >&2
+    exit 1
+    ;;
+esac

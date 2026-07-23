@@ -21,7 +21,7 @@
 | Portable ownership contract | **SHIPPED** (v1.64+) | `core/portable_contract.py` | Source of truth: every path is brain/seed/generated/vault/runtime; decides what an update may write |
 | Release catalog + bridge | **SHIPPED** (v1.65–v1.68) | `core/lifecycle/catalog/*`, `bridge.py` | Publisher-declared packing list per release; one-release handoff from the legacy updater |
 | 9 MCP servers | **SHIPPED** (mixed ages) | `core/mcp/*_server.py` | The tool surface Dex acts through; Work MCP is the giant (43 tools) |
-| Connection Manager (OAuth/token) | **PROTOTYPE** | `core/integrations/connection-manager/` | Local-first OAuth via Nango catalog-as-data; encrypted on-device tokens; not yet run against a live provider |
+| Connection Manager (OAuth/token) | **COMMITTED, INERT** | `core/integrations/connection-manager/` | Local-first OAuth via Nango catalog-as-data; encrypted on-device tokens; in CI; no shipped surface invokes it until the live-account gate passes |
 | DexDiff (methodology sharing) | **SHIPPED** cmd surface / **PARKED** redesign | `.claude/skills/diff-*`, `core/dexdiff_profile_adopt.py` | Generate→publish→adopt-regenerates-locally; redesign parked for the desktop "Vorflux" rebuild |
 | Entity engine + gardener | **SHIPPED** (v1.37 / v1.44) + **LOCAL** cooling | `core/entity_engine/*`, `core/entity_maintenance.py` | Auto-creates person/company pages, logs meeting touches, classifies relationship temperature, and resurfaces consequential relationships going cold |
 | Hooks | **SHIPPED** (wired subset) / dead weight present | `.claude/hooks/`, `.claude/settings.json` | Small wired core; several unwired scripts + one silently-dead hook still in the tree |
@@ -98,13 +98,13 @@
 
 **Honesty-contract gap.** Three servers lack `feature_status` (`dex-improvements-mcp`, `dex-onboarding-mcp`, `dex-session-memory`) — meaning they don't return the ok/off/not_installed/broken/unknown status envelope the rest do. That's the honest weak spot in the "every MCP tells you its health" story.
 
-## 6. Connection Manager (OAuth/token layer) — PROTOTYPE
+## 6. Connection Manager (OAuth/token layer) — COMMITTED, INERT (live-account gate pending)
 
-**What it is.** Local-first OAuth + token management. No Docker, no relay, no cloud. Provider config comes from Nango's open-source catalog (`@nangohq/providers`, ~831 providers) consumed **as data only**; the runtime (OAuth2 + PKCE, refresh, health state machine) is Dex-owned plain Node; tokens live AES-256-GCM-encrypted on-device under `{DEX_VAULT}/System/credentials/`.
+**What it is.** Local-first OAuth + token management. No Docker, no relay, no cloud. Provider config comes from Nango's open-source catalog (`@nangohq/providers`, ~831 providers, pinned) consumed **as data only**; the runtime (OAuth2 + PKCE, refresh, health state machine) is Dex-owned plain Node; tokens live AES-256-GCM-encrypted on-device under `{DEX_VAULT}/System/credentials/`.
 
-**Where it lives.** `core/integrations/connection-manager/`: `catalog.cjs` (Nango entry → Dex OAuth descriptor), `oauth-flow.cjs` (PKCE + localhost callback + refresh), `token-store.cjs` (encrypted store + `connections.json`), `health.cjs` (connected/expiring/expired/needs_reauth state machine), `connect.cjs` (CLI), `get-token.cjs` (Python MCP accessor). Also `CONSUMPTION-LAYER.md`.
+**Where it lives.** `core/integrations/connection-manager/`: `catalog.cjs` (Nango entry → Dex OAuth descriptor), `oauth-flow.cjs` (PKCE + localhost callback + refresh), `token-store.cjs` (encrypted store + `connections.json`), `health.cjs` (connected/expiring/expired/needs_reauth state machine), `connect.cjs` (CLI), `get-token.cjs` (Python MCP accessor). Also `CONSUMPTION-LAYER.md`. Tests: `connection-manager.test.cjs`, run in CI via `npm run test:integrations`.
 
-**Status (from its README).** "Foundation built and smoke-tested… **Not yet run against a live provider**… Do not `dex-push` until the break→detect→reconnect loop is verified on real accounts." So: **PROTOTYPE** — real machinery, unverified end-to-end. Licence note: Nango providers is Elastic License 2.0 (source-available), consumed as npm dep, not vendored.
+**Status.** Committed to main as the shared Core↔Desktop connections engine (the "one integrations brain" program — Dave ratified 2026-07-23; Mission Control card `integrations-unification-one-shared-connector-brain-for-core-desktop`). **INERT: no shipped surface invokes it** — the `/connect` skill and session-start health hook are deliberately held out of the tree until the live-account verification gate (connect → break → detect → reconnect on real providers) passes. Nothing user-facing may consume it before that gate. Licence note: Nango providers is Elastic License 2.0 (source-available), consumed as a pinned npm dep, not vendored; never re-expose the catalog as a managed service.
 
 **How it connects.** Intended to sit under the integration setup skills (`google-workspace-setup`, `slack`, `notion`, etc.) and feed fresh tokens to Python MCP servers via `get-token.cjs`. Currently parallel to the existing per-integration `detect.py` / `task_sync.py` paths.
 
@@ -167,7 +167,7 @@
 Concrete non-obvious things that a fresh agent would get wrong by reasoning from priors:
 
 1. **The Work MCP is a 43-tool monster (247 KB) and it's under-surfaced.** Only 7 skills reference it; most of its 43 tools are never named by any skill. Easy to assume "Dex has a few task tools" and miss the actual breadth.
-2. **A whole local-first OAuth stack (Connection Manager) exists** — Nango-catalog-as-data, PKCE, encrypted on-device tokens, a health/refresh state machine — and it is a **PROTOTYPE never run against a live provider**. You would not guess this layer is there, nor that it's unverified.
+2. **A whole local-first OAuth stack (Connection Manager) exists** — Nango-catalog-as-data, PKCE, encrypted on-device tokens, a health/refresh state machine — now COMMITTED and in CI, but **never run against a live provider and invoked by no shipped surface**. Do not wire anything user-facing to it until the live-account gate (§6) passes.
 3. **`career-evidence-capture.cjs` was silently dead (now fixed, PR #180).** It read hook input from an env var (`CLAUDE_HOOK_CONTEXT`) when Claude Code delivers it on stdin — so it no-opped on every invocation while looking like a working feature. PR #180 fixes it and adds a contract test guarding the whole hook family.
 4. **Three MCP servers lack the `feature_status` honesty contract** (`dex-improvements`, `dex-onboarding`, `dex-session-memory`) — so the "every feature reports its own health" promise has real holes.
 5. **The observation layer / health-checkers are UNTRACKED local files, not product** — easy to mistake local cruft on the maintainer's disk for shipped Core. Separately, **`/diff-adopt` edits CLAUDE.md + registers hooks outside the lifecycle safe-door** — a real exception to the "one safe door for every change" story worth knowing before you touch it.
