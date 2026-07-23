@@ -63,9 +63,27 @@ def test_dex_update_unconditionally_rejects_an_upstream_trust_registry() -> None
 
 def test_create_skill_runs_frontmatter_validator_before_confirmation() -> None:
     text = (ROOT / ".claude/skills/create-skill/SKILL.md").read_text(encoding="utf-8")
-    validation = text.index("### Step 2.5: Validate Frontmatter")
-    confirmation = text.index("### Step 3: Confirm")
+    validation = text.index("Validate frontmatter")
+    confirmation = text.index("Inspect, then confirm")
 
     assert validation < confirmation
     assert "validators.validate_skill_frontmatter" in text
-    assert "show the validation result" in text
+    assert "show the result" in text
+
+
+def test_create_skill_v2_collision_check_and_core_hard_gate() -> None:
+    text = (ROOT / ".claude/skills/create-skill/SKILL.md").read_text(encoding="utf-8")
+
+    # v2 runs a collision check before writing anything, and it precedes scoring.
+    collision = text.index("Collision check")
+    score = text.index("Score it (the gate)")
+    assert collision < score
+
+    # The scoring gate is invoked, and Core is hard-gated at >= 85 while a user
+    # skill is coached, never blocked.
+    assert "skill-score" in text
+    assert "85" in text
+    assert "coached, never block" in text
+
+    # Origin-aware: user skills keep the -custom protection.
+    assert "-custom" in text
