@@ -6,6 +6,7 @@ const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
 const { parseEntityPage } = require('../../lib/entity-pages.cjs');
+const { installEntityEngineStub } = require('../../lib/tests/entity-engine-test-helper.cjs');
 const { loadSuggestions, processEntityCreation } = require('../lib/entity-creation.cjs');
 const {
   acceptSuggestion,
@@ -17,14 +18,18 @@ const {
 function withVault(fn) {
   const previousVault = process.env.VAULT_PATH;
   const previousProject = process.env.CLAUDE_PROJECT_DIR;
+  const previousPython = process.env.DEX_PYTHON;
   const vault = fs.mkdtempSync(path.join(os.tmpdir(), 'dex-suggestion-actions-'));
   process.env.VAULT_PATH = vault;
+  process.env.DEX_PYTHON = installEntityEngineStub(vault);
   delete process.env.CLAUDE_PROJECT_DIR;
   try { return fn(vault); } finally {
     if (previousVault === undefined) delete process.env.VAULT_PATH;
     else process.env.VAULT_PATH = previousVault;
     if (previousProject === undefined) delete process.env.CLAUDE_PROJECT_DIR;
     else process.env.CLAUDE_PROJECT_DIR = previousProject;
+    if (previousPython === undefined) delete process.env.DEX_PYTHON;
+    else process.env.DEX_PYTHON = previousPython;
     fs.rmSync(vault, { recursive: true, force: true });
   }
 }

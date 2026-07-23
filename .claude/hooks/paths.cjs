@@ -60,6 +60,7 @@ function loadPaths() {
     CONTACTS_STATE_FILE: path.join(VAULT_ROOT, 'System', '.dex', 'contacts.json'),
     GARDENER_STATE_FILE: path.join(VAULT_ROOT, 'System', '.dex', 'gardener.json'),
     ENTITY_SUGGESTIONS_FILE: path.join(VAULT_ROOT, 'System', '.dex', 'entity-suggestions.json'),
+    ENTITY_PENDING_FILE: path.join(VAULT_ROOT, 'System', '.dex', 'entity-pending.json'),
     ENTITY_VERIFICATION_FILE: path.join(VAULT_ROOT, 'System', '.dex', 'entity-verification.json'),
   };
 }
