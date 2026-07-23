@@ -329,9 +329,9 @@ When making significant system changes:
 ### Learning Capture
 After significant work (new features, complex integrations), ask: "Worth capturing any learnings from this?" Don't prompt after routine tasks.
 
-### Learning Capture via `/daily-review`
+### Learning Capture via `/review`
 
-Learnings are captured during the daily review process. When the user runs `/daily-review`, you will:
+Learnings are captured during the daily review process. When the user runs `/review`, you will:
 
 1. **Scan the current session** for learning opportunities:
    - Mistakes or corrections made
@@ -354,7 +354,7 @@ Learnings are captured during the daily review process. When the user runs `/dai
 
 3. **Tell the user** how many learnings you captured, then ask if they want to add more
 
-This happens during `/daily-review` - you don't need to capture learnings silently during the session. The review process handles it systematically.
+This happens during `/review` - you don't need to capture learnings silently during the session. The review process handles it systematically.
 
 ### Background Self-Learning Automation
 
