@@ -23,7 +23,7 @@
 | 9 MCP servers | **SHIPPED** (mixed ages) | `core/mcp/*_server.py` | The tool surface Dex acts through; Work MCP is the giant (43 tools) |
 | Connection Manager (OAuth/token) | **PROTOTYPE** | `core/integrations/connection-manager/` | Local-first OAuth via Nango catalog-as-data; encrypted on-device tokens; not yet run against a live provider |
 | DexDiff (methodology sharing) | **SHIPPED** cmd surface / **PARKED** redesign | `.claude/skills/diff-*`, `core/dexdiff_profile_adopt.py` | Generate→publish→adopt-regenerates-locally; redesign parked for the desktop "Vorflux" rebuild |
-| Entity engine + gardener | **SHIPPED** (v1.37 / v1.44) | `core/utils/entity_pages.py`, `core/entity_maintenance.py` | Auto-creates person/company pages from meetings; gardener keeps living summaries |
+| Entity engine + gardener | **SHIPPED** (v1.37 / v1.44) + **LOCAL** cooling | `core/entity_engine/*`, `core/entity_maintenance.py` | Auto-creates person/company pages, logs meeting touches, classifies relationship temperature, and resurfaces consequential relationships going cold |
 | Hooks | **SHIPPED** (wired subset) / dead weight present | `.claude/hooks/`, `.claude/settings.json` | Small wired core; several unwired scripts + one silently-dead hook still in the tree |
 | Skills (68 shipped, ~74 on disk) | **SHIPPED** | `.claude/skills/` | `/command` workflows; consolidation + description-rewrite direction in flight |
 | Grounding suite (inventory + drift gate) | **LOCAL** (PR #179) | `docs/architecture/INVENTORY.md`, `scripts/generate-architecture-inventory.py` | Code-derived inventory + CI drift gate; state ledger + session digest are **PLANNED** |
@@ -120,13 +120,13 @@
 
 **Status.** The command surface is shipped and usable; a **redesign is PARKED** for the desktop "Vorflux" rebuild. Treat DexDiff as functional-but-frozen — don't invest in hardening the current CLI PII/adopt path; that work moves to Vorflux.
 
-## 8. Entity engine + gardener — SHIPPED (v1.37.0 / v1.44.0)
+## 8. Entity engine + gardener — SHIPPED (v1.37.0 / v1.44.0) + LOCAL cooling
 
-**What it is.** Two layers. (a) **Entity engine** — background meeting sync deterministically creates person/company pages once someone with an email recurs (2+ meetings across 2+ weeks, or 2+ meetings with transcript evidence); `entity_creation` config = `auto`/`suggest`/`off`. (b) **Gardener** (v1.44) — keeps a living "who this person is to you right now" summary block on active pages, refreshed at most weekly, ≤5 pages/sync, only when something new happened, only if an AI key is present. If the user edits inside the marked block, Dex permanently stops maintaining it.
+**What it is.** Three layers. (a) **Entity engine** — background meeting sync deterministically creates person/company pages once someone with an email recurs (2+ meetings across 2+ weeks, or 2+ meetings with transcript evidence); `entity_creation` config = `auto`/`suggest`/`off`. (b) **Gardener** (v1.44) — keeps a living "who this person is to you right now" summary block on active pages, refreshed at most weekly, ≤5 pages/sync, only when something new happened, only if an AI key is present. If the user edits inside the marked block, Dex permanently stops maintaining it. (c) **LOCAL relationship cooling** — meeting sync and the post-meeting hook log canonical, idempotent touches; the pure temperature classifier separates warm, cooling, and cold relationships; and the cooling read only surfaces cold people/accounts with engagement on at least two distinct days.
 
-**Where it lives.** `core/utils/entity_pages.py` (shared parse/render, frontmatter, quarantine flag), `core/entity_maintenance.py` (metadata maintenance CLI). Gardener logic ties into the meeting-sync path. Off switch: `entity_gardener: enabled: false`.
+**Where it lives.** `core/entity_engine/contract.py` (canonical parse/render, frontmatter, quarantine and composite writes), `core/entity_engine/index.py` (disposable SQLite projection), `core/entity_engine/temperature.py` (pure classifier), `core/entity_engine/cooling.py` (read + `System/.dex/entity-cooling.json` feed), and `core/entity_maintenance.py` (metadata maintenance CLI). Gardener and cooling-feed refresh both tie into the meeting-sync path. Off switch for the gardener: `entity_gardener: enabled: false`.
 
-**How it connects.** Consumes Work MCP meeting/attendee data; produces the person/company pages that `lookup_person`, context-injector hooks, and `/process-meetings` read. `07` memory note confirms v1.37 shipped the auto-creation machinery.
+**How it connects.** Consumes Work MCP meeting/attendee data; produces the person/company pages and disposable index that `lookup_person`, context-injector hooks, and `/process-meetings` read. Sync refreshes the cooling feed after entity work, and `/daily-plan` turns its consequential `cold` list into one "❄️ Going cold" heads-up line. `07` memory note confirms v1.37 shipped the auto-creation machinery; touch logging, temperature, and cooling remain **LOCAL** until the next release.
 
 ## 9. Hooks — SHIPPED wired subset / dead weight present
 

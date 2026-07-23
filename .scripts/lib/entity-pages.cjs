@@ -22,7 +22,8 @@ function emptyResult() {
   return {
     type: null, name: null, role: null, company: null, company_page: null,
     emails: [], aliases: [], location: null, last_interaction: null,
-    domains: [], website: null, status: null, quarantined: false, source_formats: [],
+    domains: [], website: null, status: null, touches: [], last_touched: null,
+    quarantined: false, source_formats: [],
   };
 }
 
@@ -48,11 +49,24 @@ function normaliseField(key, value) {
   return value;
 }
 
+function normaliseYamlValue(value) {
+  if (value instanceof Date && !Number.isNaN(value.valueOf())) {
+    return value.toISOString().slice(0, 10);
+  }
+  if (Array.isArray(value)) return value.map(normaliseYamlValue);
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, item]) => [key, normaliseYamlValue(item)]),
+    );
+  }
+  return value;
+}
+
 function normaliseV2Field(key, value) {
   if (key === 'dex_pinned' || key === 'dex_last_written') {
     return value && !Array.isArray(value) && typeof value === 'object' ? { ...value } : null;
   }
-  if (key === 'touches') return Array.isArray(value) ? [...value] : null;
+  if (key === 'touches') return Array.isArray(value) ? normaliseYamlValue(value) : null;
   return normaliseScalar(value);
 }
 
@@ -127,12 +141,110 @@ function parseEntityPage(filePath) {
       if (value !== null) { result[key] = value; break; }
     }
   }
+  if (split.frontmatter && !split.quarantined) {
+    const touches = normaliseV2Field('touches', split.frontmatter.touches);
+    const lastTouched = normaliseV2Field('last_touched', split.frontmatter.last_touched);
+    if (touches !== null) result.touches = touches;
+    if (lastTouched !== null) result.last_touched = lastTouched;
+  }
   result.type = inferType(filePath, result);
   if (result.type && !result.name) {
     const heading = /^#\s+(.+?)\s*$/m.exec(split.body);
     result.name = heading ? heading[1].trim() : path.basename(filePath, path.extname(filePath)).replace(/_/g, ' ');
   }
   return result;
+}
+
+function readFrontmatterField(text, key) {
+  const split = splitFrontmatter(text);
+  if (!split.frontmatter || split.quarantined) return key === 'touches' ? [] : null;
+  const value = normaliseV2Field(key, split.frontmatter[key]);
+  return value === null && key === 'touches' ? [] : value;
+}
+
+function displayScalar(value) {
+  if (value instanceof Date && !Number.isNaN(value.valueOf())) {
+    return value.toISOString().slice(0, 10);
+  }
+  if (value === null || value === undefined
+      || Array.isArray(value) || typeof value === 'object') return null;
+  const text = String(value).trim().replace(/\s+/g, ' ');
+  return text || null;
+}
+
+function sourceLabel(value) {
+  if (value && !Array.isArray(value) && typeof value === 'object') {
+    const title = displayScalar(value.title || value.name);
+    const sourceId = displayScalar(value.id);
+    if (title && sourceId) return `${title} [${sourceId}]`;
+    return title || (sourceId ? `[${sourceId}]` : null);
+  }
+  return displayScalar(value);
+}
+
+function directionLabel(value, touchType) {
+  const direction = displayScalar(value);
+  if (touchType === 'mention') return 'mention';
+  if (touchType === 'meeting' && direction === 'none') return 'two-way';
+  return { in: 'inbound', out: 'outbound', none: 'none' }[direction || ''] || null;
+}
+
+function compareStrings(left, right) {
+  if (left < right) return -1;
+  if (left > right) return 1;
+  return 0;
+}
+
+function renderUpdateLog({
+  touches = null,
+  relationshipProvenance = null,
+  creationMetadata = null,
+} = {}) {
+  const entries = [];
+  if (creationMetadata) {
+    const timestamp = displayScalar(
+      creationMetadata.created_at || creationMetadata.ts,
+    );
+    const source = sourceLabel(creationMetadata.source);
+    if (timestamp) {
+      let line = `- ${timestamp.slice(0, 10)} — created`;
+      if (source) line += ` — ${source}`;
+      entries.push([timestamp, line]);
+    }
+  }
+  for (const relationship of relationshipProvenance || []) {
+    if (!relationship || typeof relationship !== 'object') continue;
+    const timestamp = displayScalar(
+      relationship.recorded_at || relationship.ts,
+    );
+    const relationType = displayScalar(relationship.type);
+    const target = displayScalar(
+      relationship.target || relationship.target_path,
+    );
+    if (!timestamp || !relationType || !target) continue;
+    let line = `- ${timestamp.slice(0, 10)} — relationship · ${relationType} — ${target}`;
+    const source = sourceLabel(relationship.source);
+    if (source) line += ` — ${source}`;
+    entries.push([timestamp, line]);
+  }
+  for (const touch of touches || []) {
+    if (!touch || typeof touch !== 'object') continue;
+    const timestamp = displayScalar(touch.ts);
+    const touchType = displayScalar(touch.type);
+    const source = sourceLabel(touch.source);
+    if (!timestamp || !touchType || !source) continue;
+    const direction = directionLabel(touch.direction, touchType);
+    let line = `- ${timestamp.slice(0, 10)} — ${touchType}`;
+    if (direction) line += ` · ${direction}`;
+    line += ` — ${source}`;
+    const nature = displayScalar(touch.nature);
+    if (nature) line += ` — ${nature}`;
+    entries.push([timestamp, line]);
+  }
+  entries.sort((left, right) => (
+    compareStrings(left[0], right[0]) || compareStrings(left[1], right[1])
+  ));
+  return entries.map(([_timestamp, line]) => line).join('\n');
 }
 
 function atomicWrite(filePath, text) {
@@ -338,6 +450,7 @@ function replaceMachineRegionInFile(filePath, slug, newContent) {
 
 module.exports = {
   atomicWrite,
-  mergeFrontmatterText, parseEntityPage, upsertFrontmatter, renderPersonPage, renderCompanyPage,
+  mergeFrontmatterText, parseEntityPage, readFrontmatterField, renderUpdateLog,
+  upsertFrontmatter, renderPersonPage, renderCompanyPage,
   replaceMachineRegion, replaceMachineRegionInFile,
 };

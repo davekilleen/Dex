@@ -8,6 +8,7 @@ import pytest
 import yaml
 
 from core import entity_maintenance
+from core.entity_engine.contract import render_update_log
 from core.utils.entity_pages import (
     parse_entity_page,
     render_company_page,
@@ -27,6 +28,66 @@ def test_parse_golden_fixtures() -> None:
     for page in pages:
         expected = json.loads(page.with_suffix(".expected.json").read_text(encoding="utf-8"))
         assert parse_entity_page(page) == expected, page.name
+
+
+def test_parse_touches_only_from_valid_frontmatter(tmp_path: Path) -> None:
+    page = tmp_path / "Touched.md"
+    touches = [
+        {
+            "ts": "2026-07-22",
+            "type": "meeting",
+            "direction": "none",
+            "source": {"id": "meeting-1", "title": "Roadmap"},
+        }
+    ]
+    page.write_text(
+        "---\n"
+        "type: person\n"
+        "name: Touched Person\n"
+        f"touches: {json.dumps(touches)}\n"
+        "last_touched: 2026-07-22\n"
+        "---\n"
+        "# Touched Person\n",
+        encoding="utf-8",
+    )
+    assert parse_entity_page(page)["touches"] == touches
+    assert parse_entity_page(page)["last_touched"] == "2026-07-22"
+
+    unquoted = tmp_path / "Unquoted.md"
+    unquoted.write_text(
+        "---\n"
+        "type: person\n"
+        "touches:\n"
+        "  - ts: 2026-07-22\n"
+        "    type: meeting\n"
+        "    source: {id: meeting-1}\n"
+        "last_touched: 2026-07-22\n"
+        "---\n"
+        "# Unquoted\n",
+        encoding="utf-8",
+    )
+    unquoted_parsed = parse_entity_page(unquoted)
+    assert unquoted_parsed["touches"][0]["ts"] == "2026-07-22"
+    assert unquoted_parsed["last_touched"] == "2026-07-22"
+
+    malformed = tmp_path / "Malformed.md"
+    malformed.write_text(
+        "---\ntype: person\ntouches: not-a-list\nlast_touched: [bad]\n---\n"
+        "# Malformed\n\n**Touches:** legacy must be ignored\n",
+        encoding="utf-8",
+    )
+    assert parse_entity_page(malformed)["touches"] == []
+    assert parse_entity_page(malformed)["last_touched"] is None
+
+    quarantined = tmp_path / "Quarantined.md"
+    quarantined.write_text(
+        "---\ntype: person\ntouches: [broken\n---\n# Quarantined\n",
+        encoding="utf-8",
+    )
+    parsed = parse_entity_page(quarantined)
+    assert parsed["quarantined"] is True
+    assert parsed["touches"] == []
+    assert parsed["last_touched"] is None
 
 
 def test_upsert_preserves_unknown_keys_and_is_idempotent(tmp_path: Path) -> None:
@@ -304,6 +365,92 @@ def test_render_golden_parity() -> None:
     company = render_company_page(**company_input)
     assert person.index("## Relationships") < person.index("## Update Log")
     assert company.index("## Relationships") < company.index("## Update Log")
+
+
+def test_render_update_log_is_byte_identical_across_twins() -> None:
+    touches = [
+        {
+            "ts": "2026-07-22T10:00:00Z",
+            "type": "meeting",
+            "direction": "none",
+            "source": {"id": "meeting-2", "title": "Roadmap"},
+        },
+        {
+            "ts": "2026-07-23T11:00:00Z",
+            "type": "mention",
+            "source": {"id": "meeting-3", "title": "Launch review"},
+            "nature": "Asked for a follow-up.",
+        },
+        {
+            "ts": "2026-07-24T12:00:00Z",
+            "type": "meeting",
+            "direction": "out",
+            "source": {"id": "meeting-4", "title": "Planning"},
+            "nature": "Shared the launch plan.",
+        },
+        {
+            "ts": "2026-07-25T13:00:00Z",
+            "type": "meeting",
+            "direction": "none",
+            "source": {
+                "id": " meeting  5 ",
+                "title": " Product\n review ",
+            },
+            "nature": " Agreed\n  next steps. ",
+        },
+    ]
+    relationship_provenance = [
+        {
+            "recorded_at": "2026-07-21T09:00:00Z",
+            "type": "reports_to",
+            "target": "05-Areas/People/Internal/Alex.md",
+            "source": {"id": "meeting-1", "title": "Weekly 1:1"},
+        }
+    ]
+    creation_metadata = {
+        "created_at": "2026-07-20T08:00:00Z",
+        "source": {"id": "ritual", "title": "Ritual Intelligence"},
+    }
+
+    def render_js(
+        touch_values: list[dict[str, object]],
+        creation: dict[str, object] | None,
+        relationships: list[dict[str, object]] | None = relationship_provenance,
+    ) -> str:
+        completed = subprocess.run(
+            [
+                "node",
+                "-e",
+                (
+                    "const { renderUpdateLog } = require(process.argv[1]);"
+                    "process.stdout.write(renderUpdateLog(JSON.parse(process.argv[2])));"
+                ),
+                str(ROOT / ".scripts" / "lib" / "entity-pages.cjs"),
+                json.dumps(
+                        {
+                            "touches": touch_values,
+                            "relationshipProvenance": relationships,
+                        "creationMetadata": creation,
+                    }
+                ),
+            ],
+            cwd=ROOT,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        return completed.stdout
+
+    expected = render_update_log(
+        touches=touches,
+        relationship_provenance=relationship_provenance,
+        creation_metadata=creation_metadata,
+    )
+    assert render_js(touches, creation_metadata) == expected
+    assert render_js(list(reversed(touches)), creation_metadata) == expected
+
+    touches_only = render_update_log(touches=touches)
+    assert render_js(touches, None, []) == touches_only
 
 
 def test_replace_machine_region_and_atomic_file_write(tmp_path: Path) -> None:

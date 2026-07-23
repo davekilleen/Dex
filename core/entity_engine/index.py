@@ -450,6 +450,51 @@ def _project_source(
         "INSERT OR IGNORE INTO node_keys(node_id, kind, value) VALUES (?, ?, ?)",
         [(source.relative_path, kind, value) for kind, value in keys],
     )
+    touch_rows = []
+    for touch in parsed.get("touches") or []:
+        if not isinstance(touch, dict):
+            continue
+        timestamp = touch.get("ts")
+        touch_type = touch.get("type")
+        direction = touch.get("direction")
+        nature = touch.get("nature")
+        if any(
+            isinstance(value, (dict, list))
+            for value in (timestamp, touch_type, direction, nature)
+        ):
+            continue
+        if not timestamp or not touch_type:
+            continue
+        timestamp = str(timestamp)
+        touch_type = str(touch_type)
+        direction = str(direction) if direction is not None else None
+        nature = str(nature) if nature is not None else None
+        touch_source = touch.get("source")
+        if isinstance(touch_source, dict):
+            touch_source = touch_source.get("id")
+            if touch_source is not None:
+                touch_source = str(touch_source)
+        elif touch_source is not None:
+            touch_source = str(touch_source)
+        touch_rows.append(
+            (
+                source.relative_path,
+                timestamp,
+                touch_type,
+                direction,
+                touch_source,
+                nature,
+                source.relative_path,
+            )
+        )
+    connection.executemany(
+        """
+        INSERT OR IGNORE INTO touches(
+            node_id, ts, touch_type, direction, source, nature, source_path
+        ) VALUES (?, ?, ?, ?, ?, ?, ?)
+        """,
+        touch_rows,
+    )
 
 
 def _initialize_schema(connection: sqlite3.Connection) -> None:
@@ -667,6 +712,30 @@ def reconcile(
     """Reconcile the materialized view using a complete path-set diff."""
     root = Path(vault_root)
     db_path = database_path(root)
+    rebuild = False
+    if db_path.exists():
+        try:
+            with closing(connect(db_path)) as connection:
+                has_meta = connection.execute(
+                    """
+                    SELECT 1 FROM sqlite_master
+                    WHERE type = 'table' AND name = 'meta'
+                    """
+                ).fetchone()
+                version = (
+                    connection.execute(
+                        "SELECT value FROM meta WHERE key = 'schema_version'"
+                    ).fetchone()
+                    if has_meta
+                    else None
+                )
+                rebuild = version is None or version[0] != SCHEMA_VERSION
+        except sqlite3.Error as error:
+            if not _is_corruption(error):
+                raise
+            rebuild = True
+    if rebuild:
+        remove_database(db_path)
     sources = _scan_sources(
         root,
         people_dir=people_dir,

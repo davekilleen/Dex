@@ -125,6 +125,10 @@ if (fallbackNames.length === 0) skip('no-person-references-found');
 
 const relativeMeetingPath = path.relative(vaultRoot, filePath).split(path.sep).join('/');
 const date = meetingDate(metadata);
+const granolaId = typeof metadata.granola_id === 'string'
+  ? metadata.granola_id.trim()
+  : '';
+const sourceId = granolaId || path.basename(relativeMeetingPath, '.md');
 const interaction = `- [${meetingTitle(metadata)}](${relativeMeetingPath}) — ${date}`;
 const seen = new Set();
 const ops = [];
@@ -156,6 +160,7 @@ try {
           path: relativeMeetingPath,
           line: interaction,
           date,
+          source_id: sourceId,
         },
       },
     });

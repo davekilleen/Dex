@@ -11,6 +11,8 @@ const { resolveEntityPath } = require('./entity-identity.cjs');
 const {
   mergeFrontmatterText,
   parseEntityPage,
+  readFrontmatterField,
+  renderUpdateLog,
   replaceMachineRegion,
 } = require('./entity-pages.cjs');
 
@@ -238,6 +240,12 @@ function escapeRegExp(value) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
+function compareStrings(left, right) {
+  if (left < right) return -1;
+  if (left > right) return 1;
+  return 0;
+}
+
 function regionRank(slug) {
   const rank = REGION_ORDER.indexOf(slug);
   return rank < 0 ? REGION_ORDER.length : rank;
@@ -299,6 +307,42 @@ function appendLegacyInteraction(original, line) {
   return `${original.replace(/\s*$/, '')}\n\n${line}\n`;
 }
 
+function mergeTouchRecords(latest, touches) {
+  const merged = [];
+  const seen = new Set();
+  for (const touch of [
+    ...readFrontmatterField(latest, 'touches'),
+    ...touches,
+  ]) {
+    if (!touch || typeof touch !== 'object') continue;
+    const sourceId = touch.source && typeof touch.source === 'object'
+      ? touch.source.id
+      : null;
+    const key = `${String(touch.ts || '').slice(0, 10)}\0${touch.type || ''}\0${sourceId || ''}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    merged.push(touch);
+  }
+  merged.sort((left, right) => (
+    compareStrings(String(left.ts || ''), String(right.ts || ''))
+    || compareStrings(String(left.type || ''), String(right.type || ''))
+    || compareStrings(
+      String(left.source?.id || ''),
+      String(right.source?.id || ''),
+    )
+  ));
+  return {
+    merged,
+    lastTouched: merged.reduce(
+      (latestTouch, touch) => (
+        String(touch.ts || '') > latestTouch ? String(touch.ts) : latestTouch
+      ),
+      '',
+    ),
+    rendered: renderUpdateLog({ touches: merged }),
+  };
+}
+
 function materializeHookIntent(operation, latest, intent) {
   const interaction = intent.interaction;
   if (!interaction || typeof interaction.path !== 'string'
@@ -307,10 +351,26 @@ function materializeHookIntent(operation, latest, intent) {
     throw new Error(`Invalid hook mutation intent for ${operation.path}`);
   }
   const entity = parseEntityPage(operation.path);
-  const fieldChanges = !entity.last_interaction
-      || interaction.date > entity.last_interaction
-    ? { last_interaction: interaction.date }
-    : null;
+  const titleMatch = /^-\s+\[([^\]]+)\]\(/.exec(interaction.line);
+  const touch = {
+    ts: interaction.date,
+    type: 'meeting',
+    direction: 'none',
+    source: {
+      id: typeof interaction.source_id === 'string' && interaction.source_id.trim()
+        ? interaction.source_id.trim()
+        : path.basename(interaction.path, '.md'),
+      title: titleMatch?.[1]?.trim() || path.basename(interaction.path, '.md'),
+    },
+  };
+  const { merged, lastTouched, rendered } = mergeTouchRecords(latest, [touch]);
+  const fieldChanges = {
+    ...(!entity.last_interaction || interaction.date > entity.last_interaction
+      ? { last_interaction: interaction.date }
+      : {}),
+    touches: merged,
+    last_touched: lastTouched,
+  };
   const baseFingerprint = fingerprintText(latest);
   let materialized;
   let target;
@@ -335,29 +395,39 @@ function materializeHookIntent(operation, latest, intent) {
       'recent-interactions',
       projection,
     );
-    target = fieldChanges
-      ? mergeFrontmatterText(operation.path, withRegion, fieldChanges)
-      : withRegion;
+    target = mergeFrontmatterText(operation.path, withRegion, fieldChanges);
+    if (target !== null) {
+      target = ensureRegion(target, 'update-log');
+      target = replaceMachineRegion(target, 'update-log', rendered);
+    }
     materialized = {
       op: 'mutate',
       path: operation.path,
       base_fingerprint: baseFingerprint,
-      region_projections: { 'recent-interactions': projection },
-      ...(fieldChanges ? { field_changes: fieldChanges } : {}),
+      ensure_regions: ['update-log'],
+      field_changes: fieldChanges,
+      region_projections: {
+        'recent-interactions': projection,
+        'update-log': rendered,
+      },
     };
   } else {
     const replacement = latest.includes(interaction.path)
       ? latest
       : appendLegacyInteraction(latest, interaction.line);
-    target = fieldChanges
-      ? mergeFrontmatterText(operation.path, replacement, fieldChanges)
-      : replacement;
+    target = mergeFrontmatterText(operation.path, replacement, fieldChanges);
+    if (target !== null) {
+      target = ensureRegion(target, 'update-log');
+      target = replaceMachineRegion(target, 'update-log', rendered);
+    }
     materialized = {
       op: 'mutate',
       path: operation.path,
       base_fingerprint: baseFingerprint,
       replacement_content: replacement,
-      ...(fieldChanges ? { field_changes: fieldChanges } : {}),
+      ensure_regions: ['update-log'],
+      field_changes: fieldChanges,
+      region_projections: { 'update-log': rendered },
     };
   }
   if (target !== null) materialized.target_fingerprint = fingerprintText(target);
@@ -384,6 +454,54 @@ function materializeGardenerIntent(operation, latest, intent) {
     },
     target_fingerprint: fingerprintText(target),
   };
+}
+
+function materializeTouchIntent(operation, latest, intent) {
+  const touches = intent.touches;
+  const valid = Array.isArray(touches)
+    && touches.length > 0
+    && touches.every(touch => (
+      touch
+      && typeof touch === 'object'
+      && /^\d{4}-\d{2}-\d{2}$/.test(touch.ts || '')
+      && ['meeting', 'mention'].includes(touch.type)
+      && touch.source
+      && typeof touch.source === 'object'
+      && typeof touch.source.id === 'string'
+      && touch.source.id.trim()
+    ));
+  if (!valid) {
+    throw new Error(`Invalid touch-log mutation intent for ${operation.path}`);
+  }
+
+  const { merged, lastTouched, rendered } = mergeTouchRecords(latest, touches);
+  const fieldChanges = {
+    touches: merged,
+    last_touched: lastTouched,
+  };
+  const withRegion = ensureRegion(latest, 'update-log');
+  const withProjection = replaceMachineRegion(
+    withRegion,
+    'update-log',
+    rendered,
+  );
+  const target = mergeFrontmatterText(
+    operation.path,
+    withProjection,
+    fieldChanges,
+  );
+  const materialized = {
+    op: 'mutate',
+    path: operation.path,
+    base_fingerprint: fingerprintText(latest),
+    ensure_regions: ['update-log'],
+    field_changes: fieldChanges,
+    region_projections: { 'update-log': rendered },
+  };
+  if (target !== null) {
+    materialized.target_fingerprint = fingerprintText(target);
+  }
+  return materialized;
 }
 
 function materializeOperation(operation, vaultRoot) {
@@ -429,6 +547,12 @@ function materializeOperation(operation, vaultRoot) {
     return {
       operation: effective,
       materialized: materializeGardenerIntent(effective, latest, effective.intent),
+    };
+  }
+  if (effective.intent.kind === 'touch-log') {
+    return {
+      operation: effective,
+      materialized: materializeTouchIntent(effective, latest, effective.intent),
     };
   }
   throw new Error(`Unsupported mutation intent: ${effective.intent.kind}`);
@@ -622,7 +746,7 @@ function requeueDeadLetters(vaultRoot) {
 
 function materializationFailureClass(error) {
   const message = error instanceof Error ? error.message : String(error);
-  return /^(Invalid hook mutation intent|Invalid gardener mutation intent|Unsupported mutation intent|Mutation operation has no declarative intent)/.test(
+  return /^(Invalid hook mutation intent|Invalid gardener mutation intent|Invalid touch-log mutation intent|Unsupported mutation intent|Mutation operation has no declarative intent)/.test(
     message,
   )
     ? 'permanent'

@@ -6,9 +6,11 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { parseEntityPage, renderCompanyPage, renderPersonPage } = require('../../lib/entity-pages.cjs');
+const { flushEntityOps } = require('../../lib/entity-engine-client.cjs');
 const { installEntityEngineStub } = require('../../lib/tests/entity-engine-test-helper.cjs');
 const { loadState } = require('../lib/contacts-state.cjs');
 const { loadSuggestions, processEntityCreation } = require('../lib/entity-creation.cjs');
+const { beginEntityPhase, reconcileEntityPhases } = require('../lib/entity-phase.cjs');
 
 function withVault(fn, { python = null } = {}) {
   const oldVault = process.env.VAULT_PATH;
@@ -65,12 +67,9 @@ test('auto mode creates one canonical external page and reruns create nothing', 
   const first = processEntityCreation(meetings(), { entity_creation: { mode: 'auto' } });
   assert.equal(first.created.length, 1);
   const pagePath = path.join(vault, first.created[0].page_path);
-  assert.equal(
-    fs.readFileSync(pagePath, 'utf8'),
-    renderPersonPage('Jane Doe', null, null, ['jane@acme.com'], [], 'external'),
-  );
   assert.deepEqual(parseEntityPage(pagePath).emails, ['jane@acme.com']);
   assert.equal(parseEntityPage(pagePath).location, 'external');
+  assert.equal(parseEntityPage(pagePath).touches.length, 2);
   assert.equal(processEntityCreation(meetings(), { entity_creation: { mode: 'auto' } }).created.length, 0);
 }));
 
@@ -268,6 +267,122 @@ test('auto mode creates a canonical company page from two observed contacts', ()
   assert.equal(company.type, 'company');
   assert.deepEqual(company.domains, ['acme.com']);
   assert.match(lines.join('\n'), /Created company page:/);
+}));
+
+test('batch sync logs idempotent person and company touches without fabricating no-email attendees', () => withVault(vault => {
+  const attendees = [
+    { name: 'Jane Doe', email: 'jane@example.com', location: 'external' },
+    { name: 'John Roe', email: 'john@example.com', location: 'external' },
+    { name: 'No Email', location: 'external' },
+  ];
+  const batch = [
+    {
+      id: 'touch-meeting-1',
+      title: 'Roadmap Review',
+      createdAt: '2026-06-01T10:00:00Z',
+      transcript: '',
+      filteredAttendees: attendees,
+    },
+    {
+      id: 'touch-meeting-2',
+      createdAt: '2026-06-08T10:00:00Z',
+      transcript: '',
+      filteredAttendees: attendees,
+    },
+  ];
+  const profile = {
+    entity_creation: { mode: 'auto' },
+    capabilities: { companies: { enabled: true } },
+  };
+
+  const first = processEntityCreation(batch, profile);
+  assert.equal(first.created.length, 2);
+  assert.equal(first.companies_created.length, 1);
+
+  const personPath = path.join(vault, '05-Areas', 'People', 'External', 'Jane_Doe.md');
+  const companyPath = path.join(vault, '05-Areas', 'Companies', 'Example.md');
+  const expectedTouches = [
+    {
+      ts: '2026-06-01',
+      type: 'meeting',
+      direction: 'none',
+      source: { id: 'touch-meeting-1', title: 'Roadmap Review' },
+    },
+    {
+      ts: '2026-06-08',
+      type: 'meeting',
+      direction: 'none',
+      source: { id: 'touch-meeting-2', title: 'Meeting 2026-06-08' },
+    },
+  ];
+  assert.deepEqual(parseEntityPage(personPath).touches, expectedTouches);
+  assert.deepEqual(parseEntityPage(companyPath).touches, expectedTouches);
+  assert.equal(parseEntityPage(personPath).last_touched, '2026-06-08');
+  assert.equal(parseEntityPage(companyPath).last_touched, '2026-06-08');
+  assert.equal(
+    fs.existsSync(path.join(vault, '05-Areas', 'People', 'External', 'No_Email.md')),
+    false,
+  );
+
+  const personOnce = fs.readFileSync(personPath);
+  const companyOnce = fs.readFileSync(companyPath);
+  const second = processEntityCreation(batch, profile);
+  assert.deepEqual(second.created, []);
+  assert.deepEqual(second.companies_created, []);
+  assert.deepEqual(fs.readFileSync(personPath), personOnce);
+  assert.deepEqual(fs.readFileSync(companyPath), companyOnce);
+}));
+
+test('a permanent touch failure is returned and makes the meeting phase terminal', () => withVault(vault => {
+  const page = path.join(vault, '05-Areas', 'People', 'External', 'Touch_Failure.md');
+  fs.mkdirSync(path.dirname(page), { recursive: true });
+  fs.writeFileSync(
+    page,
+    renderPersonPage(
+      'Touch Failure',
+      null,
+      null,
+      ['touch-failure@example.org'],
+      [],
+      'external',
+    ),
+  );
+  const invalidTouch = {
+    op: 'mutate',
+    path: page,
+    intent: {
+      kind: 'touch-log',
+      touches: [],
+    },
+  };
+  for (let attempt = 1; attempt <= 4; attempt += 1) {
+    flushEntityOps({
+      vaultRoot: vault,
+      ops: attempt === 1 ? [invalidTouch] : [],
+      meetingIds: attempt === 1 ? ['m1'] : [],
+      scope: 'touch',
+      now: new Date(Date.UTC(2026, 6, attempt)),
+    });
+  }
+
+  const result = processEntityCreation(
+    meetings(),
+    { entity_creation: { mode: 'auto' } },
+    () => {},
+    { now: new Date('2026-07-05T00:00:00.000Z') },
+  );
+
+  assert.equal(result.created.length, 1);
+  assert.equal(result.entity_write.ok, true);
+  assert.equal(result.entity_write.dead_lettered_ops.length, 1);
+  assert.equal(result.entity_write.dead_lettered_ops[0].scope, 'touch');
+  assert.match(result.errors[0].error, /failed permanently/i);
+
+  const state = { processedMeetings: {} };
+  beginEntityPhase(state, [{ id: 'm1' }]);
+  reconcileEntityPhases(state, result.entity_write);
+  assert.equal(state.processedMeetings.m1.entity_phase, 'failed');
+  assert.equal(state.processedMeetings.m1.entity_terminal, true);
 }));
 
 test('freemail, internal, and unknown-location domains never create companies', () => {
