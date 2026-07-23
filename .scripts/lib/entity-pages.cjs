@@ -309,11 +309,18 @@ function renderCompanyPage(name, domains = null, website = null, status = 'Prosp
 function replaceMachineRegion(text, slug, newContent) {
   const start = `<!-- dex:auto:${slug} -->`;
   const end = '<!-- /dex:auto -->';
-  const escape = value => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const pattern = new RegExp(`${escape(start)}[\\s\\S]*?${escape(end)}`);
-  if (!pattern.test(text)) throw new Error(`machine region not found: ${slug}`);
+  const startIndex = text.indexOf(start);
+  if (startIndex < 0) throw new Error(`machine region not found: ${slug}`);
+  const contentStart = startIndex + start.length;
+  const endIndex = text.indexOf(end, contentStart);
+  if (endIndex < 0) throw new Error(`malformed machine region: ${slug} (missing end marker)`);
+  const inner = text.slice(contentStart, endIndex);
+  if (inner.includes('<!-- dex:auto:')) {
+    throw new Error(`malformed machine region: ${slug} (nested start marker)`);
+  }
   const content = newContent.replace(/^[\r\n]+|[\r\n]+$/g, '');
-  return text.replace(pattern, content ? `${start}\n${content}\n${end}` : `${start}\n${end}`);
+  const replacement = content ? `${start}\n${content}\n${end}` : `${start}\n${end}`;
+  return `${text.slice(0, startIndex)}${replacement}${text.slice(endIndex + end.length)}`;
 }
 
 function replaceMachineRegionInFile(filePath, slug, newContent) {
