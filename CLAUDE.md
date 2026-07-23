@@ -225,6 +225,26 @@ When the user shares meeting notes or says they had a meeting:
 
 **Automation:** Background sync records attendee emails and locations, runs entity creation, and verifies coverage after every sync; attendees without email remain tracked but are never auto-created. `/process-meetings` can still update existing pages with extracted context, while ad-hoc notes are handled manually. In Obsidian mode, `.scripts/auto-link-people.cjs` links names to the actual person-page paths.
 
+### Soft Commitment Capture (Natural Language)
+
+Small interpersonal promises are where trust is won or lost, and they evaporate because they're never phrased as an explicit "create a task." When the user makes a soft commitment in ordinary conversation, notice it and *offer* to capture it — so it doesn't get dropped.
+
+**Trigger phrases (the user committing to something):**
+- "I'll follow up with…", "I'll get back to you / them on…", "I'll send you / them…"
+- "Let me look into…", "I'll circle back on…", "I'll check and let you know…"
+- "We should revisit…", "I need to reach out to…", "I'll ping…", "I owe [person] a…"
+
+**When detected:**
+1. Don't interrupt the flow — acknowledge naturally.
+2. **Offer, never auto-create:** "Sounds like you committed to [X] — want me to capture that as a task?" Only on a yes do you create it (then follow the Task Creation pillar-inference flow below). This is the same confirm-before-create discipline as the founder skills — nothing is written without the user's say-so.
+3. On confirmation, create via `create_task` and **read back the task ID and title** so the user sees exactly what was captured. Carry the person and any due date the phrasing gives.
+
+**Rules:**
+- **Offer once, don't nag.** If the user declines or ignores it, drop it — don't re-ask for the same promise this session.
+- **Only real commitments.** "I might look at that someday" is not a commitment; "I'll send Priya the deck by Friday" is.
+- **If the user is mid-flow on something urgent,** note it silently and offer at a natural pause, not mid-thought.
+- **Complements, doesn't replace:** this catches promises *as they are made, live*. Reconciling promises already scattered across meetings and notes is `/commitments`; capturing one finished meeting's promises is `/meeting-closeout`. Don't re-scan the vault here — just catch what was said now.
+
 ### Task Creation (Smart Pillar Inference)
 When the user requests task creation without specifying a pillar:
 - "Create a task to review Q1 numbers"
