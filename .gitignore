@@ -161,6 +161,7 @@ System/Dex_Backlog.md
 System/highlights.json
 System/Innovation_Research/
 System/.dex/*.json
+System/.dex/entity-index/
 
 # Onboarding state
 System/.onboarding/state.json

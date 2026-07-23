@@ -690,6 +690,10 @@ core/capabilities.py
 core/data/freemail_domains.json
 core/data/multi_part_tlds.json
 core/dexdiff_profile_adopt.py
+core/entity_engine/__init__.py
+core/entity_engine/contract.py
+core/entity_engine/index.py
+core/entity_engine/write.py
 core/entity_maintenance.py
 core/integrations/BUILD_TRACKER.md
 core/integrations/__init__.py
@@ -899,6 +903,9 @@ core/tests/test_diff_gate_fetch.py
 core/tests/test_distribution_artifacts.py
 core/tests/test_docs_bridge.py
 core/tests/test_doctor.py
+core/tests/test_entity_engine.py
+core/tests/test_entity_engine_writers.py
+core/tests/test_entity_index.py
 core/tests/test_entity_pages.py
 core/tests/test_feature_status.py
 core/tests/test_fixture_vault.py
