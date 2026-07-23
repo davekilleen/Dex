@@ -1,6 +1,6 @@
 <!-- GENERATED FILE — DO NOT EDIT BY HAND. -->
 <!-- Generator: scripts/generate-architecture-inventory.py -->
-<!-- Content SHA-256: cde580101a896bd756f52c699fe9df5af9fc7d02d40c85265ec39f8f2109f5fe -->
+<!-- Content SHA-256: 4b23758c4cad2d68a23e40b7ee532f3101b8882a29f8dd07165fe793b5282cd3 -->
 
 # Architecture Inventory
 
@@ -25,7 +25,7 @@ This inventory is derived only from repository code and shipped skill files.
 ## Skills
 
 **Skill count:** 70<br>
-**Discoverability-risk count:** 4
+**Discoverability-risk count:** 3
 
 A description has a trigger when its frontmatter contains the word `when` or `whenever` (case-insensitive). Length is measured in characters.
 
@@ -87,7 +87,7 @@ A description has a trigger when its frontmatter contains the word `when` or `wh
 | `project-health` | `.claude/skills/project-health/SKILL.md` | Scan active projects for status, blockers and next actions. Use when the user says 'how are my projects', 'what's stuck', 'project status'. Also use proactively when projects have gone quiet. Not for writing a spec for a new product idea; use `product-brief`. | 259 | when |
 | `prompt-improver` | `.claude/skills/prompt-improver/SKILL.md` | Rewrite a vague prompt into a rich, structured one, with automatic fallback. Use when the user says 'improve this prompt', 'make this prompt better', or hands over a thin instruction. Not for creating a reusable skill; use `create-skill`. | 238 | when |
 | `reset` | `.claude/skills/reset/SKILL.md` | Restructure an existing Dex vault for a new role or changed preferences, without losing data. Use when the user says 'I changed jobs', 'restructure my Dex', 'my role is different now'. Not for first-time setup; use `setup`. Not for just toggling one feature; use `manage-capabilities`. | 285 | when |
-| `review` | `.claude/skills/review/SKILL.md` | End of day review with learning capture. Integrates with evening journaling if enabled. | 87 | **discoverability-risk** |
+| `review` | `.claude/skills/review/SKILL.md` | Deprecation alias for `daily-review`. The end-of-day review was renamed; `/review` now redirects to `daily-review` and will be removed after one release. Use when the user types `/review` out of habit — hand straight off to `daily-review`, which owns end-of-day review and learning capture. Not for running the review here; use `daily-review`. | 343 | when |
 | `save-insight` | `.claude/skills/save-insight/SKILL.md` | Capture a reusable learning from completed work so future similar work is easier. Use when the user says 'save this learning', 'capture this insight', or finishes something tricky. Also use proactively after non-routine work. Not for recording a *decision* and its rationale; use `decision-log`. | 295 | when |
 | `scrape` | `.claude/skills/scrape/SKILL.md` | Scrape web pages via Scrapling — stealth fetching, anti-bot bypass, CSS selectors, no API key. Use when the user says 'scrape', 'pull data from this URL', 'extract from this site'. Not for meaning-based search of the user's own vault; use `enable-semantic-search`. | 264 | when |
 | `setup` | `.claude/skills/setup/SKILL.md` | Run first-time Dex onboarding: build the vault structure, capture the user profile and configure MCPs. Use when `04-Projects/` doesn't exist yet or the user says 'set up Dex', 'start onboarding'. Not for the post-onboarding tour; use `getting-started`. Not for a mid-life role change; use `reset`. | 297 | when |
@@ -108,7 +108,7 @@ References are exact tool-name matches in skill bodies (frontmatter excluded). U
 
 | Server | Referencing skill count | Surface status | Skills (referenced tools) |
 | --- | ---: | --- | --- |
-| `dex-analytics` | 25 | **over-surfaced** | `create-mcp` (`track_event`); `create-skill` (`track_event`); `daily-plan` (`track_event`); `daily-review` (`track_event`); `dex-add-mcp` (`track_event`); `dex-backlog` (`track_event`); `dex-improve` (`track_event`); `dex-level-up` (`track_event`); `dex-obsidian-setup` (`track_event`); `dex-whats-new` (`track_event`); `getting-started` (`track_event`); `integrate-mcp` (`track_event`); `journal` (`track_event`); `meeting-prep` (`track_event`); `process-meetings` (`track_event`); `product-brief` (`track_event`); `project-health` (`track_event`); `prompt-improver` (`track_event`); `reset` (`track_event`); `review` (`track_event`); `save-insight` (`track_event`); `triage` (`track_event`); `week-plan` (`track_event`); `week-review` (`track_event`); `xray` (`track_event`) |
+| `dex-analytics` | 24 | **over-surfaced** | `create-mcp` (`track_event`); `create-skill` (`track_event`); `daily-plan` (`track_event`); `daily-review` (`track_event`); `dex-add-mcp` (`track_event`); `dex-backlog` (`track_event`); `dex-improve` (`track_event`); `dex-level-up` (`track_event`); `dex-obsidian-setup` (`track_event`); `dex-whats-new` (`track_event`); `getting-started` (`track_event`); `integrate-mcp` (`track_event`); `journal` (`track_event`); `meeting-prep` (`track_event`); `process-meetings` (`track_event`); `product-brief` (`track_event`); `project-health` (`track_event`); `prompt-improver` (`track_event`); `reset` (`track_event`); `save-insight` (`track_event`); `triage` (`track_event`); `week-plan` (`track_event`); `week-review` (`track_event`); `xray` (`track_event`) |
 | `dex-calendar-mcp` | 5 | normal | `daily-plan` (`calendar_get_events_with_attendees`, `calendar_get_today`, `reminders_clear_completed`, `reminders_complete_item`, `reminders_create_item`, `reminders_ensure_lists`, `reminders_find_and_complete`, `reminders_list_completed`, `reminders_list_items`); `daily-review` (`calendar_get_today`, `reminders_clear_completed`, `reminders_find_and_complete`, `reminders_list_completed`, `reminders_list_items`); `getting-started` (`calendar_get_events`); `week-plan` (`calendar_get_events_with_attendees`); `week-review` (`calendar_get_events_with_attendees`, `reminders_list_items`) |
 | `dex-career-mcp` | 0 | **under-surfaced** | — |
 | `dex-granola-mcp` | 4 | normal | `daily-plan` (`granola_get_recent_meetings`); `getting-started` (`granola_check_available`, `granola_get_recent_meetings`); `week-plan` (`granola_get_today_meetings`); `zoom-setup` (`granola_check_available`) |
@@ -126,7 +126,7 @@ References are exact tool-name matches in skill bodies (frontmatter excluded). U
 
 ### Over-surfaced servers
 
-- `dex-analytics` — 25 skills reference its tools.
+- `dex-analytics` — 24 skills reference its tools.
 
 ## Portable ownership classes
 

@@ -943,7 +943,7 @@ This keeps a timeline of your feedback and progress.
 
 ### Daily Reviews
 
-During `/review`, if user mentions career-relevant achievements:
+During `/daily-review`, if user mentions career-relevant achievements:
 
 ```markdown
 ## Career Evidence?

@@ -21,7 +21,7 @@ These commands have explicit tracking steps added:
 | Command | Tracking Step | Usage Log Entry |
 |---------|---------------|-----------------|
 | `/daily-plan` | Step 7 | `- [x] Daily planning (/daily-plan)` |
-| `/review` | Step 6 | `- [x] Daily review (/review)` |
+| `/daily-review` | Step 6 | `- [x] Daily review (/daily-review)` |
 | `/week-plan` | Step 5 | `- [x] Weekly planning (/week-plan)` |
 | `/week-review` | After synthesis | `- [x] Weekly review (/week-review)` |
 
@@ -79,7 +79,7 @@ Some features are tracked by detecting their existence in the vault:
 ```markdown
 ## Core Workflows
 - [x] Daily planning (/daily-plan)  ← Checked after first run
-- [ ] Daily review (/review)
+- [ ] Daily review (/daily-review)
 - [ ] Weekly planning (/week-plan)
 - [ ] Weekly review (/week-review)
 ...
@@ -126,7 +126,7 @@ Recommendations:
 ```markdown
 ## Core Workflows
 - [x] Daily planning (/daily-plan)
-- [x] Daily review (/review)
+- [x] Daily review (/daily-review)
 - [x] Weekly planning (/week-plan)
 - [ ] Weekly review (/week-review)  ← Not used yet
 - [ ] Quarterly planning (/quarter-plan)
@@ -177,7 +177,7 @@ Recommendations:
 ```markdown
 ## Core Workflows
 - [x] Daily planning (/daily-plan)
-- [x] Daily review (/review)
+- [x] Daily review (/daily-review)
 - [x] Weekly planning (/week-plan)
 - [x] Weekly review (/week-review)
 - [x] Quarterly planning (/quarter-plan)

@@ -508,7 +508,7 @@ Ask: "Which journaling prompts do you want?"
 **Then:**
 1. Create `00-Inbox/Journals/` folder
 2. Update `System/user-profile.yaml` with selections
-3. Say: "✓ Journaling enabled. You'll see prompts in `/daily-plan` and `/review`"
+3. Say: "✓ Journaling enabled. You'll see prompts in `/daily-plan` and `/daily-review`"
 
 ### Granola Setup (if selected):
 
