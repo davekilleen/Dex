@@ -139,7 +139,7 @@ test('contract authorization is red when the authorizing rule is removed', () =>
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'dex-migration-contract-red-'));
   const contract = JSON.parse(fs.readFileSync(CONTRACT_PATH, 'utf8'));
   const reducedPath = path.join(root, 'portable-vault.contract.json');
-  contract.rules = contract.rules.filter((rule) => rule.id !== 'brain-claude-md');
+  contract.rules = contract.rules.filter((rule) => rule.id !== 'generated-claude-md');
   fs.writeFileSync(reducedPath, `${JSON.stringify(contract, null, 2)}\n`);
 
   assert.doesNotThrow(
