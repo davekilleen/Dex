@@ -30,6 +30,30 @@ function evidenceFor(connId) {
   return ledger.rollup(connId);
 }
 
+function completeStatusRow(row) {
+  const verification = connectorModel.deriveVerification({
+    lastVerifiedAt: row.lastVerifiedAt,
+    lastProbeAt: row.lastProbeAt,
+  });
+  return {
+    service: row.service,
+    provider: row.provider,
+    alias: row.alias || null,
+    status: row.status,
+    expiresAt: row.expiresAt || null,
+    hasRefreshToken: Boolean(row.hasRefreshToken),
+    scopes: Array.isArray(row.scopes) ? row.scopes : [],
+    lastRefreshedAt: row.lastRefreshedAt || null,
+    error: row.error || null,
+    ...verification,
+    ...row,
+    alias: row.alias || null,
+    expiresAt: row.expiresAt || null,
+    lastRefreshedAt: row.lastRefreshedAt || null,
+    error: row.error || null,
+  };
+}
+
 /** True if this connection is a paste-a-key (Class B) connection (registry mode or stored kind). */
 function isKeyBased(reg, token) {
   if (reg && reg.authMode && catalog.KEY_MODES.has(reg.authMode)) return true;
@@ -49,7 +73,7 @@ function connectionHealth(service) {
     if (err && err.code === 'DEX_CM_KEY_LOST') {
       // Computed at read time and never persisted, so a transient keychain
       // blip self-heals completely the moment the key is readable again.
-      return {
+      return completeStatusRow({
         service: connId,
         provider,
         alias: reg && reg.alias,
@@ -60,7 +84,7 @@ function connectionHealth(service) {
         lastRefreshedAt: reg && reg.lastRefreshedAt,
         error: 'encryption_key_lost',
         message: err.message,
-      };
+      });
     }
     throw err;
   }
@@ -68,7 +92,7 @@ function connectionHealth(service) {
     // Re-read: loadToken may just have stamped a corruption reason on the entry.
     const reg2 = store.readRegistry()[connId] || reg;
     if (reg2 && reg2.error) {
-      return {
+      return completeStatusRow({
         service: connId,
         provider: reg2.provider || provider,
         alias: reg2.alias,
@@ -78,15 +102,15 @@ function connectionHealth(service) {
         scopes: reg2.scopes || [],
         lastRefreshedAt: reg2.lastRefreshedAt,
         error: reg2.error,
-      };
+      });
     }
-    return {
+    return completeStatusRow({
       service: connId,
       status: 'not_connected',
       provider,
       alias: reg && reg.alias,
       ...connectorModel.deriveVerification(evidenceFor(connId)),
-    };
+    });
   }
 
   const keyBased = isKeyBased(reg, token);
@@ -98,7 +122,7 @@ function connectionHealth(service) {
     hasRefreshToken: Boolean(token.refresh_token),
   });
 
-  return {
+  return completeStatusRow({
     service: connId,
     provider,
     alias: reg && reg.alias,
@@ -109,7 +133,7 @@ function connectionHealth(service) {
     lastRefreshedAt: reg && reg.lastRefreshedAt,
     error: reg && reg.error,
     ...connectorModel.deriveVerification(evidenceFor(connId)),
-  };
+  });
 }
 
 /** Sweep every known connection (the monitoring view). One broken connection must never kill the sweep. */
@@ -118,13 +142,13 @@ function allConnectionsHealth() {
     try {
       return connectionHealth(c.service);
     } catch (err) {
-      return {
+      return completeStatusRow({
         service: c.service,
         provider: c.provider,
         alias: c.alias,
         status: 'needs_reauth',
         error: err && err.code === 'DEX_CM_KEY_LOST' ? 'encryption_key_lost' : `health_check_failed: ${err.message}`,
-      };
+      });
     }
   });
 }
@@ -176,6 +200,15 @@ function normalizeRefreshResult(result, previous) {
     ...(raw.id || nested.id || previous.id ? { id: raw.id || nested.id || previous.id } : {}),
     raw,
   };
+}
+
+function tokenRevision(token) {
+  return JSON.stringify([
+    token && token.access_token,
+    token && token.refresh_token,
+    token && token.expires_at,
+    token && token.obtained_at,
+  ]);
 }
 
 function recordConnectionEvent(connId, op, row = {}) {
@@ -235,8 +268,12 @@ async function refreshToken(service, { force = false } = {}) {
   return runSingleFlight(connId, async () =>
     store.withRefreshLock(connId, async () => {
       // Double-check under the lock: another process may have refreshed while
-      // we waited. If the stored token is fresh now, use it: no network call.
+      // we waited. This applies even to `force`: force means this invocation
+      // must cause a refresh, not that every racing process must burn the same
+      // rotating refresh token. If the persisted revision changed while this
+      // caller waited, the invocation's refresh has already been satisfied.
       const current = store.loadToken(connId) || token;
+      if (tokenRevision(current) !== tokenRevision(token)) return current.access_token;
       if (!force && connectionHealth(connId).status === 'connected') return current.access_token;
 
       const reg = store.readRegistry()[connId] || {};

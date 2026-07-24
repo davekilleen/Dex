@@ -60,6 +60,46 @@ async function main() {
       process.stdout.write('refreshed');
       return;
     }
+    case 'refresh-force': {
+      // refresh-force <connId>: run the real refresh state machine in this OS
+      // process. The test-only endpoint is an in-process fetch responder whose
+      // append-only counter is shared by all child processes.
+      const [connId] = args;
+      const counter = process.env.DEX_CM_TEST_REFRESH_COUNTER;
+      if (!counter) throw new Error('DEX_CM_TEST_REFRESH_COUNTER is required');
+      const catalog = require('./catalog.cjs');
+      const realGetProviderConfig = catalog.getProviderConfig;
+      catalog.getProviderConfig = (provider, config) => ({
+        ...realGetProviderConfig(provider, config),
+        tokenUrl: 'https://mock-token-endpoint.invalid/token',
+        refreshUrl: null,
+        refreshRetryDelayMs: 0,
+      });
+      global.fetch = async () => {
+        require('fs').appendFileSync(counter, 'hit\n');
+        await new Promise((resolve) => setTimeout(resolve, Number(process.env.DEX_CM_TEST_REFRESH_DELAY_MS || 0)));
+        return {
+          ok: true,
+          status: 200,
+          headers: new Headers(),
+          json: async () => ({
+            access_token: 'FAKE-CROSS-PROCESS-AT',
+            refresh_token: 'FAKE-CROSS-PROCESS-RT',
+            expires_in: 3600,
+          }),
+        };
+      };
+      const health = require('./health.cjs');
+      process.stdout.write(await health.refreshToken(connId, { force: true }));
+      return;
+    }
+    case 'take-refresh-lock': {
+      // take-refresh-lock <connId>: proves the exact per-connection refresh
+      // lock path can recover from a dead holder.
+      await store.withRefreshLock(args[0], async () => {});
+      process.stdout.write('locked');
+      return;
+    }
     case 'load-token': {
       // load-token <connId>: prints the decrypted token JSON. Exit 9 on key loss
       // (distinct from generic failure) so tests can assert the explicit state.

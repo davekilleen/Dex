@@ -38,6 +38,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const { LOCK_PROTOCOL } = require('./contract.cjs');
 const crypto = require('crypto');
 
 /**
@@ -76,9 +77,9 @@ function writeFileAtomic(filePath, data, { mode = 0o600 } = {}) {
 
 // ---- Cross-process lock ------------------------------------------------------
 
-const ACQUIRE_TIMEOUT_MS = 10_000; // default wait for the lock before erroring
-const UNREADABLE_STALE_MS = 30_000; // unreadable lockfile older than this is stale
-const HARD_STALE_MS = 10 * 60 * 1000; // absolute backstop: no lock lives longer
+const ACQUIRE_TIMEOUT_MS = LOCK_PROTOCOL.storeTimeoutMs;
+const UNREADABLE_STALE_MS = LOCK_PROTOCOL.unreadableStaleMs;
+const HARD_STALE_MS = LOCK_PROTOCOL.hardStaleMs;
 
 // Reentrancy bookkeeping: how many times THIS process currently holds each lock path.
 const _heldDepth = new Map();

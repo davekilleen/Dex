@@ -1,0 +1,135 @@
+{
+  "contract": "dex.connections",
+  "version": "1.0.0",
+  "engineVersion": "1.0.0",
+  "source": "core/integrations/connection-manager/contract.cjs",
+  "schema": "connections.schema.json",
+  "engine": {
+    "relativeRoot": "core/integrations/connection-manager",
+    "manifest": "connections-engine.manifest.json"
+  },
+  "compatibility": {
+    "rule": "Additive changes require a minor version. Breaking or removing any frozen field, value, invocation, or behavior requires a major version.",
+    "additive": "minor",
+    "breaking": "major"
+  },
+  "ownership": {
+    "rule": "Consumers are read-only and accessor-only. They MUST NOT write credential files or implement a writer. ALL mutations go through the connection-manager engine CLI.",
+    "consumerCapabilities": [
+      "connect.cjs status --json",
+      "get-token.cjs <connection>"
+    ],
+    "mutationBoundary": "core/integrations/connection-manager/connect.cjs"
+  },
+  "cli": {
+    "getToken": {
+      "executable": "get-token.cjs",
+      "invocation": [
+        "node",
+        "get-token.cjs",
+        "<connection>",
+        "[--full | --access-token-only]"
+      ],
+      "connectionId": "provider or provider:alias",
+      "modes": {
+        "defaultOAuth": {
+          "schema": "#/$defs/leastPrivilegeToken",
+          "output": "{access_token, expires_at}",
+          "leastPrivilege": true
+        },
+        "defaultClassB": {
+          "schema": "#/$defs/classBEnvelope",
+          "output": "{kind, baseUrl, headers, query}",
+          "note": "Rendered request envelope; credentials may be embedded in headers, query, or baseUrl."
+        },
+        "full": {
+          "flag": "--full",
+          "schema": "#/$defs/fullToken",
+          "note": "Full stored OAuth token. Explicit privileged mode."
+        },
+        "accessTokenOnly": {
+          "flag": "--access-token-only",
+          "schema": "#/$defs/accessTokenOnly",
+          "note": "Raw OAuth bearer token or raw Class B secret. Explicit privileged mode."
+        }
+      },
+      "exitCodes": {
+        "ok": 0,
+        "not_connected": 2,
+        "needs_reauth": 3,
+        "error": 1
+      }
+    },
+    "status": {
+      "executable": "connect.cjs",
+      "invocation": [
+        "node",
+        "connect.cjs",
+        "status",
+        "--json"
+      ],
+      "schema": "#/$defs/statusOutput",
+      "statuses": [
+        "connected",
+        "expiring",
+        "expired",
+        "needs_reauth",
+        "not_connected"
+      ],
+      "verificationStates": [
+        "verified",
+        "unverified"
+      ]
+    }
+  },
+  "storage": {
+    "root": "{DEX_VAULT}/System/credentials",
+    "layout": {
+      "tokens": "tokens/<connId with colon encoded as __>.json",
+      "ledger": "ledger/<connection>.jsonl",
+      "registry": "connections.json",
+      "oauthApps": "oauth-apps.json",
+      "fallbackKey": ".dex-cm.key",
+      "gitignore": ".gitignore"
+    },
+    "gitignoreGuard": {
+      "requiredRule": "*",
+      "exceptions": [
+        "!.gitignore",
+        "!README.md"
+      ]
+    },
+    "tokenEnvelope": {
+      "schema": "#/$defs/tokenEnvelopeV2",
+      "fields": [
+        "v",
+        "aad",
+        "iv",
+        "tag",
+        "data"
+      ],
+      "v": 2,
+      "aad": "token:<connId>",
+      "encoding": "iv, tag, and data are base64; AES-256-GCM binds aad"
+    }
+  },
+  "locks": {
+    "protocol": "Exclusive lockfile creation (O_CREAT|O_EXCL); holder releases by unlink in finally; waiters never proceed unlocked.",
+    "fileShape": {
+      "pid": "positive integer",
+      "createdAt": "Unix epoch milliseconds"
+    },
+    "store": "{credentialsRoot}/.dex-cm.lock",
+    "refresh": "{credentialsRoot}/.dex-cm.refresh-<connId with colon encoded as __>.lock",
+    "staleTakeover": {
+      "deadPid": "immediate",
+      "unreadableLockfileOlderThanMs": 30000,
+      "anyLockfileOlderThanMs": 600000,
+      "method": "unlink then re-race exclusive creation"
+    },
+    "timeoutsMs": {
+      "store": 10000,
+      "refresh": 30000
+    }
+  }
+}

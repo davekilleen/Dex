@@ -227,6 +227,41 @@ test('lock: losing refresh racer reuses the winner token instead of refreshing a
   store.deleteToken('refresh-race');
 });
 
+test('refresh lock: two real forced-refresh processes make exactly one token-endpoint call', async () => {
+  const connId = 'refresh-force-race';
+  const counter = path.join(TMP_VAULT, 'refresh-endpoint-hits.txt');
+  fs.writeFileSync(counter, '');
+  store.saveToken(
+    connId,
+    { access_token: 'FAKE-ORIGINAL-AT', refresh_token: 'FAKE-ORIGINAL-RT', expires_at: Date.now() + 3600_000 },
+    { provider: 'google' }
+  );
+  store.setOAuthApp('google', { clientId: 'FAKE-CLIENT-ID', clientSecret: 'FAKE-CLIENT-SECRET' });
+  const env = { ...childEnv, DEX_CM_TEST_REFRESH_COUNTER: counter, DEX_CM_TEST_REFRESH_DELAY_MS: '250' };
+  const [first, second] = await Promise.all([
+    execFileP('node', [CHILD, 'refresh-force', connId], { env }),
+    execFileP('node', [CHILD, 'refresh-force', connId], { env }),
+  ]);
+  assert.equal(first.stdout, 'FAKE-CROSS-PROCESS-AT');
+  assert.equal(second.stdout, 'FAKE-CROSS-PROCESS-AT');
+  assert.equal(fs.readFileSync(counter, 'utf8').trim().split(/\n/).filter(Boolean).length, 1);
+  assert.equal(store.loadToken(connId).access_token, 'FAKE-CROSS-PROCESS-AT');
+  store.deleteToken(connId);
+});
+
+test('refresh lock: a dead-PID holder is taken over on the refresh lock specifically', () => {
+  const connId = 'refresh-stale-takeover';
+  const dead = require('node:child_process').spawnSync('node', ['-e', '']);
+  const refreshLock = path.join(CRED_DIR, `.dex-cm.refresh-${connId}.lock`);
+  fs.mkdirSync(CRED_DIR, { recursive: true, mode: 0o700 });
+  fs.writeFileSync(refreshLock, JSON.stringify({ pid: dead.pid, createdAt: Date.now() }), { mode: 0o600 });
+  const started = Date.now();
+  const output = execFileSync('node', [CHILD, 'take-refresh-lock', connId], { env: childEnv }).toString();
+  assert.equal(output, 'locked');
+  assert.ok(Date.now() - started < 2000, 'dead refresh holder should be stolen immediately');
+  assert.equal(fs.existsSync(refreshLock), false, 'refresh lock releases after takeover');
+});
+
 // ---- corrupt token files (fix: one bad file must not kill the sweep) ---------
 
 function corruptTokens() {
