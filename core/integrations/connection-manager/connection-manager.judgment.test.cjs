@@ -428,6 +428,38 @@ test('status distinguishes stored-but-unverified from probe-verified and support
   }
 });
 
+test('reconnecting starts a new verification epoch and never inherits an old live probe', () => {
+  const connId = 'google:reconnect-verification-epoch';
+  store.saveToken(connId, {
+    access_token: 'FIRST-ACCESS',
+    refresh_token: 'FIRST-REFRESH',
+    expires_at: Date.now() + 3_600_000,
+  }, { provider: 'google' });
+  try {
+    health.recordConnectionEvent(connId, 'connect', { ok: true });
+    health.recordConnectionEvent(connId, 'probe', { ok: true });
+    assert.equal(health.connectionHealth(connId).verified, true);
+
+    store.saveToken(connId, {
+      access_token: 'SECOND-ACCESS',
+      refresh_token: 'SECOND-REFRESH',
+      expires_at: Date.now() + 3_600_000,
+    }, { provider: 'google' });
+    health.recordConnectionEvent(connId, 'connect', { ok: true });
+
+    const current = health.connectionHealth(connId);
+    assert.equal(current.verified, false);
+    assert.equal(current.lastVerifiedAt, null);
+    assert.deepEqual(
+      health.connectionLedger().tail(connId, 3).map((entry) => entry.op),
+      ['connect', 'probe', 'connect'],
+      'the durable ledger keeps old proof, but it cannot prove the replacement credential'
+    );
+  } finally {
+    store.deleteToken(connId);
+  }
+});
+
 test('probe CLI supports one connection and stamps permanent auth failure', () => {
   store.saveApiKey('linear-cli-probe', { apiKey: 'CLI-PROBE-KEY' }, { provider: 'linear' });
   const script = `

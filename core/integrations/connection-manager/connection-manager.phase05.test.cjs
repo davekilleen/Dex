@@ -48,8 +48,9 @@ function callbackHarness({ busyPorts = [] } = {}) {
   };
   const request = (server, url) => {
     const response = {
-      writeHead(status) {
+      writeHead(status, headers = {}) {
         response.status = status;
+        response.headers = headers;
         return response;
       },
       end(body) {
@@ -187,7 +188,9 @@ test('callback server skips a contended port and completes on the next one', asy
   try {
     assert.equal(new URL(cb.redirectUri).port, String(secondPort));
     const pending = cb.waitForCode({ expectedState: 'right-state' });
-    harness.request(harness.servers[1], '/callback?code=good-code&state=right-state');
+    const response = harness.request(harness.servers[1], '/callback?code=good-code&state=right-state');
+    assert.equal(response.headers['Content-Type'], 'text/html; charset=utf-8');
+    assert.match(response.body, /✅ Connected/);
     assert.deepEqual(await pending, { code: 'good-code', state: 'right-state' });
   } finally {
     cb.close();

@@ -11,8 +11,8 @@
         "connection-manager"
       ],
       "fileCount": 17,
-      "totalBytes": 171266,
-      "treeHash": "fb1077bc75e6a182767a7da3ea1a674112da9a01ad26b302bfb8aa8f6cbf996f",
+      "totalBytes": 171926,
+      "treeHash": "2bae21416cd0c1d22d5c1a1cf8252869f0cbcafdc4cc4c6f15a500604dfded57",
       "files": [
         {
           "path": "auth-context.cjs",
@@ -61,8 +61,8 @@
         },
         {
           "path": "lib/connector-ledger.js",
-          "bytes": 4385,
-          "sha256": "451bd6d497da9f54919dcac431025f7ad2bbe37695180d5cef1a366c902ceef8"
+          "bytes": 4799,
+          "sha256": "4a9529e715d9fe9628d766ec5333137e8ecaac3d68aeac4355db08ab86cc5aba"
         },
         {
           "path": "lib/connector-model.js",
@@ -86,13 +86,13 @@
         },
         {
           "path": "oauth-flow.cjs",
-          "bytes": 9180,
-          "sha256": "07ab50b41aa8d9c67507b98e75ba83dcea7ba9b861f355f98e6048c7b86ba6fa"
+          "bytes": 9195,
+          "sha256": "6ab21fb5139da00a38f98658d38c6c0ef416aa06aba4ef9073d16b450863979d"
         },
         {
           "path": "README.md",
-          "bytes": 7024,
-          "sha256": "1a76a1bff5b774816d8b3818d6448a633347e64939e24e9c474e7c6f790c4068"
+          "bytes": 7255,
+          "sha256": "7a4e5e4491e408b59ed9b396c1b57906d11c129ef260ee180d1487a7dc616a43"
         },
         {
           "path": "token-store.cjs",

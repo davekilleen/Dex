@@ -58,12 +58,13 @@ const FILES = {
   },
   'connector-ledger.js': {
     source: '956612fbebc115fa7512aaf5db91676bfe40fa0c08d0927e52f4508e28e14cbf',
-    lifted: '451bd6d497da9f54919dcac431025f7ad2bbe37695180d5cef1a366c902ceef8',
+    lifted: '4a9529e715d9fe9628d766ec5333137e8ecaac3d68aeac4355db08ab86cc5aba',
     mode: 'core-adaptation',
     divergences: [
       'credentials/ledger path and Core connect, refresh, probe, and break vocabulary',
       'Desktop sync counts, cursors, schedules, and page receipts omitted',
       'fs-safe is the sole atomic writer and adds a per-connection cross-process lock',
+      'successful probes are scoped to the current connect epoch after a credential replacement',
     ],
   },
 };
