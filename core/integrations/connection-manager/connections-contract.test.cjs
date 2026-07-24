@@ -38,7 +38,14 @@ test('connections contract artifacts regenerate without drift and validate every
 
 test('foreign smoke consumer uses only CLIs plus contract/schema against a scratch vault', () => {
   const vault = fs.mkdtempSync(path.join(os.tmpdir(), 'dex-connections-consumer-'));
-  const env = { ...process.env, DEX_VAULT: vault, DEX_CM_NO_KEYCHAIN: '1' };
+  const runtime = fs.mkdtempSync(path.join(os.tmpdir(), 'dex-connections-consumer-runtime-'));
+  const env = {
+    ...process.env,
+    DEX_VAULT: vault,
+    DEX_CM_RUNTIME_DIR: runtime,
+    DEX_CM_BROKER_IDLE_MS: '100',
+    DEX_CM_NO_KEYCHAIN: '1',
+  };
   try {
     execFileSync('node', [path.join(__dirname, 'connect.cjs'), 'set-key', 'linear', '--no-probe'], {
       cwd: REPO,
@@ -58,12 +65,20 @@ test('foreign smoke consumer uses only CLIs plus contract/schema against a scrat
     assert.match(output, /connections consumer smoke passed/);
   } finally {
     fs.rmSync(vault, { recursive: true, force: true });
+    fs.rmSync(runtime, { recursive: true, force: true });
   }
 });
 
 test('real accessor and status CLIs conform to the published schemas and exit-code ABI', async () => {
   const vault = fs.mkdtempSync(path.join(os.tmpdir(), 'dex-connections-conformance-'));
-  const env = { ...process.env, DEX_VAULT: vault, DEX_CM_NO_KEYCHAIN: '1' };
+  const runtime = fs.mkdtempSync(path.join(os.tmpdir(), 'dex-connections-conformance-runtime-'));
+  const env = {
+    ...process.env,
+    DEX_VAULT: vault,
+    DEX_CM_RUNTIME_DIR: runtime,
+    DEX_CM_BROKER_IDLE_MS: '100',
+    DEX_CM_NO_KEYCHAIN: '1',
+  };
   const contract = JSON.parse(fs.readFileSync(CONTRACT, 'utf8'));
   const schema = JSON.parse(fs.readFileSync(SCHEMA, 'utf8'));
   const { validateAgainstSchema } = await import(path.join(REPO, 'scripts', 'connections-contract-validation.mjs'));
@@ -103,5 +118,6 @@ test('real accessor and status CLIs conform to the published schemas and exit-co
     );
   } finally {
     fs.rmSync(vault, { recursive: true, force: true });
+    fs.rmSync(runtime, { recursive: true, force: true });
   }
 });

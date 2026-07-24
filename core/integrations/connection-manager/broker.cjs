@@ -133,7 +133,7 @@ async function renderedResponse(request) {
   const context = await authContext.resolveAuthContext(request.connId);
   const provider = providerFor(request.connId, context);
   if (!pinned.isVetted(provider)) {
-    if (!request.allowUnvetted) return { ok: false, error: { category: 'unvetted' } };
+    if (!request.allowUnvetted) return { ok: false, error: { category: 'unvetted', provider } };
   } else {
     if (context.baseUrl) pinned.assertPinnedOrigin(provider, 'api', context.baseUrl);
     if (request.targetOrigin) pinned.assertPinnedOrigin(provider, 'api', request.targetOrigin);
@@ -144,6 +144,30 @@ async function renderedResponse(request) {
     baseUrl: context.baseUrl,
     headers: context.headers,
     query: context.query,
+    provider,
+  };
+}
+
+async function getTokenDefaultResponse(request) {
+  const context = await authContext.resolveAuthContext(request.connId);
+  if (context.kind === 'api_key') {
+    return {
+      ok: true,
+      value: {
+        kind: context.kind,
+        baseUrl: context.baseUrl,
+        headers: context.headers,
+        query: context.query,
+      },
+    };
+  }
+  const fresh = store.loadToken(request.connId);
+  return {
+    ok: true,
+    value: {
+      access_token: fresh.access_token,
+      expires_at: fresh.expires_at || null,
+    },
   };
 }
 
@@ -167,6 +191,7 @@ async function processRequest(request, capability) {
   const op = request.op || 'rendered';
   try {
     if (op === 'rendered') return await renderedResponse(request);
+    if (op === 'get-token-default') return await getTokenDefaultResponse(request);
     if (op === 'access-token' || op === 'full') return await privilegedResponse({ ...request, op });
     if (op === 'status') {
       return {
@@ -177,7 +202,14 @@ async function processRequest(request, capability) {
     }
     return { ok: false, error: { category: 'unsupported' } };
   } catch (error) {
-    return { ok: false, error: { category: errorCategory(error) } };
+    const category = errorCategory(error);
+    return {
+      ok: false,
+      error: {
+        category,
+        ...(category !== 'forbidden' && error && error.message ? { message: error.message } : {}),
+      },
+    };
   }
 }
 
@@ -293,6 +325,7 @@ module.exports = {
   capabilityPath,
   socketPath,
   assertPresence,
+  processRequest,
   startBroker,
   main,
 };

@@ -22,7 +22,9 @@ The engine code ships in Dex Core, but remains product-inert: no user-facing
 | `lib/connector-verify.js` | Five-second Google, Slack, and Linear live probes; only 401/403-class evidence marks reconnect. |
 | `lib/connector-ledger.js` | Secret-free per-connection evidence under `System/credentials/ledger/` (500-row cap, atomic rewrite). |
 | `connect.cjs` | CLI: `connect` / `status [--json]` / `probe` / `refresh` / `disconnect` / `providers` / `authurl`. |
-| `get-token.cjs` | Accessor so Python MCP servers read fresh tokens without the encryption key. |
+| `broker.cjs` / `broker-client.cjs` | Machine-local Unix-socket broker and client. Accessors request rendered or explicitly privileged credential views here instead of decrypting the store in their own process. |
+| `get-token.cjs` | Contract-frozen accessor for Python MCP servers; all credential reads go through the broker. |
+| `dex-call.cjs` | Generic authenticated caller; obtains rendered auth from the broker, then sends and redacts its own outbound request. |
 
 ## Maintainer smoke path
 
@@ -67,7 +69,15 @@ The store is designed so that nothing fails silently and nothing user-recoverabl
 | Credential file copied to another connection id | AES-GCM additional authenticated data binds every envelope to its connection id. The copied envelope is quarantined, and the target becomes `needs_reauth` with `token_envelope_account_mismatch`. |
 | Secrets in logs | No CLI prints token material (refresh prints none; `dex-call` diagnostics are redacted via `auth-context.secretsOf`/`redactSecrets`). Exception by contract: `get-token` IS the credential accessor; consume it via the pp-* env-injection pattern, never echo it. |
 
-Env switches: `DEX_CM_NO_KEYCHAIN=1` forces the file-based key (tests, sandboxes without `security`); `DEX_CM_TEST_CRASH_BEFORE_RENAME=1` is test-only fault injection used by the crash-simulation test.
+The broker is an honest hardening boundary, not a same-user malware sandbox:
+another process running as the same OS user can read user-owned `0600` files or
+scrape a blessed consumer's memory. The broker removes routine in-process
+decryption from accessors, centralises pinned-origin and trust checks, and puts
+privileged `--full` / `--access-token-only` exports behind the Phase 5d
+`assertPresence` seam. The default `get-token` operation remains unprivileged
+and returns only the frozen OAuth or rendered Class-B contract shape.
+
+Env switches: `DEX_CM_NO_KEYCHAIN=1` forces the file-based key (tests, sandboxes without `security`); `DEX_CM_RUNTIME_DIR` selects the machine-local broker runtime directory (tests use a unique temp directory); `DEX_CM_TEST_CRASH_BEFORE_RENAME=1` is test-only fault injection used by the crash-simulation test.
 
 Tests: `npm run test:integrations` from the repository root (offline, throwaway temp vaults, fake fixtures only).
 

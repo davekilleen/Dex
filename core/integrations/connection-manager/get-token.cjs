@@ -19,9 +19,7 @@
  * Exit codes: 0 ok · 2 not connected · 3 needs re-auth · 1 other error.
  */
 
-const health = require('./health.cjs');
-const store = require('./token-store.cjs');
-const { apiKeyContext } = require('./auth-context.cjs');
+const { brokerRequest, exitCodeForError } = require('./broker-client.cjs');
 const { GET_TOKEN_EXIT_CODES } = require('./contract.cjs');
 
 async function main() {
@@ -32,63 +30,32 @@ async function main() {
     console.error('Usage: node get-token.cjs <service> [--full | --access-token-only]');
     process.exit(GET_TOKEN_EXIT_CODES.error);
   }
-  let token;
+  const op = accessOnly ? 'access-token' : full ? 'full' : 'get-token-default';
+  let response;
   try {
-    token = store.loadToken(service);
+    response = await brokerRequest({
+      op,
+      connId: service,
+      ...(accessOnly || full ? { privileged: true } : {}),
+    });
   } catch (err) {
-    console.error(err.message);
-    process.exit(err.code === 'DEX_CM_KEY_LOST' ? GET_TOKEN_EXIT_CODES.needs_reauth : GET_TOKEN_EXIT_CODES.error);
-  }
-  if (!token) {
-    // A corrupt token file was quarantined and stamped by loadToken; that is a
-    // reconnect (exit 3 with the reason), not a plain "not connected" (exit 2).
-    const reg = store.getConnection(service);
-    if (reg && reg.error) {
-      console.error(`${service} needs re-authentication (${reg.error}). Run: node connect.cjs connect ${service}`);
-      process.exit(GET_TOKEN_EXIT_CODES.needs_reauth);
-    }
-    console.error(`${service} is not connected.`);
-    process.exit(GET_TOKEN_EXIT_CODES.not_connected);
-  }
-  try {
-    // Class B (paste-a-key): no refresh. Emit the raw secret (--access-token-only)
-    // or a JSON envelope with the catalog's auth scheme already rendered, so the
-    // consumer never re-implements per-provider header/query placement.
-    if (token.kind === 'api_key') {
-      const reg = store.getConnection(service);
-      if (reg && reg.status === 'needs_reauth') {
-        console.error(`${service} needs re-authentication. Run: node connect.cjs set-key ${service}`);
-        process.exit(GET_TOKEN_EXIT_CODES.needs_reauth);
-      }
-      store.touchUsed(service);
-      if (accessOnly) {
-        process.stdout.write(token.apiKey || token.password || '');
-        return;
-      }
-      // Render the auth scheme via the shared seam (same context dex-call uses).
-      const { apiKey: _rawSecret, ...rendered } = apiKeyContext(token, service);
-      process.stdout.write(JSON.stringify(rendered));
-      return;
-    }
-
-    const accessToken = await health.ensureFreshToken(service);
-    store.touchUsed(service);
-    if (accessOnly) {
-      process.stdout.write(accessToken);
-    } else {
-      const fresh = store.loadToken(service);
-      process.stdout.write(
-        JSON.stringify(full ? fresh : { access_token: fresh.access_token, expires_at: fresh.expires_at || null })
-      );
-    }
-  } catch (err) {
-    if (err.needsReauth) {
-      console.error(`${service} needs re-authentication. Run: node connect.cjs connect ${service}`);
-      process.exit(GET_TOKEN_EXIT_CODES.needs_reauth);
-    }
     console.error(err.message);
     process.exit(GET_TOKEN_EXIT_CODES.error);
   }
+  if (!response.ok) {
+    const error = response.error || {};
+    console.error(
+      error.message ||
+        (error.category === 'not_connected'
+          ? `${service} is not connected.`
+          : error.category === 'needs_reauth'
+            ? `${service} needs re-authentication. Run: node connect.cjs connect ${service}`
+            : 'Credential broker request failed.')
+    );
+    process.exit(exitCodeForError(error.category));
+  }
+  if (accessOnly) process.stdout.write(response.value);
+  else process.stdout.write(JSON.stringify(full ? response.token : response.value));
 }
 
 main();

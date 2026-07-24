@@ -14,7 +14,8 @@
  * Exit codes: 0 ok · 2 not connected · 3 needs re-auth · 4 HTTP 4xx/5xx · 1 other error.
  */
 
-const { resolveAuthContext, secretsOf, redactSecrets } = require('./auth-context.cjs');
+const { secretsOf, redactSecrets } = require('./auth-context.cjs');
+const { brokerRequest, exitCodeForError } = require('./broker-client.cjs');
 const { assertPinnedOrigin, isVetted } = require('./pinned-providers.cjs');
 
 const HTTP_VERBS = new Set(['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS']);
@@ -135,6 +136,20 @@ function fetchAuthenticated(url, options, fetchImpl = globalThis.fetch) {
   return fetchImpl(url, { ...options, redirect: 'error' });
 }
 
+function brokerTargetOrigin(service, pathOrUrl) {
+  if (!/^[a-z][a-z0-9+.-]*:\/\//i.test(pathOrUrl || '')) return undefined;
+  const provider = String(service || '').split(':')[0];
+  if (!isVetted(provider)) return pathOrUrl;
+  try {
+    assertPinnedOrigin(provider, 'api', pathOrUrl);
+    return pathOrUrl;
+  } catch {
+    // A cross-host absolute URL remains allowed, but buildRequest will not
+    // attach the service credential to it.
+    return undefined;
+  }
+}
+
 async function main() {
   const { service, method, path, query, headers, flags } = parseArgs(process.argv.slice(2));
   if (!service || !path) {
@@ -147,12 +162,33 @@ async function main() {
   let body = flags.body;
   if (flags.bodyFile) body = require('fs').readFileSync(flags.bodyFile, 'utf8');
 
+  const allowed = flags['allow-unvetted'] !== undefined || process.env.DEX_CM_ALLOW_UNVETTED === '1';
   let ctx;
   try {
-    ctx = await resolveAuthContext(service);
+    const response = await brokerRequest({
+      op: 'rendered',
+      connId: service,
+      targetOrigin: brokerTargetOrigin(service, path),
+      allowUnvetted: allowed,
+    });
+    if (!response.ok) {
+      const brokerError = response.error || {};
+      if (brokerError.category === 'unvetted') {
+        const provider = brokerError.provider || String(service).split(':')[0];
+        console.error(
+          `Refusing authenticated call for '${provider}': this provider is not security-reviewed. ` +
+            'Re-run with --allow-unvetted or DEX_CM_ALLOW_UNVETTED=1 to opt in.'
+        );
+      } else {
+        console.error(brokerError.message || 'Credential broker request failed.');
+      }
+      process.exit(exitCodeForError(brokerError.category));
+    }
+    const { ok: _ok, ...rendered } = response;
+    ctx = rendered;
   } catch (e) {
     console.error(e.message);
-    process.exit(e.exitCode || 1);
+    process.exit(1);
   }
 
   let req;
@@ -163,14 +199,6 @@ async function main() {
     process.exit(e.exitCode || 1);
   }
   if (req.authAttached && ctx.provider && !isVetted(ctx.provider)) {
-    const allowed = flags['allow-unvetted'] !== undefined || process.env.DEX_CM_ALLOW_UNVETTED === '1';
-    if (!allowed) {
-      console.error(
-        `Refusing authenticated call for '${ctx.provider}': this provider is not security-reviewed. ` +
-          'Re-run with --allow-unvetted or DEX_CM_ALLOW_UNVETTED=1 to opt in.'
-      );
-      process.exit(1);
-    }
     console.error(`warning: '${ctx.provider}' is not security-reviewed; sending credentials because you explicitly opted in.`);
   }
 

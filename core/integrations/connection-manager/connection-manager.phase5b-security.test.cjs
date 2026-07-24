@@ -10,7 +10,10 @@ const { spawnSync } = require('node:child_process');
 
 const pinned = require('./pinned-providers.cjs');
 const TMP_VAULT = fs.mkdtempSync(path.join(os.tmpdir(), 'dex-cm-phase5b-'));
+const TMP_RUNTIME = fs.mkdtempSync(path.join(os.tmpdir(), 'dex-cm-phase5b-runtime-'));
 process.env.DEX_VAULT = TMP_VAULT;
+process.env.DEX_CM_RUNTIME_DIR = TMP_RUNTIME;
+process.env.DEX_CM_BROKER_IDLE_MS = '100';
 process.env.DEX_CM_NO_KEYCHAIN = '1';
 
 const catalog = require('./catalog.cjs');
@@ -23,7 +26,10 @@ const health = require('./health.cjs');
 const DIR = __dirname;
 const childEnv = { ...process.env, DEX_VAULT: TMP_VAULT, DEX_CM_NO_KEYCHAIN: '1' };
 
-test.after(() => fs.rmSync(TMP_VAULT, { recursive: true, force: true }));
+test.after(() => {
+  fs.rmSync(TMP_VAULT, { recursive: true, force: true });
+  fs.rmSync(TMP_RUNTIME, { recursive: true, force: true });
+});
 
 test('reviewed providers expose immutable origin pins and reject every unpinned destination', () => {
   assert.equal(pinned.isVetted('google'), true);

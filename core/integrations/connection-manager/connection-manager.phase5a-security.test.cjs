@@ -9,14 +9,20 @@ const { EventEmitter } = require('node:events');
 const { spawnSync } = require('node:child_process');
 
 const TMP_VAULT = fs.mkdtempSync(path.join(os.tmpdir(), 'dex-cm-phase5a-'));
+const TMP_RUNTIME = fs.mkdtempSync(path.join(os.tmpdir(), 'dex-cm-phase5a-runtime-'));
 process.env.DEX_VAULT = TMP_VAULT;
+process.env.DEX_CM_RUNTIME_DIR = TMP_RUNTIME;
+process.env.DEX_CM_BROKER_IDLE_MS = '100';
 process.env.DEX_CM_NO_KEYCHAIN = '1';
 
 const store = require('./token-store.cjs');
 const oauth = require('./oauth-flow.cjs');
 const health = require('./health.cjs');
 
-test.after(() => fs.rmSync(TMP_VAULT, { recursive: true, force: true }));
+test.after(() => {
+  fs.rmSync(TMP_VAULT, { recursive: true, force: true });
+  fs.rmSync(TMP_RUNTIME, { recursive: true, force: true });
+});
 
 function callbackHarness() {
   const server = new EventEmitter();

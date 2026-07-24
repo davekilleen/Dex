@@ -135,6 +135,32 @@ function secretsOf(ctx) {
   }
   for (const v of Object.values((ctx && ctx.query) || {})) add(v);
   if (ctx && ctx.apiKey) add(ctx.apiKey);
+  // Broker-rendered contexts deliberately omit the raw apiKey field. Recover
+  // only the credential-shaped portion of catalog URLs such as Telegram's
+  // .../bot${apiKey}, so dex-call diagnostics retain their pre-broker
+  // redaction without widening the broker response.
+  if (ctx && ctx.provider && ctx.baseUrl) {
+    try {
+      const template = catalog.getProviderConfig(ctx.provider).proxyBaseUrl || '';
+      const marker = '${apiKey}';
+      const markerAt = template.indexOf(marker);
+      if (markerAt !== -1) {
+        const prefix = template.slice(0, markerAt);
+        const suffix = template.slice(markerAt + marker.length);
+        if (
+          !prefix.includes('${') &&
+          !suffix.includes('${') &&
+          ctx.baseUrl.startsWith(prefix) &&
+          ctx.baseUrl.endsWith(suffix)
+        ) {
+          const end = suffix ? ctx.baseUrl.length - suffix.length : undefined;
+          add(ctx.baseUrl.slice(prefix.length, end));
+        }
+      }
+    } catch {
+      /* header/query forms above still redact when catalog lookup is unavailable */
+    }
+  }
   // Longest first so overlapping values redact fully.
   return [...out].sort((a, b) => b.length - a.length);
 }

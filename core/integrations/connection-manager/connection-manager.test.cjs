@@ -20,7 +20,10 @@ const { execFileSync, spawnSync } = require('node:child_process');
 
 // Point everything at a throwaway vault BEFORE requiring the store modules.
 const TMP_VAULT = fs.mkdtempSync(path.join(os.tmpdir(), 'dex-cm-test-'));
+const TMP_RUNTIME = fs.mkdtempSync(path.join(os.tmpdir(), 'dex-cm-test-runtime-'));
 process.env.DEX_VAULT = TMP_VAULT;
+process.env.DEX_CM_RUNTIME_DIR = TMP_RUNTIME;
+process.env.DEX_CM_BROKER_IDLE_MS = '100';
 process.env.DEX_CM_NO_KEYCHAIN = '1';
 
 const catalog = require('./catalog.cjs');
@@ -61,7 +64,10 @@ const NULL_TARGET_PROV = KEY_PROVIDERS.find(
     cli.buildProbeTarget(catalog.getProviderConfig(p.id), { apiKey: 'k' }) === null
 );
 
-test.after(() => fs.rmSync(TMP_VAULT, { recursive: true, force: true }));
+test.after(() => {
+  fs.rmSync(TMP_VAULT, { recursive: true, force: true });
+  fs.rmSync(TMP_RUNTIME, { recursive: true, force: true });
+});
 
 // ---- vault path resolution --------------------------------------------------
 
