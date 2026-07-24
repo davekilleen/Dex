@@ -7,7 +7,9 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
-## [1.75.0] — 🔍 Dex Doctor now knows exactly what you've customised (2026-07-24)
+## [1.75.1] — 🔍 Dex Doctor now knows exactly what you've customised (2026-07-24)
+
+*(This is the v1.75.0 feature release, re-cut: v1.75.0's packaging step was incomplete, so its update bundle never published. Nothing else changed.)*
 
 If you've made Dex your own — edited a built-in skill, added your own scripts or instructions, wired up your own connections — updating has always carried a quiet worry: *what will this touch?* Until now, Dex could promise not to overwrite your files, but it couldn't tell you what you'd actually changed. Now it can.
 
