@@ -105,6 +105,8 @@ eggs/
 .eggs/
 lib/
 lib64/
+!core/integrations/connection-manager/lib/
+!core/integrations/connection-manager/lib/**
 !.scripts/lib/
 !.scripts/lib/**
 !.scripts/meeting-intel/lib/

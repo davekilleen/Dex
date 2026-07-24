@@ -13,10 +13,13 @@ This engine is committed but inert: no user-facing connection surface is shipped
 | File | Role |
 |------|------|
 | `catalog.cjs` | Normalizes a Nango provider entry → Dex OAuth descriptor (URLs, scopes, PKCE, quirks). |
-| `oauth-flow.cjs` | PKCE auth-URL, localhost callback server (dynamic port), code→token exchange, refresh. |
+| `oauth-flow.cjs` | PKCE auth-URL, localhost callback server (dynamic port), and code→token exchange. |
 | `token-store.cjs` | Encrypted on-device token store + `connections.json` registry. Keychain-or-file key. |
-| `health.cjs` | Connection health (`connected`/`expiring`/`expired`/`needs_reauth`) + refresh state machine. |
-| `connect.cjs` | CLI: `connect` / `status` / `refresh` / `disconnect` / `providers` / `authurl`. |
+| `health.cjs` | Connection health (`connected`/`expiring`/`expired`/`needs_reauth`) + the single lifted refresh/probe path. |
+| `lib/oauth-refresh.js` | Desktop-proven refresh judgment: permanent/transient split, timeout, one retry, Retry-After clamp, Slack nesting, single-flight. |
+| `lib/connector-verify.js` | Five-second Google, Slack, and Linear live probes; only 401/403-class evidence marks reconnect. |
+| `lib/connector-ledger.js` | Secret-free per-connection evidence under `System/credentials/ledger/` (500-row cap, atomic rewrite). |
+| `connect.cjs` | CLI: `connect` / `status [--json]` / `probe` / `refresh` / `disconnect` / `providers` / `authurl`. |
 | `get-token.cjs` | Accessor so Python MCP servers read fresh tokens without the encryption key. |
 
 ## Maintainer smoke path
@@ -28,6 +31,8 @@ This engine is committed but inert: no user-facing connection surface is shipped
    ```bash
    node connect.cjs connect google --scopes https://www.googleapis.com/auth/calendar.readonly,https://www.googleapis.com/auth/gmail.readonly
    node connect.cjs status
+   node connect.cjs status --json
+   node connect.cjs probe google
    node connect.cjs refresh google --force
    ```
 4. From Python (MCP server):
@@ -58,7 +63,11 @@ Tests: `npm run test:integrations` from the repository root (offline, throwaway 
 
 ## Status
 
-Phase 0.5 is committed but inert. Catalog resolution, callback handling, encrypted storage, refresh rotation, health, corruption, concurrency, and key-loss paths are covered locally. The live-account gate is still pending: do not ship or enable this engine until the break→detect→reconnect loop has been verified against a real provider.
+The engine passed its live-account gate on 2026-07-24. Phase 2 adds Desktop's
+judgment layer without changing the token accessor or encrypted-envelope
+contracts: stored credentials show as connected but unverified until a live
+probe succeeds, and only permanent refresh or 401/403-class probe evidence
+marks a connection `needs_reauth`.
 
 The held-back consumption surfaces remain maintainer-local and are not part of this committed engine: the `/connect` skill, `dex-google`, `gog-mcp-launch`, and `render-dashboard.cjs`.
 

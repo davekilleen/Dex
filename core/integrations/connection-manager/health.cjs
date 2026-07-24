@@ -10,9 +10,25 @@
 
 const store = require('./token-store.cjs');
 const catalog = require('./catalog.cjs');
-const { refreshAccessToken } = require('./oauth-flow.cjs');
+const path = require('path');
+const connectorModel = require('./lib/connector-model.js');
+const { createConnectorLedger } = require('./lib/connector-ledger.js');
+const { createConnectorVerify, CATEGORY } = require('./lib/connector-verify.js');
+const { createSingleFlight, refreshOAuthToken } = require('./lib/oauth-refresh.js');
 
 const EXPIRY_SKEW_MS = 5 * 60 * 1000; // treat tokens expiring within 5 min as "expiring"
+const runSingleFlight = createSingleFlight();
+const ledger = createConnectorLedger({
+  stateDir: () => path.join(store.credentialsDir(), 'ledger'),
+});
+
+function connectionLedger() {
+  return ledger;
+}
+
+function evidenceFor(connId) {
+  return ledger.rollup(connId);
+}
 
 /** True if this connection is a paste-a-key (Class B) connection (registry mode or stored kind). */
 function isKeyBased(reg, token) {
@@ -64,30 +80,23 @@ function connectionHealth(service) {
         error: reg2.error,
       };
     }
-    return { service: connId, status: 'not_connected', provider, alias: reg && reg.alias };
-  }
-
-  // Class B (paste-a-key): no expiry, no refresh state machine. A bad key only
-  // surfaces if a probe stamped reg.error → needs_reauth; otherwise connected.
-  if (isKeyBased(reg, token)) {
     return {
       service: connId,
+      status: 'not_connected',
       provider,
       alias: reg && reg.alias,
-      status: reg && reg.error ? 'needs_reauth' : 'connected',
-      expiresAt: null,
-      hasRefreshToken: false,
-      scopes: (reg && reg.scopes) || [],
-      lastRefreshedAt: reg && reg.lastRefreshedAt,
-      error: reg && reg.error,
+      ...connectorModel.deriveVerification(evidenceFor(connId)),
     };
   }
 
-  const expiresAt = token.expires_at || (reg && reg.expiresAt) || null;
-  let status = 'connected';
-  if (reg && reg.error) status = 'needs_reauth';
-  else if (expiresAt && Date.now() >= expiresAt) status = token.refresh_token ? 'expired' : 'needs_reauth';
-  else if (expiresAt && Date.now() >= expiresAt - EXPIRY_SKEW_MS) status = 'expiring';
+  const keyBased = isKeyBased(reg, token);
+  const expiresAt = keyBased ? null : token.expires_at || (reg && reg.expiresAt) || null;
+  const status = connectorModel.deriveStatus({
+    credentialPresent: true,
+    registryError: reg && reg.error,
+    expiresAt,
+    hasRefreshToken: Boolean(token.refresh_token),
+  });
 
   return {
     service: connId,
@@ -95,10 +104,11 @@ function connectionHealth(service) {
     alias: reg && reg.alias,
     status,
     expiresAt,
-    hasRefreshToken: Boolean(token.refresh_token),
+    hasRefreshToken: keyBased ? false : Boolean(token.refresh_token),
     scopes: (reg && reg.scopes) || [],
     lastRefreshedAt: reg && reg.lastRefreshedAt,
     error: reg && reg.error,
+    ...connectorModel.deriveVerification(evidenceFor(connId)),
   };
 }
 
@@ -119,9 +129,58 @@ function allConnectionsHealth() {
   });
 }
 
-// Per-process refresh dedup so concurrent callers in ONE process share a refresh.
-// Cross-process exclusion is the store's refresh lock (see below).
-const _inFlight = new Map();
+function providerRefreshFetch(providerConfig) {
+  return async (url, options) => {
+    const params = new URLSearchParams(options.body);
+    const headers = { Accept: 'application/json', ...(options.headers || {}) };
+    let body;
+    if (providerConfig.tokenRequestAuthMethod === 'basic') {
+      const clientId = params.get('client_id') || '';
+      const clientSecret = params.get('client_secret') || '';
+      params.delete('client_id');
+      params.delete('client_secret');
+      headers.Authorization = 'Basic ' + Buffer.from(`${clientId}:${clientSecret}`).toString('base64');
+    }
+    if (providerConfig.bodyFormat === 'json') {
+      headers['Content-Type'] = 'application/json';
+      body = JSON.stringify(Object.fromEntries(params));
+    } else {
+      headers['Content-Type'] = 'application/x-www-form-urlencoded';
+      body = params.toString();
+    }
+    const response = await globalThis.fetch(url, { ...options, headers, body });
+    if (response && typeof response.json !== 'function' && typeof response.text === 'function') {
+      return {
+        ...response,
+        json: async () => JSON.parse(await response.text()),
+      };
+    }
+    return response;
+  };
+}
+
+function normalizeRefreshResult(result, previous) {
+  const raw = result.raw && typeof result.raw === 'object' ? result.raw : {};
+  const nested = raw.authed_user && typeof raw.authed_user === 'object' ? raw.authed_user : {};
+  return {
+    ...previous,
+    access_token: result.accessToken,
+    refresh_token: result.refreshToken || previous.refresh_token || null,
+    token_type: nested.token_type || raw.token_type || previous.token_type || 'Bearer',
+    scope: nested.scope || raw.scope || previous.scope || null,
+    expires_at: result.expiresAt || previous.expires_at || null,
+    obtained_at: Date.now(),
+    ...(raw.instance_url || nested.instance_url || previous.instance_url
+      ? { instance_url: raw.instance_url || nested.instance_url || previous.instance_url }
+      : {}),
+    ...(raw.id || nested.id || previous.id ? { id: raw.id || nested.id || previous.id } : {}),
+    raw,
+  };
+}
+
+function recordConnectionEvent(connId, op, row = {}) {
+  return ledger.append(connId, { op, ...row });
+}
 
 /**
  * Return a valid access token for `service`, refreshing if expired/expiring.
@@ -166,54 +225,116 @@ async function refreshToken(service, { force = false } = {}) {
 
   if (!token.refresh_token) {
     store.upsertConnection(connId, { status: 'needs_reauth', error: 'no_refresh_token' });
+    recordConnectionEvent(connId, 'break', {
+      ok: false,
+      error: { category: 'auth_permanent', code: 'no_refresh_token', message: 'No refresh token on file' },
+    });
     throw Object.assign(new Error(`${connId} needs re-authentication (no refresh token).`), { needsReauth: true });
   }
 
-  if (_inFlight.has(connId)) return _inFlight.get(connId);
+  return runSingleFlight(connId, async () =>
+    store.withRefreshLock(connId, async () => {
+      // Double-check under the lock: another process may have refreshed while
+      // we waited. If the stored token is fresh now, use it: no network call.
+      const current = store.loadToken(connId) || token;
+      if (!force && connectionHealth(connId).status === 'connected') return current.access_token;
 
-  const promise = (async () => {
-    try {
-      return await store.withRefreshLock(connId, async () => {
-        // Double-check under the lock: another process may have refreshed while
-        // we waited. If the stored token is fresh now, use it: no network call.
-        const current = store.loadToken(connId) || token;
-        if (!force && connectionHealth(connId).status === 'connected') return current.access_token;
-
-        const reg = store.readRegistry()[connId] || {};
-        const provider = reg.provider || store.parseConnectionId(connId).provider;
-        const app = store.getOAuthApp(provider); // OAuth app is shared per provider, not per account
-        if (!app) throw new Error(`No OAuth app credentials for '${provider}'. Add them to oauth-apps.json.`);
-        const providerConfig = catalog.getProviderConfig(provider, reg.connectionConfig || {});
-        try {
-          const fresh = await refreshAccessToken(providerConfig, {
-            refreshToken: current.refresh_token || token.refresh_token,
-            clientId: app.clientId,
-            clientSecret: app.clientSecret,
-            previous: current,
+      const reg = store.readRegistry()[connId] || {};
+      const provider = reg.provider || store.parseConnectionId(connId).provider;
+      const app = store.getOAuthApp(provider); // OAuth app is shared per provider, not per account
+      if (!app) throw new Error(`No OAuth app credentials for '${provider}'. Add them to oauth-apps.json.`);
+      const providerConfig = catalog.getProviderConfig(provider, reg.connectionConfig || {});
+      try {
+        const result = await refreshOAuthToken({
+          tokenUrl: providerConfig.refreshUrl || providerConfig.tokenUrl,
+          refreshToken: current.refresh_token || token.refresh_token,
+          clientId: app.clientId,
+          clientSecret: app.clientSecret,
+          extraParams: providerConfig.refreshParams || {},
+          fetchImpl: providerRefreshFetch(providerConfig),
+          retryDelayMs: Number.isFinite(providerConfig.refreshRetryDelayMs)
+            ? providerConfig.refreshRetryDelayMs
+            : undefined,
+        });
+        const fresh = normalizeRefreshResult(result, current);
+        store.saveToken(connId, fresh, { provider: providerConfig.id, connectedAt: reg.connectedAt });
+        recordConnectionEvent(connId, 'refresh', { ok: true, httpStatus: 200 });
+        return fresh.access_token;
+      } catch (err) {
+        const needsReauth = err && err.permanent === true;
+        const code = String((err && err.message) || 'refresh_failed').slice(0, 200);
+        recordConnectionEvent(connId, 'refresh', {
+          ok: false,
+          error: { category: needsReauth ? 'auth_permanent' : 'transient', code, message: code },
+        });
+        if (needsReauth) {
+          store.upsertConnection(connId, { status: 'needs_reauth', error: code });
+          recordConnectionEvent(connId, 'break', {
+            ok: false,
+            error: { category: 'auth_permanent', code, message: code },
           });
-          store.saveToken(connId, fresh, { provider: providerConfig.id, connectedAt: reg.connectedAt });
-          return fresh.access_token;
-        } catch (err) {
-          // Refresh-token revoked / invalid_grant → needs re-auth (the break→detect→reconnect signal).
-          const needsReauth = err.status === 400 || err.status === 401;
-          store.upsertConnection(connId, {
-            status: needsReauth ? 'needs_reauth' : 'error',
-            error: (err.body && err.body.error) || err.message,
-          });
-          throw Object.assign(err, { needsReauth });
         }
-      });
-    } finally {
-      _inFlight.delete(connId);
-    }
-  })();
-
-  _inFlight.set(connId, promise);
-  return promise;
+        throw Object.assign(err, { needsReauth });
+      }
+    })
+  );
 }
 
 async function ensureFreshToken(service) {
   return refreshToken(service);
 }
 
-module.exports = { connectionHealth, allConnectionsHealth, ensureFreshToken, refreshToken, EXPIRY_SKEW_MS };
+async function probeConnection(service, options = {}) {
+  const connId = store.resolveConnId(service);
+  const reg = store.readRegistry()[connId] || {};
+  const provider = reg.provider || store.parseConnectionId(connId).provider;
+  const token = store.loadToken(connId);
+  if (!token) throw new Error(`${connId} is not connected.`);
+  const credential = isKeyBased(reg, token)
+    ? token.apiKey || token.password || null
+    : await ensureFreshToken(connId);
+  const verifier = createConnectorVerify(options);
+  const result = await verifier.verify(connId, { provider, token: credential });
+  recordConnectionEvent(connId, 'probe', verifier.toLedgerRow(connId, result));
+  if (result.error && result.error.category === CATEGORY.AUTH_PERMANENT) {
+    const code = String(result.error.code || result.error.message || 'authentication_failed');
+    store.upsertConnection(connId, { status: 'needs_reauth', error: code });
+    recordConnectionEvent(connId, 'break', {
+      ok: false,
+      httpStatus: result.httpStatus,
+      error: result.error,
+    });
+  }
+  return result;
+}
+
+async function probeConnections(service, options = {}) {
+  const targets = service ? [store.resolveConnId(service)] : store.listConnections().map((entry) => entry.service);
+  const results = [];
+  for (const connId of targets) {
+    try {
+      const result = await probeConnection(connId, options);
+      results.push({ service: connId, ...result, status: connectionHealth(connId).status });
+    } catch (error) {
+      results.push({
+        service: connId,
+        ok: false,
+        status: connectionHealth(connId).status,
+        error: { category: 'probe_failed', message: error.message },
+      });
+    }
+  }
+  return results;
+}
+
+module.exports = {
+  connectionHealth,
+  allConnectionsHealth,
+  ensureFreshToken,
+  refreshToken,
+  probeConnection,
+  probeConnections,
+  recordConnectionEvent,
+  connectionLedger,
+  EXPIRY_SKEW_MS,
+};

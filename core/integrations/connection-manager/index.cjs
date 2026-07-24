@@ -25,4 +25,6 @@ module.exports = {
   connectionHealth: health.connectionHealth,
   allConnectionsHealth: health.allConnectionsHealth,
   ensureFreshToken: health.ensureFreshToken,
+  probeConnection: health.probeConnection,
+  probeConnections: health.probeConnections,
 };
