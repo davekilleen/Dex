@@ -608,6 +608,20 @@ def test_topology_probe_distinguishes_combined_split_and_invalid(context):
     assert doctor._topology_state(context) == "combined"
     assert doctor._probe_migration_pending(context).verdict == "OFF"
 
+    migrator = (
+        context.vault_root
+        / "core/migrations/v1-to-v2-brain-vault-split.cjs"
+    )
+    migrator.parent.mkdir(parents=True)
+    migrator.write_text("'use strict';\n", encoding="utf-8")
+    assert doctor._topology_state(context) == "migration-pending"
+    pending = doctor._probe_migration_pending(context)
+    assert pending.verdict == "BROKEN"
+    assert "/dex-update" in pending.detail
+    assert "preview" in pending.detail
+    assert "approval" in pending.detail
+
+    migrator.unlink()
     shutil.rmtree(context.vault_root / ".git")
     _write_split_topology(context)
     assert doctor._topology_state(context) == "post-split"
@@ -654,6 +668,32 @@ def test_migration_recovery_verdicts_name_exact_commands_and_manual_repair_warni
     assert "--resume" in invalid.detail
     assert "--restore" in invalid.detail
     assert "Do not reinstall, restore backups, or run raw Git commands" in invalid.detail
+
+
+@pytest.mark.parametrize(
+    ("lifecycle_state", "doctor_state"),
+    [
+        ("combined", "migration-pending"),
+        ("invalid-combined", "combined"),
+        ("post-split", "post-split"),
+        ("invalid-split", "invalid-split"),
+        ("migration-in-progress", "migration-in-progress"),
+        ("zip-or-manual", "zip-or-manual"),
+    ],
+)
+def test_topology_state_delegates_to_lifecycle_classifier(
+    context,
+    monkeypatch,
+    lifecycle_state,
+    doctor_state,
+):
+    monkeypatch.setattr(
+        doctor.lifecycle_engine,
+        "topology_state",
+        lambda vault_root: lifecycle_state,
+    )
+
+    assert doctor._topology_state(context) == doctor_state
 
 
 def test_split_brain_install_probe_checks_ref_markers_origin_and_integrity(context):

@@ -9,19 +9,40 @@ Use this skill when someone wants the latest Dex capabilities or asks what an up
 
 ## The one route
 
-Every lifecycle operation goes through `core.lifecycle.service` version 1.0.0. Treat its response as authoritative. Do not fall back to direct file operations, Git mutation, an update script, or a hand-built repair when the service refuses.
+Every lifecycle operation goes through `core.lifecycle.service` version 1.1.0. Treat its response as authoritative. Do not fall back to direct file operations, Git mutation, an update script, or a hand-built repair when the service refuses.
 
 Use the service operations in this order:
 
-1. Ask `build_inventory_and_plan` for the verified inventory and ledger-aware plan.
-2. Render the five groups below without changing anything.
-3. For safe `adopt` items, ask `build_and_preview_adoption` for the exact preview and approval token.
-4. For conflict items, collect the choices below. Keep mine and Compare are read-only; Take theirs and Keep both go through `build_and_preview_conflict_resolution`.
-5. Show every proposed file from each preview. Execution requires an explicit yes to that exact preview.
-6. Pass unchanged adoption previews and tokens to `execute_approved_adoption`, and unchanged resolution previews and tokens to `execute_approved_conflict_resolution`.
-7. Ask `read_lifecycle_state` for the verified post-update state and retention warning, then render every receipt.
+1. Ask `build_and_preview_topology_migration` to check the installed layout as part of the normal update read.
+2. If it reports the older combined layout, follow the one-time migration branch below before reading the ordinary update plan.
+3. Ask `build_inventory_and_plan` for the verified inventory and ledger-aware plan.
+4. Render the five groups below without changing anything.
+5. For safe `adopt` items, ask `build_and_preview_adoption` for the exact preview and approval token.
+6. For conflict items, collect the choices below. Keep mine and Compare are read-only; Take theirs and Keep both go through `build_and_preview_conflict_resolution`.
+7. Show every proposed file from each preview. Execution requires an explicit yes to that exact preview.
+8. Pass unchanged adoption previews and tokens to `execute_approved_adoption`, and unchanged resolution previews and tokens to `execute_approved_conflict_resolution`.
+9. Ask `read_lifecycle_state` for the verified post-update state and retention warning, then render every receipt.
 
 If the service reports UNKNOWN, conflict, changed evidence, an unsafe path, or a rejected transaction, stop. Explain the refusal in ordinary language and leave the vault untouched. A refusal is a safety result, not an invitation to work around the engine.
+
+## One-time brain and vault upgrade
+
+The topology check can report that this Dex still keeps the product and the user's notes in one combined history. In that case, the service runs the shipped migrator in `dry-run` mode. This only prepares the local report; it does not start the move.
+
+Render the topology preview in the same five groups used for the ordinary update. The proposed move appears under **Needs your review**. Show the complete report returned by the service and explain:
+
+- Dex will separate its own product history from the user's private vault history.
+- Notes, tasks, projects, people, and custom additions stay where they are.
+- The new private vault history gets no remote, so Dex does not upload it.
+- The old combined history becomes the local undo archive named in the final receipt.
+
+Ask: “Make this exact one-time change?” Only an explicit yes to this displayed report authorizes the move. The earlier request to “update Dex” is not approval. Pass the unchanged preview and approval token to `execute_approved_topology_migration`.
+
+The lifecycle service owns the conversion and recovery loop. If the migrator returns exit code 75, the service routes it through resume until the bounded work is complete. Never run `--auto`, `--resume`, or the migrator directly from this skill.
+
+After success, show the topology receipt, including its transaction identifier, final report, undo archive when present, and each auto/resume attempt. Ask `build_and_preview_topology_migration` again and continue with the ordinary update only when it reports the split as complete.
+
+If the dry-run fails, the report changes before approval, approval is missing, conversion stops, or the final split cannot be proved, show the service refusal and stop. Do not improvise a repair.
 
 ## Five-group preview
 

@@ -46,6 +46,14 @@
     "execute_approved_archive_removal": {
       "request": {"$ref": "#/$defs/archiveExecuteRequest"},
       "response": {"$ref": "#/$defs/archiveExecuteResponse"}
+    },
+    "build_and_preview_topology_migration": {
+      "request": {"$ref": "#/$defs/vaultRequest"},
+      "response": {"$ref": "#/$defs/topologyPreviewResponse"}
+    },
+    "execute_approved_topology_migration": {
+      "request": {"$ref": "#/$defs/topologyExecuteRequest"},
+      "response": {"$ref": "#/$defs/topologyExecuteResponse"}
     }
   },
   "$defs": {
@@ -433,6 +441,137 @@
         "api_version": {"const": "1.1.0"},
         "ledger_state": {"$ref": "#/$defs/ledgerState"},
         "retention": {"$ref": "#/$defs/retention"}
+      }
+    },
+    "topologyGroupItem": {
+      "type": "object",
+      "properties": {
+        "item_id": {"const": "brain-vault-topology"},
+        "status": {"type": "string"},
+        "report_path": {"$ref": "#/$defs/path"},
+        "report_sha256": {"$ref": "#/$defs/sha256"},
+        "byte_size": {"type": "integer", "minimum": 0},
+        "report_markdown": {"type": "string"}
+      }
+    },
+    "topologyGroup": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "title", "items"],
+      "properties": {
+        "id": {"type": "string", "minLength": 1},
+        "title": {"type": "string", "minLength": 1},
+        "items": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/topologyGroupItem"}
+        }
+      }
+    },
+    "topologyPreview": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["preview_version", "operation", "topology", "groups"],
+      "properties": {
+        "preview_version": {"const": 1},
+        "operation": {"const": "brain-vault-topology-migration"},
+        "topology": {"type": "string", "minLength": 1},
+        "groups": {
+          "type": "array",
+          "minItems": 5,
+          "items": {"$ref": "#/$defs/topologyGroup"}
+        }
+      }
+    },
+    "topologyPreviewResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["api_version", "topology", "preview", "approval_token"],
+      "properties": {
+        "api_version": {"const": "1.1.0"},
+        "topology": {"type": "string", "minLength": 1},
+        "preview": {"$ref": "#/$defs/topologyPreview"},
+        "approval_token": {
+          "anyOf": [
+            {"$ref": "#/$defs/sha256"},
+            {"type": "null"}
+          ]
+        }
+      }
+    },
+    "topologyExecuteRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["vault_root", "preview", "approved_token"],
+      "properties": {
+        "vault_root": {"$ref": "#/$defs/path"},
+        "preview": {"$ref": "#/$defs/topologyPreview"},
+        "approved_token": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "topologyAttempt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mode", "exit_code"],
+      "properties": {
+        "mode": {"type": "string", "minLength": 1},
+        "exit_code": {"type": "integer", "minimum": 0}
+      }
+    },
+    "topologyReceipt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "receipt_version",
+        "operation",
+        "transaction_id",
+        "topology_before",
+        "topology_after",
+        "preview_sha256",
+        "final_report_path",
+        "final_report_sha256",
+        "archive_ref",
+        "migration_started_at",
+        "attempts"
+      ],
+      "properties": {
+        "receipt_version": {"const": 1},
+        "operation": {"const": "brain-vault-topology-migration"},
+        "transaction_id": {
+          "type": "string",
+          "pattern": "^[0-9]{8}T[0-9]{6}-[0-9a-f]{8}$"
+        },
+        "topology_before": {"const": "combined"},
+        "topology_after": {"const": "post-split"},
+        "preview_sha256": {"$ref": "#/$defs/sha256"},
+        "final_report_path": {"$ref": "#/$defs/path"},
+        "final_report_sha256": {"$ref": "#/$defs/sha256"},
+        "archive_ref": {
+          "anyOf": [
+            {"$ref": "#/$defs/path"},
+            {"type": "null"}
+          ]
+        },
+        "migration_started_at": {
+          "anyOf": [
+            {"type": "string", "minLength": 1},
+            {"type": "null"}
+          ]
+        },
+        "attempts": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"$ref": "#/$defs/topologyAttempt"}
+        }
+      }
+    },
+    "topologyExecuteResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["api_version", "receipt", "receipt_path"],
+      "properties": {
+        "api_version": {"const": "1.1.0"},
+        "receipt": {"$ref": "#/$defs/topologyReceipt"},
+        "receipt_path": {"$ref": "#/$defs/path"}
       }
     }
   }

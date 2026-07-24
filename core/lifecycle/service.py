@@ -29,8 +29,11 @@ from core.lifecycle.conflict import (
 )
 from core.lifecycle.engine import (
     AdoptionReceipt,
+    TopologyMigrationError,
+    build_topology_migration_preview,
     execute_adoption,
     execute_conflict_resolution,
+    execute_topology_migration,
     rewind_acknowledgement_token,
     rewind_adoption,
 )
@@ -476,6 +479,34 @@ def execute_approved_conflict_resolution(
     )
 
 
+def build_and_preview_topology_migration(
+    vault_root: str | Path,
+) -> dict[str, object]:
+    """Detect topology and preview the one-time split without converting it."""
+    topology, preview, approval_token = build_topology_migration_preview(
+        Path(vault_root)
+    )
+    return _envelope(
+        topology=topology,
+        preview=preview,
+        approval_token=approval_token,
+    )
+
+
+def execute_approved_topology_migration(
+    vault_root: str | Path,
+    preview: Mapping[str, object],
+    approved_token: str,
+) -> dict[str, object]:
+    """Execute an exactly approved split and return its durable receipt."""
+    receipt, receipt_path = execute_topology_migration(
+        Path(vault_root),
+        preview,
+        approved_token,
+    )
+    return _envelope(receipt=receipt, receipt_path=receipt_path)
+
+
 __all__ = [
     "api_version",
     "build_inventory_and_plan",
@@ -487,4 +518,7 @@ __all__ = [
     "execute_approved_conflict_resolution",
     "build_archive_removal_preview",
     "execute_approved_archive_removal",
+    "build_and_preview_topology_migration",
+    "execute_approved_topology_migration",
+    "TopologyMigrationError",
 ]

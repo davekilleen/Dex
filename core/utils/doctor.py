@@ -2425,55 +2425,11 @@ def _regular_json(path: Path) -> dict[str, Any] | None:
 
 
 def _topology_state(context: DoctorContext) -> str:
-    vault_git = context.vault_root / ".git"
-    brain_git = context.vault_root / ".dex/brain.git"
-    topology = _regular_json(context.vault_root / "System/.dex/topology.json")
-    vault_marker = _regular_json(vault_git / "dex-vault-v2")
-    brain_marker = _regular_json(brain_git / "dex-brain-v2")
-    if topology and topology.get("topology") == "brain-vault-split":
-        environment = topology.get("environment")
-        wired_vault = environment.get("DEX_VAULT") if isinstance(environment, dict) else None
-        try:
-            vault_wiring_matches = (
-                isinstance(wired_vault, str)
-                and Path(wired_vault).resolve() == context.vault_root.resolve()
-            )
-        except OSError:
-            vault_wiring_matches = False
-        if (
-            topology.get("vaultGitDir") == ".git"
-            and topology.get("brainGitDir") == ".dex/brain.git"
-            and vault_wiring_matches
-            and vault_git.is_dir()
-            and not vault_git.is_symlink()
-            and brain_git.is_dir()
-            and not brain_git.is_symlink()
-            and vault_marker
-            and vault_marker.get("role") == "vault"
-            and brain_marker
-            and brain_marker.get("role") == "brain"
-        ):
-            return "post-split"
-        return "invalid-split"
-    migration_state = _regular_json(
-        context.vault_root / "System/.dex/migration-v2-state.json"
-    )
-    if migration_state and migration_state.get("status") != "complete":
-        return "migration-in-progress"
-    if any(
-        candidate.exists()
-        for candidate in (
-            context.vault_root / ".dex/pre-split-archive.git",
-            context.vault_root / ".dex/vault-staging.git",
-        )
-    ):
-        return "migration-in-progress"
-    migrator = context.vault_root / "core/migrations/v1-to-v2-brain-vault-split.cjs"
-    if vault_git.exists() and migrator.is_file() and not migrator.is_symlink():
-        return "migration-pending"
-    if not vault_git.exists():
-        return "zip-or-manual"
-    return "combined"
+    lifecycle_state = lifecycle_engine.topology_state(context.vault_root)
+    return {
+        "combined": "migration-pending",
+        "invalid-combined": "combined",
+    }.get(lifecycle_state, lifecycle_state)
 
 
 def _probe_vault_git(context: DoctorContext) -> ProbeResult:
@@ -2656,7 +2612,8 @@ def _probe_migration_pending(context: DoctorContext) -> ProbeResult:
     if topology == "migration-pending":
         return ProbeResult(
             "BROKEN",
-            "Dex needs its one-time brain/vault upgrade — run /dex-update; notes stay in place",
+            "Dex needs its one-time brain/vault upgrade. Run /dex-update to review "
+            "the preview and give explicit approval; notes stay in place until then",
         )
     if topology == "migration-in-progress":
         return ProbeResult(

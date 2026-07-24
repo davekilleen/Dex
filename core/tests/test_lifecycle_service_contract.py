@@ -254,6 +254,16 @@ def test_public_surface_requires_a_version_bump_and_bridge_to_change() -> None:
         "execute_approved_conflict_resolution",
         "build_archive_removal_preview",
         "execute_approved_archive_removal",
+        "build_and_preview_topology_migration",
+        "execute_approved_topology_migration",
+        "TopologyMigrationError",
+    ]
+    schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
+    assert list(schema["x-operations"])[-4:] == [
+        "build_archive_removal_preview",
+        "execute_approved_archive_removal",
+        "build_and_preview_topology_migration",
+        "execute_approved_topology_migration",
     ]
     assert "version bump" in service.__doc__.lower()
     assert "bridge" in service.__doc__.lower()

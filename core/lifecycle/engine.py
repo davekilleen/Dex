@@ -9,8 +9,11 @@ import os
 import posixpath
 import re
 import secrets
+import shutil
+import subprocess
 from collections.abc import Mapping
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -49,6 +52,19 @@ REWIND_RECEIPT_VERSION = 1
 CATALOG_RELATIVE = "System/.release-catalog.json"
 ADOPTION_RECEIPTS_RELATIVE = Path("System") / ".dex" / "adoptions"
 TRANSACTION_ID = re.compile(r"^[0-9]{8}T[0-9]{6}-[0-9a-f]{8}$")
+TOPOLOGY_MIGRATOR_RELATIVE = Path(
+    "core/migrations/v1-to-v2-brain-vault-split.cjs"
+)
+TOPOLOGY_REPORT_RELATIVE = Path("System/migration-report-v2.md")
+TOPOLOGY_RECEIPTS_RELATIVE = Path("System/.dex/topology-migrations")
+TOPOLOGY_OPERATION = "brain-vault-topology-migration"
+TOPOLOGY_GROUPS = (
+    ("new-and-safe-to-adopt", "New and safe to adopt"),
+    ("needs-your-review", "Needs your review"),
+    ("held-back-by-you", "Held back by you"),
+    ("could-not-be-proved", "Could not be proved"),
+    ("already-yours", "Already yours"),
+)
 
 
 class AdoptionExecutionError(RuntimeError):
@@ -69,6 +85,10 @@ class LifecycleLedgerPersistenceError(RuntimeError):
     Callers must not blanket-catch this error: the filesystem transaction has
     already committed and the user must be told how to repair its ledger.
     """
+
+
+class TopologyMigrationError(RuntimeError):
+    """The topology preview or conversion was refused or failed safely."""
 
 
 def _refuse(message: str) -> AdoptionExecutionError:
@@ -1371,6 +1391,409 @@ def execute_conflict_resolution(
     return receipt
 
 
+def _topology_refuse(message: str) -> TopologyMigrationError:
+    return TopologyMigrationError(f"topology migration refused: {message}")
+
+
+def _regular_json(path: Path) -> dict[str, Any] | None:
+    try:
+        if path.is_symlink() or not path.is_file():
+            return None
+        value = json.loads(path.read_text(encoding="utf-8"))
+        return value if isinstance(value, dict) else None
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        return None
+
+
+def topology_state(vault_root: Path) -> str:
+    """Classify the installed brain/vault layout without changing it."""
+    root = Path(vault_root)
+    vault_git = root / ".git"
+    brain_git = root / ".dex/brain.git"
+    topology = _regular_json(root / "System/.dex/topology.json")
+    vault_marker = _regular_json(vault_git / "dex-vault-v2")
+    brain_marker = _regular_json(brain_git / "dex-brain-v2")
+    if topology and topology.get("topology") == "brain-vault-split":
+        environment = topology.get("environment")
+        wired_vault = (
+            environment.get("DEX_VAULT")
+            if isinstance(environment, dict)
+            else None
+        )
+        try:
+            wiring_matches = (
+                isinstance(wired_vault, str)
+                and Path(wired_vault).resolve() == root.resolve()
+            )
+        except OSError:
+            wiring_matches = False
+        if (
+            topology.get("vaultGitDir") == ".git"
+            and topology.get("brainGitDir") == ".dex/brain.git"
+            and wiring_matches
+            and vault_git.is_dir()
+            and not vault_git.is_symlink()
+            and brain_git.is_dir()
+            and not brain_git.is_symlink()
+            and vault_marker
+            and vault_marker.get("role") == "vault"
+            and brain_marker
+            and brain_marker.get("role") == "brain"
+        ):
+            return "post-split"
+        return "invalid-split"
+
+    migration_state = _regular_json(
+        root / "System/.dex/migration-v2-state.json"
+    )
+    if migration_state and migration_state.get("status") != "complete":
+        return "migration-in-progress"
+    if any(
+        candidate.exists()
+        for candidate in (
+            root / ".dex/pre-split-archive.git",
+            root / ".dex/vault-staging.git",
+        )
+    ):
+        return "migration-in-progress"
+    migrator = root / TOPOLOGY_MIGRATOR_RELATIVE
+    if (
+        vault_git.is_dir()
+        and not vault_git.is_symlink()
+        and migrator.is_file()
+        and not migrator.is_symlink()
+    ):
+        return "combined"
+    if not vault_git.exists():
+        return "zip-or-manual"
+    return "invalid-combined"
+
+
+def _topology_groups(
+    *,
+    review_items: list[dict[str, object]] | None = None,
+    unknown_items: list[dict[str, object]] | None = None,
+    current_items: list[dict[str, object]] | None = None,
+) -> list[dict[str, object]]:
+    items_by_group = {
+        "needs-your-review": review_items or [],
+        "could-not-be-proved": unknown_items or [],
+        "already-yours": current_items or [],
+    }
+    return [
+        {
+            "id": group_id,
+            "title": title,
+            "items": items_by_group.get(group_id, []),
+        }
+        for group_id, title in TOPOLOGY_GROUPS
+    ]
+
+
+def _migrator_command(root: Path, mode: str) -> list[str]:
+    if mode not in {"--dry-run", "--auto", "--resume"}:
+        raise _topology_refuse(f"unsupported migrator mode {mode}")
+    migrator = root / TOPOLOGY_MIGRATOR_RELATIVE
+    if (
+        migrator.is_symlink()
+        or not migrator.is_file()
+        or not migrator.resolve().is_relative_to(root.resolve())
+    ):
+        raise _topology_refuse(
+            f"the shipped migrator is missing or unsafe at "
+            f"{TOPOLOGY_MIGRATOR_RELATIVE.as_posix()}"
+        )
+    node = shutil.which("node")
+    if node is None:
+        raise _topology_refuse("Node.js is unavailable, so Dex cannot run the preview")
+    return [node, str(migrator), mode]
+
+
+def _run_topology_migrator(
+    root: Path,
+    mode: str,
+) -> subprocess.CompletedProcess[str]:
+    try:
+        return subprocess.run(
+            _migrator_command(root, mode),
+            cwd=root,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except OSError as error:
+        raise _topology_refuse(
+            f"{mode.removeprefix('--')} could not start: {error}"
+        ) from error
+
+
+def _process_detail(result: subprocess.CompletedProcess[str]) -> str:
+    return " ".join(
+        (result.stderr or result.stdout or f"exit {result.returncode}").split()
+    )
+
+
+def _read_topology_report(root: Path) -> tuple[str, str, int]:
+    report_path = root / TOPOLOGY_REPORT_RELATIVE
+    if report_path.is_symlink() or not report_path.is_file():
+        raise _topology_refuse(
+            "the migrator did not produce a safe migration report"
+        )
+    try:
+        report_bytes = report_path.read_bytes()
+        report_markdown = report_bytes.decode("utf-8")
+    except (OSError, UnicodeDecodeError) as error:
+        raise _topology_refuse(f"the migration report is unreadable: {error}") from error
+    return (
+        report_markdown,
+        hashlib.sha256(report_bytes).hexdigest(),
+        len(report_bytes),
+    )
+
+
+def canonical_topology_preview_bytes(preview: Mapping[str, object]) -> bytes:
+    """Return canonical bytes for an exact topology approval preview."""
+    try:
+        return (
+            json.dumps(
+                preview,
+                ensure_ascii=False,
+                allow_nan=False,
+                sort_keys=True,
+                separators=(",", ":"),
+            )
+            + "\n"
+        ).encode("utf-8")
+    except (TypeError, ValueError) as error:
+        raise _topology_refuse(
+            f"the topology preview cannot be serialized canonically: {error}"
+        ) from error
+
+
+def topology_preview_sha256(preview: Mapping[str, object]) -> str:
+    return hashlib.sha256(canonical_topology_preview_bytes(preview)).hexdigest()
+
+
+def build_topology_migration_preview(
+    vault_root: Path,
+) -> tuple[str, dict[str, object], str | None]:
+    """Detect topology and build the dry-run report bound to later approval."""
+    root = Path(vault_root)
+    state = topology_state(root)
+    if state == "post-split":
+        preview = {
+            "preview_version": 1,
+            "operation": TOPOLOGY_OPERATION,
+            "topology": state,
+            "groups": _topology_groups(
+                current_items=[
+                    {
+                        "item_id": "brain-vault-topology",
+                        "status": "complete",
+                    }
+                ]
+            ),
+        }
+        return state, preview, None
+    if state != "combined":
+        raise _topology_refuse(
+            f"the current layout is {state}; Dex will not guess how to convert it"
+        )
+
+    report_existed = (root / TOPOLOGY_REPORT_RELATIVE).is_file()
+    result = _run_topology_migrator(root, "--dry-run")
+    if result.returncode != 0:
+        raise _topology_refuse(
+            f"dry-run failed with exit {result.returncode}: "
+            f"{_process_detail(result)}"
+        )
+    if not report_existed:
+        # The first run creates the report, changing the migrator's filesystem
+        # inventory. Stabilize once so execute's later exact re-proof compares
+        # against the same inventory and cannot reject an unchanged vault.
+        result = _run_topology_migrator(root, "--dry-run")
+        if result.returncode != 0:
+            raise _topology_refuse(
+                f"dry-run failed with exit {result.returncode}: "
+                f"{_process_detail(result)}"
+            )
+    report_markdown, report_sha256, byte_size = _read_topology_report(root)
+    preview = {
+        "preview_version": 1,
+        "operation": TOPOLOGY_OPERATION,
+        "topology": state,
+        "groups": _topology_groups(
+            review_items=[
+                {
+                    "item_id": "brain-vault-topology",
+                    "report_path": TOPOLOGY_REPORT_RELATIVE.as_posix(),
+                    "report_sha256": report_sha256,
+                    "byte_size": byte_size,
+                    "report_markdown": report_markdown,
+                }
+            ]
+        ),
+    }
+    return state, preview, topology_preview_sha256(preview)
+
+
+def _persist_topology_receipt(
+    root: Path,
+    receipt: dict[str, object],
+) -> str:
+    transaction_id = receipt["transaction_id"]
+    if not isinstance(transaction_id, str) or TRANSACTION_ID.fullmatch(
+        transaction_id
+    ) is None:
+        raise _topology_refuse("the migration receipt transaction id is invalid")
+    directory = root / TOPOLOGY_RECEIPTS_RELATIVE
+    for component in (root / "System", root / "System/.dex", directory):
+        if component.is_symlink() or (
+            component.exists() and not component.is_dir()
+        ):
+            raise _topology_refuse(
+                f"the migration receipt path is unsafe: {component}"
+            )
+    directory.mkdir(parents=True, exist_ok=True, mode=0o700)
+    os.chmod(directory, 0o700)
+    relative = TOPOLOGY_RECEIPTS_RELATIVE / f"{transaction_id}.receipt.json"
+    target = root / relative
+    temporary = directory / f".{target.name}.tmp-{os.getpid()}-{secrets.token_hex(8)}"
+    data = (
+        json.dumps(
+            receipt,
+            ensure_ascii=False,
+            allow_nan=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        + "\n"
+    ).encode("utf-8")
+    descriptor = None
+    try:
+        descriptor = os.open(
+            temporary,
+            os.O_WRONLY | os.O_CREAT | os.O_EXCL,
+            0o600,
+        )
+        view = memoryview(data)
+        while view:
+            view = view[os.write(descriptor, view) :]
+        os.fsync(descriptor)
+        os.close(descriptor)
+        descriptor = None
+        os.replace(temporary, target)
+        os.chmod(target, 0o600)
+        _fsync_directory(directory)
+    except BaseException:
+        if descriptor is not None:
+            os.close(descriptor)
+        try:
+            temporary.unlink()
+        except FileNotFoundError:
+            pass
+        raise
+    return relative.as_posix()
+
+
+def execute_topology_migration(
+    vault_root: Path,
+    preview: Mapping[str, object],
+    approved_token: str,
+) -> tuple[dict[str, object], str]:
+    """Re-prove one topology preview, convert, resume, and persist a receipt."""
+    if not isinstance(preview, Mapping):
+        raise _topology_refuse("preview must be an object")
+    preview_document = dict(preview)
+    expected_token = topology_preview_sha256(preview_document)
+    if not isinstance(approved_token, str) or not hmac.compare_digest(
+        approved_token,
+        expected_token,
+    ):
+        raise _topology_refuse(
+            "approval token does not match the exact canonical preview"
+        )
+    if (
+        preview_document.get("operation") != TOPOLOGY_OPERATION
+        or preview_document.get("topology") != "combined"
+    ):
+        raise _topology_refuse(
+            "only a combined-topology preview can authorize this conversion"
+        )
+
+    state, rebuilt, rebuilt_token = build_topology_migration_preview(vault_root)
+    if (
+        state != "combined"
+        or rebuilt_token is None
+        or not hmac.compare_digest(approved_token, rebuilt_token)
+        or canonical_topology_preview_bytes(rebuilt)
+        != canonical_topology_preview_bytes(preview_document)
+    ):
+        raise _topology_refuse(
+            "the dry-run report changed since approval; review a fresh preview"
+        )
+
+    root = Path(vault_root)
+    attempts: list[dict[str, object]] = []
+    mode = "--auto"
+    while True:
+        result = _run_topology_migrator(root, mode)
+        attempts.append(
+            {
+                "mode": mode.removeprefix("--"),
+                "exit_code": result.returncode,
+            }
+        )
+        if result.returncode == 75:
+            mode = "--resume"
+            continue
+        if result.returncode != 0:
+            raise _topology_refuse(
+                f"{mode.removeprefix('--')} failed with exit "
+                f"{result.returncode}: {_process_detail(result)}"
+            )
+        break
+
+    final_state = topology_state(root)
+    if final_state != "post-split":
+        raise _topology_refuse(
+            "the migrator exited successfully but the split topology "
+            f"could not be verified ({final_state})"
+        )
+    _report_markdown, final_report_sha256, _byte_size = _read_topology_report(root)
+    transaction_id = (
+        datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S")
+        + f"-{secrets.token_hex(4)}"
+    )
+    migration_state = _regular_json(
+        root / "System/.dex/migration-v2-state.json"
+    )
+    receipt: dict[str, object] = {
+        "receipt_version": 1,
+        "operation": TOPOLOGY_OPERATION,
+        "transaction_id": transaction_id,
+        "topology_before": "combined",
+        "topology_after": final_state,
+        "preview_sha256": approved_token,
+        "final_report_path": TOPOLOGY_REPORT_RELATIVE.as_posix(),
+        "final_report_sha256": final_report_sha256,
+        "archive_ref": (
+            ".dex/pre-split-archive.git"
+            if (root / ".dex/pre-split-archive.git").is_dir()
+            else None
+        ),
+        "migration_started_at": (
+            migration_state.get("startedAt")
+            if isinstance(migration_state, dict)
+            and isinstance(migration_state.get("startedAt"), str)
+            else None
+        ),
+        "attempts": attempts,
+    }
+    receipt_path = _persist_topology_receipt(root, receipt)
+    return receipt, receipt_path
+
+
 __all__ = [
     "AdoptionExecutionError",
     "AdoptionReceipt",
@@ -1387,4 +1810,10 @@ __all__ = [
     "load_adoption_receipt",
     "rewind_acknowledgement_token",
     "rewind_adoption",
+    "TopologyMigrationError",
+    "build_topology_migration_preview",
+    "canonical_topology_preview_bytes",
+    "execute_topology_migration",
+    "topology_preview_sha256",
+    "topology_state",
 ]
