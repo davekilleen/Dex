@@ -138,7 +138,7 @@ def test_linked_triple_has_stable_records_edges_and_groups(tmp_path: Path) -> No
     ) in edge_pairs
     assert (
         "System/folder-paths.yaml",
-        "Work/Projects",
+        "04-Projects",
         "literal-path",
     ) in edge_pairs
 
@@ -214,13 +214,15 @@ def test_hard_denied_customization_is_restricted_without_content_leak(
     secret = b"PRIVATE KEY SENTINEL MUST NEVER APPEAR"
     write_file(vault, ".claude/skills-custom/secret/fake.pem", secret)
 
+    discovery = assessment_inventory.discover(vault)
     assessment = assess(vault)
 
-    record = _records_by_path(assessment)[".claude/skills-custom/secret/fake.pem"]
+    record = _records_by_path(discovery)[".claude/skills-custom/secret/fake.pem"]
     assert record.live.model_readability == "restricted"
     assert record.live.sha256 is None
     assert record.live.byte_size is None
-    assert _groups_by_id(assessment)[record.customization_id] is AssessmentGroup.BLOCKED
+    assert _groups_by_id(discovery)[record.customization_id] is AssessmentGroup.BLOCKED
+    assert assessment.records == ()
     encoded = json.dumps(assessment_to_dict(assessment), sort_keys=True).encode()
     assert secret not in encoded
     assert hashlib.sha256(secret).hexdigest().encode() not in encoded
@@ -310,6 +312,10 @@ def test_assessment_outputs_never_leak_extracted_config_or_script_content(
     vault.mkdir()
     _install_verified_catalog(vault)
     fake_key = "sk-FAKELEAK123456789"
+    path_shaped_secrets = (
+        "tenant/SUPERSECRET0123456789",
+        ".scripts/xoxb-SLACKFAKE/inner",
+    )
     write_file(
         vault,
         ".mcp.json",
@@ -328,16 +334,30 @@ def test_assessment_outputs_never_leak_extracted_config_or_script_content(
     write_file(vault, "core/mcp-custom/local_server.py", b"TOOLS = ()\n")
     write_file(
         vault,
-        "System/integrations/custom.yaml",
-        f"token: {fake_key}\nhelper: .scripts/helper.py\n".encode(),
-    )
-    write_file(
-        vault,
         ".scripts/custom.py",
         (
             f'SECRET_LITERAL = "{fake_key}"\n'
             'HELPER = ".scripts/helper.py"\n'
+            f"PATH_SECRETS = {path_shaped_secrets!r}\n"
         ).encode(),
+    )
+    write_file(
+        vault,
+        ".scripts/custom.cjs",
+        (
+            f"const first = {json.dumps(path_shaped_secrets[0])};\n"
+            f"const second = {json.dumps(path_shaped_secrets[1])};\n"
+        ).encode(),
+    )
+    write_file(
+        vault,
+        "System/user-profile.yaml",
+        f"note: {path_shaped_secrets[0]}\n".encode(),
+    )
+    write_file(
+        vault,
+        ".claude/skills-custom/leak-check/SKILL.md",
+        f"```sh\necho {path_shaped_secrets[1]}\n```\n".encode(),
     )
     write_file(vault, ".scripts/helper.py", b"VALUE = 1\n")
     monkeypatch.setattr(
@@ -358,17 +378,85 @@ def test_assessment_outputs_never_leak_extracted_config_or_script_content(
             now=datetime(2026, 7, 24, tzinfo=timezone.utc),
         )
     )
-    encoded = json.dumps(
-        {
-            "assessment": assessment_to_dict(assessment),
-            "report": report,
-            "doctor": doctor_result.structured_detail,
-        },
-        sort_keys=True,
+    serialized_outputs = (
+        json.dumps(assessment_to_dict(assessment), sort_keys=True),
+        json.dumps(report, sort_keys=True),
+        json.dumps(doctor_result.structured_detail, sort_keys=True),
+        assessment.canonical_assessment_bytes().decode("utf-8"),
     )
 
-    assert fake_key not in encoded
+    assert all(fake_key not in encoded for encoded in serialized_outputs)
     assert all(fake_key not in edge.target for edge in assessment.edges)
+    for secret in path_shaped_secrets:
+        assert all(secret not in encoded for encoded in serialized_outputs)
+        assert all(secret not in edge.target for edge in assessment.edges)
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        ".claude/settings.json",
+        ".claude/settings.local.json",
+        "System/integrations/custom.yaml",
+    ],
+)
+def test_credential_bearing_configs_are_restricted_before_reference_read(
+    path: str,
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    _install_verified_catalog(vault)
+    write_file(vault, path, b'helper: ".scripts/must-not-be-read.py"\n')
+    original = assessment_inventory.bounded_read
+
+    def refuse_sensitive_read(root, candidate, *, max_bytes):
+        assert candidate != path
+        return original(root, candidate, max_bytes=max_bytes)
+
+    monkeypatch.setattr(assessment_inventory, "bounded_read", refuse_sensitive_read)
+
+    discovery = assessment_inventory.discover(vault)
+    record = _records_by_path(discovery)[path]
+
+    assert record.live.model_readability == "restricted"
+    assert not any(edge.source_path == path for edge in discovery.edges)
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        ".claude/settings.json",
+        ".claude/settings.local.json",
+        "System/integrations/custom.yaml",
+    ],
+)
+def test_reference_extractor_refuses_credential_bearing_configs(path: str) -> None:
+    raw = b'{"token": "tenant/SUPERSECRET0123456789"}'
+
+    assert extract_reference_edges(path, raw, skill_paths={}) == ()
+
+
+def test_mcp_reference_extractor_emits_env_names_but_not_values() -> None:
+    raw = json.dumps(
+        {
+            "mcpServers": {
+                "local": {
+                    "args": ["core/mcp-custom/local.py"],
+                    "env": {"SAFE_TOKEN_NAME": "tenant/SUPERSECRET0123456789"},
+                }
+            }
+        }
+    ).encode()
+
+    edges = extract_reference_edges(".mcp.json", raw, skill_paths={})
+
+    assert {edge.target for edge in edges} == {
+        "core/mcp-custom/local.py",
+        "env:SAFE_TOKEN_NAME",
+    }
+    assert all("SUPERSECRET" not in edge.target for edge in edges)
 
 
 def test_standalone_custom_script_is_not_silently_omitted(tmp_path: Path) -> None:
@@ -407,12 +495,13 @@ def test_trusted_mcp_rehashes_live_bytes_and_blocks_stale_trust(
         raising=False,
     )
 
+    discovery = assessment_inventory.discover(vault)
     assessment = assess(vault)
 
-    record = _records_by_path(assessment)[path]
+    record = _records_by_path(discovery)[path]
     assert record.live.model_readability == "excluded"
     assert record.live.sha256 is None
-    assert _groups_by_id(assessment)[record.customization_id] is AssessmentGroup.BLOCKED
+    assert _groups_by_id(discovery)[record.customization_id] is AssessmentGroup.BLOCKED
     assert assessment.completeness == "UNKNOWN"
     assert trusted_hash.encode() not in assessment.canonical_assessment_bytes()
 
@@ -440,9 +529,10 @@ def test_trusted_mcp_never_leaks_registry_hash_for_hard_denied_path(
         raising=False,
     )
 
+    discovery = assessment_inventory.discover(vault)
     assessment = assess(vault)
 
-    record = _records_by_path(assessment)[path]
+    record = _records_by_path(discovery)[path]
     assert record.live.model_readability == "restricted"
     assert record.live.sha256 is None
     assert registry_hash.encode() not in assessment.canonical_assessment_bytes()
@@ -457,12 +547,14 @@ def test_embedded_secret_in_allowed_script_is_restricted_and_blocked(
     secret = b'API_KEY = "sk-live-SENTINEL0123456789"\n'
     write_file(vault, ".scripts/secret.py", secret)
 
+    discovery = assessment_inventory.discover(vault)
     assessment = assess(vault)
 
-    record = _records_by_path(assessment)[".scripts/secret.py"]
+    record = _records_by_path(discovery)[".scripts/secret.py"]
     assert record.live.model_readability == "restricted"
     assert record.live.sha256 is None
-    assert _groups_by_id(assessment)[record.customization_id] is AssessmentGroup.BLOCKED
+    assert _groups_by_id(discovery)[record.customization_id] is AssessmentGroup.BLOCKED
+    assert assessment.records == ()
     assert secret not in assessment.canonical_assessment_bytes()
 
 
@@ -496,10 +588,12 @@ def test_reference_through_symlinked_parent_is_missing_and_blocked(
     (vault / "linked").symlink_to(outside, target_is_directory=True)
     write_file(vault, ".scripts/custom.py", b'TARGET = "linked/target.json"\n')
 
+    discovery = assessment_inventory.discover(vault)
     assessment = assess(vault)
 
-    record = _records_by_path(assessment)[".scripts/custom.py"]
-    assert _groups_by_id(assessment)[record.customization_id] is AssessmentGroup.BLOCKED
+    record = _records_by_path(discovery)[".scripts/custom.py"]
+    assert _groups_by_id(discovery)[record.customization_id] is AssessmentGroup.BLOCKED
+    assert assessment.records == ()
 
 
 def test_remapped_edge_source_recomputes_its_stable_edge_id(
@@ -601,6 +695,12 @@ def test_dependency_tree_is_excluded_instead_of_becoming_customizations(
         "dependency-tree-excluded",
     ) in {(item.path, item.reason) for item in assessment.exclusions}
     assert assessment.completeness == "UNKNOWN"
+    assert assessment.records == ()
+    assert assessment.edges == ()
+    assert assessment.groups == ()
+    assert assessment.identity.inventory_path_count == 0
+    assert assessment.identity.customization_count == 0
+    assert assessment.identity.edge_count == 0
 
 
 def test_remapped_edge_target_uses_same_canonical_path_as_its_record(
@@ -680,6 +780,201 @@ def test_remapped_edge_target_uses_same_canonical_path_as_its_record(
     assert "04-Projects/custom.py" in _records_by_path(assessment)
 
 
+def test_missing_proved_target_edge_id_is_stable_across_folder_remap(
+    tmp_path: Path,
+) -> None:
+    edge_ids: list[str] = []
+    for name, target, folder_map in (
+        ("default", "04-Projects/missing.md", None),
+        ("remapped", "Work/Projects/missing.md", b'projects: "Work/Projects"\n'),
+    ):
+        vault = tmp_path / name
+        vault.mkdir()
+        _install_verified_catalog(vault)
+        if folder_map is not None:
+            write_file(vault, "System/folder-paths.yaml", folder_map)
+        write_file(
+            vault,
+            ".claude/skills-custom/caller/SKILL.md",
+            f"[missing]({target})\n".encode(),
+        )
+
+        assessment = assess(vault)
+        edge = next(
+            edge
+            for edge in assessment.edges
+            if edge.source_path == ".claude/skills-custom/caller/SKILL.md"
+            and edge.edge_kind.value == "markdown-link"
+        )
+        assert edge.target == "04-Projects/missing.md"
+        edge_ids.append(edge.edge_id)
+
+    assert edge_ids[0] == edge_ids[1]
+
+
+def test_inferred_missing_target_digest_is_stable_across_folder_remap(
+    tmp_path: Path,
+) -> None:
+    edge_targets: list[str] = []
+    edge_ids: list[str] = []
+    for name, target, folder_map in (
+        ("default", "04-Projects/missing.md", None),
+        ("remapped", "Work/Projects/missing.md", b'projects: "Work/Projects"\n'),
+    ):
+        vault = tmp_path / name
+        vault.mkdir()
+        _install_verified_catalog(vault)
+        if folder_map is not None:
+            write_file(vault, "System/folder-paths.yaml", folder_map)
+        write_file(vault, ".scripts/caller.py", f"TARGET = {target!r}\n".encode())
+
+        assessment = assess(vault)
+        edge = next(
+            edge
+            for edge in assessment.edges
+            if edge.source_path == ".scripts/caller.py"
+            and edge.edge_kind.value == "literal-path"
+        )
+        edge_targets.append(edge.target)
+        edge_ids.append(edge.edge_id)
+
+    expected = hashlib.sha256(b"04-Projects/missing.md").hexdigest()[:12]
+    assert edge_targets == [f"unresolved:{expected}", f"unresolved:{expected}"]
+    assert edge_ids[0] == edge_ids[1]
+
+
+def test_reference_file_budget_stops_before_uninspected_candidate(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    _install_verified_catalog(vault)
+    write_file(vault, ".scripts/a.py", b"VALUE=1\n")
+    write_file(vault, ".scripts/b.py", b"VALUE=2\n")
+    monkeypatch.setattr(assessment_inventory, "MAX_REFERENCE_FILES", 1)
+
+    discovery = assessment_inventory.discover(vault)
+    assessment = assess(vault)
+    budget = next(
+        item
+        for item in discovery.exclusions
+        if item.reason == "reference-budget-exhausted"
+    )
+
+    assert budget.uninspected_count == 1
+    assert assessment.completeness == "UNKNOWN"
+    assert assessment.records == ()
+
+
+def test_reference_byte_budget_allows_exact_boundary_then_stops(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    _install_verified_catalog(vault)
+    write_file(vault, ".scripts/a.py", b"VALUE=1\n")
+    write_file(vault, ".scripts/b.py", b"VALUE=2\n")
+    monkeypatch.setattr(assessment_inventory, "MAX_TOTAL_SOURCE_BYTES", 8)
+
+    discovery = assessment_inventory.discover(vault)
+    budget = next(
+        item
+        for item in discovery.exclusions
+        if item.reason == "reference-budget-exhausted"
+    )
+
+    assert budget.uninspected_count == 1
+    assert _records_by_path(discovery)[".scripts/a.py"].live.byte_size == 8
+
+
+def test_reference_byte_budget_counts_sources_rejected_after_read(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    _install_verified_catalog(vault)
+    secret = b'API_KEY = "sk-live-SENTINEL0123456789"\n'
+    write_file(vault, ".scripts/a-secret.py", secret)
+    write_file(vault, ".scripts/b.py", b"VALUE=2\n")
+    monkeypatch.setattr(assessment_inventory, "MAX_TOTAL_SOURCE_BYTES", len(secret))
+
+    discovery = assessment_inventory.discover(vault)
+    budget = next(
+        item
+        for item in discovery.exclusions
+        if item.reason == "reference-budget-exhausted"
+    )
+
+    assert budget.uninspected_count == 1
+
+
+def test_reference_byte_budget_uses_live_descriptor_size(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    _install_verified_catalog(vault)
+    write_file(vault, ".scripts/a.py", b"x")
+    monkeypatch.setattr(assessment_inventory, "MAX_TOTAL_SOURCE_BYTES", 1)
+    original = assessment_inventory.bounded_read
+    grown = False
+
+    def grow_before_assessment_read(root, path, *, max_bytes):
+        nonlocal grown
+        if path == ".scripts/a.py" and not grown:
+            grown = True
+            (root / path).write_bytes(b"xx")
+        return original(root, path, max_bytes=max_bytes)
+
+    monkeypatch.setattr(
+        assessment_inventory,
+        "bounded_read",
+        grow_before_assessment_read,
+    )
+
+    discovery = assessment_inventory.discover(vault)
+    budget = next(
+        item
+        for item in discovery.exclusions
+        if item.reason == "reference-budget-exhausted"
+    )
+
+    assert budget.uninspected_count == 1
+
+
+def test_reference_file_budget_counts_failed_read_attempts(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    _install_verified_catalog(vault)
+    write_file(vault, ".scripts/a.py", b"VALUE=1\n")
+    write_file(vault, ".scripts/b.py", b"VALUE=2\n")
+    original = assessment_inventory.bounded_read
+
+    def fail_custom_reads(root, path, *, max_bytes):
+        if path.startswith(".scripts/"):
+            raise assessment_inventory.FilesystemInspectionError("read failed")
+        return original(root, path, max_bytes=max_bytes)
+
+    monkeypatch.setattr(assessment_inventory, "MAX_REFERENCE_FILES", 1)
+    monkeypatch.setattr(assessment_inventory, "bounded_read", fail_custom_reads)
+
+    discovery = assessment_inventory.discover(vault)
+    budget = next(
+        item
+        for item in discovery.exclusions
+        if item.reason == "reference-budget-exhausted"
+    )
+
+    assert budget.uninspected_count == 1
+
+
 def test_trusted_mcp_is_blocked_when_static_dependency_is_missing(
     monkeypatch,
     tmp_path: Path,
@@ -717,8 +1012,8 @@ def test_trusted_mcp_is_blocked_when_static_dependency_is_missing(
     "raw",
     [
         b"export ACCESS_TOKEN=abcdefghijklmno123456\n",
-        b'GITHUB_TOKEN = "ghp_abcdefghijklmnopqrstuvwxyz123456"\n',
-        b"AWS_ACCESS_KEY_ID=AKIAABCDEFGHIJKLMNOP\n",
+        b'GITHUB_TOKEN = "gh' b'p_abcdefghijklmnopqrstuvwxyz123456"\n',
+        b"AWS_ACCESS_KEY_ID=AK" b"IAABCDEFGHIJKLMNOP\n",
         b'AUTHORIZATION = "Bearer abcdefghijklmnopqrstuvwxyz123456"\n',
     ],
 )
@@ -731,7 +1026,8 @@ def test_common_embedded_secret_forms_are_restricted(
     _install_verified_catalog(vault)
     write_file(vault, ".scripts/secret.sh", raw)
 
-    record = _records_by_path(assess(vault))[".scripts/secret.sh"]
+    discovery = assessment_inventory.discover(vault)
+    record = _records_by_path(discovery)[".scripts/secret.sh"]
 
     assert record.live.model_readability == "restricted"
     assert record.live.sha256 is None
@@ -800,7 +1096,8 @@ def test_credential_named_path_is_restricted_before_reader_is_called(
 
     monkeypatch.setattr(assessment_inventory, "bounded_read", refuse_credential_read)
 
-    record = _records_by_path(assess(vault))[".scripts/credentials.json"]
+    discovery = assessment_inventory.discover(vault)
+    record = _records_by_path(discovery)[".scripts/credentials.json"]
 
     assert record.live.model_readability == "restricted"
     assert record.live.sha256 is None
@@ -997,12 +1294,14 @@ def test_incoming_reference_to_canonical_collision_is_blocked(
     )
     monkeypatch.setattr(assessment_inventory, "_load_trusted_registry", lambda _root: None)
 
+    discovery = assessment_inventory.discover(vault)
     assessment = assess(vault)
 
-    record = _records_by_path(assessment)[
+    record = _records_by_path(discovery)[
         ".claude/skills-custom/caller/SKILL.md"
     ]
-    assert _groups_by_id(assessment)[record.customization_id] is AssessmentGroup.BLOCKED
+    assert _groups_by_id(discovery)[record.customization_id] is AssessmentGroup.BLOCKED
+    assert assessment.records == ()
 
 
 def test_multilevel_relative_python_import_resolves_from_parent_package(

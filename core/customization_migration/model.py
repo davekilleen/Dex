@@ -256,6 +256,7 @@ class ReferenceEdge:
             raise ValueError("reference target must be a non-empty string")
         symbolic = (
             re.fullmatch(r"env:[A-Z][A-Z0-9_]*", self.target)
+            or re.fullmatch(r"unresolved:[0-9a-f]{12}", self.target)
             or re.fullmatch(
                 r"python:(?:[A-Za-z_][A-Za-z0-9_]*)(?:\.[A-Za-z_][A-Za-z0-9_]*)*",
                 self.target,
@@ -313,6 +314,7 @@ class ReferenceEdge:
 class AssessmentExclusion:
     path: str
     reason: str
+    uninspected_count: int | None = None
 
     def __post_init__(self) -> None:
         _canonical_path(self.path)
@@ -327,11 +329,25 @@ class AssessmentExclusion:
             "dependency-tree-excluded",
             "canonical-path-collision",
             "invalid-trust-registry",
+            "reference-budget-exhausted",
         }:
             raise ValueError("exclusion reason is not a closed authority value")
+        if self.uninspected_count is not None and (
+            type(self.uninspected_count) is not int or self.uninspected_count < 1
+        ):
+            raise ValueError("uninspected_count must be a positive integer or null")
+        if (
+            self.reason == "reference-budget-exhausted"
+        ) != (self.uninspected_count is not None):
+            raise ValueError(
+                "only reference budget exclusions carry uninspected_count"
+            )
 
-    def to_dict(self) -> dict[str, str]:
-        return {"path": self.path, "reason": self.reason}
+    def to_dict(self) -> dict[str, object]:
+        result: dict[str, object] = {"path": self.path, "reason": self.reason}
+        if self.uninspected_count is not None:
+            result["uninspected_count"] = self.uninspected_count
+        return result
 
 
 @dataclass(frozen=True)
@@ -464,6 +480,17 @@ class Assessment:
             raise ValueError("identity customization_count does not match records")
         if self.identity.edge_count != len(self.edges):
             raise ValueError("identity edge_count does not match edges")
+        if self.completeness == "UNKNOWN" and (
+            self.records
+            or self.edges
+            or self.groups
+            or self.identity.inventory_path_count
+            or self.identity.customization_count
+            or self.identity.edge_count
+        ):
+            raise ValueError(
+                "unknown assessment cannot expose partial records, edges, groups, or counts"
+            )
 
     def to_dict(self) -> dict[str, object]:
         if self.completeness == "UNKNOWN":

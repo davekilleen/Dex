@@ -73,6 +73,16 @@ def validate_disposition_plan(
     items = tuple(plan_items)
     if any(type(item) is not DispositionPlanItem for item in items):
         raise TypeError("plan_items must contain DispositionPlanItem records")
+    if (
+        assessment.baseline_identity_state != "VERIFIED"
+        or assessment.completeness != "OK"
+        or assessment.verdict != "OK"
+    ):
+        return PlanValidation(
+            False,
+            "BROKEN",
+            ("assessment is not a verified complete evidence set",),
+        )
     expected_ids = {record.customization_id for record in assessment.records}
     counts = Counter(item.customization_id for item in items)
     actual_digest = hashlib.sha256(assessment.canonical_assessment_bytes()).hexdigest()

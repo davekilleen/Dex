@@ -41,6 +41,10 @@ def assessment_report(assessment: Assessment) -> dict[str, object]:
     group_counts = Counter(assignment.group.value for assignment in assessment.groups)
     edge_kind_counts = Counter(edge.edge_kind.value for edge in assessment.edges)
     confidence_counts = Counter(edge.confidence.value for edge in assessment.edges)
+    blocked_count = group_counts[AssessmentGroup.BLOCKED.value]
+    needs_interpretation_count = group_counts[
+        AssessmentGroup.NEEDS_INTERPRETATION.value
+    ]
     return {
         "schema_version": assessment.schema_version,
         "identity": assessment.identity.to_dict(),
@@ -49,6 +53,8 @@ def assessment_report(assessment: Assessment) -> dict[str, object]:
         "incomplete_reasons": list(assessment.incomplete_reasons),
         "completeness": assessment.completeness,
         "verdict": assessment.verdict,
+        "blocked_count": blocked_count,
+        "needs_interpretation_count": needs_interpretation_count,
         "counts": {
             "total": len(assessment.records),
             "kinds": {

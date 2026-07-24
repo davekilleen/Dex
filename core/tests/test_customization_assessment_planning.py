@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -13,7 +14,9 @@ from core.customization_migration.planning import (
     validate_disposition_plan,
 )
 from core.customization_migration.service import assess
+from core.customization_migration.model import AssessmentIdentity
 from core.tests.test_customization_assessment import _linked_customized_vault
+from core.tests.lifecycle_test_helpers import write_file, write_manifest
 
 
 def _plan_items(assessment):
@@ -91,3 +94,51 @@ def test_assessment_digest_drift_is_refused(tmp_path: Path) -> None:
 def test_disposition_is_closed(value: object) -> None:
     with pytest.raises((TypeError, ValueError)):
         DispositionPlanItem("cust-000000000000", value, "0" * 64)  # type: ignore[arg-type]
+
+
+def test_manifest_only_assessment_refuses_even_empty_plan(tmp_path: Path) -> None:
+    vault = tmp_path / "vault"
+    write_file(vault, ".claude/skills/daily-plan/SKILL.md", b"modified\n")
+    write_manifest(vault, [".claude/skills/daily-plan/SKILL.md"])
+
+    validation = validate_disposition_plan(assess(vault), ())
+
+    assert validation.accepted is False
+    assert validation.verdict == "BROKEN"
+    assert validation.errors == ("assessment is not a verified complete evidence set",)
+
+
+def test_truncated_assessment_refuses_even_empty_plan(tmp_path: Path) -> None:
+    complete = assess(_linked_customized_vault(tmp_path))
+    truncated = replace(
+        complete,
+        identity=AssessmentIdentity(complete.identity.release_version, 0, 0, 0),
+        incomplete_reasons=("walk-truncated",),
+        records=(),
+        edges=(),
+        groups=(),
+        completeness="UNKNOWN",
+        verdict="UNKNOWN",
+    )
+
+    validation = validate_disposition_plan(truncated, ())
+
+    assert validation.accepted is False
+    assert validation.verdict == "BROKEN"
+    assert validation.errors == ("assessment is not a verified complete evidence set",)
+
+
+def test_verified_complete_empty_assessment_keeps_current_plan_behavior(
+    tmp_path: Path,
+) -> None:
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    from core.tests.test_customization_assessment import _install_verified_catalog
+
+    _install_verified_catalog(vault)
+
+    validation = validate_disposition_plan(assess(vault), ())
+
+    assert validation.accepted is True
+    assert validation.verdict == "OK"
+    assert validation.errors == ()

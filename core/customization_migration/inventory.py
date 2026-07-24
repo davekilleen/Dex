@@ -20,11 +20,13 @@ from core.customization_migration.model import (
     CustomizationKind,
     CustomizationRecord,
     LiveInfo,
+    ReferenceConfidence,
     ReferenceEdge,
 )
 from core.customization_migration.references import (
     MAX_SOURCE_BYTES,
     extract_reference_edges,
+    is_reference_read_restricted_path,
 )
 from core.lifecycle.customizations import detect_customizations
 from core.lifecycle.filesystem import FilesystemInspectionError, bounded_read
@@ -32,6 +34,8 @@ from core.lifecycle.inventory import InventoryEntry, InventoryReport, build_inve
 
 SCRIPT_SUFFIXES = frozenset({".py", ".js", ".cjs", ".mjs", ".sh", ".bash", ".zsh"})
 CONFIG_SUFFIXES = frozenset({".json", ".yaml", ".yml", ".toml"})
+MAX_TOTAL_SOURCE_BYTES = 64 * 1024 * 1024
+MAX_REFERENCE_FILES = 2000
 USER_CONFIG_PATHS = frozenset(
     {
         ".claude/settings.json",
@@ -110,6 +114,7 @@ def _is_customization_bearing(path: str) -> bool:
         path == "CLAUDE-custom.md"
         or path == ".mcp.json"
         or path == "System/folder-paths.yaml"
+        or path.startswith("System/integrations/")
         or _is_custom_skill_path(path)
         or path.startswith(".claude/hooks/")
         or path.startswith("core/mcp-custom/")
@@ -157,13 +162,14 @@ def _contains_embedded_secret(raw: bytes) -> bool:
     return False
 
 
-def _is_secret_adjacent_path(path: str) -> bool:
-    """Mirror Doctor's credential-sensitive path refusal before any byte read."""
-    return any(
-        part.lower() == ".env"
-        or part.lower().startswith(".env.")
-        or "credential" in part.lower()
-        for part in PurePosixPath(path).parts
+def _is_pre_read_restricted(entry: InventoryEntry) -> bool:
+    return (
+        entry.denied
+        or portable_contract.is_denied(entry.actual_path)
+        or (
+            entry.actual_path != ".mcp.json"
+            and is_reference_read_restricted_path(entry.actual_path)
+        )
     )
 
 
@@ -193,52 +199,86 @@ def _kind_for(entry: InventoryEntry) -> CustomizationKind:
 def _safe_live(
     root: Path,
     entry: InventoryEntry,
-) -> tuple[LiveInfo, bytes | None, AssessmentExclusion | None]:
+    *,
+    max_read_bytes: int = MAX_SOURCE_BYTES,
+) -> tuple[
+    LiveInfo,
+    bytes | None,
+    AssessmentExclusion | None,
+    int | None,
+    bool,
+]:
     if entry.release_state == "stock-missing":
-        return LiveInfo(None, None, "missing"), None, None
-    if (
-        entry.denied
-        or portable_contract.is_denied(entry.actual_path)
-        or _is_secret_adjacent_path(entry.actual_path)
-    ):
+        return LiveInfo(None, None, "missing"), None, None, None, False
+    if _is_pre_read_restricted(entry):
         return (
             LiveInfo(None, None, "restricted"),
             None,
             AssessmentExclusion(entry.actual_path, "restricted"),
+            None,
+            False,
         )
     if entry.kind == "symlink":
         return (
             LiveInfo(None, None, "restricted"),
             None,
             AssessmentExclusion(entry.actual_path, "symlink-refused"),
+            None,
+            False,
         )
     if entry.kind != "file":
         return (
             LiveInfo(None, entry.size, "excluded"),
             None,
             AssessmentExclusion(entry.actual_path, "read-error"),
+            None,
+            False,
         )
     if entry.size is not None and entry.size > MAX_SOURCE_BYTES:
         return (
             LiveInfo(None, entry.size, "excluded"),
             None,
             AssessmentExclusion(entry.actual_path, "read-bound-exceeded"),
+            None,
+            False,
         )
+    effective_limit = min(MAX_SOURCE_BYTES, max_read_bytes)
     try:
-        raw = bounded_read(root, entry.actual_path, max_bytes=MAX_SOURCE_BYTES)
-    except FilesystemInspectionError:
+        raw = bounded_read(root, entry.actual_path, max_bytes=effective_limit)
+    except FilesystemInspectionError as error:
+        if (
+            effective_limit < MAX_SOURCE_BYTES
+            and str(error).startswith("bounded read exceeded")
+        ):
+            return (
+                LiveInfo(None, entry.size, "excluded"),
+                None,
+                None,
+                None,
+                True,
+            )
         return (
             LiveInfo(None, entry.size, "excluded"),
             None,
             AssessmentExclusion(entry.actual_path, "read-error"),
+            None,
+            False,
         )
     if _contains_embedded_secret(raw):
         return (
             LiveInfo(None, None, "restricted"),
             None,
             AssessmentExclusion(entry.actual_path, "embedded-secret"),
+            len(raw),
+            False,
         )
-    return LiveInfo(hashlib.sha256(raw).hexdigest(), len(raw), "readable"), raw, None
+    return (
+        LiveInfo(hashlib.sha256(raw).hexdigest(), len(raw), "readable"),
+        raw,
+        None,
+        len(raw),
+        False,
+    )
 
 
 def _skill_paths(entries: tuple[InventoryEntry, ...]) -> dict[str, str]:
@@ -263,6 +303,8 @@ def _target_resolves(
     actual_by_canonical: Mapping[str, str],
     ambiguous_canonical_paths: frozenset[str],
 ) -> bool:
+    if target.startswith("unresolved:"):
+        return False
     if target.startswith("outside-vault:"):
         return False
     if target.startswith("env:"):
@@ -305,10 +347,7 @@ def _target_resolves(
         return target.removeprefix("skill:") in skill_paths
     if target in ambiguous_canonical_paths:
         return False
-    return _path_exists_without_symlinks(
-        root,
-        actual_by_canonical.get(target, target),
-    )
+    return target in actual_by_canonical
 
 
 def _path_exists_without_symlinks(root: Path, relative: str) -> bool:
@@ -326,6 +365,19 @@ def _path_exists_without_symlinks(root: Path, relative: str) -> bool:
             return False
     return bool(parts) and (
         stat.S_ISREG(metadata.st_mode) or stat.S_ISDIR(metadata.st_mode)
+    )
+
+
+def _is_symbolic_target(target: str) -> bool:
+    return target.startswith(
+        (
+            "env:",
+            "outside-vault:",
+            "python:",
+            "python-relative:",
+            "skill:",
+            "unresolved:",
+        )
     )
 
 
@@ -450,43 +502,74 @@ def discover(vault_root: Path) -> DiscoveryResult:
     }
 
     skill_paths = _skill_paths(inventory.entries)
-    raw_by_path: dict[str, bytes] = {}
     live_by_path: dict[str, LiveInfo] = {}
-
-    def inspect(path: str) -> None:
-        if path in live_by_path:
-            return
-        entry = entries_by_path.get(path)
-        if entry is None:
-            return
-        if entry.canonical_path in colliding_canonical_paths:
-            return
-        live, raw, exclusion = _safe_live(root, entry)
-        if path in trusted_hashes and live.model_readability == "readable":
-            if live.sha256 == trusted_hashes[path]:
-                live = LiveInfo(live.sha256, None, "hash-only")
-            else:
-                live = LiveInfo(None, live.byte_size, "excluded")
-                exclusion = AssessmentExclusion(path, "trust-hash-mismatch")
-                raw = None
-        live_by_path[path] = live
-        if raw is not None:
-            raw_by_path[path] = raw
-        if exclusion is not None:
-            exclusions[(exclusion.path, exclusion.reason)] = exclusion
-
-    for path in sorted(candidate_paths):
-        inspect(path)
-
     all_edges: dict[str, ReferenceEdge] = {}
     processed: set[str] = set()
+    total_source_bytes = 0
+    reference_files = 0
+    budget_exhausted = False
     while True:
         pending = sorted(set(candidate_paths) - processed)
         if not pending:
             break
         for path in pending:
+            entry = entries_by_path.get(path)
+            if entry is None or entry.canonical_path in colliding_canonical_paths:
+                processed.add(path)
+                continue
+            would_read = (
+                entry.release_state != "stock-missing"
+                and not _is_pre_read_restricted(entry)
+                and entry.kind == "file"
+                and (entry.size is None or entry.size <= MAX_SOURCE_BYTES)
+            )
+            remaining_bytes = MAX_TOTAL_SOURCE_BYTES - total_source_bytes
+            if would_read and (
+                reference_files >= MAX_REFERENCE_FILES
+                or entry.size is None
+                or entry.size > remaining_bytes
+            ):
+                uninspected = len(set(candidate_paths) - processed)
+                exclusion = AssessmentExclusion(
+                    entry.canonical_path,
+                    "reference-budget-exhausted",
+                    uninspected,
+                )
+                exclusions[(exclusion.path, exclusion.reason)] = exclusion
+                budget_exhausted = True
+                break
+
             processed.add(path)
-            raw = raw_by_path.get(path)
+            if would_read:
+                reference_files += 1
+            live, raw, exclusion, bytes_read, live_budget_exhausted = _safe_live(
+                root,
+                entry,
+                max_read_bytes=remaining_bytes,
+            )
+            if live_budget_exhausted:
+                budget_exclusion = AssessmentExclusion(
+                    entry.canonical_path,
+                    "reference-budget-exhausted",
+                    len(set(candidate_paths) - processed) + 1,
+                )
+                exclusions[
+                    (budget_exclusion.path, budget_exclusion.reason)
+                ] = budget_exclusion
+                budget_exhausted = True
+                break
+            if bytes_read is not None:
+                total_source_bytes += bytes_read
+            if path in trusted_hashes and live.model_readability == "readable":
+                if live.sha256 == trusted_hashes[path]:
+                    live = LiveInfo(live.sha256, None, "hash-only")
+                else:
+                    live = LiveInfo(None, live.byte_size, "excluded")
+                    exclusion = AssessmentExclusion(path, "trust-hash-mismatch")
+                    raw = None
+            live_by_path[path] = live
+            if exclusion is not None:
+                exclusions[(exclusion.path, exclusion.reason)] = exclusion
             if raw is None:
                 continue
             for edge in extract_reference_edges(path, raw, skill_paths=skill_paths):
@@ -498,17 +581,47 @@ def discover(vault_root: Path) -> DiscoveryResult:
                     and PurePosixPath(edge.target).suffix.lower() in SCRIPT_SUFFIXES
                 ):
                     candidate_paths.add(edge.target)
-                    inspect(edge.target)
+            del raw
+        if budget_exhausted:
+            break
 
     edges = tuple(sorted(all_edges.values(), key=lambda edge: edge.edge_id))
     canonical_by_actual = {
         entry.actual_path: entry.canonical_path for entry in inventory.entries
     }
+    actual_by_canonical = {
+        entry.canonical_path: entry.actual_path
+        for entry in inventory.entries
+        if entry.kind in {"file", "directory"}
+        if entry.canonical_path not in colliding_canonical_paths
+    }
+    folder_map = getattr(inventory, "folder_map", None)
     canonical_edges_by_id: dict[str, ReferenceEdge] = {}
     for edge in edges:
+        canonical_source = canonical_by_actual.get(edge.source_path, edge.source_path)
+        if _is_symbolic_target(edge.target):
+            canonical_target = edge.target
+        elif folder_map is not None:
+            canonical_target = folder_map.canonicalize(edge.target)
+        else:
+            canonical_target = canonical_by_actual.get(edge.target, edge.target)
+        if (
+            edge.confidence is ReferenceConfidence.INFERRED
+            and not _is_symbolic_target(canonical_target)
+            and not _target_resolves(
+                root,
+                canonical_source,
+                canonical_target,
+                skill_paths,
+                actual_by_canonical,
+                colliding_canonical_paths,
+            )
+        ):
+            digest = hashlib.sha256(canonical_target.encode("utf-8")).hexdigest()[:12]
+            canonical_target = f"unresolved:{digest}"
         canonical = ReferenceEdge.create(
-            canonical_by_actual.get(edge.source_path, edge.source_path),
-            canonical_by_actual.get(edge.target, edge.target),
+            canonical_source,
+            canonical_target,
             edge.edge_kind,
             edge.confidence,
         )
@@ -553,11 +666,7 @@ def discover(vault_root: Path) -> DiscoveryResult:
         ordered_records,
         canonical_edges,
         skill_paths,
-        {
-            entry.canonical_path: entry.actual_path
-            for entry in inventory.entries
-            if entry.canonical_path not in colliding_canonical_paths
-        },
+        actual_by_canonical,
         colliding_canonical_paths,
     )
     accounted_paths = set(candidate_paths)

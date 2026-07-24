@@ -34,6 +34,28 @@ JS_REQUIRE = re.compile(r"\brequire\(\s*[\"']([^\"']+)[\"']\s*\)")
 YAML_SCALAR = re.compile(r"^[ \t]*[A-Za-z0-9_.-]+[ \t]*:[ \t]*(.+?)[ \t]*$")
 
 
+def is_reference_read_restricted_path(path: str) -> bool:
+    """Classify credential-bearing sources before callers read their bytes."""
+    parts = PurePosixPath(path).parts
+    secret_adjacent = any(
+        part.lower() == ".env"
+        or part.lower().startswith(".env.")
+        or "credential" in part.lower()
+        for part in parts
+    )
+    return (
+        path in {
+            ".claude/settings.json",
+            ".claude/settings.local.json",
+        }
+        or (
+            path.startswith("System/integrations/")
+            and PurePosixPath(path).suffix.lower() in {".yaml", ".yml"}
+        )
+        or secret_adjacent
+    )
+
+
 def _normalize_target(source_path: str, target: str) -> str | None:
     stripped = target.strip().strip("\"'")
     if not stripped or stripped.startswith(("http://", "https://", "#", "mailto:")):
@@ -116,7 +138,7 @@ def _markdown_edges(
         _path_edges(
             source_path,
             command_paths,
-            confidence=ReferenceConfidence.PROVED,
+            confidence=ReferenceConfidence.INFERRED,
         )
     )
     for skill_name in SKILL_MENTION.findall(text):
@@ -185,7 +207,7 @@ def _python_edges(source_path: str, text: str) -> list[ReferenceEdge]:
         _path_edges(
             source_path,
             paths,
-            confidence=ReferenceConfidence.PROVED,
+            confidence=ReferenceConfidence.INFERRED,
         )
     )
     return edges
@@ -284,7 +306,12 @@ def _config_edges(source_path: str, text: str) -> list[ReferenceEdge]:
     return _path_edges(
         source_path,
         paths,
-        confidence=ReferenceConfidence.PROVED,
+        confidence=(
+            ReferenceConfidence.PROVED
+            if source_path == "System/folder-paths.yaml"
+            or source_path.startswith(".claude/hooks/")
+            else ReferenceConfidence.INFERRED
+        ),
     )
 
 
@@ -295,6 +322,11 @@ def extract_reference_edges(
     skill_paths: Mapping[str, str],
 ) -> tuple[ReferenceEdge, ...]:
     """Extract deterministic edges from already safety-checked source bytes."""
+    # .mcp.json is the one credential-adjacent exception because it is the
+    # machinery's registration surface. Its structural walk emits env names,
+    # never env values or other non-name env tokens.
+    if source_path != ".mcp.json" and is_reference_read_restricted_path(source_path):
+        return ()
     if len(raw) > MAX_SOURCE_BYTES:
         raise ValueError("source exceeds the reference extraction bound")
     try:
@@ -309,14 +341,6 @@ def extract_reference_edges(
         edges = _mcp_edges(source_path, payload)
         unique = {edge.edge_id: edge for edge in edges}
         return tuple(sorted(unique.values(), key=lambda edge: edge.edge_id))
-    if source_path in {
-        ".claude/settings.json",
-        ".claude/settings.local.json",
-    } or (
-        source_path.startswith("System/integrations/")
-        and PurePosixPath(source_path).suffix.lower() in {".yaml", ".yml"}
-    ):
-        return ()
     suffix = PurePosixPath(source_path).suffix.lower()
     edges: list[ReferenceEdge] = []
     if suffix in {".md", ".markdown"} or PurePosixPath(source_path).name == "SKILL.md":
@@ -349,4 +373,8 @@ def extract_reference_edges(
     return tuple(sorted(unique.values(), key=lambda edge: edge.edge_id))
 
 
-__all__ = ["MAX_SOURCE_BYTES", "extract_reference_edges"]
+__all__ = [
+    "MAX_SOURCE_BYTES",
+    "extract_reference_edges",
+    "is_reference_read_restricted_path",
+]

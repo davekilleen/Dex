@@ -204,6 +204,7 @@ location updates leave alone."
 
 If completeness is `UNKNOWN`, render only the verdict and each `incomplete_reasons` code.
 Do not state or infer any customization count, and do not render a record list.
+When `blocked_count` is greater than zero, the first summary sentence must state that blocked count.
 
 Example register:
 

@@ -117,6 +117,7 @@ def test_manifest_only_probe_is_unknown_without_counts_or_records(
     assert "records" not in result.structured_detail
     assert "counts" not in result.structured_detail
     assert "customization_count" not in encoded
+    assert result.structured_detail["records_truncated"] is False
 
 
 def test_probe_persistence_detail_caps_record_listing_at_25(
@@ -139,3 +140,47 @@ def test_probe_persistence_detail_caps_record_listing_at_25(
     assert result.structured_detail["records_total"] == 26
     assert result.structured_detail["records_truncated"] is True
     assert len(result.structured_detail["records"]) == 25
+
+
+def test_probe_summary_leads_with_blocked_customizations(tmp_path: Path) -> None:
+    context = _context(tmp_path)
+    _install_verified_catalog(context.vault_root)
+    write_file(
+        context.vault_root,
+        ".scripts/custom.py",
+        b'TARGET = "missing/helper.py"\n',
+    )
+
+    result = doctor._probe_customization_assessment(context)
+
+    assert result.verdict == "OK"
+    assert result.detail == "Customization assessment completed: 1 customization, 1 blocked"
+    assert result.structured_detail["blocked_count"] == 1
+    assert result.structured_detail["needs_interpretation_count"] == 0
+
+
+def test_probe_summary_without_blocked_customizations(tmp_path: Path) -> None:
+    context = _context(tmp_path)
+    _install_verified_catalog(context.vault_root)
+
+    result = doctor._probe_customization_assessment(context)
+
+    assert result.verdict == "OK"
+    assert result.detail == "Customization assessment completed: 0 customizations"
+    assert result.structured_detail["blocked_count"] == 0
+    assert result.structured_detail["needs_interpretation_count"] == 0
+
+
+def test_doctor_skill_requires_blocked_count_in_first_summary_sentence() -> None:
+    skill = (
+        Path(__file__).resolve().parents[2]
+        / ".claude/skills/dex-doctor/SKILL.md"
+    ).read_text(encoding="utf-8")
+    section = skill.split("### Step 3b: Render the customization assessment", 1)[1].split(
+        "### Step 4:", 1
+    )[0]
+
+    assert (
+        "When `blocked_count` is greater than zero, the first summary sentence must "
+        "state that blocked count."
+    ) in section

@@ -44,20 +44,23 @@ def assess(vault_root: Path) -> Assessment:
     if not proved_complete and not reasons:
         reasons.add("inventory-incomplete")
     completeness = "OK" if proved_complete else "UNKNOWN"
+    public_records = discovery.records if completeness == "OK" else ()
+    public_edges = discovery.edges if completeness == "OK" else ()
+    public_groups = discovery.groups if completeness == "OK" else ()
     return Assessment(
         0,
         AssessmentIdentity(
             inventory.baseline.release_version,
-            len(inventory.entries),
-            len(discovery.records),
-            len(discovery.edges),
+            len(inventory.entries) if completeness == "OK" else 0,
+            len(public_records),
+            len(public_edges),
         ),
         inventory.baseline.identity_state,
         inventory.baseline.errors,
         tuple(sorted(reasons)),
-        discovery.records,
-        discovery.edges,
-        discovery.groups,
+        public_records,
+        public_edges,
+        public_groups,
         discovery.exclusions,
         completeness,
         "OK" if completeness == "OK" else "UNKNOWN",

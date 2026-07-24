@@ -1523,6 +1523,7 @@ def _customization_persistence_detail(
     detail = dict(authority)
     records = authority.get("records")
     if not isinstance(records, list):
+        detail["records_truncated"] = False
         return detail
     total = len(records)
     detail["records"] = records[:CUSTOMIZATION_RECORD_PERSISTENCE_CAP]
@@ -1566,9 +1567,11 @@ def _probe_customization_assessment(context: DoctorContext) -> ProbeResult:
         )
     count = assessment.identity.customization_count
     noun = "customization" if count == 1 else "customizations"
+    blocked_count = authority["blocked_count"]
+    blocked_suffix = f", {blocked_count} blocked" if blocked_count else ""
     return ProbeResult(
         "OK",
-        f"Customization assessment completed with {count} {noun}",
+        f"Customization assessment completed: {count} {noun}{blocked_suffix}",
         structured_detail=authority,
     )
 
