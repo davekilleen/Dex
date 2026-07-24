@@ -18,6 +18,7 @@ SHA256 = re.compile(r"^[0-9a-f]{64}$")
 CUSTOMIZATION_ID = re.compile(r"^cust-[0-9a-f]{12}$")
 EDGE_ID = re.compile(r"^dep-[0-9a-f]{12}$")
 SKILL_REFERENCE_TARGET = re.compile(r"^skill:[a-z0-9][a-z0-9-]*$")
+PACKAGE_REFERENCE_TARGET = re.compile(r"^package:[A-Za-z0-9@/_.-]{1,256}$")
 VERDICTS = frozenset({"OK", "OFF", "BROKEN", "UNKNOWN"})
 READABILITY = frozenset({"readable", "restricted", "excluded", "missing", "hash-only"})
 EXCLUSION_REASONS = frozenset(
@@ -30,6 +31,7 @@ EXCLUSION_REASONS = frozenset(
         "trust-hash-mismatch",
         "release-identity-unproved",
         "dependency-tree-excluded",
+        "embedded-repository",
         "canonical-path-collision",
         "invalid-trust-registry",
         "reference-budget-exhausted",
@@ -72,6 +74,8 @@ class EdgeKind(str, Enum):
     MARKDOWN_LINK = "markdown-link"
     LITERAL_PATH = "literal-path"
     ENV_VAR_NAME = "env-var-name"
+    LAUNCH_AGENT_TO_EXECUTABLE = "launch-agent-to-executable"
+    PACKAGE_DEPENDENCY = "package-dependency"
 
 
 class ReferenceConfidence(str, Enum):
@@ -148,6 +152,7 @@ class LiveInfo:
     sha256: str | None
     byte_size: int | None
     model_readability: str
+    executable: bool | None = None
 
     def __post_init__(self) -> None:
         if self.sha256 is not None and (
@@ -160,25 +165,36 @@ class LiveInfo:
             raise ValueError("live byte_size must be a non-negative integer or null")
         if self.model_readability not in READABILITY:
             raise ValueError("live model_readability is not a closed authority value")
+        if self.executable is not None and type(self.executable) is not bool:
+            raise ValueError("live executable must be a boolean or null")
         if self.model_readability == "readable" and (
             self.sha256 is None or self.byte_size is None
         ):
             raise ValueError("readable live content requires both hash and byte size")
         if self.model_readability in {"restricted", "missing"} and (
-            self.sha256 is not None or self.byte_size is not None
+            self.sha256 is not None
+            or self.byte_size is not None
+            or self.executable is not None
         ):
-            raise ValueError("restricted or missing content cannot expose hash or size")
+            raise ValueError(
+                "restricted or missing content cannot expose hash, size, or executable mode"
+            )
         if self.model_readability == "hash-only" and (
-            self.sha256 is None or self.byte_size is not None
+            self.sha256 is None
+            or self.byte_size is not None
+            or self.executable is not None
         ):
             raise ValueError("hash-only content exposes only a SHA-256")
 
     def to_dict(self) -> dict[str, object]:
-        return {
+        result: dict[str, object] = {
             "sha256": self.sha256,
             "byte_size": self.byte_size,
             "model_readability": self.model_readability,
         }
+        if self.executable is not None:
+            result["executable"] = self.executable
+        return result
 
 
 @dataclass(frozen=True)
@@ -284,6 +300,11 @@ class ReferenceEdge:
         _canonical_path(self.source_path)
         if not isinstance(self.target, str) or not self.target or "\x00" in self.target:
             raise ValueError("reference target must be a non-empty string")
+        if (
+            self.target.startswith("package:")
+            and PACKAGE_REFERENCE_TARGET.fullmatch(self.target) is None
+        ):
+            raise ValueError("package reference target is not canonical")
         symbolic = (
             re.fullmatch(r"env:[A-Z][A-Z0-9_]*", self.target)
             or re.fullmatch(r"unresolved:[0-9a-f]{12}", self.target)
@@ -297,6 +318,7 @@ class ReferenceEdge:
                 self.target,
             )
             or SKILL_REFERENCE_TARGET.fullmatch(self.target)
+            or PACKAGE_REFERENCE_TARGET.fullmatch(self.target)
             or self.target in {"outside-vault:absolute", "outside-vault:escape"}
         )
         if symbolic is None:

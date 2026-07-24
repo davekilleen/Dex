@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import ast
 import json
+import plistlib
 import posixpath
 import re
-from pathlib import PurePosixPath
+from pathlib import Path, PurePosixPath
 from typing import Iterable, Mapping
 
 from core.customization_migration.model import (
@@ -16,6 +17,7 @@ from core.customization_migration.model import (
 )
 
 MAX_SOURCE_BYTES = 1024 * 1024
+MAX_STRUCTURED_DEPTH = 64
 PATH_TOKEN = re.compile(
     r"(?<![A-Za-z0-9_.:/-])"
     r"((?:\.{0,2}/)?[A-Za-z0-9_.-]+/[A-Za-z0-9_./-]+)"
@@ -32,6 +34,23 @@ ENV_NAME = re.compile(
 )
 JS_REQUIRE = re.compile(r"\brequire\(\s*[\"']([^\"']+)[\"']\s*\)")
 YAML_SCALAR = re.compile(r"^[ \t]*[A-Za-z0-9_.-]+[ \t]*:[ \t]*(.+?)[ \t]*$")
+SHELL_WORD = re.compile(r"""(?:'[^']*'|"[^"]*"|[^\s;&|<>]+)""")
+REQUIREMENTS_NAME = re.compile(
+    r"^\s*([A-Za-z0-9_.-]{1,256})(?:\[[A-Za-z0-9_,.-]+\])?"
+    r"\s*(?:[<>=!~;@]|$)"
+)
+PACKAGE_NAME = re.compile(r"^[A-Za-z0-9@/_.-]{1,256}$")
+
+
+class ReferenceParseError(ValueError):
+    """A structural reference source could not be parsed safely."""
+
+
+def _load_json(value: str | bytes, description: str) -> object:
+    try:
+        return json.loads(value)
+    except (UnicodeDecodeError, json.JSONDecodeError, RecursionError) as error:
+        raise ReferenceParseError(f"{description} is malformed") from error
 
 
 def is_reference_read_restricted_path(path: str) -> bool:
@@ -118,6 +137,193 @@ def _path_edges(
             )
         )
     return edges
+
+
+def _shell_static_text(text: str) -> str:
+    """Blank shell words containing expansion before applying PATH_TOKEN."""
+    if text.startswith("#!"):
+        _, separator, remainder = text.partition("\n")
+        text = (" " * (len(text) - len(remainder) - len(separator))) + separator + remainder
+    return SHELL_WORD.sub(
+        lambda match: " " * len(match.group(0))
+        if "$" in match.group(0)
+        else match.group(0),
+        text,
+    )
+
+
+def _shell_edges(
+    source_path: str,
+    text: str,
+    skill_paths: Mapping[str, str],
+) -> list[ReferenceEdge]:
+    static_text = _shell_static_text(text)
+    edges = _path_edges(
+        source_path,
+        PATH_TOKEN.findall(static_text),
+        confidence=ReferenceConfidence.INFERRED,
+    )
+    for skill_name in SKILL_MENTION.findall(static_text):
+        target = skill_paths.get(skill_name)
+        if target is not None:
+            edges.append(
+                ReferenceEdge.create(
+                    source_path,
+                    target,
+                    EdgeKind.INSTRUCTIONS_TO_SKILL,
+                    ReferenceConfidence.INFERRED,
+                )
+            )
+    return edges
+
+
+def _plist_edges(source_path: str, raw: bytes) -> list[ReferenceEdge]:
+    try:
+        payload = plistlib.loads(raw)
+    except (plistlib.InvalidFileException, ValueError, TypeError) as error:
+        raise ReferenceParseError("launch-agent plist is malformed") from error
+    if not isinstance(payload, dict):
+        raise ReferenceParseError("launch-agent plist root must be a dictionary")
+    values: list[str] = []
+    arguments = payload.get("ProgramArguments")
+    if isinstance(arguments, list):
+        values.extend(value for value in arguments if isinstance(value, str))
+    working_directory = payload.get("WorkingDirectory")
+    if isinstance(working_directory, str):
+        values.append(working_directory)
+    paths = [
+        value
+        for value in values
+        if "$" not in value
+        and "\x00" not in value
+        and not value.startswith("-")
+        and "/" in value
+    ]
+    return [
+        edge
+        for edge in _path_edges(
+            source_path,
+            paths,
+            confidence=ReferenceConfidence.PROVED,
+            kind=EdgeKind.LAUNCH_AGENT_TO_EXECUTABLE,
+        )
+        if not edge.target.startswith("outside-vault:")
+    ]
+
+
+def _package_edges(source_path: str, text: str) -> list[ReferenceEdge]:
+    name = PurePosixPath(source_path).name
+    package_names: set[str] = set()
+    if name == "package.json":
+        payload = _load_json(text, "package manifest")
+        if not isinstance(payload, dict):
+            return []
+        for key in ("dependencies", "devDependencies"):
+            dependencies = payload.get(key)
+            if not isinstance(dependencies, dict):
+                continue
+            package_names.update(
+                dependency
+                for dependency in dependencies
+                if isinstance(dependency, str)
+                and PACKAGE_NAME.fullmatch(dependency) is not None
+            )
+    elif (
+        name == "requirements.txt"
+        or name.startswith("requirements-") and name.endswith(".txt")
+    ):
+        for raw_line in text.splitlines():
+            line = raw_line.split("#", 1)[0]
+            match = REQUIREMENTS_NAME.match(line)
+            if match is not None:
+                package_names.add(match.group(1))
+    return [
+        ReferenceEdge.create(
+            source_path,
+            f"package:{package_name}",
+            EdgeKind.PACKAGE_DEPENDENCY,
+            ReferenceConfidence.PROVED,
+        )
+        for package_name in sorted(package_names)
+    ]
+
+
+def _hook_commands(value: object, depth: int = 0) -> list[str]:
+    if depth > MAX_STRUCTURED_DEPTH:
+        raise ReferenceParseError("hook settings exceed the structural depth bound")
+    if isinstance(value, dict):
+        commands = [
+            nested
+            for key, nested in value.items()
+            if key == "command" and isinstance(nested, str)
+        ]
+        for nested in value.values():
+            commands.extend(_hook_commands(nested, depth + 1))
+        return commands
+    if isinstance(value, list):
+        return [
+            command
+            for nested in value
+            for command in _hook_commands(nested, depth + 1)
+        ]
+    return []
+
+
+def extract_settings_hook_edges(
+    source_path: str,
+    raw: bytes,
+    *,
+    known_paths: frozenset[str],
+) -> tuple[ReferenceEdge, ...]:
+    """Structurally extract existing hook targets without exposing commands."""
+    if source_path not in {
+        ".claude/settings.json",
+        ".claude/settings.local.json",
+    }:
+        raise ValueError("hook settings extractor only accepts Claude settings")
+    if len(raw) > MAX_SOURCE_BYTES:
+        raise ValueError("source exceeds the reference extraction bound")
+    payload = _load_json(raw, "hook settings")
+    if not isinstance(payload, dict):
+        return ()
+    hooks = payload.get("hooks")
+    paths = [
+        path
+        for command in _hook_commands(hooks)
+        for path in PATH_TOKEN.findall(_shell_static_text(command))
+    ]
+    edges = _path_edges(
+        source_path,
+        paths,
+        confidence=ReferenceConfidence.PROVED,
+        kind=EdgeKind.HOOK_TO_SCRIPT,
+    )
+    unique = {
+        edge.edge_id: edge
+        for edge in edges
+        if edge.target in known_paths
+    }
+    return tuple(sorted(unique.values(), key=lambda edge: edge.edge_id))
+
+
+def read_settings_hook_edges(
+    root: Path,
+    source_path: str,
+    *,
+    known_paths: frozenset[str],
+) -> tuple[ReferenceEdge, ...]:
+    """Bounded no-follow read dedicated to the structural hook extractor."""
+    from core.lifecycle.filesystem import FilesystemInspectionError, bounded_read
+
+    try:
+        raw = bounded_read(root, source_path, max_bytes=MAX_SOURCE_BYTES)
+    except FilesystemInspectionError:
+        return ()
+    return extract_settings_hook_edges(
+        source_path,
+        raw,
+        known_paths=known_paths,
+    )
 
 
 def _markdown_edges(
@@ -213,16 +419,22 @@ def _python_edges(source_path: str, text: str) -> list[ReferenceEdge]:
     return edges
 
 
-def _structured_values(value: object) -> list[str]:
+def _structured_values(value: object, depth: int = 0) -> list[str]:
+    if depth > MAX_STRUCTURED_DEPTH:
+        raise ReferenceParseError("configuration exceeds the structural depth bound")
     if isinstance(value, dict):
         return [
             item
             for key, nested in value.items()
             if key != "env"
-            for item in _structured_values(nested)
+            for item in _structured_values(nested, depth + 1)
         ]
     if isinstance(value, list):
-        return [item for nested in value for item in _structured_values(nested)]
+        return [
+            item
+            for nested in value
+            for item in _structured_values(nested, depth + 1)
+        ]
     return [value] if isinstance(value, str) else []
 
 
@@ -276,10 +488,7 @@ def _mcp_edges(source_path: str, payload: object) -> list[ReferenceEdge]:
 def _config_edges(source_path: str, text: str) -> list[ReferenceEdge]:
     values: list[str] = []
     if source_path.endswith(".json"):
-        try:
-            payload = json.loads(text)
-        except json.JSONDecodeError:
-            return []
+        payload = _load_json(text, "JSON configuration")
         values.extend(_structured_values(payload))
     else:
         for raw_line in text.splitlines():
@@ -289,10 +498,9 @@ def _config_edges(source_path: str, text: str) -> list[ReferenceEdge]:
                 continue
             value = match.group(1).strip()
             if value.startswith(("[", "{")):
-                try:
-                    values.extend(_structured_values(json.loads(value)))
-                except json.JSONDecodeError:
-                    continue
+                values.extend(
+                    _structured_values(_load_json(value, "structured YAML value"))
+                )
             else:
                 values.append(value.strip("\"'"))
     paths = [
@@ -329,24 +537,36 @@ def extract_reference_edges(
         return ()
     if len(raw) > MAX_SOURCE_BYTES:
         raise ValueError("source exceeds the reference extraction bound")
+    suffix = PurePosixPath(source_path).suffix.lower()
+    if suffix == ".plist":
+        edges = _plist_edges(source_path, raw)
+        unique = {edge.edge_id: edge for edge in edges}
+        return tuple(sorted(unique.values(), key=lambda edge: edge.edge_id))
     try:
         text = raw.decode("utf-8")
     except UnicodeDecodeError:
         return ()
     if source_path == ".mcp.json":
-        try:
-            payload = json.loads(text)
-        except json.JSONDecodeError:
-            return ()
+        payload = _load_json(text, "MCP configuration")
         edges = _mcp_edges(source_path, payload)
         unique = {edge.edge_id: edge for edge in edges}
         return tuple(sorted(unique.values(), key=lambda edge: edge.edge_id))
-    suffix = PurePosixPath(source_path).suffix.lower()
+    name = PurePosixPath(source_path).name
+    if (
+        name == "package.json"
+        or name == "requirements.txt"
+        or name.startswith("requirements-") and name.endswith(".txt")
+    ):
+        edges = _package_edges(source_path, text)
+        unique = {edge.edge_id: edge for edge in edges}
+        return tuple(sorted(unique.values(), key=lambda edge: edge.edge_id))
     edges: list[ReferenceEdge] = []
     if suffix in {".md", ".markdown"} or PurePosixPath(source_path).name == "SKILL.md":
         edges.extend(_markdown_edges(source_path, text, skill_paths))
     if suffix == ".py":
         edges.extend(_python_edges(source_path, text))
+    elif suffix in {".sh", ".bash", ".zsh"}:
+        edges.extend(_shell_edges(source_path, text, skill_paths))
     elif suffix in {".js", ".cjs", ".mjs"}:
         require_values = JS_REQUIRE.findall(text)
         literal_values = PATH_TOKEN.findall(text)
@@ -375,6 +595,9 @@ def extract_reference_edges(
 
 __all__ = [
     "MAX_SOURCE_BYTES",
+    "ReferenceParseError",
     "extract_reference_edges",
+    "extract_settings_hook_edges",
     "is_reference_read_restricted_path",
+    "read_settings_hook_edges",
 ]
