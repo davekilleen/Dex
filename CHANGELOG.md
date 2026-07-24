@@ -7,6 +7,19 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.74.0] — 🔌 Groundwork: connecting your other tools, tested against the real world (2026-07-24)
+
+Dex is getting a built-in way to connect the other tools you use — starting with Google Calendar and Linear — so it can work with what's in them instead of asking you to copy-paste. That doorway isn't open yet, but this release lands the machinery behind it, after a security review and live end-to-end testing with real Google and Linear accounts.
+
+**What this gets ready for you:**
+
+* **Your sign-ins will be stored sealed.** Keys and tokens are kept encrypted on your machine, and Dex refuses to save them at all if the safety wrapper around them can't be set up.
+* **Nothing gets trusted without proof.** A connection only counts as working after Dex has checked it live. And if you ever replace a key or reconnect an account, the new credential has to prove itself from scratch — it inherits nothing from the old one.
+* **Dead connections fail loudly, not quietly.** If a key is revoked or a sign-in expires, Dex tells you and stops using it, instead of limping along half-working.
+* **Google is asked for the minimum.** Calendar connections request read-only access to your calendar — the smallest permission that does the job. (Live testing caught Google rejecting the request because it didn't say what access it wanted; that's fixed and locked in with a test.)
+
+Nothing changes in day-to-day use yet — this is the foundation the connections feature will stand on.
+
 ## [1.73.0] — ✅ Every suggested connection gets its own yes or no (2026-07-24)
 
 Last release Dex started spotting connections between the people you know and offering them as suggestions. There was a rough edge worth fixing quickly: the moment you confirmed one connection on someone's page, Dex quietly stopped offering *new* ones for that person — and a suggestion you'd dismissed could later drift back. This tidies both.
