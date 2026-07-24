@@ -2370,6 +2370,19 @@ def test_integrations_check_only_task_sync_entries_through_adapter_runner(monkey
         return subprocess.CompletedProcess(command, 0, stdout='{"ok":true,"result":{"healthy":true}}\n', stderr="")
 
     monkeypatch.setattr(doctor.subprocess, "run", healthy_run)
+    # notion is enabled but has no automated checker: the probe must stay
+    # fail-closed (UNKNOWN naming notion), never report a clean bill of health
+    # for something it could not verify (see test_split_probe_regression).
+    with_unverifiable = doctor._probe_integrations_enabled(context)
+    assert with_unverifiable.verdict == "UNKNOWN"
+    assert "notion" in with_unverifiable.detail
+
+    config.write_text(
+        "todoist:\n"
+        "  enabled: true\n"
+        "  task_sync: true\n"
+        "  api_key_env_var: TODOIST_API_KEY\n"
+    )
     assert doctor._probe_integrations_enabled(context).verdict == "OK"
 
 

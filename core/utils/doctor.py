@@ -37,7 +37,6 @@ from core.lifecycle.plan import PlannedAction, ReasonCode, build_adoption_plan
 from core.transaction.engine import TX_ROOT_RELATIVE, PlanEntry
 from core.transaction.journal import Journal, JournalCorruptError
 from core.utils import preflight, release_channel
-from core.utils.integration_credentials import resolve_service_credentials
 
 VERDICTS = frozenset({"OK", "OFF", "BROKEN", "UNKNOWN"})
 DOCTOR_SAFE_PATH = "/usr/bin:/bin:/usr/sbin:/sbin"
@@ -3359,6 +3358,10 @@ def _task_sync_health_check(
     node = shutil.which("node")
     if not node:
         raise FileNotFoundError("node is required to run task-sync health checks")
+    # Lazy import: it needs PyYAML, and the doctor CLI must still emit JSON when
+    # yaml is not importable (test_cli_still_emits_json_when_yaml_is_not_importable).
+    from core.utils.integration_credentials import resolve_service_credentials
+
     credentials = resolve_service_credentials(name, settings, context.vault_root)
     runtime_settings = {**settings, **credentials}
     result = subprocess.run(
@@ -3432,11 +3435,17 @@ def _engine_integration_health(context: DoctorContext) -> tuple[list[dict[str, A
 def _probe_integrations_enabled(context: DoctorContext) -> ProbeResult:
     config_path = context.vault_root / "System" / "integrations" / "config.yaml"
     config = (_load_yaml(config_path) or {}) if config_path.exists() else {}
-    enabled = [(name, settings) for name, settings in _enabled_integrations(config) if settings.get("task_sync") is True]
+    enabled = list(_enabled_integrations(config))
 
     failures = []
     unknowns = []
     for name, settings in enabled:
+        # Only task-sync services have an automated checker (the adapters' health
+        # op). Anything else that is enabled must still fail CLOSED as
+        # "can't verify" — never silently drop it (test_split_probe_regression).
+        if settings.get("task_sync") is not True:
+            unknowns.append(f"{name}: no automated health check available")
+            continue
         try:
             healthy, detail = _task_sync_health_check(context, name, settings)
         except Exception as error:
