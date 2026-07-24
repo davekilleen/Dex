@@ -362,7 +362,11 @@ async function cmdSetKey(service, flags) {
     // and status derive verification strictly from successful probe rows.
     health.recordConnectionEvent(connId, 'probe', { ok: true });
   }
-  const note = probe === 'ok' ? ' Verified live.' : probe === 'failed' ? ' (probe failed — marked needs_reauth)' : '';
+  const note = probe === 'ok'
+    ? ' Verified live.'
+    : probe === 'failed'
+      ? ' (probe failed — marked needs_reauth)'
+      : ` (not yet verified — run: node connect.cjs probe ${connId})`;
   console.log(`✅ Stored ${descriptor.displayName}${alias ? ` (${connId})` : ''} key (encrypted) in ${store.credentialsDir()}/tokens/.${note}`);
 }
 

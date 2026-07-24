@@ -331,6 +331,26 @@ test('probe stamps only permanent auth failures and records every attempt withou
   }
 });
 
+test('a needs_reauth API-key connection can still be probed for recovery', async () => {
+  const connId = 'linear:probe-recovery';
+  const secret = 'RECOVERED-LINEAR-TOKEN';
+  store.saveApiKey(connId, { apiKey: secret }, { provider: 'linear', authMode: 'API_KEY' });
+  store.upsertConnection(connId, { status: 'needs_reauth', error: 'authentication_failed' });
+  let authorization;
+  try {
+    const result = await health.probeConnection(connId, {
+      fetchImpl: async (_url, options) => {
+        authorization = options.headers.Authorization;
+        return response(200, { data: { viewer: { id: 'viewer-1' } } });
+      },
+    });
+    assert.equal(result.ok, true);
+    assert.equal(authorization, secret);
+  } finally {
+    store.deleteToken(connId);
+  }
+});
+
 test('timeout, 429, and network probe failures stay unknown and never stamp needs_reauth', async () => {
   const cases = [
     [
@@ -497,6 +517,24 @@ test('set-key records a secret-free connect event', () => {
     assert.ok(!text.includes('CONNECT-SECRET'));
   } finally {
     store.deleteToken('linear:connect-ledger');
+  }
+});
+
+test('set-key says when a stored credential is not yet verified', () => {
+  const connId = 'linear:unverified-on-save';
+  const run = spawnSync(
+    'node',
+    [path.join(DIR, 'connect.cjs'), 'set-key', connId, '--no-probe'],
+    { env: childEnv, input: 'UNVERIFIED-SECRET\n', encoding: 'utf8' }
+  );
+  try {
+    assert.equal(run.status, 0, run.stderr);
+    assert.match(
+      run.stdout,
+      new RegExp(`not yet verified — run: node connect\\.cjs probe ${connId}`)
+    );
+  } finally {
+    store.deleteToken(connId);
   }
 });
 

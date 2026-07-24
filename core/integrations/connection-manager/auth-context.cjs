@@ -69,6 +69,12 @@ async function resolveAuthContext(service) {
     throw e;
   }
   if (token.kind === 'api_key') {
+    const reg = store.getConnection(service);
+    if (reg && reg.status === 'needs_reauth') {
+      const e = new Error(`${service} needs re-authentication. Run: node connect.cjs set-key ${service}`);
+      e.exitCode = 3;
+      throw e;
+    }
     store.touchUsed(service);
     return apiKeyContext(token, service);
   }

@@ -73,9 +73,21 @@ The original engine passed its live-account gate on 2026-07-24. Phase 2 adds Des
 judgment layer without changing the token accessor or encrypted-envelope
 contracts: stored credentials show as connected but unverified until a live
 probe succeeds, and only permanent refresh or 401/403-class probe evidence
-marks a connection `needs_reauth`. Phase 3 freezes the Desktop consumer
-contract and engine manifest. The post-Phase-2/3 Google + Linear rerun remains
-the final manual gate before any user-facing doorway can ship.
+marks a connection `needs_reauth`.
+
+`status` and `verified` answer different questions in `status --json`:
+
+- `verified: true` is durable evidence that the current credential epoch passed
+  a live probe at least once. A later failure does not erase that historical proof.
+- `status` is the connection's current health. A previously verified credential
+  can therefore correctly show `verified: true` alongside
+  `status: "needs_reauth"`.
+- Consumers must gate credential use on `status`, not `verified`.
+
+Phase 3 freezes the Desktop consumer contract and engine manifest. The
+post-Phase-2/3 Google + Linear live rerun passed on 2026-07-24 (recorded on
+PR #221); the remaining gate before any user-facing doorway ships is the
+Phase 5 security review.
 
 The held-back consumption surfaces remain outside this shipped engine:
 `/connect`, `dex-google`, `gog-mcp-launch`, and `render-dashboard.cjs`. Do not

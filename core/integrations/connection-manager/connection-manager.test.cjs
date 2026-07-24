@@ -304,6 +304,27 @@ test('dex-call: resolveAuthContext + buildRequest sign a request from a stored k
   store.deleteToken('dexcall-signed-test');
 });
 
+test('dex-call: a needs_reauth API-key connection is refused before a request', async () => {
+  const connId = 'linear:known-dead';
+  store.saveApiKey(connId, { apiKey: 'REVOKED-KEY' }, { provider: 'linear', authMode: 'API_KEY' });
+  store.upsertConnection(connId, { status: 'needs_reauth', error: 'authentication_failed' });
+  try {
+    await assert.rejects(authctx.resolveAuthContext(connId), (error) => {
+      assert.equal(error.exitCode, 3);
+      assert.match(error.message, new RegExp(`node connect\\.cjs set-key ${connId}`));
+      return true;
+    });
+    const run = spawnSync('node', [path.join(DIR, 'dex-call.cjs'), connId, 'file:///no-network'], {
+      env: childEnv,
+      encoding: 'utf8',
+    });
+    assert.equal(run.status, 3);
+    assert.match(run.stderr, new RegExp(`node connect\\.cjs set-key ${connId}`));
+  } finally {
+    store.deleteToken(connId);
+  }
+});
+
 // ---- token store ------------------------------------------------------------
 
 test('store: OAuth token encrypt/decrypt roundtrip', () => {
@@ -383,6 +404,23 @@ test('cli: get-token exits 2 when service is not connected', () => {
     code = err.status;
   }
   assert.equal(code, 2);
+});
+
+test('cli: get-token exits 3 for a needs_reauth API-key connection', () => {
+  const connId = 'linear:dead-accessor';
+  store.saveApiKey(connId, { apiKey: 'REVOKED-ACCESSOR-KEY' }, { provider: 'linear', authMode: 'API_KEY' });
+  store.upsertConnection(connId, { status: 'needs_reauth', error: 'authentication_failed' });
+  try {
+    const run = spawnSync('node', [path.join(DIR, 'get-token.cjs'), connId], {
+      env: childEnv,
+      encoding: 'utf8',
+    });
+    assert.equal(run.status, 3);
+    assert.match(run.stderr, new RegExp(`node connect\\.cjs set-key ${connId}`));
+    assert.equal(run.stdout, '');
+  } finally {
+    store.deleteToken(connId);
+  }
 });
 
 test('cli: set-key on a host-scoped provider FAILS without the field (no dead connection)', { skip: FIELD_PROV ? false : 'no field provider' }, () => {

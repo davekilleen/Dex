@@ -55,6 +55,11 @@ async function main() {
     // or a JSON envelope with the catalog's auth scheme already rendered, so the
     // consumer never re-implements per-provider header/query placement.
     if (token.kind === 'api_key') {
+      const reg = store.getConnection(service);
+      if (reg && reg.status === 'needs_reauth') {
+        console.error(`${service} needs re-authentication. Run: node connect.cjs set-key ${service}`);
+        process.exit(GET_TOKEN_EXIT_CODES.needs_reauth);
+      }
       store.touchUsed(service);
       if (accessOnly) {
         process.stdout.write(token.apiKey || token.password || '');
