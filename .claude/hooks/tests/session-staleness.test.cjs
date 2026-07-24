@@ -41,6 +41,22 @@ function completeOnboarding(sandbox) {
   fs.writeFileSync(marker, '{}\n');
 }
 
+function installSessionHealthStub(sandbox, exitStatus = 0) {
+  const script = path.join(sandbox.vault, 'core', 'utils', 'session_health.py');
+  fs.mkdirSync(path.dirname(script), { recursive: true });
+  fs.writeFileSync(
+    script,
+    [
+      'import os',
+      'from pathlib import Path',
+      'Path(os.environ["DEX_SESSION_HEALTH_CALLS"]).write_text("called\\n", encoding="utf-8")',
+      `raise SystemExit(${exitStatus})`,
+      '',
+    ].join('\n'),
+  );
+  return path.join(path.dirname(sandbox.vault), 'session-health-calls');
+}
+
 function installMovedVaultConflict(sandbox, plistName) {
   const oldVault = path.join(path.dirname(sandbox.vault), 'old-vault');
   const breadcrumb = path.join(sandbox.home, '.config', 'dex', 'vault-path');
@@ -89,6 +105,8 @@ function runSessionStart(sandbox) {
       HOME: sandbox.home,
       PATH: process.env.PATH || '/usr/bin:/bin',
       VAULT_PATH: sandbox.vault,
+      DEX_SESSION_HEALTH_CALLS: sandbox.sessionHealthCalls
+        || path.join(path.dirname(sandbox.vault), 'unused-session-health-calls'),
     },
     timeout: 10_000,
   });
@@ -180,6 +198,31 @@ test('overnight smoke block emits broken journey details', (t) => {
   assert.match(stdout, /--- 🚨 Overnight check found a problem ---/);
   assert.match(stdout, /task_lifecycle — task creation failed after the config changed/);
   assert.match(stdout, /Run \/dex-doctor for diagnosis and the fix\./);
+});
+
+test('session start runs the daily self-check fallback after onboarding', (t) => {
+  const sandbox = createSandbox(t);
+  completeOnboarding(sandbox);
+  sandbox.sessionHealthCalls = installSessionHealthStub(sandbox);
+
+  const stdout = runSessionStart(sandbox);
+
+  assert.ok(fs.existsSync(sandbox.sessionHealthCalls));
+  assert.doesNotMatch(stdout, /daily self-check could not finish/);
+});
+
+test('session start says an unfinished daily self-check will retry', (t) => {
+  const sandbox = createSandbox(t);
+  completeOnboarding(sandbox);
+  sandbox.sessionHealthCalls = installSessionHealthStub(sandbox, 2);
+
+  const stdout = runSessionStart(sandbox);
+
+  assert.ok(fs.existsSync(sandbox.sessionHealthCalls));
+  assert.match(
+    stdout,
+    /Dex's daily self-check could not finish — it will try again next session\./,
+  );
 });
 
 for (const plistName of ['com.dex.meeting-intel.plist', 'com.claudesidian.learning.plist']) {

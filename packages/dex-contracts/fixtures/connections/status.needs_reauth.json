@@ -1,0 +1,22 @@
+{
+  "connections": [
+    {
+      "service": "fixture-needs_reauth",
+      "provider": "fixture",
+      "alias": null,
+      "status": "needs_reauth",
+      "expiresAt": null,
+      "hasRefreshToken": false,
+      "scopes": [
+        "read"
+      ],
+      "lastRefreshedAt": "2030-01-01T00:00:00.000Z",
+      "error": "invalid_grant",
+      "verified": false,
+      "verification": "unverified",
+      "lastVerifiedAt": null,
+      "lastProbeAt": null
+    }
+  ],
+  "registryNotice": null
+}

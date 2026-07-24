@@ -180,8 +180,15 @@ node -e "
     const fs = require('fs');
     const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
     delete pkg.devDependencies;
-    if (pkg.scripts) delete pkg.scripts['test:hooks'];
-    if (pkg.scripts) delete pkg.scripts['test:scripts'];
+    for (const name of [
+      'test:hooks',
+      'test:scripts',
+      'test:integrations',
+      'check:connections-contract',
+      'test:connections-consumer-smoke',
+    ]) {
+      if (pkg.scripts) delete pkg.scripts[name];
+    }
     fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
 "
 git add -- package.json

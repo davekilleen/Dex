@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 import shutil
@@ -237,7 +238,7 @@ def test_frozen_service_inputs_and_outputs_conform_to_schema(tmp_path: Path) -> 
 def test_api_version_is_present_and_frozen_in_schema() -> None:
     schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
 
-    assert service.api_version == "1.0.0"
+    assert service.api_version == "1.1.0"
     assert schema["properties"]["api_version"] == {"const": service.api_version}
 
 
@@ -251,6 +252,33 @@ def test_public_surface_requires_a_version_bump_and_bridge_to_change() -> None:
         "read_lifecycle_state",
         "build_and_preview_conflict_resolution",
         "execute_approved_conflict_resolution",
+        "build_archive_removal_preview",
+        "execute_approved_archive_removal",
     ]
     assert "version bump" in service.__doc__.lower()
     assert "bridge" in service.__doc__.lower()
+
+
+def test_archive_removal_is_previewed_approved_and_receipted(tmp_path: Path) -> None:
+    vault = tmp_path / "vault"
+    archive = vault / ".dex/pre-split-archive.git"
+    archive.mkdir(parents=True)
+    (archive / "HEAD").write_text("ref: refs/heads/main\n", encoding="utf-8")
+    (archive / "objects").mkdir()
+    (archive / "objects" / "sample").write_bytes(b"archive bytes")
+
+    preview = service.build_archive_removal_preview(vault)
+
+    assert preview["api_version"] == "1.1.0"
+    assert preview["preview"]["archive_relative"] == ".dex/pre-split-archive.git"
+    assert preview["preview"]["size_bytes"] == len(b"ref: refs/heads/main\narchive bytes")
+    assert preview["preview"]["retention"] == "one full release cycle after conversion"
+    assert archive.exists()
+
+    receipt = service.execute_approved_archive_removal(vault, preview["approval_token"])
+
+    assert not archive.exists()
+    assert receipt["receipt"]["archive_sha256"] == preview["preview"]["archive_sha256"]
+    receipt_path = vault / receipt["receipt"]["receipt_relative"]
+    assert receipt_path.is_file()
+    assert hashlib.sha256(receipt_path.read_bytes()).hexdigest()

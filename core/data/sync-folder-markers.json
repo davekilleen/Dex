@@ -1,0 +1,39 @@
+{
+  "schema_version": 1,
+  "markers": [
+    {
+      "provider": "OneDrive",
+      "kind": "path-segment",
+      "values": ["onedrive", "onedrive - "]
+    },
+    {
+      "provider": "OneDrive",
+      "kind": "paired-children",
+      "values": [
+        "desktop.ini",
+        ".849C9593-D756-4E56-8D6E-42412F2A707B"
+      ]
+    },
+    {
+      "provider": "Dropbox",
+      "kind": "child",
+      "values": [".dropbox", ".dropbox.cache"]
+    },
+    {
+      "provider": "a cloud-synced folder",
+      "kind": "cloudstorage-provider",
+      "values": ["library", "cloudstorage"]
+    },
+    {
+      "provider": "iCloud Drive",
+      "kind": "icloud-materialization",
+      "values": [".icloud"]
+    }
+  ],
+  "cloudstorage_provider_prefixes": [
+    {"prefix": "dropbox", "provider": "Dropbox"},
+    {"prefix": "googledrive", "provider": "GoogleDrive"},
+    {"prefix": "onedrive", "provider": "OneDrive"},
+    {"prefix": "box", "provider": "Box"}
+  ]
+}

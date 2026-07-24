@@ -30,6 +30,7 @@ for relative in (
     "05-Areas/Meetings",
     "05-Areas/Meetings/Daily_Log",
     "System/.dex",
+    "System/.dex/lifecycle/ledger/events",
     "04-Projects/DexDiff/beta/diffs",
     "04-Projects/DexDiff/beta/profile",
     "04-Projects/DexDiff/design",

@@ -8,7 +8,15 @@ const CANONICAL_FIELDS = new Set([
   'type', 'name', 'role', 'company', 'company_page', 'emails', 'aliases',
   'location', 'last_interaction', 'domains', 'website', 'status',
 ]);
-const V2_FIELDS = new Set(['dex_pinned', 'dex_last_written', 'last_touched', 'touches']);
+const RELATIONSHIP_TYPES = [
+  'works_at', 'reports_to', 'part_of', 'stakeholder_on', 'deal_with', 'related_to',
+];
+const RELATIONSHIP_STATUSES = new Set(['suggested', 'confirmed']);
+const OWNED_FIELDS = new Set([...CANONICAL_FIELDS, 'relationships']);
+const V2_FIELDS = new Set([
+  'dex_pinned', 'dex_last_written', 'dex_dismissed_relationships',
+  'last_touched', 'touches', 'relationships',
+]);
 const LIST_FIELDS = new Set(['emails', 'aliases', 'domains']);
 const LABELS = {
   type: 'type', name: 'name', role: 'role', company: 'company',
@@ -40,13 +48,127 @@ function normaliseList(value, lowercase = false) {
   return values.map(normaliseScalar).filter(Boolean).map(item => lowercase ? item.toLowerCase() : item);
 }
 
+function fold(value) {
+  return String(value).normalize('NFC').toLowerCase();
+}
+
+function localIsoDate() {
+  const today = new Date();
+  const year = today.getFullYear();
+  const month = String(today.getMonth() + 1).padStart(2, '0');
+  const day = String(today.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function relationshipEdgeKey(relationship) {
+  return `${relationship.type}::${fold(relationship.target)}`;
+}
+
+function normaliseDismissedRelationships(value, strict = false) {
+  const invalid = (message) => {
+    if (strict) throw new Error(message);
+    return null;
+  };
+  if (value === null || value === undefined) return null;
+  if (!Array.isArray(value)) {
+    return invalid('dex_dismissed_relationships must be a list');
+  }
+  const result = [];
+  const seen = new Set();
+  for (const entry of value) {
+    if (!entry || Array.isArray(entry) || typeof entry !== 'object') {
+      invalid('dismissed relationship entries must be objects');
+      continue;
+    }
+    const rawKey = normaliseScalar(entry.key);
+    const date = normaliseScalar(entry.date);
+    if (!rawKey || !rawKey.includes('::')) {
+      invalid('dismissed relationship key must be an edge key');
+      continue;
+    }
+    const separator = rawKey.indexOf('::');
+    const type = rawKey.slice(0, separator);
+    const target = rawKey.slice(separator + 2);
+    if (!RELATIONSHIP_TYPES.includes(type) || !target) {
+      invalid(`invalid dismissed relationship key: ${rawKey}`);
+      continue;
+    }
+    if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      invalid('dismissed relationship date must be YYYY-MM-DD');
+      continue;
+    }
+    const key = `${type}::${fold(target)}`;
+    if (!seen.has(key)) {
+      seen.add(key);
+      result.push({ key, date });
+    }
+  }
+  return result;
+}
+
 function normaliseField(key, value) {
+  if (key === 'relationships') return normaliseRelationships(value);
   if (LIST_FIELDS.has(key)) return normaliseList(value, key === 'emails' || key === 'domains');
   value = normaliseScalar(value);
   if (key === 'type') return value === 'person' || value === 'company' ? value : null;
   if (key === 'location') return ['internal', 'external', 'unknown'].includes(value) ? value : null;
   if (key === 'last_interaction' && value && !/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
   return value;
+}
+
+function normaliseRelationships(value, strict = false) {
+  const invalid = (message) => {
+    if (strict) throw new Error(message);
+    return null;
+  };
+  if (value === null || value === undefined) return null;
+  if (!Array.isArray(value)) return invalid('relationships must be a list');
+  const result = [];
+  for (const entry of value) {
+    if (!entry || Array.isArray(entry) || typeof entry !== 'object') {
+      invalid('relationship entries must be objects');
+      continue;
+    }
+    const type = normaliseScalar(entry.type);
+    if (!RELATIONSHIP_TYPES.includes(type)) {
+      invalid(`unknown relationship type: ${type || '<missing>'}`);
+      continue;
+    }
+    const target = normaliseScalar(entry.target);
+    if (!target) {
+      invalid('relationship target must be a non-empty string');
+      continue;
+    }
+    const status = normaliseScalar(entry.status);
+    if (!RELATIONSHIP_STATUSES.has(status)) {
+      invalid(`invalid relationship status: ${status || '<missing>'}`);
+      continue;
+    }
+    const source = entry.source;
+    if (!source || Array.isArray(source) || typeof source !== 'object') {
+      invalid('relationship source must be an object');
+      continue;
+    }
+    const sourceKind = normaliseScalar(source.kind);
+    const sourceId = normaliseScalar(source.id);
+    if (!sourceKind || !sourceId) {
+      invalid('relationship source requires kind and id');
+      continue;
+    }
+    const date = normaliseScalar(entry.date);
+    if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      invalid('relationship date must be YYYY-MM-DD');
+      continue;
+    }
+    result.push({
+      type,
+      target,
+      status,
+      source: normaliseYamlValue(source),
+      date,
+    });
+  }
+  return result;
 }
 
 function normaliseYamlValue(value) {
@@ -67,6 +189,10 @@ function normaliseV2Field(key, value) {
     return value && !Array.isArray(value) && typeof value === 'object' ? { ...value } : null;
   }
   if (key === 'touches') return Array.isArray(value) ? normaliseYamlValue(value) : null;
+  if (key === 'relationships') return normaliseRelationships(value);
+  if (key === 'dex_dismissed_relationships') {
+    return normaliseDismissedRelationships(value);
+  }
   return normaliseScalar(value);
 }
 
@@ -144,8 +270,10 @@ function parseEntityPage(filePath) {
   if (split.frontmatter && !split.quarantined) {
     const touches = normaliseV2Field('touches', split.frontmatter.touches);
     const lastTouched = normaliseV2Field('last_touched', split.frontmatter.last_touched);
+    const relationships = normaliseV2Field('relationships', split.frontmatter.relationships);
     if (touches !== null) result.touches = touches;
     if (lastTouched !== null) result.last_touched = lastTouched;
+    if (relationships !== null) result.relationships = relationships;
   }
   result.type = inferType(filePath, result);
   if (result.type && !result.name) {
@@ -215,11 +343,11 @@ function renderUpdateLog({
   for (const relationship of relationshipProvenance || []) {
     if (!relationship || typeof relationship !== 'object') continue;
     const timestamp = displayScalar(
-      relationship.recorded_at || relationship.ts,
+      relationship.recorded_at || relationship.ts || relationship.date,
     );
     const relationType = displayScalar(relationship.type);
     const target = displayScalar(
-      relationship.target || relationship.target_path,
+      relationship.target || relationship.target_path || relationship.target_ref,
     );
     if (!timestamp || !relationType || !target) continue;
     let line = `- ${timestamp.slice(0, 10)} — relationship · ${relationType} — ${target}`;
@@ -247,6 +375,44 @@ function renderUpdateLog({
   return entries.map(([_timestamp, line]) => line).join('\n');
 }
 
+function renderRelationships(relationships = null) {
+  const normalised = normaliseRelationships([...(relationships || [])], true);
+  const rank = new Map(RELATIONSHIP_TYPES.map((type, index) => [type, index]));
+  normalised.sort((left, right) => (
+    rank.get(left.type) - rank.get(right.type)
+    || compareStrings(fold(left.target), fold(right.target))
+    || compareStrings(left.target, right.target)
+    || compareStrings(left.status, right.status)
+    || compareStrings(left.date, right.date)
+    || compareStrings(
+      JSON.stringify(stableObject(left.source)),
+      JSON.stringify(stableObject(right.source)),
+    )
+  ));
+  const groups = [];
+  for (const type of RELATIONSHIP_TYPES) {
+    const rows = normalised.filter(relationship => relationship.type === type);
+    if (rows.length === 0) continue;
+    groups.push([
+      `### ${type}`,
+      ...rows.map(relationship => (
+        `- ${relationship.target}${relationship.status === 'suggested' ? ' (suggested)' : ''}`
+      )),
+    ].join('\n'));
+  }
+  return groups.join('\n\n');
+}
+
+function stableObject(value) {
+  if (Array.isArray(value)) return value.map(stableObject);
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.keys(value).sort().map(key => [key, stableObject(value[key])]),
+    );
+  }
+  return value;
+}
+
 function atomicWrite(filePath, text) {
   const temp = path.join(path.dirname(filePath), `.${path.basename(filePath)}.${process.pid}.${Date.now()}.tmp`);
   const existingMode = fs.existsSync(filePath) ? fs.statSync(filePath).mode : null;
@@ -260,7 +426,12 @@ function atomicWrite(filePath, text) {
   }
 }
 
-function mergeFrontmatterText(filePath, rawOriginal, fields) {
+function mergeFrontmatterText(
+  filePath,
+  rawOriginal,
+  fields,
+  { relationshipRemovedKeys = [] } = {},
+) {
   const bom = rawOriginal.charCodeAt(0) === 0xfeff ? '\ufeff' : '';
   const original = bom ? rawOriginal.slice(1) : rawOriginal;
   const split = splitFrontmatter(original);
@@ -275,17 +446,23 @@ function mergeFrontmatterText(filePath, rawOriginal, fields) {
   const lastWritten = hadLastWritten ? { ...merged.dex_last_written } : {};
   const ownershipEnabled = hadPins || hadLastWritten
     || Object.keys(fields).some(key => V2_FIELDS.has(key));
+  const relationshipWrite = Object.hasOwn(fields, 'relationships');
+  const migratePinnedRelationships = relationshipWrite
+    && normaliseScalar(pinned.relationships) === 'user';
+  if (relationshipWrite) delete pinned.relationships;
 
   const suppliedPins = normaliseV2Field('dex_pinned', fields.dex_pinned);
   if (suppliedPins) {
     for (const [key, value] of Object.entries(suppliedPins)) {
-      if (CANONICAL_FIELDS.has(key) && normaliseScalar(value)) pinned[key] = value;
+      if (OWNED_FIELDS.has(key) && key !== 'relationships' && normaliseScalar(value)) {
+        pinned[key] = value;
+      }
     }
   }
   const suppliedLastWritten = normaliseV2Field('dex_last_written', fields.dex_last_written);
   if (suppliedLastWritten) {
     for (const [key, candidate] of Object.entries(suppliedLastWritten)) {
-      if (!CANONICAL_FIELDS.has(key)) continue;
+      if (!OWNED_FIELDS.has(key)) continue;
       const value = normaliseField(key, candidate);
       if (value !== null || (candidate === null && !LIST_FIELDS.has(key))) lastWritten[key] = value;
     }
@@ -305,6 +482,9 @@ function mergeFrontmatterText(filePath, rawOriginal, fields) {
   };
   const effectiveCurrent = {};
   for (const key of CANONICAL_FIELDS) effectiveCurrent[key] = explicitCurrentValue(key);
+  effectiveCurrent.relationships = normaliseRelationships(
+    split.frontmatter?.relationships,
+  ) || [];
   effectiveCurrent.type = inferType(filePath, effectiveCurrent);
   if (effectiveCurrent.type && !effectiveCurrent.name) {
     const heading = /^#\s+(.+?)\s*$/m.exec(split.body);
@@ -331,25 +511,113 @@ function mergeFrontmatterText(filePath, rawOriginal, fields) {
   const implicitBootstrap = ownershipEnabled && !hadPins && !hadLastWritten
     && suppliedLastWritten === null;
   if (implicitBootstrap) {
-    for (const key of CANONICAL_FIELDS) {
+    for (const key of OWNED_FIELDS) {
+      if (key === 'relationships') continue;
       if (hasNonemptyRawValue(key) && !Object.hasOwn(pinned, key)) pinned[key] = 'user';
     }
   }
   for (const [key, previous] of Object.entries(lastWritten)) {
-    if (!CANONICAL_FIELDS.has(key) || Object.hasOwn(pinned, key)) continue;
+    if (!OWNED_FIELDS.has(key) || key === 'relationships' || Object.hasOwn(pinned, key)) continue;
     const normalisedPrevious = normaliseField(key, previous);
     if (normalisedPrevious === null && !(previous === null && !LIST_FIELDS.has(key))) continue;
     if (JSON.stringify(currentValue(key)) !== JSON.stringify(normalisedPrevious)) pinned[key] = 'user';
   }
 
+  if (relationshipWrite) {
+    const current = migratePinnedRelationships
+      ? effectiveCurrent.relationships.map(relationship => ({
+        ...relationship,
+        status: 'confirmed',
+      }))
+      : effectiveCurrent.relationships;
+    const incoming = normaliseRelationships(fields.relationships, true);
+    const previous = normaliseRelationships(lastWritten.relationships);
+    const reliableSnapshot = Object.hasOwn(lastWritten, 'relationships')
+      && previous !== null;
+    let dismissed = normaliseDismissedRelationships(
+      merged.dex_dismissed_relationships,
+    ) || [];
+    const suppliedDismissed = normaliseDismissedRelationships(
+      fields.dex_dismissed_relationships,
+      Object.hasOwn(fields, 'dex_dismissed_relationships'),
+    );
+    if (suppliedDismissed !== null) dismissed = suppliedDismissed;
+    const dismissedByKey = new Map(dismissed.map(entry => [entry.key, entry]));
+    const explainedRemovals = new Set(relationshipRemovedKeys);
+    const currentByKey = new Map(
+      current.map(relationship => [relationshipEdgeKey(relationship), relationship]),
+    );
+    const incomingByKey = new Map();
+    for (const relationship of incoming) {
+      const key = relationshipEdgeKey(relationship);
+      if (!incomingByKey.has(key)) incomingByKey.set(key, relationship);
+    }
+
+    if (reliableSnapshot) {
+      for (const relationship of previous) {
+        const key = relationshipEdgeKey(relationship);
+        if (!currentByKey.has(key) && !explainedRemovals.has(key)
+            && !dismissedByKey.has(key)) {
+          dismissedByKey.set(key, {
+            key,
+            date: localIsoDate(),
+          });
+        }
+      }
+    }
+
+    const proposed = [];
+    const proposedKeys = new Set();
+    const append = (relationship) => {
+      const key = relationshipEdgeKey(relationship);
+      if (proposedKeys.has(key)) return;
+      proposedKeys.add(key);
+      proposed.push(relationship);
+    };
+
+    if (!reliableSnapshot) {
+      for (const relationship of current) {
+        const key = relationshipEdgeKey(relationship);
+        if (relationship.status === 'confirmed' || !dismissedByKey.has(key)) {
+          append(relationship);
+        }
+      }
+    } else {
+      for (const relationship of current) {
+        const key = relationshipEdgeKey(relationship);
+        if (relationship.status === 'confirmed'
+            && !(explainedRemovals.has(key) && !incomingByKey.has(key))) {
+          append(relationship);
+        } else if (incomingByKey.has(key) && !dismissedByKey.has(key)) {
+          append(incomingByKey.get(key));
+        }
+      }
+    }
+    for (const relationship of incoming) {
+      const key = relationshipEdgeKey(relationship);
+      if (!dismissedByKey.has(key) && !proposedKeys.has(key)) append(relationship);
+    }
+
+    merged.relationships = proposed;
+    lastWritten.relationships = proposed;
+    if (dismissedByKey.size > 0) {
+      merged.dex_dismissed_relationships = [...dismissedByKey.values()];
+    } else {
+      delete merged.dex_dismissed_relationships;
+    }
+  }
+
   for (const [key, candidate] of Object.entries(fields)) {
-    if (!CANONICAL_FIELDS.has(key) || Object.hasOwn(pinned, key)) continue;
+    if (key === 'relationships' || key === 'dex_dismissed_relationships') continue;
+    if (!OWNED_FIELDS.has(key) || Object.hasOwn(pinned, key)) continue;
     if (candidate === null && !LIST_FIELDS.has(key)) {
       merged[key] = null;
       if (ownershipEnabled) lastWritten[key] = null;
       continue;
     }
-    const value = normaliseField(key, candidate);
+    const value = key === 'relationships'
+      ? normaliseRelationships(candidate, true)
+      : normaliseField(key, candidate);
     if (value !== null) {
       merged[key] = value;
       if (ownershipEnabled) lastWritten[key] = value;
@@ -449,8 +717,12 @@ function replaceMachineRegionInFile(filePath, slug, newContent) {
 }
 
 module.exports = {
+  RELATIONSHIP_TYPES,
   atomicWrite,
+  fold,
   mergeFrontmatterText, parseEntityPage, readFrontmatterField, renderUpdateLog,
+  relationshipEdgeKey,
+  renderRelationships,
   upsertFrontmatter, renderPersonPage, renderCompanyPage,
   replaceMachineRegion, replaceMachineRegionInFile,
 };

@@ -101,10 +101,14 @@ exit 0
     return root, environment
 
 
-def _run_install(tmp_path: Path, scenario: str) -> tuple[subprocess.CompletedProcess[str], list[str]]:
+def _run_install(
+    tmp_path: Path,
+    scenario: str,
+    *arguments: str,
+) -> tuple[subprocess.CompletedProcess[str], list[str]]:
     root, environment = _install_fixture(tmp_path, scenario)
     result = subprocess.run(
-        ["/bin/bash", "install.sh"],
+        ["/bin/bash", "install.sh", *arguments],
         cwd=root,
         env=environment,
         capture_output=True,
@@ -126,6 +130,16 @@ def test_fresh_git_install_routes_bounded_migration_through_auto_then_resume(tmp
     assert "Separating the Dex brain from your vault" in result.stdout
     assert "separate Git histories" in result.stdout
     assert "Dex installation complete" in result.stdout
+
+
+def test_synced_folder_install_carries_explicit_override_into_resume(tmp_path: Path) -> None:
+    result, calls = _run_install(tmp_path, "resume", "--allow-synced-folder")
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert calls[1:3] == [
+        f"{MIGRATOR} --auto --allow-synced-folder",
+        f"{MIGRATOR} --resume --allow-synced-folder",
+    ]
 
 
 def test_already_split_install_is_safe_and_keeps_normal_setup_working(tmp_path: Path) -> None:

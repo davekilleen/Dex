@@ -639,6 +639,7 @@ def test_golden_entity_creation_auto_is_idempotent_and_verifies(
     assert update_log is not None
     assert update_log.group(1).splitlines() == [
         "- 2026-06-01 — meeting · two-way — Meeting 2026-06-01 [golden-entity-1]",
+        "- 2026-06-01 — relationship · works_at — [[Example]]",
         "- 2026-06-08 — meeting · two-way — Meeting 2026-06-08 [golden-entity-2]",
     ]
     assert journey["personAfterSecond"] == journey["personAfterFirst"]

@@ -42,7 +42,11 @@ function makeFixture(...flags) {
 }
 
 function migrate(vault, mode, options = {}) {
-  return command(process.execPath, [path.join(vault, MIGRATOR_RELATIVE), mode], {
+  return command(process.execPath, [
+    path.join(vault, MIGRATOR_RELATIVE),
+    mode,
+    ...(options.arguments || []),
+  ], {
     cwd: vault,
     ...options,
   });
@@ -119,6 +123,135 @@ function snapshotKnownUserFiles(root) {
   }
   return new Map(relatives.map((relative) => [relative, fs.readFileSync(path.join(root, relative))]));
 }
+
+function exactTreeSnapshot(root) {
+  const snapshot = new Map();
+  function visit(relative) {
+    const absolute = relative ? path.join(root, relative) : root;
+    for (const entry of fs.readdirSync(absolute, { withFileTypes: true })) {
+      const child = relative ? path.join(relative, entry.name) : entry.name;
+      const portable = child.split(path.sep).join('/');
+      const childAbsolute = path.join(root, child);
+      const stat = fs.lstatSync(childAbsolute);
+      if (entry.isDirectory()) {
+        snapshot.set(portable, `dir:${stat.mode & 0o777}`);
+        visit(child);
+      } else if (entry.isSymbolicLink()) {
+        snapshot.set(portable, `link:${stat.mode & 0o777}:${fs.readlinkSync(childAbsolute)}`);
+      } else {
+        const digest = crypto.createHash('sha256').update(fs.readFileSync(childAbsolute)).digest('hex');
+        snapshot.set(portable, `file:${stat.mode & 0o777}:${digest}`);
+      }
+    }
+  }
+  visit('');
+  return snapshot;
+}
+
+function moveFixtureIntoSyncFolder(vault, provider) {
+  const destinationRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'dex-synced-migration-'));
+  let parent;
+  if (provider === 'OneDrive') {
+    parent = path.join(destinationRoot, 'OneDrive - Example Org');
+  } else {
+    parent = path.join(destinationRoot, `${provider}-files`);
+  }
+  fs.mkdirSync(parent, { recursive: true });
+  if (provider === 'Dropbox') fs.mkdirSync(path.join(parent, '.dropbox'));
+  if (provider === 'iCloud Drive') fs.mkdirSync(path.join(parent, '.icloud'));
+  const movedVault = path.join(parent, 'Dex Vault - Aged');
+  fs.renameSync(vault, movedVault);
+  return movedVault;
+}
+
+test('synced-folder conversion refusal leaves Dropbox, iCloud, and OneDrive vaults untouched', { timeout: 300_000 }, () => {
+  for (const provider of ['Dropbox', 'iCloud Drive', 'OneDrive']) {
+    const vault = moveFixtureIntoSyncFolder(makeFixture(), provider);
+    assert.equal(fs.existsSync(path.join(vault, '.dex')), false);
+    assert.equal(fs.existsSync(path.join(vault, 'System', '.dex')), false);
+    const before = exactTreeSnapshot(vault);
+
+    const result = migrate(vault, '--auto', { expectedStatus: 1 });
+
+    assert.match(result.stderr, new RegExp(provider.replace(' ', '\\s+'), 'i'));
+    assert.match(result.stderr, /unsafe.*sync|sync.*unsafe/i);
+    assert.match(result.stderr, /move the Dex folder outside/i);
+    assert.match(result.stderr, /pause syncing/i);
+    assert.deepEqual(exactTreeSnapshot(vault), before, provider);
+    assert.equal(fs.existsSync(path.join(vault, '.dex')), false, provider);
+    assert.equal(fs.existsSync(path.join(vault, 'System', '.dex')), false, provider);
+  }
+});
+
+test('synced-folder override is recorded in migration state and report', { timeout: 180_000 }, () => {
+  const vault = moveFixtureIntoSyncFolder(makeFixture(), 'Dropbox');
+
+  const result = migrate(vault, '--auto', { arguments: ['--allow-synced-folder'] });
+
+  assert.match(result.stdout, /P9 finalize complete/);
+  const state = JSON.parse(
+    fs.readFileSync(path.join(vault, 'System', '.dex', 'migration-v2-state.json'), 'utf8'),
+  );
+  assert.deepEqual(state.syncFolder, {
+    provider: 'Dropbox',
+    allowedByOverride: true,
+  });
+  const report = fs.readFileSync(path.join(vault, 'System', 'migration-report-v2.md'), 'utf8');
+  assert.match(report, /Dropbox/);
+  assert.match(report, /override.*--allow-synced-folder/i);
+});
+
+test('synced-folder override recorded by --auto authorizes a bare --resume', { timeout: 180_000 }, () => {
+  const vault = moveFixtureIntoSyncFolder(makeFixture(), 'Dropbox');
+  const stopped = migrate(vault, '--auto', {
+    arguments: ['--allow-synced-folder'],
+    env: { DEX_MIGRATION_STOP_AFTER: 'P3' },
+    expectedStatus: 75,
+  });
+  assert.match(stopped.stdout, /Stopped safely after P3/);
+  const state = JSON.parse(
+    fs.readFileSync(path.join(vault, 'System', '.dex', 'migration-v2-state.json'), 'utf8'),
+  );
+  assert.equal(state.nextPhase, 4);
+  assert.equal(state.syncFolder?.allowedByOverride, true);
+
+  const resumed = migrate(vault, '--resume');
+
+  assert.match(resumed.stdout, /P9 finalize complete/);
+});
+
+test('bare --resume still refuses when the journal has no recorded sync-folder grant', { timeout: 180_000 }, () => {
+  const vault = moveFixtureIntoSyncFolder(makeFixture(), 'Dropbox');
+  migrate(vault, '--auto', {
+    arguments: ['--allow-synced-folder'],
+    env: { DEX_MIGRATION_STOP_AFTER: 'P3' },
+    expectedStatus: 75,
+  });
+  const statePath = path.join(vault, 'System', '.dex', 'migration-v2-state.json');
+  const state = JSON.parse(fs.readFileSync(statePath, 'utf8'));
+  state.syncFolder.allowedByOverride = false;
+  fs.writeFileSync(statePath, `${JSON.stringify(state, null, 2)}\n`);
+  const before = exactTreeSnapshot(vault);
+
+  const refused = migrate(vault, '--resume', { expectedStatus: 1 });
+
+  assert.match(refused.stderr, /Dropbox/);
+  assert.match(refused.stderr, /--allow-synced-folder/);
+  assert.deepEqual(exactTreeSnapshot(vault), before);
+});
+
+test('synced-folder dry-run report surfaces the provider before conversion', { timeout: 180_000 }, () => {
+  const vault = moveFixtureIntoSyncFolder(makeFixture(), 'Dropbox');
+
+  const result = migrate(vault, '--dry-run');
+
+  assert.match(result.stdout, /P1 report/);
+  const report = fs.readFileSync(path.join(vault, 'System', 'migration-report-v2.md'), 'utf8');
+  assert.match(report, /Dropbox/);
+  assert.match(report, /conversion will refuse/i);
+  assert.equal(fs.existsSync(path.join(vault, '.dex')), false);
+  assert.equal(fs.existsSync(path.join(vault, 'System', '.dex')), false);
+});
 
 test('dry-run writes only its report and leaves the vault topology and file bytes alone', () => {
   const vault = makeFixture();

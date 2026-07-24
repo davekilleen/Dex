@@ -1,0 +1,22 @@
+{
+  "connections": [
+    {
+      "service": "fixture-expired",
+      "provider": "fixture",
+      "alias": null,
+      "status": "expired",
+      "expiresAt": 1893456000000,
+      "hasRefreshToken": true,
+      "scopes": [
+        "read"
+      ],
+      "lastRefreshedAt": "2030-01-01T00:00:00.000Z",
+      "error": null,
+      "verified": false,
+      "verification": "unverified",
+      "lastVerifiedAt": null,
+      "lastProbeAt": null
+    }
+  ],
+  "registryNotice": null
+}

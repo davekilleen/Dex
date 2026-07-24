@@ -1,0 +1,22 @@
+{
+  "connections": [
+    {
+      "service": "fixture-connected",
+      "provider": "fixture",
+      "alias": null,
+      "status": "connected",
+      "expiresAt": null,
+      "hasRefreshToken": false,
+      "scopes": [
+        "read"
+      ],
+      "lastRefreshedAt": "2030-01-01T00:00:00.000Z",
+      "error": null,
+      "verified": true,
+      "verification": "verified",
+      "lastVerifiedAt": "2030-01-01T00:01:00.000Z",
+      "lastProbeAt": "2030-01-01T00:01:00.000Z"
+    }
+  ],
+  "registryNotice": null
+}

@@ -13,6 +13,7 @@ from pathlib import Path
 import pytest
 
 from core import portable_contract
+from core.lifecycle import service
 from core.lifecycle.bridge import (
     ACTIVATION_RELATIVE,
     BridgeActivationError,
@@ -87,7 +88,7 @@ def test_baseline_import_is_read_only_and_activation_is_atomic(
     activation_path = vault / ACTIVATION_RELATIVE
     assert activation == {
         "activation_version": 1,
-        "api_version": "1.0.0",
+        "api_version": service.api_version,
         "bridge_release_version": "1.64.0",
         "baseline_inventory_sha256": expected_hash,
     }

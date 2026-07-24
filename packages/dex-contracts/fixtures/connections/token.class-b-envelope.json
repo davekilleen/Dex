@@ -1,0 +1,8 @@
+{
+  "kind": "api_key",
+  "baseUrl": "https://api.example.test",
+  "headers": {
+    "Authorization": "FAKE-RENDERED-SECRET"
+  },
+  "query": {}
+}

@@ -1062,6 +1062,51 @@ function refreshEntityCoolingFeed(vaultRoot = VAULT_ROOT, {
   }
 }
 
+function refreshEntityRelationshipsFeed(vaultRoot = VAULT_ROOT, {
+  env = process.env,
+  spawnSync: spawn = spawnSync,
+  logger = log,
+} = {}) {
+  try {
+    const root = path.resolve(vaultRoot);
+    const pythonStatus = resolveDexPythonStatus(root, env, spawn);
+    if (!pythonStatus.path) throw new Error(pythonStatus.user_message);
+    const execution = spawn(
+      pythonStatus.path,
+      ['-m', 'core.entity_engine.relationships'],
+      {
+        cwd: root,
+        encoding: 'utf8',
+        env: {
+          ...env,
+          VAULT_PATH: root,
+          PYTHONPATH: [env.DEX_REPO_ROOT, root, env.PYTHONPATH]
+            .filter(Boolean)
+            .join(path.delimiter),
+        },
+        timeout: 30_000,
+        maxBuffer: 1024 * 1024,
+      },
+    );
+    if (execution.error || execution.status !== 0 || execution.signal) {
+      const signal = execution.signal ? ` (signal ${execution.signal})` : '';
+      throw execution.error || new Error(
+        String(execution.stderr || '').trim()
+          || `relationships CLI exited ${execution.status}${signal}`,
+      );
+    }
+    return { ok: true };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    try {
+      logger(`Relationships feed refresh skipped after error: ${message}`);
+    } catch (_) {
+      // Refresh is non-fatal even when the sync logger itself is unavailable.
+    }
+    return { ok: false, error: message };
+  }
+}
+
 // ============================================================================
 // MAIN
 // ============================================================================
@@ -1090,6 +1135,7 @@ async function main() {
       retryPendingEntityWork(state, profile);
       runEntityVerification();
       refreshEntityCoolingFeed();
+      refreshEntityRelationshipsFeed();
     }
     return; // clean exit (exit 0 via the runner)
   }
@@ -1120,6 +1166,7 @@ async function main() {
       runEntityVerification();
       await runEntityGardener(profile);
       refreshEntityCoolingFeed();
+      refreshEntityRelationshipsFeed();
     }
     return;
   }
@@ -1134,6 +1181,7 @@ async function main() {
       runEntityVerification();
       await runEntityGardener(profile);
       refreshEntityCoolingFeed();
+      refreshEntityRelationshipsFeed();
     }
     return;
   }
@@ -1167,6 +1215,7 @@ async function main() {
     saveState(state);
     runEntityVerification();
     refreshEntityCoolingFeed();
+    refreshEntityRelationshipsFeed();
     log('\n' + '='.repeat(60));
     log(`SYNC COMPLETE (source: ${dataSource})`);
     log(`Queued: ${newMeetings.length} meetings`);
@@ -1253,6 +1302,7 @@ async function main() {
   runEntityVerification();
   await runEntityGardener(profile);
   refreshEntityCoolingFeed();
+  refreshEntityRelationshipsFeed();
 
   // Summary
   log('\n' + '='.repeat(60));
@@ -1286,6 +1336,7 @@ module.exports = {
   renderAttendeesYamlBlock,
   renderParticipants,
   refreshEntityCoolingFeed,
+  refreshEntityRelationshipsFeed,
   retryDeadLetteredEntityWork,
   retryPendingEntityWork,
 };

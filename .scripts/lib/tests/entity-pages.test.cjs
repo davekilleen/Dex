@@ -7,8 +7,11 @@ const os = require('os');
 const path = require('path');
 const yaml = require('js-yaml');
 const {
+  mergeFrontmatterText,
   parseEntityPage,
   readFrontmatterField,
+  relationshipEdgeKey,
+  renderRelationships,
   renderUpdateLog,
   upsertFrontmatter,
   renderPersonPage,
@@ -108,6 +111,229 @@ test('renderUpdateLog matches the canonical golden bytes deterministically', () 
       nature: ' Agreed\n  next steps. ',
     }],
   }), '- 2026-07-23 — meeting · two-way — Product review [meeting 3] — Agreed next steps.');
+});
+
+test('renderRelationships matches the canonical grouped bytes deterministically', () => {
+  const relationships = [
+    {
+      type: 'related_to',
+      target: '[[Zoe]]',
+      status: 'suggested',
+      source: { kind: 'co-attendance', id: 'meeting-2' },
+      date: '2026-07-23',
+    },
+    {
+      type: 'works_at',
+      target: '[[Beta Co]]',
+      status: 'confirmed',
+      source: { kind: 'manual', id: 'confirmation-1' },
+      date: '2026-07-22',
+    },
+    {
+      type: 'works_at',
+      target: '[[Acme]]',
+      status: 'suggested',
+      source: { kind: 'domain-match', id: 'acme.test' },
+      date: '2026-07-21',
+    },
+  ];
+  const expected = [
+    '### works_at',
+    '- [[Acme]] (suggested)',
+    '- [[Beta Co]]',
+    '',
+    '### related_to',
+    '- [[Zoe]] (suggested)',
+  ].join('\n');
+
+  assert.equal(renderRelationships(relationships), expected);
+  assert.equal(renderRelationships([...relationships].reverse()), expected);
+  assert.throws(
+    () => renderRelationships([{ ...relationships[0], type: 'invented_relation' }]),
+    /unknown relationship type/,
+  );
+});
+
+test('relationship frontmatter is owned and round-trips through the JS twin', t => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'entity-pages-'));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const page = path.join(dir, 'Related.md');
+  const relationships = [{
+    type: 'works_at',
+    target: '[[Acme]]',
+    status: 'suggested',
+    source: { kind: 'domain-match', id: 'acme.test' },
+    date: '2026-07-23',
+  }];
+  fs.writeFileSync(page, '# Related\n');
+
+  assert.equal(upsertFrontmatter(page, { relationships }), true);
+  assert.deepEqual(parseEntityPage(page).relationships, relationships);
+  assert.deepEqual(
+    readFrontmatterField(fs.readFileSync(page, 'utf8'), 'relationships'),
+    relationships,
+  );
+});
+
+test('per-edge ownership, tombstones, stale fallback, and NFC identity merge in the JS twin', t => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'entity-pages-relationships-'));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const page = path.join(dir, 'Related.md');
+  const relationship = (target, overrides = {}) => ({
+    type: 'works_at',
+    target,
+    status: 'suggested',
+    source: { kind: 'domain-match', id: 'acme.test' },
+    date: '2026-07-23',
+    ...overrides,
+  });
+  const confirmed = relationship('[[Acme]]', { status: 'confirmed' });
+  const beta = relationship('[[Beta]]', {
+    source: { kind: 'domain-match', id: 'beta.test' },
+  });
+  fs.writeFileSync(page, [
+    '---',
+    'type: person',
+    'name: Related Person',
+    'relationships:',
+    '  - type: works_at',
+    '    target: "[[Acme]]"',
+    '    status: suggested',
+    '    source: {kind: domain-match, id: acme.test}',
+    "    date: '2026-07-23'",
+    'dex_pinned: {relationships: user}',
+    'dex_last_written:',
+    '  relationships:',
+    '    - type: works_at',
+    '      target: "[[Acme]]"',
+    '      status: suggested',
+    '      source: {kind: domain-match, id: acme.test}',
+    "      date: '2026-07-23'",
+    '---',
+    '# Related Person',
+    '',
+  ].join('\n'));
+
+  assert.equal(upsertFrontmatter(page, {
+    relationships: [
+      relationship('[[Cafe\u0301]]'),
+      relationship('[[Café]]', { source: { kind: 'domain-match', id: 'nfc' } }),
+      beta,
+    ],
+  }), true);
+  const merged = yaml.load(fs.readFileSync(page, 'utf8').split('---', 2)[1]);
+  assert.deepEqual(merged.relationships, [
+    confirmed,
+    relationship('[[Cafe\u0301]]'),
+    beta,
+  ]);
+  assert.equal(Object.hasOwn(merged.dex_pinned, 'relationships'), false);
+  assert.equal(relationshipEdgeKey(relationship('[[Café]]')), 'works_at::[[café]]');
+
+  const tombstoned = mergeFrontmatterText(page, [
+    '---',
+    'type: person',
+    'relationships: []',
+    'dex_pinned: {}',
+    'dex_last_written: {relationships: []}',
+    'dex_dismissed_relationships:',
+    '  - {key: "works_at::[[acme]]", date: "2026-07-24"}',
+    '---',
+    '# Related',
+    '',
+  ].join('\n'), { relationships: [relationship('[[Acme]]')] });
+  const dismissed = yaml.load(tombstoned.split('---', 2)[1]);
+  assert.deepEqual(dismissed.relationships, []);
+  assert.deepEqual(dismissed.dex_dismissed_relationships, [
+    { key: 'works_at::[[acme]]', date: '2026-07-24' },
+  ]);
+
+  const stale = mergeFrontmatterText(page, [
+    '---',
+    'type: person',
+    'relationships:',
+    '  - type: works_at',
+    '    target: "[[Acme]]"',
+    '    status: suggested',
+    '    source: {kind: domain-match, id: acme.test}',
+    "    date: '2026-07-23'",
+    'dex_pinned: {}',
+    'dex_last_written: {type: person}',
+    '---',
+    '# Related',
+    '',
+  ].join('\n'), { relationships: [beta] });
+  assert.deepEqual(yaml.load(stale.split('---', 2)[1]).relationships, [
+    relationship('[[Acme]]'),
+    beta,
+  ]);
+
+  const reliableBase = [
+    '---',
+    'type: person',
+    'relationships:',
+    '  - type: works_at',
+    '    target: "[[Acme]]"',
+    '    status: suggested',
+    '    source: {kind: domain-match, id: acme.test}',
+    "    date: '2026-07-23'",
+    'dex_pinned: {}',
+    'dex_last_written:',
+    '  relationships:',
+    '    - type: works_at',
+    '      target: "[[Acme]]"',
+    '      status: suggested',
+    '      source: {kind: domain-match, id: acme.test}',
+    "      date: '2026-07-23'",
+    '---',
+    '# Related',
+    '',
+  ].join('\n');
+
+  const handDeleted = reliableBase.replace(
+    /relationships:\n(?:  .+\n)+dex_pinned:/,
+    'relationships: []\ndex_pinned:',
+  );
+  const handDeleteMerge = yaml.load(
+    mergeFrontmatterText(page, handDeleted, {
+      relationships: [relationship('[[Acme]]')],
+    }).split('---', 2)[1],
+  );
+  assert.deepEqual(handDeleteMerge.relationships, []);
+  assert.equal(
+    handDeleteMerge.dex_dismissed_relationships[0].key,
+    'works_at::[[acme]]',
+  );
+
+  const retargeted = yaml.load(
+    mergeFrontmatterText(
+      page,
+      reliableBase,
+      { relationships: [relationship('[[Beta]]')] },
+      { relationshipRemovedKeys: ['works_at::[[acme]]'] },
+    ).split('---', 2)[1],
+  );
+  assert.deepEqual(retargeted.relationships, [relationship('[[Beta]]')]);
+  assert.equal(retargeted.dex_dismissed_relationships, undefined);
+
+  const relabelledCurrent = reliableBase.replace(
+    /type: works_at\n    target: "\[\[Acme\]\]"/,
+    'type: related_to\n    target: "[[Acme]]"',
+  );
+  const relabelled = relationship(
+    '[[Acme]]',
+    { type: 'related_to' },
+  );
+  const relabelMerge = yaml.load(
+    mergeFrontmatterText(page, relabelledCurrent, {
+      relationships: [relabelled],
+    }).split('---', 2)[1],
+  );
+  assert.deepEqual(relabelMerge.relationships, [relabelled]);
+  assert.equal(
+    relabelMerge.dex_dismissed_relationships[0].key,
+    'works_at::[[acme]]',
+  );
 });
 
 test('upsert preserves unknown keys, is idempotent, and leaves no temp files', t => {

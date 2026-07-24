@@ -38,6 +38,8 @@ git -C "$UPSTREAM" config user.email "fixture-builder@example.com"
 # Include the live migrator even while it is still uncommitted in this worktree.
 # The contract, tracked-ignore policy, and transition metadata come from v1.63.
 D1_FILES=(
+  core/data/sync-folder-markers.json
+  core/migrations/sync-folder-detector.cjs
   core/migrations/v1-to-v2-brain-vault-split.cjs
 )
 for relative in "${D1_FILES[@]}"; do

@@ -11,6 +11,8 @@ vitest.config.mjs       export-ignore
 core/tests/             export-ignore
 core/mcp/tests/         export-ignore
 core/migrations/tests/  export-ignore
+core/integrations/connection-manager/*.test.cjs export-ignore
+core/integrations/connection-manager/hardening.child.cjs export-ignore
 .claude/hooks/tests/    export-ignore
 .scripts/meeting-intel/__tests__/ export-ignore
 CONTRIBUTING.md         export-ignore
@@ -20,3 +22,7 @@ DISTRIBUTION_READY.md   export-ignore
 .ao-issue.md            export-ignore
 .distignore             export-ignore
 .gitattributes          export-ignore
+
+# The historical catalog blob contained a NUL sentinel. Force the one cleanup
+# diff to remain reviewable as text; subsequent blobs are ordinary UTF-8.
+core/integrations/connection-manager/catalog.cjs diff

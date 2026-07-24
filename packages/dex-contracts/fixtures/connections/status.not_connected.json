@@ -1,0 +1,20 @@
+{
+  "connections": [
+    {
+      "service": "fixture-not_connected",
+      "provider": "fixture",
+      "alias": null,
+      "status": "not_connected",
+      "expiresAt": null,
+      "hasRefreshToken": false,
+      "scopes": [],
+      "lastRefreshedAt": null,
+      "error": null,
+      "verified": false,
+      "verification": "unverified",
+      "lastVerifiedAt": null,
+      "lastProbeAt": null
+    }
+  ],
+  "registryNotice": null
+}

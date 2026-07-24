@@ -259,9 +259,22 @@ if [ ! -f "$MIGRATOR" ]; then
     exit 1
 fi
 
+MIGRATION_SYNC_FOLDER_ARGUMENT=""
+for INSTALL_ARGUMENT in "$@"; do
+    if [ "$INSTALL_ARGUMENT" = "--allow-synced-folder" ]; then
+        MIGRATION_SYNC_FOLDER_ARGUMENT="--allow-synced-folder"
+    fi
+done
+
 MIGRATION_MODE="--auto"
 while true; do
-    if node "$MIGRATOR" "$MIGRATION_MODE"; then
+    if [ -n "$MIGRATION_SYNC_FOLDER_ARGUMENT" ]; then
+        if node "$MIGRATOR" "$MIGRATION_MODE" "$MIGRATION_SYNC_FOLDER_ARGUMENT"; then
+            MIGRATION_STATUS=0
+        else
+            MIGRATION_STATUS=$?
+        fi
+    elif node "$MIGRATOR" "$MIGRATION_MODE"; then
         MIGRATION_STATUS=0
     else
         MIGRATION_STATUS=$?

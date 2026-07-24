@@ -353,13 +353,37 @@ if git clone --local --no-hardlinks --quiet "$PWD" "$RELEASE_CHECK_REPO" \
     && git -C "$RELEASE_CHECK_REPO" checkout release --quiet \
     && python3 scripts/check-catalog-coverage.py --release-root "$RELEASE_CHECK_REPO" >/dev/null; then
     RELEASE_TEST_FILES=$(git -C "$RELEASE_CHECK_REPO" ls-tree -r --name-only release -- \
-        core/tests core/mcp/tests core/migrations/tests .claude/hooks/tests)
+        core/tests core/mcp/tests core/migrations/tests .claude/hooks/tests \
+        core/integrations/connection-manager | \
+        grep -E '(^core/(tests|mcp/tests|migrations/tests)/|^\.claude/hooks/tests/|\.test\.cjs$|/hardening\.child\.cjs$)' || true)
     if [ -n "$RELEASE_TEST_FILES" ]; then
         echo "  ❌ ERROR: Test files found in generated release branch:"
         echo "$RELEASE_TEST_FILES" | sed 's/^/     /'
         ERRORS=$((ERRORS + 1))
     else
         echo "  ✅ Generated release branch contains no test suites"
+    fi
+    RELEASE_DEAD_SCRIPTS=$(git -C "$RELEASE_CHECK_REPO" show release:package.json | node -e '
+      let raw = "";
+      process.stdin.on("data", (chunk) => raw += chunk);
+      process.stdin.on("end", () => {
+        const scripts = JSON.parse(raw).scripts || {};
+        const stripped = [
+          "test:hooks",
+          "test:scripts",
+          "test:integrations",
+          "check:connections-contract",
+          "test:connections-consumer-smoke",
+        ];
+        process.stdout.write(stripped.filter((name) => Object.hasOwn(scripts, name)).join("\n"));
+      });
+    ')
+    if [ -n "$RELEASE_DEAD_SCRIPTS" ]; then
+        echo "  ❌ ERROR: Release package contains scripts whose targets were stripped:"
+        echo "$RELEASE_DEAD_SCRIPTS" | sed 's/^/     /'
+        ERRORS=$((ERRORS + 1))
+    else
+        echo "  ✅ Release package contains no scripts pointing at stripped tests/helpers"
     fi
 else
     echo "  ❌ ERROR: Could not build a temporary release branch"

@@ -9,6 +9,8 @@ from pathlib import Path
 
 import pytest
 
+from core.lifecycle import service
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
@@ -58,7 +60,7 @@ def test_adopt_preserves_existing_content_while_routing_lifecycle(tmp_path: Path
 
     assert completed.returncode == 0, completed.stderr
     summary = json.loads(completed.stdout)
-    assert summary["lifecycle_executor"]["api_version"] == "1.0.0"
+    assert summary["lifecycle_executor"]["api_version"] == service.api_version
     assert summary["lifecycle_executor"]["skipped"] == "no-release-catalog"
     assert "name: Existing User" in (vault / "System/user-profile.yaml").read_text()
     assert "custom: keep" in (vault / "System/user-profile.yaml").read_text()

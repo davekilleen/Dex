@@ -40,6 +40,8 @@ System/.last-update-check
 System/.update-available
 System/.smoke-last-run.json
 System/.dex/smoke-history.jsonl
+System/.dex/session-health.lock
+System/.dex/session-health-success.json
 System/.dex/health-telemetry-log.jsonl
 System/.dex/telemetry-id
 System/.dex/adoption/credential-journals/
@@ -105,6 +107,8 @@ eggs/
 .eggs/
 lib/
 lib64/
+!core/integrations/connection-manager/lib/
+!core/integrations/connection-manager/lib/**
 !.scripts/lib/
 !.scripts/lib/**
 !.scripts/meeting-intel/lib/

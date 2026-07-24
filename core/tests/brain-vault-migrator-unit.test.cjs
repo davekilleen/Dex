@@ -51,6 +51,49 @@ function addV163MigrationMetadata(root) {
   }
 }
 
+test('synced-folder override composes with conversion modes without weakening one-mode parsing', () => {
+  const migrator = require(MIGRATOR_PATH);
+
+  assert.deepEqual(migrator.parseArguments([]), {
+    mode: 'dry-run',
+    allowSyncedFolder: false,
+  });
+  for (const [flag, mode] of [
+    ['--dry-run', 'dry-run'],
+    ['--auto', 'auto'],
+    ['--resume', 'resume'],
+  ]) {
+    assert.deepEqual(migrator.parseArguments([flag, '--allow-synced-folder']), {
+      mode,
+      allowSyncedFolder: true,
+    });
+    assert.deepEqual(migrator.parseArguments(['--allow-synced-folder', flag]), {
+      mode,
+      allowSyncedFolder: true,
+    });
+  }
+  assert.throws(
+    () => migrator.parseArguments(['--auto', '--resume', '--allow-synced-folder']),
+    /one mode/i,
+  );
+  assert.throws(
+    () => migrator.parseArguments(['--status', '--allow-synced-folder']),
+    /only.*dry-run.*auto.*resume/i,
+  );
+  assert.throws(
+    () => migrator.parseArguments(['--restore', '--allow-synced-folder']),
+    /only.*dry-run.*auto.*resume/i,
+  );
+  assert.deepEqual(migrator.parseArguments(['--status']), {
+    mode: 'status',
+    allowSyncedFolder: false,
+  });
+  assert.deepEqual(migrator.parseArguments(['--restore']), {
+    mode: 'restore',
+    allowSyncedFolder: false,
+  });
+});
+
 test('CLAUDE regeneration lifts the legacy extension bytes and removes legacy markers', () => {
   const migrator = require(MIGRATOR_PATH);
   const legacy = [
@@ -93,6 +136,26 @@ test('CLAUDE regeneration separates custom text without changing its bytes on di
     '# Dex\nKeep this exact final character: café\n# After custom instructions\n',
   );
   assert.equal(custom.endsWith('\n'), false);
+});
+
+test('migration report opens with recovery instructions and explains the undo archive', () => {
+  const migrator = require(MIGRATOR_PATH);
+
+  const report = migrator.renderReport({
+    complete: true,
+    modifiedBrainPaths: [],
+    remoteNames: [],
+    secretFindings: [],
+    heldBackPaths: [],
+    brainFiles: [],
+    vaultFiles: [],
+  });
+
+  assert.match(report, /^# Your Dex brain and vault split\n\n## If the migration stopped/);
+  assert.match(report, /--resume/);
+  assert.match(report, /--restore/);
+  assert.match(report, /Do not reinstall, restore backups, or run raw Git commands/);
+  assert.match(report, /pre-split-archive.*one-command undo/i);
 });
 
 test('migrator root writes require a positive ownership class or exact migration exception', () => {

@@ -73,6 +73,23 @@ test('an email-less person identity may resolve by a unique name', (t) => {
   }), namesake);
 });
 
+test('NFC and NFD person names resolve as one canonical identity', (t) => {
+  const vault = makeVault(t);
+  const decomposed = 'Jose\u0301 A\u0301lvarez';
+  const person = writePerson(
+    vault,
+    'Jose_decomposed.md',
+    decomposed,
+    [],
+  );
+
+  assert.equal(resolveEntityPath(vault, {
+    kind: 'person',
+    name: decomposed.normalize('NFC'),
+    emails: [],
+  }), person);
+});
+
 test('a matching person email retargets even when the name changed', (t) => {
   const vault = makeVault(t);
   const renamed = writePerson(

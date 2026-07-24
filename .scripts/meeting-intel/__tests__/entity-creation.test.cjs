@@ -73,6 +73,42 @@ test('auto mode creates one canonical external page and reruns create nothing', 
   assert.equal(processEntityCreation(meetings(), { entity_creation: { mode: 'auto' } }).created.length, 0);
 }));
 
+test('auto mode NFC-normalizes decomposed names at filename ingestion', () => withVault(vault => {
+  const decomposed = 'Jose\u0301 A\u0301lvarez';
+  const attendee = {
+    name: decomposed,
+    email: 'jose@example.com',
+    location: 'external',
+  };
+  const result = processEntityCreation([
+    {
+      id: 'unicode-1',
+      createdAt: '2026-07-17T10:00:00Z',
+      transcript: '',
+      filteredAttendees: [attendee],
+    },
+    {
+      id: 'unicode-2',
+      createdAt: '2026-07-24T10:00:00Z',
+      transcript: '',
+      filteredAttendees: [attendee],
+    },
+  ], { entity_creation: { mode: 'auto' } });
+
+  assert.equal(result.created.length, 1);
+  assert.equal(result.created[0].page_path.endsWith('José_Álvarez.md'), true);
+  assert.equal(
+    fs.existsSync(path.join(
+      vault,
+      '05-Areas',
+      'People',
+      'External',
+      'José_Álvarez.md',
+    )),
+    true,
+  );
+}));
+
 test('unavailable engine queues the create and does not claim the page was created', () => withVault(vault => {
   const profile = { entity_creation: { mode: 'auto' } };
   const first = processEntityCreation(
@@ -191,12 +227,36 @@ for (const [label, profile] of [
   }));
 }
 
-test('off mode records observations only', () => withVault(() => {
+test('off mode records observations and performs zero relationship writes', () => withVault(vault => {
+  const people = path.join(vault, '05-Areas', 'People', 'External');
+  const companies = path.join(vault, '05-Areas', 'Companies');
+  fs.mkdirSync(people, { recursive: true });
+  fs.mkdirSync(companies, { recursive: true });
+  fs.writeFileSync(
+    path.join(people, 'Jane_Doe.md'),
+    renderPersonPage('Jane Doe', null, null, ['jane@acme.com']),
+  );
+  fs.writeFileSync(
+    path.join(companies, 'Acme.md'),
+    renderCompanyPage('Acme', ['acme.com']),
+  );
   const result = processEntityCreation(meetings(), { entity_creation: { mode: 'off' } });
   assert.equal(result.created.length, 0);
   assert.equal(result.suggested.length, 0);
   assert.equal(Object.keys(loadState().observations).length, 2);
   assert.equal(loadSuggestions().suggestions.length, 0);
+  assert.deepEqual(
+    parseEntityPage(path.join(people, 'Jane_Doe.md')).relationships || [],
+    [],
+  );
+  const pendingPath = path.join(vault, 'System', '.dex', 'entity-pending.json');
+  if (fs.existsSync(pendingPath)) {
+    const pending = JSON.parse(fs.readFileSync(pendingPath, 'utf8'));
+    assert.equal(
+      pending.batches.some(batch => batch.scope === 'relationship'),
+      false,
+    );
+  }
 }));
 
 test('unknown location in auto mode is suggested, not created', () => withVault(() => {
@@ -319,6 +379,26 @@ test('batch sync logs idempotent person and company touches without fabricating 
   assert.deepEqual(parseEntityPage(companyPath).touches, expectedTouches);
   assert.equal(parseEntityPage(personPath).last_touched, '2026-06-08');
   assert.equal(parseEntityPage(companyPath).last_touched, '2026-06-08');
+  assert.deepEqual(parseEntityPage(personPath).relationships, [
+    {
+      type: 'works_at',
+      target: '[[Example]]',
+      status: 'suggested',
+      source: { kind: 'domain-match', id: 'example.com' },
+      date: '2026-06-01',
+    },
+    {
+      type: 'related_to',
+      target: '[[John Roe]]',
+      status: 'suggested',
+      source: { kind: 'co-attendance', id: 'touch-meeting-1' },
+      date: '2026-06-01',
+    },
+  ]);
+  assert.match(
+    fs.readFileSync(personPath, 'utf8'),
+    /- 2026-06-01 — relationship · works_at — \[\[Example\]\]/,
+  );
   assert.equal(
     fs.existsSync(path.join(vault, '05-Areas', 'People', 'External', 'No_Email.md')),
     false,

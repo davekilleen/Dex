@@ -606,6 +606,11 @@ QUICK_CHECKS = (
     CheckDefinition("vault.configs", "Vault configuration", "_probe_vault_configs"),
     CheckDefinition("vault.git", "Vault history", "_probe_vault_git"),
     CheckDefinition("brain.git", "Dex brain history", "_probe_brain_git"),
+    CheckDefinition(
+        "topology.pre-split-archive",
+        "Pre-split undo archive",
+        "_probe_pre_split_archive",
+    ),
     CheckDefinition("vault.auto-commit", "Vault auto-commit", "_probe_vault_auto_commit"),
     CheckDefinition(
         "topology.migration-pending",
@@ -654,6 +659,14 @@ DEEP_CHECKS = (
 
 def _one_line(value: object) -> str:
     return " ".join(str(value).split()) or value.__class__.__name__
+
+
+def _format_archive_size(size_bytes: int) -> str:
+    """Return archive sizes in a compact, human-readable unit."""
+    for unit, divisor in (("GB", 1024**3), ("MB", 1024**2), ("KB", 1024)):
+        if size_bytes >= divisor:
+            return f"{size_bytes / divisor:.1f} {unit}"
+    return f"{size_bytes / 1024:.1f} KB"
 
 
 def _sentence(value: object) -> str:
@@ -2658,6 +2671,31 @@ def _probe_brain_git(context: DoctorContext) -> ProbeResult:
     )
 
 
+def _probe_pre_split_archive(context: DoctorContext) -> ProbeResult:
+    """Describe the retained pre-split history without treating it as a fault."""
+    archive = context.vault_root / ".dex/pre-split-archive.git"
+    if not archive.exists():
+        return ProbeResult("OFF", "No pre-split undo archive is present")
+    if archive.is_symlink() or not archive.is_dir():
+        return ProbeResult("BROKEN", "The pre-split undo archive is not a safe directory")
+    try:
+        size_bytes = sum(
+            path.stat().st_size
+            for path in archive.rglob("*")
+            if path.is_file() and not path.is_symlink()
+        )
+        age_days = max(0, int((context.now.timestamp() - archive.stat().st_mtime) // 86_400))
+    except OSError as error:
+        return ProbeResult("UNKNOWN", f"Could not inspect the pre-split undo archive: {_one_line(str(error))}")
+    size_text = _format_archive_size(size_bytes)
+    return ProbeResult(
+        "OK",
+        f"The pre-split undo archive is present ({age_days} days old, {size_text}). "
+        "It is the one-command undo for the brain/vault conversion. Keep it for one full "
+        "release cycle after conversion, then Dex can offer its receipted removal.",
+    )
+
+
 def _probe_vault_auto_commit(context: DoctorContext) -> ProbeResult:
     profile_path = context.vault_root / "System/user-profile.yaml"
     if profile_path.is_symlink():
@@ -2704,12 +2742,16 @@ def _probe_migration_pending(context: DoctorContext) -> ProbeResult:
     if topology == "migration-in-progress":
         return ProbeResult(
             "BROKEN",
-            "The one-time upgrade is incomplete — run /dex-update so recovery can resume",
+            "The one-time upgrade is incomplete. Run core/migrations/v1-to-v2-brain-vault-split.cjs "
+            "--resume to continue, or --restore to return to the pre-split layout. Do not reinstall, "
+            "restore backups, or run raw Git commands while recovery is pending.",
         )
     if topology == "invalid-split":
         return ProbeResult(
             "BROKEN",
-            "The split topology markers or DEX_VAULT wiring disagree — use updater or migrator recovery, never raw Git",
+            "The split topology markers or DEX_VAULT wiring disagree. Run "
+            "core/migrations/v1-to-v2-brain-vault-split.cjs --resume to continue, or --restore "
+            "to return to the pre-split layout. Do not reinstall, restore backups, or run raw Git commands.",
         )
     if topology == "zip-or-manual":
         return ProbeResult(
@@ -3428,77 +3470,107 @@ def _enabled_integrations(config: object) -> list[tuple[str, dict[str, Any]]]:
     return sorted(enabled.items())
 
 
-def _integration_checker_command(
-    context: DoctorContext,
-    name: str,
-    settings: dict[str, Any],
-) -> list[str]:
-    configured = settings.get("health_checker") or settings.get("health_check")
-    if isinstance(configured, list) and all(isinstance(part, str) for part in configured):
-        return [_expand_path_token(part, context) for part in configured]
-    if isinstance(configured, str):
-        checker = Path(_expand_path_token(configured, context))
-        if not checker.is_absolute():
-            checker = context.vault_root / checker
-        return [shutil.which("node") or "node", str(checker)]
-
-    candidates = (
-        context.vault_root / "core" / "integrations" / name / "connection.cjs",
-        context.vault_root / ".scripts" / "integrations" / name / "connection.cjs",
-        context.vault_root / ".scripts" / name / "connection.cjs",
-        context.vault_root / ".claude" / "skills" / f"{name}-setup" / "connection.cjs",
-    )
-    checker = next((candidate for candidate in candidates if candidate.is_file()), None)
-    if checker is None:
-        raise FileNotFoundError(f"no existing {name} connection health checker was found")
-    node = shutil.which("node")
-    if not node:
-        raise FileNotFoundError("node is required to run integration connection checkers")
-    return [node, str(checker)]
-
-
-def _integration_health_check(
+def _task_sync_health_check(
     context: DoctorContext,
     name: str,
     settings: dict[str, Any],
 ) -> tuple[bool, str]:
-    command = _integration_checker_command(context, name, settings)
+    runner = context.repo_root / ".claude" / "hooks" / "adapters" / "run.cjs"
+    if not runner.is_file():
+        raise FileNotFoundError("task-sync adapter runner is not installed")
+    node = shutil.which("node")
+    if not node:
+        raise FileNotFoundError("node is required to run task-sync health checks")
+    # Lazy import: it needs PyYAML, and the doctor CLI must still emit JSON when
+    # yaml is not importable (test_cli_still_emits_json_when_yaml_is_not_importable).
+    from core.utils.integration_credentials import resolve_service_credentials
+
+    credentials = resolve_service_credentials(name, settings, context.vault_root)
+    runtime_settings = {**settings, **credentials}
     result = subprocess.run(
-        command,
+        [node, str(runner), name, "health"],
+        input=json.dumps({"config": runtime_settings, "args": None}),
         cwd=context.vault_root,
         capture_output=True,
         text=True,
         timeout=30,
         check=False,
     )
-    detail = _one_line(result.stdout if result.returncode == 0 else result.stderr or result.stdout)
-    if result.returncode != 0:
-        return False, detail
     try:
         payload = json.loads(result.stdout)
     except (json.JSONDecodeError, TypeError):
-        return True, detail
-    if isinstance(payload, dict):
-        for key in ("healthy", "success", "ok", "connected"):
-            if payload.get(key) is False:
-                return False, _one_line(payload.get("error") or payload.get("message") or detail)
-    return True, detail
+        detail = _one_line(result.stderr or result.stdout)
+        for secret in credentials.values():
+            detail = detail.replace(secret, "[REDACTED]")
+        if result.returncode != 0:
+            return False, detail
+        return False, "task-sync adapter returned invalid JSON"
+    detail = _one_line(payload.get("error") if isinstance(payload, dict) else result.stderr or result.stdout)
+    for secret in credentials.values():
+        detail = detail.replace(secret, "[REDACTED]")
+    if result.returncode != 0:
+        return False, detail
+    healthy = (
+        isinstance(payload, dict)
+        and payload.get("ok") is True
+        and isinstance(payload.get("result"), dict)
+        and payload["result"].get("healthy") is True
+    )
+    if not healthy:
+        return False, _one_line(payload.get("error") if isinstance(payload, dict) else detail)
+    return True, name
+
+
+def _engine_integration_health(context: DoctorContext) -> tuple[list[dict[str, Any]] | None, str]:
+    engine = context.repo_root / "core" / "integrations" / "connection-manager" / "connect.cjs"
+    if not engine.is_file():
+        return None, "connection manager is not installed"
+    node = shutil.which("node")
+    if not node:
+        raise FileNotFoundError("node is required to inspect engine connections")
+    result = subprocess.run(
+        [node, str(engine), "status", "--json"],
+        cwd=context.vault_root,
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=False,
+        env={
+            "PATH": os.environ.get("PATH", ""),
+            "HOME": os.environ.get("HOME", ""),
+            "SYSTEMROOT": os.environ.get("SYSTEMROOT", ""),
+            "DEX_VAULT": str(context.vault_root),
+        },
+    )
+    detail = _one_line(result.stderr or result.stdout)
+    if result.returncode != 0:
+        raise RuntimeError(detail or "connection manager status failed")
+    try:
+        payload = json.loads(result.stdout)
+    except (json.JSONDecodeError, TypeError) as error:
+        raise RuntimeError("connection manager status returned invalid JSON") from error
+    connections = payload.get("connections") if isinstance(payload, dict) else None
+    if not isinstance(connections, list) or any(not isinstance(row, dict) for row in connections):
+        raise RuntimeError("connection manager status returned an invalid connection list")
+    return connections, detail
 
 
 def _probe_integrations_enabled(context: DoctorContext) -> ProbeResult:
     config_path = context.vault_root / "System" / "integrations" / "config.yaml"
-    if not config_path.exists():
-        return ProbeResult("OFF", "No integrations are enabled")
-    config = _load_yaml(config_path) or {}
-    enabled = _enabled_integrations(config)
-    if not enabled:
-        return ProbeResult("OFF", "No integrations are enabled")
+    config = (_load_yaml(config_path) or {}) if config_path.exists() else {}
+    enabled = list(_enabled_integrations(config))
 
     failures = []
     unknowns = []
     for name, settings in enabled:
+        # Only task-sync services have an automated checker (the adapters' health
+        # op). Anything else that is enabled must still fail CLOSED as
+        # "can't verify" — never silently drop it (test_split_probe_regression).
+        if settings.get("task_sync") is not True:
+            unknowns.append(f"{name}: no automated health check available")
+            continue
         try:
-            healthy, detail = _integration_health_check(context, name, settings)
+            healthy, detail = _task_sync_health_check(context, name, settings)
         except Exception as error:
             unknowns.append(f"{name}: {_one_line(error)}")
             continue
@@ -3507,6 +3579,27 @@ def _probe_integrations_enabled(context: DoctorContext) -> ProbeResult:
                 unknowns.append(f"{name}: {detail}")
             else:
                 failures.append(f"{name}: {detail}")
+    engine_connections: list[dict[str, Any]] = []
+    try:
+        engine_rows, _detail = _engine_integration_health(context)
+        if engine_rows is not None:
+            engine_connections = engine_rows
+    except Exception as error:
+        detail = _one_line(error)
+        if _looks_like_sandbox_failure(detail):
+            unknowns.append(f"connection manager: {detail}")
+        else:
+            failures.append(f"connection manager: {detail}")
+
+    for row in engine_connections:
+        service = str(row.get("service") or "unknown")
+        status = str(row.get("status") or "unknown")
+        if status in {"needs_reauth", "not_connected"}:
+            failures.append(f"{service}: {status}")
+        elif row.get("verified") is not True:
+            unknowns.append(
+                f"{service}: stored credential has not been live-verified"
+            )
     if failures:
         detail_parts = [f"failed: {'; '.join(failures)}"]
         if unknowns:
@@ -3521,8 +3614,11 @@ def _probe_integrations_enabled(context: DoctorContext) -> ProbeResult:
             "UNKNOWN",
             f"Enabled integration checks could not run: {'; '.join(unknowns)}",
         )
-    names = ", ".join(name for name, _settings in enabled)
-    return ProbeResult("OK", f"Existing health checkers passed for enabled integrations: {names}")
+    checked = [name for name, _settings in enabled]
+    checked.extend(str(row.get("service") or "unknown") for row in engine_connections)
+    if not checked:
+        return ProbeResult("OFF", "No task-sync or engine connections are enabled")
+    return ProbeResult("OK", f"Integration health passed for: {', '.join(checked)}")
 
 
 def _mcp_import_check(

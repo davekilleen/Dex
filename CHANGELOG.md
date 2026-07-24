@@ -7,6 +7,93 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.74.0] — 🔌 Groundwork: connecting your other tools, tested against the real world (2026-07-24)
+
+Dex is getting a built-in way to connect the other tools you use — starting with Google Calendar and Linear — so it can work with what's in them instead of asking you to copy-paste. That doorway isn't open yet, but this release lands the machinery behind it, after a security review and live end-to-end testing with real Google and Linear accounts.
+
+**What this gets ready for you:**
+
+* **Your sign-ins will be stored sealed.** Keys and tokens are kept encrypted on your machine, and Dex refuses to save them at all if the safety wrapper around them can't be set up.
+* **Nothing gets trusted without proof.** A connection only counts as working after Dex has checked it live. And if you ever replace a key or reconnect an account, the new credential has to prove itself from scratch — it inherits nothing from the old one.
+* **Dead connections fail loudly, not quietly.** If a key is revoked or a sign-in expires, Dex tells you and stops using it, instead of limping along half-working.
+* **Google is asked for the minimum.** Calendar connections request read-only access to your calendar — the smallest permission that does the job. (Live testing caught Google rejecting the request because it didn't say what access it wanted; that's fixed and locked in with a test.)
+
+Nothing changes in day-to-day use yet — this is the foundation the connections feature will stand on.
+
+## [1.73.0] — ✅ Every suggested connection gets its own yes or no (2026-07-24)
+
+Last release Dex started spotting connections between the people you know and offering them as suggestions. There was a rough edge worth fixing quickly: the moment you confirmed one connection on someone's page, Dex quietly stopped offering *new* ones for that person — and a suggestion you'd dismissed could later drift back. This tidies both.
+
+**What this fixes for you:**
+
+* **Confirming one connection no longer silences the rest.** Each suggested connection is handled on its own now — say yes to one, and Dex keeps surfacing new ones for that same person as they come up, instead of going quiet.
+* **A "no" actually sticks.** When you dismiss a suggested connection — or just delete one yourself — Dex remembers, and the same meeting won't quietly bring it back later.
+* **"Relationships to confirm" now actually lets you confirm.** The heads-up in your daily plan leads straight to a real yes-or-no step, rather than pointing you somewhere that couldn't act on it.
+* **"Off" means off.** If you've told Dex not to create things on its own, it now leaves connections alone too — no exceptions.
+
+## [1.72.0] — 🔗 Dex starts mapping how the people you know connect (2026-07-24)
+
+Dex has always kept a page for each person and company you deal with. What it couldn't do was join them up — see that someone works at a particular company, reports to someone else, or is the key stakeholder on a deal. This release starts drawing those connections, quietly, from what's already in your meetings.
+
+### 🔗 The connections between your people, drawn for you
+
+**What this fixes for you:**
+
+* **Dex now notices relationships and proposes them.** As it processes your meetings it spots things like "this person works at that company" or "these two are on the same deal," and adds them to the relevant pages — kept as *suggestions* until you say yes.
+* **Nothing is ever stated as fact until you confirm it.** Every connection Dex draws starts as a suggestion. You confirm the ones that are right, and from then on Dex treats them as settled and never quietly changes them. The ones you ignore stay as gentle suggestions, nothing more.
+* **A short "relationships to confirm" nudge in your daily plan.** When there are new connections waiting for a yes-or-no, Dex mentions it in one line during your daily plan and points you to `relationship-radar` to review them. If there's nothing pending, you'll never hear about it.
+* **It's careful with your pages.** Connections live in their own clearly-marked section on each page — everything you've written yourself is left exactly as it was.
+
+This is the groundwork for Dex understanding your world as a web of people, not just a stack of separate pages — which is what will make things like meeting prep and "who should I loop in?" genuinely smart down the line.
+
+## [1.71.0] — 🤝 Dex keeps you on top of your people, and closes out your meetings (2026-07-23)
+
+This one is mostly about the people side of your work. Dex now notices when you're drifting out of touch with someone who matters, helps you wrap up a meeting the moment it ends, keeps track of the small promises that are easy to drop, and adds a couple of new tools for starting something new. There's also a safer way to take an update when you've personalized Dex.
+
+### ❄️ Dex tells you who you're losing touch with
+
+You have people you mean to stay close to — and it's easy for weeks to slip by without noticing one has gone quiet. Until now Dex had no sense of that rhythm.
+
+**What this fixes for you:**
+
+* **A gentle "going cold" heads-up.** Dex watches how regularly you're in contact with the people on your pages, and when someone you were close to goes quiet for a while, it says so — ranked by how overdue each one is — so you can reach out before it costs you.
+* **A tool to ask directly.** The new `relationship-radar` skill answers "who should I reach out to?" or "who am I losing touch with?" whenever you want it, and it turns up during your weekly review.
+* **It never nags or acts on its own.** It only ever suggests; reaching out stays entirely your call.
+
+### 🤝 Wrap up a meeting while it's still fresh
+
+The best moment to capture what a meeting decided is the minute it ends — and that's exactly when it's easiest to move straight to the next thing and lose it.
+
+**What this fixes for you:**
+
+* **`meeting-closeout` locks it in.** Right after a call, Dex helps you pin down the decisions, who owns each action, what *you* committed to, and the single next step — then, only with your OK, turns those actions into tracked tasks.
+* **`commitments` catches what you're on the hook for.** Ask "what did I promise?" or "anything I owe people?" and Dex reconciles the promises you made and the asks you received across your meetings and notes into a clear owner/due/source list — then tracks the real ones once you confirm.
+* **Nothing becomes a task without your say-so.** Both tools show you the list first and wait for your yes.
+
+### ✍️ Small promises don't slip through
+
+In conversation you say things like "I'll follow up on that" or "let me get back to you" — real commitments that rarely make it onto any list.
+
+**What this fixes for you:**
+
+* **Dex now spots soft promises in your meetings** — the "I'll send that over" kind — and offers to capture them, so the quiet commitments get the same follow-through as the formal ones.
+* **Your meetings turn into updates you can trust.** Behind the scenes I rebuilt how a synced meeting updates your people pages so that if anything is interrupted mid-way, no update is silently lost — it's retried until it lands, and never leaves a page half-written.
+
+### 🚀 Two new tools for starting something
+
+* **`initiative-kickoff`** — when you decide to start something new (a hire, a partnership, a push), Dex turns it into a real project: the outcome and why now, what success looks like, who's involved, the first steps, and a project page that ladders up to your goals.
+* **`create-skill` got a rebuild.** Building your own Dex tool is now smarter — it checks nothing else already does the job, writes it properly, and grades it before calling it done. Anything you build for yourself is protected from future updates.
+
+### 🔐 A safer update when you've made Dex your own
+
+If you'd personalized one of Dex's tools and an update changed that same tool, you used to face an awkward either/or: keep your version or take the new one.
+
+**What this fixes for you:**
+
+* **Keep both.** Dex can now put the new version live *and* save your version right beside it, still fully usable — so you never have to throw away your customization to move forward. The whole change stays undoable.
+* **Your personal instructions survive an update.** A particular kind of update could drop the personal notes you'd added to Dex's main instructions. Those are now carried across intact.
+* **Dex still asks before touching anything, and shows you exactly what it will do first.**
+
 ## [1.70.0] — 🛟 Your own words stay safe, and Dex finds people properly again (2026-07-23)
 
 Two things in this one: a rare but unrecoverable way your writing could be overwritten, closed for good — and a rebuild of how Dex looks people up, which was quietly getting slower and occasionally turning up people who no longer exist.
@@ -131,13 +218,26 @@ This release finishes two stories that began yesterday: making Dex updates funda
 
 ---
 
-## [1.62.0] — 🔐 Some housekeeping on your connection keys, and Dex never updates itself behind your back (2026-07-20)
+## [1.63.0] — 🏠 Dex only sets up the rooms you actually need (2026-07-20)
 
-A round of tidying up. Nothing here was broken or exposed — it's a set of changes that follow good practice more closely and put you back in control of when Dex changes.
+Until now every Dex install arrived fully furnished — career coaching, company pages, quarterly goals — whether or not any of that matched your working life.
 
 **What this changes for you:**
 
-* **Your connection keys now live in a private file of their own.** When you connect a tool like Todoist or Trello, Dex saves a key that lets the two talk to each other. Those keys used to sit in a settings file inside your Dex folder. That's all on your own computer and none of it went anywhere — but the tidier habit is to keep keys out of anything you might one day share, back up or hand to someone else. So Dex now keeps them in a separate private file, away from everything else. If it spots an old key still sitting in the settings file, it'll suggest swapping it for a fresh one. Housekeeping, not an emergency.
+* **Dex asks what your work life actually looks like.** New setups keep the core always on — meetings, people and tasks — then ask three quick yes-or-no questions: do you want a Career room, a Companies room, a Quarterly Goals room? Say no and they simply don't exist in your vault, so you're not left with empty folders about a job you don't have. You can switch any room on or off later, and switching one off never deletes anything you wrote.
+* **If you already use those features, nothing changes.** Existing setups keep every room exactly as it is.
+* **The foundations for worry-free updates are in place.** Dex now has a single rulebook saying, for every file, whether it belongs to Dex or to you — plus a new update engine that backs up before touching anything, checks its own work, and can undo it exactly. If an update is ever interrupted, even by a crash, your files end up either completely untouched or completely updated — never half-done. You'll feel this properly in the next few releases, as updating becomes one command with one-click undo.
+* **The last of my own files are on their way out.** Earlier versions shipped with a few of my personal notes mixed in. Most went in this release, and the machinery to remove the final few safely — without disturbing anyone's update history — ships here too.
+
+---
+
+## [1.62.0] — 🔐 Some housekeeping on your connection keys, and Dex never updates itself behind your back (2026-07-20)
+
+A round of tidying up, and one thing you're now in control of.
+
+**What this changes for you:**
+
+* **Your connection keys now live in a private file of their own.** When you connect a tool like Todoist or Trello, Dex saves a key that lets the two talk to each other. Those keys used to sit in a settings file inside your Dex folder — and that folder keeps its own history. Dex never sent them anywhere, but if you ever share, publish or back up that folder, they'd travel with it, and old copies linger in the history even after the file changes. So Dex now keeps them in a separate private file, away from all that. If it spots an old key sitting where they used to be, it'll suggest swapping it for a fresh one.
 * **Dex's own tidiness check got better at its job.** Dex glances over your files for anything that looks like a key or a password before saving. The old check could be fooled by one written in an unusual way and would say everything was fine. The new one reads your settings properly, and if it genuinely can't tell, it says so rather than assuming.
 * **Dex never updates itself without asking.** Dex used to be able to quietly fetch and apply changes to itself when you started a session. Now it only *notices* that a newer version exists and mentions it. Nothing changes until you say so.
 * **Your own files survive an update.** Files and settings that only exist on your machine are kept safe through an update or a rollback, rather than risking being written over.

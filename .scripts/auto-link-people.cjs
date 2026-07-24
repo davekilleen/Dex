@@ -3,6 +3,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { loadPaths } = require('../.claude/hooks/paths.cjs');
+const { fold } = require('./lib/entity-pages.cjs');
 
 const STOPLIST = new Set([
   'Will',
@@ -290,7 +291,7 @@ function findClosingDestination(text, openIndex) {
 }
 
 function normalizeReferenceLabel(label) {
-  return label.trim().replace(/\s+/gu, ' ').toLowerCase();
+  return fold(label.trim().replace(/\s+/gu, ' '));
 }
 
 function findReferenceLabels(text, blockRanges) {
@@ -476,7 +477,7 @@ function wikiLinkLabel(text, range) {
 }
 
 function normalizedPersonName(name) {
-  return name.trim().replace(/\s+/gu, ' ').toLowerCase();
+  return fold(name.trim().replace(/\s+/gu, ' '));
 }
 
 function findPoisonedFirstNames(text, registry, protectedRanges) {

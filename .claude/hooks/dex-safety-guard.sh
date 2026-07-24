@@ -41,6 +41,35 @@ if [ -z "$COMMAND" ]; then
     exit 0
 fi
 
+# A live brain/vault migration owns the shared mutation lock. Raw Git writes
+# during that window can turn a recoverable pause into a corrupted topology.
+MIGRATION_LOCK="System/.dex/mutation.lock"
+MIGRATION_LOCK_LIVE=""
+if [ -f "$MIGRATION_LOCK" ]; then
+    MIGRATION_LOCK_LIVE=$(python3 -c '
+import json
+import os
+import sys
+try:
+    with open(sys.argv[1], encoding="utf-8") as handle:
+        lock = json.load(handle)
+    if lock.get("kind") != "migration":
+        raise ValueError("not a migration")
+    os.kill(lock["pid"], 0)
+except PermissionError:
+    print("yes")
+except (OSError, ValueError, KeyError, TypeError, json.JSONDecodeError):
+    pass
+else:
+    print("yes")
+' "$MIGRATION_LOCK" 2>/dev/null)
+fi
+if [ "$MIGRATION_LOCK_LIVE" = "yes" ] \
+    && echo "$COMMAND" | grep -qE '(^|[;&|[:space:]])git[[:space:]]+(add|am|apply|bisect[[:space:]]+(good|bad|reset|start)|branch[[:space:]].*(-[dDmM]|--delete|--move)|checkout|cherry-pick|clean|commit|merge|mv|rebase|reset|restore|revert|rm|stash|switch|tag)([[:space:];&|]|$)'; then
+    echo '{"decision":"block","reason":"A brain/vault migration is active. Do not use raw Git repair commands. Run the migrator with --resume to continue or --restore to return to the pre-split layout."}'
+    exit 2
+fi
+
 # === HARD BLOCKS (exit 2) ===
 
 # Catastrophic filesystem destruction

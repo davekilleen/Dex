@@ -10,6 +10,7 @@
     "vault_schema_supported",
     "ownership_classes",
     "mutation_policy",
+    "customization_migration",
     "hard_deny",
     "vault_regions",
     "rules",
@@ -77,6 +78,40 @@
             "regenerate",
             "never"
           ]
+        }
+      }
+    },
+    "customization_migration": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "version",
+        "action",
+        "seam_prefixes",
+        "seam_paths"
+      ],
+      "properties": {
+        "version": {
+          "const": 0
+        },
+        "action": {
+          "const": "write-with-user-approval"
+        },
+        "seam_prefixes": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
+        },
+        "seam_paths": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
         }
       }
     },

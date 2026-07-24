@@ -55,7 +55,9 @@ class PlanRejected(TransactionError):
 class PlanEntry:
     """One intended mutation at vault-relative ``relative``.
 
-    ``content=None`` is an authorized deletion. Deletions use the same
+    ``content=None`` is an authorized deletion. ``expected_current_sha256``
+    guards deletions (required) and content writes (optional) against a target
+    changing after the plan was built. Deletions use the same
     snapshot/apply/verify/rollback lifecycle as replacements, so an updater
     can prune a retired brain file without opening a second mutation path.
     """
@@ -127,12 +129,11 @@ class Transaction:
                     f"{entry.relative}: mode {oct(entry.mode)} carries special "
                     "bits; only permission bits up to 0o777 are allowed"
                 )
-            if entry.expected_current_sha256 is not None and (
-                entry.content is not None or not re.fullmatch(r"[0-9a-f]{64}", entry.expected_current_sha256)
+            if entry.expected_current_sha256 is not None and not re.fullmatch(
+                r"[0-9a-f]{64}", entry.expected_current_sha256
             ):
                 raise PlanRejected(
-                    f"{entry.relative}: current-content preconditions are valid only for "
-                    "deletions and must be a lowercase sha256"
+                    f"{entry.relative}: current-content preconditions must be a lowercase sha256"
                 )
             if entry.content is None and entry.expected_current_sha256 is None:
                 raise PlanRejected(f"{entry.relative}: deletions require expected_current_sha256")
@@ -243,18 +244,15 @@ class Transaction:
                 raise PlanRejected(f"{entry.relative}: {unsafe_parent}")
             if entry.expected_current_sha256 is None:
                 continue
-            target = self.vault_root / entry.relative
-            if not target.exists():
-                continue
-            if (
-                target.is_symlink()
-                or not target.is_file()
-                or hashlib.sha256(target.read_bytes()).hexdigest() != entry.expected_current_sha256
-                or target.stat().st_mode & 0o777 != entry.mode
-            ):
-                raise PlanRejected(
-                    f"{entry.relative} changed after the mutation plan was built; "
-                    "the existing file wins and the transaction aborts"
+            if entry.content is None:
+                self._verify_deletion_precondition(
+                    entry,
+                    changed_when="after the mutation plan was built",
+                )
+            else:
+                self._verify_content_precondition(
+                    entry,
+                    changed_when="after the mutation plan was built",
                 )
         self.snapshot.capture(self.vault_root, [entry.relative for entry in self._plan])
         self.journal.append("SNAPSHOT-DONE")
@@ -307,15 +305,40 @@ class Transaction:
         target = self.vault_root / entry.relative
         if not target.exists():
             return
-        if (
-            target.is_symlink()
-            or not target.is_file()
-            or hashlib.sha256(target.read_bytes()).hexdigest() != entry.expected_current_sha256
-            or target.stat().st_mode & 0o777 != entry.mode
-        ):
+        if not self._matches_current_precondition(entry, check_mode=True):
             raise PlanRejected(
                 f"{entry.relative} changed {changed_when}; the existing file wins and the transaction aborts"
             )
+
+    def _verify_content_precondition(
+        self,
+        entry: PlanEntry,
+        *,
+        changed_when: str,
+    ) -> None:
+        target = self.vault_root / entry.relative
+        if not target.exists() or not self._matches_current_precondition(
+            entry,
+            check_mode=False,
+        ):
+            raise PlanRejected(
+                f"{entry.relative} changed {changed_when}; "
+                "the existing file wins and the transaction aborts"
+            )
+
+    def _matches_current_precondition(
+        self,
+        entry: PlanEntry,
+        *,
+        check_mode: bool,
+    ) -> bool:
+        target = self.vault_root / entry.relative
+        return (
+            not target.is_symlink()
+            and target.is_file()
+            and hashlib.sha256(target.read_bytes()).hexdigest() == entry.expected_current_sha256
+            and (not check_mode or target.stat().st_mode & 0o777 == entry.mode)
+        )
 
     def _apply_one(self, index: int, entry: PlanEntry) -> None:
         relative = entry.relative
@@ -349,6 +372,15 @@ class Transaction:
             os.fsync(descriptor)
         finally:
             os.close(descriptor)
+        if entry.expected_current_sha256 is not None:
+            try:
+                self._verify_content_precondition(
+                    entry,
+                    changed_when="after the mutation snapshot",
+                )
+            except BaseException:
+                temporary.unlink(missing_ok=True)
+                raise
         os.replace(temporary, target)
         directory = os.open(target.parent, os.O_RDONLY)
         try:

@@ -110,7 +110,11 @@ _repo_root = str(Path(__file__).parent.parent.parent)
 if _repo_root not in sys.path:
     sys.path.append(_repo_root)
 from core import capabilities as capability_rooms
-from core.entity_engine import create_page_if_absent
+from core.entity_engine import (
+    create_page_if_absent,
+    fingerprint_page,
+    mutate_relationships,
+)
 from core.entity_engine import index as entity_index
 from core.paths import (
     COMPANIES_DIR,
@@ -161,6 +165,61 @@ def get_meetings_dir() -> Path:
 def get_companies_dir() -> Path:
     """Get the canonical Companies directory."""
     return COMPANIES_DIR
+
+
+def _relationship_page_path(page: str) -> Path:
+    """Resolve one Work-MCP page argument without allowing vault escape."""
+    if not isinstance(page, str) or not page.strip():
+        raise ValueError("page must be a vault-relative Markdown path")
+    root = Path(BASE_DIR).resolve()
+    candidate = Path(page.strip())
+    if not candidate.is_absolute():
+        candidate = root / candidate
+    resolved = candidate.resolve(strict=True)
+    try:
+        resolved.relative_to(root)
+    except ValueError as error:
+        raise ValueError("page must stay inside the vault") from error
+    if resolved.suffix.lower() != ".md":
+        raise ValueError("page must be a Markdown file")
+    return resolved
+
+
+def _relationship_action(
+    page: str,
+    edge_key: str,
+    *,
+    dismiss: bool,
+) -> Dict[str, Any]:
+    """Drive a confirm or dismiss through the canonical entity engine."""
+    page_path = _relationship_page_path(page)
+    intent = {
+        "kind": (
+            "dismiss_relationship" if dismiss else "confirm_relationship"
+        ),
+        "edge_key": edge_key,
+    }
+    if dismiss:
+        intent["date"] = _tz_today().isoformat()
+    try:
+        result = mutate_relationships(
+            page_path,
+            fingerprint_page(page_path),
+            intent,
+        )
+    except (OSError, TypeError, ValueError) as error:
+        return {
+            "success": False,
+            "error": str(error),
+            "page": str(page),
+            "edge_key": edge_key,
+        }
+    return {
+        "success": result.status in {"updated", "noop"},
+        "status": result.status,
+        "page": str(page),
+        "edge_key": edge_key,
+    }
 
 
 # Default pillars (used if pillars.yaml doesn't exist or can't be loaded)
@@ -3620,6 +3679,42 @@ async def handle_list_tools() -> list[types.Tool]:
     
     return [
         types.Tool(
+            name="confirm_relationship",
+            description="Confirm one suggested relationship on an entity page.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "page": {
+                        "type": "string",
+                        "description": "Vault-relative entity page path",
+                    },
+                    "edge_key": {
+                        "type": "string",
+                        "description": "Stable relationship key: <type>::<folded target>",
+                    },
+                },
+                "required": ["page", "edge_key"],
+            },
+        ),
+        types.Tool(
+            name="dismiss_relationship",
+            description="Dismiss one relationship and prevent evidence from re-adding it.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "page": {
+                        "type": "string",
+                        "description": "Vault-relative entity page path",
+                    },
+                    "edge_key": {
+                        "type": "string",
+                        "description": "Stable relationship key: <type>::<folded target>",
+                    },
+                },
+                "required": ["page", "edge_key"],
+            },
+        ),
+        types.Tool(
             name="list_tasks",
             description="List tasks with optional filters (pillar, priority, status, source)",
             inputSchema={
@@ -4132,6 +4227,7 @@ async def handle_list_tools() -> list[types.Tool]:
 
 # Tools that write to vault files and should trigger search index refresh
 WRITE_TOOLS = {
+    "confirm_relationship", "dismiss_relationship",
     "create_task", "update_task_status", "confirm_goal_link", "create_company", "refresh_company",
     "sync_external_tasks",
     "sync_task_refs", "create_quarterly_goal", "update_goal_progress",
@@ -4238,7 +4334,23 @@ async def _handle_call_tool_inner(
 ) -> list[types.TextContent | types.ImageContent | types.EmbeddedResource]:
     """Inner tool handler — wrapped by handle_call_tool for post-write hooks."""
     
-    if name == "list_tasks":
+    if name == "confirm_relationship":
+        result = _relationship_action(
+            arguments["page"],
+            arguments["edge_key"],
+            dismiss=False,
+        )
+        return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
+
+    elif name == "dismiss_relationship":
+        result = _relationship_action(
+            arguments["page"],
+            arguments["edge_key"],
+            dismiss=True,
+        )
+        return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
+
+    elif name == "list_tasks":
         tasks = get_all_tasks()
         
         if arguments:

@@ -260,6 +260,131 @@ def test_engine_verify_failure_rolls_back_byte_exact(tmp_path: Path) -> None:
     assert target.read_bytes() == b"old manifest\n"
 
 
+def test_engine_content_write_with_matching_precondition_applies_and_verifies(
+    tmp_path: Path,
+) -> None:
+    vault = _vault(tmp_path)
+    target = vault / "README.md"
+    target.write_bytes(b"captured bytes\n")
+    os.chmod(target, 0o600)
+    expected = hashlib.sha256(target.read_bytes()).hexdigest()
+
+    result = Transaction.begin(
+        vault,
+        [PlanEntry("README.md", b"replacement\n", 0o644, expected_current_sha256=expected)],
+    ).run()
+
+    assert result["committed"] is True
+    assert target.read_bytes() == b"replacement\n"
+    assert stat.S_IMODE(target.stat().st_mode) == 0o644
+
+
+def test_engine_content_write_precondition_mismatch_rejects_without_mutation(
+    tmp_path: Path,
+) -> None:
+    vault = _vault(tmp_path)
+    target = vault / "README.md"
+    target.write_bytes(b"user changed bytes\n")
+    before = _tree_state(vault, ["README.md"])
+
+    tx = Transaction.begin(
+        vault,
+        [PlanEntry("README.md", b"replacement\n", expected_current_sha256="0" * 64)],
+    )
+    with pytest.raises(PlanRejected, match="the existing file wins and the transaction aborts"):
+        tx.run()
+
+    assert _tree_state(vault, ["README.md"]) == before
+
+
+def test_engine_content_write_precondition_requires_existing_target(
+    tmp_path: Path,
+) -> None:
+    vault = _vault(tmp_path)
+    tx = Transaction.begin(
+        vault,
+        [PlanEntry("README.md", b"replacement\n", expected_current_sha256="0" * 64)],
+    )
+
+    with pytest.raises(PlanRejected, match="the existing file wins and the transaction aborts"):
+        tx.run()
+
+    assert not (vault / "README.md").exists()
+
+
+@pytest.mark.parametrize(
+    "expected",
+    [
+        "A" * 64,
+        "not-a-sha256",
+    ],
+)
+def test_engine_content_write_precondition_requires_lowercase_sha256(
+    expected: str,
+    tmp_path: Path,
+) -> None:
+    vault = _vault(tmp_path)
+
+    with pytest.raises(PlanRejected, match="must be a lowercase sha256"):
+        Transaction.begin(
+            vault,
+            [PlanEntry("README.md", b"replacement\n", expected_current_sha256=expected)],
+        )
+
+
+def test_engine_content_write_precondition_rejects_symlink_target(
+    tmp_path: Path,
+) -> None:
+    vault = _vault(tmp_path)
+    outside = tmp_path / "outside.md"
+    outside.write_bytes(b"captured bytes\n")
+    target = vault / "README.md"
+    target.symlink_to(outside)
+    expected = hashlib.sha256(outside.read_bytes()).hexdigest()
+    tx = Transaction.begin(
+        vault,
+        [PlanEntry("README.md", b"replacement\n", expected_current_sha256=expected)],
+    )
+
+    with pytest.raises(PlanRejected, match="the existing file wins and the transaction aborts"):
+        tx.run()
+
+    assert target.is_symlink()
+    assert outside.read_bytes() == b"captured bytes\n"
+
+
+def test_engine_rechecks_content_precondition_and_rolls_back_applied_entries(
+    tmp_path: Path,
+) -> None:
+    vault = _vault(tmp_path)
+    first = vault / "System/.installed-files.manifest"
+    first.write_bytes(b"old manifest\n")
+    guarded = vault / "README.md"
+    guarded.write_bytes(b"captured bytes\n")
+    expected = hashlib.sha256(guarded.read_bytes()).hexdigest()
+    tx = Transaction.begin(
+        vault,
+        [
+            PlanEntry("System/.installed-files.manifest", b"new manifest\n"),
+            PlanEntry("README.md", b"replacement\n", expected_current_sha256=expected),
+        ],
+    )
+    original_append = tx.journal.append
+
+    def swap_after_first_apply(event: str, payload=None) -> None:
+        original_append(event, payload)
+        if event == "APPLIED" and payload["index"] == 0:
+            guarded.write_bytes(b"user edit in snapshot-to-apply window\n")
+
+    tx.journal.append = swap_after_first_apply
+
+    with pytest.raises(PlanRejected, match="changed after the mutation snapshot"):
+        tx.run()
+
+    assert first.read_bytes() == b"old manifest\n"
+    assert guarded.read_bytes() == b"user edit in snapshot-to-apply window\n"
+
+
 def test_engine_delete_entry_commits_and_rolls_back_byte_exact(tmp_path: Path) -> None:
     """Updater removals use the same snapshot/apply/verify/undo path as writes."""
     vault = _vault(tmp_path)
@@ -385,6 +510,21 @@ Transaction.begin(vault, [
 
 _RELATIVES = ["03-Tasks/Tasks.md", "System/.installed-files.manifest"]
 
+_PRECONDITION_WORKER = r"""
+import hashlib
+import sys
+sys.path.insert(0, sys.argv[2])
+from pathlib import Path
+from core.transaction.engine import Transaction, PlanEntry
+vault = Path(sys.argv[1])
+target = vault / "README.md"
+expected = hashlib.sha256(target.read_bytes()).hexdigest()
+Transaction.begin(vault, [
+    PlanEntry("README.md", b"replacement\n", 0o600, expected_current_sha256=expected),
+    PlanEntry("System/.installed-files.manifest", b"regenerated\n"),
+]).run()
+"""
+
 
 @pytest.mark.parametrize(
     "seam",
@@ -441,6 +581,32 @@ def test_resume_is_idempotent(tmp_path: Path) -> None:
     second = Transaction.resume(vault)
     assert len(first) == 1
     assert second == []
+
+
+def test_resume_rolls_back_content_precondition_plan_byte_exact(
+    tmp_path: Path,
+) -> None:
+    vault = _vault(tmp_path)
+    target = vault / "README.md"
+    target.write_bytes(b"original bytes\r\nwith\x00data")
+    os.chmod(target, 0o640)
+    relatives = ["README.md", "System/.installed-files.manifest"]
+    before = _tree_state(vault, relatives)
+    env = dict(os.environ, DEX_TX_TEST_STOP_AFTER="mid-apply:0")
+
+    process = subprocess.run(
+        [sys.executable, "-c", _PRECONDITION_WORKER, str(vault), str(REPO_ROOT)],
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    assert process.returncode == 137, process.stderr[-300:]
+
+    outcomes = Transaction.resume(vault)
+
+    assert _tree_state(vault, relatives) == before
+    assert len(outcomes) == 1 and outcomes[0]["resumed"] is True
 
 
 # ---------------------------------------------------------------------------

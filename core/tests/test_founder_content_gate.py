@@ -11,6 +11,8 @@ import shutil
 import subprocess
 from pathlib import Path
 
+import pytest
+
 REPO_SCRIPTS = Path(__file__).resolve().parents[2] / "scripts"
 CORE_UTILS = Path(__file__).resolve().parents[2] / "core/utils/local_git.py"
 
@@ -20,6 +22,8 @@ CORE_UTILS = Path(__file__).resolve().parents[2] / "core/utils/local_git.py"
 SELF_ALLOW = (
     r"^scripts/check-founder-content\.py:.*:(dave|killeen|pendo|cursor)$" + "\n"
     r"^scripts/founder-content-allowlist\.txt:.*:(dave|killeen|pendo|cursor)$" + "\n"
+    r"^scripts/check-founder-content\.py:.*:personal-path$" + "\n"
+    r"^scripts/founder-content-allowlist\.txt:.*:personal-path$" + "\n"
 )
 
 
@@ -113,3 +117,39 @@ def test_removing_allowlist_entry_turns_gate_red(tmp_path):
 
     assert result.returncode != 0
     assert '"file": "README.md"' in result.stdout
+
+
+@pytest.mark.parametrize(
+    "leak",
+    (
+        "~/dex/product/notes.md",
+        "~/Vault/System/credentials",
+        "$HOME/dex/product",
+        "path.join(os.homedir(), 'Vault')",
+        # Built at runtime: a literal /Users/ path in source would trip
+        # scripts/verify-distribution.sh's own hardcoded-path scan.
+        "/".join(("", "Users", "founder", "private", "dex")),
+    ),
+)
+def test_gate_flags_personal_layout_paths(tmp_path, leak):
+    root = _fixture(tmp_path, "")
+    (root / "leak.md").write_text(f"{leak}\n", encoding="utf-8")
+    _git(root, "add", ".")
+
+    result = _run(root)
+
+    assert result.returncode != 0
+    assert '"file": "leak.md"' in result.stdout
+    assert '"token": "personal-path"' in result.stdout
+
+
+@pytest.mark.parametrize("name", ("alice", "testuser", "yourname"))
+def test_gate_allows_documented_user_path_placeholders(tmp_path, name):
+    root = _fixture(tmp_path, "")
+    placeholder_path = "/".join(("", "Users", name, "Documents", "dex"))
+    (root / "example.md").write_text(f"{placeholder_path}\n", encoding="utf-8")
+    _git(root, "add", ".")
+
+    result = _run(root)
+
+    assert result.returncode == 0, result.stdout + result.stderr

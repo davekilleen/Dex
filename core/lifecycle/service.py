@@ -15,7 +15,9 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+import os
 import re
+import shutil
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 
@@ -42,10 +44,12 @@ from core.lifecycle.retention import compute_retention_report
 from core.path_safety import unsafe_existing_parent
 from core.transaction.engine import PlanEntry, PlanRejected, Transaction
 
-api_version = "1.0.0"
+api_version = "1.1.0"
 
 _CATALOG_RELATIVE = "System/.release-catalog.json"
 _PURPOSE = re.compile(r"^[a-z0-9][a-z0-9-]{0,63}$")
+_ARCHIVE_RELATIVE = ".dex/pre-split-archive.git"
+_ARCHIVE_RECEIPTS_RELATIVE = "System/.dex/archive-removals"
 
 
 def _envelope(**values: object) -> dict[str, object]:
@@ -250,6 +254,106 @@ def _prepare(vault_root: str | Path, release_root: str | Path | None = None) -> 
     prepare_vault(vault_root, release_root=release_root)
 
 
+def _archive_inventory(root: Path) -> dict[str, object]:
+    archive = root / _ARCHIVE_RELATIVE
+    if archive.is_symlink() or not archive.is_dir():
+        raise PlanRejected("the pre-split archive is missing or is not a safe directory")
+    digest = hashlib.sha256()
+    size_bytes = 0
+    file_count = 0
+    for candidate in sorted(archive.rglob("*")):
+        if candidate.is_symlink() or not candidate.is_file():
+            if candidate.is_symlink():
+                raise PlanRejected("the pre-split archive contains a symlink")
+            continue
+        relative = candidate.relative_to(archive).as_posix().encode("utf-8")
+        raw = candidate.read_bytes()
+        digest.update(len(relative).to_bytes(8, "big"))
+        digest.update(relative)
+        digest.update(len(raw).to_bytes(8, "big"))
+        digest.update(raw)
+        size_bytes += len(raw)
+        file_count += 1
+    return {
+        "archive_relative": _ARCHIVE_RELATIVE,
+        "archive_sha256": digest.hexdigest(),
+        "size_bytes": size_bytes,
+        "file_count": file_count,
+        "retention": "one full release cycle after conversion",
+    }
+
+
+def build_archive_removal_preview(vault_root: str | Path) -> dict[str, object]:
+    """Offer, but never force, a reviewed removal of the old undo archive."""
+    root = Path(vault_root)
+    preview = _archive_inventory(root)
+    return _envelope(
+        preview=preview,
+        approval_token=hashlib.sha256(_canonical(preview)).hexdigest(),
+    )
+
+
+def _write_archive_receipt(path: Path, receipt: dict[str, object]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    temporary = path.with_suffix(".tmp")
+    with temporary.open("wb") as handle:
+        handle.write(_canonical(receipt))
+        handle.flush()
+        os.fsync(handle.fileno())
+    os.replace(temporary, path)
+    descriptor = os.open(path.parent, os.O_RDONLY)
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+
+
+def execute_approved_archive_removal(
+    vault_root: str | Path, approved_token: str
+) -> dict[str, object]:
+    """Remove the exact archive previewed by the user while holding the shared lock."""
+    root = Path(vault_root)
+    preview = _archive_inventory(root)
+    expected = hashlib.sha256(_canonical(preview)).hexdigest()
+    if not isinstance(approved_token, str) or not hmac.compare_digest(approved_token, expected):
+        raise PlanRejected("archive-removal approval token does not match the current archive")
+
+    transaction = Transaction.begin(root, [], allow_empty=True)
+    archive = root / _ARCHIVE_RELATIVE
+    quarantined = transaction.tx_dir / "removed-pre-split-archive.git"
+    receipt_relative = f"{_ARCHIVE_RECEIPTS_RELATIVE}/{transaction.tx_id}.json"
+    receipt_path = root / receipt_relative
+    moved = False
+    try:
+        def remove_archive() -> None:
+            nonlocal moved
+            os.replace(archive, quarantined)
+            moved = True
+            receipt = {
+                "receipt_version": 1,
+                "transaction_id": transaction.tx_id,
+                "archive_relative": _ARCHIVE_RELATIVE,
+                "archive_sha256": preview["archive_sha256"],
+                "size_bytes": preview["size_bytes"],
+                "file_count": preview["file_count"],
+                "retention": preview["retention"],
+            }
+            _write_archive_receipt(receipt_path, receipt)
+
+        result = transaction.run(before_commit=remove_archive)
+    except BaseException:
+        if moved and quarantined.exists() and not archive.exists():
+            os.replace(quarantined, archive)
+        receipt_path.unlink(missing_ok=True)
+        raise
+    shutil.rmtree(quarantined)
+    receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+    receipt["receipt_relative"] = receipt_relative
+    receipt["committed"] = bool(result["committed"])
+    _write_archive_receipt(receipt_path, receipt)
+    return _envelope(receipt=receipt)
+
+
 def build_inventory_and_plan(vault_root: str | Path) -> dict[str, object]:
     """Return the current verified inventory and ledger-aware adoption plan."""
     _prepare(vault_root)
@@ -381,4 +485,6 @@ __all__ = [
     "read_lifecycle_state",
     "build_and_preview_conflict_resolution",
     "execute_approved_conflict_resolution",
+    "build_archive_removal_preview",
+    "execute_approved_archive_removal",
 ]

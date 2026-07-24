@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import plistlib
 import shutil
@@ -130,6 +131,12 @@ def test_nightly_worker_sends_latest_ledger_before_success_heartbeat(tmp_path: P
     assert f"--repo {vault}" in call
     assert "--channel stable" in call
     assert "nightly smoke completed" in (vault / ".scripts" / "logs" / "smoke-nightly.log").read_text()
+    success = json.loads(
+        (vault / "System" / ".dex" / "session-health-success.json").read_text()
+    )
+    assert success["schema_version"] == 1
+    assert success["local_date"]
+    assert success["completed_at"]
 
 
 def test_nightly_worker_records_broken_verdict_without_success_heartbeat(tmp_path: Path) -> None:
@@ -140,3 +147,4 @@ def test_nightly_worker_records_broken_verdict_without_success_heartbeat(tmp_pat
     assert result.returncode == 1
     assert (vault / "telemetry-called").exists()
     assert not (vault / ".scripts" / "logs" / "smoke-nightly.log").exists()
+    assert not (vault / "System" / ".dex" / "session-health-success.json").exists()

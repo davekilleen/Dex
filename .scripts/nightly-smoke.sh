@@ -39,3 +39,16 @@ fi
 
 mkdir -p .scripts/logs
 echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] nightly smoke completed" >> .scripts/logs/smoke-nightly.log
+
+# Record completion separately from the report. SessionStart requires both a
+# clean report and this post-success marker, so an interrupted/partial run can
+# never suppress the next retry.
+SUCCESS_MARKER="System/.dex/session-health-success.json"
+SUCCESS_TEMP="System/.dex/.session-health-success.$$.json"
+trap 'rm -f "$SUCCESS_TEMP"' EXIT
+mkdir -p "$(dirname "$SUCCESS_MARKER")"
+printf '{"schema_version":1,"local_date":"%s","completed_at":"%s"}\n' \
+    "$(date +%Y-%m-%d)" \
+    "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$SUCCESS_TEMP"
+mv "$SUCCESS_TEMP" "$SUCCESS_MARKER"
+trap - EXIT
