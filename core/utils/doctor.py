@@ -600,6 +600,11 @@ QUICK_CHECKS = (
     CheckDefinition("vault.configs", "Vault configuration", "_probe_vault_configs"),
     CheckDefinition("vault.git", "Vault history", "_probe_vault_git"),
     CheckDefinition("brain.git", "Dex brain history", "_probe_brain_git"),
+    CheckDefinition(
+        "topology.pre-split-archive",
+        "Pre-split undo archive",
+        "_probe_pre_split_archive",
+    ),
     CheckDefinition("vault.auto-commit", "Vault auto-commit", "_probe_vault_auto_commit"),
     CheckDefinition(
         "topology.migration-pending",
@@ -643,6 +648,14 @@ DEEP_CHECKS = (
 
 def _one_line(value: object) -> str:
     return " ".join(str(value).split()) or value.__class__.__name__
+
+
+def _format_archive_size(size_bytes: int) -> str:
+    """Return archive sizes in a compact, human-readable unit."""
+    for unit, divisor in (("GB", 1024**3), ("MB", 1024**2), ("KB", 1024)):
+        if size_bytes >= divisor:
+            return f"{size_bytes / divisor:.1f} {unit}"
+    return f"{size_bytes / 1024:.1f} KB"
 
 
 def _sentence(value: object) -> str:
@@ -2577,6 +2590,31 @@ def _probe_brain_git(context: DoctorContext) -> ProbeResult:
     )
 
 
+def _probe_pre_split_archive(context: DoctorContext) -> ProbeResult:
+    """Describe the retained pre-split history without treating it as a fault."""
+    archive = context.vault_root / ".dex/pre-split-archive.git"
+    if not archive.exists():
+        return ProbeResult("OFF", "No pre-split undo archive is present")
+    if archive.is_symlink() or not archive.is_dir():
+        return ProbeResult("BROKEN", "The pre-split undo archive is not a safe directory")
+    try:
+        size_bytes = sum(
+            path.stat().st_size
+            for path in archive.rglob("*")
+            if path.is_file() and not path.is_symlink()
+        )
+        age_days = max(0, int((context.now.timestamp() - archive.stat().st_mtime) // 86_400))
+    except OSError as error:
+        return ProbeResult("UNKNOWN", f"Could not inspect the pre-split undo archive: {_one_line(str(error))}")
+    size_text = _format_archive_size(size_bytes)
+    return ProbeResult(
+        "OK",
+        f"The pre-split undo archive is present ({age_days} days old, {size_text}). "
+        "It is the one-command undo for the brain/vault conversion. Keep it for one full "
+        "release cycle after conversion, then Dex can offer its receipted removal.",
+    )
+
+
 def _probe_vault_auto_commit(context: DoctorContext) -> ProbeResult:
     profile_path = context.vault_root / "System/user-profile.yaml"
     if profile_path.is_symlink():
@@ -2623,12 +2661,16 @@ def _probe_migration_pending(context: DoctorContext) -> ProbeResult:
     if topology == "migration-in-progress":
         return ProbeResult(
             "BROKEN",
-            "The one-time upgrade is incomplete — run /dex-update so recovery can resume",
+            "The one-time upgrade is incomplete. Run core/migrations/v1-to-v2-brain-vault-split.cjs "
+            "--resume to continue, or --restore to return to the pre-split layout. Do not reinstall, "
+            "restore backups, or run raw Git commands while recovery is pending.",
         )
     if topology == "invalid-split":
         return ProbeResult(
             "BROKEN",
-            "The split topology markers or DEX_VAULT wiring disagree — use updater or migrator recovery, never raw Git",
+            "The split topology markers or DEX_VAULT wiring disagree. Run "
+            "core/migrations/v1-to-v2-brain-vault-split.cjs --resume to continue, or --restore "
+            "to return to the pre-split layout. Do not reinstall, restore backups, or run raw Git commands.",
         )
     if topology == "zip-or-manual":
         return ProbeResult(

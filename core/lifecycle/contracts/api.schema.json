@@ -7,7 +7,7 @@
   "additionalProperties": false,
   "required": ["api_version", "x-operations"],
   "properties": {
-    "api_version": {"const": "1.0.0"},
+    "api_version": {"const": "1.1.0"},
     "x-operations": {"type": "object"}
   },
   "x-operations": {
@@ -38,6 +38,14 @@
     "execute_approved_conflict_resolution": {
       "request": {"$ref": "#/$defs/conflictExecuteRequest"},
       "response": {"$ref": "#/$defs/executeResponse"}
+    },
+    "build_archive_removal_preview": {
+      "request": {"$ref": "#/$defs/vaultRequest"},
+      "response": {"$ref": "#/$defs/archivePreviewResponse"}
+    },
+    "execute_approved_archive_removal": {
+      "request": {"$ref": "#/$defs/archiveExecuteRequest"},
+      "response": {"$ref": "#/$defs/archiveExecuteResponse"}
     }
   },
   "$defs": {
@@ -55,7 +63,7 @@
     "apiEnvelope": {
       "type": "object",
       "required": ["api_version"],
-      "properties": {"api_version": {"const": "1.0.0"}}
+      "properties": {"api_version": {"const": "1.1.0"}}
     },
     "vaultRequest": {
       "type": "object",
@@ -108,7 +116,7 @@
           "additionalProperties": false,
           "required": ["api_version", "inventory", "plan"],
           "properties": {
-            "api_version": {"const": "1.0.0"},
+            "api_version": {"const": "1.1.0"},
             "inventory": {"$ref": "#/$defs/inventory"},
             "plan": {"$ref": "#/$defs/plan"}
           }
@@ -155,7 +163,7 @@
       "additionalProperties": false,
       "required": ["api_version", "preview", "approval_token"],
       "properties": {
-        "api_version": {"const": "1.0.0"},
+        "api_version": {"const": "1.1.0"},
         "preview": {"$ref": "#/$defs/preview"},
         "approval_token": {"$ref": "#/$defs/sha256"}
       }
@@ -240,7 +248,7 @@
       "additionalProperties": false,
       "required": ["api_version", "preview", "approval_token"],
       "properties": {
-        "api_version": {"const": "1.0.0"},
+        "api_version": {"const": "1.1.0"},
         "preview": {"$ref": "#/$defs/conflictResolutionPreview"},
         "approval_token": {"$ref": "#/$defs/sha256"}
       }
@@ -287,7 +295,7 @@
       "additionalProperties": false,
       "required": ["api_version", "receipt", "rewind_acknowledgement_token"],
       "properties": {
-        "api_version": {"const": "1.0.0"},
+        "api_version": {"const": "1.1.0"},
         "receipt": {"$ref": "#/$defs/adoptionReceipt"},
         "rewind_acknowledgement_token": {"$ref": "#/$defs/sha256"}
       }
@@ -333,7 +341,7 @@
       "additionalProperties": false,
       "required": ["api_version", "rewind_receipt"],
       "properties": {
-        "api_version": {"const": "1.0.0"},
+        "api_version": {"const": "1.1.0"},
         "rewind_receipt": {"$ref": "#/$defs/rewindReceipt"}
       }
     },
@@ -361,12 +369,68 @@
         "warning_threshold_bytes": {"type": "integer", "minimum": 1}
       }
     },
+    "archivePreview": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["archive_relative", "archive_sha256", "size_bytes", "file_count", "retention"],
+      "properties": {
+        "archive_relative": {"const": ".dex/pre-split-archive.git"},
+        "archive_sha256": {"$ref": "#/$defs/sha256"},
+        "size_bytes": {"type": "integer", "minimum": 0},
+        "file_count": {"type": "integer", "minimum": 0},
+        "retention": {"const": "one full release cycle after conversion"}
+      }
+    },
+    "archivePreviewResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["api_version", "preview", "approval_token"],
+      "properties": {
+        "api_version": {"const": "1.1.0"},
+        "preview": {"$ref": "#/$defs/archivePreview"},
+        "approval_token": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "archiveExecuteRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["vault_root", "approved_token"],
+      "properties": {
+        "vault_root": {"$ref": "#/$defs/path"},
+        "approved_token": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "archiveReceipt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["archive_relative", "archive_sha256", "size_bytes", "file_count", "retention", "receipt_version", "transaction_id", "receipt_relative", "committed"],
+      "properties": {
+        "archive_relative": {"const": ".dex/pre-split-archive.git"},
+        "archive_sha256": {"$ref": "#/$defs/sha256"},
+        "size_bytes": {"type": "integer", "minimum": 0},
+        "file_count": {"type": "integer", "minimum": 0},
+        "retention": {"const": "one full release cycle after conversion"},
+        "receipt_version": {"const": 1},
+        "transaction_id": {"type": "string", "minLength": 1},
+        "receipt_relative": {"$ref": "#/$defs/path"},
+        "committed": {"const": true}
+      }
+    },
+    "archiveExecuteResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["api_version", "receipt"],
+      "properties": {
+        "api_version": {"const": "1.1.0"},
+        "receipt": {"$ref": "#/$defs/archiveReceipt"}
+      }
+    },
     "stateResponse": {
       "type": "object",
       "additionalProperties": false,
       "required": ["api_version", "ledger_state", "retention"],
       "properties": {
-        "api_version": {"const": "1.0.0"},
+        "api_version": {"const": "1.1.0"},
         "ledger_state": {"$ref": "#/$defs/ledgerState"},
         "retention": {"$ref": "#/$defs/retention"}
       }

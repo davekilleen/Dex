@@ -31,10 +31,11 @@ function assertSafetyRouting(settings) {
   assert.deepEqual(matchingCommands(settings, 'WebFetch'), []);
 }
 
-function runGuard(toolName, script = GUARD_PATH) {
+function runGuard(toolName, script = GUARD_PATH, command = undefined, cwd = undefined) {
   return spawnSync('/bin/bash', [script], {
     encoding: 'utf8',
-    input: JSON.stringify({ tool_name: toolName, tool_input: {} }),
+    cwd,
+    input: JSON.stringify({ tool_name: toolName, tool_input: command ? { command } : {} }),
   });
 }
 
@@ -86,5 +87,42 @@ test('blocked-scraper guard-removal mutation loses protection', () => {
     assert.equal(runGuard('mcp__firecrawl__firecrawl_scrape', mutated).status, 0);
   } finally {
     fs.rmSync(temporary, { recursive: true, force: true });
+  }
+});
+
+test('guard blocks raw Git mutations while a live migration lock is held', () => {
+  const vault = fs.mkdtempSync(path.join(os.tmpdir(), 'dex-migration-guard-'));
+  try {
+    const lock = path.join(vault, 'System', '.dex', 'mutation.lock');
+    fs.mkdirSync(path.dirname(lock), { recursive: true });
+    fs.writeFileSync(lock, `${JSON.stringify({ pid: process.pid, kind: 'migration' })}\n`);
+
+    const blocked = runGuard('Bash', GUARD_PATH, 'git reset --hard HEAD', vault);
+    assert.equal(blocked.status, 2, blocked.stdout + blocked.stderr);
+    assert.match(blocked.stdout, /--resume/);
+    assert.match(blocked.stdout, /--restore/);
+
+    const allowedRead = runGuard('Bash', GUARD_PATH, 'git status --short', vault);
+    assert.equal(allowedRead.status, 0, allowedRead.stdout + allowedRead.stderr);
+  } finally {
+    fs.rmSync(vault, { recursive: true, force: true });
+  }
+});
+
+test('guard ignores stale and non-migration mutation locks', () => {
+  const vault = fs.mkdtempSync(path.join(os.tmpdir(), 'dex-migration-guard-stale-'));
+  try {
+    const lock = path.join(vault, 'System', '.dex', 'mutation.lock');
+    fs.mkdirSync(path.dirname(lock), { recursive: true });
+    for (const payload of [
+      { pid: 2147483647, kind: 'migration' },
+      { pid: process.pid, kind: 'update' },
+    ]) {
+      fs.writeFileSync(lock, `${JSON.stringify(payload)}\n`);
+      const result = runGuard('Bash', GUARD_PATH, 'git reset --hard HEAD', vault);
+      assert.equal(result.status, 0, result.stdout + result.stderr);
+    }
+  } finally {
+    fs.rmSync(vault, { recursive: true, force: true });
   }
 });

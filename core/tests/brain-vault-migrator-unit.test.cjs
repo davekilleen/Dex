@@ -138,6 +138,26 @@ test('CLAUDE regeneration separates custom text without changing its bytes on di
   assert.equal(custom.endsWith('\n'), false);
 });
 
+test('migration report opens with recovery instructions and explains the undo archive', () => {
+  const migrator = require(MIGRATOR_PATH);
+
+  const report = migrator.renderReport({
+    complete: true,
+    modifiedBrainPaths: [],
+    remoteNames: [],
+    secretFindings: [],
+    heldBackPaths: [],
+    brainFiles: [],
+    vaultFiles: [],
+  });
+
+  assert.match(report, /^# Your Dex brain and vault split\n\n## If the migration stopped/);
+  assert.match(report, /--resume/);
+  assert.match(report, /--restore/);
+  assert.match(report, /Do not reinstall, restore backups, or run raw Git commands/);
+  assert.match(report, /pre-split-archive.*one-command undo/i);
+});
+
 test('migrator root writes require a positive ownership class or exact migration exception', () => {
   const migrator = require(MIGRATOR_PATH);
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'dex-migration-write-guard-'));

@@ -25,6 +25,7 @@ QUICK_IDS = [
     "vault.configs",
     "vault.git",
     "brain.git",
+    "topology.pre-split-archive",
     "vault.auto-commit",
     "topology.migration-pending",
     "release.catalog",
@@ -615,6 +616,44 @@ def test_topology_probe_distinguishes_combined_split_and_invalid(context):
     (context.vault_root / ".dex/brain.git/dex-brain-v2").unlink()
     assert doctor._topology_state(context) == "invalid-split"
     assert doctor._probe_migration_pending(context).verdict == "BROKEN"
+
+
+def test_pre_split_archive_probe_reports_age_size_and_retention(context):
+    archive = context.vault_root / ".dex/pre-split-archive.git"
+    archive.mkdir(parents=True)
+    (archive / "HEAD").write_bytes(b"ref: refs/heads/main\n")
+    timestamp = (NOW - timedelta(days=9)).timestamp()
+    os.utime(archive, (timestamp, timestamp))
+
+    result = doctor._probe_pre_split_archive(context)
+
+    assert result.verdict == "OK"
+    assert "9 days old" in result.detail
+    assert "0.0 KB" in result.detail
+    assert "one-command undo" in result.detail
+    assert "one full release cycle after conversion" in result.detail
+
+
+def test_migration_recovery_verdicts_name_exact_commands_and_manual_repair_warning(context):
+    state = context.vault_root / "System/.dex/migration-v2-state.json"
+    state.parent.mkdir(parents=True, exist_ok=True)
+    state.write_text('{"status":"needs-resume"}\n')
+
+    in_progress = doctor._probe_migration_pending(context)
+
+    assert "--resume" in in_progress.detail
+    assert "--restore" in in_progress.detail
+    assert "Do not reinstall, restore backups, or run raw Git commands" in in_progress.detail
+
+    state.unlink()
+    _write_split_topology(context)
+    (context.vault_root / ".dex/brain.git/dex-brain-v2").unlink()
+
+    invalid = doctor._probe_migration_pending(context)
+
+    assert "--resume" in invalid.detail
+    assert "--restore" in invalid.detail
+    assert "Do not reinstall, restore backups, or run raw Git commands" in invalid.detail
 
 
 def test_split_brain_install_probe_checks_ref_markers_origin_and_integrity(context):
