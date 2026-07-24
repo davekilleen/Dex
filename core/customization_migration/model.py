@@ -17,8 +17,24 @@ from core.lifecycle.customizations import RELEASE_STATES
 SHA256 = re.compile(r"^[0-9a-f]{64}$")
 CUSTOMIZATION_ID = re.compile(r"^cust-[0-9a-f]{12}$")
 EDGE_ID = re.compile(r"^dep-[0-9a-f]{12}$")
+SKILL_REFERENCE_TARGET = re.compile(r"^skill:[a-z0-9][a-z0-9-]*$")
 VERDICTS = frozenset({"OK", "OFF", "BROKEN", "UNKNOWN"})
 READABILITY = frozenset({"readable", "restricted", "excluded", "missing", "hash-only"})
+EXCLUSION_REASONS = frozenset(
+    {
+        "restricted",
+        "symlink-refused",
+        "read-bound-exceeded",
+        "read-error",
+        "embedded-secret",
+        "trust-hash-mismatch",
+        "release-identity-unproved",
+        "dependency-tree-excluded",
+        "canonical-path-collision",
+        "invalid-trust-registry",
+        "reference-budget-exhausted",
+    }
+)
 INCOMPLETE_REASONS = frozenset(
     {
         "assessment-exclusions",
@@ -88,6 +104,20 @@ def _canonical_path(value: str) -> str:
 def _stable_id(prefix: str, *parts: str) -> str:
     payload = "\0".join(parts).encode("utf-8")
     return f"{prefix}{hashlib.sha256(payload).hexdigest()[:12]}"
+
+
+def validate_native_witness_target(value: str) -> str:
+    """Validate the deterministic native-replacement witness grammar."""
+    if not isinstance(value, str) or not value or "\x00" in value:
+        raise ValueError("native witness must be a non-empty string")
+    if SKILL_REFERENCE_TARGET.fullmatch(value) is not None:
+        return value
+    if ":" in value:
+        raise ValueError(
+            "native witness must be a vault-relative path or skill reference"
+        )
+    _canonical_path(value)
+    return value
 
 
 @dataclass(frozen=True)
@@ -266,7 +296,7 @@ class ReferenceEdge:
                 r"(?:\.[A-Za-z_][A-Za-z0-9_]*)*",
                 self.target,
             )
-            or re.fullmatch(r"skill:[a-z0-9][a-z0-9-]*", self.target)
+            or SKILL_REFERENCE_TARGET.fullmatch(self.target)
             or self.target in {"outside-vault:absolute", "outside-vault:escape"}
         )
         if symbolic is None:
@@ -318,19 +348,7 @@ class AssessmentExclusion:
 
     def __post_init__(self) -> None:
         _canonical_path(self.path)
-        if self.reason not in {
-            "restricted",
-            "symlink-refused",
-            "read-bound-exceeded",
-            "read-error",
-            "embedded-secret",
-            "trust-hash-mismatch",
-            "release-identity-unproved",
-            "dependency-tree-excluded",
-            "canonical-path-collision",
-            "invalid-trust-registry",
-            "reference-budget-exhausted",
-        }:
+        if self.reason not in EXCLUSION_REASONS:
             raise ValueError("exclusion reason is not a closed authority value")
         if self.uninspected_count is not None and (
             type(self.uninspected_count) is not int or self.uninspected_count < 1
@@ -539,7 +557,9 @@ __all__ = [
     "CustomizationKind",
     "CustomizationRecord",
     "EdgeKind",
+    "EXCLUSION_REASONS",
     "LiveInfo",
     "ReferenceConfidence",
     "ReferenceEdge",
+    "validate_native_witness_target",
 ]
