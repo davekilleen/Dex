@@ -136,6 +136,147 @@ def test_update_write_verdict(path: str, exists: bool, allowed: bool, action: st
     assert verdict.action == action
 
 
+@pytest.mark.parametrize(
+    ("path", "exists"),
+    [
+        ("04-Projects/My_Project/notes.md", True),
+        ("core/utils/doctor.py", True),
+        ("03-Tasks/Tasks.md", False),
+        (".env", False),
+        ("totally/unknown/path.xyz", False),
+    ],
+)
+def test_explicit_default_operation_matches_omitted_operation(
+    path: str,
+    exists: bool,
+) -> None:
+    assert portable_contract.update_write_verdict(
+        path,
+        exists=exists,
+        operation="update",
+    ) == portable_contract.update_write_verdict(path, exists=exists)
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "CLAUDE-custom.md",
+        "System/.dex/customization-migrations/abc123/manifest.json",
+    ],
+)
+def test_customization_migration_operation_allows_only_seams(path: str) -> None:
+    verdict = portable_contract.update_write_verdict(
+        path,
+        exists=True,
+        operation="customization-migration",
+    )
+
+    assert verdict.allowed is True
+    assert verdict.action == "write-with-user-approval"
+
+
+def test_customization_migration_operation_refuses_outside_seams() -> None:
+    verdict = portable_contract.update_write_verdict(
+        "05-Areas/People/Jane_Doe.md",
+        exists=True,
+        operation="customization-migration",
+    )
+
+    assert verdict.allowed is False
+    assert verdict.action == "outside-migration-seams"
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        ".env",
+        "System/.dex/customization-migrations/abc123/.env",
+        "System/.dex/customization-migrations/abc123/private.pem",
+    ],
+)
+def test_customization_migration_hard_deny_wins_inside_or_outside_seams(
+    path: str,
+) -> None:
+    verdict = portable_contract.update_write_verdict(
+        path,
+        exists=False,
+        operation="customization-migration",
+    )
+
+    assert verdict.allowed is False
+    assert verdict.action == "deny"
+
+
+def test_customization_migration_hard_deny_survives_unclassified_resolution(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    path = "uncovered/private.pem"
+    assert portable_contract.is_denied(path) is True
+
+    def unclassified(candidate: str) -> portable_contract.Resolution:
+        raise portable_contract.ContractViolation(
+            f"no ownership rule classifies: {candidate}"
+        )
+
+    monkeypatch.setattr(portable_contract, "resolve", unclassified)
+    with pytest.raises(portable_contract.ContractViolation):
+        portable_contract.resolve(path)
+
+    verdict = portable_contract.update_write_verdict(
+        path,
+        exists=False,
+        operation="customization-migration",
+    )
+
+    assert verdict.allowed is False
+    assert verdict.action == "deny"
+    assert verdict.ownership is None
+    assert verdict.rule_id is None
+
+
+def test_customization_migration_root_escape_is_unclassified() -> None:
+    verdict = portable_contract.update_write_verdict(
+        "../x",
+        exists=False,
+        operation="customization-migration",
+    )
+
+    assert verdict.allowed is False
+    assert verdict.action == "unclassified-never-write"
+
+
+def test_unknown_write_operation_raises_value_error() -> None:
+    with pytest.raises(ValueError, match="unknown write operation"):
+        portable_contract.update_write_verdict(
+            "README.md",
+            exists=True,
+            operation="surprise",
+        )
+
+
+def test_customization_migration_contract_view_is_frozen() -> None:
+    assert portable_contract.build_contract_document()["customization_migration"] == {
+        "version": 0,
+        "action": "write-with-user-approval",
+        "seam_prefixes": ["System/.dex/customization-migrations/"],
+        "seam_paths": ["CLAUDE-custom.md"],
+    }
+
+
+def test_ordinary_transaction_still_cannot_write_customization_seam(
+    tmp_path: Path,
+) -> None:
+    from core.transaction.engine import PlanEntry, PlanRejected, Transaction
+
+    vault = tmp_path / "vault"
+    (vault / "System/.dex").mkdir(parents=True)
+
+    with pytest.raises(PlanRejected, match="the ownership contract forbids writing"):
+        Transaction.begin(vault, [PlanEntry("CLAUDE-custom.md", b"migration bytes\n")])
+
+    assert not (vault / "CLAUDE-custom.md").exists()
+
+
 def test_legacy_shipped_runtime_surfaces_the_baseline_debt() -> None:
     debt = portable_contract.legacy_shipped_runtime(_tracked_paths())
     # Runtime debt still exists, but untrack-v1 no longer ships personal
