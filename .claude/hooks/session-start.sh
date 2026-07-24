@@ -289,7 +289,33 @@ if errors:
     fi
 fi
 
-# 19. Overnight smoke result — surface only actionable broken journeys.
+# 19. Daily self-check fallback.
+# The 03:15 Launch Agent remains the normal trigger. If the Mac was asleep or
+# off, the first Dex session of the local day runs the same bounded smoke check.
+# A clean report suppresses later session starts; broken, inconclusive, or
+# interrupted checks remain eligible for retry. The Python runner owns the
+# process-safe lock so overlapping sessions cannot launch duplicate checks.
+if [[ -f "$ONBOARDING_MARKER" && -f "$CLAUDE_DIR/core/utils/session_health.py" ]]; then
+    HEALTH_PYTHON="python3"
+    if [[ -f "$CLAUDE_DIR/.venv/bin/python" ]]; then
+        HEALTH_PYTHON="$CLAUDE_DIR/.venv/bin/python"
+    fi
+    "$HEALTH_PYTHON" "$CLAUDE_DIR/core/utils/session_health.py" \
+        --vault "$CLAUDE_DIR" \
+        --repo "$CLAUDE_DIR" >/dev/null 2>&1
+    DAILY_HEALTH_STATUS=$?
+    if [[ "$DAILY_HEALTH_STATUS" -ne 0 \
+        && "$DAILY_HEALTH_STATUS" -ne 1 \
+        && "$DAILY_HEALTH_STATUS" -ne 3 ]]; then
+        echo "⚠️ Dex's daily self-check could not finish — it will try again next session."
+        echo ""
+    elif [[ "$DAILY_HEALTH_STATUS" -eq 3 ]]; then
+        echo "⚠️ Dex's daily self-check was inconclusive — it will try again next session."
+        echo ""
+    fi
+fi
+
+# 20. Latest smoke result — surface only actionable broken journeys.
 SMOKE_LAST_RUN="$CLAUDE_DIR/System/.smoke-last-run.json"
 if [[ -f "$ONBOARDING_MARKER" && -f "$SMOKE_LAST_RUN" ]]; then
     SMOKE_ALERT=$(python3 -c "

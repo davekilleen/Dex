@@ -205,13 +205,26 @@ This release finishes two stories that began yesterday: making Dex updates funda
 
 ---
 
-## [1.62.0] — 🔐 Some housekeeping on your connection keys, and Dex never updates itself behind your back (2026-07-20)
+## [1.63.0] — 🏠 Dex only sets up the rooms you actually need (2026-07-20)
 
-A round of tidying up. Nothing here was broken or exposed — it's a set of changes that follow good practice more closely and put you back in control of when Dex changes.
+Until now every Dex install arrived fully furnished — career coaching, company pages, quarterly goals — whether or not any of that matched your working life.
 
 **What this changes for you:**
 
-* **Your connection keys now live in a private file of their own.** When you connect a tool like Todoist or Trello, Dex saves a key that lets the two talk to each other. Those keys used to sit in a settings file inside your Dex folder. That's all on your own computer and none of it went anywhere — but the tidier habit is to keep keys out of anything you might one day share, back up or hand to someone else. So Dex now keeps them in a separate private file, away from everything else. If it spots an old key still sitting in the settings file, it'll suggest swapping it for a fresh one. Housekeeping, not an emergency.
+* **Dex asks what your work life actually looks like.** New setups keep the core always on — meetings, people and tasks — then ask three quick yes-or-no questions: do you want a Career room, a Companies room, a Quarterly Goals room? Say no and they simply don't exist in your vault, so you're not left with empty folders about a job you don't have. You can switch any room on or off later, and switching one off never deletes anything you wrote.
+* **If you already use those features, nothing changes.** Existing setups keep every room exactly as it is.
+* **The foundations for worry-free updates are in place.** Dex now has a single rulebook saying, for every file, whether it belongs to Dex or to you — plus a new update engine that backs up before touching anything, checks its own work, and can undo it exactly. If an update is ever interrupted, even by a crash, your files end up either completely untouched or completely updated — never half-done. You'll feel this properly in the next few releases, as updating becomes one command with one-click undo.
+* **The last of my own files are on their way out.** Earlier versions shipped with a few of my personal notes mixed in. Most went in this release, and the machinery to remove the final few safely — without disturbing anyone's update history — ships here too.
+
+---
+
+## [1.62.0] — 🔐 Some housekeeping on your connection keys, and Dex never updates itself behind your back (2026-07-20)
+
+A round of tidying up, and one thing you're now in control of.
+
+**What this changes for you:**
+
+* **Your connection keys now live in a private file of their own.** When you connect a tool like Todoist or Trello, Dex saves a key that lets the two talk to each other. Those keys used to sit in a settings file inside your Dex folder — and that folder keeps its own history. Dex never sent them anywhere, but if you ever share, publish or back up that folder, they'd travel with it, and old copies linger in the history even after the file changes. So Dex now keeps them in a separate private file, away from all that. If it spots an old key sitting where they used to be, it'll suggest swapping it for a fresh one.
 * **Dex's own tidiness check got better at its job.** Dex glances over your files for anything that looks like a key or a password before saving. The old check could be fooled by one written in an unusual way and would say everything was fine. The new one reads your settings properly, and if it genuinely can't tell, it says so rather than assuming.
 * **Dex never updates itself without asking.** Dex used to be able to quietly fetch and apply changes to itself when you started a session. Now it only *notices* that a newer version exists and mentions it. Nothing changes until you say so.
 * **Your own files survive an update.** Files and settings that only exist on your machine are kept safe through an update or a rollback, rather than risking being written over.
