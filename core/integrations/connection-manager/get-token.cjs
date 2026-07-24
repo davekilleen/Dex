@@ -22,6 +22,7 @@
 const health = require('./health.cjs');
 const store = require('./token-store.cjs');
 const { apiKeyContext } = require('./auth-context.cjs');
+const { GET_TOKEN_EXIT_CODES } = require('./contract.cjs');
 
 async function main() {
   const service = process.argv[2];
@@ -29,14 +30,14 @@ async function main() {
   const full = process.argv.includes('--full');
   if (!service) {
     console.error('Usage: node get-token.cjs <service> [--full | --access-token-only]');
-    process.exit(1);
+    process.exit(GET_TOKEN_EXIT_CODES.error);
   }
   let token;
   try {
     token = store.loadToken(service);
   } catch (err) {
     console.error(err.message);
-    process.exit(err.code === 'DEX_CM_KEY_LOST' ? 3 : 1);
+    process.exit(err.code === 'DEX_CM_KEY_LOST' ? GET_TOKEN_EXIT_CODES.needs_reauth : GET_TOKEN_EXIT_CODES.error);
   }
   if (!token) {
     // A corrupt token file was quarantined and stamped by loadToken; that is a
@@ -44,10 +45,10 @@ async function main() {
     const reg = store.getConnection(service);
     if (reg && reg.error) {
       console.error(`${service} needs re-authentication (${reg.error}). Run: node connect.cjs connect ${service}`);
-      process.exit(3);
+      process.exit(GET_TOKEN_EXIT_CODES.needs_reauth);
     }
     console.error(`${service} is not connected.`);
-    process.exit(2);
+    process.exit(GET_TOKEN_EXIT_CODES.not_connected);
   }
   try {
     // Class B (paste-a-key): no refresh. Emit the raw secret (--access-token-only)
@@ -60,7 +61,8 @@ async function main() {
         return;
       }
       // Render the auth scheme via the shared seam (same context dex-call uses).
-      process.stdout.write(JSON.stringify(apiKeyContext(token, service)));
+      const { apiKey: _rawSecret, ...rendered } = apiKeyContext(token, service);
+      process.stdout.write(JSON.stringify(rendered));
       return;
     }
 
@@ -77,10 +79,10 @@ async function main() {
   } catch (err) {
     if (err.needsReauth) {
       console.error(`${service} needs re-authentication. Run: node connect.cjs connect ${service}`);
-      process.exit(3);
+      process.exit(GET_TOKEN_EXIT_CODES.needs_reauth);
     }
     console.error(err.message);
-    process.exit(1);
+    process.exit(GET_TOKEN_EXIT_CODES.error);
   }
 }
 

@@ -31,12 +31,13 @@ const FILES = {
   },
   'connector-model.js': {
     source: '6d96ababba84dcd0d07b85db52e0427d6434ac57f7c2f7a762ee9f8aad9f822c',
-    lifted: '4c38cbd86fb1c0cdfe66ba649f06045388ca3ddb41f080afb71d6fe1eeabd29c',
+    lifted: '29fcf20f3eab1f3ba65a6bcad33e7e0c9cd0aab2df6d377ad11bd785f58b4ac8',
     mode: 'core-adaptation',
     divergences: [
       'Core five-state credential model',
       'Desktop complete, partial, stale, failed, and sync-schedule fields omitted',
       'live verification remains separate evidence on connected credentials',
+      'status constants come from the generated connections contract source',
     ],
   },
   'connector-verify.js': {

@@ -3,13 +3,7 @@
 // Desktop's evidence-only principle while retaining Core's five public states.
 "use strict";
 
-const CONNECTOR_STATUSES = Object.freeze([
-	"connected",
-	"expiring",
-	"expired",
-	"needs_reauth",
-	"not_connected",
-]);
+const { CONNECTION_STATUSES: CONNECTOR_STATUSES } = require("../contract.cjs");
 
 /**
  * Derive Core's credential status strictly from durable evidence.

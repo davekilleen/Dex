@@ -1,0 +1,229 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://heydex.ai/contracts/connections.schema.json",
+  "title": "Dex connections consumer boundary",
+  "$defs": {
+    "leastPrivilegeToken": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "access_token",
+        "expires_at"
+      ],
+      "properties": {
+        "access_token": {
+          "type": "string",
+          "minLength": 1
+        },
+        "expires_at": {
+          "type": [
+            "number",
+            "null"
+          ]
+        }
+      }
+    },
+    "classBEnvelope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "baseUrl",
+        "headers",
+        "query"
+      ],
+      "properties": {
+        "kind": {
+          "const": "api_key"
+        },
+        "baseUrl": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "headers": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "query": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "fullToken": {
+      "type": "object",
+      "minProperties": 1
+    },
+    "accessTokenOnly": {
+      "type": "string"
+    },
+    "verificationState": {
+      "enum": [
+        "verified",
+        "unverified"
+      ]
+    },
+    "connectionStatus": {
+      "enum": [
+        "connected",
+        "expiring",
+        "expired",
+        "needs_reauth",
+        "not_connected"
+      ]
+    },
+    "statusRow": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "service",
+        "provider",
+        "alias",
+        "status",
+        "expiresAt",
+        "hasRefreshToken",
+        "scopes",
+        "lastRefreshedAt",
+        "error",
+        "verified",
+        "verification",
+        "lastVerifiedAt",
+        "lastProbeAt"
+      ],
+      "properties": {
+        "service": {
+          "type": "string",
+          "minLength": 1
+        },
+        "provider": {
+          "type": "string",
+          "minLength": 1
+        },
+        "alias": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "status": {
+          "$ref": "#/$defs/connectionStatus"
+        },
+        "expiresAt": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "hasRefreshToken": {
+          "type": "boolean"
+        },
+        "scopes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "lastRefreshedAt": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "error": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "message": {
+          "type": "string"
+        },
+        "verified": {
+          "type": "boolean"
+        },
+        "verification": {
+          "$ref": "#/$defs/verificationState"
+        },
+        "lastVerifiedAt": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "lastProbeAt": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "registryNotice": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "object"
+        }
+      ]
+    },
+    "statusOutput": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "connections",
+        "registryNotice"
+      ],
+      "properties": {
+        "connections": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/statusRow"
+          }
+        },
+        "registryNotice": {
+          "$ref": "#/$defs/registryNotice"
+        }
+      }
+    },
+    "tokenEnvelopeV2": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "v",
+        "aad",
+        "iv",
+        "tag",
+        "data"
+      ],
+      "properties": {
+        "v": {
+          "const": 2
+        },
+        "aad": {
+          "type": "string",
+          "pattern": "^token:[A-Za-z0-9][A-Za-z0-9._-]*(?::[a-z0-9_-]+)?$"
+        },
+        "iv": {
+          "type": "string",
+          "contentEncoding": "base64"
+        },
+        "tag": {
+          "type": "string",
+          "contentEncoding": "base64"
+        },
+        "data": {
+          "type": "string",
+          "contentEncoding": "base64"
+        }
+      }
+    }
+  }
+}

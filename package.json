@@ -9,7 +9,9 @@
     "meeting-sync:force": "node .scripts/meeting-intel/sync-from-granola.cjs --force",
     "test:hooks": "node --test .claude/hooks/tests/*.test.cjs",
     "test:scripts": "node --test .scripts/lib/tests/*.test.cjs .scripts/meeting-intel/__tests__/*.test.cjs",
-    "test:integrations": "node --test core/integrations/connection-manager/*.test.cjs"
+    "test:integrations": "node --test core/integrations/connection-manager/*.test.cjs",
+    "check:connections-contract": "node scripts/check-connections-contract.mjs && node scripts/build-connections-engine-manifest.mjs --check",
+    "test:connections-consumer-smoke": "node --test core/integrations/connection-manager/connections-contract.test.cjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.32.1",

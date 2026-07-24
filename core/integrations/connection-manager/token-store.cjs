@@ -4,7 +4,7 @@
  * never leave the machine and never hit a relay.
  *
  * Layout (under {DEX_VAULT}/System/credentials/, which is gitignored):
- *   tokens/<connId>.json    AES-256-GCM envelope { v, iv, tag, data } (base64)
+ *   tokens/<connId>.json    AES-256-GCM v2 envelope { v, aad, iv, tag, data } (binary fields base64)
  *   connections.json        plaintext registry: status/scopes/timestamps (NO secrets)
  *   oauth-apps.json         plaintext client ids + encrypted client-secret envelopes
  *   .dex-cm.key             fallback encryption key (0600) if OS keychain unavailable
@@ -25,6 +25,7 @@ const path = require('path');
 const crypto = require('crypto');
 const { execFileSync } = require('child_process');
 const { writeFileAtomic, withLockSync, withLock } = require('./fs-safe.cjs');
+const { TOKEN_ENVELOPE_VERSION, LOCK_PROTOCOL } = require('./contract.cjs');
 
 const KEYCHAIN_SERVICE = 'dex-connection-manager';
 const KEYCHAIN_ACCOUNT = 'token-store-key';
@@ -274,7 +275,7 @@ function withStoreLock(fn) {
  * refreshing again. 30s timeout covers a slow token endpoint.
  */
 function withRefreshLock(connId, fn) {
-  return withLock(refreshLockPath(connId), fn, { timeoutMs: 30_000 });
+  return withLock(refreshLockPath(connId), fn, { timeoutMs: LOCK_PROTOCOL.refreshTimeoutMs });
 }
 
 // ---- Encrypt / decrypt ------------------------------------------------------
@@ -293,11 +294,11 @@ function encrypt(plaintext, aad = '') {
   cipher.setAAD(Buffer.from(aad, 'utf8'));
   const data = Buffer.concat([cipher.update(plaintext, 'utf8'), cipher.final()]);
   const tag = cipher.getAuthTag();
-  return { v: 2, aad, iv: iv.toString('base64'), tag: tag.toString('base64'), data: data.toString('base64') };
+  return { v: TOKEN_ENVELOPE_VERSION, aad, iv: iv.toString('base64'), tag: tag.toString('base64'), data: data.toString('base64') };
 }
 
 function decrypt(envelope, aad = '') {
-  if (!envelope || envelope.v !== 2) throw new Error('Unsupported encrypted credential envelope version.');
+  if (!envelope || envelope.v !== TOKEN_ENVELOPE_VERSION) throw new Error('Unsupported encrypted credential envelope version.');
   if (envelope.aad !== aad) throw new EnvelopeBindingError();
   const decipher = crypto.createDecipheriv('aes-256-gcm', getKey(), Buffer.from(envelope.iv, 'base64'));
   decipher.setAAD(Buffer.from(aad, 'utf8'));
