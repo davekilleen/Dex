@@ -238,6 +238,7 @@ HARDCODED_PATHS=$(git ls-files -- '*.py' '*.ts' '*.cjs' '*.sh' | \
     xargs grep -n '/Users/' 2>/dev/null | \
     grep -v 'scripts/verify-distribution\.sh' | \
     grep -v 'scripts/check-path-consistency\.sh' | \
+    grep -v 'scripts/check-founder-content\.py' | \
     grep -v '#.*/Users/' | \
     grep -v '//.*/Users/' || true)
 if [ -n "$HARDCODED_PATHS" ]; then

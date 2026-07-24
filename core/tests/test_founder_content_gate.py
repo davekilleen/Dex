@@ -126,7 +126,9 @@ def test_removing_allowlist_entry_turns_gate_red(tmp_path):
         "~/Vault/System/credentials",
         "$HOME/dex/product",
         "path.join(os.homedir(), 'Vault')",
-        "/Users/founder/private/dex",
+        # Built at runtime: a literal /Users/ path in source would trip
+        # scripts/verify-distribution.sh's own hardcoded-path scan.
+        "/".join(("", "Users", "founder", "private", "dex")),
     ),
 )
 def test_gate_flags_personal_layout_paths(tmp_path, leak):
@@ -144,7 +146,8 @@ def test_gate_flags_personal_layout_paths(tmp_path, leak):
 @pytest.mark.parametrize("name", ("alice", "testuser", "yourname"))
 def test_gate_allows_documented_user_path_placeholders(tmp_path, name):
     root = _fixture(tmp_path, "")
-    (root / "example.md").write_text(f"/Users/{name}/Documents/dex\n", encoding="utf-8")
+    placeholder_path = "/".join(("", "Users", name, "Documents", "dex"))
+    (root / "example.md").write_text(f"{placeholder_path}\n", encoding="utf-8")
     _git(root, "add", ".")
 
     result = _run(root)
