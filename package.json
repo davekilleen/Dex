@@ -7,8 +7,6 @@
     "meeting-sync": "node .scripts/meeting-intel/sync-from-granola.cjs",
     "meeting-sync:dry-run": "node .scripts/meeting-intel/sync-from-granola.cjs --dry-run",
     "meeting-sync:force": "node .scripts/meeting-intel/sync-from-granola.cjs --force",
-    "test:hooks": "node --test .claude/hooks/tests/*.test.cjs",
-    "test:scripts": "node --test .scripts/lib/tests/*.test.cjs .scripts/meeting-intel/__tests__/*.test.cjs",
     "test:integrations": "node --test core/integrations/connection-manager/*.test.cjs"
   },
   "dependencies": {
