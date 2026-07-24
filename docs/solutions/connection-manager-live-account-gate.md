@@ -8,7 +8,7 @@ pass against the engine that actually ships).
 
 ## Setup
 
-- Dedicated gate vault (never the live vault): `DEX_VAULT=~/dex/artifacts/cm-live-gate-vault`
+- Dedicated gate vault (never the live vault): `DEX_VAULT=/path/to/dedicated/cm-live-gate-vault`
 - A Google OAuth client (type Desktop app) in any project the tester controls; Calendar API enabled;
   tester's account added as test user. Registered via `connect.cjs register-app google`
   (stdin only — the prompt is silent; type id ⏎ secret ⏎ Ctrl-D).

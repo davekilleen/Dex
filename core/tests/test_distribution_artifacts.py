@@ -1182,6 +1182,13 @@ def test_tau_removal_source_package_lock_reference_and_quarantine_contract() -> 
     assert not any((REPO_ROOT / "extensions/tau-mirror").glob("**/*"))
 
 
+def test_connection_manager_tests_are_distignored() -> None:
+    distignore = (REPO_ROOT / ".distignore").read_text(encoding="utf-8").splitlines()
+
+    assert "core/integrations/connection-manager/*.test.cjs" in distignore
+    assert "core/integrations/connection-manager/hardening.child.cjs" in distignore
+
+
 @pytest.mark.parametrize(
     "path",
     (

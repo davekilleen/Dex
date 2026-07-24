@@ -23,6 +23,8 @@ vitest.config.mjs
 core/tests/
 core/mcp/tests/
 core/migrations/tests/
+core/integrations/connection-manager/*.test.cjs
+core/integrations/connection-manager/hardening.child.cjs
 .claude/hooks/tests/
 .scripts/lib/tests/
 .scripts/meeting-intel/__tests__/

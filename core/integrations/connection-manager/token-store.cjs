@@ -20,7 +20,6 @@
  */
 
 const fs = require('fs');
-const os = require('os');
 const path = require('path');
 const crypto = require('crypto');
 const { execFileSync } = require('child_process');
@@ -30,9 +29,12 @@ const { TOKEN_ENVELOPE_VERSION, LOCK_PROTOCOL } = require('./contract.cjs');
 const KEYCHAIN_SERVICE = 'dex-connection-manager';
 const KEYCHAIN_ACCOUNT = 'token-store-key';
 
-/** Resolve the credentials directory: $DEX_VAULT/System/credentials, else ~/Vault/... */
+/** Resolve the credentials directory from the configured vault root. */
 function credentialsDir() {
-  const vault = process.env.DEX_VAULT || path.join(os.homedir(), 'Vault');
+  const vault = process.env.DEX_VAULT || process.env.VAULT_PATH;
+  if (!vault) {
+    throw new Error('Set DEX_VAULT to your vault folder before using connections');
+  }
   return path.join(vault, 'System', 'credentials');
 }
 

@@ -38,8 +38,6 @@
 ^\.claude/reference/beta-templates/analytics/README\.md:.*:pendo$
 ^06-Resources/Dex_System/.*:.*:pendo$
 ^\.claude/flows/onboarding\.md:.*:pendo$
-^System/user-profile.*\.yaml:.*:pendo$
-^System/user-profile\.yaml:.*:pendo$
 ^core/tests/.*:.*:pendo$
 ^README\.md:.*:pendo$
 
@@ -68,3 +66,5 @@
 # --- The gate and its own allowlist reference the tokens by construction ---
 ^scripts/check-founder-content\.py:.*:(dave|killeen|pendo|cursor)$
 ^scripts/founder-content-allowlist\.txt:.*:(dave|killeen|pendo|cursor)$
+^scripts/check-founder-content\.py:.*:personal-path$
+^core/tests/test_founder_content_gate\.py:.*:personal-path$
