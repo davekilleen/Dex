@@ -16,7 +16,7 @@ const assert = require('node:assert');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { execFileSync } = require('node:child_process');
+const { execFileSync, spawnSync } = require('node:child_process');
 
 // Point everything at a throwaway vault BEFORE requiring the store modules.
 const TMP_VAULT = fs.mkdtempSync(path.join(os.tmpdir(), 'dex-cm-test-'));
@@ -55,6 +55,38 @@ const NULL_TARGET_PROV = KEY_PROVIDERS.find(
 );
 
 test.after(() => fs.rmSync(TMP_VAULT, { recursive: true, force: true }));
+
+// ---- vault path resolution --------------------------------------------------
+
+test('store: credentials dir uses VAULT_PATH when DEX_VAULT is unset', () => {
+  const fallbackVault = fs.mkdtempSync(path.join(os.tmpdir(), 'dex-cm-vault-path-test-'));
+  try {
+    const env = { ...process.env, VAULT_PATH: fallbackVault };
+    delete env.DEX_VAULT;
+    const output = execFileSync(
+      process.execPath,
+      ['-e', `process.stdout.write(require(${JSON.stringify(path.join(__dirname, 'token-store.cjs'))}).credentialsDir())`],
+      { env, encoding: 'utf8' }
+    );
+    assert.equal(output, path.join(fallbackVault, 'System', 'credentials'));
+  } finally {
+    fs.rmSync(fallbackVault, { recursive: true, force: true });
+  }
+});
+
+test('store: credentials dir refuses to guess when vault env vars are unset', () => {
+  const env = { ...process.env };
+  delete env.DEX_VAULT;
+  delete env.VAULT_PATH;
+  const result = spawnSync(
+    process.execPath,
+    ['-e', `require(${JSON.stringify(path.join(__dirname, 'token-store.cjs'))}).credentialsDir()`],
+    { env, encoding: 'utf8' }
+  );
+
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /Set DEX_VAULT to your vault folder before using connections/);
+});
 
 // ---- catalog ----------------------------------------------------------------
 

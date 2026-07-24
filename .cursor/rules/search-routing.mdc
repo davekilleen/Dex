@@ -33,7 +33,6 @@ Use `qmd query "your intent" -c <collection>` for all vault content searches:
 | Reference / guides | `resources` | `06-Resources` |
 | Career / content / events | `areas` | `05-Areas` |
 | LinkedIn / newsletter / YouTube intel | `intel` | `00-Inbox/*_Intel` |
-| Dex product repo docs | `dex-docs` | `~/dex/product/**/*.md` (if locally cloned) |
 
 ## Rules
 

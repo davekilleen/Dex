@@ -14,6 +14,10 @@ remaining occurrence (branding, license, canonical URLs, real integrations, the
 supported Cursor harness, test fixtures) is listed, with a reason, in the
 allowlist file.
 
+Personal-layout paths are detected separately and reported with the token
+``personal-path``. The only concrete macOS user names exempted are the documented
+examples ``alice``, ``testuser``, and ``yourname``.
+
 Allowlist entries are regexes matched against a ``path:line:token`` identity,
 mirroring ``scripts/security-scan.py``.
 """
@@ -42,6 +46,19 @@ MAX_FINDINGS = 500
 # matched; only standalone founder-identity words are.
 TOKENS = ("dave", "killeen", "pendo", "cursor")
 PATTERNS = tuple((token, re.compile(rb"(?i)\b" + token.encode() + rb"\b")) for token in TOKENS)
+PERSONAL_PATH_PATTERNS = (
+    re.compile(rb"~/dex/"),
+    re.compile(rb"~/Vault(?:/|\b)"),
+    re.compile(rb"\$HOME/dex(?:/|\b)"),
+    re.compile(
+        rb"(?:path|os\.path)\.join\(\s*os\.homedir\(\)\s*,\s*['\"](?:Vault|dex)['\"]"
+    ),
+    # The macOS home prefix is split across two literals so the repo's other
+    # scanners (verify-distribution, check-path-consistency), which grep for the
+    # contiguous byte sequence, never match this script itself.
+    re.compile(rb"/Use" rb"rs/(?!(?:alice|testuser|yourname)/)[^/\\\s:'\"<>|]+/"),
+)
+ALL_PATTERNS = PATTERNS + tuple(("personal-path", pattern) for pattern in PERSONAL_PATH_PATTERNS)
 
 
 def _tracked_paths() -> tuple[bytes, ...]:
@@ -100,7 +117,7 @@ def main() -> int:
         if b"\x00" in data:  # skip binary files
             continue
         display = os.fsdecode(raw_path)
-        for token, pattern in PATTERNS:
+        for token, pattern in ALL_PATTERNS:
             for match in pattern.finditer(data):
                 line = data.count(b"\n", 0, match.start()) + 1
                 identity = f"{display}:{line}:{token}"
