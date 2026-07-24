@@ -364,6 +364,10 @@ MUTATION_POLICY: dict[str, str] = {
     "runtime": "never",           # local machine state; updates never write
 }
 
+CUSTOMIZATION_MIGRATION_SEAMS_VERSION = 0
+CUSTOMIZATION_MIGRATION_SEAM_PREFIXES = ("System/.dex/customization-migrations/",)
+CUSTOMIZATION_MIGRATION_SEAM_PATHS = ("CLAUDE-custom.md",)
+
 
 @dataclass(frozen=True)
 class Resolution:
@@ -393,7 +397,12 @@ class WriteVerdict:
     rule_id: str | None
 
 
-def update_write_verdict(path: str, *, exists: bool) -> WriteVerdict:
+def update_write_verdict(
+    path: str,
+    *,
+    exists: bool,
+    operation: str = "update",
+) -> WriteVerdict:
     """May an update engine write ``path``? The ONLY sanctioned write check.
 
     NOTE (folder remapping): classification assumes the DEFAULT PARA layout.
@@ -402,6 +411,56 @@ def update_write_verdict(path: str, *, exists: bool) -> WriteVerdict:
     remapped paths back to their semantic defaults before calling, or treat
     them as unclassified. Unclassified paths fail safe: never written.
     """
+    if operation not in ("update", "customization-migration"):
+        raise ValueError(f"unknown write operation: {operation}")
+
+    if operation == "customization-migration":
+        try:
+            denied = is_denied(path)
+            candidate = _normalize(path)
+        except ContractViolation:
+            return WriteVerdict(
+                str(path),
+                False,
+                "unclassified-never-write",
+                None,
+                None,
+            )
+
+        try:
+            resolution = resolve(candidate)
+        except ContractViolation:
+            resolution = None
+
+        if denied:
+            return WriteVerdict(
+                candidate,
+                False,
+                "deny",
+                resolution.ownership if resolution is not None else None,
+                resolution.rule_id if resolution is not None else None,
+            )
+
+        if candidate in CUSTOMIZATION_MIGRATION_SEAM_PATHS or any(
+            candidate.startswith(prefix)
+            for prefix in CUSTOMIZATION_MIGRATION_SEAM_PREFIXES
+        ):
+            return WriteVerdict(
+                candidate,
+                True,
+                "write-with-user-approval",
+                resolution.ownership if resolution is not None else None,
+                resolution.rule_id if resolution is not None else None,
+            )
+
+        return WriteVerdict(
+            candidate,
+            False,
+            "outside-migration-seams",
+            resolution.ownership if resolution is not None else None,
+            resolution.rule_id if resolution is not None else None,
+        )
+
     try:
         resolution = resolve(path)
     except ContractViolation:
@@ -546,6 +605,7 @@ def build_contract_schema() -> dict[str, object]:
             "vault_schema_supported",
             "ownership_classes",
             "mutation_policy",
+            "customization_migration",
             "hard_deny",
             "vault_regions",
             "rules",
@@ -569,6 +629,30 @@ def build_contract_schema() -> dict[str, object]:
                         ]
                     }
                     for ownership in OWNERSHIP_CLASSES
+                },
+            },
+            "customization_migration": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": [
+                    "version",
+                    "action",
+                    "seam_prefixes",
+                    "seam_paths",
+                ],
+                "properties": {
+                    "version": {"const": CUSTOMIZATION_MIGRATION_SEAMS_VERSION},
+                    "action": {"const": "write-with-user-approval"},
+                    "seam_prefixes": {
+                        "type": "array",
+                        "items": {"type": "string", "minLength": 1},
+                        "uniqueItems": True,
+                    },
+                    "seam_paths": {
+                        "type": "array",
+                        "items": {"type": "string", "minLength": 1},
+                        "uniqueItems": True,
+                    },
                 },
             },
             "ownership_classes": {
@@ -656,6 +740,12 @@ def build_contract_document() -> dict[str, object]:
         "vault_schema_supported": VAULT_SCHEMA_SUPPORTED,
         "ownership_classes": list(OWNERSHIP_CLASSES),
         "mutation_policy": dict(sorted(MUTATION_POLICY.items())),
+        "customization_migration": {
+            "version": CUSTOMIZATION_MIGRATION_SEAMS_VERSION,
+            "action": "write-with-user-approval",
+            "seam_prefixes": list(CUSTOMIZATION_MIGRATION_SEAM_PREFIXES),
+            "seam_paths": list(CUSTOMIZATION_MIGRATION_SEAM_PATHS),
+        },
         "hard_deny": list(HARD_DENY_PATTERNS),
         "vault_regions": list(VAULT_REGIONS),
         "rules": [

@@ -16,6 +16,16 @@
     "seed": "write-if-absent",
     "vault": "never"
   },
+  "customization_migration": {
+    "version": 0,
+    "action": "write-with-user-approval",
+    "seam_prefixes": [
+      "System/.dex/customization-migrations/"
+    ],
+    "seam_paths": [
+      "CLAUDE-custom.md"
+    ]
+  },
   "hard_deny": [
     ".env",
     ".env.*",
