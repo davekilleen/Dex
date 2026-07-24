@@ -7,12 +7,17 @@ import asyncio
 import copy
 import json
 import os
+import sys
 from pathlib import Path
 
 import mcp.server.stdio
 import mcp.types as types
 from mcp.server import NotificationOptions, Server
 from mcp.server.models import InitializationOptions
+
+# Add the vault root to sys.path so `from core.*` resolves when this server is
+# launched as a bare file path (core/mcp/<this file> → three parents up).
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from core.customization_migration import service as migration_service
 from core.customization_migration.capsule_model import EVIDENCE_SECTIONS_V0
