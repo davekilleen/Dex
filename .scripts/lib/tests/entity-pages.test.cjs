@@ -9,6 +9,7 @@ const yaml = require('js-yaml');
 const {
   parseEntityPage,
   readFrontmatterField,
+  renderRelationships,
   renderUpdateLog,
   upsertFrontmatter,
   renderPersonPage,
@@ -108,6 +109,68 @@ test('renderUpdateLog matches the canonical golden bytes deterministically', () 
       nature: ' Agreed\n  next steps. ',
     }],
   }), '- 2026-07-23 — meeting · two-way — Product review [meeting 3] — Agreed next steps.');
+});
+
+test('renderRelationships matches the canonical grouped bytes deterministically', () => {
+  const relationships = [
+    {
+      type: 'related_to',
+      target: '[[Zoe]]',
+      status: 'suggested',
+      source: { kind: 'co-attendance', id: 'meeting-2' },
+      date: '2026-07-23',
+    },
+    {
+      type: 'works_at',
+      target: '[[Beta Co]]',
+      status: 'confirmed',
+      source: { kind: 'manual', id: 'confirmation-1' },
+      date: '2026-07-22',
+    },
+    {
+      type: 'works_at',
+      target: '[[Acme]]',
+      status: 'suggested',
+      source: { kind: 'domain-match', id: 'acme.test' },
+      date: '2026-07-21',
+    },
+  ];
+  const expected = [
+    '### works_at',
+    '- [[Acme]] (suggested)',
+    '- [[Beta Co]]',
+    '',
+    '### related_to',
+    '- [[Zoe]] (suggested)',
+  ].join('\n');
+
+  assert.equal(renderRelationships(relationships), expected);
+  assert.equal(renderRelationships([...relationships].reverse()), expected);
+  assert.throws(
+    () => renderRelationships([{ ...relationships[0], type: 'invented_relation' }]),
+    /unknown relationship type/,
+  );
+});
+
+test('relationship frontmatter is owned and round-trips through the JS twin', t => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'entity-pages-'));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const page = path.join(dir, 'Related.md');
+  const relationships = [{
+    type: 'works_at',
+    target: '[[Acme]]',
+    status: 'suggested',
+    source: { kind: 'domain-match', id: 'acme.test' },
+    date: '2026-07-23',
+  }];
+  fs.writeFileSync(page, '# Related\n');
+
+  assert.equal(upsertFrontmatter(page, { relationships }), true);
+  assert.deepEqual(parseEntityPage(page).relationships, relationships);
+  assert.deepEqual(
+    readFrontmatterField(fs.readFileSync(page, 'utf8'), 'relationships'),
+    relationships,
+  );
 });
 
 test('upsert preserves unknown keys, is idempotent, and leaves no temp files', t => {

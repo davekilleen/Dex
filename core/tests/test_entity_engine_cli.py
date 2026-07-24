@@ -10,7 +10,9 @@ from pathlib import Path
 
 import pytest
 
+import core.entity_engine.contract as entity_contract
 from core.entity_engine import cli
+from core.entity_engine.contract import render_update_log
 
 
 def _run_cli(payload: object, *, vault: Path) -> subprocess.CompletedProcess[str]:
@@ -172,6 +174,64 @@ def test_run_validates_and_dispatches_mixed_batch_in_process(
     updated = existing.read_text(encoding="utf-8")
     assert "company: New Co" in updated
     assert "- works with [[Created Person]]" in updated
+
+
+def test_run_applies_materialized_relationship_mutation_in_process(
+    tmp_path: Path,
+) -> None:
+    page = tmp_path / "05-Areas" / "People" / "External" / "Related.md"
+    page.parent.mkdir(parents=True)
+    page.write_text(
+        "---\n"
+        "type: person\n"
+        "name: Related Person\n"
+        "dex_pinned: {}\n"
+        "dex_last_written: {type: person, name: Related Person}\n"
+        "---\n"
+        "# Related Person\n",
+        encoding="utf-8",
+    )
+    relationships = [
+        {
+            "type": "works_at",
+            "target": "[[Acme]]",
+            "status": "suggested",
+            "source": {"kind": "domain-match", "id": "acme.test"},
+            "date": "2026-07-23",
+        }
+    ]
+
+    response = cli.run(
+        {
+            "ops": [
+                {
+                    "op": "mutate",
+                    "path": str(page),
+                    "base_fingerprint": hashlib.sha256(
+                        page.read_bytes()
+                    ).hexdigest(),
+                    "field_changes": {"relationships": relationships},
+                    "ensure_regions": ["relationships", "update-log"],
+                    "region_projections": {
+                        "relationships": entity_contract.render_relationships(
+                            relationships
+                        ),
+                        "update-log": render_update_log(
+                            relationship_provenance=relationships
+                        ),
+                    },
+                }
+            ]
+        }
+    )
+
+    assert response["results"][0]["status"] == "updated"
+    updated = page.read_text(encoding="utf-8")
+    assert "### works_at\n- [[Acme]] (suggested)" in updated
+    assert (
+        "- 2026-07-23 — relationship · works_at — [[Acme]]"
+        in updated
+    )
 
 
 @pytest.mark.parametrize(

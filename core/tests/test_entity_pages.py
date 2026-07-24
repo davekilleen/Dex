@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 import yaml
 
+import core.entity_engine.contract as entity_contract
 from core import entity_maintenance
 from core.entity_engine.contract import render_update_log
 from core.utils.entity_pages import (
@@ -88,6 +89,123 @@ def test_parse_touches_only_from_valid_frontmatter(tmp_path: Path) -> None:
     assert parsed["quarantined"] is True
     assert parsed["touches"] == []
     assert parsed["last_touched"] is None
+
+
+def test_relationship_frontmatter_round_trips_and_rejects_unknown_types(
+    tmp_path: Path,
+) -> None:
+    page = tmp_path / "Related.md"
+    relationships = [
+        {
+            "type": "works_at",
+            "target": "[[Acme]]",
+            "status": "suggested",
+            "source": {"kind": "domain-match", "id": "acme.test"},
+            "date": "2026-07-23",
+        }
+    ]
+    page.write_text("# Related\n", encoding="utf-8")
+
+    assert upsert_frontmatter(
+        page,
+        {"relationships": relationships},
+    )
+    assert parse_entity_page(page)["relationships"] == relationships
+
+    with pytest.raises(ValueError, match="unknown relationship type"):
+        upsert_frontmatter(
+            page,
+            {
+                "relationships": [
+                    {
+                        **relationships[0],
+                        "type": "invented_relation",
+                    }
+                ]
+            },
+        )
+
+
+def test_render_relationships_has_stable_golden_bytes() -> None:
+    relationships = [
+        {
+            "type": "related_to",
+            "target": "[[Zoe]]",
+            "status": "suggested",
+            "source": {"kind": "co-attendance", "id": "meeting-2"},
+            "date": "2026-07-23",
+        },
+        {
+            "type": "works_at",
+            "target": "[[Beta Co]]",
+            "status": "confirmed",
+            "source": {"kind": "manual", "id": "confirmation-1"},
+            "date": "2026-07-22",
+        },
+        {
+            "type": "works_at",
+            "target": "[[Acme]]",
+            "status": "suggested",
+            "source": {"kind": "domain-match", "id": "acme.test"},
+            "date": "2026-07-21",
+        },
+    ]
+
+    expected = (
+        "### works_at\n"
+        "- [[Acme]] (suggested)\n"
+        "- [[Beta Co]]\n"
+        "\n"
+        "### related_to\n"
+        "- [[Zoe]] (suggested)"
+    )
+    assert entity_contract.render_relationships(relationships) == expected
+    assert entity_contract.render_relationships(reversed(relationships)) == expected
+
+
+def test_confirmed_relationship_pins_the_field_and_is_never_overwritten(
+    tmp_path: Path,
+) -> None:
+    page = tmp_path / "Confirmed.md"
+    suggested = [
+        {
+            "type": "works_at",
+            "target": "[[Acme]]",
+            "status": "suggested",
+            "source": {"kind": "domain-match", "id": "acme.test"},
+            "date": "2026-07-23",
+        }
+    ]
+    page.write_text("# Confirmed\n", encoding="utf-8")
+    assert upsert_frontmatter(
+        page,
+        {"relationships": suggested},
+    )
+
+    frontmatter = yaml.safe_load(
+        page.read_text(encoding="utf-8").split("---", 2)[1]
+    )
+    frontmatter["relationships"][0]["status"] = "confirmed"
+    body = page.read_text(encoding="utf-8").split("---", 2)[2]
+    page.write_text(
+        f"---\n{yaml.safe_dump(frontmatter, sort_keys=False).rstrip()}\n---{body}",
+        encoding="utf-8",
+    )
+
+    replacement = [
+        {
+            **suggested[0],
+            "target": "[[Different Co]]",
+        }
+    ]
+    assert upsert_frontmatter(page, {"relationships": replacement})
+    confirmed = yaml.safe_load(
+        page.read_text(encoding="utf-8").split("---", 2)[1]
+    )
+    assert confirmed["relationships"][0]["target"] == "[[Acme]]"
+    assert confirmed["relationships"][0]["status"] == "confirmed"
+    assert confirmed["dex_pinned"]["relationships"] == "user"
+    assert confirmed["dex_last_written"]["relationships"] == suggested
 
 
 def test_upsert_preserves_unknown_keys_and_is_idempotent(tmp_path: Path) -> None:

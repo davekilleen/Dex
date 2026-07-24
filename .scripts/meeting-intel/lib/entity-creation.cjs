@@ -454,6 +454,127 @@ function buildTouchOperations(
   }));
 }
 
+function buildRelationshipOperations(
+  meetings,
+  profile,
+  created,
+  companiesCreated,
+  creationEffects,
+  paths,
+) {
+  const internalDomains = new Set(
+    Array.from(getInternalDomains(profile), registrableDomain).filter(Boolean),
+  );
+  const createdPeopleByEmail = new Map();
+  const createdPeopleByName = new Map();
+  for (const page of created) {
+    for (const email of page.contact?.emails || []) {
+      createdPeopleByEmail.set(String(email).trim().toLowerCase(), page.filePath);
+    }
+    const name = String(page.contact?.name || '').trim().toLowerCase();
+    if (name) createdPeopleByName.set(name, page.filePath);
+  }
+  const createdCompaniesByDomain = new Map(
+    companiesCreated.map(page => [registrableDomain(page.domain), page.filePath]),
+  );
+  const confirmedCreationPaths = new Set([
+    ...created.map(page => page.filePath),
+    ...companiesCreated.map(page => page.filePath),
+  ]);
+  const unconfirmedCreationPaths = new Set(
+    creationEffects
+      .map(effect => effect.file_path)
+      .filter(filePath => !confirmedCreationPaths.has(filePath)),
+  );
+  const grouped = new Map();
+
+  function resolvePerson(attendee) {
+    const name = String(attendee?.name || '').trim();
+    if (!name) return null;
+    const email = typeof attendee?.email === 'string'
+      ? attendee.email.trim().toLowerCase()
+      : '';
+    return createdPeopleByEmail.get(email)
+      || createdPeopleByName.get(name.toLowerCase())
+      || resolveEntityPath(paths.VAULT_ROOT, {
+        kind: 'person',
+        name,
+        emails: email ? [email] : [],
+      });
+  }
+
+  function addRelationship(filePath, targetPath, type, source) {
+    if (!filePath || !targetPath
+        || unconfirmedCreationPaths.has(filePath)
+        || unconfirmedCreationPaths.has(targetPath)
+        || !fs.existsSync(filePath)
+        || !fs.existsSync(targetPath)) return;
+    let entity;
+    let target;
+    try {
+      entity = parseEntityPage(filePath);
+      target = parseEntityPage(targetPath);
+    } catch (_) {
+      return;
+    }
+    const entityIdentity = identityForEntity(entity);
+    if (!entityIdentity || entity.quarantined || target.quarantined || !target.name) return;
+    if (!grouped.has(filePath)) {
+      grouped.set(filePath, { entityIdentity, relationships: [] });
+    }
+    grouped.get(filePath).relationships.push({
+      type,
+      target_id: relativeVaultPath(targetPath, paths.VAULT_ROOT),
+      target_ref: `[[${target.name}]]`,
+      source,
+      confidence: 'suggested',
+    });
+  }
+
+  for (const meeting of Array.isArray(meetings) ? meetings : []) {
+    const date = String(meeting?.createdAt || meeting?.date || '').slice(0, 10);
+    if (!meeting?.id || !/^\d{4}-\d{2}-\d{2}$/.test(date)) continue;
+    const people = [];
+    for (const attendee of meetingAttendees(meeting)) {
+      const personPath = resolvePerson(attendee);
+      if (personPath && !people.includes(personPath)) people.push(personPath);
+      const email = typeof attendee?.email === 'string'
+        ? attendee.email.trim().toLowerCase()
+        : '';
+      if (!personPath || attendee?.location !== 'external' || !email.includes('@')) continue;
+      const domain = registrableDomain(email.split('@', 2)[1]);
+      if (!domain || isFreemail(domain) || internalDomains.has(domain)) continue;
+      const companyPath = createdCompaniesByDomain.get(domain)
+        || companyPageForDomain(domain);
+      addRelationship(personPath, companyPath, 'works_at', {
+        kind: 'domain-match',
+        id: domain,
+        date,
+      });
+    }
+    people.sort();
+    for (let left = 0; left < people.length; left += 1) {
+      for (let right = left + 1; right < people.length; right += 1) {
+        addRelationship(people[left], people[right], 'related_to', {
+          kind: 'co-attendance',
+          id: meeting.id,
+          date,
+        });
+      }
+    }
+  }
+
+  return [...grouped.entries()].map(([filePath, entry]) => ({
+    op: 'mutate',
+    path: filePath,
+    entity_identity: entry.entityIdentity,
+    intent: {
+      kind: 'relationship',
+      relationships: entry.relationships,
+    },
+  }));
+}
+
 function processEntityCreation(
   meetings,
   profile = {},
@@ -661,9 +782,37 @@ function processEntityCreation(
     });
     logger(writeMessage);
   }
+  const relationshipOps = buildRelationshipOperations(
+    meetings,
+    profile,
+    created,
+    companiesCreated,
+    effects,
+    paths,
+  );
+  const relationshipWrite = flushEntityOps({
+    vaultRoot: paths.VAULT_ROOT,
+    ops: relationshipOps,
+    meetingIds,
+    scope: 'relationship',
+    scopes: ['relationship'],
+    metadata: { source: 'meeting-intel' },
+    now,
+  });
+  if (!relationshipWrite.ok) {
+    const writeMessage = entityWriteMessage(relationshipWrite)
+      || 'Entity relationship writes remain pending';
+    errors.push({
+      entity_write: true,
+      scope: 'relationship',
+      error: writeMessage,
+    });
+    logger(writeMessage);
+  }
   entityWrite.dead_lettered_ops = [
     ...(entityWrite.dead_lettered_ops || []),
     ...(touchWrite.dead_lettered_ops || []),
+    ...(relationshipWrite.dead_lettered_ops || []),
   ];
   entityWrite.completed_meeting_ids = [...new Set([
     ...(entityWrite.completed_meeting_ids || []),
@@ -671,6 +820,7 @@ function processEntityCreation(
       .filter(batch => batch.scope === 'creation')
       .flatMap(batch => batch.meeting_ids || []),
     ...(touchWrite.completed_meeting_ids || []),
+    ...(relationshipWrite.completed_meeting_ids || []),
   ])].sort();
   return {
     mode, created, suggested, companies_created: companiesCreated,
@@ -679,6 +829,7 @@ function processEntityCreation(
 }
 
 module.exports = {
+  buildRelationshipOperations,
   createOrAdoptPerson,
   createOrAdoptCompany,
   capabilityEnabled,

@@ -188,6 +188,8 @@ Before commitments, read `System/.dex/entity-suggestions.json` (if present). If 
 
 Also read `System/.dex/entity-cooling.json` when it is present and fresh. If its consequential `cold` list is non-empty, surface it as one compact "❄️ Going cold" line in `## ⚠️ Heads Up`; degrade silently when the feed is absent or empty, and never widen this into a vault-wide people dump.
 
+Also read `System/.dex/entity-relationships.json` when it is present and fresh. If its `suggestions` list is non-empty, surface one compact "🔗 Relationships to confirm" line in `## ⚠️ Heads Up`; degrade silently when the feed is absent, stale, or empty. Keep it as a nudge and point to `relationship-radar` for review — confirming remains the user's action.
+
 ```
 Use: get_commitments_due(date_range="today")
 ```
@@ -549,6 +551,7 @@ integrations_used: [calendar, tasks, people, work-intelligence]
 ## ⚠️ Heads Up
 
 - {{❄️ Going cold: consequential people/accounts from the cooling feed, when present}}
+- {{🔗 Relationships to confirm: suggested typed relationships from the feed, when present}}
 - {{Warning about lagging weekly priority}}
 - {{Commitment due today}}
 - {{Back-to-back meetings}}
