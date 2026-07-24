@@ -59,8 +59,10 @@ response, never derivable from capsule or preview content.
 
 There is exactly one sanctioned write check:
 `core.portable_contract.update_write_verdict`. The migration authority is its
-`operation="customization-migration"` parameter — not a second function, so the existing
-red-when-removed mutation tests cover the new path. The verdict authorizes writes only
+`operation="customization-migration"` parameter — not a second function. The existing
+red-when-removed mutation tests keep proving that every consumer routes through this one
+check; the migration branch's own boundary (seam matching, deny precedence) is pinned by
+its direct seam-boundary tests, including the sibling-prefix refusal. The verdict authorizes writes only
 inside a versioned, enumerated seam list (`CUSTOMIZATION_MIGRATION_SEAM_*`, v0: the
 protected migration-artifact root and `CLAUDE-custom.md`); hard-deny always wins;
 everything else refuses. Expanding the seam list is a deliberate contract change: it
@@ -97,7 +99,17 @@ collapses to `manual-review`. Model confidence is never verification.
   vault root, symlink refusal, traversal refusal, bounded reads, atomic writes, the
   single-writer lock, journal-before-effect, and byte-exact rollback.
 
-## 6. What later lanes must re-prove
+## 6. Known tripwires for later lanes
+
+- Existing mutation tests monkeypatch `update_write_verdict` with `lambda path, *, exists`
+  signatures. The first caller that passes `operation=` will make those monkeypatches
+  `TypeError` — update them deliberately in the same change, never by loosening.
+- The verdict's path normalization is more lenient than the transaction engine's path
+  gate. The verdict is therefore never a sole path gate: migration writes are only valid
+  behind a `Transaction`, whose `unsafe_existing_parent` checks reject anything
+  non-canonical.
+
+## 7. What later lanes must re-prove
 
 Each write-capable lane (capsule creation, staging, activation) must, before merge:
 re-run the red-when-removed suite; add fault injection at every new mutation seam; pass an

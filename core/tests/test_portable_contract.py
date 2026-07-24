@@ -7,6 +7,7 @@ passes on the healthy tree.
 
 from __future__ import annotations
 
+import inspect
 import json
 import subprocess
 import sys
@@ -184,6 +185,56 @@ def test_customization_migration_operation_refuses_outside_seams() -> None:
 
     assert verdict.allowed is False
     assert verdict.action == "outside-migration-seams"
+
+
+def test_customization_migration_seam_prefix_requires_trailing_slash() -> None:
+    # This pins the trailing-slash prefix semantics against matcher refactors.
+    verdict = portable_contract.update_write_verdict(
+        "System/.dex/customization-migrations-evil/secret.md",
+        exists=True,
+        operation="customization-migration",
+    )
+
+    assert verdict.allowed is False
+    assert verdict.action == "outside-migration-seams"
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "System/.dex/customization-migrations/abc123/token.json",
+        "System/.dex/customization-migrations/abc123/private.key",
+    ],
+)
+def test_customization_migration_denies_additional_seam_secret_types(path: str) -> None:
+    verdict = portable_contract.update_write_verdict(
+        path,
+        exists=False,
+        operation="customization-migration",
+    )
+
+    assert verdict.allowed is False
+    assert verdict.action == "deny"
+
+
+def test_default_update_denies_customization_migration_seam() -> None:
+    verdict = portable_contract.update_write_verdict(
+        "System/.dex/customization-migrations/abc123/manifest.json",
+        exists=True,
+    )
+
+    assert verdict.allowed is False
+    assert verdict.action == "never"
+
+
+def test_update_write_verdict_operation_is_keyword_only_with_update_default() -> None:
+    # Existing mutation-test monkeypatches use lambda path, *, exists — any future
+    # caller passing operation= must update them.
+    parameters = inspect.signature(portable_contract.update_write_verdict).parameters
+
+    assert "operation" in parameters
+    assert parameters["operation"].default == "update"
+    assert parameters["operation"].kind is inspect.Parameter.KEYWORD_ONLY
 
 
 @pytest.mark.parametrize(
