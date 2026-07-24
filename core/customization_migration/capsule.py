@@ -445,6 +445,7 @@ def preview_capsule(
     vault_root: Path,
     *,
     clock: Callable[[], int] = time.time,
+    capsule_id: str | None = None,
 ) -> CapsulePreview:
     """Build a deterministic, integrity-bound plan without writing the vault."""
     assessment = assess(Path(vault_root))
@@ -452,7 +453,10 @@ def preview_capsule(
         raise CapsuleError(
             "capsule preview requires a complete VERIFIED assessment with verdict OK"
         )
-    capsule_id = "cap-" + secrets.token_hex(8)
+    if capsule_id is None:
+        capsule_id = "cap-" + secrets.token_hex(8)
+    elif CAPSULE_ID.fullmatch(capsule_id) is None:
+        raise CapsuleError("capsule preview id is not canonical")
     manifest, sections = _manifest_for(
         assessment,
         capsule_id,
