@@ -11,8 +11,8 @@
         "connection-manager"
       ],
       "fileCount": 17,
-      "totalBytes": 166873,
-      "treeHash": "91b5642e73158eb6dd6cab12dec3d6bc2a3ee03d8722659eaa13bbe1659f3dbf",
+      "totalBytes": 166924,
+      "treeHash": "73185cb6787fc56c938b4f6fe03dc80888e2fac933356710677e0510d23fd535",
       "files": [
         {
           "path": "auth-context.cjs",
@@ -96,8 +96,8 @@
         },
         {
           "path": "token-store.cjs",
-          "bytes": 29800,
-          "sha256": "a9430fc179f1451f1e4edb02396e53da174c90a3d276c1a9361e9ef2bc6ab808"
+          "bytes": 29851,
+          "sha256": "40412ef7bfc3a033f50d4e3129e5ef9438f7254d2e7523ca58cd11cc7e55be34"
         }
       ]
     }
