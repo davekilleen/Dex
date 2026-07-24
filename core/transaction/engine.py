@@ -97,9 +97,17 @@ def _unsafe_infrastructure_directory(vault_root: Path, directory: Path) -> str |
 class Transaction:
     """A single crash-safe mutation of one vault."""
 
-    def __init__(self, vault_root: Path, tx_id: str, *, _resumed: bool = False) -> None:
+    def __init__(
+        self,
+        vault_root: Path,
+        tx_id: str,
+        *,
+        operation: str = "update",
+        _resumed: bool = False,
+    ) -> None:
         self.vault_root = Path(vault_root).resolve()
         self.tx_id = tx_id
+        self.operation = operation
         self.tx_dir = self.vault_root / TX_ROOT_RELATIVE / tx_id
         self.journal = Journal(self.tx_dir / "journal.jsonl")
         self.snapshot = Snapshot(self.tx_dir / "snapshot")
@@ -116,8 +124,28 @@ class Transaction:
         plan: list[PlanEntry],
         *,
         allow_empty: bool = False,
+        operation: str = "update",
     ) -> "Transaction":
         """Authorize the whole plan, take the lock, journal BEGIN."""
+        return cls._begin_with_id(
+            vault_root,
+            plan,
+            allow_empty=allow_empty,
+            operation=operation,
+            tx_id=None,
+        )
+
+    @classmethod
+    def _begin_with_id(
+        cls,
+        vault_root: Path,
+        plan: list[PlanEntry],
+        *,
+        allow_empty: bool,
+        operation: str,
+        tx_id: str | None,
+    ) -> "Transaction":
+        """Internal begin seam for plans that must persist their tx id."""
         if not plan and not allow_empty:
             raise TransactionError("a transaction needs at least one plan entry")
 
@@ -151,13 +179,21 @@ class Transaction:
             if unsafe_parent is not None:
                 rejections.append(f"{entry.relative} [{unsafe_parent}]")
                 continue
-            verdict = portable_contract.update_write_verdict(entry.relative, exists=target.exists())
+            verdict = portable_contract.update_write_verdict(
+                entry.relative,
+                exists=target.exists(),
+                operation=operation,
+            )
             if not verdict.allowed:
                 rejections.append(f"{entry.relative} [{verdict.action}]")
         if rejections:
             raise PlanRejected("the ownership contract forbids writing: " + ", ".join(rejections))
 
-        tx = cls(vault_root, time.strftime("%Y%m%dT%H%M%S-") + uuid.uuid4().hex[:8])
+        tx = cls(
+            vault_root,
+            tx_id or time.strftime("%Y%m%dT%H%M%S-") + uuid.uuid4().hex[:8],
+            operation=operation,
+        )
         tx._plan = list(plan)
         unsafe_directory = _unsafe_infrastructure_directory(tx.vault_root, tx.tx_dir)
         if unsafe_directory is not None:
@@ -176,6 +212,7 @@ class Transaction:
                 "BEGIN",
                 {
                     "tx_id": tx.tx_id,
+                    "operation": operation,
                     "plan": [
                         {
                             "relative": entry.relative,
@@ -270,7 +307,9 @@ class Transaction:
             # wins and the whole transaction aborts (all-or-nothing), rolling
             # back anything already applied.
             verdict = portable_contract.update_write_verdict(
-                entry.relative, exists=(self.vault_root / entry.relative).exists()
+                entry.relative,
+                exists=(self.vault_root / entry.relative).exists(),
+                operation=self.operation,
             )
             if not verdict.allowed:
                 raise PlanRejected(
@@ -535,7 +574,14 @@ class Transaction:
             try:
                 rollback_only = False
                 try:
-                    events = {entry.event for entry in tx.journal.read()}
+                    journal_entries = tx.journal.read()
+                    events = {entry.event for entry in journal_entries}
+                    begin = next(
+                        (entry for entry in journal_entries if entry.event == "BEGIN"),
+                        None,
+                    )
+                    if begin is not None:
+                        tx.operation = begin.payload.get("operation", "update")
                 except JournalSchemaError:
                     events = None
                     rollback_only = True

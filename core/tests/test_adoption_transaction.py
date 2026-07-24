@@ -401,12 +401,17 @@ def test_contract_refusal_aborts_the_whole_adoption_without_skipping(
     )
     original = portable_contract.update_write_verdict
 
-    def refuse_alpha(path: str, *, exists: bool):
+    def refuse_alpha(
+        path: str,
+        *,
+        exists: bool,
+        operation: str = "update",
+    ):
         if path == ".claude/skills/alpha/SKILL.md":
             return portable_contract.WriteVerdict(
                 path, False, "deny", "brain", "adversarial-test"
             )
-        return original(path, exists=exists)
+        return original(path, exists=exists, operation=operation)
 
     monkeypatch.setattr(portable_contract, "update_write_verdict", refuse_alpha)
 

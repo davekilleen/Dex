@@ -785,9 +785,12 @@ def discover(vault_root: Path) -> DiscoveryResult:
                 "release-identity-unproved",
             )
             exclusions[(exclusion.path, exclusion.reason)] = exclusion
+    incomplete_exclusions = tuple(
+        item for item in exclusions.values() if item.reason != "embedded-secret"
+    )
     complete = (
         inventory.complete
-        and not exclusions
+        and not incomplete_exclusions
         and not inventory.errors
         and (registry is None or registry.invalid_reason is None)
     )

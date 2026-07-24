@@ -272,12 +272,17 @@ def test_ownership_contract_refusal_aborts_the_whole_rewind(
     vault, receipt = _committed_adoption(tmp_path)
     original = portable_contract.update_write_verdict
 
-    def refuse_existing(path: str, *, exists: bool):
+    def refuse_existing(
+        path: str,
+        *,
+        exists: bool,
+        operation: str = "update",
+    ):
         if path == EXISTING_PATH:
             return portable_contract.WriteVerdict(
                 path, False, "deny", "brain", "adversarial-test"
             )
-        return original(path, exists=exists)
+        return original(path, exists=exists, operation=operation)
 
     monkeypatch.setattr(portable_contract, "update_write_verdict", refuse_existing)
 
