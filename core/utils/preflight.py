@@ -56,6 +56,7 @@ SERVER_MODULES = {
     "onboarding-mcp": "onboarding_server.py",
     "resume-mcp": "resume_server.py",
     "session-memory": "session_memory_server.py",
+    "customization-migration-mcp": "customization_migration_server.py",
     "update-checker": "update_checker.py",
 }
 
@@ -69,6 +70,7 @@ SERVER_LABELS = {
     "dex-analytics": "Analytics",
     "onboarding-mcp": "Onboarding",
     "resume-mcp": "Resume Builder",
+    "customization-migration-mcp": "Customization Migration",
     "update-checker": "Update Checker",
 }
 
