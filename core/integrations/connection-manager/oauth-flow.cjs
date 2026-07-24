@@ -94,26 +94,26 @@ async function startCallbackServer({
         const error = url.searchParams.get('error');
         const code = url.searchParams.get('code');
         const state = url.searchParams.get('state');
-        const stateMismatch = expectedState !== undefined && state !== expectedState;
-        if (stateMismatch) {
-          res.writeHead(404).end();
-          return;
-        }
-        res.writeHead(200, {
+        const stateMatches = expectedState === undefined || state === expectedState;
+        const terminal = stateMatches && Boolean(code || error);
+        res.writeHead(terminal ? 200 : 400, {
           'Content-Type': 'text/html; charset=utf-8',
           'Content-Security-Policy': "default-src 'none'",
           'X-Content-Type-Options': 'nosniff',
         });
         res.end(
-          error
+          !terminal
+            ? '<html><body style="font-family:system-ui;padding:3rem;text-align:center"><h2>Callback not accepted</h2><p>Dex is still waiting for the connection to finish.</p></body></html>'
+            : error
             ? `<html><body style="font-family:system-ui;padding:3rem;text-align:center"><h2>Connection failed</h2><p>${escapeHtml(error)}</p><p>You can close this tab and return to Dex.</p></body></html>`
             : `<html><body style="font-family:system-ui;padding:3rem;text-align:center"><h2>✅ Connected</h2><p>You can close this tab and return to Dex.</p></body></html>`
         );
+        if (!terminal) return;
         clearTimeout(timeout);
         server.close();
         if (error) {
-          const code = normalizeProviderErrorCode(error, 'oauth_authorization_rejected');
-          reject(Object.assign(new Error(`Provider returned error: ${code}`), { code }));
+          const errorCode = normalizeProviderErrorCode(error, 'oauth_authorization_rejected');
+          reject(Object.assign(new Error(`Provider returned error: ${errorCode}`), { code: errorCode }));
         }
         else resolve({ code, state });
       });

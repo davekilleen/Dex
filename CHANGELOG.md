@@ -7,6 +7,21 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.75.2] — 🔐 A second look at how your app sign-ins are stored (2026-07-24)
+
+Before the connections doorway opens, I wanted the way Dex stores your sign-ins checked properly rather than taken on trust. So it got reviewed twice, independently — once by me and once by a separate AI model that wasn't shown my findings, each trying to find ways in. The good news up front: the actual sealing of your credentials held up under both reviews. What the reviews found were softer edges around it, and this release tidies all of them. Nothing here was ever exploited, and the feature isn't open to anyone yet — this is the tidying you do *before* opening the door.
+
+**What this gets ready for you:**
+
+* **Dex now tells you where the key to your credentials is kept.** Normally it lives in your Mac's Keychain, sealed away from your notes. On the rare setup where that isn't available, it sits in your vault folder instead — which means a copy of that folder is a copy of your sign-ins. Dex used to look identical either way. Now it just says which, so you can see it rather than assume.
+* **"Disconnect" no longer overpromises.** It removes the credential from your machine — but the app itself can still have permission in your account until you remove it there. Dex now says so, and points you at the right place, instead of leaving you to assume you were fully unhooked.
+* **A disconnect leaves nothing behind.** If a credential file had previously been set aside as damaged, disconnecting didn't clear it. Now it does, so removing a connection really removes it.
+* **Nothing an outside service says gets written down unexamined.** If a connected app sent back an error message, Dex saved it as-is for troubleshooting. A misbehaving service could have used that to get something sensitive written into a plain-text log. Dex now strips anything sensitive out first.
+* **A stray browser tab can't interrupt you mid-connect.** While you were connecting an app, another page open in your browser could quietly cancel it and leave you wondering what went wrong. That window is closed.
+* **Sturdier under odd setups.** If your credentials folder or key arrived from a backup with loose permissions, Dex now tightens them before use rather than trusting them, and refuses outright if something looks tampered with. And account names that could have collided into the same file — quietly breaking one of two connections — are now rejected up front.
+
+Still no change to day-to-day use: this is the last piece of groundwork before connecting your tools becomes something you can actually do.
+
 ## [1.75.1] — 🔍 Dex Doctor now knows exactly what you've customised (2026-07-24)
 
 *(This is the v1.75.0 feature release, re-cut: v1.75.0's packaging step was incomplete, so its update bundle never published. Nothing else changed.)*

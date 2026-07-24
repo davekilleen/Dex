@@ -30,7 +30,10 @@ def assess(vault_root: Path) -> Assessment:
         reasons.add("folder-map-unknown")
     if walk_truncated:
         reasons.add("walk-truncated")
-    if discovery.exclusions:
+    if any(
+        exclusion.reason != "embedded-secret"
+        for exclusion in discovery.exclusions
+    ):
         reasons.add("assessment-exclusions")
     if inventory.errors and inventory.baseline.identity_state == "VERIFIED":
         reasons.add("inventory-errors")

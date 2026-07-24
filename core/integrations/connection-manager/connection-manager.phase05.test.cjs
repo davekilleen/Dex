@@ -167,15 +167,74 @@ test('rotating refresh tokens persist and the next refresh uses the newest token
   }
 });
 
-test('callback server ignores a mismatched OAuth state and accepts the valid callback', async () => {
+test('macOS Keychain receives the master key on stdin, never in process arguments', () => {
+  const vault = fs.mkdtempSync(path.join(os.tmpdir(), 'dex-cm-keychain-argv-'));
+  const storePath = path.join(DIR, 'token-store.cjs');
+  const script = `
+    Object.defineProperty(process, 'platform', { value: 'darwin' });
+    const childProcess = require('node:child_process');
+    const calls = [];
+    childProcess.execFileSync = (file, args, options) => {
+      calls.push({ file, args, input: options && options.input });
+      if (file === 'git' && args.includes('rev-parse')) return process.env.DEX_VAULT + '\\n';
+      if (file === 'git' && args.includes('ls-files')) return '';
+      if (args[0] === 'find-generic-password') throw new Error('not found');
+      return Buffer.alloc(0);
+    };
+    const store = require(${JSON.stringify(storePath)});
+    store.saveApiKey('keychain-argv', { apiKey: 'API-KEY' }, { provider: 'linear' });
+    process.stdout.write(JSON.stringify(calls));
+  `;
+  const env = { ...childEnv, DEX_VAULT: vault };
+  delete env.DEX_CM_NO_KEYCHAIN;
+  const result = spawnSync('node', ['-e', script], { env, encoding: 'utf8' });
+  try {
+    assert.equal(result.status, 0, result.stderr);
+    const add = JSON.parse(result.stdout).find((call) => call.args[0] === 'add-generic-password');
+    assert.ok(add, 'the test reaches the Keychain write');
+    const keyArg = add.args.find((arg) => /^[A-Za-z0-9+/]{43}=$/.test(arg));
+    assert.equal(keyArg, undefined, 'the base64 master key is absent from argv');
+    assert.match(add.input, /^([A-Za-z0-9+/]{43}=)\n\1\n$/);
+    assert.equal(add.args.at(-1), '-w');
+  } finally {
+    fs.rmSync(vault, { recursive: true, force: true });
+  }
+});
+
+test('callback server escapes provider errors before rendering HTML', async () => {
+  const harness = callbackHarness();
+  const cb = await oauth.startCallbackServer({ ports: [3847], timeoutMs: 1000, createServer: harness.createServer });
+  const pending = cb.waitForCode({ expectedState: 'expected-state' }).catch((error) => error);
+  const response = harness.request(
+    harness.servers[0],
+    `/callback?error=${encodeURIComponent('<img src=x onerror=alert(1)>')}&state=expected-state`
+  );
+  assert.equal(response.status, 200);
+  assert.doesNotMatch(response.body, /<img/i);
+  assert.match((await pending).message, /provider returned error/i);
+});
+
+test('callback server ignores a mismatched state and still accepts the real callback', async () => {
   const harness = callbackHarness();
   const cb = await oauth.startCallbackServer({ ports: [3847], timeoutMs: 1000, createServer: harness.createServer });
   const pending = cb.waitForCode({ expectedState: 'expected-state' });
-  const invalid = harness.request(harness.servers[0], '/callback?code=abc&state=wrong-state');
-  assert.equal(invalid.status, 404);
-  const valid = harness.request(harness.servers[0], '/callback?code=good&state=expected-state');
-  assert.equal(valid.status, 200);
-  assert.deepEqual(await pending, { code: 'good', state: 'expected-state' });
+  let settled = false;
+  pending.then(
+    () => {
+      settled = true;
+    },
+    () => {
+      settled = true;
+    }
+  );
+  const wrong = harness.request(harness.servers[0], '/callback?code=wrong-code&state=wrong-state');
+  assert.equal(wrong.status, 400);
+  await new Promise((resolve) => setTimeout(resolve, 10));
+  assert.equal(settled, false);
+
+  const correct = harness.request(harness.servers[0], '/callback?code=right-code&state=expected-state');
+  assert.equal(correct.status, 200);
+  assert.deepEqual(await pending, { code: 'right-code', state: 'expected-state' });
 });
 
 test('callback server times out and closes cleanly', async () => {
@@ -257,6 +316,27 @@ test('OAuth app secrets surface the same explicit key-loss state as tokens', () 
   assert.match(read.stderr, /DEX_CM_KEY_LOST/);
   assert.ok(fs.existsSync(path.join(vault, 'System', 'credentials', 'oauth-apps.json')));
   fs.rmSync(vault, { recursive: true, force: true });
+});
+
+test('status reports file custody when the macOS Keychain is disabled', () => {
+  store.saveApiKey('custody-status', { apiKey: 'FAKE-custody-key' }, { provider: 'linear' });
+  try {
+    const result = run([path.join(DIR, 'connect.cjs'), 'status']);
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /Encryption key: stored in your vault folder/i);
+    assert.match(result.stdout, /anyone with a copy of that folder can read these credentials/i);
+  } finally {
+    store.deleteToken('custody-status');
+  }
+});
+
+test('disconnect explains that provider access must still be revoked', () => {
+  store.saveApiKey('disconnect-wording', { apiKey: 'FAKE-disconnect-key' }, { provider: 'linear' });
+  const result = run([path.join(DIR, 'connect.cjs'), 'disconnect', 'disconnect-wording']);
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /removed from this machine/i);
+  assert.match(result.stdout, /fully revoke access/i);
+  assert.match(result.stdout, /provider.*account settings/i);
 });
 
 test('secret argv flags are rejected with one-line stdin guidance', () => {

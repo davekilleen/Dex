@@ -554,7 +554,8 @@ def test_embedded_secret_in_allowed_script_is_restricted_and_blocked(
     assert record.live.model_readability == "restricted"
     assert record.live.sha256 is None
     assert _groups_by_id(discovery)[record.customization_id] is AssessmentGroup.BLOCKED
-    assert assessment.records == ()
+    assert _records_by_path(assessment)[".scripts/secret.py"] == record
+    assert assessment.verdict == "OK"
     assert secret not in assessment.canonical_assessment_bytes()
 
 

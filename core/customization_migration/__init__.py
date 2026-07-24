@@ -1,5 +1,34 @@
 """Read-only customization assessment public interface."""
 
+from core.customization_migration.behaviour import (
+    BehaviouralContract,
+    ContractProvenance,
+    ReportedVerification,
+    VerificationClass,
+    VerificationOutcome,
+    derive_reported_status,
+)
+from core.customization_migration.capsule import (
+    CAPSULE_ROOT,
+    CapsuleError,
+    CapsulePreview,
+    CapsuleReceipt,
+    CapsuleStatus,
+    CapsuleValidation,
+    MigrationStatus,
+    PlannedCapsuleFile,
+    abandon_capsule,
+    create_capsule,
+    preview_capsule,
+    read_capsule_status,
+    validate_capsule,
+)
+from core.customization_migration.capsule_model import (
+    CAPSULE_ID,
+    CAPSULE_LAYOUT_V0,
+    EVIDENCE_SECTIONS_V0,
+    CapsuleManifest,
+)
 from core.customization_migration.model import (
     Assessment,
     AssessmentAssignment,
@@ -22,7 +51,20 @@ from core.customization_migration.planning import (
     validate_disposition_plan,
 )
 from core.customization_migration.report import assessment_report
+from core.customization_migration.sensitivity import (
+    CREDENTIAL_BEARING_CONFIGS,
+    SECRET_ARCHIVAL_POLICY,
+    capsule_readability,
+)
 from core.customization_migration.service import assess, assessment_to_dict
+from core.customization_migration.state import (
+    ALLOWED_TRANSITIONS,
+    MigrationEvent,
+    MigrationState,
+    is_allowed_transition,
+    project_state,
+    validate_transition,
+)
 
 __all__ = [
     "Assessment",
@@ -30,19 +72,51 @@ __all__ = [
     "AssessmentExclusion",
     "AssessmentGroup",
     "AssessmentIdentity",
+    "ALLOWED_TRANSITIONS",
     "BaselineInfo",
+    "BehaviouralContract",
+    "CAPSULE_ID",
+    "CAPSULE_LAYOUT_V0",
+    "CREDENTIAL_BEARING_CONFIGS",
+    "CapsuleManifest",
+    "CapsuleError",
+    "CapsulePreview",
+    "CapsuleReceipt",
+    "CapsuleStatus",
+    "CapsuleValidation",
+    "ContractProvenance",
     "CustomizationEvidence",
     "CustomizationKind",
     "CustomizationRecord",
     "Disposition",
     "DispositionPlanItem",
+    "EVIDENCE_SECTIONS_V0",
     "EdgeKind",
     "LiveInfo",
+    "MigrationEvent",
+    "MigrationState",
+    "MigrationStatus",
     "PlanValidation",
+    "PlannedCapsuleFile",
     "ReferenceConfidence",
     "ReferenceEdge",
+    "ReportedVerification",
+    "SECRET_ARCHIVAL_POLICY",
+    "VerificationClass",
+    "VerificationOutcome",
     "assess",
+    "abandon_capsule",
     "assessment_report",
     "assessment_to_dict",
+    "capsule_readability",
+    "create_capsule",
+    "derive_reported_status",
+    "is_allowed_transition",
+    "project_state",
+    "preview_capsule",
+    "read_capsule_status",
+    "validate_transition",
     "validate_disposition_plan",
+    "validate_capsule",
+    "CAPSULE_ROOT",
 ]

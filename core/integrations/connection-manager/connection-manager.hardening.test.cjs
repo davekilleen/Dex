@@ -88,6 +88,59 @@ test('atomic: registry and token writes keep 0600 files / 0700 dirs through the 
   store.deleteToken('perm-check');
 });
 
+test('permissions: a pre-existing loose credentials directory is tightened to 0700', () => {
+  const vault = fs.mkdtempSync(path.join(os.tmpdir(), 'dex-cm-loose-dir-'));
+  const credentials = path.join(vault, 'System', 'credentials');
+  fs.mkdirSync(credentials, { recursive: true });
+  fs.chmodSync(credentials, 0o755);
+  try {
+    execFileSync('node', [CHILD, 'save-key', 'loose-dir', 'FAKE-key'], {
+      env: { ...childEnv, DEX_VAULT: vault },
+      stdio: 'pipe',
+    });
+    assert.equal(mode(credentials), 0o700);
+  } finally {
+    fs.rmSync(vault, { recursive: true, force: true });
+  }
+});
+
+test('permissions: a loose fallback key file is tightened to 0600 before reading', () => {
+  const vault = fs.mkdtempSync(path.join(os.tmpdir(), 'dex-cm-loose-key-'));
+  const env = { ...childEnv, DEX_VAULT: vault };
+  const keyFile = path.join(vault, 'System', 'credentials', '.dex-cm.key');
+  try {
+    execFileSync('node', [CHILD, 'save-key', 'loose-key', 'FAKE-key'], { env, stdio: 'pipe' });
+    fs.chmodSync(keyFile, 0o644);
+    execFileSync('node', [CHILD, 'load-token', 'loose-key'], { env, stdio: 'pipe' });
+    assert.equal(mode(keyFile), 0o600);
+  } finally {
+    fs.rmSync(vault, { recursive: true, force: true });
+  }
+});
+
+test('permissions: a symlinked fallback key is refused with clear guidance', () => {
+  const vault = fs.mkdtempSync(path.join(os.tmpdir(), 'dex-cm-symlink-key-'));
+  const env = { ...childEnv, DEX_VAULT: vault };
+  const keyFile = path.join(vault, 'System', 'credentials', '.dex-cm.key');
+  const target = path.join(vault, 'saved-key');
+  try {
+    execFileSync('node', [CHILD, 'save-key', 'symlink-key', 'FAKE-key'], { env, stdio: 'pipe' });
+    fs.renameSync(keyFile, target);
+    fs.symlinkSync(target, keyFile);
+    let failure;
+    try {
+      execFileSync('node', [CHILD, 'load-token', 'symlink-key'], { env, stdio: 'pipe' });
+    } catch (error) {
+      failure = error;
+    }
+    assert.ok(failure, 'the key must not be read through a symlink');
+    assert.match(failure.stderr.toString(), /encryption key.*symlink/i);
+    assert.match(failure.stderr.toString(), /replace/i);
+  } finally {
+    fs.rmSync(vault, { recursive: true, force: true });
+  }
+});
+
 test('atomic: crash between temp write and rename leaves the old registry intact', () => {
   store.upsertConnection('crash-keeper', { provider: 'crash-keeper', status: 'connected' });
 
@@ -273,6 +326,24 @@ test('refresh lock: a dead-PID holder is taken over on the refresh lock specific
 function corruptTokens() {
   return fs.readdirSync(TOKENS_DIR).filter((n) => n.includes('.corrupt-'));
 }
+
+test('disconnect removes only that connection’s corrupt and key-loss residue', () => {
+  store.saveApiKey('residue-target', { apiKey: 'FAKE-target' }, { provider: 'residue-target' });
+  store.saveApiKey('residue-other', { apiKey: 'FAKE-other' }, { provider: 'residue-other' });
+  const targetLive = path.join(TOKENS_DIR, 'residue-target.json');
+  const otherLive = path.join(TOKENS_DIR, 'residue-other.json');
+  const targetCorrupt = `${targetLive}.corrupt-test`;
+  const targetKeyloss = `${targetLive}.keyloss-test`;
+  const otherCorrupt = `${otherLive}.corrupt-test`;
+  fs.copyFileSync(targetLive, targetCorrupt);
+  fs.copyFileSync(targetLive, targetKeyloss);
+  fs.copyFileSync(otherLive, otherCorrupt);
+
+  store.deleteToken('residue-target');
+  assert.ok(!fs.readdirSync(TOKENS_DIR).some((name) => name.startsWith('residue-target.json.')));
+  assert.ok(fs.existsSync(otherCorrupt), 'another connection’s quarantine file is untouched');
+  store.deleteToken('residue-other');
+});
 
 test('corrupt token: truncated file becomes needs_reauth with reason, file quarantined not deleted', () => {
   store.saveApiKey('corrupt-a', { apiKey: 'FAKE-key-a' }, { provider: 'corrupt-a', authMode: 'API_KEY' });
@@ -461,6 +532,24 @@ test('ids: path-traversal connection ids are rejected before they reach the file
   // normal ids still fine
   assert.equal(store.parseConnectionId('google:work').connId, 'google:work');
   assert.equal(store.parseConnectionId('7shifts').provider, '7shifts');
+});
+
+test('ids: a provider containing the reserved filename separator is rejected', () => {
+  assert.throws(() => store.parseConnectionId('google__work'), /reserved.*__|__.*reserved/i);
+});
+
+test('ids: new mixed-case providers are rejected instead of colliding on macOS', () => {
+  assert.throws(() => store.parseConnectionId('Google:work'), /lowercase/i);
+});
+
+test('ids: an existing lowercase connection keeps its token path and still loads', () => {
+  store.saveApiKey('lowercase-existing', { apiKey: 'FAKE-lowercase-key' }, { provider: 'lowercase-existing' });
+  try {
+    assert.ok(fs.existsSync(path.join(TOKENS_DIR, 'lowercase-existing.json')));
+    assert.equal(store.loadToken('lowercase-existing').apiKey, 'FAKE-lowercase-key');
+  } finally {
+    store.deleteToken('lowercase-existing');
+  }
 });
 
 // ---- key loss (fix: never silently mint a new key over existing tokens) -------

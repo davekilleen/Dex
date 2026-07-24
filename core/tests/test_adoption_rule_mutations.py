@@ -46,8 +46,8 @@ def test_inventory_consumes_update_write_verdict(monkeypatch, tmp_path: Path) ->
     write_manifest(vault, ["core/feature.py"])
     original = portable_contract.update_write_verdict
 
-    def mutated(path: str, *, exists: bool):
-        verdict = original(path, exists=exists)
+    def mutated(path: str, *, exists: bool, operation: str = "update"):
+        verdict = original(path, exists=exists, operation=operation)
         if path == "core/feature.py":
             return portable_contract.WriteVerdict(path, False, "unclassified-never-write", None, None)
         return verdict

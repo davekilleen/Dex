@@ -41,7 +41,17 @@ function credentialsDir() {
 
 function ensureDir(dir) {
   fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
-  if (dir === credentialsDir()) ensureCredentialsGitignore(dir);
+  if (dir === credentialsDir()) {
+    const stat = fs.lstatSync(dir);
+    if (stat.isSymbolicLink()) {
+      throw new Error(`Your credentials folder at ${dir} is a symlink. Replace it with a real folder owned by your account, then try again.`);
+    }
+    if (typeof process.getuid === 'function' && stat.uid !== process.getuid()) {
+      throw new Error(`Your credentials folder at ${dir} belongs to a different user. Change its owner to your account, then try again.`);
+    }
+    if (stat.mode & 0o077) fs.chmodSync(dir, 0o700);
+    ensureCredentialsGitignore(dir);
+  }
 }
 
 // The credentials dir must ignore EVERYTHING — tokens, the registry, oauth-app secrets, AND the
@@ -141,6 +151,11 @@ function keychainDisabled() {
   return process.env.DEX_CM_NO_KEYCHAIN === '1';
 }
 
+function keyCustodyMode() {
+  if (process.platform !== 'darwin' || keychainDisabled()) return 'file';
+  return fs.existsSync(path.join(credentialsDir(), '.dex-cm.key')) ? 'file' : 'keychain';
+}
+
 function fileKeyAllowed() {
   return process.platform !== 'darwin' || keychainDisabled();
 }
@@ -166,8 +181,8 @@ function storeKeyInMacKeychain(keyB64) {
   try {
     execFileSync(
       'security',
-      ['add-generic-password', '-s', KEYCHAIN_SERVICE, '-a', KEYCHAIN_ACCOUNT, '-w', keyB64, '-U'],
-      { stdio: 'ignore' }
+      ['add-generic-password', '-s', KEYCHAIN_SERVICE, '-a', KEYCHAIN_ACCOUNT, '-U', '-w'],
+      { input: `${keyB64}\n${keyB64}\n`, stdio: ['pipe', 'ignore', 'ignore'] }
     );
     return true;
   } catch {
@@ -177,8 +192,25 @@ function storeKeyInMacKeychain(keyB64) {
 
 function keyFromFile() {
   const keyPath = path.join(credentialsDir(), '.dex-cm.key');
-  if (fs.existsSync(keyPath)) return Buffer.from(fs.readFileSync(keyPath, 'utf8').trim(), 'base64');
-  return null;
+  let stat;
+  try {
+    stat = fs.lstatSync(keyPath);
+  } catch (error) {
+    if (error && error.code === 'ENOENT') return null;
+    throw error;
+  }
+  if (stat.isSymbolicLink()) {
+    const error = new Error(`The encryption key at ${keyPath} is a symlink. Replace it with the original .dex-cm.key file, then try again.`);
+    error.code = 'DEX_CM_UNSAFE_CREDENTIAL_PATH';
+    throw error;
+  }
+  if (typeof process.getuid === 'function' && stat.uid !== process.getuid()) {
+    const error = new Error(`The encryption key at ${keyPath} belongs to a different user. Change its owner to your account, then try again.`);
+    error.code = 'DEX_CM_UNSAFE_CREDENTIAL_PATH';
+    throw error;
+  }
+  if (stat.mode & 0o077) fs.chmodSync(keyPath, 0o600);
+  return Buffer.from(fs.readFileSync(keyPath, 'utf8').trim(), 'base64');
 }
 
 function writeKeyFile(keyB64) {
@@ -232,7 +264,8 @@ function getKey() {
   let lookupFailed = false;
   try {
     found = keyFromMacKeychain() || (fileKeyAllowed() ? keyFromFile() : null);
-  } catch {
+  } catch (error) {
+    if (error && error.code === 'DEX_CM_UNSAFE_CREDENTIAL_PATH') throw error;
     lookupFailed = true; // unreadable key source counts as loss, not as "fresh start"
   }
   if (found && found.length === 32) {
@@ -479,17 +512,22 @@ function decrypt(envelope, aad = '') {
  * FILENAMES (and the registry rebuild derives ids back from filenames), so a
  * hostile id like '../x' must never reach tokenPath and escape the tokens dir.
  */
-function parseConnectionId(id) {
+function parseConnectionId(id, { allowLegacyProviderCase = false } = {}) {
   const s = String(id);
   const i = s.indexOf(':');
-  const provider = i === -1 ? s : s.slice(0, i);
-  if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$/.test(provider)) {
+  const rawProvider = i === -1 ? s : s.slice(0, i);
+  if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$/.test(rawProvider)) {
     throw new Error(`Invalid provider in connection id '${id}'. Use letters, digits, '.', '-' or '_' (must start with a letter or digit).`);
   }
-  if (provider.includes('__')) {
+  if (rawProvider.includes('__')) {
     throw new Error(`Invalid connection id '${id}': reserved filename separator '__' is not allowed.`);
   }
-  if (i === -1) return { provider: s, alias: null, connId: s };
+  const lowercaseProvider = rawProvider.toLowerCase();
+  if (rawProvider !== lowercaseProvider && !allowLegacyProviderCase) {
+    throw new Error(`Invalid provider in connection id '${id}'. Use a lowercase provider name.`);
+  }
+  const provider = allowLegacyProviderCase ? rawProvider : lowercaseProvider;
+  if (i === -1) return { provider, alias: null, connId: provider };
   const alias = s.slice(i + 1).toLowerCase();
   if (!/^[a-z0-9_-]+$/.test(alias)) throw new Error(`Invalid connection alias in '${id}'. Use letters, digits, '-' or '_'.`);
   if (alias.includes('__')) {
@@ -507,8 +545,8 @@ function parseConnectionId(id) {
  */
 function resolveConnId(id) {
   const reg = readRegistry();
+  if (reg[id] && reg[id].service) return id; // exact legacy match wins before new-id validation
   const { provider, alias } = parseConnectionId(id);
-  if (reg[id] && reg[id].service) return id; // exact match wins (back-compat)
   if (!alias) {
     const def = reg._defaults && reg._defaults[provider];
     if (def && reg[def]) return def;
@@ -537,7 +575,7 @@ function credentialDigest(connId) {
 /** Persist a token object (encrypted) and refresh the registry entry. `connId` may be `provider` or `provider:alias`. */
 function saveToken(connId, token, meta = {}) {
   assertCredentialsNotTracked();
-  const parsed = parseConnectionId(connId);
+  const parsed = parseConnectionId(connId, { allowLegacyProviderCase: Boolean(readRegistry()[connId]) });
   // Encrypt BEFORE touching the registry: if the key is lost this triggers the
   // loud recovery first, so the entry we then upsert stays 'connected'.
   const envelope = JSON.stringify(encryptForSave(JSON.stringify(token), `token:${connId}`), null, 2);
@@ -578,7 +616,7 @@ function saveToken(connId, token, meta = {}) {
 function saveApiKey(service, secretObj, meta = {}) {
   assertCredentialsNotTracked();
   const stored = { kind: 'api_key', ...secretObj, obtained_at: Date.now() };
-  const parsed = parseConnectionId(service);
+  const parsed = parseConnectionId(service, { allowLegacyProviderCase: Boolean(readRegistry()[service]) });
   const envelope = JSON.stringify(encryptForSave(JSON.stringify(stored), `token:${service}`), null, 2); // key-loss recovery before registry writes; see saveToken
   return withStoreLock(() => {
     const reg = readRegistry();
@@ -648,7 +686,7 @@ function loadToken(id) {
   } catch (err) {
     // Key loss is store-wide, not a damaged file: keep the (intact) token file
     // where it is and surface the explicit state to the caller instead.
-    if (err && err.code === 'DEX_CM_KEY_LOST') throw err;
+    if (err && (err.code === 'DEX_CM_KEY_LOST' || err.code === 'DEX_CM_UNSAFE_CREDENTIAL_PATH')) throw err;
     withStoreLock(() => {
       const bindingMismatch = err && err.code === 'DEX_CM_ENVELOPE_BINDING';
       const quarantined = quarantineFile(p, bindingMismatch ? 'mismatch' : 'corrupt');
@@ -670,9 +708,15 @@ function deleteToken(id) {
   return withStoreLock(() => {
     const p = tokenPath(connId);
     if (fs.existsSync(p)) fs.unlinkSync(p);
+    const base = path.basename(p);
+    for (const file of fs.readdirSync(path.dirname(p))) {
+      if (file.startsWith(`${base}.corrupt-`) || file.startsWith(`${base}.keyloss-`)) {
+        fs.unlinkSync(path.join(path.dirname(p), file));
+      }
+    }
     const reg = readRegistry();
+    const provider = (reg[connId] && reg[connId].provider) || parseConnectionId(connId, { allowLegacyProviderCase: true }).provider;
     delete reg[connId];
-    const { provider } = parseConnectionId(connId);
     if (reg._defaults && reg._defaults[provider] === connId) {
       delete reg._defaults[provider];
       if (!Object.keys(reg._defaults).length) delete reg._defaults;
@@ -927,7 +971,7 @@ function rebuildRegistryFromTokens(reason, quarantinedName) {
   for (const f of listTokenFiles()) {
     let parsed;
     try {
-      parsed = parseConnectionId(f.replace(/\.json$/, '').replace(/__/g, ':'));
+      parsed = parseConnectionId(f.replace(/\.json$/, '').replace(/__/g, ':'), { allowLegacyProviderCase: true });
     } catch {
       continue; // foreign or hostile filename: leave the file alone, add no entry
     }
@@ -938,7 +982,9 @@ function rebuildRegistryFromTokens(reason, quarantinedName) {
       token = JSON.parse(decrypt(JSON.parse(fs.readFileSync(fp, 'utf8')), `token:${parsed.connId}`));
     } catch (err) {
       unreadable++;
-      if (err && err.code === 'DEX_CM_KEY_LOST') {
+      if (err && err.code === 'DEX_CM_UNSAFE_CREDENTIAL_PATH') {
+        throw err;
+      } else if (err && err.code === 'DEX_CM_KEY_LOST') {
         // The key is gone, not the file: keep the file untouched and mark the state.
         rebuilt[parsed.connId] = { ...base, status: 'needs_reauth', error: 'encryption_key_lost', recoveredAt: nowIso() };
       } else {
@@ -1086,6 +1132,7 @@ function nowIso() {
 
 module.exports = {
   credentialsDir,
+  keyCustodyMode,
   parseConnectionId,
   resolveConnId,
   withStoreLock,

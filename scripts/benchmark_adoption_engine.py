@@ -20,6 +20,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 os.environ.setdefault("VAULT_PATH", str(REPO_ROOT))
 
+from core.customization_migration.service import assess
 from core.lifecycle.catalog import canonical_catalog_bytes, with_catalog_identity
 from core.lifecycle.engine import (
     execute_adoption,
@@ -128,6 +129,7 @@ def _load_budgets(path: Path) -> dict[str, object]:
         "build_inventory",
         "build_adoption_plan",
         "collect_adoption_report",
+        "customization_assessment",
         "adoption_and_rewind",
         "total_measured",
     }
@@ -157,6 +159,7 @@ def run_benchmark(file_count: int) -> dict[str, object]:
         adoption_report, doctor_seconds = _timed(
             lambda: collect_adoption_report(context)
         )
+        _, customization_assessment_seconds = _timed(lambda: assess(vault))
 
         def adopt_and_rewind():
             preview = build_adoption_preview(
@@ -185,8 +188,16 @@ def run_benchmark(file_count: int) -> dict[str, object]:
             "build_adoption_plan": plan_seconds,
             "build_inventory": inventory_seconds,
             "collect_adoption_report": doctor_seconds,
+            "customization_assessment": customization_assessment_seconds,
         }
-        seconds["total_measured"] = sum(seconds.values())
+        rounded_seconds = {
+            key: round(value, 6)
+            for key, value in sorted(seconds.items())
+        }
+        rounded_seconds["total_measured"] = round(
+            sum(rounded_seconds.values()),
+            6,
+        )
         return {
             "counts": {
                 "adopted_files": len(receipt.files_written),
@@ -197,7 +208,7 @@ def run_benchmark(file_count: int) -> dict[str, object]:
                 "synthetic_files": file_count,
             },
             "peak_rss_bytes": _peak_rss_bytes(),
-            "seconds": {key: round(value, 6) for key, value in sorted(seconds.items())},
+            "seconds": rounded_seconds,
         }
 
 

@@ -121,7 +121,7 @@ test('L1: invalid callback traffic cannot abort a pending OAuth flow', async () 
   );
 
   const unsolicited = harness.request('/callback?code=attacker&state=wrong-state');
-  assert.equal(unsolicited.status, 404);
+  assert.equal(unsolicited.status, 400);
   await new Promise((resolve) => setImmediate(resolve));
   assert.equal(settled, false, 'invalid state must leave the OAuth attempt pending');
 

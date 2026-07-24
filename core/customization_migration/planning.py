@@ -9,7 +9,10 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Iterable
 
-from core.customization_migration.model import Assessment
+from core.customization_migration.model import (
+    Assessment,
+    validate_native_witness_target,
+)
 
 CUSTOMIZATION_ID = re.compile(r"^cust-[0-9a-f]{12}$")
 SHA256 = re.compile(r"^[0-9a-f]{64}$")
@@ -30,6 +33,7 @@ class DispositionPlanItem:
     customization_id: str
     disposition: Disposition
     assessment_digest: str
+    native_witness: str | None = None
 
     def __post_init__(self) -> None:
         if (
@@ -44,6 +48,16 @@ class DispositionPlanItem:
             or SHA256.fullmatch(self.assessment_digest) is None
         ):
             raise ValueError("assessment_digest must be canonical SHA-256")
+        if self.native_witness is not None:
+            validate_native_witness_target(self.native_witness)
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "customization_id": self.customization_id,
+            "disposition": self.disposition.value,
+            "assessment_digest": self.assessment_digest,
+            "native_witness": self.native_witness,
+        }
 
 
 @dataclass(frozen=True)
@@ -98,6 +112,24 @@ def validate_disposition_plan(
     for item in items:
         if item.assessment_digest != actual_digest:
             errors.append(f"assessment digest mismatch for {item.customization_id}")
+        # A deterministic witness makes the plan validatable, never user-approved.
+        # User confirmation belongs to the Lane G consent layer, not model input.
+        if (
+            item.disposition is Disposition.NATIVE_REPLACEMENT
+            and item.native_witness is None
+        ):
+            errors.append(
+                "native-replacement requires a deterministic witness: "
+                f"{item.customization_id}"
+            )
+        elif (
+            item.disposition is not Disposition.NATIVE_REPLACEMENT
+            and item.native_witness is not None
+        ):
+            errors.append(
+                "only native-replacement accepts a deterministic witness: "
+                f"{item.customization_id}"
+            )
     ordered_errors = tuple(dict.fromkeys(errors))
     return PlanValidation(
         not ordered_errors,

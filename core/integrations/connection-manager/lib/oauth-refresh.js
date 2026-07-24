@@ -109,6 +109,7 @@ async function refreshOAuthToken({
 	retryDelayMs = DEFAULT_REFRESH_RETRY_DELAY_MS,
 	// DEX CORE DIVERGENCE: injectable delay keeps Retry-After/clamp tests instant.
 	delayImpl = delay,
+	secrets = [],
 } = {}) {
 	if (typeof fetchImpl !== "function") {
 		throw new RefreshError("No fetch implementation available for token refresh", {
@@ -127,6 +128,7 @@ async function refreshOAuthToken({
 		...(clientSecret ? { client_secret: clientSecret } : {}),
 		...extraParams,
 	}).toString();
+	const safeMessage = (message) => require("../auth-context.cjs").redactSecrets(message, secrets);
 
 	// One network exchange, bounded by a timeout. A hang or transient network
 	// error throws a non-permanent RefreshError so the retry loop below can try
@@ -148,7 +150,7 @@ async function refreshOAuthToken({
 		} catch (error) {
 			const timedOut = controller.signal.aborted || error?.name === "AbortError";
 			throw new RefreshError(
-				timedOut ? `Token refresh timed out after ${timeoutMs}ms` : "Token refresh request failed",
+				safeMessage(timedOut ? `Token refresh timed out after ${timeoutMs}ms` : "Token refresh request failed"),
 				{ permanent: false, cause: error, code: timedOut ? "refresh_timeout" : "refresh_request_failed" },
 			);
 		} finally {
@@ -176,7 +178,7 @@ async function refreshOAuthToken({
 			// (from the body `retry_after` or the response headers). Other error
 			// codes keep the existing permanent/transient classification.
 			if (rateLimit.is429(data)) {
-				throw new RefreshError("Token refresh was rate limited", {
+				throw new RefreshError(safeMessage("Token refresh was rate limited"), {
 					permanent: false,
 					code: "rate_limited",
 					retryAfterMs: rateLimit.retryAfterMs(data) ?? rateLimit.retryAfterMs(response),
@@ -186,7 +188,7 @@ async function refreshOAuthToken({
 				typeof data?.error === "string" && /^[A-Za-z][A-Za-z0-9._-]{0,79}$/.test(data.error.trim())
 					? data.error.trim()
 					: "refresh_rejected";
-			throw new RefreshError(`Token refresh was rejected (${providerCode})`, {
+			throw new RefreshError(safeMessage(`Token refresh was rejected (${providerCode})`), {
 				permanent: isPermanentError(data),
 				code: providerCode,
 			});

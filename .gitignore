@@ -48,6 +48,7 @@ System/.dex/adoption/credential-journals/
 System/.dex/adoption/history-backups/
 System/.dex/local-only-preservation/
 System/.dex/lifecycle/
+System/.dex/customization-migrations/
 
 # Custom extensions (user-created, never in upstream)
 CLAUDE-custom.md

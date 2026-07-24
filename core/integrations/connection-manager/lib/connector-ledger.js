@@ -27,13 +27,14 @@ function parseFile(text) {
 	return entries;
 }
 
-function normalizeError(error) {
+function normalizeError(error, secrets = []) {
+	const { redactSecrets } = require("../auth-context.cjs");
 	if (error == null) return null;
-	if (typeof error === "string") return { message: error };
+	if (typeof error === "string") return { message: redactSecrets(error, secrets).slice(0, 500) };
 	if (typeof error !== "object") return null;
 	const safe = {};
 	for (const key of ["code", "category", "message"]) {
-		if (error[key] != null) safe[key] = String(error[key]).slice(0, 500);
+		if (error[key] != null) safe[key] = redactSecrets(error[key], secrets).slice(0, 500);
 	}
 	return Object.keys(safe).length ? safe : null;
 }
@@ -82,7 +83,7 @@ function createConnectorLedger(opts = {}) {
 		}
 	}
 
-	function normalizeRow(connectorId, row = {}) {
+	function normalizeRow(connectorId, row = {}, secrets = []) {
 		return {
 			at: new Date(now()).toISOString(),
 			connectorId,
@@ -90,17 +91,17 @@ function createConnectorLedger(opts = {}) {
 			httpStatus: Number.isFinite(row.httpStatus) ? row.httpStatus : null,
 			ok: row.ok === true,
 			latencyMs: Number.isFinite(row.latencyMs) ? row.latencyMs : null,
-			error: normalizeError(row.error),
+			error: normalizeError(row.error, secrets),
 		};
 	}
 
-	function append(connectorId, row) {
+	function append(connectorId, row, { secrets = [] } = {}) {
 		const safeId = validateConnectorId(connectorId);
 		const dir = stateDir();
 		fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
 		const file = filePathFor(safeId);
 		return withLockSync(`${file}.lock`, () => {
-			const normalized = normalizeRow(safeId, row);
+			const normalized = normalizeRow(safeId, row, secrets);
 			const stored = attest ? attest(safeId, normalized) : normalized;
 			const entries = readDisk(safeId);
 			const next = [...entries, stored].slice(-maxEntriesPerConnector);

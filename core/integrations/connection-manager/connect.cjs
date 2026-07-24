@@ -395,6 +395,7 @@ async function cmdSetKey(service, flags) {
 function cmdStatus(flags = {}) {
   const meta = store.readRegistry()._meta;
   const rows = health.allConnectionsHealth();
+  const keyCustody = store.keyCustodyMode();
   if (flags.json !== undefined) {
     process.stdout.write(`${JSON.stringify({ connections: rows, registryNotice: meta || null })}\n`);
     return;
@@ -407,6 +408,11 @@ function cmdStatus(flags = {}) {
         ' Check the list below and reconnect anything missing or red.'
     );
   }
+  console.log(
+    keyCustody === 'keychain'
+      ? 'Encryption key: stored in your macOS Keychain.'
+      : 'Encryption key: stored in your vault folder — anyone with a copy of that folder can read these credentials.'
+  );
   if (!rows.length) {
     console.log('No connections yet. Run: node connect.cjs connect <provider>');
     return;
@@ -574,7 +580,10 @@ async function main() {
         break;
       case 'disconnect':
         store.deleteToken(positional[0]);
-        console.log(`Disconnected ${positional[0]}.`);
+        console.log(
+          `Disconnected ${positional[0]}. The credential was removed from this machine. ` +
+            "To fully revoke access, remove Dex in the provider's account settings."
+        );
         break;
       case 'providers':
         cmdProviders(positional[0], flags);

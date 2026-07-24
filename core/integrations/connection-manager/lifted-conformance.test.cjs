@@ -25,12 +25,13 @@ const FILES = {
   },
   'oauth-refresh.js': {
     source: '0f29891a988d913c8b4bfddc9ee9d8f4c91328784534107ff65abe3d4cac4783',
-    lifted: '254ae86b690b851942f888b04a54d1026e12f9a24e7ae35f6a813b2dc22bef96',
+    lifted: '6bd5c2093e659868834d74bbdde4ae22d5214573cbe25c2d008f603037d7170b',
     mode: 'core-adaptation',
     divergences: [
       'source provenance header',
       'injectable delay used only to prove Retry-After clamping',
       'credential-bearing refresh requests refuse redirects',
+      'known operation secrets redact provider-controlled refresh errors before they escape',
       'provider response diagnostics are reduced to normalized error codes and fixed safe messages',
     ],
   },
@@ -59,13 +60,14 @@ const FILES = {
   },
   'connector-ledger.js': {
     source: '956612fbebc115fa7512aaf5db91676bfe40fa0c08d0927e52f4508e28e14cbf',
-    lifted: 'b3e7b926c77d3e2a45d8c751040ba3e306d0158be6d0d4dbc29f5415068b9c59',
+    lifted: '2c3f0a58e909c46e5a3d92bdcdd4b29cde25d883519585b8ed6dc963bea69f6c',
     mode: 'core-adaptation',
     divergences: [
       'credentials/ledger path and Core connect, refresh, probe, and break vocabulary',
       'Desktop sync counts, cursors, schedules, and page receipts omitted',
       'fs-safe is the sole atomic writer and adds a per-connection cross-process lock',
       'successful probes are scoped to the current connect epoch after a credential replacement',
+      'operation secrets redact provider-controlled error fields before ledger persistence',
       'production ledger rows are MAC-attested and unauthenticated evidence is ignored',
       'successful probe counters must not predate the current connect counter',
     ],
@@ -120,6 +122,20 @@ for (const [name, contract] of Object.entries(FILES)) {
             '\t\t\t\t// Never let a refresh token or client secret cross a redirect.\n' +
             '\t\t\t\tredirect: "error",\n',
           ''
+        )
+        .replace('\tsecrets = [],\n', '')
+        .replace('\tconst safeMessage = (message) => require("../auth-context.cjs").redactSecrets(message, secrets);\n', '')
+        .replace(
+          '\t\t\t\tsafeMessage(timedOut ? `Token refresh timed out after ${timeoutMs}ms` : `Token refresh request failed: ${error?.message || "unknown"}`),\n',
+          '\t\t\t\ttimedOut ? `Token refresh timed out after ${timeoutMs}ms` : `Token refresh request failed: ${error?.message || "unknown"}`,\n'
+        )
+        .replace(
+          'throw new RefreshError(safeMessage(data?.error_description || data?.error || "Token refresh was rate limited"), {',
+          'throw new RefreshError(data?.error_description || data?.error || "Token refresh was rate limited", {'
+        )
+        .replace(
+          'throw new RefreshError(safeMessage(data?.error_description || data?.error || "Token refresh was rejected"), {',
+          'throw new RefreshError(data?.error_description || data?.error || "Token refresh was rejected", {'
         )
         .replace('await delayImpl(waitMs)', 'await delay(waitMs)');
       assert.equal(normalized, source.toString());

@@ -228,6 +228,68 @@ def test_engine_rejects_seed_overwrite_vault_deny_and_unclassified(
     assert not (vault / "System/.installed-files.manifest").exists()
 
 
+def test_engine_default_operation_refuses_customization_capsule_path(
+    tmp_path: Path,
+) -> None:
+    vault = _vault(tmp_path)
+
+    with pytest.raises(PlanRejected):
+        Transaction.begin(
+            vault,
+            [
+                PlanEntry(
+                    "System/.dex/customization-migrations/x/manifest.json",
+                    b"{}\n",
+                )
+            ],
+        )
+
+
+def test_engine_customization_migration_operation_authorizes_capsule_path(
+    tmp_path: Path,
+) -> None:
+    vault = _vault(tmp_path)
+    target = "System/.dex/customization-migrations/x/manifest.json"
+
+    result = Transaction.begin(
+        vault,
+        [PlanEntry(target, b"{}\n")],
+        operation="customization-migration",
+    ).run()
+
+    assert result["committed"] is True
+    assert (vault / target).read_bytes() == b"{}\n"
+    begin = Journal(
+        vault / "System/.dex/tx" / result["tx_id"] / "journal.jsonl"
+    ).read()[0]
+    assert begin.event == "BEGIN"
+    assert begin.payload["operation"] == "customization-migration"
+
+
+def test_engine_customization_migration_operation_refuses_user_content(
+    tmp_path: Path,
+) -> None:
+    vault = _vault(tmp_path)
+
+    with pytest.raises(PlanRejected, match="outside-migration-seams"):
+        Transaction.begin(
+            vault,
+            [PlanEntry("05-Areas/People/x.md", b"never\n")],
+            operation="customization-migration",
+        )
+
+
+def test_engine_unknown_operation_value_error_propagates(tmp_path: Path) -> None:
+    vault = _vault(tmp_path)
+
+    with pytest.raises(ValueError, match="unknown write operation: garbage"):
+        Transaction.begin(
+            vault,
+            [PlanEntry("System/.installed-files.manifest", b"manifest\n")],
+            operation="garbage",
+        )
+
+
 def test_engine_authorization_gate_is_load_bearing(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Red-when-removed: neuter the contract verdict and the engine happily
     writes into user content — proving the gate is what stands between an
@@ -239,7 +301,9 @@ def test_engine_authorization_gate_is_load_bearing(tmp_path: Path, monkeypatch: 
     monkeypatch.setattr(
         engine_module.portable_contract,
         "update_write_verdict",
-        lambda path, exists: portable_contract.WriteVerdict(path, True, "replace", "brain", "x"),
+        lambda path, *, exists, operation="update": portable_contract.WriteVerdict(
+            path, True, "replace", "brain", "x"
+        ),
     )
     result = Transaction.begin(vault, [PlanEntry("04-Projects/notes.md", b"gate gone")]).run()
     assert result["committed"] is True  # would be PlanRejected with the gate intact
@@ -525,6 +589,19 @@ Transaction.begin(vault, [
 ]).run()
 """
 
+_MIGRATION_OPERATION_WORKER = r"""
+import sys
+sys.path.insert(0, sys.argv[2])
+from pathlib import Path
+from core.transaction.engine import Transaction, PlanEntry
+vault = Path(sys.argv[1])
+Transaction.begin(
+    vault,
+    [PlanEntry("System/.dex/customization-migrations/x/manifest.json", b"{}\n")],
+    operation="customization-migration",
+).run()
+"""
+
 
 @pytest.mark.parametrize(
     "seam",
@@ -581,6 +658,40 @@ def test_resume_is_idempotent(tmp_path: Path) -> None:
     second = Transaction.resume(vault)
     assert len(first) == 1
     assert second == []
+
+
+def test_resume_restores_operation_from_begin_record(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    vault = _vault(tmp_path)
+    environment = dict(os.environ, DEX_TX_TEST_STOP_AFTER="after-begin")
+    process = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            _MIGRATION_OPERATION_WORKER,
+            str(vault),
+            str(REPO_ROOT),
+        ],
+        env=environment,
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    assert process.returncode == 137
+    observed: list[str] = []
+    original = Transaction.rollback
+
+    def capture_operation(transaction: Transaction) -> dict:
+        observed.append(transaction.operation)
+        return original(transaction)
+
+    monkeypatch.setattr(Transaction, "rollback", capture_operation)
+
+    Transaction.resume(vault)
+
+    assert observed == ["customization-migration"]
 
 
 def test_resume_rolls_back_content_precondition_plan_byte_exact(

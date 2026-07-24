@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import os
 import re
 import stat
 import sys
@@ -25,15 +26,17 @@ from core.customization_migration.model import (
 )
 from core.customization_migration.references import (
     MAX_SOURCE_BYTES,
+    ReferenceParseError,
     extract_reference_edges,
     is_reference_read_restricted_path,
+    read_settings_hook_edges,
 )
 from core.lifecycle.customizations import detect_customizations
 from core.lifecycle.filesystem import FilesystemInspectionError, bounded_read
 from core.lifecycle.inventory import InventoryEntry, InventoryReport, build_inventory
 
 SCRIPT_SUFFIXES = frozenset({".py", ".js", ".cjs", ".mjs", ".sh", ".bash", ".zsh"})
-CONFIG_SUFFIXES = frozenset({".json", ".yaml", ".yml", ".toml"})
+CONFIG_SUFFIXES = frozenset({".json", ".yaml", ".yml", ".toml", ".plist"})
 MAX_TOTAL_SOURCE_BYTES = 64 * 1024 * 1024
 MAX_REFERENCE_FILES = 2000
 USER_CONFIG_PATHS = frozenset(
@@ -129,6 +132,21 @@ def _dependency_root(path: str) -> str | None:
     if path.lower().endswith(ARCHIVE_SUFFIXES):
         return path
     return None
+
+
+def _embedded_repository_root(entry: InventoryEntry) -> str | None:
+    parts = PurePosixPath(entry.actual_path).parts
+    if (
+        entry.kind == "directory"
+        and len(parts) > 1
+        and parts[-1] == ".git"
+    ):
+        return PurePosixPath(*parts[:-1]).as_posix()
+    return None
+
+
+def _is_within(path: str, root: str) -> bool:
+    return path == root or path.startswith(root + "/")
 
 
 def _is_behavior_addition(entry: InventoryEntry, manifest_paths: frozenset[str]) -> bool:
@@ -264,6 +282,27 @@ def _safe_live(
             None,
             False,
         )
+    try:
+        metadata = os.stat(
+            root / entry.actual_path,
+            follow_symlinks=False,
+        )
+    except OSError:
+        return (
+            LiveInfo(None, entry.size, "excluded"),
+            None,
+            AssessmentExclusion(entry.actual_path, "read-error"),
+            len(raw),
+            False,
+        )
+    if not stat.S_ISREG(metadata.st_mode):
+        return (
+            LiveInfo(None, entry.size, "excluded"),
+            None,
+            AssessmentExclusion(entry.actual_path, "read-error"),
+            len(raw),
+            False,
+        )
     if _contains_embedded_secret(raw):
         return (
             LiveInfo(None, None, "restricted"),
@@ -273,7 +312,12 @@ def _safe_live(
             False,
         )
     return (
-        LiveInfo(hashlib.sha256(raw).hexdigest(), len(raw), "readable"),
+        LiveInfo(
+            hashlib.sha256(raw).hexdigest(),
+            len(raw),
+            "readable",
+            bool(metadata.st_mode & 0o111),
+        ),
         raw,
         None,
         len(raw),
@@ -308,6 +352,8 @@ def _target_resolves(
     if target.startswith("outside-vault:"):
         return False
     if target.startswith("env:"):
+        return True
+    if target.startswith("package:"):
         return True
     if target.startswith("python-relative:"):
         relative = target.removeprefix("python-relative:")
@@ -375,6 +421,7 @@ def _is_symbolic_target(target: str) -> bool:
             "outside-vault:",
             "python:",
             "python-relative:",
+            "package:",
             "skill:",
             "unresolved:",
         )
@@ -446,9 +493,25 @@ def discover(vault_root: Path) -> DiscoveryResult:
 
     entries_by_path = {entry.actual_path: entry for entry in inventory.entries}
     exclusions: dict[tuple[str, str], AssessmentExclusion] = {}
+    embedded_repository_roots = frozenset(
+        repository_root
+        for entry in inventory.entries
+        if (
+            repository_root := _embedded_repository_root(entry)
+        ) is not None
+    )
+    for repository_root in embedded_repository_roots:
+        exclusion = AssessmentExclusion(
+            repository_root,
+            "embedded-repository",
+        )
+        exclusions[(exclusion.path, exclusion.reason)] = exclusion
     for entry in inventory.entries:
         dependency_root = _dependency_root(entry.actual_path)
-        if dependency_root is not None:
+        if dependency_root is not None and not any(
+            _is_within(dependency_root, repository_root)
+            for repository_root in embedded_repository_roots
+        ):
             exclusion = AssessmentExclusion(
                 dependency_root,
                 "dependency-tree-excluded",
@@ -465,7 +528,13 @@ def discover(vault_root: Path) -> DiscoveryResult:
         if _is_behavior_addition(entry, inventory.baseline.manifest_paths)
     )
     candidate_paths = {
-        path for path in candidate_paths if _dependency_root(path) is None
+        path
+        for path in candidate_paths
+        if _dependency_root(path) is None
+        and not any(
+            _is_within(path, repository_root)
+            for repository_root in embedded_repository_roots
+        )
     }
 
     registry = _load_trusted_registry(root)
@@ -570,9 +639,39 @@ def discover(vault_root: Path) -> DiscoveryResult:
             live_by_path[path] = live
             if exclusion is not None:
                 exclusions[(exclusion.path, exclusion.reason)] = exclusion
+            if path in {
+                ".claude/settings.json",
+                ".claude/settings.local.json",
+            }:
+                try:
+                    settings_hook_edges = read_settings_hook_edges(
+                        root,
+                        path,
+                        known_paths=frozenset(entries_by_path),
+                    )
+                except ReferenceParseError:
+                    parse_exclusion = AssessmentExclusion(path, "read-error")
+                    exclusions[
+                        (parse_exclusion.path, parse_exclusion.reason)
+                    ] = parse_exclusion
+                    settings_hook_edges = ()
+                for edge in settings_hook_edges:
+                    all_edges[edge.edge_id] = edge
             if raw is None:
                 continue
-            for edge in extract_reference_edges(path, raw, skill_paths=skill_paths):
+            try:
+                extracted_edges = extract_reference_edges(
+                    path,
+                    raw,
+                    skill_paths=skill_paths,
+                )
+            except ReferenceParseError:
+                parse_exclusion = AssessmentExclusion(path, "read-error")
+                exclusions[
+                    (parse_exclusion.path, parse_exclusion.reason)
+                ] = parse_exclusion
+                continue
+            for edge in extracted_edges:
                 all_edges[edge.edge_id] = edge
                 target_entry = entries_by_path.get(edge.target)
                 if (
@@ -675,15 +774,23 @@ def discover(vault_root: Path) -> DiscoveryResult:
             entry.kind in {"file", "symlink"}
             and entry.actual_path in inventory.unproven_paths
             and entry.actual_path not in accounted_paths
+            and _dependency_root(entry.actual_path) is None
+            and not any(
+                _is_within(entry.actual_path, repository_root)
+                for repository_root in embedded_repository_roots
+            )
         ):
             exclusion = AssessmentExclusion(
                 entry.actual_path,
                 "release-identity-unproved",
             )
             exclusions[(exclusion.path, exclusion.reason)] = exclusion
+    incomplete_exclusions = tuple(
+        item for item in exclusions.values() if item.reason != "embedded-secret"
+    )
     complete = (
         inventory.complete
-        and not exclusions
+        and not incomplete_exclusions
         and not inventory.errors
         and (registry is None or registry.invalid_reason is None)
     )

@@ -155,6 +155,37 @@ test('permanent refresh failure stamps needs_reauth and records refresh + break 
   }
 });
 
+test('provider refresh errors cannot persist the refresh token in plaintext', async () => {
+  const connId = 'refresh-secret-redaction';
+  const refreshToken = 'ACTUAL-REFRESH-TOKEN-TO-REDACT';
+  seedOAuth(connId, 'google', { refresh_token: refreshToken });
+  const originalFetch = global.fetch;
+  global.fetch = async () =>
+    response(400, {
+      error: 'invalid_grant',
+      error_description: `token ${refreshToken} is expired`,
+    });
+  try {
+    await withProviderConfig(
+      'google',
+      { tokenUrl: 'https://tokens.example/refresh', refreshUrl: null },
+      async () => {
+        await assert.rejects(health.refreshToken(connId, { force: true }), (error) => {
+          assert.ok(!error.message.includes(refreshToken));
+          return true;
+        });
+      }
+    );
+    const ledgerBytes = fs.readFileSync(path.join(store.credentialsDir(), 'ledger', `${connId}.jsonl`), 'utf8');
+    const registryBytes = fs.readFileSync(path.join(store.credentialsDir(), 'connections.json'), 'utf8');
+    assert.ok(!ledgerBytes.includes(refreshToken));
+    assert.ok(!registryBytes.includes(refreshToken));
+  } finally {
+    global.fetch = originalFetch;
+    store.deleteToken(connId);
+  }
+});
+
 test('transient 500 retries once, succeeds, and never stamps a reconnect error', async () => {
   seedOAuth('refresh-transient', 'google');
   let calls = 0;
