@@ -801,6 +801,10 @@ test('a symlink anywhere in migratable content is reported and refused before to
   const result = migrate(vault, '--auto', { expectedStatus: 1 });
 
   assert.match(result.stdout + result.stderr, /refused symlinked vault entries.*04-Projects\/linked\.md/i);
+  assert.match(
+    result.stdout + result.stderr,
+    /move or delete these symlinked entries.*targets are not touched.*run the migrator again.*nothing has been changed/i,
+  );
   assert.equal(fs.readFileSync(outsideFile, 'utf8'), 'outside bytes must never be followed\n');
   assert.equal(fs.existsSync(path.join(vault, '.dex', 'brain.git')), false);
   assert.equal(fs.existsSync(path.join(vault, '.dex', 'pre-split-archive.git')), false);

@@ -216,6 +216,10 @@ def detect_sync_folder(path: Path) -> str | None:
     """
 
     ancestors = _ancestors(Path(path))
+    home_and_above = frozenset(_ancestors(Path.home()))
+    child_marker_ancestors = tuple(
+        directory for directory in ancestors if directory not in home_and_above
+    )
     folded_parts = tuple(part.casefold() for part in Path(path).absolute().parts)
     names_by_directory: dict[Path, frozenset[str]] = {}
     markers, provider_prefixes = _sync_folder_marker_data()
@@ -232,7 +236,7 @@ def detect_sync_folder(path: Path) -> str | None:
                 return provider
             continue
 
-        for directory in ancestors:
+        for directory in child_marker_ancestors:
             names = names_by_directory.setdefault(directory, _child_names(directory))
             if marker.kind == "child" and any(value.casefold() in names for value in marker.values):
                 return marker.provider

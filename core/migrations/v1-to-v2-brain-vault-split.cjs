@@ -22,6 +22,7 @@ const ARCHIVE_MARKER = 'dex-pre-split-v2-archive.json';
 const OFFICIAL_REMOTE = 'https://github.com/davekilleen/Dex.git';
 const RESUME_EXIT = 75;
 const P3_BATCH_SIZE = 64;
+const DEFAULT_SPAWN_MAX_BUFFER = 1024 * 1024 * 1024;
 const PARA_REGIONS = ['04-Projects', '05-Areas', '06-Resources', '07-Archives'];
 const POST_SWAP_RECOVERY = 'Your files are safe. Run this migrator with --restore to return everything to exactly how it was.';
 const SNAPSHOT_PATHS = [
@@ -491,7 +492,7 @@ function run(command, args, options = {}) {
   const result = spawnSync(command, args, {
     cwd: options.cwd,
     encoding: options.encoding === undefined ? 'utf8' : options.encoding,
-    maxBuffer: options.maxBuffer || 16 * 1024 * 1024,
+    maxBuffer: options.maxBuffer || DEFAULT_SPAWN_MAX_BUFFER,
   });
   if (result.error) throw result.error;
   if (!options.allowFailure && result.status !== 0) {
@@ -1421,6 +1422,19 @@ function stagedVaultInventory(root, gitDirectory) {
   return entries.sort((left, right) => left.path.localeCompare(right.path));
 }
 
+function compareVaultInventoryPaths(expected, staged) {
+  const stagedPaths = new Set(staged.map((entry) => entry.path.normalize('NFC')));
+  const expectedPaths = new Set(expected.map((entry) => entry.path.normalize('NFC')));
+  return {
+    unexpectedPaths: staged
+      .map((entry) => entry.path)
+      .filter((relative) => !expectedPaths.has(relative.normalize('NFC'))),
+    reconciledPaths: expected
+      .map((entry) => entry.path)
+      .filter((relative) => !stagedPaths.has(relative.normalize('NFC'))),
+  };
+}
+
 function phase3BuildVault(root, state) {
   const gitDirectory = path.join(root, '.dex', 'vault-staging.git');
   const trackedIgnore = loadTrackedIgnoreState(root);
@@ -1473,17 +1487,13 @@ function phase3BuildVault(root, state) {
 
   if (end < files.length) return { needsResume: true };
   plan.staged = stagedVaultInventory(root, gitDirectory);
-  const stagedPaths = new Set(plan.staged.map((entry) => entry.path));
-  const expectedPaths = new Set(plan.expected.map((entry) => entry.path));
-  const unexpectedPaths = plan.staged
-    .map((entry) => entry.path)
-    .filter((relative) => !expectedPaths.has(relative));
+  const { unexpectedPaths, reconciledPaths } = compareVaultInventoryPaths(
+    plan.expected,
+    plan.staged,
+  );
   if (unexpectedPaths.length > 0) {
     throw new Error(`P3 found unexpected staged paths and stopped before the Git swap: ${unexpectedPaths.join(', ')}`);
   }
-  const reconciledPaths = plan.expected
-    .map((entry) => entry.path)
-    .filter((relative) => !stagedPaths.has(relative));
   plan.reconciledPaths = reconciledPaths;
   writeMigrationFile(root, planPath, `${JSON.stringify(plan, null, 2)}\n`);
   if (reconciledPaths.length > 0) {
@@ -1605,7 +1615,10 @@ function phase2SnapshotAndScan(root, state) {
   snapshotFiles(root, state.startedAt);
   state.analysis = { ...state.analysis, ...analyzeMigrationPlan(root) };
   if (state.analysis.symlinkPaths.length > 0) {
-    throw new Error(`P2 refused symlinked vault entries: ${state.analysis.symlinkPaths.join(', ')}`);
+    throw new Error(
+      `P2 refused symlinked vault entries: ${state.analysis.symlinkPaths.join(', ')}. `
+      + 'Move or delete these symlinked entries, knowing that the targets are not touched, then run the migrator again; nothing has been changed by this refusal.',
+    );
   }
   state.analysis.heldBackPaths = persistHeldBackPaths(
     root,
@@ -1793,16 +1806,18 @@ function phase8Verify(root, state) {
   const treeOutput = gitDir(root, vaultGit, ['ls-tree', '-r', '-z', initialCommit], { encoding: null })
     .stdout.toString('utf8');
   const tree = new Map();
+  let treeEntryCount = 0;
   for (const record of treeOutput.split('\0').filter(Boolean)) {
     const separator = record.indexOf('\t');
     const metadata = record.slice(0, separator).split(/\s+/);
-    tree.set(record.slice(separator + 1), metadata[2]);
+    tree.set(record.slice(separator + 1).normalize('NFC'), metadata[2]);
+    treeEntryCount += 1;
   }
-  if (tree.size !== expectedEntries.length) {
-    throw new Error(`P8 initial vault snapshot differed from what Git staged in P3: staged ${expectedEntries.length} files but committed ${tree.size}.`);
+  if (treeEntryCount !== expectedEntries.length) {
+    throw new Error(`P8 initial vault snapshot differed from what Git staged in P3: staged ${expectedEntries.length} files but committed ${treeEntryCount}.`);
   }
   for (const entry of expectedEntries) {
-    const oid = tree.get(entry.path);
+    const oid = tree.get(entry.path.normalize('NFC'));
     if (!oid) throw new Error(`P8 initial vault snapshot was missing ${entry.path}, which Git staged in P3.`);
     if (entry.sha256) {
       const blob = gitDir(root, vaultGit, ['cat-file', 'blob', oid], { encoding: null }).stdout;
@@ -2416,9 +2431,11 @@ function main(argumentsList = process.argv.slice(2), root = process.cwd()) {
 }
 
 module.exports = {
+  DEFAULT_SPAWN_MAX_BUFFER,
   acquireLock,
   assertMigrationWrite,
   assertSafeMutationRoots,
+  compareVaultInventoryPaths,
   emptyLegacyExtensionBlock,
   extractLegacyExtensions,
   findReleaseRef,
@@ -2434,6 +2451,7 @@ module.exports = {
   restoreSnapshot,
   renderReport,
   snapshotFiles,
+  stagedVaultInventory,
   topologyDecision,
   writeJournal,
 };

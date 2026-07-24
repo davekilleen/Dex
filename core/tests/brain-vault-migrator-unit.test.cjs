@@ -94,6 +94,33 @@ test('synced-folder override composes with conversion modes without weakening on
   });
 });
 
+test('Git subprocesses allow at least 512 MiB of captured output by default', () => {
+  const migrator = require(MIGRATOR_PATH);
+
+  assert.ok(migrator.DEFAULT_SPAWN_MAX_BUFFER >= 512 * 1024 * 1024);
+});
+
+test('P3 verification treats decomposed filesystem paths as the same Git path', () => {
+  const migrator = require(MIGRATOR_PATH);
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'dex-migration-unicode-path-'));
+  git(root, 'init', '--quiet', '--initial-branch=main');
+  git(root, 'config', 'core.precomposeunicode', 'true');
+  const decomposed = 'Ha\u0308fele.md';
+  fs.writeFileSync(path.join(root, decomposed), 'cabinet hardware\n');
+  git(root, 'add', '--', decomposed);
+
+  const staged = migrator.stagedVaultInventory(root, path.join(root, '.git'));
+  const comparison = migrator.compareVaultInventoryPaths(
+    [{ path: decomposed }],
+    staged,
+  );
+
+  assert.deepEqual(comparison, {
+    unexpectedPaths: [],
+    reconciledPaths: [],
+  });
+});
+
 test('CLAUDE regeneration lifts the legacy extension bytes and removes legacy markers', () => {
   const migrator = require(MIGRATOR_PATH);
   const legacy = [

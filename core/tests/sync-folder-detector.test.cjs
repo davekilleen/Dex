@@ -79,3 +79,19 @@ test('CommonJS sync-folder marker loader fails closed on missing or malformed da
     /sync-folder marker data/i,
   );
 });
+
+test('CommonJS detector ignores Dropbox config in the user home directory', (t) => {
+  const detector = require(DETECTOR_PATH);
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'dex-sync-home-'));
+  const home = path.join(root, 'home');
+  const ordinaryVault = path.join(home, 'dex', 'rehearsal', 'vault-copy-a');
+  const dropboxVault = path.join(home, 'Dropbox', 'Vault');
+  fs.mkdirSync(path.join(home, '.dropbox'), { recursive: true });
+  fs.mkdirSync(path.join(home, 'Dropbox', '.dropbox.cache'), { recursive: true });
+  fs.mkdirSync(ordinaryVault, { recursive: true });
+  fs.mkdirSync(dropboxVault, { recursive: true });
+  t.mock.method(os, 'homedir', () => home);
+
+  assert.equal(detector.detectSyncFolder(ordinaryVault), null);
+  assert.equal(detector.detectSyncFolder(dropboxVault), 'Dropbox');
+});

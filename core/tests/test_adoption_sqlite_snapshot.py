@@ -284,6 +284,23 @@ def test_unknown_folder_is_not_guessed_to_be_synced(tmp_path: Path) -> None:
     assert detect_sync_folder(vault) is None
 
 
+def test_sync_folder_detection_ignores_dropbox_config_in_home(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    home = tmp_path / "home"
+    ordinary_vault = home / "dex" / "rehearsal" / "vault-copy-a"
+    dropbox_vault = home / "Dropbox" / "Vault"
+    (home / ".dropbox").mkdir(parents=True)
+    (home / "Dropbox" / ".dropbox.cache").mkdir(parents=True)
+    ordinary_vault.mkdir(parents=True)
+    dropbox_vault.mkdir(parents=True)
+    monkeypatch.setattr(Path, "home", classmethod(lambda cls: home))
+
+    assert detect_sync_folder(ordinary_vault) is None
+    assert detect_sync_folder(dropbox_vault) == "Dropbox"
+
+
 def test_onedrive_detection_requires_a_full_provider_path_segment(tmp_path: Path) -> None:
     ordinary = tmp_path / "not-onedrive-backup" / "Vault"
     onedrive = tmp_path / "OneDrive" / "Vault"

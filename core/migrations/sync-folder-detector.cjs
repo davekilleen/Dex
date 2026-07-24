@@ -1,6 +1,7 @@
 'use strict';
 
 const fs = require('node:fs');
+const os = require('node:os');
 const path = require('node:path');
 
 const DATA_PATH = path.resolve(__dirname, '..', 'data', 'sync-folder-markers.json');
@@ -145,6 +146,10 @@ function cloudstorageProvider(foldedParts, sequence, providerPrefixes) {
 
 function detectSyncFolder(candidate, markerData = SYNC_FOLDER_MARKERS) {
   const candidateAncestors = ancestors(candidate);
+  const homeAndAbove = new Set(ancestors(os.homedir()));
+  const childMarkerAncestors = candidateAncestors.filter(
+    (directory) => !homeAndAbove.has(directory),
+  );
   // JavaScript has no exact equivalent of Python str.casefold(). The shared
   // marker values are therefore validated as ASCII, where toLowerCase() and
   // casefold() agree. Path names still use the platform's Unicode lowercase.
@@ -169,7 +174,7 @@ function detectSyncFolder(candidate, markerData = SYNC_FOLDER_MARKERS) {
       continue;
     }
 
-    for (const directory of candidateAncestors) {
+    for (const directory of childMarkerAncestors) {
       if (!namesByDirectory.has(directory)) {
         namesByDirectory.set(directory, childNames(directory));
       }
