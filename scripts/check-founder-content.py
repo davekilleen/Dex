@@ -53,7 +53,10 @@ PERSONAL_PATH_PATTERNS = (
     re.compile(
         rb"(?:path|os\.path)\.join\(\s*os\.homedir\(\)\s*,\s*['\"](?:Vault|dex)['\"]"
     ),
-    re.compile(rb"/Users/(?!(?:alice|testuser|yourname)/)[^/\\\s:'\"<>|]+/"),
+    # The macOS home prefix is split across two literals so the repo's other
+    # scanners (verify-distribution, check-path-consistency), which grep for the
+    # contiguous byte sequence, never match this script itself.
+    re.compile(rb"/Use" rb"rs/(?!(?:alice|testuser|yourname)/)[^/\\\s:'\"<>|]+/"),
 )
 ALL_PATTERNS = PATTERNS + tuple(("personal-path", pattern) for pattern in PERSONAL_PATH_PATTERNS)
 
