@@ -213,23 +213,10 @@ async function exchangeCodeForToken(providerConfig, { code, codeVerifier, client
   return normalizeToken(await postToken(providerConfig, body, headers), {}, providerConfig);
 }
 
-/** Refresh an access token. Returns a normalized token (preserving refresh_token if unchanged). */
-async function refreshAccessToken(providerConfig, { refreshToken, clientId, clientSecret, previous = {} }) {
-  const body = {
-    grant_type: 'refresh_token',
-    refresh_token: refreshToken,
-    ...providerConfig.refreshParams,
-  };
-  const headers = buildTokenAuth(providerConfig, clientId, clientSecret, body);
-  const tokenUrl = providerConfig.refreshUrl || providerConfig.tokenUrl;
-  return normalizeToken(await postToken({ ...providerConfig, tokenUrl }, body, headers), previous, providerConfig);
-}
-
 module.exports = {
   startCallbackServer,
   buildAuthorizationUrl,
   exchangeCodeForToken,
-  refreshAccessToken,
   makePkce,
   CALLBACK_PORTS,
 };

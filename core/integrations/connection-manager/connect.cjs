@@ -11,6 +11,7 @@
  *   node connect.cjs register-app <provider> [--client-id ID]
  *                                                           save an OAuth app; secret via stdin only
  *   node connect.cjs status                                 health sweep (monitor view)
+ *   node connect.cjs probe [conn]                           bounded live auth probe (all when omitted)
  *   node connect.cjs refresh <conn> [--force]               refresh if needed; --force always calls provider
  *   node connect.cjs disconnect <conn>                      delete local token (conn = provider or provider:alias)
  *   node connect.cjs providers [filter] [--keys]            list OAuth (or paste-a-key) providers
@@ -91,6 +92,7 @@ async function cmdConnect(provider, flags) {
     redirectUri: cb.redirectUri,
   });
   store.saveToken(connId, token, { provider: providerConfig.id });
+  health.recordConnectionEvent(connId, 'connect', { ok: true });
   if (flags.default) store.setDefault(provider, alias);
   console.log(`✅ Connected ${providerConfig.displayName}${alias ? ` (${connId})` : ''}. Token stored (encrypted) in ${store.credentialsDir()}/tokens/.`);
 }
@@ -288,6 +290,7 @@ async function cmdSetKey(service, flags) {
   if (Object.keys(connectionConfig).length) secret.connectionConfig = connectionConfig;
 
   store.saveApiKey(connId, secret, { provider: descriptor.id, authMode: descriptor.authMode });
+  health.recordConnectionEvent(connId, 'connect', { ok: true });
   if (flags.default) store.setDefault(provider, alias);
   if (!descriptor.verified) {
     console.log('Unverified provider — advanced tier, expect quirks.');
@@ -298,8 +301,13 @@ async function cmdSetKey(service, flags) {
   console.log(`✅ Stored ${descriptor.displayName}${alias ? ` (${connId})` : ''} key (encrypted) in ${store.credentialsDir()}/tokens/.${note}`);
 }
 
-function cmdStatus() {
+function cmdStatus(flags = {}) {
   const meta = store.readRegistry()._meta;
+  const rows = health.allConnectionsHealth();
+  if (flags.json !== undefined) {
+    process.stdout.write(`${JSON.stringify({ connections: rows, registryNotice: meta || null })}\n`);
+    return;
+  }
   if (meta && meta.notice === 'registry_rebuilt') {
     console.log(
       `\n⚠️  Dex's connection list was damaged (${meta.reason}) and was rebuilt from your saved tokens on ${meta.rebuiltAt}: ` +
@@ -308,7 +316,6 @@ function cmdStatus() {
         ' Check the list below and reconnect anything missing or red.'
     );
   }
-  const rows = health.allConnectionsHealth();
   if (!rows.length) {
     console.log('No connections yet. Run: node connect.cjs connect <provider>');
     return;
@@ -321,11 +328,34 @@ function cmdStatus() {
   }
   const icon = { connected: '🟢', expiring: '🟡', expired: '🟠', needs_reauth: '🔴', error: '🔴', not_connected: '⚪' };
   console.log('\nConnection status:\n');
+  console.log('  connection         status                 expires                       last verified');
   for (const r of rows) {
     const exp = r.expiresAt ? new Date(r.expiresAt).toISOString() : '—';
-    console.log(`  ${icon[r.status] || '•'} ${r.service.padEnd(18)} ${r.status.padEnd(13)} expires ${exp}${r.error ? '  (' + r.error + ')' : ''}`);
+    const status = r.status === 'connected' && !r.verified ? 'connected (unverified)' : r.status;
+    console.log(
+      `  ${icon[r.status] || '•'} ${r.service.padEnd(18)} ${status.padEnd(22)} ${exp.padEnd(29)} ${r.lastVerifiedAt || '—'}${
+        r.error ? '  (' + r.error + ')' : ''
+      }`
+    );
   }
   console.log('');
+}
+
+async function cmdProbe(service, flags = {}) {
+  const results = await health.probeConnections(service);
+  const broken = results.some((result) => result.status === 'needs_reauth');
+  if (flags.json !== undefined) {
+    process.stdout.write(`${JSON.stringify({ results })}\n`);
+  } else if (!results.length) {
+    console.log('No connections to probe.');
+  } else {
+    for (const result of results) {
+      const category = result.error && result.error.category;
+      const label = result.ok ? 'verified' : category === 'auth_permanent' ? 'needs_reauth' : `unknown (${category || 'probe_failed'})`;
+      console.log(`${result.service}: ${label}`);
+    }
+  }
+  if (broken) process.exitCode = 1;
 }
 
 async function cmdRefresh(service, flags = {}) {
@@ -433,7 +463,10 @@ async function main() {
         cmdRegisterApp(positional[0], flags);
         break;
       case 'status':
-        cmdStatus();
+        cmdStatus(flags);
+        break;
+      case 'probe':
+        await cmdProbe(positional[0], flags);
         break;
       case 'refresh':
         await cmdRefresh(positional[0], flags);
@@ -455,7 +488,7 @@ async function main() {
         cmdAuthUrl(positional[0], flags);
         break;
       default:
-        console.log('Usage: node connect.cjs <connect|set-key|register-app|status|refresh|disconnect|providers|describe|coverage|authurl> [args]');
+        console.log('Usage: node connect.cjs <connect|set-key|register-app|status|probe|refresh|disconnect|providers|describe|coverage|authurl> [args]');
     }
   } catch (err) {
     console.error(`Error: ${err.message}`);
@@ -464,4 +497,4 @@ async function main() {
 }
 
 if (require.main === module) main();
-module.exports = { main, buildProbeTarget, classifyProbeStatus, probeKey, cmdRefresh };
+module.exports = { main, buildProbeTarget, classifyProbeStatus, probeKey, cmdRefresh, cmdStatus, cmdProbe };
