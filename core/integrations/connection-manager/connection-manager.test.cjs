@@ -21,6 +21,7 @@ const { execFileSync, spawnSync } = require('node:child_process');
 // Point everything at a throwaway vault BEFORE requiring the store modules.
 const TMP_VAULT = fs.mkdtempSync(path.join(os.tmpdir(), 'dex-cm-test-'));
 process.env.DEX_VAULT = TMP_VAULT;
+process.env.DEX_CM_NO_KEYCHAIN = '1';
 
 const catalog = require('./catalog.cjs');
 const oauth = require('./oauth-flow.cjs');
@@ -31,7 +32,7 @@ const dexcall = require('./dex-call.cjs'); // buildRequest / parseArgs (generic 
 const authctx = require('./auth-context.cjs'); // resolveAuthContext (shared auth seam)
 
 const DIR = __dirname;
-const childEnv = { ...process.env, DEX_VAULT: TMP_VAULT };
+const childEnv = { ...process.env, DEX_VAULT: TMP_VAULT, DEX_CM_NO_KEYCHAIN: '1' };
 
 // Pick a real paste-a-key provider for the Class-B path. Prefer one that needs ONLY an
 // API key (no connection_config) so the single-secret round-trip tests stay simple; the

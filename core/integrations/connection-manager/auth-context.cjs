@@ -125,10 +125,34 @@ function secretsOf(ctx) {
   return [...out].sort((a, b) => b.length - a.length);
 }
 
-/** Replace every occurrence of each secret in `text` with '***'. */
+function encodedSecretForms(secret) {
+  const forms = new Set([secret, Buffer.from(secret, 'utf8').toString('base64')]);
+  try {
+    const percentEncoded = encodeURIComponent(secret);
+    forms.add(percentEncoded);
+    forms.add(percentEncoded.replace(/%[0-9A-F]{2}/g, (hex) => hex.toLowerCase()));
+  } catch {
+    /* malformed surrogate: raw + base64 forms still redact */
+  }
+  const formEncoded = new URLSearchParams({ value: secret }).toString().slice('value='.length);
+  forms.add(formEncoded);
+  forms.add(formEncoded.replace(/%[0-9A-F]{2}/g, (hex) => hex.toLowerCase()));
+  return forms;
+}
+
+/** Replace every raw, URL/form-encoded, or base64 occurrence of each secret in `text` with '***'. */
 function redactSecrets(text, secrets) {
   let s = String(text);
-  for (const secret of secrets || []) s = s.split(secret).join('***');
+  const forms = new Set();
+  for (const secret of secrets || []) {
+    if (typeof secret !== 'string' || secret.length < 4) continue;
+    for (const form of encodedSecretForms(secret)) {
+      if (form.length >= 4) forms.add(form);
+    }
+  }
+  for (const form of [...forms].sort((a, b) => b.length - a.length)) {
+    s = s.split(form).join('***');
+  }
   return s;
 }
 

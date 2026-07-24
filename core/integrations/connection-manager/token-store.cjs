@@ -28,6 +28,7 @@ const { TOKEN_ENVELOPE_VERSION, LOCK_PROTOCOL } = require('./contract.cjs');
 
 const KEYCHAIN_SERVICE = 'dex-connection-manager';
 const KEYCHAIN_ACCOUNT = 'token-store-key';
+const MAX_ENCRYPTED_DATA_BYTES = 1024 * 1024;
 
 /** Resolve the credentials directory from the configured vault root. */
 function credentialsDir() {
@@ -76,6 +77,47 @@ function ensureCredentialsGitignore(dir) {
   }
 }
 
+const _gitSafeCredentialDirs = new Set();
+
+function assertCredentialsNotTracked() {
+  const vault = fs.realpathSync(path.resolve(process.env.DEX_VAULT || process.env.VAULT_PATH || ''));
+  const credentialRoot = path.join(vault, 'System', 'credentials');
+  if (_gitSafeCredentialDirs.has(credentialRoot)) return;
+
+  let repoRoot;
+  try {
+    repoRoot = execFileSync('git', ['-C', vault, 'rev-parse', '--show-toplevel'], {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+    }).trim();
+  } catch (error) {
+    const stderr = String((error && error.stderr) || '');
+    if (error && error.status === 128 && /not a git repository|cannot change to/i.test(stderr)) {
+      _gitSafeCredentialDirs.add(credentialRoot);
+      return;
+    }
+    throw new Error(`Cannot verify whether System/credentials is tracked by Git: ${stderr.trim() || error.message}`);
+  }
+
+  const relativeCredentialRoot = path.relative(repoRoot, credentialRoot).split(path.sep).join('/');
+  let tracked;
+  try {
+    tracked = execFileSync('git', ['-C', repoRoot, 'ls-files', '--', relativeCredentialRoot], {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+    }).trim();
+  } catch (error) {
+    throw new Error(`Cannot verify whether System/credentials is tracked by Git: ${error.message}`);
+  }
+  if (tracked) {
+    throw new Error(
+      `Credential write refused because Git already tracks path(s) under System/credentials:\n${tracked}\n` +
+        `Remove them from Git's index without deleting local files, for example: git rm --cached -r -- ${relativeCredentialRoot}`
+    );
+  }
+  _gitSafeCredentialDirs.add(credentialRoot);
+}
+
 function tokensDir() {
   const dir = path.join(credentialsDir(), 'tokens');
   ensureDir(credentialsDir()); // ensure the .gitignore guard exists before any token lands
@@ -97,6 +139,10 @@ function listTokenFiles() {
 // `security` binary is unavailable or blocked.
 function keychainDisabled() {
   return process.env.DEX_CM_NO_KEYCHAIN === '1';
+}
+
+function fileKeyAllowed() {
+  return process.platform !== 'darwin' || keychainDisabled();
 }
 
 function keyFromMacKeychain() {
@@ -136,6 +182,13 @@ function keyFromFile() {
 }
 
 function writeKeyFile(keyB64) {
+  if (!fileKeyAllowed()) {
+    throw new Error(
+      'Dex could not store its encryption key in macOS Keychain. No credential was saved. ' +
+      'Fix Keychain access, or explicitly set DEX_CM_NO_KEYCHAIN=1 to use file-based key storage.'
+    );
+  }
+  assertCredentialsNotTracked();
   ensureDir(credentialsDir());
   const keyPath = path.join(credentialsDir(), '.dex-cm.key');
   writeFileAtomic(keyPath, keyB64, { mode: 0o600 });
@@ -177,7 +230,7 @@ function getKey() {
   let found = null;
   let lookupFailed = false;
   try {
-    found = keyFromMacKeychain() || keyFromFile();
+    found = keyFromMacKeychain() || (fileKeyAllowed() ? keyFromFile() : null);
   } catch {
     lookupFailed = true; // unreadable key source counts as loss, not as "fresh start"
   }
@@ -200,7 +253,16 @@ function getKey() {
   if (credentialCount > 0) throw new KeyLossError(credentialCount, Boolean(found) || lookupFailed);
   const key = crypto.randomBytes(32);
   const b64 = key.toString('base64');
-  if (!storeKeyInMacKeychain(b64)) writeKeyFile(b64);
+  if (process.platform === 'darwin' && !keychainDisabled()) {
+    if (!storeKeyInMacKeychain(b64)) {
+      throw new Error(
+        'Dex could not store its encryption key in macOS Keychain. No credential was saved. ' +
+          'Fix Keychain access, or explicitly set DEX_CM_NO_KEYCHAIN=1 to use file-based key storage.'
+      );
+    }
+  } else {
+    writeKeyFile(b64);
+  }
   _cachedKey = key;
   return key;
 }
@@ -310,13 +372,36 @@ function encrypt(plaintext, aad = '') {
   return { v: TOKEN_ENVELOPE_VERSION, aad, iv: iv.toString('base64'), tag: tag.toString('base64'), data: data.toString('base64') };
 }
 
+function decodeCanonicalBase64(value, field, { exactBytes, maxBytes } = {}) {
+  const maxEncodedLength = maxBytes === undefined ? Infinity : Math.ceil(maxBytes / 3) * 4;
+  if (
+    typeof value !== 'string' ||
+    value.length > maxEncodedLength ||
+    !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(value)
+  ) {
+    throw new Error(`Unsupported encrypted credential envelope: invalid ${field}.`);
+  }
+  const decoded = Buffer.from(value, 'base64');
+  if (
+    decoded.toString('base64') !== value ||
+    (exactBytes !== undefined && decoded.length !== exactBytes) ||
+    (maxBytes !== undefined && decoded.length > maxBytes)
+  ) {
+    throw new Error(`Unsupported encrypted credential envelope: invalid ${field}.`);
+  }
+  return decoded;
+}
+
 function decrypt(envelope, aad = '') {
   if (!envelope || envelope.v !== TOKEN_ENVELOPE_VERSION) throw new Error('Unsupported encrypted credential envelope version.');
   if (envelope.aad !== aad) throw new EnvelopeBindingError();
-  const decipher = crypto.createDecipheriv('aes-256-gcm', getKey(), Buffer.from(envelope.iv, 'base64'));
+  const iv = decodeCanonicalBase64(envelope.iv, 'iv', { exactBytes: 12 });
+  const tag = decodeCanonicalBase64(envelope.tag, 'tag', { exactBytes: 16 });
+  const data = decodeCanonicalBase64(envelope.data, 'data', { maxBytes: MAX_ENCRYPTED_DATA_BYTES });
+  const decipher = crypto.createDecipheriv('aes-256-gcm', getKey(), iv);
   decipher.setAAD(Buffer.from(aad, 'utf8'));
-  decipher.setAuthTag(Buffer.from(envelope.tag, 'base64'));
-  const out = Buffer.concat([decipher.update(Buffer.from(envelope.data, 'base64')), decipher.final()]);
+  decipher.setAuthTag(tag);
+  const out = Buffer.concat([decipher.update(data), decipher.final()]);
   return out.toString('utf8');
 }
 
@@ -338,9 +423,15 @@ function parseConnectionId(id) {
   if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$/.test(provider)) {
     throw new Error(`Invalid provider in connection id '${id}'. Use letters, digits, '.', '-' or '_' (must start with a letter or digit).`);
   }
+  if (provider.includes('__')) {
+    throw new Error(`Invalid connection id '${id}': reserved filename separator '__' is not allowed.`);
+  }
   if (i === -1) return { provider: s, alias: null, connId: s };
   const alias = s.slice(i + 1).toLowerCase();
   if (!/^[a-z0-9_-]+$/.test(alias)) throw new Error(`Invalid connection alias in '${id}'. Use letters, digits, '-' or '_'.`);
+  if (alias.includes('__')) {
+    throw new Error(`Invalid connection id '${id}': reserved filename separator '__' is not allowed.`);
+  }
   return { provider, alias, connId: `${provider}:${alias}` };
 }
 
@@ -376,6 +467,7 @@ function tokenPath(connId) {
 
 /** Persist a token object (encrypted) and refresh the registry entry. `connId` may be `provider` or `provider:alias`. */
 function saveToken(connId, token, meta = {}) {
+  assertCredentialsNotTracked();
   const parsed = parseConnectionId(connId);
   // Encrypt BEFORE touching the registry: if the key is lost this triggers the
   // loud recovery first, so the entry we then upsert stays 'connected'.
@@ -412,6 +504,7 @@ function saveToken(connId, token, meta = {}) {
  * @param meta      { provider, scopes, connectedAt, extra }
  */
 function saveApiKey(service, secretObj, meta = {}) {
+  assertCredentialsNotTracked();
   const stored = { kind: 'api_key', ...secretObj, obtained_at: Date.now() };
   const parsed = parseConnectionId(service);
   const envelope = JSON.stringify(encryptForSave(JSON.stringify(stored), `token:${service}`), null, 2); // key-loss recovery before registry writes; see saveToken
@@ -727,6 +820,7 @@ function getOAuthApp(provider) {
  */
 function setOAuthApp(provider, { clientId, clientSecret = '' }) {
   if (!clientId) throw new Error('setOAuthApp requires a clientId.');
+  assertCredentialsNotTracked();
   ensureDir(credentialsDir());
   const encryptedSecret = encryptForSave(clientSecret, `oauth-app:${provider}`);
   return withStoreLock(() => {

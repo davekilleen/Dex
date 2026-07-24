@@ -25,12 +25,13 @@ const FILES = {
   },
   'oauth-refresh.js': {
     source: '0f29891a988d913c8b4bfddc9ee9d8f4c91328784534107ff65abe3d4cac4783',
-    lifted: 'cdc837a0acfbd7f8e0822f5d8da7c6f2726de8f0d7f5f2ae3daa57fa95616392',
-    mode: 'injectable-delay',
+    lifted: '254ae86b690b851942f888b04a54d1026e12f9a24e7ae35f6a813b2dc22bef96',
+    mode: 'core-adaptation',
     divergences: [
       'source provenance header',
       'injectable delay used only to prove Retry-After clamping',
       'credential-bearing refresh requests refuse redirects',
+      'provider response diagnostics are reduced to normalized error codes and fixed safe messages',
     ],
   },
   'connector-model.js': {

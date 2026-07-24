@@ -43,6 +43,20 @@ function listenOnFirstFreePort(ports, createServer) {
   });
 }
 
+function escapeHtml(value) {
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function normalizeProviderErrorCode(value, fallback) {
+  const code = typeof value === 'string' ? value.trim() : '';
+  return /^[A-Za-z][A-Za-z0-9._-]{0,79}$/.test(code) ? code : fallback;
+}
+
 /**
  * Start a localhost callback server. Returns:
  *   { redirectUri, waitForCode(): Promise<{code,state}>, close() }
@@ -80,18 +94,26 @@ async function startCallbackServer({
         const code = url.searchParams.get('code');
         const state = url.searchParams.get('state');
         const stateMismatch = expectedState !== undefined && state !== expectedState;
-        res.writeHead(stateMismatch ? 400 : 200, { 'Content-Type': 'text/html; charset=utf-8' });
+        if (stateMismatch) {
+          res.writeHead(404).end();
+          return;
+        }
+        res.writeHead(200, {
+          'Content-Type': 'text/html; charset=utf-8',
+          'Content-Security-Policy': "default-src 'none'",
+          'X-Content-Type-Options': 'nosniff',
+        });
         res.end(
-          stateMismatch
-            ? '<html><body style="font-family:system-ui;padding:3rem;text-align:center"><h2>Connection aborted</h2><p>OAuth state mismatch.</p></body></html>'
-            : error
-            ? `<html><body style="font-family:system-ui;padding:3rem;text-align:center"><h2>Connection failed</h2><p>${error}</p><p>You can close this tab and return to Dex.</p></body></html>`
+          error
+            ? `<html><body style="font-family:system-ui;padding:3rem;text-align:center"><h2>Connection failed</h2><p>${escapeHtml(error)}</p><p>You can close this tab and return to Dex.</p></body></html>`
             : `<html><body style="font-family:system-ui;padding:3rem;text-align:center"><h2>✅ Connected</h2><p>You can close this tab and return to Dex.</p></body></html>`
         );
         clearTimeout(timeout);
         server.close();
-        if (stateMismatch) reject(new Error('OAuth state mismatch — possible CSRF, aborting.'));
-        else if (error) reject(new Error(`Provider returned error: ${error}`));
+        if (error) {
+          const code = normalizeProviderErrorCode(error, 'oauth_authorization_rejected');
+          reject(Object.assign(new Error(`Provider returned error: ${code}`), { code }));
+        }
         else resolve({ code, state });
       });
     });
@@ -173,9 +195,10 @@ async function postToken(providerConfig, body, headers) {
     json = { raw: text };
   }
   if (!res.ok) {
-    const err = new Error(`Token endpoint ${res.status}: ${json.error || text.slice(0, 200)}`);
+    const code = normalizeProviderErrorCode(json.error, 'token_exchange_rejected');
+    const err = new Error(`Token endpoint rejected the request (HTTP ${res.status}, ${code}).`);
     err.status = res.status;
-    err.body = json;
+    err.code = code;
     throw err;
   }
   return json;

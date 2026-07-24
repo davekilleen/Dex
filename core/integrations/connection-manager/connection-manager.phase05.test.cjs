@@ -156,13 +156,15 @@ test('rotating refresh tokens persist and the next refresh uses the newest token
   }
 });
 
-test('callback server rejects a mismatched OAuth state', async () => {
+test('callback server ignores a mismatched OAuth state and accepts the valid callback', async () => {
   const harness = callbackHarness();
   const cb = await oauth.startCallbackServer({ ports: [3847], timeoutMs: 1000, createServer: harness.createServer });
   const pending = cb.waitForCode({ expectedState: 'expected-state' });
-  const response = harness.request(harness.servers[0], '/callback?code=abc&state=wrong-state');
-  assert.equal(response.status, 400);
-  await assert.rejects(pending, /state mismatch/i);
+  const invalid = harness.request(harness.servers[0], '/callback?code=abc&state=wrong-state');
+  assert.equal(invalid.status, 404);
+  const valid = harness.request(harness.servers[0], '/callback?code=good&state=expected-state');
+  assert.equal(valid.status, 200);
+  assert.deepEqual(await pending, { code: 'good', state: 'expected-state' });
 });
 
 test('callback server times out and closes cleanly', async () => {

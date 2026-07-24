@@ -11,13 +11,13 @@
         "connection-manager"
       ],
       "fileCount": 17,
-      "totalBytes": 173418,
-      "treeHash": "57238c08d18467668da0c64dd450f45275662b67fbcb639006eb3c1e79c1334e",
+      "totalBytes": 179114,
+      "treeHash": "749f981a8740a218f4189ef69c34e0f685435eb47c1a8da7e5630c0421e4f9ac",
       "files": [
         {
           "path": "auth-context.cjs",
-          "bytes": 5439,
-          "sha256": "6c1f49162f46e4dcc4ceb38aa7c02415970f3e19073d14fe3974c446afd9b585"
+          "bytes": 6351,
+          "sha256": "b90c56e323f0dcd9a2a19044b527b6f3378aa6cf48b6853b72f29a8564b83088"
         },
         {
           "path": "catalog.cjs",
@@ -51,8 +51,8 @@
         },
         {
           "path": "health.cjs",
-          "bytes": 14672,
-          "sha256": "df063349f49c85a08c8d608905cad6b4dd635af2b0f82814360afb7db24a0f4f"
+          "bytes": 14760,
+          "sha256": "6f6a2a68e9da9c5a0807c1325f9aa18444471c533ee9f5607b00d79b8192cc90"
         },
         {
           "path": "index.cjs",
@@ -76,8 +76,8 @@
         },
         {
           "path": "lib/oauth-refresh.js",
-          "bytes": 10609,
-          "sha256": "cdc837a0acfbd7f8e0822f5d8da7c6f2726de8f0d7f5f2ae3daa57fa95616392"
+          "bytes": 11070,
+          "sha256": "254ae86b690b851942f888b04a54d1026e12f9a24e7ae35f6a813b2dc22bef96"
         },
         {
           "path": "lib/rate-limit.js",
@@ -86,8 +86,8 @@
         },
         {
           "path": "oauth-flow.cjs",
-          "bytes": 9195,
-          "sha256": "6ab21fb5139da00a38f98658d38c6c0ef416aa06aba4ef9073d16b450863979d"
+          "bytes": 9720,
+          "sha256": "162fdc24771a1f041562f835e4ccb0645740db76137b0badaf5536caecf30e22"
         },
         {
           "path": "README.md",
@@ -96,8 +96,8 @@
         },
         {
           "path": "token-store.cjs",
-          "bytes": 30324,
-          "sha256": "749230cf3c607a9faf1d55efb7e30639644345e35009b8b86477d07a842f92a8"
+          "bytes": 34034,
+          "sha256": "17fbe97f5eb97b1145c562149e5f2f638e6b4a230841f1e52a37ef2c2fcf4ed0"
         }
       ]
     }

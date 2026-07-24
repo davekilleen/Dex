@@ -299,7 +299,10 @@ async function refreshToken(service, { force = false } = {}) {
         return fresh.access_token;
       } catch (err) {
         const needsReauth = err && err.permanent === true;
-        const code = String((err && err.message) || 'refresh_failed').slice(0, 200);
+        const code =
+          err && typeof err.code === 'string' && /^[A-Za-z][A-Za-z0-9._-]{0,79}$/.test(err.code)
+            ? err.code
+            : 'refresh_failed';
         recordConnectionEvent(connId, 'refresh', {
           ok: false,
           error: { category: needsReauth ? 'auth_permanent' : 'transient', code, message: code },
