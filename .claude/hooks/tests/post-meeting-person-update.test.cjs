@@ -5,6 +5,16 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 
+const {
+  installEntityEngineStub,
+} = require('../../../.scripts/lib/tests/entity-engine-test-helper.cjs');
+const {
+  parseEntityPage,
+} = require('../../../.scripts/lib/entity-pages.cjs');
+const {
+  processEntityCreation,
+} = require('../../../.scripts/meeting-intel/lib/entity-creation.cjs');
+
 const HOOK = path.resolve(__dirname, '../post-meeting-person-update.cjs');
 
 function createVault(t) {
@@ -16,19 +26,23 @@ function createVault(t) {
     '05-Areas/People/CPO_Network',
     '05-Areas/Companies',
   ]) fs.mkdirSync(path.join(vault, directory), { recursive: true });
+  installEntityEngineStub(vault);
   t.after(() => fs.rmSync(vault, { recursive: true, force: true }));
   return vault;
 }
 
-function runHook(vault, payload) {
+function runHook(vault, payload, extraEnv = {}) {
   return spawnSync(process.execPath, [HOOK], {
     cwd: vault,
     encoding: 'utf8',
     env: {
+      ...process.env,
       CLAUDE_PROJECT_DIR: vault,
       DEX_HOOK_DEBUG: '1',
+      DEX_PYTHON: path.join(vault, 'entity-engine-test-python'),
       PATH: '/usr/bin:/bin',
       VAULT_PATH: vault,
+      ...extraEnv,
     },
     input: typeof payload === 'string' ? payload : JSON.stringify(payload),
   });
@@ -50,12 +64,13 @@ function personPage(name, region = true) {
   ].join('\n');
 }
 
-function meetingNote(vault, name = 'roadmap.md') {
+function meetingNote(vault, name = 'roadmap.md', granolaId = null) {
   const meeting = path.join(vault, '00-Inbox', 'Meetings', name);
   fs.writeFileSync(meeting, [
     '---',
     'title: Roadmap Review',
     'date: 2026-07-10',
+    ...(granolaId ? [`granola_id: ${granolaId}`] : []),
     'attendees:',
     '  - name: Alice Smith',
     '    email: alice@example.com',
@@ -79,6 +94,13 @@ test('attendees update an existing machine region and last_interaction', (t) => 
   const updated = fs.readFileSync(person, 'utf8');
   assert.match(updated, /last_interaction: '2026-07-10'/);
   assert.match(updated, /\[Roadmap Review\]\(00-Inbox\/Meetings\/roadmap\.md\) — 2026-07-10/);
+  assert.deepEqual(parseEntityPage(person).touches, [{
+    ts: '2026-07-10',
+    type: 'meeting',
+    direction: 'none',
+    source: { id: 'roadmap', title: 'Roadmap Review' },
+  }]);
+  assert.match(updated, /meeting · two-way — Roadmap Review \[roadmap\]/);
 });
 
 test('legacy page receives the interaction under its existing heading', (t) => {
@@ -102,6 +124,112 @@ test('a second run is idempotent', (t) => {
   const once = fs.readFileSync(person, 'utf8');
   runHook(vault, { tool_input: { file_path: meeting } });
   assert.equal(fs.readFileSync(person, 'utf8'), once);
+});
+
+test('batch and hook paths deduplicate a Granola meeting touch', (t) => {
+  const vault = createVault(t);
+  const person = path.join(vault, '05-Areas/People/Internal/Alice_Smith.md');
+  fs.writeFileSync(person, personPage('Alice Smith'));
+  const oldVault = process.env.VAULT_PATH;
+  const oldProject = process.env.CLAUDE_PROJECT_DIR;
+  const oldPython = process.env.DEX_PYTHON;
+  process.env.VAULT_PATH = vault;
+  delete process.env.CLAUDE_PROJECT_DIR;
+  process.env.DEX_PYTHON = path.join(vault, 'entity-engine-test-python');
+  t.after(() => {
+    if (oldVault === undefined) delete process.env.VAULT_PATH;
+    else process.env.VAULT_PATH = oldVault;
+    if (oldProject === undefined) delete process.env.CLAUDE_PROJECT_DIR;
+    else process.env.CLAUDE_PROJECT_DIR = oldProject;
+    if (oldPython === undefined) delete process.env.DEX_PYTHON;
+    else process.env.DEX_PYTHON = oldPython;
+  });
+  const granolaId = 'granola-meeting-123';
+  const batch = [{
+    id: granolaId,
+    title: 'Roadmap Review',
+    createdAt: '2026-07-10T10:00:00Z',
+    filteredAttendees: [{
+      name: 'Alice Smith',
+      email: 'alice@example.com',
+      location: 'internal',
+    }],
+  }];
+
+  processEntityCreation(batch, { entity_creation: { mode: 'off' } });
+  const meeting = meetingNote(vault, 'roadmap.md', granolaId);
+  assert.equal(runHook(vault, { tool_input: { file_path: meeting } }).status, 0);
+
+  const updated = fs.readFileSync(person, 'utf8');
+  assert.equal(parseEntityPage(person).touches.length, 1);
+  assert.equal(parseEntityPage(person).touches[0].source.id, granolaId);
+  assert.equal(
+    (updated.match(/meeting · two-way — Roadmap Review \[granola-meeting-123\]/g) || []).length,
+    1,
+  );
+});
+
+test('an unavailable engine leaves the page unchanged and persists a retry', (t) => {
+  const vault = createVault(t);
+  const person = path.join(vault, '05-Areas/People/Internal/Alice_Smith.md');
+  const original = personPage('Alice Smith');
+  fs.writeFileSync(person, original);
+  const meeting = meetingNote(vault);
+
+  const result = runHook(
+    vault,
+    { tool_input: { file_path: meeting } },
+    { DEX_PYTHON: '/definitely/missing/dex-python' },
+  );
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(fs.readFileSync(person, 'utf8'), original);
+  const pending = JSON.parse(fs.readFileSync(
+    path.join(vault, 'System', '.dex', 'entity-pending.json'),
+    'utf8',
+  ));
+  assert.equal(pending.batches[0].scope, 'hook');
+  assert.equal(pending.batches[0].ops.length, 1);
+});
+
+test('a deferred interaction rematerializes after a page edit and then lands', (t) => {
+  const vault = createVault(t);
+  const person = path.join(vault, '05-Areas/People/Internal/Alice_Smith.md');
+  const original = personPage('Alice Smith');
+  fs.writeFileSync(person, original);
+  const meeting = meetingNote(vault);
+  const pendingPath = path.join(vault, 'System', '.dex', 'entity-pending.json');
+
+  assert.equal(runHook(
+    vault,
+    { tool_input: { file_path: meeting } },
+    { DEX_PYTHON: '/definitely/missing/dex-python' },
+  ).status, 0);
+  const pending = JSON.parse(fs.readFileSync(pendingPath, 'utf8'));
+  assert.deepEqual(pending.batches[0].ops[0].intent, {
+    kind: 'hook-interaction',
+    interaction: {
+      path: '00-Inbox/Meetings/roadmap.md',
+      line: '- [Roadmap Review](00-Inbox/Meetings/roadmap.md) — 2026-07-10',
+      date: '2026-07-10',
+      source_id: 'roadmap',
+    },
+  });
+  assert.equal(Object.hasOwn(pending.batches[0].ops[0], 'base_fingerprint'), false);
+  pending.batches[0].ops[0].next_attempt_at = '2026-01-01T00:00:00.000Z';
+  fs.writeFileSync(pendingPath, `${JSON.stringify(pending, null, 2)}\n`);
+
+  fs.writeFileSync(
+    person,
+    original.replace('## Recent Interactions', 'A user-authored note.\n\n## Recent Interactions'),
+  );
+  assert.equal(runHook(vault, { tool_input: { file_path: meeting } }).status, 0);
+
+  const updated = fs.readFileSync(person, 'utf8');
+  assert.match(updated, /A user-authored note\./);
+  assert.match(updated, /\[Roadmap Review\]\(00-Inbox\/Meetings\/roadmap\.md\) — 2026-07-10/);
+  assert.match(updated, /last_interaction: '2026-07-10'/);
+  assert.equal(fs.existsSync(pendingPath), false);
 });
 
 test('non-meeting paths and malformed stdin exit zero without changes', (t) => {

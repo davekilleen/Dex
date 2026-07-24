@@ -14,7 +14,11 @@ import pytest
 
 from core import portable_contract
 from core.lifecycle import service
-from core.lifecycle.catalog import canonical_catalog_bytes, with_catalog_identity
+from core.lifecycle.catalog import (
+    canonical_catalog_bytes,
+    load_catalog_payload_sources,
+    with_catalog_identity,
+)
 from core.lifecycle.ledger import record_holdback
 from core.lifecycle.preview import AdoptionPreviewError
 from core.tests.lifecycle_test_helpers import SOURCE_COMMIT, write_file, write_manifest
@@ -118,6 +122,17 @@ def _service_fixture(
 def _plan_actions(vault: Path) -> dict[str, str]:
     response = service.build_inventory_and_plan(vault)
     return {item["item_id"]: item["action"] for item in response["plan"]["items"]}
+
+
+def test_lifecycle_catalog_never_declares_composed_claude_md() -> None:
+    # The engine builds its complete write set from catalog declarations. CLAUDE.md
+    # contains composed user instructions, so it must remain outside that write set.
+    declared_paths = load_catalog_payload_sources(REPO_ROOT)
+
+    assert "CLAUDE.md" not in declared_paths, (
+        "CLAUDE.md contains the user's personal instructions; declaring it in a lifecycle "
+        "catalog item would let the live update route plan an overwrite or deletion"
+    )
 
 
 def test_real_service_adopts_replans_and_rewinds_an_official_capability(

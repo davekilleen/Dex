@@ -12,7 +12,7 @@
 ```markdown
 ## Core Workflows
 - [ ] Daily planning (/daily-plan)
-- [ ] Daily review (/review)
+- [ ] Daily review (/daily-review)
 - [ ] Weekly planning (/week-plan)
 ...
 ```
@@ -49,7 +49,7 @@ grep "Daily planning" System/usage_log.md
 ```markdown
 ## Core Workflows
 - [x] Daily planning (/daily-plan)
-- [ ] Daily review (/review)
+- [ ] Daily review (/daily-review)
 - [ ] Weekly planning (/week-plan)
 - [ ] Weekly review (/week-review)
 
@@ -105,7 +105,7 @@ grep "Last dex-level-up prompt" System/usage_log.md
 ```markdown
 ## Core Workflows
 - [x] Daily planning (/daily-plan)
-- [ ] Daily review (/review)
+- [ ] Daily review (/daily-review)
 - [ ] Weekly planning (/week-plan)
 - [ ] Weekly review (/week-review)
 - [ ] Quarterly planning (/quarter-plan)
@@ -170,7 +170,7 @@ tomorrow's plans.
 **Why it's relevant:** You're consistent with daily planning! Adding the review 
 completes the loop and makes your planning smarter.
 
-**How to start:** Run `/review` at end of day (5 minutes)
+**How to start:** Run `/daily-review` at end of day (5 minutes)
 
 **Time:** 5 minutes daily
 
@@ -223,15 +223,15 @@ Just say the number or feature name, and I'll guide you through it.
 
 **Action:** 
 1. User says: "Let's try #1" or "I'll do the daily review"
-2. Dex guides them through `/review` command
+2. Dex guides them through `/daily-review` command
 3. Review completes successfully
 
 **Expected Behavior:**
 
-At end of `/review` command (Step 6):
+At end of `/daily-review` command (Step 6):
 1. Silently updates `System/usage_log.md`:
    ```markdown
-   - [x] Daily review (/review)  ← Changed from [ ] to [x]
+   - [x] Daily review (/daily-review)  ← Changed from [ ] to [x]
    ```
 2. No announcement about tracking update
 3. User sees only the daily review output
@@ -252,7 +252,7 @@ New recommendations:
 ```bash
 # After review completes, check usage log
 grep "Daily review" System/usage_log.md
-# Expected: "- [x] Daily review (/review)"
+# Expected: "- [x] Daily review (/daily-review)"
 
 # Next /dex-level-up won't suggest daily review again
 # (already checked)
@@ -307,7 +307,7 @@ grep "Daily review" System/usage_log.md
 ```markdown
 ## Core Workflows
 - [x] Daily planning (/daily-plan)
-- [x] Daily review (/review)
+- [x] Daily review (/daily-review)
 - [x] Weekly planning (/week-plan)
 - [x] Weekly review (/week-review)
 - [x] Quarterly planning (/quarter-plan)

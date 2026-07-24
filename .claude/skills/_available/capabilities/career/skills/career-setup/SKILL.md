@@ -480,7 +480,7 @@ As you work, Dex automatically captures evidence that supports your career progr
 
 ## When Evidence Gets Captured
 
-1. **During `/review`**: End-of-day reflections prompt for notable achievements
+1. **During `/daily-review`**: End-of-day reflections prompt for notable achievements
 2. **From Granola meetings**: Feedback and discussions with your manager are extracted
 3. **Project completions**: When you finish projects, you'll be asked if there's career evidence worth noting
 4. **Ad-hoc**: Just tell me "capture this for my career evidence" and I'll add it
@@ -544,7 +544,7 @@ Run `/career-coach` anytime you want to:
 
 As you use Dex:
 - **Meetings with your manager** (via Granola) → Feedback automatically extracted
-- **Daily reviews** (`/review`) → Achievements captured as career evidence
+- **Daily reviews** (`/daily-review`) → Achievements captured as career evidence
 - **Project completions** → Impact and skills demonstrated are saved
 
 ### Quarterly Career Check-ins

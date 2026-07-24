@@ -5,10 +5,14 @@ const fs = require('fs');
 const path = require('path');
 const yaml = require('js-yaml');
 const {
-  atomicWrite: atomicWritePage,
   parseEntityPage,
   replaceMachineRegion,
 } = require('../../lib/entity-pages.cjs');
+const {
+  flushEntityOps,
+  loadPendingStore,
+} = require('../../lib/entity-engine-client.cjs');
+const { identityForEntity } = require('../../lib/entity-identity.cjs');
 const {
   atomicWrite,
   runtimePaths,
@@ -89,21 +93,6 @@ function removeResumeMarker(output) {
     .filter(line => line.trim() !== RESUME_MARKER)
     .join('\n')
     .replace(/^[\r\n]+|[\r\n]+$/g, '');
-}
-
-function ensureSummaryRegion(text) {
-  if (machineRegion(text, REGION_SLUG) !== null) return text;
-  if (text.includes(REGION_START)) {
-    throw new Error(`malformed machine region: ${REGION_SLUG} (missing end marker)`);
-  }
-  const region = `${REGION_START}\n${REGION_END}`;
-  const heading = /^## Key Context[ \t]*$/m.exec(text);
-  if (heading) {
-    const lineEnd = text.indexOf('\n', heading.index + heading[0].length);
-    const insertionPoint = lineEnd < 0 ? text.length : lineEnd + 1;
-    return `${text.slice(0, insertionPoint)}\n${region}\n${text.slice(insertionPoint)}`;
-  }
-  return `${text.replace(/\s*$/, '')}\n\n## Key Context\n\n${region}\n`;
 }
 
 function sectionLines(text, heading, maximum) {
@@ -244,9 +233,15 @@ async function gardenEntities({
     const state = withLock(paths.GARDENER_STATE_FILE, () => loadGardenerState(paths.GARDENER_STATE_FILE));
     const meetings = meetingSignals(paths.MEETINGS_DIR);
     const candidates = [];
+    const pendingPages = new Set(
+      loadPendingStore(paths.VAULT_ROOT).batches
+        .filter(batch => batch.scope === 'gardener')
+        .flatMap(batch => batch.ops.map(operation => operation.path)),
+    );
 
     for (const filePath of personPages(paths.PEOPLE_DIR)) {
       try {
+        if (!dryRun && pendingPages.has(filePath)) continue;
         const entity = parseEntityPage(filePath);
         if (entity.quarantined) { result.skipped += 1; continue; }
         const relativePath = path.relative(paths.VAULT_ROOT, filePath).split(path.sep).join('/');
@@ -310,7 +305,7 @@ async function gardenEntities({
           signal,
           inputHash,
           expectedOutputHash: observedOutputHash,
-          resumeOutput: resumeRequested ? currentOutput : null,
+          entityIdentity: identityForEntity(entity),
           saved,
         });
       } catch (error) {
@@ -328,33 +323,45 @@ async function gardenEntities({
 
     const selected = candidates.slice(0, maximum);
     result.skipped += candidates.length - selected.length;
+    const operations = [];
+    const effects = [];
     for (const candidate of selected) {
       try {
         const output = cleanOutput(await generate(promptFor(candidate.signal)));
         if (!output) { result.skipped += 1; continue; }
-        if (!dryRun) {
-          const latestText = fs.readFileSync(candidate.filePath, 'utf8');
-          const latestOutput = machineRegion(latestText, REGION_SLUG);
-          if (latestOutput === null && latestText.includes(REGION_START)) {
-            result.skipped += 1;
-            log(`Gardener preserved ${candidate.relativePath}: malformed-region`);
-            continue;
-          }
-          if (sha1(latestOutput || '') !== candidate.expectedOutputHash) {
-            candidate.saved.blocks = blockState(candidate.saved);
-            candidate.saved.blocks[REGION_SLUG] = { owner: 'user', reason: 'user-edited' };
-            savePageState(paths.GARDENER_STATE_FILE, candidate.relativePath, candidate.saved);
-            result.preserved += 1;
-            result.skipped += 1;
-            log(`Gardener preserved ${candidate.relativePath}: user-owned ${REGION_SLUG}`);
-            continue;
-          }
-          const resumedText = candidate.resumeOutput === null
-            ? latestText
-            : replaceMachineRegion(latestText, REGION_SLUG, candidate.resumeOutput);
-          const withRegion = ensureSummaryRegion(resumedText);
-          atomicWritePage(candidate.filePath, replaceMachineRegion(withRegion, REGION_SLUG, output));
-          const nextState = {
+        if (dryRun) {
+          result.gardened.push(candidate.relativePath);
+          continue;
+        }
+        const latestText = fs.readFileSync(candidate.filePath, 'utf8');
+        const latestOutput = machineRegion(latestText, REGION_SLUG);
+        // Never clobber user prose when the region is malformed (TOCTOU re-check, #144).
+        if (latestOutput === null && latestText.includes(REGION_START)) {
+          result.skipped += 1;
+          log(`Gardener preserved ${candidate.relativePath}: malformed-region`);
+          continue;
+        }
+        if (sha1(latestOutput || '') !== candidate.expectedOutputHash) {
+          candidate.saved.blocks = blockState(candidate.saved);
+          candidate.saved.blocks[REGION_SLUG] = { owner: 'user', reason: 'user-edited' };
+          savePageState(paths.GARDENER_STATE_FILE, candidate.relativePath, candidate.saved);
+          result.preserved += 1;
+          result.skipped += 1;
+          log(`Gardener preserved ${candidate.relativePath}: user-owned ${REGION_SLUG}`);
+          continue;
+        }
+        operations.push({
+          op: 'mutate',
+          path: candidate.filePath,
+          entity_identity: candidate.entityIdentity,
+          intent: {
+            kind: 'gardener-summary',
+            region_projection: output,
+          },
+        });
+        effects.push({
+          relative_path: candidate.relativePath,
+          page_state: {
             ...candidate.saved,
             last_gardened: nowDate.toISOString(),
             input_hash: candidate.inputHash,
@@ -363,12 +370,37 @@ async function gardenEntities({
               ...blockState(candidate.saved),
               [REGION_SLUG]: { owner: 'dex' },
             },
-          };
-          savePageState(paths.GARDENER_STATE_FILE, candidate.relativePath, nextState);
-        }
-        result.gardened.push(candidate.relativePath);
+          },
+        });
       } catch (error) {
         result.errors.push({ page: candidate.relativePath, error: error.message });
+      }
+    }
+    if (!dryRun) {
+      const write = flushEntityOps({
+        vaultRoot: paths.VAULT_ROOT,
+        ops: operations,
+        scope: 'gardener',
+        metadata: { effects },
+        now: nowDate,
+      });
+      for (const batch of write.completed_batches) {
+        for (const effect of batch.metadata?.effects || []) {
+          savePageState(
+            paths.GARDENER_STATE_FILE,
+            effect.relative_path,
+            effect.page_state,
+          );
+          if (!result.gardened.includes(effect.relative_path)) {
+            result.gardened.push(effect.relative_path);
+          }
+        }
+      }
+      if (!write.ok) {
+        result.errors.push({
+          page: null,
+          error: write.error || 'Gardener entity writes remain pending',
+        });
       }
     }
   } catch (error) {

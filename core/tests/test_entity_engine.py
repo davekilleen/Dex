@@ -2,8 +2,10 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
 import yaml
 
+import core.entity_engine as entity_engine
 import core.entity_engine.write as entity_write
 from core.entity_engine import (
     create_page_if_absent,
@@ -61,6 +63,43 @@ def test_composite_mutation_uses_one_atomic_replace(
     assert text.index("## Relationships") < text.index("## Update Log")
     assert text.count("- projected once") == 1
     assert "User-authored note." in text
+
+
+def test_composite_mutation_can_preserve_a_legacy_body_rewrite(
+    tmp_path: Path,
+) -> None:
+    page = tmp_path / "Legacy.md"
+    page.write_text(
+        "---\n"
+        "type: person\n"
+        "name: Legacy Person\n"
+        "last_interaction: 2026-01-01\n"
+        "dex_pinned: {}\n"
+        "dex_last_written: {last_interaction: 2026-01-01}\n"
+        "---\n"
+        "# Legacy Person\n\n"
+        "## Meetings\n\n"
+        "- Older meeting\n",
+        encoding="utf-8",
+    )
+    replacement = page.read_text(encoding="utf-8").replace(
+        "## Meetings\n",
+        "## Meetings\n"
+        "- [Roadmap](00-Inbox/Meetings/roadmap.md) — 2026-07-10\n",
+    )
+
+    result = mutate_page(
+        page,
+        fingerprint_page(page),
+        replacement_content=replacement,
+        field_changes={"last_interaction": "2026-07-10"},
+    )
+
+    assert result.status == "updated"
+    text = page.read_text(encoding="utf-8")
+    assert "last_interaction: '2026-07-10'" in text
+    assert "- [Roadmap](00-Inbox/Meetings/roadmap.md) — 2026-07-10" in text
+    assert "- Older meeting" in text
 
 
 def test_fingerprint_mismatch_returns_conflict_without_clobber(
@@ -204,6 +243,111 @@ def test_update_log_renderer_combines_every_reconstructible_fact_deterministical
         )
         == expected
     )
+
+
+def test_relationship_intent_uses_one_atomic_write_with_region_and_provenance(
+    tmp_path: Path, monkeypatch
+) -> None:
+    page = tmp_path / "Related.md"
+    page.write_text(
+        "---\n"
+        "type: person\n"
+        "name: Related Person\n"
+        "dex_pinned: {}\n"
+        "dex_last_written: {type: person, name: Related Person}\n"
+        "---\n"
+        "# Related Person\n",
+        encoding="utf-8",
+    )
+    real_atomic_replace = entity_write._atomic_replace
+    replace_calls = []
+
+    def counting_replace(path: Path, content: bytes) -> None:
+        replace_calls.append((path, content))
+        real_atomic_replace(path, content)
+
+    monkeypatch.setattr(entity_write, "_atomic_replace", counting_replace)
+
+    result = entity_engine.mutate_relationships(
+        page,
+        fingerprint_page(page),
+        {
+            "kind": "relationship",
+            "relationships": [
+                {
+                    "type": "works_at",
+                    "target_id": "05-Areas/Companies/Acme.md",
+                    "target_ref": "[[Acme]]",
+                    "source": {
+                        "kind": "domain-match",
+                        "id": "acme.test",
+                        "date": "2026-07-23",
+                    },
+                    "confidence": "suggested",
+                }
+            ],
+        },
+    )
+
+    text = page.read_text(encoding="utf-8")
+    frontmatter = _frontmatter(page)
+    assert result.status == "updated"
+    assert len(replace_calls) == 1
+    assert frontmatter["relationships"] == [
+        {
+            "type": "works_at",
+            "target": "[[Acme]]",
+            "status": "suggested",
+            "source": {"kind": "domain-match", "id": "acme.test"},
+            "date": "2026-07-23",
+        }
+    ]
+    assert frontmatter["dex_last_written"]["relationships"] == frontmatter[
+        "relationships"
+    ]
+    assert (
+        "<!-- dex:auto:relationships -->\n"
+        "### works_at\n"
+        "- [[Acme]] (suggested)\n"
+        "<!-- /dex:auto -->"
+    ) in text
+    assert (
+        "<!-- dex:auto:update-log -->\n"
+        "- 2026-07-23 — relationship · works_at — [[Acme]]\n"
+        "<!-- /dex:auto -->"
+    ) in text
+
+
+def test_relationship_intent_rejects_unknown_type_before_writing(
+    tmp_path: Path,
+) -> None:
+    page = tmp_path / "Related.md"
+    page.write_text("# Related\n", encoding="utf-8")
+    original = page.read_bytes()
+
+    with pytest.raises(ValueError, match="unknown relationship type"):
+        entity_engine.mutate_relationships(
+            page,
+            fingerprint_page(page),
+            {
+                "kind": "relationship",
+                "relationships": [
+                    {
+                        "type": "owns",
+                        "target_id": None,
+                        "target_ref": "[[Acme]]",
+                        "source": {
+                            "kind": "manual",
+                            "id": "manual-1",
+                            "date": "2026-07-23",
+                        },
+                        "confidence": "suggested",
+                    }
+                ],
+            },
+        )
+
+    assert page.read_bytes() == original
 
 
 def test_composite_mutation_never_overwrites_pinned_fields(tmp_path: Path) -> None:

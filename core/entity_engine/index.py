@@ -38,8 +38,13 @@ _GOES_BY_RE = re.compile(
 )
 _INVERSE_EDGE_LABELS = {
     "works_at": "employs",
+    "reports_to": "manages",
     "part_of": "contains",
+    "stakeholder_on": "has_stakeholder",
+    "deal_with": "deal_with",
+    "related_to": "related_to",
 }
+_WIKILINK_RE = re.compile(r"^\[\[([^|\]]+)(?:\|[^\]]+)?\]\]$")
 _T = TypeVar("_T")
 
 _SCHEMA = """
@@ -352,6 +357,59 @@ def _company_compatibility_entry(
     }
 
 
+def _relationship_target_id(
+    connection: sqlite3.Connection,
+    target_ref: str,
+) -> str | None:
+    """Resolve an edge target through canonical ids, keys, names, or wikilinks."""
+    target = target_ref.strip()
+    wikilink = _WIKILINK_RE.fullmatch(target)
+    if wikilink:
+        target = wikilink.group(1).strip()
+    if not target:
+        return None
+
+    candidates: set[str] = set()
+    direct = connection.execute(
+        "SELECT id FROM nodes WHERE id = ?",
+        (target,),
+    ).fetchall()
+    candidates.update(row[0] for row in direct)
+
+    folded = target.casefold()
+    keyed = connection.execute(
+        "SELECT node_id FROM node_keys WHERE value = ?",
+        (folded,),
+    ).fetchall()
+    candidates.update(row[0] for row in keyed)
+
+    for node_id, name, source_path in connection.execute(
+        "SELECT id, name, source_path FROM nodes"
+    ):
+        if isinstance(name, str) and name.casefold() == folded:
+            candidates.add(node_id)
+            continue
+        source_stem = Path(source_path).stem.replace("_", " ")
+        target_stem = Path(target).stem.replace("_", " ")
+        if source_stem.casefold() == target_stem.casefold():
+            candidates.add(node_id)
+    return next(iter(candidates)) if len(candidates) == 1 else None
+
+
+def _resolve_edge_destinations(connection: sqlite3.Connection) -> None:
+    """Refresh disposable edge destinations after every node reconciliation."""
+    rows = connection.execute(
+        "SELECT rowid, dst_ref FROM edges"
+    ).fetchall()
+    connection.executemany(
+        "UPDATE edges SET dst_id = ? WHERE rowid = ?",
+        [
+            (_relationship_target_id(connection, dst_ref), rowid)
+            for rowid, dst_ref in rows
+        ],
+    )
+
+
 def _project_source(
     connection: sqlite3.Connection,
     prepared: _PreparedSource,
@@ -449,6 +507,79 @@ def _project_source(
     connection.executemany(
         "INSERT OR IGNORE INTO node_keys(node_id, kind, value) VALUES (?, ?, ?)",
         [(source.relative_path, kind, value) for kind, value in keys],
+    )
+    touch_rows = []
+    for touch in parsed.get("touches") or []:
+        if not isinstance(touch, dict):
+            continue
+        timestamp = touch.get("ts")
+        touch_type = touch.get("type")
+        direction = touch.get("direction")
+        nature = touch.get("nature")
+        if any(
+            isinstance(value, (dict, list))
+            for value in (timestamp, touch_type, direction, nature)
+        ):
+            continue
+        if not timestamp or not touch_type:
+            continue
+        timestamp = str(timestamp)
+        touch_type = str(touch_type)
+        direction = str(direction) if direction is not None else None
+        nature = str(nature) if nature is not None else None
+        touch_source = touch.get("source")
+        if isinstance(touch_source, dict):
+            touch_source = touch_source.get("id")
+            if touch_source is not None:
+                touch_source = str(touch_source)
+        elif touch_source is not None:
+            touch_source = str(touch_source)
+        touch_rows.append(
+            (
+                source.relative_path,
+                timestamp,
+                touch_type,
+                direction,
+                touch_source,
+                nature,
+                source.relative_path,
+            )
+        )
+    connection.executemany(
+        """
+        INSERT OR IGNORE INTO touches(
+            node_id, ts, touch_type, direction, source, nature, source_path
+        ) VALUES (?, ?, ?, ?, ?, ?, ?)
+        """,
+        touch_rows,
+    )
+    edge_rows: set[tuple[str, str, str | None, str, str]] = set()
+    for relationship in parsed.get("relationships") or []:
+        if not isinstance(relationship, dict):
+            continue
+        edge_type = relationship.get("type")
+        target_ref = relationship.get("target")
+        if not isinstance(edge_type, str) or not isinstance(target_ref, str):
+            continue
+        target_ref = target_ref.strip()
+        if not edge_type or not target_ref:
+            continue
+        edge_rows.add(
+            (
+                source.relative_path,
+                edge_type,
+                _relationship_target_id(connection, target_ref),
+                target_ref,
+                source.relative_path,
+            )
+        )
+    connection.executemany(
+        """
+        INSERT OR IGNORE INTO edges(
+            src_id, edge_type, dst_id, dst_ref, source_path
+        ) VALUES (?, ?, ?, ?, ?)
+        """,
+        sorted(edge_rows, key=lambda row: (row[1], row[3], row[0])),
     )
 
 
@@ -637,6 +768,7 @@ def _reconcile_open_database(
                 indexed_at=indexed_at,
             )
             changed += 1
+        _resolve_edge_destinations(connection)
         connection.execute(
             """
             INSERT INTO meta(key, value) VALUES ('built_at', ?)
@@ -667,6 +799,30 @@ def reconcile(
     """Reconcile the materialized view using a complete path-set diff."""
     root = Path(vault_root)
     db_path = database_path(root)
+    rebuild = False
+    if db_path.exists():
+        try:
+            with closing(connect(db_path)) as connection:
+                has_meta = connection.execute(
+                    """
+                    SELECT 1 FROM sqlite_master
+                    WHERE type = 'table' AND name = 'meta'
+                    """
+                ).fetchone()
+                version = (
+                    connection.execute(
+                        "SELECT value FROM meta WHERE key = 'schema_version'"
+                    ).fetchone()
+                    if has_meta
+                    else None
+                )
+                rebuild = version is None or version[0] != SCHEMA_VERSION
+        except sqlite3.Error as error:
+            if not _is_corruption(error):
+                raise
+            rebuild = True
+    if rebuild:
+        remove_database(db_path)
     sources = _scan_sources(
         root,
         people_dir=people_dir,

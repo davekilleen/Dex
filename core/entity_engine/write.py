@@ -19,10 +19,14 @@ from typing import Any, Iterable, Literal, Mapping
 from core.paths import COMPANIES_DIR, PEOPLE_DIR
 
 from .contract import (
+    RELATIONSHIP_TYPES,
+    _normalise_relationships,
     _split_frontmatter,
     ensure_region,
     merge_frontmatter_text,
     ordered_region_slugs,
+    render_relationships,
+    render_update_log,
     replace_machine_region,
 )
 
@@ -149,6 +153,7 @@ def _build_mutation(
     page_path: Path,
     original_bytes: bytes,
     *,
+    replacement_content: str | None,
     field_changes: Mapping[str, Any] | None,
     ensure_regions: Iterable[str] | None,
     region_projections: Mapping[str, str] | None,
@@ -160,7 +165,9 @@ def _build_mutation(
     if quarantined:
         return None, True
 
-    updated = text
+    updated = text if replacement_content is None else replacement_content
+    if updated.startswith("\ufeff"):
+        updated = updated[1:]
     if field_changes:
         merged = merge_frontmatter_text(page_path, updated, field_changes)
         if merged is None:
@@ -181,6 +188,7 @@ def mutate_page(
     path: str | Path,
     base_fingerprint: str,
     *,
+    replacement_content: str | None = None,
     field_changes: Mapping[str, Any] | None = None,
     ensure_regions: Iterable[str] | None = None,
     region_projections: Mapping[str, str] | None = None,
@@ -206,6 +214,7 @@ def mutate_page(
     updated_bytes, quarantined = _build_mutation(
         page_path,
         original_bytes,
+        replacement_content=replacement_content,
         field_changes=field_changes,
         ensure_regions=ensure_regions,
         region_projections=region_projections,
@@ -222,6 +231,161 @@ def mutate_page(
     ):
         return Result("conflict", False)
     return Result("updated", True, _fingerprint(updated_bytes))
+
+
+def _region_content(text: str, slug: str) -> str:
+    start = f"<!-- dex:auto:{slug} -->"
+    end = "<!-- /dex:auto -->"
+    start_index = text.find(start)
+    if start_index < 0:
+        return ""
+    content_start = start_index + len(start)
+    end_index = text.find(end, content_start)
+    if end_index < 0:
+        return ""
+    return text[content_start:end_index].strip("\r\n")
+
+
+def _persisted_relationships(
+    intent: Mapping[str, Any],
+) -> list[dict[str, Any]]:
+    if intent.get("kind") != "relationship":
+        raise ValueError("relationship intent kind must be relationship")
+    candidates = intent.get("relationships")
+    if not isinstance(candidates, list) or not candidates:
+        raise ValueError("relationship intent requires relationships")
+
+    persisted = []
+    for candidate in candidates:
+        if not isinstance(candidate, Mapping):
+            raise ValueError("relationship intent entries must be objects")
+        if candidate.get("confidence") != "suggested":
+            raise ValueError("relationship confidence must be suggested")
+        source = candidate.get("source")
+        if not isinstance(source, Mapping):
+            raise ValueError("relationship source must be an object")
+        persisted.append(
+            {
+                "type": candidate.get("type"),
+                "target": candidate.get("target_ref"),
+                "status": "suggested",
+                "source": {
+                    "kind": source.get("kind"),
+                    "id": source.get("id"),
+                },
+                "date": source.get("date"),
+            }
+        )
+    normalised = _normalise_relationships(persisted, strict=True)
+    assert normalised is not None
+    return normalised
+
+
+def _relationships_from_text(text: str) -> list[dict[str, Any]]:
+    frontmatter, _body, _had_frontmatter, quarantined = _split_frontmatter(
+        text
+    )
+    if quarantined or frontmatter is None:
+        return []
+    return (
+        _normalise_relationships(frontmatter.get("relationships"))
+        or []
+    )
+
+
+def _relationship_sort_key(
+    relationship: Mapping[str, Any],
+) -> tuple[int, str, str, str]:
+    return (
+        RELATIONSHIP_TYPES.index(str(relationship["type"])),
+        str(relationship["target"]).casefold(),
+        str(relationship["target"]),
+        str(relationship["date"]),
+    )
+
+
+def mutate_relationships(
+    path: str | Path,
+    base_fingerprint: str,
+    intent: Mapping[str, Any],
+) -> Result:
+    """Materialize one relationship intent through the canonical page CAS."""
+    page_path = Path(path)
+    original_bytes = page_path.read_bytes()
+    original, _had_bom = _decode_page(original_bytes)
+    current = _relationships_from_text(original)
+    incoming = _persisted_relationships(intent)
+
+    by_edge = {
+        (relationship["type"], relationship["target"].casefold()):
+        relationship
+        for relationship in current
+    }
+    for relationship in incoming:
+        key = (
+            relationship["type"],
+            relationship["target"].casefold(),
+        )
+        by_edge.setdefault(key, relationship)
+    proposed = sorted(by_edge.values(), key=_relationship_sort_key)
+
+    preview = merge_frontmatter_text(
+        page_path,
+        original,
+        {"relationships": proposed},
+    )
+    if preview is None:
+        return mutate_page(
+            page_path,
+            base_fingerprint,
+            field_changes={"relationships": proposed},
+        )
+    effective = _relationships_from_text(preview)
+    current_edges = {
+        (relationship["type"], relationship["target"].casefold())
+        for relationship in current
+    }
+    newly_written = [
+        relationship
+        for relationship in effective
+        if (
+            relationship["type"],
+            relationship["target"].casefold(),
+        )
+        not in current_edges
+    ]
+
+    existing_update_lines = _region_content(
+        original,
+        "update-log",
+    ).splitlines()
+    provenance = render_update_log(
+        relationship_provenance=[
+            {
+                "date": relationship["date"],
+                "type": relationship["type"],
+                "target_ref": relationship["target"],
+            }
+            for relationship in newly_written
+        ]
+    )
+    update_lines = sorted(
+        {
+            line
+            for line in [*existing_update_lines, *provenance.splitlines()]
+            if line
+        }
+    )
+    return mutate_page(
+        page_path,
+        base_fingerprint,
+        field_changes={"relationships": proposed},
+        ensure_regions=("relationships", "update-log"),
+        region_projections={
+            "relationships": render_relationships(effective),
+            "update-log": "\n".join(update_lines),
+        },
+    )
 
 
 def create_page_if_absent(
@@ -269,6 +433,7 @@ def upsert_frontmatter(
         updated, quarantined = _build_mutation(
             page_path,
             original_bytes,
+            replacement_content=None,
             field_changes=fields,
             ensure_regions=None,
             region_projections=None,

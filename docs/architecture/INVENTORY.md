@@ -1,6 +1,6 @@
 <!-- GENERATED FILE — DO NOT EDIT BY HAND. -->
 <!-- Generator: scripts/generate-architecture-inventory.py -->
-<!-- Content SHA-256: 7b789f22c551ff6f6fedcb79d82e947d647c023fbbd11bb060b00c6adff50e75 -->
+<!-- Content SHA-256: eaece4ef195792dbce16aae2ba722b510bb83bb3ecec57ee972a3789b0408c71 -->
 
 # Architecture Inventory
 
@@ -20,12 +20,12 @@ This inventory is derived only from repository code and shipped skill files.
 | `dex-onboarding-mcp` | `core/mcp/onboarding_server.py` | 8 | no | `check_onboarding_complete`, `cleanup_qa_session`, `finalize_onboarding`, `get_onboarding_status`, `save_calendar_selection`, `start_onboarding_session`, `validate_and_save_step`, `verify_dependencies` |
 | `dex-resume-mcp` | `core/mcp/resume_server.py` | 12 | yes | `add_role`, `compile_resume`, `export_resume`, `extract_achievements`, `generate_linkedin`, `generate_role_writeup`, `list_sessions`, `load_session`, `pull_career_evidence`, `save_session`, `start_session`, `validate_metrics` |
 | `dex-session-memory` | `core/mcp/session_memory_server.py` | 8 | no | `get_entity_timeline`, `get_observation_timeline`, `get_recent_decisions`, `get_recent_tool_usage`, `get_session_context`, `get_session_summary`, `search_observations`, `search_sessions` |
-| `dex-work-mcp` | `core/mcp/work_server.py` | 43 | yes | `analyze_calendar_capacity`, `build_company_index`, `build_people_index`, `capture_skill_rating`, `check_goal_alignment`, `check_priority_limits`, `classify_task_effort`, `complete_weekly_priority`, `confirm_goal_link`, `create_company`, `create_person`, `create_quarterly_goal`, `create_task`, `create_weekly_priority`, `get_blocked_tasks`, `get_commitments_due`, `get_goal_status`, `get_meeting_context`, `get_pillar_summary`, `get_quarter_velocity`, `get_quarterly_goals`, `get_skill_ratings`, `get_system_status`, `get_week_priorities`, `get_week_progress`, `get_weekly_planning_context`, `get_work_summary`, `list_companies`, `list_tasks`, `lookup_person`, `migrate_quarterly_goals`, `migrate_weekly_priorities`, `process_inbox_with_dedup`, `query_meeting_cache`, `rebuild_meeting_cache`, `record_external_task_mapping`, `refresh_company`, `suggest_focus`, `suggest_task_scheduling`, `sync_external_tasks`, `sync_task_refs`, `update_goal_progress`, `update_task_status` |
+| `dex-work-mcp` | `core/mcp/work_server.py` | 44 | yes | `analyze_calendar_capacity`, `build_company_index`, `build_people_index`, `capture_skill_rating`, `check_goal_alignment`, `check_priority_limits`, `classify_task_effort`, `complete_weekly_priority`, `confirm_goal_link`, `create_company`, `create_person`, `create_quarterly_goal`, `create_task`, `create_weekly_priority`, `detect_soft_commitments`, `get_blocked_tasks`, `get_commitments_due`, `get_goal_status`, `get_meeting_context`, `get_pillar_summary`, `get_quarter_velocity`, `get_quarterly_goals`, `get_skill_ratings`, `get_system_status`, `get_week_priorities`, `get_week_progress`, `get_weekly_planning_context`, `get_work_summary`, `list_companies`, `list_tasks`, `lookup_person`, `migrate_quarterly_goals`, `migrate_weekly_priorities`, `process_inbox_with_dedup`, `query_meeting_cache`, `rebuild_meeting_cache`, `record_external_task_mapping`, `refresh_company`, `suggest_focus`, `suggest_task_scheduling`, `sync_external_tasks`, `sync_task_refs`, `update_goal_progress`, `update_task_status` |
 
 ## Skills
 
-**Skill count:** 70<br>
-**Discoverability-risk count:** 4
+**Skill count:** 74<br>
+**Discoverability-risk count:** 3
 
 A description has a trigger when its frontmatter contains the word `when` or `whenever` (case-insensitive). Length is measured in characters.
 
@@ -49,6 +49,7 @@ A description has a trigger when its frontmatter contains the word `when` or `wh
 | `anthropic-xlsx` | `.claude/skills/anthropic-xlsx/SKILL.md` | Comprehensive spreadsheet creation, editing, and analysis with support for formulas, formatting, data analysis, and visualization. When Claude needs to work with spreadsheets (.xlsx, .xlsm, .csv, .tsv, etc) for: (1) Creating new spreadsheets with formulas and formatting, (2) Reading or analyzing data, (3) Modify existing spreadsheets while preserving formulas, (4) Data analysis and visualization in spreadsheets, or (5) Recalculating formulas | 445 | when |
 | `atlassian-setup` | `.claude/skills/atlassian-setup/SKILL.md` | Connect Jira and Confluence for project tracking and knowledge search. Use when the user says 'connect Jira', 'hook up Confluence', 'my tickets/board'. Not for a personal task app like Todoist/Things/Trello; use `todoist-setup`/`things-setup`/`trello-setup`. | 258 | when |
 | `calendar-setup` | `.claude/skills/calendar-setup/SKILL.md` | Grant Python calendar access for ~30x faster calendar queries. Use when the user says 'connect my calendar', 'calendar is slow', 'set up calendar access'. Not for connecting Google Workspace as a whole; use `google-workspace-setup`. | 232 | when |
+| `commitments` | `.claude/skills/commitments/SKILL.md` | Reconcile the promises you made and the asks you received across meetings and notes into a clear owner/due/source list, then — only with your confirmation — turn the real ones into tracked tasks. Use when the user says 'what did I promise', 'what am I on the hook for', 'anything I owe people', 'loose ends', or after a run of meetings. Also use proactively during daily-plan/daily-review when uncaptured commitments surface. Not for tracking work you handed off to others; use `delegate-check`. Not for recording a decision you made; use `decision-log`. | 554 | when |
 | `create-mcp` | `.claude/skills/create-mcp/SKILL.md` | Build a brand-new MCP integration from scratch with a guided wizard. Use when the user wants Dex to talk to a tool that has no existing server — 'build an integration for X', 'Dex can't connect to Y yet'. Not for installing an MCP that already exists; use `integrate-mcp`. Not for a prompt-only workflow with no external tool; use `create-skill`. | 346 | when |
 | `create-skill` | `.claude/skills/create-skill/SKILL.md` | Author a new Dex skill — a reusable `/command` — that actually fires and passes the quality bar. Runs a collision check, classifies the shape, writes a router-grade description, generates the real package (SKILL.md + evals), and grades it with `skill-score` before calling it done. Use when the user says 'make a skill', 'I want a /command for X', 'turn this into a skill'. A skill the user builds for themselves is saved as `-custom` (protected from updates) and coached, never blocked; a first-party skill is held to the hard gate. Not for connecting an external tool; use `create-mcp`. Not for grading a skill that already exists; use `skill-score`. | 652 | when |
 | `daily-plan` | `.claude/skills/daily-plan/SKILL.md` | Build today's plan from calendar, tasks, priorities and commitments, with smart scheduling suggestions. Use when the user says 'plan my day', 'what's on today', 'help me focus', or starts the morning. Also use proactively at the first session of the day. Not for reviewing a finished day; use `daily-review`. | 308 | when |
@@ -77,17 +78,20 @@ A description has a trigger when its frontmatter contains the word `when` or `wh
 | `granola-setup` | `.claude/skills/granola-setup/SKILL.md` | Connect Granola via its official API for automatic meeting sync and transcripts. Use when the user says 'connect Granola', 'my meetings aren't syncing', 'set up meeting notes'. Not for Zoom recordings; use `zoom-setup`. Not for processing meetings already synced; use `process-meetings`. | 287 | when |
 | `identity-snapshot` | `.claude/skills/identity-snapshot/SKILL.md` | Generate a living profile of the user's working patterns, decision tendencies and quality preferences from their Dex data. Use when the user says 'what are my patterns', 'how do I work', or during `week-review`. Also use proactively when the model (older than 7 days) is stale. Not for planning a week; use `week-plan`. | 319 | when |
 | `industry-truths` | `.claude/skills/industry-truths/SKILL.md` | Define time-horizoned assumptions about your industry (today / 6mo / 12mo) that ground strategic thinking. Use when the user is making roadmap, positioning or investment calls, or says 'what am I assuming about the market'. Also use proactively before a big strategic recommendation. Not for capturing a single decision; use `decision-log`. | 340 | when |
+| `initiative-kickoff` | `.claude/skills/initiative-kickoff/SKILL.md` | Turn a decision to start something new — a hire, a partnership, a go-to-market push, an internal bet — into a real initiative: the outcome and why now, what success looks like, who's involved, the first concrete steps, and a project page that ladders to your pillars and goals. Use when the user says 'let's kick off X', 'I'm starting a new initiative', 'set up a project for this', or 'we've decided to do Y'. Also use proactively when the user commits to a new effort mid-conversation. Not for spec'ing a product feature or writing a PRD; use `product-brief`. Not for checking the status of projects already underway; use `project-health`. | 641 | when |
 | `integrate-mcp` | `.claude/skills/integrate-mcp/SKILL.md` | Install and wire up an existing MCP server from Smithery.ai or a GitHub repo. Use when the user names a tool that already has a server — 'add the Notion MCP', 'install this Smithery server'. Not for building a new integration from nothing; use `create-mcp`. Not for adding one already-known server safely; use `dex-add-mcp`. | 324 | when |
 | `journal` | `.claude/skills/journal/SKILL.md` | Toggle journaling or start a morning/evening/weekly journal entry. Use when the user says 'journal', 'morning pages', 'evening reflection'. Also use proactively when a journaling-enabled user starts/ends the day. Not for a structured end-of-day work review; use `daily-review`. | 277 | when |
 | `manage-capabilities` | `.claude/skills/manage-capabilities/SKILL.md` | Turn optional Dex rooms/features on or off without deleting any content. Use when the user says 'turn off X', 'enable the career room', 'hide a feature I don't use'. Not for diagnosing breakage; use `dex-doctor`. Not for a full role restructure; use `reset`. | 258 | when |
+| `meeting-closeout` | `.claude/skills/meeting-closeout/SKILL.md` | Close out the meeting you just had while it's fresh — lock the decisions, the action items and who owns each, what you personally committed to, and the single next step — then capture it and, only with your OK, turn the actions into tracked tasks. Use when the user says 'wrap up this meeting', 'close out my 3pm', 'here are my notes from the call', or right after a meeting ends. Also use proactively when the user pastes raw notes from a meeting that just happened. Not for bulk-processing many already-synced meetings; use `process-meetings`. Not for prepping a meeting that hasn't happened yet; use `meeting-prep`. | 618 | when |
 | `meeting-prep` | `.claude/skills/meeting-prep/SKILL.md` | Prepare for a specific upcoming meeting by gathering attendee context, history and related topics. Use when the user says 'prep me for my meeting with X', 'what do I need for the 2pm', or before a calendar event. Also use proactively when a meeting is imminent. Not for writing up a meeting that already happened; use `process-meetings`. | 337 | when |
 | `ms-teams-setup` | `.claude/skills/ms-teams-setup/SKILL.md` | Connect Microsoft Teams for cross-channel context awareness. Use when the user says 'connect Teams', 'hook up Microsoft'. Not for Google email/calendar; use `google-workspace-setup`. | 182 | when |
 | `process-meetings` | `.claude/skills/process-meetings/SKILL.md` | Turn synced meetings into updated person pages, extracted tasks and organized notes. Use when the user says 'process my meetings', 'catch up my notes', or after Granola/Otter syncs. Also use proactively when unprocessed meetings exist. Not for prepping an upcoming meeting; use `meeting-prep`. | 293 | when |
 | `product-brief` | `.claude/skills/product-brief/SKILL.md` | Extract a product idea through guided questions and generate a PRD. Use when the user says 'write a PRD', 'spec this feature', 'turn this idea into a brief'. Not for a non-product initiative like hiring or partnerships (use `initiative-kickoff` once shipped); not for checking existing projects' status (use `project-health`). | 326 | when |
 | `project-health` | `.claude/skills/project-health/SKILL.md` | Scan active projects for status, blockers and next actions. Use when the user says 'how are my projects', 'what's stuck', 'project status'. Also use proactively when projects have gone quiet. Not for writing a spec for a new product idea; use `product-brief`. | 259 | when |
 | `prompt-improver` | `.claude/skills/prompt-improver/SKILL.md` | Rewrite a vague prompt into a rich, structured one, with automatic fallback. Use when the user says 'improve this prompt', 'make this prompt better', or hands over a thin instruction. Not for creating a reusable skill; use `create-skill`. | 238 | when |
+| `relationship-radar` | `.claude/skills/relationship-radar/SKILL.md` | Spot the relationships going cold — people you were in regular contact with and haven't touched in a while, and important contacts who are slipping — ranked by how stale each has become, so you can reconnect before it costs you. Use when the user says 'who should I reach out to', 'who am I losing touch with', 'who's going cold', 'who needs attention', or during a weekly review. Also use proactively when someone important hasn't come up in a long time. Not for prepping a specific upcoming meeting; use `meeting-prep`. Not for specific promises you owe people; use `commitments`. | 582 | when |
 | `reset` | `.claude/skills/reset/SKILL.md` | Restructure an existing Dex vault for a new role or changed preferences, without losing data. Use when the user says 'I changed jobs', 'restructure my Dex', 'my role is different now'. Not for first-time setup; use `setup`. Not for just toggling one feature; use `manage-capabilities`. | 285 | when |
-| `review` | `.claude/skills/review/SKILL.md` | End of day review with learning capture. Integrates with evening journaling if enabled. | 87 | **discoverability-risk** |
+| `review` | `.claude/skills/review/SKILL.md` | Deprecation alias for `daily-review`. The end-of-day review was renamed; `/review` now redirects to `daily-review` and will be removed after one release. Use when the user types `/review` out of habit — hand straight off to `daily-review`, which owns end-of-day review and learning capture. Not for running the review here; use `daily-review`. | 343 | when |
 | `save-insight` | `.claude/skills/save-insight/SKILL.md` | Capture a reusable learning from completed work so future similar work is easier. Use when the user says 'save this learning', 'capture this insight', or finishes something tricky. Also use proactively after non-routine work. Not for recording a *decision* and its rationale; use `decision-log`. | 295 | when |
 | `scrape` | `.claude/skills/scrape/SKILL.md` | Scrape web pages via Scrapling — stealth fetching, anti-bot bypass, CSS selectors, no API key. Use when the user says 'scrape', 'pull data from this URL', 'extract from this site'. Not for meaning-based search of the user's own vault; use `enable-semantic-search`. | 264 | when |
 | `setup` | `.claude/skills/setup/SKILL.md` | Run first-time Dex onboarding: build the vault structure, capture the user profile and configure MCPs. Use when `04-Projects/` doesn't exist yet or the user says 'set up Dex', 'start onboarding'. Not for the post-onboarding tour; use `getting-started`. Not for a mid-life role change; use `reset`. | 297 | when |
@@ -108,7 +112,7 @@ References are exact tool-name matches in skill bodies (frontmatter excluded). U
 
 | Server | Referencing skill count | Surface status | Skills (referenced tools) |
 | --- | ---: | --- | --- |
-| `dex-analytics` | 25 | **over-surfaced** | `create-mcp` (`track_event`); `create-skill` (`track_event`); `daily-plan` (`track_event`); `daily-review` (`track_event`); `dex-add-mcp` (`track_event`); `dex-backlog` (`track_event`); `dex-improve` (`track_event`); `dex-level-up` (`track_event`); `dex-obsidian-setup` (`track_event`); `dex-whats-new` (`track_event`); `getting-started` (`track_event`); `integrate-mcp` (`track_event`); `journal` (`track_event`); `meeting-prep` (`track_event`); `process-meetings` (`track_event`); `product-brief` (`track_event`); `project-health` (`track_event`); `prompt-improver` (`track_event`); `reset` (`track_event`); `review` (`track_event`); `save-insight` (`track_event`); `triage` (`track_event`); `week-plan` (`track_event`); `week-review` (`track_event`); `xray` (`track_event`) |
+| `dex-analytics` | 28 | **over-surfaced** | `commitments` (`track_event`); `create-mcp` (`track_event`); `create-skill` (`track_event`); `daily-plan` (`track_event`); `daily-review` (`track_event`); `dex-add-mcp` (`track_event`); `dex-backlog` (`track_event`); `dex-improve` (`track_event`); `dex-level-up` (`track_event`); `dex-obsidian-setup` (`track_event`); `dex-whats-new` (`track_event`); `getting-started` (`track_event`); `initiative-kickoff` (`track_event`); `integrate-mcp` (`track_event`); `journal` (`track_event`); `meeting-closeout` (`track_event`); `meeting-prep` (`track_event`); `process-meetings` (`track_event`); `product-brief` (`track_event`); `project-health` (`track_event`); `prompt-improver` (`track_event`); `relationship-radar` (`track_event`); `reset` (`track_event`); `save-insight` (`track_event`); `triage` (`track_event`); `week-plan` (`track_event`); `week-review` (`track_event`); `xray` (`track_event`) |
 | `dex-calendar-mcp` | 5 | normal | `daily-plan` (`calendar_get_events_with_attendees`, `calendar_get_today`, `reminders_clear_completed`, `reminders_complete_item`, `reminders_create_item`, `reminders_ensure_lists`, `reminders_find_and_complete`, `reminders_list_completed`, `reminders_list_items`); `daily-review` (`calendar_get_today`, `reminders_clear_completed`, `reminders_find_and_complete`, `reminders_list_completed`, `reminders_list_items`); `getting-started` (`calendar_get_events`); `week-plan` (`calendar_get_events_with_attendees`); `week-review` (`calendar_get_events_with_attendees`, `reminders_list_items`) |
 | `dex-career-mcp` | 0 | **under-surfaced** | — |
 | `dex-granola-mcp` | 4 | normal | `daily-plan` (`granola_get_recent_meetings`); `getting-started` (`granola_check_available`, `granola_get_recent_meetings`); `week-plan` (`granola_get_today_meetings`); `zoom-setup` (`granola_check_available`) |
@@ -116,7 +120,7 @@ References are exact tool-name matches in skill bodies (frontmatter excluded). U
 | `dex-onboarding-mcp` | 1 | normal | `getting-started` (`check_onboarding_complete`) |
 | `dex-resume-mcp` | 0 | **under-surfaced** | — |
 | `dex-session-memory` | 0 | **under-surfaced** | — |
-| `dex-work-mcp` | 7 | normal | `create-mcp` (`create_task`, `list_tasks`); `daily-plan` (`analyze_calendar_capacity`, `build_people_index`, `confirm_goal_link`, `create_task`, `get_commitments_due`, `get_meeting_context`, `get_week_progress`, `list_tasks`, `process_inbox_with_dedup`, `record_external_task_mapping`, `suggest_task_scheduling`, `update_task_status`); `daily-review` (`analyze_calendar_capacity`, `create_task`, `get_commitments_due`, `get_meeting_context`, `get_skill_ratings`, `get_week_progress`, `list_tasks`, `update_task_status`); `process-meetings` (`create_person`, `create_task`, `lookup_person`); `triage` (`create_task`); `week-plan` (`analyze_calendar_capacity`, `classify_task_effort`, `create_weekly_priority`, `get_commitments_due`, `get_goal_status`, `get_quarterly_goals`, `list_tasks`, `suggest_task_scheduling`); `week-review` (`get_goal_status`, `get_quarterly_goals`, `get_skill_ratings`, `get_week_progress`, `list_tasks`) |
+| `dex-work-mcp` | 11 | **over-surfaced** | `commitments` (`create_task`, `get_commitments_due`); `create-mcp` (`create_task`, `list_tasks`); `daily-plan` (`analyze_calendar_capacity`, `build_people_index`, `confirm_goal_link`, `create_task`, `get_commitments_due`, `get_meeting_context`, `get_week_progress`, `list_tasks`, `process_inbox_with_dedup`, `record_external_task_mapping`, `suggest_task_scheduling`, `update_task_status`); `daily-review` (`analyze_calendar_capacity`, `create_task`, `get_commitments_due`, `get_meeting_context`, `get_skill_ratings`, `get_week_progress`, `list_tasks`, `update_task_status`); `initiative-kickoff` (`confirm_goal_link`, `create_task`, `get_quarterly_goals`, `lookup_person`); `meeting-closeout` (`create_task`, `get_meeting_context`, `lookup_person`); `process-meetings` (`create_person`, `create_task`, `detect_soft_commitments`, `lookup_person`); `relationship-radar` (`build_people_index`, `create_task`); `triage` (`create_task`); `week-plan` (`analyze_calendar_capacity`, `classify_task_effort`, `create_weekly_priority`, `get_commitments_due`, `get_goal_status`, `get_quarterly_goals`, `list_tasks`, `suggest_task_scheduling`); `week-review` (`get_goal_status`, `get_quarterly_goals`, `get_skill_ratings`, `get_week_progress`, `list_tasks`) |
 
 ### Under-surfaced servers
 
@@ -126,7 +130,8 @@ References are exact tool-name matches in skill bodies (frontmatter excluded). U
 
 ### Over-surfaced servers
 
-- `dex-analytics` — 25 skills reference its tools.
+- `dex-analytics` — 28 skills reference its tools.
+- `dex-work-mcp` — 11 skills reference its tools.
 
 ## Portable ownership classes
 
@@ -136,7 +141,7 @@ Derived from `core/portable_contract.py` `RULES` and `MUTATION_POLICY`.
 | --- | ---: | --- |
 | `brain` | 44 | `replace` |
 | `seed` | 38 | `write-if-absent` |
-| `generated` | 7 | `regenerate` |
+| `generated` | 8 | `regenerate` |
 | `vault` | 17 | `never` |
 | `runtime` | 13 | `never` |
 
@@ -166,7 +171,6 @@ Derived from `core/portable_contract.py` `RULES` and `MUTATION_POLICY`.
 - `06-Resources/Dex_System/Updating_Dex.md` (file; `brain-doc-updating-dex`)
 - `AGENTS.md` (file; `brain-agents-md`)
 - `CHANGELOG.md` (file; `brain-changelog`)
-- `CLAUDE.md` (file; `brain-claude-md`)
 - `COMMERCIAL_LICENSE.md` (file; `brain-commercial-license`)
 - `CONTRIBUTING.md` (file; `brain-contributing`)
 - `DISTRIBUTION_READY.md` (file; `brain-distribution-ready`)
@@ -175,6 +179,7 @@ Derived from `core/portable_contract.py` `RULES` and `MUTATION_POLICY`.
 - `System/Beta_Communications` (dir; `brain-beta-communications`)
 - `System/README.md` (file; `brain-system-readme`)
 - `core` (dir; `brain-core`)
+- `core/data/sync-folder-markers.json` (file; `brain-sync-folder-markers`)
 - `docs` (dir; `brain-docs`)
 - `install.sh` (file; `brain-install`)
 - `package-lock.json` (file; `brain-package-lock`)
@@ -232,8 +237,9 @@ Derived from `core/portable_contract.py` `RULES` and `MUTATION_POLICY`.
 
 </details>
 
-<details><summary><code>generated</code> declared paths (7)</summary>
+<details><summary><code>generated</code> declared paths (8)</summary>
 
+- `CLAUDE.md` (file; `generated-claude-md`)
 - `System/.doctor-last-run.json` (file; `generated-doctor-last-run`)
 - `System/.installed-files.manifest` (file; `generated-manifest`)
 - `System/.local-only-preservation-transition.json` (file; `generated-local-only-transition`)

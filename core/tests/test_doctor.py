@@ -327,6 +327,125 @@ def test_entity_engine_probe_reports_default_mode_and_stale_verification(context
     assert "stale >48h" in result.detail
 
 
+def test_entity_engine_probe_surfaces_dead_letters_through_feature_status(context):
+    _write_entity_probe_files(context)
+    dead_letter = context.vault_root / "System" / ".dex" / "entity-dead-letter.jsonl"
+    dead_letter.write_text(
+        '{"dead_letter_id":\n'
+        + json.dumps(
+            {
+                "dead_letter_id": "example-dead-letter",
+                "meeting_id": "meeting-1",
+                "meeting_ids": ["meeting-1"],
+                "op_type": "mutate",
+                "entity_path": (
+                    str(context.vault_root)
+                    + "/05-Areas/People/External/Jane_Example.md"
+                ),
+                "entity_identity": {
+                    "kind": "person",
+                    "name": "Jane Example",
+                    "emails": ["jane@example.org"],
+                },
+                "reason": "target page missing",
+            }
+        )
+        + "\n"
+    )
+
+    result = doctor._probe_entity_engine(context)
+
+    assert result.verdict == "BROKEN"
+    assert result.feature_status == "broken"
+    assert "1 entity write" in result.user_message
+    assert "System/.dex/entity-dead-letter.jsonl" in result.user_message
+    assert "/dex-doctor" in result.user_message
+    assert "re-queue" in result.user_message
+    assert result.heal == doctor.Heal(
+        tier=1,
+        action="Re-queue the dead-lettered entity write with retry counters reset.",
+        applied=False,
+    )
+    definition = next(
+        item for item in doctor.QUICK_CHECKS if item.id == "entity.engine"
+    )
+    rendered = doctor._result_json(definition, result)
+    assert rendered["feature_status"] == "broken"
+    assert rendered["user_message"] == result.user_message
+
+
+def test_t1_heal_requeues_dead_lettered_entity_writes(monkeypatch, context):
+    for name in doctor.PARA_PATH_NAMES:
+        context.core_path(name).mkdir(parents=True, exist_ok=True)
+    context.paths_json_path.parent.mkdir(parents=True, exist_ok=True)
+    context.paths_json_path.write_text(json.dumps(doctor._paths_export_for(context)))
+    monkeypatch.setattr(doctor, "_repo_shipped_executables", lambda _context: [])
+    dead_letter = context.vault_root / "System" / ".dex" / "entity-dead-letter.jsonl"
+    dead_letter.parent.mkdir(parents=True, exist_ok=True)
+    dead_letter.write_text('{"dead_letter_id":"example-dead-letter"}\n')
+    calls = []
+    monkeypatch.setattr(
+        doctor,
+        "_requeue_entity_dead_letters",
+        lambda candidate: calls.append(candidate) or {
+            "requeued": 1,
+            "dead_letter_ids": ["example-dead-letter"],
+        },
+    )
+
+    actions, errors = doctor._apply_t1_heals(context)
+
+    assert errors == []
+    assert calls == [context]
+    assert actions == ["re-queued 1 dead-lettered entity write with retry counters reset"]
+
+
+def test_entity_dead_letter_heal_round_trip_returns_probe_to_ok(context):
+    _write_entity_probe_files(context)
+    operation = {
+        "op": "create",
+        "path": str(
+            context.vault_root
+            / "05-Areas"
+            / "People"
+            / "External"
+            / "Jane_Example.md"
+        ),
+        "content": "# Jane Example\n",
+        "allowed_root": str(context.vault_root),
+    }
+    dead_letter = context.vault_root / "System" / ".dex" / "entity-dead-letter.jsonl"
+    dead_letter.write_text(
+        json.dumps(
+            {
+                "dead_letter_id": "example-dead-letter",
+                "batch_id": "example-batch",
+                "scope": "creation",
+                "meeting_id": "meeting-1",
+                "meeting_ids": ["meeting-1"],
+                "op": operation,
+            }
+        )
+        + "\n"
+    )
+    bridge_context = doctor.DoctorContext(
+        vault_root=context.vault_root,
+        repo_root=DOCTOR_PATH.parents[2],
+        home=context.home,
+        now=context.now,
+    )
+
+    healed = doctor._requeue_entity_dead_letters(bridge_context)
+
+    assert healed["requeued"] == 1
+    assert not dead_letter.exists()
+    pending = json.loads(
+        (context.vault_root / "System" / ".dex" / "entity-pending.json").read_text()
+    )
+    assert pending["batches"][0]["ops"] == [operation]
+    assert doctor._probe_entity_engine(context).verdict == "OK"
+
+
 def test_entity_engine_probe_reports_gardener_statuses(monkeypatch, context):
     for key in ("ANTHROPIC_API_KEY", "OPENAI_API_KEY", "GEMINI_API_KEY"):
         monkeypatch.delenv(key, raising=False)

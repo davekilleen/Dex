@@ -5,8 +5,15 @@ const path = require('path');
 const yaml = require('js-yaml');
 const portableContract = require('../../../packages/dex-contracts/dist/portable-vault.contract.json');
 const { parseEntityPage, renderCompanyPage, renderPersonPage } = require('../../lib/entity-pages.cjs');
+const { identityForEntity, resolveEntityPath } = require('../../lib/entity-identity.cjs');
+const {
+  fingerprintText,
+  flushEntityOps,
+  resultApplied,
+} = require('../../lib/entity-engine-client.cjs');
 const { getInternalDomains } = require('./attendees.cjs');
 const { companyNameFromDomain, isFreemail, registrableDomain } = require('./company-domains.cjs');
+const { entityWriteMessage } = require('./entity-phase.cjs');
 const {
   atomicWrite,
   deriveStats,
@@ -168,7 +175,7 @@ function pageHasEmail(filePath, email) {
   }
 }
 
-function createOrAdoptPerson(contact) {
+function planPersonPage(contact, reserved = new Set()) {
   const paths = runtimePaths();
   const folder = contact.location === 'internal' ? 'Internal' : 'External';
   const directory = path.join(paths.PEOPLE_DIR, folder);
@@ -176,16 +183,24 @@ function createOrAdoptPerson(contact) {
   const email = contact.emails[0];
   const baseName = safeFilename(contact.name);
   const basePath = path.join(directory, `${baseName}.md`);
+  const existingByIdentity = resolveEntityPath(paths.VAULT_ROOT, {
+    kind: 'person',
+    name: contact.name,
+    emails: contact.emails,
+  });
+  if (existingByIdentity && !reserved.has(existingByIdentity)) {
+    return { filePath: existingByIdentity, created: false, adopted: true };
+  }
 
-  if (fs.existsSync(basePath) && pageHasEmail(basePath, email)) {
+  if (!reserved.has(basePath) && fs.existsSync(basePath) && pageHasEmail(basePath, email)) {
     return { filePath: basePath, created: false, adopted: true };
   }
 
   let targetPath = basePath;
-  if (fs.existsSync(targetPath)) {
+  if (reserved.has(targetPath) || fs.existsSync(targetPath)) {
     const domain = safeFilename(contact.domain || email.split('@', 2)[1] || 'contact');
     targetPath = path.join(directory, `${baseName}_(${domain}).md`);
-    if (fs.existsSync(targetPath) && pageHasEmail(targetPath, email)) {
+    if (!reserved.has(targetPath) && fs.existsSync(targetPath) && pageHasEmail(targetPath, email)) {
       return { filePath: targetPath, created: false, adopted: true };
     }
   }
@@ -198,8 +213,36 @@ function createOrAdoptPerson(contact) {
     [],
     contact.location,
   );
-  fs.writeFileSync(targetPath, content, { encoding: 'utf8', flag: 'wx' });
-  return { filePath: targetPath, created: true, adopted: false };
+  reserved.add(targetPath);
+  return {
+    filePath: targetPath,
+    created: true,
+    adopted: false,
+    op: {
+      op: 'create',
+      path: targetPath,
+      content,
+      allowed_root: paths.VAULT_ROOT,
+      target_fingerprint: fingerprintText(content),
+    },
+  };
+}
+
+function executeCreatePlan(plan, paths = runtimePaths()) {
+  if (!plan.op) return plan;
+  const write = flushEntityOps({
+    vaultRoot: paths.VAULT_ROOT,
+    ops: [plan.op],
+    scope: 'suggestion',
+  });
+  if (!write.ok || !resultApplied(plan.op, write.results[0])) {
+    throw new Error(write.error || 'Entity engine did not create the person page');
+  }
+  return plan;
+}
+
+function createOrAdoptPerson(contact) {
+  return executeCreatePlan(planPersonPage(contact));
 }
 
 function walkMarkdown(directory) {
@@ -224,6 +267,11 @@ function companyPageForDomain(domain) {
       }
     }
   } catch (_) { /* an absent or malformed index is advisory only */ }
+  const resolved = resolveEntityPath(paths.VAULT_ROOT, {
+    kind: 'company',
+    domains: [domain],
+  });
+  if (resolved) candidates.add(resolved);
   for (const filePath of walkMarkdown(paths.COMPANIES_DIR)) candidates.add(filePath);
   for (const filePath of candidates) {
     try {
@@ -233,7 +281,7 @@ function companyPageForDomain(domain) {
   return null;
 }
 
-function createOrAdoptCompany(domain, profile = null) {
+function planCompanyPage(domain, profile = null, reserved = new Set()) {
   if (!capabilityEnabled(profile || loadProfile(), 'companies')) {
     throw new Error('Companies room is off');
   }
@@ -244,14 +292,32 @@ function createOrAdoptCompany(domain, profile = null) {
   const name = companyNameFromDomain(domain);
   const basePath = path.join(paths.COMPANIES_DIR, `${safeFilename(name)}.md`);
   let targetPath = basePath;
-  if (fs.existsSync(targetPath)) {
+  if (reserved.has(targetPath) || fs.existsSync(targetPath)) {
     targetPath = path.join(paths.COMPANIES_DIR, `${safeFilename(name)}_(${safeFilename(domain)}).md`);
-    if (fs.existsSync(targetPath) && parseEntityPage(targetPath).domains.map(registrableDomain).includes(domain)) {
+    if (!reserved.has(targetPath)
+        && fs.existsSync(targetPath)
+        && parseEntityPage(targetPath).domains.map(registrableDomain).includes(domain)) {
       return { filePath: targetPath, created: false, adopted: true };
     }
   }
-  fs.writeFileSync(targetPath, renderCompanyPage(name, [domain], null, 'Prospect'), { encoding: 'utf8', flag: 'wx' });
-  return { filePath: targetPath, created: true, adopted: false };
+  const content = renderCompanyPage(name, [domain], null, 'Prospect');
+  reserved.add(targetPath);
+  return {
+    filePath: targetPath,
+    created: true,
+    adopted: false,
+    op: {
+      op: 'create',
+      path: targetPath,
+      content,
+      allowed_root: paths.VAULT_ROOT,
+      target_fingerprint: fingerprintText(content),
+    },
+  };
+}
+
+function createOrAdoptCompany(domain, profile = null) {
+  return executeCreatePlan(planCompanyPage(domain, profile));
 }
 
 function qualifiedCompanyDomains(state, profile) {
@@ -277,17 +343,260 @@ function qualifiedCompanyDomains(state, profile) {
   return [...domains.entries()].filter(([, stats]) => stats.meetings.size >= 2);
 }
 
-function processEntityCreation(meetings, profile = {}, logger = () => {}) {
+function meetingAttendees(meeting) {
+  return Array.isArray(meeting?.filteredAttendees)
+    ? meeting.filteredAttendees
+    : (Array.isArray(meeting?.attendees) ? meeting.attendees : []);
+}
+
+function buildTouchOperations(
+  meetings,
+  profile,
+  created,
+  companiesCreated,
+  creationEffects,
+  paths,
+) {
+  const internalDomains = new Set(
+    Array.from(getInternalDomains(profile), registrableDomain).filter(Boolean),
+  );
+  const createdPeopleByEmail = new Map();
+  const createdPeopleByName = new Map();
+  for (const page of created) {
+    for (const email of page.contact?.emails || []) {
+      createdPeopleByEmail.set(String(email).trim().toLowerCase(), page.filePath);
+    }
+    const name = String(page.contact?.name || '').trim().toLowerCase();
+    if (name) createdPeopleByName.set(name, page.filePath);
+  }
+  const createdCompaniesByDomain = new Map(
+    companiesCreated.map(page => [registrableDomain(page.domain), page.filePath]),
+  );
+  const confirmedCreationPaths = new Set([
+    ...created.map(page => page.filePath),
+    ...companiesCreated.map(page => page.filePath),
+  ]);
+  const unconfirmedCreationPaths = new Set(
+    creationEffects
+      .map(effect => effect.file_path)
+      .filter(filePath => !confirmedCreationPaths.has(filePath)),
+  );
+  const grouped = new Map();
+
+  function addTouch(filePath, touch) {
+    if (!filePath || unconfirmedCreationPaths.has(filePath) || !fs.existsSync(filePath)) return;
+    let entity;
+    try {
+      entity = parseEntityPage(filePath);
+    } catch (_) {
+      return;
+    }
+    const entityIdentity = identityForEntity(entity);
+    if (!entityIdentity || entity.quarantined) return;
+    if (!grouped.has(filePath)) {
+      grouped.set(filePath, { entityIdentity, touches: [] });
+    }
+    grouped.get(filePath).touches.push(touch);
+  }
+
+  for (const meeting of Array.isArray(meetings) ? meetings : []) {
+    const date = String(meeting?.createdAt || meeting?.date || '').slice(0, 10);
+    if (!meeting?.id || !/^\d{4}-\d{2}-\d{2}$/.test(date)) continue;
+    const touch = {
+      ts: date,
+      type: 'meeting',
+      direction: 'none',
+      source: {
+        id: meeting.id,
+        title: meeting.title || `Meeting ${date}`,
+      },
+    };
+    const touchedPeople = new Set();
+    const touchedCompanies = new Set();
+    for (const attendee of meetingAttendees(meeting)) {
+      const name = String(attendee?.name || '').trim();
+      if (!name) continue;
+      const email = typeof attendee?.email === 'string'
+        ? attendee.email.trim().toLowerCase()
+        : '';
+      const personPath = createdPeopleByEmail.get(email)
+        || createdPeopleByName.get(name.toLowerCase())
+        || resolveEntityPath(paths.VAULT_ROOT, {
+          kind: 'person',
+          name,
+          emails: email ? [email] : [],
+        });
+      if (personPath && !touchedPeople.has(personPath)) {
+        touchedPeople.add(personPath);
+        addTouch(personPath, touch);
+      }
+
+      if (attendee?.location !== 'external' || !email.includes('@')) continue;
+      const domain = registrableDomain(email.split('@', 2)[1]);
+      if (!domain || isFreemail(domain) || internalDomains.has(domain)) continue;
+      const companyPath = createdCompaniesByDomain.get(domain)
+        || companyPageForDomain(domain);
+      if (companyPath && !touchedCompanies.has(companyPath)) {
+        touchedCompanies.add(companyPath);
+        addTouch(companyPath, touch);
+      }
+    }
+  }
+
+  return [...grouped.entries()].map(([filePath, entry]) => ({
+    op: 'mutate',
+    path: filePath,
+    entity_identity: entry.entityIdentity,
+    intent: {
+      kind: 'touch-log',
+      touches: entry.touches,
+    },
+  }));
+}
+
+function buildRelationshipOperations(
+  meetings,
+  profile,
+  created,
+  companiesCreated,
+  creationEffects,
+  paths,
+) {
+  const internalDomains = new Set(
+    Array.from(getInternalDomains(profile), registrableDomain).filter(Boolean),
+  );
+  const createdPeopleByEmail = new Map();
+  const createdPeopleByName = new Map();
+  for (const page of created) {
+    for (const email of page.contact?.emails || []) {
+      createdPeopleByEmail.set(String(email).trim().toLowerCase(), page.filePath);
+    }
+    const name = String(page.contact?.name || '').trim().toLowerCase();
+    if (name) createdPeopleByName.set(name, page.filePath);
+  }
+  const createdCompaniesByDomain = new Map(
+    companiesCreated.map(page => [registrableDomain(page.domain), page.filePath]),
+  );
+  const confirmedCreationPaths = new Set([
+    ...created.map(page => page.filePath),
+    ...companiesCreated.map(page => page.filePath),
+  ]);
+  const unconfirmedCreationPaths = new Set(
+    creationEffects
+      .map(effect => effect.file_path)
+      .filter(filePath => !confirmedCreationPaths.has(filePath)),
+  );
+  const grouped = new Map();
+
+  function resolvePerson(attendee) {
+    const name = String(attendee?.name || '').trim();
+    if (!name) return null;
+    const email = typeof attendee?.email === 'string'
+      ? attendee.email.trim().toLowerCase()
+      : '';
+    return createdPeopleByEmail.get(email)
+      || createdPeopleByName.get(name.toLowerCase())
+      || resolveEntityPath(paths.VAULT_ROOT, {
+        kind: 'person',
+        name,
+        emails: email ? [email] : [],
+      });
+  }
+
+  function addRelationship(filePath, targetPath, type, source) {
+    if (!filePath || !targetPath
+        || unconfirmedCreationPaths.has(filePath)
+        || unconfirmedCreationPaths.has(targetPath)
+        || !fs.existsSync(filePath)
+        || !fs.existsSync(targetPath)) return;
+    let entity;
+    let target;
+    try {
+      entity = parseEntityPage(filePath);
+      target = parseEntityPage(targetPath);
+    } catch (_) {
+      return;
+    }
+    const entityIdentity = identityForEntity(entity);
+    if (!entityIdentity || entity.quarantined || target.quarantined || !target.name) return;
+    if (!grouped.has(filePath)) {
+      grouped.set(filePath, { entityIdentity, relationships: [] });
+    }
+    grouped.get(filePath).relationships.push({
+      type,
+      target_id: relativeVaultPath(targetPath, paths.VAULT_ROOT),
+      target_ref: `[[${target.name}]]`,
+      source,
+      confidence: 'suggested',
+    });
+  }
+
+  for (const meeting of Array.isArray(meetings) ? meetings : []) {
+    const date = String(meeting?.createdAt || meeting?.date || '').slice(0, 10);
+    if (!meeting?.id || !/^\d{4}-\d{2}-\d{2}$/.test(date)) continue;
+    const people = [];
+    for (const attendee of meetingAttendees(meeting)) {
+      const personPath = resolvePerson(attendee);
+      if (personPath && !people.includes(personPath)) people.push(personPath);
+      const email = typeof attendee?.email === 'string'
+        ? attendee.email.trim().toLowerCase()
+        : '';
+      if (!personPath || attendee?.location !== 'external' || !email.includes('@')) continue;
+      const domain = registrableDomain(email.split('@', 2)[1]);
+      if (!domain || isFreemail(domain) || internalDomains.has(domain)) continue;
+      const companyPath = createdCompaniesByDomain.get(domain)
+        || companyPageForDomain(domain);
+      addRelationship(personPath, companyPath, 'works_at', {
+        kind: 'domain-match',
+        id: domain,
+        date,
+      });
+    }
+    people.sort();
+    for (let left = 0; left < people.length; left += 1) {
+      for (let right = left + 1; right < people.length; right += 1) {
+        addRelationship(people[left], people[right], 'related_to', {
+          kind: 'co-attendance',
+          id: meeting.id,
+          date,
+        });
+      }
+    }
+  }
+
+  return [...grouped.entries()].map(([filePath, entry]) => ({
+    op: 'mutate',
+    path: filePath,
+    entity_identity: entry.entityIdentity,
+    intent: {
+      kind: 'relationship',
+      relationships: entry.relationships,
+    },
+  }));
+}
+
+function processEntityCreation(
+  meetings,
+  profile = {},
+  logger = () => {},
+  { now = new Date() } = {},
+) {
   const paths = runtimePaths();
   const mode = creationMode(profile);
   const evidenceContacts = new Set();
   const errors = [];
+  const meetingIds = (Array.isArray(meetings) ? meetings : [])
+    .map(meeting => meeting?.id)
+    .filter(Boolean);
 
   for (const meeting of Array.isArray(meetings) ? meetings : []) {
     try {
       const result = recordObservations(meeting.id, {
         date: String(meeting.createdAt || meeting.date || '').slice(0, 10),
-        hasTranscript: Boolean(meeting.transcript && String(meeting.transcript).trim()),
+        hasTranscript: Boolean(
+          meeting.hasTranscript
+          || (meeting.transcript && String(meeting.transcript).trim()),
+        ),
         attendees: Array.isArray(meeting.filteredAttendees)
           ? meeting.filteredAttendees
           : (Array.isArray(meeting.attendees) ? meeting.attendees : []),
@@ -299,23 +608,34 @@ function processEntityCreation(meetings, profile = {}, logger = () => {}) {
     }
   }
 
-  if (mode === 'off') return {
-    mode, created: [], suggested: [], companies_created: [], companies_suggested: [], errors,
-  };
-
   const state = loadState(paths.CONTACTS_STATE_FILE);
   const created = [];
   const suggested = [];
-  for (const contact of qualifiedContacts(state)) {
+  const companiesCreated = [];
+  const companiesSuggested = [];
+  const reserved = new Set();
+  const operations = [];
+  const effects = [];
+  for (const contact of mode === 'off' ? [] : qualifiedContacts(state)) {
     try {
       const stats = deriveStats(state, contact.id);
       if (mode === 'auto' && ['internal', 'external'].includes(contact.location)) {
-        const page = createOrAdoptPerson(contact);
+        const page = planPersonPage(contact, reserved);
         const pagePath = relativeVaultPath(page.filePath, paths.VAULT_ROOT);
-        updateContact(paths.CONTACTS_STATE_FILE, contact.id, { state: 'created', page_path: pagePath });
-        markSuggestionAccepted(contact.id);
-        created.push({ ...page, contact, page_path: pagePath });
-        if (page.created) logger(`Created person page: ${pagePath}`);
+        if (page.op) {
+          operations.push(page.op);
+          effects.push({
+            kind: 'person',
+            contact_id: contact.id,
+            contact,
+            file_path: page.filePath,
+            page_path: pagePath,
+          });
+        } else {
+          updateContact(paths.CONTACTS_STATE_FILE, contact.id, { state: 'created', page_path: pagePath });
+          markSuggestionAccepted(contact.id);
+          created.push({ ...page, contact, page_path: pagePath });
+        }
       } else {
         const result = updateSuggestion(contact, stats, { newEvidence: evidenceContacts.has(contact.id) });
         suggested.push(result.suggestion);
@@ -325,16 +645,11 @@ function processEntityCreation(meetings, profile = {}, logger = () => {}) {
       logger(`Could not create or suggest ${contact.name}: ${error.message}`);
     }
   }
-  const companiesCreated = [];
-  const companiesSuggested = [];
-  if (!capabilityEnabled(profile, 'companies')) {
-    return {
-      mode, created, suggested, companies_created: companiesCreated,
-      companies_suggested: companiesSuggested, errors,
-    };
-  }
   const companyState = loadState(paths.CONTACTS_STATE_FILE);
-  for (const [domain, stats] of qualifiedCompanyDomains(companyState, profile)) {
+  const companyDomains = mode !== 'off' && capabilityEnabled(profile, 'companies')
+    ? qualifiedCompanyDomains(companyState, profile)
+    : [];
+  for (const [domain, stats] of companyDomains) {
     try {
       const existing = companyPageForDomain(domain);
       if (existing) {
@@ -346,14 +661,25 @@ function processEntityCreation(meetings, profile = {}, logger = () => {}) {
       }
       const companyName = companyNameFromDomain(domain);
       if (mode === 'auto') {
-        const page = createOrAdoptCompany(domain, profile);
+        const page = planCompanyPage(domain, profile, reserved);
         const pagePath = relativeVaultPath(page.filePath, paths.VAULT_ROOT);
-        for (const contactId of stats.contacts) {
-          updateContact(paths.CONTACTS_STATE_FILE, contactId, { company_page: pagePath });
+        if (page.op) {
+          operations.push(page.op);
+          effects.push({
+            kind: 'company',
+            contact_ids: [...stats.contacts],
+            domain,
+            name: companyName,
+            file_path: page.filePath,
+            page_path: pagePath,
+          });
+        } else {
+          for (const contactId of stats.contacts) {
+            updateContact(paths.CONTACTS_STATE_FILE, contactId, { company_page: pagePath });
+          }
+          companiesCreated.push({ ...page, name: companyName, domain, page_path: pagePath });
+          markSuggestionAccepted(`domain:${domain}`);
         }
-        companiesCreated.push({ ...page, name: companyName, domain, page_path: pagePath });
-        markSuggestionAccepted(`domain:${domain}`);
-        if (page.created) logger(`Created company page: ${pagePath}`);
       } else {
         const result = updateCompanySuggestion(
           domain, companyName, stats.contacts.size, stats.meetings.size,
@@ -366,13 +692,144 @@ function processEntityCreation(meetings, profile = {}, logger = () => {}) {
       logger(`Could not create or suggest company ${domain}: ${error.message}`);
     }
   }
+  const entityWrite = flushEntityOps({
+    vaultRoot: paths.VAULT_ROOT,
+    ops: operations,
+    meetingIds,
+    scope: 'creation',
+    scopes: ['creation', 'hook', 'suggestion'],
+    metadata: { effects },
+    now,
+  });
+  const reportedEffects = new Set([
+    ...created.map(page => `person:${page.page_path}`),
+    ...companiesCreated.map(page => `company:${page.page_path}`),
+  ]);
+  for (const batch of entityWrite.completed_batches) {
+    if (batch.scope !== 'creation') continue;
+    for (const effect of batch.metadata?.effects || []) {
+      const effectId = `${effect.kind}:${effect.page_path}`;
+      if (effect.kind === 'person') {
+        updateContact(paths.CONTACTS_STATE_FILE, effect.contact_id, {
+          state: 'created',
+          page_path: effect.page_path,
+        });
+        markSuggestionAccepted(effect.contact_id);
+        if (reportedEffects.has(effectId)) continue;
+        reportedEffects.add(effectId);
+        created.push({
+          filePath: effect.file_path,
+          created: true,
+          adopted: false,
+          contact: effect.contact,
+          page_path: effect.page_path,
+        });
+        logger(`Created person page: ${effect.page_path}`);
+      } else if (effect.kind === 'company') {
+        for (const contactId of effect.contact_ids) {
+          updateContact(paths.CONTACTS_STATE_FILE, contactId, {
+            company_page: effect.page_path,
+          });
+        }
+        markSuggestionAccepted(`domain:${effect.domain}`);
+        if (reportedEffects.has(effectId)) continue;
+        reportedEffects.add(effectId);
+        companiesCreated.push({
+          filePath: effect.file_path,
+          created: true,
+          adopted: false,
+          name: effect.name,
+          domain: effect.domain,
+          page_path: effect.page_path,
+        });
+        logger(`Created company page: ${effect.page_path}`);
+      }
+    }
+  }
+  if (!entityWrite.ok) {
+    const writeMessage = entityWriteMessage(entityWrite)
+      || 'Entity writes remain pending';
+    errors.push({
+      entity_write: true,
+      error: writeMessage,
+    });
+    logger(writeMessage);
+  }
+  const touchOps = buildTouchOperations(
+    meetings,
+    profile,
+    created,
+    companiesCreated,
+    effects,
+    paths,
+  );
+  const touchWrite = flushEntityOps({
+    vaultRoot: paths.VAULT_ROOT,
+    ops: touchOps,
+    meetingIds,
+    scope: 'touch',
+    scopes: ['touch'],
+    metadata: { source: 'meeting-intel' },
+    now,
+  });
+  if (!touchWrite.ok) {
+    const writeMessage = entityWriteMessage(touchWrite)
+      || 'Entity touch writes remain pending';
+    errors.push({
+      entity_write: true,
+      scope: 'touch',
+      error: writeMessage,
+    });
+    logger(writeMessage);
+  }
+  const relationshipOps = buildRelationshipOperations(
+    meetings,
+    profile,
+    created,
+    companiesCreated,
+    effects,
+    paths,
+  );
+  const relationshipWrite = flushEntityOps({
+    vaultRoot: paths.VAULT_ROOT,
+    ops: relationshipOps,
+    meetingIds,
+    scope: 'relationship',
+    scopes: ['relationship'],
+    metadata: { source: 'meeting-intel' },
+    now,
+  });
+  if (!relationshipWrite.ok) {
+    const writeMessage = entityWriteMessage(relationshipWrite)
+      || 'Entity relationship writes remain pending';
+    errors.push({
+      entity_write: true,
+      scope: 'relationship',
+      error: writeMessage,
+    });
+    logger(writeMessage);
+  }
+  entityWrite.dead_lettered_ops = [
+    ...(entityWrite.dead_lettered_ops || []),
+    ...(touchWrite.dead_lettered_ops || []),
+    ...(relationshipWrite.dead_lettered_ops || []),
+  ];
+  entityWrite.completed_meeting_ids = [...new Set([
+    ...(entityWrite.completed_meeting_ids || []),
+    ...(entityWrite.completed_batches || [])
+      .filter(batch => batch.scope === 'creation')
+      .flatMap(batch => batch.meeting_ids || []),
+    ...(touchWrite.completed_meeting_ids || []),
+    ...(relationshipWrite.completed_meeting_ids || []),
+  ])].sort();
   return {
     mode, created, suggested, companies_created: companiesCreated,
-    companies_suggested: companiesSuggested, errors,
+    companies_suggested: companiesSuggested, errors, entity_write: entityWrite,
   };
 }
 
 module.exports = {
+  buildRelationshipOperations,
   createOrAdoptPerson,
   createOrAdoptCompany,
   capabilityEnabled,

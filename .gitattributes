@@ -20,3 +20,7 @@ DISTRIBUTION_READY.md   export-ignore
 .ao-issue.md            export-ignore
 .distignore             export-ignore
 .gitattributes          export-ignore
+
+# The historical catalog blob contained a NUL sentinel. Force the one cleanup
+# diff to remain reviewable as text; subsequent blobs are ordinary UTF-8.
+core/integrations/connection-manager/catalog.cjs diff

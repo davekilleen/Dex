@@ -17,7 +17,7 @@ import os
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from core import portable_contract
 from core.transaction.engine import PlanEntry, Transaction
@@ -38,6 +38,14 @@ RELEASE_TAG = re.compile(
     r"^dist/release/v(?P<version>(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\."
     r"(?:0|[1-9][0-9]*))-(?P<short>[0-9a-f]{7,64})$"
 )
+START_MARKER = re.compile(
+    rb"^## USER_EXTENSIONS_START[^\r\n]*(?:\r?\n|$)",
+    re.MULTILINE,
+)
+END_MARKER = re.compile(
+    rb"^## USER_EXTENSIONS_END[^\r\n]*(?:\r?\n|$)",
+    re.MULTILINE,
+)
 
 
 class UpdateError(RuntimeError):
@@ -46,6 +54,56 @@ class UpdateError(RuntimeError):
 
 class ReleaseVerificationError(UpdateError):
     """The supplied immutable release identity failed closed verification."""
+
+
+class CompositionError(UpdateError):
+    """A release-owned composed file could not be built without data loss."""
+
+
+def _extension_block(template: bytes) -> tuple[bytes, bytes]:
+    try:
+        template.decode("utf-8")
+    except UnicodeDecodeError as error:
+        raise CompositionError("release CLAUDE.md template is not UTF-8") from error
+    starts = tuple(START_MARKER.finditer(template))
+    ends = tuple(END_MARKER.finditer(template))
+    if len(starts) != 1 or len(ends) != 1 or ends[0].start() < starts[0].end():
+        raise CompositionError(
+            "release template needs exactly one ordered USER_EXTENSIONS marker pair"
+        )
+    return template[: starts[0].start()], template[ends[0].end() :]
+
+
+def _regenerate_claude(template: bytes, custom_content: bytes) -> bytes:
+    """Mirror the dependency-free CJS migrator's ``regenerateClaude``."""
+    try:
+        custom_content.decode("utf-8")
+    except UnicodeDecodeError as error:
+        raise CompositionError("CLAUDE.md composition inputs are not UTF-8") from error
+    before, after = _extension_block(template)
+    separator = b"\n" if custom_content and not custom_content.endswith(b"\n") else b""
+    return before + custom_content + separator + after
+
+
+def _compose_claude(release_blob: bytes, vault_root: Path) -> bytes:
+    _extension_block(release_blob)
+    custom_path = vault_root / "CLAUDE-custom.md"
+    if not custom_path.exists() and not custom_path.is_symlink():
+        return release_blob
+    try:
+        if custom_path.is_symlink() or not custom_path.is_file():
+            raise CompositionError("CLAUDE-custom.md is not a regular file")
+        custom_content = custom_path.read_bytes()
+    except OSError as error:
+        raise CompositionError("CLAUDE-custom.md is unreadable") from error
+    if not custom_content:
+        return release_blob
+    return _regenerate_claude(release_blob, custom_content)
+
+
+COMPOSERS: dict[str, Callable[[bytes, Path], bytes]] = {
+    "CLAUDE.md": _compose_claude,
+}
 
 
 @dataclass(frozen=True)
@@ -75,6 +133,7 @@ class UpdatePlan:
     regenerated: tuple[str, ...]
     pruned: tuple[str, ...]
     kept: tuple[str, ...]
+    kept_reasons: tuple[tuple[str, str], ...]
     untouched: tuple[str, ...]
 
 
@@ -280,13 +339,13 @@ def verify_release_ref(
     )
 
 
-def _matches_entry(vault_root: Path, entry: TreeEntry, brain_git: Path) -> bool:
+def _matches_entry(vault_root: Path, entry: TreeEntry, expected: bytes) -> bool:
     target = vault_root / entry.path
     try:
         return (
             not target.is_symlink()
             and target.is_file()
-            and target.read_bytes() == _blob(vault_root, brain_git, entry.object_id)
+            and target.read_bytes() == expected
             and (target.stat().st_mode & 0o777) == entry.mode
         )
     except OSError:
@@ -304,6 +363,8 @@ def build_update_plan(vault_root: Path, release: VerifiedReleaseRef) -> UpdatePl
     replaced: list[str] = []
     seeded: list[str] = []
     regenerated: list[str] = []
+    kept: list[str] = []
+    kept_reasons: list[tuple[str, str]] = []
     untouched: list[str] = []
 
     for entry in release.entries:
@@ -318,10 +379,18 @@ def build_update_plan(vault_root: Path, release: VerifiedReleaseRef) -> UpdatePl
         if not verdict.allowed:
             untouched.append(entry.path)
             continue
-        if _matches_entry(root, entry, release.brain_git):
+        content = _blob(root, release.brain_git, entry.object_id)
+        composer = COMPOSERS.get(entry.path)
+        if composer is not None:
+            try:
+                content = composer(content, root)
+            except CompositionError as error:
+                kept.append(entry.path)
+                kept_reasons.append((entry.path, str(error)))
+                continue
+        if _matches_entry(root, entry, content):
             untouched.append(entry.path)
             continue
-        content = _blob(root, release.brain_git, entry.object_id)
         planned.append(PlanEntry(entry.path, content, entry.mode))
         if verdict.ownership == "brain":
             replaced.append(entry.path)
@@ -331,7 +400,6 @@ def build_update_plan(vault_root: Path, release: VerifiedReleaseRef) -> UpdatePl
             regenerated.append(entry.path)
 
     pruned: list[str] = []
-    kept: list[str] = []
     for previous in previous_entries:
         resolution = portable_contract.resolve(previous.path)
         if resolution.ownership != "brain" or previous.path in target_brain:
@@ -339,7 +407,8 @@ def build_update_plan(vault_root: Path, release: VerifiedReleaseRef) -> UpdatePl
         target = root / previous.path
         if not target.exists():
             continue
-        if _matches_entry(root, previous, release.brain_git):
+        previous_content = _blob(root, release.brain_git, previous.object_id)
+        if _matches_entry(root, previous, previous_content):
             verdict = portable_contract.update_write_verdict(previous.path, exists=True)
             if not verdict.allowed or verdict.ownership != "brain":
                 raise UpdateError(f"ownership contract refuses pruning {previous.path}")
@@ -349,7 +418,7 @@ def build_update_plan(vault_root: Path, release: VerifiedReleaseRef) -> UpdatePl
                     None,
                     previous.mode,
                     expected_current_sha256=hashlib.sha256(
-                        _blob(root, release.brain_git, previous.object_id)
+                        previous_content
                     ).hexdigest(),
                 )
             )
@@ -364,6 +433,7 @@ def build_update_plan(vault_root: Path, release: VerifiedReleaseRef) -> UpdatePl
         tuple(regenerated),
         tuple(pruned),
         tuple(kept),
+        tuple(kept_reasons),
         tuple(untouched),
     )
 
@@ -448,6 +518,7 @@ def apply_verified_release(vault_root: Path, release: VerifiedReleaseRef) -> dic
         "regenerated": list(plan.regenerated),
         "pruned": list(plan.pruned),
         "kept": list(plan.kept),
+        "kept_reasons": dict(plan.kept_reasons),
         "untouched": list(plan.untouched),
     }
 

@@ -80,6 +80,29 @@ function plural(count, singular, pluralForm = `${singular}s`) {
   return count === 1 ? singular : pluralForm;
 }
 
+function readDeadLetters(paths) {
+  const filePath = path.join(
+    path.dirname(paths.ENTITY_PENDING_FILE),
+    'entity-dead-letter.jsonl',
+  );
+  try {
+    const entries = fs.readFileSync(filePath, 'utf8')
+      .split(/\r?\n/)
+      .filter(line => line.trim())
+      .flatMap((line) => {
+        try {
+          return [JSON.parse(line)];
+        } catch (_) {
+          return [];
+        }
+      });
+    return { entries, error: null };
+  } catch (error) {
+    if (error.code === 'ENOENT') return { entries: [], error: null };
+    return { entries: [], error };
+  }
+}
+
 function summaryLine(report) {
   const counts = report.counts;
   const parts = [];
@@ -98,7 +121,13 @@ function summaryLine(report) {
   if (companyCounts.tracking) companyParts.push(`${companyCounts.tracking} tracking`);
   if (companyCounts.disabled) companyParts.push(`${companyCounts.disabled} disabled`);
   if (companyParts.length === 0) companyParts.push('0 pages');
-  return `entities: ${report.attendees} attendees -> ${parts.join(', ')}; ${report.unresolved.length} unresolved; companies: ${companyParts.join(', ')}`;
+  const deadLetter = report.dead_letter_count
+    ? `; ${report.dead_letter_count} ${plural(
+      report.dead_letter_count,
+      'entity write',
+    )} failed permanently`
+    : '';
+  return `entities: ${report.attendees} attendees -> ${parts.join(', ')}; ${report.unresolved.length} unresolved; companies: ${companyParts.join(', ')}${deadLetter}`;
 }
 
 function verifyEntities({ days = 7, now = new Date() } = {}) {
@@ -116,6 +145,7 @@ function verifyEntities({ days = 7, now = new Date() } = {}) {
   const identities = new Map();
   const windowDomains = new Map();
   const internalDomains = new Set(Array.from(getInternalDomains(profile), registrableDomain));
+  const deadLetters = readDeadLetters(paths);
 
   for (const filePath of walkMarkdown(paths.MEETINGS_DIR)) {
     const data = frontmatter(filePath);
@@ -238,6 +268,7 @@ function verifyEntities({ days = 7, now = new Date() } = {}) {
     counts,
     companies: { counts: companyCounts, domains: companyDomains },
     unresolved,
+    dead_letter_count: deadLetters.entries.length,
   };
   Object.defineProperty(report, 'attendees', { value: identities.size, enumerable: false });
   fs.mkdirSync(path.dirname(paths.ENTITY_VERIFICATION_FILE), { recursive: true });
@@ -247,7 +278,40 @@ function verifyEntities({ days = 7, now = new Date() } = {}) {
   );
   fs.writeFileSync(tempPath, `${JSON.stringify(report, null, 2)}\n`, 'utf8');
   fs.renameSync(tempPath, paths.ENTITY_VERIFICATION_FILE);
-  return { report, summary: summaryLine(report) };
+  const summary = summaryLine(report);
+  if (deadLetters.error) {
+    return {
+      success: false,
+      feature: 'Entity engine',
+      feature_status: 'unknown',
+      user_message: 'Entity write failures could not be checked. Run /dex-doctor and '
+        + 'inspect System/.dex/entity-dead-letter.jsonl.',
+      detail: deadLetters.error.message,
+      report,
+      summary,
+    };
+  }
+  if (deadLetters.entries.length > 0) {
+    const count = deadLetters.entries.length;
+    return {
+      success: false,
+      feature: 'Entity engine',
+      feature_status: 'broken',
+      user_message: `${count} ${plural(count, 'entity write')} failed permanently. `
+        + 'Run /dex-doctor to re-queue the failed write with fresh retries; '
+        + 'details remain in System/.dex/entity-dead-letter.jsonl until then.',
+      report,
+      summary,
+    };
+  }
+  return {
+    success: true,
+    feature: 'Entity engine',
+    feature_status: 'ok',
+    user_message: 'Entity verification completed with no dead-lettered writes.',
+    report,
+    summary,
+  };
 }
 
 function parseDays(argv) {

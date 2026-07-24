@@ -17,10 +17,14 @@ from core.lifecycle.sqlite_snapshot import (
     BACKUP_NAME,
     MANIFEST_NAME,
     SQLiteSnapshotError,
+    _load_sync_folder_markers,
     detect_sync_folder,
     restore_sqlite,
     snapshot_sqlite,
 )
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+SYNC_VECTOR_PATH = REPO_ROOT / "core/tests/fixtures/sync-folder-vectors.json"
 
 
 def _sha256(path: Path) -> str:
@@ -46,6 +50,116 @@ def _create_database(path: Path, rows: int = 3) -> None:
         connection.commit()
     finally:
         connection.close()
+
+
+def _sync_vectors() -> list[dict[str, object]]:
+    document = json.loads(SYNC_VECTOR_PATH.read_text(encoding="utf-8"))
+    assert document["schema_version"] == 1
+    return document["vectors"]
+
+
+def _build_sync_vector(tmp_path: Path, vector: dict[str, object], index: int) -> Path:
+    root = tmp_path / f"case-{index}"
+    relative_path = vector["relative_path"]
+    assert isinstance(relative_path, list)
+    vault = root.joinpath(*relative_path)
+    vault.mkdir(parents=True)
+    ancestor_children = vector["ancestor_children"]
+    assert isinstance(ancestor_children, list)
+    for ancestor in ancestor_children:
+        assert isinstance(ancestor, dict)
+        ancestor_path = ancestor["relative_path"]
+        names = ancestor["names"]
+        assert isinstance(ancestor_path, list)
+        assert isinstance(names, list)
+        directory = root.joinpath(*ancestor_path)
+        directory.mkdir(parents=True, exist_ok=True)
+        for name in names:
+            assert isinstance(name, str)
+            (directory / name).mkdir()
+    return vault
+
+
+def test_shared_sync_folder_vectors_cover_the_data_table_and_python_reader(
+    tmp_path: Path,
+) -> None:
+    markers, provider_prefixes = _load_sync_folder_markers()
+    expected_providers = {
+        vector["expected_provider"]
+        for vector in _sync_vectors()
+        if vector["expected_provider"] is not None
+    }
+    declared_providers = {marker.provider for marker in markers}
+    declared_providers.update(provider for _, provider in provider_prefixes)
+    assert expected_providers == declared_providers
+
+    for index, vector in enumerate(_sync_vectors()):
+        vault = _build_sync_vector(tmp_path, vector, index)
+        assert detect_sync_folder(vault) == vector["expected_provider"], vector["name"]
+
+
+@pytest.mark.parametrize(
+    "document",
+    [
+        {},
+        {"schema_version": 2, "markers": [], "cloudstorage_provider_prefixes": []},
+        {"schema_version": 1, "markers": "not-a-list", "cloudstorage_provider_prefixes": []},
+        {
+            "schema_version": 1,
+            "markers": [{"provider": "Dropbox", "kind": "child", "values": []}],
+            "cloudstorage_provider_prefixes": [],
+        },
+    ],
+)
+def test_sync_folder_marker_loader_fails_closed_on_malformed_data(
+    tmp_path: Path,
+    document: dict[str, object],
+) -> None:
+    candidate = tmp_path / "markers.json"
+    candidate.write_text(json.dumps(document), encoding="utf-8")
+
+    with pytest.raises(RuntimeError, match="sync-folder marker data"):
+        _load_sync_folder_markers(candidate)
+
+
+def test_sync_folder_marker_loader_fails_closed_when_data_is_missing(
+    tmp_path: Path,
+) -> None:
+    with pytest.raises(RuntimeError, match="sync-folder marker data"):
+        _load_sync_folder_markers(tmp_path / "missing.json")
+
+
+def test_sync_folder_marker_failure_is_confined_to_detection() -> None:
+    script = """
+from pathlib import Path
+
+original_read_text = Path.read_text
+
+def refuse_marker_data(path, *args, **kwargs):
+    if path.name == "sync-folder-markers.json":
+        raise PermissionError("marker fixture is unreadable")
+    return original_read_text(path, *args, **kwargs)
+
+Path.read_text = refuse_marker_data
+import core.lifecycle.sqlite_snapshot as snapshot
+
+assert snapshot.MANIFEST_NAME == "manifest.json"
+try:
+    snapshot.detect_sync_folder(Path("."))
+except RuntimeError as error:
+    assert "sync-folder marker data" in str(error)
+else:
+    raise AssertionError("sync-folder detection did not fail closed")
+"""
+    result = subprocess.run(
+        [sys.executable, "-c", script],
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
 
 
 def test_wal_snapshot_restores_all_committed_rows_without_touching_source_database_or_wal(

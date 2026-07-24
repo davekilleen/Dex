@@ -7,6 +7,69 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.72.0] — 🔗 Dex starts mapping how the people you know connect (2026-07-24)
+
+Dex has always kept a page for each person and company you deal with. What it couldn't do was join them up — see that someone works at a particular company, reports to someone else, or is the key stakeholder on a deal. This release starts drawing those connections, quietly, from what's already in your meetings.
+
+### 🔗 The connections between your people, drawn for you
+
+**What this fixes for you:**
+
+* **Dex now notices relationships and proposes them.** As it processes your meetings it spots things like "this person works at that company" or "these two are on the same deal," and adds them to the relevant pages — kept as *suggestions* until you say yes.
+* **Nothing is ever stated as fact until you confirm it.** Every connection Dex draws starts as a suggestion. You confirm the ones that are right, and from then on Dex treats them as settled and never quietly changes them. The ones you ignore stay as gentle suggestions, nothing more.
+* **A short "relationships to confirm" nudge in your daily plan.** When there are new connections waiting for a yes-or-no, Dex mentions it in one line during your daily plan and points you to `relationship-radar` to review them. If there's nothing pending, you'll never hear about it.
+* **It's careful with your pages.** Connections live in their own clearly-marked section on each page — everything you've written yourself is left exactly as it was.
+
+This is the groundwork for Dex understanding your world as a web of people, not just a stack of separate pages — which is what will make things like meeting prep and "who should I loop in?" genuinely smart down the line.
+
+## [1.71.0] — 🤝 Dex keeps you on top of your people, and closes out your meetings (2026-07-23)
+
+This one is mostly about the people side of your work. Dex now notices when you're drifting out of touch with someone who matters, helps you wrap up a meeting the moment it ends, keeps track of the small promises that are easy to drop, and adds a couple of new tools for starting something new. There's also a safer way to take an update when you've personalized Dex.
+
+### ❄️ Dex tells you who you're losing touch with
+
+You have people you mean to stay close to — and it's easy for weeks to slip by without noticing one has gone quiet. Until now Dex had no sense of that rhythm.
+
+**What this fixes for you:**
+
+* **A gentle "going cold" heads-up.** Dex watches how regularly you're in contact with the people on your pages, and when someone you were close to goes quiet for a while, it says so — ranked by how overdue each one is — so you can reach out before it costs you.
+* **A tool to ask directly.** The new `relationship-radar` skill answers "who should I reach out to?" or "who am I losing touch with?" whenever you want it, and it turns up during your weekly review.
+* **It never nags or acts on its own.** It only ever suggests; reaching out stays entirely your call.
+
+### 🤝 Wrap up a meeting while it's still fresh
+
+The best moment to capture what a meeting decided is the minute it ends — and that's exactly when it's easiest to move straight to the next thing and lose it.
+
+**What this fixes for you:**
+
+* **`meeting-closeout` locks it in.** Right after a call, Dex helps you pin down the decisions, who owns each action, what *you* committed to, and the single next step — then, only with your OK, turns those actions into tracked tasks.
+* **`commitments` catches what you're on the hook for.** Ask "what did I promise?" or "anything I owe people?" and Dex reconciles the promises you made and the asks you received across your meetings and notes into a clear owner/due/source list — then tracks the real ones once you confirm.
+* **Nothing becomes a task without your say-so.** Both tools show you the list first and wait for your yes.
+
+### ✍️ Small promises don't slip through
+
+In conversation you say things like "I'll follow up on that" or "let me get back to you" — real commitments that rarely make it onto any list.
+
+**What this fixes for you:**
+
+* **Dex now spots soft promises in your meetings** — the "I'll send that over" kind — and offers to capture them, so the quiet commitments get the same follow-through as the formal ones.
+* **Your meetings turn into updates you can trust.** Behind the scenes I rebuilt how a synced meeting updates your people pages so that if anything is interrupted mid-way, no update is silently lost — it's retried until it lands, and never leaves a page half-written.
+
+### 🚀 Two new tools for starting something
+
+* **`initiative-kickoff`** — when you decide to start something new (a hire, a partnership, a push), Dex turns it into a real project: the outcome and why now, what success looks like, who's involved, the first steps, and a project page that ladders up to your goals.
+* **`create-skill` got a rebuild.** Building your own Dex tool is now smarter — it checks nothing else already does the job, writes it properly, and grades it before calling it done. Anything you build for yourself is protected from future updates.
+
+### 🔐 A safer update when you've made Dex your own
+
+If you'd personalized one of Dex's tools and an update changed that same tool, you used to face an awkward either/or: keep your version or take the new one.
+
+**What this fixes for you:**
+
+* **Keep both.** Dex can now put the new version live *and* save your version right beside it, still fully usable — so you never have to throw away your customization to move forward. The whole change stays undoable.
+* **Your personal instructions survive an update.** A particular kind of update could drop the personal notes you'd added to Dex's main instructions. Those are now carried across intact.
+* **Dex still asks before touching anything, and shows you exactly what it will do first.**
+
 ## [1.70.0] — 🛟 Your own words stay safe, and Dex finds people properly again (2026-07-23)
 
 Two things in this one: a rare but unrecoverable way your writing could be overwritten, closed for good — and a rebuild of how Dex looks people up, which was quietly getting slower and occasionally turning up people who no longer exist.

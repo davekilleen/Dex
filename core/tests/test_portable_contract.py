@@ -40,7 +40,7 @@ def _tracked_paths() -> list[str]:
         # brain
         ("core/utils/doctor.py", "brain", False),
         (".claude/skills/daily-plan/SKILL.md", "brain", False),
-        ("CLAUDE.md", "brain", False),
+        ("CLAUDE.md", "generated", False),
         ("06-Resources/Dex_System/Dex_System_Guide.md", "brain", False),
         # seed: exact starters only
         ("03-Tasks/Tasks.md", "seed", False),
@@ -219,6 +219,14 @@ def test_rule_ids_are_unique_and_document_is_deterministic() -> None:
     assert portable_contract.build_contract_document() == (
         portable_contract.build_contract_document()
     )
+
+
+def test_sync_folder_marker_data_is_explicitly_release_owned() -> None:
+    resolution = portable_contract.resolve("core/data/sync-folder-markers.json")
+
+    assert resolution is not None
+    assert resolution.rule_id == "brain-sync-folder-markers"
+    assert resolution.ownership == "brain"
 
 
 # ---------------------------------------------------------------------------

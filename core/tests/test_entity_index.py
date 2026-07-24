@@ -5,6 +5,7 @@ import sqlite3
 from pathlib import Path
 
 import pytest
+import yaml
 
 from core.entity_engine import index as entity_index
 from core.entity_engine.contract import render_company_page, render_person_page
@@ -179,6 +180,265 @@ def test_foreign_keys_are_enabled_and_source_delete_cascades(
             assert connection.execute(
                 f"SELECT COUNT(*) FROM {table}"  # noqa: S608 - fixed table names
             ).fetchone() == (0,)
+
+
+def test_frontmatter_touches_project_idempotently_and_cascade_on_delete(
+    entity_vault: dict[str, Path],
+) -> None:
+    person = _write_person(entity_vault)
+    original = person.read_text(encoding="utf-8")
+    frontmatter = yaml.safe_load(original.split("---", 2)[1])
+    frontmatter["touches"] = [
+        {
+            "ts": "2026-07-20",
+            "type": "meeting",
+            "direction": "none",
+            "source": {"id": "meeting-1", "title": "Planning"},
+            "nature": "Reviewed the roadmap.",
+        },
+        {
+            "ts": "2026-07-21",
+            "type": "mention",
+            "source": "meeting-2",
+        },
+        {"ts": "2026-07-22", "source": {"id": "missing-type"}},
+        {
+            "ts": "2026-07-23",
+            "type": "meeting",
+            "direction": {"bad": "shape"},
+            "source": {"id": "malformed-direction"},
+        },
+        {
+            "ts": "2026-07-24",
+            "type": "mention",
+            "source": {"id": "malformed-nature"},
+            "nature": ["bad", "shape"],
+        },
+    ]
+    body = original.split("---", 2)[2]
+    person.write_text(
+        (
+            f"---\n{yaml.safe_dump(frontmatter, sort_keys=False).rstrip()}\n---{body}"
+        ).replace("ts: '2026-07-20'", "ts: 2026-07-20"),
+        encoding="utf-8",
+    )
+    source_path = person.relative_to(entity_vault["root"]).as_posix()
+
+    entity_index.build_from_vault(entity_vault["root"], **_kwargs(entity_vault))
+    entity_index.reconcile(
+        entity_vault["root"], force=True, **_kwargs(entity_vault)
+    )
+
+    db_path = entity_index.database_path(entity_vault["root"])
+    with entity_index.connect(db_path) as connection:
+        assert connection.execute(
+            """
+            SELECT node_id, ts, touch_type, direction, source, nature, source_path
+            FROM touches ORDER BY ts
+            """
+        ).fetchall() == [
+            (
+                source_path,
+                "2026-07-20",
+                "meeting",
+                "none",
+                "meeting-1",
+                "Reviewed the roadmap.",
+                source_path,
+            ),
+            (
+                source_path,
+                "2026-07-21",
+                "mention",
+                None,
+                "meeting-2",
+                None,
+                source_path,
+            ),
+        ]
+
+    person.unlink()
+    entity_index.reconcile(
+        entity_vault["root"], force=True, **_kwargs(entity_vault)
+    )
+    with entity_index.connect(db_path) as connection:
+        assert connection.execute("SELECT COUNT(*) FROM touches").fetchone() == (0,)
+
+
+def test_schema_version_drift_rebuilds_touches_from_frontmatter(
+    entity_vault: dict[str, Path],
+) -> None:
+    person = _write_person(entity_vault)
+    original = person.read_text(encoding="utf-8")
+    frontmatter = yaml.safe_load(original.split("---", 2)[1])
+    frontmatter["touches"] = [
+        {
+            "ts": "2026-07-20",
+            "type": "meeting",
+            "direction": "none",
+            "source": {"id": "meeting-1", "title": "Planning"},
+        }
+    ]
+    body = original.split("---", 2)[2]
+    person.write_text(
+        f"---\n{yaml.safe_dump(frontmatter, sort_keys=False).rstrip()}\n---{body}",
+        encoding="utf-8",
+    )
+
+    entity_index.build_from_vault(entity_vault["root"], **_kwargs(entity_vault))
+    db_path = entity_index.database_path(entity_vault["root"])
+    with entity_index.connect(db_path) as connection:
+        connection.execute("DELETE FROM touches")
+        connection.execute(
+            "UPDATE meta SET value = '0' WHERE key = 'schema_version'"
+        )
+
+    result = entity_index.reconcile(
+        entity_vault["root"],
+        debounce_seconds=60,
+        **_kwargs(entity_vault),
+    )
+
+    assert result == {"added": 1, "changed": 0, "removed": 0}
+    with entity_index.connect(db_path) as connection:
+        assert connection.execute(
+            "SELECT value FROM meta WHERE key = 'schema_version'"
+        ).fetchone() == (entity_index.SCHEMA_VERSION,)
+        assert connection.execute(
+            "SELECT ts, source FROM touches"
+        ).fetchall() == [("2026-07-20", "meeting-1")]
+
+
+def test_frontmatter_relationships_project_edges_and_power_neighbors(
+    entity_vault: dict[str, Path],
+) -> None:
+    alice = _write_person(entity_vault)
+    bob = _write_person(entity_vault, "Bob Jones")
+    company = _write_company(entity_vault)
+    bob_original = bob.read_text(encoding="utf-8")
+    bob_frontmatter = yaml.safe_load(bob_original.split("---", 2)[1])
+    bob_frontmatter["emails"] = ["bob@example.com"]
+    bob.write_text(
+        (
+            f"---\n{yaml.safe_dump(bob_frontmatter, sort_keys=False).rstrip()}"
+            f"\n---{bob_original.split('---', 2)[2]}"
+        ),
+        encoding="utf-8",
+    )
+    original = alice.read_text(encoding="utf-8")
+    frontmatter = yaml.safe_load(original.split("---", 2)[1])
+    frontmatter["relationships"] = [
+        {
+            "type": "works_at",
+            "target": "[[Acme]]",
+            "status": "suggested",
+            "source": {"kind": "domain-match", "id": "acme.test"},
+            "date": "2026-07-23",
+        },
+        {
+            "type": "reports_to",
+            "target": "bob@example.com",
+            "status": "suggested",
+            "source": {"kind": "meeting", "id": "meeting-1"},
+            "date": "2026-07-22",
+        },
+        {
+            "type": "related_to",
+            "target": "[[Unresolved Person]]",
+            "status": "suggested",
+            "source": {"kind": "co-attendance", "id": "meeting-2"},
+            "date": "2026-07-21",
+        },
+    ]
+    frontmatter["relationships"].append(
+        dict(frontmatter["relationships"][-1])
+    )
+    body = original.split("---", 2)[2]
+    alice.write_text(
+        f"---\n{yaml.safe_dump(frontmatter, sort_keys=False).rstrip()}\n---{body}",
+        encoding="utf-8",
+    )
+    alice_id = alice.relative_to(entity_vault["root"]).as_posix()
+    bob_id = bob.relative_to(entity_vault["root"]).as_posix()
+    company_id = company.relative_to(entity_vault["root"]).as_posix()
+
+    entity_index.build_from_vault(entity_vault["root"], **_kwargs(entity_vault))
+
+    with entity_index.connect(
+        entity_index.database_path(entity_vault["root"])
+    ) as connection:
+        assert connection.execute(
+            """
+            SELECT src_id, edge_type, dst_id, dst_ref, source_path
+            FROM edges
+            ORDER BY edge_type
+            """
+        ).fetchall() == [
+            (
+                alice_id,
+                "related_to",
+                None,
+                "[[Unresolved Person]]",
+                alice_id,
+            ),
+            (
+                alice_id,
+                "reports_to",
+                bob_id,
+                "bob@example.com",
+                alice_id,
+            ),
+            (
+                alice_id,
+                "works_at",
+                company_id,
+                "[[Acme]]",
+                alice_id,
+            ),
+        ]
+
+    assert entity_index.neighbors(
+        entity_vault["root"], alice_id, **_kwargs(entity_vault)
+    ) == [
+        {
+            "other": "[[Unresolved Person]]",
+            "edge_type": "related_to",
+            "direction": "out",
+            "label": "related_to",
+        },
+        {
+            "other": bob_id,
+            "edge_type": "reports_to",
+            "direction": "out",
+            "label": "reports_to",
+        },
+        {
+            "other": company_id,
+            "edge_type": "works_at",
+            "direction": "out",
+            "label": "works_at",
+        },
+    ]
+    assert entity_index.neighbors(
+        entity_vault["root"], bob_id, **_kwargs(entity_vault)
+    ) == [
+        {
+            "other": alice_id,
+            "edge_type": "reports_to",
+            "direction": "in",
+            "label": "manages",
+        }
+    ]
+    assert entity_index.neighbors(
+        entity_vault["root"], company_id, **_kwargs(entity_vault)
+    ) == [
+        {
+            "other": alice_id,
+            "edge_type": "works_at",
+            "direction": "in",
+            "label": "employs",
+        }
+    ]
 
 
 def test_neighbors_derives_inverse_without_storing_a_second_edge(

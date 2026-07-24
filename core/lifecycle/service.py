@@ -21,9 +21,14 @@ from pathlib import Path
 
 from core import portable_contract
 from core.lifecycle.catalog import load_catalog, load_catalog_payload_sources
+from core.lifecycle.conflict import (
+    ConflictResolutionPreview,
+    build_conflict_resolution_preview,
+)
 from core.lifecycle.engine import (
     AdoptionReceipt,
     execute_adoption,
+    execute_conflict_resolution,
     rewind_acknowledgement_token,
     rewind_adoption,
 )
@@ -322,6 +327,51 @@ def read_lifecycle_state(vault_root: str | Path) -> dict[str, object]:
     )
 
 
+def build_and_preview_conflict_resolution(
+    vault_root: str | Path,
+    release_root: str | Path,
+    resolutions: Sequence[Mapping[str, object]],
+) -> dict[str, object]:
+    """Build exact conflict-resolution writes and their approval token."""
+    _prepare(vault_root, release_root)
+    catalog, inventory, plan = _inventory_and_plan_models(vault_root)
+    preview = build_conflict_resolution_preview(
+        catalog,
+        inventory,
+        plan,
+        resolutions,
+        _release_payload_loader(release_root),
+        lambda path: bounded_read(Path(vault_root), path),
+    )
+    return _envelope(preview=preview.to_dict(), approval_token=preview.sha256)
+
+
+def execute_approved_conflict_resolution(
+    vault_root: str | Path,
+    release_root: str | Path,
+    preview: ConflictResolutionPreview | Mapping[str, object],
+    approved_token: str,
+) -> dict[str, object]:
+    """Execute one exactly approved conflict-resolution preview."""
+    _prepare(vault_root, release_root)
+    modeled = (
+        preview
+        if isinstance(preview, ConflictResolutionPreview)
+        else ConflictResolutionPreview.from_dict(preview)
+    )
+    receipt = execute_conflict_resolution(
+        Path(vault_root),
+        modeled,
+        approved_token,
+        _release_payload_loader(release_root),
+        lambda path: bounded_read(Path(vault_root), path),
+    )
+    return _envelope(
+        receipt=receipt.to_dict(),
+        rewind_acknowledgement_token=rewind_acknowledgement_token(receipt),
+    )
+
+
 __all__ = [
     "api_version",
     "build_inventory_and_plan",
@@ -329,4 +379,6 @@ __all__ = [
     "execute_approved_adoption",
     "rewind_adoption_by_receipt",
     "read_lifecycle_state",
+    "build_and_preview_conflict_resolution",
+    "execute_approved_conflict_resolution",
 ]

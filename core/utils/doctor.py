@@ -98,10 +98,20 @@ class ProbeResult:
     verdict: str
     detail: str
     heal: Heal | None = None
+    feature_status: str | None = None
+    user_message: str | None = None
 
     def __post_init__(self) -> None:
         if self.verdict not in VERDICTS:
             raise ValueError(f"Invalid doctor verdict: {self.verdict}")
+        if self.feature_status is not None and self.feature_status not in {
+            "ok",
+            "off",
+            "not_installed",
+            "broken",
+            "unknown",
+        }:
+            raise ValueError(f"Invalid feature status: {self.feature_status}")
 
 
 @dataclass(frozen=True)
@@ -664,13 +674,18 @@ def _load_yaml(path: Path) -> object:
 
 
 def _result_json(definition: CheckDefinition, result: ProbeResult) -> dict[str, Any]:
-    return {
+    rendered = {
         "id": definition.id,
         "feature": definition.feature,
         "verdict": result.verdict,
         "detail": _sentence(result.detail),
         "heal": asdict(result.heal) if result.heal else None,
     }
+    if result.feature_status is not None:
+        rendered["feature_status"] = result.feature_status
+    if result.user_message is not None:
+        rendered["user_message"] = result.user_message
+    return rendered
 
 
 def _summary(checks: list[dict[str, Any]]) -> dict[str, int]:
@@ -720,6 +735,40 @@ def _repo_shipped_executables(context: DoctorContext) -> list[Path]:
         if mode == "100755":
             executable_paths.append(context.repo_root / relative)
     return executable_paths
+
+
+def _requeue_entity_dead_letters(context: DoctorContext) -> dict[str, Any]:
+    """Run the bridge-owned dead-letter heal under its pending-store lock."""
+    node = shutil.which("node")
+    if not node:
+        raise FileNotFoundError("node is required to re-queue entity writes")
+    client = context.repo_root / ".scripts" / "lib" / "entity-engine-client.cjs"
+    if not client.is_file():
+        raise FileNotFoundError(f"entity bridge is missing: {client}")
+    source = (
+        "const client=require(process.argv[1]);"
+        "const result=client.requeueDeadLetters(process.argv[2]);"
+        "process.stdout.write(JSON.stringify(result));"
+    )
+    result = subprocess.run(
+        [node, "-e", source, str(client), str(context.vault_root)],
+        cwd=context.repo_root,
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=False,
+        env={
+            **os.environ,
+            "CLAUDE_PROJECT_DIR": str(context.vault_root),
+            "VAULT_PATH": str(context.vault_root),
+        },
+    )
+    if result.returncode != 0:
+        raise RuntimeError(result.stderr.strip() or "entity dead-letter heal failed")
+    parsed = json.loads(result.stdout)
+    if not isinstance(parsed, dict) or not isinstance(parsed.get("requeued"), int):
+        raise ValueError("entity dead-letter heal returned invalid output")
+    return parsed
 
 
 def _apply_t1_heals(context: DoctorContext) -> tuple[list[str], list[str]]:
@@ -789,6 +838,19 @@ def _apply_t1_heals(context: DoctorContext) -> tuple[list[str], list[str]]:
             planned_executables.append(relative)
         except OSError as error:
             errors.append(f"Executable-mode heal failed for {script}: {_one_line(error)}")
+
+    dead_letter_path = context.vault_root / "System" / ".dex" / "entity-dead-letter.jsonl"
+    if dead_letter_path.exists():
+        try:
+            healed = _requeue_entity_dead_letters(context)
+            requeued = healed["requeued"]
+            if requeued:
+                noun = "write" if requeued == 1 else "writes"
+                actions.append(
+                    f"re-queued {requeued} dead-lettered entity {noun} with retry counters reset"
+                )
+        except Exception as error:
+            errors.append(f"Entity-write heal failed: {_one_line(error)}")
 
     if planned:
         try:
@@ -876,11 +938,17 @@ def collect(
             )
         if result.verdict == "UNKNOWN" and _is_missing_package_error(result.detail):
             result = ProbeResult("UNKNOWN", MISSING_PACKAGES_DETAIL, result.heal)
-        if definition.id == "vault.structure" and t1_actions:
-            action = "; ".join(t1_actions) + "."
+        entity_actions = [
+            action for action in t1_actions if action.startswith("re-queued ")
+        ]
+        structure_actions = [
+            action for action in t1_actions if not action.startswith("re-queued ")
+        ]
+        if definition.id == "vault.structure" and structure_actions:
+            action = "; ".join(structure_actions) + "."
             if result.verdict == "OK":
-                repair_word = _repair_count_word(len(t1_actions))
-                repair_noun = "repair" if len(t1_actions) == 1 else "repairs"
+                repair_word = _repair_count_word(len(structure_actions))
+                repair_noun = "repair" if len(structure_actions) == 1 else "repairs"
                 detail = f"All standard PARA directories exist after {repair_word} safe {repair_noun}"
             else:
                 detail = f"{result.detail.rstrip('.')} while safe Tier-1 repairs were also applied"
@@ -888,6 +956,14 @@ def collect(
                 result.verdict,
                 detail,
                 Heal(tier=1, action=action, applied=True),
+            )
+        if definition.id == "entity.engine" and entity_actions:
+            result = ProbeResult(
+                result.verdict,
+                result.detail,
+                Heal(tier=1, action="; ".join(entity_actions) + ".", applied=True),
+                feature_status=result.feature_status,
+                user_message=result.user_message,
             )
         results[definition.id] = result
 
@@ -2886,11 +2962,25 @@ def _probe_entity_engine(context: DoctorContext) -> ProbeResult:
         people_dir = context.core_path("PEOPLE_DIR")
         companies_dir = context.core_path("COMPANIES_DIR")
         people_index_path = context.core_path("PEOPLE_INDEX_FILE")
+        dead_letter_path = (
+            context.vault_root / "System" / ".dex" / "entity-dead-letter.jsonl"
+        )
 
         contacts = json.loads(contacts_path.read_text()) if contacts_path.exists() else {}
         suggestions = json.loads(suggestions_path.read_text()) if suggestions_path.exists() else {}
         verification = json.loads(verification_path.read_text()) if verification_path.exists() else {}
         gardener = json.loads(gardener_path.read_text()) if gardener_path.exists() else {}
+        dead_letters = []
+        if dead_letter_path.exists():
+            for line in dead_letter_path.read_text().splitlines():
+                if not line.strip():
+                    continue
+                try:
+                    entry = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if isinstance(entry, dict):
+                    dead_letters.append(entry)
         profile = _load_yaml(profile_path) if profile_path.exists() else {}
         if profile is None:
             profile = {}
@@ -2964,8 +3054,28 @@ def _probe_entity_engine(context: DoctorContext) -> ProbeResult:
             f"Entity engine tracks {tracked} contacts and {observations} observations; "
             f"creation is {mode_label}; {pending} suggestions pending; last verification "
             f"{verification_label}; {quarantine_label} quarantined pages; people index {index_freshness}"
-            f"; gardener {gardener_label}"
+            f"; gardener {gardener_label}; {len(dead_letters)} dead-lettered writes"
         )
+        if dead_letters:
+            count = len(dead_letters)
+            noun = "entity write" if count == 1 else "entity writes"
+            heal_action = (
+                "Re-queue the dead-lettered entity write with retry counters reset."
+                if count == 1
+                else "Re-queue the dead-lettered entity writes with retry counters reset."
+            )
+            user_message = (
+                f"{count} {noun} failed permanently. Run /dex-doctor to re-queue "
+                f"{'it' if count == 1 else 'them'} with fresh retries; details remain in "
+                "System/.dex/entity-dead-letter.jsonl until then."
+            )
+            return ProbeResult(
+                "BROKEN",
+                detail,
+                Heal(tier=1, action=heal_action, applied=False),
+                feature_status="broken",
+                user_message=user_message,
+            )
         if unresolved or quarantined_paths:
             return ProbeResult("BROKEN", detail)
         if mode == "off":
