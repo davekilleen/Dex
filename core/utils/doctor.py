@@ -37,6 +37,7 @@ from core.lifecycle.plan import PlannedAction, ReasonCode, build_adoption_plan
 from core.transaction.engine import TX_ROOT_RELATIVE, PlanEntry
 from core.transaction.journal import Journal, JournalCorruptError
 from core.utils import preflight, release_channel
+from core.utils.integration_credentials import resolve_service_credentials
 
 VERDICTS = frozenset({"OK", "OFF", "BROKEN", "UNKNOWN"})
 DOCTOR_SAFE_PATH = "/usr/bin:/bin:/usr/sbin:/sbin"
@@ -3347,77 +3348,97 @@ def _enabled_integrations(config: object) -> list[tuple[str, dict[str, Any]]]:
     return sorted(enabled.items())
 
 
-def _integration_checker_command(
-    context: DoctorContext,
-    name: str,
-    settings: dict[str, Any],
-) -> list[str]:
-    configured = settings.get("health_checker") or settings.get("health_check")
-    if isinstance(configured, list) and all(isinstance(part, str) for part in configured):
-        return [_expand_path_token(part, context) for part in configured]
-    if isinstance(configured, str):
-        checker = Path(_expand_path_token(configured, context))
-        if not checker.is_absolute():
-            checker = context.vault_root / checker
-        return [shutil.which("node") or "node", str(checker)]
-
-    candidates = (
-        context.vault_root / "core" / "integrations" / name / "connection.cjs",
-        context.vault_root / ".scripts" / "integrations" / name / "connection.cjs",
-        context.vault_root / ".scripts" / name / "connection.cjs",
-        context.vault_root / ".claude" / "skills" / f"{name}-setup" / "connection.cjs",
-    )
-    checker = next((candidate for candidate in candidates if candidate.is_file()), None)
-    if checker is None:
-        raise FileNotFoundError(f"no existing {name} connection health checker was found")
-    node = shutil.which("node")
-    if not node:
-        raise FileNotFoundError("node is required to run integration connection checkers")
-    return [node, str(checker)]
-
-
-def _integration_health_check(
+def _task_sync_health_check(
     context: DoctorContext,
     name: str,
     settings: dict[str, Any],
 ) -> tuple[bool, str]:
-    command = _integration_checker_command(context, name, settings)
+    runner = context.repo_root / ".claude" / "hooks" / "adapters" / "run.cjs"
+    if not runner.is_file():
+        raise FileNotFoundError("task-sync adapter runner is not installed")
+    node = shutil.which("node")
+    if not node:
+        raise FileNotFoundError("node is required to run task-sync health checks")
+    credentials = resolve_service_credentials(name, settings, context.vault_root)
+    runtime_settings = {**settings, **credentials}
     result = subprocess.run(
-        command,
+        [node, str(runner), name, "health"],
+        input=json.dumps({"config": runtime_settings, "args": None}),
         cwd=context.vault_root,
         capture_output=True,
         text=True,
         timeout=30,
         check=False,
     )
-    detail = _one_line(result.stdout if result.returncode == 0 else result.stderr or result.stdout)
-    if result.returncode != 0:
-        return False, detail
     try:
         payload = json.loads(result.stdout)
     except (json.JSONDecodeError, TypeError):
-        return True, detail
-    if isinstance(payload, dict):
-        for key in ("healthy", "success", "ok", "connected"):
-            if payload.get(key) is False:
-                return False, _one_line(payload.get("error") or payload.get("message") or detail)
-    return True, detail
+        detail = _one_line(result.stderr or result.stdout)
+        for secret in credentials.values():
+            detail = detail.replace(secret, "[REDACTED]")
+        if result.returncode != 0:
+            return False, detail
+        return False, "task-sync adapter returned invalid JSON"
+    detail = _one_line(payload.get("error") if isinstance(payload, dict) else result.stderr or result.stdout)
+    for secret in credentials.values():
+        detail = detail.replace(secret, "[REDACTED]")
+    if result.returncode != 0:
+        return False, detail
+    healthy = (
+        isinstance(payload, dict)
+        and payload.get("ok") is True
+        and isinstance(payload.get("result"), dict)
+        and payload["result"].get("healthy") is True
+    )
+    if not healthy:
+        return False, _one_line(payload.get("error") if isinstance(payload, dict) else detail)
+    return True, name
+
+
+def _engine_integration_health(context: DoctorContext) -> tuple[list[dict[str, Any]] | None, str]:
+    engine = context.repo_root / "core" / "integrations" / "connection-manager" / "connect.cjs"
+    if not engine.is_file():
+        return None, "connection manager is not installed"
+    node = shutil.which("node")
+    if not node:
+        raise FileNotFoundError("node is required to inspect engine connections")
+    result = subprocess.run(
+        [node, str(engine), "status", "--json"],
+        cwd=context.vault_root,
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=False,
+        env={
+            "PATH": os.environ.get("PATH", ""),
+            "HOME": os.environ.get("HOME", ""),
+            "SYSTEMROOT": os.environ.get("SYSTEMROOT", ""),
+            "DEX_VAULT": str(context.vault_root),
+        },
+    )
+    detail = _one_line(result.stderr or result.stdout)
+    if result.returncode != 0:
+        raise RuntimeError(detail or "connection manager status failed")
+    try:
+        payload = json.loads(result.stdout)
+    except (json.JSONDecodeError, TypeError) as error:
+        raise RuntimeError("connection manager status returned invalid JSON") from error
+    connections = payload.get("connections") if isinstance(payload, dict) else None
+    if not isinstance(connections, list) or any(not isinstance(row, dict) for row in connections):
+        raise RuntimeError("connection manager status returned an invalid connection list")
+    return connections, detail
 
 
 def _probe_integrations_enabled(context: DoctorContext) -> ProbeResult:
     config_path = context.vault_root / "System" / "integrations" / "config.yaml"
-    if not config_path.exists():
-        return ProbeResult("OFF", "No integrations are enabled")
-    config = _load_yaml(config_path) or {}
-    enabled = _enabled_integrations(config)
-    if not enabled:
-        return ProbeResult("OFF", "No integrations are enabled")
+    config = (_load_yaml(config_path) or {}) if config_path.exists() else {}
+    enabled = [(name, settings) for name, settings in _enabled_integrations(config) if settings.get("task_sync") is True]
 
     failures = []
     unknowns = []
     for name, settings in enabled:
         try:
-            healthy, detail = _integration_health_check(context, name, settings)
+            healthy, detail = _task_sync_health_check(context, name, settings)
         except Exception as error:
             unknowns.append(f"{name}: {_one_line(error)}")
             continue
@@ -3426,6 +3447,23 @@ def _probe_integrations_enabled(context: DoctorContext) -> ProbeResult:
                 unknowns.append(f"{name}: {detail}")
             else:
                 failures.append(f"{name}: {detail}")
+    engine_connections: list[dict[str, Any]] = []
+    try:
+        engine_rows, _detail = _engine_integration_health(context)
+        if engine_rows is not None:
+            engine_connections = engine_rows
+    except Exception as error:
+        detail = _one_line(error)
+        if _looks_like_sandbox_failure(detail):
+            unknowns.append(f"connection manager: {detail}")
+        else:
+            failures.append(f"connection manager: {detail}")
+
+    for row in engine_connections:
+        service = str(row.get("service") or "unknown")
+        status = str(row.get("status") or "unknown")
+        if status in {"needs_reauth", "not_connected"}:
+            failures.append(f"{service}: {status}")
     if failures:
         detail_parts = [f"failed: {'; '.join(failures)}"]
         if unknowns:
@@ -3440,8 +3478,19 @@ def _probe_integrations_enabled(context: DoctorContext) -> ProbeResult:
             "UNKNOWN",
             f"Enabled integration checks could not run: {'; '.join(unknowns)}",
         )
-    names = ", ".join(name for name, _settings in enabled)
-    return ProbeResult("OK", f"Existing health checkers passed for enabled integrations: {names}")
+    checked = [name for name, _settings in enabled]
+    checked.extend(str(row.get("service") or "unknown") for row in engine_connections)
+    if not checked:
+        return ProbeResult("OFF", "No task-sync or engine connections are enabled")
+    unverified = [
+        str(row.get("service"))
+        for row in engine_connections
+        if row.get("status") == "connected" and row.get("verified") is not True
+    ]
+    detail = f"Integration health passed for: {', '.join(checked)}"
+    if unverified:
+        detail += f" (stored but unverified: {', '.join(unverified)})"
+    return ProbeResult("OK", detail)
 
 
 def _mcp_import_check(

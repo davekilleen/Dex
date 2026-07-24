@@ -2321,93 +2321,131 @@ def test_qmd_adapters_use_existing_discovery_and_status_command(monkeypatch, con
     assert doctor._qmd_status("/tmp/qmd") == (False, "status failed")
 
 
-def test_integrations_check_only_enabled_entries(monkeypatch, context):
+def test_integrations_skip_cleanly_when_engine_and_task_sync_are_absent(context):
     assert doctor._probe_integrations_enabled(context).verdict == "OFF"
 
+
+def test_integrations_check_only_task_sync_entries_through_adapter_runner(monkeypatch, context):
     config = context.vault_root / "System" / "integrations" / "config.yaml"
     config.parent.mkdir()
-    config.write_text("teams:\n  enabled: true\nnotion:\n  enabled: false\n")
-    calls = []
-    monkeypatch.setattr(
-        doctor,
-        "_integration_health_check",
-        lambda _context, name, _settings: calls.append(name) or (False, "sign-in expired"),
+    config.write_text(
+        "todoist:\n"
+        "  enabled: true\n"
+        "  task_sync: true\n"
+        "  api_key_env_var: TODOIST_API_KEY\n"
+        "notion:\n"
+        "  enabled: true\n"
     )
-    broken = doctor._probe_integrations_enabled(context)
-    assert broken.verdict == "BROKEN"
-    assert calls == ["teams"]
-
-    monkeypatch.setattr(
-        doctor,
-        "_integration_health_check",
-        lambda _context, _name, _settings: (False, "sandbox: Operation not permitted"),
-    )
-    assert doctor._probe_integrations_enabled(context).verdict == "UNKNOWN"
-
-    monkeypatch.setattr(
-        doctor,
-        "_integration_health_check",
-        lambda _context, _name, _settings: (True, "connected"),
-    )
-    assert doctor._probe_integrations_enabled(context).verdict == "OK"
-
-
-def test_integrations_support_legacy_enabled_map(monkeypatch, context):
-    config = context.vault_root / "System" / "integrations" / "config.yaml"
-    config.parent.mkdir()
-    config.write_text("enabled:\n  slack: true\n  notion: false\n")
-    calls = []
-    monkeypatch.setattr(
-        doctor,
-        "_integration_health_check",
-        lambda _context, name, _settings: calls.append(name) or (True, "connected"),
-    )
-
-    assert doctor._probe_integrations_enabled(context).verdict == "OK"
-    assert calls == ["slack"]
-
-
-def test_enabled_integration_without_existing_checker_is_unknown(context):
-    config = context.vault_root / "System" / "integrations" / "config.yaml"
-    config.parent.mkdir()
-    config.write_text("teams:\n  enabled: true\n")
-
-    result = doctor._probe_integrations_enabled(context)
-
-    assert result.verdict == "UNKNOWN"
-    assert "no existing teams connection health checker" in result.detail
-
-
-def test_integration_adapter_runs_configured_connection_checker(monkeypatch, context):
-    checker = context.vault_root / "teams" / "connection.cjs"
-    checker.parent.mkdir()
-    checker.touch()
+    (context.vault_root / ".env").write_text('TODOIST_API_KEY="secret"\n')
+    (context.vault_root / ".env").chmod(0o600)
+    runner = context.repo_root / ".claude" / "hooks" / "adapters" / "run.cjs"
+    runner.parent.mkdir(parents=True)
+    runner.touch()
     monkeypatch.setattr(doctor.shutil, "which", lambda command: "/usr/local/bin/node" if command == "node" else None)
     observed = []
 
-    def run(command, **kwargs):
-        observed.append((command, kwargs["cwd"]))
-        return subprocess.CompletedProcess(command, 0, stdout='{"connected": true}\n', stderr="")
+    def failed_run(command, **kwargs):
+        observed.append((command, json.loads(kwargs["input"])))
+        return subprocess.CompletedProcess(command, 1, stdout='{"ok":false,"error":"sign-in expired"}\n', stderr="")
 
-    monkeypatch.setattr(doctor.subprocess, "run", run)
+    monkeypatch.setattr(doctor.subprocess, "run", failed_run)
+    broken = doctor._probe_integrations_enabled(context)
+    assert broken.verdict == "BROKEN"
+    assert observed == [
+        (
+            ["/usr/local/bin/node", str(runner), "todoist", "health"],
+            {
+                "config": {
+                    "enabled": True,
+                    "task_sync": True,
+                    "api_key_env_var": "TODOIST_API_KEY",
+                    "api_key": "secret",
+                },
+                "args": None,
+            },
+        )
+    ]
 
-    assert doctor._integration_health_check(
-        context,
-        "teams",
-        {"health_checker": str(checker)},
-    ) == (True, '{"connected": true}')
-    assert observed == [(["/usr/local/bin/node", str(checker)], context.vault_root)]
+    def healthy_run(command, **_kwargs):
+        return subprocess.CompletedProcess(command, 0, stdout='{"ok":true,"result":{"healthy":true}}\n', stderr="")
+
+    monkeypatch.setattr(doctor.subprocess, "run", healthy_run)
+    assert doctor._probe_integrations_enabled(context).verdict == "OK"
+
+
+def test_integrations_read_engine_status_json_and_skip_empty_engine(monkeypatch, context):
+    engine = context.repo_root / "core" / "integrations" / "connection-manager" / "connect.cjs"
+    engine.parent.mkdir(parents=True)
+    engine.touch()
+    monkeypatch.setattr(doctor.shutil, "which", lambda command: "/usr/local/bin/node" if command == "node" else None)
+    observed = []
+
+    def empty_run(command, **kwargs):
+        observed.append((command, kwargs["env"]["DEX_VAULT"]))
+        return subprocess.CompletedProcess(command, 0, stdout='{"connections":[]}\n', stderr="")
+
+    monkeypatch.setattr(doctor.subprocess, "run", empty_run)
+    assert doctor._probe_integrations_enabled(context).verdict == "OFF"
+    assert observed == [(["/usr/local/bin/node", str(engine), "status", "--json"], str(context.vault_root))]
 
     monkeypatch.setattr(
         doctor.subprocess,
         "run",
-        lambda command, **_kwargs: subprocess.CompletedProcess(command, 1, stdout="", stderr="not connected\n"),
+        lambda command, **_kwargs: subprocess.CompletedProcess(
+            command,
+            0,
+            stdout=(
+                '{"connections":['
+                '{"service":"google","status":"connected","verified":true},'
+                '{"service":"linear","status":"needs_reauth","verified":false,"error":"invalid_key"}'
+                "]}\n"
+            ),
+            stderr="",
+        ),
     )
-    assert doctor._integration_health_check(
-        context,
-        "teams",
-        {"health_checker": str(checker)},
-    ) == (False, "not connected")
+    broken = doctor._probe_integrations_enabled(context)
+    assert broken.verdict == "BROKEN"
+    assert "linear" in broken.detail
+    assert "needs_reauth" in broken.detail
+
+
+def test_integrations_engine_unknown_transport_degrades_without_false_break(monkeypatch, context):
+    engine = context.repo_root / "core" / "integrations" / "connection-manager" / "connect.cjs"
+    engine.parent.mkdir(parents=True)
+    engine.touch()
+    monkeypatch.setattr(doctor.shutil, "which", lambda command: "/usr/local/bin/node" if command == "node" else None)
+    monkeypatch.setattr(
+        doctor.subprocess,
+        "run",
+        lambda command, **_kwargs: subprocess.CompletedProcess(
+            command,
+            1,
+            stdout="",
+            stderr="sandbox: Operation not permitted\n",
+        ),
+    )
+    assert doctor._probe_integrations_enabled(context).verdict == "UNKNOWN"
+
+
+def test_integrations_engine_connected_rows_are_ok(monkeypatch, context):
+    engine = context.repo_root / "core" / "integrations" / "connection-manager" / "connect.cjs"
+    engine.parent.mkdir(parents=True)
+    engine.touch()
+    monkeypatch.setattr(doctor.shutil, "which", lambda command: "/usr/local/bin/node" if command == "node" else None)
+    monkeypatch.setattr(
+        doctor.subprocess,
+        "run",
+        lambda command, **_kwargs: subprocess.CompletedProcess(
+            command,
+            0,
+            stdout='{"connections":[{"service":"google","status":"connected","verified":false}]}\n',
+            stderr="",
+        ),
+    )
+    result = doctor._probe_integrations_enabled(context)
+    assert result.verdict == "OK"
+    assert "google" in result.detail
+    assert "unverified" in result.detail
 
 
 def test_mcp_importable_runs_registered_core_servers_in_subprocess(monkeypatch, context):
