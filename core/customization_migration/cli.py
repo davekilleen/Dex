@@ -1,4 +1,4 @@
-"""Human-invoked consent-side adapter for customization migration."""
+"""Consent-side adapter for customization migration (consent is enforced by the interactive Doctor flow in later lanes; the confirm token is an integrity binding, not a secret)."""
 
 from __future__ import annotations
 

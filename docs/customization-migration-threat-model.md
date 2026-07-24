@@ -53,7 +53,11 @@ existing lifecycle "approval token" is an integrity binding — sha256 of the ca
 preview, provably mintable by any caller that can build a preview — so **a token is never
 consent**. Consent is an interactive act the model cannot perform or simulate: a
 confirmation collected from the user by the CLI/Doctor layer, never present in any MCP
-response, never derivable from capsule or preview content.
+response. Integrity tokens are NON-SECRET BY CONSTRUCTION — a preview token is a hash of
+data the read-only surfaces legitimately return, so redacting the token string from MCP
+responses is defense-in-depth, not a boundary. No lane may ever treat "the model cannot
+obtain the token" as a security property. The only real consent boundary is an
+interactive human act collected by the Doctor/CLI layer at the moment of mutation.
 
 ### A2 — One write authority, preconditioned
 
