@@ -23,6 +23,7 @@ const TMP_VAULT = fs.mkdtempSync(path.join(os.tmpdir(), 'dex-cm-test-'));
 process.env.DEX_VAULT = TMP_VAULT;
 
 const catalog = require('./catalog.cjs');
+const oauth = require('./oauth-flow.cjs');
 const store = require('./token-store.cjs');
 const health = require('./health.cjs');
 const cli = require('./connect.cjs'); // buildProbeTarget / classifyProbeStatus (pure probe policy)
@@ -129,6 +130,27 @@ test('catalog: normalizeScopes leaves bare-scope (non-Google) providers untouche
   const nonGoogle = catalog.listOAuthProviders().find((p) => !/^google/.test(p.id));
   if (!nonGoogle) return; // catalog always has these, but stay defensive
   assert.deepEqual(catalog.normalizeScopes(nonGoogle.id, ['read', 'write']), ['read', 'write']);
+});
+
+test('oauth: Google authorization URL defaults to Calendar read-only scope unless explicitly overridden', () => {
+  const { url: defaultUrl } = oauth.buildAuthorizationUrl(catalog.getProviderConfig('google'), {
+    clientId: 'x',
+    scopes: catalog.normalizeScopes('google', []),
+    redirectUri: 'http://127.0.0.1:1/cb',
+  });
+
+  assert.equal(
+    new URL(defaultUrl).searchParams.get('scope'),
+    'https://www.googleapis.com/auth/calendar.readonly'
+  );
+
+  const { url: overrideUrl } = oauth.buildAuthorizationUrl(catalog.getProviderConfig('google'), {
+    clientId: 'x',
+    scopes: catalog.normalizeScopes('google', ['fake.scope']),
+    redirectUri: 'http://127.0.0.1:1/cb',
+  });
+
+  assert.equal(new URL(overrideUrl).searchParams.get('scope'), 'https://www.googleapis.com/auth/fake.scope');
 });
 
 test('catalog: requiredConnectionConfig finds host-scoping fields (and none for key-only)', () => {
