@@ -1513,32 +1513,55 @@ def _probe_adoption_plan(context: DoctorContext) -> ProbeResult:
         return ProbeResult("UNKNOWN", f"The adoption plan could not be built: {_one_line(error)}")
 
 
+CUSTOMIZATION_RECORD_PERSISTENCE_CAP = 25
+
+
+def _customization_persistence_detail(
+    authority: dict[str, object],
+) -> dict[str, object]:
+    """Bound the record list that Doctor writes into its last-run receipt."""
+    detail = dict(authority)
+    records = authority.get("records")
+    if not isinstance(records, list):
+        return detail
+    total = len(records)
+    detail["records"] = records[:CUSTOMIZATION_RECORD_PERSISTENCE_CAP]
+    detail["records_total"] = total
+    detail["records_truncated"] = total > CUSTOMIZATION_RECORD_PERSISTENCE_CAP
+    return detail
+
+
 def _probe_customization_assessment(context: DoctorContext) -> ProbeResult:
     """Build the read-only customization assessment entirely in memory."""
     from core.customization_migration.report import assessment_report
     from core.customization_migration.service import assess
 
     assessment = assess(context.vault_root)
-    authority = assessment_report(assessment)
+    authority = _customization_persistence_detail(
+        assessment_report(assessment)
+    )
     catalog_path = _release_catalog_path(context)
-    if not os.path.lexists(catalog_path):
+    if os.path.lexists(catalog_path):
+        try:
+            load_catalog(catalog_path, release_root=context.vault_root)
+        except (CatalogError, UnicodeError) as error:
+            return ProbeResult(
+                "BROKEN",
+                f"The installed release catalog is invalid: {_one_line(error)}",
+                structured_detail=authority,
+            )
+    if assessment.baseline_identity_state != "VERIFIED":
         return ProbeResult(
-            "OFF",
-            "Customization assessment is unavailable because no release catalog is installed",
-            structured_detail=authority,
-        )
-    try:
-        load_catalog(catalog_path, release_root=context.vault_root)
-    except (CatalogError, UnicodeError) as error:
-        return ProbeResult(
-            "BROKEN",
-            f"The installed release catalog is invalid: {_one_line(error)}",
+            "UNKNOWN",
+            "I couldn't verify which Dex version is installed, so I can't tell you "
+            "what you've changed.",
             structured_detail=authority,
         )
     if assessment.completeness == "UNKNOWN":
         return ProbeResult(
             "UNKNOWN",
-            "Customization assessment could not prove a complete release-relative inventory",
+            "I couldn't prove a complete customization inventory "
+            f"({', '.join(assessment.incomplete_reasons)}).",
             structured_detail=authority,
         )
     count = assessment.identity.customization_count

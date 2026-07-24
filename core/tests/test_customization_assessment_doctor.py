@@ -2,11 +2,16 @@
 
 from __future__ import annotations
 
+import json
 from datetime import datetime, timezone
 from pathlib import Path
 
 from core.customization_migration.service import assess
-from core.tests.test_customization_assessment import _install_verified_catalog
+from core.tests.lifecycle_test_helpers import write_file, write_manifest
+from core.tests.test_customization_assessment import (
+    SHIPPED_SKILL,
+    _install_verified_catalog,
+)
 from core.utils import doctor
 
 NOW = datetime(2026, 7, 24, 12, 0, tzinfo=timezone.utc)
@@ -44,7 +49,7 @@ def test_deep_collect_includes_assessment_section_but_quick_does_not(
     deep = doctor.collect(deep=True, context=context)
 
     assert "customization_assessment" not in quick
-    assert deep["customization_assessment"]["schema_version"] == 1
+    assert deep["customization_assessment"]["schema_version"] == 0
     assert deep["customization_assessment"]["verdict"] == "OK"
     assert any(
         check["id"] == "customizations.assessment"
@@ -62,7 +67,7 @@ def test_probe_maps_verified_missing_and_ambiguous_catalog_states(
     older = _context(tmp_path / "older")
     older_assessment = assess(older.vault_root)
     assert older_assessment.verdict == "UNKNOWN"
-    assert doctor._probe_customization_assessment(older).verdict == "OFF"
+    assert doctor._probe_customization_assessment(older).verdict == "UNKNOWN"
 
     ambiguous = _context(tmp_path / "ambiguous")
     _install_verified_catalog(ambiguous.vault_root)
@@ -84,3 +89,53 @@ def test_probe_maps_invalid_catalog_to_broken(tmp_path: Path) -> None:
 
     assert result.verdict == "BROKEN"
     assert result.structured_detail is not None
+
+
+def test_manifest_only_probe_is_unknown_without_counts_or_records(
+    tmp_path: Path,
+) -> None:
+    context = _context(tmp_path)
+    write_file(
+        context.vault_root,
+        SHIPPED_SKILL,
+        b"locally modified without hash authority\n",
+    )
+    write_manifest(context.vault_root, [SHIPPED_SKILL])
+
+    result = doctor._probe_customization_assessment(context)
+    encoded = json.dumps(result.structured_detail, sort_keys=True)
+
+    assert result.verdict == "UNKNOWN"
+    assert result.detail == (
+        "I couldn't verify which Dex version is installed, so I can't tell you "
+        "what you've changed."
+    )
+    assert result.structured_detail is not None
+    assert result.structured_detail["incomplete_reasons"] == [
+        "baseline-not-verified"
+    ]
+    assert "records" not in result.structured_detail
+    assert "counts" not in result.structured_detail
+    assert "customization_count" not in encoded
+
+
+def test_probe_persistence_detail_caps_record_listing_at_25(
+    tmp_path: Path,
+) -> None:
+    context = _context(tmp_path)
+    _install_verified_catalog(context.vault_root)
+    for index in range(26):
+        write_file(
+            context.vault_root,
+            f".scripts/custom-{index:02d}.py",
+            f"VALUE = {index}\n".encode(),
+        )
+
+    result = doctor._probe_customization_assessment(context)
+
+    assert result.verdict == "OK"
+    assert result.structured_detail is not None
+    assert result.structured_detail["counts"]["total"] == 26
+    assert result.structured_detail["records_total"] == 26
+    assert result.structured_detail["records_truncated"] is True
+    assert len(result.structured_detail["records"]) == 25

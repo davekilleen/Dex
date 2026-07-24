@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import re
 
-
 SOFT_PROMISE_PATTERNS = [
     r"\bI(?:['’]ll| will)\s+(?:follow\s+up|get\s+back\s+to|send|circle\s+back|look\s+into|check(?:\s+\w+){0,5}\s+and\s+let\s+you\s+know|reach\s+out\s+to)\b",
     r"\blet\s+me\s+(?:get\s+back\s+to|look\s+into)\b",

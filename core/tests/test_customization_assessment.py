@@ -6,6 +6,7 @@ import hashlib
 import json
 import subprocess
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
@@ -16,10 +17,12 @@ from core.customization_migration.model import (
     CustomizationKind,
 )
 from core.customization_migration.references import extract_reference_edges
+from core.customization_migration.report import assessment_report
 from core.customization_migration.service import assess, assessment_to_dict
 from core.lifecycle.catalog import canonical_catalog_bytes, with_catalog_identity
 from core.lifecycle.inventory import InventoryEntry
 from core.tests.lifecycle_test_helpers import SOURCE_COMMIT, write_file, write_manifest
+from core.utils import doctor
 from core.utils.trust_registry import TrustedMcpEntry, TrustedMcpRegistry
 
 SHIPPED_SKILL = ".claude/skills/daily-plan/SKILL.md"
@@ -140,10 +143,13 @@ def test_linked_triple_has_stable_records_edges_and_groups(tmp_path: Path) -> No
     ) in edge_pairs
 
     groups = _groups_by_id(first)
-    assert groups[records[SHIPPED_SKILL].customization_id] is AssessmentGroup.NEEDS_INTERPRETATION
+    assert (
+        groups[records[SHIPPED_SKILL].customization_id]
+        is AssessmentGroup.UPDATE_REPLACEABLE_LOCATION
+    )
     assert (
         groups[records[".scripts/custom-plan.py"].customization_id]
-        is AssessmentGroup.NEEDS_INTERPRETATION
+        is AssessmentGroup.UPDATE_REPLACEABLE_LOCATION
     )
     assert (
         groups[records["System/folder-paths.yaml"].customization_id]
@@ -173,6 +179,30 @@ def test_missing_or_ambiguous_baseline_is_unknown_without_fabricated_records(
     assert assessment.records == ()
     assert assessment.edges == ()
     assert assessment.groups == ()
+
+
+def test_manifest_only_baseline_never_emits_zero_customization_all_clear(
+    tmp_path: Path,
+) -> None:
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    write_file(vault, SHIPPED_SKILL, b"locally modified without hash authority\n")
+    write_manifest(vault, [SHIPPED_SKILL])
+
+    assessment = assess(vault)
+    emitted = assessment_to_dict(assessment)
+    report = assessment_report(assessment)
+
+    assert assessment.baseline_identity_state == "MANIFEST_ONLY"
+    assert assessment.completeness == "UNKNOWN"
+    assert assessment.verdict == "UNKNOWN"
+    assert "baseline-not-verified" in assessment.incomplete_reasons
+    assert "identity" not in emitted
+    assert "records" not in emitted
+    assert "customization_count" not in json.dumps(emitted, sort_keys=True)
+    assert "counts" not in report
+    assert "records" not in report
+    assert report["incomplete_reasons"] == ["baseline-not-verified"]
 
 
 def test_hard_denied_customization_is_restricted_without_content_leak(
@@ -270,6 +300,75 @@ def test_mcp_environment_records_names_only_and_never_values(tmp_path: Path) -> 
     ) in edges
     assert (".mcp.json", "env:LOCAL_API_TOKEN", "env-var-name") in edges
     assert secret_value.encode() not in assessment.canonical_assessment_bytes()
+
+
+def test_assessment_outputs_never_leak_extracted_config_or_script_content(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    _install_verified_catalog(vault)
+    fake_key = "sk-FAKELEAK123456789"
+    write_file(
+        vault,
+        ".mcp.json",
+        json.dumps(
+            {
+                "mcpServers": {
+                    "custom-local": {
+                        "command": "python3",
+                        "args": ["core/mcp-custom/local_server.py"],
+                        "env": {"LOCAL_API_TOKEN": fake_key},
+                    }
+                }
+            }
+        ).encode(),
+    )
+    write_file(vault, "core/mcp-custom/local_server.py", b"TOOLS = ()\n")
+    write_file(
+        vault,
+        "System/integrations/custom.yaml",
+        f"token: {fake_key}\nhelper: .scripts/helper.py\n".encode(),
+    )
+    write_file(
+        vault,
+        ".scripts/custom.py",
+        (
+            f'SECRET_LITERAL = "{fake_key}"\n'
+            'HELPER = ".scripts/helper.py"\n'
+        ).encode(),
+    )
+    write_file(vault, ".scripts/helper.py", b"VALUE = 1\n")
+    monkeypatch.setattr(
+        assessment_inventory,
+        "_contains_embedded_secret",
+        lambda _raw: False,
+    )
+
+    assessment = assess(vault)
+    report = assessment_report(assessment)
+    home = tmp_path / "home"
+    home.mkdir()
+    doctor_result = doctor._probe_customization_assessment(
+        doctor.DoctorContext(
+            vault_root=vault,
+            repo_root=vault,
+            home=home,
+            now=datetime(2026, 7, 24, tzinfo=timezone.utc),
+        )
+    )
+    encoded = json.dumps(
+        {
+            "assessment": assessment_to_dict(assessment),
+            "report": report,
+            "doctor": doctor_result.structured_detail,
+        },
+        sort_keys=True,
+    )
+
+    assert fake_key not in encoded
+    assert all(fake_key not in edge.target for edge in assessment.edges)
 
 
 def test_standalone_custom_script_is_not_silently_omitted(tmp_path: Path) -> None:
@@ -641,8 +740,8 @@ def test_common_embedded_secret_forms_are_restricted(
 @pytest.mark.parametrize(
     ("literal", "target"),
     [
-        ("/etc/passwd", "unsafe-absolute:/etc/passwd"),
-        ("../../outside/helper.py", "unsafe-escape:../../outside/helper.py"),
+        ("/etc/passwd", "outside-vault:absolute"),
+        ("../../outside/helper.py", "outside-vault:escape"),
     ],
 )
 def test_unsafe_reference_remains_visible_and_blocks_record(
@@ -680,7 +779,7 @@ def test_sibling_python_import_resolves_relative_to_custom_script(
     record = _records_by_path(assessment)[".scripts/custom.py"]
     assert (
         _groups_by_id(assessment)[record.customization_id]
-        is AssessmentGroup.NEEDS_INTERPRETATION
+        is AssessmentGroup.UPDATE_REPLACEABLE_LOCATION
     )
 
 
@@ -770,18 +869,14 @@ def test_canonical_path_collision_is_excluded_without_raising(
     ) in {(item.path, item.reason) for item in assessment.exclusions}
 
 
-def test_mcp_bare_command_is_recorded_as_server_dependency() -> None:
+def test_mcp_bare_command_is_not_copied_into_reference_output() -> None:
     edges = extract_reference_edges(
         ".mcp.json",
         b'{"mcpServers":{"local":{"command":"python3","args":[]}}}',
         skill_paths={},
     )
 
-    assert any(
-        edge.target == "command:python3"
-        and edge.edge_kind.value == "mcp-to-server"
-        for edge in edges
-    )
+    assert edges == ()
 
 
 def test_missing_relative_python_import_blocks_custom_script(
@@ -928,5 +1023,37 @@ def test_multilevel_relative_python_import_resolves_from_parent_package(
     )
     assert (
         _groups_by_id(assessment)[record.customization_id]
-        is AssessmentGroup.NEEDS_INTERPRETATION
+        is AssessmentGroup.UPDATE_REPLACEABLE_LOCATION
     )
+
+
+def test_v0_vocabulary_is_mechanical_and_contains_no_reassurance_claims(
+    tmp_path: Path,
+) -> None:
+    assessment = assess(_linked_customized_vault(tmp_path))
+    report = assessment_report(assessment)
+    skill = (
+        Path(__file__).resolve().parents[2]
+        / ".claude/skills/dex-doctor/SKILL.md"
+    ).read_text(encoding="utf-8")
+    section = skill.split("### Step 3b: Render the customization assessment", 1)[1].split(
+        "### Step 4:", 1
+    )[0]
+    rendered = json.dumps(
+        {
+            "model": assessment_to_dict(assessment),
+            "report": report,
+            "skill_section": section,
+        },
+        sort_keys=True,
+    ).casefold()
+
+    assert assessment.schema_version == 0
+    assert set(AssessmentGroup) == {
+        AssessmentGroup.UPDATE_REPLACEABLE_LOCATION,
+        AssessmentGroup.UPDATE_UNTOUCHED_LOCATION,
+        AssessmentGroup.NEEDS_INTERPRETATION,
+        AssessmentGroup.BLOCKED,
+    }
+    for forbidden in ("already portable", "portable", "safe", "preserved"):
+        assert forbidden not in rendered

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import hashlib
 import re
-import shutil
 import stat
 import sys
 from dataclasses import dataclass
@@ -256,20 +255,6 @@ def _skill_paths(entries: tuple[InventoryEntry, ...]) -> dict[str, str]:
     return dict(sorted(result.items()))
 
 
-def _supported_seam(path: str, trusted_paths: frozenset[str]) -> bool:
-    parts = PurePosixPath(path).parts
-    return (
-        path in {"CLAUDE-custom.md", ".mcp.json"}
-        or path in trusted_paths
-        or (len(parts) >= 3 and parts[:2] == (".claude", "skills-custom"))
-        or (
-            len(parts) >= 4
-            and parts[:2] == (".claude", "skills")
-            and parts[2].endswith("-custom")
-        )
-    )
-
-
 def _target_resolves(
     root: Path,
     source_path: str,
@@ -278,10 +263,8 @@ def _target_resolves(
     actual_by_canonical: Mapping[str, str],
     ambiguous_canonical_paths: frozenset[str],
 ) -> bool:
-    if target.startswith(("unsafe-absolute:", "unsafe-escape:")):
+    if target.startswith("outside-vault:"):
         return False
-    if target.startswith("command:"):
-        return shutil.which(target.removeprefix("command:")) is not None
     if target.startswith("env:"):
         return True
     if target.startswith("python-relative:"):
@@ -360,7 +343,6 @@ def _assign_groups(
     records: tuple[CustomizationRecord, ...],
     edges: tuple[ReferenceEdge, ...],
     skill_paths: Mapping[str, str],
-    trusted_paths: frozenset[str],
     actual_by_canonical: Mapping[str, str],
     ambiguous_canonical_paths: frozenset[str],
 ) -> tuple[AssessmentAssignment, ...]:
@@ -382,12 +364,22 @@ def _assign_groups(
             )
             for edge in outgoing
         )
-        if record.live.model_readability in {"restricted", "excluded"} or missing_target:
+        write_verdict = portable_contract.update_write_verdict(
+            primary,
+            exists=record.kind is not CustomizationKind.DELETED_SHIPPED_FILE,
+        )
+        if (
+            record.live.model_readability in {"restricted", "excluded"}
+            or missing_target
+            or write_verdict.action == "deny"
+        ):
             group = AssessmentGroup.BLOCKED
-        elif _supported_seam(primary, trusted_paths):
-            group = AssessmentGroup.ALREADY_PORTABLE
-        else:
+        elif write_verdict.action == "unclassified-never-write":
             group = AssessmentGroup.NEEDS_INTERPRETATION
+        elif write_verdict.allowed:
+            group = AssessmentGroup.UPDATE_REPLACEABLE_LOCATION
+        else:
+            group = AssessmentGroup.UPDATE_UNTOUCHED_LOCATION
         assignments.append(AssessmentAssignment(record.customization_id, group))
     return tuple(sorted(assignments, key=lambda item: item.customization_id))
 
@@ -561,7 +553,6 @@ def discover(vault_root: Path) -> DiscoveryResult:
         ordered_records,
         canonical_edges,
         skill_paths,
-        frozenset(trusted_hashes),
         {
             entry.canonical_path: entry.actual_path
             for entry in inventory.entries

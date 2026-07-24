@@ -40,7 +40,7 @@ def _normalize_target(source_path: str, target: str) -> str | None:
         return None
     stripped = stripped.split("#", 1)[0].replace("\\", "/")
     if stripped.startswith("/"):
-        return f"unsafe-absolute:{stripped}"
+        return "outside-vault:absolute"
     rooted = stripped.startswith(
         (
             ".claude/",
@@ -59,7 +59,7 @@ def _normalize_target(source_path: str, target: str) -> str | None:
     if candidate in {"", "."}:
         return None
     if candidate == ".." or candidate.startswith("../"):
-        return f"unsafe-escape:{stripped}"
+        return "outside-vault:escape"
     return candidate
 
 
@@ -204,54 +204,61 @@ def _structured_values(value: object) -> list[str]:
     return [value] if isinstance(value, str) else []
 
 
-def _environment_names(value: object) -> list[str]:
-    if isinstance(value, dict):
-        names: list[str] = []
-        for key, nested in value.items():
-            if key == "env" and isinstance(nested, dict):
-                names.extend(
-                    name
-                    for name in nested
-                    if isinstance(name, str)
-                    and re.fullmatch(r"[A-Z][A-Z0-9_]*", name)
-                )
-            else:
-                names.extend(_environment_names(nested))
-        return names
-    if isinstance(value, list):
-        return [name for nested in value for name in _environment_names(nested)]
-    return []
-
-
-def _mcp_commands(value: object) -> list[str]:
-    if not isinstance(value, dict):
+def _mcp_edges(source_path: str, payload: object) -> list[ReferenceEdge]:
+    if not isinstance(payload, dict):
         return []
-    servers = value.get("mcpServers", value)
+    servers = payload.get("mcpServers", payload)
     if not isinstance(servers, dict):
         return []
-    return [
-        config["command"]
-        for config in servers.values()
-        if isinstance(config, dict)
-        and isinstance(config.get("command"), str)
-        and config["command"]
-    ]
+    paths: list[str] = []
+    environment_names: set[str] = set()
+    for config in servers.values():
+        if not isinstance(config, dict):
+            continue
+        env = config.get("env")
+        if isinstance(env, dict):
+            environment_names.update(
+                name
+                for name in env
+                if isinstance(name, str)
+                and re.fullmatch(r"[A-Z][A-Z0-9_]*", name)
+            )
+        args = config.get("args")
+        if isinstance(args, list):
+            paths.extend(
+                value
+                for value in args
+                if isinstance(value, str)
+                and value.startswith(("core/", ".scripts/", "scripts/"))
+                and PurePosixPath(value).suffix.lower()
+                in {".py", ".js", ".cjs", ".mjs", ".sh"}
+            )
+    edges = _path_edges(
+        source_path,
+        paths,
+        confidence=ReferenceConfidence.PROVED,
+        kind=EdgeKind.MCP_TO_SERVER,
+    )
+    edges.extend(
+        ReferenceEdge.create(
+            source_path,
+            f"env:{name}",
+            EdgeKind.ENV_VAR_NAME,
+            ReferenceConfidence.PROVED,
+        )
+        for name in sorted(environment_names)
+    )
+    return edges
 
 
 def _config_edges(source_path: str, text: str) -> list[ReferenceEdge]:
     values: list[str] = []
-    environment_names: list[str] = []
-    if source_path.endswith(".json") or source_path == ".mcp.json":
+    if source_path.endswith(".json"):
         try:
             payload = json.loads(text)
         except json.JSONDecodeError:
             return []
         values.extend(_structured_values(payload))
-        environment_names.extend(_environment_names(payload))
-        if source_path == ".mcp.json":
-            for command in _mcp_commands(payload):
-                if "/" not in command and "\\" not in command:
-                    values.append(f"command:{command}")
     else:
         for raw_line in text.splitlines():
             line = raw_line.split("#", 1)[0]
@@ -274,26 +281,11 @@ def _config_edges(source_path: str, text: str) -> list[ReferenceEdge]:
             + PATH_TOKEN.findall(value)
         )
     ]
-    paths.extend(
-        value for value in values if value.startswith("command:")
-    )
-    kind = EdgeKind.MCP_TO_SERVER if source_path == ".mcp.json" else None
-    edges = _path_edges(
+    return _path_edges(
         source_path,
         paths,
         confidence=ReferenceConfidence.PROVED,
-        kind=kind,
     )
-    edges.extend(
-        ReferenceEdge.create(
-            source_path,
-            f"env:{name}",
-            EdgeKind.ENV_VAR_NAME,
-            ReferenceConfidence.PROVED,
-        )
-        for name in sorted(set(environment_names))
-    )
-    return edges
 
 
 def extract_reference_edges(
@@ -308,6 +300,22 @@ def extract_reference_edges(
     try:
         text = raw.decode("utf-8")
     except UnicodeDecodeError:
+        return ()
+    if source_path == ".mcp.json":
+        try:
+            payload = json.loads(text)
+        except json.JSONDecodeError:
+            return ()
+        edges = _mcp_edges(source_path, payload)
+        unique = {edge.edge_id: edge for edge in edges}
+        return tuple(sorted(unique.values(), key=lambda edge: edge.edge_id))
+    if source_path in {
+        ".claude/settings.json",
+        ".claude/settings.local.json",
+    } or (
+        source_path.startswith("System/integrations/")
+        and PurePosixPath(source_path).suffix.lower() in {".yaml", ".yml"}
+    ):
         return ()
     suffix = PurePosixPath(source_path).suffix.lower()
     edges: list[ReferenceEdge] = []
@@ -325,7 +333,7 @@ def extract_reference_edges(
                 confidence=ReferenceConfidence.INFERRED,
             )
         )
-    elif suffix in {".json", ".yaml", ".yml"} or source_path == ".mcp.json":
+    elif suffix in {".json", ".yaml", ".yml"}:
         edges.extend(_config_edges(source_path, text))
     for match in ENV_NAME.finditer(text):
         name = next(value for value in match.groups() if value is not None)

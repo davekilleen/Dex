@@ -13,16 +13,27 @@ from core.customization_migration.model import (
 )
 
 GROUP_SURFACES = {
-    AssessmentGroup.ALREADY_PORTABLE: "These customizations already live in supported extension seams.",
-    AssessmentGroup.CAN_BE_REGENERATED: "No regeneration claims are available in this read-only assessment.",
+    AssessmentGroup.UPDATE_REPLACEABLE_LOCATION: (
+        "These customizations live in locations Dex updates can replace."
+    ),
+    AssessmentGroup.UPDATE_UNTOUCHED_LOCATION: (
+        "These customizations live in locations updates leave alone."
+    ),
     AssessmentGroup.NEEDS_INTERPRETATION: "These customizations need their purpose or target mapping interpreted.",
     AssessmentGroup.BLOCKED: "These customizations have restricted, excluded, or missing dependency evidence.",
-    AssessmentGroup.NO_LONGER_NEEDED: "No retirement claims are available in this read-only assessment.",
 }
 
 
 def assessment_report(assessment: Assessment) -> dict[str, object]:
     """Return strict authority plus the only lines a renderer may rephrase."""
+    if assessment.completeness == "UNKNOWN":
+        return {
+            "schema_version": assessment.schema_version,
+            "baseline_identity_state": assessment.baseline_identity_state,
+            "incomplete_reasons": list(assessment.incomplete_reasons),
+            "completeness": assessment.completeness,
+            "verdict": assessment.verdict,
+        }
     groups_by_id = {
         assignment.customization_id: assignment.group for assignment in assessment.groups
     }
@@ -35,6 +46,7 @@ def assessment_report(assessment: Assessment) -> dict[str, object]:
         "identity": assessment.identity.to_dict(),
         "baseline_identity_state": assessment.baseline_identity_state,
         "baseline_errors": list(assessment.baseline_errors),
+        "incomplete_reasons": list(assessment.incomplete_reasons),
         "completeness": assessment.completeness,
         "verdict": assessment.verdict,
         "counts": {

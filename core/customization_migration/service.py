@@ -11,17 +11,50 @@ from core.customization_migration.model import Assessment, AssessmentIdentity
 def assess(vault_root: Path) -> Assessment:
     """Assess one vault entirely in memory; never cache or mutate it."""
     discovery = discover(Path(vault_root))
-    completeness = "OK" if discovery.complete else "UNKNOWN"
+    inventory = discovery.inventory
+    folder_map_state = getattr(
+        getattr(inventory, "folder_map", None),
+        "state",
+        "DEFAULT",
+    )
+    walk_truncated = (
+        "filesystem inventory reached its configured entry bound"
+        in inventory.errors
+    )
+    reasons: set[str] = set()
+    if inventory.baseline.identity_state != "VERIFIED":
+        reasons.add("baseline-not-verified")
+    if not inventory.complete:
+        reasons.add("inventory-incomplete")
+    if folder_map_state == "UNKNOWN":
+        reasons.add("folder-map-unknown")
+    if walk_truncated:
+        reasons.add("walk-truncated")
+    if discovery.exclusions:
+        reasons.add("assessment-exclusions")
+    if inventory.errors and inventory.baseline.identity_state == "VERIFIED":
+        reasons.add("inventory-errors")
+    proved_complete = (
+        inventory.baseline.identity_state == "VERIFIED"
+        and inventory.complete
+        and folder_map_state != "UNKNOWN"
+        and not walk_truncated
+        and discovery.complete
+    )
+    if not proved_complete and not reasons:
+        reasons.add("inventory-incomplete")
+    completeness = "OK" if proved_complete else "UNKNOWN"
     return Assessment(
-        1,
+        0,
         AssessmentIdentity(
-            discovery.inventory.baseline.release_version,
-            len(discovery.inventory.entries),
+            inventory.baseline.release_version,
+            len(inventory.entries),
             len(discovery.records),
             len(discovery.edges),
         ),
-        discovery.inventory.baseline.identity_state,
-        discovery.inventory.baseline.errors,
+        inventory.baseline.identity_state,
+        inventory.baseline.errors,
+        tuple(sorted(reasons)),
         discovery.records,
         discovery.edges,
         discovery.groups,

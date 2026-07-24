@@ -1,4 +1,7 @@
-"""Closed, deterministic authority records for customization assessment."""
+"""Deterministic customization-assessment records.
+
+The vocabulary is v0 and may change until the capsule lanes freeze it.
+"""
 
 from __future__ import annotations
 
@@ -16,6 +19,16 @@ CUSTOMIZATION_ID = re.compile(r"^cust-[0-9a-f]{12}$")
 EDGE_ID = re.compile(r"^dep-[0-9a-f]{12}$")
 VERDICTS = frozenset({"OK", "OFF", "BROKEN", "UNKNOWN"})
 READABILITY = frozenset({"readable", "restricted", "excluded", "missing", "hash-only"})
+INCOMPLETE_REASONS = frozenset(
+    {
+        "assessment-exclusions",
+        "baseline-not-verified",
+        "folder-map-unknown",
+        "inventory-errors",
+        "inventory-incomplete",
+        "walk-truncated",
+    }
+)
 
 
 class CustomizationKind(str, Enum):
@@ -51,18 +64,12 @@ class ReferenceConfidence(str, Enum):
 
 
 class AssessmentGroup(str, Enum):
-    """Doctor's customization-assessment groups.
+    """Mechanical location/evidence groups for the v0 assessment."""
 
-    This read-only slice emits only ``already-portable``, ``needs-interpretation``,
-    and ``blocked``. The other two values are reserved so later target-release
-    planning can extend the authority without changing the vocabulary.
-    """
-
-    ALREADY_PORTABLE = "already-portable"
-    CAN_BE_REGENERATED = "can-be-regenerated"
+    UPDATE_REPLACEABLE_LOCATION = "update-replaceable-location"
+    UPDATE_UNTOUCHED_LOCATION = "update-untouched-location"
     NEEDS_INTERPRETATION = "needs-interpretation"
     BLOCKED = "blocked"
-    NO_LONGER_NEEDED = "no-longer-needed"
 
 
 def _canonical_path(value: str) -> str:
@@ -199,7 +206,7 @@ class CustomizationRecord:
         if type(self.evidence) is not CustomizationEvidence:
             raise TypeError("evidence must be CustomizationEvidence")
         if self.required_disposition is not True:
-            raise ValueError("required_disposition must be true in schema version 1")
+            raise ValueError("required_disposition must be true in schema version 0")
 
     @classmethod
     def create(
@@ -247,6 +254,22 @@ class ReferenceEdge:
         _canonical_path(self.source_path)
         if not isinstance(self.target, str) or not self.target or "\x00" in self.target:
             raise ValueError("reference target must be a non-empty string")
+        symbolic = (
+            re.fullmatch(r"env:[A-Z][A-Z0-9_]*", self.target)
+            or re.fullmatch(
+                r"python:(?:[A-Za-z_][A-Za-z0-9_]*)(?:\.[A-Za-z_][A-Za-z0-9_]*)*",
+                self.target,
+            )
+            or re.fullmatch(
+                r"python-relative:[1-9][0-9]*:[A-Za-z_][A-Za-z0-9_]*"
+                r"(?:\.[A-Za-z_][A-Za-z0-9_]*)*",
+                self.target,
+            )
+            or re.fullmatch(r"skill:[a-z0-9][a-z0-9-]*", self.target)
+            or self.target in {"outside-vault:absolute", "outside-vault:escape"}
+        )
+        if symbolic is None:
+            _canonical_path(self.target)
         if not isinstance(self.edge_kind, EdgeKind):
             raise TypeError("edge_kind must be EdgeKind")
         if not isinstance(self.confidence, ReferenceConfidence):
@@ -360,19 +383,13 @@ class AssessmentIdentity:
 
 @dataclass(frozen=True)
 class Assessment:
-    """One complete read-only assessment.
-
-    Group assignment is deterministic: supported extension seams with fully
-    resolved references are ``already-portable``; restricted/excluded content
-    or a missing target is ``blocked``; every other record is
-    ``needs-interpretation``. Schema version 1 cannot emit target-release
-    claims (``can-be-regenerated`` or ``no-longer-needed``).
-    """
+    """One read-only v0 assessment."""
 
     schema_version: int
     identity: AssessmentIdentity
     baseline_identity_state: str
     baseline_errors: tuple[str, ...]
+    incomplete_reasons: tuple[str, ...]
     records: tuple[CustomizationRecord, ...]
     edges: tuple[ReferenceEdge, ...]
     groups: tuple[AssessmentAssignment, ...]
@@ -381,7 +398,7 @@ class Assessment:
     verdict: str
 
     def __post_init__(self) -> None:
-        if self.schema_version != 1:
+        if self.schema_version != 0:
             raise ValueError("unsupported assessment schema_version")
         if type(self.identity) is not AssessmentIdentity:
             raise TypeError("identity must be AssessmentIdentity")
@@ -392,6 +409,16 @@ class Assessment:
             or tuple(sorted(set(self.baseline_errors))) != self.baseline_errors
         ):
             raise ValueError("baseline_errors must be a sorted unique tuple")
+        if (
+            not isinstance(self.incomplete_reasons, tuple)
+            or tuple(sorted(set(self.incomplete_reasons)))
+            != self.incomplete_reasons
+            or any(
+                reason not in INCOMPLETE_REASONS
+                for reason in self.incomplete_reasons
+            )
+        ):
+            raise ValueError("incomplete_reasons must use the closed reason codes")
         if not isinstance(self.records, tuple) or any(
             type(value) is not CustomizationRecord for value in self.records
         ):
@@ -415,12 +442,6 @@ class Assessment:
             or tuple(item.customization_id for item in self.groups) != expected_ids
         ):
             raise ValueError("groups must account for the exact sorted record-id set")
-        forbidden = {
-            AssessmentGroup.CAN_BE_REGENERATED,
-            AssessmentGroup.NO_LONGER_NEEDED,
-        }
-        if any(item.group in forbidden for item in self.groups):
-            raise ValueError("schema version 1 cannot make target-release group claims")
         if (
             not isinstance(self.exclusions, tuple)
             or any(type(value) is not AssessmentExclusion for value in self.exclusions)
@@ -435,17 +456,30 @@ class Assessment:
         expected_verdict = "OK" if self.completeness == "OK" else "UNKNOWN"
         if self.verdict != expected_verdict:
             raise ValueError("assessment verdict must follow completeness")
+        if self.completeness == "OK" and self.incomplete_reasons:
+            raise ValueError("complete assessment cannot contain incomplete reasons")
+        if self.completeness == "UNKNOWN" and not self.incomplete_reasons:
+            raise ValueError("unknown assessment requires at least one reason code")
         if self.identity.customization_count != len(self.records):
             raise ValueError("identity customization_count does not match records")
         if self.identity.edge_count != len(self.edges):
             raise ValueError("identity edge_count does not match edges")
 
     def to_dict(self) -> dict[str, object]:
+        if self.completeness == "UNKNOWN":
+            return {
+                "schema_version": self.schema_version,
+                "baseline_identity_state": self.baseline_identity_state,
+                "incomplete_reasons": list(self.incomplete_reasons),
+                "completeness": self.completeness,
+                "verdict": self.verdict,
+            }
         return {
             "schema_version": self.schema_version,
             "identity": self.identity.to_dict(),
             "baseline_identity_state": self.baseline_identity_state,
             "baseline_errors": list(self.baseline_errors),
+            "incomplete_reasons": list(self.incomplete_reasons),
             "records": [record.to_dict() for record in self.records],
             "edges": [edge.to_dict() for edge in self.edges],
             "groups": [group.to_dict() for group in self.groups],
