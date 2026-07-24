@@ -60,6 +60,8 @@ const UPDATE_SERVICE_OPERATIONS = new Set([
   'execute_approved_adoption',
   'build_and_preview_conflict_resolution',
   'execute_approved_conflict_resolution',
+  'build_and_preview_topology_migration',
+  'execute_approved_topology_migration',
   'read_lifecycle_state',
 ]);
 
@@ -204,7 +206,7 @@ test('update mutation follows the immutable preview, approval, execute service r
   assertOnlyServiceOperations(UPDATE_SKILL, UPDATE_SERVICE_OPERATIONS, 'dex-update');
   assert.match(
     UPDATE_SKILL,
-    /Every lifecycle operation goes through `core\.lifecycle\.service` version 1\.0\.0\./,
+    /Every lifecycle operation goes through `core\.lifecycle\.service` version 1\.1\.0\./,
   );
   assert.match(UPDATE_SKILL, /Execution requires an explicit yes to that exact preview\./);
   // execute is gated on an UNCHANGED preview + token for BOTH the adoption route and the
@@ -214,11 +216,12 @@ test('update mutation follows the immutable preview, approval, execute service r
   assert.match(UPDATE_SKILL, /The lifecycle service owns every mutation\./);
 
   assertInOrder(UPDATE_SKILL, [
-    '1. Ask `build_inventory_and_plan`',
-    '3. For safe `adopt` items, ask `build_and_preview_adoption`',
-    '5. Show every proposed file from each preview. Execution requires an explicit yes to that exact preview.',
-    '6. Pass unchanged adoption previews and tokens to `execute_approved_adoption`',
-    '7. Ask `read_lifecycle_state`',
+    '1. Ask `build_and_preview_topology_migration`',
+    '3. Ask `build_inventory_and_plan`',
+    '5. For safe `adopt` items, ask `build_and_preview_adoption`',
+    '7. Show every proposed file from each preview. Execution requires an explicit yes to that exact preview.',
+    '8. Pass unchanged adoption previews and tokens to `execute_approved_adoption`',
+    '9. Ask `read_lifecycle_state`',
   ], 'update preview-approval-execute route');
 });
 
