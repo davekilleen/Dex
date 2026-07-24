@@ -7,9 +7,9 @@
  *   node connect.cjs connect <provider> [--scopes a,b,c] [--as <alias>] [--default]
  *                                                           run OAuth, store token (--as = 2nd account)
  *   node connect.cjs set-key <provider> [--username <u>] [--as <alias>] [--default]
- *                                                           paste-a-key (Class B); secret via stdin only
+ *                                                           paste-a-key (Class B); hidden TTY prompt or stdin
  *   node connect.cjs register-app <provider> [--client-id ID]
- *                                                           save an OAuth app; secret via stdin only
+ *                                                           save an OAuth app; hidden TTY prompt or stdin
  *   node connect.cjs status                                 health sweep (monitor view)
  *   node connect.cjs probe [conn]                           bounded live auth probe (all when omitted)
  *   node connect.cjs refresh <conn> [--force]               refresh if needed; --force always calls provider
@@ -64,7 +64,7 @@ async function cmdConnect(provider, flags) {
       `'${provider}' has no OAuth app registered yet.\n` +
         `Dex can set this up with you — no file editing. It will ask for the client id and secret\n` +
         `from ${provider}'s developer console and save them for you:\n` +
-        `  node connect.cjs register-app ${provider}      (paste client id, then secret, on stdin)\n` +
+        `  node connect.cjs register-app ${provider}      (opens clear terminal prompts; the secret stays hidden)\n` +
         `Then: node connect.cjs connect ${provider}`
     );
     process.exit(1);
@@ -100,25 +100,42 @@ async function cmdConnect(provider, flags) {
 /**
  * Register a provider's OAuth app (client id + secret) WITHOUT the user opening any file.
  * The /connect skill drives this conversationally: it asks for each value and pipes it here.
- * Reads the client id from `--client-id` or stdin. The secret always comes from
- * stdin so it never appears in process listings or shell history.
+ * Reads the client id from `--client-id`, an interactive prompt, or stdin. The
+ * secret comes from a hidden interactive prompt or stdin so it never appears
+ * in process listings or shell history.
  * Public clients (PKCE, no secret) pass an empty secret.
  */
-function cmdRegisterApp(provider, flags) {
-  if (!provider) throw new Error('Usage: node connect.cjs register-app <provider> [--client-id ID] (secret via stdin)');
+async function cmdRegisterApp(provider, flags) {
+  if (!provider) throw new Error('Usage: node connect.cjs register-app <provider> [--client-id ID] (secret via hidden prompt or stdin)');
   if (flags['client-secret'] !== undefined) {
-    throw new Error('--client-secret is not accepted; pipe the client secret on stdin.');
+    throw new Error('--client-secret is not accepted; use the hidden interactive prompt or pipe the client secret on stdin.');
   }
   let clientId = flags['client-id'];
-  const piped = (readStdin() || '').split(/\r?\n/).map((s) => s.trim());
-  const clientSecret = clientId === undefined ? piped[1] || '' : piped[0] || '';
-  if (clientId === undefined) clientId = piped[0] || '';
-  if (!clientId) throw new Error(`No client id provided for '${provider}'. Pass --client-id or pipe it on stdin.`);
+  let clientSecret = '';
+  if (process.stdin.isTTY) {
+    if (clientId === undefined) {
+      clientId = await promptInteractive('Client ID: ');
+    }
+    clientSecret = await promptInteractive(
+      'Client secret (hidden; press Enter if this is a public client): ',
+      { hidden: true, allowEmpty: true }
+    );
+  } else {
+    const piped = (readStdin() || '').split(/\r?\n/).map((s) => s.trim());
+    clientSecret = clientId === undefined ? piped[1] || '' : piped[0] || '';
+    if (clientId === undefined) clientId = piped[0] || '';
+  }
+  if (!clientId) {
+    throw new Error(
+      `No client id received for '${provider}'. Run this command in an interactive terminal for a hidden prompt, ` +
+        'or pass --client-id and pipe the client secret on stdin.'
+    );
+  }
   store.setOAuthApp(provider, { clientId, clientSecret: clientSecret || '' });
   console.log(`✅ Registered OAuth app for ${provider} (saved to ${store.credentialsDir()}/oauth-apps.json). Now: node connect.cjs connect ${provider}`);
 }
 
-/** Read a secret from stdin (the default for set-key). Returns undefined if nothing is piped. */
+/** Read from piped stdin. Returns undefined when the pipe is closed without input. */
 function readStdin() {
   try {
     const data = fs.readFileSync(0, 'utf8'); // fd 0; '' immediately on empty pipe, blocks on a TTY until EOF
@@ -126,6 +143,40 @@ function readStdin() {
   } catch {
     return undefined;
   }
+}
+
+/**
+ * Ask for one terminal value. Secret prompts are written before readline is
+ * muted, so the instruction stays visible while the pasted value is not echoed.
+ */
+async function promptInteractive(label, { hidden = false, allowEmpty = false } = {}) {
+  const readline = require('readline/promises');
+  const { Writable } = require('stream');
+  let output = process.stderr;
+  if (hidden) {
+    process.stderr.write(label);
+    output = new Writable({
+      write(_chunk, _encoding, callback) {
+        callback();
+      },
+    });
+    output.isTTY = true;
+    output.columns = process.stderr.columns || 80;
+  }
+  const rl = readline.createInterface({ input: process.stdin, output, terminal: true });
+  try {
+    const value = (await rl.question(hidden ? '' : label)).trim();
+    if (!value && !allowEmpty) throw new Error(`${label.replace(/:\s*$/, '')} is required.`);
+    return value;
+  } finally {
+    rl.close();
+    if (hidden) process.stderr.write('\n');
+  }
+}
+
+async function readSecretOrPrompt(label) {
+  if (process.stdin.isTTY) return promptInteractive(label, { hidden: true });
+  return readStdin();
 }
 
 // Status codes that — ONLY at a Nango-authored verification endpoint — definitively mean
@@ -279,12 +330,21 @@ async function cmdSetKey(service, flags) {
   let secret;
   if (descriptor.authMode === 'BASIC') {
     const username = flags.username;
-    const password = readStdin();
-    if (!username || !password) throw new Error('BASIC auth needs --username and a password piped on stdin.');
+    const password = await readSecretOrPrompt('Password (hidden): ');
+    if (!username || !password) {
+      throw new Error(
+        'BASIC auth needs --username and a password. Run this command in an interactive terminal for a hidden prompt, ' +
+          'or pipe the password on stdin.'
+      );
+    }
     secret = { username, password };
   } else {
-    const apiKey = readStdin();
-    if (!apiKey) throw new Error('No key provided. Pipe it on stdin.');
+    const apiKey = await readSecretOrPrompt('API key (hidden): ');
+    if (!apiKey) {
+      throw new Error(
+        'No API key received. Run this command in an interactive terminal for a hidden prompt, or pipe the key on stdin.'
+      );
+    }
     secret = { apiKey };
   }
   if (Object.keys(connectionConfig).length) secret.connectionConfig = connectionConfig;
@@ -297,6 +357,11 @@ async function cmdSetKey(service, flags) {
   }
 
   const probe = flags['no-probe'] === undefined && flags.probe !== 'false' ? await probeKey(connId, descriptor, secret) : 'skipped';
+  if (probe === 'ok') {
+    // "Verified live" is durable evidence, not a console-only claim. Doctor
+    // and status derive verification strictly from successful probe rows.
+    health.recordConnectionEvent(connId, 'probe', { ok: true });
+  }
   const note = probe === 'ok' ? ' Verified live.' : probe === 'failed' ? ' (probe failed — marked needs_reauth)' : '';
   console.log(`✅ Stored ${descriptor.displayName}${alias ? ` (${connId})` : ''} key (encrypted) in ${store.credentialsDir()}/tokens/.${note}`);
 }
@@ -460,7 +525,7 @@ async function main() {
         await cmdSetKey(positional[0], flags);
         break;
       case 'register-app':
-        cmdRegisterApp(positional[0], flags);
+        await cmdRegisterApp(positional[0], flags);
         break;
       case 'status':
         cmdStatus(flags);

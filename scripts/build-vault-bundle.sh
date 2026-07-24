@@ -47,8 +47,15 @@ const fs = require('node:fs');
 const packagePath = process.argv[2];
 const pkg = JSON.parse(fs.readFileSync(packagePath, 'utf8'));
 delete pkg.devDependencies;
-if (pkg.scripts) delete pkg.scripts['test:hooks'];
-if (pkg.scripts) delete pkg.scripts['test:scripts'];
+for (const name of [
+  'test:hooks',
+  'test:scripts',
+  'test:integrations',
+  'check:connections-contract',
+  'test:connections-consumer-smoke',
+]) {
+  if (pkg.scripts) delete pkg.scripts[name];
+}
 fs.writeFileSync(packagePath, `${JSON.stringify(pkg, null, 2)}\n`);
 NODE
 

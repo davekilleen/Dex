@@ -2440,7 +2440,8 @@ def test_integrations_engine_unknown_transport_degrades_without_false_break(monk
     assert doctor._probe_integrations_enabled(context).verdict == "UNKNOWN"
 
 
-def test_integrations_engine_connected_rows_are_ok(monkeypatch, context):
+@pytest.mark.parametrize("status", ("connected", "expiring", "expired"))
+def test_integrations_engine_stored_but_unverified_rows_are_unknown(monkeypatch, context, status):
     engine = context.repo_root / "core" / "integrations" / "connection-manager" / "connect.cjs"
     engine.parent.mkdir(parents=True)
     engine.touch()
@@ -2451,14 +2452,18 @@ def test_integrations_engine_connected_rows_are_ok(monkeypatch, context):
         lambda command, **_kwargs: subprocess.CompletedProcess(
             command,
             0,
-            stdout='{"connections":[{"service":"google","status":"connected","verified":false}]}\n',
+            stdout=(
+                '{"connections":[{"service":"google","status":"'
+                + status
+                + '","verified":false}]}\n'
+            ),
             stderr="",
         ),
     )
     result = doctor._probe_integrations_enabled(context)
-    assert result.verdict == "OK"
+    assert result.verdict == "UNKNOWN"
     assert "google" in result.detail
-    assert "unverified" in result.detail
+    assert "stored credential has not been live-verified" in result.detail
 
 
 def test_mcp_importable_runs_registered_core_servers_in_subprocess(monkeypatch, context):

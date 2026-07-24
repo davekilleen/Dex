@@ -151,6 +151,19 @@ test('catalog: keyProviderCoverage tiers add up and reachable is the bulk', () =
   assert.ok(c.genericProbeable > 0 && c.genericProbeable <= c.singleKeyReady, 'genericProbeable ⊆ singleKeyReady');
 });
 
+test('dex-call refuses redirects when an authenticated generic request is sent', async () => {
+  let request;
+  await dexcall.fetchAuthenticated('https://api.example.test/data', {
+    method: 'GET',
+    headers: { 'X-Api-Key': 'SECRET' },
+  }, async (url, options) => {
+    request = { url, options };
+    return { ok: true, status: 200 };
+  });
+  assert.equal(request.url, 'https://api.example.test/data');
+  assert.equal(request.options.redirect, 'error');
+});
+
 // ---- probe policy (PURE — the false-negative safety net) ---------------------
 
 test('probe: classifyProbeStatus — only catalog 401/407 condemns; 403 never does', () => {
@@ -478,6 +491,30 @@ test('store: a NARROWER existing .gitignore is UPGRADED to ignore everything (re
   assert.match(gi, /^\*\s*$/m, 'a bare * line must now be present (so .dex-cm.key is ignored too)');
   assert.match(gi, /!README\.md/, 'README.md stays tracked');
   store.deleteToken('gi-upgrade');
+});
+
+test('store: credential writes fail closed when the never-commit guard cannot be installed', () => {
+  const vault = fs.mkdtempSync(path.join(os.tmpdir(), 'dex-cm-guard-failure-'));
+  const credentials = path.join(vault, 'System', 'credentials');
+  fs.mkdirSync(path.join(credentials, '.gitignore'), { recursive: true });
+  const env = { ...process.env, DEX_VAULT: vault, DEX_CM_NO_KEYCHAIN: '1' };
+  const result = spawnSync(
+    process.execPath,
+    [
+      '-e',
+      `require(${JSON.stringify(path.join(DIR, 'token-store.cjs'))}).saveApiKey('guard-failure',{apiKey:'MUST-NOT-LAND'})`,
+    ],
+    { env, encoding: 'utf8' }
+  );
+  try {
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /never-commit credentials guard/i);
+    assert.equal(fs.existsSync(path.join(credentials, '.dex-cm.key')), false);
+    assert.equal(fs.existsSync(path.join(credentials, 'connections.json')), false);
+    assert.equal(fs.existsSync(path.join(credentials, 'tokens')), false);
+  } finally {
+    fs.rmSync(vault, { recursive: true, force: true });
+  }
 });
 
 // ---- conversational OAuth-app onboarding (should-fix #3) --------------------

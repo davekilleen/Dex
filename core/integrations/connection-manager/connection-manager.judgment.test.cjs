@@ -65,6 +65,67 @@ test('the legacy oauth-flow refresher is deleted so only the lifted refresher re
   assert.doesNotMatch(fs.readFileSync(path.join(DIR, 'oauth-flow.cjs'), 'utf8'), /function refreshAccessToken/);
 });
 
+test('OAuth code exchange refuses redirects before sending codes or client secrets', async () => {
+  let request;
+  const originalFetch = global.fetch;
+  global.fetch = async (url, options) => {
+    request = { url, options };
+    return {
+      ok: true,
+      status: 200,
+      text: async () => JSON.stringify({ access_token: 'AT', refresh_token: 'RT', expires_in: 3600 }),
+    };
+  };
+  try {
+    await oauthFlow.exchangeCodeForToken(
+      {
+        tokenUrl: 'https://tokens.example/exchange',
+        tokenRequestAuthMethod: 'basic',
+        bodyFormat: 'form',
+      },
+      {
+        code: 'AUTH-CODE',
+        clientId: 'CLIENT-ID',
+        clientSecret: 'CLIENT-SECRET',
+        redirectUri: 'http://127.0.0.1/callback',
+      }
+    );
+    assert.equal(request.url, 'https://tokens.example/exchange');
+    assert.equal(request.options.redirect, 'error');
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
+
+test('OAuth refresh refuses redirects before sending refresh tokens or client secrets', async () => {
+  let request;
+  await refreshOAuthToken({
+    tokenUrl: 'https://tokens.example/refresh',
+    refreshToken: 'REFRESH-TOKEN',
+    clientId: 'CLIENT-ID',
+    clientSecret: 'CLIENT-SECRET',
+    fetchImpl: async (url, options) => {
+      request = { url, options };
+      return response(200, { access_token: 'AT', expires_in: 3600 });
+    },
+  });
+  assert.equal(request.url, 'https://tokens.example/refresh');
+  assert.equal(request.options.redirect, 'error');
+});
+
+test('live verification refuses redirects before sending access tokens or API keys', async () => {
+  let request;
+  const verifier = createConnectorVerify({
+    fetchImpl: async (url, options) => {
+      request = { url, options };
+      return response(200, { data: { viewer: { id: 'viewer-1' } } });
+    },
+  });
+  const result = await verifier.verify('linear', { provider: 'linear', token: 'LINEAR-KEY' });
+  assert.equal(result.ok, true);
+  assert.equal(request.options.redirect, 'error');
+});
+
 test('permanent refresh failure stamps needs_reauth and records refresh + break evidence', async () => {
   seedOAuth('refresh-permanent', 'google');
   const originalFetch = global.fetch;
@@ -404,5 +465,38 @@ test('set-key records a secret-free connect event', () => {
     assert.ok(!text.includes('CONNECT-SECRET'));
   } finally {
     store.deleteToken('linear:connect-ledger');
+  }
+});
+
+test('set-key persists a successful live verification in the durable ledger', () => {
+  const connId = 'linear:verified-on-save';
+  const script = `
+    global.fetch = async () => ({
+      ok: true,
+      status: 200,
+      headers: { get() { return null; } },
+      async json() { return { data: { viewer: { id: 'viewer-1' } } }; }
+    });
+    process.argv = ['node', ${JSON.stringify(path.join(DIR, 'connect.cjs'))}, 'set-key', ${JSON.stringify(connId)}];
+    require(${JSON.stringify(path.join(DIR, 'connect.cjs'))}).main();
+  `;
+  const run = spawnSync('node', ['-e', script], {
+    env: childEnv,
+    input: 'VERIFIED-SECRET\n',
+    encoding: 'utf8',
+  });
+  try {
+    assert.equal(run.status, 0, run.stderr);
+    assert.match(run.stdout, /Verified live/);
+    assert.deepEqual(
+      health.connectionLedger().tail(connId, 2).map((entry) => [entry.op, entry.ok]),
+      [
+        ['connect', true],
+        ['probe', true],
+      ]
+    );
+    assert.equal(health.connectionHealth(connId).verified, true);
+  } finally {
+    store.deleteToken(connId);
   }
 });

@@ -137,6 +137,9 @@ async function refreshOAuthToken({
 				headers: { "Content-Type": "application/x-www-form-urlencoded" },
 				body,
 				signal: controller.signal,
+				// DEX CORE DIVERGENCE: A 307/308 can preserve the POST body.
+				// Never let a refresh token or client secret cross a redirect.
+				redirect: "error",
 			});
 		} catch (error) {
 			const timedOut = controller.signal.aborted || error?.name === "AbortError";

@@ -157,7 +157,14 @@ async function postToken(providerConfig, body, headers) {
     headers['Content-Type'] = 'application/x-www-form-urlencoded';
     payload = new URLSearchParams(body).toString();
   }
-  const res = await fetch(providerConfig.tokenUrl, { method: 'POST', headers, body: payload });
+  const res = await fetch(providerConfig.tokenUrl, {
+    method: 'POST',
+    headers,
+    body: payload,
+    // Authorization codes and client secrets must never be replayed to a
+    // redirect target. Treat every redirect as a failed token exchange.
+    redirect: 'error',
+  });
   const text = await res.text();
   let json;
   try {

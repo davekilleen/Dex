@@ -256,6 +256,21 @@ test('secret argv flags are rejected with one-line stdin guidance', () => {
   }
 });
 
+test('first-run credential commands fail immediately with clear interactive guidance when stdin is empty', () => {
+  const cases = [
+    [path.join(DIR, 'connect.cjs'), 'register-app', 'first-run-oauth'],
+    [path.join(DIR, 'connect.cjs'), 'set-key', 'linear', '--no-probe'],
+  ];
+  for (const args of cases) {
+    const result = run(args);
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /interactive terminal/i);
+    assert.match(result.stderr, /hidden prompt/i);
+  }
+  assert.equal(store.getOAuthApp('first-run-oauth'), null);
+  assert.equal(store.loadToken('linear'), null);
+});
+
 test('get-token OAuth defaults to least privilege; --full and --access-token-only remain explicit', () => {
   store.saveToken(
     'least-privilege',
