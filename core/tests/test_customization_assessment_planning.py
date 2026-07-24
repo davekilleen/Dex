@@ -8,15 +8,15 @@ from pathlib import Path
 
 import pytest
 
+from core.customization_migration.model import AssessmentIdentity
 from core.customization_migration.planning import (
     Disposition,
     DispositionPlanItem,
     validate_disposition_plan,
 )
 from core.customization_migration.service import assess
-from core.customization_migration.model import AssessmentIdentity
-from core.tests.test_customization_assessment import _linked_customized_vault
 from core.tests.lifecycle_test_helpers import write_file, write_manifest
+from core.tests.test_customization_assessment import _linked_customized_vault
 
 
 def _plan_items(assessment):
