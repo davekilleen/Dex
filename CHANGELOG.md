@@ -7,6 +7,26 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.73.0] — ✅ Each suggested relationship gets its own yes or no (2026-07-24)
+
+Confirming one relationship no longer freezes every other suggestion on that page.
+Confirmed connections are protected individually, while new suggestions can still
+arrive. Dismissing a suggestion now records a small on-page tombstone so the same
+meeting evidence cannot bring it back, and deleting a suggestion by hand has the
+same durable effect.
+
+The daily-plan nudge now leads to real `confirm_relationship` and
+`dismiss_relationship` actions. Relationship generation also obeys
+`entity_creation.mode: off` as a hard write gate.
+
+The v1.72 field-level `dex_pinned.relationships` marker is removed lazily on the
+next relationship write; entries protected by that legacy whole-field pin become
+individually confirmed. Rolling back to v1.72 is degraded: the missing field pin
+means the older writer treats the field as initially unpinned. The new
+`dex_dismissed_relationships` key stays on the page but v1.72 does not enforce it,
+so avoid resyncing relationship evidence while rolled back if a dismissal must
+remain suppressed.
+
 ## [1.72.0] — 🔗 Dex starts mapping how the people you know connect (2026-07-24)
 
 Dex has always kept a page for each person and company you deal with. What it couldn't do was join them up — see that someone works at a particular company, reports to someone else, or is the key stakeholder on a deal. This release starts drawing those connections, quietly, from what's already in your meetings.

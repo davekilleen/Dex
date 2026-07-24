@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import asyncio
 import json
+from datetime import date
 from pathlib import Path
 
 import pytest
+import yaml
 
 from core.mcp import work_server
 from core.utils.entity_pages import render_company_page, render_person_page
@@ -555,3 +557,68 @@ def test_create_task_explicit_goal_is_never_second_guessed(entity_vault, monkeyp
     assert f"Goal: {explicit_goal} (?)" not in entity_vault["tasks"].read_text(
         encoding="utf-8"
     )
+
+
+def test_work_mcp_confirm_and_dismiss_relationship_use_engine_path(
+    entity_vault,
+    monkeypatch,
+) -> None:
+    person = entity_vault["people"] / "External" / "Related.md"
+    person.parent.mkdir(parents=True, exist_ok=True)
+    person.write_text(
+        "---\n"
+        "type: person\n"
+        "name: Related Person\n"
+        "relationships:\n"
+        "- type: works_at\n"
+        "  target: '[[Acme]]'\n"
+        "  status: suggested\n"
+        "  source: {kind: domain-match, id: acme.test}\n"
+        "  date: '2026-07-23'\n"
+        "dex_pinned: {relationships: user}\n"
+        "dex_last_written:\n"
+        "  relationships:\n"
+        "  - type: works_at\n"
+        "    target: '[[Acme]]'\n"
+        "    status: suggested\n"
+        "    source: {kind: domain-match, id: acme.test}\n"
+        "    date: '2026-07-23'\n"
+        "---\n"
+        "# Related Person\n",
+        encoding="utf-8",
+    )
+    relative = _vault_relative(person, entity_vault["root"])
+    monkeypatch.setattr(work_server, "_tz_today", lambda: date(2026, 7, 24))
+
+    tools = {
+        tool.name: tool
+        for tool in asyncio.run(work_server.handle_list_tools())
+    }
+    assert tools["confirm_relationship"].inputSchema["required"] == [
+        "page",
+        "edge_key",
+    ]
+    assert tools["dismiss_relationship"].inputSchema["required"] == [
+        "page",
+        "edge_key",
+    ]
+
+    confirmed = _call_tool(
+        "confirm_relationship",
+        {"page": relative, "edge_key": "works_at::[[acme]]"},
+    )
+    assert confirmed["success"] is True
+    parsed = work_server.parse_entity_page(person)
+    assert parsed["relationships"][0]["status"] == "confirmed"
+
+    dismissed = _call_tool(
+        "dismiss_relationship",
+        {"page": relative, "edge_key": "works_at::[[acme]]"},
+    )
+    assert dismissed["success"] is True
+    parsed = work_server.parse_entity_page(person)
+    assert parsed["relationships"] == []
+    frontmatter = yaml.safe_load(person.read_text(encoding="utf-8").split("---", 2)[1])
+    assert frontmatter["dex_dismissed_relationships"] == [
+        {"key": "works_at::[[acme]]", "date": "2026-07-24"}
+    ]

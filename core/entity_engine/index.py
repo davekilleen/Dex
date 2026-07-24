@@ -7,6 +7,7 @@ import json
 import re
 import sqlite3
 import time
+import unicodedata
 from contextlib import closing
 from dataclasses import dataclass
 from datetime import datetime
@@ -14,7 +15,7 @@ from difflib import SequenceMatcher
 from pathlib import Path
 from typing import Any, Callable, Iterable, TypeVar
 
-from core.entity_engine.contract import parse_entity_page
+from core.entity_engine.contract import fold, parse_entity_page
 from core.lifecycle.inventory import load_folder_map
 from core.paths import COMPANIES_DIR, PEOPLE_DIR, VAULT_ROOT
 from core.utils.company_domains import registrable_domain
@@ -27,7 +28,7 @@ _PEOPLE_EXTERNAL_REL = (PEOPLE_DIR / "External").relative_to(VAULT_ROOT).as_posi
 _PEOPLE_CPO_REL = (PEOPLE_DIR / "CPO_Network").relative_to(VAULT_ROOT).as_posix()
 _COMPANIES_REL = COMPANIES_DIR.relative_to(VAULT_ROOT).as_posix()
 
-SCHEMA_VERSION = "1"
+SCHEMA_VERSION = "2"
 DEFAULT_DEBOUNCE_SECONDS = 0.25
 _DATABASE_RELATIVE_PATH = Path("System/.dex/entity-index/database.sqlite3")
 _PEOPLE_EXPORT_RELATIVE_PATH = Path("System/People_Index.json")
@@ -302,16 +303,19 @@ def _person_compatibility_entry(
     parsed: dict[str, Any],
     content: str,
 ) -> dict[str, Any]:
-    aliases = list(parsed.get("aliases") or [])
-    folded_aliases = {value.casefold() for value in aliases}
+    aliases = [
+        unicodedata.normalize("NFC", value)
+        for value in (parsed.get("aliases") or [])
+    ]
+    folded_aliases = {fold(value) for value in aliases}
     for line in content.splitlines():
         match = _GOES_BY_RE.match(line)
         if not match:
             continue
-        alias = match.group(1).strip()
-        if alias and alias.casefold() not in folded_aliases:
+        alias = unicodedata.normalize("NFC", match.group(1).strip())
+        if alias and fold(alias) not in folded_aliases:
             aliases.append(alias)
-            folded_aliases.add(alias.casefold())
+            folded_aliases.add(fold(alias))
 
     tags: list[str] = []
     for line in content.splitlines():
@@ -321,7 +325,10 @@ def _person_compatibility_entry(
                 tags = [tag.strip() for tag in parts[2].strip().split(",") if tag.strip()]
             break
 
-    name = parsed.get("name") or source.path.stem.replace("_", " ")
+    name = unicodedata.normalize(
+        "NFC",
+        parsed.get("name") or source.path.stem.replace("_", " "),
+    )
     has_content = bool(
         parsed.get("role")
         or parsed.get("emails")
@@ -330,12 +337,16 @@ def _person_compatibility_entry(
     )
     return {
         "name": name,
-        "company": parsed.get("company"),
+        "company": (
+            unicodedata.normalize("NFC", parsed["company"])
+            if isinstance(parsed.get("company"), str)
+            else parsed.get("company")
+        ),
         "role": parsed.get("role"),
         "email": (parsed.get("emails") or [None])[0],
         "emails": parsed.get("emails") or [],
         "aliases": aliases,
-        "first_name": name.split()[0].lower() if name.split() else "",
+        "first_name": fold(name.split()[0]) if name.split() else "",
         "type": source.people_type or "external",
         "path": source.relative_path,
         "last_interaction": parsed.get("last_interaction"),
@@ -349,7 +360,10 @@ def _company_compatibility_entry(
     parsed: dict[str, Any],
 ) -> dict[str, Any]:
     return {
-        "name": parsed.get("name") or source.path.stem.replace("_", " "),
+        "name": unicodedata.normalize(
+            "NFC",
+            parsed.get("name") or source.path.stem.replace("_", " "),
+        ),
         "path": source.relative_path,
         "domains": parsed.get("domains") or [],
         "website": parsed.get("website"),
@@ -362,7 +376,7 @@ def _relationship_target_id(
     target_ref: str,
 ) -> str | None:
     """Resolve an edge target through canonical ids, keys, names, or wikilinks."""
-    target = target_ref.strip()
+    target = unicodedata.normalize("NFC", target_ref.strip())
     wikilink = _WIKILINK_RE.fullmatch(target)
     if wikilink:
         target = wikilink.group(1).strip()
@@ -376,7 +390,7 @@ def _relationship_target_id(
     ).fetchall()
     candidates.update(row[0] for row in direct)
 
-    folded = target.casefold()
+    folded = fold(target)
     keyed = connection.execute(
         "SELECT node_id FROM node_keys WHERE value = ?",
         (folded,),
@@ -386,12 +400,12 @@ def _relationship_target_id(
     for node_id, name, source_path in connection.execute(
         "SELECT id, name, source_path FROM nodes"
     ):
-        if isinstance(name, str) and name.casefold() == folded:
+        if isinstance(name, str) and fold(name) == folded:
             candidates.add(node_id)
             continue
         source_stem = Path(source_path).stem.replace("_", " ")
         target_stem = Path(target).stem.replace("_", " ")
-        if source_stem.casefold() == target_stem.casefold():
+        if fold(source_stem) == fold(target_stem):
             candidates.add(node_id)
     return next(iter(candidates)) if len(candidates) == 1 else None
 
@@ -437,9 +451,12 @@ def _project_source(
         ),
     )
     if quarantined:
-        name = source.path.stem.replace("_", " ")
+        name = unicodedata.normalize(
+            "NFC",
+            source.path.stem.replace("_", " "),
+        )
         if source.entity_type == "person":
-            first_name = name.split()[0].lower() if name.split() else ""
+            first_name = fold(name.split()[0]) if name.split() else ""
             compatibility = {
                 "name": name,
                 "company": None,
@@ -499,11 +516,20 @@ def _project_source(
         return
 
     keys: list[tuple[str, str]] = []
+    keys.extend(
+        [
+            ("name", fold(compatibility["name"])),
+            (
+                "stem",
+                fold(source.path.stem.replace("_", " ")),
+            ),
+        ]
+    )
     if source.entity_type == "person":
-        keys.extend(("email", value.casefold()) for value in compatibility["emails"])
-        keys.extend(("alias", value.casefold()) for value in compatibility["aliases"])
+        keys.extend(("email", fold(value)) for value in compatibility["emails"])
+        keys.extend(("alias", fold(value)) for value in compatibility["aliases"])
     else:
-        keys.extend(("domain", value.casefold()) for value in compatibility["domains"])
+        keys.extend(("domain", fold(value)) for value in compatibility["domains"])
     connection.executemany(
         "INSERT OR IGNORE INTO node_keys(node_id, kind, value) VALUES (?, ?, ?)",
         [(source.relative_path, kind, value) for kind, value in keys],
@@ -610,11 +636,11 @@ def _compatibility_rows(
         rows.sort(
             key=lambda item: (
                 type_order.get(item["type"], 3),
-                item["path"].casefold(),
+                fold(item["path"]),
             )
         )
     else:
-        rows.sort(key=lambda item: (item["name"].casefold(), item["path"]))
+        rows.sort(key=lambda item: (fold(item["name"]), item["path"]))
     return rows
 
 
@@ -1000,15 +1026,15 @@ def lookup_person(
     index = people_index_data(vault_root, **reconcile_kwargs)
     people = index["people"]
     if company:
-        company_lower = company.lower()
+        company_lower = fold(company)
         people = [
             person
             for person in people
-            if company_lower in (person.get("company") or "").lower()
+            if company_lower in fold(person.get("company") or "")
         ]
 
     query = name.strip()
-    query_lower = query.casefold()
+    query_lower = fold(query)
     ambiguous = False
 
     def scored(candidates: list[dict[str, Any]], score: float) -> list[dict[str, Any]]:
@@ -1021,7 +1047,7 @@ def lookup_person(
                 person
                 for person in people
                 if query_lower
-                in {email.casefold() for email in person.get("emails", [])}
+                in {fold(email) for email in person.get("emails", [])}
             ],
             1.0,
         )
@@ -1031,7 +1057,7 @@ def lookup_person(
                 person
                 for person in people
                 if query_lower
-                in {alias.casefold() for alias in person.get("aliases", [])}
+                in {fold(alias) for alias in person.get("aliases", [])}
             ],
             1.0,
         )
@@ -1040,7 +1066,7 @@ def lookup_person(
             [
                 person
                 for person in people
-                if query_lower == (person.get("name") or "").casefold()
+                if query_lower == fold(person.get("name") or "")
             ],
             1.0,
         )
@@ -1048,7 +1074,7 @@ def lookup_person(
         first_name_matches = [
             person
             for person in people
-            if query_lower == (person.get("first_name") or "").casefold()
+            if query_lower == fold(person.get("first_name") or "")
         ]
         if first_name_matches:
             matches = scored(first_name_matches, 0.9)
@@ -1056,7 +1082,7 @@ def lookup_person(
     if not matches:
         fuzzy_matches = []
         for person in people:
-            person_name = (person.get("name") or "").casefold()
+            person_name = fold(person.get("name") or "")
             if query_lower in person_name or person_name in query_lower:
                 score = 0.8
             else:

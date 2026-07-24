@@ -188,7 +188,7 @@ Before commitments, read `System/.dex/entity-suggestions.json` (if present). If 
 
 Also read `System/.dex/entity-cooling.json` when it is present and fresh. If its consequential `cold` list is non-empty, surface it as one compact "❄️ Going cold" line in `## ⚠️ Heads Up`; degrade silently when the feed is absent or empty, and never widen this into a vault-wide people dump.
 
-Also read `System/.dex/entity-relationships.json` when it is present and fresh. If its `suggestions` list is non-empty, surface one compact "🔗 Relationships to confirm" line in `## ⚠️ Heads Up`; degrade silently when the feed is absent, stale, or empty. Keep it as a nudge and point to `relationship-radar` for review — confirming remains the user's action.
+Also read `System/.dex/entity-relationships.json` when it is present and fresh. If its `suggestions` list is non-empty, surface one compact "🔗 Relationships to confirm" line in `## ⚠️ Heads Up`; degrade silently when the feed is absent, stale, or empty. Keep it as a nudge, show the page and edge being proposed, and offer the real Work MCP actions: `confirm_relationship(page, edge_key)` or `dismiss_relationship(page, edge_key)`. Never choose either action without the user's per-edge say-so.
 
 ```
 Use: get_commitments_due(date_range="today")

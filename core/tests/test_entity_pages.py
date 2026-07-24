@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import subprocess
+from datetime import date
 from pathlib import Path
 
 import pytest
@@ -163,49 +164,171 @@ def test_render_relationships_has_stable_golden_bytes() -> None:
     assert entity_contract.render_relationships(reversed(relationships)) == expected
 
 
-def test_confirmed_relationship_pins_the_field_and_is_never_overwritten(
-    tmp_path: Path,
-) -> None:
-    page = tmp_path / "Confirmed.md"
-    suggested = [
-        {
-            "type": "works_at",
-            "target": "[[Acme]]",
-            "status": "suggested",
-            "source": {"kind": "domain-match", "id": "acme.test"},
-            "date": "2026-07-23",
-        }
-    ]
-    page.write_text("# Confirmed\n", encoding="utf-8")
-    assert upsert_frontmatter(
-        page,
-        {"relationships": suggested},
-    )
+def _relationship(
+    target: str,
+    *,
+    relation_type: str = "works_at",
+    status: str = "suggested",
+    source_id: str = "acme.test",
+) -> dict[str, object]:
+    return {
+        "type": relation_type,
+        "target": target,
+        "status": status,
+        "source": {"kind": "domain-match", "id": source_id},
+        "date": "2026-07-23",
+    }
 
-    frontmatter = yaml.safe_load(
-        page.read_text(encoding="utf-8").split("---", 2)[1]
-    )
-    frontmatter["relationships"][0]["status"] = "confirmed"
-    body = page.read_text(encoding="utf-8").split("---", 2)[2]
+
+def _write_relationship_page(
+    page: Path,
+    *,
+    current: list[dict[str, object]] | None,
+    last_written: list[dict[str, object]] | None,
+    dismissed: list[dict[str, str]] | None = None,
+    pinned_relationships: bool = False,
+) -> None:
+    frontmatter: dict[str, object] = {
+        "type": "person",
+        "name": "Related Person",
+        "dex_pinned": {"relationships": "user"} if pinned_relationships else {},
+        "dex_last_written": {"type": "person", "name": "Related Person"},
+    }
+    if current is not None:
+        frontmatter["relationships"] = current
+    if last_written is not None:
+        last = frontmatter["dex_last_written"]
+        assert isinstance(last, dict)
+        last["relationships"] = last_written
+    if dismissed is not None:
+        frontmatter["dex_dismissed_relationships"] = dismissed
     page.write_text(
-        f"---\n{yaml.safe_dump(frontmatter, sort_keys=False).rstrip()}\n---{body}",
+        "---\n"
+        f"{yaml.safe_dump(frontmatter, sort_keys=False).rstrip()}\n"
+        "---\n"
+        "# Related Person\n",
         encoding="utf-8",
     )
 
-    replacement = [
-        {
-            **suggested[0],
-            "target": "[[Different Co]]",
-        }
-    ]
-    assert upsert_frontmatter(page, {"relationships": replacement})
-    confirmed = yaml.safe_load(
-        page.read_text(encoding="utf-8").split("---", 2)[1]
+
+def test_confirmed_relationship_survives_while_new_suggestions_append(
+    tmp_path: Path,
+) -> None:
+    page = tmp_path / "Confirmed.md"
+    suggested = _relationship("[[Acme]]")
+    confirmed = _relationship("[[Acme]]", status="confirmed")
+    _write_relationship_page(
+        page,
+        current=[suggested],
+        last_written=[_relationship("[[Acme]]")],
+        pinned_relationships=True,
     )
-    assert confirmed["relationships"][0]["target"] == "[[Acme]]"
-    assert confirmed["relationships"][0]["status"] == "confirmed"
-    assert confirmed["dex_pinned"]["relationships"] == "user"
-    assert confirmed["dex_last_written"]["relationships"] == suggested
+
+    incoming = [
+        _relationship("[[Acme]]", source_id="new-evidence"),
+        _relationship("[[Beta]]", source_id="beta.test"),
+    ]
+    assert upsert_frontmatter(page, {"relationships": incoming})
+
+    frontmatter = yaml.safe_load(page.read_text(encoding="utf-8").split("---", 2)[1])
+    assert frontmatter["relationships"] == [
+        confirmed,
+        _relationship("[[Beta]]", source_id="beta.test"),
+    ]
+    assert "relationships" not in frontmatter["dex_pinned"]
+    assert frontmatter["dex_last_written"]["relationships"] == frontmatter[
+        "relationships"
+    ]
+
+
+def test_dismissed_relationship_is_never_resurrected(tmp_path: Path) -> None:
+    page = tmp_path / "Dismissed.md"
+    dismissed = [{"key": "works_at::[[acme]]", "date": "2026-07-24"}]
+    _write_relationship_page(
+        page,
+        current=[],
+        last_written=[],
+        dismissed=dismissed,
+    )
+    original = page.read_bytes()
+
+    assert not upsert_frontmatter(
+        page,
+        {"relationships": [_relationship("[[Acme]]")]},
+    )
+    assert page.read_bytes() == original
+
+
+def test_hand_deleted_relationship_becomes_a_tombstone(tmp_path: Path) -> None:
+    page = tmp_path / "HandDeleted.md"
+    old = _relationship("[[Acme]]")
+    _write_relationship_page(page, current=[], last_written=[old])
+
+    assert upsert_frontmatter(page, {"relationships": [old]})
+    frontmatter = yaml.safe_load(page.read_text(encoding="utf-8").split("---", 2)[1])
+    assert frontmatter["relationships"] == []
+    assert frontmatter["dex_dismissed_relationships"] == [
+        {"key": "works_at::[[acme]]", "date": date.today().isoformat()}
+    ]
+
+
+def test_engine_retarget_does_not_tombstone_old_key(tmp_path: Path) -> None:
+    page = tmp_path / "Retargeted.md"
+    old = _relationship("[[Acme]]")
+    new = _relationship("[[Acme Holdings]]", source_id="acme-holdings.test")
+    _write_relationship_page(page, current=[old], last_written=[old])
+
+    updated = entity_contract.merge_frontmatter_text(
+        page,
+        page.read_text(encoding="utf-8"),
+        {"relationships": [new]},
+        relationship_removed_keys={"works_at::[[acme]]"},
+    )
+    assert updated is not None
+    frontmatter = yaml.safe_load(updated.split("---", 2)[1])
+    assert frontmatter["relationships"] == [new]
+    assert "dex_dismissed_relationships" not in frontmatter
+
+
+def test_user_relabel_tombstones_old_key_and_preserves_new_edge(tmp_path: Path) -> None:
+    page = tmp_path / "Relabelled.md"
+    old = _relationship("[[Acme]]")
+    relabelled = _relationship("[[Acme]]", relation_type="related_to")
+    _write_relationship_page(page, current=[relabelled], last_written=[old])
+
+    assert upsert_frontmatter(page, {"relationships": [relabelled]})
+    frontmatter = yaml.safe_load(page.read_text(encoding="utf-8").split("---", 2)[1])
+    assert frontmatter["relationships"] == [relabelled]
+    assert frontmatter["dex_dismissed_relationships"] == [
+        {"key": "works_at::[[acme]]", "date": date.today().isoformat()}
+    ]
+
+
+def test_missing_relationship_snapshot_falls_back_to_append_only(
+    tmp_path: Path,
+) -> None:
+    page = tmp_path / "Stale.md"
+    old = _relationship("[[Acme]]")
+    new = _relationship("[[Beta]]", source_id="beta.test")
+    _write_relationship_page(page, current=[old], last_written=None)
+
+    assert upsert_frontmatter(page, {"relationships": [new]})
+    frontmatter = yaml.safe_load(page.read_text(encoding="utf-8").split("---", 2)[1])
+    assert frontmatter["relationships"] == [old, new]
+
+
+def test_nfc_and_nfd_targets_share_one_edge_identity(tmp_path: Path) -> None:
+    page = tmp_path / "Unicode.md"
+    nfd = _relationship("[[Cafe\u0301]]")
+    nfc = _relationship("[[Café]]", source_id="nfc")
+    _write_relationship_page(page, current=[nfd], last_written=[nfd])
+
+    assert upsert_frontmatter(page, {"relationships": [nfc]})
+    frontmatter = yaml.safe_load(page.read_text(encoding="utf-8").split("---", 2)[1])
+    assert len(frontmatter["relationships"]) == 1
+    assert entity_contract.relationship_edge_key(
+        frontmatter["relationships"][0]
+    ) == "works_at::[[café]]"
 
 
 def test_upsert_preserves_unknown_keys_and_is_idempotent(tmp_path: Path) -> None:
@@ -233,12 +356,18 @@ def test_upsert_preserves_unknown_keys_and_is_idempotent(tmp_path: Path) -> None
     assert page.stat().st_mode & 0o777 == 0o640
 
 
-def test_upsert_list_fields_are_byte_identical_across_twins(tmp_path: Path) -> None:
+def test_upsert_owned_fields_and_tombstones_are_byte_identical_across_twins(
+    tmp_path: Path,
+) -> None:
     original = "---\ncustom: keep\n---\n# Entity\n"
     fields = {
         "emails": ["A@EXAMPLE.COM"],
         "aliases": ["Alias"],
         "domains": ["EXAMPLE.COM"],
+        "relationships": [_relationship("[[Beta]]", source_id="beta.test")],
+        "dex_dismissed_relationships": [
+            {"key": "works_at::[[acme]]", "date": "2026-07-24"}
+        ],
     }
     python_page = tmp_path / "python.md"
     javascript_page = tmp_path / "javascript.md"
@@ -263,6 +392,7 @@ def test_upsert_list_fields_are_byte_identical_across_twins(tmp_path: Path) -> N
     )
 
     assert javascript_page.read_bytes() == python_page.read_bytes()
+    assert b"dex_dismissed_relationships:" in python_page.read_bytes()
 
 
 def test_upsert_pins_diverged_field_and_keeps_other_fields_live(tmp_path: Path) -> None:

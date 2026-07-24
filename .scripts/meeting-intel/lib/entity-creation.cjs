@@ -4,7 +4,12 @@ const fs = require('fs');
 const path = require('path');
 const yaml = require('js-yaml');
 const portableContract = require('../../../packages/dex-contracts/dist/portable-vault.contract.json');
-const { parseEntityPage, renderCompanyPage, renderPersonPage } = require('../../lib/entity-pages.cjs');
+const {
+  fold,
+  parseEntityPage,
+  renderCompanyPage,
+  renderPersonPage,
+} = require('../../lib/entity-pages.cjs');
 const { identityForEntity, resolveEntityPath } = require('../../lib/entity-identity.cjs');
 const {
   fingerprintText,
@@ -158,6 +163,7 @@ function markSuggestionAccepted(contactId) {
 
 function safeFilename(name) {
   return String(name || 'Unknown')
+    .normalize('NFC')
     .trim()
     .replace(/[\\/:*?"<>|]/g, '')
     .replace(/\s+/g, '_') || 'Unknown';
@@ -181,11 +187,12 @@ function planPersonPage(contact, reserved = new Set()) {
   const directory = path.join(paths.PEOPLE_DIR, folder);
   fs.mkdirSync(directory, { recursive: true });
   const email = contact.emails[0];
-  const baseName = safeFilename(contact.name);
+  const canonicalName = String(contact.name).normalize('NFC');
+  const baseName = safeFilename(canonicalName);
   const basePath = path.join(directory, `${baseName}.md`);
   const existingByIdentity = resolveEntityPath(paths.VAULT_ROOT, {
     kind: 'person',
-    name: contact.name,
+    name: canonicalName,
     emails: contact.emails,
   });
   if (existingByIdentity && !reserved.has(existingByIdentity)) {
@@ -206,7 +213,7 @@ function planPersonPage(contact, reserved = new Set()) {
   }
 
   const content = renderPersonPage(
-    contact.name,
+    canonicalName,
     null,
     null,
     contact.emails,
@@ -366,7 +373,7 @@ function buildTouchOperations(
     for (const email of page.contact?.emails || []) {
       createdPeopleByEmail.set(String(email).trim().toLowerCase(), page.filePath);
     }
-    const name = String(page.contact?.name || '').trim().toLowerCase();
+    const name = fold(String(page.contact?.name || '').trim());
     if (name) createdPeopleByName.set(name, page.filePath);
   }
   const createdCompaniesByDomain = new Map(
@@ -420,7 +427,7 @@ function buildTouchOperations(
         ? attendee.email.trim().toLowerCase()
         : '';
       const personPath = createdPeopleByEmail.get(email)
-        || createdPeopleByName.get(name.toLowerCase())
+        || createdPeopleByName.get(fold(name))
         || resolveEntityPath(paths.VAULT_ROOT, {
           kind: 'person',
           name,
@@ -471,7 +478,7 @@ function buildRelationshipOperations(
     for (const email of page.contact?.emails || []) {
       createdPeopleByEmail.set(String(email).trim().toLowerCase(), page.filePath);
     }
-    const name = String(page.contact?.name || '').trim().toLowerCase();
+    const name = fold(String(page.contact?.name || '').trim());
     if (name) createdPeopleByName.set(name, page.filePath);
   }
   const createdCompaniesByDomain = new Map(
@@ -495,7 +502,7 @@ function buildRelationshipOperations(
       ? attendee.email.trim().toLowerCase()
       : '';
     return createdPeopleByEmail.get(email)
-      || createdPeopleByName.get(name.toLowerCase())
+      || createdPeopleByName.get(fold(name))
       || resolveEntityPath(paths.VAULT_ROOT, {
         kind: 'person',
         name,
@@ -525,7 +532,7 @@ function buildRelationshipOperations(
     grouped.get(filePath).relationships.push({
       type,
       target_id: relativeVaultPath(targetPath, paths.VAULT_ROOT),
-      target_ref: `[[${target.name}]]`,
+      target_ref: `[[${String(target.name).normalize('NFC')}]]`,
       source,
       confidence: 'suggested',
     });
@@ -782,23 +789,29 @@ function processEntityCreation(
     });
     logger(writeMessage);
   }
-  const relationshipOps = buildRelationshipOperations(
-    meetings,
-    profile,
-    created,
-    companiesCreated,
-    effects,
-    paths,
-  );
-  const relationshipWrite = flushEntityOps({
-    vaultRoot: paths.VAULT_ROOT,
-    ops: relationshipOps,
-    meetingIds,
-    scope: 'relationship',
-    scopes: ['relationship'],
-    metadata: { source: 'meeting-intel' },
-    now,
-  });
+  const relationshipWrite = mode === 'off'
+    ? {
+      ok: true,
+      completed_meeting_ids: [],
+      completed_batches: [],
+      dead_lettered_ops: [],
+    }
+    : flushEntityOps({
+      vaultRoot: paths.VAULT_ROOT,
+      ops: buildRelationshipOperations(
+        meetings,
+        profile,
+        created,
+        companiesCreated,
+        effects,
+        paths,
+      ),
+      meetingIds,
+      scope: 'relationship',
+      scopes: ['relationship'],
+      metadata: { source: 'meeting-intel' },
+      now,
+    });
   if (!relationshipWrite.ok) {
     const writeMessage = entityWriteMessage(relationshipWrite)
       || 'Entity relationship writes remain pending';

@@ -16,7 +16,7 @@ from typing import Any
 
 from core import paths
 
-from .contract import parse_entity_page
+from .contract import fold, parse_entity_page
 
 
 def _path_for_root(configured: Path, vault_root: Path) -> Path:
@@ -77,9 +77,9 @@ def relationships_report(
 
     suggestions.sort(
         key=lambda item: (
-            str(item["src_path"]).casefold(),
+            fold(str(item["src_path"])),
             str(item["type"]),
-            str(item["target_ref"]).casefold(),
+            fold(str(item["target_ref"])),
             str(item["source"]["date"]),
             str(item["source"]["id"]),
         )

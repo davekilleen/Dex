@@ -350,6 +350,228 @@ def test_relationship_intent_rejects_unknown_type_before_writing(
     assert page.read_bytes() == original
 
 
+def test_confirm_touch_render_and_resync_preserve_confirmed_edge_and_tombstones(
+    tmp_path: Path,
+) -> None:
+    page = tmp_path / "Confirmed.md"
+    page.write_text(
+        "---\n"
+        "type: person\n"
+        "name: Confirmed Person\n"
+        "relationships:\n"
+        "- type: works_at\n"
+        "  target: '[[Acme]]'\n"
+        "  status: suggested\n"
+        "  source: {kind: domain-match, id: acme.test}\n"
+        "  date: '2026-07-23'\n"
+        "dex_pinned: {relationships: user}\n"
+        "dex_last_written:\n"
+        "  relationships:\n"
+        "  - type: works_at\n"
+        "    target: '[[Acme]]'\n"
+        "    status: suggested\n"
+        "    source: {kind: domain-match, id: acme.test}\n"
+        "    date: '2026-07-23'\n"
+        "dex_dismissed_relationships:\n"
+        "- {key: 'related_to::[[dismissed]]', date: '2026-07-24'}\n"
+        "---\n"
+        "# Confirmed Person\n",
+        encoding="utf-8",
+    )
+
+    confirmed = entity_engine.mutate_relationships(
+        page,
+        fingerprint_page(page),
+        {
+            "kind": "confirm_relationship",
+            "edge_key": "works_at::[[acme]]",
+        },
+    )
+    assert confirmed.status == "updated"
+
+    touched = mutate_page(
+        page,
+        fingerprint_page(page),
+        field_changes={
+            "last_touched": "2026-07-24",
+            "touches": [{"ts": "2026-07-24", "type": "meeting"}],
+        },
+    )
+    assert touched.status == "updated"
+
+    resynced = entity_engine.mutate_relationships(
+        page,
+        fingerprint_page(page),
+        {
+            "kind": "relationship",
+            "relationships": [
+                {
+                    "type": "works_at",
+                    "target_ref": "[[Acme]]",
+                    "source": {
+                        "kind": "domain-match",
+                        "id": "new-evidence",
+                        "date": "2026-07-24",
+                    },
+                    "confidence": "suggested",
+                },
+                {
+                    "type": "related_to",
+                    "target_ref": "[[Beta]]",
+                    "source": {
+                        "kind": "co-attendance",
+                        "id": "meeting-2",
+                        "date": "2026-07-24",
+                    },
+                    "confidence": "suggested",
+                },
+            ],
+        },
+    )
+    assert resynced.status == "updated"
+    frontmatter = _frontmatter(page)
+    assert [
+        (edge["type"], edge["target"], edge["status"])
+        for edge in frontmatter["relationships"]
+    ] == [
+        ("works_at", "[[Acme]]", "confirmed"),
+        ("related_to", "[[Beta]]", "suggested"),
+    ]
+    assert frontmatter["dex_dismissed_relationships"] == [
+        {"key": "related_to::[[dismissed]]", "date": "2026-07-24"}
+    ]
+    assert "relationships" not in frontmatter["dex_pinned"]
+    assert "- [[Acme]]\n" in page.read_text(encoding="utf-8")
+
+
+def test_dismiss_then_identical_evidence_resync_cannot_resurrect(
+    tmp_path: Path,
+) -> None:
+    page = tmp_path / "Dismiss.md"
+    page.write_text(
+        "---\n"
+        "type: person\n"
+        "relationships:\n"
+        "- type: works_at\n"
+        "  target: '[[Acme]]'\n"
+        "  status: suggested\n"
+        "  source: {kind: domain-match, id: acme.test}\n"
+        "  date: '2026-07-23'\n"
+        "dex_pinned: {}\n"
+        "dex_last_written:\n"
+        "  relationships:\n"
+        "  - type: works_at\n"
+        "    target: '[[Acme]]'\n"
+        "    status: suggested\n"
+        "    source: {kind: domain-match, id: acme.test}\n"
+        "    date: '2026-07-23'\n"
+        "---\n"
+        "# Dismiss\n",
+        encoding="utf-8",
+    )
+
+    dismissed = entity_engine.mutate_relationships(
+        page,
+        fingerprint_page(page),
+        {
+            "kind": "dismiss_relationship",
+            "edge_key": "works_at::[[acme]]",
+            "date": "2026-07-24",
+        },
+    )
+    assert dismissed.status == "updated"
+
+    resynced = entity_engine.mutate_relationships(
+        page,
+        fingerprint_page(page),
+        {
+            "kind": "relationship",
+            "relationships": [
+                {
+                    "type": "works_at",
+                    "target_ref": "[[Acme]]",
+                    "source": {
+                        "kind": "domain-match",
+                        "id": "acme.test",
+                        "date": "2026-07-24",
+                    },
+                    "confidence": "suggested",
+                }
+            ],
+        },
+    )
+    assert resynced.status == "noop"
+    frontmatter = _frontmatter(page)
+    assert frontmatter["relationships"] == []
+    assert frontmatter["dex_dismissed_relationships"] == [
+        {"key": "works_at::[[acme]]", "date": "2026-07-24"}
+    ]
+
+
+@pytest.mark.parametrize(
+    ("status", "expected_targets"),
+    [
+        ("suggested", ["[[Acme Holdings]]"]),
+        ("confirmed", ["[[Acme]]", "[[Acme Holdings]]"]),
+    ],
+)
+def test_engine_retarget_intent_respects_per_edge_ownership(
+    tmp_path: Path,
+    status: str,
+    expected_targets: list[str],
+) -> None:
+    page = tmp_path / "Retarget.md"
+    page.write_text(
+        "---\n"
+        "type: person\n"
+        "relationships:\n"
+        "- type: works_at\n"
+        "  target: '[[Acme]]'\n"
+        f"  status: {status}\n"
+        "  source: {kind: domain-match, id: acme.test}\n"
+        "  date: '2026-07-23'\n"
+        "dex_pinned: {}\n"
+        "dex_last_written:\n"
+        "  relationships:\n"
+        "  - type: works_at\n"
+        "    target: '[[Acme]]'\n"
+        f"    status: {status}\n"
+        "    source: {kind: domain-match, id: acme.test}\n"
+        "    date: '2026-07-23'\n"
+        "---\n"
+        "# Retarget\n",
+        encoding="utf-8",
+    )
+
+    result = entity_engine.mutate_relationships(
+        page,
+        fingerprint_page(page),
+        {
+            "kind": "relationship",
+            "removed_edge_keys": ["works_at::[[acme]]"],
+            "relationships": [
+                {
+                    "type": "works_at",
+                    "target_ref": "[[Acme Holdings]]",
+                    "source": {
+                        "kind": "domain-match",
+                        "id": "holdings.test",
+                        "date": "2026-07-24",
+                    },
+                    "confidence": "suggested",
+                }
+            ],
+        },
+    )
+
+    assert result.status == "updated"
+    frontmatter = _frontmatter(page)
+    assert [edge["target"] for edge in frontmatter["relationships"]] == (
+        expected_targets
+    )
+    assert "dex_dismissed_relationships" not in frontmatter
+
+
 def test_composite_mutation_never_overwrites_pinned_fields(tmp_path: Path) -> None:
     page = tmp_path / "Pinned.md"
     page.write_text(

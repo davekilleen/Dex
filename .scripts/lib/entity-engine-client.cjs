@@ -10,9 +10,11 @@ const { resolveDexPythonStatus } = require('./dex-python.cjs');
 const { resolveEntityPath } = require('./entity-identity.cjs');
 const {
   RELATIONSHIP_TYPES,
+  fold,
   mergeFrontmatterText,
   parseEntityPage,
   readFrontmatterField,
+  relationshipEdgeKey,
   renderRelationships,
   renderUpdateLog,
   replaceMachineRegion,
@@ -58,6 +60,7 @@ const CLI_KEYS = new Set([
   'field_changes',
   'ensure_regions',
   'region_projections',
+  'relationship_removed_keys',
 ]);
 const deadLetterIndexCache = new Map();
 
@@ -549,23 +552,125 @@ function materializeRelationshipIntent(operation, latest, intent) {
     date: relationship.source.date,
   }));
   const current = readFrontmatterField(latest, 'relationships') || [];
-  const byEdge = new Map();
-  for (const relationship of [...current, ...incoming]) {
-    const key = `${relationship.type}\0${relationship.target.toLowerCase()}`;
-    if (!byEdge.has(key)) byEdge.set(key, relationship);
+  const rawRemovedKeys = intent.removed_edge_keys ?? [];
+  const removedKeys = Array.isArray(rawRemovedKeys)
+    ? rawRemovedKeys.map(normaliseEdgeKey)
+    : null;
+  if (removedKeys === null) {
+    throw new Error(`Invalid relationship mutation intent for ${operation.path}`);
   }
+  const removed = new Set(removedKeys);
+  const byEdge = new Map();
+  for (const relationship of current) {
+    const key = relationshipEdgeKey(relationship);
+    if (!removed.has(key) || relationship.status === 'confirmed') {
+      byEdge.set(key, relationship);
+    }
+  }
+  const dedupedIncoming = new Map();
+  for (const relationship of incoming) {
+    const key = relationshipEdgeKey(relationship);
+    if (!dedupedIncoming.has(key)) dedupedIncoming.set(key, relationship);
+  }
+  for (const [key, relationship] of dedupedIncoming) {
+    const existing = byEdge.get(key);
+    if (!existing || existing.status !== 'confirmed') byEdge.set(key, relationship);
+  }
+  return materializeRelationshipFields(
+    operation,
+    latest,
+    [...byEdge.values()],
+    { relationships: [...byEdge.values()] },
+    removedKeys,
+  );
+}
+
+function normaliseEdgeKey(value) {
+  if (typeof value !== 'string' || !value.includes('::')) {
+    throw new Error('relationship edge_key must be a stable edge key');
+  }
+  const separator = value.indexOf('::');
+  const type = value.slice(0, separator);
+  const target = value.slice(separator + 2);
+  if (!RELATIONSHIP_TYPES.includes(type) || !target) {
+    throw new Error('relationship edge_key must be a stable edge key');
+  }
+  return `${type}::${fold(target)}`;
+}
+
+function materializeRelationshipActionIntent(operation, latest, intent) {
+  let edgeKey;
+  try {
+    edgeKey = normaliseEdgeKey(intent.edge_key);
+  } catch (_) {
+    throw new Error(`Invalid relationship mutation intent for ${operation.path}`);
+  }
+  const current = readFrontmatterField(latest, 'relationships') || [];
+  const found = current.some(relationship => relationshipEdgeKey(relationship) === edgeKey);
+  if (!found) {
+    throw new Error(`Invalid relationship mutation intent for ${operation.path}`);
+  }
+  if (intent.kind === 'confirm_relationship') {
+    const proposed = current.map(relationship => (
+      relationshipEdgeKey(relationship) === edgeKey
+        ? { ...relationship, status: 'confirmed' }
+        : relationship
+    ));
+    return materializeRelationshipFields(
+      operation,
+      latest,
+      proposed,
+      { relationships: proposed },
+      [],
+    );
+  }
+  if (intent.kind !== 'dismiss_relationship'
+      || !/^\d{4}-\d{2}-\d{2}$/.test(intent.date || '')) {
+    throw new Error(`Invalid relationship mutation intent for ${operation.path}`);
+  }
+  const proposed = current.filter(
+    relationship => relationshipEdgeKey(relationship) !== edgeKey,
+  );
+  const dismissed = readFrontmatterField(
+    latest,
+    'dex_dismissed_relationships',
+  ) || [];
+  if (!dismissed.some(entry => entry.key === edgeKey)) {
+    dismissed.push({ key: edgeKey, date: intent.date });
+  }
+  return materializeRelationshipFields(
+    operation,
+    latest,
+    proposed,
+    {
+      relationships: proposed,
+      dex_dismissed_relationships: dismissed,
+    },
+    [edgeKey],
+  );
+}
+
+function materializeRelationshipFields(
+  operation,
+  latest,
+  candidates,
+  fieldChanges,
+  removedKeys,
+) {
   const rank = new Map(RELATIONSHIP_TYPES.map((type, index) => [type, index]));
-  const proposed = [...byEdge.values()].sort((left, right) => (
+  const proposed = [...candidates].sort((left, right) => (
     rank.get(left.type) - rank.get(right.type)
-    || compareStrings(left.target.toLowerCase(), right.target.toLowerCase())
+    || compareStrings(fold(left.target), fold(right.target))
     || compareStrings(left.target, right.target)
     || compareStrings(left.date, right.date)
   ));
+  const changes = { ...fieldChanges, relationships: proposed };
 
   const preview = mergeFrontmatterText(
     operation.path,
     latest,
-    { relationships: proposed },
+    changes,
+    { relationshipRemovedKeys: removedKeys },
   );
   const effective = preview === null
     ? []
@@ -586,7 +691,8 @@ function materializeRelationshipIntent(operation, latest, intent) {
     op: 'mutate',
     path: operation.path,
     base_fingerprint: fingerprintText(latest),
-    field_changes: { relationships: proposed },
+    field_changes: changes,
+    relationship_removed_keys: removedKeys,
     ensure_regions: ['relationships', 'update-log'],
     region_projections: {
       relationships: relationshipsProjection,
@@ -662,6 +768,16 @@ function materializeOperation(operation, vaultRoot) {
     return {
       operation: effective,
       materialized: materializeRelationshipIntent(
+        effective,
+        latest,
+        effective.intent,
+      ),
+    };
+  }
+  if (['confirm_relationship', 'dismiss_relationship'].includes(effective.intent.kind)) {
+    return {
+      operation: effective,
+      materialized: materializeRelationshipActionIntent(
         effective,
         latest,
         effective.intent,

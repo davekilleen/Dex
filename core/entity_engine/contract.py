@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import re
+import unicodedata
 from datetime import date, datetime
 from pathlib import Path
 from typing import Any, Iterable, Mapping
@@ -39,6 +40,7 @@ V2_FIELDS = frozenset(
     {
         "dex_pinned",
         "dex_last_written",
+        "dex_dismissed_relationships",
         "last_touched",
         "touches",
         "relationships",
@@ -165,6 +167,69 @@ def _relationship_error(message: str, *, strict: bool) -> None:
         raise ValueError(message)
 
 
+def fold(value: Any) -> str:
+    """Return the canonical comparison identity for user-visible text."""
+    return unicodedata.normalize("NFC", str(value)).casefold()
+
+
+def relationship_edge_key(relationship: Mapping[str, Any]) -> str:
+    """Derive the stable identity for one relationship entry."""
+    return f"{relationship['type']}::{fold(relationship['target'])}"
+
+
+def _normalise_dismissed_relationships(
+    value: Any,
+    *,
+    strict: bool = False,
+) -> list[dict[str, str]] | None:
+    if value is None:
+        return None
+    if not isinstance(value, list):
+        _relationship_error(
+            "dex_dismissed_relationships must be a list",
+            strict=strict,
+        )
+        return None
+    result: list[dict[str, str]] = []
+    seen: set[str] = set()
+    for entry in value:
+        if not isinstance(entry, Mapping):
+            _relationship_error(
+                "dismissed relationship entries must be objects",
+                strict=strict,
+            )
+            continue
+        raw_key = _normalise_scalar(entry.get("key"))
+        dismissed_date = _normalise_scalar(entry.get("date"))
+        if raw_key is None or "::" not in raw_key:
+            _relationship_error(
+                "dismissed relationship key must be an edge key",
+                strict=strict,
+            )
+            continue
+        relation_type, target = raw_key.split("::", 1)
+        if relation_type not in RELATIONSHIP_TYPES or not target:
+            _relationship_error(
+                f"invalid dismissed relationship key: {raw_key}",
+                strict=strict,
+            )
+            continue
+        if dismissed_date is None or not re.fullmatch(
+            r"\d{4}-\d{2}-\d{2}",
+            dismissed_date,
+        ):
+            _relationship_error(
+                "dismissed relationship date must be YYYY-MM-DD",
+                strict=strict,
+            )
+            continue
+        key = f"{relation_type}::{fold(target)}"
+        if key not in seen:
+            seen.add(key)
+            result.append({"key": key, "date": dismissed_date})
+    return result
+
+
 def _normalise_relationships(
     value: Any,
     *,
@@ -260,6 +325,8 @@ def _normalise_v2_field(key: str, value: Any) -> Any:
         return _yaml_safe(value) if isinstance(value, list) else None
     if key == "relationships":
         return _normalise_relationships(value)
+    if key == "dex_dismissed_relationships":
+        return _normalise_dismissed_relationships(value)
     return _normalise_scalar(value)
 
 
@@ -406,6 +473,8 @@ def merge_frontmatter_text(
     page_path: Path,
     original: str,
     fields: Mapping[str, Any],
+    *,
+    relationship_removed_keys: Iterable[str] = (),
 ) -> str | None:
     """Return pin-aware merged text, or ``None`` for quarantined frontmatter."""
     parsed, body, _had_frontmatter, quarantined = _split_frontmatter(original)
@@ -424,6 +493,13 @@ def merge_frontmatter_text(
         or had_last_written
         or any(key in fields for key in V2_FIELDS)
     )
+    relationship_write = "relationships" in fields
+    migrate_pinned_relationships = (
+        relationship_write
+        and _normalise_scalar(pinned.get("relationships")) == "user"
+    )
+    if relationship_write:
+        pinned.pop("relationships", None)
 
     supplied_pins = _normalise_v2_field(
         "dex_pinned", fields.get("dex_pinned")
@@ -432,7 +508,11 @@ def merge_frontmatter_text(
         pinned.update(
             (key, value)
             for key, value in supplied_pins.items()
-            if key in _OWNED_FIELDS and _normalise_scalar(value)
+            if (
+                key in _OWNED_FIELDS
+                and key != "relationships"
+                and _normalise_scalar(value)
+            )
         )
     supplied_last_written = _normalise_v2_field(
         "dex_last_written", fields.get("dex_last_written")
@@ -509,11 +589,13 @@ def merge_frontmatter_text(
     )
     if implicit_bootstrap:
         for key in _OWNED_FIELD_ORDER:
+            if key == "relationships":
+                continue
             if has_nonempty_raw_value(key):
                 pinned.setdefault(key, "user")
 
     for key, previous in last_written.items():
-        if key not in _OWNED_FIELDS or key in pinned:
+        if key not in _OWNED_FIELDS or key == "relationships" or key in pinned:
             continue
         normalised_previous = _normalise_owned_field(key, previous)
         if normalised_previous is None and not (
@@ -523,7 +605,107 @@ def merge_frontmatter_text(
         if effective_current[key] != normalised_previous:
             pinned[key] = "user"
 
+    if relationship_write:
+        current = effective_current["relationships"]
+        if migrate_pinned_relationships:
+            current = [
+                {**relationship, "status": "confirmed"}
+                for relationship in current
+            ]
+        incoming = _normalise_relationships(
+            fields["relationships"],
+            strict=True,
+        )
+        assert incoming is not None
+        previous_raw = last_written.get("relationships")
+        previous = _normalise_relationships(previous_raw)
+        reliable_snapshot = (
+            "relationships" in last_written and previous is not None
+        )
+        dismissed = (
+            _normalise_dismissed_relationships(
+                merged.get("dex_dismissed_relationships")
+            )
+            or []
+        )
+        supplied_dismissed = _normalise_dismissed_relationships(
+            fields.get("dex_dismissed_relationships"),
+            strict="dex_dismissed_relationships" in fields,
+        )
+        if supplied_dismissed is not None:
+            dismissed = supplied_dismissed
+        dismissed_by_key = {entry["key"]: entry for entry in dismissed}
+        explained_removals = {str(key) for key in relationship_removed_keys}
+        current_by_key = {
+            relationship_edge_key(relationship): relationship
+            for relationship in current
+        }
+        incoming_by_key: dict[str, dict[str, Any]] = {}
+        for relationship in incoming:
+            incoming_by_key.setdefault(
+                relationship_edge_key(relationship),
+                relationship,
+            )
+
+        if reliable_snapshot:
+            assert previous is not None
+            for relationship in previous:
+                key = relationship_edge_key(relationship)
+                if (
+                    key not in current_by_key
+                    and key not in explained_removals
+                    and key not in dismissed_by_key
+                ):
+                    dismissed_by_key[key] = {
+                        "key": key,
+                        "date": date.today().isoformat(),
+                    }
+
+        proposed: list[dict[str, Any]] = []
+        proposed_keys: set[str] = set()
+
+        def append(relationship: dict[str, Any]) -> None:
+            key = relationship_edge_key(relationship)
+            if key in proposed_keys:
+                return
+            proposed_keys.add(key)
+            proposed.append(relationship)
+
+        if not reliable_snapshot:
+            for relationship in current:
+                key = relationship_edge_key(relationship)
+                if relationship["status"] == "confirmed" or (
+                    key not in dismissed_by_key
+                ):
+                    append(relationship)
+        else:
+            for relationship in current:
+                key = relationship_edge_key(relationship)
+                if relationship["status"] == "confirmed" and not (
+                    key in explained_removals and key not in incoming_by_key
+                ):
+                    append(relationship)
+                elif key in incoming_by_key and key not in dismissed_by_key:
+                    append(incoming_by_key[key])
+
+        for relationship in incoming:
+            key = relationship_edge_key(relationship)
+            if key in dismissed_by_key or key in proposed_keys:
+                continue
+            append(relationship)
+
+        merged["relationships"] = proposed
+        last_written["relationships"] = proposed
+        if dismissed_by_key:
+            merged["dex_dismissed_relationships"] = list(
+                dismissed_by_key.values()
+            )
+        else:
+            merged.pop("dex_dismissed_relationships", None)
+
     for key, value in fields.items():
+        if key in {"relationships", "dex_dismissed_relationships"}:
+            continue
         if key not in _OWNED_FIELDS or key in pinned:
             continue
         if value is None and key in _SCALAR_FIELDS:
@@ -830,7 +1012,7 @@ def render_relationships(
     normalised.sort(
         key=lambda relationship: (
             type_rank[relationship["type"]],
-            relationship["target"].casefold(),
+            fold(relationship["target"]),
             relationship["target"],
             relationship["status"],
             relationship["date"],

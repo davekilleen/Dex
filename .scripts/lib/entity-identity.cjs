@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const { registrableDomain } = require('../meeting-intel/lib/company-domains.cjs');
-const { parseEntityPage } = require('./entity-pages.cjs');
+const { fold, parseEntityPage } = require('./entity-pages.cjs');
 const { loadPaths } = require('../../.claude/hooks/paths.cjs');
 
 // Vault-relative PARA segments derived from the canonical path constants, so the
@@ -28,7 +28,7 @@ function markdownFiles(directory) {
 }
 
 function normalizedName(value) {
-  return String(value || '').trim().toLocaleLowerCase();
+  return fold(String(value || '').trim());
 }
 
 function normalizedEmails(values) {

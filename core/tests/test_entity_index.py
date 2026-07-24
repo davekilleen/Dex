@@ -2,13 +2,16 @@ from __future__ import annotations
 
 import json
 import sqlite3
+import unicodedata
 from pathlib import Path
 
 import pytest
 import yaml
 
+from core import entity_engine
 from core.entity_engine import index as entity_index
 from core.entity_engine.contract import render_company_page, render_person_page
+from core.entity_engine.write import fingerprint_page, upsert_frontmatter
 
 
 @pytest.fixture(autouse=True)
@@ -105,6 +108,10 @@ def test_build_from_frontmatter_creates_schema_nodes_keys_and_json_exports(
             ("alias", "al"),
             ("domain", "acme.test"),
             ("email", "fixture-alice@example.com"),
+            ("name", "acme"),
+            ("name", "alice smith"),
+            ("stem", "acme"),
+            ("stem", "alice smith"),
         ]
         assert connection.execute("SELECT COUNT(*) FROM edges").fetchone() == (0,)
         assert connection.execute("SELECT COUNT(*) FROM touches").fetchone() == (0,)
@@ -439,6 +446,94 @@ def test_frontmatter_relationships_project_edges_and_power_neighbors(
             "label": "employs",
         }
     ]
+
+
+def test_nfd_person_nfc_relationship_confirm_resync_and_index_resolve_once(
+    entity_vault: dict[str, Path],
+) -> None:
+    nfd_name = unicodedata.normalize("NFD", "José Álvarez")
+    nfc_name = unicodedata.normalize("NFC", nfd_name)
+    target = _write_person(entity_vault, nfd_name)
+    source = _write_person(entity_vault, "Alice Smith")
+    suggestion = {
+        "type": "related_to",
+        "target": f"[[{nfd_name}]]",
+        "status": "suggested",
+        "source": {"kind": "co-attendance", "id": "meeting-1"},
+        "date": "2026-07-23",
+    }
+    assert upsert_frontmatter(source, {"relationships": [suggestion]})
+    assert upsert_frontmatter(
+        source,
+        {
+            "relationships": [
+                {
+                    **suggestion,
+                    "target": f"[[{nfc_name}]]",
+                    "source": {
+                        "kind": "co-attendance",
+                        "id": "meeting-2",
+                    },
+                }
+            ]
+        },
+    )
+    confirmed = entity_engine.mutate_relationships(
+        source,
+        fingerprint_page(source),
+        {
+            "kind": "confirm_relationship",
+            "edge_key": f"related_to::[[{nfc_name.lower()}]]",
+        },
+    )
+    assert confirmed.status == "updated"
+    resynced = entity_engine.mutate_relationships(
+        source,
+        fingerprint_page(source),
+        {
+            "kind": "relationship",
+            "relationships": [
+                {
+                    "type": "related_to",
+                    "target_ref": f"[[{nfd_name}]]",
+                    "source": {
+                        "kind": "co-attendance",
+                        "id": "meeting-3",
+                        "date": "2026-07-24",
+                    },
+                    "confidence": "suggested",
+                }
+            ],
+        },
+    )
+    assert resynced.status == "noop"
+
+    entity_index.build_from_vault(
+        entity_vault["root"],
+        **_kwargs(entity_vault),
+    )
+    target_id = target.relative_to(entity_vault["root"]).as_posix()
+    source_id = source.relative_to(entity_vault["root"]).as_posix()
+    with entity_index.connect(
+        entity_index.database_path(entity_vault["root"])
+    ) as connection:
+        assert connection.execute(
+            "SELECT COUNT(*) FROM nodes WHERE type = 'person'"
+        ).fetchone() == (2,)
+        assert connection.execute(
+            "SELECT src_id, dst_id FROM edges WHERE edge_type = 'related_to'"
+        ).fetchall() == [(source_id, target_id)]
+        assert connection.execute(
+            "SELECT COUNT(*) FROM node_keys WHERE kind = 'name' AND value = ?",
+            (nfc_name.casefold(),),
+        ).fetchone() == (1,)
+    looked_up = entity_index.lookup_person(
+        entity_vault["root"],
+        nfc_name,
+        **_kwargs(entity_vault),
+    )
+    assert looked_up["total_matches"] == 1
+    assert looked_up["matches"][0]["path"] == target_id
 
 
 def test_neighbors_derives_inverse_without_storing_a_second_edge(

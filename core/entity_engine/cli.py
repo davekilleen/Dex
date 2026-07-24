@@ -92,6 +92,10 @@ def _validate_op(candidate: Any, index: int) -> dict[str, Any]:
     operation["region_projections"] = _optional_mapping(
         operation.get("region_projections"), f"{label}.region_projections"
     )
+    operation["relationship_removed_keys"] = _optional_strings(
+        operation.get("relationship_removed_keys"),
+        f"{label}.relationship_removed_keys",
+    )
     return operation
 
 
@@ -126,6 +130,7 @@ def _apply(operation: Mapping[str, Any]) -> Result:
         field_changes=operation.get("field_changes"),
         ensure_regions=operation.get("ensure_regions"),
         region_projections=operation.get("region_projections"),
+        relationship_removed_keys=operation.get("relationship_removed_keys"),
     )
 
 
