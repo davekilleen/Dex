@@ -45,6 +45,7 @@ QUICK_IDS = [
 ]
 
 DEEP_IDS = [
+    "customizations.assessment",
     "granola.query_path",
     "calendar.access",
     "qmd.live",
@@ -93,7 +94,20 @@ def _stub_probes(monkeypatch, *, overrides=None, exclude=()):
     for definition in (*doctor.QUICK_CHECKS, *doctor.DEEP_CHECKS):
         if definition.id == "doctor.self" or definition.id in excluded:
             continue
-        probe_result = overrides.get(definition.id, doctor.ProbeResult("OK", "Stub probe completed."))
+        default = doctor.ProbeResult(
+            "OK",
+            "Stub probe completed.",
+            structured_detail=(
+                {
+                    "schema_version": 1,
+                    "completeness": "OK",
+                    "verdict": "OK",
+                }
+                if definition.id == "customizations.assessment"
+                else None
+            ),
+        )
+        probe_result = overrides.get(definition.id, default)
         monkeypatch.setattr(
             doctor,
             definition.probe,
@@ -746,7 +760,7 @@ def test_json_contract_shape_and_last_run_file(monkeypatch, context, deep, expec
 
     report = doctor.collect(deep=deep, context=context)
 
-    assert set(report) == {
+    expected_keys = {
         "generated_at",
         "mode",
         "instruments",
@@ -754,6 +768,9 @@ def test_json_contract_shape_and_last_run_file(monkeypatch, context, deep, expec
         "summary",
         "adoption",
     }
+    if deep:
+        expected_keys.add("customization_assessment")
+    assert set(report) == expected_keys
     assert report["generated_at"] == NOW.isoformat()
     assert report["mode"] == ("deep" if deep else "quick")
     assert report["instruments"] == {

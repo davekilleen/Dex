@@ -189,6 +189,38 @@ say the retained snapshot was pruned. If `rewind_verdict: UNKNOWN`, say the rece
 current bytes, committed journal, or snapshot could not be verified. In both cases, do
 not offer rewind.
 
+### Step 3b: Render the customization assessment
+
+Deep reports include a top-level `customization_assessment` object. Render its five groups
+in the exact order returned: `already-portable`, `can-be-regenerated`,
+`needs-interpretation`, `blocked`, and `no-longer-needed`.
+
+This section follows the same authority/surface split as adoption. Reproduce every
+customization id, count, kind, group, verdict, path, release state, edge count, edge kind,
+confidence, completeness value, and exclusion verbatim. Do not merge records, hide zero
+counts, promote an inferred edge to proved, or turn an empty target-release group into a
+claim. Only each group's `surface` line may be rephrased, in plain English.
+
+This first read-only slice can place records only in `already-portable`,
+`needs-interpretation`, or `blocked`. `can-be-regenerated` and `no-longer-needed` must stay
+at zero until later target-release evidence exists. If completeness is `UNKNOWN`, say what
+scope was excluded or could not be proved; never describe an empty record list as
+customization-free.
+
+Example register:
+
+> I found 3 customizations. One already lives in a supported extension seam, one needs its
+> purpose interpreted, and one is blocked by a missing folder reference.
+>
+> `cust-a1b2c3d4e5f6` · `custom-script` · `.scripts/custom-plan.py` ·
+> `needs-interpretation` · `canonical-customization`
+>
+> Nothing has changed — this is an inventory only.
+
+Always close this section with the exact line:
+
+`Nothing has changed — this is an inventory only.`
+
 ### Step 4: Heal, tiered
 
 - **Tier 1 (already applied by the collector):** report plainly — "Fixed automatically:

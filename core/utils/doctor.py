@@ -100,6 +100,7 @@ class ProbeResult:
     heal: Heal | None = None
     feature_status: str | None = None
     user_message: str | None = None
+    structured_detail: dict[str, object] | None = None
 
     def __post_init__(self) -> None:
         if self.verdict not in VERDICTS:
@@ -112,6 +113,11 @@ class ProbeResult:
             "unknown",
         }:
             raise ValueError(f"Invalid feature status: {self.feature_status}")
+        if self.structured_detail is not None and not isinstance(
+            self.structured_detail,
+            dict,
+        ):
+            raise TypeError("ProbeResult structured_detail must be a dict or null")
 
 
 @dataclass(frozen=True)
@@ -632,6 +638,11 @@ QUICK_CHECKS = (
 )
 
 DEEP_CHECKS = (
+    CheckDefinition(
+        "customizations.assessment",
+        "customization_assessment",
+        "_probe_customization_assessment",
+    ),
     CheckDefinition("granola.query_path", "Granola meeting sync", "_probe_granola_query_path"),
     CheckDefinition("calendar.access", "Calendar access", "_probe_calendar_access"),
     CheckDefinition("qmd.live", "Semantic search", "_probe_qmd_live"),
@@ -994,6 +1005,13 @@ def collect(
         "summary": _summary(checks),
         "adoption": adoption.to_dict(),
     }
+    if deep:
+        assessment_result = results.get("customizations.assessment")
+        if (
+            assessment_result is not None
+            and assessment_result.structured_detail is not None
+        ):
+            report["customization_assessment"] = assessment_result.structured_detail
 
     try:
         _write_last_run(report, context)
@@ -1493,6 +1511,43 @@ def _probe_adoption_plan(context: DoctorContext) -> ProbeResult:
         )
     except Exception as error:
         return ProbeResult("UNKNOWN", f"The adoption plan could not be built: {_one_line(error)}")
+
+
+def _probe_customization_assessment(context: DoctorContext) -> ProbeResult:
+    """Build the read-only customization assessment entirely in memory."""
+    from core.customization_migration.report import assessment_report
+    from core.customization_migration.service import assess
+
+    assessment = assess(context.vault_root)
+    authority = assessment_report(assessment)
+    catalog_path = _release_catalog_path(context)
+    if not os.path.lexists(catalog_path):
+        return ProbeResult(
+            "OFF",
+            "Customization assessment is unavailable because no release catalog is installed",
+            structured_detail=authority,
+        )
+    try:
+        load_catalog(catalog_path, release_root=context.vault_root)
+    except (CatalogError, UnicodeError) as error:
+        return ProbeResult(
+            "BROKEN",
+            f"The installed release catalog is invalid: {_one_line(error)}",
+            structured_detail=authority,
+        )
+    if assessment.completeness == "UNKNOWN":
+        return ProbeResult(
+            "UNKNOWN",
+            "Customization assessment could not prove a complete release-relative inventory",
+            structured_detail=authority,
+        )
+    count = assessment.identity.customization_count
+    noun = "customization" if count == 1 else "customizations"
+    return ProbeResult(
+        "OK",
+        f"Customization assessment completed with {count} {noun}",
+        structured_detail=authority,
+    )
 
 
 def _mcp_config_path(context: DoctorContext) -> Path:
