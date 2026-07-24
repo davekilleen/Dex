@@ -14,6 +14,7 @@ The engine code ships in Dex Core, but remains product-inert: no user-facing
 | File | Role |
 |------|------|
 | `catalog.cjs` | Normalizes a Nango provider entry → Dex OAuth descriptor (URLs, scopes, PKCE, quirks). |
+| `pinned-providers.cjs` | Frozen, Dex-reviewed HTTPS destination policy for vetted providers. |
 | `oauth-flow.cjs` | PKCE auth-URL, localhost callback server (dynamic port), and code→token exchange. |
 | `token-store.cjs` | Encrypted on-device token store + `connections.json` registry. Keychain-or-file key. |
 | `health.cjs` | Connection health (`connected`/`expiring`/`expired`/`needs_reauth`) + the single lifted refresh/probe path. |
@@ -58,6 +59,9 @@ The store is designed so that nothing fails silently and nothing user-recoverabl
 | Two processes mutating at once | `.dex-cm.lock` (lockfile with PID + staleness: dead-PID steal, 30s unreadable, 10min hard cap; 10s acquire timeout that errors rather than running unlocked). Reads stay lock-free thanks to atomic writes. Same-machine scope only. |
 | Two processes refreshing the same OAuth token | `.dex-cm.refresh-<conn>.lock` held across the network call; the loser re-checks freshness after acquiring and reuses the winner's token (safe for refresh-token rotation). |
 | Provider redirects a credential-bearing request | OAuth exchange, OAuth refresh, verification probes, and generic authenticated calls reject redirects. Codes, refresh tokens, client secrets, and API-key headers are never replayed to a redirect target. |
+| Catalog destination drifts away from a reviewed origin | Google and Linear credential-bearing requests fail closed before sending. Other catalog providers require explicit `--allow-unvetted` or `DEX_CM_ALLOW_UNVETTED=1` consent and are never auto-probed. |
+| Registry or ledger trust data is edited or replayed | Registry entries, the store counter, and every ledger row are MAC-authenticated with a key derived from the credential master key. Entries with a missing/invalid MAC or a mismatched encrypted-credential digest are reported as `needs_reauth` / `trust_unverified`; unauthenticated or pre-reconnect probe rows cannot verify a credential. |
+| Upgrade from an older unsigned `connections.json` | The unsigned entry is deliberately treated as `trust_unverified` and needs one reconnect. Reconnecting writes authenticated state; registry rebuilds from decryptable token files also create authenticated entries. |
 | Credential is replaced after a prior successful probe | The durable ledger retains the historical proof, but verification starts a new connect epoch. The replacement credential is unverified until it passes its own live probe. |
 | Encryption key missing/unreadable with encrypted credentials on disk | Explicit state, never silent re-keying: reads throw/report `encryption_key_lost` (computed at read time, nothing persisted, so a transient keychain blip self-heals). The one recovery path is reconnecting a tool, which preserves old token/app files as `*.keyloss-<timestamp>`, flags every other connection, prints why once, then issues a fresh key. |
 | Credential file copied to another connection id | AES-GCM additional authenticated data binds every envelope to its connection id. The copied envelope is quarantined, and the target becomes `needs_reauth` with `token_envelope_account_mismatch`. |

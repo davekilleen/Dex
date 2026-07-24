@@ -42,6 +42,11 @@ function createConnectorLedger(opts = {}) {
 	const fs = opts.fs || nodeFs;
 	const stateDirOpt = opts.stateDir;
 	const now = typeof opts.now === "function" ? opts.now : Date.now;
+	// DEX CORE DIVERGENCE: production callers attest every row with the
+	// token-store trust key and reject unauthenticated evidence on read.
+	const attest = typeof opts.attest === "function" ? opts.attest : null;
+	const verify = typeof opts.verify === "function" ? opts.verify : null;
+	const isCurrent = typeof opts.isCurrent === "function" ? opts.isCurrent : null;
 	const maxEntriesPerConnector =
 		Number.isFinite(opts.maxEntriesPerConnector) && opts.maxEntriesPerConnector > 0
 			? Math.floor(opts.maxEntriesPerConnector)
@@ -70,7 +75,8 @@ function createConnectorLedger(opts = {}) {
 		const file = filePathFor(connectorId);
 		if (!fs.existsSync(file)) return [];
 		try {
-			return parseFile(fs.readFileSync(file, "utf8"));
+			const parsed = parseFile(fs.readFileSync(file, "utf8"));
+			return verify ? parsed.filter((row) => verify(connectorId, row)) : parsed;
 		} catch {
 			return [];
 		}
@@ -93,8 +99,9 @@ function createConnectorLedger(opts = {}) {
 		const dir = stateDir();
 		fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
 		const file = filePathFor(safeId);
-		const stored = normalizeRow(safeId, row);
 		return withLockSync(`${file}.lock`, () => {
+			const normalized = normalizeRow(safeId, row);
+			const stored = attest ? attest(safeId, normalized) : normalized;
 			const entries = readDisk(safeId);
 			const next = [...entries, stored].slice(-maxEntriesPerConnector);
 			writeFileAtomic(file, serialize(next), { mode: 0o600 });
@@ -121,9 +128,17 @@ function createConnectorLedger(opts = {}) {
 			(lastIndex, entry, index) => (entry.op === "connect" ? index : lastIndex),
 			-1
 		);
+		const lastConnectCounter = latestConnect >= 0 ? entries[latestConnect].counter : null;
 		const currentEpoch = latestConnect >= 0 ? entries.slice(latestConnect) : entries;
 		const probes = currentEpoch.filter((entry) => entry.op === "probe");
-		const successful = probes.filter((entry) => entry.ok === true);
+		// DEX CORE DIVERGENCE: even a valid old probe cannot verify a credential
+		// after a newer connect counter.
+		const successful = probes.filter(
+			(entry) =>
+				entry.ok === true &&
+				(lastConnectCounter == null || entry.counter >= lastConnectCounter) &&
+				(!isCurrent || isCurrent(connectorId, entry))
+		);
 		const lastVerified = successful.length ? successful[successful.length - 1] : null;
 		const lastProbe = probes.length ? probes[probes.length - 1] : null;
 		return {

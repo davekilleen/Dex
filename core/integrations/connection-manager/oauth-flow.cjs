@@ -11,6 +11,7 @@
 
 const http = require('http');
 const crypto = require('crypto');
+const { assertPinnedOrigin, isVetted } = require('./pinned-providers.cjs');
 
 const CALLBACK_PORTS = [3847, 3848, 3849, 3850, 3851, 3852, 3853, 3854, 3855, 3860];
 
@@ -131,6 +132,9 @@ async function startCallbackServer({
  */
 function buildAuthorizationUrl(providerConfig, { clientId, scopes = [], redirectUri }) {
   const url = new URL(providerConfig.authorizationUrl);
+  if (providerConfig.id && isVetted(providerConfig.id)) {
+    assertPinnedOrigin(providerConfig.id, 'authorization', url.toString());
+  }
   const params = url.searchParams;
 
   // Defaults + catalog-declared authorization_params (response_type, access_type, prompt, ...)
@@ -171,6 +175,9 @@ function buildTokenAuth(providerConfig, clientId, clientSecret, body) {
 }
 
 async function postToken(providerConfig, body, headers) {
+  if (providerConfig.id && isVetted(providerConfig.id)) {
+    assertPinnedOrigin(providerConfig.id, 'token', providerConfig.tokenUrl);
+  }
   let payload;
   if (providerConfig.bodyFormat === 'json') {
     headers['Content-Type'] = 'application/json';

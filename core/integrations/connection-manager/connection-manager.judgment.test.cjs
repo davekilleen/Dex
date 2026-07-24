@@ -133,7 +133,7 @@ test('permanent refresh failure stamps needs_reauth and records refresh + break 
   try {
     await withProviderConfig(
       'google',
-      { tokenUrl: 'https://tokens.example/refresh', refreshUrl: null },
+      { tokenUrl: 'https://oauth2.googleapis.com/token', refreshUrl: null },
       async () => {
         await assert.rejects(health.refreshToken('refresh-permanent', { force: true }), (error) => {
           assert.equal(error.needsReauth, true);
@@ -168,7 +168,7 @@ test('transient 500 retries once, succeeds, and never stamps a reconnect error',
   try {
     await withProviderConfig(
       'google',
-      { tokenUrl: 'https://tokens.example/refresh', refreshUrl: null, refreshRetryDelayMs: 0 },
+      { tokenUrl: 'https://oauth2.googleapis.com/token', refreshUrl: null, refreshRetryDelayMs: 0 },
       async () => {
         assert.equal(await health.refreshToken('refresh-transient', { force: true }), 'NEW-AT');
       }
@@ -245,7 +245,7 @@ test('two concurrent forced refreshes share one network call', async () => {
   try {
     await withProviderConfig(
       'google',
-      { tokenUrl: 'https://tokens.example/refresh', refreshUrl: null },
+      { tokenUrl: 'https://oauth2.googleapis.com/token', refreshUrl: null },
       async () => {
         const first = health.refreshToken('refresh-single-flight', { force: true });
         const second = health.ensureFreshToken('refresh-single-flight');

@@ -15,6 +15,7 @@
  */
 
 const { resolveAuthContext, secretsOf, redactSecrets } = require('./auth-context.cjs');
+const { assertPinnedOrigin, isVetted } = require('./pinned-providers.cjs');
 
 const HTTP_VERBS = new Set(['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS']);
 
@@ -68,6 +69,9 @@ function buildRequest(ctx, method, pathOrUrl, { query = {}, headers = {}, body }
   const sameHost = !absolute || (!!baseHost && url.host === baseHost);
   const authHeaders = sameHost ? ctx.headers || {} : {};
   const authQuery = sameHost ? ctx.query || {} : {};
+  if (sameHost && ctx.provider && isVetted(ctx.provider)) {
+    assertPinnedOrigin(ctx.provider, 'api', url.toString());
+  }
 
   for (const [k, v] of Object.entries(authQuery)) url.searchParams.set(k, v);
   for (const [k, v] of Object.entries(query)) url.searchParams.set(k, v);
@@ -157,6 +161,17 @@ async function main() {
   } catch (e) {
     console.error(e.message);
     process.exit(e.exitCode || 1);
+  }
+  if (req.authAttached && ctx.provider && !isVetted(ctx.provider)) {
+    const allowed = flags['allow-unvetted'] !== undefined || process.env.DEX_CM_ALLOW_UNVETTED === '1';
+    if (!allowed) {
+      console.error(
+        `Refusing authenticated call for '${ctx.provider}': this provider is not security-reviewed. ` +
+          'Re-run with --allow-unvetted or DEX_CM_ALLOW_UNVETTED=1 to opt in.'
+      );
+      process.exit(1);
+    }
+    console.error(`warning: '${ctx.provider}' is not security-reviewed; sending credentials because you explicitly opted in.`);
   }
 
   const reqHeaders = { ...req.headers };

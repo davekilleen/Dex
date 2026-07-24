@@ -21,7 +21,12 @@ const cli = require('./connect.cjs');
 const DIR = __dirname;
 const CRED_DIR = path.join(TMP_VAULT, 'System', 'credentials');
 const TOKENS_DIR = path.join(CRED_DIR, 'tokens');
-const childEnv = { ...process.env, DEX_VAULT: TMP_VAULT, DEX_CM_NO_KEYCHAIN: '1' };
+const childEnv = {
+  ...process.env,
+  DEX_VAULT: TMP_VAULT,
+  DEX_CM_NO_KEYCHAIN: '1',
+  DEX_CM_ALLOW_UNVETTED: '1',
+};
 
 test.after(() => fs.rmSync(TMP_VAULT, { recursive: true, force: true }));
 
@@ -98,7 +103,7 @@ test('refresh --force hits the token endpoint for a fresh token; default refresh
   const originalGetProviderConfig = catalog.getProviderConfig;
   catalog.getProviderConfig = () => ({
     ...originalGetProviderConfig('google'),
-    tokenUrl: 'http://mock-token-endpoint.test/token',
+    tokenUrl: 'https://oauth2.googleapis.com/token',
     refreshUrl: null,
   });
   try {
@@ -130,7 +135,7 @@ test('rotating refresh tokens persist and the next refresh uses the newest token
   const originalGetProviderConfig = catalog.getProviderConfig;
   catalog.getProviderConfig = () => ({
     ...originalGetProviderConfig('google'),
-    tokenUrl: 'http://mock-token-endpoint.test/token',
+    tokenUrl: 'https://oauth2.googleapis.com/token',
     refreshUrl: null,
   });
   try {
@@ -324,7 +329,8 @@ test('verified providers are identified and supported unverified providers remai
   assert.equal(catalog.getProviderConfig(unverified.id).supported, true);
 
   const attempted = run([path.join(DIR, 'connect.cjs'), 'connect', unverified.id]);
-  assert.match(attempted.stdout, /^Unverified provider — advanced tier, expect quirks\.\n$/);
+  assert.match(attempted.stdout, /warning: .*not security-reviewed/i);
+  assert.match(attempted.stdout, /Unverified provider — advanced tier, expect quirks\./);
 });
 
 test('providers that depend on Nango post-connection scripts are browse-only', () => {

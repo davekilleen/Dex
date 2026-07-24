@@ -31,7 +31,17 @@ function apiKeyContext(token, service) {
     const baseUrl = (descriptor.proxyBaseUrl || '').replace(/\$\{apiKey\}/g, token.apiKey || '');
     // apiKey rides along so CLIs can REDACT it from anything they print (the
     // envelope itself is secret-bearing by contract: headers/baseUrl carry it).
-    return { kind: 'api_key', baseUrl: baseUrl || null, headers, query, ...(token.apiKey ? { apiKey: token.apiKey } : {}) };
+    const context = {
+      kind: 'api_key',
+      baseUrl: baseUrl || null,
+      headers,
+      query,
+      ...(token.apiKey ? { apiKey: token.apiKey } : {}),
+    };
+    // Internal routing metadata for dex-call's origin policy. Keep it
+    // non-enumerable so the published get-token response contract stays v1.
+    Object.defineProperty(context, 'provider', { value: provider });
+    return context;
   } catch {
     // Not in catalog (or BASIC-only) — hand back the raw secret with no scheme; a caller can
     // still hit a full URL and supply its own header.
@@ -99,7 +109,11 @@ async function resolveAuthContext(service) {
   } catch {
     /* no catalog base — caller must pass a full URL */
   }
-  return { kind: 'oauth', baseUrl, headers: { Authorization: `Bearer ${accessToken}` }, query: {} };
+  const reg = store.getConnection(service) || {};
+  const provider = reg.provider || store.parseConnectionId(service).provider;
+  const context = { kind: 'oauth', baseUrl, headers: { Authorization: `Bearer ${accessToken}` }, query: {} };
+  Object.defineProperty(context, 'provider', { value: provider });
+  return context;
 }
 
 /**

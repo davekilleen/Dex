@@ -71,7 +71,9 @@ async function main() {
       const realGetProviderConfig = catalog.getProviderConfig;
       catalog.getProviderConfig = (provider, config) => ({
         ...realGetProviderConfig(provider, config),
-        tokenUrl: 'https://mock-token-endpoint.invalid/token',
+        // Fetch is intercepted below; keep the effective destination on
+        // Google's reviewed origin so the origin-policy layer is exercised.
+        tokenUrl: 'https://oauth2.googleapis.com/token',
         refreshUrl: null,
         refreshRetryDelayMs: 0,
       });

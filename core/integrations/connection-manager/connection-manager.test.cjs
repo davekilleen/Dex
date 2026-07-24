@@ -32,7 +32,12 @@ const dexcall = require('./dex-call.cjs'); // buildRequest / parseArgs (generic 
 const authctx = require('./auth-context.cjs'); // resolveAuthContext (shared auth seam)
 
 const DIR = __dirname;
-const childEnv = { ...process.env, DEX_VAULT: TMP_VAULT, DEX_CM_NO_KEYCHAIN: '1' };
+const childEnv = {
+  ...process.env,
+  DEX_VAULT: TMP_VAULT,
+  DEX_CM_NO_KEYCHAIN: '1',
+  DEX_CM_ALLOW_UNVETTED: '1',
+};
 
 // Pick a real paste-a-key provider for the Class-B path. Prefer one that needs ONLY an
 // API key (no connection_config) so the single-secret round-trip tests stay simple; the

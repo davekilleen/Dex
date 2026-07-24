@@ -25,6 +25,22 @@ const catalog = require('./catalog.cjs');
 const store = require('./token-store.cjs');
 const oauth = require('./oauth-flow.cjs');
 const health = require('./health.cjs');
+const { assertPinnedOrigin, isVetted } = require('./pinned-providers.cjs');
+
+function allowUnvetted(flags = {}) {
+  return flags['allow-unvetted'] !== undefined || process.env.DEX_CM_ALLOW_UNVETTED === '1';
+}
+
+function requireUnvettedConsent(provider, flags = {}) {
+  if (isVetted(provider)) return;
+  if (!allowUnvetted(flags)) {
+    throw new Error(
+      `'${provider}' is not security-reviewed. Re-run with --allow-unvetted or ` +
+        'DEX_CM_ALLOW_UNVETTED=1 to explicitly opt in.'
+    );
+  }
+  console.log(`warning: '${provider}' is not security-reviewed; continuing because you explicitly opted in.`);
+}
 
 function parseFlags(args) {
   const flags = {};
@@ -47,6 +63,7 @@ function openBrowser(url) {
 
 async function cmdConnect(provider, flags) {
   if (!provider) throw new Error('Usage: node connect.cjs connect <provider> [--scopes a,b,c] [--as <alias>]');
+  requireUnvettedConsent(provider, flags);
   const providerConfig = catalog.getProviderConfig(provider);
   if (!providerConfig.supported) {
     throw new Error(`'${provider}' is not connectable yet: ${providerConfig.reason} It remains available to browse in providers.`);
@@ -262,8 +279,11 @@ function buildProbeTarget(descriptor, secret) {
  * condemn; everything inconclusive (network error, timeout, 403, 404, 5xx, redirect) is 'skipped'.
  */
 async function probeKey(service, descriptor, secret) {
+  const provider = (descriptor && descriptor.id) || store.parseConnectionId(service).provider;
+  if (!isVetted(provider)) return 'skipped';
   const t = buildProbeTarget(descriptor, secret);
   if (!t) return 'skipped';
+  assertPinnedOrigin(provider, 'verification', t.url);
   try {
     const res = await fetch(t.url, {
       method: t.method,
@@ -291,6 +311,7 @@ async function cmdSetKey(service, flags) {
   // Catalog lookups go by PROVIDER (the auth scheme); the key is SAVED under the connId.
   const parsed = store.parseConnectionId(service);
   const provider = parsed.provider;
+  requireUnvettedConsent(provider, flags);
   const alias = flags.as || parsed.alias || null;
   const connId = alias ? `${provider}:${alias}` : provider;
 
@@ -352,11 +373,10 @@ async function cmdSetKey(service, flags) {
   store.saveApiKey(connId, secret, { provider: descriptor.id, authMode: descriptor.authMode });
   health.recordConnectionEvent(connId, 'connect', { ok: true });
   if (flags.default) store.setDefault(provider, alias);
-  if (!descriptor.verified) {
-    console.log('Unverified provider — advanced tier, expect quirks.');
-  }
-
-  const probe = flags['no-probe'] === undefined && flags.probe !== 'false' ? await probeKey(connId, descriptor, secret) : 'skipped';
+  const probe =
+    isVetted(provider) && flags['no-probe'] === undefined && flags.probe !== 'false'
+      ? await probeKey(connId, descriptor, secret)
+      : 'skipped';
   if (probe === 'ok') {
     // "Verified live" is durable evidence, not a console-only claim. Doctor
     // and status derive verification strictly from successful probe rows.
@@ -366,7 +386,9 @@ async function cmdSetKey(service, flags) {
     ? ' Verified live.'
     : probe === 'failed'
       ? ' (probe failed — marked needs_reauth)'
-      : ` (not yet verified — run: node connect.cjs probe ${connId})`;
+      : isVetted(provider)
+        ? ` (not yet verified — run: node connect.cjs probe ${connId})`
+        : ' (automatic verification skipped because this provider is not security-reviewed)';
   console.log(`✅ Stored ${descriptor.displayName}${alias ? ` (${connId})` : ''} key (encrypted) in ${store.credentialsDir()}/tokens/.${note}`);
 }
 
@@ -411,7 +433,17 @@ function cmdStatus(flags = {}) {
 }
 
 async function cmdProbe(service, flags = {}) {
-  const results = await health.probeConnections(service);
+  if (service) {
+    const reg = store.getConnection(service) || {};
+    const provider = reg.provider || store.parseConnectionId(service).provider;
+    requireUnvettedConsent(provider, flags);
+  } else {
+    const unvetted = new Set(
+      store.listConnections().map((entry) => entry.provider).filter((provider) => provider && !isVetted(provider))
+    );
+    for (const provider of unvetted) requireUnvettedConsent(provider, flags);
+  }
+  const results = await health.probeConnections(service, { allowUnvetted: allowUnvetted(flags) });
   const broken = results.some((result) => result.status === 'needs_reauth');
   if (flags.json !== undefined) {
     process.stdout.write(`${JSON.stringify({ results })}\n`);

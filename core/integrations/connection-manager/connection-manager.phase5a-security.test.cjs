@@ -176,7 +176,15 @@ test('H5: dex-call --status redacts encoded query-parameter credentials', () => 
   const result = spawnSync(
     process.execPath,
     ['--require', preload, path.join(__dirname, 'dex-call.cjs'), 'google-gemini', '/v1/models', '--status', '--raw'],
-    { env: { ...process.env, DEX_VAULT: TMP_VAULT, DEX_CM_NO_KEYCHAIN: '1' }, encoding: 'utf8' }
+    {
+      env: {
+        ...process.env,
+        DEX_VAULT: TMP_VAULT,
+        DEX_CM_NO_KEYCHAIN: '1',
+        DEX_CM_ALLOW_UNVETTED: '1',
+      },
+      encoding: 'utf8',
+    }
   );
 
   try {
