@@ -1,6 +1,6 @@
 {
   "name": "dex-pkm",
-  "version": "1.71.0",
+  "version": "1.72.0",
   "description": "Dex - Personal Knowledge Management System",
   "private": true,
   "scripts": {

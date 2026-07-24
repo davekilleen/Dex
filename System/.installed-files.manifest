@@ -711,12 +711,14 @@ core/__init__.py
 core/capabilities.py
 core/data/freemail_domains.json
 core/data/multi_part_tlds.json
+core/data/sync-folder-markers.json
 core/dexdiff_profile_adopt.py
 core/entity_engine/__init__.py
 core/entity_engine/cli.py
 core/entity_engine/contract.py
 core/entity_engine/cooling.py
 core/entity_engine/index.py
+core/entity_engine/relationships.py
 core/entity_engine/temperature.py
 core/entity_engine/write.py
 core/entity_maintenance.py
@@ -786,6 +788,7 @@ core/migrations/README.md
 core/migrations/__init__.py
 core/migrations/migrate_v1_to_v2.py
 core/migrations/preserve_local_only_paths.py
+core/migrations/sync-folder-detector.cjs
 core/migrations/tests/__init__.py
 core/migrations/tests/test_migrate_v1_to_v2.py
 core/migrations/tracked-ignored-policy.yaml
@@ -856,6 +859,7 @@ core/tests/fixtures/entity_pages/render-company.expected.md
 core/tests/fixtures/entity_pages/render-company.input.json
 core/tests/fixtures/entity_pages/render-person.expected.md
 core/tests/fixtures/entity_pages/render-person.input.json
+core/tests/fixtures/sync-folder-vectors.json
 core/tests/fixtures/vault/00-Inbox/Daily_Plans/.gitkeep
 core/tests/fixtures/vault/00-Inbox/Ideas/.gitkeep
 core/tests/fixtures/vault/00-Inbox/Meetings/.gitkeep
@@ -892,6 +896,7 @@ core/tests/fixtures/vault/System/user-profile.yaml
 core/tests/lifecycle_test_helpers.py
 core/tests/support/__init__.py
 core/tests/support/vault_builder.py
+core/tests/sync-folder-detector.test.cjs
 core/tests/test_adoption_cli.py
 core/tests/test_adoption_diff.py
 core/tests/test_adoption_doctor_journey.py
@@ -924,6 +929,7 @@ core/tests/test_create_person.py
 core/tests/test_credential_remediation.py
 core/tests/test_credential_scanner.py
 core/tests/test_credential_workflow.py
+core/tests/test_daily_plan_relationships_surface.py
 core/tests/test_dex_improvements_server.py
 core/tests/test_dex_state.py
 core/tests/test_dexdiff_adopt_profile_script.py
@@ -981,6 +987,7 @@ core/tests/test_process_meetings_soft_commitment_wiring.py
 core/tests/test_provision_parity.py
 core/tests/test_qmd_query_grep_fallback.py
 core/tests/test_relationship_radar_skill.py
+core/tests/test_relationships_feed.py
 core/tests/test_release_catalog.py
 core/tests/test_release_catalog_generation.py
 core/tests/test_release_channel.py
@@ -1083,6 +1090,7 @@ docs/solutions/architecture-patterns/trust-engine-and-verification-methodology.m
 docs/superpowers/plans/2026-07-12-task-sync-bridge.md
 docs/superpowers/plans/2026-07-23-conflict-resolution-ux.md
 docs/superpowers/plans/2026-07-23-entity-engine-bridge-reliability.md
+docs/superpowers/plans/2026-07-23-typed-relationships-build.md
 docs/superpowers/specs/2026-05-15-dex-web-design.md
 docs/support/upgrade-platform-matrix.md
 docs/testing-governance.md

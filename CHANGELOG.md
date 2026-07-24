@@ -7,6 +7,21 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.72.0] — 🔗 Dex starts mapping how the people you know connect (2026-07-24)
+
+Dex has always kept a page for each person and company you deal with. What it couldn't do was join them up — see that someone works at a particular company, reports to someone else, or is the key stakeholder on a deal. This release starts drawing those connections, quietly, from what's already in your meetings.
+
+### 🔗 The connections between your people, drawn for you
+
+**What this fixes for you:**
+
+* **Dex now notices relationships and proposes them.** As it processes your meetings it spots things like "this person works at that company" or "these two are on the same deal," and adds them to the relevant pages — kept as *suggestions* until you say yes.
+* **Nothing is ever stated as fact until you confirm it.** Every connection Dex draws starts as a suggestion. You confirm the ones that are right, and from then on Dex treats them as settled and never quietly changes them. The ones you ignore stay as gentle suggestions, nothing more.
+* **A short "relationships to confirm" nudge in your daily plan.** When there are new connections waiting for a yes-or-no, Dex mentions it in one line during your daily plan and points you to `relationship-radar` to review them. If there's nothing pending, you'll never hear about it.
+* **It's careful with your pages.** Connections live in their own clearly-marked section on each page — everything you've written yourself is left exactly as it was.
+
+This is the groundwork for Dex understanding your world as a web of people, not just a stack of separate pages — which is what will make things like meeting prep and "who should I loop in?" genuinely smart down the line.
+
 ## [1.71.0] — 🤝 Dex keeps you on top of your people, and closes out your meetings (2026-07-23)
 
 This one is mostly about the people side of your work. Dex now notices when you're drifting out of touch with someone who matters, helps you wrap up a meeting the moment it ends, keeps track of the small promises that are easy to drop, and adds a couple of new tools for starting something new. There's also a safer way to take an update when you've personalized Dex.
