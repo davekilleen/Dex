@@ -96,7 +96,7 @@ jobs:
         run: bash scripts/check-path-consistency.sh
       - name: Upload release health inputs
         if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
         with:
           name: release-health-inputs
           path: |
@@ -286,7 +286,7 @@ jobs:
         with:
           python-version: '3.12'
       - name: Download release health inputs
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093  # v4
         with:
           name: release-health-inputs
           path: .
@@ -305,16 +305,16 @@ jobs:
       - name: Configure GitHub Pages
         id: pages
         continue-on-error: true
-        uses: actions/configure-pages@v5
+        uses: actions/configure-pages@983d7736d9b0ae728b81ab479565c72886d7745b  # v5
       - name: Explain Pages setup skip
         if: steps.pages.outcome != 'success'
         run: echo "::notice::Health page not deployed because GitHub Pages is not enabled. Enable Settings → Pages → GitHub Actions."
       - name: Upload GitHub Pages artifact
         if: steps.pages.outcome == 'success'
-        uses: actions/upload-pages-artifact@v3
+        uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa  # v3
         with:
           path: public
       - name: Deploy health page
         if: steps.pages.outcome == 'success'
         id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e  # v4
