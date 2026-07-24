@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 import shutil
-import hashlib
 from collections.abc import Mapping
 from pathlib import Path
 
