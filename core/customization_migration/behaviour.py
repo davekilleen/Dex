@@ -70,6 +70,8 @@ class BehaviouralContract:
             "beh-",
             self.customization_id,
             self.statement,
+            self.provenance.value,
+            self.verification_class.value,
         )
         if (
             not isinstance(self.contract_id, str)
@@ -77,7 +79,7 @@ class BehaviouralContract:
             or self.contract_id != expected_id
         ):
             raise ValueError(
-                "contract_id does not match customization_id and statement"
+                "contract_id does not match the behavioural contract fields"
             )
 
     @classmethod
@@ -89,7 +91,13 @@ class BehaviouralContract:
         verification_class: VerificationClass,
     ) -> BehaviouralContract:
         return cls(
-            _stable_id("beh-", customization_id, statement),
+            _stable_id(
+                "beh-",
+                customization_id,
+                statement,
+                provenance.value,
+                verification_class.value,
+            ),
             customization_id,
             statement,
             provenance,

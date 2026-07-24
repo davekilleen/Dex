@@ -8,6 +8,7 @@ no I/O and must remain the authority Lane C imports.
 from __future__ import annotations
 
 import fnmatch
+import posixpath
 
 from core.portable_contract import HARD_DENY_PATTERNS, is_denied
 
@@ -36,7 +37,11 @@ def capsule_readability(path: str) -> str:
             return "restricted"
     except ValueError:
         return "restricted"
-    candidate = path.strip().replace("\\", "/").lstrip("/").casefold()
+    candidate = path.strip().replace("\\", "/").lstrip("/")
+    candidate = posixpath.normpath(candidate).lstrip("/")
+    if candidate == "." or candidate == ".." or candidate.startswith("../"):
+        return "restricted"
+    candidate = candidate.casefold()
     if any(
         fnmatch.fnmatch(candidate, pattern.casefold())
         for pattern in _CAPSULE_CREDENTIAL_PATTERNS

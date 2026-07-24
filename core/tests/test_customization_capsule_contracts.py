@@ -178,6 +178,24 @@ def test_behaviour_contract_id_is_stable_and_statement_bound() -> None:
     assert changed.contract_id != first.contract_id
 
 
+def test_behaviour_contract_id_binds_provenance_and_verification_class() -> None:
+    statement = "The customization preserves its deterministic fixture output."
+    deterministic = BehaviouralContract.create(
+        CUSTOMIZATION_ID,
+        statement,
+        ContractProvenance.DETERMINISTIC,
+        VerificationClass.ISOLATED_FIXTURE,
+    )
+    model_proposed = BehaviouralContract.create(
+        CUSTOMIZATION_ID,
+        statement,
+        ContractProvenance.MODEL_PROPOSED,
+        VerificationClass.MANUAL,
+    )
+
+    assert deterministic.contract_id != model_proposed.contract_id
+
+
 def test_migration_state_vocabulary_and_transition_matrix_are_exact() -> None:
     assert {state.value for state in MigrationState} == {
         "not-assessed",
@@ -354,6 +372,21 @@ def test_capsule_layout_v0_is_frozen_and_exact() -> None:
     ],
 )
 def test_credential_bearing_or_denied_paths_are_restricted(path: str) -> None:
+    assert capsule_readability(path) == "restricted"
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "./.mcp.json",
+        ".claude/./settings.json",
+        "dir/../System/integrations/c.yaml",
+        "sub/../.mcp.json",
+        "..",
+        "../x",
+    ],
+)
+def test_traversal_or_dot_paths_are_restricted(path: str) -> None:
     assert capsule_readability(path) == "restricted"
 
 
