@@ -114,7 +114,15 @@ function createConnectorLedger(opts = {}) {
 
 	function rollup(connectorId) {
 		const entries = readAll(connectorId);
-		const probes = entries.filter((entry) => entry.op === "probe");
+		// DEX CORE DIVERGENCE: a reconnect replaces the credential but preserves
+		// historical evidence. Only probes from the current connect epoch may
+		// verify the credential that is stored now.
+		const latestConnect = entries.reduce(
+			(lastIndex, entry, index) => (entry.op === "connect" ? index : lastIndex),
+			-1
+		);
+		const currentEpoch = latestConnect >= 0 ? entries.slice(latestConnect) : entries;
+		const probes = currentEpoch.filter((entry) => entry.op === "probe");
 		const successful = probes.filter((entry) => entry.ok === true);
 		const lastVerified = successful.length ? successful[successful.length - 1] : null;
 		const lastProbe = probes.length ? probes[probes.length - 1] : null;

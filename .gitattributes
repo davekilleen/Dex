@@ -11,6 +11,8 @@ vitest.config.mjs       export-ignore
 core/tests/             export-ignore
 core/mcp/tests/         export-ignore
 core/migrations/tests/  export-ignore
+core/integrations/connection-manager/*.test.cjs export-ignore
+core/integrations/connection-manager/hardening.child.cjs export-ignore
 .claude/hooks/tests/    export-ignore
 .scripts/meeting-intel/__tests__/ export-ignore
 CONTRIBUTING.md         export-ignore

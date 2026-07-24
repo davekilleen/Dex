@@ -123,6 +123,14 @@ function parseArgs(argv) {
   return { service, method, path, query, headers, flags };
 }
 
+/**
+ * Send an authenticated request without allowing fetch to replay credentials
+ * to a redirect target. Kept injectable for the network-boundary tests.
+ */
+function fetchAuthenticated(url, options, fetchImpl = globalThis.fetch) {
+  return fetchImpl(url, { ...options, redirect: 'error' });
+}
+
 async function main() {
   const { service, method, path, query, headers, flags } = parseArgs(process.argv.slice(2));
   if (!service || !path) {
@@ -167,11 +175,10 @@ async function main() {
 
   let res;
   try {
-    res = await fetch(req.url, {
+    res = await fetchAuthenticated(req.url, {
       method: req.method,
       headers: reqHeaders,
       body: req.body != null ? req.body : undefined,
-      redirect: 'follow',
       signal: AbortSignal.timeout(30000),
     });
   } catch (e) {
@@ -195,4 +202,4 @@ async function main() {
 
 if (require.main === module) main();
 
-module.exports = { buildRequest, parseArgs };
+module.exports = { buildRequest, parseArgs, fetchAuthenticated };

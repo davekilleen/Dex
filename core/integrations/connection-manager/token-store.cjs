@@ -51,17 +51,28 @@ function ensureDir(dir) {
 function ensureCredentialsGitignore(dir) {
   const gi = path.join(dir, '.gitignore');
   let cur = '';
-  try {
-    cur = fs.existsSync(gi) ? fs.readFileSync(gi, 'utf8') : '';
-  } catch {
-    /* unreadable — fall through and (re)write */
+  if (fs.existsSync(gi)) {
+    try {
+      cur = fs.readFileSync(gi, 'utf8');
+    } catch (error) {
+      throw new Error(`Cannot verify the never-commit credentials guard at ${gi}: ${error.message}`);
+    }
   }
   if (!/^\*\s*$/m.test(cur)) {
     try {
       writeFileAtomic(gi, '# Dex connection manager — never commit credentials (tokens, keys, OAuth secrets).\n*\n!.gitignore\n!README.md\n', { mode: 0o600 });
-    } catch {
-      /* best-effort: never block a save on the guard */
+    } catch (error) {
+      throw new Error(`Cannot install the never-commit credentials guard at ${gi}: ${error.message}`);
     }
+  }
+  let installed;
+  try {
+    installed = fs.readFileSync(gi, 'utf8');
+  } catch (error) {
+    throw new Error(`Cannot verify the never-commit credentials guard at ${gi}: ${error.message}`);
+  }
+  if (!/^\*\s*$/m.test(installed)) {
+    throw new Error(`Cannot verify the never-commit credentials guard at ${gi}: required '*' rule is missing`);
   }
 }
 

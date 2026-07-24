@@ -25,9 +25,13 @@ const FILES = {
   },
   'oauth-refresh.js': {
     source: '0f29891a988d913c8b4bfddc9ee9d8f4c91328784534107ff65abe3d4cac4783',
-    lifted: '9540de5ac106f3863552359f0d950c0ef2e182c2a1d17c9aaf2e5dd15a814f35',
+    lifted: 'cdc837a0acfbd7f8e0822f5d8da7c6f2726de8f0d7f5f2ae3daa57fa95616392',
     mode: 'injectable-delay',
-    divergences: ['source provenance header', 'injectable delay used only to prove Retry-After clamping'],
+    divergences: [
+      'source provenance header',
+      'injectable delay used only to prove Retry-After clamping',
+      'credential-bearing refresh requests refuse redirects',
+    ],
   },
   'connector-model.js': {
     source: '6d96ababba84dcd0d07b85db52e0427d6434ac57f7c2f7a762ee9f8aad9f822c',
@@ -42,23 +46,25 @@ const FILES = {
   },
   'connector-verify.js': {
     source: 'd4181a12fdbee65dd3c464e055d0142f804fb2658a19ad71eacf5366f9c1a020',
-    lifted: 'd8325fd377caf21c6613fb36755dd9bd92e9fae80aff3927ba4ea1e82914c67c',
+    lifted: '8b3e01ad8dd313b39cea7b785d885f25f0ab1eb0472f49b23f6a158b1333fbc2',
     mode: 'core-adaptation',
     divergences: [
       'Core provider ids and Google calendarList, Slack auth.test, and Linear viewer probes',
       'Linear GraphQL embedded 401 or 403 recognition',
       'probe event naming and no Desktop sync-capability evidence fields',
       'Slack HTTP-200 failures remain unknown because only 401 or 403 class evidence disconnects',
+      'credential-bearing verification requests refuse redirects',
     ],
   },
   'connector-ledger.js': {
     source: '956612fbebc115fa7512aaf5db91676bfe40fa0c08d0927e52f4508e28e14cbf',
-    lifted: '451bd6d497da9f54919dcac431025f7ad2bbe37695180d5cef1a366c902ceef8',
+    lifted: '4a9529e715d9fe9628d766ec5333137e8ecaac3d68aeac4355db08ab86cc5aba',
     mode: 'core-adaptation',
     divergences: [
       'credentials/ledger path and Core connect, refresh, probe, and break vocabulary',
       'Desktop sync counts, cursors, schedules, and page receipts omitted',
       'fs-safe is the sole atomic writer and adds a per-connection cross-process lock',
+      'successful probes are scoped to the current connect epoch after a credential replacement',
     ],
   },
 };
@@ -104,6 +110,12 @@ for (const [name, contract] of Object.entries(FILES)) {
         .toString()
         .replace(
           '\t// DEX CORE DIVERGENCE: injectable delay keeps Retry-After/clamp tests instant.\n\tdelayImpl = delay,\n',
+          ''
+        )
+        .replace(
+          '\t\t\t\t// DEX CORE DIVERGENCE: A 307/308 can preserve the POST body.\n' +
+            '\t\t\t\t// Never let a refresh token or client secret cross a redirect.\n' +
+            '\t\t\t\tredirect: "error",\n',
           ''
         )
         .replace('await delayImpl(waitMs)', 'await delay(waitMs)');

@@ -80,7 +80,7 @@ async function startCallbackServer({
         const code = url.searchParams.get('code');
         const state = url.searchParams.get('state');
         const stateMismatch = expectedState !== undefined && state !== expectedState;
-        res.writeHead(stateMismatch ? 400 : 200, { 'Content-Type': 'text/html' });
+        res.writeHead(stateMismatch ? 400 : 200, { 'Content-Type': 'text/html; charset=utf-8' });
         res.end(
           stateMismatch
             ? '<html><body style="font-family:system-ui;padding:3rem;text-align:center"><h2>Connection aborted</h2><p>OAuth state mismatch.</p></body></html>'
@@ -157,7 +157,14 @@ async function postToken(providerConfig, body, headers) {
     headers['Content-Type'] = 'application/x-www-form-urlencoded';
     payload = new URLSearchParams(body).toString();
   }
-  const res = await fetch(providerConfig.tokenUrl, { method: 'POST', headers, body: payload });
+  const res = await fetch(providerConfig.tokenUrl, {
+    method: 'POST',
+    headers,
+    body: payload,
+    // Authorization codes and client secrets must never be replayed to a
+    // redirect target. Treat every redirect as a failed token exchange.
+    redirect: 'error',
+  });
   const text = await res.text();
   let json;
   try {

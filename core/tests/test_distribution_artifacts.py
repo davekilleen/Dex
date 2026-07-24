@@ -512,8 +512,14 @@ def test_release_branch_strips_dev_files_and_untracks_v1_local_only_files(tmp_pa
             text=True,
         ).stdout
     )
-    assert "test:hooks" not in package_json.get("scripts", {})
-    assert "test:scripts" not in package_json.get("scripts", {})
+    for script_name in (
+        "test:hooks",
+        "test:scripts",
+        "test:integrations",
+        "check:connections-contract",
+        "test:connections-consumer-smoke",
+    ):
+        assert script_name not in package_json.get("scripts", {})
 
 
 def test_beta_release_branch_uses_same_stripping_and_manifest(tmp_path: Path) -> None:
@@ -678,9 +684,17 @@ def test_raw_vault_bundle_has_package_profile_manifest_agreement(tmp_path: Path)
             for member in archive.getmembers()
             if member.isfile() or member.issym()
             if not member.name.removeprefix("./").startswith("node_modules/")
-        }
+    }
     assert package["version"] == profile["release_version"]
     assert profile["profile"] == "legacy-v1"
+    for script_name in (
+        "test:hooks",
+        "test:scripts",
+        "test:integrations",
+        "check:connections-contract",
+        "test:connections-consumer-smoke",
+    ):
+        assert script_name not in package.get("scripts", {})
     assert manifest == sorted(set(manifest))
     assert set(manifest) == shipped
 
@@ -1184,9 +1198,18 @@ def test_tau_removal_source_package_lock_reference_and_quarantine_contract() -> 
 
 def test_connection_manager_tests_are_distignored() -> None:
     distignore = (REPO_ROOT / ".distignore").read_text(encoding="utf-8").splitlines()
+    attributes = (REPO_ROOT / ".gitattributes").read_text(encoding="utf-8").splitlines()
 
     assert "core/integrations/connection-manager/*.test.cjs" in distignore
     assert "core/integrations/connection-manager/hardening.child.cjs" in distignore
+    assert (
+        "core/integrations/connection-manager/*.test.cjs export-ignore"
+        in attributes
+    )
+    assert (
+        "core/integrations/connection-manager/hardening.child.cjs export-ignore"
+        in attributes
+    )
 
 
 @pytest.mark.parametrize(

@@ -3473,6 +3473,10 @@ def _probe_integrations_enabled(context: DoctorContext) -> ProbeResult:
         status = str(row.get("status") or "unknown")
         if status in {"needs_reauth", "not_connected"}:
             failures.append(f"{service}: {status}")
+        elif row.get("verified") is not True:
+            unknowns.append(
+                f"{service}: stored credential has not been live-verified"
+            )
     if failures:
         detail_parts = [f"failed: {'; '.join(failures)}"]
         if unknowns:
@@ -3491,15 +3495,7 @@ def _probe_integrations_enabled(context: DoctorContext) -> ProbeResult:
     checked.extend(str(row.get("service") or "unknown") for row in engine_connections)
     if not checked:
         return ProbeResult("OFF", "No task-sync or engine connections are enabled")
-    unverified = [
-        str(row.get("service"))
-        for row in engine_connections
-        if row.get("status") == "connected" and row.get("verified") is not True
-    ]
-    detail = f"Integration health passed for: {', '.join(checked)}"
-    if unverified:
-        detail += f" (stored but unverified: {', '.join(unverified)})"
-    return ProbeResult("OK", detail)
+    return ProbeResult("OK", f"Integration health passed for: {', '.join(checked)}")
 
 
 def _mcp_import_check(

@@ -174,6 +174,9 @@ function createConnectorVerify({ fetchImpl = globalThis.fetch, timeoutMs = DEFAU
 				headers: request.headers || {},
 				...(request.body != null ? { body: request.body } : {}),
 				signal: controller.signal,
+				// DEX CORE DIVERGENCE: verification requests carry credentials.
+				// The provider must answer directly; redirects are never trusted.
+				redirect: "error",
 			});
 		} catch (error) {
 			const timedOut = controller.signal.aborted || (error && error.name === "AbortError");

@@ -11,8 +11,8 @@
         "connection-manager"
       ],
       "fileCount": 17,
-      "totalBytes": 166924,
-      "treeHash": "73185cb6787fc56c938b4f6fe03dc80888e2fac933356710677e0510d23fd535",
+      "totalBytes": 172291,
+      "treeHash": "aaa7573e05647bff28a757ba01b300bc9d4e66eafc0d854806be1531a29e7478",
       "files": [
         {
           "path": "auth-context.cjs",
@@ -21,13 +21,13 @@
         },
         {
           "path": "catalog.cjs",
-          "bytes": 20505,
-          "sha256": "2117715e9defc26496526320cd3222b40db0f3bb469c001ff4f970ffba9ee8e7"
+          "bytes": 20870,
+          "sha256": "297dacd491486fdb6014f09b4432092b2d437d0ef99a1efd3771f39b4988e7c8"
         },
         {
           "path": "connect.cjs",
-          "bytes": 24995,
-          "sha256": "296db1b5260f656fd25bea6f7310a64758efcb16a3aa38ac8f4b633b5433347b"
+          "bytes": 27241,
+          "sha256": "fdb913096eabc9570644f33263ae93ec6ab4634d931d02e20d1cf8bb5d8de0a8"
         },
         {
           "path": "contract.cjs",
@@ -36,8 +36,8 @@
         },
         {
           "path": "dex-call.cjs",
-          "bytes": 6560,
-          "sha256": "521751a487f37f76b3559d1d0b3fd53e60e2c8d7f03d61873ceb5ac14676a3fa"
+          "bytes": 6863,
+          "sha256": "d3a058ca725b98b6988c6a3f647961010d476cf3396a21adecf809daf073b719"
         },
         {
           "path": "fs-safe.cjs",
@@ -61,8 +61,8 @@
         },
         {
           "path": "lib/connector-ledger.js",
-          "bytes": 4385,
-          "sha256": "451bd6d497da9f54919dcac431025f7ad2bbe37695180d5cef1a366c902ceef8"
+          "bytes": 4799,
+          "sha256": "4a9529e715d9fe9628d766ec5333137e8ecaac3d68aeac4355db08ab86cc5aba"
         },
         {
           "path": "lib/connector-model.js",
@@ -71,13 +71,13 @@
         },
         {
           "path": "lib/connector-verify.js",
-          "bytes": 6446,
-          "sha256": "d8325fd377caf21c6613fb36755dd9bd92e9fae80aff3927ba4ea1e82914c67c"
+          "bytes": 6609,
+          "sha256": "8b3e01ad8dd313b39cea7b785d885f25f0ab1eb0472f49b23f6a158b1333fbc2"
         },
         {
           "path": "lib/oauth-refresh.js",
-          "bytes": 10452,
-          "sha256": "9540de5ac106f3863552359f0d950c0ef2e182c2a1d17c9aaf2e5dd15a814f35"
+          "bytes": 10609,
+          "sha256": "cdc837a0acfbd7f8e0822f5d8da7c6f2726de8f0d7f5f2ae3daa57fa95616392"
         },
         {
           "path": "lib/rate-limit.js",
@@ -86,18 +86,18 @@
         },
         {
           "path": "oauth-flow.cjs",
-          "bytes": 8995,
-          "sha256": "52edd8f433c567d7b9f9d14a1f7bf19140865ecea206d2de4810bddca88768b9"
+          "bytes": 9195,
+          "sha256": "6ab21fb5139da00a38f98658d38c6c0ef416aa06aba4ef9073d16b450863979d"
         },
         {
           "path": "README.md",
-          "bytes": 6209,
-          "sha256": "7403daa0fd5ff0aa31cf0bc686382b9f47b2c7183df4541362c1918f68bc58dd"
+          "bytes": 7255,
+          "sha256": "7a4e5e4491e408b59ed9b396c1b57906d11c129ef260ee180d1487a7dc616a43"
         },
         {
           "path": "token-store.cjs",
-          "bytes": 29851,
-          "sha256": "40412ef7bfc3a033f50d4e3129e5ef9438f7254d2e7523ca58cd11cc7e55be34"
+          "bytes": 30324,
+          "sha256": "749230cf3c607a9faf1d55efb7e30639644345e35009b8b86477d07a842f92a8"
         }
       ]
     }

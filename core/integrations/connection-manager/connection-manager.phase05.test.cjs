@@ -48,8 +48,9 @@ function callbackHarness({ busyPorts = [] } = {}) {
   };
   const request = (server, url) => {
     const response = {
-      writeHead(status) {
+      writeHead(status, headers = {}) {
         response.status = status;
+        response.headers = headers;
         return response;
       },
       end(body) {
@@ -187,7 +188,9 @@ test('callback server skips a contended port and completes on the next one', asy
   try {
     assert.equal(new URL(cb.redirectUri).port, String(secondPort));
     const pending = cb.waitForCode({ expectedState: 'right-state' });
-    harness.request(harness.servers[1], '/callback?code=good-code&state=right-state');
+    const response = harness.request(harness.servers[1], '/callback?code=good-code&state=right-state');
+    assert.equal(response.headers['Content-Type'], 'text/html; charset=utf-8');
+    assert.match(response.body, /✅ Connected/);
     assert.deepEqual(await pending, { code: 'good-code', state: 'right-state' });
   } finally {
     cb.close();
@@ -254,6 +257,21 @@ test('secret argv flags are rejected with one-line stdin guidance', () => {
     assert.equal(lines.length, 1, result.stderr);
     assert.match(lines[0], /stdin/i);
   }
+});
+
+test('first-run credential commands fail immediately with clear interactive guidance when stdin is empty', () => {
+  const cases = [
+    [path.join(DIR, 'connect.cjs'), 'register-app', 'first-run-oauth'],
+    [path.join(DIR, 'connect.cjs'), 'set-key', 'linear', '--no-probe'],
+  ];
+  for (const args of cases) {
+    const result = run(args);
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /interactive terminal/i);
+    assert.match(result.stderr, /hidden prompt/i);
+  }
+  assert.equal(store.getOAuthApp('first-run-oauth'), null);
+  assert.equal(store.loadToken('linear'), null);
 });
 
 test('get-token OAuth defaults to least privilege; --full and --access-token-only remain explicit', () => {
