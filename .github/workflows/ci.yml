@@ -53,6 +53,8 @@ jobs:
           # and the `pip install pyyaml` step above targets that same interpreter.
           DEX_PYTHON: ${{ steps.setup-python.outputs.python-path }}
         run: npm run test:scripts
+      - name: Connection-manager engine tests
+        run: npm run test:integrations
       - name: Diff-aware test gate
         if: github.event_name == 'pull_request'
         run: bash scripts/check-test-delta.sh
