@@ -8,8 +8,10 @@ const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 
 const SOURCE_COMMIT = '2b34aa4d';
-const DESKTOP_REPO =
-  process.env.DEX_DESKTOP_REPO || '/Users/dave.killeen/dex/product/dex-desktop-concierge';
+// Optional: point DEX_DESKTOP_REPO at a dex-desktop checkout to additionally
+// byte-verify against the pinned source commit. Without it (CI, contributor
+// machines) the test still verifies the pinned sha256 of every lifted file.
+const DESKTOP_REPO = process.env.DEX_DESKTOP_REPO || '';
 const LIB = path.join(__dirname, 'lib');
 
 // Both byte hashes are pinned. For adapted files, changing one byte requires
