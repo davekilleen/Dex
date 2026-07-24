@@ -7,25 +7,16 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
-## [1.73.0] — ✅ Each suggested relationship gets its own yes or no (2026-07-24)
+## [1.73.0] — ✅ Every suggested connection gets its own yes or no (2026-07-24)
 
-Confirming one relationship no longer freezes every other suggestion on that page.
-Confirmed connections are protected individually, while new suggestions can still
-arrive. Dismissing a suggestion now records a small on-page tombstone so the same
-meeting evidence cannot bring it back, and deleting a suggestion by hand has the
-same durable effect.
+Last release Dex started spotting connections between the people you know and offering them as suggestions. There was a rough edge worth fixing quickly: the moment you confirmed one connection on someone's page, Dex quietly stopped offering *new* ones for that person — and a suggestion you'd dismissed could later drift back. This tidies both.
 
-The daily-plan nudge now leads to real `confirm_relationship` and
-`dismiss_relationship` actions. Relationship generation also obeys
-`entity_creation.mode: off` as a hard write gate.
+**What this fixes for you:**
 
-The v1.72 field-level `dex_pinned.relationships` marker is removed lazily on the
-next relationship write; entries protected by that legacy whole-field pin become
-individually confirmed. Rolling back to v1.72 is degraded: the missing field pin
-means the older writer treats the field as initially unpinned. The new
-`dex_dismissed_relationships` key stays on the page but v1.72 does not enforce it,
-so avoid resyncing relationship evidence while rolled back if a dismissal must
-remain suppressed.
+* **Confirming one connection no longer silences the rest.** Each suggested connection is handled on its own now — say yes to one, and Dex keeps surfacing new ones for that same person as they come up, instead of going quiet.
+* **A "no" actually sticks.** When you dismiss a suggested connection — or just delete one yourself — Dex remembers, and the same meeting won't quietly bring it back later.
+* **"Relationships to confirm" now actually lets you confirm.** The heads-up in your daily plan leads straight to a real yes-or-no step, rather than pointing you somewhere that couldn't act on it.
+* **"Off" means off.** If you've told Dex not to create things on its own, it now leaves connections alone too — no exceptions.
 
 ## [1.72.0] — 🔗 Dex starts mapping how the people you know connect (2026-07-24)
 
