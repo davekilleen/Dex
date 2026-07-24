@@ -23,8 +23,30 @@ The engine code ships in Dex Core, but remains product-inert: no user-facing
 | `lib/connector-ledger.js` | Secret-free per-connection evidence under `System/credentials/ledger/` (500-row cap, atomic rewrite). |
 | `connect.cjs` | CLI: `connect` / `status [--json]` / `probe` / `refresh` / `disconnect` / `providers` / `authurl`. |
 | `broker.cjs` / `broker-client.cjs` | Machine-local Unix-socket broker and client. Accessors request rendered or explicitly privileged credential views here instead of decrypting the store in their own process. |
+| `presence.cjs` | B1 user-presence gate for raw exports and first connect, with a short in-process grant cache. |
 | `get-token.cjs` | Contract-frozen accessor for Python MCP servers; all credential reads go through the broker. |
 | `dex-call.cjs` | Generic authenticated caller; obtains rendered auth from the broker, then sends and redacts its own outbound request. |
+
+## User-presence provider (B1)
+
+Rendered authentication, default token access, and status checks never prompt,
+so unattended sync keeps working. Raw `access-token` / `full` exports and the
+first successful connect require verified user presence.
+
+Real Touch ID is not implemented by a dialog or by JavaScript in this repo.
+macOS requires an OS-signed app/helper for a genuine biometric prompt. The Dex
+desktop app supplies that helper through `DEX_CM_PRESENCE_CMD`; the value is
+argv-split and spawned directly without a shell. Exit 0 grants presence;
+non-zero or timeout denies it.
+
+Without a usable helper, the built-in macOS provider is honestly
+`unavailable`, and privileged operations fail closed. Headless/CI environments
+may explicitly set `DEX_CM_PRESENCE_OPTIONAL=1` to bypass an *unavailable*
+provider; this prints a warning that presence was not verified. It never turns
+an explicit denial into approval. Successful grants are cached in the broker
+process per connection for 60 seconds by default
+(`DEX_CM_PRESENCE_TTL_MS`; helper timeout:
+`DEX_CM_PRESENCE_TIMEOUT_MS`, default 30 seconds).
 
 ## Maintainer smoke path
 

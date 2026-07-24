@@ -50,6 +50,8 @@ async function main() {
           ? `${service} is not connected.`
           : error.category === 'needs_reauth'
             ? `${service} needs re-authentication. Run: node connect.cjs connect ${service}`
+            : error.category === 'presence_required'
+              ? `${service} requires verified user presence. Approve the OS prompt and try again.`
             : 'Credential broker request failed.')
     );
     process.exit(exitCodeForError(error.category));

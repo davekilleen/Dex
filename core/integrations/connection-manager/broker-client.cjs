@@ -22,6 +22,7 @@ function exitCodeForError(category) {
   return {
     forbidden: 1,
     unvetted: 1,
+    presence_required: 1,
     needs_reauth: 3,
     not_connected: 2,
     http: 4,

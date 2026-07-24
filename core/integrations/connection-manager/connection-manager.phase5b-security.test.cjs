@@ -24,7 +24,12 @@ const dexCall = require('./dex-call.cjs');
 const health = require('./health.cjs');
 
 const DIR = __dirname;
-const childEnv = { ...process.env, DEX_VAULT: TMP_VAULT, DEX_CM_NO_KEYCHAIN: '1' };
+const childEnv = {
+  ...process.env,
+  DEX_VAULT: TMP_VAULT,
+  DEX_CM_NO_KEYCHAIN: '1',
+  DEX_CM_PRESENCE_OPTIONAL: '1',
+};
 
 test.after(() => {
   fs.rmSync(TMP_VAULT, { recursive: true, force: true });

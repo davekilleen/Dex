@@ -10,9 +10,9 @@
       "entries": [
         "connection-manager"
       ],
-      "fileCount": 20,
-      "totalBytes": 216249,
-      "treeHash": "e3b0d9c958e4776be81a7167928034700443c3c95e09ca72f5ed3d52501fdd28",
+      "fileCount": 21,
+      "totalBytes": 224117,
+      "treeHash": "d6c68f6799a465314b37d6595a84a2ad7a43ff1d477f14642e1ba99355aa109a",
       "files": [
         {
           "path": "auth-context.cjs",
@@ -21,13 +21,13 @@
         },
         {
           "path": "broker-client.cjs",
-          "bytes": 3888,
-          "sha256": "fc5e0d82ea12a048745d52541c5c02a99319bf5d1b2700735913d754b9a644a1"
+          "bytes": 3914,
+          "sha256": "e64dce819d68e3dccf85ec3d32f39ff621fa8dc1c18d0e014bb3fa6fd2554f41"
         },
         {
           "path": "broker.cjs",
-          "bytes": 11054,
-          "sha256": "ef91c1e9d9a6d12a00e1dde1dabefac75fb22f80c043e1acc635ac77ef2e8fd5"
+          "bytes": 11705,
+          "sha256": "df8b64e3418d2b81adda32ef0d248572a501e5c7afbdb61a8b8c660fcc1487ef"
         },
         {
           "path": "catalog.cjs",
@@ -36,8 +36,8 @@
         },
         {
           "path": "connect.cjs",
-          "bytes": 29175,
-          "sha256": "10da37b67d8911448fb4b86fdc95296ebff5ec64c29b750ddf9dabcf2e4a8cc1"
+          "bytes": 29599,
+          "sha256": "ca86c82c154122392ec9cbd0c607edc2230f4b4ef8b4989cef6e04ed567a3284"
         },
         {
           "path": "contract.cjs",
@@ -46,8 +46,8 @@
         },
         {
           "path": "dex-call.cjs",
-          "bytes": 8671,
-          "sha256": "aa6ed4007fd21b6d304fd915361b4c0e87a49fb1458de1783042d08cc94a6642"
+          "bytes": 8898,
+          "sha256": "e5a818e25fa78555e737574a7a0cc029da924a831842cd5a60e573cf34e3ea82"
         },
         {
           "path": "fs-safe.cjs",
@@ -56,8 +56,8 @@
         },
         {
           "path": "get-token.cjs",
-          "bytes": 2438,
-          "sha256": "e03b67d3007c3afd225ecdf2506e0eee9c8f1fa3d044d98ae03d80d2e84642f4"
+          "bytes": 2590,
+          "sha256": "404fcc147e0a53faa6e2d43a6098e089601f8bb2c2e02a037c6e0a3a2620d194"
         },
         {
           "path": "health.cjs",
@@ -105,9 +105,14 @@
           "sha256": "bfaa66151cdd7995bdfee132d2febad6527d788798c9b62ba81cb13e83a9dada"
         },
         {
+          "path": "presence.cjs",
+          "bytes": 5170,
+          "sha256": "9260ab7be1ef50f3ef5103c432ee2e85778eb77ab3b953670ec48049672e0a3d"
+        },
+        {
           "path": "README.md",
-          "bytes": 9819,
-          "sha256": "255bbc4a7a318a4d8fd04283a7405569bbf4833a579372766bbea51a150e27f0"
+          "bytes": 11037,
+          "sha256": "4572e44c522567a6a2efdc14e4adc0dae66e24829bc4d200c00f8f91c944d42e"
         },
         {
           "path": "token-store.cjs",

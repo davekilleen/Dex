@@ -179,6 +179,11 @@ async function main() {
           `Refusing authenticated call for '${provider}': this provider is not security-reviewed. ` +
             'Re-run with --allow-unvetted or DEX_CM_ALLOW_UNVETTED=1 to opt in.'
         );
+      } else if (brokerError.category === 'presence_required') {
+        console.error(
+          brokerError.message ||
+            `${service} requires verified user presence. Approve the OS prompt and try again.`
+        );
       } else {
         console.error(brokerError.message || 'Credential broker request failed.');
       }

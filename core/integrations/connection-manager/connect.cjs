@@ -25,6 +25,7 @@ const catalog = require('./catalog.cjs');
 const store = require('./token-store.cjs');
 const oauth = require('./oauth-flow.cjs');
 const health = require('./health.cjs');
+const presence = require('./presence.cjs');
 const { assertPinnedOrigin, isVetted } = require('./pinned-providers.cjs');
 
 function allowUnvetted(flags = {}) {
@@ -61,7 +62,11 @@ function openBrowser(url) {
   spawn(cmd, [url], { stdio: 'ignore', detached: true }).unref();
 }
 
-async function cmdConnect(provider, flags) {
+async function cmdConnect(
+  provider,
+  flags,
+  { presenceProvider, oauthProvider = oauth, openBrowser: openBrowserFn = openBrowser } = {}
+) {
   if (!provider) throw new Error('Usage: node connect.cjs connect <provider> [--scopes a,b,c] [--as <alias>]');
   requireUnvettedConsent(provider, flags);
   const providerConfig = catalog.getProviderConfig(provider);
@@ -88,8 +93,8 @@ async function cmdConnect(provider, flags) {
   }
   const scopes = catalog.normalizeScopes(provider, flags.scopes ? flags.scopes.split(',') : []);
 
-  const cb = await oauth.startCallbackServer();
-  const { url, codeVerifier, state } = oauth.buildAuthorizationUrl(providerConfig, {
+  const cb = await oauthProvider.startCallbackServer();
+  const { url, codeVerifier, state } = oauthProvider.buildAuthorizationUrl(providerConfig, {
     clientId: app.clientId,
     scopes,
     redirectUri: cb.redirectUri,
@@ -97,17 +102,18 @@ async function cmdConnect(provider, flags) {
 
   console.log(`\nOpening browser to connect ${providerConfig.displayName}${alias ? ` (as ${alias})` : ''}…`);
   console.log(`(If it doesn't open, visit:)\n${url}\n`);
-  openBrowser(url);
+  openBrowserFn(url);
 
   const { code } = await cb.waitForCode({ expectedState: state });
 
-  const token = await oauth.exchangeCodeForToken(providerConfig, {
+  const token = await oauthProvider.exchangeCodeForToken(providerConfig, {
     code,
     codeVerifier,
     clientId: app.clientId,
     clientSecret: app.clientSecret,
     redirectUri: cb.redirectUri,
   });
+  await presence.assertPresence(connId, 'connect', { provider: presenceProvider });
   store.saveToken(connId, token, { provider: providerConfig.id });
   health.recordConnectionEvent(connId, 'connect', { ok: true });
   if (flags.default) store.setDefault(provider, alias);
@@ -300,7 +306,7 @@ async function probeKey(service, descriptor, secret) {
   }
 }
 
-async function cmdSetKey(service, flags) {
+async function cmdSetKey(service, flags, { presenceProvider, readSecret = readSecretOrPrompt } = {}) {
   if (!service) throw new Error('Usage: node connect.cjs set-key <provider> [--username <u>] [--<field> <value> …] [--no-probe] (secret via stdin)');
   if (flags.key !== undefined || flags.password !== undefined) {
     throw new Error('Secret flags are not accepted; pipe the API key or password on stdin.');
@@ -351,7 +357,7 @@ async function cmdSetKey(service, flags) {
   let secret;
   if (descriptor.authMode === 'BASIC') {
     const username = flags.username;
-    const password = await readSecretOrPrompt('Password (hidden): ');
+    const password = await readSecret('Password (hidden): ');
     if (!username || !password) {
       throw new Error(
         'BASIC auth needs --username and a password. Run this command in an interactive terminal for a hidden prompt, ' +
@@ -360,7 +366,7 @@ async function cmdSetKey(service, flags) {
     }
     secret = { username, password };
   } else {
-    const apiKey = await readSecretOrPrompt('API key (hidden): ');
+    const apiKey = await readSecret('API key (hidden): ');
     if (!apiKey) {
       throw new Error(
         'No API key received. Run this command in an interactive terminal for a hidden prompt, or pipe the key on stdin.'
@@ -370,6 +376,7 @@ async function cmdSetKey(service, flags) {
   }
   if (Object.keys(connectionConfig).length) secret.connectionConfig = connectionConfig;
 
+  await presence.assertPresence(connId, 'connect', { provider: presenceProvider });
   store.saveApiKey(connId, secret, { provider: descriptor.id, authMode: descriptor.authMode });
   health.recordConnectionEvent(connId, 'connect', { ok: true });
   if (flags.default) store.setDefault(provider, alias);
@@ -607,4 +614,14 @@ async function main() {
 }
 
 if (require.main === module) main();
-module.exports = { main, buildProbeTarget, classifyProbeStatus, probeKey, cmdRefresh, cmdStatus, cmdProbe };
+module.exports = {
+  main,
+  buildProbeTarget,
+  classifyProbeStatus,
+  probeKey,
+  cmdConnect,
+  cmdSetKey,
+  cmdRefresh,
+  cmdStatus,
+  cmdProbe,
+};

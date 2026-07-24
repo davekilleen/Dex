@@ -24,6 +24,7 @@ const path = require('node:path');
 const authContext = require('./auth-context.cjs');
 const health = require('./health.cjs');
 const pinned = require('./pinned-providers.cjs');
+const presence = require('./presence.cjs');
 const store = require('./token-store.cjs');
 const { withLock, writeFileAtomic } = require('./fs-safe.cjs');
 
@@ -111,8 +112,10 @@ function socketIsLive(file) {
   });
 }
 
-async function assertPresence(_connId, _op) {
-  // Phase 5d: bind privileged export to OS user-presence (Touch ID) here.
+async function assertPresence(connId, op) {
+  // Keep this exported indirection: tests and the desktop host can observe the
+  // broker seam without weakening the provider policy in presence.cjs.
+  return presence.assertPresence(connId, op);
 }
 
 function errorCategory(error) {
@@ -214,7 +217,13 @@ async function processRequest(request, capability) {
 }
 
 function createServer(capability, activity) {
-  return net.createServer((socket) => {
+  // allowHalfOpen: the client half-closes its write side after sending the
+  // request (socket.end). Without this, the server auto-closes its write side on
+  // that FIN, and a slow async handler (e.g. a presence check that spawns a
+  // child process) would finish after the socket is already closing — dropping
+  // the response. Keeping the write side open lets every response land; the
+  // handler still explicitly ends the socket once it has written.
+  return net.createServer({ allowHalfOpen: true }, (socket) => {
     socket.setEncoding('utf8');
     let input = '';
     let handled = false;

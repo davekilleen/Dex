@@ -20,7 +20,12 @@ const { refreshOAuthToken } = require('./lib/oauth-refresh.js');
 const { createConnectorVerify, CATEGORY } = require('./lib/connector-verify.js');
 const { createConnectorLedger } = require('./lib/connector-ledger.js');
 
-const childEnv = { ...process.env, DEX_VAULT: TMP_VAULT, DEX_CM_NO_KEYCHAIN: '1' };
+const childEnv = {
+  ...process.env,
+  DEX_VAULT: TMP_VAULT,
+  DEX_CM_NO_KEYCHAIN: '1',
+  DEX_CM_PRESENCE_OPTIONAL: '1',
+};
 
 test.after(() => fs.rmSync(TMP_VAULT, { recursive: true, force: true }));
 

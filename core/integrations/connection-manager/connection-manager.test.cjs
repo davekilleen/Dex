@@ -40,6 +40,7 @@ const childEnv = {
   DEX_VAULT: TMP_VAULT,
   DEX_CM_NO_KEYCHAIN: '1',
   DEX_CM_ALLOW_UNVETTED: '1',
+  DEX_CM_PRESENCE_OPTIONAL: '1',
 };
 
 // Pick a real paste-a-key provider for the Class-B path. Prefer one that needs ONLY an

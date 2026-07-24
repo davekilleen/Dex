@@ -45,6 +45,7 @@ test('foreign smoke consumer uses only CLIs plus contract/schema against a scrat
     DEX_CM_RUNTIME_DIR: runtime,
     DEX_CM_BROKER_IDLE_MS: '100',
     DEX_CM_NO_KEYCHAIN: '1',
+    DEX_CM_PRESENCE_OPTIONAL: '1',
   };
   try {
     execFileSync('node', [path.join(__dirname, 'connect.cjs'), 'set-key', 'linear', '--no-probe'], {
@@ -78,6 +79,7 @@ test('real accessor and status CLIs conform to the published schemas and exit-co
     DEX_CM_RUNTIME_DIR: runtime,
     DEX_CM_BROKER_IDLE_MS: '100',
     DEX_CM_NO_KEYCHAIN: '1',
+    DEX_CM_PRESENCE_OPTIONAL: '1',
   };
   const contract = JSON.parse(fs.readFileSync(CONTRACT, 'utf8'));
   const schema = JSON.parse(fs.readFileSync(SCHEMA, 'utf8'));

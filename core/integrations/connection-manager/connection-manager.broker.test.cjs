@@ -19,8 +19,10 @@ process.env.DEX_CM_BROKER_IDLE_MS = '150';
 
 const store = require('./token-store.cjs');
 const authContext = require('./auth-context.cjs');
+const presence = require('./presence.cjs');
 const broker = require('./broker.cjs');
 const client = require('./broker-client.cjs');
+const connect = require('./connect.cjs');
 
 function mode(file) {
   return fs.statSync(file).mode & 0o777;
@@ -109,6 +111,15 @@ test.after(async () => {
   fs.rmSync(TMP_RUNTIME, { recursive: true, force: true });
 });
 
+test('broker presence seam delegates to the provider-based presence layer', async (t) => {
+  const calls = [];
+  t.mock.method(presence, 'assertPresence', async (connId, op) => calls.push([connId, op]));
+
+  await broker.assertPresence('linear:delegated', 'access-token');
+
+  assert.deepEqual(calls, [['linear:delegated', 'access-token']]);
+});
+
 test('broker request processing preserves accessor shapes without a live socket', async () => {
   const capability = 'test-capability';
   const oauth = 'google:broker-unit';
@@ -163,6 +174,166 @@ test('broker request processing preserves accessor shapes without a live socket'
     store.deleteToken(oauth);
     store.deleteToken(classB);
   }
+});
+
+test('privileged broker denial returns presence_required without releasing a secret', async () => {
+  const capability = 'presence-denial-capability';
+  const connId = 'linear:presence-denial';
+  const secret = 'MUST-NOT-BE-RELEASED';
+  store.saveApiKey(connId, { apiKey: secret }, { provider: 'linear', authMode: 'API_KEY' });
+  const originalPresence = broker.assertPresence;
+  broker.assertPresence = async () => {
+    const error = new Error('User presence is required for this credential operation.');
+    error.code = 'DEX_CM_PRESENCE_REQUIRED';
+    error.category = 'presence_required';
+    throw error;
+  };
+  try {
+    const response = await broker.processRequest(
+      { capability, op: 'access-token', connId },
+      capability
+    );
+    assert.equal(response.ok, false);
+    assert.equal(response.error.category, 'presence_required');
+    assert.match(response.error.message, /presence/i);
+    assert.equal(JSON.stringify(response).includes(secret), false);
+  } finally {
+    broker.assertPresence = originalPresence;
+    store.deleteToken(connId);
+  }
+});
+
+test('set-key requires mocked presence before the first credential save', async () => {
+  const connId = 'linear:first-connect-approved';
+  const prompts = [];
+  const provider = {
+    available: true,
+    async verify(request) {
+      prompts.push(request);
+      return true;
+    },
+  };
+  try {
+    await connect.cmdSetKey(connId, { 'no-probe': 'true' }, {
+      presenceProvider: provider,
+      readSecret: async () => 'FIRST-CONNECT-SECRET',
+    });
+
+    assert.equal(store.loadToken(connId).apiKey, 'FIRST-CONNECT-SECRET');
+    assert.deepEqual(prompts, [{ connId, op: 'connect' }]);
+  } finally {
+    if (store.getConnection(connId)) store.deleteToken(connId);
+  }
+});
+
+test('set-key denial stores nothing and cannot overwrite an existing credential', async () => {
+  const deniedId = 'linear:first-connect-denied';
+  const deniedProvider = { available: true, verify: async () => false };
+  await assert.rejects(
+    connect.cmdSetKey(deniedId, { 'no-probe': 'true' }, {
+      presenceProvider: deniedProvider,
+      readSecret: async () => 'DENIED-FIRST-CONNECT-SECRET',
+    }),
+    { code: 'DEX_CM_PRESENCE_REQUIRED', category: 'presence_required' }
+  );
+  assert.equal(store.getConnection(deniedId), null);
+
+  const reconnectId = 'linear:reconnect-denied';
+  store.saveApiKey(reconnectId, { apiKey: 'OLD-SECRET' }, { provider: 'linear', authMode: 'API_KEY' });
+  let reconnectPrompts = 0;
+  try {
+    await assert.rejects(
+      connect.cmdSetKey(reconnectId, { 'no-probe': 'true' }, {
+        presenceProvider: {
+          available: true,
+          async verify() {
+            reconnectPrompts += 1;
+            return false;
+          },
+        },
+        readSecret: async () => 'NEW-SECRET',
+      }),
+      { code: 'DEX_CM_PRESENCE_REQUIRED', category: 'presence_required' }
+    );
+    assert.equal(store.loadToken(reconnectId).apiKey, 'OLD-SECRET');
+    assert.equal(reconnectPrompts, 1);
+  } finally {
+    if (store.getConnection(reconnectId)) store.deleteToken(reconnectId);
+  }
+});
+
+test('OAuth connect requires mocked presence before the first token save', async () => {
+  const connId = 'google:presence-oauth';
+  store.setOAuthApp('google', { clientId: 'TEST-CLIENT', clientSecret: 'TEST-SECRET' });
+  const prompts = [];
+  const oauthProvider = {
+    async startCallbackServer() {
+      return {
+        redirectUri: 'http://127.0.0.1:3847/callback',
+        waitForCode: async () => ({ code: 'TEST-CODE' }),
+      };
+    },
+    buildAuthorizationUrl() {
+      return { url: 'https://accounts.google.com/test', codeVerifier: 'VERIFIER', state: 'STATE' };
+    },
+    async exchangeCodeForToken() {
+      return { access_token: 'OAUTH-FIRST-CONNECT', refresh_token: 'OAUTH-REFRESH' };
+    },
+  };
+  try {
+    await connect.cmdConnect('google', { as: 'presence-oauth' }, {
+      oauthProvider,
+      openBrowser: () => {},
+      presenceProvider: {
+        available: true,
+        async verify(request) {
+          prompts.push(request);
+          return true;
+        },
+      },
+    });
+
+    assert.equal(store.loadToken(connId).access_token, 'OAUTH-FIRST-CONNECT');
+    assert.deepEqual(prompts, [{ connId, op: 'connect' }]);
+  } finally {
+    if (store.getConnection(connId)) store.deleteToken(connId);
+  }
+});
+
+test('accessor CLIs clearly surface presence_required with exit code 1', async () => {
+  const preload = path.join(TMP_ROOT, 'presence-required-preload.cjs');
+  const clientPath = path.join(__dirname, 'broker-client.cjs');
+  fs.writeFileSync(
+    preload,
+    [
+      "'use strict';",
+      `const clientPath = ${JSON.stringify(clientPath)};`,
+      'require.cache[clientPath] = {',
+      '  id: clientPath, filename: clientPath, loaded: true,',
+      '  exports: {',
+      "    exitCodeForError(category) { return category === 'presence_required' ? 1 : 99; },",
+      "    async brokerRequest() { return {ok:false,error:{category:'presence_required'}}; },",
+      '  },',
+      '};',
+    ].join('\n')
+  );
+  const env = { NODE_OPTIONS: `--require=${preload}` };
+
+  const getToken = await runCli(
+    path.join(__dirname, 'get-token.cjs'),
+    ['linear:presence-cli', '--access-token-only'],
+    env
+  );
+  assert.equal(getToken.status, 1);
+  assert.match(getToken.stderr, /user presence/i);
+
+  const dexCall = await runCli(
+    path.join(__dirname, 'dex-call.cjs'),
+    ['linear:presence-cli', 'GET', 'https://api.linear.app/graphql'],
+    env
+  );
+  assert.equal(dexCall.status, 1);
+  assert.match(dexCall.stderr, /user presence/i);
 });
 
 test('rendered broker auth retains key-in-URL redaction without exposing an apiKey field', async () => {
@@ -374,6 +545,24 @@ test('socket (verify outside sandbox): broker gates operations and accessor CLIs
       assert.deepEqual(presenceCalls, []);
     });
 
+    await t.test('denying presence returns presence_required without releasing the raw secret', async () => {
+      const acceptingPresence = broker.assertPresence;
+      broker.assertPresence = async () => {
+        const error = new Error('User presence is required for this credential operation.');
+        error.code = 'DEX_CM_PRESENCE_REQUIRED';
+        error.category = 'presence_required';
+        throw error;
+      };
+      try {
+        const response = await rawRequest({ capability, op: 'access-token', connId: linear });
+        assert.equal(response.ok, false);
+        assert.equal(response.error.category, 'presence_required');
+        assert.equal(JSON.stringify(response).includes('LINEAR-BROKER-SECRET'), false);
+      } finally {
+        broker.assertPresence = acceptingPresence;
+      }
+    });
+
     await t.test('privileged access-token and full exports invoke presence', async () => {
       const access = await rawRequest({ capability, op: 'access-token', connId: linear });
       assert.deepEqual(access, { ok: true, value: 'LINEAR-BROKER-SECRET' });
@@ -511,6 +700,7 @@ test('socket (verify outside sandbox): broker gates operations and accessor CLIs
 test('client maps legacy CLI exit codes', () => {
   assert.equal(client.exitCodeForError('forbidden'), 1);
   assert.equal(client.exitCodeForError('unvetted'), 1);
+  assert.equal(client.exitCodeForError('presence_required'), 1);
   assert.equal(client.exitCodeForError('needs_reauth'), 3);
   assert.equal(client.exitCodeForError('not_connected'), 2);
   assert.equal(client.exitCodeForError('http'), 4);
