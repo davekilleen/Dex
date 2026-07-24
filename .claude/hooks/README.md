@@ -16,7 +16,7 @@ These commands are wired in `.claude/settings.json` and run independently of any
 
 | Event | Matcher | Command | Purpose |
 |---|---|---|---|
-| `SessionStart` | all | `bash .claude/hooks/session-start.sh` | Inject the current Dex session context. |
+| `SessionStart` | all | `bash .claude/hooks/session-start.sh` | Inject the current Dex session context and run the bounded smoke fallback when no clean check completed on the current local day. |
 | `SessionStart` | all | `python3 "$CLAUDE_PROJECT_DIR/core/utils/update_verifier.py" --vault "$CLAUDE_PROJECT_DIR" --session-start` | Perform the bounded release-evidence check. |
 | `PreToolUse` | `Read` | `node .claude/hooks/person-context-injector.cjs` | Inject matching person context before a file read. |
 | `PreToolUse` | `Read` | `node .claude/hooks/company-context-injector.cjs` | Inject matching company context before a file read. |
