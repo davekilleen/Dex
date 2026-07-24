@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from core.customization_migration.model import EXCLUSION_REASONS, SHA256
 
 CAPSULE_ID = re.compile(r"^cap-[0-9a-f]{16}$")
+# The v0 schema includes future lanes; creation materializes only paths it writes.
 CAPSULE_LAYOUT_V0 = (
     "manifest.json",
     "journal.jsonl",

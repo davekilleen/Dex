@@ -106,8 +106,10 @@ def test_preview_create_validate_and_status_happy_path(tmp_path: Path) -> None:
     assert files
     assert set(directories.values()) == {0o700}
     assert set(files.values()) == {0o600}
-    assert (capsule / "restricted").is_dir()
-    assert list((capsule / "restricted").iterdir()) == []
+    assert set(directories) == {"blobs", "evidence", "receipts"}
+    for directory in ("blobs", "evidence", "receipts"):
+        assert stat.S_IMODE((capsule / directory).stat().st_mode) == 0o700
+    assert (capsule / "journal.jsonl").is_file()
     capsule_files = [candidate for candidate in capsule.rglob("*") if candidate.is_file()]
     assert receipt.file_count == len(capsule_files)
     assert receipt.byte_count == sum(candidate.stat().st_size for candidate in capsule_files)
@@ -162,7 +164,7 @@ def test_embedded_secret_is_finding_only_and_bytes_never_enter_capsule(
     assert exclusions["restricted_findings"][0]["source_paths"] == [
         ".scripts/secret-helper.py"
     ]
-    assert not list((capsule / "blobs").iterdir())
+    assert not (capsule / "blobs").exists()
 
 
 def test_source_drift_refuses_before_any_capsule_write(tmp_path: Path) -> None:
@@ -285,6 +287,50 @@ def test_create_fault_injection_resumes_to_absent_recovery_or_full_capsule(
     for item in status.capsules:
         if item.state is MigrationState.CAPSULE_CREATED:
             assert validate_capsule(vault, item.capsule_id).status == "OK"
+
+
+@pytest.mark.parametrize(
+    "seam",
+    (
+        "capsule-after-layout",
+        "capsule-mid-finalize",
+    ),
+)
+def test_create_capsule_finalize_crash_resumes_to_absent_capsule(
+    seam: str,
+    tmp_path: Path,
+) -> None:
+    vault = _linked_customized_vault(tmp_path)
+    source_before = _source_bytes(vault)
+    capsule_id_path = tmp_path / "capsule-id.txt"
+    script = (
+        "from pathlib import Path\n"
+        "from core.customization_migration.capsule import preview_capsule,create_capsule\n"
+        "vault=Path(__import__('sys').argv[1])\n"
+        "capsule_id_path=Path(__import__('sys').argv[2])\n"
+        "preview=preview_capsule(vault,clock=lambda:1750000000)\n"
+        "capsule_id_path.write_text(preview.capsule_id,encoding='utf-8')\n"
+        "create_capsule(vault,preview,preview.preview_sha256)\n"
+    )
+    environment = os.environ.copy()
+    environment["DEX_TX_TEST_STOP_AFTER"] = seam
+    environment["PYTHONPATH"] = str(REPO_ROOT)
+
+    child = subprocess.run(
+        [sys.executable, "-c", script, str(vault), str(capsule_id_path)],
+        cwd=REPO_ROOT,
+        env=environment,
+        capture_output=True,
+        text=True,
+    )
+    assert child.returncode == 137
+    capsule_id = capsule_id_path.read_text(encoding="utf-8")
+
+    Transaction.resume(vault)
+
+    assert _source_bytes(vault) == source_before
+    capsule_root = vault / CAPSULE_ROOT
+    assert not capsule_root.exists() or not (capsule_root / capsule_id).exists()
 
 
 def test_create_refuses_while_single_writer_lock_is_held(tmp_path: Path) -> None:

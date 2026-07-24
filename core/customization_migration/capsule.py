@@ -21,7 +21,6 @@ from pathlib import Path, PurePosixPath
 
 from core.customization_migration.capsule_model import (
     CAPSULE_ID,
-    CAPSULE_LAYOUT_V0,
     EVIDENCE_SECTIONS_V0,
     CapsuleManifest,
 )
@@ -45,6 +44,11 @@ _MAX_JOURNAL_BYTES = 1024 * 1024
 _MAX_JOURNAL_EVENTS = 256
 _MAX_CAPSULES = 256
 _EVENT_RECORD_KEYS = frozenset({"schema_version", "event"})
+
+
+def _capsule_stop_seam(name: str) -> None:
+    if os.environ.get("DEX_TX_TEST_STOP_AFTER") == name:
+        os._exit(137)
 
 
 class CapsuleError(RuntimeError):
@@ -568,10 +572,10 @@ def _ensure_layout(capsule_dir: Path) -> None:
     capsule_root.mkdir(parents=True, exist_ok=True, mode=0o700)
     secure_directory(capsule_root)
     secure_directory(capsule_dir)
-    for item in CAPSULE_LAYOUT_V0:
-        if not item.endswith("/"):
-            continue
-        secure_directory(capsule_dir / item.removesuffix("/"))
+    with os.scandir(capsule_dir) as children:
+        for child in children:
+            if child.is_dir(follow_symlinks=False):
+                secure_directory(Path(child.path))
 
 
 def create_capsule(
@@ -610,6 +614,8 @@ def create_capsule(
     if expected_files != preview.files:
         raise CapsuleError("capsule preview file plan drifted")
 
+    # The preview binds to this vault solely through these per-blob re-read hash
+    # checks; a preview built against a different vault fails here.
     blobs: dict[str, bytes] = {}
     for source in preview.blob_sources:
         raw = _read_blob_source(root, source)
@@ -659,7 +665,9 @@ def create_capsule(
 
     def finalize_capsule() -> None:
         _ensure_layout(capsule_dir)
+        _capsule_stop_seam("capsule-after-layout")
         _append_event(journal_path, MigrationEvent.CAPSULE_PREVIEWED)
+        _capsule_stop_seam("capsule-mid-finalize")
         _append_event(journal_path, MigrationEvent.CAPSULE_CREATED)
 
     transaction.run(before_commit=finalize_capsule)
