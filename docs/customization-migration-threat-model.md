@@ -91,6 +91,10 @@ collapses to `manual-review`. Model confidence is never verification.
 - No code path may construct a customization-migration transaction from MCP input.
   The `operation` value is not accepted from any tool argument, plan file, or capsule
   field; it is passed only by the lifecycle implementation after Doctor/CLI-side consent.
+- Regeneration-candidate validation is an inert planning boundary: it may validate
+  complete proposed bytes, their digests, supported eventual seams, evidence links,
+  and dependency remappings, but it may not create a capsule, staging directory, or
+  live extension. Later lifecycle code owns every persisted write.
 - Ordinary update, Doctor repair, and onboarding callers never pass `operation`; a test
   proves an ordinary transaction targeting `CLAUDE-custom.md` still refuses.
 - Secrets policy: assessment and capsule layers emit reference kinds, counts, and
