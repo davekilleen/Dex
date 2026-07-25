@@ -41,16 +41,26 @@ function credentialsDir() {
 
 function ensureDir(dir) {
   fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
-  if (dir === credentialsDir()) {
+  const credentialRoot = credentialsDir();
+  if (dir === credentialRoot || dir === path.join(credentialRoot, 'tokens')) {
     const stat = fs.lstatSync(dir);
-    if (stat.isSymbolicLink()) {
-      throw new Error(`Your credentials folder at ${dir} is a symlink. Replace it with a real folder owned by your account, then try again.`);
+    const label = dir === credentialRoot ? 'credentials folder' : 'credentials tokens folder';
+    if (!stat.isDirectory() || stat.isSymbolicLink()) {
+      const error = new Error(
+        `Your ${label} at ${dir} is a symlink or not a real folder. Replace it with a real folder owned by your account, then try again.`
+      );
+      error.code = 'DEX_CM_UNSAFE_CREDENTIAL_PATH';
+      throw error;
     }
     if (typeof process.getuid === 'function' && stat.uid !== process.getuid()) {
-      throw new Error(`Your credentials folder at ${dir} belongs to a different user. Change its owner to your account, then try again.`);
+      const error = new Error(
+        `Your ${label} at ${dir} belongs to a different user. Change its owner to your account, then try again.`
+      );
+      error.code = 'DEX_CM_UNSAFE_CREDENTIAL_PATH';
+      throw error;
     }
     if (stat.mode & 0o077) fs.chmodSync(dir, 0o700);
-    ensureCredentialsGitignore(dir);
+    if (dir === credentialRoot) ensureCredentialsGitignore(dir);
   }
 }
 

@@ -13,6 +13,7 @@ const FIXTURES = path.join(REPO, 'packages', 'dex-contracts', 'fixtures', 'conne
 const CONTRACT = path.join(DIST, 'connections.contract.json');
 const SCHEMA = path.join(DIST, 'connections.schema.json');
 const MANIFEST = path.join(DIST, 'connections-engine.manifest.json');
+const PRESENCE_PRELOAD = path.join(__dirname, 'presence-approve-preload.test.cjs');
 
 test('connections contract, schema, fixtures, and engine manifest are committed generated artifacts', () => {
   for (const file of [CONTRACT, SCHEMA, MANIFEST]) {
@@ -45,7 +46,7 @@ test('foreign smoke consumer uses only CLIs plus contract/schema against a scrat
     DEX_CM_RUNTIME_DIR: runtime,
     DEX_CM_BROKER_IDLE_MS: '100',
     DEX_CM_NO_KEYCHAIN: '1',
-    DEX_CM_PRESENCE_OPTIONAL: '1',
+    NODE_OPTIONS: [process.env.NODE_OPTIONS, `--require=${PRESENCE_PRELOAD}`].filter(Boolean).join(' '),
   };
   try {
     execFileSync('node', [path.join(__dirname, 'connect.cjs'), 'set-key', 'linear', '--no-probe'], {
@@ -79,7 +80,7 @@ test('real accessor and status CLIs conform to the published schemas and exit-co
     DEX_CM_RUNTIME_DIR: runtime,
     DEX_CM_BROKER_IDLE_MS: '100',
     DEX_CM_NO_KEYCHAIN: '1',
-    DEX_CM_PRESENCE_OPTIONAL: '1',
+    NODE_OPTIONS: [process.env.NODE_OPTIONS, `--require=${PRESENCE_PRELOAD}`].filter(Boolean).join(' '),
   };
   const contract = JSON.parse(fs.readFileSync(CONTRACT, 'utf8'));
   const schema = JSON.parse(fs.readFileSync(SCHEMA, 'utf8'));

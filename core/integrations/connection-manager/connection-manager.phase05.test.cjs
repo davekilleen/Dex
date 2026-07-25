@@ -29,7 +29,10 @@ const childEnv = {
   DEX_VAULT: TMP_VAULT,
   DEX_CM_NO_KEYCHAIN: '1',
   DEX_CM_ALLOW_UNVETTED: '1',
-  DEX_CM_PRESENCE_OPTIONAL: '1',
+  NODE_OPTIONS: [
+    process.env.NODE_OPTIONS,
+    `--require=${path.join(DIR, 'presence-approve-preload.test.cjs')}`,
+  ].filter(Boolean).join(' '),
 };
 
 test.after(() => {
@@ -350,6 +353,36 @@ test('secret argv flags are rejected with one-line stdin guidance', () => {
     const lines = result.stderr.trim().split(/\r?\n/);
     assert.equal(lines.length, 1, result.stderr);
     assert.match(lines[0], /stdin/i);
+  }
+});
+
+test('first connect ignores caller-controlled presence command and optional environment bypasses', () => {
+  const vault = fs.mkdtempSync(path.join(os.tmpdir(), 'dex-cm-presence-env-'));
+  const runtime = fs.mkdtempSync(path.join(os.tmpdir(), 'dex-cm-presence-env-runtime-'));
+  const env = {
+    ...process.env,
+    DEX_VAULT: vault,
+    DEX_CM_RUNTIME_DIR: runtime,
+    DEX_CM_NO_KEYCHAIN: '1',
+    DEX_CM_PRESENCE_OPTIONAL: '1',
+    DEX_CM_PRESENCE_CMD: `"${process.execPath}" -e "process.exit(0)"`,
+  };
+  delete env.NODE_OPTIONS;
+  try {
+    const result = spawnSync(
+      process.execPath,
+      [path.join(DIR, 'connect.cjs'), 'set-key', 'linear', '--no-probe'],
+      { env, input: 'FAKE-ENV-BYPASS-KEY\n', encoding: 'utf8' }
+    );
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /user presence is required/i);
+    assert.equal(
+      fs.existsSync(path.join(vault, 'System', 'credentials', 'tokens', 'linear.json')),
+      false
+    );
+  } finally {
+    fs.rmSync(vault, { recursive: true, force: true });
+    fs.rmSync(runtime, { recursive: true, force: true });
   }
 });
 
