@@ -1337,7 +1337,7 @@ def test_v0_vocabulary_is_mechanical_and_contains_no_reassurance_claims(
         / ".claude/skills/dex-doctor/SKILL.md"
     ).read_text(encoding="utf-8")
     section = skill.split("### Step 3b: Render the customization assessment", 1)[1].split(
-        "### Step 4:", 1
+        "### Step 3c:", 1
     )[0]
     rendered = json.dumps(
         {

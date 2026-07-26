@@ -66,6 +66,21 @@ from core.customization_migration.sensitivity import (
     capsule_readability,
 )
 from core.customization_migration.service import assess, assessment_to_dict
+from core.customization_migration.staging import (
+    STAGING_SUBDIR,
+    PlannedStagedFile,
+    ProposalStagingStatus,
+    StagingError,
+    StagingPreview,
+    StagingReceipt,
+    StagingStatus,
+    StagingValidation,
+    load_staged_candidate,
+    preview_staging,
+    read_staging_status,
+    stage_candidate,
+    validate_staging,
+)
 from core.customization_migration.state import (
     ALLOWED_TRANSITIONS,
     MigrationEvent,
@@ -74,6 +89,31 @@ from core.customization_migration.state import (
     project_state,
     validate_transition,
 )
+
+_LAZY_VERIFICATION_EXPORTS = frozenset(
+    {
+        "StaticFileResult",
+        "VerificationAttempt",
+        "VerificationCheckOutcome",
+        "VerificationError",
+        "VerificationReport",
+        "VerificationWriteReceipt",
+        "verify_staging",
+        "write_verification_report",
+    }
+)
+
+
+def __getattr__(name: str) -> object:
+    if name not in _LAZY_VERIFICATION_EXPORTS:
+        raise AttributeError(
+            f"module {__name__!r} has no attribute {name!r}"
+        )
+    from core.customization_migration import verification
+
+    value = getattr(verification, name)
+    globals()[name] = value
+    return value
 
 __all__ = [
     "Assessment",
@@ -112,15 +152,29 @@ __all__ = [
     "MigrationStatus",
     "PlanValidation",
     "PlannedCapsuleFile",
+    "PlannedStagedFile",
+    "ProposalStagingStatus",
     "RegenerationCandidate",
     "ReferenceConfidence",
     "ReferenceEdge",
     "ReportedVerification",
     "RequirementKind",
     "SECRET_ARCHIVAL_POLICY",
+    "STAGING_SUBDIR",
     "ShimExpiry",
+    "StagingError",
+    "StagingPreview",
+    "StagingReceipt",
+    "StagingStatus",
+    "StagingValidation",
+    "StaticFileResult",
+    "VerificationAttempt",
+    "VerificationCheckOutcome",
     "VerificationClass",
+    "VerificationError",
     "VerificationOutcome",
+    "VerificationReport",
+    "VerificationWriteReceipt",
     "assess",
     "abandon_capsule",
     "assessment_report",
@@ -129,12 +183,19 @@ __all__ = [
     "create_capsule",
     "derive_reported_status",
     "is_allowed_transition",
+    "load_staged_candidate",
     "project_state",
     "preview_capsule",
+    "preview_staging",
     "read_capsule_status",
+    "read_staging_status",
+    "stage_candidate",
     "validate_transition",
     "validate_disposition_plan",
     "validate_regeneration_candidate",
     "validate_capsule",
+    "validate_staging",
+    "verify_staging",
+    "write_verification_report",
     "CAPSULE_ROOT",
 ]

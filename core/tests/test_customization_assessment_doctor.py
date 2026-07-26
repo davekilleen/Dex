@@ -177,7 +177,7 @@ def test_doctor_skill_requires_blocked_count_in_first_summary_sentence() -> None
         / ".claude/skills/dex-doctor/SKILL.md"
     ).read_text(encoding="utf-8")
     section = skill.split("### Step 3b: Render the customization assessment", 1)[1].split(
-        "### Step 4:", 1
+        "### Step 3c:", 1
     )[0]
 
     assert (

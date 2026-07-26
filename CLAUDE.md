@@ -148,6 +148,9 @@ Never shorten the notice to “update available,” and never describe release a
 safe, current, or up to date. The notice appears at most once per exact release identity unless `/dex-doctor`
 explicitly requests redisplay. Uncertain evidence never clears an earlier exact notice.
 
+If Doctor reports a pending customization migration, continue through the registered
+Customization Migration MCP status tool / `/dex-update`. Do not search for or edit capsule files directly.
+
 ### Proactive Improvement Capture (Innovation Concierge)
 
 When the user expresses frustration or wishes during natural conversation, capture it as a backlog idea:

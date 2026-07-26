@@ -220,6 +220,21 @@ Always close this section with the exact line:
 
 `Nothing has changed — this is an inventory only.`
 
+### Step 3c: Render the customization migration status
+
+Deep reports include a top-level `customization_migration_status` object. Render every
+`capsule_id`, `state`, `validation.status`, `validation.mismatches`, `pending`, and
+`truncated` value verbatim. These are authority fields; only a short consequence or surface
+line may be rephrased.
+
+When `pending` is true, render this guidance exactly:
+
+> Continue via the registered Customization Migration MCP status tool / `/dex-update`; never edit capsule files directly.
+
+When any `validation.status` is not `OK`, say plainly: "The preserved evidence cannot be
+verified." Route the user to `/dex-update` guidance and reproduce the returned mismatch
+authority. Do not invent a repair, search for capsule files, or edit them directly.
+
 ### Step 4: Heal, tiered
 
 - **Tier 1 (already applied by the collector):** report plainly — "Fixed automatically:

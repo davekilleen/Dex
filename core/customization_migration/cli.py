@@ -28,6 +28,13 @@ def _preview_lines(preview: dict[str, object]) -> list[str]:
     ]
 
 
+def _receipt_lines(authority: dict[str, object]) -> list[str]:
+    return [
+        f"{field}: {authority[field]}"
+        for field in ("capsule_id", "file_count", "byte_count", "transaction_id")
+    ]
+
+
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="python -m core.customization_migration.cli")
     commands = parser.add_subparsers(dest="command", required=True)
@@ -106,6 +113,7 @@ def run(arguments: list[str] | None = None) -> int:
                 root, options.confirm_token
             )
             print(f"Created capsule {receipt.capsule_id}.")
+            print("\n".join(_receipt_lines(receipt.to_dict())))
             return 0
         if options.command == "abandon":
             if not options.acknowledge:

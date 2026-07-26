@@ -63,6 +63,19 @@ const UPDATE_SERVICE_OPERATIONS = new Set([
   'build_and_preview_topology_migration',
   'execute_approved_topology_migration',
   'read_lifecycle_state',
+  // Capsule journey (Lane H): read-only customization-migration operations and the
+  // authority fields the skill must reproduce verbatim. The CLI create/abandon writes
+  // are human-confirmed and capsule-scoped; they never touch vault user files.
+  'customization_assessment',
+  'customization_count',
+  'customization_migration',
+  'customization_migration_status',
+  'migration_status_to_dict',
+  'preview_sha256',
+  'capsule_id',
+  'file_count',
+  'byte_count',
+  'transaction_id',
 ]);
 
 function assertInOrder(document, needles, label) {

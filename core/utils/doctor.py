@@ -648,6 +648,11 @@ DEEP_CHECKS = (
         "customization_assessment",
         "_probe_customization_assessment",
     ),
+    CheckDefinition(
+        "customizations.migration-status",
+        "customization_migration_status",
+        "_probe_customization_migration_status",
+    ),
     CheckDefinition("granola.query_path", "Granola meeting sync", "_probe_granola_query_path"),
     CheckDefinition("calendar.access", "Calendar access", "_probe_calendar_access"),
     CheckDefinition("qmd.live", "Semantic search", "_probe_qmd_live"),
@@ -1025,6 +1030,14 @@ def collect(
             and assessment_result.structured_detail is not None
         ):
             report["customization_assessment"] = assessment_result.structured_detail
+        migration_status_result = results.get("customizations.migration-status")
+        if (
+            migration_status_result is not None
+            and migration_status_result.structured_detail is not None
+        ):
+            report["customization_migration_status"] = (
+                migration_status_result.structured_detail
+            )
 
     try:
         _write_last_run(report, context)
@@ -1587,6 +1600,120 @@ def _probe_customization_assessment(context: DoctorContext) -> ProbeResult:
         f"Customization assessment completed: {count} {noun}{blocked_suffix}",
         structured_detail=authority,
     )
+
+
+def _probe_customization_migration_status(context: DoctorContext) -> ProbeResult:
+    """Read and validate the bounded capsule status without changing the vault."""
+    catalog_path = _release_catalog_path(context)
+    if not os.path.lexists(catalog_path):
+        return ProbeResult(
+            "OFF",
+            "Customization migration status is unavailable because no release catalog is installed",
+        )
+    try:
+        load_catalog(catalog_path, release_root=context.vault_root)
+    except (CatalogError, UnicodeError) as error:
+        return ProbeResult(
+            "BROKEN",
+            f"The installed release catalog is invalid: {_one_line(error)}",
+        )
+
+    try:
+        from core.customization_migration.service import migration_status_to_dict
+    except ModuleNotFoundError as error:
+        missing = error.name or ""
+        if missing == "core.customization_migration" or missing.startswith(
+            "core.customization_migration."
+        ):
+            return ProbeResult(
+                "OFF",
+                "Customization migration status is unavailable on this older Dex release",
+            )
+        return ProbeResult(
+            "UNKNOWN",
+            f"The customization migration status module could not load: {_one_line(error)}",
+        )
+
+    try:
+        authority = migration_status_to_dict(context.vault_root)
+    except Exception as error:
+        return ProbeResult(
+            "UNKNOWN",
+            f"The customization migration status could not be read: {_one_line(error)}",
+        )
+
+    if not isinstance(authority, dict):
+        return ProbeResult(
+            "UNKNOWN",
+            "The customization migration status response was not an object",
+        )
+    capsules = authority.get("capsules")
+    truncated = authority.get("truncated")
+    if not isinstance(capsules, list) or type(truncated) is not bool:
+        return ProbeResult(
+            "UNKNOWN",
+            "The customization migration status response was structurally incomplete",
+        )
+
+    pending = False
+    validation_statuses: list[str] = []
+    for capsule in capsules:
+        if not isinstance(capsule, dict):
+            return ProbeResult(
+                "UNKNOWN",
+                "The customization migration status contains a malformed capsule record",
+            )
+        capsule_id = capsule.get("capsule_id")
+        state = capsule.get("state")
+        validation = capsule.get("validation")
+        if (
+            not isinstance(capsule_id, str)
+            or not isinstance(state, str)
+            or not isinstance(validation, dict)
+        ):
+            return ProbeResult(
+                "UNKNOWN",
+                "The customization migration status contains incomplete capsule authority",
+            )
+        status = validation.get("status")
+        mismatches = validation.get("mismatches")
+        if not isinstance(status, str) or not isinstance(mismatches, list) or any(
+            not isinstance(item, str) for item in mismatches
+        ):
+            return ProbeResult(
+                "UNKNOWN",
+                "The customization migration status contains malformed validation authority",
+            )
+        pending = pending or state == "capsule-created"
+        validation_statuses.append(status.upper())
+
+    structured_detail = dict(authority)
+    structured_detail["pending"] = pending
+    if truncated:
+        return ProbeResult(
+            "UNKNOWN",
+            "The customization migration status reached its capsule limit, so every capsule could not be checked",
+            structured_detail=structured_detail,
+        )
+    if any(status == "BROKEN" for status in validation_statuses):
+        return ProbeResult(
+            "BROKEN",
+            "The preserved capsule evidence failed validation; the mismatch records are surfaced in the status",
+            structured_detail=structured_detail,
+        )
+    if any(status != "OK" for status in validation_statuses):
+        return ProbeResult(
+            "UNKNOWN",
+            "The preserved capsule evidence could not be verified",
+            structured_detail=structured_detail,
+        )
+    if not capsules:
+        detail = "No customization capsules exist"
+    elif pending:
+        detail = "Every customization capsule validates; a created capsule is pending"
+    else:
+        detail = "Every customization capsule validates; none are pending"
+    return ProbeResult("OK", detail, structured_detail=structured_detail)
 
 
 def _mcp_config_path(context: DoctorContext) -> Path:
