@@ -91,7 +91,18 @@ def test_create_requires_current_printed_token_and_stale_token_writes_nothing(
     assert created.returncode == 0, created.stderr
     status = read_capsule_status(vault)
     assert len(status.capsules) == 1
-    assert validate_capsule(vault, status.capsules[0].capsule_id).status == "OK"
+    capsule_id = status.capsules[0].capsule_id
+    assert validate_capsule(vault, capsule_id).status == "OK"
+    receipt = json.loads(
+        (
+            vault
+            / "System/.dex/customization-migrations"
+            / capsule_id
+            / "receipts/capsule.json"
+        ).read_text(encoding="utf-8")
+    )
+    for field in ("capsule_id", "file_count", "byte_count", "transaction_id"):
+        assert f"{field}: {receipt[field]}" in created.stdout
 
 
 def test_abandon_requires_acknowledgement(tmp_path: Path) -> None:
