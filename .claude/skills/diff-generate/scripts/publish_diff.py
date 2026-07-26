@@ -25,7 +25,10 @@ import urllib.request
 import webbrowser
 from pathlib import Path
 
-HEYDEX_API_BASE_URL = "https://api.heydex.ai"
+# DexDiff's own backend (HTTP Actions). Must match the deployment the /diff web
+# app reads from (gallant-reindeer-229) — NOT api.heydex.ai, which routes to the
+# separate Dex Desktop backend (focused-mouse-723). Override with DEXDIFF_API_BASE.
+HEYDEX_API_BASE_URL = "https://gallant-reindeer-229.eu-west-1.convex.site"
 HEYDEX_SITE_BASE_URL = "https://heydex.ai"
 AUTH_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000
 HTTP_TIMEOUT_SECONDS = 20.0
@@ -459,14 +462,14 @@ def build_parser() -> argparse.ArgumentParser:
 
     link = subparsers.add_parser("link", help="link this terminal to Heydex with a sign-in code")
     link.add_argument("--code", required=True, help="six-character sign-in code from Heydex")
-    link.add_argument("--api-base", default=None, help="API base, default https://api.heydex.ai")
+    link.add_argument("--api-base", default=None, help="API base, default https://gallant-reindeer-229.eu-west-1.convex.site")
     link.add_argument("--site-base", default=None, help="site base, default https://heydex.ai")
     link.set_defaults(func=command_link)
 
     publish = subparsers.add_parser("publish", help="open a browser review for one or more methodology files")
     publish.add_argument("files", nargs="+", help="generated methodology YAML file")
     publish.add_argument("--no-wait", action="store_true", help="open review and return without waiting")
-    publish.add_argument("--api-base", default=None, help="API base, default https://api.heydex.ai")
+    publish.add_argument("--api-base", default=None, help="API base, default https://gallant-reindeer-229.eu-west-1.convex.site")
     publish.add_argument("--site-base", default=None, help="site base, default https://heydex.ai")
     publish.set_defaults(func=command_publish)
 

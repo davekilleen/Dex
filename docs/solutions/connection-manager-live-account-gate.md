@@ -2,15 +2,19 @@
 
 The shipping gate for the connections engine (`core/integrations/connection-manager/`): prove
 connect → use → break → detect → reconnect against REAL provider accounts. The first run passed
-2026-07-24 with tester-owned accounts on the PR #209 engine. Re-run this after any change to the
-OAuth flow, refresh path, token store, or health judgment. The post-Phase-2/3 Google + Linear rerun
-is still outstanding and must pass against the exact engine intended to ship.
+2026-07-24 with tester-owned accounts on the PR #209 engine. The post-Phase-2/3 Google + Linear
+rerun also passed on 2026-07-24 against PR #221. Re-run this after any change to the OAuth flow,
+refresh path, token store, health judgment, or signed presence host.
 
-The engine code ships in Core, but the product doorway does not: `/connect` is not implemented or
-published. This runbook is a maintainer gate, not user-facing setup.
+The engine code ships in Core, but the product doorway does not. `/connect` is implemented only on
+held draft PR #231 and must not merge while the Phase 5e security verdict remains no-go. This
+runbook is a maintainer gate, not user-facing setup.
 
 ## Setup
 
+- An OS-bound signed Dex host that supplies the trusted presence provider. Bare
+  Core intentionally fails first connect closed; environment command/optional
+  switches are not an acceptable substitute.
 - Dedicated gate vault (never the live vault): `DEX_VAULT=/path/to/dedicated/cm-live-gate-vault`
 - A Google OAuth client (type Desktop app) in any project the tester controls; Calendar API enabled;
   tester's account added as test user. Register via `connect.cjs register-app google`: an
@@ -53,7 +57,7 @@ published. This runbook is a maintainer gate, not user-facing setup.
   (`connection-manager.test.cjs` multi-account tests); exercise live when a second real account
   is convenient.
 
-## Current Phase 2/3 state
+## Current release state
 
 1. **Resolved in Phase 2:** Google, Slack, and Linear use bounded live probes with durable,
    secret-free evidence. A stored credential remains visibly unverified until a probe succeeds;
@@ -65,7 +69,23 @@ published. This runbook is a maintainer gate, not user-facing setup.
 3. **Resolved in the maintainer CLI:** `register-app` and `set-key` now show clear terminal
    prompts and hide secrets. Non-interactive stdin remains available for automation.
 4. Callback window is 5 minutes; a missed browser tab times out cleanly and is safely retryable.
-5. **Still outstanding:** repeat the complete Google loop twice and the Linear loop once against
-   the post-Phase-2/3 engine. Do not use the earlier #209 result as evidence for later judgment code.
-6. **Still held:** `/connect` is not shipped or claimable until its complete product doorway is
-   implemented and tested separately.
+5. **Passed on PR #221:** the complete Google loop twice and Linear loop once against the
+   post-Phase-2/3 engine. This is the live-account evidence for the lifted judgment layer.
+6. **Still held after Phase 5e:** `/connect` is implemented on draft PR #231, but it is not shipped
+   or claimable. The independent rereview found that another same-user process can still invoke
+   the shipped decryptor, read the persistent broker capability, and obtain usable credentials
+   through the unprompted default accessor.
+7. **Core hardening after that rereview:** caller-controlled presence command/optional/TTL
+   environment switches are ignored, grants are scoped to one connection plus one operation, and
+   a symlinked or foreign-owned token subdirectory fails before a credential write. These close
+   bounded findings; they do not resolve the decryptor/default-access contract.
+
+## Go/no-go
+
+- **GO:** ship and describe the engine as local-first, encrypted at rest, relay-free, redirect
+  rejecting, pinned for reviewed providers, contract-frozen, Doctor-visible, and live-account
+  exercised for Google and Linear.
+- **NO-GO:** ship or advertise `/connect`, Touch ID protection, broker-only decryption, or defense
+  from other software already running as the user.
+- **Manual gate after redesign:** run this full Google-twice + Linear-once battery again through
+  the real signed presence host. No automated fixture substitutes for that result.

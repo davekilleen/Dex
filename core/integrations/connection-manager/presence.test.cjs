@@ -62,35 +62,13 @@ test('provider denial throws the typed presence-required error', async () => {
   );
 });
 
-test('unavailable provider fails closed unless the explicit optional escape hatch is set', async (t) => {
+test('unavailable provider fails closed even when the caller sets the former optional escape hatch', async () => {
   const originalOptional = process.env.DEX_CM_PRESENCE_OPTIONAL;
-  const warnings = [];
-  t.mock.method(console, 'error', (message) => warnings.push(message));
   const provider = { available: false, verify: async () => true };
-
-  delete process.env.DEX_CM_PRESENCE_OPTIONAL;
-  await assert.rejects(
-    presence.assertPresence('linear:unavailable-denied', 'access-token', { provider }),
-    { code: 'DEX_CM_PRESENCE_REQUIRED', category: 'presence_required' }
-  );
-
-  process.env.DEX_CM_PRESENCE_OPTIONAL = '1';
-  await presence.assertPresence('linear:unavailable-optional', 'access-token', { provider });
-  assert.equal(warnings.length, 1);
-  assert.match(warnings[0], /not verified/i);
-
-  if (originalOptional === undefined) delete process.env.DEX_CM_PRESENCE_OPTIONAL;
-  else process.env.DEX_CM_PRESENCE_OPTIONAL = originalOptional;
-});
-
-test('optional mode never converts an explicit denial into approval', async () => {
-  const originalOptional = process.env.DEX_CM_PRESENCE_OPTIONAL;
   process.env.DEX_CM_PRESENCE_OPTIONAL = '1';
   try {
     await assert.rejects(
-      presence.assertPresence('linear:explicit-denial', 'access-token', {
-        provider: { available: true, verify: async () => false },
-      }),
+      presence.assertPresence('linear:unavailable-denied', 'access-token', { provider }),
       { code: 'DEX_CM_PRESENCE_REQUIRED', category: 'presence_required' }
     );
   } finally {
@@ -99,9 +77,7 @@ test('optional mode never converts an explicit denial into approval', async () =
   }
 });
 
-test('successful grants are cached per connection until the configured TTL expires', async () => {
-  const originalTtl = process.env.DEX_CM_PRESENCE_TTL_MS;
-  process.env.DEX_CM_PRESENCE_TTL_MS = '100';
+test('successful grants are cached only for the same connection and operation for 60 seconds', async () => {
   let clock = 10_000;
   let prompts = 0;
   const provider = {
@@ -111,19 +87,19 @@ test('successful grants are cached per connection until the configured TTL expir
       return true;
     },
   };
-  try {
-    await presence.assertPresence('linear:cached', 'access-token', { provider, now: () => clock });
-    clock += 99;
-    await presence.assertPresence('linear:cached', 'full', { provider, now: () => clock });
-    assert.equal(prompts, 1);
+  process.env.DEX_CM_PRESENCE_TTL_MS = '999999999';
+  await presence.assertPresence('linear:cached', 'access-token', { provider, now: () => clock });
+  clock += 59_999;
+  await presence.assertPresence('linear:cached', 'access-token', { provider, now: () => clock });
+  assert.equal(prompts, 1);
 
-    clock += 2;
-    await presence.assertPresence('linear:cached', 'access-token', { provider, now: () => clock });
-    assert.equal(prompts, 2);
-  } finally {
-    if (originalTtl === undefined) delete process.env.DEX_CM_PRESENCE_TTL_MS;
-    else process.env.DEX_CM_PRESENCE_TTL_MS = originalTtl;
-  }
+  await presence.assertPresence('linear:cached', 'full', { provider, now: () => clock });
+  assert.equal(prompts, 2, 'a grant for one raw-export shape must not approve another');
+
+  clock += 2;
+  await presence.assertPresence('linear:cached', 'access-token', { provider, now: () => clock });
+  assert.equal(prompts, 3, 'caller-controlled TTL environment must be ignored');
+  delete process.env.DEX_CM_PRESENCE_TTL_MS;
 });
 
 test('concurrent privileged calls share one in-flight presence prompt', async () => {
@@ -141,35 +117,23 @@ test('concurrent privileged calls share one in-flight presence prompt', async ()
   };
 
   const first = presence.assertPresence('linear:concurrent', 'access-token', { provider });
-  const second = presence.assertPresence('linear:concurrent', 'full', { provider });
+  const second = presence.assertPresence('linear:concurrent', 'access-token', { provider });
   await new Promise((resolve) => setImmediate(resolve));
   assert.equal(prompts, 1);
   approve(true);
   await Promise.all([first, second]);
 });
 
-test('command provider argv-splits without a shell and maps exit status to presence', async () => {
+test('caller-controlled command environment cannot become a production presence provider', () => {
   const originalCommand = process.env.DEX_CM_PRESENCE_CMD;
-  const originalTimeout = process.env.DEX_CM_PRESENCE_TIMEOUT_MS;
   try {
     process.env.DEX_CM_PRESENCE_CMD = `"${process.execPath}" -e "process.exit(0)"`;
-    let provider = presence.resolveProvider();
-    assert.equal(provider.available, true);
-    assert.equal(await provider.verify({ connId: 'linear:command-ok', op: 'access-token' }), true);
-
-    process.env.DEX_CM_PRESENCE_CMD = `"${process.execPath}" -e "process.exit(7)"`;
-    provider = presence.resolveProvider();
-    assert.equal(await provider.verify({ connId: 'linear:command-denied', op: 'access-token' }), false);
-
-    process.env.DEX_CM_PRESENCE_TIMEOUT_MS = '20';
-    process.env.DEX_CM_PRESENCE_CMD = `"${process.execPath}" -e "setTimeout(() => {}, 1000)"`;
-    provider = presence.resolveProvider();
-    assert.equal(await provider.verify({ connId: 'linear:command-timeout', op: 'access-token' }), false);
+    const provider = presence.resolveProvider();
+    assert.equal(provider.available, false);
+    assert.match(provider.reason, /signed|os-bound|unavailable/i);
   } finally {
     if (originalCommand === undefined) delete process.env.DEX_CM_PRESENCE_CMD;
     else process.env.DEX_CM_PRESENCE_CMD = originalCommand;
-    if (originalTimeout === undefined) delete process.env.DEX_CM_PRESENCE_TIMEOUT_MS;
-    else process.env.DEX_CM_PRESENCE_TIMEOUT_MS = originalTimeout;
   }
 });
 

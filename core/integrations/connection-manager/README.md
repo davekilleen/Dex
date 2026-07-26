@@ -34,21 +34,22 @@ so unattended sync keeps working. Raw `access-token` / `full` exports and the
 first successful connect require verified user presence.
 
 Real Touch ID is not implemented by a dialog or by JavaScript in this repo.
-macOS requires an OS-signed app/helper for a genuine biometric prompt. The Dex
-desktop app supplies that helper through `DEX_CM_PRESENCE_CMD`; the value is
-argv-split and spawned directly without a shell. Exit 0 grants presence;
-non-zero or timeout denies it.
+macOS requires an OS-bound signed app/helper for a genuine biometric prompt.
+Core deliberately does not trust `DEX_CM_PRESENCE_CMD`,
+`DEX_CM_PRESENCE_OPTIONAL`, or caller-controlled timing environment variables:
+the signed host must supply the presence provider at its trusted in-process
+boundary.
 
-Without a usable helper, the built-in macOS provider is honestly
-`unavailable`, and privileged operations fail closed. Headless/CI environments
-may explicitly set `DEX_CM_PRESENCE_OPTIONAL=1` to bypass an *unavailable*
-provider; this prints a warning that presence was not verified. It never turns
-an explicit denial into approval. Successful grants are cached in the broker
-process per connection for 60 seconds by default
-(`DEX_CM_PRESENCE_TTL_MS`; helper timeout:
-`DEX_CM_PRESENCE_TIMEOUT_MS`, default 30 seconds).
+Until that signed host is integrated and verified, the built-in provider is
+honestly `unavailable`; raw exports and first connect fail closed. A successful
+host approval is cached in the broker process for 60 seconds for that exact
+connection and operation only.
 
-## Maintainer smoke path
+## Maintainer smoke path (signed host required)
+
+The commands below describe the live battery, but direct Core `connect` /
+`set-key` now fail closed until an OS-bound signed host supplies the trusted
+presence provider. Do not restore an environment bypass to make this convenient.
 
 1. Register your **own** OAuth app (e.g. Google Cloud → OAuth client, type "Desktop app" or "Web" with redirect `http://127.0.0.1:3847/callback`).
 2. Run `node connect.cjs register-app google` in a terminal. Dex visibly asks
@@ -91,13 +92,14 @@ The store is designed so that nothing fails silently and nothing user-recoverabl
 | Credential file copied to another connection id | AES-GCM additional authenticated data binds every envelope to its connection id. The copied envelope is quarantined, and the target becomes `needs_reauth` with `token_envelope_account_mismatch`. |
 | Secrets in logs | No CLI prints token material (refresh prints none; `dex-call` diagnostics are redacted via `auth-context.secretsOf`/`redactSecrets`). Exception by contract: `get-token` IS the credential accessor; consume it via the pp-* env-injection pattern, never echo it. |
 
-The broker is an honest hardening boundary, not a same-user malware sandbox:
-another process running as the same OS user can read user-owned `0600` files or
-scrape a blessed consumer's memory. The broker removes routine in-process
-decryption from accessors, centralises pinned-origin and trust checks, and puts
-privileged `--full` / `--access-token-only` exports behind the Phase 5d
-`assertPresence` seam. The default `get-token` operation remains unprivileged
-and returns only the frozen OAuth or rendered Class-B contract shape.
+The broker is an honest hardening boundary, not a same-user malware sandbox.
+The Phase 5e rereview confirmed that the current shipped store remains directly
+decryptable by another same-user process, the persistent capability file is
+same-user-readable, and the unprompted default accessor returns usable OAuth or
+rendered Class-B credentials. The broker centralises pinned-origin and trust
+checks and puts explicit `--full` / `--access-token-only` exports behind the
+presence seam, but those facts do **not** add up to same-user-process defense.
+Do not make that claim.
 
 Env switches: `DEX_CM_NO_KEYCHAIN=1` forces the file-based key (tests, sandboxes without `security`); `DEX_CM_RUNTIME_DIR` selects the machine-local broker runtime directory (tests use a unique temp directory); `DEX_CM_TEST_CRASH_BEFORE_RENAME=1` is test-only fault injection used by the crash-simulation test.
 
@@ -122,12 +124,14 @@ marks a connection `needs_reauth`.
 
 Phase 3 freezes the Desktop consumer contract and engine manifest. The
 post-Phase-2/3 Google + Linear live rerun passed on 2026-07-24 (recorded on
-PR #221); the remaining gate before any user-facing doorway ships is the
-Phase 5 security review.
+PR #221).
 
-The held-back consumption surfaces remain outside this shipped engine:
-`/connect`, `dex-google`, `gog-mcp-launch`, and `render-dashboard.cjs`. Do not
-claim `/connect` until the complete doorway is implemented and tested.
+The `/connect` skill and daily health hook are implemented only on held draft
+PR #231; they are not shipped. Phase 5e independently rereviewed the security
+boundary and returned **do not open `/connect`**. The doorway remains blocked
+until the OS-bound decryptor/consumer-identity design and the frozen default
+accessor contract are resolved, then reviewed with a real signed host. This is
+an architecture/product decision, not a missing prompt or documentation task.
 
 ## License note
 

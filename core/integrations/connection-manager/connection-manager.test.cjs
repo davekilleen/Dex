@@ -35,12 +35,13 @@ const dexcall = require('./dex-call.cjs'); // buildRequest / parseArgs (generic 
 const authctx = require('./auth-context.cjs'); // resolveAuthContext (shared auth seam)
 
 const DIR = __dirname;
+const PRESENCE_PRELOAD = path.join(DIR, 'presence-approve-preload.test.cjs');
 const childEnv = {
   ...process.env,
   DEX_VAULT: TMP_VAULT,
   DEX_CM_NO_KEYCHAIN: '1',
   DEX_CM_ALLOW_UNVETTED: '1',
-  DEX_CM_PRESENCE_OPTIONAL: '1',
+  NODE_OPTIONS: [process.env.NODE_OPTIONS, `--require=${PRESENCE_PRELOAD}`].filter(Boolean).join(' '),
 };
 
 // Pick a real paste-a-key provider for the Class-B path. Prefer one that needs ONLY an
