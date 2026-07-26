@@ -11,8 +11,8 @@
         "connection-manager"
       ],
       "fileCount": 21,
-      "totalBytes": 225976,
-      "treeHash": "ad32bf1f6a2155db9359b4a87f00dd984e7373dc372a2821b5488faacce1c98f",
+      "totalBytes": 233211,
+      "treeHash": "f59bf17c7aa624318939e6ede3309d6ed15f30c9dff190c62804527a7cfa5f26",
       "files": [
         {
           "path": "auth-context.cjs",
@@ -21,13 +21,13 @@
         },
         {
           "path": "broker-client.cjs",
-          "bytes": 3914,
-          "sha256": "e64dce819d68e3dccf85ec3d32f39ff621fa8dc1c18d0e014bb3fa6fd2554f41"
+          "bytes": 6636,
+          "sha256": "6cc6bcb45ba1983ce54a1bf60adeb959918c1e3287904437bfb50870eb037086"
         },
         {
           "path": "broker.cjs",
-          "bytes": 11705,
-          "sha256": "df8b64e3418d2b81adda32ef0d248572a501e5c7afbdb61a8b8c660fcc1487ef"
+          "bytes": 13085,
+          "sha256": "e298a06c4652dcf73432837d9f30fd300bd8baade7052edb19b3b35badab2c44"
         },
         {
           "path": "catalog.cjs",
@@ -101,13 +101,13 @@
         },
         {
           "path": "pinned-providers.cjs",
-          "bytes": 3066,
-          "sha256": "bfaa66151cdd7995bdfee132d2febad6527d788798c9b62ba81cb13e83a9dada"
+          "bytes": 3077,
+          "sha256": "e65ec1e95671fd31061b55fd957d34397176c89c257143522e056a8d8c578113"
         },
         {
           "path": "presence.cjs",
-          "bytes": 2924,
-          "sha256": "b36ae429def6cc8de4f30016915e5a1be60d620c0e9e06ede980ef36d76ad64a"
+          "bytes": 6046,
+          "sha256": "aa98c782258ebdca54d4ac97eb6879c5af4992e701eaaaa359ce64a9ea99760e"
         },
         {
           "path": "README.md",

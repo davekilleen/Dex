@@ -8,12 +8,13 @@
  * consumer's memory. This broker alone therefore does NOT stop same-user
  * malware. It removes raw-secret-to-stdout as the default, centralises release
  * at the Phase 5d user-presence gate, and enforces capability, pinned-origin,
- * and trust-MAC policy in one place.
+ * trust-MAC, and broker-response authentication policy in one place.
  *
  * Node has no portable SO_PEERCRED API and this project deliberately carries no
  * native addon. The 0700 runtime directory limits socket access to the same uid;
- * the capability is a weak blessed-consumer distinction subject to the ceiling
- * above.
+ * the capability and 0600 server-identity file are defense-in-depth against
+ * trivial clients and stale/pre-bound sockets, subject to the same-user
+ * file-read ceiling above.
  */
 
 const crypto = require('node:crypto');
@@ -62,6 +63,10 @@ function capabilityPath() {
   return path.join(runtimeDir(), 'cm.cap');
 }
 
+function serverIdentityPath() {
+  return path.join(runtimeDir(), 'cm.srv');
+}
+
 function ensurePrivateRuntime() {
   const dir = runtimeDir();
   fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
@@ -87,6 +92,21 @@ function ensureCapability() {
     throw new Error('Credential broker capability file is invalid.');
   }
   return capability;
+}
+
+function mintServerIdentity() {
+  const file = serverIdentityPath();
+  writeFileAtomic(file, crypto.randomBytes(32).toString('base64'), { mode: 0o600 });
+  const stat = fs.lstatSync(file);
+  if (!stat.isFile() || stat.isSymbolicLink()) {
+    throw new Error(`Credential broker server identity path is not a regular file: ${file}`);
+  }
+  fs.chmodSync(file, 0o600);
+  const serverIdentity = fs.readFileSync(file, 'utf8').trim();
+  if (Buffer.from(serverIdentity, 'base64').length !== 32) {
+    throw new Error('Credential broker server identity file is invalid.');
+  }
+  return serverIdentity;
 }
 
 function capabilityMatches(actual, expected) {
@@ -216,7 +236,7 @@ async function processRequest(request, capability) {
   }
 }
 
-function createServer(capability, activity) {
+function createServer(capability, serverIdentity, activity, sockets) {
   // allowHalfOpen: the client half-closes its write side after sending the
   // request (socket.end). Without this, the server auto-closes its write side on
   // that FIN, and a slow async handler (e.g. a presence check that spawns a
@@ -224,15 +244,19 @@ function createServer(capability, activity) {
   // the response. Keeping the write side open lets every response land; the
   // handler still explicitly ends the socket once it has written.
   return net.createServer({ allowHalfOpen: true }, (socket) => {
+    sockets.add(socket);
+    socket.once('close', () => sockets.delete(socket));
     socket.setEncoding('utf8');
     let input = '';
     let handled = false;
+    const send = (response) =>
+      socket.end(`${JSON.stringify({ ...response, serverAuth: serverIdentity })}\n`);
     socket.on('data', (chunk) => {
       if (handled) return;
       input += chunk;
       if (input.length > MAX_REQUEST_BYTES) {
         handled = true;
-        socket.end(`${JSON.stringify({ ok: false, error: { category: 'invalid_request' } })}\n`);
+        send({ ok: false, error: { category: 'invalid_request' } });
         return;
       }
       const newline = input.indexOf('\n');
@@ -243,7 +267,7 @@ function createServer(capability, activity) {
         .then(() => JSON.parse(input.slice(0, newline)))
         .then((request) => processRequest(request, capability))
         .catch(() => ({ ok: false, error: { category: 'invalid_request' } }))
-        .then((response) => socket.end(`${JSON.stringify(response)}\n`))
+        .then(send)
         .finally(() => activity.end());
     });
   });
@@ -266,10 +290,12 @@ async function startBroker({ idleMs } = {}) {
       }
       fs.rmSync(socketPath(), { force: true });
       const capability = ensureCapability();
+      const serverIdentity = mintServerIdentity();
       let activeRequests = 0;
       let idleTimer = null;
       let closed = false;
       let server;
+      const sockets = new Set();
 
       const close = () =>
         new Promise((resolve, reject) => {
@@ -279,6 +305,8 @@ async function startBroker({ idleMs } = {}) {
           }
           closed = true;
           if (idleTimer) clearTimeout(idleTimer);
+          for (const socket of sockets) socket.destroy();
+          fs.rmSync(serverIdentityPath(), { force: true });
           server.close((error) => {
             fs.rmSync(socketPath(), { force: true });
             if (error && error.code !== 'ERR_SERVER_NOT_RUNNING') reject(error);
@@ -286,8 +314,10 @@ async function startBroker({ idleMs } = {}) {
           });
         });
       const scheduleIdle = () => {
+        if (closed) return;
         if (idleTimer) clearTimeout(idleTimer);
         idleTimer = setTimeout(() => {
+          if (closed) return;
           if (activeRequests === 0) void close();
           else scheduleIdle();
         }, effectiveIdle);
@@ -303,14 +333,19 @@ async function startBroker({ idleMs } = {}) {
           if (activeRequests === 0) scheduleIdle();
         },
       };
-      server = createServer(capability, activity);
-      await new Promise((resolve, reject) => {
-        server.once('error', reject);
-        server.listen(socketPath(), () => {
-          server.off('error', reject);
-          resolve();
+      server = createServer(capability, serverIdentity, activity, sockets);
+      try {
+        await new Promise((resolve, reject) => {
+          server.once('error', reject);
+          server.listen(socketPath(), () => {
+            server.off('error', reject);
+            resolve();
+          });
         });
-      });
+      } catch (error) {
+        fs.rmSync(serverIdentityPath(), { force: true });
+        throw error;
+      }
       fs.chmodSync(socketPath(), 0o600);
       scheduleIdle();
       return { server, alreadyRunning: false, close };
@@ -332,6 +367,7 @@ async function main() {
 module.exports = {
   runtimeDir,
   capabilityPath,
+  serverIdentityPath,
   socketPath,
   assertPresence,
   processRequest,

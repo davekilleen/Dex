@@ -53,7 +53,7 @@ function pinnedOriginsFor(providerId) {
 function tenantMatches(pin, kind, url) {
   if (!pin.tenant || (kind !== 'api' && kind !== 'verification')) return false;
   const suffix = String(pin.tenant.pinnedSuffix || '').toLowerCase();
-  const labelPattern = new RegExp(pin.tenant.labelPattern);
+  const labelPattern = new RegExp(`^(?:${pin.tenant.labelPattern})$`);
   const suffixWithDot = `.${suffix}`;
   if (!url.hostname.endsWith(suffixWithDot)) return false;
   const label = url.hostname.slice(0, -suffixWithDot.length);

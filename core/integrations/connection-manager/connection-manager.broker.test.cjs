@@ -7,6 +7,7 @@ const net = require('node:net');
 const os = require('node:os');
 const path = require('node:path');
 const { spawn } = require('node:child_process');
+const { EventEmitter } = require('node:events');
 
 const TMP_ROOT = fs.mkdtempSync(path.join(os.tmpdir(), 'dex-cm-broker-test-'));
 const TMP_VAULT = path.join(TMP_ROOT, 'vault');
@@ -40,7 +41,11 @@ function rawRequest(request) {
     socket.on('error', reject);
     socket.on('end', () => {
       try {
-        resolve(JSON.parse(data.trim()));
+        const response = JSON.parse(data.trim());
+        const serverAuth = fs.readFileSync(broker.serverIdentityPath(), 'utf8').trim();
+        assert.equal(response.serverAuth, serverAuth, 'every wire response must authenticate the broker');
+        delete response.serverAuth;
+        resolve(response);
       } catch (error) {
         reject(error);
       }
@@ -96,6 +101,30 @@ function runCli(file, args, extraEnv = {}) {
     child.on('error', reject);
     child.on('exit', (status) => resolve({ status, stdout, stderr }));
   });
+}
+
+function prepareClientAuthFiles() {
+  const capability = Buffer.alloc(32, 7).toString('base64');
+  const serverIdentity = Buffer.alloc(32, 9).toString('base64');
+  fs.mkdirSync(broker.runtimeDir(), { recursive: true, mode: 0o700 });
+  fs.writeFileSync(broker.capabilityPath(), capability, { mode: 0o600 });
+  fs.writeFileSync(path.join(broker.runtimeDir(), 'cm.srv'), serverIdentity, { mode: 0o600 });
+  return { capability, serverIdentity };
+}
+
+function fakeClientSocket(t, onRequest) {
+  const socket = new EventEmitter();
+  socket.destroyed = false;
+  socket.setEncoding = () => socket;
+  socket.end = (input) => onRequest(socket, input);
+  socket.destroy = () => {
+    socket.destroyed = true;
+  };
+  t.mock.method(net, 'createConnection', () => {
+    queueMicrotask(() => socket.emit('connect'));
+    return socket;
+  });
+  return socket;
 }
 
 async function waitForGone(file, timeoutMs = 2000) {
@@ -450,15 +479,157 @@ test('accessor CLIs preserve their contracts while calling the broker client', a
   ]);
 });
 
+test('broker client rejects a forged response whose server identity does not match', async (t) => {
+  prepareClientAuthFiles();
+  fakeClientSocket(t, (socket) => {
+    queueMicrotask(() => {
+      socket.emit(
+        'data',
+        `${JSON.stringify({
+          ok: true,
+          connections: [{ connId: 'forged:status', status: 'connected' }],
+          serverAuth: Buffer.alloc(32, 3).toString('base64'),
+        })}\n`
+      );
+      socket.emit('end');
+    });
+  });
+
+  await assert.rejects(
+    client.brokerRequest({ op: 'status' }),
+    (error) => error && error.code === 'DEX_CM_SERVER_AUTH_INVALID' && /authentication/i.test(error.message)
+  );
+});
+
+test('broker client authenticates and removes serverAuth before returning a response', async (t) => {
+  const { serverIdentity } = prepareClientAuthFiles();
+  fakeClientSocket(t, (socket) => {
+    queueMicrotask(() => {
+      socket.emit('data', `${JSON.stringify({ ok: true, connections: [], serverAuth: serverIdentity })}\n`);
+      socket.emit('end');
+    });
+  });
+
+  assert.deepEqual(await client.brokerRequest({ op: 'status' }), { ok: true, connections: [] });
+});
+
+test('broker client enforces an absolute response deadline and destroys the listener', async (t) => {
+  prepareClientAuthFiles();
+  const originalTimeout = process.env.DEX_CM_CLIENT_TIMEOUT_MS;
+  process.env.DEX_CM_CLIENT_TIMEOUT_MS = '10';
+  const socket = fakeClientSocket(t, () => {});
+  const guard = setTimeout(() => socket.emit('error', new Error('test guard: client timeout was not enforced')), 100);
+  try {
+    await assert.rejects(
+      client.brokerRequest({ op: 'status' }),
+      (error) => error && error.code === 'DEX_CM_CLIENT_TIMEOUT' && /within 10 ms/i.test(error.message)
+    );
+    assert.equal(socket.destroyed, true);
+  } finally {
+    clearTimeout(guard);
+    if (originalTimeout === undefined) delete process.env.DEX_CM_CLIENT_TIMEOUT_MS;
+    else process.env.DEX_CM_CLIENT_TIMEOUT_MS = originalTimeout;
+  }
+});
+
+test('broker client rejects a symlinked runtime directory before connecting', () => {
+  const originalRuntime = process.env.DEX_CM_RUNTIME_DIR;
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'dex-cm-client-symlink-'));
+  const real = path.join(root, 'real');
+  const link = path.join(root, 'link');
+  fs.mkdirSync(real, { mode: 0o700 });
+  fs.symlinkSync(real, link, 'dir');
+  process.env.DEX_CM_RUNTIME_DIR = link;
+  try {
+    assert.throws(
+      () => client.ensurePrivateRuntime(),
+      /credential broker runtime path is not a real directory/i
+    );
+  } finally {
+    if (originalRuntime === undefined) delete process.env.DEX_CM_RUNTIME_DIR;
+    else process.env.DEX_CM_RUNTIME_DIR = originalRuntime;
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('socket (verify outside sandbox): runtime paths are machine-local and permissions are private', async () => {
   assert.equal(path.resolve(broker.runtimeDir()).startsWith(`${path.resolve(TMP_VAULT)}${path.sep}`), false);
   const running = await broker.startBroker({ idleMs: 60_000 });
+  let firstServerIdentity;
   try {
     assert.equal(mode(broker.runtimeDir()), 0o700);
     assert.equal(mode(broker.socketPath()), 0o600);
     assert.equal(mode(broker.capabilityPath()), 0o600);
+    assert.equal(mode(broker.serverIdentityPath()), 0o600);
     assert.equal(Buffer.from(fs.readFileSync(broker.capabilityPath(), 'utf8').trim(), 'base64').length, 32);
+    firstServerIdentity = fs.readFileSync(broker.serverIdentityPath(), 'utf8').trim();
+    assert.equal(Buffer.from(firstServerIdentity, 'base64').length, 32);
   } finally {
+    await running.close();
+  }
+  const restarted = await broker.startBroker({ idleMs: 60_000 });
+  try {
+    const secondServerIdentity = fs.readFileSync(broker.serverIdentityPath(), 'utf8').trim();
+    assert.notEqual(secondServerIdentity, firstServerIdentity, 'every broker startup must mint a fresh identity');
+  } finally {
+    await restarted.close();
+  }
+});
+
+test('socket (verify outside sandbox): a pre-bound listener cannot forge an authenticated broker response', async () => {
+  fs.mkdirSync(broker.runtimeDir(), { recursive: true, mode: 0o700 });
+  fs.rmSync(broker.socketPath(), { force: true });
+  const capability = Buffer.alloc(32, 11).toString('base64');
+  const serverIdentity = Buffer.alloc(32, 12).toString('base64');
+  fs.writeFileSync(broker.capabilityPath(), capability, { mode: 0o600 });
+  fs.writeFileSync(path.join(broker.runtimeDir(), 'cm.srv'), serverIdentity, { mode: 0o600 });
+  const hostile = net.createServer({ allowHalfOpen: true }, (socket) => {
+    socket.setEncoding('utf8');
+    socket.once('data', () => {
+      socket.end(
+        `${JSON.stringify({
+          ok: true,
+          kind: 'api_key',
+          baseUrl: 'https://attacker.example',
+          headers: { Authorization: 'FORGED' },
+          query: {},
+          serverAuth: Buffer.alloc(32, 13).toString('base64'),
+        })}\n`
+      );
+    });
+  });
+  await new Promise((resolve, reject) => {
+    hostile.once('error', reject);
+    hostile.listen(broker.socketPath(), resolve);
+  });
+  try {
+    await assert.rejects(
+      client.brokerRequest({ op: 'rendered', connId: 'linear:prebound' }),
+      (error) => error && error.code === 'DEX_CM_SERVER_AUTH_INVALID'
+    );
+  } finally {
+    await new Promise((resolve) => hostile.close(resolve));
+    fs.rmSync(broker.socketPath(), { force: true });
+  }
+});
+
+test('socket (verify outside sandbox): idle shutdown destroys clients that never complete a request', async () => {
+  const running = await broker.startBroker({ idleMs: 25 });
+  const socket = net.createConnection(broker.socketPath());
+  const closed = new Promise((resolve, reject) => {
+    socket.once('close', () => resolve(true));
+    socket.once('error', reject);
+  });
+  try {
+    const didClose = await Promise.race([
+      closed,
+      new Promise((resolve) => setTimeout(() => resolve(false), 1000)),
+    ]);
+    assert.equal(didClose, true, 'idle broker must destroy an incomplete client socket');
+    await waitForGone(broker.socketPath());
+    assert.equal(fs.existsSync(broker.socketPath()), false);
+  } finally {
+    socket.destroy();
     await running.close();
   }
 });

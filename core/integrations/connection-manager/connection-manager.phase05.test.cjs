@@ -356,7 +356,7 @@ test('secret argv flags are rejected with one-line stdin guidance', () => {
   }
 });
 
-test('first connect ignores caller-controlled presence command and optional environment bypasses', () => {
+test('first connect production mode ignores the optional environment bypass without a helper', () => {
   const vault = fs.mkdtempSync(path.join(os.tmpdir(), 'dex-cm-presence-env-'));
   const runtime = fs.mkdtempSync(path.join(os.tmpdir(), 'dex-cm-presence-env-runtime-'));
   const env = {
@@ -365,9 +365,11 @@ test('first connect ignores caller-controlled presence command and optional envi
     DEX_CM_RUNTIME_DIR: runtime,
     DEX_CM_NO_KEYCHAIN: '1',
     DEX_CM_PRESENCE_OPTIONAL: '1',
-    DEX_CM_PRESENCE_CMD: `"${process.execPath}" -e "process.exit(0)"`,
   };
   delete env.NODE_OPTIONS;
+  delete env.NODE_TEST_CONTEXT;
+  delete env.DEX_CM_ALLOW_INSECURE_PRESENCE;
+  delete env.DEX_CM_PRESENCE_CMD;
   try {
     const result = spawnSync(
       process.execPath,

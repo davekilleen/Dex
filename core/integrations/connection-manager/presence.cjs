@@ -1,6 +1,9 @@
 'use strict';
 
+const { spawn } = require('node:child_process');
+
 const DEFAULT_TTL_MS = 60_000;
+const DEFAULT_TIMEOUT_MS = 30_000;
 const grants = new Map();
 const inFlightChecks = new Map();
 
@@ -22,8 +25,89 @@ function presenceRequiredError() {
   return error;
 }
 
+function configuredMs(name, fallback) {
+  const value = Number(process.env[name]);
+  return Number.isFinite(value) && value >= 0 ? value : fallback;
+}
+
 function currentTime(now) {
   return typeof now === 'function' ? now() : now == null ? Date.now() : Number(now);
+}
+
+function splitCommand(value) {
+  const argv = [];
+  let current = '';
+  let quote = null;
+  let escaped = false;
+  let started = false;
+  for (const char of String(value || '')) {
+    if (escaped) {
+      current += char;
+      escaped = false;
+      started = true;
+    } else if (char === '\\' && quote !== "'") {
+      escaped = true;
+      started = true;
+    } else if (quote) {
+      if (char === quote) quote = null;
+      else current += char;
+      started = true;
+    } else if (char === '"' || char === "'") {
+      quote = char;
+      started = true;
+    } else if (/\s/.test(char)) {
+      if (started) {
+        argv.push(current);
+        current = '';
+        started = false;
+      }
+    } else {
+      current += char;
+      started = true;
+    }
+  }
+  if (escaped || quote) return [];
+  if (started) argv.push(current);
+  return argv;
+}
+
+function commandProvider(commandValue) {
+  const argv = splitCommand(commandValue);
+  if (!argv.length || !argv[0]) {
+    return unavailableProvider('DEX_CM_PRESENCE_CMD could not be parsed into a command.');
+  }
+  return {
+    available: true,
+    kind: 'command',
+    verify() {
+      return new Promise((resolve) => {
+        let settled = false;
+        let timer;
+        let child;
+        const finish = (approved) => {
+          if (settled) return;
+          settled = true;
+          clearTimeout(timer);
+          resolve(approved);
+        };
+        try {
+          child = spawn(argv[0], argv.slice(1), {
+            shell: false,
+            stdio: 'ignore',
+          });
+        } catch {
+          finish(false);
+          return;
+        }
+        child.once('error', () => finish(false));
+        child.once('exit', (code) => finish(code === 0));
+        timer = setTimeout(() => {
+          child.kill('SIGKILL');
+          finish(false);
+        }, configuredMs('DEX_CM_PRESENCE_TIMEOUT_MS', DEFAULT_TIMEOUT_MS));
+      });
+    },
+  };
 }
 
 function unavailableProvider(reason) {
@@ -33,35 +117,59 @@ function unavailableProvider(reason) {
 /**
  * This module cannot honestly create a Touch ID prompt by itself: macOS
  * requires an OS-bound signed application/helper to make that claim meaningful.
- * A caller-controlled command or "optional" environment flag is not evidence
- * of user presence, so Core deliberately has no production environment adapter.
- * The signed host must inject a provider in-process at its trusted boundary.
+ * Production presence therefore requires the desktop-owned broker plus its
+ * Dex-signed helper, configured through DEX_CM_PRESENCE_CMD. That environment
+ * seam is still same-user-controllable; this is the disclosed ceiling until an
+ * OS-enforced signed service owns the credential boundary.
+ *
+ * DEX_CM_PRESENCE_OPTIONAL is deliberately NOT a production runtime bypass. It
+ * is honored only under the Node test runner, or when the explicit
+ * DEX_CM_ALLOW_INSECURE_PRESENCE=1 build/development flag is set. That flag is
+ * non-production and must never be enabled in a shipped runtime.
  */
 function resolveProvider() {
+  if (process.env.DEX_CM_PRESENCE_CMD) return commandProvider(process.env.DEX_CM_PRESENCE_CMD);
   if (process.platform === 'darwin') {
     return unavailableProvider(
-      'Real biometric presence requires an OS-bound Dex-signed host; environment commands are not trusted.'
+      'Real biometric presence requires the desktop-owned broker and its Dex-signed helper.'
     );
   }
-  return unavailableProvider('OS-bound user presence is unavailable on this platform.');
+  return unavailableProvider('OS-bound user presence is unavailable without the Dex-signed helper.');
 }
 
 function grantKey(connId, op) {
   return `${connId}\0${op}`;
 }
 
+function optionalPresenceAllowed() {
+  return (
+    process.env.DEX_CM_PRESENCE_OPTIONAL === '1' &&
+    (Boolean(process.env.NODE_TEST_CONTEXT) || process.env.DEX_CM_ALLOW_INSECURE_PRESENCE === '1')
+  );
+}
+
 async function assertPresence(connId, op, { provider, now } = {}) {
   if (!requiresPresence(op)) return;
   const key = grantKey(connId, op);
-  const checkedAt = currentTime(now);
-  const grantExpiresAt = grants.get(key);
-  if (Number.isFinite(grantExpiresAt) && checkedAt < grantExpiresAt) return;
+  const cacheable = op !== 'full';
+  if (cacheable) {
+    const checkedAt = currentTime(now);
+    const grantExpiresAt = grants.get(key);
+    if (Number.isFinite(grantExpiresAt) && checkedAt < grantExpiresAt) return;
+  }
   grants.delete(key);
 
-  // The signed desktop host can replace this exported seam in-process. Core
-  // itself never accepts presence approval from caller-controlled environment.
+  // Tests and a trusted host may inject a provider directly. Production uses
+  // the desktop-owned broker's signed-helper command seam described above.
   provider = provider || module.exports.resolveProvider();
   if (!provider || provider.available === false || typeof provider.verify !== 'function') {
+    if (optionalPresenceAllowed()) {
+      console.error(
+        `warning: user presence was NOT verified for ${connId}; ` +
+          'DEX_CM_PRESENCE_OPTIONAL=1 allowed this test/development operation.'
+      );
+      return;
+    }
     throw presenceRequiredError();
   }
   if (inFlightChecks.has(key)) return inFlightChecks.get(key);
@@ -74,7 +182,7 @@ async function assertPresence(connId, op, { provider, now } = {}) {
       approved = false;
     }
     if (!approved) throw presenceRequiredError();
-    grants.set(key, currentTime(now) + DEFAULT_TTL_MS);
+    if (cacheable) grants.set(key, currentTime(now) + DEFAULT_TTL_MS);
   })();
   inFlightChecks.set(key, check);
   try {

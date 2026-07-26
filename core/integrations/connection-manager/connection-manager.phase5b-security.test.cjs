@@ -78,7 +78,7 @@ test('tenant origin pins accept exactly one reviewed subdomain label', () => {
       verificationOrigin: null,
       tenant: {
         pinnedSuffix: 'activehosted.com',
-        labelPattern: '^[a-z0-9][a-z0-9-]{0,62}$',
+        labelPattern: '[a-z][a-z0-9-]{0,62}',
       },
     },
   });
@@ -89,6 +89,7 @@ test('tenant origin pins accept exactly one reviewed subdomain label', () => {
     for (const url of [
       'https://activehosted.com/api/3',
       'https://a.b.activehosted.com/api/3',
+      'https://9acme.activehosted.com/api/3',
       'https://acme.activehosted.com.evil.example/api/3',
       'http://acme.activehosted.com/api/3',
     ]) {
