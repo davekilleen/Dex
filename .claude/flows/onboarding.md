@@ -652,7 +652,9 @@ This takes about 2 minutes and shows you what Dex can really do.
 
 [Then actually invoke the /getting-started skill, which will have MCPs loaded]
 
-[If no:] No problem! You can run `/getting-started` anytime. For now, try `/daily-plan` to see your day."
+[If no:] No problem! You can run `/getting-started` anytime. For now, try `/daily-plan` to see your day.
+
+📖 One more thing worth bookmarking: the **Dex Guide** at https://heydex.ai/help/ — a plain-English walkthrough of everything Dex can do, with copy-paste prompts to steal. Great for your first week."
 
 ---
 

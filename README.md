@@ -727,6 +727,8 @@ Each session makes the next one better.
 
 ## Documentation
 
+**📖 Start with the [Dex Guide](https://heydex.ai/help/)** — a plain-English walkthrough from install to making Dex your own, with copy-paste prompts throughout. It's written for non-technical professionals and doubles as a hands-on education in Claude Code itself. (Also readable by AI agents: [llms.txt](https://heydex.ai/help/llms.txt).)
+
 Comprehensive guides included in the repo:
 
 - [Dex_System_Guide.md](06-Resources/Dex_System/Dex_System_Guide.md) - Complete feature reference and workflows
