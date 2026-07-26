@@ -219,6 +219,28 @@ function recordConnectionEvent(connId, op, row = {}, secrets = []) {
   return ledger.append(connId, { op, ...row }, { secrets });
 }
 
+function trustFailureReason(reg) {
+  if (!reg) return null;
+  if (reg.error === 'trust_unverified' || reg.error === 'encryption_key_lost') return reg.error;
+  return null;
+}
+
+function needsReauthError(connId, reason) {
+  return Object.assign(new Error(`${connId} needs re-authentication (${reason}).`), { needsReauth: true });
+}
+
+function authenticatedCredentialRegistry(connId, { refuseNeedsReauth = false, requireEntry = false } = {}) {
+  const reg = store.readRegistry()[connId] || null;
+  if (!reg && requireEntry) throw needsReauthError(connId, 'trust_unverified');
+  const trustFailure = trustFailureReason(reg);
+  if (trustFailure) throw needsReauthError(connId, trustFailure);
+  if (reg && refuseNeedsReauth && reg.status === 'needs_reauth') {
+    throw needsReauthError(connId, reg.error || 'needs_reauth');
+  }
+  if (reg && !reg.provider) throw needsReauthError(connId, 'trust_unverified');
+  return reg;
+}
+
 /**
  * Return a valid access token for `service`, refreshing if expired/expiring.
  * With { force:true }, perform the provider refresh even when the token is fresh.
@@ -233,6 +255,7 @@ function recordConnectionEvent(connId, op, row = {}, secrets = []) {
  */
 async function refreshToken(service, { force = false } = {}) {
   const connId = store.resolveConnId(service);
+  authenticatedCredentialRegistry(connId, { refuseNeedsReauth: true, requireEntry: true });
   let token;
   try {
     token = store.loadToken(connId);
@@ -277,11 +300,15 @@ async function refreshToken(service, { force = false } = {}) {
       // rotating refresh token. If the persisted revision changed while this
       // caller waited, the invocation's refresh has already been satisfied.
       const current = store.loadToken(connId) || token;
+
+      // Re-check after acquiring the cross-process lock and before returning or
+      // routing any credential, so an edit made while this caller waited is
+      // terminal even when another process refreshed the token first.
+      const reg = authenticatedCredentialRegistry(connId, { refuseNeedsReauth: true, requireEntry: true });
       if (tokenRevision(current) !== tokenRevision(token)) return current.access_token;
       if (!force && connectionHealth(connId).status === 'connected') return current.access_token;
 
-      const reg = store.readRegistry()[connId] || {};
-      const provider = reg.provider || store.parseConnectionId(connId).provider;
+      const provider = reg.provider;
       const app = store.getOAuthApp(provider); // OAuth app is shared per provider, not per account
       if (!app) throw new Error(`No OAuth app credentials for '${provider}'. Add them to oauth-apps.json.`);
       const providerConfig = catalog.getProviderConfig(provider, reg.connectionConfig || {});
@@ -342,7 +369,7 @@ async function ensureFreshToken(service) {
 
 async function probeConnection(service, options = {}) {
   const connId = store.resolveConnId(service);
-  const reg = store.readRegistry()[connId] || {};
+  const reg = authenticatedCredentialRegistry(connId) || {};
   const provider = reg.provider || store.parseConnectionId(connId).provider;
   if (!isVetted(provider) && options.allowUnvetted !== true) {
     throw new Error(`${provider} is not security-reviewed; verification was skipped.`);

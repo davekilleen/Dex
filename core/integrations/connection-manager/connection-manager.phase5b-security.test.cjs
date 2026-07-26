@@ -280,6 +280,7 @@ function registryMacPayload(connId, entry) {
     connId,
     service: entry.service,
     provider: entry.provider,
+    connectionConfig: entry.connectionConfig,
     status: entry.status,
     error: entry.error,
     verification: entry.verification,

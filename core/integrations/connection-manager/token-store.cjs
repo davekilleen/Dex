@@ -29,6 +29,7 @@ const { TOKEN_ENVELOPE_VERSION, LOCK_PROTOCOL } = require('./contract.cjs');
 const KEYCHAIN_SERVICE = 'dex-connection-manager';
 const KEYCHAIN_ACCOUNT = 'token-store-key';
 const MAX_ENCRYPTED_DATA_BYTES = 1024 * 1024;
+const DEFAULTS_TRUST_ERROR = Symbol('defaultsTrustError');
 
 /** Resolve the credentials directory from the configured vault root. */
 function credentialsDir() {
@@ -549,8 +550,26 @@ function resolveConnId(id) {
   const { provider, alias } = parseConnectionId(id);
   if (!alias) {
     const def = reg._defaults && reg._defaults[provider];
-    if (def && reg[def]) return def;
-    const matches = Object.keys(reg).filter((k) => k !== '_defaults' && k !== '_meta' && reg[k] && reg[k].provider === provider);
+    if (def) {
+      const entry = reg[def];
+      if (entry && entry.service && registryEntryRoutingTrusted(entry) && entry.provider === provider) return def;
+      throw defaultRoutingNeedsReauth(provider);
+    }
+    const defaultsTrustError = reg[DEFAULTS_TRUST_ERROR];
+    if (
+      defaultsTrustError &&
+      (defaultsTrustError.providers === null || defaultsTrustError.providers.includes(provider))
+    ) {
+      throw defaultRoutingNeedsReauth(provider);
+    }
+    const matches = Object.keys(reg).filter(
+      (k) =>
+        k !== '_defaults' &&
+        k !== '_meta' &&
+        reg[k] &&
+        registryEntryRoutingTrusted(reg[k]) &&
+        reg[k].provider === provider
+    );
     if (matches.length === 1) return matches[0];
     if (matches.length > 1) {
       throw new Error(`Multiple '${provider}' accounts: ${matches.join(', ')}. Pick one (e.g. ${matches[0]}) or set a default: connect ${provider} --as <alias> --default`);
@@ -718,8 +737,10 @@ function deleteToken(id) {
     const provider = (reg[connId] && reg[connId].provider) || parseConnectionId(connId, { allowLegacyProviderCase: true }).provider;
     delete reg[connId];
     if (reg._defaults && reg._defaults[provider] === connId) {
+      allocateCounter(reg);
       delete reg._defaults[provider];
       if (!Object.keys(reg._defaults).length) delete reg._defaults;
+      attestRegistryMeta(reg);
     }
     writeRegistry(reg);
   });
@@ -744,6 +765,7 @@ function registryMacPayload(connId, entry) {
     connId,
     service: entry.service,
     provider: entry.provider,
+    connectionConfig: entry.connectionConfig,
     status: entry.status,
     error: entry.error,
     verification: entry.verification,
@@ -753,8 +775,15 @@ function registryMacPayload(connId, entry) {
   };
 }
 
-function registryMetaPayload(meta) {
-  return { counter: meta.counter };
+function registryMetaPayload(reg) {
+  return {
+    counter: reg._meta.counter,
+    ...(Object.prototype.hasOwnProperty.call(reg, '_defaults') ? { defaults: reg._defaults } : {}),
+  };
+}
+
+function attestRegistryMeta(reg) {
+  reg._meta.mac = trustMac(registryMetaPayload(reg));
 }
 
 function registryMetaVerified(reg) {
@@ -763,7 +792,23 @@ function registryMetaVerified(reg) {
     isPlainObject(meta) &&
       Number.isInteger(meta.counter) &&
       meta.counter >= 0 &&
-      macMatches(meta.mac, registryMetaPayload(meta))
+      (!Object.prototype.hasOwnProperty.call(reg, '_defaults') || isPlainObject(reg._defaults)) &&
+      macMatches(meta.mac, registryMetaPayload(reg))
+  );
+}
+
+function registryEntryRoutingTrusted(entry) {
+  return Boolean(
+    entry &&
+      entry.error !== 'trust_unverified' &&
+      entry.error !== 'encryption_key_lost'
+  );
+}
+
+function defaultRoutingNeedsReauth(provider) {
+  return Object.assign(
+    new Error(`${provider} needs re-authentication because its default-account routing could not be trusted.`),
+    { needsReauth: true, code: 'DEX_CM_TRUST_UNVERIFIED' }
   );
 }
 
@@ -792,6 +837,8 @@ function downgradeUntrustedEntry(entry, error = 'trust_unverified') {
 
 function verifyRegistryTrust(reg) {
   if (!hasServiceEntries(reg)) return reg;
+  const hadDefaults = Object.prototype.hasOwnProperty.call(reg, '_defaults');
+  const defaultProviders = isPlainObject(reg._defaults) ? Object.keys(reg._defaults) : null;
   let metaVerified = false;
   let metaCounter = -1;
   let keyLost = false;
@@ -804,6 +851,15 @@ function verifyRegistryTrust(reg) {
     else throw error;
   }
   const verified = { ...reg };
+  if (hadDefaults && !metaVerified) {
+    delete verified._defaults;
+    Object.defineProperty(verified, DEFAULTS_TRUST_ERROR, {
+      value: {
+        error: keyLost ? 'encryption_key_lost' : 'trust_unverified',
+        providers: defaultProviders,
+      },
+    });
+  }
   for (const [connId, entry] of Object.entries(reg)) {
     if (connId === '_defaults' || connId === '_meta' || !entry || !entry.service) continue;
     let trusted = false;
@@ -831,13 +887,17 @@ function allocateCounter(reg) {
   }
   const counter = current + 1;
   reg._meta = { ...(isPlainObject(reg._meta) ? reg._meta : {}), counter };
-  reg._meta.mac = trustMac(registryMetaPayload(reg._meta));
+  attestRegistryMeta(reg);
   return counter;
 }
 
 function upsertConnectionInRegistry(reg, service, fields, { freshCredential = false } = {}) {
   const previous = isPlainObject(reg[service]) ? reg[service] : {};
-  const merged = { ...previous, service, ...fields };
+  // A stale/invalid MAC means every plaintext field in the old entry is
+  // attacker-controlled. An explicit reconnect may replace those fields, but
+  // it must never inherit and re-MAC routing data from the distrusted record.
+  const inherited = previous.error === 'trust_unverified' ? {} : previous;
+  const merged = { ...inherited, service, ...fields };
   const priorEpoch = Number.isInteger(previous.epoch) && previous.epoch >= 1 ? previous.epoch : 0;
   merged.provider = merged.provider || parseConnectionId(service).provider;
   merged.status = merged.status || 'connected';
@@ -1065,8 +1125,10 @@ function listConnections() {
 function setDefault(provider, alias) {
   return withStoreLock(() => {
     const reg = readRegistry();
+    allocateCounter(reg);
     reg._defaults = reg._defaults || {};
     reg._defaults[provider] = alias ? `${provider}:${alias}` : provider;
+    attestRegistryMeta(reg);
     writeRegistry(reg);
     return reg._defaults[provider];
   });
