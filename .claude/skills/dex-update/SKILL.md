@@ -44,6 +44,77 @@ After success, show the topology receipt, including its transaction identifier, 
 
 If the dry-run fails, the report changes before approval, approval is missing, conversion stops, or the final split cannot be proved, show the service refusal and stop. Do not improvise a repair.
 
+## Deeply customised setup
+
+Before applying an update, use the deep Doctor report to decide whether to offer this branch.
+Offer it when `customization_assessment.completeness` is `OK` and
+`customization_assessment.identity.customization_count >= 1`, or when the user says they have
+customised Dex heavily. If the verified count is zero, follow the normal lightweight update
+path and do not mention this branch. If completeness is `UNKNOWN`, show Doctor's uncertainty
+and do not infer a zero count.
+
+### Detect and explain
+
+Render what the assessment found through `/dex-doctor` Step 3b's authority rules, including
+all four returned groups. Explain that this journey inventories what the user changed,
+preserves the evidence in a protected snapshot called the Capsule, and then guides the update
+through the existing approval flow with nothing overwritten.
+
+A Capsule is a protected local snapshot of the evidence for every customization. It is stored
+under `System/.dex/`, is never uploaded, and survives the update. This journey does not
+rebuild customizations automatically. Regeneration remains future work behind separate gates.
+
+### Preview and create the Capsule
+
+Run `python -m core.customization_migration.cli preview`. Show every returned preview line and
+the `preview_sha256` verbatim. Then ask: “Create this exact snapshot?” The earlier request to
+“update Dex” is not approval.
+
+Only after a fresh explicit yes, run
+`python -m core.customization_migration.cli create --confirm-token <preview_sha256>` with the
+unchanged digest from that preview. The returned Capsule receipt is authority: render its
+`capsule_id`, `file_count`, `byte_count`, and `transaction_id` verbatim. Do not say the
+evidence is preserved until that receipt exists.
+
+### Proceed through the normal update
+
+After the Capsule receipt exists, return to the one-route lifecycle above and use its normal
+preview and approval flow unchanged. Conflicts still offer Keep mine / Take theirs / Keep both,
+with Compare available before the user chooses. Capsule approval never counts as update or
+conflict approval.
+
+### Re-check after the update
+
+Read `migration_status_to_dict` through Doctor's `customization_migration_status` section or the
+registered Customization Migration MCP status tool. Reproduce the Capsule id, state, validation
+status, mismatches, and `pending` flag. Say the Capsule is intact only when its validation status
+is `OK`; otherwise say the preserved evidence cannot be verified and follow `/dex-update`
+guidance without inventing repair steps.
+
+Run the deep customization assessment again and render it through the Step 3b authority rules.
+State plainly which customizations are in `update-replaceable-location` and which are in
+`update-untouched-location`. Do not rename those groups or claim that a location predicts an
+automatic rebuild.
+
+### Interrupted journey
+
+Capsule creation is resumable after a crash. A half-created Capsule appears as
+`recovery-required` or with `UNKNOWN` validation in status; never claim the evidence is
+preserved before a Capsule receipt exists.
+
+Show that status, ask for a fresh explicit acknowledgement, then route abandonment through
+`python -m core.customization_migration.cli abandon <capsule_id> --acknowledge`. After a
+confirmed abandonment, run the preview again and require a new exact-snapshot approval. If the
+deterministic adapter refuses either action, show the refusal and stop.
+
+### Customization journey boundaries
+
+- The Customization Migration MCP tools are read-only.
+- Capsule creation and abandonment happen only through the human-confirmed CLI.
+- Never search for, edit, delete, or repair Capsule files directly.
+- Regeneration, staging, verification, activation, and rewind are future work behind separate
+  gates. Never present them as callable steps or promise an automatic rebuild.
+
 ## Five-group preview
 
 Always show these groups in this order, even when a group is empty:
