@@ -47,7 +47,7 @@ def test_shipped_skills_pin_the_scoped_customization_journey() -> None:
     assert "python -m core.customization_migration.cli preview" in update_section
     assert (
         "python -m core.customization_migration.cli create "
-        "--confirm-token <preview_sha256>"
+        "--confirm-token PREVIEW_SHA256"
     ) in update_section
     assert "Create this exact snapshot?" in update_section
     assert "capsule_id" in update_section
