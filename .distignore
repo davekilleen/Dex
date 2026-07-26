@@ -31,6 +31,7 @@ core/integrations/connection-manager/hardening.child.cjs
 .scripts/meeting-intel/__tests__/
 
 # Dev scripts and docs
+AGENTS.md
 CONTRIBUTING.md
 DISTRIBUTION_READY.md
 scripts/

@@ -174,14 +174,12 @@ Invoked with `/skill-name` - automatically discovered by Claude.
 
 ## What's New
 
-### v1.11.0 — Isolated Context & Agent Memory
-
-Skills that run heavy workflows now execute in **isolated context** — your conversation stays clean, no context bleed. Key enhancements:
-
-- **Daily/Weekly workflows** (`/daily-plan`, `/daily-review`, `/week-plan`, `/week-review`) — Isolated context execution. `/daily-plan` generates a quickref summary and is powered by agents with memory that track trends across sessions.
-- **Meetings** (`/meeting-prep`, `/process-meetings`) — Isolated context. `/process-meetings` auto-updates person pages and supports background execution for large batches.
-- **Career** (`/career-coach`) — Isolated context. Auto-captures career evidence when achievements with metrics are discussed.
-- **Triage** (`/triage`) — Tuned for speed. Quick routing decisions without over-analysis.
+Release notes aren't maintained here — run `/dex-whats-new` or read `CHANGELOG.md`
+for what changed recently. For the full, always-current skill catalog (every skill,
+its description, and its trigger analysis), see the generated
+`docs/architecture/INVENTORY.md` § "Skills" in the dex-core repo; in a live vault,
+`/dex-level-up` surfaces the skills you're not using yet. Each skill's frontmatter
+`description` is its authoritative trigger contract.
 
 ---
 

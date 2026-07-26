@@ -2,6 +2,12 @@
 
 **Purpose:** System documentation and conventions that explain how Dex works and how to use it effectively.
 
+> **Note (2026-07):** this folder is currently an empty tier — the documentation it
+> describes actually lives in `.claude/reference/` (technical detail docs skills
+> point into) and `docs/Dex_System/` / `06-Resources/Dex_System/` (user-facing
+> system guides). Look there first; add a guide here only if it genuinely fits
+> neither home.
+
 ## What Goes Here
 
 Documentation files that:
