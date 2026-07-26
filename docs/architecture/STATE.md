@@ -7,13 +7,13 @@ A compact snapshot of released, local, and planned Dex Core work.
 
 SHIPPED/LOCAL are computed live — run `/dex-orient` or `python3 scripts/dex_state.py` for current truth.
 
-Released: v1.68.0 (2026-07-22)
+Released: v1.75.2 (2026-07-26)
 
 ### LOCAL — on main, not yet released (3)
 
-- #181 docs(architecture): add DEX-CORE-MAP grounding narrative
-- #180 fix: restore silently-dead career capture + hooks input-contract test + cleanup
-- #179 feat(docs): code-derived architecture inventory + CI drift gate (grounding foundation)
+- #248 feat(customization-migration): activation + rewind — make a verified rebuild live, reversibly (Lane G)
+- #249 docs: point new users at the Dex Guide (heydex.ai/help)
+- docs(changelog): v1.75.2 — one honest entry: proven vault move + guided customization journey + security groundwork
 <!-- GENERATED:END -->
 
 <!-- PLANNED:START -->
