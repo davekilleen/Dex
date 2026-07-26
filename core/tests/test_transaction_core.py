@@ -417,6 +417,319 @@ def test_engine_content_write_precondition_rejects_symlink_target(
     assert outside.read_bytes() == b"captured bytes\n"
 
 
+def test_engine_expected_absent_write_commits_and_is_journalled(
+    tmp_path: Path,
+) -> None:
+    vault = _vault(tmp_path)
+
+    result = Transaction.begin(
+        vault,
+        [PlanEntry("CLAUDE-custom.md", b"# Migrated\n", expected_absent=True)],
+        operation="customization-migration",
+    ).run()
+
+    assert result["committed"] is True
+    assert (vault / "CLAUDE-custom.md").read_bytes() == b"# Migrated\n"
+    begin = Journal(
+        vault / "System/.dex/tx" / result["tx_id"] / "journal.jsonl"
+    ).read()[0]
+    assert begin.payload["plan"][0]["expected_absent"] is True
+
+
+def test_engine_expected_absent_rejects_target_present_at_snapshot(
+    tmp_path: Path,
+) -> None:
+    vault = _vault(tmp_path)
+    tx = Transaction.begin(
+        vault,
+        [
+            PlanEntry(
+                "System/.dex/customization-migrations/x/receipt.json",
+                b"{}\n",
+            ),
+            PlanEntry(
+                "CLAUDE-custom.md",
+                b"# Migrated\n",
+                expected_absent=True,
+            ),
+        ],
+        operation="customization-migration",
+    )
+    target = vault / "CLAUDE-custom.md"
+    target.write_bytes(b"# User created this\n")
+
+    with pytest.raises(
+        PlanRejected,
+        match="the existing file wins and the transaction aborts",
+    ):
+        tx.run()
+
+    assert target.read_bytes() == b"# User created this\n"
+    assert not (
+        vault / "System/.dex/customization-migrations/x/receipt.json"
+    ).exists()
+
+
+def test_engine_expected_absent_rechecks_before_write_and_rolls_back(
+    tmp_path: Path,
+) -> None:
+    vault = _vault(tmp_path)
+    first = "System/.dex/customization-migrations/x/receipt.json"
+    guarded = vault / "CLAUDE-custom.md"
+    tx = Transaction.begin(
+        vault,
+        [
+            PlanEntry(first, b"{}\n"),
+            PlanEntry(
+                "CLAUDE-custom.md",
+                b"# Migrated\n",
+                expected_absent=True,
+            ),
+        ],
+        operation="customization-migration",
+    )
+    original_append = tx.journal.append
+
+    def create_after_first_apply(event: str, payload=None) -> None:
+        original_append(event, payload)
+        if event == "APPLIED" and payload["index"] == 0:
+            guarded.write_bytes(b"# User won the race\n")
+
+    tx.journal.append = create_after_first_apply
+
+    with pytest.raises(
+        PlanRejected,
+        match="the existing file wins and the transaction aborts",
+    ):
+        tx.run()
+
+    assert guarded.read_bytes() == b"# User won the race\n"
+    assert not (vault / first).exists()
+
+
+def test_engine_expected_absent_publication_cannot_clobber_final_race(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from core.transaction import engine as engine_module
+
+    vault = _vault(tmp_path)
+    target = vault / "CLAUDE-custom.md"
+    original_link = os.link
+
+    def user_wins_immediately_before_publish(source, destination, **kwargs) -> None:
+        target.write_bytes(b"# User created at the final boundary\n")
+        original_link(source, destination, **kwargs)
+
+    monkeypatch.setattr(engine_module.os, "link", user_wins_immediately_before_publish)
+    tx = Transaction.begin(
+        vault,
+        [PlanEntry("CLAUDE-custom.md", b"# Migrated\n", expected_absent=True)],
+        operation="customization-migration",
+    )
+
+    with pytest.raises(
+        PlanRejected,
+        match="the existing file wins and the transaction aborts",
+    ):
+        tx.run()
+
+    assert target.read_bytes() == b"# User created at the final boundary\n"
+
+
+def test_engine_expected_absent_applying_record_never_owns_a_user_file(
+    tmp_path: Path,
+) -> None:
+    vault = _vault(tmp_path)
+    target = vault / "CLAUDE-custom.md"
+    tx = Transaction.begin(
+        vault,
+        [PlanEntry("CLAUDE-custom.md", b"# Migrated\n", expected_absent=True)],
+        operation="customization-migration",
+    )
+    original_append = tx.journal.append
+
+    def interrupt_after_apply_intent(event: str, payload=None) -> None:
+        original_append(event, payload)
+        if event == "APPLYING":
+            target.write_bytes(b"# User created before publication\n")
+            raise RuntimeError("crash before expected-absent publication")
+
+    tx.journal.append = interrupt_after_apply_intent
+
+    with pytest.raises(RuntimeError, match="crash before"):
+        tx.run()
+
+    assert target.read_bytes() == b"# User created before publication\n"
+
+
+def test_resume_removes_expected_absent_publish_when_temp_is_gone_but_target_matches_begin(
+    tmp_path: Path,
+) -> None:
+    vault = _vault(tmp_path)
+    relative = "CLAUDE-custom.md"
+    planned = b"# Migrated\n"
+    entry = PlanEntry(relative, planned, expected_absent=True)
+    tx = Transaction.begin(
+        vault,
+        [entry],
+        operation="customization-migration",
+    )
+    tx._snapshot_phase()
+    tx.journal.append("APPLY-START")
+    tx.journal.append(
+        "APPLYING",
+        {"index": 0, "relative": relative, "expected_absent": True},
+    )
+    original_append = tx.journal.append
+
+    def tear_before_published(event: str, payload=None) -> None:
+        if event == "PUBLISHED":
+            raise RuntimeError("crash after link before publication record")
+        original_append(event, payload)
+
+    tx.journal.append = tear_before_published
+
+    with pytest.raises(RuntimeError, match="after link"):
+        tx._apply_one(0, entry)
+
+    target = vault / relative
+    temporary = target.parent / f".{target.name}.tx-{tx.tx_id}"
+    assert target.read_bytes() == planned
+    assert (target.stat().st_dev, target.stat().st_ino) == (
+        temporary.stat().st_dev,
+        temporary.stat().st_ino,
+    )
+    temporary.unlink()
+    assert tx._release is not None
+    tx._release()
+    tx._release = None
+
+    Transaction.resume(vault)
+
+    assert not target.exists()
+
+
+def test_resume_preserves_expected_absent_user_file_matching_plan_when_temp_inode_differs(
+    tmp_path: Path,
+) -> None:
+    vault = _vault(tmp_path)
+    relative = "CLAUDE-custom.md"
+    planned = b"# Migrated\n"
+    tx = Transaction.begin(
+        vault,
+        [PlanEntry(relative, planned, expected_absent=True)],
+        operation="customization-migration",
+    )
+    tx._snapshot_phase()
+    tx.journal.append("APPLY-START")
+    tx.journal.append(
+        "APPLYING",
+        {"index": 0, "relative": relative, "expected_absent": True},
+    )
+    target = vault / relative
+    temporary = target.parent / f".{target.name}.tx-{tx.tx_id}"
+    temporary.write_bytes(planned)
+    target.write_bytes(planned)
+    assert (target.stat().st_dev, target.stat().st_ino) != (
+        temporary.stat().st_dev,
+        temporary.stat().st_ino,
+    )
+    assert tx._release is not None
+    tx._release()
+    tx._release = None
+
+    Transaction.resume(vault)
+
+    assert target.read_bytes() == planned
+
+
+def test_resume_preserves_expected_absent_user_file_when_temp_is_gone_and_bytes_differ(
+    tmp_path: Path,
+) -> None:
+    vault = _vault(tmp_path)
+    relative = "CLAUDE-custom.md"
+    tx = Transaction.begin(
+        vault,
+        [PlanEntry(relative, b"# Migrated\n", expected_absent=True)],
+        operation="customization-migration",
+    )
+    tx._snapshot_phase()
+    tx.journal.append("APPLY-START")
+    tx.journal.append(
+        "APPLYING",
+        {"index": 0, "relative": relative, "expected_absent": True},
+    )
+    target = vault / relative
+    user_bytes = b"# User created during recovery window\n"
+    target.write_bytes(user_bytes)
+    assert tx._release is not None
+    tx._release()
+    tx._release = None
+
+    Transaction.resume(vault)
+
+    assert target.read_bytes() == user_bytes
+
+
+def test_target_matches_planned_content_refuses_symlink_target(
+    tmp_path: Path,
+) -> None:
+    planned = b"# Migrated\n"
+    real_target = tmp_path / "real-target.md"
+    real_target.write_bytes(planned)
+    symlink_target = tmp_path / "symlink-target.md"
+    symlink_target.symlink_to(real_target)
+
+    assert not Transaction._target_matches_planned_content(
+        symlink_target,
+        planned_sha256=hashlib.sha256(planned).hexdigest(),
+        planned_size=len(planned),
+    )
+
+
+def test_engine_expected_absent_is_mutually_exclusive_with_current_hash(
+    tmp_path: Path,
+) -> None:
+    vault = _vault(tmp_path)
+
+    with pytest.raises(PlanRejected, match="cannot also assert current bytes"):
+        Transaction.begin(
+            vault,
+            [
+                PlanEntry(
+                    "CLAUDE-custom.md",
+                    b"# Migrated\n",
+                    expected_current_sha256="0" * 64,
+                    expected_absent=True,
+                )
+            ],
+            operation="customization-migration",
+        )
+
+
+def test_engine_expected_absent_is_invalid_for_deletion(tmp_path: Path) -> None:
+    vault = _vault(tmp_path)
+    target = vault / "README.md"
+    target.write_bytes(b"shipped bytes\n")
+    expected = hashlib.sha256(target.read_bytes()).hexdigest()
+
+    with pytest.raises(PlanRejected, match="only valid on content writes"):
+        Transaction.begin(
+            vault,
+            [
+                PlanEntry(
+                    "README.md",
+                    None,
+                    expected_current_sha256=expected,
+                    expected_absent=True,
+                )
+            ],
+        )
+
+    assert target.read_bytes() == b"shipped bytes\n"
+
+
 def test_engine_rechecks_content_precondition_and_rolls_back_applied_entries(
     tmp_path: Path,
 ) -> None:

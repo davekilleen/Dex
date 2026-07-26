@@ -102,20 +102,51 @@ _LAZY_VERIFICATION_EXPORTS = frozenset(
         "write_verification_report",
     }
 )
+_LAZY_ACTIVATION_EXPORTS = frozenset(
+    {
+        "ActivatedFile",
+        "ActivationError",
+        "ActivationFile",
+        "ActivationPreview",
+        "ActivationReceipt",
+        "ActivationStatus",
+        "RewindFile",
+        "RewindPreview",
+        "RewindReceipt",
+        "activate",
+        "activation_receipt_from_bytes",
+        "preview_activation",
+        "preview_rewind",
+        "read_activation_status",
+        "rewind",
+    }
+)
 
 
 def __getattr__(name: str) -> object:
-    if name not in _LAZY_VERIFICATION_EXPORTS:
+    if name in _LAZY_VERIFICATION_EXPORTS:
+        from core.customization_migration import verification
+
+        value = getattr(verification, name)
+    elif name in _LAZY_ACTIVATION_EXPORTS:
+        from core.customization_migration import activation
+
+        value = getattr(activation, name)
+    else:
         raise AttributeError(
             f"module {__name__!r} has no attribute {name!r}"
         )
-    from core.customization_migration import verification
 
-    value = getattr(verification, name)
     globals()[name] = value
     return value
 
 __all__ = [
+    "ActivatedFile",
+    "ActivationError",
+    "ActivationFile",
+    "ActivationPreview",
+    "ActivationReceipt",
+    "ActivationStatus",
     "Assessment",
     "AssessmentAssignment",
     "AssessmentExclusion",
@@ -157,6 +188,9 @@ __all__ = [
     "RegenerationCandidate",
     "ReferenceConfidence",
     "ReferenceEdge",
+    "RewindFile",
+    "RewindPreview",
+    "RewindReceipt",
     "ReportedVerification",
     "RequirementKind",
     "SECRET_ARCHIVAL_POLICY",
@@ -176,6 +210,8 @@ __all__ = [
     "VerificationReport",
     "VerificationWriteReceipt",
     "assess",
+    "activate",
+    "activation_receipt_from_bytes",
     "abandon_capsule",
     "assessment_report",
     "assessment_to_dict",
@@ -186,8 +222,11 @@ __all__ = [
     "load_staged_candidate",
     "project_state",
     "preview_capsule",
+    "preview_activation",
+    "preview_rewind",
     "preview_staging",
     "read_capsule_status",
+    "read_activation_status",
     "read_staging_status",
     "stage_candidate",
     "validate_transition",
@@ -196,6 +235,7 @@ __all__ = [
     "validate_capsule",
     "validate_staging",
     "verify_staging",
+    "rewind",
     "write_verification_report",
     "CAPSULE_ROOT",
 ]

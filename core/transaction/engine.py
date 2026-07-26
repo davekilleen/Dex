@@ -28,6 +28,7 @@ import hashlib
 import os
 import re
 import shutil
+import stat
 import time
 import uuid
 from collections.abc import Callable
@@ -57,7 +58,8 @@ class PlanEntry:
 
     ``content=None`` is an authorized deletion. ``expected_current_sha256``
     guards deletions (required) and content writes (optional) against a target
-    changing after the plan was built. Deletions use the same
+    changing after the plan was built. ``expected_absent`` guards a new-file
+    write against a target appearing before apply. Deletions use the same
     snapshot/apply/verify/rollback lifecycle as replacements, so an updater
     can prune a retired brain file without opening a second mutation path.
     """
@@ -66,6 +68,7 @@ class PlanEntry:
     content: bytes | None
     mode: int = 0o644
     expected_current_sha256: str | None = None
+    expected_absent: bool = False
 
     def sha256(self) -> str | None:
         return hashlib.sha256(self.content).hexdigest() if self.content is not None else None
@@ -165,6 +168,18 @@ class Transaction:
                 )
             if entry.content is None and entry.expected_current_sha256 is None:
                 raise PlanRejected(f"{entry.relative}: deletions require expected_current_sha256")
+            if type(entry.expected_absent) is not bool:
+                raise PlanRejected(
+                    f"{entry.relative}: expected_absent must be boolean"
+                )
+            if entry.expected_absent and entry.content is None:
+                raise PlanRejected(
+                    f"{entry.relative}: expected_absent is only valid on content writes"
+                )
+            if entry.expected_absent and entry.expected_current_sha256 is not None:
+                raise PlanRejected(
+                    f"{entry.relative}: an expected-absent create cannot also assert current bytes"
+                )
 
         # All-or-nothing authorization BEFORE the lock: one disallowed entry
         # rejects the plan with nothing acquired and nothing written. For
@@ -221,6 +236,7 @@ class Transaction:
                             "mode": entry.mode,
                             "size": len(entry.content) if entry.content is not None else None,
                             "expected_current_sha256": entry.expected_current_sha256,
+                            "expected_absent": entry.expected_absent,
                         }
                         for entry in plan
                     ],
@@ -279,6 +295,13 @@ class Transaction:
             unsafe_parent = unsafe_existing_parent(self.vault_root, entry.relative)
             if unsafe_parent is not None:
                 raise PlanRejected(f"{entry.relative}: {unsafe_parent}")
+            if entry.expected_absent:
+                target = self.vault_root / entry.relative
+                if target.exists() or target.is_symlink():
+                    raise PlanRejected(
+                        f"{entry.relative} appeared after the mutation plan was built; "
+                        "the existing file wins and the transaction aborts"
+                    )
             if entry.expected_current_sha256 is None:
                 continue
             if entry.content is None:
@@ -322,7 +345,14 @@ class Transaction:
                     entry,
                     changed_when="after the mutation snapshot",
                 )
-            self.journal.append("APPLYING", {"index": index, "relative": entry.relative})
+            self.journal.append(
+                "APPLYING",
+                {
+                    "index": index,
+                    "relative": entry.relative,
+                    "expected_absent": entry.expected_absent,
+                },
+            )
             try:
                 self._apply_one(index, entry)
             except PlanRejected:
@@ -420,6 +450,43 @@ class Transaction:
             except BaseException:
                 temporary.unlink(missing_ok=True)
                 raise
+        if entry.expected_absent and (target.exists() or target.is_symlink()):
+            temporary.unlink(missing_ok=True)
+            raise PlanRejected(
+                f"{entry.relative} appeared after the mutation snapshot; "
+                "the existing file wins and the transaction aborts"
+            )
+        if entry.expected_absent:
+            try:
+                os.link(temporary, target, follow_symlinks=False)
+            except FileExistsError as error:
+                temporary.unlink(missing_ok=True)
+                raise PlanRejected(
+                    f"{entry.relative} appeared after the mutation snapshot; "
+                    "the existing file wins and the transaction aborts"
+                ) from error
+            except BaseException:
+                temporary.unlink(missing_ok=True)
+                raise
+            directory = os.open(target.parent, os.O_RDONLY)
+            try:
+                os.fsync(directory)
+            finally:
+                os.close(directory)
+            # Keep the hard-link source until publication is journalled. If
+            # this append tears, rollback can distinguish our inode from a
+            # user file that won the same window.
+            self.journal.append(
+                "PUBLISHED",
+                {"index": index, "relative": entry.relative},
+            )
+            temporary.unlink()
+            directory = os.open(target.parent, os.O_RDONLY)
+            try:
+                os.fsync(directory)
+            finally:
+                os.close(directory)
+            return
         os.replace(temporary, target)
         directory = os.open(target.parent, os.O_RDONLY)
         try:
@@ -483,16 +550,139 @@ class Transaction:
 
     # -- recovery / undo -------------------------------------------------------
 
+    @staticmethod
+    def _target_matches_planned_content(
+        target: Path,
+        *,
+        planned_sha256: str,
+        planned_size: int,
+    ) -> bool:
+        try:
+            nofollow = os.O_NOFOLLOW
+        except AttributeError:
+            return False
+        try:
+            descriptor = os.open(
+                target,
+                os.O_RDONLY | nofollow | getattr(os, "O_NONBLOCK", 0),
+            )
+        except OSError:
+            return False
+        try:
+            metadata = os.fstat(descriptor)
+            if (
+                not stat.S_ISREG(metadata.st_mode)
+                or metadata.st_size != planned_size
+            ):
+                return False
+            digest = hashlib.sha256()
+            remaining = planned_size
+            while remaining:
+                chunk = os.read(descriptor, min(remaining, 64 * 1024))
+                if not chunk:
+                    return False
+                digest.update(chunk)
+                remaining -= len(chunk)
+            if os.read(descriptor, 1):
+                return False
+            return digest.hexdigest() == planned_sha256
+        except OSError:
+            return False
+        finally:
+            try:
+                os.close(descriptor)
+            except OSError:
+                pass
+
     def _applied_relatives(self, entries) -> set[str]:
         applied: set[str] = set()
+        expected_absent: set[str] = set()
+        ambiguous_expected_absent: set[str] = set()
+        planned_content: dict[str, tuple[str, int]] = {}
+        for entry in entries:
+            if entry.event != "BEGIN":
+                continue
+            plan = entry.payload.get("plan")
+            if isinstance(plan, list):
+                for planned in plan:
+                    if (
+                        not isinstance(planned, dict)
+                        or planned.get("expected_absent") is not True
+                    ):
+                        continue
+                    relative = planned.get("relative")
+                    planned_sha256 = planned.get("sha256")
+                    planned_size = planned.get("size")
+                    if (
+                        isinstance(relative, str)
+                        and isinstance(planned_sha256, str)
+                        and re.fullmatch(r"[0-9a-f]{64}", planned_sha256)
+                        and type(planned_size) is int
+                        and planned_size >= 0
+                    ):
+                        planned_content[relative] = (
+                            planned_sha256,
+                            planned_size,
+                        )
+            break
         for entry in entries:
             relative = entry.payload.get("relative")
             if not relative:
                 continue
-            if entry.event in {"APPLYING", "APPLIED"}:
+            if entry.event == "APPLYING":
+                if entry.payload.get("expected_absent") is True:
+                    expected_absent.add(relative)
+                    ambiguous_expected_absent.add(relative)
+                else:
+                    applied.add(relative)
+            elif entry.event in {"PUBLISHED", "APPLIED"}:
                 applied.add(relative)
+                ambiguous_expected_absent.discard(relative)
             elif entry.event == "NOT-APPLIED":
                 applied.discard(relative)
+                ambiguous_expected_absent.discard(relative)
+        for relative in expected_absent:
+            if unsafe_existing_parent(self.vault_root, relative) is not None:
+                continue
+            target = self.vault_root / relative
+            temporary = target.parent / f".{target.name}.tx-{self.tx_id}"
+            try:
+                temporary_metadata = temporary.lstat()
+            except OSError:
+                temporary_metadata = None
+            try:
+                target_metadata = target.lstat()
+            except OSError:
+                target_metadata = None
+            if (
+                relative in ambiguous_expected_absent
+                and target_metadata is not None
+            ):
+                planned = planned_content.get(relative)
+                target_is_ours = (
+                    temporary_metadata is not None
+                    and stat.S_ISREG(temporary_metadata.st_mode)
+                    and stat.S_ISREG(target_metadata.st_mode)
+                    and (target_metadata.st_dev, target_metadata.st_ino)
+                    == (temporary_metadata.st_dev, temporary_metadata.st_ino)
+                ) or (
+                    temporary_metadata is None
+                    and planned is not None
+                    and self._target_matches_planned_content(
+                        target,
+                        planned_sha256=planned[0],
+                        planned_size=planned[1],
+                    )
+                )
+                if target_is_ours:
+                    applied.add(relative)
+                else:
+                    applied.discard(relative)
+            if (
+                temporary_metadata is not None
+                and stat.S_ISREG(temporary_metadata.st_mode)
+            ):
+                temporary.unlink(missing_ok=True)
         return applied
 
     def rollback(self) -> dict:
