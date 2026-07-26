@@ -25,7 +25,10 @@ import urllib.request
 import webbrowser
 from pathlib import Path
 
-HEYDEX_API_BASE_URL = "https://api.heydex.ai"
+# DexDiff's own backend (HTTP Actions). Must match the deployment the /diff web
+# app reads from (gallant-reindeer-229) — NOT api.heydex.ai, which routes to the
+# separate Dex Desktop backend (focused-mouse-723). Override with DEXDIFF_API_BASE.
+HEYDEX_API_BASE_URL = "https://gallant-reindeer-229.eu-west-1.convex.site"
 HEYDEX_SITE_BASE_URL = "https://heydex.ai"
 AUTH_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000
 HTTP_TIMEOUT_SECONDS = 20.0
