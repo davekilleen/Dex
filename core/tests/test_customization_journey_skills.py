@@ -40,7 +40,10 @@ def test_shipped_skills_pin_the_scoped_customization_journey() -> None:
         "## Deeply customised setup",
         1,
     )[1].split("## Five-group preview", 1)[0]
-    assert "customization_assessment.identity.customization_count >= 1" in update_section
+    assert (
+        "`customization_assessment.identity.customization_count` is at least 1"
+        in update_section
+    )
     assert "python -m core.customization_migration.cli preview" in update_section
     assert (
         "python -m core.customization_migration.cli create "
