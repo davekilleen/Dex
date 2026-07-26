@@ -1,6 +1,9 @@
 # Dex FAQ (DRAFT)
 
-> **Status:** Internal draft - not yet released
+> **Status: ARCHIVED DRAFT (February 2026) — never published.** User-facing help
+> now lives in the Dex Guide at https://heydex.ai/help. Answers below may be
+> stale (they predate the lifecycle update engine and the brain/vault split);
+> verify against current docs before reusing any of them.
 > **Last Updated:** 2026-02-04
 
 ---

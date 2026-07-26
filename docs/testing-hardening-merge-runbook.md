@@ -1,6 +1,11 @@
 # Testing Hardening Merge Runbook
 
-This runbook is for the current stacked QA hardening rollout.
+> **Status: HISTORICAL (March 2026).** The stacked QA hardening rollout below
+> (PRs #25–#27) merged long ago; the gates it introduced are now standing CI
+> (see `.github/workflows/ci.yml` and `docs/testing-governance.md`). Kept as a
+> record of the rollout order and rationale.
+
+This runbook was for the stacked QA hardening rollout.
 
 ## PR Stack
 Merge in this exact order:
