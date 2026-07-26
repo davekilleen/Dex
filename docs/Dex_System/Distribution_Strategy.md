@@ -1,5 +1,13 @@
 # Dex Distribution Strategy
 
+**Status: HISTORICAL (January 2026) — mechanisms superseded.** The philosophy below
+("Dex is yours, not ours"; updates enhance without disrupting) still holds, but the
+git-upstream merge mechanics this document describes were replaced in mid-2026 by
+the receipt-backed lifecycle engine (preview → backup → apply → verify → receipt →
+rewind) and the customization-migration system. For current truth read:
+`Updating_Dex.md` (user-facing), `Distribution_Checklist.md` (maintainer),
+`docs/architecture/DEX-CORE-MAP.md` §§1–4, 12 (technical). Kept as a design record.
+
 **Last Updated:** January 29, 2026
 
 This document explains how Dex handles updates, customizations, and distribution to users.

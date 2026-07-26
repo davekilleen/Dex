@@ -1,444 +1,73 @@
-# Dex Distribution Status
+# Dex Distribution — How It Works Today
 
-**Date:** 2026-01-29
-**Status:** ✅ **READY for GitHub distribution** (with minor cleanup recommendations)
+**Last Updated:** 2026-07-26 (v1.75.2)
 
----
+> This file was originally a one-time pre-launch readiness report (January 2026).
+> Dex has since shipped 70+ releases; this is now the standing description of how
+> distribution actually works. History lives in git if you need the old report.
 
-## Executive Summary
+## The short version
 
-All three distribution concerns are **SOLVED**:
+Dex is distributed from this repository. A user installs by cloning and running
+`install.sh`; releases are cut by tagging, and CI does the packaging, safety
+gating, and publishing automatically. Nothing user-owned ever ships in a release,
+and a battery of CI gates enforces that on every push.
 
-1. ✅ **Dynamic paths** — Template + install script handles this automatically
-2. ✅ **MCP servers** — 7 core servers included, external MCPs documented as optional
-3. ✅ **No credentials exposed** — .gitignore configured correctly, no API keys in code
+## Install mechanism
 
-**Users can clone and run immediately** — paths auto-configure, no manual editing needed.
+`install.sh` provisions a new vault through the **sanctioned provision contract**:
+it calls `node core/provision.cjs`, which applies `core/provision-contract.json`
+plus the generated portable-vault ownership contract to lay down exactly the files
+a fresh install should have, with the user's vault path collected once and rendered
+into a receipt.
 
----
+> Historical note: early versions templated `.mcp.json` with a
+> `sed "s|{{VAULT_PATH}}|...|"` substitution over `System/.mcp.json.example`.
+> That mechanism is gone — if you see it described anywhere, the doc is stale.
 
-## Answers to Your Questions
+The install also renames a cloned `origin` remote to `upstream` so a user's vault
+is treated as an independent local project, and detects optional companions
+(e.g. Granola) to point users at the right setup skill.
 
-### 1. "Paths will change when people download — how do we solve for that?"
+## What ships / what never ships
 
-**ALREADY SOLVED** ✅
+The portable ownership contract (`core/portable_contract.py`, §3 of
+`docs/architecture/DEX-CORE-MAP.md`) classifies every path: `brain` (release-owned),
+`seed` (shipped once, then user-owned), `generated`, `vault` (user content — never
+written by an update), `runtime` (never shipped). CI fails if any tracked path is
+unclassified.
 
-Your install script (`install.sh`) uses the template pattern:
+## Release pipeline
 
-```bash
-# Lines 49-54 of install.sh
-CURRENT_PATH="$(pwd)"
-sed "s|{{VAULT_PATH}}|$CURRENT_PATH|g" System/.mcp.json.example > .mcp.json
-```
+1. Merges land on `main`; every push runs the full CI gate list (see
+   `docs/architecture/DEX-CORE-MAP.md` and `.github/workflows/ci.yml`), including
+   the distribution-safety, PII, founder-content, and portable-contract gates.
+2. On a `main` push, CI builds and publishes the release branch, tag, and vault
+   bundle, then deploys the public release-health page (GitHub Pages).
+3. On a `v*` tag, `release.yml` extracts the matching `CHANGELOG.md` section and
+   creates the GitHub Release. `CHANGELOG.md` is the single source of release truth.
+4. A `beta` branch mirror runs the same pipeline with prerelease-only guards.
 
-**User experience:**
-```bash
-git clone https://github.com/yourusername/dex.git
-cd dex
-./install.sh
-# ✅ .mcp.json created with correct paths automatically
-```
+## Safety gates that protect distribution
 
-This is the **industry-standard solution** used by:
-- VS Code extensions
-- Homebrew formulas
-- Docker Compose templates
-- Terraform modules
+- `scripts/verify-distribution.sh` — pre-flight distribution check.
+- `scripts/check-pii.sh` + `scripts/pii_gate.py` — no personal data in tracked files.
+- `scripts/check-founder-content.sh` — no founder-machine-specific content ships.
+- `scripts/check-portable-contract.sh` — every path classified.
+- `scripts/security-gate.sh` / `security-scan.py` — credential/key scanning.
 
-**No action needed.**
+## Platform support
 
----
+macOS-first (calendar/reminders integration uses EventKit). Non-macOS installs
+degrade gracefully; see `docs/support/upgrade-platform-matrix.md`.
 
-### 2. "MCPs like Granola, browser extension — how do we fix that for Claude Desktop?"
+## Licensing
 
-**CLARIFICATION:** You have two different types of MCPs:
-
-#### Dex Core MCPs (7 servers, shipped with the repo)
-
-| MCP | File | Purpose | Requires |
-|-----|------|---------|----------|
-| work-mcp | `work_server.py` | Task/goal management | Nothing |
-| calendar-mcp | `calendar_server.py` | Calendar integration | macOS Calendar.app |
-| granola-mcp | `granola_server.py` | Meeting processing | `GRANOLA_API_KEY` from a Granola Business/Enterprise plan (optional) |
-| career-mcp | `career_server.py` | Career development | Nothing |
-| resume-mcp | `resume_server.py` | Resume building | Nothing |
-| dex-improvements-mcp | `dex_improvements_server.py` | System improvements | Nothing |
-| update-checker | `update_checker.py` | Update checking | GitHub API |
-
-**These are all included** in `core/mcp/` and configured in `System/.mcp.json.example`.
-
-#### External MCPs (NOT part of Dex)
-
-These are **separate user-installed tools** via Claude Desktop settings:
-- `cursor-ide-browser` — Browser automation (Cursor-specific)
-- `user-granola` — Official Granola MCP (different from dex granola-mcp)
-- `user-whatsapp` — WhatsApp integration
-- `user-apify` — Web scraping
-- etc.
-
-**Architecture:**
-```
-Dex Repository
-├── core/mcp/                    ← 7 servers (included)
-│   ├── work_server.py
-│   ├── calendar_server.py
-│   └── ...
-└── System/.mcp.json.example     ← Template for local setup
-
-User's Claude Desktop (separate)
-└── settings.json                ← External MCPs (user installs)
-    ├── cursor-ide-browser
-    ├── user-granola
-    └── user-whatsapp
-```
-
-**Distribution strategy:**
-1. Ship with 7 core MCPs
-2. Document optional integrations in README
-3. User installs external MCPs separately if needed
-
-**Your install.sh already handles this:**
-```bash
-if [ -d "/Applications/Granola.app" ]; then
-    echo "✅ Granola app detected — run /granola-setup to connect it (needs a Granola Business API key)"
-else
-    echo "ℹ️  Granola app not detected"
-    echo "   Install Granola from https://granola.ai for meeting transcription"
-    echo "   Then run /granola-setup to connect it (needs a Granola Business API key)"
-fi
-```
-
-App detection is only an install pointer. Meeting sync itself uses Granola's official public API and reads `GRANOLA_API_KEY` from the environment, then the vault-root `.env`; it never treats local application data as authentication.
+See `LICENSE` and `COMMERCIAL_LICENSE.md`. Note: the connection manager consumes
+Nango's provider catalog (Elastic License 2.0) as a pinned npm dependency — never
+re-expose it as a managed service.
 
 ---
 
-### 3. "Make sure I'm not exposing any credentials"
-
-**VERIFIED SAFE** ✅
-
-#### What's Protected (gitignored)
-
-```gitignore
-.env                          # API keys
-.env.local
-.mcp.json                     # Generated config with user paths
-System/user-profile.yaml      # Personal info
-System/pillars.yaml           # User's strategic pillars
-00-Inbox/                     # User data
-01-Quarter_Goals/
-02-Week_Priorities/
-03-Tasks/
-04-Projects/
-05-Areas/
-07-Archives/
-```
-
-#### Credential Scan Results
-
-**Scanned all tracked Python/JS files:**
-```bash
-✅ No API keys (sk-ant-, sk-proj-, AIza*)
-✅ No hardcoded passwords
-✅ No personal email addresses (except font licenses/docs)
-✅ Template files use placeholders only
-```
-
-#### What Users See
-
-**On first clone:**
-- `env.example` — Template showing structure (no real keys)
-- `System/.mcp.json.example` — Template with `{{VAULT_PATH}}`
-
-**Generated during setup:**
-- `.env` — Created if user enables optional features
-- `.mcp.json` — Generated by install.sh
-- User data folders — Created empty
-
-**Security best practice:** Your `.gitignore` follows the pattern used by popular repos like:
-- Laravel (PHP framework)
-- Next.js (React framework)
-- Django (Python framework)
-
-**No action needed.**
-
----
-
-## Git Remote Issue (RESOLVED)
-
-**Problem:** When users cloned the Dex repo, the git remote remained as `origin` pointing to `github.com/davekilleen/Dex`. This caused Claude Desktop to incorrectly identify their local vault as the upstream project instead of an independent local project.
-
-**Symptoms:**
-- Claude Desktop shows "davekilleen/dex" in project selector
-- Opening folder in Cursor from Claude Desktop may open wrong project
-- User's local vault treated as if it's the main repo
-
-**Solution:** install.sh now silently renames `origin` to `upstream` during setup. This breaks the association and treats the user's vault as independent.
-
-**Implementation:**
-```bash
-# Lines 11-13 of install.sh
-if git remote -v 2>/dev/null | grep -q "davekilleen/[Dd]ex"; then
-    git remote rename origin upstream 2>/dev/null || true
-fi
-```
-
-**User experience:** Completely transparent - no extra steps, no messages, just works.
-
----
-
-## Distribution Checklist
-
-Run before pushing to GitHub:
-
-### Pre-Flight Check
-
-```bash
-./scripts/verify-distribution.sh
-```
-
-**Current results:**
-- ✅ 0 errors
-- ⚠️ Warnings only (all safe — see below)
-
-**Warnings explained:**
-1. **Email addresses found** — Font licenses + documentation examples (safe)
-2. **MCP count mismatch** — Found `task_server.py` (legacy, see cleanup)
-
-### Recommended Cleanup (Optional)
-
-**1. Remove legacy task_server.py**
-
-```bash
-git rm core/mcp/task_server.py
-```
-
-This is an old version superseded by `work_server.py`. No longer used.
-
-**2. Clean up Session_Learnings (if contains personal work history)**
-
-```bash
-git rm -r System/Session_Learnings/
-```
-
-**3. Update README placeholders**
-
-Replace these lines in README.md:
-- Line 9: `[Episode 8 of The Vibe PM Podcast](https://link-tbd)`
-- Line 9: `[full blog post](https://link-tbd)`
-- Line 37: `[companion blog post](https://link-tbd)`
-- Line 633: `[link-tbd]`
-
-With actual URLs when ready to publish.
-
-**4. Add LICENSE file**
-
-```bash
-# MIT License (recommended for open source)
-touch LICENSE
-# Copy MIT license text from https://choosealicense.com/licenses/mit/
-```
-
-**5. Final verification**
-
-```bash
-# Check git history for accidentally committed secrets
-git log --all -S "sk-ant-" --source --all
-
-# Should return empty (or only this DISTRIBUTION_READY.md file)
-```
-
-### Ready to Push
-
-```bash
-git add .
-git commit -m "chore: prepare for distribution - clean up legacy files"
-git push origin main
-
-# Tag the release
-git tag -a v1.0.0 -m "Initial public release"
-git push origin v1.0.0
-```
-
----
-
-## Distribution Artifacts Created
-
-I've created three files to help with distribution:
-
-### 1. `/06-Resources/Dex_System/Distribution_Checklist.md`
-
-Comprehensive distribution guide covering:
-- Path configuration (how the template pattern works)
-- MCP architecture (core vs external servers)
-- Security verification (what's protected, what's exposed)
-- Pre-release checklist
-- GitHub release strategy
-
-**Use this as:** Reference documentation for maintainers.
-
-### 2. `/scripts/verify-distribution.sh`
-
-Automated safety check script that verifies:
-- `.mcp.json` and `.env` are gitignored
-- No API keys in tracked files
-- User data folders protected
-- Template files use placeholders
-- All required files present
-
-**Use this as:** Pre-commit check before pushing to GitHub.
-
-### 3. `/DISTRIBUTION_READY.md` (this file)
-
-Quick reference answering your three questions with action items.
-
-**Use this as:** Quick confirmation that you're ready to distribute.
-
----
-
-## Testing Strategy
-
-Before announcing publicly:
-
-### Test 1: Fresh Clone (Different Machine)
-
-```bash
-# On a different computer or VM
-git clone https://github.com/yourusername/dex.git ~/Desktop/dex-test
-cd ~/Desktop/dex-test
-./install.sh
-# ✅ Should complete without errors
-# ✅ .mcp.json should have correct paths (/Users/testuser/Desktop/dex-test)
-```
-
-### Test 2: Setup Wizard
-
-```bash
-# Open in Cursor
-cursor ~/Desktop/dex-test
-
-# In Cursor chat, run:
-/setup
-
-# ✅ Should complete onboarding
-# ✅ Should create user-profile.yaml
-# ✅ Should create pillars.yaml
-# ✅ Should NOT prompt for API keys (99% of features work without)
-```
-
-### Test 3: Core Features
-
-```bash
-# In Cursor chat
-/daily-plan
-# ✅ Should generate daily plan
-
-/meeting-prep
-# ✅ Should search for person pages
-
-# Create a task
-I need to "Review Q2 roadmap" by Friday
-
-# ✅ Should create task with unique ID
-# ✅ Should show in 03-Tasks/Tasks.md
-```
-
-### Test 4: Without Optional Dependencies
-
-```bash
-# Test on machine WITHOUT Granola installed
-/daily-plan
-
-# ✅ Should work (skip meeting intelligence)
-# ✅ Should NOT crash or show errors
-```
-
----
-
-## Windows Support
-
-**Current status:** macOS only (due to calendar-mcp using AppleScript)
-
-**Options:**
-
-1. **Document as macOS-only for v1.0**
-   ```markdown
-   ## Requirements
-   - macOS 10.15+ (for Calendar integration)
-   - Or: Any OS if not using calendar features
-   ```
-
-2. **Add Windows support later**
-   - Calendar integration via Windows Calendar APIs
-   - PowerShell version of install.sh
-
-3. **Make calendar-mcp optional**
-   - Gracefully degrade on non-macOS
-   - Most features still work
-
-**Recommendation:** Document as macOS-focused for v1.0, add Windows support in v1.1 based on demand.
-
----
-
-## Success Criteria
-
-**Before distribution:**
-- [x] Dynamic paths work automatically
-- [x] No credentials exposed
-- [x] MCP servers documented
-- [x] Git remote issue fixed (install.sh handles automatically)
-- [ ] Legacy task_server.py removed
-- [ ] README placeholders updated
-- [ ] License file added
-
-**After distribution:**
-- [ ] 10+ successful fresh clones (different users)
-- [ ] No GitHub issues about missing files
-- [ ] No GitHub issues about hardcoded paths
-- [ ] Community contributions follow security patterns
-
----
-
-## Next Steps
-
-**Immediate (before push):**
-1. Run `./scripts/verify-distribution.sh`
-2. Review warnings, decide on cleanup items
-3. Update README URLs (podcast, blog post)
-4. Add LICENSE file
-
-**Pre-launch (before announcement):**
-1. Test fresh clone on different machine
-2. Test setup wizard end-to-end
-3. Test without optional dependencies
-4. Record demo video (optional)
-
-**Launch:**
-1. Push to GitHub: `git push origin main`
-2. Create release: `git tag -a v1.0.0 -m "Initial release"`
-3. Announce on podcast/blog/social
-4. Monitor GitHub issues for first 48 hours
-
----
-
-## Questions?
-
-**"Do I need to change anything before pushing to GitHub?"**
-→ No (but recommended cleanup: remove task_server.py, update URLs)
-
-**"Will users need to edit .mcp.json manually?"**
-→ No, install.sh does it automatically
-
-**"Are my credentials exposed?"**
-→ No, verified safe
-
-**"Do I need to include external MCPs?"**
-→ No, they're separate user-installed tools
-
-**"What if someone doesn't have Granola?"**
-→ System works fine without it (graceful degradation)
-
----
-
-**Status:** ✅ **Ready to distribute**
-
-See `/06-Resources/Dex_System/Distribution_Checklist.md` for complete details.
+Maintainer checklist for cutting a release:
+`docs/Dex_System/Distribution_Checklist.md`.

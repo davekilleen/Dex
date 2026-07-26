@@ -1,7 +1,7 @@
 # Dex Technical Guide
 
 **Version:** 1.0  
-**Last Updated:** July 11, 2026
+**Last Updated:** July 2026
 
 **Audience:** People who want to understand how Dex works under the hood - whether to customize it, contribute to it, or learn from its design patterns.
 
