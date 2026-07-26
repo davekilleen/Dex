@@ -24,7 +24,10 @@ const childEnv = {
   ...process.env,
   DEX_VAULT: TMP_VAULT,
   DEX_CM_NO_KEYCHAIN: '1',
-  DEX_CM_PRESENCE_OPTIONAL: '1',
+  NODE_OPTIONS: [
+    process.env.NODE_OPTIONS,
+    `--require=${path.join(DIR, 'presence-approve-preload.test.cjs')}`,
+  ].filter(Boolean).join(' '),
 };
 
 test.after(() => fs.rmSync(TMP_VAULT, { recursive: true, force: true }));

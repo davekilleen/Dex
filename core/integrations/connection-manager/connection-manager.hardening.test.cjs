@@ -104,6 +104,32 @@ test('permissions: a pre-existing loose credentials directory is tightened to 07
   }
 });
 
+test('permissions: a symlinked tokens subdirectory is refused before any secret is written', () => {
+  const vault = fs.mkdtempSync(path.join(os.tmpdir(), 'dex-cm-symlink-tokens-'));
+  const env = { ...childEnv, DEX_VAULT: vault };
+  const credentials = path.join(vault, 'System', 'credentials');
+  const outside = fs.mkdtempSync(path.join(os.tmpdir(), 'dex-cm-token-target-'));
+  fs.mkdirSync(credentials, { recursive: true, mode: 0o700 });
+  fs.symlinkSync(outside, path.join(credentials, 'tokens'));
+  try {
+    let failure;
+    try {
+      execFileSync('node', [CHILD, 'save-key', 'symlink-tokens', 'FAKE-key'], {
+        env,
+        stdio: 'pipe',
+      });
+    } catch (error) {
+      failure = error;
+    }
+    assert.ok(failure, 'a symlinked token directory must fail closed');
+    assert.match(String(failure.stderr), /tokens.*symlink|unsafe credential path/i);
+    assert.deepEqual(fs.readdirSync(outside), [], 'the symlink target must remain untouched');
+  } finally {
+    fs.rmSync(vault, { recursive: true, force: true });
+    fs.rmSync(outside, { recursive: true, force: true });
+  }
+});
+
 test('permissions: a loose fallback key file is tightened to 0600 before reading', () => {
   const vault = fs.mkdtempSync(path.join(os.tmpdir(), 'dex-cm-loose-key-'));
   const env = { ...childEnv, DEX_VAULT: vault };
