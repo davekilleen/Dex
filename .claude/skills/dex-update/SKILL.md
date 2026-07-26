@@ -48,8 +48,8 @@ If the dry-run fails, the report changes before approval, approval is missing, c
 
 Before applying an update, use the deep Doctor report to decide whether to offer this branch.
 Offer it when `customization_assessment.completeness` is `OK` and
-`customization_assessment.identity.customization_count >= 1`, or when the user says they have
-customised Dex heavily. If the verified count is zero, follow the normal lightweight update
+`customization_assessment.identity.customization_count` is at least 1, or when the user says
+they have customised Dex heavily. If the verified count is zero, follow the normal lightweight update
 path and do not mention this branch. If completeness is `UNKNOWN`, show Doctor's uncertainty
 and do not infer a zero count.
 
@@ -71,7 +71,7 @@ the `preview_sha256` verbatim. Then ask: “Create this exact snapshot?” The e
 “update Dex” is not approval.
 
 Only after a fresh explicit yes, run
-`python -m core.customization_migration.cli create --confirm-token <preview_sha256>` with the
+`python -m core.customization_migration.cli create --confirm-token PREVIEW_SHA256` with the
 unchanged digest from that preview. The returned Capsule receipt is authority: render its
 `capsule_id`, `file_count`, `byte_count`, and `transaction_id` verbatim. Do not say the
 evidence is preserved until that receipt exists.
@@ -103,7 +103,7 @@ Capsule creation is resumable after a crash. A half-created Capsule appears as
 preserved before a Capsule receipt exists.
 
 Show that status, ask for a fresh explicit acknowledgement, then route abandonment through
-`python -m core.customization_migration.cli abandon <capsule_id> --acknowledge`. After a
+`python -m core.customization_migration.cli abandon CAPSULE_ID --acknowledge`. After a
 confirmed abandonment, run the preview again and require a new exact-snapshot approval. If the
 deterministic adapter refuses either action, show the refusal and stop.
 
