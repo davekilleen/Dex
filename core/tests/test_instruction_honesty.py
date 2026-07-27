@@ -376,6 +376,40 @@ def test_onboarding_runs_the_first_week_reveal_before_tool_discovery() -> None:
     assert "draft_weekly_plan" in finale
 
 
+def test_onboarding_step_nine_explains_connect_without_overpromising() -> None:
+    flow = _read(".claude/flows/onboarding.md")
+    connect_step = flow.split("## Step 9:", 1)[1].split("## Step 10:", 1)[0]
+    lowered = connect_step.lower()
+
+    assert "/connect" in connect_step
+    assert "hundreds" in lowered
+    assert "paste a key" in lowered
+    assert "browser sign-in" in lowered
+    assert "one-time setup" in lowered
+    assert "register your own app for dex" in lowered
+    assert "tool's own settings" in lowered
+    assert "google and linear" in lowered
+    assert "--allow-unvetted" in connect_step
+    assert "explicit opt-in" in lowered
+    assert connect_step.index("get explicit opt-in") < connect_step.index(
+        "--allow-unvetted"
+    )
+    for forbidden_claim in ("secure", "safe", "malware"):
+        assert forbidden_claim not in lowered
+
+
+def test_onboarding_step_nine_preserves_the_curated_setup_skill_flow() -> None:
+    flow = _read(".claude/flows/onboarding.md")
+    connect_step = flow.split("## Step 9:", 1)[1].split("## Step 10:", 1)[0]
+
+    assert "invoke the skill referenced in the integration's `setup` field" in connect_step
+    assert "Wait for the setup skill to complete" in connect_step
+    assert "Which existing skills just got smarter" in connect_step
+    assert "What new capabilities are now available" in connect_step
+    assert "Privacy and trust level summary" in connect_step
+    assert "Move to the next selected integration" in connect_step
+
+
 def test_getting_started_treats_the_reveal_as_already_presented() -> None:
     skill = _read(".claude/skills/getting-started/SKILL.md")
 
