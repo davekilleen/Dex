@@ -13,7 +13,7 @@ This is the release I asked heavily-customised users to wait for. Two big things
 
 **The move, proven on a real vault:**
 
-* **Rehearsed end-to-end before being offered to anyone.** I converted full copies of a real, seven-month-old, 50 GB working vault — killed the process halfway on purpose — and proved the undo restored every file byte-for-byte. The rehearsal caught four real problems, all fixed here: Dropbox users were wrongly refused, very large vaults (~12k+ files) could crash the move, accented filenames could falsely fail a safety check, and the symlink refusal now tells you what to do about it.
+* **Tested on a real vault before being offered to anyone.** Before this reached users, I rehearsed the whole move on full copies of a genuine, seven-month-old working vault — including deliberately pulling the plug halfway through — and confirmed the undo put every file back exactly as it was. That rehearsal caught four real problems, all fixed here: Dropbox users were wrongly turned away, very large vaults could fail near the finish line, file names with accents (like "Häfele") could wrongly stop the move, and on the rare setup where Dex does have to say no, it now explains the quick fix instead of just refusing.
 
 **The guided journey for customised setups:**
 
@@ -31,7 +31,7 @@ This is the release I asked heavily-customised users to wait for. Two big things
 * **A stray browser tab can't interrupt you mid-connect.** While you were connecting an app, another page open in your browser could quietly cancel it and leave you wondering what went wrong. That window is closed.
 * **Sturdier under odd setups.** If your credentials folder or key arrived from a backup with loose permissions, Dex now tightens them before use rather than trusting them, and refuses outright if something looks tampered with. And account names that could have collided into the same file — quietly breaking one of two connections — are now rejected up front.
 
-Still no change to day-to-day use for connections — and the `/connect` doorway stays deliberately closed until it passes an independent security review. Also in this release: the DexDiff sharing tool publishes to the right backend.
+Still no change to day-to-day use for connections — and the `/connect` doorway stays deliberately closed until it passes an independent security review. Also in this release: a fix so DexDiff workflow sharing publishes to the right place.
 
 ## [1.75.1] — 🔍 Dex Doctor now knows exactly what you've customised (2026-07-24)
 
