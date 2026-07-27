@@ -24,7 +24,7 @@ from pathlib import Path, PurePosixPath
 from typing import Callable, Protocol
 
 CANONICAL_REMOTE_URL = "https://github.com/davekilleen/Dex.git"
-CANONICAL_RELEASE_PAGE = "https://github.com/davekilleen/Dex/releases/tag/{tag}"
+CANONICAL_RELEASE_PAGE = "https://github.com/davekilleen/Dex/releases/tag/v{version}"
 PROFILE_PATH = "System/.release-evidence-profile.json"
 MANIFEST_PATH = "System/.installed-files.manifest"
 CATALOG_PATH = "System/.release-catalog.json"
@@ -63,9 +63,9 @@ SESSION_WALL_CLOCK_SECONDS = 10.0
 MAX_AGGREGATE_OUTPUT_BYTES = 64 * 1024 * 1024
 MAX_GIT_OUTPUT_BYTES = 32 * 1024 * 1024
 MAX_REMOTE_RELEASE_REFS = 128
-# Normal operation has one higher stable target. Thirty-two preserves ample
-# overlap for skipped releases and same-version ambiguity checks while keeping
-# adversarial tag fan-out within the single SessionStart deadline/disk budget.
+# Normal operation has one tag at the highest stable version. Thirty-two keeps
+# the complete same-version group available for ambiguity checks while bounding
+# anomalous tag fan-out within the single SessionStart deadline/disk budget.
 MAX_RELEASE_TAGS = 32
 MAX_RELEASE_TREE_ENTRIES = 100_000
 MAX_RELEASE_TREE_PATH_BYTES = 16 * 1024 * 1024
@@ -977,7 +977,7 @@ class UpdateVerifier:
         return "\n".join(
             (
                 f"{NOTICE_AVAILABLE} v{candidate.version}",
-                f"Release notes: {CANONICAL_RELEASE_PAGE.format(tag=candidate.tag)}",
+                f"Release notes: {CANONICAL_RELEASE_PAGE.format(version=candidate.version)}",
                 NOTICE_GUIDANCE,
             )
         )
@@ -1131,12 +1131,19 @@ class UpdateVerifier:
                     self._evidence_cache = persistent_cache
                     self._validate_cache()
                 remote_tags = self._remote_release_tags()
+                highest_remote_version: SemVer | None = None
                 selected_remote_tags: list[RemoteTagEvidence] = []
                 for remote_tag in remote_tags:
                     match = _TAG_RE.fullmatch(remote_tag.tag)
                     if match is None:
                         raise EvidenceError("candidate release tag shape is malformed")
-                    if SemVer.parse(match.group("version")) > current_semver:
+                    remote_version = SemVer.parse(match.group("version"))
+                    if remote_version <= current_semver:
+                        continue
+                    if highest_remote_version is None or remote_version > highest_remote_version:
+                        highest_remote_version = remote_version
+                        selected_remote_tags = [remote_tag]
+                    elif remote_version == highest_remote_version:
                         selected_remote_tags.append(remote_tag)
                 if len(selected_remote_tags) > MAX_RELEASE_TAGS:
                     raise EvidenceError("higher release candidate count exceeded its bound")
@@ -1227,7 +1234,7 @@ class UpdateVerifier:
                     "commit": candidate.commit,
                     "tree": candidate.tree,
                     "profile": candidate.profile,
-                    "release_page": CANONICAL_RELEASE_PAGE.format(tag=candidate.tag),
+                    "release_page": CANONICAL_RELEASE_PAGE.format(version=candidate.version),
                     "notice": notice,
                     "publisher_authentication": "unavailable",
                 }
