@@ -68,3 +68,10 @@
 ^scripts/founder-content-allowlist\.txt:.*:(dave|killeen|pendo|cursor)$
 ^scripts/check-founder-content\.py:.*:personal-path$
 ^core/tests/test_founder_content_gate\.py:.*:personal-path$
+
+# --- CI shard-balance data (.ci/test-durations.json) ---
+# Keys are pytest nodeids copied verbatim from core/tests/ — the same fixture
+# names already allowlisted at their source above. The file never ships
+# (.distignore) and is regenerated from CI's own junit output.
+^\.ci/test-durations\.json:.*:(dave|killeen)$
+^\.ci/test-durations\.json:.*:personal-path$

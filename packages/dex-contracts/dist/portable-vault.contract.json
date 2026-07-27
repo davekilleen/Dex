@@ -55,6 +55,13 @@
       "ownership": "brain"
     },
     {
+      "id": "brain-ci",
+      "path": ".ci",
+      "kind": "dir",
+      "ownership": "brain",
+      "note": "CI shard-balance data; dev-only, stripped from releases via .distignore"
+    },
+    {
       "id": "brain-claude",
       "path": ".claude",
       "kind": "dir",

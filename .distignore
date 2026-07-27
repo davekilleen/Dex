@@ -12,6 +12,7 @@ extensions/tau-mirror/
 
 # CI / GitHub workflows
 .github/
+.ci/
 
 # Dev tooling configs
 .gitattributes

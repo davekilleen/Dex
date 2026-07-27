@@ -242,6 +242,30 @@ def test_onboarding_skips_calendar_cleanly_on_non_macos() -> None:
     )
 
 
+def test_onboarding_gives_an_honest_time_estimate() -> None:
+    opening = _read(".claude/flows/onboarding.md").splitlines()[2]
+
+    assert "about 10 minutes" in opening
+    assert "~5 minute" not in opening
+
+
+def test_onboarding_collects_the_optional_company_name_it_saves() -> None:
+    flow = _read(".claude/flows/onboarding.md")
+    company_step = flow.split("## Step 3:", 1)[1].split("## Step 4:", 1)[0]
+
+    assert "company name" in company_step.lower()
+    assert "optional" in company_step.lower()
+
+
+def test_onboarding_documents_the_explicit_no_company_domain_path() -> None:
+    flow = _read(".claude/flows/onboarding.md")
+    domain_step = flow.split("## Step 4:", 1)[1].split("## Step 4b:", 1)[0]
+
+    assert '"no_company_domain": true' in domain_step
+    assert "Non-empty value" not in domain_step
+    assert "This step CANNOT be skipped" not in domain_step
+
+
 def test_core_behavior_defines_feature_status_rendering() -> None:
     instructions = _read("CLAUDE.md")
     heading = "### When an MCP tool returns `feature_status`"

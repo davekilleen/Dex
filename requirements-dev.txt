@@ -4,3 +4,4 @@ pytest-cov
 pytest-xdist
 ruff
 hypothesis
+pytest-split

@@ -287,7 +287,7 @@ echo ""
 echo "✓ Checking for hardcoded /Users/ paths in docs/config..."
 DOC_USER_PATHS=$(git ls-files -- '*.md' '*.yaml' '*.yml' '*.json' | \
     xargs grep -n '/Users/' 2>/dev/null | \
-    grep -v 'env.example\|Distribution_Checklist\|DISTRIBUTION_READY\|verify-distribution' | \
+    grep -v 'env.example\|Distribution_Checklist\|DISTRIBUTION_READY\|verify-distribution\|^\.ci/' | \
     grep -vE '/Users/(your-name|your-username|username|testuser|you|name|<|\{)' || true)
 if [ -n "$DOC_USER_PATHS" ]; then
     echo "  ❌ ERROR: Hardcoded /Users/ paths found in docs/config:"

@@ -161,33 +161,40 @@ def create_new_session() -> Dict:
         "data": {}
     }
 
-def validate_email_domain(domain: str) -> tuple[bool, Optional[str]]:
-    """Validate email domain format (supports multiple domains separated by commas)"""
+def validate_email_domain(domain: str) -> tuple[bool, Optional[str], str]:
+    """Validate and normalize email domains separated by commas"""
     if not domain or not domain.strip():
-        return False, "Email domain cannot be empty"
-    
-    domain = domain.strip()
-    
-    # Check for @ symbol
-    if '@' in domain:
-        return False, "Domain should not include @ symbol (e.g., 'pendo.io' not '@pendo.io')"
-    
-    # Split by comma if multiple domains
-    domains = [d.strip() for d in domain.split(',')]
-    
-    for d in domains:
+        return False, "Email domain cannot be empty", ""
+
+    domains = []
+    for raw_domain in domain.split(','):
+        d = raw_domain.strip()
         if not d:
             continue
-        
+
+        if d.startswith('@'):
+            d = d[1:]
+        if '@' in d:
+            d = d.rsplit('@', 1)[1]
+        d = d.strip()
+
+        if not d or '@' in d:
+            return False, f"Could not determine a domain from '{raw_domain.strip()}'", ""
+
         # Check for at least one dot (basic domain validation)
         if '.' not in d:
-            return False, f"Domain '{d}' should include at least one dot (e.g., 'acme.com')"
-        
+            return False, f"Domain '{d}' should include at least one dot (e.g., 'acme.com')", ""
+
         # Check for valid characters (alphanumeric, dots, hyphens)
         if not re.match(r'^[a-zA-Z0-9\-\.]+$', d):
-            return False, f"Domain '{d}' contains invalid characters"
-    
-    return True, None
+            return False, f"Domain '{d}' contains invalid characters", ""
+
+        domains.append(d)
+
+    if not domains:
+        return False, "Email domain cannot be empty", ""
+
+    return True, None, ", ".join(domains)
 
 def validate_pillars(pillars: List[str]) -> tuple[bool, Optional[str]]:
     """Validate strategic pillars"""
@@ -797,23 +804,31 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[types.Text
             # Step 4: Email Domain (CRITICAL)
             elif step_number == 4:
                 email_domain = step_data.get('email_domain', '').strip()
-                
-                valid, error_msg = validate_email_domain(email_domain)
+                no_company_domain = step_data.get('no_company_domain') is True
+
+                if not email_domain and no_company_domain:
+                    valid, error_msg, normalized_domain = True, None, ""
+                else:
+                    valid, error_msg, normalized_domain = validate_email_domain(email_domain)
+
                 if not valid:
                     result = create_error_response(
                         error_msg,
                         step=4,
                         field="email_domain",
-                        suggestion="Provide domain without @ (e.g., 'pendo.io' or 'acme.com')"
+                        suggestion=(
+                            "Provide a domain (e.g., 'pendo.io' or 'acme.com'). "
+                            "If you do not have a company domain, set no_company_domain to true."
+                        )
                     )
                 else:
-                    session['data']['email_domain'] = email_domain
+                    session['data']['email_domain'] = normalized_domain
                     if step_number not in session['completed_steps']:
                         session['completed_steps'].append(step_number)
                     session['current_step'] = 5
                     save_session(session)
                     result = create_success_response(
-                        {"step": 4, "completed": True, "email_domain": email_domain},
+                        {"step": 4, "completed": True, "email_domain": normalized_domain},
                         "Step 4 complete - email domain validated"
                     )
             
@@ -1126,7 +1141,7 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[types.Text
                 return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
 
             # Critical check for Step 4
-            if 4 not in completed or not session['data'].get('email_domain'):
+            if 4 not in completed:
                 result = create_error_response(
                     "Cannot finalize: email_domain is required",
                     step=4,

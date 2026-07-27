@@ -17,6 +17,11 @@ ignore = [
 "core/mcp/work_server.py" = ["F401"]  # optional imports for feature detection
 "core/paths.py" = ["F401"]  # sys imported for future use
 
+# relative_files lets coverage data recorded on the macOS shard runners be
+# combined and reported on a Linux aggregator (absolute runner paths differ).
+[tool.coverage.run]
+relative_files = true
+
 [tool.pytest.ini_options]
 testpaths = ["core/tests"]
 python_files = ["test_*.py"]
