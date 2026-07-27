@@ -3447,15 +3447,33 @@ def get_commitments_due_data(date_range: str = 'today') -> Dict[str, Any]:
 # CALENDAR CAPACITY ANALYSIS
 # ============================================================================
 
+def _is_all_day_calendar_event(event: Dict) -> bool:
+    """Recognize explicit and date-only all-day calendar shapes."""
+    if event.get('all_day') is True:
+        return True
+
+    for field in ('start', 'end'):
+        value = event.get(field)
+        if isinstance(value, date) and not isinstance(value, datetime):
+            return True
+        if isinstance(value, str) and re.fullmatch(r'\d{4}-\d{2}-\d{2}', value.strip()):
+            return True
+    return False
+
+
 def analyze_day_capacity(events: List[Dict], target_date: date) -> Dict[str, Any]:
     """Analyze a single day's calendar capacity"""
     day_name = target_date.strftime('%A')
+    timed_events = [
+        event for event in events
+        if not _is_all_day_calendar_event(event)
+    ]
     
     # Calculate total meeting time
     total_meeting_minutes = 0
-    meeting_count = len(events)
+    meeting_count = len(timed_events)
     
-    for event in events:
+    for event in timed_events:
         # Estimate duration from event data
         duration = event.get('duration_minutes', 60)  # Default 1 hour
         total_meeting_minutes += duration
