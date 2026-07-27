@@ -28,11 +28,8 @@ CANONICAL_RELEASE_PAGE = "https://github.com/davekilleen/Dex/releases/tag/{tag}"
 PROFILE_PATH = "System/.release-evidence-profile.json"
 MANIFEST_PATH = "System/.installed-files.manifest"
 CATALOG_PATH = "System/.release-catalog.json"
-NOTICE_CAUTION = (
-    "A newer Dex release appears to exist, but Dex has not authenticated its publisher. "
-    "Review the exact release/tag before choosing to update."
-)
-NOTICE_GUIDANCE = "Run /dex-doctor to review this evidence and update guidance. Dex will not update automatically."
+NOTICE_AVAILABLE = "A newer version of Dex is available:"
+NOTICE_GUIDANCE = "Run /dex-update when you're ready — Dex never updates itself without you."
 
 STATUS_RELEASE = "release-appears-available-unverified"
 STATUS_NONE = "no-newer-release-observed-unverified"
@@ -129,6 +126,10 @@ class SemVer:
 
     def __str__(self) -> str:
         return f"{self.major}.{self.minor}.{self.patch}"
+
+
+# The installed release evidence profile first shipped in Dex v1.62.0.
+FIRST_PROFILE_VERSION = SemVer.parse("1.62.0")
 
 
 @dataclass(frozen=True)
@@ -663,9 +664,18 @@ class UpdateVerifier:
         except (UnicodeError, json.JSONDecodeError, EvidenceError) as error:
             raise EvidenceError("installed package version is unreadable") from error
         version = package.get("version") if isinstance(package, dict) else None
-        SemVer.parse(version)
+        installed_version = SemVer.parse(version)
+        profile_path = self.vault_root / PROFILE_PATH
+        try:
+            profile_path.lstat()
+        except FileNotFoundError:
+            if installed_version < FIRST_PROFILE_VERSION:
+                return version
+            raise EvidenceError("installed release evidence profile is not a regular file")
+        except OSError as error:
+            raise EvidenceError("installed release evidence profile is unreadable") from error
         profile_raw = self._bounded_regular_file(
-            self.vault_root / PROFILE_PATH,
+            profile_path,
             max_bytes=MAX_PROFILE_BYTES,
             description="installed release evidence profile",
         )
@@ -966,13 +976,8 @@ class UpdateVerifier:
     def _notice(self, candidate: CandidateEvidence) -> str:
         return "\n".join(
             (
-                NOTICE_CAUTION,
-                f"Target version: v{candidate.version}",
-                f"Immutable tag: {candidate.tag}",
-                f"Immutable tag object: {candidate.tag_object}",
-                f"Full commit: {candidate.commit}",
-                f"Evidence profile: {candidate.profile}",
-                f"Release page: {CANONICAL_RELEASE_PAGE.format(tag=candidate.tag)}",
+                f"{NOTICE_AVAILABLE} v{candidate.version}",
+                f"Release notes: {CANONICAL_RELEASE_PAGE.format(tag=candidate.tag)}",
                 NOTICE_GUIDANCE,
             )
         )

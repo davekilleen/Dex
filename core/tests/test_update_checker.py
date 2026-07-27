@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import shutil
 import socket
 import subprocess
@@ -34,12 +35,9 @@ from core.utils.update_verifier import (
     parse_profile,
 )
 
-APPROVED_NOTICE_CAUTION = (
-    "A newer Dex release appears to exist, but Dex has not authenticated its publisher. "
-    "Review the exact release/tag before choosing to update."
-)
+APPROVED_NOTICE_AVAILABLE = "A newer version of Dex is available:"
 APPROVED_NOTICE_GUIDANCE = (
-    "Run /dex-doctor to review this evidence and update guidance. Dex will not update automatically."
+    "Run /dex-update when you're ready — Dex never updates itself without you."
 )
 
 
@@ -197,7 +195,9 @@ def _verifier(vault: Path, remote: Path, state: Path, **kwargs) -> UpdateVerifie
     )
 
 
-def test_legacy_release_notice_has_exact_caution_identity_and_no_positive_trust_claims(tmp_path: Path) -> None:
+def test_legacy_release_notice_is_readable_and_keeps_technical_evidence_out_of_user_copy(
+    tmp_path: Path,
+) -> None:
     vault = _installed_vault(tmp_path / "vault")
     remote = tmp_path / "remote"
     _init_repo(remote)
@@ -222,24 +222,31 @@ def test_legacy_release_notice_has_exact_caution_identity_and_no_positive_trust_
         "release_page": f"https://github.com/davekilleen/Dex/releases/tag/{tag}",
         "notice": "\n".join(
             (
-                APPROVED_NOTICE_CAUTION,
-                "Target version: v1.62.0",
-                f"Immutable tag: {tag}",
-                f"Immutable tag object: {tag_object}",
-                f"Full commit: {commit}",
-                "Evidence profile: legacy-v1",
-                f"Release page: https://github.com/davekilleen/Dex/releases/tag/{tag}",
+                f"{APPROVED_NOTICE_AVAILABLE} v1.62.0",
+                f"Release notes: https://github.com/davekilleen/Dex/releases/tag/{tag}",
                 APPROVED_NOTICE_GUIDANCE,
             )
         ),
         "publisher_authentication": "unavailable",
     }
     notice_lower = result["notice"].lower()
-    assert "update available" not in notice_lower
-    assert "safe" not in notice_lower
-    assert "current" not in notice_lower
-    assert "up to date" not in notice_lower
-    assert "verified" not in notice_lower
+    assert re.search(r"\b[0-9a-f]{40}\b", result["notice"]) is None
+    for banned in (
+        "appears to exist",
+        "has not authenticated its publisher",
+        "unverified",
+        "evidence",
+        "immutable tag",
+        "tag object",
+        "profile",
+        "full commit",
+        "authenticated",
+        "verified",
+        "safe",
+        "current",
+        "up to date",
+    ):
+        assert banned not in notice_lower
     assert all(Path(command[0]).is_absolute() for command in commands)
     assert sum("for-each-ref" in command for command in commands) == 1
     joined_commands = "\n".join(" ".join(command) for command in commands)
@@ -536,7 +543,10 @@ def test_equal_or_lower_release_yields_no_newer_observed_without_currentness_cla
     assert result["status"] == STATUS_NONE
     assert result["should_notify"] is False
     assert "not a currentness claim" in result["message"]
-    assert "up to date" not in result["message"].lower()
+    message_lower = result["message"].lower()
+    assert "up to date" not in message_lower
+    assert "verified" not in message_lower
+    assert "authenticated" not in message_lower
 
 
 def test_daily_attempt_exact_release_dedup_and_doctor_redisplay(tmp_path: Path) -> None:
@@ -554,7 +564,7 @@ def test_daily_attempt_exact_release_dedup_and_doctor_redisplay(tmp_path: Path) 
     assert exact["skip_reason"] == "exact-release-notice"
     redisplay = verifier.check(doctor_redisplay=True)
     assert redisplay["status"] == STATUS_RELEASE
-    assert redisplay["notice"].startswith(APPROVED_NOTICE_CAUTION)
+    assert redisplay["notice"].startswith(f"{APPROVED_NOTICE_AVAILABLE} v1.62.0\n")
 
 
 def test_legacy_notice_is_migrated_to_exact_release_suppression_without_mutating_it(tmp_path: Path) -> None:

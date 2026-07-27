@@ -146,11 +146,13 @@ The SessionStart hook performs one bounded daily fetch-only evidence attempt aga
 repository. It uses an isolated bare cache and never pulls, merges, resets, stages, installs, changes HEAD, or updates
 automatically.
 
-Only the `release-appears-available-unverified` state creates a notice. Preserve the hook's complete notice verbatim;
-it contains this required caution plus exact version, immutable tag, full commit, selected evidence profile, canonical
-release page, and `/dex-doctor` guidance:
+Only the `release-appears-available-unverified` state creates a notice. Preserve the hook's complete three-line notice
+verbatim; it plainly states that a newer version is available, gives its canonical release page, and points to
+`/dex-update`:
 
-> A newer Dex release appears to exist, but Dex has not authenticated its publisher. Review the exact release/tag before choosing to update.
+> A newer version of Dex is available: v[version]
+> Release notes: https://github.com/davekilleen/Dex/releases/tag/[tag]
+> Run /dex-update when you're ready — Dex never updates itself without you.
 
 Other states are silent during normal conversation:
 - `no-newer-release-observed-unverified` means only that the bounded evidence check observed no higher release. It is
@@ -159,9 +161,9 @@ Other states are silent during normal conversation:
 - `UNKNOWN` means evidence was missing, malformed, contradictory, unsupported, or unverifiable.
 - `skipped` means daily-attempt or exact-release notice dedup applied.
 
-Never shorten the notice to “update available,” and never describe release awareness as authenticated, verified,
-safe, current, or up to date. The notice appears at most once per exact release identity unless `/dex-doctor`
-explicitly requests redisplay. Uncertain evidence never clears an earlier exact notice.
+Never describe release awareness as authenticated, verified, safe, current, or up to date. The notice appears at most
+once per exact release identity unless `/dex-doctor` explicitly requests redisplay. Uncertain evidence never clears
+an earlier exact notice.
 
 If Doctor reports a pending customization migration, continue through the registered
 Customization Migration MCP status tool / `/dex-update`. Do not search for or edit capsule files directly.

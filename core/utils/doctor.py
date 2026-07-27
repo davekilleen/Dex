@@ -36,7 +36,7 @@ from core.lifecycle.model import ITEM_ID, SEMVER, AdoptionState
 from core.lifecycle.plan import PlannedAction, ReasonCode, build_adoption_plan
 from core.transaction.engine import TX_ROOT_RELATIVE, PlanEntry
 from core.transaction.journal import Journal, JournalCorruptError
-from core.utils import preflight, release_channel
+from core.utils import dex_logger, preflight, release_channel
 
 VERDICTS = frozenset({"OK", "OFF", "BROKEN", "UNKNOWN"})
 DOCTOR_SAFE_PATH = "/usr/bin:/bin:/usr/sbin:/sbin"
@@ -2432,15 +2432,92 @@ def _probe_jobs_fresh(context: DoctorContext) -> ProbeResult:
 def _preflight_snapshot(context: DoctorContext) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     with _vault_environment(context):
         health = preflight.run_preflight()
-        queue_path = preflight.get_error_queue_path()
-        queued = json.loads(queue_path.read_text()) if queue_path.exists() else []
-    if not isinstance(queued, list):
-        raise ValueError("the preflight error queue must contain a list")
+        queued = dex_logger.get_unacknowledged_errors(now=context.now)
     return health, queued
+
+
+def _historical_preflight_errors(context: DoctorContext) -> list[dict[str, Any]]:
+    with _vault_environment(context):
+        return dex_logger.get_historical_errors(now=context.now)
+
+
+def _preflight_error_queue_status(context: DoctorContext) -> str:
+    with _vault_environment(context):
+        return dex_logger.get_error_queue_status()
+
+
+def _queued_error_date(entry: dict[str, Any]) -> str:
+    timestamp = entry.get("timestamp")
+    if isinstance(timestamp, str):
+        try:
+            return datetime.fromisoformat(timestamp.replace("Z", "+00:00")).date().isoformat()
+        except ValueError:
+            pass
+    return "date unavailable"
+
+
+def _historical_error_summary(
+    context: DoctorContext,
+    entries: list[dict[str, Any]],
+) -> str | None:
+    if not entries:
+        return None
+
+    current_version = None
+    try:
+        package = json.loads((context.vault_root / "package.json").read_text())
+        if isinstance(package, dict) and isinstance(package.get("version"), str):
+            current_version = package["version"]
+    except (OSError, json.JSONDecodeError):
+        pass
+
+    previous_version_count = sum(
+        isinstance(entry.get("dexVersion"), str)
+        and current_version is not None
+        and entry["dexVersion"] != current_version
+        for entry in entries
+    )
+    count = len(entries)
+    subject = "1 earlier error" if count == 1 else f"{count} earlier errors"
+    if previous_version_count == count:
+        reason = (
+            " from a previous Dex version"
+            if count == 1
+            else " from previous Dex versions"
+        )
+    elif previous_version_count:
+        reason = (
+            " from previous Dex versions or more than "
+            f"{dex_logger.STALE_ERROR_DAYS} days ago"
+        )
+    else:
+        reason = (
+            " that is old enough to count as history"
+            if count == 1
+            else " that are old enough to count as history"
+        )
+
+    dated = [
+        _queued_error_date(entry)
+        for entry in entries
+        if _queued_error_date(entry) != "date unavailable"
+    ]
+    if dated:
+        return f"{subject}{reason}, last on {max(dated)}"
+    return f"{subject}{reason}, dates unavailable"
 
 
 def _probe_preflight_queue(context: DoctorContext) -> ProbeResult:
     health, queued = _preflight_snapshot(context)
+    if _preflight_error_queue_status(context) == "unreadable":
+        return ProbeResult(
+            "UNKNOWN",
+            "The error log could not be read, so queued errors were not checked",
+        )
+    historical_summary = _historical_error_summary(
+        context,
+        _historical_preflight_errors(context),
+    )
     server_errors = []
     core_server_names = set(preflight.SERVER_MODULES)
     try:
@@ -2454,22 +2531,32 @@ def _probe_preflight_queue(context: DoctorContext) -> ProbeResult:
         elif result.get("status") == "unknown" and name in core_server_names:
             unknown_core_servers.append(name)
     queued_errors = [
-        error.get("humanMessage") or error.get("message") or "queued background error"
+        (
+            f"{error.get('humanMessage') or error.get('message') or 'queued background error'} "
+            f"(on {_queued_error_date(error)})"
+        )
         for error in queued
-        if not error.get("acknowledged", False)
     ]
     problems = [*server_errors, *queued_errors]
     if problems:
         detail = f"Preflight reported: {'; '.join(str(problem) for problem in problems)}"
+        if historical_summary:
+            detail += f"; {historical_summary}"
         if unknown_core_servers:
             detail += f"; preflight did not check: {', '.join(sorted(unknown_core_servers))}"
         return ProbeResult("BROKEN", detail)
     if unknown_core_servers:
+        detail = f"Preflight did not check registered core servers: {', '.join(sorted(unknown_core_servers))}"
+        if historical_summary:
+            detail += f"; {historical_summary}"
         return ProbeResult(
             "UNKNOWN",
-            f"Preflight did not check registered core servers: {', '.join(sorted(unknown_core_servers))}",
+            detail,
         )
-    return ProbeResult("OK", "Preflight completed with no server or queued errors")
+    detail = "Preflight completed with no server or current queued errors"
+    if historical_summary:
+        detail += f"; {historical_summary}"
+    return ProbeResult("OK", detail)
 
 
 def _display_vault_path(context: DoctorContext, path: Path) -> str:

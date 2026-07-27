@@ -1021,6 +1021,7 @@ core/tests/test_entity_engine_cli.py
 core/tests/test_entity_engine_writers.py
 core/tests/test_entity_index.py
 core/tests/test_entity_pages.py
+core/tests/test_error_queue_lifecycle.py
 core/tests/test_feature_status.py
 core/tests/test_fixture_vault.py
 core/tests/test_founder_content_gate.py
@@ -1092,6 +1093,7 @@ core/tests/test_transcript_reconcile.py
 core/tests/test_trust_wizards.py
 core/tests/test_trusted_mcp_safety.py
 core/tests/test_update_checker.py
+core/tests/test_update_checker_real_installs.py
 core/tests/test_update_rollback_journey.py
 core/tests/test_work_server_entity_links.py
 core/tests/test_work_server_legacy_task_completion.py
