@@ -961,8 +961,12 @@ def test_hanging_journey_is_killed_and_returns_exit_two(monkeypatch, tmp_path: P
 def test_timed_out_journey_kills_delayed_descendants(monkeypatch, tmp_path: Path) -> None:
     vault = _write_valid_vault(tmp_path)
     sentinel = tmp_path / "timed-out-descendant-survived"
+    # The survival window and the post-run wait below are seconds apart on purpose:
+    # with a tight margin (formerly 0.7s sleep / 0.8s wait) a CPU-starved descendant
+    # on a loaded runner could be delayed past the check and fake a pass even when
+    # the kill logic is broken. Wide margins keep this test honest under parallel load.
     descendant = (
-        "import time; from pathlib import Path; time.sleep(0.7); "
+        "import time; from pathlib import Path; time.sleep(2.5); "
         f"Path({str(sentinel)!r}).touch()"
     )
     parent = (
@@ -981,7 +985,7 @@ def test_timed_out_journey_kills_delayed_descendants(monkeypatch, tmp_path: Path
         repo_root=REPO_ROOT,
         journey_definitions=(_definition("configs", 0.4),),
     )
-    time.sleep(0.8)
+    time.sleep(4.0)
 
     assert run.exit_code == 2
     assert "timed out" in run.report["journeys"][0]["detail"]
@@ -1020,8 +1024,11 @@ def test_hanging_preparation_is_killed_within_the_journey_budget(monkeypatch, tm
 def test_normal_journey_exit_cleans_up_same_group_descendants(monkeypatch, tmp_path: Path) -> None:
     vault = _write_valid_vault(tmp_path)
     sentinel = tmp_path / "orphan-survived"
+    # Wide survival/check margins for the same reason as the timed-out-descendant
+    # test above: a starved descendant must not be able to slip past the check
+    # window on a loaded runner and mask broken cleanup.
     descendant = (
-        "import time; from pathlib import Path; time.sleep(0.5); "
+        "import time; from pathlib import Path; time.sleep(2.5); "
         f"Path({str(sentinel)!r}).touch()"
     )
     parent = (
@@ -1041,7 +1048,7 @@ def test_normal_journey_exit_cleans_up_same_group_descendants(monkeypatch, tmp_p
         repo_root=REPO_ROOT,
         journey_definitions=(_definition("configs"),),
     )
-    time.sleep(0.7)
+    time.sleep(4.0)
 
     assert run.exit_code == 0
     assert not sentinel.exists()
