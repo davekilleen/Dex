@@ -339,6 +339,15 @@ except Exception:
     fi
 fi
 
+# 21. Unprocessed synced meetings — detect only; processing happens via /process-meetings.
+if [[ -f "$ONBOARDING_MARKER" ]]; then
+    MEETING_QUEUE_OUTPUT=$(node "$CLAUDE_DIR/.claude/hooks/meeting-queue-check.cjs" "$CLAUDE_DIR" 2>/dev/null || true)
+    if [[ -n "$MEETING_QUEUE_OUTPUT" ]]; then
+        echo "$MEETING_QUEUE_OUTPUT"
+        echo ""
+    fi
+fi
+
 # Background job staleness — keep in sync with core/utils/doctor.py's JOB_FRESHNESS table.
 {
     DEX_LAUNCH_AGENTS_DIR="${DEX_LAUNCH_AGENTS_DIR:-$HOME/Library/LaunchAgents}"

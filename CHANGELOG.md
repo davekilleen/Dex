@@ -7,6 +7,16 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.79.0] — 📋 Your meetings get dealt with without you asking (2026-07-28)
+
+Once Granola was connected, your meetings did arrive in Dex on their own — but turning them into something useful (updated pages for the people you met, tasks from what you agreed to do, tidy notes) still waited for you to ask. If you never asked, meetings quietly piled up half-done. The docs promised meetings "flow in on their own" — this release makes that promise true.
+
+**What this fixes for you:**
+
+* **Waiting meetings get handled when you start a session.** When you open Dex and there are meetings that haven't been dealt with yet, Dex notices and processes them in the background — person pages updated, tasks pulled out, notes filed — while you get on with whatever you came to do. It tells you in one line that it's happening.
+* **Nothing gets done twice.** A meeting that's already been processed is never picked up again, and if you have several Dex windows open at once they won't trip over each other — the check stands down for half an hour once one of them has taken the job.
+* **Silence when there's nothing to do.** No message when everything's up to date, and nothing at all if you haven't connected Granola — this feature simply doesn't exist for you until you do.
+
 ## [1.78.0] — 📓 Your goals and career pages come back (2026-07-28)
 
 Last week I made Quarter Goals and Career optional — off unless you asked for them — and retired the starter pages that came with each one. That was the wrong call, and one user found out the hard way. They had written a quarter's worth of real goals into the goals page Dex had given them. When that page stopped being part of Dex, their update stopped working. The safety check did its job and refused to run rather than touch the file — but nothing had ever warned them that a page they'd come to rely on was being taken away, and they had to dig their goals out of an old copy themselves.

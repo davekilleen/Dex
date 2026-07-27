@@ -66,6 +66,12 @@ After setup, `/process-meetings` reads synced files and updates your vault:
 
 People qualify after 2+ meetings across 2+ weeks, or after 2+ meetings where at least one has a transcript. An attendee without an email is tracked but never auto-created. In Obsidian mode, auto-linking points names at the person pages' actual vault paths.
 
+## Session-Start Detection
+
+Once Granola is connected, session start checks for synced meetings still waiting for `/process-meetings`: recent notes without a `tasks-extracted` marker that either have `ai_analyzed: false` or an unchecked `### For Me` item. A notice is limited to once every 30 minutes through `System/.last-meeting-queue-notice`, and the check stays silent when Granola is not connected or nothing is waiting.
+
+The detector never processes or edits a meeting. `/process-meetings` still owns that work and continues to respect the vault's `entity_creation` setting.
+
 ## What Gets Extracted
 
 The background sync uses your LLM API to extract:
