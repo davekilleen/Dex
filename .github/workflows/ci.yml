@@ -138,6 +138,7 @@ jobs:
           echo "Runner cores: $(sysctl -n hw.ncpu)"
           pytest core/tests/ core/mcp/tests/ core/migrations/tests/ -v -m "not fuzz" \
             --splits 3 --group ${{ matrix.shard }} --durations-path .ci/test-durations.json \
+            --splitting-algorithm least_duration \
             -n auto --dist loadgroup \
             --junitxml=.logs/pytest-report-shard-${{ matrix.shard }}.xml \
             --cov=core
@@ -205,7 +206,9 @@ jobs:
           # A present-but-corrupt shard file only WARNS in `coverage combine`; the
           # count assertion turns a partially-combined total into a hard failure.
           coverage combine --keep coverage-shard-1.data coverage-shard-2.data coverage-shard-3.data | tee combine.log
-          [ "$(grep -c '^Combined data file' combine.log)" = "3" ] || { echo "Expected 3 combined shard data files." >&2; exit 1; }
+          COMBINED=$(grep -oE '^Combined [0-9]+ files?' combine.log | grep -oE '[0-9]+' || true)
+          PER_FILE=$(grep -c '^Combined data file' combine.log || true)
+          [ "$COMBINED" = "3" ] || [ "$PER_FILE" = "3" ] || { echo "Expected 3 combined shard data files (saw: $(cat combine.log))." >&2; exit 1; }
           coverage json -o coverage.json
           coverage report --fail-under="${COVERAGE_MIN_TOTAL}"
       - name: Touched-file coverage gate
