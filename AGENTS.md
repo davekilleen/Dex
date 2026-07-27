@@ -59,7 +59,10 @@ UI copy, not like docs.
   `docs/plans/2026-07-24-customization-migration-mcp.md`
 - Doctor: `docs/dex-doctor-spec.md` · Merge gates: `docs/merge-gates.md`
 - Distribution: `DISTRIBUTION_READY.md`, `docs/Dex_System/Distribution_Checklist.md`
-- Past root causes and runbooks: `docs/solutions/`
+- Past root causes, runbooks and practice learnings: `docs/solutions/` —
+  organised by category, searchable on frontmatter (`module`, `tags`,
+  `problem_type`)
+- Shared domain vocabulary: `CONCEPTS.md`
 - System docs canon: `docs/Dex_System/` is canonical; the copies under
   `06-Resources/Dex_System/` are compatibility bridge files — keep them
   byte-identical until the physical move lands (see `docs/Dex_System/README.md`).
