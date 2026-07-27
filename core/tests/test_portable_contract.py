@@ -237,6 +237,24 @@ def test_update_write_verdict_operation_is_keyword_only_with_update_default() ->
     assert parameters["operation"].kind is inspect.Parameter.KEYWORD_ONLY
 
 
+def test_capability_state_operation_only_authorizes_the_live_profile() -> None:
+    allowed = portable_contract.update_write_verdict(
+        "System/user-profile.yaml",
+        exists=True,
+        operation="capability-state",
+    )
+    refused = portable_contract.update_write_verdict(
+        "System/user-profile-template.yaml",
+        exists=True,
+        operation="capability-state",
+    )
+
+    assert allowed.allowed is True
+    assert allowed.action == "write-capability-state"
+    assert refused.allowed is False
+    assert refused.action == "outside-capability-state"
+
+
 @pytest.mark.parametrize(
     "path",
     [
@@ -388,8 +406,9 @@ def test_capability_rooms_cover_gated_regions() -> None:
     assert "meetings" not in capabilities
     assert "people" not in capabilities
     assert "tasks" not in capabilities
-    # Rooms default OFF: a fresh spine-only install is the baseline.
-    assert all(spec["default_enabled"] is False for spec in capabilities.values())
+    assert capabilities["career"]["default_enabled"] is False
+    assert capabilities["companies"]["default_enabled"] is True
+    assert capabilities["quarter_goals"]["default_enabled"] is False
 
 
 def test_committed_dist_matches_source_of_truth() -> None:

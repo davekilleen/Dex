@@ -110,7 +110,10 @@ test('auto mode NFC-normalizes decomposed names at filename ingestion', () => wi
 }));
 
 test('unavailable engine queues the create and does not claim the page was created', () => withVault(vault => {
-  const profile = { entity_creation: { mode: 'auto' } };
+  const profile = {
+    entity_creation: { mode: 'auto' },
+    capabilities: { companies: { enabled: false } },
+  };
   const first = processEntityCreation(
     meetings('external', 'example.com'),
     profile,
@@ -524,7 +527,10 @@ test('suggest mode writes one deduplicated company suggestion', () => withVault(
 }));
 
 test('companies room off records people but neither creates nor suggests companies', () => withVault(vault => {
-  const result = processEntityCreation(companyMeetings(), { entity_creation: { mode: 'auto' } });
+  const result = processEntityCreation(companyMeetings(), {
+    entity_creation: { mode: 'auto' },
+    capabilities: { companies: { enabled: false } },
+  });
   assert.equal(result.created.length, 2);
   assert.deepEqual(result.companies_created, []);
   assert.deepEqual(result.companies_suggested, []);

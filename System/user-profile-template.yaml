@@ -126,7 +126,7 @@ capabilities:
   career:
     enabled: false
   companies:
-    enabled: false
+    enabled: true
   quarter_goals:
     enabled: false
 

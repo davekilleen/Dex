@@ -470,10 +470,10 @@ def _write_entity_profile(vault: Path, mode: str) -> None:
     profile = yaml.safe_load(profile_path.read_text(encoding="utf-8")) or {}
     profile["email_domain"] = "dex.test"
     profile["entity_creation"] = {"mode": mode}
+    profile.setdefault("capabilities", {})["companies"] = {"enabled": True}
     profile_path.write_text(yaml.safe_dump(profile, sort_keys=False), encoding="utf-8")
-    # The entity fixture models an ACTIVE, already-onboarded vault; the marker
-    # engages the legacy capability bridge (rooms keep their pre-rooms status
-    # quo) that background company creation depends on.
+    # The entity fixture opts into company creation explicitly; existing vaults
+    # without a Companies opinion must remain off when the fresh default changes.
     (vault / "System" / ".onboarding-complete").write_text("{}\n", encoding="utf-8")
 
 

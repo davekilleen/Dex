@@ -356,9 +356,42 @@ from core.lifecycle import service
 from core.lifecycle.catalog import load_catalog_payload_sources
 
 vault = Path(sys.argv[1])
+preview_only = sys.argv[3] == "preview-only"
+compatibility = (
+    (
+        service._preview_missing_companies_default(vault)
+        if preview_only
+        else service._pin_missing_companies_default(vault)
+    )
+    if sys.argv[2] == "pin-companies"
+    else {"pinned": False, "receipt": None, "preview": None, "states": {}}
+)
+if preview_only:
+    print(json.dumps({
+        "ok": True,
+        "api_version": service.api_version,
+        "previewed": [],
+        "receipt": None,
+        "compatibility_pinned": compatibility["pinned"],
+        "compatibility_receipt": None,
+        "compatibility_preview": compatibility.get("preview"),
+        "compatibility_states": compatibility["states"],
+        "skipped": "dry-run",
+    }))
+    raise SystemExit(0)
 catalog = vault / "System/.release-catalog.json"
 if not catalog.is_file():
-    print(json.dumps({"ok": True, "api_version": service.api_version, "previewed": [], "receipt": None, "skipped": "no-release-catalog"}))
+    print(json.dumps({
+        "ok": True,
+        "api_version": service.api_version,
+        "previewed": [],
+        "receipt": None,
+        "compatibility_pinned": compatibility["pinned"],
+        "compatibility_receipt": compatibility["receipt"],
+        "compatibility_preview": None,
+        "compatibility_states": compatibility["states"],
+        "skipped": "no-release-catalog",
+    }))
     raise SystemExit(0)
 
 inventory = service.build_inventory_and_plan(vault)
@@ -387,17 +420,36 @@ if requested:
         preview["preview"],
         preview["approval_token"],
     )["receipt"]
-print(json.dumps({"ok": True, "api_version": service.api_version, "previewed": requested, "receipt": receipt}))
+print(json.dumps({
+    "ok": True,
+    "api_version": service.api_version,
+    "previewed": requested,
+    "receipt": receipt,
+    "compatibility_pinned": compatibility["pinned"],
+    "compatibility_receipt": compatibility["receipt"],
+    "compatibility_preview": None,
+    "compatibility_states": compatibility["states"],
+}))
 `;
 
-function routeAdoptionThroughLifecycleService(vaultRoot) {
+function routeAdoptionThroughLifecycleService(
+  vaultRoot,
+  { pinCompanies = true, previewOnly = false } = {},
+) {
   const python = process.env.DEX_LIFECYCLE_PYTHON
+    || process.env.DEX_PYTHON
     || (process.platform === 'win32' ? 'python' : 'python3');
   const repoRoot = path.resolve(__dirname, '..');
   const separator = process.platform === 'win32' ? ';' : ':';
   const result = childProcess.spawnSync(
     python,
-    ['-c', LIFECYCLE_ADOPTION, vaultRoot],
+    [
+      '-c',
+      LIFECYCLE_ADOPTION,
+      vaultRoot,
+      pinCompanies ? 'pin-companies' : 'skip-companies',
+      previewOnly ? 'preview-only' : 'execute',
+    ],
     {
       cwd: repoRoot,
       encoding: 'utf8',
@@ -509,15 +561,35 @@ function provision(options) {
       return reporter.summary;
     }
     try {
-      reporter.summary.lifecycle_executor = options.dryRun
-        ? { ok: true, previewed: [], receipt: null, skipped: 'dry-run' }
-        : routeAdoptionThroughLifecycleService(vaultRoot);
-      const lifecycleReceipt = reporter.summary.lifecycle_executor.receipt;
+      reporter.summary.lifecycle_executor = routeAdoptionThroughLifecycleService(
+        vaultRoot,
+        { previewOnly: options.dryRun },
+      );
+      const lifecycleReceipts = [
+        reporter.summary.lifecycle_executor.compatibility_receipt,
+        reporter.summary.lifecycle_executor.receipt,
+      ].filter(Boolean);
+      const lifecycleDeclaredPaths = lifecycleReceipts.flatMap(
+        receipt => receipt.declared_paths
+          || (receipt.files_written || []).map(file => file.path),
+      );
+      const compatibilityPreviewPaths = (
+        reporter.summary.lifecycle_executor.compatibility_preview?.writes || []
+      ).map(write => write.path);
+      const lifecycleTransactionIds = lifecycleReceipts
+        .map(receipt => receipt.transaction_id)
+        .filter(Boolean);
       reporter.summary.mutation_receipt = {
         executor: 'lifecycle-service',
-        declared_paths: (lifecycleReceipt?.files_written || []).map(file => file.path).sort(),
-        lifecycle_transaction_id: lifecycleReceipt?.transaction_id || null,
+        declared_paths: [...lifecycleDeclaredPaths, ...compatibilityPreviewPaths]
+          .filter((file, index, files) => files.indexOf(file) === index)
+          .sort(),
+        lifecycle_transaction_id: lifecycleTransactionIds[0] || null,
+        lifecycle_transaction_ids: lifecycleTransactionIds,
       };
+      reporter.summary.compatibility_pins = reporter.summary.lifecycle_executor.compatibility_pinned
+        ? ['companies']
+        : [];
     } catch (error) {
       reporter.error(error.message);
     }
@@ -525,8 +597,14 @@ function provision(options) {
   }
 
   try {
-    if ((options.adopt || options.onboard) && !options.dryRun) {
-      reporter.summary.lifecycle_executor = routeAdoptionThroughLifecycleService(vaultRoot);
+    if (options.adopt || options.onboard) {
+      reporter.summary.lifecycle_executor = routeAdoptionThroughLifecycleService(
+        vaultRoot,
+        {
+          pinCompanies: options.adopt === true,
+          previewOnly: options.dryRun,
+        },
+      );
     }
     const overlay = loadProfileOverlay(options.profile);
     const templatePath = path.join(vaultRoot, 'System', 'user-profile-template.yaml');
@@ -537,6 +615,15 @@ function provision(options) {
 
     if (fs.existsSync(profilePath)) {
       profile = yaml.load(fs.readFileSync(profilePath, 'utf8')) || {};
+      if (options.adopt && options.dryRun) {
+        profile.capabilities ||= {};
+        for (const [room, enabled] of Object.entries(
+          reporter.summary.lifecycle_executor?.compatibility_states || {},
+        )) {
+          profile.capabilities[room] ||= {};
+          profile.capabilities[room].enabled = enabled;
+        }
+      }
       if (options.onboard) {
         profile = freshProfile;
         writeIfChanged(
@@ -552,8 +639,13 @@ function provision(options) {
         const gapDefaults = structuredClone(freshProfile);
         delete gapDefaults.entity_creation;
         for (const [room, definition] of Object.entries(portableContract.capabilities || {})) {
-          if (!profile.capabilities?.[room] && typeof definition.config === 'string') {
-            gapDefaults.capabilities[room].enabled = capabilityEnabled(profile, room, definition);
+          const explicit = profile.capabilities?.[room]?.enabled;
+          if (typeof explicit === 'boolean') continue;
+          const legacy = typeof definition.config === 'string'
+            ? profile?.[definition.config]?.enabled
+            : undefined;
+          if (typeof legacy === 'boolean') {
+            gapDefaults.capabilities[room].enabled = legacy;
           }
         }
         if (deepFillMissing(profile, gapDefaults)) {
@@ -656,6 +748,17 @@ function provision(options) {
     reporter.error(error.message);
   }
 
+  const lifecycleReceipts = [
+    reporter.summary.lifecycle_executor?.compatibility_receipt,
+    reporter.summary.lifecycle_executor?.receipt,
+  ].filter(Boolean);
+  const lifecycleTransactionIds = lifecycleReceipts
+    .map(receipt => receipt.transaction_id)
+    .filter(Boolean);
+  const lifecycleDeclaredPaths = lifecycleReceipts.flatMap(
+    receipt => receipt.declared_paths
+      || (receipt.files_written || []).map(file => file.path),
+  );
   reporter.summary.mutation_receipt = {
     executor: options.adopt || options.onboard
       ? 'lifecycle-service+provision-contract'
@@ -663,8 +766,10 @@ function provision(options) {
     declared_paths: [...new Set([
       ...reporter.summary.created,
       ...reporter.summary.removed,
+      ...lifecycleDeclaredPaths,
     ])].sort(),
-    lifecycle_transaction_id: reporter.summary.lifecycle_executor?.receipt?.transaction_id || null,
+    lifecycle_transaction_id: lifecycleTransactionIds[0] || null,
+    lifecycle_transaction_ids: lifecycleTransactionIds,
   };
 
   return reporter.summary;

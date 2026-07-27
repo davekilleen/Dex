@@ -368,11 +368,25 @@ def check_granola() -> Dict[str, Any]:
         "setup": "/granola-setup",
     }
 
+def _capability_states(
+    selected: Dict[str, bool] | None = None,
+) -> Dict[str, bool]:
+    selected = selected or {}
+    states: Dict[str, bool] = {}
+    for room in capability_rooms.room_ids():
+        if room in selected:
+            states[room] = selected[room] is True
+            continue
+        default = capability_rooms.surfaces_for(room).get("default_enabled", False)
+        states[room] = default if isinstance(default, bool) else False
+    return states
+
+
 def _provision_folders(capability_states: Dict[str, bool] | None = None) -> List[str]:
     folders = list(PROVISION_CONTRACT["para_directories"])
-    states = capability_states or {}
+    states = _capability_states(capability_states)
     for room in capability_rooms.room_ids():
-        if states.get(room, False) is True:
+        if states[room] is True:
             folders.extend(capability_rooms.surfaces_for(room).get("folders", []))
     return list(dict.fromkeys(folders))
 
@@ -384,9 +398,9 @@ def _finalize_through_provisioner(session: Dict) -> Dict[str, Any]:
         {"name": pillar, "description": ""}
         for pillar in data.get("pillars", [])
     ]
-    selected = data.get("capabilities", {})
+    selected = _capability_states(data.get("capabilities"))
     data["capabilities"] = {
-        room: {"enabled": selected.get(room, False) is True}
+        room: {"enabled": selected[room]}
         for room in capability_rooms.room_ids()
     }
     profile_path: Path | None = None
@@ -1291,7 +1305,7 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[types.Text
                 save_session(session)
                 result = create_success_response({"step": 6, "completed": True}, "Step 6 complete")
 
-            # Step 7: Optional capability rooms (all default off)
+            # Step 7: Optional capability rooms (contract-declared defaults)
             elif step_number == 7:
                 supplied = step_data.get('capabilities', {})
                 if not isinstance(supplied, dict):
@@ -1311,11 +1325,10 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[types.Text
                     for room in capability_rooms.room_ids():
                         if invalid_field:
                             break
-                        value = supplied.get(room, False)
-                        if not isinstance(value, bool):
+                        if room in supplied and not isinstance(supplied[room], bool):
                             invalid_field = f"capabilities.{room}"
                             break
-                        selected[room] = value
+                    selected = _capability_states(supplied)
                     if invalid_field:
                         result = create_error_response(
                             f"{invalid_field} must be true or false",
@@ -1534,7 +1547,9 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[types.Text
                 logger.info("Finalize (DRY RUN) - previewing what would be created")
 
                 # Compute folders that would be created
-                selected_capabilities = session['data'].get('capabilities', {})
+                selected_capabilities = _capability_states(
+                    session['data'].get('capabilities')
+                )
                 para_folders = _provision_folders(selected_capabilities)
                 would_create_folders = [f for f in para_folders if not (BASE_DIR / f).exists()]
                 already_exist_folders = [f for f in para_folders if (BASE_DIR / f).exists()]
@@ -1576,7 +1591,7 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[types.Text
                     'entity_creation': {'mode': 'auto'},
                     'communication': data.get('communication', {}),
                     'capabilities': {
-                        room: {'enabled': selected_capabilities.get(room, False) is True}
+                        room: {'enabled': selected_capabilities[room]}
                         for room in capability_rooms.room_ids()
                     },
                 }
