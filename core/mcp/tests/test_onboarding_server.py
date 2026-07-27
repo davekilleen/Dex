@@ -781,7 +781,7 @@ class TestCapabilityStep:
                 onboarding_server.handle_call_tool(
                     "validate_and_save_step",
                     {
-                        "step_number": 7,
+                        "step_number": 8,
                         "step_data": {"capabilities": {"career": True}},
                     },
                 )
