@@ -122,12 +122,27 @@ def test_work_company_creation_uses_engine_create_primitive(
     assert result["success"] is True
     assert len(calls) == 1
     assert calls[0][0] == companies_dir / "Engine_Company.md"
-    assert calls[0][1] == render_company_page(
+
+    canonical = render_company_page(
         "Engine Company",
         domains=["engine.example"],
         website="https://engine.example",
         status="Customer",
     )
+    written = calls[0][1]
+
+    # The machine-managed half must stay byte-identical to the canonical
+    # renderer: the entity engine's domain matching depends on that shape.
+    canonical_frontmatter = canonical.split("---", 2)[2].split("## Notes")[0]
+    assert written.split("---", 2)[2].split("## Notes")[0] == canonical_frontmatter
+    assert written.startswith(canonical.split("# Engine Company")[0])
+
+    # industry and size have no canonical frontmatter field, but the tool
+    # accepts them, so they are recorded under Notes rather than discarded.
+    notes = written.split("## Notes", 1)[1].split("## Relationships", 1)[0]
+    assert "**Industry:** Software" in notes
+    assert "**Size:** Scale-up" in notes
+
     assert calls[0][2] == companies_dir
 
 
