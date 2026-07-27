@@ -1,3 +1,4 @@
+.agents/README.md
 .agents/skills/getting-started/SKILL.md
 .agents/skills/industry-truths/SKILL.md
 .agents/skills/process-meetings/SKILL.md
@@ -679,6 +680,7 @@
 07-Archives/Projects/README.md
 07-Archives/README.md
 07-Archives/Reviews/README.md
+AGENTS.md
 CHANGELOG.md
 CLAUDE.md
 COMMERCIAL_LICENSE.md
@@ -711,6 +713,7 @@ System/user-profile.yaml
 core/__init__.py
 core/capabilities.py
 core/customization_migration/__init__.py
+core/customization_migration/activation.py
 core/customization_migration/behaviour.py
 core/customization_migration/capsule.py
 core/customization_migration/capsule_model.py
@@ -982,6 +985,7 @@ core/tests/test_create_person.py
 core/tests/test_credential_remediation.py
 core/tests/test_credential_scanner.py
 core/tests/test_credential_workflow.py
+core/tests/test_customization_activation.py
 core/tests/test_customization_assessment.py
 core/tests/test_customization_assessment_depth.py
 core/tests/test_customization_assessment_doctor.py
@@ -989,7 +993,9 @@ core/tests/test_customization_assessment_planning.py
 core/tests/test_customization_capsule_contracts.py
 core/tests/test_customization_capsule_create.py
 core/tests/test_customization_journey_skills.py
+core/tests/test_customization_lifecycle_boundary.py
 core/tests/test_customization_migration_cli.py
+core/tests/test_customization_migration_service.py
 core/tests/test_customization_migration_status_doctor.py
 core/tests/test_customization_regeneration_planning.py
 core/tests/test_customization_staging.py
@@ -1139,11 +1145,11 @@ docs/Dex_System/Named_Sessions_Guide.md
 docs/Dex_System/Obsidian_Guide.md
 docs/Dex_System/README.md
 docs/Dex_System/Updating_Dex.md
-docs/FAQ-DRAFT.md
 docs/analytics-proxy.md
 docs/architecture/DEX-CORE-MAP.md
 docs/architecture/INVENTORY.md
 docs/architecture/STATE.md
+docs/assets/dex-hero.gif
 docs/calendar-performance.md
 docs/credential-remediation.md
 docs/customization-migration-threat-model.md

@@ -4,7 +4,7 @@
 >
 > **Status vocabulary.** `SHIPPED` = in a released version tag. `LOCAL` = merged on `main`, not yet in a release tag. `PROTOTYPE` = built, not verified against live/real use. `PLANNED` = designed, not built.
 >
-> **Ground truth as of** HEAD on `main`, latest release tag **v1.75.2** (2026-07-26). `LOCAL` delta after the tag: PR #248 (customization-migration Lane G — activation + rewind, merged but **HELD**, see §12) and PR #249 (docs pointing new users at the Dex Guide).
+> **Ground truth as of** HEAD on `main`, latest release tag **v1.75.2** (2026-07-26). The untagged tree contains PR #248 (customization-migration activation + rewind engine), PR #249 (Dex Guide pointers), PR #251 (documentation refresh), and this branch's authorized human-confirmed rebuild doorway. None of that post-tag work is shipped in v1.75.2.
 >
 > **Don't duplicate generated files.** Tool lists, skill lists, ownership-class path tables, and MCP↔skill wiring live in the auto-generated `docs/architecture/INVENTORY.md`. This map cross-references it; it does not restate it.
 >
@@ -22,7 +22,7 @@
 | Release catalog + bridge | **SHIPPED** (v1.65–v1.68) | `core/lifecycle/catalog/*`, `bridge.py` | Publisher-declared packing list per release; one-release handoff from the legacy updater |
 | 10 MCP servers | **SHIPPED** (mixed ages) | `core/mcp/*_server.py` | The tool surface Dex acts through; Work MCP is the giant (46 tools) |
 | Connection Manager (OAuth/token) | **SHIPPED ENGINE, `/connect` HELD** | `core/integrations/connection-manager/` | Local-first OAuth via Nango catalog-as-data; encrypted on-device tokens; hardened through security Phases 0–5g, but the `/connect` doorway stays held (draft PR #231) |
-| Customization migration | **SHIPPED** assess/capsule/guided-journey (v1.75.x) / **LOCAL+HELD** activation (Lane G) | `core/customization_migration/*`, `core/mcp/customization_migration_server.py` | Inventories a user's customizations, snapshots them into a consent-gated Capsule, and guides customized setups through updates; the activation/rewind lane is merged but deliberately not live |
+| Customization migration | **SHIPPED** assess/capsule/guided-journey (v1.75.x) / **LOCAL** rebuild engine and doorway | `core/customization_migration/*`, `core/mcp/customization_migration_server.py` | Inventories customizations, preserves a Capsule, and offers a human-confirmed, receipt-backed rebuild and rewind; the doorway is authorized but remains unshipped until its release |
 | DexDiff (methodology sharing) | **SHIPPED** cmd surface / **PARKED** redesign | `.claude/skills/diff-*`, `core/dexdiff_profile_adopt.py` | Generate→publish→adopt-regenerates-locally; redesign parked for the desktop "Vorflux" rebuild |
 | Entity engine + gardener + relationships | **SHIPPED** (v1.37 / v1.44 / v1.71–v1.73) | `core/entity_engine/*`, `core/entity_maintenance.py` | Auto-creates person/company pages, logs meeting touches, classifies relationship temperature, resurfaces relationships going cold, and maintains typed person↔company relationships (suggested-until-confirmed) |
 | Ritual intelligence | **PARKED** (code-complete, unwired) | `core/ritual_intelligence/*` | Meeting-intelligence pipeline built Mar 2026, tested in CI, but never wired to any skill/hook/MCP; its beta preview surface was explicitly retracted (see CHANGELOG) |
@@ -96,10 +96,10 @@
 | `dex-onboarding-mcp` | `onboarding_server.py` | 8 | **no** |
 | `dex-session-memory` | `session_memory_server.py` | 8 | **no** |
 | `dex-granola-mcp` | `granola_server.py` | 6 | yes |
-| `dex-customization-migration-mcp` | `customization_migration_server.py` | 4 | yes |
+| `dex-customization-migration-mcp` | `customization_migration_server.py` | 7 | yes |
 | `dex-analytics` | `analytics_server.py` | 4 | yes |
 
-**The big one.** `dex-work-mcp` is 46 tools (tasks, people/company indexes, goals, priorities, meeting cache, external task sync, focus/scheduling, relationship confirm/dismiss, soft-commitment detection). It is the spine of `/daily-plan`, `/week-plan`, `/process-meetings`. Per INVENTORY's connectedness section, four servers are **under-surfaced** (0 skills reference them): `dex-career-mcp`, `dex-resume-mcp`, `dex-session-memory`, and `dex-customization-migration-mcp` (the last is intentional — it's invoked by Doctor/agents directly, not via a skill). `dex-analytics` is **over-surfaced** (28 skills call `track_event`).
+**The big one.** `dex-work-mcp` is 46 tools (tasks, people/company indexes, goals, priorities, meeting cache, external task sync, focus/scheduling, relationship confirm/dismiss, soft-commitment detection). It is the spine of `/daily-plan`, `/week-plan`, `/process-meetings`. Per INVENTORY's connectedness section, three servers are **under-surfaced** (0 skills reference them): `dex-career-mcp`, `dex-resume-mcp`, and `dex-session-memory`. The customization-migration MCP is now surfaced through `/dex-update` for Capsule evidence and readable blob access. `dex-analytics` is **over-surfaced** (28 skills call `track_event`).
 
 **Honesty-contract gap.** Three servers lack `feature_status` (`dex-improvements-mcp`, `dex-onboarding-mcp`, `dex-session-memory`) — meaning they don't return the ok/off/not_installed/broken/unknown status envelope the rest do. That's the honest weak spot in the "every MCP tells you its health" story.
 
@@ -170,13 +170,13 @@
 
 **How it connects.** The inventory generator parses `core/mcp/*_server.py`, `.claude/skills/*/SKILL.md`, and `core/portable_contract.py` by AST/regex, so the drift gate fails CI if code and INVENTORY diverge. This map is the human narrative layer above that machine inventory — read both: INVENTORY for exact lists, this map for what's real, what's shipped, and how it fits. STATE.md has no CI gate — refresh it (`python3 scripts/dex_state.py --write`) whenever you touch this map.
 
-## 12. Customization migration — SHIPPED assess/capsule/guided-journey (v1.75.x) / LOCAL+HELD activation
+## 12. Customization migration — SHIPPED assess/capsule/guided-journey (v1.75.x) / LOCAL rebuild doorway
 
 **What it is.** The machinery that lets an update respect a user's customizations instead of silently overwriting or stranding them. Built as lanes A–H over 2026-07-23→26: Doctor produces a **read-only inventory** of everything the user has customized (edited skills, added scripts, custom instructions) with sensitivity classification (v1.75.1); a consent-gated, protected local **Capsule** snapshots the customization evidence through the sealed transaction (Lanes C/E-staging/F); `/dex-update` offers a **guided journey** for deeply customized setups — shows the inventory, explains impact, walks step by step (Lane H, v1.75.2); regeneration candidates are validated before anything is proposed (#238).
 
-**Where it lives.** `core/customization_migration/` (17 modules: `service.py`, `capsule.py`/`capsule_model.py`, `inventory.py`, `sensitivity.py`, `planning.py`, `staging.py`, `verification.py`, `activation.py`, `behaviour.py`, `registration.py`, `references.py`, `report.py`, `state.py`, `model.py`, `cli.py`, …) + the `dex-customization-migration-mcp` server (4 read-only tools; invoked by Doctor/agents directly, not via a skill). Lane A's binding contracts: `docs/customization-migration-threat-model.md`; build plan: `docs/plans/2026-07-24-customization-migration-mcp.md`.
+**Where it lives.** `core/customization_migration/` (17 modules: `service.py`, `capsule.py`/`capsule_model.py`, `inventory.py`, `sensitivity.py`, `planning.py`, `staging.py`, `verification.py`, `activation.py`, `behaviour.py`, `registration.py`, `references.py`, `report.py`, `state.py`, `model.py`, `cli.py`, …) + the `dex-customization-migration-mcp` server (7 read-only tools, including digest-bound access to sensitivity-approved Capsule text blobs; surfaced through `/dex-update` and Doctor). Lane A's binding contracts: `docs/customization-migration-threat-model.md`; build plan: `docs/plans/2026-07-24-customization-migration-mcp.md`.
 
-**⚠️ HELD, not live:** Lane G — **activation + rewind** (make a verified rebuild live, reversibly; PR #248) — is merged on `main` but deliberately **not released and not switched on**, pending a second adversarial review and a real-vault rehearsal. Do not describe activation as a shipped capability.
+**LOCAL, not shipped:** Lane G's activation + rewind engine is merged and rehearsal-proven. The rebuild doorway on this branch adds the human-confirmed CLI journey through staging, verification, activation, status, recovery, and receipt-backed rewind. The MCP remains read-only and exposes bounded Capsule evidence, readable text blobs, and status. This doorway is authorized for release, but it is not available to users until this branch is merged and a release containing it is published.
 
 **How it connects.** Wired into the lifecycle engine (§1) — the guided journey runs inside `/dex-update`; capsule writes go through the sealed transaction (§2); Doctor reads the assessment via the MCP server.
 
@@ -195,13 +195,13 @@ Concrete non-obvious things that a fresh agent would get wrong by reasoning from
 3. **`career-evidence-capture.cjs` was silently dead (fixed, PR #180).** It read hook input from an env var (`CLAUDE_HOOK_CONTEXT`) when Claude Code delivers it on stdin — so it no-opped on every invocation while looking like a working feature. PR #180 fixed it and added a contract test guarding the whole hook family.
 4. **Three MCP servers lack the `feature_status` honesty contract** (`dex-improvements`, `dex-onboarding`, `dex-session-memory`) — so the "every feature reports its own health" promise has real holes.
 5. **The observation layer / health-checkers are UNTRACKED local files, not product** — easy to mistake local cruft on the maintainer's disk for shipped Core. Separately, **`/diff-adopt` edits CLAUDE.md + registers hooks outside the lifecycle safe-door** — a real exception to the "one safe door for every change" story worth knowing before you touch it.
-6. **Merged ≠ live, twice over.** Customization-migration Lane G (activation + rewind) is merged on `main` but HELD (§12), and `ritual_intelligence` is a whole CI-green subsystem that nothing invokes (§13). Reasoning from "the code exists and tests pass" to "the feature ships" gets both of these wrong.
+6. **Built ≠ shipped, twice over.** Customization-migration activation + rewind is rehearsal-proven and its doorway is authorized, but the doorway is still untagged (§12); `ritual_intelligence` is a whole CI-green subsystem that nothing invokes (§13). Reasoning from "the code exists and tests pass" to "the feature ships" gets both of these wrong.
 
 ---
 
 ## Open questions / statuses to re-verify on next refresh
 
 - **Connection Manager doorway.** Phases 5f–5g closed named criticals; whether they satisfy the Phase 5e redesign requirements (OS-bound decryptor/consumer identity + default-access contract) is a security-review call, not a docs call. Until a review explicitly lifts the no-go, this map says HELD.
-- **Customization-migration Lane G (activation + rewind).** Merged but HELD pending a second adversarial review + real-vault rehearsal. Flip §12 when that gate passes and it ships in a release.
+- **Customization-migration rebuild release.** The engine rehearsal and Dave's authorization gate have passed. Keep the doorway LOCAL until it is merged and a release containing it is published; do not infer an independent review from local implementation or test results.
 - **`ritual_intelligence` wire-or-retire.** Parked since March; an open product decision, not an engineering blocker.
 - **Observation layer's disposition — RESOLVED.** The observation-*.cjs hooks and the beta-rollout doc are untracked local files (verified via `git ls-files`), not in the repo. There is nothing to "remove" from the product; they are local experimentation only. The one tracked observation-adjacent file (`staging/vault-fixes/delight-capture.cjs`) was deleted by PR #180.

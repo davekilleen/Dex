@@ -31,7 +31,7 @@ import shutil
 import stat
 import time
 import uuid
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -736,7 +736,12 @@ class Transaction:
         }
 
     @classmethod
-    def resume(cls, vault_root: Path) -> list[dict]:
+    def resume(
+        cls,
+        vault_root: Path,
+        *,
+        transaction_ids: Iterable[str] | None = None,
+    ) -> list[dict]:
         """Recover every unfinished transaction under the vault's tx root.
 
         Reads each journal and converges: a transaction that reached
@@ -745,6 +750,17 @@ class Transaction:
         Never leaves a half-state.
         """
         root = Path(vault_root).resolve()
+        selected = None
+        if transaction_ids is not None:
+            selected = frozenset(transaction_ids)
+            if any(
+                not isinstance(tx_id, str)
+                or not tx_id
+                or "/" in tx_id
+                or "\x00" in tx_id
+                for tx_id in selected
+            ):
+                raise TransactionError("recovery transaction id is invalid")
         outcomes: list[dict] = []
         tx_root = root / TX_ROOT_RELATIVE
         unsafe_directory = _unsafe_infrastructure_directory(root, tx_root)
@@ -756,6 +772,8 @@ class Transaction:
             return outcomes
         for tx_dir in sorted(tx_root.iterdir()):
             if not tx_dir.is_dir():
+                continue
+            if selected is not None and tx_dir.name not in selected:
                 continue
             tx = cls(root, tx_dir.name, _resumed=True)
             # One damaged transaction must never strand the recovery of the

@@ -1066,18 +1066,25 @@ def read_activation_status(
             ),
             MigrationState.RECOVERY_REQUIRED,
         )
+        reason = state.value
         if state not in {MigrationState.ACTIVATED, MigrationState.REWOUND}:
             state = MigrationState.RECOVERY_REQUIRED
+            reason = "activation-receipt-state-mismatch"
         tx_root = (root / receipt.snapshot_ref).parent
         if tx_root.is_symlink():
             state = MigrationState.RECOVERY_REQUIRED
+            reason = "activation-transaction-unsafe"
         elif tx_root.is_dir():
             try:
                 _verify_activation_commit(root, receipt)
             except ActivationError:
                 state = MigrationState.RECOVERY_REQUIRED
+                reason = "activation-transaction-invalid"
         if state is MigrationState.REWOUND:
+            rewind_receipt_target = root / _rewind_receipt_relative(capsule_id)
             try:
+                if not rewind_receipt_target.exists():
+                    raise FileNotFoundError
                 rewind_receipt = _load_rewind_receipt(root, capsule_id)
                 if (
                     rewind_receipt.status != "OK"
@@ -1103,16 +1110,30 @@ def read_activation_status(
                     )
                 if rewind_tx_root.is_dir():
                     _verify_rewind_commit(root, receipt, rewind_receipt)
+            except FileNotFoundError:
+                state = MigrationState.RECOVERY_REQUIRED
+                reason = "rewind-receipt-missing"
             except ActivationError:
                 state = MigrationState.RECOVERY_REQUIRED
+                reason = "rewind-receipt-invalid"
         return ActivationStatus(
             capsule_id,
             receipt.proposal_id,
             state,
-            state.value,
+            reason,
         )
     if len(staging_status.proposals) == 1:
         proposal = staging_status.proposals[0]
+        if proposal.state in {
+            MigrationState.ACTIVATED,
+            MigrationState.REWOUND,
+        }:
+            return ActivationStatus(
+                capsule_id,
+                proposal.proposal_id,
+                MigrationState.RECOVERY_REQUIRED,
+                "activation-receipt-missing",
+            )
         return ActivationStatus(
             capsule_id,
             proposal.proposal_id,
