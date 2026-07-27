@@ -4,6 +4,7 @@ import asyncio
 import json
 import shutil
 import sys
+from datetime import date, datetime
 from pathlib import Path
 
 import pytest
@@ -14,10 +15,212 @@ sys.path.insert(0, str(REPO_ROOT))
 sys.path.insert(0, str(REPO_ROOT / "core" / "mcp"))
 
 import onboarding_server  # noqa: E402
+from core.mcp import work_server  # noqa: E402
 
 
 def _decode_tool_result(result) -> dict:
     return json.loads(result[0].text)
+
+
+@pytest.fixture
+def mixed_calendar_events():
+    return [
+        {
+            "title": "Customer review",
+            "start": datetime(2026, 7, 27, 9, 0),
+            "end": datetime(2026, 7, 27, 10, 30),
+            "duration_minutes": 90,
+            "attendees": [
+                {"name": "Jane", "email": "jane@acme.com"},
+                {"name": "John", "email": "john@example.com"},
+            ],
+        },
+        {
+            "title": "Out of office",
+            "start": date(2026, 7, 28),
+            "end": date(2026, 7, 29),
+            "duration_minutes": 24 * 60,
+            "attendees": [
+                {"name": "Jane", "email": "jane@acme.com"},
+            ],
+        },
+        {
+            "title": "Holiday",
+            "start": "2026-07-29T00:00:00+01:00",
+            "end": "2026-07-30T00:00:00+01:00",
+            "duration_minutes": 24 * 60,
+            "all_day": True,
+            "attendees": [
+                {"name": "John", "email": "john@example.com"},
+            ],
+        },
+    ]
+
+
+class TestFirstWeekAnalysis:
+    def test_tool_is_registered(self):
+        tools = asyncio.run(onboarding_server.handle_list_tools())
+
+        assert "run_first_week_analysis" in {tool.name for tool in tools}
+
+    def test_returns_structured_result(
+        self,
+        tmp_path,
+        monkeypatch,
+        mixed_calendar_events,
+    ):
+        system = tmp_path / "System"
+        system.mkdir()
+        (system / "user-profile.yaml").write_text(
+            "role: Founder\n"
+            "email_domain: acme.com\n"
+            "pillars:\n"
+            "  - name: Product\n"
+            "  - name: Customers\n",
+            encoding="utf-8",
+        )
+        monkeypatch.setattr(onboarding_server, "BASE_DIR", tmp_path)
+
+        def calendar_events():
+            return mixed_calendar_events
+
+        monkeypatch.setattr(
+            onboarding_server,
+            "get_calendar_events_for_week",
+            calendar_events,
+        )
+        monkeypatch.setattr(
+            onboarding_server,
+            "get_recent_granola_meetings",
+            lambda days=7: [],
+        )
+
+        payload = _decode_tool_result(
+            asyncio.run(
+                onboarding_server.handle_call_tool("run_first_week_analysis", {})
+            )
+        )
+
+        assert payload["success"] is True
+        analysis = payload["data"]
+        assert set(analysis) == {
+            "available",
+            "meeting_count",
+            "meeting_hours",
+            "one_on_one_count",
+            "busiest_day",
+            "top_contacts",
+            "unique_people_count",
+            "external_company_count",
+            "recent_meeting_count",
+            "draft_weekly_plan",
+        }
+        assert analysis["available"] is True
+        assert analysis["meeting_count"] == 1
+        assert analysis["meeting_hours"] == 1.5
+        assert analysis["one_on_one_count"] == 1
+        assert analysis["busiest_day"] == {"day": "Monday", "count": 1}
+        assert analysis["top_contacts"] == [
+            {"name": "Jane", "email": "jane@acme.com", "meeting_count": 1},
+            {"name": "John", "email": "john@example.com", "meeting_count": 1},
+        ]
+        assert analysis["unique_people_count"] == 2
+        assert analysis["external_company_count"] == 1
+        assert analysis["recent_meeting_count"] == 0
+        assert "You have **1 meetings** scheduled this week." in analysis[
+            "draft_weekly_plan"
+        ]
+        assert "Out of office" not in analysis["draft_weekly_plan"]
+        assert "Holiday" not in analysis["draft_weekly_plan"]
+
+    def test_reports_unavailable_without_fabricated_numbers(self, monkeypatch):
+        def unavailable_calendar():
+            raise RuntimeError("Calendar permission denied")
+
+        monkeypatch.setattr(
+            onboarding_server,
+            "get_calendar_events_for_week",
+            unavailable_calendar,
+        )
+
+        payload = _decode_tool_result(
+            asyncio.run(
+                onboarding_server.handle_call_tool("run_first_week_analysis", {})
+            )
+        )
+
+        assert payload == {
+            "success": True,
+            "data": {
+                "available": False,
+                "reason": "Calendar permission denied",
+            },
+        }
+
+    def test_zero_meetings_is_available(self, tmp_path, monkeypatch):
+        system = tmp_path / "System"
+        system.mkdir()
+        (system / "user-profile.yaml").write_text(
+            "role: Founder\nemail_domain: acme.com\npillars: []\n",
+            encoding="utf-8",
+        )
+        monkeypatch.setattr(onboarding_server, "BASE_DIR", tmp_path)
+
+        def no_calendar_events():
+            return []
+
+        monkeypatch.setattr(
+            onboarding_server,
+            "get_calendar_events_for_week",
+            no_calendar_events,
+        )
+        monkeypatch.setattr(
+            onboarding_server,
+            "get_recent_granola_meetings",
+            lambda days=7: [],
+        )
+
+        payload = _decode_tool_result(
+            asyncio.run(
+                onboarding_server.handle_call_tool("run_first_week_analysis", {})
+            )
+        )
+
+        assert payload["success"] is True
+        analysis = payload["data"]
+        assert analysis["available"] is True
+        assert analysis["meeting_count"] == 0
+        assert analysis["meeting_hours"] == 0.0
+        assert analysis["one_on_one_count"] == 0
+        assert analysis["busiest_day"] == {"day": "", "count": 0}
+        assert analysis["top_contacts"] == []
+        assert "You have **0 meetings** scheduled this week." in analysis[
+            "draft_weekly_plan"
+        ]
+
+    def test_all_day_events_contribute_zero_hours_and_are_not_meetings(
+        self,
+        mixed_calendar_events,
+    ):
+        analysis = onboarding_server.analyze_calendar_events(mixed_calendar_events)
+
+        assert analysis["total_meetings"] == 1
+        assert analysis["meeting_hours"] == 1.5
+        assert analysis["one_on_ones"] == 1
+        assert analysis["busiest_day"] == "Monday"
+        assert analysis["busiest_day_count"] == 1
+
+    def test_capacity_hours_exclude_all_day_events(
+        self,
+        mixed_calendar_events,
+    ):
+        capacity = work_server.analyze_day_capacity(
+            mixed_calendar_events,
+            date(2026, 7, 27),
+        )
+
+        assert capacity["meeting_count"] == 1
+        assert capacity["meeting_hours"] == 1.5
 
 
 class TestEmailDomainStep:

@@ -367,58 +367,157 @@ def _finalize_through_provisioner(session: Dict) -> Dict[str, Any]:
 # PRE-ANALYSIS HELPER FUNCTIONS
 # ============================================================================
 
+def _load_first_week_profile() -> Dict[str, Any]:
+    """Load the finalized profile used to personalize the first-week draft."""
+    profile_path = BASE_DIR / 'System' / 'user-profile.yaml'
+    if not profile_path.exists():
+        return {}
+
+    try:
+        import yaml
+        return yaml.safe_load(profile_path.read_text(encoding='utf-8')) or {}
+    except Exception as e:
+        logger.warning(f"Failed to load user profile for first-week analysis: {e}")
+        return {}
+
+
+def _calendar_event_datetime(value: Any) -> Optional[datetime]:
+    """Return a timed calendar value as datetime; date-only values are all-day."""
+    if isinstance(value, datetime):
+        return value
+    if isinstance(value, date):
+        return None
+    if not isinstance(value, str):
+        return None
+
+    cleaned = value.strip()
+    if re.fullmatch(r'\d{4}-\d{2}-\d{2}', cleaned):
+        return None
+    try:
+        return datetime.fromisoformat(
+            cleaned.replace('Z', '+00:00').replace(' +0000', '+00:00')
+        )
+    except ValueError:
+        return None
+
+
+def _timed_calendar_events(events: List[Dict]) -> List[Dict]:
+    """Exclude all-day and malformed events from meeting analysis."""
+    timed_events = []
+    for event in events:
+        if event.get('all_day') is True:
+            continue
+        if (
+            _calendar_event_datetime(event.get('start')) is None
+            or _calendar_event_datetime(event.get('end')) is None
+        ):
+            continue
+        timed_events.append(event)
+    return timed_events
+
+
+def _meeting_attendees(meeting: Dict) -> List[Dict]:
+    """Return participants from Calendar or Granola's normalized shapes."""
+    return meeting.get('attendees') or meeting.get('participants') or []
+
+
 def get_calendar_events_for_week() -> List[Dict]:
     """
     Get calendar events for the current week by importing and calling calendar MCP.
-    Returns empty list if calendar not available.
+    Raises with an honest reason when Calendar is unavailable; an empty list means
+    the query succeeded and the user genuinely has no meetings this week.
     """
+    if platform.system() != 'Darwin':
+        raise RuntimeError(
+            "First-week calendar analysis is currently available only on macOS."
+        )
+
     try:
-        # Import calendar server functions
         calendar_server_path = BASE_DIR / 'core' / 'mcp' / 'calendar_server.py'
         if not calendar_server_path.exists():
-            logger.warning("calendar_server.py not found")
-            return []
+            raise RuntimeError("Calendar support is not installed in this vault.")
+
+        profile = _load_first_week_profile()
+        calendar_config = profile.get('calendar', {})
+        if calendar_config.get('permissions_pending') is True:
+            raise RuntimeError("Calendar access was skipped or permission is not available.")
         
-        # Dynamic import to avoid circular dependencies
         import importlib.util
         spec = importlib.util.spec_from_file_location("calendar_server", calendar_server_path)
+        if spec is None or spec.loader is None:
+            raise RuntimeError("Calendar support could not be loaded.")
         calendar_module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(calendar_module)
         
-        # Get this week's events
         from datetime import timedelta
         today = datetime.now()
         start = today - timedelta(days=today.weekday())
         end = start + timedelta(days=7)
-        
-        events = calendar_module.get_events_for_range(start, end)
-        return events if events else []
+
+        calendar_name = (
+            calendar_config.get('work_calendar')
+            or profile.get('work_email')
+            or calendar_module.DEFAULT_WORK_CALENDAR
+        )
+        midnight = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+        start_offset = (
+            start.replace(hour=0, minute=0, second=0, microsecond=0) - midnight
+        ).days
+        end_offset = (
+            end.replace(hour=0, minute=0, second=0, microsecond=0) - midnight
+        ).days
+        success, output = calendar_module.run_shell_script(
+            "calendar_eventkit.py",
+            "attendees",
+            calendar_name,
+            str(start_offset),
+            str(end_offset),
+        )
+        if not success:
+            raise RuntimeError(output or "Calendar data could not be read.")
+
+        events = json.loads(output)
+        if not isinstance(events, list):
+            raise RuntimeError("Calendar returned an invalid event list.")
+        return events
     except Exception as e:
         logger.warning(f"Failed to get calendar events: {e}")
-        return []
+        if isinstance(e, RuntimeError):
+            raise
+        raise RuntimeError(str(e) or "Calendar data could not be read.") from e
 
 def analyze_calendar_events(events: List[Dict]) -> Dict:
     """Analyze calendar events to extract insights"""
-    if not events:
-        return {}
+    timed_events = _timed_calendar_events(events)
     
     # Count meetings
-    total = len(events)
+    total = len(timed_events)
+
+    total_seconds = 0.0
+    for event in timed_events:
+        start = _calendar_event_datetime(event.get('start'))
+        end = _calendar_event_datetime(event.get('end'))
+        try:
+            total_seconds += max(0.0, (end - start).total_seconds())
+        except (TypeError, AttributeError):
+            continue
     
     # Count 1:1s (events with 2 attendees)
-    one_on_ones = sum(1 for e in events if len(e.get('attendees', [])) == 2)
+    one_on_ones = sum(1 for e in timed_events if len(_meeting_attendees(e)) == 2)
     
     # Find busiest day
     day_counts = {}
-    for event in events:
-        day = event['start'].strftime('%A')
+    for event in timed_events:
+        day = _calendar_event_datetime(event.get('start')).strftime('%A')
         day_counts[day] = day_counts.get(day, 0) + 1
-    busiest_day = max(day_counts.items(), key=lambda x: x[1]) if day_counts else ('Unknown', 0)
+    busiest_day = max(day_counts.items(), key=lambda x: x[1]) if day_counts else ('', 0)
     
     # Get frequent attendees (excluding self)
     attendee_counts = {}
-    for event in events:
-        for attendee in event.get('attendees', []):
+    for event in timed_events:
+        for attendee in _meeting_attendees(event):
+            if attendee.get('is_current_user') is True:
+                continue
             email = attendee.get('email', '')
             name = attendee.get('name', email)
             if email and name:
@@ -429,6 +528,7 @@ def analyze_calendar_events(events: List[Dict]) -> Dict:
     
     return {
         'total_meetings': total,
+        'meeting_hours': round(total_seconds / 3600, 2),
         'one_on_ones': one_on_ones,
         'busiest_day': busiest_day[0],
         'busiest_day_count': busiest_day[1],
@@ -438,6 +538,7 @@ def analyze_calendar_events(events: List[Dict]) -> Dict:
 def generate_weekly_plan(events: List[Dict], pillars: List[str], role: str) -> str:
     """Generate weekly plan markdown content from calendar events"""
     from datetime import timedelta
+    timed_events = _timed_calendar_events(events)
     today = datetime.now()
     week_start = today - timedelta(days=today.weekday())
     week_end = week_start + timedelta(days=6)
@@ -455,12 +556,12 @@ Based on your calendar and pillars, here are suggested priorities:
         content += f"{i}. **{pillar}**: [Define specific outcome for this week]\n"
     
     content += "\n## Meeting Overview\n\n"
-    content += f"You have **{len(events)} meetings** scheduled this week.\n\n"
+    content += f"You have **{len(timed_events)} meetings** scheduled this week.\n\n"
     
     # Group by day
     days = {}
-    for event in events:
-        day = event['start'].strftime('%A')
+    for event in timed_events:
+        day = _calendar_event_datetime(event.get('start')).strftime('%A')
         if day not in days:
             days[day] = []
         days[day].append(event)
@@ -470,7 +571,7 @@ Based on your calendar and pillars, here are suggested priorities:
         if day in days:
             content += f"**{day}** ({len(days[day])} meetings)\n"
             for event in days[day][:3]:  # Show first 3
-                time = event['start'].strftime('%I:%M %p')
+                time = _calendar_event_datetime(event.get('start')).strftime('%I:%M %p')
                 content += f"- {time}: {event['title']}\n"
             if len(days[day]) > 3:
                 content += f"- ... and {len(days[day]) - 3} more\n"
@@ -493,8 +594,10 @@ def get_frequent_attendees(events: List[Dict], limit: int = 3) -> List[Dict]:
     """Get most frequent meeting attendees"""
     attendee_data = {}
     
-    for event in events:
-        for attendee in event.get('attendees', []):
+    for event in _timed_calendar_events(events):
+        for attendee in _meeting_attendees(event):
+            if attendee.get('is_current_user') is True:
+                continue
             email = attendee.get('email', '')
             name = attendee.get('name', email)
             if email and name:
@@ -524,10 +627,7 @@ def get_recent_granola_meetings(days: int = 7) -> List[Dict]:
         granola_module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(granola_module)
         
-        # Get recent meetings
-        from datetime import timedelta
-        cutoff = datetime.now() - timedelta(days=days)
-        meetings = granola_module.get_meetings_since(cutoff)
+        meetings = granola_module.get_recent_meetings(days_back=days)
         return meetings if meetings else []
     except Exception as e:
         logger.warning(f"Failed to get Granola meetings: {e}")
@@ -537,26 +637,88 @@ def count_unique_people(meetings: List[Dict]) -> int:
     """Count unique people across meetings"""
     people = set()
     for meeting in meetings:
-        for attendee in meeting.get('attendees', []):
+        for attendee in _meeting_attendees(meeting):
+            if attendee.get('is_current_user') is True:
+                continue
             email = attendee.get('email', '')
             if email:
-                people.add(email)
+                people.add(email.lower())
     return len(people)
 
 def count_external_companies(meetings: List[Dict], email_domain: str) -> int:
     """Count unique external companies based on email domains"""
-    internal_domains = set(d.strip() for d in email_domain.split(','))
+    internal_domains = {
+        domain.strip().lower()
+        for domain in email_domain.split(',')
+        if domain.strip()
+    }
     external_domains = set()
     
     for meeting in meetings:
-        for attendee in meeting.get('attendees', []):
+        for attendee in _meeting_attendees(meeting):
+            if attendee.get('is_current_user') is True:
+                continue
             email = attendee.get('email', '')
             if '@' in email:
-                domain = email.split('@')[1]
+                domain = email.rsplit('@', 1)[1].lower()
                 if domain not in internal_domains:
                     external_domains.add(domain)
     
     return len(external_domains)
+
+
+def run_first_week_analysis() -> Dict[str, Any]:
+    """Build the honest, structured first-week reveal used after finalization."""
+    try:
+        events = get_calendar_events_for_week()
+    except Exception as e:
+        return {
+            "available": False,
+            "reason": str(e) or "Calendar data could not be read.",
+        }
+
+    timed_events = _timed_calendar_events(events)
+    calendar_analysis = analyze_calendar_events(timed_events)
+    top_contacts = get_frequent_attendees(timed_events)
+    recent_meetings = get_recent_granola_meetings(days=7)
+    combined_meetings = [*timed_events, *recent_meetings]
+
+    profile = _load_first_week_profile()
+    pillars = [
+        pillar.get('name', '') if isinstance(pillar, dict) else str(pillar)
+        for pillar in profile.get('pillars', [])
+    ]
+    pillars = [pillar for pillar in pillars if pillar]
+
+    return {
+        "available": True,
+        "meeting_count": calendar_analysis['total_meetings'],
+        "meeting_hours": calendar_analysis['meeting_hours'],
+        "one_on_one_count": calendar_analysis['one_on_ones'],
+        "busiest_day": {
+            "day": calendar_analysis['busiest_day'],
+            "count": calendar_analysis['busiest_day_count'],
+        },
+        "top_contacts": [
+            {
+                "name": contact['name'],
+                "email": contact['email'],
+                "meeting_count": contact['count'],
+            }
+            for contact in top_contacts
+        ],
+        "unique_people_count": count_unique_people(combined_meetings),
+        "external_company_count": count_external_companies(
+            combined_meetings,
+            profile.get('email_domain', ''),
+        ),
+        "recent_meeting_count": len(recent_meetings),
+        "draft_weekly_plan": generate_weekly_plan(
+            timed_events,
+            pillars,
+            profile.get('role', ''),
+        ),
+    }
 
 # ============================================================================
 # MCP SERVER SETUP
@@ -650,6 +812,14 @@ async def handle_list_tools() -> list[types.Tool]:
         types.Tool(
             name="verify_dependencies",
             description="Check system requirements: Python packages, Calendar.app, Granola",
+            inputSchema={
+                "type": "object",
+                "properties": {}
+            }
+        ),
+        types.Tool(
+            name="run_first_week_analysis",
+            description="Analyze this week's timed calendar meetings and return an honest, structured onboarding reveal.",
             inputSchema={
                 "type": "object",
                 "properties": {}
@@ -1112,6 +1282,13 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[types.Text
             })
             
             return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
+
+        elif name == "run_first_week_analysis":
+            result = create_success_response(run_first_week_analysis())
+            return [types.TextContent(
+                type="text",
+                text=json.dumps(result, indent=2, cls=DateTimeEncoder),
+            )]
         
         elif name == "finalize_onboarding":
             dry_run = arguments.get('dry_run', False)
