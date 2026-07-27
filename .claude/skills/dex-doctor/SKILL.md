@@ -224,8 +224,11 @@ Always close this section with the exact line:
 
 Deep reports include a top-level `customization_migration_status` object. Render every
 `capsule_id`, `state`, `validation.status`, `validation.mismatches`, `pending`, and
-`truncated` value verbatim. These are authority fields; only a short consequence or surface
-line may be rephrased.
+`truncated` value verbatim. For each canonical Capsule, also render
+`staging.proposals`, every proposal's `verification_verdict`, the
+`verification_verdicts` summary, `pending_rebuild`, `activation.state`,
+`activation.reason`, `activation_receipt_present`, and `rewindable` verbatim. These are
+authority fields; only a short consequence or surface line may be rephrased.
 
 When `pending` is true, render this guidance exactly:
 
@@ -234,6 +237,12 @@ When `pending` is true, render this guidance exactly:
 When any `validation.status` is not `OK`, say plainly: "The preserved evidence cannot be
 verified." Route the user to `/dex-update` guidance and reproduce the returned mismatch
 authority. Do not invent a repair, search for capsule files, or edit them directly.
+
+When `pending_rebuild` is true, say the protected rebuild is waiting to continue through
+`/dex-update`. A `BLOCKED` verification verdict stays blocked and an `UNKNOWN` verdict stays
+unknown. Say activation is receipt-backed only when `activation_receipt_present` is true, and
+say rewind is available only when `rewindable` is true. A `recovery-required` staging or
+activation state is a stop condition, not permission to repair Capsule files directly.
 
 ### Step 4: Heal, tiered
 

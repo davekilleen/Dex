@@ -76,6 +76,13 @@ const UPDATE_SERVICE_OPERATIONS = new Set([
   'file_count',
   'byte_count',
   'transaction_id',
+  // Rebuild doorway: deterministic adapter operations and authority fields used by
+  // the human-confirmed stage, verification, activation, status, and rewind journey.
+  'validate_regeneration_candidate',
+  'approval_token',
+  'acknowledgement_token',
+  'rewind_available',
+  'rewindable',
 ]);
 
 function assertInOrder(document, needles, label) {

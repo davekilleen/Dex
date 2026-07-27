@@ -57,12 +57,14 @@ and do not infer a zero count.
 
 Render what the assessment found through `/dex-doctor` Step 3b's authority rules, including
 all four returned groups. Explain that this journey inventories what the user changed,
-preserves the evidence in a protected snapshot called the Capsule, and then guides the update
-through the existing approval flow with nothing overwritten.
+preserves the evidence in a protected snapshot called the Capsule, guides the update through
+the existing approval flow, and then offers the rebuild with this exact promise:
+"rebuilds your customisations on the new version, shows you anything it can't safely carry forward, everything backed up and reversible".
 
 A Capsule is a protected local snapshot of the evidence for every customization. It is stored
-under `System/.dex/`, is never uploaded, and survives the update. This journey does not
-rebuild customizations automatically. Regeneration remains future work behind separate gates.
+under `System/.dex/`, is never uploaded, and survives the update. This is not an automatic
+rebuild: candidate planning, staging, activation, and rewind each keep their own authority
+boundary.
 
 ### Preview and create the Capsule
 
@@ -96,6 +98,65 @@ State plainly which customizations are in `update-replaceable-location` and whic
 `update-untouched-location`. Do not rename those groups or claim that a location predicts an
 automatic rebuild.
 
+### Propose the rebuild
+
+Read the Capsule evidence only through the registered MCP. Author one canonical candidate in
+a local scratch file outside the vault named `CANDIDATE_JSON`. The no-token `stage` command
+makes no vault write: it parses the closed candidate shape and delegates to `validate_regeneration_candidate` before it returns a preview. Run that preview before proposing the candidate.
+Every customization must have exactly one disposition; never omit an item or use model
+confidence as verification.
+
+Present every disposition and its evidence. If an item is blocked or needs manual review,
+present one question at a time. Update and revalidate the candidate after each answer. Do not
+stage while required questions remain unresolved or exact-set validation refuses the candidate.
+
+### Stage and verify
+
+Run `python -m core.customization_migration.cli stage CANDIDATE_JSON` to obtain the private
+staging preview. Render every line, including every disposition, future live path, and
+`preview_sha256`. Ask: “Stage this exact candidate for verification?” Capsule approval and
+update approval do not count.
+
+Only after a fresh explicit yes, run
+`python -m core.customization_migration.cli stage CANDIDATE_JSON --confirm-token PREVIEW_SHA256`
+with the unchanged token. Render the staging receipt verbatim.
+
+Run `python -m core.customization_migration.cli verify CAPSULE_ID PROPOSAL_ID`. Render the
+report verdict, every static result, every behavioural-contract status, and the verification
+receipt verbatim. Say verified only when the engine says `verified`. If the returned per-item
+value is `manual`, render `manual`; if it is `unknown`, render `unknown`. Never promote either
+one, and never describe a blocked report as complete.
+
+### Preview and activate
+
+Run
+`python -m core.customization_migration.cli preview-activation CAPSULE_ID PROPOSAL_ID`.
+Render every live path, every disposition, the snapshot-retention note, the rewind note, and
+`approval_token` verbatim. Ask: “Activate this exact verified rebuild?” A fresh explicit yes
+must be bound to the displayed token: an earlier yes is not this yes.
+
+Only after that yes, run
+`python -m core.customization_migration.cli activate CAPSULE_ID PROPOSAL_ID --confirm-token APPROVAL_TOKEN`.
+Render every activation receipt field verbatim, including the complete file list, transaction
+identifier, snapshot reference, and `rewind_available`. Then run
+`python -m core.customization_migration.cli activation-status CAPSULE_ID` and state rewind
+availability only from its returned `rewindable` value.
+
+### Rewind the rebuild
+
+When the user asks to undo the activation, run
+`python -m core.customization_migration.cli preview-rewind CAPSULE_ID`. Render every restore
+path, whether it existed before activation, the reason, and `acknowledgement_token` verbatim.
+Explain that rewind restores the exact pre-activation live file state. It does not undo
+external actions from manual verification, and it refuses after unsafe live drift or lost
+snapshot evidence.
+
+Ask: “Rewind this exact activation?” Only after a fresh explicit yes, run
+`python -m core.customization_migration.cli rewind CAPSULE_ID --acknowledge-token ACKNOWLEDGEMENT_TOKEN`.
+Render the rewind receipt verbatim, then run
+`python -m core.customization_migration.cli activation-status CAPSULE_ID` again. Never infer a
+successful rewind from command exit alone.
+
 ### Interrupted journey
 
 Capsule creation is resumable after a crash. A half-created Capsule appears as
@@ -110,10 +171,11 @@ deterministic adapter refuses either action, show the refusal and stop.
 ### Customization journey boundaries
 
 - The Customization Migration MCP tools are read-only.
-- Capsule creation and abandonment happen only through the human-confirmed CLI.
+- Capsule creation, abandonment, staging, verification sealing, activation, and rewind happen
+  only through the human-confirmed CLI.
 - Never search for, edit, delete, or repair Capsule files directly.
-- Regeneration, staging, verification, activation, and rewind are future work behind separate
-  gates. Never present them as callable steps or promise an automatic rebuild.
+- Never use an MCP call, a raw vault write, an earlier approval, or a shortened token as an
+  actuation substitute.
 
 ## Five-group preview
 

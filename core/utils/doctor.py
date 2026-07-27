@@ -1657,6 +1657,8 @@ def _probe_customization_migration_status(context: DoctorContext) -> ProbeResult
 
     pending = False
     validation_statuses: list[str] = []
+    rebuild_broken = False
+    rebuild_unknown = False
     for capsule in capsules:
         if not isinstance(capsule, dict):
             return ProbeResult(
@@ -1684,7 +1686,109 @@ def _probe_customization_migration_status(context: DoctorContext) -> ProbeResult
                 "UNKNOWN",
                 "The customization migration status contains malformed validation authority",
             )
-        pending = pending or state == "capsule-created"
+        if capsule_id.startswith("cap-"):
+            staging = capsule.get("staging")
+            verification_verdicts = capsule.get("verification_verdicts")
+            pending_rebuild = capsule.get("pending_rebuild")
+            activation = capsule.get("activation")
+            activation_receipt_present = capsule.get(
+                "activation_receipt_present"
+            )
+            rewindable = capsule.get("rewindable")
+            if (
+                not isinstance(staging, dict)
+                or not isinstance(verification_verdicts, dict)
+                or type(pending_rebuild) is not bool
+                or not isinstance(activation, dict)
+                or type(activation_receipt_present) is not bool
+                or type(rewindable) is not bool
+            ):
+                return ProbeResult(
+                    "UNKNOWN",
+                    "The customization rebuild status is structurally incomplete",
+                )
+            proposals = staging.get("proposals")
+            staging_truncated = staging.get("truncated")
+            if (
+                staging.get("capsule_id") != capsule_id
+                or not isinstance(proposals, list)
+                or type(staging_truncated) is not bool
+                or set(verification_verdicts) != {"OK", "BLOCKED", "UNKNOWN"}
+                or any(
+                    type(verification_verdicts[key]) is not int
+                    or verification_verdicts[key] < 0
+                    for key in ("OK", "BLOCKED", "UNKNOWN")
+                )
+            ):
+                return ProbeResult(
+                    "UNKNOWN",
+                    "The customization staging status is structurally incomplete",
+                )
+            counted_verdicts = {"OK": 0, "BLOCKED": 0, "UNKNOWN": 0}
+            for proposal in proposals:
+                if (
+                    not isinstance(proposal, dict)
+                    or not isinstance(proposal.get("proposal_id"), str)
+                    or not isinstance(proposal.get("state"), str)
+                    or proposal.get("verification_verdict")
+                    not in counted_verdicts
+                ):
+                    return ProbeResult(
+                        "UNKNOWN",
+                        "The customization staging status contains a malformed proposal",
+                    )
+                counted_verdicts[proposal["verification_verdict"]] += 1
+                rebuild_broken = rebuild_broken or (
+                    proposal["state"] == "recovery-required"
+                )
+            if counted_verdicts != verification_verdicts:
+                return ProbeResult(
+                    "UNKNOWN",
+                    "The customization verification summary contradicts its proposals",
+                )
+            activation_required = {
+                "capsule_id",
+                "proposal_id",
+                "state",
+                "reason",
+                "activation_receipt_present",
+                "rewindable",
+            }
+            if (
+                set(activation) != activation_required
+                or activation.get("capsule_id") != capsule_id
+                or (
+                    activation.get("proposal_id") is not None
+                    and not isinstance(activation.get("proposal_id"), str)
+                )
+                or not isinstance(activation.get("state"), str)
+                or not isinstance(activation.get("reason"), str)
+                or type(activation.get("activation_receipt_present")) is not bool
+                or type(activation.get("rewindable")) is not bool
+                or activation_receipt_present
+                != activation["activation_receipt_present"]
+                or rewindable != activation["rewindable"]
+            ):
+                return ProbeResult(
+                    "UNKNOWN",
+                    "The customization activation status is structurally incomplete",
+                )
+            pending = pending or pending_rebuild
+            rebuild_broken = rebuild_broken or (
+                verification_verdicts["BLOCKED"] > 0
+                or activation["state"] == "recovery-required"
+            )
+            rebuild_unknown = rebuild_unknown or (
+                staging_truncated
+                or verification_verdicts["UNKNOWN"] > 0
+                or (
+                    activation_receipt_present
+                    and activation["state"]
+                    not in {"activated", "rewound"}
+                )
+            )
+        else:
+            pending = pending or state == "capsule-created"
         validation_statuses.append(status.upper())
 
     structured_detail = dict(authority)
@@ -1701,10 +1805,22 @@ def _probe_customization_migration_status(context: DoctorContext) -> ProbeResult
             "The preserved capsule evidence failed validation; the mismatch records are surfaced in the status",
             structured_detail=structured_detail,
         )
+    if rebuild_broken:
+        return ProbeResult(
+            "BROKEN",
+            "The customization rebuild evidence reports a blocked or recovery-required state",
+            structured_detail=structured_detail,
+        )
     if any(status != "OK" for status in validation_statuses):
         return ProbeResult(
             "UNKNOWN",
             "The preserved capsule evidence could not be verified",
+            structured_detail=structured_detail,
+        )
+    if rebuild_unknown:
+        return ProbeResult(
+            "UNKNOWN",
+            "The customization rebuild evidence could not be fully verified",
             structured_detail=structured_detail,
         )
     if not capsules:
