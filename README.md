@@ -4,6 +4,10 @@
 
 **A personal operating system powered by Claude.** Strategic work management, meeting intelligence, relationship tracking, daily planning — all configured for your specific role. No coding required.
 
+<p align="center">
+  <img src="docs/assets/dex-hero.gif" alt='Dex in action: "plan my day" scans your calendar, Slack, Salesforce, Granola and goals, then protects your morning — "what do I owe people?" finds every open promise and drafts the replies.' width="960">
+</p>
+
 **The story behind Dex:** 🎥 [Malleable Software — when everyone can build, what makes a great product?](https://www.youtube.com/watch?v=QcqBsxw9hQM) (Dave's keynote on the thinking behind Dex) · 🎙️ [Episode 8 of The Vibe PM Podcast](https://youtu.be/WaqgSvL-V10?si=b2Pfwf7I5rozWCo0) (full walkthrough) · ✍️ [the original launch post](https://www.linkedin.com/pulse/your-ai-chief-staff-building-personal-operating-system-dave-killeen-yxnqe/) · 💬 [the honest highs-and-lows of building it](https://www.linkedin.com/feed/update/urn:li:activity:7486431643524796418/) — the pause, the unlock, and 52 releases in two weeks
 
 > 🖥️ **Prefer never to see a terminal?** Dex desktop and mobile apps are on the way — sign up for early access at **[heydex.ai/beta](https://heydex.ai/beta)**.
