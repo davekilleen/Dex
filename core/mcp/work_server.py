@@ -98,6 +98,13 @@ except ImportError:
     def _tz_today():
         return date.today()
 
+# User-configured working week (defaults to Monday-Friday)
+try:
+    from core.utils.working_week import is_working_day as _is_working_day
+except ImportError:
+    def _is_working_day(target_date):
+        return target_date.weekday() < 5
+
 # Custom JSON encoder for handling date/datetime objects
 class DateTimeEncoder(json.JSONEncoder):
     def default(self, obj):
@@ -3499,7 +3506,7 @@ def get_calendar_capacity_data(days_ahead: int = 5) -> Dict[str, Any]:
     # Generate structure for each day
     for i in range(days_ahead):
         target_date = today + timedelta(days=i)
-        if target_date.weekday() >= 5:  # Skip weekends
+        if not _is_working_day(target_date):
             continue
         
         day_data = {
@@ -5924,7 +5931,7 @@ async def _handle_call_tool_inner(
             # Analyze each day
             for i in range(days_ahead):
                 target_date = today + timedelta(days=i)
-                if target_date.weekday() >= 5:  # Skip weekends
+                if not _is_working_day(target_date):
                     continue
                 
                 date_str = target_date.isoformat()
@@ -5984,7 +5991,7 @@ async def _handle_call_tool_inner(
 
             for i in range(5):
                 target_date = today + timedelta(days=i)
-                if target_date.weekday() >= 5:
+                if not _is_working_day(target_date):
                     continue
 
                 date_str = target_date.isoformat()

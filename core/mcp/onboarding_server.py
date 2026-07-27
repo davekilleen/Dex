@@ -21,7 +21,7 @@ import re
 import subprocess
 import sys
 import tempfile
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -54,6 +54,19 @@ from core.paths import (
 from core.paths import (
     VAULT_ROOT as BASE_DIR,
 )
+
+# User-configured working week (defaults to Monday-Friday)
+try:
+    from core.utils.working_week import (
+        first_working_day_of_week,
+        working_day_names,
+    )
+except ImportError:
+    def first_working_day_of_week(target_date):
+        return target_date - timedelta(days=target_date.weekday())
+
+    def working_day_names():
+        return ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"]
 
 GRANOLA_APP_PATH = Path("/Applications/Granola.app")
 ONBOARDING_STEPS = 7
@@ -745,10 +758,9 @@ def build_pillar_evidence(events: List[Dict], email_domain: str) -> Dict[str, An
 
 def generate_weekly_plan(events: List[Dict], pillars: List[str], role: str) -> str:
     """Generate weekly plan markdown content from calendar events"""
-    from datetime import timedelta
     timed_events = _timed_calendar_events(events)
-    today = datetime.now()
-    week_start = today - timedelta(days=today.weekday())
+    today = datetime.now().date()
+    week_start = first_working_day_of_week(today)
     week_end = week_start + timedelta(days=6)
     
     content = f"""# Week Priorities - {week_start.strftime('%b %d')} to {week_end.strftime('%b %d, %Y')}
@@ -775,7 +787,7 @@ Based on your calendar and pillars, here are suggested priorities:
         days[day].append(event)
     
     content += "### Key Meetings\n\n"
-    for day in ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']:
+    for day in working_day_names():
         if day in days:
             content += f"**{day}** ({len(days[day])} meetings)\n"
             for event in days[day][:3]:  # Show first 3
