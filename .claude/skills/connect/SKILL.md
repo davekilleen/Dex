@@ -1,6 +1,6 @@
 ---
 name: connect
-description: Connect, check and manage your app integrations — Google, Slack and Linear are reviewed and ready; hundreds more connect with an extra confirmation. OAuth or paste-a-key, tokens stored encrypted on your machine.
+description: Connect, check and manage your app integrations — Google and Linear are reviewed and ready; hundreds more (Slack, Notion, GitHub and others) connect with an extra confirmation. OAuth or paste-a-key, tokens stored encrypted on your machine.
 ---
 
 # Connect
@@ -17,11 +17,11 @@ This skill is a friendly driver over the connection manager CLI. You run the CLI
 
 - **See what's connected** — a health sweep of all your connections, with each one mapped to a next action (reconnect, refresh, or nothing needed)
 - **Connect a new app** — two paths:
-  - **OAuth (Class A, 425 apps)** — before browser sign-in, the user must register their own app in the provider's developer console unless they already have one saved. Dex then guides browser consent, remembers the login locally, and auto-refreshes the token.
-  - **Paste a key (Class B, 350 apps)** — Linear, GitHub PATs, and other API-key services. No OAuth app or consent screen — paste the secret.
+  - **OAuth (Class A, 279 apps)** — before browser sign-in, the user must register their own app in the provider's developer console unless they already have one saved. Dex then guides browser consent, remembers the login locally, and auto-refreshes the token.
+  - **Paste a key (Class B, 348 apps)** — Linear, GitHub PATs, and other API-key services. No OAuth app or consent screen — paste the secret.
 - **Reconnect** — when a token is revoked or expires beyond refresh, re-run the OAuth flow
 - **Disconnect** — remove a connection and delete its local token
-- **Find a provider** — fuzzy-search 831 catalog entries by name; 775 can be connected today (425 with OAuth/browser sign-in, 350 with a key)
+- **Find a provider** — fuzzy-search 831 catalog entries by name; 627 can be connected today (279 with OAuth/browser sign-in, 348 with a key)
 
 The connection manager lives at:
 `core/integrations/connection-manager/`
@@ -136,7 +136,7 @@ node core/integrations/connection-manager/connect.cjs providers --keys <filter>
 
 Show the matches and confirm which one they mean. Each row shows the provider `id`, display name, and auth mode. The `id` is what you pass to `connect` / `set-key`.
 
-Google, Slack, and Linear have passed Dex's security review. Other catalog providers are marked `advanced` and the CLI requires the user's explicit opt-in with `--allow-unvetted`; explain that plainly before using that flag. Browse-only providers cannot be connected yet.
+Google and Linear have passed Dex's security review — that's the whole reviewed list. Everything else — including common picks like Slack, Notion, and GitHub — is marked `advanced` and the CLI requires the user's explicit opt-in with `--allow-unvetted`. This is normal, not a warning sign: it just means Dex hasn't hand-verified that provider's sign-in yet. Explain it plainly before using the flag. Browse-only providers cannot be connected yet.
 
 If the match is unambiguous (one obvious hit), just confirm it inline rather than making them pick.
 
