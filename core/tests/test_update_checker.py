@@ -167,6 +167,12 @@ def _tag_object(repo: Path, tag: str) -> str:
     return _git(repo, "rev-parse", f"refs/tags/{tag}")
 
 
+def _lightweight_release_tag(repo: Path, version: str, suffix: str) -> str:
+    tag = f"dist/release/v{version}-{suffix}"
+    _git(repo, "tag", tag)
+    return tag
+
+
 @pytest.fixture(autouse=True)
 def deny_external_sockets(monkeypatch: pytest.MonkeyPatch):
     def denied_socket(*_args, **_kwargs):
@@ -219,17 +225,18 @@ def test_legacy_release_notice_is_readable_and_keeps_technical_evidence_out_of_u
         "commit": commit,
         "tree": tree,
         "profile": "legacy-v1",
-        "release_page": f"https://github.com/davekilleen/Dex/releases/tag/{tag}",
+        "release_page": "https://github.com/davekilleen/Dex/releases/tag/v1.62.0",
         "notice": "\n".join(
             (
                 f"{APPROVED_NOTICE_AVAILABLE} v1.62.0",
-                f"Release notes: https://github.com/davekilleen/Dex/releases/tag/{tag}",
+                "Release notes: https://github.com/davekilleen/Dex/releases/tag/v1.62.0",
                 APPROVED_NOTICE_GUIDANCE,
             )
         ),
         "publisher_authentication": "unavailable",
     }
     notice_lower = result["notice"].lower()
+    assert "dist/release/" not in result["notice"]
     assert re.search(r"\b[0-9a-f]{40}\b", result["notice"]) is None
     for banned in (
         "appears to exist",
@@ -399,21 +406,81 @@ def test_missing_profile_on_a_higher_pre_profile_candidate_is_unknown(tmp_path: 
     assert commit not in json.dumps(result)
 
 
-def test_two_distinct_candidates_for_the_same_higher_version_are_ambiguous(tmp_path: Path) -> None:
+def test_more_than_candidate_bound_higher_releases_reports_and_notifies_newest(
+    tmp_path: Path,
+) -> None:
     vault = _installed_vault(tmp_path / "vault")
     remote = tmp_path / "remote"
     _init_repo(remote)
-    _release(remote, "1.62.0")
+    newest_version = "9.0.0"
+    newest_tag, _commit = _release(remote, newest_version)
+    lower_tags = []
+    for index in range(update_verifier_module.MAX_RELEASE_TAGS):
+        lower_tags.append(_lightweight_release_tag(remote, f"2.0.{index}", f"{index + 1:064x}"))
+    commands: list[tuple[str, ...]] = []
+    runner = GitRunner(allowed_protocol="file", command_observer=commands.append)
+
+    result = _verifier(vault, remote, tmp_path / "state", git_runner=runner).check()
+
+    assert result["status"] == STATUS_RELEASE
+    assert result["should_notify"] is True
+    assert result["version"] == newest_version
+    assert result["tag"] == newest_tag
+    assert f"{APPROVED_NOTICE_AVAILABLE} v{newest_version}" in result["notice"]
+    fetch_commands = [command for command in commands if "fetch" in command]
+    assert len(fetch_commands) == 1
+    assert f"refs/tags/{newest_tag}:refs/tags/{newest_tag}" in fetch_commands[0]
+    assert all(f"refs/tags/{tag}:refs/tags/{tag}" not in fetch_commands[0] for tag in lower_tags)
+
+
+def test_highest_version_remains_ambiguous_with_many_lower_releases(tmp_path: Path) -> None:
+    vault = _installed_vault(tmp_path / "vault")
+    remote = tmp_path / "remote"
+    _init_repo(remote)
+    first_tag, _commit = _release(remote, "9.0.0")
+    for index in range(update_verifier_module.MAX_RELEASE_TAGS):
+        _lightweight_release_tag(remote, f"2.0.{index}", f"{index + 1:064x}")
     (remote / "README.md").write_text("second release identity\n")
     _git(remote, "add", "README.md")
     _git(remote, "commit", "--quiet", "-m", "conflicting release identity")
     second_short = _git(remote, "rev-parse", "--short", "HEAD")
-    _git(remote, "tag", "-a", f"dist/release/v1.62.0-{second_short}", "-m", "conflicting identity")
+    second_tag = f"dist/release/v9.0.0-{second_short}"
+    _git(remote, "tag", "-a", second_tag, "-m", "conflicting identity")
+    commands: list[tuple[str, ...]] = []
+    runner = GitRunner(allowed_protocol="file", command_observer=commands.append)
 
-    result = _verifier(vault, remote, tmp_path / "state").check()
+    result = _verifier(vault, remote, tmp_path / "state", git_runner=runner).check()
 
     assert result["status"] == STATUS_UNKNOWN
     assert result["should_notify"] is False
+    assert result["reason"] == "evidence-invalid"
+    fetch_commands = [command for command in commands if "fetch" in command]
+    assert len(fetch_commands) == 1
+    assert f"refs/tags/{first_tag}:refs/tags/{first_tag}" in fetch_commands[0]
+    assert f"refs/tags/{second_tag}:refs/tags/{second_tag}" in fetch_commands[0]
+
+
+def test_single_highest_version_candidate_bound_remains_an_anomaly_guard(
+    tmp_path: Path,
+) -> None:
+    vault = _installed_vault(tmp_path / "vault")
+    remote = tmp_path / "remote"
+    _init_repo(remote)
+    _release(remote, "9.0.0")
+    for index in range(update_verifier_module.MAX_RELEASE_TAGS):
+        _lightweight_release_tag(remote, "9.0.0", f"{index + 1:064x}")
+    commands: list[tuple[str, ...]] = []
+    runner = GitRunner(allowed_protocol="file", command_observer=commands.append)
+
+    result = _verifier(vault, remote, tmp_path / "state", git_runner=runner).check()
+
+    assert result == {
+        "status": STATUS_UNKNOWN,
+        "should_notify": False,
+        "current_version": "1.61.0",
+        "reason": "evidence-invalid",
+    }
+    assert not any("fetch" in command for command in commands)
 
 
 def test_moved_annotated_tag_is_unknown_and_never_re_notified(tmp_path: Path) -> None:

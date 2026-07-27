@@ -7,6 +7,20 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.77.2] — 🔔 Dex can tell you about updates again (2026-07-27)
+
+Yesterday's fix was half the story. Chasing it properly — by testing against the real thing rather than a stand-in — turned up something considerably worse: **Dex had stopped telling almost anyone that updates existed.**
+
+**What this fixes for you:**
+
+* **You get told when there's a new version.** Dex checks for updates by looking at what's been published. Every time I merged any piece of work, a duplicate marker was created for the version already released — so Dex would find several different things all claiming to be the same version, sensibly conclude it couldn't tell which was real, and say nothing at all. That happened within minutes of every release, so for most people the update notice had quietly stopped working entirely. Each version now produces exactly one published copy, and Dex can read it again.
+* **Being a long way behind no longer makes it worse.** Dex would give up if too many versions had come out since yours — so the further behind you were, the more certain it became that you'd never hear about an update. It now simply looks at the newest one.
+* **The "release notes" link goes to the release notes.** It pointed at an internal build reference where nothing is written. It now takes you to the page that actually explains what changed.
+
+**Why I didn't see it:** my tests built a small pretend copy of the project with two or three versions in it, where none of this can happen. The real thing has over a hundred published markers, duplicates going back several versions, and a page that wasn't where the code assumed. Nothing was wrong with the tests — they were just testing a world that doesn't exist. Dex is now checked against the real published releases before any of this is called working, and there's a new guard that refuses to publish a second copy of a version that's already out.
+
+If you've been on an older version for a while and never saw an update prompt, this is why — and it should now appear on its own.
+
 ## [1.77.1] — 🩺 Dex stops crying wolf, and older setups can find their updates again (2026-07-27)
 
 Both of these came from one user's bug report, and both only affect people who've been using Dex for a while — which is exactly why neither had been spotted.

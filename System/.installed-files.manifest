@@ -1070,6 +1070,7 @@ core/tests/test_relationships_feed.py
 core/tests/test_release_catalog.py
 core/tests/test_release_catalog_generation.py
 core/tests/test_release_channel.py
+core/tests/test_release_tag_uniqueness.py
 core/tests/test_review_retirement.py
 core/tests/test_ritual_intelligence_entrypoints.py
 core/tests/test_ritual_intelligence_runtime.py
@@ -1228,6 +1229,7 @@ scripts/check-path-contract-usage.sh
 scripts/check-pii.sh
 scripts/check-portable-contract.py
 scripts/check-portable-contract.sh
+scripts/check-release-tag-uniqueness.sh
 scripts/check-tau-removal.py
 scripts/check-test-delta.sh
 scripts/check-tracked-ignored.py

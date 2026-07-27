@@ -67,6 +67,8 @@ jobs:
       - name: Documentation drift gate
         if: github.event_name == 'pull_request'
         run: bash scripts/check-doc-drift.sh
+      - name: Release-tag uniqueness gate
+        run: bash scripts/check-release-tag-uniqueness.sh
       - name: Architecture inventory drift gate
         run: bash scripts/check-architecture-inventory.sh
       - name: Instructed-tool existence gate
@@ -290,11 +292,43 @@ jobs:
     permissions:
       contents: write
     outputs:
-      release_sha: ${{ steps.release_build.outputs.release_sha }}
+      release_sha: ${{ steps.release_guard.outputs.release_sha || steps.release_build.outputs.release_sha }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 0
+      # A second artifact for one version makes every update check ambiguous,
+      # while --clobber silently replaces the already-released bundle.
+      - name: Check whether this version is already published
+        id: release_guard
+        run: |
+          VERSION="$(python3 -c 'import json; print(json.load(open("package.json"))["version"])')"
+          PUBLISHED_TAGS="$(git ls-remote --tags origin "refs/tags/dist/release/v${VERSION}-*")"
+          if [ -n "$PUBLISHED_TAGS" ]; then
+            echo "already_published=true" >> "$GITHUB_OUTPUT"
+            # Historical versions may have multiple immutable tags. Choose the
+            # lexicographically first tag name so health reporting stays stable
+            # on every merge; the uniqueness gate prevents this for new versions.
+            PUBLISHED_TAG="$(
+              printf '%s\n' "$PUBLISHED_TAGS" |
+                awk '$2 !~ /\^\{\}$/ { print $2 }' |
+                LC_ALL=C sort |
+                sed -n '1p'
+            )"
+            PEELED_REF="${PUBLISHED_TAG}^{}"
+            RELEASE_SHA="$(
+              printf '%s\n' "$PUBLISHED_TAGS" |
+                awk -v peeled_ref="$PEELED_REF" '$2 == peeled_ref { print $1 }'
+            )"
+            if [ -z "$RELEASE_SHA" ]; then
+              echo "Unable to resolve the published release commit from $PEELED_REF." >&2
+              exit 1
+            fi
+            echo "release_sha=$RELEASE_SHA" >> "$GITHUB_OUTPUT"
+            echo "Version v$VERSION is already published; publishing runs only when package.json is bumped."
+          else
+            echo "already_published=false" >> "$GITHUB_OUTPUT"
+          fi
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: '20'
@@ -305,6 +339,7 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
       - name: Build release branch
         id: release_build
+        if: steps.release_guard.outputs.already_published != 'true'
         run: |
           bash scripts/build-release.sh
           echo "release_sha=$(git rev-parse release)" >> "$GITHUB_OUTPUT"
@@ -313,12 +348,15 @@ jobs:
           git rev-parse --verify "refs/tags/$RELEASE_TAG"
           echo "release_tag=$RELEASE_TAG" >> "$GITHUB_OUTPUT"
       - name: Push release branch and immutable tag
+        if: steps.release_guard.outputs.already_published != 'true'
         run: |
           git push origin release --force
           git push origin "${{ steps.release_build.outputs.release_tag }}"
       - name: Build self-contained vault bundle
+        if: steps.release_guard.outputs.already_published != 'true'
         run: bash scripts/build-vault-bundle.sh
       - name: Upload vault bundle to versioned GitHub Release
+        if: steps.release_guard.outputs.already_published != 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
