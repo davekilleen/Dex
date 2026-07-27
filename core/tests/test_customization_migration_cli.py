@@ -9,6 +9,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+from core.customization_migration import cli
 from core.customization_migration.capsule import (
     CAPSULE_ROOT,
     read_capsule_status,
@@ -79,6 +80,19 @@ def _rendered(value: object) -> str:
             allow_nan=False,
         )
     return str(value)
+
+
+def _run_in_process(
+    vault: Path,
+    capsys,
+    monkeypatch,
+    *arguments: str,
+) -> tuple[int, str]:
+    monkeypatch.setenv("VAULT_PATH", str(vault))
+    return_code = cli.run(list(arguments))
+    captured = capsys.readouterr()
+    assert captured.err == ""
+    return return_code, captured.out
 
 
 def test_status_assess_and_preview_are_plain_and_write_nothing(tmp_path: Path) -> None:
@@ -211,6 +225,394 @@ def test_registration_snippet_shape_is_pinned() -> None:
             "env": {"VAULT_PATH": "{{VAULT_PATH}}"},
         }
     }
+
+
+def test_cli_run_covers_rebuild_confirmation_receipts_and_status(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    vault, candidate = _candidate_with_contract(tmp_path)
+    candidate_path = _candidate_file(tmp_path, candidate)
+
+    before_stage = snapshot_vault(vault)
+    return_code, output = _run_in_process(
+        vault,
+        capsys,
+        monkeypatch,
+        "stage",
+        str(candidate_path),
+    )
+    staging_token = _token(output)
+    assert return_code == 2
+    assert "Live path after activation:" in output
+    assert "Disposition:" in output
+    assert "Nothing was staged." in output
+    assert snapshot_vault(vault) == before_stage
+
+    return_code, output = _run_in_process(
+        vault,
+        capsys,
+        monkeypatch,
+        "stage",
+        str(candidate_path),
+        "--confirm-token",
+        "0" * 64,
+    )
+    assert return_code == 2
+    assert _token(output) == staging_token
+    assert snapshot_vault(vault) == before_stage
+
+    return_code, output = _run_in_process(
+        vault,
+        capsys,
+        monkeypatch,
+        "stage",
+        str(candidate_path),
+        "--confirm-token",
+        staging_token,
+    )
+    assert return_code == 0
+    for field in (
+        "capsule_id",
+        "proposal_id",
+        "staged_file_count",
+        "staged_byte_count",
+        "staging_digest",
+        "transaction_id",
+    ):
+        assert f"{field}:" in output
+
+    before_verification = snapshot_vault(vault)
+    return_code, output = _run_in_process(
+        vault,
+        capsys,
+        monkeypatch,
+        "verify",
+        candidate.capsule_id,
+        candidate.proposal_id,
+    )
+    verification_token = _token(output)
+    assert return_code == 2
+    for field in (
+        "confirm_token",
+        "capsule_id",
+        "proposal_id",
+        "staging_receipt_sha256",
+        "report_sha256",
+        "verdict",
+        "static_file_count",
+        "behavioural_contract_count",
+    ):
+        assert f"{field}:" in output
+    assert "Nothing was sealed." in output
+    assert snapshot_vault(vault) == before_verification
+
+    return_code, output = _run_in_process(
+        vault,
+        capsys,
+        monkeypatch,
+        "verify",
+        candidate.capsule_id,
+        candidate.proposal_id,
+        "--confirm-token",
+        "0" * 64,
+    )
+    assert return_code == 2
+    assert _token(output) == verification_token
+    assert snapshot_vault(vault) == before_verification
+
+    return_code, output = _run_in_process(
+        vault,
+        capsys,
+        monkeypatch,
+        "verify",
+        candidate.capsule_id,
+        candidate.proposal_id,
+        "--confirm-token",
+        verification_token,
+    )
+    assert return_code == 0
+    for field in (
+        "capsule_id",
+        "proposal_id",
+        "verdict",
+        "staging_id",
+        "report_sha256",
+        "transaction_id",
+    ):
+        assert f"{field}:" in output
+    assert "static_results:" not in output
+    assert "reported_verifications:" not in output
+    assert "notes:" not in output
+
+    return_code, output = _run_in_process(
+        vault,
+        capsys,
+        monkeypatch,
+        "preview-activation",
+        candidate.capsule_id,
+        candidate.proposal_id,
+    )
+    activation_token = _token(output)
+    assert return_code == 0
+    assert "Live path:" in output
+    assert "Disposition:" in output
+    assert "Snapshot retention:" in output
+    assert "Rewind:" in output
+    assert "Approval token:" in output
+
+    before_activation = snapshot_vault(vault)
+    return_code, output = _run_in_process(
+        vault,
+        capsys,
+        monkeypatch,
+        "activate",
+        candidate.capsule_id,
+        candidate.proposal_id,
+    )
+    assert return_code == 2
+    assert _token(output) == activation_token
+    assert "Nothing was activated." in output
+    assert snapshot_vault(vault) == before_activation
+
+    return_code, output = _run_in_process(
+        vault,
+        capsys,
+        monkeypatch,
+        "activate",
+        candidate.capsule_id,
+        candidate.proposal_id,
+        "--confirm-token",
+        "0" * 64,
+    )
+    assert return_code == 2
+    assert _token(output) == activation_token
+    assert snapshot_vault(vault) == before_activation
+
+    return_code, output = _run_in_process(
+        vault,
+        capsys,
+        monkeypatch,
+        "activate",
+        candidate.capsule_id,
+        candidate.proposal_id,
+        "--confirm-token",
+        activation_token,
+    )
+    assert return_code == 0
+    for field in (
+        "capsule_id",
+        "proposal_id",
+        "verification_report_sha256",
+        "candidate_sha256",
+        "file_count",
+        "transaction_id",
+        "activated_epoch_seconds",
+        "rewind_available",
+    ):
+        assert f"{field}:" in output
+    assert "files_written:" not in output
+    assert "snapshot_ref:" not in output
+
+    return_code, output = _run_in_process(
+        vault,
+        capsys,
+        monkeypatch,
+        "activation-status",
+        candidate.capsule_id,
+    )
+    assert return_code == 0
+    for expected in (
+        "state: activated",
+        "activation_receipt_present: true",
+        "rewindable: true",
+    ):
+        assert expected in output
+
+    return_code, output = _run_in_process(
+        vault,
+        capsys,
+        monkeypatch,
+        "preview-rewind",
+        candidate.capsule_id,
+    )
+    rewind_token = _token(output)
+    assert return_code == 0
+    assert "Status: OK" in output
+    assert "Restore path:" in output
+    assert "Acknowledgement token:" in output
+
+    before_rewind = snapshot_vault(vault)
+    return_code, output = _run_in_process(
+        vault,
+        capsys,
+        monkeypatch,
+        "rewind",
+        candidate.capsule_id,
+    )
+    assert return_code == 2
+    assert _token(output) == rewind_token
+    assert "Nothing was rewound." in output
+    assert snapshot_vault(vault) == before_rewind
+
+    return_code, output = _run_in_process(
+        vault,
+        capsys,
+        monkeypatch,
+        "rewind",
+        candidate.capsule_id,
+        "--acknowledge-token",
+        "0" * 64,
+    )
+    assert return_code == 2
+    assert _token(output) == rewind_token
+    assert snapshot_vault(vault) == before_rewind
+
+    return_code, output = _run_in_process(
+        vault,
+        capsys,
+        monkeypatch,
+        "rewind",
+        candidate.capsule_id,
+        "--acknowledge-token",
+        rewind_token,
+    )
+    assert return_code == 0
+    for field in (
+        "capsule_id",
+        "proposal_id",
+        "activation_transaction_id",
+        "rewind_transaction_id",
+        "status",
+        "reason",
+        "file_count",
+        "rewound_epoch_seconds",
+    ):
+        assert f"{field}:" in output
+    assert "files_restored:" not in output
+
+    return_code, output = _run_in_process(
+        vault,
+        capsys,
+        monkeypatch,
+        "activation-status",
+        candidate.capsule_id,
+    )
+    assert return_code == 0
+    assert "state: rewound" in output
+    assert "rewindable: false" in output
+
+    return_code, output = _run_in_process(
+        vault,
+        capsys,
+        monkeypatch,
+        "rewind",
+        candidate.capsule_id,
+    )
+    assert return_code == 2
+    assert "Nothing was rewound because rewind is not available." in output
+
+
+def test_cli_run_covers_recovery_refusals_and_result_rendering(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    vault, candidate = _candidate_with_contract(tmp_path)
+    candidate_path = _candidate_file(tmp_path, candidate)
+    stage_preview = _run(vault, "stage", str(candidate_path))
+    staged = _run(
+        vault,
+        "stage",
+        str(candidate_path),
+        "--confirm-token",
+        _token(stage_preview.stdout),
+    )
+    assert staged.returncode == 0
+    verification_preview = _run(
+        vault,
+        "verify",
+        candidate.capsule_id,
+        candidate.proposal_id,
+    )
+    verified = _run(
+        vault,
+        "verify",
+        candidate.capsule_id,
+        candidate.proposal_id,
+        "--confirm-token",
+        _token(verification_preview.stdout),
+    )
+    assert verified.returncode == 0
+    activation_preview = _run(
+        vault,
+        "preview-activation",
+        candidate.capsule_id,
+        candidate.proposal_id,
+    )
+    interrupted = _run(
+        vault,
+        "activate",
+        candidate.capsule_id,
+        candidate.proposal_id,
+        "--confirm-token",
+        _token(activation_preview.stdout),
+        extra_env={"DEX_TX_TEST_STOP_AFTER": "mid-apply:0"},
+    )
+    assert interrupted.returncode == 137
+    after_interrupt = snapshot_vault(vault)
+
+    return_code, output = _run_in_process(
+        vault,
+        capsys,
+        monkeypatch,
+        "recover",
+    )
+    recovery_token = _token(output)
+    assert return_code == 2
+    assert "Recovery phase: activation" in output
+    assert f"Recovery capsule: {candidate.capsule_id}" in output
+    assert f"Recovery proposal: {candidate.proposal_id}" in output
+    assert "Recovery action:" in output
+    assert "Nothing was recovered." in output
+    assert snapshot_vault(vault) == after_interrupt
+
+    return_code, output = _run_in_process(
+        vault,
+        capsys,
+        monkeypatch,
+        "recover",
+        "--confirm-token",
+        "0" * 64,
+    )
+    assert return_code == 2
+    assert _token(output) == recovery_token
+    assert snapshot_vault(vault) == after_interrupt
+
+    return_code, output = _run_in_process(
+        vault,
+        capsys,
+        monkeypatch,
+        "recover",
+        "--confirm-token",
+        recovery_token,
+    )
+    assert return_code == 0
+    assert "Recovered phase: activation" in output
+    assert "Recovery status: restored" in output
+    assert "Restored file count:" in output
+
+    return_code, output = _run_in_process(
+        vault,
+        capsys,
+        monkeypatch,
+        "recover",
+    )
+    assert return_code == 0
+    assert output.strip() == (
+        "No interrupted customization transaction needs recovery."
+    )
 
 
 def test_rebuild_doorway_runs_real_happy_path_and_renders_every_receipt(
