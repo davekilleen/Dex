@@ -35,15 +35,15 @@ def _parser() -> argparse.ArgumentParser:
     keep_log = subparsers.add_parser("keep-activity-log")
     keep_log.add_argument("occurrence_id")
 
-    ingest_granola = subparsers.add_parser("ingest-granola")
-    ingest_granola.add_argument("--days-back", type=int, default=30)
-
     import_transcript = subparsers.add_parser("import-transcript")
     import_transcript.add_argument("file_path")
     import_transcript.add_argument("--title", required=True)
     import_transcript.add_argument("--started-at")
     import_transcript.add_argument("--ended-at")
     import_transcript.add_argument("--source-event-id")
+
+    import_transcript_folder = subparsers.add_parser("import-transcript-folder")
+    import_transcript_folder.add_argument("folder_path")
 
     subparsers.add_parser("reconcile-transcripts")
     subparsers.add_parser("review-transcripts")
@@ -111,10 +111,6 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps(service.set_occurrence_activity_log(args.occurrence_id), indent=2, sort_keys=True))
         return 0
 
-    if args.command == "ingest-granola":
-        print(json.dumps(service.ingest_granola_local(days_back=args.days_back), indent=2, sort_keys=True))
-        return 0
-
     if args.command == "import-transcript":
         print(
             json.dumps(
@@ -124,6 +120,18 @@ def main(argv: list[str] | None = None) -> int:
                     started_at=datetime.fromisoformat(args.started_at) if args.started_at else None,
                     ended_at=datetime.fromisoformat(args.ended_at) if args.ended_at else None,
                     source_event_id=args.source_event_id,
+                ),
+                indent=2,
+                sort_keys=True,
+            )
+        )
+        return 0
+
+    if args.command == "import-transcript-folder":
+        print(
+            json.dumps(
+                service.import_manual_transcript_folder(
+                    folder_path=Path(args.folder_path),
                 ),
                 indent=2,
                 sort_keys=True,

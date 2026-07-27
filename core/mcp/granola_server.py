@@ -4,12 +4,11 @@ Granola Meeting Notes MCP Server for Dex
 
 Data source: Granola's official public REST API (https://public-api.granola.ai).
 
-Authentication uses a Granola API key (format grn_...), created on a Granola
-Business/Enterprise plan. The key is read from the GRANOLA_API_KEY environment
-variable, or from a .env file at the vault root (VAULT_ROOT) if not set in the
-environment. There is NO local-file fallback — the official API is the only
-data source. If no key is configured, tools return a friendly "not connected"
-message instead of erroring.
+Authentication uses a Granola API key (format grn_...). The key is read first
+from Dex's connection manager, then from the GRANOLA_API_KEY environment
+variable, then from a .env file at the vault root (VAULT_ROOT). There is NO
+local-file fallback — the official API is the only data source. If no key is
+configured, tools return a friendly "not connected" message instead of erroring.
 
 API shape:
 - LIST:   GET /v1/notes (cursor pagination; list items have no summary/attendees/transcript)
@@ -27,6 +26,7 @@ Tools (interface unchanged):
 import json
 import logging
 import os
+import subprocess
 import sys
 import time
 import urllib.error
@@ -58,8 +58,7 @@ VAULT_PATH = Path(os.environ.get("VAULT_PATH", Path.cwd()))
 
 # Friendly message shown when no API key is configured (shared convention).
 NOT_CONNECTED_MESSAGE = (
-    "Granola not connected — run /granola-setup to add your Granola API key "
-    "(requires a Granola Business plan)."
+    "Granola not connected — run /connect granola to add your Granola API key."
 )
 
 # Set up logging
@@ -82,6 +81,13 @@ class DateTimeEncoder(json.JSONEncoder):
 # ============================================================================
 # API KEY RESOLUTION
 # ============================================================================
+
+_CONNECTION_MANAGER_ACCESSOR = (
+    Path(__file__).parents[1]
+    / "integrations"
+    / "connection-manager"
+    / "get-token.cjs"
+)
 
 
 def _vault_root() -> Path:
@@ -118,11 +124,55 @@ def _read_key_from_env_file() -> Optional[str]:
     return None
 
 
+def _read_key_from_connection_manager() -> Optional[str]:
+    """Read Granola's bearer key from the connection manager's safe envelope."""
+    try:
+        result = subprocess.run(
+            ["node", str(_CONNECTION_MANAGER_ACCESSOR), "granola"],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if result.returncode != 0:
+        return None
+
+    try:
+        envelope = json.loads(result.stdout)
+    except (json.JSONDecodeError, TypeError):
+        return None
+    if not isinstance(envelope, dict) or envelope.get("kind") != "api_key":
+        return None
+
+    headers = envelope.get("headers")
+    if not isinstance(headers, dict):
+        return None
+    authorization = next(
+        (
+            value
+            for name, value in headers.items()
+            if str(name).lower() == "authorization"
+        ),
+        None,
+    )
+    if not isinstance(authorization, str) or not authorization.lower().startswith(
+        "bearer "
+    ):
+        return None
+    return authorization[len("Bearer "):].strip() or None
+
+
 def get_api_key() -> Optional[str]:
-    """Resolve the Granola API key from the environment, then a .env at VAULT_ROOT."""
-    key = os.environ.get("GRANOLA_API_KEY")
+    """Resolve the Granola key from connection manager, environment, then .env."""
+    key = _read_key_from_connection_manager()
     if key:
-        return key.strip() or None
+        return key
+
+    key = os.environ.get("GRANOLA_API_KEY")
+    if key and key.strip():
+        return key.strip()
     return _read_key_from_env_file()
 
 

@@ -91,6 +91,29 @@ Do not block onboarding when they skip. `/dex-doctor` will confirm the calendar 
 
 ---
 
+## Meeting Sources (Before Step 1)
+
+Make one short, optional offer while the rest of onboarding is still ahead. Run:
+
+```bash
+node .claude/hooks/integration-concierge.cjs
+```
+
+Use only meeting tools the concierge actually detected in `high_value`, `moderate_value`, or `connect_detected` (an installed app, configured connector, or real vault signal). Ask: "I spotted [detected meeting tools]. Want me to start pulling notes from any of those while we finish setting up? You can skip this."
+
+Do not ask eligibility questions. Route only what Dex can honestly read:
+
+- **Granola:** connect with `/connect granola`, then use Dex's Granola API reader.
+- **Zoom:** use `/zoom-setup`, then Dex's Zoom recording/transcript reader.
+- **Teams:** use `/ms-teams-setup`, then Dex's Teams reader for the meeting context it exposes.
+- **Any other meeting-notes tool:** do not imply Dex has a direct reader. Offer: "Point me at a folder of exported notes and I'll import the `.md`, `.txt`, `.vtt`, and `.srt` files." Run `python -m core.ritual_intelligence import-transcript-folder "<folder>"`.
+
+After a selected reader is connected, start its initial sync as a background task and continue to Step 1 without waiting for the backfill. For a folder, start the import the same way. Say plainly: "I'll keep that running in the background while we finish setting up."
+
+If nothing relevant is detected, offer the exported-notes folder once. If the user says skip, later, or no, continue immediately. This offer has no validation step and must never block onboarding.
+
+---
+
 ## Step 1: Welcome
 
 If step 1 was already validated through the calendar confirmation, continue to Step 2. Otherwise:
@@ -555,7 +578,7 @@ Ask: "Which journaling prompts do you want?"
 
 Say: "Granola captures your meeting notes and transcripts. I can help you process them.
 
-**First, connect Granola:** Dex uses the official Granola API, which needs a Granola Business plan and an API key. Run `/granola-setup` and I'll walk you through adding it — no file editing needed.
+**First, connect Granola** — skip this if you already did at the meeting-sources step earlier, where Granola is offered alongside anything else Dex spotted on your machine. Connecting it there uses `/connect`, the same as any other tool. `/granola-setup` still works if you would rather add the key that way. Either route needs an API key from Granola's own settings.
 
 **Processing modes (once connected):**
 - **Manual** (recommended) — Run `/process-meetings` when you want. No extra LLM API key needed.
