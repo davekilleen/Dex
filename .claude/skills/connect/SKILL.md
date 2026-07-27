@@ -1,6 +1,6 @@
 ---
 name: connect
-description: Connect, check, and manage your app integrations (Google, Slack, Linear, GitHub, and hundreds more) — OAuth or paste-a-key, with tokens stored encrypted on your machine
+description: Connect, check and manage your app integrations — Google, Slack and Linear are reviewed and ready; hundreds more connect with an extra confirmation. OAuth or paste-a-key, tokens stored encrypted on your machine.
 ---
 
 # Connect
@@ -85,7 +85,7 @@ of shared or synced storage.
 
 | Status | What it means | What you tell the user |
 |--------|---------------|------------------------|
-| `connected` | A saved credential is present and has no known problem | Nothing needed. If no live-check time is shown, say it has not been verified live yet. |
+| `connected` | A saved credential is present and has no known problem | Nothing needed. If no live-check time is shown, say it has not been checked live yet. |
 | `expiring` | Token expires soon | Nothing needed — auto-refresh handles it. (Optionally offer `refresh` if they want it now.) |
 | `expired` | Token lapsed, refresh available | Offer `refresh`; if that fails permanently it becomes `needs_reauth` and must be reconnected |
 | `needs_reauth` | The saved credential can no longer be used | **Reconnect required** — re-run OAuth, or paste the key again for a key-based connection |
@@ -98,7 +98,7 @@ Example of how to render it:
 ```
 Here's where your connections stand:
 
-- Google — connected and verified
+- Google — connected, checked just now
 - Slack — needs reconnect (the token was revoked). Want me to reconnect it?
 - Linear — connected (API key)
 
@@ -229,7 +229,7 @@ Have the user paste their key when prompted (it's read from stdin). For BASIC se
 
 **If a required field is missing, `set-key` refuses and names it** (e.g. *"ActiveCampaign needs connection detail: hostname"*) rather than saving a dead connection — so always `describe` first, or just read the error and re-run with the field.
 
-On success the key is encrypted and stored exactly like an OAuth token. For security-reviewed providers, Dex runs a **live check** where it can: a reviewed verification endpoint can confirm the key or flag a rejected credential, while a generic check can only confirm and never condemn. Advanced providers are not auto-checked. Confirm with `connect.cjs status` — key connections show as `connected` or `connected (unverified)` (they don't expire or need refresh).
+On success the key is encrypted and stored exactly like an OAuth token. For security-reviewed providers, Dex runs a **live check** where it can: a reviewed verification endpoint can confirm the key or flag a rejected credential, while a generic check can only confirm and never condemn. Advanced providers are not auto-checked. Confirm with `connect.cjs status` — key connections show as `connected` or `connected (unverified)`; read "(unverified)" to the user as "not checked live yet", never as a safety statement (they don't expire or need refresh).
 
 **Note on how consumers use it:** for an API-key service, the token accessor returns the rendered request recipe so callers don't re-implement the auth scheme:
 
