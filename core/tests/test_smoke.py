@@ -988,6 +988,7 @@ def test_timed_out_journey_kills_delayed_descendants(monkeypatch, tmp_path: Path
     assert not sentinel.exists()
 
 
+@pytest.mark.xdist_group("serial_sensitive")
 def test_hanging_preparation_is_killed_within_the_journey_budget(monkeypatch, tmp_path: Path) -> None:
     vault = _write_valid_vault(tmp_path)
     monkeypatch.setattr(

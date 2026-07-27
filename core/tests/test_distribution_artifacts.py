@@ -17,6 +17,12 @@ from types import ModuleType
 import pytest
 import yaml
 
+# These tests build release trees from the shared repository checkout; two of them
+# running at once corrupt each other's git state. Under pytest-xdist the group name
+# pins the whole module to a single worker (serial among themselves, parallel to
+# everything else). Harmless no-op without xdist.
+pytestmark = pytest.mark.xdist_group("serial_sensitive")
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
 DOCS_BRIDGE_PATHS = tuple(

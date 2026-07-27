@@ -77,8 +77,15 @@ jobs:
         run: python core/paths.py
       - name: Ruff linting (fail fast)
         run: ruff check core/
+      # -n auto spreads tests across the runner's cores (pytest-xdist); --dist loadgroup
+      # keeps the xdist_group("serial_sensitive")-marked tests on one worker because they
+      # share release-build git state or assert wall-clock budgets. Coverage measurement,
+      # thresholds, and the junit report are identical to the former serial run —
+      # pytest-cov combines worker data automatically. Identical test set, same gates.
       - name: Test suites + coverage
-        run: pytest core/tests/ core/mcp/tests/ core/migrations/tests/ -v -m "not fuzz" --junitxml=.logs/pytest-report.xml --cov=core --cov-report=term --cov-report=json:coverage.json --cov-fail-under="${COVERAGE_MIN_TOTAL}"
+        run: |
+          echo "Runner cores: $(sysctl -n hw.ncpu)"
+          pytest core/tests/ core/mcp/tests/ core/migrations/tests/ -v -m "not fuzz" -n auto --dist loadgroup --junitxml=.logs/pytest-report.xml --cov=core --cov-report=term --cov-report=json:coverage.json --cov-fail-under="${COVERAGE_MIN_TOTAL}"
       - name: Touched-file coverage gate
         if: github.event_name == 'pull_request'
         run: python scripts/check-coverage-threshold.py
