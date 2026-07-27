@@ -1,7 +1,6 @@
 ---
 name: getting-started
-description: Interactive post-onboarding tour with adaptive pathways based on available data
-model_hint: fast
+description: "Interactive post-onboarding tour that adapts to whatever data exists (calendar, Granola, or none). Use right after onboarding, or when the user says 'show me around', 'how do I start'. Also use proactively when the vault is < 7 days old. Not for the initial setup itself; use `setup`."
 ---
 
 ## Purpose
@@ -802,7 +801,7 @@ Company restrictions, API limitations, weird auth flows -
 lots can go wrong in the real world.
 
 **But here's what's cool:** Even when it doesn't work, you learn:
-• How to use Codex to debug APIs
+• How to use Claude to debug APIs
 • How to build integrations yourself
 • How MCP servers work
 • How to read API documentation
@@ -854,12 +853,13 @@ After completing the main pathway flow (A, B, or C) but before showing the compl
 
 ### How to Run
 
-Execute the integration concierge:
+Execute the integration concierge — it scans the vault for signals (mentions, links, email domains) of tools the user already works with and ranks them:
+
 ```bash
 node .claude/hooks/integration-concierge.cjs
 ```
 
-Parse the JSON output for `high_value` and `moderate_value` recommendations.
+Parse the JSON output for the high_value and moderate_value tiers. Each entry includes `shortName`, `reason` (a ready-to-use plain-English signal — "installed on your Mac", "3 mentions in your notes", "already set up as a connector but not switched on yet"), `value`, `setupTime`, and `setup` (the setup skill to run). Prefer `reason` verbatim — it already names the strongest evidence (an installed app or configured connector outranks a passing mention).
 
 ### Presenting Recommendations
 
@@ -868,8 +868,7 @@ Parse the JSON output for `high_value` and `moderate_value` recommendations.
 For each high_value integration found:
 
 ```
-By the way, I noticed you mention **[shortName]** in a few places
-([mentions] references across files like [first example file]).
+By the way — **[shortName]** ([reason]).
 
 Connecting it would give you: [value proposition]
 
@@ -886,13 +885,9 @@ Want to connect any of these? Or run `/integrate-mcp` anytime later.
 **Rules:**
 - Maximum 2 integration suggestions (don't overwhelm)
 - Only mention high_value items (score >= 5) — skip moderate and available
-- If user says yes, run the setup skill inline then return to the getting-started completion
-- If user says no/skip/later, move on without pressure
-- Don't show this section if the user already went through integration setup during onboarding Step 8
-
-### Detecting Prior Setup
-
-Check `.onboarding-complete` marker file for an `integrations_offered` flag. If present, skip this section — they already saw integration recommendations during onboarding.
+- If the user says yes, run the setup skill (its `setup` field, e.g. `/trello-setup`) inline, then return to the getting-started completion
+- If the user says no/skip/later, move on without pressure
+- Don't show this section if the user already went through integration setup during onboarding Step 8 — check the `.onboarding-complete` marker for an `integrations_offered` flag and skip if present
 
 ---
 
@@ -916,20 +911,6 @@ After any pathway completes:
 **Come back anytime:**
 • `/getting-started` - Run this tour again
 • Just ask in natural language - I'll figure out what you need
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  Upgrade to Smart Search?
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Right now I find your notes with keywords. I can upgrade to
-semantic search — finds content by meaning, not just words.
-
-  "customer churn" → finds notes saying "retention risk",
-  "users leaving", "cancellation patterns"
-
-5 minutes to set up. Runs locally. Recommended.
-
-  [1] Set it up now  →  I'll run /enable-semantic-search
-  [2] Skip for now   →  run /enable-semantic-search anytime
 
 What would you like to work on first?"
 ```

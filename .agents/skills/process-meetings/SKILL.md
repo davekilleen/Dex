@@ -1,13 +1,7 @@
 ---
 name: process-meetings
-description: Process synced Granola meetings to update person pages, extract tasks, and organize meeting notes
+description: "Turn synced meetings into updated person pages, extracted tasks and organized notes. Use when the user says 'process my meetings', 'catch up my notes', or after Granola/Otter syncs. Also use proactively when unprocessed meetings exist. Not for prepping an upcoming meeting; use `meeting-prep`."
 model_hint: balanced
-context: fork
-hooks:
-  PostToolUse:
-    - matcher: Write
-      type: command
-      command: "node .claude/hooks/post-meeting-person-update.cjs"
 ---
 
 # Process Meetings
@@ -218,6 +212,12 @@ If available, enhance meeting processing with meaning-based intelligence:
    ```
    Find if they've been mentioned in other meetings/notes, even if they weren't a direct participant.
 
+**Deterministic soft-commitment pass (always runs):** Independently of QMD
+availability, run the `detect_soft_commitments` Work-MCP tool over each meeting's
+discussion notes. Add matches to the action-items list marked
+"*(soft commitment — confirm before creating)*" so Step 5 confirms, creates, and
+reads back every task ID. QMD is the semantic complement; NEVER auto-create.
+
 **Integration:**
 - Add implicit commitments to the action items list with a note: "*(detected — not explicitly stated)*"
 - Add project links to meeting frontmatter
@@ -231,21 +231,38 @@ For each meeting with unextracted tasks:
 1. **Find action items** in the "## Action Items > ### For Me" section
 2. **For each unchecked item** (`- [ ]`):
    - Extract task description
-   - Get task ID (format: `^task-YYYYMMDD-XXX`)
-   - Read pillar from meeting frontmatter
+   - Read pillar from meeting frontmatter, then resolve it to the unique pillar
+     ID in `System/pillars.yaml` by matching either `id` or display `name`
+   - Preserve the exact source checkbox line text for `stamp_source_line`
+   - Let `create_task` generate the task ID and stamp it back onto that line
 
 3. **Create task** using Work MCP:
    ```
    create_task(
      title: "Task description",
      priority: "P2",  // default, P1 if "urgent" mentioned
-     pillar: "{from meeting}",
-     people: ["{participants}"],
-     source: "{meeting path}"
+     pillar: "{resolved pillar ID}",
+     people: ["{participant page paths}"],
+     source: "{meeting path}",
+     stamp_source_line: "{exact source checkbox line text}"
    )
    ```
 
-4. **Mark as extracted** by adding comment to meeting note:
+   `people` values must resolve to existing person page paths. Prefer the paths
+   returned by Step 3's `lookup_person`/`create_person` flow; if only a bare
+   participant name is available, pass that name unchanged and let `create_task`
+   resolve it. Never construct or guess a person page path.
+
+4. **Verify every result before marking the meeting extracted:**
+   - Require `success: true` for every `create_task` call.
+   - Require either `stamp.stamped: true`, or `reason: "already_anchored"`
+     with the exact source line's existing anchor equal to the returned
+     `task.task_id`.
+   - If entity resolution or stamping is unresolved, surface the exact failed
+     line and leave the meeting unmarked for reconciliation. Do not blindly
+     retry a task that was created but not stamped.
+
+   Only after every action item is verified, add this comment to the meeting note:
    ```markdown
    <!-- tasks-extracted: 2026-02-03T10:30:00Z -->
    ```
@@ -300,6 +317,8 @@ If `ENTITY_SUGGESTIONS_FILE` contains suggested people, list them and ask: "Want
 ```
 
 ## Error Handling
+
+For MCP responses, follow CLAUDE.md's `feature_status` rendering convention before applying these fallbacks.
 
 **If no meetings found:**
 > "No meetings synced in the last 7 days. Make sure:

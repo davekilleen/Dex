@@ -15,15 +15,13 @@ The copies here are **adapters**, not a second source of truth: when a skill
 that exists in both places changes in `.claude/skills/`, the change should be
 mirrored here in the same PR.
 
-> ⚠️ Known drift (2026-07-26): `process-meetings` and `getting-started` here
-> lag their `.claude/skills/` counterparts (e.g. the deterministic
-> soft-commitment pass and pillar-ID resolution are missing from the copies
-> here). Re-syncing is pending a deliberate pass — these files are covered by
+> Last synced 2026-07-27 (canonical body verbatim; Claude-Code-only frontmatter
+> keys like `hooks:`/`context:` dropped). These files are covered by
 > instruction-honesty and configuration-truth tests
 > (`core/tests/test_instruction_honesty.py`,
 > `core/tests/test_granola_configuration_truth.py`,
-> `scripts/check-instructed-tools.py`), so sync them via a reviewed change,
-> not a blind copy.
+> `scripts/check-instructed-tools.py`) — always sync via a reviewed change and
+> re-run those, never a blind copy.
 
 This directory is `brain`-classed in the portable ownership contract and is
 provisioned into installs (`core/provision-contract.json`); user-authored
