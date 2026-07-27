@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import re
 import shutil
 import sys
 from datetime import date, datetime
@@ -50,6 +51,68 @@ def mixed_calendar_events():
             "start": "2026-07-29T00:00:00+01:00",
             "end": "2026-07-30T00:00:00+01:00",
             "duration_minutes": 24 * 60,
+            "all_day": True,
+            "attendees": [
+                {"name": "John", "email": "john@example.com"},
+            ],
+        },
+    ]
+
+
+@pytest.fixture
+def pillar_evidence_events():
+    return [
+        {
+            "title": "Weekly planning",
+            "provider_event_id": "weekly-planning-2026-07-27",
+            "provider_series_id": "weekly-planning",
+            "start": datetime(2026, 7, 27, 9, 0),
+            "end": datetime(2026, 7, 27, 10, 0),
+            "attendees": [
+                {
+                    "name": "Jane",
+                    "email": "jane@acme.com",
+                    "is_current_user": True,
+                },
+                {"name": "John", "email": "john@acme.com"},
+            ],
+        },
+        {
+            "title": "Customer review",
+            "provider_event_id": "customer-review-2026-07-27",
+            "provider_series_id": "customer-review",
+            "start": datetime(2026, 7, 27, 11, 0),
+            "end": datetime(2026, 7, 27, 12, 30),
+            "attendees": [
+                {
+                    "name": "Jane",
+                    "email": "jane@acme.com",
+                    "is_current_user": True,
+                },
+                {"name": "John", "email": "john@example.com"},
+            ],
+        },
+        {
+            "title": "Weekly planning",
+            "provider_event_id": "weekly-planning-2026-07-28",
+            "provider_series_id": "weekly-planning",
+            "start": datetime(2026, 7, 28, 9, 0),
+            "end": datetime(2026, 7, 28, 10, 0),
+            "attendees": [
+                {
+                    "name": "Jane",
+                    "email": "jane@acme.com",
+                    "is_current_user": True,
+                },
+                {"name": "John", "email": "john@acme.com"},
+            ],
+        },
+        {
+            "title": "Holiday",
+            "provider_event_id": "holiday-2026-07-29",
+            "provider_series_id": "holiday",
+            "start": datetime(2026, 7, 29, 0, 0),
+            "end": datetime(2026, 7, 30, 0, 0),
             "all_day": True,
             "attendees": [
                 {"name": "John", "email": "john@example.com"},
@@ -114,6 +177,7 @@ class TestFirstWeekAnalysis:
             "unique_people_count",
             "external_company_count",
             "recent_meeting_count",
+            "pillar_evidence",
             "draft_weekly_plan",
         }
         assert analysis["available"] is True
@@ -223,6 +287,237 @@ class TestFirstWeekAnalysis:
         assert capacity["meeting_count"] == 1
         assert capacity["meeting_hours"] == 1.5
 
+    def test_pillar_evidence_uses_only_timed_calendar_events(
+        self,
+        tmp_path,
+        monkeypatch,
+        pillar_evidence_events,
+    ):
+        system = tmp_path / "System"
+        system.mkdir()
+        (system / "user-profile.yaml").write_text(
+            "role: Founder\nemail_domain: acme.com\npillars: []\n",
+            encoding="utf-8",
+        )
+        monkeypatch.setattr(onboarding_server, "BASE_DIR", tmp_path)
+        monkeypatch.setattr(
+            onboarding_server,
+            "SESSION_FILE",
+            system / ".onboarding-session.json",
+        )
+        monkeypatch.setattr(
+            onboarding_server,
+            "get_calendar_events_for_week",
+            lambda: pillar_evidence_events,
+        )
+        monkeypatch.setattr(
+            onboarding_server,
+            "get_recent_granola_meetings",
+            lambda days=7: [],
+        )
+
+        analysis = onboarding_server.run_first_week_analysis()
+
+        assert analysis["meeting_count"] == 3
+        assert analysis["meeting_hours"] == 3.5
+        assert analysis["pillar_evidence"] == {
+            "recurring_commitments": [
+                {
+                    "title": "Weekly planning",
+                    "meeting_count": 2,
+                    "meeting_hours": 2.0,
+                }
+            ],
+            "internal_external_split": {
+                "internal_meeting_count": 2,
+                "external_meeting_count": 1,
+                "unknown_meeting_count": 0,
+            },
+            "observations": [
+                "Monday is your busiest day, with 2 timed meetings.",
+                "3 of your 3 timed meetings are 1:1s.",
+            ],
+        }
+        assert "Holiday" not in json.dumps(analysis["pillar_evidence"])
+        assert "24" not in json.dumps(analysis["pillar_evidence"])
+
+    def test_analysis_context_uses_active_onboarding_session_before_finalize(
+        self,
+        tmp_path,
+        monkeypatch,
+    ):
+        system = tmp_path / "System"
+        system.mkdir()
+        session_file = system / ".onboarding-session.json"
+        monkeypatch.setattr(onboarding_server, "BASE_DIR", tmp_path)
+        monkeypatch.setattr(onboarding_server, "SESSION_FILE", session_file)
+        session = onboarding_server.create_new_session()
+        session["data"] = {
+            "email_domain": "acme.com",
+            "calendar": {"work_calendar": "jane@acme.com"},
+        }
+        onboarding_server.save_session(session)
+
+        assert onboarding_server._load_first_week_profile() == session["data"]
+
+
+class TestIdentityDerivation:
+    @pytest.mark.parametrize(
+        ("address", "expected"),
+        (
+            (
+                "jane.smith@example.com",
+                {"name": "Jane", "domain": "example.com"},
+            ),
+            ("js@example.com", {"name": None, "domain": "example.com"}),
+            ("info@example.com", {"name": None, "domain": "example.com"}),
+            ("j.smith@example.com", {"name": None, "domain": "example.com"}),
+            ("jane@acme.com", {"name": "Jane", "domain": "acme.com"}),
+        ),
+    )
+    def test_derives_only_confident_identity_guesses(self, address, expected):
+        assert onboarding_server.derive_identity_from_email(address) == expected
+
+    @pytest.mark.parametrize(
+        "address",
+        ("", "not-an-email", "jane@@example.com", "@example.com", "jane@example"),
+    )
+    def test_rejects_malformed_addresses(self, address):
+        assert onboarding_server.derive_identity_from_email(address) == {
+            "name": None,
+            "domain": None,
+        }
+
+    def test_calendar_save_returns_identity_for_confirmation(
+        self, tmp_path, monkeypatch
+    ):
+        from core.mcp import calendar_server
+
+        session_file = tmp_path / "System/.onboarding-session.json"
+        monkeypatch.setattr(onboarding_server, "SESSION_FILE", session_file)
+        monkeypatch.setattr(
+            calendar_server,
+            "_get_calendar_list_result",
+            lambda: {
+                "success": True,
+                "calendars": ["jane.smith@example.com"],
+                "count": 1,
+            },
+        )
+        onboarding_server.save_session(onboarding_server.create_new_session())
+
+        payload = _decode_tool_result(
+            asyncio.run(
+                onboarding_server.handle_call_tool(
+                    "save_calendar_selection",
+                    {
+                        "work_calendar": "jane.smith@example.com",
+                        "work_email": "jane.smith@example.com",
+                        "calendar_count": 1,
+                    },
+                )
+            )
+        )
+
+        assert payload["success"] is True
+        assert payload["data"]["derived_identity"] == {
+            "name": "Jane",
+            "domain": "example.com",
+        }
+
+
+class TestRoleStep:
+    def test_role_areas_cover_all_existing_role_numbers_once(self):
+        mapped_numbers = [
+            role_number
+            for role_numbers in onboarding_server.ROLE_AREAS.values()
+            for role_number in role_numbers
+        ]
+
+        assert len(onboarding_server.ROLE_AREAS) == 8
+        assert list(onboarding_server.ROLES) == list(range(1, 32))
+        assert sorted(mapped_numbers) == list(onboarding_server.ROLES)
+        assert len(mapped_numbers) == len(set(mapped_numbers))
+
+        role_step = (
+            REPO_ROOT / ".claude/flows/onboarding.md"
+        ).read_text(encoding="utf-8").split("## Step 2:", 1)[1].split(
+            "## Step 3:", 1
+        )[0]
+        documented_numbers = []
+        for area, role_numbers in onboarding_server.ROLE_AREAS.items():
+            area_line = next(
+                line
+                for line in role_step.splitlines()
+                if line.startswith(f"- **{area}:**")
+            )
+            documented_area_numbers = [
+                int(number) for number in re.findall(r"`(\d+)`", area_line)
+            ]
+            assert documented_area_numbers == list(role_numbers)
+            documented_numbers.extend(documented_area_numbers)
+
+        assert sorted(documented_numbers) == list(onboarding_server.ROLES)
+        assert len(documented_numbers) == len(set(documented_numbers))
+        for role_number, (label, _) in onboarding_server.ROLES.items():
+            assert role_step.count(f"`{role_number}` {label}") == 1
+
+    @pytest.mark.parametrize("role_number", (1, 31))
+    def test_numbered_role_contract_is_unchanged(
+        self,
+        tmp_path,
+        monkeypatch,
+        role_number,
+    ):
+        session_file = tmp_path / "System/.onboarding-session.json"
+        monkeypatch.setattr(onboarding_server, "SESSION_FILE", session_file)
+        onboarding_server.save_session(onboarding_server.create_new_session())
+
+        payload = _decode_tool_result(
+            asyncio.run(
+                onboarding_server.handle_call_tool(
+                    "validate_and_save_step",
+                    {
+                        "step_number": 2,
+                        "step_data": {"role_number": role_number},
+                    },
+                )
+            )
+        )
+
+        expected_role, expected_group = onboarding_server.ROLES[role_number]
+        assert payload["success"] is True
+        assert onboarding_server.load_session()["data"] == {
+            "role": expected_role,
+            "role_group": expected_group,
+        }
+
+    def test_custom_role_contract_is_unchanged(self, tmp_path, monkeypatch):
+        session_file = tmp_path / "System/.onboarding-session.json"
+        monkeypatch.setattr(onboarding_server, "SESSION_FILE", session_file)
+        onboarding_server.save_session(onboarding_server.create_new_session())
+
+        payload = _decode_tool_result(
+            asyncio.run(
+                onboarding_server.handle_call_tool(
+                    "validate_and_save_step",
+                    {
+                        "step_number": 2,
+                        "step_data": {
+                            "role": "Researcher",
+                            "role_group": "Custom",
+                        },
+                    },
+                )
+            )
+        )
+
+        assert payload["success"] is True
+        assert onboarding_server.load_session()["data"] == {
+            "role": "Researcher",
+            "role_group": "Custom",
+        }
+
 
 class TestEmailDomainStep:
     @pytest.mark.parametrize(
@@ -315,6 +610,22 @@ class TestEmailDomainStep:
 
         assert payload["success"] is False
         assert "no_company_domain" in f"{payload['error']} {payload['suggestion']}"
+
+
+class TestPillarStep:
+    def test_requires_at_least_two_pillars(self):
+        assert onboarding_server.validate_pillars(["Product"]) == (
+            False,
+            "Need at least 2 pillars",
+        )
+
+    def test_more_than_three_pillars_still_warns(self):
+        valid, warning = onboarding_server.validate_pillars(
+            ["Product", "Customers", "Team", "Operations"]
+        )
+
+        assert valid is True
+        assert warning == "Warning: 4 pillars provided. 2-3 is recommended for focus."
 
 
 class TestCapabilityStep:

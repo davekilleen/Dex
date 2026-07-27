@@ -24,7 +24,76 @@ Remember this for the rest of onboarding. Every step that says "present options"
 
 ---
 
+## Calendar First (Before Step 1)
+
+Say: "Welcome to Dex. Before I ask you anything, let's connect your calendar — at the end of setup I'll show you your actual week, organised. It takes a few seconds, and you can skip it."
+
+This opening is separate from the seven validated profile steps. It must stay non-blocking.
+
+Detect the host platform first. Run `uname -s` when available; if that command is unavailable, use the runtime-reported operating system.
+
+**On non-macOS platforms (anything other than `Darwin`):**
+
+Say: "Calendar sync is currently available only on macOS, so I'll skip calendar setup on this computer."
+
+Call `save_calendar_selection(skipped=true)`, then continue to Step 1. Do not call `calendar_list_calendars`, show macOS settings guidance, or block onboarding.
+
+**On macOS:**
+
+Call `calendar_list_calendars` from the Calendar MCP to get the calendar names Calendar.app can see.
+
+**If the listing succeeds:**
+
+Say: "Which calendar should I use for your work schedule?"
+
+Present every returned calendar name as a numbered list:
+```
+1. [exact calendar name]
+2. [exact calendar name]
+3. [exact calendar name]
+```
+
+The user can reply with a number or type the calendar name. Resolve a number to the exact returned name, then call `save_calendar_selection` from the Onboarding MCP with:
+- `work_calendar`: the exact selected calendar name
+- `calendar_count`: the `count` returned by `calendar_list_calendars`
+- `work_email`: the selected name only when that calendar name is an email address; otherwise omit it
+
+Example:
+```
+save_calendar_selection(
+  work_calendar="jane@example.com",
+  work_email="jane@example.com",
+  calendar_count=4
+)
+```
+
+If the save returns `success: false`, show the available names from its error response and ask the user to choose again. If it succeeds, say: "✓ Got it — I'll use [calendar name] for your work schedule."
+
+The successful save response includes `derived_identity`, with conservative `name` and `domain` guesses when `work_email` is usable:
+
+- **If both `name` and `domain` are present:** Say: "You're [name], at [domain] — right?" Present two choices: **Yes, that's right** and **Let me correct that**.
+  - On **Yes, that's right**, call `validate_and_save_step(step_number=1, step_data={"name": "[confirmed name]"})`, then call `validate_and_save_step(step_number=4, step_data={"email_domain": "[confirmed domain]"})`.
+  - On **Let me correct that**, collect both normally: ask for their name and company email domain, including the existing no-company-domain option, then save each answer through those same step 1 and step 4 calls.
+- **If only `domain` is present:** Offer the domain for confirmation: "It looks like your company domain is [domain] — right?" Confirm or correct it through `validate_and_save_step(step_number=4, step_data={"email_domain": "[confirmed domain]"})`, including the existing explicit no-company-domain path when correcting. Then ask for the name normally in Step 1.
+- **If there is no `work_email`, or neither value can be derived:** Do not guess or mention the failed derivation. Follow Steps 1 and 4 exactly as written.
+
+Do not bypass either validation call. Only skip the corresponding later question after that step's validation call succeeds.
+
+**If the listing fails or calendar permission is denied:**
+
+Say: "macOS hasn't let this terminal app read your calendars yet — open **System Settings** → **Privacy & Security** → **Calendars** and enable the terminal app you're using."
+
+Offer two choices:
+1. Try again after granting access — call `calendar_list_calendars` again
+2. Skip for now — call `save_calendar_selection(skipped=true)`
+
+Do not block onboarding when they skip. `/dex-doctor` will confirm the calendar setup later. Continue to Step 1.
+
+---
+
 ## Step 1: Welcome
+
+If step 1 was already validated through the calendar confirmation, continue to Step 2. Otherwise:
 
 Say: "Welcome to Dex! I'm your personal knowledge assistant.
 
@@ -38,58 +107,48 @@ Let's get you set up. First, what's your name?"
 
 ## Step 2: Role
 
-Ask: "What's your role?"
+First ask for their AREA:
+
+Ask: "Which area is closest to your work?"
 
 Present options using your detected platform tool (see "Platform Detection" above):
 ```json
 {
   "questions": [{
-    "id": "role",
-    "prompt": "What's your role?",
+    "id": "role_area",
+    "prompt": "Which area is closest to your work?",
     "allow_multiple": false,
     "options": [
-      {"id": "1", "label": "Product Manager"},
-      {"id": "2", "label": "Sales / Account Executive"},
-      {"id": "3", "label": "Marketing"},
-      {"id": "4", "label": "Engineering"},
-      {"id": "5", "label": "Design"},
-      {"id": "6", "label": "Customer Success"},
-      {"id": "7", "label": "Solutions Engineering"},
-      {"id": "8", "label": "Product Operations"},
-      {"id": "9", "label": "RevOps / BizOps"},
-      {"id": "10", "label": "Data / Analytics"},
-      {"id": "11", "label": "Finance"},
-      {"id": "12", "label": "People (HR)"},
-      {"id": "13", "label": "Legal"},
-      {"id": "14", "label": "IT Support"},
-      {"id": "15", "label": "Founder"},
-      {"id": "16", "label": "CEO"},
-      {"id": "17", "label": "CFO"},
-      {"id": "18", "label": "COO"},
-      {"id": "19", "label": "CMO"},
-      {"id": "20", "label": "CRO"},
-      {"id": "21", "label": "CTO"},
-      {"id": "22", "label": "CPO"},
-      {"id": "23", "label": "CIO"},
-      {"id": "24", "label": "CISO"},
-      {"id": "25", "label": "CHRO / Chief People Officer"},
-      {"id": "26", "label": "CLO / General Counsel"},
-      {"id": "27", "label": "CCO (Chief Customer Officer)"},
-      {"id": "28", "label": "Fractional CPO"},
-      {"id": "29", "label": "Consultant"},
-      {"id": "30", "label": "Coach"},
-      {"id": "31", "label": "Venture Capital / Private Equity"},
-      {"id": "other", "label": "My role isn't listed"}
+      {"id": "product", "label": "Product"},
+      {"id": "sales", "label": "Sales"},
+      {"id": "marketing", "label": "Marketing"},
+      {"id": "engineering", "label": "Engineering / Data / IT"},
+      {"id": "design", "label": "Design"},
+      {"id": "customer_success", "label": "Customer Success"},
+      {"id": "operations", "label": "Operations / Finance / People / Legal"},
+      {"id": "leadership", "label": "Leadership / Exec / Advisory"},
+      {"id": "other", "label": "Something else"}
     ]
   }]
 }
 ```
 
-**If user selects "My role isn't listed" (id: "other"):**
+Then ask for their ROLE using only the roles mapped to the selected area. Keep each existing number as the option id:
+
+- **Product:** `1` Product Manager; `8` Product Operations; `22` CPO; `28` Fractional CPO
+- **Sales:** `2` Sales / Account Executive; `7` Solutions Engineering; `20` CRO
+- **Marketing:** `3` Marketing; `19` CMO
+- **Engineering / Data / IT:** `4` Engineering; `10` Data / Analytics; `14` IT Support; `21` CTO; `23` CIO; `24` CISO
+- **Design:** `5` Design
+- **Customer Success:** `6` Customer Success; `27` CCO (Chief Customer Officer)
+- **Operations / Finance / People / Legal:** `9` RevOps / BizOps; `11` Finance; `12` People (HR); `13` Legal; `17` CFO; `18` COO; `25` CHRO / Chief People Officer; `26` CLO / General Counsel
+- **Leadership / Exec / Advisory:** `15` Founder; `16` CEO; `29` Consultant; `30` Coach; `31` Venture Capital / Private Equity
+
+**If user selects "Something else" (id: "other"):**
 Ask: "What's your role? Describe it however makes sense — I'll tailor the system accordingly."
 Then call `validate_and_save_step(step_number=2, step_data={"role": "[their description]", "role_group": "Custom"})`.
 
-**If user selects a numbered role:**
+**If user selects a role from an area:**
 Call `validate_and_save_step(step_number=2, step_data={"role_number": [selected id as integer]})` to validate and save.
 
 ---
@@ -123,6 +182,8 @@ Present options using your detected platform tool:
 
 ## Step 4: Email Domain (MANDATORY)
 
+If step 4 was already validated through the calendar confirmation, continue to Step 5. Otherwise:
+
 **⚠️ ASK EVERY USER - Required for Internal/External person routing**
 
 Ask: "What's your company email domain? This helps me automatically:
@@ -144,62 +205,19 @@ Ask: "What's your company email domain? This helps me automatically:
 
 ---
 
-## Step 4b: Calendar Selection
-
-**Purpose:** Optimize calendar queries for performance (45s → 0.3s) by identifying the user's actual work calendar instead of guessing its name.
-
-Detect the host platform first. Run `uname -s` when available; if that command is unavailable, use the runtime-reported operating system.
-
-**On non-macOS platforms (anything other than `Darwin`):**
-
-Say: "Calendar sync is currently available only on macOS, so I'll skip calendar setup on this computer."
-
-Call `save_calendar_selection(skipped=true)`, then continue to Step 5. Do not call `calendar_list_calendars`, show macOS settings guidance, or block onboarding.
-
-**On macOS:**
-
-Call `calendar_list_calendars` from the Calendar MCP to get the calendar names Calendar.app can see.
-
-**If the listing succeeds:**
-
-Say: "Which calendar should I use for your work schedule?"
-
-Present every returned calendar name as a numbered list:
-```
-1. [exact calendar name]
-2. [exact calendar name]
-3. [exact calendar name]
-```
-
-The user can reply with a number or type the calendar name. Resolve a number to the exact returned name, then call `save_calendar_selection` from the Onboarding MCP with:
-- `work_calendar`: the exact selected calendar name
-- `calendar_count`: the `count` returned by `calendar_list_calendars`
-- `work_email`: the selected name only when that calendar name is an email address; otherwise omit it
-
-Example:
-```
-save_calendar_selection(
-  work_calendar="user@company.com",
-  work_email="user@company.com",
-  calendar_count=4
-)
-```
-
-If the save returns `success: false`, show the available names from its error response and ask the user to choose again. If it succeeds, say: "✓ Got it — I'll use [calendar name] for your work schedule."
-
-**If the listing fails or calendar permission is denied:**
-
-Say: "macOS hasn't let this terminal app read your calendars yet — open **System Settings** → **Privacy & Security** → **Calendars** and enable the terminal app you're using."
-
-Offer two choices:
-1. Try again after granting access — call `calendar_list_calendars` again
-2. Skip for now — call `save_calendar_selection(skipped=true)`
-
-Do not block onboarding when they skip. `/dex-doctor` will confirm the calendar setup later.
-
----
-
 ## Step 5: Strategic Pillars
+
+Before asking, call `run_first_week_analysis()` from onboarding-mcp. This is evidence for the question, never an answer to it. Do not infer or guess pillars from calendar activity.
+
+- If `available: true` and `meeting_count` is greater than zero, show one compact evidence block using only `pillar_evidence`:
+  - Show `recurring_commitments`; if the list is empty, say that no recurring commitments were identifiable from this week.
+  - Show the meeting counts in `internal_external_split`.
+  - Show the returned `observations` (at most two).
+  - Do not recalculate any count or hours. The MCP has already excluded all-day entries such as flights, holidays, and days off.
+
+Then say: "That's where your time went. Pillars are what you want to be true in a year — and there's often something important that owns none of your calendar yet. That counts too."
+
+- If `available: false` or `meeting_count: 0`, show no evidence block and no apology. Do not mention the failed or empty calendar analysis; continue directly to the unchanged question below.
 
 Ask: "What are the 2-3 long-term areas of focus for your role? Think broad themes, not specific goals.
 

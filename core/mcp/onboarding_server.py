@@ -96,10 +96,58 @@ ROLES = {
     31: ("Venture Capital / Private Equity", "advisory"),
 }
 
+ROLE_AREAS = {
+    "Product": (1, 8, 22, 28),
+    "Sales": (2, 7, 20),
+    "Marketing": (3, 19),
+    "Engineering / Data / IT": (4, 10, 14, 21, 23, 24),
+    "Design": (5,),
+    "Customer Success": (6, 27),
+    "Operations / Finance / People / Legal": (9, 11, 12, 13, 17, 18, 25, 26),
+    "Leadership / Exec / Advisory": (15, 16, 29, 30, 31),
+}
+
 COMPANY_SIZES = ["startup", "scaling", "enterprise", "large_enterprise"]
 FORMALITY_LEVELS = ["formal", "professional_casual", "casual"]
 DIRECTNESS_LEVELS = ["very_direct", "balanced", "supportive"]
 CAREER_LEVELS = ["junior", "mid", "senior", "leadership", "c_suite"]
+ROLE_EMAIL_LOCALS = {
+    "accounts",
+    "admin",
+    "administrator",
+    "billing",
+    "careers",
+    "contact",
+    "customerservice",
+    "enquiries",
+    "enquiry",
+    "events",
+    "finance",
+    "hello",
+    "help",
+    "hr",
+    "info",
+    "jobs",
+    "legal",
+    "mail",
+    "marketing",
+    "media",
+    "noreply",
+    "notifications",
+    "office",
+    "partners",
+    "partnerships",
+    "people",
+    "press",
+    "privacy",
+    "recruiting",
+    "recruitment",
+    "sales",
+    "security",
+    "service",
+    "support",
+    "team",
+}
 
 # ============================================================================
 # UTILITY FUNCTIONS
@@ -195,6 +243,43 @@ def validate_email_domain(domain: str) -> tuple[bool, Optional[str], str]:
         return False, "Email domain cannot be empty", ""
 
     return True, None, ", ".join(domains)
+
+
+def derive_identity_from_email(address: str) -> Dict[str, Optional[str]]:
+    """Return only identity details that are safe to offer for confirmation."""
+    empty_identity = {"name": None, "domain": None}
+    if not isinstance(address, str):
+        return empty_identity
+
+    cleaned = address.strip()
+    if cleaned.count("@") != 1:
+        return empty_identity
+
+    local_part, domain = cleaned.split("@", 1)
+    if (
+        not local_part
+        or local_part.startswith(".")
+        or local_part.endswith(".")
+        or ".." in local_part
+        or re.fullmatch(r"[A-Za-z0-9!#$%&'*+/=?^_`{|}~.-]+", local_part) is None
+    ):
+        return empty_identity
+
+    valid_domain, _, normalized_domain = validate_email_domain(domain)
+    if not valid_domain:
+        return empty_identity
+
+    first_token = local_part.split(".", 1)[0].lower()
+    name = None
+    if (
+        len(first_token) >= 3
+        and first_token.isalpha()
+        and first_token not in ROLE_EMAIL_LOCALS
+    ):
+        name = first_token.title()
+
+    return {"name": name, "domain": normalized_domain.lower()}
+
 
 def validate_pillars(pillars: List[str]) -> tuple[bool, Optional[str]]:
     """Validate strategic pillars"""
@@ -368,17 +453,20 @@ def _finalize_through_provisioner(session: Dict) -> Dict[str, Any]:
 # ============================================================================
 
 def _load_first_week_profile() -> Dict[str, Any]:
-    """Load the finalized profile used to personalize the first-week draft."""
+    """Load finalized or in-progress profile data for calendar analysis."""
+    profile = {}
     profile_path = BASE_DIR / 'System' / 'user-profile.yaml'
-    if not profile_path.exists():
-        return {}
+    if profile_path.exists():
+        try:
+            import yaml
+            profile = yaml.safe_load(profile_path.read_text(encoding='utf-8')) or {}
+        except Exception as e:
+            logger.warning(f"Failed to load user profile for first-week analysis: {e}")
 
-    try:
-        import yaml
-        return yaml.safe_load(profile_path.read_text(encoding='utf-8')) or {}
-    except Exception as e:
-        logger.warning(f"Failed to load user profile for first-week analysis: {e}")
-        return {}
+    session = load_session()
+    if session and isinstance(session.get('data'), dict):
+        profile.update(session['data'])
+    return profile
 
 
 def _calendar_event_datetime(value: Any) -> Optional[datetime]:
@@ -534,6 +622,112 @@ def analyze_calendar_events(events: List[Dict]) -> Dict:
         'busiest_day_count': busiest_day[1],
         'top_people': [{'email': email, 'count': count} for email, count in top_people]
     }
+
+
+def build_pillar_evidence(events: List[Dict], email_domain: str) -> Dict[str, Any]:
+    """Summarize timed calendar evidence without inferring strategic pillars."""
+    timed_events = _timed_calendar_events(events)
+    calendar_analysis = analyze_calendar_events(timed_events)
+
+    calendar_series = {}
+    for event in timed_events:
+        provider_series_id = event.get('provider_series_id')
+        if not provider_series_id:
+            continue
+
+        title = (event.get('title') or 'Untitled meeting').strip()
+        commitment = calendar_series.setdefault(
+            str(provider_series_id),
+            {
+                'title': title,
+                'meeting_count': 0,
+                'meeting_seconds': 0.0,
+            },
+        )
+        commitment['meeting_count'] += 1
+        start = _calendar_event_datetime(event.get('start'))
+        end = _calendar_event_datetime(event.get('end'))
+        commitment['meeting_seconds'] += max(0.0, (end - start).total_seconds())
+
+    recurring_commitments = [
+        {
+            'title': commitment['title'],
+            'meeting_count': commitment['meeting_count'],
+            'meeting_hours': round(commitment['meeting_seconds'] / 3600, 2),
+        }
+        for commitment in sorted(
+            (
+                commitment
+                for commitment in calendar_series.values()
+                if commitment['meeting_count'] > 1
+            ),
+            key=lambda item: (
+                -item['meeting_count'],
+                -item['meeting_seconds'],
+                item['title'].casefold(),
+            ),
+        )[:3]
+    ]
+
+    internal_domains = {
+        domain.strip().lower()
+        for domain in email_domain.split(',')
+        if domain.strip()
+    }
+    meeting_split = {
+        'internal_meeting_count': 0,
+        'external_meeting_count': 0,
+        'unknown_meeting_count': 0,
+    }
+    for event in timed_events:
+        attendee_domains = []
+        for attendee in _meeting_attendees(event):
+            if attendee.get('is_current_user') is True:
+                continue
+            email = attendee.get('email', '')
+            if '@' in email:
+                attendee_domains.append(email.rsplit('@', 1)[1].lower())
+
+        if not attendee_domains:
+            meeting_split['unknown_meeting_count'] += 1
+        elif internal_domains and all(
+            domain in internal_domains for domain in attendee_domains
+        ):
+            meeting_split['internal_meeting_count'] += 1
+        else:
+            meeting_split['external_meeting_count'] += 1
+
+    total_meetings = calendar_analysis['total_meetings']
+    observations = []
+    if calendar_analysis['busiest_day']:
+        count = calendar_analysis['busiest_day_count']
+        meeting_label = 'timed meeting' if count == 1 else 'timed meetings'
+        observations.append(
+            f"{calendar_analysis['busiest_day']} is your busiest day, "
+            f"with {count} {meeting_label}."
+        )
+
+    one_on_ones = calendar_analysis['one_on_ones']
+    if one_on_ones:
+        meeting_label = 'timed meeting' if total_meetings == 1 else 'timed meetings'
+        verb = 'is' if one_on_ones == 1 else 'are'
+        observations.append(
+            f"{one_on_ones} of your {total_meetings} {meeting_label} "
+            f"{verb} {'a 1:1' if one_on_ones == 1 else '1:1s'}."
+        )
+    elif total_meetings:
+        meeting_label = 'timed meeting takes' if total_meetings == 1 else 'timed meetings take'
+        observations.append(
+            f"Your {total_meetings} {meeting_label} "
+            f"{calendar_analysis['meeting_hours']:g} hours this week."
+        )
+
+    return {
+        'recurring_commitments': recurring_commitments,
+        'internal_external_split': meeting_split,
+        'observations': observations[:2],
+    }
+
 
 def generate_weekly_plan(events: List[Dict], pillars: List[str], role: str) -> str:
     """Generate weekly plan markdown content from calendar events"""
@@ -713,6 +907,10 @@ def run_first_week_analysis() -> Dict[str, Any]:
             profile.get('email_domain', ''),
         ),
         "recent_meeting_count": len(recent_meetings),
+        "pillar_evidence": build_pillar_evidence(
+            timed_events,
+            profile.get('email_domain', ''),
+        ),
         "draft_weekly_plan": generate_weekly_plan(
             timed_events,
             pillars,
@@ -1213,7 +1411,11 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[types.Text
             save_session(session)
 
             result = create_success_response(
-                {"work_email": work_email, "calendar": calendar},
+                {
+                    "work_email": work_email,
+                    "calendar": calendar,
+                    "derived_identity": derive_identity_from_email(work_email),
+                },
                 f"Work calendar saved.{verification_note}"
             )
             return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
