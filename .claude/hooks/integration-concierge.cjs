@@ -195,17 +195,11 @@ const INTEGRATIONS = {
     id: 'granola',
     name: 'Granola',
     shortName: 'Granola',
-    // Routed to its own setup skill, NOT /connect: granola_server.py reads
-    // GRANOLA_API_KEY from the environment or the vault's .env file, so a
-    // credential stored by the connection manager would be invisible to it and
-    // the user would be told they had connected something that still cannot work.
-    route: 'skill',
-    setup: '/granola-setup',
+    route: 'connect',
     apps: ['Granola.app'],
     signals: {},
     value: 'Your meeting notes and transcripts as context in planning and prep',
-    setupTime: '2 min',
-    auth: 'API key (needs a Granola Business or Enterprise plan)',
+    auth: 'API key',
   },
   cursor: {
     id: 'cursor',

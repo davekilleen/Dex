@@ -92,10 +92,6 @@ const CURATED_SETUP_ROUTES = {
   trello: '/trello-setup',
   zoom: '/zoom-setup',
   atlassian: '/atlassian-setup',
-  // Granola is curated, not a /connect route: granola_server.py reads
-  // GRANOLA_API_KEY from the environment or the vault .env, so a credential
-  // stored by the connection manager would be invisible to it.
-  granola: '/granola-setup',
 };
 
 const CONNECT_APP_ROUTES = {
@@ -105,6 +101,7 @@ const CONNECT_APP_ROUTES = {
   obsidian: { name: 'Obsidian', shortName: 'Obsidian', app: 'Obsidian.app' },
   cursor: { name: 'Cursor', shortName: 'Cursor', app: 'Cursor.app' },
   figma: { name: 'Figma', shortName: 'Figma', app: 'Figma.app' },
+  granola: { name: 'Granola', shortName: 'Granola', app: 'Granola.app' },
 };
 
 test('curated integrations preserve their setup skills and ordering', (t) => {

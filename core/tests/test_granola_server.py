@@ -9,6 +9,8 @@ import logging
 import re
 import urllib.error
 import urllib.parse
+from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -19,6 +21,11 @@ from core.mcp import granola_server
 def _configured_api(monkeypatch):
     """Keep tests offline while exercising the connected-tool code paths."""
     monkeypatch.setenv("GRANOLA_API_KEY", "grn_test")
+    monkeypatch.setattr(
+        granola_server.subprocess,
+        "run",
+        lambda *_args, **_kwargs: SimpleNamespace(returncode=2, stdout=""),
+    )
     granola_server._response_cache.clear()
     yield
     granola_server._response_cache.clear()
@@ -27,6 +34,109 @@ def _configured_api(monkeypatch):
 def _call_tool(name: str, arguments: dict | None = None) -> dict:
     contents = asyncio.run(granola_server.handle_call_tool(name, arguments))
     return json.loads(contents[0].text)
+
+
+def test_api_key_prefers_connection_manager_over_legacy_sources(monkeypatch, tmp_path):
+    (tmp_path / ".env").write_text("GRANOLA_API_KEY=grn_from_dotenv\n", encoding="utf-8")
+    monkeypatch.setenv("VAULT_ROOT", str(tmp_path))
+    monkeypatch.setenv("GRANOLA_API_KEY", "grn_from_environment")
+    calls = []
+
+    def connected(command, **kwargs):
+        calls.append((command, kwargs))
+        return SimpleNamespace(
+            returncode=0,
+            stdout=json.dumps(
+                {
+                    "kind": "api_key",
+                    "baseUrl": "https://public-api.granola.ai",
+                    "headers": {"authorization": "Bearer grn_from_connection_manager"},
+                    "query": {},
+                }
+            ),
+        )
+
+    monkeypatch.setattr(granola_server.subprocess, "run", connected)
+
+    assert granola_server.get_api_key() == "grn_from_connection_manager"
+    assert calls == [
+        (
+            [
+                "node",
+                str(
+                    Path(granola_server.__file__).parents[1]
+                    / "integrations"
+                    / "connection-manager"
+                    / "get-token.cjs"
+                ),
+                "granola",
+            ],
+            {
+                "check": False,
+                "capture_output": True,
+                "text": True,
+                "timeout": 5,
+            },
+        )
+    ]
+
+
+def test_api_key_falls_back_to_environment_when_granola_is_not_connected(monkeypatch):
+    monkeypatch.setenv("GRANOLA_API_KEY", "grn_from_environment")
+    monkeypatch.setattr(
+        granola_server.subprocess,
+        "run",
+        lambda *_args, **_kwargs: SimpleNamespace(returncode=2, stdout=""),
+    )
+
+    assert granola_server.get_api_key() == "grn_from_environment"
+
+
+def test_api_key_falls_back_when_connection_manager_output_is_not_an_envelope(
+    monkeypatch,
+):
+    monkeypatch.setenv("GRANOLA_API_KEY", "grn_from_environment")
+    monkeypatch.setattr(
+        granola_server.subprocess,
+        "run",
+        lambda *_args, **_kwargs: SimpleNamespace(returncode=0, stdout="[]"),
+    )
+
+    assert granola_server.get_api_key() == "grn_from_environment"
+
+
+def test_api_key_falls_back_to_vault_env_when_connection_manager_is_absent(
+    monkeypatch,
+    tmp_path,
+):
+    (tmp_path / ".env").write_text(
+        'export GRANOLA_API_KEY="grn_from_dotenv"\n',
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("VAULT_ROOT", str(tmp_path))
+    monkeypatch.delenv("GRANOLA_API_KEY", raising=False)
+    monkeypatch.setattr(
+        granola_server.subprocess,
+        "run",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(FileNotFoundError),
+    )
+
+    assert granola_server.get_api_key() == "grn_from_dotenv"
+
+
+def test_api_key_returns_none_when_connection_manager_and_legacy_sources_are_absent(
+    monkeypatch,
+    tmp_path,
+):
+    monkeypatch.setenv("VAULT_ROOT", str(tmp_path))
+    monkeypatch.delenv("GRANOLA_API_KEY", raising=False)
+    monkeypatch.setattr(
+        granola_server.subprocess,
+        "run",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(FileNotFoundError),
+    )
+
+    assert granola_server.get_api_key() is None
 
 
 def test_recent_meetings_preserves_legitimate_empty_success(monkeypatch):
