@@ -7,6 +7,37 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.77.0] — 🔌 Connect Dex to your tools (2026-07-27)
+
+Dex could always work with a handful of tools it was wired into directly. Connecting anything else was a manual job, and mostly you didn't bother.
+
+Now Dex carries a map of how **775 different tools handle signing in**. You say "connect Notion" and Dex works out what that one needs and walks you through it.
+
+**What this gives you:**
+
+* **Paste a key, and you're done.** For around 350 tools it's that quick — I timed it at **one second**, no forms, no browser, nothing to approve.
+* **Browser sign-ins take one setup, once.** For the other 425, Dex doesn't arrive with a pre-arranged identity at Google or Slack — deliberately, because that would mean your sign-in passing through us. So the first time, you register Dex yourself in that tool's settings. It's the most technical thing I'll ever ask of you, it's once per tool ever, and I'll talk you through it.
+* **Logins that renew themselves.** Sign-ins expire — that's the app being careful, not something breaking. I renew them quietly before they lapse. You'll never see it.
+* **I fix what I can before you notice.** At the start of a session I check your connections and repair what I'm able to, speaking up only when something genuinely needs you.
+* **Encrypted, and never off your machine.** On a Mac the key that unlocks your sign-ins sits in the macOS Keychain. Nothing is sent to us — there's no server holding your logins, because there's no server.
+* **Leaving is clean.** Disconnect a tool and I delete its sign-in from your machine, and remind you to remove Dex in that tool's own settings too.
+
+One honest note: on the command line these sign-ins aren't shielded from other software already running as you — the same as any tool that keeps logins on your computer. The Dex desktop app adds a fingerprint check on top of that.
+
+### 🚪 Setting up Dex — four things that tripped people up on day one
+
+* **Your email is accepted however you type it.** "@acme.com" or your whole address — I work out what you meant.
+* **Working solo no longer stops you.** Setup told you to leave the company field blank, then refused blank. That dead end is gone.
+* **I now ask your company's name.** I always had somewhere to put it but never actually asked.
+* **The time estimate is honest.** It claimed 5 minutes and took 10. It now says 10.
+
+### 📅 Your first week, and a workload count that adds up
+
+* **Setup now ends by showing you your actual week**, rather than an optional tour most people skipped.
+* **Your daily plan stops counting days off as meetings.** Flights, holidays and out-of-office were each landing as a meeting in your workload — enough to make a quiet week look stacked. This reaches everyone on update, with no re-setup needed.
+* **I tell the truth when I can't see your calendar**, instead of a confusing error.
+* **I no longer claim to have built person pages I never built.**
+
 ## [1.76.1] — 🔧 A quiet strengthening under the hood (2026-07-27)
 
 Nothing changes in what you see or do. This is internal hardening of the customisation-rebuild feature that shipped in 1.76.0.

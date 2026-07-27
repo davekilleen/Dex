@@ -14,6 +14,10 @@
           {
             "type": "command",
             "command": "bash .claude/hooks/dex-core-orientation.sh"
+          },
+          {
+            "type": "command",
+            "command": "node .claude/hooks/connection-health-checker.cjs"
           }
         ]
       }

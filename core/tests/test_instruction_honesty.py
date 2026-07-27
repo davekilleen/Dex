@@ -266,6 +266,28 @@ def test_onboarding_documents_the_explicit_no_company_domain_path() -> None:
     assert "This step CANNOT be skipped" not in domain_step
 
 
+def test_onboarding_runs_the_first_week_reveal_before_tool_discovery() -> None:
+    flow = _read(".claude/flows/onboarding.md")
+    finale = flow.split("## Step 8:", 1)[1].split("## Step 9:", 1)[0]
+
+    assert "run_first_week_analysis()" in finale
+    assert "This call is automatic" in finale
+    assert "`available: false`" in finale
+    assert "`meeting_count: 0`" in finale
+    assert "Never invent" in finale
+    assert "draft_weekly_plan" in finale
+
+
+def test_getting_started_treats_the_reveal_as_already_presented() -> None:
+    skill = _read(".claude/skills/getting-started/SKILL.md")
+
+    assert "The first-week reveal already ran during onboarding" in skill
+    assert "Do not repeat the first-week statistics" in skill
+    assert "pre_analysis_deferred" not in skill
+    assert "run_dramatic_reveal" not in skill
+    assert "Analyze Granola data extent" in skill
+
+
 def test_core_behavior_defines_feature_status_rendering() -> None:
     instructions = _read("CLAUDE.md")
     heading = "### When an MCP tool returns `feature_status`"
