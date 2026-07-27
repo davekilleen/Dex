@@ -414,6 +414,23 @@ The MCP returns a summary of what was created (folders, files, configs).
 
 Show the summary from the MCP response.
 
+### Automatic First-Week Reveal
+
+Immediately call `run_first_week_analysis()` from onboarding-mcp. This call is automatic; do not ask whether the user wants a tour first.
+
+Use only the structured fields returned by the tool:
+
+- If `available: false`, say one plain line using its `reason`, then continue: "I couldn't read your calendar for the first-week snapshot: [reason]." Never invent numbers or imply that calendar data was read.
+- If `available: true` and `meeting_count: 0`, say: "Your calendar is available, and you have no timed meetings scheduled this week." This is a valid result, not an error.
+- If `available: true` and `meeting_count` is greater than zero, present:
+  - Timed meetings and `meeting_hours`
+  - 1:1 count
+  - Busiest day and count
+  - `top_contacts`, only when the list is non-empty
+  - Recent meeting and people/company counts, only when the corresponding values are non-zero
+
+Then show `draft_weekly_plan` as a suggested draft for the user's week. Do not claim that the draft, person pages, or company pages were written to the vault; this tool analyzes and drafts, it does not create those artifacts.
+
 ## Step 9: Connect Your Tools (Integration Discovery)
 
 Help the user connect the tools they use. Present the available integrations by category and let them choose — keep it light.
@@ -637,21 +654,13 @@ I've configured your system with:
 - [Any optional features they enabled]
 - **All your integrations** (calendar, Granola, etc.)
 
-**Here's what happens next:**
+You've already seen the first-week snapshot from the calendar data Dex could read.
 
-I'm going to analyze your calendar and recent meetings to:
-• Create your weekly plan with actual meeting data
-• Build person pages for your frequent contacts  
-• Show you what's on your plate this week
-• Get you oriented with quick wins
-
-This takes about 2 minutes and shows you what Dex can really do.
-
-**Want me to run the getting started tour?** (Highly recommended)
+**Want me to run the deeper getting-started tour?** It can show you around the workspace and help process meeting history. (Recommended)
 
 [If yes:] Great! Running `/getting-started` now...
 
-[Then actually invoke the /getting-started skill, which will have MCPs loaded]
+[Then actually invoke the `/getting-started` skill.]
 
 [If no:] No problem! You can run `/getting-started` anytime. For now, try `/daily-plan` to see your day.
 
@@ -659,17 +668,16 @@ This takes about 2 minutes and shows you what Dex can really do.
 
 ---
 
-## Step 11: Phase 2 - Getting Started (Optional but Recommended)
+## Step 11: Phase 2 - Deeper Getting Started (Optional but Recommended)
 
 **Trigger:** Either immediately after Step 10, OR at next session start if vault is < 7 days old.
 
-**Purpose:** Transform "I have a system, now what?" into immediate value and confidence. This is where the **dramatic reveal** happens - analyzing their calendar/Granola data and showing what Dex built automatically.
+**Purpose:** Transform "I have a system, now what?" into confidence with a workspace tour, historical meeting processing, and useful next actions. The first-week reveal has already happened automatically in Step 8 and must not be presented again as a new discovery.
 
 **If yes (user wants to continue):** Run `/getting-started` skill (see `.claude/skills/getting-started/SKILL.md`)
-- The skill will check for `pre_analysis_deferred: true` flag in `.onboarding-complete`
-- If found, it will run the full calendar/Granola analysis NOW
-- This includes the dramatic reveal showing meetings, contacts, and auto-created artifacts
-- Much better UX than blocking during finalization
+- Start with the deeper tour or historical-data choices
+- Reuse the first-week context already shown; do not repeat it
+- Verify any artifact before saying it was created
 
 **If no:** 
 "No problem! You can always run `/getting-started` later when you're ready.
@@ -678,7 +686,7 @@ This takes about 2 minutes and shows you what Dex can really do.
 - `/daily-plan` - Start your day with context
 - `/meeting-prep [person]` - Prep for meetings
 - `/dex-level-up` - Discover features
-- `/getting-started` - Come back to this tour anytime (includes data analysis)
+- `/getting-started` - Come back to the deeper tour anytime
 
 What would you like to work on first?"
 
