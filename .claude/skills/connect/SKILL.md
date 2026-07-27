@@ -17,11 +17,11 @@ This skill is a friendly driver over the connection manager CLI. You run the CLI
 
 - **See what's connected** — a health sweep of all your connections, with each one mapped to a next action (reconnect, refresh, or nothing needed)
 - **Connect a new app** — two paths:
-  - **OAuth (Class A)** — Google, Slack, Atlassian, and most major apps. Authorize once in your browser; Dex remembers the login locally and auto-refreshes the token.
-  - **Paste a key (Class B)** — Linear, GitHub PATs, and any API-key service. No OAuth app, no consent screen — just paste the secret.
+  - **OAuth (Class A, 425 apps)** — before browser sign-in, the user must register their own app in the provider's developer console unless they already have one saved. Dex then guides browser consent, remembers the login locally, and auto-refreshes the token.
+  - **Paste a key (Class B, 350 apps)** — Linear, GitHub PATs, and other API-key services. No OAuth app or consent screen — paste the secret.
 - **Reconnect** — when a token is revoked or expires beyond refresh, re-run the OAuth flow
 - **Disconnect** — remove a connection and delete its local token
-- **Find a provider** — fuzzy-search 775 catalog entries by name; 627 can be connected today
+- **Find a provider** — fuzzy-search 831 catalog entries by name; 775 can be connected today (425 with OAuth/browser sign-in, 350 with a key)
 
 The connection manager lives at:
 `core/integrations/connection-manager/`

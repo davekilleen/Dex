@@ -54,6 +54,7 @@ test('privileged operations require an approving provider', async () => {
 
 test('an injected presence provider is used by assertPresence', async () => {
   const calls = [];
+  let hostDetections = 0;
   presence.setPresenceProvider({
     available: true,
     async verify(request) {
@@ -62,16 +63,48 @@ test('an injected presence provider is used by assertPresence', async () => {
     },
   });
   try {
-    await presence.assertPresence('linear:injected', 'access-token', { now: () => 1_000 });
+    await presence.assertPresence('linear:injected', 'access-token', {
+      now: () => 1_000,
+      detectHostBroker: async () => {
+        hostDetections += 1;
+        return { reachable: false, authenticated: false };
+      },
+    });
   } finally {
     presence.setPresenceProvider(null);
   }
 
   assert.deepEqual(calls, [{ connId: 'linear:injected', op: 'access-token' }]);
+  assert.equal(hostDetections, 0);
+});
+
+test('an injected denying provider still refuses the operation', async () => {
+  let prompts = 0;
+  let hostDetections = 0;
+  presence.setPresenceProvider({
+    available: true,
+    async verify() {
+      prompts += 1;
+      return false;
+    },
+  });
+
+  await assert.rejects(
+    presence.assertPresence('linear:injected-denied', 'connect', {
+      detectHostBroker: async () => {
+        hostDetections += 1;
+        return { reachable: false, authenticated: false };
+      },
+    }),
+    { code: 'DEX_CM_PRESENCE_REQUIRED', category: 'presence_required' }
+  );
+  assert.equal(prompts, 1);
+  assert.equal(hostDetections, 0);
 });
 
 test('a malformed injected provider without available fails closed', async () => {
   let prompts = 0;
+  let hostDetections = 0;
   presence.setPresenceProvider({
     async verify() {
       prompts += 1;
@@ -80,10 +113,16 @@ test('a malformed injected provider without available fails closed', async () =>
   });
 
   await assert.rejects(
-    presence.assertPresence('linear:malformed-injected', 'access-token'),
+    presence.assertPresence('linear:malformed-injected', 'access-token', {
+      detectHostBroker: async () => {
+        hostDetections += 1;
+        return { reachable: false, authenticated: false };
+      },
+    }),
     { code: 'DEX_CM_PRESENCE_REQUIRED', category: 'presence_required' }
   );
   assert.equal(prompts, 0);
+  assert.equal(hostDetections, 0);
 });
 
 test('clearing an injected provider restores command-based resolution', () => {
@@ -136,30 +175,48 @@ test('full exports remain one-shot with an injected provider', async () => {
   assert.equal(prompts, 2);
 });
 
-test('production fails closed when no provider is available', async () => {
+test('standalone CLI allows connect when no host, command, or injection exists', async () => {
   const originalCommand = process.env.DEX_CM_PRESENCE_CMD;
-  const originalOptional = process.env.DEX_CM_PRESENCE_OPTIONAL;
-  const originalTestContext = process.env.NODE_TEST_CONTEXT;
-  const originalInsecureFlag = process.env.DEX_CM_ALLOW_INSECURE_PRESENCE;
   delete process.env.DEX_CM_PRESENCE_CMD;
-  process.env.DEX_CM_PRESENCE_OPTIONAL = '1';
-  delete process.env.NODE_TEST_CONTEXT;
-  delete process.env.DEX_CM_ALLOW_INSECURE_PRESENCE;
   presence.setPresenceProvider(null);
   try {
-    await assert.rejects(
-      presence.assertPresence('linear:no-production-provider', 'access-token'),
-      { code: 'DEX_CM_PRESENCE_REQUIRED', category: 'presence_required' }
-    );
+    const provider = await presence.resolveProvider({
+      detectHostBroker: async () => ({ reachable: false, authenticated: false }),
+    });
+    assert.equal(provider.kind, 'standalone');
+    assert.equal(provider.standalone, true);
+
+    await presence.assertPresence('linear:standalone', 'connect', {
+      detectHostBroker: async () => ({ reachable: false, authenticated: false }),
+    });
   } finally {
     if (originalCommand === undefined) delete process.env.DEX_CM_PRESENCE_CMD;
     else process.env.DEX_CM_PRESENCE_CMD = originalCommand;
-    if (originalOptional === undefined) delete process.env.DEX_CM_PRESENCE_OPTIONAL;
-    else process.env.DEX_CM_PRESENCE_OPTIONAL = originalOptional;
-    if (originalTestContext === undefined) delete process.env.NODE_TEST_CONTEXT;
-    else process.env.NODE_TEST_CONTEXT = originalTestContext;
-    if (originalInsecureFlag === undefined) delete process.env.DEX_CM_ALLOW_INSECURE_PRESENCE;
-    else process.env.DEX_CM_ALLOW_INSECURE_PRESENCE = originalInsecureFlag;
+  }
+});
+
+test('reachable authenticated host broker keeps presence enforcement fail-closed', async () => {
+  const originalCommand = process.env.DEX_CM_PRESENCE_CMD;
+  let detections = 0;
+  delete process.env.DEX_CM_PRESENCE_CMD;
+  presence.setPresenceProvider(null);
+  const detectHostBroker = async () => {
+    detections += 1;
+    return { reachable: true, authenticated: true };
+  };
+  try {
+    const provider = await presence.resolveProvider({ detectHostBroker });
+    assert.equal(provider.available, false);
+    assert.equal(provider.kind, 'unavailable');
+
+    await assert.rejects(
+      presence.assertPresence('linear:desktop-hosted', 'connect', { detectHostBroker }),
+      { code: 'DEX_CM_PRESENCE_REQUIRED', category: 'presence_required' }
+    );
+    assert.equal(detections, 2);
+  } finally {
+    if (originalCommand === undefined) delete process.env.DEX_CM_PRESENCE_CMD;
+    else process.env.DEX_CM_PRESENCE_CMD = originalCommand;
   }
 });
 
@@ -345,27 +402,35 @@ test('concurrent checks are shared only for the same connection and operation', 
 
 test('the standalone command presence seam remains available without an injected provider', async () => {
   const originalCommand = process.env.DEX_CM_PRESENCE_CMD;
+  let hostDetections = 0;
+  const detectHostBroker = async () => {
+    hostDetections += 1;
+    return { reachable: true, authenticated: true };
+  };
   try {
     presence.setPresenceProvider(null);
     process.env.DEX_CM_PRESENCE_CMD = `"${process.execPath}" -e "process.exit(0)"`;
-    const provider = presence.resolveProvider();
+    const provider = presence.resolveProvider({ detectHostBroker });
     assert.equal(provider.available, true);
     assert.equal(provider.kind, 'command');
     assert.equal(await provider.verify(), true);
-    await presence.assertPresence('linear:command-provider', 'access-token');
+    await presence.assertPresence('linear:command-provider', 'access-token', { detectHostBroker });
+    assert.equal(hostDetections, 0);
   } finally {
     if (originalCommand === undefined) delete process.env.DEX_CM_PRESENCE_CMD;
     else process.env.DEX_CM_PRESENCE_CMD = originalCommand;
   }
 });
 
-test('the platform default is honestly unavailable when no signed helper is configured', () => {
+test('ambiguous host broker state remains fail-closed', async () => {
   const originalCommand = process.env.DEX_CM_PRESENCE_CMD;
   delete process.env.DEX_CM_PRESENCE_CMD;
   try {
-    const provider = presence.resolveProvider();
+    const provider = await presence.resolveProvider({
+      detectHostBroker: async () => ({ reachable: true, authenticated: false }),
+    });
     assert.equal(provider.available, false);
-    assert.match(provider.reason, /signed|biometric|unavailable/i);
+    assert.match(provider.reason, /could not safely prove/i);
   } finally {
     if (originalCommand !== undefined) process.env.DEX_CM_PRESENCE_CMD = originalCommand;
   }

@@ -356,9 +356,53 @@ test('secret argv flags are rejected with one-line stdin guidance', () => {
   }
 });
 
-test('first connect production mode ignores the optional environment bypass without a helper', () => {
+test('first connect on a genuinely hostless standalone CLI succeeds without presence', () => {
+  // Ship-blocker regression guard: a plain CLI user with a clean vault and no
+  // desktop host must be able to connect. With no broker socket and no server
+  // identity present, presence resolves to the explicit standalone tier and the
+  // operation proceeds (the honest ceiling — there is no biometric gate to run).
+  const vault = fs.mkdtempSync(path.join(os.tmpdir(), 'dex-cm-standalone-'));
+  const runtime = fs.mkdtempSync(path.join(os.tmpdir(), 'dex-cm-standalone-runtime-'));
+  const env = {
+    ...process.env,
+    DEX_VAULT: vault,
+    DEX_CM_RUNTIME_DIR: runtime,
+    DEX_CM_NO_KEYCHAIN: '1',
+  };
+  delete env.NODE_OPTIONS;
+  delete env.NODE_TEST_CONTEXT;
+  delete env.DEX_CM_ALLOW_INSECURE_PRESENCE;
+  delete env.DEX_CM_PRESENCE_OPTIONAL;
+  delete env.DEX_CM_PRESENCE_CMD;
+  try {
+    const result = spawnSync(
+      process.execPath,
+      [path.join(DIR, 'connect.cjs'), 'set-key', 'linear', '--no-probe'],
+      { env, input: 'STANDALONE-CLI-KEY\n', encoding: 'utf8' }
+    );
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(
+      fs.existsSync(path.join(vault, 'System', 'credentials', 'tokens', 'linear.json')),
+      true,
+      result.stderr
+    );
+  } finally {
+    fs.rmSync(vault, { recursive: true, force: true });
+    fs.rmSync(runtime, { recursive: true, force: true });
+  }
+});
+
+test('production mode ignores the optional environment bypass when a host makes presence required', () => {
+  // Security invariant (unchanged from the pre-standalone model): the test-only
+  // DEX_CM_PRESENCE_OPTIONAL flag must NEVER bypass presence in a shipped runtime.
+  // Standalone only engages when there is genuinely no host, so we place the CLI
+  // in an un-verifiable host state — a server identity present but no reachable
+  // socket. That resolves to a fail-closed provider (not standalone), which is
+  // exactly where the optional flag would matter. It must still be refused.
   const vault = fs.mkdtempSync(path.join(os.tmpdir(), 'dex-cm-presence-env-'));
   const runtime = fs.mkdtempSync(path.join(os.tmpdir(), 'dex-cm-presence-env-runtime-'));
+  // cm.srv present + cm.sock absent => ambiguous/un-verifiable host => fail closed.
+  fs.writeFileSync(path.join(runtime, 'cm.srv'), 'stub-server-identity');
   const env = {
     ...process.env,
     DEX_VAULT: vault,
