@@ -11,8 +11,8 @@
         "connection-manager"
       ],
       "fileCount": 21,
-      "totalBytes": 234151,
-      "treeHash": "abc277623e475585b946f6321a7388cb2aeb3e621abfbea8e7f296cb628a52ec",
+      "totalBytes": 239971,
+      "treeHash": "306544b03a089e5032e11eda94beed8f72603a7835baa9cb5f6d531d783d35a7",
       "files": [
         {
           "path": "auth-context.cjs",
@@ -21,13 +21,13 @@
         },
         {
           "path": "broker-client.cjs",
-          "bytes": 7169,
-          "sha256": "e684e17121929817e361b28aa5773393a81e44f8f1e8049bf5f32b0f5743c09e"
+          "bytes": 8229,
+          "sha256": "b5ebd0628032afc925f450fab6e4b2fa8386ce0bd1324fdbbf42baccf4712a26"
         },
         {
           "path": "broker.cjs",
-          "bytes": 13085,
-          "sha256": "e298a06c4652dcf73432837d9f30fd300bd8baade7052edb19b3b35badab2c44"
+          "bytes": 15837,
+          "sha256": "5091879810d16354e1bb3fbaa25debe726804e87f715a357a75a5b46e2fdc6a6"
         },
         {
           "path": "catalog.cjs",
@@ -46,8 +46,8 @@
         },
         {
           "path": "dex-call.cjs",
-          "bytes": 8898,
-          "sha256": "e5a818e25fa78555e737574a7a0cc029da924a831842cd5a60e573cf34e3ea82"
+          "bytes": 8954,
+          "sha256": "992971812078e9777844cc5c663f22fe0f6b449e78933ccd045e9618e3649e1f"
         },
         {
           "path": "fs-safe.cjs",
@@ -56,8 +56,8 @@
         },
         {
           "path": "get-token.cjs",
-          "bytes": 2590,
-          "sha256": "404fcc147e0a53faa6e2d43a6098e089601f8bb2c2e02a037c6e0a3a2620d194"
+          "bytes": 2646,
+          "sha256": "2e784b64bb3a722b183b8c92770dd555ae70d24598158d4da1b706abe5bb04c2"
         },
         {
           "path": "health.cjs",
@@ -106,8 +106,8 @@
         },
         {
           "path": "presence.cjs",
-          "bytes": 6453,
-          "sha256": "8f124492c31ae50d4f7f2cda5b7a180e02705519c31cb5e84f24b071b9e5f500"
+          "bytes": 8349,
+          "sha256": "9f2e701d16657169611d2f52d54a4a20c9014f2da13d99ec3b0be1bdaaff54d2"
         },
         {
           "path": "README.md",

@@ -2,6 +2,7 @@
 .agents/skills/getting-started/SKILL.md
 .agents/skills/industry-truths/SKILL.md
 .agents/skills/process-meetings/SKILL.md
+.ci/test-durations.json
 .claude/flows/README.md
 .claude/flows/onboarding.md
 .claude/guides/README.md
@@ -14,6 +15,7 @@
 .claude/hooks/adapters/trello.cjs
 .claude/hooks/career-evidence-capture.cjs
 .claude/hooks/company-context-injector.cjs
+.claude/hooks/connection-health-checker.cjs
 .claude/hooks/daily-plan-quick-ref.cjs
 .claude/hooks/dex-core-orientation.sh
 .claude/hooks/dex-safety-guard.sh
@@ -30,6 +32,7 @@
 .claude/hooks/tests/adapter-runner.test.cjs
 .claude/hooks/tests/auto-link-gate.test.cjs
 .claude/hooks/tests/auto-link-people.test.cjs
+.claude/hooks/tests/connection-health-checker.test.cjs
 .claude/hooks/tests/context-injectors.test.cjs
 .claude/hooks/tests/data-safety-instructions.test.cjs
 .claude/hooks/tests/hook-harness.test.cjs
@@ -515,6 +518,7 @@
 .claude/skills/calendar-setup/SKILL.md
 .claude/skills/commitments/SKILL.md
 .claude/skills/commitments/evals/trigger-cases.yaml
+.claude/skills/connect/SKILL.md
 .claude/skills/create-mcp/SKILL.md
 .claude/skills/create-skill/SKILL.md
 .claude/skills/create-skill/evals/trigger-cases.yaml
@@ -747,6 +751,7 @@ core/integrations/__init__.py
 core/integrations/connection-manager/README.md
 core/integrations/connection-manager/auth-context.cjs
 core/integrations/connection-manager/broker-client.cjs
+core/integrations/connection-manager/broker-client.unavailable.test.cjs
 core/integrations/connection-manager/broker.cjs
 core/integrations/connection-manager/catalog.cjs
 core/integrations/connection-manager/connect.cjs
@@ -974,6 +979,7 @@ core/tests/test_architecture_inventory.py
 core/tests/test_calendar_eventkit_script.py
 core/tests/test_calendar_server.py
 core/tests/test_capabilities.py
+core/tests/test_ci_shard_durations.py
 core/tests/test_commitments_skill.py
 core/tests/test_company_domains.py
 core/tests/test_company_index.py
@@ -1235,8 +1241,10 @@ scripts/generate-manifest.sh
 scripts/generate-path-contracts.py
 scripts/generate-portable-contract.py
 scripts/generate-release-catalog.py
+scripts/generate-test-durations.py
 scripts/instructed-tools-allowlist.txt
 scripts/make-aged-vault-fixture.sh
+scripts/merge-junit.py
 scripts/pii-allowlist.txt
 scripts/pii_gate.py
 scripts/pr_report.py

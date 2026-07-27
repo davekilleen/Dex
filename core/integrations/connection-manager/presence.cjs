@@ -1,9 +1,11 @@
 'use strict';
 
 const { spawn } = require('node:child_process');
+const fs = require('node:fs');
 
 const DEFAULT_TTL_MS = 60_000;
 const DEFAULT_TIMEOUT_MS = 30_000;
+const STANDALONE_PROVIDER = Object.freeze({ kind: 'standalone', standalone: true });
 const grants = new Map();
 const inFlightChecks = new Map();
 let injectedProvider = null;
@@ -20,7 +22,9 @@ function requiresPresence(op) {
 }
 
 function presenceRequiredError() {
-  const error = new Error('User presence is required for this credential operation.');
+  const error = new Error(
+    'User presence is required for this operation, which only the Dex desktop app can provide — it cannot be completed from the command line.'
+  );
   error.code = 'DEX_CM_PRESENCE_REQUIRED';
   error.category = 'presence_required';
   return error;
@@ -115,6 +119,30 @@ function unavailableProvider(reason) {
   return { available: false, kind: 'unavailable', reason };
 }
 
+async function detectHostBroker() {
+  // Lazy requires avoid presence.cjs <-> broker.cjs initialization cycles.
+  const broker = require('./broker.cjs');
+  const socketPresent = fs.existsSync(broker.socketPath());
+  const identityPresent = fs.existsSync(broker.serverIdentityPath());
+  if (!socketPresent && !identityPresent) {
+    return { reachable: false, authenticated: false };
+  }
+  if (!socketPresent || !identityPresent) {
+    return { reachable: true, authenticated: false };
+  }
+  try {
+    // brokerRequest authenticates serverAuth before returning. The filesystem
+    // checks above prevent this probe from starting a broker for a clean,
+    // genuinely hostless CLI.
+    await require('./broker-client.cjs').brokerRequest({ op: 'status' });
+    return { reachable: true, authenticated: true };
+  } catch {
+    // Runtime evidence exists but cannot be authenticated. This is ambiguous,
+    // not proof that no host exists, so the caller must remain fail-closed.
+    return { reachable: true, authenticated: false };
+  }
+}
+
 /**
  * This module cannot honestly create a Touch ID prompt by itself: macOS
  * requires an OS-bound signed application/helper to make that claim meaningful.
@@ -126,16 +154,29 @@ function unavailableProvider(reason) {
  * is honored only under the Node test runner, or when the explicit
  * DEX_CM_ALLOW_INSECURE_PRESENCE=1 build/development flag is set. That flag is
  * non-production and must never be enabled in a shipped runtime.
+ *
+ * Precedence is security policy: injected provider, command provider,
+ * authenticated/ambiguous host (fail closed), then explicit standalone.
  */
-function resolveProvider() {
+function resolveProvider({ detectHostBroker: detect = detectHostBroker } = {}) {
   if (injectedProvider) return injectedProvider;
   if (process.env.DEX_CM_PRESENCE_CMD) return commandProvider(process.env.DEX_CM_PRESENCE_CMD);
-  if (process.platform === 'darwin') {
-    return unavailableProvider(
-      'Real biometric presence requires the desktop-owned broker and its Dex-signed helper.'
+  return Promise.resolve()
+    .then(() => detect())
+    .then((host) => {
+      if (host && host.reachable === false) return STANDALONE_PROVIDER;
+      if (host && host.authenticated === true) {
+        return unavailableProvider(
+          'A desktop-owned credential broker is reachable, so its user-presence provider is required.'
+        );
+      }
+      return unavailableProvider(
+        'Dex could not safely prove that no desktop-owned credential broker is present.'
+      );
+    })
+    .catch(() =>
+      unavailableProvider('Dex could not safely determine whether a desktop-owned broker is present.')
     );
-  }
-  return unavailableProvider('OS-bound user presence is unavailable without the Dex-signed helper.');
 }
 
 function setPresenceProvider(provider) {
@@ -160,7 +201,7 @@ function optionalPresenceAllowed() {
   );
 }
 
-async function assertPresence(connId, op, { provider, now } = {}) {
+async function assertPresence(connId, op, { provider, now, detectHostBroker: detect } = {}) {
   if (!requiresPresence(op)) return;
   const key = grantKey(connId, op);
   const cacheable = op !== 'full';
@@ -173,7 +214,8 @@ async function assertPresence(connId, op, { provider, now } = {}) {
 
   // Tests and the desktop host may inject a provider directly. Standalone Core
   // otherwise uses the command or fail-closed fallbacks described above.
-  provider = provider || module.exports.resolveProvider();
+  provider = provider || (await module.exports.resolveProvider({ detectHostBroker: detect }));
+  if (provider === STANDALONE_PROVIDER) return;
   if (!provider || provider.available !== true || typeof provider.verify !== 'function') {
     if (optionalPresenceAllowed()) {
       console.error(

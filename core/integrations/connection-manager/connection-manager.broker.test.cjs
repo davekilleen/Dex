@@ -16,7 +16,7 @@ fs.mkdirSync(TMP_VAULT, { recursive: true });
 process.env.DEX_VAULT = TMP_VAULT;
 process.env.DEX_CM_RUNTIME_DIR = TMP_RUNTIME;
 process.env.DEX_CM_NO_KEYCHAIN = '1';
-process.env.DEX_CM_BROKER_IDLE_MS = '150';
+process.env.DEX_CM_BROKER_IDLE_MS = '30000';
 
 const store = require('./token-store.cjs');
 const authContext = require('./auth-context.cjs');
@@ -666,6 +666,12 @@ test('socket (verify outside sandbox): a pre-bound listener cannot forge an auth
 test('socket (verify outside sandbox): idle shutdown destroys clients that never complete a request', async () => {
   const running = await broker.startBroker({ idleMs: 25 });
   const socket = net.createConnection(broker.socketPath());
+  // Drain the read side like every real client does: a peer that never reads
+  // cannot observe the shutdown (the restarting line sits unread in its
+  // buffer), and the broker-side guarantee this test pins — the socket is
+  // destroyed and the listener removed promptly — is asserted below via
+  // waitForGone regardless of what the client observes.
+  socket.on('data', () => {});
   const closed = new Promise((resolve, reject) => {
     socket.once('close', () => resolve(true));
     socket.once('error', reject);
@@ -680,6 +686,133 @@ test('socket (verify outside sandbox): idle shutdown destroys clients that never
     assert.equal(fs.existsSync(broker.socketPath()), false);
   } finally {
     socket.destroy();
+    await running.close();
+  }
+});
+
+test('socket (verify outside sandbox): idle shutdown certifies unparsed requests as safely resendable', async () => {
+  // The accept-to-write race: a client whose connection was accepted but whose
+  // request had not arrived when idle shutdown fired must receive an
+  // AUTHENTICATED broker_restarting line (not a silent destroy) so it can
+  // safely respawn and resend — the broker only idles with zero requests in
+  // flight, so the line certifies nothing was executed. Regression guard for
+  // the spurious generic-error exits this race caused in accessor CLIs.
+  const running = await broker.startBroker({ idleMs: 25 });
+  const serverIdentity = fs.readFileSync(broker.serverIdentityPath(), 'utf8').trim();
+  const socket = net.createConnection(broker.socketPath());
+  let data = '';
+  socket.setEncoding('utf8');
+  socket.on('data', (chunk) => {
+    data += chunk;
+  });
+  const closed = new Promise((resolve, reject) => {
+    socket.once('close', resolve);
+    socket.once('error', reject);
+  });
+  try {
+    await closed;
+    const line = data.trim();
+    assert.notEqual(line, '', 'pre-request socket must receive the restarting line, not a silent destroy');
+    const response = JSON.parse(line);
+    assert.equal(response.ok, false);
+    assert.equal(response.error.category, 'broker_restarting');
+    assert.equal(response.serverAuth, serverIdentity, 'the restarting line must be authenticated');
+    assert.equal(client.isBrokerRestarting({ ok: false, error: { category: 'broker_restarting' } }), true);
+    assert.equal(client.isBrokerRestarting({ ok: false, error: { category: 'needs_reauth' } }), false, 'real error categories must never be treated as resendable');
+  } finally {
+    socket.destroy();
+    await running.close();
+  }
+});
+
+test('socket (verify outside sandbox): idle shutdown survives lingering liveness-probe sockets', async () => {
+  // socketReady()/socketIsLive() probes connect and destroy without sending a
+  // byte; their server-side halves linger half-open. Writing the restarting
+  // line to one EPIPEs asynchronously — without an error handler that would
+  // crash the broker mid-shutdown (found by adversarial review, reproduced).
+  const running = await broker.startBroker({ idleMs: 25 });
+  await new Promise((resolve, reject) => {
+    const probe = net.createConnection(broker.socketPath());
+    probe.once('connect', () => {
+      probe.destroy();
+      resolve();
+    });
+    probe.once('error', reject);
+  });
+  await running.close();
+  // The broker process survived shutdown with the poisoned socket present; a
+  // successor must be able to start and serve on a clean path.
+  const successor = await broker.startBroker({ idleMs: 60_000 });
+  try {
+    const response = await rawRequest({ op: 'nonsense-op' });
+    assert.equal(response.ok, false, 'successor broker must be serving');
+  } finally {
+    await successor.close();
+  }
+});
+
+test('socket (verify outside sandbox): teardown completes within its bound even when a client never reads', async () => {
+  // The 250ms destroy backstop is the only thing standing between a silent,
+  // never-reading, never-closing peer and a pinned shutdown. close() memoizes
+  // its teardown promise, so awaiting it here awaits the REAL in-flight
+  // teardown — this test fails if the backstop is ever removed.
+  const running = await broker.startBroker({ idleMs: 25 });
+  const silent = net.createConnection(broker.socketPath());
+  await new Promise((resolve) => silent.once('connect', resolve));
+  try {
+    const done = await Promise.race([
+      running.close().then(() => true),
+      new Promise((resolve) => setTimeout(() => resolve(false), 1500)),
+    ]);
+    assert.equal(done, true, 'shutdown must not be pinned by a never-reading peer');
+  } finally {
+    silent.destroy();
+  }
+});
+
+test('socket (verify outside sandbox): a request racing the shutdown instant is never executed after the restarting certificate', async () => {
+  // Request bytes can land in the same event-loop turn as the idle deadline.
+  // The certificate promises nothing was executed, so the dying broker must
+  // sever its read path BEFORE certifying — otherwise the queued bytes parse
+  // and run a privileged op the client is about to resend (double execution;
+  // found by adversarial review, reproduced deterministically).
+  store.saveToken(
+    'race-oauth',
+    { access_token: 'RACE-AT', refresh_token: 'RACE-RT', expires_at: Date.now() + 3_600_000 },
+    { provider: 'google' }
+  );
+  const running = await broker.startBroker({ idleMs: 60_000 });
+  const capability = fs.readFileSync(broker.capabilityPath(), 'utf8').trim();
+  const serverIdentity = fs.readFileSync(broker.serverIdentityPath(), 'utf8').trim();
+  const originalPresence = broker.assertPresence;
+  let executed = 0;
+  broker.assertPresence = async () => {
+    executed += 1;
+  };
+  try {
+    const outcome = await new Promise((resolve, reject) => {
+      const socket = net.createConnection(broker.socketPath());
+      let data = '';
+      socket.setEncoding('utf8');
+      socket.on('data', (chunk) => {
+        data += chunk;
+      });
+      socket.once('close', () => resolve(data.trim()));
+      socket.once('error', reject);
+      socket.once('connect', () => {
+        socket.write(`${JSON.stringify({ capability, op: 'access-token', connId: 'race-oauth' })}\n`);
+        void running.close();
+      });
+    });
+    assert.equal(executed, 0, 'the dying broker must not execute a request it certified as unparsed');
+    if (outcome !== '') {
+      const response = JSON.parse(outcome);
+      assert.equal(response.error.category, 'broker_restarting');
+      assert.equal(response.serverAuth, serverIdentity);
+    }
+  } finally {
+    broker.assertPresence = originalPresence;
+    store.deleteToken('race-oauth');
     await running.close();
   }
 });

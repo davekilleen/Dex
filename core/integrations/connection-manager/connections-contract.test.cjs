@@ -44,7 +44,7 @@ test('foreign smoke consumer uses only CLIs plus contract/schema against a scrat
     ...process.env,
     DEX_VAULT: vault,
     DEX_CM_RUNTIME_DIR: runtime,
-    DEX_CM_BROKER_IDLE_MS: '100',
+    DEX_CM_BROKER_IDLE_MS: '30000',
     DEX_CM_NO_KEYCHAIN: '1',
     NODE_OPTIONS: [process.env.NODE_OPTIONS, `--require=${PRESENCE_PRELOAD}`].filter(Boolean).join(' '),
   };
@@ -78,7 +78,7 @@ test('real accessor and status CLIs conform to the published schemas and exit-co
     ...process.env,
     DEX_VAULT: vault,
     DEX_CM_RUNTIME_DIR: runtime,
-    DEX_CM_BROKER_IDLE_MS: '100',
+    DEX_CM_BROKER_IDLE_MS: '30000',
     DEX_CM_NO_KEYCHAIN: '1',
     NODE_OPTIONS: [process.env.NODE_OPTIONS, `--require=${PRESENCE_PRELOAD}`].filter(Boolean).join(' '),
   };

@@ -30,7 +30,7 @@ const TMP_VAULT = fs.mkdtempSync(path.join(os.tmpdir(), 'dex-cm-hardening-'));
 const TMP_RUNTIME = fs.mkdtempSync(path.join(os.tmpdir(), 'dex-cm-hardening-runtime-'));
 process.env.DEX_VAULT = TMP_VAULT;
 process.env.DEX_CM_RUNTIME_DIR = TMP_RUNTIME;
-process.env.DEX_CM_BROKER_IDLE_MS = '100';
+process.env.DEX_CM_BROKER_IDLE_MS = '30000';
 process.env.DEX_CM_NO_KEYCHAIN = '1';
 
 const store = require('./token-store.cjs');
