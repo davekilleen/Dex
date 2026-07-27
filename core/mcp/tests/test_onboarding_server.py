@@ -25,7 +25,7 @@ class TestEmailDomainStep:
         ("entered_domain", "normalized_domain"),
         (
             ("@acme.com", "acme.com"),
-            ("dave@acme.com", "acme.com"),
+            ("jane@acme.com", "acme.com"),
             ("acme.com, @acme.io", "acme.com, acme.io"),
         ),
     )
