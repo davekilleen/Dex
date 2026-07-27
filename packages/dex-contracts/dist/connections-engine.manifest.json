@@ -11,8 +11,8 @@
         "connection-manager"
       ],
       "fileCount": 21,
-      "totalBytes": 235424,
-      "treeHash": "dd1405952397d178fa422ff77c5504776945340e21466388d2e52c393f48947c",
+      "totalBytes": 235957,
+      "treeHash": "01fb11f8d608aa9ce183c36dc50a298eab20b0165863d7bfd5c88fdf080ed0b1",
       "files": [
         {
           "path": "auth-context.cjs",
@@ -21,8 +21,8 @@
         },
         {
           "path": "broker-client.cjs",
-          "bytes": 6636,
-          "sha256": "6cc6bcb45ba1983ce54a1bf60adeb959918c1e3287904437bfb50870eb037086"
+          "bytes": 7169,
+          "sha256": "e684e17121929817e361b28aa5773393a81e44f8f1e8049bf5f32b0f5743c09e"
         },
         {
           "path": "broker.cjs",
