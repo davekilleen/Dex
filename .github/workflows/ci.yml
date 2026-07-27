@@ -169,19 +169,32 @@ jobs:
   # on this job, so a missing or failed shard can never slip through.
   test-results:
     needs: tests
+    # !cancelled() makes this job RUN (and fail via the guard below) when a shard
+    # fails, instead of being skipped. That matters because GitHub treats a
+    # SKIPPED required check as satisfied — without this, a red shard would leave
+    # the required test-results context green-by-absence and the PR mergeable.
+    if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     env:
+      VAULT_PATH: core/tests/fixtures/vault
       COVERAGE_MIN_TOTAL: "25"
       COVERAGE_MIN_TOUCHED: "10"
     steps:
+      - name: Require every shard green
+        run: |
+          [ "${{ needs.tests.result }}" = "success" ] || { echo "Shard matrix result: ${{ needs.tests.result }} — failing the suite verdict." >&2; exit 1; }
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 0
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: '3.12'
-      - name: Install coverage tooling
-        run: pip install coverage
+          cache: pip
+          cache-dependency-path: requirements-dev.txt
+      - name: Install Python dependencies
+        run: |
+          pip install -r requirements-dev.txt
+          pip install mcp pyyaml python-dateutil requests
       - name: Download shard results
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093  # v4
         with:
@@ -189,7 +202,10 @@ jobs:
           merge-multiple: true
       - name: Combine coverage and enforce total threshold
         run: |
-          coverage combine --keep coverage-shard-1.data coverage-shard-2.data coverage-shard-3.data
+          # A present-but-corrupt shard file only WARNS in `coverage combine`; the
+          # count assertion turns a partially-combined total into a hard failure.
+          coverage combine --keep coverage-shard-1.data coverage-shard-2.data coverage-shard-3.data | tee combine.log
+          [ "$(grep -c '^Combined data file' combine.log)" = "3" ] || { echo "Expected 3 combined shard data files." >&2; exit 1; }
           coverage json -o coverage.json
           coverage report --fail-under="${COVERAGE_MIN_TOTAL}"
       - name: Touched-file coverage gate
@@ -197,6 +213,17 @@ jobs:
         run: python scripts/check-coverage-threshold.py
       - name: Merge junit reports
         run: python scripts/merge-junit.py .logs/pytest-report-shard-1.xml .logs/pytest-report-shard-2.xml .logs/pytest-report-shard-3.xml --output .logs/pytest-report.xml
+      # The one invariant that retires every silent-drop class at once (mismatched
+      # --splits vs matrix size, a shard collecting fewer tests, an empty shard
+      # report): the union of what the shards RAN must equal what a fresh
+      # collection of this commit FINDS. Any mismatch is a red gate, not a warning.
+      - name: Shard-completeness invariant
+        run: |
+          python -c "from core import paths; from pathlib import Path; [getattr(paths, n).mkdir(parents=True, exist_ok=True) for n in dir(paths) if n.endswith('_DIR') and isinstance(getattr(paths, n), Path)]"
+          COLLECTED=$(pytest core/tests/ core/mcp/tests/ core/migrations/tests/ -m "not fuzz" --collect-only -q | grep -c "::")
+          MERGED=$(python -c "import xml.etree.ElementTree as ET; print(sum(int(s.get('tests', 0)) for s in ET.parse('.logs/pytest-report.xml').getroot().iter('testsuite')))")
+          echo "collected=$COLLECTED merged=$MERGED"
+          [ "$COLLECTED" = "$MERGED" ] || { echo "Shards ran $MERGED tests but this commit collects $COLLECTED — tests were dropped or duplicated." >&2; exit 1; }
       - name: Upload release health inputs
         if: github.ref == 'refs/heads/main' && github.event_name == 'push'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
