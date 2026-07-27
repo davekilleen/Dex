@@ -262,6 +262,7 @@ function createServer(capability, serverIdentity, activity, sockets) {
       const newline = input.indexOf('\n');
       if (newline === -1) return;
       handled = true;
+      socket.dexRequestStarted = true;
       activity.begin();
       Promise.resolve()
         .then(() => JSON.parse(input.slice(0, newline)))
@@ -297,22 +298,66 @@ async function startBroker({ idleMs } = {}) {
       let server;
       const sockets = new Set();
 
-      const close = () =>
-        new Promise((resolve, reject) => {
-          if (closed) {
-            resolve();
-            return;
-          }
+      // Memoized: every caller (idle timer, signals, embedding tests) shares ONE
+      // teardown promise, so awaiting close() genuinely awaits the in-flight
+      // teardown instead of resolving early on the `closed` flag.
+      let closePromise = null;
+      const close = () => {
+        closePromise ??= new Promise((resolve, reject) => {
           closed = true;
           if (idleTimer) clearTimeout(idleTimer);
-          for (const socket of sockets) socket.destroy();
+          // Unlink the socket file FIRST: existing connections keep working on
+          // the open handles, new connect attempts get ENOENT (= no broker, the
+          // client's spawn path), and a successor broker can bind a fresh file
+          // immediately. Deleting it in the server.close callback instead would
+          // race a successor: the graceful socket teardown below can defer that
+          // callback, and its late rmSync would delete the SUCCESSOR's socket.
+          fs.rmSync(socketPath(), { force: true });
           fs.rmSync(serverIdentityPath(), { force: true });
+          for (const socket of sockets) {
+            // A socket whose request never arrived is closed with an
+            // authenticated "restarting" line first: idle close only fires with
+            // zero requests in flight, so the broker can certify that nothing
+            // this client asked for was executed — the client may then safely
+            // respawn a broker and resend. This closes the accept-to-write race
+            // (a busy host can delay the client's request past the idle
+            // deadline) while keeping the invariant that incomplete clients are
+            // destroyed promptly rather than pinning the broker: end() flushes
+            // the line and FINs, and the destroy below remains the backstop for
+            // an unresponsive peer.
+            if (!socket.dexRequestStarted) {
+              // Sever the read path FIRST: request bytes already queued in the
+              // kernel could otherwise still dispatch and EXECUTE after the
+              // certificate below was sent — the certificate must be true.
+              socket.removeAllListeners('data');
+              // Liveness probes (socketReady/socketIsLive) connect and destroy
+              // without sending bytes; their server-side halves linger here
+              // half-open and a write to one EPIPEs asynchronously — without a
+              // handler that uncaught error would crash the broker mid-close.
+              socket.on('error', () => socket.destroy());
+              if (socket.readableEnded || socket.writableEnded) {
+                socket.destroy();
+              } else {
+                try {
+                  socket.end(
+                    `${JSON.stringify({ ok: false, error: { category: 'broker_restarting' }, serverAuth: serverIdentity })}\n`
+                  );
+                } catch {
+                  socket.destroy();
+                }
+                setTimeout(() => socket.destroy(), 250).unref();
+              }
+            } else {
+              socket.destroy();
+            }
+          }
           server.close((error) => {
-            fs.rmSync(socketPath(), { force: true });
             if (error && error.code !== 'ERR_SERVER_NOT_RUNNING') reject(error);
             else resolve();
           });
         });
+        return closePromise;
+      };
       const scheduleIdle = () => {
         if (closed) return;
         if (idleTimer) clearTimeout(idleTimer);

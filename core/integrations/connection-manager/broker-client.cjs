@@ -209,13 +209,32 @@ async function brokerRequest({ op = 'rendered', connId, targetOrigin, allowUnvet
     ...(targetOrigin ? { targetOrigin } : {}),
     ...(allowUnvetted ? { allowUnvetted: true } : {}),
   };
-  try {
-    return await exchange(request);
-  } catch (error) {
-    if (!isBrokerUnavailable(error)) throw error;
+  // Both resend conditions are safe by construction — isBrokerUnavailable
+  // means the request was never delivered, and an authenticated
+  // broker_restarting line is the broker's idle shutdown CERTIFYING the
+  // request was never parsed (it only idles with zero requests in flight;
+  // identity is validated before the category is read, so the certificate
+  // cannot be forged). A resend can itself race the fresh broker's idle
+  // deadline on a saturated host, so the bound is a few certified attempts,
+  // not exactly one.
+  const ATTEMPTS = 3;
+  for (let attempt = 1; ; attempt += 1) {
+    try {
+      const response = await exchange(request);
+      if (!isBrokerRestarting(response)) return response;
+      if (attempt >= ATTEMPTS) {
+        // Surface plain language rather than the internal protocol category.
+        throw new Error('Credential broker was restarting; please retry.');
+      }
+    } catch (error) {
+      if (!isBrokerUnavailable(error) || attempt >= ATTEMPTS) throw error;
+    }
+    await startBrokerSingleFlight();
   }
-  await startBrokerSingleFlight();
-  return exchange(request);
 }
 
-module.exports = { brokerRequest, exitCodeForError, ensurePrivateRuntime, isBrokerUnavailable };
+function isBrokerRestarting(response) {
+  return Boolean(response && response.ok === false && response.error && response.error.category === 'broker_restarting');
+}
+
+module.exports = { brokerRequest, exitCodeForError, ensurePrivateRuntime, isBrokerUnavailable, isBrokerRestarting };
