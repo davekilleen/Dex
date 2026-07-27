@@ -47,6 +47,10 @@ SOURCE_CONTENT_EXCLUSIONS = {
     ".distignore",
     ".gitattributes",
     "scripts/check-tau-removal.py",
+    # CI shard-balance data: keys are test nodeids, including the tau gate's own
+    # core/tests/ test names (that prefix is already excluded below). Never ships
+    # (.distignore), and release-tree scans remain fully unexcluded.
+    ".ci/test-durations.json",
 }
 SOURCE_PREFIX_EXCLUSIONS = ("core/tests/",)
 DISTIGNORE_ENTRY = "extensions/" + TAU_NAME + "/"

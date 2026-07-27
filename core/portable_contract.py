@@ -127,6 +127,8 @@ RULES: tuple[Rule, ...] = (
     _r("brain-obsidian", ".obsidian", "dir", "brain",
        "shipped Obsidian defaults; a user's live workspace state is untracked"),
     _r("brain-github", ".github", "dir", "brain"),
+    _r("brain-ci", ".ci", "dir", "brain",
+       "CI shard-balance data; dev-only, stripped from releases via .distignore"),
     _r("brain-docs", "docs", "dir", "brain"),
     # System docs shipped inside the user's Resources region: enumerated file by
     # file (mirroring the PARA seed pattern) so a USER note or edit added under

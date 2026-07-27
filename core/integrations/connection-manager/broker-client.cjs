@@ -191,7 +191,14 @@ async function startBrokerSingleFlight() {
 }
 
 function isBrokerUnavailable(error) {
-  return error && (error.code === 'ENOENT' || error.code === 'ECONNREFUSED');
+  // EPIPE: the broker accepted our connection but idle-exited before our
+  // request bytes were parsed (an accepted socket only counts as broker
+  // activity once its request starts). The write failed, so the request was
+  // never processed — same recovery as a dead socket: spawn a fresh broker
+  // and send the request once more. Response-side failures (e.g. ECONNRESET
+  // after the request was delivered) stay non-retriable: the broker may have
+  // executed a mutating op.
+  return error && (error.code === 'ENOENT' || error.code === 'ECONNREFUSED' || error.code === 'EPIPE');
 }
 
 async function brokerRequest({ op = 'rendered', connId, targetOrigin, allowUnvetted, privileged: _privileged } = {}) {
@@ -211,4 +218,4 @@ async function brokerRequest({ op = 'rendered', connId, targetOrigin, allowUnvet
   return exchange(request);
 }
 
-module.exports = { brokerRequest, exitCodeForError, ensurePrivateRuntime };
+module.exports = { brokerRequest, exitCodeForError, ensurePrivateRuntime, isBrokerUnavailable };
