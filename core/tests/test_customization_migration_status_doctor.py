@@ -7,7 +7,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from core.customization_migration import service as migration_service
+from core.customization_migration.behaviour import ContractProvenance
 from core.tests.test_customization_assessment import _linked_customized_vault
+from core.tests.test_customization_verification import _candidate_with_contract
 from core.utils import doctor
 
 NOW = datetime(2026, 7, 26, 12, 0, tzinfo=timezone.utc)
@@ -125,6 +127,27 @@ def test_created_capsule_is_ok_pending_and_lists_capsule_id(tmp_path: Path) -> N
             "capsule_id": receipt.capsule_id,
             "state": "capsule-created",
             "validation": {"status": "OK", "mismatches": []},
+            "staging": {
+                "capsule_id": receipt.capsule_id,
+                "proposals": [],
+                "truncated": False,
+            },
+            "verification_verdicts": {
+                "OK": 0,
+                "BLOCKED": 0,
+                "UNKNOWN": 0,
+            },
+            "pending_rebuild": True,
+            "activation": {
+                "capsule_id": receipt.capsule_id,
+                "proposal_id": None,
+                "state": "unknown",
+                "reason": "activation-not-found",
+                "activation_receipt_present": False,
+                "rewindable": False,
+            },
+            "activation_receipt_present": False,
+            "rewindable": False,
         }
     ]
 
@@ -247,3 +270,149 @@ def test_structural_status_read_failure_is_unknown(
     assert result.verdict == "UNKNOWN"
     assert "malformed migration status" in result.detail
     assert result.structured_detail is None
+
+
+def test_doctor_surfaces_verified_activation_and_rewind_authority(
+    tmp_path: Path,
+) -> None:
+    vault, candidate = _candidate_with_contract(tmp_path)
+    staging_preview = migration_service.preview_staging_to_dict(vault, candidate)
+    migration_service.stage_confirmed_candidate(
+        vault,
+        candidate,
+        staging_preview["preview_sha256"],
+    )
+    migration_service.verify_staging_to_dict(
+        vault,
+        candidate.capsule_id,
+        candidate.proposal_id,
+    )
+    activation_preview = migration_service.preview_activation_to_dict(
+        vault,
+        candidate.capsule_id,
+        candidate.proposal_id,
+    )
+    migration_service.activate_confirmed(
+        vault,
+        candidate.capsule_id,
+        candidate.proposal_id,
+        activation_preview["approval_token"],
+    )
+
+    activated = doctor._probe_customization_migration_status(
+        _context(vault, tmp_path)
+    )
+
+    assert activated.verdict == "OK"
+    assert activated.structured_detail is not None
+    capsule = activated.structured_detail["capsules"][0]
+    assert capsule["pending_rebuild"] is False
+    assert capsule["verification_verdicts"] == {
+        "OK": 1,
+        "BLOCKED": 0,
+        "UNKNOWN": 0,
+    }
+    assert capsule["activation_receipt_present"] is True
+    assert capsule["rewindable"] is True
+    assert capsule["activation"]["state"] == "activated"
+
+    rewind_preview = migration_service.preview_rewind_to_dict(
+        vault,
+        candidate.capsule_id,
+    )
+    migration_service.rewind_acknowledged(
+        vault,
+        candidate.capsule_id,
+        rewind_preview["acknowledgement_token"],
+    )
+    rewound = doctor._probe_customization_migration_status(
+        _context(vault, tmp_path)
+    )
+
+    assert rewound.verdict == "OK"
+    assert rewound.structured_detail is not None
+    rewound_capsule = rewound.structured_detail["capsules"][0]
+    assert rewound_capsule["activation"]["state"] == "rewound"
+    assert rewound_capsule["rewindable"] is False
+
+
+def test_corrupt_activation_evidence_is_broken_fail_closed(
+    tmp_path: Path,
+) -> None:
+    vault, candidate = _candidate_with_contract(tmp_path)
+    staging_preview = migration_service.preview_staging_to_dict(vault, candidate)
+    migration_service.stage_confirmed_candidate(
+        vault,
+        candidate,
+        staging_preview["preview_sha256"],
+    )
+    migration_service.verify_staging_to_dict(
+        vault,
+        candidate.capsule_id,
+        candidate.proposal_id,
+    )
+    activation_preview = migration_service.preview_activation_to_dict(
+        vault,
+        candidate.capsule_id,
+        candidate.proposal_id,
+    )
+    migration_service.activate_confirmed(
+        vault,
+        candidate.capsule_id,
+        candidate.proposal_id,
+        activation_preview["approval_token"],
+    )
+    receipt = (
+        vault
+        / "System/.dex/customization-migrations"
+        / candidate.capsule_id
+        / "receipts/activation.json"
+    )
+    receipt.write_bytes(receipt.read_bytes() + b" ")
+
+    result = doctor._probe_customization_migration_status(
+        _context(vault, tmp_path)
+    )
+
+    assert result.verdict == "BROKEN"
+    assert result.structured_detail is not None
+    capsule = result.structured_detail["capsules"][0]
+    assert capsule["activation"]["state"] == "recovery-required"
+    assert capsule["rewindable"] is False
+
+
+def test_blocked_verification_remains_blocked_and_is_broken(
+    tmp_path: Path,
+) -> None:
+    vault, candidate = _candidate_with_contract(
+        tmp_path,
+        provenance=ContractProvenance.MODEL_PROPOSED,
+    )
+    staging_preview = migration_service.preview_staging_to_dict(vault, candidate)
+    migration_service.stage_confirmed_candidate(
+        vault,
+        candidate,
+        staging_preview["preview_sha256"],
+    )
+    verification = migration_service.verify_staging_to_dict(
+        vault,
+        candidate.capsule_id,
+        candidate.proposal_id,
+    )
+
+    result = doctor._probe_customization_migration_status(
+        _context(vault, tmp_path)
+    )
+
+    assert verification["report"]["verdict"] == "BLOCKED"
+    assert result.verdict == "BROKEN"
+    assert result.structured_detail is not None
+    capsule = result.structured_detail["capsules"][0]
+    assert capsule["verification_verdicts"] == {
+        "OK": 0,
+        "BLOCKED": 1,
+        "UNKNOWN": 0,
+    }
+    assert capsule["staging"]["proposals"][0][
+        "verification_verdict"
+    ] == "BLOCKED"

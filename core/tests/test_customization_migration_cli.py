@@ -9,9 +9,14 @@ import subprocess
 import sys
 from pathlib import Path
 
-from core.customization_migration.capsule import read_capsule_status, validate_capsule
+from core.customization_migration.capsule import (
+    CAPSULE_ROOT,
+    read_capsule_status,
+    validate_capsule,
+)
 from core.tests.test_customization_assessment import _linked_customized_vault
 from core.tests.test_customization_capsule_create import _manifest_only_vault
+from core.tests.test_customization_verification import _candidate_with_contract
 from core.tests.vault_observed_writes import snapshot_vault
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -40,6 +45,34 @@ def _token(output: str) -> str:
     match = re.search(r"\b[0-9a-f]{64}\b", output)
     assert match, output
     return match.group(0)
+
+
+def _candidate_file(tmp_path: Path, candidate) -> Path:
+    path = tmp_path / "candidate.json"
+    path.write_text(
+        json.dumps(
+            candidate.to_dict(),
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+            allow_nan=False,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    return path
+
+
+def _rendered(value: object) -> str:
+    if isinstance(value, (dict, list)) or value is None or type(value) is bool:
+        return json.dumps(
+            value,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+            allow_nan=False,
+        )
+    return str(value)
 
 
 def test_status_assess_and_preview_are_plain_and_write_nothing(tmp_path: Path) -> None:
@@ -172,3 +205,172 @@ def test_registration_snippet_shape_is_pinned() -> None:
             "env": {"VAULT_PATH": "{{VAULT_PATH}}"},
         }
     }
+
+
+def test_rebuild_doorway_runs_real_happy_path_and_renders_every_receipt(
+    tmp_path: Path,
+) -> None:
+    vault, candidate = _candidate_with_contract(tmp_path)
+    candidate_path = _candidate_file(tmp_path, candidate)
+
+    before_stage = snapshot_vault(vault)
+    refused_stage = _run(vault, "stage", str(candidate_path))
+    assert refused_stage.returncode != 0
+    assert snapshot_vault(vault) == before_stage
+    staging_token = _token(refused_stage.stdout)
+
+    stale_stage = _run(
+        vault,
+        "stage",
+        str(candidate_path),
+        "--confirm-token",
+        "0" * 64,
+    )
+    assert stale_stage.returncode != 0
+    assert _token(stale_stage.stdout) == staging_token
+    assert snapshot_vault(vault) == before_stage
+
+    staged = _run(
+        vault,
+        "stage",
+        str(candidate_path),
+        "--confirm-token",
+        staging_token,
+    )
+    assert staged.returncode == 0, staged.stdout
+    for field in (
+        "capsule_id",
+        "proposal_id",
+        "staged_file_count",
+        "staged_byte_count",
+        "staging_digest",
+        "transaction_id",
+    ):
+        assert f"{field}:" in staged.stdout
+
+    verified = _run(
+        vault,
+        "verify",
+        candidate.capsule_id,
+        candidate.proposal_id,
+    )
+    assert verified.returncode == 0, verified.stdout
+    report = json.loads(
+        (
+            vault
+            / CAPSULE_ROOT
+            / candidate.capsule_id
+            / "verification"
+            / f"{candidate.proposal_id}.json"
+        ).read_text(encoding="utf-8")
+    )
+    for field, value in report.items():
+        assert f"{field}: {_rendered(value)}" in verified.stdout
+    for field in (
+        "capsule_id",
+        "staging_id",
+        "report_path",
+        "report_sha256",
+        "transaction_id",
+    ):
+        assert f"{field}:" in verified.stdout
+
+    previewed_activation = _run(
+        vault,
+        "preview-activation",
+        candidate.capsule_id,
+        candidate.proposal_id,
+    )
+    assert previewed_activation.returncode == 0, previewed_activation.stdout
+    activation_token = _token(previewed_activation.stdout)
+    before_activation = snapshot_vault(vault)
+
+    missing_activation = _run(
+        vault,
+        "activate",
+        candidate.capsule_id,
+        candidate.proposal_id,
+    )
+    assert missing_activation.returncode != 0
+    assert _token(missing_activation.stdout) == activation_token
+    assert snapshot_vault(vault) == before_activation
+
+    stale_activation = _run(
+        vault,
+        "activate",
+        candidate.capsule_id,
+        candidate.proposal_id,
+        "--confirm-token",
+        "0" * 64,
+    )
+    assert stale_activation.returncode != 0
+    assert _token(stale_activation.stdout) == activation_token
+    assert snapshot_vault(vault) == before_activation
+
+    activated = _run(
+        vault,
+        "activate",
+        candidate.capsule_id,
+        candidate.proposal_id,
+        "--confirm-token",
+        activation_token,
+    )
+    assert activated.returncode == 0, activated.stdout
+    activation_receipt = json.loads(
+        (
+            vault
+            / "System/.dex/customization-migrations"
+            / candidate.capsule_id
+            / "receipts/activation.json"
+        ).read_text(encoding="utf-8")
+    )
+    for field, value in activation_receipt.items():
+        assert f"{field}: {_rendered(value)}" in activated.stdout
+
+    status = _run(vault, "activation-status", candidate.capsule_id)
+    assert status.returncode == 0
+    assert "state: activated" in status.stdout
+    assert "rewindable: true" in status.stdout
+
+    previewed_rewind = _run(vault, "preview-rewind", candidate.capsule_id)
+    assert previewed_rewind.returncode == 0
+    rewind_token = _token(previewed_rewind.stdout)
+    before_rewind = snapshot_vault(vault)
+
+    missing_rewind = _run(vault, "rewind", candidate.capsule_id)
+    assert missing_rewind.returncode != 0
+    assert _token(missing_rewind.stdout) == rewind_token
+    assert snapshot_vault(vault) == before_rewind
+
+    stale_rewind = _run(
+        vault,
+        "rewind",
+        candidate.capsule_id,
+        "--acknowledge-token",
+        "0" * 64,
+    )
+    assert stale_rewind.returncode != 0
+    assert _token(stale_rewind.stdout) == rewind_token
+    assert snapshot_vault(vault) == before_rewind
+
+    rewound = _run(
+        vault,
+        "rewind",
+        candidate.capsule_id,
+        "--acknowledge-token",
+        rewind_token,
+    )
+    assert rewound.returncode == 0, rewound.stdout
+    rewind_receipt = json.loads(
+        (
+            vault
+            / "System/.dex/customization-migrations"
+            / candidate.capsule_id
+            / "receipts/rewind.json"
+        ).read_text(encoding="utf-8")
+    )
+    for field, value in rewind_receipt.items():
+        assert f"{field}: {_rendered(value)}" in rewound.stdout
+    final_status = _run(vault, "activation-status", candidate.capsule_id)
+    assert "state: rewound" in final_status.stdout
+    assert "rewindable: false" in final_status.stdout

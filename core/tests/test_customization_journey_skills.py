@@ -62,13 +62,39 @@ def test_shipped_skills_pin_the_scoped_customization_journey() -> None:
     assert "Capsule creation is resumable after a crash." in update_section
     assert "MCP tools are read-only" in update_section
     assert "automatic rebuild" in update_section
-    for unavailable_call in (
-        "stage_approved_regeneration",
-        "verify_staged_regeneration",
-        "activate_approved_customizations",
-        "rewind_customization_activation",
+    assert (
+        "rebuilds your customisations on the new version, shows you anything "
+        "it can't safely carry forward, everything backed up and reversible"
+    ) in update_section
+    assert "validate_regeneration_candidate" in update_section
+    assert (
+        "makes no vault write: it parses the closed candidate shape and "
+        "delegates to `validate_regeneration_candidate` before it returns a preview"
+    ) in update_section
+    assert "exactly one disposition" in update_section
+    assert "one question at a time" in update_section
+    for command in (
+        "python -m core.customization_migration.cli stage CANDIDATE_JSON",
+        "python -m core.customization_migration.cli stage CANDIDATE_JSON "
+        "--confirm-token PREVIEW_SHA256",
+        "python -m core.customization_migration.cli verify CAPSULE_ID PROPOSAL_ID",
+        "python -m core.customization_migration.cli preview-activation "
+        "CAPSULE_ID PROPOSAL_ID",
+        "python -m core.customization_migration.cli activate CAPSULE_ID "
+        "PROPOSAL_ID --confirm-token APPROVAL_TOKEN",
+        "python -m core.customization_migration.cli preview-rewind CAPSULE_ID",
+        "python -m core.customization_migration.cli rewind CAPSULE_ID "
+        "--acknowledge-token ACKNOWLEDGEMENT_TOKEN",
+        "python -m core.customization_migration.cli activation-status CAPSULE_ID",
     ):
-        assert unavailable_call not in update_section
+        assert command in update_section
+    assert "an earlier yes is not this yes" in update_section.lower()
+    assert "verified only when the engine says `verified`" in update_section
+    assert "`manual`" in update_section
+    assert "`unknown`" in update_section
+    assert "external actions" in update_section
+    assert "<" not in update_section
+    assert ">=" not in update_section
 
 
 def test_session_continuity_survives_claude_template_composition(

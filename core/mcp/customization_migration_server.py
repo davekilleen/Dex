@@ -129,6 +129,20 @@ def _page(records: list[object], cursor: int) -> tuple[list[object], int | None]
     return page, None if index == len(records) else index
 
 
+def _capsule_status_schema() -> dict[str, object]:
+    return {
+        "type": "object",
+        "properties": {
+            "capsule_id": {
+                "type": "string",
+                "pattern": "^cap-[0-9a-f]{16}$",
+            },
+        },
+        "required": ["capsule_id"],
+        "additionalProperties": False,
+    }
+
+
 @app.list_tools()
 async def handle_list_tools() -> list[types.Tool]:
     empty = {
@@ -151,6 +165,16 @@ async def handle_list_tools() -> list[types.Tool]:
             name="read_customization_migration_status",
             description="Read capsule states and validation verdicts.",
             inputSchema=empty,
+        ),
+        types.Tool(
+            name="read_staging_status",
+            description="Read staged proposal states and verification verdicts.",
+            inputSchema=_capsule_status_schema(),
+        ),
+        types.Tool(
+            name="read_activation_status",
+            description="Read activation, receipt-presence, and rewindable status.",
+            inputSchema=_capsule_status_schema(),
         ),
         types.Tool(
             name="read_customization_capsule_section",
@@ -223,6 +247,40 @@ async def handle_call_tool(
                     "ok",
                     "Customization migration status was read.",
                     migration_status=migration_service.migration_status_to_dict(_root()),
+                )
+            )
+        if name in {"read_staging_status", "read_activation_status"}:
+            values = _closed_arguments(
+                arguments or {},
+                allowed=frozenset({"capsule_id"}),
+                required=frozenset({"capsule_id"}),
+            )
+            capsule_id = values["capsule_id"]
+            if not isinstance(capsule_id, str):
+                raise migration_service.MigrationServiceError(
+                    "malformed-arguments", "capsule_id must be a string."
+                )
+            if name == "read_staging_status":
+                return _text(
+                    feature_status(
+                        _FEATURE,
+                        "ok",
+                        "Customization staging status was read.",
+                        staging_status=migration_service.staging_status_to_dict(
+                            _root(),
+                            capsule_id,
+                        ),
+                    )
+                )
+            return _text(
+                feature_status(
+                    _FEATURE,
+                    "ok",
+                    "Customization activation status was read.",
+                    activation_status=migration_service.activation_status_to_dict(
+                        _root(),
+                        capsule_id,
+                    ),
                 )
             )
         if name == "read_customization_capsule_section":
