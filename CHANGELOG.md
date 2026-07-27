@@ -13,7 +13,7 @@ This is the release I asked heavily-customised users to wait for. Two big things
 
 **The move, proven on a real vault:**
 
-* **Rehearsed end-to-end before being offered to anyone.** I converted full copies of a real, seven-month-old, 50 GB working vault — killed the process halfway on purpose — and proved the undo restored every file byte-for-byte. The rehearsal caught four real problems, all fixed here: Dropbox users were wrongly refused, very large vaults (~12k+ files) could crash the move, accented filenames could falsely fail a safety check, and the symlink refusal now tells you what to do about it.
+* **Tested on a real vault before being offered to anyone.** Before this reached users, I rehearsed the whole move on full copies of a genuine, seven-month-old working vault — including deliberately pulling the plug halfway through — and confirmed the undo put every file back exactly as it was. That rehearsal caught four real problems, all fixed here: Dropbox users were wrongly turned away, very large vaults could fail near the finish line, file names with accents (like "Häfele") could wrongly stop the move, and on the rare setup where Dex does have to say no, it now explains the quick fix instead of just refusing.
 
 **The guided journey for customised setups:**
 
@@ -31,7 +31,7 @@ This is the release I asked heavily-customised users to wait for. Two big things
 * **A stray browser tab can't interrupt you mid-connect.** While you were connecting an app, another page open in your browser could quietly cancel it and leave you wondering what went wrong. That window is closed.
 * **Sturdier under odd setups.** If your credentials folder or key arrived from a backup with loose permissions, Dex now tightens them before use rather than trusting them, and refuses outright if something looks tampered with. And account names that could have collided into the same file — quietly breaking one of two connections — are now rejected up front.
 
-Still no change to day-to-day use for connections — and the `/connect` doorway stays deliberately closed until it passes an independent security review. Also in this release: the DexDiff sharing tool publishes to the right backend.
+Still no change to day-to-day use for connections — and the `/connect` doorway stays deliberately closed until it passes an independent security review. Also in this release: a fix so DexDiff workflow sharing publishes to the right place.
 
 ## [1.75.1] — 🔍 Dex Doctor now knows exactly what you've customised (2026-07-24)
 
@@ -221,13 +221,13 @@ This morning's release gave Dex full sight of what an update would change. This 
 **What this changes for you:**
 
 * **Nothing is applied without a double-check.** Before writing anything, Dex shows exactly what will change and gets an approval bound to that exact list. At the moment of writing, it re-checks everything from scratch — if anything on disk moved in between, it refuses and asks again rather than guessing.
-* **Every change comes with an undo.** Each applied change produces a receipt, and Dex can restore things to exactly how they were — byte for byte. If you've edited a file since, Dex refuses to undo over your edit and tells you which file, instead of destroying your work.
+* **Every change comes with an undo.** Each applied change produces a receipt, and Dex can restore things to exactly how they were, down to the last detail. If you've edited a file since, Dex refuses to undo over your edit and tells you which file, instead of destroying your work.
 * **A crash can never leave you half-changed.** Pull the plug at any instant during an apply or an undo and you end up either fully done or exactly where you started. This was independently attack-tested at every possible interruption point.
-* **Databases get real protection.** Some tools keep your data in database files that can be silently corrupted by naive copying. Dex now backs these up the one safe way, verifies the result, and — after a security reviewer proved a subtle power-loss risk — restores them in an order that no crash timing can corrupt.
+* **Databases get real protection.** Some tools keep your data in database files that a straightforward copy can silently corrupt. Dex now backs these up the one safe way, verifies the result, and — after a security reviewer proved a subtle power-loss risk — restores them in an order that no crash timing can corrupt.
 * **A heads-up if your vault lives in Dropbox, iCloud, or OneDrive.** Sync services can corrupt databases mid-write, so Dex now asks before backing up a database inside one.
-* **Honest housekeeping.** Dex keeps the last three undo points (about the last three changes), warns if they ever grow past ~2GB of disk, and tells you plainly when something is too old to undo.
+* **Honest housekeeping.** Dex keeps the last three undo points (about the last three changes), warns if they ever grow past about 2GB of disk, and tells you plainly when something is too old to undo.
 
-Every piece of this release passed an independent adversarial security review before merging.
+Every piece of this release passed an independent security review, deliberately trying to break it, before it shipped.
 
 ---
 
@@ -242,7 +242,7 @@ Until now, updating Dex meant trusting that the new version and your vault would
 * **You'll be able to skip parts of an update safely.** The planning engine guarantees that saying "not this one" to any piece never changes what happens to the rest — each piece is decided completely on its own.
 * **`/dex-doctor` gained two new checks** that report on all of the above, in the same honest working / off / broken / couldn't-check language as everything else.
 
-This completes the "look, don't touch" phase of the update-safety program. Next up: applying updates through this map, with automatic backups and one-command undo.
+This completes the "look, don't touch" phase of the update-safety program. Next up: applying updates through this map, with automatic backups and undo in a single step.
 
 ---
 
@@ -253,7 +253,7 @@ This release finishes two stories that began yesterday: making Dex updates funda
 **What this changes for you:**
 
 * **Updates now run through a protected engine.** For vaults on the new layout, updating no longer mixes Dex's changes into your files the old way. Instead: Dex backs everything up, applies the new version, checks its own work, and can undo the whole thing exactly. If your machine crashes mid-update, you end up either fully updated or exactly where you started — never in between.
-* **Your vault can become fully yours.** New machinery (not yet switched on by default) can separate Dex's code from your content entirely, so your notes live in their own private, versioned space that updates physically cannot touch — with a practice run first and one command to change your mind.
+* **Your vault can become fully yours.** New machinery (not yet switched on by default) can separate Dex's code from your content entirely, so your notes live in their own private space, with its own history, that updates physically cannot touch — with a practice run first and a single step to change your mind.
 * **A few old files from the maker's setup are being retired the safe way.** If you ever edited them, your copies are preserved exactly; nothing of yours is touched.
 * **Fresh installs land in the right shape automatically**, with plain-English guidance if anything needs a decision.
 
@@ -267,7 +267,7 @@ Until now every Dex install arrived fully furnished — career coaching, company
 
 * **Dex asks what your work life actually looks like.** New setups keep the core always on — meetings, people and tasks — then ask three quick yes-or-no questions: do you want a Career room, a Companies room, a Quarterly Goals room? Say no and they simply don't exist in your vault, so you're not left with empty folders about a job you don't have. You can switch any room on or off later, and switching one off never deletes anything you wrote.
 * **If you already use those features, nothing changes.** Existing setups keep every room exactly as it is.
-* **The foundations for worry-free updates are in place.** Dex now has a single rulebook saying, for every file, whether it belongs to Dex or to you — plus a new update engine that backs up before touching anything, checks its own work, and can undo it exactly. If an update is ever interrupted, even by a crash, your files end up either completely untouched or completely updated — never half-done. You'll feel this properly in the next few releases, as updating becomes one command with one-click undo.
+* **The foundations for worry-free updates are in place.** Dex now has a single rulebook saying, for every file, whether it belongs to Dex or to you — plus a new update engine that backs up before touching anything, checks its own work, and can undo it exactly. If an update is ever interrupted, even by a crash, your files end up either completely untouched or completely updated — never half-done. You'll feel this properly in the next few releases, as updating becomes a single step with one-click undo.
 * **The last of my own files are on their way out.** Earlier versions shipped with a few of my personal notes mixed in. Most went in this release, and the machinery to remove the final few safely — without disturbing anyone's update history — ships here too.
 
 ---
@@ -288,20 +288,20 @@ A round of tidying up, and one thing you're now in control of.
 
 ## [1.61.0] — 🧪 Behind the scenes: groundwork for a test version of Dex (2026-07-14)
 
-Beta-channel build pipeline (internal): CI can now produce a `release-beta` build and every release gets an immutable tag; no user-visible change yet.
+Behind the scenes, I can now build a test version of Dex alongside the normal one, and every version gets a permanent marker pointing at exactly what was in it. Nothing changes for you yet.
 
 **What this changes today:**
 
-* **Stable builds keep their existing path.** Pushes to `main` still produce the stripped `release` branch and the normal versioned GitHub Release.
-* **Beta builds are ready internally.** Once a `beta` source branch exists, pushes to it can produce `release-beta` with the same stripping and installed-files manifest as stable, without creating a GitHub Release or changing which release is latest.
-* **Every built distribution has a permanent identity.** An annotated tag points to the exact release commit and its manifest, so a later rollback update can find historical release contents even after a release branch is rebuilt.
-* **Beta is not user-selectable yet.** Update, rollback, and channel-switching behavior is unchanged and will ship separately.
+* **The normal version is unaffected.** Stable releases are still tidied up and published on GitHub exactly as before.
+* **Test builds are ready internally.** Once a test line of Dex exists, it can be built with the same tidying and the same packing list as the stable one — without being published, and without becoming the version people get by default.
+* **Every version Dex builds keeps a permanent identity.** Each one is marked so its exact contents and packing list can still be found later — which is what lets a rollback reach an older version reliably.
+* **You can't choose the test version yet.** Updating, rolling back, and switching between the stable and test versions all behave exactly as before; the controls come later.
 
 ---
 
 ## [1.60.0] — 🧪 Behind the scenes: more test-version groundwork (nothing changes for you yet) (2026-07-13)
 
-Dex now has the internal release-channel plumbing needed for a future opt-in beta. The health check understands which release line an installation belongs to, so future beta users will not get false "couldn't verify" warnings from being compared with stable code.
+Dex now has the internal groundwork needed for a future opt-in test version. Its health check understands which line of Dex an installation is on, so future test users will not get false "couldn't verify" warnings from being compared against the stable version.
 
 **What this changes for you today:**
 
@@ -318,19 +318,19 @@ Dex's health check gave built-in services just 1.5 seconds to wake up. On a slow
 **What this fixes for you:**
 
 * **Slow starts no longer look like failures.** `/dex-doctor` and nightly health checks wait long enough for working built-in services to answer, even when your machine is under load.
-* **Unusually slow setups can choose a longer window.** Set `DEX_MCP_HANDSHAKE_TIMEOUT` to a positive number of seconds when your services genuinely need more than the standard eight seconds; missing or invalid values safely keep the default.
+* **Unusually slow setups can choose a longer window.** If your built-in services genuinely need more than the standard eight seconds, you can set `DEX_MCP_HANDSHAKE_TIMEOUT` to the number of seconds you want; if it's missing or doesn't make sense, Dex safely keeps the standard eight.
 
 ---
 
 ## [1.58.0] — ✅ Your tasks and priorities are handled more carefully (2026-07-13)
 
-A coverage review of the code that edits your task and priority files turned up eight ways Dex could quietly mishandle them. All eight are now fixed, each locked in by a test so they can't come back.
+A close review of the code that edits your task and priority files turned up eight ways Dex could quietly mishandle them. All eight are now fixed, each locked in by a test so they can't come back.
 
 **What this fixes for you:**
 
-* **Completing a task marks the *right* one.** If two tasks had similar wording (one a substring of the other) and no ID, saying "done" could flip the wrong task. Dex now matches the exact task, and refuses to guess when it's genuinely ambiguous rather than picking wrong.
+* **Completing a task marks the *right* one.** If two tasks had similar wording — one title sitting word-for-word inside the other — and neither had an ID, saying "done" could flip the wrong task. Dex now matches the exact task, and refuses to guess when it's genuinely ambiguous rather than picking wrong.
 * **"Done" actually completes an open task.** If an already-completed copy of a task sat above an open one, Dex could report success without ticking the open one. It now finds the open task and completes it.
-* **Your file's line endings are left alone.** Completing a task in a file edited on Windows no longer rewrites every line ending — only the one task line changes.
+* **A file you've edited on Windows stays as you left it.** Completing a task in one no longer quietly rewrites every line in the file — only the one task line changes.
 * **Checkbox text inside a task title is safe.** A task whose title happened to contain checkbox characters is no longer mangled when completed.
 * **Weekly priorities stay in order.** New "Top 3" priorities are added at the bottom, numbered in sequence — no more entries landing out of order or two items sharing a number.
 * **A fourth priority is handled gracefully.** Adding beyond three no longer corrupts the list; the item is numbered correctly and Dex gently notes that "Top 3" is meant to keep your focus tight.
@@ -345,9 +345,9 @@ Opt in to help catch bad releases across all vaults — anonymous nightly health
 **What this fixes for you:**
 
 * **Bad releases can show up within hours.** If you explicitly opt in, Dex shares one tiny verdict after its nightly self-check so maintainers can see when the same update starts breaking across installations.
-* **Your work never joins the report.** The verdict contains only outcome counts, one fixed check identifier when something is wrong, the Dex version and release channel, and a random installation ID. It never includes names, notes, filenames, paths, or file contents.
+* **Your work never joins the report.** The verdict contains only counts of what passed and failed, the name of the failing check when something is wrong (drawn from a fixed list), which version of Dex you're on and which line of it, and a random installation number. It never includes names, notes, filenames, paths, or file contents.
 * **This choice is separate and defaults to no.** Existing analytics consent does not enable health sharing. Missing, pending, or malformed consent sends nothing, and you can turn health telemetry on or off in plain language anytime.
-* **You can inspect every attempt locally.** Dex keeps an ignored local line-by-line audit of exactly what it would send, including attempts skipped by consent and requests dropped after a network failure.
+* **You can inspect every attempt yourself.** Dex keeps a private record on your own machine, line by line, of exactly what it would send — including the times it sent nothing because you hadn't opted in, and the times a send was dropped because the connection failed.
 
 ---
 
@@ -360,19 +360,19 @@ When Dex suggests connecting a tool, it now leans on real evidence — is the ap
 * **"Installed on your Mac" beats a guess.** When Dex offers to connect Things, Trello, Todoist, Zoom, or Teams, it now checks whether the app is actually installed and leads with that — so its suggestions feel observant, not random. An installed app is strong enough to surface on its own.
 * **Half-finished setups get noticed.** If a tool's connector is already configured but sync was never switched on, Dex spots the loose end and offers to finish it, rather than treating it as brand new.
 * **Suggestions say why.** Each recommendation now comes with its reason in plain words — "installed on your Mac", "already set up but not switched on yet", or how many times you mentioned it — so you understand where the nudge came from.
-* **Nothing leaves your machine.** The check is a local look at your Applications folder and your own config files — no network calls, and it quietly does nothing on non-Mac systems where those apps don't apply.
+* **Nothing leaves your machine.** The check is a quick look at your Applications folder and your own settings files — nothing is sent anywhere, and it quietly does nothing on computers that aren't Macs, where those apps don't apply.
 
 ---
 
 ## [1.55.0] — 🤝 Contributing to Dex is now safer (2026-07-13)
 
-Contributing to Dex is now safer — CI catches personal data before it's shared, and tells contributors in plain English what their change touches.
+Contributing to Dex is now safer — automatic checks catch personal data before it's shared, and tell contributors in plain English what their change touches.
 
 **What this fixes for you:**
 
-* **Personal details are stopped before merge.** Pull-request CI checks only newly added lines and names the exact file and line when it finds a real email, filled-in tracked profile or integration identity, personal vault content, or configured CLAUDE profile.
-* **Every contribution gets a product map.** A sticky report translates changed paths into recognizable Dex areas, the user journeys they feed, and the quality gates that apply. Fork contributors still get the identical report in the job summary when GitHub withholds comment permission.
-* **Messy real-world content gets exercised.** Disposable vault fixtures now include unicode and spaced filenames, half-written notes, duplicate task headings, and recoverable malformed YAML, backed by fast property tests and larger nightly fuzz cases.
+* **Personal details are stopped before a change is accepted.** The automatic checks look only at newly added lines, and name the exact file and line when they find a real email address, a filled-in personal profile or connection identity, personal vault content, or someone's own Dex instructions.
+* **Every contribution gets a product map.** A report pinned to the change translates the files touched into recognizable parts of Dex, the things people use them for, and the checks that apply. Outside contributors get exactly the same report on the results page when GitHub won't let me post it as a comment.
+* **Messy real-world content gets tested.** The throwaway practice vaults now include accented characters and spaces in filenames, half-written notes, duplicate task headings, and settings files with recoverable mistakes in them — backed by fast automated tests and larger overnight stress tests.
 * **A busy machine no longer makes one of my own checks look broken.** One release check now gets more breathing room and a single retry if it simply ran out of time. What Dex promises you at run time is unchanged.
 
 ---
@@ -381,9 +381,9 @@ Contributing to Dex is now safer — CI catches personal data before it's shared
 
 Dex's release checks were rigorous but invisible once a release reached you. Each successful release build now publishes a small public page showing the evidence for that exact version, without turning checks that did not run into reassuring green ticks.
 
-* **The proof is tied to one release.** The page names the package version, source commit, generated release commit, verification time, and workflow run.
-* **Every gate tells the truth.** Checks run by the successful main build are marked passed; pull-request-only checks are explicitly marked not applicable and not run on the release build. Missing evidence stays unknown.
-* **A failed later build cannot rewrite history.** The published page remains labelled as the last successful release build, so it never claims to describe a newer failing `HEAD`.
+* **The proof is tied to one release.** The page names the exact version, the exact snapshots of the code it was built from and published as, when it was checked, and which build produced it.
+* **Every check tells the truth.** Checks the successful build actually ran are marked passed; checks that only apply while a change is being proposed are marked plainly as not applicable and not run. Missing evidence stays unknown.
+* **A failed later build cannot rewrite history.** The published page remains labelled as the last successful release build, so it never claims to describe newer code that failed.
 
 ---
 
@@ -401,12 +401,12 @@ Dex quietly gained two-way sync with Todoist, Things 3, and Trello — but you'd
 
 ## [1.52.0] — 🩺 Your own tools can now be health-checked for real — only when you say so (2026-07-13)
 
-Tools you build yourself used to sit permanently at "can't tell", because Dex won't run your own code during a checkup without permission. You can now ask `/create-mcp` for a one-off startup proof and, as a separate default-no choice, trust one exact local Python file for nightly and deep checks.
+Tools you build yourself used to sit permanently at "can't tell", because Dex won't run your own code during a checkup without permission. You can now ask `/create-mcp` to prove, once, that one of your tools starts up properly — and, as a separate choice that stays off unless you turn it on, tell Dex it may trust one exact file of yours during nightly and deeper checkups.
 
-* **Consent is specific and honest.** Dex shows the vault-relative file and SHA-256 first, and says plainly that this runs the file with your user permissions and trusts whatever it imports.
-* **Changed code never inherits old consent.** Name, path, and opened-file hash must all match. Dex hashes and copies from the same no-follow file handle, then starts only that private copy.
-* **Everything else stays structural-only.** Missing or linked files, changed content, invalid registries, extra Python flags, remote servers, npm/npx commands, binaries, and hand-edited ineligible entries are refused with an exact reason.
-* **Your trust choices remain yours.** `System/trusted-mcps.yaml` is gitignored and included in update recovery's user-data preservation list, so an upstream update cannot add or replace consent entries.
+* **Your permission is specific and honest.** Dex first shows you exactly which file in your vault it means, along with a fingerprint of its contents, and says plainly that this runs that file as you, and trusts everything the file pulls in.
+* **Changed code never inherits old permission.** The name, the location, and the file's fingerprint must all still match. Dex takes both the fingerprint and its own private copy from the very same file it opened — nothing can be swapped underneath it — and only ever runs that copy.
+* **Everything else is only checked from the outside.** Anything Dex can't safely vouch for — a missing file, a shortcut standing in for the real one, changed contents, a broken settings list, unusual start-up options, anything that runs over the internet or as a ready-made program, or an entry someone typed in by hand — is refused, with the exact reason.
+* **Your trust choices remain yours.** `System/trusted-mcps.yaml` is never shared or shipped, and it's on the list of your own files that an update has to preserve — so an update from me can never add or change what you've trusted.
 
 ---
 
@@ -420,7 +420,7 @@ Real two-way sync landed for Todoist in the last release. This one brings your M
 * **Trello boards stay in step.** New Dex tasks become cards in the right list, finishing a task moves its card to Done, and cards you add or move on the board come back to you for review — matched to the exact lists you picked during setup, not guessed from their names.
 * **Tasks from either tool arrive through your review, never behind your back.** Whatever you created in Things or Trello queues up in your daily plan, where you decide what becomes a Dex task — with duplicate checks and pillar linking — instead of it silently appearing in your backlog.
 * **A task title with an apostrophe can't break things anymore.** The Things connection was rebuilt to hand your task text to macOS safely, so quotes, apostrophes, and punctuation in a task name just work instead of causing a failure.
-* **Your pillars, not someone else's.** Both connections now read the Areas and lists from your own setup rather than falling back to a hardcoded set of categories that only fit one person's vault.
+* **Your pillars, not someone else's.** Both connections now read the Areas and lists from your own setup rather than falling back to a fixed built-in set of categories that only fit one person's vault.
 * **Honest setup guides, again.** The Things, Trello, and Todoist setup walkthroughs now describe the sync that genuinely exists — the "coming later" note is gone because it's here.
 
 ## [1.50.0] — 🔁 Real Todoist sync — the promise, finally built (2026-07-13)
@@ -447,7 +447,7 @@ until the next manual check.
 **What this fixes for you:**
 
 * **Dex checks its core journeys every night.** At 03:15 it safely tests configuration,
-  task creation, built-in services, skills, and hooks in temporary copies without writing
+  task creation, built-in services, skills, and its automatic background steps in temporary copies without writing
   into your live vault.
 * **The next session tells you when something broke.** You see the affected journey and
   its concrete failure, while healthy nights stay silent.
@@ -465,7 +465,7 @@ Tasks extracted from meetings used to land in your backlog without a moment to r
 
 * **One glance at what your meetings produced.** The daily plan lists tasks created from recent meetings, each with the meeting it came from and its due date — so nothing your meetings generated slips past you.
 * **Likely goal links get a yes or no.** When Dex links a task to a quarterly goal with a "(?)" (meaning "probably, but confirm"), the daily plan walks you through them in one pass — keep the link or clear it, one word each. A new under-the-hood tool makes the answer stick properly, so you never have to edit task files by hand.
-* **Unextracted meetings get a nudge.** If meetings are sitting with action items nobody turned into tasks, the plan says so and points at `/process-meetings`.
+* **Meetings nobody has turned into tasks get a nudge.** If meetings are sitting with action items nobody turned into tasks, the plan says so and points at `/process-meetings`.
 * **Quiet when there's nothing to review.** No "0 tasks from meetings" noise on quiet days.
 
 ## [1.47.0] — 🔧 Behind the scenes: my own checks stopped tripping over themselves (2026-07-12)
@@ -474,8 +474,8 @@ The automated checks that run on every proposed change could fail with a confusi
 
 **What this fixes for you:**
 
-* **Contributor and update checks stop flaking.** The checks now fetch the main line in full instead of a truncated snapshot, so they can always compare your change against it. The earlier partial-fetch was the actual cause of the spurious "no common ancestor" failures — not, as first suspected, anything rewriting the project history.
-* **A guard keeps it from coming back.** A new test fails the build if any check reintroduces the truncated fetch.
+* **Contributor and update checks stop flaking.** The checks now download the project's main line in full instead of a partial copy, so they can always compare your change against it. The earlier partial-fetch was the actual cause of the spurious "no common ancestor" failures — not, as first suspected, anything rewriting the project history.
+* **A guard keeps it from coming back.** A new test stops the release if any check goes back to the partial copy.
 
 ---
 
@@ -485,7 +485,7 @@ An independent review of this week's safety fixes caught two cases where a fix d
 
 **What this fixes for you:**
 
-* **Checking a task off directly in your task list now updates everywhere.** A recent change meant that ticking a box straight in `Tasks.md` (rather than through chat or a person page) quietly stopped updating the linked person and meeting pages. Those edits propagate again.
+* **Checking a task off directly in your task list now updates everywhere.** A recent change meant that ticking a box straight in `Tasks.md` (rather than through chat or a person page) quietly stopped updating the linked person and meeting pages. Those updates flow through again.
 * **An empty pillar keyword list no longer wipes your pillars.** Leaving a pillar's keywords blank in your settings could quietly reset *all* your pillars to the defaults. A blank list is now handled safely.
 
 ---
@@ -501,19 +501,19 @@ problems in your setup from problems in Dex itself.
 * **Your custom skills and connections get an exact diagnosis.** `/dex-doctor` names the
   file that needs attention and tells you to fix or remove that customization, rather
   than blaming Dex or suggesting an unrelated rollback.
-* **Deep checks exercise real journeys without risking your vault.** Dex loads configs,
+* **Deep checks exercise real journeys without risking your vault.** Dex loads settings files,
   creates and updates a task, starts only Dex's own built-in services, and checks every skill
-  and hook in temporary copies. It never runs skills you wrote yourself, contacts the network,
+  and background step in temporary copies. It never runs skills you wrote yourself, contacts the network,
   or writes into your live vault.
-* **Updates and rollbacks verify the result.** Both flows run the doctor and smoke tests
-  before declaring success, and rollback cleanup uses shipped manifests so files you
-  created remain yours.
+* **Updates and rollbacks verify the result.** Both flows run the doctor and its quick
+  self-tests before declaring success, and rollback cleanup uses Dex's own list of the files
+  it shipped, so files you created remain yours.
 * **Changes to shipped Dex files are visible before an update.** The doctor warns which
-  modified files may conflict while leaving sanctioned customization surfaces alone.
+  modified files may conflict while leaving the places you're meant to customize alone.
 
 ## [1.44.0] — 🧠 Person pages now get smarter, not just longer (2026-07-12)
 
-The entity engine made pages accumulate facts automatically — meetings, tasks, dates. But accumulation isn't understanding: a page that only grows becomes a log file. The gardener fixes that.
+Dex started building person pages by itself — meetings, tasks, dates piling up. But accumulation isn't understanding: a page that only grows becomes a list nobody reads. A new tidying pass fixes that.
 
 **What this fixes for you:**
 
@@ -526,7 +526,7 @@ The entity engine made pages accumulate facts automatically — meetings, tasks,
 
 ## [1.43.0] — ✅ Adding a task never fails just because a priority is busy (2026-07-12)
 
-When a priority level was already full, Dex used to refuse to create the task at all — and that refusal was easy to miss in a wall of terminal text, so the task either vanished or landed at the wrong priority.
+When a priority level was already full, Dex used to refuse to create the task at all — and that refusal was easy to miss in a wall of on-screen text, so the task either vanished or landed at the wrong priority.
 
 **What this fixes for you:**
 
@@ -543,11 +543,11 @@ Some setup and recovery guidance could promise features that never reached your 
 **What this fixes for you:**
 
 * **Model setup no longer leads you into a dead end.** Dex used to offer budget and offline settings that only ever configured Pi — a separate tool Dex no longer ships — so they did nothing. They're gone, and Dex no longer guesses how much memory your computer has.
-* **Parked meeting experiments stay out of your way.** An unwired ritual beta handout no longer tells testers that `/daily-plan` will surface recurring-meeting previews when that feature is not connected.
+* **Parked meeting experiments stay out of your way.** A leftover beta handout for meeting rituals, never wired up, no longer tells testers that `/daily-plan` will surface recurring-meeting previews when that feature is not connected.
 * **Integration prompts now open a skill that exists.** Setup and post-update guidance sends you to `/integrate-mcp` for Notion, Slack, and Google Workspace instead of naming skills Dex cannot run.
 * **Calendar onboarding fits your operating system.** macOS users still get the permission steps they need; Windows and Linux users now get a clear explanation that calendar sync is macOS-only and can continue setup without looping on impossible instructions.
 * **Optional features are described consistently.** A feature that is off stays calm and healthy, a missing or broken feature includes the real fix, and an uncertain check simply admits it could not verify the state.
-* **Developer probes no longer clutter your install.** One-off diagnostics and an obsolete launch-agent repair utility are gone; `/dex-doctor` remains the supported place to check background-job health.
+* **Developer-only test tools no longer clutter your install.** One-off diagnostics and an obsolete background-job repair tool are gone; `/dex-doctor` remains the supported place to check background-job health.
 
 ---
 
@@ -559,10 +559,10 @@ A fresh install could mistake other Dex products or optional features for failur
 
 * **Other Dex products stay out of your checkup.** Background jobs belonging to a different Dex installation are skipped in one quiet note instead of being reported as broken against the wrong vault.
 * **Calendar access tells you exactly what is missing.** Write-only access is now explained as insufficient for reading your calendar, with the right guidance to grant full access; unfamiliar permission states include the value Dex actually received.
-* **Every built-in service is checked.** The session-memory service is included on fresh installs, and an automatic consistency check prevents future services from being registered without being checked.
+* **Every built-in service is checked.** The session-memory service is included on fresh installs, and an automatic consistency check prevents future services from being added without being checked.
 * **Checkup totals add up.** Status summaries now use the numbers from the checkup that just ran instead of copying contradictory example totals.
 * **Career features stay quietly optional.** If career tracking is not set up, Dex offers the setup skill calmly without an error, a missing-file warning, or a private path from your Mac.
-* **New installs start genuinely clean.** Slack and every related meeting or planning hook begin off, so a new vault no longer inherits someone else's connected-tool state or gets noisy connection warnings.
+* **New installs start genuinely clean.** Slack and every related meeting or planning automation begin off, so a new vault no longer inherits someone else's connected-tool state or gets noisy connection warnings.
 ---
 
 ## [1.40.0] — 🎙️ Granola setup now tells you the truth (2026-07-12)
@@ -572,7 +572,7 @@ Granola could be fully connected while Dex said it was missing, look ready witho
 **What this fixes for you:**
 
 * **Connected now means ready to sync.** Setup and the background checks now look for the actual Granola key that meeting sync needs, so simply having the app installed — or an old leftover file — can no longer produce a false green light.
-* **Manual processing stays manual.** Choosing manual mode now saves the setting in the right shape, and existing vaults with the older shape remain understood instead of silently switching to automatic processing.
+* **Manual processing stays manual.** Choosing manual mode now saves the setting in the right form, and existing vaults with the older form are still understood instead of silently switching to automatic processing.
 * **Fresh installs show the real next step.** Dex detects the Granola app without claiming meeting intelligence is already connected, then points you to `/granola-setup` and explains that you'll need a Granola Business plan to get the key.
 * **Every setup path follows the same model.** Onboarding, updates, analytics, and meeting guidance agree on the official Granola connection, so you no longer get contradictory instructions depending on where you ask.
 
@@ -598,11 +598,11 @@ Two long-standing gaps closed at once: tasks extracted from meetings finally get
 **What this fixes for you:**
 
 * **Meeting action items become real tasks with a closed loop.** Before, meeting notes carried made-up task IDs that collided and matched nothing. Now the note gets a plain checkbox, Dex creates the real task, writes the real ID back onto that exact line — and when you complete the task, the checkbox in the meeting note ticks itself too.
-* **Name a person, get the right link.** Say "task about the pricing deck for Sarah" and Dex resolves "Sarah" through your people directory — by email, alias, or name. If two Sarahs match, it asks instead of picking one. It never invents a link to a page that doesn't exist.
-* **Companies resolve from a name, a domain, or even a URL.** "acme.com", "Acme", or a pasted link all find the same company page.
+* **Name a person, get the right link.** Say "task about the pricing deck for Sarah" and Dex matches "Sarah" against your people directory — by email, alias, or name. If two Sarahs match, it asks instead of picking one. It never invents a link to a page that doesn't exist.
+* **Companies match from a name, a web address, or even a link.** "acme.com", "Acme", or a pasted link all find the same company page.
 * **Tasks find their goal.** When a new task clearly serves one of your quarterly goals, it links itself. When the match is only likely, it links with a visible "(?)" you can confirm or clear — uncertain never masquerades as certain.
-* **Old meeting notes heal instead of breaking.** If an old note already carries one of the legacy made-up IDs, Dex adopts it rather than minting a competitor, so nothing you have gets orphaned.
-* **Pillar names just work.** You can pass a pillar by its display name ("Deal Support") or its internal ID — both resolve.
+* **Old meeting notes heal instead of breaking.** If an old note already carries one of the legacy made-up IDs, Dex adopts it rather than creating a rival one, so nothing you have is left stranded.
+* **Pillar names just work.** You can refer to a pillar by its display name ("Deal Support") or its internal ID — both work.
 
 ## [1.37.0] — 👥 Your people and company pages now build themselves (2026-07-12)
 
@@ -618,7 +618,7 @@ Dex has always said your person and company pages would look after themselves. U
 
 ## [1.36.0] — ✅ Every promise about tasks is now one Dex keeps (2026-07-12)
 
-A few task features described things that didn't actually happen: the Todoist, Things, and Trello setups promised automatic two-way sync that was never built, the inbox triage helper read planning files from locations that no longer exist, and some flows quietly wrote tasks in a way the rest of the system couldn't track. This release makes every promise honest and every capture path first-class.
+A few task features described things that didn't actually happen: the Todoist, Things, and Trello setups promised automatic two-way sync that was never built, the inbox triage helper read planning files from locations that no longer exist, and some flows quietly wrote tasks in a way the rest of the system couldn't track. This release makes every promise honest, and every way of capturing a task creates a real, tracked task.
 
 **What this fixes for you:**
 
@@ -634,16 +634,16 @@ When you created a task and confirmed its pillar and priority, Dex wrote them do
 **What this fixes for you:**
 
 * **The priority and pillar you confirm are the ones you see.** Lists, focus suggestions, and limits now read the stored values instead of guessing from the title.
-* **Tasks linked to a weekly priority finally count.** Goal and week progress now include tasks you created through Dex — before, those links were written where nothing could read them, so rollups showed zero.
+* **Tasks linked to a weekly priority finally count.** Goal and week progress now include tasks you created through Dex — before, those links were written where nothing could read them, so those totals showed zero.
 * **Tasks can carry a due date, a project, and a quarterly goal.** All optional, all checked when set — an unknown goal or missing project file gets a helpful error listing what's available instead of a silent dead link.
 * **Duplicate detection stops teaching the wrong habit.** When Dex flags a similar task, you can now say "create it anyway" — before, the suggested workaround was to reword the title, which defeated the duplicate check entirely.
 * **A rare data-loss bug is gone.** Adding a task to a section whose heading appeared twice in your task file could silently delete everything after the second heading. Inserts are now safe no matter what your file looks like.
-* **Completed tasks stay clickable in Obsidian.** The completion timestamp used to be written where it broke Obsidian's link-to-this-line feature; it now goes before the link anchor.
+* **Completed tasks stay clickable in Obsidian.** The completion timestamp used to be written where it broke Obsidian's link-to-this-line feature; it now goes before the link marker.
 * **Meeting prep sees all your meetings again.** Synced meetings are stored in dated folders that the meeting memory never looked inside — daily plans and meeting prep were blind to them. Both now scan the full folder tree.
 
 ## [1.34.1] — 🤝 Dex's release checks no longer break contributor setups (2026-07-12)
 
-Release checks now preserve your local Git history and explain when they cannot compare it.
+Release checks now leave the copy of the project's history on your machine intact, and explain when they cannot compare it.
 
 **What this fixes for you:**
 
@@ -656,7 +656,7 @@ People auto-linking was promised but never shipped (issue #46); this release fin
 
 **What this fixes for you:**
 
-* **People become connected on their first useful mention.** Full names, unique aliases, and safe unique first names now create backlinks to the right person page without cluttering every mention.
+* **People become connected on their first useful mention.** Full names, unique aliases, and safe unique first names now create links back to the right person page without cluttering every mention.
 * **Dex never guesses on ambiguous names.** Shared first names, common English words, and names that could refer to someone unknown stay as plain text.
 * **Your identity and carefully formatted text stay untouched.** Your own name, existing links, note metadata, code, and Markdown links are preserved, and running the feature again adds nothing extra.
 
@@ -670,7 +670,7 @@ Dex could describe an optional feature as broken in one place and merely disconn
 
 * **Optional features stay peacefully off.** If you deliberately did not enable or configure something, Dex treats it as healthy, never uses an error tone, and never nags you to fix it.
 * **Real failures stand out.** “Broken” is reserved for a feature that is configured and expected to work but is failing, so genuine problems no longer look like personal setup choices.
-* **Missing software has its own answer.** When a required app, binary, or dependency is absent, Dex says that directly instead of calling the feature broken.
+* **Missing software has its own answer.** When a required app, or a piece of software it depends on, is missing, Dex says that directly instead of calling the feature broken.
 * **Uncertain checks admit uncertainty.** If a check itself fails, Dex reports that it could not determine the state instead of inventing a diagnosis.
 
 ---
@@ -689,7 +689,7 @@ Some instructions could send you looking for a tool or runnable helper that was 
 
 ## [1.31.0] — 📅 Dex asks which calendar is yours instead of guessing (2026-07-11)
 
-Empty calendar results were traced back to onboarding guessing a work calendar name that did not match the names Apple Calendar actually exposes.
+Empty calendar results were traced back to onboarding guessing a work calendar name that did not match the names Apple Calendar actually uses.
 
 **What this fixes for you:**
 
@@ -731,15 +731,15 @@ Some install and update paths looked successful while quietly leaving out workin
 * **Downloading Dex as a zip file now gives you complete skills.** Document, presentation, PDF, and other scripted skills could arrive as instructions with no working code behind them. ZIP downloads now include everything those skills need to run.
 * **Updates no longer dump 58 of my own test files into your folders.** Releases now leave out test suites and developer setup files reliably, even when filenames contain spaces, and no longer include commands that point at files you do not have.
 * **Setup and Claude Code now read your connection settings from the same place.** New setup, Claude Code, and Dex's health checks all look in one place. Existing vaults that use the old location still work, and Dex tells you when it is relying on that fallback.
-* **Release checks now use Dex the way you do.** They complete real onboarding and task journeys, confirm meeting updates are written back, start every built-in service, validate every shipped skill, and run every hook in an isolated vault. Packaging and startup failures should be caught before an update reaches you.
+* **Release checks now use Dex the way you do.** They complete real onboarding and task journeys, confirm meeting updates are written back, start every built-in service, validate every shipped skill, and run every automatic background step in a separate test vault. Packaging and startup failures should be caught before an update reaches you.
 
-*Version note: package metadata moves from 1.26.0 to 1.28.0 to catch up with the already-published 1.27.0 changelog entry.*
+*Version note: Dex's own version number jumps from 1.26.0 to 1.28.0 to catch up with the already-published 1.27.0 changelog entry.*
 
 ---
 
 ## [1.27.0] — 🩺 /dex-doctor: a real system checkup that tells the truth (2026-07-11)
 
-Replaces `/health-check` with a rigorous whole-system diagnostic that knows the difference between "off", "broken", "couldn't check", and "fine" — built against the exact failure modes the July 2026 audit uncovered.
+Replaces `/health-check` with a rigorous whole-system diagnostic that knows the difference between "off", "broken", "couldn't check", and "fine" — built against the exact ways things broke in the July 2026 audit.
 
 **What this fixes for you:**
 
@@ -747,7 +747,7 @@ Replaces `/health-check` with a rigorous whole-system diagnostic that knows the 
 * **It heals what's safe to heal, silently.** Missing standard folders, an out-of-date settings file, helper scripts that lost permission to run — it fixes these before reporting and tells you it did. For riskier fixes (starting a background job, repairing a broken setting) it proposes one at a time and only acts on your yes.
 * **Background jobs are checked honestly — freshness, not just presence.** The doctor confirms each installed Dex job actually ran recently, says when it last ran if it's stale, and spots a job that can no longer start before it becomes your problem.
 * **Replaces `/health-check`**, which diagnosed Granola by looking at a file the connector never reads and had other stale assumptions. All references now point at `/dex-doctor`.
-* **Deep scan available.** Ask for the deep scan and Dex will actually contact the tools you've connected — Granola, your calendar, and the rest — to confirm the real query paths work, not just that the config looks right.
+* **Deep scan available.** Ask for the deep scan and Dex will actually contact the tools you've connected — Granola, your calendar, and the rest — to confirm the real lookups work, not just that the settings look right.
 
 ---
 
@@ -757,10 +757,10 @@ The final batch from the dex-core audit — removing things that looked real but
 
 **What this changes for you:**
 
-* **The integration concierge actually ships.** The vault scanner that recommends which tools to connect (used by onboarding and `/getting-started`) existed only on the developer's Mac — it was never committed, so the tour silently skipped it for everyone. It's now included, with its setup-skill references corrected.
-* **People auto-linking is paused instead of broken.** Dex's instructions required running a script that was never shipped (issue #46) — erroring on every meeting note and daily plan. The instruction is removed; the real auto-linking feature is queued to be built properly.
+* **The integration concierge actually ships.** The vault scanner that recommends which tools to connect (used by onboarding and `/getting-started`) existed only on the developer's Mac — it was never included in the release, so the tour silently skipped it for everyone. It's now included, with its setup-skill references corrected.
+* **People auto-linking is paused instead of broken.** Dex's instructions required running a helper that was never shipped (issue #46) — failing with an error on every meeting note and daily plan. The instruction is removed; the real auto-linking feature is queued to be built properly.
 * **Deleted two settings files nobody was reading** — they looked official, were wired to nothing, and were behind the whole family of "this service can't be reached" bugs.
-* **Removed a dead installer step and a write-only config file** nothing ever read.
+* **Removed a dead installer step and a settings file** nothing ever read.
 
 ---
 
@@ -783,27 +783,27 @@ returned nothing (reported by a beta user with full diagnosis — thank you, Mic
 
 ## [1.24.0] — ✅ Honest task completion, and search that only switches on when you ask (2026-07-11)
 
-Final code batch from the dex-core audit.
+The last batch of fixes from my top-to-bottom review of Dex.
 
 **What this fixes for you:**
 
 * **"Task marked done" now means it.** If updating a completed task failed in some of its locations, Dex used to report success anyway. It now tells you exactly which locations updated and which failed.
-* **No more phantom "failing server" for search you never enabled.** Search-by-meaning is no longer switched on for everyone in advance; it registers when you actually enable it (`/enable-semantic-search`), or automatically at install if it's already on your machine.
+* **No more phantom "something's failing" warning for search you never enabled.** Search-by-meaning is no longer switched on for everyone in advance; it's set up when you actually enable it (`/enable-semantic-search`), or automatically at install if it's already on your machine.
 * **Empty calendar results now explain themselves.** If your configured work calendar doesn't match any real calendar, Dex says so and lists the calendars it can see — instead of silently returning nothing.
-* **The safety guard actually guards.** A safeguard that blocks damaging commands had never been switched on, so it had never once run. It's now active.
+* **The safety guard actually guards.** A safeguard that blocks damaging actions on your computer had never been switched on, so it had never once run. It's now active.
 
 ---
 
 ## [1.23.0] — 🩺 The health system tells the truth (2026-07-11)
 
-Fixes from the full dex-core audit (every finding independently verified before fixing).
+Fixes from my top-to-bottom review of Dex (every finding independently confirmed before fixing).
 
 **What this fixes for you:**
 
 * **Dex's per-session health check now actually runs.** It was silently skipped on every real install — it looked for a folder layout that only existed on the developer's machine. It now runs when you start a session, stays silent when everything is healthy, and says so if it can't run at all.
-* **The background-job checker no longer looks away from real breakage.** It used to skip system paths entirely, which hid the exact class of failure users hit (a background job pointing at a piece of software that isn't there). It now checks directly that every Dex background job can actually start.
+* **The background-job checker no longer looks away from real breakage.** It used to skip over Dex's own folders entirely, which hid exactly the failure people were hitting (a background job pointing at a piece of software that isn't there). It now checks directly that every Dex background job can actually start.
 * **The changelog-checker background job works on Apple Silicon.** It was looking for a piece of software in a location that only exists on older Intel Macs, so on modern Macs it failed every six hours, forever, without a word. Dex now finds where that software actually lives — and refuses to set up a background job that can't run.
-* **Instructions match reality (shipped in 1.22.x line).** Ten places where Dex's own instructions described things that weren't true — search tools named wrongly in the daily commands, the Granola check looking at a file nothing reads, optional Apple Reminders calls that weren't marked optional, and references to files that don't exist.
+* **Instructions match reality (shipped in 1.22.x line).** Ten places where Dex's own instructions described things that weren't true — search tools named wrongly in the daily skills, the Granola check looking at a file nothing reads, optional Apple Reminders steps that weren't marked optional, and references to files that don't exist.
 
 ---
 
@@ -836,28 +836,28 @@ A round of fixes for small things that were quietly getting in the way.
 
 **What this fixes for you:**
 
-* **No more false "your install is broken" alarm.** On startup, Dex sometimes warned that "0/8 MCP servers ready" and that it "may need reinstalling" — even when everything was working perfectly. It was looking in the wrong folder. Fixed.
+* **No more false "your install is broken" alarm.** On startup, Dex sometimes warned that none of its connected tools were ready and that it "may need reinstalling" — even when everything was working perfectly. It was looking in the wrong folder. Fixed.
 * **Tasks won't get wrongly rejected.** Adding a task could fail with "priority limit exceeded" even when you only had a couple of tasks at that level, because Dex was miscounting and reading the priority from the wrong place. It now reads your real backlog correctly.
 * **The budget AI model works again.** The low-cost option still pointed at a Google model that has since been retired, so it could fail. It now uses the current Gemini 2.5 Flash (still around 90% cheaper than Claude).
-* **Behind the scenes:** the automated checks that run on every release no longer fail spuriously, so Dex's own update pipeline is healthy again.
+* **Behind the scenes:** the automatic checks that run on every release no longer fail for no reason, so Dex's own release process is healthy again.
 
 Nothing to do on your end — just update.
 
 ---
 
-## [1.20.0] - Granola Meetings Now Sync Through the Official API (2026-06-01)
+## [1.20.0] - Granola Meetings Now Sync the Official Way (2026-06-01)
 
 For a while, Dex pulled your Granola meetings by reading Granola's local files on your machine. That worked until Granola encrypted those files in v7.162.6, and the local route quietly stopped being viable.
 
-Dex now connects to Granola the supported way: through Granola's official public API. It pulls both your notes and your transcripts directly from Granola, so nothing depends on poking around in local files anymore.
+Dex now connects to Granola the supported way: through the official connection Granola offers. It pulls both your notes and your transcripts directly from Granola, so nothing depends on poking around in files on your machine anymore.
 
 **What this means for you:**
 
-* Meeting sync uses Granola's official, supported API, so there is no more reading of local files
+* Meeting sync uses Granola's official, supported connection, so there is no more reading of files on your machine
 * Both your notes and full transcripts come through
 * It keeps working through Granola updates, including encryption changes
 
-**To connect:** Run `/granola-setup` and Dex will walk you through adding your Granola API key. API access comes with Granola's Business plan, which is available to individuals, not just companies, at $14 a month. You do not need a big corporate plan.
+**To connect:** Run `/granola-setup` and Dex will walk you through adding your Granola access key — a long password Granola gives you. That access comes with Granola's Business plan, which is available to individuals, not just companies, at $14 a month. You do not need a big corporate plan.
 
 ---
 
@@ -866,56 +866,56 @@ Dex now connects to Granola the supported way: through Granola's official public
 ### 🔍 Semantic Search Now Covers Your Entire Vault
 
 **Before:** Smart search only covered 6 folders — meetings, people, projects,
-accounts, tasks, and goals. Finding anything in your PRDs, plans, or session
-learnings required remembering exact keywords.
+accounts, tasks, and goals. Finding anything in your product briefs, plans, or
+session notes required remembering exact keywords.
 
-**Now:** Semantic search covers 14 collections across your whole vault.
-PRDs, implementation plans, session learnings, and resource docs are all
-searchable by meaning.
+**Now:** Search by meaning — finding notes by what they're about, not the exact
+words — covers 14 areas across your whole vault. Product briefs, plans, session
+notes, and reference docs are all searchable this way.
 
 **Result:** Ask "what did we decide about notifications?" or "find past work
-on MCP integration" — Dex finds the right content wherever it lives.
+on connecting other tools" — Dex finds the right content wherever it lives.
 
-**To pick up new collections:** Run `/enable-semantic-search`.
+**To pick up the new areas:** Run `/enable-semantic-search`.
 
 ---
 
-## [1.18.3] — Fix Python Install on Modern Macs + Atlassian MCP Config (2026-03-21)
+## [1.18.3] — Setup No Longer Fails on Modern Macs + Jira/Confluence Connects Properly (2026-03-21)
 
-**Python/pip fix (affects most macOS users with Homebrew):**
+**Setup fix (affects most Mac users):**
 
-`install.sh` and `/dex-update` used `pip3` to install Python helpers, which fails on modern Macs with Homebrew Python (and recent Linux) due to a Python safety rule called PEP 668 — the system refuses direct pip installs. The `--user` fallback also fails in many setups.
+Installing Dex and running `/dex-update` used to stop partway through on modern Macs. Some of Dex's helpers are written in a language called Python, and newer Macs refuse to let anything add extra pieces to the copy of Python your computer already relies on.
 
-Dex now creates a private sandboxed Python environment (`.venv/`) inside your vault folder and installs all dependencies there. This works on all platforms and never touches your system Python.
-
-**What changed:**
-* `install.sh` creates `.venv/` and installs deps via the venv pip — no more PEP 668 errors
-* `.mcp.json` now points MCP servers to the venv Python instead of system `python3`
-* `/dex-update` uses the venv pip when updating dependencies, creating the venv first if upgrading from an older Dex install
-* Windows path handled automatically (`.venv/Scripts/python.exe`)
-
-**Atlassian MCP fix:**
-
-`/atlassian-setup` and `.mcp.json.example` referenced `@anthropic/atlassian-mcp` — a package that doesn't exist on npm. Atlassian's official MCP is a remote server, not an npm package.
+Dex now keeps its own private set of those helpers inside your vault folder instead. That works on every kind of computer and never touches the one your machine depends on.
 
 **What changed:**
-* Atlassian MCP config now uses `mcp-remote@latest` pointing to `https://mcp.atlassian.com/v1/sse`
-* No credentials needed in the config — authentication is handled via the OAuth browser flow
+* Installing Dex sets up its own private helper folder inside your vault — no more failures partway through
+* Dex's connected tools now use those private helpers instead of your computer's
+* `/dex-update` uses the same private helpers, and sets them up first if you're coming from an older Dex
+* Windows is handled automatically
 
-**What you need to do:** Run `/dex-update` to get these fixes. If your install previously failed on the Python step, run `./install.sh` again.
+**Jira + Confluence fix:**
+
+`/atlassian-setup` pointed at a piece of software that doesn't exist, so connecting Jira and Confluence could never work. Atlassian's official route is a hosted connection — there's nothing to install.
+
+**What changed:**
+* Dex now points at Atlassian's official hosted connection
+* Nothing to paste in — you just sign in to Atlassian in your browser
+
+**What you need to do:** Run `/dex-update` to get these fixes. If your setup previously stopped partway through, run `./install.sh` again.
 
 ---
 
 ## [1.18.2] — Fix Background Meeting Sync Installation (2026-03-12)
 
-`install-automation.sh` failed because it referenced two files that no longer exist: `granola-auth.cjs` (deprecated — Granola now stores credentials in `supabase.json` automatically) and `sync-from-granola-v2.cjs` (never shipped — v1 works fine).
+Setting up automatic meeting sync failed, because it was looking for two files that no longer exist: an old Granola sign-in helper (Granola now saves your sign-in by itself) and a second version of the sync script that was never finished. The original one works fine.
 
 **What changed:**
 
-* Plist template now points to `sync-from-granola.cjs` (the script that actually exists)
-* Install script checks for `supabase.json` instead of calling the removed `granola-auth.cjs`
-* No more interactive browser auth step — Granola handles credentials automatically
-* `--auth` flag now checks credential status instead of launching a dead script
+* The background job now points at the sync script that actually exists
+* Setup now checks that Granola has saved your sign-in, instead of calling the removed helper
+* No more separate browser sign-in step — Granola handles it automatically
+* The sign-in check now simply reports whether you're signed in, instead of running a script that isn't there
 
 **What you need to do:** Run `./install-automation.sh` again — it should complete without errors now.
 
@@ -923,39 +923,39 @@ Dex now creates a private sandboxed Python environment (`.venv/`) inside your va
 
 ## [1.18.1] — Meeting Sync Now Works Reliably Again (2026-03-05)
 
-In v1.17.0, I switched background meeting sync to use Granola's official MCP server — thinking the "official" route would be more reliable. Turns out, the MCP server sends meeting data back in a format designed for AI to read in conversation, not for code to process in the background. The sync script expected structured data, got free-form text, couldn't make sense of it, and quietly fell back to old cached data. Meetings were going missing with no error message.
+In v1.17.0, I switched background meeting sync to Granola's official connection — thinking the "official" route would be more reliable. Turns out that route sends meetings back as free-form writing, meant for an AI to read in conversation, not as tidy data a background job can work with. The sync couldn't make sense of it and quietly fell back to the older meetings already saved on your machine. Meetings were going missing with no error message.
 
-I've switched to using Granola's direct API instead. It returns clean structured data, includes mobile recordings, and uses the same credentials Granola already stores on your machine — no separate sign-in needed.
+I've switched to connecting to Granola directly instead. It sends back tidy data, includes mobile recordings, and uses the sign-in Granola already keeps on your machine — no separate sign-in needed.
 
 **What this means for you:**
 
 * Meeting sync is reliable again — no more silent failures
 * Mobile recordings still sync (that wasn't the problem — the data source was)
-* One fewer thing to authenticate: no separate Granola MCP sign-in step
-* If you previously ran through the MCP OAuth setup, you don't need to do anything — the new approach uses your existing Granola sign-in automatically
+* One fewer thing to sign in to: no separate Granola sign-in step
+* If you previously went through that extra sign-in setup, you don't need to do anything — the new approach uses your existing Granola sign-in automatically
 
 **What changed under the hood:**
 
-* Background sync now uses Granola's direct API (`api.granola.ai`) instead of the MCP server
-* Removed `granola-mcp-client.cjs`, `granola-auth.cjs`, and `check-granola-migration.cjs` — no longer needed
-* Local cache remains as fallback for offline scenarios
+* Background sync now connects to Granola directly instead of going through the official middle layer
+* Three helper files that are no longer needed have been removed
+* Meetings already saved on your machine are still used when you're offline
 
 ---
 
-## [1.18.0] — Intelligent Model Routing Metadata + Safer Skill Updates (2026-03-02)
+## [1.18.0] — Skills Now Ask for the Right-Sized AI + Safer Skill Updates (2026-03-02)
 
-Dex skills now carry explicit model-routing metadata so cheap/fast models can be used for simple work while higher-tier models stay reserved for heavier thinking.
+Dex skills now say what size of AI they need, so cheap, fast models handle the simple work and the more expensive ones stay reserved for heavy thinking.
 
 **What this means for you:**
-- Many built-in skills now declare `model_hint` or `model_routing` in `SKILL.md`
-- Routing metadata is now standardized across the core skill catalog
-- Update flow now has a skill-aware conflict resolver for routing metadata
+- Many built-in skills now state which model they'd prefer
+- That preference is written the same way across all the built-in skills
+- Updating Dex now knows how to handle those preferences when your version and mine differ
 
 **Conflict handling improvement:**
-- During `/dex-update`, conflicted skill files can now be auto-resolved by:
-  - keeping your local skill instructions/custom edits
-  - merging upstream routing metadata (`model_hint`, `model_routing`)
-  - skipping `*-custom` skills completely
+- During `/dex-update`, when a skill has changed on both sides, Dex can now settle it for you by:
+  - keeping your own edits to that skill
+  - taking only the new model preference from my version
+  - leaving your `*-custom` skills completely alone
 
 This reduces update friction for users who customize built-in skills while still letting new model-routing behavior land safely.
 
@@ -973,11 +973,11 @@ This is powered by Granola's official integration, which means it's more reliabl
 - Everything keeps working while you set up — your existing meetings aren't affected
 
 **Behind the scenes:**
-- Background sync now uses Granola's official MCP server instead of a custom integration
-- Automatic fallback to local data if the cloud connection is temporarily unavailable
+- Background sync now uses Granola's official connection instead of a homemade one
+- If that connection drops for a while, Dex falls back to the meetings already saved on your machine
 - Migration detection tells you when the upgrade is available — no guesswork
 
-**If you set up Dex before this update:** Run `/dex-update` and Dex will detect the upgrade opportunity. When you next run `/process-meetings`, it'll offer to connect you to Granola's official API.
+**If you set up Dex before this update:** Run `/dex-update` and Dex will detect the upgrade opportunity. When you next run `/process-meetings`, it'll offer to connect you to Granola's official connection.
 
 ---
 
@@ -986,7 +986,7 @@ This is powered by Granola's official integration, which means it's more reliabl
 When you share a URL with Dex — an article, a blog post, a page you want summarized — it now uses **Scrapling** every time. Scrapling is free, runs on your machine, and handles sites that block other tools (including Cloudflare-protected pages).
 
 **What this means for you:**
-- Share a URL, get the content. No API keys, no credits, no limits.
+- Share a URL, get the content. No accounts, no credits, no limits.
 - Sites that used to come back empty (anti-bot protection) now work out of the box.
 - Your data never leaves your machine — Scrapling fetches locally, not through a cloud service.
 
@@ -1000,13 +1000,13 @@ When you share a URL with Dex — an article, a blog post, a page you want summa
 
 This is a big one. Dex now connects to 8 tools where your real work happens — and it goes both ways. Complete a task in Dex and it's done in Todoist. Get an email flagged in your morning plan because someone hasn't replied in 3 days. See your Jira sprint status right next to your weekly priorities.
 
-Some of you have already been building your own integrations using `/create-mcp` and `/integrate-mcp` — and honestly, that's impressive. But Dave kept hearing the same thing: "I just want to get up and running without figuring out the plumbing." So it's built in now.
+Some of you have already been building your own integrations using `/create-mcp` and `/integrate-mcp` — and honestly, that's impressive. But I kept hearing the same thing: "I just want to get up and running without figuring out the plumbing." So it's built in now.
 
 ---
 
 ### 🔗 8 integrations, ready to go
 
-Each one takes a few minutes to set up. Run the command, answer a couple of questions, and you're connected. Dex tells you exactly what changed — which skills got smarter, what new capabilities unlocked.
+Each one takes a few minutes to set up. Run the skill, answer a couple of questions, and you're connected. Dex tells you exactly what changed — which skills got smarter, what new capabilities unlocked.
 
 **Communication:**
 - **Slack** (`/slack-setup`) — Chat context in your daily plan and meeting prep. Unread DMs, mentions, active threads. No admin approval needed — just Slack open in Chrome. 2-minute setup.
@@ -1015,8 +1015,8 @@ Each one takes a few minutes to set up. Run the command, answer a couple of ques
 
 **Task Management:**
 - **Todoist** (`/todoist-setup`) — Two-way task sync. Create in Dex, appears in Todoist. Complete on your phone, done in Dex. Your pillars map to Todoist projects. 1-minute setup.
-- **Things 3** (`/things-setup`) — Two-way sync for Mac users. No account needed, works offline, pure local sync via AppleScript. Your pillars map to Things Areas, P0/P1 tasks go straight to Today. 30-second setup.
-- **Trello** (`/trello-setup`) — Board sync. Cards become tasks. Move a card to "Done" and it's complete in Dex. Your Kanban board and your task list stay in sync.
+- **Things 3** (`/things-setup`) — Two-way sync for Mac users. No account needed, works offline, everything stays on your own Mac. Your pillars map to Things Areas, P0/P1 tasks go straight to Today. 30-second setup.
+- **Trello** (`/trello-setup`) — Board sync. Cards become tasks. Move a card to "Done" and it's complete in Dex. Your Trello board and your task list stay in sync.
 
 **Meetings & Knowledge:**
 - **Zoom** (`/zoom-setup`) — Access recordings, schedule meetings. Smart enough to know if Granola already handles your meeting capture so they don't step on each other.
@@ -1034,7 +1034,7 @@ When new users set up Dex, Step 8 now asks what tools they use. Pick Gmail and T
 
 ### ⚡ Existing users: add integrations anytime
 
-Already using Dex? Just run the setup command for any tool:
+Already using Dex? Just run the setup skill for any tool:
 
 - `/slack-setup` — Slack
 - `/google-workspace-setup` — Gmail + Calendar + Docs
@@ -1049,7 +1049,7 @@ Or run `/dex-level-up` and Dex will suggest which integrations would make the bi
 
 ### 🏢 Corporate environments
 
-Some corporate IT policies restrict access for third-party tools. If you hit a wall during setup — a blocked consent screen, a missing permission — just ask Dex about it. There are often creative workarounds: personal API keys that don't need admin approval, local-only integrations like Things 3 that bypass corporate restrictions entirely. Dex generally finds a way if you give it a go.
+Some corporate IT policies restrict access for third-party tools. If you hit a wall during setup — a blocked consent screen, a missing permission — just ask Dex about it. There are often creative workarounds: personal access keys that don't need admin approval, or tools like Things 3 that stay entirely on your own machine and never touch corporate systems. Dex generally finds a way if you give it a go.
 
 ### 📋 Smarter daily plans and meeting prep
 
@@ -1057,13 +1057,13 @@ Every skill that touches your day got more useful:
 
 - **`/daily-plan`** now includes email digest, Slack/Teams digest, external task status, Jira sprint progress, and Trello card updates — all in one view.
 - **`/meeting-prep`** pulls in recent email exchanges, Slack/Teams messages, Zoom recordings, Confluence docs, and Jira/Trello context for every attendee.
-- **`/week-review`** shows email stats, Zoom meeting time, cross-system task completion, and Jira velocity alongside your existing review.
+- **`/week-review`** shows email stats, Zoom meeting time, tasks completed across all your tools, and how fast work is moving in Jira, alongside your existing review.
 - **`/project-health`** surfaces Trello board status and Jira sprint health for connected projects.
 - **`/dex-level-up`** spots unused integration capabilities — "You connected Gmail but haven't enabled email follow-up detection. Try it."
 
 ### 🩺 Integration health
 
-Dex checks whether your connected tools are healthy each time you start a session. If something's gone stale — an expired token, a disconnected service — you'll know right away with a friendly nudge to reconnect, instead of discovering it mid-meeting-prep.
+Dex checks whether your connected tools are healthy each time you start a session. If something's gone stale — a sign-in that's expired, a service that's dropped out — you'll know right away with a friendly nudge to reconnect, instead of discovering it mid-meeting-prep.
 
 ---
 
@@ -1079,13 +1079,13 @@ This is the biggest single release since semantic search. Dex remembers things n
 
 **Critical decisions persist.** When you make an important decision in a session — "decided to move Acme to negotiation by March" — it now survives across sessions. Critical decisions appear at every session start for 30 days, so you never lose track of what you committed to.
 
-**Meeting cache.** Every meeting you process now gets stored as a compact summary instead of the full transcript. Meeting prep and daily planning are dramatically faster — same intelligence, fraction of the processing time.
+**Meetings kept as summaries.** Every meeting you process now gets saved as a short summary instead of the full transcript. Meeting prep and daily planning are dramatically faster — same intelligence, fraction of the processing time.
 
 **Memory that compounds.** The six agents that power your morning intelligence — deals, commitments, people, projects, focus, and pillar balance — now remember what they found in previous sessions. First run, they scan everything. Second run, they know what they already told you. Resolved items quietly drop off. New issues are clearly marked. And things you've been ignoring? Dex notices. "I've flagged this three sessions running. Still no action. This is a pattern, not a blip."
 
 **Faster people lookups.** Dex now keeps a lightweight directory of everyone you know. Instead of scanning dozens of files every time you mention someone, it reads one small index. Looking up "Paul" instantly returns the right person with their role, company, and context. The index stays fresh automatically — it rebuilds during your daily plan and self-heals if it goes stale.
 
-**Memory ownership, clarified.** With multiple memory layers now active, Dave has documented exactly what owns what. Claude's built-in memory handles your preferences and communication style. Dex's memory handles your work — who said what in which meeting, what you committed to, which deals need attention. They stack, not compete. See the new Memory Ownership guide in your Dex System docs.
+**Memory ownership, clarified.** With multiple memory layers now active, I've documented exactly what owns what. Claude's built-in memory handles your preferences and communication style. Dex's memory handles your work — who said what in which meeting, what you committed to, which deals need attention. They stack, not compete. See the new Memory Ownership guide in your Dex System docs.
 
 ---
 
@@ -1095,7 +1095,7 @@ This is the biggest single release since semantic search. Dex remembers things n
 
 **Identity snapshot.** Dex now automatically builds a living profile of how you actually work — your goals, priorities, task patterns, learnings, and skill ratings all feed into it. Not self-reported traits — observed patterns. What pillar gets neglected under pressure. Which skills you rate highest. Where your blind spots are. It refreshes during weekly reviews and Dex reads it when making prioritization suggestions. You can also run `/identity-snapshot` anytime to see it on demand.
 
-**Skill quality signals.** After key workflows like daily plans, meeting prep, and reviews, Dex asks one optional question: "Quick rating, 1-5?" Your ratings accumulate over time. During weekly reviews, if a skill has been trending down, Dex surfaces it with context — "Your meeting prep averaged 2.8 this week, common note: missing context from last meeting." If everything's fine, you hear nothing. Ratings also feed into anonymous product analytics so Dave knows which skills to invest in.
+**Skill quality signals.** After key workflows like daily plans, meeting prep, and reviews, Dex asks one optional question: "Quick rating, 1-5?" Your ratings accumulate over time. During weekly reviews, if a skill has been trending down, Dex surfaces it with context — "Your meeting prep averaged 2.8 this week, common note: missing context from last meeting." If everything's fine, you hear nothing. Ratings also feed into anonymous product analytics so I know which skills to invest in.
 
 ---
 
@@ -1103,7 +1103,7 @@ This is the biggest single release since semantic search. Dex remembers things n
 
 **Sessions that last all day.** Your heaviest skills — daily plan, weekly review, meeting prep, and seven others — now run in their own space instead of loading everything into your main conversation. Previously, running `/daily-plan` then staying in that chat all day meant things got slower and muddier by the afternoon. Now each skill does its work separately and hands back just the result. Stay in one chat from morning planning through end-of-day review without penalty.
 
-**Command safety guard.** A protective layer that silently watches every terminal command and blocks catastrophic ones before they execute. Disk wipes, force pushes to main, repo deletions — all stopped instantly. Normal commands pass through with zero overhead. You never notice it until the one time it saves you.
+**A safety net for risky actions.** A protective layer quietly watches everything Dex runs on your computer and stops the catastrophic ones before they happen — wiping a disk, deleting a project outright, overwriting shared work. Everything normal passes straight through, with no slowdown. You never notice it until the one time it saves you.
 
 **Faster startup and routing.** Background services start faster and use less memory. Quick operations like `/triage` and inbox processing are tuned for speed — routing decisions that used to take 8 seconds now feel instant.
 
@@ -1143,7 +1143,7 @@ It works the other direction too. After your daily plan generates, your most imp
 
 Your phone and your vault stay in sync — without opening a laptop, without any new apps, without any setup beyond saying "Hey Siri" for the first time.
 
-If you've made improvements to your Dex setup that could help others, Dave would love to see them. See [CONTRIBUTING.md](CONTRIBUTING.md) for how to share — no technical background required.
+If you've made improvements to your Dex setup that could help others, I'd love to see them. See [CONTRIBUTING.md](CONTRIBUTING.md) for how to share — no technical background required.
 
 ---
 
@@ -1165,7 +1165,7 @@ Say: 'health check' to investigate
 
 If everything is fine? Complete silence. No "all systems go" noise.
 
-**Say `/health-check` anytime** to get a full diagnostic: which services are running, what's failed recently, and — for most issues — a suggested fix. Missing something? It tells you the exact command. Config issue? It offers to repair it.
+**Say `/health-check` anytime** to get a full diagnostic: which services are running, what's failed recently, and — for most issues — a suggested fix. Missing something? It tells you exactly what to run. A setting wrong? It offers to repair it.
 
 **What this means for you:** Instead of discovering something's been broken for a week, you find out at your next conversation. Instead of a cryptic error, you get "Calendar couldn't connect" with a clear next step. Dex is becoming the kind of system that takes care of itself — and tells you when it needs your help.
 
@@ -1198,7 +1198,7 @@ Step 2 has always been intelligent — that's Claude doing what it does best. Bu
 
 **That's what semantic search fixes.** It upgrades Step 1 — the finding — so the right notes reach Claude even when the words don't match.
 
-It's also significantly faster and lighter. Instead of Claude reading entire files to find what's relevant (thousands of tokens each), the search engine returns just the relevant snippets. One developer measured a 96% reduction in the amount of context needed per search.
+It's also significantly faster and lighter. Instead of Claude reading entire files to find what's relevant, the search engine hands back just the relevant snippets. One developer measured a 96% cut in how much text Claude has to read per search.
 
 **When does this matter?** Honestly, if your vault has fewer than 50 notes, keyword matching works fine. As your vault grows into the hundreds of files, keyword search starts missing things — and that's where this upgrade earns its keep.
 
@@ -1208,7 +1208,7 @@ This is powered by [QMD](https://github.com/tobi/qmd), an open-source local sear
 
 > "I think QMD is one of my finest tools. I use it every day because it's the foundation of all the other tools I build for myself. A local search engine that lives and executes entirely on your computer. Both for you and agents." — [Tobi Lütke](https://x.com/tobi/status/2013217570912919575)
 
-**Setup required.** Semantic search is available but requires running `/enable-semantic-search` to set it up (5 min, 2.5GB download). New users are offered this during onboarding. Once enabled, all vault searches automatically use semantic matching instead of keyword-only — skills don't change, the AI routing layer gets smarter and uses QMD when available.
+**Setup required.** Semantic search is available but requires running `/enable-semantic-search` to set it up (5 min, 2.5GB download). New users are offered this during onboarding. Once enabled, all vault searches automatically find things by meaning instead of exact words — the skills don't change, Dex simply gets smarter about how it searches and uses QMD whenever it's there.
 
 **What gets better when you enable it:**
 
@@ -1218,17 +1218,17 @@ This is powered by [QMD](https://github.com/tobi/qmd), an open-source local sear
 
 - **Search & People** — All vault searches become meaning-aware. Person lookup finds references by role ("the VP of Sales asked about..."), not just by name.
 
-- **Smarter Dedup** — Task creation detects semantic duplicates ("Review Q1 metrics" matches "Check quarterly pipeline numbers"). Same for improvement ideas in your backlog.
+- **Fewer duplicate tasks** — Dex spots when a new task means the same thing as one you already have ("Review Q1 metrics" matches "Check quarterly pipeline numbers"). Same for improvement ideas in your backlog.
 
 - **Natural Task Completion** — Say "I finished the pricing thing" and Dex matches it to the right task, even when your words don't match the title exactly.
 
-- **Career Tracking** — If you use the career system, skill demonstration is now detected without explicit `# Career:` tags. "Designed the API migration strategy" automatically matches your "System Design" competency.
+- **Career Tracking** — If you use the career system, skill demonstration is now detected without explicit `# Career:` tags. "Designed the data migration strategy" automatically matches your "System Design" competency.
 
 **If you don't enable it,** nothing changes — everything continues to work with keyword matching, just as it always has.
 
-Part of the philosophy with Dex is to stay on top of the best open-source tools so you don't have to. When something like QMD comes along that genuinely makes the experience better, Dave integrates it — you run one command and your existing workflows get smarter.
+Part of the philosophy with Dex is to stay on top of the best open-source tools so you don't have to. When something like QMD comes along that genuinely makes the experience better, I build it in — you run one skill and your existing workflows get smarter.
 
-**Smart setup, not generic indexing.** When you run `/enable-semantic-search`, Dex scans your vault and recommends purpose-built search collections based on what you've actually built — people pages, meeting notes, projects, goals. Each collection gets semantic context that tells the search engine what the content IS, dramatically improving result relevance. Generic tools dump everything into one index. Dex gives your search engine a mental model of your information architecture.
+**Smart setup, not one big pile.** When you run `/enable-semantic-search`, Dex looks through your vault and recommends purpose-built search areas based on what you've actually built — people pages, meeting notes, projects, goals. Each area comes with a short description of what that content is, which sharpens the results a lot. Generic tools dump everything into one big pile. Dex tells your search engine how your vault is actually organised.
 
 As your vault grows, Dex notices. Created your first few company pages? Next time you run `/daily-plan`, it'll suggest: "You've got enough accounts for a dedicated collection now — want me to create one?" Your search setup evolves with your vault.
 
@@ -1256,7 +1256,7 @@ When you run `/dex-update`, any new features automatically appear in your usage 
 
 **Before:** During setup, picking your role meant scrolling through a wall of 31 numbered options and typing a number. If your Mac's Calendar app was running in the background (but not in the foreground), Dex couldn't detect your calendars — silently skipping calendar optimization. And if you onboarded in Cursor vs Claude Code, the question prompts might not work because each platform has a different tool for presenting clickable options.
 
-**Now:** Role selection, company size, and other choices are presented as clickable lists — just pick from the menu. Dex detects your platform once at the start (Cursor vs Claude Code vs terminal) and uses the right question tool throughout. Calendar detection works regardless of whether Calendar.app is in the foreground or background. QA testing uses dry-run mode so nothing gets overwritten.
+**Now:** Role selection, company size, and other choices are presented as clickable lists — just pick from the menu. Dex detects your platform once at the start (Cursor vs Claude Code vs terminal) and uses the right question tool throughout. Calendar detection works regardless of whether Calendar.app is in the foreground or background. Testing now runs in a practice mode, so nothing of yours gets overwritten.
 
 **Result:** Onboarding feels polished — fewer things to type, fewer silent failures, works correctly whether you're in Cursor or Claude Code.
 
@@ -1271,7 +1271,7 @@ When you run `/dex-update`, any new features automatically appear in your usage 
 **Now:** Dex watches for opportunities to get better and weaves them into your existing routines:
 
 - `/dex-whats-new` spots relevant Claude Code releases and turns them into improvement ideas in your backlog
-- `/daily-plan` highlights the most timely idea as an "Innovation Spotlight" when something new is relevant (e.g., "Claude just shipped native memory — here's how that could help")
+- `/daily-plan` highlights the most timely idea as an "Innovation Spotlight" when something new is relevant (e.g., "Claude just added built-in memory — here's how that could help")
 - `/daily-review` connects today's frustrations to ideas already in your backlog
 - `/week-review` shows your top 3 highest-scored improvement ideas
 - Say "I wish Dex could..." in conversation and it's captured automatically — no duplicates
@@ -1296,9 +1296,9 @@ When you run `/dex-update`, any new features automatically appear in your usage 
 
 ### 🔧 Dex Now Always Knows What Day It Is
 
-**Before:** Dex relied entirely on the host platform (Cursor, Claude Code) to tell Claude the current date. If the platform didn't surface it prominently, Claude could lose track of what day it was — especially frustrating during daily planning or scheduling conversations.
+**Before:** Dex relied entirely on the app you run it in (Cursor, Claude Code) to tell Claude the current date. If that app didn't say it clearly enough, Claude could lose track of what day it was — especially frustrating during daily planning or scheduling conversations.
 
-**Now:** The session-start hook explicitly outputs today's date at the very top of every session context injection, so it's front-and-center regardless of platform behavior.
+**Now:** Dex states today's date at the very top of everything it loads when a session starts, so it's front-and-center no matter which app you're in.
 
 **Result:** No more "what day is it?" confusion. Dex always knows the date, every session, every platform.
 
@@ -1325,7 +1325,7 @@ Then confirms with a quick one-liner:
 - **Triage flow:** Route quick captures to `00-Inbox/Quick_Captures.md`, then sort them during `/triage` (skill you can build yourself or request)
 - **Your own keywords:** Edit `System/pillars.yaml` to add custom keywords for better inference
 
-**Technical:** Updated task creation behavior in `.claude/CLAUDE.md` to include pillar inference logic. The work-mcp validation still requires a pillar (maintains data integrity), but Dex now handles the inference and confirmation before calling the MCP.
+**Behind the scenes:** Dex's own instructions in `.claude/CLAUDE.md` now cover how to work out the pillar. Every task still has to have a pillar (that's what keeps your data clean) — Dex just works it out and confirms it with you first.
 
 ---
 
@@ -1339,11 +1339,11 @@ Then confirms with a quick one-liner:
 
 ---
 
-### 🐛 Paths Now Work on Any Machine
+### 🐛 Dex Now Works Wherever Your Vault Lives
 
 **Before:** A few features — Obsidian integration and background automations — didn't work correctly on some setups.
 
-**Now:** All paths resolve dynamically based on where your vault lives. Everything works regardless of your username or folder structure.
+**Now:** Dex finds your vault wherever you keep it. Everything works no matter your username or how your folders are arranged.
 
 **How to update:** In Cursor, just type `/dex-update` — that's it!
 
@@ -1359,16 +1359,16 @@ Then confirms with a quick one-liner:
 
 **Default mode (just `/xray`):** Shows the work from THIS conversation:
 - What files were read and why
-- What tools/MCPs were used
+- Which tools Dex used
 - What context was loaded at session start (and how)
 - How each action connects to underlying AI concepts
 
 **Deep-dive modes:**
-- `/xray ai` — First principles: context windows, tokens, statelessness, tools
-- `/xray dex` — The architecture: CLAUDE.md, hooks, MCPs, skills, vault structure
+- `/xray ai` — The basics of how AI works: how much it can hold in mind at once, why it forgets between chats, and how it uses tools
+- `/xray dex` — How Dex is put together: its instructions, its automatic triggers, its connected tools, its skills, and your vault structure
 - `/xray boot` — The session startup sequence in detail
 - `/xray today` — ScreenPipe-powered analysis of your day
-- `/xray extend` — How to customize: edit CLAUDE.md, create skills, write hooks, build MCPs
+- `/xray extend` — How to make it yours: edit Dex's instructions, create skills, add automatic triggers, connect new tools
 
 **The philosophy:** The best way to learn AI is by examining what just happened, not reading abstract explanations. Every `/xray` session connects specific actions (I read this file because...) to general concepts (...CLAUDE.md tells me where files live).
 
@@ -1391,36 +1391,36 @@ Then confirms with a quick one-liner:
    - Search your Notion workspace from Dex
    - Meeting prep pulls relevant Notion docs
    - Person pages link to shared Notion content
-   - Uses official Notion MCP (`@notionhq/notion-mcp-server`)
+   - Uses Notion's own official connection
 
 2. **Slack Integration** (`/integrate-slack`)
    - "What did Sarah say about the Q1 budget?" → Searches Slack
    - Meeting prep includes recent Slack context with attendees
    - Person pages show communication history
-   - Easy cookie auth (no bot setup required) or traditional bot tokens
+   - Signs in using the Slack session already open in your browser (nothing to register), or a Slack app key if you prefer
 
 3. **Google Workspace Integration** (`/integrate-google`)
    - Gmail thread context in person pages
    - Email threads with meeting attendees during prep
    - Calendar event enrichment
-   - One-time OAuth setup (~5 min)
+   - One-time sign-in through Google (~5 min)
 
 **Where you'll see it:**
 - `/meeting-prep` — Pulls context from all enabled integrations
 - Person pages — Integration Context section with Slack/Notion/Email history
 - New users — Onboarding Step 9 offers integration setup
-- Existing users — `/dex-update` announces new integrations, detects your existing MCPs
+- Existing users — `/dex-update` announces new integrations and spots the tools you've already connected
 
 **Smart detection for existing users:**
-If you already have Notion/Slack/Google MCPs configured, Dex detects them and offers to:
+If you've already connected Notion, Slack or Google yourself, Dex spots that and offers to:
 - Keep your existing setup (it works!)
-- Upgrade to Dex recommended packages (better maintained, more features)
+- Switch to the versions Dex recommends (better maintained, more features)
 - Skip and configure later
 
-**Setup commands:**
-- `/integrate-notion` — 2 min setup (just needs a token)
-- `/integrate-slack` — 3 min setup (cookie auth or bot token)
-- `/integrate-google` — 5 min setup (OAuth through Google Cloud)
+**Setup skills:**
+- `/integrate-notion` — 2 min setup (just needs an access key from Notion)
+- `/integrate-slack` — 3 min setup (uses your browser sign-in, or a Slack app key)
+- `/integrate-google` — 5 min setup (sign in through Google)
 
 ---
 
@@ -1478,12 +1478,12 @@ If you already have Notion/Slack/Google MCPs configured, Dex detects them and of
 
 ### 🤖 AI Model Flexibility: Budget Cloud & Offline Mode
 
-**What was frustrating:** Dex only worked with Claude, which costs money and requires internet. Heavy users faced high API bills, and travelers couldn't use Dex on planes or trains.
+**What was frustrating:** Dex only worked with Claude, which costs money and requires internet. Heavy users faced high AI bills, and travelers couldn't use Dex on planes or trains.
 
 **What's new:** Two new ways to use Dex:
 
 1. **Budget Cloud Mode** — Use cheaper AI models like Kimi K2.5 or DeepSeek when online
-   - Save 80-97% on API costs for routine tasks
+   - Save 80-97% on AI costs for routine tasks
    - Requires ~$5-10 upfront via OpenRouter
    - Quality is great for daily tasks (summaries, planning, task management)
 
@@ -1519,7 +1519,7 @@ Dave could use your help making Dex better. This release adds optional, privacy-
 - No content, names, notes, or conversations — ever
 
 **What's NOT tracked:**
-- Custom skills or MCPs you create
+- Custom skills or tool connections you create
 - Any content you write or manage
 - Who you meet with or what you discuss
 
@@ -1531,11 +1531,10 @@ During onboarding (new users) or your next planning session (existing users), De
 
 Say yes, and you help Dave understand which features work and which need improvement. Say no, and nothing changes — Dex works exactly the same.
 
-**Technical:**
-- Added `analytics_helper.py` in `core/mcp/`
-- Consent tracked in `System/usage_log.md`
-- Events only fire if `analytics.enabled: true` in user-profile.yaml
-- 20+ skills now have analytics hooks
+**Behind the scenes:**
+- Your answer is recorded in `System/usage_log.md`
+- Nothing is ever sent unless `analytics.enabled: true` in `System/user-profile.yaml`
+- 20+ skills now report their usage when you've opted in
 
 **Beta only:** This feature is currently in beta testing.
 
@@ -1551,7 +1550,7 @@ Until now, daily and weekly planning showed you information — your tasks, cale
 
 Now Dex actively thinks ahead and surfaces things you might have missed.
 
-This is the biggest upgrade to Dex's intelligence since launch. Based on feedback from early users, Dave rebuilt the planning skills to be proactive rather than passive. Dex now does the mental work of connecting your calendar to your tasks, tracking your commitments, and warning you when things are slipping — so you can focus on actually doing the work.
+This is the biggest upgrade to Dex's intelligence since launch. Based on feedback from early users, I rebuilt the planning skills to be proactive rather than passive. Dex now does the mental work of connecting your calendar to your tasks, tracking your commitments, and warning you when things are slipping — so you can focus on actually doing the work.
 
 ---
 
@@ -1677,7 +1676,7 @@ If you've added notes to yourself in the CLAUDE.md file — reminders about how 
 
 If you've connected Dex to other apps (like your email, calendar, or note-taking tools), those connections are now protected too. When you add a tool, Dex automatically names it in a way that keeps it safe from updates.
 
-**New command: `/dex-add-mcp`** — When you want to connect a new tool, just run this command. It handles the technical bits and makes sure your connection is protected. No config files to edit.
+**New skill: `/dex-add-mcp`** — When you want to connect a new tool, just run it. It handles the technical bits and makes sure your connection is protected. No settings files to edit.
 
 ---
 
@@ -1713,7 +1712,7 @@ I want you to make Dex truly yours. And I want to keep improving it with new fea
 
 ### ✨ Prompt Improvement Works Everywhere
 
-**Before:** The `/prompt-improver` command required extra configuration. In some setups, it just didn't work.
+**Before:** The `/prompt-improver` skill required extra setup. In some setups, it just didn't work.
 
 **Now:** It automatically uses whatever AI is available — no special configuration needed.
 
@@ -1748,4 +1747,4 @@ Dex is your AI-powered personal knowledge system. It helps you organize your pro
 - **Project tracking** — Keep initiatives moving forward
 - **Weekly and quarterly reviews** — Reflect and improve systematically
 
-**Requires:** Cursor IDE with Claude, Python 3.10+, Node.js
+**Requires:** Cursor (with Claude), plus Python 3.10 or newer and Node.js installed on your computer.
