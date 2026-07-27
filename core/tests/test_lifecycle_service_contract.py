@@ -238,7 +238,7 @@ def test_frozen_service_inputs_and_outputs_conform_to_schema(tmp_path: Path) -> 
 def test_api_version_is_present_and_frozen_in_schema() -> None:
     schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
 
-    assert service.api_version == "1.1.0"
+    assert service.api_version == "1.2.0"
     assert schema["properties"]["api_version"] == {"const": service.api_version}
 
 
@@ -256,14 +256,24 @@ def test_public_surface_requires_a_version_bump_and_bridge_to_change() -> None:
         "execute_approved_archive_removal",
         "build_and_preview_topology_migration",
         "execute_approved_topology_migration",
+        "execute_approved_rebuild_capsule",
+        "execute_approved_rebuild_staging",
+        "execute_approved_rebuild_verification",
+        "execute_approved_rebuild_activation",
+        "rewind_rebuild_activation_by_receipt",
+        "abandon_rebuild_capsule",
+        "recover_rebuild_transactions",
         "TopologyMigrationError",
     ]
     schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
-    assert list(schema["x-operations"])[-4:] == [
-        "build_archive_removal_preview",
-        "execute_approved_archive_removal",
-        "build_and_preview_topology_migration",
-        "execute_approved_topology_migration",
+    assert list(schema["x-operations"])[-7:] == [
+        "execute_approved_rebuild_capsule",
+        "execute_approved_rebuild_staging",
+        "execute_approved_rebuild_verification",
+        "execute_approved_rebuild_activation",
+        "rewind_rebuild_activation_by_receipt",
+        "abandon_rebuild_capsule",
+        "recover_rebuild_transactions",
     ]
     assert "version bump" in service.__doc__.lower()
     assert "bridge" in service.__doc__.lower()
@@ -279,7 +289,7 @@ def test_archive_removal_is_previewed_approved_and_receipted(tmp_path: Path) -> 
 
     preview = service.build_archive_removal_preview(vault)
 
-    assert preview["api_version"] == "1.1.0"
+    assert preview["api_version"] == "1.2.0"
     assert preview["preview"]["archive_relative"] == ".dex/pre-split-archive.git"
     assert preview["preview"]["size_bytes"] == len(b"ref: refs/heads/main\narchive bytes")
     assert preview["preview"]["retention"] == "one full release cycle after conversion"

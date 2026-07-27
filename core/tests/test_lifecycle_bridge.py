@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import inspect
 import json
 import os
 import stat
@@ -255,3 +256,54 @@ def test_shipped_bridge_release_matches_transaction_resume_window() -> None:
     assert bridge.transaction_journal.previous_schema == PREVIOUS_SCHEMA_VERSION
     assert bridge.transaction_journal.minimum_resumable_schema == PREVIOUS_SCHEMA_VERSION
     assert bridge.transaction_journal.incompatible_action == "rollback-only"
+
+
+def test_lifecycle_1_1_callers_resolve_unchanged_operations() -> None:
+    """The 1.2 surface is additive: every 1.1 operation keeps its exact call shape."""
+    expected_signatures = {
+        "build_inventory_and_plan": "(vault_root: 'str | Path') -> 'dict[str, object]'",
+        "build_and_preview_adoption": (
+            "(vault_root: 'str | Path', release_root: 'str | Path', "
+            "requested_item_ids: 'Sequence[str]') -> 'dict[str, object]'"
+        ),
+        "execute_approved_adoption": (
+            "(vault_root: 'str | Path', release_root: 'str | Path', "
+            "preview: 'AdoptionPreview | Mapping[str, object]', "
+            "approved_token: 'str') -> 'dict[str, object]'"
+        ),
+        "rewind_adoption_by_receipt": (
+            "(vault_root: 'str | Path', "
+            "receipt: 'AdoptionReceipt | Mapping[str, object]', "
+            "acknowledgement_token: 'str') -> 'dict[str, object]'"
+        ),
+        "read_lifecycle_state": "(vault_root: 'str | Path') -> 'dict[str, object]'",
+        "build_and_preview_conflict_resolution": (
+            "(vault_root: 'str | Path', release_root: 'str | Path', "
+            "resolutions: 'Sequence[Mapping[str, object]]') -> 'dict[str, object]'"
+        ),
+        "execute_approved_conflict_resolution": (
+            "(vault_root: 'str | Path', release_root: 'str | Path', "
+            "preview: 'ConflictResolutionPreview | Mapping[str, object]', "
+            "approved_token: 'str') -> 'dict[str, object]'"
+        ),
+        "build_archive_removal_preview": (
+            "(vault_root: 'str | Path') -> 'dict[str, object]'"
+        ),
+        "execute_approved_archive_removal": (
+            "(vault_root: 'str | Path', approved_token: 'str') "
+            "-> 'dict[str, object]'"
+        ),
+        "build_and_preview_topology_migration": (
+            "(vault_root: 'str | Path') -> 'dict[str, object]'"
+        ),
+        "execute_approved_topology_migration": (
+            "(vault_root: 'str | Path', preview: 'Mapping[str, object]', "
+            "approved_token: 'str') -> 'dict[str, object]'"
+        ),
+    }
+
+    assert service.api_version == "1.2.0"
+    assert {
+        name: str(inspect.signature(getattr(service, name)))
+        for name in expected_signatures
+    } == expected_signatures
