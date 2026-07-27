@@ -23,10 +23,30 @@ function createFixture(t, rows = []) {
     [
       "'use strict';",
       "const fs = require('node:fs');",
+      'function refreshedServices() {',
+      '  try {',
+      '    return new Set(fs.readFileSync(process.env.HEALTH_REFRESHED_FILE, "utf8").trim().split("\\n").filter(Boolean));',
+      '  } catch {',
+      '    return new Set();',
+      '  }',
+      '}',
       'module.exports.allConnectionsHealth = () => {',
       '  fs.appendFileSync(process.env.HEALTH_CALLS_FILE, "called\\n");',
       '  if (process.env.HEALTH_THROW === "1") throw new Error("fixture failure");',
-      '  return JSON.parse(process.env.HEALTH_ROWS || "[]");',
+      '  const refreshed = refreshedServices();',
+      '  return JSON.parse(process.env.HEALTH_ROWS || "[]").map((row) =>',
+      '    refreshed.has(row.service)',
+      '      ? { ...row, status: "connected", hasRefreshToken: true }',
+      '      : row',
+      '  );',
+      '};',
+      'module.exports.refreshToken = async (service) => {',
+      '  fs.appendFileSync(process.env.HEALTH_REFRESH_CALLS_FILE, `${service}\\n`);',
+      '  const delayMs = Number(process.env.HEALTH_REFRESH_DELAY_MS || 0);',
+      '  if (delayMs > 0) await new Promise((resolve) => setTimeout(resolve, delayMs));',
+      '  if (process.env.HEALTH_REFRESH_REJECT === "1") throw new Error("fixture refresh failure");',
+      '  fs.appendFileSync(process.env.HEALTH_REFRESHED_FILE, `${service}\\n`);',
+      '  return "refreshed-access-token";',
       '};',
       '',
     ].join('\n'),
@@ -37,6 +57,8 @@ function createFixture(t, rows = []) {
     hookPath: path.join(hooksDir, 'connection-health-checker.cjs'),
     managerDir,
     callsFile: path.join(vault, 'health-calls.txt'),
+    refreshCallsFile: path.join(vault, 'health-refresh-calls.txt'),
+    refreshedFile: path.join(vault, 'health-refreshed.txt'),
     rows,
   };
 }
@@ -50,6 +72,8 @@ function runHook(fixture, env = {}) {
       CLAUDE_PROJECT_DIR: fixture.vault,
       DEX_VAULT: fixture.vault,
       HEALTH_CALLS_FILE: fixture.callsFile,
+      HEALTH_REFRESH_CALLS_FILE: fixture.refreshCallsFile,
+      HEALTH_REFRESHED_FILE: fixture.refreshedFile,
       HEALTH_ROWS: JSON.stringify(fixture.rows),
       ...env,
     },
@@ -64,6 +88,14 @@ function assertCleanExit(result) {
     `hook exited ${result.status}\nstdout:\n${result.stdout}\nstderr:\n${result.stderr}`,
   );
   assert.equal(result.stderr, '');
+}
+
+function readCalls(file) {
+  try {
+    return fs.readFileSync(file, 'utf8').trim().split('\n').filter(Boolean);
+  } catch {
+    return [];
+  }
 }
 
 test('SessionStart runs the connection health checker without changing existing hooks', () => {
@@ -100,6 +132,69 @@ test('surfaces a connection that needs reauthentication', (t) => {
   assert.match(result.stdout, /google:work — needs re-authentication/);
   assert.match(result.stdout, /Run \/connect google:work to reconnect/);
   assert.match(result.stdout, /slack — expired/);
+});
+
+test('silently repairs an expired OAuth connection with a refresh token', (t) => {
+  const fixture = createFixture(t, [
+    { service: 'google:work', status: 'expired', hasRefreshToken: true },
+  ]);
+
+  const result = runHook(fixture);
+
+  assertCleanExit(result);
+  assert.deepEqual(readCalls(fixture.refreshCallsFile), ['google:work']);
+  assert.equal(result.stdout, '');
+});
+
+test('does not auto-fix needs_reauth and still surfaces it', (t) => {
+  const fixture = createFixture(t, [
+    { service: 'google:work', status: 'needs_reauth', hasRefreshToken: true },
+  ]);
+
+  const result = runHook(fixture);
+
+  assertCleanExit(result);
+  assert.deepEqual(readCalls(fixture.refreshCallsFile), []);
+  assert.match(result.stdout, /google:work — needs re-authentication/);
+});
+
+test('does not repair an expired connection without a refresh token and still surfaces it', (t) => {
+  const fixture = createFixture(t, [
+    { service: 'slack', status: 'expired', hasRefreshToken: false },
+  ]);
+
+  const result = runHook(fixture);
+
+  assertCleanExit(result);
+  assert.deepEqual(readCalls(fixture.refreshCallsFile), []);
+  assert.match(result.stdout, /slack — expired/);
+});
+
+test('swallows a rejected refresh and falls back to surfacing the connection', (t) => {
+  const fixture = createFixture(t, [
+    { service: 'linear', status: 'expired', hasRefreshToken: true },
+  ]);
+
+  const result = runHook(fixture, { HEALTH_REFRESH_REJECT: '1' });
+
+  assertCleanExit(result);
+  assert.deepEqual(readCalls(fixture.refreshCallsFile), ['linear']);
+  assert.match(result.stdout, /linear — expired/);
+});
+
+test('abandons a hanging refresh within the repair budget and falls back to report-only', (t) => {
+  const fixture = createFixture(t, [
+    { service: 'google', status: 'expired', hasRefreshToken: true },
+  ]);
+  const startedAt = Date.now();
+
+  const result = runHook(fixture, { HEALTH_REFRESH_DELAY_MS: '4000' });
+  const elapsedMs = Date.now() - startedAt;
+
+  assertCleanExit(result);
+  assert.deepEqual(readCalls(fixture.refreshCallsFile), ['google']);
+  assert.match(result.stdout, /google — expired/);
+  assert.ok(elapsedMs < 2_500, `hook took ${elapsedMs}ms`);
 });
 
 test('runs the local health sweep at most once per day', (t) => {

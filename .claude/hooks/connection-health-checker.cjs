@@ -4,8 +4,9 @@
  * Connection Health Checker
  *
  * Runs at session start at most once per day. Reads the connection manager's
- * local-only health sweep and surfaces a short note only when a connection is
- * expired or needs reauthentication.
+ * local-only health sweep, silently repairs refreshable expired OAuth
+ * connections, and surfaces a short note only for connections still expired
+ * or needing reauthentication.
  *
  * ALWAYS exits 0. Missing vaults, missing engine files, and read/write errors
  * are silent so this can never block a session start.
@@ -15,9 +16,13 @@
 
 const fs = require('fs');
 const path = require('path');
+const { spawn } = require('child_process');
 
 const CM_DIR = path.resolve(__dirname, '..', '..', 'core', 'integrations', 'connection-manager');
 const STATUSES_TO_SURFACE = new Set(['needs_reauth', 'expired']);
+const REPAIR_PASS_BUDGET_MS = 2_000;
+const REFRESH_REQUEST_TIMEOUT_MS = 1_500;
+const REFRESH_WORKER_ARG = '--connection-health-refresh-worker';
 
 function configuredPaths() {
   const configuredVault = process.env.DEX_VAULT || process.env.VAULT_PATH;
@@ -75,7 +80,131 @@ function saveCheckState(file, needsAttention) {
   }
 }
 
-function main() {
+function isRefreshableExpired(row) {
+  // health.cjs reports hasRefreshToken=false for every paste-a-key connection,
+  // so this only selects expired OAuth entries with a usable refresh token.
+  return Boolean(
+    row &&
+      row.status === 'expired' &&
+      row.hasRefreshToken === true &&
+      typeof row.service === 'string' &&
+      row.service,
+  );
+}
+
+async function refreshWorker(service) {
+  const healthPath = path.join(CM_DIR, 'health.cjs');
+  let health;
+  let ok = false;
+  try {
+    health = require(healthPath);
+    await health.refreshToken(service);
+    ok = true;
+  } catch {
+    // The parent reports the connection's health; worker errors stay silent.
+  }
+
+  let rows = null;
+  try {
+    const refreshedRows = health && health.allConnectionsHealth();
+    if (Array.isArray(refreshedRows)) rows = refreshedRows;
+  } catch {
+    // A failed post-refresh read falls back to the parent's previous rows.
+  }
+
+  try {
+    process.stdout.write(JSON.stringify({ ok, rows }));
+  } catch {
+    // The parent treats missing worker output as a report-only fallback.
+  }
+}
+
+function refreshInWorker(service, timeoutMs) {
+  return new Promise((resolve) => {
+    let settled = false;
+    let timer;
+    let stdout = '';
+    let child;
+
+    const finish = (result) => {
+      if (settled) return;
+      settled = true;
+      if (timer) clearTimeout(timer);
+      resolve(result);
+    };
+
+    try {
+      child = spawn(process.execPath, [__filename, REFRESH_WORKER_ARG, service], {
+        cwd: process.cwd(),
+        env: process.env,
+        stdio: ['ignore', 'pipe', 'ignore'],
+      });
+    } catch {
+      finish({ ok: false, rows: null });
+      return;
+    }
+
+    child.stdout.setEncoding('utf8');
+    child.stdout.on('data', (chunk) => {
+      stdout += chunk;
+    });
+    child.once('error', () => finish({ ok: false, rows: null }));
+    child.once('close', () => {
+      try {
+        const result = JSON.parse(stdout);
+        finish({
+          ok: result.ok === true,
+          rows: Array.isArray(result.rows) ? result.rows : null,
+        });
+      } catch {
+        finish({ ok: false, rows: null });
+      }
+    });
+
+    timer = setTimeout(() => {
+      try {
+        child.kill('SIGKILL');
+        child.stdout.destroy();
+        child.unref();
+      } catch {
+        // The worker may already have exited between the timer and the kill.
+      }
+      finish({ ok: false, rows: null });
+    }, timeoutMs);
+  });
+}
+
+async function attemptAutoRepair(rows) {
+  let currentRows = rows;
+  const deadline = Date.now() + REPAIR_PASS_BUDGET_MS;
+  const candidates = rows.filter(isRefreshableExpired);
+
+  for (const candidate of candidates) {
+    const remainingMs = deadline - Date.now();
+    if (remainingMs <= 0) break;
+
+    const result = await refreshInWorker(
+      candidate.service,
+      Math.min(REFRESH_REQUEST_TIMEOUT_MS, remainingMs),
+    );
+
+    if (result.rows) {
+      currentRows = result.rows;
+    } else if (result.ok) {
+      // Guarded refresh completed, but the follow-up local sweep failed.
+      // Silence the repaired row without making assumptions about any others.
+      currentRows = currentRows.filter((row) => row.service !== candidate.service);
+    }
+
+    // A rejected, broken, or timed-out repair degrades to report-only. Do not
+    // spend more of the session-start budget trying other connections.
+    if (!result.ok) break;
+  }
+
+  return currentRows;
+}
+
+async function main() {
   const paths = configuredPaths();
   if (!paths) return;
 
@@ -97,6 +226,12 @@ function main() {
     return;
   }
 
+  try {
+    rows = await attemptAutoRepair(rows);
+  } catch {
+    // Any repair failure falls back to the original report-only rows.
+  }
+
   const attention = rows.filter((row) => STATUSES_TO_SURFACE.has(row.status));
   if (attention.length) {
     console.log('--- Connections Need Attention ---');
@@ -110,9 +245,18 @@ function main() {
   saveCheckState(file, attention.length > 0);
 }
 
-try {
-  main();
-} catch {
-  // SessionStart hooks are advisory. Fail open and stay silent.
+async function run() {
+  try {
+    if (process.argv[2] === REFRESH_WORKER_ARG) {
+      await refreshWorker(process.argv[3]);
+      return;
+    }
+    await main();
+  } catch {
+    // SessionStart hooks are advisory. Fail open and stay silent.
+  }
 }
-process.exitCode = 0;
+
+run().finally(() => {
+  process.exitCode = 0;
+});
