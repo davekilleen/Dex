@@ -1,6 +1,6 @@
 ---
 name: week-plan
-description: "Set the week's priorities against goals, calendar shape and task effort. Use when the user says 'plan my week', 'what should I focus on this week', or on Monday. Also use proactively at the first session of a new week. Not for reviewing the week just past; use `week-review`."
+description: "Set the week's priorities against goals, calendar shape and task effort. Use when the user says 'plan my week', 'what should I focus on this week', or on their first working day. Also use proactively at the first session of a new week. Not for reviewing the week just past; use `week-review`."
 context: fork
 ---
 
@@ -10,7 +10,7 @@ Set priorities and plan the week ahead. Now with **intelligent priority suggesti
 
 ## Usage
 
-- `/week-plan` — Plan current week (or next week if run on Friday/weekend)
+- `/week-plan` — Plan current week (or next week if run on the last working day or a non-working day)
 - `/week-plan next` — Explicitly plan next week
 - `/week-plan current` — Force planning current week
 
@@ -19,9 +19,11 @@ Set priorities and plan the week ahead. Now with **intelligent priority suggesti
 ## When to Use
 
 **Best times:**
-- **Monday morning** - Before diving into daily work
-- **Friday evening** - Set up next week while context is fresh
-- **Sunday evening** - Weekend planning session
+- **First working day, before work** - Before diving into daily work
+- **Last working day, after work** - Set up next week while context is fresh
+- **Evening before the first working day** - Plan before the week begins
+
+Read `working_week.days` in `System/user-profile.yaml` before deciding which days are first, last, or outside the working week.
 
 ---
 
@@ -233,7 +235,7 @@ Create updated `02-Week_Priorities/Week_Priorities.md`:
 ```markdown
 # Week Priorities
 
-**Week of:** [Monday YYYY-MM-DD]
+**Week of:** [first working day YYYY-MM-DD]
 
 ---
 
@@ -333,7 +335,7 @@ Create updated `02-Week_Priorities/Week_Priorities.md`:
 
 ## 🏁 End of Week Review
 
-*Fill in on Friday*
+*Fill in on the last working day*
 
 ### Completed
 - 
@@ -388,7 +390,7 @@ After generating the file, provide a summary:
 > - [Capacity warning if applicable]
 > - [Stalled goal reminder]
 > 
-> Ready to run `/daily-plan` for Monday?"
+> Ready to run `/daily-plan` for your first working day?"
 
 ---
 

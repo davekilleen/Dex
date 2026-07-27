@@ -11,7 +11,7 @@ Transform the post-onboarding experience from "blank chat window" to guided valu
 
 - Automatically suggested at session start if vault < 7 days old
 - User types `/getting-started`
-- After onboarding completion (Step 10)
+- After onboarding completion (Step 11)
 - User says they're not sure what to do next
 
 ## Entry Point
@@ -702,7 +702,7 @@ Want to connect any of these? Or run `/integrate-mcp` anytime later.
 - Only mention high_value items (score >= 5) — skip moderate and available
 - If the user says yes, run the setup skill (its `setup` field, e.g. `/trello-setup`) inline, then return to the getting-started completion
 - If the user says no/skip/later, move on without pressure
-- Don't show this section if the user already went through integration setup during onboarding Step 8 — check the `.onboarding-complete` marker for an `integrations_offered` flag and skip if present
+- Don't show this section if the user already went through integration setup during onboarding Step 10 — check the `.onboarding-complete` marker for an `integrations_offered` flag and skip if present
 
 ---
 

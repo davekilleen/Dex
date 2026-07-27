@@ -287,6 +287,11 @@ async def main():
             "obsidian_mode": False,
         },
         7: {
+            "working_week": {
+                "days": ["sunday", "monday", "tuesday", "wednesday", "thursday"],
+            }
+        },
+        8: {
             "capabilities": {
                 "career": True,
                 "companies": True,
@@ -537,6 +542,13 @@ def test_golden_onboarding_drives_state_machine_to_real_vault(fixture_vault: Pat
     assert profile["company_size"] == "startup"
     assert profile["email_domain"] == "golden.example"
     assert profile["communication"]["career_level"] == "leadership"
+    assert profile["working_week"]["days"] == [
+        "sunday",
+        "monday",
+        "tuesday",
+        "wednesday",
+        "thursday",
+    ]
 
     pillars = yaml.safe_load((vault / "System/pillars.yaml").read_text(encoding="utf-8"))
     assert [pillar["name"] for pillar in pillars["pillars"]] == ["Customer", "Product"]

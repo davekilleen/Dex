@@ -164,7 +164,7 @@ def test_live_integration_guidance_only_names_the_shipped_entrypoint() -> None:
     for path in LIVE_INTEGRATION_GUIDANCE:
         assert "/integrate-mcp" in _read(path), path
     assert "Building in Parallel" not in _read("core/integrations/BUILD_TRACKER.md")
-    assert "onboarding (Step 8)" in _read(".claude/skills/integrations/README.md")
+    assert "onboarding (Step 10)" in _read(".claude/skills/integrations/README.md")
 
 
 def test_post_update_missing_integrations_point_to_integrate_mcp(monkeypatch) -> None:
@@ -364,9 +364,37 @@ def test_onboarding_documents_the_explicit_no_company_domain_path() -> None:
     assert "This step CANNOT be skipped" not in domain_step
 
 
+def test_onboarding_confirms_working_days_and_allows_correction() -> None:
+    flow = _read(".claude/flows/onboarding.md")
+    working_week_step = flow.split("## Step 7:", 1)[1].split("## Step 8:", 1)[0]
+
+    assert "working_week_suggestion" in working_week_step
+    assert "Always show the suggestion" in working_week_step
+    assert "Which days do you work?" in working_week_step
+    assert "Monday to Friday" in working_week_step
+    assert "confirm" in working_week_step.lower()
+    assert (
+        'validate_and_save_step(step_number=7, step_data={"working_week": '
+        '{"days": [...]}})' in working_week_step
+    )
+
+
+def test_week_skills_read_the_users_working_week_for_timing() -> None:
+    week_plan = _read(".claude/skills/week-plan/SKILL.md")
+    week_review = _read(".claude/skills/week-review/SKILL.md")
+
+    assert "`working_week.days`" in week_plan
+    assert "first working day" in week_plan
+    assert "last working day" in week_plan
+    assert "Friday/weekend" not in week_plan
+    assert "`working_week.days`" in week_review
+    assert "last working day" in week_review
+    assert "Friday/end of week" not in week_review
+
+
 def test_onboarding_runs_the_first_week_reveal_before_tool_discovery() -> None:
     flow = _read(".claude/flows/onboarding.md")
-    finale = flow.split("## Step 8:", 1)[1].split("## Step 9:", 1)[0]
+    finale = flow.split("## Step 9:", 1)[1].split("## Step 10:", 1)[0]
 
     assert "run_first_week_analysis()" in finale
     assert "This call is automatic" in finale
@@ -413,6 +441,8 @@ def test_onboarding_step_nine_preserves_the_curated_setup_skill_flow() -> None:
 def test_getting_started_treats_the_reveal_as_already_presented() -> None:
     skill = _read(".claude/skills/getting-started/SKILL.md")
 
+    assert "onboarding completion (Step 11)" in skill
+    assert "onboarding Step 10" in skill
     assert "The first-week reveal already ran during onboarding" in skill
     assert "Do not repeat the first-week statistics" in skill
     assert "pre_analysis_deferred" not in skill

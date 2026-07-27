@@ -98,6 +98,12 @@ def test_full_names_abbreviations_and_integers_parse_case_insensitively(
     assert working_week.get_working_days() == {6, 0, 1, 2, 4}
 
 
+def test_normalize_working_days_reuses_profile_parsing_rules() -> None:
+    assert working_week.normalize_working_days(
+        ["Sunday", "MON", "tUeSdAy", "sun", 4, "unknown", 8, True]
+    ) == ["sunday", "monday", "tuesday", "friday"]
+
+
 def test_integer_weekday_boundaries_zero_and_six_parse(
     tmp_path: Path,
     monkeypatch,

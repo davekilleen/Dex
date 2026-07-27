@@ -58,18 +58,25 @@ from core.paths import (
 # User-configured working week (defaults to Monday-Friday)
 try:
     from core.utils.working_week import (
+        DEFAULT_WORKING_DAYS,
         first_working_day_of_week,
+        normalize_working_days,
         working_day_names,
     )
 except ImportError:
+    DEFAULT_WORKING_DAYS = frozenset({0, 1, 2, 3, 4})
+
     def first_working_day_of_week(target_date):
         return target_date - timedelta(days=target_date.weekday())
+
+    def normalize_working_days(_configured_days):
+        return []
 
     def working_day_names():
         return ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"]
 
 GRANOLA_APP_PATH = Path("/Applications/Granola.app")
-ONBOARDING_STEPS = 7
+ONBOARDING_STEPS = 8
 PROVISION_CONTRACT = json.loads(
     (Path(__file__).parent.parent / "provision-contract.json").read_text(encoding="utf-8")
 )
@@ -221,6 +228,22 @@ def create_new_session() -> Dict:
         "current_step": 1,
         "data": {}
     }
+
+
+def default_working_week_suggestion() -> Dict[str, Any]:
+    """Return the visible fallback when recent calendar evidence is unavailable."""
+    days = normalize_working_days(sorted(DEFAULT_WORKING_DAYS))
+    if not days:
+        days = [day.casefold() for day in working_day_names()]
+    return {
+        "days": days,
+        "basis": "default",
+        # Never claim a check Dex did not run: today nothing reads several weeks
+        # of calendar history, so the honest line is that it has not worked this
+        # out, not that it looked and found too little.
+        "reason": "Dex hasn't worked this out from your calendar.",
+    }
+
 
 def validate_email_domain(domain: str) -> tuple[bool, Optional[str], str]:
     """Validate and normalize email domains separated by commas"""
@@ -983,9 +1006,9 @@ async def handle_list_tools() -> list[types.Tool]:
                 "properties": {
                     "step_number": {
                         "type": "integer",
-                        "description": "Step number (1-7)",
+                        "description": f"Step number (1-{ONBOARDING_STEPS})",
                         "minimum": 1,
-                        "maximum": 7
+                        "maximum": ONBOARDING_STEPS
                     },
                     "step_data": {
                         "type": "object",
@@ -1119,7 +1142,10 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[types.Text
             step_data = arguments.get('step_data', {})
             
             if not step_number or not isinstance(step_number, int):
-                result = create_error_response("Invalid step_number", suggestion="Provide step_number as integer 1-7")
+                result = create_error_response(
+                    "Invalid step_number",
+                    suggestion=f"Provide step_number as integer 1-{ONBOARDING_STEPS}",
+                )
                 return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
             
             session = load_session()
@@ -1317,13 +1343,45 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[types.Text
                 save_session(session)
                 result = create_success_response({"step": 6, "completed": True}, "Step 6 complete")
 
-            # Step 7: Optional capability rooms (contract-declared defaults)
+            # Step 7: Working week
             elif step_number == 7:
+                working_week = step_data.get('working_week', {})
+                supplied_days = (
+                    working_week.get('days', [])
+                    if isinstance(working_week, dict)
+                    else []
+                )
+                days = normalize_working_days(supplied_days)
+                if not days:
+                    result = create_error_response(
+                        "Working week needs at least one valid day",
+                        step=7,
+                        field="working_week.days",
+                        suggestion="Choose at least one day you normally work",
+                    )
+                else:
+                    normalized_working_week = {'days': days}
+                    session['data']['working_week'] = normalized_working_week
+                    if step_number not in session['completed_steps']:
+                        session['completed_steps'].append(step_number)
+                    session['current_step'] = 8
+                    save_session(session)
+                    result = create_success_response(
+                        {
+                            "step": 7,
+                            "completed": True,
+                            "working_week": normalized_working_week,
+                        },
+                        "Step 7 complete",
+                    )
+
+            # Step 8: Optional capability rooms (contract-declared defaults)
+            elif step_number == 8:
                 supplied = step_data.get('capabilities', {})
                 if not isinstance(supplied, dict):
                     result = create_error_response(
                         "Capabilities must be an object",
-                        step=7,
+                        step=8,
                         field="capabilities",
                         suggestion="Answer yes or no for each optional room",
                     )
@@ -1344,7 +1402,7 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[types.Text
                     if invalid_field:
                         result = create_error_response(
                             f"{invalid_field} must be true or false",
-                            step=7,
+                            step=8,
                             field=invalid_field,
                             suggestion="Answer yes or no for this room",
                         )
@@ -1352,15 +1410,18 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[types.Text
                         session['data']['capabilities'] = selected
                         if step_number not in session['completed_steps']:
                             session['completed_steps'].append(step_number)
-                        session['current_step'] = 8
+                        session['current_step'] = 9
                         save_session(session)
                         result = create_success_response(
-                            {"step": 7, "completed": True, "capabilities": selected},
-                            "Step 7 complete",
+                            {"step": 8, "completed": True, "capabilities": selected},
+                            "Step 8 complete",
                         )
             
             else:
-                result = create_error_response(f"Invalid step number: {step_number}", suggestion="Step must be 1-7")
+                result = create_error_response(
+                    f"Invalid step number: {step_number}",
+                    suggestion=f"Step must be 1-{ONBOARDING_STEPS}",
+                )
             
             return [types.TextContent(type="text", text=json.dumps(result, indent=2, cls=DateTimeEncoder))]
 
@@ -1384,7 +1445,10 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[types.Text
                 session['data']['calendar'] = calendar
                 save_session(session)
                 result = create_success_response(
-                    {"calendar": calendar},
+                    {
+                        "calendar": calendar,
+                        "working_week_suggestion": default_working_week_suggestion(),
+                    },
                     "Calendar setup skipped for now. /dex-doctor will pick this up later."
                 )
                 return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
@@ -1440,6 +1504,7 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[types.Text
                     "work_email": work_email,
                     "calendar": calendar,
                     "derived_identity": derive_identity_from_email(work_email),
+                    "working_week_suggestion": default_working_week_suggestion(),
                 },
                 f"Work calendar saved.{verification_note}"
             )
@@ -1452,9 +1517,9 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[types.Text
                 result = create_error_response("No active session", suggestion="Call start_onboarding_session first")
                 return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
             
-            # Step 7 (optional rooms) is skippable: every room defaults OFF, so an
+            # Step 8 (optional rooms) is skippable: every room defaults OFF, so an
             # unanswered step means the safe default, never a blocker.
-            required_steps = [s for s in range(1, ONBOARDING_STEPS + 1) if s != 7]
+            required_steps = [s for s in range(1, ONBOARDING_STEPS + 1) if s != 8]
             completed = session['completed_steps']
             missing = [s for s in required_steps if s not in completed]
             
@@ -1465,7 +1530,8 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[types.Text
                 4: "Email Domain (CRITICAL)",
                 5: "Strategic Pillars",
                 6: "Communication Preferences",
-                7: "Optional Rooms",
+                7: "Working Week",
+                8: "Optional Rooms",
             }
             
             completed_required = [s for s in completed if s in required_steps]
@@ -1526,9 +1592,9 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[types.Text
                 return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
 
             # Verify all required steps completed
-            # Step 7 (optional rooms) is skippable: every room defaults OFF, so an
+            # Step 8 (optional rooms) is skippable: every room defaults OFF, so an
             # unanswered step means the safe default, never a blocker.
-            required_steps = [s for s in range(1, ONBOARDING_STEPS + 1) if s != 7]
+            required_steps = [s for s in range(1, ONBOARDING_STEPS + 1) if s != 8]
             completed = session['completed_steps']
             missing = [s for s in required_steps if s not in completed]
 
@@ -1536,7 +1602,7 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[types.Text
                 step_names = {
                     1: "Name", 2: "Role", 3: "Company Size",
                     4: "Email Domain", 5: "Pillars", 6: "Communication",
-                    7: "Optional Rooms",
+                    7: "Working Week", 8: "Optional Rooms",
                 }
                 result = create_error_response(
                     f"Cannot finalize: missing steps {missing}",
@@ -1601,6 +1667,7 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[types.Text
                     'email_domain': data.get('email_domain', ''),
                     'obsidian_mode': data.get('obsidian_mode', False),
                     'entity_creation': {'mode': 'auto'},
+                    'working_week': data.get('working_week', {}),
                     'communication': data.get('communication', {}),
                     'capabilities': {
                         room: {'enabled': selected_capabilities[room]}

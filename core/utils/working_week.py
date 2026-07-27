@@ -10,6 +10,7 @@ from __future__ import annotations
 import os
 from datetime import date, timedelta
 from pathlib import Path
+from typing import Any
 
 DEFAULT_WORKING_DAYS = frozenset({0, 1, 2, 3, 4})
 DAY_NAMES = (
@@ -31,6 +32,30 @@ _cached_working_days: set[int] | None = None
 _cache_loaded = False
 
 
+def normalize_working_days(configured_days: Any) -> list[str]:
+    """Normalize supported profile values to unique lowercase day names."""
+    if not isinstance(configured_days, list):
+        return []
+
+    normalized_days = []
+    seen_weekdays = set()
+    for configured_day in configured_days:
+        weekday = None
+        if isinstance(configured_day, bool):
+            continue
+        if isinstance(configured_day, int):
+            if 0 <= configured_day <= 6:
+                weekday = configured_day
+        elif isinstance(configured_day, str):
+            weekday = DAY_NAME_TO_WEEKDAY.get(configured_day.strip().casefold())
+
+        if weekday is not None and weekday not in seen_weekdays:
+            normalized_days.append(DAY_NAMES[weekday].casefold())
+            seen_weekdays.add(weekday)
+
+    return normalized_days
+
+
 def _load_working_days() -> set[int]:
     """Load working days from user-profile.yaml, returning the safe default."""
     try:
@@ -46,21 +71,10 @@ def _load_working_days() -> set[int]:
             profile = yaml.safe_load(profile_file)
         working_week = (profile or {}).get("working_week", {})
         configured_days = working_week.get("days", [])
-        if not isinstance(configured_days, list):
-            return set(DEFAULT_WORKING_DAYS)
-
-        parsed_days = set()
-        for configured_day in configured_days:
-            if isinstance(configured_day, bool):
-                continue
-            if isinstance(configured_day, int):
-                if 0 <= configured_day <= 6:
-                    parsed_days.add(configured_day)
-                continue
-            if isinstance(configured_day, str):
-                weekday = DAY_NAME_TO_WEEKDAY.get(configured_day.strip().casefold())
-                if weekday is not None:
-                    parsed_days.add(weekday)
+        parsed_days = {
+            DAY_NAME_TO_WEEKDAY[day]
+            for day in normalize_working_days(configured_days)
+        }
         return parsed_days or set(DEFAULT_WORKING_DAYS)
     except Exception:
         return set(DEFAULT_WORKING_DAYS)
