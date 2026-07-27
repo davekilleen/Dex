@@ -127,6 +127,20 @@ function fakeClientSocket(t, onRequest) {
   return socket;
 }
 
+function loadBrokerClientWithSpawn(spawnImplementation) {
+  const childProcess = require('node:child_process');
+  const clientPath = require.resolve('./broker-client.cjs');
+  const originalSpawn = childProcess.spawn;
+  delete require.cache[clientPath];
+  try {
+    childProcess.spawn = spawnImplementation;
+    return require(clientPath);
+  } finally {
+    childProcess.spawn = originalSpawn;
+    delete require.cache[clientPath];
+  }
+}
+
 async function waitForGone(file, timeoutMs = 2000) {
   const deadline = Date.now() + timeoutMs;
   while (fs.existsSync(file) && Date.now() < deadline) {
@@ -147,6 +161,24 @@ test('broker presence seam delegates to the provider-based presence layer', asyn
   await broker.assertPresence('linear:delegated', 'access-token');
 
   assert.deepEqual(calls, [['linear:delegated', 'access-token']]);
+});
+
+test('broker presence seam uses the injected in-process provider', async () => {
+  const calls = [];
+  presence.setPresenceProvider({
+    available: true,
+    async verify(request) {
+      calls.push(request);
+      return true;
+    },
+  });
+  try {
+    await broker.assertPresence('linear:host-injected', 'access-token');
+  } finally {
+    presence.setPresenceProvider(null);
+  }
+
+  assert.deepEqual(calls, [{ connId: 'linear:host-injected', op: 'access-token' }]);
 });
 
 test('broker request processing preserves accessor shapes without a live socket', async () => {
@@ -511,6 +543,24 @@ test('broker client authenticates and removes serverAuth before returning a resp
   });
 
   assert.deepEqual(await client.brokerRequest({ op: 'status' }), { ok: true, connections: [] });
+});
+
+test('broker client uses a live authenticated host broker without spawning a competitor', async (t) => {
+  let spawnCalls = 0;
+  const hostClient = loadBrokerClientWithSpawn(() => {
+    spawnCalls += 1;
+    throw new Error('the client must not spawn when the host broker is already live');
+  });
+  const { serverIdentity } = prepareClientAuthFiles();
+  fakeClientSocket(t, (socket) => {
+    queueMicrotask(() => {
+      socket.emit('data', `${JSON.stringify({ ok: true, connections: [], serverAuth: serverIdentity })}\n`);
+      socket.emit('end');
+    });
+  });
+
+  assert.deepEqual(await hostClient.brokerRequest({ op: 'status' }), { ok: true, connections: [] });
+  assert.equal(spawnCalls, 0);
 });
 
 test('broker client enforces an absolute response deadline and destroys the listener', async (t) => {

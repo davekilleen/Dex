@@ -6,6 +6,7 @@ const DEFAULT_TTL_MS = 60_000;
 const DEFAULT_TIMEOUT_MS = 30_000;
 const grants = new Map();
 const inFlightChecks = new Map();
+let injectedProvider = null;
 
 /**
  * B1 user-presence policy.
@@ -117,10 +118,9 @@ function unavailableProvider(reason) {
 /**
  * This module cannot honestly create a Touch ID prompt by itself: macOS
  * requires an OS-bound signed application/helper to make that claim meaningful.
- * Production presence therefore requires the desktop-owned broker plus its
- * Dex-signed helper, configured through DEX_CM_PRESENCE_CMD. That environment
- * seam is still same-user-controllable; this is the disclosed ceiling until an
- * OS-enforced signed service owns the credential boundary.
+ * The desktop host may inject its own in-process provider. Standalone Core can
+ * still use DEX_CM_PRESENCE_CMD, whose environment seam is same-user-
+ * controllable and therefore carries the documented CLI-only security ceiling.
  *
  * DEX_CM_PRESENCE_OPTIONAL is deliberately NOT a production runtime bypass. It
  * is honored only under the Node test runner, or when the explicit
@@ -128,6 +128,7 @@ function unavailableProvider(reason) {
  * non-production and must never be enabled in a shipped runtime.
  */
 function resolveProvider() {
+  if (injectedProvider) return injectedProvider;
   if (process.env.DEX_CM_PRESENCE_CMD) return commandProvider(process.env.DEX_CM_PRESENCE_CMD);
   if (process.platform === 'darwin') {
     return unavailableProvider(
@@ -135,6 +136,10 @@ function resolveProvider() {
     );
   }
   return unavailableProvider('OS-bound user presence is unavailable without the Dex-signed helper.');
+}
+
+function setPresenceProvider(provider) {
+  injectedProvider = provider && typeof provider.verify === 'function' ? provider : null;
 }
 
 function grantKey(connId, op) {
@@ -159,8 +164,8 @@ async function assertPresence(connId, op, { provider, now } = {}) {
   }
   grants.delete(key);
 
-  // Tests and a trusted host may inject a provider directly. Production uses
-  // the desktop-owned broker's signed-helper command seam described above.
+  // Tests and the desktop host may inject a provider directly. Standalone Core
+  // otherwise uses the command or fail-closed fallbacks described above.
   provider = provider || module.exports.resolveProvider();
   if (!provider || provider.available === false || typeof provider.verify !== 'function') {
     if (optionalPresenceAllowed()) {
@@ -192,4 +197,4 @@ async function assertPresence(connId, op, { provider, now } = {}) {
   }
 }
 
-module.exports = { requiresPresence, assertPresence, resolveProvider };
+module.exports = { requiresPresence, assertPresence, resolveProvider, setPresenceProvider };

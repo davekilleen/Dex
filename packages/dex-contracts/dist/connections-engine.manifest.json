@@ -11,8 +11,8 @@
         "connection-manager"
       ],
       "fileCount": 21,
-      "totalBytes": 233211,
-      "treeHash": "f59bf17c7aa624318939e6ede3309d6ed15f30c9dff190c62804527a7cfa5f26",
+      "totalBytes": 233380,
+      "treeHash": "bd09b75b190876e386b0a6c96233d53c84b0029b0fb2bc4c0e1d318a619f5435",
       "files": [
         {
           "path": "auth-context.cjs",
@@ -106,8 +106,8 @@
         },
         {
           "path": "presence.cjs",
-          "bytes": 6046,
-          "sha256": "aa98c782258ebdca54d4ac97eb6879c5af4992e701eaaaa359ce64a9ea99760e"
+          "bytes": 6215,
+          "sha256": "31905f32693fd1f0f1853a5ab0a08851405953ab6f6105dbf56a960ec42d420e"
         },
         {
           "path": "README.md",
