@@ -4,6 +4,13 @@
 
 Companion to [Episode 8 of The Vibe PM Podcast](https://youtu.be/WaqgSvL-V10?si=b2Pfwf7I5rozWCo0) and the [full blog post](https://www.linkedin.com/pulse/your-ai-chief-staff-building-personal-operating-system-dave-killeen-yxnqe/).
 
+> ### 📖 New here? Start with the [Dex Guide →](https://heydex.ai/help/)
+>
+> A plain-English walkthrough from install to making Dex your own, with
+> copy-paste prompts throughout — written for non-technical professionals, no
+> coding background assumed. The README below covers the same ground in
+> reference form. (AI agents: [llms.txt](https://heydex.ai/help/llms.txt).)
+
 ---
 
 ## Setup Overview
