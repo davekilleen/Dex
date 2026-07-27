@@ -22,7 +22,9 @@ function requiresPresence(op) {
 }
 
 function presenceRequiredError() {
-  const error = new Error('User presence is required for this credential operation.');
+  const error = new Error(
+    'User presence is required for this operation, which only the Dex desktop app can provide — it cannot be completed from the command line.'
+  );
   error.code = 'DEX_CM_PRESENCE_REQUIRED';
   error.category = 'presence_required';
   return error;

@@ -432,6 +432,49 @@ test('production mode ignores the optional environment bypass when a host makes 
   }
 });
 
+test('a standalone privileged read is refused with an honest desktop-app message and a non-zero exit', () => {
+  // Presence refusal contract: a privileged token export (--full / --access-token-only)
+  // cannot be presence-verified on the command line, so it must (a) exit non-zero and
+  // (b) say plainly that this needs the Dex desktop app — never instruct the user to
+  // satisfy an OS prompt that the CLI cannot raise.
+  const vault = fs.mkdtempSync(path.join(os.tmpdir(), 'dex-cm-privread-'));
+  const runtime = fs.mkdtempSync(path.join(os.tmpdir(), 'dex-cm-privread-runtime-'));
+  const env = {
+    ...process.env,
+    DEX_VAULT: vault,
+    DEX_CM_RUNTIME_DIR: runtime,
+    DEX_CM_NO_KEYCHAIN: '1',
+  };
+  delete env.NODE_OPTIONS;
+  delete env.NODE_TEST_CONTEXT;
+  delete env.DEX_CM_ALLOW_INSECURE_PRESENCE;
+  delete env.DEX_CM_PRESENCE_OPTIONAL;
+  delete env.DEX_CM_PRESENCE_CMD;
+  try {
+    // Store standalone (this succeeds — the ship-blocker fix).
+    const stored = spawnSync(
+      process.execPath,
+      [path.join(DIR, 'connect.cjs'), 'set-key', 'linear', '--no-probe'],
+      { env, input: 'lin_PRIVREAD_KEY\n', encoding: 'utf8' }
+    );
+    assert.equal(stored.status, 0, stored.stderr);
+    // A privileged export cannot be presence-verified on the CLI: refuse, non-zero, honest.
+    const full = spawnSync(
+      process.execPath,
+      [path.join(DIR, 'get-token.cjs'), 'linear', '--full'],
+      { env, encoding: 'utf8' }
+    );
+    assert.notEqual(full.status, 0, 'privileged read must exit non-zero');
+    assert.match(full.stderr, /desktop app/i);
+    assert.doesNotMatch(full.stderr, /approve the os prompt/i);
+    // And it must not have leaked the secret to stdout.
+    assert.doesNotMatch(full.stdout || '', /PRIVREAD_KEY/);
+  } finally {
+    fs.rmSync(vault, { recursive: true, force: true });
+    fs.rmSync(runtime, { recursive: true, force: true });
+  }
+});
+
 test('first-run credential commands fail immediately with clear interactive guidance when stdin is empty', () => {
   const cases = [
     [path.join(DIR, 'connect.cjs'), 'register-app', 'first-run-oauth'],

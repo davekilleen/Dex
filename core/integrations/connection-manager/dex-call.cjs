@@ -182,7 +182,7 @@ async function main() {
       } else if (brokerError.category === 'presence_required') {
         console.error(
           brokerError.message ||
-            `${service} requires verified user presence. Approve the OS prompt and try again.`
+            `${service} requires verified user presence, which only the Dex desktop app can provide — it cannot be completed from the command line.`
         );
       } else {
         console.error(brokerError.message || 'Credential broker request failed.');
