@@ -10,6 +10,7 @@ import sys
 from datetime import timedelta
 from pathlib import Path
 
+import pytest
 from mcp import ClientSession
 from mcp.client.stdio import StdioServerParameters, stdio_client
 
@@ -63,6 +64,7 @@ def _decode_handler_result(result) -> dict:
     return json.loads(result[0].text)
 
 
+@pytest.mark.xdist_group("serial_sensitive")
 def test_create_task_succeeds_over_production_stdio(fixture_vault: Path, tmp_path: Path):
     vault = _copy_fixture_vault(fixture_vault, tmp_path)
 

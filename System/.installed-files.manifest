@@ -993,6 +993,7 @@ core/tests/test_customization_assessment_planning.py
 core/tests/test_customization_capsule_contracts.py
 core/tests/test_customization_capsule_create.py
 core/tests/test_customization_journey_skills.py
+core/tests/test_customization_lifecycle_boundary.py
 core/tests/test_customization_migration_cli.py
 core/tests/test_customization_migration_service.py
 core/tests/test_customization_migration_status_doctor.py
@@ -1144,7 +1145,6 @@ docs/Dex_System/Named_Sessions_Guide.md
 docs/Dex_System/Obsidian_Guide.md
 docs/Dex_System/README.md
 docs/Dex_System/Updating_Dex.md
-docs/FAQ-DRAFT.md
 docs/analytics-proxy.md
 docs/architecture/DEX-CORE-MAP.md
 docs/architecture/INVENTORY.md

@@ -18,6 +18,7 @@ from core.customization_migration.capsule_model import (
 )
 from core.customization_migration.inventory import discover
 from core.customization_migration.model import Assessment, AssessmentIdentity
+from core.lifecycle import service as lifecycle_service
 
 if TYPE_CHECKING:
     from core.customization_migration.verification import VerificationReport
@@ -160,11 +161,26 @@ def preview_to_dict(vault_root: Path) -> dict[str, object]:
 
 
 def create_confirmed_capsule(vault_root: Path, preview_sha256: str):
-    from core.customization_migration.capsule import create_capsule
+    from core.customization_migration.capsule import CapsuleReceipt
 
     root = resolve_vault_root(vault_root)
     preview = _confirmation_preview(root)
-    return create_capsule(root, preview, preview_sha256)
+    response = lifecycle_service.execute_approved_rebuild_capsule(
+        root,
+        preview,
+        preview_sha256,
+    )
+    receipt = response["receipt"]
+    if not isinstance(receipt, Mapping):
+        raise TypeError("lifecycle capsule receipt must be an object")
+    return CapsuleReceipt(
+        receipt["schema_version"],
+        receipt["capsule_id"],
+        receipt["manifest_sha256"],
+        receipt["file_count"],
+        receipt["byte_count"],
+        receipt["transaction_id"],
+    )
 
 
 def load_regeneration_candidate(candidate_path: str | Path):
@@ -217,14 +233,30 @@ def stage_confirmed_candidate(
 ):
     from core.customization_migration.staging import (
         StagingError,
+        StagingReceipt,
         preview_staging,
-        stage_candidate,
     )
 
     root = resolve_vault_root(vault_root)
     try:
         preview = preview_staging(root, candidate.capsule_id, candidate)
-        return stage_candidate(root, preview, preview_sha256)
+        response = lifecycle_service.execute_approved_rebuild_staging(
+            root,
+            preview,
+            preview_sha256,
+        )
+        receipt = response["receipt"]
+        if not isinstance(receipt, Mapping):
+            raise TypeError("lifecycle staging receipt must be an object")
+        return StagingReceipt(
+            receipt["schema_version"],
+            receipt["capsule_id"],
+            receipt["proposal_id"],
+            receipt["staged_file_count"],
+            receipt["staged_byte_count"],
+            receipt["staging_digest"],
+            receipt["transaction_id"],
+        )
     except (AttributeError, OSError, StagingError, TypeError, ValueError) as error:
         raise MigrationServiceError(
             "staging-refused",
@@ -308,32 +340,26 @@ def verify_staging_to_dict(
     confirm_token: str,
 ) -> dict[str, object]:
     from core.customization_migration.staging import StagingError
-    from core.customization_migration.verification import (
-        VerificationError,
-        write_verification_report,
-    )
+    from core.customization_migration.verification import VerificationError
 
     root = resolve_vault_root(vault_root)
     try:
-        report, _staging_receipt_sha256, expected_token = _verification_preview(
+        report, _staging_receipt_sha256, _expected_token = _verification_preview(
             root,
             capsule_id,
             proposal_id,
         )
-        if (
-            not isinstance(confirm_token, str)
-            or not hmac.compare_digest(confirm_token, expected_token)
-        ):
-            raise VerificationError(
-                "verification confirmation token does not match staging"
-            )
-        receipt = write_verification_report(
+        response = lifecycle_service.execute_approved_rebuild_verification(
             root,
             capsule_id,
             proposal_id,
             report,
+            confirm_token,
         )
-        return {"report": report.to_dict(), "receipt": receipt.to_dict()}
+        receipt = response["receipt"]
+        if not isinstance(receipt, Mapping):
+            raise TypeError("lifecycle verification receipt must be an object")
+        return {"report": report.to_dict(), "receipt": dict(receipt)}
     except (OSError, StagingError, VerificationError, TypeError, ValueError) as error:
         raise MigrationServiceError(
             "verification-refused",
@@ -444,7 +470,7 @@ def activate_confirmed(
 ):
     from core.customization_migration.activation import (
         ActivationError,
-        activate,
+        ActivationReceipt,
         preview_activation,
     )
     from core.customization_migration.staging import StagingError
@@ -453,7 +479,12 @@ def activate_confirmed(
     root = resolve_vault_root(vault_root)
     try:
         preview = preview_activation(root, capsule_id, proposal_id)
-        return activate(root, preview, approval_token)
+        response = lifecycle_service.execute_approved_rebuild_activation(
+            root,
+            preview,
+            approval_token,
+        )
+        return ActivationReceipt.from_dict(response["receipt"])
     except (
         OSError,
         ActivationError,
@@ -510,13 +541,18 @@ def rewind_acknowledged(
     capsule_id: str,
     acknowledgement_token: str,
 ):
-    from core.customization_migration.activation import ActivationError, rewind
+    from core.customization_migration.activation import ActivationError, RewindReceipt
     from core.customization_migration.staging import StagingError
 
     root = resolve_vault_root(vault_root)
     try:
         receipt = _persisted_activation_receipt(root, capsule_id)
-        return rewind(root, receipt, acknowledgement_token)
+        response = lifecycle_service.rewind_rebuild_activation_by_receipt(
+            root,
+            receipt,
+            acknowledgement_token,
+        )
+        return RewindReceipt.from_dict(response["rewind_receipt"])
     except (OSError, ActivationError, StagingError, TypeError, ValueError) as error:
         raise MigrationServiceError(
             "rewind-refused",
@@ -575,9 +611,10 @@ def activation_status_to_dict(
 
 
 def abandon_existing_capsule(vault_root: Path, capsule_id: str) -> None:
-    from core.customization_migration.capsule import abandon_capsule
-
-    abandon_capsule(resolve_vault_root(vault_root), capsule_id)
+    lifecycle_service.abandon_rebuild_capsule(
+        resolve_vault_root(vault_root),
+        capsule_id,
+    )
 
 
 def _recovery_identity(plan: object) -> dict[str, object] | None:
@@ -707,7 +744,7 @@ def recover_confirmed(
     vault_root: Path,
     confirm_token: str,
 ) -> dict[str, object]:
-    from core.transaction.engine import Transaction, TransactionError
+    from core.transaction.engine import TransactionError
 
     root = resolve_vault_root(vault_root)
     preview = recovery_preview_to_dict(root)
@@ -731,10 +768,10 @@ def recover_confirmed(
         and isinstance(action.get("transaction_id"), str)
     }
     try:
-        outcomes = Transaction.resume(
-            root,
-            transaction_ids=frozenset(by_transaction),
-        )
+        response = lifecycle_service.recover_rebuild_transactions(root)
+        outcomes = response["outcomes"]
+        if not isinstance(outcomes, list):
+            raise TypeError("lifecycle recovery outcomes must be a list")
     except (OSError, TransactionError, TypeError, ValueError) as error:
         raise MigrationServiceError(
             "recovery-refused",

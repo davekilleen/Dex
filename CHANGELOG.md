@@ -7,6 +7,17 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.76.1] — 🔧 A quiet strengthening under the hood (2026-07-27)
+
+Nothing changes in what you see or do. This is internal hardening of the customisation-rebuild feature that shipped in 1.76.0.
+
+**What changed, honestly:**
+
+* **The rebuild now goes through the same single safety gate as everything else.** Every change Dex makes to your vault is meant to pass through one guarded door, so a single place can back it up, check it, and (in future) ask your permission. The new rebuild step had been reaching the file-writing engine through a second path; it now goes through the one door like everything else — which means any future safety, consent, or audit check automatically covers the rebuild too.
+* **An interrupted rebuild now has a proper recovery route.** If a rebuild step is stopped partway, Dex can now converge it safely through that same door. Previously that recovery only existed in internal tests.
+
+I re-proved the whole rebuild end to end on a real, heavily-customised vault through the actual update journey before shipping. No behaviour changed for you — this only makes the foundation harder to get wrong later.
+
 ## [1.76.0] — 🪄 Dex can now rebuild your customisations on a new version — with your say-so at every step (2026-07-27)
 
 Yesterday gave customised setups a guided update with a protected snapshot (the Capsule). Today the rebuild goes live: `/dex-update` can now carry your customisations forward onto the new version — proven end-to-end on a real, heavily-customised vault before being offered to anyone.

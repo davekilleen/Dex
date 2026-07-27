@@ -77,8 +77,27 @@ jobs:
         run: python core/paths.py
       - name: Ruff linting (fail fast)
         run: ruff check core/
+      # -n auto spreads tests across the runner's cores (pytest-xdist); --dist loadgroup
+      # keeps the xdist_group("serial_sensitive")-marked tests on one worker because they
+      # share release-build git state (grouping serializes them against EACH OTHER only —
+      # it does not quiet the CPU, so load-sensitive tests must carry generous margins
+      # in their own assertions). Coverage measurement, thresholds, and the junit report
+      # are identical to the former serial run — pytest-cov combines worker data
+      # automatically. Identical test set, same gates.
       - name: Test suites + coverage
-        run: pytest core/tests/ core/mcp/tests/ core/migrations/tests/ -v -m "not fuzz" --junitxml=.logs/pytest-report.xml --cov=core --cov-report=term --cov-report=json:coverage.json --cov-fail-under="${COVERAGE_MIN_TOTAL}"
+        run: |
+          echo "Runner cores: $(sysctl -n hw.ncpu)"
+          pytest core/tests/ core/mcp/tests/ core/migrations/tests/ -v -m "not fuzz" -n auto --dist loadgroup --junitxml=.logs/pytest-report.xml --cov=core --cov-report=term --cov-report=json:coverage.json --cov-fail-under="${COVERAGE_MIN_TOTAL}"
+      # Backstop for the conftest sessionfinish check: that check fires on the xdist
+      # controller today (verified empirically), but it rides on unpinned pytest/xdist
+      # hook internals. This shell gate cannot be version-drifted away.
+      - name: Fixture-vault mutation gate
+        run: |
+          if [ -n "$(git status --porcelain -- core/tests/fixtures/vault)" ]; then
+            echo "Tracked fixture vault was mutated by the test run:" >&2
+            git status --porcelain -- core/tests/fixtures/vault >&2
+            exit 1
+          fi
       - name: Touched-file coverage gate
         if: github.event_name == 'pull_request'
         run: python scripts/check-coverage-threshold.py

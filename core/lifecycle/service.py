@@ -47,12 +47,19 @@ from core.lifecycle.retention import compute_retention_report
 from core.path_safety import unsafe_existing_parent
 from core.transaction.engine import PlanEntry, PlanRejected, Transaction
 
-api_version = "1.1.0"
+api_version = "1.2.0"
 
 _CATALOG_RELATIVE = "System/.release-catalog.json"
 _PURPOSE = re.compile(r"^[a-z0-9][a-z0-9-]{0,63}$")
 _ARCHIVE_RELATIVE = ".dex/pre-split-archive.git"
 _ARCHIVE_RECEIPTS_RELATIVE = "System/.dex/archive-removals"
+_REBUILD_TRANSACTION_PATH = re.compile(
+    r"^System/\.dex/customization-migrations/cap-[0-9a-f]{16}/(?:"
+    r"receipts/(?:capsule|activation|rewind)\.json|"
+    r"verification/prop-[0-9a-f]{16}\.json|"
+    r"candidates/prop-[0-9a-f]{16}/staging/receipt\.json"
+    r")$"
+)
 
 
 def _envelope(**values: object) -> dict[str, object]:
@@ -507,6 +514,185 @@ def execute_approved_topology_migration(
     return _envelope(receipt=receipt, receipt_path=receipt_path)
 
 
+def execute_approved_rebuild_capsule(
+    vault_root: str | Path,
+    preview: object,
+    approved_token: str,
+) -> dict[str, object]:
+    """Create the exact approved customization Capsule through the lifecycle door."""
+    from core.customization_migration.capsule import create_capsule
+
+    receipt = create_capsule(Path(vault_root), preview, approved_token)
+    return _envelope(receipt=receipt.to_dict())
+
+
+def execute_approved_rebuild_staging(
+    vault_root: str | Path,
+    preview: object,
+    approved_token: str,
+) -> dict[str, object]:
+    """Stage the exact approved rebuild candidate through the lifecycle door."""
+    from core.customization_migration.staging import stage_candidate
+
+    receipt = stage_candidate(Path(vault_root), preview, approved_token)
+    return _envelope(receipt=receipt.to_dict())
+
+
+def execute_approved_rebuild_verification(
+    vault_root: str | Path,
+    capsule_id: str,
+    proposal_id: str,
+    report: object,
+    approved_token: str,
+) -> dict[str, object]:
+    """Seal one exact approved verification report through the lifecycle door."""
+    from core.customization_migration.staging import load_staged_candidate
+    from core.customization_migration.verification import (
+        VerificationError,
+        VerificationReport,
+        write_verification_report,
+    )
+
+    if type(report) is not VerificationReport:
+        raise TypeError("report must be VerificationReport")
+    _candidate, staging_receipt, _staging = load_staged_candidate(
+        Path(vault_root),
+        capsule_id,
+        proposal_id,
+    )
+    expected_token = hashlib.sha256(
+        _canonical(
+            {
+                "capsule_id": capsule_id,
+                "proposal_id": proposal_id,
+                "staging_receipt_sha256": hashlib.sha256(
+                    staging_receipt.canonical_bytes()
+                ).hexdigest(),
+                "report_sha256": hashlib.sha256(
+                    report.canonical_bytes()
+                ).hexdigest(),
+            }
+        )
+    ).hexdigest()
+    if not isinstance(approved_token, str) or not hmac.compare_digest(
+        approved_token,
+        expected_token,
+    ):
+        raise VerificationError(
+            "verification confirmation token does not match staging"
+        )
+    receipt = write_verification_report(
+        Path(vault_root),
+        capsule_id,
+        proposal_id,
+        report,
+    )
+    return _envelope(receipt=receipt.to_dict())
+
+
+def execute_approved_rebuild_activation(
+    vault_root: str | Path,
+    preview: object,
+    approved_token: str,
+) -> dict[str, object]:
+    """Activate the exact approved rebuild and return its rewind acknowledgement."""
+    from core.customization_migration import activation
+
+    root = Path(vault_root)
+    receipt = activation.activate(root, preview, approved_token)
+    return _envelope(
+        receipt=receipt.to_dict(),
+        rewind_acknowledgement_token=(
+            activation._rewind_acknowledgement_token(receipt)
+        ),
+    )
+
+
+def rewind_rebuild_activation_by_receipt(
+    vault_root: str | Path,
+    receipt: object,
+    acknowledgement_token: str,
+) -> dict[str, object]:
+    """Rewind one rebuild activation identified by its exact receipt."""
+    from core.customization_migration.activation import (
+        ActivationReceipt,
+        rewind,
+    )
+
+    modeled = (
+        receipt
+        if isinstance(receipt, ActivationReceipt)
+        else ActivationReceipt.from_dict(receipt)
+    )
+    rewind_receipt = rewind(
+        Path(vault_root),
+        modeled,
+        acknowledgement_token,
+    )
+    return _envelope(rewind_receipt=rewind_receipt.to_dict())
+
+
+def abandon_rebuild_capsule(
+    vault_root: str | Path,
+    capsule_id: str,
+) -> dict[str, object]:
+    """Append one rebuild Capsule abandonment event through the lifecycle door."""
+    from core.customization_migration.capsule import abandon_capsule
+
+    abandon_capsule(Path(vault_root), capsule_id)
+    return _envelope(capsule_id=capsule_id, abandoned=True)
+
+
+def _rebuild_transaction_ids(root: Path) -> frozenset[str]:
+    from core.transaction.engine import TX_ROOT_RELATIVE
+    from core.transaction.journal import Journal, JournalCorruptError
+
+    tx_root = root / TX_ROOT_RELATIVE
+    if not tx_root.is_dir() or tx_root.is_symlink():
+        return frozenset()
+    transaction_ids: set[str] = set()
+    for tx_dir in sorted(tx_root.iterdir(), key=lambda path: path.name):
+        if not tx_dir.is_dir() or tx_dir.is_symlink():
+            continue
+        try:
+            entries = Journal(tx_dir / "journal.jsonl").read()
+        except JournalCorruptError:
+            continue
+        events = {entry.event for entry in entries}
+        if not entries or events & {"COMMITTED", "ROLLED-BACK"}:
+            continue
+        begin = next((entry for entry in entries if entry.event == "BEGIN"), None)
+        if begin is None or begin.payload.get("operation") != "customization-migration":
+            continue
+        plan = begin.payload.get("plan")
+        if not isinstance(plan, list):
+            continue
+        relatives = (
+            item.get("relative")
+            for item in plan
+            if isinstance(item, Mapping)
+        )
+        if any(
+            isinstance(relative, str)
+            and _REBUILD_TRANSACTION_PATH.fullmatch(relative) is not None
+            for relative in relatives
+        ):
+            transaction_ids.add(tx_dir.name)
+    return frozenset(transaction_ids)
+
+
+def recover_rebuild_transactions(
+    vault_root: str | Path,
+) -> dict[str, object]:
+    """Converge every interrupted rebuild transaction through the lifecycle door."""
+    root = Path(vault_root)
+    outcomes = Transaction.resume(
+        root,
+        transaction_ids=_rebuild_transaction_ids(root),
+    )
+    return _envelope(outcomes=outcomes)
+
+
 __all__ = [
     "api_version",
     "build_inventory_and_plan",
@@ -520,5 +706,12 @@ __all__ = [
     "execute_approved_archive_removal",
     "build_and_preview_topology_migration",
     "execute_approved_topology_migration",
+    "execute_approved_rebuild_capsule",
+    "execute_approved_rebuild_staging",
+    "execute_approved_rebuild_verification",
+    "execute_approved_rebuild_activation",
+    "rewind_rebuild_activation_by_receipt",
+    "abandon_rebuild_capsule",
+    "recover_rebuild_transactions",
     "TopologyMigrationError",
 ]

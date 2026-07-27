@@ -457,7 +457,9 @@ def test_stdio_server_boots_lists_tools_and_exits_cleanly(
         [sys.executable, "-m", "core.mcp.customization_migration_server"],
         cwd=REPO_ROOT,
         env=env,
-        timeout=10,
+        # Hang-guard, not a perf assertion: server boot competes with other
+        # pytest-xdist workers for CPU, so keep several multiples of headroom.
+        timeout=30,
     )
 
     assert result.ok, f"{result.error}\nstderr:\n{result.stderr}"

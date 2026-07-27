@@ -1,4 +1,10 @@
-"""Regression tests for artifacts produced from the public repository."""
+"""Regression tests for artifacts produced from the public repository.
+
+The subprocess timeouts in this module are hang-guards, not performance
+assertions: under pytest-xdist the release builds here run while other workers
+keep every core busy, so the guards carry several multiples of headroom over
+the serial runtime. Tightening them re-introduces load flakes.
+"""
 
 from __future__ import annotations
 
@@ -16,6 +22,12 @@ from types import ModuleType
 
 import pytest
 import yaml
+
+# These tests build release trees from the shared repository checkout; two of them
+# running at once corrupt each other's git state. Under pytest-xdist the group name
+# pins the whole module to a single worker (serial among themselves, parallel to
+# everything else). Harmless no-op without xdist.
+pytestmark = pytest.mark.xdist_group("serial_sensitive")
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
@@ -233,7 +245,7 @@ def _build_release_in_clone(
         check=True,
         capture_output=True,
         text=True,
-        timeout=60,
+        timeout=240,
     )
     result = subprocess.run(
         ["git", "ls-tree", "-r", "--name-only", target],
@@ -251,7 +263,7 @@ def _run_tau_check(repo: Path, *args: str) -> subprocess.CompletedProcess[str]:
         cwd=repo,
         capture_output=True,
         text=True,
-        timeout=120,
+        timeout=240,
     )
 
 
@@ -477,7 +489,7 @@ def test_release_branch_strips_dev_files_and_untracks_v1_local_only_files(tmp_pa
         # Generous sanity ceiling, not a perf assertion: the smoke run spawns several
         # subprocess journeys, which can exceed a tight 30s budget on a loaded CI runner
         # and flake this test even though the run succeeds.
-        timeout=90,
+        timeout=240,
     )
     assert smoke_result.returncode == 0, smoke_result.stderr or smoke_result.stdout
     assert json.loads(smoke_result.stdout)["schema_version"] == 1
@@ -589,7 +601,7 @@ def test_release_build_uses_selected_source_version_for_tree_profile_manifest_an
         check=True,
         capture_output=True,
         text=True,
-        timeout=60,
+        timeout=240,
     )
 
     assert _git_json(clone, "release-selected:package.json")["version"] == "2.3.4"
@@ -645,7 +657,7 @@ def test_release_build_rejects_malformed_selected_package_before_creating_refs(t
         cwd=clone,
         capture_output=True,
         text=True,
-        timeout=60,
+        timeout=240,
     )
 
     assert result.returncode == 1
@@ -672,7 +684,7 @@ def test_raw_vault_bundle_has_package_profile_manifest_agreement(tmp_path: Path)
         check=True,
         capture_output=True,
         text=True,
-        timeout=120,
+        timeout=240,
     )
     archive_path = next(output.glob("dex-vault-bundle-v*.tar.gz"))
     with tarfile.open(archive_path, "r:gz") as archive:
@@ -731,7 +743,7 @@ def test_release_script_regenerates_profile_for_bumped_version(tmp_path: Path) -
         check=True,
         capture_output=True,
         text=True,
-        timeout=60,
+        timeout=240,
     )
 
     package = _git_json(clone, "HEAD:package.json")
@@ -819,7 +831,7 @@ def test_release_build_rejects_unsafe_selected_source_before_creating_ref(
         cwd=clone,
         capture_output=True,
         text=True,
-        timeout=120,
+        timeout=240,
     )
 
     assert result.returncode == 1
@@ -866,7 +878,7 @@ def test_release_build_uses_safe_selected_source_despite_unsafe_current_checkout
         cwd=clone,
         capture_output=True,
         text=True,
-        timeout=60,
+        timeout=240,
     )
 
     assert result.returncode == 0, result.stdout + result.stderr
@@ -914,7 +926,7 @@ def test_release_build_uses_selected_source_distignore_contract(tmp_path: Path) 
         cwd=clone,
         capture_output=True,
         text=True,
-        timeout=120,
+        timeout=240,
     )
 
     assert result.returncode == 1
@@ -935,7 +947,7 @@ def test_manifest_accepts_safe_head_source_tree(tmp_path: Path) -> None:
         cwd=clone,
         capture_output=True,
         text=True,
-        timeout=120,
+        timeout=240,
     )
 
     assert result.returncode == 0, result.stdout + result.stderr
@@ -991,7 +1003,7 @@ def test_manifest_rejects_unsafe_requested_tree_without_output_or_ref_mutation(
         cwd=clone,
         capture_output=True,
         text=True,
-        timeout=120,
+        timeout=240,
     )
 
     assert result.returncode == 1
@@ -1053,7 +1065,7 @@ def test_release_build_creates_immutable_versioned_tags(tmp_path: Path) -> None:
         check=True,
         capture_output=True,
         text=True,
-        timeout=60,
+        timeout=240,
     )
 
     second_short_sha = subprocess.run(
@@ -1178,7 +1190,7 @@ def test_distribution_check_rejects_enabled_integration_templates(tmp_path: Path
         cwd=clone,
         capture_output=True,
         text=True,
-        timeout=60,
+        timeout=240,
     )
 
     assert result.returncode == 1
@@ -1382,7 +1394,7 @@ def test_vault_distignore_directory_rules_resolve_before_staging(tmp_path: Path)
         cwd=REPO_ROOT,
         capture_output=True,
         text=True,
-        timeout=120,
+        timeout=240,
         env=environment,
     )
 
@@ -1416,7 +1428,7 @@ def test_vault_bundle_tree_manifest_and_archive_contain_no_tau(tmp_path: Path) -
         cwd=clone,
         capture_output=True,
         text=True,
-        timeout=120,
+        timeout=240,
         env=environment,
     )
     assert build_result.returncode == 0, build_result.stdout + build_result.stderr
@@ -1709,7 +1721,7 @@ def test_tau_gate_rejects_reintroduced_source_path_and_release_build_input(tmp_p
         cwd=clone,
         capture_output=True,
         text=True,
-        timeout=120,
+        timeout=240,
     )
     assert gate.returncode == 1
     assert "removed Tau path" in gate.stdout
@@ -1849,7 +1861,7 @@ def test_vault_build_rejects_tau_before_build_package_or_archive_commands(
         cwd=clone,
         capture_output=True,
         text=True,
-        timeout=120,
+        timeout=240,
         env=environment,
     )
     assert result.returncode == 1
