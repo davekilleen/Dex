@@ -283,6 +283,63 @@ def test_onboarding_keeps_conservative_identity_fallbacks() -> None:
     assert "What's your company email domain?" in domain_step
 
 
+def test_onboarding_narrows_roles_by_area_before_saving_existing_role_number() -> None:
+    flow = _read(".claude/flows/onboarding.md")
+    role_step = flow.split("## Step 2:", 1)[1].split("## Step 3:", 1)[0]
+
+    assert "First ask for their AREA" in role_step
+    assert "Then ask for their ROLE" in role_step
+    for area in (
+        "Product",
+        "Sales",
+        "Marketing",
+        "Engineering / Data / IT",
+        "Design",
+        "Customer Success",
+        "Operations / Finance / People / Legal",
+        "Leadership / Exec / Advisory",
+        "Something else",
+    ):
+        assert area in role_step
+    assert role_step.index("First ask for their AREA") < role_step.index(
+        "Then ask for their ROLE"
+    )
+    assert (
+        'validate_and_save_step(step_number=2, step_data={"role_number": '
+        "[selected id as integer]})" in role_step
+    )
+    assert (
+        'validate_and_save_step(step_number=2, step_data={"role": '
+        '"[their description]", "role_group": "Custom"})' in role_step
+    )
+
+
+def test_onboarding_keeps_pillars_intentional_and_grounds_them_in_calendar_evidence() -> None:
+    flow = _read(".claude/flows/onboarding.md")
+    pillar_step = flow.split("## Step 5:", 1)[1].split("## Step 6:", 1)[0]
+    unchanged_question = (
+        'Ask: "What are the 2-3 long-term areas of focus for your role? '
+        "Think broad themes, not specific goals."
+    )
+
+    assert "run_first_week_analysis()" in pillar_step
+    assert pillar_step.index("run_first_week_analysis()") < pillar_step.index(
+        unchanged_question
+    )
+    assert "`recurring_commitments`" in pillar_step
+    assert "`internal_external_split`" in pillar_step
+    assert "`observations`" in pillar_step
+    assert (
+        "That's where your time went. Pillars are what you want to be true in a "
+        "year — and there's often something important that owns none of your "
+        "calendar yet. That counts too."
+    ) in pillar_step
+    assert "Do not infer or guess pillars" in pillar_step
+    assert "`available: false` or `meeting_count: 0`" in pillar_step
+    assert "no evidence block and no apology" in pillar_step
+    assert unchanged_question in pillar_step
+
+
 def test_onboarding_gives_an_honest_time_estimate() -> None:
     opening = _read(".claude/flows/onboarding.md").splitlines()[2]
 

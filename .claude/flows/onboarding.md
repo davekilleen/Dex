@@ -61,8 +61,8 @@ The user can reply with a number or type the calendar name. Resolve a number to 
 Example:
 ```
 save_calendar_selection(
-  work_calendar="user@company.com",
-  work_email="user@company.com",
+  work_calendar="jane@example.com",
+  work_email="jane@example.com",
   calendar_count=4
 )
 ```
@@ -107,58 +107,48 @@ Let's get you set up. First, what's your name?"
 
 ## Step 2: Role
 
-Ask: "What's your role?"
+First ask for their AREA:
+
+Ask: "Which area is closest to your work?"
 
 Present options using your detected platform tool (see "Platform Detection" above):
 ```json
 {
   "questions": [{
-    "id": "role",
-    "prompt": "What's your role?",
+    "id": "role_area",
+    "prompt": "Which area is closest to your work?",
     "allow_multiple": false,
     "options": [
-      {"id": "1", "label": "Product Manager"},
-      {"id": "2", "label": "Sales / Account Executive"},
-      {"id": "3", "label": "Marketing"},
-      {"id": "4", "label": "Engineering"},
-      {"id": "5", "label": "Design"},
-      {"id": "6", "label": "Customer Success"},
-      {"id": "7", "label": "Solutions Engineering"},
-      {"id": "8", "label": "Product Operations"},
-      {"id": "9", "label": "RevOps / BizOps"},
-      {"id": "10", "label": "Data / Analytics"},
-      {"id": "11", "label": "Finance"},
-      {"id": "12", "label": "People (HR)"},
-      {"id": "13", "label": "Legal"},
-      {"id": "14", "label": "IT Support"},
-      {"id": "15", "label": "Founder"},
-      {"id": "16", "label": "CEO"},
-      {"id": "17", "label": "CFO"},
-      {"id": "18", "label": "COO"},
-      {"id": "19", "label": "CMO"},
-      {"id": "20", "label": "CRO"},
-      {"id": "21", "label": "CTO"},
-      {"id": "22", "label": "CPO"},
-      {"id": "23", "label": "CIO"},
-      {"id": "24", "label": "CISO"},
-      {"id": "25", "label": "CHRO / Chief People Officer"},
-      {"id": "26", "label": "CLO / General Counsel"},
-      {"id": "27", "label": "CCO (Chief Customer Officer)"},
-      {"id": "28", "label": "Fractional CPO"},
-      {"id": "29", "label": "Consultant"},
-      {"id": "30", "label": "Coach"},
-      {"id": "31", "label": "Venture Capital / Private Equity"},
-      {"id": "other", "label": "My role isn't listed"}
+      {"id": "product", "label": "Product"},
+      {"id": "sales", "label": "Sales"},
+      {"id": "marketing", "label": "Marketing"},
+      {"id": "engineering", "label": "Engineering / Data / IT"},
+      {"id": "design", "label": "Design"},
+      {"id": "customer_success", "label": "Customer Success"},
+      {"id": "operations", "label": "Operations / Finance / People / Legal"},
+      {"id": "leadership", "label": "Leadership / Exec / Advisory"},
+      {"id": "other", "label": "Something else"}
     ]
   }]
 }
 ```
 
-**If user selects "My role isn't listed" (id: "other"):**
+Then ask for their ROLE using only the roles mapped to the selected area. Keep each existing number as the option id:
+
+- **Product:** `1` Product Manager; `8` Product Operations; `22` CPO; `28` Fractional CPO
+- **Sales:** `2` Sales / Account Executive; `7` Solutions Engineering; `20` CRO
+- **Marketing:** `3` Marketing; `19` CMO
+- **Engineering / Data / IT:** `4` Engineering; `10` Data / Analytics; `14` IT Support; `21` CTO; `23` CIO; `24` CISO
+- **Design:** `5` Design
+- **Customer Success:** `6` Customer Success; `27` CCO (Chief Customer Officer)
+- **Operations / Finance / People / Legal:** `9` RevOps / BizOps; `11` Finance; `12` People (HR); `13` Legal; `17` CFO; `18` COO; `25` CHRO / Chief People Officer; `26` CLO / General Counsel
+- **Leadership / Exec / Advisory:** `15` Founder; `16` CEO; `29` Consultant; `30` Coach; `31` Venture Capital / Private Equity
+
+**If user selects "Something else" (id: "other"):**
 Ask: "What's your role? Describe it however makes sense — I'll tailor the system accordingly."
 Then call `validate_and_save_step(step_number=2, step_data={"role": "[their description]", "role_group": "Custom"})`.
 
-**If user selects a numbered role:**
+**If user selects a role from an area:**
 Call `validate_and_save_step(step_number=2, step_data={"role_number": [selected id as integer]})` to validate and save.
 
 ---
@@ -216,6 +206,18 @@ Ask: "What's your company email domain? This helps me automatically:
 ---
 
 ## Step 5: Strategic Pillars
+
+Before asking, call `run_first_week_analysis()` from onboarding-mcp. This is evidence for the question, never an answer to it. Do not infer or guess pillars from calendar activity.
+
+- If `available: true` and `meeting_count` is greater than zero, show one compact evidence block using only `pillar_evidence`:
+  - Show `recurring_commitments`; if the list is empty, say that no recurring commitments were identifiable from this week.
+  - Show the meeting counts in `internal_external_split`.
+  - Show the returned `observations` (at most two).
+  - Do not recalculate any count or hours. The MCP has already excluded all-day entries such as flights, holidays, and days off.
+
+Then say: "That's where your time went. Pillars are what you want to be true in a year — and there's often something important that owns none of your calendar yet. That counts too."
+
+- If `available: false` or `meeting_count: 0`, show no evidence block and no apology. Do not mention the failed or empty calendar analysis; continue directly to the unchanged question below.
 
 Ask: "What are the 2-3 long-term areas of focus for your role? Think broad themes, not specific goals.
 
