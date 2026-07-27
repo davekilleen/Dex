@@ -6,7 +6,7 @@
  * Returns intelligent integration recommendations ranked by signal strength.
  *
  * Called by:
- * - Onboarding Step 8 (first-time integration discovery)
+ * - Onboarding Step 9 (first-time integration discovery)
  * - /getting-started (post-onboarding tour)
  * - /dex-level-up (feature discovery)
  *
@@ -42,6 +42,7 @@ const INTEGRATIONS = {
     id: 'google-workspace',
     name: 'Google Workspace (Gmail + Calendar + Docs)',
     shortName: 'Gmail',
+    route: 'skill',
     setup: '/google-workspace-setup',
     mcpServers: ['google-workspace-mcp'],
     signals: {
@@ -58,6 +59,7 @@ const INTEGRATIONS = {
     id: 'teams',
     name: 'Microsoft Teams',
     shortName: 'Teams',
+    route: 'skill',
     setup: '/ms-teams-setup',
     apps: ['Microsoft Teams.app'],
     mcpServers: ['teams-mcp'],
@@ -75,6 +77,7 @@ const INTEGRATIONS = {
     id: 'todoist',
     name: 'Todoist',
     shortName: 'Todoist',
+    route: 'skill',
     setup: '/todoist-setup',
     apps: ['Todoist.app'],
     mcpServers: ['todoist-mcp'],
@@ -90,6 +93,7 @@ const INTEGRATIONS = {
     id: 'things',
     name: 'Things 3',
     shortName: 'Things 3',
+    route: 'skill',
     setup: '/things-setup',
     apps: ['Things3.app'],
     mcpServers: ['things3-mcp'],
@@ -105,6 +109,7 @@ const INTEGRATIONS = {
     id: 'trello',
     name: 'Trello',
     shortName: 'Trello',
+    route: 'skill',
     setup: '/trello-setup',
     apps: ['Trello.app'],
     mcpServers: ['mcp-server-trello'],
@@ -120,6 +125,7 @@ const INTEGRATIONS = {
     id: 'zoom',
     name: 'Zoom',
     shortName: 'Zoom',
+    route: 'skill',
     setup: '/zoom-setup',
     apps: ['zoom.us.app'],
     mcpServers: ['zoom-mcp'],
@@ -137,6 +143,7 @@ const INTEGRATIONS = {
     id: 'atlassian',
     name: 'Atlassian (Jira + Confluence)',
     shortName: 'Jira/Confluence',
+    route: 'skill',
     setup: '/atlassian-setup',
     mcpServers: ['atlassian-mcp'],
     signals: {
@@ -147,6 +154,76 @@ const INTEGRATIONS = {
     value: 'Jira tickets and Confluence docs in daily plans, sprint tracking',
     setupTime: '3 min',
     auth: 'OAuth (Atlassian Cloud)',
+  },
+  slack: {
+    id: 'slack',
+    name: 'Slack',
+    shortName: 'Slack',
+    route: 'connect',
+    apps: ['Slack.app'],
+    signals: {},
+    value: 'Work conversations and decisions as context when a Dex workflow supports Slack',
+  },
+  notion: {
+    id: 'notion',
+    name: 'Notion',
+    shortName: 'Notion',
+    route: 'connect',
+    apps: ['Notion.app'],
+    signals: {},
+    value: 'Knowledge and project docs as context when a Dex workflow supports Notion',
+  },
+  linear: {
+    id: 'linear',
+    name: 'Linear',
+    shortName: 'Linear',
+    route: 'connect',
+    apps: ['Linear.app'],
+    signals: {},
+    value: 'Issues and project updates as context when a Dex workflow supports Linear',
+  },
+  obsidian: {
+    id: 'obsidian',
+    name: 'Obsidian',
+    shortName: 'Obsidian',
+    route: 'connect',
+    apps: ['Obsidian.app'],
+    signals: {},
+    value: 'Your existing notes workspace as context for choosing the right setup',
+  },
+  granola: {
+    id: 'granola',
+    name: 'Granola',
+    shortName: 'Granola',
+    // Routed to its own setup skill, NOT /connect: granola_server.py reads
+    // GRANOLA_API_KEY from the environment or the vault's .env file, so a
+    // credential stored by the connection manager would be invisible to it and
+    // the user would be told they had connected something that still cannot work.
+    route: 'skill',
+    setup: '/granola-setup',
+    apps: ['Granola.app'],
+    signals: {},
+    value: 'Your meeting notes and transcripts as context in planning and prep',
+    setupTime: '2 min',
+    auth: 'API key (needs a Granola Business or Enterprise plan)',
+  },
+  cursor: {
+    id: 'cursor',
+    name: 'Cursor',
+    shortName: 'Cursor',
+    route: 'connect',
+    apps: ['Cursor.app'],
+    signals: {},
+    value: 'Your coding environment as a signal for relevant developer workflows',
+  },
+  figma: {
+    id: 'figma',
+    name: 'Figma',
+    shortName: 'Figma',
+    route: 'connect',
+    apps: ['Figma.app'],
+    signals: {},
+    value: 'Design files and comments as context when a Dex workflow supports Figma',
   },
 };
 
@@ -476,21 +553,15 @@ function generateRecommendations(signals) {
     moderate_value: [], // Score 1-4 and not enabled
     available: [],     // Score 0, not enabled
     already_connected: [], // Already enabled
+    connect_detected: [], // Installed apps that route through /connect
   };
 
   for (const [key, data] of Object.entries(signals)) {
-    if (enabled.includes(key)) {
-      recommendations.already_connected.push({
-        id: key,
-        name: data.shortName,
-      });
-      continue;
-    }
-
     const entry = {
       id: key,
       name: data.name,
       shortName: data.shortName,
+      route: data.route,
       setup: data.setup,
       value: data.value,
       setupTime: data.setupTime,
@@ -508,6 +579,21 @@ function generateRecommendations(signals) {
             ? `${data.mentions} mention${data.mentions === 1 ? '' : 's'} in your notes${data.examples.length > 0 ? ` (e.g. ${data.examples[0]})` : ''}`
             : 'available to connect',
     };
+
+    if (data.route === 'connect') {
+      if (data.score > 0) {
+        recommendations.connect_detected.push(entry);
+      }
+      continue;
+    }
+
+    if (enabled.includes(key)) {
+      recommendations.already_connected.push({
+        id: key,
+        name: data.shortName,
+      });
+      continue;
+    }
 
     // Add Granola note to Zoom
     if (key === 'zoom' && hasGranola) {
@@ -531,6 +617,7 @@ function generateRecommendations(signals) {
   // Sort each tier by score descending
   recommendations.high_value.sort((a, b) => b.score - a.score);
   recommendations.moderate_value.sort((a, b) => b.score - a.score);
+  recommendations.connect_detected.sort((a, b) => b.score - a.score);
 
   return recommendations;
 }

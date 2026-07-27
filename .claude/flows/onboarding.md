@@ -476,6 +476,8 @@ Say: "Now the fun part — let's connect the tools you use day to day."
 - Atlassian (Jira + Confluence) — Tickets and docs in daily plans. Setup: 3 min
 ```
 
+Dex can also connect hundreds of other tools with `/connect`. The quick ones ask you to paste a key; browser sign-ins need a one-time setup where you register your own app for Dex in that tool's own settings. Only Google and Linear have had Dex's security review; anything else asks for your explicit opt-in before Dex continues.
+
 If any integrations are already connected, briefly note them so you don't re-offer.
 
 ### 8b: Personalize with Vault Signals
@@ -486,39 +488,42 @@ Before asking which to connect, run the integration concierge — it scans for s
 node .claude/hooks/integration-concierge.cjs
 ```
 
-Parse the JSON for the high_value and moderate_value tiers. Each entry has a `reason` field with a ready-made plain-English signal ("installed on your Mac", "already set up as a connector but not switched on yet", or a mention count). If any high_value items came back, surface them first, personalized:
+Parse the JSON for `high_value`, `moderate_value`, and `connect_detected`. Each entry has a `reason` and a `route`: `skill` uses its tested setup skill; `connect` uses `/connect` and deliberately has no `setup` field. Surface curated `high_value` items as before, then add at most the top three `connect_detected` items:
 
 ```
 Based on what's already on your machine and in your vault, these look most useful:
 
-- **[shortName]** — [reason]. [value proposition]. Setup: [setupTime].
+- `skill`: **[shortName]** — [reason]. [value]. Setup: [setupTime].
+- `connect`: **[shortName]** — [reason]. [value]. Connect with `/connect`.
 ```
 
-Then present the rest of the categorized list from 8a for anything not already surfaced. If the concierge returns no high_value signals (common for a brand-new vault), just use the 8a list as-is — don't mention the scan.
+Then present the rest of the curated list from 8a for anything not already surfaced. If both `high_value` and `connect_detected` are empty, just use the 8a list — don't mention the scan.
 
 After presenting, set an `integrations_offered` flag in the `.onboarding-complete` marker so `/getting-started` doesn't re-run this discovery.
 
 **Then ask:**
 
-"Which ones would you like to connect? You can always add more later with `/integrate-mcp` or individual setup commands."
+"Which ones would you like to connect? You can always add more later with `/connect`, `/integrate-mcp`, or individual setup commands."
 
 ### 8c: Connect Selected Integrations
 
-For each integration the user selects:
+For each integration the user selects, follow its `route`:
 
-1. Run its setup skill: invoke the skill referenced in the integration's `setup` field (e.g., `/todoist-setup`, `/google-workspace-setup`)
-2. Wait for the setup skill to complete (each includes auth, config, and verification)
-3. The setup skill shows its **Capability Cascade** at the end (from `integration-patterns.md`):
-   - Which existing skills just got smarter
-   - What new capabilities are now available
-   - Privacy and trust level summary
-4. Move to the next selected integration
+- `skill`:
+  1. Run its setup skill: invoke the skill referenced in the integration's `setup` field (e.g., `/todoist-setup`, `/google-workspace-setup`)
+  2. Wait for the setup skill to complete (each includes auth, config, and verification)
+  3. The setup skill shows its **Capability Cascade** at the end (from `integration-patterns.md`):
+     - Which existing skills just got smarter
+     - What new capabilities are now available
+     - Privacy and trust level summary
+  4. Move to the next selected integration
+- `connect`: invoke `/connect` for that provider; never invent a setup skill or setup time. `/connect` explains whether it needs a pasted key or the browser-sign-in setup. For anything other than Google or Linear, explain that it has not had Dex's security review and get explicit opt-in before using `--allow-unvetted`.
 
 If the user selects multiple, run them in sequence. After each one, confirm success before moving to the next.
 
 If the user says "skip" or "none" or "later":
 
-Say: "No problem! You can connect tools anytime with `/integrate-mcp` or the individual setup commands. Run `/dex-level-up` to see what's available."
+Say: "No problem! You can connect tools anytime with `/connect`, `/integrate-mcp`, or the individual setup commands. Run `/dex-level-up` to see what's available."
 
 ### 8d: Optional Features (After Integrations)
 
