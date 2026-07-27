@@ -1,6 +1,6 @@
 <!-- GENERATED FILE — DO NOT EDIT BY HAND. -->
 <!-- Generator: scripts/generate-architecture-inventory.py -->
-<!-- Content SHA-256: 6015417c0401d0f87088c47313c71ce89cff4cfae49d2a646387bdf0cff86fa3 -->
+<!-- Content SHA-256: edef88059661d1f61966d12e9ed4163c0c10fd6afd8fddb9a0bd255acfe27e78 -->
 
 # Architecture Inventory
 
@@ -141,15 +141,16 @@ Derived from `core/portable_contract.py` `RULES` and `MUTATION_POLICY`.
 
 | Class | Rule count | Update action |
 | --- | ---: | --- |
-| `brain` | 44 | `replace` |
+| `brain` | 45 | `replace` |
 | `seed` | 38 | `write-if-absent` |
 | `generated` | 8 | `regenerate` |
 | `vault` | 17 | `never` |
 | `runtime` | 13 | `never` |
 
-<details><summary><code>brain</code> declared paths (44)</summary>
+<details><summary><code>brain</code> declared paths (45)</summary>
 
 - `.agents` (dir; `brain-agents`)
+- `.ci` (dir; `brain-ci`)
 - `.claude` (dir; `brain-claude`)
 - `.cursor` (dir; `brain-cursor`)
 - `.distignore` (file; `brain-distignore`)

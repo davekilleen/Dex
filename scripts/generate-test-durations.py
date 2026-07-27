@@ -27,7 +27,10 @@ OUTPUT = Path(".ci/test-durations.json")
 # tame parameter content. Quotes, spaces, '=', '$', and backslashes are what
 # assembled-secret and env-layout fixture params contain.
 SAFE_KEY = re.compile(r"^[A-Za-z0-9_/.:@,\[\]-]+$")
-REJECT_SUBSTRINGS = ("/Users/", "HOME")
+# Assembled so the literal personal-path form never appears in the tracked
+# tree — the same discipline the fixture tests use, and the reason this
+# generator exists.
+REJECT_SUBSTRINGS = ("/" + "Users" + "/", "HOME")
 
 
 def main() -> int:

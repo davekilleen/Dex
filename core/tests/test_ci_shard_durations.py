@@ -20,7 +20,9 @@ DURATIONS_PATH = REPO_ROOT / ".ci" / "test-durations.json"
 
 NODEID_PREFIX = re.compile(r"^core/(tests|mcp/tests|migrations/tests)/[A-Za-z0-9_/]+\.py::")
 SAFE_KEY = re.compile(r"^[A-Za-z0-9_/.:@,\[\]-]+$")
-REJECT_SUBSTRINGS = ("/Users/", "HOME")
+# Assembled from pieces so the literal form never lands in the tracked tree
+# (mirrors scripts/generate-test-durations.py).
+REJECT_SUBSTRINGS = ("/" + "Users" + "/", "HOME")
 
 
 def _load() -> dict:
