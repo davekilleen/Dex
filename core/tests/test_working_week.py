@@ -330,6 +330,56 @@ def test_calendar_capacity_tool_handler_uses_configured_working_week(
     ]
 
 
+def test_calendar_capacity_planning_ignores_nudges_and_keeps_meetings(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    _write_profile(
+        tmp_path,
+        "working_week:\n"
+        "  days: [monday, tuesday, wednesday, thursday, friday]\n",
+    )
+    monkeypatch.setenv("VAULT_PATH", str(tmp_path))
+    working_week._reset_cache()
+    monkeypatch.setattr(work_server, "_tz_today", lambda: date(2026, 7, 27))
+
+    result = asyncio.run(
+        work_server.handle_call_tool(
+            "analyze_calendar_capacity",
+            {
+                "days_ahead": 1,
+                "events": [
+                    {
+                        "date": "2026-07-27",
+                        "title": "Customer review",
+                        "duration_minutes": 60,
+                        "calendar_name": "Work",
+                    },
+                    {
+                        "date": "2026-07-27",
+                        "title": "Plan today with Dex",
+                        "duration_minutes": 30,
+                        "calendar_name": " Dex ",
+                    },
+                    {
+                        "date": "2026-07-27",
+                        "title": "Review my week",
+                        "duration_minutes": 30,
+                        "calendar_name": "Work",
+                        "notes": (
+                            "Added by Dex · delete the Dex calendar to stop these"
+                        ),
+                    },
+                ],
+            },
+        )
+    )
+    payload = json.loads(result[0].text)
+
+    assert payload["days"][0]["meeting_count"] == 1
+    assert payload["days"][0]["meeting_hours"] == 1.0
+
+
 def test_task_scheduling_uses_configured_working_week(
     tmp_path: Path,
     monkeypatch,

@@ -732,6 +732,13 @@ You've already seen the first-week snapshot from the calendar data Dex could rea
 
 📖 One more thing worth bookmarking: the **Dex Guide** at https://heydex.ai/help/ — a plain-English walkthrough of everything Dex can do, with copy-paste prompts to steal. Great for your first week."
 
+Then ask: "Want me to put a few gentle nudges in your calendar for your first few weeks? One a day, each with something to try. They're all-day reminders marked private and free, so they never block your time or make you look busy — and you can delete the whole thing in one tap."
+
+Present two choices: **Yes, add them** and **No thanks**.
+
+- On **Yes, add them**: call `generate_nudge_calendar()`. Tell them the file is ready, give its returned path, and explain that opening it will offer to add a new calendar called Dex. On macOS, offer to open it for them with `open <path>`. Say plainly: choose "New Calendar" if asked, so it stays separate and is easy to remove.
+- On **No thanks**: say nothing more about it and move on. Do not ask again. Do not capture anything.
+
 ---
 
 ## Step 12: Phase 2 - Deeper Getting Started (Optional but Recommended)

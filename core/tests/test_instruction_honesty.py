@@ -438,6 +438,28 @@ def test_onboarding_connect_step_preserves_the_curated_setup_skill_flow() -> Non
     assert "Move to the next selected integration" in connect_step
 
 
+def test_onboarding_completion_offers_the_optional_nudge_calendar() -> None:
+    flow = _read(".claude/flows/onboarding.md")
+    completion = flow.split("## Step 11:", 1)[1].split("## Step 12:", 1)[0]
+
+    assert (
+        "Want me to put a few gentle nudges in your calendar for your first "
+        "few weeks? One a day, each with something to try. They're all-day "
+        "reminders marked private and free, so they never block your time or "
+        "make you look busy — and you can delete the whole thing in one tap."
+        in completion
+    )
+    assert "**Yes, add them**" in completion
+    assert "**No thanks**" in completion
+    assert "generate_nudge_calendar()" in completion
+    assert "opening it will offer to add a new calendar called Dex" in completion
+    assert "`open <path>`" in completion
+    assert 'choose "New Calendar" if asked' in completion
+    assert "say nothing more about it and move on" in completion
+    assert "Do not ask again" in completion
+    assert "Do not capture anything" in completion
+
+
 def test_getting_started_treats_the_reveal_as_already_presented() -> None:
     skill = _read(".claude/skills/getting-started/SKILL.md")
 

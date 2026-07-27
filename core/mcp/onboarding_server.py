@@ -54,6 +54,7 @@ from core.paths import (
 from core.paths import (
     VAULT_ROOT as BASE_DIR,
 )
+from core.utils.nudge_calendar import build_nudge_calendar, is_dex_nudge_event
 
 # User-configured working week (defaults to Monday-Friday)
 try:
@@ -543,6 +544,8 @@ def _timed_calendar_events(events: List[Dict]) -> List[Dict]:
     """Exclude all-day and malformed events from meeting analysis."""
     timed_events = []
     for event in events:
+        if is_dex_nudge_event(event):
+            continue
         if event.get('all_day') is True:
             continue
         if (
@@ -967,6 +970,53 @@ def run_first_week_analysis() -> Dict[str, Any]:
         ),
     }
 
+
+def generate_nudge_calendar() -> Dict[str, Any]:
+    """Write the optional onboarding nudge calendar and return concrete metadata."""
+
+    def _granola_connected() -> bool:
+        # Granola only changes the wording of one event. If its module cannot be
+        # imported or the lookup fails, fall back to the not-connected variant
+        # rather than failing the whole calendar for an optional flourish.
+        try:
+            from core.mcp.granola_server import get_api_key
+
+            return get_api_key() is not None
+        except Exception as error:
+            logger.warning(f"Could not check the Granola connection: {error}")
+            return False
+
+    profile = _load_first_week_profile()
+    pillars = [
+        pillar.get('name', '') if isinstance(pillar, dict) else str(pillar)
+        for pillar in profile.get('pillars', [])
+    ]
+    pillars = [pillar.strip() for pillar in pillars if pillar.strip()]
+    calendar_text = build_nudge_calendar(
+        date.today(),
+        pillars=pillars,
+        granola_connected=_granola_connected(),
+    )
+
+    calendar_path = (BASE_DIR / "System" / "dex-calendar.ics").resolve()
+    calendar_path.parent.mkdir(parents=True, exist_ok=True)
+    calendar_path.write_text(calendar_text, encoding="utf-8", newline="")
+
+    first_date_value = next(
+        line.partition(":")[2]
+        for line in calendar_text.splitlines()
+        if line.startswith("DTSTART;VALUE=DATE:")
+    )
+    return {
+        "path": str(calendar_path),
+        "event_count": calendar_text.count("BEGIN:VEVENT"),
+        "first_event_date": datetime.strptime(
+            first_date_value,
+            "%Y%m%d",
+        ).date().isoformat(),
+    }
+
+
 # ============================================================================
 # MCP SERVER SETUP
 # ============================================================================
@@ -1067,6 +1117,14 @@ async def handle_list_tools() -> list[types.Tool]:
         types.Tool(
             name="run_first_week_analysis",
             description="Analyze this week's timed calendar meetings and return an honest, structured onboarding reveal.",
+            inputSchema={
+                "type": "object",
+                "properties": {}
+            }
+        ),
+        types.Tool(
+            name="generate_nudge_calendar",
+            description="Create the optional first-weeks Dex nudge calendar and return its file path and event details.",
             inputSchema={
                 "type": "object",
                 "properties": {}
@@ -1578,6 +1636,16 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[types.Text
 
         elif name == "run_first_week_analysis":
             result = create_success_response(run_first_week_analysis())
+            return [types.TextContent(
+                type="text",
+                text=json.dumps(result, indent=2, cls=DateTimeEncoder),
+            )]
+
+        elif name == "generate_nudge_calendar":
+            result = create_success_response(
+                generate_nudge_calendar(),
+                "Nudge calendar ready",
+            )
             return [types.TextContent(
                 type="text",
                 text=json.dumps(result, indent=2, cls=DateTimeEncoder),

@@ -38,6 +38,15 @@ def mixed_calendar_events():
             ],
         },
         {
+            "title": "Plan today with Dex",
+            "start": datetime(2026, 7, 27, 10, 30),
+            "end": datetime(2026, 7, 27, 11, 0),
+            "duration_minutes": 30,
+            "calendar_name": "Personal",
+            "notes": "Added by Dex · delete the Dex calendar to stop these",
+            "attendees": [],
+        },
+        {
             "title": "Out of office",
             "start": date(2026, 7, 28),
             "end": date(2026, 7, 29),

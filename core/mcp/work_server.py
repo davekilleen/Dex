@@ -3424,10 +3424,15 @@ def _is_all_day_calendar_event(event: Dict) -> bool:
 
 def analyze_day_capacity(events: List[Dict], target_date: date) -> Dict[str, Any]:
     """Analyze a single day's calendar capacity"""
+    from core.utils.nudge_calendar import is_dex_nudge_event
+
     day_name = target_date.strftime('%A')
     timed_events = [
         event for event in events
-        if not _is_all_day_calendar_event(event)
+        if (
+            not _is_all_day_calendar_event(event)
+            and not is_dex_nudge_event(event)
+        )
     ]
     
     # Calculate total meeting time
