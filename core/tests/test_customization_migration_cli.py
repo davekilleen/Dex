@@ -22,7 +22,11 @@ from core.tests.vault_observed_writes import snapshot_vault
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
-def _run(vault: Path, *arguments: str) -> subprocess.CompletedProcess[str]:
+def _run(
+    vault: Path,
+    *arguments: str,
+    extra_env: dict[str, str] | None = None,
+) -> subprocess.CompletedProcess[str]:
     env = os.environ.copy()
     env.update(
         {
@@ -30,6 +34,8 @@ def _run(vault: Path, *arguments: str) -> subprocess.CompletedProcess[str]:
             "VAULT_PATH": str(vault),
         }
     )
+    if extra_env is not None:
+        env.update(extra_env)
     return subprocess.run(
         [sys.executable, "-m", "core.customization_migration.cli", *arguments],
         cwd=REPO_ROOT,
@@ -248,32 +254,48 @@ def test_rebuild_doorway_runs_real_happy_path_and_renders_every_receipt(
     ):
         assert f"{field}:" in staged.stdout
 
-    verified = _run(
+    before_verification = snapshot_vault(vault)
+    missing_verification = _run(
         vault,
         "verify",
         candidate.capsule_id,
         candidate.proposal_id,
     )
-    assert verified.returncode == 0, verified.stdout
-    report = json.loads(
-        (
-            vault
-            / CAPSULE_ROOT
-            / candidate.capsule_id
-            / "verification"
-            / f"{candidate.proposal_id}.json"
-        ).read_text(encoding="utf-8")
+    assert missing_verification.returncode != 0
+    verification_token = _token(missing_verification.stdout)
+    assert snapshot_vault(vault) == before_verification
+
+    stale_verification = _run(
+        vault,
+        "verify",
+        candidate.capsule_id,
+        candidate.proposal_id,
+        "--confirm-token",
+        "0" * 64,
     )
-    for field, value in report.items():
-        assert f"{field}: {_rendered(value)}" in verified.stdout
+    assert stale_verification.returncode != 0
+    assert _token(stale_verification.stdout) == verification_token
+    assert snapshot_vault(vault) == before_verification
+
+    verified = _run(
+        vault,
+        "verify",
+        candidate.capsule_id,
+        candidate.proposal_id,
+        "--confirm-token",
+        verification_token,
+    )
+    assert verified.returncode == 0, verified.stdout
     for field in (
         "capsule_id",
         "staging_id",
-        "report_path",
         "report_sha256",
         "transaction_id",
     ):
         assert f"{field}:" in verified.stdout
+    assert "static_results:" not in verified.stdout
+    assert "reported_verifications:" not in verified.stdout
+    assert "notes:" not in verified.stdout
 
     previewed_activation = _run(
         vault,
@@ -316,16 +338,19 @@ def test_rebuild_doorway_runs_real_happy_path_and_renders_every_receipt(
         activation_token,
     )
     assert activated.returncode == 0, activated.stdout
-    activation_receipt = json.loads(
-        (
-            vault
-            / "System/.dex/customization-migrations"
-            / candidate.capsule_id
-            / "receipts/activation.json"
-        ).read_text(encoding="utf-8")
-    )
-    for field, value in activation_receipt.items():
-        assert f"{field}: {_rendered(value)}" in activated.stdout
+    for field in (
+        "capsule_id",
+        "proposal_id",
+        "verification_report_sha256",
+            "candidate_sha256",
+            "file_count",
+            "transaction_id",
+            "activated_epoch_seconds",
+            "rewind_available",
+    ):
+        assert f"{field}:" in activated.stdout
+    assert "files_written:" not in activated.stdout
+    assert "snapshot_ref:" not in activated.stdout
 
     status = _run(vault, "activation-status", candidate.capsule_id)
     assert status.returncode == 0
@@ -361,16 +386,140 @@ def test_rebuild_doorway_runs_real_happy_path_and_renders_every_receipt(
         rewind_token,
     )
     assert rewound.returncode == 0, rewound.stdout
-    rewind_receipt = json.loads(
-        (
-            vault
-            / "System/.dex/customization-migrations"
-            / candidate.capsule_id
-            / "receipts/rewind.json"
-        ).read_text(encoding="utf-8")
-    )
-    for field, value in rewind_receipt.items():
-        assert f"{field}: {_rendered(value)}" in rewound.stdout
+    for field in (
+        "capsule_id",
+        "proposal_id",
+        "activation_transaction_id",
+        "rewind_transaction_id",
+        "status",
+            "reason",
+            "file_count",
+            "rewound_epoch_seconds",
+        ):
+        assert f"{field}:" in rewound.stdout
+    assert "files_restored:" not in rewound.stdout
     final_status = _run(vault, "activation-status", candidate.capsule_id)
     assert "state: rewound" in final_status.stdout
     assert "rewindable: false" in final_status.stdout
+
+
+def test_verification_output_does_not_print_candidate_controlled_free_text(
+    tmp_path: Path,
+) -> None:
+    sentinel = "DO-NOT-PRINT-CANDIDATE-CONTROLLED-TEXT"
+    vault, candidate = _candidate_with_contract(tmp_path, statement=sentinel)
+    candidate_path = _candidate_file(tmp_path, candidate)
+    stage_preview = _run(vault, "stage", str(candidate_path))
+    stage_token = _token(stage_preview.stdout)
+    staged = _run(
+        vault,
+        "stage",
+        str(candidate_path),
+        "--confirm-token",
+        stage_token,
+    )
+    assert staged.returncode == 0
+    verify_preview = _run(
+        vault,
+        "verify",
+        candidate.capsule_id,
+        candidate.proposal_id,
+    )
+    verification_token = _token(verify_preview.stdout)
+
+    verified = _run(
+        vault,
+        "verify",
+        candidate.capsule_id,
+        candidate.proposal_id,
+        "--confirm-token",
+        verification_token,
+    )
+
+    assert verified.returncode == 0
+    assert sentinel not in verify_preview.stdout
+    assert sentinel not in verified.stdout
+
+
+def test_recover_cli_restores_one_interrupted_activation_with_bound_token(
+    tmp_path: Path,
+) -> None:
+    vault, candidate = _candidate_with_contract(tmp_path)
+    candidate_path = _candidate_file(tmp_path, candidate)
+    stage_preview = _run(vault, "stage", str(candidate_path))
+    staged = _run(
+        vault,
+        "stage",
+        str(candidate_path),
+        "--confirm-token",
+        _token(stage_preview.stdout),
+    )
+    assert staged.returncode == 0
+    verification_preview = _run(
+        vault,
+        "verify",
+        candidate.capsule_id,
+        candidate.proposal_id,
+    )
+    verified = _run(
+        vault,
+        "verify",
+        candidate.capsule_id,
+        candidate.proposal_id,
+        "--confirm-token",
+        _token(verification_preview.stdout),
+    )
+    assert verified.returncode == 0
+    activation_preview = _run(
+        vault,
+        "preview-activation",
+        candidate.capsule_id,
+        candidate.proposal_id,
+    )
+
+    interrupted = _run(
+        vault,
+        "activate",
+        candidate.capsule_id,
+        candidate.proposal_id,
+        "--confirm-token",
+        _token(activation_preview.stdout),
+        extra_env={"DEX_TX_TEST_STOP_AFTER": "mid-apply:0"},
+    )
+
+    assert interrupted.returncode == 137
+    after_interrupt = snapshot_vault(vault)
+    status = _run(vault, "status")
+    assert "Recovery phase: activation" in status.stdout
+    assert (
+        "Recovery action: python3 -m core.customization_migration.cli "
+        "recover --confirm-token "
+    ) in status.stdout
+
+    missing = _run(vault, "recover")
+    assert missing.returncode != 0
+    recovery_token = _token(missing.stdout)
+    assert snapshot_vault(vault) == after_interrupt
+
+    stale = _run(vault, "recover", "--confirm-token", "0" * 64)
+    assert stale.returncode != 0
+    assert _token(stale.stdout) == recovery_token
+    assert snapshot_vault(vault) == after_interrupt
+
+    recovered = _run(
+        vault,
+        "recover",
+        "--confirm-token",
+        recovery_token,
+    )
+
+    assert recovered.returncode == 0, recovered.stdout
+    assert "Recovered phase: activation" in recovered.stdout
+    assert not (vault / candidate.files[0].target_path).exists()
+    assert not (
+        vault
+        / CAPSULE_ROOT
+        / candidate.capsule_id
+        / "receipts/activation.json"
+    ).exists()
+    assert "Recovery phase:" not in _run(vault, "status").stdout

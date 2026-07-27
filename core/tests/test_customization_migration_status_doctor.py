@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import hashlib
+import os
+import subprocess
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -282,10 +285,16 @@ def test_doctor_surfaces_verified_activation_and_rewind_authority(
         candidate,
         staging_preview["preview_sha256"],
     )
+    verification_preview = migration_service.preview_verification_to_dict(
+        vault,
+        candidate.capsule_id,
+        candidate.proposal_id,
+    )
     migration_service.verify_staging_to_dict(
         vault,
         candidate.capsule_id,
         candidate.proposal_id,
+        verification_preview["confirm_token"],
     )
     activation_preview = migration_service.preview_activation_to_dict(
         vault,
@@ -346,10 +355,16 @@ def test_corrupt_activation_evidence_is_broken_fail_closed(
         candidate,
         staging_preview["preview_sha256"],
     )
+    verification_preview = migration_service.preview_verification_to_dict(
+        vault,
+        candidate.capsule_id,
+        candidate.proposal_id,
+    )
     migration_service.verify_staging_to_dict(
         vault,
         candidate.capsule_id,
         candidate.proposal_id,
+        verification_preview["confirm_token"],
     )
     activation_preview = migration_service.preview_activation_to_dict(
         vault,
@@ -394,10 +409,16 @@ def test_blocked_verification_remains_blocked_and_is_broken(
         candidate,
         staging_preview["preview_sha256"],
     )
+    verification_preview = migration_service.preview_verification_to_dict(
+        vault,
+        candidate.capsule_id,
+        candidate.proposal_id,
+    )
     verification = migration_service.verify_staging_to_dict(
         vault,
         candidate.capsule_id,
         candidate.proposal_id,
+        verification_preview["confirm_token"],
     )
 
     result = doctor._probe_customization_migration_status(
@@ -416,3 +437,131 @@ def test_blocked_verification_remains_blocked_and_is_broken(
     assert capsule["staging"]["proposals"][0][
         "verification_verdict"
     ] == "BLOCKED"
+
+
+def test_missing_activation_receipt_is_broken_pending_recovery_required(
+    tmp_path: Path,
+) -> None:
+    vault, candidate = _candidate_with_contract(tmp_path)
+    staging_preview = migration_service.preview_staging_to_dict(vault, candidate)
+    migration_service.stage_confirmed_candidate(
+        vault,
+        candidate,
+        staging_preview["preview_sha256"],
+    )
+    verification_preview = migration_service.preview_verification_to_dict(
+        vault,
+        candidate.capsule_id,
+        candidate.proposal_id,
+    )
+    migration_service.verify_staging_to_dict(
+        vault,
+        candidate.capsule_id,
+        candidate.proposal_id,
+        verification_preview["confirm_token"],
+    )
+    activation_preview = migration_service.preview_activation_to_dict(
+        vault,
+        candidate.capsule_id,
+        candidate.proposal_id,
+    )
+    migration_service.activate_confirmed(
+        vault,
+        candidate.capsule_id,
+        candidate.proposal_id,
+        activation_preview["approval_token"],
+    )
+    (
+        vault
+        / "System/.dex/customization-migrations"
+        / candidate.capsule_id
+        / "receipts/activation.json"
+    ).unlink()
+
+    result = doctor._probe_customization_migration_status(
+        _context(vault, tmp_path)
+    )
+
+    assert result.verdict == "BROKEN"
+    assert result.structured_detail is not None
+    assert result.structured_detail["pending"] is True
+    capsule = result.structured_detail["capsules"][0]
+    assert capsule["pending_rebuild"] is True
+    assert capsule["activation"]["state"] == "recovery-required"
+    assert capsule["activation"]["reason"] == "activation-receipt-missing"
+    assert capsule["activation_receipt_present"] is False
+    assert capsule["rewindable"] is False
+
+
+def test_doctor_returns_exact_interrupted_activation_recovery_action(
+    tmp_path: Path,
+) -> None:
+    vault, candidate = _candidate_with_contract(tmp_path)
+    staging_preview = migration_service.preview_staging_to_dict(vault, candidate)
+    migration_service.stage_confirmed_candidate(
+        vault,
+        candidate,
+        staging_preview["preview_sha256"],
+    )
+    verification_preview = migration_service.preview_verification_to_dict(
+        vault,
+        candidate.capsule_id,
+        candidate.proposal_id,
+    )
+    migration_service.verify_staging_to_dict(
+        vault,
+        candidate.capsule_id,
+        candidate.proposal_id,
+        verification_preview["confirm_token"],
+    )
+    activation_preview = migration_service.preview_activation_to_dict(
+        vault,
+        candidate.capsule_id,
+        candidate.proposal_id,
+    )
+    repo_root = Path(__file__).resolve().parents[2]
+    environment = dict(os.environ)
+    environment.update(
+        {
+            "DEX_TX_TEST_STOP_AFTER": "mid-apply:0",
+            "PYTHONPATH": str(repo_root),
+            "VAULT_PATH": str(vault),
+        }
+    )
+    interrupted = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "core.customization_migration.cli",
+            "activate",
+            candidate.capsule_id,
+            candidate.proposal_id,
+            "--confirm-token",
+            activation_preview["approval_token"],
+        ],
+        cwd=repo_root,
+        env=environment,
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=30,
+    )
+    assert interrupted.returncode == 137
+
+    result = doctor._probe_customization_migration_status(
+        _context(vault, tmp_path)
+    )
+
+    assert result.verdict == "BROKEN"
+    assert result.structured_detail is not None
+    assert result.structured_detail["pending"] is True
+    recovery_actions = result.structured_detail["recovery_actions"]
+    assert len(recovery_actions) == 1
+    recovery = recovery_actions[0]
+    assert recovery["phase"] == "activation"
+    assert recovery["capsule_id"] == candidate.capsule_id
+    assert recovery["proposal_id"] == candidate.proposal_id
+    assert recovery["action"] == (
+        "python3 -m core.customization_migration.cli recover "
+        f"--confirm-token {result.structured_detail['recovery_token']}"
+    )

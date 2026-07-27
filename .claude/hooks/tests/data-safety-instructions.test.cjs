@@ -78,6 +78,8 @@ const UPDATE_SERVICE_OPERATIONS = new Set([
   'transaction_id',
   // Rebuild doorway: deterministic adapter operations and authority fields used by
   // the human-confirmed stage, verification, activation, status, and rewind journey.
+  'read_customization_capsule_section',
+  'read_customization_capsule_blob',
   'validate_regeneration_candidate',
   'approval_token',
   'acknowledgement_token',

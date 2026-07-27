@@ -1655,9 +1655,64 @@ def _probe_customization_migration_status(context: DoctorContext) -> ProbeResult
             "The customization migration status response was structurally incomplete",
         )
 
-    pending = False
+    recovery_actions = authority.get("recovery_actions", [])
+    recovery_token = authority.get("recovery_token")
+    if (
+        not isinstance(recovery_actions, list)
+        or (
+            recovery_actions
+            and (
+                not isinstance(recovery_token, str)
+                or len(recovery_token) != 64
+            )
+        )
+        or (not recovery_actions and recovery_token is not None)
+    ):
+        return ProbeResult(
+            "UNKNOWN",
+            "The customization recovery status is structurally incomplete",
+        )
+    expected_recovery_action = (
+        "python3 -m core.customization_migration.cli recover "
+        f"--confirm-token {recovery_token}"
+        if isinstance(recovery_token, str)
+        else None
+    )
+    for recovery in recovery_actions:
+        if (
+            not isinstance(recovery, dict)
+            or set(recovery)
+            != {
+                "transaction_id",
+                "phase",
+                "capsule_id",
+                "proposal_id",
+                "action",
+            }
+            or not isinstance(recovery["transaction_id"], str)
+            or recovery["phase"]
+            not in {
+                "capsule",
+                "staging",
+                "verification",
+                "activation",
+                "rewind",
+            }
+            or not isinstance(recovery["capsule_id"], str)
+            or (
+                recovery["proposal_id"] is not None
+                and not isinstance(recovery["proposal_id"], str)
+            )
+            or recovery["action"] != expected_recovery_action
+        ):
+            return ProbeResult(
+                "UNKNOWN",
+                "The customization recovery action is structurally incomplete",
+            )
+
+    pending = bool(recovery_actions)
     validation_statuses: list[str] = []
-    rebuild_broken = False
+    rebuild_broken = bool(recovery_actions)
     rebuild_unknown = False
     for capsule in capsules:
         if not isinstance(capsule, dict):

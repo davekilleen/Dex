@@ -1,6 +1,6 @@
 <!-- GENERATED FILE — DO NOT EDIT BY HAND. -->
 <!-- Generator: scripts/generate-architecture-inventory.py -->
-<!-- Content SHA-256: 9f8de5eed0a524826dc1381c7f88cde5e05e3ed5b67921ee6bcaf20539f92bdb -->
+<!-- Content SHA-256: 6015417c0401d0f87088c47313c71ce89cff4cfae49d2a646387bdf0cff86fa3 -->
 
 # Architecture Inventory
 
@@ -15,7 +15,7 @@ This inventory is derived only from repository code and shipped skill files.
 | `dex-analytics` | `core/mcp/analytics_server.py` | 4 | yes | `check_analytics_status`, `identify_user`, `test_connection`, `track_event` |
 | `dex-calendar-mcp` | `core/mcp/calendar_server.py` | 15 | yes | `calendar_create_event`, `calendar_delete_event`, `calendar_get_events`, `calendar_get_events_with_attendees`, `calendar_get_next_event`, `calendar_get_today`, `calendar_list_calendars`, `calendar_search_events`, `reminders_clear_completed`, `reminders_complete_item`, `reminders_create_item`, `reminders_ensure_lists`, `reminders_find_and_complete`, `reminders_list_completed`, `reminders_list_items` |
 | `dex-career-mcp` | `core/mcp/career_server.py` | 8 | yes | `analyze_coverage`, `generate_evidence_from_work`, `parse_ladder`, `promotion_readiness_score`, `scan_evidence`, `scan_work_for_evidence`, `skills_gap_analysis`, `timeline_analysis` |
-| `dex-customization-migration-mcp` | `core/mcp/customization_migration_server.py` | 6 | yes | `assess_customizations`, `preview_customization_capsule`, `read_activation_status`, `read_customization_capsule_section`, `read_customization_migration_status`, `read_staging_status` |
+| `dex-customization-migration-mcp` | `core/mcp/customization_migration_server.py` | 7 | yes | `assess_customizations`, `preview_customization_capsule`, `read_activation_status`, `read_customization_capsule_blob`, `read_customization_capsule_section`, `read_customization_migration_status`, `read_staging_status` |
 | `dex-granola-mcp` | `core/mcp/granola_server.py` | 6 | yes | `granola_check_available`, `granola_get_extent`, `granola_get_meeting_details`, `granola_get_recent_meetings`, `granola_get_today_meetings`, `granola_search_meetings` |
 | `dex-improvements-mcp` | `core/mcp/dex_improvements_server.py` | 9 | no | `capture_idea`, `enrich_idea`, `get_backlog_stats`, `get_idea_details`, `list_ideas`, `mark_implemented`, `synthesize_changelog`, `synthesize_learnings`, `validate_backlog` |
 | `dex-onboarding-mcp` | `core/mcp/onboarding_server.py` | 8 | no | `check_onboarding_complete`, `cleanup_qa_session`, `finalize_onboarding`, `get_onboarding_status`, `save_calendar_selection`, `start_onboarding_session`, `validate_and_save_step`, `verify_dependencies` |
@@ -116,7 +116,7 @@ References are exact tool-name matches in skill bodies (frontmatter excluded). U
 | `dex-analytics` | 28 | **over-surfaced** | `commitments` (`track_event`); `create-mcp` (`track_event`); `create-skill` (`track_event`); `daily-plan` (`track_event`); `daily-review` (`track_event`); `dex-add-mcp` (`track_event`); `dex-backlog` (`track_event`); `dex-improve` (`track_event`); `dex-level-up` (`track_event`); `dex-obsidian-setup` (`track_event`); `dex-whats-new` (`track_event`); `getting-started` (`track_event`); `initiative-kickoff` (`track_event`); `integrate-mcp` (`track_event`); `journal` (`track_event`); `meeting-closeout` (`track_event`); `meeting-prep` (`track_event`); `process-meetings` (`track_event`); `product-brief` (`track_event`); `project-health` (`track_event`); `prompt-improver` (`track_event`); `relationship-radar` (`track_event`); `reset` (`track_event`); `save-insight` (`track_event`); `triage` (`track_event`); `week-plan` (`track_event`); `week-review` (`track_event`); `xray` (`track_event`) |
 | `dex-calendar-mcp` | 5 | normal | `daily-plan` (`calendar_get_events_with_attendees`, `calendar_get_today`, `reminders_clear_completed`, `reminders_complete_item`, `reminders_create_item`, `reminders_ensure_lists`, `reminders_find_and_complete`, `reminders_list_completed`, `reminders_list_items`); `daily-review` (`calendar_get_today`, `reminders_clear_completed`, `reminders_find_and_complete`, `reminders_list_completed`, `reminders_list_items`); `getting-started` (`calendar_get_events`); `week-plan` (`calendar_get_events_with_attendees`); `week-review` (`calendar_get_events_with_attendees`, `reminders_list_items`) |
 | `dex-career-mcp` | 0 | **under-surfaced** | — |
-| `dex-customization-migration-mcp` | 0 | **under-surfaced** | — |
+| `dex-customization-migration-mcp` | 1 | normal | `dex-update` (`read_customization_capsule_blob`, `read_customization_capsule_section`) |
 | `dex-granola-mcp` | 4 | normal | `daily-plan` (`granola_get_recent_meetings`); `getting-started` (`granola_check_available`, `granola_get_recent_meetings`); `week-plan` (`granola_get_today_meetings`); `zoom-setup` (`granola_check_available`) |
 | `dex-improvements-mcp` | 7 | normal | `daily-plan` (`list_ideas`, `synthesize_changelog`, `synthesize_learnings`); `daily-review` (`list_ideas`); `dex-backlog` (`capture_idea`, `mark_implemented`); `dex-doctor` (`capture_idea`); `dex-level-up` (`capture_idea`); `dex-whats-new` (`synthesize_changelog`, `synthesize_learnings`); `week-review` (`list_ideas`) |
 | `dex-onboarding-mcp` | 1 | normal | `getting-started` (`check_onboarding_complete`) |
@@ -127,7 +127,6 @@ References are exact tool-name matches in skill bodies (frontmatter excluded). U
 ### Under-surfaced servers
 
 - `dex-career-mcp` — 0 skills reference its 8 tools.
-- `dex-customization-migration-mcp` — 0 skills reference its 6 tools.
 - `dex-resume-mcp` — 0 skills reference its 12 tools.
 - `dex-session-memory` — 0 skills reference its 8 tools.
 

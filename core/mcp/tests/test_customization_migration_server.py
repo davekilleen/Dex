@@ -27,6 +27,7 @@ TOOL_NAMES = (
     "read_staging_status",
     "read_activation_status",
     "read_customization_capsule_section",
+    "read_customization_capsule_blob",
 )
 
 
@@ -61,10 +62,15 @@ def test_tool_listing_is_exact_and_every_schema_is_closed() -> None:
     tools = asyncio.run(server.handle_list_tools())
 
     assert tuple(tool.name for tool in tools) == TOOL_NAMES
+    assert tuple(server.TOOL_REGISTRY) == TOOL_NAMES
     for tool in tools:
         assert tool.inputSchema["type"] == "object"
         assert tool.inputSchema["additionalProperties"] is False
-    section_tool = tools[-1]
+    section_tool = next(
+        tool
+        for tool in tools
+        if tool.name == "read_customization_capsule_section"
+    )
     assert section_tool.inputSchema["properties"]["section"]["enum"] == sorted(
         EVIDENCE_SECTIONS_V0
     )
@@ -223,6 +229,36 @@ def test_section_pagination_walks_all_records_and_binds_digest(
     assert pages >= 2
 
 
+def test_blob_tool_returns_digest_bound_text_and_writes_nothing(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    vault = _linked_customized_vault(tmp_path)
+    preview = preview_capsule(vault)
+    create_capsule(vault, preview, preview.preview_sha256)
+    source = preview.blob_sources[0]
+    before = snapshot_vault(vault)
+
+    payload = _call(
+        monkeypatch,
+        vault,
+        "read_customization_capsule_blob",
+        {
+            "capsule_id": preview.capsule_id,
+            "sha256": source.sha256,
+        },
+    )
+
+    assert payload["feature_status"] == "ok"
+    assert payload["capsule_id"] == preview.capsule_id
+    assert payload["sha256"] == source.sha256
+    assert payload["byte_size"] == source.byte_size
+    assert payload["text"] == (vault / source.source_path).read_text(
+        encoding="utf-8"
+    )
+    assert snapshot_vault(vault) == before
+
+
 def test_malformed_unknown_and_missing_inputs_are_structured_errors(
     tmp_path: Path, monkeypatch
 ) -> None:
@@ -334,6 +370,75 @@ def test_tool_list_cannot_gain_customization_mutation_names() -> None:
     }
 
     assert names.isdisjoint(mutating_names)
+
+
+def test_unregistered_dispatch_name_is_rejected_before_dispatch(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    vault = _linked_customized_vault(tmp_path)
+
+    payload = _call(
+        monkeypatch,
+        vault,
+        "read_customization_capsule_blob_hidden_alias",
+        {},
+    )
+
+    assert payload["feature_status"] == "broken"
+    assert payload["error"]["code"] == "unknown-tool"
+
+
+def test_every_registered_handler_is_observed_read_only(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    vault = _linked_customized_vault(tmp_path)
+    preview = preview_capsule(vault)
+    create_capsule(vault, preview, preview.preview_sha256)
+    source = preview.blob_sources[0]
+    mutators = (
+        "create_confirmed_capsule",
+        "abandon_existing_capsule",
+        "stage_confirmed_candidate",
+        "verify_staging_to_dict",
+        "activate_confirmed",
+        "rewind_acknowledged",
+        "recover_confirmed",
+    )
+
+    def mutation_trap(*_args, **_kwargs):
+        raise AssertionError("registered MCP handler reached a mutator")
+
+    for name in mutators:
+        monkeypatch.setattr(
+            server.migration_service,
+            name,
+            mutation_trap,
+            raising=False,
+        )
+
+    arguments = {
+        "assess_customizations": {},
+        "preview_customization_capsule": {},
+        "read_customization_migration_status": {},
+        "read_staging_status": {"capsule_id": preview.capsule_id},
+        "read_activation_status": {"capsule_id": preview.capsule_id},
+        "read_customization_capsule_section": {
+            "capsule_id": preview.capsule_id,
+            "section": "customizations",
+        },
+        "read_customization_capsule_blob": {
+            "capsule_id": preview.capsule_id,
+            "sha256": source.sha256,
+        },
+    }
+    before = snapshot_vault(vault)
+
+    for name in server.TOOL_REGISTRY:
+        payload = _call(monkeypatch, vault, name, arguments[name])
+        assert payload["feature_status"] in {"ok", "unknown"}
+        assert snapshot_vault(vault) == before
 
 
 def test_stdio_server_boots_lists_tools_and_exits_cleanly(

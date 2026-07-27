@@ -9,6 +9,7 @@ import json
 import os
 import sys
 from pathlib import Path
+from types import MappingProxyType
 
 import mcp.server.stdio
 import mcp.types as types
@@ -143,57 +144,91 @@ def _capsule_status_schema() -> dict[str, object]:
     }
 
 
+_EMPTY_SCHEMA = {
+    "type": "object",
+    "properties": {},
+    "additionalProperties": False,
+}
+_CAPSULE_SECTION_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "capsule_id": {"type": "string", "pattern": "^cap-[0-9a-f]{16}$"},
+        "section": {
+            "type": "string",
+            "enum": sorted(EVIDENCE_SECTIONS_V0),
+        },
+        "cursor": {"type": "integer", "minimum": 0},
+    },
+    "required": ["capsule_id", "section"],
+    "additionalProperties": False,
+}
+_CAPSULE_BLOB_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "capsule_id": {"type": "string", "pattern": "^cap-[0-9a-f]{16}$"},
+        "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    },
+    "required": ["capsule_id", "sha256"],
+    "additionalProperties": False,
+}
+TOOL_REGISTRY = MappingProxyType(
+    {
+        tool.name: tool
+        for tool in (
+            types.Tool(
+                name="assess_customizations",
+                description="Assess vault customizations without changing the vault.",
+                inputSchema=_EMPTY_SCHEMA,
+            ),
+            types.Tool(
+                name="preview_customization_capsule",
+                description=(
+                    "Preview a protected evidence capsule without creating it."
+                ),
+                inputSchema=_EMPTY_SCHEMA,
+            ),
+            types.Tool(
+                name="read_customization_migration_status",
+                description="Read capsule states and validation verdicts.",
+                inputSchema=_EMPTY_SCHEMA,
+            ),
+            types.Tool(
+                name="read_staging_status",
+                description=(
+                    "Read staged proposal states and verification verdicts."
+                ),
+                inputSchema=_capsule_status_schema(),
+            ),
+            types.Tool(
+                name="read_activation_status",
+                description=(
+                    "Read activation, receipt-presence, and rewindable status."
+                ),
+                inputSchema=_capsule_status_schema(),
+            ),
+            types.Tool(
+                name="read_customization_capsule_section",
+                description=(
+                    "Read one bounded page from one existing capsule section."
+                ),
+                inputSchema=_CAPSULE_SECTION_SCHEMA,
+            ),
+            types.Tool(
+                name="read_customization_capsule_blob",
+                description=(
+                    "Read one digest-bound, sensitivity-gated Capsule blob as "
+                    "bounded UTF-8 text."
+                ),
+                inputSchema=_CAPSULE_BLOB_SCHEMA,
+            ),
+        )
+    }
+)
+
+
 @app.list_tools()
 async def handle_list_tools() -> list[types.Tool]:
-    empty = {
-        "type": "object",
-        "properties": {},
-        "additionalProperties": False,
-    }
-    return [
-        types.Tool(
-            name="assess_customizations",
-            description="Assess vault customizations without changing the vault.",
-            inputSchema=empty,
-        ),
-        types.Tool(
-            name="preview_customization_capsule",
-            description="Preview a protected evidence capsule without creating it.",
-            inputSchema=empty,
-        ),
-        types.Tool(
-            name="read_customization_migration_status",
-            description="Read capsule states and validation verdicts.",
-            inputSchema=empty,
-        ),
-        types.Tool(
-            name="read_staging_status",
-            description="Read staged proposal states and verification verdicts.",
-            inputSchema=_capsule_status_schema(),
-        ),
-        types.Tool(
-            name="read_activation_status",
-            description="Read activation, receipt-presence, and rewindable status.",
-            inputSchema=_capsule_status_schema(),
-        ),
-        types.Tool(
-            name="read_customization_capsule_section",
-            description="Read one bounded page from one existing capsule section.",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "capsule_id": {"type": "string", "pattern": "^cap-[0-9a-f]{16}$"},
-                    "section": {
-                        "type": "string",
-                        "enum": sorted(EVIDENCE_SECTIONS_V0),
-                    },
-                    "cursor": {"type": "integer", "minimum": 0},
-                },
-                "required": ["capsule_id", "section"],
-                "additionalProperties": False,
-            },
-        ),
-    ]
+    return list(TOOL_REGISTRY.values())
 
 
 @app.call_tool()
@@ -201,6 +236,8 @@ async def handle_call_tool(
     name: str,
     arguments: dict[str, object] | None,
 ) -> list[types.TextContent]:
+    if name not in TOOL_REGISTRY:
+        return _error("unknown-tool", "The requested tool is not available.")
     try:
         if name == "assess_customizations":
             _closed_arguments(arguments or {}, allowed=frozenset())
@@ -330,7 +367,33 @@ async def handle_call_tool(
                     complete=next_cursor is None,
                 )
             )
-        return _error("unknown-tool", "The requested tool is not available.")
+        if name == "read_customization_capsule_blob":
+            values = _closed_arguments(
+                arguments or {},
+                allowed=frozenset({"capsule_id", "sha256"}),
+                required=frozenset({"capsule_id", "sha256"}),
+            )
+            capsule_id = values["capsule_id"]
+            sha256 = values["sha256"]
+            if not isinstance(capsule_id, str) or not isinstance(sha256, str):
+                raise migration_service.MigrationServiceError(
+                    "malformed-arguments",
+                    "capsule_id and sha256 must be strings.",
+                )
+            blob = migration_service.read_capsule_blob_text(
+                _root(),
+                capsule_id,
+                sha256,
+            )
+            return _text(
+                feature_status(
+                    _FEATURE,
+                    "ok",
+                    "Customization capsule blob text was read.",
+                    **blob,
+                )
+            )
+        return _error("operation-failed", "The registered tool has no handler.")
     except migration_service.MigrationServiceError as error:
         state = "unknown" if error.code == "invalid-vault-root" else "broken"
         return _error(error.code, error.message, state=state)

@@ -8,10 +8,13 @@ from pathlib import Path
 
 import pytest
 
+from core.customization_migration import sensitivity as sensitivity_module
 from core.customization_migration import service as migration_service
 from core.customization_migration import staging as staging_module
+from core.customization_migration.capsule import create_capsule, preview_capsule
 from core.customization_migration.planning import Disposition
 from core.tests.lifecycle_test_helpers import write_file
+from core.tests.test_customization_assessment import _linked_customized_vault
 from core.tests.test_customization_verification import _candidate_with_contract
 from core.tests.vault_observed_writes import snapshot_vault
 
@@ -43,10 +46,27 @@ def test_service_runs_real_stage_verify_activate_status_and_rewind(
         staging_preview["preview_sha256"]
     )
 
+    verification_preview = migration_service.preview_verification_to_dict(
+        vault,
+        candidate.capsule_id,
+        candidate.proposal_id,
+    )
+    before_verification = snapshot_vault(vault)
+    with pytest.raises(migration_service.MigrationServiceError) as refused_verification:
+        migration_service.verify_staging_to_dict(
+            vault,
+            candidate.capsule_id,
+            candidate.proposal_id,
+            "0" * 64,
+        )
+    assert refused_verification.value.code == "verification-refused"
+    assert snapshot_vault(vault) == before_verification
+
     verification = migration_service.verify_staging_to_dict(
         vault,
         candidate.capsule_id,
         candidate.proposal_id,
+        verification_preview["confirm_token"],
     )
     assert verification["report"]["verdict"] == "OK"
     assert verification["report"]["reported_verifications"][0]["status"] == (
@@ -169,10 +189,16 @@ def test_activation_preview_refuses_dispositions_not_bound_to_its_token(
         candidate,
         staging_preview["preview_sha256"],
     )
+    verification_preview = migration_service.preview_verification_to_dict(
+        vault,
+        candidate.capsule_id,
+        candidate.proposal_id,
+    )
     migration_service.verify_staging_to_dict(
         vault,
         candidate.capsule_id,
         candidate.proposal_id,
+        verification_preview["confirm_token"],
     )
     altered_disposition = replace(
         candidate.dispositions[0],
@@ -201,3 +227,130 @@ def test_activation_preview_refuses_dispositions_not_bound_to_its_token(
         )
 
     assert refused.value.code == "activation-refused"
+
+
+def test_read_capsule_blob_is_digest_bound_utf8_and_sensitivity_gated(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    vault = _linked_customized_vault(tmp_path)
+    preview = preview_capsule(vault)
+    create_capsule(vault, preview, preview.preview_sha256)
+    source = preview.blob_sources[0]
+    expected = (vault / source.source_path).read_text(encoding="utf-8")
+
+    result = migration_service.read_capsule_blob_text(
+        vault,
+        preview.capsule_id,
+        source.sha256,
+    )
+
+    assert result == {
+        "capsule_id": preview.capsule_id,
+        "sha256": source.sha256,
+        "byte_size": source.byte_size,
+        "text": expected,
+    }
+
+    with pytest.raises(migration_service.MigrationServiceError) as unknown:
+        migration_service.read_capsule_blob_text(
+            vault,
+            preview.capsule_id,
+            "0" * 64,
+        )
+    assert unknown.value.code == "unreadable-blob"
+
+    monkeypatch.setattr(
+        sensitivity_module,
+        "capsule_readability",
+        lambda _path: "restricted",
+    )
+    with pytest.raises(migration_service.MigrationServiceError) as restricted:
+        migration_service.read_capsule_blob_text(
+            vault,
+            preview.capsule_id,
+            source.sha256,
+        )
+    assert restricted.value.code == "unreadable-blob"
+
+
+def test_read_capsule_blob_refuses_binary_bytes(tmp_path: Path) -> None:
+    vault = _linked_customized_vault(tmp_path)
+    binary_source = vault / ".scripts/custom-binary.bin"
+    binary_source.write_bytes(b"\xff\x00not-text")
+    preview = preview_capsule(vault)
+    source = next(
+        item
+        for item in preview.blob_sources
+        if item.source_path == ".scripts/custom-binary.bin"
+    )
+    create_capsule(vault, preview, preview.preview_sha256)
+
+    with pytest.raises(migration_service.MigrationServiceError) as refused:
+        migration_service.read_capsule_blob_text(
+            vault,
+            preview.capsule_id,
+            source.sha256,
+        )
+
+    assert refused.value.code == "binary-blob"
+
+
+def test_rewound_journal_without_rewind_receipt_requires_recovery(
+    tmp_path: Path,
+) -> None:
+    vault, candidate = _candidate_with_contract(tmp_path)
+    staging_preview = migration_service.preview_staging_to_dict(vault, candidate)
+    migration_service.stage_confirmed_candidate(
+        vault,
+        candidate,
+        staging_preview["preview_sha256"],
+    )
+    verification_preview = migration_service.preview_verification_to_dict(
+        vault,
+        candidate.capsule_id,
+        candidate.proposal_id,
+    )
+    migration_service.verify_staging_to_dict(
+        vault,
+        candidate.capsule_id,
+        candidate.proposal_id,
+        verification_preview["confirm_token"],
+    )
+    activation_preview = migration_service.preview_activation_to_dict(
+        vault,
+        candidate.capsule_id,
+        candidate.proposal_id,
+    )
+    migration_service.activate_confirmed(
+        vault,
+        candidate.capsule_id,
+        candidate.proposal_id,
+        activation_preview["approval_token"],
+    )
+    rewind_preview = migration_service.preview_rewind_to_dict(
+        vault,
+        candidate.capsule_id,
+    )
+    migration_service.rewind_acknowledged(
+        vault,
+        candidate.capsule_id,
+        rewind_preview["acknowledgement_token"],
+    )
+    (
+        vault
+        / "System/.dex/customization-migrations"
+        / candidate.capsule_id
+        / "receipts/rewind.json"
+    ).unlink()
+
+    activation_status = migration_service.activation_status_to_dict(
+        vault,
+        candidate.capsule_id,
+    )
+    migration_status = migration_service.migration_status_to_dict(vault)
+
+    assert activation_status["state"] == "recovery-required"
+    assert activation_status["reason"] == "rewind-receipt-missing"
+    assert activation_status["rewindable"] is False
+    assert migration_status["capsules"][0]["pending_rebuild"] is True

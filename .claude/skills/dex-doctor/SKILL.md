@@ -229,6 +229,9 @@ Deep reports include a top-level `customization_migration_status` object. Render
 `verification_verdicts` summary, `pending_rebuild`, `activation.state`,
 `activation.reason`, `activation_receipt_present`, and `rewindable` verbatim. These are
 authority fields; only a short consequence or surface line may be rephrased.
+When present, also render every `recovery_actions` record's `phase`, `capsule_id`,
+`proposal_id`, and exact `action` verbatim. The action is already bound to
+`recovery_token`; never shorten, rebuild, or improvise it.
 
 When `pending` is true, render this guidance exactly:
 
@@ -243,6 +246,8 @@ When `pending_rebuild` is true, say the protected rebuild is waiting to continue
 unknown. Say activation is receipt-backed only when `activation_receipt_present` is true, and
 say rewind is available only when `rewindable` is true. A `recovery-required` staging or
 activation state is a stop condition, not permission to repair Capsule files directly.
+For interrupted staging, activation, or rewind, offer only the exact phase-specific
+`recovery_actions.action` returned by Doctor after a fresh explicit acknowledgement.
 
 ### Step 4: Heal, tiered
 

@@ -32,10 +32,14 @@ def _preview_lines(preview: dict[str, object]) -> list[str]:
     ]
 
 
-def _receipt_lines(authority: dict[str, object]) -> list[str]:
+def _safe_field_lines(
+    authority: dict[str, object],
+    fields: tuple[str, ...],
+) -> list[str]:
     return [
-        f"{field}: {_render_value(value)}"
-        for field, value in authority.items()
+        f"{field}: {_render_value(authority[field])}"
+        for field in fields
+        if field in authority
     ]
 
 
@@ -112,8 +116,77 @@ def _rewind_preview_lines(preview: dict[str, object]) -> list[str]:
     return lines
 
 
+def _verification_preview_lines(preview: dict[str, object]) -> list[str]:
+    return _safe_field_lines(
+        preview,
+        (
+            "confirm_token",
+            "capsule_id",
+            "proposal_id",
+            "staging_receipt_sha256",
+            "report_sha256",
+            "verdict",
+            "static_file_count",
+            "behavioural_contract_count",
+        ),
+    )
+
+
+_CAPSULE_RECEIPT_FIELDS = (
+    "capsule_id",
+    "manifest_sha256",
+    "file_count",
+    "byte_count",
+    "transaction_id",
+)
+_STAGING_RECEIPT_FIELDS = (
+    "capsule_id",
+    "proposal_id",
+    "staged_file_count",
+    "staged_byte_count",
+    "staging_digest",
+    "transaction_id",
+)
+_VERIFICATION_RECEIPT_FIELDS = (
+    "capsule_id",
+    "staging_id",
+    "report_sha256",
+    "transaction_id",
+)
+_ACTIVATION_STATUS_FIELDS = (
+    "capsule_id",
+    "proposal_id",
+    "state",
+    "reason",
+    "activation_receipt_present",
+    "rewindable",
+)
+_ACTIVATION_RECEIPT_FIELDS = (
+    "capsule_id",
+    "proposal_id",
+    "verification_report_sha256",
+    "candidate_sha256",
+    "file_count",
+    "transaction_id",
+    "activated_epoch_seconds",
+    "rewind_available",
+)
+_REWIND_RECEIPT_FIELDS = (
+    "capsule_id",
+    "proposal_id",
+    "activation_transaction_id",
+    "rewind_transaction_id",
+    "status",
+    "reason",
+    "file_count",
+    "rewound_epoch_seconds",
+)
+
+
 def _parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="python -m core.customization_migration.cli")
+    parser = argparse.ArgumentParser(
+        prog="python3 -m core.customization_migration.cli"
+    )
     commands = parser.add_subparsers(dest="command", required=True)
     commands.add_parser("status")
     commands.add_parser("assess")
@@ -129,6 +202,7 @@ def _parser() -> argparse.ArgumentParser:
     verify = commands.add_parser("verify")
     verify.add_argument("capsule_id")
     verify.add_argument("proposal_id")
+    verify.add_argument("--confirm-token")
     preview_activation = commands.add_parser("preview-activation")
     preview_activation.add_argument("capsule_id")
     preview_activation.add_argument("proposal_id")
@@ -143,6 +217,8 @@ def _parser() -> argparse.ArgumentParser:
     rewind.add_argument("--acknowledge-token")
     activation_status = commands.add_parser("activation-status")
     activation_status.add_argument("capsule_id")
+    recover = commands.add_parser("recover")
+    recover.add_argument("--confirm-token")
     return parser
 
 
@@ -157,7 +233,8 @@ def run(arguments: list[str] | None = None) -> int:
         if options.command == "status":
             status = migration_service.migration_status_to_dict(root)
             capsules = status["capsules"]
-            if not capsules:
+            recovery_actions = status.get("recovery_actions", [])
+            if not capsules and not recovery_actions:
                 print("No customization capsules exist.")
                 return 0
             for capsule in capsules:
@@ -169,6 +246,12 @@ def run(arguments: list[str] | None = None) -> int:
                 )
             if status["truncated"]:
                 print("More capsules exist than this status view can safely show.")
+            for recovery in recovery_actions:
+                print(f"Recovery phase: {recovery['phase']}")
+                print(f"Recovery capsule: {recovery['capsule_id']}")
+                if recovery["proposal_id"] is not None:
+                    print(f"Recovery proposal: {recovery['proposal_id']}")
+                print(f"Recovery action: {recovery['action']}")
             return 0
         if options.command == "assess":
             assessment = migration_service.assess_to_dict(root)
@@ -210,7 +293,14 @@ def run(arguments: list[str] | None = None) -> int:
                 root, options.confirm_token
             )
             print(f"Created capsule {receipt.capsule_id}.")
-            print("\n".join(_receipt_lines(receipt.to_dict())))
+            print(
+                "\n".join(
+                    _safe_field_lines(
+                        receipt.to_dict(),
+                        _CAPSULE_RECEIPT_FIELDS,
+                    )
+                )
+            )
             return 0
         if options.command == "abandon":
             if not options.acknowledge:
@@ -239,20 +329,54 @@ def run(arguments: list[str] | None = None) -> int:
                 candidate,
                 options.confirm_token,
             )
-            print("\n".join(_receipt_lines(receipt.to_dict())))
+            print(
+                "\n".join(
+                    _safe_field_lines(
+                        receipt.to_dict(),
+                        _STAGING_RECEIPT_FIELDS,
+                    )
+                )
+            )
             return 0
         if options.command == "verify":
+            preview = migration_service.preview_verification_to_dict(
+                root,
+                options.capsule_id,
+                options.proposal_id,
+            )
+            print("\n".join(_verification_preview_lines(preview)))
+            if options.confirm_token != preview["confirm_token"]:
+                print(
+                    "Nothing was sealed. Run this command again with "
+                    f"--confirm-token {preview['confirm_token']}"
+                )
+                return 2
             verification = migration_service.verify_staging_to_dict(
                 root,
                 options.capsule_id,
                 options.proposal_id,
+                options.confirm_token,
             )
             report = verification["report"]
             receipt = verification["receipt"]
             assert isinstance(report, dict)
             assert isinstance(receipt, dict)
-            print("\n".join(_receipt_lines(report)))
-            print("\n".join(_receipt_lines(receipt)))
+            print(
+                "\n".join(
+                    _safe_field_lines(
+                        report,
+                        ("capsule_id", "proposal_id", "verdict"),
+                    )
+                )
+            )
+            print(
+                "\n".join(
+                    _safe_field_lines(
+                        receipt,
+                        _VERIFICATION_RECEIPT_FIELDS,
+                    )
+                )
+            )
             return 0
         if options.command in {"preview-activation", "activate"}:
             preview = migration_service.preview_activation_to_dict(
@@ -275,14 +399,30 @@ def run(arguments: list[str] | None = None) -> int:
                 options.proposal_id,
                 options.confirm_token,
             )
-            print("\n".join(_receipt_lines(receipt.to_dict())))
+            receipt_dict = receipt.to_dict()
+            receipt_dict["file_count"] = len(receipt.files_written)
+            print(
+                "\n".join(
+                    _safe_field_lines(
+                        receipt_dict,
+                        _ACTIVATION_RECEIPT_FIELDS,
+                    )
+                )
+            )
             return 0
         if options.command == "activation-status":
             status = migration_service.activation_status_to_dict(
                 root,
                 options.capsule_id,
             )
-            print("\n".join(_receipt_lines(status)))
+            print(
+                "\n".join(
+                    _safe_field_lines(
+                        status,
+                        _ACTIVATION_STATUS_FIELDS,
+                    )
+                )
+            )
             return 0
         if options.command in {"preview-rewind", "rewind"}:
             preview = migration_service.preview_rewind_to_dict(
@@ -307,7 +447,47 @@ def run(arguments: list[str] | None = None) -> int:
                 options.capsule_id,
                 options.acknowledge_token,
             )
-            print("\n".join(_receipt_lines(receipt.to_dict())))
+            receipt_dict = receipt.to_dict()
+            receipt_dict["file_count"] = len(receipt.files_restored)
+            print(
+                "\n".join(
+                    _safe_field_lines(
+                        receipt_dict,
+                        _REWIND_RECEIPT_FIELDS,
+                    )
+                )
+            )
+            return 0
+        if options.command == "recover":
+            preview = migration_service.recovery_preview_to_dict(root)
+            actions = preview["recovery_actions"]
+            token = preview["recovery_token"]
+            if not actions or token is None:
+                print("No interrupted customization transaction needs recovery.")
+                return 0
+            for recovery in actions:
+                print(f"Recovery phase: {recovery['phase']}")
+                print(f"Recovery capsule: {recovery['capsule_id']}")
+                if recovery["proposal_id"] is not None:
+                    print(f"Recovery proposal: {recovery['proposal_id']}")
+                print(f"Recovery action: {recovery['action']}")
+            if options.confirm_token != token:
+                print(
+                    "Nothing was recovered. Run this command again with "
+                    f"--confirm-token {token}"
+                )
+                return 2
+            result = migration_service.recover_confirmed(
+                root,
+                options.confirm_token,
+            )
+            for recovered in result["recovered"]:
+                print(f"Recovered phase: {recovered['phase']}")
+                print(f"Recovery status: {recovered['status']}")
+                print(
+                    "Restored file count: "
+                    f"{recovered['restored_file_count']}"
+                )
             return 0
     except migration_service.MigrationServiceError as error:
         print(error.message)
