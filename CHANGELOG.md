@@ -24,12 +24,12 @@ Both of these came from one user's bug report, and both only affect people who'v
 
 Dex could always work with a handful of tools it was wired into directly. Connecting anything else was a manual job, and mostly you didn't bother.
 
-Now Dex carries a map of how **775 different tools handle signing in**. You say "connect Notion" and Dex works out what that one needs and walks you through it.
+Now Dex knows how **831 different tools handle signing in**, and can connect you to **627 of them** today. You say "connect Notion" and Dex works out what that one needs and walks you through it.
 
 **What this gives you:**
 
 * **Paste a key, and you're done.** For around 350 tools it's that quick — I timed it at **one second**, no forms, no browser, nothing to approve.
-* **Browser sign-ins take one setup, once.** For the other 425, Dex doesn't arrive with a pre-arranged identity at Google or Slack — deliberately, because that would mean your sign-in passing through us. So the first time, you register Dex yourself in that tool's settings. It's the most technical thing I'll ever ask of you, it's once per tool ever, and I'll talk you through it.
+* **Browser sign-ins take one setup, once.** For the other 279, Dex doesn't arrive with a pre-arranged identity at Google or Slack — deliberately, because that would mean your sign-in passing through us. So the first time, you register Dex yourself in that tool's settings. It's the most technical thing I'll ever ask of you, it's once per tool ever, and I'll talk you through it.
 * **Logins that renew themselves.** Sign-ins expire — that's the app being careful, not something breaking. I renew them quietly before they lapse. You'll never see it.
 * **I fix what I can before you notice.** At the start of a session I check your connections and repair what I'm able to, speaking up only when something genuinely needs you.
 * **Encrypted, and never off your machine.** On a Mac the key that unlocks your sign-ins sits in the macOS Keychain. Nothing is sent to us — there's no server holding your logins, because there's no server.
