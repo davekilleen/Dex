@@ -404,9 +404,9 @@ def test_onboarding_runs_the_first_week_reveal_before_tool_discovery() -> None:
     assert "draft_weekly_plan" in finale
 
 
-def test_onboarding_step_nine_explains_connect_without_overpromising() -> None:
+def test_onboarding_connect_step_explains_connect_without_overpromising() -> None:
     flow = _read(".claude/flows/onboarding.md")
-    connect_step = flow.split("## Step 9:", 1)[1].split("## Step 10:", 1)[0]
+    connect_step = flow.split("## Step 10:", 1)[1].split("## Step 11:", 1)[0]
     lowered = connect_step.lower()
 
     assert "/connect" in connect_step
@@ -426,9 +426,9 @@ def test_onboarding_step_nine_explains_connect_without_overpromising() -> None:
         assert forbidden_claim not in lowered
 
 
-def test_onboarding_step_nine_preserves_the_curated_setup_skill_flow() -> None:
+def test_onboarding_connect_step_preserves_the_curated_setup_skill_flow() -> None:
     flow = _read(".claude/flows/onboarding.md")
-    connect_step = flow.split("## Step 9:", 1)[1].split("## Step 10:", 1)[0]
+    connect_step = flow.split("## Step 10:", 1)[1].split("## Step 11:", 1)[0]
 
     assert "invoke the skill referenced in the integration's `setup` field" in connect_step
     assert "Wait for the setup skill to complete" in connect_step
