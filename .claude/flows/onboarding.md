@@ -1,6 +1,6 @@
 # Dex Onboarding Flow
 
-Guide new users through setup in a friendly ~5 minute conversation. Keep it simple, practical, and focused on getting them working quickly.
+Guide new users through setup in a friendly conversation of about 10 minutes. Keep it simple, practical, and focused on getting them working quickly.
 
 ## Before Starting
 
@@ -96,7 +96,9 @@ Call `validate_and_save_step(step_number=2, step_data={"role_number": [selected 
 
 ## Step 3: Company Size
 
-Ask: "What's your company size?"
+Ask: "What's your company name? (Optional — leave it blank if you don't have one.)"
+
+Then ask: "What's your company size?"
 
 Present options using your detected platform tool:
 ```json
@@ -121,7 +123,7 @@ Present options using your detected platform tool:
 
 ## Step 4: Email Domain (MANDATORY)
 
-**⚠️ DO NOT SKIP THIS STEP - Required for Internal/External person routing**
+**⚠️ ASK EVERY USER - Required for Internal/External person routing**
 
 Ask: "What's your company email domain? This helps me automatically:
 - Identify internal colleagues vs external contacts
@@ -133,13 +135,12 @@ Ask: "What's your company email domain? This helps me automatically:
 
 **Store in** `System/user-profile.yaml` as `email_domain` field.
 
-**If they're unsure or don't have one:** Set to empty string, system will default to External for all people.
+**If they don't have a company domain:** Call `validate_and_save_step(step_number=4, step_data={"email_domain": "", "no_company_domain": true})`. This explicitly completes the required step and defaults all people to External.
 
 **After receiving email domain:** Call `validate_and_save_step(step_number=4, step_data={"email_domain": "..."})` to validate and save. The MCP enforces:
-- Non-empty value
-- No @ symbol
 - Valid domain format with dot
-- This step CANNOT be skipped
+- Normalization of a leading @ or a pasted full email address
+- A validated domain or an explicit "I don't have one" answer before the step is complete
 
 ---
 

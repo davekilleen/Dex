@@ -6,6 +6,8 @@ import shutil
 import sys
 from pathlib import Path
 
+import pytest
+
 # core/mcp/tests -> repo root (for `core.paths`) and core/mcp (for the module).
 REPO_ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(REPO_ROOT))
@@ -16,6 +18,99 @@ import onboarding_server  # noqa: E402
 
 def _decode_tool_result(result) -> dict:
     return json.loads(result[0].text)
+
+
+class TestEmailDomainStep:
+    @pytest.mark.parametrize(
+        ("entered_domain", "normalized_domain"),
+        (
+            ("@acme.com", "acme.com"),
+            ("dave@acme.com", "acme.com"),
+            ("acme.com, @acme.io", "acme.com, acme.io"),
+        ),
+    )
+    def test_normalizes_and_saves_email_domains(
+        self, tmp_path, monkeypatch, entered_domain, normalized_domain
+    ):
+        session_file = tmp_path / "System/.onboarding-session.json"
+        monkeypatch.setattr(onboarding_server, "SESSION_FILE", session_file)
+        onboarding_server.save_session(onboarding_server.create_new_session())
+
+        payload = _decode_tool_result(
+            asyncio.run(
+                onboarding_server.handle_call_tool(
+                    "validate_and_save_step",
+                    {
+                        "step_number": 4,
+                        "step_data": {"email_domain": entered_domain},
+                    },
+                )
+            )
+        )
+
+        assert payload["success"] is True
+        assert payload["data"]["email_domain"] == normalized_domain
+        assert onboarding_server.load_session()["data"]["email_domain"] == normalized_domain
+
+    def test_explicit_no_company_domain_completes_step_and_allows_finalize(
+        self, tmp_path, monkeypatch
+    ):
+        session_file = tmp_path / "System/.onboarding-session.json"
+        monkeypatch.setattr(onboarding_server, "SESSION_FILE", session_file)
+        monkeypatch.setattr(onboarding_server, "BASE_DIR", tmp_path)
+        onboarding_server.save_session(onboarding_server.create_new_session())
+
+        payload = _decode_tool_result(
+            asyncio.run(
+                onboarding_server.handle_call_tool(
+                    "validate_and_save_step",
+                    {
+                        "step_number": 4,
+                        "step_data": {
+                            "email_domain": "",
+                            "no_company_domain": True,
+                        },
+                    },
+                )
+            )
+        )
+
+        assert payload["success"] is True
+        session = onboarding_server.load_session()
+        assert session["data"]["email_domain"] == ""
+        assert 4 in session["completed_steps"]
+
+        session["completed_steps"] = [1, 2, 3, 4, 5, 6]
+        onboarding_server.save_session(session)
+        finalized = _decode_tool_result(
+            asyncio.run(
+                onboarding_server.handle_call_tool(
+                    "finalize_onboarding", {"dry_run": True}
+                )
+            )
+        )
+
+        assert finalized["success"] is True
+        assert finalized["data"]["preview_user_profile"]["email_domain"] == ""
+
+    def test_rejects_plain_empty_domain_with_explicit_opt_out_guidance(
+        self, tmp_path, monkeypatch
+    ):
+        session_file = tmp_path / "System/.onboarding-session.json"
+        monkeypatch.setattr(onboarding_server, "SESSION_FILE", session_file)
+        onboarding_server.save_session(onboarding_server.create_new_session())
+
+        payload = _decode_tool_result(
+            asyncio.run(
+                onboarding_server.handle_call_tool(
+                    "validate_and_save_step",
+                    {"step_number": 4, "step_data": {"email_domain": ""}},
+                )
+            )
+        )
+
+        assert payload["success"] is False
+        assert "no_company_domain" in f"{payload['error']} {payload['suggestion']}"
 
 
 class TestCapabilityStep:
