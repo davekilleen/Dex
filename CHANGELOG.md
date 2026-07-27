@@ -7,6 +7,19 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.77.1] — 🩺 Dex stops crying wolf, and older setups can find their updates again (2026-07-27)
+
+Both of these came from one user's bug report, and both only affect people who've been using Dex for a while — which is exactly why neither had been spotted.
+
+**What this fixes for you:**
+
+* **Old problems stop being reported as though they're happening right now.** Dex keeps a log of things that have gone wrong. Nothing ever cleared it, so a checkup could tell you your setup was broken because of something that failed weeks ago and was fixed long since. Problems now fade into history after 30 days — and anything that went wrong on a version of Dex you've already moved past is treated as history immediately. When Dex does report a problem, it now tells you the date it happened, so you can see at a glance whether it's news.
+* **Dex admits when it couldn't look, instead of reporting all clear.** If that log couldn't be read at all, the checkup used to come back clean. It now says plainly that it couldn't check — a checkup that can't see something should say so, not reassure you.
+* **Setups on an older version can find updates again.** If you were on an older version of Dex, the update check could get permanently stuck: no version, no explanation, nothing useful, every single time. It was looking for a small file that older versions never had. Dex now recognises an older setup for what it is and gets on with the check.
+* **The update message is finally readable.** It used to open with a warning that Dex "has not authenticated its publisher", followed by two forty-character codes. It now simply tells you a newer version is available, links you to the release notes, and says to run `/dex-update` when you're ready. The technical detail is still there in `/dex-doctor` for anyone who wants it. Dex still never updates itself without you.
+
+**Why this slipped past me:** every test I had imagined someone who'd installed Dex that morning — current, with no history behind them. Both of these problems only bite people with months of real use. Dex is now tested against genuinely old versions, and against a clock wound forward, so this kind of thing gets caught before you ever see it.
+
 ## [1.76.1] — 🔧 A quiet strengthening under the hood (2026-07-27)
 
 Nothing changes in what you see or do. This is internal hardening of the customisation-rebuild feature that shipped in 1.76.0.
