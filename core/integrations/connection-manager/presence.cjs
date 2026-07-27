@@ -139,7 +139,14 @@ function resolveProvider() {
 }
 
 function setPresenceProvider(provider) {
-  injectedProvider = provider && typeof provider.verify === 'function' ? provider : null;
+  if (provider === null) {
+    injectedProvider = null;
+    return;
+  }
+  injectedProvider =
+    provider && provider.available === true && typeof provider.verify === 'function'
+      ? provider
+      : unavailableProvider('Injected presence provider is unavailable or malformed.');
 }
 
 function grantKey(connId, op) {
@@ -167,7 +174,7 @@ async function assertPresence(connId, op, { provider, now } = {}) {
   // Tests and the desktop host may inject a provider directly. Standalone Core
   // otherwise uses the command or fail-closed fallbacks described above.
   provider = provider || module.exports.resolveProvider();
-  if (!provider || provider.available === false || typeof provider.verify !== 'function') {
+  if (!provider || provider.available !== true || typeof provider.verify !== 'function') {
     if (optionalPresenceAllowed()) {
       console.error(
         `warning: user presence was NOT verified for ${connId}; ` +
@@ -177,7 +184,7 @@ async function assertPresence(connId, op, { provider, now } = {}) {
     }
     throw presenceRequiredError();
   }
-  if (inFlightChecks.has(key)) return inFlightChecks.get(key);
+  if (cacheable && inFlightChecks.has(key)) return inFlightChecks.get(key);
 
   const check = (async () => {
     let approved = false;
@@ -189,6 +196,8 @@ async function assertPresence(connId, op, { provider, now } = {}) {
     if (!approved) throw presenceRequiredError();
     if (cacheable) grants.set(key, currentTime(now) + DEFAULT_TTL_MS);
   })();
+  if (!cacheable) return check;
+
   inFlightChecks.set(key, check);
   try {
     return await check;

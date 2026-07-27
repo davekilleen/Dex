@@ -70,6 +70,22 @@ test('an injected presence provider is used by assertPresence', async () => {
   assert.deepEqual(calls, [{ connId: 'linear:injected', op: 'access-token' }]);
 });
 
+test('a malformed injected provider without available fails closed', async () => {
+  let prompts = 0;
+  presence.setPresenceProvider({
+    async verify() {
+      prompts += 1;
+      return true;
+    },
+  });
+
+  await assert.rejects(
+    presence.assertPresence('linear:malformed-injected', 'access-token'),
+    { code: 'DEX_CM_PRESENCE_REQUIRED', category: 'presence_required' }
+  );
+  assert.equal(prompts, 0);
+});
+
 test('clearing an injected provider restores command-based resolution', () => {
   const originalCommand = process.env.DEX_CM_PRESENCE_CMD;
   const injected = { available: true, verify: async () => true };
@@ -86,12 +102,18 @@ test('clearing an injected provider restores command-based resolution', () => {
   }
 });
 
-test('a malformed injection falls through to the existing provider resolution', () => {
+test('malformed injections install a fail-closed unavailable sentinel', () => {
   const originalCommand = process.env.DEX_CM_PRESENCE_CMD;
   process.env.DEX_CM_PRESENCE_CMD = `"${process.execPath}" -e "process.exit(0)"`;
   try {
-    presence.setPresenceProvider({ available: true });
-    assert.equal(presence.resolveProvider().kind, 'command');
+    for (const malformed of [
+      { available: true },
+      { available: false, verify: async () => true },
+    ]) {
+      presence.setPresenceProvider(malformed);
+      assert.equal(presence.resolveProvider().available, false);
+      assert.equal(presence.resolveProvider().kind, 'unavailable');
+    }
   } finally {
     if (originalCommand === undefined) delete process.env.DEX_CM_PRESENCE_CMD;
     else process.env.DEX_CM_PRESENCE_CMD = originalCommand;
@@ -257,6 +279,46 @@ test('concurrent privileged calls share one in-flight presence prompt', async ()
   assert.equal(prompts, 1);
   approve(true);
   await Promise.all([first, second]);
+});
+
+test('concurrent full exports each require their own presence prompt', async () => {
+  const approvals = [];
+  const provider = {
+    available: true,
+    verify() {
+      return new Promise((resolve) => approvals.push(resolve));
+    },
+  };
+  let firstApproved = false;
+  let secondApproved = false;
+
+  const first = presence
+    .assertPresence('linear:concurrent-full', 'full', { provider })
+    .then(() => {
+      firstApproved = true;
+    });
+  const second = presence
+    .assertPresence('linear:concurrent-full', 'full', { provider })
+    .then(() => {
+      secondApproved = true;
+    });
+
+  try {
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(approvals.length, 2);
+
+    approvals[0](true);
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(firstApproved, true);
+    assert.equal(secondApproved, false);
+
+    approvals[1](true);
+    await Promise.all([first, second]);
+    assert.equal(secondApproved, true);
+  } finally {
+    for (const approve of approvals) approve(true);
+    await Promise.allSettled([first, second]);
+  }
 });
 
 test('concurrent checks are shared only for the same connection and operation', async () => {
