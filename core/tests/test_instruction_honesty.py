@@ -225,21 +225,62 @@ def test_missing_anthropic_key_points_to_env_file() -> None:
 
 def test_onboarding_skips_calendar_cleanly_on_non_macos() -> None:
     flow = _read(".claude/flows/onboarding.md")
-    calendar_step = flow.split("## Step 4b: Calendar Selection", 1)[1].split(
-        "## Step 5:", 1
+    calendar_step = flow.split("## Calendar First (Before Step 1)", 1)[1].split(
+        "## Step 1:", 1
     )[0]
 
     assert "uname -s" in calendar_step
     assert "non-macOS" in calendar_step
     assert "calendar sync is currently available only on macos" in calendar_step.lower()
     assert "save_calendar_selection(skipped=true)" in calendar_step
-    assert "continue to Step 5" in calendar_step
+    assert "continue to Step 1" in calendar_step
     assert "Do not call `calendar_list_calendars`" in calendar_step
     assert "show macOS settings guidance" in calendar_step
     assert "block onboarding" in calendar_step
     assert calendar_step.index("uname -s") < calendar_step.index(
         "calendar_list_calendars"
     )
+    assert flow.index("## Calendar First (Before Step 1)") < flow.index("## Step 1:")
+
+
+def test_onboarding_confirms_calendar_identity_through_existing_validation() -> None:
+    flow = _read(".claude/flows/onboarding.md")
+    calendar_step = flow.split("## Calendar First (Before Step 1)", 1)[1].split(
+        "## Step 1:", 1
+    )[0]
+
+    assert "Before I ask you anything" in calendar_step
+    assert "your actual week, organised" in calendar_step
+    assert "you can skip it" in calendar_step
+    assert "derived_identity" in calendar_step
+    assert "You're [name], at [domain] — right?" in calendar_step
+    assert "Yes, that's right" in calendar_step
+    assert "Let me correct that" in calendar_step
+    assert (
+        'validate_and_save_step(step_number=1, step_data={"name": "[confirmed name]"})'
+        in calendar_step
+    )
+    assert (
+        'validate_and_save_step(step_number=4, step_data={"email_domain": '
+        '"[confirmed domain]"})' in calendar_step
+    )
+    assert "Do not bypass either validation call" in calendar_step
+
+
+def test_onboarding_keeps_conservative_identity_fallbacks() -> None:
+    flow = _read(".claude/flows/onboarding.md")
+    calendar_step = flow.split("## Calendar First (Before Step 1)", 1)[1].split(
+        "## Step 1:", 1
+    )[0]
+    name_step = flow.split("## Step 1:", 1)[1].split("## Step 2:", 1)[0]
+    domain_step = flow.split("## Step 4:", 1)[1].split("## Step 5:", 1)[0]
+
+    assert "If only `domain` is present" in calendar_step
+    assert "ask for the name normally in Step 1" in calendar_step
+    assert "If there is no `work_email`" in calendar_step
+    assert "follow steps 1 and 4 exactly as written" in calendar_step.lower()
+    assert "First, what's your name?" in name_step
+    assert "What's your company email domain?" in domain_step
 
 
 def test_onboarding_gives_an_honest_time_estimate() -> None:
@@ -259,7 +300,7 @@ def test_onboarding_collects_the_optional_company_name_it_saves() -> None:
 
 def test_onboarding_documents_the_explicit_no_company_domain_path() -> None:
     flow = _read(".claude/flows/onboarding.md")
-    domain_step = flow.split("## Step 4:", 1)[1].split("## Step 4b:", 1)[0]
+    domain_step = flow.split("## Step 4:", 1)[1].split("## Step 5:", 1)[0]
 
     assert '"no_company_domain": true' in domain_step
     assert "Non-empty value" not in domain_step

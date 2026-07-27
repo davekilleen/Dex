@@ -224,6 +224,71 @@ class TestFirstWeekAnalysis:
         assert capacity["meeting_hours"] == 1.5
 
 
+class TestIdentityDerivation:
+    @pytest.mark.parametrize(
+        ("address", "expected"),
+        (
+            (
+                "jane.smith@example.com",
+                {"name": "Jane", "domain": "example.com"},
+            ),
+            ("js@example.com", {"name": None, "domain": "example.com"}),
+            ("info@example.com", {"name": None, "domain": "example.com"}),
+            ("j.smith@example.com", {"name": None, "domain": "example.com"}),
+            ("jane@acme.com", {"name": "Jane", "domain": "acme.com"}),
+        ),
+    )
+    def test_derives_only_confident_identity_guesses(self, address, expected):
+        assert onboarding_server.derive_identity_from_email(address) == expected
+
+    @pytest.mark.parametrize(
+        "address",
+        ("", "not-an-email", "jane@@example.com", "@example.com", "jane@example"),
+    )
+    def test_rejects_malformed_addresses(self, address):
+        assert onboarding_server.derive_identity_from_email(address) == {
+            "name": None,
+            "domain": None,
+        }
+
+    def test_calendar_save_returns_identity_for_confirmation(
+        self, tmp_path, monkeypatch
+    ):
+        from core.mcp import calendar_server
+
+        session_file = tmp_path / "System/.onboarding-session.json"
+        monkeypatch.setattr(onboarding_server, "SESSION_FILE", session_file)
+        monkeypatch.setattr(
+            calendar_server,
+            "_get_calendar_list_result",
+            lambda: {
+                "success": True,
+                "calendars": ["jane.smith@example.com"],
+                "count": 1,
+            },
+        )
+        onboarding_server.save_session(onboarding_server.create_new_session())
+
+        payload = _decode_tool_result(
+            asyncio.run(
+                onboarding_server.handle_call_tool(
+                    "save_calendar_selection",
+                    {
+                        "work_calendar": "jane.smith@example.com",
+                        "work_email": "jane.smith@example.com",
+                        "calendar_count": 1,
+                    },
+                )
+            )
+        )
+
+        assert payload["success"] is True
+        assert payload["data"]["derived_identity"] == {
+            "name": "Jane",
+            "domain": "example.com",
+        }
+
+
 class TestEmailDomainStep:
     @pytest.mark.parametrize(
         ("entered_domain", "normalized_domain"),

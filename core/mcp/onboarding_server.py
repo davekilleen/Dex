@@ -100,6 +100,43 @@ COMPANY_SIZES = ["startup", "scaling", "enterprise", "large_enterprise"]
 FORMALITY_LEVELS = ["formal", "professional_casual", "casual"]
 DIRECTNESS_LEVELS = ["very_direct", "balanced", "supportive"]
 CAREER_LEVELS = ["junior", "mid", "senior", "leadership", "c_suite"]
+ROLE_EMAIL_LOCALS = {
+    "accounts",
+    "admin",
+    "administrator",
+    "billing",
+    "careers",
+    "contact",
+    "customerservice",
+    "enquiries",
+    "enquiry",
+    "events",
+    "finance",
+    "hello",
+    "help",
+    "hr",
+    "info",
+    "jobs",
+    "legal",
+    "mail",
+    "marketing",
+    "media",
+    "noreply",
+    "notifications",
+    "office",
+    "partners",
+    "partnerships",
+    "people",
+    "press",
+    "privacy",
+    "recruiting",
+    "recruitment",
+    "sales",
+    "security",
+    "service",
+    "support",
+    "team",
+}
 
 # ============================================================================
 # UTILITY FUNCTIONS
@@ -195,6 +232,43 @@ def validate_email_domain(domain: str) -> tuple[bool, Optional[str], str]:
         return False, "Email domain cannot be empty", ""
 
     return True, None, ", ".join(domains)
+
+
+def derive_identity_from_email(address: str) -> Dict[str, Optional[str]]:
+    """Return only identity details that are safe to offer for confirmation."""
+    empty_identity = {"name": None, "domain": None}
+    if not isinstance(address, str):
+        return empty_identity
+
+    cleaned = address.strip()
+    if cleaned.count("@") != 1:
+        return empty_identity
+
+    local_part, domain = cleaned.split("@", 1)
+    if (
+        not local_part
+        or local_part.startswith(".")
+        or local_part.endswith(".")
+        or ".." in local_part
+        or re.fullmatch(r"[A-Za-z0-9!#$%&'*+/=?^_`{|}~.-]+", local_part) is None
+    ):
+        return empty_identity
+
+    valid_domain, _, normalized_domain = validate_email_domain(domain)
+    if not valid_domain:
+        return empty_identity
+
+    first_token = local_part.split(".", 1)[0].lower()
+    name = None
+    if (
+        len(first_token) >= 3
+        and first_token.isalpha()
+        and first_token not in ROLE_EMAIL_LOCALS
+    ):
+        name = first_token.title()
+
+    return {"name": name, "domain": normalized_domain.lower()}
+
 
 def validate_pillars(pillars: List[str]) -> tuple[bool, Optional[str]]:
     """Validate strategic pillars"""
@@ -1213,7 +1287,11 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[types.Text
             save_session(session)
 
             result = create_success_response(
-                {"work_email": work_email, "calendar": calendar},
+                {
+                    "work_email": work_email,
+                    "calendar": calendar,
+                    "derived_identity": derive_identity_from_email(work_email),
+                },
                 f"Work calendar saved.{verification_note}"
             )
             return [types.TextContent(type="text", text=json.dumps(result, indent=2))]

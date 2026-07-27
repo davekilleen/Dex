@@ -24,7 +24,76 @@ Remember this for the rest of onboarding. Every step that says "present options"
 
 ---
 
+## Calendar First (Before Step 1)
+
+Say: "Welcome to Dex. Before I ask you anything, let's connect your calendar — at the end of setup I'll show you your actual week, organised. It takes a few seconds, and you can skip it."
+
+This opening is separate from the seven validated profile steps. It must stay non-blocking.
+
+Detect the host platform first. Run `uname -s` when available; if that command is unavailable, use the runtime-reported operating system.
+
+**On non-macOS platforms (anything other than `Darwin`):**
+
+Say: "Calendar sync is currently available only on macOS, so I'll skip calendar setup on this computer."
+
+Call `save_calendar_selection(skipped=true)`, then continue to Step 1. Do not call `calendar_list_calendars`, show macOS settings guidance, or block onboarding.
+
+**On macOS:**
+
+Call `calendar_list_calendars` from the Calendar MCP to get the calendar names Calendar.app can see.
+
+**If the listing succeeds:**
+
+Say: "Which calendar should I use for your work schedule?"
+
+Present every returned calendar name as a numbered list:
+```
+1. [exact calendar name]
+2. [exact calendar name]
+3. [exact calendar name]
+```
+
+The user can reply with a number or type the calendar name. Resolve a number to the exact returned name, then call `save_calendar_selection` from the Onboarding MCP with:
+- `work_calendar`: the exact selected calendar name
+- `calendar_count`: the `count` returned by `calendar_list_calendars`
+- `work_email`: the selected name only when that calendar name is an email address; otherwise omit it
+
+Example:
+```
+save_calendar_selection(
+  work_calendar="user@company.com",
+  work_email="user@company.com",
+  calendar_count=4
+)
+```
+
+If the save returns `success: false`, show the available names from its error response and ask the user to choose again. If it succeeds, say: "✓ Got it — I'll use [calendar name] for your work schedule."
+
+The successful save response includes `derived_identity`, with conservative `name` and `domain` guesses when `work_email` is usable:
+
+- **If both `name` and `domain` are present:** Say: "You're [name], at [domain] — right?" Present two choices: **Yes, that's right** and **Let me correct that**.
+  - On **Yes, that's right**, call `validate_and_save_step(step_number=1, step_data={"name": "[confirmed name]"})`, then call `validate_and_save_step(step_number=4, step_data={"email_domain": "[confirmed domain]"})`.
+  - On **Let me correct that**, collect both normally: ask for their name and company email domain, including the existing no-company-domain option, then save each answer through those same step 1 and step 4 calls.
+- **If only `domain` is present:** Offer the domain for confirmation: "It looks like your company domain is [domain] — right?" Confirm or correct it through `validate_and_save_step(step_number=4, step_data={"email_domain": "[confirmed domain]"})`, including the existing explicit no-company-domain path when correcting. Then ask for the name normally in Step 1.
+- **If there is no `work_email`, or neither value can be derived:** Do not guess or mention the failed derivation. Follow Steps 1 and 4 exactly as written.
+
+Do not bypass either validation call. Only skip the corresponding later question after that step's validation call succeeds.
+
+**If the listing fails or calendar permission is denied:**
+
+Say: "macOS hasn't let this terminal app read your calendars yet — open **System Settings** → **Privacy & Security** → **Calendars** and enable the terminal app you're using."
+
+Offer two choices:
+1. Try again after granting access — call `calendar_list_calendars` again
+2. Skip for now — call `save_calendar_selection(skipped=true)`
+
+Do not block onboarding when they skip. `/dex-doctor` will confirm the calendar setup later. Continue to Step 1.
+
+---
+
 ## Step 1: Welcome
+
+If step 1 was already validated through the calendar confirmation, continue to Step 2. Otherwise:
 
 Say: "Welcome to Dex! I'm your personal knowledge assistant.
 
@@ -123,6 +192,8 @@ Present options using your detected platform tool:
 
 ## Step 4: Email Domain (MANDATORY)
 
+If step 4 was already validated through the calendar confirmation, continue to Step 5. Otherwise:
+
 **⚠️ ASK EVERY USER - Required for Internal/External person routing**
 
 Ask: "What's your company email domain? This helps me automatically:
@@ -141,61 +212,6 @@ Ask: "What's your company email domain? This helps me automatically:
 - Valid domain format with dot
 - Normalization of a leading @ or a pasted full email address
 - A validated domain or an explicit "I don't have one" answer before the step is complete
-
----
-
-## Step 4b: Calendar Selection
-
-**Purpose:** Optimize calendar queries for performance (45s → 0.3s) by identifying the user's actual work calendar instead of guessing its name.
-
-Detect the host platform first. Run `uname -s` when available; if that command is unavailable, use the runtime-reported operating system.
-
-**On non-macOS platforms (anything other than `Darwin`):**
-
-Say: "Calendar sync is currently available only on macOS, so I'll skip calendar setup on this computer."
-
-Call `save_calendar_selection(skipped=true)`, then continue to Step 5. Do not call `calendar_list_calendars`, show macOS settings guidance, or block onboarding.
-
-**On macOS:**
-
-Call `calendar_list_calendars` from the Calendar MCP to get the calendar names Calendar.app can see.
-
-**If the listing succeeds:**
-
-Say: "Which calendar should I use for your work schedule?"
-
-Present every returned calendar name as a numbered list:
-```
-1. [exact calendar name]
-2. [exact calendar name]
-3. [exact calendar name]
-```
-
-The user can reply with a number or type the calendar name. Resolve a number to the exact returned name, then call `save_calendar_selection` from the Onboarding MCP with:
-- `work_calendar`: the exact selected calendar name
-- `calendar_count`: the `count` returned by `calendar_list_calendars`
-- `work_email`: the selected name only when that calendar name is an email address; otherwise omit it
-
-Example:
-```
-save_calendar_selection(
-  work_calendar="user@company.com",
-  work_email="user@company.com",
-  calendar_count=4
-)
-```
-
-If the save returns `success: false`, show the available names from its error response and ask the user to choose again. If it succeeds, say: "✓ Got it — I'll use [calendar name] for your work schedule."
-
-**If the listing fails or calendar permission is denied:**
-
-Say: "macOS hasn't let this terminal app read your calendars yet — open **System Settings** → **Privacy & Security** → **Calendars** and enable the terminal app you're using."
-
-Offer two choices:
-1. Try again after granting access — call `calendar_list_calendars` again
-2. Skip for now — call `save_calendar_selection(skipped=true)`
-
-Do not block onboarding when they skip. `/dex-doctor` will confirm the calendar setup later.
 
 ---
 
