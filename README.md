@@ -1,8 +1,19 @@
 # Dex by Dave — Your AI Chief of Staff
 
+[![Latest release](https://img.shields.io/github/v/release/davekilleen/dex?label=release&color=2ea44f)](https://github.com/davekilleen/dex/releases) [![License: PolyForm Noncommercial](https://img.shields.io/badge/license-PolyForm%20Noncommercial-blue)](LICENSE) [![Built for non-engineers](https://img.shields.io/badge/coding%20required-none-ff69b4)](https://heydex.ai/help/)
+
 **A personal operating system powered by Claude.** Strategic work management, meeting intelligence, relationship tracking, daily planning — all configured for your specific role. No coding required.
 
-Companion to [Episode 8 of The Vibe PM Podcast](https://youtu.be/WaqgSvL-V10?si=b2Pfwf7I5rozWCo0) and the [full blog post](https://www.linkedin.com/pulse/your-ai-chief-staff-building-personal-operating-system-dave-killeen-yxnqe/).
+**The story behind Dex:** 🎥 [Malleable Software — when everyone can build, what makes a great product?](https://www.youtube.com/watch?v=QcqBsxw9hQM) (Dave's keynote on the thinking behind Dex) · 🎙️ [Episode 8 of The Vibe PM Podcast](https://youtu.be/WaqgSvL-V10?si=b2Pfwf7I5rozWCo0) (full walkthrough) · ✍️ [the original launch post](https://www.linkedin.com/pulse/your-ai-chief-staff-building-personal-operating-system-dave-killeen-yxnqe/) · 💬 [the honest highs-and-lows of building it](https://www.linkedin.com/feed/update/urn:li:activity:7486431643524796418/) — the pause, the unlock, and 52 releases in two weeks
+
+> 🖥️ **Prefer never to see a terminal?** Dex desktop and mobile apps are on the way — sign up for early access at **[heydex.ai/beta](https://heydex.ai/beta)**.
+
+> ### 📖 New here? Start with the [Dex Guide →](https://heydex.ai/help/)
+>
+> A plain-English walkthrough from install to making Dex your own, with
+> copy-paste prompts throughout — written for non-technical professionals, no
+> coding background assumed. The README below covers the same ground in
+> reference form. (AI agents: [llms.txt](https://heydex.ai/help/llms.txt).)
 
 ---
 
@@ -138,7 +149,7 @@ Copy and paste this command and press Enter:
 
 **Your system Python stays clean:** The installer creates a project-local virtual environment (`.venv`) inside your vault and installs all Python dependencies there — your system, Homebrew, or pyenv Python is never modified. No global installs, and no `pipx` needed.
 
-⚠️ **IMPORTANT: You're not done yet. Complete Steps 2B and 3 to finish setup.**
+⚠️ **IMPORTANT: You're not done yet. Complete Step 3 below to finish setup.**
 
 **Verify MCP servers:** Cursor should automatically detect `.mcp.json` and enable the MCP servers. Look for the MCP icon in Cursor's bottom panel - you should see server names with green checkmarks.
 
@@ -518,7 +529,7 @@ Out of the box, working immediately:
 
 - **8 core capabilities** - Daily focus, relationship tracking, commitment management, career evidence, task sync that actually works, learning system, project health monitoring, system evolution (see jobs table above)
 - **Complete planning system** - Quarterly goals → weekly priorities → daily plans, all connected with rollup tracking
-- **25+ ready-to-use skills** - `/daily-plan`, `/meeting-prep`, `/career-coach`, `/week-review` and more - invoke with `/skill-name`
+- **70+ ready-to-use skills** - `/daily-plan`, `/meeting-prep`, `/process-meetings`, `/week-review`, `/commitments`, `/relationship-radar` and more - invoke with `/skill-name`. Role-specific packs (career coaching, sales, finance…) switch on via `/manage-capabilities`.
 - **Role-based setup** - 31 roles from CEO to IC, scaffolds appropriate folder structure and workflows. Onboarding MCP enforces validation (email domain required for Internal/External person routing) with session resume capability
 - **Meeting intelligence** - Process transcripts into structured notes with action items auto-synced. Works with Granola MCP (included), or paste transcripts from any source - system recognizes and processes them
 - **Task management with unique IDs (Work MCP)** - Tasks sync everywhere automatically (meeting notes, person pages, project files). Check off once, updates everywhere. Deduplication prevents doubles. Priority limits stop overcommit.
@@ -574,7 +585,7 @@ One decision instead of many. Immediate filing.
 
 Great work happens daily, but evidence disappears. Review time becomes a scramble to remember what you accomplished.
 
-Run `/career-setup` once (job description, career ladder, recent review, growth goals). From that point forward, Dex automatically captures career evidence:
+Career coaching lives in Dex's optional **Career room** — Dex offers it during setup, or turn it on anytime with `/manage-capabilities`. Then run `/career-setup` once (job description, career ladder, recent review, growth goals). From that point forward, Dex automatically captures career evidence:
 
 | When | What Gets Captured |
 |------|-------------------|
@@ -718,8 +729,9 @@ Each session makes the next one better.
 
 | Item | Cost |
 |------|------|
-| Cursor Pro | $20/month (Claude included) |
 | Cursor Free | $0 (limited usage, enough to try it) |
+| Cursor Pro | $20/month (Claude included) |
+| Claude Pro (for Claude Code) | $20/month — alternative to Cursor Pro |
 | Time | 10 minutes to set up |
 | Coding skills | None required |
 
@@ -750,17 +762,7 @@ These guides live in your vault after setup.
 
 ### Automatic Release Awareness
 
-At most once daily, Claude Code's SessionStart hook performs a bounded fetch-only evidence check. It does not pull,
-merge, install, or update Dex. When every integrity/consistency check selected by a higher release's immutable profile
-agrees, Dex says:
-
-```
-A newer Dex release appears to exist, but Dex has not authenticated its publisher. Review the exact release/tag before choosing to update.
-```
-
-The full notice includes the exact version, immutable tag, full commit, evidence profile, canonical release page, and
-`/dex-doctor` guidance. Missing or conflicting evidence produces no release notice. Seeing no higher release is not a
-claim that the installation is current.
+At most once a day, Dex quietly checks whether a newer release exists and, if it can verify one, mentions it at the start of your session — with the exact version and a link so you can review before deciding. It never downloads or installs anything on its own, and if it can't verify a release it says nothing rather than guess.
 
 ### Update in One Command
 
@@ -768,16 +770,15 @@ claim that the installation is current.
 /dex-update
 ```
 
-**That's it.** Dex shows you what's new, you confirm, and then it handles everything:
-- ✓ Downloads latest version
-- ✓ Protects your data (never touches notes/tasks/projects)
-- ✓ Handles conflicts automatically
-- ✓ Creates safety backup
-- ✓ Shows progress at every step
+**That's it.** Dex shows you exactly what would change, you approve, and it handles the rest:
+- ✓ Previews every change before touching anything
+- ✓ Protects your data (your notes/tasks/projects are never part of an update)
+- ✓ If you've customized a file, nothing moves until you choose: keep yours, take the new one, or keep both
+- ✓ Backs up first, verifies after, and writes an undo receipt
+- ✓ `/dex-rollback` rewinds the exact change, byte for byte
 
 **Time:** 2-5 minutes  
-**Technical knowledge:** None  
-**Risk:** Zero - your data is always safe
+**Technical knowledge:** None
 
 ### If Something Goes Wrong
 
@@ -832,8 +833,11 @@ Obsidian is completely optional - Dex works perfectly in Cursor/terminal alone. 
 
 ## Resources
 
+- [Malleable Software: When Everyone Can Build, What Makes a Great Product?](https://www.youtube.com/watch?v=QcqBsxw9hQM) — Dave's keynote on the journey and thinking behind Dex
 - [Vibe PM Episode 8](https://youtu.be/WaqgSvL-V10?si=b2Pfwf7I5rozWCo0) — Video walkthrough
 - [Companion Blog Post](https://www.linkedin.com/pulse/your-ai-chief-staff-building-personal-operating-system-dave-killeen-yxnqe/) — Deep dive on all the concepts
+- [The highs and lows of building Dex](https://www.linkedin.com/feed/update/urn:li:activity:7486431643524796418/) — Dave's honest account: the pause, the unlock, and what shipped
+- [heydex.ai](https://heydex.ai) — the Dex site: [guide](https://heydex.ai/help/), [DexDiff profiles](https://heydex.ai), and [desktop/mobile beta signup](https://heydex.ai/beta)
 - [Cursor](https://cursor.com) — The AI-powered editor
 - [Granola](https://granola.ai) — Meeting transcription (optional)
 
