@@ -15,6 +15,7 @@ sys.path.insert(0, str(REPO_ROOT))
 sys.path.insert(0, str(REPO_ROOT / "core" / "mcp"))
 
 import onboarding_server  # noqa: E402
+
 from core.mcp import work_server  # noqa: E402
 
 
