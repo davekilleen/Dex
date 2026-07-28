@@ -69,6 +69,8 @@ jobs:
         run: bash scripts/check-doc-drift.sh
       - name: Release-tag uniqueness gate
         run: bash scripts/check-release-tag-uniqueness.sh
+      - name: Old-version release-tag reachability gate
+        run: bash scripts/check-release-tag-reachability.sh
       - name: Architecture inventory drift gate
         run: bash scripts/check-architecture-inventory.sh
       - name: Instructed-tool existence gate
