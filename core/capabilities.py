@@ -9,6 +9,7 @@ feature lists.
 from __future__ import annotations
 
 import argparse
+import copy
 import json
 import os
 import shutil
@@ -233,13 +234,12 @@ def migrate_legacy_room_state(
 ) -> list[str]:
     """One-time bridge for vaults onboarded before capability rooms existed.
 
-    Before rooms shipped, every install had all three rooms' surfaces active —
-    so the faithful migration for an ALREADY-ONBOARDED vault whose profile has
-    no ``capabilities`` key is to seed every room ``enabled: true``, preserving
-    the user's status quo. Fresh installs write explicit room answers at
-    onboarding and are never touched here. Returns the rooms seeded (empty
-    when no migration was needed). Runs before any reconcile on the upgrade
-    path so a months-long Career user is never silently switched off.
+    Preserve each room's pre-migration behavior without overriding an explicit
+    capability value or a legacy config value. Companies is pinned off because
+    its fresh-vault default is now on; Career and Quarter Goals keep the earlier
+    bridge's on default when they have no prior opinion. Fresh installs write
+    explicit room answers at onboarding and are never touched here. Returns the
+    rooms seeded (empty when no migration was needed).
     """
     root = Path(vault_root).resolve()
     profile_file = Path(profile_path or root / "System/user-profile.yaml")
@@ -247,13 +247,42 @@ def migrate_legacy_room_state(
     if not onboarded:
         return []
     profile = _read_profile(profile_file, strict=True)
-    if isinstance(profile.get("capabilities"), Mapping):
-        return []  # already migrated or freshly onboarded with explicit answers
+    capability_state = profile.get("capabilities")
+    room_defaults = (
+        {"companies": False}
+        if isinstance(capability_state, Mapping)
+        else {
+            "career": True,
+            "companies": False,
+            "quarter_goals": True,
+        }
+    )
     seeded: list[str] = []
     for room in room_ids(contract_path=contract_path):
+        room_state = (
+            capability_state.get(room)
+            if isinstance(capability_state, Mapping)
+            else None
+        )
+        if (
+            isinstance(room_state, Mapping)
+            and isinstance(room_state.get("enabled"), bool)
+        ):
+            continue
+        surfaces = surfaces_for(room, contract_path=contract_path)
+        legacy_config = surfaces.get("config")
+        if isinstance(legacy_config, str):
+            legacy = profile.get(legacy_config)
+            if (
+                isinstance(legacy, Mapping)
+                and isinstance(legacy.get("enabled"), bool)
+            ):
+                continue
+        if room not in room_defaults:
+            continue
         set_enabled(
             room,
-            True,
+            room_defaults[room],
             vault_root=root,
             profile_path=profile_file,
             contract_path=contract_path,
@@ -270,9 +299,8 @@ def reconcile_all(
 ) -> list[dict[str, Any]]:
     """Reconcile every contract-declared room against the current profile.
 
-    Runs the legacy migration first: an already-onboarded vault with no
-    ``capabilities`` state keeps all rooms on (its pre-rooms status quo)
-    rather than being silently reset to the fresh-install defaults.
+    Runs the legacy migration first so an already-onboarded vault keeps each
+    room's pre-migration behavior rather than inheriting fresh-install defaults.
     """
     root = Path(vault_root).resolve()
     profile = Path(profile_path or root / "System/user-profile.yaml")
@@ -367,6 +395,107 @@ def _set_block_enabled(text: str, block_key: str, room: str | None, value: bool)
             return "".join(lines)
     lines.insert(start + 1, f"{target_indent}enabled: {rendered}{newline}")
     return "".join(lines)
+
+
+def render_missing_companies_compatibility_pin(
+    original: str,
+    *,
+    contract_path: Path | str | None = None,
+) -> str | None:
+    """Render the one-time Companies-off pin without rewriting profile prose.
+
+    ``None`` means the profile already has an explicit or legacy opinion.
+    Invalid state fails closed so an update cannot fall through to the new
+    contract default or replace user-owned data. Profiles with no capability
+    map also retain the earlier Career/Quarter bridge defaults in the same
+    transaction; partial maps gain only the Companies pin.
+    """
+    try:
+        profile = yaml.safe_load(original) or {}
+    except yaml.YAMLError as exc:
+        raise CapabilityError("Profile must contain valid YAML") from exc
+    if not isinstance(profile, dict):
+        raise CapabilityError("Profile must contain an object")
+
+    capability_state = profile.get("capabilities")
+    if capability_state is not None and not isinstance(capability_state, Mapping):
+        raise CapabilityError("Profile capabilities must contain an object")
+    company_state = (
+        capability_state.get("companies")
+        if isinstance(capability_state, Mapping)
+        else None
+    )
+    if company_state is not None and not isinstance(company_state, Mapping):
+        raise CapabilityError("Profile capabilities.companies must contain an object")
+    if isinstance(company_state, Mapping) and "enabled" in company_state:
+        if not isinstance(company_state["enabled"], bool):
+            raise CapabilityError(
+                "Profile capabilities.companies.enabled must be true or false"
+            )
+        return None
+    company_surfaces = surfaces_for("companies", contract_path=contract_path)
+    company_legacy_config = company_surfaces.get("config")
+    if isinstance(company_legacy_config, str):
+        company_legacy_state = profile.get(company_legacy_config)
+        if (
+            isinstance(company_legacy_state, Mapping)
+            and "enabled" in company_legacy_state
+        ):
+            if not isinstance(company_legacy_state["enabled"], bool):
+                raise CapabilityError(
+                    f"Profile {company_legacy_config}.enabled must be true or false"
+                )
+            return None
+
+    room_defaults = (
+        {"companies": False}
+        if isinstance(capability_state, Mapping)
+        else {
+            "career": True,
+            "companies": False,
+            "quarter_goals": True,
+        }
+    )
+    expected = copy.deepcopy(profile)
+    rendered = original
+    for room, default in room_defaults.items():
+        room_state = (
+            capability_state.get(room)
+            if isinstance(capability_state, Mapping)
+            else None
+        )
+        if isinstance(room_state, Mapping) and "enabled" in room_state:
+            if not isinstance(room_state["enabled"], bool):
+                raise CapabilityError(
+                    f"Profile capabilities.{room}.enabled must be true or false"
+                )
+            continue
+        surfaces = surfaces_for(room, contract_path=contract_path)
+        legacy_config = surfaces.get("config")
+        if isinstance(legacy_config, str):
+            legacy_state = profile.get(legacy_config)
+            if isinstance(legacy_state, Mapping) and "enabled" in legacy_state:
+                if not isinstance(legacy_state["enabled"], bool):
+                    raise CapabilityError(
+                        f"Profile {legacy_config}.enabled must be true or false"
+                    )
+                continue
+        expected.setdefault("capabilities", {})
+        expected["capabilities"].setdefault(room, {})
+        expected["capabilities"][room]["enabled"] = default
+        rendered = _set_block_enabled(
+            rendered,
+            "capabilities",
+            room,
+            default,
+        )
+    try:
+        reparsed = yaml.safe_load(rendered) or {}
+    except yaml.YAMLError as exc:  # pragma: no cover - guarded by byte-level tests
+        raise CapabilityError("Companies compatibility pin produced invalid YAML") from exc
+    if reparsed != expected:
+        raise CapabilityError("Companies compatibility pin changed unrelated profile state")
+    return rendered
 
 
 def set_enabled(

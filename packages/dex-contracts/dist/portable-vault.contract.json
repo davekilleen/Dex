@@ -814,7 +814,7 @@
   ],
   "capabilities": {
     "career": {
-      "default_enabled": false,
+      "default_enabled": true,
       "folders": [
         "05-Areas/Career"
       ],
@@ -829,7 +829,7 @@
       ]
     },
     "companies": {
-      "default_enabled": false,
+      "default_enabled": true,
       "features": [
         "entity-engine.company-pages"
       ],
@@ -840,7 +840,7 @@
     },
     "quarter_goals": {
       "config": "quarterly_planning",
-      "default_enabled": false,
+      "default_enabled": true,
       "folders": [
         "01-Quarter_Goals"
       ],

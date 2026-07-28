@@ -10,7 +10,7 @@ Guide new users through setup in a friendly conversation of about 10 minutes. Ke
 - The MCP tracks completion and validates each step
 - Session state enables resume if interrupted
 
-**After each step (1-7):** Call `validate_and_save_step(step_number=X, step_data={...})` before proceeding. If validation fails, show the error and retry the step.
+**After each step (1-8):** Call `validate_and_save_step(step_number=X, step_data={...})` before proceeding. If validation fails, show the error and retry the step.
 
 ### Platform Detection (do this once, before Step 1)
 
@@ -28,7 +28,7 @@ Remember this for the rest of onboarding. Every step that says "present options"
 
 Say: "Welcome to Dex. Before I ask you anything, let's connect your calendar — at the end of setup I'll show you your actual week, organised. It takes a few seconds, and you can skip it."
 
-This opening is separate from the seven validated profile steps. It must stay non-blocking.
+This opening is separate from the eight validated profile steps. It must stay non-blocking.
 
 Detect the host platform first. Run `uname -s` when available; if that command is unavailable, use the runtime-reported operating system.
 
@@ -69,7 +69,9 @@ save_calendar_selection(
 
 If the save returns `success: false`, show the available names from its error response and ask the user to choose again. If it succeeds, say: "✓ Got it — I'll use [calendar name] for your work schedule."
 
-The successful save response includes `derived_identity`, with conservative `name` and `domain` guesses when `work_email` is usable:
+Keep the `working_week_suggestion` from the successful save response for Step 7. It includes the suggested days, whether the suggestion came from calendar evidence or the safe default, and a plain reason when Dex could not make a useful calendar-based guess.
+
+The successful save response also includes `derived_identity`, with conservative `name` and `domain` guesses when `work_email` is usable:
 
 - **If both `name` and `domain` are present:** Say: "You're [name], at [domain] — right?" Present two choices: **Yes, that's right** and **Let me correct that**.
   - On **Yes, that's right**, call `validate_and_save_step(step_number=1, step_data={"name": "[confirmed name]"})`, then call `validate_and_save_step(step_number=4, step_data={"email_domain": "[confirmed domain]"})`.
@@ -88,6 +90,29 @@ Offer two choices:
 2. Skip for now — call `save_calendar_selection(skipped=true)`
 
 Do not block onboarding when they skip. `/dex-doctor` will confirm the calendar setup later. Continue to Step 1.
+
+---
+
+## Meeting Sources (Before Step 1)
+
+Make one short, optional offer while the rest of onboarding is still ahead. Run:
+
+```bash
+node .claude/hooks/integration-concierge.cjs
+```
+
+Use only meeting tools the concierge actually detected in `high_value`, `moderate_value`, or `connect_detected` (an installed app, configured connector, or real vault signal). Ask: "I spotted [detected meeting tools]. Want me to start pulling notes from any of those while we finish setting up? You can skip this."
+
+Do not ask eligibility questions. Route only what Dex can honestly read:
+
+- **Granola:** connect with `/connect granola`, then use Dex's Granola API reader.
+- **Zoom:** use `/zoom-setup`, then Dex's Zoom recording/transcript reader.
+- **Teams:** use `/ms-teams-setup`, then Dex's Teams reader for the meeting context it exposes.
+- **Any other meeting-notes tool:** do not imply Dex has a direct reader. Offer: "Point me at a folder of exported notes and I'll import the `.md`, `.txt`, `.vtt`, and `.srt` files." Run `python -m core.ritual_intelligence import-transcript-folder "<folder>"`.
+
+After a selected reader is connected, start its initial sync as a background task and continue to Step 1 without waiting for the backfill. For a folder, start the import the same way. Say plainly: "I'll keep that running in the background while we finish setting up."
+
+If nothing relevant is detected, offer the exported-notes folder once. If the user says skip, later, or no, continue immediately. This offer has no validation step and must never block onboarding.
 
 ---
 
@@ -335,66 +360,57 @@ Present options using your detected platform tool:
 
 ---
 
-## Step 7: Choose Optional Rooms
+## Step 7: Working Week
 
-Say: "Dex's meetings, people, and tasks spine is always on. I can also add three optional rooms now. All three start off unless you say yes."
+Use the `working_week_suggestion` returned when the calendar choice was saved. Always show the suggestion and let the user change it.
 
-Present these three plain yes/no questions using your detected platform tool:
+- When `basis` is `calendar`, say: "Looks like you work [suggested days] — right?"
+- When `basis` is `default`, say: "[reason] I've suggested Monday to Friday — is that right?"
 
-```json
-{
-  "questions": [
-    {
-      "id": "career",
-      "prompt": "Add a Career room for growth evidence, coaching, and resumes?",
-      "allow_multiple": false,
-      "options": [
-        {"id": "yes", "label": "Yes"},
-        {"id": "no", "label": "No"}
-      ]
-    },
-    {
-      "id": "companies",
-      "prompt": "Add a Companies room for organization and account pages?",
-      "allow_multiple": false,
-      "options": [
-        {"id": "yes", "label": "Yes"},
-        {"id": "no", "label": "No"}
-      ]
-    },
-    {
-      "id": "quarter_goals",
-      "prompt": "Add a Quarter Goals room for 3-month planning and reviews?",
-      "allow_multiple": false,
-      "options": [
-        {"id": "yes", "label": "Yes"},
-        {"id": "no", "label": "No"}
-      ]
-    }
-  ]
-}
-```
+Present two choices: **Yes, that's right** and **Change the days**.
 
-Map each `yes` to `true` and each `no` to `false`. Then call:
+- If they confirm, use the suggested `days`.
+- If they choose to change it, ask: "Which days do you work?" Let them select any combination of Monday through Sunday.
+
+Keep this to one short exchange. Ask only which days they work, never why they chose them.
+
+Then call `validate_and_save_step(step_number=7, step_data={"working_week": {"days": [...]}})` using lowercase day names from the confirmed answer.
+
+---
+
+## Step 8: Rooms
+
+**Do not ask a question here.** All three rooms are on for a new vault, so there is
+nothing to choose. Onboarding is already long; a question whose answer is always
+"yes" only makes it longer.
+
+Say: "Alongside meetings, people, and tasks, you're getting three more rooms:
+**Companies** for the organizations you deal with, **Career** for growth evidence
+and resumes, and **Quarter Goals** for 3-month planning. All three are set up and
+ready — you don't have to use them, and nothing appears in them until you do."
+
+Then move straight to Step 9. **Do not call `validate_and_save_step` for step 8.**
+Finalization fills in every room it wasn't given an answer for, using the shipped
+defaults, which turns all three on and creates their folders.
+
+**If the user volunteers that they don't want one** — "skip the career stuff", "I
+don't need quarterly planning" — take them at their word and record only that room:
 
 ```text
 validate_and_save_step(
-  step_number=7,
-  step_data={
-    "capabilities": {
-      "career": true/false,
-      "companies": true/false,
-      "quarter_goals": true/false
-    }
-  }
+  step_number=8,
+  step_data={"capabilities": {"career": false}}
 )
 ```
+
+Only name the rooms they actually spoke about. Any room you leave out still follows
+the default, and a recorded answer — on or off — is never overwritten later.
 
 Say: "You can change these later with `/manage-capabilities`. Turning a room off never deletes its notes; it only hides that room's skills and stops new room content from being created."
 
 ---
 
-## Step 8: Generate Structure
+## Step 9: Generate Structure
 
 **BEFORE PROCEEDING - MCP Validation:**
 1. Call `get_onboarding_status()` to verify all required steps (1-7) are completed
@@ -423,7 +439,7 @@ Call `finalize_onboarding()` from onboarding-mcp. This single call handles:
 5. Write System/pillars.yaml from pillars
 6. Update CLAUDE.md User Profile section
 7. Setup root .mcp.json (replace {{VAULT_PATH}} automatically)
-8. Provision folders and skills only for the optional rooms selected in Step 7
+8. Provision folders and skills only for the optional rooms selected in Step 8
 9. Delete session file on success
 
 The MCP returns a summary of what was created (folders, files, configs).
@@ -449,11 +465,11 @@ Use only the structured fields returned by the tool:
 
 Then show `draft_weekly_plan` as a suggested draft for the user's week. Do not claim that the draft, person pages, or company pages were written to the vault; this tool analyzes and drafts, it does not create those artifacts.
 
-## Step 9: Connect Your Tools (Integration Discovery)
+## Step 10: Connect Your Tools (Integration Discovery)
 
 Help the user connect the tools they use. Present the available integrations by category and let them choose — keep it light.
 
-### 8a: Present Available Integrations
+### 10a: Present Available Integrations
 
 If `System/integrations/config.yaml` exists, read it first and note any already-enabled integrations so you don't re-offer them.
 
@@ -476,9 +492,11 @@ Say: "Now the fun part — let's connect the tools you use day to day."
 - Atlassian (Jira + Confluence) — Tickets and docs in daily plans. Setup: 3 min
 ```
 
+Dex can also connect hundreds of other tools with `/connect`. The quick ones ask you to paste a key; browser sign-ins need a one-time setup where you register your own app for Dex in that tool's own settings. Only Google and Linear have had Dex's security review; anything else asks for your explicit opt-in before Dex continues.
+
 If any integrations are already connected, briefly note them so you don't re-offer.
 
-### 8b: Personalize with Vault Signals
+### 10b: Personalize with Vault Signals
 
 Before asking which to connect, run the integration concierge — it scans for signals of tools the user already works with (apps installed on their Mac, connectors already configured, and mentions/links in their notes), so you can lead with what fits them instead of a flat list:
 
@@ -486,41 +504,44 @@ Before asking which to connect, run the integration concierge — it scans for s
 node .claude/hooks/integration-concierge.cjs
 ```
 
-Parse the JSON for the high_value and moderate_value tiers. Each entry has a `reason` field with a ready-made plain-English signal ("installed on your Mac", "already set up as a connector but not switched on yet", or a mention count). If any high_value items came back, surface them first, personalized:
+Parse the JSON for `high_value`, `moderate_value`, and `connect_detected`. Each entry has a `reason` and a `route`: `skill` uses its tested setup skill; `connect` uses `/connect` and deliberately has no `setup` field. Surface curated `high_value` items as before, then add at most the top three `connect_detected` items:
 
 ```
 Based on what's already on your machine and in your vault, these look most useful:
 
-- **[shortName]** — [reason]. [value proposition]. Setup: [setupTime].
+- `skill`: **[shortName]** — [reason]. [value]. Setup: [setupTime].
+- `connect`: **[shortName]** — [reason]. [value]. Connect with `/connect`.
 ```
 
-Then present the rest of the categorized list from 8a for anything not already surfaced. If the concierge returns no high_value signals (common for a brand-new vault), just use the 8a list as-is — don't mention the scan.
+Then present the rest of the curated list from 10a for anything not already surfaced. If both `high_value` and `connect_detected` are empty, just use the 10a list — don't mention the scan.
 
 After presenting, set an `integrations_offered` flag in the `.onboarding-complete` marker so `/getting-started` doesn't re-run this discovery.
 
 **Then ask:**
 
-"Which ones would you like to connect? You can always add more later with `/integrate-mcp` or individual setup commands."
+"Which ones would you like to connect? You can always add more later with `/connect`, `/integrate-mcp`, or individual setup commands."
 
-### 8c: Connect Selected Integrations
+### 10c: Connect Selected Integrations
 
-For each integration the user selects:
+For each integration the user selects, follow its `route`:
 
-1. Run its setup skill: invoke the skill referenced in the integration's `setup` field (e.g., `/todoist-setup`, `/google-workspace-setup`)
-2. Wait for the setup skill to complete (each includes auth, config, and verification)
-3. The setup skill shows its **Capability Cascade** at the end (from `integration-patterns.md`):
-   - Which existing skills just got smarter
-   - What new capabilities are now available
-   - Privacy and trust level summary
-4. Move to the next selected integration
+- `skill`:
+  1. Run its setup skill: invoke the skill referenced in the integration's `setup` field (e.g., `/todoist-setup`, `/google-workspace-setup`)
+  2. Wait for the setup skill to complete (each includes auth, config, and verification)
+  3. The setup skill shows its **Capability Cascade** at the end (from `integration-patterns.md`):
+     - Which existing skills just got smarter
+     - What new capabilities are now available
+     - Privacy and trust level summary
+  4. Move to the next selected integration
+- `connect`: invoke `/connect` for that provider; never invent a setup skill or setup time. `/connect` explains whether it needs a pasted key or the browser-sign-in setup. For anything other than Google or Linear, explain that it has not had Dex's security review and get explicit opt-in before using `--allow-unvetted`.
 
 If the user selects multiple, run them in sequence. After each one, confirm success before moving to the next.
 
 If the user says "skip" or "none" or "later":
 
-Say: "No problem! You can connect tools anytime with `/integrate-mcp` or the individual setup commands. Run `/dex-level-up` to see what's available."
+Say: "No problem! You can connect tools anytime with `/connect`, `/integrate-mcp`, or the individual setup commands. Run `/dex-level-up` to see what's available."
 
-### 8d: Optional Features (After Integrations)
+### 10d: Optional Features (After Integrations)
 
 Say: "A couple more optional add-ons:
 
@@ -550,7 +571,7 @@ Ask: "Which journaling prompts do you want?"
 
 Say: "Granola captures your meeting notes and transcripts. I can help you process them.
 
-**First, connect Granola:** Dex uses the official Granola API, which needs a Granola Business plan and an API key. Run `/granola-setup` and I'll walk you through adding it — no file editing needed.
+**First, connect Granola** — skip this if you already did at the meeting-sources step earlier, where Granola is offered alongside anything else Dex spotted on your machine. Connecting it there uses `/connect`, the same as any other tool. `/granola-setup` still works if you would rather add the key that way. Either route needs an API key from Granola's own settings.
 
 **Processing modes (once connected):**
 - **Manual** (recommended) — Run `/process-meetings` when you want. No extra LLM API key needed.
@@ -635,7 +656,7 @@ Ask: "Install background automation?"
 **If no:**
 Say: "No problem! Self-learning checks will still run inline during session start and `/daily-plan`. You can install later with `bash .scripts/install-learning-automation.sh`"
 
-## Step 10: Completion & Phase 2 Bridge
+## Step 11: Completion & Phase 2 Bridge
 
 ### Cursor Version Check (If Cursor Detected)
 
@@ -684,13 +705,20 @@ You've already seen the first-week snapshot from the calendar data Dex could rea
 
 📖 One more thing worth bookmarking: the **Dex Guide** at https://heydex.ai/help/ — a plain-English walkthrough of everything Dex can do, with copy-paste prompts to steal. Great for your first week."
 
+Then ask: "Want me to put a few gentle nudges in your calendar for your first few weeks? One a day, each with something to try. They're all-day reminders marked private and free, so they never block your time or make you look busy — and you can delete the whole thing in one tap."
+
+Present two choices: **Yes, add them** and **No thanks**.
+
+- On **Yes, add them**: call `generate_nudge_calendar()`. Tell them the file is ready, give its returned path, and explain that opening it will offer to add a new calendar called Dex. On macOS, offer to open it for them with `open <path>`. Say plainly: choose "New Calendar" if asked, so it stays separate and is easy to remove.
+- On **No thanks**: say nothing more about it and move on. Do not ask again. Do not capture anything.
+
 ---
 
-## Step 11: Phase 2 - Deeper Getting Started (Optional but Recommended)
+## Step 12: Phase 2 - Deeper Getting Started (Optional but Recommended)
 
-**Trigger:** Either immediately after Step 10, OR at next session start if vault is < 7 days old.
+**Trigger:** Either immediately after Step 11, OR at next session start if vault is < 7 days old.
 
-**Purpose:** Transform "I have a system, now what?" into confidence with a workspace tour, historical meeting processing, and useful next actions. The first-week reveal has already happened automatically in Step 8 and must not be presented again as a new discovery.
+**Purpose:** Transform "I have a system, now what?" into confidence with a workspace tour, historical meeting processing, and useful next actions. The first-week reveal has already happened automatically in Step 9 and must not be presented again as a new discovery.
 
 **If yes (user wants to continue):** Run `/getting-started` skill (see `.claude/skills/getting-started/SKILL.md`)
 - Start with the deeper tour or historical-data choices

@@ -3,9 +3,10 @@
 # Usage: bash scripts/release.sh [patch|minor|major]
 #
 # Steps:
-#   1. Bump version in package.json
-#   2. Insert dated CHANGELOG header for the new version
-#   3. Commit, tag, and push
+#   1. Check the last release reached the public releases page
+#   2. Bump version in package.json
+#   3. Insert dated CHANGELOG header for the new version
+#   4. Commit, tag, and push
 
 set -euo pipefail
 
@@ -47,6 +48,52 @@ TAG="v${NEW_VERSION}"
 TODAY=$(date +%Y-%m-%d)
 
 echo "Releasing: ${CURRENT_VERSION} -> ${NEW_VERSION} (${BUMP_TYPE})"
+
+# --- Check previous release reached the public page ---------------------------
+
+if ! command -v curl >/dev/null 2>&1; then
+  echo "Releases page check could not run (curl is unavailable); continuing."
+else
+  FETCH_RESULT=$(
+    if curl -fsS --connect-timeout 5 --max-time 15 \
+      "https://heydex.ai/releases/releases.md" 2>/dev/null; then
+      printf '\n__DEX_RELEASES_FETCH_OK__\n'
+    else
+      printf '\n__DEX_RELEASES_FETCH_FAILED__\n'
+    fi
+  )
+  if [[ "$FETCH_RESULT" == *$'\n__DEX_RELEASES_FETCH_OK__' ]]; then
+    PUBLISHED_CHANGELOG=${FETCH_RESULT%$'\n__DEX_RELEASES_FETCH_OK__'}
+    PUBLISHED_VERSION=$(
+      if printf '%s\n' "$PUBLISHED_CHANGELOG" \
+        | grep -m 1 -E '^## \[[0-9]+\.[0-9]+\.[0-9]+\]' \
+        | sed -E 's/^## \[([0-9]+\.[0-9]+\.[0-9]+)\].*/\1/'; then
+        :
+      fi
+    )
+    if [ -n "$PUBLISHED_VERSION" ]; then
+      IFS='.' read -r C_MAJOR C_MINOR C_PATCH <<< "$CURRENT_VERSION"
+      IFS='.' read -r P_MAJOR P_MINOR P_PATCH <<< "$PUBLISHED_VERSION"
+      if [ "$PUBLISHED_VERSION" = "$CURRENT_VERSION" ]; then
+        echo "Releases page check: ${CURRENT_VERSION} is published."
+      elif (( P_MAJOR < C_MAJOR
+        || (P_MAJOR == C_MAJOR && P_MINOR < C_MINOR)
+        || (P_MAJOR == C_MAJOR && P_MINOR == C_MINOR && P_PATCH < C_PATCH) )); then
+        echo ""
+        echo "WARNING: The last release has not reached heydex.ai/releases yet."
+        echo "  Published version: ${PUBLISHED_VERSION}"
+        echo "  Last release:      ${CURRENT_VERSION}"
+        echo "  Publish now: run ./deploy-releases.sh in the heydex-website repo."
+        echo "  If the hourly timer is dead: run ops/releases-republish/install.sh there."
+        echo ""
+      fi
+    else
+      echo "Releases page check could not run (no release version found); continuing."
+    fi
+  else
+    echo "Releases page check could not run (heydex.ai was unavailable); continuing."
+  fi
+fi
 
 # --- Bump package.json --------------------------------------------------------
 

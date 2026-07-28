@@ -336,19 +336,19 @@ CAPABILITIES: dict[str, dict[str, object]] = {
         "folders": ("05-Areas/Career",),
         "skills": ("career-setup", "career-coach", "resume-builder"),
         "mcp": ("career_server", "resume_server"),
-        "default_enabled": False,
+        "default_enabled": True,
     },
     "companies": {
         "folders": ("05-Areas/Companies",),
         "skills": (),
         "features": ("entity-engine.company-pages",),
-        "default_enabled": False,
+        "default_enabled": True,
     },
     "quarter_goals": {
         "folders": ("01-Quarter_Goals",),
         "skills": ("quarter-plan", "quarter-review"),
         "config": "quarterly_planning",
-        "default_enabled": False,
+        "default_enabled": True,
     },
 }
 
@@ -413,8 +413,48 @@ def update_write_verdict(
     remapped paths back to their semantic defaults before calling, or treat
     them as unclassified. Unclassified paths fail safe: never written.
     """
-    if operation not in ("update", "customization-migration"):
+    if operation not in ("update", "customization-migration", "capability-state"):
         raise ValueError(f"unknown write operation: {operation}")
+
+    if operation == "capability-state":
+        try:
+            denied = is_denied(path)
+            candidate = _normalize(path)
+        except ContractViolation:
+            return WriteVerdict(
+                str(path),
+                False,
+                "outside-capability-state",
+                None,
+                None,
+            )
+        try:
+            resolution = resolve(candidate)
+        except ContractViolation:
+            resolution = None
+        if denied:
+            return WriteVerdict(
+                candidate,
+                False,
+                "deny",
+                resolution.ownership if resolution is not None else None,
+                resolution.rule_id if resolution is not None else None,
+            )
+        if candidate == "System/user-profile.yaml":
+            return WriteVerdict(
+                candidate,
+                True,
+                "write-capability-state",
+                resolution.ownership if resolution is not None else None,
+                resolution.rule_id if resolution is not None else None,
+            )
+        return WriteVerdict(
+            candidate,
+            False,
+            "outside-capability-state",
+            resolution.ownership if resolution is not None else None,
+            resolution.rule_id if resolution is not None else None,
+        )
 
     if operation == "customization-migration":
         try:

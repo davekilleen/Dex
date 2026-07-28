@@ -7,6 +7,33 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.78.0] — 📓 Your goals and career pages come back (2026-07-28)
+
+Last week I made Quarter Goals and Career optional — off unless you asked for them — and retired the starter pages that came with each one. That was the wrong call, and one user found out the hard way. They had written a quarter's worth of real goals into the goals page Dex had given them. When that page stopped being part of Dex, their update stopped working. The safety check did its job and refused to run rather than touch the file — but nothing had ever warned them that a page they'd come to rely on was being taken away, and they had to dig their goals out of an old copy themselves.
+
+**What this fixes for you:**
+
+* **Goals and Career come with Dex again.** Both are set up from the start for a new vault, starter pages included. If you'd never expressed a preference either way, they're switched back on for you too.
+* **A choice you made stays your choice.** If you ever turned either one on or off — during setup or afterwards — that decision stands, and nothing here overrides it in either direction. You can still switch any of them off with `/manage-capabilities`, and switching one off never deletes what you've already written.
+* **Dex recognises its own pages again.** The starter goals page and the career evidence page ship with Dex once more, so when you write into them, an update knows what it's looking at instead of treating your work as a stray file it daren't touch.
+* **Setup stops asking.** It used to put three yes/no questions to you about rooms you hadn't seen yet, right when you were trying to get started. All three now simply come with Dex, and setup tells you so in a sentence.
+
+Thanks to Amit, who reported this and worked out exactly what had happened.
+
+## [1.77.2] — 🔔 Dex can tell you about updates again (2026-07-27)
+
+Yesterday's fix was half the story. Chasing it properly — by testing against the real thing rather than a stand-in — turned up something considerably worse: **Dex had stopped telling almost anyone that updates existed.**
+
+**What this fixes for you:**
+
+* **You get told when there's a new version.** Dex checks for updates by looking at what's been published. Every time I merged any piece of work, a duplicate marker was created for the version already released — so Dex would find several different things all claiming to be the same version, sensibly conclude it couldn't tell which was real, and say nothing at all. That happened within minutes of every release, so for most people the update notice had quietly stopped working entirely. Each version now produces exactly one published copy, and Dex can read it again.
+* **Being a long way behind no longer makes it worse.** Dex would give up if too many versions had come out since yours — so the further behind you were, the more certain it became that you'd never hear about an update. It now simply looks at the newest one.
+* **The "release notes" link goes to the release notes.** It pointed at an internal build reference where nothing is written. It now takes you to the page that actually explains what changed.
+
+**Why I didn't see it:** my tests built a small pretend copy of the project with two or three versions in it, where none of this can happen. The real thing has over a hundred published markers, duplicates going back several versions, and a page that wasn't where the code assumed. Nothing was wrong with the tests — they were just testing a world that doesn't exist. Dex is now checked against the real published releases before any of this is called working, and there's a new guard that refuses to publish a second copy of a version that's already out.
+
+If you've been on an older version for a while and never saw an update prompt, this is why — and it should now appear on its own.
+
 ## [1.77.1] — 🩺 Dex stops crying wolf, and older setups can find their updates again (2026-07-27)
 
 Both of these came from one user's bug report, and both only affect people who've been using Dex for a while — which is exactly why neither had been spotted.
@@ -24,12 +51,12 @@ Both of these came from one user's bug report, and both only affect people who'v
 
 Dex could always work with a handful of tools it was wired into directly. Connecting anything else was a manual job, and mostly you didn't bother.
 
-Now Dex carries a map of how **775 different tools handle signing in**. You say "connect Notion" and Dex works out what that one needs and walks you through it.
+Now Dex knows how **831 different tools handle signing in**, and can connect you to **627 of them** today. You say "connect Notion" and Dex works out what that one needs and walks you through it.
 
 **What this gives you:**
 
 * **Paste a key, and you're done.** For around 350 tools it's that quick — I timed it at **one second**, no forms, no browser, nothing to approve.
-* **Browser sign-ins take one setup, once.** For the other 425, Dex doesn't arrive with a pre-arranged identity at Google or Slack — deliberately, because that would mean your sign-in passing through us. So the first time, you register Dex yourself in that tool's settings. It's the most technical thing I'll ever ask of you, it's once per tool ever, and I'll talk you through it.
+* **Browser sign-ins take one setup, once.** For the other 279, Dex doesn't arrive with a pre-arranged identity at Google or Slack — deliberately, because that would mean your sign-in passing through us. So the first time, you register Dex yourself in that tool's settings. It's the most technical thing I'll ever ask of you, it's once per tool ever, and I'll talk you through it.
 * **Logins that renew themselves.** Sign-ins expire — that's the app being careful, not something breaking. I renew them quietly before they lapse. You'll never see it.
 * **I fix what I can before you notice.** At the start of a session I check your connections and repair what I'm able to, speaking up only when something genuinely needs you.
 * **Encrypted, and never off your machine.** On a Mac the key that unlocks your sign-ins sits in the macOS Keychain. Nothing is sent to us — there's no server holding your logins, because there's no server.

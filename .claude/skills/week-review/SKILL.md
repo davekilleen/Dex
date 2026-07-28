@@ -1,12 +1,14 @@
 ---
 name: week-review
-description: "Review the week with concrete accomplishments (not fake percentages), pattern detection and goal tracking. Use when the user says 'how was my week', 'week review', or it's Friday/end of week. Also use proactively when a week's priorities are largely resolved. Not for planning the coming week; use `week-plan`."
+description: "Review the week with concrete accomplishments (not fake percentages), pattern detection and goal tracking. Use when the user says 'how was my week', 'week review', or it's their last working day. Also use proactively when a week's priorities are largely resolved. Not for planning the coming week; use `week-plan`."
 context: fork
 ---
 
 ## Purpose
 
 Create a synthesis of the week reviewing activity, progress, and what was accomplished. **Uses concrete metrics, not vague percentages.**
+
+Read `working_week.days` in `System/user-profile.yaml` and treat its last working day as the natural review point.
 
 ---
 

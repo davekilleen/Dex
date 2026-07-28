@@ -164,7 +164,7 @@ def test_live_integration_guidance_only_names_the_shipped_entrypoint() -> None:
     for path in LIVE_INTEGRATION_GUIDANCE:
         assert "/integrate-mcp" in _read(path), path
     assert "Building in Parallel" not in _read("core/integrations/BUILD_TRACKER.md")
-    assert "onboarding (Step 8)" in _read(".claude/skills/integrations/README.md")
+    assert "onboarding (Step 10)" in _read(".claude/skills/integrations/README.md")
 
 
 def test_post_update_missing_integrations_point_to_integrate_mcp(monkeypatch) -> None:
@@ -364,9 +364,37 @@ def test_onboarding_documents_the_explicit_no_company_domain_path() -> None:
     assert "This step CANNOT be skipped" not in domain_step
 
 
+def test_onboarding_confirms_working_days_and_allows_correction() -> None:
+    flow = _read(".claude/flows/onboarding.md")
+    working_week_step = flow.split("## Step 7:", 1)[1].split("## Step 8:", 1)[0]
+
+    assert "working_week_suggestion" in working_week_step
+    assert "Always show the suggestion" in working_week_step
+    assert "Which days do you work?" in working_week_step
+    assert "Monday to Friday" in working_week_step
+    assert "confirm" in working_week_step.lower()
+    assert (
+        'validate_and_save_step(step_number=7, step_data={"working_week": '
+        '{"days": [...]}})' in working_week_step
+    )
+
+
+def test_week_skills_read_the_users_working_week_for_timing() -> None:
+    week_plan = _read(".claude/skills/week-plan/SKILL.md")
+    week_review = _read(".claude/skills/week-review/SKILL.md")
+
+    assert "`working_week.days`" in week_plan
+    assert "first working day" in week_plan
+    assert "last working day" in week_plan
+    assert "Friday/weekend" not in week_plan
+    assert "`working_week.days`" in week_review
+    assert "last working day" in week_review
+    assert "Friday/end of week" not in week_review
+
+
 def test_onboarding_runs_the_first_week_reveal_before_tool_discovery() -> None:
     flow = _read(".claude/flows/onboarding.md")
-    finale = flow.split("## Step 8:", 1)[1].split("## Step 9:", 1)[0]
+    finale = flow.split("## Step 9:", 1)[1].split("## Step 10:", 1)[0]
 
     assert "run_first_week_analysis()" in finale
     assert "This call is automatic" in finale
@@ -376,9 +404,67 @@ def test_onboarding_runs_the_first_week_reveal_before_tool_discovery() -> None:
     assert "draft_weekly_plan" in finale
 
 
+def test_onboarding_connect_step_explains_connect_without_overpromising() -> None:
+    flow = _read(".claude/flows/onboarding.md")
+    connect_step = flow.split("## Step 10:", 1)[1].split("## Step 11:", 1)[0]
+    lowered = connect_step.lower()
+
+    assert "/connect" in connect_step
+    assert "hundreds" in lowered
+    assert "paste a key" in lowered
+    assert "browser sign-in" in lowered
+    assert "one-time setup" in lowered
+    assert "register your own app for dex" in lowered
+    assert "tool's own settings" in lowered
+    assert "google and linear" in lowered
+    assert "--allow-unvetted" in connect_step
+    assert "explicit opt-in" in lowered
+    assert connect_step.index("get explicit opt-in") < connect_step.index(
+        "--allow-unvetted"
+    )
+    for forbidden_claim in ("secure", "safe", "malware"):
+        assert forbidden_claim not in lowered
+
+
+def test_onboarding_connect_step_preserves_the_curated_setup_skill_flow() -> None:
+    flow = _read(".claude/flows/onboarding.md")
+    connect_step = flow.split("## Step 10:", 1)[1].split("## Step 11:", 1)[0]
+
+    assert "invoke the skill referenced in the integration's `setup` field" in connect_step
+    assert "Wait for the setup skill to complete" in connect_step
+    assert "Which existing skills just got smarter" in connect_step
+    assert "What new capabilities are now available" in connect_step
+    assert "Privacy and trust level summary" in connect_step
+    assert "Move to the next selected integration" in connect_step
+
+
+def test_onboarding_completion_offers_the_optional_nudge_calendar() -> None:
+    flow = _read(".claude/flows/onboarding.md")
+    completion = flow.split("## Step 11:", 1)[1].split("## Step 12:", 1)[0]
+
+    assert (
+        "Want me to put a few gentle nudges in your calendar for your first "
+        "few weeks? One a day, each with something to try. They're all-day "
+        "reminders marked private and free, so they never block your time or "
+        "make you look busy — and you can delete the whole thing in one tap."
+        in completion
+    )
+    assert "**Yes, add them**" in completion
+    assert "**No thanks**" in completion
+    assert "generate_nudge_calendar()" in completion
+    assert "opening it will offer to add a new calendar called Dex" in completion
+    assert "`open <path>`" in completion
+    assert 'choose "New Calendar" if asked' in completion
+    assert "say nothing more about it and move on" in completion
+    assert "Do not ask again" in completion
+    assert "Do not capture anything" in completion
+
+
 def test_getting_started_treats_the_reveal_as_already_presented() -> None:
     skill = _read(".claude/skills/getting-started/SKILL.md")
 
+    assert "onboarding completion (Step 11)" in skill
+    assert "onboarding Step 10" in skill
     assert "The first-week reveal already ran during onboarding" in skill
     assert "Do not repeat the first-week statistics" in skill
     assert "pre_analysis_deferred" not in skill

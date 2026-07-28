@@ -25,7 +25,7 @@ Dex/
 │   │   ├── Internal/         # Colleagues (same email domain)
 │   │   └── External/         # Customers, partners (different domain)
 │   ├── Companies/            # External organizations (universal)
-│   ├── Career/               # Career development (via /career-setup)
+│   ├── Career/               # Career development (set up for you)
 │   └── [Role-specific]/     # Accounts/, Team/, Content/, etc.
 ├── 06-Resources/                # Reference material
 │   ├── Dex_System/           # System documentation
@@ -45,13 +45,13 @@ Dex/
 │   └── Dex_Backlog.md        # System improvement backlog
 ├── 03-Tasks/                    # Task management
 │   └── Tasks.md              # Main task backlog
-├── 01-Quarter_Goals/            # Quarterly planning (optional)
+├── 01-Quarter_Goals/            # Quarterly planning (set up for you)
 │   └── Quarter_Goals.md      # Current quarter's 3-5 goals
-└── 02-Week_Priorities/          # Weekly planning (optional)
+└── 02-Week_Priorities/          # Weekly planning
     └── Week_Priorities.md    # Current week's Top 3
 ```
 
-**Note:** The numbered folders (`01-`, `02-`, `03-`) appear after running the respective planning commands (`/quarter-plan`, `/week-plan`, `/triage`). Before then, you'll just see the PARA folders (04-07) plus 00-Inbox/ and System/.
+**Note:** These folders are all created for you during setup, each with a starter page waiting inside. They stay empty until you run the matching command (`/quarter-plan`, `/week-plan`, `/triage`) or start writing in them yourself.
 
 ---
 
@@ -98,9 +98,10 @@ Eligible external email domains can also become company pages. New vaults start 
 
 Most users only need the universal areas (People and Companies). You can create additional areas as needed for your workflow.
 
-### Career Area (Optional)
+### Career Area
 
-Created via `/career-setup` command:
+Set up for you during onboarding. Run `/career-setup` to fill it in, or `/manage-capabilities` to switch it off — switching it off never deletes anything already written there.
+
 - `Career/` — Career development tracking
   - `Current_Role.md` — Job description and responsibilities
   - `Career_Ladder.md` — Competency framework
@@ -258,7 +259,7 @@ If you enable quarterly and weekly planning, everything connects from pillars �
 5. **Tasks** (`03-Tasks/Tasks.md`)  
    Backlog tagged with `#pillar [Q1-2] [Week-1]` connecting to goals
 
-**Note:** Weekly planning (`02-Week_Priorities/`) is always available. Quarterly planning (`01-Quarter_Goals/`) is optional and created when you run `/quarter-plan`.
+**Note:** Both weekly planning (`02-Week_Priorities/`) and quarterly planning (`01-Quarter_Goals/`) are set up from the start. Quarterly planning can be switched off with `/manage-capabilities` if you don't work that way.
 
 ---
 
@@ -312,7 +313,7 @@ Tasks sync bidirectionally with person pages, company pages, and meeting notes v
 | **00-Inbox/** | Quick captures | Days (until triaged) | Onboarding |
 | **System/** | Configuration | Indefinite | Onboarding |
 | **03-Tasks/** | Task backlog | Indefinite | First `/triage` or `/daily-plan` |
-| **01-Quarter_Goals/** | Quarterly goals | Per quarter | First `/quarter-plan` |
+| **01-Quarter_Goals/** | Quarterly goals | Per quarter | Onboarding |
 | **02-Week_Priorities/** | Weekly priorities | Per week | First `/week-plan` |
 
 ---

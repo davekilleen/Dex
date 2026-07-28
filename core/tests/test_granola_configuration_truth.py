@@ -165,6 +165,25 @@ def test_meeting_processing_instructions_write_the_canonical_object_shape() -> N
         assert "mode: automatic" in text
 
 
+def test_onboarding_offers_detected_meeting_sources_before_step_one() -> None:
+    text = (REPO_ROOT / ".claude" / "flows" / "onboarding.md").read_text(
+        encoding="utf-8"
+    )
+    calendar_index = text.index("## Calendar First (Before Step 1)")
+    meeting_sources_index = text.index("## Meeting Sources (Before Step 1)")
+    step_one_index = text.index("## Step 1: Welcome")
+    early_offer = text[meeting_sources_index:step_one_index]
+
+    assert calendar_index < meeting_sources_index < step_one_index
+    assert "node .claude/hooks/integration-concierge.cjs" in early_offer
+    assert all(name in early_offer for name in ("Granola", "Zoom", "Teams"))
+    assert "import-transcript-folder" in early_offer
+    assert "background" in early_offer
+    assert "skip" in early_offer.lower()
+    assert "paid" not in early_offer.lower()
+    assert "business plan" not in early_offer.lower()
+
+
 def test_no_live_code_or_instructions_use_legacy_granola_local_auth() -> None:
     intentional_history_or_prohibition = {
         Path("CHANGELOG.md"),

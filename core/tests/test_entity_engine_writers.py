@@ -4,7 +4,7 @@ import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
 
-from core.entity_engine import Result
+from core.entity_engine import Result, render_company_page
 from core.mcp import work_server
 from core.ritual_intelligence import contact_promote
 
@@ -114,12 +114,64 @@ def test_work_company_creation_uses_engine_create_primitive(
     result = work_server.create_company_page(
         "Engine Company",
         website="https://engine.example",
+        industry="Software",
+        size="Scale-up",
+        stage="Customer",
     )
 
     assert result["success"] is True
     assert len(calls) == 1
     assert calls[0][0] == companies_dir / "Engine_Company.md"
+
+    canonical = render_company_page(
+        "Engine Company",
+        domains=["engine.example"],
+        website="https://engine.example",
+        status="Customer",
+    )
+    written = calls[0][1]
+
+    # The machine-managed half must stay byte-identical to the canonical
+    # renderer: the entity engine's domain matching depends on that shape.
+    canonical_frontmatter = canonical.split("---", 2)[2].split("## Notes")[0]
+    assert written.split("---", 2)[2].split("## Notes")[0] == canonical_frontmatter
+    assert written.startswith(canonical.split("# Engine Company")[0])
+
+    # industry and size have no canonical frontmatter field, but the tool
+    # accepts them, so they are recorded under Notes rather than discarded.
+    notes = written.split("## Notes", 1)[1].split("## Relationships", 1)[0]
+    assert "**Industry:** Software" in notes
+    assert "**Size:** Scale-up" in notes
+
     assert calls[0][2] == companies_dir
+
+
+def test_work_company_listing_reads_canonical_company_status(
+    tmp_path: Path, monkeypatch
+) -> None:
+    companies_dir = tmp_path / "Companies"
+    companies_dir.mkdir()
+    (companies_dir / "Engine_Company.md").write_text(
+        render_company_page(
+            "Engine Company",
+            domains=["engine.example"],
+            website="https://engine.example",
+            status="Customer",
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(work_server, "COMPANIES_DIR", companies_dir)
+    monkeypatch.setattr(work_server, "find_people_at_company", lambda _name: [])
+
+    assert work_server.list_companies() == [
+        {
+            "name": "Engine Company",
+            "filepath": str(companies_dir / "Engine_Company.md"),
+            "stage": "Customer",
+            "industry": None,
+            "contacts": 0,
+        }
+    ]
 
 
 def test_work_company_refresh_only_replaces_existing_sections_and_keeps_raw_footer(

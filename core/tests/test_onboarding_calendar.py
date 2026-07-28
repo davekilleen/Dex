@@ -71,6 +71,11 @@ def test_save_calendar_selection_stores_valid_live_calendar(
         "calendar_count": 2,
         "lazy_load": True,
     }
+    assert result["data"]["working_week_suggestion"] == {
+        "days": ["monday", "tuesday", "wednesday", "thursday", "friday"],
+        "basis": "default",
+        "reason": "Dex hasn't worked this out from your calendar.",
+    }
 
 
 def test_save_calendar_selection_rejects_name_missing_from_live_calendars(
@@ -143,6 +148,7 @@ def test_save_calendar_selection_marks_permissions_pending_when_skipped(
 
     assert result["success"] is True
     assert "/dex-doctor" in result["message"]
+    assert result["data"]["working_week_suggestion"]["basis"] == "default"
     assert onboarding_server.load_session()["data"]["calendar"] == {
         "permissions_pending": True,
     }
@@ -228,7 +234,7 @@ def test_save_calendar_selection_is_registered():
 
 def test_finalize_dry_run_previews_calendar_selection(onboarding_vault):
     session = onboarding_server.create_new_session()
-    session["completed_steps"] = [1, 2, 3, 4, 5, 6]
+    session["completed_steps"] = [1, 2, 3, 4, 5, 6, 7]
     session["data"] = {
         "name": "Dave",
         "role": "Founder",
@@ -239,6 +245,9 @@ def test_finalize_dry_run_previews_calendar_selection(onboarding_vault):
             "work_calendar": "dave@dex.ai",
             "calendar_count": 2,
             "lazy_load": True,
+        },
+        "working_week": {
+            "days": ["monday", "tuesday", "wednesday", "thursday", "friday"]
         },
     }
     assert onboarding_server.save_session(session) is True
@@ -253,3 +262,6 @@ def test_finalize_dry_run_previews_calendar_selection(onboarding_vault):
         "lazy_load": True,
     }
     assert result["data"]["preview_user_profile"]["entity_creation"] == {"mode": "auto"}
+    assert result["data"]["preview_user_profile"]["working_week"] == {
+        "days": ["monday", "tuesday", "wednesday", "thursday", "friday"]
+    }

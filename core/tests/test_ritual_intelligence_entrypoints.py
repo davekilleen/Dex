@@ -24,6 +24,10 @@ class _FakeService:
         self.calls.append(("import_manual_transcript", kwargs))
         return {"status": "imported", "title": kwargs["title"]}
 
+    def import_manual_transcript_folder(self, **kwargs):
+        self.calls.append(("import_manual_transcript_folder", kwargs))
+        return {"imported": 2, "skipped": 1, "failed": 0}
+
 
 def test_cli_preview_suggestions_json(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]):
     service = _FakeService()
@@ -68,6 +72,29 @@ def test_cli_import_transcript_parses_iso_datetimes(
     assert payload["started_at"] == datetime.fromisoformat("2026-03-10T09:00:00")
     assert payload["ended_at"] == datetime.fromisoformat("2026-03-10T09:30:00")
     assert json.loads(capsys.readouterr().out)["status"] == "imported"
+
+
+def test_cli_import_transcript_folder_reports_batch_result(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+):
+    service = _FakeService()
+    monkeypatch.setattr(cli, "RitualIntelligenceService", lambda: service)
+    exports = tmp_path / "exports"
+    exports.mkdir()
+
+    exit_code = cli.main(["import-transcript-folder", str(exports)])
+
+    assert exit_code == 0
+    assert service.calls == [
+        ("import_manual_transcript_folder", {"folder_path": exports})
+    ]
+    assert json.loads(capsys.readouterr().out) == {
+        "imported": 2,
+        "skipped": 1,
+        "failed": 0,
+    }
 
 
 def test_module_entrypoint_exits_with_cli_status(monkeypatch: pytest.MonkeyPatch):

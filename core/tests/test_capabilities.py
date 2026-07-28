@@ -103,7 +103,7 @@ def test_room_missing_from_contract_registry_is_unknown(tmp_path: Path) -> None:
         capabilities.surfaces_for("career", contract_path=reduced_contract)
 
 
-def test_all_rooms_default_off_and_legacy_quarterly_planning_is_a_fallback(
+def test_no_opinion_rooms_default_on_and_legacy_quarterly_planning_is_a_fallback(
     tmp_path: Path,
 ) -> None:
     profile_path = tmp_path / "System/user-profile.yaml"
@@ -112,10 +112,10 @@ def test_all_rooms_default_off_and_legacy_quarterly_planning_is_a_fallback(
 
     assert capabilities.enabled(
         "career", profile_path=profile_path, contract_path=CONTRACT_PATH
-    ) is False
+    ) is True
     assert capabilities.enabled(
         "companies", profile_path=profile_path, contract_path=CONTRACT_PATH
-    ) is False
+    ) is True
     assert capabilities.enabled(
         "quarter_goals", profile_path=profile_path, contract_path=CONTRACT_PATH
     ) is True
@@ -132,7 +132,36 @@ def test_all_rooms_default_off_and_legacy_quarterly_planning_is_a_fallback(
     profile_path.write_text("capabilities: malformed\n", encoding="utf-8")
     assert capabilities.enabled(
         "career", profile_path=profile_path, contract_path=CONTRACT_PATH
-    ) is False
+    ) is True
+
+
+def test_flipped_rooms_default_on_but_a_recorded_answer_always_wins(
+    tmp_path: Path,
+) -> None:
+    """Career and Quarter Goals default on (Dave's 2026-07-28 rooms decision).
+
+    The default is the *fallback*, never an override: a recorded answer outranks
+    it in both directions, so flipping the default can never switch a room on for
+    someone who said no, nor off for someone who said yes.
+    """
+    profile_path = tmp_path / "System/user-profile.yaml"
+
+    for room in ("career", "quarter_goals"):
+        _profile(profile_path, **{room: False})
+        assert capabilities.enabled(
+            room, profile_path=profile_path, contract_path=CONTRACT_PATH
+        ) is False
+
+        _profile(profile_path, **{room: True})
+        assert capabilities.enabled(
+            room, profile_path=profile_path, contract_path=CONTRACT_PATH
+        ) is True
+
+    # A map that names one room leaves the other on the contract default.
+    _profile(profile_path, quarter_goals=False)
+    assert capabilities.enabled(
+        "career", profile_path=profile_path, contract_path=CONTRACT_PATH
+    ) is True
 
 
 def test_off_rooms_stay_dormant_and_leave_the_spine_intact(tmp_path: Path) -> None:
@@ -392,9 +421,9 @@ def test_setup_reconciles_rooms_without_creating_companies_directly() -> None:
     assert "- `05-Areas/Companies/`" not in setup
 
 
-def test_legacy_onboarded_vault_keeps_all_rooms_on(tmp_path):
-    """Review finding #1: a vault onboarded before rooms existed must keep its
-    status quo (everything on) — never be silently reset to fresh defaults."""
+def test_legacy_onboarded_vault_pins_companies_off_and_honors_legacy_state(tmp_path):
+    """An existing vault gets a durable Companies-off opinion before the
+    contract default changes, while its legacy quarter choice remains authoritative."""
     from core import capabilities
 
     vault = _fake_vault(tmp_path)
@@ -407,13 +436,76 @@ def test_legacy_onboarded_vault_keeps_all_rooms_on(tmp_path):
 
     seeded = capabilities.migrate_legacy_room_state(vault)
 
-    assert sorted(seeded) == ["career", "companies", "quarter_goals"]
-    for room in ("career", "companies", "quarter_goals"):
-        assert capabilities.enabled(
-            room, profile_path=vault / "System" / "user-profile.yaml"
-        ) is True
+    assert sorted(seeded) == ["career", "companies"]
+    profile_path = vault / "System" / "user-profile.yaml"
+    assert capabilities.enabled("career", profile_path=profile_path) is True
+    assert capabilities.enabled("companies", profile_path=profile_path) is False
+    assert capabilities.enabled("quarter_goals", profile_path=profile_path) is False
+    profile = yaml.safe_load(profile_path.read_text(encoding="utf-8"))
+    assert profile["capabilities"]["companies"]["enabled"] is False
+    assert profile["quarterly_planning"]["enabled"] is False
     # Idempotent: a second run seeds nothing.
     assert capabilities.migrate_legacy_room_state(vault) == []
+
+
+@pytest.mark.parametrize("company_enabled", [True, False])
+def test_legacy_migration_preserves_explicit_company_state(
+    tmp_path: Path,
+    company_enabled: bool,
+) -> None:
+    vault = _fake_vault(tmp_path)
+    profile_path = vault / "System/user-profile.yaml"
+    profile_path.parent.mkdir(parents=True, exist_ok=True)
+    (vault / "System/.onboarding-complete").write_text("{}\n", encoding="utf-8")
+    profile_path.write_text(
+        yaml.safe_dump(
+            {
+                "capabilities": {
+                    "companies": {
+                        "enabled": company_enabled,
+                        "custom": "keep",
+                    }
+                }
+            },
+            sort_keys=False,
+        ),
+        encoding="utf-8",
+    )
+
+    capabilities.migrate_legacy_room_state(vault)
+
+    profile = yaml.safe_load(profile_path.read_text(encoding="utf-8"))
+    assert profile["capabilities"]["companies"] == {
+        "enabled": company_enabled,
+        "custom": "keep",
+    }
+
+
+def test_partial_capability_map_only_gains_the_companies_compatibility_pin(
+    tmp_path: Path,
+) -> None:
+    vault = _fake_vault(tmp_path)
+    profile_path = vault / "System/user-profile.yaml"
+    profile_path.parent.mkdir(parents=True, exist_ok=True)
+    (vault / "System/.onboarding-complete").write_text("{}\n", encoding="utf-8")
+    profile_path.write_text(
+        "capabilities:\n  career:\n    enabled: false\n",
+        encoding="utf-8",
+    )
+
+    seeded = capabilities.migrate_legacy_room_state(vault)
+
+    profile = yaml.safe_load(profile_path.read_text(encoding="utf-8"))
+    assert seeded == ["companies"]
+    assert profile["capabilities"] == {
+        "career": {"enabled": False},
+        "companies": {"enabled": False},
+    }
+    assert capabilities.enabled(
+        "quarter_goals",
+        profile_path=profile_path,
+        contract_path=CONTRACT_PATH,
+    ) is True
 
 
 def test_fresh_unonboarded_vault_is_never_migrated(tmp_path):

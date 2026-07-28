@@ -138,6 +138,30 @@ def test_update_write_verdict(path: str, exists: bool, allowed: bool, action: st
 
 
 @pytest.mark.parametrize(
+    "relative_path",
+    [
+        "01-Quarter_Goals/Quarter_Goals.md",
+        "05-Areas/Career/Evidence/README.md",
+    ],
+)
+def test_protected_capability_seeds_ship_with_write_if_absent_policy(
+    relative_path: str,
+) -> None:
+    seed = REPO_ROOT / relative_path
+    assert seed.is_file(), (
+        f"{relative_path} is a protected shipped seed. If retirement is deliberate, "
+        "declare it explicitly and update this regression with the migration proof."
+    )
+
+    absent = portable_contract.update_write_verdict(relative_path, exists=False)
+    existing = portable_contract.update_write_verdict(relative_path, exists=True)
+    assert absent.allowed is True
+    assert absent.action == "write-if-absent"
+    assert existing.allowed is False
+    assert existing.action == "write-if-absent"
+
+
+@pytest.mark.parametrize(
     ("path", "exists"),
     [
         ("04-Projects/My_Project/notes.md", True),
@@ -235,6 +259,24 @@ def test_update_write_verdict_operation_is_keyword_only_with_update_default() ->
     assert "operation" in parameters
     assert parameters["operation"].default == "update"
     assert parameters["operation"].kind is inspect.Parameter.KEYWORD_ONLY
+
+
+def test_capability_state_operation_only_authorizes_the_live_profile() -> None:
+    allowed = portable_contract.update_write_verdict(
+        "System/user-profile.yaml",
+        exists=True,
+        operation="capability-state",
+    )
+    refused = portable_contract.update_write_verdict(
+        "System/user-profile-template.yaml",
+        exists=True,
+        operation="capability-state",
+    )
+
+    assert allowed.allowed is True
+    assert allowed.action == "write-capability-state"
+    assert refused.allowed is False
+    assert refused.action == "outside-capability-state"
 
 
 @pytest.mark.parametrize(
@@ -388,8 +430,9 @@ def test_capability_rooms_cover_gated_regions() -> None:
     assert "meetings" not in capabilities
     assert "people" not in capabilities
     assert "tasks" not in capabilities
-    # Rooms default OFF: a fresh spine-only install is the baseline.
-    assert all(spec["default_enabled"] is False for spec in capabilities.values())
+    assert capabilities["career"]["default_enabled"] is True
+    assert capabilities["companies"]["default_enabled"] is True
+    assert capabilities["quarter_goals"]["default_enabled"] is True
 
 
 def test_committed_dist_matches_source_of_truth() -> None:
