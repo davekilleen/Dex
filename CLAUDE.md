@@ -518,13 +518,13 @@ Dex uses the PARA method: Projects (time-bound), Areas (ongoing), Resources (ref
 - `04-Projects/` - Active projects
 - `05-Areas/People/` - Person pages (Internal/ and External/)
 - `05-Areas/Companies/` - External organizations
-- `05-Areas/Career/` - Career development (optional, via `/career-setup`)
+- `05-Areas/Career/` - Career development (set up by default; fill in with `/career-setup`)
 - `06-Resources/` - Reference material
 - `07-Archives/` - Completed work
 - `00-Inbox/` - Capture zone (meetings, ideas)
 - `System/` - Configuration (pillars.yaml, user-profile.yaml)
 - `03-Tasks/Tasks.md` - Task backlog
-- `01-Quarter_Goals/Quarter_Goals.md` - Quarterly goals (optional)
+- `01-Quarter_Goals/Quarter_Goals.md` - Quarterly goals (set up by default)
 - `02-Week_Priorities/Week_Priorities.md` - Weekly priorities
 
 **Planning hierarchy:** Pillars → Quarter Goals → Week Priorities → Daily Plans → Tasks

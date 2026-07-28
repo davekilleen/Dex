@@ -7,6 +7,19 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.78.0] — 📓 Your goals and career pages come back (2026-07-28)
+
+Last week I made Quarter Goals and Career optional — off unless you asked for them — and retired the starter pages that came with each one. That was the wrong call, and one user found out the hard way. They had written a quarter's worth of real goals into the goals page Dex had given them. When that page stopped being part of Dex, their update stopped working. The safety check did its job and refused to run rather than touch the file — but nothing had ever warned them that a page they'd come to rely on was being taken away, and they had to dig their goals out of an old copy themselves.
+
+**What this fixes for you:**
+
+* **Goals and Career come with Dex again.** Both are set up from the start for a new vault, starter pages included. If you'd never expressed a preference either way, they're switched back on for you too.
+* **A choice you made stays your choice.** If you ever turned either one on or off — during setup or afterwards — that decision stands, and nothing here overrides it in either direction. You can still switch any of them off with `/manage-capabilities`, and switching one off never deletes what you've already written.
+* **Dex recognises its own pages again.** The starter goals page and the career evidence page ship with Dex once more, so when you write into them, an update knows what it's looking at instead of treating your work as a stray file it daren't touch.
+* **Setup stops asking.** It used to put three yes/no questions to you about rooms you hadn't seen yet, right when you were trying to get started. All three now simply come with Dex, and setup tells you so in a sentence.
+
+Thanks to Amit, who reported this and worked out exactly what had happened.
+
 ## [1.77.2] — 🔔 Dex can tell you about updates again (2026-07-27)
 
 Yesterday's fix was half the story. Chasing it properly — by testing against the real thing rather than a stand-in — turned up something considerably worse: **Dex had stopped telling almost anyone that updates existed.**
