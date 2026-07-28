@@ -25,6 +25,7 @@ from core.lifecycle.bridge import (
 from core.lifecycle.catalog import load_catalog
 from core.lifecycle.inventory import build_inventory
 from core.tests.test_adoption_transaction import _setup
+from core.transaction.engine import PlanRejected
 from core.transaction.journal import PREVIOUS_SCHEMA_VERSION, SCHEMA_VERSION
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -127,6 +128,46 @@ def test_reactivation_is_idempotent_but_invalid_existing_record_is_refused(
     with pytest.raises(BridgeActivationError, match="existing activation"):
         activate_vault(vault)
     assert activation_path.read_text(encoding="utf-8") == '{"activation_version":999}\n'
+
+
+def test_activation_accepts_a_self_consistent_release_and_refuses_a_mismatch(
+    tmp_path: Path,
+) -> None:
+    consistent_root = tmp_path / "consistent"
+    consistent_root.mkdir()
+    consistent = _activation_fixture(consistent_root)
+
+    activation = activate_vault(consistent)
+
+    assert activation["bridge_release_version"] == "1.64.0"
+
+    mismatched_root = tmp_path / "mismatched"
+    mismatched_root.mkdir()
+    mismatched = _activation_fixture(mismatched_root)
+    _write_bridge_release(mismatched, release_version="1.64.1")
+
+    with pytest.raises(
+        BridgeActivationError,
+        match="installed catalog release does not match the designated bridge release",
+    ):
+        activate_vault(mismatched)
+    assert not (mismatched / ACTIVATION_RELATIVE).exists()
+
+
+def test_lifecycle_service_translates_bridge_activation_failure_to_plain_refusal(
+    tmp_path: Path,
+) -> None:
+    vault = _activation_fixture(tmp_path)
+    _write_bridge_release(vault, release_version="1.64.1")
+
+    with pytest.raises(
+        PlanRejected,
+        match=(
+            "this Dex copy's update engine doesn't match its release information "
+            "— run /dex-doctor"
+        ),
+    ):
+        service.build_inventory_and_plan(vault)
 
 
 _INTERRUPT_WORKER = r"""
@@ -250,8 +291,11 @@ def test_previous_journal_schema_resumes_normally(tmp_path: Path) -> None:
 
 def test_shipped_bridge_release_matches_transaction_resume_window() -> None:
     bridge = load_bridge_release(REPO_ROOT)
+    package_version = json.loads(
+        (REPO_ROOT / "package.json").read_text(encoding="utf-8")
+    )["version"]
 
-    assert bridge.release_version == "1.68.0"
+    assert bridge.release_version == package_version
     assert bridge.transaction_journal.current_schema == SCHEMA_VERSION
     assert bridge.transaction_journal.previous_schema == PREVIOUS_SCHEMA_VERSION
     assert bridge.transaction_journal.minimum_resumable_schema == PREVIOUS_SCHEMA_VERSION

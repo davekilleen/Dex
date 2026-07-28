@@ -120,11 +120,21 @@ python3 core/utils/update_verifier.py \
   --release-version "$NEW_VERSION"
 VAULT_PATH="$PWD" python3 -m core.migrations.preserve_local_only_paths stamp-transition \
   --repo "$PWD"
+python3 - "$NEW_VERSION" <<'STAMP'
+import json, sys
+path = "core/lifecycle/catalog/bridge-release.json"
+data = json.load(open(path))
+data["release_version"] = sys.argv[1]
+open(path, "w").write(
+    json.dumps(data, ensure_ascii=False, sort_keys=True, separators=(",", ":")) + "\n"
+)
+STAMP
 bash scripts/generate-manifest.sh
 
 # --- Commit, tag, push --------------------------------------------------------
 
 git add package.json package-lock.json CHANGELOG.md \
+  core/lifecycle/catalog/bridge-release.json \
   System/.release-evidence-profile.json \
   System/.local-only-preservation-transition.json \
   System/.installed-files.manifest

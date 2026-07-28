@@ -206,6 +206,7 @@ git add -- "$PROFILE"
 # both; replacing their contents does not change the set of shipped paths.
 MANIFEST="System/.installed-files.manifest"
 CATALOG="System/.release-catalog.json"
+BRIDGE_RELEASE="core/lifecycle/catalog/bridge-release.json"
 mkdir -p "$(dirname "$MANIFEST")"
 : > "$MANIFEST"
 : > "$CATALOG"
@@ -225,7 +226,7 @@ python3 "$CATALOG_GENERATOR" \
     --channel "$CATALOG_CHANNEL" \
     --source-commit "$SOURCE_SHA"
 python3 "$CATALOG_COVERAGE_CHECKER" --release-root "$REPO_ROOT"
-git add -- "$MANIFEST" "$CATALOG" packages/dex-contracts/dist/release-catalog-v1.schema.json
+git add -- "$MANIFEST" "$CATALOG" "$BRIDGE_RELEASE" packages/dex-contracts/dist/release-catalog-v1.schema.json
 
 if git diff --cached --quiet; then
     echo "Nothing to remove — release branch matches main."

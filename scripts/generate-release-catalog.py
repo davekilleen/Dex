@@ -21,6 +21,7 @@ sys.dont_write_bytecode = True
 
 CATALOG_PATH = Path("System/.release-catalog.json")
 CATALOG_SOURCE_DIR = Path("core/lifecycle/catalog")
+BRIDGE_RELEASE_PATH = CATALOG_SOURCE_DIR / "bridge-release.json"
 MANIFEST_PATH = Path("System/.installed-files.manifest")
 PACKAGE_PATH = Path("package.json")
 SCHEMA_SOURCE = Path("core/lifecycle/schemas/release-catalog-v1.schema.json")
@@ -265,6 +266,31 @@ def _atomic_write(path: Path, content: bytes) -> None:
         temporary.unlink(missing_ok=True)
 
 
+def _stamp_bridge_release(release_root: Path, release_version: str) -> None:
+    path = release_root / BRIDGE_RELEASE_PATH
+    document = _mapping(_closed_json(path), context=str(BRIDGE_RELEASE_PATH))
+    _exact_fields(
+        document,
+        {"bridge_contract_version", "release_version", "transaction_journal"},
+        context=str(BRIDGE_RELEASE_PATH),
+    )
+    stamped = dict(document)
+    stamped["release_version"] = release_version
+    _atomic_write(
+        path,
+        (
+            json.dumps(
+                stamped,
+                ensure_ascii=False,
+                allow_nan=False,
+                sort_keys=True,
+                separators=(",", ":"),
+            )
+            + "\n"
+        ).encode("utf-8"),
+    )
+
+
 def sync_schema(release_root: Path, *, contract_root: Path | None = None) -> Path:
     contract_root = (contract_root or release_root).resolve()
     source = contract_root / SCHEMA_SOURCE
@@ -296,8 +322,16 @@ def generate_catalog(
     sys.path.insert(0, str(contract_root))
     try:
         from core import portable_contract
+        from core.lifecycle.bridge import load_bridge_release
         from core.lifecycle.catalog import canonical_catalog_bytes, loads_catalog, with_catalog_identity
 
+        release_version = _package_version(release_root)
+        _stamp_bridge_release(release_root, release_version)
+        bridge = load_bridge_release(release_root)
+        if bridge.release_version != release_version:
+            raise CatalogGenerationError(
+                "stamped bridge release does not match the package release version"
+            )
         sync_schema(release_root, contract_root=contract_root)
         manifest_path = release_root / MANIFEST_PATH
         manifest_bytes = manifest_path.read_bytes()
@@ -310,10 +344,10 @@ def generate_catalog(
         document: dict[str, object] = {
             "catalog_version": 1,
             "release": {
-                "version": _package_version(release_root),
+                "version": release_version,
                 "channel": channel,
                 "immutable_distribution_tag": (
-                    f"dist/{channel}/v{_package_version(release_root)}-{commit[:7]}"
+                    f"dist/{channel}/v{release_version}-{commit[:7]}"
                 ),
                 "source_commit": commit,
                 "manifest": {
