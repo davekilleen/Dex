@@ -17,6 +17,11 @@ Once Granola was connected, your meetings did arrive in Dex on their own — but
 * **Nothing gets done twice.** A meeting that's already been processed is never picked up again, and if you have several Dex windows open at once they won't trip over each other — the check stands down for half an hour once one of them has taken the job.
 * **Silence when there's nothing to do.** No message when everything's up to date, and nothing at all if you haven't connected Granola — this feature simply doesn't exist for you until you do.
 
+### 🧭 A new install starts in the right place
+
+* **I now start every new install on the newest published Dex.** It previously picked up whatever I happened to be working on that day, leaving no reliable record of which version you had from the beginning.
+* **Your very first setup is less likely to stall at the finish line.** I fixed a final setup step that could stop a brand-new install before it was ready to use.
+
 ## [1.78.0] — 🛡️ The trust release: updating Dex works again, for everyone (2026-07-28)
 
 ### 📓 Your goals and career pages come back
