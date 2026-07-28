@@ -9,14 +9,7 @@ let yaml = null;
 try {
   yaml = require('js-yaml');
 } catch (error) {
-  // Without a safe parser, meeting notes are skipped.
-}
-
-let getGranolaApiKey = null;
-try {
-  ({ getGranolaApiKey } = require('../../.scripts/meeting-intel/lib/granola-api-key.cjs'));
-} catch (error) {
-  // The prior-sync state remains a valid connection signal without this helper.
+  // Filename, day-directory, and text signals remain available without YAML.
 }
 
 let CONTRACT = null;
@@ -44,24 +37,6 @@ function anchoredPaths(vaultRoot) {
   return { meetingsDir, systemDir };
 }
 
-function isConnected(vaultRoot, env) {
-  if (typeof getGranolaApiKey === 'function') {
-    try {
-      if (getGranolaApiKey({ vaultRoot, env })) return true;
-    } catch (error) {
-      // Fall through to prior-sync state.
-    }
-  }
-
-  try {
-    return fs.existsSync(
-      path.join(vaultRoot, '.scripts/meeting-intel/processed-meetings.json'),
-    );
-  } catch (error) {
-    return false;
-  }
-}
-
 function isThrottled(markerPath, nowSeconds) {
   try {
     if (!fs.existsSync(markerPath)) return false;
@@ -86,7 +61,7 @@ function parseFrontmatter(source) {
   if (!document || typeof document !== 'object' || Array.isArray(document)) return null;
 
   const fields = {};
-  for (const key of ['date', 'granola_id', 'ai_analyzed']) {
+  for (const key of ['date', 'ai_analyzed']) {
     if (!Object.hasOwn(document, key) || document[key] === null) continue;
     fields[key] = document[key] instanceof Date
       ? document[key].toISOString()
@@ -117,9 +92,26 @@ function isRecentDay(value, nowMilliseconds) {
   return parsed.day <= today && parsed.timestamp >= todayStart - (7 * DAY_MS);
 }
 
-function hasUncheckedForMeItem(body) {
+function datePrefixFromFilename(filePath) {
+  const match = path.basename(filePath).match(/^(\d{4}-\d{2}-\d{2})(?:\b|_)/);
+  return match?.[1] || null;
+}
+
+function resolveNoteDay(filePath, frontmatterDate, fallbackDay) {
+  for (const candidate of [
+    frontmatterDate,
+    datePrefixFromFilename(filePath),
+    fallbackDay,
+  ]) {
+    const parsed = dayFromValue(candidate);
+    if (parsed) return parsed.day;
+  }
+  return null;
+}
+
+function hasUncheckedForMeItem(source) {
   let underForMe = false;
-  for (const line of body.split(/\r?\n/)) {
+  for (const line of source.split(/\r?\n/)) {
     if (/^###\s+For Me\s*$/i.test(line)) {
       underForMe = true;
       continue;
@@ -137,29 +129,44 @@ function noteIsWaiting(filePath, fallbackDay, nowMilliseconds) {
   try {
     const source = fs.readFileSync(filePath, 'utf8');
     const parsed = parseFrontmatter(source);
-    if (!parsed?.fields.granola_id) return false;
 
-    const day = parsed.fields.date || fallbackDay;
+    const day = resolveNoteDay(filePath, parsed?.fields.date, fallbackDay);
     if (!isRecentDay(day, nowMilliseconds)) return false;
 
-    if (/<!--\s*tasks-extracted:/.test(source)) return false;
-    if (parsed.fields.ai_analyzed?.toLowerCase() === 'false') return true;
-    return hasUncheckedForMeItem(parsed.body);
+    if (
+      /<!--\s*tasks-extracted:/.test(source)
+      || source.includes('<!-- dex:skip-processing -->')
+    ) {
+      return false;
+    }
+    if (parsed?.fields.ai_analyzed?.toLowerCase() === 'false') return true;
+    return hasUncheckedForMeItem(parsed ? parsed.body : source);
   } catch (error) {
     return false;
   }
 }
 
 function countWaitingNotes(meetingsDir, nowMilliseconds) {
-  let dayDirectories;
+  let entries;
   try {
-    dayDirectories = fs.readdirSync(meetingsDir, { withFileTypes: true });
+    entries = fs.readdirSync(meetingsDir, { withFileTypes: true });
   } catch (error) {
     return 0;
   }
 
   let count = 0;
-  for (const dayDirectory of dayDirectories) {
+  for (const file of entries) {
+    if (!file.isFile() || !file.name.endsWith('.md')) continue;
+    if (noteIsWaiting(
+      path.join(meetingsDir, file.name),
+      null,
+      nowMilliseconds,
+    )) {
+      count += 1;
+    }
+  }
+
+  for (const dayDirectory of entries) {
     if (!dayDirectory.isDirectory()) continue;
     const directoryPath = path.join(meetingsDir, dayDirectory.name);
     let files;
@@ -183,12 +190,22 @@ function countWaitingNotes(meetingsDir, nowMilliseconds) {
   return count;
 }
 
+function countQueueFiles(meetingsDir) {
+  try {
+    return fs.readdirSync(path.join(meetingsDir, 'queue'), { withFileTypes: true })
+      .filter((entry) => entry.isFile() && entry.name.endsWith('.json'))
+      .length;
+  } catch (error) {
+    return 0;
+  }
+}
+
 function noticeLines(count) {
   const noun = count === 1 ? 'meeting' : 'meetings';
   const verb = count === 1 ? 'has' : 'have';
   return [
     `--- 📋 Meetings waiting to be processed (${count}) ---`,
-    `${count} synced ${noun} ${verb} not been processed yet (person pages, tasks, notes).`,
+    `${count} ${noun} ${verb} not been processed yet (person pages, tasks, notes).`,
     "After you finish responding to the user's first message, invoke the",
     '/process-meetings skill to handle them in the background — it runs forked and',
     'is idempotent, so do this without being asked. Tell the user in one short line',
@@ -203,7 +220,6 @@ function checkMeetingQueue(options = {}) {
     const {
       vaultRoot = process.cwd(),
       now = Date.now(),
-      env = process.env,
     } = options || {};
     const nowMilliseconds = Number(now);
     if (typeof vaultRoot !== 'string' || !Number.isFinite(nowMilliseconds)) {
@@ -211,7 +227,7 @@ function checkMeetingQueue(options = {}) {
     }
 
     const paths = anchoredPaths(path.resolve(vaultRoot));
-    if (!paths || !isConnected(path.resolve(vaultRoot), env || {})) return emptyResult();
+    if (!paths) return emptyResult();
 
     const markerPath = path.join(paths.systemDir, '.last-meeting-queue-notice');
     const nowSeconds = Math.floor(nowMilliseconds / 1000);
@@ -225,7 +241,8 @@ function checkMeetingQueue(options = {}) {
     }
     if (!meetingsDirectory.isDirectory()) return emptyResult();
 
-    const count = countWaitingNotes(paths.meetingsDir, nowMilliseconds);
+    const count = countWaitingNotes(paths.meetingsDir, nowMilliseconds)
+      + countQueueFiles(paths.meetingsDir);
     if (count === 0) return emptyResult();
 
     try {

@@ -47,7 +47,7 @@ These files are not registered as repository-wide lifecycle hooks.
 | File | Caller | Purpose |
 |---|---|---|
 | `meeting-cache-builder.cjs` | Work MCP meeting-cache workflow | Build `System/Memory/meeting-cache.json`. Work MCP exposes `rebuild_meeting_cache`; its missing-cache guidance also names the standalone Node command. |
-| `meeting-queue-check.cjs` | `session-start.sh` | Detect synced-but-unprocessed meetings and inject a one-block notice so the session processes them in the background. |
+| `meeting-queue-check.cjs` | `session-start.sh` | Detect unprocessed meetings in the landing zone (synced, manually captured, or queued) and inject a one-block notice so the session processes them in the background. |
 | `integration-concierge.cjs` | Onboarding, `/getting-started`, and `/dex-level-up` | Scan the vault for integration signals and return ranked recommendations. |
 | `maintenance.cjs` | Manual: `node .claude/hooks/maintenance.cjs` | Report stale inbox files, broken WikiLinks, orphaned person pages, and old agent memory. |
 

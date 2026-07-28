@@ -8,6 +8,13 @@ const test = require('node:test');
 
 const HOOK_PATH = path.resolve(__dirname, '..', 'meeting-queue-check.cjs');
 const NOW = Date.parse('2026-07-27T12:00:00Z');
+const TODAY = new Date(NOW).toISOString().slice(0, 10);
+
+function dayFromNow(dayOffset) {
+  const date = new Date(NOW);
+  date.setUTCDate(date.getUTCDate() + dayOffset);
+  return date.toISOString().slice(0, 10);
+}
 
 function fixture(t) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'dex-meeting-queue-'));
@@ -15,33 +22,51 @@ function fixture(t) {
   return root;
 }
 
-function writeMeeting(root, day, fileName, content) {
-  const directory = path.join(root, '00-Inbox', 'Meetings', day);
+function meetingsRoot(root) {
+  return path.join(root, '00-Inbox', 'Meetings');
+}
+
+function writeFlatMeeting(root, fileName, content) {
+  const directory = meetingsRoot(root);
   fs.mkdirSync(directory, { recursive: true });
   const filePath = path.join(directory, fileName);
   fs.writeFileSync(filePath, content);
   return filePath;
 }
 
-function connectGranola(root) {
-  const statePath = path.join(root, '.scripts', 'meeting-intel', 'processed-meetings.json');
-  fs.mkdirSync(path.dirname(statePath), { recursive: true });
-  fs.writeFileSync(statePath, '{}\n');
+function writeDayMeeting(root, day, fileName, content) {
+  const directory = path.join(meetingsRoot(root), day);
+  fs.mkdirSync(directory, { recursive: true });
+  const filePath = path.join(directory, fileName);
+  fs.writeFileSync(filePath, content);
+  return filePath;
+}
+
+function writeQueueMeeting(root, fileName, content = '{}\n') {
+  const directory = path.join(meetingsRoot(root), 'queue');
+  fs.mkdirSync(directory, { recursive: true });
+  const filePath = path.join(directory, fileName);
+  fs.writeFileSync(filePath, content);
+  return filePath;
 }
 
 function meetingNote({
-  day = '2026-07-27',
-  granolaId = 'meeting-1',
+  day = TODAY,
+  granolaId,
   aiAnalyzed,
   body = '### For Me\n- [ ] Send the proposal\n',
   tasksExtracted = false,
+  skipProcessing = false,
 } = {}) {
-  const fields = [`date: ${day}`, `granola_id: ${granolaId}`];
+  const fields = [`date: ${day}`];
+  if (granolaId !== undefined) fields.push(`granola_id: ${granolaId}`);
   if (aiAnalyzed !== undefined) fields.push(`ai_analyzed: ${aiAnalyzed}`);
-  const marker = tasksExtracted
-    ? '\n<!-- tasks-extracted: 2026-01-01T00:00:00Z -->\n'
-    : '';
-  return `---\n${fields.join('\n')}\n---\n\n${body}${marker}`;
+  const markers = [
+    tasksExtracted ? '<!-- tasks-extracted: 2026-01-01T00:00:00Z -->' : '',
+    skipProcessing ? '<!-- dex:skip-processing -->' : '',
+  ].filter(Boolean);
+  const markerBlock = markers.length > 0 ? `\n${markers.join('\n')}\n` : '';
+  return `---\n${fields.join('\n')}\n---\n\n${body}${markerBlock}`;
 }
 
 function expectedLines(count) {
@@ -49,7 +74,7 @@ function expectedLines(count) {
   const verb = count === 1 ? 'has' : 'have';
   return [
     `--- 📋 Meetings waiting to be processed (${count}) ---`,
-    `${count} synced ${noun} ${verb} not been processed yet (person pages, tasks, notes).`,
+    `${count} ${noun} ${verb} not been processed yet (person pages, tasks, notes).`,
     "After you finish responding to the user's first message, invoke the",
     '/process-meetings skill to handle them in the background — it runs forked and',
     'is idempotent, so do this without being asked. Tell the user in one short line',
@@ -64,153 +89,243 @@ function checkMeetingQueue(options) {
   return require(HOOK_PATH).checkMeetingQueue(options);
 }
 
-test('Granola not connected stays silent even when a meeting is waiting', (t) => {
+test('detects a waiting manual note with no Granola signals anywhere', (t) => {
   const root = fixture(t);
-  writeMeeting(
+  writeDayMeeting(root, TODAY, 'manual-notes.md', meetingNote());
+
+  assert.equal(fs.existsSync(path.join(root, '.scripts', 'meeting-intel')), false);
+  assert.doesNotMatch(
+    fs.readFileSync(path.join(meetingsRoot(root), TODAY, 'manual-notes.md'), 'utf8'),
+    /granola/i,
+  );
+
+  const result = checkMeetingQueue({ vaultRoot: root, now: NOW });
+
+  assert.deepEqual(result, { count: 1, lines: expectedLines(1) });
+});
+
+test('counts a recent flat note without frontmatter using its filename date', (t) => {
+  const root = fixture(t);
+  writeFlatMeeting(
     root,
-    '2026-07-27',
-    'planning.md',
+    `${TODAY} - Planning.md`,
+    '# Planning\n\n### For Me\n- [ ] Send the proposal\n',
+  );
+
+  const result = checkMeetingQueue({ vaultRoot: root, now: NOW });
+
+  assert.deepEqual(result, { count: 1, lines: expectedLines(1) });
+});
+
+test('excludes a flat note stamped as tasks extracted', (t) => {
+  const root = fixture(t);
+  writeFlatMeeting(
+    root,
+    `${TODAY} - Planning.md`,
     [
-      '---',
-      'date: 2026-07-27',
-      'granola_id: meeting-1',
-      '---',
+      '# Planning',
       '',
       '### For Me',
       '- [ ] Send the proposal',
       '',
+      '<!-- tasks-extracted: 2026-07-27T11:00:00Z -->',
+      '',
     ].join('\n'),
   );
 
-  const result = checkMeetingQueue({ vaultRoot: root, now: NOW, env: {} });
+  const result = checkMeetingQueue({ vaultRoot: root, now: NOW });
 
   assert.deepEqual(result, { count: 0, lines: [] });
 });
 
-test('connected Granola with an empty queue stays silent', (t) => {
+test('excludes a waiting note marked to skip processing', (t) => {
   const root = fixture(t);
-  connectGranola(root);
-
-  const result = checkMeetingQueue({ vaultRoot: root, now: NOW, env: {} });
-
-  assert.deepEqual(result, { count: 0, lines: [] });
-});
-
-test('detects a recent Granola note with an unchecked For Me item', (t) => {
-  const root = fixture(t);
-  connectGranola(root);
-  writeMeeting(root, '2026-07-27', 'planning.md', meetingNote());
-
-  const result = checkMeetingQueue({ vaultRoot: root, now: NOW, env: {} });
-
-  assert.equal(result.count, 1);
-  assert.deepEqual(result.lines, expectedLines(1));
-});
-
-test('does not double-process stamped notes or notes whose For Me items are checked', (t) => {
-  const root = fixture(t);
-  connectGranola(root);
-  writeMeeting(
+  writeDayMeeting(
     root,
-    '2026-07-27',
-    'already-stamped.md',
-    meetingNote({
-      granolaId: 'meeting-stamped',
-      aiAnalyzed: false,
-      tasksExtracted: true,
-    }),
+    TODAY,
+    'skip-me.md',
+    meetingNote({ skipProcessing: true }),
   );
-  writeMeeting(
+
+  const result = checkMeetingQueue({ vaultRoot: root, now: NOW });
+
+  assert.deepEqual(result, { count: 0, lines: [] });
+});
+
+test('excludes a flat note with no resolvable date', (t) => {
+  const root = fixture(t);
+  writeFlatMeeting(
     root,
-    '2026-07-27',
-    'already-checked.md',
+    'Planning.md',
+    '# Planning\n\n### For Me\n- [ ] Send the proposal\n',
+  );
+
+  const result = checkMeetingQueue({ vaultRoot: root, now: NOW });
+
+  assert.deepEqual(result, { count: 0, lines: [] });
+});
+
+test('excludes a flat note whose filename date is 30 days old', (t) => {
+  const root = fixture(t);
+  writeFlatMeeting(
+    root,
+    `${dayFromNow(-30)} - Old planning.md`,
+    '# Old planning\n\n### For Me\n- [ ] Send the proposal\n',
+  );
+
+  const result = checkMeetingQueue({ vaultRoot: root, now: NOW });
+
+  assert.deepEqual(result, { count: 0, lines: [] });
+});
+
+test('counts a recent day-directory Granola-style note with an unchecked For Me item', (t) => {
+  const root = fixture(t);
+  writeDayMeeting(
+    root,
+    TODAY,
+    'granola-note.md',
+    meetingNote({ granolaId: 'meeting-1' }),
+  );
+
+  const result = checkMeetingQueue({ vaultRoot: root, now: NOW });
+
+  assert.deepEqual(result, { count: 1, lines: expectedLines(1) });
+});
+
+test('excludes a stamped day-directory Granola-style note', (t) => {
+  const root = fixture(t);
+  writeDayMeeting(
+    root,
+    TODAY,
+    'granola-note.md',
+    meetingNote({ granolaId: 'meeting-1', tasksExtracted: true }),
+  );
+
+  const result = checkMeetingQueue({ vaultRoot: root, now: NOW });
+
+  assert.deepEqual(result, { count: 0, lines: [] });
+});
+
+test('excludes a day-directory Granola-style note whose For Me items are all checked', (t) => {
+  const root = fixture(t);
+  writeDayMeeting(
+    root,
+    TODAY,
+    'granola-note.md',
     meetingNote({
-      granolaId: 'meeting-checked',
+      granolaId: 'meeting-1',
       body: '### For Me\n- [x] Send the proposal\n',
     }),
   );
 
-  const result = checkMeetingQueue({ vaultRoot: root, now: NOW, env: {} });
+  const result = checkMeetingQueue({ vaultRoot: root, now: NOW });
 
   assert.deepEqual(result, { count: 0, lines: [] });
 });
 
-test('counts an unanalyzed Granola note without a For Me section', (t) => {
+test('tasks-extracted marker overrides ai_analyzed false', (t) => {
   const root = fixture(t);
-  connectGranola(root);
-  writeMeeting(
+  writeDayMeeting(
     root,
-    '2026-07-27',
-    'basic-note.md',
-    meetingNote({ aiAnalyzed: false, body: '# Basic meeting note\n' }),
+    TODAY,
+    'already-processed.md',
+    meetingNote({
+      aiAnalyzed: false,
+      body: '# Basic meeting note\n',
+      tasksExtracted: true,
+    }),
   );
 
-  const result = checkMeetingQueue({ vaultRoot: root, now: NOW, env: {} });
-
-  assert.equal(result.count, 1);
-  assert.deepEqual(result.lines, expectedLines(1));
-});
-
-test('ignores manual-mode queue JSON files', (t) => {
-  const root = fixture(t);
-  connectGranola(root);
-  const queue = path.join(root, '00-Inbox', 'Meetings', 'queue');
-  fs.mkdirSync(queue, { recursive: true });
-  fs.writeFileSync(path.join(queue, 'old-manual-meeting.json'), '{}\n');
-
-  const result = checkMeetingQueue({ vaultRoot: root, now: NOW, env: {} });
+  const result = checkMeetingQueue({ vaultRoot: root, now: NOW });
 
   assert.deepEqual(result, { count: 0, lines: [] });
 });
 
-test('excludes meeting notes dated 30 days ago', (t) => {
+test('counts ai_analyzed false using the day-directory date', (t) => {
   const root = fixture(t);
-  connectGranola(root);
-  writeMeeting(
+  writeDayMeeting(
     root,
-    '2026-06-27',
-    'old-meeting.md',
-    meetingNote({ day: '2026-06-27', granolaId: 'meeting-old' }),
-  );
-
-  const result = checkMeetingQueue({ vaultRoot: root, now: NOW, env: {} });
-
-  assert.deepEqual(result, { count: 0, lines: [] });
-});
-
-test('uses the meeting day directory when date frontmatter is absent', (t) => {
-  const root = fixture(t);
-  connectGranola(root);
-  writeMeeting(
-    root,
-    '2026-07-27',
-    'fallback-date.md',
+    TODAY,
+    'unanalyzed.md',
     [
       '---',
-      'granola_id: meeting-fallback',
+      'ai_analyzed: false',
       '---',
       '',
-      '### For Me',
-      '- [ ] Send the proposal',
+      '# Basic meeting note',
       '',
     ].join('\n'),
   );
 
-  const result = checkMeetingQueue({ vaultRoot: root, now: NOW, env: {} });
+  const result = checkMeetingQueue({ vaultRoot: root, now: NOW });
 
-  assert.equal(result.count, 1);
+  assert.deepEqual(result, { count: 1, lines: expectedLines(1) });
 });
 
-test('a fresh notice marker throttles another session', (t) => {
+test('counts a queue JSON without applying a note age filter', (t) => {
   const root = fixture(t);
-  connectGranola(root);
-  writeMeeting(root, '2026-07-27', 'planning.md', meetingNote());
+  writeQueueMeeting(root, 'old-manual-meeting.json');
+
+  const result = checkMeetingQueue({ vaultRoot: root, now: NOW });
+
+  assert.deepEqual(result, { count: 1, lines: expectedLines(1) });
+});
+
+test('counts only two queue JSONs when meeting notes are already stamped', (t) => {
+  const root = fixture(t);
+  writeDayMeeting(
+    root,
+    TODAY,
+    'already-stamped.md',
+    meetingNote({ tasksExtracted: true }),
+  );
+  writeDayMeeting(
+    root,
+    TODAY,
+    'also-stamped.md',
+    meetingNote({ aiAnalyzed: false, tasksExtracted: true }),
+  );
+  writeQueueMeeting(root, 'manual-one.json');
+  writeQueueMeeting(root, 'manual-two.json');
+
+  const result = checkMeetingQueue({ vaultRoot: root, now: NOW });
+
+  assert.deepEqual(result, { count: 2, lines: expectedLines(2) });
+});
+
+test('counts unchecked For Me items despite garbled frontmatter using the day directory', (t) => {
+  const root = fixture(t);
+  writeDayMeeting(
+    root,
+    TODAY,
+    'garbled.md',
+    [
+      '---',
+      'participants: [unterminated',
+      '---',
+      '',
+      '### For Me',
+      '- [ ] This garbled note still counts',
+      '',
+    ].join('\n'),
+  );
+
+  let result;
+  assert.doesNotThrow(() => {
+    result = checkMeetingQueue({ vaultRoot: root, now: NOW });
+  });
+  assert.deepEqual(result, { count: 1, lines: expectedLines(1) });
+});
+
+test('a fresh notice marker throttles another session without being rewritten', (t) => {
+  const root = fixture(t);
+  writeDayMeeting(root, TODAY, 'planning.md', meetingNote());
   const marker = path.join(root, 'System', '.last-meeting-queue-notice');
   fs.mkdirSync(path.dirname(marker), { recursive: true });
   const freshTimestamp = String(Math.floor(NOW / 1000) - 60);
   fs.writeFileSync(marker, `${freshTimestamp}\n`);
 
-  const result = checkMeetingQueue({ vaultRoot: root, now: NOW, env: {} });
+  const result = checkMeetingQueue({ vaultRoot: root, now: NOW });
 
   assert.deepEqual(result, { count: 0, lines: [] });
   assert.equal(fs.readFileSync(marker, 'utf8'), `${freshTimestamp}\n`);
@@ -218,41 +333,40 @@ test('a fresh notice marker throttles another session', (t) => {
 
 test('a stale notice marker allows output and is rewritten', (t) => {
   const root = fixture(t);
-  connectGranola(root);
-  writeMeeting(root, '2026-07-27', 'planning.md', meetingNote());
+  writeDayMeeting(root, TODAY, 'planning.md', meetingNote());
   const marker = path.join(root, 'System', '.last-meeting-queue-notice');
   fs.mkdirSync(path.dirname(marker), { recursive: true });
   fs.writeFileSync(marker, `${Math.floor(NOW / 1000) - 3600}\n`);
 
-  const result = checkMeetingQueue({ vaultRoot: root, now: NOW, env: {} });
+  const result = checkMeetingQueue({ vaultRoot: root, now: NOW });
 
-  assert.equal(result.count, 1);
+  assert.deepEqual(result, { count: 1, lines: expectedLines(1) });
   assert.equal(fs.readFileSync(marker, 'utf8'), `${Math.floor(NOW / 1000)}\n`);
 });
 
-test('malformed meeting frontmatter fails silent and is not counted', (t) => {
+test('missing meeting directories return zero without throwing', (t) => {
   const root = fixture(t);
-  connectGranola(root);
-  writeMeeting(
-    root,
-    '2026-07-27',
-    'malformed.md',
-    [
-      '---',
-      'date: 2026-07-27',
-      'granola_id: meeting-malformed',
-      'participants: [unterminated',
-      '---',
-      '',
-      '### For Me',
-      '- [ ] This malformed note must not count',
-      '',
-    ].join('\n'),
-  );
 
   let result;
   assert.doesNotThrow(() => {
-    result = checkMeetingQueue({ vaultRoot: root, now: NOW, env: {} });
+    result = checkMeetingQueue({ vaultRoot: root, now: NOW });
   });
+  assert.deepEqual(result, { count: 0, lines: [] });
+});
+
+test('an unreadable meetings directory returns zero without throwing', (t) => {
+  const root = fixture(t);
+  const directory = meetingsRoot(root);
+  fs.mkdirSync(directory, { recursive: true });
+  fs.chmodSync(directory, 0o000);
+
+  let result;
+  try {
+    assert.doesNotThrow(() => {
+      result = checkMeetingQueue({ vaultRoot: root, now: NOW });
+    });
+  } finally {
+    fs.chmodSync(directory, 0o700);
+  }
   assert.deepEqual(result, { count: 0, lines: [] });
 });

@@ -81,9 +81,9 @@ meeting_processing:
   api_provider: gemini
 
 # Person-page creation from repeated meeting observations.
-# Options: auto, suggest, off. If omitted, Dex uses suggest for existing vaults.
+# Options: auto, suggest, off. Fresh setup starts at suggest until the user chooses.
 entity_creation:
-  mode: auto
+  mode: suggest
 
 # Background person-summary maintenance; missing key is enabled, explicit false disables.
 entity_gardener:

@@ -68,7 +68,29 @@ People qualify after 2+ meetings across 2+ weeks, or after 2+ meetings where at 
 
 ## Session-Start Detection
 
-Once Granola is connected, session start checks for synced meetings still waiting for `/process-meetings`: recent notes without a `tasks-extracted` marker that either have `ai_analyzed: false` or an unchecked `### For Me` item. A notice is limited to once every 30 minutes through `System/.last-meeting-queue-notice`, and the check stays silent when Granola is not connected or nothing is waiting.
+`00-Inbox/Meetings/` is the meeting landing zone. Anything that drops a meeting
+note there — Granola sync, a pasted note, a hand-dropped file, or a future
+service integration — is detected at session start and processed by
+`/process-meetings`. New fetchers should write to this folder rather than add
+their own detection path.
+
+A meeting-shaped note is waiting when its date is within seven days, it has no
+`<!-- tasks-extracted: -->` marker, it has no `<!-- dex:skip-processing -->`
+opt-out, and it either has `ai_analyzed: false` or an unchecked item under
+`### For Me`. This applies to Granola-synced notes in day directories and flat,
+manually captured `YYYY-MM-DD - Topic.md` notes in the landing-zone root, with
+or without frontmatter. A user can add `<!-- dex:skip-processing -->` to any
+meeting note to permanently exclude it from processing and from the sweep.
+
+Manual-mode JSON files in `00-Inbox/Meetings/queue/` also count as waiting.
+`/process-meetings` consumes each queue file by writing its meeting note into
+the landing zone before deleting the JSON, then processes the note normally.
+No Granola credentials are required for landing-zone detection, queued meetings,
+or manually captured notes.
+
+A notice is limited to once every 30 minutes through
+`System/.last-meeting-queue-notice`, and the check stays silent when nothing is
+waiting.
 
 The detector never processes or edits a meeting. `/process-meetings` still owns that work and continues to respect the vault's `entity_creation` setting.
 

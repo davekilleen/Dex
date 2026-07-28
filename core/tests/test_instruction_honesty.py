@@ -402,6 +402,14 @@ def test_onboarding_runs_the_first_week_reveal_before_tool_discovery() -> None:
     assert "`meeting_count: 0`" in finale
     assert "Never invent" in finale
     assert "draft_weekly_plan" in finale
+    assert "prepare_entity_page_offer()" in finale
+    assert "respond_to_entity_page_offer" in finale
+    assert "yes / no / never" in finale
+    assert "If `suggestions` is empty, say nothing about pages" in finale
+    assert "Want me to just do this automatically from now on?" in finale
+    assert "set_entity_creation_default(automatic=true)" in finale
+    assert "set_entity_creation_default(automatic=false)" in finale
+    assert "Ask me about any of them" in finale
 
 
 def test_onboarding_connect_step_explains_connect_without_overpromising() -> None:
