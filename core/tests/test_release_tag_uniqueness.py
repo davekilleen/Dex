@@ -5,10 +5,12 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 
+import pytest
 import yaml
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 GATE = REPO_ROOT / "scripts/check-release-tag-uniqueness.sh"
+REACHABILITY_GATE = REPO_ROOT / "scripts/check-release-tag-reachability.sh"
 
 
 def _git(repo: Path, *args: str) -> subprocess.CompletedProcess[str]:
@@ -64,15 +66,13 @@ def test_gate_accepts_one_annotated_tag_per_version(tmp_path: Path) -> None:
     assert result.returncode == 0, result.stdout + result.stderr
 
 
-def test_gate_allows_historical_duplicates_at_or_below_threshold(
+def test_gate_rejects_duplicate_at_old_version(
     tmp_path: Path,
 ) -> None:
     repository = _repository_with_remote_tags(
         tmp_path,
         "dist/release/v1.76.0-1111111",
         "dist/release/v1.76.0-2222222",
-        "dist/release/v1.77.1-3333333",
-        "dist/release/v1.77.1-4444444",
     )
 
     result = subprocess.run(
@@ -83,13 +83,14 @@ def test_gate_allows_historical_duplicates_at_or_below_threshold(
         text=True,
     )
 
-    assert result.returncode == 0, result.stdout + result.stderr
-    assert "Historical exception: v1.76.0" in result.stdout
-    assert "Historical exception: v1.77.1" in result.stdout
-    assert "at or below v1.77.1" in result.stdout
+    assert result.returncode == 1
+    assert "v1.76.0 has 2 dist/release tags" in result.stderr
+    assert "dist/archive/*" in result.stderr
+    assert "git push --tags" in result.stderr
+    assert "stale local tags" in result.stderr
     gate_source = GATE.read_text(encoding="utf-8")
-    assert 'HISTORICAL_VERSION_THRESHOLD="1.77.1"' in gate_source
-    assert "1.77.0|1.77.1" not in gate_source
+    assert "HISTORICAL_VERSION_THRESHOLD" not in gate_source
+    assert "version_is_at_or_below_threshold" not in gate_source
 
 
 def test_gate_reports_every_new_version_with_duplicate_tags(tmp_path: Path) -> None:
@@ -114,6 +115,104 @@ def test_gate_reports_every_new_version_with_duplicate_tags(tmp_path: Path) -> N
     assert "v1.79.0" in result.stderr
 
 
+def _newer_release_tags(count: int) -> tuple[str, ...]:
+    return tuple(
+        f"dist/release/v1.{minor}.0-{minor:07x}"
+        for minor in range(75, 75 + count)
+    )
+
+
+def test_reachability_gate_passes_below_safety_margin(tmp_path: Path) -> None:
+    repository = _repository_with_remote_tags(
+        tmp_path,
+        *_newer_release_tags(25),
+    )
+
+    result = subprocess.run(
+        ["bash", str(REACHABILITY_GATE)],
+        cwd=repository,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "Release-tag reachability gate passed." in result.stdout
+
+
+@pytest.mark.parametrize("newer_count", (26, 27))
+def test_reachability_gate_fails_at_or_above_safety_margin(
+    tmp_path: Path,
+    newer_count: int,
+) -> None:
+    repository = _repository_with_remote_tags(
+        tmp_path,
+        *_newer_release_tags(newer_count),
+    )
+
+    result = subprocess.run(
+        ["bash", str(REACHABILITY_GATE)],
+        cwd=repository,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 1
+    for sentinel in ("1.62.0", "1.68.0", "1.74.0"):
+        assert (
+            f"v{sentinel} has {newer_count} newer dist/release tags"
+            in result.stderr
+        )
+    assert "dist/archive/*" in result.stderr
+
+
+def test_reachability_gate_fails_loudly_when_remote_tags_are_unreadable(
+    tmp_path: Path,
+) -> None:
+    repository = _repository_with_remote_tags(
+        tmp_path,
+        "dist/release/v1.79.0-1111111",
+    )
+    _git(
+        repository,
+        "remote",
+        "set-url",
+        "origin",
+        str(tmp_path / "missing.git"),
+    )
+
+    result = subprocess.run(
+        ["bash", str(REACHABILITY_GATE)],
+        cwd=repository,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 1
+    assert "could not read dist/release tags from origin" in result.stderr
+    assert "git ls-remote failed" in result.stderr
+
+
+def test_reachability_gate_fails_loudly_when_remote_has_no_release_tags(
+    tmp_path: Path,
+) -> None:
+    repository = _repository_with_remote_tags(tmp_path)
+
+    result = subprocess.run(
+        ["bash", str(REACHABILITY_GATE)],
+        cwd=repository,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 1
+    assert "origin returned no readable dist/release tags" in result.stderr
+    assert "old-version reachability cannot be verified" in result.stderr
+
+
 def test_stable_release_ci_publishes_each_version_at_most_once() -> None:
     workflow = yaml.safe_load(
         (REPO_ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
@@ -121,6 +220,10 @@ def test_stable_release_ci_publishes_each_version_at_most_once() -> None:
     quality_steps = workflow["jobs"]["quality"]["steps"]
     assert any(
         step.get("run") == "bash scripts/check-release-tag-uniqueness.sh"
+        for step in quality_steps
+    )
+    assert any(
+        step.get("run") == "bash scripts/check-release-tag-reachability.sh"
         for step in quality_steps
     )
 
