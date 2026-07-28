@@ -470,7 +470,26 @@ Use only the structured fields returned by the tool:
   - `top_contacts`, only when the list is non-empty
   - Recent meeting and people/company counts, only when the corresponding values are non-zero
 
-Then show `draft_weekly_plan` as a suggested draft for the user's week. Do not claim that the draft, person pages, or company pages were written to the vault; this tool analyzes and drafts, it does not create those artifacts.
+Then show `draft_weekly_plan` as a suggested draft for the user's week. Do not claim that the draft was written to the vault; this tool analyzes and drafts.
+
+### Offer qualified pages
+
+Only now, after `finalize_onboarding()` has succeeded and the first-week reveal has been shown, call `prepare_entity_page_offer()` from onboarding-mcp. This records the same bounded evidence and applies the same qualification threshold as the background entity engine. It stages suggestions in `System/.dex/entity-suggestions.json`; it never creates a page.
+
+- If `suggestions` is empty, say nothing about pages, page creation, or defaults. Continue directly to Step 9.
+- If `suggestions` is non-empty, show the returned names and plain `reason` values. Do not add `top_contacts` or lower the threshold to make the list longer.
+- Offer exactly: "I can make pages for these people so their context has somewhere to build. yes / no / never?" Explain only if needed: no means not now; never means do not suggest these specific pages again.
+- Apply the answer with `respond_to_entity_page_offer(action="yes"|"no"|"never", suggestion_ids=[the exact returned ids])`. On yes, report both newly created and already-existing/adopted pages as successful; never imply a duplicate or a failure when the result says `existing: true`.
+- When a returned company suggestion is present, include it in the same offer. Company suggestions will only be returned when the Companies room is on. Never call a company creation tool separately.
+
+After handling the offer, say: "Ask me about any of them whenever you want — I can look up anyone Dex now knows."
+
+Then ask: "Want me to just do this automatically from now on?"
+
+- Yes: call `set_entity_creation_default(automatic=true)`.
+- No: call `set_entity_creation_default(automatic=false)`.
+
+Always make this tool call after their answer. Do not infer the setting from their page-offer answer, and do not leave a completed setup on an unspoken automatic default.
 
 ## Step 9: Connect Your Tools (Integration Discovery)
 
@@ -709,6 +728,8 @@ You've already seen the first-week snapshot from the calendar data Dex could rea
 [Then actually invoke the `/getting-started` skill.]
 
 [If no:] No problem! You can run `/getting-started` anytime. For now, try `/daily-plan` to see your day.
+
+**Say this in BOTH cases**, whether or not they wanted the tour — it sits outside the yes/no branches on purpose, and someone who said yes should hear it too:
 
 📖 One more thing worth bookmarking: the **Dex Guide** at https://heydex.ai/help/ — a plain-English walkthrough of everything Dex can do, with copy-paste prompts to steal. Great for your first week."
 

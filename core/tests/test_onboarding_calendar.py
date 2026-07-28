@@ -252,4 +252,6 @@ def test_finalize_dry_run_previews_calendar_selection(onboarding_vault):
         "calendar_count": 2,
         "lazy_load": True,
     }
-    assert result["data"]["preview_user_profile"]["entity_creation"] == {"mode": "auto"}
+    assert result["data"]["preview_user_profile"]["entity_creation"] == {
+        "mode": "suggest"
+    }

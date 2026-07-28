@@ -115,7 +115,7 @@ test('fresh provision creates the full profile, seeds, MCP config, paths, and by
     const profile = yaml.load(fs.readFileSync(path.join(vault, 'System', 'user-profile.yaml'), 'utf8'));
     assert.equal(profile.name, 'Ada Lovelace');
     assert.equal(profile.work_email, 'ada@engines.test');
-    assert.deepEqual(profile.entity_creation, { mode: 'auto' });
+    assert.deepEqual(profile.entity_creation, { mode: 'suggest' });
     assert.equal(profile.communication.formality, 'formal');
     assert.equal(profile.communication.detail_level, 'concise');
     assert.equal(profile.ignored_key, undefined);

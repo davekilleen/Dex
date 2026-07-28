@@ -82,7 +82,11 @@ function acceptSuggestion(id) {
         suggestion.status = 'accepted';
         suggestion.updated_at = new Date().toISOString();
         atomicWrite(suggestionsPath, store);
-        return { page_path: pagePath };
+        return {
+          page_path: pagePath,
+          created: page.created === true,
+          existing: page.adopted === true,
+        };
       }
 
       if (suggestion.kind === 'company') {
@@ -99,7 +103,11 @@ function acceptSuggestion(id) {
         suggestion.status = 'accepted';
         suggestion.updated_at = new Date().toISOString();
         atomicWrite(suggestionsPath, store);
-        return { page_path: pagePath };
+        return {
+          page_path: pagePath,
+          created: page.created === true,
+          existing: page.adopted === true,
+        };
       }
 
       return failure('invalid_suggestion', `Unsupported suggestion kind: ${suggestion.kind}`);
