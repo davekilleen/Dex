@@ -606,6 +606,14 @@ def test_release_build_uses_selected_source_version_for_tree_profile_manifest_an
 
     assert _git_json(clone, "release-selected:package.json")["version"] == "2.3.4"
     assert _git_json(clone, "release-selected:System/.release-evidence-profile.json")["release_version"] == "2.3.4"
+    assert _git_json(
+        clone,
+        "release-selected:core/lifecycle/catalog/bridge-release.json",
+    )["release_version"] == "2.3.4"
+    assert _git_json(
+        clone,
+        "release-selected:System/.release-catalog.json",
+    )["release"]["version"] == "2.3.4"
     members = set(
         subprocess.run(
             ["git", "ls-tree", "-r", "--name-only", "release-selected"],

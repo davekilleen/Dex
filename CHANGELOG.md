@@ -17,7 +17,9 @@ Once Granola was connected, your meetings did arrive in Dex on their own — but
 * **Nothing gets done twice.** A meeting that's already been processed is never picked up again, and if you have several Dex windows open at once they won't trip over each other — the check stands down for half an hour once one of them has taken the job.
 * **Silence when there's nothing to do.** No message when everything's up to date, and nothing at all if you haven't connected Granola — this feature simply doesn't exist for you until you do.
 
-## [1.78.0] — 📓 Your goals and career pages come back (2026-07-28)
+## [1.78.0] — 🛡️ The trust release: updating Dex works again, for everyone (2026-07-28)
+
+### 📓 Your goals and career pages come back
 
 Last week I made Quarter Goals and Career optional — off unless you asked for them — and retired the starter pages that came with each one. That was the wrong call, and one user found out the hard way. They had written a quarter's worth of real goals into the goals page Dex had given them. When that page stopped being part of Dex, their update stopped working. The safety check did its job and refused to run rather than touch the file — but nothing had ever warned them that a page they'd come to rely on was being taken away, and they had to dig their goals out of an old copy themselves.
 
@@ -29,6 +31,29 @@ Last week I made Quarter Goals and Career optional — off unless you asked for 
 * **Setup stops asking.** It used to put three yes/no questions to you about rooms you hadn't seen yet, right when you were trying to get started. All three now simply come with Dex, and setup tells you so in a sentence.
 
 Thanks to Amit, who reported this and worked out exactly what had happened.
+
+### 🔧 Updating Dex actually works again
+
+This one is humbling. To find out why updates felt untrustworthy, I took five real copies of Dex — today's version, and installs frozen at four older moments, loaded with real notes and real customisations — and ran each one's genuine update against the live product, step by step, the way you would. The reassuring part first: **across all five, not one byte of anyone's notes was ever at risk.** Every time something hard-stopped, it was the safety machinery correctly refusing to guess. The embarrassing part: nearly everything *around* that machinery was failing people.
+
+**What this fixes for you:**
+
+* **The guided update runs again.** Since mid-June, an internal label deep in the update engine was never moved forward — so on every copy of Dex installed or updated since then, running the update crashed before it did anything. Technically-minded people worked around it by hand, which is exactly why nobody reported it. The label now moves automatically with every release, a check refuses to publish a release where it hasn't, and if that check ever does fire on your machine, it explains itself in plain words instead of a wall of code.
+* **A far-behind Dex can always hear about updates.** Older versions gave up if too many releases had come out since theirs, and a second, deeper limit was weeks away from silencing *every* copy, including brand-new ones. Both limits are gone from this version onwards — being years behind will never again mean being told nothing. I'm also cleaning up the leftover duplicate release markers from the old build bug, which is what lets older installs start hearing announcements again on their own.
+* **The checkup stops telling healthy setups they're broken.** This was a chorus of false alarms, several firing on every install in the world: an overnight check that flagged a file which wasn't missing, a demand for a software piece the installer never provides, six of Dex's own files reported as suspiciously modified when they were untouched, your own task list described as a "modified Dex file", and two "broken skills" that have never existed — with advice to run an update that couldn't fix them. After a successful update, this chorus would tell you the update had *failed* and offer to undo it. Every one of these now tells the truth.
+* **One bad moment no longer haunts you.** If a single update check failed — say you were offline — the checkup reported Dex as broken forever after, even once everything was fine. A later success now clears the old failure on its own.
+* **Machines with unusual setups are believed.** If your tools live somewhere non-standard, Dex's checkup used to declare the whole setup broken. It now finds your tools where they actually are, checks them properly, and only then passes judgement.
+* **Updating from an old Dex finishes the job.** An older copy updating the old way used to land "half-arrived": the new machinery present but not switched on, features silently off, five skills gone without a word — under a message saying "✅ Update successful!". The checkup now notices that state and completes it, reconnecting what you had, without ever touching your notes.
+
+Thanks again to Amit, whose three precise bug reports started all of this — every one of them is fixed in this release.
+
+### ✨ Also new in this release
+
+* **An optional calendar that teaches Dex your rhythm** over your first few weeks, and Dex now **learns which days you actually work** rather than assuming Monday to Friday.
+* **Company pages arrive switched on for new vaults** — existing setups stay exactly as they are.
+* **Setup got smarter**: it recognises more of the tools you already use, offers meeting notes earlier, and mentions `/connect` so you know it exists.
+* **The connections list tells the truth**: a wrongly-claimed "reviewed" integration and inflated tool counts on the live page are corrected.
+* **Installing Dex is one line**: the front page now leads with a single command that sets everything up.
 
 ## [1.77.2] — 🔔 Dex can tell you about updates again (2026-07-27)
 
