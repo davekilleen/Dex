@@ -775,6 +775,7 @@ At EVERY major decision point:
 - "Want to explore on your own first? That's cool"
 
 After full tour:
+- "Want to see everything you now own on one page? Run `/dex-dashboard`"
 - "Remember - invoke `/dex-level-up` to discover more"
 - "Or `/integrate-mcp` to add tools as you need them"
 - "The system grows with you"

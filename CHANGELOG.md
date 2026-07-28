@@ -7,6 +7,21 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.80.0] — 🪞 Meet your Dex Dashboard — one page that shows you your whole Dex (2026-07-28)
+
+Until now, everything Dex knew about you lived in files and chat. There was no *place* — nowhere to see what you own, what it's doing for you, and what to try next. Say "show my dashboard" (or run `/dex-dashboard`) and Dex builds you one: a private page, created fresh on your machine each time, that never leaves it.
+
+**What's on the page:**
+
+* **A value receipt, in real numbers only.** "68 meetings turned into notes. 64 people remembered. 4 tasks closed this week." Nothing estimated, nothing inflated — just what Dex actually held onto for you.
+* **Observations written by Dex, about your Dex.** Not canned stats — each time the page is built, Dex reads your actual data and writes two or three short, honest observations. Every one has to cite a real number, file, or event from your vault; if there's nothing specific to say, it says less rather than vaguer.
+* **One next step, not forty.** Dex picks a single suggestion that fits your role and how you already work, with a ready-to-use prompt built from your real data — copy it, paste it, done.
+* **A map of everything you could be using** — lit up where you've been, dim where you haven't.
+* **Change settings by clicking.** Ask for your settings ("let me toggle things") and the page becomes interactive: flip analytics, communication style, or an integration on the page and it saves straight to your Dex files, with a one-click undo. The helper behind it exists only while the page is open — it shuts itself down when you close the tab and nothing keeps running afterwards. Only a short, vetted list of safe settings can be changed this way, and each change is checked before it's written so a click can't damage your files.
+* **Your history, compounding.** Every time the page is built, Dex saves a small private snapshot. Over weeks that becomes trend lines, "then vs now" moments, and the occasional milestone worth a quiet ✦ — one thousand tasks closed, a year with Dex.
+
+Your weekly review and the getting-started tour now offer the page at natural moments, and it never nags — it only appears when you ask.
+
 ## [1.79.0] — 📋 Your meetings get dealt with without you asking (2026-07-28)
 
 Your meetings did arrive in Dex on their own — but turning them into something useful (updated pages for the people you met, tasks from what you agreed to do, tidy notes) still waited for you to ask. If you never asked, meetings quietly piled up half-done. The docs promised meetings "flow in on their own" — this release makes that promise true.

@@ -467,6 +467,7 @@ After synthesis:
 2. Archive completed items
 3. Update project pages with status changes
 4. Offer to run `/week-plan` for next week
+5. Offer once, lightly: "Want your Dex Dashboard refreshed with this week folded in? (`/dex-dashboard`)" — skip the offer entirely if the user has never run `/dex-dashboard`
 
 ---
 

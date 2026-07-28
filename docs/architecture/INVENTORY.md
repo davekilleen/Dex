@@ -1,6 +1,6 @@
 <!-- GENERATED FILE — DO NOT EDIT BY HAND. -->
 <!-- Generator: scripts/generate-architecture-inventory.py -->
-<!-- Content SHA-256: 344f88c8486d129e982e9c51537b5cd46b8ac2b45c6815857b1658e8559e22fe -->
+<!-- Content SHA-256: 142a87eca6f749b9f40bcb873879ace3eb0169a99ccfcde973e41607ce3c8211 -->
 
 # Architecture Inventory
 
@@ -25,7 +25,7 @@ This inventory is derived only from repository code and shipped skill files.
 
 ## Skills
 
-**Skill count:** 75<br>
+**Skill count:** 76<br>
 **Discoverability-risk count:** 4
 
 A description has a trigger when its frontmatter contains the word `when` or `whenever` (case-insensitive). Length is measured in characters.
@@ -60,6 +60,7 @@ A description has a trigger when its frontmatter contains the word `when` or `wh
 | `delegate-check` | `.claude/skills/delegate-check/SKILL.md` | Review open delegations — what you handed off, to whom, its status, and the next useful nudge. Use when the user says 'what did I delegate', 'who owes me', 'check my handoffs', 'follow up with someone'. Not for prepping a meeting; use meeting-prep. | 248 | when |
 | `dex-add-mcp` | `.claude/skills/dex-add-mcp/SKILL.md` | Add a known MCP server to config using Dex-safe user scope. Use when the user has server details in hand and says 'add this MCP', 'register this server'. Not for discovering/installing from a marketplace; use `integrate-mcp`. Not for building one; use `create-mcp`. | 265 | when |
 | `dex-backlog` | `.claude/skills/dex-backlog/SKILL.md` | Show the AI-ranked backlog of Dex system-improvement ideas. Use when the user says 'show my Dex ideas', 'what's in the backlog', 'what should we build next'. Not for workshopping one idea into a plan; use `dex-improve`. Not for discovering existing features; use `dex-level-up`. | 278 | when |
+| `dex-dashboard` | `.claude/skills/dex-dashboard/SKILL.md` | A personal, local page showing how the user is using Dex, what stands out, and one evidence-backed next step. Use when the user says "show my dashboard", "open my Dex dashboard", "how am I using Dex", "what does my Dex look like", or "my Dex stats". Not for system health checks; use `dex-doctor`. Not for a chat list of unused features; use `dex-level-up`. | 357 | when |
 | `dex-doctor` | `.claude/skills/dex-doctor/SKILL.md` | Whole-system checkup: verifies every Dex feature honestly (working/off/broken/couldn't-check), self-heals what's provably safe, guides the rest. Use when the user says 'is Dex healthy', 'something's broken', 'check my setup', 'run diagnostics'. Not for discovering unused *features*; use `dex-level-up`. Not for applying an update; use `dex-update`. | 349 | when |
 | `dex-improve` | `.claude/skills/dex-improve/SKILL.md` | Workshop one improvement idea into an implementation plan. Use when the user says 'let's flesh out idea-X', 'turn this into a plan', 'improve Dex's Y'. Not for ranking the whole backlog; use `dex-backlog`. Not for a PRD for the user's own product; use `product-brief`. | 268 | when |
 | `dex-level-up` | `.claude/skills/dex-level-up/SKILL.md` | Surface Dex features the user isn't using yet, based on their usage patterns. Use when the user says 'what am I missing', 'show me new features', 'level up my Dex'. Not for diagnosing what's broken; use `dex-doctor`. Not for what changed in a release; use `dex-whats-new`. | 272 | when |

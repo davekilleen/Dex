@@ -414,6 +414,7 @@ Then proceed with first-run behavior.
 
 - `/dex-improve` — Full design partner (includes this + workshopping + audit)
 - `/create-mcp` — Build new integrations when new MCP features enable them
+- `/dex-dashboard` — See what's new alongside what you actually use, on one page
 
 ## Track Usage (Silent)
 
