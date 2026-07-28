@@ -39,13 +39,13 @@ from core.transaction.journal import Journal, JournalCorruptError
 from core.utils import dex_logger, preflight, release_channel
 
 VERDICTS = frozenset({"OK", "OFF", "BROKEN", "UNKNOWN"})
-DOCTOR_SAFE_PATH = "/usr/bin:/bin:/usr/sbin:/sbin"
 DOCTOR_GIT_CANDIDATES = (Path("/usr/bin/git"), Path("/bin/git"))
 MISSING_PACKAGES_DETAIL = (
     "Python packages not installed — run /dex-update (or pip install -r requirements.txt) "
     "then re-run /dex-doctor"
 )
 RELEASE_CATALOG_PATH = "System/.release-catalog.json"
+KNOWN_SKILL_CONTAINER_DIRECTORIES = frozenset({"_available", "integrations"})
 ADOPTION_REPORT_VERSION = 1
 ADOPTION_GROUP_IDS = (
     "new-and-safe",
@@ -2601,9 +2601,27 @@ def _probe_customization_skills(context: DoctorContext) -> ProbeResult:
             f"{relative} {root_safety} and was not read for safety; fix or remove {relative}",
         )
     skill_directories = sorted(
-        (path for path in skills_root.iterdir() if path.is_symlink() or path.is_dir()),
+        (
+            path
+            for path in skills_root.iterdir()
+            if path.name not in KNOWN_SKILL_CONTAINER_DIRECTORIES
+            and (path.is_symlink() or path.is_dir())
+        ),
         key=lambda path: path.name,
     ) if skills_root.is_dir() else []
+    catalogued_paths: frozenset[str] | None = None
+    catalog_path = _release_catalog_path(context)
+    if catalog_path.is_file():
+        try:
+            catalog = load_catalog(catalog_path, release_root=context.vault_root)
+        except (CatalogError, OSError, UnicodeError):
+            pass
+        else:
+            catalogued_paths = frozenset(
+                file.path
+                for item in catalog.items
+                for file in item.files
+            )
     failures = []
     safety_findings = []
     custom_count = 0
@@ -2612,6 +2630,13 @@ def _probe_customization_skills(context: DoctorContext) -> ProbeResult:
         relative = _display_vault_path(context, skill_path)
         is_custom = skill_directory.name.endswith("-custom")
         custom_count += int(is_custom)
+        release_carries_skill = catalogued_paths is None or relative in catalogued_paths
+        shipped_label = "shipped skill" if release_carries_skill else "skill"
+        guidance = (
+            f"run /dex-update to restore {relative}"
+            if release_carries_skill
+            else f"fix or remove {relative}"
+        )
         safety_reason = _unsafe_customization_path(context, skill_path)
         if safety_reason:
             if is_custom:
@@ -2621,8 +2646,8 @@ def _probe_customization_skills(context: DoctorContext) -> ProbeResult:
                 )
             else:
                 safety_findings.append(
-                    f"shipped skill {relative} {safety_reason} and was not read for safety; "
-                    f"run /dex-update to restore {relative}"
+                    f"{shipped_label} {relative} {safety_reason} and was not read for safety; "
+                    f"{guidance}"
                 )
             continue
         errors = validate_skill_frontmatter(skill_path)
@@ -2635,7 +2660,7 @@ def _probe_customization_skills(context: DoctorContext) -> ProbeResult:
             )
         else:
             failures.append(
-                f"shipped skill {relative} is invalid ({issue}); run /dex-update to restore {relative}"
+                f"{shipped_label} {relative} is invalid ({issue}); {guidance}"
             )
 
     findings = [*failures, *safety_findings]
@@ -2845,6 +2870,10 @@ def _git_result(
     )
     if executable is None:
         return subprocess.CompletedProcess([], 127, "", "trusted system git is unavailable")
+    safe_path, _tools = release_channel.sanitized_path_with_tools(
+        context.vault_root,
+        ("node", "python3"),
+    )
     return subprocess.run(
         [
             executable,
@@ -2872,7 +2901,7 @@ def _git_result(
             "GIT_TERMINAL_PROMPT": "0",
             "HOME": "/var/empty" if Path("/var/empty").is_dir() else "/",
             "LC_ALL": "C",
-            "PATH": DOCTOR_SAFE_PATH,
+            "PATH": safe_path,
         },
         text=True,
         timeout=10,

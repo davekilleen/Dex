@@ -648,6 +648,40 @@ def test_runner_materialization_excludes_untracked_core_files(
     assert not (runner / "core" / "mcp" / "evil_server.py").exists()
 
 
+def test_runner_fallback_is_import_complete_for_the_runner_entry(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    required = {
+        Path("core/utils/smoke.py"),
+        Path("core/utils/release_channel.py"),
+        Path("core/utils/update_verifier.py"),
+    }
+    assert required <= set(smoke.RUNNER_FALLBACK_RELATIVES)
+    monkeypatch.setattr(smoke, "_git_tree_paths", lambda *_args: None)
+    runner = smoke._materialize_runner(tmp_path / "fallback-runner")
+
+    imported = subprocess.run(
+        [
+            sys.executable,
+            "-S",
+            "-c",
+            "import core.utils.smoke; import core.utils.update_verifier",
+        ],
+        cwd=tmp_path,
+        env={
+            "PATH": os.environ.get("PATH", ""),
+            "PYTHONPATH": str(runner),
+            "PYTHONDONTWRITEBYTECODE": "1",
+        },
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert imported.returncode == 0, imported.stderr or imported.stdout
+
+
 def test_runner_materializes_only_exact_content_verified_sensitive_dependencies(tmp_path: Path) -> None:
     runner = smoke._materialize_runner(tmp_path / "runner-sensitive")
     required = {
@@ -1193,6 +1227,111 @@ def test_ambient_path_cannot_replace_git_or_node(monkeypatch, tmp_path: Path) ->
     assert run.exit_code == 0
     assert run.report["journeys"][0]["verdict"] in {"OK", "UNKNOWN"}
     assert not sentinel.exists()
+
+
+def test_hostile_path_can_add_a_valid_nonstandard_node_without_trusting_other_entries(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    real_node = shutil.which("node")
+    assert real_node is not None, "normal CI requires node for the smoke hooks journey"
+    prefix = tmp_path / "nonstandard-node-prefix"
+    bin_dir = prefix / "bin"
+    bin_dir.mkdir(parents=True)
+    linked_node = bin_dir / "node"
+    linked_node.symlink_to(Path(real_node).resolve())
+    monkeypatch.setenv("PATH", str(bin_dir))
+    vault = tmp_path / "vault"
+    vault.mkdir()
+
+    safe_path, tools = release_channel.sanitized_path_with_tools(vault, ("node", "python3"))
+
+    assert safe_path.split(os.pathsep)[:4] == ["/usr/bin", "/bin", "/usr/sbin", "/sbin"]
+    assert str(bin_dir) in safe_path.split(os.pathsep)
+    assert tools["node"] == str(Path(real_node).resolve())
+    assert shutil.which("node", path=safe_path) is not None
+
+
+def test_nonstandard_node_path_keeps_the_hooks_journey_healthy(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    real_node = shutil.which("node")
+    assert real_node is not None, "normal CI requires node for the smoke hooks journey"
+    bin_dir = tmp_path / "node-prefix" / "bin"
+    bin_dir.mkdir(parents=True)
+    (bin_dir / "node").symlink_to(Path(real_node).resolve())
+    vault = _write_valid_vault(tmp_path)
+    hook = vault / ".claude" / "hooks" / "check.js"
+    hook.parent.mkdir()
+    hook.write_text("console.log('syntax only');\n", encoding="utf-8")
+    (vault / ".claude" / "settings.json").write_text(
+        json.dumps(
+            {
+                "hooks": {
+                    "SessionStart": [
+                        {"hooks": [{"command": "node .claude/hooks/check.js"}]}
+                    ]
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("PATH", str(bin_dir))
+    home = tmp_path / "home"
+    home.mkdir()
+    runtime = tmp_path / "runtime"
+    runtime.mkdir()
+
+    clean_env = smoke._clean_environment(
+        vault,
+        home,
+        REPO_ROOT,
+        runtime,
+        "test-run-token",
+        source_root=vault,
+    )
+
+    assert str(bin_dir) in clean_env["PATH"].split(os.pathsep)
+    run = smoke.run_smoke(
+        vault_root=vault,
+        repo_root=REPO_ROOT,
+        journey_definitions=(_definition("hooks"),),
+    )
+
+    assert run.harness_failed is False
+    assert run.report["journeys"][0]["verdict"] == "OK"
+
+
+def test_sanitized_path_rejects_tools_inside_the_vault_or_world_writable_directories(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    real_node = shutil.which("node")
+    assert real_node is not None, "normal CI requires node for the smoke hooks journey"
+    vault = tmp_path / "vault"
+    vault_bin = vault / "bin"
+    vault_bin.mkdir(parents=True)
+    (vault_bin / "node").symlink_to(Path(real_node).resolve())
+    monkeypatch.setenv("PATH", str(vault_bin))
+
+    vault_path, vault_tools = release_channel.sanitized_path_with_tools(vault, ("node",))
+
+    assert str(vault_bin) not in vault_path.split(os.pathsep)
+    assert "node" not in vault_tools
+
+    world_writable = tmp_path / "world-writable"
+    world_writable.mkdir()
+    world_writable.chmod(0o777)
+    (world_writable / "node").symlink_to(Path(real_node).resolve())
+    monkeypatch.setenv("PATH", str(world_writable))
+    try:
+        writable_path, writable_tools = release_channel.sanitized_path_with_tools(vault, ("node",))
+    finally:
+        world_writable.chmod(0o755)
+
+    assert str(world_writable) not in writable_path.split(os.pathsep)
+    assert "node" not in writable_tools
 
 
 def test_custom_mcp_command_is_structural_only_and_never_launched(tmp_path: Path) -> None:

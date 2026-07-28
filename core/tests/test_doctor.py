@@ -4,6 +4,7 @@ import hashlib
 import json
 import os
 import plistlib
+import re
 import shutil
 import stat
 import subprocess
@@ -17,6 +18,7 @@ from core.lifecycle.catalog import with_catalog_identity
 from core.tests.lifecycle_test_helpers import SOURCE_COMMIT, write_file, write_manifest
 from core.utils import doctor, release_channel
 
+REPO_ROOT = Path(__file__).resolve().parents[2]
 DOCTOR_PATH = Path(__file__).resolve().parents[1] / "utils" / "doctor.py"
 NOW = datetime(2026, 7, 11, 12, 0, tzinfo=timezone.utc)
 
@@ -1797,6 +1799,58 @@ def test_customization_skills_are_ok_when_every_frontmatter_is_valid(context):
 
     assert result.verdict == "OK"
     assert "1 user customization" in result.detail
+
+
+def test_customization_skill_containers_are_not_validated_or_counted_as_skills(context):
+    _write_skill(context, "daily-plan")
+    assert {"_available", "integrations"} <= doctor.KNOWN_SKILL_CONTAINER_DIRECTORIES
+    for name in doctor.KNOWN_SKILL_CONTAINER_DIRECTORIES:
+        container = context.vault_root / ".claude" / "skills" / name
+        container.mkdir(parents=True)
+        (container / "README.md").write_text("Reference material, not a skill.\n", encoding="utf-8")
+
+    result = doctor._probe_customization_skills(context)
+
+    assert result.verdict == "OK"
+    assert result.detail == "Validated 0 user customizations and 1 shipped skill"
+
+
+def test_customization_skills_only_prescribe_update_for_catalogued_paths(context):
+    catalogued = ".claude/skills/fixture-item/SKILL.md"
+    unlisted_skill = _write_skill(context, "unlisted-skill", frontmatter_name="wrong-name")
+    _write_release_catalog(context, content=b"not valid skill frontmatter\n")
+
+    result = doctor._probe_customization_skills(context)
+
+    unlisted = unlisted_skill.relative_to(context.vault_root).as_posix()
+    assert result.verdict == "BROKEN"
+    assert f"run /dex-update to restore {catalogued}" in result.detail
+    assert f"fix or remove {unlisted}" in result.detail
+    assert f"run /dex-update to restore {unlisted}" not in result.detail
+
+
+def test_repository_shipped_skill_tree_is_doctor_clean_and_restore_advice_is_real(
+    tmp_path: Path,
+) -> None:
+    skills_root = REPO_ROOT / ".claude" / "skills"
+    manifest_path = REPO_ROOT / "System" / ".installed-files.manifest"
+    assert skills_root.is_dir(), "repository shipped skills tree is missing"
+    assert manifest_path.is_file(), "repository installed-files manifest is missing"
+    for name in ("_available", "integrations"):
+        assert (skills_root / name).is_dir(), f"shipped skill container {name} is missing"
+
+    context = doctor.DoctorContext(
+        vault_root=REPO_ROOT,
+        repo_root=REPO_ROOT,
+        home=tmp_path,
+        now=NOW,
+    )
+    result = doctor._probe_customization_skills(context)
+
+    assert result.verdict == "OK", result.detail
+    shipped_paths = set(manifest_path.read_text(encoding="utf-8").splitlines())
+    restore_paths = re.findall(r"run /dex-update to restore ([^;]+)", result.detail)
+    assert all(path in shipped_paths for path in restore_paths), result.detail
 
 
 def test_customization_skills_do_not_follow_user_symlinks(context, tmp_path):
