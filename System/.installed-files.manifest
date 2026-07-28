@@ -23,6 +23,7 @@
 .claude/hooks/integration-concierge.cjs
 .claude/hooks/maintenance.cjs
 .claude/hooks/meeting-cache-builder.cjs
+.claude/hooks/meeting-queue-check.cjs
 .claude/hooks/paths.cjs
 .claude/hooks/person-context-injector.cjs
 .claude/hooks/post-meeting-person-update.cjs
@@ -38,6 +39,7 @@
 .claude/hooks/tests/hook-harness.test.cjs
 .claude/hooks/tests/input-contract.test.cjs
 .claude/hooks/tests/integration-concierge.test.cjs
+.claude/hooks/tests/meeting-queue-check.test.cjs
 .claude/hooks/tests/post-meeting-person-update.test.cjs
 .claude/hooks/tests/safety-guard-settings.test.cjs
 .claude/hooks/tests/session-staleness.test.cjs
@@ -1164,6 +1166,7 @@ docs/Dex_System/Named_Sessions_Guide.md
 docs/Dex_System/Obsidian_Guide.md
 docs/Dex_System/README.md
 docs/Dex_System/Updating_Dex.md
+docs/UPDATE-RESCUE.md
 docs/analytics-proxy.md
 docs/architecture/DEX-CORE-MAP.md
 docs/architecture/INVENTORY.md
