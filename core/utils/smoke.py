@@ -566,8 +566,9 @@ def _prepare_skills_vault(source: Path, vault: Path) -> None:
 
 
 def _prepare_hooks_vault(source: Path, vault: Path) -> None:
+    settings_path = source / ".claude" / "settings.json"
     _copy_file(
-        source / ".claude" / "settings.json",
+        settings_path,
         vault / ".claude" / "settings.json",
         source,
     )
@@ -577,6 +578,27 @@ def _prepare_hooks_vault(source: Path, vault: Path) -> None:
         for path in hooks.rglob("*"):
             _ensure_safe_source(path, source)
         shutil.copytree(hooks, vault / ".claude" / "hooks", symlinks=True)
+
+    try:
+        settings = json.loads(settings_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return
+    if not isinstance(settings, Mapping):
+        return
+    for raw_command in _walk_hook_commands(settings.get("hooks", {})):
+        command = _expanded_hook_command(raw_command, source)
+        for _index, target in _hook_script_targets(command, source):
+            try:
+                relative = target.relative_to(source)
+            except ValueError:
+                continue
+            if (
+                not relative.parts
+                or any(part in {"", ".", ".."} for part in relative.parts)
+                or not target.is_file()
+            ):
+                continue
+            _copy_file(target, vault / relative, source)
 
 
 def _topology_json(path: Path) -> dict[str, Any] | None:

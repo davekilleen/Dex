@@ -1752,6 +1752,27 @@ def test_hooks_are_syntax_checked_without_executing_commands(tmp_path: Path) -> 
     assert not sentinel.exists()
 
 
+def test_repository_hooks_journey_stages_vault_local_core_targets() -> None:
+    settings = json.loads(
+        (REPO_ROOT / ".claude" / "settings.json").read_text(encoding="utf-8")
+    )
+    commands = list(smoke._walk_hook_commands(settings["hooks"]))
+    assert any(
+        "$CLAUDE_PROJECT_DIR/core/utils/update_verifier.py" in command
+        for command in commands
+    )
+
+    run = smoke.run_smoke(
+        vault_root=REPO_ROOT,
+        repo_root=REPO_ROOT,
+        journey_definitions=(_definition("hooks"),),
+    )
+
+    assert run.exit_code == 0
+    assert run.harness_failed is False
+    assert run.report["journeys"][0]["verdict"] == "OK"
+
+
 def test_hooks_report_dynamic_targets_and_each_compound_executable(tmp_path: Path) -> None:
     vault = _write_valid_vault(tmp_path)
     (vault / ".claude" / "settings.json").write_text(

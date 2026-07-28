@@ -40,6 +40,7 @@ QUICK_IDS = [
     "jobs.loaded",
     "jobs.fresh",
     "preflight.queue",
+    "capabilities.rooms",
     "entity.engine",
     "customizations.skills",
     "customizations.mcp",
@@ -638,10 +639,10 @@ def test_topology_probe_distinguishes_combined_split_and_invalid(context):
     migrator.write_text("'use strict';\n", encoding="utf-8")
     assert doctor._topology_state(context) == "migration-pending"
     pending = doctor._probe_migration_pending(context)
-    assert pending.verdict == "BROKEN"
+    assert pending.verdict == "OFF"
     assert "/dex-update" in pending.detail
-    assert "preview" in pending.detail
-    assert "approval" in pending.detail
+    assert "when you want it" in pending.detail
+    assert "notes stay in place either way" in pending.detail
 
     migrator.unlink()
     shutil.rmtree(context.vault_root / ".git")
@@ -1215,6 +1216,146 @@ def test_vault_configs_maps_parse_errors_to_broken(context):
     assert result.verdict == "BROKEN"
     assert "pillars.yaml" in result.detail
     assert result.heal.tier == 3
+
+
+def test_capability_rooms_probe_detects_missing_on_assets_and_live_off_skills(
+    context,
+) -> None:
+    (context.vault_root / "System/.onboarding-complete").touch()
+    (context.vault_root / "System/user-profile.yaml").write_text(
+        "name: Legacy User\n"
+        "capabilities:\n"
+        "  career:\n"
+        "    enabled: true\n"
+        "  companies:\n"
+        "    enabled: false\n"
+        "  quarter_goals:\n"
+        "    enabled: false\n",
+        encoding="utf-8",
+    )
+    stale_skill = context.vault_root / ".claude/skills/quarter-plan/SKILL.md"
+    stale_skill.parent.mkdir(parents=True, exist_ok=True)
+    stale_skill.write_text("---\nname: quarter-plan\n---\n", encoding="utf-8")
+
+    result = doctor._probe_capability_rooms(context)
+
+    assert result.verdict == "BROKEN"
+    assert "career" in result.detail
+    assert "quarter-plan" in result.detail
+    assert result.heal == doctor.Heal(
+        tier=1,
+        action=(
+            "Reconcile capability room folders and shipped skills without "
+            "deleting user content."
+        ),
+        applied=False,
+    )
+
+
+def test_capability_seed_probe_advises_update_only_for_enabled_rooms(
+    context,
+) -> None:
+    (context.vault_root / "System/.onboarding-complete").touch()
+    profile_path = context.vault_root / "System/user-profile.yaml"
+    profile_path.write_text(
+        "name: Legacy User\n"
+        "capabilities:\n"
+        "  career:\n"
+        "    enabled: true\n"
+        "  companies:\n"
+        "    enabled: false\n"
+        "  quarter_goals:\n"
+        "    enabled: false\n",
+        encoding="utf-8",
+    )
+    career = context.vault_root / "05-Areas/Career"
+    career.mkdir(parents=True)
+    dormant = (
+        REPO_ROOT / ".claude/skills/_available/capabilities/career/skills"
+    )
+    for skill in ("career-setup", "career-coach", "resume-builder"):
+        shutil.copytree(dormant / skill, context.vault_root / ".claude/skills" / skill)
+
+    missing = doctor._probe_capability_rooms(context)
+
+    assert missing.verdict == "BROKEN"
+    assert "05-Areas/Career/Evidence/README.md" in missing.detail
+    assert "run /dex-update to restore" in missing.detail
+    assert "01-Quarter_Goals/Quarter_Goals.md" not in missing.detail
+
+    profile_path.write_text(
+        profile_path.read_text(encoding="utf-8").replace(
+            "  career:\n    enabled: true",
+            "  career:\n    enabled: false",
+        ),
+        encoding="utf-8",
+    )
+    for skill in ("career-setup", "career-coach", "resume-builder"):
+        shutil.rmtree(context.vault_root / ".claude/skills" / skill)
+
+    disabled = doctor._probe_capability_rooms(context)
+
+    assert disabled.verdict == "OK"
+    assert "05-Areas/Career/Evidence/README.md" not in disabled.detail
+    assert "/dex-update" not in disabled.detail
+
+
+def test_doctor_heal_reconciles_room_assets_and_preserves_user_content(
+    monkeypatch: pytest.MonkeyPatch,
+    context,
+) -> None:
+    for name in doctor.PARA_PATH_NAMES:
+        context.core_path(name).mkdir(parents=True, exist_ok=True)
+    (context.vault_root / "System/user-profile.yaml").write_text(
+        "name: Legacy User\n"
+        "role: Founder\n",
+        encoding="utf-8",
+    )
+    user_note = context.vault_root / "05-Areas/Career/private-review.md"
+    user_note.parent.mkdir(parents=True, exist_ok=True)
+    user_note.write_text("Keep this forever.\n", encoding="utf-8")
+    stale_skill = context.vault_root / ".claude/skills/quarter-plan/SKILL.md"
+    stale_skill.parent.mkdir(parents=True, exist_ok=True)
+    stale_skill.write_text("---\nname: quarter-plan\n---\n", encoding="utf-8")
+    context.paths_json_path.parent.mkdir(parents=True, exist_ok=True)
+    context.paths_json_path.write_text(
+        json.dumps(doctor._paths_export_for(context)),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(doctor, "_repo_shipped_executables", lambda _context: [])
+    _stub_probes(monkeypatch, exclude={"capabilities.rooms"})
+
+    report = doctor.collect(heal=True, context=context)
+
+    rooms = _check(report, "capabilities.rooms")
+    assert rooms["verdict"] == "OK"
+    assert rooms["heal"] == {
+        "tier": 1,
+        "action": "reconciled capability room assets without deleting user content.",
+        "applied": True,
+    }
+    assert user_note.read_text(encoding="utf-8") == "Keep this forever.\n"
+    assert (
+        context.vault_root / "05-Areas/Career/Evidence/README.md"
+    ).is_file()
+    for skill in ("career-setup", "career-coach", "resume-builder"):
+        assert (
+            context.vault_root / ".claude/skills" / skill / "SKILL.md"
+        ).is_file()
+    for skill in (
+        "career-setup",
+        "career-coach",
+        "resume-builder",
+        "quarter-plan",
+        "quarter-review",
+    ):
+        assert (
+            context.vault_root / ".claude/skills" / skill / "SKILL.md"
+        ).is_file()
+    profile = (
+        context.vault_root / "System/user-profile.yaml"
+    ).read_text(encoding="utf-8")
+    assert "companies:\n    enabled: false" in profile
 
 
 def test_mcp_registered_distinguishes_never_onboarded_from_missing_after_onboarding(context):
@@ -1848,9 +1989,45 @@ def test_repository_shipped_skill_tree_is_doctor_clean_and_restore_advice_is_rea
     result = doctor._probe_customization_skills(context)
 
     assert result.verdict == "OK", result.detail
+    migration = doctor._probe_migration_pending(context)
+    assert migration.verdict == "OFF", migration.detail
+    rooms = doctor._probe_capability_rooms(context)
+    assert rooms.verdict in {"OK", "OFF"}, rooms.detail
     shipped_paths = set(manifest_path.read_text(encoding="utf-8").splitlines())
     restore_paths = re.findall(r"run /dex-update to restore ([^;]+)", result.detail)
     assert all(path in shipped_paths for path in restore_paths), result.detail
+
+    archive = tmp_path / "shipped-head.tar"
+    subprocess.run(
+        [
+            "/usr/bin/git",
+            "-C",
+            str(REPO_ROOT),
+            "archive",
+            "--format=tar",
+            f"--output={archive}",
+            "HEAD",
+        ],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    shipped_root = tmp_path / "shipped-head"
+    shutil.unpack_archive(archive, shipped_root)
+    _git(shipped_root, "init")
+    _git(shipped_root, "config", "user.email", "doctor@example.com")
+    _git(shipped_root, "config", "user.name", "Doctor Test")
+    _git(shipped_root, "add", "-f", "--", ".")
+    _git(shipped_root, "commit", "-m", "actual shipped HEAD")
+    _git(shipped_root, "update-ref", _remote_release_ref("stable"), "HEAD")
+    shipped_context = doctor.DoctorContext(
+        vault_root=shipped_root,
+        repo_root=shipped_root,
+        home=tmp_path / "shipped-home",
+        now=NOW,
+    )
+    shipped_drift = doctor._probe_core_drift(shipped_context)
+    assert shipped_drift.verdict == "OK", shipped_drift.detail
 
 
 def test_customization_skills_do_not_follow_user_symlinks(context, tmp_path):
@@ -1995,6 +2172,84 @@ def test_core_drift_is_ok_for_a_clean_release_checkout(tmp_path):
     drift_context = _drift_context(tmp_path)
 
     assert doctor._probe_core_drift(drift_context).verdict == "OK"
+
+
+def test_repository_credential_named_release_files_match_head_without_python_reads(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    context = doctor.DoctorContext(
+        vault_root=REPO_ROOT,
+        repo_root=REPO_ROOT,
+        home=tmp_path,
+        now=NOW,
+    )
+    release_entries = doctor._release_tree_entries(context, "HEAD")
+    credential_paths = sorted(
+        relative
+        for relative in release_entries
+        if "credential" in relative.casefold()
+        and not relative.startswith("core/tests/")
+    )
+    assert credential_paths == [
+        "core/utils/credential_migration_exceptions.json",
+        "core/utils/credential_remediation.py",
+        "core/utils/credential_scanner.py",
+        "core/utils/credential_workflow.py",
+        "core/utils/integration_credentials.py",
+        "docs/credential-remediation.md",
+    ]
+    protected = {REPO_ROOT / relative for relative in credential_paths}
+    original_read_bytes = Path.read_bytes
+    original_read_text = Path.read_text
+
+    def refuse_credential_content(path: Path) -> bytes:
+        if path in protected:
+            raise AssertionError(f"doctor read credential-shaped content: {path}")
+        return original_read_bytes(path)
+
+    def refuse_credential_text(path: Path, *args, **kwargs) -> str:
+        if path in protected:
+            raise AssertionError(f"doctor read credential-shaped content: {path}")
+        return original_read_text(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_bytes", refuse_credential_content)
+    monkeypatch.setattr(Path, "read_text", refuse_credential_text)
+
+    assert all(
+        doctor._worktree_matches_release_blob(
+            context,
+            relative,
+            *release_entries[relative],
+        )
+        for relative in credential_paths
+    )
+
+
+def test_core_drift_excludes_user_owned_seed_files(tmp_path: Path) -> None:
+    drift_context = _drift_context(tmp_path)
+    vault = drift_context.vault_root
+    seeds = {
+        "02-Week_Priorities/Week_Priorities.md": "# Priorities\n",
+        "03-Tasks/Tasks.md": "# Tasks\n",
+    }
+    for relative, content in seeds.items():
+        path = vault / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(content, encoding="utf-8")
+    _git(vault, "add", "--", *seeds)
+    _git(vault, "commit", "-m", "ship seed fixtures")
+    _git(vault, "update-ref", _remote_release_ref("stable"), "HEAD")
+    for relative in seeds:
+        (vault / relative).write_text(
+            seeds[relative] + "User-authored content.\n",
+            encoding="utf-8",
+        )
+
+    result = doctor._probe_core_drift(drift_context)
+
+    assert result.verdict == "OK"
+    assert all(relative not in result.detail for relative in seeds)
 
 
 def test_core_drift_missing_channel_keeps_stable_release_ref_behavior(tmp_path):

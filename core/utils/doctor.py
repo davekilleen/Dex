@@ -627,6 +627,11 @@ QUICK_CHECKS = (
     CheckDefinition("jobs.loaded", "Background jobs", "_probe_jobs_loaded"),
     CheckDefinition("jobs.fresh", "Background job freshness", "_probe_jobs_fresh"),
     CheckDefinition("preflight.queue", "Preflight health", "_probe_preflight_queue"),
+    CheckDefinition(
+        "capabilities.rooms",
+        "Capability rooms",
+        "_probe_capability_rooms",
+    ),
     CheckDefinition("entity.engine", "Entity engine", "_probe_entity_engine"),
     CheckDefinition(
         "customizations.skills",
@@ -881,6 +886,37 @@ def _apply_t1_heals(context: DoctorContext) -> tuple[list[str], list[str]]:
         except Exception as error:
             errors.append(f"Entity-write heal failed: {_one_line(error)}")
 
+    try:
+        acknowledged = _acknowledge_resolved_preflight_errors(context)
+        if acknowledged:
+            noun = "error" if acknowledged == 1 else "errors"
+            actions.append(
+                f"acknowledged {acknowledged} resolved preflight {noun}"
+            )
+    except Exception as error:
+        errors.append(f"Preflight-queue heal failed: {_one_line(error)}")
+
+    try:
+        room_health = _probe_capability_rooms(context)
+        if (
+            room_health.verdict == "BROKEN"
+            and room_health.heal is not None
+            and room_health.heal.tier == 1
+        ):
+            from core import capabilities
+
+            reconciled = capabilities.reconcile_all(
+                context.vault_root,
+                profile_path=context.vault_root / "System/user-profile.yaml",
+            )
+            if any(result.get("user_content_deleted") is not False for result in reconciled):
+                raise RuntimeError("capability reconciliation did not preserve user content")
+            actions.append(
+                "reconciled capability room assets without deleting user content"
+            )
+    except Exception as error:
+        errors.append(f"Capability-room heal failed: {_one_line(error)}")
+
     if planned:
         try:
             preview = lifecycle_service._preview_transaction(
@@ -970,8 +1006,18 @@ def collect(
         entity_actions = [
             action for action in t1_actions if action.startswith("re-queued ")
         ]
+        preflight_actions = [
+            action for action in t1_actions if action.startswith("acknowledged ")
+        ]
+        capability_actions = [
+            action for action in t1_actions if action.startswith("reconciled capability ")
+        ]
         structure_actions = [
-            action for action in t1_actions if not action.startswith("re-queued ")
+            action
+            for action in t1_actions
+            if not action.startswith(
+                ("re-queued ", "acknowledged ", "reconciled capability ")
+            )
         ]
         if definition.id == "vault.structure" and structure_actions:
             action = "; ".join(structure_actions) + "."
@@ -991,6 +1037,24 @@ def collect(
                 result.verdict,
                 result.detail,
                 Heal(tier=1, action="; ".join(entity_actions) + ".", applied=True),
+                feature_status=result.feature_status,
+                user_message=result.user_message,
+            )
+        if definition.id == "preflight.queue" and preflight_actions:
+            action = "; ".join(preflight_actions) + "."
+            result = ProbeResult(
+                result.verdict,
+                f"{result.detail.rstrip('.')} after a safe Tier-1 queue repair",
+                Heal(tier=1, action=action, applied=True),
+                feature_status=result.feature_status,
+                user_message=result.user_message,
+            )
+        if definition.id == "capabilities.rooms" and capability_actions:
+            action = "; ".join(capability_actions) + "."
+            result = ProbeResult(
+                result.verdict,
+                f"{result.detail.rstrip('.')} after a safe Tier-1 reconciliation",
+                Heal(tier=1, action=action, applied=True),
                 feature_status=result.feature_status,
                 user_message=result.user_message,
             )
@@ -2441,6 +2505,73 @@ def _historical_preflight_errors(context: DoctorContext) -> list[dict[str, Any]]
         return dex_logger.get_historical_errors(now=context.now)
 
 
+def _parsed_queue_timestamp(value: object) -> datetime | None:
+    if not isinstance(value, str):
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
+def _resolved_preflight_error_ids(
+    health: dict[str, Any],
+    entries: list[dict[str, Any]],
+) -> set[str]:
+    servers = health.get("servers")
+    if not isinstance(servers, dict):
+        return set()
+    resolved: set[str] = set()
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        entry_id = entry.get("id")
+        source = entry.get("source")
+        failed_at = _parsed_queue_timestamp(entry.get("timestamp"))
+        server = servers.get(source) if isinstance(source, str) else None
+        succeeded_at = (
+            _parsed_queue_timestamp(server.get("checkedAt"))
+            if isinstance(server, dict) and server.get("status") == "ok"
+            else None
+        )
+        if (
+            isinstance(entry_id, str)
+            and failed_at is not None
+            and succeeded_at is not None
+            and succeeded_at > failed_at
+        ):
+            resolved.add(entry_id)
+    return resolved
+
+
+def _acknowledge_resolved_preflight_errors(context: DoctorContext) -> int:
+    """Acknowledge queue entries only when health has newer same-source success."""
+    with _vault_environment(context):
+        status, entries = dex_logger._read_queue_with_status()
+        if status != "readable":
+            return 0
+        health = preflight.run_preflight()
+        resolved = _resolved_preflight_error_ids(health, entries)
+        if not resolved:
+            return 0
+        acknowledged = 0
+        for entry in entries:
+            if (
+                isinstance(entry, dict)
+                and entry.get("id") in resolved
+                and not entry.get("acknowledged", False)
+            ):
+                entry["acknowledged"] = True
+                entry["acknowledgedAt"] = context.now.astimezone(timezone.utc).isoformat()
+                acknowledged += 1
+        if acknowledged:
+            dex_logger._write_queue(entries, now=context.now)
+        return acknowledged
+
+
 def _preflight_error_queue_status(context: DoctorContext) -> str:
     with _vault_environment(context):
         return dex_logger.get_error_queue_status()
@@ -2514,6 +2645,21 @@ def _probe_preflight_queue(context: DoctorContext) -> ProbeResult:
             "UNKNOWN",
             "The error log could not be read, so queued errors were not checked",
         )
+    resolved_ids = _resolved_preflight_error_ids(health, queued)
+    queued = [entry for entry in queued if entry.get("id") not in resolved_ids]
+    resolved_count = len(resolved_ids)
+    resolved_heal = (
+        Heal(
+            tier=1,
+            action=(
+                f"Acknowledge {resolved_count} resolved preflight "
+                f"{'error' if resolved_count == 1 else 'errors'}."
+            ),
+            applied=False,
+        )
+        if resolved_count
+        else None
+    )
     historical_summary = _historical_error_summary(
         context,
         _historical_preflight_errors(context),
@@ -2544,7 +2690,7 @@ def _probe_preflight_queue(context: DoctorContext) -> ProbeResult:
             detail += f"; {historical_summary}"
         if unknown_core_servers:
             detail += f"; preflight did not check: {', '.join(sorted(unknown_core_servers))}"
-        return ProbeResult("BROKEN", detail)
+        return ProbeResult("BROKEN", detail, resolved_heal)
     if unknown_core_servers:
         detail = f"Preflight did not check registered core servers: {', '.join(sorted(unknown_core_servers))}"
         if historical_summary:
@@ -2552,11 +2698,120 @@ def _probe_preflight_queue(context: DoctorContext) -> ProbeResult:
         return ProbeResult(
             "UNKNOWN",
             detail,
+            resolved_heal,
         )
     detail = "Preflight completed with no server or current queued errors"
+    if resolved_count:
+        noun = "error has" if resolved_count == 1 else "errors have"
+        detail += (
+            f"; {resolved_count} queued {noun} a newer successful check"
+        )
     if historical_summary:
         detail += f"; {historical_summary}"
-    return ProbeResult("OK", detail)
+    return ProbeResult("OK", detail, resolved_heal)
+
+
+def _capability_seed_paths(room: str) -> tuple[str, ...]:
+    from core import capabilities
+
+    folders = tuple(
+        str(folder).rstrip("/")
+        for folder in capabilities.surfaces_for(room).get("folders", [])
+    )
+    return tuple(
+        sorted(
+            rule.path
+            for rule in portable_contract.RULES
+            if rule.ownership == "seed"
+            and rule.kind == "file"
+            and any(
+                rule.path == folder or rule.path.startswith(f"{folder}/")
+                for folder in folders
+            )
+        )
+    )
+
+
+def _probe_capability_rooms(context: DoctorContext) -> ProbeResult:
+    from core import capabilities
+
+    profile_path = context.vault_root / "System/user-profile.yaml"
+    if not capabilities.has_onboarding_evidence(
+        context.vault_root,
+        profile_path=profile_path,
+    ):
+        return ProbeResult(
+            "OFF",
+            "Capability rooms are not active until onboarding has real user evidence",
+        )
+
+    missing_folders: list[str] = []
+    missing_skills: list[str] = []
+    stale_skills: list[str] = []
+    missing_seeds: list[str] = []
+    for room in capabilities.room_ids():
+        room_enabled = capabilities.enabled(room, profile_path=profile_path)
+        surfaces = capabilities.surfaces_for(room)
+        if room_enabled:
+            for relative in surfaces.get("folders", []):
+                path = context.vault_root / str(relative)
+                if path.is_symlink() or not path.is_dir():
+                    missing_folders.append(f"{room}: {relative}")
+            for skill in surfaces.get("skills", []):
+                path = context.vault_root / ".claude/skills" / str(skill)
+                skill_file = path / "SKILL.md"
+                if (
+                    path.is_symlink()
+                    or not path.is_dir()
+                    or skill_file.is_symlink()
+                    or not skill_file.is_file()
+                ):
+                    missing_skills.append(f"{room}: {skill}")
+            for relative in _capability_seed_paths(room):
+                path = context.vault_root / relative
+                if path.is_symlink() or not path.is_file():
+                    missing_seeds.append(relative)
+        else:
+            for skill in surfaces.get("skills", []):
+                path = context.vault_root / ".claude/skills" / str(skill)
+                if path.exists() or path.is_symlink():
+                    stale_skills.append(f"{room}: {skill}")
+
+    findings: list[str] = []
+    if missing_folders:
+        findings.append(
+            f"Enabled room folders are missing: {', '.join(missing_folders)}"
+        )
+    if missing_skills:
+        findings.append(
+            f"Enabled room skills are missing: {', '.join(missing_skills)}"
+        )
+    if stale_skills:
+        findings.append(
+            f"Disabled room skills are still live: {', '.join(stale_skills)}"
+        )
+    if missing_seeds:
+        findings.append(
+            "Missing enabled-room seed files: "
+            f"{', '.join(missing_seeds)} — run /dex-update to restore"
+        )
+    if findings:
+        return ProbeResult(
+            "BROKEN",
+            "; ".join(findings),
+            Heal(
+                tier=1,
+                action=(
+                    "Reconcile capability room folders and shipped skills "
+                    "without deleting user content."
+                ),
+                applied=False,
+            ),
+        )
+    return ProbeResult(
+        "OK",
+        "Enabled room folders, shipped skills, and seed files match the saved room choices",
+    )
 
 
 def _display_vault_path(context: DoctorContext, path: Path) -> str:
@@ -2859,6 +3114,7 @@ def _git_result(
     context: DoctorContext,
     *arguments: str,
     git_directory: Path | None = None,
+    input_text: str | None = None,
 ) -> subprocess.CompletedProcess[str]:
     executable = next(
         (
@@ -2893,6 +3149,7 @@ def _git_result(
             *arguments,
         ],
         capture_output=True,
+        input=input_text,
         env={
             "GIT_CONFIG_GLOBAL": "/dev/null",
             "GIT_CONFIG_NOSYSTEM": "1",
@@ -3106,9 +3363,9 @@ def _probe_migration_pending(context: DoctorContext) -> ProbeResult:
         return ProbeResult("OK", "The brain/vault split is complete")
     if topology == "migration-pending":
         return ProbeResult(
-            "BROKEN",
-            "Dex needs its one-time brain/vault upgrade. Run /dex-update to review "
-            "the preview and give explicit approval; notes stay in place until then",
+            "OFF",
+            "Optional one-time upgrade available — run /dex-update when you want it; "
+            "notes stay in place either way",
         )
     if topology == "migration-in-progress":
         return ProbeResult(
@@ -3296,19 +3553,17 @@ def _release_tree_entries(
     return entries
 
 
-def _worktree_matches_release_blob(
+def _worktree_blob_mode_matches(
     context: DoctorContext,
     relative: str,
     mode: str,
-    object_id: str,
 ) -> bool:
     parts = Path(relative).parts
-    if not parts or any(
-        part in {"", ".", ".."}
-        or part.lower() == ".env"
-        or part.lower().startswith(".env.")
-        or "credential" in part.lower()
-        for part in parts
+    if (
+        not parts
+        or "\n" in relative
+        or "\r" in relative
+        or any(part in {"", ".", ".."} for part in parts)
     ):
         return False
     current = context.repo_root
@@ -3321,25 +3576,106 @@ def _worktree_matches_release_blob(
         if mode == "120000":
             if not path.is_symlink():
                 return False
-            data = os.readlink(path).encode("utf-8")
         elif mode in {"100644", "100755"}:
             if path.is_symlink() or not path.is_file():
                 return False
-            data = path.read_bytes()
             if bool(path.stat().st_mode & 0o111) != (mode == "100755"):
                 return False
         else:
             return False
-    except (OSError, UnicodeError):
+    except OSError:
         return False
+    return True
 
-    algorithm = "sha1" if len(object_id) == 40 else "sha256" if len(object_id) == 64 else None
+
+def _worktree_blob_ids(
+    context: DoctorContext,
+    relatives: list[str],
+) -> dict[str, str]:
+    if not relatives:
+        return {}
+    hashed = _git_result(
+        context,
+        "hash-object",
+        "--no-filters",
+        "--stdin-paths",
+        input_text="".join(f"{relative}\n" for relative in relatives),
+    )
+    if hashed.returncode != 0:
+        return {}
+    object_ids = hashed.stdout.splitlines()
+    if len(object_ids) != len(relatives):
+        return {}
+    return dict(zip(relatives, object_ids, strict=True))
+
+
+def _symlink_matches_release_blob(path: Path, object_id: str) -> bool:
+    algorithm = (
+        "sha1"
+        if len(object_id) == 40
+        else "sha256"
+        if len(object_id) == 64
+        else None
+    )
     if algorithm is None:
+        return False
+    try:
+        data = os.fsencode(os.readlink(path))
+    except OSError:
         return False
     digest = hashlib.new(algorithm)
     digest.update(f"blob {len(data)}\0".encode("ascii"))
     digest.update(data)
     return digest.hexdigest() == object_id
+
+
+def _mismatched_release_blobs(
+    context: DoctorContext,
+    entries: dict[str, tuple[str, str]],
+) -> set[str]:
+    hashable = [
+        relative
+        for relative, (mode, _object_id) in entries.items()
+        if mode != "120000"
+        and _worktree_blob_mode_matches(context, relative, mode)
+    ]
+    worktree_ids = _worktree_blob_ids(context, hashable)
+    return {
+        relative
+        for relative, (mode, object_id) in entries.items()
+        if (
+            not _worktree_blob_mode_matches(context, relative, mode)
+            or (
+                mode == "120000"
+                and not _symlink_matches_release_blob(
+                    context.repo_root / relative,
+                    object_id,
+                )
+            )
+            or (mode != "120000" and worktree_ids.get(relative) != object_id)
+        )
+    }
+
+
+def _worktree_matches_release_blob(
+    context: DoctorContext,
+    relative: str,
+    mode: str,
+    object_id: str,
+) -> bool:
+    if not _worktree_blob_mode_matches(context, relative, mode):
+        return False
+    if mode == "120000":
+        return _symlink_matches_release_blob(context.repo_root / relative, object_id)
+    return _worktree_blob_ids(context, [relative]).get(relative) == object_id
+
+
+def _is_shipped_drift_candidate(relative: str) -> bool:
+    try:
+        ownership = portable_contract.resolve(relative).ownership
+    except portable_contract.ContractViolation:
+        return True
+    return ownership not in {"seed", "vault", "runtime"}
 
 
 def _brain_paths_from_installed_release(
@@ -3388,14 +3724,15 @@ def _probe_core_drift(context: DoctorContext) -> ProbeResult:
             context, baseline, git_directory=brain
         )
         brain_paths = _brain_paths_from_installed_release(context, baseline, brain)
-        drifted = sorted(
-            relative
+        brain_entries = {
+            relative: release_entries[relative]
             for relative in brain_paths
             if relative in release_entries
-            and not _worktree_matches_release_blob(
+        }
+        drifted = sorted(
+            _mismatched_release_blobs(
                 context,
-                relative,
-                *release_entries[relative],
+                brain_entries,
             )
         )
         if not drifted:
@@ -3423,16 +3760,18 @@ def _probe_core_drift(context: DoctorContext) -> ProbeResult:
     merge_base = _git_result(context, "merge-base", "HEAD", release_ref)
     baseline = merge_base.stdout.strip() if merge_base.returncode == 0 else release_ref
     release_entries = _release_tree_entries(context, baseline)
+    mismatched = _mismatched_release_blobs(context, release_entries)
     candidates = sorted(
         relative
-        for relative, (mode, object_id) in release_entries.items()
-        if not _sanctioned_customization_path(relative)
-        and not _worktree_matches_release_blob(context, relative, mode, object_id)
+        for relative in mismatched
+        if _is_shipped_drift_candidate(relative)
+        and not _sanctioned_customization_path(relative)
     )
     drifted = [
         relative
         for relative in candidates
-        if not _only_sanctioned_file_changes(context, baseline, relative)
+        if relative not in {"CLAUDE.md", ".mcp.json"}
+        or not _only_sanctioned_file_changes(context, baseline, relative)
     ]
     if not drifted:
         return ProbeResult("OK", "No tracked shipped files differ from the installed release")

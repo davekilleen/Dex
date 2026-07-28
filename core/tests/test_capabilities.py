@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import shutil
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -417,6 +418,116 @@ def test_legacy_onboarded_vault_pins_companies_off_and_honors_legacy_state(tmp_p
     assert profile["quarterly_planning"]["enabled"] is False
     # Idempotent: a second run seeds nothing.
     assert capabilities.migrate_legacy_room_state(vault) == []
+
+
+def test_pre_engine_identity_without_marker_gets_legacy_room_pins(
+    tmp_path: Path,
+) -> None:
+    vault = _fake_vault(tmp_path)
+    profile_path = vault / "System/user-profile.yaml"
+    profile_path.parent.mkdir(parents=True, exist_ok=True)
+    profile_path.write_text(
+        "name: Legacy User\nrole: Founder\nemail_domain: example.com\n",
+        encoding="utf-8",
+    )
+
+    seeded = capabilities.migrate_legacy_room_state(vault)
+
+    assert sorted(seeded) == ["career", "companies", "quarter_goals"]
+    assert capabilities.enabled("career", profile_path=profile_path) is True
+    assert capabilities.enabled("companies", profile_path=profile_path) is False
+    assert capabilities.enabled("quarter_goals", profile_path=profile_path) is True
+
+
+def test_real_room_content_without_marker_counts_as_onboarding_evidence(
+    tmp_path: Path,
+) -> None:
+    vault = _fake_vault(tmp_path)
+    profile_path = vault / "System/user-profile.yaml"
+    profile_path.parent.mkdir(parents=True, exist_ok=True)
+    profile_path.write_text('name: ""\n', encoding="utf-8")
+    note = vault / "05-Areas/Companies/Acme.md"
+    note.parent.mkdir(parents=True, exist_ok=True)
+    note.write_text("# Acme\n\nUser-authored account notes.\n", encoding="utf-8")
+
+    seeded = capabilities.migrate_legacy_room_state(vault)
+
+    assert sorted(seeded) == ["career", "companies", "quarter_goals"]
+    assert capabilities.enabled("companies", profile_path=profile_path) is False
+
+
+def test_shipped_room_seed_without_identity_is_not_onboarding_evidence(
+    tmp_path: Path,
+) -> None:
+    vault = _fake_vault(tmp_path)
+    profile_path = vault / "System/user-profile.yaml"
+    profile_path.parent.mkdir(parents=True, exist_ok=True)
+    profile_path.write_text('name: ""\n', encoding="utf-8")
+    shipped_seed = (
+        capabilities._dormant_root("companies", vault)
+        / "folders/05-Areas/Companies/README.md"
+    )
+    active_seed = vault / "05-Areas/Companies/README.md"
+    active_seed.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(shipped_seed, active_seed)
+
+    assert capabilities.migrate_legacy_room_state(vault) == []
+    assert "capabilities:" not in profile_path.read_text(encoding="utf-8")
+
+
+def test_user_edit_to_tracked_room_seed_is_onboarding_evidence(
+    tmp_path: Path,
+) -> None:
+    vault = _fake_vault(tmp_path)
+    profile_path = vault / "System/user-profile.yaml"
+    profile_path.parent.mkdir(parents=True, exist_ok=True)
+    profile_path.write_text('name: ""\n', encoding="utf-8")
+    shipped_seed = (
+        capabilities._dormant_root("quarter_goals", vault)
+        / "folders/01-Quarter_Goals/Quarter_Goals.md"
+    )
+    active_seed = vault / "01-Quarter_Goals/Quarter_Goals.md"
+    active_seed.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(shipped_seed, active_seed)
+    subprocess.run(["git", "init", "--quiet"], cwd=vault, check=True)
+    subprocess.run(
+        ["git", "config", "user.name", "Capability Test"],
+        cwd=vault,
+        check=True,
+    )
+    subprocess.run(
+        ["git", "config", "user.email", "capability@example.test"],
+        cwd=vault,
+        check=True,
+    )
+    subprocess.run(
+        [
+            "git",
+            "add",
+            "--",
+            "System/user-profile.yaml",
+            "01-Quarter_Goals/Quarter_Goals.md",
+        ],
+        cwd=vault,
+        check=True,
+    )
+    subprocess.run(
+        ["git", "commit", "--quiet", "-m", "shipped vault"],
+        cwd=vault,
+        check=True,
+    )
+    assert capabilities.migrate_legacy_room_state(vault) == []
+
+    active_seed.write_text(
+        active_seed.read_text(encoding="utf-8") + "\nMy real quarterly goal.\n",
+        encoding="utf-8",
+    )
+
+    assert sorted(capabilities.migrate_legacy_room_state(vault)) == [
+        "career",
+        "companies",
+        "quarter_goals",
+    ]
 
 
 @pytest.mark.parametrize("company_enabled", [True, False])
