@@ -814,7 +814,7 @@
   ],
   "capabilities": {
     "career": {
-      "default_enabled": false,
+      "default_enabled": true,
       "folders": [
         "05-Areas/Career"
       ],
@@ -840,7 +840,7 @@
     },
     "quarter_goals": {
       "config": "quarterly_planning",
-      "default_enabled": false,
+      "default_enabled": true,
       "folders": [
         "01-Quarter_Goals"
       ],

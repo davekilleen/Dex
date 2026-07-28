@@ -1575,8 +1575,8 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[types.Text
                 result = create_error_response("No active session", suggestion="Call start_onboarding_session first")
                 return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
             
-            # Step 8 (optional rooms) is skippable: every room defaults OFF, so an
-            # unanswered step means the safe default, never a blocker.
+            # Step 8 is skippable: omitted answers resolve from the portable
+            # contract defaults and are persisted explicitly at finalization.
             required_steps = [s for s in range(1, ONBOARDING_STEPS + 1) if s != 8]
             completed = session['completed_steps']
             missing = [s for s in required_steps if s not in completed]
@@ -1660,8 +1660,8 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[types.Text
                 return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
 
             # Verify all required steps completed
-            # Step 8 (optional rooms) is skippable: every room defaults OFF, so an
-            # unanswered step means the safe default, never a blocker.
+            # Step 8 is skippable: omitted answers resolve from the portable
+            # contract defaults and are persisted explicitly at finalization.
             required_steps = [s for s in range(1, ONBOARDING_STEPS + 1) if s != 8]
             completed = session['completed_steps']
             missing = [s for s in required_steps if s not in completed]

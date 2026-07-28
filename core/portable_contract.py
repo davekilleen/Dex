@@ -336,7 +336,7 @@ CAPABILITIES: dict[str, dict[str, object]] = {
         "folders": ("05-Areas/Career",),
         "skills": ("career-setup", "career-coach", "resume-builder"),
         "mcp": ("career_server", "resume_server"),
-        "default_enabled": False,
+        "default_enabled": True,
     },
     "companies": {
         "folders": ("05-Areas/Companies",),
@@ -348,7 +348,7 @@ CAPABILITIES: dict[str, dict[str, object]] = {
         "folders": ("01-Quarter_Goals",),
         "skills": ("quarter-plan", "quarter-review"),
         "config": "quarterly_planning",
-        "default_enabled": False,
+        "default_enabled": True,
     },
 }
 

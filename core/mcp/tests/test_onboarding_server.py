@@ -9,6 +9,7 @@ from datetime import date, datetime
 from pathlib import Path
 
 import pytest
+import yaml
 
 # core/mcp/tests -> repo root (for `core.paths`) and core/mcp (for the module).
 REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -801,7 +802,7 @@ class TestCapabilityStep:
         assert onboarding_server.load_session()["data"]["capabilities"] == {
             "career": True,
             "companies": True,
-            "quarter_goals": False,
+            "quarter_goals": True,
         }
 
     def test_rejects_non_boolean_room_answers(self, tmp_path, monkeypatch):
@@ -886,7 +887,7 @@ class TestCapabilityStep:
         preview = payload["data"]
         assert "05-Areas/Career" in preview["would_create_folders"]
         assert "05-Areas/Companies" not in preview["would_create_folders"]
-        assert "01-Quarter_Goals" not in preview["would_create_folders"]
+        assert "01-Quarter_Goals" in preview["would_create_folders"]
         assert preview["preview_user_profile"]["capabilities"] == {
             "career": {"enabled": True},
             "companies": {"enabled": False},
@@ -924,9 +925,84 @@ class TestCapabilityStep:
         )
 
         preview = payload["data"]
+        assert "05-Areas/Career" in preview["would_create_folders"]
         assert "05-Areas/Companies" in preview["would_create_folders"]
-        assert preview["preview_user_profile"]["capabilities"]["companies"] == {
-            "enabled": True
+        assert "01-Quarter_Goals" in preview["would_create_folders"]
+        assert preview["preview_user_profile"]["capabilities"] == {
+            "career": {"enabled": True},
+            "companies": {"enabled": True},
+            "quarter_goals": {"enabled": True},
+        }
+
+    def test_onboarding_flow_recommends_the_two_protected_default_on_rooms(self):
+        flow = (REPO_ROOT / ".claude/flows/onboarding.md").read_text(encoding="utf-8")
+
+        assert "Career and Quarter Goals start on by default" in flow
+        assert flow.count('"label": "Yes (Recommended)"') == 2
+
+    def test_finalize_with_default_answers_provisions_protected_room_seeds(
+        self, tmp_path, monkeypatch
+    ):
+        system = tmp_path / "System"
+        system.mkdir()
+        shutil.copy(
+            REPO_ROOT / "System/user-profile-template.yaml",
+            system / "user-profile-template.yaml",
+        )
+        shutil.copytree(
+            REPO_ROOT / ".claude/skills/_available/capabilities",
+            tmp_path / ".claude/skills/_available/capabilities",
+        )
+        (tmp_path / "core").mkdir()
+        shutil.copy(REPO_ROOT / "core/paths.py", tmp_path / "core/paths.py")
+        (tmp_path / ".scripts").mkdir()
+        mcp_example = system / ".mcp.json.example"
+        mcp_example.write_text('{"mcpServers": {}}\n', encoding="utf-8")
+        (tmp_path / "CLAUDE.md").write_text(
+            "## User Profile\n\n---\n",
+            encoding="utf-8",
+        )
+
+        paths = {
+            "BASE_DIR": tmp_path,
+            "SESSION_FILE": system / ".onboarding-session.json",
+            "MCP_CONFIG_EXAMPLE": mcp_example,
+            "MARKER_FILE": system / ".onboarding-complete",
+        }
+        for name, value in paths.items():
+            monkeypatch.setattr(onboarding_server, name, value)
+
+        session = onboarding_server.create_new_session()
+        session["completed_steps"] = [1, 2, 3, 4, 5, 6, 7]
+        session["current_step"] = 8
+        session["data"] = {
+            "name": "Default User",
+            "role": "Founder",
+            "role_group": "leadership",
+            "company_size": "startup",
+            "email_domain": "example.com",
+            "pillars": ["Build", "Learn"],
+            "communication": {},
+            "working_week": {
+                "days": ["monday", "tuesday", "wednesday", "thursday", "friday"]
+            },
+        }
+        onboarding_server.save_session(session)
+
+        payload = _decode_tool_result(
+            asyncio.run(onboarding_server.handle_call_tool("finalize_onboarding", {}))
+        )
+
+        assert payload["success"] is True, payload
+        assert (tmp_path / "05-Areas/Career/Evidence/README.md").is_file()
+        assert (tmp_path / "01-Quarter_Goals/Quarter_Goals.md").is_file()
+        profile = yaml.safe_load(
+            (tmp_path / "System/user-profile.yaml").read_text(encoding="utf-8")
+        )
+        assert profile["capabilities"] == {
+            "career": {"enabled": True},
+            "companies": {"enabled": True},
+            "quarter_goals": {"enabled": True},
         }
 
     def test_finalize_provisions_only_selected_room_assets(self, tmp_path, monkeypatch):
@@ -985,7 +1061,9 @@ class TestCapabilityStep:
         assert (tmp_path / "05-Areas/Career/Evidence/README.md").is_file()
         assert (tmp_path / ".claude/skills/career-setup/SKILL.md").is_file()
         assert not (tmp_path / "05-Areas/Companies").exists()
-        assert not (tmp_path / "01-Quarter_Goals").exists()
+        assert (tmp_path / "01-Quarter_Goals").is_dir()
+        assert not (tmp_path / ".claude/skills/quarter-plan").exists()
+        assert not (tmp_path / ".claude/skills/quarter-review").exists()
         assert (tmp_path / "03-Tasks/Tasks.md").is_file()
         assert (tmp_path / "05-Areas/People/Internal").is_dir()
         profile = (tmp_path / "System/user-profile.yaml").read_text(encoding="utf-8")

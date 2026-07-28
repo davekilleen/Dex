@@ -380,7 +380,7 @@ Then call `validate_and_save_step(step_number=7, step_data={"working_week": {"da
 
 ## Step 8: Choose Optional Rooms
 
-Say: "Dex's meetings, people, and tasks spine is always on. I can also add three optional rooms now. All three start off unless you say yes."
+Say: "Dex's meetings, people, and tasks spine is always on. I can also add three optional rooms now. Career and Quarter Goals start on by default; say no to leave either one off. Companies remains a separate yes/no choice."
 
 Present these three plain yes/no questions using your detected platform tool:
 
@@ -392,7 +392,7 @@ Present these three plain yes/no questions using your detected platform tool:
       "prompt": "Add a Career room for growth evidence, coaching, and resumes?",
       "allow_multiple": false,
       "options": [
-        {"id": "yes", "label": "Yes"},
+        {"id": "yes", "label": "Yes (Recommended)"},
         {"id": "no", "label": "No"}
       ]
     },
@@ -410,7 +410,7 @@ Present these three plain yes/no questions using your detected platform tool:
       "prompt": "Add a Quarter Goals room for 3-month planning and reviews?",
       "allow_multiple": false,
       "options": [
-        {"id": "yes", "label": "Yes"},
+        {"id": "yes", "label": "Yes (Recommended)"},
         {"id": "no", "label": "No"}
       ]
     }
