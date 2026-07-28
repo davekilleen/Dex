@@ -415,10 +415,21 @@ def test_shipped_room_skills_live_only_in_the_dormant_catalog() -> None:
             ).is_file()
 
 
-def test_setup_reconciles_rooms_without_creating_companies_directly() -> None:
+def test_setup_defers_rooms_to_the_onboarding_flow_and_creates_nothing_itself() -> None:
+    """Setup must route into the MCP-driven flow, never provision rooms itself.
+
+    It used to instruct a manual `capabilities.py --reconcile` call. Room
+    provisioning is now owned by finalize_onboarding and core/provision.cjs, so
+    the skill carrying its own copy is how the two paths drifted apart.
+    """
     setup = (REPO_ROOT / ".claude/skills/setup/SKILL.md").read_text(encoding="utf-8")
 
-    assert "core/capabilities.py\" --reconcile" in setup
+    # Routes into the one deterministic flow.
+    assert "start_onboarding_session()" in setup
+    assert ".claude/flows/onboarding.md" in setup
+
+    # Hand-rolls nothing: no room reconciliation, no folder creation.
+    assert "--reconcile" not in setup
     assert "- `05-Areas/Companies/`" not in setup
 
 
