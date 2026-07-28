@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import io
-import json
+import re
 import subprocess
 import tarfile
 from datetime import datetime, timezone
@@ -21,7 +21,10 @@ from core.utils.update_verifier import (
 )
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-CURRENT_VERSION = json.loads((REPO_ROOT / "package.json").read_text())["version"]
+_DISTRIBUTION_TAG_RE = re.compile(
+    r"^dist/release/v(?P<version>(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\."
+    r"(?:0|[1-9][0-9]*))-[0-9a-f]{7,64}$"
+)
 
 
 def _git(*args: str, check: bool = True) -> subprocess.CompletedProcess[bytes]:
@@ -30,6 +33,34 @@ def _git(*args: str, check: bool = True) -> subprocess.CompletedProcess[bytes]:
         check=check,
         capture_output=True,
     )
+
+
+LOCAL_DISTRIBUTION_TAGS = tuple(
+    _git("tag", "--list", "dist/release/v*").stdout.decode().splitlines()
+)
+if not LOCAL_DISTRIBUTION_TAGS:
+    pytest.skip(
+        "real-install safeguard did not run: no local dist/release/v* distribution "
+        "tags are available; this clone may be shallow or tags may not have been fetched",
+        allow_module_level=True,
+    )
+
+_TAGGED_RELEASES = tuple(
+    (
+        tuple(int(part) for part in match.group("version").split(".")),
+        match.group("version"),
+    )
+    for tag in LOCAL_DISTRIBUTION_TAGS
+    if (match := _DISTRIBUTION_TAG_RE.fullmatch(tag))
+)
+assert _TAGGED_RELEASES, (
+    "real-install safeguard did not run: local dist/release/v* tags exist, "
+    "but none has the published distribution-tag format"
+)
+CURRENT_VERSION = max(_TAGGED_RELEASES)[1]
+assert any(
+    tag.startswith(f"dist/release/v{CURRENT_VERSION}-") for tag in LOCAL_DISTRIBUTION_TAGS
+), "resolved current release has no local published distribution tag"
 
 
 def _require_tag(tag: str) -> None:
@@ -80,6 +111,13 @@ def _verifier(vault: Path, remote: Path, state: Path) -> UpdateVerifier:
         allow_test_transport=True,
         now=lambda: datetime(2026, 7, 27, 12, 0, tzinfo=timezone.utc),
         wall_clock_seconds=3600.0,
+    )
+
+
+def test_current_release_version_has_a_published_distribution_tag() -> None:
+    assert any(
+        tag.startswith(f"dist/release/v{CURRENT_VERSION}-")
+        for tag in LOCAL_DISTRIBUTION_TAGS
     )
 
 
