@@ -37,12 +37,13 @@ def _get_vault_path() -> str:
     return os.environ.get("VAULT_PATH", os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 
-def _get_logs_dir() -> Path:
-    """Get or create .logs directory."""
+def _get_logs_dir(*, create: bool = True) -> Path:
+    """Get the .logs directory, creating its writer bootstrap when requested."""
     logs_dir = Path(_get_vault_path()) / ".logs"
-    logs_dir.mkdir(exist_ok=True)
+    if not create:
+        return logs_dir
 
-    # Ensure .gitignore exists
+    logs_dir.mkdir(exist_ok=True)
     gitignore = logs_dir / ".gitignore"
     if not gitignore.exists():
         gitignore.write_text("*\n")
@@ -50,8 +51,8 @@ def _get_logs_dir() -> Path:
     return logs_dir
 
 
-def _get_queue_path() -> Path:
-    return _get_logs_dir() / "error-queue.json"
+def _get_queue_path(*, create: bool = True) -> Path:
+    return _get_logs_dir(create=create) / "error-queue.json"
 
 
 def _get_health_path() -> Path:
@@ -107,7 +108,7 @@ def _generate_human_message(source: str, message: str) -> str:
 def _read_queue_with_status() -> tuple[str, list]:
     """Read the queue without throwing and preserve whether it was readable."""
     try:
-        queue_path = _get_queue_path()
+        queue_path = _get_queue_path(create=False)
         if not queue_path.exists():
             return "missing", []
         with open(queue_path, "r") as f:

@@ -360,6 +360,15 @@ def test_missing_error_queue_is_ok(
     assert "no server or current queued errors" in result.detail.lower()
 
 
+def test_reading_missing_error_queue_leaves_filesystem_untouched(vault: Path) -> None:
+    before = set(vault.rglob("*"))
+
+    status, entries = dex_logger._read_queue_with_status()
+
+    assert (status, entries) == ("missing", [])
+    assert set(vault.rglob("*")) == before
+
+
 def test_every_public_error_queue_accessor_is_wired_outside_logger() -> None:
     public_functions = {
         name
