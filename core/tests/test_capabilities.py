@@ -525,7 +525,7 @@ def test_user_edit_to_tracked_room_seed_is_onboarding_evidence(
         check=True,
     )
     subprocess.run(
-        ["git", "config", "user.email", "capability@example.test"],
+        ["git", "config", "user.email", "capability@example.com"],
         cwd=vault,
         check=True,
     )
