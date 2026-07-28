@@ -37,7 +37,7 @@ jobs:
       - name: Install Python dependencies
         run: |
           pip install -r requirements-dev.txt
-          pip install mcp pyyaml python-dateutil requests
+          pip install "mcp<2" pyyaml python-dateutil requests
       - run: npm ci
       - name: Ensure policy scripts are executable
         run: chmod +x scripts/check-*.sh scripts/check-coverage-threshold.py scripts/check-path-contract-usage.sh scripts/security-gate.sh scripts/benchmark_large_vault.py
@@ -135,7 +135,7 @@ jobs:
       - name: Install Python dependencies
         run: |
           pip install -r requirements-dev.txt
-          pip install mcp pyyaml python-dateutil requests
+          pip install "mcp<2" pyyaml python-dateutil requests
       - run: npm ci
       - name: Create vault directories
         run: python -c "from core import paths; from pathlib import Path; [getattr(paths, n).mkdir(parents=True, exist_ok=True) for n in dir(paths) if n.endswith('_DIR') and isinstance(getattr(paths, n), Path)]"
@@ -203,7 +203,7 @@ jobs:
       - name: Install Python dependencies
         run: |
           pip install -r requirements-dev.txt
-          pip install mcp pyyaml python-dateutil requests
+          pip install "mcp<2" pyyaml python-dateutil requests
       - name: Download shard results
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093  # v4
         with:
