@@ -608,13 +608,26 @@ function provision(options) {
 
   try {
     if (options.adopt || options.onboard) {
-      reporter.summary.lifecycle_executor = routeAdoptionThroughLifecycleService(
-        vaultRoot,
-        {
-          pinCompanies: options.adopt === true,
-          previewOnly: options.dryRun,
-        },
-      );
+      try {
+        reporter.summary.lifecycle_executor = routeAdoptionThroughLifecycleService(
+          vaultRoot,
+          {
+            pinCompanies: options.adopt === true,
+            previewOnly: options.dryRun,
+          },
+        );
+      } catch (lifecycleError) {
+        // The lifecycle service needs a working Python. A user whose Python has
+        // broken should still be able to update: refusing the whole run is the
+        // wrong trade, and it is how a shipped release blocked updates outright.
+        // Continue and report honestly instead of aborting.
+        reporter.summary.lifecycle_executor = {
+          ok: false,
+          reason: lifecycleError.message,
+          compatibility_pinned: false,
+          fallback: 'continued without the lifecycle step',
+        };
+      }
     }
     const overlay = loadProfileOverlay(options.profile);
     const templatePath = path.join(vaultRoot, 'System', 'user-profile-template.yaml');

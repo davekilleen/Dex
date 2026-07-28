@@ -78,7 +78,7 @@
 
 ## 4. Release catalog + bridge — SHIPPED (v1.65–v1.68)
 
-**What it is.** Each release carries an exact packing list. `core/lifecycle/catalog/*.json` (publisher-owned declarations, e.g. `official-capabilities.json`) is read by the release builder in filename order and emitted as the canonical `System/.release-catalog.json`. `bridge.py` handles the one-release handoff from the legacy CJS updater to the new engine (resumes safely even if a prior update was interrupted — the v1.68 "smooth bridge").
+**What it is.** Each release carries an exact packing list. `core/lifecycle/catalog/*.json` (publisher-owned declarations, e.g. `official-capabilities.json`) is read by the release builder in filename order and emitted as the canonical `System/.release-catalog.json`. The separately modeled `bridge-release.json` keeps its publisher-owned compatibility contract, while the release generator stamps its `release_version` from the same `package.json` version used by the canonical catalog and validates the result through the strict bridge model. `bridge.py` handles the one-release handoff from the legacy CJS updater to the new engine (resumes safely even if a prior update was interrupted — the v1.68 "smooth bridge").
 
 **How it connects.** Feeds `lifecycle/plan.py` (what's available to adopt) and the DexDiff-adjacent adoption receipts under `System/.dex/adoptions/`. The v1.67 "two dozen role-specific tools you can turn on safely" are catalog items adopted through this path.
 

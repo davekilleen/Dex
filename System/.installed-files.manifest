@@ -653,9 +653,12 @@
 00-Inbox/Ideas/README.md
 00-Inbox/Meetings/README.md
 00-Inbox/README.md
+01-Quarter_Goals/Quarter_Goals.md
 02-Week_Priorities/Week_Priorities.md
 03-Tasks/Tasks.md
 04-Projects/README.md
+05-Areas/Career/Evidence/README.md
+05-Areas/Companies/README.md
 05-Areas/People/External/README.md
 05-Areas/People/Internal/README.md
 05-Areas/People/README.md
@@ -955,6 +958,7 @@ core/tests/fixtures/vault/System/pillars.yaml
 core/tests/fixtures/vault/System/user-profile-template.yaml
 core/tests/fixtures/vault/System/user-profile.yaml
 core/tests/lifecycle_test_helpers.py
+core/tests/provision-working-week.test.cjs
 core/tests/support/__init__.py
 core/tests/support/vault_builder.py
 core/tests/sync-folder-detector.test.cjs
@@ -1054,6 +1058,7 @@ core/tests/test_mcp_tool_behavior.py
 core/tests/test_meeting_closeout_skill.py
 core/tests/test_messy_vault_parsers.py
 core/tests/test_no_deprecated_models.py
+core/tests/test_nudge_calendar.py
 core/tests/test_onboarding_calendar.py
 core/tests/test_path_contract.py
 core/tests/test_paths.py
@@ -1079,6 +1084,7 @@ core/tests/test_safe_autosave.py
 core/tests/test_security_gate.py
 core/tests/test_session_health.py
 core/tests/test_setup_credential_disclosure.py
+core/tests/test_shipped_seed_policy.py
 core/tests/test_skill_integrity.py
 core/tests/test_smoke.py
 core/tests/test_smoke_automation.py
@@ -1090,6 +1096,7 @@ core/tests/test_task_sync.py
 core/tests/test_temperature.py
 core/tests/test_tracked_ignored.py
 core/tests/test_transaction_core.py
+core/tests/test_transcript_ingest.py
 core/tests/test_transcript_reconcile.py
 core/tests/test_trust_wizards.py
 core/tests/test_trusted_mcp_safety.py
@@ -1102,6 +1109,7 @@ core/tests/test_work_server_production_paths.py
 core/tests/test_work_server_roundtrip.py
 core/tests/test_work_server_task_priorities.py
 core/tests/test_work_server_weekly_priority_creation.py
+core/tests/test_working_week.py
 core/tests/vault_observed_writes.py
 core/transaction/__init__.py
 core/transaction/engine.py
@@ -1126,6 +1134,7 @@ core/utils/integration_credentials.py
 core/utils/local_git.py
 core/utils/manifest.py
 core/utils/mcp_handshake.py
+core/utils/nudge_calendar.py
 core/utils/page_generators.py
 core/utils/preflight.py
 core/utils/qmd_indexer.py
@@ -1141,6 +1150,7 @@ core/utils/tracked_ignored.py
 core/utils/trust_registry.py
 core/utils/update_verifier.py
 core/utils/validators.py
+core/utils/working_week.py
 docs/Dex_System/Background_Processing_Guide.md
 docs/Dex_System/Calendar_Setup.md
 docs/Dex_System/Dex_Jobs_to_Be_Done.md
@@ -1177,6 +1187,7 @@ docs/superpowers/plans/2026-07-12-task-sync-bridge.md
 docs/superpowers/plans/2026-07-23-conflict-resolution-ux.md
 docs/superpowers/plans/2026-07-23-entity-engine-bridge-reliability.md
 docs/superpowers/plans/2026-07-23-typed-relationships-build.md
+docs/superpowers/plans/2026-07-27-meeting-sources.md
 docs/superpowers/specs/2026-05-15-dex-web-design.md
 docs/support/upgrade-platform-matrix.md
 docs/testing-governance.md

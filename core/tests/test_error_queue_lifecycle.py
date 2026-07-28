@@ -189,6 +189,95 @@ def test_fresh_current_version_error_is_broken_and_includes_its_date(
     assert f"Task Manager cannot start (on {error_date})" in result.detail
 
 
+def test_newer_same_source_success_resolves_current_error_without_mutating_probe(
+    vault: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    dex_logger.log_error(
+        "update-checker",
+        "offline",
+        human_message="Update check could not connect",
+    )
+    error = _queue(vault)[0]
+    error_at = datetime.fromisoformat(
+        str(error["timestamp"]).replace("Z", "+00:00")
+    )
+    success_at = (error_at + timedelta(seconds=1)).isoformat()
+    monkeypatch.setattr(
+        doctor.preflight,
+        "run_preflight",
+        lambda: {
+            "lastCheck": success_at,
+            "servers": {
+                "update-checker": {
+                    "status": "ok",
+                    "checkedAt": success_at,
+                }
+            },
+        },
+    )
+
+    result = doctor._probe_preflight_queue(
+        _context(vault, error_at + timedelta(seconds=2))
+    )
+
+    assert result.verdict == "OK"
+    assert "newer successful check" in result.detail
+    assert result.heal == doctor.Heal(
+        tier=1,
+        action="Acknowledge 1 resolved preflight error.",
+        applied=False,
+    )
+    assert _queue(vault)[0]["acknowledged"] is False
+
+
+def test_tier_one_heal_acknowledges_only_errors_resolved_by_newer_success(
+    vault: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    dex_logger.log_error("update-checker", "offline")
+    dex_logger.log_error("work-mcp", "task failed")
+    entries = _queue(vault)
+    error_at = datetime.fromisoformat(
+        str(entries[0]["timestamp"]).replace("Z", "+00:00")
+    )
+    success_at = (error_at + timedelta(seconds=1)).isoformat()
+    monkeypatch.setattr(
+        doctor.preflight,
+        "run_preflight",
+        lambda: {
+            "lastCheck": success_at,
+            "servers": {
+                "update-checker": {
+                    "status": "ok",
+                    "checkedAt": success_at,
+                },
+                "work-mcp": {
+                    "status": "error",
+                    "checkedAt": success_at,
+                },
+            },
+        },
+    )
+    context = _context(vault, error_at + timedelta(seconds=2))
+    for name in doctor.PARA_PATH_NAMES:
+        context.core_path(name).mkdir(parents=True, exist_ok=True)
+    context.paths_json_path.parent.mkdir(parents=True, exist_ok=True)
+    context.paths_json_path.write_text(
+        json.dumps(doctor._paths_export_for(context)),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(doctor, "_repo_shipped_executables", lambda _context: [])
+
+    actions, errors = doctor._apply_t1_heals(context)
+
+    assert errors == []
+    assert actions == ["acknowledged 1 resolved preflight error"]
+    saved = {entry["source"]: entry for entry in _queue(vault)}
+    assert saved["update-checker"]["acknowledged"] is True
+    assert saved["work-mcp"]["acknowledged"] is False
+
+
 def test_current_version_error_newer_than_retention_threshold_is_current_breakage(
     vault: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -269,6 +358,15 @@ def test_missing_error_queue_is_ok(
 
     assert result.verdict == "OK"
     assert "no server or current queued errors" in result.detail.lower()
+
+
+def test_reading_missing_error_queue_leaves_filesystem_untouched(vault: Path) -> None:
+    before = set(vault.rglob("*"))
+
+    status, entries = dex_logger._read_queue_with_status()
+
+    assert (status, entries) == ("missing", [])
+    assert set(vault.rglob("*")) == before
 
 
 def test_every_public_error_queue_accessor_is_wired_outside_logger() -> None:

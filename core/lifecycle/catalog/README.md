@@ -5,6 +5,14 @@ release builder reads every JSON file here in filename order, except the
 separately modeled `bridge-release.json`, and emits the canonical
 `System/.release-catalog.json` through the B1 model and schema.
 
+`bridge-release.json` keeps the publisher-owned bridge contract and transaction
+journal compatibility window. During a release build, the same generator that
+emits `System/.release-catalog.json` stamps only its `release_version` from
+`package.json`, validates the complete declaration through the strict bridge
+model, and ships both files with the same version. The checked-in declaration
+matches the repository package version for local development; it is not a
+placeholder and the release build does not weaken the runtime equality check.
+
 Each source file is a closed document:
 
 ```json

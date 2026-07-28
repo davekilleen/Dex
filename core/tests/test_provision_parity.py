@@ -114,9 +114,11 @@ def test_fresh_provision_enables_companies_and_creates_its_room(tmp_path: Path) 
 
 
 @pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")
-def test_adopt_pins_an_existing_vault_without_a_company_opinion_off_idempotently(
+def test_adopt_gives_an_existing_vault_without_a_company_opinion_the_room_idempotently(
     tmp_path: Path,
 ) -> None:
+    """A vault that never expressed a choice gets Companies, like Career and
+    Quarter Goals. It was previously withheld, which no user could explain."""
     vault = _prepare_provision_vault(
         tmp_path,
         profile_text="name: Existing User\ncustom: keep\n",
@@ -128,13 +130,13 @@ def test_adopt_pins_an_existing_vault_without_a_company_opinion_off_idempotently
 
     first = profile_path.read_text(encoding="utf-8")
     profile = yaml.safe_load(first)
-    assert profile["capabilities"]["companies"]["enabled"] is False
+    assert profile["capabilities"]["companies"]["enabled"] is True
     assert capabilities.enabled(
         "companies",
         profile_path=profile_path,
         contract_path=CONTRACT_PATH,
-    ) is False
-    assert not (vault / "05-Areas/Companies").exists()
+    ) is True
+    assert (vault / "05-Areas/Companies").exists()
 
     _run_provision(vault, "--adopt")
 
@@ -155,7 +157,7 @@ def test_lifecycle_only_update_pins_markerless_existing_vault_transactionally(
     profile = yaml.safe_load(first)
     assert first.startswith(original)
     assert profile["capabilities"]["career"]["enabled"] is True
-    assert profile["capabilities"]["companies"]["enabled"] is False
+    assert profile["capabilities"]["companies"]["enabled"] is True
     assert profile["capabilities"]["quarter_goals"]["enabled"] is True
     assert first_summary["compatibility_pins"] == ["companies"]
     assert first_summary["mutation_receipt"]["executor"] == "lifecycle-service"
@@ -188,7 +190,7 @@ def test_lifecycle_only_dry_run_previews_the_exact_compatibility_pin(
     assert summary["compatibility_pins"] == ["companies"]
     assert summary["lifecycle_executor"]["compatibility_states"] == {
         "career": True,
-        "companies": False,
+        "companies": True,
         "quarter_goals": True,
     }
     assert summary["mutation_receipt"]["declared_paths"] == [
@@ -207,12 +209,12 @@ def test_full_adopt_dry_run_uses_the_transaction_previewed_room_states(
     summary = _run_provision(vault, "--adopt", "--dry-run")
 
     assert (vault / "System/user-profile.yaml").read_text(encoding="utf-8") == original
-    assert "05-Areas/Companies" not in summary["created"]
+    assert "05-Areas/Companies" in summary["created"]
     assert "05-Areas/Career" in summary["created"]
     assert "01-Quarter_Goals" in summary["created"]
     assert summary["lifecycle_executor"]["compatibility_states"] == {
         "career": True,
-        "companies": False,
+        "companies": True,
         "quarter_goals": True,
     }
 
@@ -240,7 +242,7 @@ def test_compatibility_pin_recovers_before_inspecting_profile(
     assert calls == [vault]
     assert result["pinned"] is True
     profile = yaml.safe_load(profile_path.read_text(encoding="utf-8"))
-    assert profile["capabilities"]["companies"]["enabled"] is False
+    assert profile["capabilities"]["companies"]["enabled"] is True
 
 
 @pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")
@@ -258,7 +260,9 @@ def test_lifecycle_only_update_adds_only_companies_to_a_partial_capability_map(
         (vault / "System/user-profile.yaml").read_text(encoding="utf-8")
     )
     assert profile["capabilities"] == {
-        "companies": {"enabled": False},
+        # Companies is added because this vault never said otherwise; the
+        # explicit career: false above is a real choice and is preserved.
+        "companies": {"enabled": True},
         "career": {"enabled": False},
     }
 
@@ -336,7 +340,7 @@ def test_adopt_preserves_a_legacy_capability_opinion(tmp_path: Path) -> None:
     profile = yaml.safe_load(
         (vault / "System/user-profile.yaml").read_text(encoding="utf-8")
     )
-    assert profile["capabilities"]["companies"]["enabled"] is False
+    assert profile["capabilities"]["companies"]["enabled"] is True
     assert profile["capabilities"]["quarter_goals"]["enabled"] is True
     assert profile["quarterly_planning"]["enabled"] is True
     assert profile["quarterly_planning"]["q1_start_month"] == 4
