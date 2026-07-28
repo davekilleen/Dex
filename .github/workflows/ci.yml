@@ -73,6 +73,12 @@ jobs:
         run: bash scripts/check-architecture-inventory.sh
       - name: Instructed-tool existence gate
         run: python scripts/check-instructed-tools.py
+      - name: Shipped-seed tracking gate
+        # A starter page Dex ships can silently stop shipping — the file is
+        # covered by .gitignore, so dropping it from the index looks like
+        # nothing. A user who had written real work into that page then finds
+        # their update refusing to run. This gate fails the build instead.
+        run: python scripts/check-tracked-ignored.py
       - name: Create vault directories
         run: python -c "from core import paths; from pathlib import Path; [getattr(paths, n).mkdir(parents=True, exist_ok=True) for n in dir(paths) if n.endswith('_DIR') and isinstance(getattr(paths, n), Path)]"
       - name: Generate paths.json

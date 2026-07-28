@@ -378,60 +378,33 @@ Then call `validate_and_save_step(step_number=7, step_data={"working_week": {"da
 
 ---
 
-## Step 8: Choose Optional Rooms
+## Step 8: Rooms
 
-Say: "Dex's meetings, people, and tasks spine is always on. I can also add three optional rooms now. Career and Quarter Goals start on by default; say no to leave either one off. Companies remains a separate yes/no choice."
+**Do not ask a question here.** All three rooms are on for a new vault, so there is
+nothing to choose. Onboarding is already long; a question whose answer is always
+"yes" only makes it longer.
 
-Present these three plain yes/no questions using your detected platform tool:
+Say: "Alongside meetings, people, and tasks, you're getting three more rooms:
+**Companies** for the organizations you deal with, **Career** for growth evidence
+and resumes, and **Quarter Goals** for 3-month planning. All three are set up and
+ready — you don't have to use them, and nothing appears in them until you do."
 
-```json
-{
-  "questions": [
-    {
-      "id": "career",
-      "prompt": "Add a Career room for growth evidence, coaching, and resumes?",
-      "allow_multiple": false,
-      "options": [
-        {"id": "yes", "label": "Yes (Recommended)"},
-        {"id": "no", "label": "No"}
-      ]
-    },
-    {
-      "id": "companies",
-      "prompt": "Add a Companies room for organization and account pages?",
-      "allow_multiple": false,
-      "options": [
-        {"id": "yes", "label": "Yes"},
-        {"id": "no", "label": "No"}
-      ]
-    },
-    {
-      "id": "quarter_goals",
-      "prompt": "Add a Quarter Goals room for 3-month planning and reviews?",
-      "allow_multiple": false,
-      "options": [
-        {"id": "yes", "label": "Yes (Recommended)"},
-        {"id": "no", "label": "No"}
-      ]
-    }
-  ]
-}
-```
+Then move straight to Step 9. **Do not call `validate_and_save_step` for step 8.**
+Finalization fills in every room it wasn't given an answer for, using the shipped
+defaults, which turns all three on and creates their folders.
 
-Map each `yes` to `true` and each `no` to `false`. Then call:
+**If the user volunteers that they don't want one** — "skip the career stuff", "I
+don't need quarterly planning" — take them at their word and record only that room:
 
 ```text
 validate_and_save_step(
   step_number=8,
-  step_data={
-    "capabilities": {
-      "career": true/false,
-      "companies": true/false,
-      "quarter_goals": true/false
-    }
-  }
+  step_data={"capabilities": {"career": false}}
 )
 ```
+
+Only name the rooms they actually spoke about. Any room you leave out still follows
+the default, and a recorded answer — on or off — is never overwritten later.
 
 Say: "You can change these later with `/manage-capabilities`. Turning a room off never deletes its notes; it only hides that room's skills and stops new room content from being created."
 

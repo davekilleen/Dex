@@ -934,11 +934,23 @@ class TestCapabilityStep:
             "quarter_goals": {"enabled": True},
         }
 
-    def test_onboarding_flow_recommends_the_two_protected_default_on_rooms(self):
-        flow = (REPO_ROOT / ".claude/flows/onboarding.md").read_text(encoding="utf-8")
+    def test_onboarding_step_8_asks_nothing_now_that_every_room_is_on(self):
+        """All three rooms default on, so step 8 has no question left to ask.
 
-        assert "Career and Quarter Goals start on by default" in flow
-        assert flow.count('"label": "Yes (Recommended)"') == 2
+        It states what the user is getting and moves on. The step must not put a
+        yes/no choice to someone whose answer is always yes, and must not force
+        an answer — an unanswered step 8 is what lets finalization fill every
+        room from the shipped defaults.
+        """
+        flow = (REPO_ROOT / ".claude/flows/onboarding.md").read_text(encoding="utf-8")
+        step = flow.split("## Step 8:", 1)[1].split("## Step 9:", 1)[0]
+
+        assert '"options"' not in step
+        assert "Recommended" not in step
+        assert "**Do not ask a question here.**" in step
+        assert "Do not call `validate_and_save_step` for step 8." in step
+        for room in ("Companies", "Career", "Quarter Goals"):
+            assert room in step
 
     def test_finalize_with_default_answers_provisions_protected_room_seeds(
         self, tmp_path, monkeypatch
