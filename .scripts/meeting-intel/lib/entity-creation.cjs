@@ -91,6 +91,10 @@ function loadSuggestions(filePath = runtimePaths().ENTITY_SUGGESTIONS_FILE) {
   }
 }
 
+function counted(count, singular) {
+  return `${count} ${singular}${count === 1 ? '' : 's'}`;
+}
+
 function updateSuggestion(contact, stats, { newEvidence = false } = {}) {
   const filePath = runtimePaths().ENTITY_SUGGESTIONS_FILE;
   return withLock(filePath, () => {
@@ -108,7 +112,7 @@ function updateSuggestion(contact, stats, { newEvidence = false } = {}) {
       name: contact.name,
       emails: contact.emails,
       location: contact.location || 'unknown',
-      reason: `Seen in ${stats.tracked_meetings} meetings across ${stats.distinct_weeks} weeks`,
+      reason: `Seen in ${counted(stats.tracked_meetings, 'meeting')} across ${counted(stats.distinct_weeks, 'week')}`,
       status: 'suggested',
       created_at: existing?.created_at || now,
       updated_at: now,
@@ -136,7 +140,7 @@ function updateCompanySuggestion(domain, companyName, contactCount, meetingCount
       kind: 'company',
       name: companyName,
       domains: [domain],
-      reason: `${contactCount} contacts across ${meetingCount} meetings`,
+      reason: `${counted(contactCount, 'contact')} across ${counted(meetingCount, 'meeting')}`,
       status: 'suggested',
       created_at: existing?.created_at || now,
       updated_at: now,

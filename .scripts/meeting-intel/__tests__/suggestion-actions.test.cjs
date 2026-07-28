@@ -68,6 +68,8 @@ test('accept person creates a page, marks contact created, and accepts suggestio
   const suggestion = listSuggestions().find(item => item.kind === 'person');
   const result = acceptSuggestion(suggestion.id);
   assert.equal(result.page_path, '05-Areas/People/External/Jane_Doe.md');
+  assert.equal(result.created, true);
+  assert.equal(result.existing, false);
   assert.deepEqual(parseEntityPage(path.join(vault, result.page_path)).emails, ['jane@acme.com']);
   assert.equal(loadSuggestions().suggestions.find(item => item.id === suggestion.id).status, 'accepted');
   assert.equal(listSuggestions().some(item => item.id === suggestion.id), false);
@@ -84,6 +86,8 @@ test('accept company creates a page and accepts the company suggestion', () => w
   const suggestion = listSuggestions().find(item => item.kind === 'company');
   const result = acceptSuggestion(suggestion.id);
   assert.equal(result.page_path, '05-Areas/Companies/Acme.md');
+  assert.equal(result.created, true);
+  assert.equal(result.existing, false);
   assert.deepEqual(parseEntityPage(path.join(vault, result.page_path)).domains, ['acme.com']);
   assert.equal(loadSuggestions().suggestions.find(item => item.id === suggestion.id).status, 'accepted');
 }));

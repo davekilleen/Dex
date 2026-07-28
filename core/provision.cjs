@@ -188,7 +188,10 @@ function buildFreshProfile(template, overlay) {
       }
     } else profile[key] = value;
   }
-  profile.entity_creation = { mode: 'auto' };
+  // Setup offers concrete, qualified pages before asking whether future
+  // creation should be automatic. Until that explicit answer, suggest is the
+  // safe fresh-vault default.
+  profile.entity_creation = { mode: 'suggest' };
   for (const [room, definition] of Object.entries(portableContract.capabilities || {})) {
     const explicit = overlay.capabilities?.[room]?.enabled;
     if (typeof explicit === 'boolean' && typeof definition.config === 'string') {

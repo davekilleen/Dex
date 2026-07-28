@@ -13,6 +13,7 @@ Features:
 - PARA folder structure creation
 """
 
+import hashlib
 import json
 import logging
 import os
@@ -590,7 +591,6 @@ def get_calendar_events_for_week() -> List[Dict]:
         calendar_module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(calendar_module)
         
-        from datetime import timedelta
         today = datetime.now()
         start = today - timedelta(days=today.weekday())
         end = start + timedelta(days=7)
@@ -626,6 +626,54 @@ def get_calendar_events_for_week() -> List[Dict]:
         if isinstance(e, RuntimeError):
             raise
         raise RuntimeError(str(e) or "Calendar data could not be read.") from e
+
+
+def get_calendar_events_for_entity_offer(days_back: int = 28) -> List[Dict]:
+    """Read recent calendar evidence for entity qualification."""
+    if days_back < 1:
+        return []
+    if platform.system() != 'Darwin':
+        return []
+
+    try:
+        calendar_server_path = BASE_DIR / 'core' / 'mcp' / 'calendar_server.py'
+        if not calendar_server_path.exists():
+            return []
+
+        profile = _load_first_week_profile()
+        calendar_config = profile.get('calendar', {})
+        if calendar_config.get('permissions_pending') is True:
+            return []
+
+        import importlib.util
+        spec = importlib.util.spec_from_file_location(
+            "calendar_server_entity_offer",
+            calendar_server_path,
+        )
+        if spec is None or spec.loader is None:
+            return []
+        calendar_module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(calendar_module)
+
+        calendar_name = (
+            calendar_config.get('work_calendar')
+            or profile.get('work_email')
+            or calendar_module.DEFAULT_WORK_CALENDAR
+        )
+        success, output = calendar_module.run_shell_script(
+            "calendar_eventkit.py",
+            "attendees",
+            calendar_name,
+            str(-(days_back - 1)),
+            "1",
+        )
+        if not success:
+            return []
+        events = json.loads(output)
+        return events if isinstance(events, list) else []
+    except Exception as error:
+        logger.warning("Could not read calendar history for entity offer: %s", error)
+        return []
 
 def analyze_calendar_events(events: List[Dict]) -> Dict:
     """Analyze calendar events to extract insights"""
@@ -879,6 +927,44 @@ def get_recent_granola_meetings(days: int = 7) -> List[Dict]:
         logger.warning(f"Failed to get Granola meetings: {e}")
         return []
 
+
+def get_recent_granola_meetings_for_entity_offer(
+    days: int = 28,
+    limit: int = 20,
+) -> List[Dict]:
+    """Fetch a bounded set of detailed Granola meetings for qualification."""
+    try:
+        granola_server_path = BASE_DIR / 'core' / 'mcp' / 'granola_server.py'
+        if not granola_server_path.exists():
+            return []
+
+        import importlib.util
+        spec = importlib.util.spec_from_file_location(
+            "granola_server_entity_offer",
+            granola_server_path,
+        )
+        if spec is None or spec.loader is None:
+            return []
+        granola_module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(granola_module)
+
+        meetings = granola_module.get_recent_meetings(
+            days_back=days,
+            limit=limit,
+        )
+        detailed = []
+        for meeting in meetings[:limit]:
+            meeting_id = meeting.get('id')
+            if not meeting_id:
+                continue
+            detail = granola_module.get_meeting_details(meeting_id)
+            if detail:
+                detailed.append(detail)
+        return detailed
+    except Exception as error:
+        logger.warning("Could not read Granola history for entity offer: %s", error)
+        return []
+
 def count_unique_people(meetings: List[Dict]) -> int:
     """Count unique people across meetings"""
     people = set()
@@ -911,6 +997,386 @@ def count_external_companies(meetings: List[Dict], email_domain: str) -> int:
                     external_domains.add(domain)
     
     return len(external_domains)
+
+
+def _profile_email_domains(profile: Dict[str, Any]) -> set[str]:
+    configured = profile.get('email_domain') or ''
+    values = configured if isinstance(configured, list) else str(configured).split(',')
+    return {
+        str(value).strip().lower().lstrip('@')
+        for value in values
+        if str(value).strip()
+    }
+
+
+def _entity_offer_attendees(
+    meeting: Dict,
+    profile: Dict[str, Any],
+) -> List[Dict[str, str]]:
+    """Normalize attendees to the entity engine's name/email/location shape."""
+    internal_domains = _profile_email_domains(profile)
+    current_user_emails = {
+        str(value).strip().lower()
+        for value in (
+            profile.get('work_email'),
+            profile.get('calendar', {}).get('work_calendar')
+            if isinstance(profile.get('calendar'), dict)
+            else None,
+        )
+        if isinstance(value, str) and '@' in value
+    }
+    normalized = []
+    seen = set()
+    for attendee in _meeting_attendees(meeting):
+        email = str(attendee.get('email') or '').strip().lower()
+        name = str(attendee.get('name') or email).strip()
+        if not name or attendee.get('is_current_user') is True:
+            continue
+        if email and email in current_user_emails:
+            continue
+        identity = email or f"name:{name.casefold()}"
+        if identity in seen:
+            continue
+        seen.add(identity)
+
+        location = attendee.get('location')
+        if location not in {'internal', 'external', 'unknown'}:
+            domain = email.rsplit('@', 1)[1] if '@' in email else ''
+            location = (
+                'internal'
+                if domain and domain in internal_domains
+                else ('external' if domain else 'unknown')
+            )
+        normalized.append(
+            {
+                'name': name,
+                'email': email,
+                'location': location,
+            }
+        )
+    return normalized
+
+
+def _normalize_entity_offer_meeting(
+    meeting: Dict,
+    profile: Dict[str, Any],
+    *,
+    source: str,
+) -> Optional[Dict[str, Any]]:
+    created_at = (
+        meeting.get('createdAt')
+        or meeting.get('created_at')
+        or meeting.get('start')
+        or meeting.get('date')
+    )
+    event_datetime = _calendar_event_datetime(created_at)
+    if event_datetime is None and isinstance(created_at, str):
+        try:
+            event_datetime = datetime.fromisoformat(
+                created_at.replace('Z', '+00:00').replace(' +0000', '+00:00')
+            )
+        except ValueError:
+            return None
+    if event_datetime is None:
+        return None
+    if source == 'calendar':
+        comparable = event_datetime
+        now = datetime.now(tz=event_datetime.tzinfo)
+        if comparable > now:
+            return None
+
+    attendees = _entity_offer_attendees(meeting, profile)
+    if not attendees:
+        return None
+    meeting_id = (
+        meeting.get('id')
+        or meeting.get('provider_event_id')
+        or meeting.get('source_event_id')
+    )
+    if not meeting_id:
+        identity = json.dumps(
+            {
+                'source': source,
+                'created_at': event_datetime.isoformat(),
+                'title': meeting.get('title', ''),
+                'attendees': attendees,
+            },
+            sort_keys=True,
+        )
+        meeting_id = hashlib.sha1(identity.encode('utf-8')).hexdigest()
+    return {
+        'id': str(meeting_id),
+        'createdAt': event_datetime.isoformat(),
+        'hasTranscript': bool(
+            meeting.get('hasTranscript')
+            or meeting.get('has_transcript')
+            or str(meeting.get('transcript') or '').strip()
+        ),
+        'filteredAttendees': attendees,
+        '_source': source,
+    }
+
+
+def _entity_offer_dedupe_key(meeting: Dict[str, Any]) -> tuple[str, tuple[str, ...]]:
+    date_key = str(meeting['createdAt'])[:10]
+    attendee_keys = tuple(sorted(
+        attendee.get('email') or f"name:{attendee['name'].casefold()}"
+        for attendee in meeting['filteredAttendees']
+    ))
+    return date_key, attendee_keys
+
+
+def _collect_entity_offer_meetings() -> List[Dict[str, Any]]:
+    """Collect bounded history, preferring transcript-backed Granola duplicates."""
+    profile = _load_first_week_profile()
+    normalized: Dict[tuple[str, tuple[str, ...]], Dict[str, Any]] = {}
+    sources = (
+        ('calendar', get_calendar_events_for_entity_offer(days_back=28)),
+        ('granola', get_recent_granola_meetings_for_entity_offer(days=28, limit=20)),
+    )
+    for source, meetings in sources:
+        for meeting in meetings:
+            candidate = _normalize_entity_offer_meeting(
+                meeting,
+                profile,
+                source=source,
+            )
+            if candidate is None:
+                continue
+            key = _entity_offer_dedupe_key(candidate)
+            existing = normalized.get(key)
+            if existing is None:
+                normalized[key] = candidate
+                continue
+            existing['hasTranscript'] = (
+                existing['hasTranscript'] or candidate['hasTranscript']
+            )
+            if source == 'granola':
+                candidate['hasTranscript'] = existing['hasTranscript']
+                normalized[key] = candidate
+
+    return [
+        {
+            key: value
+            for key, value in meeting.items()
+            if not key.startswith('_')
+        }
+        for meeting in sorted(
+            normalized.values(),
+            key=lambda item: (item['createdAt'], item['id']),
+        )
+    ]
+
+
+def _require_finalized_onboarding() -> None:
+    if not MARKER_FILE.exists():
+        raise RuntimeError(
+            "Entity page offers are available only after finalize_onboarding succeeds."
+        )
+
+
+def _run_entity_offer_bridge(command: str, **payload: Any) -> Dict[str, Any]:
+    """Call the shipped local entity engine without relying on work-mcp."""
+    bridge = Path(__file__).parent / 'scripts' / 'onboarding_entity_offer.cjs'
+    repo_root = Path(__file__).parent.parent.parent
+    node = os.environ.get('DEX_PROVISION_NODE', 'node')
+    completed = subprocess.run(
+        [node, str(bridge)],
+        input=json.dumps({'command': command, **payload}, cls=DateTimeEncoder),
+        cwd=repo_root,
+        capture_output=True,
+        text=True,
+        timeout=120,
+        check=False,
+        env={
+            **os.environ,
+            'VAULT_PATH': str(BASE_DIR),
+            'CLAUDE_PROJECT_DIR': str(BASE_DIR),
+            'DEX_PYTHON': os.environ.get('DEX_PYTHON', sys.executable),
+            'PYTHONPATH': os.pathsep.join(
+                path
+                for path in (
+                    str(repo_root),
+                    os.environ.get('PYTHONPATH', ''),
+                )
+                if path
+            ),
+        },
+    )
+    try:
+        result = json.loads(completed.stdout)
+    except json.JSONDecodeError as error:
+        raise RuntimeError("Entity offer bridge returned an invalid response") from error
+    if completed.returncode != 0 or result.get('ok') is not True:
+        error = result.get('error', {})
+        result_errors = [
+            item.get('error', {}).get('message')
+            for item in result.get('results', [])
+            if isinstance(item, dict) and isinstance(item.get('error'), dict)
+        ]
+        raise RuntimeError(
+            error.get('message')
+            or next((message for message in result_errors if message), None)
+            or completed.stderr.strip()
+            or "Entity offer bridge failed"
+        )
+    return result
+
+
+def prepare_entity_page_offer() -> Dict[str, Any]:
+    """Stage only engine-qualified suggestions after onboarding finalization."""
+    _require_finalized_onboarding()
+    profile = _load_first_week_profile()
+    result = _run_entity_offer_bridge(
+        'prepare',
+        meetings=_collect_entity_offer_meetings(),
+        profile=profile,
+    )
+    suggestions = result.get('suggestions', [])
+    return {
+        'available': True,
+        'offered': bool(suggestions),
+        'suggestions': suggestions,
+    }
+
+
+def respond_to_entity_page_offer(
+    action: str,
+    suggestion_ids: List[str],
+) -> Dict[str, Any]:
+    """Accept, dismiss, or permanently suppress the concrete onboarding offer."""
+    _require_finalized_onboarding()
+    result = _run_entity_offer_bridge(
+        'respond',
+        action=action,
+        suggestion_ids=suggestion_ids,
+    )
+    return {
+        'action': result['action'],
+        'results': result['results'],
+    }
+
+
+def _render_entity_creation_mode(original: str, mode: str) -> str:
+    """Surgically set entity_creation.mode while preserving unrelated YAML."""
+    import copy
+
+    import yaml
+
+    if mode not in {'auto', 'suggest'}:
+        raise ValueError("entity creation mode must be auto or suggest")
+    try:
+        before = yaml.safe_load(original) or {}
+    except yaml.YAMLError as error:
+        raise RuntimeError("User profile contains invalid YAML") from error
+    if not isinstance(before, dict):
+        raise RuntimeError("User profile must contain an object")
+
+    expected = copy.deepcopy(before)
+    current_block = expected.get('entity_creation')
+    if current_block is not None and not isinstance(current_block, dict):
+        raise RuntimeError("User profile entity_creation must contain an object")
+    expected.setdefault('entity_creation', {})['mode'] = mode
+
+    lines = original.splitlines(keepends=True)
+    newline = '\r\n' if any(line.endswith('\r\n') for line in lines) else '\n'
+    start = next(
+        (
+            index
+            for index, line in enumerate(lines)
+            if line.rstrip('\r\n').startswith('entity_creation:')
+            and not line.startswith((' ', '\t'))
+        ),
+        None,
+    )
+    rendered_line = f"  mode: {mode}{newline}"
+    if start is None:
+        prefix = '' if not original or original.endswith(('\n', '\r')) else newline
+        rendered = f"{original}{prefix}entity_creation:{newline}{rendered_line}"
+    else:
+        end = len(lines)
+        for index in range(start + 1, len(lines)):
+            stripped = lines[index].rstrip('\r\n')
+            if stripped and not stripped.startswith((' ', '\t', '#')):
+                end = index
+                break
+        mode_index = next(
+            (
+                index
+                for index in range(start + 1, end)
+                if lines[index].lstrip().startswith('mode:')
+            ),
+            None,
+        )
+        if mode_index is None:
+            lines.insert(start + 1, rendered_line)
+        else:
+            lines[mode_index] = rendered_line
+        rendered = ''.join(lines)
+
+    try:
+        after = yaml.safe_load(rendered) or {}
+    except yaml.YAMLError as error:  # pragma: no cover - validation invariant
+        raise RuntimeError("Entity creation setting produced invalid YAML") from error
+    if after != expected:
+        raise RuntimeError("Entity creation setting changed unrelated profile state")
+    return rendered
+
+
+def set_entity_creation_default(automatic: bool) -> Dict[str, Any]:
+    """Persist the user's explicit default through the lifecycle transaction door."""
+    _require_finalized_onboarding()
+    if not isinstance(automatic, bool):
+        raise ValueError("automatic must be true or false")
+
+    from core.lifecycle import service as lifecycle_service
+    from core.transaction.engine import PlanEntry
+
+    profile_path = BASE_DIR / 'System' / 'user-profile.yaml'
+    if profile_path.is_symlink() or not profile_path.is_file():
+        raise RuntimeError("User profile is missing or unsafe")
+    original_bytes = profile_path.read_bytes()
+    mode = 'auto' if automatic else 'suggest'
+    rendered = _render_entity_creation_mode(
+        original_bytes.decode('utf-8'),
+        mode,
+    ).encode('utf-8')
+    if rendered == original_bytes:
+        return {
+            'mode': mode,
+            'changed': False,
+            'lifecycle_receipt': {
+                'purpose': 'entity-creation-mode',
+                'files_written': [],
+            },
+        }
+
+    plan = [
+        PlanEntry(
+            'System/user-profile.yaml',
+            rendered,
+            mode=profile_path.stat().st_mode & 0o777,
+            expected_current_sha256=hashlib.sha256(original_bytes).hexdigest(),
+        )
+    ]
+    preview = lifecycle_service._preview_transaction(
+        BASE_DIR,
+        plan,
+        purpose='entity-creation-mode',
+        operation='capability-state',
+    )
+    executed = lifecycle_service._execute_approved_transaction(
+        BASE_DIR,
+        plan,
+        purpose='entity-creation-mode',
+        operation='capability-state',
+        approved_token=str(preview['approval_token']),
+    )
+    return {
+        'mode': mode,
+        'changed': True,
+        'lifecycle_receipt': executed['receipt'],
+    }
 
 
 def run_first_week_analysis() -> Dict[str, Any]:
@@ -1128,6 +1594,47 @@ async def handle_list_tools() -> list[types.Tool]:
             inputSchema={
                 "type": "object",
                 "properties": {}
+            }
+        ),
+        types.Tool(
+            name="prepare_entity_page_offer",
+            description="After finalization, stage only entity-engine-qualified person/company suggestions for the concrete onboarding offer.",
+            inputSchema={
+                "type": "object",
+                "properties": {}
+            }
+        ),
+        types.Tool(
+            name="respond_to_entity_page_offer",
+            description="Apply the user's yes, no, or never answer to the exact onboarding entity suggestions.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "action": {
+                        "type": "string",
+                        "enum": ["yes", "no", "never"],
+                    },
+                    "suggestion_ids": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "minItems": 1,
+                        "maxItems": 5,
+                    },
+                },
+                "required": ["action", "suggestion_ids"],
+            }
+        ),
+        types.Tool(
+            name="set_entity_creation_default",
+            description="Persist the user's explicit choice for automatic versus suggest-first future entity creation.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "automatic": {
+                        "type": "boolean",
+                    },
+                },
+                "required": ["automatic"],
             }
         ),
         types.Tool(
@@ -1650,6 +2157,34 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[types.Text
                 type="text",
                 text=json.dumps(result, indent=2, cls=DateTimeEncoder),
             )]
+
+        elif name == "prepare_entity_page_offer":
+            result = create_success_response(prepare_entity_page_offer())
+            return [types.TextContent(
+                type="text",
+                text=json.dumps(result, indent=2, cls=DateTimeEncoder),
+            )]
+
+        elif name == "respond_to_entity_page_offer":
+            result = create_success_response(
+                respond_to_entity_page_offer(
+                    arguments.get('action', ''),
+                    arguments.get('suggestion_ids', []),
+                )
+            )
+            return [types.TextContent(
+                type="text",
+                text=json.dumps(result, indent=2, cls=DateTimeEncoder),
+            )]
+
+        elif name == "set_entity_creation_default":
+            result = create_success_response(
+                set_entity_creation_default(arguments.get('automatic'))
+            )
+            return [types.TextContent(
+                type="text",
+                text=json.dumps(result, indent=2, cls=DateTimeEncoder),
+            )]
         
         elif name == "finalize_onboarding":
             dry_run = arguments.get('dry_run', False)
@@ -1734,7 +2269,11 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[types.Text
                     'company_size': data.get('company_size', ''),
                     'email_domain': data.get('email_domain', ''),
                     'obsidian_mode': data.get('obsidian_mode', False),
-                    'entity_creation': {'mode': 'auto'},
+                    # 'suggest', not 'auto': onboarding now asks whether page
+                    # creation should be automatic and writes the answer, so a
+                    # completed setup never leaves someone on a default they
+                    # were never told about.
+                    'entity_creation': {'mode': 'suggest'},
                     'working_week': data.get('working_week', {}),
                     'communication': data.get('communication', {}),
                     'capabilities': {

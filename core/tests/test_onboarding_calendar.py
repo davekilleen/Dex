@@ -261,7 +261,9 @@ def test_finalize_dry_run_previews_calendar_selection(onboarding_vault):
         "calendar_count": 2,
         "lazy_load": True,
     }
-    assert result["data"]["preview_user_profile"]["entity_creation"] == {"mode": "auto"}
+    assert result["data"]["preview_user_profile"]["entity_creation"] == {
+        "mode": "suggest"
+    }
     assert result["data"]["preview_user_profile"]["working_week"] == {
         "days": ["monday", "tuesday", "wednesday", "thursday", "friday"]
     }
