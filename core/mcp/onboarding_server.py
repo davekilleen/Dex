@@ -78,6 +78,21 @@ except ImportError:
 
 GRANOLA_APP_PATH = Path("/Applications/Granola.app")
 ONBOARDING_STEPS = 8
+REQUIRED_ONBOARDING_STEPS = tuple(range(1, 8))
+STEP_NAMES = {
+    1: "name",
+    2: "role",
+    3: "company size",
+    4: "email domain",
+    5: "strategic pillars",
+    6: "communication preferences",
+    7: "working week",
+    8: "optional rooms",
+}
+CALENDAR_REQUIRED_ERROR = (
+    "Connect the calendar first (or skip it explicitly with "
+    "save_calendar_selection(skipped=true)) — setup opens with the calendar."
+)
 PROVISION_CONTRACT = json.loads(
     (Path(__file__).parent.parent / "provision-contract.json").read_text(encoding="utf-8")
 )
@@ -229,6 +244,28 @@ def create_new_session() -> Dict:
         "current_step": 1,
         "data": {}
     }
+
+
+def _calendar_addressed(session: Dict[str, Any]) -> bool:
+    """Return whether calendar setup was saved or explicitly skipped."""
+    return bool(session.get("data", {}).get("calendar"))
+
+
+def _next_required_step_before(
+    step_number: int,
+    completed_steps: List[int],
+) -> Optional[int]:
+    """Return the first incomplete required step below the requested step."""
+    if step_number in completed_steps:
+        return None
+    return next(
+        (
+            required_step
+            for required_step in REQUIRED_ONBOARDING_STEPS
+            if required_step < step_number and required_step not in completed_steps
+        ),
+        None,
+    )
 
 
 def default_working_week_suggestion() -> Dict[str, Any]:
@@ -1210,6 +1247,28 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[types.Text
             if not session:
                 result = create_error_response("No active session", suggestion="Call start_onboarding_session first")
                 return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
+
+            if step_number < 1 or step_number > ONBOARDING_STEPS:
+                result = create_error_response(
+                    f"Invalid step number: {step_number}",
+                    suggestion=f"Step must be 1-{ONBOARDING_STEPS}",
+                )
+                return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
+
+            if step_number == 1 and not _calendar_addressed(session):
+                result = create_error_response(CALENDAR_REQUIRED_ERROR)
+                return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
+
+            next_required_step = _next_required_step_before(
+                step_number,
+                session["completed_steps"],
+            )
+            if next_required_step is not None:
+                result = create_error_response(
+                    f"Complete step {next_required_step} "
+                    f"({STEP_NAMES[next_required_step]}) first — steps run in order."
+                )
+                return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
             
             # Step 1: Name
             if step_number == 1:
@@ -1575,11 +1634,8 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[types.Text
                 result = create_error_response("No active session", suggestion="Call start_onboarding_session first")
                 return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
             
-            # Step 8 is skippable: omitted answers resolve from the portable
-            # contract defaults and are persisted explicitly at finalization.
-            required_steps = [s for s in range(1, ONBOARDING_STEPS + 1) if s != 8]
             completed = session['completed_steps']
-            missing = [s for s in required_steps if s not in completed]
+            missing = [s for s in REQUIRED_ONBOARDING_STEPS if s not in completed]
             
             step_names = {
                 1: "Name",
@@ -1592,8 +1648,13 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[types.Text
                 8: "Optional Rooms",
             }
             
-            completed_required = [s for s in completed if s in required_steps]
-            progress = len(completed_required) / len(required_steps) * 100
+            completed_required = [
+                s for s in completed if s in REQUIRED_ONBOARDING_STEPS
+            ]
+            progress = (
+                len(completed_required) / len(REQUIRED_ONBOARDING_STEPS) * 100
+            )
+            calendar_addressed = _calendar_addressed(session)
             
             status = {
                 "completed_steps": completed,
@@ -1601,7 +1662,8 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[types.Text
                 "missing_step_names": [step_names[s] for s in missing],
                 "current_step": session['current_step'],
                 "progress_percent": round(progress, 1),
-                "ready_to_finalize": len(missing) == 0,
+                "calendar_addressed": calendar_addressed,
+                "ready_to_finalize": len(missing) == 0 and calendar_addressed,
                 "session_data": session['data']
             }
             
@@ -1659,12 +1721,15 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[types.Text
                 result = create_error_response("No active session", suggestion="Call start_onboarding_session first")
                 return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
 
+            if not _calendar_addressed(session):
+                result = create_error_response(CALENDAR_REQUIRED_ERROR)
+                return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
+
             # Verify all required steps completed
             # Step 8 is skippable: omitted answers resolve from the portable
             # contract defaults and are persisted explicitly at finalization.
-            required_steps = [s for s in range(1, ONBOARDING_STEPS + 1) if s != 8]
             completed = session['completed_steps']
-            missing = [s for s in required_steps if s not in completed]
+            missing = [s for s in REQUIRED_ONBOARDING_STEPS if s not in completed]
 
             if missing:
                 step_names = {

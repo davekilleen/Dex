@@ -25,6 +25,187 @@ def _decode_tool_result(result) -> dict:
     return json.loads(result[0].text)
 
 
+def _call_tool(name: str, arguments: dict | None = None) -> dict:
+    return _decode_tool_result(
+        asyncio.run(onboarding_server.handle_call_tool(name, arguments or {}))
+    )
+
+
+VALID_STEP_DATA = {
+    1: {"name": "Jane"},
+    2: {"role_number": 1},
+    3: {"company": "Acme", "company_size": "startup"},
+    4: {"email_domain": "acme.com"},
+    5: {"pillars": ["Build", "Learn"]},
+    6: {"communication": {}},
+    7: {"working_week": {"days": ["monday"]}},
+}
+
+
+def _start_session_before_step(step_number: int) -> None:
+    onboarding_server.save_session(onboarding_server.create_new_session())
+    skipped = _call_tool("save_calendar_selection", {"skipped": True})
+    assert skipped["success"] is True, skipped
+    for prior_step in range(1, step_number):
+        payload = _call_tool(
+            "validate_and_save_step",
+            {
+                "step_number": prior_step,
+                "step_data": VALID_STEP_DATA[prior_step],
+            },
+        )
+        assert payload["success"] is True, payload
+
+
+class TestStepOrdering:
+    def test_rejects_out_of_order_step_with_next_expected_step(
+        self, tmp_path, monkeypatch
+    ):
+        session_file = tmp_path / "System/.onboarding-session.json"
+        monkeypatch.setattr(onboarding_server, "SESSION_FILE", session_file)
+        _start_session_before_step(2)
+
+        payload = _call_tool(
+            "validate_and_save_step",
+            {
+                "step_number": 3,
+                "step_data": {"company": "Acme", "company_size": "startup"},
+            },
+        )
+
+        assert payload["success"] is False
+        assert payload["error"] == (
+            "Complete step 2 (role) first — steps run in order."
+        )
+
+    def test_rejects_step_1_until_calendar_is_addressed(
+        self, tmp_path, monkeypatch
+    ):
+        session_file = tmp_path / "System/.onboarding-session.json"
+        monkeypatch.setattr(onboarding_server, "SESSION_FILE", session_file)
+        onboarding_server.save_session(onboarding_server.create_new_session())
+
+        payload = _call_tool(
+            "validate_and_save_step",
+            {"step_number": 1, "step_data": {"name": "Jane"}},
+        )
+
+        assert payload["success"] is False
+        assert payload["error"] == (
+            "Connect the calendar first (or skip it explicitly with "
+            "save_calendar_selection(skipped=true)) — setup opens with the calendar."
+        )
+
+    def test_accepts_step_1_after_calendar_is_explicitly_skipped(
+        self, tmp_path, monkeypatch
+    ):
+        session_file = tmp_path / "System/.onboarding-session.json"
+        monkeypatch.setattr(onboarding_server, "SESSION_FILE", session_file)
+        onboarding_server.save_session(onboarding_server.create_new_session())
+
+        skipped = _call_tool("save_calendar_selection", {"skipped": True})
+        payload = _call_tool(
+            "validate_and_save_step",
+            {"step_number": 1, "step_data": {"name": "Jane"}},
+        )
+
+        assert skipped["success"] is True
+        assert payload["success"] is True
+
+    def test_allows_correction_of_an_already_completed_step(
+        self, tmp_path, monkeypatch
+    ):
+        session_file = tmp_path / "System/.onboarding-session.json"
+        monkeypatch.setattr(onboarding_server, "SESSION_FILE", session_file)
+        session = onboarding_server.create_new_session()
+        session["completed_steps"] = [2]
+        session["data"] = {
+            "calendar": {"permissions_pending": True},
+            "role": "Product Manager",
+            "role_group": "product",
+        }
+        onboarding_server.save_session(session)
+
+        payload = _call_tool(
+            "validate_and_save_step",
+            {
+                "step_number": 2,
+                "step_data": {"role": "Researcher", "role_group": "Custom"},
+            },
+        )
+
+        assert payload["success"] is True
+        assert onboarding_server.load_session()["data"]["role"] == "Researcher"
+
+    def test_optional_step_8_does_not_block_finalization(
+        self, tmp_path, monkeypatch
+    ):
+        session_file = tmp_path / "System/.onboarding-session.json"
+        monkeypatch.setattr(onboarding_server, "SESSION_FILE", session_file)
+        monkeypatch.setattr(onboarding_server, "BASE_DIR", tmp_path)
+        session = onboarding_server.create_new_session()
+        session["completed_steps"] = [1, 2, 3, 4, 5, 6, 7]
+        session["data"] = {
+            "calendar": {"permissions_pending": True},
+            "name": "Jane",
+            "role": "Founder",
+            "company_size": "startup",
+            "email_domain": "acme.com",
+            "pillars": ["Build", "Learn"],
+            "communication": {},
+            "working_week": {"days": ["monday"]},
+        }
+        onboarding_server.save_session(session)
+
+        payload = _call_tool("finalize_onboarding", {"dry_run": True})
+
+        assert payload["success"] is True
+
+    def test_finalize_rejects_session_without_calendar_addressed(
+        self, tmp_path, monkeypatch
+    ):
+        session_file = tmp_path / "System/.onboarding-session.json"
+        monkeypatch.setattr(onboarding_server, "SESSION_FILE", session_file)
+        monkeypatch.setattr(onboarding_server, "BASE_DIR", tmp_path)
+        session = onboarding_server.create_new_session()
+        session["completed_steps"] = [1, 2, 3, 4, 5, 6, 7]
+        session["data"] = {
+            "name": "Jane",
+            "role": "Founder",
+            "company_size": "startup",
+            "email_domain": "acme.com",
+            "pillars": ["Build", "Learn"],
+            "communication": {},
+            "working_week": {"days": ["monday"]},
+        }
+        onboarding_server.save_session(session)
+
+        payload = _call_tool("finalize_onboarding", {"dry_run": True})
+
+        assert payload["success"] is False
+        assert payload["error"] == (
+            "Connect the calendar first (or skip it explicitly with "
+            "save_calendar_selection(skipped=true)) — setup opens with the calendar."
+        )
+
+    def test_status_is_not_ready_without_calendar_addressed(
+        self, tmp_path, monkeypatch
+    ):
+        session_file = tmp_path / "System/.onboarding-session.json"
+        monkeypatch.setattr(onboarding_server, "SESSION_FILE", session_file)
+        session = onboarding_server.create_new_session()
+        session["completed_steps"] = [1, 2, 3, 4, 5, 6, 7]
+        onboarding_server.save_session(session)
+
+        payload = _call_tool("get_onboarding_status")
+
+        assert payload["success"] is True
+        assert payload["data"]["missing_steps"] == []
+        assert payload["data"]["progress_percent"] == 100.0
+        assert payload["data"]["calendar_addressed"] is False
+        assert payload["data"]["ready_to_finalize"] is False
+
+
 @pytest.fixture
 def mixed_calendar_events():
     return [
@@ -481,7 +662,7 @@ class TestRoleStep:
     ):
         session_file = tmp_path / "System/.onboarding-session.json"
         monkeypatch.setattr(onboarding_server, "SESSION_FILE", session_file)
-        onboarding_server.save_session(onboarding_server.create_new_session())
+        _start_session_before_step(2)
 
         payload = _decode_tool_result(
             asyncio.run(
@@ -497,15 +678,14 @@ class TestRoleStep:
 
         expected_role, expected_group = onboarding_server.ROLES[role_number]
         assert payload["success"] is True
-        assert onboarding_server.load_session()["data"] == {
-            "role": expected_role,
-            "role_group": expected_group,
-        }
+        session_data = onboarding_server.load_session()["data"]
+        assert session_data["role"] == expected_role
+        assert session_data["role_group"] == expected_group
 
     def test_custom_role_contract_is_unchanged(self, tmp_path, monkeypatch):
         session_file = tmp_path / "System/.onboarding-session.json"
         monkeypatch.setattr(onboarding_server, "SESSION_FILE", session_file)
-        onboarding_server.save_session(onboarding_server.create_new_session())
+        _start_session_before_step(2)
 
         payload = _decode_tool_result(
             asyncio.run(
@@ -523,10 +703,9 @@ class TestRoleStep:
         )
 
         assert payload["success"] is True
-        assert onboarding_server.load_session()["data"] == {
-            "role": "Researcher",
-            "role_group": "Custom",
-        }
+        session_data = onboarding_server.load_session()["data"]
+        assert session_data["role"] == "Researcher"
+        assert session_data["role_group"] == "Custom"
 
 
 class TestEmailDomainStep:
@@ -543,7 +722,7 @@ class TestEmailDomainStep:
     ):
         session_file = tmp_path / "System/.onboarding-session.json"
         monkeypatch.setattr(onboarding_server, "SESSION_FILE", session_file)
-        onboarding_server.save_session(onboarding_server.create_new_session())
+        _start_session_before_step(4)
 
         payload = _decode_tool_result(
             asyncio.run(
@@ -567,7 +746,7 @@ class TestEmailDomainStep:
         session_file = tmp_path / "System/.onboarding-session.json"
         monkeypatch.setattr(onboarding_server, "SESSION_FILE", session_file)
         monkeypatch.setattr(onboarding_server, "BASE_DIR", tmp_path)
-        onboarding_server.save_session(onboarding_server.create_new_session())
+        _start_session_before_step(4)
 
         payload = _decode_tool_result(
             asyncio.run(
@@ -610,7 +789,7 @@ class TestEmailDomainStep:
     ):
         session_file = tmp_path / "System/.onboarding-session.json"
         monkeypatch.setattr(onboarding_server, "SESSION_FILE", session_file)
-        onboarding_server.save_session(onboarding_server.create_new_session())
+        _start_session_before_step(4)
 
         payload = _decode_tool_result(
             asyncio.run(
@@ -649,7 +828,7 @@ class TestWorkingWeekStep:
     ):
         session_file = tmp_path / "System/.onboarding-session.json"
         monkeypatch.setattr(onboarding_server, "SESSION_FILE", session_file)
-        onboarding_server.save_session(onboarding_server.create_new_session())
+        _start_session_before_step(7)
 
         payload = _decode_tool_result(
             asyncio.run(
@@ -687,7 +866,7 @@ class TestWorkingWeekStep:
     ):
         session_file = tmp_path / "System/.onboarding-session.json"
         monkeypatch.setattr(onboarding_server, "SESSION_FILE", session_file)
-        onboarding_server.save_session(onboarding_server.create_new_session())
+        _start_session_before_step(7)
 
         payload = _decode_tool_result(
             asyncio.run(
@@ -715,6 +894,7 @@ class TestWorkingWeekStep:
         monkeypatch.setattr(onboarding_server, "SESSION_FILE", session_file)
         session = onboarding_server.create_new_session()
         session["completed_steps"] = [1, 2, 3, 4, 5, 6]
+        session["data"]["calendar"] = {"permissions_pending": True}
         onboarding_server.save_session(session)
 
         incomplete = _decode_tool_result(
@@ -751,7 +931,7 @@ class TestCapabilityStep:
     def test_saves_explicit_room_answers(self, tmp_path, monkeypatch):
         session_file = tmp_path / "System/.onboarding-session.json"
         monkeypatch.setattr(onboarding_server, "SESSION_FILE", session_file)
-        onboarding_server.save_session(onboarding_server.create_new_session())
+        _start_session_before_step(8)
 
         payload = _decode_tool_result(
             asyncio.run(
@@ -784,7 +964,7 @@ class TestCapabilityStep:
     def test_omitted_room_answers_use_contract_defaults(self, tmp_path, monkeypatch):
         session_file = tmp_path / "System/.onboarding-session.json"
         monkeypatch.setattr(onboarding_server, "SESSION_FILE", session_file)
-        onboarding_server.save_session(onboarding_server.create_new_session())
+        _start_session_before_step(8)
 
         payload = _decode_tool_result(
             asyncio.run(
@@ -808,7 +988,7 @@ class TestCapabilityStep:
     def test_rejects_non_boolean_room_answers(self, tmp_path, monkeypatch):
         session_file = tmp_path / "System/.onboarding-session.json"
         monkeypatch.setattr(onboarding_server, "SESSION_FILE", session_file)
-        onboarding_server.save_session(onboarding_server.create_new_session())
+        _start_session_before_step(8)
 
         payload = _decode_tool_result(
             asyncio.run(
@@ -834,7 +1014,7 @@ class TestCapabilityStep:
     def test_rejects_unknown_room_answers(self, tmp_path, monkeypatch):
         session_file = tmp_path / "System/.onboarding-session.json"
         monkeypatch.setattr(onboarding_server, "SESSION_FILE", session_file)
-        onboarding_server.save_session(onboarding_server.create_new_session())
+        _start_session_before_step(8)
 
         payload = _decode_tool_result(
             asyncio.run(
@@ -859,6 +1039,7 @@ class TestCapabilityStep:
         session["completed_steps"] = [1, 2, 3, 4, 5, 6, 7, 8]
         session["current_step"] = 9
         session["data"] = {
+            "calendar": {"permissions_pending": True},
             "name": "Test User",
             "role": "Founder",
             "company_size": "startup",
@@ -907,6 +1088,7 @@ class TestCapabilityStep:
         session["completed_steps"] = [1, 2, 3, 4, 5, 6, 7]
         session["current_step"] = 8
         session["data"] = {
+            "calendar": {"permissions_pending": True},
             "name": "Test User",
             "role": "Founder",
             "company_size": "startup",
@@ -988,6 +1170,7 @@ class TestCapabilityStep:
         session["completed_steps"] = [1, 2, 3, 4, 5, 6, 7]
         session["current_step"] = 8
         session["data"] = {
+            "calendar": {"permissions_pending": True},
             "name": "Default User",
             "role": "Founder",
             "role_group": "leadership",
@@ -1047,6 +1230,7 @@ class TestCapabilityStep:
         session["completed_steps"] = [1, 2, 3, 4, 5, 6, 7, 8]
         session["current_step"] = 9
         session["data"] = {
+            "calendar": {"permissions_pending": True},
             "name": "Test User",
             "role": "Founder",
             "role_group": "leadership",

@@ -271,6 +271,10 @@ async def main():
     onboarding.check_calendar_app = lambda: {"available": True}
     onboarding.check_granola = lambda: {"available": True}
     results["dependencies"] = await call("verify_dependencies")
+    results["calendar"] = await call(
+        "save_calendar_selection",
+        {"skipped": True},
+    )
 
     step_data = {
         1: {"name": "Golden User"},
@@ -510,6 +514,7 @@ def test_golden_onboarding_drives_state_machine_to_real_vault(fixture_vault: Pat
     assert journey["resume"]["data"]["completed_steps"] == []
     assert "Resuming onboarding session" in journey["resume"]["message"]
     assert journey["dependencies"]["data"]["all_required_installed"] is True
+    assert journey["calendar"]["success"] is True
     assert all(step["success"] for step in journey["steps"])
     assert journey["status"]["data"]["progress_percent"] == 100.0
     assert journey["status"]["data"]["ready_to_finalize"] is True

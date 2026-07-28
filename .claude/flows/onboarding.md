@@ -74,12 +74,12 @@ Keep the `working_week_suggestion` from the successful save response for Step 7.
 The successful save response also includes `derived_identity`, with conservative `name` and `domain` guesses when `work_email` is usable:
 
 - **If both `name` and `domain` are present:** Say: "You're [name], at [domain] — right?" Present two choices: **Yes, that's right** and **Let me correct that**.
-  - On **Yes, that's right**, call `validate_and_save_step(step_number=1, step_data={"name": "[confirmed name]"})`, then call `validate_and_save_step(step_number=4, step_data={"email_domain": "[confirmed domain]"})`.
-  - On **Let me correct that**, collect both normally: ask for their name and company email domain, including the existing no-company-domain option, then save each answer through those same step 1 and step 4 calls.
-- **If only `domain` is present:** Offer the domain for confirmation: "It looks like your company domain is [domain] — right?" Confirm or correct it through `validate_and_save_step(step_number=4, step_data={"email_domain": "[confirmed domain]"})`, including the existing explicit no-company-domain path when correcting. Then ask for the name normally in Step 1.
+  - On **Yes, that's right**, call `validate_and_save_step(step_number=1, step_data={"name": "[confirmed name]"})`. Remember the confirmed domain, continue through Steps 2 and 3 in order, then call `validate_and_save_step(step_number=4, step_data={"email_domain": "[confirmed domain]"})` when the flow reaches Step 4.
+  - On **Let me correct that**, collect both normally. Save the corrected name through step 1, remember the corrected domain or explicit no-company-domain answer, continue through Steps 2 and 3 in order, then save that remembered answer through step 4.
+- **If only `domain` is present:** Offer the domain for confirmation: "It looks like your company domain is [domain] — right?" Remember the confirmed domain, corrected domain, or explicit no-company-domain answer. Then ask for the name normally in Step 1, continue through Steps 2 and 3 in order, and save the remembered answer when the flow reaches Step 4.
 - **If there is no `work_email`, or neither value can be derived:** Do not guess or mention the failed derivation. Follow Steps 1 and 4 exactly as written.
 
-Do not bypass either validation call. Only skip the corresponding later question after that step's validation call succeeds.
+Do not bypass either validation call or call step 4 early. Only skip the corresponding later question after that step's validation call succeeds.
 
 **If the listing fails or calendar permission is denied:**
 
@@ -207,7 +207,9 @@ Present options using your detected platform tool:
 
 ## Step 4: Email Domain (MANDATORY)
 
-If step 4 was already validated through the calendar confirmation, continue to Step 5. Otherwise:
+If a domain or explicit no-company-domain answer was remembered from the calendar
+confirmation, save it now through `validate_and_save_step(step_number=4, ...)` and
+continue to Step 5 after validation succeeds. Otherwise:
 
 **⚠️ ASK EVERY USER - Required for Internal/External person routing**
 
