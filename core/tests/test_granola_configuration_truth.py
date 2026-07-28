@@ -90,17 +90,13 @@ def test_meeting_intel_auth_points_missing_keys_to_granola_setup(tmp_path: Path)
     assert "desktop app and sign in" not in result.stdout
 
 
-def test_install_and_setup_instructions_detect_the_app_without_claiming_connection() -> None:
+def test_install_instructions_detect_the_app_without_claiming_connection() -> None:
     install_text = (REPO_ROOT / "install.sh").read_text(encoding="utf-8")
-    setup_text = (
-        REPO_ROOT / ".claude" / "skills" / "setup" / "SKILL.md"
-    ).read_text(encoding="utf-8")
 
-    for text in (install_text, setup_text):
-        assert "/Applications/Granola.app" in text
-        assert "Granola app detected" in text
-        assert "/granola-setup" in text
-        assert "If the app is present, the API key is configured" not in text
+    assert "/Applications/Granola.app" in install_text
+    assert "Granola app detected" in install_text
+    assert "/granola-setup" in install_text
+    assert "If the app is present, the API key is configured" not in install_text
 
     assert "needs a Granola Business API key" in install_text
 
@@ -154,15 +150,12 @@ def test_identify_user_accepts_string_and_object_meeting_processing(
 
 def test_meeting_processing_instructions_write_the_canonical_object_shape() -> None:
     bare_shape = re.compile(r"meeting_processing:\s+(?:manual|automatic)")
-    for relative_path in (
-        ".claude/flows/onboarding.md",
-        ".claude/skills/setup/SKILL.md",
-    ):
-        text = (REPO_ROOT / relative_path).read_text(encoding="utf-8")
-        assert bare_shape.search(text) is None, relative_path
-        assert "meeting_processing:" in text
-        assert "mode: manual" in text
-        assert "mode: automatic" in text
+    relative_path = ".claude/flows/onboarding.md"
+    text = (REPO_ROOT / relative_path).read_text(encoding="utf-8")
+    assert bare_shape.search(text) is None, relative_path
+    assert "meeting_processing:" in text
+    assert "mode: manual" in text
+    assert "mode: automatic" in text
 
 
 def test_onboarding_offers_detected_meeting_sources_before_step_one() -> None:
