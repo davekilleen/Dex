@@ -9,13 +9,16 @@ All notable changes to Dex will be documented in this file.
 
 ## [1.79.0] — 📋 Your meetings get dealt with without you asking (2026-07-28)
 
-Once Granola was connected, your meetings did arrive in Dex on their own — but turning them into something useful (updated pages for the people you met, tasks from what you agreed to do, tidy notes) still waited for you to ask. If you never asked, meetings quietly piled up half-done. The docs promised meetings "flow in on their own" — this release makes that promise true.
+Your meetings did arrive in Dex on their own — but turning them into something useful (updated pages for the people you met, tasks from what you agreed to do, tidy notes) still waited for you to ask. If you never asked, meetings quietly piled up half-done. The docs promised meetings "flow in on their own" — this release makes that promise true.
 
 **What this fixes for you:**
 
 * **Waiting meetings get handled when you start a session.** When you open Dex and there are meetings that haven't been dealt with yet, Dex notices and processes them in the background — person pages updated, tasks pulled out, notes filed — while you get on with whatever you came to do. It tells you in one line that it's happening.
+* **It doesn't matter how the meeting got there.** Meetings synced from Granola, notes you pasted in and saved, files you dropped into your meetings folder yourself — Dex treats them all the same. You don't need Granola, or any connected service, for this to work.
 * **Nothing gets done twice.** A meeting that's already been processed is never picked up again, and if you have several Dex windows open at once they won't trip over each other — the check stands down for half an hour once one of them has taken the job.
-* **Silence when there's nothing to do.** No message when everything's up to date, and nothing at all if you haven't connected Granola — this feature simply doesn't exist for you until you do.
+* **You stay in charge of individual notes.** If there's a meeting note you'd rather Dex never touched, one small marker in the note tells Dex to leave it alone permanently.
+* **Meetings set aside for "manual processing" stop being lost.** If you'd chosen to process meetings by hand, Dex was setting each one aside in a waiting pile — and then nothing ever looked at that pile. Those meetings are now picked up, turned into proper notes, and handled with the rest.
+* **Silence when there's nothing to do.** No message when everything's up to date.
 
 ### 🧭 A new install starts in the right place
 

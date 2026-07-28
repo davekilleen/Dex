@@ -77,7 +77,7 @@ If user runs `--setup`:
 cd .scripts/meeting-intel && ./install-automation.sh
 ```
 
-### Step 2: Find Synced Meetings
+### Step 2: Find Waiting Meetings
 
 Read the processed meetings state:
 ```javascript
@@ -89,13 +89,39 @@ List meeting files in `00-Inbox/Meetings/`:
 find 00-Inbox/Meetings -name "*.md" -mtime -7 | head -50
 ```
 
-For each meeting file:
+This includes Granola-synced notes in day directories and flat `*.md` notes in
+the `00-Inbox/Meetings/` folder root. Root-level notes are manually captured
+meetings with no `granola_id`; process and stamp them with the same
+`tasks-extracted` marker as any other meeting note. The `queue/` subfolder is
+handled in Step 2.5.
+
+For each meeting file, skip notes containing `<!-- dex:skip-processing -->`:
 1. Read frontmatter to get `granola_id`, `participants`, `company`, `date`
 2. Check if person/company pages need updating
 3. Check if tasks need extracting (look for unchecked items in "For Me" section)
 
 Report findings:
-> "Found X synced meetings from the last 7 days. Y need person page updates, Z have unextracted tasks."
+> "Found X waiting meetings from the last 7 days. Y need person page updates, Z have unextracted tasks."
+
+### Step 2.5: Consume Queued Meetings (manual mode)
+
+If `00-Inbox/Meetings/queue/*.json` files exist, consume each queued meeting
+before continuing:
+
+1. Read the complete JSON: `id`, `title`, `createdAt`, `participants`,
+   `attendees`, `company`, `notes`, and `transcript`.
+2. Check whether a meeting note with that JSON object's `id` as its
+   `granola_id` already exists. If it does, delete the queue JSON and continue
+   to the next one.
+3. Otherwise, create the meeting note under
+   `00-Inbox/Meetings/{date}/` (with `{date}` and `time` derived from
+   `createdAt`) in the standard format, including frontmatter for `date`,
+   `time`, `type: meeting-note`, `source: granola`, `title`, `participants`,
+   `attendees`, `company`, and `granola_id` from the JSON `id`. Include the
+   queued `notes` and `transcript` in the note body.
+4. Delete the queue JSON only after its note has been written successfully.
+
+The new note then flows through the normal processing steps. Never delete a queue file before its meeting note is written.
 
 ### Step 3: Update Person Pages
 
@@ -267,6 +293,10 @@ For each meeting with unextracted tasks:
    - If entity resolution or stamping is unresolved, surface the exact failed
      line and leave the meeting unmarked for reconciliation. Do not blindly
      retry a task that was created but not stamped.
+
+   A user can add `<!-- dex:skip-processing -->` to any meeting note to
+   permanently exclude it from processing and from the session-start sweep.
+   Skip such notes entirely: do not extract tasks or add a completion stamp.
 
    Only after every action item is verified, add this comment to the meeting note:
    ```markdown
