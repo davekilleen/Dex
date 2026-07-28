@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
 import shutil
 import socket
 import subprocess
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -171,6 +173,25 @@ def _lightweight_release_tag(repo: Path, version: str, suffix: str) -> str:
     tag = f"dist/release/v{version}-{suffix}"
     _git(repo, "tag", tag)
     return tag
+
+
+def _lightweight_release_tags(
+    repo: Path,
+    versions: list[str],
+) -> list[str]:
+    commit = _git(repo, "rev-parse", "HEAD")
+    tags = [
+        f"dist/release/v{version}-{index + 1:064x}"
+        for index, version in enumerate(versions)
+    ]
+    subprocess.run(
+        ["git", "-C", str(repo), "update-ref", "--stdin"],
+        check=True,
+        input="".join(f"create refs/tags/{tag} {commit}\n" for tag in tags),
+        capture_output=True,
+        text=True,
+    )
+    return tags
 
 
 @pytest.fixture(autouse=True)
@@ -406,17 +427,20 @@ def test_missing_profile_on_a_higher_pre_profile_candidate_is_unknown(tmp_path: 
     assert commit not in json.dumps(result)
 
 
-def test_more_than_candidate_bound_higher_releases_reports_and_notifies_newest(
+@pytest.mark.parametrize("release_count", [500, 5_000])
+def test_remote_release_enumeration_reports_and_fetches_only_the_newest_version(
     tmp_path: Path,
+    release_count: int,
 ) -> None:
     vault = _installed_vault(tmp_path / "vault")
     remote = tmp_path / "remote"
     _init_repo(remote)
     newest_version = "9.0.0"
     newest_tag, _commit = _release(remote, newest_version)
-    lower_tags = []
-    for index in range(update_verifier_module.MAX_RELEASE_TAGS):
-        lower_tags.append(_lightweight_release_tag(remote, f"2.0.{index}", f"{index + 1:064x}"))
+    lower_tags = _lightweight_release_tags(
+        remote,
+        [f"2.{index}.0" for index in range(release_count - 1)],
+    )
     commands: list[tuple[str, ...]] = []
     runner = GitRunner(allowed_protocol="file", command_observer=commands.append)
 
@@ -438,8 +462,7 @@ def test_highest_version_remains_ambiguous_with_many_lower_releases(tmp_path: Pa
     remote = tmp_path / "remote"
     _init_repo(remote)
     first_tag, _commit = _release(remote, "9.0.0")
-    for index in range(update_verifier_module.MAX_RELEASE_TAGS):
-        _lightweight_release_tag(remote, f"2.0.{index}", f"{index + 1:064x}")
+    _lightweight_release_tags(remote, [f"2.{index}.0" for index in range(500)])
     (remote / "README.md").write_text("second release identity\n")
     _git(remote, "add", "README.md")
     _git(remote, "commit", "--quiet", "-m", "conflicting release identity")
@@ -458,6 +481,24 @@ def test_highest_version_remains_ambiguous_with_many_lower_releases(tmp_path: Pa
     assert len(fetch_commands) == 1
     assert f"refs/tags/{first_tag}:refs/tags/{first_tag}" in fetch_commands[0]
     assert f"refs/tags/{second_tag}:refs/tags/{second_tag}" in fetch_commands[0]
+
+
+def test_malformed_remote_release_refs_are_skipped_without_hiding_the_newest_release(
+    tmp_path: Path,
+) -> None:
+    vault = _installed_vault(tmp_path / "vault")
+    remote = tmp_path / "remote"
+    _init_repo(remote)
+    newest_tag, _commit = _release(remote, "9.0.0")
+    _git(remote, "tag", "dist/release/not-a-release")
+    _git(remote, "tag", "dist/release/v999.0.0-not-a-hash")
+
+    result = _verifier(vault, remote, tmp_path / "state").check()
+
+    assert result["status"] == STATUS_RELEASE
+    assert result["should_notify"] is True
+    assert result["version"] == "9.0.0"
+    assert result["tag"] == newest_tag
 
 
 def test_single_highest_version_candidate_bound_remains_an_anomaly_guard(
@@ -675,6 +716,64 @@ def test_offline_cancellation_and_corrupt_state_fail_closed(tmp_path: Path) -> N
     (corrupt_state / "state.json").write_text("not json")
     corrupt_result = _verifier(vault, remote, corrupt_state).check()
     assert corrupt_result == {"status": STATUS_UNKNOWN, "should_notify": False, "reason": "state-corrupt"}
+
+
+def test_missing_aiohttp_cannot_crash_the_mcp_update_check(tmp_path: Path) -> None:
+    vault = _installed_vault(tmp_path / "vault")
+    remote = tmp_path / "remote"
+    _init_repo(remote)
+    _release(remote, "1.62.0")
+    state = tmp_path / "state"
+    script = r"""
+import asyncio
+import builtins
+import json
+import os
+from datetime import datetime, timezone
+from pathlib import Path
+
+real_import = builtins.__import__
+
+def without_aiohttp(name, *args, **kwargs):
+    if name == "aiohttp" or name.startswith("aiohttp."):
+        raise ModuleNotFoundError("synthetic missing aiohttp")
+    return real_import(name, *args, **kwargs)
+
+builtins.__import__ = without_aiohttp
+
+from core.mcp import update_checker
+
+real_verifier = update_checker.UpdateVerifier
+update_checker.UpdateVerifier = lambda vault: real_verifier(
+    vault,
+    state_root=Path(os.environ["STATE_PATH"]),
+    remote_url=os.environ["REMOTE_PATH"],
+    allow_test_transport=True,
+    now=lambda: datetime(2026, 7, 19, 12, 0, tzinfo=timezone.utc),
+    wall_clock_seconds=3600.0,
+)
+result = asyncio.run(update_checker.check_for_updates(force=True))
+print(json.dumps(result, sort_keys=True))
+"""
+    result = subprocess.run(
+        [sys.executable, "-c", script],
+        cwd=Path(__file__).resolve().parents[2],
+        env={
+            **os.environ,
+            "VAULT_PATH": str(vault),
+            "REMOTE_PATH": str(remote),
+            "STATE_PATH": str(state),
+        },
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(result.stdout.splitlines()[-1])
+    assert payload["status"] == STATUS_RELEASE
+    assert payload["should_notify"] is True
+    assert payload["version"] == "1.62.0"
 
 
 def test_remote_and_git_configuration_poisoning_are_ignored_and_install_is_invariant(
@@ -932,6 +1031,28 @@ def test_candidate_enumeration_and_required_artifact_bounds_fail_closed(
     assert result["status"] == STATUS_UNKNOWN
     assert result["should_notify"] is False
     assert "notice" not in result
+
+
+def test_real_repository_release_tag_count_has_margin_below_the_dos_ceiling() -> None:
+    repo_root = Path(__file__).resolve().parents[2]
+    listed = subprocess.run(
+        ["git", "-C", str(repo_root), "tag", "--list", "dist/release/*"],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert listed.returncode == 0, (
+        "could not read real dist/release/* tags from this checkout; "
+        f"git exited {listed.returncode}: {listed.stderr.strip() or 'no error detail'}"
+    )
+    actual_tag_count = len([tag for tag in listed.stdout.splitlines() if tag])
+    ceiling = update_verifier_module.MAX_REMOTE_RELEASE_REFS
+
+    assert actual_tag_count * 5 <= ceiling * 4, (
+        f"real dist/release/* tag count {actual_tag_count} has exceeded 80% of "
+        f"MAX_REMOTE_RELEASE_REFS={ceiling}; revisit MAX_REMOTE_RELEASE_REFS before "
+        "release history can blind every install"
+    )
 
 
 def test_profile_parser_is_closed_immutable_and_sorted() -> None:

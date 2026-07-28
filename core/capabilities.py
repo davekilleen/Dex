@@ -13,6 +13,7 @@ import copy
 import json
 import os
 import shutil
+import subprocess
 import tempfile
 from pathlib import Path
 from typing import Any, Mapping
@@ -154,6 +155,138 @@ def _dormant_root(room: str, vault_root: Path) -> Path:
     return _within(vault_root, (DORMANT_CATALOG / room).as_posix())
 
 
+def _tracked_file_differs_from_head(root: Path, relative: Path) -> bool | None:
+    """Compare one tracked file by Git object id without loading its contents."""
+    git = next(
+        (
+            candidate
+            for candidate in (Path("/usr/bin/git"), Path("/bin/git"))
+            if candidate.is_file() and not candidate.is_symlink()
+        ),
+        None,
+    )
+    if git is None:
+        return None
+    command_prefix = [
+        str(git),
+        "-c",
+        "core.fsmonitor=false",
+        "-c",
+        "core.hooksPath=/dev/null",
+        "-c",
+        "core.attributesFile=/dev/null",
+        "-c",
+        "core.excludesFile=/dev/null",
+        "-C",
+        str(root),
+    ]
+    env = {
+        "GIT_CONFIG_GLOBAL": "/dev/null",
+        "GIT_CONFIG_NOSYSTEM": "1",
+        "GIT_OPTIONAL_LOCKS": "0",
+        "GIT_PAGER": "cat",
+        "GIT_TERMINAL_PROMPT": "0",
+        "HOME": "/var/empty" if Path("/var/empty").is_dir() else "/",
+        "LC_ALL": "C",
+        "PATH": "/usr/bin:/bin:/usr/sbin:/sbin",
+    }
+    relative_text = relative.as_posix()
+    try:
+        tracked = subprocess.run(
+            [*command_prefix, "ls-tree", "HEAD", "--", relative_text],
+            capture_output=True,
+            env=env,
+            text=True,
+            timeout=3,
+            check=False,
+        )
+        metadata, separator, _path = tracked.stdout.partition("\t")
+        fields = metadata.split()
+        if tracked.returncode != 0 or not separator or len(fields) != 3:
+            return None
+        expected = fields[2]
+        current = subprocess.run(
+            [
+                *command_prefix,
+                "hash-object",
+                "--no-filters",
+                "--",
+                relative_text,
+            ],
+            capture_output=True,
+            env=env,
+            text=True,
+            timeout=3,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    if current.returncode != 0:
+        return None
+    return current.stdout.strip() != expected
+
+
+def _room_has_user_content(
+    root: Path,
+    room: str,
+    surfaces: Mapping[str, Any],
+) -> bool:
+    """Detect room use without mistaking untouched shipped seeds for user work."""
+    dormant = _dormant_root(room, root)
+    for relative_folder in surfaces.get("folders", []):
+        folder = _within(root, str(relative_folder))
+        if folder.is_symlink() or not folder.is_dir():
+            continue
+        for path in sorted(folder.rglob("*")):
+            if (
+                path.is_symlink()
+                or not path.is_file()
+                or path.name in {".DS_Store", ".gitkeep"}
+            ):
+                continue
+            relative = path.relative_to(root)
+            shipped = dormant / "folders" / relative
+            if not shipped.exists():
+                return True
+            if shipped.is_symlink() or not shipped.is_file():
+                continue
+            tracked_difference = _tracked_file_differs_from_head(
+                root,
+                relative,
+            )
+            if tracked_difference is not None:
+                if tracked_difference:
+                    return True
+                continue
+    return False
+
+
+def has_onboarding_evidence(
+    vault_root: Path | str,
+    *,
+    profile_path: Path | str | None = None,
+    contract_path: Path | str | None = None,
+) -> bool:
+    """Recognize completed old vaults without guessing about fresh installs."""
+    root = Path(vault_root).resolve()
+    marker = root / "System/.onboarding-complete"
+    if marker.is_file() and not marker.is_symlink():
+        return True
+    profile_file = Path(profile_path or root / "System/user-profile.yaml")
+    profile = _read_profile(profile_file)
+    name = profile.get("name")
+    if isinstance(name, str) and name.strip():
+        return True
+    return any(
+        _room_has_user_content(
+            root,
+            room,
+            surfaces_for(room, contract_path=contract_path),
+        )
+        for room in room_ids(contract_path=contract_path)
+    )
+
+
 def _preflight_room_assets(
     root: Path,
     room: str,
@@ -243,8 +376,11 @@ def migrate_legacy_room_state(
     """
     root = Path(vault_root).resolve()
     profile_file = Path(profile_path or root / "System/user-profile.yaml")
-    onboarded = (root / "System" / ".onboarding-complete").exists()
-    if not onboarded:
+    if not has_onboarding_evidence(
+        root,
+        profile_path=profile_file,
+        contract_path=contract_path,
+    ):
         return []
     profile = _read_profile(profile_file, strict=True)
     capability_state = profile.get("capabilities")

@@ -68,7 +68,6 @@ SENSITIVE_CONFIG_KEY = re.compile(
     r"(?:api[_-]?key|authorization|credential|password|secret|token)",
     re.IGNORECASE,
 )
-SAFE_PATH = "/usr/bin:/bin:/usr/sbin:/sbin"
 SNAPSHOT_CHANGED_DETAIL = "snapshot changed before launch"
 MCP_ONCE_CONSENT_DETAIL = "valid fresh single-use consent token is required"
 MCP_ONCE_TOKEN_PREFIX = "dex-mcp-once-consent-"
@@ -81,6 +80,7 @@ RUNNER_FALLBACK_RELATIVES = (
     Path("core/utils/release_channel.py"),
     Path("core/utils/smoke.py"),
     Path("core/utils/trust_registry.py"),
+    Path("core/utils/update_verifier.py"),
     Path("core/utils/validators.py"),
 )
 CONTENT_VERIFIED_SENSITIVE_DEPENDENCIES = frozenset(
@@ -111,19 +111,6 @@ def _trusted_git() -> str | None:
     return None
 
 
-def _trusted_node() -> str | None:
-    candidates = (
-        Path("/usr/bin/node"),
-        Path("/usr/local/bin/node"),
-        Path("/opt/homebrew/bin/node"),
-        Path.home() / ".hermes" / "node" / "bin" / "node",
-    )
-    for candidate in candidates:
-        if not candidate.is_symlink() and candidate.is_file() and os.access(candidate, os.X_OK):
-            return str(candidate)
-    return None
-
-
 def _git_command(repo_root: Path, *arguments: str) -> list[str] | None:
     executable = _trusted_git()
     if executable is None:
@@ -146,7 +133,11 @@ def _git_command(repo_root: Path, *arguments: str) -> list[str] | None:
     ]
 
 
-def _git_environment() -> dict[str, str]:
+def _git_environment(vault_root: Path) -> dict[str, str]:
+    safe_path, _tools = release_channel.sanitized_path_with_tools(
+        vault_root,
+        ("node", "python3"),
+    )
     return {
         "GIT_CONFIG_GLOBAL": "/dev/null",
         "GIT_CONFIG_NOSYSTEM": "1",
@@ -155,7 +146,7 @@ def _git_environment() -> dict[str, str]:
         "GIT_TERMINAL_PROMPT": "0",
         "HOME": "/var/empty" if Path("/var/empty").is_dir() else "/",
         "LC_ALL": "C",
-        "PATH": SAFE_PATH,
+        "PATH": safe_path,
     }
 
 
@@ -575,8 +566,9 @@ def _prepare_skills_vault(source: Path, vault: Path) -> None:
 
 
 def _prepare_hooks_vault(source: Path, vault: Path) -> None:
+    settings_path = source / ".claude" / "settings.json"
     _copy_file(
-        source / ".claude" / "settings.json",
+        settings_path,
         vault / ".claude" / "settings.json",
         source,
     )
@@ -586,6 +578,27 @@ def _prepare_hooks_vault(source: Path, vault: Path) -> None:
         for path in hooks.rglob("*"):
             _ensure_safe_source(path, source)
         shutil.copytree(hooks, vault / ".claude" / "hooks", symlinks=True)
+
+    try:
+        settings = json.loads(settings_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return
+    if not isinstance(settings, Mapping):
+        return
+    for raw_command in _walk_hook_commands(settings.get("hooks", {})):
+        command = _expanded_hook_command(raw_command, source)
+        for _index, target in _hook_script_targets(command, source):
+            try:
+                relative = target.relative_to(source)
+            except ValueError:
+                continue
+            if (
+                not relative.parts
+                or any(part in {"", ".", ".."} for part in relative.parts)
+                or not target.is_file()
+            ):
+                continue
+            _copy_file(target, vault / relative, source)
 
 
 def _topology_json(path: Path) -> dict[str, Any] | None:
@@ -973,7 +986,7 @@ def _materialize_release_core(
         result = subprocess.run(
             command,
             capture_output=True,
-            env=_git_environment(),
+            env=_git_environment(repo_root),
             timeout=max(0.05, min(3.0, timeout_seconds)),
             check=False,
         )
@@ -1113,6 +1126,8 @@ def _clean_environment(
     runner_root: Path,
     temporary_root: Path,
     run_token: str,
+    *,
+    source_root: Path | None = None,
 ) -> dict[str, str]:
     guard = _install_network_guard(temporary_root)
     python_paths = [str(runner_root), str(guard)]
@@ -1120,9 +1135,13 @@ def _clean_environment(
         site_packages = Path(sysconfig.get_paths()[key]).resolve()
         if site_packages.is_dir() and str(site_packages) not in python_paths:
             python_paths.append(str(site_packages))
+    safe_path, tools = release_channel.sanitized_path_with_tools(
+        source_root or vault,
+        ("node", "python3"),
+    )
     return {
         "HOME": str(home),
-        "PATH": SAFE_PATH,
+        "PATH": safe_path,
         "PYTHONPATH": os.pathsep.join(python_paths),
         "PYTHONDONTWRITEBYTECODE": "1",
         "PYTHONNOUSERSITE": "1",
@@ -1133,7 +1152,7 @@ def _clean_environment(
         "DEX_VAULT": str(vault),
         "DEX_SMOKE_RUN_TOKEN": run_token,
         "DEX_SMOKE_SERVER_BOOTSTRAP": str(guard / "server_bootstrap.py"),
-        **({"DEX_SMOKE_NODE": node} if (node := _trusted_node()) is not None else {}),
+        **({"DEX_SMOKE_NODE": tools["node"]} if "node" in tools else {}),
     }
 
 
@@ -1561,6 +1580,7 @@ def _run_smoke_journeys(
                         runner_root,
                         temporary_root,
                         run_token,
+                        source_root=source,
                     )
                     preparation_budget = min(
                         definition.timeout_seconds - (time.monotonic() - journey_started),
@@ -1730,6 +1750,7 @@ def check_custom_mcp_once(
                 RUNNER_ROOT,
                 temporary_root,
                 secrets.token_urlsafe(32),
+                source_root=vault_root,
             )
             bootstrap = Path(env["DEX_SMOKE_SERVER_BOOTSTRAP"])
             result = mcp_stdio_handshake(
@@ -1934,7 +1955,7 @@ def _git_release_ref(repo_root: Path, channel: str | None = None) -> str | None:
         result = subprocess.run(
             verify_command,
             capture_output=True,
-            env=_git_environment(),
+            env=_git_environment(repo_root),
             text=True,
             timeout=3,
             check=False,
@@ -1946,7 +1967,7 @@ def _git_release_ref(repo_root: Path, channel: str | None = None) -> str | None:
             merge_base = subprocess.run(
                 merge_base_command,
                 capture_output=True,
-                env=_git_environment(),
+                env=_git_environment(repo_root),
                 text=True,
                 timeout=3,
                 check=False,
@@ -1971,7 +1992,7 @@ def _git_tree_paths(repo_root: Path, treeish: str) -> set[str] | None:
     result = subprocess.run(
         command,
         capture_output=True,
-        env=_git_environment(),
+        env=_git_environment(repo_root),
         timeout=3,
         check=False,
     )
@@ -2068,7 +2089,7 @@ def _script_is_unmodified(
     result = subprocess.run(
         command,
         capture_output=True,
-        env=_git_environment(),
+        env=_git_environment(repo_root),
         timeout=3,
         check=False,
     )
@@ -2353,7 +2374,7 @@ def _node_from_clean_environment(env: Mapping[str, str]) -> str | None:
     if not configured:
         return None
     candidate = Path(configured)
-    if candidate.is_symlink() or not candidate.is_file() or not os.access(candidate, os.X_OK):
+    if not candidate.is_absolute() or not candidate.is_file() or not os.access(candidate, os.X_OK):
         return None
     return str(candidate)
 
