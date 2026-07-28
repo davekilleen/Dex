@@ -26,6 +26,46 @@ def load_policy(path: Path) -> tuple[PolicyRow, ...]:
     return load_exact_policy(path).rows
 
 
+CONVENTIONS: dict[str, str] = {
+    "stale-policy-row": (
+        "Declared seed is missing from the repository. A seed must be tracked at its "
+        "real vault path (the path in the policy), force-added with `git add -f` "
+        "because .gitignore covers the user PARA folders. A copy under "
+        ".claude/skills/_available/capabilities/<room>/folders/ is the dormant "
+        "room-pack placeholder — it is copied in only when a room is switched on "
+        "later, and it does NOT satisfy this policy. Ship both: the vault-root seed "
+        "is what users get, the room-pack copy is the fallback."
+    ),
+    "unknown-tracked-ignored": (
+        "Tracked despite being ignored, but not declared in the policy. Either add a "
+        "row to core/migrations/tracked-ignored-policy.yaml (if this is a seed Dex "
+        "ships on purpose) or untrack it with `git rm --cached`."
+    ),
+    "local-only-still-tracked": (
+        "Declared local-only, but still tracked. These must be untracked with "
+        "`git rm --cached` so they never ship to users."
+    ),
+    "bootstrap-state-mismatch": (
+        "Transition metadata says bootstrap, but the tracked set does not match the "
+        "declared local-only set. Reconcile before advancing the baseline."
+    ),
+    "check-failed": "The policy could not be read or did not agree with transition metadata.",
+}
+
+
+def _explain(errors: list[dict[str, object]]) -> list[str]:
+    """Human-readable lines for CI logs — the JSON alone reads as an opaque code."""
+    lines: list[str] = []
+    for error in errors:
+        code = str(error.get("code", ""))
+        lines.append(f"{code}: {CONVENTIONS.get(code, '')}".rstrip(": "))
+        for path in error.get("paths", []) or []:
+            lines.append(f"  - {path}")
+        if detail := error.get("detail"):
+            lines.append(f"  {detail}")
+    return lines
+
+
 def check(repo: Path, policy_path: Path) -> dict[str, object]:
     policy = load_exact_policy(policy_path)
     rows = policy.rows
@@ -72,8 +112,18 @@ def main(argv: list[str] | None = None) -> int:
         result = check(args.repo.resolve(), args.policy.resolve())
     except TrackedIgnoredError as error:
         result = {"ok": False, "errors": [{"code": "check-failed", "detail": str(error)}]}
-    print(json.dumps(result, sort_keys=True))
-    return 0 if result["ok"] else 1
+    print(json.dumps(result, sort_keys=True), flush=True)
+    if result["ok"]:
+        return 0
+    errors = result.get("errors") or []
+    print("\nShipped-seed policy check FAILED.", file=sys.stderr)
+    for line in _explain(errors):
+        print(line, file=sys.stderr)
+    print(
+        "\nPolicy: core/migrations/tracked-ignored-policy.yaml (active baseline).",
+        file=sys.stderr,
+    )
+    return 1
 
 
 if __name__ == "__main__":

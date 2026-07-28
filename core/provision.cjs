@@ -10,7 +10,7 @@ const portableContract = require('../packages/dex-contracts/dist/portable-vault.
 
 const PROFILE_KEYS = new Set([
   'name', 'role', 'company', 'company_size', 'email_domain', 'work_email',
-  'obsidian_mode', 'pillars', 'communication', 'capabilities',
+  'obsidian_mode', 'pillars', 'working_week', 'communication', 'capabilities',
 ]);
 
 const CAPABILITY_CATALOG = path.join(
@@ -147,6 +147,13 @@ function loadProfileOverlay(profilePath) {
   if (overlay.pillars !== undefined && !Array.isArray(overlay.pillars)) {
     throw new Error('Profile JSON pillars must be an array');
   }
+  if (overlay.working_week !== undefined && (
+    !overlay.working_week
+    || typeof overlay.working_week !== 'object'
+    || Array.isArray(overlay.working_week)
+    || !Array.isArray(overlay.working_week.days)
+    || overlay.working_week.days.length === 0
+  )) throw new Error('Profile JSON working_week must be an object with days as a non-empty array');
   if (overlay.communication !== undefined && (
     !overlay.communication || typeof overlay.communication !== 'object' || Array.isArray(overlay.communication)
   )) throw new Error('Profile JSON communication must be an object');
@@ -641,6 +648,7 @@ function provision(options) {
         // flipped to auto-create. Only fresh provisions opt into auto.
         const gapDefaults = structuredClone(freshProfile);
         delete gapDefaults.entity_creation;
+        delete gapDefaults.working_week;
         for (const [room, definition] of Object.entries(portableContract.capabilities || {})) {
           const explicit = profile.capabilities?.[room]?.enabled;
           if (typeof explicit === 'boolean') continue;

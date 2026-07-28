@@ -103,7 +103,7 @@ def test_room_missing_from_contract_registry_is_unknown(tmp_path: Path) -> None:
         capabilities.surfaces_for("career", contract_path=reduced_contract)
 
 
-def test_companies_defaults_on_and_legacy_quarterly_planning_is_a_fallback(
+def test_no_opinion_rooms_default_on_and_legacy_quarterly_planning_is_a_fallback(
     tmp_path: Path,
 ) -> None:
     profile_path = tmp_path / "System/user-profile.yaml"
@@ -112,7 +112,7 @@ def test_companies_defaults_on_and_legacy_quarterly_planning_is_a_fallback(
 
     assert capabilities.enabled(
         "career", profile_path=profile_path, contract_path=CONTRACT_PATH
-    ) is False
+    ) is True
     assert capabilities.enabled(
         "companies", profile_path=profile_path, contract_path=CONTRACT_PATH
     ) is True
@@ -132,7 +132,36 @@ def test_companies_defaults_on_and_legacy_quarterly_planning_is_a_fallback(
     profile_path.write_text("capabilities: malformed\n", encoding="utf-8")
     assert capabilities.enabled(
         "career", profile_path=profile_path, contract_path=CONTRACT_PATH
-    ) is False
+    ) is True
+
+
+def test_flipped_rooms_default_on_but_a_recorded_answer_always_wins(
+    tmp_path: Path,
+) -> None:
+    """Career and Quarter Goals default on (Dave's 2026-07-28 rooms decision).
+
+    The default is the *fallback*, never an override: a recorded answer outranks
+    it in both directions, so flipping the default can never switch a room on for
+    someone who said no, nor off for someone who said yes.
+    """
+    profile_path = tmp_path / "System/user-profile.yaml"
+
+    for room in ("career", "quarter_goals"):
+        _profile(profile_path, **{room: False})
+        assert capabilities.enabled(
+            room, profile_path=profile_path, contract_path=CONTRACT_PATH
+        ) is False
+
+        _profile(profile_path, **{room: True})
+        assert capabilities.enabled(
+            room, profile_path=profile_path, contract_path=CONTRACT_PATH
+        ) is True
+
+    # A map that names one room leaves the other on the contract default.
+    _profile(profile_path, quarter_goals=False)
+    assert capabilities.enabled(
+        "career", profile_path=profile_path, contract_path=CONTRACT_PATH
+    ) is True
 
 
 def test_off_rooms_stay_dormant_and_leave_the_spine_intact(tmp_path: Path) -> None:
@@ -472,6 +501,11 @@ def test_partial_capability_map_only_gains_the_companies_compatibility_pin(
         "career": {"enabled": False},
         "companies": {"enabled": False},
     }
+    assert capabilities.enabled(
+        "quarter_goals",
+        profile_path=profile_path,
+        contract_path=CONTRACT_PATH,
+    ) is True
 
 
 def test_fresh_unonboarded_vault_is_never_migrated(tmp_path):

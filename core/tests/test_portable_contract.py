@@ -138,6 +138,30 @@ def test_update_write_verdict(path: str, exists: bool, allowed: bool, action: st
 
 
 @pytest.mark.parametrize(
+    "relative_path",
+    [
+        "01-Quarter_Goals/Quarter_Goals.md",
+        "05-Areas/Career/Evidence/README.md",
+    ],
+)
+def test_protected_capability_seeds_ship_with_write_if_absent_policy(
+    relative_path: str,
+) -> None:
+    seed = REPO_ROOT / relative_path
+    assert seed.is_file(), (
+        f"{relative_path} is a protected shipped seed. If retirement is deliberate, "
+        "declare it explicitly and update this regression with the migration proof."
+    )
+
+    absent = portable_contract.update_write_verdict(relative_path, exists=False)
+    existing = portable_contract.update_write_verdict(relative_path, exists=True)
+    assert absent.allowed is True
+    assert absent.action == "write-if-absent"
+    assert existing.allowed is False
+    assert existing.action == "write-if-absent"
+
+
+@pytest.mark.parametrize(
     ("path", "exists"),
     [
         ("04-Projects/My_Project/notes.md", True),
@@ -406,9 +430,9 @@ def test_capability_rooms_cover_gated_regions() -> None:
     assert "meetings" not in capabilities
     assert "people" not in capabilities
     assert "tasks" not in capabilities
-    assert capabilities["career"]["default_enabled"] is False
+    assert capabilities["career"]["default_enabled"] is True
     assert capabilities["companies"]["default_enabled"] is True
-    assert capabilities["quarter_goals"]["default_enabled"] is False
+    assert capabilities["quarter_goals"]["default_enabled"] is True
 
 
 def test_committed_dist_matches_source_of_truth() -> None:

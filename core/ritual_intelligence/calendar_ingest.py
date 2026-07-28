@@ -9,6 +9,7 @@ from typing import Iterable
 import yaml
 
 from core.paths import LEGACY_MEETINGS_DIR, TRACKED_MEETINGS_DIR, USER_PROFILE_FILE
+from core.utils.nudge_calendar import is_dex_nudge_event
 
 from .models import NormalizedAttendee, NormalizedCalendarEvent
 
@@ -51,6 +52,8 @@ def _parse_datetime(value: str | None) -> datetime | None:
 def normalize_events(raw_events: Iterable[dict]) -> list[NormalizedCalendarEvent]:
     events: list[NormalizedCalendarEvent] = []
     for raw in raw_events:
+        if is_dex_nudge_event(raw):
+            continue
         attendees = [
             NormalizedAttendee(
                 name=entry.get("name"),

@@ -128,7 +128,10 @@ class SemVer:
         return f"{self.major}.{self.minor}.{self.patch}"
 
 
-# The installed release evidence profile first shipped in Dex v1.62.0.
+# v1.62.0 is the first version whose every published build is known to carry
+# the release evidence profile. v1.61.0 was published with different contents:
+# its earliest build has no profile, while later ones do. A genuinely absent
+# profile below this threshold is pre-profile; at or above it, absence is damage.
 FIRST_PROFILE_VERSION = SemVer.parse("1.62.0")
 
 

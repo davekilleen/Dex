@@ -18,6 +18,11 @@ email_domain: ""
 # Auto-detected from system if not set. Used for time-of-day greetings and focus time calculations.
 timezone: ""
 
+# Which days you work. Used for daily planning, weekly review timing, and anything
+# that needs to know your weekend. Defaults to Monday-Friday when not set.
+working_week:
+  days: [monday, tuesday, wednesday, thursday, friday]
+
 # Update Channel
 # Additional channels are reserved for a future release.
 updates:

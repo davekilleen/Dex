@@ -9,6 +9,7 @@ from datetime import date, datetime
 from pathlib import Path
 
 import pytest
+import yaml
 
 # core/mcp/tests -> repo root (for `core.paths`) and core/mcp (for the module).
 REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -36,6 +37,15 @@ def mixed_calendar_events():
                 {"name": "Jane", "email": "jane@acme.com"},
                 {"name": "John", "email": "john@example.com"},
             ],
+        },
+        {
+            "title": "Plan today with Dex",
+            "start": datetime(2026, 7, 27, 10, 30),
+            "end": datetime(2026, 7, 27, 11, 0),
+            "duration_minutes": 30,
+            "calendar_name": "Personal",
+            "notes": "Added by Dex · delete the Dex calendar to stop these",
+            "attendees": [],
         },
         {
             "title": "Out of office",
@@ -579,7 +589,10 @@ class TestEmailDomainStep:
         assert session["data"]["email_domain"] == ""
         assert 4 in session["completed_steps"]
 
-        session["completed_steps"] = [1, 2, 3, 4, 5, 6]
+        session["completed_steps"] = [1, 2, 3, 4, 5, 6, 7]
+        session["data"]["working_week"] = {
+            "days": ["monday", "tuesday", "wednesday", "thursday", "friday"]
+        }
         onboarding_server.save_session(session)
         finalized = _decode_tool_result(
             asyncio.run(
@@ -628,12 +641,112 @@ class TestPillarStep:
         assert warning == "Warning: 4 pillars provided. 2-3 is recommended for focus."
 
 
+class TestWorkingWeekStep:
+    def test_saves_days_in_the_profile_parsers_normalized_shape(
+        self,
+        tmp_path,
+        monkeypatch,
+    ):
+        session_file = tmp_path / "System/.onboarding-session.json"
+        monkeypatch.setattr(onboarding_server, "SESSION_FILE", session_file)
+        onboarding_server.save_session(onboarding_server.create_new_session())
+
+        payload = _decode_tool_result(
+            asyncio.run(
+                onboarding_server.handle_call_tool(
+                    "validate_and_save_step",
+                    {
+                        "step_number": 7,
+                        "step_data": {
+                            "working_week": {
+                                "days": ["Sunday", "MON", "sun", 2, "not-a-day"]
+                            }
+                        },
+                    },
+                )
+            )
+        )
+
+        assert payload["success"] is True
+        assert payload["data"]["working_week"] == {
+            "days": ["sunday", "monday", "wednesday"]
+        }
+        session = onboarding_server.load_session()
+        assert session["data"]["working_week"] == {
+            "days": ["sunday", "monday", "wednesday"]
+        }
+        assert 7 in session["completed_steps"]
+        assert session["current_step"] == 8
+
+    @pytest.mark.parametrize("submitted_days", ([], ["not-a-day", 9, True]))
+    def test_rejects_a_working_week_without_any_valid_days(
+        self,
+        tmp_path,
+        monkeypatch,
+        submitted_days,
+    ):
+        session_file = tmp_path / "System/.onboarding-session.json"
+        monkeypatch.setattr(onboarding_server, "SESSION_FILE", session_file)
+        onboarding_server.save_session(onboarding_server.create_new_session())
+
+        payload = _decode_tool_result(
+            asyncio.run(
+                onboarding_server.handle_call_tool(
+                    "validate_and_save_step",
+                    {
+                        "step_number": 7,
+                        "step_data": {"working_week": {"days": submitted_days}},
+                    },
+                )
+            )
+        )
+
+        assert payload["success"] is False
+        assert payload["field"] == "working_week.days"
+        assert "at least one day" in payload["suggestion"].lower()
+        assert 7 not in onboarding_server.load_session()["completed_steps"]
+
+    def test_progress_counts_the_new_required_step_and_keeps_rooms_optional(
+        self,
+        tmp_path,
+        monkeypatch,
+    ):
+        session_file = tmp_path / "System/.onboarding-session.json"
+        monkeypatch.setattr(onboarding_server, "SESSION_FILE", session_file)
+        session = onboarding_server.create_new_session()
+        session["completed_steps"] = [1, 2, 3, 4, 5, 6]
+        onboarding_server.save_session(session)
+
+        incomplete = _decode_tool_result(
+            asyncio.run(
+                onboarding_server.handle_call_tool("get_onboarding_status", {})
+            )
+        )
+
+        assert onboarding_server.ONBOARDING_STEPS == 8
+        assert incomplete["data"]["missing_steps"] == [7]
+        assert incomplete["data"]["missing_step_names"] == ["Working Week"]
+        assert incomplete["data"]["progress_percent"] == 85.7
+        assert incomplete["data"]["ready_to_finalize"] is False
+
+        session["completed_steps"].append(7)
+        onboarding_server.save_session(session)
+        complete = _decode_tool_result(
+            asyncio.run(
+                onboarding_server.handle_call_tool("get_onboarding_status", {})
+            )
+        )
+
+        assert complete["data"]["progress_percent"] == 100.0
+        assert complete["data"]["ready_to_finalize"] is True
+
+
 class TestCapabilityStep:
-    def test_tool_schema_includes_the_seventh_capability_step(self):
+    def test_tool_schema_includes_the_eighth_capability_step(self):
         tools = asyncio.run(onboarding_server.handle_list_tools())
         validate = next(tool for tool in tools if tool.name == "validate_and_save_step")
 
-        assert validate.inputSchema["properties"]["step_number"]["maximum"] == 7
+        assert validate.inputSchema["properties"]["step_number"]["maximum"] == 8
 
     def test_saves_explicit_room_answers(self, tmp_path, monkeypatch):
         session_file = tmp_path / "System/.onboarding-session.json"
@@ -645,7 +758,7 @@ class TestCapabilityStep:
                 onboarding_server.handle_call_tool(
                     "validate_and_save_step",
                     {
-                        "step_number": 7,
+                        "step_number": 8,
                         "step_data": {
                             "capabilities": {
                                 "career": True,
@@ -665,8 +778,8 @@ class TestCapabilityStep:
             "companies": False,
             "quarter_goals": True,
         }
-        assert 7 in session["completed_steps"]
-        assert session["current_step"] == 8
+        assert 8 in session["completed_steps"]
+        assert session["current_step"] == 9
 
     def test_omitted_room_answers_use_contract_defaults(self, tmp_path, monkeypatch):
         session_file = tmp_path / "System/.onboarding-session.json"
@@ -678,7 +791,7 @@ class TestCapabilityStep:
                 onboarding_server.handle_call_tool(
                     "validate_and_save_step",
                     {
-                        "step_number": 7,
+                        "step_number": 8,
                         "step_data": {"capabilities": {"career": True}},
                     },
                 )
@@ -689,7 +802,7 @@ class TestCapabilityStep:
         assert onboarding_server.load_session()["data"]["capabilities"] == {
             "career": True,
             "companies": True,
-            "quarter_goals": False,
+            "quarter_goals": True,
         }
 
     def test_rejects_non_boolean_room_answers(self, tmp_path, monkeypatch):
@@ -702,7 +815,7 @@ class TestCapabilityStep:
                 onboarding_server.handle_call_tool(
                     "validate_and_save_step",
                     {
-                        "step_number": 7,
+                        "step_number": 8,
                         "step_data": {
                             "capabilities": {
                                 "career": "yes",
@@ -728,7 +841,7 @@ class TestCapabilityStep:
                 onboarding_server.handle_call_tool(
                     "validate_and_save_step",
                     {
-                        "step_number": 7,
+                        "step_number": 8,
                         "step_data": {"capabilities": {"careeer": True}},
                     },
                 )
@@ -743,8 +856,8 @@ class TestCapabilityStep:
         monkeypatch.setattr(onboarding_server, "SESSION_FILE", session_file)
         monkeypatch.setattr(onboarding_server, "BASE_DIR", tmp_path)
         session = onboarding_server.create_new_session()
-        session["completed_steps"] = [1, 2, 3, 4, 5, 6, 7]
-        session["current_step"] = 8
+        session["completed_steps"] = [1, 2, 3, 4, 5, 6, 7, 8]
+        session["current_step"] = 9
         session["data"] = {
             "name": "Test User",
             "role": "Founder",
@@ -752,6 +865,9 @@ class TestCapabilityStep:
             "email_domain": "example.test",
             "pillars": ["Build", "Learn"],
             "communication": {},
+            "working_week": {
+                "days": ["sunday", "monday", "tuesday", "wednesday", "thursday"]
+            },
             "capabilities": {
                 "career": True,
                 "companies": False,
@@ -771,11 +887,14 @@ class TestCapabilityStep:
         preview = payload["data"]
         assert "05-Areas/Career" in preview["would_create_folders"]
         assert "05-Areas/Companies" not in preview["would_create_folders"]
-        assert "01-Quarter_Goals" not in preview["would_create_folders"]
+        assert "01-Quarter_Goals" in preview["would_create_folders"]
         assert preview["preview_user_profile"]["capabilities"] == {
             "career": {"enabled": True},
             "companies": {"enabled": False},
             "quarter_goals": {"enabled": False},
+        }
+        assert preview["preview_user_profile"]["working_week"] == {
+            "days": ["sunday", "monday", "tuesday", "wednesday", "thursday"]
         }
 
     def test_dry_run_uses_contract_defaults_when_capabilities_are_omitted(
@@ -806,9 +925,96 @@ class TestCapabilityStep:
         )
 
         preview = payload["data"]
+        assert "05-Areas/Career" in preview["would_create_folders"]
         assert "05-Areas/Companies" in preview["would_create_folders"]
-        assert preview["preview_user_profile"]["capabilities"]["companies"] == {
-            "enabled": True
+        assert "01-Quarter_Goals" in preview["would_create_folders"]
+        assert preview["preview_user_profile"]["capabilities"] == {
+            "career": {"enabled": True},
+            "companies": {"enabled": True},
+            "quarter_goals": {"enabled": True},
+        }
+
+    def test_onboarding_step_8_asks_nothing_now_that_every_room_is_on(self):
+        """All three rooms default on, so step 8 has no question left to ask.
+
+        It states what the user is getting and moves on. The step must not put a
+        yes/no choice to someone whose answer is always yes, and must not force
+        an answer — an unanswered step 8 is what lets finalization fill every
+        room from the shipped defaults.
+        """
+        flow = (REPO_ROOT / ".claude/flows/onboarding.md").read_text(encoding="utf-8")
+        step = flow.split("## Step 8:", 1)[1].split("## Step 9:", 1)[0]
+
+        assert '"options"' not in step
+        assert "Recommended" not in step
+        assert "**Do not ask a question here.**" in step
+        assert "Do not call `validate_and_save_step` for step 8." in step
+        for room in ("Companies", "Career", "Quarter Goals"):
+            assert room in step
+
+    def test_finalize_with_default_answers_provisions_protected_room_seeds(
+        self, tmp_path, monkeypatch
+    ):
+        system = tmp_path / "System"
+        system.mkdir()
+        shutil.copy(
+            REPO_ROOT / "System/user-profile-template.yaml",
+            system / "user-profile-template.yaml",
+        )
+        shutil.copytree(
+            REPO_ROOT / ".claude/skills/_available/capabilities",
+            tmp_path / ".claude/skills/_available/capabilities",
+        )
+        (tmp_path / "core").mkdir()
+        shutil.copy(REPO_ROOT / "core/paths.py", tmp_path / "core/paths.py")
+        (tmp_path / ".scripts").mkdir()
+        mcp_example = system / ".mcp.json.example"
+        mcp_example.write_text('{"mcpServers": {}}\n', encoding="utf-8")
+        (tmp_path / "CLAUDE.md").write_text(
+            "## User Profile\n\n---\n",
+            encoding="utf-8",
+        )
+
+        paths = {
+            "BASE_DIR": tmp_path,
+            "SESSION_FILE": system / ".onboarding-session.json",
+            "MCP_CONFIG_EXAMPLE": mcp_example,
+            "MARKER_FILE": system / ".onboarding-complete",
+        }
+        for name, value in paths.items():
+            monkeypatch.setattr(onboarding_server, name, value)
+
+        session = onboarding_server.create_new_session()
+        session["completed_steps"] = [1, 2, 3, 4, 5, 6, 7]
+        session["current_step"] = 8
+        session["data"] = {
+            "name": "Default User",
+            "role": "Founder",
+            "role_group": "leadership",
+            "company_size": "startup",
+            "email_domain": "example.com",
+            "pillars": ["Build", "Learn"],
+            "communication": {},
+            "working_week": {
+                "days": ["monday", "tuesday", "wednesday", "thursday", "friday"]
+            },
+        }
+        onboarding_server.save_session(session)
+
+        payload = _decode_tool_result(
+            asyncio.run(onboarding_server.handle_call_tool("finalize_onboarding", {}))
+        )
+
+        assert payload["success"] is True, payload
+        assert (tmp_path / "05-Areas/Career/Evidence/README.md").is_file()
+        assert (tmp_path / "01-Quarter_Goals/Quarter_Goals.md").is_file()
+        profile = yaml.safe_load(
+            (tmp_path / "System/user-profile.yaml").read_text(encoding="utf-8")
+        )
+        assert profile["capabilities"] == {
+            "career": {"enabled": True},
+            "companies": {"enabled": True},
+            "quarter_goals": {"enabled": True},
         }
 
     def test_finalize_provisions_only_selected_room_assets(self, tmp_path, monkeypatch):
@@ -838,8 +1044,8 @@ class TestCapabilityStep:
             monkeypatch.setattr(onboarding_server, name, value)
 
         session = onboarding_server.create_new_session()
-        session["completed_steps"] = [1, 2, 3, 4, 5, 6, 7]
-        session["current_step"] = 8
+        session["completed_steps"] = [1, 2, 3, 4, 5, 6, 7, 8]
+        session["current_step"] = 9
         session["data"] = {
             "name": "Test User",
             "role": "Founder",
@@ -848,6 +1054,9 @@ class TestCapabilityStep:
             "email_domain": "example.com",
             "pillars": ["Build", "Learn"],
             "communication": {},
+            "working_week": {
+                "days": ["sunday", "monday", "tuesday", "wednesday", "thursday"]
+            },
             "capabilities": {
                 "career": True,
                 "companies": False,
@@ -864,7 +1073,13 @@ class TestCapabilityStep:
         assert (tmp_path / "05-Areas/Career/Evidence/README.md").is_file()
         assert (tmp_path / ".claude/skills/career-setup/SKILL.md").is_file()
         assert not (tmp_path / "05-Areas/Companies").exists()
-        assert not (tmp_path / "01-Quarter_Goals").exists()
+        assert (tmp_path / "01-Quarter_Goals").is_dir()
+        assert not (tmp_path / ".claude/skills/quarter-plan").exists()
+        assert not (tmp_path / ".claude/skills/quarter-review").exists()
         assert (tmp_path / "03-Tasks/Tasks.md").is_file()
         assert (tmp_path / "05-Areas/People/Internal").is_dir()
+        profile = (tmp_path / "System/user-profile.yaml").read_text(encoding="utf-8")
+        assert "working_week:" in profile
+        assert "days:" in profile
+        assert "sunday" in profile
         assert not paths["SESSION_FILE"].exists()

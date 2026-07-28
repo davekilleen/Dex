@@ -16,6 +16,7 @@ process.env.DEX_CM_BROKER_IDLE_MS = '30000';
 process.env.DEX_CM_NO_KEYCHAIN = '1';
 
 const catalog = require('./catalog.cjs');
+const { isVetted } = require('./pinned-providers.cjs');
 const store = require('./token-store.cjs');
 const health = require('./health.cjs');
 const oauth = require('./oauth-flow.cjs');
@@ -529,10 +530,19 @@ test('unsupported OAuth mode is browse-only and connect refuses with the honest 
 });
 
 test('verified providers are identified and supported unverified providers remain advanced-tier', () => {
-  assert.deepEqual(catalog.VERIFIED_PROVIDERS, ['google', 'slack', 'linear']);
-  assert.equal(catalog.getProviderConfig('google').verified, true);
+  const listedProviders = new Map(
+    [...catalog.listOAuthProviders(), ...catalog.listKeyProviders()].map((provider) => [provider.id, provider])
+  );
+  for (const [providerId, expectedVetted] of [
+    ['google', true],
+    ['linear', true],
+    ['slack', false],
+  ]) {
+    assert.equal(isVetted(providerId), expectedVetted);
+    assert.equal(catalog.getProviderConfig(providerId).verified, isVetted(providerId));
+    assert.equal(listedProviders.get(providerId).verified, isVetted(providerId));
+  }
   assert.equal(catalog.listOAuthProviders().some((p) => p.id === 'linear'), false, 'the key override replaces raw Linear OAuth');
-  assert.equal(catalog.listKeyProviders().find((p) => p.id === 'linear').verified, true);
   const unverified = catalog.listOAuthProviders().find((p) => p.supported && !p.verified);
   assert.ok(unverified, 'the browse catalog keeps supported-but-unverified providers');
   assert.equal(catalog.getProviderConfig(unverified.id).supported, true);

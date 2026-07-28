@@ -126,7 +126,7 @@ test('fresh provision creates the full profile, seeds, MCP config, paths, and by
     });
     assert.equal(fs.existsSync(path.join(vault, '05-Areas', 'Career')), false);
     assert.equal(fs.existsSync(path.join(vault, '05-Areas', 'Companies')), true);
-    assert.equal(fs.existsSync(path.join(vault, '01-Quarter_Goals')), false);
+    assert.equal(fs.existsSync(path.join(vault, '01-Quarter_Goals')), true);
 
     const pillars = yaml.load(fs.readFileSync(path.join(vault, 'System', 'pillars.yaml'), 'utf8'));
     assert.deepEqual(pillars.pillars[0], {
@@ -172,8 +172,15 @@ test('fresh provision surfaces only the selected capability rooms', () => {
       assert.equal(fs.existsSync(path.join(vault, '.claude', 'skills', skill, 'SKILL.md')), true);
     }
     assert.equal(fs.existsSync(path.join(vault, '05-Areas', 'Companies')), false);
-    assert.equal(fs.existsSync(path.join(vault, '01-Quarter_Goals')), false);
+    assert.equal(fs.existsSync(path.join(vault, '01-Quarter_Goals')), true);
+    assert.equal(fs.existsSync(path.join(vault, '.claude', 'skills', 'quarter-plan')), false);
+    assert.equal(fs.existsSync(path.join(vault, '.claude', 'skills', 'quarter-review')), false);
   });
+});
+
+test('provision contract restores Quarter Goals without changing Companies baseline', () => {
+  assert.equal(contract.para_directories.includes('01-Quarter_Goals'), true);
+  assert.equal(contract.para_directories.includes('05-Areas/Companies'), false);
 });
 
 test('fresh provision fills omitted capability rooms from template defaults', () => {

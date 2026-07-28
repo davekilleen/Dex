@@ -23,7 +23,7 @@
 
 ## Setup Overview
 
-**Total time:** ~10 minutes. Three steps: install tools → get the code → tell it your role.
+**Total time:** ~10 minutes. One pasted line installs everything, then you tell Dex your role.
 
 **Pick one of these to get started:**
 
@@ -39,7 +39,35 @@
 
 ---
 
-## Getting Started
+## Quick Install (Recommended)
+
+One pasted line checks your computer, installs anything missing (asking first), downloads Dex to `Documents/Dex`, and sets everything up. Safe to run more than once.
+
+**Mac** — press `Cmd+Space`, type "Terminal", press Enter, then paste this and press Enter:
+
+```bash
+curl -fsSL https://heydex.ai/install.sh | bash
+```
+
+**Windows** — open the Start menu, type "PowerShell", press Enter, then paste this and press Enter:
+
+```powershell
+irm https://heydex.ai/install.ps1 | iex
+```
+
+**Or let your AI do the whole thing.** If you already use Claude, ChatGPT, or another AI assistant that can run things on your computer, just tell it:
+
+> Install Dex on my computer. Follow the instructions at https://heydex.ai/install.md and walk me through anything you can't do yourself.
+
+When the installer finishes, open the Dex folder in Cursor or Claude Code, say **"hi"**, and Dex introduces itself and sets itself up around your role. Full details and troubleshooting: **[heydex.ai/install](https://heydex.ai/install/)**.
+
+**If anything goes wrong:** nothing on your computer is changed half-way — copy the error message, paste it to your AI assistant, and it can tell you exactly what to do. Or follow the step-by-step path below instead.
+
+---
+
+## Manual Setup (Step-by-Step Alternative)
+
+Prefer to see every step, or the quick install hit a snag? This section does the same thing by hand.
 
 ### What You'll Need to Install (One-Time)
 
@@ -885,4 +913,4 @@ Commercial use is not allowed without a separate written commercial license from
 
 ---
 
-**Ready to start?** Follow the [setup instructions above](#getting-started) — install Cursor, get the code, run `/setup` inside Cursor's chat panel.
+**Ready to start?** Follow the [quick install above](#quick-install-recommended) — one pasted line, then open the Dex folder in Cursor or Claude Code and say "hi".
