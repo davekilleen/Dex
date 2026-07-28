@@ -829,7 +829,7 @@
       ]
     },
     "companies": {
-      "default_enabled": false,
+      "default_enabled": true,
       "features": [
         "entity-engine.company-pages"
       ],

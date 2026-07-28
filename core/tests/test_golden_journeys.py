@@ -287,6 +287,11 @@ async def main():
             "obsidian_mode": False,
         },
         7: {
+            "working_week": {
+                "days": ["sunday", "monday", "tuesday", "wednesday", "thursday"],
+            }
+        },
+        8: {
             "capabilities": {
                 "career": True,
                 "companies": True,
@@ -470,10 +475,10 @@ def _write_entity_profile(vault: Path, mode: str) -> None:
     profile = yaml.safe_load(profile_path.read_text(encoding="utf-8")) or {}
     profile["email_domain"] = "dex.test"
     profile["entity_creation"] = {"mode": mode}
+    profile.setdefault("capabilities", {})["companies"] = {"enabled": True}
     profile_path.write_text(yaml.safe_dump(profile, sort_keys=False), encoding="utf-8")
-    # The entity fixture models an ACTIVE, already-onboarded vault; the marker
-    # engages the legacy capability bridge (rooms keep their pre-rooms status
-    # quo) that background company creation depends on.
+    # The entity fixture opts into company creation explicitly; existing vaults
+    # without a Companies opinion must remain off when the fresh default changes.
     (vault / "System" / ".onboarding-complete").write_text("{}\n", encoding="utf-8")
 
 
@@ -537,6 +542,13 @@ def test_golden_onboarding_drives_state_machine_to_real_vault(fixture_vault: Pat
     assert profile["company_size"] == "startup"
     assert profile["email_domain"] == "golden.example"
     assert profile["communication"]["career_level"] == "leadership"
+    assert profile["working_week"]["days"] == [
+        "sunday",
+        "monday",
+        "tuesday",
+        "wednesday",
+        "thursday",
+    ]
 
     pillars = yaml.safe_load((vault / "System/pillars.yaml").read_text(encoding="utf-8"))
     assert [pillar["name"] for pillar in pillars["pillars"]] == ["Customer", "Product"]

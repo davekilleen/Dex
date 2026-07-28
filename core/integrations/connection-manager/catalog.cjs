@@ -20,6 +20,8 @@ try {
   );
 }
 
+const { isVetted } = require('./pinned-providers.cjs');
+
 const DEX_UNFILLED = '<<dex:unfilled>>';
 
 /**
@@ -47,7 +49,6 @@ function resolveTemplate(value, connectionConfig = {}) {
 
 const CONNECTABLE_OAUTH_MODES = new Set(['OAUTH2', 'MCP_OAUTH2']);
 const BROWSE_OAUTH_MODES = new Set(['OAUTH2', 'MCP_OAUTH2', 'OAUTH1', 'OAUTH2_CC', 'TBA']);
-const VERIFIED_PROVIDERS = Object.freeze(['google', 'slack', 'linear']);
 
 // Class-B "paste a secret" auth modes. These don't run an OAuth dance — the user
 // pastes a long-lived secret (API key, or a username/password pair for HTTP Basic),
@@ -108,7 +109,7 @@ const OAUTH_PROVIDER_OVERRIDES = {
 };
 
 function providerSupport(providerId, raw) {
-  const verified = VERIFIED_PROVIDERS.includes(providerId);
+  const verified = isVetted(providerId);
   if (raw.auth_mode === 'OAUTH1') {
     return { supported: false, verified, reason: 'OAuth 1 is not implemented by the Dex connection manager.' };
   }
@@ -167,7 +168,7 @@ function getProviderConfig(providerId, connectionConfig = {}) {
   if (keyOverride) {
     return {
       supported: true,
-      verified: VERIFIED_PROVIDERS.includes(providerId),
+      verified: isVetted(providerId),
       reason: null,
       authMode: 'API_KEY',
       id: providerId,
@@ -287,7 +288,7 @@ function listKeyProviders() {
       displayName: o.displayName || id,
       authMode: 'API_KEY',
       supported: true,
-      verified: VERIFIED_PROVIDERS.includes(id),
+      verified: isVetted(id),
       reason: null,
     }));
   return [...fromCatalog, ...fromOverrides].sort((a, b) => a.displayName.localeCompare(b.displayName));
@@ -478,5 +479,4 @@ module.exports = {
   resolveTemplate,
   KEY_MODES,
   KEY_HEADER_OVERRIDES,
-  VERIFIED_PROVIDERS,
 };

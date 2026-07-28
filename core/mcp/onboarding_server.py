@@ -21,7 +21,7 @@ import re
 import subprocess
 import sys
 import tempfile
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -54,9 +54,30 @@ from core.paths import (
 from core.paths import (
     VAULT_ROOT as BASE_DIR,
 )
+from core.utils.nudge_calendar import build_nudge_calendar, is_dex_nudge_event
+
+# User-configured working week (defaults to Monday-Friday)
+try:
+    from core.utils.working_week import (
+        DEFAULT_WORKING_DAYS,
+        first_working_day_of_week,
+        normalize_working_days,
+        working_day_names,
+    )
+except ImportError:
+    DEFAULT_WORKING_DAYS = frozenset({0, 1, 2, 3, 4})
+
+    def first_working_day_of_week(target_date):
+        return target_date - timedelta(days=target_date.weekday())
+
+    def normalize_working_days(_configured_days):
+        return []
+
+    def working_day_names():
+        return ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"]
 
 GRANOLA_APP_PATH = Path("/Applications/Granola.app")
-ONBOARDING_STEPS = 7
+ONBOARDING_STEPS = 8
 PROVISION_CONTRACT = json.loads(
     (Path(__file__).parent.parent / "provision-contract.json").read_text(encoding="utf-8")
 )
@@ -208,6 +229,22 @@ def create_new_session() -> Dict:
         "current_step": 1,
         "data": {}
     }
+
+
+def default_working_week_suggestion() -> Dict[str, Any]:
+    """Return the visible fallback when recent calendar evidence is unavailable."""
+    days = normalize_working_days(sorted(DEFAULT_WORKING_DAYS))
+    if not days:
+        days = [day.casefold() for day in working_day_names()]
+    return {
+        "days": days,
+        "basis": "default",
+        # Never claim a check Dex did not run: today nothing reads several weeks
+        # of calendar history, so the honest line is that it has not worked this
+        # out, not that it looked and found too little.
+        "reason": "Dex hasn't worked this out from your calendar.",
+    }
+
 
 def validate_email_domain(domain: str) -> tuple[bool, Optional[str], str]:
     """Validate and normalize email domains separated by commas"""
@@ -368,11 +405,25 @@ def check_granola() -> Dict[str, Any]:
         "setup": "/granola-setup",
     }
 
+def _capability_states(
+    selected: Dict[str, bool] | None = None,
+) -> Dict[str, bool]:
+    selected = selected or {}
+    states: Dict[str, bool] = {}
+    for room in capability_rooms.room_ids():
+        if room in selected:
+            states[room] = selected[room] is True
+            continue
+        default = capability_rooms.surfaces_for(room).get("default_enabled", False)
+        states[room] = default if isinstance(default, bool) else False
+    return states
+
+
 def _provision_folders(capability_states: Dict[str, bool] | None = None) -> List[str]:
     folders = list(PROVISION_CONTRACT["para_directories"])
-    states = capability_states or {}
+    states = _capability_states(capability_states)
     for room in capability_rooms.room_ids():
-        if states.get(room, False) is True:
+        if states[room] is True:
             folders.extend(capability_rooms.surfaces_for(room).get("folders", []))
     return list(dict.fromkeys(folders))
 
@@ -384,9 +435,9 @@ def _finalize_through_provisioner(session: Dict) -> Dict[str, Any]:
         {"name": pillar, "description": ""}
         for pillar in data.get("pillars", [])
     ]
-    selected = data.get("capabilities", {})
+    selected = _capability_states(data.get("capabilities"))
     data["capabilities"] = {
-        room: {"enabled": selected.get(room, False) is True}
+        room: {"enabled": selected[room]}
         for room in capability_rooms.room_ids()
     }
     profile_path: Path | None = None
@@ -493,6 +544,8 @@ def _timed_calendar_events(events: List[Dict]) -> List[Dict]:
     """Exclude all-day and malformed events from meeting analysis."""
     timed_events = []
     for event in events:
+        if is_dex_nudge_event(event):
+            continue
         if event.get('all_day') is True:
             continue
         if (
@@ -731,10 +784,9 @@ def build_pillar_evidence(events: List[Dict], email_domain: str) -> Dict[str, An
 
 def generate_weekly_plan(events: List[Dict], pillars: List[str], role: str) -> str:
     """Generate weekly plan markdown content from calendar events"""
-    from datetime import timedelta
     timed_events = _timed_calendar_events(events)
-    today = datetime.now()
-    week_start = today - timedelta(days=today.weekday())
+    today = datetime.now().date()
+    week_start = first_working_day_of_week(today)
     week_end = week_start + timedelta(days=6)
     
     content = f"""# Week Priorities - {week_start.strftime('%b %d')} to {week_end.strftime('%b %d, %Y')}
@@ -761,7 +813,7 @@ Based on your calendar and pillars, here are suggested priorities:
         days[day].append(event)
     
     content += "### Key Meetings\n\n"
-    for day in ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']:
+    for day in working_day_names():
         if day in days:
             content += f"**{day}** ({len(days[day])} meetings)\n"
             for event in days[day][:3]:  # Show first 3
@@ -918,6 +970,53 @@ def run_first_week_analysis() -> Dict[str, Any]:
         ),
     }
 
+
+def generate_nudge_calendar() -> Dict[str, Any]:
+    """Write the optional onboarding nudge calendar and return concrete metadata."""
+
+    def _granola_connected() -> bool:
+        # Granola only changes the wording of one event. If its module cannot be
+        # imported or the lookup fails, fall back to the not-connected variant
+        # rather than failing the whole calendar for an optional flourish.
+        try:
+            from core.mcp.granola_server import get_api_key
+
+            return get_api_key() is not None
+        except Exception as error:
+            logger.warning(f"Could not check the Granola connection: {error}")
+            return False
+
+    profile = _load_first_week_profile()
+    pillars = [
+        pillar.get('name', '') if isinstance(pillar, dict) else str(pillar)
+        for pillar in profile.get('pillars', [])
+    ]
+    pillars = [pillar.strip() for pillar in pillars if pillar.strip()]
+    calendar_text = build_nudge_calendar(
+        date.today(),
+        pillars=pillars,
+        granola_connected=_granola_connected(),
+    )
+
+    calendar_path = (BASE_DIR / "System" / "dex-calendar.ics").resolve()
+    calendar_path.parent.mkdir(parents=True, exist_ok=True)
+    calendar_path.write_text(calendar_text, encoding="utf-8", newline="")
+
+    first_date_value = next(
+        line.partition(":")[2]
+        for line in calendar_text.splitlines()
+        if line.startswith("DTSTART;VALUE=DATE:")
+    )
+    return {
+        "path": str(calendar_path),
+        "event_count": calendar_text.count("BEGIN:VEVENT"),
+        "first_event_date": datetime.strptime(
+            first_date_value,
+            "%Y%m%d",
+        ).date().isoformat(),
+    }
+
+
 # ============================================================================
 # MCP SERVER SETUP
 # ============================================================================
@@ -957,9 +1056,9 @@ async def handle_list_tools() -> list[types.Tool]:
                 "properties": {
                     "step_number": {
                         "type": "integer",
-                        "description": "Step number (1-7)",
+                        "description": f"Step number (1-{ONBOARDING_STEPS})",
                         "minimum": 1,
-                        "maximum": 7
+                        "maximum": ONBOARDING_STEPS
                     },
                     "step_data": {
                         "type": "object",
@@ -1018,6 +1117,14 @@ async def handle_list_tools() -> list[types.Tool]:
         types.Tool(
             name="run_first_week_analysis",
             description="Analyze this week's timed calendar meetings and return an honest, structured onboarding reveal.",
+            inputSchema={
+                "type": "object",
+                "properties": {}
+            }
+        ),
+        types.Tool(
+            name="generate_nudge_calendar",
+            description="Create the optional first-weeks Dex nudge calendar and return its file path and event details.",
             inputSchema={
                 "type": "object",
                 "properties": {}
@@ -1093,7 +1200,10 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[types.Text
             step_data = arguments.get('step_data', {})
             
             if not step_number or not isinstance(step_number, int):
-                result = create_error_response("Invalid step_number", suggestion="Provide step_number as integer 1-7")
+                result = create_error_response(
+                    "Invalid step_number",
+                    suggestion=f"Provide step_number as integer 1-{ONBOARDING_STEPS}",
+                )
                 return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
             
             session = load_session()
@@ -1291,13 +1401,45 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[types.Text
                 save_session(session)
                 result = create_success_response({"step": 6, "completed": True}, "Step 6 complete")
 
-            # Step 7: Optional capability rooms (all default off)
+            # Step 7: Working week
             elif step_number == 7:
+                working_week = step_data.get('working_week', {})
+                supplied_days = (
+                    working_week.get('days', [])
+                    if isinstance(working_week, dict)
+                    else []
+                )
+                days = normalize_working_days(supplied_days)
+                if not days:
+                    result = create_error_response(
+                        "Working week needs at least one valid day",
+                        step=7,
+                        field="working_week.days",
+                        suggestion="Choose at least one day you normally work",
+                    )
+                else:
+                    normalized_working_week = {'days': days}
+                    session['data']['working_week'] = normalized_working_week
+                    if step_number not in session['completed_steps']:
+                        session['completed_steps'].append(step_number)
+                    session['current_step'] = 8
+                    save_session(session)
+                    result = create_success_response(
+                        {
+                            "step": 7,
+                            "completed": True,
+                            "working_week": normalized_working_week,
+                        },
+                        "Step 7 complete",
+                    )
+
+            # Step 8: Optional capability rooms (contract-declared defaults)
+            elif step_number == 8:
                 supplied = step_data.get('capabilities', {})
                 if not isinstance(supplied, dict):
                     result = create_error_response(
                         "Capabilities must be an object",
-                        step=7,
+                        step=8,
                         field="capabilities",
                         suggestion="Answer yes or no for each optional room",
                     )
@@ -1311,15 +1453,14 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[types.Text
                     for room in capability_rooms.room_ids():
                         if invalid_field:
                             break
-                        value = supplied.get(room, False)
-                        if not isinstance(value, bool):
+                        if room in supplied and not isinstance(supplied[room], bool):
                             invalid_field = f"capabilities.{room}"
                             break
-                        selected[room] = value
+                    selected = _capability_states(supplied)
                     if invalid_field:
                         result = create_error_response(
                             f"{invalid_field} must be true or false",
-                            step=7,
+                            step=8,
                             field=invalid_field,
                             suggestion="Answer yes or no for this room",
                         )
@@ -1327,15 +1468,18 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[types.Text
                         session['data']['capabilities'] = selected
                         if step_number not in session['completed_steps']:
                             session['completed_steps'].append(step_number)
-                        session['current_step'] = 8
+                        session['current_step'] = 9
                         save_session(session)
                         result = create_success_response(
-                            {"step": 7, "completed": True, "capabilities": selected},
-                            "Step 7 complete",
+                            {"step": 8, "completed": True, "capabilities": selected},
+                            "Step 8 complete",
                         )
             
             else:
-                result = create_error_response(f"Invalid step number: {step_number}", suggestion="Step must be 1-7")
+                result = create_error_response(
+                    f"Invalid step number: {step_number}",
+                    suggestion=f"Step must be 1-{ONBOARDING_STEPS}",
+                )
             
             return [types.TextContent(type="text", text=json.dumps(result, indent=2, cls=DateTimeEncoder))]
 
@@ -1359,7 +1503,10 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[types.Text
                 session['data']['calendar'] = calendar
                 save_session(session)
                 result = create_success_response(
-                    {"calendar": calendar},
+                    {
+                        "calendar": calendar,
+                        "working_week_suggestion": default_working_week_suggestion(),
+                    },
                     "Calendar setup skipped for now. /dex-doctor will pick this up later."
                 )
                 return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
@@ -1415,6 +1562,7 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[types.Text
                     "work_email": work_email,
                     "calendar": calendar,
                     "derived_identity": derive_identity_from_email(work_email),
+                    "working_week_suggestion": default_working_week_suggestion(),
                 },
                 f"Work calendar saved.{verification_note}"
             )
@@ -1427,9 +1575,9 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[types.Text
                 result = create_error_response("No active session", suggestion="Call start_onboarding_session first")
                 return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
             
-            # Step 7 (optional rooms) is skippable: every room defaults OFF, so an
+            # Step 8 (optional rooms) is skippable: every room defaults OFF, so an
             # unanswered step means the safe default, never a blocker.
-            required_steps = [s for s in range(1, ONBOARDING_STEPS + 1) if s != 7]
+            required_steps = [s for s in range(1, ONBOARDING_STEPS + 1) if s != 8]
             completed = session['completed_steps']
             missing = [s for s in required_steps if s not in completed]
             
@@ -1440,7 +1588,8 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[types.Text
                 4: "Email Domain (CRITICAL)",
                 5: "Strategic Pillars",
                 6: "Communication Preferences",
-                7: "Optional Rooms",
+                7: "Working Week",
+                8: "Optional Rooms",
             }
             
             completed_required = [s for s in completed if s in required_steps]
@@ -1491,6 +1640,16 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[types.Text
                 type="text",
                 text=json.dumps(result, indent=2, cls=DateTimeEncoder),
             )]
+
+        elif name == "generate_nudge_calendar":
+            result = create_success_response(
+                generate_nudge_calendar(),
+                "Nudge calendar ready",
+            )
+            return [types.TextContent(
+                type="text",
+                text=json.dumps(result, indent=2, cls=DateTimeEncoder),
+            )]
         
         elif name == "finalize_onboarding":
             dry_run = arguments.get('dry_run', False)
@@ -1501,9 +1660,9 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[types.Text
                 return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
 
             # Verify all required steps completed
-            # Step 7 (optional rooms) is skippable: every room defaults OFF, so an
+            # Step 8 (optional rooms) is skippable: every room defaults OFF, so an
             # unanswered step means the safe default, never a blocker.
-            required_steps = [s for s in range(1, ONBOARDING_STEPS + 1) if s != 7]
+            required_steps = [s for s in range(1, ONBOARDING_STEPS + 1) if s != 8]
             completed = session['completed_steps']
             missing = [s for s in required_steps if s not in completed]
 
@@ -1511,7 +1670,7 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[types.Text
                 step_names = {
                     1: "Name", 2: "Role", 3: "Company Size",
                     4: "Email Domain", 5: "Pillars", 6: "Communication",
-                    7: "Optional Rooms",
+                    7: "Working Week", 8: "Optional Rooms",
                 }
                 result = create_error_response(
                     f"Cannot finalize: missing steps {missing}",
@@ -1534,7 +1693,9 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[types.Text
                 logger.info("Finalize (DRY RUN) - previewing what would be created")
 
                 # Compute folders that would be created
-                selected_capabilities = session['data'].get('capabilities', {})
+                selected_capabilities = _capability_states(
+                    session['data'].get('capabilities')
+                )
                 para_folders = _provision_folders(selected_capabilities)
                 would_create_folders = [f for f in para_folders if not (BASE_DIR / f).exists()]
                 already_exist_folders = [f for f in para_folders if (BASE_DIR / f).exists()]
@@ -1574,9 +1735,10 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[types.Text
                     'email_domain': data.get('email_domain', ''),
                     'obsidian_mode': data.get('obsidian_mode', False),
                     'entity_creation': {'mode': 'auto'},
+                    'working_week': data.get('working_week', {}),
                     'communication': data.get('communication', {}),
                     'capabilities': {
-                        room: {'enabled': selected_capabilities.get(room, False) is True}
+                        room: {'enabled': selected_capabilities[room]}
                         for room in capability_rooms.room_ids()
                     },
                 }

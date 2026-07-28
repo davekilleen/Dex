@@ -55,6 +55,6 @@ When you run `/dex-update`, Dex automatically:
 
 ## Related
 
-- `.claude/flows/onboarding.md` — Integration setup during onboarding (Step 8)
+- `.claude/flows/onboarding.md` — Integration setup during onboarding (Step 10)
 - `core/integrations/` — Python modules for detection and setup
 - `06-Resources/Dex_System/Dex_Technical_Guide.md` — Technical details

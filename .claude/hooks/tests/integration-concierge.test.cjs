@@ -74,14 +74,80 @@ function recommendationFor(output, id) {
   ].find((entry) => entry.id === id);
 }
 
-function assertFourTiers(output) {
+function assertOutputShape(output) {
   assert.deepEqual(Object.keys(output), [
     'high_value',
     'moderate_value',
     'available',
     'already_connected',
+    'connect_detected',
   ]);
 }
+
+const CURATED_SETUP_ROUTES = {
+  'google-workspace': '/google-workspace-setup',
+  teams: '/ms-teams-setup',
+  todoist: '/todoist-setup',
+  things: '/things-setup',
+  trello: '/trello-setup',
+  zoom: '/zoom-setup',
+  atlassian: '/atlassian-setup',
+};
+
+const CONNECT_APP_ROUTES = {
+  slack: { name: 'Slack', shortName: 'Slack', app: 'Slack.app' },
+  notion: { name: 'Notion', shortName: 'Notion', app: 'Notion.app' },
+  linear: { name: 'Linear', shortName: 'Linear', app: 'Linear.app' },
+  obsidian: { name: 'Obsidian', shortName: 'Obsidian', app: 'Obsidian.app' },
+  cursor: { name: 'Cursor', shortName: 'Cursor', app: 'Cursor.app' },
+  figma: { name: 'Figma', shortName: 'Figma', app: 'Figma.app' },
+  granola: { name: 'Granola', shortName: 'Granola', app: 'Granola.app' },
+};
+
+test('curated integrations preserve their setup skills and ordering', (t) => {
+  const fixture = createFixture(t);
+  const output = runConcierge(fixture.env);
+
+  assert.deepEqual(
+    output.available.map((entry) => entry.id),
+    Object.keys(CURATED_SETUP_ROUTES),
+  );
+  assert.deepEqual(output.connect_detected, []);
+  for (const [id, setup] of Object.entries(CURATED_SETUP_ROUTES)) {
+    const entry = recommendationFor(output, id);
+    assert.equal(entry.route, 'skill', id);
+    assert.equal(entry.setup, setup, id);
+  }
+});
+
+test('installed detection-only apps use connect routes without fabricated setup skills', (t) => {
+  const fixture = createFixture(t);
+  for (const { app } of Object.values(CONNECT_APP_ROUTES)) {
+    fs.mkdirSync(path.join(fixture.appDir, app));
+  }
+
+  const output = runConcierge(fixture.env);
+  const legacyEntries = [
+    ...output.high_value,
+    ...output.moderate_value,
+    ...output.available,
+    ...output.already_connected,
+  ];
+
+  for (const [id, expected] of Object.entries(CONNECT_APP_ROUTES)) {
+    const entry = output.connect_detected.find((candidate) => candidate.id === id);
+    assert.ok(entry, id);
+    assert.equal(entry.route, 'connect', id);
+    assert.equal(Object.hasOwn(entry, 'setup'), false, id);
+    assert.equal(Object.hasOwn(entry, 'setupSkill'), false, id);
+    assert.equal(entry.name, expected.name, id);
+    assert.equal(entry.shortName, expected.shortName, id);
+    assert.deepEqual(entry.installedApps, [expected.app], id);
+    assert.equal(entry.reason, 'installed on your Mac', id);
+    assert.ok(entry.value, id);
+    assert.equal(legacyEntries.some((candidate) => candidate.id === id), false, id);
+  }
+});
 
 test('installed Things app promotes the integration to high value', (t) => {
   const fixture = createFixture(t);
@@ -192,7 +258,7 @@ test('malformed MCP config is ignored without changing the output tiers', (t) =>
   const output = runConcierge(fixture.env);
   const trello = output.available.find((entry) => entry.id === 'trello');
 
-  assertFourTiers(output);
+  assertOutputShape(output);
   assert.ok(trello, JSON.stringify(output, null, 2));
   assert.equal(trello.reason, 'available to connect');
   assert.deepEqual(trello.configuredMcp, []);

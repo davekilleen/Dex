@@ -84,6 +84,7 @@ def _transaction_preview_document(
     plan: Sequence[PlanEntry],
     *,
     purpose: str,
+    operation: str = "update",
 ) -> dict[str, object]:
     """Build the private service-to-Transaction approval binding.
 
@@ -111,6 +112,7 @@ def _transaction_preview_document(
         verdict = portable_contract.update_write_verdict(
             entry.relative,
             exists=target.exists(),
+            operation=operation,
         )
         if not verdict.allowed:
             raise PlanRejected(
@@ -137,10 +139,13 @@ def _transaction_preview_document(
                 "current": current,
             }
         )
-    return {
+    preview = {
         "purpose": purpose,
         "writes": sorted(writes, key=lambda write: str(write["path"])),
     }
+    if operation != "update":
+        preview["operation"] = operation
+    return preview
 
 
 def _preview_transaction(
@@ -148,9 +153,15 @@ def _preview_transaction(
     plan: Sequence[PlanEntry],
     *,
     purpose: str,
+    operation: str = "update",
 ) -> dict[str, object]:
     """Preview a private, contract-authorized transaction without writing."""
-    preview = _transaction_preview_document(vault_root, plan, purpose=purpose)
+    preview = _transaction_preview_document(
+        vault_root,
+        plan,
+        purpose=purpose,
+        operation=operation,
+    )
     return _envelope(
         preview=preview,
         approval_token=hashlib.sha256(_canonical(preview)).hexdigest(),
@@ -184,10 +195,16 @@ def _execute_approved_transaction(
     *,
     purpose: str,
     approved_token: str,
+    operation: str = "update",
 ) -> dict[str, object]:
     """Execute an exact private preview through the one Transaction engine."""
     root = Path(vault_root)
-    rebuilt = _preview_transaction(root, plan, purpose=purpose)
+    rebuilt = _preview_transaction(
+        root,
+        plan,
+        purpose=purpose,
+        operation=operation,
+    )
     expected = rebuilt["approval_token"]
     if not isinstance(approved_token, str) or not hmac.compare_digest(
         approved_token,
@@ -202,7 +219,7 @@ def _execute_approved_transaction(
     )
     tx_root_relative = Path("System/.dex/tx")
     tx_paths_before = _tree_paths(root, tx_root_relative)
-    result = Transaction.begin(root, list(plan)).run()
+    result = Transaction.begin(root, list(plan), operation=operation).run()
     tx_paths_after = _tree_paths(root, tx_root_relative)
     declared_paths = (
         set(targets)
@@ -227,6 +244,99 @@ def _execute_approved_transaction(
             "declared_paths": sorted(declared_paths),
         }
     )
+
+
+def _missing_companies_default_plan(
+    vault_root: str | Path,
+) -> tuple[list[PlanEntry], dict[str, bool]]:
+    """Build the exact compatibility plan and room-state summary."""
+    import yaml
+
+    from core.capabilities import render_missing_companies_compatibility_pin
+
+    root = Path(vault_root)
+    profile = root / "System/user-profile.yaml"
+    if profile.is_symlink():
+        raise PlanRejected("System/user-profile.yaml must not be a symlink")
+    exists = profile.exists()
+    if exists and not profile.is_file():
+        raise PlanRejected("System/user-profile.yaml must be a regular file")
+    original = profile.read_text(encoding="utf-8") if exists else ""
+    rendered = render_missing_companies_compatibility_pin(original)
+    if rendered is None:
+        return [], {}
+
+    before = yaml.safe_load(original) or {}
+    after = yaml.safe_load(rendered) or {}
+    before_capabilities = before.get("capabilities", {})
+    after_capabilities = after.get("capabilities", {})
+    states = {
+        room: state["enabled"]
+        for room, state in after_capabilities.items()
+        if isinstance(state, Mapping)
+        and isinstance(state.get("enabled"), bool)
+        and (
+            not isinstance(before_capabilities, Mapping)
+            or before_capabilities.get(room) != state
+        )
+    }
+
+    raw = original.encode("utf-8")
+    return [
+        PlanEntry(
+            "System/user-profile.yaml",
+            rendered.encode("utf-8"),
+            mode=(profile.stat().st_mode & 0o777) if exists else 0o644,
+            expected_current_sha256=(
+                hashlib.sha256(raw).hexdigest() if exists else None
+            ),
+            expected_absent=not exists,
+        )
+    ], states
+
+
+def _preview_missing_companies_default(
+    vault_root: str | Path,
+) -> dict[str, object]:
+    """Preview the compatibility transaction without recovering or writing."""
+    root = Path(vault_root)
+    plan, states = _missing_companies_default_plan(root)
+    if not plan:
+        return _envelope(pinned=False, preview=None, states={})
+    purpose = "companies-default-compatibility"
+    operation = "capability-state"
+    preview = _preview_transaction(
+        root,
+        plan,
+        purpose=purpose,
+        operation=operation,
+    )
+    return _envelope(pinned=True, preview=preview["preview"], states=states)
+
+
+def _pin_missing_companies_default(vault_root: str | Path) -> dict[str, object]:
+    """Recover first, then transactionally pin legacy Companies state."""
+    root = Path(vault_root)
+    Transaction.resume(root)
+    plan, states = _missing_companies_default_plan(root)
+    if not plan:
+        return _envelope(pinned=False, receipt=None, states={})
+    purpose = "companies-default-compatibility"
+    operation = "capability-state"
+    preview = _preview_transaction(
+        root,
+        plan,
+        purpose=purpose,
+        operation=operation,
+    )
+    executed = _execute_approved_transaction(
+        root,
+        plan,
+        purpose=purpose,
+        operation=operation,
+        approved_token=str(preview["approval_token"]),
+    )
+    return _envelope(pinned=True, receipt=executed["receipt"], states=states)
 
 
 def _inventory_and_plan_models(vault_root: str | Path):

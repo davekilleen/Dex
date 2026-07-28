@@ -98,6 +98,13 @@ except ImportError:
     def _tz_today():
         return date.today()
 
+# User-configured working week (defaults to Monday-Friday)
+try:
+    from core.utils.working_week import is_working_day as _is_working_day
+except ImportError:
+    def _is_working_day(target_date):
+        return target_date.weekday() < 5
+
 # Custom JSON encoder for handling date/datetime objects
 class DateTimeEncoder(json.JSONEncoder):
     def default(self, obj):
@@ -114,6 +121,7 @@ from core.entity_engine import (
     create_page_if_absent,
     fingerprint_page,
     mutate_relationships,
+    render_company_page,
 )
 from core.entity_engine import index as entity_index
 from core.paths import (
@@ -1964,21 +1972,19 @@ def list_companies() -> List[Dict[str, Any]]:
     
     for company_file in COMPANIES_DIR.glob('*.md'):
         content = company_file.read_text()
+        entity = parse_entity_page(company_file)
         
-        # Extract basic info
+        # Canonical pages keep status in frontmatter; parse_entity_page also
+        # retains the old table/inline fallbacks for legacy pages.
         company = {
-            'name': company_file.stem.replace('_', ' '),
+            'name': entity.get('name') or company_file.stem.replace('_', ' '),
             'filepath': str(company_file),
-            'stage': None,
+            'stage': entity.get('status'),
             'industry': None
         }
         
         for line in content.split('\n'):
-            if '**Stage**' in line and '|' in line:
-                parts = line.split('|')
-                if len(parts) >= 3:
-                    company['stage'] = parts[2].strip()
-            elif '**Industry**' in line and '|' in line:
+            if '**Industry**' in line and '|' in line:
                 parts = line.split('|')
                 if len(parts) >= 3:
                     company['industry'] = parts[2].strip()
@@ -1993,7 +1999,7 @@ def list_companies() -> List[Dict[str, Any]]:
 def create_company_page(name: str, website: str = '', industry: str = '', 
                        size: str = '', stage: str = 'Prospect', 
                        domains: List[str] = None) -> Dict[str, Any]:
-    """Create a new company page from template"""
+    """Create a new company page from the canonical entity template."""
 
     if not capability_rooms.enabled("companies", profile_path=USER_PROFILE_FILE):
         return feature_status(
@@ -2015,82 +2021,37 @@ def create_company_page(name: str, website: str = '', industry: str = '',
             'error': f'Company page already exists: {filepath}'
         }
     
-    # Build domains string
+    # Derive the domain exactly as this tool always has when callers only
+    # provide a website; canonical rendering normalizes the final list.
     if not domains:
-        # Extract domain from website
         if website:
             domain = website.replace('https://', '').replace('http://', '').replace('www.', '').split('/')[0]
             domains = [domain]
         else:
             domains = []
-    
-    domains_str = ', '.join(domains) if domains else '{{company.com}}'
-    
-    timestamp = _tz_now().strftime('%Y-%m-%d')
-    
-    content = f"""# {name}
+    content = render_company_page(
+        name,
+        domains=domains,
+        website=website or None,
+        status=stage,
+    )
 
-## Overview
+    # The canonical renderer has no frontmatter field for industry or size, but
+    # this tool has always accepted both. Dropping them silently would lose the
+    # caller's input with no error, so record them under Notes where the user
+    # can see and edit them, leaving the machine-managed frontmatter canonical.
+    supplied_details = [
+        f"- **Industry:** {industry}" if industry else None,
+        f"- **Size:** {size}" if size else None,
+    ]
+    supplied_details = [line for line in supplied_details if line]
+    if supplied_details:
+        content = content.replace(
+            "## Notes\n\n",
+            "## Notes\n\n" + "\n".join(supplied_details) + "\n\n",
+            1,
+        )
 
-| Field | Value |
-|-------|-------|
-| **Website** | {website or '{{company.com}}'} |
-| **Industry** | {industry or '{{Industry}}'} |
-| **Size** | {size or '{{Startup / Scale-up / Enterprise}}'} |
-| **Stage** | {stage} |
-| **Domains** | {domains_str} |
-
----
-
-## Key Contacts
-
-<!-- Auto-populated from People pages with company: {name} -->
-
-| Name | Role | Last Interaction |
-|------|------|------------------|
-
-*Run refresh_company to update from People pages*
-
----
-
-## Projects
-
-<!-- Projects involving this company -->
-
----
-
-## Meeting History
-
-<!-- Auto-populated from meetings where attendee emails match domains -->
-
-| Date | Topic | Link |
-|------|-------|------|
-
-*Meetings detected by email domain matching*
-
----
-
-## Related Tasks
-
-<!-- Synced from 03-Tasks/Tasks.md via task MCP -->
-
-*Synced from 03-Tasks/Tasks.md — never*
-
-| Status | Task | Priority |
-|--------|------|----------|
-
----
-
-## Notes
-
-
-
----
-
-*Created: {timestamp}*
-*Updated: {timestamp}*
-"""
-    
     try:
         created = create_page_if_absent(
             filepath,
@@ -3463,10 +3424,15 @@ def _is_all_day_calendar_event(event: Dict) -> bool:
 
 def analyze_day_capacity(events: List[Dict], target_date: date) -> Dict[str, Any]:
     """Analyze a single day's calendar capacity"""
+    from core.utils.nudge_calendar import is_dex_nudge_event
+
     day_name = target_date.strftime('%A')
     timed_events = [
         event for event in events
-        if not _is_all_day_calendar_event(event)
+        if (
+            not _is_all_day_calendar_event(event)
+            and not is_dex_nudge_event(event)
+        )
     ]
     
     # Calculate total meeting time
@@ -3545,7 +3511,7 @@ def get_calendar_capacity_data(days_ahead: int = 5) -> Dict[str, Any]:
     # Generate structure for each day
     for i in range(days_ahead):
         target_date = today + timedelta(days=i)
-        if target_date.weekday() >= 5:  # Skip weekends
+        if not _is_working_day(target_date):
             continue
         
         day_data = {
@@ -5970,7 +5936,7 @@ async def _handle_call_tool_inner(
             # Analyze each day
             for i in range(days_ahead):
                 target_date = today + timedelta(days=i)
-                if target_date.weekday() >= 5:  # Skip weekends
+                if not _is_working_day(target_date):
                     continue
                 
                 date_str = target_date.isoformat()
@@ -6030,7 +5996,7 @@ async def _handle_call_tool_inner(
 
             for i in range(5):
                 target_date = today + timedelta(days=i)
-                if target_date.weekday() >= 5:
+                if not _is_working_day(target_date):
                     continue
 
                 date_str = target_date.isoformat()

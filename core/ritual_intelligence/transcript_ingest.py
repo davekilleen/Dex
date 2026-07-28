@@ -1,83 +1,17 @@
-"""Local transcript ingestion for Granola and manual imports."""
+"""Local transcript ingestion for manual file and folder imports."""
 
 from __future__ import annotations
 
 import json
-import platform
-import re
-from datetime import datetime, timedelta
+import os
+from datetime import datetime
 from pathlib import Path
 
 from .db import transaction, utc_now
-from .models import NormalizedAttendee, TranscriptArtifact
+from .models import TranscriptArtifact
 from .transcript_store import extract_action_items, extract_decisions, write_transcript_artifact
 
-
-def _find_latest_cache(granola_dir: Path) -> Path | None:
-    candidates = sorted(
-        granola_dir.glob("cache-v*.json"),
-        key=lambda path: int(re.search(r"v(\d+)", path.name).group(1)) if re.search(r"v(\d+)", path.name) else 0,
-        reverse=True,
-    )
-    return candidates[0] if candidates else None
-
-
-def granola_cache_path() -> Path:
-    home = Path.home()
-    system = platform.system()
-    if system == "Darwin":
-        base = home / "Library" / "Application Support" / "Granola"
-    elif system == "Windows":
-        base = Path.home() / "AppData" / "Roaming" / "Granola"
-    else:
-        base = home / ".config" / "Granola"
-    return _find_latest_cache(base) or base / "cache-v3.json"
-
-
-def _read_granola_cache(path: Path | None = None) -> dict:
-    target = path or granola_cache_path()
-    raw = json.loads(target.read_text(encoding="utf-8"))
-    cache = json.loads(raw.get("cache", "{}"))
-    return cache.get("state", {})
-
-
-def _normalize_granola_artifacts(cache_state: dict, *, days_back: int = 30) -> list[TranscriptArtifact]:
-    documents = cache_state.get("documents", {})
-    transcripts = cache_state.get("transcripts", {})
-    cutoff = datetime.now() - timedelta(days=days_back)
-    artifacts: list[TranscriptArtifact] = []
-    for meeting_id, document in documents.items():
-        if document.get("type") != "meeting":
-            continue
-        created_at_raw = document.get("created_at")
-        created_at = datetime.fromisoformat(created_at_raw.replace("Z", "+00:00")) if created_at_raw else None
-        if created_at and created_at.replace(tzinfo=None) < cutoff:
-            continue
-        transcript_entries = transcripts.get(meeting_id, [])
-        raw_text = "\n".join(entry.get("text", "") for entry in transcript_entries if entry.get("text")).strip()
-        if not raw_text:
-            continue
-        attendees = []
-        for attendee in document.get("people", {}).get("attendees", []):
-            name = (
-                attendee.get("details", {}).get("person", {}).get("name", {}).get("fullName")
-                or attendee.get("name")
-                or attendee.get("email")
-            )
-            attendees.append(NormalizedAttendee(name=name, email=attendee.get("email")))
-        artifacts.append(
-            TranscriptArtifact(
-                transcript_id=f"trn_{meeting_id}",
-                source="granola",
-                source_transcript_id=meeting_id,
-                title=document.get("title") or "Untitled Meeting",
-                started_at=created_at,
-                ended_at=None,
-                attendees=attendees,
-                raw_text=raw_text,
-            )
-        )
-    return artifacts
+SUPPORTED_TRANSCRIPT_SUFFIXES = frozenset({".md", ".txt", ".vtt", ".srt"})
 
 
 def ingest_artifacts(artifacts: list[TranscriptArtifact]) -> list[dict]:
@@ -147,12 +81,6 @@ def ingest_artifacts(artifacts: list[TranscriptArtifact]) -> list[dict]:
     return results
 
 
-def ingest_granola_local(*, cache_path: Path | None = None, days_back: int = 30) -> list[dict]:
-    state = _read_granola_cache(cache_path)
-    artifacts = _normalize_granola_artifacts(state, days_back=days_back)
-    return ingest_artifacts(artifacts)
-
-
 def import_manual_transcript(
     *,
     file_path: Path,
@@ -173,3 +101,115 @@ def import_manual_transcript(
         raw_text=raw_text,
     )
     return ingest_artifacts([artifact])[0]
+
+
+def _manual_transcript_imported(file_path: Path) -> bool:
+    with transaction(create=True) as conn:
+        row = conn.execute(
+            """
+            SELECT 1
+            FROM transcripts
+            WHERE source = 'manual' AND source_transcript_id = ?
+            LIMIT 1
+            """,
+            (str(file_path),),
+        ).fetchone()
+    return row is not None
+
+
+def _is_utf8_text_file(file_path: Path) -> bool:
+    raw = file_path.read_bytes()
+    if b"\x00" in raw:
+        return False
+    raw.decode("utf-8")
+    return True
+
+
+def import_manual_transcript_folder(*, folder_path: Path) -> dict:
+    """Import supported transcript files below a folder without crossing symlinks."""
+    requested_root = Path(folder_path).expanduser()
+    if requested_root.is_symlink():
+        raise ValueError(f"Transcript folder must not be a symlink: {requested_root}")
+    if not requested_root.is_dir():
+        raise ValueError(f"Transcript folder does not exist: {requested_root}")
+    root = requested_root.resolve(strict=True)
+
+    report = {"imported": 0, "skipped": 0, "failed": 0, "files": []}
+    for current_root, directory_names, file_names in os.walk(
+        root,
+        followlinks=False,
+    ):
+        directory_names[:] = sorted(
+            name
+            for name in directory_names
+            if not (Path(current_root) / name).is_symlink()
+        )
+        for file_name in sorted(file_names):
+            candidate = Path(current_root) / file_name
+            if candidate.suffix.lower() not in SUPPORTED_TRANSCRIPT_SUFFIXES:
+                continue
+
+            if candidate.is_symlink():
+                report["skipped"] += 1
+                report["files"].append(
+                    {"path": str(candidate), "status": "skipped"}
+                )
+                continue
+
+            try:
+                canonical_path = candidate.resolve(strict=True)
+            except OSError:
+                report["skipped"] += 1
+                report["files"].append(
+                    {"path": str(candidate), "status": "skipped"}
+                )
+                continue
+            if not canonical_path.is_relative_to(root) or not canonical_path.is_file():
+                report["skipped"] += 1
+                report["files"].append(
+                    {"path": str(candidate), "status": "skipped"}
+                )
+                continue
+
+            try:
+                if _manual_transcript_imported(canonical_path):
+                    report["skipped"] += 1
+                    report["files"].append(
+                        {"path": str(canonical_path), "status": "skipped"}
+                    )
+                    continue
+                if not _is_utf8_text_file(canonical_path):
+                    report["skipped"] += 1
+                    report["files"].append(
+                        {"path": str(canonical_path), "status": "skipped"}
+                    )
+                    continue
+            except (OSError, UnicodeError):
+                report["skipped"] += 1
+                report["files"].append(
+                    {"path": str(canonical_path), "status": "skipped"}
+                )
+                continue
+            except Exception:
+                report["failed"] += 1
+                report["files"].append(
+                    {"path": str(canonical_path), "status": "failed"}
+                )
+                continue
+
+            try:
+                import_manual_transcript(
+                    file_path=canonical_path,
+                    title=canonical_path.stem,
+                )
+            except Exception:
+                report["failed"] += 1
+                report["files"].append(
+                    {"path": str(canonical_path), "status": "failed"}
+                )
+                continue
+            report["imported"] += 1
+            report["files"].append(
+                {"path": str(canonical_path), "status": "imported"}
+            )
+    return report
