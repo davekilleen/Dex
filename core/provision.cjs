@@ -603,7 +603,6 @@ function provision(options) {
     return reporter.summary;
   }
 
-  let compatibilityPinUnavailable = false;
   try {
     if (options.adopt || options.onboard) {
       try {
@@ -615,18 +614,15 @@ function provision(options) {
           },
         );
       } catch (lifecycleError) {
-        // The pin records that an existing vault keeps its current rooms, and it
-        // runs through the lifecycle service so the change is transactional. That
-        // service needs a working Python. A user whose Python has broken should
-        // still be able to update: refusing the whole run to avoid adding one
-        // folder is the wrong trade. Continue, and fall back to pinning the rooms
-        // directly below — never by adopting the newer, more-enabled default.
-        compatibilityPinUnavailable = options.adopt === true;
+        // The lifecycle service needs a working Python. A user whose Python has
+        // broken should still be able to update: refusing the whole run is the
+        // wrong trade, and it is how a shipped release blocked updates outright.
+        // Continue and report honestly instead of aborting.
         reporter.summary.lifecycle_executor = {
           ok: false,
           reason: lifecycleError.message,
           compatibility_pinned: false,
-          fallback: 'existing rooms kept as they are, written directly',
+          fallback: 'continued without the lifecycle step',
         };
       }
     }
@@ -671,15 +667,6 @@ function provision(options) {
             : undefined;
           if (typeof legacy === 'boolean') {
             gapDefaults.capabilities[room].enabled = legacy;
-            continue;
-          }
-          if (compatibilityPinUnavailable) {
-            // The transactional pin could not run. A vault with no opinion on
-            // this room must still keep the behaviour it has today rather than
-            // inherit a default that has since been switched on, so record the
-            // room as off. Being switched on silently is the failure this pin
-            // exists to prevent, and that must not depend on Python working.
-            gapDefaults.capabilities[room].enabled = false;
           }
         }
         if (deepFillMissing(profile, gapDefaults)) {

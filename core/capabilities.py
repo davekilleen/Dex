@@ -583,12 +583,17 @@ def render_missing_companies_compatibility_pin(
                 )
             return None
 
+    # A vault that never expressed a choice gets these rooms rather than being
+    # held at an older, emptier shape: restoring a data surface nobody declined
+    # is the point. Companies now matches Career and Quarter Goals; it was the
+    # odd one out, pinned off, which no user could have explained. An explicit
+    # choice, on or off, is read above this and always wins.
     room_defaults = (
-        {"companies": False}
+        {"companies": True}
         if isinstance(capability_state, Mapping)
         else {
             "career": True,
-            "companies": False,
+            "companies": True,
             "quarter_goals": True,
         }
     )
