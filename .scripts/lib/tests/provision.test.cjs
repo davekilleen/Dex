@@ -120,11 +120,11 @@ test('fresh provision creates the full profile, seeds, MCP config, paths, and by
     assert.equal(profile.communication.detail_level, 'concise');
     assert.equal(profile.ignored_key, undefined);
     assert.deepEqual(profile.capabilities, {
-      career: { enabled: false },
+      career: { enabled: true },
       companies: { enabled: true },
-      quarter_goals: { enabled: false },
+      quarter_goals: { enabled: true },
     });
-    assert.equal(fs.existsSync(path.join(vault, '05-Areas', 'Career')), false);
+    assert.equal(fs.existsSync(path.join(vault, '05-Areas', 'Career')), true);
     assert.equal(fs.existsSync(path.join(vault, '05-Areas', 'Companies')), true);
     assert.equal(fs.existsSync(path.join(vault, '01-Quarter_Goals')), true);
 
@@ -197,7 +197,7 @@ test('fresh provision fills omitted capability rooms from template defaults', ()
     assert.deepEqual(profile.capabilities, {
       career: { enabled: true },
       companies: { enabled: true },
-      quarter_goals: { enabled: false },
+      quarter_goals: { enabled: true },
     });
     assert.equal(fs.existsSync(path.join(vault, '05-Areas', 'Companies')), true);
   });
