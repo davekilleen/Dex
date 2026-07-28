@@ -26,7 +26,7 @@ jobs:
       - name: Install dependencies
         run: |
           pip install -r requirements-dev.txt
-          pip install mcp pyyaml python-dateutil requests
+          pip install "mcp>=1.0.0,<2.0.0" pyyaml python-dateutil requests
           npm ci
 
       - name: Ensure scripts are executable
@@ -72,7 +72,7 @@ jobs:
       - name: Install Python dependencies
         run: |
           pip install -r requirements-dev.txt
-          pip install mcp pyyaml python-dateutil requests
+          pip install "mcp>=1.0.0,<2.0.0" pyyaml python-dateutil requests
 
       - name: Messy-vault adoption journey
         run: |
