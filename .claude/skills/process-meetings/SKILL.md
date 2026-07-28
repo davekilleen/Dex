@@ -273,6 +273,12 @@ For each meeting with unextracted tasks:
    <!-- tasks-extracted: 2026-02-03T10:30:00Z -->
    ```
 
+   **Also stamp meetings with nothing to extract.** If a meeting note has no
+   action items (or you just added AI analysis to a basic note and found none),
+   add the same `tasks-extracted` comment once processing is complete. The
+   session-start check uses this marker to know a meeting is done — an
+   unstamped note keeps being flagged as waiting.
+
 ### Step 6: Auto-link People in Processed Notes
 
 After finishing edits to each processed meeting note, run this once for every processed note:

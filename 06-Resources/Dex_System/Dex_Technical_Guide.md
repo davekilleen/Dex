@@ -763,7 +763,7 @@ Tasks use three tag types:
    - Person pages: Add meeting reference + action items
    - Career folder: If manager 1:1, save feedback to `05-Areas/Career/Evidence/`
 
-**User experience:** Meetings auto-sync. Just run `/process-meetings` to review and triage.
+**User experience:** Meetings auto-sync. Once Granola is connected, Dex notices waiting meetings at the start of a session and processes them in the background automatically. Nothing appears when there is nothing to do. You can still run `/process-meetings` directly whenever you want to review or triage meetings yourself.
 
 ### Why MCP for Integrations?
 
