@@ -20,6 +20,10 @@ Your meetings did arrive in Dex on their own — but turning them into something
 * **Meetings set aside for "manual processing" stop being lost.** If you'd chosen to process meetings by hand, Dex was setting each one aside in a waiting pile — and then nothing ever looked at that pile. Those meetings are now picked up, turned into proper notes, and handled with the rest.
 * **Silence when there's nothing to do.** No message when everything's up to date.
 
+### 🧭 Setting up Dex for the first time gets to the finish line
+
+* **A brand-new setup no longer stops at its very last step.** Depending on how your computer was set up, the final step of a first install could fail and leave you with a half-finished Dex. It now uses the tools the installer has just prepared for it, so it finishes properly.
+
 ## [1.78.0] — 🛡️ The trust release: updating Dex works again, for everyone (2026-07-28)
 
 ### 📓 Your goals and career pages come back

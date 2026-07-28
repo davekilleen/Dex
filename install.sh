@@ -302,7 +302,11 @@ fi
 
 # Any catalog adoption after bootstrap crosses the frozen lifecycle service;
 # the provisioner only collects the vault path and renders its receipt.
-DEX_LIFECYCLE_PYTHON="$PYTHON_CMD" node core/provision.cjs --path "$(pwd)" --adopt --lifecycle-only
+DEX_ADOPTION_PYTHON="$PYTHON_CMD"
+if [ -n "$VENV_PYTHON" ] && [ -f "$VENV_PYTHON" ]; then
+    DEX_ADOPTION_PYTHON="$VENV_PYTHON"
+fi
+DEX_LIFECYCLE_PYTHON="$DEX_ADOPTION_PYTHON" node core/provision.cjs --path "$(pwd)" --adopt --lifecycle-only
 
 # Success
 echo ""
