@@ -129,11 +129,11 @@ journaling:
 # and intentionally have no switch here.
 capabilities:
   career:
-    enabled: false
+    enabled: true
   companies:
     enabled: true
   quarter_goals:
-    enabled: false
+    enabled: true
 
 # Quarterly Planning Configuration
 # Controls whether you use quarterly goal setting
