@@ -62,6 +62,25 @@ def _catalog_fixture(tmp_path: Path) -> tuple[Path, Path, bytes]:
         + "\n",
         encoding="utf-8",
     )
+    bridge_path = release_root / "core/lifecycle/catalog/bridge-release.json"
+    bridge_path.write_text(
+        json.dumps(
+            {
+                "bridge_contract_version": 1,
+                "release_version": "1.68.0",
+                "transaction_journal": {
+                    "current_schema": 2,
+                    "previous_schema": 1,
+                    "minimum_resumable_schema": 1,
+                    "incompatible_action": "rollback-only",
+                },
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        + "\n",
+        encoding="utf-8",
+    )
     (release_root / "package.json").write_text('{"version":"9.8.7"}\n', encoding="utf-8")
 
     manifest_path = release_root / "System/.installed-files.manifest"
@@ -70,6 +89,7 @@ def _catalog_fixture(tmp_path: Path) -> tuple[Path, Path, bytes]:
         b".claude/skills/decision-log/SKILL.md\n"
         b"System/.installed-files.manifest\n"
         b"System/.release-catalog.json\n"
+        b"core/lifecycle/catalog/bridge-release.json\n"
         b"core/lifecycle/catalog/test-items.json\n"
         b"package.json\n"
     )
@@ -120,6 +140,25 @@ def test_release_catalog_generation_is_deterministic_and_uses_b1_contract(
     assert catalog.items[0].files[0].sha256 == hashlib.sha256(item_path.read_bytes()).hexdigest()
     assert catalog.items[0].files[0].ownership_class == "brain"
     assert catalog.items[0].rewind.token == "rewind:decision-log@1.0.0"
+
+
+def test_release_generation_stamps_and_stages_the_bridge_release_version(
+    tmp_path: Path,
+) -> None:
+    release_root, _item_path, _manifest_bytes = _catalog_fixture(tmp_path)
+
+    result = _generate(release_root)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    bridge = json.loads(
+        (release_root / "core/lifecycle/catalog/bridge-release.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    catalog = json.loads(
+        (release_root / "System/.release-catalog.json").read_text(encoding="utf-8")
+    )
+    assert bridge["release_version"] == catalog["release"]["version"] == "9.8.7"
 
 
 def test_catalog_coverage_gate_fails_closed_when_an_item_file_is_removed(

@@ -369,9 +369,15 @@ def _release_payload_loader(release_root: str | Path):
 
 
 def _prepare(vault_root: str | Path, release_root: str | Path | None = None) -> None:
-    from core.lifecycle.bridge import prepare_vault
+    from core.lifecycle.bridge import BridgeActivationError, prepare_vault
 
-    prepare_vault(vault_root, release_root=release_root)
+    try:
+        prepare_vault(vault_root, release_root=release_root)
+    except BridgeActivationError:
+        raise PlanRejected(
+            "this Dex copy's update engine doesn't match its release information "
+            "— run /dex-doctor"
+        ) from None
 
 
 def _archive_inventory(root: Path) -> dict[str, object]:

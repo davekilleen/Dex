@@ -62,7 +62,12 @@ _FORBIDDEN_GIT_ENV_NAMES = {
 SESSION_WALL_CLOCK_SECONDS = 10.0
 MAX_AGGREGATE_OUTPUT_BYTES = 64 * 1024 * 1024
 MAX_GIT_OUTPUT_BYTES = 32 * 1024 * 1024
-MAX_REMOTE_RELEASE_REFS = 128
+# DoS-only guard, not release-evidence policy: 10,000 refs is decades away at
+# the current immutable-tag cadence. Correctness bounds apply only to the final
+# highest-version group through MAX_RELEASE_TAGS below.
+MAX_REMOTE_RELEASE_REFS = 10_000
+MAX_REMOTE_RELEASE_REF_BYTES = 512
+MAX_REMOTE_RELEASE_OUTPUT_BYTES = MAX_REMOTE_RELEASE_REFS * (MAX_REMOTE_RELEASE_REF_BYTES + 1)
 # Normal operation has one tag at the highest stable version. Thirty-two keeps
 # the complete same-version group available for ambiguity checks while bounding
 # anomalous tag fan-out within the single SessionStart deadline/disk budget.
@@ -153,6 +158,12 @@ class ReleaseEvidenceProfile:
 class RemoteTagEvidence:
     tag: str
     tag_object: str
+
+
+@dataclass(frozen=True)
+class RemoteReleaseTagEnumeration:
+    selected: tuple[RemoteTagEvidence, ...]
+    observed_tags: frozenset[str]
 
 
 @dataclass(frozen=True)
@@ -707,7 +718,7 @@ class UpdateVerifier:
             raise EvidenceError("isolated release cache contains alternate object storage")
         GitRunner._bounded_directory_usage(self.cache_path)
 
-    def _remote_release_tags(self) -> tuple[RemoteTagEvidence, ...]:
+    def _remote_release_tags(self) -> RemoteReleaseTagEnumeration:
         raw = self.git.run_plain(
             "-c",
             "credential.helper=",
@@ -721,10 +732,18 @@ class UpdateVerifier:
             self.remote_url,
             "refs/tags/dist/release/*",
             network=True,
-            max_output_bytes=256 * 1024,
+            max_output_bytes=MAX_REMOTE_RELEASE_OUTPUT_BYTES,
         )
-        tags: list[RemoteTagEvidence] = []
+        observed_tags: set[str] = set()
+        selected: list[RemoteTagEvidence] = []
+        highest_version: SemVer | None = None
+        ref_count = 0
         for line in raw.splitlines():
+            ref_count += 1
+            if ref_count > MAX_REMOTE_RELEASE_REFS:
+                raise EvidenceError("remote release reference enumeration exceeded its DoS bound")
+            if len(line) > MAX_REMOTE_RELEASE_REF_BYTES:
+                raise EvidenceError("remote release reference exceeded its per-ref parsing bound")
             try:
                 object_id, raw_ref = line.split(b"\t", 1)
                 ref = raw_ref.decode("utf-8")
@@ -734,17 +753,29 @@ class UpdateVerifier:
                 "refs/tags/dist/release/"
             ):
                 raise EvidenceError("remote release reference is outside the pinned namespace")
-            tags.append(
-                RemoteTagEvidence(
-                    tag=ref.removeprefix("refs/tags/"),
-                    tag_object=object_id.decode("ascii"),
-                )
+            tag = ref.removeprefix("refs/tags/")
+            match = _TAG_RE.fullmatch(tag)
+            if match is None:
+                continue
+            if tag in observed_tags:
+                raise EvidenceError("remote release reference enumeration is ambiguous")
+            observed_tags.add(tag)
+            evidence = RemoteTagEvidence(
+                tag=tag,
+                tag_object=object_id.decode("ascii"),
             )
-            if len(tags) > MAX_REMOTE_RELEASE_REFS:
-                raise EvidenceError("remote release reference enumeration exceeded its bound")
-        if len(tags) != len({item.tag for item in tags}):
-            raise EvidenceError("remote release reference enumeration is ambiguous")
-        return tuple(sorted(tags, key=lambda item: item.tag))
+            version = SemVer.parse(match.group("version"))
+            if highest_version is None or version > highest_version:
+                highest_version = version
+                selected = [evidence]
+            elif version == highest_version:
+                selected.append(evidence)
+        if len(selected) > MAX_RELEASE_TAGS:
+            raise EvidenceError("higher release candidate count exceeded its bound")
+        return RemoteReleaseTagEnumeration(
+            selected=tuple(sorted(selected, key=lambda item: item.tag)),
+            observed_tags=frozenset(observed_tags),
+        )
 
     def _fetch(self, tags: tuple[RemoteTagEvidence, ...]) -> None:
         if self.fetch_override is not None:
@@ -1130,7 +1161,8 @@ class UpdateVerifier:
                 if persistent_cache.exists():
                     self._evidence_cache = persistent_cache
                     self._validate_cache()
-                remote_tags = self._remote_release_tags()
+                remote_enumeration = self._remote_release_tags()
+                remote_tags = remote_enumeration.selected
                 highest_remote_version: SemVer | None = None
                 selected_remote_tags: list[RemoteTagEvidence] = []
                 for remote_tag in remote_tags:
@@ -1154,7 +1186,7 @@ class UpdateVerifier:
                     if (
                         prior_match is not None
                         and SemVer.parse(prior_match.group("version")) > current_semver
-                        and prior_tag not in {item.tag for item in remote_tags}
+                        and prior_tag not in remote_enumeration.observed_tags
                     ):
                         raise EvidenceError("previously observed immutable candidate tag disappeared")
                 for remote_tag in selected_remote_tags:
