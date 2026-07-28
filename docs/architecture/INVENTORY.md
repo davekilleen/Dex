@@ -1,10 +1,6 @@
 <!-- GENERATED FILE — DO NOT EDIT BY HAND. -->
 <!-- Generator: scripts/generate-architecture-inventory.py -->
-<<<<<<< HEAD
-<!-- Content SHA-256: 9425f63da071266225506605e4d8d7b1874824e8a20949e51b5f1fc88661ca78 -->
-=======
-<!-- Content SHA-256: 344f88c8486d129e982e9c51537b5cd46b8ac2b45c6815857b1658e8559e22fe -->
->>>>>>> origin/main
+<!-- Content SHA-256: d176e7ceff1ad967d0ccc56cf09fb0d6d8b363c60944459331158578cc0d717b -->
 
 # Architecture Inventory
 
