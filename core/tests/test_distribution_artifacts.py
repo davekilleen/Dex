@@ -745,7 +745,7 @@ def test_release_script_regenerates_profile_for_bumped_version(tmp_path: Path) -
     major, minor, patch = (int(part) for part in before.split("."))
     bumped = f"{major}.{minor}.{patch + 1}"
 
-    subprocess.run(
+    result = subprocess.run(
         ["bash", "scripts/release.sh", "patch"],
         cwd=clone,
         check=True,
@@ -766,6 +766,8 @@ def test_release_script_regenerates_profile_for_bumped_version(tmp_path: Path) -
     ).stdout.strip() == subprocess.run(
         ["git", "rev-parse", "HEAD"], cwd=clone, check=True, capture_output=True, text=True
     ).stdout.strip()
+    assert f"git push origin HEAD:main && git push origin refs/tags/v{bumped}" in result.stdout
+    assert "--follow-tags" not in result.stdout
 
 
 def test_every_release_path_invokes_legacy_profile_generation() -> None:
