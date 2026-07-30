@@ -689,9 +689,16 @@ def test_production_runtime_refuses_undeclared_lifecycle_operation() -> None:
         )
 
 
+@pytest.mark.parametrize(
+    ("foundation_installed", "use_cache", "expected_cleaned"),
+    ((False, False, [True]), (True, True, [])),
+)
 def test_fixture_runtime_server_exposes_only_fixed_bridge_and_lifecycle_messages(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    foundation_installed: bool,
+    use_cache: bool,
+    expected_cleaned: list[bool],
 ) -> None:
     cleaned: list[bool] = []
 
@@ -723,7 +730,7 @@ def test_fixture_runtime_server_exposes_only_fixed_bridge_and_lifecycle_messages
     monkeypatch.setattr(
         executor.dex_update_bridge,
         "_foundation_is_installed",
-        lambda *_args: False,
+        lambda *_args: foundation_installed,
     )
     monkeypatch.setattr(
         executor.dex_update_bridge,
@@ -751,7 +758,13 @@ def test_fixture_runtime_server_exposes_only_fixed_bridge_and_lifecycle_messages
     monkeypatch.setattr(executor.sys, "stdin", request_stream)
     monkeypatch.setattr(executor.sys, "stdout", response_stream)
 
-    assert executor._runtime_server(tmp_path / "vault") == 0
+    assert (
+        executor._runtime_server(
+            tmp_path / "vault",
+            foundation_cache=(tmp_path / "unused-cache" if use_cache else None),
+        )
+        == 0
+    )
 
     messages = [
         json.loads(line)
@@ -767,4 +780,4 @@ def test_fixture_runtime_server_exposes_only_fixed_bridge_and_lifecycle_messages
     assert messages[1]["text"] == "exact topology preview"
     assert messages[2]["prompt"] == "exact topology prompt"
     assert messages[4]["value"]["status"] == "delivered"
-    assert cleaned == [True]
+    assert cleaned == expected_cleaned

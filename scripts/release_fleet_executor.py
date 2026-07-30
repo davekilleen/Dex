@@ -634,6 +634,10 @@ def _runtime_server(
 
     root = dex_update_bridge._validate_vault(vault)
     temporary: tempfile.TemporaryDirectory[str] | None = None
+    cached_fetch: Callable[
+        [Path, dex_update_bridge.ReleasePin],
+        None,
+    ] | None = None
     try:
         if dex_update_bridge._foundation_is_installed(
             root,
@@ -654,6 +658,7 @@ def _runtime_server(
                     pin,
                     cache=foundation_cache,
                 )
+            cached_fetch = fetch_foundation
         else:
             temporary, source = dex_update_bridge.acquire_foundation_source()
         service = dex_update_bridge._load_lifecycle_service(source)
@@ -674,8 +679,8 @@ def _runtime_server(
                             {"kind": "output", "text": text}
                         ),
                     }
-                    if foundation_cache is not None:
-                        bridge_arguments["fetch_foundation"] = fetch_foundation
+                    if cached_fetch is not None:
+                        bridge_arguments["fetch_foundation"] = cached_fetch
                     result = dex_update_bridge.run_bridge(
                         root,
                         service,
