@@ -12,6 +12,7 @@ import platform
 import re
 import shutil
 import signal
+import stat
 import subprocess
 import sys
 import time
@@ -124,6 +125,7 @@ SEALED_INSTALLER_ENVIRONMENT_KEYS = frozenset(
         "HOME",
         "TMPDIR",
         "PATH",
+        "PIP_CACHE_DIR",
         "LANG",
         "LC_ALL",
         "PYTHONNOUSERSITE",
@@ -751,17 +753,31 @@ def _case_environment(
     *,
     node_runtime: NodeRuntime | None = None,
     python_runtime: PythonRuntime | None = None,
+    pip_cache_dir: Path | None = None,
 ) -> dict[str, str]:
     """Return the complete, deliberately small environment for one fixture."""
 
     home = runtime_root / "home"
     temporary = runtime_root / "tmp"
+    pip_cache = pip_cache_dir or runtime_root / "pip-cache"
     home.mkdir(parents=True, exist_ok=False)
     temporary.mkdir(parents=True, exist_ok=False)
+    if pip_cache.is_symlink() or (pip_cache.exists() and not pip_cache.is_dir()):
+        raise FleetError("fixture pip cache must be a private directory")
+    pip_cache.mkdir(parents=True, mode=0o700, exist_ok=True)
+    cache_status = pip_cache.stat()
+    if (
+        cache_status.st_uid != os.getuid()
+        or stat.S_IMODE(cache_status.st_mode) != 0o700
+    ):
+        raise FleetError(
+            "fixture pip cache must be owned by the controller with mode 0700"
+        )
     environment = {
         "HOME": str(home),
         "TMPDIR": str(temporary),
         "PATH": "/usr/bin:/bin:/usr/sbin:/sbin",
+        "PIP_CACHE_DIR": str(pip_cache.resolve(strict=True)),
         "LANG": "C.UTF-8",
         "LC_ALL": "C.UTF-8",
         "PYTHONNOUSERSITE": "1",

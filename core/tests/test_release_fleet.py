@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import stat
 import subprocess
 import sys
 import time
@@ -1329,6 +1330,7 @@ def test_case_environment_is_allowlisted_and_has_an_isolated_home(tmp_path: Path
         "HOME",
         "TMPDIR",
         "PATH",
+        "PIP_CACHE_DIR",
         "LANG",
         "LC_ALL",
         "PYTHONNOUSERSITE",
@@ -1338,8 +1340,52 @@ def test_case_environment_is_allowlisted_and_has_an_isolated_home(tmp_path: Path
         "VAULT_PATH",
     }
     assert Path(environment["HOME"]).is_dir()
+    assert Path(environment["PIP_CACHE_DIR"]).is_dir()
+    assert stat.S_IMODE(Path(environment["PIP_CACHE_DIR"]).stat().st_mode) == 0o700
     assert environment["HOME"] != str(Path.home())
     assert environment["VAULT_PATH"] == str(tmp_path / "vault")
+
+
+def test_case_environment_reuses_only_a_private_controller_pip_cache(
+    tmp_path: Path,
+) -> None:
+    shared_cache = tmp_path / "controller-cache" / "pip"
+    first = release_fleet._case_environment(
+        tmp_path / "first-vault",
+        tmp_path / "first-runtime",
+        pip_cache_dir=shared_cache,
+    )
+    second = release_fleet._case_environment(
+        tmp_path / "second-vault",
+        tmp_path / "second-runtime",
+        pip_cache_dir=shared_cache,
+    )
+
+    assert first["PIP_CACHE_DIR"] == str(shared_cache)
+    assert second["PIP_CACHE_DIR"] == str(shared_cache)
+    assert stat.S_IMODE(shared_cache.stat().st_mode) == 0o700
+
+
+@pytest.mark.parametrize("unsafe_kind", ("symlink", "permissive"))
+def test_case_environment_rejects_unsafe_shared_pip_cache(
+    tmp_path: Path,
+    unsafe_kind: str,
+) -> None:
+    shared_cache = tmp_path / "shared-cache"
+    if unsafe_kind == "symlink":
+        target = tmp_path / "target"
+        target.mkdir(mode=0o700)
+        shared_cache.symlink_to(target, target_is_directory=True)
+    else:
+        shared_cache.mkdir(mode=0o755)
+        shared_cache.chmod(0o755)
+
+    with pytest.raises(release_fleet.FleetError, match="pip cache"):
+        release_fleet._case_environment(
+            tmp_path / "vault",
+            tmp_path / "runtime",
+            pip_cache_dir=shared_cache,
+        )
 
 
 def test_trusted_node_runtime_ignores_hostile_path_and_is_explicitly_injected(
