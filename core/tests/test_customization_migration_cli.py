@@ -124,6 +124,43 @@ def test_assess_unknown_prints_no_counts(tmp_path: Path) -> None:
     )
 
 
+def test_assess_partial_prints_observed_count_and_exclusion_guidance(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    vault = _manifest_only_vault(tmp_path)
+    monkeypatch.setattr(
+        cli.migration_service,
+        "assess_to_dict",
+        lambda _root: {
+            "verdict": "UNKNOWN",
+            "records": [{"customization_id": "custom-1"}],
+            "exclusions": [
+                {
+                    "path": "custom/large.md",
+                    "reason": "read-bound-exceeded",
+                    "guidance": "Split the file, then reassess.",
+                }
+            ],
+        },
+    )
+
+    return_code, output = _run_in_process(
+        vault,
+        capsys,
+        monkeypatch,
+        "assess",
+    )
+
+    assert return_code == 0
+    assert "Observed 1 customizations" in output
+    assert (
+        "Excluded custom/large.md [read-bound-exceeded]: "
+        "Split the file, then reassess."
+    ) in output
+
+
 def test_create_requires_current_printed_token_and_stale_token_writes_nothing(
     tmp_path: Path,
 ) -> None:
