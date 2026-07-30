@@ -10,6 +10,7 @@ the topology conversion and release writes to its lifecycle service.
 from __future__ import annotations
 
 import argparse
+import base64
 import hashlib
 import importlib
 import json
@@ -33,6 +34,15 @@ _TRUSTED_EXECUTABLE_DIRECTORIES = (Path("/usr/bin"), Path("/bin"), Path("/usr/lo
 _TOPOLOGY_MIGRATOR_RELATIVE = Path(
     "core/migrations/v1-to-v2-brain-vault-split.cjs"
 )
+_TRACKED_IGNORE_POLICY_RELATIVE = Path(
+    "core/migrations/tracked-ignored-policy.yaml"
+)
+_PRESERVATION_TRANSITION_RELATIVE = Path(
+    "System/.local-only-preservation-transition.json"
+)
+_LEGACY_SHIPPED_SYMLINK_RELATIVE = Path(".pi/agent/extensions/dex")
+_LEGACY_SHIPPED_SYMLINK_TARGET = "../../../pi-extensions/dex"
+_LEGACY_SHIPPED_SYMLINK_BLOB = "f1c88c92cea996705f982e902bafb758156aef52"
 
 
 class BridgeError(RuntimeError):
@@ -100,6 +110,155 @@ LEGACY_TOPOLOGY_FOUNDATION = LegacyTopologyPin(
     commit="9e6f35d3282cb354008a4e7372b1cdb1d469ad3d",
     tree="b781bb94e417b2873d057a5a417d8c666a360bca",
 )
+
+# v1.20.1 predates the tracked-ignore transition that the topology migrator
+# reads before it can even build a preview. This is the complete baseline-v1
+# policy first shipped for those historical paths, pinned here by byte hash.
+# The compatibility preload exposes it read-only to the verified migrator; it
+# never installs these newer release files into the old combined vault.
+_LEGACY_TRACKED_IGNORE_POLICY = b"""schema_version: 2
+active_baseline_version: 1
+baselines:
+  - baseline_version: 1
+    baseline_count: 27
+    paths:
+      - path: 00-Inbox/Daily_Plans/README.md
+        classification: intentional-seed
+      - path: 00-Inbox/Ideas/README.md
+        classification: intentional-seed
+      - path: 00-Inbox/Meetings/README.md
+        classification: intentional-seed
+      - path: 00-Inbox/README.md
+        classification: intentional-seed
+      - path: 01-Quarter_Goals/Quarter_Goals.md
+        classification: intentional-seed
+      - path: 02-Week_Priorities/Week_Priorities.md
+        classification: intentional-seed
+      - path: 03-Tasks/Tasks.md
+        classification: intentional-seed
+      - path: 04-Projects/README.md
+        classification: intentional-seed
+      - path: 05-Areas/Career/Evidence/README.md
+        classification: intentional-seed
+      - path: 05-Areas/Companies/README.md
+        classification: intentional-seed
+      - path: 05-Areas/People/External/README.md
+        classification: intentional-seed
+      - path: 05-Areas/People/Internal/README.md
+        classification: intentional-seed
+      - path: 05-Areas/People/README.md
+        classification: intentional-seed
+      - path: 05-Areas/README.md
+        classification: intentional-seed
+      - path: 07-Archives/Plans/README.md
+        classification: intentional-seed
+      - path: 07-Archives/Projects/README.md
+        classification: intentional-seed
+      - path: 07-Archives/README.md
+        classification: intentional-seed
+      - path: 07-Archives/Reviews/README.md
+        classification: intentional-seed
+      - path: System/Dex_Backlog.md
+        classification: intentional-seed
+      - path: System/Session_Learnings/README.md
+        classification: intentional-seed
+      - path: System/pillars.yaml
+        classification: intentional-seed
+      - path: System/usage_log.md
+        classification: intentional-seed
+      - path: System/user-profile.yaml
+        classification: intentional-seed
+      - path: System/Beta_Communications/2026-02-04_hardcoded_paths_fix.md
+        classification: release-doc
+      - path: System/Session_Learnings/2026-01-29.md
+        classification: local-only-must-be-untracked
+      - path: System/Session_Learnings/2026-01-30.md
+        classification: local-only-must-be-untracked
+      - path: System/integrations/slack.yaml
+        classification: local-only-must-be-untracked
+"""
+_LEGACY_TRACKED_IGNORE_POLICY_SHA256 = (
+    "bf0af119939930fb4d3b466584a3e9392edb66bf61ec09675521c9a5969f3f50"
+)
+_LEGACY_PRESERVATION_TRANSITION = (
+    b'{"phase":"bootstrap-v1","release_version":"1.20.1","schema_version":1}\n'
+)
+
+
+def _legacy_preload_bytes() -> bytes:
+    """Build the closed Node preload that supplies two absent read-only inputs."""
+
+    policy = base64.b64encode(_LEGACY_TRACKED_IGNORE_POLICY).decode("ascii")
+    transition = base64.b64encode(_LEGACY_PRESERVATION_TRANSITION).decode(
+        "ascii"
+    )
+    return f"""'use strict';
+const fs = require('node:fs');
+const path = require('node:path');
+
+const root = fs.realpathSync(process.cwd());
+const shippedLink = path.join(root, '{_LEGACY_SHIPPED_SYMLINK_RELATIVE.as_posix()}');
+const shippedLinkParent = path.dirname(shippedLink);
+const shippedLinkName = path.basename(shippedLink);
+const shippedLinkTarget = '{_LEGACY_SHIPPED_SYMLINK_TARGET}';
+const inputs = new Map([
+  [path.join(root, '{_TRACKED_IGNORE_POLICY_RELATIVE.as_posix()}'), Buffer.from('{policy}', 'base64')],
+  [path.join(root, '{_PRESERVATION_TRANSITION_RELATIVE.as_posix()}'), Buffer.from('{transition}', 'base64')],
+]);
+const originalReadFileSync = fs.readFileSync.bind(fs);
+const originalReaddirSync = fs.readdirSync.bind(fs);
+
+let hideShippedLink = false;
+let shippedLinkFound = false;
+try {{
+  const linkState = fs.lstatSync(shippedLink);
+  shippedLinkFound = true;
+  const resolvedTarget = fs.realpathSync(shippedLink);
+  const expectedTarget = path.join(root, 'pi-extensions/dex');
+  if (
+    !linkState.isSymbolicLink()
+    || fs.readlinkSync(shippedLink) !== shippedLinkTarget
+    || resolvedTarget !== expectedTarget
+    || !fs.lstatSync(expectedTarget).isDirectory()
+  ) {{
+    throw new Error(`Dex update bridge refused changed legacy release symlink ${{shippedLink}}.`);
+  }}
+  hideShippedLink = true;
+}} catch (error) {{
+  if (shippedLinkFound || !error || error.code !== 'ENOENT') throw error;
+}}
+
+fs.readFileSync = function dexLegacyCompatibilityRead(candidate, options) {{
+  const supplied = Buffer.isBuffer(candidate) ? candidate.toString() : String(candidate);
+  const absolute = path.resolve(supplied);
+  const content = inputs.get(absolute);
+  if (content === undefined) return originalReadFileSync(candidate, options);
+  try {{
+    fs.lstatSync(absolute);
+  }} catch (error) {{
+    if (error && error.code === 'ENOENT') {{
+      const encoding = typeof options === 'string' ? options : options && options.encoding;
+      return encoding ? content.toString(encoding) : Buffer.from(content);
+    }}
+    throw error;
+  }}
+  throw new Error(`Dex update bridge refused existing legacy compatibility input ${{absolute}}.`);
+}};
+
+fs.readdirSync = function dexLegacyCompatibilityDirectory(directory, options) {{
+  const entries = originalReaddirSync(directory, options);
+  if (
+    hideShippedLink
+    && path.resolve(String(directory)) === shippedLinkParent
+    && options
+    && typeof options === 'object'
+    && options.withFileTypes === true
+  ) {{
+    return entries.filter((entry) => entry.name !== shippedLinkName);
+  }}
+  return entries;
+}};
+""".encode()
 
 
 class LifecycleService(Protocol):
@@ -359,13 +518,23 @@ class _FoundationLifecycleService:
     bridge file is copied into the vault and unknown layouts stay fail-closed.
     """
 
-    def __init__(self, service: ModuleType, engine: ModuleType, source: Path) -> None:
+    def __init__(
+        self,
+        service: ModuleType,
+        engine: ModuleType,
+        apply_update: ModuleType,
+        source: Path,
+    ) -> None:
         self._service = service
         self._engine = engine
+        self._apply_update = apply_update
         self._source = Path(source).resolve()
         self._migrator = self._source / _TOPOLOGY_MIGRATOR_RELATIVE
         engine_relative = getattr(engine, "TOPOLOGY_MIGRATOR_RELATIVE", None)
-        if Path(engine_relative) != _TOPOLOGY_MIGRATOR_RELATIVE:
+        if (
+            not isinstance(engine_relative, Path)
+            or engine_relative != _TOPOLOGY_MIGRATOR_RELATIVE
+        ):
             raise BridgeError("pinned foundation topology migrator path changed")
         if (
             self._migrator.is_symlink()
@@ -374,12 +543,34 @@ class _FoundationLifecycleService:
         ):
             raise BridgeError("pinned foundation topology migrator is missing or unsafe")
         self._migrator_sha256 = hashlib.sha256(self._migrator.read_bytes()).hexdigest()
+        if (
+            hashlib.sha256(_LEGACY_TRACKED_IGNORE_POLICY).hexdigest()
+            != _LEGACY_TRACKED_IGNORE_POLICY_SHA256
+        ):
+            raise BridgeError("pinned legacy tracked-ignore policy changed")
+        compatibility = Path(
+            tempfile.mkdtemp(
+                prefix="dex-v1201-compat-",
+                dir=self._source.parent,
+            )
+        )
+        self._preload = compatibility / "read-only-inputs.cjs"
+        with self._preload.open("xb") as handle:
+            handle.write(_legacy_preload_bytes())
+            handle.flush()
+            os.fsync(handle.fileno())
+        self._preload.chmod(0o400)
+        self._preload_sha256 = hashlib.sha256(self._preload.read_bytes()).hexdigest()
         if not callable(getattr(engine, "topology_state", None)) or not callable(
             getattr(engine, "_migrator_command", None)
         ):
             raise BridgeError("pinned foundation topology engine is incomplete")
+        if not callable(getattr(apply_update, "_tree_entries", None)) or not callable(
+            getattr(apply_update, "_verify_manifest", None)
+        ):
+            raise BridgeError("pinned foundation release planner is incomplete")
 
-    def _verify_migrator(self) -> None:
+    def _verify_compatibility_runtime(self) -> None:
         if (
             self._migrator.is_symlink()
             or not self._migrator.is_file()
@@ -390,10 +581,18 @@ class _FoundationLifecycleService:
             != self._migrator_sha256
         ):
             raise BridgeError("pinned foundation topology migrator changed after verification")
+        if (
+            self._preload.is_symlink()
+            or not self._preload.is_file()
+            or not self._preload.resolve().is_relative_to(self._source.parent.resolve())
+            or hashlib.sha256(self._preload.read_bytes()).hexdigest()
+            != self._preload_sha256
+        ):
+            raise BridgeError("pinned legacy compatibility preload changed after verification")
 
     @contextmanager
     def _topology_source(self) -> Iterator[None]:
-        self._verify_migrator()
+        self._verify_compatibility_runtime()
         original_state = self._engine.topology_state
         original_command = self._engine._migrator_command
         authorized_roots: set[Path] = set()
@@ -422,13 +621,19 @@ class _FoundationLifecycleService:
                 or mode not in {"--dry-run", "--auto", "--resume"}
             ):
                 return original_command(vault_root, mode)
-            self._verify_migrator()
+            self._verify_compatibility_runtime()
             node = _trusted_executable("node")
             if node is None:
                 raise BridgeError(
                     "trusted system Node.js is required for the foundation topology migrator"
                 )
-            return [str(node), str(self._migrator), mode]
+            return [
+                str(node),
+                "--require",
+                str(self._preload),
+                str(self._migrator),
+                mode,
+            ]
 
         self._engine.topology_state = topology_state
         self._engine._migrator_command = migrator_command
@@ -437,6 +642,145 @@ class _FoundationLifecycleService:
         finally:
             self._engine.topology_state = original_state
             self._engine._migrator_command = original_command
+
+    @contextmanager
+    def _legacy_delivery_source(self) -> Iterator[None]:
+        """Let the planner read the one exact pre-manifest legacy release.
+
+        v1.20.1 has one shipped symlink and no installed-files manifest. The
+        foundation planner correctly refuses either shape for a modern target.
+        For only the already-pinned installed tree, this read adapter omits the
+        known symlink and unclassified retired release paths. The lifecycle
+        transaction remains the sole writer; omitted legacy paths stay in
+        place as user-controlled/unmanaged content.
+        """
+
+        original_tree_entries = self._apply_update._tree_entries
+        original_verify_manifest = self._apply_update._verify_manifest
+        authorized_legacy_signatures: set[tuple[tuple[str, int, str], ...]] = set()
+        release_error = getattr(
+            self._apply_update,
+            "ReleaseVerificationError",
+            RuntimeError,
+        )
+        contract_violation = getattr(
+            self._apply_update.portable_contract,
+            "ContractViolation",
+            RuntimeError,
+        )
+        tree_entry = getattr(self._apply_update, "TreeEntry", None)
+        if not callable(tree_entry):
+            raise BridgeError("pinned foundation release entry type is unavailable")
+
+        def signature(entries: tuple[Any, ...]) -> tuple[tuple[str, int, str], ...]:
+            return tuple(
+                (entry.path, entry.mode, entry.object_id) for entry in entries
+            )
+
+        def legacy_tree_entries(
+            vault_root: Path,
+            brain_git: Path,
+            commit: str,
+        ) -> tuple[Any, ...]:
+            if commit != LEGACY_TOPOLOGY_FOUNDATION.commit:
+                return original_tree_entries(vault_root, brain_git, commit)
+            if (
+                _run_git(Path(brain_git), "rev-parse", "--verify", f"{commit}^{{tree}}")
+                != LEGACY_TOPOLOGY_FOUNDATION.tree
+            ):
+                raise BridgeError("installed legacy release tree changed before delivery")
+            raw = self._apply_update._brain_output(
+                vault_root,
+                brain_git,
+                "ls-tree",
+                "-r",
+                "-z",
+                "--full-tree",
+                commit,
+            )
+            entries: list[Any] = []
+            seen: set[str] = set()
+            for record in raw.split(b"\0"):
+                if not record:
+                    continue
+                try:
+                    metadata, raw_path = record.split(b"\t", 1)
+                    raw_mode, object_type, object_id = (
+                        metadata.decode("ascii").split(" ")
+                    )
+                    relative = raw_path.decode("utf-8")
+                except (ValueError, UnicodeDecodeError) as error:
+                    raise release_error(
+                        "legacy release tree contains a malformed entry"
+                    ) from error
+                if relative in seen or object_type != "blob":
+                    raise release_error("legacy release tree is ambiguous")
+                seen.add(relative)
+                if raw_mode == "120000":
+                    if (
+                        relative
+                        != _LEGACY_SHIPPED_SYMLINK_RELATIVE.as_posix()
+                        or object_id != _LEGACY_SHIPPED_SYMLINK_BLOB
+                        or self._apply_update._brain_output(
+                            vault_root,
+                            brain_git,
+                            "cat-file",
+                            "blob",
+                            object_id,
+                        )
+                        != _LEGACY_SHIPPED_SYMLINK_TARGET.encode()
+                    ):
+                        raise release_error(
+                            "legacy release contains an unknown symlink"
+                        )
+                    continue
+                if raw_mode not in {"100644", "100755"}:
+                    raise release_error(
+                        "legacy release contains an unsupported entry"
+                    )
+                try:
+                    self._apply_update.portable_contract.resolve(relative)
+                except contract_violation:
+                    # Retired release paths that the current contract does not
+                    # own are deliberately preserved rather than pruned.
+                    continue
+                entries.append(
+                    tree_entry(
+                        relative,
+                        0o755 if raw_mode == "100755" else 0o644,
+                        object_id,
+                    )
+                )
+            result = tuple(sorted(entries, key=lambda entry: entry.path))
+            authorized_legacy_signatures.add(signature(result))
+            return result
+
+        def verify_manifest(
+            vault_root: Path,
+            brain_git: Path,
+            entries: tuple[Any, ...],
+        ) -> None:
+            try:
+                original_verify_manifest(vault_root, brain_git, entries)
+            except release_error:
+                if signature(entries) not in authorized_legacy_signatures:
+                    raise
+                installed = _run_git(
+                    Path(brain_git),
+                    "rev-parse",
+                    "--verify",
+                    "refs/dex/installed^{commit}",
+                )
+                if installed != LEGACY_TOPOLOGY_FOUNDATION.commit:
+                    raise
+
+        self._apply_update._tree_entries = legacy_tree_entries
+        self._apply_update._verify_manifest = verify_manifest
+        try:
+            yield
+        finally:
+            self._apply_update._tree_entries = original_tree_entries
+            self._apply_update._verify_manifest = original_verify_manifest
 
     def build_and_preview_topology_migration(
         self,
@@ -463,7 +807,11 @@ class _FoundationLifecycleService:
         vault_root: str | Path,
         release: Mapping[str, Any],
     ) -> Mapping[str, Any]:
-        return self._service.build_and_preview_delivered_release(vault_root, release)
+        with self._legacy_delivery_source():
+            return self._service.build_and_preview_delivered_release(
+                vault_root,
+                release,
+            )
 
     def execute_approved_delivered_release(
         self,
@@ -471,11 +819,12 @@ class _FoundationLifecycleService:
         preview: Mapping[str, Any],
         approved_token: str,
     ) -> Mapping[str, Any]:
-        return self._service.execute_approved_delivered_release(
-            vault_root,
-            preview,
-            approved_token,
-        )
+        with self._legacy_delivery_source():
+            return self._service.execute_approved_delivered_release(
+                vault_root,
+                preview,
+                approved_token,
+            )
 
 
 def _load_lifecycle_service(source: Path) -> LifecycleService:
@@ -504,7 +853,13 @@ def _load_lifecycle_service(source: Path) -> LifecycleService:
         raise BridgeError(
             f"pinned foundation topology engine could not start: {error}"
         ) from error
-    return _FoundationLifecycleService(module, engine, source)
+    try:
+        apply_update = importlib.import_module("core.update.apply_update")
+    except Exception as error:  # noqa: BLE001
+        raise BridgeError(
+            f"pinned foundation release planner could not start: {error}"
+        ) from error
+    return _FoundationLifecycleService(module, engine, apply_update, source)
 
 
 def _approved_preview(prompt: str, preview: Mapping[str, Any], approval_token: object, *, input_fn: Callable[[str], str], output_fn: Callable[[str], None]) -> tuple[Mapping[str, Any], str]:

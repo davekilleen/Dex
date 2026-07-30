@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import json
 import os
+import shutil
 import subprocess
 import sys
+from collections import namedtuple
 from pathlib import Path
 from types import ModuleType
 
@@ -95,6 +98,12 @@ def _foundation_topology_adapter(
 
     engine.topology_state = original_state
     engine._migrator_command = original_command
+    apply_update = ModuleType("test_foundation_apply_update")
+    apply_update._tree_entries = lambda *_arguments: ()
+    apply_update._verify_manifest = lambda *_arguments: None
+    apply_update.portable_contract = ModuleType("test_portable_contract")
+    apply_update.portable_contract.ContractViolation = RuntimeError
+    apply_update.TreeEntry = tuple
 
     class Service:
         def build_and_preview_topology_migration(self, vault_root: Path):
@@ -138,7 +147,17 @@ def _foundation_topology_adapter(
                 "approval_token": approved_token,
             }
 
-    return bridge._FoundationLifecycleService(Service(), engine, source), engine, vault, migrator
+    return (
+        bridge._FoundationLifecycleService(
+            Service(),
+            engine,
+            apply_update,
+            source,
+        ),
+        engine,
+        vault,
+        migrator,
+    )
 
 
 def test_foundation_pin_is_closed_and_uses_only_the_release_channel() -> None:
@@ -208,15 +227,21 @@ def test_foundation_service_uses_verified_migrator_for_exact_legacy_topology_onl
         "token",
     )
 
+    command_prefix = [
+        "/trusted/node",
+        "--require",
+        str(service._preload),
+        str(migrator),
+    ]
     assert preview == {
         "topology": "combined",
-        "command": ["/trusted/node", str(migrator), "--dry-run"],
+        "command": [*command_prefix, "--dry-run"],
     }
     assert executed == {
         "topology": "combined",
         "commands": [
-            ["/trusted/node", str(migrator), "--auto"],
-            ["/trusted/node", str(migrator), "--resume"],
+            [*command_prefix, "--auto"],
+            [*command_prefix, "--resume"],
         ],
     }
     assert not (vault / bridge._TOPOLOGY_MIGRATOR_RELATIVE).exists()
@@ -266,6 +291,294 @@ def test_foundation_service_refuses_migrator_changed_after_verification(
 
     with pytest.raises(bridge.BridgeError, match="changed after verification"):
         service.build_and_preview_topology_migration(vault)
+
+
+def test_legacy_preload_supplies_absent_read_only_inputs_without_vault_writes(
+    tmp_path: Path,
+) -> None:
+    service, _engine, vault, _migrator = _foundation_topology_adapter(tmp_path)
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("Node.js is required for the compatibility preload test")
+    script = """
+const fs = require('node:fs');
+const path = require('node:path');
+const root = process.cwd();
+const policy = fs.readFileSync(path.join(root, 'core/migrations/tracked-ignored-policy.yaml'), 'utf8');
+const transition = fs.readFileSync(path.join(root, 'System/.local-only-preservation-transition.json'), 'utf8');
+process.stdout.write(JSON.stringify({policy, transition}));
+"""
+
+    result = subprocess.run(
+        [node, "--require", str(service._preload), "--eval", script],
+        cwd=vault,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    supplied = json.loads(result.stdout)
+
+    assert supplied["policy"].encode() == bridge._LEGACY_TRACKED_IGNORE_POLICY
+    assert supplied["transition"].encode() == bridge._LEGACY_PRESERVATION_TRANSITION
+    assert not (vault / bridge._TRACKED_IGNORE_POLICY_RELATIVE).exists()
+    assert not (vault / bridge._PRESERVATION_TRANSITION_RELATIVE).exists()
+
+
+def test_legacy_preload_refuses_an_existing_or_symlinked_compatibility_input(
+    tmp_path: Path,
+) -> None:
+    service, _engine, vault, _migrator = _foundation_topology_adapter(tmp_path)
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("Node.js is required for the compatibility preload test")
+    policy = vault / bridge._TRACKED_IGNORE_POLICY_RELATIVE
+    policy.parent.mkdir(parents=True)
+    policy.symlink_to(vault / "attacker-policy.yaml")
+    script = (
+        "require('node:fs').readFileSync("
+        "require('node:path').join(process.cwd(), "
+        "'core/migrations/tracked-ignored-policy.yaml'), 'utf8')"
+    )
+
+    result = subprocess.run(
+        [node, "--require", str(service._preload), "--eval", script],
+        cwd=vault,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode != 0
+    assert "refused existing legacy compatibility input" in result.stderr
+
+
+def test_legacy_preload_hides_only_the_exact_shipped_v1201_symlink(
+    tmp_path: Path,
+) -> None:
+    service, _engine, vault, _migrator = _foundation_topology_adapter(tmp_path)
+    target = vault / "pi-extensions" / "dex"
+    target.mkdir(parents=True)
+    shipped_link = vault / bridge._LEGACY_SHIPPED_SYMLINK_RELATIVE
+    shipped_link.parent.mkdir(parents=True)
+    shipped_link.symlink_to(bridge._LEGACY_SHIPPED_SYMLINK_TARGET)
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("Node.js is required for the compatibility preload test")
+    script = """
+const fs = require('node:fs');
+const names = fs.readdirSync('.pi/agent/extensions', {withFileTypes: true})
+  .map((entry) => entry.name);
+process.stdout.write(JSON.stringify(names));
+"""
+
+    result = subprocess.run(
+        [node, "--require", str(service._preload), "--eval", script],
+        cwd=vault,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    assert json.loads(result.stdout) == []
+    assert shipped_link.is_symlink()
+    assert shipped_link.readlink() == Path(bridge._LEGACY_SHIPPED_SYMLINK_TARGET)
+
+
+def test_legacy_preload_refuses_a_changed_release_symlink(
+    tmp_path: Path,
+) -> None:
+    service, _engine, vault, _migrator = _foundation_topology_adapter(tmp_path)
+    target = vault / "different-target"
+    target.mkdir()
+    shipped_link = vault / bridge._LEGACY_SHIPPED_SYMLINK_RELATIVE
+    shipped_link.parent.mkdir(parents=True)
+    shipped_link.symlink_to(target)
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("Node.js is required for the compatibility preload test")
+
+    result = subprocess.run(
+        [node, "--require", str(service._preload), "--eval", "'ok'"],
+        cwd=vault,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode != 0
+    assert "refused changed legacy release symlink" in result.stderr
+
+
+def test_foundation_service_refuses_compatibility_preload_changed_after_verification(
+    tmp_path: Path,
+) -> None:
+    service, _engine, vault, _migrator = _foundation_topology_adapter(tmp_path)
+    service._preload.chmod(0o600)
+    service._preload.write_text("'use strict';\n// changed\n", encoding="utf-8")
+
+    with pytest.raises(bridge.BridgeError, match="preload changed after verification"):
+        service.build_and_preview_topology_migration(vault)
+
+
+def test_foundation_service_reports_missing_engine_path_as_bridge_error(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "foundation"
+    migrator = source / bridge._TOPOLOGY_MIGRATOR_RELATIVE
+    migrator.parent.mkdir(parents=True)
+    migrator.write_text("'use strict';\n", encoding="utf-8")
+    engine = ModuleType("missing_path_engine")
+    apply_update = ModuleType("apply_update")
+
+    with pytest.raises(bridge.BridgeError, match="migrator path changed"):
+        bridge._FoundationLifecycleService(
+            ModuleType("service"),
+            engine,
+            apply_update,
+            source,
+        )
+
+
+def test_legacy_delivery_reader_accepts_only_the_pinned_pre_manifest_tree(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service, _engine, vault, _migrator = _foundation_topology_adapter(tmp_path)
+    apply_update = service._apply_update
+
+    class ReleaseVerificationError(RuntimeError):
+        pass
+
+    class ContractViolation(RuntimeError):
+        pass
+
+    TreeEntry = namedtuple("TreeEntry", ("path", "mode", "object_id"))
+    classified_oid = "1" * 40
+    retired_oid = "2" * 40
+    records = (
+        f"100644 blob {classified_oid}\tCLAUDE.md\0"
+        f"100644 blob {retired_oid}\tretired-release-path.txt\0"
+        f"120000 blob {bridge._LEGACY_SHIPPED_SYMLINK_BLOB}\t"
+        f"{bridge._LEGACY_SHIPPED_SYMLINK_RELATIVE.as_posix()}\0"
+    ).encode()
+
+    def brain_output(_root: Path, _brain: Path, *arguments: str) -> bytes:
+        if arguments[:2] == ("ls-tree", "-r"):
+            return records
+        if arguments[:2] == ("cat-file", "blob"):
+            return bridge._LEGACY_SHIPPED_SYMLINK_TARGET.encode()
+        raise AssertionError(arguments)
+
+    def resolve(path: str):
+        if path == "retired-release-path.txt":
+            raise ContractViolation(path)
+        return object()
+
+    apply_update.ReleaseVerificationError = ReleaseVerificationError
+    apply_update.portable_contract.ContractViolation = ContractViolation
+    apply_update.portable_contract.resolve = resolve
+    apply_update.TreeEntry = TreeEntry
+    apply_update._brain_output = brain_output
+
+    def original_tree_entries(*_arguments):
+        pytest.fail("exact legacy commit should use the compatibility reader")
+
+    def original_verify_manifest(*_arguments):
+        raise ReleaseVerificationError("legacy release has no manifest")
+
+    apply_update._tree_entries = original_tree_entries
+    apply_update._verify_manifest = original_verify_manifest
+    brain = vault / ".dex" / "brain.git"
+
+    class DeliveryService:
+        @staticmethod
+        def build_and_preview_delivered_release(_vault_root: Path, _release):
+            entries = apply_update._tree_entries(
+                vault,
+                brain,
+                bridge.LEGACY_TOPOLOGY_FOUNDATION.commit,
+            )
+            apply_update._verify_manifest(vault, brain, entries)
+            return {"paths": [entry.path for entry in entries]}
+
+        @staticmethod
+        def execute_approved_delivered_release(
+            _vault_root: Path,
+            _preview,
+            _approved_token: str,
+        ):
+            return {"executed": True}
+
+    service._service = DeliveryService()
+    pin = bridge.LEGACY_TOPOLOGY_FOUNDATION
+    values = {
+        ("rev-parse", "--verify", f"{pin.commit}^{{tree}}"): pin.tree,
+        ("rev-parse", "--verify", "refs/dex/installed^{commit}"): pin.commit,
+    }
+    monkeypatch.setattr(
+        bridge,
+        "_run_git",
+        lambda _root, *arguments: values[arguments],
+    )
+
+    assert service.build_and_preview_delivered_release(vault, {}) == {
+        "paths": ["CLAUDE.md"]
+    }
+    assert apply_update._tree_entries is original_tree_entries
+    assert apply_update._verify_manifest is original_verify_manifest
+
+
+def test_legacy_delivery_reader_rejects_any_other_symlink(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service, _engine, vault, _migrator = _foundation_topology_adapter(tmp_path)
+    apply_update = service._apply_update
+
+    class ReleaseVerificationError(RuntimeError):
+        pass
+
+    class ContractViolation(RuntimeError):
+        pass
+
+    TreeEntry = namedtuple("TreeEntry", ("path", "mode", "object_id"))
+    apply_update.ReleaseVerificationError = ReleaseVerificationError
+    apply_update.portable_contract.ContractViolation = ContractViolation
+    apply_update.portable_contract.resolve = lambda _path: object()
+    apply_update.TreeEntry = TreeEntry
+    apply_update._brain_output = lambda _root, _brain, *arguments: (
+        b"120000 blob 0000000000000000000000000000000000000000\t"
+        b"unexpected-link\0"
+        if arguments[:2] == ("ls-tree", "-r")
+        else b"unexpected"
+    )
+    apply_update._tree_entries = lambda *_arguments: ()
+    apply_update._verify_manifest = lambda *_arguments: None
+
+    class DeliveryService:
+        @staticmethod
+        def build_and_preview_delivered_release(_vault_root: Path, _release):
+            return apply_update._tree_entries(
+                vault,
+                vault / ".dex" / "brain.git",
+                bridge.LEGACY_TOPOLOGY_FOUNDATION.commit,
+            )
+
+    service._service = DeliveryService()
+    pin = bridge.LEGACY_TOPOLOGY_FOUNDATION
+    monkeypatch.setattr(
+        bridge,
+        "_run_git",
+        lambda _root, *arguments: (
+            pin.tree
+            if arguments
+            == ("rev-parse", "--verify", f"{pin.commit}^{{tree}}")
+            else pytest.fail(f"unexpected Git call: {arguments}")
+        ),
+    )
+
+    with pytest.raises(ReleaseVerificationError, match="unknown symlink"):
+        service.build_and_preview_delivered_release(vault, {})
 
 
 def test_bridge_success_copy_names_the_canonical_dex_update_command() -> None:
