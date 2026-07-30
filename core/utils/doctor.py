@@ -58,6 +58,24 @@ ADOPTION_GROUP_IDS = (
 ADOPTION_ACTIONS = frozenset(action.value for action in PlannedAction)
 ADOPTION_STATUSES = frozenset(state.value for state in AdoptionState)
 ADOPTION_REASON_CODES = frozenset(reason.value for reason in ReasonCode)
+INSTALLER_STRIPPED_PACKAGE_SCRIPTS = {
+    "test:hooks": "node --test .claude/hooks/tests/*.test.cjs",
+    "test:scripts": (
+        "node --test .scripts/lib/tests/*.test.cjs "
+        ".scripts/meeting-intel/__tests__/*.test.cjs"
+    ),
+    "test:integrations": (
+        "node --test core/integrations/connection-manager/*.test.cjs"
+    ),
+    "check:connections-contract": (
+        "node scripts/check-connections-contract.mjs && "
+        "node scripts/build-connections-engine-manifest.mjs --check"
+    ),
+    "test:connections-consumer-smoke": (
+        "node --test "
+        "core/integrations/connection-manager/connections-contract.test.cjs"
+    ),
+}
 
 
 def _validate_authority_item(item_id: object, item_version: object) -> None:
@@ -3785,7 +3803,8 @@ def _installer_normalized_package_metadata(
                 return False
         extra_names = set(current_scripts) - set(baseline_scripts)
         if not extra_names or any(
-            not (name.startswith("test:") or name.startswith("check:"))
+            name not in INSTALLER_STRIPPED_PACKAGE_SCRIPTS
+            or current_scripts[name] != INSTALLER_STRIPPED_PACKAGE_SCRIPTS[name]
             for name in extra_names
         ):
             return False

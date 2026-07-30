@@ -226,6 +226,7 @@ def test_installer_sees_the_official_release_ref_then_the_runner_disables_it(
         "#!/bin/sh\n"
         "set -eu\n"
         f'test "$(git remote get-url upstream)" = "{release_fleet.OFFICIAL_REPOSITORY_URL}"\n'
+        'test "$(git remote get-url --push upstream)" = "DISABLED"\n'
         "test -n \"$(git rev-parse refs/remotes/upstream/release)\"\n",
         encoding="utf-8",
     )

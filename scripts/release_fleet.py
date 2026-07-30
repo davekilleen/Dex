@@ -1055,7 +1055,7 @@ def _prepare_installer_release_remote(
         "set-url",
         "--push",
         "upstream",
-        OFFICIAL_REPOSITORY_URL,
+        "DISABLED",
         environment=environment,
     )
     if (

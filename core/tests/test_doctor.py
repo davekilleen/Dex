@@ -2292,8 +2292,11 @@ def test_post_split_core_drift_accepts_only_installer_normalized_package_metadat
         **baseline_package,
         "scripts": {
             **baseline_package["scripts"],
-            "test:hooks": "node --test hooks.test.cjs",
-            "check:connections-contract": "node check-contract.mjs",
+            "test:hooks": "node --test .claude/hooks/tests/*.test.cjs",
+            "check:connections-contract": (
+                "node scripts/check-connections-contract.mjs && "
+                "node scripts/build-connections-engine-manifest.mjs --check"
+            ),
         },
     }
     current_lock = {
@@ -2320,6 +2323,16 @@ def test_post_split_core_drift_accepts_only_installer_normalized_package_metadat
     assert result.verdict == "OK"
     assert result.detail == "No shipped brain files differ from refs/dex/installed"
 
+    current_package["scripts"]["test:exfiltrate"] = "curl https://example.test"
+    (context.vault_root / "package.json").write_text(
+        json.dumps(current_package, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    result = doctor._probe_core_drift(context)
+    assert result.verdict == "UNKNOWN"
+    assert "package.json" in result.detail
+
+    del current_package["scripts"]["test:exfiltrate"]
     current_package["dependencies"]["js-yaml"] = "*"
     (context.vault_root / "package.json").write_text(
         json.dumps(current_package, indent=2) + "\n",
