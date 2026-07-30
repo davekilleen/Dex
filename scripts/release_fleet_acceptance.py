@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Fail-closed orchestration for the cross-platform historic updater fleet."""
+"""Fail-closed orchestration for the macOS historic updater fleet."""
 
 from __future__ import annotations
 
@@ -34,7 +34,6 @@ PLATFORM_MANIFEST_SCHEMA_VERSION = 1
 ACCEPTANCE_SOURCE = "scripts/release_fleet_acceptance.py"
 FIRST_PARTY_PLATFORM_JOBS = {
     "darwin": "historic-fleet-darwin",
-    "linux": "historic-fleet-linux",
 }
 MAX_PLATFORM_MANIFEST_BYTES = 16 * 1024 * 1024
 PLATFORM_MANIFEST_NAME = "platform-manifest.json"
@@ -378,7 +377,7 @@ def _verified_payload(
 def _require_protocol_platforms(platforms: Sequence[str]) -> tuple[str, ...]:
     value = tuple(platforms)
     if value != SUPPORTED_PLATFORMS:
-        raise release_fleet.FleetError("fleet acceptance protocol platforms are not exactly darwin and linux")
+        raise release_fleet.FleetError("fleet acceptance protocol platforms are not exactly darwin")
     return value
 
 
@@ -676,8 +675,6 @@ def _platform_receipt_boundary():
     platform_validator = assert_platform_report_bound
     if sys.platform == "darwin":
         host_platform = "darwin"
-    elif sys.platform.startswith("linux"):
-        host_platform = "linux"
     else:
         host_platform = ""
 
@@ -939,9 +936,7 @@ def _assert_session_matches_inputs(
 def _running_platform() -> str:
     if sys.platform == "darwin":
         return "darwin"
-    if sys.platform.startswith("linux"):
-        return "linux"
-    raise release_fleet.FleetError("historic fleet acceptance supports macOS and Linux only")
+    raise release_fleet.FleetError("historic fleet acceptance supports macOS only")
 
 
 def _add_bound_input_arguments(parser: argparse.ArgumentParser) -> None:
@@ -979,7 +974,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     platform.add_argument("--output", type=Path, required=True)
     aggregate = subcommands.add_parser(
         "aggregate",
-        help="validate serialized Darwin and Linux evidence without minting acceptance",
+        help="validate serialized Darwin evidence without minting acceptance",
     )
     _add_bound_input_arguments(aggregate)
     aggregate.add_argument("--session", type=Path, required=True)
@@ -989,14 +984,14 @@ def main(argv: Sequence[str] | None = None) -> int:
         action="append",
         type=Path,
         required=True,
-        help="signed platform receipt; provide once for Darwin and once for Linux",
+        help="signed Darwin platform receipt; provide exactly once",
     )
     aggregate.add_argument(
         "--manifest",
         action="append",
         type=Path,
         required=True,
-        help="immutable platform manifest; provide once for Darwin and once for Linux",
+        help="immutable Darwin platform manifest; provide exactly once",
     )
     aggregate.add_argument("--output", type=Path, required=True)
     args = parser.parse_args(argv)

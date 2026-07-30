@@ -1,4 +1,4 @@
-"""Fail-closed tests for cross-platform historic updater acceptance."""
+"""Fail-closed tests for macOS historic updater acceptance."""
 
 from __future__ import annotations
 
@@ -186,7 +186,7 @@ def _case(tag: str, platform: str) -> release_fleet.CaseResult:
 def test_platform_report_is_bound_to_one_real_protocol_platform() -> None:
     acceptance = _acceptance()
     tags = {"v1.20.1", "dist/release/v1.80.5-2222222"}
-    protocol = SimpleNamespace(platforms=("darwin", "linux"))
+    protocol = SimpleNamespace(platforms=("darwin",))
     report = release_fleet.AcceptanceReport(
         foundation_tag=FOUNDATION.tag,
         follow_up_tag="dist/release/v1.81.1-3333333",
@@ -224,7 +224,7 @@ def test_platform_report_is_bound_to_one_real_protocol_platform() -> None:
         )
 
 
-def test_platform_report_rejects_a_protocol_platform_subset() -> None:
+def test_platform_report_rejects_a_protocol_platform_superset() -> None:
     acceptance = _acceptance()
     report = release_fleet.AcceptanceReport(
         foundation_tag=FOUNDATION.tag,
@@ -236,7 +236,7 @@ def test_platform_report_rejects_a_protocol_platform_subset() -> None:
     with pytest.raises(release_fleet.FleetError, match="protocol platforms"):
         acceptance.assert_platform_report_bound(
             report,
-            protocol=SimpleNamespace(platforms=("darwin",)),
+            protocol=SimpleNamespace(platforms=("darwin", "linux")),
             running_platform="darwin",
             expected_start_tags={"v1.20.1"},
         )
@@ -253,7 +253,7 @@ def _fleet_inputs() -> tuple[object, tuple[release_fleet.DistributionRelease, ..
             releases=releases,
             foundation=_immutable_foundation(),
             follow_up=_immutable_follow_up(),
-            protocol=SimpleNamespace(platforms=("darwin", "linux")),
+            protocol=SimpleNamespace(platforms=("darwin",)),
             source_commit="c" * 40,
             acceptance_source_sha256="d" * 64,
             cohort_sha256="a" * 64,
@@ -357,7 +357,7 @@ def test_serialized_platform_evidence_is_never_an_acceptance_authority(
             inputs=inputs,
             platform=platform,
         )
-        for platform in ("darwin", "linux")
+        for platform in ("darwin",)
     ]
 
     result = acceptance.aggregate_platform_evidence(
@@ -372,18 +372,17 @@ def test_serialized_platform_evidence_is_never_an_acceptance_authority(
         "outcome": "HISTORIC_FLEET_EVIDENCE_AGGREGATED",
         "acceptance": False,
         "authority_complete": False,
-        "platforms": ["darwin", "linux"],
+        "platforms": ["darwin"],
         "case_count": 168,
-        "journey_count": 336,
+        "journey_count": 168,
         "discovered": 168,
-        "started": 336,
-        "completed": 336,
-        "passed": 336,
+        "started": 168,
+        "completed": 168,
+        "passed": 168,
         "failed": 0,
         "session_id": "e" * 64,
         "required_job_conclusions": {
             "darwin": "historic-fleet-darwin",
-            "linux": "historic-fleet-linux",
         },
     }
     assert not hasattr(acceptance, "sign_platform_receipt")
@@ -406,7 +405,7 @@ def test_possession_of_the_shared_key_cannot_sign_an_accepted_receipt(
             inputs=inputs,
             platform=platform,
         )
-        for platform in ("darwin", "linux")
+        for platform in ("darwin",)
     ]
 
     result = acceptance.aggregate_platform_evidence(
@@ -421,7 +420,7 @@ def test_possession_of_the_shared_key_cannot_sign_an_accepted_receipt(
     assert result["authority_complete"] is False
 
 
-def test_aggregation_requires_exact_darwin_and_linux_evidence(
+def test_aggregation_requires_exact_darwin_evidence(
     tmp_path: Path,
 ) -> None:
     acceptance = _acceptance()
@@ -446,8 +445,8 @@ def test_aggregation_requires_exact_darwin_and_linux_evidence(
     with pytest.raises(release_fleet.FleetError, match="exact protocol platforms"):
         acceptance.aggregate_platform_evidence(
             session,
-            [darwin[1]],
-            [darwin[0]],
+            [],
+            [],
             key=key,
             inputs=inputs,
         )
@@ -455,7 +454,7 @@ def test_aggregation_requires_exact_darwin_and_linux_evidence(
     with pytest.raises(release_fleet.FleetError, match="exact protocol platforms"):
         acceptance.aggregate_platform_evidence(
             session,
-            [darwin[1], darwin[1]],
+            [darwin[1], linux[1]],
             [darwin[0], linux[0]],
             key=key,
             inputs=inputs,
@@ -476,7 +475,7 @@ def test_receipts_reject_caller_supplied_counts_and_case_digests(
             inputs=inputs,
             platform=platform,
         )
-        for platform in ("darwin", "linux")
+        for platform in ("darwin",)
     ]
     forged_receipts = [json.loads(json.dumps(receipt)) for _path, receipt in evidence]
     forged_receipts[0]["payload"]["started"] = 168
@@ -507,7 +506,7 @@ def test_aggregation_reopens_and_hashes_the_immutable_manifest(
             inputs=inputs,
             platform=platform,
         )
-        for platform in ("darwin", "linux")
+        for platform in ("darwin",)
     ]
     evidence[0][0].chmod(0o644)
     document = json.loads(evidence[0][0].read_text(encoding="utf-8"))
@@ -552,15 +551,7 @@ def test_aggregation_requires_exactly_168_unique_final_starts_per_platform(
             inputs=inputs,
             platform="darwin",
             manifest=darwin,
-        ),
-        _write_authored_platform_evidence(
-            acceptance,
-            tmp_path,
-            session=session,
-            key=key,
-            inputs=inputs,
-            platform="linux",
-        ),
+        )
     ]
 
     with pytest.raises(release_fleet.FleetError, match="historic release|case count"):
@@ -583,36 +574,47 @@ def test_aggregation_rejects_mixed_sessions_and_platform_spoofing(
         platform="darwin",
         session_id="f" * 64,
     )
-    spoofed = _manifest_document(inputs=inputs, platform="linux")
+    spoofed = _manifest_document(inputs=inputs, platform="darwin")
     spoofed_report = spoofed["report"]
     assert isinstance(spoofed_report, dict)
-    spoofed_report["platforms"] = ["darwin"]
-    evidence = [
-        _write_authored_platform_evidence(
-            acceptance,
-            tmp_path,
-            session=session,
-            key=key,
-            inputs=inputs,
-            platform="darwin",
-            manifest=wrong_session,
-        ),
-        _write_authored_platform_evidence(
-            acceptance,
-            tmp_path,
-            session=session,
-            key=key,
-            inputs=inputs,
-            platform="linux",
-            manifest=spoofed,
-        ),
-    ]
+    spoofed_report["platforms"] = ["linux"]
+    wrong_session_root = tmp_path / "wrong-session"
+    wrong_session_root.mkdir()
+    wrong_session_evidence = _write_authored_platform_evidence(
+        acceptance,
+        wrong_session_root,
+        session=session,
+        key=key,
+        inputs=inputs,
+        platform="darwin",
+        manifest=wrong_session,
+    )
 
-    with pytest.raises(release_fleet.FleetError, match="session|platform"):
+    with pytest.raises(release_fleet.FleetError, match="session"):
         acceptance.aggregate_platform_evidence(
             session,
-            [receipt for _path, receipt in evidence],
-            [path for path, _receipt in evidence],
+            [wrong_session_evidence[1]],
+            [wrong_session_evidence[0]],
+            key=key,
+            inputs=inputs,
+        )
+
+    spoofed_root = tmp_path / "spoofed-platform"
+    spoofed_root.mkdir()
+    spoofed_evidence = _write_authored_platform_evidence(
+        acceptance,
+        spoofed_root,
+        session=session,
+        key=key,
+        inputs=inputs,
+        platform="darwin",
+        manifest=spoofed,
+    )
+    with pytest.raises(release_fleet.FleetError, match="running platform"):
+        acceptance.aggregate_platform_evidence(
+            session,
+            [spoofed_evidence[1]],
+            [spoofed_evidence[0]],
             key=key,
             inputs=inputs,
         )
@@ -634,15 +636,7 @@ def test_aggregation_rejects_preflight_authored_symlink_and_writable_manifests(
             inputs=inputs,
             platform="darwin",
             manifest=preflight,
-        ),
-        _write_authored_platform_evidence(
-            acceptance,
-            tmp_path,
-            session=session,
-            key=key,
-            inputs=inputs,
-            platform="linux",
-        ),
+        )
     ]
 
     with pytest.raises(release_fleet.FleetError, match="manifest shape"):
@@ -661,7 +655,7 @@ def test_aggregation_rejects_preflight_authored_symlink_and_writable_manifests(
         acceptance.aggregate_platform_evidence(
             session,
             [receipt for _path, receipt in evidence],
-            [link, evidence[1][0]],
+            [link],
             key=key,
             inputs=inputs,
         )
@@ -671,7 +665,7 @@ def test_aggregation_rejects_preflight_authored_symlink_and_writable_manifests(
         acceptance.aggregate_platform_evidence(
             session,
             [receipt for _path, receipt in evidence],
-            [real, evidence[1][0]],
+            [real],
             key=key,
             inputs=inputs,
         )
@@ -1038,7 +1032,7 @@ def test_full_command_surface_aggregates_evidence_without_minting_acceptance(
     )
     foundation = _immutable_foundation()
     follow_up = _immutable_follow_up()
-    protocol = SimpleNamespace(platforms=("darwin", "linux"))
+    protocol = SimpleNamespace(platforms=("darwin",))
     inputs = acceptance.FleetInputs(
         releases=releases,
         foundation=foundation,
@@ -1123,7 +1117,7 @@ def test_full_command_surface_aggregates_evidence_without_minting_acceptance(
     monkeypatch.setattr(acceptance, "finalize_live_platform_execution", finalize)
     receipt_paths: list[Path] = []
     manifest_paths: list[Path] = []
-    for platform in ("darwin", "linux"):
+    for platform in ("darwin",):
         monkeypatch.setattr(acceptance, "_running_platform", lambda value=platform: value)
         platform_root = tmp_path / platform
         receipt_path = platform_root / acceptance.PLATFORM_RECEIPT_NAME
@@ -1173,12 +1167,8 @@ def test_full_command_surface_aggregates_evidence_without_minting_acceptance(
                 str(key_path),
                 "--receipt",
                 str(receipt_paths[0]),
-                "--receipt",
-                str(receipt_paths[1]),
                 "--manifest",
                 str(manifest_paths[0]),
-                "--manifest",
-                str(manifest_paths[1]),
                 "--output",
                 str(aggregate_path),
             ]
@@ -1190,17 +1180,16 @@ def test_full_command_surface_aggregates_evidence_without_minting_acceptance(
         "acceptance": False,
         "authority_complete": False,
         "case_count": 168,
-        "completed": 336,
+        "completed": 168,
         "discovered": 168,
         "failed": 0,
-        "journey_count": 336,
+        "journey_count": 168,
         "outcome": "HISTORIC_FLEET_EVIDENCE_AGGREGATED",
-        "passed": 336,
-        "platforms": ["darwin", "linux"],
+        "passed": 168,
+        "platforms": ["darwin"],
         "required_job_conclusions": {
             "darwin": "historic-fleet-darwin",
-            "linux": "historic-fleet-linux",
         },
         "session_id": session["payload"]["session_id"],
-        "started": 336,
+        "started": 168,
     }
