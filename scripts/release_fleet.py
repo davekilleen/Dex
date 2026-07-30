@@ -1952,20 +1952,29 @@ def run_journey(
         resolve_fixture_python(case.vault, trusted_python=python_runtime)
         from scripts import release_fleet_executor
 
-        return release_fleet_executor.execute_journey(
-            repo_root=repo,
-            source_commit=source_commit,
-            vault_root=case.vault,
-            evidence_root=evidence_root,
-            starting_release=historic_surface["release"],
-            foundation_release=foundation.identity(),
-            follow_up_release=follow_up.identity(),
-            protocol=protocol,
-            historic_surface=historic_surface,
-            foundation_surface=foundation_surface,
-            user_owned_paths=tuple(USER_FIXTURES),
-            platform=journey_platform,
-        )
+        try:
+            _prepare_installer_release_remote(
+                repo,
+                case.vault,
+                start,
+                environment,
+            )
+            return release_fleet_executor.execute_journey(
+                repo_root=repo,
+                source_commit=source_commit,
+                vault_root=case.vault,
+                evidence_root=evidence_root,
+                starting_release=historic_surface["release"],
+                foundation_release=foundation.identity(),
+                follow_up_release=follow_up.identity(),
+                protocol=protocol,
+                historic_surface=historic_surface,
+                foundation_surface=foundation_surface,
+                user_owned_paths=tuple(USER_FIXTURES),
+                platform=journey_platform,
+            )
+        finally:
+            _disable_all_fixture_remotes(case.vault, environment)
     finally:
         _remove_disposable_fixture(vault, output)
         _remove_disposable_fixture(runtime_root, output)

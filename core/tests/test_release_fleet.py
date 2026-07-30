@@ -1627,6 +1627,7 @@ def test_journey_delegates_only_after_released_source_and_fixture_are_bound(
     )
     source_commit = "f" * 40
     captured: dict[str, object] = {}
+    remote_events: list[str] = []
 
     class Run:
         case = {"starting_tag": start.tag}
@@ -1696,11 +1697,26 @@ def test_journey_delegates_only_after_released_source_and_fixture_are_bound(
         return release_fleet.FleetCase(release, vault, {"00-Inbox/keep.md": "0" * 64})
 
     def execute(**kwargs):
+        assert remote_events == ["official-read-open"]
+        remote_events.append("execute")
         captured.update(kwargs)
         return Run()
 
     monkeypatch.setattr(release_fleet, "build_installed_fixture", build_case)
     monkeypatch.setattr(release_fleet, "resolve_fixture_python", lambda *_args, **_kwargs: object())
+    monkeypatch.setattr(
+        release_fleet,
+        "_prepare_installer_release_remote",
+        lambda _repo, _vault, release, _environment: (
+            remote_events.append("official-read-open")
+            or (release.commit, release.tree)
+        ),
+    )
+    monkeypatch.setattr(
+        release_fleet,
+        "_disable_all_fixture_remotes",
+        lambda *_args, **_kwargs: remote_events.append("remote-closed"),
+    )
     monkeypatch.setattr(release_fleet_executor, "execute_journey", execute)
 
     run = release_fleet.run_journey(
@@ -1716,6 +1732,7 @@ def test_journey_delegates_only_after_released_source_and_fixture_are_bound(
     assert captured["foundation_release"] == foundation.identity()
     assert captured["follow_up_release"] == follow_up.identity()
     assert captured["user_owned_paths"] == tuple(release_fleet.USER_FIXTURES)
+    assert remote_events == ["official-read-open", "execute", "remote-closed"]
     assert not (tmp_path / "output" / release_fleet.safe_case_name(start)).exists()
 
 
