@@ -2900,7 +2900,10 @@ def _probe_customization_skills(context: DoctorContext) -> ProbeResult:
             path
             for path in skills_root.iterdir()
             if path.name not in KNOWN_SKILL_CONTAINER_DIRECTORIES
-            and (path.is_symlink() or path.is_dir())
+            and (
+                path.is_symlink()
+                or (path.is_dir() and any(path.iterdir()))
+            )
         ),
         key=lambda path: path.name,
     ) if skills_root.is_dir() else []

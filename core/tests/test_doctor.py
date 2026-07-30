@@ -2001,6 +2001,17 @@ def test_customization_skills_are_ok_when_every_frontmatter_is_valid(context):
     assert "1 user customization" in result.detail
 
 
+def test_customization_skills_ignore_empty_retired_skill_directories(context):
+    _write_skill(context, "daily-plan")
+    retired = context.vault_root / ".claude" / "skills" / "retired-shipped-skill"
+    retired.mkdir(parents=True)
+
+    result = doctor._probe_customization_skills(context)
+
+    assert result.verdict == "OK"
+    assert result.detail == "Validated 0 user customizations and 1 shipped skill"
+
+
 def test_customization_skill_containers_are_not_validated_or_counted_as_skills(context):
     _write_skill(context, "daily-plan")
     assert {"_available", "integrations"} <= doctor.KNOWN_SKILL_CONTAINER_DIRECTORIES
