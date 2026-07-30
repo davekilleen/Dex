@@ -107,14 +107,48 @@ def assess(vault_root: Path) -> Assessment:
     if not proved_complete and not reasons:
         reasons.add("inventory-incomplete")
     completeness = "OK" if proved_complete else "UNKNOWN"
-    public_records = discovery.records if completeness == "OK" else ()
-    public_edges = discovery.edges if completeness == "OK" else ()
-    public_groups = discovery.groups if completeness == "OK" else ()
+    can_expose_observed_evidence = inventory.baseline.identity_state == "VERIFIED"
+    excluded_paths = {
+        exclusion.path
+        for exclusion in discovery.exclusions
+        if exclusion.reason != "embedded-secret"
+    }
+    public_records = (
+        tuple(
+            record
+            for record in discovery.records
+            if excluded_paths.isdisjoint(record.source_paths)
+        )
+        if can_expose_observed_evidence
+        else ()
+    )
+    public_record_ids = {
+        record.customization_id
+        for record in public_records
+    }
+    public_edges = (
+        tuple(
+            edge
+            for edge in discovery.edges
+            if edge.source_path not in excluded_paths
+        )
+        if can_expose_observed_evidence
+        else ()
+    )
+    public_groups = (
+        tuple(
+            group
+            for group in discovery.groups
+            if group.customization_id in public_record_ids
+        )
+        if can_expose_observed_evidence
+        else ()
+    )
     return Assessment(
         0,
         AssessmentIdentity(
             inventory.baseline.release_version,
-            len(inventory.entries) if completeness == "OK" else 0,
+            len(inventory.entries) if can_expose_observed_evidence else 0,
             len(public_records),
             len(public_edges),
         ),

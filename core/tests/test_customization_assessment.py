@@ -205,6 +205,44 @@ def test_manifest_only_baseline_never_emits_zero_customization_all_clear(
     assert report["incomplete_reasons"] == ["baseline-not-verified"]
 
 
+def test_verified_partial_assessment_keeps_safe_inventory_and_exclusion_evidence(
+    tmp_path: Path,
+) -> None:
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    _install_verified_catalog(vault)
+    write_file(vault, ".scripts/custom.py", b"VALUE = 1\n")
+    external = tmp_path / "outside.py"
+    external.write_text("PRIVATE = True\n", encoding="utf-8")
+    link = vault / ".scripts" / "outside-link.py"
+    link.symlink_to(external)
+
+    assessment = assess(vault)
+    emitted = assessment_to_dict(assessment)
+    report = assessment_report(assessment)
+
+    assert assessment.completeness == "UNKNOWN"
+    assert assessment.verdict == "UNKNOWN"
+    assert [record.source_paths for record in assessment.records] == [
+        (".scripts/custom.py",)
+    ]
+    assert assessment.edges == ()
+    assert len(assessment.groups) == 1
+    assert emitted["partial"] is True
+    assert emitted["identity"]["customization_count"] == 1
+    assert emitted["records"][0]["source_paths"] == [".scripts/custom.py"]
+    assert emitted["exclusions"] == [
+        {
+            "path": ".scripts/outside-link.py",
+            "reason": "symlink-refused",
+            "guidance": "Replace the link with a regular file inside the vault, then reassess.",
+        }
+    ]
+    assert report["partial"] is True
+    assert report["counts"]["total"] == 1
+    assert report["exclusions"] == emitted["exclusions"]
+
+
 def test_hard_denied_customization_is_restricted_without_content_leak(
     tmp_path: Path,
 ) -> None:
@@ -594,7 +632,12 @@ def test_reference_through_symlinked_parent_is_missing_and_blocked(
 
     record = _records_by_path(discovery)[".scripts/custom.py"]
     assert _groups_by_id(discovery)[record.customization_id] is AssessmentGroup.BLOCKED
-    assert assessment.records == ()
+    assert [item.source_paths for item in assessment.records] == [
+        (".scripts/custom.py",)
+    ]
+    assert len(assessment.edges) == 1
+    assert _groups_by_id(assessment)[record.customization_id] is AssessmentGroup.BLOCKED
+    assert assessment.to_dict()["partial"] is True
 
 
 def test_remapped_edge_source_recomputes_its_stable_edge_id(
@@ -699,9 +742,10 @@ def test_dependency_tree_is_excluded_instead_of_becoming_customizations(
     assert assessment.records == ()
     assert assessment.edges == ()
     assert assessment.groups == ()
-    assert assessment.identity.inventory_path_count == 0
+    assert assessment.identity.inventory_path_count > 0
     assert assessment.identity.customization_count == 0
     assert assessment.identity.edge_count == 0
+    assert assessment.to_dict()["partial"] is True
 
 
 def test_remapped_edge_target_uses_same_canonical_path_as_its_record(
@@ -865,7 +909,10 @@ def test_reference_file_budget_stops_before_uninspected_candidate(
 
     assert budget.uninspected_count == 1
     assert assessment.completeness == "UNKNOWN"
-    assert assessment.records == ()
+    assert [record.source_paths for record in assessment.records] == [
+        (".scripts/a.py",)
+    ]
+    assert assessment.to_dict()["partial"] is True
 
 
 def test_reference_byte_budget_allows_exact_boundary_then_stops(
@@ -1302,7 +1349,12 @@ def test_incoming_reference_to_canonical_collision_is_blocked(
         ".claude/skills-custom/caller/SKILL.md"
     ]
     assert _groups_by_id(discovery)[record.customization_id] is AssessmentGroup.BLOCKED
-    assert assessment.records == ()
+    assert [item.source_paths for item in assessment.records] == [
+        (".claude/skills-custom/caller/SKILL.md",)
+    ]
+    assert len(assessment.edges) == 1
+    assert _groups_by_id(assessment)[record.customization_id] is AssessmentGroup.BLOCKED
+    assert assessment.to_dict()["partial"] is True
 
 
 def test_multilevel_relative_python_import_resolves_from_parent_package(

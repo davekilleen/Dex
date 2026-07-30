@@ -202,8 +202,12 @@ counts, or promote an inferred edge to proved. Only each group's `surface` line 
 rephrased, in plain English: "lives in a location Dex updates can replace" or "lives in a
 location updates leave alone."
 
-If completeness is `UNKNOWN`, render only the verdict and each `incomplete_reasons` code.
-Do not state or infer any customization count, and do not render a record list.
+If completeness is `UNKNOWN` with `partial: true`, the installed baseline was still
+verified. Render the observed count and record list explicitly as partial, followed
+by every exclusion path, reason, and guidance line. Never present the observed count
+as the complete total, and do not offer a Capsule write until completeness is `OK`.
+If completeness is `UNKNOWN` without `partial: true`, render only the verdict and
+each `incomplete_reasons` code; do not state or infer a customization count.
 When `blocked_count` is greater than zero, the first summary sentence must state that blocked count.
 
 Example register:

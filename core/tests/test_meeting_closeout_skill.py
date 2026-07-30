@@ -64,6 +64,16 @@ def test_degrades_without_fabricating_a_recap() -> None:
     assert "ask for the notes" in text
 
 
+def test_named_meeting_discovery_is_provider_neutral_and_not_folder_bound() -> None:
+    text = SKILL.read_text(encoding="utf-8").lower()
+
+    assert "provider-neutral" in text
+    assert "search the vault" in text
+    assert "clickup" in text
+    assert "not only `00-inbox/meetings/`" in text
+    assert "original source note" in text
+
+
 @pytest.mark.parametrize(
     "needle",
     ["positive:", "negative:", "ambiguous:", "missing_prerequisite:", "failure_recovery:"],

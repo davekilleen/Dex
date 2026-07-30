@@ -80,7 +80,10 @@ Offer it when `customization_assessment.completeness` is `OK` and
 `customization_assessment.identity.customization_count` is at least 1, or when the user says
 they have customised Dex heavily. If the verified count is zero, follow the normal lightweight update
 path and do not mention this branch. If completeness is `UNKNOWN`, show Doctor's uncertainty
-and do not infer a zero count.
+and do not infer a zero count. When Doctor returns `partial: true`, show the observed
+records and every exclusion path, reason, and guidance as a partial inventory. Do not
+run the Capsule preview or ask for Capsule approval until reassessment returns
+completeness `OK`.
 
 ### Detect and explain
 

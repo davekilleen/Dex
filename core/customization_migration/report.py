@@ -26,7 +26,10 @@ GROUP_SURFACES = {
 
 def assessment_report(assessment: Assessment) -> dict[str, object]:
     """Return strict authority plus the only lines a renderer may rephrase."""
-    if assessment.completeness == "UNKNOWN":
+    if (
+        assessment.completeness == "UNKNOWN"
+        and assessment.baseline_identity_state != "VERIFIED"
+    ):
         return {
             "schema_version": assessment.schema_version,
             "baseline_identity_state": assessment.baseline_identity_state,
@@ -45,7 +48,7 @@ def assessment_report(assessment: Assessment) -> dict[str, object]:
     needs_interpretation_count = group_counts[
         AssessmentGroup.NEEDS_INTERPRETATION.value
     ]
-    return {
+    result = {
         "schema_version": assessment.schema_version,
         "identity": assessment.identity.to_dict(),
         "baseline_identity_state": assessment.baseline_identity_state,
@@ -94,6 +97,9 @@ def assessment_report(assessment: Assessment) -> dict[str, object]:
             for group in AssessmentGroup
         ],
     }
+    if assessment.completeness == "UNKNOWN":
+        result["partial"] = True
+    return result
 
 
 __all__ = ["assessment_report"]

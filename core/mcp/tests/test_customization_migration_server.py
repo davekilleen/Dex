@@ -88,6 +88,40 @@ def test_assess_and_preview_happy_paths(tmp_path: Path, monkeypatch) -> None:
     assert preview["preview"]["files"]
 
 
+def test_partial_assessment_message_preserves_observed_evidence(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    assessment = {
+        "verdict": "UNKNOWN",
+        "partial": True,
+        "records": [{"source_paths": [".scripts/custom.py"]}],
+        "exclusions": [
+            {
+                "path": ".scripts/link.py",
+                "reason": "symlink-refused",
+                "guidance": "Replace the link, then reassess.",
+            }
+        ],
+    }
+    monkeypatch.setattr(
+        server.migration_service,
+        "assess_to_dict",
+        lambda _root: assessment,
+    )
+
+    payload = _call(monkeypatch, vault, "assess_customizations")
+
+    assert payload["feature_status"] == "unknown"
+    assert payload["user_message"] == (
+        "Customization assessment is partial; review the listed exclusions "
+        "before creating a Capsule."
+    )
+    assert payload["assessment"] == assessment
+
+
 def test_preview_tool_never_returns_the_cli_confirmation_token(
     tmp_path: Path, monkeypatch
 ) -> None:

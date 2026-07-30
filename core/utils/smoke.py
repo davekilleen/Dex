@@ -57,8 +57,8 @@ VERDICTS = frozenset({"OK", "OFF", "BROKEN", "UNKNOWN"})
 VERDICT_PRIORITY = {"OFF": 0, "OK": 1, "UNKNOWN": 2, "BROKEN": 3}
 NOT_SET_UP_DETAIL = "not set up yet — complete onboarding first"
 MISSING_PACKAGES_DETAIL = (
-    "Python packages not installed — run /dex-update (or pip install -r requirements.txt) "
-    "then re-run /dex-doctor"
+    "Python packages not installed in this vault's .venv — run /dex-update "
+    "(or reinstall requirements.txt into that .venv), then re-run /dex-doctor"
 )
 PYTHON_COMMAND = re.compile(r"^python(?:\d+(?:\.\d+)*)?$")
 SCRIPT_SUFFIXES = {".js", ".cjs", ".mjs", ".sh", ".py"}

@@ -450,6 +450,15 @@ def preview_capsule(
     """Build a deterministic, integrity-bound plan without writing the vault."""
     assessment = assess(Path(vault_root))
     if assessment.verdict != "OK":
+        exclusions = ", ".join(
+            f"{item.path} ({item.reason})"
+            for item in assessment.exclusions
+        )
+        if exclusions:
+            raise CapsuleError(
+                "capsule write preview is blocked until the assessment is complete; "
+                f"resolve these exclusions and reassess: {exclusions}"
+            )
         raise CapsuleError(
             "capsule preview requires a complete VERIFIED assessment with verdict OK"
         )

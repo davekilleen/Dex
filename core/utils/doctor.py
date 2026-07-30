@@ -1637,10 +1637,13 @@ def _probe_customization_assessment(context: DoctorContext) -> ProbeResult:
             structured_detail=authority,
         )
     if assessment.completeness == "UNKNOWN":
+        observed = assessment.identity.customization_count
+        noun = "customization" if observed == 1 else "customizations"
         return ProbeResult(
             "UNKNOWN",
-            "I couldn't prove a complete customization inventory "
-            f"({', '.join(assessment.incomplete_reasons)}).",
+            f"I found {observed} {noun}, but couldn't prove the inventory is complete "
+            f"({', '.join(assessment.incomplete_reasons)}). Review the listed exclusions "
+            "before creating a Capsule.",
             structured_detail=authority,
         )
     count = assessment.identity.customization_count
@@ -4563,6 +4566,12 @@ def _probe_smoke_history(context: DoctorContext) -> ProbeResult:
 
 def _probe_smoke_journeys(context: DoctorContext) -> ProbeResult:
     smoke_path = context.repo_root / "core" / "utils" / "smoke.py"
+    vault_python = context.vault_root / ".venv" / "bin" / "python"
+    interpreter = (
+        str(vault_python)
+        if vault_python.is_file() and os.access(vault_python, os.X_OK)
+        else sys.executable
+    )
     env = {
         name: os.environ[name]
         for name in ("PATH", "PYTHONPATH")
@@ -4572,11 +4581,12 @@ def _probe_smoke_journeys(context: DoctorContext) -> ProbeResult:
         {
             "VAULT_PATH": str(context.vault_root),
             "VAULT_ROOT": str(context.vault_root),
+            "DEX_PYTHON": interpreter,
             "PYTHONDONTWRITEBYTECODE": "1",
         }
     )
     result = subprocess.run(
-        [sys.executable, str(smoke_path), "--json"],
+        [interpreter, str(smoke_path), "--json"],
         cwd=context.vault_root,
         env=env,
         capture_output=True,

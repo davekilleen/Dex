@@ -255,7 +255,12 @@ async def handle_call_tool(
                     (
                         "Customization assessment is complete."
                         if state == "ok"
-                        else "Customization assessment could not be verified."
+                        else (
+                            "Customization assessment is partial; review the listed "
+                            "exclusions before creating a Capsule."
+                            if assessment.get("partial") is True
+                            else "Customization assessment could not be verified."
+                        )
                     ),
                     **extra,
                 )

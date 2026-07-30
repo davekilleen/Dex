@@ -84,6 +84,26 @@ def test_preview_refuses_manifest_only_unknown_assessment(tmp_path: Path) -> Non
     assert not (vault / CAPSULE_ROOT).exists()
 
 
+def test_preview_refusal_names_exact_exclusions_and_preserves_partial_understanding(
+    tmp_path: Path,
+) -> None:
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    _install_verified_catalog(vault)
+    write_file(vault, ".scripts/custom.py", b"VALUE = 1\n")
+    external = tmp_path / "outside.py"
+    external.write_text("PRIVATE = True\n", encoding="utf-8")
+    link = vault / ".scripts" / "outside-link.py"
+    link.symlink_to(external)
+
+    with pytest.raises(CapsuleError) as raised:
+        preview_capsule(vault)
+
+    assert ".scripts/outside-link.py" in str(raised.value)
+    assert "symlink-refused" in str(raised.value)
+    assert not (vault / CAPSULE_ROOT).exists()
+
+
 def test_preview_create_validate_and_status_happy_path(tmp_path: Path) -> None:
     vault = _linked_customized_vault(tmp_path)
 

@@ -1,12 +1,25 @@
 ---
 name: daily-review
 description: "Close out the day: what got done vs planned, meeting follow-ups, learnings, and tomorrow's focus. Use when the user says 'review my day', 'wrap up', 'end of day', or it's evening. Also use proactively when the day's work is clearly done. Not for setting up the morning; use `daily-plan`."
-context: fork
 ---
 
 ## Purpose
 
 Conduct an end-of-day review to capture progress, track what you actually accomplished vs. planned, surface meeting follow-ups, and set up tomorrow.
+
+## Execution mode
+
+Run inline in the current conversation by default. Do not fork merely because this
+skill was selected. Only run in the background when the user explicitly asks for a
+background review or the host has already obtained a specific background-work
+approval for this review.
+
+Before authoring anything, check for existing day state: today's archived plan,
+today's completion metrics, and any review or closeout already written for today. If
+existing day state is present, enter **verifier mode**. Read it, compare it with the
+current tasks and meeting evidence, and surface omissions or proposed corrections.
+Do not create a competing review or overwrite the existing author. Any proposed
+write still follows the confirmation and write-guard rules below.
 
 ## Tone Calibration
 

@@ -15,7 +15,14 @@ It is the single-meeting, in-the-moment ritual. It is **not** the bulk "catch up
 
 Work from whichever exists, in this order:
 1. **Notes the user just pasted or dictated** — the common case; use them directly even if the meeting was never synced.
-2. **The meeting they name** ("my 3pm with Acme") — pull it via `get_meeting_context` or the latest file in `00-Inbox/Meetings/`.
+2. **The meeting they name** ("my 3pm with Acme") — pull it via `get_meeting_context`.
+3. **A provider-neutral source note elsewhere in the vault** — if the named meeting
+   was not returned, search the vault by meeting title, attendee, and date. This
+   includes notes created by ClickUp AI and other recorders. Provider-neutral
+   discovery is not only `00-Inbox/Meetings/`. Exclude Dex internals, dependency folders, archives that
+   fall outside the requested date, and binary files. Prefer QMD when available,
+   otherwise use a bounded Markdown filename/content search. Read the matched note
+   before treating it as the meeting.
 
 If there are no notes and no matching synced meeting, **ask for the notes** (or a two-line recap) — do not fabricate a summary of a meeting you can't see.
 
@@ -39,7 +46,12 @@ Offer to create tasks from the action items and your commitments. **Nothing is w
 
 ## Step 5 — Capture, then confirm what happened
 
-Save the closeout to the meeting note (or `00-Inbox/Meetings/` if it was pasted, unsynced). Then confirm the real result by reading it back: the note path saved, the tasks created (by ID), and which person pages were updated. Never report "captured / done" without those in hand.
+Save the closeout to the original source note when one was discovered, wherever it
+lives. Do not silently copy a ClickUp or other provider note into
+`00-Inbox/Meetings/`. Use `00-Inbox/Meetings/` only when the notes were pasted or
+dictated and have no source file. Then confirm the real result by reading it back:
+the note path saved, the tasks created (by ID), and which person pages were updated.
+Never report "captured / done" without those in hand.
 
 ---
 

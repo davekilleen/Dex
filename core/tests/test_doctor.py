@@ -9,6 +9,7 @@ import shutil
 import stat
 import subprocess
 import sys
+import venv
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -2518,6 +2519,43 @@ def test_smoke_journeys_roll_up_unknown_and_use_the_same_interpreter(monkeypatch
     ]
     assert observed["kwargs"]["env"]["VAULT_PATH"] == str(context.vault_root)
     assert observed["kwargs"]["cwd"] == context.vault_root
+
+
+def test_smoke_journeys_use_vault_venv_where_yaml_is_actually_installed(
+    tmp_path,
+):
+    vault = tmp_path / "vault"
+    smoke_path = vault / "core" / "utils" / "smoke.py"
+    smoke_path.parent.mkdir(parents=True)
+    (vault / "System").mkdir()
+    venv.create(vault / ".venv", with_pip=False)
+    python = vault / ".venv" / "bin" / "python"
+    version = f"python{sys.version_info.major}.{sys.version_info.minor}"
+    site_packages = vault / ".venv" / "lib" / version / "site-packages"
+    site_packages.mkdir(parents=True, exist_ok=True)
+    (site_packages / "yaml.py").write_text("SAFE_SENTINEL = True\n", encoding="utf-8")
+    smoke_path.write_text(
+        "import json, yaml\n"
+        "assert yaml.SAFE_SENTINEL is True\n"
+        "print(json.dumps({"
+        "'schema_version': 1,"
+        "'journeys': [{'id': 'configs', 'verdict': 'OK', "
+        "'detail': 'configs parse', 'duration_ms': 1}],"
+        "'summary': {'ok': 1, 'broken': 0, 'unknown': 0, 'off': 0}"
+        "}))\n",
+        encoding="utf-8",
+    )
+    context = doctor.DoctorContext(
+        vault_root=vault,
+        repo_root=vault,
+        home=tmp_path / "home",
+        now=NOW,
+    )
+
+    result = doctor._probe_smoke_journeys(context)
+
+    assert result.verdict == "OK"
+    assert result.detail == "configs [OK]: configs parse"
 
 
 def test_smoke_journeys_roll_up_broken_from_exit_one(monkeypatch, context):

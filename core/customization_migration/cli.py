@@ -256,6 +256,19 @@ def run(arguments: list[str] | None = None) -> int:
         if options.command == "assess":
             assessment = migration_service.assess_to_dict(root)
             if assessment["verdict"] != "OK":
+                records = assessment.get("records")
+                exclusions = assessment.get("exclusions")
+                if isinstance(records, list) and isinstance(exclusions, list):
+                    print(
+                        f"Observed {len(records)} customizations, but the inventory "
+                        "is partial and cannot authorize a Capsule write."
+                    )
+                    for exclusion in exclusions:
+                        print(
+                            f"Excluded {exclusion['path']} [{exclusion['reason']}]: "
+                            f"{exclusion['guidance']}"
+                        )
+                    return 0
                 print(
                     "Nothing could be verified, so no customization counts are shown."
                 )

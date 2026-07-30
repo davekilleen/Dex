@@ -32,6 +32,18 @@ def test_daily_review_still_exists_as_canonical() -> None:
     assert "daily-review" in DAILY_REVIEW.read_text(encoding="utf-8")
 
 
+def test_daily_review_does_not_force_a_fork_and_verifies_existing_day_state() -> None:
+    text = DAILY_REVIEW.read_text(encoding="utf-8")
+    frontmatter = text.split("---\n", 2)[1]
+    lower = text.lower()
+
+    assert "context: fork" not in frontmatter
+    assert "inline" in lower
+    assert "verifier mode" in lower
+    assert "existing day state" in lower
+    assert "explicitly asks" in lower and "background" in lower
+
+
 def test_alias_description_names_daily_review_as_the_target() -> None:
     fm = REVIEW.read_text(encoding="utf-8").split("---\n", 2)[1]
     desc = next(line for line in fm.splitlines() if line.startswith("description:")).lower()

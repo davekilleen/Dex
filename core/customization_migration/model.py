@@ -37,6 +37,20 @@ EXCLUSION_REASONS = frozenset(
         "reference-budget-exhausted",
     }
 )
+EXCLUSION_GUIDANCE = {
+    "restricted": "Review this path locally; Dex will not inspect or archive it.",
+    "symlink-refused": "Replace the link with a regular file inside the vault, then reassess.",
+    "read-bound-exceeded": "Reduce or split the file so it fits the inspection limit, then reassess.",
+    "read-error": "Make the file readable and valid for its format, then reassess.",
+    "embedded-secret": "Remove the credential or secret before including this file; Dex will not archive it.",
+    "trust-hash-mismatch": "Re-authorize the current file through the trust flow, then reassess.",
+    "release-identity-unproved": "Restore a verified release catalog through /dex-update, then reassess.",
+    "dependency-tree-excluded": "Move the dependency into a regular supported vault path, then reassess.",
+    "embedded-repository": "Keep the nested repository separate and record its dependency manually.",
+    "canonical-path-collision": "Rename the colliding path so each canonical vault path is unique.",
+    "invalid-trust-registry": "Repair or recreate the trust registry through its setup flow, then reassess.",
+    "reference-budget-exhausted": "Reduce the assessed scope or split the dependency set, then reassess.",
+}
 INCOMPLETE_REASONS = frozenset(
     {
         "assessment-exclusions",
@@ -384,7 +398,11 @@ class AssessmentExclusion:
             )
 
     def to_dict(self) -> dict[str, object]:
-        result: dict[str, object] = {"path": self.path, "reason": self.reason}
+        result: dict[str, object] = {
+            "path": self.path,
+            "reason": self.reason,
+            "guidance": EXCLUSION_GUIDANCE[self.reason],
+        }
         if self.uninspected_count is not None:
             result["uninspected_count"] = self.uninspected_count
         return result
@@ -520,20 +538,27 @@ class Assessment:
             raise ValueError("identity customization_count does not match records")
         if self.identity.edge_count != len(self.edges):
             raise ValueError("identity edge_count does not match edges")
-        if self.completeness == "UNKNOWN" and (
-            self.records
-            or self.edges
-            or self.groups
-            or self.identity.inventory_path_count
-            or self.identity.customization_count
-            or self.identity.edge_count
+        if (
+            self.completeness == "UNKNOWN"
+            and self.baseline_identity_state != "VERIFIED"
+            and (
+                self.records
+                or self.edges
+                or self.groups
+                or self.identity.inventory_path_count
+                or self.identity.customization_count
+                or self.identity.edge_count
+            )
         ):
             raise ValueError(
-                "unknown assessment cannot expose partial records, edges, groups, or counts"
+                "an unverified baseline cannot expose partial records, edges, groups, or counts"
             )
 
     def to_dict(self) -> dict[str, object]:
-        if self.completeness == "UNKNOWN":
+        if (
+            self.completeness == "UNKNOWN"
+            and self.baseline_identity_state != "VERIFIED"
+        ):
             return {
                 "schema_version": self.schema_version,
                 "baseline_identity_state": self.baseline_identity_state,
@@ -541,7 +566,7 @@ class Assessment:
                 "completeness": self.completeness,
                 "verdict": self.verdict,
             }
-        return {
+        result = {
             "schema_version": self.schema_version,
             "identity": self.identity.to_dict(),
             "baseline_identity_state": self.baseline_identity_state,
@@ -554,6 +579,9 @@ class Assessment:
             "completeness": self.completeness,
             "verdict": self.verdict,
         }
+        if self.completeness == "UNKNOWN":
+            result["partial"] = True
+        return result
 
     def canonical_assessment_bytes(self) -> bytes:
         return (
@@ -579,6 +607,7 @@ __all__ = [
     "CustomizationKind",
     "CustomizationRecord",
     "EdgeKind",
+    "EXCLUSION_GUIDANCE",
     "EXCLUSION_REASONS",
     "LiveInfo",
     "ReferenceConfidence",

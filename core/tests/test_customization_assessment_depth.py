@@ -603,10 +603,13 @@ def test_extreme_corpus_exact_exclusions_and_unknown_honesty(
     }
     assert assessment.completeness == "UNKNOWN"
     assert assessment.verdict == "UNKNOWN"
-    assert assessment.records == ()
-    assert assessment.edges == ()
-    assert assessment.groups == ()
+    assert len(assessment.records) == 9
+    assert len(assessment.edges) == 7
+    assert len(assessment.groups) == 9
+    assert assessment.identity.customization_count == 9
+    assert assessment.identity.edge_count == 7
     assert "assessment-exclusions" in assessment.incomplete_reasons
+    assert assessment.to_dict()["partial"] is True
 
 
 def test_adoption_benchmark_reports_customization_assessment_stage() -> None:
