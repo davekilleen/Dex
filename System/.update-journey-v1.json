@@ -52,7 +52,7 @@
     "linux"
   ],
   "runner": {
-    "sha256": "d6212ea6d778f745e8c58b55c52715ed10ad9bcc3a103bf0557296afc73f7b9c",
+    "sha256": "a98e31890b46a9d3b33f1f2a293e0d588105b40f5c27232533d7f526b112a199",
     "source_path": "scripts/release_fleet.py"
   },
   "schema_version": 1

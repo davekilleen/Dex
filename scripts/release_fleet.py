@@ -1344,6 +1344,52 @@ def _prove_installed_release_identity(
         )
 
 
+def _installer_created_split_topology(vault: Path) -> bool:
+    """Recognize the already-proved split shape without requiring a vault remote."""
+
+    brain = vault / ".dex/brain.git"
+    archive = vault / ".dex/pre-split-archive.git"
+    if (
+        brain.is_symlink()
+        or not brain.is_dir()
+        or archive.is_symlink()
+        or not archive.is_dir()
+    ):
+        return False
+    try:
+        topology = _read_closed_json_file(
+            vault / "System/.dex/topology.json",
+            label="installer-created topology record",
+        )
+        vault_marker = _read_closed_json_file(
+            vault / ".git/dex-vault-v2",
+            label="installer-created vault marker",
+        )
+        brain_marker = _read_closed_json_file(
+            brain / "dex-brain-v2",
+            label="installer-created brain marker",
+        )
+    except FleetError:
+        return False
+    installed = topology.get("installedRelease")
+    return (
+        isinstance(installed, str)
+        and bool(installed)
+        and topology.get("schemaVersion") == 1
+        and topology.get("topology") == "brain-vault-split"
+        and topology.get("vaultGitDir") == ".git"
+        and topology.get("brainGitDir") == ".dex/brain.git"
+        and topology.get("archiveGitDir") == ".dex/pre-split-archive.git"
+        and vault_marker == {"schemaVersion": 1, "role": "vault"}
+        and brain_marker
+        == {
+            "schemaVersion": 1,
+            "role": "brain",
+            "installed": installed,
+        }
+    )
+
+
 def _run_historic_installer(
     vault: Path,
     release: DistributionRelease,
@@ -1352,6 +1398,7 @@ def _run_historic_installer(
     timeout_seconds: int = 15 * 60,
     official_release_commit: str | None = None,
     official_release_tree: str | None = None,
+    keep_official_fetch: bool = False,
 ) -> str:
     """Run trusted first-party installer code inside a sealed disposable fixture.
 
@@ -1425,7 +1472,8 @@ def _run_historic_installer(
         )
         return "installer-complete"
     finally:
-        _disable_all_fixture_remotes(vault, environment)
+        if not keep_official_fetch:
+            _disable_all_fixture_remotes(vault, environment)
 
 
 def build_installed_fixture(
@@ -1434,6 +1482,7 @@ def build_installed_fixture(
     output: Path,
     *,
     environment: Mapping[str, str] | None = None,
+    keep_official_fetch: bool = False,
 ) -> FleetCase:
     """Install the historic release, then add synthetic user-owned data for updating."""
     vault = output / safe_case_name(release)
@@ -1453,6 +1502,7 @@ def build_installed_fixture(
         sealed_environment,
         official_release_commit=release_commit,
         official_release_tree=release_tree,
+        keep_official_fetch=keep_official_fetch,
     )
     return FleetCase(
         release=release,
@@ -1948,17 +1998,19 @@ def run_journey(
             start,
             output,
             environment=environment,
+            keep_official_fetch=True,
         )
         resolve_fixture_python(case.vault, trusted_python=python_runtime)
         from scripts import release_fleet_executor
 
         try:
-            _prepare_installer_release_remote(
-                repo,
-                case.vault,
-                start,
-                environment,
-            )
+            if not _installer_created_split_topology(case.vault):
+                _prepare_installer_release_remote(
+                    repo,
+                    case.vault,
+                    start,
+                    environment,
+                )
             return release_fleet_executor.execute_journey(
                 repo_root=repo,
                 source_commit=source_commit,

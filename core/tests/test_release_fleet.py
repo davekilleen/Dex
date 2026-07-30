@@ -1594,9 +1594,11 @@ def test_journey_refuses_an_undeclared_host_platform(
         )
 
 
+@pytest.mark.parametrize("split_topology", [False, True])
 def test_journey_delegates_only_after_released_source_and_fixture_are_bound(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    split_topology: bool,
 ) -> None:
     from core.update.journey_protocol import load_update_journey_protocol
     from scripts import release_fleet_executor
@@ -1690,14 +1692,61 @@ def test_journey_delegates_only_after_released_source_and_fixture_are_bound(
         lambda *_args, **_kwargs: {},
     )
 
-    def build_case(_repo, release, output, *, environment):
+    def build_case(
+        _repo,
+        release,
+        output,
+        *,
+        environment,
+        keep_official_fetch,
+    ):
         assert environment == {}
+        assert keep_official_fetch is True
         vault = output / release_fleet.safe_case_name(release)
         vault.mkdir(parents=True)
+        if split_topology:
+            (vault / "System/.dex").mkdir(parents=True)
+            (vault / ".git").mkdir()
+            (vault / ".dex/brain.git").mkdir(parents=True)
+            (vault / ".dex/pre-split-archive.git").mkdir()
+            (vault / "System/.dex/topology.json").write_text(
+                json.dumps(
+                    {
+                        "schemaVersion": 1,
+                        "topology": "brain-vault-split",
+                        "vaultGitDir": ".git",
+                        "brainGitDir": ".dex/brain.git",
+                        "archiveGitDir": ".dex/pre-split-archive.git",
+                        "installedRelease": start.commit,
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            (vault / ".git/dex-vault-v2").write_text(
+                json.dumps({"schemaVersion": 1, "role": "vault"}) + "\n",
+                encoding="utf-8",
+            )
+            (vault / ".dex/brain.git/dex-brain-v2").write_text(
+                json.dumps(
+                    {
+                        "schemaVersion": 1,
+                        "role": "brain",
+                        "installed": start.commit,
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            remote_events.append("split-official-read-retained")
         return release_fleet.FleetCase(release, vault, {"00-Inbox/keep.md": "0" * 64})
 
     def execute(**kwargs):
-        assert remote_events == ["official-read-open"]
+        assert remote_events == (
+            ["split-official-read-retained"]
+            if split_topology
+            else ["official-read-open"]
+        )
         remote_events.append("execute")
         captured.update(kwargs)
         return Run()
@@ -1732,7 +1781,11 @@ def test_journey_delegates_only_after_released_source_and_fixture_are_bound(
     assert captured["foundation_release"] == foundation.identity()
     assert captured["follow_up_release"] == follow_up.identity()
     assert captured["user_owned_paths"] == tuple(release_fleet.USER_FIXTURES)
-    assert remote_events == ["official-read-open", "execute", "remote-closed"]
+    assert remote_events == (
+        ["split-official-read-retained", "execute", "remote-closed"]
+        if split_topology
+        else ["official-read-open", "execute", "remote-closed"]
+    )
     assert not (tmp_path / "output" / release_fleet.safe_case_name(start)).exists()
 
 
