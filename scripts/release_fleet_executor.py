@@ -14,6 +14,7 @@ import os
 import re
 import select
 import signal
+import stat
 import subprocess
 import sys
 import tempfile
@@ -75,6 +76,151 @@ class ExecutorRun:
         return value
 
 
+def _cached_git(repository: Path, *arguments: str) -> str:
+    """Run local-only Git against a controller-verified foundation cache."""
+
+    environment = dex_update_bridge._bridge_environment()
+    environment["GIT_ALLOW_PROTOCOL"] = "file"
+    completed = subprocess.run(
+        [
+            str(dex_update_bridge._trusted_git_binary()),
+            "-c",
+            "core.hooksPath=/dev/null",
+            "-c",
+            "credential.helper=",
+            "-c",
+            "fetch.fsckObjects=true",
+            "-c",
+            "transfer.fsckObjects=true",
+            "-C",
+            str(repository),
+            *arguments,
+        ],
+        check=False,
+        capture_output=True,
+        env=environment,
+        timeout=90,
+    )
+    if completed.returncode:
+        detail = completed.stderr.decode("utf-8", "replace").strip()
+        raise ExecutorError(detail or "foundation cache Git operation failed")
+    try:
+        return completed.stdout.decode("utf-8").strip()
+    except UnicodeDecodeError as error:
+        raise ExecutorError("foundation cache Git output was not text") from error
+
+
+def _validate_foundation_cache(
+    cache: Path,
+    pin: dex_update_bridge.ReleasePin = dex_update_bridge.FOUNDATION,
+) -> Path:
+    """Prove a private local cache contains the exact official foundation."""
+
+    if cache.is_symlink() or not cache.is_dir():
+        raise ExecutorError("foundation cache must be a private bare repository")
+    status = cache.stat()
+    if status.st_uid != os.getuid() or stat.S_IMODE(status.st_mode) != 0o700:
+        raise ExecutorError(
+            "foundation cache must be controller-owned with mode 0700"
+        )
+    resolved = cache.resolve(strict=True)
+    expected = {
+        f"refs/tags/{pin.tag}": pin.tag_object,
+        f"{pin.tag}^{{commit}}": pin.commit,
+        f"{pin.tag}^{{tree}}": pin.tree,
+        "refs/heads/release^{commit}": pin.commit,
+    }
+    for revision, identity in expected.items():
+        try:
+            actual = _cached_git(resolved, "rev-parse", "--verify", revision)
+        except ExecutorError as error:
+            raise ExecutorError(
+                "foundation cache does not match the pinned official release"
+            ) from error
+        if actual != identity:
+            raise ExecutorError(
+                "foundation cache does not match the pinned official release"
+            )
+    return resolved
+
+
+def _acquire_cached_foundation_source(
+    cache: Path,
+    pin: dex_update_bridge.ReleasePin = dex_update_bridge.FOUNDATION,
+) -> tuple[tempfile.TemporaryDirectory[str], Path]:
+    """Check out the verified cache without another network transfer."""
+
+    verified = _validate_foundation_cache(cache, pin)
+    temporary = tempfile.TemporaryDirectory(prefix="dex-cached-foundation-")
+    root = Path(temporary.name)
+    source = root / "foundation"
+    try:
+        _cached_git(
+            root,
+            "clone",
+            "--quiet",
+            "--no-checkout",
+            "--no-local",
+            str(verified),
+            str(source),
+        )
+        _cached_git(source, "checkout", "--quiet", "--detach", pin.tag)
+        for revision, identity in (
+            (f"refs/tags/{pin.tag}", pin.tag_object),
+            (f"{pin.tag}^{{commit}}", pin.commit),
+            (f"{pin.tag}^{{tree}}", pin.tree),
+        ):
+            if _cached_git(source, "rev-parse", "--verify", revision) != identity:
+                raise ExecutorError(
+                    "cached foundation checkout changed immutable identity"
+                )
+    except Exception:
+        temporary.cleanup()
+        raise
+    return temporary, source
+
+
+def _fetch_foundation_from_cache(
+    vault: Path,
+    pin: dex_update_bridge.ReleasePin,
+    *,
+    cache: Path,
+) -> None:
+    """Populate only the private brain from the preverified local cache."""
+
+    verified = _validate_foundation_cache(cache, pin)
+    brain = vault / ".dex/brain.git"
+    if brain.is_symlink() or not brain.is_dir():
+        raise ExecutorError("topology conversion did not create a safe brain store")
+    _cached_git(
+        brain,
+        "fetch",
+        "--quiet",
+        "--no-tags",
+        "--no-write-fetch-head",
+        "--no-recurse-submodules",
+        str(verified),
+        f"refs/tags/{pin.tag}:refs/tags/{pin.tag}",
+        "+refs/heads/release:refs/remotes/upstream/release",
+    )
+    if (
+        _cached_git(brain, "rev-parse", "--verify", f"refs/tags/{pin.tag}")
+        != pin.tag_object
+        or _cached_git(brain, "rev-parse", "--verify", f"{pin.tag}^{{commit}}")
+        != pin.commit
+        or _cached_git(brain, "rev-parse", "--verify", f"{pin.tag}^{{tree}}")
+        != pin.tree
+        or _cached_git(
+            brain,
+            "rev-parse",
+            "--verify",
+            "refs/remotes/upstream/release^{commit}",
+        )
+        != pin.commit
+    ):
+        raise ExecutorError("cached foundation fetch changed immutable identity")
+
+
 class JourneyRuntime(Protocol):
     """Internal seam for the production and deterministic test adapters."""
 
@@ -112,7 +258,7 @@ class JourneyRuntime(Protocol):
 class _ProductionRuntime:
     """Closed parent adapter over a fixture-venv lifecycle runtime."""
 
-    def __init__(self) -> None:
+    def __init__(self, *, foundation_cache: Path | None = None) -> None:
         self._runtime_home = tempfile.TemporaryDirectory(
             prefix="dex-release-journey-runtime-"
         )
@@ -120,6 +266,11 @@ class _ProductionRuntime:
         self._server_stderr = tempfile.TemporaryFile(mode="w+b")
         self._server_vault: Path | None = None
         self._server_buffer = bytearray()
+        self._foundation_cache = (
+            _validate_foundation_cache(foundation_cache)
+            if foundation_cache is not None
+            else None
+        )
 
     def close(self) -> None:
         process = self._server
@@ -213,14 +364,19 @@ class _ProductionRuntime:
             )
         self._server_stderr.seek(0)
         self._server_stderr.truncate()
+        command = [
+            str(interpreter),
+            str(Path(__file__).resolve()),
+            "_runtime-server",
+            "--vault",
+            str(root),
+        ]
+        if self._foundation_cache is not None:
+            command.extend(
+                ["--foundation-cache", str(self._foundation_cache)]
+            )
         process = subprocess.Popen(
-            [
-                str(interpreter),
-                str(Path(__file__).resolve()),
-                "_runtime-server",
-                "--vault",
-                str(root),
-            ],
+            command,
             cwd=PROJECT_ROOT,
             env=self._runtime_environment(root),
             stdin=subprocess.PIPE,
@@ -469,7 +625,11 @@ def _runtime_server_answer(prompt: str) -> str:
     return response["answer"]
 
 
-def _runtime_server(vault: Path) -> int:
+def _runtime_server(
+    vault: Path,
+    *,
+    foundation_cache: Path | None = None,
+) -> int:
     """Serve the fixed lifecycle vocabulary from the fixture virtualenv."""
 
     root = dex_update_bridge._validate_vault(vault)
@@ -480,6 +640,20 @@ def _runtime_server(vault: Path) -> int:
             dex_update_bridge.FOUNDATION,
         ):
             source = root
+        elif foundation_cache is not None:
+            temporary, source = _acquire_cached_foundation_source(
+                foundation_cache
+            )
+
+            def fetch_foundation(
+                vault_root: Path,
+                pin: dex_update_bridge.ReleasePin,
+            ) -> None:
+                _fetch_foundation_from_cache(
+                    vault_root,
+                    pin,
+                    cache=foundation_cache,
+                )
         else:
             temporary, source = dex_update_bridge.acquire_foundation_source()
         service = dex_update_bridge._load_lifecycle_service(source)
@@ -493,14 +667,19 @@ def _runtime_server(vault: Path) -> int:
                 if operation == "close" and set(request) == {"operation"}:
                     return 0
                 if operation == "bridge" and set(request) == {"operation"}:
+                    bridge_arguments: dict[str, object] = {
+                        "pin": dex_update_bridge.FOUNDATION,
+                        "input_fn": _runtime_server_answer,
+                        "output_fn": lambda text: _runtime_server_emit(
+                            {"kind": "output", "text": text}
+                        ),
+                    }
+                    if foundation_cache is not None:
+                        bridge_arguments["fetch_foundation"] = fetch_foundation
                     result = dex_update_bridge.run_bridge(
                         root,
                         service,
-                        pin=dex_update_bridge.FOUNDATION,
-                        input_fn=_runtime_server_answer,
-                        output_fn=lambda text: _runtime_server_emit(
-                            {"kind": "output", "text": text}
-                        ),
+                        **bridge_arguments,
                     )
                 elif operation == "deliver_latest_release" and set(request) == {
                     "operation"
@@ -1175,9 +1354,24 @@ __all__ = [
 
 
 if __name__ == "__main__":
-    if len(sys.argv) != 4 or sys.argv[1:3] != ["_runtime-server", "--vault"]:
+    valid = (
+        len(sys.argv) == 4
+        and sys.argv[1:3] == ["_runtime-server", "--vault"]
+    ) or (
+        len(sys.argv) == 6
+        and sys.argv[1:3] == ["_runtime-server", "--vault"]
+        and sys.argv[4] == "--foundation-cache"
+    )
+    if not valid:
         raise SystemExit("released journey executor has no standalone interface")
     try:
-        raise SystemExit(_runtime_server(Path(sys.argv[3])))
+        raise SystemExit(
+            _runtime_server(
+                Path(sys.argv[3]),
+                foundation_cache=(
+                    Path(sys.argv[5]) if len(sys.argv) == 6 else None
+                ),
+            )
+        )
     except Exception as error:  # noqa: BLE001
         raise SystemExit(f"fixture lifecycle runtime stopped safely: {error}") from error

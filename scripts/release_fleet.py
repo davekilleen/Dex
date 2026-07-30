@@ -754,12 +754,44 @@ def _case_environment(
     node_runtime: NodeRuntime | None = None,
     python_runtime: PythonRuntime | None = None,
     pip_cache_dir: Path | None = None,
+    controller_root: Path | None = None,
 ) -> dict[str, str]:
-    """Return the complete, deliberately small environment for one fixture."""
+    """Return the sealed fixture environment owned by one private controller.
 
+    The fleet controller creates this root before running first-party historic
+    installers. Fleet execution is serialized; this boundary is not intended
+    to defend against a hostile concurrent process replacing controller files.
+    """
+
+    controller = controller_root or runtime_root
+    if controller.is_symlink() or (
+        controller.exists() and not controller.is_dir()
+    ):
+        raise FleetError("fixture controller root must be a private directory")
+    controller.mkdir(parents=True, mode=0o700, exist_ok=True)
+    controller_status = controller.stat()
+    if (
+        controller_status.st_uid != os.getuid()
+        or stat.S_IMODE(controller_status.st_mode) != 0o700
+    ):
+        raise FleetError(
+            "fixture controller root must be owned by the controller with mode 0700"
+        )
     home = runtime_root / "home"
     temporary = runtime_root / "tmp"
     pip_cache = pip_cache_dir or runtime_root / "pip-cache"
+    try:
+        pip_cache.resolve().relative_to(controller.resolve(strict=True))
+    except ValueError as error:
+        raise FleetError(
+            "fixture pip cache must stay inside the private controller root"
+        ) from error
+    try:
+        pip_cache.resolve().relative_to(vault.resolve())
+    except ValueError:
+        pass
+    else:
+        raise FleetError("fixture pip cache must stay outside the vault")
     home.mkdir(parents=True, exist_ok=False)
     temporary.mkdir(parents=True, exist_ok=False)
     if pip_cache.is_symlink() or (pip_cache.exists() and not pip_cache.is_dir()):
@@ -1783,6 +1815,8 @@ def _survey_case(
             runtime_root,
             node_runtime=node_runtime,
             python_runtime=python_runtime,
+            pip_cache_dir=work_root / ".controller-cache/pip",
+            controller_root=work_root / ".controller-cache",
         )
         _create_fixture_vault(repo, release, work_root, environment=environment)
         release_commit, release_tree = _prepare_installer_release_remote(
@@ -2007,6 +2041,8 @@ def run_journey(
         runtime_root,
         node_runtime=node_runtime,
         python_runtime=python_runtime,
+        pip_cache_dir=output / ".fixture-controller/pip",
+        controller_root=output / ".fixture-controller",
     )
     try:
         case = build_installed_fixture(

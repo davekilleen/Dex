@@ -65,6 +65,123 @@ def _executor_source_commit(tmp_path: Path) -> tuple[Path, str]:
     return repo, commit
 
 
+def _foundation_cache(
+    tmp_path: Path,
+) -> tuple[Path, executor.dex_update_bridge.ReleasePin]:
+    source = tmp_path / "foundation-source"
+    source.mkdir(parents=True)
+    subprocess.run(["git", "init", "--quiet"], cwd=source, check=True)
+    subprocess.run(
+        ["git", "config", "user.name", "Dex Tests"],
+        cwd=source,
+        check=True,
+    )
+    subprocess.run(
+        ["git", "config", "user.email", "tests@example.com"],
+        cwd=source,
+        check=True,
+    )
+    service = source / "core/lifecycle/service.py"
+    service.parent.mkdir(parents=True)
+    service.write_text("FOUNDATION = True\n", encoding="utf-8")
+    subprocess.run(["git", "add", "-A"], cwd=source, check=True)
+    subprocess.run(
+        ["git", "commit", "--quiet", "-m", "foundation"],
+        cwd=source,
+        check=True,
+    )
+    commit = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=source,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    tree = subprocess.run(
+        ["git", "rev-parse", "HEAD^{tree}"],
+        cwd=source,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    tag = f"dist/release/v1.2.3-{commit[:7]}"
+    subprocess.run(
+        ["git", "tag", "-a", tag, "-m", "foundation"],
+        cwd=source,
+        check=True,
+    )
+    tag_object = subprocess.run(
+        ["git", "rev-parse", tag],
+        cwd=source,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    subprocess.run(["git", "branch", "release"], cwd=source, check=True)
+    cache = tmp_path / "foundation-cache.git"
+    subprocess.run(
+        ["git", "clone", "--bare", "--quiet", str(source), str(cache)],
+        check=True,
+    )
+    cache.chmod(0o700)
+    pin = executor.dex_update_bridge.ReleasePin(
+        tag=tag,
+        tag_object=tag_object,
+        commit=commit,
+        tree=tree,
+        version="1.2.3",
+    )
+    return cache, pin
+
+
+def test_private_foundation_cache_preserves_exact_official_identity(
+    tmp_path: Path,
+) -> None:
+    cache, pin = _foundation_cache(tmp_path)
+
+    assert executor._validate_foundation_cache(cache, pin) == cache.resolve()
+    temporary, source = executor._acquire_cached_foundation_source(cache, pin)
+    try:
+        assert (source / "core/lifecycle/service.py").is_file()
+        assert (
+            executor._cached_git(source, "rev-parse", "HEAD^{commit}")
+            == pin.commit
+        )
+    finally:
+        temporary.cleanup()
+
+    vault = tmp_path / "vault"
+    brain = vault / ".dex/brain.git"
+    brain.parent.mkdir(parents=True)
+    subprocess.run(["git", "init", "--bare", "--quiet", str(brain)], check=True)
+    executor._fetch_foundation_from_cache(vault, pin, cache=cache)
+    assert (
+        executor._cached_git(
+            brain,
+            "rev-parse",
+            "refs/remotes/upstream/release^{commit}",
+        )
+        == pin.commit
+    )
+
+
+def test_foundation_cache_rejects_wrong_channel_or_unsafe_permissions(
+    tmp_path: Path,
+) -> None:
+    cache, pin = _foundation_cache(tmp_path)
+    subprocess.run(
+        ["git", "--git-dir", str(cache), "update-ref", "-d", "refs/heads/release"],
+        check=True,
+    )
+    with pytest.raises(executor.ExecutorError, match="pinned official"):
+        executor._validate_foundation_cache(cache, pin)
+
+    cache, pin = _foundation_cache(tmp_path / "second")
+    cache.chmod(0o755)
+    with pytest.raises(executor.ExecutorError, match="mode 0700"):
+        executor._validate_foundation_cache(cache, pin)
+
+
 def _commit_executor_tamper(repo: Path) -> str:
     path = repo / "scripts/release_fleet_executor.py"
     path.write_bytes(path.read_bytes() + b"\n# externally substituted bytes\n")

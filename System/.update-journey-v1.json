@@ -13,7 +13,7 @@
     "follow-up-smoke"
   ],
   "executor": {
-    "sha256": "f2935ecb3230213934ee9f4aaaf2c5ed0d77df3c7f15dc33338120b62b5d78d6",
+    "sha256": "59dc1d4a4cecc00812b3eba9cc611b4e8cd6ab71e88e7774ac6c0d1c39e66e06",
     "source_path": "scripts/release_fleet_executor.py"
   },
   "foundation_to_follow_up": {
@@ -52,7 +52,7 @@
     "linux"
   ],
   "runner": {
-    "sha256": "13df124f62b4e5f3b9339c1f52ffee45a43c7177db7e9e6e3093b50d7fc62591",
+    "sha256": "d8be15528779e69c6d876cbe67bbf0347a33c924554ee269f4f47a231e978ac5",
     "source_path": "scripts/release_fleet.py"
   },
   "schema_version": 1

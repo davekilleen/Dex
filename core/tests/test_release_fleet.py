@@ -1350,15 +1350,18 @@ def test_case_environment_reuses_only_a_private_controller_pip_cache(
     tmp_path: Path,
 ) -> None:
     shared_cache = tmp_path / "controller-cache" / "pip"
+    controller_root = tmp_path / "controller-cache"
     first = release_fleet._case_environment(
         tmp_path / "first-vault",
         tmp_path / "first-runtime",
         pip_cache_dir=shared_cache,
+        controller_root=controller_root,
     )
     second = release_fleet._case_environment(
         tmp_path / "second-vault",
         tmp_path / "second-runtime",
         pip_cache_dir=shared_cache,
+        controller_root=controller_root,
     )
 
     assert first["PIP_CACHE_DIR"] == str(shared_cache)
@@ -1385,6 +1388,31 @@ def test_case_environment_rejects_unsafe_shared_pip_cache(
             tmp_path / "vault",
             tmp_path / "runtime",
             pip_cache_dir=shared_cache,
+            controller_root=tmp_path,
+        )
+
+
+def test_case_environment_rejects_pip_cache_outside_controller_or_inside_vault(
+    tmp_path: Path,
+) -> None:
+    controller_root = tmp_path / "controller"
+    controller_root.mkdir(mode=0o700)
+    vault = tmp_path / "vault"
+    vault.mkdir()
+
+    with pytest.raises(release_fleet.FleetError, match="controller root"):
+        release_fleet._case_environment(
+            vault,
+            tmp_path / "outside-runtime",
+            pip_cache_dir=tmp_path / "outside-cache",
+            controller_root=controller_root,
+        )
+    with pytest.raises(release_fleet.FleetError, match="outside the vault"):
+        release_fleet._case_environment(
+            vault,
+            tmp_path / "inside-runtime",
+            pip_cache_dir=vault / "cache",
+            controller_root=tmp_path,
         )
 
 
@@ -1675,6 +1703,7 @@ def test_journey_delegates_only_after_released_source_and_fixture_are_bound(
     )
     source_commit = "f" * 40
     captured: dict[str, object] = {}
+    environment_kwargs: dict[str, object] = {}
     remote_events: list[str] = []
 
     class Run:
@@ -1732,11 +1761,11 @@ def test_journey_delegates_only_after_released_source_and_fixture_are_bound(
     )
     monkeypatch.setattr(release_fleet, "resolve_trusted_node_runtime", object)
     monkeypatch.setattr(release_fleet, "resolve_trusted_python_runtime", object)
-    monkeypatch.setattr(
-        release_fleet,
-        "_case_environment",
-        lambda *_args, **_kwargs: {},
-    )
+    def case_environment(*_args, **kwargs):
+        environment_kwargs.update(kwargs)
+        return {}
+
+    monkeypatch.setattr(release_fleet, "_case_environment", case_environment)
 
     def build_case(
         _repo,
@@ -1827,6 +1856,12 @@ def test_journey_delegates_only_after_released_source_and_fixture_are_bound(
     assert captured["foundation_release"] == foundation.identity()
     assert captured["follow_up_release"] == follow_up.identity()
     assert captured["user_owned_paths"] == tuple(release_fleet.USER_FIXTURES)
+    assert environment_kwargs["pip_cache_dir"] == (
+        tmp_path / "output/.fixture-controller/pip"
+    )
+    assert environment_kwargs["controller_root"] == (
+        tmp_path / "output/.fixture-controller"
+    )
     assert remote_events == (
         ["split-official-read-retained", "execute", "remote-closed"]
         if split_topology
