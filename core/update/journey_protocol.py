@@ -13,10 +13,10 @@ import re
 from dataclasses import dataclass
 from typing import Mapping
 
-PROTOCOL_RELATIVE = "System/.update-journey-v1.json"
+PROTOCOL_RELATIVE = "core/update/journey-protocol-v1.json"
 PROTOCOL_VERSION = 1
 CONTROLLER = "release-fleet-v1"
-SUPPORTED_PLATFORMS = ("darwin", "linux")
+SUPPORTED_PLATFORMS = ("darwin",)
 BRIDGE_ADAPTER = "pinned-foundation-bridge-v1"
 BRIDGE_SOURCE = "scripts/dex_update_bridge.py"
 RUNNER_SOURCE = "scripts/release_fleet.py"

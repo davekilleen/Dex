@@ -106,7 +106,7 @@ python3 scripts/release_fleet.py journey --repo . --output "$fleet_root" \
 ```
 
 The repository has the canonical protocol source at
-`System/.update-journey-v1.json`, with a strict parser in
+`core/update/journey-protocol-v1.json`, with a strict parser in
 `core/update/journey_protocol.py`. It is a closed operation vocabulary, not a
 shell-command format. Version 1 permits only:
 

@@ -48,8 +48,7 @@
     }
   },
   "platforms": [
-    "darwin",
-    "linux"
+    "darwin"
   ],
   "runner": {
     "sha256": "d8be15528779e69c6d876cbe67bbf0347a33c924554ee269f4f47a231e978ac5",

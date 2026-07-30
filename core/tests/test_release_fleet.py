@@ -1020,7 +1020,9 @@ def _tag_protocol_control_release(
     )
     document["historic_to_foundation"]["foundation"] = foundation.identity()
     protocol_path.write_text(json.dumps(document, indent=2, sort_keys=True) + "\n")
-    (repo / "System/.release-catalog.json").write_text(
+    catalog = repo / "System/.release-catalog.json"
+    catalog.parent.mkdir(parents=True, exist_ok=True)
+    catalog.write_text(
         json.dumps(
             {
                 "catalog_version": 1,
@@ -1898,6 +1900,7 @@ def test_shipped_update_surface_requires_and_exposes_the_released_executor(
         (release_fleet.PROJECT_ROOT / release_fleet.UPDATE_JOURNEY_RELATIVE).read_bytes()
     )
     catalog = repo / "System/.release-catalog.json"
+    catalog.parent.mkdir(parents=True, exist_ok=True)
     catalog.write_text(
         json.dumps(
             {

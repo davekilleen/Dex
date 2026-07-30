@@ -20,7 +20,7 @@
 | Transaction core | **SHIPPED** (v1.66) | `core/transaction/*` | Crash-safe snapshot→apply→verify→commit/rollback substrate the lifecycle engine writes through |
 | Portable ownership contract | **SHIPPED** (v1.64+) | `core/portable_contract.py` | Source of truth: every path is brain/seed/generated/vault/runtime; decides what an update may write |
 | Release catalog + bridge | **SHIPPED** (v1.65–v1.68) | `core/lifecycle/catalog/*`, `bridge.py` | Publisher-declared packing list per release; one-release handoff from the legacy updater |
-| Historic updater journey protocol + executor | **LOCAL** | `System/.update-journey-v1.json`, `core/update/journey_protocol.py`, `scripts/release_fleet_executor.py` | Closed release-owned machine contract and evidence-owning implementation for the pinned bridge and lifecycle delivery route; not yet published or fleet-executed |
+| Historic updater journey protocol + executor | **LOCAL** | `core/update/journey-protocol-v1.json`, `core/update/journey_protocol.py`, `scripts/release_fleet_executor.py` | Closed release-owned machine contract and evidence-owning implementation for the pinned bridge and lifecycle delivery route; not yet published or fleet-executed |
 | 10 MCP servers | **SHIPPED** (mixed ages) | `core/mcp/*_server.py` | The tool surface Dex acts through; Work MCP is the giant (46 tools) |
 | Connection Manager (OAuth/token) | **SHIPPED ENGINE, `/connect` HELD** | `core/integrations/connection-manager/` | Local-first OAuth via Nango catalog-as-data; encrypted on-device tokens; hardened through security Phases 0–5g, but the `/connect` doorway stays held (draft PR #231) |
 | Customization migration | **SHIPPED** assess/capsule/guided-journey (v1.75.x) / **LOCAL** rebuild engine and doorway | `core/customization_migration/*`, `core/mcp/customization_migration_server.py` | Inventories customizations, preserves a Capsule, and offers a human-confirmed, receipt-backed rebuild and rewind; the doorway is authorized but remains unshipped until its release |
@@ -85,7 +85,7 @@
 
 ### Historic updater journey protocol — LOCAL
 
-`System/.update-journey-v1.json` is the future release-owned control plane for
+`core/update/journey-protocol-v1.json` is the future release-owned control plane for
 historic fleet evidence. Its strict parser permits only the pinned
 foundation-bridge adapter and the existing
 `deliver_latest_release` → `build_and_preview_delivered_release` →

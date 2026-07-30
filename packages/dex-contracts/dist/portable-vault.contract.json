@@ -567,13 +567,6 @@
       "ownership": "generated"
     },
     {
-      "id": "brain-update-journey-protocol",
-      "path": "System/.update-journey-v1.json",
-      "kind": "file",
-      "ownership": "brain",
-      "note": "immutable release-owned updater instructions with no arbitrary command surface"
-    },
-    {
       "id": "brain-beta-communications",
       "path": "System/Beta_Communications",
       "kind": "dir",

@@ -166,8 +166,8 @@ git checkout -B "$RELEASE_BRANCH" "$SOURCE_SHA" --quiet
 # selected source bytes. The generated root itself ships; the bridge, fleet
 # runner, and executor remain publisher-source artifacts referenced by SHA-256.
 python3 scripts/generate-update-journey-protocol.py --output "$JOURNEY_PROTOCOL_CHECK"
-if ! cmp -s "$JOURNEY_PROTOCOL_CHECK" System/.update-journey-v1.json; then
-    echo "Error: System/.update-journey-v1.json is stale for selected source '$SOURCE_BRANCH'." >&2
+if ! cmp -s "$JOURNEY_PROTOCOL_CHECK" core/update/journey-protocol-v1.json; then
+    echo "Error: core/update/journey-protocol-v1.json is stale for selected source '$SOURCE_BRANCH'." >&2
     echo "Run python3 scripts/generate-update-journey-protocol.py and commit the result." >&2
     exit 1
 fi

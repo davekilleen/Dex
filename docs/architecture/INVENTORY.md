@@ -1,6 +1,6 @@
 <!-- GENERATED FILE — DO NOT EDIT BY HAND. -->
 <!-- Generator: scripts/generate-architecture-inventory.py -->
-<!-- Content SHA-256: 009821c355c74ff355369c1008312a3343040da985a12a2a7bb89714c681114a -->
+<!-- Content SHA-256: 3852f0d6f0c74d546862f3f89d8b5525cd5dcbcb218bbe8152c2475d63aa93e7 -->
 
 # Architecture Inventory
 
@@ -142,13 +142,13 @@ Derived from `core/portable_contract.py` `RULES` and `MUTATION_POLICY`.
 
 | Class | Rule count | Update action |
 | --- | ---: | --- |
-| `brain` | 46 | `replace` |
+| `brain` | 45 | `replace` |
 | `seed` | 38 | `write-if-absent` |
 | `generated` | 8 | `regenerate` |
 | `vault` | 17 | `never` |
 | `runtime` | 13 | `never` |
 
-<details><summary><code>brain</code> declared paths (46)</summary>
+<details><summary><code>brain</code> declared paths (45)</summary>
 
 - `.agents` (dir; `brain-agents`)
 - `.ci` (dir; `brain-ci`)
@@ -180,7 +180,6 @@ Derived from `core/portable_contract.py` `RULES` and `MUTATION_POLICY`.
 - `DISTRIBUTION_READY.md` (file; `brain-distribution-ready`)
 - `LICENSE` (file; `brain-license`)
 - `README.md` (file; `brain-readme`)
-- `System/.update-journey-v1.json` (file; `brain-update-journey-protocol`)
 - `System/Beta_Communications` (dir; `brain-beta-communications`)
 - `System/README.md` (file; `brain-system-readme`)
 - `core` (dir; `brain-core`)

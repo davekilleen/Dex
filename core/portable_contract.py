@@ -183,14 +183,6 @@ RULES: tuple[Rule, ...] = (
     _r("brain-beta-communications", "System/Beta_Communications", "dir", "brain",
        "release-doc retained until the schema-2 baseline-reduction follow-up"),
     _r("brain-system-readme", "System/README.md", "file", "brain"),
-    _r(
-        "brain-update-journey-protocol",
-        "System/.update-journey-v1.json",
-        "file",
-        "brain",
-        "immutable release-owned updater instructions with no arbitrary command surface",
-    ),
-
     # --- seed: shipped once, then the user's; update writes only if absent -
     _r("seed-templates", "System/Templates", "dir", "seed"),
     _r("seed-user-profile-live", "System/user-profile.yaml", "file", "seed",

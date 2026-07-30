@@ -304,7 +304,7 @@ def test_executor_owns_the_closed_two_hop_journey_and_returned_evidence(
     tmp_path: Path,
 ) -> None:
     protocol = load_update_journey_protocol(
-        (REPO_ROOT / "System/.update-journey-v1.json").read_bytes()
+        (REPO_ROOT / "core/update/journey-protocol-v1.json").read_bytes()
     )
     source_repo, source_commit = _executor_source_commit(tmp_path)
     vault, user_files = _vault(tmp_path)
@@ -379,7 +379,7 @@ def _execute(
     starting: dict[str, str] | None = None,
 ) -> executor.ExecutorRun:
     protocol = load_update_journey_protocol(
-        (REPO_ROOT / "System/.update-journey-v1.json").read_bytes()
+        (REPO_ROOT / "core/update/journey-protocol-v1.json").read_bytes()
     )
     vault, user_files = _vault(tmp_path)
     starting = starting or _identity("1.61.0", "a")
@@ -547,7 +547,7 @@ def test_already_installed_foundation_executes_and_validates_without_a_fake_tran
     tmp_path: Path,
 ) -> None:
     protocol = load_update_journey_protocol(
-        (REPO_ROOT / "System/.update-journey-v1.json").read_bytes()
+        (REPO_ROOT / "core/update/journey-protocol-v1.json").read_bytes()
     )
     source_repo, source_commit = _executor_source_commit(tmp_path)
 

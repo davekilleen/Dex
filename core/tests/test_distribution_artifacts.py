@@ -65,7 +65,7 @@ RELEASE_BUILD_INPUTS = (
     ".claude/skills/dex-update/SKILL.md",
     ".claude/skills/dex-rollback/SKILL.md",
     "System/.local-only-preservation-transition.json",
-    "System/.update-journey-v1.json",
+    "core/update/journey-protocol-v1.json",
     "System/Beta_Communications/2026-02-04_hardcoded_paths_fix.md",
     "core/migrations/preserve_local_only_paths.py",
     "core/migrations/tracked-ignored-policy.yaml",
@@ -135,7 +135,7 @@ def test_release_builders_gate_frozen_lifecycle_contract_artifacts() -> None:
     from core.utils.manifest import REQUIRED_LIFECYCLE_RELEASE_PATHS
 
     assert REQUIRED_LIFECYCLE_RELEASE_PATHS == (
-        "System/.update-journey-v1.json",
+        "core/update/journey-protocol-v1.json",
         "core/lifecycle/bridge.py",
         "core/lifecycle/catalog/bridge-release.json",
         "core/lifecycle/contracts/api.schema.json",
@@ -405,7 +405,7 @@ def test_release_branch_strips_dev_files_and_untracks_v1_local_only_files(tmp_pa
     assert "System/.installed-files.manifest" in members
     assert "System/.release-catalog.json" in members
     assert "System/.release-evidence-profile.json" in members
-    assert "System/.update-journey-v1.json" in members
+    assert "core/update/journey-protocol-v1.json" in members
     assert "core/lifecycle/catalog/bridge-release.json" in members
     assert "core/lifecycle/contracts/api.schema.json" in members
     assert "core/lifecycle/service.py" in members
@@ -432,7 +432,7 @@ def test_release_branch_strips_dev_files_and_untracks_v1_local_only_files(tmp_pa
     assert "core/tests/test_distribution_artifacts.py" not in manifest
     assert "core/lifecycle/catalog/bridge-release.json" in manifest
     assert "core/lifecycle/contracts/api.schema.json" in manifest
-    assert "System/.update-journey-v1.json" in manifest
+    assert "core/update/journey-protocol-v1.json" in manifest
     assert "core/update/journey_protocol.py" in manifest
     assert "System/.dex/lifecycle/activation.json" not in manifest
     catalog = _git_json(clone, "release:System/.release-catalog.json")

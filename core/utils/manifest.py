@@ -9,7 +9,7 @@ from pathlib import Path
 
 DEFAULT_MANIFEST = Path("System/.installed-files.manifest")
 REQUIRED_LIFECYCLE_RELEASE_PATHS = (
-    "System/.update-journey-v1.json",
+    "core/update/journey-protocol-v1.json",
     "core/lifecycle/bridge.py",
     "core/lifecycle/catalog/bridge-release.json",
     "core/lifecycle/contracts/api.schema.json",

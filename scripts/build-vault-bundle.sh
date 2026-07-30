@@ -35,7 +35,7 @@ cd "$REPO_ROOT"
 # working tree instead of that exact commit.
 SOURCE_COMMIT="$(git rev-parse --verify 'HEAD^{commit}')"
 PROTOCOL_SOURCE_PATHS=(
-  "System/.update-journey-v1.json"
+  "core/update/journey-protocol-v1.json"
   "core/update/journey_protocol.py"
   "scripts/dex_update_bridge.py"
   "scripts/generate-update-journey-protocol.py"
@@ -51,8 +51,8 @@ fi
 # The bundle must carry the protocol for these exact committed source artifacts.
 python3 "$REPO_ROOT/scripts/generate-update-journey-protocol.py" \
   --output "$JOURNEY_PROTOCOL_CHECK"
-if ! cmp -s "$JOURNEY_PROTOCOL_CHECK" "$REPO_ROOT/System/.update-journey-v1.json"; then
-  echo "Error: System/.update-journey-v1.json is stale for this source tree." >&2
+if ! cmp -s "$JOURNEY_PROTOCOL_CHECK" "$REPO_ROOT/core/update/journey-protocol-v1.json"; then
+  echo "Error: core/update/journey-protocol-v1.json is stale for this source tree." >&2
   echo "Run python3 scripts/generate-update-journey-protocol.py and commit the result." >&2
   exit 1
 fi

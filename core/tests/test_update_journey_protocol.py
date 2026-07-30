@@ -10,22 +10,36 @@ from pathlib import Path
 
 import pytest
 
+from core import portable_contract
 from core.update.journey_protocol import (
+    PROTOCOL_RELATIVE,
     JourneyProtocolError,
     load_update_journey_protocol,
 )
 from scripts import dex_update_bridge
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-PROTOCOL_PATH = REPO_ROOT / "System/.update-journey-v1.json"
+PROTOCOL_PATH = REPO_ROOT / "core/update/journey-protocol-v1.json"
 GENERATOR = REPO_ROOT / "scripts/generate-update-journey-protocol.py"
+
+
+def test_protocol_uses_the_foundation_classified_brain_tree() -> None:
+    resolution = portable_contract.resolve(PROTOCOL_RELATIVE)
+
+    assert PROTOCOL_RELATIVE == "core/update/journey-protocol-v1.json"
+    assert resolution.rule_id == "brain-core"
+    assert resolution.ownership == "brain"
+    assert portable_contract.update_write_verdict(
+        PROTOCOL_RELATIVE,
+        exists=False,
+    ).action == "replace"
 
 
 def test_release_owned_protocol_binds_only_the_reviewed_update_adapters() -> None:
     protocol = load_update_journey_protocol(PROTOCOL_PATH.read_bytes())
 
     assert protocol.foundation == dex_update_bridge.FOUNDATION.identity()
-    assert protocol.platforms == ("darwin", "linux")
+    assert protocol.platforms == ("darwin",)
     assert protocol.bridge.adapter == "pinned-foundation-bridge-v1"
     assert protocol.follow_up.adapter == "lifecycle-delivered-release-v1"
     assert protocol.follow_up.operations == (
