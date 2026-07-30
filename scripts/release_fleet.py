@@ -107,6 +107,8 @@ DISCOVERY_WORK_NAME = ".historic-discovery-fixtures"
 DISCOVERY_MAX_WORKERS = 4
 DISCOVERY_DEFAULT_INSTALL_TIMEOUT_SECONDS = 180
 DISCOVERY_DEFAULT_DOCTOR_TIMEOUT_SECONDS = 90
+OFFICIAL_REPOSITORY_URL = "https://github.com/davekilleen/Dex.git"
+OFFICIAL_RELEASE_REF = "refs/remotes/upstream/release"
 # Discovery fixtures deliberately do not inherit the caller's PATH.  Keep the
 # capability needed by old installers explicit, reviewable, and narrow.
 TRUSTED_NODE_CANDIDATES = (Path("/opt/homebrew/bin/node"),)
@@ -324,6 +326,23 @@ def _git(repo: Path, *arguments: str, environment: Mapping[str, str] | None = No
 def _git_lines(repo: Path, *arguments: str) -> tuple[str, ...]:
     output = _git(repo, *arguments)
     return tuple(line for line in output.splitlines() if line)
+
+
+def _git_directory(
+    git_directory: Path,
+    *arguments: str,
+    environment: Mapping[str, str] | None = None,
+) -> str:
+    result = subprocess.run(
+        ["git", f"--git-dir={git_directory}", *arguments],
+        capture_output=True,
+        text=True,
+        env=dict(environment) if environment is not None else None,
+    )
+    if result.returncode:
+        message = result.stderr.strip() or result.stdout.strip() or "Git command failed"
+        raise FleetError(message)
+    return result.stdout.strip()
 
 
 def resolve_immutable_release(repo: Path, tag: str) -> ImmutableRelease:
@@ -946,6 +965,115 @@ def _disable_fixture_remotes(
             raise FleetError(f"fixture remote {remote!r} could not be disabled")
 
 
+def _disable_git_directory_remotes(
+    git_directory: Path,
+    environment: Mapping[str, str] | None = None,
+) -> None:
+    if git_directory.is_symlink() or not git_directory.is_dir():
+        return
+    remotes = tuple(
+        line
+        for line in _git_directory(
+            git_directory, "remote", environment=environment
+        ).splitlines()
+        if line
+    )
+    for remote in remotes:
+        _git_directory(
+            git_directory,
+            "remote",
+            "set-url",
+            remote,
+            "DISABLED",
+            environment=environment,
+        )
+        _git_directory(
+            git_directory,
+            "remote",
+            "set-url",
+            "--push",
+            remote,
+            "DISABLED",
+            environment=environment,
+        )
+
+
+def _disable_all_fixture_remotes(
+    vault: Path,
+    environment: Mapping[str, str] | None = None,
+) -> None:
+    _disable_fixture_remotes(vault, environment)
+    for relative in (".dex/brain.git", ".dex/pre-split-archive.git"):
+        _disable_git_directory_remotes(vault / relative, environment)
+
+
+def _prepare_installer_release_remote(
+    repo: Path,
+    vault: Path,
+    release: DistributionRelease,
+    environment: Mapping[str, str],
+) -> tuple[str, str]:
+    """Expose the exact historic release as the official ref during installation."""
+
+    try:
+        release_commit = _git(
+            repo,
+            "rev-parse",
+            "--verify",
+            f"{release.commit}^{{commit}}",
+        )
+        release_tree = _git(
+            repo,
+            "rev-parse",
+            "--verify",
+            f"{release.commit}^{{tree}}",
+        )
+    except FleetError as error:
+        raise FleetError("historic release is unavailable for fixture setup") from error
+    if release_commit != release.commit or release_tree != release.tree:
+        raise FleetError("historic release identity changed before fixture setup")
+    _git(
+        vault,
+        "fetch",
+        "--quiet",
+        "--no-tags",
+        str(repo),
+        f"+{release_commit}:{OFFICIAL_RELEASE_REF}",
+        environment=environment,
+    )
+    _git(
+        vault,
+        "remote",
+        "set-url",
+        "upstream",
+        OFFICIAL_REPOSITORY_URL,
+        environment=environment,
+    )
+    _git(
+        vault,
+        "remote",
+        "set-url",
+        "--push",
+        "upstream",
+        OFFICIAL_REPOSITORY_URL,
+        environment=environment,
+    )
+    if (
+        _git(vault, "remote", "get-url", "upstream", environment=environment)
+        != OFFICIAL_REPOSITORY_URL
+        or _git(
+            vault,
+            "rev-parse",
+            "--verify",
+            f"{OFFICIAL_RELEASE_REF}^{{commit}}",
+            environment=environment,
+        )
+        != release_commit
+    ):
+        raise FleetError("fixture could not prove the official release ref")
+    return release_commit, release_tree
+
+
 def _seed_user_content(vault: Path, environment: Mapping[str, str] | None = None) -> dict[str, str]:
     """Place fixed user-owned content only after the historic install is ready."""
     for relative, content in USER_FIXTURES.items():
@@ -1034,13 +1162,197 @@ def _run_bounded_process_group(
     )
 
 
+def _historic_installer_command(
+    installer: Path,
+    release: DistributionRelease,
+) -> list[str]:
+    command = ["bash", "install.sh"]
+    try:
+        source = installer.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError) as error:
+        raise FleetError("historic install.sh is unreadable") from error
+    if release.version == "1.75.0" and "--allow-synced-folder" in source:
+        command.append("--allow-synced-folder")
+    return command
+
+
+def _stamp_v175_transition(
+    vault: Path,
+    environment: Mapping[str, str],
+    *,
+    timeout_seconds: int,
+) -> None:
+    """Use v1.75's own publisher command to repair its stale generated stamp."""
+
+    transition_path = vault / "System/.local-only-preservation-transition.json"
+    package_path = vault / "package.json"
+    try:
+        before = json.loads(transition_path.read_text(encoding="utf-8"))
+        package = json.loads(package_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        raise FleetError("v1.75 transition metadata could not be inspected") from error
+    if (
+        not isinstance(before, Mapping)
+        or set(before) != {"schema_version", "phase", "release_version"}
+        or before.get("schema_version") != 1
+        or before.get("phase") != "untrack-v1"
+        or before.get("release_version") != "1.74.0"
+        or not isinstance(package, Mapping)
+        or package.get("version") != "1.75.0"
+    ):
+        raise FleetError("v1.75 transition repair precondition did not match")
+    command = [
+        str(vault / ".venv/bin/python"),
+        "-m",
+        "core.migrations.preserve_local_only_paths",
+        "stamp-transition",
+        "--repo",
+        str(vault),
+    ]
+    result = _run_bounded_process_group(
+        command,
+        cwd=vault,
+        environment=environment,
+        timeout_seconds=timeout_seconds,
+    )
+    if result.returncode:
+        raise FleetError("v1.75 transition publisher repair failed")
+    try:
+        after = json.loads(transition_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        raise FleetError("v1.75 transition publisher repair was unreadable") from error
+    if after != {
+        "schema_version": 1,
+        "phase": "untrack-v1",
+        "release_version": "1.75.0",
+    }:
+        raise FleetError("v1.75 transition publisher repair was invalid")
+
+
+def _read_closed_json_file(path: Path, *, label: str) -> dict[str, object]:
+    if path.is_symlink() or not path.is_file():
+        raise FleetError(f"{label} is missing or unsafe")
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        raise FleetError(f"{label} is unreadable") from error
+    if not isinstance(value, Mapping):
+        raise FleetError(f"{label} is malformed")
+    return dict(value)
+
+
+def _prove_installed_release_identity(
+    vault: Path,
+    release: DistributionRelease,
+    environment: Mapping[str, str],
+    *,
+    official_release_commit: str,
+    official_release_tree: str,
+) -> None:
+    """Accept the original checkout or the migrator's fully proved split."""
+
+    try:
+        installed_commit = _git(vault, "rev-parse", "HEAD", environment=environment)
+        installed_tree = _git(vault, "rev-parse", "HEAD^{tree}", environment=environment)
+    except FleetError as error:
+        raise FleetError("historic installer release identity could not be proved") from error
+    if installed_commit == release.commit and installed_tree == release.tree:
+        return
+
+    try:
+        topology = _read_closed_json_file(
+            vault / "System/.dex/topology.json",
+            label="installer-created topology record",
+        )
+    except FleetError as error:
+        raise FleetError(
+            "historic installer changed immutable release identity without a valid topology"
+        ) from error
+    if (
+        topology.get("schemaVersion") != 1
+        or topology.get("topology") != "brain-vault-split"
+        or topology.get("vaultGitDir") != ".git"
+        or topology.get("brainGitDir") != ".dex/brain.git"
+        or topology.get("archiveGitDir") != ".dex/pre-split-archive.git"
+        or topology.get("installedRelease") != official_release_commit
+    ):
+        raise FleetError(
+            "historic installer changed immutable release identity without a valid topology"
+        )
+    brain = vault / ".dex/brain.git"
+    try:
+        vault_marker = _read_closed_json_file(
+            vault / ".git/dex-vault-v2",
+            label="installer-created vault marker",
+        )
+        brain_marker = _read_closed_json_file(
+            brain / "dex-brain-v2",
+            label="installer-created brain marker",
+        )
+    except FleetError as error:
+        raise FleetError(
+            "historic installer changed immutable release identity with invalid topology markers"
+        ) from error
+    if (
+        vault_marker != {"schemaVersion": 1, "role": "vault"}
+        or brain_marker
+        != {
+            "schemaVersion": 1,
+            "role": "brain",
+            "installed": official_release_commit,
+        }
+    ):
+        raise FleetError(
+            "historic installer changed immutable release identity with invalid topology markers"
+        )
+    archive = vault / ".dex/pre-split-archive.git"
+    try:
+        archive_commit = _git_directory(
+            archive, "rev-parse", "HEAD^{commit}", environment=environment
+        )
+        archive_tree = _git_directory(
+            archive, "rev-parse", "HEAD^{tree}", environment=environment
+        )
+        brain_commit = _git_directory(
+            brain,
+            "rev-parse",
+            "refs/dex/installed^{commit}",
+            environment=environment,
+        )
+        brain_tree = _git_directory(
+            brain,
+            "rev-parse",
+            "refs/dex/installed^{tree}",
+            environment=environment,
+        )
+    except FleetError as error:
+        raise FleetError(
+            "historic installer changed immutable release identity and topology could not be proved"
+        ) from error
+    if archive_commit != release.commit or archive_tree != release.tree:
+        raise FleetError(
+            "historic installer changed immutable release identity and its pre-split archive "
+            "does not preserve the immutable release"
+        )
+    if (
+        brain_commit != official_release_commit
+        or brain_tree != official_release_tree
+    ):
+        raise FleetError(
+            "historic installer changed immutable release identity and its brain does not "
+            "match the official release ref"
+        )
+
+
 def _run_historic_installer(
     vault: Path,
     release: DistributionRelease,
     environment: Mapping[str, str],
     *,
     timeout_seconds: int = 15 * 60,
-) -> None:
+    official_release_commit: str | None = None,
+    official_release_tree: str | None = None,
+) -> str:
     """Run trusted first-party installer code inside a sealed disposable fixture.
 
     Published Dex installers are trusted first-party code, not arbitrary hostile
@@ -1053,32 +1365,67 @@ def _run_historic_installer(
     installer = vault / "install.sh"
     if installer.is_symlink() or not installer.is_file():
         raise FleetError("historic release has no safe install.sh to bootstrap its fixture")
-    command = ["bash", "install.sh"]
-    result = _run_bounded_process_group(
-        command,
-        cwd=vault,
-        environment=environment,
-        timeout_seconds=timeout_seconds,
-    )
-    if result.returncode:
-        # npm commonly writes benign notices to stderr while the actionable
-        # installer failure is on stdout. Keep both for local classification,
-        # but never retain volatile fixture output in the discovery artifact.
+    try:
+        command = _historic_installer_command(installer, release)
+        result = _run_bounded_process_group(
+            command,
+            cwd=vault,
+            environment=environment,
+            timeout_seconds=timeout_seconds,
+        )
         detail = "\n".join(
             output for output in (result.stdout, result.stderr) if output
         ).strip()
-        raise FleetError(f"historic installer failed for {vault.name}: {detail}")
-    try:
-        installed_commit = _git(vault, "rev-parse", "HEAD", environment=environment)
-        installed_tree = _git(vault, "rev-parse", "HEAD^{tree}", environment=environment)
-    except FleetError as error:
-        raise FleetError("historic installer release identity could not be proved") from error
-    if installed_commit != release.commit or installed_tree != release.tree:
-        raise FleetError(
-            "historic installer changed immutable release identity "
-            f"(expected {release.commit}/{release.tree}, "
-            f"found {installed_commit}/{installed_tree})"
+        if (
+            result.returncode
+            and release.version == "1.75.0"
+            and "Tracked-ignore transition version does not match package metadata."
+            in detail
+        ):
+            _stamp_v175_transition(
+                vault,
+                environment,
+                timeout_seconds=timeout_seconds,
+            )
+            result = _run_bounded_process_group(
+                command,
+                cwd=vault,
+                environment=environment,
+                timeout_seconds=timeout_seconds,
+            )
+            detail = "\n".join(
+                output for output in (result.stdout, result.stderr) if output
+            ).strip()
+        installed_release_commit = official_release_commit or release.commit
+        installed_release_tree = official_release_tree or release.tree
+        if result.returncode:
+            known_post_topology_stop = (
+                "installed catalog release does not match the designated bridge release"
+                in detail
+                or "ModuleNotFoundError: No module named 'yaml'" in detail
+            )
+            if not known_post_topology_stop:
+                raise FleetError(
+                    f"historic installer failed for {vault.name}: {detail}"
+                )
+            _prove_installed_release_identity(
+                vault,
+                release,
+                environment,
+                official_release_commit=installed_release_commit,
+                official_release_tree=installed_release_tree,
+            )
+            return "installer-complete-after-known-post-topology-stop"
+        _prove_installed_release_identity(
+            vault,
+            release,
+            environment,
+            official_release_commit=installed_release_commit,
+            official_release_tree=installed_release_tree,
         )
+        return "installer-complete"
+    finally:
+        _disable_all_fixture_remotes(vault, environment)
 
 
 def build_installed_fixture(
@@ -1097,7 +1444,16 @@ def build_installed_fixture(
         else _case_environment(vault, runtime_root)
     )
     _create_fixture_vault(repo, release, output, environment=sealed_environment)
-    _run_historic_installer(vault, release, sealed_environment)
+    release_commit, release_tree = _prepare_installer_release_remote(
+        repo, vault, release, sealed_environment
+    )
+    _run_historic_installer(
+        vault,
+        release,
+        sealed_environment,
+        official_release_commit=release_commit,
+        official_release_tree=release_tree,
+    )
     return FleetCase(
         release=release,
         vault=vault,
@@ -1363,12 +1719,17 @@ def _survey_case(
             python_runtime=python_runtime,
         )
         _create_fixture_vault(repo, release, work_root, environment=environment)
+        release_commit, release_tree = _prepare_installer_release_remote(
+            repo, vault, release, environment
+        )
         try:
-            _run_historic_installer(
+            install_code = _run_historic_installer(
                 vault,
                 release,
                 environment,
                 timeout_seconds=install_timeout_seconds,
+                official_release_commit=release_commit,
+                official_release_tree=release_tree,
             )
         except subprocess.TimeoutExpired as error:
             result["fixture_install"] = {
@@ -1388,7 +1749,7 @@ def _survey_case(
             result["fixture_install"] = {"status": "failed", "code": code}
             issues.append(_survey_issue("fixture-install", code))
             return result
-        result["fixture_install"] = {"status": "ok", "code": "installer-complete"}
+        result["fixture_install"] = {"status": "ok", "code": install_code}
         try:
             fixture_python = resolve_fixture_python(vault, trusted_python=python_runtime)
         except FleetError as error:

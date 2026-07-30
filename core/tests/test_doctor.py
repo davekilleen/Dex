@@ -2233,6 +2233,103 @@ def test_core_drift_is_ok_for_a_clean_release_checkout(tmp_path):
     assert doctor._probe_core_drift(drift_context).verdict == "OK"
 
 
+def test_post_split_core_drift_accepts_only_installer_normalized_package_metadata(
+    context,
+) -> None:
+    brain = _write_split_topology(context)
+    baseline_package = {
+        "name": "dex-pkm",
+        "version": "1.80.5",
+        "scripts": {"meeting-sync": "node sync.cjs"},
+        "dependencies": {"js-yaml": "^4.1.0"},
+    }
+    baseline_lock = {
+        "name": "dex-pkm",
+        "version": "1.75.0",
+        "lockfileVersion": 3,
+        "requires": True,
+        "packages": {
+            "": {
+                "name": "dex-pkm",
+                "version": "1.75.0",
+                "dependencies": {"js-yaml": "^4.1.0"},
+            }
+        },
+    }
+    (context.vault_root / "package.json").write_text(
+        json.dumps(baseline_package, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    (context.vault_root / "package-lock.json").write_text(
+        json.dumps(baseline_lock, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    (context.vault_root / "System/.installed-files.manifest").write_text(
+        "package-lock.json\npackage.json\n",
+        encoding="utf-8",
+    )
+    _git(
+        context.vault_root,
+        "add",
+        "package.json",
+        "package-lock.json",
+        "System/.installed-files.manifest",
+    )
+    _git(context.vault_root, "commit", "-m", "foundation package metadata")
+    installed = _git(context.vault_root, "rev-parse", "HEAD").stdout.strip()
+    subprocess.run(
+        [
+            "git",
+            f"--git-dir={brain}",
+            "fetch",
+            "--quiet",
+            str(context.vault_root),
+            f"+{installed}:refs/dex/installed",
+        ],
+        check=True,
+    )
+    current_package = {
+        **baseline_package,
+        "scripts": {
+            **baseline_package["scripts"],
+            "test:hooks": "node --test hooks.test.cjs",
+            "check:connections-contract": "node check-contract.mjs",
+        },
+    }
+    current_lock = {
+        **baseline_lock,
+        "version": "1.80.5",
+        "packages": {
+            "": {
+                **baseline_lock["packages"][""],
+                "version": "1.80.5",
+            }
+        },
+    }
+    (context.vault_root / "package.json").write_text(
+        json.dumps(current_package, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    (context.vault_root / "package-lock.json").write_text(
+        json.dumps(current_lock, indent=2) + "\n",
+        encoding="utf-8",
+    )
+
+    result = doctor._probe_core_drift(context)
+
+    assert result.verdict == "OK"
+    assert result.detail == "No shipped brain files differ from refs/dex/installed"
+
+    current_package["dependencies"]["js-yaml"] = "*"
+    (context.vault_root / "package.json").write_text(
+        json.dumps(current_package, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    result = doctor._probe_core_drift(context)
+    assert result.verdict == "UNKNOWN"
+    assert "package.json" in result.detail
+
+
 def test_repository_credential_named_release_files_match_head_without_python_reads(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

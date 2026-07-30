@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import copy
 import hashlib
 import json
 import os
@@ -20,7 +21,7 @@ from contextlib import contextmanager
 from dataclasses import asdict, dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Iterator
+from typing import Any, Iterator, Mapping
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(REPO_ROOT) not in sys.path:
@@ -3725,6 +3726,103 @@ def _brain_paths_from_installed_release(
     return paths
 
 
+def _package_json_object(raw: str) -> dict[str, object] | None:
+    try:
+        value = json.loads(raw)
+    except (TypeError, json.JSONDecodeError):
+        return None
+    return dict(value) if isinstance(value, Mapping) else None
+
+
+def _current_package_json(context: DoctorContext, relative: str) -> dict[str, object] | None:
+    path = context.repo_root / relative
+    if path.is_symlink() or not path.is_file():
+        return None
+    try:
+        return _package_json_object(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError):
+        return None
+
+
+def _installer_normalized_package_metadata(
+    context: DoctorContext,
+    relative: str,
+    baseline: str,
+    brain: Path,
+) -> bool:
+    """Recognize only npm/release-builder changes that cannot alter runtime deps."""
+
+    if relative not in {"package.json", "package-lock.json"}:
+        return False
+    baseline_raw = _git_file(
+        context,
+        baseline,
+        relative,
+        git_directory=brain,
+    )
+    if baseline_raw is None:
+        return False
+    baseline_value = _package_json_object(baseline_raw)
+    current_value = _current_package_json(context, relative)
+    current_package = _current_package_json(context, "package.json")
+    if (
+        baseline_value is None
+        or current_value is None
+        or current_package is None
+        or not isinstance(current_package.get("version"), str)
+    ):
+        return False
+
+    if relative == "package.json":
+        baseline_scripts = baseline_value.get("scripts")
+        current_scripts = current_value.get("scripts")
+        if not isinstance(baseline_scripts, Mapping) or not isinstance(
+            current_scripts, Mapping
+        ):
+            return False
+        for name, command in baseline_scripts.items():
+            if current_scripts.get(name) != command:
+                return False
+        extra_names = set(current_scripts) - set(baseline_scripts)
+        if not extra_names or any(
+            not (name.startswith("test:") or name.startswith("check:"))
+            for name in extra_names
+        ):
+            return False
+        normalized = dict(current_value)
+        normalized["scripts"] = dict(baseline_scripts)
+        return normalized == baseline_value
+
+    baseline_packages = baseline_value.get("packages")
+    current_packages = current_value.get("packages")
+    if not isinstance(baseline_packages, Mapping) or not isinstance(
+        current_packages, Mapping
+    ):
+        return False
+    baseline_root = baseline_packages.get("")
+    current_root = current_packages.get("")
+    if not isinstance(baseline_root, Mapping) or not isinstance(
+        current_root, Mapping
+    ):
+        return False
+    package_version = current_package["version"]
+    if (
+        current_value.get("version") != package_version
+        or current_root.get("version") != package_version
+        or not isinstance(baseline_value.get("version"), str)
+        or not isinstance(baseline_root.get("version"), str)
+    ):
+        return False
+    normalized = copy.deepcopy(current_value)
+    normalized["version"] = baseline_value["version"]
+    normalized_packages = normalized["packages"]
+    assert isinstance(normalized_packages, dict)
+    normalized_root = normalized_packages[""]
+    assert isinstance(normalized_root, dict)
+    normalized_root["version"] = baseline_root["version"]
+    return normalized == baseline_value
+
+
 def _probe_core_drift(context: DoctorContext) -> ProbeResult:
     if _topology_state(context) == "post-split":
         brain = context.vault_root / ".dex/brain.git"
@@ -3750,10 +3848,18 @@ def _probe_core_drift(context: DoctorContext) -> ProbeResult:
             for relative in brain_paths
             if relative in release_entries
         }
+        mismatched = _mismatched_release_blobs(
+            context,
+            brain_entries,
+        )
         drifted = sorted(
-            _mismatched_release_blobs(
+            relative
+            for relative in mismatched
+            if not _installer_normalized_package_metadata(
                 context,
-                brain_entries,
+                relative,
+                baseline,
+                brain,
             )
         )
         if not drifted:
