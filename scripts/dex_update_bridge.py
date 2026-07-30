@@ -10,6 +10,7 @@ the topology conversion and release writes to its lifecycle service.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import importlib
 import json
 import os
@@ -17,10 +18,11 @@ import re
 import subprocess
 import sys
 import tempfile
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from types import ModuleType
-from typing import Any, Callable, Mapping, Protocol
+from typing import Any, Callable, Iterator, Mapping, Protocol
 
 OFFICIAL_REMOTE = "https://github.com/davekilleen/Dex.git"
 _HEX = re.compile(r"^[0-9a-f]{40}$")
@@ -28,6 +30,9 @@ _RELEASE_TAG = re.compile(r"^dist/release/v[0-9]+\.[0-9]+\.[0-9]+-[0-9a-f]{7,40}
 _APPROVAL_WORD = "APPLY"
 _CLEAN_RUNTIME_MARKER = "DEX_UPDATE_BRIDGE_CLEAN_RUNTIME"
 _TRUSTED_EXECUTABLE_DIRECTORIES = (Path("/usr/bin"), Path("/bin"), Path("/usr/local/bin"), Path("/opt/homebrew/bin"))
+_TOPOLOGY_MIGRATOR_RELATIVE = Path(
+    "core/migrations/v1-to-v2-brain-vault-split.cjs"
+)
 
 
 class BridgeError(RuntimeError):
@@ -76,6 +81,24 @@ FOUNDATION = ReleasePin(
     commit="9211053235d7c1837a6e327bff1596b593323fc6",
     tree="d394658e2bf1125b96eb5afdace24f3a5ba3107e",
     version="1.80.5",
+)
+
+
+@dataclass(frozen=True)
+class LegacyTopologyPin:
+    """One immutable legacy tree allowed to use the foundation migrator."""
+
+    tag: str
+    tag_object: str
+    commit: str
+    tree: str
+
+
+LEGACY_TOPOLOGY_FOUNDATION = LegacyTopologyPin(
+    tag="v1.20.1",
+    tag_object="3f7338dbe21ec98c015a3c8417d037cdd51b517d",
+    commit="9e6f35d3282cb354008a4e7372b1cdb1d469ad3d",
+    tree="b781bb94e417b2873d057a5a417d8c666a360bca",
 )
 
 
@@ -139,6 +162,7 @@ def _run_git(directory: Path, *arguments: str) -> str:
     completed = subprocess.run(
         [
             str(_trusted_git_binary()),
+            "--no-replace-objects",
             "-c",
             "core.hooksPath=/dev/null",
             "-c",
@@ -174,6 +198,39 @@ def _verify_pin(repository: Path, pin: ReleasePin) -> None:
     _assert_equal(_run_git(repository, "rev-parse", "--verify", f"refs/tags/{pin.tag}"), pin.tag_object, "annotated tag")
     _assert_equal(_run_git(repository, "rev-parse", "--verify", f"{pin.tag}^{{commit}}"), pin.commit, "commit")
     _assert_equal(_run_git(repository, "rev-parse", "--verify", f"{pin.tag}^{{tree}}"), pin.tree, "tree")
+
+
+def _supported_legacy_topology(
+    vault_root: Path,
+    pin: LegacyTopologyPin = LEGACY_TOPOLOGY_FOUNDATION,
+) -> bool:
+    """Prove the exact legacy base allowed to borrow the foundation migrator."""
+
+    root = Path(vault_root)
+    git_directory = root / ".git"
+    if (
+        git_directory.is_symlink()
+        or not git_directory.is_dir()
+        or (root / _TOPOLOGY_MIGRATOR_RELATIVE).exists()
+        or (root / _TOPOLOGY_MIGRATOR_RELATIVE).is_symlink()
+    ):
+        return False
+    try:
+        if _run_git(root, "cat-file", "-t", pin.tag) != "tag":
+            return False
+        if _run_git(root, "rev-parse", "--verify", f"refs/tags/{pin.tag}") != pin.tag_object:
+            return False
+        if _run_git(root, "rev-parse", "--verify", f"{pin.tag}^{{commit}}") != pin.commit:
+            return False
+        if _run_git(root, "rev-parse", "--verify", f"{pin.tag}^{{tree}}") != pin.tree:
+            return False
+        head = _run_git(root, "rev-parse", "--verify", "HEAD^{commit}")
+        if _HEX.fullmatch(head) is None:
+            return False
+        _run_git(root, "merge-base", "--is-ancestor", pin.commit, head)
+    except BridgeError:
+        return False
+    return True
 
 
 def acquire_foundation_source(pin: ReleasePin = FOUNDATION) -> tuple[tempfile.TemporaryDirectory[str], Path]:
@@ -292,6 +349,135 @@ def _reexec_in_installed_runtime(vault_root: Path, argv: list[str]) -> None:
     )
 
 
+class _FoundationLifecycleService:
+    """Bind a verified foundation migrator to one legacy lifecycle call.
+
+    The foundation service normally launches the migrator shipped inside the
+    vault. v1.20.1 predates that file. For only that exact immutable base, this
+    adapter lets the same lifecycle preview/approval/execute path launch the
+    migrator from the already-verified disposable foundation checkout. No
+    bridge file is copied into the vault and unknown layouts stay fail-closed.
+    """
+
+    def __init__(self, service: ModuleType, engine: ModuleType, source: Path) -> None:
+        self._service = service
+        self._engine = engine
+        self._source = Path(source).resolve()
+        self._migrator = self._source / _TOPOLOGY_MIGRATOR_RELATIVE
+        engine_relative = getattr(engine, "TOPOLOGY_MIGRATOR_RELATIVE", None)
+        if Path(engine_relative) != _TOPOLOGY_MIGRATOR_RELATIVE:
+            raise BridgeError("pinned foundation topology migrator path changed")
+        if (
+            self._migrator.is_symlink()
+            or not self._migrator.is_file()
+            or not self._migrator.resolve().is_relative_to(self._source)
+        ):
+            raise BridgeError("pinned foundation topology migrator is missing or unsafe")
+        self._migrator_sha256 = hashlib.sha256(self._migrator.read_bytes()).hexdigest()
+        if not callable(getattr(engine, "topology_state", None)) or not callable(
+            getattr(engine, "_migrator_command", None)
+        ):
+            raise BridgeError("pinned foundation topology engine is incomplete")
+
+    def _verify_migrator(self) -> None:
+        if (
+            self._migrator.is_symlink()
+            or not self._migrator.is_file()
+            or self._migrator.resolve().parent != (
+                self._source / _TOPOLOGY_MIGRATOR_RELATIVE.parent
+            ).resolve()
+            or hashlib.sha256(self._migrator.read_bytes()).hexdigest()
+            != self._migrator_sha256
+        ):
+            raise BridgeError("pinned foundation topology migrator changed after verification")
+
+    @contextmanager
+    def _topology_source(self) -> Iterator[None]:
+        self._verify_migrator()
+        original_state = self._engine.topology_state
+        original_command = self._engine._migrator_command
+        authorized_roots: set[Path] = set()
+
+        def topology_state(vault_root: Path) -> str:
+            state = original_state(vault_root)
+            root = Path(vault_root).resolve()
+            candidate = root / _TOPOLOGY_MIGRATOR_RELATIVE
+            if (
+                state == "invalid-combined"
+                and not candidate.exists()
+                and not candidate.is_symlink()
+                and _supported_legacy_topology(root)
+            ):
+                authorized_roots.add(root)
+                return "combined"
+            return state
+
+        def migrator_command(vault_root: Path, mode: str) -> list[str]:
+            root = Path(vault_root).resolve()
+            candidate = root / _TOPOLOGY_MIGRATOR_RELATIVE
+            if (
+                root not in authorized_roots
+                or candidate.exists()
+                or candidate.is_symlink()
+                or mode not in {"--dry-run", "--auto", "--resume"}
+            ):
+                return original_command(vault_root, mode)
+            self._verify_migrator()
+            node = _trusted_executable("node")
+            if node is None:
+                raise BridgeError(
+                    "trusted system Node.js is required for the foundation topology migrator"
+                )
+            return [str(node), str(self._migrator), mode]
+
+        self._engine.topology_state = topology_state
+        self._engine._migrator_command = migrator_command
+        try:
+            yield
+        finally:
+            self._engine.topology_state = original_state
+            self._engine._migrator_command = original_command
+
+    def build_and_preview_topology_migration(
+        self,
+        vault_root: str | Path,
+    ) -> Mapping[str, Any]:
+        with self._topology_source():
+            return self._service.build_and_preview_topology_migration(vault_root)
+
+    def execute_approved_topology_migration(
+        self,
+        vault_root: str | Path,
+        preview: Mapping[str, Any],
+        approved_token: str,
+    ) -> Mapping[str, Any]:
+        with self._topology_source():
+            return self._service.execute_approved_topology_migration(
+                vault_root,
+                preview,
+                approved_token,
+            )
+
+    def build_and_preview_delivered_release(
+        self,
+        vault_root: str | Path,
+        release: Mapping[str, Any],
+    ) -> Mapping[str, Any]:
+        return self._service.build_and_preview_delivered_release(vault_root, release)
+
+    def execute_approved_delivered_release(
+        self,
+        vault_root: str | Path,
+        preview: Mapping[str, Any],
+        approved_token: str,
+    ) -> Mapping[str, Any]:
+        return self._service.execute_approved_delivered_release(
+            vault_root,
+            preview,
+            approved_token,
+        )
+
+
 def _load_lifecycle_service(source: Path) -> LifecycleService:
     """Import only the verified foundation release's lifecycle service."""
     if not (source / "core" / "lifecycle" / "service.py").is_file():
@@ -312,7 +498,13 @@ def _load_lifecycle_service(source: Path) -> LifecycleService:
     )
     if any(not callable(getattr(module, name, None)) for name in required):
         raise BridgeError("pinned foundation lifecycle service is incomplete")
-    return module  # type: ignore[return-value]
+    try:
+        engine = importlib.import_module("core.lifecycle.engine")
+    except Exception as error:  # noqa: BLE001
+        raise BridgeError(
+            f"pinned foundation topology engine could not start: {error}"
+        ) from error
+    return _FoundationLifecycleService(module, engine, source)
 
 
 def _approved_preview(prompt: str, preview: Mapping[str, Any], approval_token: object, *, input_fn: Callable[[str], str], output_fn: Callable[[str], None]) -> tuple[Mapping[str, Any], str]:

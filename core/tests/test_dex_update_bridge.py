@@ -6,6 +6,7 @@ import os
 import subprocess
 import sys
 from pathlib import Path
+from types import ModuleType
 
 import pytest
 
@@ -75,6 +76,71 @@ def _completed_vault(tmp_path: Path) -> Path:
     return vault
 
 
+def _foundation_topology_adapter(
+    tmp_path: Path,
+) -> tuple[bridge._FoundationLifecycleService, ModuleType, Path, Path]:
+    source = tmp_path / "foundation"
+    migrator = source / bridge._TOPOLOGY_MIGRATOR_RELATIVE
+    migrator.parent.mkdir(parents=True)
+    migrator.write_text("'use strict';\n", encoding="utf-8")
+    vault = _vault(tmp_path)
+    engine = ModuleType("test_foundation_engine")
+    engine.TOPOLOGY_MIGRATOR_RELATIVE = bridge._TOPOLOGY_MIGRATOR_RELATIVE
+
+    def original_state(_vault_root: Path) -> str:
+        return "invalid-combined"
+
+    def original_command(_vault_root: Path, _mode: str) -> list[str]:
+        raise RuntimeError("vault migrator was rejected")
+
+    engine.topology_state = original_state
+    engine._migrator_command = original_command
+
+    class Service:
+        def build_and_preview_topology_migration(self, vault_root: Path):
+            state = engine.topology_state(vault_root)
+            return {
+                "topology": state,
+                "command": (
+                    engine._migrator_command(vault_root, "--dry-run")
+                    if state == "combined"
+                    else None
+                ),
+            }
+
+        def execute_approved_topology_migration(
+            self,
+            vault_root: Path,
+            _preview,
+            _approved_token: str,
+        ):
+            state = engine.topology_state(vault_root)
+            return {
+                "topology": state,
+                "commands": [
+                    engine._migrator_command(vault_root, "--auto"),
+                    engine._migrator_command(vault_root, "--resume"),
+                ],
+            }
+
+        def build_and_preview_delivered_release(self, vault_root: Path, release):
+            return {"vault": str(vault_root), "release": release}
+
+        def execute_approved_delivered_release(
+            self,
+            vault_root: Path,
+            preview,
+            approved_token: str,
+        ):
+            return {
+                "vault": str(vault_root),
+                "preview": preview,
+                "approval_token": approved_token,
+            }
+
+    return bridge._FoundationLifecycleService(Service(), engine, source), engine, vault, migrator
+
+
 def test_foundation_pin_is_closed_and_uses_only_the_release_channel() -> None:
     assert bridge.FOUNDATION.identity() == {
         "tag": "dist/release/v1.80.5-9211053",
@@ -84,6 +150,122 @@ def test_foundation_pin_is_closed_and_uses_only_the_release_channel() -> None:
         "version": "1.80.5",
         "channel": "stable",
     }
+
+
+def test_legacy_topology_pin_is_closed_to_exact_v1201_release() -> None:
+    assert bridge.LEGACY_TOPOLOGY_FOUNDATION == bridge.LegacyTopologyPin(
+        tag="v1.20.1",
+        tag_object="3f7338dbe21ec98c015a3c8417d037cdd51b517d",
+        commit="9e6f35d3282cb354008a4e7372b1cdb1d469ad3d",
+        tree="b781bb94e417b2873d057a5a417d8c666a360bca",
+    )
+
+
+def test_legacy_topology_requires_exact_tag_commit_tree_and_current_ancestry(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    vault = _vault(tmp_path)
+    pin = bridge.LEGACY_TOPOLOGY_FOUNDATION
+    values = {
+        ("cat-file", "-t", pin.tag): "tag",
+        ("rev-parse", "--verify", f"refs/tags/{pin.tag}"): pin.tag_object,
+        ("rev-parse", "--verify", f"{pin.tag}^{{commit}}"): pin.commit,
+        ("rev-parse", "--verify", f"{pin.tag}^{{tree}}"): pin.tree,
+        ("rev-parse", "--verify", "HEAD^{commit}"): "f" * 40,
+        ("merge-base", "--is-ancestor", pin.commit, "f" * 40): "",
+    }
+    monkeypatch.setattr(
+        bridge,
+        "_run_git",
+        lambda _root, *arguments: values[arguments],
+    )
+
+    assert bridge._supported_legacy_topology(vault) is True
+
+    values[("rev-parse", "--verify", f"{pin.tag}^{{tree}}")] = "0" * 40
+    assert bridge._supported_legacy_topology(vault) is False
+
+
+def test_foundation_service_uses_verified_migrator_for_exact_legacy_topology_only(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service, engine, vault, migrator = _foundation_topology_adapter(tmp_path)
+    original_state = engine.topology_state
+    original_command = engine._migrator_command
+    monkeypatch.setattr(bridge, "_supported_legacy_topology", lambda _root: True)
+    monkeypatch.setattr(
+        bridge,
+        "_trusted_executable",
+        lambda name: Path("/trusted/node") if name == "node" else None,
+    )
+
+    preview = service.build_and_preview_topology_migration(vault)
+    executed = service.execute_approved_topology_migration(
+        vault,
+        {"approved": True},
+        "token",
+    )
+
+    assert preview == {
+        "topology": "combined",
+        "command": ["/trusted/node", str(migrator), "--dry-run"],
+    }
+    assert executed == {
+        "topology": "combined",
+        "commands": [
+            ["/trusted/node", str(migrator), "--auto"],
+            ["/trusted/node", str(migrator), "--resume"],
+        ],
+    }
+    assert not (vault / bridge._TOPOLOGY_MIGRATOR_RELATIVE).exists()
+    assert engine.topology_state is original_state
+    assert engine._migrator_command is original_command
+
+
+def test_foundation_service_keeps_unknown_or_ambiguous_topology_fail_closed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service, _engine, vault, _migrator = _foundation_topology_adapter(tmp_path)
+    monkeypatch.setattr(bridge, "_supported_legacy_topology", lambda _root: False)
+    monkeypatch.setattr(
+        bridge,
+        "_trusted_executable",
+        lambda _name: pytest.fail("unknown topology must not select Node"),
+    )
+
+    assert service.build_and_preview_topology_migration(vault) == {
+        "topology": "invalid-combined",
+        "command": None,
+    }
+
+
+def test_foundation_service_does_not_bypass_an_unsafe_vault_migrator(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service, _engine, vault, migrator = _foundation_topology_adapter(tmp_path)
+    candidate = vault / bridge._TOPOLOGY_MIGRATOR_RELATIVE
+    candidate.parent.mkdir(parents=True)
+    candidate.symlink_to(migrator)
+    monkeypatch.setattr(bridge, "_supported_legacy_topology", lambda _root: True)
+
+    assert service.build_and_preview_topology_migration(vault) == {
+        "topology": "invalid-combined",
+        "command": None,
+    }
+
+
+def test_foundation_service_refuses_migrator_changed_after_verification(
+    tmp_path: Path,
+) -> None:
+    service, _engine, vault, migrator = _foundation_topology_adapter(tmp_path)
+    migrator.write_text("'use strict';\n// changed\n", encoding="utf-8")
+
+    with pytest.raises(bridge.BridgeError, match="changed after verification"):
+        service.build_and_preview_topology_migration(vault)
 
 
 def test_bridge_success_copy_names_the_canonical_dex_update_command() -> None:
@@ -421,3 +603,4 @@ def test_git_subprocess_environment_excludes_caller_git_and_credential_settings(
     assert "GIT_DIR" not in environment
     assert "GIT_SSH_COMMAND" not in environment
     assert "credential.helper=" in captured["arguments"]
+    assert "--no-replace-objects" in captured["arguments"]
