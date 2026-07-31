@@ -7,6 +7,21 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.81.5] — 🧾 Historic installs receive matching migration metadata (2026-07-31)
+
+The public 1.49.0 journey crossed the repaired history proof, then found that
+the read-only migration marker still named 1.20.1. The foundation migrator
+correctly refused that mismatch before changing the fixture.
+
+**What this fixes for you:**
+
+* **Each historic install receives its own version marker.** The compatibility
+  layer derives the read-only transition metadata from the installed package.
+* **Malformed metadata still stops safely.** Missing, symlinked, or invalid
+  package versions are refused before the migration can begin.
+* **No compatibility file is written into the old vault.** The marker exists
+  only inside the verified migration process and personal files remain guarded.
+
 ## [1.81.4] — 🏷️ Historic installs no longer need every old tag label (2026-07-31)
 
 The first formal fleet run passed the oldest supported Dex release, then found

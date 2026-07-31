@@ -180,18 +180,12 @@ baselines:
 _LEGACY_TRACKED_IGNORE_POLICY_SHA256 = (
     "bf0af119939930fb4d3b466584a3e9392edb66bf61ec09675521c9a5969f3f50"
 )
-_LEGACY_PRESERVATION_TRANSITION = (
-    b'{"phase":"bootstrap-v1","release_version":"1.20.1","schema_version":1}\n'
-)
 
 
 def _legacy_preload_bytes() -> bytes:
     """Build the closed Node preload that supplies two absent read-only inputs."""
 
     policy = base64.b64encode(_LEGACY_TRACKED_IGNORE_POLICY).decode("ascii")
-    transition = base64.b64encode(_LEGACY_PRESERVATION_TRANSITION).decode(
-        "ascii"
-    )
     return f"""'use strict';
 const fs = require('node:fs');
 const path = require('node:path');
@@ -208,12 +202,35 @@ const shippedLink = path.join(root, '{_LEGACY_SHIPPED_SYMLINK_RELATIVE.as_posix(
 const shippedLinkParent = path.dirname(shippedLink);
 const shippedLinkName = path.basename(shippedLink);
 const shippedLinkTarget = '{_LEGACY_SHIPPED_SYMLINK_TARGET}';
+const transitionPath = path.join(root, '{_PRESERVATION_TRANSITION_RELATIVE.as_posix()}');
+const packagePath = path.join(root, 'package.json');
 const inputs = new Map([
   [path.join(root, '{_TRACKED_IGNORE_POLICY_RELATIVE.as_posix()}'), Buffer.from('{policy}', 'base64')],
-  [path.join(root, '{_PRESERVATION_TRANSITION_RELATIVE.as_posix()}'), Buffer.from('{transition}', 'base64')],
 ]);
 const originalReadFileSync = fs.readFileSync.bind(fs);
 const originalReaddirSync = fs.readdirSync.bind(fs);
+
+function legacyTransition() {{
+  const packageState = fs.lstatSync(packagePath);
+  if (!packageState.isFile() || packageState.isSymbolicLink()) {{
+    throw new Error(`Dex update bridge refused unsafe legacy package metadata ${{packagePath}}.`);
+  }}
+  const packageJson = JSON.parse(originalReadFileSync(packagePath, 'utf8'));
+  if (
+    !packageJson
+    || typeof packageJson !== 'object'
+    || Array.isArray(packageJson)
+    || typeof packageJson.version !== 'string'
+    || !/^[0-9]+\\.[0-9]+\\.[0-9]+$/.test(packageJson.version)
+  ) {{
+    throw new Error(`Dex update bridge refused invalid legacy package version ${{packagePath}}.`);
+  }}
+  return Buffer.from(`${{JSON.stringify({{
+    phase: 'bootstrap-v1',
+    release_version: packageJson.version,
+    schema_version: 1,
+  }})}}\\n`, 'utf8');
+}}
 
 let hideShippedLink = false;
 let shippedLinkFound = false;
@@ -238,12 +255,15 @@ try {{
 fs.readFileSync = function dexLegacyCompatibilityRead(candidate, options) {{
   const supplied = Buffer.isBuffer(candidate) ? candidate.toString() : String(candidate);
   const absolute = path.resolve(supplied);
-  const content = inputs.get(absolute);
-  if (content === undefined) return originalReadFileSync(candidate, options);
+  const suppliedInput = inputs.has(absolute) || absolute === transitionPath;
+  if (!suppliedInput) return originalReadFileSync(candidate, options);
   try {{
     fs.lstatSync(absolute);
   }} catch (error) {{
     if (error && error.code === 'ENOENT') {{
+      const content = absolute === transitionPath
+        ? legacyTransition()
+        : inputs.get(absolute);
       const encoding = typeof options === 'string' ? options : options && options.encoding;
       return encoding ? content.toString(encoding) : Buffer.from(content);
     }}

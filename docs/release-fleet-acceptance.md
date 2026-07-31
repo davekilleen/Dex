@@ -102,7 +102,7 @@ Markdown `/dex-update` instructions into an API.
 python3 scripts/release_fleet.py journey --repo . --output "$fleet_root" \
   --starting-tag dist/release/v1.74.0-EXACTSTART \
   --foundation-tag dist/release/v1.81.0-EXACTFOUNDATION \
-  --follow-up-tag dist/release/v1.81.4-EXACTFOLLOWUP
+  --follow-up-tag dist/release/v1.81.5-EXACTFOLLOWUP
 ```
 
 The repository has the canonical protocol source at

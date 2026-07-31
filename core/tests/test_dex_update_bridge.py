@@ -501,6 +501,10 @@ def test_legacy_preload_supplies_absent_read_only_inputs_without_vault_writes(
     node = shutil.which("node")
     if node is None:
         pytest.skip("Node.js is required for the compatibility preload test")
+    (vault / "package.json").write_text(
+        '{"name":"dex-pkm","version":"1.49.0"}\n',
+        encoding="utf-8",
+    )
     script = """
 const fs = require('node:fs');
 const path = require('node:path');
@@ -521,8 +525,46 @@ process.stdout.write(JSON.stringify({policy, transition}));
     supplied = json.loads(result.stdout)
 
     assert supplied["policy"].encode() == bridge._LEGACY_TRACKED_IGNORE_POLICY
-    assert supplied["transition"].encode() == bridge._LEGACY_PRESERVATION_TRANSITION
+    assert json.loads(supplied["transition"]) == {
+        "phase": "bootstrap-v1",
+        "release_version": "1.49.0",
+        "schema_version": 1,
+    }
     assert not (vault / bridge._TRACKED_IGNORE_POLICY_RELATIVE).exists()
+    assert not (vault / bridge._PRESERVATION_TRANSITION_RELATIVE).exists()
+
+
+def test_legacy_preload_refuses_an_invalid_package_version(
+    tmp_path: Path,
+) -> None:
+    service, _engine, vault, _migrator = _foundation_topology_adapter(tmp_path)
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("Node.js is required for the compatibility preload test")
+    (vault / "package.json").write_text(
+        '{"name":"dex-pkm","version":"../../changed"}\n',
+        encoding="utf-8",
+    )
+    script = """
+const fs = require('node:fs');
+const path = require('node:path');
+fs.readFileSync(
+  path.join(process.cwd(), 'System/.local-only-preservation-transition.json'),
+  'utf8',
+);
+"""
+
+    result = subprocess.run(
+        [node, "--require", str(service._preload), "--eval", script],
+        cwd=vault,
+        check=False,
+        capture_output=True,
+        text=True,
+        env=bridge._bridge_environment(),
+    )
+
+    assert result.returncode != 0
+    assert "Dex update bridge refused invalid legacy package version" in result.stderr
     assert not (vault / bridge._PRESERVATION_TRANSITION_RELATIVE).exists()
 
 
