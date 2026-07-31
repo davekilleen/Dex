@@ -558,6 +558,8 @@ class _ProductionRuntime:
         *arguments: str,
         timeout_seconds: int = 600,
         timeout_attempts: int = 1,
+        attempt_number: int = 1,
+        retain_attempt_count: bool = False,
     ) -> Mapping[str, object]:
         root = dex_update_bridge._validate_vault(vault)
         interpreter = dex_update_bridge._installed_python(root)
@@ -588,6 +590,8 @@ class _ProductionRuntime:
                     *arguments,
                     timeout_seconds=timeout_seconds,
                     timeout_attempts=timeout_attempts - 1,
+                    attempt_number=attempt_number + 1,
+                    retain_attempt_count=retain_attempt_count,
                 )
             raise ExecutorError(f"installed {module} timed out") from error
         if len(stdout) > 16 * 1024 * 1024 or len(stderr) > 1024 * 1024:
@@ -601,6 +605,15 @@ class _ProductionRuntime:
             raise ExecutorError(f"installed {module} returned malformed JSON") from error
         if not isinstance(report, Mapping):
             raise ExecutorError(f"installed {module} returned malformed JSON")
+        if retain_attempt_count:
+            if "journey_transport" in report:
+                raise ExecutorError(
+                    f"installed {module} returned reserved journey transport evidence"
+                )
+            return {
+                **report,
+                "journey_transport": {"attempt_count": attempt_number},
+            }
         return report
 
     def doctor(self, vault: Path) -> Mapping[str, object]:
@@ -609,6 +622,7 @@ class _ProductionRuntime:
             "core.utils.doctor",
             timeout_seconds=60,
             timeout_attempts=2,
+            retain_attempt_count=True,
         )
 
     def deliver_latest_release(self, vault: Path) -> Mapping[str, object]:
