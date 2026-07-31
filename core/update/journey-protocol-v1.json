@@ -13,7 +13,7 @@
     "follow-up-smoke"
   ],
   "executor": {
-    "sha256": "cd574fc09138bdc251537fb4759f559a2d11f376ed08807d815459f8cdf0ceb4",
+    "sha256": "a061e10a92ae724dc3d49409cc235b060082e2a38e9e043a255f92525d570567",
     "source_path": "scripts/release_fleet_executor.py"
   },
   "foundation_to_follow_up": {
@@ -35,7 +35,7 @@
       "word": "APPLY"
     },
     "artifact": {
-      "sha256": "c17e0372f78aa38904f18e60831651d4b37613bd6376fc18bb4cb49e20e29715",
+      "sha256": "89d5810643b0aff4bcb0a0a30debede34f3e1cfc2464691fb1bd815f0b0ab4b0",
       "source_path": "scripts/dex_update_bridge.py"
     },
     "foundation": {
@@ -51,7 +51,7 @@
     "darwin"
   ],
   "runner": {
-    "sha256": "bc1ed084a3248a5bc98e91dc20a74b0caed66d22525357f7d4480657ca07e5ce",
+    "sha256": "f67ff3cc8f35f14750479085982e73c7ea27b45a001ac93689ce8e8d46767f74",
     "source_path": "scripts/release_fleet.py"
   },
   "schema_version": 1

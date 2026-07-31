@@ -24,7 +24,6 @@ import pytest
 
 from scripts import dex_update_bridge as bridge
 
-
 # These are independent historical Git identities.  A ``None`` value is part
 # of the identity: it means that the historical tree did *not* ship that
 # input, not that a nearby release may supply it.
