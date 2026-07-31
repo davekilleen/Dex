@@ -703,7 +703,6 @@ System/.last-learning-check
 System/.local-only-preservation-transition.json
 System/.mcp.json.example
 System/.release-evidence-profile.json
-System/.update-journey-v1.json
 System/Beta_Communications/2026-02-04_hardcoded_paths_fix.md
 System/Dex_Backlog.md
 System/README.md
@@ -1086,6 +1085,7 @@ core/tests/test_release_catalog.py
 core/tests/test_release_catalog_generation.py
 core/tests/test_release_channel.py
 core/tests/test_release_fleet.py
+core/tests/test_release_fleet_acceptance.py
 core/tests/test_release_fleet_executor.py
 core/tests/test_release_tag_uniqueness.py
 core/tests/test_review_retirement.py
@@ -1131,6 +1131,7 @@ core/transaction/lock.py
 core/transaction/snapshot.py
 core/update/__init__.py
 core/update/apply_update.py
+core/update/journey-protocol-v1.json
 core/update/journey_protocol.py
 core/utils/__init__.py
 core/utils/company_domains.py
@@ -1285,6 +1286,7 @@ scripts/pii_gate.py
 scripts/pr_report.py
 scripts/release.sh
 scripts/release_fleet.py
+scripts/release_fleet_acceptance.py
 scripts/release_fleet_executor.py
 scripts/render-health-page.py
 scripts/resolve-distignore-files.sh

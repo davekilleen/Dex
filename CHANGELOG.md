@@ -7,6 +7,42 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.81.0] — 🛟 Older Dex installations have a safe way forward again (2026-07-31)
+
+Some people on recent older versions of Dex could see that an update existed but
+still could not reach it through the normal guided route. Amit hit this on 1.77.2;
+Jim hit it on a clean 1.79.0 install. Both stopped safely, but neither should have
+needed a technical rescue.
+
+**What this fixes for you:**
+
+* **Recent older Dex versions can cross the update bridge.** Dex now has the
+  missing, pinned handoff that lets those installations reach the protected
+  self-updating foundation without asking you to use Git or replace files by hand.
+* **Your files remain the hard boundary.** I exercised every distinct Mac release
+  tree from 1.77.0 through 1.80.5 through two complete update hops. All 26 finished
+  healthy, with every seeded user file unchanged.
+* **The checkup uses the environment Dex actually installed.** Doctor and smoke
+  now inspect the vault's own Python environment, so an installed dependency is
+  no longer reported missing just because a different system Python was found
+  first.
+* **Retired empty skill folders stop looking broken.** If an update correctly
+  removes an old built-in skill and leaves an empty folder behind, Doctor ignores
+  that harmless shell. Linked, malformed, custom, or non-empty folders still fail
+  closed.
+* **Customized setups get useful, honest guidance.** Dex can show the safe evidence
+  it verified and explain each excluded item separately, while still refusing to
+  write a Capsule when the full safety contract is not met.
+* **Daily review stays in the conversation you started.** It no longer forces a
+  second thread, and it recognises a review that already exists for the day.
+* **Meeting closeout can find notes from more than one provider.** Notes such as
+  ClickUp AI are found wherever they legitimately live, and the closeout is written
+  back to that source note rather than copied into a competing record.
+
+This is the bridge foundation. The immediately following release is deliberately
+separate so this version can prove it can fetch and deliver its own successor
+through the same public route.
+
 ## [1.80.5] — 🔒 Your personal profile never ships in Dex (2026-07-29)
 
 Dex's download package used to include a default profile file. It was not your
