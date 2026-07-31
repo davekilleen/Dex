@@ -8,6 +8,12 @@ complete *installed-source* identity.  The latter must return ``None`` for
 every near miss; it is not an ancestry, version, or best-effort compatibility
 detector.  Filesystem/Git collection belongs to the bridge, while this module
 keeps the authorization policy independently frozen and easy to audit.
+
+The separate existing-inputs cohort uses the equivalent
+``historic_missing_migrator_pins()`` and
+``historic_missing_migrator_for(evidence)`` seams.  It must not be folded into
+the manifestless ledger: its policy and transition inputs already exist and
+must be proven exact before the bridge can use an in-memory compatibility view.
 """
 
 from __future__ import annotations
@@ -151,6 +157,179 @@ _COMMON_NATIVE_MIGRATOR = {
 }
 
 
+# This is intentionally a *separate* failure class from the 13 manifestless
+# semantic releases above.  These are the precise 13 historic installations
+# that retained policy + transition inputs but not the topology migrator.  The
+# table comes from the sealed 170-case breadth summary and the production
+# bridge's closed ``MissingMigratorPin`` tuples.  A release must match its own
+# release identity *and* its own existing-input tuple; no tuple is a generic
+# migration permission.
+_MISSING_MIGRATOR_FAILURES = (
+    (
+        "dist/release/v1.61.0-03c33d3",
+        "b278bc51278c5b141dd65883fec920c8cb92d17a",
+        "03c33d3c956557d1077ae2606168732a2c05bfb0",
+        "f4e950f8266bd770ff99ce59f4b0de02ae8f2e19",
+        "1.61.0",
+        "b5e268bfd8bfe62e3efbe5a141e8dbb020d73609",
+        "20d095aedcad0a13bd6b25ea183afcd5d367c438adb082b1044c582fb5c2ebf9",
+        "35fa3d86020fe7b22768c199379508ddb4cef992",
+        "4d7d0b4940afd1e0b0891801f75db2dce925ea6893cde82176aa0abe5b4c1872",
+        "f76bf2a54600dd4ee8553664c9b9f36c4111e489",
+        "f7073cf418c2ea7504f2bf1030d84d5a85be1b90f42f14895959e8318ff34e",
+    ),
+    (
+        "dist/release/v1.61.0-a010533", "6ecc9ea45be51d6040466072eeedef9a26dda15f",
+        "a010533278912f092e6920447846f2c7b3402abe", "3cd446661d70a9f2bc5f9fcd58083efbd2f4b436",
+        "1.61.0", "b5e268bfd8bfe62e3efbe5a141e8dbb020d73609",
+        "20d095aedcad0a13bd6b25ea183afcd5d367c438adb082b1044c582fb5c2ebf9",
+        "35fa3d86020fe7b22768c199379508ddb4cef992",
+        "4d7d0b4940afd1e0b0891801f75db2dce925ea6893cde82176aa0abe5b4c1872",
+        "f76bf2a54600dd4ee8553664c9b9f36c4111e489",
+        "f7073cf418c2ea7504f2bf1030d84d5a85be1b90f42f14895959e8318ff34e",
+    ),
+    (
+        "dist/release/v1.61.0-dc7d332", "113ea147d484da0c2eb3bd80e35fa934388b095e",
+        "dc7d332bed63589982664eca493da925cd1da6ce", "75f5fd9ae7baa05ee775093661e258746a18b0fb",
+        "1.61.0", "b5e268bfd8bfe62e3efbe5a141e8dbb020d73609",
+        "20d095aedcad0a13bd6b25ea183afcd5d367c438adb082b1044c582fb5c2ebf9",
+        "35fa3d86020fe7b22768c199379508ddb4cef992",
+        "4d7d0b4940afd1e0b0891801f75db2dce925ea6893cde82176aa0abe5b4c1872",
+        "f76bf2a54600dd4ee8553664c9b9f36c4111e489",
+        "f7073cf418c2ea7504f2bf1030d84d5a85be1b90f42f14895959e8318ff34e",
+    ),
+    (
+        "dist/release/v1.62.0-5a4fc2a", "e031be627ae35606770cee498f1101f050e75ef6",
+        "5a4fc2a5a00f8523c231d840cbe9b2decb9b101e", "d51076f79dfac62020f83fa9430defe2ca605201",
+        "1.62.0", "eefff9e671693d8eba2a1bb97a4f146923542ddf",
+        "0d9912852060bae981c74dff56d24d1b12cdc5125a73b2c4c87d61bf51c787a4",
+        "35fa3d86020fe7b22768c199379508ddb4cef992",
+        "4d7d0b4940afd1e0b0891801f75db2dce925ea6893cde82176aa0abe5b4c1872",
+        "f76bf2a54600dd4ee8553664c9b9f36c4111e489",
+        "f7073cf418c2ea7504f2bf1030d84d5a85be1b90f42f14895959e8318ff34e",
+    ),
+    (
+        "dist/release/v1.62.0-6de410c", "5e954b3e10e52a48024b6030d3125d35d4699fb3",
+        "6de410cce1b7bb80a4195940092bd5e82d7c32cf", "c0d5374d8e0494df461f012458b937fae797d007",
+        "1.62.0", "eefff9e671693d8eba2a1bb97a4f146923542ddf",
+        "0d9912852060bae981c74dff56d24d1b12cdc5125a73b2c4c87d61bf51c787a4",
+        "35fa3d86020fe7b22768c199379508ddb4cef992",
+        "4d7d0b4940afd1e0b0891801f75db2dce925ea6893cde82176aa0abe5b4c1872",
+        "f76bf2a54600dd4ee8553664c9b9f36c4111e489",
+        "f7073cf418c2ea7504f2bf1030d84d5a85be1b90f42f14895959e8318ff34e",
+    ),
+    (
+        "dist/release/v1.62.0-ba4862f", "7157ae8defde2e8698e5b6900bf4c6d9394b16d3",
+        "ba4862f55813d34ab7ec6970507dc40e3ef8027f", "235168077df9621db3fcddfb677633bdcc946723",
+        "1.62.0", "eefff9e671693d8eba2a1bb97a4f146923542ddf",
+        "0d9912852060bae981c74dff56d24d1b12cdc5125a73b2c4c87d61bf51c787a4",
+        "35fa3d86020fe7b22768c199379508ddb4cef992",
+        "4d7d0b4940afd1e0b0891801f75db2dce925ea6893cde82176aa0abe5b4c1872",
+        "f76bf2a54600dd4ee8553664c9b9f36c4111e489",
+        "f7073cf418c2ea7504f2bf1030d84d5a85be1b90f42f14895959e8318ff34e",
+    ),
+    (
+        "dist/release/v1.62.0-cebe07b", "6b5f8f663c08613d5c8c49308bc1d08326e02a8f",
+        "cebe07b23d6ceabf286ad31a24ce1aed23321c29", "4ec6aad8d9d162ccc489fbf7a9ff4b37f3e83b95",
+        "1.62.0", "eefff9e671693d8eba2a1bb97a4f146923542ddf",
+        "0d9912852060bae981c74dff56d24d1b12cdc5125a73b2c4c87d61bf51c787a4",
+        "35fa3d86020fe7b22768c199379508ddb4cef992",
+        "4d7d0b4940afd1e0b0891801f75db2dce925ea6893cde82176aa0abe5b4c1872",
+        "f76bf2a54600dd4ee8553664c9b9f36c4111e489",
+        "f7073cf418c2ea7504f2bf1030d84d5a85be1b90f42f14895959e8318ff34e",
+    ),
+    (
+        "dist/release/v1.62.0-d1ff64c", "ff0cd2c781a9689e26b0ba207e408649bf02fff1",
+        "d1ff64c7f8938cb81b548bc7238c4cc9dc398a64", "feba9f46177dd802b698d5acd60896282b1508ff",
+        "1.62.0", "eefff9e671693d8eba2a1bb97a4f146923542ddf",
+        "0d9912852060bae981c74dff56d24d1b12cdc5125a73b2c4c87d61bf51c787a4",
+        "35fa3d86020fe7b22768c199379508ddb4cef992",
+        "4d7d0b4940afd1e0b0891801f75db2dce925ea6893cde82176aa0abe5b4c1872",
+        "f76bf2a54600dd4ee8553664c9b9f36c4111e489",
+        "f7073cf418c2ea7504f2bf1030d84d5a85be1b90f42f14895959e8318ff34e",
+    ),
+    (
+        "dist/release/v1.62.0-d5bd522", "2abdc01c6a78b1a69eb7484dae151f646c603adc",
+        "d5bd522bccc3d17498d3c0c1e437ca0909c975a4", "3de9d2ec9884d4c97c471ecbf32236572fb8d496",
+        "1.62.0", "eefff9e671693d8eba2a1bb97a4f146923542ddf",
+        "0d9912852060bae981c74dff56d24d1b12cdc5125a73b2c4c87d61bf51c787a4",
+        "b2dfd209e83ecfed1d1f7fcc90be4e3444f08b2e",
+        "caf6c54e8172ecc3d8f92a13fb6a739dddb8e9965e24bfa5a6e29d08f412aa5d",
+        "8cec307895b102363a85992f5f3f5a2c7b0d3730",
+        "31f90404e5898913b14d61a470489ac307abfd6877e313d2d714e2204b3037f7",
+    ),
+    (
+        "dist/release/v1.63.0-6167d6e", "041d65c0e5706b191eea172fbe59762f66cbf3c9",
+        "6167d6ef82d1607ed65b7b795538eb4ccdb23cbe", "c3e961ac5cbef45d762962ecd50b4fafbdece958",
+        "1.63.0", "036655ee0687f89a309b6ac18e763996e719695c",
+        "c7d1e58bfcf635af6703dc519546b12ed7538a34ee298d493b3db373cb495c98",
+        "b2dfd209e83ecfed1d1f7fcc90be4e3444f08b2e",
+        "caf6c54e8172ecc3d8f92a13fb6a739dddb8e9965e24bfa5a6e29d08f412aa5d",
+        "91069155a2b5d14409d927af8708556f424740bd",
+        "afd7f6338561ecd3597f32552e594f14630028f9ced64755f6dc11249b43d7a4",
+    ),
+    (
+        "dist/release/v1.63.0-d1050f4", "d4a49d6be2e5bdccf6ceee3cc6f016524e4d02bc",
+        "d1050f47598a1625205dc571313dc3d4d08cfcd3", "b18cee1e7f61d4873c0748bd48396d7aa9ccd985",
+        "1.63.0", "036655ee0687f89a309b6ac18e763996e719695c",
+        "c7d1e58bfcf635af6703dc519546b12ed7538a34ee298d493b3db373cb495c98",
+        "b2dfd209e83ecfed1d1f7fcc90be4e3444f08b2e",
+        "caf6c54e8172ecc3d8f92a13fb6a739dddb8e9965e24bfa5a6e29d08f412aa5d",
+        "8cec307895b102363a85992f5f3f5a2c7b0d3730",
+        "31f90404e5898913b14d61a470489ac307abfd6877e313d2d714e2204b3037f7",
+    ),
+    (
+        "v1.62.0", "4913a778452003fcf8dc71a10222d5275ff28d5c",
+        "77c4a15a7884080e48b095c8de2c384d01a87883", "1bf30a86c151890024040f0e4e1a533be17c5686",
+        "1.62.0", "2d7f21a72798d4189f042e955e62ee799e90a90c",
+        "75bef63d563a7e5062db6ad664ccb65a7581dbfd3d466655d1b3709bbad7ffa5",
+        "35fa3d86020fe7b22768c199379508ddb4cef992",
+        "4d7d0b4940afd1e0b0891801f75db2dce925ea6893cde82176aa0abe5b4c1872",
+        "f76bf2a54600dd4ee8553664c9b9f36c4111e489",
+        "f7073cf418c2ea7504f2bf1030d84d5a85be1b90f42f14895959e8318ff34e",
+    ),
+    (
+        "v1.63.0", "eff2f060455f186fcd27f5e680825051baf037b7",
+        "b5ee55366f3600b79748a9b56e063a9825172a45", "a418102a6d8254a14c81575d1d86aea7d28bd6f8",
+        "1.63.0", "846e23a1dd09c7096784268b234fde7139915575",
+        "2f13e9f4f765dbe18a68a6fbe4b58f211eccecd50deba60e45647fdef0b9f6cf",
+        "b2dfd209e83ecfed1d1f7fcc90be4e3444f08b2e",
+        "caf6c54e8172ecc3d8f92a13fb6a739dddb8e9965e24bfa5a6e29d08f412aa5d",
+        "8cec307895b102363a85992f5f3f5a2c7b0d3730",
+        "31f90404e5898913b14d61a470489ac307abfd6877e313d2d714e2204b3037f7",
+    ),
+)
+
+
+def _missing_migrator_ledger() -> dict[str, dict[str, object]]:
+    """Independent expected public seam for exact existing-input authorizations."""
+
+    fields = (
+        "tag",
+        "tag_object",
+        "commit",
+        "tree",
+        "version",
+        "package_blob",
+        "package_sha256",
+        "policy_blob",
+        "policy_sha256",
+        "transition_blob",
+        "transition_sha256",
+    )
+    return {
+        values[0]: {
+            "kind": "existing-inputs-missing-migrator",
+            "role": "installed-source",
+            **dict(zip(fields, values, strict=True)),
+            "migrator_blob": None,
+            "migrator_state": "absent",
+            "overwrite_existing_inputs": False,
+        }
+        for values in _MISSING_MIGRATOR_FAILURES
+    }
+
+
 def _expected_pins() -> dict[str, dict[str, object]]:
     pins: dict[str, dict[str, object]] = {}
     for tag, identity in _MANIFESTLESS_MISSING_MIGRATOR.items():
@@ -231,6 +410,17 @@ def _authorize(evidence: dict[str, object]) -> str | None:
     return bridge.historic_compatibility_for(evidence)
 
 
+def _missing_migrator_pins() -> dict[str, dict[str, object]]:
+    return {
+        name: dict(pin)
+        for name, pin in bridge.historic_missing_migrator_pins().items()
+    }
+
+
+def _authorize_missing_migrator(evidence: dict[str, object]) -> str | None:
+    return bridge.historic_missing_migrator_for(evidence)
+
+
 def test_historic_ledger_is_exactly_the_closed_frozen_set() -> None:
     """No range, prefix, or latest-version fallback may enter this ledger."""
 
@@ -238,6 +428,69 @@ def test_historic_ledger_is_exactly_the_closed_frozen_set() -> None:
     assert len(_MANIFESTLESS_MISSING_MIGRATOR) == 13
     assert len(_V175_OMISSIONS) == 13
     assert len(_NATIVE_MIGRATOR_TRANSPORT) == 4
+
+
+def test_missing_migrator_ledger_is_the_exact_13_case_failure_group() -> None:
+    """The old existing-inputs problem cannot grow into a version-range rule."""
+
+    assert _missing_migrator_pins() == _missing_migrator_ledger()
+    assert len(_MISSING_MIGRATOR_FAILURES) == 13
+
+
+@pytest.mark.parametrize("name", tuple(_missing_migrator_ledger()))
+def test_each_missing_migrator_tuple_is_authorized_only_when_complete(name: str) -> None:
+    evidence = deepcopy(_missing_migrator_ledger()[name])
+    assert _authorize_missing_migrator(evidence) == name
+
+
+@pytest.mark.parametrize("name", tuple(_missing_migrator_ledger()))
+@pytest.mark.parametrize(
+    "field",
+    (
+        "tag",
+        "tag_object",
+        "commit",
+        "tree",
+        "version",
+        "package_blob",
+        "package_sha256",
+        "policy_blob",
+        "policy_sha256",
+        "transition_blob",
+        "transition_sha256",
+        "migrator_blob",
+        "migrator_state",
+        "overwrite_existing_inputs",
+        "role",
+    ),
+)
+def test_missing_migrator_one_field_near_miss_is_refused(
+    name: str,
+    field: str,
+) -> None:
+    evidence = deepcopy(_missing_migrator_ledger()[name])
+    actual = evidence[field]
+    if isinstance(actual, str):
+        evidence[field] = ("0" * len(actual)) if actual else "changed"
+    elif actual is None:
+        evidence[field] = "unexpected-present-migrator"
+    elif isinstance(actual, bool):
+        evidence[field] = not actual
+    else:  # pragma: no cover - fixed literal table guards the supported shapes.
+        raise AssertionError(f"missing-migrator test has unsupported field: {field}")
+
+    assert _authorize_missing_migrator(evidence) is None
+
+
+def test_missing_migrator_tuple_cannot_borrow_a_nearby_release_inputs() -> None:
+    source = deepcopy(_missing_migrator_ledger()["dist/release/v1.62.0-d5bd522"])
+    nearby = _missing_migrator_ledger()["dist/release/v1.62.0-5a4fc2a"]
+    source["policy_blob"] = nearby["policy_blob"]
+    source["policy_sha256"] = nearby["policy_sha256"]
+    source["transition_blob"] = nearby["transition_blob"]
+    source["transition_sha256"] = nearby["transition_sha256"]
+
+    assert _authorize_missing_migrator(source) is None
 
 
 @pytest.mark.parametrize("name", tuple(_expected_pins()))
