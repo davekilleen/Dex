@@ -328,7 +328,17 @@ def test_foundation_service_uses_verified_migrator_for_exact_legacy_topology_onl
     service, engine, vault, migrator = _foundation_topology_adapter(tmp_path)
     original_state = engine.topology_state
     original_command = engine._migrator_command
-    monkeypatch.setattr(bridge, "_supported_legacy_topology", lambda _root: True)
+    authorization = bridge.LegacyTopologyAuthorization(
+        "absent-inputs",
+        bridge.LEGACY_TOPOLOGY_FOUNDATION,
+        None,
+        "absent",
+    )
+    monkeypatch.setattr(
+        bridge,
+        "_legacy_topology_authorization",
+        lambda _root: authorization,
+    )
     monkeypatch.setattr(
         bridge,
         "_trusted_executable",
@@ -345,7 +355,7 @@ def test_foundation_service_uses_verified_migrator_for_exact_legacy_topology_onl
     command_prefix = [
         "/trusted/node",
         "--require",
-        str(service._preload),
+        str(service._preload_for_authorization(authorization)),
         str(migrator),
     ]
     assert preview == {
@@ -419,7 +429,17 @@ if (
             return engine._run_topology_migrator(vault_root, "--dry-run")
 
     service._service = RunningService()
-    monkeypatch.setattr(bridge, "_supported_legacy_topology", lambda _root: True)
+    authorization = bridge.LegacyTopologyAuthorization(
+        "absent-inputs",
+        bridge.LEGACY_TOPOLOGY_FOUNDATION,
+        None,
+        "absent",
+    )
+    monkeypatch.setattr(
+        bridge,
+        "_legacy_topology_authorization",
+        lambda _root: authorization,
+    )
     monkeypatch.setenv("GIT_ALLOW_PROTOCOL", "https")
     parent_environment = bridge._bridge_environment()
     parent_attempt = subprocess.run(
@@ -455,7 +475,7 @@ def test_foundation_service_keeps_unknown_or_ambiguous_topology_fail_closed(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     service, _engine, vault, _migrator = _foundation_topology_adapter(tmp_path)
-    monkeypatch.setattr(bridge, "_supported_legacy_topology", lambda _root: False)
+    monkeypatch.setattr(bridge, "_legacy_topology_authorization", lambda _root: None)
     monkeypatch.setattr(
         bridge,
         "_trusted_executable",
@@ -476,7 +496,11 @@ def test_foundation_service_does_not_bypass_an_unsafe_vault_migrator(
     candidate = vault / bridge._TOPOLOGY_MIGRATOR_RELATIVE
     candidate.parent.mkdir(parents=True)
     candidate.symlink_to(migrator)
-    monkeypatch.setattr(bridge, "_supported_legacy_topology", lambda _root: True)
+    monkeypatch.setattr(
+        bridge,
+        "_legacy_topology_authorization",
+        lambda _root: pytest.fail("unsafe migrator must be rejected before authorization"),
+    )
 
     assert service.build_and_preview_topology_migration(vault) == {
         "topology": "invalid-combined",

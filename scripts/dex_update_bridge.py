@@ -422,6 +422,16 @@ class MissingMigratorPin:
     inputs: ExistingInputTuple
 
 
+@dataclass(frozen=True)
+class LegacyTopologyAuthorization:
+    """Exact release and input class proven before borrowing the migrator."""
+
+    kind: str
+    release: HistoricReleasePin | LegacyTopologyPin
+    inputs: ExistingInputTuple | None
+    package_state: str
+
+
 def _historic_pin(
     tag: str,
     tag_object: str,
@@ -853,10 +863,36 @@ baselines:
 _LEGACY_TRACKED_IGNORE_POLICY_SHA256 = "bf0af119939930fb4d3b466584a3e9392edb66bf61ec09675521c9a5969f3f50"
 
 
-def _legacy_preload_bytes() -> bytes:
+def _legacy_preload_bytes(
+    authorization: LegacyTopologyAuthorization | None = None,
+) -> bytes:
     """Build the closed preload for absent or exact defective legacy inputs."""
 
     policy = base64.b64encode(_LEGACY_TRACKED_IGNORE_POLICY).decode("ascii")
+    if authorization is None:
+        allowed_pins = MISSING_MIGRATOR_RELEASES
+        expected_package_version = None
+        expected_package_sha256 = None
+        expected_package_state = None
+    else:
+        allowed_pins = tuple(
+            pin
+            for pin in MISSING_MIGRATOR_RELEASES
+            if authorization.inputs is not None
+            and pin.release == authorization.release
+            and pin.inputs == authorization.inputs
+        )
+        if isinstance(authorization.release, HistoricReleasePin):
+            expected_package_version = authorization.release.version
+            expected_package_sha256 = authorization.release.package_sha256
+        else:
+            expected_package_version = "1.20.1"
+            expected_package_sha256 = (
+                _LEGACY_V1201_PACKAGE_SHA256
+                if authorization.package_state == "present"
+                else None
+            )
+        expected_package_state = authorization.package_state
     allowed_existing = json.dumps(
         sorted(
             {
@@ -866,7 +902,7 @@ def _legacy_preload_bytes() -> bytes:
                     pin.inputs.policy_sha256,
                     pin.inputs.transition_sha256,
                 )
-                for pin in MISSING_MIGRATOR_RELEASES
+                for pin in allowed_pins
             }
         ),
         separators=(",", ":"),
@@ -894,6 +930,9 @@ const inputs = new Map([
   [path.join(root, '{_TRACKED_IGNORE_POLICY_RELATIVE.as_posix()}'), Buffer.from('{policy}', 'base64')],
 ]);
 const allowedExisting = new Set({allowed_existing}.map((values) => values.join(':')));
+const expectedPackageVersion = {json.dumps(expected_package_version)};
+const expectedPackageDigest = {json.dumps(expected_package_sha256)};
+const expectedPackageState = {json.dumps(expected_package_state)};
 const originalReadFileSync = fs.readFileSync.bind(fs);
 const originalReaddirSync = fs.readdirSync.bind(fs);
 
@@ -923,6 +962,13 @@ function legacyTransition() {{
     || !/^[0-9]+\\.[0-9]+\\.[0-9]+$/.test(packageJson.version)
   ) {{
     throw new Error(`Dex update bridge refused invalid legacy package version ${{packagePath}}.`);
+  }}
+  if (
+    (expectedPackageState && expectedPackageState !== 'present')
+    || (expectedPackageVersion && packageJson.version !== expectedPackageVersion)
+    || (expectedPackageDigest && digest(originalReadFileSync(packagePath)) !== expectedPackageDigest)
+  ) {{
+    throw new Error('Dex update bridge refused changed legacy package identity.');
   }}
   return Buffer.from(`${{JSON.stringify({{
     phase: 'bootstrap-v1',
@@ -956,6 +1002,13 @@ function compatibilityInputs() {{
   }}
   if (!packageJson || typeof packageJson.version !== 'string') {{
     throw new Error(`Dex update bridge refused invalid legacy package version ${{packagePath}}.`);
+  }}
+  if (
+    (expectedPackageState && expectedPackageState !== 'present')
+    || (expectedPackageVersion && packageJson.version !== expectedPackageVersion)
+    || (expectedPackageDigest && digest(packageBytes) !== expectedPackageDigest)
+  ) {{
+    throw new Error('Dex update bridge refused changed legacy package identity.');
   }}
   const policyBytes = regularBytes(policyPath, 'tracked-ignore policy');
   const transitionBytes = regularBytes(transitionPath, 'preservation transition');
@@ -1298,11 +1351,11 @@ def exact_unbound_journey_source(
     return pin.release.commit
 
 
-def _supported_legacy_topology(
+def _legacy_topology_authorization(
     vault_root: Path,
     pin: LegacyTopologyPin = LEGACY_TOPOLOGY_FOUNDATION,
-) -> bool:
-    """Prove the exact legacy base allowed to borrow the foundation migrator."""
+) -> LegacyTopologyAuthorization | None:
+    """Return the exact legacy release and input class proved at this instant."""
 
     root = Path(vault_root)
     git_directory = root / ".git"
@@ -1312,7 +1365,7 @@ def _supported_legacy_topology(
         or (root / _TOPOLOGY_MIGRATOR_RELATIVE).exists()
         or (root / _TOPOLOGY_MIGRATOR_RELATIVE).is_symlink()
     ):
-        return False
+        return None
     package = root / _PACKAGE_RELATIVE
     if package.exists() or package.is_symlink():
         absent_inputs = (
@@ -1324,15 +1377,30 @@ def _supported_legacy_topology(
             if _matches_historic_release(root, release) and all(
                 not (root / relative).exists() and not (root / relative).is_symlink() for relative in absent_inputs
             ):
-                return True
+                return LegacyTopologyAuthorization(
+                    "absent-inputs",
+                    release,
+                    None,
+                    "present",
+                )
         if _matches_historic_release(root, V161_RETIRED_MANIFEST_RELEASE) and all(
             not (root / relative).exists() and not (root / relative).is_symlink()
             for relative in absent_inputs
         ):
-            return True
+            return LegacyTopologyAuthorization(
+                "absent-inputs",
+                V161_RETIRED_MANIFEST_RELEASE,
+                None,
+                "present",
+            )
         for compatibility in MISSING_MIGRATOR_RELEASES:
             if _matches_historic_release(root, compatibility.release) and _matches_existing_inputs(root, compatibility):
-                return True
+                return LegacyTopologyAuthorization(
+                    "existing-inputs",
+                    compatibility.release,
+                    compatibility.inputs,
+                    "present",
+                )
     try:
         tag_object = _run_git(
             root,
@@ -1342,9 +1410,9 @@ def _supported_legacy_topology(
         )
         if tag_object:
             if tag_object != pin.tag_object:
-                return False
+                return None
             if _run_git(root, "cat-file", "-t", pin.tag_object) != "tag":
-                return False
+                return None
             identity = pin.tag
         else:
             # Historic installers retained their own release tag but could
@@ -1352,21 +1420,39 @@ def _supported_legacy_topology(
             # only when its object type, commit identity, tree, and ancestry
             # all match the closed v1.20.1 foundation.
             if _run_git(root, "cat-file", "-t", pin.commit) != "commit":
-                return False
+                return None
             identity = pin.commit
         if _run_git(root, "rev-parse", "--verify", f"{identity}^{{commit}}") != pin.commit:
-            return False
+            return None
         if _run_git(root, "rev-parse", "--verify", f"{identity}^{{tree}}") != pin.tree:
-            return False
+            return None
         head = _run_git(root, "rev-parse", "--verify", "HEAD^{commit}")
         if _HEX.fullmatch(head) is None:
-            return False
+            return None
         _run_git(root, "merge-base", "--is-ancestor", pin.commit, head)
     except BridgeError:
-        return False
+        return None
     if package.exists() or package.is_symlink():
-        return _regular_sha256(package) == _LEGACY_V1201_PACKAGE_SHA256
-    return True
+        if _regular_sha256(package) != _LEGACY_V1201_PACKAGE_SHA256:
+            return None
+        package_state = "present"
+    else:
+        package_state = "absent"
+    return LegacyTopologyAuthorization(
+        "absent-inputs",
+        pin,
+        None,
+        package_state,
+    )
+
+
+def _supported_legacy_topology(
+    vault_root: Path,
+    pin: LegacyTopologyPin = LEGACY_TOPOLOGY_FOUNDATION,
+) -> bool:
+    """Prove the exact legacy base allowed to borrow the foundation migrator."""
+
+    return _legacy_topology_authorization(vault_root, pin) is not None
 
 
 def acquire_foundation_source(pin: ReleasePin = FOUNDATION) -> tuple[tempfile.TemporaryDirectory[str], Path]:
@@ -1541,6 +1627,10 @@ class _FoundationLifecycleService:
             os.fsync(handle.fileno())
         self._preload.chmod(0o400)
         self._preload_sha256 = hashlib.sha256(self._preload.read_bytes()).hexdigest()
+        self._authorization_preloads: dict[
+            LegacyTopologyAuthorization,
+            tuple[Path, str],
+        ] = {}
         self._transport_preload = compatibility / "file-transport-only.cjs"
         with self._transport_preload.open("xb") as handle:
             handle.write(_transport_preload_bytes())
@@ -1572,6 +1662,15 @@ class _FoundationLifecycleService:
             or hashlib.sha256(self._preload.read_bytes()).hexdigest() != self._preload_sha256
         ):
             raise BridgeError("pinned legacy compatibility preload changed after verification")
+        for authorization_preload, expected_sha256 in self._authorization_preloads.values():
+            if (
+                authorization_preload.is_symlink()
+                or not authorization_preload.is_file()
+                or not authorization_preload.resolve().is_relative_to(self._source.parent.resolve())
+                or hashlib.sha256(authorization_preload.read_bytes()).hexdigest()
+                != expected_sha256
+            ):
+                raise BridgeError("bound legacy compatibility preload changed after verification")
         if (
             self._transport_preload.is_symlink()
             or not self._transport_preload.is_file()
@@ -1580,12 +1679,39 @@ class _FoundationLifecycleService:
         ):
             raise BridgeError("pinned transport compatibility preload changed after verification")
 
+    def _preload_for_authorization(
+        self,
+        authorization: LegacyTopologyAuthorization,
+    ) -> Path:
+        existing = self._authorization_preloads.get(authorization)
+        if existing is not None:
+            return existing[0]
+        content = _legacy_preload_bytes(authorization)
+        sha256 = hashlib.sha256(content).hexdigest()
+        preload = self._preload.parent / f"read-only-inputs-{sha256[:16]}.cjs"
+        try:
+            with preload.open("xb") as handle:
+                handle.write(content)
+                handle.flush()
+                os.fsync(handle.fileno())
+            preload.chmod(0o400)
+        except FileExistsError as error:
+            if (
+                preload.is_symlink()
+                or not preload.is_file()
+                or hashlib.sha256(preload.read_bytes()).hexdigest() != sha256
+            ):
+                raise BridgeError("bound legacy compatibility preload identity collided") from error
+        self._authorization_preloads[authorization] = (preload, sha256)
+        self._verify_compatibility_runtime()
+        return preload
+
     @contextmanager
     def _topology_source(self) -> Iterator[None]:
         self._verify_compatibility_runtime()
         original_state = self._engine.topology_state
         original_command = self._engine._migrator_command
-        authorized_roots: set[Path] = set()
+        authorized_roots: dict[Path, LegacyTopologyAuthorization] = {}
         transport_roots: set[Path] = set()
 
         def topology_state(vault_root: Path) -> str:
@@ -1598,29 +1724,34 @@ class _FoundationLifecycleService:
                 state == "invalid-combined"
                 and not candidate.exists()
                 and not candidate.is_symlink()
-                and _supported_legacy_topology(root)
             ):
-                authorized_roots.add(root)
-                return "combined"
+                authorization = _legacy_topology_authorization(root)
+                if authorization is not None:
+                    authorized_roots[root] = authorization
+                    return "combined"
             return state
 
         def migrator_command(vault_root: Path, mode: str) -> list[str]:
             root = Path(vault_root).resolve()
             candidate = root / _TOPOLOGY_MIGRATOR_RELATIVE
-            if (
-                root in authorized_roots
-                and not candidate.exists()
-                and not candidate.is_symlink()
-                and mode in {"--dry-run", "--auto", "--resume"}
-            ):
+            authorization = authorized_roots.get(root)
+            if authorization is not None:
+                if (
+                    candidate.exists()
+                    or candidate.is_symlink()
+                    or mode not in {"--dry-run", "--auto", "--resume"}
+                    or _legacy_topology_authorization(root) != authorization
+                ):
+                    raise BridgeError("pinned legacy topology identity changed after authorization")
                 self._verify_compatibility_runtime()
                 node = _trusted_executable("node")
                 if node is None:
                     raise BridgeError("trusted system Node.js is required for the foundation topology migrator")
+                preload = self._preload_for_authorization(authorization)
                 return [
                     str(node),
                     "--require",
-                    str(self._preload),
+                    str(preload),
                     str(self._migrator),
                     mode,
                 ]

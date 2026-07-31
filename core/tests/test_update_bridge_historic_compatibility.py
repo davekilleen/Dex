@@ -534,6 +534,47 @@ def _delivery_adapter(
     return bridge._FoundationLifecycleService(service, engine, apply_update, source), service
 
 
+def _topology_command_adapter(
+    tmp_path: Path,
+) -> tuple[bridge._FoundationLifecycleService, ModuleType]:
+    """Build the real bridge command adapter around a disposable migrator."""
+
+    source = tmp_path / "foundation-topology-source"
+    migrator = source / bridge._TOPOLOGY_MIGRATOR_RELATIVE
+    migrator.parent.mkdir(parents=True)
+    migrator.write_text(
+        """'use strict';
+const fs = require('node:fs');
+const path = require('node:path');
+fs.readFileSync(path.join(process.cwd(), 'core/migrations/tracked-ignored-policy.yaml'));
+fs.readFileSync(path.join(process.cwd(), 'System/.local-only-preservation-transition.json'));
+""",
+        encoding="utf-8",
+    )
+
+    engine = ModuleType("historic_topology_engine")
+    engine.TOPOLOGY_MIGRATOR_RELATIVE = bridge._TOPOLOGY_MIGRATOR_RELATIVE
+    engine.topology_state = lambda _root: "invalid-combined"
+
+    def rejected_command(_root: Path, _mode: str) -> list[str]:
+        raise RuntimeError("historic vault migrator was rejected")
+
+    engine._migrator_command = rejected_command
+
+    class TopologyService:
+        pass
+
+    return (
+        bridge._FoundationLifecycleService(
+            TopologyService(),
+            engine,
+            apply_update,
+            source,
+        ),
+        engine,
+    )
+
+
 def _commit_nonregular_variant(repository: Path, base: str, mode: str, name: str) -> tuple[str, str]:
     _git(repository, "checkout", "--quiet", "--detach", "--force", base)
     if mode == "120000":
@@ -909,6 +950,125 @@ def test_runtime_legacy_topology_refuses_cross_borrowed_existing_inputs(
         )
 
     assert bridge._supported_legacy_topology(repository, impossible_fallback) is False
+
+
+def test_runtime_legacy_command_reproves_unchanged_existing_input_tuple(
+    tmp_path: Path,
+) -> None:
+    pin = bridge.MISSING_MIGRATOR_RELEASES[3]
+    repository = _historic_checkout(tmp_path, pin.release)
+    adapter, engine = _topology_command_adapter(tmp_path)
+
+    with adapter._topology_source():
+        assert engine.topology_state(repository) == "combined"
+        command = engine._migrator_command(repository, "--dry-run")
+
+    assert command[-2:] == [str(adapter._migrator), "--dry-run"]
+    completed = subprocess.run(
+        command,
+        cwd=repository,
+        check=False,
+        capture_output=True,
+        text=True,
+        env=bridge._bridge_environment(),
+    )
+    assert completed.returncode == 0, completed.stderr
+
+
+@pytest.mark.parametrize("mode", ("--dry-run", "--auto"))
+def test_runtime_legacy_command_refuses_exact_cross_borrow_after_authorization(
+    tmp_path: Path,
+    mode: str,
+) -> None:
+    pin = bridge.MISSING_MIGRATOR_RELEASES[3]
+    borrowed = bridge.MISSING_MIGRATOR_RELEASES[8]
+    assert pin.release.version == borrowed.release.version
+    assert pin.release.package_blob == borrowed.release.package_blob
+    assert pin.inputs != borrowed.inputs
+
+    repository = _historic_checkout(tmp_path, pin.release)
+    adapter, engine = _topology_command_adapter(tmp_path)
+
+    with adapter._topology_source():
+        assert engine.topology_state(repository) == "combined"
+        for relative, blob in (
+            (bridge._TRACKED_IGNORE_POLICY_RELATIVE, borrowed.inputs.policy_blob),
+            (bridge._PRESERVATION_TRANSITION_RELATIVE, borrowed.inputs.transition_blob),
+        ):
+            (repository / relative).write_bytes(
+                subprocess.run(
+                    ["git", "-C", str(repository), "cat-file", "blob", blob],
+                    check=True,
+                    capture_output=True,
+                ).stdout
+            )
+
+        with pytest.raises(bridge.BridgeError, match="identity changed after authorization"):
+            engine._migrator_command(repository, mode)
+
+
+def test_runtime_legacy_command_refuses_existing_inputs_added_to_absent_class(
+    tmp_path: Path,
+) -> None:
+    pin = bridge.MANIFESTLESS_SEMANTIC_RELEASES[1]
+    borrowed = bridge.MISSING_MIGRATOR_RELEASES[8]
+    repository = _historic_checkout(tmp_path, pin)
+    adapter, engine = _topology_command_adapter(tmp_path)
+
+    with adapter._topology_source():
+        assert engine.topology_state(repository) == "combined"
+        for relative, blob in (
+            (bridge._TRACKED_IGNORE_POLICY_RELATIVE, borrowed.inputs.policy_blob),
+            (bridge._PRESERVATION_TRANSITION_RELATIVE, borrowed.inputs.transition_blob),
+        ):
+            candidate = repository / relative
+            candidate.parent.mkdir(parents=True, exist_ok=True)
+            candidate.write_bytes(
+                subprocess.run(
+                    ["git", "-C", str(repository), "cat-file", "blob", blob],
+                    check=True,
+                    capture_output=True,
+                ).stdout
+            )
+
+        with pytest.raises(bridge.BridgeError, match="identity changed after authorization"):
+            engine._migrator_command(repository, "--dry-run")
+
+
+def test_bound_legacy_preload_refuses_cross_borrow_after_command_creation(
+    tmp_path: Path,
+) -> None:
+    pin = bridge.MISSING_MIGRATOR_RELEASES[3]
+    borrowed = bridge.MISSING_MIGRATOR_RELEASES[8]
+    repository = _historic_checkout(tmp_path, pin.release)
+    adapter, engine = _topology_command_adapter(tmp_path)
+
+    with adapter._topology_source():
+        assert engine.topology_state(repository) == "combined"
+        command = engine._migrator_command(repository, "--dry-run")
+
+    for relative, blob in (
+        (bridge._TRACKED_IGNORE_POLICY_RELATIVE, borrowed.inputs.policy_blob),
+        (bridge._PRESERVATION_TRANSITION_RELATIVE, borrowed.inputs.transition_blob),
+    ):
+        (repository / relative).write_bytes(
+            subprocess.run(
+                ["git", "-C", str(repository), "cat-file", "blob", blob],
+                check=True,
+                capture_output=True,
+            ).stdout
+        )
+
+    completed = subprocess.run(
+        command,
+        cwd=repository,
+        check=False,
+        capture_output=True,
+        text=True,
+        env=bridge._bridge_environment(),
+    )
+    assert completed.returncode != 0
+    assert "refused an unknown legacy compatibility tuple" in completed.stderr
 
 
 def test_runtime_retired_manifest_topology_requires_exact_git_and_absent_inputs(
