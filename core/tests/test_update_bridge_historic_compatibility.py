@@ -18,6 +18,7 @@ must be proven exact before the bridge can use an in-memory compatibility view.
 
 from __future__ import annotations
 
+import hashlib
 import subprocess
 from copy import deepcopy
 from dataclasses import replace
@@ -151,6 +152,17 @@ _NATIVE_MIGRATOR_TRANSPORT = {
         "tree": "582bef8eebf62d171c63354b5cf4c618f2ac5593",
     },
 }
+
+_V161_RETIRED_MANIFEST_RELEASE = bridge.HistoricReleasePin(
+    "dist/release/v1.61.0-774437a",
+    "d1325426421fc0228865b2a64c8e780f2b8056ed",
+    "tag",
+    "774437aadfdb85bf834e2c2e1eacca6488364c18",
+    "c3a71ece867e43c88dd30b8166c6087da2b344f2",
+    "1.61.0",
+    "b5e268bfd8bfe62e3efbe5a141e8dbb020d73609",
+    "20d095aedcad0a13bd6b25ea183afcd5d367c438adb082b1044c582fb5c2ebf9",
+)
 
 _COMMON_NATIVE_MIGRATOR = {
     "package_blob": "036655ee0687f89a309b6ac18e763996e719695c",
@@ -492,6 +504,8 @@ def _delivery_adapter(
         def build_and_preview_delivered_release(self, _vault_root: Path, _release: object):
             entries = apply_update._tree_entries(repository, repository / ".git", self.commit)
             apply_update._verify_manifest(repository, repository / ".git", entries)
+            for entry in entries:
+                apply_update.portable_contract.resolve(entry.path)
             return entries
 
     service = DeliveryService()
@@ -551,6 +565,51 @@ def _commit_manifestless_omission_variant(
     )
     commit = _git(repository, "rev-parse", "HEAD^{commit}")
     return commit, _git(repository, "rev-parse", "HEAD^{tree}")
+
+
+def _commit_retired_manifest_variant(
+    repository: Path,
+    base: str,
+    mutation: str,
+) -> tuple[str, str, str, str]:
+    """Create a manifest-consistent real Git near-miss around the retired pair."""
+
+    readme = "extensions/tau-mirror/README-TAU-MIRROR.md"
+    unexpected = "extensions/tau-mirror/unexpected.md"
+    manifest = repository / "System/.installed-files.manifest"
+    _git(repository, "checkout", "--quiet", "--detach", "--force", base)
+    paths = manifest.read_text(encoding="utf-8").splitlines()
+    if mutation == "missing":
+        _git(repository, "rm", "--quiet", "--", readme)
+        paths.remove(readme)
+    elif mutation == "extra":
+        target = repository / unexpected
+        target.write_text("unexpected retired content\n", encoding="utf-8")
+        _git(repository, "add", "--", unexpected)
+        paths.append(unexpected)
+    elif mutation == "tampered-blob":
+        (repository / readme).write_text("tampered historic bytes\n", encoding="utf-8")
+        _git(repository, "add", "--", readme)
+    elif mutation == "altered-mode":
+        _git(repository, "update-index", "--chmod=+x", "--", readme)
+    elif mutation == "renamed-path":
+        _git(repository, "mv", "--", readme, unexpected)
+        paths[paths.index(readme)] = unexpected
+    else:  # pragma: no cover - the parametrization below is deliberately closed
+        raise AssertionError(f"unknown test mutation: {mutation}")
+    if mutation in {"missing", "extra", "renamed-path"}:
+        manifest.write_text("\n".join(sorted(paths)) + "\n", encoding="utf-8")
+        _git(repository, "add", "--", "System/.installed-files.manifest")
+    _git(repository, "commit", "--quiet", "-m", f"test retired manifest {mutation}")
+    commit = _git(repository, "rev-parse", "HEAD^{commit}")
+    tree = _git(repository, "rev-parse", "HEAD^{tree}")
+    manifest_blob = _git(repository, "rev-parse", f"{commit}:System/.installed-files.manifest")
+    manifest_sha256 = subprocess.run(
+        ["git", "-C", str(repository), "cat-file", "blob", manifest_blob],
+        check=True,
+        capture_output=True,
+    ).stdout
+    return commit, tree, manifest_blob, hashlib.sha256(manifest_sha256).hexdigest()
 
 
 def test_historic_ledger_is_exactly_the_closed_frozen_set() -> None:
@@ -873,6 +932,87 @@ def test_runtime_manifest_omission_adapter_accepts_only_exact_historic_trees(
     changed[next(iter(changed))] = "0" * 40
     monkeypatch.setattr(bridge, "_V175_DEFECTIVE_MANIFEST_OMISSIONS", changed)
     with pytest.raises(apply_update.ReleaseVerificationError, match="omission changed"):
+        adapter.build_and_preview_delivered_release(repository, {})
+
+
+def test_runtime_retired_manifest_adapter_accepts_exact_public_git_tree(
+    tmp_path: Path,
+) -> None:
+    pin = _V161_RETIRED_MANIFEST_RELEASE
+    repository = _historic_checkout(tmp_path, pin)
+    adapter, service = _delivery_adapter(tmp_path, repository)
+    service.commit = pin.commit
+    _git(repository, "update-ref", "refs/dex/installed", pin.commit)
+    retired_bytes = {
+        relative: (repository / relative).read_bytes()
+        for relative in (
+            "extensions/tau-mirror/README-TAU-MIRROR.md",
+            "extensions/tau-mirror/tau-mirror-integration.ts",
+        )
+    }
+
+    entries = adapter.build_and_preview_delivered_release(repository, {})
+
+    assert bridge.V161_RETIRED_MANIFEST_RELEASE == pin
+    assert bridge._V161_RETIRED_MANIFEST_BLOB == "feef2bb3dd6756c7c54d76bdfd6128904c87f679"
+    assert (
+        bridge._V161_RETIRED_MANIFEST_SHA256
+        == "edf6e98bc16063c47b362280cfa33fd10f075a5d240d5884d5ded5d894cbcc63"
+    )
+    assert len(entries) == 766
+    assert {
+        "extensions/tau-mirror/README-TAU-MIRROR.md",
+        "extensions/tau-mirror/tau-mirror-integration.ts",
+    }.isdisjoint(entry.path for entry in entries)
+    assert {
+        relative: (repository / relative).read_bytes() for relative in retired_bytes
+    } == retired_bytes
+
+
+@pytest.mark.parametrize(
+    ("mutation", "message"),
+    (
+        ("missing", "omission set changed"),
+        ("extra", "unknown unclassified path"),
+        ("tampered-blob", "unknown unclassified path"),
+        ("altered-mode", "unknown unclassified path"),
+        ("renamed-path", "unknown unclassified path"),
+    ),
+)
+def test_runtime_retired_manifest_adapter_refuses_real_git_identity_near_misses(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    mutation: str,
+    message: str,
+) -> None:
+    pin = _V161_RETIRED_MANIFEST_RELEASE
+    repository = _historic_checkout(tmp_path, pin)
+    commit, tree, manifest_blob, manifest_sha256 = _commit_retired_manifest_variant(
+        repository,
+        pin.commit,
+        mutation,
+    )
+    mutated_pin = replace(
+        pin,
+        tag_object=commit,
+        tag_object_type="commit",
+        commit=commit,
+        tree=tree,
+    )
+    _git(repository, "update-ref", f"refs/tags/{pin.tag}", commit)
+    _git(repository, "update-ref", "refs/dex/installed", commit)
+    monkeypatch.setattr(bridge, "V161_RETIRED_MANIFEST_RELEASE", mutated_pin, raising=False)
+    monkeypatch.setattr(bridge, "_V161_RETIRED_MANIFEST_BLOB", manifest_blob, raising=False)
+    monkeypatch.setattr(
+        bridge,
+        "_V161_RETIRED_MANIFEST_SHA256",
+        manifest_sha256,
+        raising=False,
+    )
+    adapter, service = _delivery_adapter(tmp_path, repository)
+    service.commit = commit
+
+    with pytest.raises(apply_update.ReleaseVerificationError, match=message):
         adapter.build_and_preview_delivered_release(repository, {})
 
 

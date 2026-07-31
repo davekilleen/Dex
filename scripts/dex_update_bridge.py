@@ -290,6 +290,20 @@ MANIFESTLESS_SEMANTIC_RELEASES = (
     ),
 )
 
+V161_RETIRED_MANIFEST_RELEASE = HistoricReleasePin(
+    "dist/release/v1.61.0-774437a",
+    "d1325426421fc0228865b2a64c8e780f2b8056ed",
+    "tag",
+    "774437aadfdb85bf834e2c2e1eacca6488364c18",
+    "c3a71ece867e43c88dd30b8166c6087da2b344f2",
+    "1.61.0",
+    "b5e268bfd8bfe62e3efbe5a141e8dbb020d73609",
+    "20d095aedcad0a13bd6b25ea183afcd5d367c438adb082b1044c582fb5c2ebf9",
+)
+_V161_RETIRED_MANIFEST_BLOB = "feef2bb3dd6756c7c54d76bdfd6128904c87f679"
+_V161_RETIRED_MANIFEST_SHA256 = "edf6e98bc16063c47b362280cfa33fd10f075a5d240d5884d5ded5d894cbcc63"
+_V161_RETIRED_MANIFEST_PATH_COUNT = 768
+
 V175_DEFECTIVE_MANIFEST_RELEASE = HistoricReleasePin(
     "v1.75.0",
     "5e73481519ee9b5fe9a6c3196ee7cabaa0446ee8",
@@ -1620,12 +1634,13 @@ class _FoundationLifecycleService:
     def _legacy_delivery_source(self) -> Iterator[None]:
         """Let the planner read the one exact pre-manifest legacy release.
 
-        v1.20.1 has one shipped symlink and no installed-files manifest. The
-        foundation planner correctly refuses either shape for a modern target.
-        For only the already-pinned installed tree, this read adapter omits the
-        known symlink and unclassified retired release paths. The lifecycle
-        transaction remains the sole writer; omitted legacy paths stay in
-        place as user-controlled/unmanaged content.
+        Historic sources can have no manifest, one incomplete manifest, or one
+        exact early manifest that still names two retired entries. The
+        foundation planner correctly refuses those shapes for a modern target.
+        For only the already-pinned installed trees, this read adapter omits
+        closed entry identities. The lifecycle transaction remains the sole
+        writer; omitted legacy paths stay in place as user-controlled/unmanaged
+        content.
         """
 
         original_tree_entries = self._apply_update._tree_entries
@@ -1656,11 +1671,53 @@ class _FoundationLifecycleService:
         ) -> tuple[Any, ...]:
             manifestless = manifestless_by_commit.get(commit)
             defective = V175_DEFECTIVE_MANIFEST_RELEASE if commit == V175_DEFECTIVE_MANIFEST_RELEASE.commit else None
-            pin = manifestless or defective
+            retired_manifest = (
+                V161_RETIRED_MANIFEST_RELEASE
+                if commit == V161_RETIRED_MANIFEST_RELEASE.commit
+                else None
+            )
+            pin = manifestless or defective or retired_manifest
             if pin is None:
                 return original_tree_entries(vault_root, brain_git, commit)
             if _run_git(Path(brain_git), "rev-parse", "--verify", f"{commit}^{{tree}}") != pin.tree:
                 raise BridgeError("installed historic release tree changed before delivery")
+            if retired_manifest is not None:
+                try:
+                    if (
+                        _run_git(
+                            Path(brain_git),
+                            "for-each-ref",
+                            "--format=%(objectname)",
+                            f"refs/tags/{retired_manifest.tag}",
+                        )
+                        != retired_manifest.tag_object
+                        or _run_git(Path(brain_git), "cat-file", "-t", retired_manifest.tag_object)
+                        != retired_manifest.tag_object_type
+                        or _run_git(
+                            Path(brain_git),
+                            "rev-parse",
+                            "--verify",
+                            f"{retired_manifest.tag}^{{commit}}",
+                        )
+                        != retired_manifest.commit
+                        or _run_git(
+                            Path(brain_git),
+                            "rev-parse",
+                            "--verify",
+                            f"{retired_manifest.commit}:{_PACKAGE_RELATIVE.as_posix()}",
+                        )
+                        != retired_manifest.package_blob
+                        or _run_git(
+                            Path(brain_git),
+                            "rev-parse",
+                            "--verify",
+                            f"{retired_manifest.commit}:System/.installed-files.manifest",
+                        )
+                        != _V161_RETIRED_MANIFEST_BLOB
+                    ):
+                        raise release_error("historic retired-manifest identity changed")
+                except BridgeError as error:
+                    raise release_error("historic retired-manifest identity changed") from error
             raw = self._apply_update._brain_output(
                 vault_root,
                 brain_git,
@@ -1710,10 +1767,28 @@ class _FoundationLifecycleService:
                     omitted.add(relative)
                     continue
                 omission_identity = _manifestless_omission_identity(relative, raw_mode, object_id)
-                if manifestless is not None and omission_identity in _MANIFESTLESS_OMISSION_IDENTITIES:
+                if (
+                    (manifestless is not None or retired_manifest is not None)
+                    and omission_identity in _MANIFESTLESS_OMISSION_IDENTITIES
+                ):
                     omitted.add(omission_identity)
                     continue
-                if manifestless is None:
+                if manifestless is None and retired_manifest is None:
+                    entries.append(
+                        tree_entry(
+                            relative,
+                            0o755 if raw_mode == "100755" else 0o644,
+                            object_id,
+                        )
+                    )
+                    continue
+                if retired_manifest is not None:
+                    try:
+                        self._apply_update.portable_contract.resolve(relative)
+                    except contract_violation as error:
+                        raise release_error(
+                            "historic release contains an unknown unclassified path"
+                        ) from error
                     entries.append(
                         tree_entry(
                             relative,
@@ -1742,10 +1817,39 @@ class _FoundationLifecycleService:
                 raise release_error("historic release omission set changed")
             if manifestless is not None and not _manifestless_omission_identities_match(omitted):
                 raise release_error("historic manifestless omission set changed")
+            if retired_manifest is not None:
+                if not _manifestless_omission_identities_match(omitted):
+                    raise release_error("historic retired-manifest omission set changed")
+                complete = original_tree_entries(vault_root, brain_git, commit)
+                original_verify_manifest(vault_root, brain_git, complete)
+                by_path = {entry.path: entry for entry in complete}
+                manifest_entry = by_path.get("System/.installed-files.manifest")
+                if (
+                    len(complete) != _V161_RETIRED_MANIFEST_PATH_COUNT
+                    or manifest_entry is None
+                    or manifest_entry.object_id != _V161_RETIRED_MANIFEST_BLOB
+                    or hashlib.sha256(
+                        self._apply_update._brain_output(
+                            vault_root,
+                            brain_git,
+                            "cat-file",
+                            "blob",
+                            manifest_entry.object_id,
+                        )
+                    ).hexdigest()
+                    != _V161_RETIRED_MANIFEST_SHA256
+                ):
+                    raise release_error("historic retired-manifest identity changed")
             result = tuple(sorted(entries, key=lambda entry: entry.path))
             authorized_legacy_signatures[signature(result)] = (
                 pin.commit,
-                "manifestless" if manifestless is not None else "incomplete-manifest",
+                (
+                    "manifestless"
+                    if manifestless is not None
+                    else "retired-manifest"
+                    if retired_manifest is not None
+                    else "incomplete-manifest"
+                ),
             )
             return result
 
@@ -1769,7 +1873,7 @@ class _FoundationLifecycleService:
             try:
                 original_verify_manifest(vault_root, brain_git, entries)
             except release_error:
-                if authorization[1] != "manifestless":
+                if authorization[1] not in {"manifestless", "retired-manifest"}:
                     raise
 
         self._apply_update._tree_entries = legacy_tree_entries
