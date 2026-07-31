@@ -122,10 +122,14 @@ def _newer_release_tags(count: int) -> tuple[str, ...]:
     )
 
 
-def test_reachability_gate_passes_below_safety_margin(tmp_path: Path) -> None:
+@pytest.mark.parametrize("newer_count", (26, 30))
+def test_reachability_gate_passes_with_at_least_two_shipped_slots_remaining(
+    tmp_path: Path,
+    newer_count: int,
+) -> None:
     repository = _repository_with_remote_tags(
         tmp_path,
-        *_newer_release_tags(25),
+        *_newer_release_tags(newer_count),
     )
 
     result = subprocess.run(
@@ -140,8 +144,8 @@ def test_reachability_gate_passes_below_safety_margin(tmp_path: Path) -> None:
     assert "Release-tag reachability gate passed." in result.stdout
 
 
-@pytest.mark.parametrize("newer_count", (26, 27))
-def test_reachability_gate_fails_at_or_above_safety_margin(
+@pytest.mark.parametrize("newer_count", (31, 32))
+def test_reachability_gate_fails_before_the_last_shipped_slot_is_consumed(
     tmp_path: Path,
     newer_count: int,
 ) -> None:
@@ -164,7 +168,8 @@ def test_reachability_gate_fails_at_or_above_safety_margin(
             f"v{sentinel} has {newer_count} newer dist/release tags"
             in result.stderr
         )
-    assert "dist/archive/*" in result.stderr
+    assert "Do not move immutable release labels blindly" in result.stderr
+    assert "verified bridge-and-archive procedure" in result.stderr
 
 
 def test_reachability_gate_fails_loudly_when_remote_tags_are_unreadable(

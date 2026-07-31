@@ -2,7 +2,10 @@
 set -euo pipefail
 
 SENTINEL_VERSIONS=("1.62.0" "1.68.0" "1.74.0")
-SAFETY_MARGIN=26
+# The shipped verifier accepts at most 32 newer candidates. Stop while two
+# slots remain: the current CI run may publish one release, leaving one final
+# recovery slot rather than forcing a risky early label move.
+SAFETY_MARGIN=31
 SHIPPED_TAG_BOUND=32
 
 if ! REMOTE_TAGS="$(
@@ -55,7 +58,7 @@ for SENTINEL in "${SENTINEL_VERSIONS[@]}"; do
 
   if [ "$NEWER_COUNT" -ge "$SAFETY_MARGIN" ]; then
     echo "❌ v$SENTINEL has $NEWER_COUNT newer dist/release tags; the safety margin is $SAFETY_MARGIN before the shipped $SHIPPED_TAG_BOUND-tag bound." >&2
-    echo "Archive older duplicates to dist/archive/* before old installs go silent." >&2
+    echo "Do not move immutable release labels blindly; use the verified bridge-and-archive procedure before old installs go silent." >&2
     FAILED=1
   fi
 done
