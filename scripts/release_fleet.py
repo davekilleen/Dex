@@ -31,6 +31,7 @@ from core.update.journey_protocol import (
     UpdateJourneyProtocol,
     load_update_journey_protocol,
 )
+from scripts import dex_update_bridge
 
 UPDATE_JOURNEY_RELATIVE = PROTOCOL_RELATIVE
 RELEASE_TAG = re.compile(
@@ -474,6 +475,7 @@ def shipped_update_surface(repo: Path, release: DistributionRelease | ImmutableR
         "controller": None,
         "executor": None,
     }
+    unbound_source: str | None = None
     if protocol_bytes is not None:
         try:
             protocol = load_update_journey_protocol(protocol_bytes)
@@ -481,10 +483,11 @@ def shipped_update_surface(repo: Path, release: DistributionRelease | ImmutableR
             raise FleetError(
                 f"{release.tag}: released journey protocol is invalid: {error}"
             ) from error
-        source_commit = _verify_released_protocol_artifacts(repo, release, protocol)
+        unbound_source = dex_update_bridge.exact_unbound_journey_source(repo, release.tag)
+        source_commit = unbound_source or _verify_released_protocol_artifacts(repo, release, protocol)
         protocol_surface = {
             "path": UPDATE_JOURNEY_RELATIVE,
-            "status": "present",
+            "status": "present-unbound" if unbound_source else "present",
             "sha256": hashlib.sha256(protocol_bytes).hexdigest(),
             "schema_version": protocol.schema_version,
             "controller": protocol.controller,
@@ -513,7 +516,7 @@ def shipped_update_surface(repo: Path, release: DistributionRelease | ImmutableR
         "journey_protocol": protocol_surface,
         # This describes released capability, not successful execution.
         # Acceptance still requires a live, process-local ExecutorRun.
-        "machine_executable": protocol_bytes is not None,
+        "machine_executable": protocol_bytes is not None and unbound_source is None,
     }
 
 
@@ -1602,6 +1605,7 @@ def classify_historic_update_surface(repo: Path, release: DistributionRelease) -
         repo, release.tag, "core/lifecycle/catalog/bridge-release.json"
     )
     protocol = _optional_tag_file(repo, release.tag, UPDATE_JOURNEY_RELATIVE)
+    unbound_source = dex_update_bridge.exact_unbound_journey_source(repo, release.tag)
     if protocol is not None:
         try:
             parsed_protocol = load_update_journey_protocol(protocol)
@@ -1609,9 +1613,13 @@ def classify_historic_update_surface(repo: Path, release: DistributionRelease) -
             raise FleetError(
                 f"{release.tag}: released journey protocol is invalid: {error}"
             ) from error
-        _verify_released_protocol_artifacts(repo, release, parsed_protocol)
-        route = "machine-protocol-released-executor"
-        bridge_requirement = "released-journey-executor"
+        if unbound_source is None:
+            _verify_released_protocol_artifacts(repo, release, parsed_protocol)
+            route = "machine-protocol-released-executor"
+            bridge_requirement = "released-journey-executor"
+        else:
+            route = "protocol-present-unbound-source"
+            bridge_requirement = "versioned-delivery-bridge-required"
     elif skill is None:
         route = "missing-dex-update-skill"
         bridge_requirement = "unsupported-without-published-route"
@@ -1627,7 +1635,7 @@ def classify_historic_update_surface(repo: Path, release: DistributionRelease) -
     return {
         "route_classification": route,
         "bridge_requirement": bridge_requirement,
-        "machine_executable": protocol is not None,
+        "machine_executable": protocol is not None and unbound_source is None,
         "dex_update_skill": {
             "path": UPDATE_SKILL_RELATIVE,
             "status": "present" if skill is not None else "missing",
