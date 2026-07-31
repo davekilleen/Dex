@@ -1182,6 +1182,8 @@ def _run_bounded_process_group(
             process.poll()
             if not _process_group_exists(process.pid):
                 break
+            if process.returncode is not None:
+                break
             remaining = deadline - time.monotonic()
             if remaining <= 0:
                 break
