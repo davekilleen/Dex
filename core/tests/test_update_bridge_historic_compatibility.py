@@ -1,0 +1,319 @@
+"""Adversarial contract for the closed historic updater bridge allow-list.
+
+The bridge implementation exposes two deliberately small, data-only seams:
+
+``historic_compatibility_pins()`` returns the immutable, JSON-like pin ledger
+and ``historic_compatibility_for(evidence)`` returns a pin name only for a
+complete *installed-source* identity.  The latter must return ``None`` for
+every near miss; it is not an ancestry, version, or best-effort compatibility
+detector.  Filesystem/Git collection belongs to the bridge, while this module
+keeps the authorization policy independently frozen and easy to audit.
+"""
+
+from __future__ import annotations
+
+from copy import deepcopy
+
+import pytest
+
+from scripts import dex_update_bridge as bridge
+
+
+# These are independent historical Git identities.  A ``None`` value is part
+# of the identity: it means that the historical tree did *not* ship that
+# input, not that a nearby release may supply it.
+_MANIFESTLESS_MISSING_MIGRATOR = {
+    "v1.20.1": {
+        "tag_object": "3f7338dbe21ec98c015a3c8417d037cdd51b517d",
+        "commit": "9e6f35d3282cb354008a4e7372b1cdb1d469ad3d",
+        "tree": "b781bb94e417b2873d057a5a417d8c666a360bca",
+        "package_blob": "524e4fc38b6ef0b266776fd52023e41e603fa4a1",
+    },
+    "v1.49.0": {
+        "tag_object": None,
+        "commit": "930adabf3e88b6534b3c90a9ad386151c1e291e4",
+        "tree": "0a153375382907fd25a68d7c1845851d0d1f9946",
+        "package_blob": "32c22a6a13f1444beb8ce62a30ce6309b70244be",
+    },
+    "v1.51.0": {
+        "tag_object": None,
+        "commit": "c8069c90c1715bc7a10aced19ef95e3657089bfd",
+        "tree": "8129f1a2d66a6a9d412cb6a3d919af725b160e6f",
+        "package_blob": "887ddacba2ff3e99b4293c50b522b112e8e7b8e0",
+    },
+    "v1.52.0": {
+        "tag_object": None,
+        "commit": "0b843163815dab2bd9d0d4797a70f7c59864e76f",
+        "tree": "faebf21f5c14dc10a2ac9b28856040425e6a24a8",
+        "package_blob": "34227d365e65fde32a61830c0b77cd6331fb3e7b",
+    },
+    "v1.53.0": {
+        "tag_object": None,
+        "commit": "a0bbd82d4a7c825b94c2e5467d3d34f8f2129280",
+        "tree": "59a50aba122ef8213544dc99ba36fd19cc78b5c1",
+        "package_blob": "d21587d1eb2e23562428fa72d4d7fb9e0a586b97",
+    },
+    "v1.54.0": {
+        "tag_object": None,
+        "commit": "3956d3710645492975d66f8f481c806c72533453",
+        "tree": "ce724d55e677ef126a5f1ed4aa03f48236379327",
+        "package_blob": "113903345c57bf43ad4c2f991af866f0e1183da9",
+    },
+    "v1.55.0": {
+        "tag_object": None,
+        "commit": "a023581a86b56ef97577513092001ea565832e17",
+        "tree": "754789c0721bcb9bd82f43055afa8f09be0fda28",
+        "package_blob": "2b1c2330ad98ca6ca85fb3319a59d7b6835f8368",
+    },
+    "v1.56.0": {
+        "tag_object": None,
+        "commit": "69505741999ab493f4f23733e33a9ffb2395c4bf",
+        "tree": "255083281de057f9dd07bdfe2c3e94be1e1de5ce",
+        "package_blob": "90bbdde25254fd3a9ceb3c4221337d9b3b39008f",
+    },
+    "v1.57.0": {
+        "tag_object": None,
+        "commit": "e5220bf72689e4434697aaa06978cac31cc9d5ee",
+        "tree": "68af3dbebc0cbac8699dfa6d9fecf41b11852785",
+        "package_blob": "f6e66582be2bd845ebc6bdf3e7166ada6a4c0d1b",
+    },
+    "v1.58.0": {
+        "tag_object": None,
+        "commit": "b001eb4048d413e1c68213f83b2c3ca2ad818a17",
+        "tree": "da2ee15b6490452d85eaf8a7fd883f92b743bea9",
+        "package_blob": "d25d36733053bd92f7f6d86fae9e0a887adb0bbc",
+    },
+    "v1.59.0": {
+        "tag_object": None,
+        "commit": "f3a4413d6a1bc245250e23b4f5868953620b7237",
+        "tree": "9ecb0a55dd44c16b82a06ac1a02a1ee1a872607e",
+        "package_blob": "5cf1c327e9eec8c42d578c3da9bb6520f7b5fe18",
+    },
+    "v1.60.0": {
+        "tag_object": None,
+        "commit": "6c986d80280e15af26b9cc4412c4578461b916db",
+        "tree": "6906f751bbb058db9bd4aee01e745459661c7131",
+        "package_blob": "7bbc92cdcfc2fd023861fb30d474e129f885913a",
+    },
+    "v1.61.0": {
+        "tag_object": None,
+        "commit": "b7c74d877b2aca4cb70ab343173f444feca612d0",
+        "tree": "0dda073b96be4955312445a089c625cc902738ca",
+        "package_blob": "884cf4421e2c3d74a8717f707fd3ac83c4bbc8fb",
+    },
+}
+
+_V175_OMISSIONS = (
+    "core/customization_migration/__init__.py",
+    "core/customization_migration/inventory.py",
+    "core/customization_migration/model.py",
+    "core/customization_migration/planning.py",
+    "core/customization_migration/references.py",
+    "core/customization_migration/report.py",
+    "core/customization_migration/service.py",
+    "core/tests/test_customization_assessment.py",
+    "core/tests/test_customization_assessment_doctor.py",
+    "core/tests/test_customization_assessment_planning.py",
+    "core/tests/test_lifecycle_topology_migration.py",
+    "docs/customization-migration-threat-model.md",
+    "docs/plans/2026-07-24-customization-migration-mcp.md",
+)
+
+_NATIVE_MIGRATOR_TRANSPORT = {
+    "dist/release/v1.63.0-08ce719": {
+        "tag_object": "492b56c53dbe469dcac93c7d9a85081026f04132",
+        "commit": "08ce719d595809808e202fa4a7a5fbc68c1b5257",
+        "tree": "87467beec1c11e91ff1bc27223d310b32b9b4978",
+    },
+    "dist/release/v1.63.0-2f006c9": {
+        "tag_object": "25e579ea946e8b493fcec0d2e49aec5cdb9c1141",
+        "commit": "2f006c95adcb566ee6ce881ffb534628ade49d02",
+        "tree": "cfe29096d001d08ba77a9a649c9999d40f250c6e",
+    },
+    "dist/release/v1.63.0-9a0660f": {
+        "tag_object": "d5123c4438c97b5c0e630dddad049f66389d3bc7",
+        "commit": "9a0660f785b4f6d0c15ab3a77b346bb522e80eb7",
+        "tree": "d4bc25fed1798db4e362506b60627da4b4fa97ad",
+    },
+    "dist/release/v1.63.0-9dc6e3d": {
+        "tag_object": "05553ca6f04a2b89a3efbbea9d4901c63b74ae1f",
+        "commit": "9dc6e3dfafd75b23c40607171787bd028099f6d1",
+        "tree": "582bef8eebf62d171c63354b5cf4c618f2ac5593",
+    },
+}
+
+_COMMON_NATIVE_MIGRATOR = {
+    "package_blob": "036655ee0687f89a309b6ac18e763996e719695c",
+    "policy_blob": "b2dfd209e83ecfed1d1f7fcc90be4e3444f08b2e",
+    "transition_blob": "91069155a2b5d14409d927af8708556f424740bd",
+    "migrator_blob": "57da3fa834ed1f9069f0187dd19b3e3e6f5b5580",
+    "install_blob": "f1ce82fa657786a3b9cae0526a8a8757531f6f39",
+}
+
+
+def _expected_pins() -> dict[str, dict[str, object]]:
+    pins: dict[str, dict[str, object]] = {}
+    for tag, identity in _MANIFESTLESS_MISSING_MIGRATOR.items():
+        pins[tag] = {
+            "kind": "manifestless-missing-migrator",
+            "role": "installed-source",
+            "tag": tag,
+            **identity,
+            "manifest_blob": None,
+            "policy_blob": None,
+            "transition_blob": None,
+            "migrator_blob": None,
+            "unexpected_nonregular_paths": (),
+        }
+    pins["v1.20.1"].update(
+        {
+            "shipped_symlink": {
+                "path": ".pi/agent/extensions/dex",
+                "blob": "f1c88c92cea996705f982e902bafb758156aef52",
+                "target": "../../../pi-extensions/dex",
+            },
+        }
+    )
+    pins["v1.75.0"] = {
+        "kind": "incomplete-manifest",
+        "role": "installed-source",
+        "tag": "v1.75.0",
+        "tag_object": None,
+        "commit": "5e73481519ee9b5fe9a6c3196ee7cabaa0446ee8",
+        "tree": "382b92df5b3a14da90e9122956353f589f2fc0b7",
+        "package_blob": "1cacd5c174cfc309e855bd54ae96bcf04afa4079",
+        "manifest_blob": "6d2105eb1e33bd007ef8b4e2e77b927508a150f7",
+        "manifest_sha256": "6a065ef3bcce45ac8e42d8143a4eb9e3516ea633fd0cbe8c3d2aff10a137ec34",
+        "manifest_path_count": 1201,
+        "omitted_paths": _V175_OMISSIONS,
+        "omitted_paths_sha256": "b476b6a35ac869339e93f6451f13f6a09c6622b7be6ba73ee6e82bc404cc567d",
+        "policy_blob": "b2dfd209e83ecfed1d1f7fcc90be4e3444f08b2e",
+        "transition_blob": "2a016eafa4f2712343c3eea206b5be22259e3362",
+        "migrator_blob": "559a870762bd8feb68aac7b6a9f93ec2f99d1efd",
+        "unexpected_nonregular_paths": (),
+    }
+    pins["v1.81.0"] = {
+        "kind": "semantic-no-catalog",
+        "role": "installed-source",
+        "tag": "v1.81.0",
+        "tag_object": None,
+        "commit": "0f23787a22aa52afb40878df05e4819f77d179e6",
+        "tree": "03e1832add6a27bc6c6dc833bfdba2b6cf7fd524",
+        "package_blob": "f54091ab0c0d543c848bb1344b8a0048c067b89f",
+        "catalog_blob": None,
+        "manifest_blob": "1264aba3b8f1cff516caeb277380c09be1973e99",
+        "manifest_sha256": "fdd28af603f7575efcfe358472a60d0513b08d2f0f7aecf8395f7a0da27ea8ca",
+        "manifest_path_count": 1297,
+        "policy_blob": "7d1f2b3ace56e12fce2ff01fafe6435cd1b59e59",
+        "transition_blob": "4b7ad8ff59d95a5e0af7106cb40f3aafa699400c",
+        "migrator_blob": "c73fe7e186abbcd8dc588fa5c94d6244bf156662",
+        "unexpected_nonregular_paths": (),
+    }
+    for tag, identity in _NATIVE_MIGRATOR_TRANSPORT.items():
+        pins[tag] = {
+            "kind": "native-migrator-file-transport",
+            "role": "installed-source",
+            "tag": tag,
+            **identity,
+            **_COMMON_NATIVE_MIGRATOR,
+            "unexpected_nonregular_paths": (),
+        }
+    return pins
+
+
+def _ledger() -> dict[str, dict[str, object]]:
+    """Normalize the bridge's read-only ledger without sharing test objects."""
+
+    return {name: dict(pin) for name, pin in bridge.historic_compatibility_pins().items()}
+
+
+def _authorize(evidence: dict[str, object]) -> str | None:
+    return bridge.historic_compatibility_for(evidence)
+
+
+def test_historic_ledger_is_exactly_the_closed_frozen_set() -> None:
+    """No range, prefix, or latest-version fallback may enter this ledger."""
+
+    assert _ledger() == _expected_pins()
+    assert len(_MANIFESTLESS_MISSING_MIGRATOR) == 13
+    assert len(_V175_OMISSIONS) == 13
+    assert len(_NATIVE_MIGRATOR_TRANSPORT) == 4
+
+
+@pytest.mark.parametrize("name", tuple(_expected_pins()))
+def test_each_frozen_historic_identity_authorizes_only_as_installed_source(name: str) -> None:
+    evidence = deepcopy(_expected_pins()[name])
+
+    assert _authorize(evidence) == name
+
+    modern_target = deepcopy(evidence)
+    modern_target["role"] = "delivery-target"
+    assert _authorize(modern_target) is None
+
+
+@pytest.mark.parametrize("name", tuple(_expected_pins()))
+def test_one_tampered_identity_field_never_inherits_historic_authorization(name: str) -> None:
+    evidence = deepcopy(_expected_pins()[name])
+    evidence["package_blob"] = "0" * 40
+
+    assert _authorize(evidence) is None
+
+
+def test_cross_pairing_a_real_tree_and_a_real_package_is_not_compatibility() -> None:
+    evidence = deepcopy(_expected_pins()["v1.57.0"])
+    evidence["tree"] = _expected_pins()["v1.58.0"]["tree"]
+
+    assert _authorize(evidence) is None
+
+
+def test_v120_tau_symlink_is_exact_and_another_symlink_is_not_allowed() -> None:
+    evidence = deepcopy(_expected_pins()["v1.20.1"])
+    assert _authorize(evidence) == "v1.20.1"
+
+    evidence["shipped_symlink"] = {
+        **evidence["shipped_symlink"],
+        "target": "../../../../outside-the-vault",
+    }
+    assert _authorize(evidence) is None
+
+
+@pytest.mark.parametrize("name", ("v1.75.0", "v1.81.0", "dist/release/v1.63.0-08ce719"))
+def test_unexpected_nonregular_entry_is_not_hidden_by_a_known_historic_shape(name: str) -> None:
+    evidence = deepcopy(_expected_pins()[name])
+    evidence["unexpected_nonregular_paths"] = ("System/unsafe-link",)
+
+    assert _authorize(evidence) is None
+
+
+def test_missing_migrator_policy_transition_and_package_are_a_closed_tuple() -> None:
+    evidence = deepcopy(_expected_pins()["v1.61.0"])
+    assert _authorize(evidence) == "v1.61.0"
+
+    # The empty historical tuple is not permission to borrow newer inputs.
+    evidence["policy_blob"] = _COMMON_NATIVE_MIGRATOR["policy_blob"]
+    evidence["transition_blob"] = _COMMON_NATIVE_MIGRATOR["transition_blob"]
+    assert _authorize(evidence) is None
+
+
+def test_native_file_transport_permission_is_not_reused_by_a_nearby_release() -> None:
+    evidence = deepcopy(_expected_pins()["dist/release/v1.63.0-08ce719"])
+    assert _authorize(evidence) == "dist/release/v1.63.0-08ce719"
+
+    evidence["tag"] = "dist/release/v1.63.0-f2f288e"
+    assert _authorize(evidence) is None
+
+
+def test_modern_foundation_is_not_granted_any_historic_escape_hatch() -> None:
+    """A current target is handled by normal validation, never this ledger."""
+
+    assert _authorize(
+        {
+            "role": "delivery-target",
+            "tag": bridge.FOUNDATION.tag,
+            "tag_object": bridge.FOUNDATION.tag_object,
+            "commit": bridge.FOUNDATION.commit,
+            "tree": bridge.FOUNDATION.tree,
+            "package_blob": "not-a-historic-package",
+            "unexpected_nonregular_paths": (),
+        }
+    ) is None
