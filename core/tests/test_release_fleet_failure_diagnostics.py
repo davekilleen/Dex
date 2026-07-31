@@ -275,6 +275,59 @@ def test_failure_diagnostic_is_atomic_and_never_overwrites_existing_file(
     assert list(evidence.glob("*.tmp")) == []
 
 
+def test_failure_diagnostic_never_removes_a_preexisting_temporary_file(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    evidence = tmp_path / "case.evidence"
+    evidence.mkdir(mode=0o700)
+    evidence.chmod(0o700)
+    name = "foundation-doctor-failure.diagnostic.json"
+    timestamp = 123456
+    monkeypatch.setattr(executor.time, "time_ns", lambda: timestamp)
+    temporary = evidence / f".{name}.{executor.os.getpid()}.{timestamp}.tmp"
+    temporary.write_text("another process owns this\n", encoding="utf-8")
+
+    with pytest.raises(executor.ExecutorError, match="could not be retained safely"):
+        executor._write_failure_diagnostic(
+            evidence,
+            name,
+            {"acceptance": False, "kind": "local-failure-diagnostic"},
+        )
+
+    assert temporary.read_text(encoding="utf-8") == "another process owns this\n"
+
+
+def test_safe_metadata_does_not_follow_a_symlink_swapped_after_lstat(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    vault, _ = _vault(tmp_path)
+    relative = "System/.release-catalog.json"
+    candidate = vault / relative
+    secret = tmp_path / "secret.txt"
+    secret.write_text("TOP-SECRET-NOT-FOR-DIAGNOSTICS\n", encoding="utf-8")
+    original_open = executor.os.open
+    swapped = False
+
+    def swap_before_open(path, *args, **kwargs):
+        nonlocal swapped
+        if Path(path) == candidate and not swapped:
+            swapped = True
+            candidate.unlink()
+            candidate.symlink_to(secret)
+        return original_open(path, *args, **kwargs)
+
+    monkeypatch.setattr(executor.os, "open", swap_before_open)
+
+    metadata = executor._safe_file_metadata(vault, relative)
+
+    assert swapped
+    assert metadata["state"] in {"unreadable", "changed"}
+    assert "sha256" not in metadata
+    assert "TOP-SECRET-NOT-FOR-DIAGNOSTICS" not in json.dumps(metadata)
+
+
 def test_failure_diagnostic_cleans_temporary_file_when_file_fsync_fails(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

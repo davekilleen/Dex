@@ -951,11 +951,41 @@ def _safe_file_metadata(vault: Path, relative: str) -> dict[str, object]:
         return {"state": "not-regular"}
     if status.st_size > _FAILURE_DIAGNOSTIC_MAX_FILE_BYTES:
         return {"state": "too-large", "byte_size": status.st_size}
-    return {
-        "state": "regular",
-        "byte_size": status.st_size,
-        "sha256": hashlib.sha256(candidate.read_bytes()).hexdigest(),
-    }
+    try:
+        descriptor = os.open(
+            candidate,
+            os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0),
+        )
+    except FileNotFoundError:
+        return {"state": "missing"}
+    except OSError:
+        # Do not include operating-system errors: they can embed user paths.
+        return {"state": "unreadable"}
+    try:
+        opened = os.fstat(descriptor)
+        if not stat.S_ISREG(opened.st_mode):
+            return {"state": "not-regular"}
+        if (opened.st_dev, opened.st_ino) != (status.st_dev, status.st_ino):
+            return {"state": "changed"}
+        if opened.st_size > _FAILURE_DIAGNOSTIC_MAX_FILE_BYTES:
+            return {"state": "too-large", "byte_size": opened.st_size}
+        digest = hashlib.sha256()
+        byte_size = 0
+        while True:
+            chunk = os.read(descriptor, min(64 * 1024, _FAILURE_DIAGNOSTIC_MAX_FILE_BYTES + 1 - byte_size))
+            if not chunk:
+                break
+            byte_size += len(chunk)
+            if byte_size > _FAILURE_DIAGNOSTIC_MAX_FILE_BYTES:
+                return {"state": "too-large", "byte_size": byte_size}
+            digest.update(chunk)
+        return {
+            "state": "regular",
+            "byte_size": byte_size,
+            "sha256": digest.hexdigest(),
+        }
+    finally:
+        os.close(descriptor)
 
 
 def _sanitized_doctor_report(report: Mapping[str, object]) -> dict[str, object]:
@@ -1024,12 +1054,14 @@ def _write_failure_diagnostic(
         + "\n"
     ).encode("utf-8")
     temporary = evidence_root / f".{name}.{os.getpid()}.{time.time_ns()}.tmp"
+    created = False
     try:
         descriptor = os.open(
             temporary,
             os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0),
             0o600,
         )
+        created = True
         try:
             view = memoryview(content)
             while view:
@@ -1047,10 +1079,11 @@ def _write_failure_diagnostic(
     except OSError as error:
         raise ExecutorError("failure diagnostic could not be retained safely") from error
     finally:
-        try:
-            temporary.unlink()
-        except FileNotFoundError:
-            pass
+        if created:
+            try:
+                temporary.unlink()
+            except FileNotFoundError:
+                pass
     return destination
 
 
