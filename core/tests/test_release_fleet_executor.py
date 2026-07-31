@@ -206,6 +206,67 @@ def test_production_runtime_exposes_only_installed_qmd_not_ambient_path(
         runtime.close()
 
 
+def test_production_runtime_retries_exact_installed_doctor_after_transport_timeout(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    interpreter = tmp_path / "python"
+    interpreter.touch()
+    report = {
+        "summary": {"broken": 0, "unknown": 0},
+        "checks": [{"id": "core.drift", "verdict": "OK"}],
+    }
+    processes = []
+
+    class FakeProcess:
+        returncode = 0
+
+        def __init__(self, *, times_out: bool) -> None:
+            self.pid = 41000 + len(processes)
+            self.times_out = times_out
+            self.commands: list[float | int | None] = []
+
+        def communicate(self, timeout=None):
+            self.commands.append(timeout)
+            if self.times_out and timeout is not None:
+                raise subprocess.TimeoutExpired("doctor", timeout)
+            if timeout is None:
+                return b"", b""
+            return json.dumps(report).encode("utf-8"), b""
+
+    def popen(command, **kwargs):
+        process = FakeProcess(times_out=not processes)
+        process.command = command
+        process.kwargs = kwargs
+        processes.append(process)
+        return process
+
+    monkeypatch.setattr(executor.dex_update_bridge, "_validate_vault", lambda root: root)
+    monkeypatch.setattr(
+        executor.dex_update_bridge,
+        "_installed_python",
+        lambda _root: interpreter,
+    )
+    monkeypatch.setattr(executor.subprocess, "Popen", popen)
+    monkeypatch.setattr(executor.os, "killpg", lambda _pid, _signal: None)
+
+    runtime = executor._ProductionRuntime()
+    try:
+        assert runtime.doctor(vault) == report
+    finally:
+        runtime.close()
+
+    assert len(processes) == 2
+    assert all(
+        process.command == [str(interpreter), "-m", "core.utils.doctor"]
+        for process in processes
+    )
+    assert processes[0].commands == [60, None]
+    assert processes[1].commands == [60]
+
+
 def _commit_executor_tamper(repo: Path) -> str:
     path = repo / "scripts/release_fleet_executor.py"
     path.write_bytes(path.read_bytes() + b"\n# externally substituted bytes\n")

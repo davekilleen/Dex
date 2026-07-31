@@ -556,6 +556,8 @@ class _ProductionRuntime:
         vault: Path,
         module: str,
         *arguments: str,
+        timeout_seconds: int = 600,
+        timeout_attempts: int = 1,
     ) -> Mapping[str, object]:
         root = dex_update_bridge._validate_vault(vault)
         interpreter = dex_update_bridge._installed_python(root)
@@ -572,13 +574,21 @@ class _ProductionRuntime:
             start_new_session=True,
         )
         try:
-            stdout, stderr = process.communicate(timeout=600)
+            stdout, stderr = process.communicate(timeout=timeout_seconds)
         except subprocess.TimeoutExpired as error:
             try:
                 os.killpg(process.pid, signal.SIGKILL)
             except ProcessLookupError:
                 pass
             process.communicate()
+            if timeout_attempts > 1:
+                return self._installed_json(
+                    vault,
+                    module,
+                    *arguments,
+                    timeout_seconds=timeout_seconds,
+                    timeout_attempts=timeout_attempts - 1,
+                )
             raise ExecutorError(f"installed {module} timed out") from error
         if len(stdout) > 16 * 1024 * 1024 or len(stderr) > 1024 * 1024:
             raise ExecutorError(f"installed {module} output exceeded its bound")
@@ -594,7 +604,12 @@ class _ProductionRuntime:
         return report
 
     def doctor(self, vault: Path) -> Mapping[str, object]:
-        return self._installed_json(vault, "core.utils.doctor")
+        return self._installed_json(
+            vault,
+            "core.utils.doctor",
+            timeout_seconds=60,
+            timeout_attempts=2,
+        )
 
     def deliver_latest_release(self, vault: Path) -> Mapping[str, object]:
         return self._server_call(vault, "deliver_latest_release")

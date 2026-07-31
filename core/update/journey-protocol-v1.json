@@ -13,7 +13,7 @@
     "follow-up-smoke"
   ],
   "executor": {
-    "sha256": "a061e10a92ae724dc3d49409cc235b060082e2a38e9e043a255f92525d570567",
+    "sha256": "74043a814c261ce401cf07dbd06e8d2779bfb95b09fcee5d76f5f7ce15e0417d",
     "source_path": "scripts/release_fleet_executor.py"
   },
   "foundation_to_follow_up": {

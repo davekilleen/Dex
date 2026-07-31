@@ -2244,6 +2244,43 @@ def test_core_drift_is_ok_for_a_clean_release_checkout(tmp_path):
     assert doctor._probe_core_drift(drift_context).verdict == "OK"
 
 
+def test_worktree_blob_ids_hash_large_release_trees_in_pipe_safe_batches(
+    context,
+    monkeypatch,
+) -> None:
+    relatives = [f"core/release-file-{index:04d}.py" for index in range(600)]
+    expected = {
+        relative: hashlib.sha1(relative.encode("utf-8"), usedforsecurity=False).hexdigest()
+        for relative in relatives
+    }
+    observed_batches: list[list[str]] = []
+
+    def pipe_limited_git_result(
+        _context,
+        *arguments,
+        git_directory=None,
+        input_text=None,
+    ) -> subprocess.CompletedProcess[str]:
+        assert arguments == ("hash-object", "--no-filters", "--stdin-paths")
+        assert git_directory is None
+        batch = input_text.splitlines()
+        observed_batches.append(batch)
+        if len(batch) > 128:
+            return subprocess.CompletedProcess(arguments, 1, "", "simulated pipe saturation")
+        return subprocess.CompletedProcess(
+            arguments,
+            0,
+            "".join(f"{expected[relative]}\n" for relative in batch),
+            "",
+        )
+
+    monkeypatch.setattr(doctor, "_git_result", pipe_limited_git_result)
+
+    assert doctor._worktree_blob_ids(context, relatives) == expected
+    assert len(observed_batches) > 1
+    assert max(map(len, observed_batches)) <= 128
+
+
 def test_post_split_core_drift_accepts_only_installer_normalized_package_metadata(
     context,
 ) -> None:

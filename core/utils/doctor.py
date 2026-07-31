@@ -3637,19 +3637,23 @@ def _worktree_blob_ids(
 ) -> dict[str, str]:
     if not relatives:
         return {}
-    hashed = _git_result(
-        context,
-        "hash-object",
-        "--no-filters",
-        "--stdin-paths",
-        input_text="".join(f"{relative}\n" for relative in relatives),
-    )
-    if hashed.returncode != 0:
-        return {}
-    object_ids = hashed.stdout.splitlines()
-    if len(object_ids) != len(relatives):
-        return {}
-    return dict(zip(relatives, object_ids, strict=True))
+    worktree_ids: dict[str, str] = {}
+    for offset in range(0, len(relatives), 128):
+        batch = relatives[offset : offset + 128]
+        hashed = _git_result(
+            context,
+            "hash-object",
+            "--no-filters",
+            "--stdin-paths",
+            input_text="".join(f"{relative}\n" for relative in batch),
+        )
+        if hashed.returncode != 0:
+            return {}
+        object_ids = hashed.stdout.splitlines()
+        if len(object_ids) != len(batch):
+            return {}
+        worktree_ids.update(zip(batch, object_ids, strict=True))
+    return worktree_ids
 
 
 def _symlink_matches_release_blob(path: Path, object_id: str) -> bool:
