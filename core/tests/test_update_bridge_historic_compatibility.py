@@ -369,6 +369,28 @@ def _expected_pins() -> dict[str, dict[str, object]]:
             },
         }
     )
+    pins["dist/release/v1.61.0-774437a"] = {
+        "kind": "complete-manifest-retired-paths",
+        "role": "installed-source",
+        "tag": "dist/release/v1.61.0-774437a",
+        "tag_object": "d1325426421fc0228865b2a64c8e780f2b8056ed",
+        "commit": "774437aadfdb85bf834e2c2e1eacca6488364c18",
+        "tree": "c3a71ece867e43c88dd30b8166c6087da2b344f2",
+        "version": "1.61.0",
+        "package_blob": "b5e268bfd8bfe62e3efbe5a141e8dbb020d73609",
+        "package_sha256": "20d095aedcad0a13bd6b25ea183afcd5d367c438adb082b1044c582fb5c2ebf9",
+        "manifest_blob": "feef2bb3dd6756c7c54d76bdfd6128904c87f679",
+        "manifest_sha256": "edf6e98bc16063c47b362280cfa33fd10f075a5d240d5884d5ded5d894cbcc63",
+        "manifest_path_count": 768,
+        "policy_blob": None,
+        "transition_blob": None,
+        "migrator_blob": None,
+        "omission_identities": (
+            "50a3e65dc2d65e6f6b28b30b630e06656d95ddd82f4a68a7152017119b110f90",
+            "af78f3d480b78b5bb558d873b98638c91d532de98f84f8f50e73448a1404b37d",
+        ),
+        "unexpected_nonregular_paths": (),
+    }
     pins["v1.75.0"] = {
         "kind": "incomplete-manifest",
         "role": "installed-source",
@@ -710,6 +732,27 @@ def test_cross_pairing_a_real_tree_and_a_real_package_is_not_compatibility() -> 
     assert _authorize(evidence) is None
 
 
+@pytest.mark.parametrize(
+    "field",
+    tuple(_expected_pins()["dist/release/v1.61.0-774437a"]),
+)
+def test_retired_manifest_one_field_near_miss_is_refused(field: str) -> None:
+    evidence = deepcopy(_expected_pins()["dist/release/v1.61.0-774437a"])
+    actual = evidence[field]
+    if isinstance(actual, str):
+        evidence[field] = ("0" * len(actual)) if actual else "changed"
+    elif actual is None:
+        evidence[field] = "unexpected-present-input"
+    elif isinstance(actual, int):
+        evidence[field] = actual + 1
+    elif isinstance(actual, tuple):
+        evidence[field] = (("0" * 64), *actual[1:]) if actual else ("unexpected",)
+    else:  # pragma: no cover - fixed literal table guards the supported shapes.
+        raise AssertionError(f"retired-manifest test has unsupported field: {field}")
+
+    assert _authorize(evidence) is None
+
+
 def test_v120_tau_symlink_is_exact_and_another_symlink_is_not_allowed() -> None:
     evidence = deepcopy(_expected_pins()["v1.20.1"])
     assert _authorize(evidence) == "v1.20.1"
@@ -868,6 +911,62 @@ def test_runtime_legacy_topology_refuses_cross_borrowed_existing_inputs(
     assert bridge._supported_legacy_topology(repository, impossible_fallback) is False
 
 
+def test_runtime_retired_manifest_topology_requires_exact_git_and_absent_inputs(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    pin = bridge.V161_RETIRED_MANIFEST_RELEASE
+    nearby = bridge.MANIFESTLESS_SEMANTIC_RELEASES[-1]
+    repository = _historic_checkout(tmp_path, pin)
+    impossible_fallback = replace(
+        bridge.LEGACY_TOPOLOGY_FOUNDATION,
+        tag="v9.9.9",
+        commit="0" * 40,
+        tree="0" * 40,
+    )
+    monkeypatch.setattr(bridge, "MANIFESTLESS_SEMANTIC_RELEASES", ())
+    monkeypatch.setattr(bridge, "MISSING_MIGRATOR_RELEASES", ())
+
+    assert bridge._supported_legacy_topology(repository, impossible_fallback) is True
+
+    mutations = (
+        replace(pin, tag_object=nearby.tag_object),
+        replace(pin, tag_object_type="commit"),
+        replace(pin, commit=nearby.commit),
+        replace(pin, tree=nearby.tree),
+        replace(pin, package_blob=nearby.package_blob),
+        replace(pin, package_sha256="0" * 64),
+    )
+    for mutation in mutations:
+        monkeypatch.setattr(bridge, "V161_RETIRED_MANIFEST_RELEASE", mutation)
+        assert bridge._supported_legacy_topology(repository, impossible_fallback) is False
+    monkeypatch.setattr(bridge, "V161_RETIRED_MANIFEST_RELEASE", pin)
+
+    absent_inputs = (
+        bridge._TRACKED_IGNORE_POLICY_RELATIVE,
+        bridge._PRESERVATION_TRANSITION_RELATIVE,
+        bridge._TOPOLOGY_MIGRATOR_RELATIVE,
+    )
+    for relative in absent_inputs:
+        candidate = repository / relative
+        candidate.parent.mkdir(parents=True, exist_ok=True)
+        candidate.write_text("unexpected compatibility input\n", encoding="utf-8")
+        assert bridge._supported_legacy_topology(repository, impossible_fallback) is False
+        candidate.unlink()
+
+    symlink = repository / bridge._TRACKED_IGNORE_POLICY_RELATIVE
+    symlink.symlink_to(repository / "CLAUDE.md")
+    assert bridge._supported_legacy_topology(repository, impossible_fallback) is False
+
+    _restore_checkout(repository, pin)
+    _git(repository, "update-ref", f"refs/tags/{pin.tag}", nearby.commit)
+    assert bridge._supported_legacy_topology(repository, impossible_fallback) is False
+
+    _restore_checkout(repository, pin)
+    _git(repository, "checkout", "--quiet", "--detach", "--force", bridge.FOUNDATION.commit)
+    assert bridge._supported_legacy_topology(repository, impossible_fallback) is False
+
+
 def test_runtime_native_transport_matches_only_exact_git_and_regular_files(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -940,6 +1039,19 @@ def test_runtime_retired_manifest_adapter_accepts_exact_public_git_tree(
 ) -> None:
     pin = _V161_RETIRED_MANIFEST_RELEASE
     repository = _historic_checkout(tmp_path, pin)
+    impossible_fallback = replace(
+        bridge.LEGACY_TOPOLOGY_FOUNDATION,
+        tag="v9.9.9",
+        commit="0" * 40,
+        tree="0" * 40,
+    )
+    assert bridge._supported_legacy_topology(repository, impossible_fallback) is True
+
+    # The split migration moves the original Git store into the pre-split
+    # archive, then brain.git fetches the installed commit with --no-tags.
+    # Delivery must rely on the already-proven installed identity, not expect
+    # the annotated release tag to be present in the new brain store.
+    _git(repository, "update-ref", "-d", f"refs/tags/{pin.tag}")
     adapter, service = _delivery_adapter(tmp_path, repository)
     service.commit = pin.commit
     _git(repository, "update-ref", "refs/dex/installed", pin.commit)

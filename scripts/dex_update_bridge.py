@@ -698,6 +698,26 @@ def historic_compatibility_pins() -> dict[str, dict[str, object]]:
         "blob": _LEGACY_SHIPPED_SYMLINK_BLOB,
         "target": _LEGACY_SHIPPED_SYMLINK_TARGET,
     }
+    retired_manifest = V161_RETIRED_MANIFEST_RELEASE
+    pins[retired_manifest.tag] = {
+        "kind": "complete-manifest-retired-paths",
+        "role": "installed-source",
+        "tag": retired_manifest.tag,
+        "tag_object": retired_manifest.tag_object,
+        "commit": retired_manifest.commit,
+        "tree": retired_manifest.tree,
+        "version": retired_manifest.version,
+        "package_blob": retired_manifest.package_blob,
+        "package_sha256": retired_manifest.package_sha256,
+        "manifest_blob": _V161_RETIRED_MANIFEST_BLOB,
+        "manifest_sha256": _V161_RETIRED_MANIFEST_SHA256,
+        "manifest_path_count": _V161_RETIRED_MANIFEST_PATH_COUNT,
+        "policy_blob": None,
+        "transition_blob": None,
+        "migrator_blob": None,
+        "omission_identities": tuple(sorted(_MANIFESTLESS_OMISSION_IDENTITIES)),
+        "unexpected_nonregular_paths": (),
+    }
     pins[V175_DEFECTIVE_MANIFEST_RELEASE.tag] = {
         "kind": "incomplete-manifest",
         "role": "installed-source",
@@ -1305,6 +1325,11 @@ def _supported_legacy_topology(
                 not (root / relative).exists() and not (root / relative).is_symlink() for relative in absent_inputs
             ):
                 return True
+        if _matches_historic_release(root, V161_RETIRED_MANIFEST_RELEASE) and all(
+            not (root / relative).exists() and not (root / relative).is_symlink()
+            for relative in absent_inputs
+        ):
+            return True
         for compatibility in MISSING_MIGRATOR_RELEASES:
             if _matches_historic_release(root, compatibility.release) and _matches_existing_inputs(root, compatibility):
                 return True
@@ -1686,20 +1711,13 @@ class _FoundationLifecycleService:
                     if (
                         _run_git(
                             Path(brain_git),
-                            "for-each-ref",
-                            "--format=%(objectname)",
-                            f"refs/tags/{retired_manifest.tag}",
-                        )
-                        != retired_manifest.tag_object
-                        or _run_git(Path(brain_git), "cat-file", "-t", retired_manifest.tag_object)
-                        != retired_manifest.tag_object_type
-                        or _run_git(
-                            Path(brain_git),
                             "rev-parse",
                             "--verify",
-                            f"{retired_manifest.tag}^{{commit}}",
+                            "refs/dex/installed^{commit}",
                         )
                         != retired_manifest.commit
+                        or _run_git(Path(brain_git), "cat-file", "-t", retired_manifest.commit)
+                        != "commit"
                         or _run_git(
                             Path(brain_git),
                             "rev-parse",
