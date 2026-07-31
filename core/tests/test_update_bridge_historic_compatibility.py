@@ -18,10 +18,15 @@ must be proven exact before the bridge can use an in-memory compatibility view.
 
 from __future__ import annotations
 
+import subprocess
 from copy import deepcopy
+from dataclasses import replace
+from pathlib import Path
+from types import ModuleType
 
 import pytest
 
+from core.update import apply_update
 from scripts import dex_update_bridge as bridge
 
 # These are independent historical Git identities.  A ``None`` value is part
@@ -420,6 +425,93 @@ def _authorize_missing_migrator(evidence: dict[str, object]) -> str | None:
     return bridge.historic_missing_migrator_for(evidence)
 
 
+def _git(repository: Path, *arguments: str) -> str:
+    completed = subprocess.run(
+        [
+            "git",
+            "-c",
+            "core.hooksPath=/dev/null",
+            "-c",
+            "user.name=Dex Updater Test",
+            "-c",
+            "user.email=updater-test@example.invalid",
+            "-C",
+            str(repository),
+            *arguments,
+        ],
+        check=True,
+        capture_output=True,
+    )
+    return completed.stdout.decode("utf-8").strip()
+
+
+def _historic_checkout(tmp_path: Path, pin: bridge.HistoricReleasePin) -> Path:
+    """Make a disposable checkout backed by the test runner's real Git objects."""
+
+    repository = tmp_path / "historic-vault"
+    subprocess.run(
+        [
+            "git",
+            "clone",
+            "--quiet",
+            "--shared",
+            "--no-checkout",
+            str(Path(__file__).resolve().parents[2]),
+            str(repository),
+        ],
+        check=True,
+    )
+    _git(repository, "checkout", "--quiet", "--detach", pin.commit)
+    _git(repository, "update-ref", f"refs/tags/{pin.tag}", pin.tag_object)
+    return repository
+
+
+def _restore_checkout(repository: Path, pin: bridge.HistoricReleasePin) -> None:
+    _git(repository, "checkout", "--quiet", "--detach", "--force", pin.commit)
+    _git(repository, "clean", "-dffx")
+    _git(repository, "update-ref", f"refs/tags/{pin.tag}", pin.tag_object)
+
+
+def _delivery_adapter(
+    tmp_path: Path,
+    repository: Path,
+) -> tuple[bridge._FoundationLifecycleService, object]:
+    source = tmp_path / "foundation-source"
+    migrator = source / bridge._TOPOLOGY_MIGRATOR_RELATIVE
+    migrator.parent.mkdir(parents=True)
+    migrator.write_text("'use strict';\n", encoding="utf-8")
+
+    engine = ModuleType("historic_delivery_engine")
+    engine.TOPOLOGY_MIGRATOR_RELATIVE = bridge._TOPOLOGY_MIGRATOR_RELATIVE
+    engine.topology_state = lambda _root: "invalid-combined"
+    engine._migrator_command = lambda _root, _mode: []
+
+    class DeliveryService:
+        commit = ""
+
+        def build_and_preview_delivered_release(self, _vault_root: Path, _release: object):
+            entries = apply_update._tree_entries(repository, repository / ".git", self.commit)
+            apply_update._verify_manifest(repository, repository / ".git", entries)
+            return entries
+
+    service = DeliveryService()
+    return bridge._FoundationLifecycleService(service, engine, apply_update, source), service
+
+
+def _commit_nonregular_variant(repository: Path, base: str, mode: str, name: str) -> tuple[str, str]:
+    _git(repository, "checkout", "--quiet", "--detach", "--force", base)
+    if mode == "120000":
+        target = repository / name
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.symlink_to("CLAUDE.md")
+        _git(repository, "add", "--", name)
+    else:
+        _git(repository, "update-index", "--add", "--cacheinfo", f"160000,{base},{name}")
+    _git(repository, "commit", "--quiet", "-m", f"test {mode} entry")
+    commit = _git(repository, "rev-parse", "HEAD^{commit}")
+    return commit, _git(repository, "rev-parse", "HEAD^{tree}")
+
+
 def test_historic_ledger_is_exactly_the_closed_frozen_set() -> None:
     """No range, prefix, or latest-version fallback may enter this ledger."""
 
@@ -588,3 +680,270 @@ def test_modern_foundation_is_not_granted_any_historic_escape_hatch() -> None:
             "unexpected_nonregular_paths": (),
         }
     ) is None
+
+
+def test_runtime_legacy_topology_matches_real_git_and_regular_files_only(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    pin = bridge.MANIFESTLESS_SEMANTIC_RELEASES[1]
+    nearby = bridge.MANIFESTLESS_SEMANTIC_RELEASES[2]
+    repository = _historic_checkout(tmp_path, pin)
+    impossible_fallback = replace(
+        bridge.LEGACY_TOPOLOGY_FOUNDATION,
+        tag="v9.9.9",
+        commit="0" * 40,
+        tree="0" * 40,
+    )
+    monkeypatch.setattr(bridge, "MANIFESTLESS_SEMANTIC_RELEASES", (pin,))
+    monkeypatch.setattr(bridge, "MISSING_MIGRATOR_RELEASES", ())
+
+    assert bridge._supported_legacy_topology(repository, impossible_fallback) is True
+
+    mutations = (
+        replace(pin, tag_object=nearby.tag_object),
+        replace(pin, tag_object_type="tag"),
+        replace(pin, commit=nearby.commit),
+        replace(pin, tree=nearby.tree),
+        replace(pin, package_blob=nearby.package_blob),
+        replace(pin, package_sha256="0" * 64),
+    )
+    for mutation in mutations:
+        monkeypatch.setattr(bridge, "MANIFESTLESS_SEMANTIC_RELEASES", (mutation,))
+        assert bridge._supported_legacy_topology(repository, impossible_fallback) is False
+    monkeypatch.setattr(bridge, "MANIFESTLESS_SEMANTIC_RELEASES", (pin,))
+
+    package = repository / bridge._PACKAGE_RELATIVE
+    package.write_text('{"version":"1.49.0","tampered":true}\n', encoding="utf-8")
+    assert bridge._supported_legacy_topology(repository, impossible_fallback) is False
+
+    _restore_checkout(repository, pin)
+    package.unlink()
+    package.symlink_to("CLAUDE.md")
+    assert bridge._supported_legacy_topology(repository, impossible_fallback) is False
+
+    _restore_checkout(repository, pin)
+    package.unlink()
+    package.mkdir()
+    assert bridge._supported_legacy_topology(repository, impossible_fallback) is False
+
+    _restore_checkout(repository, pin)
+    _git(repository, "update-ref", f"refs/tags/{pin.tag}", nearby.commit)
+    assert bridge._supported_legacy_topology(repository, impossible_fallback) is False
+
+    _git(repository, "checkout", "--quiet", "--detach", "--force", bridge.FOUNDATION.commit)
+    assert bridge._supported_legacy_topology(repository, impossible_fallback) is False
+
+
+def test_runtime_legacy_topology_refuses_cross_borrowed_existing_inputs(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    pin = bridge.MISSING_MIGRATOR_RELEASES[0]
+    borrowed = bridge.MISSING_MIGRATOR_RELEASES[8]
+    repository = _historic_checkout(tmp_path, pin.release)
+    impossible_fallback = replace(
+        bridge.LEGACY_TOPOLOGY_FOUNDATION,
+        tag="v9.9.9",
+        commit="0" * 40,
+        tree="0" * 40,
+    )
+    monkeypatch.setattr(bridge, "MANIFESTLESS_SEMANTIC_RELEASES", ())
+    monkeypatch.setattr(bridge, "MISSING_MIGRATOR_RELEASES", (pin,))
+
+    assert bridge._supported_legacy_topology(repository, impossible_fallback) is True
+
+    for relative, blob in (
+        (bridge._TRACKED_IGNORE_POLICY_RELATIVE, borrowed.inputs.policy_blob),
+        (bridge._PRESERVATION_TRANSITION_RELATIVE, borrowed.inputs.transition_blob),
+    ):
+        (repository / relative).write_bytes(
+            subprocess.run(
+                ["git", "-C", str(repository), "cat-file", "blob", blob],
+                check=True,
+                capture_output=True,
+            ).stdout
+        )
+
+    assert bridge._supported_legacy_topology(repository, impossible_fallback) is False
+
+
+def test_runtime_native_transport_matches_only_exact_git_and_regular_files(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    pin = bridge.NATIVE_MIGRATOR_TRANSPORT_RELEASES[0]
+    nearby = bridge.NATIVE_MIGRATOR_TRANSPORT_RELEASES[1]
+    repository = _historic_checkout(tmp_path, pin)
+
+    assert bridge._native_transport_release(repository) == pin
+    monkeypatch.setattr(bridge, "NATIVE_MIGRATOR_TRANSPORT_RELEASES", (pin,))
+
+    package = repository / bridge._PACKAGE_RELATIVE
+    package.write_text('{"version":"1.63.0","tampered":true}\n', encoding="utf-8")
+    assert bridge._native_transport_release(repository) is None
+
+    _restore_checkout(repository, pin)
+    candidate = repository / bridge._TOPOLOGY_MIGRATOR_RELATIVE
+    candidate.unlink()
+    candidate.symlink_to(repository / "CLAUDE.md")
+    assert bridge._native_transport_release(repository) is None
+
+    _restore_checkout(repository, pin)
+    candidate = repository / bridge._TRACKED_IGNORE_POLICY_RELATIVE
+    candidate.unlink()
+    candidate.mkdir()
+    assert bridge._native_transport_release(repository) is None
+
+    _restore_checkout(repository, pin)
+    _git(repository, "update-ref", f"refs/tags/{pin.tag}", nearby.tag_object)
+    assert bridge._native_transport_release(repository) is None
+
+    _git(repository, "checkout", "--quiet", "--detach", "--force", bridge.FOUNDATION.commit)
+    assert bridge._native_transport_release(repository) is None
+
+
+def test_runtime_manifest_omission_adapter_accepts_only_exact_historic_trees(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    manifestless = bridge.MANIFESTLESS_SEMANTIC_RELEASES[0]
+    repository = _historic_checkout(tmp_path, manifestless)
+    adapter, service = _delivery_adapter(tmp_path, repository)
+
+    service.commit = manifestless.commit
+    _git(repository, "update-ref", "refs/dex/installed", manifestless.commit)
+    entries = adapter.build_and_preview_delivered_release(repository, {})
+    assert bridge._LEGACY_SHIPPED_SYMLINK_RELATIVE.as_posix() not in {
+        entry.path for entry in entries
+    }
+    assert "System/.installed-files.manifest" not in {entry.path for entry in entries}
+
+    defective = bridge.V175_DEFECTIVE_MANIFEST_RELEASE
+    _restore_checkout(repository, defective)
+    service.commit = defective.commit
+    _git(repository, "update-ref", "refs/dex/installed", defective.commit)
+    entries = adapter.build_and_preview_delivered_release(repository, {})
+    paths = {entry.path for entry in entries}
+    assert len(entries) == 1201
+    assert paths.isdisjoint(bridge._V175_DEFECTIVE_MANIFEST_OMISSIONS)
+
+    changed = dict(bridge._V175_DEFECTIVE_MANIFEST_OMISSIONS)
+    changed[next(iter(changed))] = "0" * 40
+    monkeypatch.setattr(bridge, "_V175_DEFECTIVE_MANIFEST_OMISSIONS", changed)
+    with pytest.raises(apply_update.ReleaseVerificationError, match="omission changed"):
+        adapter.build_and_preview_delivered_release(repository, {})
+
+
+@pytest.mark.parametrize(
+    ("mode", "message"),
+    (("120000", "unknown symlink"), ("160000", "ambiguous")),
+)
+def test_runtime_manifest_omission_adapter_refuses_real_unknown_nonregular_entries(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    mode: str,
+    message: str,
+) -> None:
+    defective = bridge.V175_DEFECTIVE_MANIFEST_RELEASE
+    repository = _historic_checkout(tmp_path, defective)
+    commit, tree = _commit_nonregular_variant(
+        repository,
+        defective.commit,
+        mode,
+        "System/unexpected-nonregular",
+    )
+    mutation = replace(
+        defective,
+        tag_object=commit,
+        tag_object_type="commit",
+        commit=commit,
+        tree=tree,
+    )
+    monkeypatch.setattr(bridge, "V175_DEFECTIVE_MANIFEST_RELEASE", mutation)
+    _git(repository, "update-ref", "refs/dex/installed", commit)
+    adapter, service = _delivery_adapter(tmp_path, repository)
+    service.commit = commit
+
+    with pytest.raises(apply_update.ReleaseVerificationError, match=message):
+        adapter.build_and_preview_delivered_release(repository, {})
+
+
+def test_runtime_manifest_adapter_binds_entries_to_installed_commit_and_keeps_unknown_modern_strict(
+    tmp_path: Path,
+) -> None:
+    pin = bridge.MANIFESTLESS_SEMANTIC_RELEASES[1]
+    nearby = bridge.MANIFESTLESS_SEMANTIC_RELEASES[2]
+    repository = _historic_checkout(tmp_path, pin)
+    adapter, _service = _delivery_adapter(tmp_path, repository)
+    _git(repository, "update-ref", "refs/dex/installed", pin.commit)
+
+    with adapter._legacy_delivery_source():
+        entries = apply_update._tree_entries(repository, repository / ".git", pin.commit)
+        _git(repository, "update-ref", "refs/dex/installed", nearby.commit)
+        with pytest.raises(apply_update.ReleaseVerificationError, match="identity changed"):
+            apply_update._verify_manifest(repository, repository / ".git", entries)
+
+    modern = bridge.V181_UNBOUND_JOURNEY_SOURCE.release
+    _restore_checkout(repository, modern)
+    _git(repository, "rm", "--quiet", "System/.installed-files.manifest")
+    _git(repository, "commit", "--quiet", "-m", "test unknown manifestless modern tree")
+    unknown_commit = _git(repository, "rev-parse", "HEAD^{commit}")
+    _git(repository, "update-ref", "refs/dex/installed", unknown_commit)
+    with adapter._legacy_delivery_source():
+        entries = apply_update._tree_entries(repository, repository / ".git", unknown_commit)
+        with pytest.raises(apply_update.ReleaseVerificationError, match="missing its installed-files manifest"):
+            apply_update._verify_manifest(repository, repository / ".git", entries)
+
+
+def test_exact_unbound_journey_source_uses_real_git_identity_and_artifact_blobs(
+    tmp_path: Path,
+) -> None:
+    pin = bridge.V181_UNBOUND_JOURNEY_SOURCE
+    repository = _historic_checkout(tmp_path, pin.release)
+
+    assert bridge.exact_unbound_journey_source(repository, pin.release.tag) == pin.release.commit
+
+    nearby = bridge.MANIFESTLESS_SEMANTIC_RELEASES[-1]
+    release_mutations = (
+        replace(pin.release, tag_object=nearby.tag_object),
+        replace(pin.release, commit=nearby.commit),
+        replace(pin.release, tree=nearby.tree),
+    )
+    for release in release_mutations:
+        assert bridge.exact_unbound_journey_source(
+            repository,
+            pin.release.tag,
+            replace(pin, release=release),
+        ) is None
+
+    first_artifact = pin.artifacts[0]
+    changed_artifacts = ((first_artifact[0], "0" * 40, first_artifact[2]), *pin.artifacts[1:])
+    assert bridge.exact_unbound_journey_source(
+        repository,
+        pin.release.tag,
+        replace(pin, artifacts=changed_artifacts),
+    ) is None
+
+    _git(repository, "update-ref", f"refs/tags/{pin.release.tag}", nearby.commit)
+    assert bridge.exact_unbound_journey_source(repository, pin.release.tag) is None
+    assert bridge.exact_unbound_journey_source(repository, bridge.FOUNDATION.tag) is None
+
+    _restore_checkout(repository, pin.release)
+    catalog = repository / "System/.release-catalog.json"
+    catalog.write_text("{}\n", encoding="utf-8")
+    _git(repository, "add", "--", catalog.relative_to(repository).as_posix())
+    _git(repository, "commit", "--quiet", "-m", "test catalog-bearing source")
+    catalog_commit = _git(repository, "rev-parse", "HEAD^{commit}")
+    catalog_tree = _git(repository, "rev-parse", "HEAD^{tree}")
+    _git(repository, "update-ref", f"refs/tags/{pin.release.tag}", catalog_commit)
+    catalog_pin = replace(
+        pin,
+        release=replace(
+            pin.release,
+            tag_object=catalog_commit,
+            commit=catalog_commit,
+            tree=catalog_tree,
+        ),
+    )
+    assert bridge.exact_unbound_journey_source(repository, pin.release.tag, catalog_pin) is None
