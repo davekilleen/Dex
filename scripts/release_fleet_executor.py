@@ -1024,19 +1024,19 @@ def _write_failure_diagnostic(
         + "\n"
     ).encode("utf-8")
     temporary = evidence_root / f".{name}.{os.getpid()}.{time.time_ns()}.tmp"
-    descriptor = os.open(
-        temporary,
-        os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0),
-        0o600,
-    )
     try:
-        view = memoryview(content)
-        while view:
-            view = view[os.write(descriptor, view) :]
-        os.fsync(descriptor)
-    finally:
-        os.close(descriptor)
-    try:
+        descriptor = os.open(
+            temporary,
+            os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0),
+            0o600,
+        )
+        try:
+            view = memoryview(content)
+            while view:
+                view = view[os.write(descriptor, view) :]
+            os.fsync(descriptor)
+        finally:
+            os.close(descriptor)
         # link(2) is atomic and fails rather than replacing a pre-existing path.
         os.link(temporary, destination, follow_symlinks=False)
         directory = os.open(evidence_root, os.O_RDONLY)
@@ -1060,7 +1060,6 @@ def _failure_runtime_metadata(vault: Path) -> dict[str, dict[str, object]]:
     return {
         relative: _safe_file_metadata(vault, relative)
         for relative in (
-            ".mcp.json",
             "System/.release-catalog.json",
             "System/.installed-files.manifest",
         )

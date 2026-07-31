@@ -71,8 +71,8 @@ def _vault(tmp_path: Path) -> tuple[Path, tuple[str, ...]]:
         target = vault / relative
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(f"user-owned:{relative}\n", encoding="utf-8")
-    # This deliberately looks like a sensitive user config.  Diagnostics may
-    # retain a digest but must never serialize its contents.
+    # This deliberately looks like a sensitive user config. Diagnostics must
+    # neither read nor serialize it.
     (vault / ".mcp.json").write_text(
         '{"token":"TOP-SECRET-NOT-FOR-DIAGNOSTICS"}\n', encoding="utf-8"
     )
@@ -229,7 +229,13 @@ def test_failed_journey_retains_only_private_sanitized_diagnostic(
     assert document["acceptance"] is False
     assert document["kind"] == "local-failure-diagnostic"
     assert document["phase"] == phase
-    assert "TOP-SECRET-NOT-FOR-DIAGNOSTICS" not in diagnostic.read_text()
+    serialized = diagnostic.read_text(encoding="utf-8")
+    assert "TOP-SECRET-NOT-FOR-DIAGNOSTICS" not in serialized
+    assert ".mcp.json" not in serialized
+    assert set(document["runtime_metadata"]) == {
+        "System/.installed-files.manifest",
+        "System/.release-catalog.json",
+    }
     assert stat.S_IMODE(evidence.stat().st_mode) == 0o700
     assert stat.S_IMODE(diagnostic.stat().st_mode) == 0o600
     assert not (evidence / "journey-result.json").exists()
@@ -266,4 +272,34 @@ def test_failure_diagnostic_is_atomic_and_never_overwrites_existing_file(
         )
 
     assert destination.read_text(encoding="utf-8") == "original diagnostic\n"
+    assert list(evidence.glob("*.tmp")) == []
+
+
+def test_failure_diagnostic_cleans_temporary_file_when_file_fsync_fails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    evidence = tmp_path / "case.evidence"
+    evidence.mkdir(mode=0o700)
+    evidence.chmod(0o700)
+    original_fsync = executor.os.fsync
+    calls = 0
+
+    def fail_first_fsync(descriptor: int) -> None:
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise OSError("injected fsync failure")
+        original_fsync(descriptor)
+
+    monkeypatch.setattr(executor.os, "fsync", fail_first_fsync)
+
+    with pytest.raises(executor.ExecutorError, match="could not be retained safely"):
+        executor._write_failure_diagnostic(
+            evidence,
+            "foundation-doctor-failure.diagnostic.json",
+            {"acceptance": False, "kind": "local-failure-diagnostic"},
+        )
+
+    assert not (evidence / "foundation-doctor-failure.diagnostic.json").exists()
     assert list(evidence.glob("*.tmp")) == []
