@@ -1087,6 +1087,7 @@ core/tests/test_release_channel.py
 core/tests/test_release_fleet.py
 core/tests/test_release_fleet_acceptance.py
 core/tests/test_release_fleet_executor.py
+core/tests/test_release_fleet_failure_diagnostics.py
 core/tests/test_release_tag_uniqueness.py
 core/tests/test_review_retirement.py
 core/tests/test_ritual_intelligence_entrypoints.py
@@ -1112,6 +1113,7 @@ core/tests/test_transcript_ingest.py
 core/tests/test_transcript_reconcile.py
 core/tests/test_trust_wizards.py
 core/tests/test_trusted_mcp_safety.py
+core/tests/test_update_bridge_historic_compatibility.py
 core/tests/test_update_checker.py
 core/tests/test_update_checker_real_installs.py
 core/tests/test_update_journey_protocol.py
