@@ -434,7 +434,7 @@ def _git(repository: Path, *arguments: str) -> str:
             "-c",
             "user.name=Dex Updater Test",
             "-c",
-            "user.email=updater-test@example.invalid",
+            "user.email=updater-test@example.com",
             "-C",
             str(repository),
             *arguments,
@@ -508,6 +508,47 @@ def _commit_nonregular_variant(repository: Path, base: str, mode: str, name: str
     else:
         _git(repository, "update-index", "--add", "--cacheinfo", f"160000,{base},{name}")
     _git(repository, "commit", "--quiet", "-m", f"test {mode} entry")
+    commit = _git(repository, "rev-parse", "HEAD^{commit}")
+    return commit, _git(repository, "rev-parse", "HEAD^{tree}")
+
+
+def _commit_manifestless_omission_variant(
+    repository: Path,
+    base: str,
+    mutation: str,
+) -> tuple[str, str]:
+    """Create one real Git near-miss around the closed legacy omission pair."""
+
+    readme = "extensions/tau-mirror/README-TAU-MIRROR.md"
+    unexpected = "extensions/tau-mirror/unexpected.md"
+    _git(repository, "checkout", "--quiet", "--detach", "--force", base)
+    if mutation == "missing":
+        _git(repository, "rm", "--quiet", "--", readme)
+    elif mutation == "extra":
+        blob = _git(repository, "rev-parse", f"{base}:{readme}")
+        _git(
+            repository,
+            "update-index",
+            "--add",
+            "--cacheinfo",
+            f"100644,{blob},{unexpected}",
+        )
+    elif mutation == "tampered-blob":
+        (repository / readme).write_text("tampered historic bytes\n", encoding="utf-8")
+        _git(repository, "add", "--", readme)
+    elif mutation == "altered-mode":
+        _git(repository, "update-index", "--chmod=+x", "--", readme)
+    elif mutation == "renamed-path":
+        _git(repository, "mv", "--", readme, unexpected)
+    else:  # pragma: no cover - the parametrization below is deliberately closed
+        raise AssertionError(f"unknown test mutation: {mutation}")
+    _git(
+        repository,
+        "commit",
+        "--quiet",
+        "-m",
+        f"test manifestless omission {mutation}",
+    )
     commit = _git(repository, "rev-parse", "HEAD^{commit}")
     return commit, _git(repository, "rev-parse", "HEAD^{tree}")
 
@@ -832,6 +873,42 @@ def test_runtime_manifest_omission_adapter_accepts_only_exact_historic_trees(
     changed[next(iter(changed))] = "0" * 40
     monkeypatch.setattr(bridge, "_V175_DEFECTIVE_MANIFEST_OMISSIONS", changed)
     with pytest.raises(apply_update.ReleaseVerificationError, match="omission changed"):
+        adapter.build_and_preview_delivered_release(repository, {})
+
+
+@pytest.mark.parametrize(
+    ("mutation", "message"),
+    (
+        ("missing", "omission set changed"),
+        ("extra", "unknown unclassified path"),
+        ("tampered-blob", "unknown unclassified path"),
+        ("altered-mode", "unknown unclassified path"),
+        ("renamed-path", "unknown unclassified path"),
+    ),
+)
+def test_runtime_manifest_omission_adapter_refuses_real_git_identity_near_misses(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    mutation: str,
+    message: str,
+) -> None:
+    pin = bridge.MANIFESTLESS_SEMANTIC_RELEASES[1]
+    repository = _historic_checkout(tmp_path, pin)
+    commit, tree = _commit_manifestless_omission_variant(
+        repository,
+        pin.commit,
+        mutation,
+    )
+    # Rebind only the immutable outer tree pin so this near-miss reaches the
+    # production omission matcher; neither its identity function nor its
+    # closed expected set is replaced here.
+    mutated_pin = replace(pin, commit=commit, tree=tree)
+    monkeypatch.setattr(bridge, "MANIFESTLESS_SEMANTIC_RELEASES", (mutated_pin,))
+    _git(repository, "update-ref", "refs/dex/installed", commit)
+    adapter, service = _delivery_adapter(tmp_path, repository)
+    service.commit = commit
+
+    with pytest.raises(apply_update.ReleaseVerificationError, match=message):
         adapter.build_and_preview_delivered_release(repository, {})
 
 
