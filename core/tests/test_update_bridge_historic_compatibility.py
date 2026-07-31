@@ -529,6 +529,25 @@ def test_v120_tau_symlink_is_exact_and_another_symlink_is_not_allowed() -> None:
     assert _authorize(evidence) is None
 
 
+def test_v120_manifestless_omission_identities_are_closed() -> None:
+    evidence = deepcopy(_expected_pins()["v1.20.1"])
+    assert _authorize(evidence) == "v1.20.1"
+
+    exact = frozenset(
+        {
+            "af78f3d480b78b5bb558d873b98638c91d532de98f84f8f50e73448a1404b37d",
+            "50a3e65dc2d65e6f6b28b30b630e06656d95ddd82f4a68a7152017119b110f90",
+        }
+    )
+    assert bridge._manifestless_omission_identities_match(exact)
+
+    omitted = next(iter(exact))
+    tampered = frozenset((exact - {omitted}) | {"0" + omitted[1:]})
+    assert not bridge._manifestless_omission_identities_match(tampered)
+    assert not bridge._manifestless_omission_identities_match(exact - {omitted})
+    assert not bridge._manifestless_omission_identities_match(exact | {"f" * 64})
+
+
 @pytest.mark.parametrize("name", ("v1.75.0", "v1.81.0", "dist/release/v1.63.0-08ce719"))
 def test_unexpected_nonregular_entry_is_not_hidden_by_a_known_historic_shape(name: str) -> None:
     evidence = deepcopy(_expected_pins()[name])

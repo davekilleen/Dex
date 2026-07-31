@@ -38,10 +38,25 @@ _LEGACY_SHIPPED_SYMLINK_RELATIVE = Path(".pi/agent/extensions/dex")
 _LEGACY_SHIPPED_SYMLINK_TARGET = "../../../pi-extensions/dex"
 _LEGACY_SHIPPED_SYMLINK_BLOB = "f1c88c92cea996705f982e902bafb758156aef52"
 _PACKAGE_RELATIVE = Path("package.json")
-_TAU_MIRROR_OMISSIONS = {
-    "extensions/tau-mirror/README-TAU-MIRROR.md": "c19e4fafa1adeb1d1232299ff7be68c448cab498",
-    "extensions/tau-mirror/tau-mirror-integration.ts": "fff2a52e50070545ad46760100d9cedab5dc1ecd",
-}
+_MANIFESTLESS_OMISSION_IDENTITIES = frozenset(
+    {
+        "af78f3d480b78b5bb558d873b98638c91d532de98f84f8f50e73448a1404b37d",
+        "50a3e65dc2d65e6f6b28b30b630e06656d95ddd82f4a68a7152017119b110f90",
+    }
+)
+
+
+def _manifestless_omission_identity(relative: str, raw_mode: str, object_id: str) -> str:
+    """Return an opaque identity for one exact historical tree entry."""
+
+    record = f"{raw_mode} blob {object_id}\t{relative}".encode()
+    return hashlib.sha256(record).hexdigest()
+
+
+def _manifestless_omission_identities_match(identities: set[str] | frozenset[str]) -> bool:
+    """Accept only the complete closed omission set shipped by the pinned trees."""
+
+    return frozenset(identities) == _MANIFESTLESS_OMISSION_IDENTITIES
 
 
 class BridgeError(RuntimeError):
@@ -1694,10 +1709,9 @@ class _FoundationLifecycleService:
                         raise release_error("historic defective-manifest omission changed")
                     omitted.add(relative)
                     continue
-                if manifestless is not None and relative in _TAU_MIRROR_OMISSIONS:
-                    if object_id != _TAU_MIRROR_OMISSIONS[relative]:
-                        raise release_error("historic tau-mirror omission changed")
-                    omitted.add(relative)
+                omission_identity = _manifestless_omission_identity(relative, raw_mode, object_id)
+                if manifestless is not None and omission_identity in _MANIFESTLESS_OMISSION_IDENTITIES:
+                    omitted.add(omission_identity)
                     continue
                 if manifestless is None:
                     entries.append(
@@ -1713,7 +1727,7 @@ class _FoundationLifecycleService:
                 except contract_violation as error:
                     # Retired release paths that the current contract does not
                     # own are preserved only for the already-shipped v1.20.1
-                    # exception. Later pins have only the exact tau omissions.
+                    # exception. Later pins have only the two closed omissions.
                     if manifestless.commit == LEGACY_TOPOLOGY_FOUNDATION.commit:
                         continue
                     raise release_error("historic release contains an unknown unclassified path") from error
@@ -1726,6 +1740,8 @@ class _FoundationLifecycleService:
                 )
             if defective is not None and omitted != set(_V175_DEFECTIVE_MANIFEST_OMISSIONS):
                 raise release_error("historic release omission set changed")
+            if manifestless is not None and not _manifestless_omission_identities_match(omitted):
+                raise release_error("historic manifestless omission set changed")
             result = tuple(sorted(entries, key=lambda entry: entry.path))
             authorized_legacy_signatures[signature(result)] = (
                 pin.commit,

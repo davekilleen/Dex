@@ -711,9 +711,13 @@ def test_legacy_delivery_reader_accepts_only_the_pinned_pre_manifest_tree(
     TreeEntry = namedtuple("TreeEntry", ("path", "mode", "object_id"))
     classified_oid = "1" * 40
     retired_oid = "2" * 40
+    omission_a_oid = "3" * 40
+    omission_b_oid = "4" * 40
     records = (
         f"100644 blob {classified_oid}\tCLAUDE.md\0"
         f"100644 blob {retired_oid}\tretired-release-path.txt\0"
+        f"100644 blob {omission_a_oid}\tclosed-omission-a\0"
+        f"100644 blob {omission_b_oid}\tclosed-omission-b\0"
         f"120000 blob {bridge._LEGACY_SHIPPED_SYMLINK_BLOB}\t"
         f"{bridge._LEGACY_SHIPPED_SYMLINK_RELATIVE.as_posix()}\0"
     ).encode()
@@ -735,6 +739,20 @@ def test_legacy_delivery_reader_accepts_only_the_pinned_pre_manifest_tree(
     apply_update.portable_contract.resolve = resolve
     apply_update.TreeEntry = TreeEntry
     apply_update._brain_output = brain_output
+    original_omission_identity = bridge._manifestless_omission_identity
+    omission_identities = {
+        "closed-omission-a": "af78f3d480b78b5bb558d873b98638c91d532de98f84f8f50e73448a1404b37d",
+        "closed-omission-b": "50a3e65dc2d65e6f6b28b30b630e06656d95ddd82f4a68a7152017119b110f90",
+    }
+
+    def omission_identity(relative: str, raw_mode: str, object_id: str) -> str:
+        if relative in omission_identities:
+            assert raw_mode == "100644"
+            assert object_id in {omission_a_oid, omission_b_oid}
+            return omission_identities[relative]
+        return original_omission_identity(relative, raw_mode, object_id)
+
+    monkeypatch.setattr(bridge, "_manifestless_omission_identity", omission_identity)
 
     def original_tree_entries(*_arguments):
         pytest.fail("exact legacy commit should use the compatibility reader")
