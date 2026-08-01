@@ -227,6 +227,12 @@ def _is_runner_runtime_path(path: str | Path) -> bool:
         relative.startswith("core/tests/")
         or relative.startswith("core/mcp/tests/")
         or relative.startswith("core/migrations/tests/")
+        # Kept in step with the ``export-ignore`` entries in ``.gitattributes``:
+        # the trusted snapshot comes from ``git archive``, so a test file that is
+        # excluded there but counted as runtime here is expected and missing, and
+        # every vault-mutating journey skips as though ``core`` had been modified.
+        or relative.endswith(".test.cjs")
+        or relative == "core/integrations/connection-manager/hardening.child.cjs"
     )
 
 
