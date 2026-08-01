@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import hashlib
+import io
 import json
 import os
 import shutil
 import stat
 import subprocess
 import sys
+import tarfile
 import time
 from pathlib import Path
 
@@ -1827,3 +1829,34 @@ def test_internal_task_journey_refuses_a_live_vault(monkeypatch, tmp_path: Path,
     assert exit_code == 2
     assert "refused" in capsys.readouterr().err
     assert _tree_hash(vault) == before
+
+
+def test_every_runtime_core_path_survives_git_archive() -> None:
+    """Paths the release comparison expects must actually reach the archive.
+
+    ``_materialize_release_core`` builds the trusted snapshot with ``git archive``,
+    which honours ``export-ignore``. ``_release_execution_reason`` builds the set of
+    paths it expects to find there from ``git ls-tree`` filtered by
+    ``_is_runner_runtime_path``. When a ``core`` path is export-ignored but still
+    counts as a runtime path, it is expected and missing, so every vault-mutating
+    journey skips with "Dex-owned core differs" no matter which ref is used.
+    """
+    listed = subprocess.run(
+        ["git", "ls-tree", "-r", "-z", "--name-only", "HEAD", "--", "core"],
+        cwd=REPO_ROOT,
+        capture_output=True,
+        check=True,
+    ).stdout
+    paths = [raw.decode("utf-8") for raw in listed.split(b"\0") if raw]
+    runtime = {path for path in paths if smoke._is_runner_runtime_path(path)}
+
+    archived = subprocess.run(
+        ["git", "archive", "--format=tar", "HEAD", "--", "core"],
+        cwd=REPO_ROOT,
+        capture_output=True,
+        check=True,
+    ).stdout
+    with tarfile.open(fileobj=io.BytesIO(archived), mode="r:") as archive:
+        exported = {member.name for member in archive.getmembers() if member.isfile()}
+
+    assert sorted(runtime - exported) == []
