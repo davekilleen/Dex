@@ -125,6 +125,27 @@ else:
     raise SystemExit("Error: CHANGELOG.md has no preamble separator")
 CHANGELOG
 
+# --- Advance the versioned update-rescue bridge --------------------------------
+
+# The rescue instructions name the released bridge itself, so they must move with
+# every release. Refuse to cut a release if the guide is already out of sync:
+# publishing another tag would otherwise leave a broken public recovery command.
+python3 - "$CURRENT_VERSION" "$NEW_VERSION" <<'UPDATE_RESCUE'
+from pathlib import Path
+import sys
+
+current_version, new_version = sys.argv[1:]
+path = Path("docs/UPDATE-RESCUE.md")
+text = path.read_text(encoding="utf-8")
+current_marker = f"v{current_version}"
+if current_marker not in text:
+    raise SystemExit(
+        f"Error: {path} does not name the current public bridge {current_marker}; "
+        "repair the rescue guide before cutting another release"
+    )
+path.write_text(text.replace(current_marker, f"v{new_version}"), encoding="utf-8")
+UPDATE_RESCUE
+
 # --- Generate installed-files manifest -----------------------------------------
 
 python3 core/utils/update_verifier.py \
@@ -145,7 +166,7 @@ bash scripts/generate-manifest.sh
 
 # --- Commit, tag, push --------------------------------------------------------
 
-git add package.json package-lock.json CHANGELOG.md \
+git add package.json package-lock.json CHANGELOG.md docs/UPDATE-RESCUE.md \
   core/lifecycle/catalog/bridge-release.json \
   System/.release-evidence-profile.json \
   System/.local-only-preservation-transition.json \

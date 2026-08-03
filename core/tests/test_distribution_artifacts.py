@@ -846,6 +846,13 @@ def test_release_script_regenerates_profile_for_bumped_version(tmp_path: Path) -
         capture_output=True,
         text=True,
     ).stdout
+    rescue = subprocess.run(
+        ["git", "show", "HEAD:docs/UPDATE-RESCUE.md"],
+        cwd=clone,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout
     assert package["version"] == bumped
     assert profile == {"profile": "legacy-v1", "release_version": bumped, "schema_version": 1}
     assert transition == {
@@ -855,6 +862,13 @@ def test_release_script_regenerates_profile_for_bumped_version(tmp_path: Path) -
         "release_version": bumped,
     }
     assert f"---\n\n## [{bumped}] — (" in changelog
+    bridge_name = f"dex-update-bridge-v{bumped}.py"
+    assert (
+        f"https://github.com/davekilleen/Dex/releases/download/v{bumped}/{bridge_name}"
+        in rescue
+    )
+    assert f'shasum -a 256 -c "{bridge_name}.sha256"' in rescue
+    assert f'python3 "$BRIDGE_DIR/{bridge_name}" --vault "$PWD"' in rescue
     assert "System/.release-evidence-profile.json" in _release_manifest(clone, "HEAD")
     assert subprocess.run(
         ["git", "rev-parse", f"v{bumped}^{{}}"], cwd=clone, check=True, capture_output=True, text=True
