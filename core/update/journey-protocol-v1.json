@@ -13,7 +13,7 @@
     "follow-up-smoke"
   ],
   "executor": {
-    "sha256": "e747892139a25137fa328f47e2e025d74eed7c86344bf26a01e9369a73d9e733",
+    "sha256": "ac25db8ebbc3f56e5a173ef9429ae16a31a0a834fa17f6a9327ca193f80182eb",
     "source_path": "scripts/release_fleet_executor.py"
   },
   "foundation_to_follow_up": {
@@ -35,7 +35,7 @@
       "word": "APPLY"
     },
     "artifact": {
-      "sha256": "90986a037e53db1dc238082fec559c5709bfd7899ad7cbd4290cfe2d8a5f3953",
+      "sha256": "a766b2d31e9f98036c9e5557f39080fe98453a409499c228f8e14db00579d295",
       "source_path": "scripts/dex_update_bridge.py"
     },
     "foundation": {

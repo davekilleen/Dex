@@ -124,6 +124,9 @@ class _Runtime:
             return {
                 "status": "unexpected: TOP-SECRET-NOT-FOR-DIAGNOSTICS",
                 "release": {"opaque": "TOP-SECRET-NOT-FOR-DIAGNOSTICS"},
+                "evidence": {
+                    "reason": "TOP-SECRET-NOT-FOR-DIAGNOSTICS",
+                },
             }
         return {"status": "delivered", "release": self.follow_up}
 
@@ -264,9 +267,48 @@ def test_failed_journey_retains_only_private_sanitized_diagnostic(
         }
     else:
         assert document["delivery"] == {
-            "status": "not-delivered",
+            "elapsed_ms": document["delivery"]["elapsed_ms"],
+            "failure_reason": "unclassified",
             "release_matches_expected": False,
+            "status": "not-delivered",
         }
+        assert isinstance(document["delivery"]["elapsed_ms"], int)
+        assert 0 <= document["delivery"]["elapsed_ms"] <= 900_000
+
+
+def test_failure_diagnostic_retains_only_allowlisted_delivery_reason(
+    tmp_path: Path,
+) -> None:
+    vault, _user_paths = _vault(tmp_path)
+    document = executor._failure_diagnostic(
+        phase="follow-up-delivery",
+        vault=vault,
+        foundation=_identity("1.81.0", "a"),
+        follow_up=_identity("1.81.10", "b"),
+        delivery={
+            "status": "not-delivered",
+            "evidence": {"reason": "evidence-invalid"},
+        },
+        delivery_elapsed_ms=1_000_000,
+    )
+
+    assert document["delivery"] == {
+        "elapsed_ms": 900_000,
+        "failure_reason": "evidence-invalid",
+        "release_matches_expected": False,
+        "status": "not-delivered",
+    }
+
+    unclassified = executor._failure_diagnostic(
+        phase="follow-up-delivery",
+        vault=vault,
+        foundation=_identity("1.81.0", "a"),
+        follow_up=_identity("1.81.10", "b"),
+        delivery={"status": "not-delivered", "evidence": {"reason": ["unsafe"]}},
+        delivery_elapsed_ms=-1,
+    )
+    assert unclassified["delivery"]["failure_reason"] == "unclassified"
+    assert unclassified["delivery"]["elapsed_ms"] == 0
 
 
 def test_failure_diagnostic_is_atomic_and_never_overwrites_existing_file(

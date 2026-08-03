@@ -54,6 +54,23 @@ _DECLARED_LIFECYCLE_OPERATIONS = frozenset(
         "execute_approved_delivered_release",
     }
 )
+_SAFE_DELIVERY_FAILURE_REASONS = frozenset(
+    {
+        "cancelled",
+        "channel-invalid",
+        "encoding-invalid",
+        "evidence-invalid",
+        "identity-malformed",
+        "io-error",
+        "network-unavailable",
+        "query-setup-invalid",
+        "state-write-failed",
+        "subprocess-failed",
+        "tag-object-mismatch",
+        "tag-object-moved",
+    }
+)
+_MAX_FAILURE_DIAGNOSTIC_ELAPSED_MS = 900_000
 
 
 class ExecutorError(RuntimeError):
@@ -1299,6 +1316,7 @@ def _failure_diagnostic(
     follow_up: Mapping[str, str],
     doctor: Mapping[str, object] | None = None,
     delivery: Mapping[str, object] | None = None,
+    delivery_elapsed_ms: int | None = None,
 ) -> dict[str, object]:
     document: dict[str, object] = {
         "acceptance": False,
@@ -1312,11 +1330,23 @@ def _failure_diagnostic(
     if doctor is not None:
         document["doctor"] = _sanitized_doctor_report(doctor)
     if delivery is not None:
+        evidence = delivery.get("evidence")
+        reason = evidence.get("reason") if isinstance(evidence, Mapping) else None
         document["delivery"] = {
             "status": (
                 "delivered" if delivery.get("status") == "delivered" else "not-delivered"
             ),
             "release_matches_expected": delivery.get("release") == dict(follow_up),
+            "failure_reason": (
+                reason
+                if isinstance(reason, str)
+                and reason in _SAFE_DELIVERY_FAILURE_REASONS
+                else "unclassified"
+            ),
+            "elapsed_ms": min(
+                max(delivery_elapsed_ms or 0, 0),
+                _MAX_FAILURE_DIAGNOSTIC_ELAPSED_MS,
+            ),
         }
     return document
 
@@ -1550,7 +1580,9 @@ def _execute_journey_with_runtime(
     if after_foundation != before:
         raise ExecutorError("user-owned content changed during foundation health proof")
 
+    delivery_started = time.monotonic_ns()
     delivered = dict(_runtime.deliver_latest_release(vault))
+    delivery_elapsed_ms = (time.monotonic_ns() - delivery_started) // 1_000_000
     if (
         delivered.get("status") != "delivered"
         or delivered.get("release") != follow_up
@@ -1564,6 +1596,7 @@ def _execute_journey_with_runtime(
                 foundation=foundation,
                 follow_up=follow_up,
                 delivery=delivered,
+                delivery_elapsed_ms=delivery_elapsed_ms,
             ),
         )
         raise ExecutorError("lifecycle delivery did not prove the requested follow-up release")

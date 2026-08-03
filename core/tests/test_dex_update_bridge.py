@@ -134,8 +134,16 @@ def _foundation_topology_adapter(
     apply_update.portable_contract = ModuleType("test_portable_contract")
     apply_update.portable_contract.ContractViolation = RuntimeError
     apply_update.TreeEntry = tuple
+    apply_update.deliver_latest_release = lambda vault_root, **_kwargs: {
+        "status": "delivered",
+        "vault": str(vault_root),
+    }
 
     class Service:
+        @staticmethod
+        def _envelope(**values: object) -> dict[str, object]:
+            return {"api_version": "1.0.0", **values}
+
         def build_and_preview_topology_migration(self, vault_root: Path):
             state = engine.topology_state(vault_root)
             return {
@@ -1134,13 +1142,29 @@ def test_foundation_service_refuses_compatibility_preload_changed_after_verifica
         service.build_and_preview_topology_migration(vault)
 
 
-def test_foundation_service_exposes_release_delivery(tmp_path: Path) -> None:
+def test_foundation_service_exposes_enveloped_release_delivery_with_formal_budget(
+    tmp_path: Path,
+) -> None:
     service, _engine, vault, _migrator = _foundation_topology_adapter(tmp_path)
+    calls: list[tuple[Path, dict[str, object]]] = []
+
+    def deliver(vault_root: Path, **kwargs: object) -> dict[str, object]:
+        calls.append((vault_root, kwargs))
+        return {
+            "status": "not-delivered",
+            "evidence": {"status": "UNKNOWN", "reason": "evidence-invalid"},
+        }
+
+    service._apply_update.deliver_latest_release = deliver
 
     assert service.deliver_latest_release(vault) == {
-        "status": "delivered",
-        "vault": str(vault),
+        "api_version": "1.0.0",
+        "status": "not-delivered",
+        "evidence": {"status": "UNKNOWN", "reason": "evidence-invalid"},
     }
+    assert calls == [
+        (vault, {"wall_clock_seconds": 60.0}),
+    ]
 
 
 def test_foundation_service_routes_only_explicit_test_delivery_to_local_cache(
@@ -1167,11 +1191,14 @@ def test_foundation_service_routes_only_explicit_test_delivery_to_local_cache(
             {
                 "remote_url": str(cache),
                 "allow_test_transport": True,
+                "wall_clock_seconds": 60.0,
             },
         )
     ]
     with pytest.raises(bridge.BridgeError, match="explicit local cache"):
         service.deliver_latest_release(vault, remote_url=str(cache))
+    with pytest.raises(bridge.BridgeError, match="explicit local cache"):
+        service.deliver_latest_release(vault, allow_test_transport=True)
 
 
 def test_foundation_service_reports_missing_engine_path_as_bridge_error(

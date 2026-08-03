@@ -29,6 +29,7 @@ from types import ModuleType
 from typing import Any, Callable, Iterator, Mapping, Protocol
 
 OFFICIAL_REMOTE = "https://github.com/davekilleen/Dex.git"
+_FLEET_FOLLOW_UP_DELIVERY_WALL_CLOCK_SECONDS = 60.0
 _HEX = re.compile(r"^[0-9a-f]{40}$")
 _RELEASE_TAG = re.compile(r"^dist/release/v[0-9]+\.[0-9]+\.[0-9]+-[0-9a-f]{7,40}$")
 _APPROVAL_WORD = "APPLY"
@@ -2273,8 +2274,14 @@ class _FoundationLifecycleService:
                 Path(vault_root),
                 remote_url=remote_url,
                 allow_test_transport=True,
+                wall_clock_seconds=_FLEET_FOLLOW_UP_DELIVERY_WALL_CLOCK_SECONDS,
             )
-        return self._service.deliver_latest_release(vault_root)
+        return self._service._envelope(
+            **self._apply_update.deliver_latest_release(
+                Path(vault_root),
+                wall_clock_seconds=_FLEET_FOLLOW_UP_DELIVERY_WALL_CLOCK_SECONDS,
+            )
+        )
 
     def build_and_preview_delivered_release(
         self,

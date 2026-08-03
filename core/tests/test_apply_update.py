@@ -14,6 +14,7 @@ import pytest
 from core.lifecycle import service
 from core.transaction.engine import PlanRejected
 from core.update import apply_update
+from core.utils import update_verifier
 from core.utils.update_verifier import legacy_profile_bytes
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -306,6 +307,32 @@ def test_delivery_previews_and_applies_only_the_exact_pinned_release(
     assert executed["receipt"]["transaction_id"]
     assert _git(brain, "rev-parse", "refs/dex/installed") == target_commit
     assert (vault / "README.md").read_bytes() == b"new brain\n"
+
+
+def test_default_delivery_budget_remains_ten_seconds_and_evidence_failure_is_not_retried(
+    split_release_fixture: dict[str, object],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    vault = split_release_fixture["vault"]
+    calls: list[float] = []
+
+    def prove_latest_release(
+        *_args, wall_clock_seconds: float, **_kwargs
+    ) -> dict[str, object]:
+        calls.append(wall_clock_seconds)
+        return {"status": "UNKNOWN", "reason": "evidence-invalid"}
+
+    monkeypatch.setattr(update_verifier, "prove_latest_release", prove_latest_release)
+
+    assert apply_update.deliver_latest_release(
+        vault,
+        state_root=tmp_path / "evidence-state",
+    ) == {
+        "status": "not-delivered",
+        "evidence": {"status": "UNKNOWN", "reason": "evidence-invalid"},
+    }
+    assert calls == [10.0]
 
 
 def test_delivered_release_refuses_any_preview_drift_before_writing(
