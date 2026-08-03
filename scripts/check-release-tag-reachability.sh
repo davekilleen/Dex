@@ -39,13 +39,21 @@ if ! CURRENT_VERSION="$(
   echo "❌ Release-tag reachability gate failed: could not read the current package version." >&2
   exit 1
 fi
-if ! [[ "$CURRENT_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-  echo "❌ Release-tag reachability gate failed: current package version '$CURRENT_VERSION' is not a stable semantic version." >&2
+
+# Keep prerelease recognition aligned with build-release-beta: that lane writes
+# dist/release-beta/* and cannot consume a stable dist/release/* slot.
+CURRENT_VERSION_KIND=""
+if [[ "$CURRENT_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+  CURRENT_VERSION_KIND="stable"
+elif [[ "$CURRENT_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+-[0-9A-Za-z.]+$ ]]; then
+  CURRENT_VERSION_KIND="prerelease"
+else
+  echo "❌ Release-tag reachability gate failed: current package version '$CURRENT_VERSION' is not a supported stable or prerelease semantic version." >&2
   exit 1
 fi
 
 CURRENT_VERSION_PUBLISHED=0
-if printf '%s\n' "$RELEASE_VERSIONS" | grep -Fxq "$CURRENT_VERSION"; then
+if [ "$CURRENT_VERSION_KIND" = "stable" ] && printf '%s\n' "$RELEASE_VERSIONS" | grep -Fxq "$CURRENT_VERSION"; then
   CURRENT_VERSION_PUBLISHED=1
 fi
 
@@ -75,7 +83,7 @@ for SENTINEL in "${SENTINEL_VERSIONS[@]}"; do
     echo "❌ v$SENTINEL has $NEWER_COUNT newer dist/release tags; the shipped verifier bound is $SHIPPED_TAG_BOUND." >&2
     echo "Do not move immutable release labels blindly; use the verified bridge-and-archive procedure before old installs go silent." >&2
     FAILED=1
-  elif [ "$NEWER_COUNT" -ge "$PREPUBLICATION_MARGIN" ] && [ "$CURRENT_VERSION_PUBLISHED" -ne 1 ]; then
+  elif [ "$NEWER_COUNT" -ge "$PREPUBLICATION_MARGIN" ] && [ "$CURRENT_VERSION_KIND" = "stable" ] && [ "$CURRENT_VERSION_PUBLISHED" -ne 1 ]; then
     echo "❌ v$SENTINEL has $NEWER_COUNT newer dist/release tags and current package version v$CURRENT_VERSION is not published; the pre-publication safety margin is $PREPUBLICATION_MARGIN." >&2
     echo "This CI run may publish one more tag, so use the verified bridge-and-archive procedure before old installs go silent." >&2
     FAILED=1
