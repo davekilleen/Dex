@@ -2,10 +2,9 @@
 set -euo pipefail
 
 SENTINEL_VERSIONS=("1.62.0" "1.68.0" "1.74.0")
-# The shipped verifier accepts at most 32 newer candidates. Stop while two
-# slots remain: the current CI run may publish one release, leaving one final
-# recovery slot rather than forcing a risky early label move.
-SAFETY_MARGIN=31
+# An unpublished version may consume one more slot in this CI run. A version
+# already present on origin cannot: build-release's exact-version guard skips it.
+PREPUBLICATION_MARGIN=31
 SHIPPED_TAG_BOUND=32
 
 if ! REMOTE_TAGS="$(
@@ -34,6 +33,22 @@ if [ -z "$RELEASE_VERSIONS" ]; then
   exit 1
 fi
 
+if ! CURRENT_VERSION="$(
+  python3 -c 'import json; print(json.load(open("package.json"))["version"])'
+)"; then
+  echo "❌ Release-tag reachability gate failed: could not read the current package version." >&2
+  exit 1
+fi
+if ! [[ "$CURRENT_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+  echo "❌ Release-tag reachability gate failed: current package version '$CURRENT_VERSION' is not a stable semantic version." >&2
+  exit 1
+fi
+
+CURRENT_VERSION_PUBLISHED=0
+if printf '%s\n' "$RELEASE_VERSIONS" | grep -Fxq "$CURRENT_VERSION"; then
+  CURRENT_VERSION_PUBLISHED=1
+fi
+
 FAILED=0
 for SENTINEL in "${SENTINEL_VERSIONS[@]}"; do
   NEWER_COUNT="$(
@@ -56,9 +71,13 @@ for SENTINEL in "${SENTINEL_VERSIONS[@]}"; do
       '
   )"
 
-  if [ "$NEWER_COUNT" -ge "$SAFETY_MARGIN" ]; then
-    echo "❌ v$SENTINEL has $NEWER_COUNT newer dist/release tags; the safety margin is $SAFETY_MARGIN before the shipped $SHIPPED_TAG_BOUND-tag bound." >&2
+  if [ "$NEWER_COUNT" -ge "$SHIPPED_TAG_BOUND" ]; then
+    echo "❌ v$SENTINEL has $NEWER_COUNT newer dist/release tags; the shipped verifier bound is $SHIPPED_TAG_BOUND." >&2
     echo "Do not move immutable release labels blindly; use the verified bridge-and-archive procedure before old installs go silent." >&2
+    FAILED=1
+  elif [ "$NEWER_COUNT" -ge "$PREPUBLICATION_MARGIN" ] && [ "$CURRENT_VERSION_PUBLISHED" -ne 1 ]; then
+    echo "❌ v$SENTINEL has $NEWER_COUNT newer dist/release tags and current package version v$CURRENT_VERSION is not published; the pre-publication safety margin is $PREPUBLICATION_MARGIN." >&2
+    echo "This CI run may publish one more tag, so use the verified bridge-and-archive procedure before old installs go silent." >&2
     FAILED=1
   fi
 done
