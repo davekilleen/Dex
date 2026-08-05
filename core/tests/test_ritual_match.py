@@ -146,3 +146,30 @@ def test_user_edited_prep_block_locks_regeneration():
     with transaction(create=True) as conn:
         locked = conn.execute("SELECT user_locked FROM occurrences WHERE id = ?", (occurrence_id,)).fetchone()
     assert locked["user_locked"] == 1
+
+
+def test_confirmed_ritual_on_sunday_includes_that_same_evening():
+    """The horizon must reach the END of its last day, not `now`'s time-of-day.
+
+    A Sunday-morning confirmation would otherwise drop a Sunday-evening
+    occurrence: days_until_end_of_week is 0 on a Sunday, so the horizon
+    collapsed onto the current timestamp.
+    """
+    _cleanup_runtime_artifacts()
+    service = RitualIntelligenceService()
+    # Relative dates so events always fall within the matcher's 28-day window (issue #44).
+    base = datetime.now(timezone.utc).replace(hour=21, minute=0, second=0, microsecond=0)
+    sunday_evening = base - timedelta(days=(base.weekday() - 6) % 7 + 7)
+    previous_sunday = sunday_evening - timedelta(days=7)
+    service.refresh_calendar(events=[
+        _event(source_event_id="sun-prev", source_series_id="series-s", starts_at=previous_sunday),
+        _event(source_event_id="sun", source_series_id="series-s", starts_at=sunday_evening),
+    ])
+
+    suggestions = service.list_ritual_suggestions()
+    result = confirm_ritual(suggestions[0]["series_id"], now=sunday_evening.replace(hour=9))
+
+    assert result["status"] == "confirmed"
+    assert any(sunday_evening.strftime("%Y-%m-%d") in item["note_path"] for item in result["generated"]), (
+        "Sunday-evening occurrence was excluded by a horizon that stopped at Sunday morning"
+    )
