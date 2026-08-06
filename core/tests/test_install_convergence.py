@@ -16,7 +16,11 @@ def _write_executable(path: Path, content: str) -> None:
     path.chmod(0o755)
 
 
-def _install_fixture(tmp_path: Path, scenario: str) -> tuple[Path, dict[str, str]]:
+def _install_fixture(
+    tmp_path: Path,
+    scenario: str,
+    chat_app: str | None = None,
+) -> tuple[Path, dict[str, str]]:
     root = tmp_path / "dex-install"
     root.mkdir()
     shutil.copy2(REPO_ROOT / "install.sh", root / "install.sh")
@@ -88,6 +92,8 @@ exit 0
     for command in ("npm", "npx"):
         _write_executable(shim_dir / command, "#!/bin/sh\nexit 0\n")
     _write_executable(shim_dir / "xcode-select", "#!/bin/sh\nexit 0\n")
+    if chat_app is not None:
+        _write_executable(shim_dir / chat_app, "#!/bin/sh\nexit 0\n")
 
     environment = os.environ.copy()
     environment.update(
@@ -105,8 +111,9 @@ def _run_install(
     tmp_path: Path,
     scenario: str,
     *arguments: str,
+    chat_app: str | None = None,
 ) -> tuple[subprocess.CompletedProcess[str], list[str]]:
-    root, environment = _install_fixture(tmp_path, scenario)
+    root, environment = _install_fixture(tmp_path, scenario, chat_app)
     result = subprocess.run(
         ["/bin/bash", "install.sh", *arguments],
         cwd=root,
@@ -174,3 +181,24 @@ def test_migration_failure_stops_install_with_plain_english_recovery(tmp_path: P
     assert "could not finish the brain/vault split" in result.stdout
     assert "migration-report-v2.md" in result.stdout
     assert "Dex installation complete" not in result.stdout
+
+
+def test_install_points_claude_code_users_at_the_install_folder(tmp_path: Path) -> None:
+    result, _ = _run_install(tmp_path, "zip", chat_app="claude")
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "Open Claude Code in this folder" in result.stdout
+    assert "the folder you just installed into" in result.stdout
+    assert "In Claude Code chat, type: /setup" in result.stdout
+    # Detection must name one app only, never leak the other.
+    assert "In Cursor chat, type: /setup" not in result.stdout
+
+
+def test_install_points_cursor_users_at_the_install_folder(tmp_path: Path) -> None:
+    result, _ = _run_install(tmp_path, "zip", chat_app="cursor")
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "Open Cursor in this folder" in result.stdout
+    assert "the folder you just installed into" in result.stdout
+    assert "In Cursor chat, type: /setup" in result.stdout
+    assert "In Claude Code chat, type: /setup" not in result.stdout
