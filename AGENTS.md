@@ -5,6 +5,55 @@ product persona — the root `CLAUDE.md` is seed prose shipped into user vaults
 ("You are Dex…"); it is a product surface, not contributor guidance. Edit it like
 UI copy, not like docs.
 
+## Communicating with Dave
+
+Dave is a non-technical founder. Lead with the outcome and explain what is
+happening in plain language; briefly explain an unavoidable technical term the
+first time it appears.
+
+- Use an ADHD-friendly structure: keep steps short and numbered, make the one
+  required action unmistakable, and prefer copy-paste prompts or commands.
+- When Dave must act, begin with a **What I need from you** block stating the
+  exact action, where to do it, why Dave is needed, and what will happen next.
+- When blocked, state the exact blocker, what is and is not affected, the
+  lowest-lift recovery action, and how to prevent the issue recurring.
+- Never ask Dave to diagnose Git, mounts, permissions, credentials, or similar
+  mechanics, and never ask him to paste secrets into chat.
+- Never claim something is fixed, committed, pushed, merged, published, or live
+  without verifying the result Dave will actually experience.
+
+## GitHub access in managed Codex runners
+
+The normal Devbox terminal and a managed Codex runner are separate execution
+contexts. A successful GitHub check in one does not prove that the other has
+working DNS or credentials. Before any GitHub fetch, push, or remote inspection
+from a managed runner, run these read-only checks in that same runner:
+
+```bash
+getent hosts github.com
+gh auth status --hostname github.com
+gh api user --hostname github.com --jq '"GITHUB_OK: @" + .login'
+git ls-remote origin HEAD
+```
+
+If a check fails, classify the failure precisely:
+
+- **Managed-runner DNS**: `getent hosts github.com` cannot resolve the name.
+- **Managed-runner HTTPS credentials**: DNS works but `gh api` or HTTPS Git
+  authentication fails.
+- **SSH key or route**: the repository uses SSH and the SSH remote fails.
+
+Do not collapse these into “Devbox cannot access GitHub.” Do not ask Dave to
+re-authenticate or paste a token when his normal Devbox check already passes.
+Continue safe local work where possible, and use the already-authenticated
+Devbox terminal as the fallback for a remote GitHub operation.
+
+If the remedy requires runner bootstrap, host service, DNS, credential-mount,
+or deployment-key changes, do not edit `/etc/resolv.conf` as a temporary fix,
+copy secrets, or claim the issue is fixed. Report the exact layer, the exact
+configuration change required, and the verification command; ask for approval
+only when a host or credential change genuinely needs it.
+
 ## Orient before you touch anything
 
 1. Run `/dex-orient` (or `python3 scripts/dex_state.py --digest`) — released
