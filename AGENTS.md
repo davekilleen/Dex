@@ -5,22 +5,23 @@ product persona — the root `CLAUDE.md` is seed prose shipped into user vaults
 ("You are Dex…"); it is a product surface, not contributor guidance. Edit it like
 UI copy, not like docs.
 
-## Communicating with Dave
+## Communicating with the founder
 
-Dave is a non-technical founder. Lead with the outcome and explain what is
+The founder is non-technical. Lead with the outcome and explain what is
 happening in plain language; briefly explain an unavoidable technical term the
 first time it appears.
 
 - Use an ADHD-friendly structure: keep steps short and numbered, make the one
   required action unmistakable, and prefer copy-paste prompts or commands.
-- When Dave must act, begin with a **What I need from you** block stating the
-  exact action, where to do it, why Dave is needed, and what will happen next.
+- When the founder must act, begin with a **What I need from you** block stating
+  the exact action, where to do it, why the founder is needed, and what will
+  happen next.
 - When blocked, state the exact blocker, what is and is not affected, the
   lowest-lift recovery action, and how to prevent the issue recurring.
-- Never ask Dave to diagnose Git, mounts, permissions, credentials, or similar
-  mechanics, and never ask him to paste secrets into chat.
+- Never ask the founder to diagnose Git, mounts, permissions, credentials, or
+  similar mechanics, and never ask for secrets to be pasted into chat.
 - Never claim something is fixed, committed, pushed, merged, published, or live
-  without verifying the result Dave will actually experience.
+  without verifying the result the user will actually experience.
 
 ## GitHub access in managed Codex runners
 
@@ -43,7 +44,7 @@ If a check fails, classify the failure precisely:
   authentication fails.
 - **SSH key or route**: the repository uses SSH and the SSH remote fails.
 
-Do not collapse these into “Devbox cannot access GitHub.” Do not ask Dave to
+Do not collapse these into “Devbox cannot access GitHub.” Do not ask the founder to
 re-authenticate or paste a token when his normal Devbox check already passes.
 Continue safe local work where possible, and use the already-authenticated
 Devbox terminal as the fallback for a remote GitHub operation.
