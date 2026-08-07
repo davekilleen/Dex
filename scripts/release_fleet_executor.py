@@ -71,6 +71,50 @@ _SAFE_DELIVERY_FAILURE_REASONS = frozenset(
     }
 )
 _MAX_FAILURE_DIAGNOSTIC_ELAPSED_MS = 900_000
+# Harness-level protection for momentary controller network loss.  The
+# installed foundation's own updater predates in-release retry fixes, so the
+# executor retries only transient network failures around each delivery hop.
+_TRANSIENT_DELIVERY_MAX_ATTEMPTS = 3
+_TRANSIENT_DELIVERY_BACKOFF_SECONDS = (10.0, 30.0)
+_TRANSIENT_NETWORK_DELIVERY_REASONS = frozenset({"network-unavailable"})
+_TRANSIENT_NETWORK_ERROR_FRAGMENTS = (
+    "connection refused",
+    "connection reset",
+    "connection timed out",
+    "could not resolve host",
+    "couldn't connect to server",
+    "name or service not known",
+    "network is unreachable",
+    "network-unavailable",
+    "nodename nor servname provided",
+    "operation timed out",
+    "ssl connect error",
+    "temporary failure in name resolution",
+)
+
+
+def _transient_network_error(detail: str) -> bool:
+    """Classify one delivery error message as a momentary network outage."""
+
+    lowered = detail.lower()
+    return any(
+        fragment in lowered for fragment in _TRANSIENT_NETWORK_ERROR_FRAGMENTS
+    )
+
+
+def _transient_network_delivery(delivery: Mapping[str, object]) -> bool:
+    """Classify one not-delivered lifecycle response as transient network loss."""
+
+    evidence = delivery.get("evidence")
+    reason = evidence.get("reason") if isinstance(evidence, Mapping) else None
+    return isinstance(reason, str) and reason in _TRANSIENT_NETWORK_DELIVERY_REASONS
+
+
+def _transient_delivery_backoff(attempt_number: int) -> None:
+    """Wait briefly before the next bounded transient-network attempt."""
+
+    delays = _TRANSIENT_DELIVERY_BACKOFF_SECONDS
+    time.sleep(delays[min(attempt_number, len(delays)) - 1])
 
 
 class ExecutorError(RuntimeError):
@@ -1359,6 +1403,7 @@ def _failure_diagnostic(
     doctor: Mapping[str, object] | None = None,
     delivery: Mapping[str, object] | None = None,
     delivery_elapsed_ms: int | None = None,
+    delivery_attempt_count: int = 1,
 ) -> dict[str, object]:
     document: dict[str, object] = {
         "acceptance": False,
@@ -1390,6 +1435,10 @@ def _failure_diagnostic(
             "elapsed_ms": min(
                 max(delivery_elapsed_ms or 0, 0),
                 _MAX_FAILURE_DIAGNOSTIC_ELAPSED_MS,
+            ),
+            "attempt_count": min(
+                max(delivery_attempt_count, 1),
+                _TRANSIENT_DELIVERY_MAX_ATTEMPTS,
             ),
         }
         if route_drift_release is not None:
@@ -1592,14 +1641,28 @@ def _execute_journey_with_runtime(
             raise ExecutorError("foundation bridge approval was not exact")
         return answer
 
-    bridge_response = dict(
-        _runtime.bridge_to_foundation(
-            vault,
-            foundation,
-            input_fn=bridge_input,
-            output_fn=output_fn,
-        )
-    )
+    bridge_attempt_count = 0
+    while True:
+        bridge_attempt_count += 1
+        bridge_approvals.clear()
+        try:
+            bridge_response = dict(
+                _runtime.bridge_to_foundation(
+                    vault,
+                    foundation,
+                    input_fn=bridge_input,
+                    output_fn=output_fn,
+                )
+            )
+        except ExecutorError as error:
+            if (
+                bridge_attempt_count >= _TRANSIENT_DELIVERY_MAX_ATTEMPTS
+                or not _transient_network_error(str(error))
+            ):
+                raise
+            _transient_delivery_backoff(bridge_attempt_count)
+            continue
+        break
     if len(bridge_approvals) > protocol.bridge.approval_count:
         raise ExecutorError("foundation bridge requested too many approvals")
     bridge_result = _validate_bridge_result(
@@ -1630,11 +1693,48 @@ def _execute_journey_with_runtime(
     if after_foundation != before:
         raise ExecutorError("user-owned content changed during foundation health proof")
 
-    delivery_started = time.monotonic_ns()
-    delivered = dict(_runtime.deliver_latest_release(vault))
-    delivery_elapsed_ms = (time.monotonic_ns() - delivery_started) // 1_000_000
-    delivered_release = _public_route_drift_identity(delivered, follow_up)
-    if delivered_release is not None:
+    delivery_attempt_count = 0
+    while True:
+        delivery_attempt_count += 1
+        delivery_started = time.monotonic_ns()
+        try:
+            delivered = dict(_runtime.deliver_latest_release(vault))
+        except ExecutorError as error:
+            if (
+                delivery_attempt_count >= _TRANSIENT_DELIVERY_MAX_ATTEMPTS
+                or not _transient_network_error(str(error))
+            ):
+                raise
+            _transient_delivery_backoff(delivery_attempt_count)
+            continue
+        delivery_elapsed_ms = (time.monotonic_ns() - delivery_started) // 1_000_000
+        delivered_release = _public_route_drift_identity(delivered, follow_up)
+        if delivered_release is not None:
+            _write_failure_diagnostic(
+                evidence_root,
+                "follow-up-delivery-failure.diagnostic.json",
+                _failure_diagnostic(
+                    phase="follow-up-delivery",
+                    vault=vault,
+                    foundation=foundation,
+                    follow_up=follow_up,
+                    delivery=delivered,
+                    delivery_elapsed_ms=delivery_elapsed_ms,
+                    delivery_attempt_count=delivery_attempt_count,
+                ),
+            )
+            raise PublicRouteDriftError(follow_up, delivered_release)
+        if (
+            delivered.get("status") == "delivered"
+            and delivered.get("release") == follow_up
+        ):
+            break
+        if (
+            delivery_attempt_count < _TRANSIENT_DELIVERY_MAX_ATTEMPTS
+            and _transient_network_delivery(delivered)
+        ):
+            _transient_delivery_backoff(delivery_attempt_count)
+            continue
         _write_failure_diagnostic(
             evidence_root,
             "follow-up-delivery-failure.diagnostic.json",
@@ -1645,23 +1745,7 @@ def _execute_journey_with_runtime(
                 follow_up=follow_up,
                 delivery=delivered,
                 delivery_elapsed_ms=delivery_elapsed_ms,
-            ),
-        )
-        raise PublicRouteDriftError(follow_up, delivered_release)
-    if (
-        delivered.get("status") != "delivered"
-        or delivered.get("release") != follow_up
-    ):
-        _write_failure_diagnostic(
-            evidence_root,
-            "follow-up-delivery-failure.diagnostic.json",
-            _failure_diagnostic(
-                phase="follow-up-delivery",
-                vault=vault,
-                foundation=foundation,
-                follow_up=follow_up,
-                delivery=delivered,
-                delivery_elapsed_ms=delivery_elapsed_ms,
+                delivery_attempt_count=delivery_attempt_count,
             ),
         )
         raise ExecutorError("lifecycle delivery did not prove the requested follow-up release")
@@ -1769,6 +1853,7 @@ def _execute_journey_with_runtime(
             "bridge_asset": dict(bridge_asset_evidence),
             "approval_count": len(bridge_approvals),
             "approvals": bridge_approvals,
+            "journey_transport": {"attempt_count": bridge_attempt_count},
         },
         {
             "id": "foundation-update-surface",
@@ -1783,6 +1868,7 @@ def _execute_journey_with_runtime(
             "from_release": foundation,
             "target_release": follow_up,
             "preview_sha256": preview_sha256,
+            "journey_transport": {"attempt_count": delivery_attempt_count},
         },
         {
             "id": "foundation-approval",

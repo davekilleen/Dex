@@ -278,6 +278,7 @@ def test_failed_journey_retains_only_private_sanitized_diagnostic(
         }
     else:
         assert document["delivery"] == {
+            "attempt_count": 1,
             "elapsed_ms": document["delivery"]["elapsed_ms"],
             "failure_reason": "unclassified",
             "release_matches_expected": False,
@@ -301,6 +302,7 @@ def test_closed_delivery_mismatch_is_shared_public_route_drift_with_safe_identit
     document = json.loads(diagnostic.read_text(encoding="utf-8"))
 
     assert document["delivery"] == {
+        "attempt_count": 1,
         "delivered_release": _identity("1.81.6", "c"),
         "elapsed_ms": document["delivery"]["elapsed_ms"],
         "failure_reason": "public-route-drift",
@@ -360,6 +362,7 @@ def test_failure_diagnostic_retains_only_allowlisted_delivery_reason(
     )
 
     assert document["delivery"] == {
+        "attempt_count": 1,
         "elapsed_ms": 900_000,
         "failure_reason": "evidence-invalid",
         "release_matches_expected": False,

@@ -1034,6 +1034,245 @@ def test_executor_records_the_bridge_approval_count_that_actually_occurred(
     ]
 
 
+def test_transient_network_classifiers_match_only_momentary_network_loss() -> None:
+    assert executor._transient_network_error("Could not resolve host: github.com")
+    assert executor._transient_network_error(
+        "fatal: unable to access 'https://github.com/': Connection reset by peer"
+    )
+    assert not executor._transient_network_error("fixture lifecycle runtime timed out")
+    assert not executor._transient_network_error("foundation bridge approval was not exact")
+    assert executor._transient_network_delivery(
+        {"status": "not-delivered", "evidence": {"reason": "network-unavailable"}}
+    )
+    assert not executor._transient_network_delivery(
+        {"status": "not-delivered", "evidence": {"reason": "evidence-invalid"}}
+    )
+    assert not executor._transient_network_delivery({"status": "not-delivered"})
+
+
+def test_transient_network_follow_up_delivery_retries_and_records_attempts(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source_repo, source_commit = _executor_source_commit(tmp_path)
+    slept: list[float] = []
+    monkeypatch.setattr(executor.time, "sleep", slept.append)
+
+    class BlippedDeliveryRuntime(_Runtime):
+        delivery_attempts = 0
+
+        def deliver_latest_release(self, vault: Path) -> dict[str, object]:
+            self.delivery_attempts += 1
+            if self.delivery_attempts < 3:
+                return {
+                    "status": "not-delivered",
+                    "evidence": {"reason": "network-unavailable"},
+                }
+            return super().deliver_latest_release(vault)
+
+    runtime = BlippedDeliveryRuntime(_identity("1.81.0", "b"))
+    run = _execute(
+        tmp_path,
+        runtime,
+        source_repo=source_repo,
+        source_commit=source_commit,
+    )
+
+    assert run.case["reached_follow_up"] is True
+    assert runtime.delivery_attempts == 3
+    assert slept == list(executor._TRANSIENT_DELIVERY_BACKOFF_SECONDS)
+    transcript = json.loads(
+        (tmp_path / "case.evidence" / "journey-transcript.json").read_text()
+    )
+    events = {event["id"]: event for event in transcript["events"]}
+    assert events["foundation-preview"]["journey_transport"] == {"attempt_count": 3}
+    assert events["bridge-foundation"]["journey_transport"] == {"attempt_count": 1}
+    assert not (
+        tmp_path / "case.evidence" / "follow-up-delivery-failure.diagnostic.json"
+    ).exists()
+
+
+def test_transient_network_delivery_error_is_retried_without_a_diagnostic(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source_repo, source_commit = _executor_source_commit(tmp_path)
+    monkeypatch.setattr(executor.time, "sleep", lambda _delay: None)
+
+    class DnsBlippedDeliveryRuntime(_Runtime):
+        delivery_attempts = 0
+
+        def deliver_latest_release(self, vault: Path) -> dict[str, object]:
+            self.delivery_attempts += 1
+            if self.delivery_attempts == 1:
+                raise executor.ExecutorError(
+                    "fatal: unable to access 'https://github.com/davekilleen/Dex.git/':"
+                    " Could not resolve host: github.com"
+                )
+            return super().deliver_latest_release(vault)
+
+    runtime = DnsBlippedDeliveryRuntime(_identity("1.81.0", "b"))
+    run = _execute(
+        tmp_path,
+        runtime,
+        source_repo=source_repo,
+        source_commit=source_commit,
+    )
+
+    assert run.case["reached_follow_up"] is True
+    assert runtime.delivery_attempts == 2
+    transcript = json.loads(
+        (tmp_path / "case.evidence" / "journey-transcript.json").read_text()
+    )
+    events = {event["id"]: event for event in transcript["events"]}
+    assert events["foundation-preview"]["journey_transport"] == {"attempt_count": 2}
+
+
+def test_non_network_delivery_failure_is_never_retried(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source_repo, source_commit = _executor_source_commit(tmp_path)
+    monkeypatch.setattr(
+        executor.time,
+        "sleep",
+        lambda _delay: pytest.fail("a non-network delivery failure must not back off"),
+    )
+
+    class BrokenDeliveryRuntime(_Runtime):
+        def deliver_latest_release(self, vault: Path) -> dict[str, object]:
+            self.calls.append("deliver_latest_release")
+            return {
+                "status": "not-delivered",
+                "evidence": {"reason": "evidence-invalid"},
+            }
+
+    runtime = BrokenDeliveryRuntime(_identity("1.81.0", "b"))
+    with pytest.raises(executor.ExecutorError, match="did not prove"):
+        _execute(
+            tmp_path,
+            runtime,
+            source_repo=source_repo,
+            source_commit=source_commit,
+        )
+
+    assert runtime.calls.count("deliver_latest_release") == 1
+    diagnostic = json.loads(
+        (
+            tmp_path / "case.evidence" / "follow-up-delivery-failure.diagnostic.json"
+        ).read_text()
+    )
+    assert diagnostic["delivery"]["failure_reason"] == "evidence-invalid"
+    assert diagnostic["delivery"]["attempt_count"] == 1
+
+
+def test_transient_network_delivery_still_fails_after_bounded_attempts(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source_repo, source_commit = _executor_source_commit(tmp_path)
+    slept: list[float] = []
+    monkeypatch.setattr(executor.time, "sleep", slept.append)
+
+    class OfflineDeliveryRuntime(_Runtime):
+        def deliver_latest_release(self, vault: Path) -> dict[str, object]:
+            self.calls.append("deliver_latest_release")
+            return {
+                "status": "not-delivered",
+                "evidence": {"reason": "network-unavailable"},
+            }
+
+    runtime = OfflineDeliveryRuntime(_identity("1.81.0", "b"))
+    with pytest.raises(executor.ExecutorError, match="did not prove"):
+        _execute(
+            tmp_path,
+            runtime,
+            source_repo=source_repo,
+            source_commit=source_commit,
+        )
+
+    assert runtime.calls.count("deliver_latest_release") == 3
+    assert slept == list(executor._TRANSIENT_DELIVERY_BACKOFF_SECONDS)
+    diagnostic = json.loads(
+        (
+            tmp_path / "case.evidence" / "follow-up-delivery-failure.diagnostic.json"
+        ).read_text()
+    )
+    assert diagnostic["delivery"]["failure_reason"] == "network-unavailable"
+    assert diagnostic["delivery"]["attempt_count"] == 3
+
+
+def test_transient_network_bridge_failure_retries_with_fresh_exact_approvals(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source_repo, source_commit = _executor_source_commit(tmp_path)
+    monkeypatch.setattr(executor.time, "sleep", lambda _delay: None)
+
+    class BlippedBridgeRuntime(_Runtime):
+        def bridge_to_foundation(self, vault: Path, foundation, *, input_fn, output_fn):
+            if self.calls.count("bridge") == 0:
+                self.calls.append("bridge")
+                assert input_fn("topology approval") == "APPLY"
+                raise executor.ExecutorError(
+                    "curl: (6) Could not resolve host: github.com"
+                )
+            return super().bridge_to_foundation(
+                vault,
+                foundation,
+                input_fn=input_fn,
+                output_fn=output_fn,
+            )
+
+    runtime = BlippedBridgeRuntime(_identity("1.81.0", "b"))
+    run = _execute(
+        tmp_path,
+        runtime,
+        source_repo=source_repo,
+        source_commit=source_commit,
+    )
+
+    assert run.case["reached_foundation"] is True
+    assert runtime.calls.count("bridge") == 2
+    transcript = json.loads(
+        (tmp_path / "case.evidence" / "journey-transcript.json").read_text()
+    )
+    events = {event["id"]: event for event in transcript["events"]}
+    assert events["bridge-foundation"]["journey_transport"] == {"attempt_count": 2}
+    assert events["bridge-foundation"]["approval_count"] == 3
+    assert len(events["bridge-foundation"]["approvals"]) == 3
+
+
+def test_non_network_bridge_failure_is_never_retried(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source_repo, source_commit = _executor_source_commit(tmp_path)
+    monkeypatch.setattr(
+        executor.time,
+        "sleep",
+        lambda _delay: pytest.fail("a non-network bridge failure must not back off"),
+    )
+
+    class RefusingBridgeRuntime(_Runtime):
+        def bridge_to_foundation(self, vault: Path, foundation, *, input_fn, output_fn):
+            self.calls.append("bridge")
+            raise executor.ExecutorError(
+                "foundation cache does not match the pinned official release"
+            )
+
+    runtime = RefusingBridgeRuntime(_identity("1.81.0", "b"))
+    with pytest.raises(executor.ExecutorError, match="foundation cache"):
+        _execute(
+            tmp_path,
+            runtime,
+            source_repo=source_repo,
+            source_commit=source_commit,
+        )
+
+    assert runtime.calls.count("bridge") == 1
+
+
 def test_controlled_fleet_approval_still_rejects_excess_bridge_prompts(
     tmp_path: Path,
 ) -> None:
