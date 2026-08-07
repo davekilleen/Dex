@@ -1617,11 +1617,31 @@ def _probe_adoption_plan(context: DoctorContext) -> ProbeResult:
     try:
         catalog = load_catalog(catalog_path, release_root=context.vault_root)
         inventory = build_inventory(context.vault_root, catalog=catalog)
-        plan = build_adoption_plan(catalog, inventory)
+        # Keep the quick probe on the same lifecycle-ledger authority as the
+        # detailed adoption report and the update service.  Without these
+        # states, an item already adopted by a prior update is incorrectly
+        # presented as newly adoptable (for example, "27 adoptable / 0
+        # adopted" beside the updater's "adopt: 0 / already-adopted: 27").
+        ledger_state = lifecycle_ledger.project_state(context.vault_root)
+        catalog_ids = {item.id for item in catalog.items}
+        adopted = ledger_state["adopted"]
+        held_back = ledger_state["held_back"]
+        if not isinstance(adopted, Mapping) or not isinstance(held_back, list):
+            raise lifecycle_ledger.LedgerError("ledger state adoption fields are invalid")
+        plan = build_adoption_plan(
+            catalog,
+            inventory,
+            adoption_states={
+                item_id: AdoptionState.ADOPTED
+                for item_id in adopted
+                if item_id in catalog_ids
+            },
+            held_back=frozenset(set(held_back) & catalog_ids),
+        )
         counts = plan.counts
         return ProbeResult(
             "OK",
-            f"{counts['adopt']} adoptable / {counts['already-adopted']} adopted / "
+            f"{counts['adopt']} ready to adopt / {counts['already-adopted']} already adopted / "
             f"{counts['conflict']} conflicts",
         )
     except Exception as error:
