@@ -307,4 +307,5 @@ machine-state and investigation ingredients, so the user does nothing but approv
 
 - `/granola-setup`, `/calendar-setup`, `/enable-semantic-search` — Tier-3 fix paths
 - `/dex-update` — often the fix for package/version drift
+- `/feedback` — when a finding is a genuine Dex bug (not the user's setup), report it to the Dex team; the Doctor evidence becomes the report and the user only approves
 - `/xray` — understand what the doctor checked and why

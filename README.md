@@ -347,6 +347,12 @@ If `/daily-plan` doesn't show your meetings, or your recurring meetings (e.g. we
 
 See **[Calendar_Setup.md](06-Resources/Dex_System/Calendar_Setup.md)** for the full guide.
 
+---
+
+### Something else seems broken after setup?
+
+Once Dex is running, ask it to run `/dex-doctor` — a whole-system checkup that finds what's wrong, fixes what's safe on its own, and guides you through the rest. And if the problem turns out to be a bug in Dex itself, run `/feedback` (or just say "report this"): Dex writes the bug report for you, shows you what would be sent before anything leaves (never anything from your notes or meetings), and tells you when the fix ships.
+
 </details>
 
 ### Step 3: Tell Dex About Your Role
