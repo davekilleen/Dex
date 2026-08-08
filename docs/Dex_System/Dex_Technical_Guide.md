@@ -1079,6 +1079,11 @@ The doctor's quick `smoke.history` check narrows the change window and reports o
 matching configuration/custom-skill modification times or a Dex version change. The
 automation heartbeat lives at `.scripts/logs/smoke-nightly.log`.
 
+When a check stays broken across runs and points to a defect in Dex itself rather than
+local setup, Doctor offers to report it through `/feedback`. The user-facing
+troubleshooting path is documented in `Dex_System_Guide.md` under
+"Troubleshooting: When Something Seems Broken".
+
 ---
 
 ## Design Constraints
