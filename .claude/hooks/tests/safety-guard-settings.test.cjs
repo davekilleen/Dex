@@ -8,7 +8,7 @@ const path = require('node:path');
 const ROOT = path.resolve(__dirname, '../../..');
 const SETTINGS_PATH = path.join(ROOT, '.claude/settings.json');
 const GUARD_PATH = path.join(ROOT, '.claude/hooks/dex-safety-guard.sh');
-const GUARD_COMMAND = 'bash .claude/hooks/dex-safety-guard.sh';
+const GUARD_COMMAND = 'bash "$CLAUDE_PROJECT_DIR"/.claude/hooks/dex-safety-guard.sh';
 
 function matchingCommands(settings, toolName) {
   return (settings.hooks?.PreToolUse || [])
@@ -20,7 +20,7 @@ function matchingCommands(settings, toolName) {
 function assertSafetyRouting(settings) {
   assert.deepEqual(matchingCommands(settings, 'Bash'), [
     GUARD_COMMAND,
-    'node .claude/hooks/ensure-mcp-user-scope.cjs',
+    'node "$CLAUDE_PROJECT_DIR"/.claude/hooks/ensure-mcp-user-scope.cjs',
   ]);
   assert.deepEqual(matchingCommands(settings, 'mcp__firecrawl__firecrawl_scrape'), [
     GUARD_COMMAND,
