@@ -84,13 +84,17 @@ class DexSyncHandler(FileSystemEventHandler):
         logger.info(f"Processing {len(self.pending_files)} changed files")
         
         canonical_states = None
-        for file_path in self.pending_files:
+        # Snapshot-and-swap: the watchdog observer thread mutates pending_files
+        # while this loop iterates it, which raises "RuntimeError: Set changed
+        # size during iteration" and kills the daemon under busy file activity
+        # (issue #362). Draining atomically also preserves events that arrive
+        # mid-pass for the next cycle instead of losing them to clear().
+        batch, self.pending_files = self.pending_files, set()
+        for file_path in batch:
             try:
                 canonical_states = self.sync_file_tasks(file_path, canonical_states)
             except Exception as e:
                 logger.error(f"Error syncing {file_path}: {e}")
-        
-        self.pending_files.clear()
         self.last_process_time = time.time()
     
     def sync_file_tasks(self, file_path: Path, canonical_states=None):
