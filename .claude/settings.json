@@ -22,6 +22,10 @@
           {
             "type": "command",
             "command": "python3 \"$CLAUDE_PROJECT_DIR/core/utils/feedback_sweep.py\" --vault \"$CLAUDE_PROJECT_DIR\" --session-start"
+          },
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/core/utils/release_notes_sweep.py\" --vault \"$CLAUDE_PROJECT_DIR\" --session-start"
           }
         ]
       }
