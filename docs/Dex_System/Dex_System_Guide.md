@@ -631,6 +631,12 @@ Run `/dex-doctor` or say "check my vault." Dex will report what it finds and sug
 
 No configuration is required. Run it whenever your vault feels messy or meeting contacts do not look right.
 
+### Troubleshooting: When Something Seems Broken
+
+`/dex-doctor` is also your first stop when Dex itself misbehaves — a command that errors out, meetings that stop coming through, a feature that used to work. It checks the whole system, fixes what's safe to fix on its own, and guides you through the rest.
+
+If the problem turns out to be a bug in Dex itself rather than your setup, run `/feedback` (or just say "report this"). Dex investigates on your machine, writes the bug report for you, and shows you exactly what would be sent before anything leaves. Nothing from your notes, meetings, or conversations ever goes into a report — and when the fix ships, Dex tells you.
+
 ---
 
 ## Role-Specific Skills
