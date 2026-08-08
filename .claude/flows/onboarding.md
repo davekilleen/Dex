@@ -782,7 +782,9 @@ You've already seen the first-week snapshot from the calendar data Dex could rea
 
 **Say this in BOTH cases**, whether or not they wanted the tour — it sits outside the yes/no branches on purpose, and someone who said yes should hear it too:
 
-📖 One more thing worth bookmarking: the **Dex Guide** at https://heydex.ai/help/ — a plain-English walkthrough of everything Dex can do, with copy-paste prompts to steal. Great for your first week."
+📖 One more thing worth bookmarking: the **Dex Guide** at https://heydex.ai/help/ — a plain-English walkthrough of everything Dex can do, with copy-paste prompts to steal. Great for your first week.
+
+💬 And if Dex itself ever misbehaves, just say "report this" (or run `/feedback`). Dex investigates on your machine, writes the bug report for you, shows it to you before anything is sent, and tells you when the fix ships. Nothing from your notes or meetings ever goes into a report."
 
 Then ask: "Want me to put a few gentle nudges in your calendar for your first few weeks? One a day, each with something to try. They're all-day reminders marked private and free, so they never block your time or make you look busy — and you can delete the whole thing in one tap."
 

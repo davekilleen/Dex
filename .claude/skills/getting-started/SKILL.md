@@ -721,6 +721,7 @@ After any pathway completes:
 **Discovery:**
 • `/dex-level-up` - Find features you haven't tried
 • `/integrate-mcp` - Add more tools anytime
+• `/feedback` - Something misbehaving? Dex writes the bug report for you and tells you when it's fixed
 • Smithery.ai - Browse MCP marketplace
 
 **Come back anytime:**
