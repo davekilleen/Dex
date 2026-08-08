@@ -1485,13 +1485,29 @@ def prove_release_identity(
     )
 
 
-def _session_start_output(result: dict[str, object]) -> None:
+def _session_start_output(result: dict[str, object], vault: Path) -> None:
     if result.get("status") != STATUS_RELEASE or result.get("should_notify") is not True:
         return
+    notice = result["notice"]
+    try:
+        if __package__:
+            from .release_feed import enrich_available_notice
+        else:
+            from release_feed import enrich_available_notice
+
+        notice = enrich_available_notice(
+            vault,
+            installed_version=str(result["current_version"]),
+            available_version=str(result["version"]),
+            base_notice=str(notice),
+        )
+    except Exception:
+        if os.environ.get("DEX_RELEASE_FEED_DEBUG") == "1":
+            raise
     output = {
         "hookSpecificOutput": {
             "hookEventName": "SessionStart",
-            "additionalContext": f"\n{result['notice']}\n",
+            "additionalContext": f"\n{notice}\n",
         }
     }
     print(json.dumps(output, separators=(",", ":")))
@@ -1513,7 +1529,7 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     result = UpdateVerifier(args.vault).check(force=args.force, doctor_redisplay=args.doctor_redisplay)
     if args.session_start:
-        _session_start_output(result)
+        _session_start_output(result, args.vault.resolve())
     else:
         print(json.dumps(result, sort_keys=True, indent=2))
     return 0
