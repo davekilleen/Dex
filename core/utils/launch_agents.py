@@ -17,7 +17,7 @@ import argparse
 import plistlib
 import re
 from pathlib import Path
-from typing import Any, Iterator
+from typing import Iterator
 
 # Labels Dex has ever shipped under.  This is a filename heuristic with one
 # narrow job: a corrupt plist that *presents itself* as Dex's must be reported
