@@ -46,6 +46,20 @@ INDEX_FLAGS = {
 }
 
 
+_BLOCKED_PREVIEW_PATH_LIMIT = 50
+_BLOCKED_QUERY_GUIDANCE = (
+    "This safety gate refuses to change git tracking until the live "
+    "tracked-but-ignored file set matches the approved baseline exactly. "
+    "'unexpected_tracked_ignored' lists files that are tracked by git and "
+    "matched by .gitignore but are not in the baseline; untrack each with "
+    "'git rm --cached <path>' (the file stays on disk). "
+    "'missing_from_baseline' lists baseline paths the live query did not "
+    "report; those under 'missing_never_present' do not exist in this "
+    "vault at all, which usually means the vault never received those "
+    "seed files."
+)
+
+
 class MigrationError(RuntimeError):
     """The exact preservation migration cannot proceed safely."""
 
@@ -1014,25 +1028,17 @@ def preview(repo: Path, policy_path: Path | None = None) -> dict[str, Any]:
     if state == "blocked-query-mismatch":
         # The gate itself stays exact and fail-closed; what changes is that a
         # blocked result now names the paths responsible instead of leaving
-        # the user with a bare count mismatch (issue #242 item 4).
-        missing = sorted(policy_paths - actual)
-        unexpected = sorted(actual - policy_paths)
-        result["missing_from_baseline"] = missing[:50]
+        # the user with a bare count mismatch (issue #242 item 4). Both lists
+        # derive from the same truncation so "never present" is always a
+        # subset of the missing paths actually shown.
+        missing = sorted(policy_paths - actual)[:_BLOCKED_PREVIEW_PATH_LIMIT]
+        unexpected = sorted(actual - policy_paths)[:_BLOCKED_PREVIEW_PATH_LIMIT]
+        result["missing_from_baseline"] = missing
         result["missing_never_present"] = [
             relative for relative in missing if not (repo / relative).exists()
-        ][:50]
-        result["unexpected_tracked_ignored"] = unexpected[:50]
-        result["guidance"] = (
-            "This safety gate refuses to change git tracking until the live "
-            "tracked-but-ignored file set matches the approved baseline exactly. "
-            "'unexpected_tracked_ignored' lists files that are tracked by git and "
-            "matched by .gitignore but are not in the baseline; untrack each with "
-            "'git rm --cached <path>' (the file stays on disk). "
-            "'missing_from_baseline' lists baseline paths the live query did not "
-            "report; those under 'missing_never_present' do not exist in this "
-            "vault at all, which usually means the vault never received those "
-            "seed files."
-        )
+        ]
+        result["unexpected_tracked_ignored"] = unexpected
+        result["guidance"] = _BLOCKED_QUERY_GUIDANCE
     return result
 
 

@@ -60,8 +60,25 @@ function installSessionHealthStub(sandbox, exitStatus = 0) {
   return path.join(path.dirname(sandbox.vault), 'session-health-calls');
 }
 
-function installMovedVaultConflict(sandbox, plistName) {
-  const oldVault = path.join(path.dirname(sandbox.vault), 'old-vault');
+function installStaleJobHelper(sandbox) {
+  // The hook delegates stale-job detection to the real shared module so the
+  // hook and Doctor cannot diverge; install it into the sandbox vault the
+  // same way a real install ships it.
+  const repoRoot = path.resolve(__dirname, '..', '..', '..');
+  for (const relative of [
+    path.join('core', '__init__.py'),
+    path.join('core', 'utils', '__init__.py'),
+    path.join('core', 'utils', 'launch_agents.py'),
+  ]) {
+    const target = path.join(sandbox.vault, relative);
+    fs.mkdirSync(path.dirname(target), { recursive: true });
+    fs.copyFileSync(path.join(repoRoot, relative), target);
+  }
+}
+
+function installMovedVaultConflict(sandbox, plistName, oldVaultName = 'old-vault') {
+  installStaleJobHelper(sandbox);
+  const oldVault = path.join(path.dirname(sandbox.vault), oldVaultName);
   const breadcrumb = path.join(sandbox.home, '.config', 'dex', 'vault-path');
   const launchAgents = path.join(sandbox.home, 'Library', 'LaunchAgents');
   const plist = path.join(launchAgents, plistName);
@@ -288,4 +305,57 @@ test('session start stays silent when a plist references a sibling of the former
   const stdout = runSessionStart(sandbox);
 
   assert.doesNotMatch(stdout, /still points to this vault's old location/);
+});
+
+test('session start ignores a degenerate breadcrumb root that Doctor also rejects', (t) => {
+  // A corrupted breadcrumb of "/tmp" would substring-match countless
+  // third-party plists. Doctor rejects such roots; the hook must too, or it
+  // warns every session about something Doctor reports as healthy.
+  const sandbox = createSandbox(t);
+  completeOnboarding(sandbox);
+  const conflict = installMovedVaultConflict(sandbox, 'com.dex.meeting-intel.plist');
+  fs.writeFileSync(conflict.breadcrumb, '/tmp\n');
+  fs.writeFileSync(
+    conflict.plist,
+    '<plist><string>/tmp/some-other-tool.log</string></plist>\n',
+  );
+
+  const stdout = runSessionStart(sandbox);
+
+  assert.doesNotMatch(stdout, /still points to this vault's old location/);
+});
+
+test('session start warns for a former vault path containing spaces', (t) => {
+  // The old bash implementation mangled interior spaces out of the
+  // breadcrumb before grepping; the shared helper must not.
+  const sandbox = createSandbox(t);
+  completeOnboarding(sandbox);
+  const conflict = installMovedVaultConflict(
+    sandbox,
+    'com.dex.meeting-intel.plist',
+    'My Old Vault',
+  );
+
+  const stdout = runSessionStart(sandbox);
+
+  assert.match(
+    stdout,
+    /Dex found a background job that still points to this vault's old location — run \/dex-doctor to fix this safely\./,
+  );
+});
+
+test('session start warns when the old path hides inside a shell command string', (t) => {
+  // /bin/bash -c "cd <old>; exec ..." is how real jobs embed the vault path;
+  // ";" must count as a path boundary.
+  const sandbox = createSandbox(t);
+  completeOnboarding(sandbox);
+  const conflict = installMovedVaultConflict(sandbox, 'com.alice.dex.context-sync.plist');
+  fs.writeFileSync(
+    conflict.plist,
+    `<plist><string>cd ${conflict.oldVault}; exec ./run-sync.sh</string></plist>\n`,
+  );
+
+  const stdout = runSessionStart(sandbox);
+
+  assert.match(stdout, /still points to this vault's old location/);
 });
