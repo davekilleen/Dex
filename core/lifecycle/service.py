@@ -758,6 +758,32 @@ def _closed_release_identity(value: Mapping[str, object]) -> dict[str, str]:
     return {key: str(value[key]) for key in sorted(required)}
 
 
+def _refresh_bridge_activation(root: Path) -> None:
+    """Re-record the bridge activation against the just-applied release bytes.
+
+    Runs inside the delivered-release transaction's before-commit window,
+    after the plan writes (including the new bridge declaration and catalog)
+    are on disk but before COMMITTED is journaled.  A vault that has never
+    activated is left alone: its first gated operation records the baseline
+    exactly as a first run would.  A vault with an existing record must not
+    commit an update that leaves its own update engine refusing, so any
+    record that cannot be re-recorded against the newly installed release
+    rolls the whole update back through the normal locked rollback path.
+    """
+    from core.lifecycle import bridge
+
+    target = root / bridge.ACTIVATION_RELATIVE
+    if not target.exists() and not target.is_symlink():
+        return
+    try:
+        bridge.activate_vault(root)
+    except bridge.BridgeError as error:
+        raise PlanRejected(
+            "the delivered release cannot re-record this vault's update-engine "
+            f"activation, so the update was rolled back: {error}"
+        ) from error
+
+
 def _delivered_release_preview(
     vault_root: str | Path,
     release_identity: Mapping[str, object],
@@ -846,14 +872,21 @@ def execute_approved_delivered_release(
         plan,
         purpose="delivered-release",
     )["approval_token"]
+    root = Path(vault_root).resolve()
+
+    def finalize_delivered_release() -> None:
+        # The activation refresh runs first so a refresh failure rolls the
+        # transaction back before the release identity (topology markers and
+        # the installed ref) has been finalized.
+        _refresh_bridge_activation(root)
+        apply_update._finalize_release_metadata(root, release, previous_commit)
+
     executed = _execute_approved_transaction(
         vault_root,
         plan,
         purpose="delivered-release",
         approved_token=str(transaction_token),
-        before_commit=lambda: apply_update._finalize_release_metadata(
-            Path(vault_root).resolve(), release, previous_commit
-        ),
+        before_commit=finalize_delivered_release,
     )
     return _envelope(receipt=executed["receipt"], release=expected_preview["release"])
 
