@@ -58,3 +58,20 @@ def test_find_task_by_id_never_matches_a_longer_id(vault: Path) -> None:
     assert [i["line_content"] for i in long] == [
         "- [ ] Task number task-20260810-1000 ^task-20260810-1000"
     ]
+
+
+def test_wikilink_migration_converts_four_digit_task_anchors() -> None:
+    from core.obsidian.migrate_to_wikilinks import convert_references_in_file
+
+    content = "- [ ] The thousandth task ^task-20260810-1000\n"
+    converted, changes = convert_references_in_file(content, {}, {}, {})
+
+    assert changes == 1
+    assert "[[^task-20260810-1000]]" in converted
+
+
+def test_smoke_task_anchor_scan_reads_four_digit_ids() -> None:
+    from core.utils.smoke import _task_anchor_ids
+
+    text = "- [ ] a ^task-20260810-999\n- [ ] b ^task-20260810-1000\n"
+    assert _task_anchor_ids(text) == ["task-20260810-999", "task-20260810-1000"]

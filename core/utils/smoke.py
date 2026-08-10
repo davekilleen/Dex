@@ -1846,6 +1846,11 @@ def _decode_tool_response(contents: Sequence[object]) -> dict[str, Any]:
     return decoded
 
 
+def _task_anchor_ids(text: str) -> list[str]:
+    """Task anchors in a document; the sequence part may exceed three digits."""
+    return re.findall(r"\^(task-\d{8}-\d{3,})", text)
+
+
 def _journey_task_lifecycle(vault: Path, _release_root: Path) -> dict[str, str]:
     tasks_file = _core_path(vault, "TASKS_FILE")
     tasks_dir = tasks_file.parent
@@ -1878,7 +1883,7 @@ def _journey_task_lifecycle(vault: Path, _release_root: Path) -> dict[str, str]:
 
         original = tasks_file.read_text(encoding="utf-8")
         original_lines = original.splitlines()
-        original_task_ids = re.findall(r"\^(task-\d{8}-\d{3,})", original)
+        original_task_ids = _task_anchor_ids(original)
 
         from core.mcp import work_server as work
 
