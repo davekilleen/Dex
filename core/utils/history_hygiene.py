@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Callable, Literal
 
 from core.paths import HISTORY_BACKUPS_RELATIVE_PARTS
+from core.transaction.fsync import fsync_directory
 from core.utils.local_git import git_env, git_output
 
 try:
@@ -245,14 +246,6 @@ def _sha(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
-def _fsync_dir(path: Path) -> None:
-    descriptor = os.open(path, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
-    try:
-        os.fsync(descriptor)
-    finally:
-        os.close(descriptor)
-
-
 def _write_restrictive(path: Path, data: bytes) -> None:
     descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
     with os.fdopen(descriptor, "wb") as handle:
@@ -261,7 +254,7 @@ def _write_restrictive(path: Path, data: bytes) -> None:
         os.fsync(handle.fileno())
     if path.read_bytes() != data or stat.S_IMODE(path.stat().st_mode) != 0o600:
         raise OSError("restrictive history artifact readback failed")
-    _fsync_dir(path.parent)
+    fsync_directory(path.parent)
 
 
 def _atomic_replace(path: Path, data: bytes, mode: int, error: str) -> None:
@@ -273,7 +266,7 @@ def _atomic_replace(path: Path, data: bytes, mode: int, error: str) -> None:
             handle.flush()
             os.fsync(handle.fileno())
         os.replace(temporary, path)
-        _fsync_dir(path.parent)
+        fsync_directory(path.parent)
         if path.read_bytes() != data or stat.S_IMODE(path.stat().st_mode) != mode:
             raise OSError(error)
     finally:
@@ -789,7 +782,7 @@ def prepare_history_cleanup(
             manifest = HistoryManifest.create(core)
             preview_sha = str(manifest["preview_sha256"])
             _write_restrictive(transaction / "manifest.json", manifest.serialize())
-            _fsync_dir(transaction)
+            fsync_directory(transaction)
             os.rename(
                 incomplete_name,
                 transaction_id,
@@ -1067,7 +1060,7 @@ def _apply_history_cleanup_loaded(
                 env=_git_env(),
                 pass_fds=(replacement.fileno(),),
             )
-        _fsync_dir(transaction)
+        fsync_directory(transaction)
         if result.returncode:
             raise RuntimeError("git-filter-repo cleanup failed")
         _restore_and_verify_git_config(root, config_path, config_before, config_mode, remotes_before)
@@ -1099,7 +1092,7 @@ def _apply_history_cleanup_loaded(
             uninspected_scopes=("selected-refs",) if state == "history-scope-unknown" else (),
         )
     except BaseException:
-        _fsync_dir(transaction)
+        fsync_directory(transaction)
         try:
             _restore_and_verify_git_config(root, config_path, config_before, config_mode, remotes_before)
         except (OSError, RuntimeError):

@@ -77,13 +77,13 @@ def test_baseline_import_is_read_only_and_activation_is_atomic(
     before = protected.read_bytes()
     system_mode = stat.S_IMODE((vault / "System").stat().st_mode)
     fsynced_directories: list[Path] = []
-    real_fsync_directory = bridge_module._fsync_directory
+    real_fsync_directory = bridge_module.fsync_directory
 
     def record_fsync(directory: Path) -> None:
         fsynced_directories.append(directory.relative_to(vault))
         real_fsync_directory(directory)
 
-    monkeypatch.setattr(bridge_module, "_fsync_directory", record_fsync)
+    monkeypatch.setattr(bridge_module, "fsync_directory", record_fsync)
 
     activation = activate_vault(vault)
 

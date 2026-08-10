@@ -16,6 +16,7 @@ from core.lifecycle.inventory import build_inventory
 from core.lifecycle.model import HEX_SHA256, SEMVER
 from core.path_safety import unsafe_existing_parent
 from core.transaction.engine import Transaction
+from core.transaction.fsync import fsync_directory
 from core.transaction.journal import PREVIOUS_SCHEMA_VERSION, SCHEMA_VERSION
 
 BRIDGE_CONTRACT_VERSION = 1
@@ -228,14 +229,6 @@ def _stale_activation(raw: bytes, bridge: BridgeRelease) -> bool:
     )
 
 
-def _fsync_directory(directory: Path) -> None:
-    descriptor = os.open(directory, os.O_RDONLY)
-    try:
-        os.fsync(descriptor)
-    finally:
-        os.close(descriptor)
-
-
 def _activation_directory(root: Path) -> Path:
     unsafe = unsafe_existing_parent(root, ACTIVATION_RELATIVE.as_posix())
     if unsafe is not None:
@@ -248,7 +241,7 @@ def _activation_directory(root: Path) -> Path:
         if not directory.exists():
             directory.mkdir(mode=0o700)
             os.chmod(directory, 0o700)
-            _fsync_directory(directory.parent)
+            fsync_directory(directory.parent)
     return directory
 
 
@@ -321,11 +314,11 @@ def activate_vault(
             if stale_record is None or current != stale_record:
                 existing = _validate_activation(current, bridge)
                 temporary.unlink()
-                _fsync_directory(directory)
+                fsync_directory(directory)
                 return existing
         os.replace(temporary, target)
         os.chmod(target, 0o600)
-        _fsync_directory(directory)
+        fsync_directory(directory)
     except BaseException:
         if descriptor is not None:
             os.close(descriptor)

@@ -22,6 +22,8 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
+from core.transaction.fsync import fsync_directory
+
 SCHEMA_VERSION = 2
 PREVIOUS_SCHEMA_VERSION = 1
 RESUMABLE_SCHEMA_VERSIONS = frozenset({PREVIOUS_SCHEMA_VERSION, SCHEMA_VERSION})
@@ -55,12 +57,6 @@ def _entry_sha(record: dict) -> str:
     return hashlib.sha256(_canonical(without_sha)).hexdigest()
 
 
-def _fsync_directory(directory: Path) -> None:
-    descriptor = os.open(directory, os.O_RDONLY)
-    try:
-        os.fsync(descriptor)
-    finally:
-        os.close(descriptor)
 
 
 class Journal:
@@ -98,7 +94,7 @@ class Journal:
             os.fsync(descriptor)
         finally:
             os.close(descriptor)
-        _fsync_directory(self.path.parent)
+        fsync_directory(self.path.parent)
         return JournalEntry(sequence, record["event"], record["payload"])
 
     def _truncate_torn_tail(self) -> None:

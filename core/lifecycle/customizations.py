@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
 from dataclasses import dataclass
 from pathlib import Path
 from types import MappingProxyType
@@ -12,7 +11,7 @@ from core.lifecycle.catalog import (
     CatalogError,
     load_catalog_payload_sources,
     loads_catalog,
-    manifest_binding_matches,
+    release_bytes_match,
 )
 from core.lifecycle.filesystem import FilesystemInspectionError, bounded_read, normalize_relative_path
 from core.lifecycle.model import ReleaseCatalog
@@ -100,8 +99,8 @@ def _parse_manifest(raw: bytes) -> frozenset[str]:
     # tracked manifest as CRLF (issue #256). Normalizing CRLF→LF first is
     # deterministic and cannot invent paths — manifest generation refuses any
     # path containing "\r" — so the canonicality checks below stay meaningful.
-    if b"\r\n" in raw:
-        raw = raw.replace(b"\r\n", b"\n")
+    # (replace() is the identity when no CRLF is present.)
+    raw = raw.replace(b"\r\n", b"\n")
     try:
         text = raw.decode("utf-8")
     except UnicodeDecodeError as error:
@@ -157,7 +156,7 @@ def load_release_baseline(
     release_version: str | None = None
     identity_state = "UNKNOWN"
     if selected_catalog is not None and manifest_bytes is not None:
-        if not manifest_binding_matches(
+        if not release_bytes_match(
             selected_catalog.release.manifest.sha256, manifest_bytes
         ):
             errors.append("catalog manifest binding does not match the installed manifest")
@@ -194,10 +193,10 @@ def load_release_baseline(
                         errors.append(str(error))
                         unresolved_targets.add(target)
                         continue
-                    if (
-                        len(payload) != mapping.byte_size
-                        or hashlib.sha256(payload).hexdigest() != catalog_hashes[target]
-                    ):
+                    # A matching hash proves the byte size too; the CRLF form
+                    # of a payload has a different size by construction, so
+                    # the declared byte_size is not compared directly here.
+                    if not release_bytes_match(catalog_hashes[target], payload):
                         unresolved_targets.add(target)
             if unresolved_targets:
                 errors.append(
@@ -244,8 +243,16 @@ def classify_release_state(
     denied: bool,
     actual_sha256: str | None,
     baseline: ReleaseBaseline,
+    crlf_normalized_sha256: str | None = None,
 ) -> str:
-    """Layer byte/release state on top of the contract ownership class."""
+    """Layer byte/release state on top of the contract ownership class.
+
+    ``crlf_normalized_sha256`` is the digest of the file's CRLF→LF form
+    (None when the file contains no CRLF). On Windows autocrlf checkouts
+    every pristine text file carries CRLF on disk (issue #256); a file
+    whose LF form is byte-identical to the release is stock, not a user
+    modification — the same tolerance the manifest binding applies.
+    """
     if denied:
         return "forbidden"
     if kind == "missing":
@@ -256,7 +263,11 @@ def classify_release_state(
     if expected is not None and kind == "file":
         if actual_sha256 is None:
             return "unknown"
-        return "stock-unmodified" if actual_sha256 == expected else "stock-modified"
+        if actual_sha256 == expected or (
+            crlf_normalized_sha256 is not None and crlf_normalized_sha256 == expected
+        ):
+            return "stock-unmodified"
+        return "stock-modified"
     if ownership_class == "brain":
         return "unknown"
     if ownership_class == "generated":

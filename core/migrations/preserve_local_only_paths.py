@@ -14,6 +14,7 @@ import uuid
 from pathlib import Path
 from typing import Any
 
+from core.transaction.fsync import fsync_directory
 from core.utils.tracked_ignored import (
     BASELINE_LOCAL_ONLY_PATHS,
     LOCAL_ONLY_PATHS,  # noqa: F401 — re-exported; tests and callers use this module's name
@@ -176,14 +177,6 @@ def _write_journal(journal_dir: Path, payload: dict[str, Any]) -> None:
     finally:
         if os.path.exists(temporary_name):
             os.unlink(temporary_name)
-
-
-def _fsync_directory(path: Path) -> None:
-    descriptor = os.open(path, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
-    try:
-        os.fsync(descriptor)
-    finally:
-        os.close(descriptor)
 
 
 def _reject_duplicate_json_keys(pairs: list[tuple[str, object]]) -> dict[str, object]:
@@ -435,7 +428,7 @@ def _write_publication_intent(journal_dir: Path, generation: Path, archive: Path
             os.fsync(handle.fileno())
         os.chmod(temporary_name, 0o600)
         os.replace(temporary_name, intent_path)
-        _fsync_directory(journal_dir.parent)
+        fsync_directory(journal_dir.parent)
     finally:
         if os.path.exists(temporary_name):
             os.unlink(temporary_name)
@@ -494,23 +487,23 @@ def _finish_publication_recovery(journal_dir: Path) -> bool:
             if archive is None or archive_exists:
                 raise MigrationError("preservation publication recovery state is ambiguous")
             os.replace(journal_dir, archive)
-            _fsync_directory(journal_dir.parent)
+            fsync_directory(journal_dir.parent)
         elif archive is not None:
             if not archive_exists:
                 raise MigrationError("preservation publication recovery archive is missing")
             _read_journal(archive)
         os.replace(generation, journal_dir)
-        _fsync_directory(journal_dir.parent)
+        fsync_directory(journal_dir.parent)
         _read_journal(journal_dir)
     elif not canonical_exists and archive_exists and archive is not None:
         _read_journal(archive)
         os.replace(archive, journal_dir)
-        _fsync_directory(journal_dir.parent)
+        fsync_directory(journal_dir.parent)
         _read_journal(journal_dir)
     else:
         raise MigrationError("preservation publication recovery has no valid canonical generation")
     _publication_intent_path(journal_dir).unlink()
-    _fsync_directory(journal_dir.parent)
+    fsync_directory(journal_dir.parent)
     return True
 
 
@@ -557,18 +550,18 @@ def _publish_generation(journal_dir: Path, generation: Path, existing: dict[str,
     try:
         if archive is not None:
             os.replace(journal_dir, archive)
-            _fsync_directory(journal_dir.parent)
+            fsync_directory(journal_dir.parent)
         os.replace(generation, journal_dir)
-        _fsync_directory(journal_dir.parent)
+        fsync_directory(journal_dir.parent)
     except BaseException:
         if archive is not None and not journal_dir.exists():
             os.replace(archive, journal_dir)
-            _fsync_directory(journal_dir.parent)
+            fsync_directory(journal_dir.parent)
         _publication_intent_path(journal_dir).unlink(missing_ok=True)
-        _fsync_directory(journal_dir.parent)
+        fsync_directory(journal_dir.parent)
         raise
     _publication_intent_path(journal_dir).unlink()
-    _fsync_directory(journal_dir.parent)
+    fsync_directory(journal_dir.parent)
     if _identity(journal_dir.parent.lstat()) != _identity(parent_before):
         raise MigrationError("preservation storage parent identity changed during generation publish")
 
@@ -1038,7 +1031,7 @@ def stamp_transition(repo: Path) -> dict[str, Any]:
             os.fsync(handle.fileno())
         os.chmod(temporary_name, 0o644)
         os.replace(temporary_name, transition_path)
-        _fsync_directory(transition_path.parent)
+        fsync_directory(transition_path.parent)
     finally:
         if os.path.exists(temporary_name):
             os.unlink(temporary_name)

@@ -331,23 +331,36 @@ def canonical_catalog_bytes(catalog: ReleaseCatalog | Mapping[str, object]) -> b
     return _canonical_bytes(document)
 
 
-def manifest_binding_matches(expected_sha256: str, manifest_bytes: bytes) -> bool:
-    """True when the manifest bytes prove the catalog's manifest binding.
+def crlf_normalized_sha256(raw: bytes) -> str | None:
+    """Digest of the CRLF→LF form of *raw*, or None when it contains no CRLF.
 
-    The exact bytes are checked first and stay the primary contract. If they
-    differ and contain CRLF sequences, one deterministic CRLF→LF
-    normalization is also tried: Git's recommended ``core.autocrlf=true`` on
-    Windows rewrites the tracked manifest to CRLF at checkout time (issue
-    #256), while the binding hash is always computed over the LF release
-    bytes. The retry cannot create a false pass — it only accepts a manifest
-    whose LF form is byte-identical to the released manifest.
+    This is the ONE normalization Dex applies when release-owned bytes are
+    compared against release hashes. Git's recommended ``core.autocrlf=true``
+    on Windows rewrites every tracked text file to CRLF at checkout time
+    (issue #256), while release hashes are always computed over the LF
+    blob bytes. The normalization is deterministic — it cannot create a
+    false pass, because it only maps a file to the digest of its LF form,
+    which must still be byte-identical to the released content.
     """
-    if hashlib.sha256(manifest_bytes).hexdigest() == expected_sha256:
+    normalized = raw.replace(b"\r\n", b"\n")
+    if normalized == raw:
+        return None
+    return hashlib.sha256(normalized).hexdigest()
+
+
+def release_bytes_match(expected_sha256: str, raw: bytes) -> bool:
+    """True when *raw* proves a release hash; the exact bytes stay primary.
+
+    Every comparison of on-disk bytes against a release-declared sha256
+    (manifest binding, dormant payload sources, per-file release-state
+    classification) must go through this one policy: strict byte hash
+    first, then — only when the bytes contain CRLF — the digest of their
+    CRLF→LF form. See :func:`crlf_normalized_sha256` for why this is sound.
+    """
+    if hashlib.sha256(raw).hexdigest() == expected_sha256:
         return True
-    if b"\r\n" not in manifest_bytes:
-        return False
-    normalized = manifest_bytes.replace(b"\r\n", b"\n")
-    return hashlib.sha256(normalized).hexdigest() == expected_sha256
+    normalized = crlf_normalized_sha256(raw)
+    return normalized is not None and normalized == expected_sha256
 
 
 def _verify_identity(catalog: ReleaseCatalog, document: Mapping[str, object], manifest_bytes: bytes) -> None:
@@ -359,7 +372,7 @@ def _verify_identity(catalog: ReleaseCatalog, document: Mapping[str, object], ma
         )
     if not isinstance(manifest_bytes, bytes):
         _fail(CatalogIdentityError, "release manifest bytes were not supplied as bytes")
-    if not manifest_binding_matches(catalog.release.manifest.sha256, manifest_bytes):
+    if not release_bytes_match(catalog.release.manifest.sha256, manifest_bytes):
         _fail(CatalogIdentityError, "release manifest bytes do not match the catalog binding")
 
 
@@ -412,11 +425,12 @@ __all__ = [
     "canonical_catalog_bytes",
     "canonical_identity_bytes",
     "compute_catalog_sha256",
+    "crlf_normalized_sha256",
     "load_catalog",
     "load_catalog_payload_sources",
     "load_catalog_schema",
     "loads_catalog",
-    "manifest_binding_matches",
+    "release_bytes_match",
     "validate_catalog_document",
     "with_catalog_identity",
 ]
