@@ -280,7 +280,7 @@ def discard_superseded_activation(
         if document is None or document["bridge_release_version"] == installed_release_version:
             return False
         target.unlink()
-        _fsync_directory(target.parent)
+        fsync_directory(target.parent)
         return True
     except Exception:  # noqa: BLE001 - tidy-up must never fail a committed update
         return False

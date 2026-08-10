@@ -1026,7 +1026,7 @@ def test_delivered_release_commits_when_activation_record_is_corrupt(
         # Failure before anything is judged: the record is untouched.
         ("_well_formed_activation", True),
         # Failure after the unlink: the removal itself already happened.
-        ("_fsync_directory", False),
+        ("fsync_directory", False),
     ],
 )
 def test_delivered_release_commits_when_activation_removal_fails(

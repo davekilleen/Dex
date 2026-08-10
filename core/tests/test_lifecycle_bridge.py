@@ -254,7 +254,7 @@ def test_discard_superseded_activation_never_raises(
     def fail_fsync(_directory: Path) -> None:
         raise OSError("simulated fsync failure")
 
-    monkeypatch.setattr(bridge_module, "_fsync_directory", fail_fsync)
+    monkeypatch.setattr(bridge_module, "fsync_directory", fail_fsync)
     assert discard_superseded_activation(vault, "1.65.0") is False
     assert not path.exists()
 
