@@ -7,6 +7,18 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.93.0] — 🧹 Your list of changes stays yours — Dex's own files stop showing up in it (2026-08-10)
+
+Chris found his vault's change list crowded with dozens of files he never touched — Dex's own product files, freshly rewritten by an update and showing up as if they were his edits. The cause: the file that tells your vault what to overlook is written for the team that builds Dex, and it deliberately keeps Dex's own files visible there. Inside *your* vault that's backwards — one broad "save everything" moment quietly folds hundreds of Dex files into your private history, and every update after that dirties them all again.
+
+**What this fixes for you:**
+
+* **Dex's files no longer masquerade as your changes.** When an update refreshes that overlook-list in a vault, Dex now appends a clearly marked section telling your vault to disregard its product files — while everything of yours, including your custom skills and custom connections, stays visible and versioned exactly as before. The section is rebuilt from Dex's own ownership rules on every update, so it can never drift out of date.
+* **A background bookkeeping file stops appearing as something new to save.** The small timestamp Dex keeps to know when your search index was last refreshed is now overlooked like the rest of Dex's working state.
+* **If your vault already caught some of Dex's files,** they'll stop changing on their own once told to let them go — ask Dex to "untrack Dex's product files" and it takes one command, with nothing deleted from disk.
+
+Thanks to Chris for the report, traced from a single noisy update all the way to the root cause.
+
 ## [1.94.0] — 📦 Moving your Dex folder no longer locks you out of updating (2026-08-11)
 
 Dex writes down where your vault lives. Move that folder, rename it, or work from a copy of it, and the note still points at the old place — and Dex was reading that mismatch as damage. It refused to update at all, with a message that didn't say why. A user hit this while rehearsing the rescue route on a duplicate of his own vault, and spent an hour reading Dex's code to work out which of its nine checks had failed.
