@@ -115,6 +115,56 @@ def test_helper_functions_and_formatters_cover_event_shape():
     assert with_attendees["attendees"][0]["is_current_user"] is True
 
 
+class _ModernStore:
+    """Store exposing the macOS 14+ full-access request API."""
+
+    def __init__(self):
+        self.calls = []
+
+    def requestFullAccessToEventsWithCompletion_(self, completion):
+        self.calls.append("requestFullAccessToEventsWithCompletion_")
+        completion(True, None)
+
+    def requestAccessToEntityType_completion_(self, entity_type, completion):
+        self.calls.append("requestAccessToEntityType_completion_")
+        completion(True, None)
+
+
+class _LegacyStore:
+    """Store on macOS 13 and earlier — only the legacy request API exists."""
+
+    def __init__(self):
+        self.calls = []
+
+    def requestAccessToEntityType_completion_(self, entity_type, completion):
+        self.calls.append("requestAccessToEntityType_completion_")
+        completion(True, None)
+
+
+def test_request_calendar_access_prefers_modern_full_access_api(monkeypatch):
+    """On macOS 14+ the legacy request API reports denied without prompting,
+    so fresh grants were impossible (#377) — the modern API must win."""
+    monkeypatch.setattr(calendar_eventkit, "EventKit", SimpleNamespace(EKEntityTypeEvent=0))
+    store = _ModernStore()
+    granted = []
+
+    calendar_eventkit.request_calendar_access(store, lambda ok, error: granted.append(ok))
+
+    assert store.calls == ["requestFullAccessToEventsWithCompletion_"]
+    assert granted == [True]
+
+
+def test_request_calendar_access_falls_back_to_legacy_api(monkeypatch):
+    monkeypatch.setattr(calendar_eventkit, "EventKit", SimpleNamespace(EKEntityTypeEvent=0))
+    store = _LegacyStore()
+    granted = []
+
+    calendar_eventkit.request_calendar_access(store, lambda ok, error: granted.append(ok))
+
+    assert store.calls == ["requestAccessToEntityType_completion_"]
+    assert granted == [True]
+
+
 def test_get_events_prints_json(monkeypatch, capsys):
     monkeypatch.setattr(
         calendar_eventkit,

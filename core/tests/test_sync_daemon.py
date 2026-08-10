@@ -160,6 +160,36 @@ def test_pending_batch_parses_the_canonical_task_list_once(
     assert sorted(updates) == sorted([(first_id, True), (second_id, True)])
 
 
+def test_processing_survives_files_arriving_mid_batch(
+    tmp_path, monkeypatch, sync_daemon
+):
+    """The watchdog observer thread adds to pending_files while
+    process_pending_files iterates it. Iterating the live set raised
+    "RuntimeError: Set changed size during iteration" and crash-looped the
+    daemon (#362); the batch must be snapshotted, and events landing
+    mid-batch must be kept for the next cycle rather than cleared away."""
+    handler = sync_daemon.DexSyncHandler(tmp_path)
+    first_note = tmp_path / "first.md"
+    second_note = tmp_path / "second.md"
+    late_note = tmp_path / "late.md"
+    handler.pending_files.update({first_note, second_note})
+
+    processed = []
+
+    def sync_and_mutate_pending(file_path, canonical_states=None):
+        processed.append(file_path)
+        # Simulate the observer thread delivering a new event mid-batch.
+        handler.pending_files.add(late_note)
+        return canonical_states
+
+    monkeypatch.setattr(handler, "sync_file_tasks", sync_and_mutate_pending)
+
+    handler.process_pending_files()  # must not raise RuntimeError
+
+    assert sorted(processed) == sorted([first_note, second_note])
+    assert handler.pending_files == {late_note}
+
+
 def test_third_failure_is_queued_once_for_session_start(
     tmp_path, monkeypatch, sync_daemon, caplog
 ):
