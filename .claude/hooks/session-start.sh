@@ -30,27 +30,19 @@ echo "📅 Today: $(date '+%A, %B %d, %Y')"
 echo ""
 
 # Detect launch agents that still point to this vault's former location.
-# Doctor owns the repair; session start remains read-only for these machine files.
-VAULT_BREADCRUMB="$HOME/.config/dex/vault-path"
-if [[ -f "$ONBOARDING_MARKER" ]]; then
-    STORED_VAULT=""
-    if [[ -f "$VAULT_BREADCRUMB" ]]; then
-        STORED_VAULT=$(tr -d '[:space:]' < "$VAULT_BREADCRUMB")
+# Doctor owns the repair; session start remains read-only for these machine
+# files. Detection is delegated to core/utils/launch_agents.py — the exact
+# module Doctor uses — so the hook can never warn about something Doctor
+# refuses to see (breadcrumb guards, symlink normalization, plist parsing,
+# and path-boundary matching all come from that one implementation).
+if [[ -f "$ONBOARDING_MARKER" && -f "$CLAUDE_DIR/core/utils/launch_agents.py" ]]; then
+    STALE_JOB_PYTHON="python3"
+    if [[ -f "$CLAUDE_DIR/.venv/bin/python" ]]; then
+        STALE_JOB_PYTHON="$CLAUDE_DIR/.venv/bin/python"
     fi
-    if [[ "$STORED_VAULT" != "$CLAUDE_DIR" ]]; then
-        if [[ -n "$STORED_VAULT" ]]; then
-            PLIST_PATH_CONFLICT="false"
-            for plist in "$HOME/Library/LaunchAgents"/com.dex.*.plist "$HOME/Library/LaunchAgents"/com.claudesidian.*.plist; do
-                [[ -f "$plist" ]] || continue
-                if grep -Fq -- "$STORED_VAULT" "$plist" 2>/dev/null; then
-                    PLIST_PATH_CONFLICT="true"
-                    break
-                fi
-            done
-            if [[ "$PLIST_PATH_CONFLICT" == "true" ]]; then
-                echo "Dex found a background job that still points to this vault's old location — run /dex-doctor to fix this safely."
-            fi
-        fi
+    STALE_JOB_STATUS=$( (cd "$CLAUDE_DIR" && "$STALE_JOB_PYTHON" -m core.utils.launch_agents --stale-check --vault "$CLAUDE_DIR") 2>/dev/null || true )
+    if [[ "$STALE_JOB_STATUS" == "stale-job-found" ]]; then
+        echo "Dex found a background job that still points to this vault's old location — run /dex-doctor to fix this safely."
     fi
 fi
 
