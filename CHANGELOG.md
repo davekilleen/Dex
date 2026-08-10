@@ -7,14 +7,14 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
-## [1.86.0] — 🔄 An update now finishes its own paperwork (2026-08-10)
+## [1.86.0] — 🔄 An update now clears its own stale paperwork (2026-08-10)
 
-A wonderfully thorough field report — the reporter reproduced the problem twice and traced it to the exact line — showed that after every successful update, the small internal note recording "this is the version running here" still named the old version. Since v1.84.0, Dex has corrected that note the next time you used a planning or undo feature. But that's a repair after the fact: for a stretch after each update, the note was simply wrong, and anything that checked it during that stretch was refused.
+A wonderfully thorough field report (reproduced twice, traced to the exact line) showed that after every update, a small internal note recording "this version is active here" still named the old version, so the next planning or undo request was refused until a separate repair ran.
 
 **What this fixes for you:**
 
-* **The update corrects the note itself, as part of installing.** Refreshing that internal note is now part of the same protected step that puts the new version's files in place — so the moment an update finishes, your install already agrees with itself. Nothing has to wait for the next feature you happen to use, and nightly unattended updates no longer trip over the previous night's paperwork.
-* **An update that would leave the update system broken now steps back instead of finishing.** If, at the last moment, the freshly installed files can't confirm a working update system, Dex puts everything back exactly as it was and asks you to run /dex-doctor — rather than completing the update and leaving you stuck afterwards.
+* **An update now clears the outdated note as its final step.** The moment the new files are safely in place, the note the old version left behind is removed — and the very next thing you do writes a fresh one for the new version. Plans, undo, and unattended nightly updates no longer trip over the previous version's paperwork, and there's no gap where your install disagrees with itself.
+* **Clearing the note can never block an update.** If the note is unreadable or can't be cleared, the update still completes exactly as before — tidying up is never allowed to veto an update that already succeeded — and Dex's existing self-repair still fixes the note the next time it's read.
 
 ## [1.85.0] — 🫀 Health checks that ask "did it work?" — and don't wait until tomorrow to tell you (2026-08-10)
 

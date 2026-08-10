@@ -14,6 +14,14 @@ from types import SimpleNamespace
 import pytest
 
 from core.lifecycle import service
+from core.lifecycle.bridge import ACTIVATION_RELATIVE, activate_vault
+from core.lifecycle.catalog import canonical_catalog_bytes, load_catalog
+from core.lifecycle.inventory import build_inventory
+from core.tests.lifecycle_test_helpers import (
+    canonical_json_bytes,
+    lifecycle_catalog_document,
+    write_bridge_release,
+)
 from core.transaction.engine import PlanRejected
 from core.update import apply_update
 from core.utils import update_verifier
@@ -829,105 +837,56 @@ def test_delivered_release_refuses_any_preview_drift_before_writing(
     assert _git(brain, "rev-parse", "refs/dex/installed") == old_commit
 
 
-def _lifecycle_catalog_document(version: str, manifest_bytes: bytes) -> dict[str, object]:
-    import hashlib
+def _equip_with_lifecycle_state(root: Path, version: str) -> None:
+    """Give one tree (vault or release) an installed bridge + bound catalog.
 
-    from core.lifecycle.catalog import with_catalog_identity
-
-    return with_catalog_identity(
-        {
-            "catalog_version": 1,
-            "release": {
-                "version": version,
-                "channel": "release",
-                "immutable_distribution_tag": f"dist/release/v{version}-0123456",
-                "source_commit": "0123456789abcdef0123456789abcdef01234567",
-                "manifest": {
-                    "path": "System/.installed-files.manifest",
-                    "sha256": hashlib.sha256(manifest_bytes).hexdigest(),
-                },
-            },
-            "items": [],
-            "integrity": {"catalog_sha256": "0" * 64, "signatures": []},
-        }
-    )
-
-
-def _manifest_bytes_for(root: Path, *, exclude_top_level: frozenset[str]) -> bytes:
-    paths = sorted(
-        {
-            candidate.relative_to(root).as_posix()
-            for candidate in root.rglob("*")
-            if candidate.is_file()
-            and not (set(candidate.relative_to(root).parts) & exclude_top_level)
-        }
-        | {"System/.installed-files.manifest"}
-    )
-    return "".join(f"{relative}\n" for relative in paths).encode()
-
-
-def _equip_release_with_lifecycle_catalog(
-    release: Path, version: str, *, catalog_version: str | None = None
-) -> bytes:
-    """Ship a bridge declaration and a bound catalog exactly as a release does.
-
-    Returns the manifest bytes ``_commit_release`` will regenerate, so tests
-    can assert the catalog binding stays exact.
+    Uses the same ``_refresh_manifest`` the release fixture commits with, so a
+    later ``_commit_release`` regenerates byte-identical manifest content and
+    the catalog binding stays exact.
     """
-    from core.lifecycle.catalog import canonical_catalog_bytes
-    from core.tests.test_lifecycle_bridge import _write_bridge_release
-
-    _write_bridge_release(release, release_version=version)
-    _write(release, "System/.release-catalog.json", b"{}\n")
-    manifest_bytes = _manifest_bytes_for(release, exclude_top_level=frozenset({".git"}))
-    document = _lifecycle_catalog_document(catalog_version or version, manifest_bytes)
-    _write(release, "System/.release-catalog.json", canonical_catalog_bytes(document))
-    return manifest_bytes
+    write_bridge_release(root, release_version=version)
+    _write(root, "System/.release-catalog.json", b"{}\n")
+    _refresh_manifest(root)
+    manifest_bytes = (root / "System/.installed-files.manifest").read_bytes()
+    document = lifecycle_catalog_document(version, manifest_bytes)
+    _write(root, "System/.release-catalog.json", canonical_catalog_bytes(document))
 
 
-def _equip_vault_with_lifecycle_state(vault: Path, version: str) -> None:
-    """Give the fixture vault the installed bridge + catalog for ``version``."""
-    from core.lifecycle.catalog import canonical_catalog_bytes
-    from core.tests.test_lifecycle_bridge import _write_bridge_release
-
-    _write_bridge_release(vault, release_version=version)
-    _write(vault, "System/.release-catalog.json", b"{}\n")
-    manifest_bytes = _manifest_bytes_for(
-        vault, exclude_top_level=frozenset({".git", ".dex"})
-    )
-    _write(vault, "System/.installed-files.manifest", manifest_bytes)
-    document = _lifecycle_catalog_document(version, manifest_bytes)
-    _write(vault, "System/.release-catalog.json", canonical_catalog_bytes(document))
-
-
-def test_delivered_release_refreshes_activation_inside_the_committed_transaction(
+def _deliver_and_preview_equipped_release(
     split_release_fixture: dict[str, object],
     tmp_path: Path,
-) -> None:
-    """Issue #433: applying an update must leave the activation record naming
-    the newly installed release, not the previous one, before any later gated
-    operation gets a chance to repair it."""
-    from core.lifecycle.bridge import ACTIVATION_RELATIVE, activate_vault
-
+    *,
+    vault_version: str = "1.63.0",
+    release_version: str = "1.65.0",
+    equip_release: bool = True,
+) -> tuple[dict[str, object], dict[str, object]]:
+    """Deliver and preview a release over a vault with installed lifecycle state."""
     vault = split_release_fixture["vault"]
     release = split_release_fixture["release"]
     brain = split_release_fixture["brain"]
     _old_tag, _old_tag_object, old_commit, _old_tree = split_release_fixture["old"]
 
-    _equip_vault_with_lifecycle_state(vault, "1.63.0")
-    activation_path = vault / ACTIVATION_RELATIVE
-    stale = activate_vault(vault)
-    assert stale["bridge_release_version"] == "1.63.0"
-
-    _write(release, "System/.release-evidence-profile.json", legacy_profile_bytes("1.65.0"))
-    expected_manifest = _equip_release_with_lifecycle_catalog(release, "1.65.0")
-    target_tag, _target_tag_object, target_commit, _target_tree = _commit_release(
-        release, "1.65.0"
+    _write(
+        release,
+        "System/.release-evidence-profile.json",
+        legacy_profile_bytes(release_version),
     )
-    assert (release / "System/.installed-files.manifest").read_bytes() == expected_manifest
+    if equip_release:
+        _equip_with_lifecycle_state(release, release_version)
+    target = _commit_release(release, release_version)
+    split_release_fixture["target"] = target
+    _target_tag, _target_tag_object, target_commit, _target_tree = target
     _git(release, "branch", "-f", "release", target_commit)
-    _write(vault, "package.json", b'{"name":"dex-test","version":"1.63.0"}\n')
-    _write(vault, "System/.release-evidence-profile.json", legacy_profile_bytes("1.63.0"))
+    _write(
+        vault,
+        "package.json",
+        json.dumps({"name": "dex-test", "version": vault_version}).encode() + b"\n",
+    )
+    _write(
+        vault,
+        "System/.release-evidence-profile.json",
+        legacy_profile_bytes(vault_version),
+    )
     _git(brain, "update-ref", "refs/remotes/upstream/release", old_commit)
 
     delivered = apply_update.deliver_latest_release(
@@ -938,9 +897,33 @@ def test_delivered_release_refreshes_activation_inside_the_committed_transaction
         wall_clock_seconds=60.0,
     )
     assert delivered["status"] == "delivered"
+    previewed = service.build_and_preview_delivered_release(vault, delivered["release"])
+    return delivered, previewed
+
+
+def test_delivered_release_clears_superseded_activation_and_next_plan_read_succeeds(
+    split_release_fixture: dict[str, object],
+    tmp_path: Path,
+) -> None:
+    """Issue #433: after an update commits, the previous release's activation
+    record must not keep refusing gated operations.  The committed apply
+    removes the superseded record (declared in the receipt); the next gated
+    operation re-records against the newly installed release, stamping the
+    running code's own api_version."""
+    vault = split_release_fixture["vault"]
+    brain = split_release_fixture["brain"]
+
+    _equip_with_lifecycle_state(vault, "1.63.0")
+    activation_path = vault / ACTIVATION_RELATIVE
+    stale = activate_vault(vault)
+    assert stale["bridge_release_version"] == "1.63.0"
+
+    delivered, previewed = _deliver_and_preview_equipped_release(
+        split_release_fixture, tmp_path
+    )
+    target_tag, _target_tag_object, target_commit, _target_tree = split_release_fixture["target"]
     assert delivered["release"]["tag"] == target_tag
 
-    previewed = service.build_and_preview_delivered_release(vault, delivered["release"])
     executed = service.execute_approved_delivered_release(
         vault,
         previewed["preview"],
@@ -950,74 +933,217 @@ def test_delivered_release_refreshes_activation_inside_the_committed_transaction
     assert executed["receipt"]["transaction_id"]
     assert _git(brain, "rev-parse", "refs/dex/installed") == target_commit
 
-    # The pre-fix failure shape: immediately after the apply, before any other
-    # lifecycle operation runs, the record still named 1.63.0 and every gated
-    # operation raised "existing activation belongs to another bridge release".
+    # The pre-fix #433 failure shape: immediately after the apply the record
+    # still named 1.63.0 and every gated operation raised "existing activation
+    # belongs to another bridge release".  The committed apply now removes the
+    # superseded record and declares that removal in its receipt.
+    assert not activation_path.exists() and not activation_path.is_symlink()
+    assert ACTIVATION_RELATIVE.as_posix() in executed["receipt"]["declared_paths"]
+
+    # The reported symptom cannot recur: the next gated read succeeds, and the
+    # newly installed code records its own activation for the new release.
+    plan = service.build_inventory_and_plan(vault)
+    assert "plan" in plan
     refreshed = json.loads(activation_path.read_text(encoding="utf-8"))
     assert refreshed["bridge_release_version"] == "1.65.0"
     assert refreshed["activation_version"] == 1
     assert refreshed["api_version"] == service.api_version
-    recorded_bytes = activation_path.read_bytes()
-
-    # A subsequent gated plan read succeeds AND validates the record as-is —
-    # proving the refresh happened inside the delivered-release transaction,
-    # not through the later stale-record repair.
-    plan = service.build_inventory_and_plan(vault)
-    assert "plan" in plan
-    assert activation_path.read_bytes() == recorded_bytes
 
 
-def test_delivered_release_rolls_back_when_activation_cannot_be_rerecorded(
+def test_delivered_release_commits_even_when_new_release_declarations_are_unreadable(
     split_release_fixture: dict[str, object],
     tmp_path: Path,
 ) -> None:
-    """A release whose applied bytes cannot re-record activation must not
-    commit: committing would strand every subsequent gated operation."""
-    from core.lifecycle.bridge import ACTIVATION_RELATIVE, activate_vault
-
+    """The engine executing an update is the previous release's code.  It must
+    never veto a byte-verified update because it cannot interpret the new
+    release's declarations (a future bridge contract, journal schema, or
+    activation API); tidy-up reads only the old record's own format."""
     vault = split_release_fixture["vault"]
     release = split_release_fixture["release"]
-    brain = split_release_fixture["brain"]
-    _old_tag, _old_tag_object, old_commit, _old_tree = split_release_fixture["old"]
 
-    _equip_vault_with_lifecycle_state(vault, "1.63.0")
+    _equip_with_lifecycle_state(vault, "1.63.0")
     activation_path = vault / ACTIVATION_RELATIVE
     activate_vault(vault)
-    activation_before = activation_path.read_bytes()
-    readme_before = (vault / "README.md").read_bytes()
 
-    _write(release, "System/.release-evidence-profile.json", legacy_profile_bytes("1.65.0"))
-    # Torn release: the bridge declaration says 1.65.0 but its catalog still
-    # names 1.63.0, so the applied bytes cannot prove a consistent activation.
-    _equip_release_with_lifecycle_catalog(release, "1.65.0", catalog_version="1.63.0")
-    _target_tag, _target_tag_object, target_commit, _target_tree = _commit_release(
-        release, "1.65.0"
+    # The new release ships a declaration this engine cannot parse.
+    _write(
+        release,
+        "core/lifecycle/catalog/bridge-release.json",
+        b'{"bridge_contract_version": 2, "release_version": "1.65.0", "future_field": true}\n',
     )
-    _git(release, "branch", "-f", "release", target_commit)
-    _write(vault, "package.json", b'{"name":"dex-test","version":"1.63.0"}\n')
-    _write(vault, "System/.release-evidence-profile.json", legacy_profile_bytes("1.63.0"))
-    _git(brain, "update-ref", "refs/remotes/upstream/release", old_commit)
+    _delivered, previewed = _deliver_and_preview_equipped_release(
+        split_release_fixture, tmp_path, equip_release=False
+    )
 
-    delivered = apply_update.deliver_latest_release(
+    executed = service.execute_approved_delivered_release(
         vault,
-        state_root=tmp_path / "evidence-state",
-        remote_url=str(release),
-        allow_test_transport=True,
-        wall_clock_seconds=60.0,
+        previewed["preview"],
+        previewed["approval_token"],
     )
-    assert delivered["status"] == "delivered"
-    previewed = service.build_and_preview_delivered_release(vault, delivered["release"])
 
-    with pytest.raises(PlanRejected, match="cannot re-record"):
+    assert executed["receipt"]["transaction_id"]
+    assert (vault / "README.md").read_bytes() == b"new brain\n"
+    # The superseded record is still cleared: removal never reads the newly
+    # installed release's files.
+    assert not activation_path.exists()
+
+
+def test_delivered_release_commits_when_activation_record_is_corrupt(
+    split_release_fixture: dict[str, object],
+    tmp_path: Path,
+) -> None:
+    """A pre-existing corrupt record must not block an update.  It is left in
+    place as fail-closed evidence for activation and Doctor to judge."""
+    vault = split_release_fixture["vault"]
+
+    _equip_with_lifecycle_state(vault, "1.63.0")
+    activation_path = vault / ACTIVATION_RELATIVE
+    activation_path.parent.mkdir(parents=True, exist_ok=True)
+    corrupt = b'{"activation_version":999}\n'
+    activation_path.write_bytes(corrupt)
+
+    _delivered, previewed = _deliver_and_preview_equipped_release(
+        split_release_fixture, tmp_path
+    )
+    executed = service.execute_approved_delivered_release(
+        vault,
+        previewed["preview"],
+        previewed["approval_token"],
+    )
+
+    assert executed["receipt"]["transaction_id"]
+    assert (vault / "README.md").read_bytes() == b"new brain\n"
+    assert activation_path.read_bytes() == corrupt
+    assert ACTIVATION_RELATIVE.as_posix() not in executed["receipt"]["declared_paths"]
+    # Gated operations still fail closed on the corrupt record afterwards.
+    with pytest.raises(PlanRejected, match="run /dex-doctor"):
+        service.build_inventory_and_plan(vault)
+
+
+@pytest.mark.parametrize(
+    ("failing_seam", "record_survives"),
+    [
+        # Failure before anything is judged: the record is untouched.
+        ("_well_formed_activation", True),
+        # Failure after the unlink: the removal itself already happened.
+        ("_fsync_directory", False),
+    ],
+)
+def test_delivered_release_commits_when_activation_removal_fails(
+    split_release_fixture: dict[str, object],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    failing_seam: str,
+    record_survives: bool,
+) -> None:
+    """Removal is tidy-up, never a gate: any failure inside it must neither
+    fail nor roll back the committed update, and must keep the receipt honest."""
+    from core.lifecycle import bridge as bridge_module
+
+    vault = split_release_fixture["vault"]
+
+    _equip_with_lifecycle_state(vault, "1.63.0")
+    activation_path = vault / ACTIVATION_RELATIVE
+    activate_vault(vault)
+
+    _delivered, previewed = _deliver_and_preview_equipped_release(
+        split_release_fixture, tmp_path
+    )
+
+    def fail(*_args: object, **_kwargs: object) -> None:
+        raise OSError("simulated failure during activation tidy-up")
+
+    monkeypatch.setattr(bridge_module, failing_seam, fail)
+    executed = service.execute_approved_delivered_release(
+        vault,
+        previewed["preview"],
+        previewed["approval_token"],
+    )
+
+    assert executed["receipt"]["transaction_id"]
+    assert (vault / "README.md").read_bytes() == b"new brain\n"
+    assert activation_path.exists() is record_survives
+    assert ACTIVATION_RELATIVE.as_posix() not in executed["receipt"]["declared_paths"]
+
+
+def test_delivered_release_retry_after_finalize_failure_keeps_no_stale_state(
+    split_release_fixture: dict[str, object],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A finalize failure rolls the attempt back without touching the record;
+    the retried apply removes it, and the record the next gated operation
+    writes reflects the committed vault — never a mid-attempt baseline."""
+    vault = split_release_fixture["vault"]
+
+    _equip_with_lifecycle_state(vault, "1.63.0")
+    activation_path = vault / ACTIVATION_RELATIVE
+    activate_vault(vault)
+    record_before = activation_path.read_bytes()
+
+    _delivered, previewed = _deliver_and_preview_equipped_release(
+        split_release_fixture, tmp_path
+    )
+
+    real_finalize = apply_update._finalize_release_metadata
+
+    def fail_finalize(*_args: object, **_kwargs: object) -> None:
+        raise RuntimeError("simulated release pin failure")
+
+    monkeypatch.setattr(apply_update, "_finalize_release_metadata", fail_finalize)
+    with pytest.raises(RuntimeError, match="simulated release pin failure"):
         service.execute_approved_delivered_release(
             vault,
             previewed["preview"],
             previewed["approval_token"],
         )
+    assert activation_path.read_bytes() == record_before
 
-    assert (vault / "README.md").read_bytes() == readme_before
-    assert activation_path.read_bytes() == activation_before
-    assert _git(brain, "rev-parse", "refs/dex/installed") == old_commit
+    monkeypatch.setattr(apply_update, "_finalize_release_metadata", real_finalize)
+    executed = service.execute_approved_delivered_release(
+        vault,
+        previewed["preview"],
+        previewed["approval_token"],
+    )
+    assert executed["receipt"]["transaction_id"]
+    assert not activation_path.exists()
+
+    expected_catalog = load_catalog(
+        vault / "System/.release-catalog.json", release_root=vault
+    )
+    expected_hash = build_inventory(vault, catalog=expected_catalog).to_dict()[
+        "inventory_sha256"
+    ]
+    plan = service.build_inventory_and_plan(vault)
+    assert "plan" in plan
+    refreshed = json.loads(activation_path.read_text(encoding="utf-8"))
+    assert refreshed["bridge_release_version"] == "1.65.0"
+    assert refreshed["baseline_inventory_sha256"] == expected_hash
+
+
+def test_apply_verified_release_clears_superseded_activation(
+    split_release_fixture: dict[str, object],
+) -> None:
+    """The direct apply route shares the post-commit tidy-up, so any future
+    caller of apply_verified_release cannot reproduce issue #433."""
+    vault = split_release_fixture["vault"]
+    activation_path = vault / ACTIVATION_RELATIVE
+    activation_path.parent.mkdir(parents=True, exist_ok=True)
+    activation_path.write_bytes(
+        canonical_json_bytes(
+            {
+                "activation_version": 1,
+                "api_version": service.api_version,
+                "bridge_release_version": "1.63.0",
+                "baseline_inventory_sha256": "0" * 64,
+            }
+        )
+    )
+
+    result = apply_update.apply_verified_release(vault, _verified(split_release_fixture))
+
+    assert result["committed"] is True
+    assert not activation_path.exists()
 
 
 def test_apply_update_keeps_personal_instructions_when_release_template_changes(

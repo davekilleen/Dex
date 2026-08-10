@@ -190,15 +190,13 @@ def _validate_activation(raw: bytes, bridge: BridgeRelease) -> dict[str, object]
         raise BridgeActivationError(f"existing activation is invalid: {error}") from error
 
 
-def _stale_activation(raw: bytes, bridge: BridgeRelease) -> bool:
-    """True when the record is a well-formed activation for a different bridge release.
+def _well_formed_activation(raw: bytes) -> dict[str, object] | None:
+    """Return the parsed record when it is structurally a routine activation.
 
-    A delivered release rewrites the shipped bridge declaration, but the
-    activation record is runtime state no release may write, so after every
-    update the existing record still references the prior release. That
-    staleness is routine, not evidence of tampering; activation re-records
-    the baseline exactly as a first run would. Anything structurally invalid
-    stays refused.
+    "Routine" means the closed four-field shape in canonical bytes with a
+    supported activation version, a string API version, a strict-SemVer
+    release, and a hex inventory digest.  Anything else returns ``None`` so
+    callers keep treating it as fail-closed evidence rather than staleness.
     """
     try:
         value = _closed(
@@ -212,20 +210,79 @@ def _stale_activation(raw: bytes, bridge: BridgeRelease) -> bool:
             "existing activation",
         )
     except BridgeError:
-        return False
+        return None
     recorded = value["bridge_release_version"]
     digest = value["baseline_inventory_sha256"]
-    return (
+    if (
         type(value["activation_version"]) is int
         and value["activation_version"] == ACTIVATION_VERSION
         and isinstance(value["api_version"], str)
         and isinstance(recorded, str)
         and SEMVER.fullmatch(recorded) is not None
-        and recorded != bridge.release_version
         and isinstance(digest, str)
         and HEX_SHA256.fullmatch(digest) is not None
         and raw == _canonical(dict(value))
-    )
+    ):
+        return dict(value)
+    return None
+
+
+def _stale_activation(raw: bytes, bridge: BridgeRelease) -> bool:
+    """True when the record is a well-formed activation for a different bridge release.
+
+    A delivered release rewrites the shipped bridge declaration, but the
+    activation record is runtime state no release may write, so after every
+    update the existing record still references the prior release. That
+    staleness is routine, not evidence of tampering; activation re-records
+    the baseline exactly as a first run would. Anything structurally invalid
+    stays refused.
+    """
+    document = _well_formed_activation(raw)
+    return document is not None and document["bridge_release_version"] != bridge.release_version
+
+
+def discard_superseded_activation(
+    vault_root: str | Path,
+    installed_release_version: str,
+) -> bool:
+    """Best-effort, post-commit removal of a record another release left behind.
+
+    Called by the release-apply paths after their transaction has committed a
+    release identified by ``installed_release_version``.  The engine executing
+    an update is the *previous* release's code, so it must never interpret the
+    newly installed release's declarations (a future release may change the
+    bridge contract, the journal schema, or the activation API surface) and it
+    must never stamp its own ``api_version`` onto a record naming the new
+    release.  Removing the superseded record avoids both: an absent record
+    means "activate on next use" to every historic and future engine, and the
+    next gated operation re-records the baseline with the newly installed
+    code, which validates its own formats.
+
+    This is tidy-up, never a gate: it runs outside the transaction, removes
+    only a well-formed record naming a different release, leaves anything
+    unreadable, malformed, or unsafe in place for the fail-closed activation
+    path to judge, and never raises — a byte-verified committed update must
+    not be failed (or rolled back) because its paperwork could not be cleared.
+    ``activate_vault``'s stale-record re-recording remains the safety net.
+    Returns ``True`` only when a record was removed.
+    """
+    try:
+        if (
+            not isinstance(installed_release_version, str)
+            or SEMVER.fullmatch(installed_release_version) is None
+        ):
+            return False
+        target = Path(vault_root) / ACTIVATION_RELATIVE
+        if target.is_symlink() or not target.is_file():
+            return False
+        document = _well_formed_activation(target.read_bytes())
+        if document is None or document["bridge_release_version"] == installed_release_version:
+            return False
+        target.unlink()
+        _fsync_directory(target.parent)
+        return True
+    except Exception:  # noqa: BLE001 - tidy-up must never fail a committed update
+        return False
 
 
 def _fsync_directory(directory: Path) -> None:
@@ -369,6 +426,7 @@ __all__ = [
     "BridgeRelease",
     "JournalCompatibility",
     "activate_vault",
+    "discard_superseded_activation",
     "load_bridge_release",
     "prepare_vault",
     "resume_bridge_transactions",
