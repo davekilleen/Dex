@@ -7,7 +7,7 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
-## [1.86.0] — 🔄 Note-syncing survives busy days, and calendar permissions work again on newer Macs (2026-08-10)
+## [1.87.0] — 🔄 Note-syncing survives busy days, and calendar permissions work again on newer Macs (2026-08-10)
 
 A community member sent in two unusually sharp bug reports, each diagnosed right down to the fix. Both are in this release — thank you, Chris.
 
@@ -16,6 +16,17 @@ A community member sent in two unusually sharp bug reports, each diagnosed right
 * **The helper that syncs your ticked checkboxes stops dying on busy days.** The background helper that notices when you tick a task done in Obsidian and updates it everywhere could crash whenever lots of files changed at once — a big meeting-processing run, a reorganization, any burst of activity. Your Mac restarted it each time, so it limped along for months looking healthy while quietly missing changes at exactly the busiest moments. It now takes a calm snapshot of what's waiting, works through that, and anything that changes while it's working is simply picked up in the next pass — nothing crashes, nothing gets dropped.
 * **Dex can actually ask for calendar and reminders permission on newer Macs.** Apple changed how apps must request calendar access, and Dex was still asking the old way — which newer Macs refuse instantly without ever showing you the permission window. So anyone on a recent Mac, a new machine, or who had reset their privacy settings could never grant Dex calendar access, no matter how many times they tried. Dex now asks the new way on Macs that support it, and the old way still works on older ones.
 * **When calendar access is denied, you're told what to do about it — not "Exit code: 1".** Dex has always written a helpful explanation when access is refused ("Calendar access denied. Enable in System Settings → Privacy & Security → Calendars…"), but the part of Dex that relays errors was looking for it in the wrong place, so all you ever saw was a bare "Exit code: 1". The real guidance now reaches you — which matters twice over, because it's how you'd discover the permission problem above.
+
+## [1.86.0] — 🧭 The checkup now sees all your background jobs — and stops crying wolf (2026-08-10)
+
+Three community bug reports showed the same pattern from different angles: Dex's health checkup could miss real problems with background jobs while flagging healthy things as broken. This release makes the checkup match reality in both directions. Thanks to the three reporters whose unusually precise write-ups made these fixes straightforward.
+
+**What this fixes for you:**
+
+* **Background jobs you set up yourself are now watched.** The checkup used to recognize only the background jobs Dex ships. If you scheduled your own Dex automations under your own names, they were invisible — a silently dead job read as "healthy, nothing to monitor," the exact failure the check exists to catch. Now any background job that works on this vault is checked no matter what you named it (jobs from Dex's earlier name are recognized too), and the checkup says plainly which jobs it can audit for freshness and which it can only confirm are running. Other products' background jobs are never touched — even a damaged one can't confuse Dex's own checkup.
+* **Moving your Dex folder no longer strands background jobs in limbo.** After a folder move or rename, Dex would warn at session start that background jobs still pointed at the old location and send you to /dex-doctor — which then reported everything fine, because it treated those very jobs as belonging to some other install. Now the session-start warning and the doctor use one shared detector, so anything the warning fires on the doctor can see: it reports the job as broken and offers to repoint or remove it with your approval — including jobs only half-fixed by an earlier move. (In the report that surfaced this, seven jobs had been running against a dead folder for a day while the checkup said nothing was broken.)
+* **"Modified shipped files" stops accusing files you never touched.** The checkup compared your files against an out-of-date reference point, so files that were exactly what your installed version ships could be flagged as modified — alarmingly, including the files that handle credentials — and real changes got lost in the noise. The comparison now uses the version you actually have installed, so the list only names things you actually changed — and a vault accidentally carrying files from a version you haven't installed yet is still called out rather than waved through.
+* **When the one-time file-bookkeeping cleanup is blocked, it now tells you why.** Its safety gate used to refuse with a bare count mismatch, leaving you to guess which files were responsible. It now lists the exact files, notes which expected files never existed in your vault at all, and shows the one command that clears each extra file — the gate itself stays just as strict.
 
 ## [1.85.0] — 🫀 Health checks that ask "did it work?" — and don't wait until tomorrow to tell you (2026-08-10)
 
