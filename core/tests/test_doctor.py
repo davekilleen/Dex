@@ -2001,6 +2001,383 @@ def test_daemon_promises_are_not_freshness_audited(context):
     assert doctor._probe_jobs_fresh(context).verdict == "OFF"
 
 
+def _write_breadcrumb(context, former_vault):
+    breadcrumb = context.home / ".config" / "dex" / "vault-path"
+    breadcrumb.parent.mkdir(parents=True, exist_ok=True)
+    breadcrumb.write_text(f"{former_vault}\n", encoding="utf-8")
+    return breadcrumb
+
+
+def test_jobs_loaded_flags_agent_pointing_at_the_stored_former_vault_root(
+    monkeypatch, context
+):
+    """A job left behind by a vault move is owned-and-stale, never foreign (#364)."""
+    former_vault = context.home.parent / "old-vault"
+    _write_breadcrumb(context, former_vault)
+    agents = context.home / "Library" / "LaunchAgents"
+    agents.mkdir(parents=True, exist_ok=True)
+    plist = agents / "com.dex.example-job.plist"
+    with plist.open("wb") as handle:
+        plistlib.dump(
+            {
+                "Label": "com.dex.example-job",
+                "ProgramArguments": [
+                    "/bin/bash",
+                    str(former_vault / ".scripts" / "example-job.sh"),
+                ],
+            },
+            handle,
+        )
+    monkeypatch.setattr(doctor, "_is_macos", lambda: True)
+
+    result = doctor._probe_jobs_loaded(context)
+
+    assert result.verdict == "BROKEN"
+    assert "com.dex.example-job" in result.detail
+    assert "old location" in result.detail
+    assert str(former_vault) in result.detail
+    assert result.heal.tier == 2
+    assert "repoint" in result.heal.action
+    assert str(context.vault_root) in result.heal.action
+
+
+def test_jobs_loaded_flags_user_labeled_stale_agent_the_hook_warns_about(
+    monkeypatch, context
+):
+    """The hook and the doctor must agree: any label pointing at the former root."""
+    former_vault = context.home.parent / "old-vault"
+    _write_breadcrumb(context, former_vault)
+    agents = context.home / "Library" / "LaunchAgents"
+    agents.mkdir(parents=True, exist_ok=True)
+    plist = agents / "com.alice.dex.context-sync.plist"
+    with plist.open("wb") as handle:
+        plistlib.dump(
+            {
+                "Label": "com.alice.dex.context-sync",
+                "ProgramArguments": [
+                    "/bin/bash",
+                    "-c",
+                    f"cd {former_vault} && ./run-sync.sh",
+                ],
+            },
+            handle,
+        )
+    monkeypatch.setattr(doctor, "_is_macos", lambda: True)
+
+    result = doctor._probe_jobs_loaded(context)
+
+    assert result.verdict == "BROKEN"
+    assert "com.alice.dex.context-sync" in result.detail
+    assert "old location" in result.detail
+
+
+def test_jobs_loaded_stale_matching_requires_a_path_boundary(monkeypatch, context):
+    """A former root of .../old-vault must not claim jobs under .../old-vault-other."""
+    former_vault = context.home.parent / "old-vault"
+    _write_breadcrumb(context, former_vault)
+    agents = context.home / "Library" / "LaunchAgents"
+    agents.mkdir(parents=True, exist_ok=True)
+    plist = agents / "com.dex.sibling-product.plist"
+    with plist.open("wb") as handle:
+        plistlib.dump(
+            {
+                "Label": "com.dex.sibling-product",
+                "ProgramArguments": [
+                    "/bin/bash",
+                    str(
+                        context.home.parent
+                        / "old-vault-other"
+                        / ".scripts"
+                        / "run.sh"
+                    ),
+                ],
+            },
+            handle,
+        )
+    monkeypatch.setattr(doctor, "_is_macos", lambda: True)
+
+    result = doctor._probe_jobs_loaded(context)
+
+    assert result.verdict == "OFF"
+    assert "old location" not in result.detail
+    assert "was skipped" in result.detail
+
+
+def test_jobs_loaded_discovers_user_labeled_dex_agent_for_this_vault(
+    monkeypatch, context
+):
+    """User-installed com.<user>.dex.* jobs get real monitoring coverage (#253)."""
+    agents = context.home / "Library" / "LaunchAgents"
+    agents.mkdir(parents=True, exist_ok=True)
+    missing_script = context.vault_root / ".scripts" / "context-sync.sh"
+    plist = agents / "com.alice.dex.context-sync.plist"
+    with plist.open("wb") as handle:
+        plistlib.dump(
+            {
+                "Label": "com.alice.dex.context-sync",
+                "ProgramArguments": ["/bin/bash", str(missing_script)],
+            },
+            handle,
+        )
+    monkeypatch.setattr(doctor, "_is_macos", lambda: True)
+
+    result = doctor._probe_jobs_loaded(context)
+
+    assert result.verdict == "BROKEN"
+    assert "com.alice.dex.context-sync" in result.detail
+    assert str(missing_script) in result.detail
+
+
+def test_jobs_loaded_discovers_vault_job_under_any_label_by_path_evidence(
+    monkeypatch, context
+):
+    """Ownership is path evidence, not the label: any plist into this vault counts."""
+    plist = _write_plist(context, "com.mycompany.sync")
+    monkeypatch.setattr(doctor, "_is_macos", lambda: True)
+    monkeypatch.setattr(doctor, "_launchctl_domain_check", lambda: None)
+    monkeypatch.setattr(
+        doctor, "_plist_interpreter", lambda candidate: "/bin/bash" if candidate == plist else None
+    )
+    monkeypatch.setattr(
+        doctor,
+        "_launchctl_status",
+        lambda _label: {"loaded": True, "last_exit_status": 0},
+    )
+
+    result = doctor._probe_jobs_loaded(context)
+
+    assert result.verdict == "OK"
+    assert "All 1 installed launch agents for this vault are loaded" in result.detail
+
+
+def test_jobs_loaded_ignores_unrelated_products_whose_names_contain_dex(
+    monkeypatch, context
+):
+    """com.dexcom.* / com.samsung.dex.* / com.fedex.* are other products."""
+    agents = context.home / "Library" / "LaunchAgents"
+    agents.mkdir(parents=True, exist_ok=True)
+    for label in ("com.dexcom.monitor", "com.samsung.dex.launcher", "com.fedex.tracker"):
+        plist = agents / f"{label}.plist"
+        with plist.open("wb") as handle:
+            plistlib.dump(
+                {"Label": label, "ProgramArguments": ["/usr/bin/true"]},
+                handle,
+            )
+    monkeypatch.setattr(doctor, "_is_macos", lambda: True)
+
+    result = doctor._probe_jobs_loaded(context)
+
+    assert result.verdict == "OFF"
+    assert result.detail == "No Dex launch agents are installed"
+
+
+def test_jobs_loaded_leaves_unreadable_non_dex_plists_alone(monkeypatch, context):
+    """Another product's corrupt plist is none of this vault's business."""
+    agents = context.home / "Library" / "LaunchAgents"
+    agents.mkdir(parents=True, exist_ok=True)
+    (agents / "com.othertool.job.plist").write_bytes(b"not a plist")
+    monkeypatch.setattr(doctor, "_is_macos", lambda: True)
+
+    result = doctor._probe_jobs_loaded(context)
+
+    assert result.verdict == "OFF"
+    assert result.detail == "No Dex launch agents are installed"
+
+
+def test_corrupt_third_party_plists_never_degrade_job_monitoring(monkeypatch, context):
+    """One damaged foreign file must not take down Dex's own job checks.
+
+    plistlib raises ExpatError for truncated XML with a valid header (a
+    classic interrupted write) and ValueError for bad scalars; neither may
+    make jobs.loaded or jobs.fresh UNKNOWN, or a genuinely dead com.dex job
+    would stop being reported.
+    """
+    agents = context.home / "Library" / "LaunchAgents"
+    agents.mkdir(parents=True, exist_ok=True)
+    (agents / "com.samsung.dex.service.plist").write_bytes(
+        b'<?xml version="1.0"?><plist version="1.0"><dict><key>Label</key>'
+    )
+    (agents / "com.othertool.job.plist").write_bytes(
+        b'<plist version="1.0"><dict><key>N</key><integer>zz</integer></dict></plist>'
+    )
+    plist = _write_plist(context, "com.dex.smoke-nightly")
+    monkeypatch.setattr(doctor, "_is_macos", lambda: True)
+    monkeypatch.setattr(doctor, "_launchctl_domain_check", lambda: None)
+    monkeypatch.setattr(
+        doctor, "_plist_interpreter", lambda candidate: "/bin/bash" if candidate == plist else None
+    )
+    monkeypatch.setattr(
+        doctor,
+        "_launchctl_status",
+        lambda _label: {"loaded": True, "last_exit_status": 0},
+    )
+
+    loaded = doctor._probe_jobs_loaded(context)
+    fresh = doctor._probe_jobs_fresh(context)
+
+    assert loaded.verdict == "OK"
+    assert "othertool" not in loaded.detail and "samsung" not in loaded.detail
+    assert fresh.verdict == "BROKEN"  # smoke-nightly never recorded a run
+    assert "never recorded a completed run" in fresh.detail
+    assert "othertool" not in fresh.detail and "samsung" not in fresh.detail
+
+
+def test_truncated_shipped_plist_is_unknown_not_a_probe_crash(monkeypatch, context):
+    """A shipped plist damaged mid-write is an unknown, not an exception."""
+    agents = context.home / "Library" / "LaunchAgents"
+    agents.mkdir(parents=True, exist_ok=True)
+    plist = agents / "com.dex.meeting-intel.plist"
+    plist.write_bytes(
+        b'<?xml version="1.0"?><plist version="1.0"><dict><key>Label</key>'
+    )
+    monkeypatch.setattr(doctor, "_is_macos", lambda: True)
+
+    loaded = doctor._probe_jobs_loaded(context)
+    fresh = doctor._probe_jobs_fresh(context)
+
+    assert loaded.verdict == "UNKNOWN"
+    assert plist.name in loaded.detail
+    assert fresh.verdict == "UNKNOWN"
+    assert plist.name in fresh.detail
+
+
+def test_legacy_claudesidian_jobs_get_real_freshness_audits(context):
+    """Pre-rename shipped jobs map onto their com.dex.* promises (not 'user jobs')."""
+    _write_plist(context, "com.claudesidian.learning-review")
+
+    result = doctor._probe_jobs_fresh(context)
+
+    assert result.verdict == "BROKEN"
+    assert "Learning review has never run" in result.detail
+    assert "checked for loading only" not in result.detail
+
+
+def test_jobs_loaded_flags_owned_agent_with_leftover_former_root_references(
+    monkeypatch, context
+):
+    """A partially repointed job (invocation current, other keys stale) is surfaced.
+
+    The session-start hook greps raw bytes and keeps warning about the
+    leftover references; the doctor must see the same thing or the user is
+    back in the hook-warns/doctor-shrugs limbo of #364.
+    """
+    former_vault = context.home.parent / "old-vault"
+    _write_breadcrumb(context, former_vault)
+    plist = _write_plist(context, "com.dex.meeting-intel")
+    script = context.vault_root / ".scripts" / "com.dex.meeting-intel.sh"
+    with plist.open("wb") as handle:
+        plistlib.dump(
+            {
+                "Label": "com.dex.meeting-intel",
+                "ProgramArguments": ["/bin/bash", str(script)],
+                "WorkingDirectory": str(former_vault),
+            },
+            handle,
+        )
+    monkeypatch.setattr(doctor, "_is_macos", lambda: True)
+
+    result = doctor._probe_jobs_loaded(context)
+
+    assert result.verdict == "BROKEN"
+    assert "still references its old location" in result.detail
+    assert str(former_vault) in result.detail
+    assert result.heal.tier == 2
+    assert "repoint" in result.heal.action
+
+
+def test_plist_ownership_sees_vault_path_inside_shell_command_strings(context):
+    """/bin/bash -c "cd <vault>; ..." owns the job even without a path argument."""
+    vault_root = context.vault_root.resolve()
+    owned = {
+        "Label": "com.dex.custom",
+        "ProgramArguments": ["/bin/bash", "-c", f"cd {vault_root}; exec ./run.sh"],
+    }
+    sibling = {
+        "Label": "com.dex.custom",
+        "ProgramArguments": ["/bin/bash", "-c", f"cd {vault_root}-other; exec ./run.sh"],
+    }
+    logging_only = {
+        "Label": "com.other.tool",
+        "ProgramArguments": ["/usr/bin/true"],
+        "StandardOutPath": str(vault_root / "log.txt"),
+    }
+
+    assert doctor._plist_owned_by_vault(owned, vault_root) is True
+    assert doctor._plist_owned_by_vault(sibling, vault_root) is False
+    assert doctor._plist_owned_by_vault(logging_only, vault_root) is False
+
+
+def test_jobs_fresh_names_user_jobs_it_cannot_freshness_audit(context):
+    """OFF must not read as 'nothing to monitor' when user jobs exist (#253)."""
+    _write_plist(context, "com.alice.dex.context-sync")
+
+    result = doctor._probe_jobs_fresh(context)
+
+    assert result.verdict == "OFF"
+    assert "No shipped Dex freshness jobs are installed" in result.detail
+    assert "com.alice.dex.context-sync" in result.detail
+    assert "checked for loading only, not freshness" in result.detail
+
+
+def test_jobs_fresh_appends_user_job_coverage_note_alongside_shipped_promises(context):
+    _write_plist(context, "com.dex.meeting-intel")
+    _write_plist(context, "com.alice.dex.context-sync")
+    promise = health_promises.promise_by_id("com.dex.meeting-intel")
+    receipt = context.vault_root / promise.receipt_path
+    receipt.parent.mkdir(parents=True, exist_ok=True)
+    fresh_at = NOW - timedelta(hours=1)
+    receipt.write_text(
+        json.dumps({"lastSync": fresh_at.isoformat().replace("+00:00", "Z")}),
+        encoding="utf-8",
+    )
+
+    result = doctor._probe_jobs_fresh(context)
+
+    assert result.verdict == "OK"
+    assert "com.alice.dex.context-sync" in result.detail
+    assert "checked for loading only, not freshness" in result.detail
+
+
+def test_launch_agent_classification_is_shared_within_a_scan_scope(monkeypatch, context):
+    """collect() classifies every plist once; direct probe calls stay fresh."""
+    calls = []
+    real_classify = doctor._classify_launch_agents
+
+    def counting_classify(inner_context):
+        calls.append(inner_context)
+        return real_classify(inner_context)
+
+    monkeypatch.setattr(doctor, "_classify_launch_agents", counting_classify)
+
+    doctor._begin_launch_agent_scan_scope(context)
+    try:
+        doctor._scan_launch_agents(context)
+        doctor._scan_launch_agents(context)
+        assert len(calls) == 1
+    finally:
+        doctor._end_launch_agent_scan_scope(context)
+
+    doctor._scan_launch_agents(context)
+    assert len(calls) == 2
+
+
+def test_stored_former_vault_root_rejects_current_and_degenerate_roots(context):
+    assert doctor._stored_former_vault_root(context) is None
+
+    _write_breadcrumb(context, context.vault_root)
+    assert doctor._stored_former_vault_root(context) is None
+
+    _write_breadcrumb(context, "/tmp")
+    assert doctor._stored_former_vault_root(context) is None
+
+    _write_breadcrumb(context, "relative/path")
+    assert doctor._stored_former_vault_root(context) is None
+
+    former = context.home.parent / "old-vault"
+    _write_breadcrumb(context, former)
+    assert doctor._stored_former_vault_root(context) == former
+
+
 def test_jobs_loaded_flags_a_dex_plist_repointed_at_a_worktree(monkeypatch, context):
     """A worktree-pointed job is a repointed install, not another product's."""
     agents = context.home / "Library" / "LaunchAgents"
@@ -2375,6 +2752,59 @@ def test_core_drift_is_ok_for_a_clean_release_checkout(tmp_path):
     drift_context = _drift_context(tmp_path)
 
     assert doctor._probe_core_drift(drift_context).verdict == "OK"
+
+
+def test_core_drift_compares_against_the_installed_release_identity(tmp_path):
+    """Drift means "differs from the release you actually have installed".
+
+    Two other reference points are both wrong (issue #242 item 2): the
+    merge-base lags installs where the legacy updater delivered release
+    files without advancing shared history (byte-identical release content
+    read as user modifications), and the fetched release tip can be newer
+    than what is installed (files matching a not-yet-installed release
+    would pass, masking a mixed-version vault). package.json names the
+    installed version and releases are tagged, so the tag is the identity.
+    """
+    drift_context = _drift_context(tmp_path)
+    vault = drift_context.vault_root
+    base = _git(vault, "rev-parse", "HEAD").stdout.strip()
+
+    # The installed release: shipped.py advances and the version is tagged.
+    (vault / "core" / "shipped.py").write_text("SHIPPED = 2\n")
+    (vault / "package.json").write_text('{\n  "version": "9.9.9"\n}\n')
+    _git(vault, "add", "package.json")
+    _git(vault, "commit", "-am", "installed release")
+    _git(vault, "tag", "v9.9.9")
+
+    # The repo has since FETCHED a newer release the user has not installed.
+    (vault / "core" / "shipped.py").write_text("SHIPPED = 3\n")
+    _git(vault, "commit", "-am", "newer fetched release")
+    _git(vault, "update-ref", _remote_release_ref("stable"), "HEAD")
+
+    # The vault's own history stays at the old baseline plus a local commit
+    # carrying the exact bytes the INSTALLED (v9.9.9) release ships — how a
+    # legacy update leaves a vault (files copied, shared history unmoved).
+    _git(vault, "reset", "--hard", base)
+    (vault / "core" / "shipped.py").write_text("SHIPPED = 2\n")
+    (vault / "package.json").write_text('{\n  "version": "9.9.9"\n}\n')
+    _git(vault, "add", "package.json")
+    _git(vault, "commit", "-am", "release files copied without shared history")
+
+    # Byte-identical to the installed release: not drift.
+    assert doctor._probe_core_drift(drift_context).verdict == "OK"
+
+    # Matching the NEWER fetched-but-not-installed release is still drift —
+    # a mixed-version vault must not be masked by the fetched tip.
+    (vault / "core" / "shipped.py").write_text("SHIPPED = 3\n")
+    mixed = doctor._probe_core_drift(drift_context)
+    assert mixed.verdict == "UNKNOWN"
+    assert "core/shipped.py" in mixed.detail
+
+    # A genuine user edit matching no release is reported too.
+    (vault / "core" / "shipped.py").write_text("SHIPPED = 999  # user edit\n")
+    edited = doctor._probe_core_drift(drift_context)
+    assert edited.verdict == "UNKNOWN"
+    assert "core/shipped.py" in edited.detail
 
 
 def test_worktree_blob_ids_hash_large_release_trees_in_pipe_safe_batches(

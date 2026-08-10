@@ -67,9 +67,14 @@ def main():
         def completion_handler(granted, error):
             access_granted[0] = granted
 
-        store.requestAccessToEntityType_completion_(
-            EventKit.EKEntityTypeReminder, completion_handler
-        )
+        # macOS 14+ deprecated the legacy request API for reminders full
+        # access — it reports denied immediately without prompting (#377).
+        if hasattr(store, "requestFullAccessToRemindersWithCompletion_"):
+            store.requestFullAccessToRemindersWithCompletion_(completion_handler)
+        else:
+            store.requestAccessToEntityType_completion_(
+                EventKit.EKEntityTypeReminder, completion_handler
+            )
 
         # Wait for user response (max 30 seconds)
         for i in range(300):

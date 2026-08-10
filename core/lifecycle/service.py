@@ -855,7 +855,26 @@ def execute_approved_delivered_release(
             Path(vault_root).resolve(), release, previous_commit
         ),
     )
-    return _envelope(receipt=executed["receipt"], release=expected_preview["release"])
+    # Post-commit tidy-up (issue #433): the runtime activation record still
+    # names the release that just executed this update, which would refuse
+    # every gated operation until repaired.  The record is removed — never
+    # rewritten — because this (old) engine must not interpret the newly
+    # installed release's declarations or stamp its own api_version onto a
+    # record naming the new release; the next gated operation re-records the
+    # baseline with the newly installed code.  Removal is deliberately outside
+    # the transaction and best-effort: a byte-verified committed update is
+    # never failed because tidy-up could not run, and activate_vault's
+    # stale-record re-recording remains the safety net.
+    from core.lifecycle.bridge import ACTIVATION_RELATIVE, discard_superseded_activation
+
+    receipt = executed["receipt"]
+    identity = expected_preview["release"]
+    assert isinstance(identity, Mapping)
+    if discard_superseded_activation(Path(vault_root).resolve(), str(identity["version"])):
+        declared = receipt.get("declared_paths")
+        if isinstance(declared, list):
+            receipt["declared_paths"] = sorted({*declared, ACTIVATION_RELATIVE.as_posix()})
+    return _envelope(receipt=receipt, release=expected_preview["release"])
 
 
 def _mcp_registration_preview(
