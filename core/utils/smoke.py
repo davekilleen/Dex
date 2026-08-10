@@ -1878,7 +1878,7 @@ def _journey_task_lifecycle(vault: Path, _release_root: Path) -> dict[str, str]:
 
         original = tasks_file.read_text(encoding="utf-8")
         original_lines = original.splitlines()
-        original_task_ids = re.findall(r"\^(task-\d{8}-\d{3})", original)
+        original_task_ids = re.findall(r"\^(task-\d{8}-\d{3,})", original)
 
         from core.mcp import work_server as work
 

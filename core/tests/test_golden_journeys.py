@@ -581,7 +581,7 @@ def test_golden_task_lifecycle_propagates_and_rolls_up(fixture_vault: Path, tmp_
     title = journey["title"]
     task_id = created["task"]["task_id"]
     assert created["success"] is True
-    assert re.fullmatch(r"task-\d{8}-\d{3}", task_id)
+    assert re.fullmatch(r"task-\d{8}-\d{3,}", task_id)
     assert journey["person_path"] in created["synced_pages"]
     assert f"^{task_id}" in journey["tasks_after_create"]
     assert f"| ⏳ | {title} | P2 |" in journey["person_after_create"]

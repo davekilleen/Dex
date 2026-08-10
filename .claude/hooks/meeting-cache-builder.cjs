@@ -103,7 +103,7 @@ function extractSection(content, heading) {
       item = item.replace(/^\[[ x]\]\s*/, "");
       // Strip completion timestamps and task IDs in either stored layout.
       item = item.replace(/\s*✅\s*\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}/, "");
-      item = item.replace(/\s*\^task-\d{8}-\d{3}\b/, "");
+      item = item.replace(/\s*\^task-\d{8}-\d{3,}\b/, "");
       // Strip WikiLink wrappers: [[path|display]] -> display
       item = item.replace(/\[\[[^\]|]*\|([^\]]*)\]\]/g, "$1");
       item = item.replace(/\[\[([^\]]*)\]\]/g, "$1");

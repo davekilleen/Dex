@@ -25,7 +25,7 @@ from core.utils.strict_yaml import load_yaml_path
 
 ADAPTERS_DIR = VAULT_ROOT / ".claude" / "hooks" / "adapters"
 _SERVICE_PATTERN = re.compile(r"^[a-z][a-z0-9_-]*$")
-_TASK_ID_PATTERN = re.compile(r"^task-(\d{8})-\d{3}$")
+_TASK_ID_PATTERN = re.compile(r"^task-(\d{8})-\d{3,}$")
 
 
 def _now_iso() -> str:

@@ -448,7 +448,7 @@ def generate_task_id() -> str:
         for md_file in folder.rglob('*.md'):
             try:
                 content = md_file.read_text()
-                pattern = r'\^task-\d{8}-(\d{3})'
+                pattern = r'\^task-\d{8}-(\d{3,})'
                 matches = re.findall(pattern, content)
                 existing_ids.extend([int(m) for m in matches])
             except Exception:
@@ -460,7 +460,7 @@ def generate_task_id() -> str:
 
 def extract_task_id(line: str) -> Optional[str]:
     """Extract task ID from a line"""
-    match = re.search(r'\^(task-\d{8}-\d{3})', line)
+    match = re.search(r'\^(task-\d{8}-\d{3,})', line)
     return match.group(1) if match else None
 
 def _is_indented_bullet(line: str) -> bool:
@@ -564,7 +564,7 @@ def _task_title_from_line(line: str) -> str:
     """Extract task text while accepting both completion timestamp layouts."""
     title = re.sub(r'^\s*-\s*\[[x ]\]\s*', '', line, count=1)
     title = re.sub(r'\s*✅\s*\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}', '', title)
-    title = re.sub(r'\s*\^task-\d{8}-\d{3}\b', '', title)
+    title = re.sub(r'\s*\^task-\d{8}-\d{3,}\b', '', title)
     title = title.strip()
     bold_match = re.match(r'^\*\*(.+?)\*\*(.*)$', title)
     if bold_match:
@@ -596,7 +596,7 @@ def _source_page_path(source: str) -> Optional[Path]:
 
 def _line_without_task_anchor(line: str) -> str:
     """Remove a task anchor for idempotent source-line comparison."""
-    return re.sub(r'\s+\^task-\d{8}-\d{3}\b', '', line).strip()
+    return re.sub(r'\s+\^task-\d{8}-\d{3,}\b', '', line).strip()
 
 
 def stamp_task_source_line(source: str, source_line: str,
@@ -626,8 +626,8 @@ def stamp_task_source_line(source: str, source_line: str,
             if stripped == target:
                 exact_matches.append(index)
             elif (
-                not re.search(r'\^task-\d{8}-\d{3}\b', target)
-                and re.search(r'\^task-\d{8}-\d{3}\b', stripped)
+                not re.search(r'\^task-\d{8}-\d{3,}\b', target)
+                and re.search(r'\^task-\d{8}-\d{3,}\b', stripped)
                 and _line_without_task_anchor(stripped) == target
             ):
                 anchored_matches.append(index)
@@ -641,7 +641,7 @@ def stamp_task_source_line(source: str, source_line: str,
         if len(exact_matches) == 1:
             match_index = exact_matches[0]
             matched_line = lines[match_index].rstrip('\r\n')
-            if re.search(r'\^task-\d{8}-\d{3}\b', matched_line):
+            if re.search(r'\^task-\d{8}-\d{3,}\b', matched_line):
                 return {**result, 'reason': 'already_anchored'}
 
             line_ending = lines[match_index][len(matched_line):]
@@ -669,14 +669,17 @@ def stamp_task_source_line(source: str, source_line: str,
 def find_task_by_id(task_id: str) -> List[Dict[str, Any]]:
     """Find all instances of a task ID across all markdown files"""
     instances = []
-    
+    # Anchor on a digit boundary: a plain substring test lets task-...-100
+    # match inside task-...-1000 and update the wrong row.
+    anchored = re.compile(r'\^' + re.escape(task_id) + r'(?!\d)')
+
     for md_file in BASE_DIR.rglob('*.md'):
         try:
             content = md_file.read_text()
             lines = content.split('\n')
-            
+
             for i, line in enumerate(lines):
-                if f'^{task_id}' in line and ('- [ ]' in line or '- [x]' in line):
+                if anchored.search(line) and ('- [ ]' in line or '- [x]' in line):
                     # Extract task title
                     title = _task_title_from_line(line).split('|', 1)[0].strip()
                     
@@ -758,7 +761,7 @@ def update_task_status_everywhere(task_id: str, completed: bool) -> Dict[str, An
             if completed:
                 new_line = old_line.replace('- [ ]', '- [x]')
                 new_line = re.sub(r'\s*✅\s*\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}', '', new_line)
-                task_id_match = re.search(r'\^' + re.escape(task_id), new_line)
+                task_id_match = re.search(r'\^' + re.escape(task_id) + r'(?!\d)', new_line)
                 if task_id_match:
                     without_anchor = (
                         new_line[:task_id_match.start()] + new_line[task_id_match.end():]
@@ -768,7 +771,7 @@ def update_task_status_everywhere(task_id: str, completed: bool) -> Dict[str, An
                 # Uncompleting: change checkbox and remove timestamp
                 new_line = old_line.replace('- [x]', '- [ ]')
                 new_line = re.sub(r'\s*✅\s*\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}', '', new_line)
-                task_id_match = re.search(r'\^' + re.escape(task_id), new_line)
+                task_id_match = re.search(r'\^' + re.escape(task_id) + r'(?!\d)', new_line)
                 if task_id_match:
                     without_anchor = (
                         new_line[:task_id_match.start()] + new_line[task_id_match.end():]
@@ -1795,7 +1798,7 @@ def _parse_meeting_file_python(content: str, filename: str, rel_path: str) -> Di
                 item = stripped[2:].strip()
                 item = re.sub(r'^\[[ x]\]\s*', '', item)
                 item = re.sub(r'\s*✅\s*\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}', '', item)
-                item = re.sub(r'\s*\^task-\d{8}-\d{3}\b', '', item)
+                item = re.sub(r'\s*\^task-\d{8}-\d{3,}\b', '', item)
                 item = re.sub(r'\[\[[^\]|]*\|([^\]]*)\]\]', r'\1', item)
                 item = re.sub(r'\[\[([^\]]*)\]\]', r'\1', item)
                 item = re.sub(r'\*\*([^*]+)\*\*', r'\1', item)
@@ -2704,7 +2707,7 @@ def parse_tasks_file(filepath: Path) -> List[Dict[str, Any]]:
             # Clean title - remove file path references for display
             clean_title = re.sub(r'\s*\|\s*(?:People|Active)/[^\s]+', '', title)
             clean_title = re.sub(r'\s+\.md\b', '', clean_title)
-            clean_title = re.sub(r'\s*\^task-\d{8}-\d{3}\s*', '', clean_title)  # Remove task ID
+            clean_title = re.sub(r'\s*\^task-\d{8}-\d{3,}\s*', '', clean_title)  # Remove task ID
             if not clean_title.strip():
                 continue
             
@@ -3757,7 +3760,7 @@ async def handle_list_tools() -> list[types.Tool]:
                 "properties": {
                     "task_id": {
                         "type": "string",
-                        "pattern": r"^task-\d{8}-\d{3}$",
+                        "pattern": r"^task-\d{8}-\d{3,}$",
                         "description": "Task ID without the leading caret (e.g., task-20260128-001)",
                     },
                     "action": {

@@ -68,7 +68,7 @@ def test_confirm_goal_link_schema_requires_task_id_and_action():
     confirm_goal_link = next(tool for tool in tools if tool.name == "confirm_goal_link")
 
     assert confirm_goal_link.inputSchema["required"] == ["task_id", "action"]
-    assert confirm_goal_link.inputSchema["properties"]["task_id"]["pattern"] == r"^task-\d{8}-\d{3}$"
+    assert confirm_goal_link.inputSchema["properties"]["task_id"]["pattern"] == r"^task-\d{8}-\d{3,}$"
     assert confirm_goal_link.inputSchema["properties"]["action"]["enum"] == ["confirm", "clear"]
 
 

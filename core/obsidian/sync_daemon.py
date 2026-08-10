@@ -30,7 +30,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-TASK_PATTERN = re.compile(r'- \[([ xX])\].*?\^(task-\d{8}-\d{3})')
+TASK_PATTERN = re.compile(r'- \[([ xX])\].*?\^(task-\d{8}-\d{3,})')
 
 
 class DexSyncHandler(FileSystemEventHandler):

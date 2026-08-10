@@ -76,7 +76,7 @@ def test_create_task_succeeds_over_production_stdio(fixture_vault: Path, tmp_pat
 
     tasks_text = (vault / "03-Tasks" / "Tasks.md").read_text(encoding="utf-8")
     assert TASK_TITLE in tasks_text
-    assert re.search(r"\^task-\d{8}-\d{3}", tasks_text)
+    assert re.search(r"\^task-\d{8}-\d{3,}", tasks_text)
 
 
 def test_task_lifecycle_succeeds_in_process_without_qmd_patching(tmp_path: Path, monkeypatch):

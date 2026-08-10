@@ -98,7 +98,7 @@ def convert_references_in_file(content: str, person_idx: dict,
             changes += matches
     
     # Convert task ID references (^task-YYYYMMDD-XXX)
-    pattern = r'(?<!\[\[)\^(task-\d{8}-\d{3})(?!\]\])'
+    pattern = r'(?<!\[\[)\^(task-\d{8}-\d{3,})(?!\]\])'
     matches = len(re.findall(pattern, content))
     if matches > 0:
         content = re.sub(pattern, r'[[^\1]]', content)

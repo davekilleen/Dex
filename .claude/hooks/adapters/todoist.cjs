@@ -11,7 +11,7 @@ const REQUEST_TIMEOUT_MS = 15_000;
 const MAX_RETRIES = 3;
 const DEFAULT_RETRY_DELAY_MS = 2_000;
 const COMPLETION_WINDOW_MS = 89 * 24 * 60 * 60 * 1_000;
-const DEX_ID_PATTERN = /\[dex:(task-\d{8}-\d{3})\]/;
+const DEX_ID_PATTERN = /\[dex:(task-\d{8}-\d{3,})\]/;
 const DEX_TO_TODOIST_PRIORITY = { P0: 4, P1: 3, P2: 2, P3: 1 };
 
 const projectCache = new Map();
