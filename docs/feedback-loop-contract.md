@@ -25,6 +25,9 @@ Override for tests: `DEX_FEEDBACK_API_BASE`.
 
 Auth on every feedback route: `Authorization: Bearer <sessionToken>` resolved against
 `cliSessions` (required — the beta-gate-disabled bypass does not apply to feedback).
+Sign-in is compulsory, but DexDiff beta membership is NOT (Dave, 2026-08-10): any
+signed-in Heydex account may link a terminal and file feedback. The DexDiff private
+beta continues to gate publishing, love letters, and diff/profile reads only.
 
 ## HTTP endpoints (all also answer OPTIONS for CORS)
 
