@@ -7,6 +7,16 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.86.0] — 🔄 Note-syncing survives busy days, and calendar permissions work again on newer Macs (2026-08-10)
+
+A community member sent in two unusually sharp bug reports, each diagnosed right down to the fix. Both are in this release — thank you, Chris.
+
+**What this fixes for you:**
+
+* **The helper that syncs your ticked checkboxes stops dying on busy days.** The background helper that notices when you tick a task done in Obsidian and updates it everywhere could crash whenever lots of files changed at once — a big meeting-processing run, a reorganization, any burst of activity. Your Mac restarted it each time, so it limped along for months looking healthy while quietly missing changes at exactly the busiest moments. It now takes a calm snapshot of what's waiting, works through that, and anything that changes while it's working is simply picked up in the next pass — nothing crashes, nothing gets dropped.
+* **Dex can actually ask for calendar and reminders permission on newer Macs.** Apple changed how apps must request calendar access, and Dex was still asking the old way — which newer Macs refuse instantly without ever showing you the permission window. So anyone on a recent Mac, a new machine, or who had reset their privacy settings could never grant Dex calendar access, no matter how many times they tried. Dex now asks the new way on Macs that support it, and the old way still works on older ones.
+* **When calendar access is denied, you're told what to do about it — not "Exit code: 1".** Dex has always written a helpful explanation when access is refused ("Calendar access denied. Enable in System Settings → Privacy & Security → Calendars…"), but the part of Dex that relays errors was looking for it in the wrong place, so all you ever saw was a bare "Exit code: 1". The real guidance now reaches you — which matters twice over, because it's how you'd discover the permission problem above.
+
 ## [1.85.0] — 🫀 Health checks that ask "did it work?" — and don't wait until tomorrow to tell you (2026-08-10)
 
 Yesterday's release fixed a background sync that had been failing silently for six days while every health check stayed green. Today's release fixes the deeper problem: health checks that measured the wrong thing, and health news that only arrived when you started a fresh session.
