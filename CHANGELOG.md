@@ -7,7 +7,7 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
-## [1.88.0] — 🔐 The file holding your AI keys is now private — and the checkup finally sees it (2026-08-10)
+## [1.91.0] — 🔐 The file holding your AI keys is now private — and the checkup finally sees it (2026-08-10)
 
 If you gave Dex an AI key so meetings get analyzed in the background, that key sat in a small file at the top of your vault that other accounts on the same computer could read — and Dex's own checkup couldn't see the key at all, so it reported "no key" and recommended you put one exactly where it already was.
 
@@ -18,6 +18,36 @@ If you gave Dex an AI key so meetings get analyzed in the background, that key s
 * **Advice that no longer points you wrong.** Wherever Dex tells you to add an AI key, it now also tells you to keep that file private — and it's honest that Dex's encrypted credential storage doesn't yet feed these background features, so the file is still the right place for now. Moving those keys into encrypted storage is a separate, deliberately unhurried piece of work.
 
 Thanks to Chris, whose report mapped the whole problem — including the parts this release fixes and the deeper move it defers.
+
+## [1.90.0] — 🧭 Clearer rescue directions for stuck older installs (2026-08-10)
+
+The update-rescue guide (the page that helps when `/dex-update` refuses) sent some stuck installs down a road that couldn't work — and, in one rare case, a road that could cost files.
+
+**What this fixes for you:**
+
+* **The guide now checks your vault's shape first.** Installs where Dex's code already lives in its own private store were being pointed at a manual Git route that cannot work for them (its first command fails on those vaults); they're now sent straight to the supported one-time bridge, whatever version they're on.
+* **The oldest versions go to the bridge, never the old manual route.** A detailed report showed that versions before v1.62 hit a safety refusal the manual route can never satisfy — and that forcing past that refusal silently deleted three of the reporter's personal files (recovered from their own backup, nothing lost). The guide now says plainly: if you see that refusal, stop and use the bridge, which recognises those exact older versions and protects personal files by design.
+
+## [1.89.0] — 🪟 Windows stops raising false alarms (2026-08-10)
+
+Two detailed reports from the community, one theme: on Windows, Dex's health checkup declared a perfectly healthy install broken. Both were false alarms — Dex behaved slightly differently on Windows than on Mac in a handful of invisible places — and both are fixed. Thank you to the Windows user who filed them.
+
+**What this fixes for you:**
+
+* **The checkup stops insisting your install doesn't match its release.** On Windows, the standard way of keeping files on disk quietly stores text in Windows' own format. Dex's integrity checks compared those files against the original release and reported a mismatch — every time, on every Windows machine — which cascaded into a whole page of "broken" verdicts across the update and adoption tools, and could brand files you never touched as "modified by you". Everywhere Dex checks its own files against a release — the install record, optional capability files, and the modified-or-not verdict on each file — it now recognizes Windows formatting for what it is: the same content, stored the Windows way. Files you actually edited are still caught exactly as before.
+* **The doctor stops blocking itself.** While running its checkup on Windows, Dex could trip over its own safety lock and refuse to finish, reporting "another Dex process is already changing this vault" — where the "other process" was the checkup itself. The cause was one internal bookkeeping step that works on Mac but simply doesn't exist on Windows; it turned out to be attempted in ten different places, so fixing only the first would have moved the failure one step down the line. All ten now handle Windows properly, and a failed attempt cleans up after itself instead of leaving a confusing leftover behind.
+* **Checking on another Dex process can no longer harm it.** The way Dex asked "is that other process still running?" was safe on Mac but on Windows could actually shut the other process down. Dex now only looks — it can never touch.
+
+These fixes were verified with tests that simulate the Windows behavior, not on a live Windows machine — if you're on Windows and still see either symptom after updating, please run `/feedback`.
+
+## [1.88.0] — 🔄 An update now clears its own stale paperwork (2026-08-10)
+
+A wonderfully thorough field report (reproduced twice, traced to the exact line) showed that after every update, a small internal note recording "this version is active here" still named the old version, so the next planning or undo request was refused until a separate repair ran.
+
+**What this fixes for you:**
+
+* **An update now clears the outdated note as its final step.** The moment the new files are safely in place, the note the old version left behind is removed — and the very next thing you do writes a fresh one for the new version. Plans, undo, and unattended nightly updates no longer trip over the previous version's paperwork, and there's no gap where your install disagrees with itself.
+* **Clearing the note can never block an update.** If the note is unreadable or can't be cleared, the update still completes exactly as before — tidying up is never allowed to veto an update that already succeeded — and Dex's existing self-repair still fixes the note the next time it's read.
 
 ## [1.87.0] — 🔄 Note-syncing survives busy days, and calendar permissions work again on newer Macs (2026-08-10)
 

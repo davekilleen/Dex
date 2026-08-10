@@ -19,11 +19,13 @@ from core.lifecycle.bridge import (
     ACTIVATION_RELATIVE,
     BridgeActivationError,
     activate_vault,
+    discard_superseded_activation,
     load_bridge_release,
     resume_bridge_transactions,
 )
 from core.lifecycle.catalog import load_catalog
 from core.lifecycle.inventory import build_inventory
+from core.tests.lifecycle_test_helpers import write_bridge_release
 from core.tests.test_adoption_transaction import _setup
 from core.transaction.engine import PlanRejected
 from core.transaction.journal import PREVIOUS_SCHEMA_VERSION, SCHEMA_VERSION
@@ -38,23 +40,10 @@ def _canonical(value: object) -> bytes:
     ).encode()
 
 
-def _write_bridge_release(vault: Path, release_version: str = "1.64.0") -> None:
-    target = vault / "core/lifecycle/catalog/bridge-release.json"
-    target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_bytes(
-        _canonical(
-            {
-                "bridge_contract_version": 1,
-                "release_version": release_version,
-                "transaction_journal": {
-                    "current_schema": SCHEMA_VERSION,
-                    "previous_schema": PREVIOUS_SCHEMA_VERSION,
-                    "minimum_resumable_schema": PREVIOUS_SCHEMA_VERSION,
-                    "incompatible_action": "rollback-only",
-                },
-            }
-        )
-    )
+# Shared with other lifecycle suites; kept under its historical name so
+# existing ``from core.tests.test_lifecycle_bridge import _write_bridge_release``
+# imports keep working.
+_write_bridge_release = write_bridge_release
 
 
 def _activation_fixture(tmp_path: Path) -> Path:
@@ -77,13 +66,13 @@ def test_baseline_import_is_read_only_and_activation_is_atomic(
     before = protected.read_bytes()
     system_mode = stat.S_IMODE((vault / "System").stat().st_mode)
     fsynced_directories: list[Path] = []
-    real_fsync_directory = bridge_module._fsync_directory
+    real_fsync_directory = bridge_module.fsync_directory
 
     def record_fsync(directory: Path) -> None:
         fsynced_directories.append(directory.relative_to(vault))
         real_fsync_directory(directory)
 
-    monkeypatch.setattr(bridge_module, "_fsync_directory", record_fsync)
+    monkeypatch.setattr(bridge_module, "fsync_directory", record_fsync)
 
     activation = activate_vault(vault)
 
@@ -215,6 +204,59 @@ def test_stale_activation_refresh_still_refuses_a_torn_install(
     ):
         activate_vault(vault)
     assert (vault / ACTIVATION_RELATIVE).read_bytes() == _canonical(stale)
+
+
+def test_discard_superseded_activation_removes_only_routine_records(
+    tmp_path: Path,
+) -> None:
+    vault = _activation_fixture(tmp_path)
+    record = activate_vault(vault)
+    path = vault / ACTIVATION_RELATIVE
+
+    # Same-version records and malformed version arguments are left alone.
+    assert discard_superseded_activation(vault, "1.64.0") is False
+    assert discard_superseded_activation(vault, "not-semver") is False
+    assert path.read_bytes() == _canonical(record)
+
+    # A structurally invalid record is fail-closed evidence, never tidy-up.
+    path.write_text('{"activation_version":999}\n', encoding="utf-8")
+    assert discard_superseded_activation(vault, "1.65.0") is False
+    assert path.read_text(encoding="utf-8") == '{"activation_version":999}\n'
+
+    # A symlinked record is refused untouched.
+    path.unlink()
+    real = vault / "real-activation.json"
+    real.write_bytes(_canonical(record))
+    path.symlink_to(real)
+    assert discard_superseded_activation(vault, "1.65.0") is False
+    assert path.is_symlink()
+    path.unlink()
+
+    # An absent record is a no-op.
+    assert discard_superseded_activation(vault, "1.65.0") is False
+
+    # A well-formed record for another release is removed, exactly once.
+    path.write_bytes(_canonical(record))
+    assert discard_superseded_activation(vault, "1.65.0") is True
+    assert not path.exists()
+    assert discard_superseded_activation(vault, "1.65.0") is False
+
+
+def test_discard_superseded_activation_never_raises(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from core.lifecycle import bridge as bridge_module
+
+    vault = _activation_fixture(tmp_path)
+    activate_vault(vault)
+    path = vault / ACTIVATION_RELATIVE
+
+    def fail_fsync(_directory: Path) -> None:
+        raise OSError("simulated fsync failure")
+
+    monkeypatch.setattr(bridge_module, "fsync_directory", fail_fsync)
+    assert discard_superseded_activation(vault, "1.65.0") is False
+    assert not path.exists()
 
 
 def test_gated_operations_recover_after_a_delivered_release(tmp_path: Path) -> None:

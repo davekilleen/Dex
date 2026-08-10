@@ -655,7 +655,7 @@ def test_restore_fsyncs_removed_sidecars_before_atomic_replace(
 
     from core.lifecycle import sqlite_snapshot as sqlite_snapshot_module
 
-    real_fsync_directory = sqlite_snapshot_module._fsync_directory
+    real_fsync_directory = sqlite_snapshot_module.fsync_directory
     real_replace = sqlite_snapshot_module.os.replace
     fsynced_directories: list[Path] = []
 
@@ -669,7 +669,7 @@ def test_restore_fsyncs_removed_sidecars_before_atomic_replace(
         assert fsynced_directories == [destination.parent]
         real_replace(source_path, destination_path)
 
-    monkeypatch.setattr(sqlite_snapshot_module, "_fsync_directory", observe_fsync)
+    monkeypatch.setattr(sqlite_snapshot_module, "fsync_directory", observe_fsync)
     monkeypatch.setattr(sqlite_snapshot_module.os, "replace", assert_ordering)
 
     restore_sqlite(snapshot_dir, destination)

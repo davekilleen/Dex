@@ -75,6 +75,73 @@ def test_lock_release_after_takeover_is_a_noop(tmp_path: Path) -> None:
     release_new()
 
 
+def test_lock_failed_acquisition_cleans_up_its_own_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Issue #257 regression: the doctor tripped over its own orphaned lock.
+
+    On Windows the directory fsync raised PermissionError AFTER the lock file
+    was created (os.open cannot open directories there), so the acquisition
+    failed but left a lock naming the doctor's own live PID. The doctor's
+    next acquisition — writing System/.doctor-last-run.json — then reported
+    "another Dex process (pid X)" where X was the doctor itself. A failure
+    between creating the lock file and returning release() must remove the
+    file, so the next acquisition in the same process starts clean.
+    """
+    import core.transaction.lock as lock_module
+
+    vault = _vault(tmp_path)
+    lock = vault / "System/.dex/mutation.lock"
+
+    def windows_style_failure(directory: Path) -> None:
+        raise PermissionError(13, "cannot open a directory handle")
+
+    # First acquisition (the doctor's Tier-1 heal transaction) fails after
+    # the lock file exists — the exact Windows failure shape.
+    monkeypatch.setattr(lock_module, "fsync_directory", windows_style_failure)
+    with pytest.raises(PermissionError):
+        acquire_owned_lock(vault, "transaction:t1-heal")
+    monkeypatch.undo()
+
+    # The failed acquisition must not leave a lock naming our own live PID.
+    assert not lock.exists()
+
+    # Second acquisition (the doctor-report write) used to raise LockBusyError
+    # naming our own PID; with the orphan gone it must simply succeed.
+    release = acquire_owned_lock(vault, "transaction:doctor-report")
+    assert json.loads(lock.read_text())["kind"] == "transaction:doctor-report"
+    release()
+    assert not lock.exists()
+
+
+def test_lock_supports_the_doctors_sequential_double_acquisition(tmp_path: Path) -> None:
+    """doctor --heal acquires for the heal transaction, releases, then
+    acquires again in the same process to write the last-run report."""
+    vault = _vault(tmp_path)
+    release_heal = acquire_owned_lock(vault, "transaction:t1-heal")
+    release_heal()
+    release_report = acquire_owned_lock(vault, "transaction:doctor-report")
+    release_report()
+    assert not (vault / "System/.dex/mutation.lock").exists()
+
+
+def test_fsync_directory_is_a_noop_on_windows(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Windows cannot open a directory descriptor; the shared directory fsync
+    (used by the lock, journal, snapshots, ledger, and engines) must return
+    without attempting to, instead of failing after the write it guards."""
+    import core.transaction.fsync as fsync_module
+
+    monkeypatch.setattr(fsync_module.os, "name", "nt")
+
+    def forbidden(*args: object, **kwargs: object) -> int:
+        raise AssertionError("no directory descriptor may be opened on Windows")
+
+    monkeypatch.setattr(fsync_module.os, "open", forbidden)
+    fsync_module.fsync_directory(tmp_path)  # must not raise
+
+
 # ---------------------------------------------------------------------------
 # Journal
 # ---------------------------------------------------------------------------

@@ -37,6 +37,7 @@ from pathlib import Path
 
 from core import portable_contract
 from core.path_safety import unsafe_existing_parent
+from core.transaction.fsync import fsync_directory
 from core.transaction.journal import Journal, JournalCorruptError, JournalSchemaError
 from core.transaction.lock import acquire_owned_lock
 from core.transaction.snapshot import Snapshot
@@ -424,11 +425,7 @@ class Transaction:
             except FileNotFoundError:
                 pass
             else:
-                directory = os.open(target.parent, os.O_RDONLY)
-                try:
-                    os.fsync(directory)
-                finally:
-                    os.close(directory)
+                fsync_directory(target.parent)
             return
 
         staged = self.tx_dir / "staged" / f"{index:06d}.bin"
@@ -468,11 +465,7 @@ class Transaction:
             except BaseException:
                 temporary.unlink(missing_ok=True)
                 raise
-            directory = os.open(target.parent, os.O_RDONLY)
-            try:
-                os.fsync(directory)
-            finally:
-                os.close(directory)
+            fsync_directory(target.parent)
             # Keep the hard-link source until publication is journalled. If
             # this append tears, rollback can distinguish our inode from a
             # user file that won the same window.
@@ -481,18 +474,10 @@ class Transaction:
                 {"index": index, "relative": entry.relative},
             )
             temporary.unlink()
-            directory = os.open(target.parent, os.O_RDONLY)
-            try:
-                os.fsync(directory)
-            finally:
-                os.close(directory)
+            fsync_directory(target.parent)
             return
         os.replace(temporary, target)
-        directory = os.open(target.parent, os.O_RDONLY)
-        try:
-            os.fsync(directory)
-        finally:
-            os.close(directory)
+        fsync_directory(target.parent)
 
     def _verify_phase(self) -> None:
         assert self._plan is not None

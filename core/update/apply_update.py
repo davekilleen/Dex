@@ -527,6 +527,15 @@ def apply_verified_release(vault_root: Path, release: VerifiedReleaseRef) -> dic
             previous_commit,
         )
     )
+    # Post-commit, best-effort tidy-up shared with the lifecycle service's
+    # delivered-release route (issue #433): remove the previous release's
+    # activation record so gated operations do not refuse until repaired.
+    # See core.lifecycle.bridge.discard_superseded_activation for why the
+    # record is removed rather than rewritten and why failure never blocks
+    # a committed update.
+    from core.lifecycle.bridge import discard_superseded_activation
+
+    discard_superseded_activation(root, release.version)
     return {
         **transaction_result,
         "tag": release.tag,

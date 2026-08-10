@@ -20,6 +20,8 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
+from core.transaction.fsync import fsync_directory
+
 MANIFEST_NAME = "manifest.json"
 BACKUP_NAME = "database.sqlite3"
 SCHEMA_VERSION = 1
@@ -274,14 +276,6 @@ def _fsync_file(path: Path) -> None:
         os.close(descriptor)
 
 
-def _fsync_directory(directory: Path) -> None:
-    descriptor = os.open(directory, os.O_RDONLY)
-    try:
-        os.fsync(descriptor)
-    finally:
-        os.close(descriptor)
-
-
 def _write_all(descriptor: int, data: bytes) -> None:
     offset = 0
     while offset < len(data):
@@ -445,7 +439,7 @@ def snapshot_sqlite(
                 changes[2],
             )
             _write_manifest(destination, result)
-            _fsync_directory(destination)
+            fsync_directory(destination)
             return result
         finally:
             if backup_connection is not None:
@@ -593,10 +587,10 @@ def restore_sqlite(snapshot_dir: Path, dest_db: Path) -> None:
                 sidecar.unlink()
             except FileNotFoundError:
                 pass
-        _fsync_directory(destination.parent)
+        fsync_directory(destination.parent)
         os.replace(temporary, destination)
         replaced = True
-        _fsync_directory(destination.parent)
+        fsync_directory(destination.parent)
     except SQLiteSnapshotError:
         raise
     except (OSError, sqlite3.Error) as error:

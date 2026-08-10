@@ -111,6 +111,26 @@ def test_release_identity_binds_tag_source_commit_and_manifest() -> None:
         loads_catalog(json.dumps(wrong_tag), manifest_bytes=MANIFEST_BYTES)
 
 
+def test_manifest_binding_tolerates_windows_crlf_checkout() -> None:
+    """Issue #256: Git's recommended core.autocrlf=true on Windows rewrites
+    the tracked manifest to CRLF at checkout, so the binding hash — computed
+    over the LF release bytes — never matched on any Windows install. The
+    strict byte check stays primary; a CRLF manifest whose LF form is
+    byte-identical to the released manifest is the one tolerated shape."""
+    document = valid_document()
+
+    crlf_manifest = MANIFEST_BYTES.replace(b"\n", b"\r\n")
+    assert crlf_manifest != MANIFEST_BYTES
+    parsed = loads_catalog(json.dumps(document), manifest_bytes=crlf_manifest)
+    assert parsed.release.manifest.sha256 == MANIFEST_SHA256
+
+    # Normalization is not a loophole: CRLF bytes of a DIFFERENT manifest
+    # still fail the binding.
+    wrong_crlf = (MANIFEST_BYTES + b"README.md\n").replace(b"\n", b"\r\n")
+    with pytest.raises(CatalogIdentityError, match="UNKNOWN.*manifest"):
+        loads_catalog(json.dumps(document), manifest_bytes=wrong_crlf)
+
+
 def test_signature_envelopes_are_hash_bound_without_claiming_publisher_trust() -> None:
     document = valid_document()
     document["integrity"]["signatures"] = [

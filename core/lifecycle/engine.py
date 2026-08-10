@@ -44,6 +44,7 @@ from core.lifecycle.preview import (
     canonical_adoption_preview_bytes,
 )
 from core.transaction.engine import PlanEntry, PlanRejected, Transaction, TransactionError
+from core.transaction.fsync import fsync_directory
 from core.transaction.journal import Journal, JournalCorruptError
 from core.transaction.snapshot import Snapshot, SnapshotEntry, SnapshotError
 
@@ -491,14 +492,6 @@ def rewind_acknowledgement_token(receipt: object) -> str:
     return hashlib.sha256(canonical).hexdigest()
 
 
-def _fsync_directory(directory: Path) -> None:
-    descriptor = os.open(directory, os.O_RDONLY)
-    try:
-        os.fsync(descriptor)
-    finally:
-        os.close(descriptor)
-
-
 def _receipt_path(vault_root: Path, transaction_id: str) -> Path:
     if TRANSACTION_ID.fullmatch(transaction_id) is None:
         raise _rewind_refuse("receipt transaction_id is not canonical")
@@ -548,7 +541,7 @@ def _persist_adoption_receipt(vault_root: Path, receipt: AdoptionReceipt) -> Non
         descriptor = None
         os.replace(temporary, target)
         os.chmod(target, 0o600)
-        _fsync_directory(directory)
+        fsync_directory(directory)
     except BaseException:
         if descriptor is not None:
             os.close(descriptor)
@@ -1684,7 +1677,7 @@ def _persist_topology_receipt(
         descriptor = None
         os.replace(temporary, target)
         os.chmod(target, 0o600)
-        _fsync_directory(directory)
+        fsync_directory(directory)
     except BaseException:
         if descriptor is not None:
             os.close(descriptor)

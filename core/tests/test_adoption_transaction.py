@@ -378,14 +378,14 @@ def test_e6_execution_does_not_hash_non_requested_item_payloads(
 
     vault, _document_value, catalog, inventory, plan, loader = _setup(tmp_path)
     preview = build_adoption_preview(catalog, inventory, plan, ("alpha",), loader)
-    original_sha256_file = inventory_module.sha256_file
+    original_bounded_read = inventory_module.bounded_read
 
-    def requested_only(root: Path, relative: str, *, max_bytes: int) -> str:
+    def requested_only(root: Path, relative: str, *, max_bytes: int) -> bytes:
         if relative == ".claude/skills/beta/SKILL.md":
             raise AssertionError("execution read a non-requested item payload")
-        return original_sha256_file(root, relative, max_bytes=max_bytes)
+        return original_bounded_read(root, relative, max_bytes=max_bytes)
 
-    monkeypatch.setattr(inventory_module, "sha256_file", requested_only)
+    monkeypatch.setattr(inventory_module, "bounded_read", requested_only)
 
     receipt = execute_adoption(vault, preview, preview.sha256, loader)
 

@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from core import portable_contract
+from core.lifecycle.catalog import crlf_normalized_sha256
 from core.lifecycle.customizations import (
     CustomizationReport,
     ReleaseBaseline,
@@ -21,8 +22,8 @@ from core.lifecycle.filesystem import (
     DEFAULT_MAX_ENTRIES,
     DEFAULT_MAX_READ_BYTES,
     FilesystemInspectionError,
+    bounded_read,
     normalize_relative_path,
-    sha256_file,
     walk_read_only,
 )
 from core.lifecycle.machine_state import MachineStateReport, probe_machine_state
@@ -194,8 +195,6 @@ def load_folder_map(vault_root: Path) -> FolderMap:
     if not path.exists():
         return FolderMap("DEFAULT", ())
     try:
-        from core.lifecycle.filesystem import bounded_read
-
         raw = bounded_read(root, FOLDER_MAP_PATH, max_bytes=MAX_FOLDER_MAP_BYTES)
         payload = _parse_flat_folder_map(raw)
         mappings: list[tuple[str, str, str]] = []
@@ -296,15 +295,21 @@ def build_inventory(
         canonical_to_actual.setdefault(canonical.casefold(), []).append(observed.path)
         ownership, rule, denied, write_allowed, write_action = _contract_facts(canonical, exists=True)
         digest: str | None = None
+        normalized_digest: str | None = None
         if (
             observed.kind == "file"
             and not denied
             and baseline.expected_sha256(canonical) is not None
         ):
             try:
-                digest = sha256_file(root, observed.path, max_bytes=max_hash_bytes)
+                raw = bounded_read(root, observed.path, max_bytes=max_hash_bytes)
             except FilesystemInspectionError as error:
                 errors.append(str(error))
+            else:
+                # The entry records the honest on-disk digest; the normalized
+                # digest only feeds the release-state comparison (issue #256).
+                digest = hashlib.sha256(raw).hexdigest()
+                normalized_digest = crlf_normalized_sha256(raw)
         release_state = classify_release_state(
             canonical_path=canonical,
             kind=observed.kind,
@@ -312,6 +317,7 @@ def build_inventory(
             denied=denied,
             actual_sha256=digest,
             baseline=baseline,
+            crlf_normalized_sha256=normalized_digest,
         )
         entries.append(
             InventoryEntry(

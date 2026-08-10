@@ -21,6 +21,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from core.path_safety import unsafe_existing_parent
+from core.transaction.fsync import fsync_directory
 
 MANIFEST_NAME = "manifest.json"
 
@@ -36,14 +37,6 @@ class SnapshotEntry:
     mode: int | None
     sha256: str | None
     size: int | None
-
-
-def _fsync_directory(directory: Path) -> None:
-    descriptor = os.open(directory, os.O_RDONLY)
-    try:
-        os.fsync(descriptor)
-    finally:
-        os.close(descriptor)
 
 
 def _sha256(path: Path) -> tuple[str, int]:
@@ -129,7 +122,7 @@ class Snapshot:
             else:
                 entries.append(SnapshotEntry(relative, False, None, None, None))
         self._write_manifest(entries)
-        _fsync_directory(self.root)
+        fsync_directory(self.root)
         return entries
 
     def _write_manifest(self, entries: list[SnapshotEntry]) -> None:
@@ -218,12 +211,12 @@ class Snapshot:
                 finally:
                     os.close(descriptor)
                 os.replace(temporary, target)
-                _fsync_directory(target.parent)
+                fsync_directory(target.parent)
             else:
                 transaction_wrote_it = created_deletions is None or entry.relative in created_deletions
                 if transaction_wrote_it and (target.is_symlink() or target.exists()):
                     target.unlink()
-                    _fsync_directory(target.parent)
+                    fsync_directory(target.parent)
                     # Remove now-empty parent directories the apply created,
                     # stopping at the first non-empty (or the vault root).
                     parent = target.parent
