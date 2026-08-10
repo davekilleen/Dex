@@ -7,6 +7,17 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.86.0] — 🧭 The checkup now sees all your background jobs — and stops crying wolf (2026-08-10)
+
+Three community bug reports showed the same pattern from different angles: Dex's health checkup could miss real problems with background jobs while flagging healthy things as broken. This release makes the checkup match reality in both directions. Thanks to the three reporters whose unusually precise write-ups made these fixes straightforward.
+
+**What this fixes for you:**
+
+* **Background jobs you set up yourself are now watched.** The checkup used to recognize only the background jobs Dex ships. If you scheduled your own Dex automations under your own names, they were invisible — a silently dead job read as "healthy, nothing to monitor," the exact failure the check exists to catch. Now any background job that works on this vault is checked no matter what you named it, and the checkup says plainly which jobs it can audit for freshness and which it can only confirm are running.
+* **Moving your Dex folder no longer strands background jobs in limbo.** After a folder move or rename, Dex would warn at session start that background jobs still pointed at the old location and send you to /dex-doctor — which then reported everything fine, because it treated those very jobs as belonging to some other install. Now the doctor recognizes a job pointing at your vault's previous location as yours, reports it as broken, and offers to repoint or remove it with your approval. The warning and the fix finally agree. (In the report that surfaced this, seven jobs had been running against a dead folder for a day while the checkup said nothing was broken.)
+* **"Modified shipped files" stops accusing files you never touched.** The checkup compared your files against an out-of-date reference point, so files that were exactly what the current release ships could be flagged as modified — alarmingly, including the files that handle credentials — and real changes got lost in the noise. Files that match the current release are now recognized as release content, so the list only names things you actually changed.
+* **When the one-time file-bookkeeping cleanup is blocked, it now tells you why.** Its safety gate used to refuse with a bare count mismatch, leaving you to guess which files were responsible. It now lists the exact files, notes which expected files never existed in your vault at all, and shows the one command that clears each extra file — the gate itself stays just as strict.
+
 ## [1.85.0] — 🫀 Health checks that ask "did it work?" — and don't wait until tomorrow to tell you (2026-08-10)
 
 Yesterday's release fixed a background sync that had been failing silently for six days while every health check stayed green. Today's release fixes the deeper problem: health checks that measured the wrong thing, and health news that only arrived when you started a fresh session.

@@ -40,9 +40,15 @@ if [[ -f "$ONBOARDING_MARKER" ]]; then
     if [[ "$STORED_VAULT" != "$CLAUDE_DIR" ]]; then
         if [[ -n "$STORED_VAULT" ]]; then
             PLIST_PATH_CONFLICT="false"
-            for plist in "$HOME/Library/LaunchAgents"/com.dex.*.plist "$HOME/Library/LaunchAgents"/com.claudesidian.*.plist; do
+            # Escape the stored path for ERE, and require a path boundary after
+            # it, so /old/Dex never matches /old/Dex-other. Any label can carry
+            # this vault's job (users install their own), so scan every plist —
+            # Doctor applies the same stored-path ownership rule and can heal
+            # everything this warning fires on.
+            STORED_VAULT_REGEX=$(printf '%s' "$STORED_VAULT" | sed -e 's/[][\.|$(){}?+*^\\]/\\&/g')
+            for plist in "$HOME/Library/LaunchAgents"/*.plist; do
                 [[ -f "$plist" ]] || continue
-                if grep -Fq -- "$STORED_VAULT" "$plist" 2>/dev/null; then
+                if grep -Eq -- "${STORED_VAULT_REGEX}(/|[[:space:]'\":<]|\$)" "$plist" 2>/dev/null; then
                     PLIST_PATH_CONFLICT="true"
                     break
                 fi

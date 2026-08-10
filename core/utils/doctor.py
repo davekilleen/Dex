@@ -2249,8 +2249,81 @@ def _is_macos() -> bool:
     return sys.platform == "darwin"
 
 
-def _installed_launch_agents(context: DoctorContext) -> list[Path]:
-    return sorted(context.launch_agents_dir.glob("com.dex.*.plist"))
+_LEGACY_LAUNCH_AGENT_PREFIX = "com.claudesidian."
+
+
+def _is_dex_named_plist(name: str) -> bool:
+    """Return whether a plist filename presents itself as a Dex launch agent.
+
+    Shipped agents are ``com.dex.*``; users install their own under labels
+    like ``com.<user>.dex.*``; the pre-rename product used
+    ``com.claudesidian.*``.  Matching requires a whole ``dex`` label segment
+    so unrelated products whose names merely contain the letters
+    (``com.dexcom.*``, ``com.fedex.*``) are never treated as Dex's.
+    """
+    stem = name[: -len(".plist")] if name.endswith(".plist") else name
+    lowered = stem.lower()
+    if lowered.startswith(_LEGACY_LAUNCH_AGENT_PREFIX):
+        return True
+    return "dex" in lowered.split(".")
+
+
+def _installed_launch_agents(context: DoctorContext) -> list[tuple[Path, bool]]:
+    """Enumerate every launch agent with its is-Dex-named classification.
+
+    Non-Dex-named plists are enumerated too because ownership evidence is
+    the paths inside a plist, not its filename: a user's custom job under
+    any label that points into this vault is this vault's business.
+    """
+    directory = context.launch_agents_dir
+    if not directory.is_dir():
+        return []
+    return sorted(
+        (path, _is_dex_named_plist(path.name)) for path in directory.glob("*.plist")
+    )
+
+
+def _stored_former_vault_root(context: DoctorContext) -> Path | None:
+    """Return the breadcrumb's stored vault path when it names a former root.
+
+    The installers write the vault's location to ``~/.config/dex/vault-path``.
+    When a vault directory is moved or renamed, that breadcrumb keeps naming
+    the old location — the same evidence the session-start hook uses to warn
+    about launch agents left pointing at the former root.  Doctor reads the
+    same breadcrumb so the hook and the doctor agree on ownership.
+    """
+    breadcrumb = context.home / ".config" / "dex" / "vault-path"
+    try:
+        if breadcrumb.is_symlink() or not breadcrumb.is_file():
+            return None
+        stored = breadcrumb.read_text(encoding="utf-8").strip()
+    except (OSError, UnicodeError):
+        return None
+    if not stored:
+        return None
+    candidate = Path(stored).expanduser()
+    # Refuse degenerate roots ("/", "/Users") that would match everything.
+    if not candidate.is_absolute() or len(candidate.parts) < 3:
+        return None
+    if candidate == context.vault_root:
+        return None
+    try:
+        if candidate.resolve() == context.vault_root.resolve():
+            return None
+    except (OSError, RuntimeError):
+        pass
+    return candidate
+
+
+def _plist_references_stale_root(data: dict[str, Any], stale_root: Path) -> bool:
+    """Return whether any plist string names the vault's former location.
+
+    Matches the session-start hook's text search, tightened with a path
+    boundary so a former root of ``/Users/x/Dex`` never claims an agent
+    working under ``/Users/x/Dex-other``.
+    """
+    pattern = re.compile(re.escape(stale_root.as_posix()) + r"(?=$|[/\s'\":])")
+    return any(pattern.search(value) for value in _plist_strings(data))
 
 
 def _plist_data(plist: Path) -> dict[str, Any]:
@@ -2445,10 +2518,44 @@ def _resolved_interpreter(raw: str, context: DoctorContext) -> str | None:
     return str(candidate) if candidate.is_file() and os.access(candidate, os.X_OK) else None
 
 
+def _relevant_launch_agents(
+    context: DoctorContext,
+    stale_root: Path | None,
+) -> list[tuple[Path, bool, dict[str, Any] | None, Exception | None]]:
+    """Return the launch agents this vault must account for.
+
+    Every Dex-named plist is relevant (parse failures included — a corrupt
+    Dex plist is an unknown, never assumed foreign).  A plist under any
+    other name is relevant only on path evidence: it references this vault,
+    or the vault's stored former location.  Unreadable non-Dex plists are
+    other products' files and are left alone.
+    """
+    relevant: list[tuple[Path, bool, dict[str, Any] | None, Exception | None]] = []
+    for plist, dex_named in _installed_launch_agents(context):
+        try:
+            data = _plist_data(plist)
+        except PermissionError:
+            if dex_named:
+                raise
+            continue
+        except RuntimeError as error:
+            if dex_named:
+                relevant.append((plist, dex_named, None, error))
+            continue
+        if (
+            dex_named
+            or _plist_owned_by_vault(plist, data, context)
+            or (stale_root is not None and _plist_references_stale_root(data, stale_root))
+        ):
+            relevant.append((plist, dex_named, data, None))
+    return relevant
+
+
 def _probe_jobs_loaded(context: DoctorContext) -> ProbeResult:
-    plists = _installed_launch_agents(context)
+    stale_root = _stored_former_vault_root(context)
+    plists = _relevant_launch_agents(context, stale_root)
     if not plists:
-        return ProbeResult("OFF", "No com.dex launch agents are installed")
+        return ProbeResult("OFF", "No Dex launch agents are installed")
     if not _is_macos():
         return ProbeResult("UNKNOWN", "launchctl and plutil checks are only available on macOS")
 
@@ -2457,23 +2564,36 @@ def _probe_jobs_loaded(context: DoctorContext) -> ProbeResult:
     runtime_labels = []
     skipped_count = 0
     owned_count = 0
-    for plist in plists:
-        try:
-            data = _plist_data(plist)
-        except RuntimeError as error:
+    stale_count = 0
+    for plist, _dex_named, data, parse_error in plists:
+        if data is None:
             # A corrupt plist could belong to this vault, but a filename alone
             # cannot establish that safely. Surface the uncertainty instead of
             # falsely treating it as a foreign Dex installation.
-            unknowns.append(_unattributable_launch_agent_detail(plist, error))
+            unknowns.append(_unattributable_launch_agent_detail(plist, parse_error))
             continue
         if not _plist_owned_by_vault(plist, data, context):
-            orphan_issue = _launch_agent_orphan_issue(data)
-            if orphan_issue is not None:
-                orphan_label = str(data.get("Label") or plist.stem)
+            label = str(data.get("Label") or plist.stem)
+            if stale_root is not None and _plist_references_stale_root(data, stale_root):
+                # The agent points at this vault's stored former location.
+                # That is this vault's job left behind by a move or rename —
+                # owned-and-stale, never another product's (issue #364).
+                stale_count += 1
                 issues.append(
                     (
                         2,
-                        f"{orphan_label} {orphan_issue} — likely installed from a "
+                        f"{label} still points at this vault's old location "
+                        f"({stale_root}) — it keeps running against the moved "
+                        "directory until it is repointed or removed",
+                    )
+                )
+                continue
+            orphan_issue = _launch_agent_orphan_issue(data)
+            if orphan_issue is not None:
+                issues.append(
+                    (
+                        2,
+                        f"{label} {orphan_issue} — likely installed from a "
                         "temporary checkout; reinstall it from the real vault",
                     )
                 )
@@ -2531,7 +2651,16 @@ def _probe_jobs_loaded(context: DoctorContext) -> ProbeResult:
         action_parts = []
         if any(issue_tier == 3 for issue_tier, _detail in issues):
             action_parts.append("Install or repair the missing job interpreter by hand")
-        if any(issue_tier == 2 for issue_tier, _detail in issues):
+        if stale_count:
+            action_parts.append(
+                "repoint the stale launch agent at this vault's current location "
+                f"({context.vault_root}) — unload it, rewrite the old paths, plutil -lint, "
+                "reload — or remove it, and update ~/.config/dex/vault-path, "
+                "only after explicit approval"
+            )
+        if any(issue_tier == 2 for issue_tier, _detail in issues) and (
+            len([issue for issue in issues if issue[0] == 2]) > stale_count
+        ):
             action_parts.append("repair or reload the named launch agent only after explicit approval")
         detail_parts = [detail for _tier, detail in issues]
         detail_parts.extend(unknowns)
@@ -2565,11 +2694,11 @@ def _probe_jobs_fresh(context: DoctorContext) -> ProbeResult:
 
     installed = set()
     unknowns = []
-    for plist in _installed_launch_agents(context):
-        try:
-            data = _plist_data(plist)
-        except RuntimeError as error:
-            unknowns.append(_unattributable_launch_agent_detail(plist, error))
+    for plist, _dex_named, data, parse_error in _relevant_launch_agents(
+        context, _stored_former_vault_root(context)
+    ):
+        if data is None:
+            unknowns.append(_unattributable_launch_agent_detail(plist, parse_error))
             continue
         if _plist_owned_by_vault(plist, data, context):
             installed.add(str(data.get("Label") or plist.stem))
@@ -2578,10 +2707,26 @@ def _probe_jobs_fresh(context: DoctorContext) -> ProbeResult:
         for promise in health_promises.PROMISES
         if promise.id in installed and promise.receipt_kind != "daemon"
     ]
+    # Jobs the user installed themselves have no receipt in the promise
+    # register, so their freshness cannot be audited. Say so plainly instead
+    # of letting "OFF" read as "nothing to monitor" (issue #253).
+    registered_ids = {promise.id for promise in health_promises.PROMISES}
+    unregistered = sorted(installed - registered_ids)
+    coverage_note = ""
+    if unregistered:
+        count = len(unregistered)
+        noun = "launch agent" if count == 1 else "launch agents"
+        coverage_note = (
+            f"{count} user-installed {noun} referencing this vault "
+            f"({', '.join(unregistered)}) are checked for loading only, not freshness"
+        )
     if not monitored:
         if unknowns:
             return ProbeResult("UNKNOWN", "; ".join(unknowns))
-        return ProbeResult("OFF", "No monitored Dex freshness jobs are installed")
+        detail = "No shipped Dex freshness jobs are installed"
+        if coverage_note:
+            detail += f"; {coverage_note}"
+        return ProbeResult("OFF", detail)
 
     stale = []
     for promise in monitored:
@@ -2591,15 +2736,15 @@ def _probe_jobs_fresh(context: DoctorContext) -> ProbeResult:
     if stale:
         return ProbeResult(
             "BROKEN",
-            "; ".join([*stale, *unknowns]),
+            "; ".join([*stale, *unknowns, *([coverage_note] if coverage_note else [])]),
             Heal(tier=2, action="Run the stale job once and inspect its application log.", applied=False),
         )
     if unknowns:
         return ProbeResult("UNKNOWN", "; ".join(unknowns))
-    return ProbeResult(
-        "OK",
-        f"All {len(monitored)} installed job promises are within their promised cadence",
-    )
+    detail = f"All {len(monitored)} installed job promises are within their promised cadence"
+    if coverage_note:
+        detail += f"; {coverage_note}"
+    return ProbeResult("OK", detail)
 
 
 def _preflight_snapshot(context: DoctorContext) -> tuple[dict[str, Any], list[dict[str, Any]]]:
@@ -3990,6 +4135,33 @@ def _probe_core_drift(context: DoctorContext) -> ProbeResult:
         if relative not in {"CLAUDE.md", ".mcp.json"}
         or not _only_sanctioned_file_changes(context, baseline, relative)
     ]
+    # The merge-base baseline can lag what is actually on disk: the legacy
+    # updater delivered newer release files without advancing the shared
+    # history, so a file byte-identical to the current release still differs
+    # from the stale baseline. Release-delivered bytes are not user drift —
+    # only files that also differ from the release tip stay flagged
+    # (issue #242 item 2).
+    if drifted:
+        tip = _git_result(
+            context, "rev-parse", "--verify", "--quiet", f"{release_ref}^{{commit}}"
+        )
+        tip_commit = tip.stdout.strip() if tip.returncode == 0 else ""
+        if tip_commit and tip_commit != baseline:
+            try:
+                tip_entries = _release_tree_entries(context, release_ref)
+            except RuntimeError:
+                tip_entries = {}
+            tip_subset = {
+                relative: tip_entries[relative]
+                for relative in drifted
+                if relative in tip_entries
+            }
+            still_mismatched = _mismatched_release_blobs(context, tip_subset)
+            drifted = [
+                relative
+                for relative in drifted
+                if relative not in tip_subset or relative in still_mismatched
+            ]
     if not drifted:
         return ProbeResult("OK", "No tracked shipped files differ from the installed release")
     return ProbeResult(

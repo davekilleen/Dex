@@ -237,7 +237,14 @@ test('session start says an unfinished daily self-check will retry', (t) => {
   );
 });
 
-for (const plistName of ['com.dex.meeting-intel.plist', 'com.claudesidian.learning.plist']) {
+for (const plistName of [
+  'com.dex.meeting-intel.plist',
+  'com.claudesidian.learning.plist',
+  // User-installed jobs under any label are this vault's too — the doctor
+  // claims them by stored-path evidence, so the hook must warn about them.
+  'com.alice.dex.context-sync.plist',
+  'com.mycompany.sync.plist',
+]) {
   test(`session start reports but never changes moved-vault conflict in ${plistName}`, (t) => {
     const sandbox = createSandbox(t);
     completeOnboarding(sandbox);
@@ -264,4 +271,21 @@ test('session start stays silent when no plist points to the stored former vault
 
   assert.doesNotMatch(stdout, /still points to this vault's old location/);
   assert.equal(fs.readFileSync(conflict.breadcrumb, 'utf8'), `${conflict.oldVault}\n`);
+});
+
+test('session start stays silent when a plist references a sibling of the former vault', (t) => {
+  // A former root of /x/old-vault must not match /x/old-vault-other: the
+  // doctor's stored-path ownership rule requires a path boundary, and the
+  // hook must never warn about something the doctor will not act on.
+  const sandbox = createSandbox(t);
+  completeOnboarding(sandbox);
+  const conflict = installMovedVaultConflict(sandbox, 'com.dex.meeting-intel.plist');
+  fs.writeFileSync(
+    conflict.plist,
+    `<plist><string>${conflict.oldVault}-other/.scripts/run.sh</string></plist>\n`,
+  );
+
+  const stdout = runSessionStart(sandbox);
+
+  assert.doesNotMatch(stdout, /still points to this vault's old location/);
 });
