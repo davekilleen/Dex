@@ -7,6 +7,15 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.87.0] — 🧭 Clearer rescue directions for stuck older installs (2026-08-10)
+
+The update-rescue guide (the page that helps when `/dex-update` refuses) sent some stuck installs down a road that couldn't work — and, in one rare case, a road that could cost files.
+
+**What this fixes for you:**
+
+* **The guide now checks your vault's shape first.** Installs where Dex's code already lives in its own private store were being pointed at a manual Git route that cannot work for them (its first command fails on those vaults); they're now sent straight to the supported one-time bridge, whatever version they're on.
+* **The oldest versions go to the bridge, never the old manual route.** A detailed report showed that versions before v1.62 hit a safety refusal the manual route can never satisfy — and that forcing past that refusal silently deleted three of the reporter's personal files (recovered from their own backup, nothing lost). The guide now says plainly: if you see that refusal, stop and use the bridge, which recognises those exact older versions and protects personal files by design.
+
 ## [1.85.0] — 🫀 Health checks that ask "did it work?" — and don't wait until tomorrow to tell you (2026-08-10)
 
 Yesterday's release fixed a background sync that had been failing silently for six days while every health check stayed green. Today's release fixes the deeper problem: health checks that measured the wrong thing, and health news that only arrived when you started a fresh session.

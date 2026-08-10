@@ -6,6 +6,15 @@ because an update failed: follow this page exactly; do not improvise beyond it.
 
 ## Who this applies to
 
+**First, check the vault's shape — it decides the route.** If the vault contains a
+`.dex/brain.git` folder, Dex's code already lives in its own private store and the
+vault's own Git history has no release in it to merge — the Git fallback below
+cannot work there, whatever version is installed, and its `git fetch upstream`
+step will fail because the vault has no `upstream` remote. Skip straight to
+"Lifecycle-era bridge" further down this page.
+
+For a vault **without** `.dex/brain.git`:
+
 - **Versions v1.68 through v1.77.2**: the guided update route in these versions has a
   defect (an internal version label that was never advanced) which makes it refuse
   before doing anything — often as an error mentioning
@@ -20,9 +29,14 @@ because an update failed: follow this page exactly; do not improvise beyond it.
 - **Versions v1.74 through v1.79 whose `/dex-update` cannot fetch a new release**:
   these versions predate the delivered-release mechanism and need the one-time
   bridge — skip the Git fallback below and go straight to
-  "Lifecycle-era bridge — v1.74 through v1.79" further down this page.
-- **Versions before v1.62**: your built-in update instructions already use the
-  fallback route; follow your own `/dex-update` skill as written.
+  "Lifecycle-era bridge" further down this page.
+- **Versions before v1.62**: use the one-time bridge — skip the Git fallback and go
+  straight to "Lifecycle-era bridge" further down this page. These versions' own
+  built-in update instructions describe the Git route, but their pre-merge safety
+  check cannot approve today's releases, so that route stops with
+  `blocked-query-mismatch` — and pushing past that refusal deletes the very files
+  the check protects (see the warning below). The bridge recognises these exact
+  older releases and carries their file-protection rules with it.
 
 ## The fallback route (safe, reversible, one time)
 
@@ -38,6 +52,15 @@ git tag backup-before-dex-update-$(date +%Y%m%d) || true
 git fetch upstream
 git merge upstream/release --no-edit
 ```
+
+**Stop immediately if any step reports `blocked-query-mismatch`.** That is the
+pre-merge safety check saying it cannot vouch for this merge. Do not continue and
+do not work around it: merging past this refusal silently deletes the personal
+files the check exists to protect (files under `System/Session_Learnings/` and
+`System/integrations/` have been lost this way). Leave the merge uncommitted (or
+run `git merge --abort` if one started), and use the "Lifecycle-era bridge"
+section further down this page instead — it reaches the same destination without
+that gate.
 
 Conflict rules, in order of precedence:
 - Anything under `00-Inbox` … `07-Archives`, `System/user-profile.yaml`,
@@ -77,14 +100,18 @@ can write. The transaction and ownership contract decide every vault-content
 write and keep the receipt and rewind evidence. If delivery, preview, or
 execution cannot be proved, it stops; do not substitute a manual Git command.
 
-## Lifecycle-era bridge — v1.74 through v1.79
+## Lifecycle-era bridge — the one-time route when the Git fallback can't apply
 
-Those releases can safely update the Dex files they already have, but they do
-not contain the later delivery mechanism that fetches a new Dex release. They
-need one **one-time bridge** before their normal `dex-update` experience can
-begin. The bridge is intentionally not a raw Git merge: it fetches only the
-pre-pinned foundation release, proves its annotated tag, commit, and tree, then
-uses that foundation's existing topology and receipt-backed transaction service.
+This is the supported route for releases before v1.62, for v1.74 through v1.79
+(which predate the delivery mechanism that fetches a new Dex release), and for
+any vault that already has a `.dex/brain.git` folder. These installs need one
+**one-time bridge** before the normal `dex-update` experience can begin. The
+bridge is intentionally not a raw Git merge: it fetches only the pre-pinned
+foundation release, proves its annotated tag, commit, and tree, then uses that
+foundation's existing topology and receipt-backed transaction service. It
+recognises the exact published older releases (back to the earliest supported
+trees) and carries their file-protection rules with it, so nothing a person
+wrote is part of what it may replace.
 
 The bridge now pins the exact public v1.81.16 foundation: its annotated
 distribution tag, tag object, commit, and tree are all closed in the released
