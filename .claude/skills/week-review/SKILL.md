@@ -1,8 +1,15 @@
 ---
 name: week-review
 description: "Review the week with concrete accomplishments (not fake percentages), pattern detection and goal tracking. Use when the user says 'how was my week', 'week review', or it's their last working day. Also use proactively when a week's priorities are largely resolved. Not for planning the coming week; use `week-plan`."
-context: fork
 ---
+
+## Execution mode
+
+Run inline in the current conversation by default, so this work can see what the
+user has already discussed, decided, or settled this session. Do not fork merely
+because this skill was selected. Only run in the background when the user
+explicitly asks for a background run or the host has already obtained a specific
+background-work approval for this run.
 
 ## Purpose
 

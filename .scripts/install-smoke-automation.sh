@@ -43,6 +43,14 @@ if [ "${1:-}" != "" ]; then
     exit 2
 fi
 
+# Never point machine-wide background jobs (or the shared Dex path record) at a
+# temporary checkout. A git worktree marks .git as a file; a real vault does not.
+if [ -f "$VAULT_PATH/.git" ] || case "$VAULT_PATH" in */worktrees/*) true;; *) false;; esac; then
+    echo "$VAULT_PATH looks like a temporary working copy (a git worktree), not your real Dex vault." >&2
+    echo "Run this installer from your real vault." >&2
+    exit 1
+fi
+
 mkdir -p "$HOME/.config/dex" "$HOME/Library/LaunchAgents" "$VAULT_PATH/.scripts/logs"
 echo "$VAULT_PATH" > "$HOME/.config/dex/vault-path"
 chmod +x "$VAULT_PATH/.scripts/nightly-smoke.sh"

@@ -72,6 +72,15 @@ def test_named_meeting_discovery_is_provider_neutral_and_not_folder_bound() -> N
     assert "clickup" in text
     assert "not only `00-inbox/meetings/`" in text
     assert "original source note" in text
+    assert "meeting_sources" in text
+
+
+def test_source_boundary_forbids_external_services() -> None:
+    text = SKILL.read_text(encoding="utf-8").lower()
+    assert "source boundary" in text
+    assert "never go looking in external services" in text
+    assert "google drive" in text
+    assert "do not widen the search to external tools" in text
 
 
 @pytest.mark.parametrize(

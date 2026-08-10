@@ -106,6 +106,18 @@ if [ "$1" = "--stop" ] || [ "$1" = "--uninstall" ]; then
 fi
 
 # Installation
+
+# Never point machine-wide background jobs (or the shared Dex path record) at a
+# temporary checkout: agent tooling runs this installer from short-lived git
+# worktrees, which then vanish and leave the job failing silently every 30 min.
+# A git worktree marks .git as a file; a real clone or plain vault does not.
+if [ -f "$VAULT_PATH/.git" ] || case "$VAULT_PATH" in */worktrees/*) true;; *) false;; esac; then
+    echo -e "${RED}✗${NC} $VAULT_PATH looks like a temporary working copy (a git worktree), not your real Dex vault."
+    echo "  Installing from here would point background sync — and the machine-wide Dex path record —"
+    echo "  at a folder that may disappear. Run this installer from your real vault."
+    exit 1
+fi
+
 echo "Installing background sync..."
 echo ""
 

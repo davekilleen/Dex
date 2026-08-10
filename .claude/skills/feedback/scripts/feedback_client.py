@@ -430,11 +430,24 @@ def validate_draft(draft: dict) -> dict:
 # ---------------------------------------------------------------------------
 # Commands
 # ---------------------------------------------------------------------------
+def command_check(args: argparse.Namespace) -> int:
+    """Preflight: is this terminal linked and fresh enough to send right now?
+
+    Raises AuthError (exit 2, CONNECTION NEEDED) when it is not, so callers can
+    resolve the link before any report is drafted.
+    """
+    auth = load_auth(site_base=args.site_base)
+    identity = auth.get("email") or auth.get("handle") or "your Heydex account"
+    print(f"LINKED: this terminal can send feedback as {identity}.")
+    return 0
+
+
 def command_link(args: argparse.Namespace) -> int:
     code = args.code.strip()
     if not code:
-        print("A sign-in code is required. Create one at %s/connect/?cli=true." % get_site_base_url(args.site_base))
-        return 2
+        raise FeedbackError(
+            "A sign-in code is required. Create one at %s/connect/?cli=true." % get_site_base_url(args.site_base)
+        )
 
     payload = _request_json("POST", get_api_base_url(args.api_base), "/api/connect/redeem", {"code": code})
     save_auth(payload)
@@ -617,6 +630,9 @@ def build_parser() -> argparse.ArgumentParser:
     common.add_argument("--site-base", default=None, help="Site base, default %s" % HEYDEX_SITE_BASE_URL)
     common.add_argument("--vault", default=None, help="Vault root, default $VAULT_PATH or the current directory")
 
+    check = subparsers.add_parser("check", parents=[common], help="Preflight: is this terminal linked and ready to send?")
+    check.set_defaults(func=command_check)
+
     link = subparsers.add_parser("link", parents=[common], help="Link this terminal to a heydex account")
     link.add_argument("--code", required=True)
     link.set_defaults(func=command_link)
@@ -656,6 +672,9 @@ def main(argv: "list[str] | None" = None) -> int:
         return error.exit_code
     except BadResponse as error:
         print(f"BAD RESPONSE: {error.user_message}")
+        return error.exit_code
+    except FeedbackError as error:
+        print(f"PROBLEM: {error.user_message}")
         return error.exit_code
 
 

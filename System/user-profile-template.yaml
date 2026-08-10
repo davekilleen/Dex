@@ -88,6 +88,14 @@ meeting_processing:
   # API provider for automatic mode: gemini, anthropic, or openai
   api_provider: gemini
 
+# Where meeting notes come from. Meeting skills consult this before searching.
+# primary: granola | zoom | teams | exported-folder | none
+# notes_folder: vault-relative folder where exported/recorder notes land
+#   (for exported-folder, or a recorder like ClickUp AI dropping notes into the vault)
+meeting_sources:
+  primary: none
+  notes_folder: ""
+
 # Person-page creation from repeated meeting observations.
 # Options: auto, suggest, off. Fresh setup starts at suggest until the user chooses.
 entity_creation:

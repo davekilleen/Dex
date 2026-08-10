@@ -17,6 +17,10 @@ because an update failed: follow this page exactly; do not improvise beyond it.
   checker in these releases refused when too many release tags existed. The
   repository's tag list has been cleaned so these versions announce updates again.
   If a notice still never appears, use the fallback below.
+- **Versions v1.74 through v1.79 whose `/dex-update` cannot fetch a new release**:
+  these versions predate the delivered-release mechanism and need the one-time
+  bridge — skip the Git fallback below and go straight to
+  "Lifecycle-era bridge — v1.74 through v1.79" further down this page.
 - **Versions before v1.62**: your built-in update instructions already use the
   fallback route; follow your own `/dex-update` skill as written.
 
@@ -114,12 +118,21 @@ curl -fL \
 python3 "$BRIDGE_DIR/dex-update-bridge-v1.83.0.py" --vault "$PWD"
 ```
 
-It shows two independent previews and requires `APPLY` for each: first the
-one-time separation of Dex code from the user's notes, then the exact files for
-the verified foundation release. It never pushes, never uses a branch, and
-stops before a user-file change if either proof or approval is missing. Only a
-published bridge whose historical fixture proof is green may say that later
-updates are the ordinary `/dex-update` route.
+It shows up to three independent previews and requires `APPLY` for each: the
+one-time separation of Dex code from the user's notes (skipped when the vault
+is already split), the exact files for the verified foundation release, and the
+one-line registration of Dex's update-support tool. It never pushes, never uses
+a branch, and stops before a user-file change if either proof or approval is
+missing. Only a published bridge whose historical fixture proof is green may
+say that later updates are the ordinary `/dex-update` route.
+
+**What you should see.** The bridge narrates each stage on the terminal:
+relaunching into Dex's installed runtime, checking the install, fetching the
+pinned release, then building the exact preview (which can take a few minutes
+on a large vault). If it stops, it prints one line starting
+`Dex update bridge stopped safely:` explaining why. A bridge that runs for
+minutes with **no output at all** is wedged, not working — press Ctrl-C and
+report exactly what you ran and saw.
 
 Windows is not part of this P0 bridge. Do not substitute an unverified PowerShell
 or Git command; use the supported rescue path until a Windows bridge is

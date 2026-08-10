@@ -141,10 +141,17 @@ class ProbeResult:
 
 @dataclass(frozen=True)
 class JobFreshness:
-    """The application log and allowed age for one installed job."""
+    """The application log and allowed age for one installed job.
+
+    ``success_state_path`` names a JSON file whose ``lastSync`` field is
+    written only by a completed run.  When present it replaces the log-mtime
+    check: a job can fail on every run while still appending to its log, so
+    log age proves activity, not success.
+    """
 
     log_path: Path
     max_age: timedelta
+    success_state_path: Path | None = None
 
 
 @dataclass(frozen=True)
@@ -597,6 +604,7 @@ JOB_FRESHNESS = {
     "com.dex.meeting-intel": JobFreshness(
         Path(".scripts/logs/meeting-intel.log"),
         timedelta(hours=48),
+        success_state_path=Path(".scripts/meeting-intel/processed-meetings.json"),
     ),
     "com.dex.changelog-checker": JobFreshness(
         Path(".scripts/logs/changelog-checker.log"),
@@ -2330,6 +2338,43 @@ def _plist_owned_by_vault(plist: Path, data: dict[str, Any], context: DoctorCont
     return False
 
 
+_TEMPORARY_CHECKOUT_MARKER = "/worktrees/"
+
+
+def _launch_agent_orphan_issue(data: dict[str, Any]) -> str | None:
+    """Name the defect when a Dex launch agent targets a dead or temporary path.
+
+    A foreign-but-healthy plist can belong to another Dex vault on the same
+    Mac and is none of this vault's business. One whose embedded absolute
+    path lives inside a git worktree cannot belong to any durable install —
+    it is a repointed job that runs (and fails) silently forever, so it must
+    be surfaced rather than skipped as another product's.
+    """
+    candidates: list[Path] = []
+    arguments = data.get("ProgramArguments")
+    strings: list[object] = list(arguments) if isinstance(arguments, list) else []
+    working_directory = data.get("WorkingDirectory")
+    if isinstance(working_directory, str):
+        strings.append(working_directory)
+    for argument in strings:
+        if not isinstance(argument, str):
+            continue
+        candidate = Path(argument).expanduser()
+        if candidate.is_absolute():
+            candidates.append(candidate)
+    for candidate in candidates:
+        if _TEMPORARY_CHECKOUT_MARKER in candidate.as_posix():
+            return f"points at a temporary working copy ({candidate})"
+        try:
+            if candidate.exists():
+                for ancestor in (candidate, *candidate.parents):
+                    if (ancestor / ".git").is_file():
+                        return f"points at a temporary working copy ({candidate})"
+        except OSError:
+            continue
+    return None
+
+
 def _with_skipped_launch_agents(detail: str, skipped_count: int) -> str:
     if not skipped_count:
         return detail
@@ -2452,6 +2497,17 @@ def _probe_jobs_loaded(context: DoctorContext) -> ProbeResult:
             unknowns.append(_unattributable_launch_agent_detail(plist, error))
             continue
         if not _plist_owned_by_vault(plist, data, context):
+            orphan_issue = _launch_agent_orphan_issue(data)
+            if orphan_issue is not None:
+                orphan_label = str(data.get("Label") or plist.stem)
+                issues.append(
+                    (
+                        2,
+                        f"{orphan_label} {orphan_issue} — likely installed from a "
+                        "temporary checkout; reinstall it from the real vault",
+                    )
+                )
+                continue
             skipped_count += 1
             continue
         owned_count += 1
@@ -2490,7 +2546,7 @@ def _probe_jobs_loaded(context: DoctorContext) -> ProbeResult:
                     unknowns.append(f"{label} is loaded but has no observable LastExitStatus")
                 elif status["last_exit_status"] != 0:
                     issues.append((2, f"{label} last exited with status {status['last_exit_status']}"))
-    if not owned_count:
+    if not owned_count and not issues:
         if unknowns:
             return ProbeResult(
                 "UNKNOWN",
@@ -2528,6 +2584,26 @@ def _probe_jobs_loaded(context: DoctorContext) -> ProbeResult:
     )
 
 
+def _last_success_timestamp(state_path: Path) -> datetime | None:
+    """Read the last completed-run timestamp a sync job records only on success."""
+    if not state_path.is_file():
+        return None
+    try:
+        state = json.loads(state_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    value = state.get("lastSync") if isinstance(state, dict) else None
+    if not isinstance(value, str):
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
 def _probe_jobs_fresh(context: DoctorContext) -> ProbeResult:
     installed = set()
     unknowns = []
@@ -2548,6 +2624,20 @@ def _probe_jobs_fresh(context: DoctorContext) -> ProbeResult:
     stale = []
     for label in monitored:
         policy = JOB_FRESHNESS[label]
+        if policy.success_state_path is not None:
+            succeeded = _last_success_timestamp(context.vault_root / policy.success_state_path)
+            if succeeded is None:
+                stale.append(
+                    f"{label} has never recorded a completed run "
+                    "(a job can keep writing its log while failing every time)"
+                )
+                continue
+            if context.now.astimezone(timezone.utc) - succeeded > policy.max_age:
+                stale.append(
+                    f"{label} last completed successfully on {succeeded.date().isoformat()} "
+                    "— it may still be running without succeeding"
+                )
+            continue
         log_path = context.vault_root / policy.log_path
         if not log_path.is_file():
             stale.append(f"{label} has no run log")

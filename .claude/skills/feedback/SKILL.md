@@ -35,6 +35,19 @@ with the user doing nothing but approving. Contract: `docs/feedback-loop-contrac
 
 ## Filing a report
 
+0. **Preflight the connection first** — before investigating or drafting anything:
+
+   ```bash
+   python3 .claude/skills/feedback/scripts/feedback_client.py check --vault "$VAULT_PATH"
+   ```
+
+   - Exit 0 (LINKED): carry on.
+   - Exit 2 (CONNECTION NEEDED): tell the user now, not after drafting: "One-time
+     setup first (~30 seconds): open the connect page, sign in, create a code, and
+     I'll link this terminal." Show the script's instructions, run the `link`
+     subcommand with their code, then continue. If they'd rather not link right
+     now, offer to draft the report anyway and save it locally so nothing is lost —
+     but never let them discover the missing link only after approving a draft.
 1. **Establish the facts.** From the conversation and quick local checks:
    - Dex version: read `version` from `package.json` at the vault root.
    - Feature: which skill/command/automation misbehaved.

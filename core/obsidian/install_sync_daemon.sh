@@ -6,6 +6,14 @@ set -e  # Exit on error
 VAULT_PATH="${VAULT_PATH:-$(pwd)}"
 PLIST_PATH="$HOME/Library/LaunchAgents/com.dex.obsidian-sync.plist"
 
+# Never point machine-wide background jobs at a temporary checkout. A git
+# worktree marks .git as a file; a real clone or plain vault does not.
+if [[ -f "$VAULT_PATH/.git" || "$VAULT_PATH" == */worktrees/* ]]; then
+    echo "Error: $VAULT_PATH looks like a temporary working copy (a git worktree), not your real Dex vault."
+    echo "Run this installer from your real vault."
+    exit 1
+fi
+
 echo "Dex Obsidian Sync Daemon Installer"
 echo "===================================="
 echo ""

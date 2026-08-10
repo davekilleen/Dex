@@ -120,6 +120,8 @@ Do not ask eligibility questions. Route only what Dex can honestly read:
 
 After a selected reader is connected, start its initial sync as a background task and continue to Step 1 without waiting for the backfill. For a folder, start the import the same way. Say plainly: "I'll keep that running in the background while we finish setting up."
 
+**Persist the choice.** Record what the user picked in `System/user-profile.yaml` → `meeting_sources`: set `primary` (granola / zoom / teams / exported-folder / none) and, for a folder, `notes_folder` (the vault-relative folder where the notes land). Meeting skills read this later to know where notes live — an unrecorded choice is forgotten the moment onboarding ends. If the user skips, leave the template default.
+
 If nothing relevant is detected, offer the exported-notes folder once. If the user says skip, later, or no, continue immediately. This offer has no validation step and must never block onboarding.
 
 ---

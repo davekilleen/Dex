@@ -1,8 +1,15 @@
 ---
 name: week-plan
 description: "Set the week's priorities against goals, calendar shape and task effort. Use when the user says 'plan my week', 'what should I focus on this week', or on their first working day. Also use proactively at the first session of a new week. Not for reviewing the week just past; use `week-review`."
-context: fork
 ---
+
+## Execution mode
+
+Run inline in the current conversation by default, so this work can see what the
+user has already discussed, decided, or settled this session. Do not fork merely
+because this skill was selected. Only run in the background when the user
+explicitly asks for a background run or the host has already obtained a specific
+background-work approval for this run.
 
 ## Purpose
 

@@ -1,13 +1,20 @@
 ---
 name: career-coach
 description: "Personal career coach with 4 modes: weekly reports, monthly reflections, self-reviews, promotion assessments"
-context: fork
 hooks:
   PostToolUse:
     - matcher: Write
       type: command
       command: "node .claude/hooks/career-evidence-capture.cjs"
 ---
+
+## Execution mode
+
+Run inline in the current conversation by default, so this work can see what the
+user has already discussed, decided, or settled this session. Do not fork merely
+because this skill was selected. Only run in the background when the user
+explicitly asks for a background run or the host has already obtained a specific
+background-work approval for this run.
 
 ## Purpose
 

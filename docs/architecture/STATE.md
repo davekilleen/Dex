@@ -7,7 +7,7 @@ A compact snapshot of released, local, and planned Dex Core work.
 
 SHIPPED/LOCAL are computed live — run `/dex-orient` or `python3 scripts/dex_state.py` for current truth.
 
-Released: v1.81.0 (2026-07-31)
+Released: v1.83.0 (2026-08-08)
 
 ### LOCAL — on main, not yet released (0)
 

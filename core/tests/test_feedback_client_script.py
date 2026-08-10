@@ -212,3 +212,61 @@ def test_expired_auth_raises_connection_instructions(tmp_path, monkeypatch):
         client.load_auth()
     assert "expired" in excinfo.value.user_message
     assert "feedback_client.py link" in excinfo.value.user_message
+
+
+def test_check_subcommand_exits_2_with_connection_needed_when_unlinked(tmp_path, monkeypatch, capsys):
+    client = _load_script()
+    monkeypatch.setattr(client, "auth_file_path", lambda: tmp_path / "missing-auth.json")
+
+    code = client.main(["check", "--vault", str(tmp_path)])
+
+    assert code == 2
+    out = capsys.readouterr().out
+    assert out.startswith("CONNECTION NEEDED: ")
+    assert "feedback_client.py link" in out
+
+
+def test_check_subcommand_exits_0_when_linked(tmp_path, monkeypatch, capsys):
+    client = _load_script()
+    auth = tmp_path / "auth.json"
+    auth.write_text(
+        json.dumps(
+            {"sessionToken": "token", "timestamp": client.now_ms(), "email": "user@example.com"}
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(client, "auth_file_path", lambda: auth)
+
+    code = client.main(["check", "--vault", str(tmp_path)])
+
+    assert code == 0
+    assert "LINKED" in capsys.readouterr().out
+
+
+def test_report_exit_code_through_main_is_2_when_unlinked_and_receipt_is_kept(
+    tmp_path, monkeypatch, capsys
+):
+    client = _load_script()
+    monkeypatch.setattr(client, "auth_file_path", lambda: tmp_path / "missing-auth.json")
+    draft = tmp_path / "draft.json"
+    draft.write_text(json.dumps(_draft()), encoding="utf-8")
+
+    code = client.main(["report", "--file", str(draft), "--vault", str(tmp_path)])
+
+    assert code == 2
+    assert capsys.readouterr().out.startswith("CONNECTION NEEDED: ")
+    receipts = (tmp_path / "System" / ".dex" / "feedback-log.jsonl").read_text(encoding="utf-8")
+    record = json.loads(receipts.strip())
+    assert record["sent"] is False
+    assert record["reason"] == "AuthError"
+
+
+def test_link_with_blank_code_does_not_reuse_the_connection_needed_exit_code(capsys):
+    client = _load_script()
+
+    code = client.main(["link", "--code", "   "])
+
+    assert code == client.FeedbackError.exit_code
+    out = capsys.readouterr().out
+    assert "sign-in code is required" in out
+    assert "CONNECTION NEEDED" not in out

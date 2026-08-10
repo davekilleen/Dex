@@ -79,6 +79,14 @@ VAULT_ROOT="$(dirname "$SCRIPT_DIR")"
 echo "Vault path: $VAULT_ROOT"
 echo ""
 
+# Never point machine-wide background jobs at a temporary checkout. A git
+# worktree marks .git as a file; a real clone or plain vault does not.
+if [[ -f "$VAULT_ROOT/.git" || "$VAULT_ROOT" == */worktrees/* ]]; then
+  echo -e "${RED}✗${NC} $VAULT_ROOT looks like a temporary working copy (a git worktree), not your real Dex vault." >&2
+  echo "  Run this installer from your real vault." >&2
+  exit 1
+fi
+
 NODE_PATH="$(find_node)"
 
 # Create LaunchAgents directory if it doesn't exist

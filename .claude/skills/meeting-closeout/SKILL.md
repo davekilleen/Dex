@@ -16,7 +16,11 @@ It is the single-meeting, in-the-moment ritual. It is **not** the bulk "catch up
 Work from whichever exists, in this order:
 1. **Notes the user just pasted or dictated** — the common case; use them directly even if the meeting was never synced.
 2. **The meeting they name** ("my 3pm with Acme") — pull it via `get_meeting_context`.
-3. **A provider-neutral source note elsewhere in the vault** — if the named meeting
+3. **The user's configured meeting source** — read `meeting_sources` in
+   `System/user-profile.yaml`. If a `notes_folder` is set, search that folder for
+   the meeting by title, attendee, and date before anything else. A configured
+   source always outranks improvised discovery.
+4. **A provider-neutral source note elsewhere in the vault** — if the named meeting
    was not returned, search the vault by meeting title, attendee, and date. This
    includes notes created by ClickUp AI and other recorders. Provider-neutral
    discovery is not only `00-Inbox/Meetings/`. Exclude Dex internals, dependency folders, archives that
@@ -24,7 +28,17 @@ Work from whichever exists, in this order:
    otherwise use a bounded Markdown filename/content search. Read the matched note
    before treating it as the meeting.
 
-If there are no notes and no matching synced meeting, **ask for the notes** (or a two-line recap) — do not fabricate a summary of a meeting you can't see.
+**Source boundary (hard rule).** Meeting notes come from the vault (and the
+configured `meeting_sources` folder) only. Never go looking in external services —
+Google Drive, Gemini notes, Notion, email, or any connected tool — for a meeting
+the vault doesn't have, unless the user explicitly points at that source for this
+meeting in this conversation. Auto-generated notes from an unconfigured source can
+describe a different meeting or contain invented content, and a closeout built on
+them is worse than no closeout.
+
+If there are no notes and no matching vault note, **the search is over — ask for
+the notes** (or a two-line recap) — do not fabricate a summary of a meeting you
+can't see, and do not widen the search to external tools.
 
 ## Step 2 — Extract the closeout essentials
 

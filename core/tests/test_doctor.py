@@ -1916,23 +1916,32 @@ def test_freshness_thresholds_are_strictly_greater_than_the_limit(label, expecte
     _write_plist(context, label)
     policy = doctor.JOB_FRESHNESS[label]
     assert policy.max_age == expected_max_age
-    log = context.vault_root / policy.log_path
-    log.parent.mkdir(parents=True, exist_ok=True)
-    log.touch()
 
-    fresh_mtime = (NOW - expected_max_age + timedelta(seconds=1)).timestamp()
-    os.utime(log, (fresh_mtime, fresh_mtime))
+    def record_run(when):
+        if policy.success_state_path is not None:
+            state = context.vault_root / policy.success_state_path
+            state.parent.mkdir(parents=True, exist_ok=True)
+            state.write_text(
+                json.dumps({"lastSync": when.isoformat().replace("+00:00", "Z")}),
+                encoding="utf-8",
+            )
+        else:
+            log = context.vault_root / policy.log_path
+            log.parent.mkdir(parents=True, exist_ok=True)
+            log.touch()
+            os.utime(log, (when.timestamp(), when.timestamp()))
+
+    record_run(NOW - expected_max_age + timedelta(seconds=1))
     assert doctor._probe_jobs_fresh(context).verdict == "OK"
 
-    exact_mtime = (NOW - expected_max_age).timestamp()
-    os.utime(log, (exact_mtime, exact_mtime))
+    record_run(NOW - expected_max_age)
     assert doctor._probe_jobs_fresh(context).verdict == "OK"
 
-    stale_mtime = (NOW - expected_max_age - timedelta(seconds=1)).timestamp()
-    os.utime(log, (stale_mtime, stale_mtime))
+    stale_at = NOW - expected_max_age - timedelta(seconds=1)
+    record_run(stale_at)
     result = doctor._probe_jobs_fresh(context)
     assert result.verdict == "BROKEN"
-    assert datetime.fromtimestamp(stale_mtime, tz=timezone.utc).date().isoformat() in result.detail
+    assert stale_at.date().isoformat() in result.detail
 
 
 def test_freshness_is_off_when_job_is_not_installed_even_if_log_is_stale(context):
@@ -1947,12 +1956,91 @@ def test_freshness_is_off_when_job_is_not_installed_even_if_log_is_stale(context
 
 
 def test_freshness_is_broken_when_installed_job_has_no_log(context):
-    _write_plist(context, "com.dex.meeting-intel")
+    _write_plist(context, "com.dex.smoke-nightly")
 
     result = doctor._probe_jobs_fresh(context)
 
     assert result.verdict == "BROKEN"
     assert "no run log" in result.detail
+
+
+def test_meeting_sync_freshness_reads_last_success_not_log_activity(context):
+    """A job that fails every run keeps appending its log; only lastSync counts."""
+    _write_plist(context, "com.dex.meeting-intel")
+    policy = doctor.JOB_FRESHNESS["com.dex.meeting-intel"]
+    log = context.vault_root / policy.log_path
+    log.parent.mkdir(parents=True, exist_ok=True)
+    log.touch()
+    os.utime(log, (NOW.timestamp(), NOW.timestamp()))
+
+    never = doctor._probe_jobs_fresh(context)
+    assert never.verdict == "BROKEN"
+    assert "never recorded a completed run" in never.detail
+
+    state = context.vault_root / policy.success_state_path
+    state.parent.mkdir(parents=True, exist_ok=True)
+    stale_at = NOW - timedelta(days=6)
+    state.write_text(
+        json.dumps({"lastSync": stale_at.isoformat().replace("+00:00", "Z")}),
+        encoding="utf-8",
+    )
+
+    stale = doctor._probe_jobs_fresh(context)
+    assert stale.verdict == "BROKEN"
+    assert "last completed successfully" in stale.detail
+    assert stale_at.date().isoformat() in stale.detail
+
+
+def test_jobs_loaded_flags_a_dex_plist_repointed_at_a_worktree(monkeypatch, context):
+    """A worktree-pointed job is a repointed install, not another product's."""
+    agents = context.home / "Library" / "LaunchAgents"
+    agents.mkdir(parents=True, exist_ok=True)
+    worktree = context.home.parent / ".bb" / "worktrees" / "env_x" / "dex-core"
+    plist = agents / "com.dex.meeting-intel.plist"
+    with plist.open("wb") as handle:
+        plistlib.dump(
+            {
+                "Label": "com.dex.meeting-intel",
+                "ProgramArguments": ["/bin/bash", str(worktree / ".scripts" / "dex-launcher.sh")],
+                "WorkingDirectory": str(worktree),
+            },
+            handle,
+        )
+    monkeypatch.setattr(doctor, "_is_macos", lambda: True)
+
+    result = doctor._probe_jobs_loaded(context)
+
+    assert result.verdict == "BROKEN"
+    assert "temporary working copy" in result.detail
+    assert "reinstall it from the real vault" in result.detail
+
+
+def test_jobs_loaded_flags_a_dex_plist_pointing_into_a_git_worktree_checkout(
+    monkeypatch, context
+):
+    checkout = context.home.parent / "checkouts" / "dex-copy"
+    (checkout / ".scripts").mkdir(parents=True)
+    (checkout / ".git").write_text("gitdir: /somewhere/else\n", encoding="utf-8")
+    script = checkout / ".scripts" / "dex-launcher.sh"
+    script.write_text("#!/bin/bash\n", encoding="utf-8")
+    agents = context.home / "Library" / "LaunchAgents"
+    agents.mkdir(parents=True, exist_ok=True)
+    plist = agents / "com.dex.meeting-intel.plist"
+    with plist.open("wb") as handle:
+        plistlib.dump(
+            {
+                "Label": "com.dex.meeting-intel",
+                "ProgramArguments": ["/bin/bash", str(script)],
+                "WorkingDirectory": str(checkout),
+            },
+            handle,
+        )
+    monkeypatch.setattr(doctor, "_is_macos", lambda: True)
+
+    result = doctor._probe_jobs_loaded(context)
+
+    assert result.verdict == "BROKEN"
+    assert "temporary working copy" in result.detail
 
 
 def test_preflight_queue_maps_server_and_queued_errors_to_broken(monkeypatch, context):

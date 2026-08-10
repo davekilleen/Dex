@@ -162,6 +162,73 @@ def test_activation_accepts_a_self_consistent_release_and_refuses_a_mismatch(
     assert not (mismatched / ACTIVATION_RELATIVE).exists()
 
 
+def _deliver_release(vault: Path, release_version: str) -> None:
+    """Simulate a delivered update: bridge declaration + catalog move together."""
+    from core.lifecycle.catalog import canonical_catalog_bytes, with_catalog_identity
+
+    _write_bridge_release(vault, release_version=release_version)
+    catalog_path = vault / "System/.release-catalog.json"
+    document = json.loads(catalog_path.read_text(encoding="utf-8"))
+    document["release"]["version"] = release_version
+    document["release"]["immutable_distribution_tag"] = (
+        f"dist/release/v{release_version}-0123456"
+    )
+    catalog_path.write_bytes(canonical_catalog_bytes(with_catalog_identity(document)))
+
+
+def test_stale_activation_from_a_previous_release_is_rerecorded(
+    tmp_path: Path,
+) -> None:
+    vault = _activation_fixture(tmp_path)
+    first = activate_vault(vault)
+    assert first["bridge_release_version"] == "1.64.0"
+
+    _deliver_release(vault, "1.64.1")
+
+    refreshed = activate_vault(vault)
+
+    catalog = load_catalog(vault / "System/.release-catalog.json", release_root=vault)
+    expected_hash = build_inventory(vault, catalog=catalog).to_dict()["inventory_sha256"]
+    activation_path = vault / ACTIVATION_RELATIVE
+    assert refreshed == {
+        "activation_version": 1,
+        "api_version": service.api_version,
+        "bridge_release_version": "1.64.1",
+        "baseline_inventory_sha256": expected_hash,
+    }
+    assert activation_path.read_bytes() == _canonical(refreshed)
+    assert stat.S_IMODE(activation_path.stat().st_mode) == 0o600
+    assert not list(activation_path.parent.glob(".activation.json.tmp-*"))
+    assert activate_vault(vault) == refreshed
+
+
+def test_stale_activation_refresh_still_refuses_a_torn_install(
+    tmp_path: Path,
+) -> None:
+    vault = _activation_fixture(tmp_path)
+    stale = activate_vault(vault)
+    _write_bridge_release(vault, release_version="1.64.1")
+
+    with pytest.raises(
+        BridgeActivationError,
+        match="installed catalog release does not match the designated bridge release",
+    ):
+        activate_vault(vault)
+    assert (vault / ACTIVATION_RELATIVE).read_bytes() == _canonical(stale)
+
+
+def test_gated_operations_recover_after_a_delivered_release(tmp_path: Path) -> None:
+    vault = _activation_fixture(tmp_path)
+    activate_vault(vault)
+    _deliver_release(vault, "1.64.1")
+
+    state = service.read_lifecycle_state(vault)
+
+    assert "ledger_state" in state
+    plan = service.build_inventory_and_plan(vault)
+    assert "plan" in plan
+
+
 def test_lifecycle_service_translates_bridge_activation_failure_to_plain_refusal(
     tmp_path: Path,
 ) -> None:

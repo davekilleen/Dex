@@ -1,8 +1,15 @@
 ---
 name: decision-log
 description: Capture an important decision with its context, options, rationale, and review date, then find it again when it matters.
-context: fork
 ---
+
+## Execution mode
+
+Run inline in the current conversation by default, so this work can see what the
+user has already discussed, decided, or settled this session. Do not fork merely
+because this skill was selected. Only run in the background when the user
+explicitly asks for a background run or the host has already obtained a specific
+background-work approval for this run.
 
 ## Purpose
 

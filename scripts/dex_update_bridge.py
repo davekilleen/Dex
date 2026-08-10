@@ -1284,6 +1284,7 @@ def _bridge_environment() -> dict[str, str]:
         "GIT_TERMINAL_PROMPT": "0",
         "PYTHONNOUSERSITE": "1",
         "PYTHONDONTWRITEBYTECODE": "1",
+        "PYTHONUNBUFFERED": "1",
     }
 
 
@@ -1780,6 +1781,45 @@ def _running_in_selected_runtime(interpreter: Path) -> bool:
     )
 
 
+# macOS framework builds launch a virtualenv Python through a stub that injects
+# this variable into the child's environment after execve; its presence is a
+# property of the selected interpreter itself, not of the caller.
+_INTERPRETER_INJECTED_VARIABLES = frozenset({"__PYVENV_LAUNCHER__"})
+
+
+def _observed_clean_environment() -> dict[str, str]:
+    return {
+        key: value
+        for key, value in os.environ.items()
+        if key not in _INTERPRETER_INJECTED_VARIABLES
+    }
+
+
+def _runtime_reentry_diagnostic(interpreter: Path, environment: Mapping[str, str]) -> str:
+    """Name exactly why the relaunched process still isn't the closed runtime."""
+    observed = _observed_clean_environment()
+    problems: list[str] = []
+    unexpected = sorted(set(observed) - set(environment))
+    if unexpected:
+        problems.append("unexpected environment variables appeared: " + ", ".join(unexpected))
+    changed = sorted(key for key in environment if observed.get(key) != environment[key])
+    if changed:
+        problems.append("environment variables disagree: " + ", ".join(changed))
+    if os.path.abspath(sys.executable) != str(interpreter):
+        problems.append(
+            f"the running Python is {os.path.abspath(sys.executable)} instead of {interpreter}"
+        )
+    selected_prefix = str(interpreter.parent.parent)
+    if os.path.abspath(sys.prefix) != selected_prefix or os.path.abspath(sys.exec_prefix) != selected_prefix:
+        problems.append(
+            f"the running Python reports prefix {os.path.abspath(sys.prefix)} "
+            f"instead of the vault virtualenv {selected_prefix}"
+        )
+    if not problems:
+        problems.append("no difference could be identified")
+    return "; ".join(problems)
+
+
 def _reexec_in_installed_runtime(vault_root: Path, argv: list[str]) -> None:
     """Enter one clean process before loading any foundation code.
 
@@ -1787,19 +1827,30 @@ def _reexec_in_installed_runtime(vault_root: Path, argv: list[str]) -> None:
     but running it by its venv path still selects the installed dependencies.
     Never trust a caller-supplied runtime marker: it is accepted only when the
     complete environment already equals the closed runtime environment and the
-    running Python identifies as the selected vault virtualenv.
+    running Python identifies as the selected vault virtualenv.  The marker can
+    never grant a dirty runtime — when it is present but the runtime still is
+    not clean, a second relaunch would reproduce the same state exactly, so the
+    bridge stops with a diagnostic instead of relaunching itself forever.
     """
     interpreter = _installed_python(vault_root)
     if interpreter is None:
         raise BridgeError("Dex's installed virtualenv is required for the one-time update bridge")
     environment = _bridge_environment()
     environment[_CLEAN_RUNTIME_MARKER] = "1"
-    if (
-        os.environ.get(_CLEAN_RUNTIME_MARKER) == "1"
-        and dict(os.environ) == environment
-        and _running_in_selected_runtime(interpreter)
-    ):
-        return
+    if os.environ.get(_CLEAN_RUNTIME_MARKER) == "1":
+        if _observed_clean_environment() == environment and _running_in_selected_runtime(interpreter):
+            return
+        raise BridgeError(
+            "the installed Dex runtime could not be entered cleanly, so the bridge "
+            "stopped instead of relaunching endlessly: "
+            + _runtime_reentry_diagnostic(interpreter, environment)
+            + f" (if {_CLEAN_RUNTIME_MARKER} was set in your shell, unset it and re-run)"
+        )
+    print(
+        "Relaunching inside Dex's installed runtime...",
+        file=sys.stderr,
+        flush=True,
+    )
     os.execve(
         str(interpreter),
         [str(interpreter), str(Path(__file__).resolve()), *argv],
@@ -2832,6 +2883,17 @@ def _complete_mcp_registration(
     )
 
 
+def _progress(message: str) -> None:
+    """Narrate long-running read-only stages on stderr.
+
+    The bridge can legitimately work for minutes between approvals (building
+    the exact preview reads every release file); a user watching a silent
+    terminal cannot tell working from wedged, so every long stage announces
+    itself.  Approval previews and results stay on stdout unchanged.
+    """
+    print(message, file=sys.stderr, flush=True)
+
+
 def run_bridge(
     vault_root: Path,
     service: LifecycleService,
@@ -2843,6 +2905,7 @@ def run_bridge(
 ) -> Mapping[str, Any]:
     """Run up to three fresh approval boundaries through the foundation service."""
     root = _validate_vault(vault_root)
+    _progress("Checking this Dex install (read-only)...")
     # This local ref is the authoritative resume marker. Check it before
     # importing/calling lifecycle code or attempting any network operation: a
     # completed bridge must work offline and must not be disturbed merely
@@ -2880,7 +2943,12 @@ def run_bridge(
 
     # This fetch touches only Dex's private code store. The following preview is
     # still the sole authority for every vault-content write.
+    _progress(f"Fetching pinned Dex release v{pin.version} (network; this can take a minute)...")
     fetch_foundation(root, pin)
+    _progress(
+        "Building the exact update preview — nothing is written yet. "
+        "This reads every release file and can take a few minutes on a large vault..."
+    )
     delivery = service.build_and_preview_delivered_release(root, pin.identity())
     release_preview = delivery.get("preview")
     if not isinstance(release_preview, Mapping):

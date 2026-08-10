@@ -1,8 +1,15 @@
 ---
 name: meeting-prep
 description: "Prepare for a specific upcoming meeting by gathering attendee context, history and related topics. Use when the user says 'prep me for my meeting with X', 'what do I need for the 2pm', or before a calendar event. Also use proactively when a meeting is imminent. Not for writing up a meeting that already happened; use `process-meetings`."
-context: fork
 ---
+
+## Execution mode
+
+Run inline in the current conversation by default, so this work can see what the
+user has already discussed, decided, or settled this session. Do not fork merely
+because this skill was selected. Only run in the background when the user
+explicitly asks for a background run or the host has already obtained a specific
+background-work approval for this run.
 
 Prepare for an upcoming meeting by gathering context on attendees and related topics.
 

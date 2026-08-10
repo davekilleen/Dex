@@ -1,8 +1,15 @@
 ---
 name: delegate-check
 description: "Review open delegations — what you handed off, to whom, its status, and the next useful nudge. Use when the user says 'what did I delegate', 'who owes me', 'check my handoffs', 'follow up with someone'. Not for prepping a meeting; use meeting-prep."
-context: fork
 ---
+
+## Execution mode
+
+Run inline in the current conversation by default, so this work can see what the
+user has already discussed, decided, or settled this session. Do not fork merely
+because this skill was selected. Only run in the background when the user
+explicitly asks for a background run or the host has already obtained a specific
+background-work approval for this run.
 
 ## Purpose
 

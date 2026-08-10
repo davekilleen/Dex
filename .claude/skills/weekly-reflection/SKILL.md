@@ -1,8 +1,15 @@
 ---
 name: weekly-reflection
 description: "A short guided reflection on what energized you, what drained you, and one change for next week. Use when the user wants to reflect on how work *felt*, not what got done — 'reflect on my week', 'what's draining me'. Not for progress-and-goals tracking; use `week-review`."
-context: fork
 ---
+
+## Execution mode
+
+Run inline in the current conversation by default, so this work can see what the
+user has already discussed, decided, or settled this session. Do not fork merely
+because this skill was selected. Only run in the background when the user
+explicitly asks for a background run or the host has already obtained a specific
+background-work approval for this run.
 
 ## Purpose
 

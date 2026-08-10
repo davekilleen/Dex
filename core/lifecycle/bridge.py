@@ -190,6 +190,44 @@ def _validate_activation(raw: bytes, bridge: BridgeRelease) -> dict[str, object]
         raise BridgeActivationError(f"existing activation is invalid: {error}") from error
 
 
+def _stale_activation(raw: bytes, bridge: BridgeRelease) -> bool:
+    """True when the record is a well-formed activation for a different bridge release.
+
+    A delivered release rewrites the shipped bridge declaration, but the
+    activation record is runtime state no release may write, so after every
+    update the existing record still references the prior release. That
+    staleness is routine, not evidence of tampering; activation re-records
+    the baseline exactly as a first run would. Anything structurally invalid
+    stays refused.
+    """
+    try:
+        value = _closed(
+            _strict_json(raw, "existing activation"),
+            {
+                "activation_version",
+                "api_version",
+                "bridge_release_version",
+                "baseline_inventory_sha256",
+            },
+            "existing activation",
+        )
+    except BridgeError:
+        return False
+    recorded = value["bridge_release_version"]
+    digest = value["baseline_inventory_sha256"]
+    return (
+        type(value["activation_version"]) is int
+        and value["activation_version"] == ACTIVATION_VERSION
+        and isinstance(value["api_version"], str)
+        and isinstance(recorded, str)
+        and SEMVER.fullmatch(recorded) is not None
+        and recorded != bridge.release_version
+        and isinstance(digest, str)
+        and HEX_SHA256.fullmatch(digest) is not None
+        and raw == _canonical(dict(value))
+    )
+
+
 def _fsync_directory(directory: Path) -> None:
     descriptor = os.open(directory, os.O_RDONLY)
     try:
@@ -219,22 +257,32 @@ def activate_vault(
     *,
     release_root: str | Path | None = None,
 ) -> dict[str, object]:
-    """Read current vault state, then atomically record first-run activation.
+    """Read current vault state, then atomically record activation.
 
     The inventory pass is read-only.  The only durable output is the runtime
     activation record (plus its same-directory temporary file during publish).
+    A well-formed record left behind by an earlier bridge release is re-recorded
+    against the currently installed release rather than refused, so a delivered
+    update never strands plan, state, adoption, or rewind operations.
     """
     root = Path(vault_root)
     release = root if release_root is None else Path(release_root)
     bridge = load_bridge_release(release)
     target = root / ACTIVATION_RELATIVE
+    stale_record: bytes | None = None
     if target.exists() or target.is_symlink():
         if target.is_symlink() or not target.is_file():
             raise BridgeActivationError("existing activation path is unsafe")
         try:
-            return _validate_activation(target.read_bytes(), bridge)
+            raw = target.read_bytes()
         except OSError as error:
             raise BridgeActivationError(f"existing activation could not be read: {error}") from error
+        try:
+            return _validate_activation(raw, bridge)
+        except BridgeActivationError:
+            if not _stale_activation(raw, bridge):
+                raise
+            stale_record = raw
 
     try:
         catalog = load_catalog(root / CATALOG_RELATIVE, release_root=root)
@@ -269,10 +317,12 @@ def activate_vault(
         os.close(descriptor)
         descriptor = None
         if target.exists() or target.is_symlink():
-            existing = _validate_activation(target.read_bytes(), bridge)
-            temporary.unlink()
-            _fsync_directory(directory)
-            return existing
+            current = target.read_bytes()
+            if stale_record is None or current != stale_record:
+                existing = _validate_activation(current, bridge)
+                temporary.unlink()
+                _fsync_directory(directory)
+                return existing
         os.replace(temporary, target)
         os.chmod(target, 0o600)
         _fsync_directory(directory)

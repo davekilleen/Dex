@@ -555,33 +555,17 @@ Without memory, every planning session starts from zero. The same blind spots pe
 
 ---
 
-## Context Isolation
+## Skills See Your Conversation
 
-**The Problem:** Long conversations slow down. You start a planning session in the morning, then by afternoon your chat is sluggish because it's carrying the full weight of every skill you ran.
+**The Problem:** Earlier versions ran the planning, review, and meeting skills in an isolated workspace to keep long chats fast. That isolation had a hidden cost: an isolated skill couldn't see what you had already discussed and settled in the conversation, so a plan could resurface items you'd resolved minutes earlier. It looked like Dex was forgetting — it never had the information.
 
-**What Dex Does:** Heavy skills now run in isolated context. Your main conversation stays clean all day.
-
-### Which Skills Are Isolated
-
-These skills run in their own context, separate from your main conversation:
-
-- `/daily-plan`
-- `/daily-review`
-- `/week-plan`
-- `/week-review`
-- `/meeting-prep`
-- `/process-meetings`
-- `/career-coach`
+**What Dex Does now:** Planning, review, and meeting skills run inside your current conversation by default, so they always know what you've already covered. Dex only moves work to the background when you explicitly ask for a background run.
 
 ### What This Means for You
 
-- **No more starting fresh chats.** You can run `/daily-plan` in the morning, work all day, run `/daily-review` at night, and the conversation stays responsive.
-- **Results still flow back.** The output of each skill (your plan, review, meeting prep) is available in your conversation — only the heavy processing happens in isolation.
-- **Lighter skills stay inline.** Quick things like `/triage` or task creation happen in your current conversation as before.
-
-### Why This Matters
-
-Before context isolation, running three or four skills in one session could noticeably slow things down. Now each heavy skill gets a clean workspace, does its work, and returns the result without cluttering your main thread.
+- **Plans and reviews respect the conversation.** If you settled something earlier in the chat, `/daily-plan` and `/daily-review` won't bring it back as an open item.
+- **Background runs are opt-in.** Say "run this in the background" if you want the old behavior for a heavy run; Dex will ask before doing that on its own.
+- **Long sessions can still be split.** If a day-long chat gets sluggish, starting a fresh session is always safe — plans, reviews, and notes live in your files, not in the chat.
 
 **Reference:** See `06-Resources/Dex_System/Named_Sessions_Guide.md` for details on how named sessions work.
 

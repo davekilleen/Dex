@@ -1861,18 +1861,15 @@ def test_main_resumes_completed_foundation_from_installed_service_without_downlo
     assert reexec_calls == [(vault, ["--vault", str(vault)])]
 
 
-def test_runtime_reexec_cleans_a_hostile_same_interpreter_and_preset_marker(
+def test_runtime_reexec_with_preset_marker_and_dirty_environment_stops_instead_of_looping(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    captured: dict[str, object] = {}
-
-    def fake_execve(interpreter: str, argv: list[str], environment: dict[str, str]) -> None:
-        captured["interpreter"] = interpreter
-        captured["argv"] = argv
-        captured["environment"] = environment
-
     monkeypatch.setattr(bridge, "_installed_python", lambda _vault: Path(sys.executable))
-    monkeypatch.setattr(bridge.os, "execve", fake_execve)
+    monkeypatch.setattr(
+        bridge.os,
+        "execve",
+        lambda *_arguments: pytest.fail("a marked process must never relaunch again"),
+    )
     monkeypatch.setenv(bridge._CLEAN_RUNTIME_MARKER, "1")
     monkeypatch.setenv("PATH", "/private/attacker-bin")
     monkeypatch.setenv("GIT_DIR", "/private/attacker-repository")
@@ -1881,52 +1878,53 @@ def test_runtime_reexec_cleans_a_hostile_same_interpreter_and_preset_marker(
     monkeypatch.setenv("PYTHONPATH", "/private/attacker-python")
     monkeypatch.setenv("NODE_OPTIONS", "--require=/private/attacker-node")
 
-    bridge._reexec_in_installed_runtime(_vault(tmp_path), ["--vault", "/safe/vault"])
-
-    assert captured["interpreter"] == str(Path(sys.executable))
-    assert captured["argv"] == [
-        str(Path(sys.executable)),
-        str(Path(bridge.__file__).resolve()),
-        "--vault",
-        "/safe/vault",
-    ]
-    environment = captured["environment"]
-    assert isinstance(environment, dict)
-    assert environment[bridge._CLEAN_RUNTIME_MARKER] == "1"
-    assert "/private/attacker-bin" not in environment["PATH"]
-    assert environment["GIT_CONFIG_GLOBAL"] == os.devnull
-    for name in ("GIT_DIR", "GIT_SSH_COMMAND", "PYTHONPATH", "NODE_OPTIONS"):
-        assert name not in environment
+    with pytest.raises(bridge.BridgeError, match="stopped instead of relaunching"):
+        bridge._reexec_in_installed_runtime(_vault(tmp_path), ["--vault", "/safe/vault"])
 
 
 def test_runtime_reexec_rejects_a_forged_exact_clean_environment_from_host_python(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    captured: dict[str, object] = {}
     vault = _vault(tmp_path)
     selected_interpreter = vault / ".venv" / "bin" / "python"
     clean_environment = bridge._bridge_environment()
     clean_environment[bridge._CLEAN_RUNTIME_MARKER] = "1"
 
-    def fake_execve(interpreter: str, argv: list[str], environment: dict[str, str]) -> None:
-        captured["interpreter"] = interpreter
-        captured["argv"] = argv
-        captured["environment"] = environment
-
     monkeypatch.setattr(bridge, "_installed_python", lambda _vault: selected_interpreter)
-    monkeypatch.setattr(bridge.os, "execve", fake_execve)
+    monkeypatch.setattr(
+        bridge.os,
+        "execve",
+        lambda *_arguments: pytest.fail("a marked process must never relaunch again"),
+    )
     monkeypatch.setattr(bridge.os, "environ", clean_environment)
 
-    bridge._reexec_in_installed_runtime(vault, ["--vault", "/safe/vault"])
+    with pytest.raises(bridge.BridgeError, match="stopped instead of relaunching") as excinfo:
+        bridge._reexec_in_installed_runtime(vault, ["--vault", "/safe/vault"])
+    assert "the running Python is" in str(excinfo.value)
 
-    assert captured["interpreter"] == str(selected_interpreter)
-    assert captured["argv"] == [
-        str(selected_interpreter),
-        str(Path(bridge.__file__).resolve()),
-        "--vault",
-        "/safe/vault",
-    ]
-    assert captured["environment"] == clean_environment
+
+def test_runtime_marker_tolerates_the_macos_interpreter_launcher_variable(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    vault = _vault(tmp_path)
+    selected_interpreter = vault / ".venv" / "bin" / "python"
+    selected_prefix = selected_interpreter.parent.parent
+    clean_environment = bridge._bridge_environment()
+    clean_environment[bridge._CLEAN_RUNTIME_MARKER] = "1"
+    clean_environment["__PYVENV_LAUNCHER__"] = str(selected_interpreter)
+
+    monkeypatch.setattr(bridge, "_installed_python", lambda _vault: selected_interpreter)
+    monkeypatch.setattr(bridge.os, "environ", clean_environment)
+    monkeypatch.setattr(bridge.sys, "executable", str(selected_interpreter))
+    monkeypatch.setattr(bridge.sys, "prefix", str(selected_prefix))
+    monkeypatch.setattr(bridge.sys, "exec_prefix", str(selected_prefix))
+    monkeypatch.setattr(
+        bridge.os,
+        "execve",
+        lambda *_arguments: pytest.fail("selected clean virtualenv must not re-exec"),
+    )
+
+    bridge._reexec_in_installed_runtime(vault, ["--vault", "/safe/vault"])
 
 
 def test_runtime_marker_accepts_only_the_selected_virtualenv_process(

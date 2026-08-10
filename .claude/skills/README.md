@@ -195,12 +195,12 @@ Built specifically for personal knowledge management and productivity workflows 
 - `/getting-started` - Interactive post-onboarding tour (adaptive to your setup)
 
 **Daily Workflow:**
-- `/daily-plan` - Context-aware daily planning *(v1.11: isolated context, quickref summary, agent memory tracks trends)*
-- `/daily-review` - End of day review with learning capture *(v1.11: isolated context)*
+- `/daily-plan` - Context-aware daily planning *(quickref summary, agent memory tracks trends)*
+- `/daily-review` - End of day review with learning capture
 - `/journal` - Start or manage journaling
 
 **Weekly Workflow:**
-- `/week-plan` - Set weekly priorities *(v1.11: isolated context)*
+- `/week-plan` - Set weekly priorities
 - `/week-review` - Weekly synthesis
 
 **Quarterly Workflow:**
@@ -208,8 +208,8 @@ Built specifically for personal knowledge management and productivity workflows 
 - `/quarter-review` - Review and capture learnings
 
 **Meetings:**
-- `/meeting-prep` - Prepare for meetings *(v1.11: isolated context)*
-- `/process-meetings` - Process Granola meetings *(v1.11: isolated context, auto-updates person pages, background execution)*
+- `/meeting-prep` - Prepare for meetings
+- `/process-meetings` - Process Granola meetings *(auto-updates person pages)*
 
 **Integrations (Connect Your Tools):**
 - `/todoist-setup` - Connect Todoist for two-way task sync (any platform)
@@ -225,7 +225,7 @@ Built specifically for personal knowledge management and productivity workflows 
 
 **Career Development:**
 - `/career-setup` - Initialize career system
-- `/career-coach` - Career reflections and assessments *(v1.11: isolated context, auto-captures career evidence)*
+- `/career-coach` - Career reflections and assessments *(auto-captures career evidence)*
 - `/resume-builder` - Build resume through guided interview
 
 **Projects:**

@@ -360,7 +360,7 @@ fi
 # Background job staleness — keep in sync with core/utils/doctor.py's JOB_FRESHNESS table.
 {
     DEX_LAUNCH_AGENTS_DIR="${DEX_LAUNCH_AGENTS_DIR:-$HOME/Library/LaunchAgents}"
-    while IFS='|' read -r JOB_NAME JOB_LOG_RELATIVE_PATH JOB_MAX_AGE_SECONDS JOB_EXPECTED_CADENCE JOB_LABEL; do
+    while IFS='|' read -r JOB_NAME JOB_LOG_RELATIVE_PATH JOB_MAX_AGE_SECONDS JOB_EXPECTED_CADENCE JOB_LABEL JOB_MODE; do
         [[ -f "$DEX_LAUNCH_AGENTS_DIR/$JOB_NAME.plist" ]] || continue
 
         JOB_LOG="$CLAUDE_DIR/$JOB_LOG_RELATIVE_PATH"
@@ -369,9 +369,21 @@ fi
             continue
         fi
 
-        JOB_MTIME=$(stat -f %m "$JOB_LOG" 2>/dev/null || true)
-        if [[ ! "$JOB_MTIME" =~ ^[0-9]+$ ]]; then
-            JOB_MTIME=$(stat -c %Y "$JOB_LOG" 2>/dev/null || true)
+        if [[ "$JOB_MODE" == "lastSync" ]]; then
+            # A completed run is the only writer of lastSync; the log keeps
+            # updating even when every run fails, so log age proves nothing.
+            JOB_TS=$(sed -n 's/.*"lastSync"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$JOB_LOG" | head -1)
+            if [[ -z "$JOB_TS" ]]; then
+                echo "⏰ $JOB_LABEL is installed but has never completed a successful run — run /dex-doctor to investigate."
+                continue
+            fi
+            JOB_TS_SECONDS="${JOB_TS%%.*}"; JOB_TS_SECONDS="${JOB_TS_SECONDS%Z}"
+            JOB_MTIME=$(date -u -j -f "%Y-%m-%dT%H:%M:%S" "$JOB_TS_SECONDS" +%s 2>/dev/null || date -u -d "$JOB_TS" +%s 2>/dev/null || true)
+        else
+            JOB_MTIME=$(stat -f %m "$JOB_LOG" 2>/dev/null || true)
+            if [[ ! "$JOB_MTIME" =~ ^[0-9]+$ ]]; then
+                JOB_MTIME=$(stat -c %Y "$JOB_LOG" 2>/dev/null || true)
+            fi
         fi
         [[ "$JOB_MTIME" =~ ^[0-9]+$ && "$NOW" =~ ^[0-9]+$ ]] || continue
 
@@ -387,13 +399,15 @@ fi
             if (( JOB_AGE == 1 )); then
                 JOB_AGE_UNIT="${JOB_AGE_UNIT%s}"
             fi
-            echo "⏰ $JOB_LABEL last ran $JOB_AGE $JOB_AGE_UNIT ago (expected every $JOB_EXPECTED_CADENCE) — run /dex-doctor to investigate."
+            JOB_VERB="last ran"
+            [[ "$JOB_MODE" == "lastSync" ]] && JOB_VERB="last completed successfully"
+            echo "⏰ $JOB_LABEL $JOB_VERB $JOB_AGE $JOB_AGE_UNIT ago (expected every $JOB_EXPECTED_CADENCE) — run /dex-doctor to investigate."
         fi
     done <<'EOF'
-com.dex.smoke-nightly|.scripts/logs/smoke-nightly.log|93600|26 hours|Nightly smoke
-com.dex.meeting-intel|.scripts/logs/meeting-intel.log|172800|2 days|Meeting sync
-com.dex.changelog-checker|.scripts/logs/changelog-checker.log|604800|7 days|Claude update watcher
-com.dex.learning-review|.scripts/logs/learning-review.log|604800|7 days|Learning review
+com.dex.smoke-nightly|.scripts/logs/smoke-nightly.log|93600|26 hours|Nightly smoke|mtime
+com.dex.meeting-intel|.scripts/meeting-intel/processed-meetings.json|172800|2 days|Meeting sync|lastSync
+com.dex.changelog-checker|.scripts/logs/changelog-checker.log|604800|7 days|Claude update watcher|mtime
+com.dex.learning-review|.scripts/logs/learning-review.log|604800|7 days|Learning review|mtime
 EOF
 } || true
 
