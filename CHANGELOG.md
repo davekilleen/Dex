@@ -19,6 +19,16 @@ If you gave Dex an AI key so meetings get analyzed in the background, that key s
 
 Thanks to Chris, whose report mapped the whole problem — including the parts this release fixes and the deeper move it defers.
 
+## [1.87.0] — 🔄 Note-syncing survives busy days, and calendar permissions work again on newer Macs (2026-08-10)
+
+A community member sent in two unusually sharp bug reports, each diagnosed right down to the fix. Both are in this release — thank you, Chris.
+
+**What this fixes for you:**
+
+* **The helper that syncs your ticked checkboxes stops dying on busy days.** The background helper that notices when you tick a task done in Obsidian and updates it everywhere could crash whenever lots of files changed at once — a big meeting-processing run, a reorganization, any burst of activity. Your Mac restarted it each time, so it limped along for months looking healthy while quietly missing changes at exactly the busiest moments. It now takes a calm snapshot of what's waiting, works through that, and anything that changes while it's working is simply picked up in the next pass — nothing crashes, nothing gets dropped.
+* **Dex can actually ask for calendar and reminders permission on newer Macs.** Apple changed how apps must request calendar access, and Dex was still asking the old way — which newer Macs refuse instantly without ever showing you the permission window. So anyone on a recent Mac, a new machine, or who had reset their privacy settings could never grant Dex calendar access, no matter how many times they tried. Dex now asks the new way on Macs that support it, and the old way still works on older ones.
+* **When calendar access is denied, you're told what to do about it — not "Exit code: 1".** Dex has always written a helpful explanation when access is refused ("Calendar access denied. Enable in System Settings → Privacy & Security → Calendars…"), but the part of Dex that relays errors was looking for it in the wrong place, so all you ever saw was a bare "Exit code: 1". The real guidance now reaches you — which matters twice over, because it's how you'd discover the permission problem above.
+
 ## [1.86.0] — 🧭 The checkup now sees all your background jobs — and stops crying wolf (2026-08-10)
 
 Three community bug reports showed the same pattern from different angles: Dex's health checkup could miss real problems with background jobs while flagging healthy things as broken. This release makes the checkup match reality in both directions. Thanks to the three reporters whose unusually precise write-ups made these fixes straightforward.

@@ -29,6 +29,20 @@ CALENDAR_ACCESS_DENIED = (
 )
 
 
+def request_calendar_access(store, completion):
+    """Request calendar access, preferring the modern macOS 14+ API.
+
+    On macOS 14+ the legacy requestAccessToEntityType_completion_ is
+    deprecated for calendar full access and reports denied immediately
+    without ever showing the permission prompt — so fresh grants were
+    impossible through this script (#377).
+    """
+    if hasattr(store, "requestFullAccessToEventsWithCompletion_"):
+        store.requestFullAccessToEventsWithCompletion_(completion)
+    else:
+        store.requestAccessToEntityType_completion_(EventKit.EKEntityTypeEvent, completion)
+
+
 def ensure_calendar_access(store):
     """Request calendar access if needed; wait for user to grant. Required to see all calendars (e.g. Google)."""
     status = EventKit.EKEventStore.authorizationStatusForEntityType_(EventKit.EKEntityTypeEvent)
@@ -45,7 +59,7 @@ def ensure_calendar_access(store):
         result[0] = granted
         done.set()
 
-    store.requestAccessToEntityType_completion_(EventKit.EKEntityTypeEvent, completion)
+    request_calendar_access(store, completion)
     # Wait up to 60s for user to respond to the system dialog
     done.wait(timeout=60)
     return result[0] is True

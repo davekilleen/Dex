@@ -52,6 +52,49 @@ def test_run_shell_script_dispatches_py_scripts_to_python(monkeypatch):
     assert captured["command"][1].endswith("calendar_eventkit.py")
 
 
+def test_run_shell_script_failure_surfaces_stdout_when_stderr_is_empty(monkeypatch):
+    """Helper scripts print actionable errors (e.g. calendar-access-denied
+    guidance) as JSON on stdout and exit 1 with an empty stderr. Users used
+    to see a bare "Exit code: 1" instead of the guidance (#377)."""
+    denial = json.dumps({"error": "Calendar access denied. Enable in System Settings."})
+
+    def fake_run(command, **kwargs):
+        return subprocess.CompletedProcess(command, 1, stdout=denial + "\n", stderr="")
+
+    monkeypatch.setattr(calendar_server.subprocess, "run", fake_run)
+
+    success, output = calendar_server.run_shell_script("calendar_eventkit.py", "list")
+
+    assert not success
+    assert output == denial
+
+
+def test_run_shell_script_failure_still_prefers_stderr(monkeypatch):
+    def fake_run(command, **kwargs):
+        return subprocess.CompletedProcess(
+            command, 1, stdout="partial output\n", stderr="Traceback: boom\n"
+        )
+
+    monkeypatch.setattr(calendar_server.subprocess, "run", fake_run)
+
+    success, output = calendar_server.run_shell_script("calendar_eventkit.py", "list")
+
+    assert not success
+    assert output == "Traceback: boom"
+
+
+def test_run_shell_script_failure_without_any_output_reports_exit_code(monkeypatch):
+    def fake_run(command, **kwargs):
+        return subprocess.CompletedProcess(command, 1, stdout="", stderr="")
+
+    monkeypatch.setattr(calendar_server.subprocess, "run", fake_run)
+
+    success, output = calendar_server.run_shell_script("calendar_eventkit.py", "list")
+
+    assert not success
+    assert output == "Exit code: 1"
+
+
 def test_allowed_sh_scripts_are_valid_bash():
     """Guard the helper scripts themselves: every allowed .sh must parse under bash."""
     for script_name in sorted(calendar_server.ALLOWED_SCRIPTS):
