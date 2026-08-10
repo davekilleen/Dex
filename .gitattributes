@@ -1,3 +1,16 @@
+# Line endings (issue #256): Dex verifies the exact bytes of tracked files
+# against release hashes — the installed-files manifest is bound to the
+# release catalog, and catalog items declare per-file hashes for their
+# payloads. Git's own recommended core.autocrlf=true on Windows converts
+# text files to CRLF on checkout, which broke every such check on every
+# Windows install. Force LF on checkout everywhere so working-copy bytes
+# always match the committed (and hashed) bytes.
+* text=auto eol=lf
+System/.installed-files.manifest text eol=lf
+
+# This fixture's CRLF bytes are the point of its test — never convert it.
+core/tests/fixtures/entity_pages/09-crlf.md -text
+
 # Exclude dev-only files from git archive (ZIP downloads)
 # Mirrors .distignore — keep both in sync
 

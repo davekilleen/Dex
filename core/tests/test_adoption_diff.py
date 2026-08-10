@@ -36,6 +36,28 @@ def test_diff_reports_modified_missing_and_unprovable_separately(tmp_path: Path)
     }
 
 
+def test_windows_crlf_manifest_still_proves_release_identity(tmp_path: Path) -> None:
+    """Issue #256 defense in depth: an existing Windows checkout keeps its
+    CRLF manifest until the .gitattributes rule re-checks it out. Release
+    identity must still verify from that working copy — canonicality parsing
+    and the catalog binding both tolerate the CRLF form of the exact
+    released manifest, and nothing else."""
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    write_file(vault, "core/feature.py", b"release bytes\n")
+    manifest = write_manifest(vault, ["core/feature.py"])
+    catalog = catalog_for(manifest, {"core/feature.py": b"release bytes\n"})
+    # Rewrite the manifest on disk the way core.autocrlf=true checks it out.
+    target = vault / "System/.installed-files.manifest"
+    target.write_bytes(manifest.replace(b"\n", b"\r\n"))
+
+    report = build_inventory(vault, catalog=catalog)
+    by_path = {entry.actual_path: entry for entry in report.entries}
+
+    assert report.baseline.identity_state == "VERIFIED"
+    assert by_path["core/feature.py"].release_state == "stock-unmodified"
+
+
 def test_manifest_only_never_claims_release_owned_file_is_clean(tmp_path: Path) -> None:
     vault = tmp_path / "vault"
     vault.mkdir()

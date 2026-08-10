@@ -8,7 +8,12 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import Mapping, Protocol
 
-from core.lifecycle.catalog import CatalogError, load_catalog_payload_sources, loads_catalog
+from core.lifecycle.catalog import (
+    CatalogError,
+    load_catalog_payload_sources,
+    loads_catalog,
+    manifest_binding_matches,
+)
 from core.lifecycle.filesystem import FilesystemInspectionError, bounded_read, normalize_relative_path
 from core.lifecycle.model import ReleaseCatalog
 
@@ -91,6 +96,12 @@ class CustomizationReport:
 
 
 def _parse_manifest(raw: bytes) -> frozenset[str]:
+    # Windows checkouts with Git's recommended core.autocrlf=true carry the
+    # tracked manifest as CRLF (issue #256). Normalizing CRLF→LF first is
+    # deterministic and cannot invent paths — manifest generation refuses any
+    # path containing "\r" — so the canonicality checks below stay meaningful.
+    if b"\r\n" in raw:
+        raw = raw.replace(b"\r\n", b"\n")
     try:
         text = raw.decode("utf-8")
     except UnicodeDecodeError as error:
@@ -146,8 +157,9 @@ def load_release_baseline(
     release_version: str | None = None
     identity_state = "UNKNOWN"
     if selected_catalog is not None and manifest_bytes is not None:
-        actual_manifest_hash = hashlib.sha256(manifest_bytes).hexdigest()
-        if selected_catalog.release.manifest.sha256 != actual_manifest_hash:
+        if not manifest_binding_matches(
+            selected_catalog.release.manifest.sha256, manifest_bytes
+        ):
             errors.append("catalog manifest binding does not match the installed manifest")
         else:
             catalog_hashes = {

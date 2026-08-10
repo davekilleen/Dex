@@ -331,6 +331,25 @@ def canonical_catalog_bytes(catalog: ReleaseCatalog | Mapping[str, object]) -> b
     return _canonical_bytes(document)
 
 
+def manifest_binding_matches(expected_sha256: str, manifest_bytes: bytes) -> bool:
+    """True when the manifest bytes prove the catalog's manifest binding.
+
+    The exact bytes are checked first and stay the primary contract. If they
+    differ and contain CRLF sequences, one deterministic CRLF→LF
+    normalization is also tried: Git's recommended ``core.autocrlf=true`` on
+    Windows rewrites the tracked manifest to CRLF at checkout time (issue
+    #256), while the binding hash is always computed over the LF release
+    bytes. The retry cannot create a false pass — it only accepts a manifest
+    whose LF form is byte-identical to the released manifest.
+    """
+    if hashlib.sha256(manifest_bytes).hexdigest() == expected_sha256:
+        return True
+    if b"\r\n" not in manifest_bytes:
+        return False
+    normalized = manifest_bytes.replace(b"\r\n", b"\n")
+    return hashlib.sha256(normalized).hexdigest() == expected_sha256
+
+
 def _verify_identity(catalog: ReleaseCatalog, document: Mapping[str, object], manifest_bytes: bytes) -> None:
     expected = compute_catalog_sha256(document)
     if catalog.integrity.catalog_sha256 != expected:
@@ -340,8 +359,7 @@ def _verify_identity(catalog: ReleaseCatalog, document: Mapping[str, object], ma
         )
     if not isinstance(manifest_bytes, bytes):
         _fail(CatalogIdentityError, "release manifest bytes were not supplied as bytes")
-    actual_manifest = hashlib.sha256(manifest_bytes).hexdigest()
-    if catalog.release.manifest.sha256 != actual_manifest:
+    if not manifest_binding_matches(catalog.release.manifest.sha256, manifest_bytes):
         _fail(CatalogIdentityError, "release manifest bytes do not match the catalog binding")
 
 
@@ -398,6 +416,7 @@ __all__ = [
     "load_catalog_payload_sources",
     "load_catalog_schema",
     "loads_catalog",
+    "manifest_binding_matches",
     "validate_catalog_document",
     "with_catalog_identity",
 ]

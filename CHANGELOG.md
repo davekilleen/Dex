@@ -7,6 +7,18 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.86.0] — 🪟 Windows stops raising false alarms (2026-08-10)
+
+Two detailed reports from the community, one theme: on Windows, Dex's health checkup declared a perfectly healthy install broken. Both were false alarms — Dex behaved slightly differently on Windows than on Mac in two invisible places — and both are fixed. Thank you to the Windows user who filed them.
+
+**What this fixes for you:**
+
+* **The checkup stops insisting your install doesn't match its release.** On Windows, the standard way of downloading Dex quietly rewrites text files into Windows' own text format. Dex's integrity check then compared those rewritten files against the original release and reported a mismatch — every time, on every Windows machine — which cascaded into a whole page of "broken" verdicts across the update and adoption tools. Dex now recognizes that rewrite for the harmless Windows convention it is, and fresh downloads keep files in their original form so the question never comes up again.
+* **The doctor stops blocking itself.** While running its checkup on Windows, Dex could trip over its own safety lock and refuse to finish, reporting "another Dex process is already changing this vault" — where the "other process" was the checkup itself. Dex now recognizes a leftover lock of its own and clears it, and the Windows-only failure that created that leftover is gone.
+* **Checking on another Dex process can no longer harm it.** The way Dex asked "is that other process still running?" was safe on Mac but on Windows could actually shut the other process down. Dex now only looks — it can never touch.
+
+These fixes were verified with tests that simulate the Windows behavior, not on a live Windows machine — if you're on Windows and still see either symptom after updating, please run `/feedback`.
+
 ## [1.85.0] — 🫀 Health checks that ask "did it work?" — and don't wait until tomorrow to tell you (2026-08-10)
 
 Yesterday's release fixed a background sync that had been failing silently for six days while every health check stayed green. Today's release fixes the deeper problem: health checks that measured the wrong thing, and health news that only arrived when you started a fresh session.

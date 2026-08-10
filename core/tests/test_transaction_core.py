@@ -75,6 +75,99 @@ def test_lock_release_after_takeover_is_a_noop(tmp_path: Path) -> None:
     release_new()
 
 
+def test_lock_reclaims_own_orphan_from_a_crashed_acquisition(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Issue #257 regression: the doctor tripped over its own orphaned lock.
+
+    On Windows the directory fsync raised PermissionError AFTER the lock file
+    was created (os.open cannot open directories there), so the acquisition
+    failed but left a lock naming the doctor's own PID. The doctor's next
+    acquisition — writing System/.doctor-last-run.json — then reported
+    "another Dex process (pid X)" where X was the doctor itself. A lock file
+    carrying our live PID that no acquisition in this process holds must be
+    reclaimed, not treated as a foreign owner.
+    """
+    import core.transaction.lock as lock_module
+
+    vault = _vault(tmp_path)
+    lock = vault / "System/.dex/mutation.lock"
+    real_fsync_directory = lock_module._fsync_directory
+
+    def windows_style_failure(directory: Path) -> None:
+        raise PermissionError(13, "cannot open a directory handle")
+
+    # First acquisition (the doctor's Tier-1 heal transaction) crashes after
+    # the lock file exists — the exact Windows failure shape.
+    monkeypatch.setattr(lock_module, "_fsync_directory", windows_style_failure)
+    with pytest.raises(PermissionError):
+        acquire_owned_lock(vault, "transaction:t1-heal")
+    monkeypatch.setattr(lock_module, "_fsync_directory", real_fsync_directory)
+
+    assert lock.is_file()
+    assert json.loads(lock.read_text())["pid"] == os.getpid()
+
+    # Second acquisition (the doctor-report write) used to raise LockBusyError
+    # naming our own PID; it must reclaim the orphan and succeed.
+    release = acquire_owned_lock(vault, "transaction:doctor-report")
+    assert json.loads(lock.read_text())["kind"] == "transaction:doctor-report"
+    release()
+    assert not lock.exists()
+
+
+def test_lock_supports_the_doctors_sequential_double_acquisition(tmp_path: Path) -> None:
+    """doctor --heal acquires for the heal transaction, releases, then
+    acquires again in the same process to write the last-run report."""
+    vault = _vault(tmp_path)
+    release_heal = acquire_owned_lock(vault, "transaction:t1-heal")
+    release_heal()
+    release_report = acquire_owned_lock(vault, "transaction:doctor-report")
+    release_report()
+    assert not (vault / "System/.dex/mutation.lock").exists()
+
+
+def test_lock_held_by_this_process_still_refuses_reacquisition(tmp_path: Path) -> None:
+    """Own-orphan reclaim must not weaken mutual exclusion: while a live
+    acquisition in this process holds the lock, a second one stays refused."""
+    vault = _vault(tmp_path)
+    release = acquire_owned_lock(vault, "transaction:live")
+    with pytest.raises(LockBusyError):
+        acquire_owned_lock(vault, "transaction:intruder")
+    release()
+
+
+def test_liveness_probe_never_signals_our_own_pid(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """os.kill is not a liveness probe on Windows — CPython documents that any
+    signal other than the console-control events unconditionally kills the
+    target via TerminateProcess. Probing the lock's recorded PID when it is
+    our own must therefore never reach os.kill on any platform."""
+    import core.transaction.lock as lock_module
+
+    def forbidden(pid: int, sig: int) -> None:
+        raise AssertionError("the liveness probe must not signal our own process")
+
+    monkeypatch.setattr(lock_module.os, "kill", forbidden)
+    assert lock_module._process_is_running(os.getpid()) is True
+
+
+def test_fsync_directory_is_a_noop_on_windows(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Windows cannot open a directory descriptor; the directory fsync must
+    return without attempting to, instead of orphaning a just-created lock."""
+    import core.transaction.lock as lock_module
+
+    monkeypatch.setattr(lock_module.os, "name", "nt")
+
+    def forbidden(*args: object, **kwargs: object) -> int:
+        raise AssertionError("no directory descriptor may be opened on Windows")
+
+    monkeypatch.setattr(lock_module.os, "open", forbidden)
+    lock_module._fsync_directory(tmp_path)  # must not raise
+
+
 # ---------------------------------------------------------------------------
 # Journal
 # ---------------------------------------------------------------------------
