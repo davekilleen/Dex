@@ -272,7 +272,7 @@ def test_tier_one_heal_acknowledges_only_errors_resolved_by_newer_success(
     actions, errors = doctor._apply_t1_heals(context)
 
     assert errors == []
-    assert actions == ["acknowledged 1 resolved preflight error"]
+    assert actions == {"preflight.queue": ["acknowledged 1 resolved preflight error"]}
     saved = {entry["source"]: entry for entry in _queue(vault)}
     assert saved["update-checker"]["acknowledged"] is True
     assert saved["work-mcp"]["acknowledged"] is False

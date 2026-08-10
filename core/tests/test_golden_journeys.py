@@ -73,8 +73,9 @@ def test_service_owned_repair_crosses_transaction_and_declares_every_write(
     after = snapshot_vault(vault)
 
     assert errors == []
-    assert "regenerated core/paths.json" in actions
-    assert any("restored executable permission" in action for action in actions)
+    structure_actions = actions["vault.structure"]
+    assert "regenerated core/paths.json" in structure_actions
+    assert any("restored executable permission" in action for action in structure_actions)
     assert len(receipts) == 1
     receipt = receipts[0]
     assert receipt["purpose"] == "doctor-tier-1"
