@@ -37,7 +37,7 @@ from core.lifecycle.model import ITEM_ID, SEMVER, AdoptionState
 from core.lifecycle.plan import PlannedAction, ReasonCode, build_adoption_plan
 from core.transaction.engine import TX_ROOT_RELATIVE, PlanEntry
 from core.transaction.journal import Journal, JournalCorruptError
-from core.utils import dex_logger, preflight, release_channel
+from core.utils import dex_logger, launch_agents, preflight, release_channel
 
 VERDICTS = frozenset({"OK", "OFF", "BROKEN", "UNKNOWN"})
 DOCTOR_GIT_CANDIDATES = (Path("/usr/bin/git"), Path("/bin/git"))
@@ -972,78 +972,84 @@ def collect(
         except Exception as error:
             failed.append({"id": "doctor.self", "error": _one_line(error)})
 
-    for definition in definitions:
-        if definition.id == "doctor.self":
-            continue
-        try:
-            result = globals()[definition.probe](context)
-        except Exception as error:
-            error_text = _actionable_probe_error(error)
-            failed.append({"id": definition.id, "error": error_text})
-            result = ProbeResult(
-                "UNKNOWN",
-                error_text
-                if error_text == MISSING_PACKAGES_DETAIL
-                else f"The {definition.feature} probe could not run: {error_text}",
-            )
-        if result.verdict == "UNKNOWN" and _is_missing_package_error(result.detail):
-            result = ProbeResult("UNKNOWN", MISSING_PACKAGES_DETAIL, result.heal)
-        entity_actions = [
-            action for action in t1_actions if action.startswith("re-queued ")
-        ]
-        preflight_actions = [
-            action for action in t1_actions if action.startswith("acknowledged ")
-        ]
-        capability_actions = [
-            action for action in t1_actions if action.startswith("reconciled capability ")
-        ]
-        structure_actions = [
-            action
-            for action in t1_actions
-            if not action.startswith(
-                ("re-queued ", "acknowledged ", "reconciled capability ")
-            )
-        ]
-        if definition.id == "vault.structure" and structure_actions:
-            action = "; ".join(structure_actions) + "."
-            if result.verdict == "OK":
-                repair_word = _repair_count_word(len(structure_actions))
-                repair_noun = "repair" if len(structure_actions) == 1 else "repairs"
-                detail = f"All standard PARA directories exist after {repair_word} safe {repair_noun}"
-            else:
-                detail = f"{result.detail.rstrip('.')} while safe Tier-1 repairs were also applied"
-            result = ProbeResult(
-                result.verdict,
-                detail,
-                Heal(tier=1, action=action, applied=True),
-            )
-        if definition.id == "entity.engine" and entity_actions:
-            result = ProbeResult(
-                result.verdict,
-                result.detail,
-                Heal(tier=1, action="; ".join(entity_actions) + ".", applied=True),
-                feature_status=result.feature_status,
-                user_message=result.user_message,
-            )
-        if definition.id == "preflight.queue" and preflight_actions:
-            action = "; ".join(preflight_actions) + "."
-            result = ProbeResult(
-                result.verdict,
-                f"{result.detail.rstrip('.')} after a safe Tier-1 queue repair",
-                Heal(tier=1, action=action, applied=True),
-                feature_status=result.feature_status,
-                user_message=result.user_message,
-            )
-        if definition.id == "capabilities.rooms" and capability_actions:
-            action = "; ".join(capability_actions) + "."
-            result = ProbeResult(
-                result.verdict,
-                f"{result.detail.rstrip('.')} after a safe Tier-1 reconciliation",
-                Heal(tier=1, action=action, applied=True),
-                feature_status=result.feature_status,
-                user_message=result.user_message,
-            )
-        results[definition.id] = result
+    # One classification pass over ~/Library/LaunchAgents is shared by
+    # jobs.loaded and jobs.fresh instead of re-parsing every plist twice.
+    _begin_launch_agent_scan_scope(context)
+    try:
+        for definition in definitions:
+            if definition.id == "doctor.self":
+                continue
+            try:
+                result = globals()[definition.probe](context)
+            except Exception as error:
+                error_text = _actionable_probe_error(error)
+                failed.append({"id": definition.id, "error": error_text})
+                result = ProbeResult(
+                    "UNKNOWN",
+                    error_text
+                    if error_text == MISSING_PACKAGES_DETAIL
+                    else f"The {definition.feature} probe could not run: {error_text}",
+                )
+            if result.verdict == "UNKNOWN" and _is_missing_package_error(result.detail):
+                result = ProbeResult("UNKNOWN", MISSING_PACKAGES_DETAIL, result.heal)
+            entity_actions = [
+                action for action in t1_actions if action.startswith("re-queued ")
+            ]
+            preflight_actions = [
+                action for action in t1_actions if action.startswith("acknowledged ")
+            ]
+            capability_actions = [
+                action for action in t1_actions if action.startswith("reconciled capability ")
+            ]
+            structure_actions = [
+                action
+                for action in t1_actions
+                if not action.startswith(
+                    ("re-queued ", "acknowledged ", "reconciled capability ")
+                )
+            ]
+            if definition.id == "vault.structure" and structure_actions:
+                action = "; ".join(structure_actions) + "."
+                if result.verdict == "OK":
+                    repair_word = _repair_count_word(len(structure_actions))
+                    repair_noun = "repair" if len(structure_actions) == 1 else "repairs"
+                    detail = f"All standard PARA directories exist after {repair_word} safe {repair_noun}"
+                else:
+                    detail = f"{result.detail.rstrip('.')} while safe Tier-1 repairs were also applied"
+                result = ProbeResult(
+                    result.verdict,
+                    detail,
+                    Heal(tier=1, action=action, applied=True),
+                )
+            if definition.id == "entity.engine" and entity_actions:
+                result = ProbeResult(
+                    result.verdict,
+                    result.detail,
+                    Heal(tier=1, action="; ".join(entity_actions) + ".", applied=True),
+                    feature_status=result.feature_status,
+                    user_message=result.user_message,
+                )
+            if definition.id == "preflight.queue" and preflight_actions:
+                action = "; ".join(preflight_actions) + "."
+                result = ProbeResult(
+                    result.verdict,
+                    f"{result.detail.rstrip('.')} after a safe Tier-1 queue repair",
+                    Heal(tier=1, action=action, applied=True),
+                    feature_status=result.feature_status,
+                    user_message=result.user_message,
+                )
+            if definition.id == "capabilities.rooms" and capability_actions:
+                action = "; ".join(capability_actions) + "."
+                result = ProbeResult(
+                    result.verdict,
+                    f"{result.detail.rstrip('.')} after a safe Tier-1 reconciliation",
+                    Heal(tier=1, action=action, applied=True),
+                    feature_status=result.feature_status,
+                    user_message=result.user_message,
+                )
+            results[definition.id] = result
+    finally:
+        _end_launch_agent_scan_scope(context)
 
     if failed:
         failed_ids = ", ".join(failure["id"] for failure in failed)
@@ -2249,8 +2255,37 @@ def _is_macos() -> bool:
     return sys.platform == "darwin"
 
 
-def _installed_launch_agents(context: DoctorContext) -> list[Path]:
-    return sorted(context.launch_agents_dir.glob("com.dex.*.plist"))
+def _installed_launch_agents(context: DoctorContext) -> list[tuple[Path, bool]]:
+    """Enumerate every launch agent with its presents-as-Dex classification.
+
+    Non-Dex-named plists are enumerated too because ownership evidence is
+    the paths inside a plist, not its filename: a user's custom job under
+    any label that points into this vault is this vault's business.  The
+    naming heuristic (shipped ``com.dex.`` / legacy ``com.claudesidian.``
+    prefixes only) exists solely so a corrupt shipped plist reads as
+    unreadable instead of foreign — see ``core.utils.launch_agents``.
+    """
+    directory = context.launch_agents_dir
+    if not directory.is_dir():
+        return []
+    return sorted(
+        (path, launch_agents.is_dex_named(path.name))
+        for path in directory.glob("*.plist")
+    )
+
+
+def _stored_former_vault_root(context: DoctorContext) -> Path | None:
+    """Return the breadcrumb's stored vault path when it names a former root.
+
+    Shared with the session-start hook (``core.utils.launch_agents``) so the
+    hook can never warn about a stored former location Doctor refuses to see.
+    """
+    return launch_agents.stored_former_vault_root(context.vault_root, context.home)
+
+
+def _plist_references_stale_root(data: dict[str, Any], stale_root: Path) -> bool:
+    """Return whether any plist string names the vault's former location."""
+    return launch_agents.payload_references_root(data, stale_root)
 
 
 def _plist_data(plist: Path) -> dict[str, Any]:
@@ -2259,43 +2294,48 @@ def _plist_data(plist: Path) -> dict[str, Any]:
             loaded = plistlib.load(handle)
     except PermissionError:
         raise
-    except (OSError, plistlib.InvalidFileException) as error:
+    # plistlib raises a zoo of exceptions for damaged files: OSError,
+    # InvalidFileException, xml.parsers.expat.ExpatError for truncated XML
+    # with a valid header (a classic interrupted write), ValueError for bad
+    # scalars, OverflowError for absurd dates. Every one of them means the
+    # same thing here — this file is not readable evidence — and none of
+    # them may take down the whole probe.
+    except Exception as error:  # noqa: BLE001
         raise RuntimeError(f"Could not parse {plist.name}: {_one_line(error)}") from error
     if not isinstance(loaded, dict):
         raise RuntimeError(f"Could not parse {plist.name}: top level is not a dictionary")
     return loaded
 
 
-def _plist_label(plist: Path) -> str:
-    return str(_plist_data(plist).get("Label") or plist.stem)
+def _plist_label(plist: Path, data: dict[str, Any]) -> str:
+    return str(data.get("Label") or plist.stem)
 
 
 def _plist_strings(value: object) -> Iterator[str]:
-    if isinstance(value, str):
-        yield value
-    elif isinstance(value, dict):
-        for child in value.values():
-            yield from _plist_strings(child)
-    elif isinstance(value, list):
-        for child in value:
-            yield from _plist_strings(child)
+    yield from launch_agents.iter_plist_strings(value)
 
 
-def _plist_owned_by_vault(plist: Path, data: dict[str, Any], context: DoctorContext) -> bool:
-    """Return whether a launch agent explicitly points into this vault.
+def _plist_owned_by_vault(data: dict[str, Any], vault_root: Path) -> bool:
+    """Return whether a launch agent's program invocation points into this vault.
 
-    Labels are shared between Dex installs, so they are not ownership evidence.
-    A known ``com.dex.*`` label can still belong to another Dex vault on the
-    same Mac; only an absolute ProgramArguments path beneath this vault makes
-    it this vault's responsibility.
+    Labels are shared between Dex installs, so they are not ownership
+    evidence.  A known ``com.dex.*`` label can still belong to another Dex
+    vault on the same Mac; only the ProgramArguments referencing this vault
+    make it this vault's responsibility — either an absolute path entry that
+    resolves beneath the vault, or the vault root embedded in a shell string
+    such as ``/bin/bash -c "cd <vault> && ..."``.  Non-invocation keys
+    (WorkingDirectory, StandardOutPath) never claim ownership: a third-party
+    tool merely logging into the vault folder is not Dex's job.
     """
     arguments = data.get("ProgramArguments")
     if not isinstance(arguments, list):
         return False
-    vault_root = context.vault_root.resolve()
+    vault_pattern = launch_agents.reference_pattern(vault_root)
     for argument in arguments:
         if not isinstance(argument, str):
             continue
+        if vault_pattern.search(argument):
+            return True
         candidate = Path(argument).expanduser()
         if not candidate.is_absolute():
             continue
@@ -2445,10 +2485,133 @@ def _resolved_interpreter(raw: str, context: DoctorContext) -> str | None:
     return str(candidate) if candidate.is_file() and os.access(candidate, os.X_OK) else None
 
 
+_OWNED = "owned"
+_STALE = "stale"
+_FOREIGN = "foreign"
+_UNREADABLE = "unreadable"
+
+
+@dataclass(frozen=True)
+class LaunchAgentRecord:
+    """One launch agent's classification, computed once per doctor run."""
+
+    plist: Path
+    classification: str  # "owned" | "stale" | "foreign" | "unreadable"
+    label: str
+    data: dict[str, Any] | None = None
+    error_detail: str | None = None  # unreadable only
+    orphan_issue: str | None = None  # foreign only: worktree-pointed defect
+    stale_references: bool = False  # owned only: former-root strings remain
+
+
+@dataclass(frozen=True)
+class LaunchAgentScan:
+    """The classified launch agents plus the evidence they were judged by."""
+
+    stale_root: Path | None
+    records: tuple[LaunchAgentRecord, ...]
+
+
+def _classify_launch_agents(context: DoctorContext) -> LaunchAgentScan:
+    """Classify every relevant launch agent exactly once.
+
+    Every Dex-named plist is classified (parse failures included — a corrupt
+    shipped plist is UNREADABLE, never assumed foreign).  A plist under any
+    other name counts only on path evidence: it references this vault
+    (OWNED), or the vault's stored former location (STALE, issue #364).
+    Unreadable or irrelevant third-party plists are other products' files
+    and can never degrade Dex's own checks.
+    """
+    stale_root = _stored_former_vault_root(context)
+    try:
+        vault_root = context.vault_root.resolve()
+    except (OSError, RuntimeError):
+        vault_root = context.vault_root
+    records: list[LaunchAgentRecord] = []
+    for plist, dex_named in _installed_launch_agents(context):
+        try:
+            data = _plist_data(plist)
+        except PermissionError:
+            # A sandbox that refuses shipped-plist reads makes the whole
+            # probe an unknown instrument; other products' files it merely
+            # can't read are not this vault's problem.
+            if dex_named:
+                raise
+            continue
+        except RuntimeError as error:
+            if dex_named:
+                records.append(
+                    LaunchAgentRecord(
+                        plist=plist,
+                        classification=_UNREADABLE,
+                        label=plist.stem,
+                        error_detail=_unattributable_launch_agent_detail(plist, error),
+                    )
+                )
+            continue
+        label = _plist_label(plist, data)
+        stale_hit = stale_root is not None and _plist_references_stale_root(data, stale_root)
+        if _plist_owned_by_vault(data, vault_root):
+            records.append(
+                LaunchAgentRecord(
+                    plist=plist,
+                    classification=_OWNED,
+                    label=label,
+                    data=data,
+                    stale_references=stale_hit,
+                )
+            )
+        elif stale_hit:
+            # The agent points at this vault's stored former location. That
+            # is this vault's job left behind by a move or rename —
+            # owned-and-stale, never another product's (issue #364).
+            records.append(
+                LaunchAgentRecord(
+                    plist=plist, classification=_STALE, label=label, data=data
+                )
+            )
+        elif dex_named:
+            records.append(
+                LaunchAgentRecord(
+                    plist=plist,
+                    classification=_FOREIGN,
+                    label=label,
+                    data=data,
+                    orphan_issue=_launch_agent_orphan_issue(data),
+                )
+            )
+    return LaunchAgentScan(stale_root=stale_root, records=tuple(records))
+
+
+# collect() opens a scan scope so jobs.loaded and jobs.fresh share one
+# classification pass per run instead of re-parsing every plist twice.
+# Probes called outside a scope (tests, other tools) classify fresh.
+_launch_agent_scan_cache: dict[int, LaunchAgentScan | None] = {}
+
+
+def _begin_launch_agent_scan_scope(context: DoctorContext) -> None:
+    _launch_agent_scan_cache[id(context)] = None
+
+
+def _end_launch_agent_scan_scope(context: DoctorContext) -> None:
+    _launch_agent_scan_cache.pop(id(context), None)
+
+
+def _scan_launch_agents(context: DoctorContext) -> LaunchAgentScan:
+    key = id(context)
+    if key in _launch_agent_scan_cache:
+        cached = _launch_agent_scan_cache[key]
+        if cached is None:
+            cached = _classify_launch_agents(context)
+            _launch_agent_scan_cache[key] = cached
+        return cached
+    return _classify_launch_agents(context)
+
+
 def _probe_jobs_loaded(context: DoctorContext) -> ProbeResult:
-    plists = _installed_launch_agents(context)
-    if not plists:
-        return ProbeResult("OFF", "No com.dex launch agents are installed")
+    scan = _scan_launch_agents(context)
+    if not scan.records:
+        return ProbeResult("OFF", "No Dex launch agents are installed")
     if not _is_macos():
         return ProbeResult("UNKNOWN", "launchctl and plutil checks are only available on macOS")
 
@@ -2457,31 +2620,53 @@ def _probe_jobs_loaded(context: DoctorContext) -> ProbeResult:
     runtime_labels = []
     skipped_count = 0
     owned_count = 0
-    for plist in plists:
-        try:
-            data = _plist_data(plist)
-        except RuntimeError as error:
+    stale_count = 0
+    for record in scan.records:
+        if record.classification == _UNREADABLE:
             # A corrupt plist could belong to this vault, but a filename alone
             # cannot establish that safely. Surface the uncertainty instead of
             # falsely treating it as a foreign Dex installation.
-            unknowns.append(_unattributable_launch_agent_detail(plist, error))
+            unknowns.append(record.error_detail)
             continue
-        if not _plist_owned_by_vault(plist, data, context):
-            orphan_issue = _launch_agent_orphan_issue(data)
-            if orphan_issue is not None:
-                orphan_label = str(data.get("Label") or plist.stem)
+        if record.classification == _STALE:
+            stale_count += 1
+            issues.append(
+                (
+                    2,
+                    f"{record.label} still points at this vault's old location "
+                    f"({scan.stale_root}) — it keeps running against the moved "
+                    "directory until it is repointed or removed",
+                )
+            )
+            continue
+        if record.classification == _FOREIGN:
+            if record.orphan_issue is not None:
                 issues.append(
                     (
                         2,
-                        f"{orphan_label} {orphan_issue} — likely installed from a "
+                        f"{record.label} {record.orphan_issue} — likely installed from a "
                         "temporary checkout; reinstall it from the real vault",
                     )
                 )
-                continue
-            skipped_count += 1
+            else:
+                skipped_count += 1
             continue
         owned_count += 1
-        label = str(data.get("Label") or plist.stem)
+        plist, data, label = record.plist, record.data, record.label
+        if record.stale_references:
+            # Partially repointed: the invocation targets this vault but other
+            # keys (WorkingDirectory, log paths, environment) still name the
+            # former root — the session-start hook keeps warning until every
+            # reference is repointed, so the doctor must surface it too.
+            stale_count += 1
+            issues.append(
+                (
+                    2,
+                    f"{label} runs against this vault but still references its "
+                    f"old location ({scan.stale_root}) — finish repointing it",
+                )
+            )
+            continue
         configuration_issue = _plist_configuration_issue(plist, data, context)
         if configuration_issue:
             issues.append((2, f"{label} has invalid launch-agent configuration ({configuration_issue})"))
@@ -2531,7 +2716,14 @@ def _probe_jobs_loaded(context: DoctorContext) -> ProbeResult:
         action_parts = []
         if any(issue_tier == 3 for issue_tier, _detail in issues):
             action_parts.append("Install or repair the missing job interpreter by hand")
-        if any(issue_tier == 2 for issue_tier, _detail in issues):
+        if stale_count:
+            action_parts.append(
+                "repoint the stale launch agent at this vault's current location "
+                f"({context.vault_root}) — unload it, rewrite the old paths, plutil -lint, "
+                "reload — or remove it, and update ~/.config/dex/vault-path, "
+                "only after explicit approval"
+            )
+        if sum(1 for issue_tier, _detail in issues if issue_tier == 2) > stale_count:
             action_parts.append("repair or reload the named launch agent only after explicit approval")
         detail_parts = [detail for _tier, detail in issues]
         detail_parts.extend(unknowns)
@@ -2563,25 +2755,60 @@ def _probe_jobs_fresh(context: DoctorContext) -> ProbeResult:
     """
     from core.health import promises as health_promises
 
-    installed = set()
-    unknowns = []
-    for plist in _installed_launch_agents(context):
-        try:
-            data = _plist_data(plist)
-        except RuntimeError as error:
-            unknowns.append(_unattributable_launch_agent_detail(plist, error))
-            continue
-        if _plist_owned_by_vault(plist, data, context):
-            installed.add(str(data.get("Label") or plist.stem))
-    monitored = [
-        promise
-        for promise in health_promises.PROMISES
-        if promise.id in installed and promise.receipt_kind != "daemon"
+    def _promise_for_label(label: str):
+        # Pre-rename installs run the same shipped jobs under the legacy
+        # com.claudesidian.* labels; they map onto their com.dex.* promises
+        # so their freshness is genuinely audited, not waved through as
+        # unauditable user jobs.
+        for candidate in launch_agents.promise_label_candidates(label):
+            promise = health_promises.promise_by_id(candidate)
+            if promise is not None:
+                return promise
+        return None
+
+    scan = _scan_launch_agents(context)
+    unknowns = [
+        record.error_detail
+        for record in scan.records
+        if record.classification == _UNREADABLE
     ]
+    installed = sorted(
+        {record.label for record in scan.records if record.classification == _OWNED}
+    )
+    monitored = []
+    monitored_ids = set()
+    unregistered = []
+    for label in installed:
+        promise = _promise_for_label(label)
+        if promise is None:
+            unregistered.append(label)
+        elif promise.receipt_kind != "daemon" and promise.id not in monitored_ids:
+            monitored_ids.add(promise.id)
+            monitored.append(promise)
+
+    # Jobs with no receipt in the promise register cannot be freshness-
+    # audited. Say so plainly at every verdict instead of letting "OFF" read
+    # as "nothing to monitor" (issue #253).
+    coverage_note = ""
+    if unregistered:
+        count = len(unregistered)
+        noun = "launch agent" if count == 1 else "launch agents"
+        verb = "is" if count == 1 else "are"
+        coverage_note = (
+            f"{count} {noun} referencing this vault ({', '.join(unregistered)}) "
+            f"{verb} checked for loading only, not freshness "
+            "(no registered freshness receipt)"
+        )
+
+    def _with_coverage_note(detail: str) -> str:
+        return f"{detail}; {coverage_note}" if coverage_note else detail
+
     if not monitored:
         if unknowns:
-            return ProbeResult("UNKNOWN", "; ".join(unknowns))
-        return ProbeResult("OFF", "No monitored Dex freshness jobs are installed")
+            return ProbeResult("UNKNOWN", _with_coverage_note("; ".join(unknowns)))
+        return ProbeResult(
+            "OFF", _with_coverage_note("No shipped Dex freshness jobs are installed")
+        )
 
     stale = []
     for promise in monitored:
@@ -2591,14 +2818,16 @@ def _probe_jobs_fresh(context: DoctorContext) -> ProbeResult:
     if stale:
         return ProbeResult(
             "BROKEN",
-            "; ".join([*stale, *unknowns]),
+            _with_coverage_note("; ".join([*stale, *unknowns])),
             Heal(tier=2, action="Run the stale job once and inspect its application log.", applied=False),
         )
     if unknowns:
-        return ProbeResult("UNKNOWN", "; ".join(unknowns))
+        return ProbeResult("UNKNOWN", _with_coverage_note("; ".join(unknowns)))
     return ProbeResult(
         "OK",
-        f"All {len(monitored)} installed job promises are within their promised cadence",
+        _with_coverage_note(
+            f"All {len(monitored)} installed job promises are within their promised cadence"
+        ),
     )
 
 
@@ -3507,6 +3736,25 @@ def _upstream_release_ref(context: DoctorContext, channel: str | None = None) ->
     return None
 
 
+def _installed_release_treeish(context: DoctorContext) -> str | None:
+    """Resolve the git identity of the release this vault actually runs.
+
+    package.json carries the installed release version and releases are
+    tagged, so the matching tag names the exact installed tree — regardless
+    of how far ahead the fetched release tip has moved since.
+    """
+    package = _regular_json(context.repo_root / "package.json")
+    version = package.get("version") if isinstance(package, dict) else None
+    if not isinstance(version, str) or not version:
+        return None
+    for tag in (f"v{version}", version):
+        ref = f"refs/tags/{tag}"
+        result = _git_result(context, "rev-parse", "--verify", "--quiet", f"{ref}^{{commit}}")
+        if result.returncode == 0:
+            return ref
+    return None
+
+
 def _git_output_or_raise(result: subprocess.CompletedProcess[str], operation: str) -> str:
     if result.returncode == 0:
         return result.stdout
@@ -3974,8 +4222,21 @@ def _probe_core_drift(context: DoctorContext) -> ProbeResult:
             return ProbeResult("UNKNOWN", "couldn't verify your update channel")
         return ProbeResult("UNKNOWN", "no upstream remote — can't compare")
 
-    merge_base = _git_result(context, "merge-base", "HEAD", release_ref)
-    baseline = merge_base.stdout.strip() if merge_base.returncode == 0 else release_ref
+    # The comparison identity must be the release this vault actually has
+    # installed — the same altitude the post-split branch gets from
+    # refs/dex/installed. Two other reference points are both wrong: the
+    # merge-base can lag what is installed (the legacy updater delivered
+    # newer release files without advancing shared history, so
+    # release-delivered bytes read as user modifications — issue #242
+    # item 2), and the fetched release tip can be newer than what is
+    # installed (files half-matching a not-yet-installed release would pass,
+    # masking a mixed-version vault). package.json records the installed
+    # version and releases are tagged, so the matching tag is the installed
+    # identity; merge-base stays the fallback for repos without that tag.
+    baseline = _installed_release_treeish(context)
+    if baseline is None:
+        merge_base = _git_result(context, "merge-base", "HEAD", release_ref)
+        baseline = merge_base.stdout.strip() if merge_base.returncode == 0 else release_ref
     release_entries = _release_tree_entries(context, baseline)
     mismatched = _mismatched_release_blobs(context, release_entries)
     candidates = sorted(

@@ -986,6 +986,33 @@ def test_bootstrap_apply_is_non_mutating_and_reports_installed_state(tracked_ign
     }
 
 
+def test_blocked_preview_names_the_paths_responsible(tracked_ignored_repo):
+    """A blocked gate must say which files block it, not just a count (issue #242)."""
+    rows = _policy_rows(POLICY, 1)
+    absent = rows[0]["path"]
+    # A baseline path this vault never received: untracked and deleted.
+    _git(tracked_ignored_repo, "rm", "-q", "--cached", "--", absent)
+    (tracked_ignored_repo / absent).unlink()
+    # An ordinary-use file that is both tracked and matched by .gitignore.
+    extra = "04-Projects/Tracker.md"
+    target = tracked_ignored_repo / extra
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_bytes(b"project tracker\n")
+    with (tracked_ignored_repo / ".gitignore").open("a", encoding="utf-8") as handle:
+        handle.write(f"/{extra}\n")
+    _git(tracked_ignored_repo, "add", "-f", "--", extra)
+    _git(tracked_ignored_repo, "commit", "-qm", "ordinary use")
+
+    result = migration.preview(tracked_ignored_repo)
+
+    assert result["ok"] is False
+    assert result["state"] == "blocked-query-mismatch"
+    assert result["missing_from_baseline"] == [absent]
+    assert result["missing_never_present"] == [absent]
+    assert result["unexpected_tracked_ignored"] == [extra]
+    assert "git rm --cached" in result["guidance"]
+
+
 def test_update_journey_capture_before_release_restores_files_removed_by_release(tracked_ignored_repo, tmp_path):
     first, second, third = migration.LOCAL_ONLY_PATHS
     (tracked_ignored_repo / first).write_bytes(b"current session learning\n")

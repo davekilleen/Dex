@@ -29,6 +29,7 @@ from core.lifecycle.engine import (
     RewindReceipt,
 )
 from core.lifecycle.model import HEX_SHA256, ITEM_ID, SEMVER
+from core.transaction.fsync import fsync_directory
 
 LEDGER_VERSION = 1
 GENESIS_SHA256 = "0" * 64
@@ -89,14 +90,6 @@ def _canonical_bytes(value: object, context: str) -> bytes:
         ).encode("utf-8")
     except (TypeError, ValueError) as error:
         raise LedgerError(f"{context} cannot be serialized canonically: {error}") from error
-
-
-def _fsync_directory(directory: Path) -> None:
-    descriptor = os.open(directory, os.O_RDONLY)
-    try:
-        os.fsync(descriptor)
-    finally:
-        os.close(descriptor)
 
 
 def _ledger_paths(vault_root: Path) -> tuple[Path, Path, Path]:
@@ -325,8 +318,8 @@ def _quarantine_torn_event(vault_root: Path, path: Path) -> Path:
         target = quarantine / f"{path.name}.torn-{suffix}"
         suffix += 1
     os.rename(path, target)
-    _fsync_directory(path.parent)
-    _fsync_directory(quarantine)
+    fsync_directory(path.parent)
+    fsync_directory(quarantine)
     return target
 
 
@@ -358,9 +351,9 @@ def _complete_commitment(vault_root: Path, sequence: int, digest: str) -> None:
                 raise LedgerError(
                     f"existing lifecycle commitment sequence {sequence} disagrees with event"
                 )
-        _fsync_directory(commitment_directory)
+        fsync_directory(commitment_directory)
         temporary.unlink()
-        _fsync_directory(ledger_root)
+        fsync_directory(ledger_root)
     except BaseException:
         if descriptor is not None:
             os.close(descriptor)
@@ -662,7 +655,7 @@ def _write_state(vault_root: Path, state: dict[str, object]) -> None:
         descriptor = None
         os.replace(temporary, state_path)
         os.chmod(state_path, 0o600)
-        _fsync_directory(ledger_root)
+        fsync_directory(ledger_root)
     except BaseException:
         if descriptor is not None:
             os.close(descriptor)
@@ -820,9 +813,9 @@ def _publish_event(vault_root: Path, event_type: str, payload: dict[str, object]
             raise LedgerError(
                 f"refusing to rewrite existing lifecycle event sequence {sequence}: {target.name}"
             ) from error
-        _fsync_directory(events_dir)
+        fsync_directory(events_dir)
         temporary.unlink()
-        _fsync_directory(ledger_root)
+        fsync_directory(ledger_root)
         commitment_directory = ledger_root / "commitments"
         commitment_target = commitment_directory / f"{sequence:08d}.sha256"
         commitment_temporary = (
@@ -848,9 +841,9 @@ def _publish_event(vault_root: Path, event_type: str, payload: dict[str, object]
                 raise LedgerError(
                     f"refusing to rewrite existing lifecycle commitment sequence {sequence}"
                 ) from error
-            _fsync_directory(commitment_directory)
+            fsync_directory(commitment_directory)
             commitment_temporary.unlink()
-            _fsync_directory(ledger_root)
+            fsync_directory(ledger_root)
         except BaseException:
             if commitment_descriptor is not None:
                 os.close(commitment_descriptor)

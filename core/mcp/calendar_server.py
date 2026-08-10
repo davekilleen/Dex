@@ -173,7 +173,14 @@ def run_shell_script(script_name: str, *args) -> tuple[bool, str]:
         if result.returncode == 0:
             return True, result.stdout.strip()
         else:
-            return False, result.stderr.strip() or f"Exit code: {result.returncode}"
+            # Helper scripts print their actionable errors (e.g. the
+            # calendar-access-denied guidance) as JSON on stdout — fall back
+            # to it so users never see a bare "Exit code: 1" (#377).
+            return False, (
+                result.stderr.strip()
+                or result.stdout.strip()
+                or f"Exit code: {result.returncode}"
+            )
     except subprocess.TimeoutExpired:
         return False, f"Script '{script_name}' timed out after 120 seconds"
     except Exception as e:

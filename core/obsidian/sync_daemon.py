@@ -80,17 +80,24 @@ class DexSyncHandler(FileSystemEventHandler):
         """Process accumulated file changes"""
         if not self.pending_files:
             return
-        
-        logger.info(f"Processing {len(self.pending_files)} changed files")
-        
+
+        # Snapshot-and-swap before iterating: the watchdog observer thread
+        # adds to pending_files concurrently, so iterating the live set dies
+        # with "RuntimeError: Set changed size during iteration" whenever a
+        # file event lands mid-batch (#362). Events arriving while we process
+        # accumulate in the fresh set for the next cycle instead of being
+        # lost by clear().
+        batch, self.pending_files = self.pending_files, set()
+
+        logger.info(f"Processing {len(batch)} changed files")
+
         canonical_states = None
-        for file_path in self.pending_files:
+        for file_path in batch:
             try:
                 canonical_states = self.sync_file_tasks(file_path, canonical_states)
             except Exception as e:
                 logger.error(f"Error syncing {file_path}: {e}")
-        
-        self.pending_files.clear()
+
         self.last_process_time = time.time()
     
     def sync_file_tasks(self, file_path: Path, canonical_states=None):

@@ -70,7 +70,16 @@ def require_lifecycle_release_paths(paths: tuple[str, ...]) -> None:
 
 
 def read_manifest(path: Path) -> tuple[str, ...]:
-    """Read one canonical sorted/unique newline manifest."""
+    """Read one canonical sorted/unique newline manifest.
+
+    Deliberately strict about CRLF, unlike the runtime readers
+    (``core.lifecycle.customizations._parse_manifest`` and the binding check
+    in ``core.lifecycle.catalog.release_bytes_match``, which tolerate the
+    CRLF form Git's autocrlf writes on Windows checkouts — issue #256).
+    This reader runs at release-build/validation time, where the manifest
+    comes straight from Git blob bytes: CRLF here means a build bug, and
+    must fail loudly rather than be normalized away.
+    """
     raw = Path(path).read_bytes()
     try:
         text = raw.decode("utf-8")

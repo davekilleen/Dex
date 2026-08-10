@@ -64,7 +64,12 @@ def main():
         def completion_handler(granted, error):
             access_granted[0] = granted
         
-        store.requestAccessToEntityType_completion_(EventKit.EKEntityTypeEvent, completion_handler)
+        # macOS 14+ deprecated the legacy request API for calendar full
+        # access — it reports denied immediately without prompting (#377).
+        if hasattr(store, "requestFullAccessToEventsWithCompletion_"):
+            store.requestFullAccessToEventsWithCompletion_(completion_handler)
+        else:
+            store.requestAccessToEntityType_completion_(EventKit.EKEntityTypeEvent, completion_handler)
         
         # Wait for user response (max 30 seconds)
         for i in range(300):

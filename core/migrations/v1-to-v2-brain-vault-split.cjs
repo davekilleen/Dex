@@ -327,6 +327,10 @@ function regenerateClaude(template, customContent) {
 }
 
 function fsyncDirectory(directory) {
+  // Windows has no user-space directory fsync (opening/fsyncing a directory
+  // fails there), and a failure AFTER a file was created can orphan it —
+  // the issue #257 shape. Skip on Windows, matching core/transaction/fsync.py.
+  if (process.platform === 'win32') return;
   let descriptor;
   try {
     descriptor = fs.openSync(directory, 'r');
@@ -666,19 +670,33 @@ function acquireLock(root) {
 
     let stat;
     try {
-      const body = `${JSON.stringify({
-        pid: process.pid,
-        kind: 'migration',
-        token,
-        at: new Date().toISOString(),
-      })}\n`;
-      fs.writeFileSync(descriptor, body);
-      fs.fsyncSync(descriptor);
-      stat = fs.fstatSync(descriptor);
-    } finally {
-      fs.closeSync(descriptor);
+      try {
+        const body = `${JSON.stringify({
+          pid: process.pid,
+          kind: 'migration',
+          token,
+          at: new Date().toISOString(),
+        })}\n`;
+        fs.writeFileSync(descriptor, body);
+        fs.fsyncSync(descriptor);
+        stat = fs.fstatSync(descriptor);
+      } finally {
+        fs.closeSync(descriptor);
+      }
+      fsyncDirectory(path.dirname(lock));
+    } catch (error) {
+      // Failing between creating the lock file and returning its release
+      // would orphan a lock naming our own live PID, which every later
+      // acquisition — including this same process's — must refuse as busy
+      // (issue #257). We created the file exclusively and our PID is alive,
+      // so nobody else may have removed or replaced it.
+      try {
+        fs.unlinkSync(lock);
+      } catch {
+        // Best effort; the original failure is the one worth reporting.
+      }
+      throw error;
     }
-    fsyncDirectory(path.dirname(lock));
 
     return () => {
       const current = readLockSnapshot(lock);

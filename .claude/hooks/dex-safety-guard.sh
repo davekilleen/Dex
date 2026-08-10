@@ -50,18 +50,50 @@ if [ -f "$MIGRATION_LOCK" ]; then
 import json
 import os
 import sys
+
+
+def process_is_running(pid):
+    if not isinstance(pid, int) or pid <= 0:
+        return False
+    if os.name == "nt":
+        # os.kill is NOT a liveness probe on Windows: CPython documents that
+        # any sig other than the console-control events unconditionally kills
+        # the target via TerminateProcess. Use a query-only process handle.
+        import ctypes
+        from ctypes import wintypes
+
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        kernel32.OpenProcess.restype = wintypes.HANDLE
+        kernel32.OpenProcess.argtypes = (wintypes.DWORD, wintypes.BOOL, wintypes.DWORD)
+        kernel32.WaitForSingleObject.restype = wintypes.DWORD
+        kernel32.WaitForSingleObject.argtypes = (wintypes.HANDLE, wintypes.DWORD)
+        kernel32.CloseHandle.restype = wintypes.BOOL
+        kernel32.CloseHandle.argtypes = (wintypes.HANDLE,)
+        handle = kernel32.OpenProcess(0x1000 | 0x00100000, False, pid)  # QUERY_LIMITED | SYNCHRONIZE
+        if not handle:
+            return ctypes.get_last_error() == 5  # ERROR_ACCESS_DENIED: exists
+        try:
+            return kernel32.WaitForSingleObject(handle, 0) != 0  # 0 = exited
+        finally:
+            kernel32.CloseHandle(handle)
+    try:
+        os.kill(pid, 0)
+        return True
+    except PermissionError:
+        return True
+    except OSError:
+        return False
+
+
 try:
     with open(sys.argv[1], encoding="utf-8") as handle:
         lock = json.load(handle)
     if lock.get("kind") != "migration":
         raise ValueError("not a migration")
-    os.kill(lock["pid"], 0)
-except PermissionError:
-    print("yes")
+    if process_is_running(lock["pid"]):
+        print("yes")
 except (OSError, ValueError, KeyError, TypeError, json.JSONDecodeError):
     pass
-else:
-    print("yes")
 ' "$MIGRATION_LOCK" 2>/dev/null)
 fi
 if [ "$MIGRATION_LOCK_LIVE" = "yes" ] \
