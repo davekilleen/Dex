@@ -18,6 +18,8 @@ These commands are wired in `.claude/settings.json` and run independently of any
 |---|---|---|---|
 | `SessionStart` | all | `bash .claude/hooks/session-start.sh` | Inject the current Dex session context, show the latest complete proactive-health status, and run the bounded smoke fallback when no clean check completed on the current local day. |
 | `SessionStart` | all | `python3 "$CLAUDE_PROJECT_DIR/core/utils/update_verifier.py" --vault "$CLAUDE_PROJECT_DIR" --session-start` | Perform the bounded release-evidence check. |
+| `UserPromptSubmit` | all | `python3 "$CLAUDE_PROJECT_DIR/.claude/hooks/soft-promise-detector.py"` | Detect soft commitments in the user's message and offer a one-time capture. |
+| `UserPromptSubmit` | all | `bash "$CLAUDE_PROJECT_DIR/.claude/hooks/health-pulse.sh"` | Mid-session health pulse: read the latest proactive-health snapshot's age and status (two file reads, never computes) and interject at most once per day when the checkup is stale or newly critical — so bad health news does not wait for the next fresh session. |
 | `PreToolUse` | `Read` | `node .claude/hooks/person-context-injector.cjs` | Inject matching person context before a file read. |
 | `PreToolUse` | `Read` | `node .claude/hooks/company-context-injector.cjs` | Inject matching company context before a file read. |
 | `PreToolUse` | `Bash` | `bash .claude/hooks/dex-safety-guard.sh` | Block unsafe shell commands and redirect disallowed MCP usage. |

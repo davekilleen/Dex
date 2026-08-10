@@ -140,21 +140,6 @@ class ProbeResult:
 
 
 @dataclass(frozen=True)
-class JobFreshness:
-    """The application log and allowed age for one installed job.
-
-    ``success_state_path`` names a JSON file whose ``lastSync`` field is
-    written only by a completed run.  When present it replaces the log-mtime
-    check: a job can fail on every run while still appending to its log, so
-    log age proves activity, not success.
-    """
-
-    log_path: Path
-    max_age: timedelta
-    success_state_path: Path | None = None
-
-
-@dataclass(frozen=True)
 class DoctorContext:
     """Filesystem and clock inputs for deterministic collector runs."""
 
@@ -595,26 +580,9 @@ PARA_PATH_NAMES = (
     "ARCHIVES_DIR",
 )
 
-# Keep in sync with .claude/hooks/session-start.sh's background-job staleness table.
-JOB_FRESHNESS = {
-    "com.dex.smoke-nightly": JobFreshness(
-        Path(".scripts/logs/smoke-nightly.log"),
-        timedelta(hours=26),
-    ),
-    "com.dex.meeting-intel": JobFreshness(
-        Path(".scripts/logs/meeting-intel.log"),
-        timedelta(hours=48),
-        success_state_path=Path(".scripts/meeting-intel/processed-meetings.json"),
-    ),
-    "com.dex.changelog-checker": JobFreshness(
-        Path(".scripts/logs/changelog-checker.log"),
-        timedelta(days=7),
-    ),
-    "com.dex.learning-review": JobFreshness(
-        Path(".scripts/logs/learning-review.log"),
-        timedelta(days=7),
-    ),
-}
+# Background-job success contracts live in the health promise register
+# (core/health/promises.py); .claude/hooks/session-start.sh mirrors it for the
+# in-session staleness glance.
 
 QUICK_CHECKS = (
     CheckDefinition("vault.structure", "Vault structure", "_probe_vault_structure"),
@@ -674,6 +642,7 @@ DEEP_CHECKS = (
         "_probe_customization_migration_status",
     ),
     CheckDefinition("granola.query_path", "Granola meeting sync", "_probe_granola_query_path"),
+    CheckDefinition("config.meeting_sources", "Configured meeting source", "_probe_meeting_sources"),
     CheckDefinition("calendar.access", "Calendar access", "_probe_calendar_access"),
     CheckDefinition("qmd.live", "Semantic search", "_probe_qmd_live"),
     CheckDefinition("integrations.enabled", "Enabled integrations", "_probe_integrations_enabled"),
@@ -2584,27 +2553,15 @@ def _probe_jobs_loaded(context: DoctorContext) -> ProbeResult:
     )
 
 
-def _last_success_timestamp(state_path: Path) -> datetime | None:
-    """Read the last completed-run timestamp a sync job records only on success."""
-    if not state_path.is_file():
-        return None
-    try:
-        state = json.loads(state_path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return None
-    value = state.get("lastSync") if isinstance(state, dict) else None
-    if not isinstance(value, str):
-        return None
-    try:
-        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
-    except ValueError:
-        return None
-    if parsed.tzinfo is None:
-        return parsed.replace(tzinfo=timezone.utc)
-    return parsed.astimezone(timezone.utc)
-
-
 def _probe_jobs_fresh(context: DoctorContext) -> ProbeResult:
+    """Audit installed jobs against the health promise register.
+
+    The register's receipts prove success, not activity, so a job that keeps
+    running while failing every time is reported broken here even though its
+    log never stops growing.
+    """
+    from core.health import promises as health_promises
+
     installed = set()
     unknowns = []
     for plist in _installed_launch_agents(context):
@@ -2615,36 +2572,21 @@ def _probe_jobs_fresh(context: DoctorContext) -> ProbeResult:
             continue
         if _plist_owned_by_vault(plist, data, context):
             installed.add(str(data.get("Label") or plist.stem))
-    monitored = [label for label in JOB_FRESHNESS if label in installed]
+    monitored = [
+        promise
+        for promise in health_promises.PROMISES
+        if promise.id in installed and promise.receipt_kind != "daemon"
+    ]
     if not monitored:
         if unknowns:
             return ProbeResult("UNKNOWN", "; ".join(unknowns))
         return ProbeResult("OFF", "No monitored Dex freshness jobs are installed")
 
     stale = []
-    for label in monitored:
-        policy = JOB_FRESHNESS[label]
-        if policy.success_state_path is not None:
-            succeeded = _last_success_timestamp(context.vault_root / policy.success_state_path)
-            if succeeded is None:
-                stale.append(
-                    f"{label} has never recorded a completed run "
-                    "(a job can keep writing its log while failing every time)"
-                )
-                continue
-            if context.now.astimezone(timezone.utc) - succeeded > policy.max_age:
-                stale.append(
-                    f"{label} last completed successfully on {succeeded.date().isoformat()} "
-                    "— it may still be running without succeeding"
-                )
-            continue
-        log_path = context.vault_root / policy.log_path
-        if not log_path.is_file():
-            stale.append(f"{label} has no run log")
-            continue
-        modified = datetime.fromtimestamp(log_path.stat().st_mtime, tz=timezone.utc)
-        if context.now.astimezone(timezone.utc) - modified > policy.max_age:
-            stale.append(f"{label} last ran on {modified.date().isoformat()}")
+    for promise in monitored:
+        audit = health_promises.audit_promise(context.vault_root, promise, now=context.now)
+        if audit.state in {"never", "broken"}:
+            stale.append(audit.detail())
     if stale:
         return ProbeResult(
             "BROKEN",
@@ -2653,7 +2595,10 @@ def _probe_jobs_fresh(context: DoctorContext) -> ProbeResult:
         )
     if unknowns:
         return ProbeResult("UNKNOWN", "; ".join(unknowns))
-    return ProbeResult("OK", f"All {len(monitored)} installed job logs are within their freshness thresholds")
+    return ProbeResult(
+        "OK",
+        f"All {len(monitored)} installed job promises are within their promised cadence",
+    )
 
 
 def _preflight_snapshot(context: DoctorContext) -> tuple[dict[str, Any], list[dict[str, Any]]]:
@@ -4246,6 +4191,67 @@ def _granola_filtered_query(context: DoctorContext) -> list[dict[str, Any]]:
             max_notes=1,
             page_size=1,
         )
+
+
+def _probe_meeting_sources(context: DoctorContext) -> ProbeResult:
+    """Compare the configured meeting-notes source with what actually exists.
+
+    A configured source that quietly stops matching reality is how a meeting
+    closeout ends up built from the wrong tool's notes: the vault search finds
+    nothing and the model improvises. Config-vs-reality is checkable, so
+    check it.
+    """
+    profile_path = context.vault_root / "System/user-profile.yaml"
+    if profile_path.is_symlink():
+        return ProbeResult(
+            "UNKNOWN",
+            "The doctor will not follow a symlinked profile to inspect meeting sources",
+        )
+    try:
+        profile = _load_yaml(profile_path)
+    except FileNotFoundError:
+        profile = {}
+    except (OSError, ValueError) as error:
+        return ProbeResult("UNKNOWN", f"user-profile.yaml could not be read ({_one_line(error)})")
+    if not isinstance(profile, dict):
+        return ProbeResult("UNKNOWN", "user-profile.yaml is not a mapping")
+    sources = profile.get("meeting_sources")
+    if not isinstance(sources, dict):
+        return ProbeResult("OFF", "No meeting source is configured")
+    folder = sources.get("notes_folder")
+    if not isinstance(folder, str) or not folder.strip():
+        primary = sources.get("primary")
+        if isinstance(primary, str) and primary not in {"", "none"}:
+            return ProbeResult("OK", f"Meeting source is {primary} (no notes folder to verify)")
+        return ProbeResult("OFF", "No meeting source is configured")
+    folder = folder.strip()
+    if Path(folder).is_absolute() or ".." in Path(folder).parts:
+        return ProbeResult(
+            "BROKEN",
+            "The configured meeting-notes folder must be a folder inside the vault",
+            Heal(tier=2, action="Point meeting_sources.notes_folder at a vault folder.", applied=False),
+        )
+    target = context.vault_root / folder
+    if not target.is_dir():
+        return ProbeResult(
+            "BROKEN",
+            f"Your meeting notes are configured to live in '{folder}', but that folder does not exist "
+            "— meeting skills will search blind and may fall back to the wrong source",
+            Heal(tier=2, action="Recreate the folder or update meeting_sources.notes_folder.", applied=False),
+        )
+    note_count = sum(
+        1
+        for candidate in target.rglob("*")
+        if candidate.is_file() and candidate.suffix.lower() in {".md", ".txt", ".vtt", ".srt"}
+    )
+    if note_count == 0:
+        return ProbeResult(
+            "BROKEN",
+            f"The configured meeting-notes folder '{folder}' exists but has never received a note "
+            "— the export from your meeting tool may not be running",
+            Heal(tier=2, action="Check the export from your meeting tool into that folder.", applied=False),
+        )
+    return ProbeResult("OK", f"Meeting-notes folder '{folder}' exists with {note_count} note(s)")
 
 
 def _probe_granola_query_path(context: DoctorContext) -> ProbeResult:

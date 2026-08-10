@@ -73,6 +73,10 @@ jobs:
         run: bash scripts/check-release-tag-reachability.sh
       - name: Architecture inventory drift gate
         run: bash scripts/check-architecture-inventory.sh
+      - name: Health promise register gate
+        # Every shipped background job must declare a success receipt in
+        # core/health/promises.py, or health checks can only measure activity.
+        run: python scripts/generate-health-promises.py --check
       - name: Instructed-tool existence gate
         run: python scripts/check-instructed-tools.py
       - name: Shipped-seed tracking gate

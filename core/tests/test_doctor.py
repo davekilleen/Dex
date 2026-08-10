@@ -15,6 +15,7 @@ from pathlib import Path
 
 import pytest
 
+from core.health import promises as health_promises
 from core.lifecycle.catalog import with_catalog_identity
 from core.lifecycle.engine import AdoptionReceipt
 from core.lifecycle.ledger import record_adoption
@@ -55,6 +56,7 @@ DEEP_IDS = [
     "customizations.assessment",
     "customizations.migration-status",
     "granola.query_path",
+    "config.meeting_sources",
     "calendar.access",
     "qmd.live",
     "integrations.enabled",
@@ -1914,22 +1916,20 @@ def test_jobs_loaded_degrades_to_unknown_off_macos(monkeypatch, context):
 )
 def test_freshness_thresholds_are_strictly_greater_than_the_limit(label, expected_max_age, context):
     _write_plist(context, label)
-    policy = doctor.JOB_FRESHNESS[label]
-    assert policy.max_age == expected_max_age
+    promise = health_promises.promise_by_id(label)
+    assert promise is not None and promise.cadence == expected_max_age
 
     def record_run(when):
-        if policy.success_state_path is not None:
-            state = context.vault_root / policy.success_state_path
-            state.parent.mkdir(parents=True, exist_ok=True)
-            state.write_text(
-                json.dumps({"lastSync": when.isoformat().replace("+00:00", "Z")}),
+        receipt = context.vault_root / promise.receipt_path
+        receipt.parent.mkdir(parents=True, exist_ok=True)
+        if promise.receipt_kind == "json-timestamp":
+            receipt.write_text(
+                json.dumps({promise.receipt_key: when.isoformat().replace("+00:00", "Z")}),
                 encoding="utf-8",
             )
         else:
-            log = context.vault_root / policy.log_path
-            log.parent.mkdir(parents=True, exist_ok=True)
-            log.touch()
-            os.utime(log, (when.timestamp(), when.timestamp()))
+            receipt.touch()
+            os.utime(receipt, (when.timestamp(), when.timestamp()))
 
     record_run(NOW - expected_max_age + timedelta(seconds=1))
     assert doctor._probe_jobs_fresh(context).verdict == "OK"
@@ -1944,31 +1944,33 @@ def test_freshness_thresholds_are_strictly_greater_than_the_limit(label, expecte
     assert stale_at.date().isoformat() in result.detail
 
 
-def test_freshness_is_off_when_job_is_not_installed_even_if_log_is_stale(context):
-    policy = doctor.JOB_FRESHNESS["com.dex.meeting-intel"]
-    log = context.vault_root / policy.log_path
-    log.parent.mkdir(parents=True)
-    log.touch()
-    stale_mtime = (NOW - timedelta(days=100)).timestamp()
-    os.utime(log, (stale_mtime, stale_mtime))
+def test_freshness_is_off_when_job_is_not_installed_even_if_receipt_is_stale(context):
+    promise = health_promises.promise_by_id("com.dex.meeting-intel")
+    receipt = context.vault_root / promise.receipt_path
+    receipt.parent.mkdir(parents=True)
+    stale_at = NOW - timedelta(days=100)
+    receipt.write_text(
+        json.dumps({"lastSync": stale_at.isoformat().replace("+00:00", "Z")}),
+        encoding="utf-8",
+    )
 
     assert doctor._probe_jobs_fresh(context).verdict == "OFF"
 
 
-def test_freshness_is_broken_when_installed_job_has_no_log(context):
+def test_freshness_is_broken_when_installed_job_never_succeeded(context):
     _write_plist(context, "com.dex.smoke-nightly")
 
     result = doctor._probe_jobs_fresh(context)
 
     assert result.verdict == "BROKEN"
-    assert "no run log" in result.detail
+    assert "never recorded a completed run" in result.detail
 
 
 def test_meeting_sync_freshness_reads_last_success_not_log_activity(context):
     """A job that fails every run keeps appending its log; only lastSync counts."""
     _write_plist(context, "com.dex.meeting-intel")
-    policy = doctor.JOB_FRESHNESS["com.dex.meeting-intel"]
-    log = context.vault_root / policy.log_path
+    promise = health_promises.promise_by_id("com.dex.meeting-intel")
+    log = context.vault_root / ".scripts/logs/meeting-intel.log"
     log.parent.mkdir(parents=True, exist_ok=True)
     log.touch()
     os.utime(log, (NOW.timestamp(), NOW.timestamp()))
@@ -1977,7 +1979,7 @@ def test_meeting_sync_freshness_reads_last_success_not_log_activity(context):
     assert never.verdict == "BROKEN"
     assert "never recorded a completed run" in never.detail
 
-    state = context.vault_root / policy.success_state_path
+    state = context.vault_root / promise.receipt_path
     state.parent.mkdir(parents=True, exist_ok=True)
     stale_at = NOW - timedelta(days=6)
     state.write_text(
@@ -1989,6 +1991,13 @@ def test_meeting_sync_freshness_reads_last_success_not_log_activity(context):
     assert stale.verdict == "BROKEN"
     assert "last completed successfully" in stale.detail
     assert stale_at.date().isoformat() in stale.detail
+
+
+def test_daemon_promises_are_not_freshness_audited(context):
+    """Continuous daemons have no cadence; launchd liveness is their check."""
+    _write_plist(context, "com.dex.obsidian-sync")
+
+    assert doctor._probe_jobs_fresh(context).verdict == "OFF"
 
 
 def test_jobs_loaded_flags_a_dex_plist_repointed_at_a_worktree(monkeypatch, context):
@@ -3312,3 +3321,47 @@ def test_cli_credential_scan_is_reachable_structured_and_redacted(context, capsy
     assert '"action": "scan"' in output
     assert '"findings"' in output
     assert "synthetic-doctor-value" not in output
+
+
+def test_meeting_sources_probe_compares_config_with_reality(context):
+    profile = context.vault_root / "System" / "user-profile.yaml"
+
+    assert doctor._probe_meeting_sources(context).verdict == "OFF"
+
+    profile.write_text(
+        "meeting_sources:\n  primary: exported-folder\n  notes_folder: 00-Inbox/ClickUp\n",
+        encoding="utf-8",
+    )
+    missing = doctor._probe_meeting_sources(context)
+    assert missing.verdict == "BROKEN"
+    assert "does not exist" in missing.detail
+
+    folder = context.vault_root / "00-Inbox" / "ClickUp"
+    folder.mkdir(parents=True)
+    empty = doctor._probe_meeting_sources(context)
+    assert empty.verdict == "BROKEN"
+    assert "never received a note" in empty.detail
+
+    (folder / "2026-08-07 - Client sync.md").write_text("# notes\n", encoding="utf-8")
+    ok = doctor._probe_meeting_sources(context)
+    assert ok.verdict == "OK"
+    assert "1 note(s)" in ok.detail
+
+
+def test_meeting_sources_probe_rejects_paths_outside_the_vault(context):
+    profile = context.vault_root / "System" / "user-profile.yaml"
+    profile.write_text(
+        "meeting_sources:\n  primary: exported-folder\n  notes_folder: ../elsewhere\n",
+        encoding="utf-8",
+    )
+    result = doctor._probe_meeting_sources(context)
+    assert result.verdict == "BROKEN"
+    assert "inside the vault" in result.detail
+
+
+def test_meeting_sources_probe_is_ok_for_api_sources_without_folders(context):
+    profile = context.vault_root / "System" / "user-profile.yaml"
+    profile.write_text("meeting_sources:\n  primary: granola\n  notes_folder: \"\"\n", encoding="utf-8")
+    result = doctor._probe_meeting_sources(context)
+    assert result.verdict == "OK"
+    assert "granola" in result.detail
