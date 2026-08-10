@@ -90,6 +90,12 @@ only when a host or credential change genuinely needs it.
 - **Worktree isolation** — never write in a checkout another session is using;
   work on a branch in its own worktree.
 - GitHub Actions are **pinned to commit SHAs**; keep new workflow edits pinned.
+- **This repo's issue tracker is public and user-facing only** — bug reports and
+  feature requests from real users, nothing else. Internal roadmap planning,
+  epics, and architecture-exploration tickets (the "Wayfinder: ..." pattern and
+  its sub-issues) go in the private `dex-cards` repo instead. Never open that
+  class of issue here, even in draft form — 26 such issues were found publicly
+  exposed and moved to `dex-cards` on 2026-08-10 after the founder caught it.
 
 ## Tests
 
