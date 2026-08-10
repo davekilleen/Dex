@@ -107,3 +107,41 @@ test('pulse never fails on malformed health state', (t) => {
 
   assert.equal(runPulse(sandbox), '');
 });
+
+test('pulse reads the top-level status, not a nested reporter field', (t) => {
+  const sandbox = createSandbox(t);
+  completeOnboarding(sandbox);
+  const snapshotId = 'snap-0001';
+  fs.writeFileSync(
+    path.join(sandbox.vault, 'System', '.dex', 'health', 'latest.json'),
+    `${JSON.stringify({
+      contract: 'dex.health.latest/v1',
+      snapshot_id: snapshotId,
+      path: `System/.dex/health/snapshots/${snapshotId}.json`,
+      published_at: isoHoursAgo(2),
+    })}\n`,
+  );
+  // Canonical snapshots sort keys, so the authoritative overall_status comes
+  // before the nested reporter envelope; the decoy must not win.
+  fs.writeFileSync(
+    path.join(sandbox.vault, 'System', '.dex', 'health', 'snapshots', `${snapshotId}.json`),
+    `${JSON.stringify({
+      completed_at: isoHoursAgo(2),
+      overall_status: 'critical',
+      report: { summary: { overall_status: 'healthy' } },
+      snapshot_id: snapshotId,
+    })}\n`,
+  );
+
+  assert.match(runPulse(sandbox), /self-check found a problem/);
+});
+
+test('pulse stays silent when the dedup marker cannot be persisted', (t) => {
+  const sandbox = createSandbox(t);
+  completeOnboarding(sandbox);
+  writeSnapshotState(sandbox, { publishedAt: isoHoursAgo(72), status: 'healthy' });
+  fs.mkdirSync(sandbox.dedupFile, { recursive: true }); // a directory: unwritable as a file
+
+  assert.equal(runPulse(sandbox), '', 'unwritable dedup must degrade to silence, not a nag');
+  assert.equal(runPulse(sandbox), '');
+});

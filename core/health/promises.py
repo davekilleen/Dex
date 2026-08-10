@@ -11,10 +11,12 @@ snapshots) walks the register looking for broken promises.
 Two rules keep the register honest:
 
 * **Declared, not inferred.** The register is the truth.  A build-time
-  scanner (``scripts/check-health-promises.sh``) infers background jobs from
-  the shipped launchd templates and installers and fails the build when a
-  job exists with no registered promise, so the register cannot silently
-  fall behind the code.
+  scanner (``scripts/generate-health-promises.py --check``) infers background
+  jobs from the shipped launchd templates and shell installers and fails the
+  build when a job exists with no registered promise, so the register cannot
+  silently fall behind the code.  (The scan covers ``.plist``/``.sh``
+  sources; an installer written in another language must add its label here
+  deliberately.)
 * **Activity-only receipts say so.** A log file that grows on every attempt
   proves the job ran, not that it worked.  Entries whose only receipt is
   activity carry ``activity_only=True`` and every surface that reports them
@@ -27,6 +29,8 @@ import json
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+
+from core.utils.timezone import parse_timestamp
 
 RECEIPT_KINDS = frozenset({"json-timestamp", "file-activity", "daemon"})
 
@@ -71,9 +75,12 @@ PROMISES: tuple[HealthPromise, ...] = (
         id="com.dex.smoke-nightly",
         label="Nightly smoke",
         cadence=timedelta(hours=26),
-        receipt_kind="json-timestamp",
-        receipt_path="System/.smoke-last-run.json",
-        receipt_key="generated_at",
+        # .scripts/nightly-smoke.sh appends this log only after a zero exit,
+        # so its age is a genuine success receipt.  System/.smoke-last-run.json
+        # is deliberately NOT the receipt: smoke rewrites it on every run,
+        # including total harness failures, so it proves activity only.
+        receipt_kind="file-activity",
+        receipt_path=".scripts/logs/smoke-nightly.log",
     ),
     HealthPromise(
         id="com.dex.changelog-checker",
@@ -96,7 +103,7 @@ PROMISES: tuple[HealthPromise, ...] = (
         label="Obsidian sync daemon",
         cadence=None,
         receipt_kind="daemon",
-        receipt_path=".scripts/logs/obsidian-sync.log",
+        receipt_path="System/obsidian-sync.log",
         activity_only=True,
     ),
 )
@@ -107,14 +114,12 @@ class PromiseAudit:
     """The auditor's verdict for one installed promise."""
 
     promise: HealthPromise
-    state: str  # "kept" | "never" | "broken" | "unaudited"
+    state: str  # "kept" | "never" | "broken"
     last_success: datetime | None = None
 
     def detail(self) -> str:
         label = self.promise.label
         verb = "ran" if self.promise.activity_only else "completed successfully"
-        if self.state == "unaudited":
-            return f"{label} is a continuous daemon; launchd liveness is its only check"
         if self.state == "never":
             if self.promise.activity_only:
                 return f"{label} has never run"
@@ -142,7 +147,7 @@ def read_receipt_timestamp(vault_root: str | Path, promise: HealthPromise) -> da
     path = Path(vault_root) / promise.receipt_path
     if not path.is_file():
         return None
-    if promise.receipt_kind == "file-activity" or promise.receipt_kind == "daemon":
+    if promise.receipt_kind != "json-timestamp":
         try:
             return datetime.fromtimestamp(path.stat().st_mtime, tz=timezone.utc)
         except OSError:
@@ -152,15 +157,8 @@ def read_receipt_timestamp(vault_root: str | Path, promise: HealthPromise) -> da
     except (OSError, json.JSONDecodeError):
         return None
     value = document.get(promise.receipt_key) if isinstance(document, dict) else None
-    if not isinstance(value, str):
-        return None
-    try:
-        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
-    except ValueError:
-        return None
-    if parsed.tzinfo is None:
-        return parsed.replace(tzinfo=timezone.utc)
-    return parsed.astimezone(timezone.utc)
+    parsed = parse_timestamp(value)
+    return parsed.astimezone(timezone.utc) if parsed is not None else None
 
 
 def audit_promise(
@@ -169,9 +167,9 @@ def audit_promise(
     *,
     now: datetime | None = None,
 ) -> PromiseAudit:
-    """Judge one installed promise: kept, never succeeded, or broken."""
+    """Judge one installed periodic promise: kept, never succeeded, or broken."""
     if promise.receipt_kind == "daemon":
-        return PromiseAudit(promise, "unaudited")
+        raise ValueError("daemon promises have no cadence to audit; launchd liveness is their check")
     current = now or datetime.now(timezone.utc)
     if current.tzinfo is None:
         current = current.replace(tzinfo=timezone.utc)

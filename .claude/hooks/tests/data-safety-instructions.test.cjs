@@ -55,6 +55,10 @@ const ROLLBACK_SERVICE_OPERATIONS = new Set([
   'rewind_adoption_by_receipt',
 ]);
 const UPDATE_SERVICE_OPERATIONS = new Set([
+  // Read-only post-update canary module (core/health/post_update.py): it only
+  // calls read_lifecycle_state + build_inventory_and_plan and writes its own
+  // receipt under System/.dex/health/ — never vault content.
+  'post_update',
   'build_inventory_and_plan',
   'build_and_preview_adoption',
   'execute_approved_adoption',

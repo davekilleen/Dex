@@ -31,16 +31,7 @@ def _aware_now(now: datetime) -> datetime:
     return now if now.tzinfo is not None else now.astimezone()
 
 
-def _parse_timestamp(value: object) -> datetime | None:
-    if not isinstance(value, str) or not value.strip():
-        return None
-    try:
-        parsed = datetime.fromisoformat(value.strip().replace("Z", "+00:00"))
-    except ValueError:
-        return None
-    if parsed.tzinfo is None:
-        parsed = parsed.replace(tzinfo=timezone.utc)
-    return parsed
+from core.utils.timezone import parse_timestamp as _parse_timestamp
 
 
 def _read_report(vault_root: Path) -> dict[str, Any] | None:

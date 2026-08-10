@@ -15,6 +15,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import secrets
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -34,13 +35,24 @@ def _dex_version(vault_root: Path) -> str | None:
 def _write_receipt(vault_root: Path, receipt: dict[str, object]) -> None:
     target = vault_root / RECEIPT_RELATIVE
     target.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-    temporary = target.with_suffix(".tmp")
-    with temporary.open("w", encoding="utf-8") as handle:
-        json.dump(receipt, handle, ensure_ascii=False, sort_keys=True)
-        handle.write("\n")
-        handle.flush()
-        os.fsync(handle.fileno())
-    os.replace(temporary, target)
+    # Unique temp name: two concurrent canaries must never interleave into one
+    # published receipt, and a crashed attempt must not leave a fixed-name
+    # orphan that the next attempt trips over.
+    temporary = target.parent / f".{target.name}.tmp-{os.getpid()}-{secrets.token_hex(4)}"
+    try:
+        with temporary.open("w", encoding="utf-8") as handle:
+            json.dump(receipt, handle, ensure_ascii=False, sort_keys=True)
+            handle.write("\n")
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, target)
+        directory = os.open(target.parent, os.O_RDONLY)
+        try:
+            os.fsync(directory)
+        finally:
+            os.close(directory)
+    finally:
+        temporary.unlink(missing_ok=True)
 
 
 def run_canary(vault_root: str | Path) -> dict[str, object]:
@@ -71,15 +83,24 @@ def run_canary(vault_root: str | Path) -> dict[str, object]:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--vault", type=Path, default=Path.cwd())
-    args = parser.parse_args(argv)
-    receipt = run_canary(args.vault)
+    try:
+        parser = argparse.ArgumentParser(description=__doc__)
+        parser.add_argument("--vault", type=Path, default=Path.cwd())
+        args = parser.parse_args(argv)
+        receipt = run_canary(args.vault)
+    except SystemExit:
+        raise
+    except BaseException as error:  # noqa: BLE001 - a canary that crashes is a failed canary
+        print(
+            "Post-update check FAILED before it could finish "
+            f"({type(error).__name__}: {error}). Run /dex-doctor now."
+        )
+        return 1
     if receipt["ok"]:
-        print("Post-update check passed: Dex's plan, state, and undo doors all open.")
+        print("Post-update check passed: Dex's plan and state doors both open.")
         return 0
     print(
-        "Post-update check FAILED: this update applied, but Dex's plan/state/undo "
+        "Post-update check FAILED: this update applied, but Dex's plan/state "
         f"doors did not open afterwards ({receipt['error']}). Run /dex-doctor now, "
         "before anything else relies on this install."
     )

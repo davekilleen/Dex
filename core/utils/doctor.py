@@ -643,6 +643,7 @@ DEEP_CHECKS = (
     ),
     CheckDefinition("granola.query_path", "Granola meeting sync", "_probe_granola_query_path"),
     CheckDefinition("config.meeting_sources", "Configured meeting source", "_probe_meeting_sources"),
+    CheckDefinition("update.post-canary", "Post-update canary", "_probe_post_update_canary"),
     CheckDefinition("calendar.access", "Calendar access", "_probe_calendar_access"),
     CheckDefinition("qmd.live", "Semantic search", "_probe_qmd_live"),
     CheckDefinition("integrations.enabled", "Enabled integrations", "_probe_integrations_enabled"),
@@ -2614,15 +2615,10 @@ def _historical_preflight_errors(context: DoctorContext) -> list[dict[str, Any]]
 
 
 def _parsed_queue_timestamp(value: object) -> datetime | None:
-    if not isinstance(value, str):
-        return None
-    try:
-        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
-    except ValueError:
-        return None
-    if parsed.tzinfo is None:
-        return parsed.replace(tzinfo=timezone.utc)
-    return parsed.astimezone(timezone.utc)
+    from core.utils.timezone import parse_timestamp
+
+    parsed = parse_timestamp(value)
+    return parsed.astimezone(timezone.utc) if parsed is not None else None
 
 
 def _resolved_preflight_error_ids(
@@ -4201,6 +4197,8 @@ def _probe_meeting_sources(context: DoctorContext) -> ProbeResult:
     nothing and the model improvises. Config-vs-reality is checkable, so
     check it.
     """
+    from core.ritual_intelligence.transcript_ingest import SUPPORTED_TRANSCRIPT_SUFFIXES
+
     profile_path = context.vault_root / "System/user-profile.yaml"
     if profile_path.is_symlink():
         return ProbeResult(
@@ -4225,13 +4223,21 @@ def _probe_meeting_sources(context: DoctorContext) -> ProbeResult:
             return ProbeResult("OK", f"Meeting source is {primary} (no notes folder to verify)")
         return ProbeResult("OFF", "No meeting source is configured")
     folder = folder.strip()
-    if Path(folder).is_absolute() or ".." in Path(folder).parts:
+    vault_root = context.vault_root.resolve()
+    target = (context.vault_root / folder).resolve() if not Path(folder).is_absolute() else Path(folder)
+    if (
+        Path(folder).is_absolute()
+        or ".." in Path(folder).parts
+        or target == vault_root
+        or not target.is_relative_to(vault_root)
+    ):
+        # resolve() also closes the symlinked-subfolder escape: a notes_folder
+        # whose real location is outside the vault is one no meeting flow reads.
         return ProbeResult(
             "BROKEN",
             "The configured meeting-notes folder must be a folder inside the vault",
             Heal(tier=2, action="Point meeting_sources.notes_folder at a vault folder.", applied=False),
         )
-    target = context.vault_root / folder
     if not target.is_dir():
         return ProbeResult(
             "BROKEN",
@@ -4239,19 +4245,54 @@ def _probe_meeting_sources(context: DoctorContext) -> ProbeResult:
             "— meeting skills will search blind and may fall back to the wrong source",
             Heal(tier=2, action="Recreate the folder or update meeting_sources.notes_folder.", applied=False),
         )
-    note_count = sum(
-        1
-        for candidate in target.rglob("*")
-        if candidate.is_file() and candidate.suffix.lower() in {".md", ".txt", ".vtt", ".srt"}
-    )
-    if note_count == 0:
+    has_note = False
+    for current_root, dirnames, filenames in os.walk(target, followlinks=False):
+        dirnames[:] = [name for name in dirnames if not name.startswith(".")]
+        if any(Path(name).suffix.lower() in SUPPORTED_TRANSCRIPT_SUFFIXES for name in filenames):
+            has_note = True
+            break
+    if not has_note:
+        # An empty folder is a young or quiet setup, not a defect: reporting
+        # BROKEN would turn a brand-new correct configuration into a critical
+        # health snapshot on day one.
         return ProbeResult(
-            "BROKEN",
-            f"The configured meeting-notes folder '{folder}' exists but has never received a note "
-            "— the export from your meeting tool may not be running",
-            Heal(tier=2, action="Check the export from your meeting tool into that folder.", applied=False),
+            "UNKNOWN",
+            f"The configured meeting-notes folder '{folder}' exists but has no notes yet "
+            "— if your meeting tool should already be exporting, check that export",
         )
-    return ProbeResult("OK", f"Meeting-notes folder '{folder}' exists with {note_count} note(s)")
+    return ProbeResult("OK", f"Meeting-notes folder '{folder}' exists and contains notes")
+
+
+def _probe_post_update_canary(context: DoctorContext) -> ProbeResult:
+    """Read the post-update canary's receipt so a failed canary stays visible.
+
+    The canary runs once, right after an update applies; this probe is what
+    makes its verdict durable — without a reader, a failed walk through the
+    lifecycle doors would be a line in a closed terminal and nothing more.
+    """
+    from core.health.post_update import RECEIPT_CONTRACT, RECEIPT_RELATIVE
+
+    receipt_path = context.vault_root / RECEIPT_RELATIVE
+    if not receipt_path.is_file():
+        return ProbeResult("OFF", "No post-update check has run yet (normal before the first update on this version)")
+    try:
+        receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return ProbeResult("UNKNOWN", "The post-update check's receipt could not be read")
+    if not isinstance(receipt, dict) or receipt.get("contract") != RECEIPT_CONTRACT:
+        return ProbeResult("UNKNOWN", "The post-update check's receipt has an unrecognized shape")
+    version = receipt.get("dex_version")
+    version_text = f" (after updating to {version})" if isinstance(version, str) else ""
+    if receipt.get("ok") is True:
+        return ProbeResult("OK", f"The last post-update check passed{version_text}")
+    error = receipt.get("error")
+    detail = f": {error}" if isinstance(error, str) and error else ""
+    return ProbeResult(
+        "BROKEN",
+        f"The last post-update check failed{version_text}{detail} — plan/state operations "
+        "did not open after the update applied",
+        Heal(tier=2, action="Investigate the lifecycle refusal; /dex-rollback can undo the update.", applied=False),
+    )
 
 
 def _probe_granola_query_path(context: DoctorContext) -> ProbeResult:
@@ -4933,8 +4974,35 @@ def main(argv: list[str] | None = None, *, context: DoctorContext | None = None)
         print(f"dex-doctor could not produce JSON: {_one_line(error)}", file=sys.stderr)
         return 1
 
+    if args.deep:
+        _publish_health_snapshot(report, context)
     print(output)
     return 0
+
+
+def _publish_health_snapshot(report: dict[str, Any], context: DoctorContext | None) -> None:
+    """Best-effort: publish a completed deep report as the latest health snapshot.
+
+    This is the store's production writer — the session-start health surface
+    and the mid-session pulse both read the latest snapshot, so a Doctor deep
+    run is what refreshes the answer they glance at.  Only a complete
+    (deep) registry normalizes into a snapshot; failures never disturb the
+    prior snapshot or the Doctor report the user is reading.
+    """
+    try:
+        from core.health.doctor_reporter import from_doctor_report
+        from core.health.snapshot import HealthStore
+
+        refresh_id = f"doctor-{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}"
+        normalized = from_doctor_report(report, refresh_id=refresh_id)
+        if not normalized.accepted:
+            return
+        root = context.vault_root if context is not None else paths.VAULT_ROOT
+        store = HealthStore(root)
+        with store.refresh(refresh_id) as refresh:
+            refresh.publish(normalized)
+    except Exception:  # noqa: BLE001 - publication must never break a Doctor run
+        return
 
 
 if __name__ == "__main__":

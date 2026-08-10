@@ -107,7 +107,7 @@ repointed to `/dex-doctor`.
 | python.env | `.venv` python exists; `mcp`, `yaml`, `dateutil`, `requests` importable | — | missing (T2: pip install into venv) |
 | hooks.wired | every hook command in `settings.json` points at an existing file | — | dangling hook (T2) |
 | jobs.loaded | for each `~/Library/LaunchAgents/com.dex.*.plist` that has an absolute `ProgramArguments` path under the checked vault: `launchctl list` state, interpreter exists+executable (ProgramArguments[0]). Same-label agents for another vault are skipped; an unreadable plist is `UNKNOWN`, not assumed foreign. | no attributable plist installed | installed but unloaded (T2 load) / interpreter missing (T3 install node) |
-| jobs.fresh | log mtime vs cadence: meeting-intel >48 h, changelog-checker >7 d, learning-review >7 d — only for an attributable job in the checked vault. Same-label foreign jobs are ignored; an unreadable plist is `UNKNOWN`. | no attributable job installed | stale beyond threshold (detail says last-run date) |
+| jobs.fresh | audits the health promise register (`core/health/promises.py`): each installed job's success receipt vs its promised cadence (meeting-intel `lastSync` >48 h, smoke-nightly success log >26 h, changelog-checker/learning-review activity logs >7 d). Receipts prove completion, not activity — a job that keeps running while failing reports BROKEN. Daemons and same-label foreign jobs are ignored; an unreadable plist is `UNKNOWN`. | no attributable job installed | receipt missing ("never recorded a completed run") or stale beyond cadence (detail says last-success date) |
 | preflight.queue | `run_preflight()` result + queued errors | — | per preflight |
 | doctor.self | instruments counter; last-run file writable | — | any probe raised (UNKNOWN with error) |
 
@@ -116,6 +116,8 @@ repointed to `/dex-doctor`.
 | id | probe | OFF when | BROKEN when |
 |---|---|---|---|
 | granola.query_path | filtered `created_after` list via the same helper real queries use (`_cutoff_iso`) | no `GRANOLA_API_KEY` | API error (surface `GranolaAPIError` detail) |
+| config.meeting_sources | `meeting_sources.notes_folder` (profile) must exist inside the vault (symlink escapes refused) and contain at least one supported note; empty-but-configured is `UNKNOWN`, not BROKEN | no meeting source configured | folder missing or outside the vault |
+| update.post-canary | reads the post-update canary receipt (`System/.dex/health/post-update-canary.json`) written right after an update applies | no canary has run yet | last canary failed (plan/state doors did not open after an update) |
 | calendar.access | `calendar_list_calendars` path via EventKit; configured `work_calendar` present in the list | permission never granted AND feature unused | permission denied (T3) / configured calendar not found (T3: set `calendar.work_calendar`, list real names) |
 | qmd.live | registered in `.mcp.json` → `which qmd` + `qmd status` | not registered (opt-in respected) | registered but binary/status fails (T3: `/enable-semantic-search`) |
 | integrations.enabled | for each `enabled: true` in `System/integrations/config.yaml`, run its existing health checker (gmail/teams/connection cjs) | not enabled | checker reports failure |

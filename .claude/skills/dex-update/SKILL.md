@@ -39,16 +39,14 @@ Render its lifecycle receipt. If delivery, preview, or execution refuses, stop;
 no vault-content change was made.
 
 **Immediately after a successful apply, run the post-update canary** — one
-read-only walk through the same doors every later command will use:
-
-```bash
-python3 -m core.health.post_update --vault "$VAULT_PATH"
-```
-
-Relay its one-line result verbatim. On failure, treat it as part of this
-update, not a separate errand: tell the user plainly that the update applied
-but something is wrong underneath, and run `/dex-doctor` now. Never report the
-update as complete while the canary is failing.
+read-only walk through the same doors every later command will use. From the
+vault root, run `python3 core/health/post_update.py --vault .` (the direct
+file path matters: it keeps the canary runnable even when the installed
+packages are the thing that broke). Relay its one-line result verbatim. On
+failure, treat it as part of this update, not a separate errand: tell the user
+plainly that the update applied but something is wrong underneath, and run
+`/dex-doctor` now. Never report the update as complete while the canary is
+failing.
 
 If the service reports UNKNOWN, conflict, changed evidence, an unsafe path, or a rejected transaction, stop. Explain the refusal in ordinary language and leave the vault untouched. A refusal is a safety result, not an invitation to work around the engine.
 

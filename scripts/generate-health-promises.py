@@ -5,35 +5,46 @@ Declared, not inferred: ``core/health/promises.py`` is the truth about what
 each background job promises. This script is the inference side — it scans
 the shipped tree for launchd job labels and fails when a job exists that
 never registered a promise, so the register cannot silently fall behind the
-code. With ``--write`` it renders ``docs/architecture/HEALTH-PROMISES.md``;
+code. It also verifies the bash mirror in
+``.claude/hooks/session-start.sh`` (kept for bare-sandbox operation) still
+matches the register, so the in-session glance and Doctor cannot drift
+apart. With ``--write`` it renders ``docs/architecture/HEALTH-PROMISES.md``;
 with ``--check`` it verifies the rendered view is current (CI drift gate).
+
+Coverage boundary: the scan reads shipped ``.plist``/``.plist.template``
+files and ``.sh`` installers. A launchd job introduced from another language
+must add its promise to the register deliberately.
 """
 
 from __future__ import annotations
 
 import argparse
 import re
-import subprocess
 import sys
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 OUTPUT = REPO_ROOT / "docs" / "architecture" / "HEALTH-PROMISES.md"
+SESSION_START = REPO_ROOT / ".claude" / "hooks" / "session-start.sh"
 LABEL_PATTERN = re.compile(r"com\.dex\.[a-z0-9][a-z0-9-]*")
 # Files that can introduce a launchd job.
 CANDIDATE_SUFFIXES = (".plist", ".plist.template", ".sh")
-# Labels that appear in code but are not shipped Dex background jobs.
-IGNORED_LABELS: frozenset[str] = frozenset()
+MIRROR_ROW = re.compile(
+    r"^(?P<label>com\.dex\.[a-z0-9-]+)\|(?P<path>[^|]+)\|(?P<seconds>\d+)\|[^|]+\|[^|]+\|(?P<mode>[A-Za-z:_-]+)$",
+    re.MULTILINE,
+)
 
 
 def _tracked_files() -> list[Path]:
-    listing = subprocess.run(
-        ["git", "-C", str(REPO_ROOT), "ls-files"],
-        capture_output=True,
-        text=True,
-        check=True,
-    )
-    return [REPO_ROOT / line for line in listing.stdout.splitlines() if line]
+    sys.path.insert(0, str(REPO_ROOT))
+    from core.utils.local_git import git_output
+
+    listing = git_output(REPO_ROOT, "ls-files", "-z", profile="read-only")
+    return [
+        REPO_ROOT / name.decode("utf-8", "surrogateescape")
+        for name in listing.split(b"\0")
+        if name
+    ]
 
 
 def discovered_labels() -> dict[str, list[str]]:
@@ -49,10 +60,51 @@ def discovered_labels() -> dict[str, list[str]]:
         if "launchctl" not in text and not path.name.endswith((".plist", ".plist.template")):
             continue
         for label in LABEL_PATTERN.findall(text):
-            if label in IGNORED_LABELS:
-                continue
             found.setdefault(label, []).append(path.relative_to(REPO_ROOT).as_posix())
     return found
+
+
+def session_start_mirror_errors(promises) -> list[str]:
+    """The bash staleness table must agree with the register it mirrors."""
+    try:
+        text = SESSION_START.read_text(encoding="utf-8")
+    except OSError as error:
+        return [f"session-start.sh could not be read: {error}"]
+    rows = {match.group("label"): match for match in MIRROR_ROW.finditer(text)}
+    errors: list[str] = []
+    for promise in promises:
+        if promise.receipt_kind == "daemon":
+            if promise.id in rows:
+                errors.append(f"{promise.id} is a daemon and must not be in the session-start staleness table")
+            continue
+        row = rows.pop(promise.id, None)
+        if row is None:
+            errors.append(f"{promise.id} is registered but missing from the session-start staleness table")
+            continue
+        expected_seconds = int(promise.cadence.total_seconds())
+        if int(row.group("seconds")) != expected_seconds:
+            errors.append(
+                f"{promise.id}: session-start cadence {row.group('seconds')}s disagrees with the register ({expected_seconds}s)"
+            )
+        if row.group("path") != promise.receipt_path:
+            errors.append(
+                f"{promise.id}: session-start receipt path {row.group('path')!r} disagrees with the register ({promise.receipt_path!r})"
+            )
+        if promise.receipt_kind == "json-timestamp":
+            expected_mode = f"json:{promise.receipt_key}"
+        elif promise.activity_only:
+            expected_mode = "mtime"
+        else:
+            expected_mode = "mtime-success"
+        if row.group("mode") != expected_mode:
+            errors.append(
+                f"{promise.id}: session-start mode {row.group('mode')!r} disagrees with the register ({expected_mode!r})"
+            )
+    registered = {promise.id for promise in promises}
+    for extra in rows:
+        if extra not in registered:
+            errors.append(f"session-start staleness table names unregistered job {extra}")
+    return errors
 
 
 def render(promises, labels: dict[str, list[str]]) -> str:
@@ -109,27 +161,33 @@ def main(argv: list[str] | None = None) -> int:
     sys.path.insert(0, str(REPO_ROOT))
     from core.health.promises import PROMISES
 
-    labels = discovered_labels()
-    registered = {promise.id for promise in PROMISES}
-    unregistered = sorted(set(labels) - registered)
-    if unregistered:
-        for label in unregistered:
-            sources = ", ".join(sorted(set(labels[label])))
-            print(
-                f"❌ background job {label} (declared in {sources}) has no entry in "
-                "core/health/promises.py — register its success receipt so health "
-                "checks can audit it",
-                file=sys.stderr,
-            )
+    try:
+        labels = discovered_labels()
+    except Exception as error:  # noqa: BLE001 - a broken scan is a failed gate, not a traceback
+        print(f"❌ health promise scan could not run: {error}", file=sys.stderr)
         return 1
-    orphaned = sorted(registered - set(labels))
-    if orphaned:
-        for label in orphaned:
-            print(
-                f"❌ promise {label} is registered but no shipped installer or "
-                "template declares that job — remove the stale entry",
-                file=sys.stderr,
-            )
+    registered = {promise.id for promise in PROMISES}
+    failed = False
+    for label in sorted(set(labels) - registered):
+        sources = ", ".join(sorted(set(labels[label])))
+        print(
+            f"❌ background job {label} (declared in {sources}) has no entry in "
+            "core/health/promises.py — register its success receipt so health "
+            "checks can audit it",
+            file=sys.stderr,
+        )
+        failed = True
+    for label in sorted(registered - set(labels)):
+        print(
+            f"❌ promise {label} is registered but no shipped installer or "
+            "template declares that job — remove the stale entry",
+            file=sys.stderr,
+        )
+        failed = True
+    for error in session_start_mirror_errors(PROMISES):
+        print(f"❌ {error}", file=sys.stderr)
+        failed = True
+    if failed:
         return 1
 
     rendered = render(PROMISES, labels)

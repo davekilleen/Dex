@@ -64,8 +64,9 @@ Read these files when users ask about system details, features, or setup.
 
 Other capability surfaces to know about (read on demand, don't preload):
 - **Hooks** — automatic behaviors (session context, person/company context injection,
-  safety guards, release awareness, session-end autocommit) are wired in
-  `.claude/settings.json`; `.claude/hooks/README.md` documents them.
+  safety guards, release awareness, the mid-session health pulse, session-end
+  autocommit) are wired in `.claude/settings.json`; `.claude/hooks/README.md`
+  documents them.
 - **Optional capability rooms** — role-specific skill packs live in
   `.claude/skills/_available/` and are switched on via `/manage-capabilities`
   (registry: `core/capabilities.py`). If a user asks for sales/product/marketing/

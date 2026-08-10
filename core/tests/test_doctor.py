@@ -57,6 +57,7 @@ DEEP_IDS = [
     "customizations.migration-status",
     "granola.query_path",
     "config.meeting_sources",
+    "update.post-canary",
     "calendar.access",
     "qmd.live",
     "integrations.enabled",
@@ -3339,24 +3340,86 @@ def test_meeting_sources_probe_compares_config_with_reality(context):
     folder = context.vault_root / "00-Inbox" / "ClickUp"
     folder.mkdir(parents=True)
     empty = doctor._probe_meeting_sources(context)
-    assert empty.verdict == "BROKEN"
-    assert "never received a note" in empty.detail
+    assert empty.verdict == "UNKNOWN"
+    assert "no notes yet" in empty.detail
 
     (folder / "2026-08-07 - Client sync.md").write_text("# notes\n", encoding="utf-8")
     ok = doctor._probe_meeting_sources(context)
     assert ok.verdict == "OK"
-    assert "1 note(s)" in ok.detail
+    assert "contains notes" in ok.detail
 
 
 def test_meeting_sources_probe_rejects_paths_outside_the_vault(context):
     profile = context.vault_root / "System" / "user-profile.yaml"
+    for folder in ("../elsewhere", ".", "./"):
+        profile.write_text(
+            f"meeting_sources:\n  primary: exported-folder\n  notes_folder: {folder!r}\n",
+            encoding="utf-8",
+        )
+        result = doctor._probe_meeting_sources(context)
+        assert result.verdict == "BROKEN", folder
+        assert "inside the vault" in result.detail
+
+
+def test_meeting_sources_probe_rejects_a_symlinked_escape(context):
+    outside = context.vault_root.parent / "outside-notes"
+    outside.mkdir()
+    (outside / "note.md").write_text("# outside\n", encoding="utf-8")
+    inbox = context.vault_root / "00-Inbox"
+    inbox.mkdir()
+    (inbox / "Notes").symlink_to(outside, target_is_directory=True)
+    profile = context.vault_root / "System" / "user-profile.yaml"
     profile.write_text(
-        "meeting_sources:\n  primary: exported-folder\n  notes_folder: ../elsewhere\n",
+        "meeting_sources:\n  primary: exported-folder\n  notes_folder: 00-Inbox/Notes\n",
         encoding="utf-8",
     )
+
     result = doctor._probe_meeting_sources(context)
+
     assert result.verdict == "BROKEN"
     assert "inside the vault" in result.detail
+
+
+def test_post_update_canary_probe_reads_the_receipt(context):
+    assert doctor._probe_post_update_canary(context).verdict == "OFF"
+
+    receipt = context.vault_root / "System" / ".dex" / "health" / "post-update-canary.json"
+    receipt.parent.mkdir(parents=True)
+    receipt.write_text("not json\n", encoding="utf-8")
+    assert doctor._probe_post_update_canary(context).verdict == "UNKNOWN"
+
+    receipt.write_text(
+        json.dumps(
+            {
+                "contract": "dex.health.post-update-canary/v1",
+                "checked_at": "2026-08-10T12:00:00+00:00",
+                "dex_version": "1.85.0",
+                "ok": True,
+                "error": None,
+            }
+        ),
+        encoding="utf-8",
+    )
+    ok = doctor._probe_post_update_canary(context)
+    assert ok.verdict == "OK"
+    assert "1.85.0" in ok.detail
+
+    receipt.write_text(
+        json.dumps(
+            {
+                "contract": "dex.health.post-update-canary/v1",
+                "checked_at": "2026-08-10T12:00:00+00:00",
+                "dex_version": "1.85.0",
+                "ok": False,
+                "error": "PlanRejected: refused",
+            }
+        ),
+        encoding="utf-8",
+    )
+    broken = doctor._probe_post_update_canary(context)
+    assert broken.verdict == "BROKEN"
+    assert "PlanRejected" in broken.detail
+    assert broken.heal.tier == 2
 
 
 def test_meeting_sources_probe_is_ok_for_api_sources_without_folders(context):

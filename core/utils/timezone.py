@@ -7,8 +7,27 @@ configured timezone in user-profile.yaml, falling back to system local time.
 
 import os
 from datetime import date, datetime
+from datetime import timezone as _timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
+
+def parse_timestamp(value: object) -> "datetime | None":
+    """Parse one ISO-8601 timestamp defensively; naive stamps count as UTC.
+
+    The shared parse for every receipt, snapshot, and ledger timestamp read —
+    hardening applied here (``Z`` suffixes, naive stamps) reaches every
+    consumer instead of one copy.
+    """
+    if not isinstance(value, str) or not value.strip():
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.strip().replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=_timezone.utc)
+    return parsed
 
 _cached_tz = None
 _cache_loaded = False

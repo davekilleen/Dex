@@ -27,6 +27,7 @@ def validate_user_profile_config(config: object) -> list[str]:
         "communication",
         "meeting_processing",
         "meeting_intelligence",
+        "meeting_sources",
         "journaling",
         "quarterly_planning",
         "analytics",
@@ -43,6 +44,19 @@ def validate_user_profile_config(config: object) -> list[str]:
         channel = updates["channel"]
         if not isinstance(channel, str) or channel not in {"stable", "beta"}:
             errors.append("updates.channel must be stable or beta")
+    meeting_sources = config.get("meeting_sources")
+    if isinstance(meeting_sources, Mapping):
+        if "primary" in meeting_sources:
+            primary = meeting_sources["primary"]
+            allowed_primaries = {"granola", "zoom", "teams", "exported-folder", "none"}
+            if not isinstance(primary, str) or primary not in allowed_primaries:
+                errors.append(
+                    "meeting_sources.primary must be granola, zoom, teams, exported-folder, or none"
+                )
+        if "notes_folder" in meeting_sources and not isinstance(
+            meeting_sources["notes_folder"], str
+        ):
+            errors.append("meeting_sources.notes_folder must be a string")
     feedback = config.get("feedback")
     if isinstance(feedback, Mapping) and "review_mode" in feedback:
         review_mode = feedback["review_mode"]

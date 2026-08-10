@@ -379,7 +379,9 @@ fi
                 echo "⏰ $JOB_LABEL is installed but has never completed a successful run — run /dex-doctor to investigate."
                 continue
             fi
-            JOB_TS_SECONDS="${JOB_TS%%.*}"; JOB_TS_SECONDS="${JOB_TS_SECONDS%Z}"
+            # BSD date needs bare seconds (strip fraction, Z, and ±HH:MM);
+            # GNU date parses the raw stamp, offsets included.
+            JOB_TS_SECONDS="${JOB_TS%%.*}"; JOB_TS_SECONDS="${JOB_TS_SECONDS%Z}"; JOB_TS_SECONDS="${JOB_TS_SECONDS%[+-]??:??}"
             JOB_MTIME=$(date -u -j -f "%Y-%m-%dT%H:%M:%S" "$JOB_TS_SECONDS" +%s 2>/dev/null || date -u -d "$JOB_TS" +%s 2>/dev/null || true)
         else
             JOB_MTIME=$(stat -f %m "$JOB_LOG" 2>/dev/null || true)
@@ -402,11 +404,11 @@ fi
                 JOB_AGE_UNIT="${JOB_AGE_UNIT%s}"
             fi
             JOB_VERB="last ran"
-            [[ "$JOB_MODE" == json:* ]] && JOB_VERB="last completed successfully"
+            [[ "$JOB_MODE" == json:* || "$JOB_MODE" == "mtime-success" ]] && JOB_VERB="last completed successfully"
             echo "⏰ $JOB_LABEL $JOB_VERB $JOB_AGE $JOB_AGE_UNIT ago (expected every $JOB_EXPECTED_CADENCE) — run /dex-doctor to investigate."
         fi
     done <<'EOF'
-com.dex.smoke-nightly|System/.smoke-last-run.json|93600|26 hours|Nightly smoke|json:generated_at
+com.dex.smoke-nightly|.scripts/logs/smoke-nightly.log|93600|26 hours|Nightly smoke|mtime-success
 com.dex.meeting-intel|.scripts/meeting-intel/processed-meetings.json|172800|2 days|Meeting sync|json:lastSync
 com.dex.changelog-checker|.scripts/logs/changelog-checker.log|604800|7 days|Claude update watcher|mtime
 com.dex.learning-review|.scripts/logs/learning-review.log|604800|7 days|Learning review|mtime
