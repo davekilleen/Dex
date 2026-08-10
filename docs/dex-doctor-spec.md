@@ -32,7 +32,9 @@ where that is provably safe and user guidance only where Dex genuinely cannot ac
    - **T1 — auto-fix silently, report after.** Only actions that are provably safe,
      idempotent, and reversible, touching no user data and no credentials:
      create missing standard PARA directories; regenerate the generated `core/paths.json`;
-     restore executable bits on repo-shipped scripts.
+     restore executable bits on repo-shipped scripts; tighten a vault-root `.env` that other
+     accounts could read to owner-only permissions (permission bits only — the file's
+     contents are never read, copied, or logged).
    - **T2 — propose, fix on explicit yes.** State-changing but standard: load an installed-
      but-unloaded `com.dex.*` launch agent; re-run plist substitution from templates;
      repair a `.mcp.json` entry whose target file is missing (additive/corrective edits

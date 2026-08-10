@@ -132,6 +132,9 @@ echo -e "${GREEN}✓${NC} Node.js found at: $NODE_PATH"
 
 if [ ! -f "$VAULT_PATH/.env" ]; then
     echo -e "${YELLOW}!${NC} Warning: .env file not found. Make sure GEMINI_API_KEY (or another LLM key) is set."
+else
+    # API keys live in this file — keep it owner-only.
+    chmod 600 "$VAULT_PATH/.env" 2>/dev/null || true
 fi
 
 # Check the same authentication source the sync worker uses.

@@ -511,6 +511,105 @@ def test_entity_engine_probe_reports_gardener_statuses(monkeypatch, context):
     assert "1 legacy lock pending migration" in result.detail
 
 
+def test_entity_engine_probe_reads_llm_key_from_vault_env_file(monkeypatch, context):
+    for key in doctor.LLM_KEY_NAMES:
+        monkeypatch.delenv(key, raising=False)
+    _write_entity_probe_files(context)
+    gardener = context.core_path("GARDENER_STATE_FILE")
+    gardener.write_text(json.dumps({"version": 2, "pages": {
+        "one.md": {"output_hash": "one", "blocks": {"context-summary": {"owner": "dex"}}},
+    }}))
+    env_path = context.vault_root / ".env"
+    env_path.write_text("# local keys\nexport GEMINI_API_KEY='test-placeholder-key'\n")
+
+    result = doctor._probe_entity_engine(context)
+
+    assert "gardener on (1 pages maintained)" in result.detail
+    assert "test-placeholder-key" not in result.detail
+
+    env_path.write_text("GEMINI_API_KEY=\n")
+    result = doctor._probe_entity_engine(context)
+    assert "gardener off (no LLM key)" in result.detail
+
+    env_path.unlink()
+    result = doctor._probe_entity_engine(context)
+    assert "gardener off (no LLM key)" in result.detail
+
+
+@pytest.mark.skipif(os.name != "posix", reason="POSIX file permissions only")
+def test_vault_configs_flags_group_readable_env_with_t1_heal(context):
+    _write_valid_configs(context)
+    assert doctor._probe_vault_configs(context).verdict == "OK"
+
+    env_path = context.vault_root / ".env"
+    env_path.write_text("ANTHROPIC_API_KEY=test-placeholder-not-a-real-key\n")
+    env_path.chmod(0o644)
+    result = doctor._probe_vault_configs(context)
+    assert result.verdict == "BROKEN"
+    assert "readable by other users" in result.detail
+    assert "644" in result.detail
+    assert "test-placeholder-not-a-real-key" not in result.detail
+    assert result.heal == doctor.Heal(
+        tier=1,
+        action="Tighten .env to owner-only permissions.",
+        applied=False,
+    )
+
+    env_path.chmod(0o600)
+    assert doctor._probe_vault_configs(context).verdict == "OK"
+
+
+@pytest.mark.skipif(os.name != "posix", reason="POSIX file permissions only")
+def test_t1_heal_tightens_env_permissions_without_touching_contents(monkeypatch, context):
+    for name in doctor.PARA_PATH_NAMES:
+        context.core_path(name).mkdir(parents=True, exist_ok=True)
+    context.paths_json_path.parent.mkdir(parents=True, exist_ok=True)
+    context.paths_json_path.write_text(json.dumps(doctor._paths_export_for(context)))
+    monkeypatch.setattr(doctor, "_repo_shipped_executables", lambda _context: [])
+    env_path = context.vault_root / ".env"
+    env_path.write_text("OPENAI_API_KEY=test-placeholder-not-a-real-key\n")
+    env_path.chmod(0o644)
+
+    actions, errors = doctor._apply_t1_heals(context)
+
+    assert errors == []
+    assert "tightened .env to owner-only permissions" in actions
+    assert stat.S_IMODE(env_path.lstat().st_mode) == 0o600
+    assert env_path.read_text() == "OPENAI_API_KEY=test-placeholder-not-a-real-key\n"
+
+    actions, errors = doctor._apply_t1_heals(context)
+    assert errors == []
+    assert actions == []
+
+
+@pytest.mark.skipif(os.name != "posix", reason="POSIX file permissions only")
+def test_heal_tightens_env_permissions_and_annotates_vault_configs(monkeypatch, context):
+    _write_valid_configs(context)
+    for name in doctor.PARA_PATH_NAMES:
+        context.core_path(name).mkdir(parents=True, exist_ok=True)
+    context.paths_json_path.parent.mkdir(parents=True, exist_ok=True)
+    context.paths_json_path.write_text(json.dumps(doctor._paths_export_for(context)))
+    monkeypatch.setattr(doctor, "_repo_shipped_executables", lambda _context: [])
+    env_path = context.vault_root / ".env"
+    env_path.write_text("ANTHROPIC_API_KEY=test-placeholder-not-a-real-key\n")
+    env_path.chmod(0o644)
+    _stub_probes(monkeypatch, exclude={"vault.configs"})
+
+    report = doctor.collect(heal=True, context=context)
+
+    assert stat.S_IMODE(env_path.lstat().st_mode) == 0o600
+    assert env_path.read_text() == "ANTHROPIC_API_KEY=test-placeholder-not-a-real-key\n"
+    configs = _check(report, "vault.configs")
+    assert configs["verdict"] == "OK"
+    assert "after a safe Tier-1 permission repair" in configs["detail"]
+    assert configs["heal"] == {
+        "tier": 1,
+        "action": "tightened .env to owner-only permissions.",
+        "applied": True,
+    }
+    assert "test-placeholder-not-a-real-key" not in json.dumps(report)
+
+
 def test_registry_ids_match_the_approved_spec():
     assert [definition.id for definition in doctor.QUICK_CHECKS] == QUICK_IDS
     assert [definition.id for definition in doctor.DEEP_CHECKS] == DEEP_IDS

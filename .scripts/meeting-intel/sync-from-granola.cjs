@@ -607,7 +607,7 @@ async function analyzeWithLLM(meeting, profile, pillars) {
   const { generateContent, isConfigured, getActiveProvider } = require('../lib/llm-client.cjs');
 
   if (!isConfigured()) {
-    throw new Error('No LLM API key found. Set ANTHROPIC_API_KEY, OPENAI_API_KEY, or GEMINI_API_KEY in .env');
+    throw new Error('No LLM API key found. Set ANTHROPIC_API_KEY, OPENAI_API_KEY, or GEMINI_API_KEY in the vault-root .env (keep that file owner-only: chmod 600 .env)');
   }
 
   const prompt = buildAnalysisPrompt(meeting, profile, pillars);
@@ -1244,7 +1244,7 @@ async function main() {
     } catch (err) {
       if (err.message.includes('No LLM API key') || err.message.includes('not configured')) {
         // No LLM configured — create a basic structured note instead
-        log(`  No LLM available — creating basic note (add ANTHROPIC_API_KEY, OPENAI_API_KEY, or GEMINI_API_KEY to .env for background analysis)`);
+        log(`  No LLM available — creating basic note (add ANTHROPIC_API_KEY, OPENAI_API_KEY, or GEMINI_API_KEY to the vault-root .env — owner-only, chmod 600 — for background analysis)`);
         result = createBasicMeetingNote(meeting, profile);
       } else {
         log(`  Failed: ${err.message}`);

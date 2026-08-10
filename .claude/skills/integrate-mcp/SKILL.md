@@ -202,6 +202,8 @@ ENVVAR_1=value1
 ENV_VAR_2=value2
 ```
 
+After writing, make the file owner-only (`chmod 600 .env`) — create it with that mode if it's new, and tighten it if an existing `.env` was left readable by other users.
+
 ### Step 5: Update MCP Config
 
 Add to `System/.mcp.json`:

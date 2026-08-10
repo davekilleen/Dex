@@ -135,7 +135,8 @@ Wait for the user to paste the key.
 1. Locate the vault root `.env` file (`VAULT_ROOT/.env`). Create it if it doesn't exist.
 2. Write or update the line `GRANOLA_API_KEY=<pasted key>` in that file.
    - If a `GRANOLA_API_KEY=` line already exists, replace it; otherwise append it.
-3. Confirm `.env` is gitignored (it is by convention — never commit it).
+3. Make the file owner-only: `chmod 600 "$VAULT_ROOT/.env"`. Run this every time — it also tightens a pre-existing `.env` that was left readable by other users of the machine.
+4. Confirm `.env` is gitignored (it is by convention — never commit it).
 
 **Verify it with a real request:**
 

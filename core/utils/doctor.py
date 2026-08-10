@@ -858,6 +858,15 @@ def _apply_t1_heals(context: DoctorContext) -> tuple[list[str], list[str]]:
         except OSError as error:
             errors.append(f"Executable-mode heal failed for {script}: {_one_line(error)}")
 
+    try:
+        if _env_permissions_issue(context) is not None:
+            # Metadata-only repair: never reads, copies, or snapshots the
+            # secrets inside .env — it only removes group/other access.
+            os.chmod(context.vault_root / ".env", 0o600)
+            actions.append("tightened .env to owner-only permissions")
+    except OSError as error:
+        errors.append(f".env permission heal failed: {_one_line(error)}")
+
     dead_letter_path = context.vault_root / "System" / ".dex" / "entity-dead-letter.jsonl"
     if dead_letter_path.exists():
         try:
@@ -1001,11 +1010,14 @@ def collect(
             capability_actions = [
                 action for action in t1_actions if action.startswith("reconciled capability ")
             ]
+            config_actions = [
+                action for action in t1_actions if action.startswith("tightened ")
+            ]
             structure_actions = [
                 action
                 for action in t1_actions
                 if not action.startswith(
-                    ("re-queued ", "acknowledged ", "reconciled capability ")
+                    ("re-queued ", "acknowledged ", "reconciled capability ", "tightened ")
                 )
             ]
             if definition.id == "vault.structure" and structure_actions:
@@ -1034,6 +1046,15 @@ def collect(
                 result = ProbeResult(
                     result.verdict,
                     f"{result.detail.rstrip('.')} after a safe Tier-1 queue repair",
+                    Heal(tier=1, action=action, applied=True),
+                    feature_status=result.feature_status,
+                    user_message=result.user_message,
+                )
+            if definition.id == "vault.configs" and config_actions:
+                action = "; ".join(config_actions) + "."
+                result = ProbeResult(
+                    result.verdict,
+                    f"{result.detail.rstrip('.')} after a safe Tier-1 permission repair",
                     Heal(tier=1, action=action, applied=True),
                     feature_status=result.feature_status,
                     user_message=result.user_message,
@@ -1159,6 +1180,25 @@ def _probe_vault_structure(context: DoctorContext) -> ProbeResult:
     return ProbeResult("OK", "All standard PARA directories exist")
 
 
+def _env_permissions_issue(context: DoctorContext) -> str | None:
+    """Report a vault .env readable by other users; never reads its contents."""
+    if os.name != "posix":
+        return None
+    try:
+        metadata = (context.vault_root / ".env").lstat()
+    except OSError:
+        return None
+    if not stat.S_ISREG(metadata.st_mode):
+        return None
+    mode = stat.S_IMODE(metadata.st_mode)
+    if mode & 0o077:
+        return (
+            f".env is readable by other users of this machine (permissions {mode:03o}; "
+            "the API keys it holds belong in an owner-only file)"
+        )
+    return None
+
+
 def _probe_vault_configs(context: DoctorContext) -> ProbeResult:
     config_files = (
         (context.core_path("USER_PROFILE_FILE"), "yaml"),
@@ -1186,6 +1226,13 @@ def _probe_vault_configs(context: DoctorContext) -> ProbeResult:
             "BROKEN",
             "; ".join(failures),
             Heal(tier=3, action="Repair the named configuration file by hand.", applied=False),
+        )
+    env_issue = _env_permissions_issue(context)
+    if env_issue:
+        return ProbeResult(
+            "BROKEN",
+            env_issue,
+            Heal(tier=1, action="Tighten .env to owner-only permissions.", applied=False),
         )
     return ProbeResult("OK", "user-profile.yaml, pillars.yaml, and .claude/settings.json all parse")
 
@@ -4316,7 +4363,7 @@ def _probe_entity_engine(context: DoctorContext) -> ProbeResult:
         )
         if profile.get("entity_gardener", {}).get("enabled") is False:
             gardener_label = "off (disabled)"
-        elif not any(os.environ.get(key) for key in ("ANTHROPIC_API_KEY", "OPENAI_API_KEY", "GEMINI_API_KEY")):
+        elif not _llm_key_available(context):
             gardener_label = "off (no LLM key)"
         else:
             maintained = sum(bool(item.get("output_hash")) for item in gardener_pages.values())
@@ -4415,27 +4462,49 @@ def _looks_like_sandbox_failure(detail: str) -> bool:
     )
 
 
-def _granola_api_key(context: DoctorContext) -> str | None:
-    configured = os.environ.get("GRANOLA_API_KEY")
-    if configured and configured.strip():
-        return configured.strip()
-    env_path = context.vault_root / ".env"
-    if not env_path.exists():
+def _env_file_value(env_path: Path, name: str) -> str | None:
+    """Parse one value from a dotenv-style file without executing it."""
+    try:
+        content = env_path.read_text()
+    except OSError:
         return None
-    for raw_line in env_path.read_text().splitlines():
+    for raw_line in content.splitlines():
         line = raw_line.strip()
         if not line or line.startswith("#"):
             continue
         if line.startswith("export "):
             line = line.removeprefix("export ").strip()
-        name, separator, value = line.partition("=")
-        if not separator or name.strip() != "GRANOLA_API_KEY":
+        key, separator, value = line.partition("=")
+        if not separator or key.strip() != name:
             continue
         value = value.strip()
         if len(value) >= 2 and value[0] == value[-1] and value[0] in {"'", '"'}:
             value = value[1:-1]
         return value or None
     return None
+
+
+LLM_KEY_NAMES = ("ANTHROPIC_API_KEY", "OPENAI_API_KEY", "GEMINI_API_KEY")
+
+
+def _llm_key_available(context: DoctorContext) -> bool:
+    """True when an LLM key exists in the environment or the vault-root .env.
+
+    Presence only: this mirrors how the background LLM consumers resolve keys
+    (environment first, then the vault-root .env via dotenv). The key values
+    are never returned, logged, or included in any probe detail.
+    """
+    if any((os.environ.get(name) or "").strip() for name in LLM_KEY_NAMES):
+        return True
+    env_path = context.vault_root / ".env"
+    return any(_env_file_value(env_path, name) for name in LLM_KEY_NAMES)
+
+
+def _granola_api_key(context: DoctorContext) -> str | None:
+    configured = os.environ.get("GRANOLA_API_KEY")
+    if configured and configured.strip():
+        return configured.strip()
+    return _env_file_value(context.vault_root / ".env", "GRANOLA_API_KEY")
 
 
 def _granola_filtered_query(context: DoctorContext) -> list[dict[str, Any]]:

@@ -77,7 +77,7 @@ ls .scripts/meeting-intel/processed-meetings.json
 >
 > **Requirements:**
 > - A Granola Business plan, with your Granola API key connected via `/granola-setup`
-> - An LLM API key in `.env` (GEMINI_API_KEY, ANTHROPIC_API_KEY, or OPENAI_API_KEY)"
+> - An LLM API key in the vault-root `.env` (GEMINI_API_KEY, ANTHROPIC_API_KEY, or OPENAI_API_KEY) — keep that file owner-only (`chmod 600 .env`)"
 
 If user runs `--setup`:
 ```bash

@@ -608,7 +608,7 @@ Let me verify everything is in place:
    ```
    export [ENV_VAR]="your-value-here"
    ```
-   Or add to your shell config / .env file.
+   Or add to your shell config / the vault-root `.env` file (keep `.env` owner-only: `chmod 600 .env`).
 
 3. Configure Claude Desktop to use the server:
    Edit `~/Library/Application Support/Claude/claude_desktop_config.json`:

@@ -107,7 +107,9 @@ async function generateContent(prompt, options = {}) {
   
   if (!provider) {
     throw new Error(
-      'No LLM API key found. Set ANTHROPIC_API_KEY, OPENAI_API_KEY, or GEMINI_API_KEY in your .env file'
+      'No LLM API key found. Set ANTHROPIC_API_KEY, OPENAI_API_KEY, or GEMINI_API_KEY in the vault-root .env file '
+        + 'and keep that file owner-only (chmod 600 .env). Dex\'s encrypted credential store (/connect) does not '
+        + 'feed background LLM features yet, so .env is still the supported location for these keys.'
     );
   }
   

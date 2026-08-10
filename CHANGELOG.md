@@ -7,6 +7,18 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.88.0] — 🔐 The file holding your AI keys is now private — and the checkup finally sees it (2026-08-10)
+
+If you gave Dex an AI key so meetings get analyzed in the background, that key sat in a small file at the top of your vault that other accounts on the same computer could read — and Dex's own checkup couldn't see the key at all, so it reported "no key" and recommended you put one exactly where it already was.
+
+**What this fixes for you:**
+
+* **Only you can read your key file now.** Every place Dex creates or updates that file makes it private to your account, and the checkup (`/dex-doctor`) safely tightens an existing file that was left open — without reading or changing anything inside it.
+* **The checkup stops calling a configured key "missing."** The health check now looks in the same place the background features actually read the key from, so a key you've already set up is recognised instead of reported absent. The key itself never appears in any report or log — the check only confirms one exists.
+* **Advice that no longer points you wrong.** Wherever Dex tells you to add an AI key, it now also tells you to keep that file private — and it's honest that Dex's encrypted credential storage doesn't yet feed these background features, so the file is still the right place for now. Moving those keys into encrypted storage is a separate, deliberately unhurried piece of work.
+
+Thanks to Chris, whose report mapped the whole problem — including the parts this release fixes and the deeper move it defers.
+
 ## [1.86.0] — 🧭 The checkup now sees all your background jobs — and stops crying wolf (2026-08-10)
 
 Three community bug reports showed the same pattern from different angles: Dex's health checkup could miss real problems with background jobs while flagging healthy things as broken. This release makes the checkup match reality in both directions. Thanks to the three reporters whose unusually precise write-ups made these fixes straightforward.
