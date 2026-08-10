@@ -42,8 +42,10 @@ where that is provably safe and user guidance only where Dex genuinely cannot ac
    - **T3 — user-only, guided.** Grant macOS Calendar/Reminders permission; paste an API
      key; install an app (Granola, node, bun/qmd); sign in. Doctor gives exact steps and
      the skill to run (e.g. `/granola-setup`).
-   - **Never:** delete or overwrite user data; touch credentials; force-anything. A doctor
-     that mis-heals is worse than one that only reports.
+   - **Never:** delete or overwrite user data; touch credential *contents*; force-anything.
+     (The one credential-adjacent T1 heal — tightening `.env` to owner-only — changes
+     permission bits through a no-follow descriptor and never reads, copies, or logs a
+     byte of the file.) A doctor that mis-heals is worse than one that only reports.
 
 ## Architecture
 
@@ -103,7 +105,7 @@ repointed to `/dex-doctor`.
 | id | probe | OFF when | BROKEN when |
 |---|---|---|---|
 | vault.structure | PARA dirs from `core.paths` exist | — | missing dirs (T1 heal: create) |
-| vault.configs | `user-profile.yaml`, `pillars.yaml`, `.claude/settings.json` parse | — | parse error (T3: guided repair) |
+| vault.configs | `user-profile.yaml`, `pillars.yaml`, `.claude/settings.json` parse; vault-root `.env` is owner-only | — | parse error (T3: guided repair) / `.env` readable by other users (T1 heal: tighten to 0600 when we own the regular file; T3 manual guidance when `.env` is a symlink or owned by another user). Both conditions are always evaluated — a parse failure never hides the permission finding, and the post-heal annotation appends to a still-BROKEN result instead of replacing its heal |
 | mcp.registered | `.mcp.json` exists, valid; every entry's target file exists | no `.mcp.json` + never onboarded | entry → missing file (T2 repair) |
 | mcp.orphans | every `core/mcp/*_server.py` present in `.mcp.json` | — | orphaned server (T2 add) |
 | python.env | `.venv` python exists; `mcp`, `yaml`, `dateutil`, `requests` importable | — | missing (T2: pip install into venv) |

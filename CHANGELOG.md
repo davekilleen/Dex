@@ -13,7 +13,7 @@ If you gave Dex an AI key so meetings get analyzed in the background, that key s
 
 **What this fixes for you:**
 
-* **Only you can read your key file now.** Every place Dex creates or updates that file makes it private to your account, and the checkup (`/dex-doctor`) safely tightens an existing file that was left open — without reading or changing anything inside it.
+* **Only you can read your key file now.** Every place Dex creates or updates that file makes it private to your account, and the checkup (`/dex-doctor`) safely tightens an existing file that was left open — without reading or changing anything inside it. In the two cases where fixing it automatically would be wrong — the file belongs to a different account, or it's a shortcut-style link to a file elsewhere — the checkup reports the problem and gives you the exact command instead of guessing.
 * **The checkup stops calling a configured key "missing."** The health check now looks in the same place the background features actually read the key from, so a key you've already set up is recognised instead of reported absent. The key itself never appears in any report or log — the check only confirms one exists.
 * **Advice that no longer points you wrong.** Wherever Dex tells you to add an AI key, it now also tells you to keep that file private — and it's honest that Dex's encrypted credential storage doesn't yet feed these background features, so the file is still the right place for now. Moving those keys into encrypted storage is a separate, deliberately unhurried piece of work.
 

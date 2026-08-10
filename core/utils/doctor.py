@@ -18,7 +18,7 @@ import subprocess
 import sys
 import tempfile
 from contextlib import contextmanager
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Iterator, Mapping
@@ -790,9 +790,36 @@ def _requeue_entity_dead_letters(context: DoctorContext) -> dict[str, Any]:
     return parsed
 
 
-def _apply_t1_heals(context: DoctorContext) -> tuple[list[str], list[str]]:
-    """Preview and apply contract-authorized Tier-1 repairs through the service."""
-    actions: list[str] = []
+def _tighten_env_permissions(context: DoctorContext) -> None:
+    """chmod the vault .env to 0600 through a no-follow descriptor.
+
+    Metadata-only: no bytes are ever read from the file. The descriptor-based
+    re-verification (regular file, owned by us) closes the lstat→chmod race a
+    path-based ``os.chmod`` would leave open — a symlink swapped in between
+    would otherwise be followed to an arbitrary target.
+    """
+    descriptor = os.open(
+        context.vault_root / ".env",
+        os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0),
+    )
+    try:
+        opened = os.fstat(descriptor)
+        if not stat.S_ISREG(opened.st_mode):
+            raise OSError(".env changed identity during the permission repair")
+        if hasattr(os, "geteuid") and opened.st_uid != os.geteuid():
+            raise OSError(".env is owned by another user")
+        os.fchmod(descriptor, 0o600)
+    finally:
+        os.close(descriptor)
+
+
+def _apply_t1_heals(context: DoctorContext) -> tuple[dict[str, list[str]], list[str]]:
+    """Preview and apply contract-authorized Tier-1 repairs through the service.
+
+    Returns applied actions keyed by the check id they belong to — routing on
+    check id, never on the human wording of an action string — plus errors.
+    """
+    actions: dict[str, list[str]] = {}
     errors: list[str] = []
     planned: list[PlanEntry] = []
     planned_paths_export = False
@@ -859,11 +886,16 @@ def _apply_t1_heals(context: DoctorContext) -> tuple[list[str], list[str]]:
             errors.append(f"Executable-mode heal failed for {script}: {_one_line(error)}")
 
     try:
-        if _env_permissions_issue(context) is not None:
+        finding = _env_permission_finding(context)
+        if finding is not None and finding.auto_tighten:
             # Metadata-only repair: never reads, copies, or snapshots the
             # secrets inside .env — it only removes group/other access.
-            os.chmod(context.vault_root / ".env", 0o600)
-            actions.append("tightened .env to owner-only permissions")
+            # Findings that cannot be auto-tightened (foreign owner, symlink)
+            # carry their own Tier-3 guidance and are never attempted here.
+            _tighten_env_permissions(context)
+            actions.setdefault("vault.configs", []).append(
+                "tightened .env to owner-only permissions"
+            )
     except OSError as error:
         errors.append(f".env permission heal failed: {_one_line(error)}")
 
@@ -874,7 +906,7 @@ def _apply_t1_heals(context: DoctorContext) -> tuple[list[str], list[str]]:
             requeued = healed["requeued"]
             if requeued:
                 noun = "write" if requeued == 1 else "writes"
-                actions.append(
+                actions.setdefault("entity.engine", []).append(
                     f"re-queued {requeued} dead-lettered entity {noun} with retry counters reset"
                 )
         except Exception as error:
@@ -884,7 +916,7 @@ def _apply_t1_heals(context: DoctorContext) -> tuple[list[str], list[str]]:
         acknowledged = _acknowledge_resolved_preflight_errors(context)
         if acknowledged:
             noun = "error" if acknowledged == 1 else "errors"
-            actions.append(
+            actions.setdefault("preflight.queue", []).append(
                 f"acknowledged {acknowledged} resolved preflight {noun}"
             )
     except Exception as error:
@@ -905,7 +937,7 @@ def _apply_t1_heals(context: DoctorContext) -> tuple[list[str], list[str]]:
             )
             if any(result.get("user_content_deleted") is not False for result in reconciled):
                 raise RuntimeError("capability reconciliation did not preserve user content")
-            actions.append(
+            actions.setdefault("capabilities.rooms", []).append(
                 "reconciled capability room assets without deleting user content"
             )
     except Exception as error:
@@ -928,10 +960,10 @@ def _apply_t1_heals(context: DoctorContext) -> tuple[list[str], list[str]]:
             errors.append(f"Tier-1 transaction failed: {_one_line(error)}")
         else:
             if planned_paths_export:
-                actions.append("regenerated core/paths.json")
+                actions.setdefault("vault.structure", []).append("regenerated core/paths.json")
             if planned_executables:
                 noun = "permission" if len(planned_executables) == 1 else "permissions"
-                actions.append(
+                actions.setdefault("vault.structure", []).append(
                     f"restored executable {noun} on {', '.join(planned_executables)}"
                 )
 
@@ -972,7 +1004,7 @@ def collect(
     results: dict[str, ProbeResult] = {}
     failed: list[dict[str, str]] = []
 
-    t1_actions: list[str] = []
+    t1_actions: dict[str, list[str]] = {}
     if heal:
         try:
             t1_actions, t1_errors = _apply_t1_heals(context)
@@ -1001,72 +1033,55 @@ def collect(
                 )
             if result.verdict == "UNKNOWN" and _is_missing_package_error(result.detail):
                 result = ProbeResult("UNKNOWN", MISSING_PACKAGES_DETAIL, result.heal)
-            entity_actions = [
-                action for action in t1_actions if action.startswith("re-queued ")
-            ]
-            preflight_actions = [
-                action for action in t1_actions if action.startswith("acknowledged ")
-            ]
-            capability_actions = [
-                action for action in t1_actions if action.startswith("reconciled capability ")
-            ]
-            config_actions = [
-                action for action in t1_actions if action.startswith("tightened ")
-            ]
-            structure_actions = [
-                action
-                for action in t1_actions
-                if not action.startswith(
-                    ("re-queued ", "acknowledged ", "reconciled capability ", "tightened ")
-                )
-            ]
-            if definition.id == "vault.structure" and structure_actions:
-                action = "; ".join(structure_actions) + "."
+            check_actions = t1_actions.get(definition.id, [])
+            if definition.id == "vault.structure" and check_actions:
+                action = "; ".join(check_actions) + "."
                 if result.verdict == "OK":
-                    repair_word = _repair_count_word(len(structure_actions))
-                    repair_noun = "repair" if len(structure_actions) == 1 else "repairs"
+                    repair_word = _repair_count_word(len(check_actions))
+                    repair_noun = "repair" if len(check_actions) == 1 else "repairs"
                     detail = f"All standard PARA directories exist after {repair_word} safe {repair_noun}"
                 else:
                     detail = f"{result.detail.rstrip('.')} while safe Tier-1 repairs were also applied"
-                result = ProbeResult(
-                    result.verdict,
-                    detail,
-                    Heal(tier=1, action=action, applied=True),
+                result = replace(
+                    result,
+                    detail=detail,
+                    heal=Heal(tier=1, action=action, applied=True),
                 )
-            if definition.id == "entity.engine" and entity_actions:
-                result = ProbeResult(
-                    result.verdict,
-                    result.detail,
-                    Heal(tier=1, action="; ".join(entity_actions) + ".", applied=True),
-                    feature_status=result.feature_status,
-                    user_message=result.user_message,
+            if definition.id == "entity.engine" and check_actions:
+                result = replace(
+                    result,
+                    heal=Heal(tier=1, action="; ".join(check_actions) + ".", applied=True),
                 )
-            if definition.id == "preflight.queue" and preflight_actions:
-                action = "; ".join(preflight_actions) + "."
-                result = ProbeResult(
-                    result.verdict,
-                    f"{result.detail.rstrip('.')} after a safe Tier-1 queue repair",
-                    Heal(tier=1, action=action, applied=True),
-                    feature_status=result.feature_status,
-                    user_message=result.user_message,
+            if definition.id == "preflight.queue" and check_actions:
+                result = replace(
+                    result,
+                    detail=f"{result.detail.rstrip('.')} after a safe Tier-1 queue repair",
+                    heal=Heal(tier=1, action="; ".join(check_actions) + ".", applied=True),
                 )
-            if definition.id == "vault.configs" and config_actions:
-                action = "; ".join(config_actions) + "."
-                result = ProbeResult(
-                    result.verdict,
-                    f"{result.detail.rstrip('.')} after a safe Tier-1 permission repair",
-                    Heal(tier=1, action=action, applied=True),
-                    feature_status=result.feature_status,
-                    user_message=result.user_message,
-                )
-            if definition.id == "capabilities.rooms" and capability_actions:
-                action = "; ".join(capability_actions) + "."
-                result = ProbeResult(
-                    result.verdict,
-                    f"{result.detail.rstrip('.')} after a safe Tier-1 reconciliation",
-                    Heal(tier=1, action=action, applied=True),
-                    feature_status=result.feature_status,
-                    user_message=result.user_message,
+            if definition.id == "vault.configs" and check_actions:
+                # Merge, never replace: when the probe is still BROKEN (a
+                # parse failure, or a symlink/foreign-owner .env finding),
+                # its verdict and actionable heal must survive — the applied
+                # env repair is only appended as extra detail.
+                if result.verdict == "OK" and result.heal is None:
+                    result = replace(
+                        result,
+                        detail=f"{result.detail.rstrip('.')} after a safe Tier-1 permission repair",
+                        heal=Heal(tier=1, action="; ".join(check_actions) + ".", applied=True),
+                    )
+                else:
+                    result = replace(
+                        result,
+                        detail=(
+                            f"{result.detail.rstrip('.')}; a safe Tier-1 repair separately "
+                            + "; ".join(check_actions)
+                        ),
+                    )
+            if definition.id == "capabilities.rooms" and check_actions:
+                result = replace(
+                    result,
+                    detail=f"{result.detail.rstrip('.')} after a safe Tier-1 reconciliation",
+                    heal=Heal(tier=1, action="; ".join(check_actions) + ".", applied=True),
                 )
             results[definition.id] = result
     finally:
@@ -1180,23 +1195,84 @@ def _probe_vault_structure(context: DoctorContext) -> ProbeResult:
     return ProbeResult("OK", "All standard PARA directories exist")
 
 
-def _env_permissions_issue(context: DoctorContext) -> str | None:
-    """Report a vault .env readable by other users; never reads its contents."""
+@dataclass(frozen=True)
+class EnvPermissionFinding:
+    """One diagnosable problem with the vault-root .env's file authority."""
+
+    detail: str
+    heal: Heal
+    auto_tighten: bool
+
+
+def _env_permission_finding(context: DoctorContext) -> EnvPermissionFinding | None:
+    """Classify a vault .env readable by other users; never reads its contents.
+
+    Three shapes, matching how (and whether) the Tier-1 heal may act:
+    - a regular file we own → Tier-1, auto-tightenable;
+    - a regular file owned by another user → Tier-3 manual guidance (a chmod
+      attempt would fail on every heal run and flip doctor.self BROKEN);
+    - a symlink whose target is loose → Tier-3 manual guidance (Dex never
+      chmods through a link, but every .env reader follows it, so staying
+      silent would pass a world-readable key file as OK).
+    """
     if os.name != "posix":
         return None
+    env_path = context.vault_root / ".env"
     try:
-        metadata = (context.vault_root / ".env").lstat()
+        metadata = env_path.lstat()
     except OSError:
         return None
+    if stat.S_ISLNK(metadata.st_mode):
+        try:
+            target = env_path.stat()
+        except OSError:
+            return None
+        target_mode = stat.S_IMODE(target.st_mode)
+        if not stat.S_ISREG(target.st_mode) or not target_mode & 0o077:
+            return None
+        try:
+            resolved = env_path.resolve(strict=True)
+        except OSError:
+            return None
+        return EnvPermissionFinding(
+            detail=(
+                f".env is a symlink whose target is readable by other users of this "
+                f"machine (permissions {target_mode:03o}); Dex never auto-tightens "
+                "through a link"
+            ),
+            heal=Heal(
+                tier=3,
+                action=f"Run: chmod 600 '{resolved}' (the symlink's real target).",
+                applied=False,
+            ),
+            auto_tighten=False,
+        )
     if not stat.S_ISREG(metadata.st_mode):
         return None
     mode = stat.S_IMODE(metadata.st_mode)
-    if mode & 0o077:
-        return (
+    if not mode & 0o077:
+        return None
+    if hasattr(os, "geteuid") and metadata.st_uid != os.geteuid():
+        return EnvPermissionFinding(
+            detail=(
+                f".env is readable by other users of this machine (permissions "
+                f"{mode:03o}) and is owned by another user, so Dex cannot tighten it"
+            ),
+            heal=Heal(
+                tier=3,
+                action="As the file's owner, run: chmod 600 .env — and chown it to your user.",
+                applied=False,
+            ),
+            auto_tighten=False,
+        )
+    return EnvPermissionFinding(
+        detail=(
             f".env is readable by other users of this machine (permissions {mode:03o}; "
             "the API keys it holds belong in an owner-only file)"
-        )
-    return None
+        ),
+        heal=Heal(tier=1, action="Tighten .env to owner-only permissions.", applied=False),
+        auto_tighten=True,
+    )
 
 
 def _probe_vault_configs(context: DoctorContext) -> ProbeResult:
@@ -1221,19 +1297,21 @@ def _probe_vault_configs(context: DoctorContext) -> ProbeResult:
             raise
         except Exception as error:
             failures.append(f"{config_path.name} could not be parsed ({_one_line(error)})")
+    env_finding = _env_permission_finding(context)
     if failures:
+        # The parse failures keep the Tier-3 hand-repair heal, but the
+        # security finding must never be masked by an unrelated config
+        # problem — report both in the same detail.
+        detail = "; ".join(failures)
+        if env_finding is not None:
+            detail += f"; {env_finding.detail}"
         return ProbeResult(
             "BROKEN",
-            "; ".join(failures),
+            detail,
             Heal(tier=3, action="Repair the named configuration file by hand.", applied=False),
         )
-    env_issue = _env_permissions_issue(context)
-    if env_issue:
-        return ProbeResult(
-            "BROKEN",
-            env_issue,
-            Heal(tier=1, action="Tighten .env to owner-only permissions.", applied=False),
-        )
+    if env_finding is not None:
+        return ProbeResult("BROKEN", env_finding.detail, env_finding.heal)
     return ProbeResult("OK", "user-profile.yaml, pillars.yaml, and .claude/settings.json all parse")
 
 
@@ -4462,26 +4540,26 @@ def _looks_like_sandbox_failure(detail: str) -> bool:
     )
 
 
-def _env_file_value(env_path: Path, name: str) -> str | None:
-    """Parse one value from a dotenv-style file without executing it."""
+def _read_vault_env_values(context: DoctorContext) -> dict[str, str]:
+    """Parse the vault-root .env with the shared strict credential parser.
+
+    Delegates decoding to ``integration_credentials.parse_env_assignments`` so
+    the doctor sees exactly the values every credential path sees (quoted and
+    JSON-escaped values decode identically) instead of keeping a divergent
+    dotenv dialect. Returns ``{}`` when the file is absent; a present-but-
+    unreadable or unparseable file raises (``OSError``/``UnicodeDecodeError``/
+    ``ValueError``) so callers can distinguish "no file" from "cannot read".
+    Deliberately does not validate permissions or ownership — the doctor must
+    be able to see keys inside a loose-permission .env (that looseness is the
+    vault.configs finding, not a reason to go blind).
+    """
+    from core.utils.integration_credentials import parse_env_assignments
+
     try:
-        content = env_path.read_text()
-    except OSError:
-        return None
-    for raw_line in content.splitlines():
-        line = raw_line.strip()
-        if not line or line.startswith("#"):
-            continue
-        if line.startswith("export "):
-            line = line.removeprefix("export ").strip()
-        key, separator, value = line.partition("=")
-        if not separator or key.strip() != name:
-            continue
-        value = value.strip()
-        if len(value) >= 2 and value[0] == value[-1] and value[0] in {"'", '"'}:
-            value = value[1:-1]
-        return value or None
-    return None
+        raw = (context.vault_root / ".env").read_bytes()
+    except FileNotFoundError:
+        return {}
+    return parse_env_assignments(raw)
 
 
 LLM_KEY_NAMES = ("ANTHROPIC_API_KEY", "OPENAI_API_KEY", "GEMINI_API_KEY")
@@ -4492,19 +4570,30 @@ def _llm_key_available(context: DoctorContext) -> bool:
 
     Presence only: this mirrors how the background LLM consumers resolve keys
     (environment first, then the vault-root .env via dotenv). The key values
-    are never returned, logged, or included in any probe detail.
+    are never returned, logged, or included in any probe detail. An unreadable
+    or unparseable .env counts as "no key confirmed" rather than an error, so
+    a stray byte in .env can never flip the entity-engine check to UNKNOWN.
     """
     if any((os.environ.get(name) or "").strip() for name in LLM_KEY_NAMES):
         return True
-    env_path = context.vault_root / ".env"
-    return any(_env_file_value(env_path, name) for name in LLM_KEY_NAMES)
+    try:
+        values = _read_vault_env_values(context)
+    except (OSError, UnicodeDecodeError, ValueError):
+        return False
+    return any(values.get(name) for name in LLM_KEY_NAMES)
 
 
 def _granola_api_key(context: DoctorContext) -> str | None:
+    """Resolve the Granola key: environment first, then the vault-root .env.
+
+    Returns ``None`` only when the key is genuinely absent. A present-but-
+    unreadable or unparseable .env raises so the probe surfaces the real cause
+    as UNKNOWN instead of telling the user to add a key that is already there.
+    """
     configured = os.environ.get("GRANOLA_API_KEY")
     if configured and configured.strip():
         return configured.strip()
-    return _env_file_value(context.vault_root / ".env", "GRANOLA_API_KEY")
+    return _read_vault_env_values(context).get("GRANOLA_API_KEY") or None
 
 
 def _granola_filtered_query(context: DoctorContext) -> list[dict[str, Any]]:

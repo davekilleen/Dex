@@ -434,7 +434,9 @@ def test_t1_heal_requeues_dead_lettered_entity_writes(monkeypatch, context):
 
     assert errors == []
     assert calls == [context]
-    assert actions == ["re-queued 1 dead-lettered entity write with retry counters reset"]
+    assert actions == {
+        "entity.engine": ["re-queued 1 dead-lettered entity write with retry counters reset"],
+    }
 
 
 def test_entity_dead_letter_heal_round_trip_returns_probe_to_ok(context):
@@ -573,13 +575,13 @@ def test_t1_heal_tightens_env_permissions_without_touching_contents(monkeypatch,
     actions, errors = doctor._apply_t1_heals(context)
 
     assert errors == []
-    assert "tightened .env to owner-only permissions" in actions
+    assert actions == {"vault.configs": ["tightened .env to owner-only permissions"]}
     assert stat.S_IMODE(env_path.lstat().st_mode) == 0o600
     assert env_path.read_text() == "OPENAI_API_KEY=test-placeholder-not-a-real-key\n"
 
     actions, errors = doctor._apply_t1_heals(context)
     assert errors == []
-    assert actions == []
+    assert actions == {}
 
 
 @pytest.mark.skipif(os.name != "posix", reason="POSIX file permissions only")
@@ -608,6 +610,140 @@ def test_heal_tightens_env_permissions_and_annotates_vault_configs(monkeypatch, 
         "applied": True,
     }
     assert "test-placeholder-not-a-real-key" not in json.dumps(report)
+
+
+@pytest.mark.skipif(os.name != "posix", reason="POSIX file permissions only")
+def test_vault_configs_reports_env_permissions_even_with_parse_failures(context):
+    _write_valid_configs(context)
+    (context.vault_root / "System" / "pillars.yaml").write_text("pillars: [\n")
+    env_path = context.vault_root / ".env"
+    env_path.write_text("ANTHROPIC_API_KEY=test-placeholder-not-a-real-key\n")
+    env_path.chmod(0o644)
+
+    result = doctor._probe_vault_configs(context)
+
+    assert result.verdict == "BROKEN"
+    assert "pillars.yaml" in result.detail
+    assert "readable by other users" in result.detail
+    assert "test-placeholder-not-a-real-key" not in result.detail
+    assert result.heal.tier == 3  # the parse-failure guidance survives
+
+
+@pytest.mark.skipif(os.name != "posix", reason="POSIX file permissions only")
+def test_heal_annotation_merges_into_a_still_broken_vault_configs(monkeypatch, context):
+    # A parse failure and a loose .env together: --heal tightens the file but
+    # must not replace the BROKEN verdict or the Tier-3 hand-repair guidance.
+    _write_valid_configs(context)
+    (context.vault_root / "System" / "pillars.yaml").write_text("pillars: [\n")
+    for name in doctor.PARA_PATH_NAMES:
+        context.core_path(name).mkdir(parents=True, exist_ok=True)
+    context.paths_json_path.parent.mkdir(parents=True, exist_ok=True)
+    context.paths_json_path.write_text(json.dumps(doctor._paths_export_for(context)))
+    monkeypatch.setattr(doctor, "_repo_shipped_executables", lambda _context: [])
+    env_path = context.vault_root / ".env"
+    env_path.write_text("ANTHROPIC_API_KEY=test-placeholder-not-a-real-key\n")
+    env_path.chmod(0o644)
+    _stub_probes(monkeypatch, exclude={"vault.configs"})
+
+    report = doctor.collect(heal=True, context=context)
+
+    assert stat.S_IMODE(env_path.lstat().st_mode) == 0o600
+    configs = _check(report, "vault.configs")
+    assert configs["verdict"] == "BROKEN"
+    assert configs["heal"] == {
+        "tier": 3,
+        "action": "Repair the named configuration file by hand.",
+        "applied": False,
+    }
+    assert "pillars.yaml" in configs["detail"]
+    assert "tightened .env to owner-only permissions" in configs["detail"]
+
+
+@pytest.mark.skipif(os.name != "posix", reason="POSIX file permissions only")
+def test_symlinked_env_is_reported_but_never_auto_tightened(monkeypatch, context, tmp_path):
+    _write_valid_configs(context)
+    target = tmp_path / "real-env"
+    target.write_text("ANTHROPIC_API_KEY=test-placeholder-not-a-real-key\n")
+    target.chmod(0o644)
+    env_path = context.vault_root / ".env"
+    env_path.symlink_to(target)
+
+    result = doctor._probe_vault_configs(context)
+
+    assert result.verdict == "BROKEN"
+    assert "symlink" in result.detail
+    assert "test-placeholder-not-a-real-key" not in result.detail
+    assert result.heal.tier == 3
+    assert result.heal.applied is False
+    assert str(env_path.resolve()) in result.heal.action
+
+    for name in doctor.PARA_PATH_NAMES:
+        context.core_path(name).mkdir(parents=True, exist_ok=True)
+    context.paths_json_path.parent.mkdir(parents=True, exist_ok=True)
+    context.paths_json_path.write_text(json.dumps(doctor._paths_export_for(context)))
+    monkeypatch.setattr(doctor, "_repo_shipped_executables", lambda _context: [])
+
+    actions, errors = doctor._apply_t1_heals(context)
+
+    assert errors == []
+    assert "vault.configs" not in actions
+    assert stat.S_IMODE(target.lstat().st_mode) == 0o644  # untouched
+
+
+@pytest.mark.skipif(os.name != "posix", reason="POSIX file permissions only")
+def test_foreign_owned_env_degrades_to_manual_guidance(monkeypatch, context):
+    _write_valid_configs(context)
+    env_path = context.vault_root / ".env"
+    env_path.write_text("ANTHROPIC_API_KEY=test-placeholder-not-a-real-key\n")
+    env_path.chmod(0o644)
+    monkeypatch.setattr(doctor.os, "geteuid", lambda: env_path.lstat().st_uid + 1)
+
+    result = doctor._probe_vault_configs(context)
+
+    assert result.verdict == "BROKEN"
+    assert "owned by another user" in result.detail
+    assert result.heal.tier == 3
+    assert result.heal.applied is False
+
+    for name in doctor.PARA_PATH_NAMES:
+        context.core_path(name).mkdir(parents=True, exist_ok=True)
+    context.paths_json_path.parent.mkdir(parents=True, exist_ok=True)
+    context.paths_json_path.write_text(json.dumps(doctor._paths_export_for(context)))
+    monkeypatch.setattr(doctor, "_repo_shipped_executables", lambda _context: [])
+
+    actions, errors = doctor._apply_t1_heals(context)
+
+    assert errors == []  # no unappliable heal breaking doctor.self on every run
+    assert "vault.configs" not in actions
+    assert stat.S_IMODE(env_path.lstat().st_mode) == 0o644
+
+
+def test_entity_engine_probe_tolerates_undecodable_env_file(monkeypatch, context):
+    for key in doctor.LLM_KEY_NAMES:
+        monkeypatch.delenv(key, raising=False)
+    _write_entity_probe_files(context)
+    (context.vault_root / ".env").write_bytes(b"ANTHROPIC_API_KEY=caf\xe9\n")
+
+    result = doctor._probe_entity_engine(context)
+
+    assert result.verdict == "OK"
+    assert "gardener off (no LLM key)" in result.detail
+
+
+def test_granola_api_key_distinguishes_absent_from_unreadable(monkeypatch, context):
+    monkeypatch.delenv("GRANOLA_API_KEY", raising=False)
+    assert doctor._granola_api_key(context) is None  # no .env file at all
+
+    env_path = context.vault_root / ".env"
+    env_path.write_text("GRANOLA_API_KEY=\n")
+    assert doctor._granola_api_key(context) is None  # empty value
+
+    env_path.write_text('GRANOLA_API_KEY="grn_\\u0066ile_key"\n')
+    assert doctor._granola_api_key(context) == "grn_file_key"  # shared JSON decoding
+
+    env_path.write_bytes(b"not a valid assignment line\n")
+    with pytest.raises(ValueError):
+        doctor._granola_api_key(context)  # present-but-unparseable surfaces, never "no key"
 
 
 def test_registry_ids_match_the_approved_spec():
@@ -1236,8 +1372,9 @@ def test_t1_authorized_repairs_preview_and_execute_through_lifecycle_service(
     actions, errors = doctor._apply_t1_heals(context)
 
     assert errors == []
-    assert "regenerated core/paths.json" in actions
-    assert any("restored executable permission" in action for action in actions)
+    structure_actions = actions["vault.structure"]
+    assert "regenerated core/paths.json" in structure_actions
+    assert any("restored executable permission" in action for action in structure_actions)
     assert len(calls) == 1
     assert calls[0][1]["purpose"] == "doctor-tier-1"
     assert (context.vault_root / "core/paths.json").is_file()
@@ -1269,7 +1406,7 @@ def test_heal_does_not_overwrite_a_raising_structure_probe_with_ok(monkeypatch, 
     monkeypatch.setattr(
         doctor,
         "_apply_t1_heals",
-        lambda _context: (["regenerated core/paths.json"], []),
+        lambda _context: ({"vault.structure": ["regenerated core/paths.json"]}, []),
     )
 
     def explode(_context):
@@ -1290,7 +1427,7 @@ def test_heal_does_not_overwrite_a_raising_structure_probe_with_ok(monkeypatch, 
 def test_main_heal_flag_invokes_t1_and_still_returns_json(monkeypatch, context, capsys):
     _stub_probes(monkeypatch)
     calls = []
-    monkeypatch.setattr(doctor, "_apply_t1_heals", lambda candidate: (calls.append(candidate) or [], []))
+    monkeypatch.setattr(doctor, "_apply_t1_heals", lambda candidate: (calls.append(candidate) or {}, []))
 
     assert doctor.main(["--heal"], context=context) == 0
     assert json.loads(capsys.readouterr().out)["mode"] == "quick"
