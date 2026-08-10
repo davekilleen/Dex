@@ -7,7 +7,7 @@ const path = require('node:path');
 
 const HOOK_PATH = path.resolve(__dirname, '..', 'session-start.sh');
 const MEETING_INTEL_PLIST = 'com.dex.meeting-intel.plist';
-const MEETING_INTEL_LOG = '.scripts/logs/meeting-intel.log';
+const MEETING_INTEL_STATE = '.scripts/meeting-intel/processed-meetings.json';
 
 function createSandbox(t) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'dex-session-staleness-'));
@@ -28,11 +28,14 @@ function installMeetingIntel(sandbox) {
   fs.writeFileSync(path.join(sandbox.launchAgents, MEETING_INTEL_PLIST), '<plist/>\n');
 }
 
-function writeMeetingIntelLog(sandbox) {
-  const logPath = path.join(sandbox.vault, MEETING_INTEL_LOG);
-  fs.mkdirSync(path.dirname(logPath), { recursive: true });
-  fs.writeFileSync(logPath, 'meeting sync ran\n');
-  return logPath;
+function writeMeetingIntelState(sandbox, lastSync) {
+  const statePath = path.join(sandbox.vault, MEETING_INTEL_STATE);
+  fs.mkdirSync(path.dirname(statePath), { recursive: true });
+  const state = lastSync === undefined
+    ? { processedIds: [] }
+    : { processedIds: [], lastSync: lastSync.toISOString() };
+  fs.writeFileSync(statePath, `${JSON.stringify(state)}\n`);
+  return statePath;
 }
 
 function completeOnboarding(sandbox) {
@@ -121,36 +124,32 @@ function runSessionStart(sandbox) {
   return result.stdout;
 }
 
-test('session start warns when an installed meeting sync log is stale', (t) => {
+test('session start warns when an installed meeting sync last succeeded 3 days ago', (t) => {
   const sandbox = createSandbox(t);
   installMeetingIntel(sandbox);
-  const logPath = writeMeetingIntelLog(sandbox);
-  const threeDaysAgo = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000);
-  fs.utimesSync(logPath, threeDaysAgo, threeDaysAgo);
+  writeMeetingIntelState(sandbox, new Date(Date.now() - 3 * 24 * 60 * 60 * 1000));
 
   const stdout = runSessionStart(sandbox);
 
   assert.match(
     stdout,
-    /⏰ Meeting sync last ran 3 days ago \(expected every 2 days\) — run \/dex-doctor to investigate\./,
+    /⏰ Meeting sync last completed successfully 3 days ago \(expected every 2 days\) — run \/dex-doctor to investigate\./,
   );
 });
 
-test('session start stays silent for a fresh installed meeting sync log', (t) => {
+test('session start stays silent for a recently succeeded meeting sync', (t) => {
   const sandbox = createSandbox(t);
   installMeetingIntel(sandbox);
-  writeMeetingIntelLog(sandbox);
+  writeMeetingIntelState(sandbox, new Date());
 
   const stdout = runSessionStart(sandbox);
 
   assert.doesNotMatch(stdout, /⏰ Meeting sync/);
 });
 
-test('session start ignores stale logs for launch agents that are not installed', (t) => {
+test('session start ignores stale sync state for launch agents that are not installed', (t) => {
   const sandbox = createSandbox(t);
-  const logPath = writeMeetingIntelLog(sandbox);
-  const threeDaysAgo = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000);
-  fs.utimesSync(logPath, threeDaysAgo, threeDaysAgo);
+  writeMeetingIntelState(sandbox, new Date(Date.now() - 3 * 24 * 60 * 60 * 1000));
 
   const stdout = runSessionStart(sandbox);
 
@@ -166,6 +165,19 @@ test('session start warns when an installed meeting sync has never run', (t) => 
   assert.match(
     stdout,
     /⏰ Meeting sync is installed but has never run — run \/dex-doctor to investigate\./,
+  );
+});
+
+test('session start warns when meeting sync keeps running but has never succeeded', (t) => {
+  const sandbox = createSandbox(t);
+  installMeetingIntel(sandbox);
+  writeMeetingIntelState(sandbox, undefined);
+
+  const stdout = runSessionStart(sandbox);
+
+  assert.match(
+    stdout,
+    /⏰ Meeting sync is installed but has never completed a successful run — run \/dex-doctor to investigate\./,
   );
 });
 

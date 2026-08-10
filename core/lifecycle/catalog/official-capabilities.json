@@ -160,7 +160,7 @@
           "path": ".claude/skills/decision-log/SKILL.md",
           "source_path": ".claude/skills/decision-log/SKILL.md",
           "sha256": "e6c5d64940fe7135bfacd06aebcffae7ac40ca0f1971503b6f4a46551c505283",
-          "byte_size": 4156
+          "byte_size": 4518
         }
       ],
       "dependencies": [],
@@ -175,7 +175,7 @@
           "path": ".claude/skills/delegate-check/SKILL.md",
           "source_path": ".claude/skills/delegate-check/SKILL.md",
           "sha256": "c4cc8a0bb2c7b48edddf3aa809a0756fa123fb6f6be8c60076357454b96edc34",
-          "byte_size": 4073
+          "byte_size": 4435
         }
       ],
       "dependencies": [],
@@ -400,7 +400,7 @@
           "path": ".claude/skills/weekly-reflection/SKILL.md",
           "source_path": ".claude/skills/weekly-reflection/SKILL.md",
           "sha256": "7a8fdd0bf4dfb517bcc076d2f9cc899efa1d678c5efa3f0bd6457d9186ef4ffb",
-          "byte_size": 3567
+          "byte_size": 3929
         }
       ],
       "dependencies": [],
