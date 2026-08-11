@@ -7,7 +7,7 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
-## [1.95.0] - 🧺 Your daily plan stops running out of room as your vault grows (2026-08-11)
+## [1.98.0] - 🧺 Your daily plan stops running out of room as your vault grows (2026-08-11)
 
 The big daily rituals (planning your day, reviewing it, closing the week, prepping a meeting, processing your meetings) work by reading a lot first: your calendar, your tasks, your notes, your mail, your meeting history. In a young vault that reading is light. In a vault with a year or two of history, it can be so much material that Dex fills up on the reading alone and has nothing left for the part you actually came for. The failure is quiet: sessions get slower and shallower, and on the worst days a review dies halfway through and has to be rebuilt the next morning. One long-time user measured a single day of these rituals and found that of everything Dex read, less than two percent actually needed to stay in the conversation.
 
