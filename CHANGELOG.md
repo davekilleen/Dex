@@ -19,6 +19,20 @@ Chris found his vault's change list crowded with dozens of files he never touche
 
 Thanks to Chris for the report, traced from a single noisy update all the way to the root cause.
 
+## [1.94.0] — 🤝 Dex can work with your Pipedrive deals, and never behind your back (2026-08-11)
+
+If you keep deals in Pipedrive, you have been keeping them twice: once in the system your company reports from, and once in the notes where you actually think about the deal. The two drift apart within days, and reconciling them by hand is exactly the admin nobody does on a Friday afternoon. Chris built this to solve it for himself and offered it back.
+
+**What this adds for you:**
+
+* **Ask Dex what is really in your pipeline.** Connect Pipedrive once (`/pipedrive-setup`) and Dex can read your live deals: stage, value, likelihood, close date, owner, and recent activity. Your weekly review, meeting prep and daily plan can all draw on the real numbers instead of whatever was last typed into a note.
+* **One reconciliation instead of two arguments.** `/pipeline-sync` puts your deal notes and Pipedrive side by side, shows you every place they disagree, and lets you choose which one is right, deal by deal. The principle throughout: Pipedrive is trusted for the numbers, your notes are trusted for the strategy, and neither is ever silently overwritten by the other.
+* **Nothing reaches your company's system without you saying yes.** Every change Dex could make to Pipedrive is shown to you in full first, exactly as it would be sent, and goes nowhere until you approve that specific change. This is deliberate: for most people Pipedrive is a shared company system where a surprise edit is a real problem.
+* **Creating new deals stays switched off until you decide otherwise.** Dex can update existing deals out of the box, but creating new ones is off by default and takes a deliberate change to your settings to enable. Same reasoning: adding a deal to a shared company system is a bigger step than updating one, and it should be your call, not a side effect.
+* **Your access key is kept in your Mac's keychain,** not in a file in your notes, and never appears in any note, log or report Dex writes.
+
+Thanks to Chris, who built and hardened this before offering it upstream (requested in issue #360).
+
 ## [1.94.0] — 📦 Moving your Dex folder no longer locks you out of updating (2026-08-11)
 
 Dex writes down where your vault lives. Move that folder, rename it, or work from a copy of it, and the note still points at the old place — and Dex was reading that mismatch as damage. It refused to update at all, with a message that didn't say why. A user hit this while rehearsing the rescue route on a duplicate of his own vault, and spent an hour reading Dex's code to work out which of its nine checks had failed.

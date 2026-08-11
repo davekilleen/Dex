@@ -1,0 +1,46 @@
+# Pipedrive non-secret settings (template).
+# Copy to pipedrive.yaml -- /pipedrive-setup fills this in for you.
+#
+# The access token is NEVER stored here. It lives in the macOS Keychain
+# (service: dex-pipedrive, account: api) or, on other systems, as
+# PIPEDRIVE_API_TOKEN in the ignored vault-root .env file.
+
+configured_at: null            # YYYY-MM-DD, set by /pipedrive-setup
+company_domain: null           # the bit before .pipedrive.com in your web address
+base_url: null                 # e.g. https://yourcompany.pipedrive.com (derived from company_domain if omitted)
+
+# Where your local pipeline strategy note lives. Pipedrive owns the deal
+# numbers; this file owns the strategy and the focus list of deals you sync.
+tracker_path: 04-Projects/Pipeline_Tracker.md
+
+# Maps the stage phrases you use in your tracker to Pipedrive stage ids.
+# Build this with /pipedrive-setup (it reads your real stages via the API).
+# Won/Lost are Pipedrive deal STATUS, not stages -- handled via update_deal.
+stage_mapping: {}
+#  "discovery": 2
+#  "qualified": 3
+#  "proposal": 4
+
+# Optional: your pipeline's per-stage default probabilities (from Pipedrive
+# pipeline settings). When a deal's own probability is null it inherits its
+# stage's probability below. The API does not return these, so /pipedrive-setup
+# asks you for them.
+stages: {}
+#  2: { name: "Discovery",  probability: 25 }
+#  3: { name: "Qualified",  probability: 40 }
+#  4: { name: "Proposal",   probability: 60 }
+
+# Maps the owner names you use in your tracker to Pipedrive user ids.
+# Build this with /pipedrive-setup (it lists your CRM's users via the API).
+owner_mapping: {}
+#  "Your Name": 12345678
+
+# Write permissions.
+# allow_create defaults to OFF deliberately: many people point Dex at a
+# SHARED corporate CRM, where an AI-created deal or organisation is a
+# governance problem. With it off, Dex can still annotate and update deals
+# that already exist (every write previewed and confirmed by you). Flip it
+# to true only if you are happy for Dex to create new deals/organisations
+# after showing you the exact payload and getting your explicit yes.
+writes:
+  allow_create: false

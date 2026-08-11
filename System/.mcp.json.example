@@ -113,6 +113,16 @@
         "VAULT_PATH": "{{VAULT_PATH}}"
       }
     },
+    "pipedrive-mcp": {
+      "type": "stdio",
+      "command": "{{VAULT_PATH}}/.venv/bin/python",
+      "args": [
+        "{{VAULT_PATH}}/core/mcp/pipedrive_server.py"
+      ],
+      "env": {
+        "VAULT_PATH": "{{VAULT_PATH}}"
+      }
+    },
     "slack-mcp": {
       "command": "npx",
       "args": ["-y", "slack-mcp"],

@@ -48,3 +48,11 @@ trello:
   enabled: false
   api_key_env_var: TRELLO_API_KEY
   token_env_var: TRELLO_TOKEN
+
+# Pipedrive CRM (run /pipedrive-setup to connect).
+# The access token lives in the macOS Keychain (service dex-pipedrive) or the
+# ignored vault-root .env file. Non-secret settings live in pipedrive.yaml
+# (template: pipedrive.yaml.example).
+pipedrive:
+  enabled: false
+  token_env_var: PIPEDRIVE_API_TOKEN
