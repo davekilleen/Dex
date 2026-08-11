@@ -7,6 +7,21 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.99.0] — 📬 Dex stops quietly pretending it searched your email (2026-08-12)
+
+If you connected Apple Mail to Dex on a Mac, there's a fair chance mail search has never once worked — and never said so. Listing and opening messages runs on one Mac permission; *searching* them needs a second, separate permission plus a one-off setup command that most people never ran. When that's missing, a search doesn't fail. It comes back empty, looking exactly like "you have no matching email." Dex then falls back to opening messages one at a time, so your daily plan looks finished while quietly missing things. The user who reported this had been running that way for months before he spotted it. Thanks to Chris Jackson for finding it and tracing why.
+
+**What this fixes for you:**
+
+* **Your checkup now catches it.** `/dex-doctor` checks mail search properly: is Apple Mail connected, was the one-off setup actually run, and is what Dex searches recent enough to trust. If any of those is wrong it says so plainly and prints the exact command that fixes it, instead of leaving you with silently empty results.
+* **Out-of-date results get flagged too, not just missing ones.** The setup can complete and then quietly go out of date, because the automatic refresh gives up without complaining when it lacks permission. If what Dex searches is more than a week old, the checkup now tells you recent mail is invisible to search — rather than letting you read an empty result as an empty inbox.
+* **A guided setup that doesn't skip the step everyone skips.** The new `/apple-mail-setup` walks you through it in the right order, including the Mac privacy setting that must be granted *before* the setup command, and why quitting and reopening Terminal is what makes it take effect. It finishes by checking the result rather than assuming it worked.
+* **If you never connected Apple Mail, nothing changes.** The checkup reports it as switched off, calmly, and never nags you about it.
+
+---
+
+---
+
 ## [1.98.0] — 🤝 Dex can work with your Pipedrive deals, and never behind your back (2026-08-11)
 
 If you keep deals in Pipedrive, you have been keeping them twice: once in the system your company reports from, and once in the notes where you actually think about the deal. The two drift apart within days, and reconciling them by hand is exactly the admin nobody does on a Friday afternoon. Chris built this to solve it for himself and offered it back.

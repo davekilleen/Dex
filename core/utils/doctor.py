@@ -646,6 +646,7 @@ DEEP_CHECKS = (
     CheckDefinition("config.meeting_sources", "Configured meeting source", "_probe_meeting_sources"),
     CheckDefinition("update.post-canary", "Post-update canary", "_probe_post_update_canary"),
     CheckDefinition("calendar.access", "Calendar access", "_probe_calendar_access"),
+    CheckDefinition("mail.apple-search", "Apple Mail search", "_probe_apple_mail_search"),
     CheckDefinition("qmd.live", "Semantic search", "_probe_qmd_live"),
     CheckDefinition("integrations.enabled", "Enabled integrations", "_probe_integrations_enabled"),
     CheckDefinition("mcp.importable", "MCP imports", "_probe_mcp_importable"),
@@ -4980,6 +4981,158 @@ def _probe_calendar_access(context: DoctorContext) -> ProbeResult:
             ),
         )
     return ProbeResult("OK", f"Calendar access works and {len(calendars)} calendar names were returned")
+
+
+APPLE_MAIL_INDEX_STALE_AFTER = timedelta(days=7)
+APPLE_MAIL_INDEX_FIX = (
+    "Run `apple-mail-mcp index` in Terminal. It needs Full Disk Access: "
+    "System Settings > Privacy & Security > Full Disk Access, add Terminal, then re-run the command."
+)
+
+
+def _apple_mail_user_scope_config(context: DoctorContext) -> dict[str, Any]:
+    """Read the user-scope MCP registrations Dex's own hook steers people towards."""
+    user_config = context.home / ".claude.json"
+    try:
+        loaded = json.loads(user_config.read_text())
+    except (FileNotFoundError, ValueError, OSError):
+        return {}
+    if not isinstance(loaded, dict):
+        return {}
+    servers = loaded.get("mcpServers")
+    return servers if isinstance(servers, dict) else {}
+
+
+def _apple_mail_registered(context: DoctorContext) -> bool:
+    """An Apple Mail server counts whether it is registered at user or project scope."""
+    entries: dict[str, Any] = dict(_apple_mail_user_scope_config(context))
+    try:
+        entries.update(_load_mcp_config(context).get("mcpServers", {}))
+    except (FileNotFoundError, ValueError, OSError):
+        pass
+    for name, entry in entries.items():
+        if "apple-mail" in name.lower().replace("_", "-"):
+            return True
+        if not isinstance(entry, dict):
+            continue
+        tokens = [str(entry.get("command", ""))]
+        tokens.extend(str(argument) for argument in entry.get("args", []) if isinstance(argument, str))
+        if any("apple-mail-mcp" in token for token in tokens):
+            return True
+    return False
+
+
+def _apple_mail_index_path(context: DoctorContext) -> Path:
+    return context.home / ".apple-mail-mcp" / "index.db"
+
+
+def _apple_mail_cli_present() -> bool:
+    return shutil.which("apple-mail-mcp") is not None
+
+
+def _probe_apple_mail_search(context: DoctorContext) -> ProbeResult:
+    """Tell the truth about Apple Mail search instead of letting it fail silently.
+
+    The community server's list/read tools work on Automation permission alone, so the
+    integration looks healthy while its search tool returns empty every time because the
+    FTS index was never built (that needs a manual run plus Full Disk Access).
+    """
+    if not _apple_mail_registered(context):
+        return ProbeResult(
+            "OFF",
+            "Apple Mail search is not connected, so it stays opt-in",
+            feature_status="off",
+        )
+    if not _is_macos():
+        return ProbeResult(
+            "UNKNOWN",
+            "An Apple Mail server is registered but its index can only be checked on macOS",
+            feature_status="unknown",
+        )
+    if not _apple_mail_cli_present():
+        return ProbeResult(
+            "BROKEN",
+            "An Apple Mail server is registered but the apple-mail-mcp command is not installed, "
+            "so mail search cannot work",
+            Heal(
+                tier=3,
+                action="Install the server with `pipx install apple-mail-mcp`, then run /apple-mail-setup.",
+                applied=False,
+            ),
+            feature_status="broken",
+            user_message=(
+                "Mail search is registered but the apple-mail-mcp command is missing. "
+                "Install it with `pipx install apple-mail-mcp`, then run /apple-mail-setup."
+            ),
+        )
+
+    index = _apple_mail_index_path(context)
+    try:
+        stat = index.stat()
+    except FileNotFoundError:
+        return ProbeResult(
+            "BROKEN",
+            "Apple Mail search has no index, so every mail search returns nothing "
+            f"(expected {index})",
+            Heal(tier=3, action=APPLE_MAIL_INDEX_FIX, applied=False),
+            feature_status="broken",
+            user_message=(
+                "Mail search has never been built, so it silently returns nothing. "
+                + APPLE_MAIL_INDEX_FIX
+            ),
+        )
+    except OSError as error:
+        detail = _one_line(error)
+        if _looks_like_sandbox_failure(detail):
+            return ProbeResult(
+                "UNKNOWN",
+                f"The sandbox blocked the Apple Mail index check: {detail}",
+                feature_status="unknown",
+            )
+        return ProbeResult(
+            "UNKNOWN",
+            f"The Apple Mail index could not be read: {detail}",
+            feature_status="unknown",
+        )
+
+    if stat.st_size == 0:
+        return ProbeResult(
+            "BROKEN",
+            f"The Apple Mail search index at {index} is empty, so every mail search returns nothing",
+            Heal(tier=3, action=APPLE_MAIL_INDEX_FIX, applied=False),
+            feature_status="broken",
+            user_message="Mail search's index is empty, so it returns nothing. " + APPLE_MAIL_INDEX_FIX,
+        )
+
+    built = datetime.fromtimestamp(stat.st_mtime, timezone.utc)
+    age = context.now - built
+    if age > APPLE_MAIL_INDEX_STALE_AFTER:
+        days = max(age.days, 1)
+        return ProbeResult(
+            "BROKEN",
+            f"The Apple Mail search index was last built {days} days ago, so recent mail is missing "
+            "from every search",
+            Heal(tier=3, action=APPLE_MAIL_INDEX_FIX, applied=False),
+            feature_status="broken",
+            user_message=(
+                f"Mail search is running on a {days}-day-old index, so recent mail is invisible to it. "
+                + APPLE_MAIL_INDEX_FIX
+            ),
+        )
+    return ProbeResult(
+        "OK",
+        f"Apple Mail search has an index built {_describe_index_age(age)}",
+        feature_status="ok",
+    )
+
+
+def _describe_index_age(age: timedelta) -> str:
+    if age.days >= 1:
+        return f"{age.days} day{'s' if age.days != 1 else ''} ago"
+    hours = int(age.total_seconds() // 3600)
+    if hours >= 1:
+        return f"{hours} hour{'s' if hours != 1 else ''} ago"
+    return "in the last hour"
 
 
 def _qmd_registered(config: dict[str, Any]) -> bool:

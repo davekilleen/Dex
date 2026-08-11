@@ -221,6 +221,7 @@ Built specifically for personal knowledge management and productivity workflows 
 - `/atlassian-setup` - Jira tickets and Confluence docs in daily plans
 - `/granola-setup` - Connect Granola for automatic meeting capture
 - `/calendar-setup` - Connect your calendar
+- `/apple-mail-setup` - Connect Apple Mail search and build the index it needs (macOS)
 - `/integrate-mcp` - Browse and connect more tools via the MCP marketplace
 
 **Career Development:**

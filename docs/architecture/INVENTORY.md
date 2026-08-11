@@ -1,6 +1,6 @@
 <!-- GENERATED FILE — DO NOT EDIT BY HAND. -->
 <!-- Generator: scripts/generate-architecture-inventory.py -->
-<!-- Content SHA-256: ee2f684fa835b3dbcd3c1fd45f87979d327a0a0c0c5e41b1b2a0683414e44886 -->
+<!-- Content SHA-256: ad2df2c3206e60e168a5e05c63ef5ded9f44396ae2aea7371e0cf43c805eff6f -->
 
 # Architecture Inventory
 
@@ -26,7 +26,7 @@ This inventory is derived only from repository code and shipped skill files.
 
 ## Skills
 
-**Skill count:** 81<br>
+**Skill count:** 82<br>
 **Discoverability-risk count:** 4
 
 A description has a trigger when its frontmatter contains the word `when` or `whenever` (case-insensitive). Length is measured in characters.
@@ -49,6 +49,7 @@ A description has a trigger when its frontmatter contains the word `when` or `wh
 | `anthropic-web-artifacts-builder` | `.claude/skills/anthropic-web-artifacts-builder/SKILL.md` | Suite of tools for creating elaborate, multi-component claude.ai HTML artifacts using modern frontend web technologies (React, Tailwind CSS, shadcn/ui). Use for complex artifacts requiring state management, routing, or shadcn/ui components - not for simple single-file HTML/JSX artifacts. | 288 | **discoverability-risk** |
 | `anthropic-webapp-testing` | `.claude/skills/anthropic-webapp-testing/SKILL.md` | Toolkit for interacting with and testing local web applications using Playwright. Supports verifying frontend functionality, debugging UI behavior, capturing browser screenshots, and viewing browser logs. | 204 | **discoverability-risk** |
 | `anthropic-xlsx` | `.claude/skills/anthropic-xlsx/SKILL.md` | Comprehensive spreadsheet creation, editing, and analysis with support for formulas, formatting, data analysis, and visualization. When Claude needs to work with spreadsheets (.xlsx, .xlsm, .csv, .tsv, etc) for: (1) Creating new spreadsheets with formulas and formatting, (2) Reading or analyzing data, (3) Modify existing spreadsheets while preserving formulas, (4) Data analysis and visualization in spreadsheets, or (5) Recalculating formulas | 445 | when |
+| `apple-mail-setup` | `.claude/skills/apple-mail-setup/SKILL.md` | Set up and verify Apple Mail search on macOS, including the search index that silently returns nothing when it was never built. Use when the user says 'connect Apple Mail', 'set up mail search', 'Dex can't find my emails', 'mail search returns nothing'. Not for Gmail or Google Workspace; use `google-workspace-setup`. | 318 | when |
 | `atlassian-setup` | `.claude/skills/atlassian-setup/SKILL.md` | Connect Jira and Confluence for project tracking and knowledge search. Use when the user says 'connect Jira', 'hook up Confluence', 'my tickets/board'. Not for a personal task app like Todoist/Things/Trello; use `todoist-setup`/`things-setup`/`trello-setup`. | 258 | when |
 | `backup-now` | `.claude/skills/backup-now/SKILL.md` | Run a vault backup right now and report the verified result. Use when the user says 'back up now', 'take a backup before I do this', or is about to make a big change. Not for scheduling or changing where backups go (`backup-setup`); not for getting files back (`backup-restore`). | 279 | when |
 | `backup-restore` | `.claude/skills/backup-restore/SKILL.md` | Verify a vault backup, prove it restores, or restore it to a folder of the user's choosing. Use when the user says 'restore my backup', 'test my backups', 'are my backups any good', or after data loss. Never overwrites the live vault. Not for taking a backup (`backup-now`); not for scheduling (`backup-setup`). | 311 | when |

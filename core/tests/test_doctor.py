@@ -68,6 +68,7 @@ DEEP_IDS = [
     "config.meeting_sources",
     "update.post-canary",
     "calendar.access",
+    "mail.apple-search",
     "qmd.live",
     "integrations.enabled",
     "mcp.importable",
@@ -3929,6 +3930,118 @@ def test_calendar_sandbox_failure_is_unknown(monkeypatch, context):
     )
 
     assert doctor._probe_calendar_access(context).verdict == "UNKNOWN"
+
+
+def _register_apple_mail_user_scope(context, name="user-apple-mail"):
+    (context.home / ".claude.json").write_text(
+        json.dumps({"mcpServers": {name: {"command": "apple-mail-mcp", "args": ["serve"]}}})
+    )
+
+
+def _write_apple_mail_index(context, *, age_days=0.0, size=4096):
+    index = context.home / ".apple-mail-mcp" / "index.db"
+    index.parent.mkdir(parents=True, exist_ok=True)
+    index.write_bytes(b"x" * size)
+    built = (context.now - timedelta(days=age_days)).timestamp()
+    os.utime(index, (built, built))
+    return index
+
+
+def test_apple_mail_search_is_off_when_no_server_is_registered(context):
+    result = doctor._probe_apple_mail_search(context)
+
+    assert result.verdict == "OFF"
+    assert result.feature_status == "off"
+    assert result.heal is None
+
+
+def test_apple_mail_search_detects_registration_at_either_scope(context):
+    _register_apple_mail_user_scope(context)
+    assert doctor._apple_mail_registered(context) is True
+
+    (context.home / ".claude.json").unlink()
+    assert doctor._apple_mail_registered(context) is False
+
+    (context.vault_root / ".mcp.json").write_text(
+        json.dumps({"mcpServers": {"mail": {"command": "pipx", "args": ["run", "apple-mail-mcp"]}}})
+    )
+    assert doctor._apple_mail_registered(context) is True
+
+
+def test_apple_mail_search_is_unknown_off_macos(monkeypatch, context):
+    _register_apple_mail_user_scope(context)
+    monkeypatch.setattr(doctor, "_is_macos", lambda: False)
+
+    result = doctor._probe_apple_mail_search(context)
+
+    assert result.verdict == "UNKNOWN"
+    assert result.feature_status == "unknown"
+
+
+def test_apple_mail_search_is_broken_when_the_command_is_missing(monkeypatch, context):
+    _register_apple_mail_user_scope(context)
+    monkeypatch.setattr(doctor, "_is_macos", lambda: True)
+    monkeypatch.setattr(doctor, "_apple_mail_cli_present", lambda: False)
+
+    result = doctor._probe_apple_mail_search(context)
+
+    assert result.verdict == "BROKEN"
+    assert result.feature_status == "broken"
+    assert "pipx install apple-mail-mcp" in result.heal.action
+
+
+def test_apple_mail_search_is_broken_when_the_index_was_never_built(monkeypatch, context):
+    """The silent failure from #446: list/read work, so search looks healthy while returning nothing."""
+    _register_apple_mail_user_scope(context)
+    monkeypatch.setattr(doctor, "_is_macos", lambda: True)
+    monkeypatch.setattr(doctor, "_apple_mail_cli_present", lambda: True)
+
+    result = doctor._probe_apple_mail_search(context)
+
+    assert result.verdict == "BROKEN"
+    assert result.feature_status == "broken"
+    assert "apple-mail-mcp index" in result.heal.action
+    assert "Full Disk Access" in result.heal.action
+    assert "returns nothing" in result.user_message
+
+
+def test_apple_mail_search_is_broken_when_the_index_is_empty(monkeypatch, context):
+    _register_apple_mail_user_scope(context)
+    monkeypatch.setattr(doctor, "_is_macos", lambda: True)
+    monkeypatch.setattr(doctor, "_apple_mail_cli_present", lambda: True)
+    _write_apple_mail_index(context, size=0)
+
+    result = doctor._probe_apple_mail_search(context)
+
+    assert result.verdict == "BROKEN"
+    assert "empty" in result.detail
+
+
+def test_apple_mail_search_is_broken_when_the_index_has_gone_stale(monkeypatch, context):
+    """Startup sync silently no-ops without Full Disk Access, so a built index quietly stales."""
+    _register_apple_mail_user_scope(context)
+    monkeypatch.setattr(doctor, "_is_macos", lambda: True)
+    monkeypatch.setattr(doctor, "_apple_mail_cli_present", lambda: True)
+    _write_apple_mail_index(context, age_days=30)
+
+    result = doctor._probe_apple_mail_search(context)
+
+    assert result.verdict == "BROKEN"
+    assert "30 days ago" in result.detail
+    assert "apple-mail-mcp index" in result.heal.action
+
+
+def test_apple_mail_search_is_ok_with_a_fresh_index(monkeypatch, context):
+    _register_apple_mail_user_scope(context)
+    monkeypatch.setattr(doctor, "_is_macos", lambda: True)
+    monkeypatch.setattr(doctor, "_apple_mail_cli_present", lambda: True)
+    _write_apple_mail_index(context, age_days=1)
+
+    result = doctor._probe_apple_mail_search(context)
+
+    assert result.verdict == "OK"
+    assert result.feature_status == "ok"
+    assert result.heal is None
 
 
 def test_calendar_permission_adapter_preserves_eventkit_status(monkeypatch, context):
