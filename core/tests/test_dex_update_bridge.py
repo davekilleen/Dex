@@ -1109,10 +1109,14 @@ def test_foundation_service_keeps_unknown_or_ambiguous_topology_fail_closed(
         lambda _name: pytest.fail("unknown topology must not select Node"),
     )
 
-    assert service.build_and_preview_topology_migration(vault) == {
-        "topology": "invalid-combined",
-        "command": None,
-    }
+    # Still fail-closed, and no Node was selected — the monkeypatched
+    # _trusted_executable above fails the test if it ever is. The refusal now
+    # names the condition instead of leaving the reader to guess which of the
+    # layout checks tripped.
+    with pytest.raises(bridge.BridgeError) as refusal:
+        service.build_and_preview_topology_migration(vault)
+    assert bridge._TOPOLOGY_MIGRATOR_RELATIVE.as_posix() in str(refusal.value)
+    assert "nothing was changed" in str(refusal.value)
 
 
 def test_foundation_service_does_not_bypass_an_unsafe_vault_migrator(
@@ -1129,10 +1133,11 @@ def test_foundation_service_does_not_bypass_an_unsafe_vault_migrator(
         lambda _root: pytest.fail("unsafe migrator must be rejected before authorization"),
     )
 
-    assert service.build_and_preview_topology_migration(vault) == {
-        "topology": "invalid-combined",
-        "command": None,
-    }
+    # Still fail-closed, and authorization was never attempted — the
+    # monkeypatched _legacy_topology_authorization above fails the test if it is.
+    with pytest.raises(bridge.BridgeError) as refusal:
+        service.build_and_preview_topology_migration(vault)
+    assert bridge._TOPOLOGY_MIGRATOR_RELATIVE.as_posix() in str(refusal.value)
 
 
 def test_foundation_service_refuses_migrator_changed_after_verification(
@@ -1558,8 +1563,21 @@ def test_legacy_delivery_reader_rejects_any_other_symlink(
 
 def test_bridge_success_copy_names_the_canonical_dex_update_command() -> None:
     source = Path(bridge.__file__).read_text(encoding="utf-8")
-    assert "future updates use /dex-update." in source
-    assert "Future updates use /dex update." not in source
+    assert "Run /dex-update" in source
+    assert "/dex update" not in source
+
+
+def test_bridge_success_copy_says_a_second_ordinary_update_is_still_needed() -> None:
+    """The bridge is stage one of two, and has to say so where it succeeds.
+
+    A completed run lands on the pinned foundation, not the current release. The
+    old line said only that "future updates use /dex-update", which reads as a
+    note about later releases rather than an instruction to run one now.
+    """
+    source = Path(bridge.__file__).read_text(encoding="utf-8")
+    assert "Stage one of two is complete" in source
+    assert bridge.FOUNDATION.version in source
+    assert "4 August 2026" in source
 
 
 def test_release_pin_rejects_a_mutable_or_incomplete_identity() -> None:
@@ -2151,3 +2169,358 @@ def test_the_bridge_can_be_started_as_a_process_by_a_stuck_user(
     # incomplete vault, it has to say something: silence after the relaunch is
     # the exact shape of the loop that shipped.
     assert completed.stderr.split(notice, 1)[1].strip()
+    # The vault's own logging must not surface in the bridge's user-facing
+    # output. This notice used to arrive through the root logger before the
+    # bridge had run a single check of its own.
+    assert "VAULT_PATH not set" not in completed.stderr
+    assert "VAULT_PATH not set" not in completed.stdout
+    # Every refusal is one plain sentence. A traceback here is a defect.
+    assert "Traceback (most recent call last)" not in completed.stderr
+
+
+def test_a_closed_stdin_stops_with_one_plain_sentence_not_a_traceback(
+    tmp_path: Path,
+) -> None:
+    """The designed dry run: run with stdin closed and read the refusal.
+
+    Running non-interactively so the bridge halts at its first gate is what the
+    rescue guidance encourages. ``input`` raises ``EOFError`` on a closed stdin,
+    which no handler caught, so the gate that promises one clear line produced a
+    stack trace instead.
+    """
+
+    def closed_stdin(_prompt: str) -> str:
+        raise EOFError
+
+    service = _Service()
+
+    with pytest.raises(bridge.BridgeError) as refusal:
+        bridge.run_bridge(
+            _vault(tmp_path),
+            service,
+            fetch_foundation=lambda _vault, _pin: pytest.fail("release fetch must not happen"),
+            input_fn=closed_stdin,
+            output_fn=lambda _line: None,
+        )
+
+    message = str(refusal.value)
+    assert "no change was made because no approval could be read" in message
+    assert "standard input" in message
+    assert service.calls == ["topology-preview"]
+
+
+def test_main_reports_a_closed_stdin_as_a_safe_stop(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """``main`` must turn the same condition into the standard stop line."""
+    vault = _vault(tmp_path)
+    monkeypatch.setattr(bridge, "_trusted_git_binary", lambda: Path("/usr/bin/git"))
+    monkeypatch.setattr(bridge, "_reexec_in_installed_runtime", lambda *_args: None)
+    monkeypatch.setattr(bridge, "_foundation_is_installed", lambda *_args: False)
+
+    def acquire() -> tuple[object, Path]:
+        raise EOFError("no approval could be read")
+
+    monkeypatch.setattr(bridge, "acquire_foundation_source", acquire)
+
+    assert bridge.main(["--vault", str(vault)]) == 1
+
+    captured = capsys.readouterr()
+    assert captured.err.strip() == (
+        "Dex update bridge stopped safely: no approval could be read"
+    )
+    assert "Traceback" not in captured.err
+
+
+def _split_topology_bytes(vault: Path, recorded: Path, installed: str) -> bytes:
+    return (
+        json.dumps(
+            {
+                "topology": "brain-vault-split",
+                "vaultGitDir": ".git",
+                "brainGitDir": ".dex/brain.git",
+                "installedRelease": installed,
+                "environment": {"DEX_VAULT": str(recorded)},
+            },
+            indent=2,
+            sort_keys=True,
+        )
+        + "\n"
+    ).encode("utf-8")
+
+
+def _relocated_completed_vault(tmp_path: Path) -> Path:
+    """A completed bridge that was then copied somewhere else."""
+    original = _completed_vault(tmp_path)
+    duplicate = tmp_path / "Documents" / "Dex"
+    duplicate.parent.mkdir(parents=True)
+    shutil.copytree(original, duplicate, symlinks=True)
+    return duplicate
+
+
+def test_repair_rewires_a_relocated_split_and_leaves_everything_else_alone(
+    tmp_path: Path,
+) -> None:
+    """A copied or moved vault is relocated runtime state, not a broken layout."""
+    duplicate = _relocated_completed_vault(tmp_path)
+    marker = duplicate / "System" / ".dex" / "topology.json"
+    before = json.loads(marker.read_text(encoding="utf-8"))
+    assert Path(before["environment"]["DEX_VAULT"]) != duplicate.resolve()
+
+    assert bridge._split_layout_failures(duplicate) == ()
+    assert bridge._repair_relocated_split(duplicate) is True
+
+    after = json.loads(marker.read_text(encoding="utf-8"))
+    assert Path(after["environment"]["DEX_VAULT"]) == duplicate.resolve()
+    assert {key: value for key, value in after.items() if key != "environment"} == {
+        key: value for key, value in before.items() if key != "environment"
+    }
+    # Repeating it is a no-op rather than a second rewrite.
+    assert bridge._repair_relocated_split(duplicate) is False
+
+
+def test_repair_is_a_no_op_for_a_vault_that_never_moved(tmp_path: Path) -> None:
+    vault = _completed_vault(tmp_path)
+    marker = vault / "System" / ".dex" / "topology.json"
+    before = marker.read_bytes()
+
+    assert bridge._repair_relocated_split(vault) is False
+    assert marker.read_bytes() == before
+
+
+def test_a_completed_bridge_resumes_after_the_vault_is_copied(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A finished install that was then copied must still resume offline.
+
+    The recorded path alone used to stop this, even though every other marker
+    agreed with the pinned foundation.
+    """
+    duplicate = _relocated_completed_vault(tmp_path)
+    monkeypatch.setattr(
+        bridge,
+        "_run_git",
+        lambda *_args, **_kwargs: bridge.FOUNDATION.commit,
+    )
+
+    bridge._validate_completed_foundation(duplicate, bridge.FOUNDATION)
+    assert bridge._foundation_is_installed(duplicate, bridge.FOUNDATION) is True
+    assert bridge._repair_relocated_split(duplicate) is True
+    bridge._validate_completed_foundation(duplicate, bridge.FOUNDATION)
+
+
+def test_a_completed_bridge_still_refuses_a_disagreeing_release_identity(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Tolerating the recorded path must not tolerate the wrong release."""
+    vault = _completed_vault(tmp_path)
+    monkeypatch.setattr(
+        bridge,
+        "_run_git",
+        lambda *_args, **_kwargs: bridge.FOUNDATION.commit,
+    )
+    _edit_bridge_topology(vault, installedRelease="d" * 40)
+
+    with pytest.raises(bridge.BridgeError) as refusal:
+        bridge._validate_completed_foundation(vault, bridge.FOUNDATION)
+    assert "records installedRelease" in str(refusal.value)
+    assert bridge.FOUNDATION.commit in str(refusal.value)
+
+    _edit_bridge_topology(vault, installedRelease=bridge.FOUNDATION.commit)
+    (vault / ".dex" / "brain.git" / "dex-brain-v2").write_text(
+        '{"role":"brain","installed":"' + "e" * 40 + '"}\n',
+        encoding="utf-8",
+    )
+    with pytest.raises(bridge.BridgeError) as refusal:
+        bridge._validate_completed_foundation(vault, bridge.FOUNDATION)
+    assert "dex-brain-v2 records installed" in str(refusal.value)
+
+
+def _edit_bridge_topology(vault: Path, **fields: object) -> None:
+    path = vault / "System" / ".dex" / "topology.json"
+    value = json.loads(path.read_text(encoding="utf-8"))
+    value.update(fields)
+    path.write_text(json.dumps(value, indent=2) + "\n", encoding="utf-8")
+
+
+# label, how to break it, the clause _split_layout_failures must name, and the
+# clause the completed-bridge validator must name (its own path and marker
+# pre-checks fire first for some breaks, and already say which file they mean).
+_BRIDGE_BREAKS: tuple[tuple[str, object, str, str], ...] = (
+    (
+        "wrong-vault-git-dir",
+        lambda vault: _edit_bridge_topology(vault, vaultGitDir=".vault.git"),
+        "records vaultGitDir '.vault.git' instead of '.git'",
+        "records vaultGitDir '.vault.git' instead of '.git'",
+    ),
+    (
+        "wrong-brain-git-dir",
+        lambda vault: _edit_bridge_topology(vault, brainGitDir=".dex/other.git"),
+        "records brainGitDir '.dex/other.git' instead of '.dex/brain.git'",
+        "records brainGitDir '.dex/other.git' instead of '.dex/brain.git'",
+    ),
+    (
+        "no-recorded-vault-path",
+        lambda vault: _edit_bridge_topology(vault, environment={}),
+        "records no environment.DEX_VAULT path",
+        "records no environment.DEX_VAULT path",
+    ),
+    (
+        "symlinked-vault-git",
+        lambda vault: (
+            shutil.rmtree(vault / ".git"),
+            (vault / "elsewhere.git").mkdir(),
+            (vault / ".git").symlink_to(vault / "elsewhere.git"),
+        ),
+        ".git is a symbolic link, which Dex refuses to follow",
+        "unsafe .git directory",
+    ),
+    (
+        "symlinked-brain-git",
+        lambda vault: (
+            shutil.rmtree(vault / ".dex" / "brain.git"),
+            (vault / ".dex" / "elsewhere.git").mkdir(),
+            (vault / ".dex" / "brain.git").symlink_to(vault / ".dex" / "elsewhere.git"),
+        ),
+        ".dex/brain.git is a symbolic link, which Dex refuses to follow",
+        "unsafe .dex/brain.git directory",
+    ),
+    (
+        "missing-brain-git",
+        lambda vault: shutil.rmtree(vault / ".dex" / "brain.git"),
+        ".dex/brain.git is missing or is not a directory",
+        "unsafe .dex/brain.git directory",
+    ),
+    (
+        "missing-vault-marker",
+        lambda vault: (vault / ".git" / "dex-vault-v2").unlink(),
+        ".git/dex-vault-v2 is missing or unreadable",
+        "vault Git marker is not a regular file",
+    ),
+    (
+        "missing-brain-marker",
+        lambda vault: (vault / ".dex" / "brain.git" / "dex-brain-v2").unlink(),
+        ".dex/brain.git/dex-brain-v2 is missing or unreadable",
+        "brain Git marker is not a regular file",
+    ),
+    (
+        "wrong-vault-marker-role",
+        lambda vault: (vault / ".git" / "dex-vault-v2").write_text(
+            '{"role":"brain"}\n', encoding="utf-8"
+        ),
+        ".git/dex-vault-v2 records role 'brain' instead of 'vault'",
+        ".git/dex-vault-v2 records role 'brain' instead of 'vault'",
+    ),
+    (
+        "wrong-brain-marker-role",
+        lambda vault: (vault / ".dex" / "brain.git" / "dex-brain-v2").write_text(
+            '{"role":"vault","installed":"'
+            + bridge.FOUNDATION.commit
+            + '"}\n',
+            encoding="utf-8",
+        ),
+        ".dex/brain.git/dex-brain-v2 records role 'vault' instead of 'brain'",
+        ".dex/brain.git/dex-brain-v2 records role 'vault' instead of 'brain'",
+    ),
+)
+
+
+@pytest.mark.parametrize(
+    ("label", "break_layout", "expected_failure", "expected_refusal"),
+    _BRIDGE_BREAKS,
+    ids=[entry[0] for entry in _BRIDGE_BREAKS],
+)
+def test_repair_refuses_every_structurally_broken_split_and_names_it(
+    tmp_path: Path,
+    label: str,
+    break_layout: object,
+    expected_failure: str,
+    expected_refusal: str,
+) -> None:
+    """Relocation is tolerable; damage is not, and each cause names itself."""
+    duplicate = _relocated_completed_vault(tmp_path)
+    break_layout(duplicate)
+    marker = duplicate / "System" / ".dex" / "topology.json"
+    before = marker.read_bytes()
+
+    failures = bridge._split_layout_failures(duplicate)
+    assert any(expected_failure in failure for failure in failures)
+    assert bridge._repair_relocated_split(duplicate) is False
+    assert marker.read_bytes() == before
+
+    with pytest.raises(bridge.BridgeError) as refusal:
+        bridge._validate_completed_foundation(duplicate, bridge.FOUNDATION)
+    assert expected_refusal in str(refusal.value)
+
+
+def test_run_bridge_rewires_a_relocated_vault_before_the_foundation_sees_it(
+    tmp_path: Path,
+) -> None:
+    """The pinned foundation shipped before relocation was understood.
+
+    It cannot be changed retroactively, so the record is put right here, before
+    the foundation service is ever handed the vault.
+    """
+    original = _vault(tmp_path)
+    (original / "System" / ".dex").mkdir()
+    (original / "System" / ".dex" / "topology.json").write_bytes(
+        _split_topology_bytes(original, original, "b" * 40)
+    )
+    (original / ".git" / "dex-vault-v2").write_text('{"role":"vault"}\n', encoding="utf-8")
+    (original / ".dex" / "brain.git" / "dex-brain-v2").write_text(
+        '{"role":"brain"}\n', encoding="utf-8"
+    )
+    duplicate = tmp_path / "Documents" / "Dex"
+    duplicate.parent.mkdir(parents=True)
+    shutil.copytree(original, duplicate, symlinks=True)
+
+    observed: list[str] = []
+
+    class _RecordingService(_SplitService):
+        def build_and_preview_topology_migration(self, vault_root: Path):
+            observed.append(
+                json.loads(
+                    (vault_root / "System/.dex/topology.json").read_text(encoding="utf-8")
+                )["environment"]["DEX_VAULT"]
+            )
+            return super().build_and_preview_topology_migration(vault_root)
+
+    bridge.run_bridge(
+        duplicate,
+        _RecordingService(),
+        fetch_foundation=lambda _vault, _pin: None,
+        input_fn=lambda _prompt: bridge._APPROVAL_WORD,
+        output_fn=lambda _line: None,
+    )
+
+    assert observed == [str(duplicate.resolve())]
+
+
+def test_the_bridge_names_the_condition_that_made_a_split_invalid(
+    tmp_path: Path,
+) -> None:
+    """The pinned foundation refuses without naming any of its conditions.
+
+    That cost a beta user an hour in engine.py. The bridge refuses first, and
+    says which condition failed.
+    """
+    adapter, engine, vault, _migrator = _foundation_topology_adapter(tmp_path)
+    (vault / "System" / ".dex").mkdir(parents=True)
+    (vault / "System" / ".dex" / "topology.json").write_bytes(
+        _split_topology_bytes(vault, vault, "c" * 40)
+    )
+    (vault / ".git" / "dex-vault-v2").write_text('{"role":"vault"}\n', encoding="utf-8")
+    # No brain marker: a genuinely broken split, not a relocated one.
+    engine.topology_state = lambda _vault_root: "invalid-split"
+
+    with adapter._topology_source():
+        with pytest.raises(bridge.BridgeError) as refusal:
+            engine.topology_state(vault)
+
+    message = str(refusal.value)
+    assert "dex-brain-v2 is missing or unreadable" in message
+    assert "nothing was changed" in message

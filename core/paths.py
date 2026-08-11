@@ -17,11 +17,18 @@ import sys
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
+# This module is a library that many entry points import, so it must not decide
+# where anyone's log output goes. Warning through the root logger did: it
+# installed a stderr handler as a side effect of being imported, and the notice
+# below then surfaced in the update bridge's own user-facing output, where it is
+# both alarming and irrelevant. A NullHandler keeps the notice available to any
+# program that configures logging, and silent in every program that does not.
+logger.addHandler(logging.NullHandler())
 
 # --- Vault root ---
 _vault_path = os.environ.get('VAULT_PATH')
 if not _vault_path:
-    logging.warning(
+    logger.warning(
         "VAULT_PATH not set — falling back to cwd(). "
         "Task ID generation may produce duplicates."
     )

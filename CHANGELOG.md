@@ -7,6 +7,22 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.94.0] — 📦 Moving your Dex folder no longer locks you out of updating (2026-08-11)
+
+Dex writes down where your vault lives. Move that folder, rename it, or work from a copy of it, and the note still points at the old place — and Dex was reading that mismatch as damage. It refused to update at all, with a message that didn't say why. A user hit this while rehearsing the rescue route on a duplicate of his own vault, and spent an hour reading Dex's code to work out which of its nine checks had failed.
+
+**What this fixes for you:**
+
+* **A vault you moved, renamed, or copied updates normally again.** Dex now treats that note for what it is — a stale reminder of where the folder used to be — and writes the new location down the next time it updates. You don't have to put the folder back, and nothing about your files or your history has to change. Anything that would signal real damage is still refused exactly as strictly as before; only the out-of-date location became forgivable.
+* **When Dex does refuse, it tells you which thing is wrong.** These refusals used to end with "Dex will not guess how to convert it" and nothing more. Each one now names the specific file or folder that didn't check out, and says what it expected to find there — so the next step is obvious in a minute rather than an hour.
+* **Trying the rescue tool without answering it no longer looks like a crash.** Starting it with its input closed — the ordinary way to watch how far it gets before you commit to anything — produced a page of programmer error text. It now stops with the same single plain sentence as every other stop, saying that nothing was changed because it couldn't read an answer.
+* **A stray warning about task numbering no longer interrupts a rescue.** The rescue tool's output opened with an alarming note that had nothing to do with updating: a different part of Dex talking over the top of it. It no longer reaches you there, and the rescue tool's own messages are unaffected.
+* **The rescue route now says up front that it takes two runs.** Finishing the rescue tool puts you on a release from 4 August, not the newest one; a second, ordinary `/dex-update` covers the rest. The guide now says that before you start and the tool says it when it finishes, instead of hinting at it afterwards.
+
+Thanks to Jim, who checked all nine conditions by hand against both his real vault and the duplicate, found that only the recorded location differed, then proved everything behind that check was sound by correcting that one line and re-running.
+
+---
+
 ## [1.93.3] — 🗣️ Tell Dex something's broken however you like (2026-08-11)
 
 Setup now promises that if something goes wrong you can just say so in your own words. That promise needed the other half: Dex reliably recognising a description of a fault as a fault. Until now it leaned on you using the words "report this" or running the command — which is exactly the homework the whole feature was built to remove.

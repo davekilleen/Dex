@@ -4,6 +4,26 @@ This page is for any Dex install whose `/dex-update` cannot complete, and for th
 assistant driving it. If you are the AI assistant inside a Dex vault reading this
 because an update failed: follow this page exactly; do not improvise beyond it.
 
+## Read this first: getting unstuck takes two runs, not one
+
+The one-time bridge on this page does not bring a stuck install up to the newest
+version of Dex. It brings it up to **v1.81.16, a release from 4 August 2026** —
+the oldest version that can then update itself the normal way. That is on
+purpose: the bridge aims at one exact release it can check thoroughly, rather
+than at a moving target.
+
+So a full rescue is two runs:
+
+1. **The bridge** (this page) gets the install to v1.81.16 and gives it a working
+   update route again. Expect up to three approval prompts.
+2. **`/dex-update`** then takes it from v1.81.16 to the current release. This is
+   the ordinary update everybody else uses, and it can be repeated any time.
+
+Finishing step 1 and stopping there is safe: nothing is broken and no notes are
+at risk — the install is simply behind. Run `/dex-update` when you are ready.
+
+If you already know you only need step 2, you do not need this page at all.
+
 ## Who this applies to
 
 **First, check the vault's shape — it decides the route.** If the vault contains a
@@ -157,9 +177,24 @@ say that later updates are the ordinary `/dex-update` route.
 relaunching into Dex's installed runtime, checking the install, fetching the
 pinned release, then building the exact preview (which can take a few minutes
 on a large vault). If it stops, it prints one line starting
-`Dex update bridge stopped safely:` explaining why. A bridge that runs for
-minutes with **no output at all** is wedged, not working — press Ctrl-C and
-report exactly what you ran and saw.
+`Dex update bridge stopped safely:` explaining why, and that line names the
+specific thing that stopped it — you should never have to guess, or read Dex's
+code, to find out. A bridge that runs for minutes with **no output at all** is
+wedged, not working — press Ctrl-C and report exactly what you ran and saw.
+
+**Running it without answering.** If you want to see how far it gets without
+changing anything, start it with its input closed
+(`python3 … --vault "$PWD" < /dev/null`). It reaches the first approval prompt,
+cannot read an answer, and stops with one line saying nothing was changed. That
+is a deliberate, safe dry run.
+
+**When it finishes.** The last line says stage one of two is complete, names the
+version now installed, and tells you to run `/dex-update` next. Do that: the
+install is working, but it is not yet on the current release.
+
+**If the vault has been moved, copied, or renamed.** That is fine. Dex records
+where the vault lives, and moving it makes that note stale; the bridge notices,
+says so, updates the note, and carries on. It does not need the folder put back.
 
 Windows is not part of this P0 bridge. Do not substitute an unverified PowerShell
 or Git command; use the supported rescue path until a Windows bridge is

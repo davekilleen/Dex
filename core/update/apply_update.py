@@ -224,6 +224,31 @@ def _verify_manifest(
         raise ReleaseVerificationError("release manifest contradicts the exact release tree")
 
 
+def _recorded_vault_path(topology: dict[str, Any]) -> str | None:
+    """Return the vault path the split marker records, if it records one.
+
+    Kept consistent with ``core.lifecycle.engine.recorded_vault_path``: the
+    marker has to record *a* path, but the value is runtime state and a moved
+    or copied vault legitimately records somewhere else.
+    """
+    environment = topology.get("environment")
+    if not isinstance(environment, dict):
+        return None
+    recorded = environment.get("DEX_VAULT")
+    return recorded if isinstance(recorded, str) and recorded else None
+
+
+def _relocated_vault(root: Path, topology: dict[str, Any]) -> bool:
+    """True when a sound split records a vault path other than this one."""
+    recorded = _recorded_vault_path(topology)
+    if recorded is None:
+        return False
+    try:
+        return Path(recorded).resolve() != root
+    except (OSError, RuntimeError):
+        return True
+
+
 def _topology(vault_root: Path) -> tuple[Path, dict[str, Any], dict[str, Any]]:
     root = Path(vault_root).resolve()
     for relative in (Path(".git"), Path(".dex"), BRAIN_RELATIVE, Path("System"), Path("System/.dex")):
@@ -234,22 +259,48 @@ def _topology(vault_root: Path) -> tuple[Path, dict[str, Any], dict[str, Any]]:
     vault_marker = _read_regular_json(root / VAULT_MARKER_RELATIVE, "vault Git marker")
     brain_git = root / BRAIN_RELATIVE
     brain_marker = _read_regular_json(brain_git / BRAIN_MARKER_NAME, "brain Git marker")
-    environment = topology.get("environment")
-    wired_vault = environment.get("DEX_VAULT") if isinstance(environment, dict) else None
-    try:
-        vault_wiring_matches = isinstance(wired_vault, str) and Path(wired_vault).resolve() == root
-    except (OSError, RuntimeError):
-        vault_wiring_matches = False
-    if (
-        topology.get("topology") != "brain-vault-split"
-        or topology.get("vaultGitDir") != ".git"
-        or topology.get("brainGitDir") != ".dex/brain.git"
-        or not vault_wiring_matches
-        or vault_marker.get("role") != "vault"
-        or brain_marker.get("role") != "brain"
-        or not brain_git.is_dir()
-    ):
-        raise UpdateError("the brain/vault split topology is incomplete or inconsistent")
+    # The recorded vault path is deliberately *not* a condition here. It is an
+    # absolute path held in runtime state, so any copied, moved, or renamed
+    # vault records somewhere else; nothing in this module reads it as a path
+    # (every path below derives from ``root``). A relocated vault is therefore
+    # sound, and _finalize_release_metadata re-records it on install. Structural
+    # damage still fails closed, and each cause now names itself.
+    failures: list[str] = []
+    if topology.get("topology") != "brain-vault-split":
+        failures.append(
+            f"{TOPOLOGY_RELATIVE.as_posix()} does not record a brain/vault split"
+        )
+    if topology.get("vaultGitDir") != ".git":
+        failures.append(
+            f"{TOPOLOGY_RELATIVE.as_posix()} records vaultGitDir "
+            f"{topology.get('vaultGitDir')!r} instead of '.git'"
+        )
+    if topology.get("brainGitDir") != ".dex/brain.git":
+        failures.append(
+            f"{TOPOLOGY_RELATIVE.as_posix()} records brainGitDir "
+            f"{topology.get('brainGitDir')!r} instead of '.dex/brain.git'"
+        )
+    if _recorded_vault_path(topology) is None:
+        failures.append(
+            f"{TOPOLOGY_RELATIVE.as_posix()} records no environment.DEX_VAULT path"
+        )
+    if vault_marker.get("role") != "vault":
+        failures.append(
+            f"{VAULT_MARKER_RELATIVE.as_posix()} records role "
+            f"{vault_marker.get('role')!r} instead of 'vault'"
+        )
+    if brain_marker.get("role") != "brain":
+        failures.append(
+            f"{BRAIN_RELATIVE.as_posix()}/{BRAIN_MARKER_NAME} records role "
+            f"{brain_marker.get('role')!r} instead of 'brain'"
+        )
+    if not brain_git.is_dir():
+        failures.append(f"{BRAIN_RELATIVE.as_posix()} is missing or is not a directory")
+    if failures:
+        raise UpdateError(
+            "the brain/vault split topology is incomplete or inconsistent: "
+            + "; ".join(failures)
+        )
     return brain_git, topology, brain_marker
 
 
@@ -465,6 +516,15 @@ def _finalize_release_metadata(
     release: VerifiedReleaseRef,
     previous_commit: str,
 ) -> None:
+    """Record the installed release, and re-record a relocated vault path.
+
+    This is the one place that legitimately rewrites the split marker, so it is
+    where a vault that was copied, moved, or renamed gets its recorded path put
+    right — the same routine-staleness repair the lifecycle activation record
+    already does. ``_topology`` has re-proved the layout by the time this runs,
+    and the existing restore-on-failure covers the extra field.
+    """
+    root = Path(vault_root).resolve()
     topology_path = vault_root / TOPOLOGY_RELATIVE
     marker_path = release.brain_git / BRAIN_MARKER_NAME
     topology = _read_regular_json(topology_path, "split topology marker")
@@ -472,6 +532,10 @@ def _finalize_release_metadata(
     previous_topology = dict(topology)
     previous_marker = dict(marker)
     topology["installedRelease"] = release.commit
+    if _relocated_vault(root, topology):
+        environment = topology.get("environment")
+        if isinstance(environment, dict):
+            topology["environment"] = {**environment, "DEX_VAULT": str(root)}
     marker["installed"] = release.commit
     try:
         _atomic_json(topology_path, topology)
