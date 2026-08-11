@@ -391,3 +391,42 @@ def test_slim_deal_flattens_nested_org_and_owner():
 
 def test_slim_deal_tolerates_non_dict():
     assert pipedrive_server._slim_deal(None) == {}
+
+
+# ---------------------------------------------------------------------------
+# SAFETY: the API token never reaches an error string
+# ---------------------------------------------------------------------------
+
+def test_network_error_does_not_leak_the_token(connected, monkeypatch):
+    """requests quotes the full URL - including ?api_token=... - in its
+    exception text. That text is returned to the model, printed by
+    /dex-doctor and written to the doctor's report file on disk."""
+    def boom(method, url, params=None, json=None, timeout=None):
+        raise pipedrive_server.requests.RequestException(
+            f"HTTPSConnectionPool(host='example.pipedrive.com', port=443): "
+            f"Max retries exceeded with url: /api/v1/users/me?api_token={params['api_token']}"
+        )
+
+    monkeypatch.setattr(pipedrive_server.requests, "request", boom)
+    payload = _decode(_call("pipedrive_status"))
+    blob = json.dumps(payload)
+    assert "env-token" not in blob
+    assert "***redacted***" in blob
+
+
+def test_api_error_body_echoing_the_token_is_redacted(connected, monkeypatch):
+    monkeypatch.setattr(
+        pipedrive_server.requests, "request",
+        lambda *a, **k: FakeResponse(status_code=400, payload={
+            "success": False, "error": "bad request for /api/v1/deals?api_token=env-token",
+        }),
+    )
+    payload = _decode(_call("pipedrive_list_deals"))
+    assert "env-token" not in json.dumps(payload)
+
+
+def test_redact_is_a_noop_without_a_token():
+    assert pipedrive_server._redact("plain text", None) == "plain text"
+
+
+# ---------------------------------------------------------------------------

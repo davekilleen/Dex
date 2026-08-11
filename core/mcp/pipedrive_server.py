@@ -308,36 +308,60 @@ def _resolve() -> Dict[str, Any]:
 # HTTP helpers
 # ---------------------------------------------------------------------------
 
+def _redact(text: Any, secret: Optional[str]) -> str:
+    """SAFETY (load-bearing): the API token must never reach a message.
+
+    Pipedrive v1 authenticates with the token in the query string, so any
+    library-level failure that quotes the URL back at us - connection
+    refused, DNS failure, read timeout, proxy error - carries the live
+    token inside its text. Those strings do not stay in memory: they are
+    returned to the model as tool output, printed by /dex-doctor, and
+    written into the doctor's report file on disk. Every error string that
+    leaves this module is scrubbed here, at the single choke point, rather
+    than at each call site where a new one could be forgotten.
+    """
+    rendered = str(text)
+    if not secret:
+        return rendered
+    return rendered.replace(secret, "***redacted***")
+
+
 def _request(method: str, path: str, env: Dict[str, Any],
              params: Optional[Dict] = None, body: Optional[Dict] = None) -> Dict[str, Any]:
     """
     Make a Pipedrive API v1 request. Auth via api_token query param
     (the documented method for personal API tokens).
-    Returns {"ok": bool, ...} and never raises.
+    Returns {"ok": bool, ...} and never raises. Every error string is
+    token-scrubbed before it is returned (see _redact).
     """
+    token = env.get("api_token")
     url = f"{env['base_url']}/api/v1/{path.lstrip('/')}"
     params = dict(params or {})
-    params["api_token"] = env["api_token"]
+    params["api_token"] = token
+
+    def _fail(message: str) -> Dict[str, Any]:
+        return {"ok": False, "error": _redact(message, token)}
+
     try:
         resp = requests.request(method, url, params=params, json=body, timeout=HTTP_TIMEOUT)
     except requests.RequestException as e:
-        return {"ok": False, "error": f"Network error calling Pipedrive: {e}"}
+        return _fail(f"Network error calling Pipedrive: {e}")
 
     if resp.status_code == 401:
-        return {"ok": False, "error": "Pipedrive auth failed (401). Token may be invalid or expired - re-run /pipedrive-setup."}
+        return _fail("Pipedrive auth failed (401). Token may be invalid or expired - re-run /pipedrive-setup.")
     if resp.status_code == 403:
-        return {"ok": False, "error": "Pipedrive denied the request (403). Your token may lack permission for this action."}
+        return _fail("Pipedrive denied the request (403). Your token may lack permission for this action.")
     if resp.status_code == 429:
-        return {"ok": False, "error": "Pipedrive rate limit hit (429). Try again in a moment."}
+        return _fail("Pipedrive rate limit hit (429). Try again in a moment.")
 
     try:
         payload = resp.json()
     except ValueError:
-        return {"ok": False, "error": f"Non-JSON response from Pipedrive (HTTP {resp.status_code})."}
+        return _fail(f"Non-JSON response from Pipedrive (HTTP {resp.status_code}).")
 
     if not resp.ok or payload.get("success") is False:
         msg = payload.get("error") or payload.get("error_info") or f"HTTP {resp.status_code}"
-        return {"ok": False, "error": f"Pipedrive API error: {msg}"}
+        return _fail(f"Pipedrive API error: {msg}")
 
     return {"ok": True, "data": payload.get("data"), "additional_data": payload.get("additional_data")}
 
