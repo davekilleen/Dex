@@ -35,7 +35,7 @@ not_started), warnings for priorities with no activity.
 ### 1.2 Calendar + Capacity
 
 ```
-Use: calendar_get_my_events(start_date="{{TARGET_DATE}}", end_date="{{TARGET_DATE_PLUS_1}}")
+Use: calendar_get_events_with_attendees(start_date="{{TARGET_DATE}}", end_date="{{TARGET_DATE_PLUS_1}}")
 Use: analyze_calendar_capacity(days_ahead=1, events=[...from above...])
 ```
 

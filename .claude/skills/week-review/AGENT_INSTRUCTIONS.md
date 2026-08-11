@@ -62,7 +62,7 @@ table.
 Check `00-Inbox/Meetings/` for this week's meeting notes, and:
 
 ```
-Use: calendar_get_my_events(start_date="{{WEEK_START_DATE}}", end_date="{{TARGET_DATE_PLUS_1}}")
+Use: calendar_get_events_with_attendees(start_date="{{WEEK_START_DATE}}", end_date="{{TARGET_DATE_PLUS_1}}")
 ```
 
 Extract: meetings held, key decisions, action items created, new contacts, and

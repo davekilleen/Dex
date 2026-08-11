@@ -142,7 +142,7 @@ remaining, and which priorities need attention tomorrow.
 Call `analyze_calendar_capacity(days_ahead=1)` and/or:
 
 ```
-calendar_get_my_events(start_date="{{TOMORROW_DATE}}", end_date="{{TOMORROW_DATE_PLUS_1}}")
+calendar_get_events_with_attendees(start_date="{{TOMORROW_DATE}}", end_date="{{TOMORROW_DATE_PLUS_1}}")
 ```
 
 Record: meeting count, free blocks, day type (stacked / moderate / open).
