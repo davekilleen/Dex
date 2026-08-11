@@ -39,6 +39,15 @@ Agent tool, using the self-contained prompt in this skill's
    a short description.
 4. Verify it wrote the draft plan to `07-Archives/Plans/YYYY-MM-DD.md`, then run
    the remaining interactive steps from its findings and present the plan.
+5. **Close out every `<!-- NEEDS TASK -->` line in the draft.** The subagent
+   never creates tasks, so a focus candidate with no existing task is written
+   without a checkbox and marked. For each one: confirm it with the user per
+   Step 6, create the task with `create_task`, then rewrite that line as a
+   `- [ ]` checkbox carrying the returned `^task-YYYYMMDD-XXX` anchor and
+   remove the marker. If the user declines, remove the marker and leave the
+   line checkbox-free. Never leave the marker in the saved plan, and never turn
+   one of these lines into a checkbox without an anchor — an anchorless
+   checkbox is invisible to completion sync forever (Step 6).
 
 The subagent inherits MCP connections, runs in its own context, and that context
 is freed when it completes, so only its findings reach this conversation.

@@ -164,10 +164,20 @@ each candidate so the main conversation can confirm or adjust the selection.
 candidate that matches a task in `03-Tasks/Tasks.md`, write it in the plan as a
 `- [ ]` checkbox line with that task's `^task-YYYYMMDD-XXX` anchor at the end of
 the same line (dash checkbox, not a numbered one; the ID never goes on its own
-line). For candidates with no existing task, do NOT create one; flag them in
-your report as "needs a task" so the main conversation can create it with the
-user's confirmation. Candidates that are not tasks at all (for example
-"protect the 2-4pm free block") get neither a checkbox nor an ID.
+line).
+
+For candidates with no existing task, do NOT create one, and **do NOT write them
+as a checkbox.** Write the line without any checkbox and end it with the literal
+marker `<!-- NEEDS TASK -->`, and flag it in your report as "needs a task".
+
+Why this matters: completion sync only matches a line holding both a checkbox and
+a `^task-...` anchor. A checkbox with no anchor never syncs in either direction,
+looks exactly like a working one, and can never be repaired after the fact
+because nothing marks it as broken. The marker is what lets the main conversation
+find the line and rewrite it once the user has confirmed the task.
+
+Candidates that are not tasks at all (for example "protect the 2-4pm free block")
+get neither a checkbox, nor an ID, nor the marker.
 
 ### Meeting Prep
 
