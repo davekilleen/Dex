@@ -1,6 +1,6 @@
 <!-- GENERATED FILE — DO NOT EDIT BY HAND. -->
 <!-- Generator: scripts/generate-architecture-inventory.py -->
-<!-- Content SHA-256: b11c8bc055791f064b96d7851e30cbb9a7c5175f696653a0e6c997f6a621b5b1 -->
+<!-- Content SHA-256: aa96f51b76c10c294521b0b4fe4db551e4a3ee2850d873317f2fdf1fa2e708e1 -->
 
 # Architecture Inventory
 
@@ -8,7 +8,7 @@ This inventory is derived only from repository code and shipped skill files.
 
 ## MCP engines
 
-**Engine count:** 10
+**Engine count:** 11
 
 | Server | Source | Tool count | `feature_status` honesty contract | Exposed tools |
 | --- | --- | ---: | :---: | --- |
@@ -19,13 +19,14 @@ This inventory is derived only from repository code and shipped skill files.
 | `dex-granola-mcp` | `core/mcp/granola_server.py` | 6 | yes | `granola_check_available`, `granola_get_extent`, `granola_get_meeting_details`, `granola_get_recent_meetings`, `granola_get_today_meetings`, `granola_search_meetings` |
 | `dex-improvements-mcp` | `core/mcp/dex_improvements_server.py` | 9 | no | `capture_idea`, `enrich_idea`, `get_backlog_stats`, `get_idea_details`, `list_ideas`, `mark_implemented`, `synthesize_changelog`, `synthesize_learnings`, `validate_backlog` |
 | `dex-onboarding-mcp` | `core/mcp/onboarding_server.py` | 15 | no | `apply_confirmed_onboarding_context`, `check_onboarding_complete`, `cleanup_qa_session`, `finalize_onboarding`, `generate_nudge_calendar`, `get_onboarding_status`, `prepare_entity_page_offer`, `preview_confirmed_onboarding_context`, `respond_to_entity_page_offer`, `run_first_week_analysis`, `save_calendar_selection`, `set_entity_creation_default`, `start_onboarding_session`, `validate_and_save_step`, `verify_dependencies` |
+| `dex-pipedrive-mcp` | `core/mcp/pipedrive_server.py` | 15 | yes | `pipedrive_add_deal_activity`, `pipedrive_add_deal_note`, `pipedrive_create_deal`, `pipedrive_create_org`, `pipedrive_find_deal`, `pipedrive_find_org`, `pipedrive_get_deal`, `pipedrive_get_mapping`, `pipedrive_get_pipeline_snapshot`, `pipedrive_list_deals`, `pipedrive_list_stages`, `pipedrive_list_users`, `pipedrive_save_mapping`, `pipedrive_status`, `pipedrive_update_deal` |
 | `dex-resume-mcp` | `core/mcp/resume_server.py` | 12 | yes | `add_role`, `compile_resume`, `export_resume`, `extract_achievements`, `generate_linkedin`, `generate_role_writeup`, `list_sessions`, `load_session`, `pull_career_evidence`, `save_session`, `start_session`, `validate_metrics` |
 | `dex-session-memory` | `core/mcp/session_memory_server.py` | 8 | no | `get_entity_timeline`, `get_observation_timeline`, `get_recent_decisions`, `get_recent_tool_usage`, `get_session_context`, `get_session_summary`, `search_observations`, `search_sessions` |
 | `dex-work-mcp` | `core/mcp/work_server.py` | 46 | yes | `analyze_calendar_capacity`, `build_company_index`, `build_people_index`, `capture_skill_rating`, `check_goal_alignment`, `check_priority_limits`, `classify_task_effort`, `complete_weekly_priority`, `confirm_goal_link`, `confirm_relationship`, `create_company`, `create_person`, `create_quarterly_goal`, `create_task`, `create_weekly_priority`, `detect_soft_commitments`, `dismiss_relationship`, `get_blocked_tasks`, `get_commitments_due`, `get_goal_status`, `get_meeting_context`, `get_pillar_summary`, `get_quarter_velocity`, `get_quarterly_goals`, `get_skill_ratings`, `get_system_status`, `get_week_priorities`, `get_week_progress`, `get_weekly_planning_context`, `get_work_summary`, `list_companies`, `list_tasks`, `lookup_person`, `migrate_quarterly_goals`, `migrate_weekly_priorities`, `process_inbox_with_dedup`, `query_meeting_cache`, `rebuild_meeting_cache`, `record_external_task_mapping`, `refresh_company`, `suggest_focus`, `suggest_task_scheduling`, `sync_external_tasks`, `sync_task_refs`, `update_goal_progress`, `update_task_status` |
 
 ## Skills
 
-**Skill count:** 76<br>
+**Skill count:** 78<br>
 **Discoverability-risk count:** 4
 
 A description has a trigger when its frontmatter contains the word `when` or `whenever` (case-insensitive). Length is measured in characters.
@@ -88,6 +89,8 @@ A description has a trigger when its frontmatter contains the word `when` or `wh
 | `meeting-closeout` | `.claude/skills/meeting-closeout/SKILL.md` | Close out the meeting you just had while it's fresh — lock the decisions, the action items and who owns each, what you personally committed to, and the single next step — then capture it and, only with your OK, turn the actions into tracked tasks. Use when the user says 'wrap up this meeting', 'close out my 3pm', 'here are my notes from the call', or right after a meeting ends. Also use proactively when the user pastes raw notes from a meeting that just happened. Not for bulk-processing many already-synced meetings; use `process-meetings`. Not for prepping a meeting that hasn't happened yet; use `meeting-prep`. | 618 | when |
 | `meeting-prep` | `.claude/skills/meeting-prep/SKILL.md` | Prepare for a specific upcoming meeting by gathering attendee context, history and related topics. Use when the user says 'prep me for my meeting with X', 'what do I need for the 2pm', or before a calendar event. Also use proactively when a meeting is imminent. Not for writing up a meeting that already happened; use `process-meetings`. | 337 | when |
 | `ms-teams-setup` | `.claude/skills/ms-teams-setup/SKILL.md` | Connect Microsoft Teams for cross-channel context awareness. Use when the user says 'connect Teams', 'hook up Microsoft'. Not for Google email/calendar; use `google-workspace-setup`. | 182 | when |
+| `pipedrive-setup` | `.claude/skills/pipedrive-setup/SKILL.md` | Connect Pipedrive CRM for a live pipeline view and confirm-gated deal updates. Use when the user says 'connect Pipedrive', 'link my CRM', 'sync my pipeline with Pipedrive'. Not for pipeline analysis without a CRM; use `pipeline-health`. Not for reconciling an already-connected CRM; use `pipeline-sync`. | 303 | when |
+| `pipeline-sync` | `.claude/skills/pipeline-sync/SKILL.md` | Live view of your Pipedrive pipeline reconciled against your local pipeline tracker; flags drift, maps focus deals, and pushes confirmed updates to the CRM. Use when the user says 'sync my pipeline', 'show me my pipeline', 'reconcile the CRM'. Not for connecting Pipedrive in the first place; use `pipedrive-setup`. | 315 | when |
 | `process-meetings` | `.claude/skills/process-meetings/SKILL.md` | Turn synced meetings into updated person pages, extracted tasks and organized notes. Use when the user says 'process my meetings', 'catch up my notes', or after Granola/Otter syncs. Also use proactively when unprocessed meetings exist. Not for prepping an upcoming meeting; use `meeting-prep`. | 293 | when |
 | `product-brief` | `.claude/skills/product-brief/SKILL.md` | Extract a product idea through guided questions and generate a PRD. Use when the user says 'write a PRD', 'spec this feature', 'turn this idea into a brief'. Not for a non-product initiative like hiring or partnerships (use `initiative-kickoff` once shipped); not for checking existing projects' status (use `project-health`). | 326 | when |
 | `project-health` | `.claude/skills/project-health/SKILL.md` | Scan active projects for status, blockers and next actions. Use when the user says 'how are my projects', 'what's stuck', 'project status'. Also use proactively when projects have gone quiet. Not for writing a spec for a new product idea; use `product-brief`. | 259 | when |
@@ -122,9 +125,10 @@ References are exact tool-name matches in skill bodies (frontmatter excluded). U
 | `dex-granola-mcp` | 4 | normal | `daily-plan` (`granola_get_recent_meetings`); `getting-started` (`granola_check_available`, `granola_get_recent_meetings`); `week-plan` (`granola_get_today_meetings`); `zoom-setup` (`granola_check_available`) |
 | `dex-improvements-mcp` | 7 | normal | `daily-plan` (`list_ideas`, `synthesize_changelog`, `synthesize_learnings`); `daily-review` (`list_ideas`); `dex-backlog` (`capture_idea`, `mark_implemented`); `dex-doctor` (`capture_idea`); `dex-level-up` (`capture_idea`); `dex-whats-new` (`synthesize_changelog`, `synthesize_learnings`); `week-review` (`list_ideas`) |
 | `dex-onboarding-mcp` | 3 | normal | `getting-started` (`check_onboarding_complete`); `reset` (`finalize_onboarding`, `start_onboarding_session`); `setup` (`start_onboarding_session`) |
+| `dex-pipedrive-mcp` | 2 | normal | `pipedrive-setup` (`pipedrive_list_stages`, `pipedrive_list_users`, `pipedrive_status`); `pipeline-sync` (`pipedrive_add_deal_activity`, `pipedrive_add_deal_note`, `pipedrive_create_deal`, `pipedrive_create_org`, `pipedrive_get_pipeline_snapshot`, `pipedrive_list_deals`, `pipedrive_save_mapping`, `pipedrive_status`, `pipedrive_update_deal`) |
 | `dex-resume-mcp` | 0 | **under-surfaced** | — |
 | `dex-session-memory` | 0 | **under-surfaced** | — |
-| `dex-work-mcp` | 11 | **over-surfaced** | `commitments` (`create_task`, `get_commitments_due`); `create-mcp` (`create_task`, `list_tasks`); `daily-plan` (`analyze_calendar_capacity`, `build_people_index`, `confirm_goal_link`, `confirm_relationship`, `create_task`, `dismiss_relationship`, `get_commitments_due`, `get_meeting_context`, `get_week_progress`, `list_tasks`, `process_inbox_with_dedup`, `record_external_task_mapping`, `suggest_task_scheduling`, `update_task_status`); `daily-review` (`analyze_calendar_capacity`, `create_task`, `get_commitments_due`, `get_meeting_context`, `get_skill_ratings`, `get_week_progress`, `list_tasks`, `update_task_status`); `initiative-kickoff` (`confirm_goal_link`, `create_task`, `get_quarterly_goals`, `lookup_person`); `meeting-closeout` (`create_task`, `get_meeting_context`, `lookup_person`); `process-meetings` (`create_person`, `create_task`, `detect_soft_commitments`, `lookup_person`); `relationship-radar` (`build_people_index`, `create_task`); `triage` (`create_task`); `week-plan` (`analyze_calendar_capacity`, `classify_task_effort`, `create_weekly_priority`, `get_commitments_due`, `get_goal_status`, `get_quarterly_goals`, `list_tasks`, `suggest_task_scheduling`); `week-review` (`get_goal_status`, `get_quarterly_goals`, `get_skill_ratings`, `get_week_progress`, `list_tasks`) |
+| `dex-work-mcp` | 12 | **over-surfaced** | `commitments` (`create_task`, `get_commitments_due`); `create-mcp` (`create_task`, `list_tasks`); `daily-plan` (`analyze_calendar_capacity`, `build_people_index`, `confirm_goal_link`, `confirm_relationship`, `create_task`, `dismiss_relationship`, `get_commitments_due`, `get_meeting_context`, `get_week_progress`, `list_tasks`, `process_inbox_with_dedup`, `record_external_task_mapping`, `suggest_task_scheduling`, `update_task_status`); `daily-review` (`analyze_calendar_capacity`, `create_task`, `get_commitments_due`, `get_meeting_context`, `get_skill_ratings`, `get_week_progress`, `list_tasks`, `update_task_status`); `initiative-kickoff` (`confirm_goal_link`, `create_task`, `get_quarterly_goals`, `lookup_person`); `meeting-closeout` (`create_task`, `get_meeting_context`, `lookup_person`); `pipeline-sync` (`capture_skill_rating`); `process-meetings` (`create_person`, `create_task`, `detect_soft_commitments`, `lookup_person`); `relationship-radar` (`build_people_index`, `create_task`); `triage` (`create_task`); `week-plan` (`analyze_calendar_capacity`, `classify_task_effort`, `create_weekly_priority`, `get_commitments_due`, `get_goal_status`, `get_quarterly_goals`, `list_tasks`, `suggest_task_scheduling`); `week-review` (`get_goal_status`, `get_quarterly_goals`, `get_skill_ratings`, `get_week_progress`, `list_tasks`) |
 
 ### Under-surfaced servers
 
@@ -135,7 +139,7 @@ References are exact tool-name matches in skill bodies (frontmatter excluded). U
 ### Over-surfaced servers
 
 - `dex-analytics` — 28 skills reference its tools.
-- `dex-work-mcp` — 11 skills reference its tools.
+- `dex-work-mcp` — 12 skills reference its tools.
 
 ## Portable ownership classes
 

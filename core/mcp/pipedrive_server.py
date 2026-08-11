@@ -99,7 +99,9 @@ KEYCHAIN_SERVICE = "dex-pipedrive"
 KEYCHAIN_ACCOUNT = "api"
 TOKEN_ENV_VAR = "PIPEDRIVE_API_TOKEN"
 
-app = Server(SERVER_NAME)
+# The architecture inventory generator reads this name statically, so it must
+# be a literal here exactly as every other shipped server declares it.
+app = Server("dex-pipedrive-mcp")
 
 
 # ---------------------------------------------------------------------------
