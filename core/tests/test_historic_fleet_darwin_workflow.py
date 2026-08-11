@@ -124,6 +124,35 @@ def test_twelve_start_pr_canary_is_release_shaped_and_cannot_publish() -> None:
     assert "GH_TOKEN" not in WORKFLOW_PATH.read_text(encoding="utf-8")
 
 
+def test_one_canary_start_runs_the_bridge_as_a_top_level_process() -> None:
+    """The gate that guards the bridge has to start the bridge.
+
+    Driving the bridge's lifecycle functions in-process leaves its whole entry
+    path -- environment scrub, relaunch into the vault runtime, clean-runtime
+    check -- unexecuted, which is where two consecutive user-blocking defects
+    shipped through a green canary.
+    """
+
+    source = RUNNER_PATH.read_text(encoding="utf-8")
+    designated = re.search(
+        r'^BRIDGE_PROCESS_ENTRY_START="(?P<start>[^"]+)"$', source, re.MULTILINE
+    )
+    assert designated is not None
+    canary_block = re.search(
+        r'^CANARY_STARTS=\(\n(?P<body>(?:  "[^"]+"\n)+)\)$',
+        source,
+        re.MULTILINE,
+    )
+    assert canary_block is not None
+    canary_starts = re.findall(
+        r'^  "([^"]+)"$', canary_block.group("body"), re.MULTILINE
+    )
+    assert designated.group("start") in canary_starts
+    # Exactly one bounded process run, not a thirteenth journey.
+    assert source.count("--bridge-process-entry") == 1
+    assert "--bridge-process-entry" not in source.split("run_canary()", 1)[0]
+
+
 def test_formal_runner_freezes_public_cohort_and_retains_exact_counts() -> None:
     source = RUNNER_PATH.read_text(encoding="utf-8")
     assert 'PINNED_FOUNDATION_TAG="dist/release/v1.81.16-281202d"' in source

@@ -122,6 +122,18 @@ MINIMUM_SUPPORTED_PYTHON = (3, 10)
 PROCESS_GROUP_TERMINATION_GRACE_SECONDS = 1.0
 FIXTURE_REQUIRED_PYTHON_DEPENDENCIES = ("mcp", "yaml")
 PRE_BRIDGE_REQUIRED_PYTHON_DEPENDENCIES = ("yaml",)
+# The journeys drive the bridge's lifecycle functions in-process, so nothing in
+# the fleet ever started the published bridge the way a stuck user starts it:
+# as a top-level process that has to scrub its environment and relaunch itself
+# inside the vault's own virtualenv before it may load any foundation code. Two
+# consecutive user-blocking defects lived entirely in that entry path -- an
+# unbounded relaunch loop that burned CPU in silence, then a clean-runtime
+# refusal that could never pass -- and both shipped through a green fleet.
+BRIDGE_PROCESS_ENTRY_NOTICE = "Relaunching inside Dex's installed runtime..."
+BRIDGE_PROCESS_ENTRY_REFUSAL = "could not be entered cleanly"
+BRIDGE_PROCESS_ENTRY_TIMEOUT_SECONDS = 600
+BRIDGE_PROCESS_ENTRY_RETAINED_BYTES = 256 * 1024
+BRIDGE_PROCESS_ENTRY_SUFFIX = ".bridge-process-entry"
 SEALED_INSTALLER_ENVIRONMENT_KEYS = frozenset(
     {
         "HOME",
@@ -1254,6 +1266,7 @@ def _run_bounded_process_group(
     cwd: Path,
     environment: Mapping[str, str],
     timeout_seconds: float,
+    stdin: int | None = None,
 ) -> subprocess.CompletedProcess[str]:
     """Run one trusted fixture command and leave no same-group timeout descendants."""
 
@@ -1263,6 +1276,7 @@ def _run_bounded_process_group(
         list(command),
         cwd=cwd,
         env=dict(environment),
+        stdin=stdin,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
@@ -2144,6 +2158,132 @@ def _verify_standalone_bridge_asset(
     }
 
 
+def _retained_tail(text: str) -> str:
+    """Keep the end of a captured stream inside a fixed evidence bound."""
+
+    if len(text) <= BRIDGE_PROCESS_ENTRY_RETAINED_BYTES:
+        return text
+    return text[-BRIDGE_PROCESS_ENTRY_RETAINED_BYTES:]
+
+
+def assert_bridge_process_entry(
+    evidence: Mapping[str, object],
+    *,
+    approval_word: str,
+) -> None:
+    """Refuse a released bridge that a stuck user cannot actually start.
+
+    The stuck user's whole experience of this path is one command and whatever
+    it prints. Every check below is that experience: the process has to finish,
+    it has to relaunch itself exactly once into the vault runtime, it must never
+    stop on a runtime-entry refusal, and it has to print the first approval gate
+    rather than nothing at all. Silence was the reported symptom of the relaunch
+    loop, so an empty stream is a failure in its own right.
+    """
+
+    problems: list[str] = []
+    if evidence.get("timed_out"):
+        problems.append(
+            "it never finished within "
+            f"{evidence.get('timeout_seconds')}s, which is how an unbounded "
+            "relaunch loop presents"
+        )
+    if evidence.get("runtime_entry_refused"):
+        problems.append("it stopped on a clean-runtime entry refusal")
+    notices = evidence.get("relaunch_notice_count")
+    if notices != 1:
+        problems.append(
+            f"it announced {notices} relaunches into the installed runtime instead of exactly one"
+        )
+    if not evidence.get("produced_output"):
+        problems.append("it produced no output at all")
+    if not evidence.get("reached_approval_gate"):
+        problems.append(f"it never reached the first {approval_word} gate")
+    if not problems:
+        return
+    raise FleetError(
+        "the released bridge asset could not be started the way a stuck user starts it: "
+        + "; ".join(problems)
+        + f" | exit={evidence.get('exit_code')!r}"
+        + f" | stdout tail: {str(evidence.get('stdout', ''))[-2000:]!r}"
+        + f" | stderr tail: {str(evidence.get('stderr', ''))[-2000:]!r}"
+    )
+
+
+def probe_bridge_process_entry(
+    *,
+    vault: Path,
+    bridge_asset: Path,
+    python_runtime: PythonRuntime,
+    environment: Mapping[str, str],
+    approval_word: str,
+    evidence_root: Path,
+) -> dict[str, object]:
+    """Start the published bridge as a top-level process against a real vault.
+
+    This is deliberately the published asset, launched from the vault root with
+    ``--vault`` and with stdin closed, so it runs the whole entry path -- the
+    environment scrub, the ``execve`` into the vault virtualenv, and the
+    clean-runtime equality check -- and then halts at the first approval gate
+    without changing anything. The asset stays outside the vault so the fixture
+    that the journey is about to update is not given an extra untracked file.
+    """
+
+    command = [
+        str(python_runtime.requested_python),
+        str(bridge_asset),
+        "--vault",
+        str(vault),
+    ]
+    timed_out = False
+    exit_code: int | None = None
+    try:
+        completed = _run_bounded_process_group(
+            command,
+            cwd=vault,
+            environment=environment,
+            timeout_seconds=BRIDGE_PROCESS_ENTRY_TIMEOUT_SECONDS,
+            stdin=subprocess.DEVNULL,
+        )
+        stdout = completed.stdout or ""
+        stderr = completed.stderr or ""
+        exit_code = completed.returncode
+    except subprocess.TimeoutExpired as error:
+        timed_out = True
+        stdout = error.stdout if isinstance(error.stdout, str) else ""
+        stderr = error.stderr if isinstance(error.stderr, str) else ""
+    evidence: dict[str, object] = {
+        "schema_version": 1,
+        "command": [str(bridge_asset.name), "--vault", str(vault)],
+        "interpreter": str(python_runtime.requested_python),
+        "working_directory": str(vault),
+        "stdin": "closed",
+        "timeout_seconds": BRIDGE_PROCESS_ENTRY_TIMEOUT_SECONDS,
+        "timed_out": timed_out,
+        "exit_code": exit_code,
+        "relaunch_notice_count": stderr.count(BRIDGE_PROCESS_ENTRY_NOTICE),
+        "runtime_entry_refused": BRIDGE_PROCESS_ENTRY_REFUSAL in stderr,
+        "reached_approval_gate": f"Type {approval_word} to continue:" in stdout,
+        "produced_output": bool(stdout.strip()),
+        "stdout_bytes": len(stdout),
+        "stderr_bytes": len(stderr),
+        "stdout": _retained_tail(stdout),
+        "stderr": _retained_tail(stderr),
+    }
+    # Retain the streams even when the assertion below fails: silence was the
+    # original symptom, so the captured output is the evidence that matters.
+    evidence_root.mkdir(mode=0o700, parents=True, exist_ok=True)
+    (evidence_root / "bridge-process-entry-stdout.txt").write_text(
+        _retained_tail(stdout), encoding="utf-8"
+    )
+    (evidence_root / "bridge-process-entry-stderr.txt").write_text(
+        _retained_tail(stderr), encoding="utf-8"
+    )
+    _write_json(evidence_root / "bridge-process-entry.json", evidence)
+    assert_bridge_process_entry(evidence, approval_word=approval_word)
+    return evidence
+
+
 def run_case_executor(
     starting_tag: str,
     executor: Callable[..., object],
@@ -2181,6 +2321,7 @@ def run_journey(
     bridge_checksum: Path | None = None,
     controlled_approvals: bool = False,
     follow_up_cache: Path | None = None,
+    bridge_process_entry: bool = False,
 ) -> object:
     """Build one fixture and delegate the closed journey to its released executor."""
 
@@ -2282,6 +2423,19 @@ def run_journey(
             trusted_python=python_runtime,
             required_dependencies=PRE_BRIDGE_REQUIRED_PYTHON_DEPENDENCIES,
         )
+        if bridge_process_entry:
+            # Read-only: the run stops at the first approval gate, so the vault
+            # the journey is about to update is left exactly as installed. Its
+            # evidence lives beside the fixture rather than inside the sealed
+            # journey evidence the executor owns.
+            probe_bridge_process_entry(
+                vault=case.vault,
+                bridge_asset=bridge_asset.resolve(strict=True),
+                python_runtime=python_runtime,
+                environment=environment,
+                approval_word=protocol.bridge.approval_word,
+                evidence_root=output / f"{case_name}{BRIDGE_PROCESS_ENTRY_SUFFIX}",
+            )
         initial_install_evidence = _initial_install_evidence(case.vault, environment)
         from scripts import release_fleet_executor
 
@@ -2886,6 +3040,15 @@ def main(argv: Sequence[str] | None = None) -> int:
         action="store_true",
         help="approve only the disposable fixture used by a controlled fleet run",
     )
+    journey.add_argument(
+        "--bridge-process-entry",
+        action="store_true",
+        help=(
+            "before the journey, start the published bridge asset as a top-level "
+            "process against this fixture and require it to reach its first "
+            "approval gate"
+        ),
+    )
     args = parser.parse_args(argv)
 
     if args.command == "manifest":
@@ -2926,6 +3089,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             bridge_checksum=args.bridge_checksum,
             controlled_approvals=args.controlled_approvals,
             follow_up_cache=args.follow_up_cache,
+            bridge_process_entry=args.bridge_process_entry,
         )
         print(
             json.dumps(
