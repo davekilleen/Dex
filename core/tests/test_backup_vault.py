@@ -213,7 +213,7 @@ def test_config_without_yaml_module_still_parses(monkeypatch):
         "backup:\n"
         "  enabled: true\n"
         "  backend: folder  # a comment\n"
-        "  destination: '/Users/pat/OneDrive/Dex Backups'\n"
+        "  destination: '/Users/alice/OneDrive/Dex Backups'\n"
         "  retention:\n"
         "    daily: 5\n"
         "    weekly: 2\n"
@@ -224,7 +224,7 @@ def test_config_without_yaml_module_still_parses(monkeypatch):
     block = backup_vault.parse_backup_block_without_yaml(text)
     assert block["enabled"] == "true"
     assert block["backend"] == "folder"
-    assert block["destination"] == "/Users/pat/OneDrive/Dex Backups"
+    assert block["destination"] == "/Users/alice/OneDrive/Dex Backups"
     assert block["retention"] == {"daily": "5", "weekly": "2"}
 
 
