@@ -308,6 +308,7 @@ jobs:
       contents: write
     outputs:
       release_sha: ${{ steps.release_guard.outputs.release_sha || steps.release_build.outputs.release_sha }}
+      already_published: ${{ steps.release_guard.outputs.already_published }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -370,6 +371,31 @@ jobs:
       - name: Build self-contained vault bundle
         if: steps.release_guard.outputs.already_published != 'true'
         run: bash scripts/build-vault-bundle.sh
+      - name: Generate signed Dex Lens catalog
+        if: steps.release_guard.outputs.already_published != 'true' && vars.DEX_LENS_CATALOG_RELEASE_GATE_ENABLED == 'true'
+        env:
+          # Front Desk release review and Lens M1 verifier confirmation are required before
+          # setting DEX_LENS_CATALOG_RELEASE_GATE_ENABLED=true for a live release.
+          # The value must be a base64-encoded Ed25519 PEM private key stored as an
+          # environment secret; no generated private key belongs in the repo.
+          DEX_LENS_CATALOG_ED25519_PRIVATE_KEY_B64: ${{ secrets.DEX_LENS_CATALOG_ED25519_PRIVATE_KEY_B64 }}
+        run: |
+          python3 -m pip install 'cryptography>=42'
+          python3 scripts/generate-dex-lens-catalog.py \
+            --release-root "$PWD" \
+            --output-dir dist \
+            --sign \
+            --key-id dex-core-lens-1
+      - name: Upload Dex Lens catalog for Pages
+        if: steps.release_guard.outputs.already_published != 'true' && vars.DEX_LENS_CATALOG_RELEASE_GATE_ENABLED == 'true'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
+        with:
+          name: dex-lens-catalog-pages
+          path: |
+            dist/dex-lens-catalog-latest.json
+            dist/dex-lens-catalog-latest.json.sha256
+          if-no-files-found: error
+          retention-days: 1
       - name: Upload vault bundle to versioned GitHub Release
         if: steps.release_guard.outputs.already_published != 'true'
         env:
@@ -390,6 +416,16 @@ jobs:
             "dist/dex-vault-bundle-v$VERSION.tar.gz.sha256" \
             "dist/dex-update-bridge-v$VERSION.py" \
             "dist/dex-update-bridge-v$VERSION.py.sha256" \
+            --clobber
+      - name: Upload Dex Lens catalog to versioned GitHub Release
+        if: steps.release_guard.outputs.already_published != 'true' && vars.DEX_LENS_CATALOG_RELEASE_GATE_ENABLED == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION="$(node -p "require('./package.json').version")"
+          gh release upload "v$VERSION" \
+            "dist/dex-lens-catalog-v$VERSION.json" \
+            "dist/dex-lens-catalog-v$VERSION.json.sha256" \
             --clobber
 
   build-release-beta:
@@ -481,11 +517,18 @@ jobs:
         with:
           name: release-health-inputs
           path: .
+      - name: Download Dex Lens latest catalog
+        if: needs['build-release'].outputs.already_published != 'true' && vars.DEX_LENS_CATALOG_RELEASE_GATE_ENABLED == 'true'
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093  # v4
+        with:
+          name: dex-lens-catalog-pages
+          path: dex-lens-catalog-pages
       - name: Build release health page
         env:
           SOURCE_SHA: ${{ github.sha }}
           RELEASE_SHA: ${{ needs['build-release'].outputs.release_sha }}
         run: |
+          mkdir -p public
           python scripts/build-health-json.py \
             --source-sha "$SOURCE_SHA" \
             --release-sha "$RELEASE_SHA" \
@@ -493,6 +536,10 @@ jobs:
             --quality-conclusion success \
             --output health.json
           python scripts/render-health-page.py --input health.json --output public/health.html
+          if [ -f dex-lens-catalog-pages/dex-lens-catalog-latest.json ]; then
+            cp dex-lens-catalog-pages/dex-lens-catalog-latest.json public/dex-lens-catalog-latest.json
+            cp dex-lens-catalog-pages/dex-lens-catalog-latest.json.sha256 public/dex-lens-catalog-latest.json.sha256
+          fi
       - name: Configure GitHub Pages
         id: pages
         continue-on-error: true
