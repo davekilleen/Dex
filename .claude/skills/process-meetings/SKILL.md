@@ -72,6 +72,20 @@ and reports the exact failing line. Surface those lines rather than burying
 them: an unstamped meeting is the safe state, but it stays flagged as waiting
 until someone resolves it.
 
+**The report is a claim, not evidence — check it before repeating it.** This
+subagent writes to the vault, and its summary states counts the user will act
+on. Before displaying it, verify the claims cheaply against the vault:
+
+- Every task it says it created: confirm the ID appears in `03-Tasks/Tasks.md`
+  (`list_tasks`, or read the file).
+- Every meeting it says it stamped: confirm the `tasks-extracted` marker is
+  actually in that note.
+- Every person or company page it says it created: confirm the file exists.
+
+If a claim does not hold, say so plainly in the summary you present and treat
+that meeting as unprocessed. Never pass an unverified count to the user as fact,
+and never repeat "processing complete" on the strength of the report alone.
+
 # Process Meetings
 
 Process meetings that have been synced from Granola by the background automation. Updates person pages, extracts tasks, and organizes meeting notes.

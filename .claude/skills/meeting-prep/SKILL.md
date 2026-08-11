@@ -30,6 +30,11 @@ Agent tool, using the self-contained prompt in this skill's
    a short description.
 4. Present its findings as the prep brief, in the Output Format below.
 
+Spot-check before presenting: the brief names person pages, projects and past
+meetings. Confirm a sample of those files actually exist before repeating their
+content to the user, and drop anything you cannot stand behind. A subagent's
+report is a claim, not evidence.
+
 The subagent inherits MCP connections, runs in its own context, and that context
 is freed when it completes, so only its findings reach this conversation.
 
