@@ -12,10 +12,13 @@ Design:
   The user's local pipeline tracker note owns STRATEGY + the focus list.
 - Reconciliation logic lives in the /pipeline-sync skill, NOT here.
   This server stays a thin, well-behaved API client.
-- SAFETY (load-bearing, do not remove): every write tool supports
-  dry_run=True so the skill layer can show the exact payload before
-  anything hits a shared corporate CRM. The skill layer confirm-gates
-  every write on an explicit user yes.
+- SAFETY (load-bearing, do not remove): every write tool previews by
+  DEFAULT. dry_run defaults to True, so a call that omits it returns the
+  exact payload and sends nothing; writing to a shared corporate CRM
+  requires the caller to pass dry_run=false deliberately, after the skill
+  layer has shown that payload and the user has said yes. The default is
+  the gate: an ambiguous instruction, a retry or a stray sync pass costs a
+  wasted preview rather than an unapproved write.
 - SAFETY (load-bearing): record creation is opt-in. The create tools
   (pipedrive_create_deal, pipedrive_create_org) are gated behind
   writes.allow_create in System/integrations/pipedrive.yaml and that
@@ -533,7 +536,7 @@ async def handle_list_tools() -> List[types.Tool]:
                 "properties": {
                     "deal_id": {"type": "integer"},
                     "content": {"type": "string", "description": "Note content (plain text or simple HTML)"},
-                    "dry_run": {"type": "boolean", "description": "If true, return the payload without sending. Default false."},
+                    "dry_run": {"type": "boolean", "description": "Preview only. DEFAULTS TO TRUE: omitting this returns the exact payload and sends nothing. To actually write to the CRM you must pass dry_run=false explicitly, after the user has approved that specific payload."},
                 },
                 "required": ["deal_id", "content"],
             },
@@ -550,7 +553,7 @@ async def handle_list_tools() -> List[types.Tool]:
                     "type": {"type": "string", "description": "Activity type key (e.g. task, call, meeting, email). Default 'task'."},
                     "note": {"type": "string", "description": "Optional activity note"},
                     "done": {"type": "boolean", "description": "Mark the activity complete on creation. Use true for already-held meetings/calls (avoids a false 'overdue' on a past due_date); false (default) for a genuinely upcoming/scheduled activity."},
-                    "dry_run": {"type": "boolean", "description": "If true, return the payload without sending. Default false."},
+                    "dry_run": {"type": "boolean", "description": "Preview only. DEFAULTS TO TRUE: omitting this returns the exact payload and sends nothing. To actually write to the CRM you must pass dry_run=false explicitly, after the user has approved that specific payload."},
                 },
                 "required": ["deal_id", "subject"],
             },
@@ -570,7 +573,7 @@ async def handle_list_tools() -> List[types.Tool]:
                     "probability": {"type": "number"},
                     "owner_id": {"type": "integer", "description": "Pipedrive user id to own the deal"},
                     "expected_close_date": {"type": "string", "description": "YYYY-MM-DD"},
-                    "dry_run": {"type": "boolean", "description": "If true, return the payload without sending. Default false."},
+                    "dry_run": {"type": "boolean", "description": "Preview only. DEFAULTS TO TRUE: omitting this returns the exact payload and sends nothing. To actually write to the CRM you must pass dry_run=false explicitly, after the user has approved that specific payload."},
                 },
                 "required": ["title"],
             },
@@ -582,7 +585,7 @@ async def handle_list_tools() -> List[types.Tool]:
                 "type": "object",
                 "properties": {
                     "name": {"type": "string", "description": "Organization name"},
-                    "dry_run": {"type": "boolean", "description": "If true, return the payload without sending. Default false."},
+                    "dry_run": {"type": "boolean", "description": "Preview only. DEFAULTS TO TRUE: omitting this returns the exact payload and sends nothing. To actually write to the CRM you must pass dry_run=false explicitly, after the user has approved that specific payload."},
                 },
                 "required": ["name"],
             },
@@ -598,7 +601,7 @@ async def handle_list_tools() -> List[types.Tool]:
                         "type": "object",
                         "description": "Subset of: stage_id, value, currency, probability, expected_close_date, user_id, status",
                     },
-                    "dry_run": {"type": "boolean", "description": "If true, return the payload without sending. Default false."},
+                    "dry_run": {"type": "boolean", "description": "Preview only. DEFAULTS TO TRUE: omitting this returns the exact payload and sends nothing. To actually write to the CRM you must pass dry_run=false explicitly, after the user has approved that specific payload."},
                 },
                 "required": ["deal_id", "fields"],
             },
@@ -616,6 +619,28 @@ WRITABLE_DEAL_FIELDS = {
     "stage_id", "value", "currency", "probability",
     "expected_close_date", "user_id", "status",
 }
+
+# SAFETY (load-bearing): 'status' is a writable field because moving a deal to
+# won or lost is ordinary pipeline upkeep. Pipedrive also accepts the value
+# 'deleted' on that same field, which removes the deal from the CRM - a
+# destructive action dressed up as a field update, and one no part of Dex has
+# any business performing on a shared corporate CRM. Only these three values
+# are ever sent.
+WRITABLE_DEAL_STATUSES = {"open", "won", "lost"}
+
+
+def _is_dry_run(args: Dict[str, Any]) -> bool:
+    """SAFETY (load-bearing): previewing is the DEFAULT; sending is explicit.
+
+    Every write tool is confirm-gated, and the gate is only as strong as
+    what happens when the parameter is forgotten. Defaulting to False would
+    mean an ambiguous instruction, a retry, or a sync pass that simply omits
+    'dry_run' writes straight to the user's live CRM. Defaulting to True
+    inverts that: a forgotten parameter costs a wasted preview, never an
+    unapproved write. Sending requires the caller to pass dry_run=false,
+    which is exactly what the /pipeline-sync flow does after the user's yes.
+    """
+    return args.get("dry_run", True) is not False
 
 
 @app.call_tool()
@@ -761,7 +786,7 @@ async def handle_call_tool(name: str, arguments: dict) -> List[types.TextContent
         body = {"deal_id": args.get("deal_id"), "content": args.get("content", "")}
         # SAFETY (load-bearing): dry_run returns the exact payload with NO
         # HTTP call, so the skill layer can show it and get an explicit yes.
-        if args.get("dry_run"):
+        if _is_dry_run(args):
             return _text({"dry_run": True, "method": "POST", "endpoint": "notes", "payload": body})
         r = _request("POST", "notes", env, body=body)
         if not r["ok"]:
@@ -780,7 +805,7 @@ async def handle_call_tool(name: str, arguments: dict) -> List[types.TextContent
         if args.get("note"):
             body["note"] = args["note"]
         # SAFETY (load-bearing): see pipedrive_add_deal_note.
-        if args.get("dry_run"):
+        if _is_dry_run(args):
             return _text({"dry_run": True, "method": "POST", "endpoint": "activities", "payload": body})
         r = _request("POST", "activities", env, body=body)
         if not r["ok"]:
@@ -804,7 +829,7 @@ async def handle_call_tool(name: str, arguments: dict) -> List[types.TextContent
             body["user_id"] = args["owner_id"]
         # SAFETY (load-bearing): dry_run returns the exact payload with NO
         # HTTP call, so the skill layer can show it and get an explicit yes.
-        if args.get("dry_run"):
+        if _is_dry_run(args):
             return _text({"dry_run": True, "method": "POST", "endpoint": "deals", "payload": body})
         # Resolve org_name -> org_id only at real-send time (search is a read).
         if "org_name" in body and "org_id" not in body:
@@ -830,7 +855,7 @@ async def handle_call_tool(name: str, arguments: dict) -> List[types.TextContent
         if not _creates_allowed(env["config"]):
             return _text(feature_status(FEATURE_NAME, "off", CREATE_DISABLED_MESSAGE))
         body = {"name": args.get("name")}
-        if args.get("dry_run"):
+        if _is_dry_run(args):
             return _text({"dry_run": True, "method": "POST", "endpoint": "organizations", "payload": body})
         r = _request("POST", "organizations", env, body=body)
         if not r["ok"]:
@@ -843,10 +868,18 @@ async def handle_call_tool(name: str, arguments: dict) -> List[types.TextContent
         raw_fields = args.get("fields", {}) or {}
         fields = {k: v for k, v in raw_fields.items() if k in WRITABLE_DEAL_FIELDS}
         rejected = [k for k in raw_fields if k not in WRITABLE_DEAL_FIELDS]
+        # SAFETY (load-bearing): refuse destructive status values outright,
+        # before a payload is even previewed. See WRITABLE_DEAL_STATUSES.
+        if "status" in fields and fields["status"] not in WRITABLE_DEAL_STATUSES:
+            return _text({"ok": False, "error": (
+                f"Refusing to set deal status to '{fields['status']}'. Dex will only "
+                f"set status to one of {sorted(WRITABLE_DEAL_STATUSES)}; deleting or "
+                "archiving a deal is not something Dex does on your behalf - do it in "
+                "Pipedrive yourself if you mean it.")})
         if not fields:
             return _text({"ok": False, "error": f"No writable fields provided. Allowed: {sorted(WRITABLE_DEAL_FIELDS)}"})
         # SAFETY (load-bearing): see pipedrive_add_deal_note.
-        if args.get("dry_run"):
+        if _is_dry_run(args):
             return _text({"dry_run": True, "method": "PUT", "endpoint": f"deals/{deal_id}",
                           "payload": fields, "rejected_fields": rejected})
         r = _request("PUT", f"deals/{deal_id}", env, body=fields)

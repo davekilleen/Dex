@@ -275,7 +275,7 @@ def test_update_deal_rejects_all_unwritable_fields(connected, http):
 
 def test_add_note_real_send_posts_once(connected, http):
     payload = _decode(_call("pipedrive_add_deal_note", {
-        "deal_id": 12, "content": "Meeting summary",
+        "deal_id": 12, "content": "Meeting summary", "dry_run": False,
     }))
     assert payload["ok"] is True
     assert payload["note_id"] == 7
@@ -329,7 +329,9 @@ def test_create_deal_gate_on_dry_run_payload(connected, http):
 
 def test_create_deal_gate_on_real_send(connected, http):
     _enable_creation(connected)
-    payload = _decode(_call("pipedrive_create_deal", {"title": "New Deal", "org_id": 9}))
+    payload = _decode(_call("pipedrive_create_deal", {
+        "title": "New Deal", "org_id": 9, "dry_run": False,
+    }))
     assert payload["ok"] is True
     assert len(http) == 1
     assert http[0]["url"].endswith("/api/v1/deals")
@@ -342,7 +344,7 @@ def test_create_org_gate_on_dry_run_and_send(connected, http):
     assert dry == {"dry_run": True, "method": "POST", "endpoint": "organizations",
                    "payload": {"name": "Acme"}}
     assert http == []
-    sent = _decode(_call("pipedrive_create_org", {"name": "Acme"}))
+    sent = _decode(_call("pipedrive_create_org", {"name": "Acme", "dry_run": False}))
     assert sent["ok"] is True
     assert sent["org_id"] == 7
     assert len(http) == 1
@@ -394,6 +396,52 @@ def test_slim_deal_tolerates_non_dict():
 
 
 # ---------------------------------------------------------------------------
+# SAFETY: previewing is the default, so a forgotten parameter cannot write
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize("tool,arguments", [
+    ("pipedrive_add_deal_note", {"deal_id": 12, "content": "Meeting summary"}),
+    ("pipedrive_add_deal_activity", {"deal_id": 12, "subject": "Follow up"}),
+    ("pipedrive_update_deal", {"deal_id": 12, "fields": {"value": 250000}}),
+])
+def test_write_tools_preview_when_dry_run_is_omitted(connected, http, tool, arguments):
+    """Omitting dry_run must preview, never send. The confirm gate is only as
+    strong as the behaviour when the model forgets the parameter."""
+    payload = _decode(_call(tool, arguments))
+    assert payload["dry_run"] is True
+    assert http == []
+
+
+@pytest.mark.parametrize("tool,arguments", [
+    ("pipedrive_create_deal", {"title": "New Deal", "org_id": 9}),
+    ("pipedrive_create_org", {"name": "Acme"}),
+])
+def test_create_tools_preview_when_dry_run_is_omitted(connected, http, tool, arguments):
+    _enable_creation(connected)
+    payload = _decode(_call(tool, arguments))
+    assert payload["dry_run"] is True
+    assert http == []
+
+
+def test_explicit_false_still_sends(connected, http):
+    """The documented flow - preview, get a yes, send - must keep working."""
+    payload = _decode(_call("pipedrive_add_deal_note", {
+        "deal_id": 12, "content": "Summary", "dry_run": False,
+    }))
+    assert payload["ok"] is True
+    assert len(http) == 1
+
+
+def test_truthy_non_boolean_dry_run_is_treated_as_preview(connected, http):
+    """Anything that is not an explicit False previews (fail safe)."""
+    payload = _decode(_call("pipedrive_add_deal_note", {
+        "deal_id": 12, "content": "Summary", "dry_run": "false",
+    }))
+    assert payload["dry_run"] is True
+    assert http == []
+
+
+# ---------------------------------------------------------------------------
 # SAFETY: the API token never reaches an error string
 # ---------------------------------------------------------------------------
 
@@ -430,3 +478,23 @@ def test_redact_is_a_noop_without_a_token():
 
 
 # ---------------------------------------------------------------------------
+# SAFETY: a whitelisted field must not become a delete button
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize("status", ["deleted", "DELETED", "archived"])
+def test_update_deal_refuses_destructive_status_values(connected, http, status):
+    payload = _decode(_call("pipedrive_update_deal", {
+        "deal_id": 12, "fields": {"status": status}, "dry_run": False,
+    }))
+    assert payload["ok"] is False
+    assert "status" in payload["error"]
+    assert http == []
+
+
+@pytest.mark.parametrize("status", ["open", "won", "lost"])
+def test_update_deal_allows_ordinary_status_values(connected, http, status):
+    payload = _decode(_call("pipedrive_update_deal", {
+        "deal_id": 12, "fields": {"status": status}, "dry_run": False,
+    }))
+    assert payload["ok"] is True
+    assert http[0]["json"] == {"status": status}
