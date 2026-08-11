@@ -24,6 +24,13 @@ FASTMCP_TOOL_DECLARATION = re.compile(
     re.MULTILINE,
 )
 CALL_REFERENCE = re.compile(rf"`(?P<name>{TOOL_NAME_PATTERN})\([^`\r\n]*\)`")
+# Skills also instruct a call as a bare `Use: tool_name(...)` line, nearly always
+# inside a fenced block where inline backticks are not used. A gate that matches
+# only backticked calls reads those files and finds nothing, so a misspelled or
+# invented tool name in the dominant call form ships unchallenged.
+USE_DIRECTIVE_REFERENCE = re.compile(
+    rf"^[ \t>*-]*Use:[ \t]*(?P<name>{TOOL_NAME_PATTERN})[ \t]*\("
+)
 MCP_NAME_REFERENCE = re.compile(rf"`(?P<name>{TOOL_NAME_PATTERN})`")
 SNAKE_CASE_NAME = re.compile(r"[a-z][a-z0-9]*_[a-z0-9_]+")
 
@@ -85,6 +92,11 @@ def extract_instructed_references(source: str, path: Path) -> list[ToolReference
             ToolReference(match.group("name"), path, line_number)
             for match in CALL_REFERENCE.finditer(line)
         )
+        use_directive = USE_DIRECTIVE_REFERENCE.match(line)
+        if use_directive is not None:
+            references.append(
+                ToolReference(use_directive.group("name"), path, line_number)
+            )
         if "mcp" not in line.casefold():
             continue
         references.extend(

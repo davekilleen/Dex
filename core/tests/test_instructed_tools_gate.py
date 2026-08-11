@@ -149,3 +149,26 @@ def test_plugin_skill_path_is_not_an_instruction_surface() -> None:
         Path(".claude/plugins/example/skills/example/SKILL.md")
     )
     assert checker.is_instruction_surface(Path(".claude/skills/example/SKILL.md"))
+
+
+def test_use_directive_reference_is_detected() -> None:
+    """`Use: tool(...)` is how skills write a call inside a fenced block.
+
+    Inline backticks are absent inside fences, so a gate that matches only
+    backticked calls reads these files and finds nothing -- leaving the most
+    common call form in the shipped skills entirely unchecked.
+    """
+    findings = _find_unknown("```\nUse: missing_tool(start_date=\"2026-08-11\")\n```\n")
+
+    assert [(finding.name, finding.line) for finding in findings] == [
+        ("missing_tool", 2)
+    ]
+
+
+def test_known_use_directive_reference_passes() -> None:
+    findings = _find_unknown(
+        "Use: known_tool(days_ahead=1)\n",
+        defined={"known_tool"},
+    )
+
+    assert findings == []
