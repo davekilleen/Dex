@@ -182,11 +182,13 @@ specific thing that stopped it — you should never have to guess, or read Dex's
 code, to find out. A bridge that runs for minutes with **no output at all** is
 wedged, not working — press Ctrl-C and report exactly what you ran and saw.
 
-**Running it without answering.** If you want to see how far it gets without
-changing anything, start it with its input closed
+**Running it without answering.** To see how far it gets before you commit to
+anything, start it with its input closed
 (`python3 … --vault "$PWD" < /dev/null`). It reaches the first approval prompt,
-cannot read an answer, and stops with one line saying nothing was changed. That
-is a deliberate, safe dry run.
+cannot read an answer, and stops with one line saying so. Nothing it asked you
+to approve is applied. The one thing a run like this does leave behind is
+`System/migration-report-v2.md`, the preview report it writes for you to read —
+that file is the preview, not the change.
 
 **When it finishes.** The last line says stage one of two is complete, names the
 version now installed, and tells you to run `/dex-update` next. Do that: the
