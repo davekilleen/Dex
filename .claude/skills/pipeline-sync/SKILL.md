@@ -18,7 +18,8 @@ Requires the Pipedrive integration. If `System/integrations/config.yaml -> piped
 
 ## Operating principles (non-negotiable)
 
-- **Confirm every write.** Never call a Pipedrive write tool (`pipedrive_add_deal_note`, `pipedrive_add_deal_activity`, `pipedrive_update_deal`, `pipedrive_create_deal`, `pipedrive_create_org`) without first showing the exact payload (use `dry_run: true`) and getting the user's explicit yes. CRMs are often shared with colleagues.
+- **Confirm every write.** Never call a Pipedrive write tool (`pipedrive_add_deal_note`, `pipedrive_add_deal_activity`, `pipedrive_update_deal`, `pipedrive_create_deal`, `pipedrive_create_org`) without first showing the exact payload (use `dry_run: true`) and getting the user's explicit yes. CRMs are often shared with colleagues. The tools preview by default and only send on an explicit `dry_run: false`, so that parameter is the record of the user's yes — never pass it to "get past" a preview the user has not actually seen and approved.
+- **A partial read is not a clean read.** `pipedrive_get_pipeline_snapshot` and `pipedrive_list_deals` return a `complete` flag and a `warning` when they could not see everything. When `complete` is false, report the named deals as *unchecked*; never fold them into "no drift" or "nothing else in the CRM".
 - **Never auto-resolve drift.** For each difference, the user chooses the direction. Default to doing nothing.
 - **Tracker totals matter.** If a deal value or probability changes on the tracker side, recompute any gross/weighted totals the tracker maintains and update its `last_updated` field if it has one.
 - **Re-read before editing.** Re-read the tracker and any company page immediately before editing it; don't trust session memory of file state.
