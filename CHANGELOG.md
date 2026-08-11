@@ -7,7 +7,7 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
-## [1.93.0] — 🧹 Your list of changes stays yours — Dex's own files stop showing up in it (2026-08-10)
+## [1.95.0] — 🧹 Your list of changes stays yours — Dex's own files stop showing up in it (2026-08-10)
 
 Chris found his vault's change list crowded with dozens of files he never touched — Dex's own product files, freshly rewritten by an update and showing up as if they were his edits. The cause: the file that tells your vault what to overlook is written for the team that builds Dex, and it deliberately keeps Dex's own files visible there. Inside *your* vault that's backwards — one broad "save everything" moment quietly folds hundreds of Dex files into your private history, and every update after that dirties them all again.
 
