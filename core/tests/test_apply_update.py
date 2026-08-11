@@ -14,6 +14,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from core import portable_contract
 from core.lifecycle import service
 from core.lifecycle.bridge import ACTIVATION_RELATIVE, activate_vault
 from core.lifecycle.catalog import canonical_catalog_bytes, load_catalog
@@ -1624,3 +1625,74 @@ def test_each_broken_split_is_still_refused_by_the_planner_and_names_itself(
     with pytest.raises(apply_update.UpdateError) as refusal:
         apply_update._topology(vault)
     assert expected_clause in str(refusal.value)
+
+
+# --- .gitignore vault-mode composition -------------------------------------
+
+
+def test_composed_gitignore_appends_contract_derived_vault_section() -> None:
+    release_blob = b"# distribution rules\n!core/\n!docs/\n"
+
+    composed = apply_update._compose_gitignore(release_blob, Path("/unused")).decode()
+
+    assert composed.startswith("# distribution rules\n")
+    section = composed.split(apply_update.GITIGNORE_SECTION_BEGIN, 1)[1]
+    assert apply_update.GITIGNORE_SECTION_END in section
+    for expected in ("/docs/", "/scripts/", "/CHANGELOG.md", "/README.md", "/LICENSE"):
+        assert f"\n{expected}\n" in section
+    # brain dirs with vault-owned children switch to /*-plus-negation form
+    assert "\n/core/*\n" in section
+    assert "\n!/core/mcp-custom/\n" in section
+    assert "\n!/core/mcp-premium/\n" in section
+    assert "\n/.claude/*\n" in section
+    assert "\n!/.claude/skills-custom/\n" in section
+    # a plain dir ignore for core/.claude would make the negations dead rules
+    assert "\n/core/\n" not in section
+    assert "\n/.claude/\n" not in section
+
+
+def test_composed_gitignore_is_idempotent_and_replaces_stale_section() -> None:
+    release_blob = b"# rules\n"
+    once = apply_update._compose_gitignore(release_blob, Path("/unused"))
+    twice = apply_update._compose_gitignore(once, Path("/unused"))
+
+    assert once == twice
+    assert once.decode().count(apply_update.GITIGNORE_SECTION_BEGIN) == 1
+
+    stale = (
+        b"# rules\n\n"
+        + apply_update.GITIGNORE_SECTION_BEGIN.encode()
+        + b"\nstale-entry/\n"
+        + apply_update.GITIGNORE_SECTION_END.encode()
+        + b"\n"
+    )
+    recomposed = apply_update._compose_gitignore(stale, Path("/unused")).decode()
+    assert "stale-entry/" not in recomposed
+    assert recomposed.count(apply_update.GITIGNORE_SECTION_BEGIN) == 1
+
+
+def test_composed_gitignore_refuses_non_utf8_release_bytes() -> None:
+    with pytest.raises(apply_update.CompositionError):
+        apply_update._compose_gitignore(b"\xff\xfe", Path("/unused"))
+
+
+def test_vault_section_assumes_direct_child_exceptions_only() -> None:
+    """Guard the contract shape the generator relies on.
+
+    Every vault-owned path nested under a top-level brain directory must be a
+    direct child: gitignore cannot re-include a file whose parent directory is
+    excluded, so a deeper nesting would need recursive /*-negation chains the
+    generator deliberately does not emit. If this fails, extend
+    _vault_mode_gitignore_section before changing the contract.
+    """
+    tops = {
+        rule.path
+        for rule in portable_contract.RULES
+        if rule.ownership == "brain" and "/" not in rule.path
+    }
+    for rule in portable_contract.RULES:
+        if rule.ownership != "vault" or "/" not in rule.path:
+            continue
+        root = rule.path.split("/", 1)[0]
+        if root in tops:
+            assert rule.path.count("/") == 1, rule.path

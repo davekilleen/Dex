@@ -37,6 +37,7 @@ System/user-profile.yaml
 System/pillars.yaml
 System/trusted-mcps.yaml
 System/.last-update-check
+System/.last-qmd-update
 System/.update-available
 System/.smoke-last-run.json
 System/.dex/smoke-history.jsonl

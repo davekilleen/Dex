@@ -34,6 +34,17 @@ Until now, everything in your vault lived on exactly one computer. That's the ri
 * **Restoring never gambles with your live vault.** A restore always lands in a fresh folder you choose, for you to inspect and move into place yourself. And your secrets (AI keys and the like) are deliberately never inside a backup, so nothing sensitive ever sits in a synced folder; the short restore guide covers what to re-enter on a new machine.
 
 Thanks to Chris, who proposed this, ran it on his own vault first, and whose ten silent days shaped the design.
+## [1.95.0] — 🧹 Your list of changes stays yours — Dex's own files stop showing up in it (2026-08-10)
+
+Chris found his vault's change list crowded with dozens of files he never touched — Dex's own product files, freshly rewritten by an update and showing up as if they were his edits. The cause: the file that tells your vault what to overlook is written for the team that builds Dex, and it deliberately keeps Dex's own files visible there. Inside *your* vault that's backwards — one broad "save everything" moment quietly folds hundreds of Dex files into your private history, and every update after that dirties them all again.
+
+**What this fixes for you:**
+
+* **Dex's files no longer masquerade as your changes.** When an update refreshes that overlook-list in a vault, Dex now appends a clearly marked section telling your vault to disregard its product files — while everything of yours, including your custom skills and custom connections, stays visible and versioned exactly as before. The section is rebuilt from Dex's own ownership rules on every update, so it can never drift out of date.
+* **A background bookkeeping file stops appearing as something new to save.** The small timestamp Dex keeps to know when your search index was last refreshed is now overlooked like the rest of Dex's working state.
+* **If Dex's files were already folded into your history, no more will join them.** This change stops the leak; it can't undo what a past update already captured, so those particular files keep appearing as changed for now. Releasing them — without deleting a single file from your folder — is the next piece of work.
+
+Thanks to Chris for the report, traced from a single noisy update all the way to the root cause.
 
 ## [1.94.0] — 📦 Moving your Dex folder no longer locks you out of updating (2026-08-11)
 

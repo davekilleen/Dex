@@ -106,8 +106,80 @@ def _compose_claude(release_blob: bytes, vault_root: Path) -> bytes:
     return _regenerate_claude(release_blob, custom_content)
 
 
+GITIGNORE_SECTION_BEGIN = "# >>> dex-vault-mode (managed by Dex updates) >>>"
+GITIGNORE_SECTION_END = "# <<< dex-vault-mode (managed by Dex updates) <<<"
+GITIGNORE_MANAGED_SECTION = re.compile(
+    rf"\n*{re.escape(GITIGNORE_SECTION_BEGIN)}.*?{re.escape(GITIGNORE_SECTION_END)}\n?",
+    re.DOTALL,
+)
+
+
+def _vault_mode_gitignore_section() -> str:
+    """Ignore rules that neutralize the distribution re-include block in a vault.
+
+    The release ships the distribution repository's ``.gitignore``, whose
+    "Keep Template Files" negations (``!core/``, ``!docs/`` and friends) exist
+    so the development repository tracks its own product files. Inside a split
+    vault those same negations leave every brain-owned file un-ignored, so one
+    broad ``git add -A`` silently captures hundreds of release files into the
+    user's private history — and every later update then dirties them all.
+
+    Because ``.gitignore`` outranks ``.git/info/exclude``, the only reliable
+    place to restore vault-side behavior is the end of the file itself
+    (last match wins). The section is derived from the ownership contract so
+    there is no second path list to drift.
+    """
+    tops = sorted(
+        (rule for rule in portable_contract.RULES
+         if rule.ownership == "brain" and "/" not in rule.path),
+        key=lambda rule: rule.path,
+    )
+    vault_children = [
+        rule for rule in portable_contract.RULES
+        if rule.ownership == "vault" and "/" in rule.path
+    ]
+    lines = [
+        GITIGNORE_SECTION_BEGIN,
+        "# This repository is your private vault. The Dex product files below are",
+        "# delivered and refreshed by Dex's receipt-backed updates, not tracked",
+        "# here. Derived from the ownership contract; edits inside this section",
+        "# are replaced on every update.",
+    ]
+    for top in tops:
+        exceptions = sorted(
+            rule.path for rule in vault_children
+            if rule.path.startswith(f"{top.path}/")
+        )
+        for exception in exceptions:
+            if exception.count("/") != top.path.count("/") + 1:
+                raise CompositionError(
+                    "vault-owned contract path nested deeper than one level "
+                    f"under brain-owned {top.path!r}: {exception!r}"
+                )
+        if top.kind == "file":
+            lines.append(f"/{top.path}")
+        elif exceptions:
+            lines.append(f"/{top.path}/*")
+            lines.extend(f"!/{exception}/" for exception in exceptions)
+        else:
+            lines.append(f"/{top.path}/")
+    lines.append(GITIGNORE_SECTION_END)
+    return "\n".join(lines)
+
+
+def _compose_gitignore(release_blob: bytes, vault_root: Path) -> bytes:
+    del vault_root  # the section depends only on the ownership contract
+    try:
+        text = release_blob.decode("utf-8")
+    except UnicodeDecodeError as error:
+        raise CompositionError("release .gitignore is not UTF-8") from error
+    base = GITIGNORE_MANAGED_SECTION.sub("", text).rstrip("\n")
+    return f"{base}\n\n{_vault_mode_gitignore_section()}\n".encode("utf-8")
+
+
 COMPOSERS: dict[str, Callable[[bytes, Path], bytes]] = {
     "CLAUDE.md": _compose_claude,
+    ".gitignore": _compose_gitignore,
 }
 
 
