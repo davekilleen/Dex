@@ -57,7 +57,16 @@ file's content; never substitute for it.
   `AGENT_INSTRUCTIONS.md`. A missing subagent must never mean a missing result.
 
 **Stays inline:** the background-sync status check when it needs setup guidance
-(`--setup`), and presenting the final summary report.
+(`--setup`), the Granola pre-flight message when no API key is connected,
+confirming each detected soft commitment before any task is created, resolving
+ambiguous person matches and entity suggestions, and presenting the final
+summary report.
+
+**Check the report for unstamped meetings.** The subagent leaves a meeting
+without its `tasks-extracted` marker whenever a task failed to create or stamp,
+and reports the exact failing line. Surface those lines rather than burying
+them: an unstamped meeting is the safe state, but it stays flagged as waiting
+until someone resolves it.
 
 # Process Meetings
 
