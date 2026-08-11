@@ -364,6 +364,36 @@ def test_onboarding_documents_the_explicit_no_company_domain_path() -> None:
     assert "This step CANNOT be skipped" not in domain_step
 
 
+def test_onboarding_teaches_the_feedback_loop_without_overpromising() -> None:
+    """Setup must teach the repair loop, and promise only what the code does today."""
+    flow = _read(".claude/flows/onboarding.md")
+    section = flow.split("### When Something Goes Wrong", 1)[1].split("## Step 11:", 1)[0]
+    # The copy is hard-wrapped; match on the spoken sentence, not the line breaks.
+    beat = " ".join(section.split())
+
+    # The four things a user has to learn: report in their own words, what it
+    # can never contain, the checkup, and where each of those is documented.
+    assert "whatever words come naturally" in beat
+    assert "/feedback" in beat
+    assert "/dex-doctor" in beat
+    assert "https://heydex.ai/help/feedback.html" in beat
+    assert "https://heydex.ai/help/updating-troubleshooting.html#health-dex-doctor" in beat
+
+    # Honesty guards. Questions and fix news arrive through the once-daily
+    # session-start sweep (core/utils/feedback_sweep.py), not mid-conversation,
+    # and sending requires the one-time connect-code sign-in.
+    assert "next time you start a session" in beat
+    assert "sign in once" in beat
+    assert "mid-conversation" not in beat
+    assert "instantly" not in beat
+
+    # The privacy boundary must match the contract's allowed ingredients, and
+    # must not be inflated into a promise the transport does not make.
+    assert "Nothing from your notes, meetings, people or our conversations" in beat
+    assert "encrypted" not in beat
+    assert "anonymous" not in beat
+
+
 def test_reset_uses_the_canonical_onboarding_route_without_moving_user_content() -> None:
     """A role change must not revive the retired hand-written reset procedure."""
     reset = _read(".claude/skills/reset/SKILL.md")

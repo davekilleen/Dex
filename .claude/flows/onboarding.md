@@ -735,6 +735,44 @@ Ask: "Install background automation?"
 **If no:**
 Say: "No problem! Self-learning checks will still run inline during session start and `/daily-plan`. You can install later with `bash .scripts/install-learning-automation.sh`"
 
+### When Something Goes Wrong (Inform, Don't Ask)
+
+**Shown to everyone, no question attached.** This is where a user learns Dex has a repair
+loop at all. Most never find it on their own, and an unreported bug stays broken for
+everyone. Say it warmly, once, and move on — there is nothing to save and no config to write.
+
+Say: "Two last things, both for when Dex itself misbehaves.
+
+**Just tell me what happened, in whatever words come naturally.** 'The meeting sync is doing
+something weird' is plenty — you don't need a special phrase. I'll investigate on this
+machine, write the bug report for you, and show it to you before anything leaves. (If I
+don't pick it up as a bug, say 'report this' or run `/feedback` and I will.) The first
+report asks you to sign in once, about thirty seconds, so the fix can find its way back to you.
+
+After that it's hands-off. Your report lands on the Dex team's private desk with a reference
+number. If they need one more detail, the question comes back here — you'll see it next time
+you start a session, and I can go and find the answer and show it to you before it goes.
+Ask me how your reports are doing any time. And when a release fixes your bug, your next
+session opens with the news and the version that has it.
+
+Nothing from your notes, meetings, people or our conversations ever goes into a report. A
+report is built from a fixed list of ingredients — which version of Dex you're on, which
+feature broke, the error, and what I found described as counts — and that list is enforced
+in the code, not just promised. The whole list is here: https://heydex.ai/help/feedback.html
+
+**And if things just feel off, run `/dex-doctor`.** It checks every part of Dex and tells you
+honestly what's working, what's switched off, what's broken, and what it couldn't check —
+then repairs what it can repair on its own, without touching your notes, and walks you
+through anything left. Worth running after an
+update, on a new machine, or when something has quietly stopped happening:
+https://heydex.ai/help/updating-troubleshooting.html#health-dex-doctor
+
+Genuinely — feedback is the most useful thing you can give us. Dex gets better because
+someone took a moment to say 'this is broken'. Please be that someone."
+
+**Do not turn this into a setup step.** If they ask a question about it, answer it and carry
+on. Never ask them to file anything now.
+
 ## Step 11: Completion & Phase 2 Bridge
 
 ### Cursor Version Check (If Cursor Detected)
@@ -786,7 +824,7 @@ You've already seen the first-week snapshot from the calendar data Dex could rea
 
 📖 One more thing worth bookmarking: the **Dex Guide** at https://heydex.ai/help/ — a plain-English walkthrough of everything Dex can do, with copy-paste prompts to steal. Great for your first week.
 
-💬 And if Dex itself ever misbehaves, just say "report this" (or run `/feedback`). Dex investigates on your machine, writes the bug report for you, shows it to you before anything is sent, and tells you when the fix ships. Nothing from your notes, meetings or conversations ever goes into a report — a report is built from a fixed list of ingredients, and you can read exactly what that list is at https://heydex.ai/help/feedback.html."
+💬 And remember: if Dex ever misbehaves, just tell me in your own words. I'll investigate, write the report for you, and show it to you before anything is sent — what a report can and can't contain is at https://heydex.ai/help/feedback.html. When things feel off generally, `/dex-doctor` is the checkup."
 
 Then ask: "Want me to put a few gentle nudges in your calendar for your first few weeks? One a day, each with something to try. They're all-day reminders marked private and free, so they never block your time or make you look busy — and you can delete the whole thing in one tap."
 
