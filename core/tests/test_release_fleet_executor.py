@@ -1050,13 +1050,46 @@ def test_transient_network_classifiers_match_only_momentary_network_loss() -> No
     assert not executor._transient_network_delivery({"status": "not-delivered"})
 
 
+def _recorded_backoff(monkeypatch: pytest.MonkeyPatch) -> list[float]:
+    """Record the delays the *executor* waits, and nothing else in the process.
+
+    These tests used to replace ``time.sleep`` for the whole process, which also
+    catches subprocess's internal wait loop: ``subprocess.run(..., timeout=...)``
+    sleeps whenever a child's pipes reach EOF before the child is reapable. The
+    executor shells out to Git during every one of these runs, so on a loaded
+    machine an unrelated sleep landed in the recording — or tripped the
+    must-not-back-off assertions. Wrapping the real backoff keeps its actual
+    delay under test while narrowing the substitution to the moment it runs.
+    """
+
+    delays: list[float] = []
+    real_backoff = executor._transient_delivery_backoff
+
+    def record(attempt_number: int) -> None:
+        with monkeypatch.context() as inside_backoff:
+            inside_backoff.setattr(executor.time, "sleep", delays.append)
+            real_backoff(attempt_number)
+
+    monkeypatch.setattr(executor, "_transient_delivery_backoff", record)
+    return delays
+
+
+def _forbid_backoff(monkeypatch: pytest.MonkeyPatch, reason: str) -> None:
+    """Fail if the executor backs off at all, without watching every sleep."""
+
+    monkeypatch.setattr(
+        executor,
+        "_transient_delivery_backoff",
+        lambda _attempt: pytest.fail(reason),
+    )
+
+
 def test_transient_network_follow_up_delivery_retries_and_records_attempts(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     source_repo, source_commit = _executor_source_commit(tmp_path)
-    slept: list[float] = []
-    monkeypatch.setattr(executor.time, "sleep", slept.append)
+    slept = _recorded_backoff(monkeypatch)
 
     class BlippedDeliveryRuntime(_Runtime):
         delivery_attempts = 0
@@ -1097,7 +1130,7 @@ def test_transient_network_delivery_error_is_retried_without_a_diagnostic(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     source_repo, source_commit = _executor_source_commit(tmp_path)
-    monkeypatch.setattr(executor.time, "sleep", lambda _delay: None)
+    _recorded_backoff(monkeypatch)
 
     class DnsBlippedDeliveryRuntime(_Runtime):
         delivery_attempts = 0
@@ -1133,11 +1166,7 @@ def test_non_network_delivery_failure_is_never_retried(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     source_repo, source_commit = _executor_source_commit(tmp_path)
-    monkeypatch.setattr(
-        executor.time,
-        "sleep",
-        lambda _delay: pytest.fail("a non-network delivery failure must not back off"),
-    )
+    _forbid_backoff(monkeypatch, "a non-network delivery failure must not back off")
 
     class BrokenDeliveryRuntime(_Runtime):
         def deliver_latest_release(self, vault: Path) -> dict[str, object]:
@@ -1171,8 +1200,7 @@ def test_transient_network_delivery_still_fails_after_bounded_attempts(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     source_repo, source_commit = _executor_source_commit(tmp_path)
-    slept: list[float] = []
-    monkeypatch.setattr(executor.time, "sleep", slept.append)
+    slept = _recorded_backoff(monkeypatch)
 
     class OfflineDeliveryRuntime(_Runtime):
         def deliver_latest_release(self, vault: Path) -> dict[str, object]:
@@ -1207,7 +1235,7 @@ def test_transient_network_bridge_failure_retries_with_fresh_exact_approvals(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     source_repo, source_commit = _executor_source_commit(tmp_path)
-    monkeypatch.setattr(executor.time, "sleep", lambda _delay: None)
+    _recorded_backoff(monkeypatch)
 
     class BlippedBridgeRuntime(_Runtime):
         def bridge_to_foundation(self, vault: Path, foundation, *, input_fn, output_fn):
@@ -1248,11 +1276,7 @@ def test_non_network_bridge_failure_is_never_retried(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     source_repo, source_commit = _executor_source_commit(tmp_path)
-    monkeypatch.setattr(
-        executor.time,
-        "sleep",
-        lambda _delay: pytest.fail("a non-network bridge failure must not back off"),
-    )
+    _forbid_backoff(monkeypatch, "a non-network bridge failure must not back off")
 
     class RefusingBridgeRuntime(_Runtime):
         def bridge_to_foundation(self, vault: Path, foundation, *, input_fn, output_fn):

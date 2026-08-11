@@ -24,6 +24,12 @@ CANARY_STARTS=(
   "v1.81.7"
   "v1.81.11"
 )
+# One start also runs the published bridge the way a stuck user runs it: as a
+# top-level process from the vault root, with stdin closed, which is the only
+# way the environment scrub, the relaunch into the vault runtime, and the
+# clean-runtime check are executed at all. The oldest start is the one a rescued
+# user is most likely to be on. One bounded process run, not a thirteenth journey.
+BRIDGE_PROCESS_ENTRY_START="v1.51.0"
 
 MODE="${1:-}"
 case "$MODE" in
@@ -369,13 +375,21 @@ run_canary() {
 
   refresh_public_tags
   assert_public_annotated_tag "$PINNED_FOUNDATION_TAG"
+  bridge_process_entry_planned=0
   for start in "${CANARY_STARTS[@]}"; do
+    if [ "$start" = "$BRIDGE_PROCESS_ENTRY_START" ]; then
+      bridge_process_entry_planned=1
+    fi
     if ! git rev-parse --verify "$start^{commit}" >/dev/null 2>&1; then
       echo "public canary start is unavailable: $start" >&2
       echo "if the release-tag archive renamed it, update CANARY_STARTS to the dist/archive/ name" >&2
       return 1
     fi
   done
+  if [ "$bridge_process_entry_planned" -ne 1 ]; then
+    echo "no canary start runs the bridge as a process: $BRIDGE_PROCESS_ENTRY_START is not in CANARY_STARTS" >&2
+    return 1
+  fi
 
   git config user.name "github-actions[bot]"
   git config user.email "github-actions[bot]@users.noreply.github.com"
@@ -413,6 +427,10 @@ run_canary() {
   DISCOVERED="${#CANARY_STARTS[@]}"
   for start in "${CANARY_STARTS[@]}"; do
     STARTED=$((STARTED + 1))
+    journey_options=(--controlled-approvals)
+    if [ "$start" = "$BRIDGE_PROCESS_ENTRY_START" ]; then
+      journey_options+=(--bridge-process-entry)
+    fi
     if run_bounded python3 scripts/release_fleet.py journey \
       --repo . --output "$JOURNEY_ROOT" \
       --starting-tag "$start" \
@@ -421,7 +439,7 @@ run_canary() {
       --bridge-asset "$BRIDGE_ASSET" \
       --bridge-checksum "$BRIDGE_CHECKSUM" \
       --follow-up-cache "$FOLLOW_UP_CACHE" \
-      --controlled-approvals
+      "${journey_options[@]}"
     then
       journey_status=0
     else

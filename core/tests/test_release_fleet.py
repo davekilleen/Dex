@@ -2511,3 +2511,162 @@ def test_shipped_update_surface_rejects_a_protocol_with_an_unknown_operation(
 
     with pytest.raises(release_fleet.FleetError, match="journey protocol"):
         release_fleet.shipped_update_surface(repo, release)
+
+
+def _bridge_process_evidence(**overrides: object) -> dict[str, object]:
+    """A record of a bridge process that behaved the way a stuck user needs."""
+
+    evidence: dict[str, object] = {
+        "timed_out": False,
+        "timeout_seconds": release_fleet.BRIDGE_PROCESS_ENTRY_TIMEOUT_SECONDS,
+        "exit_code": 1,
+        "relaunch_notice_count": 1,
+        "runtime_entry_refused": False,
+        "reached_approval_gate": True,
+        "produced_output": True,
+        "stdout": '{\n  "plan": "split"\n}\nDex will first separate its code from '
+        "your notes. Type APPLY to continue: ",
+        "stderr": f"{release_fleet.BRIDGE_PROCESS_ENTRY_NOTICE}\n"
+        "Checking this Dex install (read-only)...\n",
+    }
+    evidence.update(overrides)
+    return evidence
+
+
+def test_bridge_process_entry_accepts_a_run_that_reaches_the_first_gate() -> None:
+    release_fleet.assert_bridge_process_entry(
+        _bridge_process_evidence(), approval_word="APPLY"
+    )
+
+
+def test_bridge_process_entry_refuses_the_false_clean_runtime_stop() -> None:
+    """The defect v1.93.0 fixed: the scrub manufactured the difference the check refuses."""
+
+    evidence = _bridge_process_evidence(
+        runtime_entry_refused=True,
+        reached_approval_gate=False,
+        produced_output=False,
+        stdout="",
+        stderr=f"{release_fleet.BRIDGE_PROCESS_ENTRY_NOTICE}\n"
+        "Dex update bridge stopped safely: the installed Dex runtime "
+        f"{release_fleet.BRIDGE_PROCESS_ENTRY_REFUSAL}, so the bridge stopped "
+        "instead of relaunching endlessly: unexpected environment variables "
+        "appeared: LC_CTYPE\n",
+    )
+
+    with pytest.raises(release_fleet.FleetError) as failure:
+        release_fleet.assert_bridge_process_entry(evidence, approval_word="APPLY")
+
+    assert "clean-runtime entry refusal" in str(failure.value)
+    assert "no output at all" in str(failure.value)
+
+
+def test_bridge_process_entry_refuses_an_unbounded_silent_relaunch_loop() -> None:
+    """The defect v1.92.0 fixed: it relaunched forever, printing nothing at all."""
+
+    evidence = _bridge_process_evidence(
+        timed_out=True,
+        exit_code=None,
+        relaunch_notice_count=4096,
+        reached_approval_gate=False,
+        produced_output=False,
+        stdout="",
+        stderr=f"{release_fleet.BRIDGE_PROCESS_ENTRY_NOTICE}\n" * 4096,
+    )
+
+    with pytest.raises(release_fleet.FleetError) as failure:
+        release_fleet.assert_bridge_process_entry(evidence, approval_word="APPLY")
+
+    assert "never finished" in str(failure.value)
+    assert "instead of exactly one" in str(failure.value)
+
+
+def test_bridge_process_entry_refuses_a_run_that_never_reached_the_gate() -> None:
+    evidence = _bridge_process_evidence(
+        reached_approval_gate=False,
+        stdout="Dex update bridge stopped safely: something else entirely\n",
+    )
+
+    with pytest.raises(
+        release_fleet.FleetError, match="never reached the first APPLY gate"
+    ):
+        release_fleet.assert_bridge_process_entry(evidence, approval_word="APPLY")
+
+
+def _fixture_python_runtime() -> release_fleet.PythonRuntime:
+    return release_fleet.PythonRuntime(
+        requested_python=Path(sys.executable),
+        resolved_python=Path(sys.executable).resolve(),
+        python_version="Python 3",
+        python_sha256="",
+    )
+
+
+def test_bridge_process_entry_probe_retains_the_streams_it_judged(
+    tmp_path: Path,
+) -> None:
+    """Silence was the original symptom, so the captured output is the evidence."""
+
+    asset = tmp_path / "dex-update-bridge-v9.9.9.py"
+    asset.write_text(
+        "import sys\n"
+        f"print({release_fleet.BRIDGE_PROCESS_ENTRY_NOTICE!r}, file=sys.stderr)\n"
+        "print('{}')\n"
+        "input('Dex will first separate its code from your notes. "
+        "Type APPLY to continue: ')\n",
+        encoding="utf-8",
+    )
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    evidence_root = tmp_path / "evidence"
+
+    evidence = release_fleet.probe_bridge_process_entry(
+        vault=vault,
+        bridge_asset=asset,
+        python_runtime=_fixture_python_runtime(),
+        environment={"PATH": "/usr/bin:/bin"},
+        approval_word="APPLY",
+        evidence_root=evidence_root,
+    )
+
+    assert evidence["relaunch_notice_count"] == 1
+    assert evidence["timed_out"] is False
+    assert evidence["reached_approval_gate"] is True
+    assert "Type APPLY to continue:" in str(evidence["stdout"])
+    retained = json.loads(
+        (evidence_root / "bridge-process-entry.json").read_text(encoding="utf-8")
+    )
+    assert retained["working_directory"] == str(vault)
+    assert retained["stdin"] == "closed"
+    assert release_fleet.BRIDGE_PROCESS_ENTRY_NOTICE in (
+        evidence_root / "bridge-process-entry-stderr.txt"
+    ).read_text(encoding="utf-8")
+
+
+def test_bridge_process_entry_probe_retains_the_streams_of_a_failing_run(
+    tmp_path: Path,
+) -> None:
+    asset = tmp_path / "dex-update-bridge-v9.9.9.py"
+    asset.write_text(
+        "import sys\n"
+        "print('the installed Dex runtime could not be entered cleanly', file=sys.stderr)\n",
+        encoding="utf-8",
+    )
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    evidence_root = tmp_path / "evidence"
+
+    with pytest.raises(release_fleet.FleetError, match="clean-runtime entry refusal"):
+        release_fleet.probe_bridge_process_entry(
+            vault=vault,
+            bridge_asset=asset,
+            python_runtime=_fixture_python_runtime(),
+            environment={"PATH": "/usr/bin:/bin"},
+            approval_word="APPLY",
+            evidence_root=evidence_root,
+        )
+
+    retained = json.loads(
+        (evidence_root / "bridge-process-entry.json").read_text(encoding="utf-8")
+    )
+    assert retained["runtime_entry_refused"] is True

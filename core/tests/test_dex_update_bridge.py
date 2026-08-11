@@ -7,6 +7,7 @@ import os
 import shutil
 import subprocess
 import sys
+import venv
 from collections import namedtuple
 from pathlib import Path
 from types import ModuleType
@@ -16,6 +17,8 @@ import pytest
 from core.lifecycle import service as lifecycle_service
 from core.transaction.engine import PlanRejected
 from scripts import dex_update_bridge as bridge
+
+BRIDGE_SOURCE = Path(bridge.__file__).resolve()
 
 
 class _Service:
@@ -2084,3 +2087,67 @@ def test_git_subprocess_environment_excludes_caller_git_and_credential_settings(
     assert "GIT_SSH_COMMAND" not in environment
     assert "credential.helper=" in captured["arguments"]
     assert "--no-replace-objects" in captured["arguments"]
+
+
+def _process_entry_vault(tmp_path: Path) -> Path:
+    """Build the smallest vault the bridge will accept, with a real virtualenv.
+
+    ``resolve()`` matters: the bridge refuses a vault path with a symlinked
+    component, and the macOS temporary directory reaches it through ``/var``.
+    """
+
+    root = tmp_path.resolve()
+    vault = root / "vault"
+    (vault / ".git").mkdir(parents=True)
+    (vault / "System").mkdir()
+    venv.EnvBuilder(with_pip=False, symlinks=True).create(vault / ".venv")
+    return vault
+
+
+def test_the_bridge_can_be_started_as_a_process_by_a_stuck_user(
+    tmp_path: Path,
+) -> None:
+    """Run the whole entry path in a real process, the way a rescued user does.
+
+    Every other test here drives the bridge in-process, so the scrub, the
+    ``execve`` into the vault virtualenv, and the clean-runtime equality check
+    only ever run under monkeypatched stand-ins. Two consecutive user-blocking
+    defects lived exactly there: v1.91's relaunch loop, which burned CPU while
+    printing nothing at all, and v1.92's clean-runtime refusal, which could
+    never pass because the scrub manufactured the difference it compared.
+
+    The run stops on its own: this vault is not a real Dex install, so the
+    bridge reports a vault problem shortly after entering its runtime. What
+    matters is that it got that far, exactly once, and said so. The pinned
+    foundation fetch runs when the network is available and fails within its own
+    bounded deadline when it is not; either outcome is a stop *after* entry.
+    """
+
+    vault = _process_entry_vault(tmp_path)
+    home = tmp_path / "home"
+    home.mkdir()
+
+    completed = subprocess.run(
+        [sys.executable, str(BRIDGE_SOURCE), "--vault", str(vault)],
+        cwd=vault,
+        env={
+            "HOME": str(home),
+            "PATH": "/usr/local/bin:/usr/bin:/bin:/opt/homebrew/bin",
+            "LANG": "en_US.UTF-8",
+            "TERM": "xterm-256color",
+        },
+        stdin=subprocess.DEVNULL,
+        capture_output=True,
+        text=True,
+        # A healthy run takes seconds; the bound exists so an unbounded relaunch
+        # loop fails this test instead of running until the CI job is cancelled.
+        timeout=180,
+    )
+
+    notice = "Relaunching inside Dex's installed runtime..."
+    assert completed.stderr.count(notice) == 1
+    assert "could not be entered cleanly" not in completed.stderr
+    # Whatever the relaunched process goes on to say about this deliberately
+    # incomplete vault, it has to say something: silence after the relaunch is
+    # the exact shape of the loop that shipped.
+    assert completed.stderr.split(notice, 1)[1].strip()
