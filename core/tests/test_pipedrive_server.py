@@ -561,3 +561,29 @@ def test_snapshot_reports_a_clean_fetch_as_complete(connected, monkeypatch):
     assert payload["ok"] is True
     assert payload["errors"] == []
     assert "warning" not in payload
+
+
+# ---------------------------------------------------------------------------
+# Dispatch contract: an unknown tool is a caller error, in every state
+# ---------------------------------------------------------------------------
+
+def test_known_tools_matches_the_advertised_tool_list():
+    """KNOWN_TOOLS and the tools this server advertises must not drift."""
+    advertised = {t.name for t in asyncio.run(pipedrive_server.handle_list_tools())}
+    assert advertised == pipedrive_server.KNOWN_TOOLS
+
+
+@pytest.mark.parametrize("fixture_name", ["vault", "connected"])
+def test_unknown_tool_is_an_explicit_error_whatever_the_connection_state(
+    request, fixture_name, monkeypatch,
+):
+    """Configured or not, a bad tool name reports itself as a bad tool name -
+    never as 'Pipedrive is not connected', which would send the caller off to
+    configure a CRM to fix a typo."""
+    request.getfixturevalue(fixture_name)
+    if fixture_name == "vault":
+        monkeypatch.setattr(pipedrive_server.shutil, "which", lambda _name: None)
+        monkeypatch.delenv("PIPEDRIVE_API_TOKEN", raising=False)
+    payload = _decode(_call("__invalid_tool_name__"))
+    assert payload["ok"] is False
+    assert "Unknown tool" in payload["error"]

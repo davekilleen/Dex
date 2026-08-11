@@ -630,6 +630,18 @@ WRITABLE_DEAL_FIELDS = {
 # are ever sent.
 WRITABLE_DEAL_STATUSES = {"open", "won", "lost"}
 
+# Every tool this server dispatches. Kept beside the dispatcher so an unknown
+# name is caught before any other gate; a test asserts it matches the advertised
+# tool list exactly, so the two cannot drift.
+KNOWN_TOOLS = {
+    "pipedrive_status", "pipedrive_list_users", "pipedrive_list_stages",
+    "pipedrive_find_org", "pipedrive_find_deal", "pipedrive_get_deal",
+    "pipedrive_list_deals", "pipedrive_get_pipeline_snapshot",
+    "pipedrive_get_mapping", "pipedrive_save_mapping",
+    "pipedrive_add_deal_note", "pipedrive_add_deal_activity",
+    "pipedrive_create_deal", "pipedrive_create_org", "pipedrive_update_deal",
+}
+
 
 def _is_dry_run(args: Dict[str, Any]) -> bool:
     """SAFETY (load-bearing): previewing is the DEFAULT; sending is explicit.
@@ -648,6 +660,15 @@ def _is_dry_run(args: Dict[str, Any]) -> bool:
 @app.call_tool()
 async def handle_call_tool(name: str, arguments: dict) -> List[types.TextContent]:
     args = arguments or {}
+
+    # An unrecognised tool name is a caller mistake, and it must be reported as
+    # one whatever the integration's state. Answering it with the calm
+    # not-connected message (the connection gate below runs first) would tell a
+    # caller that a typo'd or hallucinated tool merely needs /pipedrive-setup,
+    # sending them to configure a CRM to fix a bug in the call.
+    if name not in KNOWN_TOOLS:
+        return _text({"ok": False, "error": f"Unknown tool: {name}",
+                      "known_tools": sorted(KNOWN_TOOLS)})
 
     # Mapping-cache reads/writes are local files and never need API access.
     if name == "pipedrive_get_mapping":
