@@ -78,7 +78,7 @@ _TEACHING_COPY = (
             'Paste this: "I\'m going to dump thoughts at you in no particular order. Don\'t respond beyond \'noted\'. When I say HARVEST, turn everything into a board update, in my voice, ready to use. File anything that sounds like a task where it belongs."',
             "Best on a walk after a big meeting. Dump the debrief, say HARVEST, done — and the leftovers get filed instead of lost.",
             "Skill: /triage",
-            "https://heydex.ai/help/capture.html",
+            "https://heydex.ai/help/prompts-to-steal.html#magic-words-voice-in-finished-work-out",
         ),
     ),
     _EventCopy(
@@ -87,7 +87,7 @@ _TEACHING_COPY = (
             'Paste this: "Here\'s what I\'m about to do: [decision]. You have my goals and my history. Make the strongest honest case AGAINST it — not strawmen, the version my smartest critic would make. Then tell me what evidence would change your mind, and what you\'d do instead."',
             "Most people use AI to agree with them. This is the opposite, and it's where the value is.",
             "Skill: /decision-log",
-            "https://heydex.ai/help/goals-decisions.html",
+            "https://heydex.ai/help/prompts-to-steal.html#set-traps-for-your-blind-spots",
         ),
     ),
     _EventCopy(

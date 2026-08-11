@@ -47,7 +47,7 @@ TEACHING_COPY = (
             'Paste this: "I\'m going to dump thoughts at you in no particular order. Don\'t respond beyond \'noted\'. When I say HARVEST, turn everything into a board update, in my voice, ready to use. File anything that sounds like a task where it belongs."',
             "Best on a walk after a big meeting. Dump the debrief, say HARVEST, done — and the leftovers get filed instead of lost.",
             "Skill: /triage",
-            "https://heydex.ai/help/capture.html",
+            "https://heydex.ai/help/prompts-to-steal.html#magic-words-voice-in-finished-work-out",
         ),
     ),
     (
@@ -56,7 +56,7 @@ TEACHING_COPY = (
             'Paste this: "Here\'s what I\'m about to do: [decision]. You have my goals and my history. Make the strongest honest case AGAINST it — not strawmen, the version my smartest critic would make. Then tell me what evidence would change your mind, and what you\'d do instead."',
             "Most people use AI to agree with them. This is the opposite, and it's where the value is.",
             "Skill: /decision-log",
-            "https://heydex.ai/help/goals-decisions.html",
+            "https://heydex.ai/help/prompts-to-steal.html#set-traps-for-your-blind-spots",
         ),
     ),
     (
@@ -682,3 +682,50 @@ def test_ritual_calendar_analysis_ignores_dex_nudges() -> None:
     )
 
     assert [event.title for event in events] == ["Customer review"]
+
+
+# The guide pages actually published at heydex.ai/help/ (the Dex Guide nav).
+# A nudge that links anywhere else is a 404 in a user's calendar, which is how
+# help/capture.html and help/goals-decisions.html shipped in #287 — both were
+# invented at writing time and never existed on the site.
+PUBLISHED_HELP_PAGES = frozenset(
+    {
+        "",
+        "index.html",
+        "automations.html",
+        "claude-code-primer.html",
+        "connect.html",
+        "daily-rhythm.html",
+        "extend-dex.html",
+        "feedback.html",
+        "first-week.html",
+        "how-dex-works.html",
+        "install.html",
+        "integrations.html",
+        "make-it-your-own.html",
+        "meetings.html",
+        "onboarding.html",
+        "people-projects.html",
+        "proactive-health.html",
+        "prompts-to-steal.html",
+        "search-memory.html",
+        "tasks-planning.html",
+        "updating-troubleshooting.html",
+        "xray.html",
+    }
+)
+
+
+def test_every_nudge_link_points_at_a_published_help_page() -> None:
+    """A nudge link is clicked by a brand-new user in week one; it must resolve."""
+    source = (Path(__file__).resolve().parents[1] / "utils" / "nudge_calendar.py").read_text(
+        encoding="utf-8"
+    )
+    links = re.findall(r"https://heydex\.ai/help/([A-Za-z0-9._#-]*)", source)
+
+    assert links, "nudge copy should still be teaching with help links"
+    unknown = sorted({link.split("#", 1)[0] for link in links} - PUBLISHED_HELP_PAGES)
+    assert not unknown, (
+        f"nudge copy links to help pages that are not published: {unknown}. "
+        "Point at an existing page, or get the page written before shipping the link."
+    )

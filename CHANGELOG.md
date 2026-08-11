@@ -7,6 +7,19 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.93.2] — 🔗 Two dead links in your first-week reminders now go somewhere (2026-08-11)
+
+If you accepted the optional calendar reminders during setup, two of them — the one teaching the HARVEST trick, and the one about making Dex argue against your decision — linked to guide pages that don't exist. Clicking either gave you a "page not found" in your first week, which is the worst possible moment to look unfinished.
+
+**What this fixes for you:**
+
+* **Both links now land on the prompt they're teaching.** They point at the "prompts to steal" page, at the exact section holding that prompt — the HARVEST wording in one case, the argue-against-me wording in the other. That page was always the right home; the reminders just pointed at page names that were never built.
+* **It can't happen again quietly.** A check now runs with every change and fails if a reminder links to a guide page that isn't published, naming the page.
+
+Nothing else changed, and your calendar reminders are untouched — reminders already in your calendar keep their old text until you regenerate them.
+
+---
+
 ## [1.93.1] — 💬 Setup now shows you how to get something fixed (2026-08-11)
 
 Dex finished setting itself up without ever telling you what to do when Dex itself goes wrong. There was one line about it in the sign-off, easy to miss and gone forever once the screen scrolled. So people hit a problem, assumed it was theirs to live with, and never said anything — and a fault nobody reports stays broken for everyone who has it.
