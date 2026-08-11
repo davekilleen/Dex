@@ -5,6 +5,7 @@ from __future__ import annotations
 import base64
 import json
 import os
+import shutil
 import subprocess
 import sys
 import time as real_time
@@ -13,6 +14,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from core import portable_contract
 from core.lifecycle import service
 from core.lifecycle.bridge import ACTIVATION_RELATIVE, activate_vault
 from core.lifecycle.catalog import canonical_catalog_bytes, load_catalog
@@ -1476,3 +1478,221 @@ def test_apply_update_can_finalize_when_every_release_mutation_already_matches(
     assert result["committed"] is True
     assert result["targets"] == []
     assert _git(vault / ".dex/brain.git", "rev-parse", "refs/dex/installed") == release.commit
+
+
+def _edit_topology(vault: Path, **fields: object) -> None:
+    path = vault / "System/.dex/topology.json"
+    value = json.loads(path.read_text())
+    value.update(fields)
+    path.write_text(json.dumps(value, indent=2) + "\n")
+
+
+def test_relocated_split_is_accepted_and_its_recorded_path_is_re_recorded(
+    split_release_fixture: dict[str, object],
+) -> None:
+    """A moved vault updates, and the install puts its recorded location right.
+
+    The recorded path is an absolute path in local runtime state, so a vault
+    that was moved or renamed records somewhere else. Nothing here reads it as a
+    path, so it can only ever be a consistency note — and this is the one place
+    that legitimately rewrites the marker, so it is where the note is corrected.
+    """
+    vault: Path = split_release_fixture["vault"]
+    _edit_topology(vault, environment={"DEX_VAULT": str(vault.parent / "somewhere-else")})
+
+    # Accepted despite the stale record: the layout itself is sound.
+    brain_git, topology, _marker = apply_update._topology(vault)
+    assert brain_git == vault / ".dex/brain.git"
+    assert topology["environment"]["DEX_VAULT"] != str(vault.resolve())
+
+    release = _verified(split_release_fixture)
+    result = apply_update.apply_verified_release(vault, release)
+
+    assert result["committed"] is True
+    _, _, target_commit, _ = split_release_fixture["target"]
+    rewritten = json.loads((vault / "System/.dex/topology.json").read_text())
+    assert rewritten["environment"]["DEX_VAULT"] == str(vault.resolve())
+    assert rewritten["installedRelease"] == target_commit
+    # Only that one field moved; nothing else in the marker was rewritten.
+    assert rewritten["vaultGitDir"] == ".git"
+    assert rewritten["brainGitDir"] == ".dex/brain.git"
+
+
+def test_copied_split_vault_is_accepted_by_the_release_planner(
+    split_release_fixture: dict[str, object],
+    tmp_path: Path,
+) -> None:
+    """The duplicate-vault rehearsal: a copy is relocated, not inconsistent."""
+    original: Path = split_release_fixture["vault"]
+    duplicate = tmp_path / "Documents" / "Dex"
+    duplicate.parent.mkdir(parents=True)
+    shutil.copytree(original, duplicate, symlinks=True)
+
+    recorded = json.loads((duplicate / "System/.dex/topology.json").read_text())
+    assert Path(recorded["environment"]["DEX_VAULT"]) == original.resolve()
+
+    brain_git, _topology, marker = apply_update._topology(duplicate)
+    assert brain_git == duplicate / ".dex/brain.git"
+    assert marker["role"] == "brain"
+
+
+def test_an_unmoved_vault_keeps_its_recorded_path_byte_for_byte(
+    split_release_fixture: dict[str, object],
+) -> None:
+    vault: Path = split_release_fixture["vault"]
+    release = _verified(split_release_fixture)
+
+    apply_update.apply_verified_release(vault, release)
+
+    rewritten = json.loads((vault / "System/.dex/topology.json").read_text())
+    assert rewritten["environment"] == {"DEX_VAULT": str(vault.resolve())}
+
+
+_PLANNER_BREAKS: tuple[tuple[str, object, str], ...] = (
+    (
+        "not-a-split",
+        lambda vault: _edit_topology(vault, topology="combined"),
+        "does not record a brain/vault split",
+    ),
+    (
+        "wrong-vault-git-dir",
+        lambda vault: _edit_topology(vault, vaultGitDir=".vault.git"),
+        "records vaultGitDir '.vault.git' instead of '.git'",
+    ),
+    (
+        "wrong-brain-git-dir",
+        lambda vault: _edit_topology(vault, brainGitDir=".dex/other.git"),
+        "records brainGitDir '.dex/other.git' instead of '.dex/brain.git'",
+    ),
+    (
+        "no-recorded-vault-path",
+        lambda vault: _edit_topology(vault, environment={}),
+        "records no environment.DEX_VAULT path",
+    ),
+    (
+        "non-string-recorded-vault-path",
+        lambda vault: _edit_topology(vault, environment={"DEX_VAULT": 7}),
+        "records no environment.DEX_VAULT path",
+    ),
+    (
+        "wrong-vault-marker-role",
+        lambda vault: _write(vault, ".git/dex-vault-v2", b'{"role":"brain"}\n'),
+        "records role 'brain' instead of 'vault'",
+    ),
+    (
+        "wrong-brain-marker-role",
+        lambda vault: _write(
+            vault,
+            ".dex/brain.git/dex-brain-v2",
+            b'{"role":"vault","installed":"x"}\n',
+        ),
+        "records role 'vault' instead of 'brain'",
+    ),
+    (
+        "missing-brain-git",
+        lambda vault: (
+            (vault / ".dex/brain.git/dex-brain-v2").rename(
+                vault / ".dex/dex-brain-v2"
+            ),
+            shutil.rmtree(vault / ".dex/brain.git"),
+            (vault / ".dex/brain.git").mkdir(),
+            (vault / ".dex/dex-brain-v2").rename(
+                vault / ".dex/brain.git/dex-brain-v2"
+            ),
+            (vault / ".dex/brain.git").rename(vault / ".dex/brain.git.moved"),
+            (vault / ".dex/brain.git").symlink_to(vault / ".dex/brain.git.moved"),
+        ),
+        "split update refuses a symlinked .dex/brain.git",
+    ),
+)
+
+
+@pytest.mark.parametrize(
+    ("label", "break_layout", "expected_clause"),
+    _PLANNER_BREAKS,
+    ids=[entry[0] for entry in _PLANNER_BREAKS],
+)
+def test_each_broken_split_is_still_refused_by_the_planner_and_names_itself(
+    split_release_fixture: dict[str, object],
+    label: str,
+    break_layout: object,
+    expected_clause: str,
+) -> None:
+    """Only the recorded-path value became tolerable; nothing structural did."""
+    vault: Path = split_release_fixture["vault"]
+    break_layout(vault)
+
+    with pytest.raises(apply_update.UpdateError) as refusal:
+        apply_update._topology(vault)
+    assert expected_clause in str(refusal.value)
+
+
+# --- .gitignore vault-mode composition -------------------------------------
+
+
+def test_composed_gitignore_appends_contract_derived_vault_section() -> None:
+    release_blob = b"# distribution rules\n!core/\n!docs/\n"
+
+    composed = apply_update._compose_gitignore(release_blob, Path("/unused")).decode()
+
+    assert composed.startswith("# distribution rules\n")
+    section = composed.split(apply_update.GITIGNORE_SECTION_BEGIN, 1)[1]
+    assert apply_update.GITIGNORE_SECTION_END in section
+    for expected in ("/docs/", "/scripts/", "/CHANGELOG.md", "/README.md", "/LICENSE"):
+        assert f"\n{expected}\n" in section
+    # brain dirs with vault-owned children switch to /*-plus-negation form
+    assert "\n/core/*\n" in section
+    assert "\n!/core/mcp-custom/\n" in section
+    assert "\n!/core/mcp-premium/\n" in section
+    assert "\n/.claude/*\n" in section
+    assert "\n!/.claude/skills-custom/\n" in section
+    # a plain dir ignore for core/.claude would make the negations dead rules
+    assert "\n/core/\n" not in section
+    assert "\n/.claude/\n" not in section
+
+
+def test_composed_gitignore_is_idempotent_and_replaces_stale_section() -> None:
+    release_blob = b"# rules\n"
+    once = apply_update._compose_gitignore(release_blob, Path("/unused"))
+    twice = apply_update._compose_gitignore(once, Path("/unused"))
+
+    assert once == twice
+    assert once.decode().count(apply_update.GITIGNORE_SECTION_BEGIN) == 1
+
+    stale = (
+        b"# rules\n\n"
+        + apply_update.GITIGNORE_SECTION_BEGIN.encode()
+        + b"\nstale-entry/\n"
+        + apply_update.GITIGNORE_SECTION_END.encode()
+        + b"\n"
+    )
+    recomposed = apply_update._compose_gitignore(stale, Path("/unused")).decode()
+    assert "stale-entry/" not in recomposed
+    assert recomposed.count(apply_update.GITIGNORE_SECTION_BEGIN) == 1
+
+
+def test_composed_gitignore_refuses_non_utf8_release_bytes() -> None:
+    with pytest.raises(apply_update.CompositionError):
+        apply_update._compose_gitignore(b"\xff\xfe", Path("/unused"))
+
+
+def test_vault_section_assumes_direct_child_exceptions_only() -> None:
+    """Guard the contract shape the generator relies on.
+
+    Every vault-owned path nested under a top-level brain directory must be a
+    direct child: gitignore cannot re-include a file whose parent directory is
+    excluded, so a deeper nesting would need recursive /*-negation chains the
+    generator deliberately does not emit. If this fails, extend
+    _vault_mode_gitignore_section before changing the contract.
+    """
+    tops = {
+        rule.path
+        for rule in portable_contract.RULES
+        if rule.ownership == "brain" and "/" not in rule.path
+    }
+    for rule in portable_contract.RULES:
+        if rule.ownership != "vault" or "/" not in rule.path:
+            continue
+        root = rule.path.split("/", 1)[0]
+        if root in tops:
+            assert rule.path.count("/") == 1, rule.path

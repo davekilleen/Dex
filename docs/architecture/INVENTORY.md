@@ -1,6 +1,6 @@
 <!-- GENERATED FILE — DO NOT EDIT BY HAND. -->
 <!-- Generator: scripts/generate-architecture-inventory.py -->
-<!-- Content SHA-256: 2a423297efc2ecc96ad84bf2bbb07e701625606bd31f18a8ee002d9cf314e277 -->
+<!-- Content SHA-256: 656d74663bc99fafc83f0d263bf021c9102068ae082300e14051b01235d7952d -->
 
 # Architecture Inventory
 
@@ -75,7 +75,7 @@ A description has a trigger when its frontmatter contains the word `when` or `wh
 | `diff-profile` | `.claude/skills/diff-profile/SKILL.md` | Package your entire Dex system into a shareable DexDiff profile so others can replicate how you work. Use when the user says 'share my whole setup', 'publish my profile'. Not for a single workflow; use `diff-generate`. Not for adopting a whole profile; use `diff-adopt-profile`. | 278 | when |
 | `diff-remove` | `.claude/skills/diff-remove/SKILL.md` | Remove a previously adopted DexDiff workflow — deletes its generated skills and config, leaves your data untouched. Use when the user says 'remove that workflow', 'undo the adoption'. Not for listing what's installed; use `diff-list`. | 234 | when |
 | `enable-semantic-search` | `.claude/skills/enable-semantic-search/SKILL.md` | Turn on local AI-powered semantic (meaning-based) search over the vault, with smart collection discovery. Use when the user says 'enable semantic search', 'search by meaning', 'set up QMD', or search keeps missing obvious matches. Not for scraping the web; use `scrape`. | 270 | when |
-| `feedback` | `.claude/skills/feedback/SKILL.md` | Report a Dex bug to the Dex team with zero homework — Dex investigates locally, builds a privacy-safe report, shows it to you (or auto-sends if you've chosen that), and tracks the ticket until it's fixed. Use when the user says "report this", "send this to the Dex team", "file feedback", "/feedback", asks "what happened to my bug report", or accepts Doctor's offer to report a Dex bug. Not for capturing ideas about your own vault or workflow; use the improvements backlog for those. | 485 | when |
+| `feedback` | `.claude/skills/feedback/SKILL.md` | Report a Dex bug to the Dex team with zero homework — Dex investigates locally, builds a privacy-safe report, shows it to you (or auto-sends if you've chosen that), and tracks the ticket until it's fixed. Use when the user says "report this", "send this to the Dex team", "file feedback", "/feedback", asks "what happened to my bug report", or accepts Doctor's offer to report a Dex bug. Also use when the user describes something in Dex misbehaving in their own words, without asking for a report at all — "the meeting sync is doing something weird", "this keeps breaking", "X stopped working", "that's not what I asked for" — investigate first, then offer. Not for capturing ideas about your own vault or workflow; use the improvements backlog for those. Not for trouble in the user's own notes, calendar or projects, which is never a Dex defect. | 848 | when |
 | `getting-started` | `.claude/skills/getting-started/SKILL.md` | Interactive post-onboarding tour that adapts to whatever data exists (calendar, Granola, or none). Use right after onboarding, or when the user says 'show me around', 'how do I start'. Also use proactively when the vault is < 7 days old. Not for the initial setup itself; use `setup`. | 284 | when |
 | `google-workspace-setup` | `.claude/skills/google-workspace-setup/SKILL.md` | Connect Google Workspace (Gmail, Calendar, Docs) for email-aware planning and meeting prep. Use when the user says 'connect Gmail/Google', 'hook up my work email'. Not for local macOS calendar speed only; use `calendar-setup`. Not for Microsoft; use `ms-teams-setup`. | 267 | when |
 | `granola-setup` | `.claude/skills/granola-setup/SKILL.md` | Connect Granola via its official API for automatic meeting sync and transcripts. Use when the user says 'connect Granola', 'my meetings aren't syncing', 'set up meeting notes'. Not for Zoom recordings; use `zoom-setup`. Not for processing meetings already synced; use `process-meetings`. | 287 | when |
@@ -116,7 +116,7 @@ References are exact tool-name matches in skill bodies (frontmatter excluded). U
 | Server | Referencing skill count | Surface status | Skills (referenced tools) |
 | --- | ---: | --- | --- |
 | `dex-analytics` | 28 | **over-surfaced** | `commitments` (`track_event`); `create-mcp` (`track_event`); `create-skill` (`track_event`); `daily-plan` (`track_event`); `daily-review` (`track_event`); `dex-add-mcp` (`track_event`); `dex-backlog` (`track_event`); `dex-improve` (`track_event`); `dex-level-up` (`track_event`); `dex-obsidian-setup` (`track_event`); `dex-whats-new` (`track_event`); `getting-started` (`track_event`); `initiative-kickoff` (`track_event`); `integrate-mcp` (`track_event`); `journal` (`track_event`); `meeting-closeout` (`track_event`); `meeting-prep` (`track_event`); `process-meetings` (`track_event`); `product-brief` (`track_event`); `project-health` (`track_event`); `prompt-improver` (`track_event`); `relationship-radar` (`track_event`); `reset` (`track_event`); `save-insight` (`track_event`); `triage` (`track_event`); `week-plan` (`track_event`); `week-review` (`track_event`); `xray` (`track_event`) |
-| `dex-calendar-mcp` | 4 | normal | `daily-plan` (`calendar_get_events_with_attendees`, `calendar_get_today`, `reminders_clear_completed`, `reminders_complete_item`, `reminders_create_item`, `reminders_ensure_lists`, `reminders_find_and_complete`, `reminders_list_completed`, `reminders_list_items`); `daily-review` (`calendar_get_today`, `reminders_clear_completed`, `reminders_find_and_complete`, `reminders_list_completed`, `reminders_list_items`); `week-plan` (`calendar_get_events_with_attendees`); `week-review` (`calendar_get_events_with_attendees`, `reminders_list_items`) |
+| `dex-calendar-mcp` | 4 | normal | `daily-plan` (`calendar_get_events_with_attendees`, `calendar_get_today`, `reminders_clear_completed`, `reminders_complete_item`, `reminders_create_item`, `reminders_ensure_lists`, `reminders_find_and_complete`, `reminders_list_completed`, `reminders_list_items`); `daily-review` (`calendar_get_events_with_attendees`, `calendar_get_today`, `reminders_clear_completed`, `reminders_find_and_complete`, `reminders_list_completed`, `reminders_list_items`); `week-plan` (`calendar_get_events_with_attendees`); `week-review` (`calendar_get_events_with_attendees`, `reminders_list_items`) |
 | `dex-career-mcp` | 0 | **under-surfaced** | — |
 | `dex-customization-migration-mcp` | 1 | normal | `dex-update` (`read_customization_capsule_blob`, `read_customization_capsule_section`) |
 | `dex-granola-mcp` | 4 | normal | `daily-plan` (`granola_get_recent_meetings`); `getting-started` (`granola_check_available`, `granola_get_recent_meetings`); `week-plan` (`granola_get_today_meetings`); `zoom-setup` (`granola_check_available`) |
@@ -124,7 +124,7 @@ References are exact tool-name matches in skill bodies (frontmatter excluded). U
 | `dex-onboarding-mcp` | 3 | normal | `getting-started` (`check_onboarding_complete`); `reset` (`finalize_onboarding`, `start_onboarding_session`); `setup` (`start_onboarding_session`) |
 | `dex-resume-mcp` | 0 | **under-surfaced** | — |
 | `dex-session-memory` | 0 | **under-surfaced** | — |
-| `dex-work-mcp` | 11 | **over-surfaced** | `commitments` (`create_task`, `get_commitments_due`); `create-mcp` (`create_task`, `list_tasks`); `daily-plan` (`analyze_calendar_capacity`, `build_people_index`, `confirm_goal_link`, `confirm_relationship`, `create_task`, `dismiss_relationship`, `get_commitments_due`, `get_meeting_context`, `get_week_progress`, `list_tasks`, `process_inbox_with_dedup`, `record_external_task_mapping`, `suggest_task_scheduling`, `update_task_status`); `daily-review` (`analyze_calendar_capacity`, `create_task`, `get_commitments_due`, `get_meeting_context`, `get_skill_ratings`, `get_week_progress`, `list_tasks`, `update_task_status`); `initiative-kickoff` (`confirm_goal_link`, `create_task`, `get_quarterly_goals`, `lookup_person`); `meeting-closeout` (`create_task`, `get_meeting_context`, `lookup_person`); `process-meetings` (`create_person`, `create_task`, `detect_soft_commitments`, `lookup_person`); `relationship-radar` (`build_people_index`, `create_task`); `triage` (`create_task`); `week-plan` (`analyze_calendar_capacity`, `classify_task_effort`, `create_weekly_priority`, `get_commitments_due`, `get_goal_status`, `get_quarterly_goals`, `list_tasks`, `suggest_task_scheduling`); `week-review` (`get_goal_status`, `get_quarterly_goals`, `get_skill_ratings`, `get_week_progress`, `list_tasks`) |
+| `dex-work-mcp` | 12 | **over-surfaced** | `commitments` (`create_task`, `get_commitments_due`); `create-mcp` (`create_task`, `list_tasks`); `daily-plan` (`analyze_calendar_capacity`, `build_people_index`, `confirm_goal_link`, `confirm_relationship`, `create_task`, `dismiss_relationship`, `get_commitments_due`, `get_meeting_context`, `get_week_progress`, `get_work_summary`, `list_tasks`, `process_inbox_with_dedup`, `record_external_task_mapping`, `suggest_task_scheduling`, `update_task_status`); `daily-review` (`analyze_calendar_capacity`, `create_task`, `get_commitments_due`, `get_meeting_context`, `get_skill_ratings`, `get_week_priorities`, `get_week_progress`, `list_tasks`, `lookup_person`, `update_task_status`); `initiative-kickoff` (`confirm_goal_link`, `create_task`, `get_quarterly_goals`, `lookup_person`); `meeting-closeout` (`create_task`, `get_meeting_context`, `lookup_person`); `meeting-prep` (`get_meeting_context`, `lookup_person`, `query_meeting_cache`); `process-meetings` (`create_person`, `create_task`, `detect_soft_commitments`, `list_tasks`, `lookup_person`); `relationship-radar` (`build_people_index`, `create_task`); `triage` (`create_task`); `week-plan` (`analyze_calendar_capacity`, `classify_task_effort`, `create_weekly_priority`, `get_commitments_due`, `get_goal_status`, `get_quarterly_goals`, `list_tasks`, `suggest_task_scheduling`); `week-review` (`get_goal_status`, `get_pillar_summary`, `get_quarterly_goals`, `get_skill_ratings`, `get_week_priorities`, `get_week_progress`, `list_tasks`) |
 
 ### Under-surfaced servers
 
@@ -135,7 +135,7 @@ References are exact tool-name matches in skill bodies (frontmatter excluded). U
 ### Over-surfaced servers
 
 - `dex-analytics` — 28 skills reference its tools.
-- `dex-work-mcp` — 11 skills reference its tools.
+- `dex-work-mcp` — 12 skills reference its tools.
 
 ## Portable ownership classes
 
@@ -143,13 +143,13 @@ Derived from `core/portable_contract.py` `RULES` and `MUTATION_POLICY`.
 
 | Class | Rule count | Update action |
 | --- | ---: | --- |
-| `brain` | 45 | `replace` |
+| `brain` | 46 | `replace` |
 | `seed` | 38 | `write-if-absent` |
 | `generated` | 9 | `regenerate` |
 | `vault` | 17 | `never` |
-| `runtime` | 13 | `never` |
+| `runtime` | 14 | `never` |
 
-<details><summary><code>brain</code> declared paths (45)</summary>
+<details><summary><code>brain</code> declared paths (46)</summary>
 
 - `.agents` (dir; `brain-agents`)
 - `.ci` (dir; `brain-ci`)
@@ -183,6 +183,7 @@ Derived from `core/portable_contract.py` `RULES` and `MUTATION_POLICY`.
 - `README.md` (file; `brain-readme`)
 - `System/Beta_Communications` (dir; `brain-beta-communications`)
 - `System/README.md` (file; `brain-system-readme`)
+- `System/backup/RESTORE.md` (file; `brain-backup-restore-guide`)
 - `core` (dir; `brain-core`)
 - `core/data/sync-folder-markers.json` (file; `brain-sync-folder-markers`)
 - `docs` (dir; `brain-docs`)
@@ -278,7 +279,7 @@ Derived from `core/portable_contract.py` `RULES` and `MUTATION_POLICY`.
 
 </details>
 
-<details><summary><code>runtime</code> declared paths (13)</summary>
+<details><summary><code>runtime</code> declared paths (14)</summary>
 
 - `.logs` (dir; `runtime-logs`)
 - `System/.dex` (dir; `runtime-dex-dir`)
@@ -291,6 +292,7 @@ Derived from `core/portable_contract.py` `RULES` and `MUTATION_POLICY`.
 - `System/.onboarding-session.json` (file; `runtime-onboarding-session`)
 - `System/Session_Learnings` (dir; `runtime-session-learnings`)
 - `System/Session_Memory` (dir; `runtime-session-memory`)
+- `System/backup` (dir; `runtime-backup-logs`)
 - `System/claude-code-state.json` (file; `runtime-claude-state`)
 - `System/usage_log.md` (file; `runtime-usage-log`)
 

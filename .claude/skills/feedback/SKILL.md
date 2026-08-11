@@ -1,6 +1,6 @@
 ---
 name: feedback
-description: Report a Dex bug to the Dex team with zero homework — Dex investigates locally, builds a privacy-safe report, shows it to you (or auto-sends if you've chosen that), and tracks the ticket until it's fixed. Use when the user says "report this", "send this to the Dex team", "file feedback", "/feedback", asks "what happened to my bug report", or accepts Doctor's offer to report a Dex bug. Not for capturing ideas about your own vault or workflow; use the improvements backlog for those.
+description: Report a Dex bug to the Dex team with zero homework — Dex investigates locally, builds a privacy-safe report, shows it to you (or auto-sends if you've chosen that), and tracks the ticket until it's fixed. Use when the user says "report this", "send this to the Dex team", "file feedback", "/feedback", asks "what happened to my bug report", or accepts Doctor's offer to report a Dex bug. Also use when the user describes something in Dex misbehaving in their own words, without asking for a report at all — "the meeting sync is doing something weird", "this keeps breaking", "X stopped working", "that's not what I asked for" — investigate first, then offer. Not for capturing ideas about your own vault or workflow; use the improvements backlog for those. Not for trouble in the user's own notes, calendar or projects, which is never a Dex defect.
 ---
 
 # /feedback — concierge bug reporting

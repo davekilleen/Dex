@@ -35,7 +35,7 @@
       "word": "APPLY"
     },
     "artifact": {
-      "sha256": "e24b5f741286a364ab501140baae2372ef2e9cc73330157ca60c38b5845ce2b8",
+      "sha256": "543e89166865525cfce15a4d67853902a44d1394dee8785e17279bad4629f6ff",
       "source_path": "scripts/dex_update_bridge.py"
     },
     "foundation": {

@@ -183,6 +183,10 @@ RULES: tuple[Rule, ...] = (
     _r("brain-beta-communications", "System/Beta_Communications", "dir", "brain",
        "release-doc retained until the schema-2 baseline-reduction follow-up"),
     _r("brain-system-readme", "System/README.md", "file", "brain"),
+    _r("brain-backup-restore-guide", "System/backup/RESTORE.md", "file", "brain",
+       "the restore runbook must sit inside the vault so it travels inside "
+       "every backup archive and is readable on a bare machine; shipped and "
+       "release-owned, so an update replaces it like any other brain doc"),
     # --- seed: shipped once, then the user's; update writes only if absent -
     _r("seed-templates", "System/Templates", "dir", "seed"),
     _r("seed-user-profile-live", "System/user-profile.yaml", "file", "seed",
@@ -287,6 +291,9 @@ RULES: tuple[Rule, ...] = (
     _r("runtime-onboarding-session", "System/.onboarding-session.json", "file", "runtime",
        "pre-engine onboarding scratch; deleted by receipt-declared finalization"),
     _r("runtime-dex-dir", "System/.dex", "dir", "runtime"),
+    _r("runtime-backup-logs", "System/backup", "dir", "runtime",
+       "the backup engine's own logs; the shipped RESTORE.md inside it carries "
+       "its own brain rule and wins by exact-file match"),
     _r("runtime-onboarding", "System/.onboarding", "dir", "runtime"),
     _r("runtime-onboarding-marker", "System/.onboarding-complete", "file", "runtime"),
     _r("runtime-logs", ".logs", "dir", "runtime"),

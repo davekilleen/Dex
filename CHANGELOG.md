@@ -7,6 +7,68 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.97.0] — 🧺 Your daily plan stops running out of room as your vault grows (2026-08-11)
+
+The big daily rituals (planning your day, reviewing it, closing the week, prepping a meeting, processing your meetings) work by reading a lot first: your calendar, your tasks, your notes, your mail, your meeting history. In a young vault that reading is light. In a vault with a year or two of history, it can be so much material that Dex fills up on the reading alone and has nothing left for the part you actually came for. The failure is quiet: sessions get slower and shallower, and on the worst days a review dies halfway through and has to be rebuilt the next morning. One long-time user measured a single day of these rituals and found that of everything Dex read, less than two percent actually needed to stay in the conversation.
+
+**What this fixes for you:**
+
+* **The reading now happens in a side room, not in your conversation.** Each of the five heavy skills sends a helper off to do the bulk reading and come back with just the findings. The helper's workspace is cleared the moment it finishes, so your conversation keeps its room for the thinking, the writing, and the back-and-forth with you.
+* **The conversation itself doesn't change.** These skills still run right where you're talking, still see what you've already discussed and decided this session, and still ask you every question they used to ask. Only the silent bulk reading moved.
+* **If the helper ever fails, you still get your plan.** Dex says so plainly and does the reading the old way in the conversation instead. A hiccup in the new route never means a missing plan or review.
+* **Meeting processing keeps updating your people pages.** Dex can't count on its usual automatic bookkeeping for work done in the side room, so the helper is told to do that bookkeeping itself. Two new automatic checks now guard the arrangement: one makes sure the two halves of each skill can never quietly drift apart in a future release, and one makes sure the helper is only ever told to use tools Dex actually has — a wrong name would have meant a whole source, such as your calendar, going missing with no error shown.
+* **Nothing gets written into your vault on trust.** Where the helper adds tasks from your meeting notes, it now has to confirm each one landed correctly before it marks that meeting finished, and anything you'd normally be asked about — a commitment you mentioned in passing, a focus item that isn't a task yet — comes back to you for a yes before it becomes real.
+
+The same steps run in the same order on a small or young vault, with more headroom for the day the vault gets big. Being honest about what's measured: the reading cost above was measured on a real, mature vault; the improvement to your conversation's headroom follows from moving that reading out of it, and hasn't been measured side by side.
+
+---
+
+## [1.95.0] — 🧹 Your list of changes stays yours — Dex's own files stop showing up in it (2026-08-10)
+
+Chris found his vault's change list crowded with dozens of files he never touched — Dex's own product files, freshly rewritten by an update and showing up as if they were his edits. The cause: the file that tells your vault what to overlook is written for the team that builds Dex, and it deliberately keeps Dex's own files visible there. Inside *your* vault that's backwards — one broad "save everything" moment quietly folds hundreds of Dex files into your private history, and every update after that dirties them all again.
+
+**What this fixes for you:**
+
+* **Dex's files no longer masquerade as your changes.** When an update refreshes that overlook-list in a vault, Dex now appends a clearly marked section telling your vault to disregard its product files — while everything of yours, including your custom skills and custom connections, stays visible and versioned exactly as before. The section is rebuilt from Dex's own ownership rules on every update, so it can never drift out of date.
+* **A background bookkeeping file stops appearing as something new to save.** The small timestamp Dex keeps to know when your search index was last refreshed is now overlooked like the rest of Dex's working state.
+* **If Dex's files were already folded into your history, no more will join them.** This change stops the leak; it can't undo what a past update already captured, so those particular files keep appearing as changed for now. Releasing them — without deleting a single file from your folder — is the next piece of work.
+
+Thanks to Chris for the report, traced from a single noisy update all the way to the root cause.
+
+---
+
+## [1.94.0] — 📦 Moving your Dex folder no longer locks you out of updating (2026-08-11)
+
+Dex writes down where your vault lives. Move that folder, rename it, or work from a copy of it, and the note still points at the old place — and Dex was reading that mismatch as damage. It refused to update at all, with a message that didn't say why. A user hit this while rehearsing the rescue route on a duplicate of his own vault, and spent an hour reading Dex's code to work out which of its nine checks had failed.
+
+**What this fixes for you:**
+
+* **A vault you moved, renamed, or copied updates normally again.** Dex now treats that note for what it is — a stale reminder of where the folder used to be — and writes the new location down the next time it updates. You don't have to put the folder back, and nothing about your files or your history has to change. Anything that would signal real damage is still refused exactly as strictly as before; only the out-of-date location became forgivable.
+* **When Dex does refuse, it tells you which thing is wrong.** These refusals used to end with "Dex will not guess how to convert it" and nothing more. Each one now names the specific file or folder that didn't check out, and says what it expected to find there — so the next step is obvious in a minute rather than an hour.
+* **Trying the rescue tool without answering it no longer looks like a crash.** Starting it with its input closed — the ordinary way to watch how far it gets before you commit to anything — produced a page of programmer error text. It now stops with the same single plain sentence as every other stop, saying that nothing was changed because it couldn't read an answer.
+* **A stray warning about task numbering no longer interrupts a rescue.** The rescue tool's output opened with an alarming note that had nothing to do with updating: a different part of Dex talking over the top of it. It no longer reaches you there, and the rescue tool's own messages are unaffected.
+* **The rescue route now says up front that it takes two runs.** Finishing the rescue tool puts you on a release from 4 August, not the newest one; a second, ordinary `/dex-update` covers the rest. The guide now says that before you start and the tool says it when it finishes, instead of hinting at it afterwards.
+
+Thanks to Jim, who checked all nine conditions by hand against both his real vault and the duplicate, found that only the recorded location differed, then proved everything behind that check was sound by correcting that one line and re-running.
+
+---
+
+## [1.93.3] — 🗣️ Tell Dex something's broken however you like (2026-08-11)
+
+Setup now promises that if something goes wrong you can just say so in your own words. That promise needed the other half: Dex reliably recognising a description of a fault as a fault. Until now it leaned on you using the words "report this" or running the command — which is exactly the homework the whole feature was built to remove.
+
+**What this fixes for you:**
+
+* **"The meeting sync is doing something weird" is enough.** Ordinary descriptions — this keeps breaking, it stopped working, that's not what I asked for, it did that again — now get treated the way the magic words always were: Dex looks into it on your machine and, if the cause is a fault in Dex, offers to write it up for you.
+* **A fault and a wish go to different places.** "I wish Dex could do X" still becomes an idea in your own list. "X stopped working" goes to the team as a bug. If you say both in one breath, Dex handles the fault first and keeps the idea.
+* **It won't file a report about your life.** "My calendar is a mess" or "this project is a disaster" is about your work, not a fault in Dex, and never becomes a report. Neither does an outside tool having a slow day, unless Dex's own handling of it is at fault.
+* **A setup problem gets fixed, not filed.** If the cause turns out to be something not yet connected on your machine, Dex fixes it with you — or points you at the checkup — instead of sending the team a report about your own setup.
+* **Nothing is sent without you seeing it.** Reports that start this way follow exactly the same rules as any other: you see the whole thing first, and it can only contain the same fixed list of ingredients.
+
+Dex now offers once per problem, and drops it if you say no.
+
+---
+
 ## [1.93.2] — 🔗 Two dead links in your first-week reminders now go somewhere (2026-08-11)
 
 If you accepted the optional calendar reminders during setup, two of them — the one teaching the HARVEST trick, and the one about making Dex argue against your decision — linked to guide pages that don't exist. Clicking either gave you a "page not found" in your first week, which is the worst possible moment to look unfinished.

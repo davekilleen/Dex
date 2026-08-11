@@ -11,6 +11,54 @@ because this skill was selected. Only run in the background when the user
 explicitly asks for a background run or the host has already obtained a specific
 background-work approval for this run.
 
+### Delegated gathering (large-vault scaling)
+
+This skill stays inline as described above: it keeps session awareness, it asks
+the user the questions, and it owns every interactive step. What it does NOT do
+inline is the bulk read-gathering, which on a mature vault (hundreds of notes,
+thousands of indexed messages, a live calendar and multiple integrations) can be
+large enough to exhaust the main conversation before the useful work starts.
+
+So the gathering phase is delegated to one `general-purpose` subagent via the
+Agent tool, using the self-contained prompt in this skill's
+`AGENT_INSTRUCTIONS.md`:
+
+1. Read `.claude/skills/week-review/AGENT_INSTRUCTIONS.md`.
+2. Substitute its placeholders (`{{TARGET_DATE}}`, `{{WEEK_START_DATE}}`,
+   `{{TARGET_DATE_PLUS_1}}`, `{{DAY_NAME}}`, `{{MONTH}}`, `{{DD}}`, `{{YYYY}}`).
+3. Call the Agent tool with `subagent_type: "general-purpose"`, that prompt, and
+   a short description.
+4. Verify it wrote the synthesis to `00-Inbox/Weekly_Synthesis_YYYY-MM-DD.md`,
+   then run the interactive review from its structured findings.
+
+The subagent inherits MCP connections, runs in its own context, and that context
+is freed when it completes, so only its findings reach this conversation.
+
+**Use `AGENT_INSTRUCTIONS.md` verbatim.** Read the file and pass its content as
+the subagent prompt, substituting only the placeholders. Do NOT hand-write a
+replacement brief from what you already know about the week: that is how steps
+get silently dropped, and the omission looks complete because nothing errors. If
+context from this conversation is worth adding, APPEND it to the file's content;
+never substitute for it.
+
+**Two caveats that are load-bearing:**
+
+- **Do not count on hooks for the subagent's writes.** The hooks declared in
+  this skill's own frontmatter belong to this skill's run, not the subagent's,
+  and whether the repository-wide hooks in `.claude/settings.json` reach a
+  subagent's tool calls is not something a skill should assume either way.
+  Nothing in this skill's gathering depends on a hook; the subagent's writes
+  must stand on their own.
+- **Always fall back.** If the subagent fails, times out, or returns nothing
+  usable, say so plainly and run the gathering inline from the same
+  `AGENT_INSTRUCTIONS.md`. A missing subagent must never mean a missing result.
+
+**Stays inline:** the whole interactive review, priority-by-priority assessment,
+pattern discussion, goal updates, career evidence capture, next week's priority
+confirmation, the Dex Inbox check (Step 0.5), and the `/identity-snapshot` run
+that follows the synthesis. The subagent gathers evidence; it does not make
+judgements.
+
 ## Purpose
 
 Create a synthesis of the week reviewing activity, progress, and what was accomplished. **Uses concrete metrics, not vague percentages.**

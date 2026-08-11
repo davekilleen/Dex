@@ -16,6 +16,7 @@ import hmac
 import importlib
 import inspect
 import json
+import logging
 import os
 import re
 import shutil
@@ -49,6 +50,12 @@ _APPROVAL_WORD = "APPLY"
 _CLEAN_RUNTIME_MARKER = "DEX_UPDATE_BRIDGE_CLEAN_RUNTIME"
 _TRUSTED_EXECUTABLE_DIRECTORIES = (Path("/usr/bin"), Path("/bin"), Path("/usr/local/bin"), Path("/opt/homebrew/bin"))
 _TOPOLOGY_MIGRATOR_RELATIVE = Path("core/migrations/v1-to-v2-brain-vault-split.cjs")
+# The layouts every supported foundation refuses to convert. Closed on purpose:
+# the bridge substitutes a refusal that names the failing condition only for
+# these, and any other state a foundation reports is passed through untouched.
+_UNCONVERTIBLE_TOPOLOGY_STATES = frozenset(
+    {"invalid-split", "invalid-combined", "migration-in-progress", "zip-or-manual"}
+)
 _PRE_SPLIT_ARCHIVE_MARKER = "dex-pre-split-v2-archive.json"
 _LEGACY_QMD_RECONCILIATION_PURPOSE = "legacy-qmd-reconciliation"
 _TRACKED_IGNORE_POLICY_RELATIVE = Path("core/migrations/tracked-ignored-policy.yaml")
@@ -2039,6 +2046,18 @@ class _FoundationLifecycleService:
                 if authorization is not None:
                     authorized_roots[root] = authorization
                     return "combined"
+            if state in _UNCONVERTIBLE_TOPOLOGY_STATES:
+                # The pinned foundation refuses each of these with one sentence
+                # that names none of its conditions, which is an hour in its
+                # source for anyone who hits it. Refuse here instead, naming the
+                # condition that actually stopped the run. Deliberately a closed
+                # list of the states the foundation already refuses: any state
+                # not named here still passes through to the foundation exactly
+                # as before.
+                raise BridgeError(
+                    f"{_topology_refusal_detail(root, state)} — Dex will not "
+                    "guess how to convert it, and nothing was changed"
+                )
             return state
 
         def migrator_command(vault_root: Path, mode: str) -> list[str]:
@@ -2756,7 +2775,18 @@ def _approved_preview(
     if not isinstance(approval_token, str) or not approval_token:
         raise BridgeError("lifecycle preview did not return an approval token")
     output_fn(json.dumps(preview, indent=2, sort_keys=True))
-    if input_fn(f"{prompt} Type {_APPROVAL_WORD} to continue: ") != _APPROVAL_WORD:
+    try:
+        answer = input_fn(f"{prompt} Type {_APPROVAL_WORD} to continue: ")
+    except EOFError as error:
+        # A closed or exhausted stdin is the ordinary shape of a deliberate
+        # dry run, and every other refusal here is one plain sentence. Without
+        # this, the designed gate raised a traceback instead.
+        raise BridgeError(
+            "no change was made because no approval could be read — "
+            "this run had no answer available on standard input, so the "
+            f"gate that asks you to type {_APPROVAL_WORD} could not be answered"
+        ) from error
+    if answer != _APPROVAL_WORD:
         raise BridgeError("no change was made because the displayed preview was not approved")
     return preview, approval_token
 
@@ -2798,6 +2828,182 @@ def _regular_json(path: Path, description: str) -> dict[str, Any]:
     return value
 
 
+def _optional_json(path: Path) -> dict[str, Any] | None:
+    """Read a regular JSON object, or None — for classification, never a gate."""
+    try:
+        if path.is_symlink() or not path.is_file():
+            return None
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        return None
+    return value if isinstance(value, dict) else None
+
+
+def _recorded_vault_path(topology: Mapping[str, Any]) -> str | None:
+    """Return the vault path the split marker records, if it records one."""
+    environment = topology.get("environment")
+    if not isinstance(environment, Mapping):
+        return None
+    recorded = environment.get("DEX_VAULT")
+    return recorded if isinstance(recorded, str) and recorded else None
+
+
+def _split_layout_failures(vault_root: Path) -> tuple[str, ...]:
+    """Name every structural condition a recorded split layout fails.
+
+    Read-only. This exists so a refusal can say which condition failed instead
+    of asking the reader to work through Dex's source. The recorded vault path
+    is not one of these conditions; only its absence is.
+    """
+    root = Path(vault_root)
+    vault_git = root / ".git"
+    brain_git = root / ".dex" / "brain.git"
+    topology = _optional_json(root / "System" / ".dex" / "topology.json")
+    vault_marker = _optional_json(vault_git / "dex-vault-v2")
+    brain_marker = _optional_json(brain_git / "dex-brain-v2")
+    if not topology or topology.get("topology") != "brain-vault-split":
+        return ("System/.dex/topology.json does not record a brain/vault split",)
+    failures: list[str] = []
+    if topology.get("vaultGitDir") != ".git":
+        failures.append(
+            "System/.dex/topology.json records vaultGitDir "
+            f"{topology.get('vaultGitDir')!r} instead of '.git'"
+        )
+    if topology.get("brainGitDir") != ".dex/brain.git":
+        failures.append(
+            "System/.dex/topology.json records brainGitDir "
+            f"{topology.get('brainGitDir')!r} instead of '.dex/brain.git'"
+        )
+    if _recorded_vault_path(topology) is None:
+        failures.append("System/.dex/topology.json records no environment.DEX_VAULT path")
+    if vault_git.is_symlink():
+        failures.append(".git is a symbolic link, which Dex refuses to follow")
+    elif not vault_git.is_dir():
+        failures.append(".git is missing or is not a directory")
+    if brain_git.is_symlink():
+        failures.append(".dex/brain.git is a symbolic link, which Dex refuses to follow")
+    elif not brain_git.is_dir():
+        failures.append(".dex/brain.git is missing or is not a directory")
+    if not vault_marker:
+        failures.append(".git/dex-vault-v2 is missing or unreadable")
+    elif vault_marker.get("role") != "vault":
+        failures.append(
+            f".git/dex-vault-v2 records role {vault_marker.get('role')!r} instead of 'vault'"
+        )
+    if not brain_marker:
+        failures.append(".dex/brain.git/dex-brain-v2 is missing or unreadable")
+    elif brain_marker.get("role") != "brain":
+        failures.append(
+            ".dex/brain.git/dex-brain-v2 records role "
+            f"{brain_marker.get('role')!r} instead of 'brain'"
+        )
+    return tuple(failures)
+
+
+def _topology_refusal_detail(vault_root: Path, state: str) -> str:
+    """Say in one clause why this exact layout cannot be converted.
+
+    Kept in step with ``core.lifecycle.engine.topology_refusal_detail``. It has
+    to live here as well because the bridge delegates to a pinned foundation
+    release whose own refusal names none of its conditions and cannot be changed
+    after the fact. Only paths the user already owns appear here.
+    """
+    root = Path(vault_root)
+    if state == "invalid-split":
+        return (
+            "this vault records the separated brain/vault layout, but "
+            + "; ".join(_split_layout_failures(root))
+        )
+    if state == "migration-in-progress":
+        migration_state = _optional_json(
+            root / "System" / ".dex" / "migration-v2-state.json"
+        )
+        if migration_state and migration_state.get("status") != "complete":
+            return (
+                "System/.dex/migration-v2-state.json records an earlier "
+                f"separation that stopped at {migration_state.get('status')!r} "
+                "and was never finished"
+            )
+        leftovers = [
+            relative
+            for relative in (".dex/pre-split-archive.git", ".dex/vault-staging.git")
+            if (root / relative).exists()
+        ]
+        return (
+            "an earlier separation left "
+            + " and ".join(leftovers)
+            + " behind, so Dex cannot tell finished work from unfinished work"
+        )
+    if state == "zip-or-manual":
+        return (
+            "this folder has no .git directory, so it is a copied or downloaded "
+            "folder rather than an install Dex can update in place"
+        )
+    if state == "invalid-combined":
+        return (
+            "this folder has a .git directory but no separation tool at "
+            f"{_TOPOLOGY_MIGRATOR_RELATIVE.as_posix()}, and its Dex release is "
+            "not one of the historic layouts this bridge knows how to start from"
+        )
+    return f"the current layout is {state}"
+
+
+def _repair_relocated_split(vault_root: Path) -> bool:
+    """Re-record the vault path of a structurally sound split that was moved.
+
+    The recorded path is an absolute path held in local runtime state, so a
+    vault that was copied, moved, or renamed records somewhere else. Nothing
+    reads that value as a path — every check derives its paths from the vault
+    root it was given — so the record is a consistency note, and a relocated
+    vault is sound rather than damaged.
+
+    The pinned foundation this bridge delegates to shipped before that was
+    understood and refuses on the mismatch, so the record is put right here,
+    before the foundation ever sees it. Only that one field changes, only when
+    every structural condition passes, and the surrounding markers are left
+    exactly as they are.
+    """
+    root = Path(vault_root).resolve()
+    target = root / "System" / ".dex" / "topology.json"
+    topology = _optional_json(target)
+    if not topology or topology.get("topology") != "brain-vault-split":
+        return False
+    if _split_layout_failures(root):
+        return False
+    recorded = _recorded_vault_path(topology)
+    if recorded is None:
+        return False
+    try:
+        if Path(recorded).resolve() == root:
+            return False
+    except (OSError, RuntimeError):
+        pass
+    environment = topology.get("environment")
+    if not isinstance(environment, dict):
+        return False
+    rewritten = dict(topology)
+    rewritten["environment"] = {**environment, "DEX_VAULT": str(root)}
+    data = (json.dumps(rewritten, sort_keys=True, indent=2) + "\n").encode("utf-8")
+    temporary = target.parent / f".{target.name}.relocated-{os.getpid()}"
+    descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    try:
+        os.write(descriptor, data)
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+    os.replace(temporary, target)
+    directory = os.open(target.parent, os.O_RDONLY)
+    try:
+        os.fsync(directory)
+    finally:
+        os.close(directory)
+    _progress(
+        "This vault has moved since Dex last recorded where it lives; "
+        f"re-recording it as {root} and continuing."
+    )
+    return True
+
+
 def _validate_completed_foundation(vault_root: Path, pin: ReleasePin) -> None:
     """Prove every durable split marker agrees with the installed pin."""
     brain = vault_root / ".dex" / "brain.git"
@@ -2814,23 +3020,27 @@ def _validate_completed_foundation(vault_root: Path, pin: ReleasePin) -> None:
     topology = _regular_json(vault_root / "System" / ".dex" / "topology.json", "split topology marker")
     vault_marker = _regular_json(vault_root / ".git" / "dex-vault-v2", "vault Git marker")
     brain_marker = _regular_json(brain / "dex-brain-v2", "brain Git marker")
-    environment = topology.get("environment")
-    wired_vault = environment.get("DEX_VAULT") if isinstance(environment, dict) else None
-    try:
-        wiring_matches = isinstance(wired_vault, str) and Path(wired_vault).resolve() == vault_root
-    except (OSError, RuntimeError):
-        wiring_matches = False
-    if (
-        topology.get("topology") != "brain-vault-split"
-        or topology.get("vaultGitDir") != ".git"
-        or topology.get("brainGitDir") != ".dex/brain.git"
-        or not wiring_matches
-        or topology.get("installedRelease") != pin.commit
-        or vault_marker.get("role") != "vault"
-        or brain_marker.get("role") != "brain"
-        or brain_marker.get("installed") != pin.commit
-    ):
-        raise BridgeError("completed bridge markers do not agree with the pinned foundation")
+    # The recorded vault path is deliberately not a condition: see
+    # _repair_relocated_split. Everything structural still fails closed, and
+    # each cause now names itself rather than leaving the reader to guess.
+    disagreements = list(_split_layout_failures(vault_root))
+    if topology.get("installedRelease") != pin.commit:
+        disagreements.append(
+            "System/.dex/topology.json records installedRelease "
+            f"{topology.get('installedRelease')!r} instead of the pinned "
+            f"foundation {pin.commit}"
+        )
+    if brain_marker.get("installed") != pin.commit:
+        disagreements.append(
+            ".dex/brain.git/dex-brain-v2 records installed "
+            f"{brain_marker.get('installed')!r} instead of the pinned "
+            f"foundation {pin.commit}"
+        )
+    if disagreements:
+        raise BridgeError(
+            "completed bridge markers do not agree with the pinned foundation: "
+            + "; ".join(disagreements)
+        )
 
 
 def _foundation_is_installed(vault_root: Path, pin: ReleasePin) -> bool:
@@ -2935,6 +3145,11 @@ def run_bridge(
 ) -> Mapping[str, Any]:
     """Run up to three fresh approval boundaries through the foundation service."""
     root = _validate_vault(vault_root)
+    # Before the read-only notice below, because a vault that has moved gets one
+    # line of local runtime state put right and says so. Idempotent, silent, and
+    # a no-op for every vault that has not moved; main() has normally done it
+    # already, and this covers callers that enter here directly.
+    _repair_relocated_split(root)
     _progress("Checking this Dex install (read-only)...")
     # This local ref is the authoritative resume marker. Check it before
     # importing/calling lifecycle code or attempting any network operation: a
@@ -3007,7 +3222,27 @@ def run_bridge(
     }
 
 
+def _own_this_process_logging() -> None:
+    """Keep imported Dex code's logging out of the bridge's own output.
+
+    The bridge's stderr is a user-facing surface: every stage it narrates, and
+    every way it can stop, is a plain sentence written with ``print``. It uses
+    no logger of its own. The pinned foundation release it imports does, and
+    warned through the root logger as a side effect of being imported, which put
+    ``VAULT_PATH not set — falling back to cwd()`` in front of the bridge's first
+    check, where it is both alarming and irrelevant. That release cannot be
+    changed after the fact.
+
+    An entry point is the right place to decide where log output goes, so this
+    one decides: attaching a handler to the root logger stops Python's
+    last-resort handler writing library records to stderr. No bridge diagnostic
+    travels this way, so none is suppressed.
+    """
+    logging.getLogger().addHandler(logging.NullHandler())
+
+
 def main(argv: list[str] | None = None) -> int:
+    _own_this_process_logging()
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--vault", type=Path, default=Path.cwd(), help="old Dex vault (defaults to current directory)")
     args = parser.parse_args(argv)
@@ -3016,6 +3251,10 @@ def main(argv: list[str] | None = None) -> int:
     try:
         _trusted_git_binary()
         vault = _validate_vault(args.vault)
+        # Put a moved vault's recorded location right before anything reads it:
+        # the resume check below and the pinned foundation both compare it, and
+        # both shipped before relocation was understood as routine.
+        _repair_relocated_split(vault)
         # A completed bridge has all durable state locally.  Check before
         # selecting the old virtualenv or downloading source so resuming it is
         # genuinely offline and independent of a later stable-channel change.
@@ -3035,10 +3274,18 @@ def main(argv: list[str] | None = None) -> int:
                 result = run_bridge(vault, _load_lifecycle_service(source))
             finally:
                 temporary.cleanup()
-    except (BridgeError, OSError, RuntimeError) as error:
+    except (BridgeError, EOFError, OSError, RuntimeError) as error:
+        # EOFError belongs here as a backstop: every approval gate converts it
+        # into a plain BridgeError sentence, and no gate may ever be able to
+        # reach the user as a traceback instead.
         print(f"Dex update bridge stopped safely: {error}", file=sys.stderr)
         return 1
-    print("Foundation delivery is complete. Once historical support is verified, future updates use /dex-update.")
+    print(
+        "Stage one of two is complete: this Dex install is now on foundation "
+        f"v{FOUNDATION.version}, a release from 4 August 2026. Run /dex-update "
+        "next to come up to the current release — that is an ordinary update "
+        "and you can repeat it whenever you like."
+    )
     print(json.dumps(result, indent=2, sort_keys=True))
     return 0
 

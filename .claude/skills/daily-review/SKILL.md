@@ -21,6 +21,54 @@ current tasks and meeting evidence, and surface omissions or proposed correction
 Do not create a competing review or overwrite the existing author. Any proposed
 write still follows the confirmation and write-guard rules below.
 
+### Delegated gathering (large-vault scaling)
+
+This skill stays inline as described above: it keeps session awareness, it asks
+the user the questions, and it owns every interactive step. What it does NOT do
+inline is the bulk read-gathering, which on a mature vault (hundreds of notes,
+thousands of indexed messages, a live calendar and multiple integrations) can be
+large enough to exhaust the main conversation before the useful work starts.
+
+So the gathering phase is delegated to one `general-purpose` subagent via the
+Agent tool, using the self-contained prompt in this skill's
+`AGENT_INSTRUCTIONS.md`:
+
+1. Read `.claude/skills/daily-review/AGENT_INSTRUCTIONS.md`.
+2. Substitute its placeholders (`{{TARGET_DATE}}`, `{{TOMORROW_DATE}}`,
+   `{{TOMORROW_DATE_PLUS_1}}`, `{{DAY_NAME}}`, `{{MONTH}}`, `{{DD}}`, `{{YYYY}}`).
+3. Call the Agent tool with `subagent_type: "general-purpose"`, that prompt, and
+   a short description.
+4. Verify it wrote the draft to `07-Archives/Reviews/Daily_Review_YYYY-MM-DD.md`,
+   then run the interactive steps from its findings and complete the placeholder
+   sections.
+
+The subagent inherits MCP connections, runs in its own context, and that context
+is freed when it completes, so only its findings reach this conversation.
+
+**Use `AGENT_INSTRUCTIONS.md` verbatim.** Read the file and pass its content as
+the subagent prompt, substituting only the placeholders. Do NOT hand-write a
+replacement brief from what you already know about the day: that is how steps get
+silently dropped, and the omission looks complete because nothing errors. If
+context from this conversation is worth adding, APPEND it to the file's content;
+never substitute for it.
+
+**Two caveats that are load-bearing:**
+
+- **Do not count on hooks for the subagent's writes.** The hooks declared in
+  this skill's own frontmatter belong to this skill's run, not the subagent's,
+  and whether the repository-wide hooks in `.claude/settings.json` reach a
+  subagent's tool calls is not something a skill should assume either way.
+  Nothing in this skill's gathering depends on a hook; the subagent's writes
+  must stand on their own.
+- **Always fall back.** If the subagent fails, times out, or returns nothing
+  usable, say so plainly and run the gathering inline from the same
+  `AGENT_INSTRUCTIONS.md`. A missing subagent must never mean a missing result.
+
+**Stays inline:** verifier mode, meeting follow-up surfacing, learning capture
+and categorisation, tomorrow's focus confirmation, the Dex Inbox check
+(Step 2.55), the retrospective insight (Step 9.5), the evening journal, and the
+rating prompt. These need the user, so they must not be delegated.
+
 ## Tone Calibration
 
 Read `System/user-profile.yaml` → `communication` section and adapt accordingly.

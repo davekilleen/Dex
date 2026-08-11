@@ -625,6 +625,20 @@
       "ownership": "seed"
     },
     {
+      "id": "runtime-backup-logs",
+      "path": "System/backup",
+      "kind": "dir",
+      "ownership": "runtime",
+      "note": "the backup engine's own logs; the shipped RESTORE.md inside it carries its own brain rule and wins by exact-file match"
+    },
+    {
+      "id": "brain-backup-restore-guide",
+      "path": "System/backup/RESTORE.md",
+      "kind": "file",
+      "ownership": "brain",
+      "note": "the restore runbook must sit inside the vault so it travels inside every backup archive and is readable on a bare machine; shipped and release-owned, so an update replaces it like any other brain doc"
+    },
+    {
       "id": "runtime-claude-state",
       "path": "System/claude-code-state.json",
       "kind": "file",
