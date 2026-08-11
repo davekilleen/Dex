@@ -108,7 +108,7 @@ def _compose_claude(release_blob: bytes, vault_root: Path) -> bytes:
 
 GITIGNORE_SECTION_BEGIN = "# >>> dex-vault-mode (managed by Dex updates) >>>"
 GITIGNORE_SECTION_END = "# <<< dex-vault-mode (managed by Dex updates) <<<"
-_GITIGNORE_MANAGED_SECTION = re.compile(
+GITIGNORE_MANAGED_SECTION = re.compile(
     rf"\n*{re.escape(GITIGNORE_SECTION_BEGIN)}.*?{re.escape(GITIGNORE_SECTION_END)}\n?",
     re.DOTALL,
 )
@@ -173,7 +173,7 @@ def _compose_gitignore(release_blob: bytes, vault_root: Path) -> bytes:
         text = release_blob.decode("utf-8")
     except UnicodeDecodeError as error:
         raise CompositionError("release .gitignore is not UTF-8") from error
-    base = _GITIGNORE_MANAGED_SECTION.sub("", text).rstrip("\n")
+    base = GITIGNORE_MANAGED_SECTION.sub("", text).rstrip("\n")
     return f"{base}\n\n{_vault_mode_gitignore_section()}\n".encode("utf-8")
 
 

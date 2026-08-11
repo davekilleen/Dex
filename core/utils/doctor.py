@@ -3934,17 +3934,43 @@ def _mcp_without_custom_entries(text: str) -> str | None:
     return json.dumps(normalized, sort_keys=True, separators=(",", ":"))
 
 
+def _without_vault_mode_gitignore_section(text: str) -> str:
+    """Drop the update-managed vault-mode block so only real edits remain.
+
+    A vault's ``.gitignore`` is composed at delivery: the update appends a
+    marked section that stops the distribution re-include block from exposing
+    Dex's own product files inside the user's private history. Those bytes are
+    Dex's, rebuilt on every update, so comparing them against the release blob
+    would report the composition itself as user drift.
+    """
+    from core.update.apply_update import GITIGNORE_MANAGED_SECTION
+
+    return GITIGNORE_MANAGED_SECTION.sub("", text).rstrip("\n")
+
+
+# Shipped files Dex composes per vault at delivery time: their worktree bytes
+# are expected to differ from the release blob, so drift is judged on the
+# non-composed remainder instead of a plain byte comparison.
+COMPOSED_SHIPPED_PATHS = frozenset({"CLAUDE.md", ".mcp.json", ".gitignore"})
+
+
 def _only_sanctioned_file_changes(
     context: DoctorContext,
     baseline: str,
     relative: str,
+    *,
+    git_directory: Path | None = None,
 ) -> bool:
-    baseline_text = _git_file(context, baseline, relative)
+    baseline_text = _git_file(context, baseline, relative, git_directory=git_directory)
     working_text = _working_file(context, relative)
     if baseline_text is None or working_text is None:
         return False
     if relative == "CLAUDE.md":
         return _strip_user_extensions(baseline_text) == _strip_user_extensions(working_text)
+    if relative == ".gitignore":
+        return _without_vault_mode_gitignore_section(
+            baseline_text
+        ) == _without_vault_mode_gitignore_section(working_text)
     if relative == ".mcp.json":
         baseline_config = _mcp_without_custom_entries(baseline_text)
         working_config = _mcp_without_custom_entries(working_text)
@@ -4276,6 +4302,15 @@ def _probe_core_drift(context: DoctorContext) -> ProbeResult:
                 baseline,
                 brain,
             )
+            and not (
+                relative in COMPOSED_SHIPPED_PATHS
+                and _only_sanctioned_file_changes(
+                    context,
+                    baseline,
+                    relative,
+                    git_directory=brain,
+                )
+            )
         )
         if not drifted:
             return ProbeResult(
@@ -4325,7 +4360,7 @@ def _probe_core_drift(context: DoctorContext) -> ProbeResult:
     drifted = [
         relative
         for relative in candidates
-        if relative not in {"CLAUDE.md", ".mcp.json"}
+        if relative not in COMPOSED_SHIPPED_PATHS
         or not _only_sanctioned_file_changes(context, baseline, relative)
     ]
     if not drifted:

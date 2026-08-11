@@ -15,7 +15,7 @@ Chris found his vault's change list crowded with dozens of files he never touche
 
 * **Dex's files no longer masquerade as your changes.** When an update refreshes that overlook-list in a vault, Dex now appends a clearly marked section telling your vault to disregard its product files — while everything of yours, including your custom skills and custom connections, stays visible and versioned exactly as before. The section is rebuilt from Dex's own ownership rules on every update, so it can never drift out of date.
 * **A background bookkeeping file stops appearing as something new to save.** The small timestamp Dex keeps to know when your search index was last refreshed is now overlooked like the rest of Dex's working state.
-* **If your vault already caught some of Dex's files,** they'll stop changing on their own once told to let them go — ask Dex to "untrack Dex's product files" and it takes one command, with nothing deleted from disk.
+* **If Dex's files were already folded into your history, no more will join them.** This change stops the leak; it can't undo what a past update already captured, so those particular files keep appearing as changed for now. Releasing them — without deleting a single file from your folder — is the next piece of work.
 
 Thanks to Chris for the report, traced from a single noisy update all the way to the root cause.
 

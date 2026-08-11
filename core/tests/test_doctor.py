@@ -3226,6 +3226,56 @@ def test_post_split_core_drift_accepts_only_installer_normalized_package_metadat
     assert "package.json" in result.detail
 
 
+def test_post_split_core_drift_accepts_the_composed_vault_mode_gitignore(
+    context,
+) -> None:
+    """The vault-mode section Dex composes at delivery is not user drift.
+
+    ``.gitignore`` is brain-owned and shipped, so the post-split probe compares
+    its worktree bytes against ``refs/dex/installed``. The update deliberately
+    appends a managed vault-mode section when it writes the file into a vault,
+    so a plain byte comparison would report every updated vault as carrying
+    modified shipped files. Edits outside that section are still drift.
+    """
+    from core.update import apply_update
+
+    brain = _write_split_topology(context)
+    release_blob = b"# distribution rules\n!core/\n!docs/\n"
+    (context.vault_root / ".gitignore").write_bytes(release_blob)
+    (context.vault_root / "System/.installed-files.manifest").write_text(
+        ".gitignore\n",
+        encoding="utf-8",
+    )
+    _git(context.vault_root, "add", ".gitignore", "System/.installed-files.manifest")
+    _git(context.vault_root, "commit", "--quiet", "-m", "release gitignore")
+    installed = _git(context.vault_root, "rev-parse", "HEAD").stdout.strip()
+    subprocess.run(
+        [
+            "git",
+            f"--git-dir={brain}",
+            "fetch",
+            "--quiet",
+            str(context.vault_root),
+            f"+{installed}:refs/dex/installed",
+        ],
+        check=True,
+    )
+
+    composed = apply_update._compose_gitignore(release_blob, context.vault_root)
+    assert composed != release_blob
+    (context.vault_root / ".gitignore").write_bytes(composed)
+
+    result = doctor._probe_core_drift(context)
+
+    assert result.verdict == "OK"
+    assert result.detail == "No shipped brain files differ from refs/dex/installed"
+
+    (context.vault_root / ".gitignore").write_bytes(composed + b"secret-exfil/\n")
+    edited = doctor._probe_core_drift(context)
+    assert edited.verdict == "UNKNOWN"
+    assert ".gitignore" in edited.detail
+
+
 def test_repository_credential_named_release_files_match_head_without_python_reads(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
