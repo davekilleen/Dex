@@ -32,12 +32,10 @@ import tempfile
 from pathlib import Path
 
 try:
-    from core.backup.backup_vault import (PREFIX, file_digest, load_config,
-                                          resolve_vault_root)
+    from core.backup.backup_vault import PREFIX, file_digest, load_config, resolve_vault_root
 except ImportError:  # invoked by file path: put the vault root on sys.path
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-    from core.backup.backup_vault import (PREFIX, file_digest, load_config,
-                                          resolve_vault_root)
+    from core.backup.backup_vault import PREFIX, file_digest, load_config, resolve_vault_root
 
 
 class RestoreError(RuntimeError):
