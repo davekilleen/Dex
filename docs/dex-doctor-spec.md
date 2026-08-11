@@ -120,6 +120,7 @@ repointed to `/dex-doctor`.
 | id | probe | OFF when | BROKEN when |
 |---|---|---|---|
 | granola.query_path | filtered `created_after` list via the same helper real queries use (`_cutoff_iso`) | no `GRANOLA_API_KEY` | API error (surface `GranolaAPIError` detail) |
+| pipedrive.connection | resolves the server's own `feature_status` payload, then proves the stored credential with one live `users/me` read | Pipedrive not connected, or `enabled: false` in `System/integrations/config.yaml` | auth/API failure, or missing `base_url`/`company_domain` (T3: run `/pipedrive-setup`) |
 | config.meeting_sources | `meeting_sources.notes_folder` (profile) must exist inside the vault (symlink escapes refused) and contain at least one supported note; empty-but-configured is `UNKNOWN`, not BROKEN | no meeting source configured | folder missing or outside the vault |
 | update.post-canary | reads the post-update canary receipt (`System/.dex/health/post-update-canary.json`) written right after an update applies | no canary has run yet | last canary failed (plan/state doors did not open after an update) |
 | calendar.access | `calendar_list_calendars` path via EventKit; configured `work_calendar` present in the list | permission never granted AND feature unused | permission denied (T3) / configured calendar not found (T3: set `calendar.work_calendar`, list real names) |

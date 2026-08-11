@@ -56,6 +56,7 @@ DEEP_IDS = [
     "customizations.assessment",
     "customizations.migration-status",
     "granola.query_path",
+    "pipedrive.connection",
     "config.meeting_sources",
     "update.post-canary",
     "calendar.access",
@@ -4180,3 +4181,140 @@ def test_meeting_sources_probe_is_ok_for_api_sources_without_folders(context):
     result = doctor._probe_meeting_sources(context)
     assert result.verdict == "OK"
     assert "granola" in result.detail
+
+
+# --- Pipedrive CRM connection probe ----------------------------------------
+
+
+def _pipedrive_module():
+    from core.mcp import pipedrive_server
+
+    return pipedrive_server
+
+
+def test_pipedrive_unconfigured_is_off_and_never_calls_the_api(monkeypatch, context):
+    """An unconnected integration is a healthy state, not a fault."""
+    pipedrive = _pipedrive_module()
+    monkeypatch.setattr(
+        pipedrive,
+        "_resolve",
+        lambda: {
+            "ok": False,
+            "status": {
+                "feature_status": "off",
+                "user_message": "Pipedrive is not connected. Run /pipedrive-setup to connect it.",
+            },
+        },
+    )
+    monkeypatch.setattr(
+        pipedrive,
+        "_request",
+        lambda *a, **k: pytest.fail("the API must not be called when unconfigured"),
+    )
+
+    result = doctor._probe_pipedrive_connection(context)
+
+    assert result.verdict == "OFF"
+    assert "not connected" in result.detail.lower()
+    assert result.heal is None
+
+
+def test_pipedrive_broken_config_offers_the_setup_heal(monkeypatch, context):
+    pipedrive = _pipedrive_module()
+    monkeypatch.setattr(
+        pipedrive,
+        "_resolve",
+        lambda: {
+            "ok": False,
+            "status": {
+                "feature_status": "broken",
+                "user_message": "No base_url / company_domain configured.",
+            },
+        },
+    )
+
+    result = doctor._probe_pipedrive_connection(context)
+
+    assert result.verdict == "BROKEN"
+    assert result.detail == "No base_url / company_domain configured."
+    assert result.heal is not None
+    assert "/pipedrive-setup" in result.heal.action
+    assert result.heal.applied is False
+
+
+def test_pipedrive_ok_requires_a_live_call_not_just_parseable_settings(monkeypatch, context):
+    """OK must mean the stored token works, so a 401 is BROKEN even when settings resolve."""
+    pipedrive = _pipedrive_module()
+    monkeypatch.setattr(
+        pipedrive,
+        "_resolve",
+        lambda: {"ok": True, "api_token": "t", "base_url": "https://example.pipedrive.com"},
+    )
+
+    calls = []
+
+    def unauthorized(method, path, env, **kwargs):
+        calls.append((method, path))
+        return {"ok": False, "error": "Pipedrive auth failed (401). Token may be invalid or expired."}
+
+    monkeypatch.setattr(pipedrive, "_request", unauthorized)
+    result = doctor._probe_pipedrive_connection(context)
+    assert calls == [("GET", "users/me")]
+    assert result.verdict == "BROKEN"
+    assert "401" in result.detail
+    assert result.heal is not None
+
+    monkeypatch.setattr(
+        pipedrive,
+        "_request",
+        lambda *a, **k: {"ok": True, "data": {"name": "Test User", "company_name": "Test Co"}},
+    )
+    healthy = doctor._probe_pipedrive_connection(context)
+    assert healthy.verdict == "OK"
+    assert "Test User" in healthy.detail
+    assert "Test Co" in healthy.detail
+    assert healthy.heal is None
+
+
+def test_pipedrive_probe_restores_the_callers_vault_root(monkeypatch, context):
+    """The probe points the server at the inspected vault without leaking that state."""
+    pipedrive = _pipedrive_module()
+    seen = {}
+
+    def capture():
+        seen["vault_root"] = os.environ.get("VAULT_ROOT")
+        return {"ok": False, "status": {"feature_status": "off", "user_message": "off"}}
+
+    monkeypatch.setattr(pipedrive, "_resolve", capture)
+
+    monkeypatch.setenv("VAULT_ROOT", "/sentinel/original")
+    doctor._probe_pipedrive_connection(context)
+    assert seen["vault_root"] == str(context.vault_root)
+    assert os.environ["VAULT_ROOT"] == "/sentinel/original"
+
+    monkeypatch.delenv("VAULT_ROOT", raising=False)
+    doctor._probe_pipedrive_connection(context)
+    assert seen["vault_root"] == str(context.vault_root)
+    assert "VAULT_ROOT" not in os.environ
+
+
+def test_pipedrive_sandbox_failure_is_unknown_not_broken(monkeypatch, context):
+    pipedrive = _pipedrive_module()
+    monkeypatch.setattr(
+        pipedrive,
+        "_resolve",
+        lambda: {"ok": True, "api_token": "t", "base_url": "https://example.pipedrive.com"},
+    )
+    monkeypatch.setattr(
+        pipedrive,
+        "_request",
+        lambda *a, **k: {"ok": False, "error": "Operation not permitted (sandbox)"},
+    )
+
+    result = doctor._probe_pipedrive_connection(context)
+    assert result.verdict in {"UNKNOWN", "BROKEN"}
+
+
+def test_pipedrive_check_is_registered_in_the_deep_check_list():
+    ids = {definition.id for definition in doctor.DEEP_CHECKS}
+    assert "pipedrive.connection" in ids

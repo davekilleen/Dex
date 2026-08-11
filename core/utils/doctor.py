@@ -642,6 +642,7 @@ DEEP_CHECKS = (
         "_probe_customization_migration_status",
     ),
     CheckDefinition("granola.query_path", "Granola meeting sync", "_probe_granola_query_path"),
+    CheckDefinition("pipedrive.connection", "Pipedrive CRM", "_probe_pipedrive_connection"),
     CheckDefinition("config.meeting_sources", "Configured meeting source", "_probe_meeting_sources"),
     CheckDefinition("update.post-canary", "Post-update canary", "_probe_post_update_canary"),
     CheckDefinition("calendar.access", "Calendar access", "_probe_calendar_access"),
@@ -4719,6 +4720,78 @@ def _probe_granola_query_path(context: DoctorContext) -> ProbeResult:
             return ProbeResult("UNKNOWN", f"The sandbox blocked the Granola query: {_one_line(error)}")
         raise
     return ProbeResult("OK", f"The real filtered Granola query completed and returned {len(notes)} note summaries")
+
+
+def _probe_pipedrive_connection(context: DoctorContext) -> ProbeResult:
+    """Report the real state of the Pipedrive CRM integration.
+
+    The server already speaks the shared feature_status contract, so this probe
+    translates that payload rather than re-deriving configuration rules. On a
+    resolvable configuration it then makes one cheap authenticated call, so OK
+    means "the stored token actually works" and not merely "the settings parse".
+    """
+    try:
+        from core.mcp import pipedrive_server
+    except Exception as error:  # pragma: no cover - import guard
+        detail = _one_line(error)
+        if _looks_like_sandbox_failure(detail):
+            return ProbeResult("UNKNOWN", f"The sandbox blocked the Pipedrive import: {detail}")
+        return ProbeResult(
+            "BROKEN",
+            f"The Pipedrive server could not be imported: {detail}",
+            Heal(tier=3, action="Run /pipedrive-setup to repair the Pipedrive connection.", applied=False),
+        )
+
+    # The server resolves vault-relative settings from the environment, exactly
+    # as it does when launched as an MCP process. Point it at the vault under
+    # inspection and restore the caller's environment afterwards.
+    previous = os.environ.get("VAULT_ROOT")
+    os.environ["VAULT_ROOT"] = str(context.vault_root)
+    try:
+        resolved = pipedrive_server._resolve()
+        if not resolved.get("ok"):
+            status = resolved.get("status") or {}
+            state = str(status.get("feature_status") or status.get("status") or "unknown")
+            message = str(status.get("user_message") or "Pipedrive reported no detail.")
+            if state == "off":
+                return ProbeResult("OFF", message)
+            if state in {"broken", "not_installed"}:
+                return ProbeResult(
+                    "BROKEN",
+                    message,
+                    Heal(tier=3, action="Run /pipedrive-setup to repair the Pipedrive connection.", applied=False),
+                )
+            return ProbeResult("UNKNOWN", message)
+
+        # Configuration resolves. Prove the credential with the cheapest
+        # authenticated read Pipedrive offers.
+        result = pipedrive_server._request("GET", "users/me", resolved)
+    except Exception as error:
+        detail = _one_line(error)
+        if _looks_like_sandbox_failure(detail):
+            return ProbeResult("UNKNOWN", f"The sandbox blocked the Pipedrive check: {detail}")
+        raise
+    finally:
+        if previous is None:
+            os.environ.pop("VAULT_ROOT", None)
+        else:
+            os.environ["VAULT_ROOT"] = previous
+
+    if not result.get("ok"):
+        detail = _one_line(result.get("error") or "Pipedrive returned no detail.")
+        if _looks_like_sandbox_failure(detail):
+            return ProbeResult("UNKNOWN", f"The sandbox blocked the Pipedrive call: {detail}")
+        return ProbeResult(
+            "BROKEN",
+            detail,
+            Heal(tier=3, action="Run /pipedrive-setup to repair the Pipedrive connection.", applied=False),
+        )
+
+    data = result.get("data") or {}
+    who = data.get("name") or data.get("email") or "the configured user"
+    company = data.get("company_name")
+    suffix = f" ({company})" if company else ""
+    return ProbeResult("OK", f"The Pipedrive connection answered a live request as {who}{suffix}")
 
 
 def _calendar_permission_status(_context: DoctorContext) -> str:
