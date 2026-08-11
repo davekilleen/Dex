@@ -16,10 +16,18 @@ from pathlib import Path
 import pytest
 
 from core.health import promises as health_promises
+from core.lifecycle import service as lifecycle_service
+from core.lifecycle.bridge import activate_vault
 from core.lifecycle.catalog import with_catalog_identity
 from core.lifecycle.engine import AdoptionReceipt
 from core.lifecycle.ledger import record_adoption
-from core.tests.lifecycle_test_helpers import SOURCE_COMMIT, write_file, write_manifest
+from core.tests.lifecycle_test_helpers import (
+    SOURCE_COMMIT,
+    write_bridge_release,
+    write_file,
+    write_manifest,
+)
+from core.transaction.engine import PlanRejected
 from core.utils import doctor, release_channel
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -792,8 +800,15 @@ def test_release_catalog_probe_reports_non_utf8_corruption_as_broken(context):
     assert "codec can't decode" in result.detail
 
 
+def _activate_release_catalog(context) -> None:
+    """Stand in for the one-time bridge activation a real install already has."""
+    write_bridge_release(context.vault_root)
+    activate_vault(context.vault_root)
+
+
 def test_adoption_plan_probe_summarizes_valid_catalog_in_memory(context):
     _write_release_catalog(context)
+    _activate_release_catalog(context)
     before = _tree_snapshot(context.vault_root)
 
     result = doctor._probe_adoption_plan(context)
@@ -805,6 +820,7 @@ def test_adoption_plan_probe_summarizes_valid_catalog_in_memory(context):
 
 def test_adoption_plan_probe_counts_receipt_backed_adoptions(context):
     _write_release_catalog(context)
+    _activate_release_catalog(context)
     content = b"release skill\n"
     transaction_id = "20260807T120000-00000001"
     receipt = AdoptionReceipt.from_dict(
@@ -845,16 +861,46 @@ def test_adoption_plan_probe_is_off_without_a_release_catalog(context):
 
 def test_adoption_plan_probe_maps_internal_failures_to_unknown(monkeypatch, context):
     _write_release_catalog(context)
+    _activate_release_catalog(context)
 
     def explode(*_args, **_kwargs):
         raise RuntimeError("inventory exploded")
 
-    monkeypatch.setattr(doctor, "build_inventory", explode)
+    monkeypatch.setattr(lifecycle_service, "build_inventory_and_plan", explode)
 
     result = doctor._probe_adoption_plan(context)
 
     assert result.verdict == "UNKNOWN"
     assert "inventory exploded" in result.detail
+
+
+def test_adoption_plan_probe_reports_broken_when_the_update_gate_refuses(monkeypatch, context):
+    """A refusal from the same gate /dex-update uses must not read as a clean bill of health."""
+    _write_release_catalog(context)
+    _activate_release_catalog(context)
+
+    def refuse(*_args, **_kwargs):
+        raise PlanRejected("this Dex copy's update engine doesn't match its release information — run /dex-doctor")
+
+    monkeypatch.setattr(lifecycle_service, "build_inventory_and_plan", refuse)
+
+    result = doctor._probe_adoption_plan(context)
+
+    assert result.verdict == "BROKEN"
+    assert "Updating is blocked" in result.detail
+    assert "doesn't match its release information" in result.detail
+
+
+def test_adoption_plan_probe_is_broken_on_a_real_bridge_pin_mismatch(context):
+    """Reproduces the #252-style refusal: the probe must go through the real gate, not just build a plan in memory."""
+    _write_release_catalog(context)
+    write_bridge_release(context.vault_root, release_version="9.9.9")
+
+    result = doctor._probe_adoption_plan(context)
+
+    assert result.verdict == "BROKEN"
+    assert "Updating is blocked" in result.detail
+    assert "doesn't match its release information" in result.detail
 
 
 def test_corrupt_catalog_never_raises_out_of_doctor(monkeypatch, context):
@@ -3389,6 +3435,17 @@ def test_core_drift_invalid_channel_is_unknown_and_does_not_use_stable(tmp_path)
 
     assert result.verdict == "UNKNOWN"
     assert result.detail == "couldn't verify your update channel"
+
+
+def test_core_drift_missing_pyyaml_is_reported_distinctly_from_a_broken_profile(monkeypatch, tmp_path):
+    """A missing dependency must not be reported as if the user's settings file were broken."""
+    drift_context = _drift_context(tmp_path, channel="beta")
+    monkeypatch.setitem(sys.modules, "yaml", None)
+
+    result = doctor._probe_core_drift(drift_context)
+
+    assert result.verdict == "UNKNOWN"
+    assert result.detail == "PyYAML isn't installed — Dex can't read your update channel setting"
 
 
 def test_core_drift_never_executes_repo_fsmonitor_or_ambient_git(

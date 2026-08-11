@@ -1550,6 +1550,15 @@ def test_task_lifecycle_invalid_channel_is_unknown_and_refuses_execution(tmp_pat
     assert "not executed for safety" in result["detail"]
 
 
+def test_missing_release_ref_reason_distinguishes_missing_pyyaml_from_a_broken_channel() -> None:
+    """A missing dependency must not be reported as if the user's settings file were broken."""
+    assert (
+        smoke._missing_release_ref_reason("missing-dependency")
+        == "PyYAML isn't installed — Dex can't read your update channel setting"
+    )
+    assert smoke._missing_release_ref_reason("invalid") == "couldn't verify your update channel"
+
+
 def test_task_lifecycle_runs_verified_release_and_refuses_dependency_drift(tmp_path: Path) -> None:
     vault = _write_valid_vault(tmp_path)
     repo = _release_repo(tmp_path)

@@ -1984,6 +1984,8 @@ def _git_release_ref(repo_root: Path, channel: str | None = None) -> str | None:
 def _missing_release_ref_reason(channel: str, *, server: bool = False) -> str:
     if channel == "beta":
         return "beta channel selected but no beta release found — staying on stable is safe"
+    if channel == "missing-dependency":
+        return "PyYAML isn't installed — Dex can't read your update channel setting"
     if channel == "invalid":
         return "couldn't verify your update channel"
     suffix = " to verify the server" if server else ""

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 
 import pytest
@@ -60,6 +61,17 @@ def test_read_channel_returns_invalid_when_profile_yaml_cannot_be_parsed(tmp_pat
     _write_profile(tmp_path, "updates:\n  channel: [beta\n")
 
     assert read_channel(tmp_path) == "invalid"
+
+
+def test_read_channel_distinguishes_missing_pyyaml_from_a_broken_profile(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """A missing PyYAML must not be reported the same way as a genuinely broken settings file."""
+    _write_profile(tmp_path, "updates:\n  channel: beta\n")
+    monkeypatch.setitem(sys.modules, "yaml", None)
+
+    assert read_channel(tmp_path) == "missing-dependency"
 
 
 @pytest.mark.parametrize(

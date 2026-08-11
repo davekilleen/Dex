@@ -35,7 +35,7 @@ from core.lifecycle.catalog import CatalogError, load_catalog
 from core.lifecycle.inventory import build_inventory
 from core.lifecycle.model import ITEM_ID, SEMVER, AdoptionState
 from core.lifecycle.plan import PlannedAction, ReasonCode, build_adoption_plan
-from core.transaction.engine import TX_ROOT_RELATIVE, PlanEntry
+from core.transaction.engine import TX_ROOT_RELATIVE, PlanEntry, PlanRejected
 from core.transaction.journal import Journal, JournalCorruptError
 from core.utils import dex_logger, launch_agents, preflight, release_channel
 
@@ -1718,7 +1718,7 @@ def _probe_release_catalog(context: DoctorContext) -> ProbeResult:
 
 
 def _probe_adoption_plan(context: DoctorContext) -> ProbeResult:
-    """Build and summarize the adoption plan entirely in memory."""
+    """Build and summarize the adoption plan through the same gated entry point /dex-update uses."""
     catalog_path = _release_catalog_path(context)
     if not os.path.lexists(catalog_path):
         return ProbeResult(
@@ -1726,32 +1726,17 @@ def _probe_adoption_plan(context: DoctorContext) -> ProbeResult:
             "Adoption planning is unavailable on this older Dex release because no release catalog is installed",
         )
     try:
-        catalog = load_catalog(catalog_path, release_root=context.vault_root)
-        inventory = build_inventory(context.vault_root, catalog=catalog)
-        ledger_state = lifecycle_ledger.project_state(context.vault_root)
-        adopted = ledger_state["adopted"]
-        held_back = ledger_state["held_back"]
-        assert isinstance(adopted, dict)
-        assert isinstance(held_back, list)
-        catalog_ids = {item.id for item in catalog.items}
-        plan = build_adoption_plan(
-            catalog,
-            inventory,
-            adoption_states={
-                item_id: AdoptionState.ADOPTED
-                for item_id in adopted
-                if item_id in catalog_ids
-            },
-            held_back=frozenset(held_back) & catalog_ids,
-        )
-        counts = plan.counts
-        return ProbeResult(
-            "OK",
-            f"{counts['adopt']} adoptable / {counts['already-adopted']} adopted / "
-            f"{counts['conflict']} conflicts",
-        )
+        result = lifecycle_service.build_inventory_and_plan(context.vault_root)
+    except PlanRejected as error:
+        return ProbeResult("BROKEN", f"Updating is blocked: {_one_line(error)}")
     except Exception as error:
         return ProbeResult("UNKNOWN", f"The adoption plan could not be built: {_one_line(error)}")
+    counts = result["plan"]["counts"]
+    return ProbeResult(
+        "OK",
+        f"{counts['adopt']} adoptable / {counts['already-adopted']} adopted / "
+        f"{counts['conflict']} conflicts",
+    )
 
 
 CUSTOMIZATION_RECORD_PERSISTENCE_CAP = 25
@@ -4332,6 +4317,8 @@ def _probe_core_drift(context: DoctorContext) -> ProbeResult:
                 "UNKNOWN",
                 "beta channel selected but no beta release found — staying on stable is safe",
             )
+        if channel == "missing-dependency":
+            return ProbeResult("UNKNOWN", "PyYAML isn't installed — Dex can't read your update channel setting")
         if channel == "invalid":
             return ProbeResult("UNKNOWN", "couldn't verify your update channel")
         return ProbeResult("UNKNOWN", "no upstream remote — can't compare")
