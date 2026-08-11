@@ -5,3 +5,4 @@ pytest-xdist
 ruff
 hypothesis
 pytest-split
+cryptography>=42

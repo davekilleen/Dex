@@ -1,0 +1,279 @@
+{
+  "registry_version": 1,
+  "catalog_version": 1,
+  "jobs": [
+    {
+      "job_id": "plan-my-work",
+      "title": "Plan my work",
+      "description": "Turn current commitments, calendar pressure and goals into a realistic plan for the day or week."
+    },
+    {
+      "job_id": "keep-relationships-warm",
+      "title": "Keep relationships warm",
+      "description": "Notice important people and accounts going quiet, then prepare useful follow-up before the relationship goes cold."
+    },
+    {
+      "job_id": "process-meetings",
+      "title": "Process meetings",
+      "description": "Convert meeting records into context, actions and organised notes without losing what was agreed."
+    },
+    {
+      "job_id": "keep-system-healthy",
+      "title": "Keep the system healthy",
+      "description": "Check what is working, what is off or broken, and what can be safely repaired or escalated."
+    },
+    {
+      "job_id": "compound-learning",
+      "title": "Compound learning",
+      "description": "Capture decisions, insights and reusable patterns so future work starts with better context."
+    }
+  ],
+  "entries": [
+    {
+      "id": "daily-plan",
+      "source": {
+        "kind": "skill",
+        "path": ".claude/skills/daily-plan/SKILL.md",
+        "sha256": "311c9cdf45842936cee4a91d1ac116ce9e1eeae576c01aacdce989e44b912221",
+        "byte_size": 30797
+      },
+      "value": "Helps a person choose a small, realistic focus list before the day scatters across meetings, tasks and loose commitments.",
+      "jobs_served": ["plan-my-work"],
+      "foundation_capabilities": ["context-orientation", "scoped-agency-human-control"],
+      "prerequisites": ["A readable task list or commitment source.", "Calendar access improves the plan but is not the only input."],
+      "trade_offs": ["The plan is only as current as the sources it can inspect.", "It drafts priorities; the person still chooses what to do."],
+      "evidence": [
+        {
+          "kind": "test",
+          "reference": "core/tests/test_commitments_skill.py",
+          "summary": "The planning path is covered where commitments become bounded, reviewable tasks."
+        },
+        {
+          "kind": "runtime-path",
+          "reference": ".claude/skills/daily-plan/SKILL.md",
+          "summary": "The shipped skill defines the daily planning workflow and its required source checks."
+        }
+      ],
+      "brief": {
+        "goal": "Create a daily planning routine that combines meetings, tasks and commitments into one bounded plan.",
+        "method_outline": ["Read current commitments and calendar shape.", "Choose a short list that fits the available time.", "Keep any task creation reviewable by the person."],
+        "verification_checklist": ["The output names a realistic number of actions for today.", "The person can reject or edit task changes before anything persists."],
+        "rollback_advice": "Disable or remove the planning command; the workflow should not require irreversible data changes."
+      },
+      "compatibility": {
+        "host_requirements": ["skills-directory", "readable-task-source"],
+        "needs_hooks": false,
+        "needs_mcp": true,
+        "platforms": ["macos", "linux", "windows"]
+      },
+      "docs_url": "https://github.com/davekilleen/Dex",
+      "since_release": "1.80.0",
+      "changed_in": []
+    },
+    {
+      "id": "week-plan",
+      "source": {
+        "kind": "skill",
+        "path": ".claude/skills/week-plan/SKILL.md",
+        "sha256": "23b5acf167fb02f41fa31fb75c38c366afab2263a53b0b4a9dcbdc62966b4bf2",
+        "byte_size": 12007
+      },
+      "value": "Turns goals, capacity and open work into a weekly focus plan, so repeated work starts from priorities rather than a blank chat.",
+      "jobs_served": ["plan-my-work"],
+      "foundation_capabilities": ["context-orientation", "durable-memory-provenance", "scoped-agency-human-control"],
+      "prerequisites": ["Some durable goal or task record the host can read.", "A cadence for reviewing the plan."],
+      "trade_offs": ["A weekly plan can become stale mid-week unless the person revisits it.", "It depends on honest capacity data."],
+      "evidence": [
+        {
+          "kind": "test",
+          "reference": "core/tests/test_work_server_weekly_priority_creation.py",
+          "summary": "Weekly priority creation is covered through the Work MCP path."
+        },
+        {
+          "kind": "runtime-path",
+          "reference": ".claude/skills/week-plan/SKILL.md",
+          "summary": "The shipped skill defines the weekly planning routine."
+        }
+      ],
+      "brief": {
+        "goal": "Create a weekly planning routine that maps goals and commitments to a bounded set of priorities.",
+        "method_outline": ["Read goals, open tasks and calendar pressure.", "Select a short priority set for the week.", "Expose uncertainty instead of forcing a fake complete plan."],
+        "verification_checklist": ["The plan names priorities, not a generic task dump.", "Capacity limits are visible in the output."],
+        "rollback_advice": "Remove the weekly planning command or its scheduled reminder; preserve the underlying tasks and goals."
+      },
+      "compatibility": {
+        "host_requirements": ["skills-directory", "durable-goals-or-tasks"],
+        "needs_hooks": false,
+        "needs_mcp": true,
+        "platforms": ["macos", "linux", "windows"]
+      },
+      "docs_url": "https://github.com/davekilleen/Dex",
+      "since_release": "1.80.0",
+      "changed_in": []
+    },
+    {
+      "id": "process-meetings",
+      "source": {
+        "kind": "skill",
+        "path": ".claude/skills/process-meetings/SKILL.md",
+        "sha256": "eb7e819ed4c4e32fb5ec1f5477b249ec4bd6d8805870360107098d893a04642c",
+        "byte_size": 19094
+      },
+      "value": "Turns meeting material into people context and follow-up tasks, reducing the chance that decisions or promises disappear after the call.",
+      "jobs_served": ["process-meetings", "keep-relationships-warm"],
+      "foundation_capabilities": ["context-orientation", "durable-memory-provenance", "privacy-minimal-disclosure"],
+      "prerequisites": ["Meeting notes or transcripts in a readable local source.", "A place to write reviewable follow-up tasks."],
+      "trade_offs": ["Transcript quality controls output quality.", "Private meeting material must stay within the host's declared read scope."],
+      "evidence": [
+        {
+          "kind": "test",
+          "reference": "core/tests/test_process_meetings_soft_commitment_wiring.py",
+          "summary": "Meeting processing is covered where soft commitments are detected and routed."
+        },
+        {
+          "kind": "runtime-path",
+          "reference": ".claude/skills/process-meetings/SKILL.md",
+          "summary": "The shipped skill defines the meeting processing workflow."
+        }
+      ],
+      "brief": {
+        "goal": "Create a meeting processing routine that extracts decisions, commitments and relationship context from approved meeting material.",
+        "method_outline": ["Read only the approved meeting source.", "Identify decisions, action items and people references.", "Offer reviewable tasks or note updates."],
+        "verification_checklist": ["No unrelated meeting content is read.", "Every proposed follow-up cites the meeting source.", "The person can edit before task creation."],
+        "rollback_advice": "Disable the meeting processor and remove generated follow-up drafts; keep original meeting notes untouched."
+      },
+      "compatibility": {
+        "host_requirements": ["skills-directory", "meeting-source", "task-or-note-store"],
+        "needs_hooks": false,
+        "needs_mcp": true,
+        "platforms": ["macos", "linux", "windows"]
+      },
+      "docs_url": "https://github.com/davekilleen/Dex",
+      "since_release": "1.80.0",
+      "changed_in": []
+    },
+    {
+      "id": "dex-doctor",
+      "source": {
+        "kind": "skill",
+        "path": ".claude/skills/dex-doctor/SKILL.md",
+        "sha256": "a36a2aa7df05a9bc23542685ec239b682fb0365b1a451900869381aa27d7dc89",
+        "byte_size": 17429
+      },
+      "value": "Gives the person an honest system check: what works, what is off, what is broken and what should not be guessed.",
+      "jobs_served": ["keep-system-healthy"],
+      "foundation_capabilities": ["honest-health-observability", "safe-change-recovery", "privacy-minimal-disclosure"],
+      "prerequisites": ["A host can run local checks against its own configuration.", "Repair paths must be separately gated from diagnosis."],
+      "trade_offs": ["A check can report unknown when evidence is missing.", "Automatic repair must remain limited to provably safe fixes."],
+      "evidence": [
+        {
+          "kind": "test",
+          "reference": "core/tests/test_doctor.py",
+          "summary": "Doctor behavior is covered by the main health-check test suite."
+        },
+        {
+          "kind": "runtime-path",
+          "reference": ".claude/skills/dex-doctor/SKILL.md",
+          "summary": "The shipped skill defines the checkup flow and safe repair boundary."
+        }
+      ],
+      "brief": {
+        "goal": "Create a local health check that distinguishes working, off, broken and unknown states without over-claiming.",
+        "method_outline": ["Probe the same paths the real features use.", "Report unknown when evidence is incomplete.", "Keep any repair action behind a separate approval path."],
+        "verification_checklist": ["A sabotaged probe does not become working.", "Unknown and off states are visible to the person.", "No secret value appears in output."],
+        "rollback_advice": "Disable repair actions first; the diagnostic report can remain read-only."
+      },
+      "compatibility": {
+        "host_requirements": ["local-diagnostics", "feature-status-vocabulary"],
+        "needs_hooks": false,
+        "needs_mcp": false,
+        "platforms": ["macos", "linux", "windows"]
+      },
+      "docs_url": "https://github.com/davekilleen/Dex",
+      "since_release": "1.80.0",
+      "changed_in": []
+    },
+    {
+      "id": "relationship-radar",
+      "source": {
+        "kind": "skill",
+        "path": ".claude/skills/relationship-radar/SKILL.md",
+        "sha256": "e28b91f08f068368a8d66dc51e090fa807ab3f7fa0ec88c62de10344ea44f78e",
+        "byte_size": 5811
+      },
+      "value": "Shows important relationships that are going quiet so the person can reconnect before silence becomes a problem.",
+      "jobs_served": ["keep-relationships-warm"],
+      "foundation_capabilities": ["context-orientation", "durable-memory-provenance", "scoped-agency-human-control"],
+      "prerequisites": ["A relationship or meeting history source.", "A rule for what counts as important enough to surface."],
+      "trade_offs": ["Recency signals can miss context the system cannot see.", "The person still decides whether to reach out."],
+      "evidence": [
+        {
+          "kind": "test",
+          "reference": "core/tests/test_relationship_radar_skill.py",
+          "summary": "Relationship radar skill behavior is covered in the skill test."
+        },
+        {
+          "kind": "runtime-path",
+          "reference": ".claude/skills/relationship-radar/SKILL.md",
+          "summary": "The shipped skill defines the cold-relationship workflow."
+        }
+      ],
+      "brief": {
+        "goal": "Create a relationship review that identifies important contacts with stale recent engagement.",
+        "method_outline": ["Read approved relationship or meeting evidence.", "Rank by importance and recency.", "Suggest reviewable next actions rather than sending messages."],
+        "verification_checklist": ["The output names why each person surfaced.", "No message is sent automatically.", "The person can dismiss or defer a suggestion."],
+        "rollback_advice": "Remove the radar command or delete its generated suggestions; do not alter source relationship history."
+      },
+      "compatibility": {
+        "host_requirements": ["relationship-history", "skills-directory"],
+        "needs_hooks": false,
+        "needs_mcp": true,
+        "platforms": ["macos", "linux", "windows"]
+      },
+      "docs_url": "https://github.com/davekilleen/Dex",
+      "since_release": "1.80.0",
+      "changed_in": []
+    },
+    {
+      "id": "save-insight",
+      "source": {
+        "kind": "skill",
+        "path": ".claude/skills/save-insight/SKILL.md",
+        "sha256": "1fdb8303f5b56ff4f2b95f69fb430ac0821eccd15027bd55476973dce61ce9d1",
+        "byte_size": 2658
+      },
+      "value": "Turns a learning from completed work into durable context future agents can reuse instead of rediscovering it.",
+      "jobs_served": ["compound-learning"],
+      "foundation_capabilities": ["durable-memory-provenance", "compounding-correctability", "context-orientation"],
+      "prerequisites": ["A durable memory or notes store.", "A review habit for deciding what is worth keeping."],
+      "trade_offs": ["Low-quality memories can clutter future context.", "The person or system needs a rule for when to save learning."],
+      "evidence": [
+        {
+          "kind": "test",
+          "reference": "core/tests/test_learning_capture_command_name.py",
+          "summary": "Learning capture command naming is pinned by tests."
+        },
+        {
+          "kind": "runtime-path",
+          "reference": ".claude/skills/save-insight/SKILL.md",
+          "summary": "The shipped skill defines the reusable-learning capture flow."
+        }
+      ],
+      "brief": {
+        "goal": "Create a lightweight learning capture routine for reusable lessons from completed work.",
+        "method_outline": ["Ask what changed future behavior.", "Store only the reusable rule and source context.", "Prefer small scoped memories over broad summaries."],
+        "verification_checklist": ["The saved item has a clear reuse condition.", "It does not contain secrets or raw private material.", "Future work can cite where it came from."],
+        "rollback_advice": "Delete or archive the saved learning entry; keep original project records separate."
+      },
+      "compatibility": {
+        "host_requirements": ["durable-memory-store", "skills-directory"],
+        "needs_hooks": false,
+        "needs_mcp": false,
+        "platforms": ["macos", "linux", "windows"]
+      },
+      "docs_url": "https://github.com/davekilleen/Dex",
+      "since_release": "1.80.0",
+      "changed_in": []
+    }
+  ]
+}
