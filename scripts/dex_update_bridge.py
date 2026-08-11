@@ -1285,6 +1285,14 @@ def _bridge_environment() -> dict[str, str]:
         "PYTHONNOUSERSITE": "1",
         "PYTHONDONTWRITEBYTECODE": "1",
         "PYTHONUNBUFFERED": "1",
+        # Removing the caller's locale leaves the C locale behind, and a Python
+        # that inherits the C locale coerces it (PEP 538) by exporting LC_CTYPE
+        # into its own environment -- the scrub would otherwise manufacture the
+        # very difference the clean-runtime check then refuses.  Declining the
+        # coercion keeps the child's environment exactly what was handed to it;
+        # UTF-8 mode then fixes the text encoding without relying on a locale.
+        "PYTHONCOERCECLOCALE": "0",
+        "PYTHONUTF8": "1",
     }
 
 
@@ -1781,17 +1789,37 @@ def _running_in_selected_runtime(interpreter: Path) -> bool:
     )
 
 
-# macOS framework builds launch a virtualenv Python through a stub that injects
-# this variable into the child's environment after execve; its presence is a
-# property of the selected interpreter itself, not of the caller.
-_INTERPRETER_INJECTED_VARIABLES = frozenset({"__PYVENV_LAUNCHER__"})
+# The values a Python that inherits the C locale may coerce it to (PEP 538).
+_LOCALE_COERCION_VALUES = frozenset({"C.UTF-8", "C.utf8", "UTF-8"})
+
+# The operating system and the interpreter both add variables to the child
+# *after* execve, so they can be present in a genuinely clean relaunch and are
+# properties of the selected runtime rather than of the caller.  Each entry
+# names a variable that carries no repository, credential, import path, or
+# executable-lookup influence, paired with the values the platform may inject.
+_INTERPRETER_INJECTED_VARIABLES: dict[str, Callable[[str], bool]] = {
+    # macOS framework builds launch a virtualenv Python through a stub.
+    "__PYVENV_LAUNCHER__": lambda _value: True,
+    # CoreFoundation stamps the account's text encoding into any process it
+    # touches, including one started from a completely empty environment.
+    "__CF_USER_TEXT_ENCODING": lambda _value: True,
+    # A Python left in the C locale coerces it and exports the result; the
+    # bridge declines that coercion, so accept only its exact outcomes.
+    "LC_CTYPE": lambda value: value in _LOCALE_COERCION_VALUES,
+}
 
 
 def _observed_clean_environment() -> dict[str, str]:
+    """Return the caller-attributable environment of this process.
+
+    Platform-injected variables are dropped so that a clean relaunch is never
+    mistaken for a dirty one; everything else, including any injected name
+    carrying an unexpected value, is reported exactly as it stands.
+    """
     return {
         key: value
         for key, value in os.environ.items()
-        if key not in _INTERPRETER_INJECTED_VARIABLES
+        if not _INTERPRETER_INJECTED_VARIABLES.get(key, lambda _value: False)(value)
     }
 
 
@@ -1844,7 +1872,9 @@ def _reexec_in_installed_runtime(vault_root: Path, argv: list[str]) -> None:
             "the installed Dex runtime could not be entered cleanly, so the bridge "
             "stopped instead of relaunching endlessly: "
             + _runtime_reentry_diagnostic(interpreter, environment)
-            + f" (if {_CLEAN_RUNTIME_MARKER} was set in your shell, unset it and re-run)"
+            + f" (if {_CLEAN_RUNTIME_MARKER} was set in your shell, unset it and re-run;"
+            " otherwise your vault is untouched and this whole line is what the Dex"
+            " team needs to fix it)"
         )
     print(
         "Relaunching inside Dex's installed runtime...",

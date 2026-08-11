@@ -7,6 +7,18 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.93.0] — 🌉 The rescue bridge for stuck installs actually starts now (2026-08-11)
+
+Dex's rescue bridge — the one-time tool that gets a very old install updating again — clears out its surroundings before it runs, so nothing already on your machine can quietly steer the update. The last release taught it to stop safely instead of spinning forever when that clean start didn't take. It duly stopped, and told a user it couldn't continue. The cause turned out to be the cleaning itself.
+
+**What this fixes for you:**
+
+* **The bridge gets past its own front door.** Clearing the surroundings removed the setting that tells a program which characters and alphabet to expect, and the language Dex runs on quietly put its own replacement back. The bridge saw a setting it hadn't put there, assumed something had interfered, and stopped. It now asks for that replacement not to happen, and pins character handling directly instead — so the clean start it asks for is the clean start it gets.
+* **Two harmless leftovers no longer halt an update.** Apple's system stamps a text-encoding marker onto every program it runs, and there is no way to switch that off. The bridge now recognises that marker, and the character setting above, for what they are — the machine's own housekeeping, not something that arrived with you — while still refusing anything that could genuinely redirect an update somewhere else.
+* **If it ever does stop, the message is worth something.** The single line it prints now says plainly that your vault is untouched and that the line itself is everything the Dex team needs in order to fix it.
+
+Thanks to Jim, whose measurements pinned the cause exactly — including that it would have happened on any Mac, not only his.
+
 ## [1.92.0] — 🔢 Task numbers no longer stop counting at 999 (2026-08-10)
 
 A user with a well-used vault found that once his tasks passed number 999, every new task got the same number — four collisions in one day. His report arrived with the diagnosis already done (thank you, Martin), and it checked out exactly.

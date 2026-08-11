@@ -1927,6 +1927,89 @@ def test_runtime_marker_tolerates_the_macos_interpreter_launcher_variable(
     bridge._reexec_in_installed_runtime(vault, ["--vault", "/safe/vault"])
 
 
+def test_relaunching_a_real_interpreter_adds_nothing_the_clean_check_rejects(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The scrub must not manufacture the difference the clean check refuses.
+
+    Removing the caller's locale leaves the C locale behind, and a Python that
+    inherits the C locale coerces it by exporting LC_CTYPE into its own
+    environment.  This drives a real interpreter with exactly the environment
+    the bridge hands its relaunched self and reads back what actually arrived.
+    """
+    environment = bridge._bridge_environment()
+    environment[bridge._CLEAN_RUNTIME_MARKER] = "1"
+
+    completed = subprocess.run(
+        [sys.executable, "-c", "import json, os; print(json.dumps(dict(os.environ)))"],
+        env=environment,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    monkeypatch.setattr(bridge.os, "environ", json.loads(completed.stdout))
+
+    assert bridge._observed_clean_environment() == environment
+
+
+def test_clean_check_tolerates_platform_injected_locale_and_text_encoding(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    vault = _vault(tmp_path)
+    selected_interpreter = vault / ".venv" / "bin" / "python"
+    selected_prefix = selected_interpreter.parent.parent
+    clean_environment = bridge._bridge_environment()
+    clean_environment[bridge._CLEAN_RUNTIME_MARKER] = "1"
+    clean_environment["LC_CTYPE"] = "C.UTF-8"
+    clean_environment["__CF_USER_TEXT_ENCODING"] = "0x1F5:0x8000100:0x8000100"
+
+    monkeypatch.setattr(bridge, "_installed_python", lambda _vault: selected_interpreter)
+    monkeypatch.setattr(bridge.os, "environ", clean_environment)
+    monkeypatch.setattr(bridge.sys, "executable", str(selected_interpreter))
+    monkeypatch.setattr(bridge.sys, "prefix", str(selected_prefix))
+    monkeypatch.setattr(bridge.sys, "exec_prefix", str(selected_prefix))
+    monkeypatch.setattr(
+        bridge.os,
+        "execve",
+        lambda *_arguments: pytest.fail("selected clean virtualenv must not re-exec"),
+    )
+
+    bridge._reexec_in_installed_runtime(vault, ["--vault", "/safe/vault"])
+
+
+def test_clean_check_still_refuses_a_caller_chosen_locale(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Only the coercion's own outcomes are tolerated, not any locale at all."""
+    vault = _vault(tmp_path)
+    selected_interpreter = vault / ".venv" / "bin" / "python"
+    selected_prefix = selected_interpreter.parent.parent
+    clean_environment = bridge._bridge_environment()
+    clean_environment[bridge._CLEAN_RUNTIME_MARKER] = "1"
+    clean_environment["LC_CTYPE"] = "tr_TR.ISO8859-9"
+
+    monkeypatch.setattr(bridge, "_installed_python", lambda _vault: selected_interpreter)
+    monkeypatch.setattr(bridge.os, "environ", clean_environment)
+    monkeypatch.setattr(bridge.sys, "executable", str(selected_interpreter))
+    monkeypatch.setattr(bridge.sys, "prefix", str(selected_prefix))
+    monkeypatch.setattr(bridge.sys, "exec_prefix", str(selected_prefix))
+    monkeypatch.setattr(
+        bridge.os,
+        "execve",
+        lambda *_arguments: pytest.fail("a marked process must never relaunch again"),
+    )
+
+    with pytest.raises(bridge.BridgeError, match="LC_CTYPE"):
+        bridge._reexec_in_installed_runtime(vault, ["--vault", "/safe/vault"])
+
+
+def test_bridge_environment_declines_the_locale_coercion_it_would_otherwise_cause() -> None:
+    environment = bridge._bridge_environment()
+
+    assert environment["PYTHONCOERCECLOCALE"] == "0"
+    assert environment["PYTHONUTF8"] == "1"
+
+
 def test_runtime_marker_accepts_only_the_selected_virtualenv_process(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
