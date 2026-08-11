@@ -1431,19 +1431,23 @@ def relocated_split(vault_root: Path) -> bool:
     if split_layout_failures(root):
         return False
     recorded = recorded_vault_path(topology)
+    if recorded is None:
+        return False
     try:
-        return recorded is not None and Path(recorded).resolve() != root.resolve()
-    except OSError:
+        return Path(recorded).resolve() != root.resolve()
+    except (OSError, RuntimeError):
+        # An unresolvable recorded path names nowhere reachable, which is the
+        # strongest possible evidence that it is not this vault.
         return True
 
 
 def split_layout_failures(vault_root: Path) -> tuple[str, ...]:
     """Name every structural condition a recorded split layout fails.
 
-    Read-only, and deliberately exhaustive rather than short-circuiting: a
-    refusal that names one of six possible causes is what turns an hour of
-    source reading into a minute. The recorded vault *path* is not among these
-    conditions; only its absence is (see :func:`relocated_split`).
+    Read-only, and deliberately exhaustive rather than short-circuiting: naming
+    every cause at once is what turns an hour of source reading into a minute.
+    The recorded vault *path* is not among these conditions; only its absence
+    is (see :func:`relocated_split`).
     """
     root = Path(vault_root)
     vault_git = root / ".git"
@@ -1500,8 +1504,9 @@ def topology_state(vault_root: Path) -> str:
 
     A structurally sound split is ``post-split`` even when its recorded vault
     path names somewhere else: that record is runtime state, and a moved or
-    copied vault is relocated, not invalid. :func:`repair_relocated_split`
-    re-records it where a write is already legitimate.
+    copied vault is relocated, not invalid.
+    ``core.update.apply_update._finalize_release_metadata`` re-records it on the
+    next install, which is where a write to that marker is already legitimate.
     """
     root = Path(vault_root)
     vault_git = root / ".git"

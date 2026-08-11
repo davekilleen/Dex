@@ -50,6 +50,12 @@ _APPROVAL_WORD = "APPLY"
 _CLEAN_RUNTIME_MARKER = "DEX_UPDATE_BRIDGE_CLEAN_RUNTIME"
 _TRUSTED_EXECUTABLE_DIRECTORIES = (Path("/usr/bin"), Path("/bin"), Path("/usr/local/bin"), Path("/opt/homebrew/bin"))
 _TOPOLOGY_MIGRATOR_RELATIVE = Path("core/migrations/v1-to-v2-brain-vault-split.cjs")
+# The layouts every supported foundation refuses to convert. Closed on purpose:
+# the bridge substitutes a refusal that names the failing condition only for
+# these, and any other state a foundation reports is passed through untouched.
+_UNCONVERTIBLE_TOPOLOGY_STATES = frozenset(
+    {"invalid-split", "invalid-combined", "migration-in-progress", "zip-or-manual"}
+)
 _PRE_SPLIT_ARCHIVE_MARKER = "dex-pre-split-v2-archive.json"
 _LEGACY_QMD_RECONCILIATION_PURPOSE = "legacy-qmd-reconciliation"
 _TRACKED_IGNORE_POLICY_RELATIVE = Path("core/migrations/tracked-ignored-policy.yaml")
@@ -2040,12 +2046,14 @@ class _FoundationLifecycleService:
                 if authorization is not None:
                     authorized_roots[root] = authorization
                     return "combined"
-            if state not in {"combined", "post-split", "brain-vault-split"}:
-                # The pinned foundation refuses every remaining state with one
-                # sentence that names none of its conditions, which is an hour
-                # in its source for anyone who hits it. Refuse here instead,
-                # naming the condition that actually stopped the run. This is
-                # only reached where the foundation would have refused anyway.
+            if state in _UNCONVERTIBLE_TOPOLOGY_STATES:
+                # The pinned foundation refuses each of these with one sentence
+                # that names none of its conditions, which is an hour in its
+                # source for anyone who hits it. Refuse here instead, naming the
+                # condition that actually stopped the run. Deliberately a closed
+                # list of the states the foundation already refuses: any state
+                # not named here still passes through to the foundation exactly
+                # as before.
                 raise BridgeError(
                     f"{_topology_refusal_detail(root, state)} — Dex will not "
                     "guess how to convert it, and nothing was changed"
@@ -3028,10 +3036,6 @@ def _validate_completed_foundation(vault_root: Path, pin: ReleasePin) -> None:
             f"{brain_marker.get('installed')!r} instead of the pinned "
             f"foundation {pin.commit}"
         )
-    if vault_marker.get("role") != "vault" and not any(
-        "dex-vault-v2 records role" in entry for entry in disagreements
-    ):  # pragma: no cover - _split_layout_failures already names this
-        disagreements.append(".git/dex-vault-v2 does not record the vault role")
     if disagreements:
         raise BridgeError(
             "completed bridge markers do not agree with the pinned foundation: "
@@ -3141,9 +3145,12 @@ def run_bridge(
 ) -> Mapping[str, Any]:
     """Run up to three fresh approval boundaries through the foundation service."""
     root = _validate_vault(vault_root)
-    _progress("Checking this Dex install (read-only)...")
-    # Idempotent, and a no-op for every vault that has not moved.
+    # Before the read-only notice below, because a vault that has moved gets one
+    # line of local runtime state put right and says so. Idempotent, silent, and
+    # a no-op for every vault that has not moved; main() has normally done it
+    # already, and this covers callers that enter here directly.
     _repair_relocated_split(root)
+    _progress("Checking this Dex install (read-only)...")
     # This local ref is the authoritative resume marker. Check it before
     # importing/calling lifecycle code or attempting any network operation: a
     # completed bridge must work offline and must not be disturbed merely
@@ -3274,7 +3281,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"Dex update bridge stopped safely: {error}", file=sys.stderr)
         return 1
     print(
-        f"Stage one of two is complete: this Dex install is now on foundation "
+        "Stage one of two is complete: this Dex install is now on foundation "
         f"v{FOUNDATION.version}, a release from 4 August 2026. Run /dex-update "
         "next to come up to the current release — that is an ordinary update "
         "and you can repeat it whenever you like."
