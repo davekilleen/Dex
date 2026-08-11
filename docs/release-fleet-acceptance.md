@@ -165,20 +165,52 @@ acceptance run.
 
 Pull requests that touch the updater route get a separate non-publishing
 macOS canary. It builds a local release-shaped candidate and runs real journeys
-from these exact seven starts:
+from these exact twelve starts:
 
 - semantic `v1.51.0`;
 - `dist/release/v1.61.0-dc7d332`;
 - `dist/archive/v1.61.0-1ec1387`;
 - semantic `v1.62.0`;
 - `dist/archive/v1.63.0-08ce719`;
-- `dist/archive/v1.65.0-c5ec161`; and
-- `dist/archive/v1.76.0-d0bb932`.
+- `dist/archive/v1.65.0-c5ec161`;
+- `dist/archive/v1.72.0-7d75da9`;
+- `dist/archive/v1.76.0-d0bb932`;
+- semantic `v1.81.1`;
+- `dist/archive/v1.81.1-b17ef02`;
+- semantic `v1.81.7`; and
+- semantic `v1.81.11`.
 
 These journeys cover the old dependency fixture, split-topology and retired
 manifest variants, archived releases, and the recent Mac final-fetch path
 before merge. They remain explicitly non-acceptance evidence and cannot replace
 the freshly generated public fleet.
+
+### One start also starts the bridge as a process
+
+A journey drives the bridge's lifecycle *functions* in-process, so `main` — the
+environment scrub, the `os.execve` into the vault virtualenv, and the
+clean-runtime equality check — was for a long time executed by no gate at all.
+Two consecutive user-blocking defects lived in that entry path and shipped
+through a green canary.
+
+The oldest start (`v1.51.0`, set by `BRIDGE_PROCESS_ENTRY_START` in the runner
+and passed to `release_fleet.py journey` as `--bridge-process-entry`) therefore
+also runs `probe_bridge_process_entry` against its freshly installed fixture,
+before its journey. That launches the published asset the way a stuck user
+does — the trusted system Python, the asset path, `--vault`, from the vault
+root, stdin closed — and `assert_bridge_process_entry` requires that it
+finished inside its bound, relaunched exactly once, never stopped on a
+runtime-entry refusal, printed something at all, and reached the first `APPLY`
+gate. stdout, stderr and a JSON record are retained beside the fixture in
+`<case>.bridge-process-entry/` whether it passes or fails, because silence was
+the original symptom. The runner fails closed if the designated start ever
+leaves `CANARY_STARTS`.
+
+`core/tests/test_dex_update_bridge.py` carries the cheap counterpart:
+`test_the_bridge_can_be_started_as_a_process_by_a_stuck_user` builds a minimal
+vault with a real virtualenv and launches the real bridge in about three
+seconds, so the entry path is covered on Linux and on every pull request rather
+than only by the macOS job.
 
 Within a journey, the foundation updater proves the exact follow-up identity
 before its final fetch into the private brain store. If and only if that final

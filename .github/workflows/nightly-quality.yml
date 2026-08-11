@@ -82,6 +82,10 @@ jobs:
 
       - name: 100k-file adoption performance budget
         run: |
+          # A step is run as `bash -e`, not `bash -eo pipefail`, so without this
+          # the exit code of the pipeline is tee's and an exceeded budget is
+          # green. See docs/gate-omission-audit-2026-08-11.md (F1).
+          set -o pipefail
           python scripts/benchmark_adoption_engine.py --files 100000 \
             | tee .logs/adoption-gates/benchmark-100k.json
 

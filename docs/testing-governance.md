@@ -163,6 +163,14 @@ each journey's `OK`, `OFF`, `BROKEN`, or `UNKNOWN` result in the report.
 
 Every exception must include rationale in PR body and reviewer approval.
 
+## Known Gaps Between This Document And CI
+
+Some statements above are stronger than what CI enforces today — including the
+exception labels immediately above, which no workflow reads. Every known
+discrepancy is listed, with file and line, in
+[docs/gate-omission-audit-2026-08-11.md](gate-omission-audit-2026-08-11.md).
+Read that before relying on any gate named here.
+
 ## Regression Rule
 - Bug-fix PRs must include a regression test or explicit reviewer-approved exception.
 
