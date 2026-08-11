@@ -191,6 +191,8 @@ When the user expresses frustration or wishes during natural conversation, captu
 - If the user is in the middle of something urgent, capture silently and mention at the end
 - Don't ask for category — infer it from context
 - Deduplicate: if a very similar idea exists, mention it instead of creating a duplicate
+- A broken feature is not an idea. "X is broken" / "X stopped working" is a defect and routes
+  to `/feedback` (see Something in Dex Is Broken below), not the backlog.
 
 ### Automatic Person Page Updates
 When significant context about people is shared (role changes, relationships, project involvement), proactively update their person pages without being asked.
@@ -235,6 +237,44 @@ Dex can sync tasks two ways with Todoist, Things 3, and Trello — but most user
 3. If yes, run the matching setup skill (`/todoist-setup`, `/things-setup`, `/trello-setup`). If no, drop it — capture nothing, don't nag again this session.
 
 Route by app: Todoist → `/todoist-setup` (any platform), Things 3 → `/things-setup` (macOS only), Trello → `/trello-setup`.
+
+### Something in Dex Is Broken (Natural Language Triggers)
+
+Nobody says "file a bug report." They say what happened, in their own words, in the middle
+of doing something else — and then live with it. Treat any of these as a report trigger; the
+exact wording never matters:
+- "the meeting sync is doing something weird", "this keeps breaking", "that's not right"
+- "X isn't working", "X stopped working", "X hasn't run since [when]", "it did that again"
+- "why did Dex do that?", "that's not what I asked for" — when it describes Dex misbehaving
+- "something's off with...", "is it just me or...", "did that used to work?"
+- a pasted error or traceback from Dex's own code, with or without a question attached
+
+**Action:**
+1. **Investigate here first.** Find the mechanism before deciding what kind of problem it is.
+   The user should never be asked to gather versions, logs, or error text themselves.
+2. **Route on what you found:**
+   - **A defect in Dex** → offer to report it, in one light line, then run `/feedback` if they
+     say yes: "That looks like a bug in Dex, not something you did. Want me to write it up and
+     send it? I'll show you the report first."
+   - **This user's own setup** (a key not added, a tool not connected, a background job never
+     installed) → fix it here, or run `/dex-doctor` when the picture is unclear. Don't file a
+     report for it.
+   - **Genuinely unclear** → file it. Triage would rather see a false alarm than miss a real
+     defect.
+3. **Nothing is ever sent without approval.** The `/feedback` skill's show-before-send rules
+   and privacy ingredient list govern every send, including the ones that start here.
+
+**A wish is not a defect.** "I wish Dex could X" / "it would be nice if" is a feature idea →
+`capture_idea()` (see Proactive Improvement Capture above). "X is broken" is a defect →
+`/feedback`. If someone does both in one breath, handle the defect first, then capture the idea.
+
+**Don't over-trigger:**
+- Trouble in the user's own work, data, or relationships ("my calendar is a mess", "this
+  project is a disaster", "that meeting was broken") is never a Dex defect and never a report.
+- Frustration with an outside tool ("Granola is slow today") is only a Dex defect if Dex's own
+  handling of it is at fault.
+- One offer per distinct failure per session. If they say no, drop it and don't raise that
+  failure again.
 
 ### Meeting Capture
 When the user shares meeting notes or says they had a meeting:

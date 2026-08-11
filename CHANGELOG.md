@@ -7,6 +7,22 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.93.3] — 🗣️ Tell Dex something's broken however you like (2026-08-11)
+
+Setup now promises that if something goes wrong you can just say so in your own words. That promise needed the other half: Dex reliably recognising a description of a fault as a fault. Until now it leaned on you using the words "report this" or running the command — which is exactly the homework the whole feature was built to remove.
+
+**What this fixes for you:**
+
+* **"The meeting sync is doing something weird" is enough.** Ordinary descriptions — this keeps breaking, it stopped working, that's not what I asked for, it did that again — now get treated the way the magic words always were: Dex looks into it on your machine and, if the cause is a fault in Dex, offers to write it up for you.
+* **A fault and a wish go to different places.** "I wish Dex could do X" still becomes an idea in your own list. "X stopped working" goes to the team as a bug. If you say both in one breath, Dex handles the fault first and keeps the idea.
+* **It won't file a report about your life.** "My calendar is a mess" or "this project is a disaster" is about your work, not a fault in Dex, and never becomes a report. Neither does an outside tool having a slow day, unless Dex's own handling of it is at fault.
+* **A setup problem gets fixed, not filed.** If the cause turns out to be something not yet connected on your machine, Dex fixes it with you — or points you at the checkup — instead of sending the team a report about your own setup.
+* **Nothing is sent without you seeing it.** Reports that start this way follow exactly the same rules as any other: you see the whole thing first, and it can only contain the same fixed list of ingredients.
+
+Dex now offers once per problem, and drops it if you say no.
+
+---
+
 ## [1.93.2] — 🔗 Two dead links in your first-week reminders now go somewhere (2026-08-11)
 
 If you accepted the optional calendar reminders during setup, two of them — the one teaching the HARVEST trick, and the one about making Dex argue against your decision — linked to guide pages that don't exist. Clicking either gave you a "page not found" in your first week, which is the worst possible moment to look unfinished.
