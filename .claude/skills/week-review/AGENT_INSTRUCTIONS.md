@@ -154,6 +154,11 @@ is enabled, list significant accomplishments worth capturing under a Career
 Evidence heading with the marker
 `<!-- PLACEHOLDER: conversation will ask the user about capturing these -->`.
 
+**Reading `SKILL.md` safely.** You need only the section named above. Ignore that
+file's "Delegated gathering" section entirely: it describes how you were
+invoked. You ARE the subagent, so you must never call the Agent tool or spawn a
+subagent of your own.
+
 **Output rules:**
 - Omit any section where no data was available
 - Use real data, not placeholders

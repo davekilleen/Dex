@@ -47,11 +47,15 @@ file's content; never substitute for it.
 
 **Two caveats that are load-bearing:**
 
-- **Hooks do not fire in subagent context.** This matters here: this skill's
-  PostToolUse hook (`post-meeting-person-update.cjs`) will NOT run for the
-  subagent's writes, so `AGENT_INSTRUCTIONS.md` makes the subagent perform
-  person-page updates directly. Do not remove that instruction believing the
-  hook covers it.
+- **Do not count on this skill's hook for the subagent's writes.** The
+  PostToolUse hook `post-meeting-person-update.cjs` is declared in this
+  SKILL.md's frontmatter, so it belongs to this skill's run and must not be
+  assumed to cover a subagent's writes. `AGENT_INSTRUCTIONS.md` therefore has
+  the subagent update person pages itself. Do not remove that instruction
+  believing the hook covers it. It is also safe if the hook does run for those
+  writes: both write the same "Recent Interactions" line format, and both skip
+  a person page that already references the meeting, so the entry cannot be
+  added twice.
 - **Always fall back.** If the subagent fails, times out, or returns nothing
   usable, say so plainly and run the processing inline from the same
   `AGENT_INSTRUCTIONS.md`. A missing subagent must never mean a missing result.

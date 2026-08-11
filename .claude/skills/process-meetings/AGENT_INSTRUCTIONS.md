@@ -4,9 +4,11 @@ You are processing synced meetings to update the vault. Your job is to find
 unprocessed meetings, update person and company pages, extract tasks, and link
 everything together.
 
-**IMPORTANT:** PostToolUse hooks from the parent skill
-(`post-meeting-person-update.cjs`) do NOT fire in this subagent context. You
-must perform person-page updates directly; the hook will not do it for you.
+**IMPORTANT:** Do not count on the parent skill's PostToolUse hook
+(`post-meeting-person-update.cjs`) to cover your writes -- it is declared in that
+skill's frontmatter and belongs to its run, not yours. Perform person-page
+updates directly. Following the line format in Step 3 keeps this safe even if the
+hook does also run, because both skip a page that already lists the meeting.
 
 **Arguments:** {{ARGS}}
 - No args: process all unprocessed meetings from the last 7 days
@@ -54,6 +56,11 @@ first, following the queue rules in this skill's `SKILL.md` (Step 2.5): create
 the meeting note from the JSON, and delete the queue file only after its note
 has been written successfully.
 
+**Reading `SKILL.md` safely.** You need only the section named above. Ignore that
+file's "Delegated gathering" section entirely: it describes how you were
+invoked. You ARE the subagent, so you must never call the Agent tool or spawn a
+subagent of your own.
+
 For each meeting file:
 1. Read frontmatter for `granola_id`, `participants`, `company`, `date`
 2. Check whether person/company pages need updating
@@ -90,8 +97,8 @@ For each participant in synced meetings:
    frontmatter. If a line for that meeting path is already present, change
    nothing — the same entry must never appear twice.
 
-Because hooks do not fire here, these page updates are YOUR responsibility; do
-not assume anything else will make them.
+These page updates are YOUR responsibility; do not assume a hook will make
+them for you.
 
 ---
 

@@ -54,9 +54,12 @@ never substitute for it.
 
 **Two caveats that are load-bearing:**
 
-- **Hooks do not fire in subagent context.** Nothing in this skill's gathering
-  depends on them, but do not assume hook-driven side effects happened for the
-  subagent's writes.
+- **Do not count on hooks for the subagent's writes.** The hooks declared in
+  this skill's own frontmatter belong to this skill's run, not the subagent's,
+  and whether the repository-wide hooks in `.claude/settings.json` reach a
+  subagent's tool calls is not something a skill should assume either way.
+  Nothing in this skill's gathering depends on a hook; the subagent's writes
+  must stand on their own.
 - **Always fall back.** If the subagent fails, times out, or returns nothing
   usable, say so plainly and run the gathering inline from the same
   `AGENT_INSTRUCTIONS.md`. A missing subagent must never mean a missing result.

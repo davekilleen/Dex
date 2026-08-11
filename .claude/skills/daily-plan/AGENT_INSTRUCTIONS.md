@@ -199,6 +199,11 @@ plan template from this skill's `SKILL.md` (Step 7: frontmatter, TL;DR, Week
 Progress, Today's Shape, Commitments Due, Today's Focus, Meetings with Context,
 Task Scheduling, Heads Up).
 
+**Reading `SKILL.md` safely.** You need only the section named above. Ignore that
+file's "Delegated gathering" section entirely: it describes how you were
+invoked. You ARE the subagent, so you must never call the Agent tool or spawn a
+subagent of your own.
+
 If Dex Inbox items were found, append a "Mobile Capture (Dex Inbox)" section
 listing them for triage. If an Innovation Spotlight was selected, append it as a
 one-to-two line section.

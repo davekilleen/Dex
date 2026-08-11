@@ -28,7 +28,7 @@ the review does not run.
 If the meeting source (Granola via `GRANOLA_API_KEY`, or another configured
 source) has unprocessed meetings in the window, process them following the
 conventions in `.claude/skills/process-meetings/AGENT_INSTRUCTIONS.md`,
-including updating person pages directly (hooks do not fire in this context).
+including updating person pages directly rather than counting on a hook.
 Note which meetings were processed. If no source is connected or nothing is
 unprocessed, skip silently.
 
@@ -159,6 +159,11 @@ frontmatter with `plan_completion_rate`, Plan vs. Reality, Accomplished,
 Progress Made, Weekly Priorities Progress, Meeting Follow-Ups, Insights,
 Blocked/Stuck, Discovered Questions, Tomorrow's Focus, Open Loops. Add an Email
 Summary section only when email data was gathered.
+
+**Reading `SKILL.md` safely.** You need only the section named above. Ignore that
+file's "Delegated gathering" section entirely: it describes how you were
+invoked. You ARE the subagent, so you must never call the Agent tool or spawn a
+subagent of your own.
 
 **Output rules:**
 - Omit any section where no data was available
