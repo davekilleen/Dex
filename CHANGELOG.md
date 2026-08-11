@@ -19,7 +19,7 @@ Chris found his vault's change list crowded with dozens of files he never touche
 
 Thanks to Chris for the report, traced from a single noisy update all the way to the root cause.
 
-## [1.94.0] — 🤝 Dex can work with your Pipedrive deals, and never behind your back (2026-08-11)
+## [1.96.0] — 🤝 Dex can work with your Pipedrive deals, and never behind your back (2026-08-11)
 
 If you keep deals in Pipedrive, you have been keeping them twice: once in the system your company reports from, and once in the notes where you actually think about the deal. The two drift apart within days, and reconciling them by hand is exactly the admin nobody does on a Friday afternoon. Chris built this to solve it for himself and offered it back.
 
