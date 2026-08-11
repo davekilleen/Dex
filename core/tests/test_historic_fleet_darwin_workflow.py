@@ -108,7 +108,9 @@ def test_twelve_start_pr_canary_is_release_shaped_and_cannot_publish() -> None:
         "dist/archive/v1.72.0-7d75da9",
         "dist/archive/v1.76.0-d0bb932",
         "v1.81.1",
-        "dist/release/v1.81.1-b17ef02",
+        # The release-tag archive renamed this exact annotated tag (object
+        # 8fe3516f, commit b17ef028) from dist/release/ to dist/archive/.
+        "dist/archive/v1.81.1-b17ef02",
         "v1.81.7",
         "v1.81.11",
     )

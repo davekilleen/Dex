@@ -7,6 +7,9 @@ set -euo pipefail
 CANONICAL_PUBLIC_REMOTE="https://github.com/davekilleen/Dex.git"
 PINNED_FOUNDATION_TAG="dist/release/v1.81.16-281202d"
 MAX_DISK_KIB=$((50 * 1024 * 1024))
+# Every entry must still resolve on the public remote. The release-tag archive
+# renames tags from dist/release/ to dist/archive/ without moving the object, so
+# an archived start is updated here rather than dropped.
 CANARY_STARTS=(
   "v1.51.0"
   "dist/release/v1.61.0-dc7d332"
@@ -17,7 +20,7 @@ CANARY_STARTS=(
   "dist/archive/v1.72.0-7d75da9"
   "dist/archive/v1.76.0-d0bb932"
   "v1.81.1"
-  "dist/release/v1.81.1-b17ef02"
+  "dist/archive/v1.81.1-b17ef02"
   "v1.81.7"
   "v1.81.11"
 )
@@ -369,6 +372,7 @@ run_canary() {
   for start in "${CANARY_STARTS[@]}"; do
     if ! git rev-parse --verify "$start^{commit}" >/dev/null 2>&1; then
       echo "public canary start is unavailable: $start" >&2
+      echo "if the release-tag archive renamed it, update CANARY_STARTS to the dist/archive/ name" >&2
       return 1
     fi
   done
