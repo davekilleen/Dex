@@ -198,6 +198,13 @@ def discover_skills(repo_root: Path) -> list[Skill]:
             raise InventoryError(
                 f"skill lacks description frontmatter: {path.relative_to(repo_root)}"
             )
+        # A heavy skill delegates its bulk gathering to a subagent whose prompt
+        # lives in AGENT_INSTRUCTIONS.md beside SKILL.md. The tools that brief
+        # names are tools the skill uses, so they belong in this inventory --
+        # otherwise a skill reads as surfacing fewer tools than it really does.
+        brief = path.parent / "AGENT_INSTRUCTIONS.md"
+        if brief.is_file():
+            body = f"{body}\n{brief.read_text(encoding='utf-8')}"
         skills.append(
             Skill(
                 name=name,

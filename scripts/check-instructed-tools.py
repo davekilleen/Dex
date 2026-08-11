@@ -13,6 +13,13 @@ from typing import NamedTuple
 REPO_ROOT = Path(__file__).resolve().parents[1]
 ALLOWLIST_PATH = REPO_ROOT / "scripts" / "instructed-tools-allowlist.txt"
 
+# Files inside a skill directory that instruct tool calls. SKILL.md is the skill
+# itself; AGENT_INSTRUCTIONS.md is the prompt a heavy skill hands to its
+# gathering subagent, and it names tools the same way -- so it needs the same
+# gate. A subagent told to call a tool that does not exist fails silently,
+# because those briefs also say to skip a failing source without erroring.
+SKILL_INSTRUCTION_FILENAMES = ("SKILL.md", "AGENT_INSTRUCTIONS.md")
+
 TOOL_NAME_PATTERN = r"[a-z][a-z0-9_]+"
 TOOL_DECLARATION = re.compile(
     rf"\b(?:types\.)?Tool\s*\(\s*name\s*=\s*['\"]({TOOL_NAME_PATTERN})['\"]",
@@ -24,6 +31,13 @@ FASTMCP_TOOL_DECLARATION = re.compile(
     re.MULTILINE,
 )
 CALL_REFERENCE = re.compile(rf"`(?P<name>{TOOL_NAME_PATTERN})\([^`\r\n]*\)`")
+# Skills and delegated-gathering briefs also instruct a call as a bare
+# `Use: tool_name(...)` line, usually inside a fenced block where inline
+# backticks are not used. Without this the gate reads the file and matches
+# nothing, which is how an invented tool name reached five shipped briefs.
+USE_DIRECTIVE_REFERENCE = re.compile(
+    rf"^[ \t>*-]*Use:[ \t]*(?P<name>{TOOL_NAME_PATTERN})[ \t]*\("
+)
 MCP_NAME_REFERENCE = re.compile(rf"`(?P<name>{TOOL_NAME_PATTERN})`")
 SNAKE_CASE_NAME = re.compile(r"[a-z][a-z0-9]*_[a-z0-9_]+")
 
@@ -85,6 +99,11 @@ def extract_instructed_references(source: str, path: Path) -> list[ToolReference
             ToolReference(match.group("name"), path, line_number)
             for match in CALL_REFERENCE.finditer(line)
         )
+        use_directive = USE_DIRECTIVE_REFERENCE.match(line)
+        if use_directive is not None:
+            references.append(
+                ToolReference(use_directive.group("name"), path, line_number)
+            )
         if "mcp" not in line.casefold():
             continue
         references.extend(
@@ -128,11 +147,11 @@ def is_instruction_surface(path: Path, repo_root: Path = REPO_ROOT) -> bool:
     if parts == ("CLAUDE.md",):
         return True
     if len(parts) >= 3 and parts[:2] == (".claude", "skills"):
-        return relative_path.name == "SKILL.md"
+        return relative_path.name in SKILL_INSTRUCTION_FILENAMES
     if len(parts) == 3 and parts[:2] == (".claude", "flows"):
         return relative_path.suffix == ".md"
     if len(parts) >= 3 and parts[:2] == (".agents", "skills"):
-        return relative_path.name == "SKILL.md"
+        return relative_path.name in SKILL_INSTRUCTION_FILENAMES
     return False
 
 
@@ -151,9 +170,10 @@ def collect_defined_tools(repo_root: Path = REPO_ROOT) -> set[str]:
 def collect_instruction_files(repo_root: Path = REPO_ROOT) -> list[Path]:
     """Collect Dex-owned instruction files, excluding bundled plugins."""
     candidates = [repo_root / "CLAUDE.md"]
-    candidates.extend((repo_root / ".claude" / "skills").rglob("SKILL.md"))
+    for filename in SKILL_INSTRUCTION_FILENAMES:
+        candidates.extend((repo_root / ".claude" / "skills").rglob(filename))
+        candidates.extend((repo_root / ".agents" / "skills").rglob(filename))
     candidates.extend((repo_root / ".claude" / "flows").glob("*.md"))
-    candidates.extend((repo_root / ".agents" / "skills").rglob("SKILL.md"))
     return sorted(
         path for path in set(candidates) if path.is_file() and is_instruction_surface(path, repo_root)
     )

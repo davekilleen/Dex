@@ -1398,43 +1398,123 @@ def _regular_json(path: Path) -> dict[str, Any] | None:
         return None
 
 
-def topology_state(vault_root: Path) -> str:
-    """Classify the installed brain/vault layout without changing it."""
+def recorded_vault_path(topology: Mapping[str, Any] | None) -> str | None:
+    """Return the vault path a split topology marker records, if well formed.
+
+    The marker has to *record* a path for the layout to be a recognizable
+    split, so a missing or non-string value stays fail-closed evidence. The
+    value itself is a different matter — see :func:`split_layout_failures`.
+    """
+    if not isinstance(topology, Mapping):
+        return None
+    environment = topology.get("environment")
+    if not isinstance(environment, Mapping):
+        return None
+    recorded = environment.get("DEX_VAULT")
+    return recorded if isinstance(recorded, str) and recorded else None
+
+
+def relocated_split(vault_root: Path) -> bool:
+    """True when a sound split records a vault path other than this one.
+
+    Absolute paths are runtime state, so copying, moving, or renaming a vault
+    leaves the recorded path naming somewhere else. That staleness is routine
+    relocation, not damage: nothing reads the recorded value as a path (every
+    consumer derives its paths from the vault root it was handed), so it can
+    only ever be a consistency note. A layout that fails any *structural*
+    condition is not relocated, and stays refused.
+    """
+    root = Path(vault_root)
+    topology = _regular_json(root / "System/.dex/topology.json")
+    if not topology or topology.get("topology") != "brain-vault-split":
+        return False
+    if split_layout_failures(root):
+        return False
+    recorded = recorded_vault_path(topology)
+    if recorded is None:
+        return False
+    try:
+        return Path(recorded).resolve() != root.resolve()
+    except (OSError, RuntimeError):
+        # An unresolvable recorded path names nowhere reachable, which is the
+        # strongest possible evidence that it is not this vault.
+        return True
+
+
+def split_layout_failures(vault_root: Path) -> tuple[str, ...]:
+    """Name every structural condition a recorded split layout fails.
+
+    Read-only, and deliberately exhaustive rather than short-circuiting: naming
+    every cause at once is what turns an hour of source reading into a minute.
+    The recorded vault *path* is not among these conditions; only its absence
+    is (see :func:`relocated_split`).
+    """
     root = Path(vault_root)
     vault_git = root / ".git"
     brain_git = root / ".dex/brain.git"
     topology = _regular_json(root / "System/.dex/topology.json")
     vault_marker = _regular_json(vault_git / "dex-vault-v2")
     brain_marker = _regular_json(brain_git / "dex-brain-v2")
-    if topology and topology.get("topology") == "brain-vault-split":
-        environment = topology.get("environment")
-        wired_vault = (
-            environment.get("DEX_VAULT")
-            if isinstance(environment, dict)
-            else None
+    failures: list[str] = []
+    if not topology or topology.get("topology") != "brain-vault-split":
+        return ("System/.dex/topology.json does not record a brain/vault split",)
+    if topology.get("vaultGitDir") != ".git":
+        failures.append(
+            "System/.dex/topology.json records vaultGitDir "
+            f"{topology.get('vaultGitDir')!r} instead of '.git'"
         )
-        try:
-            wiring_matches = (
-                isinstance(wired_vault, str)
-                and Path(wired_vault).resolve() == root.resolve()
-            )
-        except OSError:
-            wiring_matches = False
-        if (
-            topology.get("vaultGitDir") == ".git"
-            and topology.get("brainGitDir") == ".dex/brain.git"
-            and wiring_matches
-            and vault_git.is_dir()
-            and not vault_git.is_symlink()
-            and brain_git.is_dir()
-            and not brain_git.is_symlink()
-            and vault_marker
-            and vault_marker.get("role") == "vault"
-            and brain_marker
-            and brain_marker.get("role") == "brain"
-        ):
-            return "post-split"
-        return "invalid-split"
+    if topology.get("brainGitDir") != ".dex/brain.git":
+        failures.append(
+            "System/.dex/topology.json records brainGitDir "
+            f"{topology.get('brainGitDir')!r} instead of '.dex/brain.git'"
+        )
+    if recorded_vault_path(topology) is None:
+        failures.append(
+            "System/.dex/topology.json records no environment.DEX_VAULT path"
+        )
+    if vault_git.is_symlink():
+        failures.append(".git is a symbolic link, which Dex refuses to follow")
+    elif not vault_git.is_dir():
+        failures.append(".git is missing or is not a directory")
+    if brain_git.is_symlink():
+        failures.append(
+            ".dex/brain.git is a symbolic link, which Dex refuses to follow"
+        )
+    elif not brain_git.is_dir():
+        failures.append(".dex/brain.git is missing or is not a directory")
+    if not vault_marker:
+        failures.append(".git/dex-vault-v2 is missing or unreadable")
+    elif vault_marker.get("role") != "vault":
+        failures.append(
+            f".git/dex-vault-v2 records role {vault_marker.get('role')!r} "
+            "instead of 'vault'"
+        )
+    if not brain_marker:
+        failures.append(".dex/brain.git/dex-brain-v2 is missing or unreadable")
+    elif brain_marker.get("role") != "brain":
+        failures.append(
+            ".dex/brain.git/dex-brain-v2 records role "
+            f"{brain_marker.get('role')!r} instead of 'brain'"
+        )
+    return tuple(failures)
+
+
+def topology_state(vault_root: Path) -> str:
+    """Classify the installed brain/vault layout without changing it.
+
+    A structurally sound split is ``post-split`` even when its recorded vault
+    path names somewhere else: that record is runtime state, and a moved or
+    copied vault is relocated, not invalid.
+    ``core.update.apply_update._finalize_release_metadata`` re-records it on the
+    next install, which is where a write to that marker is already legitimate.
+    """
+    root = Path(vault_root)
+    vault_git = root / ".git"
+    topology = _regular_json(root / "System/.dex/topology.json")
+    if topology and topology.get("topology") == "brain-vault-split":
+        if split_layout_failures(root):
+            return "invalid-split"
+        return "post-split"
 
     migration_state = _regular_json(
         root / "System/.dex/migration-v2-state.json"
@@ -1460,6 +1540,54 @@ def topology_state(vault_root: Path) -> str:
     if not vault_git.exists():
         return "zip-or-manual"
     return "invalid-combined"
+
+
+def topology_refusal_detail(vault_root: Path, state: str) -> str:
+    """Say in one clause why this exact layout cannot be converted.
+
+    Every branch names the condition that actually failed, so nobody has to
+    read Dex's source to learn why they were refused. Only paths the user
+    already owns appear here.
+    """
+    root = Path(vault_root)
+    if state == "invalid-split":
+        failures = split_layout_failures(root)
+        return (
+            "this vault records the separated brain/vault layout, but "
+            + "; ".join(failures)
+        )
+    if state == "migration-in-progress":
+        migration_state = _regular_json(
+            root / "System/.dex/migration-v2-state.json"
+        )
+        if migration_state and migration_state.get("status") != "complete":
+            return (
+                "System/.dex/migration-v2-state.json records an earlier "
+                f"separation that stopped at {migration_state.get('status')!r} "
+                "and was never finished"
+            )
+        leftovers = [
+            relative
+            for relative in (".dex/pre-split-archive.git", ".dex/vault-staging.git")
+            if (root / relative).exists()
+        ]
+        return (
+            "an earlier separation left "
+            + " and ".join(leftovers)
+            + " behind, so Dex cannot tell finished work from unfinished work"
+        )
+    if state == "zip-or-manual":
+        return (
+            "this folder has no .git directory, so it is a copied or "
+            "downloaded folder rather than an install Dex can update in place"
+        )
+    if state == "invalid-combined":
+        return (
+            "this folder has a .git directory but no separation tool at "
+            f"{TOPOLOGY_MIGRATOR_RELATIVE.as_posix()}, so its Dex release is "
+            "too old or incomplete for Dex to separate it"
+        )
+    return f"the current layout is {state}"
 
 
 def _topology_groups(
@@ -1590,7 +1718,9 @@ def build_topology_migration_preview(
         return state, preview, None
     if state != "combined":
         raise _topology_refuse(
-            f"the current layout is {state}; Dex will not guess how to convert it"
+            f"the current layout is {state} — "
+            f"{topology_refusal_detail(root, state)}. Dex will not guess how "
+            "to convert it"
         )
 
     report_existed = (root / TOPOLOGY_REPORT_RELATIVE).is_file()
@@ -1807,6 +1937,10 @@ __all__ = [
     "build_topology_migration_preview",
     "canonical_topology_preview_bytes",
     "execute_topology_migration",
+    "recorded_vault_path",
+    "relocated_split",
+    "split_layout_failures",
     "topology_preview_sha256",
+    "topology_refusal_detail",
     "topology_state",
 ]

@@ -106,8 +106,80 @@ def _compose_claude(release_blob: bytes, vault_root: Path) -> bytes:
     return _regenerate_claude(release_blob, custom_content)
 
 
+GITIGNORE_SECTION_BEGIN = "# >>> dex-vault-mode (managed by Dex updates) >>>"
+GITIGNORE_SECTION_END = "# <<< dex-vault-mode (managed by Dex updates) <<<"
+GITIGNORE_MANAGED_SECTION = re.compile(
+    rf"\n*{re.escape(GITIGNORE_SECTION_BEGIN)}.*?{re.escape(GITIGNORE_SECTION_END)}\n?",
+    re.DOTALL,
+)
+
+
+def _vault_mode_gitignore_section() -> str:
+    """Ignore rules that neutralize the distribution re-include block in a vault.
+
+    The release ships the distribution repository's ``.gitignore``, whose
+    "Keep Template Files" negations (``!core/``, ``!docs/`` and friends) exist
+    so the development repository tracks its own product files. Inside a split
+    vault those same negations leave every brain-owned file un-ignored, so one
+    broad ``git add -A`` silently captures hundreds of release files into the
+    user's private history — and every later update then dirties them all.
+
+    Because ``.gitignore`` outranks ``.git/info/exclude``, the only reliable
+    place to restore vault-side behavior is the end of the file itself
+    (last match wins). The section is derived from the ownership contract so
+    there is no second path list to drift.
+    """
+    tops = sorted(
+        (rule for rule in portable_contract.RULES
+         if rule.ownership == "brain" and "/" not in rule.path),
+        key=lambda rule: rule.path,
+    )
+    vault_children = [
+        rule for rule in portable_contract.RULES
+        if rule.ownership == "vault" and "/" in rule.path
+    ]
+    lines = [
+        GITIGNORE_SECTION_BEGIN,
+        "# This repository is your private vault. The Dex product files below are",
+        "# delivered and refreshed by Dex's receipt-backed updates, not tracked",
+        "# here. Derived from the ownership contract; edits inside this section",
+        "# are replaced on every update.",
+    ]
+    for top in tops:
+        exceptions = sorted(
+            rule.path for rule in vault_children
+            if rule.path.startswith(f"{top.path}/")
+        )
+        for exception in exceptions:
+            if exception.count("/") != top.path.count("/") + 1:
+                raise CompositionError(
+                    "vault-owned contract path nested deeper than one level "
+                    f"under brain-owned {top.path!r}: {exception!r}"
+                )
+        if top.kind == "file":
+            lines.append(f"/{top.path}")
+        elif exceptions:
+            lines.append(f"/{top.path}/*")
+            lines.extend(f"!/{exception}/" for exception in exceptions)
+        else:
+            lines.append(f"/{top.path}/")
+    lines.append(GITIGNORE_SECTION_END)
+    return "\n".join(lines)
+
+
+def _compose_gitignore(release_blob: bytes, vault_root: Path) -> bytes:
+    del vault_root  # the section depends only on the ownership contract
+    try:
+        text = release_blob.decode("utf-8")
+    except UnicodeDecodeError as error:
+        raise CompositionError("release .gitignore is not UTF-8") from error
+    base = GITIGNORE_MANAGED_SECTION.sub("", text).rstrip("\n")
+    return f"{base}\n\n{_vault_mode_gitignore_section()}\n".encode("utf-8")
+
+
 COMPOSERS: dict[str, Callable[[bytes, Path], bytes]] = {
     "CLAUDE.md": _compose_claude,
+    ".gitignore": _compose_gitignore,
 }
 
 
@@ -224,6 +296,31 @@ def _verify_manifest(
         raise ReleaseVerificationError("release manifest contradicts the exact release tree")
 
 
+def _recorded_vault_path(topology: dict[str, Any]) -> str | None:
+    """Return the vault path the split marker records, if it records one.
+
+    Kept consistent with ``core.lifecycle.engine.recorded_vault_path``: the
+    marker has to record *a* path, but the value is runtime state and a moved
+    or copied vault legitimately records somewhere else.
+    """
+    environment = topology.get("environment")
+    if not isinstance(environment, dict):
+        return None
+    recorded = environment.get("DEX_VAULT")
+    return recorded if isinstance(recorded, str) and recorded else None
+
+
+def _relocated_vault(root: Path, topology: dict[str, Any]) -> bool:
+    """True when a sound split records a vault path other than this one."""
+    recorded = _recorded_vault_path(topology)
+    if recorded is None:
+        return False
+    try:
+        return Path(recorded).resolve() != root
+    except (OSError, RuntimeError):
+        return True
+
+
 def _topology(vault_root: Path) -> tuple[Path, dict[str, Any], dict[str, Any]]:
     root = Path(vault_root).resolve()
     for relative in (Path(".git"), Path(".dex"), BRAIN_RELATIVE, Path("System"), Path("System/.dex")):
@@ -234,22 +331,48 @@ def _topology(vault_root: Path) -> tuple[Path, dict[str, Any], dict[str, Any]]:
     vault_marker = _read_regular_json(root / VAULT_MARKER_RELATIVE, "vault Git marker")
     brain_git = root / BRAIN_RELATIVE
     brain_marker = _read_regular_json(brain_git / BRAIN_MARKER_NAME, "brain Git marker")
-    environment = topology.get("environment")
-    wired_vault = environment.get("DEX_VAULT") if isinstance(environment, dict) else None
-    try:
-        vault_wiring_matches = isinstance(wired_vault, str) and Path(wired_vault).resolve() == root
-    except (OSError, RuntimeError):
-        vault_wiring_matches = False
-    if (
-        topology.get("topology") != "brain-vault-split"
-        or topology.get("vaultGitDir") != ".git"
-        or topology.get("brainGitDir") != ".dex/brain.git"
-        or not vault_wiring_matches
-        or vault_marker.get("role") != "vault"
-        or brain_marker.get("role") != "brain"
-        or not brain_git.is_dir()
-    ):
-        raise UpdateError("the brain/vault split topology is incomplete or inconsistent")
+    # The recorded vault path is deliberately *not* a condition here. It is an
+    # absolute path held in runtime state, so any copied, moved, or renamed
+    # vault records somewhere else; nothing in this module reads it as a path
+    # (every path below derives from ``root``). A relocated vault is therefore
+    # sound, and _finalize_release_metadata re-records it on install. Structural
+    # damage still fails closed, and each cause now names itself.
+    failures: list[str] = []
+    if topology.get("topology") != "brain-vault-split":
+        failures.append(
+            f"{TOPOLOGY_RELATIVE.as_posix()} does not record a brain/vault split"
+        )
+    if topology.get("vaultGitDir") != ".git":
+        failures.append(
+            f"{TOPOLOGY_RELATIVE.as_posix()} records vaultGitDir "
+            f"{topology.get('vaultGitDir')!r} instead of '.git'"
+        )
+    if topology.get("brainGitDir") != ".dex/brain.git":
+        failures.append(
+            f"{TOPOLOGY_RELATIVE.as_posix()} records brainGitDir "
+            f"{topology.get('brainGitDir')!r} instead of '.dex/brain.git'"
+        )
+    if _recorded_vault_path(topology) is None:
+        failures.append(
+            f"{TOPOLOGY_RELATIVE.as_posix()} records no environment.DEX_VAULT path"
+        )
+    if vault_marker.get("role") != "vault":
+        failures.append(
+            f"{VAULT_MARKER_RELATIVE.as_posix()} records role "
+            f"{vault_marker.get('role')!r} instead of 'vault'"
+        )
+    if brain_marker.get("role") != "brain":
+        failures.append(
+            f"{BRAIN_RELATIVE.as_posix()}/{BRAIN_MARKER_NAME} records role "
+            f"{brain_marker.get('role')!r} instead of 'brain'"
+        )
+    if not brain_git.is_dir():
+        failures.append(f"{BRAIN_RELATIVE.as_posix()} is missing or is not a directory")
+    if failures:
+        raise UpdateError(
+            "the brain/vault split topology is incomplete or inconsistent: "
+            + "; ".join(failures)
+        )
     return brain_git, topology, brain_marker
 
 
@@ -465,6 +588,15 @@ def _finalize_release_metadata(
     release: VerifiedReleaseRef,
     previous_commit: str,
 ) -> None:
+    """Record the installed release, and re-record a relocated vault path.
+
+    This is the one place that legitimately rewrites the split marker, so it is
+    where a vault that was copied, moved, or renamed gets its recorded path put
+    right — the same routine-staleness repair the lifecycle activation record
+    already does. ``_topology`` has re-proved the layout by the time this runs,
+    and the existing restore-on-failure covers the extra field.
+    """
+    root = Path(vault_root).resolve()
     topology_path = vault_root / TOPOLOGY_RELATIVE
     marker_path = release.brain_git / BRAIN_MARKER_NAME
     topology = _read_regular_json(topology_path, "split topology marker")
@@ -472,6 +604,10 @@ def _finalize_release_metadata(
     previous_topology = dict(topology)
     previous_marker = dict(marker)
     topology["installedRelease"] = release.commit
+    if _relocated_vault(root, topology):
+        environment = topology.get("environment")
+        if isinstance(environment, dict):
+            topology["environment"] = {**environment, "DEX_VAULT": str(root)}
     marker["installed"] = release.commit
     try:
         _atomic_json(topology_path, topology)

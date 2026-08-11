@@ -997,6 +997,7 @@ core/tests/test_adoption_sqlite_snapshot.py
 core/tests/test_adoption_transaction.py
 core/tests/test_apply_update.py
 core/tests/test_architecture_inventory.py
+core/tests/test_branch_protection_script.py
 core/tests/test_calendar_eventkit_script.py
 core/tests/test_calendar_server.py
 core/tests/test_capabilities.py
@@ -1047,6 +1048,7 @@ core/tests/test_error_queue_lifecycle.py
 core/tests/test_feature_status.py
 core/tests/test_feedback_client_script.py
 core/tests/test_feedback_sweep.py
+core/tests/test_feedback_trigger_routing.py
 core/tests/test_first_run_trigger.py
 core/tests/test_fixture_vault.py
 core/tests/test_founder_content_gate.py
@@ -1076,6 +1078,7 @@ core/tests/test_large_vault_performance.py
 core/tests/test_learning_capture_command_name.py
 core/tests/test_lifecycle_bridge.py
 core/tests/test_lifecycle_official_capabilities.py
+core/tests/test_lifecycle_relocated_vault.py
 core/tests/test_lifecycle_service_contract.py
 core/tests/test_lifecycle_topology_migration.py
 core/tests/test_local_git.py
@@ -1225,6 +1228,7 @@ docs/customization-migration-threat-model.md
 docs/dex-doctor-spec.md
 docs/dexdiff-runtime-boundary.md
 docs/feedback-loop-contract.md
+docs/gate-omission-audit-2026-08-11.md
 docs/health-telemetry.md
 docs/merge-gates.md
 docs/plans/2026-07-23-brain-vault-existing-user-readiness.md
