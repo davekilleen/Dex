@@ -7,6 +7,21 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.95.0] - 🧺 Your daily plan stops running out of room as your vault grows (2026-08-11)
+
+The big daily rituals (planning your day, reviewing it, closing the week, prepping a meeting, processing your meetings) work by reading a lot first: your calendar, your tasks, your notes, your mail, your meeting history. In a young vault that reading is light. In a vault with a year or two of history, it can be so much material that Dex fills up on the reading alone and has nothing left for the part you actually came for. The failure is quiet: sessions get slower and shallower, and on the worst days a review dies halfway through and has to be rebuilt the next morning. One long-time user measured a single day of these rituals and found that of everything Dex read, less than two percent actually needed to stay in the conversation.
+
+**What this fixes for you:**
+
+* **The reading now happens in a side room, not in your conversation.** Each of the five heavy skills sends a helper off to do the bulk reading and come back with just the findings. The helper's workspace is cleared the moment it finishes, so your conversation keeps its room for the thinking, the writing, and the back-and-forth with you.
+* **The conversation itself doesn't change.** These skills still run right where you're talking, still see what you've already discussed and decided this session, and still ask you every question they used to ask. Only the silent bulk reading moved.
+* **If the helper ever fails, you still get your plan.** Dex says so plainly and does the reading the old way in the conversation instead. A hiccup in the new route never means a missing plan or review.
+* **Meeting processing keeps updating your people pages.** Some of Dex's automatic bookkeeping doesn't run for work done in the side room, so the helper is told to do that bookkeeping itself, and a new automatic check makes sure the two halves of each skill can never quietly drift apart in a future release.
+
+Small and young vaults lose nothing: the same steps run, in the same order, with the same results, just with more headroom for the day the vault gets big.
+
+---
+
 ## [1.95.0] — 🧹 Your list of changes stays yours — Dex's own files stop showing up in it (2026-08-10)
 
 Chris found his vault's change list crowded with dozens of files he never touched — Dex's own product files, freshly rewritten by an update and showing up as if they were his edits. The cause: the file that tells your vault what to overlook is written for the team that builds Dex, and it deliberately keeps Dex's own files visible there. Inside *your* vault that's backwards — one broad "save everything" moment quietly folds hundreds of Dex files into your private history, and every update after that dirties them all again.
@@ -18,6 +33,8 @@ Chris found his vault's change list crowded with dozens of files he never touche
 * **If Dex's files were already folded into your history, no more will join them.** This change stops the leak; it can't undo what a past update already captured, so those particular files keep appearing as changed for now. Releasing them — without deleting a single file from your folder — is the next piece of work.
 
 Thanks to Chris for the report, traced from a single noisy update all the way to the root cause.
+
+---
 
 ## [1.94.0] — 📦 Moving your Dex folder no longer locks you out of updating (2026-08-11)
 

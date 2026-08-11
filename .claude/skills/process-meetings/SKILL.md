@@ -17,6 +17,48 @@ because this skill was selected. Only run in the background when the user
 explicitly asks for a background run or the host has already obtained a specific
 background-work approval for this run.
 
+### Delegated gathering (large-vault scaling)
+
+This skill stays inline as described above: it keeps session awareness, it asks
+the user the questions, and it owns every interactive step. What it does NOT do
+inline is the bulk read-gathering, which on a mature vault (hundreds of notes,
+thousands of indexed messages, a live calendar and multiple integrations) can be
+large enough to exhaust the main conversation before the useful work starts.
+
+So the gathering-and-processing phase is delegated to one `general-purpose`
+subagent via the Agent tool, using the self-contained prompt in this skill's
+`AGENT_INSTRUCTIONS.md`:
+
+1. Read `.claude/skills/process-meetings/AGENT_INSTRUCTIONS.md`.
+2. Substitute its placeholders (`{{ARGS}}`, the arguments passed to this skill).
+3. Call the Agent tool with `subagent_type: "general-purpose"`, that prompt, and
+   a short description.
+4. Display its summary report.
+
+The subagent inherits MCP connections, runs in its own context, and that context
+is freed when it completes, so only its findings reach this conversation.
+
+**Use `AGENT_INSTRUCTIONS.md` verbatim.** Read the file and pass its content as
+the subagent prompt, substituting only the placeholders. Do NOT hand-write a
+replacement brief from what you already know about the meetings: that is how
+steps get silently dropped, and the omission looks complete because nothing
+errors. If context from this conversation is worth adding, APPEND it to the
+file's content; never substitute for it.
+
+**Two caveats that are load-bearing:**
+
+- **Hooks do not fire in subagent context.** This matters here: this skill's
+  PostToolUse hook (`post-meeting-person-update.cjs`) will NOT run for the
+  subagent's writes, so `AGENT_INSTRUCTIONS.md` makes the subagent perform
+  person-page updates directly. Do not remove that instruction believing the
+  hook covers it.
+- **Always fall back.** If the subagent fails, times out, or returns nothing
+  usable, say so plainly and run the processing inline from the same
+  `AGENT_INSTRUCTIONS.md`. A missing subagent must never mean a missing result.
+
+**Stays inline:** the background-sync status check when it needs setup guidance
+(`--setup`), and presenting the final summary report.
+
 # Process Meetings
 
 Process meetings that have been synced from Granola by the background automation. Updates person pages, extracts tasks, and organizes meeting notes.
