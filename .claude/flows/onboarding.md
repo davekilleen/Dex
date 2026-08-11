@@ -763,8 +763,8 @@ in the code, not just promised. The whole list is here: https://heydex.ai/help/f
 **And if things just feel off, run `/dex-doctor`.** It checks every part of Dex and tells you
 honestly what's working, what's switched off, what's broken, and what it couldn't check —
 then repairs what it can repair on its own, without touching your notes, and walks you
-through anything left. Worth running after an
-update, on a new machine, or when something has quietly stopped happening:
+through anything left. Worth running after an update, on a new machine, or when something
+has quietly stopped happening:
 https://heydex.ai/help/updating-troubleshooting.html#health-dex-doctor
 
 Genuinely — feedback is the most useful thing you can give us. Dex gets better because

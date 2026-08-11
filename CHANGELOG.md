@@ -7,6 +7,21 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.93.1] — 💬 Setup now shows you how to get something fixed (2026-08-11)
+
+Dex finished setting itself up without ever telling you what to do when Dex itself goes wrong. There was one line about it in the sign-off, easy to miss and gone forever once the screen scrolled. So people hit a problem, assumed it was theirs to live with, and never said anything — and a fault nobody reports stays broken for everyone who has it.
+
+**What this fixes for you:**
+
+* **You learn you can just say it.** Setup now explains, near the end, that if something misbehaves you describe it however you like — "the meeting sync is doing something weird" is plenty. Dex looks into it on your machine, writes the report for you, and shows it to you before anything is sent. If Dex doesn't pick it up as a bug, saying "report this" gets you there.
+* **You find out what happens after you send one.** Your report arrives on the Dex team's private desk with a reference number. If they need one more detail, the question comes back to you the next time you open Dex, and Dex can go and find the answer and show it to you before it goes. You can ask how your reports are doing whenever you like, and when a release contains your fix, Dex opens with the news and the version that has it.
+* **The privacy line is said out loud, with the full list a click away.** Nothing from your notes, meetings, people or your conversations with Dex ever goes into a report. Setup says so plainly and links the guide that lists every single thing a report is allowed to contain.
+* **You meet the checkup before you need it.** Setup introduces `/dex-doctor` for the times when nothing looks broken but something feels off — it tells you honestly what's working, what's switched off, what's broken and what it couldn't check, then repairs what it can without touching your notes.
+
+Every promise in that new part of setup was checked against the code that has to keep it, so what Dex tells you at the start is what actually happens later.
+
+---
+
 ## [1.93.0] — 🌉 The rescue bridge for stuck installs actually starts now (2026-08-11)
 
 Dex's rescue bridge — the one-time tool that gets a very old install updating again — clears out its surroundings before it runs, so nothing already on your machine can quietly steer the update. The last release taught it to stop safely instead of spinning forever when that clean start didn't take. It duly stopped, and told a user it couldn't continue. The cause turned out to be the cleaning itself.
