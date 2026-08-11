@@ -51,8 +51,9 @@ never substitute for it.
   `AGENT_INSTRUCTIONS.md`. A missing subagent must never mean a missing result.
 
 **Stays inline:** the whole interactive review, priority-by-priority assessment,
-pattern discussion, goal updates, career evidence capture, and next week's
-priority confirmation. The subagent gathers evidence; it does not make
+pattern discussion, goal updates, career evidence capture, next week's priority
+confirmation, the Dex Inbox check (Step 0.5), and the `/identity-snapshot` run
+that follows the synthesis. The subagent gathers evidence; it does not make
 judgements.
 
 ## Purpose

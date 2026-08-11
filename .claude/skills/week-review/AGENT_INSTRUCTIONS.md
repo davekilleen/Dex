@@ -105,6 +105,35 @@ Use: get_pillar_summary()
 Get task distribution across the user's strategic pillars (from
 `System/pillars.yaml`; never assume a fixed set).
 
+### 1.10 Project Activity
+
+Find files under `04-Projects/**/*.md` modified between {{WEEK_START_DATE}} and
+{{TARGET_DATE}}. For each project that moved: what changed, and which weekly
+priority or quarterly goal it serves. A week's real progress often lives here
+rather than in the task list.
+
+### 1.11 Journals (if enabled)
+
+Read this week's journals under `00-Inbox/Journals/{{YYYY}}/`. Also read
+`06-Resources/Learnings/**/*.md` for explicit learnings alongside the session
+learnings from 1.7. Extract recurring themes, energy patterns, and anything the
+user already named as a lesson. If journaling is not enabled or no entries
+exist, skip silently.
+
+### 1.12 Backlog and Skill Quality (report only)
+
+```
+Use: list_ideas(status="active", min_score=70)
+Use: get_skill_ratings()
+```
+
+- **Ideas:** note the top three by score, for the synthesis's improvement-ideas
+  section.
+- **Skill ratings:** note only skills that are declining or averaging below 3.0.
+  If everything is stable, record that in one line and add no section.
+
+Report both; the conversation decides what to raise with the user.
+
 ---
 
 ## Phase 2: Write the Synthesis
@@ -116,7 +145,11 @@ Use the synthesis template from this skill's `SKILL.md` (Output Format
 section): TL;DR, Weekly Priorities, Task Completion, Quarterly Goals, Daily
 Completion Trend, Meetings & People, Learnings, Pillar Balance, Next Week
 (suggested priorities with reasons, blocked items needing resolution). Add an
-Email Summary section only when email data was gathered. If the Career system
+Email Summary section only when email data was gathered, a Top 3 Dex
+Improvement Ideas section from 1.12 when ideas qualify, and a Skill Quality
+This Week section only when 1.12 found a declining or sub-3.0 skill. Fold
+project activity from 1.10 and journal themes from 1.11 into the priority and
+learnings sections as evidence. If the Career system
 is enabled, list significant accomplishments worth capturing under a Career
 Evidence heading with the marker
 `<!-- PLACEHOLDER: conversation will ask the user about capturing these -->`.
@@ -148,6 +181,9 @@ Summary:
 - Goals advancing: [list]
 - Goals stalled: [list]
 - Pillar balance: [assessment]
+- Projects that moved this week: [list, or none]
+- Journal themes: [brief, or "not enabled"]
+- Skills declining or below 3.0: [list, or "all stable"]
 - Sections needing interactive input: Career Evidence, Next Week confirmation
 
 [Any warnings or issues encountered]

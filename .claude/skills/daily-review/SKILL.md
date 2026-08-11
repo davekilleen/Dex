@@ -62,7 +62,8 @@ never substitute for it.
   `AGENT_INSTRUCTIONS.md`. A missing subagent must never mean a missing result.
 
 **Stays inline:** verifier mode, meeting follow-up surfacing, learning capture
-and categorisation, tomorrow's focus confirmation, the evening journal, and the
+and categorisation, tomorrow's focus confirmation, the Dex Inbox check
+(Step 2.55), the retrospective insight (Step 9.5), the evening journal, and the
 rating prompt. These need the user, so they must not be delegated.
 
 ## Tone Calibration
