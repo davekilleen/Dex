@@ -749,6 +749,12 @@ async def handle_call_tool(name: str, arguments: dict) -> List[types.TextContent
         deal["activities"] = [{"id": a.get("id"), "subject": a.get("subject"), "type": a.get("type"),
                                "due_date": a.get("due_date"), "done": a.get("done")}
                               for a in (acts.get("data") or [])] if acts["ok"] else []
+        # HONESTY: notes and activities are fetched with a fixed limit of 20.
+        # Flag a full page so a busy deal's history is not read as its whole
+        # history, and flag a failed sub-fetch so an empty list is not read as
+        # "this deal has no notes".
+        deal["notes_complete"] = len(deal["notes"]) < 20 if notes["ok"] else False
+        deal["activities_complete"] = len(deal["activities"]) < 20 if acts["ok"] else False
         return _text({"ok": True, "deal": deal})
 
     if name == "pipedrive_list_deals":
@@ -763,7 +769,23 @@ async def handle_call_tool(name: str, arguments: dict) -> List[types.TextContent
         r = _request("GET", "deals", env, params=params)
         if not r["ok"]:
             return _api_error(r["error"])
-        return _text({"ok": True, "deals": [_slim_deal(d) for d in (r["data"] or [])]})
+        deals = [_slim_deal(d) for d in (r["data"] or [])]
+        # HONESTY (load-bearing): this tool answers "what is in Pipedrive that
+        # I am not tracking?". Pipedrive pages its results, so a bare list is
+        # indistinguishable from a complete one - and a truncated answer to
+        # that question reads as "nothing else in the CRM", which is worse
+        # than no answer. Say plainly when more records exist.
+        pagination = ((r.get("additional_data") or {}).get("pagination") or {})
+        more = bool(pagination.get("more_items_in_collection"))
+        out: Dict[str, Any] = {"ok": True, "deals": deals, "complete": not more}
+        if more:
+            out["warning"] = (
+                f"PARTIAL LIST: Pipedrive has more deals matching this filter than the "
+                f"{params['limit']} returned. Do not describe this as the user's whole "
+                "pipeline; raise 'limit', or narrow by stage_id/user_id, before drawing "
+                "any 'nothing else is in the CRM' conclusion.")
+            out["next_start"] = pagination.get("next_start")
+        return _text(out)
 
     if name == "pipedrive_get_pipeline_snapshot":
         deal_ids = args.get("deal_ids")
@@ -779,8 +801,25 @@ async def handle_call_tool(name: str, arguments: dict) -> List[types.TextContent
                 snapshot.append(_slim_deal(d["data"] or {}))
             else:
                 errors.append({"deal_id": did, "error": d["error"]})
-        return _text({"ok": True, "deals": snapshot, "errors": errors,
-                      "fetched_at": datetime.now().isoformat(timespec="seconds")})
+        # HONESTY (load-bearing): this is the reconcile workhorse, and it
+        # fetches one deal per request. A rate limit or a dropped connection
+        # partway through leaves a snapshot that looks complete but silently
+        # omits deals - so the reconciler would report "no drift" on a deal it
+        # never actually read. A partial fetch says so, in words.
+        out: Dict[str, Any] = {
+            "ok": not errors,
+            "complete": not errors,
+            "deals": snapshot,
+            "errors": errors,
+            "requested": len(deal_ids),
+            "fetched_at": datetime.now().isoformat(timespec="seconds"),
+        }
+        if errors:
+            out["warning"] = (
+                f"PARTIAL SNAPSHOT: {len(errors)} of {len(deal_ids)} deals could not be "
+                "read. The deals listed here are accurate; the ones in 'errors' were not "
+                "checked at all. Report them as unchecked - never as unchanged or in sync.")
+        return _text(out)
 
     if name == "pipedrive_add_deal_note":
         body = {"deal_id": args.get("deal_id"), "content": args.get("content", "")}

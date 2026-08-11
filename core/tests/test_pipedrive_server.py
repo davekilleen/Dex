@@ -498,3 +498,67 @@ def test_update_deal_allows_ordinary_status_values(connected, http, status):
     }))
     assert payload["ok"] is True
     assert http[0]["json"] == {"status": status}
+
+
+# ---------------------------------------------------------------------------
+# HONESTY: a partial answer never presents itself as a complete one
+# ---------------------------------------------------------------------------
+
+def test_list_deals_flags_a_truncated_page(connected, monkeypatch):
+    monkeypatch.setattr(
+        pipedrive_server.requests, "request",
+        lambda *a, **k: FakeResponse(payload={
+            "success": True, "data": [{"id": 1, "title": "A"}],
+            "additional_data": {"pagination": {"more_items_in_collection": True, "next_start": 50}},
+        }),
+    )
+    payload = _decode(_call("pipedrive_list_deals"))
+    assert payload["complete"] is False
+    assert "PARTIAL LIST" in payload["warning"]
+    assert payload["next_start"] == 50
+
+
+def test_list_deals_reports_a_whole_page_as_complete(connected, monkeypatch):
+    monkeypatch.setattr(
+        pipedrive_server.requests, "request",
+        lambda *a, **k: FakeResponse(payload={
+            "success": True, "data": [{"id": 1, "title": "A"}],
+            "additional_data": {"pagination": {"more_items_in_collection": False}},
+        }),
+    )
+    payload = _decode(_call("pipedrive_list_deals"))
+    assert payload["complete"] is True
+    assert "warning" not in payload
+
+
+def test_snapshot_reports_a_partial_fetch_as_incomplete(connected, monkeypatch):
+    """A rate limit partway through must not yield a snapshot that reads as
+    'no drift' on deals that were never actually read."""
+    seen = []
+
+    def flaky(method, url, params=None, json=None, timeout=None):
+        seen.append(url)
+        if url.endswith("/deals/2"):
+            return FakeResponse(status_code=429, payload={"success": False})
+        return FakeResponse(payload={"success": True, "data": {"id": 1, "title": "A"}})
+
+    monkeypatch.setattr(pipedrive_server.requests, "request", flaky)
+    payload = _decode(_call("pipedrive_get_pipeline_snapshot", {"deal_ids": [1, 2]}))
+    assert payload["complete"] is False
+    assert payload["ok"] is False
+    assert payload["requested"] == 2
+    assert len(payload["deals"]) == 1
+    assert payload["errors"][0]["deal_id"] == 2
+    assert "PARTIAL SNAPSHOT" in payload["warning"]
+
+
+def test_snapshot_reports_a_clean_fetch_as_complete(connected, monkeypatch):
+    monkeypatch.setattr(
+        pipedrive_server.requests, "request",
+        lambda *a, **k: FakeResponse(payload={"success": True, "data": {"id": 1, "title": "A"}}),
+    )
+    payload = _decode(_call("pipedrive_get_pipeline_snapshot", {"deal_ids": [1]}))
+    assert payload["complete"] is True
+    assert payload["ok"] is True
+    assert payload["errors"] == []
+    assert "warning" not in payload
