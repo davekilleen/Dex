@@ -38,6 +38,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import io
 import json
 import os
 import shutil
@@ -51,6 +52,16 @@ from pathlib import Path, PurePosixPath
 
 PREFIX = "dex-vault-"
 ARCNAME = "dex-vault"
+
+# The restore runbook has to be readable on a bare machine, so a copy travels
+# inside every archive. It is not shipped into the vault at that location,
+# though: an update refuses any released path the installed version's ownership
+# contract cannot classify, and no released version before this one has a rule
+# for System/backup/. Shipping it there stranded every existing install on the
+# release that introduced it. It therefore lives under docs/ - which every
+# released contract already classifies - and is written into the archive here.
+RUNBOOK_SOURCE = "docs/backup-restore.md"
+RUNBOOK_IN_ARCHIVE = "System/backup/RESTORE.md"
 STAMP_FORMAT = "%Y%m%d-%H%M%S"
 
 # Secrets and generated credential config: never leaves the machine.
@@ -224,6 +235,11 @@ def excluded(relative: str) -> bool:
 
 def _tar_filter(tarinfo: tarfile.TarInfo) -> tarfile.TarInfo | None:
     relative = "/".join(Path(tarinfo.name).parts[1:])  # drop the arcname
+    if relative == RUNBOOK_IN_ARCHIVE:
+        # A vault restored from an older backup still has a copy here. Drop it
+        # so the walk cannot add a second member under the same name; the copy
+        # written from RUNBOOK_SOURCE below is the authoritative one.
+        return None
     return None if relative and excluded(relative) else tarinfo
 
 
@@ -276,6 +292,33 @@ def file_digest(path: Path) -> str:
     return digest.hexdigest()
 
 
+def _add_runbook(tar: tarfile.TarFile, vault: Path,
+                 warnings: list[str] | None = None) -> None:
+    """Write the restore runbook into the archive at its bare-machine location.
+
+    Read from the vault's own copy rather than embedded here, so there is one
+    source of truth for the text. A vault too old to carry it still gets a
+    backup - the notes are what matter - but says so, because a set whose
+    runbook is missing is a set someone will open on a dead machine.
+    """
+    source = vault / RUNBOOK_SOURCE
+    try:
+        payload = source.read_bytes()
+        modified = int(source.stat().st_mtime)
+    except OSError:
+        if warnings is not None:
+            warnings.append(
+                f"this backup has no restore runbook inside it: {RUNBOOK_SOURCE} "
+                "is missing from the vault, so the archive carries the notes but "
+                "not the instructions for rebuilding from them")
+        return
+    info = tarfile.TarInfo(f"{ARCNAME}/{RUNBOOK_IN_ARCHIVE}")
+    info.size = len(payload)
+    info.mtime = modified
+    info.mode = 0o644
+    tar.addfile(info, io.BytesIO(payload))
+
+
 def build_artifacts(vault: Path, workdir: Path, stamp: str,
                     warnings: list[str] | None = None) -> list[Path]:
     """Build the archive, the verified git bundle, and the checksum sidecar.
@@ -290,6 +333,7 @@ def build_artifacts(vault: Path, workdir: Path, stamp: str,
     escaping: list[str] = []
     with tarfile.open(archive, "w:gz") as tar:
         tar.add(vault, arcname=ARCNAME, filter=_collecting_tar_filter(escaping))
+        _add_runbook(tar, vault, warnings)
     if escaping and warnings is not None:
         shown = ", ".join(sorted(escaping)[:5])
         warnings.append(

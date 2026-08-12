@@ -14,7 +14,7 @@ test     verify, then fully extract the archive into a throwaway temporary
 restore  verify, then extract into a folder you choose. The target must be
          empty or absent; this tool never overwrites the live vault or any
          existing files. Reconnecting keys, schedules, and permissions is a
-         separate, deliberate step: see System/backup/RESTORE.md.
+         separate, deliberate step: see docs/backup-restore.md.
 
 --source defaults to the folder backend's configured destination. For the
 rclone backend, first copy one set down to a local folder
@@ -227,7 +227,7 @@ def restore(source: Path, stamp: str, target: Path, vault: Path) -> None:
         print(f"Copied {bundle.name} alongside; recover the version history "
               f"with: git clone {bundle.name} restored-history")
     print("Secrets, schedules, and permissions are deliberately not in a "
-          "backup; see System/backup/RESTORE.md for what to re-establish.")
+          "backup; see docs/backup-restore.md for what to re-establish.")
 
 
 def main(argv: list[str] | None = None) -> int:
