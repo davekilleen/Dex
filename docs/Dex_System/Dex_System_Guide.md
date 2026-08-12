@@ -631,6 +631,12 @@ Run `/dex-doctor` or say "check my vault." Dex will report what it finds and sug
 
 No configuration is required. Run it whenever your vault feels messy or meeting contacts do not look right.
 
+### Troubleshooting: When Something Seems Broken
+
+`/dex-doctor` is also your first stop when Dex itself misbehaves — a command that errors out, meetings that stop coming through, a feature that used to work. It checks the whole system and tells you honestly what's working, what's switched off, what's broken and what it couldn't check, repairs what it can on its own without touching your notes, and guides you through the rest. How it works: https://heydex.ai/help/updating-troubleshooting.html#health-dex-doctor
+
+If the problem turns out to be a bug in Dex itself rather than your setup, just say what went wrong in your own words — "the meeting sync is doing something weird" is enough, and you don't need a special command (`/feedback` works too if you prefer to be explicit). Dex investigates on your machine, writes the bug report for you, and by default every report waits for your yes before anything leaves. Nothing from your notes, meetings, or conversations ever goes into a report; the full list of what a report can contain is at https://heydex.ai/help/feedback.html. When the fix ships, Dex tells you.
+
 ---
 
 ## Role-Specific Skills

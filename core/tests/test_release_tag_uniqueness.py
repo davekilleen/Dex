@@ -369,7 +369,9 @@ def test_stable_release_ci_publishes_each_version_at_most_once() -> None:
         "Build release branch",
         "Push release branch and immutable tag",
         "Build self-contained vault bundle",
-        "Upload vault bundle to versioned GitHub Release",
+        # Draft-first: this step attaches the assets, verifies them, and only then
+        # makes the release public. See test_release_workflows_draft_first.py.
+        "Attach assets, verify them, then make the release public",
     ):
         assert named_steps[step_name]["if"] == publish_condition
 
