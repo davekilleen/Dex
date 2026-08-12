@@ -157,8 +157,8 @@
       "source": {
         "kind": "skill",
         "path": ".claude/skills/dex-doctor/SKILL.md",
-        "sha256": "a36a2aa7df05a9bc23542685ec239b682fb0365b1a451900869381aa27d7dc89",
-        "byte_size": 17429
+        "sha256": "d875ffd44a37489e225ddb0eae06cde12dc146f7e356152320da80f77a0cee08",
+        "byte_size": 17600
       },
       "value": "Gives the person an honest system check: what works, what is off, what is broken and what should not be guessed.",
       "jobs_served": ["keep-system-healthy"],

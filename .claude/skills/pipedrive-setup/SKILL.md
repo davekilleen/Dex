@@ -136,12 +136,15 @@ Check `.mcp.json` for a `pipedrive-mcp` entry under `mcpServers`. If missing, ad
 "pipedrive-mcp": {
   "type": "stdio",
   "command": "<vault path>/.venv/bin/python",
-  "args": ["<vault path>/core/mcp/pipedrive_server.py"],
+  "args": ["<vault path>/core/integrations/pipedrive/pipedrive_server.py"],
   "env": { "VAULT_PATH": "<vault path>" }
 }
 ```
 
 If already present, leave it. Tell the user the MCP server picks up the token on the next session restart.
+
+This step is how an existing install gets Pipedrive: an update never adds a server to a
+vault's `.mcp.json`, so the entry above is added here, when the user chooses to connect.
 
 ### Step 6: Enable + Test
 

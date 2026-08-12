@@ -146,23 +146,23 @@ identity. A newer source commit, a mutable branch, or a similarly named tag is
 not equivalent, and an older bridge must refuse rather than silently
 substituting a newer release.
 
-Download the versioned bridge and its checksum from the public v1.95.0 release,
+Download the versioned bridge and its checksum from the public v1.95.1 release,
 verify the bytes, then run that exact artifact. Run this block from the vault
 root. It keeps the downloaded files in a temporary folder outside the vault.
 
 ```bash
 BRIDGE_DIR="$(mktemp -d "${TMPDIR:-/tmp}/dex-update-bridge.XXXXXX")"
 curl -fL \
-  "https://github.com/davekilleen/Dex/releases/download/v1.95.0/dex-update-bridge-v1.95.0.py" \
-  -o "$BRIDGE_DIR/dex-update-bridge-v1.95.0.py"
+  "https://github.com/davekilleen/Dex/releases/download/v1.95.1/dex-update-bridge-v1.95.1.py" \
+  -o "$BRIDGE_DIR/dex-update-bridge-v1.95.1.py"
 curl -fL \
-  "https://github.com/davekilleen/Dex/releases/download/v1.95.0/dex-update-bridge-v1.95.0.py.sha256" \
-  -o "$BRIDGE_DIR/dex-update-bridge-v1.95.0.py.sha256"
+  "https://github.com/davekilleen/Dex/releases/download/v1.95.1/dex-update-bridge-v1.95.1.py.sha256" \
+  -o "$BRIDGE_DIR/dex-update-bridge-v1.95.1.py.sha256"
 (
   cd "$BRIDGE_DIR"
-  shasum -a 256 -c "dex-update-bridge-v1.95.0.py.sha256"
+  shasum -a 256 -c "dex-update-bridge-v1.95.1.py.sha256"
 )
-python3 "$BRIDGE_DIR/dex-update-bridge-v1.95.0.py" --vault "$PWD"
+python3 "$BRIDGE_DIR/dex-update-bridge-v1.95.1.py" --vault "$PWD"
 ```
 
 It shows up to three independent previews and requires `APPLY` for each: the

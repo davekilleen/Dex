@@ -821,6 +821,7 @@ core/integrations/connection-manager/token-store.cjs
 core/integrations/detect.py
 core/integrations/google/setup.py
 core/integrations/notion/setup.py
+core/integrations/pipedrive/pipedrive_server.py
 core/integrations/post_update_check.py
 core/integrations/slack/setup.py
 core/integrations/task_sync.py
@@ -862,7 +863,6 @@ core/mcp/customization_migration_server.py
 core/mcp/dex_improvements_server.py
 core/mcp/granola_server.py
 core/mcp/onboarding_server.py
-core/mcp/pipedrive_server.py
 core/mcp/requirements.txt
 core/mcp/resume_parser.py
 core/mcp/resume_server.py
@@ -1144,6 +1144,7 @@ core/tests/test_release_fleet_failure_diagnostics.py
 core/tests/test_release_notes_sweep.py
 core/tests/test_release_publish_draft_first.py
 core/tests/test_release_tag_uniqueness.py
+core/tests/test_release_tree_matches_tag.py
 core/tests/test_release_workflows_draft_first.py
 core/tests/test_review_retirement.py
 core/tests/test_ritual_intelligence_entrypoints.py
@@ -1330,6 +1331,7 @@ scripts/check-portable-contract.py
 scripts/check-portable-contract.sh
 scripts/check-release-tag-reachability.sh
 scripts/check-release-tag-uniqueness.sh
+scripts/check-release-tree-matches-tag.sh
 scripts/check-tau-removal.py
 scripts/check-test-delta.sh
 scripts/check-tracked-ignored.py

@@ -45,13 +45,15 @@ def get_error_queue_path() -> Path:
     return Path(get_vault_path()) / ".logs" / "error-queue.json"
 
 
-# Map of MCP server names → their Python module files (relative to core/mcp/)
+# Map of MCP server names → their Python module files (relative to core/mcp/).
+# Core servers only. An opt-in integration server (core/integrations/<name>/)
+# is not listed here: preflight only covers what every install registers, and
+# each integration reports its own health through its Doctor probe.
 SERVER_MODULES = {
     "work-mcp": "work_server.py",
     "calendar-mcp": "calendar_server.py",
     "career-mcp": "career_server.py",
     "granola-mcp": "granola_server.py",
-    "pipedrive-mcp": "pipedrive_server.py",
     "dex-improvements-mcp": "dex_improvements_server.py",
     "dex-analytics": "analytics_server.py",
     "onboarding-mcp": "onboarding_server.py",
@@ -67,7 +69,6 @@ SERVER_LABELS = {
     "calendar-mcp": "Calendar",
     "career-mcp": "Career Tracker",
     "granola-mcp": "Granola (meetings)",
-    "pipedrive-mcp": "Pipedrive (CRM)",
     "dex-improvements-mcp": "Improvements Backlog",
     "dex-analytics": "Analytics",
     "onboarding-mcp": "Onboarding",

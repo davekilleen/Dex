@@ -158,7 +158,12 @@ def is_instruction_surface(path: Path, repo_root: Path = REPO_ROOT) -> bool:
 def collect_defined_tools(repo_root: Path = REPO_ROOT) -> set[str]:
     """Collect statically declared MCP tools and public lifecycle operations."""
     defined_tools: set[str] = set()
-    for path in sorted((repo_root / "core" / "mcp").glob("*.py")):
+    server_sources = sorted((repo_root / "core" / "mcp").glob("*.py")) + sorted(
+        # Opt-in integration servers (core/integrations/<name>/) define real
+        # tools that skills instruct, so they count as defined here too.
+        (repo_root / "core" / "integrations").glob("*/*_server.py")
+    )
+    for path in server_sources:
         defined_tools.update(extract_defined_tool_names(path.read_text(encoding="utf-8")))
     lifecycle_service = repo_root / "core" / "lifecycle" / "service.py"
     defined_tools.update(
