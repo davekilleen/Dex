@@ -821,6 +821,7 @@ core/integrations/connection-manager/token-store.cjs
 core/integrations/detect.py
 core/integrations/google/setup.py
 core/integrations/notion/setup.py
+core/integrations/pipedrive/pipedrive_server.py
 core/integrations/post_update_check.py
 core/integrations/slack/setup.py
 core/integrations/task_sync.py
@@ -862,7 +863,6 @@ core/mcp/customization_migration_server.py
 core/mcp/dex_improvements_server.py
 core/mcp/granola_server.py
 core/mcp/onboarding_server.py
-core/mcp/pipedrive_server.py
 core/mcp/requirements.txt
 core/mcp/resume_parser.py
 core/mcp/resume_server.py

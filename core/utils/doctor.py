@@ -4719,7 +4719,7 @@ def _probe_pipedrive_connection(context: DoctorContext) -> ProbeResult:
     means "the stored token actually works" and not merely "the settings parse".
     """
     try:
-        from core.mcp import pipedrive_server
+        from core.integrations.pipedrive import pipedrive_server
     except Exception as error:  # pragma: no cover - import guard
         detail = _one_line(error)
         if _looks_like_sandbox_failure(detail):

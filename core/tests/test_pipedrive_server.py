@@ -8,7 +8,7 @@ import subprocess
 
 import pytest
 
-from core.mcp import pipedrive_server
+from core.integrations.pipedrive import pipedrive_server
 
 # ---------------------------------------------------------------------------
 # Helpers
