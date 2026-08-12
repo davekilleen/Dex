@@ -79,7 +79,7 @@ def _missing_module_detail(error: ModuleNotFoundError) -> str:
         )
     if module:
         return (
-            f"Python module {module!r} is not installed in this vault's .venv — run /dex-update "
+            f"Python packages not installed in this vault's .venv (missing module {module!r}) — run /dex-update "
             "(or reinstall requirements.txt into that .venv), then re-run /dex-doctor"
         )
     return MISSING_PACKAGES_DETAIL

@@ -493,7 +493,7 @@ def test_main_exit_one_for_a_broken_journey(tmp_path: Path, capsys) -> None:
         ),
         (
             "yaml",
-            "Python module 'yaml' is not installed in this vault's .venv — run /dex-update "
+            "Python packages not installed in this vault's .venv (missing module 'yaml') — run /dex-update "
             "(or reinstall requirements.txt into that .venv), then re-run /dex-doctor",
         ),
     ],
