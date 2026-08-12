@@ -997,17 +997,24 @@ def test_hanging_journey_is_killed_and_returns_exit_two(monkeypatch, tmp_path: P
 def test_timed_out_journey_kills_delayed_descendants(monkeypatch, tmp_path: Path) -> None:
     vault = _write_valid_vault(tmp_path)
     sentinel = tmp_path / "timed-out-descendant-survived"
-    # The survival window and the post-run wait below are seconds apart on purpose:
-    # with a tight margin (formerly 0.7s sleep / 0.8s wait) a CPU-starved descendant
-    # on a loaded runner could be delayed past the check and fake a pass even when
-    # the kill logic is broken. Wide margins keep this test honest under parallel load.
+    spawned = tmp_path / "descendant-was-spawned"
+    # Three timings, and the order between them is the whole test:
+    #   spawn happens well inside the journey budget (so there is something to kill),
+    #   the budget expires long before the descendant would write (so a working kill
+    #   leaves no sentinel), and the post-run wait outlasts the descendant (so a
+    #   survivor is actually observed rather than merely not-yet-arrived).
+    # The former 0.4s budget was the flake (F11, #477): on a loaded runner it could
+    # expire before the parent had spawned the descendant at all, orphaning a process
+    # the kill never saw, which then wrote the sentinel and blamed the kill logic.
+    budget, descendant_delay, post_run_wait = 3.0, 8.0, 10.0
     descendant = (
-        "import time; from pathlib import Path; time.sleep(2.5); "
+        f"import time; from pathlib import Path; time.sleep({descendant_delay}); "
         f"Path({str(sentinel)!r}).touch()"
     )
     parent = (
-        "import subprocess, sys, time; "
+        "import subprocess, sys, time; from pathlib import Path; "
         f"subprocess.Popen([sys.executable, '-c', {descendant!r}]); "
+        f"Path({str(spawned)!r}).touch(); "
         "time.sleep(60)"
     )
     monkeypatch.setattr(
@@ -1019,12 +1026,18 @@ def test_timed_out_journey_kills_delayed_descendants(monkeypatch, tmp_path: Path
     run = smoke.run_smoke(
         vault_root=vault,
         repo_root=REPO_ROOT,
-        journey_definitions=(_definition("configs", 0.4),),
+        journey_definitions=(_definition("configs", budget),),
     )
-    time.sleep(4.0)
+    time.sleep(post_run_wait)
 
     assert run.exit_code == 2
     assert "timed out" in run.report["journeys"][0]["detail"]
+    # Without this, a run where the descendant was never spawned passes while
+    # proving nothing: no descendant, no sentinel, no kill exercised.
+    assert spawned.exists(), (
+        "the parent never spawned a descendant, so this test did not exercise the "
+        "kill path at all; it cannot pass on that basis"
+    )
     assert not sentinel.exists()
 
 
