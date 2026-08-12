@@ -148,7 +148,7 @@ The guide now says plainly what to reach for: `/dex-doctor` first when something
 broken, `/feedback` when it looks like a genuine Dex bug — with the privacy promise
 spelled out, so you know what does and does not leave your machine.
 
-**A note on version numbers.** 1.95.0 was withdrawn before anyone could download it: its files were built from the wrong snapshot of the code, and a safety check caught that before the release became visible. Nothing was ever published under that number. Everything described below reached you in 1.95.1 instead.
+**A note on version numbers.** 1.95.0 was withdrawn before anyone could download it: its files were built from the wrong snapshot of the code, and a safety check caught that before the release became visible. Nothing was ever published under that number. Everything described in this section reached you in 1.95.1 instead.
 
 ---
 
