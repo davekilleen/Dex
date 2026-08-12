@@ -20,7 +20,7 @@ There is an optional setting that saves your vault to its own local history at t
 * **Session snapshots save your notes, including the ones you wrote today.** Both halves of the fault are fixed: the save no longer refuses on your own folders, and it now finds notes you have only just created rather than silently skipping them. A snapshot that quietly saved nothing new was the more dangerous half, because it looked like it had worked.
 * **Nothing private got swept in to make that work.** Your keys, saved sign-ins, deal caches from connected tools, and per-tool settings are still deliberately left out, and a new check exists purely to keep it that way. Only the folders your notes live in were opened up.
 
-Found by Chris, who spotted the feature enabled, no history being written, and no error anywhere — then traced it to the exact cause. Nothing you saved before this release was lost; the snapshots simply never happened, and your notes were untouched throughout. This release was renumbered from 1.95.0 to carry the fix, which is why there is no 1.95.0.
+Found by Chris, who spotted the feature enabled, no history being written, and no error anywhere — then traced it to the exact cause. Nothing you saved before this release was lost; the snapshots simply never happened, and your notes were untouched throughout.
 
 
 ### ⚡ Big vaults get ready to update in seconds instead of minutes
@@ -147,6 +147,8 @@ coming back.
 The guide now says plainly what to reach for: `/dex-doctor` first when something seems
 broken, `/feedback` when it looks like a genuine Dex bug — with the privacy promise
 spelled out, so you know what does and does not leave your machine.
+
+**A note on version numbers.** 1.95.0 was withdrawn before anyone could download it: its files were built from the wrong snapshot of the code, and a safety check caught that before the release became visible. Nothing was ever published under that number. Everything described below reached you in 1.95.1 instead.
 
 ---
 
