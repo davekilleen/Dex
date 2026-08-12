@@ -122,6 +122,54 @@ def test_gate_reports_every_new_version_with_duplicate_tags(tmp_path: Path) -> N
     assert "v1.79.0" in result.stderr
 
 
+def test_gate_rejects_non_canonical_archive_tag_without_a_canonical_twin(
+    tmp_path: Path,
+) -> None:
+    # The executor requires exactly 7 hex characters in a dist/archive tag and
+    # only says so per-journey, hours into historic-fleet-darwin. A lone
+    # non-canonical start must fail here instead.
+    repository = _repository_with_remote_tags(
+        tmp_path,
+        "dist/archive/v1.81.12-3a8245ab",
+    )
+
+    result = subprocess.run(
+        ["bash", str(GATE)],
+        cwd=repository,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 1
+    assert "dist/archive/v1.81.12-3a8245ab" in result.stderr
+    assert "no canonical twin" in result.stderr
+    assert "Remedy: create dist/archive/v1.81.12-" in result.stderr
+    assert "Delete nothing" in result.stderr
+
+
+def test_gate_accepts_non_canonical_archive_tag_with_a_canonical_twin(
+    tmp_path: Path,
+) -> None:
+    # Discovery de-duplicates journeys by tree, so a canonical tag at the same
+    # commit already shadows the non-canonical one. That is today's tag set.
+    repository = _repository_with_remote_tags(
+        tmp_path,
+        "dist/archive/v1.81.12-3a8245ab",
+        "dist/archive/v1.81.12-3a8245a",
+    )
+
+    result = subprocess.run(
+        ["bash", str(GATE)],
+        cwd=repository,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
 def _newer_release_tags(count: int) -> tuple[str, ...]:
     return tuple(
         f"dist/release/v1.{minor}.0-{minor:07x}"
