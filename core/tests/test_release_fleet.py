@@ -101,6 +101,52 @@ def test_discovers_archived_distribution_tree_when_the_canonical_tag_is_absent(
     assert [release.tag for release in releases] == [archive_tag]
 
 
+def test_rejects_archived_start_the_executor_would_refuse_mid_run(
+    tmp_path: Path,
+) -> None:
+    """A non-canonical archived start must fail discovery, not journey 191 of 202.
+
+    The executor accepts archived starts only in the canonical seven-character
+    form. Discovery is deliberately wider, so before this guard a hand-made tag
+    with a longer short sha was admitted here and then refused hours later,
+    aborting the whole fleet. Reproduces dist/archive/v1.81.12-3a8245ab.
+    """
+
+    repo = _repository(tmp_path)
+    tag = _tag_release(repo, "1.81.12", "historic release")
+    commit = _git(repo, "rev-parse", f"{tag}^{{commit}}")
+    oversized = f"dist/archive/v1.81.12-{commit[:8]}"
+    _git(repo, "tag", "-a", oversized, commit, "-m", oversized)
+    _git(repo, "tag", "-d", tag)
+
+    with pytest.raises(release_fleet.FleetError, match="canonical"):
+        release_fleet.discover_distribution_releases(repo)
+
+
+def test_canonical_archived_start_supersedes_its_oversized_twin(
+    tmp_path: Path,
+) -> None:
+    """Adding the canonical tag is enough; the oversized one needs no deletion.
+
+    Discovery keeps one start per tree and sorts by tag, so the shorter tag wins
+    and its oversized twin is skipped as a duplicate tree. This is the property
+    the dist/archive/v1.81.12-3a8245a fix relies on.
+    """
+
+    repo = _repository(tmp_path)
+    tag = _tag_release(repo, "1.81.12", "historic release")
+    commit = _git(repo, "rev-parse", f"{tag}^{{commit}}")
+    oversized = f"dist/archive/v1.81.12-{commit[:8]}"
+    canonical = f"dist/archive/v1.81.12-{commit[:7]}"
+    _git(repo, "tag", "-a", oversized, commit, "-m", oversized)
+    _git(repo, "tag", "-a", canonical, commit, "-m", canonical)
+    _git(repo, "tag", "-d", tag)
+
+    releases = release_fleet.discover_distribution_releases(repo)
+
+    assert [release.tag for release in releases] == [canonical]
+
+
 def test_discovers_exact_v164_archived_starting_tree(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     tag = "dist/archive/v1.64.0-366c168"
     commit = "366c168af61c50ee7157976a9eb8a154ca0fd7f4"

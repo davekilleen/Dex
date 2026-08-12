@@ -40,6 +40,14 @@ RELEASE_TAG = re.compile(
 ARCHIVE_RELEASE_TAG = re.compile(
     r"^dist/archive/v(?P<version>[0-9]+\.[0-9]+\.[0-9]+)-(?P<short>[0-9a-f]{7,64})$"
 )
+# The journey executor accepts an archived start only in the canonical
+# seven-character form (`_ARCHIVE_RELEASE_TAG` in scripts/release_fleet_executor.py).
+# Discovery above is deliberately wider so a non-canonical tag is still seen rather
+# than silently ignored; this pattern is what lets discovery reject it up front
+# instead of letting the fleet refuse it hours later, mid-run.
+EXECUTOR_ARCHIVE_RELEASE_TAG = re.compile(
+    r"^dist/archive/v(?P<version>[0-9]+\.[0-9]+\.[0-9]+)-(?P<short>[0-9a-f]{7})$"
+)
 LEGACY_RELEASE_TAG = re.compile(r"^v(?P<version>[0-9]+\.[0-9]+\.[0-9]+)$")
 USER_FIXTURES = {
     str(INBOX_DIR.relative_to(VAULT_ROOT) / "keep.md"): b"# User note\nThis must survive updates.\n",
@@ -1027,6 +1035,18 @@ def discover_distribution_releases(repo: Path) -> tuple[DistributionRelease, ...
                 commit=commit,
                 tree=tree,
             )
+        )
+    for release in discovered:
+        if not release.tag.startswith("dist/archive/"):
+            continue
+        if EXECUTOR_ARCHIVE_RELEASE_TAG.fullmatch(release.tag) is not None:
+            continue
+        raise FleetError(
+            f"{release.tag}: archived start tag is not in the canonical "
+            f"seven-character form, so the journey executor would refuse it "
+            f"part-way through a run. Add the canonical tag for commit "
+            f"{release.commit} alongside it; nothing needs deleting, because "
+            f"discovery keeps one start per tree and prefers the shorter tag."
         )
     return tuple(sorted(discovered, key=lambda item: (_version_key(item.version), item.tag)))
 
