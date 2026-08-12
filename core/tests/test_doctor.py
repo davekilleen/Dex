@@ -2112,6 +2112,23 @@ def test_jobs_loaded_treats_a_live_pid_as_authoritative_over_a_previous_exit(mon
     assert result.verdict == "OK"
 
 
+def test_jobs_loaded_does_not_treat_pid_zero_as_a_running_service(monkeypatch, context):
+    _write_plist(context, "com.dex.meeting-intel")
+    monkeypatch.setattr(doctor, "_is_macos", lambda: True)
+    monkeypatch.setattr(doctor, "_launchctl_domain_check", lambda: None)
+    monkeypatch.setattr(doctor, "_plist_interpreter", lambda _plist: "/bin/bash")
+    monkeypatch.setattr(
+        doctor,
+        "_launchctl_status",
+        lambda _label: {"loaded": True, "pid": 0, "last_exit_status": -15},
+    )
+
+    result = doctor._probe_jobs_loaded(context)
+
+    assert result.verdict == "BROKEN"
+    assert "last exited with status -15" in result.detail
+
+
 def test_jobs_loaded_maps_invalid_or_unsubstituted_plist_to_broken_t2(monkeypatch, context):
     plist = _write_plist(context, "com.dex.meeting-intel")
     with plist.open("wb") as handle:

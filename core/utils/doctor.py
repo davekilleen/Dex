@@ -2763,7 +2763,7 @@ def _probe_jobs_loaded(context: DoctorContext) -> ProbeResult:
                     continue
                 if not status["loaded"]:
                     issues.append((2, f"{label} is installed but not loaded"))
-                elif status.get("pid") is not None:
+                elif isinstance(status.get("pid"), int) and status["pid"] > 0:
                     # LastExitStatus describes the previous process. A live PID
                     # is the current state and must win over stale history.
                     continue
