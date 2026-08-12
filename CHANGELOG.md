@@ -7,6 +7,18 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.99.0] — 📦 A new version is never announced before the files you download exist (2026-08-12)
+
+When Dex put out a new version, the announcement page appeared within seconds — but the files your copy of Dex actually downloads to update or repair itself were prepared separately, after the full test suite had run, and attached only afterwards. So there was always a window where the newest version was announced and undownloadable, and if those tests failed or got stuck waiting behind another long-running check, the window never closed. That is what happened on 11 August: version 1.94.0 sat at the top of the releases page for about ninety minutes with nothing attached to it, while Dex's own emergency repair instructions pointed at a file that came back "not found". The person most likely to hit that is someone whose update is already broken.
+
+**What this fixes for you:**
+
+* **"Newest version" now means the files are actually there.** The release page is created hidden. The downloads are attached to it, each one fetched back off the page and compared against what was prepared, and only then does the page become visible. There is no longer a moment where you can see a version you cannot download.
+* **A release that goes wrong now leaves nothing published at all.** If any part of it fails, the release simply stays hidden until someone fixes it. Before, a failure left a half-finished release sitting at the top of the page looking like the current version.
+* **Your download is verified before it is offered, not after.** Each release includes small companion files that let you confirm a download arrived complete and unaltered. Dex now checks those against the real files before the release goes public, so the verification step in the repair instructions cannot fail on something Dex itself published.
+* **Something now checks the real download links every hour.** A scheduled check fetches the newest release exactly the way your copy of Dex would — including the precise links written into the emergency repair instructions — and raises the alarm if any of them is missing or damaged. A half-published release is caught within the hour rather than when someone runs into it.
+* **A release waiting its turn now says so.** Before releases go out, Dex runs a long rehearsal that replays real historic updates, and that rehearsal occupies the release lane for several hours. A release queued behind it now explains that on its own page, so it reads as waiting rather than broken.
+
 ## [1.98.0] — 🤝 Dex can work with your Pipedrive deals, and never behind your back (2026-08-11)
 
 If you keep deals in Pipedrive, you have been keeping them twice: once in the system your company reports from, and once in the notes where you actually think about the deal. The two drift apart within days, and reconciling them by hand is exactly the admin nobody does on a Friday afternoon. Chris built this to solve it for himself and offered it back.

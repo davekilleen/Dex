@@ -1079,6 +1079,13 @@ The doctor's quick `smoke.history` check narrows the change window and reports o
 matching configuration/custom-skill modification times or a Dex version change. The
 automation heartbeat lives at `.scripts/logs/smoke-nightly.log`.
 
+When a check stays broken across runs and points to a defect in Dex itself rather than
+local setup, Doctor offers to report it through `/feedback`. That is not the only route:
+the persona's "Something in Dex Is Broken (Natural Language Triggers)" block in `CLAUDE.md`
+(shipped v1.94.0) routes ordinary descriptions of a fault to the same place, and routes
+setup problems back to Doctor instead. The user-facing troubleshooting path is documented
+in `Dex_System_Guide.md` under "Troubleshooting: When Something Seems Broken".
+
 ---
 
 ## Design Constraints

@@ -1229,43 +1229,63 @@ def test_beta_release_ci_builds_branch_and_tag() -> None:
 
 def test_beta_release_ci_publishes_vault_bundle_only_as_prerelease() -> None:
     """The beta lane may publish a GitHub release, but only ever as a --prerelease,
-    and must never be able to clobber a stable (non-prerelease) release asset."""
+    and must never be able to clobber a stable (non-prerelease) release asset.
+
+    Both guards used to be inline workflow bash. Draft-first publishing moved them
+    into scripts/release_publish.py, where they are exercised by
+    test_release_publish_draft_first.py against a fake GitHub rather than only
+    read. This test holds the wiring: the beta lane still builds the same bundle
+    and still goes through the beta channel, and the stable lane still does not.
+    """
     workflow = yaml.safe_load((REPO_ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8"))
     beta_job = workflow["jobs"]["build-release-beta"]
     beta_commands = "\n".join(step.get("run", "") for step in beta_job["steps"])
 
     # It builds the same self-contained bundle the stable lane ships.
     assert "bash scripts/build-vault-bundle.sh" in beta_commands
-    assert "dist/dex-vault-bundle-v$VERSION.tar.gz" in beta_commands
+    # And publishes it through the verified path, on the beta channel.
+    assert "scripts/release_publish.py publish" in beta_commands
+    assert "--channel beta" in beta_commands
 
-    # Every release creation from the beta lane is a prerelease (keeps it off "latest").
-    assert "gh release create" in beta_commands
-    assert "--prerelease" in beta_commands
-
+    publish_source = (REPO_ROOT / "scripts/release_publish.py").read_text(encoding="utf-8")
     # Guard 1: refuse a non-prerelease (bare X.Y.Z) version so the beta lane can never
     # target a stable release tag.
-    assert "X.Y.Z-<pre>" in beta_commands or "is not a prerelease" in beta_commands
+    assert "X.Y.Z-<pre>" in publish_source
+    assert "is not a prerelease" in publish_source
     # Guard 2: before clobbering an existing tag, assert it is already a prerelease.
-    assert "isPrerelease" in beta_commands
-    assert "will not clobber it" in beta_commands
+    assert "is_prerelease" in publish_source
+    assert "will not clobber it" in publish_source
 
     # And the stable lane's own publish must remain a normal (non-prerelease) release.
     stable_job = workflow["jobs"]["build-release"]
     stable_commands = "\n".join(step.get("run", "") for step in stable_job["steps"])
-    assert "gh release create" in stable_commands
-    assert "--prerelease" not in stable_commands
+    assert "--channel stable" in stable_commands
+    assert "--channel beta" not in stable_commands
 
 
 def test_release_ci_uploads_standalone_bridge_and_checksum() -> None:
-    """Stable and beta releases expose the bridge outside the full vault bundle."""
+    """Stable and beta releases expose the bridge outside the full vault bundle.
 
+    The asset list moved out of duplicated workflow bash into one place, so this
+    now asserts against that single list -- which is also what the prober probes
+    and what docs/UPDATE-RESCUE.md tells a stuck user to download.
+    """
+    from scripts import release_publish
+
+    names = release_publish.asset_names("$VERSION")
+    assert "dex-update-bridge-v$VERSION.py" in names
+    assert "dex-update-bridge-v$VERSION.py.sha256" in names
+    assert "dex-vault-bundle-v$VERSION.tar.gz" in names
+    assert "dex-vault-bundle-v$VERSION.tar.gz.sha256" in names
+
+    # Both lanes ship exactly that list, through the verified publish path.
     workflow = yaml.safe_load((REPO_ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8"))
     for job_name in ("build-release", "build-release-beta"):
         commands = "\n".join(
             step.get("run", "") for step in workflow["jobs"][job_name]["steps"]
         )
-        assert 'dist/dex-update-bridge-v$VERSION.py"' in commands
-        assert 'dist/dex-update-bridge-v$VERSION.py.sha256"' in commands
+        assert "scripts/release_publish.py publish" in commands
+        assert "--dist dist" in commands
 
 
 def test_update_rescue_acquires_verifies_then_runs_released_bridge() -> None:

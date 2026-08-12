@@ -396,37 +396,33 @@ jobs:
             dist/dex-lens-catalog-latest.json.sha256
           if-no-files-found: error
           retention-days: 1
-      - name: Upload vault bundle to versioned GitHub Release
+      # The ONLY step that makes a stable release public, and it does so last:
+      # attach every asset, read each one back off the release and compare it to
+      # what was built, and only then flip the draft public. A failure anywhere here
+      # leaves the release a hidden draft rather than a public empty page — see the
+      # header comment in .github/workflows/release.yml.
+      #
+      # The Dex Lens catalogue rides along as an extra asset rather than being
+      # uploaded afterwards, so nothing can ever appear on a release that is
+      # already live.
+      - name: Attach assets, verify them, then make the release public
         if: steps.release_guard.outputs.already_published != 'true'
         env:
           GH_TOKEN: ${{ github.token }}
+          LENS_CATALOG_ENABLED: ${{ vars.DEX_LENS_CATALOG_RELEASE_GATE_ENABLED }}
         run: |
           VERSION="$(node -p "require('./package.json').version")"
-          # Create the release (and its git tag, at this commit) only if absent.
-          # --notes-from-tag needs a pre-existing annotated tag, which the release
-          # process never makes; let gh create the tag and generate notes instead.
-          if ! gh release view "v$VERSION" >/dev/null 2>&1; then
-            gh release create "v$VERSION" \
-              --target "$GITHUB_SHA" \
-              --title "v$VERSION" \
-              --generate-notes
+          EXTRA=()
+          if [ "$LENS_CATALOG_ENABLED" = "true" ]; then
+            EXTRA+=(--extra-asset "dist/dex-lens-catalog-v$VERSION.json")
+            EXTRA+=(--extra-asset "dist/dex-lens-catalog-v$VERSION.json.sha256")
           fi
-          gh release upload "v$VERSION" \
-            "dist/dex-vault-bundle-v$VERSION.tar.gz" \
-            "dist/dex-vault-bundle-v$VERSION.tar.gz.sha256" \
-            "dist/dex-update-bridge-v$VERSION.py" \
-            "dist/dex-update-bridge-v$VERSION.py.sha256" \
-            --clobber
-      - name: Upload Dex Lens catalog to versioned GitHub Release
-        if: steps.release_guard.outputs.already_published != 'true' && vars.DEX_LENS_CATALOG_RELEASE_GATE_ENABLED == 'true'
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          VERSION="$(node -p "require('./package.json').version")"
-          gh release upload "v$VERSION" \
-            "dist/dex-lens-catalog-v$VERSION.json" \
-            "dist/dex-lens-catalog-v$VERSION.json.sha256" \
-            --clobber
+          python3 scripts/release_publish.py publish \
+            --version "$VERSION" \
+            --channel stable \
+            --dist dist \
+            --target "$GITHUB_SHA" \
+            "${EXTRA[@]}"
 
   build-release-beta:
     needs: [quality, test-results]
@@ -460,41 +456,23 @@ jobs:
           git push origin "${{ steps.release_build.outputs.release_tag }}"
       - name: Build self-contained vault bundle
         run: bash scripts/build-vault-bundle.sh
-      - name: Publish beta vault bundle as a GitHub prerelease
+      # Same draft-first path as the stable lane, staying marked as a prerelease
+      # when it goes live. Both of this lane's long-standing safety guards now live
+      # in scripts/release_publish.py, where they are unit-tested rather than only
+      # read: it refuses a version that is not X.Y.Z-<pre> (so the beta branch can
+      # never publish over a stable release), and refuses to touch an existing
+      # release that is not already a prerelease (so it can never clobber a
+      # promoted one).
+      - name: Attach beta assets, verify them, then publish the prerelease
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           VERSION="$(node -p "require('./package.json').version")"
-          # SAFETY: the beta lane must never be able to touch a stable release asset.
-          # Guard 1 — refuse unless this is a prerelease version (X.Y.Z-<pre>, e.g.
-          # 1.62.0-beta.1). A bare X.Y.Z is a stable version; publishing it from the
-          # beta branch could collide with — and clobber — a real stable release.
-          if ! printf '%s' "$VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+-[0-9A-Za-z.]+$'; then
-            echo "Refusing: beta version '$VERSION' is not a prerelease (expected X.Y.Z-<pre>, e.g. 1.62.0-beta.1)." >&2
-            echo "The beta branch must carry a prerelease version so it can never overwrite a stable release." >&2
-            exit 1
-          fi
-          # Guard 2 — if a release with this tag already exists, it MUST already be a
-          # prerelease before we upload/clobber. Never overwrite a promoted/stable release.
-          if gh release view "v$VERSION" >/dev/null 2>&1; then
-            IS_PRERELEASE="$(gh release view "v$VERSION" --json isPrerelease -q .isPrerelease)"
-            if [ "$IS_PRERELEASE" != "true" ]; then
-              echo "Refusing: release v$VERSION exists but is not a prerelease; the beta lane will not clobber it." >&2
-              exit 1
-            fi
-          else
-            gh release create "v$VERSION" \
-              --target "$GITHUB_SHA" \
-              --title "v$VERSION" \
-              --prerelease \
-              --generate-notes
-          fi
-          gh release upload "v$VERSION" \
-            "dist/dex-vault-bundle-v$VERSION.tar.gz" \
-            "dist/dex-vault-bundle-v$VERSION.tar.gz.sha256" \
-            "dist/dex-update-bridge-v$VERSION.py" \
-            "dist/dex-update-bridge-v$VERSION.py.sha256" \
-            --clobber
+          python3 scripts/release_publish.py publish \
+            --version "$VERSION" \
+            --channel beta \
+            --dist dist \
+            --target "$GITHUB_SHA"
 
   deploy-health:
     needs: [quality, build-release]

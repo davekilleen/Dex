@@ -629,14 +629,7 @@
       "path": "System/backup",
       "kind": "dir",
       "ownership": "runtime",
-      "note": "the backup engine's own logs; the shipped RESTORE.md inside it carries its own brain rule and wins by exact-file match"
-    },
-    {
-      "id": "brain-backup-restore-guide",
-      "path": "System/backup/RESTORE.md",
-      "kind": "file",
-      "ownership": "brain",
-      "note": "the restore runbook must sit inside the vault so it travels inside every backup archive and is readable on a bare machine; shipped and release-owned, so an update replaces it like any other brain doc"
+      "note": "the backup engine's own logs, plus the restore runbook that a restored archive unpacks here; nothing under this path is shipped by a release, because no released contract before v1.95 can classify it"
     },
     {
       "id": "runtime-claude-state",
