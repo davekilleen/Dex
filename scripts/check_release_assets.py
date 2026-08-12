@@ -42,6 +42,7 @@ import subprocess
 import sys
 import urllib.error
 import urllib.request
+import uuid
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -79,7 +80,14 @@ STUCK_DRAFT_HOURS = 6
 
 MAX_DOWNLOAD_BYTES = 64 * 1024 * 1024
 TIMEOUT_SECONDS = 60
-USER_AGENT = "dex-release-asset-prober/1"
+
+# Imitate curl, because `curl -fL` is literally what docs/UPDATE-RESCUE.md tells a
+# stuck user to run. GitHub's response varies on `Accept`, so probing with a
+# different Accept header checks a DIFFERENT cache entry than the one a real user
+# hits -- and can return 200 while that user's curl gets 404. Verified against a
+# real release on 2026-08-12, where the two disagreed for ten minutes straight.
+USER_AGENT = "curl/8.5.0"
+ACCEPT = "*/*"
 
 
 @dataclass
@@ -138,7 +146,9 @@ def fetch(url: str, *, opener=None) -> tuple[int, bytes]:
     release.
     """
     opener = opener or _opener()
-    request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
+    request = urllib.request.Request(
+        url, headers={"User-Agent": USER_AGENT, "Accept": ACCEPT}
+    )
     try:
         with opener.open(request, timeout=TIMEOUT_SECONDS) as response:
             body = response.read(MAX_DOWNLOAD_BYTES + 1)
@@ -239,6 +249,23 @@ def probe_urls(
         probe.status = status
         if status != 200:
             probe.detail = f"HTTP {status} — a user following this link gets nothing."
+            if status == 404:
+                # Distinguish "the file was never attached" from "GitHub cached a
+                # 'not found' it served while the file was still being copied out".
+                # Both break the user; the repair is completely different, so the
+                # alert has to say which one it is.
+                separator = "&" if "?" in url else "?"
+                try:
+                    bust, _ = fetch(f"{url}{separator}cache-bust={uuid.uuid4().hex}", opener=opener)
+                except Undetermined:
+                    bust = None
+                if bust == 200:
+                    probe.detail = (
+                        "HTTP 404 for a normal request, but the file IS there — GitHub "
+                        "is serving a cached 'not found' from while it was still being "
+                        "copied out. It clears by itself; a user retrying later gets the "
+                        "file, but right now they do not."
+                    )
             probes.append(probe)
             continue
         if not body:

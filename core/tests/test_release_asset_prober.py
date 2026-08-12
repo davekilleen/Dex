@@ -343,3 +343,37 @@ def test_the_real_rescue_guide_in_this_checkout_names_download_urls() -> None:
     assert undetermined == []
     assert urls, f"{prober.RESCUE_DOC} should name at least one release download URL"
     assert all("/releases/download/" in url for url in urls)
+
+
+def test_a_cached_not_found_is_named_as_such(routes, capsys) -> None:
+    """The repair for a stale cache is completely different from a missing file."""
+    bridge = _url(f"dex-update-bridge-v{VERSION}.py")
+    original = dict(routes)
+
+    def selective(url: str, *, opener=None):
+        if url.startswith(bridge) and "cache-bust=" in url:
+            return original[bridge]          # the file really is there
+        if url == bridge:
+            return 404, b""                  # but the plain URL says otherwise
+        if url not in original:
+            return 404, b""
+        return original[url]
+
+    import scripts.check_release_assets as mod
+
+    mod_fetch = mod.fetch
+    try:
+        mod.fetch = selective
+        assert _run() == 1
+    finally:
+        mod.fetch = mod_fetch
+
+    out = capsys.readouterr().out
+    assert "the file IS there" in out
+    assert "cached 'not found'" in out
+
+
+def test_the_prober_asks_the_way_a_users_curl_asks() -> None:
+    """Probing a different cache entry than the user hits gives a useless answer."""
+    assert prober.USER_AGENT.startswith("curl/")
+    assert prober.ACCEPT == "*/*"

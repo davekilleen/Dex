@@ -32,10 +32,14 @@ import hashlib
 import json
 import os
 import re
+import secrets
 import shutil
 import subprocess
 import sys
 import tempfile
+import time
+import urllib.error
+import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -69,6 +73,10 @@ PRERELEASE_VERSION = re.compile(
 )
 
 FLEET_WORKFLOW = "historic-fleet-darwin.yml"
+
+# GitHub applies release flag changes asynchronously; re-read before believing.
+SETTLE_ATTEMPTS = 5
+SETTLE_SECONDS = 3.0
 
 
 class ReleasePublishError(RuntimeError):
@@ -510,6 +518,153 @@ def verify_attached_assets(
     return verified
 
 
+def public_download_url(repo: str, version: str, name: str) -> str:
+    return f"https://github.com/{repo}/releases/download/v{version}/{name}"
+
+
+def fetch_public_status(url: str) -> int:
+    """HTTP status from the anonymous public route, following redirects.
+
+    The headers deliberately imitate `curl`, because `curl -fL` is literally what
+    docs/UPDATE-RESCUE.md tells a stuck user to run. GitHub's response varies on
+    `Accept`, so probing with a different Accept header checks a different cache
+    entry than the one a real user hits -- and can return 200 while the user's
+    curl gets 404. Verified on 2026-08-12 against a real release.
+    """
+    request = urllib.request.Request(
+        url,
+        headers={"User-Agent": "curl/8.5.0", "Accept": "*/*"},
+        method="GET",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=30) as response:
+            response.read(1)
+            return response.status
+    except urllib.error.HTTPError as error:
+        return error.code
+    except (urllib.error.URLError, TimeoutError):
+        return 0
+
+
+def verify_public_route(
+    gh: Gh,
+    tag: str,
+    version: str,
+    extras: list[Path] | None = None,
+    *,
+    repo: str | None = None,
+    attempts: int = 10,
+    sleep_seconds: float = 6.0,
+    sleeper=None,
+    status_reader=None,
+) -> None:
+    """Confirm the anonymous download route serves every asset, and hide it if not.
+
+    The read-back proof in step 4 goes through the authenticated API. On
+    2026-08-12 that proof passed while the public URL for one asset still returned
+    404 for several seconds -- GitHub's public route lags the API. Checking only the
+    API would therefore let a release go live moments before it is downloadable,
+    which is a smaller version of the exact bug this whole change exists to remove.
+
+    If the public route never comes good, the release is put back to a hidden draft:
+    an invisible release is always better than a visible broken one.
+    """
+    sleeper = sleeper or time.sleep
+    status_reader = status_reader or fetch_public_status
+    repo = repo or gh.repo or _origin_repo()
+    if not repo:
+        log(
+            "::warning::Could not work out the repository name, so the public "
+            "download route was not checked."
+        )
+        return
+
+    names = asset_names(version) + [path.name for path in (extras or [])]
+    pending = [(name, public_download_url(repo, version, name)) for name in names]
+    confirmed: list[str] = []
+
+    for attempt in range(1, attempts + 1):
+        still_pending = []
+        for name, url in pending:
+            status = status_reader(url)
+            if status == 200:
+                confirmed.append(name)
+                log(f"  public ok: {name} (HTTP 200 anonymously)")
+            else:
+                still_pending.append((name, url))
+        pending = still_pending
+        if not pending:
+            break
+        if attempt < attempts:
+            log(
+                f"  {len(pending)} asset(s) not yet served publicly; waiting "
+                f"{sleep_seconds:g}s (attempt {attempt}/{attempts})…"
+            )
+            sleeper(sleep_seconds)
+
+    if pending:
+        # Distinguish two very different situations before doing anything drastic.
+        # A stale cached 404 (GitHub briefly served "not found" while the asset was
+        # propagating, and that answer got cached for this request shape) still has
+        # a perfectly good asset behind it, and it expires on its own. Hiding the
+        # release for that would be an over-reaction; hiding it for a genuinely
+        # absent asset is exactly right.
+        stale, genuinely_missing = [], []
+        for name, url in pending:
+            separator = "&" if "?" in url else "?"
+            if status_reader(f"{url}{separator}cache-bust={secrets.token_hex(6)}") == 200:
+                stale.append(name)
+            else:
+                genuinely_missing.append(name)
+
+        for name in stale:
+            log(
+                f"::warning::{name} is present and downloadable, but the public URL is "
+                "currently answering with a cached 'not found' from while it was still "
+                "being copied out. That cache entry expires by itself; a user retrying "
+                "in a few minutes gets the file."
+            )
+
+        if genuinely_missing:
+            stuck = ", ".join(genuinely_missing)
+            log(f"::error::{tag} is public but {stuck} does not download. Hiding it again.")
+            gh.release(["edit", tag, "--draft=true"], check=False)
+            state = read_release(gh, tag)
+            hidden = "hidden again" if state.is_draft else "STILL PUBLIC — fix by hand"
+            raise ReleasePublishError(
+                f"{tag} went public but the public download route never served: {stuck}. "
+                f"The release was {hidden}."
+            )
+        confirmed.extend(stale)
+
+    if len(confirmed) != len(names):
+        raise ReleasePublishError(
+            f"Confirmed {len(confirmed)} public downloads, expected {len(names)}."
+        )
+    log(
+        f"Public proof: all {len(confirmed)} assets download anonymously from the "
+        f"real release URLs — the route a stuck copy of Dex actually uses."
+    )
+
+
+def _origin_repo() -> str | None:
+    """`owner/name` from the git remote, so the public URLs can be built."""
+    try:
+        result = subprocess.run(
+            ["git", "remote", "get-url", "origin"],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+    except FileNotFoundError:
+        return None
+    if result.returncode != 0:
+        return None
+    url = result.stdout.strip()
+    match = re.search(r"[:/]([^/:]+/[^/]+?)(?:\.git)?$", url)
+    return match.group(1) if match else None
+
+
 def command_publish(args: argparse.Namespace, gh: Gh | None = None) -> int:
     gh = gh or Gh(repo=args.repo)
     version = args.version
@@ -577,26 +732,65 @@ def command_publish(args: argparse.Namespace, gh: Gh | None = None) -> int:
     log("Step 4/5 — reading every asset back off the release")
     verify_attached_assets(gh, tag, dist, version, extras)
 
-    log("Step 5/5 — making the release public")
+    log("Step 5/6 — making the release public")
     current = read_release(gh, tag)
+    want_prerelease = args.channel == "beta"
     with tempfile.TemporaryDirectory() as workdir:
         body_file = Path(workdir) / "body.md"
         body_file.write_text(strip_note(current.body), encoding="utf-8")
-        edit = ["edit", tag, "--draft=false", "--notes-file", str(body_file)]
-        if args.channel == "beta":
-            edit.append("--prerelease")
-        else:
-            edit += ["--prerelease=false", "--latest"]
-        result = gh.release(edit, check=False)
+        # Two separate calls, deliberately. Observed on 2026-08-12 against a real
+        # release: setting the prerelease flag in the SAME `gh release edit` as
+        # `--draft=false` left the release marked as not-a-prerelease, which for the
+        # beta lane would present a beta build to everyone as the current version.
+        # Applied on its own, the flag sticks. So: set the notes and the flags while
+        # the release is still hidden, then flip it public as its own operation.
+        flags = ["edit", tag, "--notes-file", str(body_file)]
+        flags.append("--prerelease=true" if want_prerelease else "--prerelease=false")
+        if not want_prerelease:
+            flags.append("--latest")
+        result = gh.release(flags, check=False)
+        if result.returncode != 0:
+            raise ReleasePublishError(
+                f"Could not set the release flags on {tag}: {result.stderr.strip()}"
+            )
+
+        result = gh.release(["edit", tag, "--draft=false"], check=False)
         if result.returncode != 0:
             raise ReleasePublishError(
                 f"Assets are verified but {tag} could not be made public: "
                 f"{result.stderr.strip()}"
             )
 
+    # GitHub settles these fields asynchronously, so read the end state more than
+    # once rather than trusting the first answer. The first read after the flip has
+    # been seen reporting a value that later changed.
     final = read_release(gh, tag)
+    for _ in range(SETTLE_ATTEMPTS):
+        if not final.is_draft and final.is_prerelease == want_prerelease:
+            break
+        time.sleep(SETTLE_SECONDS)
+        final = read_release(gh, tag)
+
     if final.is_draft:
         raise ReleasePublishError(f"{tag} still reads as a draft after the flip.")
+    if final.is_prerelease != want_prerelease:
+        # Repair rather than refuse: a beta release that is not marked as a
+        # prerelease can be presented to everyone as the current version.
+        log(
+            f"::warning::{tag} came back with prerelease={final.is_prerelease}, "
+            f"expected {want_prerelease}. Correcting it."
+        )
+        gh.release(
+            ["edit", tag, "--prerelease=true" if want_prerelease else "--prerelease=false"],
+            check=False,
+        )
+        time.sleep(SETTLE_SECONDS)
+        final = read_release(gh, tag)
+        if final.is_prerelease != want_prerelease:
+            raise ReleasePublishError(
+                f"{tag} is public but its prerelease flag is {final.is_prerelease}, "
+                f"and it could not be set to {want_prerelease}."
+            )
     still_missing = [
         name
         for name in asset_names(version) + [path.name for path in extras]
@@ -607,6 +801,9 @@ def command_publish(args: argparse.Namespace, gh: Gh | None = None) -> int:
             f"{tag} went public but is missing {', '.join(still_missing)}. "
             "This should be impossible; treat it as a publishing bug."
         )
+
+    log("Step 6/6 — proving the PUBLIC download route actually serves the files")
+    verify_public_route(gh, tag, version, extras)
     if NOTE_START in final.body:
         raise ReleasePublishError(
             f"{tag} is public but still carries the not-public-yet note."

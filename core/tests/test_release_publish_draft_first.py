@@ -44,7 +44,7 @@ class FakeRelease:
 class FakeGh:
     """Records every call, and refuses to serve bytes that were never uploaded."""
 
-    def __init__(self, *, releases: dict[str, FakeRelease] | None = None, repo=None):
+    def __init__(self, *, releases: dict[str, FakeRelease] | None = None, repo="test/repo"):
         self.repo = repo
         self.releases = releases or {}
         self.calls: list[list[str]] = []
@@ -119,9 +119,11 @@ class FakeGh:
                 ).read_text(encoding="utf-8")
             if "--draft=false" in args:
                 release.draft = False
+            if "--draft=true" in args:
+                release.draft = True
             if "--prerelease=false" in args:
                 release.prerelease = False
-            elif "--prerelease" in args:
+            elif "--prerelease=true" in args or "--prerelease" in args:
                 release.prerelease = True
             return self._result(0)
 
@@ -185,6 +187,16 @@ def _draft_args(changelog: Path, *, version: str = VERSION, channel: str = "stab
     return argparse.Namespace(
         repo=None, version=version, channel=channel, changelog=str(changelog), target="deadbeef"
     )
+
+
+@pytest.fixture(autouse=True)
+def _public_route_serves_everything(monkeypatch):
+    """Default the anonymous download route to healthy and instant.
+
+    Individual tests override this to exercise the lagging/broken public route.
+    """
+    monkeypatch.setattr(rp, "fetch_public_status", lambda url: 200)
+    monkeypatch.setattr(rp.time, "sleep", lambda seconds: None)
 
 
 def _publish(args, gh: FakeGh) -> int:
@@ -512,3 +524,140 @@ def test_the_four_required_assets_are_still_required_when_extras_are_present(
 
     assert _publish(_publish_args(dist, extra_asset=[str(catalogue)]), gh) == 1
     assert gh.releases[TAG].draft is True
+
+
+# --------------------------------------------------------------------------- #
+# The public route, which lags the authenticated API
+# --------------------------------------------------------------------------- #
+
+
+def test_publish_waits_for_the_public_route_to_catch_up(tmp_path, monkeypatch) -> None:
+    """Observed on 2026-08-12: an asset 404s publicly for seconds after upload."""
+    dist = _write_dist(tmp_path)
+    gh = FakeGh(releases={TAG: FakeRelease(draft=True)})
+    calls = {"n": 0}
+
+    def lagging(url: str) -> int:
+        calls["n"] += 1
+        # The bridge is the last to appear, exactly as GitHub behaved.
+        if "dex-update-bridge" in url and calls["n"] < 6:
+            return 404
+        return 200
+
+    monkeypatch.setattr(rp, "fetch_public_status", lagging)
+    monkeypatch.setattr(rp.time, "sleep", lambda seconds: None)
+
+    assert _publish(_publish_args(dist), gh) == 0
+    assert gh.releases[TAG].draft is False, "it should publish once the route catches up"
+
+
+def test_publish_hides_the_release_again_when_it_never_downloads(
+    tmp_path, monkeypatch, capsys
+) -> None:
+    """An invisible release beats a visible broken one."""
+    dist = _write_dist(tmp_path)
+    gh = FakeGh(releases={TAG: FakeRelease(draft=True)})
+    monkeypatch.setattr(
+        rp, "fetch_public_status", lambda url: 404 if "tar.gz" in url else 200
+    )
+    monkeypatch.setattr(rp.time, "sleep", lambda seconds: None)
+
+    assert _publish(_publish_args(dist), gh) == 1
+    assert gh.releases[TAG].draft is True, (
+        "a release whose files do not download must be pulled back out of sight"
+    )
+    assert "does not download" in capsys.readouterr().out
+
+
+def test_the_public_route_check_uses_the_real_download_urls() -> None:
+    url = rp.public_download_url("davekilleen/Dex", "1.2.3", "dex-update-bridge-v1.2.3.py")
+    assert url == (
+        "https://github.com/davekilleen/Dex/releases/download/v1.2.3/"
+        "dex-update-bridge-v1.2.3.py"
+    ), "this must match what docs/UPDATE-RESCUE.md tells a stuck user to run"
+
+
+# --------------------------------------------------------------------------- #
+# The prerelease flag is stated and then checked, never trusted
+# --------------------------------------------------------------------------- #
+
+
+def test_a_beta_release_that_comes_back_unmarked_is_corrected(tmp_path) -> None:
+    """Real gh behaviour: `--prerelease` alongside `--draft=false` was dropped."""
+    beta_version = "9.9.9-beta.1"
+    dist = _write_dist(tmp_path, version=beta_version)
+    tag = f"v{beta_version}"
+
+    class ForgetfulGh(FakeGh):
+        def release(self, args, *, check=True):
+            result = super().release(args, check=check)
+            # Simulate the flip silently clearing the prerelease flag.
+            if args[0] == "edit" and "--draft=false" in args:
+                self.releases[args[1]].prerelease = False
+            return result
+
+    gh = ForgetfulGh(releases={tag: FakeRelease(draft=True, prerelease=True)})
+
+    assert _publish(_publish_args(dist, version=beta_version, channel="beta"), gh) == 0
+    assert gh.releases[tag].prerelease is True, (
+        "a beta release must never be left presented as a normal release"
+    )
+
+
+def test_a_stable_release_is_marked_latest_and_not_a_prerelease(tmp_path) -> None:
+    """Flags are set while the release is still hidden, then it is flipped.
+
+    Setting them in the same call as `--draft=false` silently dropped the
+    prerelease flag against real GitHub on 2026-08-12, so these are separate
+    operations and the order matters.
+    """
+    dist = _write_dist(tmp_path)
+    gh = FakeGh(releases={TAG: FakeRelease(draft=True)})
+
+    assert _publish(_publish_args(dist), gh) == 0
+
+    flags_at = gh.index_of(
+        lambda c: c[:2] == ["release", "edit"]
+        and "--prerelease=false" in c
+        and "--latest" in c
+    )
+    flip_at = gh.index_of(lambda c: c[:2] == ["release", "edit"] and "--draft=false" in c)
+    assert flags_at >= 0, "a stable release must be marked latest and not a prerelease"
+    assert flip_at >= 0
+    assert flags_at < flip_at, "flags must be set before the release becomes visible"
+    assert "--draft=false" not in gh.calls[flags_at], (
+        "the flag call must not also publish; combining the two loses the flag"
+    )
+
+
+def test_a_stale_cached_not_found_does_not_hide_a_good_release(
+    tmp_path, monkeypatch, capsys
+) -> None:
+    """GitHub can cache a 404 served while an asset was still propagating.
+
+    The asset is fine and the cache entry expires on its own, so hiding the release
+    would be an over-reaction. It warns instead — but only because a cache-busted
+    request proves the file is really there.
+    """
+    dist = _write_dist(tmp_path)
+    gh = FakeGh(releases={TAG: FakeRelease(draft=True)})
+
+    def cached_404(url: str) -> int:
+        # The plain URL is poisoned; a cache-busted one shows the truth.
+        if "cache-bust=" in url:
+            return 200
+        return 404 if "tar.gz" in url and "sha256" not in url else 200
+
+    monkeypatch.setattr(rp, "fetch_public_status", cached_404)
+    monkeypatch.setattr(rp.time, "sleep", lambda seconds: None)
+
+    assert _publish(_publish_args(dist), gh) == 0
+    assert gh.releases[TAG].draft is False, "a good release must not be hidden"
+    assert "cached 'not found'" in capsys.readouterr().out
+
+
+def test_the_public_check_imitates_curl_because_github_varies_on_accept() -> None:
+    """Probing with a different Accept header checks a different cache entry."""
+    source = Path(rp.__file__).read_text(encoding="utf-8")
+    assert '"Accept": "*/*"' in source
+    assert "curl/" in source
