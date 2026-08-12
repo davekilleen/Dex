@@ -237,9 +237,22 @@ def test_generator_rejects_unshipped_or_stale_source(tmp_path: Path) -> None:
 
 
 def test_generator_rejects_vendored_third_party_skill_sources(tmp_path: Path) -> None:
+    """Dex must never present a vendored third-party skill as its own capability.
+
+    Sixteen `.claude/skills/anthropic-*` skills ship in the tree, and without the
+    structural guard the producer signs and publishes them as Dex capabilities --
+    verified by removing the guard and watching this fixture build cleanly.
+
+    The entry id deliberately MATCHES the vendored path. With a mismatched id the
+    entry-id/path check refuses first, so the test would pass with the guard
+    deleted and prove nothing: the exact registry shape that actually slips
+    through is the one where the id agrees with the path. The negative assertions
+    below hold this property in place.
+    """
     _registry(tmp_path)
-    vendored_bytes = _skill(tmp_path, "anthropic-pdf")
+    vendored_bytes = _skill(tmp_path, "anthropic-pdf", description="Vendored third-party PDF skill.")
     data = json.loads((tmp_path / "core/lens-catalog/registry.json").read_text())
+    data["entries"][0]["id"] = "anthropic-pdf"
     data["entries"][0]["source"] = {
         "kind": "skill",
         "path": ".claude/skills/anthropic-pdf/SKILL.md",
@@ -252,6 +265,11 @@ def test_generator_rejects_vendored_third_party_skill_sources(tmp_path: Path) ->
 
     assert result.returncode == 1
     assert "must not be a vendored third-party skill" in result.stderr
+    # The guard is the reason, not some other check that happens to fire first.
+    assert "must match entry id" not in result.stderr
+    assert "must be a shipped skill SKILL.md" not in result.stderr
+    # Fails closed: nothing left for the release job's upload steps to publish.
+    assert _lens_artifacts(tmp_path) == []
 
 
 def test_signing_requires_environment_secret_and_never_generates_a_key(tmp_path: Path) -> None:
