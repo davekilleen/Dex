@@ -1144,6 +1144,7 @@ core/tests/test_release_fleet_failure_diagnostics.py
 core/tests/test_release_notes_sweep.py
 core/tests/test_release_publish_draft_first.py
 core/tests/test_release_tag_uniqueness.py
+core/tests/test_release_tree_matches_tag.py
 core/tests/test_release_workflows_draft_first.py
 core/tests/test_review_retirement.py
 core/tests/test_ritual_intelligence_entrypoints.py
@@ -1330,6 +1331,7 @@ scripts/check-portable-contract.py
 scripts/check-portable-contract.sh
 scripts/check-release-tag-reachability.sh
 scripts/check-release-tag-uniqueness.sh
+scripts/check-release-tree-matches-tag.sh
 scripts/check-tau-removal.py
 scripts/check-test-delta.sh
 scripts/check-tracked-ignored.py
