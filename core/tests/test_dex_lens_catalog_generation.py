@@ -5,6 +5,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -15,6 +16,7 @@ from cryptography.hazmat.primitives.serialization import Encoding, NoEncryption,
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 GENERATOR = REPO_ROOT / "scripts/generate-dex-lens-catalog.py"
+REAL_REGISTRY = REPO_ROOT / "core/lens-catalog/registry.json"
 
 
 def _signed_payload(envelope: dict) -> str:
@@ -496,3 +498,101 @@ def test_broken_registry_refusal_is_not_a_signing_failure(
         "cryptography>=42 is required",
     ):
         assert signing_error not in result.stderr
+
+
+# --- The registry Dex actually ships ---------------------------------------
+#
+# Every test above builds a synthetic release tree. That proves the producer's
+# logic, but it cannot see the registry Dex actually ships, so the whole file
+# stays green while the real catalogue refuses to build. That happened: a skill
+# was edited after its pin was written, and the first place it could have
+# surfaced was the release job itself, with the release already in motion.
+#
+# These two tests read core/lens-catalog/registry.json against the real release
+# root, so pin drift fails on the pull request that causes it.
+
+
+def test_real_registry_source_pins_match_the_shipped_skills() -> None:
+    """Every pinned skill must still hash to the digest and size the registry declares.
+
+    This is the narrow, fast gate: it needs no signing key and no release
+    metadata, so it reports pin drift as pin drift rather than as some later
+    failure, and it names the corrected values so the fix is mechanical.
+    """
+    entries = json.loads(REAL_REGISTRY.read_text(encoding="utf-8"))["entries"]
+    assert entries, "the shipped registry declares no entries to check"
+
+    drifted = []
+    for index, entry in enumerate(entries):
+        source = entry["source"]
+        skill = REPO_ROOT / source["path"]
+        if not skill.is_file():
+            drifted.append(f"entry {index} ({entry['id']}): {source['path']} is missing")
+            continue
+        content = skill.read_bytes()
+        actual_sha = hashlib.sha256(content).hexdigest()
+        if actual_sha != source["sha256"] or len(content) != source["byte_size"]:
+            drifted.append(
+                f"entry {index} ({entry['id']}): {source['path']} changed after its pin was"
+                f" written -- declared sha256={source['sha256']} byte_size={source['byte_size']},"
+                f" actual sha256={actual_sha} byte_size={len(content)}"
+            )
+
+    assert not drifted, (
+        "core/lens-catalog/registry.json source pins are stale, so the release job's Lens"
+        " catalogue generation will refuse. Update the declared sha256 and byte_size for:\n  "
+        + "\n  ".join(drifted)
+    )
+
+
+def test_shipped_registry_builds_the_release_catalogue(tmp_path: Path, signing_key_b64: str) -> None:
+    """The real registry must produce a signed catalogue, invoked as the release job does.
+
+    Broader than the pin check above: this exercises the whole producer against
+    the real release root -- release version against CHANGELOG, job and
+    foundation references, skill frontmatter, the vendored schema -- so any
+    registry change that would only fail during a release fails here instead.
+    Output goes to a temporary directory; the repository is never written to.
+    """
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(GENERATOR),
+            "--release-root",
+            str(REPO_ROOT),
+            "--output-dir",
+            str(tmp_path / "dist"),
+            "--issued-at",
+            "2026-08-11T12:00:00Z",
+            "--sign",
+            "--signing-key-env",
+            "DEX_LENS_TEST_KEY",
+            "--key-id",
+            "dex-core-lens-1",
+        ],
+        cwd=REPO_ROOT,
+        env={**os.environ, "DEX_LENS_TEST_KEY": signing_key_b64},
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0, (
+        "the shipped Lens registry no longer builds, so the next release would fail to"
+        f" produce its catalogue: {result.stderr}"
+    )
+
+    version = json.loads((REPO_ROOT / "package.json").read_text(encoding="utf-8"))["version"]
+    assert _lens_artifacts(tmp_path) == [
+        "dex-lens-catalog-latest.json",
+        "dex-lens-catalog-latest.json.sha256",
+        f"dex-lens-catalog-v{version}.json",
+        f"dex-lens-catalog-v{version}.json.sha256",
+    ]
+
+    envelope = json.loads((tmp_path / f"dist/dex-lens-catalog-v{version}.json").read_text())
+    assert envelope["signature"], "the real catalogue was written without a signature"
+    assert envelope["metadata"]["core_release"] == f"v{version}"
+    registry = json.loads(REAL_REGISTRY.read_text(encoding="utf-8"))
+    assert [capability["capability_id"] for capability in envelope["catalogue"]["capabilities"]] == [
+        entry["id"] for entry in registry["entries"]
+    ]
