@@ -4358,7 +4358,7 @@ def test_meeting_sources_probe_is_ok_for_api_sources_without_folders(context):
 
 
 def _pipedrive_module():
-    from core.mcp import pipedrive_server
+    from core.integrations.pipedrive import pipedrive_server
 
     return pipedrive_server
 

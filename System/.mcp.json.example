@@ -117,7 +117,7 @@
       "type": "stdio",
       "command": "{{VAULT_PATH}}/.venv/bin/python",
       "args": [
-        "{{VAULT_PATH}}/core/mcp/pipedrive_server.py"
+        "{{VAULT_PATH}}/core/integrations/pipedrive/pipedrive_server.py"
       ],
       "env": {
         "VAULT_PATH": "{{VAULT_PATH}}"
