@@ -9,10 +9,29 @@ on:
   # Merge queue: CI validates the QUEUED BATCH exactly as it will land on main,
   # then everything in the batch merges together on one green run.
   merge_group:
-# A superseded push to the same PR/branch cancels its stale in-flight run.
+# A superseded push to the same PULL REQUEST cancels its stale in-flight run.
+# Nothing else is ever cancelled.
+#
+# The grouping carries that rule, rather than a boolean expression deciding it. A
+# pull request groups by its number, so its own later pushes supersede it. Every
+# other run — main, beta, tags, the merge queue — groups by its unique run id, so it
+# shares a group with nothing and cannot be cancelled by anything.
+#
+# This was previously expressed as `cancel-in-progress: ${{ github.event_name ==
+# 'pull_request' }}` over a group keyed on `github.ref`, which meant every push to
+# main shared one group. Observed on 2026-08-12: 10 of the last 15 main runs ended
+# `cancelled`, each at the exact second the next merge created its run, with no jobs
+# ever scheduled. That matters well beyond wasted minutes — `build-release` only runs
+# on main, so a main run cancelled by a later merge is a release whose download files
+# are never built. Draft-first publishing makes that state safe (the release stays a
+# hidden draft and the prober flags it) but safe is not the same as shipped.
+#
+# Serialising the actual release work does not depend on this: the `build-release`
+# job holds the `stable-public-route` concurrency lock with `cancel-in-progress:
+# false`, so concurrent main runs still queue behind each other for publishing.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
 jobs:
   # Gates, JS suites, lint, and static checks. The Python test suite runs in the
   # sharded `tests` matrix below; its thresholds are enforced by `test-results`.
