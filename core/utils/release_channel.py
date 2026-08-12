@@ -91,7 +91,7 @@ def sanitized_path_with_tools(
 
 
 def read_channel(vault_root: str | Path) -> str:
-    """Return the configured channel, the stable default, or ``invalid``."""
+    """Return the configured channel, the stable default, ``missing-dependency``, or ``invalid``."""
     profile_path = Path(vault_root) / "System" / "user-profile.yaml"
     try:
         content = profile_path.read_text(encoding="utf-8")
@@ -102,7 +102,12 @@ def read_channel(vault_root: str | Path) -> str:
 
     try:
         import yaml
+    except ImportError:
+        # A missing PyYAML is not a broken settings file — keep the two distinguishable
+        # so callers don't send users hunting for a config problem that doesn't exist.
+        return "missing-dependency"
 
+    try:
         profile = yaml.safe_load(content)
     except Exception:
         return "invalid"

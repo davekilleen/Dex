@@ -35,7 +35,7 @@ from core.lifecycle.catalog import CatalogError, load_catalog
 from core.lifecycle.inventory import build_inventory
 from core.lifecycle.model import ITEM_ID, SEMVER, AdoptionState
 from core.lifecycle.plan import PlannedAction, ReasonCode, build_adoption_plan
-from core.transaction.engine import TX_ROOT_RELATIVE, PlanEntry
+from core.transaction.engine import TX_ROOT_RELATIVE, PlanEntry, PlanRejected
 from core.transaction.journal import Journal, JournalCorruptError
 from core.utils import dex_logger, launch_agents, preflight, release_channel
 
@@ -642,6 +642,7 @@ DEEP_CHECKS = (
         "_probe_customization_migration_status",
     ),
     CheckDefinition("granola.query_path", "Granola meeting sync", "_probe_granola_query_path"),
+    CheckDefinition("pipedrive.connection", "Pipedrive CRM", "_probe_pipedrive_connection"),
     CheckDefinition("config.meeting_sources", "Configured meeting source", "_probe_meeting_sources"),
     CheckDefinition("update.post-canary", "Post-update canary", "_probe_post_update_canary"),
     CheckDefinition("calendar.access", "Calendar access", "_probe_calendar_access"),
@@ -649,6 +650,7 @@ DEEP_CHECKS = (
     CheckDefinition("integrations.enabled", "Enabled integrations", "_probe_integrations_enabled"),
     CheckDefinition("mcp.importable", "MCP imports", "_probe_mcp_importable"),
     CheckDefinition("smoke.journeys", "End-to-end smoke journeys", "_probe_smoke_journeys"),
+    CheckDefinition("backup.freshness", "Vault backups", "_probe_backup_freshness"),
 )
 
 
@@ -1716,7 +1718,7 @@ def _probe_release_catalog(context: DoctorContext) -> ProbeResult:
 
 
 def _probe_adoption_plan(context: DoctorContext) -> ProbeResult:
-    """Build and summarize the adoption plan entirely in memory."""
+    """Build and summarize the adoption plan through the same gated entry point /dex-update uses."""
     catalog_path = _release_catalog_path(context)
     if not os.path.lexists(catalog_path):
         return ProbeResult(
@@ -1724,32 +1726,17 @@ def _probe_adoption_plan(context: DoctorContext) -> ProbeResult:
             "Adoption planning is unavailable on this older Dex release because no release catalog is installed",
         )
     try:
-        catalog = load_catalog(catalog_path, release_root=context.vault_root)
-        inventory = build_inventory(context.vault_root, catalog=catalog)
-        ledger_state = lifecycle_ledger.project_state(context.vault_root)
-        adopted = ledger_state["adopted"]
-        held_back = ledger_state["held_back"]
-        assert isinstance(adopted, dict)
-        assert isinstance(held_back, list)
-        catalog_ids = {item.id for item in catalog.items}
-        plan = build_adoption_plan(
-            catalog,
-            inventory,
-            adoption_states={
-                item_id: AdoptionState.ADOPTED
-                for item_id in adopted
-                if item_id in catalog_ids
-            },
-            held_back=frozenset(held_back) & catalog_ids,
-        )
-        counts = plan.counts
-        return ProbeResult(
-            "OK",
-            f"{counts['adopt']} adoptable / {counts['already-adopted']} adopted / "
-            f"{counts['conflict']} conflicts",
-        )
+        result = lifecycle_service.build_inventory_and_plan(context.vault_root)
+    except PlanRejected as error:
+        return ProbeResult("BROKEN", f"Updating is blocked: {_one_line(error)}")
     except Exception as error:
         return ProbeResult("UNKNOWN", f"The adoption plan could not be built: {_one_line(error)}")
+    counts = result["plan"]["counts"]
+    return ProbeResult(
+        "OK",
+        f"{counts['adopt']} adoptable / {counts['already-adopted']} adopted / "
+        f"{counts['conflict']} conflicts",
+    )
 
 
 CUSTOMIZATION_RECORD_PERSISTENCE_CAP = 25
@@ -4330,6 +4317,8 @@ def _probe_core_drift(context: DoctorContext) -> ProbeResult:
                 "UNKNOWN",
                 "beta channel selected but no beta release found — staying on stable is safe",
             )
+        if channel == "missing-dependency":
+            return ProbeResult("UNKNOWN", "PyYAML isn't installed — Dex can't read your update channel setting")
         if channel == "invalid":
             return ProbeResult("UNKNOWN", "couldn't verify your update channel")
         return ProbeResult("UNKNOWN", "no upstream remote — can't compare")
@@ -4719,6 +4708,162 @@ def _probe_granola_query_path(context: DoctorContext) -> ProbeResult:
             return ProbeResult("UNKNOWN", f"The sandbox blocked the Granola query: {_one_line(error)}")
         raise
     return ProbeResult("OK", f"The real filtered Granola query completed and returned {len(notes)} note summaries")
+
+
+def _probe_pipedrive_connection(context: DoctorContext) -> ProbeResult:
+    """Report the real state of the Pipedrive CRM integration.
+
+    The server already speaks the shared feature_status contract, so this probe
+    translates that payload rather than re-deriving configuration rules. On a
+    resolvable configuration it then makes one cheap authenticated call, so OK
+    means "the stored token actually works" and not merely "the settings parse".
+    """
+    try:
+        from core.mcp import pipedrive_server
+    except Exception as error:  # pragma: no cover - import guard
+        detail = _one_line(error)
+        if _looks_like_sandbox_failure(detail):
+            return ProbeResult("UNKNOWN", f"The sandbox blocked the Pipedrive import: {detail}")
+        return ProbeResult(
+            "BROKEN",
+            f"The Pipedrive server could not be imported: {detail}",
+            Heal(tier=3, action="Run /pipedrive-setup to repair the Pipedrive connection.", applied=False),
+        )
+
+    # The server resolves vault-relative settings from the environment, exactly
+    # as it does when launched as an MCP process. Point it at the vault under
+    # inspection and restore the caller's environment afterwards.
+    previous = os.environ.get("VAULT_ROOT")
+    os.environ["VAULT_ROOT"] = str(context.vault_root)
+    try:
+        resolved = pipedrive_server._resolve()
+        if not resolved.get("ok"):
+            status = resolved.get("status") or {}
+            state = str(status.get("feature_status") or status.get("status") or "unknown")
+            message = str(status.get("user_message") or "Pipedrive reported no detail.")
+            if state == "off":
+                return ProbeResult("OFF", message)
+            if state in {"broken", "not_installed"}:
+                return ProbeResult(
+                    "BROKEN",
+                    message,
+                    Heal(tier=3, action="Run /pipedrive-setup to repair the Pipedrive connection.", applied=False),
+                )
+            return ProbeResult("UNKNOWN", message)
+
+        # Configuration resolves. Prove the credential with the cheapest
+        # authenticated read Pipedrive offers.
+        result = pipedrive_server._request("GET", "users/me", resolved)
+    except Exception as error:
+        detail = _one_line(error)
+        if _looks_like_sandbox_failure(detail):
+            return ProbeResult("UNKNOWN", f"The sandbox blocked the Pipedrive check: {detail}")
+        raise
+    finally:
+        if previous is None:
+            os.environ.pop("VAULT_ROOT", None)
+        else:
+            os.environ["VAULT_ROOT"] = previous
+
+    if not result.get("ok"):
+        detail = _one_line(result.get("error") or "Pipedrive returned no detail.")
+        if _looks_like_sandbox_failure(detail):
+            return ProbeResult("UNKNOWN", f"The sandbox blocked the Pipedrive call: {detail}")
+        return ProbeResult(
+            "BROKEN",
+            detail,
+            Heal(tier=3, action="Run /pipedrive-setup to repair the Pipedrive connection.", applied=False),
+        )
+
+    data = result.get("data") or {}
+    who = data.get("name") or data.get("email") or "the configured user"
+    company = data.get("company_name")
+    suffix = f" ({company})" if company else ""
+    return ProbeResult("OK", f"The Pipedrive connection answered a live request as {who}{suffix}")
+
+
+BACKUP_FRESHNESS_WINDOW = timedelta(days=2)
+BACKUP_STAMP_FILENAME = "backup-last-run.json"
+_BACKUP_HEAL = Heal(
+    tier=3,
+    action="Run /backup-setup to repair the backup schedule and take a verified backup.",
+    applied=False,
+)
+
+
+def _backup_settings(context: DoctorContext) -> dict[str, Any] | None:
+    """Return the backup block from the integrations config, or None."""
+    config_path = context.core_path("INTEGRATION_CONFIG_FILE")
+    if not config_path.exists():
+        return None
+    parsed = _load_yaml(config_path) or {}
+    if not isinstance(parsed, Mapping):
+        raise ValueError("integrations config.yaml must contain an object")
+    block = parsed.get("backup")
+    return dict(block) if isinstance(block, Mapping) else None
+
+
+def _backup_stamp_timestamp(stamp: Mapping[str, Any], context: DoctorContext) -> datetime:
+    parsed = datetime.fromisoformat(str(stamp["timestamp"]))
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=context.now.astimezone().tzinfo)
+    return parsed
+
+
+def _probe_backup_freshness(context: DoctorContext) -> ProbeResult:
+    try:
+        settings = _backup_settings(context)
+    except Exception as error:  # noqa: BLE001 - map sandbox denials to UNKNOWN
+        detail = _one_line(error)
+        if _looks_like_sandbox_failure(detail):
+            return ProbeResult("UNKNOWN", f"The sandbox blocked reading the backup configuration: {detail}")
+        raise
+    if not settings or not settings.get("enabled"):
+        return ProbeResult("OFF", "Vault backups are not configured; /backup-setup turns them on")
+    stamp_path = context.core_path("DEX_RUNTIME_DIR") / BACKUP_STAMP_FILENAME
+    try:
+        raw = stamp_path.read_text()
+    except FileNotFoundError:
+        return ProbeResult(
+            "BROKEN",
+            "Backups are configured but have never recorded a run",
+            _BACKUP_HEAL,
+        )
+    except OSError as error:
+        detail = _one_line(error)
+        if _looks_like_sandbox_failure(detail):
+            return ProbeResult("UNKNOWN", f"The sandbox blocked reading the backup run record: {detail}")
+        raise
+    try:
+        stamp = json.loads(raw)
+        when = _backup_stamp_timestamp(stamp, context)
+    except (ValueError, TypeError, KeyError) as error:
+        return ProbeResult("UNKNOWN", f"The backup run record could not be read: {_one_line(error)}")
+    if not stamp.get("ok"):
+        recorded = _one_line(stamp.get("error") or "no error detail was recorded")
+        return ProbeResult("BROKEN", f"The last backup run failed: {recorded}", _BACKUP_HEAL)
+    age = context.now - when
+    if age > BACKUP_FRESHNESS_WINDOW:
+        return ProbeResult(
+            "BROKEN",
+            f"The newest successful backup is {age.days} days old (recorded {when.date().isoformat()})",
+            _BACKUP_HEAL,
+        )
+    destination = _one_line(stamp.get("location") or stamp.get("backend") or "the configured destination")
+    summary = (
+        f"The last backup succeeded within the last two days "
+        f"(set {_one_line(stamp.get('set') or 'unknown')} to {destination})"
+    )
+    # A run can succeed and still have stored less than the user expects — a
+    # history bundle that could not be built, or linked files a restore cannot
+    # unpack. Reporting a bare OK for those would recreate the exact silence
+    # this check exists to end.
+    warnings = stamp.get("warnings")
+    if isinstance(warnings, list) and warnings:
+        detail = "; ".join(_one_line(str(item)) for item in warnings[:3])
+        return ProbeResult("BROKEN", f"{summary}, but it stored less than a full "
+                                     f"backup: {detail}", _BACKUP_HEAL)
+    return ProbeResult("OK", summary)
 
 
 def _calendar_permission_status(_context: DoctorContext) -> str:

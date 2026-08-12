@@ -120,12 +120,14 @@ repointed to `/dex-doctor`.
 | id | probe | OFF when | BROKEN when |
 |---|---|---|---|
 | granola.query_path | filtered `created_after` list via the same helper real queries use (`_cutoff_iso`) | no `GRANOLA_API_KEY` | API error (surface `GranolaAPIError` detail) |
+| pipedrive.connection | resolves the server's own `feature_status` payload, then proves the stored credential with one live `users/me` read | Pipedrive not connected, or `enabled: false` in `System/integrations/config.yaml` | auth/API failure, or missing `base_url`/`company_domain` (T3: run `/pipedrive-setup`) |
 | config.meeting_sources | `meeting_sources.notes_folder` (profile) must exist inside the vault (symlink escapes refused) and contain at least one supported note; empty-but-configured is `UNKNOWN`, not BROKEN | no meeting source configured | folder missing or outside the vault |
 | update.post-canary | reads the post-update canary receipt (`System/.dex/health/post-update-canary.json`) written right after an update applies | no canary has run yet | last canary failed (plan/state doors did not open after an update) |
 | calendar.access | `calendar_list_calendars` path via EventKit; configured `work_calendar` present in the list | permission never granted AND feature unused | permission denied (T3) / configured calendar not found (T3: set `calendar.work_calendar`, list real names) |
 | qmd.live | registered in `.mcp.json` → `which qmd` + `qmd status` | not registered (opt-in respected) | registered but binary/status fails (T3: `/enable-semantic-search`) |
 | integrations.enabled | for each `enabled: true` in `System/integrations/config.yaml`, run its existing health checker (gmail/teams/connection cjs) | not enabled | checker reports failure |
 | mcp.importable | each registered `core/mcp/*_server.py` imports in a subprocess | — | ImportError (T2: reinstall deps) |
+| backup.freshness | reads the engine's run record (`System/.dex/backup-last-run.json`, written on every run, success or failure) against the `backup:` block in `System/integrations/config.yaml`. OFF when backups are not configured (a healthy, never-nagged state). OK when the newest run succeeded within 2 days AND recorded no warnings; a run that succeeded but stored less than a full backup (history it could not bundle, linked files a restore cannot unpack) is BROKEN with the recorded reason, never a bare OK. Sandbox denials while reading config or record are `UNKNOWN`; an unparseable record is `UNKNOWN`, never silently OK. Exists because a real vault's scheduled backup died silently for ten days. | `backup.enabled` absent or false | last run failed (detail carries the stamped error), configured-but-never-ran, or newest success older than 2 days (T3: `/backup-setup`) |
 
 Sandbox note (for the builder): EventKit/GPU/permission probes can fail in a sandboxed
 build environment even when correct — such failures must map to `UNKNOWN`, and tests must

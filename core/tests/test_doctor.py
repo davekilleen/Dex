@@ -16,10 +16,18 @@ from pathlib import Path
 import pytest
 
 from core.health import promises as health_promises
+from core.lifecycle import service as lifecycle_service
+from core.lifecycle.bridge import activate_vault
 from core.lifecycle.catalog import with_catalog_identity
 from core.lifecycle.engine import AdoptionReceipt
 from core.lifecycle.ledger import record_adoption
-from core.tests.lifecycle_test_helpers import SOURCE_COMMIT, write_file, write_manifest
+from core.tests.lifecycle_test_helpers import (
+    SOURCE_COMMIT,
+    write_bridge_release,
+    write_file,
+    write_manifest,
+)
+from core.transaction.engine import PlanRejected
 from core.utils import doctor, release_channel
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -56,6 +64,7 @@ DEEP_IDS = [
     "customizations.assessment",
     "customizations.migration-status",
     "granola.query_path",
+    "pipedrive.connection",
     "config.meeting_sources",
     "update.post-canary",
     "calendar.access",
@@ -63,6 +72,7 @@ DEEP_IDS = [
     "integrations.enabled",
     "mcp.importable",
     "smoke.journeys",
+    "backup.freshness",
 ]
 
 
@@ -790,8 +800,15 @@ def test_release_catalog_probe_reports_non_utf8_corruption_as_broken(context):
     assert "codec can't decode" in result.detail
 
 
+def _activate_release_catalog(context) -> None:
+    """Stand in for the one-time bridge activation a real install already has."""
+    write_bridge_release(context.vault_root)
+    activate_vault(context.vault_root)
+
+
 def test_adoption_plan_probe_summarizes_valid_catalog_in_memory(context):
     _write_release_catalog(context)
+    _activate_release_catalog(context)
     before = _tree_snapshot(context.vault_root)
 
     result = doctor._probe_adoption_plan(context)
@@ -803,6 +820,7 @@ def test_adoption_plan_probe_summarizes_valid_catalog_in_memory(context):
 
 def test_adoption_plan_probe_counts_receipt_backed_adoptions(context):
     _write_release_catalog(context)
+    _activate_release_catalog(context)
     content = b"release skill\n"
     transaction_id = "20260807T120000-00000001"
     receipt = AdoptionReceipt.from_dict(
@@ -843,16 +861,46 @@ def test_adoption_plan_probe_is_off_without_a_release_catalog(context):
 
 def test_adoption_plan_probe_maps_internal_failures_to_unknown(monkeypatch, context):
     _write_release_catalog(context)
+    _activate_release_catalog(context)
 
     def explode(*_args, **_kwargs):
         raise RuntimeError("inventory exploded")
 
-    monkeypatch.setattr(doctor, "build_inventory", explode)
+    monkeypatch.setattr(lifecycle_service, "build_inventory_and_plan", explode)
 
     result = doctor._probe_adoption_plan(context)
 
     assert result.verdict == "UNKNOWN"
     assert "inventory exploded" in result.detail
+
+
+def test_adoption_plan_probe_reports_broken_when_the_update_gate_refuses(monkeypatch, context):
+    """A refusal from the same gate /dex-update uses must not read as a clean bill of health."""
+    _write_release_catalog(context)
+    _activate_release_catalog(context)
+
+    def refuse(*_args, **_kwargs):
+        raise PlanRejected("this Dex copy's update engine doesn't match its release information — run /dex-doctor")
+
+    monkeypatch.setattr(lifecycle_service, "build_inventory_and_plan", refuse)
+
+    result = doctor._probe_adoption_plan(context)
+
+    assert result.verdict == "BROKEN"
+    assert "Updating is blocked" in result.detail
+    assert "doesn't match its release information" in result.detail
+
+
+def test_adoption_plan_probe_is_broken_on_a_real_bridge_pin_mismatch(context):
+    """Reproduces the #252-style refusal: the probe must go through the real gate, not just build a plan in memory."""
+    _write_release_catalog(context)
+    write_bridge_release(context.vault_root, release_version="9.9.9")
+
+    result = doctor._probe_adoption_plan(context)
+
+    assert result.verdict == "BROKEN"
+    assert "Updating is blocked" in result.detail
+    assert "doesn't match its release information" in result.detail
 
 
 def test_corrupt_catalog_never_raises_out_of_doctor(monkeypatch, context):
@@ -3389,6 +3437,17 @@ def test_core_drift_invalid_channel_is_unknown_and_does_not_use_stable(tmp_path)
     assert result.detail == "couldn't verify your update channel"
 
 
+def test_core_drift_missing_pyyaml_is_reported_distinctly_from_a_broken_profile(monkeypatch, tmp_path):
+    """A missing dependency must not be reported as if the user's settings file were broken."""
+    drift_context = _drift_context(tmp_path, channel="beta")
+    monkeypatch.setitem(sys.modules, "yaml", None)
+
+    result = doctor._probe_core_drift(drift_context)
+
+    assert result.verdict == "UNKNOWN"
+    assert result.detail == "PyYAML isn't installed — Dex can't read your update channel setting"
+
+
 def test_core_drift_never_executes_repo_fsmonitor_or_ambient_git(
     monkeypatch,
     tmp_path,
@@ -3674,6 +3733,119 @@ def test_granola_no_key_is_off_and_api_400_is_broken(monkeypatch, context):
         "Granola query failed (HTTP 400) — the connector may need updating. "
         "Response: created_after is invalid"
     )
+
+
+def _write_backup_config(context, *, enabled=True):
+    config = context.vault_root / "System" / "integrations" / "config.yaml"
+    config.parent.mkdir(parents=True, exist_ok=True)
+    config.write_text(
+        "backup:\n"
+        f"  enabled: {str(enabled).lower()}\n"
+        "  backend: folder\n"
+        "  destination: /backups\n"
+    )
+
+
+def _write_backup_stamp(context, *, ok, timestamp, error=None, warnings=None):
+    runtime = context.vault_root / "System" / ".dex"
+    runtime.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "timestamp": timestamp,
+        "ok": ok,
+        "backend": "folder",
+        "location": "/backups",
+        "set": "20260710-020000",
+    }
+    if error is not None:
+        payload["error"] = error
+    if warnings is not None:
+        payload["warnings"] = warnings
+    (runtime / "backup-last-run.json").write_text(json.dumps(payload))
+
+
+def test_backup_freshness_broken_when_a_recent_run_stored_less_than_asked(context):
+    """A fresh, successful, but degraded backup must not report a bare OK."""
+    _write_backup_config(context)
+    _write_backup_stamp(
+        context,
+        ok=True,
+        timestamp="2026-07-10T02:00:00+00:00",
+        warnings=["the vault's version history could not be bundled, so this "
+                  "set holds the notes archive only: fatal: Refusing to create "
+                  "empty bundle."],
+    )
+    result = doctor._probe_backup_freshness(context)
+    assert result.verdict == "BROKEN"
+    assert "stored less than a full backup" in result.detail
+    assert "version history could not be bundled" in result.detail
+    assert result.heal is not None
+
+
+def test_backup_freshness_stays_ok_when_the_run_recorded_no_warnings(context):
+    _write_backup_config(context)
+    _write_backup_stamp(
+        context, ok=True, timestamp="2026-07-10T02:00:00+00:00", warnings=[])
+    assert doctor._probe_backup_freshness(context).verdict == "OK"
+
+
+def test_backup_freshness_off_when_not_configured(context):
+    assert doctor._probe_backup_freshness(context).verdict == "OFF"
+
+    _write_backup_config(context, enabled=False)
+    result = doctor._probe_backup_freshness(context)
+    assert result.verdict == "OFF"
+    assert result.heal is None
+
+
+def test_backup_freshness_ok_when_last_success_is_within_two_days(context):
+    _write_backup_config(context)
+    _write_backup_stamp(context, ok=True, timestamp="2026-07-10T02:00:00+00:00")
+    result = doctor._probe_backup_freshness(context)
+    assert result.verdict == "OK"
+    assert "20260710-020000" in result.detail
+    assert "/backups" in result.detail
+
+
+def test_backup_freshness_broken_when_last_run_failed(context):
+    _write_backup_config(context)
+    _write_backup_stamp(
+        context,
+        ok=False,
+        timestamp="2026-07-11T02:00:00+00:00",
+        error="backup.destination is not set; run /backup-setup",
+    )
+    result = doctor._probe_backup_freshness(context)
+    assert result.verdict == "BROKEN"
+    assert "backup.destination is not set" in result.detail
+    assert result.heal.tier == 3
+    assert "/backup-setup" in result.heal.action
+
+
+def test_backup_freshness_broken_when_newest_success_is_stale(context):
+    _write_backup_config(context)
+    _write_backup_stamp(context, ok=True, timestamp="2026-07-05T02:00:00+00:00")
+    result = doctor._probe_backup_freshness(context)
+    assert result.verdict == "BROKEN"
+    assert "6 days old" in result.detail
+    assert result.heal.tier == 3
+
+
+def test_backup_freshness_broken_when_configured_but_never_ran(context):
+    _write_backup_config(context)
+    result = doctor._probe_backup_freshness(context)
+    assert result.verdict == "BROKEN"
+    assert "never recorded a run" in result.detail
+    assert result.heal.tier == 3
+
+
+def test_backup_freshness_unknown_when_stamp_is_unreadable(context):
+    _write_backup_config(context)
+    runtime = context.vault_root / "System" / ".dex"
+    runtime.mkdir(parents=True, exist_ok=True)
+    (runtime / "backup-last-run.json").write_text("{not json")
+    result = doctor._probe_backup_freshness(context)
+    assert result.verdict == "UNKNOWN"
+    assert "could not be read" in result.detail
 
 
 def test_granola_key_adapter_reads_exported_quoted_env_file(monkeypatch, context):
@@ -4180,3 +4352,140 @@ def test_meeting_sources_probe_is_ok_for_api_sources_without_folders(context):
     result = doctor._probe_meeting_sources(context)
     assert result.verdict == "OK"
     assert "granola" in result.detail
+
+
+# --- Pipedrive CRM connection probe ----------------------------------------
+
+
+def _pipedrive_module():
+    from core.mcp import pipedrive_server
+
+    return pipedrive_server
+
+
+def test_pipedrive_unconfigured_is_off_and_never_calls_the_api(monkeypatch, context):
+    """An unconnected integration is a healthy state, not a fault."""
+    pipedrive = _pipedrive_module()
+    monkeypatch.setattr(
+        pipedrive,
+        "_resolve",
+        lambda: {
+            "ok": False,
+            "status": {
+                "feature_status": "off",
+                "user_message": "Pipedrive is not connected. Run /pipedrive-setup to connect it.",
+            },
+        },
+    )
+    monkeypatch.setattr(
+        pipedrive,
+        "_request",
+        lambda *a, **k: pytest.fail("the API must not be called when unconfigured"),
+    )
+
+    result = doctor._probe_pipedrive_connection(context)
+
+    assert result.verdict == "OFF"
+    assert "not connected" in result.detail.lower()
+    assert result.heal is None
+
+
+def test_pipedrive_broken_config_offers_the_setup_heal(monkeypatch, context):
+    pipedrive = _pipedrive_module()
+    monkeypatch.setattr(
+        pipedrive,
+        "_resolve",
+        lambda: {
+            "ok": False,
+            "status": {
+                "feature_status": "broken",
+                "user_message": "No base_url / company_domain configured.",
+            },
+        },
+    )
+
+    result = doctor._probe_pipedrive_connection(context)
+
+    assert result.verdict == "BROKEN"
+    assert result.detail == "No base_url / company_domain configured."
+    assert result.heal is not None
+    assert "/pipedrive-setup" in result.heal.action
+    assert result.heal.applied is False
+
+
+def test_pipedrive_ok_requires_a_live_call_not_just_parseable_settings(monkeypatch, context):
+    """OK must mean the stored token works, so a 401 is BROKEN even when settings resolve."""
+    pipedrive = _pipedrive_module()
+    monkeypatch.setattr(
+        pipedrive,
+        "_resolve",
+        lambda: {"ok": True, "api_token": "t", "base_url": "https://example.pipedrive.com"},
+    )
+
+    calls = []
+
+    def unauthorized(method, path, env, **kwargs):
+        calls.append((method, path))
+        return {"ok": False, "error": "Pipedrive auth failed (401). Token may be invalid or expired."}
+
+    monkeypatch.setattr(pipedrive, "_request", unauthorized)
+    result = doctor._probe_pipedrive_connection(context)
+    assert calls == [("GET", "users/me")]
+    assert result.verdict == "BROKEN"
+    assert "401" in result.detail
+    assert result.heal is not None
+
+    monkeypatch.setattr(
+        pipedrive,
+        "_request",
+        lambda *a, **k: {"ok": True, "data": {"name": "Test User", "company_name": "Test Co"}},
+    )
+    healthy = doctor._probe_pipedrive_connection(context)
+    assert healthy.verdict == "OK"
+    assert "Test User" in healthy.detail
+    assert "Test Co" in healthy.detail
+    assert healthy.heal is None
+
+
+def test_pipedrive_probe_restores_the_callers_vault_root(monkeypatch, context):
+    """The probe points the server at the inspected vault without leaking that state."""
+    pipedrive = _pipedrive_module()
+    seen = {}
+
+    def capture():
+        seen["vault_root"] = os.environ.get("VAULT_ROOT")
+        return {"ok": False, "status": {"feature_status": "off", "user_message": "off"}}
+
+    monkeypatch.setattr(pipedrive, "_resolve", capture)
+
+    monkeypatch.setenv("VAULT_ROOT", "/sentinel/original")
+    doctor._probe_pipedrive_connection(context)
+    assert seen["vault_root"] == str(context.vault_root)
+    assert os.environ["VAULT_ROOT"] == "/sentinel/original"
+
+    monkeypatch.delenv("VAULT_ROOT", raising=False)
+    doctor._probe_pipedrive_connection(context)
+    assert seen["vault_root"] == str(context.vault_root)
+    assert "VAULT_ROOT" not in os.environ
+
+
+def test_pipedrive_sandbox_failure_is_unknown_not_broken(monkeypatch, context):
+    pipedrive = _pipedrive_module()
+    monkeypatch.setattr(
+        pipedrive,
+        "_resolve",
+        lambda: {"ok": True, "api_token": "t", "base_url": "https://example.pipedrive.com"},
+    )
+    monkeypatch.setattr(
+        pipedrive,
+        "_request",
+        lambda *a, **k: {"ok": False, "error": "Operation not permitted (sandbox)"},
+    )
+
+    result = doctor._probe_pipedrive_connection(context)
+    assert result.verdict in {"UNKNOWN", "BROKEN"}
+
+
+def test_pipedrive_check_is_registered_in_the_deep_check_list():
+    ids = {definition.id for definition in doctor.DEEP_CHECKS}
+    assert "pipedrive.connection" in ids

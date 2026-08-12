@@ -20,6 +20,10 @@ System/integrations/*.yaml
 !System/integrations/config.yaml
 System/integrations/.sync-state.json
 System/integrations/inbound-tasks.json
+# Pipedrive focus-deal mapping cache: real customer deal titles and CRM ids.
+# Written by the Pipedrive server, swept up by session-end autocommit if left
+# tracked, and private to the user either way.
+System/integrations/.pipedrive-cache.json
 
 # Obsidian
 .obsidian/workspace.json
@@ -45,6 +49,7 @@ System/.dex/session-health.lock
 System/.dex/release-notes-state.lock
 System/.dex/session-health-success.json
 System/.dex/health-telemetry-log.jsonl
+System/.dex/backup-last-run.json
 System/.dex/telemetry-id
 System/.dex/feedback/
 System/.dex/feedback-log.jsonl

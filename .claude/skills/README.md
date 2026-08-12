@@ -234,6 +234,11 @@ Built specifically for personal knowledge management and productivity workflows 
 - `/triage` - Organize inbox and extract tasks *(v1.11: tuned for speed)*
 - `/industry-truths` - Define time-horizoned assumptions that ground strategic thinking
 
+**Backups:**
+- `/backup-setup` - Schedule automatic vault backups to a synced folder or cloud provider
+- `/backup-now` - Take a verified backup immediately (before big changes)
+- `/backup-restore` - Prove a backup restores, or restore one to a folder of your choosing
+
 **System Management:**
 - `/dex-doctor` - Full system checkup: verifies every feature honestly, self-heals what's safe, guides you through the rest
 - `/enable-semantic-search` - Enable local AI-powered semantic search with smart collection discovery
