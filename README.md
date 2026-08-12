@@ -347,6 +347,14 @@ If `/daily-plan` doesn't show your meetings, or your recurring meetings (e.g. we
 
 See **[Calendar_Setup.md](06-Resources/Dex_System/Calendar_Setup.md)** for the full guide.
 
+---
+
+### Something else seems broken after setup?
+
+Once Dex is running, ask it to run `/dex-doctor` — a whole-system checkup that tells you honestly what's working, what's switched off and what's broken, repairs what it can on its own, and guides you through the rest.
+
+And if the problem turns out to be a bug in Dex itself, you don't need a command or the right words: just describe what happened ("the meeting sync is doing something weird"). Dex investigates on your machine, writes the bug report for you, and by default waits for your yes before anything leaves — never anything from your notes, meetings or conversations. It tells you when the fix ships. Details: [what a report can contain](https://heydex.ai/help/feedback.html) · [the checkup](https://heydex.ai/help/updating-troubleshooting.html#health-dex-doctor)
+
 </details>
 
 ### Step 3: Tell Dex About Your Role

@@ -9,6 +9,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from cryptography.hazmat.primitives.serialization import Encoding, NoEncryption, PrivateFormat
 
@@ -334,3 +335,164 @@ def test_real_ed25519_signing_hook_uses_only_environment_key(tmp_path: Path) -> 
     envelope = json.loads((tmp_path / "dist/dex-lens-catalog-v1.94.0.json").read_text())
     signature = base64.b64decode(envelope["signature"])
     private_key.public_key().verify(signature, _signed_payload(envelope).encode("utf-8"))
+
+
+def _corrupt_dropped_required_field(data: dict) -> str:
+    del data["entries"][0]["value"]
+    return "missing value"
+
+
+def _corrupt_wrong_schema_shape(data: dict) -> str:
+    data["entries"][0]["prerequisites"] = "a single string, not an array"
+    return "prerequisites must be a non-empty array"
+
+
+def _corrupt_stale_source_sha256(data: dict) -> str:
+    data["entries"][0]["source"]["sha256"] = "1" * 64
+    return "does not match its declared sha256 or byte_size"
+
+
+def _corrupt_stale_source_byte_size(data: dict) -> str:
+    data["entries"][0]["source"]["byte_size"] = 999999
+    return "does not match its declared sha256 or byte_size"
+
+
+def _corrupt_unknown_job_reference(data: dict) -> str:
+    data["entries"][0]["jobs_served"] = ["job-that-does-not-exist"]
+    return "unknown job reference"
+
+
+def _corrupt_unknown_foundation_reference(data: dict) -> str:
+    data["entries"][0]["foundation_capabilities"] = ["foundation-that-does-not-exist"]
+    return "unknown foundation reference"
+
+
+def _corrupt_unreleased_since_version(data: dict) -> str:
+    data["entries"][0]["since_release"] = "99.0.0"
+    return "since_release has no shipped source in CHANGELOG.md"
+
+
+def _lens_artifacts(root: Path) -> list[str]:
+    """Every file the release workflow would publish for the Lens catalogue."""
+    dist = root / "dist"
+    if not dist.exists():
+        return []
+    return sorted(path.name for path in dist.iterdir() if path.name.startswith("dex-lens-catalog"))
+
+
+def _generate_signed(root: Path, key_b64: str) -> subprocess.CompletedProcess[str]:
+    """Run the producer exactly as the release job does: --sign with a usable key present."""
+    return subprocess.run(
+        [
+            sys.executable,
+            str(GENERATOR),
+            "--release-root",
+            str(root),
+            "--output-dir",
+            str(root / "dist"),
+            "--issued-at",
+            "2026-08-11T12:00:00Z",
+            "--sign",
+            "--signing-key-env",
+            "DEX_LENS_TEST_KEY",
+            "--key-id",
+            "dex-core-lens-1",
+        ],
+        cwd=REPO_ROOT,
+        env={"DEX_LENS_TEST_KEY": key_b64},
+        capture_output=True,
+        text=True,
+    )
+
+
+@pytest.fixture(name="signing_key_b64")
+def _signing_key_b64() -> str:
+    private_pem = Ed25519PrivateKey.generate().private_bytes(
+        Encoding.PEM,
+        PrivateFormat.PKCS8,
+        NoEncryption(),
+    )
+    return base64.b64encode(private_pem).decode("ascii")
+
+
+def test_signed_release_path_publishes_when_the_registry_is_sound(
+    tmp_path: Path, signing_key_b64: str
+) -> None:
+    """Positive control: without this, the fail-closed test below could pass vacuously."""
+    _registry(tmp_path)
+
+    result = _generate_signed(tmp_path, signing_key_b64)
+
+    assert result.returncode == 0, result.stderr
+    assert _lens_artifacts(tmp_path) == [
+        "dex-lens-catalog-latest.json",
+        "dex-lens-catalog-latest.json.sha256",
+        "dex-lens-catalog-v1.94.0.json",
+        "dex-lens-catalog-v1.94.0.json.sha256",
+    ]
+    assert json.loads((tmp_path / "dist/dex-lens-catalog-v1.94.0.json").read_text())["signature"]
+
+
+@pytest.mark.parametrize(
+    ("corrupt", "label"),
+    [
+        (_corrupt_dropped_required_field, "dropped-required-field"),
+        (_corrupt_wrong_schema_shape, "wrong-schema-shape"),
+        (_corrupt_stale_source_sha256, "stale-source-sha256"),
+        (_corrupt_stale_source_byte_size, "stale-source-byte-size"),
+        (_corrupt_unknown_job_reference, "unknown-job-reference"),
+        (_corrupt_unknown_foundation_reference, "unknown-foundation-reference"),
+        (_corrupt_unreleased_since_version, "unreleased-since-version"),
+    ],
+)
+def test_broken_registry_entry_fails_closed_before_signing_or_publication(
+    tmp_path: Path, signing_key_b64: str, corrupt, label: str
+) -> None:
+    """A broken registry entry must stop the release producer before it signs or writes.
+
+    The unsigned rejection tests above prove the generator complains. This proves the
+    property the release job actually depends on: with a usable signing key present and
+    --sign requested, a broken entry still refuses, and leaves nothing behind for the
+    'Upload Dex Lens catalog' steps to publish.
+    """
+    _registry(tmp_path)
+    registry_path = tmp_path / "core/lens-catalog/registry.json"
+    data = json.loads(registry_path.read_text())
+    expected_error = corrupt(data)
+    _write(registry_path, json.dumps(data))
+
+    result = _generate_signed(tmp_path, signing_key_b64)
+
+    assert result.returncode == 1, f"{label}: expected refusal, got {result.returncode}"
+    assert "Dex Lens catalog generation failed" in result.stderr
+    assert expected_error in result.stderr, f"{label}: unexpected reason: {result.stderr}"
+    # Fails closed: no signed envelope, no digest sidecar, nothing to upload or serve.
+    assert _lens_artifacts(tmp_path) == [], f"{label}: producer left publishable output behind"
+
+
+def test_broken_registry_refusal_is_not_a_signing_failure(
+    tmp_path: Path, signing_key_b64: str
+) -> None:
+    """The refusal must come from registry validation, not from the signing step.
+
+    If validation ever moved after signing, the error text would change and this
+    would catch it -- the producer must never reach the key for a broken registry.
+    """
+    _registry(tmp_path)
+    registry_path = tmp_path / "core/lens-catalog/registry.json"
+    data = json.loads(registry_path.read_text())
+    _corrupt_stale_source_sha256(data)
+    _write(registry_path, json.dumps(data))
+
+    result = _generate_signed(tmp_path, signing_key_b64)
+
+    assert result.returncode == 1
+    assert "does not match its declared sha256 or byte_size" in result.stderr
+    for signing_error in (
+        "environment secret",
+        "is not base64",
+        "Ed25519 signing failed",
+        "is not an Ed25519 private key",
+        "cryptography>=42 is required",
+    ):
+        assert signing_error not in result.stderr
