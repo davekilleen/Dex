@@ -198,6 +198,34 @@ def test_the_prober_runs_on_a_schedule_and_can_be_run_by_hand() -> None:
     assert workflow["permissions"] == {"contents": "read"}
 
 
+def test_the_prober_schedule_is_slack_enough_to_actually_fire() -> None:
+    """An hourly cron here fires NEVER, so asking for one is asking for nothing.
+
+    GitHub's scheduled runs are best-effort, and this repository's are consistently
+    very late: measured 2026-08-12 against `nightly-quality.yml` (cron `0 3 * * *`),
+    its last eight scheduled runs began 65, 70, 71, 82, 108, 156, 159 and 159 minutes
+    after the hour. A tick that is already overdue when the next one arrives gets
+    dropped rather than queued -- this workflow's own first two hourly attempts
+    (02:17Z and 03:17Z) both failed to run at all.
+
+    So the interval must comfortably exceed the observed slippage. This asserts a
+    floor of four hours, which the worst observed delay (159 min) still fits inside.
+    """
+    schedule = _triggers(_load(PROBER_WORKFLOW))["schedule"]
+    assert schedule, "the backstop needs a schedule"
+    for entry in schedule:
+        hour_field = entry["cron"].split()[1]
+        assert hour_field != "*", (
+            "an hourly cron cannot fire in this repository -- GitHub's scheduler "
+            f"slips well over an hour here. Saw: {entry['cron']!r}"
+        )
+        if hour_field.startswith("*/"):
+            assert int(hour_field[2:]) >= 4, (
+                "the interval must exceed GitHub's observed ~2.5h worst-case delay; "
+                f"saw {entry['cron']!r}"
+            )
+
+
 def test_the_prober_is_exercised_when_the_prober_itself_changes() -> None:
     """Otherwise the check that watches the release route is the thing nobody watches."""
     paths = _triggers(_load(PROBER_WORKFLOW))["pull_request"]["paths"]

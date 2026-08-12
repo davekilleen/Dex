@@ -14,14 +14,29 @@ name: Release asset prober
 # Deliberately unauthenticated for the probes themselves: an authenticated API view
 # can succeed while the public route a user takes returns "not found".
 #
-# Cadence note: hourly, not every few minutes. Draft-first publishing is the primary
-# control and verifies every asset before a release goes public, so this is the
-# backstop — and each run downloads the full bundle to verify its checksum honestly,
-# which is not worth doing every five minutes.
+# Cadence: every six hours, and NOT hourly, because hourly does not work here.
+#
+# GitHub's scheduled runs are best-effort and this repository's are consistently
+# very late. Measured on 2026-08-12 against `nightly-quality.yml`, whose cron is
+# `0 3 * * *`: its last eight scheduled runs started 65, 70, 71, 82, 108, 156, 159
+# and 159 minutes after the hour. A schedule asking for an hourly run is therefore
+# always overdue before its next tick, and GitHub drops the overdue one rather than
+# queueing it — an hourly cron here fires never, which is exactly what this workflow
+# did on its first two attempts (02:17Z and 03:17Z, neither ran).
+#
+# Six hours absorbs that slippage with room to spare, so this actually runs. It also
+# reflects what this job honestly is: the BACKSTOP. Draft-first publishing verifies
+# every asset before a release goes public, and the operator-side watchman keeps the
+# frequent cadence and is the leg that can raise an alert where someone will see it.
+# What this leg uniquely covers is the case where that machine is off or wedged, and
+# for that a few times a day is the right answer, not a schedule that lies.
+#
+# Each run downloads the full bundle to verify its checksum honestly, which is
+# another reason not to want this every few minutes.
 
 on:
   schedule:
-    - cron: '17 * * * *'
+    - cron: '17 */6 * * *'
   workflow_dispatch:
     inputs:
       version:
