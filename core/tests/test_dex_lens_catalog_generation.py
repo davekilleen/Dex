@@ -236,6 +236,24 @@ def test_generator_rejects_unshipped_or_stale_source(tmp_path: Path) -> None:
     assert "does not match its declared sha256 or byte_size" in stale.stderr
 
 
+def test_generator_rejects_vendored_third_party_skill_sources(tmp_path: Path) -> None:
+    _registry(tmp_path)
+    vendored_bytes = _skill(tmp_path, "anthropic-pdf")
+    data = json.loads((tmp_path / "core/lens-catalog/registry.json").read_text())
+    data["entries"][0]["source"] = {
+        "kind": "skill",
+        "path": ".claude/skills/anthropic-pdf/SKILL.md",
+        "sha256": hashlib.sha256(vendored_bytes).hexdigest(),
+        "byte_size": len(vendored_bytes),
+    }
+    _write(tmp_path / "core/lens-catalog/registry.json", json.dumps(data))
+
+    result = _generate(tmp_path)
+
+    assert result.returncode == 1
+    assert "must not be a vendored third-party skill" in result.stderr
+
+
 def test_signing_requires_environment_secret_and_never_generates_a_key(tmp_path: Path) -> None:
     _registry(tmp_path)
 
@@ -512,20 +530,14 @@ def test_broken_registry_refusal_is_not_a_signing_failure(
 # root, so pin drift fails on the pull request that causes it.
 
 
-def test_real_registry_source_pins_match_the_shipped_skills() -> None:
-    """Every pinned skill must still hash to the digest and size the registry declares.
-
-    This is the narrow, fast gate: it needs no signing key and no release
-    metadata, so it reports pin drift as pin drift rather than as some later
-    failure, and it names the corrected values so the fix is mechanical.
-    """
-    entries = json.loads(REAL_REGISTRY.read_text(encoding="utf-8"))["entries"]
+def _registry_source_pin_drifts(registry_path: Path, release_root: Path) -> list[str]:
+    entries = json.loads(registry_path.read_text(encoding="utf-8"))["entries"]
     assert entries, "the shipped registry declares no entries to check"
 
     drifted = []
     for index, entry in enumerate(entries):
         source = entry["source"]
-        skill = REPO_ROOT / source["path"]
+        skill = release_root / source["path"]
         if not skill.is_file():
             drifted.append(f"entry {index} ({entry['id']}): {source['path']} is missing")
             continue
@@ -537,12 +549,34 @@ def test_real_registry_source_pins_match_the_shipped_skills() -> None:
                 f" written -- declared sha256={source['sha256']} byte_size={source['byte_size']},"
                 f" actual sha256={actual_sha} byte_size={len(content)}"
             )
+    return drifted
 
+
+def test_real_registry_source_pins_match_the_shipped_skills() -> None:
+    """Every pinned skill must still hash to the digest and size the registry declares.
+
+    This is the narrow, fast gate: it needs no signing key and no release
+    metadata, so it reports pin drift as pin drift rather than as some later
+    failure, and it names the corrected values so the fix is mechanical.
+    """
+    drifted = _registry_source_pin_drifts(REAL_REGISTRY, REPO_ROOT)
     assert not drifted, (
         "core/lens-catalog/registry.json source pins are stale, so the release job's Lens"
         " catalogue generation will refuse. Update the declared sha256 and byte_size for:\n  "
         + "\n  ".join(drifted)
     )
+
+
+def test_real_registry_pin_check_fails_on_a_deliberately_drifted_pin(tmp_path: Path) -> None:
+    registry = json.loads(REAL_REGISTRY.read_text(encoding="utf-8"))
+    registry["entries"][0]["source"]["sha256"] = "0" * 64
+    registry_path = tmp_path / "registry.json"
+    registry_path.write_text(json.dumps(registry), encoding="utf-8")
+
+    drifted = _registry_source_pin_drifts(registry_path, REPO_ROOT)
+
+    assert drifted
+    assert "changed after its pin was written" in drifted[0]
 
 
 def test_shipped_registry_builds_the_release_catalogue(tmp_path: Path, signing_key_b64: str) -> None:

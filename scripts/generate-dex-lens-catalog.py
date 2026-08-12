@@ -241,6 +241,8 @@ def _source(entry: Mapping[str, object], release_root: Path, *, context: str) ->
         raise LensCatalogError(f"{context} source path must be a shipped skill SKILL.md")
     if "/_available/" in relative:
         raise LensCatalogError(f"{context} source path must not be a dormant optional skill")
+    if relative.startswith(".claude/skills/anthropic-"):
+        raise LensCatalogError(f"{context} source path must not be a vendored third-party skill")
     if not _is_git_tracked(release_root, relative):
         raise LensCatalogError(f"{context} source path is not tracked by the release tree: {relative}")
     declared_sha = raw.get("sha256")
