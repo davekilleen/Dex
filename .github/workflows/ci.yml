@@ -408,8 +408,17 @@ jobs:
           # environment secret; no generated private key belongs in the repo.
           DEX_LENS_CATALOG_ED25519_PRIVATE_KEY_B64: ${{ secrets.DEX_LENS_CATALOG_ED25519_PRIVATE_KEY_B64 }}
         run: |
-          python3 -m pip install 'cryptography>=42'
-          python3 scripts/generate-dex-lens-catalog.py \
+          # build-release never runs actions/setup-python, so `python3` here is the
+          # runner's Homebrew interpreter and PEP 668 refuses a system-wide install:
+          # `pip install cryptography` died with externally-managed-environment and
+          # took the whole release with it. An isolated venv keeps the install off the
+          # system interpreter without --break-system-packages (which Homebrew warns
+          # can break the runner) and without changing `python3` for any other step.
+          # jsonschema is installed too: the producer imports it at module scope, so
+          # a venv holding only cryptography would fail on the very next line.
+          python3 -m venv .lens-venv
+          .lens-venv/bin/python -m pip install --quiet 'cryptography>=42' jsonschema
+          .lens-venv/bin/python scripts/generate-dex-lens-catalog.py \
             --release-root "$PWD" \
             --output-dir dist \
             --sign \
