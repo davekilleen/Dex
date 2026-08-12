@@ -255,12 +255,22 @@ function nulPaths(result) {
   return result.stdout.toString('utf8').split('\0').filter(Boolean);
 }
 
-function candidateWorktreePaths(root) {
+function candidateWorktreePaths(root, contract) {
   const commands = [
     ['diff', '--name-only', '-z'],
     ['diff', '--cached', '--name-only', '-z'],
     ['ls-files', '--others', '--exclude-standard', '-z'],
   ];
+  // The shipped .gitignore ignores the PARA folders wholesale, so the sweep above cannot
+  // see a note the user wrote today — it would report a healthy snapshot that saved
+  // nothing new (#485). Look inside the contract's own vault regions for ignored-but-
+  // untracked content as well. Scoped deliberately to those regions: other ignored paths
+  // (the Pipedrive cache, trusted-mcps.yaml, per-user integration settings) are ignored
+  // because they should stay out of history, and this must not start sweeping them in.
+  const regions = Array.isArray(contract.vault_regions) ? contract.vault_regions : [];
+  if (regions.length > 0) {
+    commands.push(['ls-files', '--others', '--ignored', '--exclude-standard', '-z', '--', ...regions]);
+  }
   const paths = [];
   for (const command of commands) {
     const result = nulPaths(git(root, command, { encoding: null }));
@@ -333,12 +343,19 @@ function run(options = {}) {
     if (!ensureLocalIdentity(root)) {
       return status('broken', 'Vault auto-commit could not set a local-only commit identity.');
     }
-    const candidates = candidateWorktreePaths(root);
+    const candidates = candidateWorktreePaths(root, contract);
     if (candidates === null) {
       return status('unknown', 'Vault auto-commit could not determine eligible local files.');
     }
     const eligible = candidates.filter((relative) => eligiblePath(contract, relative));
-    if (eligible.length > 0 && git(root, ['add', '-A', '--', ...eligible]).status !== 0) {
+    // The shipped .gitignore ignores the PARA folders, and a pathspec add that touches an
+    // ignored directory hard-fails as a whole — so a vault whose PARA content is tracked
+    // (what the v1-to-v2 migration leaves behind) could never stage anything, and every
+    // run returned broken into the SessionEnd void (#485). Eligibility here is decided by
+    // the ownership contract above and the protected-file sweep below, not by .gitignore,
+    // so bypass the ignore objection for exactly these paths — the same way the migration
+    // stages the vault's existing history.
+    if (eligible.length > 0 && git(root, ['add', '-A', '-f', '--', ...eligible]).status !== 0) {
       return status('broken', 'Vault auto-commit could not prepare the local snapshot. Files are unchanged.');
     }
     const rejected = stagedRejectedPaths(root, contract);

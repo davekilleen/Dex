@@ -21,9 +21,20 @@ Found by Dex's own overnight performance check, which had been reporting this st
 
 ---
 
-## [1.95.0] — 🗄️ Your notes now back themselves up — plus Pipedrive, roomier daily rituals, and releases that never announce a file that isn't there (2026-08-12)
+## [1.95.1] — 🗄️ Your notes now back themselves up — plus session snapshots that actually save, Pipedrive, roomier daily rituals, and releases that never announce a file that isn't there (2026-08-12)
 
-A larger release than usual: five pieces of work landed together, three of them from Chris, who has been running Dex hard and reporting what broke. Each is written up in full below.
+A larger release than usual: six pieces of work landed together, four of them from Chris, who has been running Dex hard and reporting what broke. Each is written up in full below.
+
+### 💾 If you switched on session snapshots, they never once saved. They do now.
+
+There is an optional setting that saves your vault to its own local history at the end of every session, so you can go back through your own edits. If you turned it on, it has never worked — not once, for anyone, since it arrived on 21 July. Dex's own list of files to leave alone covers the folders your notes actually live in, and the save step gives up completely the moment it touches one of them. It reported that failure honestly every single time, at the one moment nothing was listening: as the session closed.
+
+**What this fixes for you:**
+
+* **Session snapshots save your notes, including the ones you wrote today.** Both halves of the fault are fixed: the save no longer refuses on your own folders, and it now finds notes you have only just created rather than silently skipping them. A snapshot that quietly saved nothing new was the more dangerous half, because it looked like it had worked.
+* **Nothing private got swept in to make that work.** Your keys, saved sign-ins, deal caches from connected tools, and per-tool settings are still deliberately left out, and a new check exists purely to keep it that way. Only the folders your notes live in were opened up.
+
+Found by Chris, who spotted the feature enabled, no history being written, and no error anywhere — then traced it to the exact cause. Nothing you saved before this release was lost; the snapshots simply never happened, and your notes were untouched throughout. This release was renumbered from 1.95.0 to carry the fix, which is why there is no 1.95.0.
 
 ### 🗄️ Your notes now back themselves up, and Dex tells you loudly if that ever stops
 
