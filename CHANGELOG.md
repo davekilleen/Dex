@@ -7,6 +7,20 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.95.1] — ⚡ Big vaults get ready to update in seconds instead of minutes (2026-08-12)
+
+Before Dex updates itself, it reads through your vault to find everything you have personally changed or added, so that your own work is protected rather than overwritten. On a big vault that step had been taking far longer than its size warranted: doubling the number of files made it four to eight times slower rather than twice as slow, so it got worse the more you put in. On a vault of around a hundred thousand files it was spending about four minutes on that one step.
+
+**What this fixes for you:**
+
+* **The check before an update finishes far quicker.** Measured on a vault of about a hundred thousand files, the slow step went from roughly four minutes to roughly twenty seconds. The larger your vault, the larger the saving — small vaults were never really affected.
+* **It now slows down in step with your vault instead of ahead of it.** Dex was re-reading the same long list from the beginning once for every file it considered. It now looks that list up directly, so the time grows steadily with your vault rather than running away as the vault fills up.
+* **Nothing it decides has changed.** The step examines exactly the same files and reaches exactly the same conclusions as before — only the waiting is different.
+
+Found by Dex's own overnight performance check, which had been reporting this step as over its time limit every night since it was introduced.
+
+---
+
 ## [1.95.0] — 🗄️ Your notes now back themselves up — plus Pipedrive, roomier daily rituals, and releases that never announce a file that isn't there (2026-08-12)
 
 A larger release than usual: five pieces of work landed together, three of them from Chris, who has been running Dex hard and reporting what broke. Each is written up in full below.
