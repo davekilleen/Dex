@@ -164,9 +164,20 @@ def _write_dist(tmp_path: Path, version: str = VERSION) -> Path:
     return dist
 
 
-def _publish_args(dist: Path, *, version: str = VERSION, channel: str = "stable"):
+def _publish_args(
+    dist: Path,
+    *,
+    version: str = VERSION,
+    channel: str = "stable",
+    extra_asset: list[str] | None = None,
+):
     return argparse.Namespace(
-        repo=None, version=version, channel=channel, dist=str(dist), target="deadbeef"
+        repo=None,
+        version=version,
+        channel=channel,
+        dist=str(dist),
+        target="deadbeef",
+        extra_asset=extra_asset or [],
     )
 
 
@@ -440,3 +451,64 @@ def test_asset_list_is_the_four_files_dex_installs_fetch() -> None:
         "dex-update-bridge-v1.2.3.py.sha256",
     ]
     assert rp.REQUIRED_ASSET_COUNT == 4
+
+
+# --------------------------------------------------------------------------- #
+# Extra assets (the signed Dex Lens catalogue) ride the same verified path
+# --------------------------------------------------------------------------- #
+
+
+def test_extra_assets_are_attached_and_verified_before_the_flip(tmp_path: Path) -> None:
+    """Nothing may appear on a release after it has gone public."""
+    dist = _write_dist(tmp_path)
+    catalogue = dist / f"dex-lens-catalog-v{VERSION}.json"
+    catalogue.write_text('{"catalogue": true}', encoding="utf-8")
+    gh = FakeGh(releases={TAG: FakeRelease(draft=True)})
+
+    assert _publish(_publish_args(dist, extra_asset=[str(catalogue)]), gh) == 0
+
+    release = gh.releases[TAG]
+    assert catalogue.name in release.assets, "the extra asset must be attached"
+    assert release.draft is False
+
+    readback_at = gh.index_of(lambda c: c[0] == "download" and catalogue.name in c[1])
+    flip_at = gh.index_of(lambda c: c[:2] == ["release", "edit"] and "--draft=false" in c)
+    assert readback_at >= 0, "an extra asset must be read back like any other"
+    assert readback_at < flip_at, "extras must be proven before the release goes public"
+
+
+def test_a_missing_extra_asset_stops_the_release_going_public(tmp_path: Path) -> None:
+    dist = _write_dist(tmp_path)
+    gh = FakeGh(releases={TAG: FakeRelease(draft=True)})
+
+    result = _publish(
+        _publish_args(dist, extra_asset=[str(dist / "never-built.json")]), gh
+    )
+
+    assert result == 1
+    assert gh.releases[TAG].draft is True
+    assert not gh.flipped_public()
+
+
+def test_an_empty_extra_asset_stops_the_release_going_public(tmp_path: Path) -> None:
+    dist = _write_dist(tmp_path)
+    empty = dist / f"dex-lens-catalog-v{VERSION}.json"
+    empty.write_bytes(b"")
+    gh = FakeGh(releases={TAG: FakeRelease(draft=True)})
+
+    assert _publish(_publish_args(dist, extra_asset=[str(empty)]), gh) == 1
+    assert gh.releases[TAG].draft is True
+
+
+def test_the_four_required_assets_are_still_required_when_extras_are_present(
+    tmp_path: Path,
+) -> None:
+    """An extra asset must never be able to stand in for a missing required one."""
+    dist = _write_dist(tmp_path)
+    (dist / f"dex-update-bridge-v{VERSION}.py").unlink()
+    catalogue = dist / f"dex-lens-catalog-v{VERSION}.json"
+    catalogue.write_text("{}", encoding="utf-8")
+    gh = FakeGh(releases={TAG: FakeRelease(draft=True)})
+
+    assert _publish(_publish_args(dist, extra_asset=[str(catalogue)]), gh) == 1
+    assert gh.releases[TAG].draft is True
