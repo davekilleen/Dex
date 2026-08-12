@@ -7,21 +7,7 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
-## [1.95.1] — ⚡ Big vaults get ready to update in seconds instead of minutes (2026-08-12)
-
-Before Dex updates itself, it reads through your vault to find everything you have personally changed or added, so that your own work is protected rather than overwritten. On a big vault that step had been taking far longer than its size warranted: doubling the number of files made it four to eight times slower rather than twice as slow, so it got worse the more you put in. On a vault of around a hundred thousand files it was spending about four minutes on that one step.
-
-**What this fixes for you:**
-
-* **The check before an update finishes far quicker.** Measured on a vault of about a hundred thousand files, the slow step went from roughly four minutes to roughly twenty seconds. The larger your vault, the larger the saving — small vaults were never really affected.
-* **It now slows down in step with your vault instead of ahead of it.** Dex was re-reading the same long list from the beginning once for every file it considered. It now looks that list up directly, so the time grows steadily with your vault rather than running away as the vault fills up.
-* **Nothing it decides has changed.** The step examines exactly the same files and reaches exactly the same conclusions as before — only the waiting is different.
-
-Found by Dex's own overnight performance check, which had been reporting this step as over its time limit every night since it was introduced.
-
----
-
-## [1.95.1] — 🗄️ Your notes now back themselves up — plus session snapshots that actually save, Pipedrive, roomier daily rituals, and releases that never announce a file that isn't there (2026-08-12)
+## [1.95.1] — 💾 Session snapshots actually save now — plus first-party backups, Pipedrive, and roomier daily rituals (2026-08-12)
 
 A larger release than usual: six pieces of work landed together, four of them from Chris, who has been running Dex hard and reporting what broke. Each is written up in full below.
 
@@ -35,6 +21,19 @@ There is an optional setting that saves your vault to its own local history at t
 * **Nothing private got swept in to make that work.** Your keys, saved sign-ins, deal caches from connected tools, and per-tool settings are still deliberately left out, and a new check exists purely to keep it that way. Only the folders your notes live in were opened up.
 
 Found by Chris, who spotted the feature enabled, no history being written, and no error anywhere — then traced it to the exact cause. Nothing you saved before this release was lost; the snapshots simply never happened, and your notes were untouched throughout. This release was renumbered from 1.95.0 to carry the fix, which is why there is no 1.95.0.
+
+
+### ⚡ Big vaults get ready to update in seconds instead of minutes
+
+Before Dex updates itself, it reads through your vault to find everything you have personally changed or added, so that your own work is protected rather than overwritten. On a big vault that step had been taking far longer than its size warranted: doubling the number of files made it four to eight times slower rather than twice as slow, so it got worse the more you put in. On a vault of around a hundred thousand files it was spending about four minutes on that one step.
+
+**What this fixes for you:**
+
+* **The check before an update finishes far quicker.** Measured on a vault of about a hundred thousand files, the slow step went from roughly four minutes to roughly twenty seconds. The larger your vault, the larger the saving — small vaults were never really affected.
+* **It now slows down in step with your vault instead of ahead of it.** Dex was re-reading the same long list from the beginning once for every file it considered. It now looks that list up directly, so the time grows steadily with your vault rather than running away as the vault fills up.
+* **Nothing it decides has changed.** The step examines exactly the same files and reaches exactly the same conclusions as before — only the waiting is different.
+
+Found by Dex's own overnight performance check, which had been reporting this step as over its time limit every night since it was introduced.
 
 ### 🗄️ Your notes now back themselves up, and Dex tells you loudly if that ever stops
 
@@ -52,6 +51,7 @@ Very large vaults are handled a piece at a time rather than loaded whole, so siz
 
 Thanks to Chris, who proposed this, built it, ran it on his own vault first, and whose ten silent days shaped the design.
 
+
 ### 🤝 Dex can work with your Pipedrive deals, and never behind your back
 
 If you keep deals in Pipedrive, you have been keeping them twice: once in the system your company reports from, and once in the notes where you actually think about the deal. The two drift apart within days, and reconciling them by hand is exactly the admin nobody does on a Friday afternoon. Chris built this to solve it for himself and offered it back.
@@ -68,6 +68,7 @@ If you keep deals in Pipedrive, you have been keeping them twice: once in the sy
 
 Thanks to Chris, who built and hardened this before offering it upstream (requested in issue #360).
 
+
 ### 🧺 Your daily plan stops running out of room as your vault grows
 
 The big daily rituals (planning your day, reviewing it, closing the week, prepping a meeting, processing your meetings) work by reading a lot first: your calendar, your tasks, your notes, your mail, your meeting history. In a young vault that reading is light. In a vault with a year or two of history, it can be so much material that Dex fills up on the reading alone and has nothing left for the part you actually came for. The failure is quiet: sessions get slower and shallower, and on the worst days a review dies halfway through and has to be rebuilt the next morning. One long-time user measured a single day of these rituals and found that of everything Dex read, less than two percent actually needed to stay in the conversation.
@@ -82,6 +83,7 @@ The big daily rituals (planning your day, reviewing it, closing the week, preppi
 
 The same steps run in the same order on a small or young vault, with more headroom for the day the vault gets big. Being honest about what's measured: the reading cost above was measured on a real, mature vault; the improvement to your conversation's headroom follows from moving that reading out of it, and hasn't been measured side by side.
 
+
 ### 🧹 Your list of changes stays yours — Dex's own files stop showing up in it
 
 Chris found his vault's change list crowded with dozens of files he never touched — Dex's own product files, freshly rewritten by an update and showing up as if they were his edits. The cause: the file that tells your vault what to overlook is written for the team that builds Dex, and it deliberately keeps Dex's own files visible there. Inside *your* vault that's backwards — one broad "save everything" moment quietly folds hundreds of Dex files into your private history, and every update after that dirties them all again.
@@ -94,6 +96,7 @@ Chris found his vault's change list crowded with dozens of files he never touche
 
 Thanks to Chris for the report, traced from a single noisy update all the way to the root cause.
 
+
 ### 📦 A new version is never announced before the files you download exist
 
 When Dex put out a new version, the announcement page appeared within seconds — but the files your copy of Dex actually downloads to update or repair itself were prepared separately, after the full test suite had run, and attached only afterwards. So there was always a window where the newest version was announced and undownloadable, and if those tests failed or got stuck waiting behind another long-running check, the window never closed. That is what happened on 11 August: version 1.94.0 sat at the top of the releases page for about ninety minutes with nothing attached to it, while Dex's own emergency repair instructions pointed at a file that came back "not found". The person most likely to hit that is someone whose update is already broken.
@@ -105,6 +108,47 @@ When Dex put out a new version, the announcement page appeared within seconds �
 * **Your download is verified before it is offered, not after.** Each release includes small companion files that let you confirm a download arrived complete and unaltered. Dex now checks those against the real files before the release goes public, so the verification step in the repair instructions cannot fail on something Dex itself published.
 * **Something now keeps checking the real download links.** A standing check fetches the newest release exactly the way your copy of Dex would — including the precise links written into the emergency repair instructions — and raises the alarm if any of them is missing or damaged. It runs hourly on the machine that watches Dex's releases, with a second, slower copy running on GitHub itself in case that machine is off. A half-published release is caught in minutes to an hour or so, rather than whenever someone unlucky runs into it.
 * **A release waiting its turn now says so.** Before releases go out, Dex runs a long rehearsal that replays real historic updates, and that rehearsal occupies the release lane for several hours. A release queued behind it now explains that on its own page, so it reads as waiting rather than broken.
+
+### 🔍 Dex stops blaming your settings file for something else being missing
+
+When a supporting component Dex relies on was absent, Dex reported that your settings
+file was damaged. Two completely different problems wearing the same message, and the
+one you would have gone looking for was the wrong one. The missing component is now
+named as exactly that, everywhere that message can reach you.
+
+Thanks to Amit Godbole, reporting for the first time.
+
+### 🩺 Doctor stops giving an all-clear that an update would refuse
+
+Doctor's update-readiness check worked out its own answer instead of asking the part of
+Dex that actually performs updates. So it could tell you that you were ready at the very
+moment a real update would have refused. It now asks the same gate the update itself
+uses, and reports a problem when there is one.
+
+Also thanks to Amit for this one.
+
+### 📅 A ritual confirmed on Sunday morning no longer loses Sunday evening
+
+When you confirmed a recurring session, Dex decided which upcoming ones to prepare for
+using a window that stopped at the current time of day rather than the end of the day.
+On a Sunday that collapsed the window onto the moment you confirmed, so a session later
+the same day quietly got no preparation at all.
+
+### 🔒 A safety check that could not start now starts
+
+Dex's automatic behaviours — including the guard that refuses dangerous commands — were
+found using a location relative to wherever you happened to be working. Run something
+from a subfolder and the guard could not launch: a safety control that was quietly not
+there. Every one is now anchored to the project itself, and a test stops a relative path
+coming back.
+
+### 🧭 One place to look when something seems wrong
+
+The guide now says plainly what to reach for: `/dex-doctor` first when something seems
+broken, `/feedback` when it looks like a genuine Dex bug — with the privacy promise
+spelled out, so you know what does and does not leave your machine.
+
+---
 
 ## [1.94.0] — 📦 Moving your Dex folder no longer locks you out of updating (2026-08-11)
 
