@@ -351,7 +351,9 @@ See **[Calendar_Setup.md](06-Resources/Dex_System/Calendar_Setup.md)** for the f
 
 ### Something else seems broken after setup?
 
-Once Dex is running, ask it to run `/dex-doctor` — a whole-system checkup that finds what's wrong, fixes what's safe on its own, and guides you through the rest. And if the problem turns out to be a bug in Dex itself, run `/feedback` (or just say "report this"): Dex writes the bug report for you, shows you what would be sent before anything leaves (never anything from your notes or meetings), and tells you when the fix ships.
+Once Dex is running, ask it to run `/dex-doctor` — a whole-system checkup that tells you honestly what's working, what's switched off and what's broken, repairs what it can on its own, and guides you through the rest.
+
+And if the problem turns out to be a bug in Dex itself, you don't need a command or the right words: just describe what happened ("the meeting sync is doing something weird"). Dex investigates on your machine, writes the bug report for you, and by default waits for your yes before anything leaves — never anything from your notes, meetings or conversations. It tells you when the fix ships. Details: [what a report can contain](https://heydex.ai/help/feedback.html) · [the checkup](https://heydex.ai/help/updating-troubleshooting.html#health-dex-doctor)
 
 </details>
 
