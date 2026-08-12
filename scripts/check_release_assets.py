@@ -419,7 +419,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--repo-root",
         default=str(Path(__file__).resolve().parents[1]),
-        help=f"Repository root, used only with --rescue-doc-source local.",
+        help="Repository root, used only with --rescue-doc-source local.",
     )
     parser.add_argument(
         "--rescue-doc-source",
