@@ -483,6 +483,83 @@ def test_main_exit_one_for_a_broken_journey(tmp_path: Path, capsys) -> None:
     assert report["summary"] == {"ok": 0, "broken": 1, "unknown": 0, "off": 0}
 
 
+@pytest.mark.parametrize(
+    ("missing_module", "expected_detail"),
+    [
+        (
+            "core",
+            "Dex's own code could not be loaded (No module named 'core'). "
+            "This is a Dex checkup fault, not a missing Python package.",
+        ),
+        (
+            "yaml",
+            "Python module 'yaml' is not installed in this vault's .venv — run /dex-update "
+            "(or reinstall requirements.txt into that .venv), then re-run /dex-doctor",
+        ),
+    ],
+)
+def test_smoke_preparation_names_the_missing_module_truthfully(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    missing_module: str,
+    expected_detail: str,
+) -> None:
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    monkeypatch.setattr(smoke, "_authorize_internal", lambda *_args: None)
+    monkeypatch.setattr(smoke, "_block_python_network", lambda: None)
+    monkeypatch.setattr(smoke, "_internal_release_root", lambda *_args: tmp_path)
+
+    def fail_with_missing_module(*_args) -> None:
+        raise ModuleNotFoundError(f"No module named '{missing_module}'", name=missing_module)
+
+    monkeypatch.setattr(smoke, "_prepare_vault", fail_with_missing_module)
+
+    exit_code = smoke.main(
+        [
+            "--_prepare",
+            "configs",
+            "--source-root",
+            str(tmp_path),
+            "--vault-root",
+            str(vault),
+        ]
+    )
+
+    result = json.loads(capsys.readouterr().out)
+    assert exit_code == 0
+    assert result == {"verdict": "UNKNOWN", "detail": expected_detail}
+
+
+def test_smoke_journey_names_a_missing_dex_module_truthfully(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    monkeypatch.setenv("VAULT_PATH", str(vault))
+    monkeypatch.setattr(smoke, "_authorize_internal", lambda *_args: None)
+    monkeypatch.setattr(smoke, "_block_python_network", lambda: None)
+    monkeypatch.setattr(smoke, "_internal_release_root", lambda *_args: tmp_path)
+
+    def fail_with_missing_core(*_args) -> dict[str, str]:
+        raise ModuleNotFoundError("No module named 'core'", name="core")
+
+    monkeypatch.setitem(smoke.INTERNAL_JOURNEYS, "configs", fail_with_missing_core)
+
+    exit_code = smoke.main(["--_journey", "configs"])
+
+    result = json.loads(capsys.readouterr().out)
+    assert exit_code == 0
+    assert result == {
+        "verdict": "UNKNOWN",
+        "detail": "Dex's own code could not be loaded (No module named 'core'). "
+        "This is a Dex checkup fault, not a missing Python package.",
+    }
+
+
 def test_ledger_writes_latest_and_versioned_history(tmp_path: Path, capsys) -> None:
     vault = _write_valid_vault(tmp_path)
 

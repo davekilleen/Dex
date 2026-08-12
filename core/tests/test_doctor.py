@@ -2096,6 +2096,22 @@ def test_jobs_loaded_checks_interpreter_exit_status_and_healthy_state(monkeypatc
     assert doctor._probe_jobs_loaded(context).verdict == "UNKNOWN"
 
 
+def test_jobs_loaded_treats_a_live_pid_as_authoritative_over_a_previous_exit(monkeypatch, context):
+    _write_plist(context, "com.dex.meeting-intel")
+    monkeypatch.setattr(doctor, "_is_macos", lambda: True)
+    monkeypatch.setattr(doctor, "_launchctl_domain_check", lambda: None)
+    monkeypatch.setattr(doctor, "_plist_interpreter", lambda _plist: "/bin/bash")
+    monkeypatch.setattr(
+        doctor,
+        "_launchctl_status",
+        lambda _label: {"loaded": True, "pid": 5266, "last_exit_status": -15},
+    )
+
+    result = doctor._probe_jobs_loaded(context)
+
+    assert result.verdict == "OK"
+
+
 def test_jobs_loaded_maps_invalid_or_unsubstituted_plist_to_broken_t2(monkeypatch, context):
     plist = _write_plist(context, "com.dex.meeting-intel")
     with plist.open("wb") as handle:
@@ -2188,14 +2204,18 @@ def test_empty_plutil_failure_is_unknown_not_malformed(monkeypatch, context):
 
 
 def test_launchctl_status_adapter_parses_last_exit_status(monkeypatch):
-    output = '{\n    "LastExitStatus" = 7;\n}\n'
+    output = '{\n    "PID" = 5266;\n    "LastExitStatus" = 7;\n}\n'
     monkeypatch.setattr(
         doctor.subprocess,
         "run",
         lambda command, **_kwargs: subprocess.CompletedProcess(command, 0, stdout=output, stderr=""),
     )
 
-    assert doctor._launchctl_status("com.dex.test") == {"loaded": True, "last_exit_status": 7}
+    assert doctor._launchctl_status("com.dex.test") == {
+        "loaded": True,
+        "pid": 5266,
+        "last_exit_status": 7,
+    }
 
     monkeypatch.setattr(
         doctor.subprocess,
@@ -2207,7 +2227,11 @@ def test_launchctl_status_adapter_parses_last_exit_status(monkeypatch):
             stderr="Could not find service",
         ),
     )
-    assert doctor._launchctl_status("com.dex.missing") == {"loaded": False, "last_exit_status": None}
+    assert doctor._launchctl_status("com.dex.missing") == {
+        "loaded": False,
+        "pid": None,
+        "last_exit_status": None,
+    }
 
 
 def test_jobs_loaded_degrades_to_unknown_off_macos(monkeypatch, context):

@@ -2542,11 +2542,13 @@ def _launchctl_status(label: str) -> dict[str, int | bool | None]:
     if result.returncode != 0:
         if _looks_like_sandbox_failure(combined):
             raise PermissionError(combined)
-        return {"loaded": False, "last_exit_status": None}
-    match = re.search(r"LastExitStatus\D+(-?\d+)", result.stdout)
+        return {"loaded": False, "pid": None, "last_exit_status": None}
+    pid_match = re.search(r"\bPID\D+(\d+)", result.stdout)
+    exit_match = re.search(r"LastExitStatus\D+(-?\d+)", result.stdout)
     return {
         "loaded": True,
-        "last_exit_status": int(match.group(1)) if match else None,
+        "pid": int(pid_match.group(1)) if pid_match else None,
+        "last_exit_status": int(exit_match.group(1)) if exit_match else None,
     }
 
 
@@ -2761,6 +2763,10 @@ def _probe_jobs_loaded(context: DoctorContext) -> ProbeResult:
                     continue
                 if not status["loaded"]:
                     issues.append((2, f"{label} is installed but not loaded"))
+                elif status.get("pid") is not None:
+                    # LastExitStatus describes the previous process. A live PID
+                    # is the current state and must win over stale history.
+                    continue
                 elif status["last_exit_status"] is None:
                     unknowns.append(f"{label} is loaded but has no observable LastExitStatus")
                 elif status["last_exit_status"] != 0:

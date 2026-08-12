@@ -68,6 +68,23 @@ SENSITIVE_CONFIG_KEY = re.compile(
     r"(?:api[_-]?key|authorization|credential|password|secret|token)",
     re.IGNORECASE,
 )
+
+
+def _missing_module_detail(error: ModuleNotFoundError) -> str:
+    module = error.name
+    if module == "core" or (isinstance(module, str) and module.startswith("core.")):
+        return (
+            f"Dex's own code could not be loaded ({_one_line(error)}). "
+            "This is a Dex checkup fault, not a missing Python package."
+        )
+    if module:
+        return (
+            f"Python module {module!r} is not installed in this vault's .venv — run /dex-update "
+            "(or reinstall requirements.txt into that .venv), then re-run /dex-doctor"
+        )
+    return MISSING_PACKAGES_DETAIL
+
+
 SNAPSHOT_CHANGED_DETAIL = "snapshot changed before launch"
 MCP_ONCE_CONSENT_DETAIL = "valid fresh single-use consent token is required"
 MCP_ONCE_TOKEN_PREFIX = "dex-mcp-once-consent-"
@@ -2693,8 +2710,8 @@ def main(
             result = {"verdict": "BROKEN", "detail": _one_line(exc)}
         except JourneySafetySkip as exc:
             result = {"verdict": "UNKNOWN", "detail": _one_line(exc)}
-        except ModuleNotFoundError:
-            result = {"verdict": "UNKNOWN", "detail": MISSING_PACKAGES_DETAIL}
+        except ModuleNotFoundError as error:
+            result = {"verdict": "UNKNOWN", "detail": _missing_module_detail(error)}
         except (OSError, PermissionError) as exc:
             print(f"smoke preparation refused: {_one_line(exc)}", file=sys.stderr)
             return 2
@@ -2710,8 +2727,8 @@ def main(
             _block_python_network()
             release_root = _internal_release_root(args.run_marker, args.release_root)
             result = INTERNAL_JOURNEYS[args._journey](vault, release_root)
-        except ModuleNotFoundError:
-            result = {"verdict": "UNKNOWN", "detail": MISSING_PACKAGES_DETAIL}
+        except ModuleNotFoundError as error:
+            result = {"verdict": "UNKNOWN", "detail": _missing_module_detail(error)}
         except (KeyError, OSError, PermissionError) as exc:
             print(f"internal smoke journey refused: {_one_line(exc)}", file=sys.stderr)
             return 2
