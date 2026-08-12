@@ -55,6 +55,22 @@ _OFFLINE_MARKERS = (
     "couldn't connect to server",
     "temporary failure in name resolution",
 )
+# Deliberately NOT merged into _OFFLINE_MARKERS. "We could not reach GitHub"
+# and "we reached something claiming to be GitHub but could not verify it" are
+# different risk classes: the second one is what an interception looks like.
+# Folding them together would make a genuine man-in-the-middle read as routine.
+_TLS_TRUST_MARKERS = (
+    "ssl certificate problem",
+    "server certificate verification failed",
+    "unable to get local issuer certificate",
+    "certificate has expired",
+    "schannel:",
+)
+TLS_UNTRUSTED_MESSAGE = (
+    "Dex couldn't verify a secure connection to GitHub. This usually means a "
+    "network proxy is inspecting traffic. Dex did not check for an update and "
+    "did not relax certificate verification."
+)
 _TRANSIENT_HTTP_REJECTION_RE = re.compile(
     r"(?:\bHTTP(?:/[0-9.]+)?\s+429\b|\brequested URL returned error:\s*429\b)",
     re.IGNORECASE,
@@ -109,6 +125,16 @@ class TransientHttpRejectionError(EvidenceError):
 
     def __init__(self) -> None:
         super().__init__("canonical Git endpoint returned a transient HTTP rejection")
+
+
+class TlsTrustError(EvidenceError):
+    """The canonical Git endpoint's certificate chain could not be trusted.
+
+    This is a transport-trust failure, not a claim about the release evidence.
+    It is surfaced as its own reason so users behind a TLS-inspecting proxy are
+    never told their release evidence is invalid. Dex never responds to it by
+    weakening or bypassing certificate verification.
+    """
 
 
 class CancelledError(RuntimeError):
@@ -215,6 +241,30 @@ class TagObjectMovedError(EvidenceError):
 
 class TagObjectMismatchError(EvidenceError):
     """Fetched tag identity differs from the canonical remote advertisement."""
+
+
+# Ordered most-specific-first and matched with isinstance, so exception
+# subclasses (FileNotFoundError, PermissionError, CalledProcessError,
+# TimeoutExpired, UnicodeDecodeError) classify honestly instead of silently
+# collapsing into "evidence-invalid" the way exact-type dispatch made them.
+_FAILURE_REASONS: tuple[tuple[type[BaseException], str], ...] = (
+    (CancelledError, "cancelled"),
+    (TagObjectMovedError, "tag-object-moved"),
+    (TagObjectMismatchError, "tag-object-mismatch"),
+    (TlsTrustError, "tls-untrusted"),
+    (EvidenceError, "evidence-invalid"),
+    (UnicodeError, "encoding-invalid"),
+    (OSError, "io-error"),
+    (subprocess.SubprocessError, "subprocess-failed"),
+)
+
+
+def _failure_reason(error: BaseException) -> str:
+    """Classify one caught evidence failure into its closed reason code."""
+    for error_type, reason in _FAILURE_REASONS:
+        if isinstance(error, error_type):
+            return reason
+    return "evidence-invalid"
 
 
 @dataclass
@@ -506,7 +556,13 @@ class GitRunner:
                 detail = stderr[: 64 * 1024].decode("utf-8", errors="replace").strip()
                 if network and _TRANSIENT_HTTP_REJECTION_RE.search(detail):
                     raise TransientHttpRejectionError
-                if network and any(marker in detail.lower() for marker in _OFFLINE_MARKERS):
+                lowered = detail.lower()
+                if network and any(marker in lowered for marker in _TLS_TRUST_MARKERS):
+                    # Retain no stderr, exactly as the HTTP-429 classification does.
+                    raise TlsTrustError(
+                        "bounded canonical fetch could not verify a secure connection"
+                    )
+                if network and any(marker in lowered for marker in _OFFLINE_MARKERS):
                     raise OfflineError("bounded canonical fetch was unavailable")
                 raise EvidenceError(detail or "Git evidence command failed")
             stdout_file.seek(0)
@@ -1085,15 +1141,13 @@ class UpdateVerifier:
         except OfflineError:
             return {"status": STATUS_OFFLINE, "reason": "network-unavailable"}
         except (CancelledError, EvidenceError, OSError, UnicodeError, subprocess.SubprocessError) as error:
-            reason = {
-                CancelledError: "cancelled",
-                TagObjectMovedError: "tag-object-moved",
-                TagObjectMismatchError: "tag-object-mismatch",
-                EvidenceError: "evidence-invalid",
-                OSError: "io-error",
-                UnicodeError: "encoding-invalid",
-                subprocess.SubprocessError: "subprocess-failed",
-            }.get(type(error), "evidence-invalid")
+            reason = _failure_reason(error)
+            if reason == "tls-untrusted":
+                return {
+                    "status": STATUS_UNKNOWN,
+                    "reason": reason,
+                    "message": TLS_UNTRUSTED_MESSAGE,
+                }
             return {"status": STATUS_UNKNOWN, "reason": reason}
         finally:
             self._budget = None
@@ -1390,17 +1444,11 @@ class UpdateVerifier:
                 return {**result, "reason": reason}
             return {**result, "status": STATUS_OFFLINE, "reason": reason}
         except (CancelledError, EvidenceError, OSError, UnicodeError, subprocess.SubprocessError) as error:
-            reason = {
-                CancelledError: "cancelled",
-                TagObjectMovedError: "tag-object-moved",
-                TagObjectMismatchError: "tag-object-mismatch",
-                EvidenceError: "evidence-invalid",
-                OSError: "io-error",
-                UnicodeError: "encoding-invalid",
-                subprocess.SubprocessError: "subprocess-failed",
-            }.get(type(error), "evidence-invalid")
+            reason = _failure_reason(error)
             if not self._persist_failure(today=today, status=STATUS_UNKNOWN, reason=reason):
                 reason = "state-write-failed"
+            if reason == "tls-untrusted":
+                return {**result, "reason": reason, "message": TLS_UNTRUSTED_MESSAGE}
             return {**result, "reason": reason}
         finally:
             self._budget = None

@@ -1228,3 +1228,192 @@ def test_latest_release_identity_proof_reports_up_to_date(tmp_path: Path) -> Non
         "current_version": "1.63.0",
         "latest_version": "1.63.0",
     }
+
+
+# --- TLS-trust classification and subclass-safe failure dispatch -------------
+#
+# A TLS-inspecting corporate proxy (Zscaler, Netskope) or a captive portal makes
+# git fail with a certificate error. That is neither "offline" nor "the release
+# evidence is invalid": it is "Dex could not verify a secure connection". These
+# tests pin the distinct classification, and pin that the failure dispatch uses
+# isinstance so exception subclasses stop collapsing into evidence-invalid.
+
+
+_TLS_INTERCEPTION_STDERR = (
+    "fatal: unable to access 'https://github.com/davekilleen/Dex.git/': "
+    "SSL certificate problem: self signed certificate",
+    "fatal: unable to access 'https://github.com/davekilleen/Dex.git/': "
+    "server certificate verification failed. CAfile: none CRLfile: none",
+    "fatal: unable to access 'https://github.com/davekilleen/Dex.git/': "
+    "SSL certificate problem: unable to get local issuer certificate",
+    "fatal: unable to access 'https://github.com/davekilleen/Dex.git/': "
+    "SSL certificate problem: certificate has expired",
+    "fatal: unable to access 'https://github.com/davekilleen/Dex.git/': "
+    "schannel: CertGetCertificateChain trust error CERT_TRUST_IS_UNTRUSTED_ROOT",
+)
+
+
+@pytest.mark.parametrize("detail", _TLS_INTERCEPTION_STDERR)
+def test_network_git_classifies_tls_trust_failures_distinctly(
+    tmp_path: Path,
+    detail: str,
+) -> None:
+    """A certificate failure is its own risk class, not offline and not invalid."""
+    fake_git = tmp_path / "git"
+    _write(fake_git, f'#!/bin/sh\necho "{detail}" >&2\nexit 128\n'.encode())
+    fake_git.chmod(0o755)
+    runner = GitRunner(git_path=fake_git)
+
+    with pytest.raises(update_verifier_module.TlsTrustError) as error_info:
+        runner.run_plain("ls-remote", network=True)
+
+    # It stays inside the evidence-error family so existing handlers still catch
+    # it, but it must never be indistinguishable from a generic EvidenceError.
+    assert isinstance(error_info.value, EvidenceError)
+    assert type(error_info.value) is not EvidenceError
+    assert not isinstance(error_info.value, OfflineError)
+    # Same stderr-retention rule the HTTP-429 classification already follows.
+    assert "github.com" not in str(error_info.value)
+
+
+def test_tls_trust_markers_are_not_folded_into_the_offline_markers(tmp_path: Path) -> None:
+    """Conflating 'cannot verify the certificate' with 'offline' would hide a MITM."""
+    for marker in (
+        "ssl certificate problem",
+        "server certificate verification failed",
+        "unable to get local issuer certificate",
+        "certificate has expired",
+        "schannel:",
+    ):
+        assert marker not in update_verifier_module._OFFLINE_MARKERS
+
+
+def test_release_identity_proof_reports_tls_untrusted_not_evidence_invalid(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    vault = _installed_vault(tmp_path / "vault")
+
+    def reject(*_args, **_kwargs):
+        raise update_verifier_module.TlsTrustError(
+            "bounded canonical fetch could not verify a secure connection"
+        )
+
+    monkeypatch.setattr(UpdateVerifier, "_remote_release_tags", reject)
+
+    result = update_verifier_module.prove_latest_release(
+        vault,
+        "stable",
+        state_root=tmp_path / "state",
+        wall_clock_seconds=10.0,
+    )
+
+    assert result["status"] == STATUS_UNKNOWN
+    assert result["reason"] == "tls-untrusted"
+    assert result["reason"] != "evidence-invalid"
+    message = result["message"]
+    assert "secure connection" in message
+    assert "proxy" in message
+
+
+def test_check_reports_tls_untrusted_with_an_honest_user_facing_message(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    vault = _installed_vault(tmp_path / "vault")
+    remote = tmp_path / "remote"
+    _init_repo(remote)
+    _release(remote, "1.62.0")
+
+    def reject(*_args, **_kwargs):
+        raise update_verifier_module.TlsTrustError(
+            "bounded canonical fetch could not verify a secure connection"
+        )
+
+    monkeypatch.setattr(UpdateVerifier, "_remote_release_tags", reject)
+
+    result = _verifier(vault, remote, tmp_path / "state").check()
+
+    assert result["status"] == STATUS_UNKNOWN
+    assert result["should_notify"] is False
+    assert result["reason"] == "tls-untrusted"
+    assert "secure connection" in result["message"]
+
+
+@pytest.mark.parametrize(
+    ("error", "expected_reason"),
+    (
+        (FileNotFoundError(2, "no such file"), "io-error"),
+        (PermissionError(13, "permission denied"), "io-error"),
+        (OSError(5, "input/output error"), "io-error"),
+        (subprocess.CalledProcessError(128, ("git", "ls-remote")), "subprocess-failed"),
+        (subprocess.TimeoutExpired(("git", "ls-remote"), 10.0), "subprocess-failed"),
+        (subprocess.SubprocessError("generic subprocess failure"), "subprocess-failed"),
+        (UnicodeDecodeError("utf-8", b"\xff", 0, 1, "invalid start byte"), "encoding-invalid"),
+        (CancelledError("synthetic cancellation"), "cancelled"),
+        (EvidenceError("genuinely invalid evidence"), "evidence-invalid"),
+    ),
+)
+def test_failure_dispatch_classifies_exception_subclasses_by_isinstance(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    error: Exception,
+    expected_reason: str,
+) -> None:
+    """Exact-type dispatch silently collapsed every subclass into evidence-invalid."""
+    vault = _installed_vault(tmp_path / "vault")
+
+    def reject(*_args, **_kwargs):
+        raise error
+
+    monkeypatch.setattr(UpdateVerifier, "_remote_release_tags", reject)
+
+    result = update_verifier_module.prove_latest_release(
+        vault,
+        "stable",
+        state_root=tmp_path / "state",
+        wall_clock_seconds=10.0,
+    )
+
+    assert result == {"status": STATUS_UNKNOWN, "reason": expected_reason}
+
+
+@pytest.mark.parametrize(
+    ("error", "expected_reason"),
+    (
+        (FileNotFoundError(2, "no such file"), "io-error"),
+        (subprocess.CalledProcessError(128, ("git", "ls-remote")), "subprocess-failed"),
+    ),
+)
+def test_check_failure_dispatch_classifies_exception_subclasses_by_isinstance(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    error: Exception,
+    expected_reason: str,
+) -> None:
+    vault = _installed_vault(tmp_path / "vault")
+    remote = tmp_path / "remote"
+    _init_repo(remote)
+    _release(remote, "1.62.0")
+
+    def reject(*_args, **_kwargs):
+        raise error
+
+    monkeypatch.setattr(UpdateVerifier, "_remote_release_tags", reject)
+
+    result = _verifier(vault, remote, tmp_path / "state").check()
+
+    assert result["reason"] == expected_reason
+
+
+def test_no_certificate_verification_escape_hatch_exists_in_the_verifier() -> None:
+    """The fix improves the message and the retry, never the trust decision."""
+    source = Path(update_verifier_module.__file__).read_text(encoding="utf-8")
+    for forbidden in (
+        "GIT_SSL_NO_VERIFY",
+        "sslVerify",
+        "GIT_SSL_CAINFO",
+        "http.sslVerify",
+        "--no-verify-ssl",
+    ):
+        assert forbidden not in source
