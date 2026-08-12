@@ -88,6 +88,91 @@ reviewer: if the 100k budget is currently being exceeded, the next nightly will
 go red. That is the gate working for the first time, not a regression
 introduced here.
 
+### Epilogue — the next nightly did go red, and the gate had never been able to pass *(2026-08-12)*
+
+The very next nightly ([run 31564048293](https://github.com/davekilleen/Dex/actions/runs/31564048293))
+failed on this step, exactly as predicted above. Investigating it produced the
+proof that belongs with this finding, because **a gate that was born unable to
+pass is the purest specimen of this audit's class** — and the next auditor
+should inherit the evidence rather than re-derive it.
+
+The benchmark prints its measurements to stdout even when the step went green,
+so `tee` preserved them in every nightly log. Recovered for every run since the
+gate landed:
+
+| night | `total_measured` | budget in force | over |
+|---|---|---|---|
+| 2026-07-22 *(first run after D-GATE)* | 35.1s | 17.0s | 2.06x |
+| 2026-07-23 | 30.3s | 17.0s | 1.78x |
+| 2026-07-29 | 172.7s | 84.5s | 2.04x |
+| 2026-07-30 | 201.0s | 84.5s | 2.38x |
+| 2026-07-31 | 193.7s | 84.5s | 2.29x |
+| 2026-08-01 | 213.0s | 84.5s | 2.52x |
+| 2026-08-02 | 229.8s | 84.5s | 2.72x |
+| 2026-08-03 | 231.3s | 84.5s | 2.74x |
+| 2026-08-04 | 175.4s | 84.5s | 2.08x |
+| 2026-08-05 | 239.9s | 84.5s | 2.84x |
+| 2026-08-06 | 217.7s | 84.5s | 2.58x |
+| 2026-08-07 | 174.9s | 84.5s | 2.07x |
+| 2026-08-08 | 264.8s | 84.5s | 3.14x |
+| 2026-08-09 | 205.0s | 84.5s | 2.43x |
+| 2026-08-10 | 292.1s | 84.5s | 3.46x |
+| 2026-08-11 | 217.7s | 84.5s | 2.58x |
+| 2026-08-12 *(first honest failure)* | 272.4s | 84.5s | 3.22x |
+
+**17 of 17 runs over budget. Never once under, including the first.** The
+budget rose at #234 (17.0s to 84.5s) when `customization_assessment` was added;
+both budgets were exceeded from their first night onward.
+
+Two independent causes, deliberately separated:
+
+1. **A real quadratic, which the dead gate hid.** `discover()` tested
+   `entry.actual_path in inventory.unproven_paths` once per entry against a
+   *tuple* — a full scan per entry, O(n^2) on any vault where most files are
+   unproven. At 50k files that one loop was 77% of the whole assessment stage.
+   Fixed in #482 (`dffd8fb8`): 100k assessment ~4min to 20.9s on the
+   investigating host. **This is the defect the gate existed to catch, and it
+   was catching it — into `/dev/null` — from night one.**
+2. **A budget calibrated on a machine that never runs it.** `budget_version` 1
+   was measured on an 18-core M5 Pro laptop and enforced on a GitHub-hosted
+   `macos-latest` runner roughly 1.8x slower, which is why *every* stage was
+   uniformly ~1.9-2.2x over from the start. Recalibrated against the enforcing
+   runner in the follow-up to #482.
+
+Two lessons for future gates, both cheap to apply:
+
+- **Calibrate a threshold on the machine that enforces it.** A budget measured
+  somewhere faster measures the runner, not the code.
+- **Derive headroom from observed spread, never a fixed percentage.** The
+  original +30% sat *below* this runner's own 1.75x night-to-night variation on
+  identical work, so the budget could not have been stable even if it had been
+  centred correctly.
+- **Do not budget a stage smaller than the measurement noise.** Caught in the
+  replacement budget's own deliberate-break test: `build_adoption_plan` has a
+  ~4.6ms median, so even a 2.5x ceiling (11.5ms) sits inside ordinary timer
+  jitter and tripped on an *unmodified* tree. Ceilings are now floored at 0.5s,
+  which is still 109x that stage's median — a real blowup there cannot hide,
+  and a millisecond of noise cannot turn the nightly red. A threshold that can
+  fail for reasons unrelated to the code is the mirror-image of this audit's
+  bug: not a gate that cannot fail, but one that fails meaninglessly, which
+  gets muted and then ignored.
+- **Prove a replacement threshold both ways before shipping it.** Both
+  directions were demonstrated at 100k before merge — exit 0 on an unmodified
+  tree, exit 1 (382.8s vs 29.0s) with the #482 quadratic deliberately
+  reintroduced. The pass run is what caught the millisecond-stage flake above.
+
+And one for auditors: **a gate that has never once passed is as broken as a
+gate that has never once failed**, and it is detectable the same way — by
+reading what it actually measured, not whether it went green.
+
+**Dated follow-up (due 2026-08-19, 7 nights after #482 merged):** the ceilings
+now in `core/lifecycle/performance-budget-v1.json` are explicitly marked
+**provisional** — 2.5x the projected post-fix CI median. Derive final per-stage
+ceilings from the first 7 nights of the real post-#482 distribution (median
+plus spread-derived headroom, statistic argued in that PR) so the provisional
+multiplier does not silently become permanent. A provisional number left
+unrevisited is how the original budget survived 17 failing nights.
+
 ---
 
 ## F2 — The nightly flaky-test detector passes when it runs no tests *(confirmed)*
