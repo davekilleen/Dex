@@ -423,6 +423,37 @@ Nothing about the executor changed; only what the tests watch.
 
 ---
 
+## Follow-ups opened after this audit
+
+Recorded here so the next gate-health pass starts from the current state rather
+than from 11 August.
+
+- **F11 — the revived release smoke journeys are flaky under the CI sandbox.**
+  [#477](https://github.com/davekilleen/Dex/issues/477). This audit's family had
+  one more member, found on 12 August during an open-PR triage: the release
+  smoke comparison built its expected-file list from `git ls-tree` while the
+  trusted snapshot came from `git archive`, which honours `export-ignore`.
+  Fifteen `core` paths were therefore expected and permanently missing, so
+  *every* vault-mutating journey skipped with "Dex-owned core differs" no matter
+  which ref was used — the F1/F2/F4 mechanism exactly: the check ran, produced
+  output, and reported without exercising the thing it names. Fixed in
+  [#367](https://github.com/davekilleen/Dex/pull/367) (`c260582`), whose new
+  test derives its expectation from git itself (`ls-tree` vs `archive`) so the
+  exclusion list cannot silently drift.
+
+  **What is still open:** now that the journeys actually execute, one fails
+  roughly one run in three with a bare `EPERM` from inside the harness
+  (`mcp_startup` → verdict `UNKNOWN`, `harness_failed`, exit 2). That is the
+  harness failing to run under the runner's sandbox, not the product breaking —
+  and it lands on this document's own closing lesson: noise is how a suite earns
+  the reputation that makes people re-run it instead of reading it. A gate people
+  re-run until green is worth no more than the dead gate it replaced. #477 has
+  the three run links showing identical code green, red, then green, and argues
+  against the tempting non-fix (loosening the `exit_code == 0` assertion), which
+  would recreate the unfailable gate #367 just removed.
+
+---
+
 ## Smaller gaps, no action proposed
 
 - `scripts/check-path-consistency.sh:21` globs `*.py *.ts *.cjs *.sh` and so
