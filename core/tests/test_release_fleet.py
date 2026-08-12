@@ -2643,6 +2643,108 @@ def test_bridge_process_entry_probe_retains_the_streams_it_judged(
     ).read_text(encoding="utf-8")
 
 
+def test_bridge_process_entry_probe_starts_from_an_untidy_caller_environment(
+    tmp_path: Path,
+) -> None:
+    """A clean launch lets the scrub pass by doing nothing.
+
+    The v1.93.0 defect was produced by a caller-chosen locale: the bridge
+    removes it, and the relaunched interpreter must not reintroduce a
+    difference the clean-runtime check then refuses. Launching from the fleet's
+    own sealed environment never presents that input, so the probe deliberately
+    dirties it first. This asserts the dirt actually arrives in the child.
+    """
+
+    asset = tmp_path / "dex-update-bridge-v9.9.9.py"
+    asset.write_text(
+        "import json, os, sys\n"
+        f"print({release_fleet.BRIDGE_PROCESS_ENTRY_NOTICE!r}, file=sys.stderr)\n"
+        "print(json.dumps(dict(os.environ)), file=sys.stderr)\n"
+        "print('{}')\n"
+        "input('Type APPLY to continue: ')\n",
+        encoding="utf-8",
+    )
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    evidence_root = tmp_path / "evidence"
+
+    evidence = release_fleet.probe_bridge_process_entry(
+        vault=vault,
+        bridge_asset=asset,
+        python_runtime=_fixture_python_runtime(),
+        environment={"PATH": "/usr/bin:/bin"},
+        approval_word="APPLY",
+        evidence_root=evidence_root,
+    )
+
+    arrived = json.loads(str(evidence["stderr"]).splitlines()[1])
+    for name, value in release_fleet.BRIDGE_PROCESS_ENTRY_CALLER_NOISE.items():
+        assert arrived[name] == value, f"{name} never reached the launched bridge"
+    # The caller's own environment is preserved, not replaced.
+    assert arrived["PATH"] == "/usr/bin:/bin"
+
+    retained = json.loads(
+        (evidence_root / "bridge-process-entry.json").read_text(encoding="utf-8")
+    )
+    assert retained["caller_environment_noise"] == dict(
+        release_fleet.BRIDGE_PROCESS_ENTRY_CALLER_NOISE
+    )
+
+
+def test_the_caller_noise_is_the_input_class_that_produced_the_defect() -> None:
+    """Pin the parts that matter, so a future tidy-up cannot quietly drop them."""
+
+    noise = release_fleet.BRIDGE_PROCESS_ENTRY_CALLER_NOISE
+
+    # A caller-chosen locale: the bridge tolerates only the coercion's own
+    # outcomes, so a leak of this exact value must fail the clean-runtime check.
+    assert noise["LC_CTYPE"] == "en_GB.UTF-8"
+    assert noise["LC_CTYPE"] not in {"C.UTF-8", "C.utf8", "UTF-8"}
+    # ...and it only stays caller-chosen if the whole locale is. A lone
+    # LC_CTYPE over a C locale is coerced to C.UTF-8 before the launched
+    # process sees it, which the clean-runtime check tolerates -- so the probe
+    # would present no caller-chosen locale at all.
+    assert noise["LANG"] == noise["LC_CTYPE"]
+    assert noise["LC_ALL"] == noise["LC_CTYPE"]
+    # An import path the relaunched interpreter must not inherit.
+    assert "PYTHONPATH" in noise
+
+
+def test_the_caller_locale_survives_even_a_bare_environment(tmp_path: Path) -> None:
+    """The noise must not depend on what the fixture environment happens to set.
+
+    Regression for a real near-miss: with only LC_CTYPE in the noise, this probe
+    presented a caller-chosen locale when the fixture environment set LANG and
+    LC_ALL, and presented none when it did not -- silently, and identically
+    green either way.
+    """
+
+    asset = tmp_path / "dex-update-bridge-v9.9.9.py"
+    asset.write_text(
+        "import json, os, sys\n"
+        f"print({release_fleet.BRIDGE_PROCESS_ENTRY_NOTICE!r}, file=sys.stderr)\n"
+        "print(json.dumps(dict(os.environ)), file=sys.stderr)\n"
+        "print('{}')\n"
+        "input('Type APPLY to continue: ')\n",
+        encoding="utf-8",
+    )
+    vault = tmp_path / "vault"
+    vault.mkdir()
+
+    evidence = release_fleet.probe_bridge_process_entry(
+        vault=vault,
+        bridge_asset=asset,
+        python_runtime=_fixture_python_runtime(),
+        # Deliberately bare: no LANG, no LC_ALL.
+        environment={"PATH": "/usr/bin:/bin"},
+        approval_word="APPLY",
+        evidence_root=tmp_path / "evidence",
+    )
+
+    arrived = json.loads(str(evidence["stderr"]).splitlines()[1])
+    assert arrived["LC_CTYPE"] == "en_GB.UTF-8"
+
+
 def test_bridge_process_entry_probe_retains_the_streams_of_a_failing_run(
     tmp_path: Path,
 ) -> None:
