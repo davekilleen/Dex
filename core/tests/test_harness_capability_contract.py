@@ -31,6 +31,7 @@ LIVE_HARNESS_GUIDANCE = (
     ".agents/README.md",
     ".claude/skills/README.md",
     "docs/architecture/HARNESS-CAPABILITY.md",
+    "docs/architecture/HOOK-INVENTORY.md",
     "docs/architecture/DEX-CORE-MAP.md",
     "docs/Dex_System/Background_Processing_Guide.md",
     "docs/Dex_System/Dex_Technical_Guide.md",
@@ -56,6 +57,7 @@ TIER_LE_2_CODE_GLOBS = (
     "core/mcp/*.py",
     "core/lifecycle/*.py",
     "core/utils/*.py",
+    "core/context/*.py",
     ".scripts/**/*.cjs",
     ".scripts/**/*.js",
     ".scripts/**/*.py",
@@ -111,6 +113,25 @@ def test_architecture_doc_names_the_same_tiers_and_the_hooks_split() -> None:
     assert "Do not mass-migrate" in doc or "not migrated in this change" in doc.lower()
     assert "Claude Code" in doc
     assert "Tier 3" in doc
+    assert "boot_today" in doc
+    assert "get_person_context" in doc
+
+
+def test_hook_inventory_has_three_buckets_and_does_not_mass_migrate() -> None:
+    doc = _read("docs/architecture/HOOK-INVENTORY.md")
+    lowered = doc.lower()
+    assert "scheduled" in lowered
+    assert "in-turn inject" in lowered or "in-turn inject" in doc.lower()
+    assert "gates" in lowered
+    assert "do not mass-migrate" in lowered
+    assert "boot_today" in doc
+    assert "get_person_context" in doc
+    assert "session-start.sh" in doc
+    assert "person-context-injector.cjs" in doc
+    assert "dex-safety-guard.sh" in doc
+    assert "com.dex.meeting-intel" in doc
+    assert "Tier 1 Core" in doc
+    assert "Tier 3 Full" in doc
 
 
 def test_agents_readme_describes_generation_not_a_hand_mirror() -> None:

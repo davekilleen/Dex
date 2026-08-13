@@ -7,6 +7,20 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.98.0] — 🧭 Cursor and ChatGPT can load today's plan and a person's notes on purpose (2026-08-13)
+
+Claude Code already put this week's goals and a person's page into the chat automatically. Other apps only got those facts if the model happened to read a long instruction file — and it often skipped them.
+
+**What this fixes for you:**
+
+* **At the start of a chat in Cursor or ChatGPT, Dex can load the same day's facts Claude Code already showed.** This week's goals, priorities, focus areas, and urgent tasks come from one shared source. Other assistants ask Dex for them at the start of the session, instead of hoping they read the instructions.
+* **When a person comes up, those apps can load the same snapshot Claude Code already put in.** Role, company, last interaction, and open items.
+* **Claude Code still does this automatically.** Nothing about that path changed for you except it now uses the same source, so the facts cannot drift apart.
+
+This does not add a model picker, and it does not move every automatic behaviour off Claude Code.
+
+---
+
 ## [1.97.0] — 📝 Session notes get used, career evidence is kept, and Cursor gets the same named journeys (2026-08-13)
 
 A larger release than usual: session lessons actually get installed, career evidence is kept even without a number, Claude's private project notes are copied into the vault, other assistants get an honest account of what they can run, and a checkup that used to cry wolf now says what it means. Each is written up in full below.

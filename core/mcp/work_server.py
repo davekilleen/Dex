@@ -138,6 +138,8 @@ _repo_root = str(Path(__file__).parent.parent.parent)
 if _repo_root not in sys.path:
     sys.path.append(_repo_root)
 from core import capabilities as capability_rooms
+from core.context.person_context import get_person_context as get_person_context_payload
+from core.context.session_boot import build_session_boot
 from core.entity_engine import (
     create_page_if_absent,
     fingerprint_page,
@@ -4193,6 +4195,34 @@ async def handle_list_tools() -> list[types.Tool]:
             }
         ),
         types.Tool(
+            name="boot_today",
+            description=(
+                "Session boot context: today's date, strategic pillars, quarter "
+                "goals, week priorities, and urgent tasks. Cursor, ChatGPT, and "
+                "Codex should call this at session start. Claude Code auto-fires "
+                "the same payload via the SessionStart hook."
+            ),
+            inputSchema={"type": "object", "properties": {}},
+        ),
+        types.Tool(
+            name="get_person_context",
+            description=(
+                "Person inject payload: role, company, last interaction, and "
+                "open items. Call when a person is mentioned. Claude Code "
+                "auto-fires the same payload when a file with that person is read."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "description": "Person name (full name preferred)",
+                    },
+                },
+                "required": ["name"],
+            },
+        ),
+        types.Tool(
             name="create_person",
             description="Create a canonical person page with duplicate protection and refresh the People index.",
             inputSchema={
@@ -4353,6 +4383,8 @@ async def handle_call_tool(
                 "classify_task_effort": "Task effort classification failed",
                 "analyze_calendar_capacity": "Calendar capacity analysis failed",
                 "suggest_task_scheduling": "Task scheduling suggestion failed",
+                "boot_today": "Session boot context failed",
+                "get_person_context": "Person context lookup failed",
             }
             _log_health_error(
                 source="work-mcp",
@@ -6107,6 +6139,15 @@ async def _handle_call_tool_inner(
         person_name = arguments['name']
         company_filter = arguments.get('company')
         result = lookup_person_data(person_name, company_filter)
+        return [types.TextContent(type="text", text=json.dumps(result, indent=2, cls=DateTimeEncoder))]
+
+    elif name == "boot_today":
+        result = build_session_boot(BASE_DIR)
+        return [types.TextContent(type="text", text=json.dumps(result, indent=2, cls=DateTimeEncoder))]
+
+    elif name == "get_person_context":
+        person_name = (arguments or {}).get("name") or ""
+        result = get_person_context_payload(BASE_DIR, person_name)
         return [types.TextContent(type="text", text=json.dumps(result, indent=2, cls=DateTimeEncoder))]
 
     elif name == "create_person":

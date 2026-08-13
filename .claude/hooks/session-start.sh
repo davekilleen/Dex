@@ -15,10 +15,6 @@ fi
 echo "$NOW" > "$DEDUP_FILE"
 
 CLAUDE_DIR="$CLAUDE_PROJECT_DIR"
-PILLARS_FILE="$CLAUDE_DIR/System/pillars.yaml"
-QUARTER_GOALS="$CLAUDE_DIR/01-Quarter_Goals/Quarter_Goals.md"
-WEEK_PRIORITIES="$CLAUDE_DIR/02-Week_Priorities/Week_Priorities.md"
-TASKS_FILE="$CLAUDE_DIR/03-Tasks/Tasks.md"
 LEARNINGS_DIR="$CLAUDE_DIR/06-Resources/Learnings"
 MISTAKES_FILE="$LEARNINGS_DIR/Mistake_Patterns.md"
 PREFERENCES_FILE="$LEARNINGS_DIR/Working_Preferences.md"
@@ -138,50 +134,21 @@ fi
 
 echo ""
 
-# STRATEGIC HIERARCHY (Top-Down)
-
-# 1. Strategic Pillars
-if [[ -f "$PILLARS_FILE" ]]; then
-    echo "--- Strategic Pillars ---"
-    # Extract pillar names and descriptions
-    awk '/^  - id:/{getline; name=$0; getline; desc=$0; gsub(/^[[:space:]]*name: "/, "", name); gsub(/"$/, "", name); gsub(/^[[:space:]]*description: "/, "", desc); gsub(/"$/, "", desc); print "• " name " — " desc}' "$PILLARS_FILE" 2>/dev/null | head -5
-    echo "---"
-    echo ""
-fi
-
-# 2. Quarterly Goals
-if [[ -f "$QUARTER_GOALS" ]]; then
-    # Check if goals are filled in (not template)
-    if ! grep -q "^\[Goal 1 Title\]" "$QUARTER_GOALS" 2>/dev/null; then
-        echo "--- Quarter Goals ---"
-        # Extract goal titles and progress
-        awk '/^### [0-9]\./,/^---$/{if(/^### [0-9]\./) print; if(/^\*\*Progress:\*\*/) print}' "$QUARTER_GOALS" 2>/dev/null | head -10
-        echo "---"
-        echo ""
+# STRATEGIC HIERARCHY + urgent tasks — same payload as Work MCP boot_today.
+# The hook stays a thin wrapper so Cursor/ChatGPT/Codex calling the tool get
+# the same facts Claude Code injects here. Do not re-extract these in bash.
+HOOK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SESSION_BOOT_PY="$HOOK_DIR/../../core/context/session_boot.py"
+if [[ -f "$SESSION_BOOT_PY" ]]; then
+    BOOT_PYTHON="python3"
+    if [[ -f "$CLAUDE_DIR/.venv/bin/python" ]]; then
+        BOOT_PYTHON="$CLAUDE_DIR/.venv/bin/python"
+    elif [[ -f "$HOOK_DIR/../../.venv/bin/python" ]]; then
+        BOOT_PYTHON="$HOOK_DIR/../../.venv/bin/python"
     fi
-fi
-
-# 3. Weekly Priorities
-if [[ -f "$WEEK_PRIORITIES" ]]; then
-    # Extract current week's priorities section
-    WEEK_PRIORITIES_CONTENT=$(awk '/^## 🎯 This Week|^## This Week/,/^---$/{if(!/^##/ && !/^---/ && NF) print}' "$WEEK_PRIORITIES" 2>/dev/null)
-    if [[ -n "$WEEK_PRIORITIES_CONTENT" ]]; then
-        echo "--- Weekly Priorities ---"
-        echo "$WEEK_PRIORITIES_CONTENT"
-        echo "---"
-        echo ""
-    fi
-fi
-
-# TACTICAL CONTEXT
-
-# 4. Urgent Tasks
-if [[ -f "$TASKS_FILE" ]]; then
-    URGENT=$(grep -i "P0\|urgent\|today\|overdue" "$TASKS_FILE" 2>/dev/null | grep "^\- \[ \]" | head -3)
-    if [[ -n "$URGENT" ]]; then
-        echo "--- Urgent Tasks ---"
-        echo "$URGENT"
-        echo "---"
+    BOOT_OUTPUT=$("$BOOT_PYTHON" "$SESSION_BOOT_PY" --vault "$CLAUDE_DIR" --format hook-text 2>/dev/null || true)
+    if [[ -n "$BOOT_OUTPUT" ]]; then
+        echo "$BOOT_OUTPUT"
         echo ""
     fi
 fi

@@ -117,13 +117,32 @@ could not show the three-line notice in the conversation that just opened.
 Moving them off SessionStart without an in-turn injector would hide the
 result from the user. That is not an obvious safe move.
 
+The three-bucket inventory (scheduled / in-turn inject / gates), including
+session-end writers left out of those buckets, is in
+[`HOOK-INVENTORY.md`](./HOOK-INVENTORY.md).
+
+### First slice: shared payloads, not a hook rewrite
+
+Two in-turn inject payloads now live in `core/context/` and are exposed as
+Work MCP tools (**Tier 1 Core**). Claude Code hooks are thin wrappers over
+the same functions — no behaviour fork.
+
+| Guarantee | Shared module | MCP tool | Claude Code hook |
+| --- | --- | --- | --- |
+| Session boot (pillars, quarter goals, week priorities, urgent tasks) | `core/context/session_boot.py` | `boot_today` | `session-start.sh` |
+| Person inject-on-read | `core/context/person_context.py` | `get_person_context` | `person-context-injector.cjs` |
+
+Cursor, ChatGPT, and Codex call those tools at session start / when a
+person is mentioned. Claude Code still auto-fires them. Nothing else in
+the inject or gates buckets is migrated in this slice.
+
 ### What this change does not do
 
-Not migrated in this change: no hook is moved to launchd. The ratio above
-is the investigation #506 asked for. The scheduled slice is already
-harness-neutral. The in-turn slice is why Tier 3 stays Claude Code. Session
-sweeps stay on SessionStart until a harness-neutral injector exists that
-can still show the user the notice.
+Not migrated: no hook is moved to launchd, and the remaining 40+ hook
+files stay Claude-only. **Do not mass-migrate hooks.** The scheduled slice
+is already harness-neutral. The in-turn slice is why Tier 3 stays Claude
+Code for automatic behaviour. Session sweeps stay on SessionStart until a
+harness-neutral injector exists that can still show the user the notice.
 
 ## Non-goals (do not revive)
 
@@ -139,5 +158,6 @@ can still show the user the notice.
 - User-facing tier table: `README.md`
 - Adapter generation: `scripts/generate-agents-skills.py`
 - Hook wiring: `.claude/hooks/README.md`, `.claude/settings.json`
+- Hook inventory (scheduled / inject / gates): `docs/architecture/HOOK-INVENTORY.md`
 - Scheduled job promises: `docs/architecture/HEALTH-PROMISES.md`
 - Issue: https://github.com/davekilleen/Dex/issues/506

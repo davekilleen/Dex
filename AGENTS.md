@@ -70,8 +70,12 @@ only when a host or credential change genuinely needs it.
    self-learning). Cursor, Codex, and other Agent Skills harnesses are
    **Tier 2 Skills**: generated `.agents/` adapters, not a hand-mirror.
    Do not describe Dex as Claude-only, and do not promise those other
-   harnesses hooks they do not run. Non-goals: multi-model routing and
-   reviving `/ai-setup`.
+   harnesses hooks they do not run. Session boot and person context are
+   **Tier 1 Core** tools (`boot_today`, `get_person_context` on
+   `dex-work-mcp`): Cursor/ChatGPT/Codex call them at session start and
+   when a person is mentioned; Claude Code still auto-fires the same
+   functions via hooks. Inventory: `docs/architecture/HOOK-INVENTORY.md`.
+   Non-goals: multi-model routing and reviving `/ai-setup`.
 
 ## Merged is not shipped, and shipped is not always live
 
