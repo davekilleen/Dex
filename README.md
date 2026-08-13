@@ -50,6 +50,8 @@ Dex is the vault and the tools. The app you talk to is a **harness**. What you g
 
 Cursor is **Tier 2**. Claude Code is **Tier 3**. Codex, Gemini CLI, and other Agent Skills harnesses are **Tier 2** as well. The vault is always **Tier 0**. A longer write-up of the split — including which hooks are truly in-the-moment vs already scheduled — lives in [`docs/architecture/HARNESS-CAPABILITY.md`](docs/architecture/HARNESS-CAPABILITY.md).
 
+Cursor, ChatGPT, and Codex should call Dex's `check_safety_gate` tool before a dangerous command or an unsafe path. Claude Code still auto-fires that same stop. The inventory of scheduled vs inject vs gates is in [`docs/architecture/HOOK-INVENTORY.md`](docs/architecture/HOOK-INVENTORY.md).
+
 ---
 
 ## Quick Install (Recommended)

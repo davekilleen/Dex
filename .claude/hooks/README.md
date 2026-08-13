@@ -22,9 +22,9 @@ These commands are wired in `.claude/settings.json` and run independently of any
 | `UserPromptSubmit` | all | `bash "$CLAUDE_PROJECT_DIR/.claude/hooks/health-pulse.sh"` | Mid-session health pulse: read the latest proactive-health snapshot's age and status (two file reads, never computes) and interject at most once per day when the checkup is stale or newly critical — so bad health news does not wait for the next fresh session. |
 | `PreToolUse` | `Read` | `node .claude/hooks/person-context-injector.cjs` | Inject matching person context before a file read. |
 | `PreToolUse` | `Read` | `node .claude/hooks/company-context-injector.cjs` | Inject matching company context before a file read. |
-| `PreToolUse` | `Bash` | `bash .claude/hooks/dex-safety-guard.sh` | Block unsafe shell commands and redirect disallowed MCP usage. |
+| `PreToolUse` | `Bash` | `bash .claude/hooks/dex-safety-guard.sh` | Thin wrapper: refuse destructive commands and unsafe paths via `core/gates/safety.py` (same as Work MCP `check_safety_gate`); Claude-only scraper matcher stays in the hook. |
 | `PreToolUse` | `Bash` | `node .claude/hooks/ensure-mcp-user-scope.cjs` | Require an explicit scope for `claude mcp add`. |
-| `PreToolUse` | `mcp__.*` | `bash .claude/hooks/dex-safety-guard.sh` | Apply the MCP safety rules before MCP calls. |
+| `PreToolUse` | `mcp__.*` | `bash .claude/hooks/dex-safety-guard.sh` | Same shared gate as Bash, plus the Claude-only scraper matcher. |
 | `PostToolUse` | `Write\|Edit` | `node "$CLAUDE_PROJECT_DIR"/.claude/hooks/career-evidence-capture.cjs` | After a Career Evidence file is written or edited, return a provenance-bearing, unconfirmed candidate. The hook never writes evidence. Skipped Career files leave a one-line reason. |
 | `Stop` | all | `bash "$CLAUDE_PROJECT_DIR/.claude/hooks/install-learnings.sh"` | When unused session learnings have piled up (8 pending and the oldest is at least 14 days), block Stop once per day so they get installed or honestly dropped. Capture stays separate. |
 | `SessionEnd` | all | `"$CLAUDE_PROJECT_DIR"/.claude/hooks/session-end.sh "$transcript_path"` | Record the session-end marker and transcript reference. |

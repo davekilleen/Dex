@@ -145,6 +145,7 @@ from core.entity_engine import (
     render_company_page,
 )
 from core.entity_engine import index as entity_index
+from core.gates.safety import evaluate_safety_gate
 from core.meeting_capture_match import match_capture_to_calendar
 from core.paths import (
     COMPANIES_DIR,
@@ -4193,6 +4194,33 @@ async def handle_list_tools() -> list[types.Tool]:
             }
         ),
         types.Tool(
+            name="check_safety_gate",
+            description=(
+                "Refuse destructive shell commands and unsafe paths before they "
+                "run. Cursor, ChatGPT, and Codex should call this before a "
+                "dangerous action. Claude Code auto-fires the same check via "
+                "the PreToolUse hook. Returns refused=true when the action "
+                "must not proceed."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "tool_name": {
+                        "type": "string",
+                        "description": "Tool being proposed (e.g. Bash)",
+                    },
+                    "command": {
+                        "type": "string",
+                        "description": "Shell command to evaluate",
+                    },
+                    "path": {
+                        "type": "string",
+                        "description": "Filesystem path to evaluate",
+                    },
+                },
+            },
+        ),
+        types.Tool(
             name="create_person",
             description="Create a canonical person page with duplicate protection and refresh the People index.",
             inputSchema={
@@ -4353,6 +4381,7 @@ async def handle_call_tool(
                 "classify_task_effort": "Task effort classification failed",
                 "analyze_calendar_capacity": "Calendar capacity analysis failed",
                 "suggest_task_scheduling": "Task scheduling suggestion failed",
+                "check_safety_gate": "Safety gate check failed",
             }
             _log_health_error(
                 source="work-mcp",
@@ -6107,6 +6136,16 @@ async def _handle_call_tool_inner(
         person_name = arguments['name']
         company_filter = arguments.get('company')
         result = lookup_person_data(person_name, company_filter)
+        return [types.TextContent(type="text", text=json.dumps(result, indent=2, cls=DateTimeEncoder))]
+
+    elif name == "check_safety_gate":
+        args = arguments or {}
+        result = evaluate_safety_gate(
+            tool_name=str(args.get("tool_name") or ""),
+            command=str(args.get("command") or ""),
+            path=str(args.get("path") or ""),
+            vault=BASE_DIR,
+        ).as_payload()
         return [types.TextContent(type="text", text=json.dumps(result, indent=2, cls=DateTimeEncoder))]
 
     elif name == "create_person":

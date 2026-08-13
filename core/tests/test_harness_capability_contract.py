@@ -31,6 +31,7 @@ LIVE_HARNESS_GUIDANCE = (
     ".agents/README.md",
     ".claude/skills/README.md",
     "docs/architecture/HARNESS-CAPABILITY.md",
+    "docs/architecture/HOOK-INVENTORY.md",
     "docs/architecture/DEX-CORE-MAP.md",
     "docs/Dex_System/Background_Processing_Guide.md",
     "docs/Dex_System/Dex_Technical_Guide.md",
@@ -56,6 +57,7 @@ TIER_LE_2_CODE_GLOBS = (
     "core/mcp/*.py",
     "core/lifecycle/*.py",
     "core/utils/*.py",
+    "core/gates/*.py",
     ".scripts/**/*.cjs",
     ".scripts/**/*.js",
     ".scripts/**/*.py",
@@ -111,6 +113,8 @@ def test_architecture_doc_names_the_same_tiers_and_the_hooks_split() -> None:
     assert "Do not mass-migrate" in doc or "not migrated in this change" in doc.lower()
     assert "Claude Code" in doc
     assert "Tier 3" in doc
+    assert "check_safety_gate" in doc
+    assert "core/gates" in doc
 
 
 def test_agents_readme_describes_generation_not_a_hand_mirror() -> None:

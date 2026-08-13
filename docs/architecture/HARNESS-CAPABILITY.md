@@ -81,7 +81,7 @@ OS timer cannot substitute without changing the product.
 | --- | --- | --- |
 | `person-context-injector.cjs` | `PreToolUse` / Read | Injects the matching person page **before that file is read** |
 | `company-context-injector.cjs` | `PreToolUse` / Read | Same for company pages |
-| `dex-safety-guard.sh` | `PreToolUse` / Bash and MCP | Blocks unsafe shell / MCP **before the call runs** |
+| `dex-safety-guard.sh` | `PreToolUse` / Bash and MCP | Thin wrapper over `core/gates/safety.py`: blocks unsafe shell **before the call runs**. Claude-only scraper matcher stays in the hook. |
 | `ensure-mcp-user-scope.cjs` | `PreToolUse` / Bash | Requires an explicit scope for `claude mcp add` |
 | `soft-promise-detector.py` | `UserPromptSubmit` | Offers to capture a commitment **in the message just sent** |
 | `health-pulse.sh` | `UserPromptSubmit` | Mid-session stale-health nudge; must interrupt *this* conversation |
@@ -117,13 +117,33 @@ could not show the three-line notice in the conversation that just opened.
 Moving them off SessionStart without an in-turn injector would hide the
 result from the user. That is not an obvious safe move.
 
+The three-bucket inventory (scheduled / in-turn inject / gates), including
+session-end writers left out of those buckets, is in
+[`HOOK-INVENTORY.md`](./HOOK-INVENTORY.md).
+
+### Gates slice: shared refusal, not a matcher rewrite
+
+Destructive commands and unsafe paths now live in `core/gates/` and are
+exposed as a Work MCP tool (**Tier 1 Core**). The Claude Code hook is a
+thin wrapper over the same function — no behaviour fork, and no silent
+skip on another harness that calls the tool.
+
+| Guarantee | Shared module | MCP tool | Claude Code hook |
+| --- | --- | --- | --- |
+| Refuse destructive commands and unsafe paths | `core/gates/safety.py` | `check_safety_gate` | `dex-safety-guard.sh` |
+
+Cursor, ChatGPT, and Codex call `check_safety_gate` before a dangerous
+action. Claude Code still auto-fires it. Claude-only matchers (preferred
+scraper, `claude mcp add` scope) stay in the hook. Nothing else in the
+inject bucket is migrated in this slice.
+
 ### What this change does not do
 
-Not migrated in this change: no hook is moved to launchd. The ratio above
-is the investigation #506 asked for. The scheduled slice is already
-harness-neutral. The in-turn slice is why Tier 3 stays Claude Code. Session
-sweeps stay on SessionStart until a harness-neutral injector exists that
-can still show the user the notice.
+Not migrated: no hook is moved to launchd, remaining inject hooks stay
+Claude-only, and Claude-only matchers stay in the hook. **Do not mass-migrate hooks.** The scheduled slice is already harness-neutral. The
+in-turn inject slice is why Tier 3 stays Claude Code for automatic
+behaviour. Session sweeps stay on SessionStart until a harness-neutral
+injector exists that can still show the user the notice.
 
 ## Non-goals (do not revive)
 
@@ -139,5 +159,6 @@ can still show the user the notice.
 - User-facing tier table: `README.md`
 - Adapter generation: `scripts/generate-agents-skills.py`
 - Hook wiring: `.claude/hooks/README.md`, `.claude/settings.json`
+- Hook inventory (scheduled / inject / gates): `docs/architecture/HOOK-INVENTORY.md`
 - Scheduled job promises: `docs/architecture/HEALTH-PROMISES.md`
 - Issue: https://github.com/davekilleen/Dex/issues/506

@@ -169,7 +169,7 @@ therefore remains false.
 **What it is.** Event-driven shell scripts. The **actually-wired set** (from `.claude/settings.json`) is small:
 - SessionStart → `session-start.sh` + `core/utils/update_verifier.py` (bounded release awareness).
 - PreToolUse/Read → `person-context-injector.cjs`, `company-context-injector.cjs`.
-- PreToolUse/Bash → `dex-safety-guard.sh`, `ensure-mcp-user-scope.cjs`.
+- PreToolUse/Bash → `dex-safety-guard.sh` (thin wrapper over `core/gates/safety.py`; `ensure-mcp-user-scope.cjs` stays Claude-only).
 - PreToolUse/`mcp__.*` → `dex-safety-guard.sh`.
 - PostToolUse/`Write|Edit` → `career-evidence-capture.cjs` (Career Evidence folder only; candidate, never a silent save).
 - SessionEnd → `session-end.sh`, `memory_mirror.py`, `vault-autocommit.cjs`.
@@ -179,7 +179,7 @@ therefore remains false.
 - **Observation layer** (`observation-extract.cjs`, `observation-profile.cjs`, `observation-serendipity.cjs`, `observation-weekly-synthesis.cjs`, `observation-utils.cjs`) and the **health-checkers** (`connection-health-checker.cjs`, `gmail-health-checker.cjs`, `teams-health-checker.cjs`) exist **only as UNTRACKED local files** on the maintainer's machine — `git ls-files` shows none of them, and neither does `docs/observation-layer-beta-rollout.md`. **They are not in the repo and never ship to users.** So there is no observation layer in the distributed product to "remove"; it's local experimentation. Don't cite these as Core behavior.
 - **`career-evidence-capture.cjs` was silently dead — now fixed (PR #180), then under-wired (issue #505).** PR #180 switched it to stdin. Issue #505 found the remaining layer: it was registered only on `/career-coach` Write, and it dropped files with no metric. Capture is now a repository-wide Write/Edit hook on the Career Evidence folder; skips leave a one-line reason that `/dex-doctor` can see.
 
-**How it connects.** Wired hooks feed context injection, safety guards, and the bounded release-awareness notice. That in-turn slice is **Tier 3 Full** and Claude Code only today — a stated position. Scheduled jobs (`com.dex.meeting-intel` and the other launchd promises) are already **Tier 1 Core** and do not need a hook. The investigation and the do-not-mass-migrate decision live in `docs/architecture/HARNESS-CAPABILITY.md`. The observation/health-checker scripts are **untracked local cruft, not product** — treat them as absent when reasoning about what a user's install does.
+**How it connects.** Wired hooks feed context injection, safety guards, and the bounded release-awareness notice. Destructive-command and unsafe-path refusals are **Tier 1 Core** (`check_safety_gate`); Claude Code still auto-fires them. The rest of the in-turn slice is **Tier 3 Full** and Claude Code only today — a stated position. Scheduled jobs (`com.dex.meeting-intel` and the other launchd promises) are already **Tier 1 Core** and do not need a hook. The investigation and the do-not-mass-migrate decision live in `docs/architecture/HARNESS-CAPABILITY.md`. Inventory: `docs/architecture/HOOK-INVENTORY.md`. The observation/health-checker scripts are **untracked local cruft, not product** — treat them as absent when reasoning about what a user's install does.
 
 ## 10. Skills — SHIPPED (74 counted by generator)
 

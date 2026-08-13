@@ -7,6 +7,18 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.98.0] — 🛑 A dangerous command now stops in Cursor and ChatGPT too (2026-08-13)
+
+Claude Code already stopped a wipe-your-files or overwrite-the-main-copy command before it ran. Other apps skipped that check, so the same dangerous action could go through with no warning.
+
+**What this fixes for you:**
+
+* **Cursor, ChatGPT, and Codex can ask Dex to stop a dangerous action before it runs.** Deleting everything in your home folder, wiping a disk, or overwriting the main copy of your project gets the same no that Claude Code already gave.
+* **Claude Code still stops those actions automatically.** It now uses the same source, so the answer cannot drift apart.
+* **This is not a model picker, and it does not move every automatic behaviour off Claude Code.** Only the "stop this, it is dangerous" check moved.
+
+---
+
 ## [1.97.0] — 📝 Session notes get used, career evidence is kept, and Cursor gets the same named journeys (2026-08-13)
 
 A larger release than usual: session lessons actually get installed, career evidence is kept even without a number, Claude's private project notes are copied into the vault, other assistants get an honest account of what they can run, and a checkup that used to cry wolf now says what it means. Each is written up in full below.
