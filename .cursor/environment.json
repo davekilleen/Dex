@@ -1,0 +1,4 @@
+{
+  "name": "dex-core",
+  "install": "bash .cursor/install.sh"
+}
