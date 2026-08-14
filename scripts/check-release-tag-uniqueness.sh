@@ -68,7 +68,7 @@ fi
 UNTWINNED_ARCHIVE_TAGS="$(
   printf '%s\n' "$ARCHIVE_TAGS" |
     awk '
-      # An annotated tag's peeled ^{} ref carries the commit the tag resolves
+      # An annotated tags peeled ^{} ref carries the commit the tag resolves
       # to; the bare ref carries the tag object. Prefer the peeled value so
       # twins pointing at one commit compare equal.
       {
