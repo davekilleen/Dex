@@ -365,6 +365,24 @@ def test_capability_state_operation_only_authorizes_the_live_profile() -> None:
     assert refused.action == "outside-capability-state"
 
 
+def test_room_presence_operation_only_authorizes_the_live_profile() -> None:
+    allowed = portable_contract.update_write_verdict(
+        "System/user-profile.yaml",
+        exists=True,
+        operation="room-presence",
+    )
+    refused = portable_contract.update_write_verdict(
+        "05-Areas/Career/Evidence/README.md",
+        exists=True,
+        operation="room-presence",
+    )
+
+    assert allowed.allowed is True
+    assert allowed.action == "write-room-presence"
+    assert refused.allowed is False
+    assert refused.action == "outside-room-presence"
+
+
 def test_onboarding_context_operation_only_authorizes_the_live_profile() -> None:
     allowed = portable_contract.update_write_verdict(
         "System/user-profile.yaml",

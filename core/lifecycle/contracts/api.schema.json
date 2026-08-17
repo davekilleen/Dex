@@ -63,6 +63,22 @@
       "request": {"$ref": "#/$defs/onboardingContextExecuteRequest"},
       "response": {"$ref": "#/$defs/onboardingContextExecuteResponse"}
     },
+    "build_and_preview_room_presence": {
+      "request": {"$ref": "#/$defs/roomPresencePreviewRequest"},
+      "response": {"$ref": "#/$defs/roomPresencePreviewResponse"}
+    },
+    "execute_approved_room_presence": {
+      "request": {"$ref": "#/$defs/roomPresenceExecuteRequest"},
+      "response": {"$ref": "#/$defs/roomPresenceExecuteResponse"}
+    },
+    "build_and_preview_room_presence_share": {
+      "request": {"$ref": "#/$defs/roomPresenceSharePreviewRequest"},
+      "response": {"$ref": "#/$defs/roomPresenceSharePreviewResponse"}
+    },
+    "execute_approved_room_presence_share": {
+      "request": {"$ref": "#/$defs/roomPresenceShareExecuteRequest"},
+      "response": {"$ref": "#/$defs/roomPresenceExecuteResponse"}
+    },
     "build_and_preview_automation_claim": {
       "request": {"$ref": "#/$defs/automationClaimPreviewRequest"},
       "response": {"$ref": "#/$defs/automationPreviewResponse"}
@@ -514,6 +530,106 @@
       "properties": {
         "api_version": {"const": "1.5.0"},
         "receipt": {"type": "object"}
+      }
+    },
+    "roomPresenceCard": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["photo", "title", "company"],
+      "properties": {
+        "photo": {"type": "string"},
+        "title": {"type": "string"},
+        "company": {"type": "string"}
+      }
+    },
+    "roomPresencePreview": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["card", "shared", "writes"],
+      "properties": {
+        "card": {"$ref": "#/$defs/roomPresenceCard"},
+        "shared": {"const": false},
+        "writes": {"type": "array", "minItems": 1, "items": {"type": "object"}}
+      }
+    },
+    "roomPresencePreviewRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["vault_root", "fields"],
+      "properties": {
+        "vault_root": {"$ref": "#/$defs/path"},
+        "fields": {"type": "object"}
+      }
+    },
+    "roomPresencePreviewResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["api_version", "preview", "approval_token"],
+      "properties": {
+        "api_version": {"const": "1.5.0"},
+        "preview": {"$ref": "#/$defs/roomPresencePreview"},
+        "approval_token": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "roomPresenceExecuteRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["vault_root", "preview", "approved_token"],
+      "properties": {
+        "vault_root": {"$ref": "#/$defs/path"},
+        "preview": {"$ref": "#/$defs/roomPresencePreview"},
+        "approved_token": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "roomPresenceExecuteResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["api_version", "receipt"],
+      "properties": {
+        "api_version": {"const": "1.5.0"},
+        "receipt": {"type": "object"}
+      }
+    },
+    "roomPresenceSharePreview": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["room", "consent_required", "card", "visible_after_yes", "writes"],
+      "properties": {
+        "room": {"type": "string", "minLength": 1},
+        "consent_required": {"const": "yes"},
+        "card": {"$ref": "#/$defs/roomPresenceCard"},
+        "visible_after_yes": {"type": "object"},
+        "writes": {"type": "array", "minItems": 1, "items": {"type": "object"}}
+      }
+    },
+    "roomPresenceSharePreviewRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["vault_root", "room_id"],
+      "properties": {
+        "vault_root": {"$ref": "#/$defs/path"},
+        "room_id": {"type": "string", "minLength": 1}
+      }
+    },
+    "roomPresenceSharePreviewResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["api_version", "preview", "approval_token"],
+      "properties": {
+        "api_version": {"const": "1.5.0"},
+        "preview": {"$ref": "#/$defs/roomPresenceSharePreview"},
+        "approval_token": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "roomPresenceShareExecuteRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["vault_root", "preview", "approved_token", "consent"],
+      "properties": {
+        "vault_root": {"$ref": "#/$defs/path"},
+        "preview": {"$ref": "#/$defs/roomPresenceSharePreview"},
+        "approved_token": {"$ref": "#/$defs/sha256"},
+        "consent": {"const": "yes"}
       }
     },
     "previewRequest": {
