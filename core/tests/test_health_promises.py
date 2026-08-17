@@ -177,6 +177,7 @@ def test_canary_cli_reports_a_torn_install_plainly_without_a_traceback(tmp_path:
 
     assert completed.returncode == 1
     assert "Post-update check FAILED" in completed.stdout
+    assert "PlanRejected" in completed.stdout
     assert "Traceback" not in completed.stdout + completed.stderr
     stored = json.loads((vault / RECEIPT_RELATIVE).read_text(encoding="utf-8"))
     assert stored["ok"] is False

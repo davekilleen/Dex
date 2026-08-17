@@ -24,8 +24,16 @@ CATALOG_SOURCE_DIR = Path("core/lifecycle/catalog")
 BRIDGE_RELEASE_PATH = CATALOG_SOURCE_DIR / "bridge-release.json"
 MANIFEST_PATH = Path("System/.installed-files.manifest")
 PACKAGE_PATH = Path("package.json")
-SCHEMA_SOURCE = Path("core/lifecycle/schemas/release-catalog-v1.schema.json")
-SCHEMA_DISTRIBUTION = Path("packages/dex-contracts/dist/release-catalog-v1.schema.json")
+SCHEMA_PAIRS = (
+    (
+        Path("core/lifecycle/schemas/release-catalog-v1.schema.json"),
+        Path("packages/dex-contracts/dist/release-catalog-v1.schema.json"),
+    ),
+    (
+        Path("core/lifecycle/schemas/release-catalog-v2.schema.json"),
+        Path("packages/dex-contracts/dist/release-catalog-v2.schema.json"),
+    ),
+)
 SOURCE_VERSION = 1
 FULL_COMMIT = re.compile(r"^[0-9a-f]{40}$")
 HEX_SHA256 = re.compile(r"^[0-9a-f]{64}$")
@@ -293,14 +301,19 @@ def _stamp_bridge_release(release_root: Path, release_version: str) -> None:
 
 def sync_schema(release_root: Path, *, contract_root: Path | None = None) -> Path:
     contract_root = (contract_root or release_root).resolve()
-    source = contract_root / SCHEMA_SOURCE
-    destination = release_root / SCHEMA_DISTRIBUTION
-    try:
-        content = source.read_bytes()
-    except OSError as error:
-        raise CatalogGenerationError(f"cannot read the B1 catalog schema: {error}") from error
-    _atomic_write(destination, content)
-    return destination
+    destinations: list[Path] = []
+    for source_relative, destination_relative in SCHEMA_PAIRS:
+        source = contract_root / source_relative
+        destination = release_root / destination_relative
+        try:
+            content = source.read_bytes()
+        except OSError as error:
+            raise CatalogGenerationError(
+                f"cannot read catalog schema {source_relative.name}: {error}"
+            ) from error
+        _atomic_write(destination, content)
+        destinations.append(destination)
+    return destinations[-1]
 
 
 def generate_catalog(
@@ -342,12 +355,12 @@ def generate_catalog(
                 f"installed-files manifest is not canonical or omits {output_text}"
             )
         document: dict[str, object] = {
-            "catalog_version": 1,
+            "catalog_version": 2,
             "release": {
                 "version": release_version,
                 "channel": channel,
-                "immutable_distribution_tag": (
-                    f"dist/{channel}/v{release_version}-{commit[:7]}"
+                "immutable_distribution_tag_pattern": (
+                    f"dist/{channel}/v{release_version}-<release-commit-prefix>"
                 ),
                 "source_commit": commit,
                 "manifest": {

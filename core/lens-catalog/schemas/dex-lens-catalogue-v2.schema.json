@@ -5,30 +5,36 @@
       "properties": {
         "foundation_capabilities": {
           "items": {
+            "pattern": "^[a-z][a-z0-9-]{2,80}$",
             "type": "string"
           },
           "maxItems": 20,
           "minItems": 1,
           "title": "Foundation Capabilities",
-          "type": "array"
+          "type": "array",
+          "uniqueItems": true
         },
         "host_adapters": {
           "items": {
+            "pattern": "^[a-z][a-z0-9-]{2,80}$",
             "type": "string"
           },
           "maxItems": 20,
           "minItems": 1,
           "title": "Host Adapters",
-          "type": "array"
+          "type": "array",
+          "uniqueItems": true
         },
         "host_requirements": {
           "items": {
+            "pattern": "^[a-z][a-z0-9-]{2,80}$",
             "type": "string"
           },
           "maxItems": 20,
           "minItems": 1,
           "title": "Host Requirements",
-          "type": "array"
+          "type": "array",
+          "uniqueItems": true
         },
         "limitations": {
           "items": {
@@ -184,11 +190,13 @@
         },
         "changed_in": {
           "items": {
+            "pattern": "^\\d+\\.\\d+\\.\\d+$",
             "type": "string"
           },
           "maxItems": 40,
           "title": "Changed In",
-          "type": "array"
+          "type": "array",
+          "uniqueItems": true
         },
         "compatibility": {
           "$ref": "#/$defs/CapabilityCompatibilityV2"
@@ -210,12 +218,14 @@
         },
         "jobs": {
           "items": {
+            "pattern": "^[a-z][a-z0-9-]{2,80}$",
             "type": "string"
           },
           "maxItems": 20,
           "minItems": 1,
           "title": "Jobs",
-          "type": "array"
+          "type": "array",
+          "uniqueItems": true
         },
         "portable_brief": {
           "$ref": "#/$defs/CapabilityPortableBriefV2"

@@ -406,6 +406,15 @@ run_canary() {
     return 1
   fi
   CANDIDATE_TAG="${candidate_tags[0]}"
+  CANDIDATE_IDENTITY="$(
+    python3 scripts/check-release-catalog-tag-identity.py \
+      --release-ref release --source-ref candidate
+  )"
+  if [ -z "$CANDIDATE_IDENTITY" ]; then
+    echo "candidate release catalog identity observation was empty" >&2
+    return 1
+  fi
+  printf '%s\n' "$CANDIDATE_IDENTITY"
   FOLLOW_UP_CACHE="$WORK_ROOT/candidate-release.git"
   git init --bare --quiet "$FOLLOW_UP_CACHE"
   chmod 700 "$FOLLOW_UP_CACHE"

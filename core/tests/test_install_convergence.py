@@ -36,6 +36,7 @@ def _install_fixture(
     (root / "core" / "mcp" / "requirements.txt").write_text("", encoding="utf-8")
 
     if scenario == "post-split":
+        (root / ".git").mkdir()
         (root / ".dex" / "brain.git").mkdir(parents=True)
         (root / "System" / ".dex").mkdir()
         (root / "System" / ".dex" / "topology.json").write_text("{}\n", encoding="utf-8")
@@ -62,10 +63,14 @@ case "$DEX_TEST_SCENARIO:$2" in
     fi
     ;;
   resume:--resume)
-    mkdir -p .dex/brain.git System/.dex
+    mkdir -p .git .dex/brain.git System/.dex
     printf '{}\n' > System/.dex/topology.json
     ;;
   split:--auto)
+    mkdir -p .git .dex/brain.git System/.dex
+    printf '{}\n' > System/.dex/topology.json
+    ;;
+  split-without-vault-git:--auto)
     mkdir -p .dex/brain.git System/.dex
     printf '{}\n' > System/.dex/topology.json
     ;;
@@ -147,6 +152,18 @@ def test_synced_folder_install_carries_explicit_override_into_resume(tmp_path: P
         f"{MIGRATOR} --auto --allow-synced-folder",
         f"{MIGRATOR} --resume --allow-synced-folder",
     ]
+
+
+def test_install_refuses_to_claim_success_when_vault_git_is_missing(
+    tmp_path: Path,
+) -> None:
+    result, calls = _run_install(tmp_path, "split-without-vault-git")
+
+    assert result.returncode != 0, result.stdout + result.stderr
+    assert calls[1] == f"{MIGRATOR} --auto"
+    assert "could not finish the brain/vault split" in result.stdout
+    assert "v1-to-v2-brain-vault-split.cjs --resume" in result.stdout
+    assert "Dex installation complete" not in result.stdout
 
 
 def test_already_split_install_is_safe_and_keeps_normal_setup_working(tmp_path: Path) -> None:

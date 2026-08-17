@@ -417,6 +417,7 @@ async function fetchMeetingDetail(apiKey, noteId, profile = {}) {
   const participants = attendees.map(attendee => attendee.name);
 
   const transcript = flattenTranscript(data.transcript);
+  const captureIdentity = captureIdentityFromDetail(data);
 
   return {
     id,
@@ -430,8 +431,22 @@ async function fetchMeetingDetail(apiKey, noteId, profile = {}) {
     owner: data.owner || null,
     company: extractCompanyFromTitle(title),
     duration: null, // not provided by the public API
-    source: 'api'
+    source: 'api',
+    ...captureIdentity,
   };
+}
+
+/**
+ * Preserve only the aware capture start needed for calendar matching.
+ * Calendar titles, invitees, locations, join links, and other payload stay out.
+ */
+function captureIdentityFromDetail(detail) {
+  const value = detail?.calendar_event?.scheduled_start_time;
+  if (typeof value !== 'string') return {};
+  const captureStartedAt = value.trim();
+  const hasTimezone = /(?:Z|[+-]\d{2}:\d{2})$/i.test(captureStartedAt);
+  if (!hasTimezone || Number.isNaN(Date.parse(captureStartedAt))) return {};
+  return { captureStartedAt };
 }
 
 /**
@@ -768,6 +783,9 @@ function createMeetingNote(meeting, analysis, profile, pillars, options = {}) {
   const filteredParticipants = filteredAttendees.map(attendee => attendee.name);
 
   const sourceLabel = meeting.source === 'api' ? 'API' : 'Cache';
+  const captureStartFrontmatter = meeting.captureStartedAt
+    ? `capture_started_at: ${meeting.captureStartedAt}\n`
+    : '';
 
   const content = `---
 date: ${date}
@@ -780,7 +798,7 @@ ${renderAttendeesYamlBlock(filteredAttendees)}
 company: "${meeting.company}"
 pillar: "${pillar}"
 duration: ${meeting.duration || 'unknown'}
-granola_id: ${JSON.stringify(String(meeting.id))}
+${captureStartFrontmatter}granola_id: ${JSON.stringify(String(meeting.id))}
 processed: ${new Date().toISOString()}
 ---
 
@@ -854,6 +872,9 @@ function createBasicMeetingNote(meeting, profile, options = {}) {
   const transcriptSection = meeting.transcript
     ? `## Transcript\n\n${meeting.transcript.slice(0, 5000)}${meeting.transcript.length > 5000 ? '\n\n[Truncated...]' : ''}\n`
     : '';
+  const captureStartFrontmatter = meeting.captureStartedAt
+    ? `capture_started_at: ${meeting.captureStartedAt}\n`
+    : '';
 
   const content = `---
 date: ${date}
@@ -864,7 +885,7 @@ title: "${meeting.title.replace(/"/g, '\\"')}"
 participants: [${filteredParticipants.map(p => `"${p}"`).join(', ')}]
 ${renderAttendeesYamlBlock(filteredAttendees)}
 company: "${meeting.company || ''}"
-granola_id: ${JSON.stringify(String(meeting.id))}
+${captureStartFrontmatter}granola_id: ${JSON.stringify(String(meeting.id))}
 processed: ${new Date().toISOString()}
 ai_analyzed: false
 ---
@@ -1329,6 +1350,7 @@ module.exports = {
   getGranolaApiKey,
   getNewMeetingsFromApi,
   fetchMeetingDetail,
+  captureIdentityFromDetail,
   createBasicMeetingNote,
   createMeetingNote,
   resolveMeetingNoteTarget,

@@ -223,6 +223,24 @@ def test_missing_anthropic_key_points_to_env_file() -> None:
     ) == "API key missing — add it to your .env file"
 
 
+@pytest.mark.parametrize(
+    ("message", "expected"),
+    [
+        (
+            "subprocess failed: ModuleNotFoundError: No module named 'core.paths'",
+            "Work MCP can't start: Dex's own code could not be loaded "
+            "(missing module 'core.paths'); this is a Dex fault, not a missing Python package",
+        ),
+        (
+            "subprocess failed: ModuleNotFoundError: No module named 'yaml'",
+            "Work MCP can't start: missing Python package 'yaml'",
+        ),
+    ],
+)
+def test_logger_names_missing_modules_truthfully(message: str, expected: str) -> None:
+    assert dex_logger._generate_human_message("Work MCP", message) == expected
+
+
 def test_onboarding_skips_calendar_cleanly_on_non_macos() -> None:
     flow = _read(".claude/flows/onboarding.md")
     calendar_step = flow.split("## Calendar First (Before Step 1)", 1)[1].split(
@@ -558,3 +576,27 @@ def test_core_behavior_defines_feature_status_rendering() -> None:
 )
 def test_high_traffic_skills_follow_feature_status_rendering(skill_path: str) -> None:
     assert "`feature_status` rendering convention" in _read(skill_path)
+
+
+def test_email_aware_plans_do_not_silently_skip_a_broken_mail_index() -> None:
+    for relative in (
+        ".claude/skills/daily-plan/SKILL.md",
+        ".claude/skills/daily-plan/AGENT_INSTRUCTIONS.md",
+        ".claude/skills/week-review/SKILL.md",
+        ".claude/skills/week-review/AGENT_INSTRUCTIONS.md",
+    ):
+        instructions = _read(relative)
+        assert "mail.apple-search" in instructions, relative
+        assert "do not silently skip" in instructions.lower(), relative
+        assert "python3 core/utils/doctor.py --deep" in instructions, relative
+
+
+def test_apple_mail_setup_installs_only_the_runtime_mac_ci_proves() -> None:
+    supported_runtime = "apple-mail-mcp==0.4.3"
+    setup = _read(".claude/skills/apple-mail-setup/SKILL.md")
+    requirements = _read("requirements-dev.txt")
+
+    assert f"pipx install '{supported_runtime}'" in setup
+    assert supported_runtime in requirements
+    assert "community-maintained" in setup
+    assert "health checks and macOS CI prove compatibility" in setup

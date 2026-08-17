@@ -74,9 +74,10 @@ DISTIGNORE=$(mktemp)
 TAU_CHECKER=$(mktemp)
 CATALOG_GENERATOR=$(mktemp)
 CATALOG_COVERAGE_CHECKER=$(mktemp)
+CATALOG_IDENTITY_CHECKER=$(mktemp)
 JOURNEY_PROTOCOL_CHECK=$(mktemp)
 MATCHES_FILE=$(mktemp)
-trap 'rm -f "$DISTIGNORE" "$TAU_CHECKER" "$CATALOG_GENERATOR" "$CATALOG_COVERAGE_CHECKER" "$JOURNEY_PROTOCOL_CHECK" "$MATCHES_FILE"' EXIT
+trap 'rm -f "$DISTIGNORE" "$TAU_CHECKER" "$CATALOG_GENERATOR" "$CATALOG_COVERAGE_CHECKER" "$CATALOG_IDENTITY_CHECKER" "$JOURNEY_PROTOCOL_CHECK" "$MATCHES_FILE"' EXIT
 if ! git show "$SOURCE_BRANCH:.distignore" > "$DISTIGNORE"; then
     echo "Error: .distignore not found in selected source '$SOURCE_BRANCH'." >&2
     exit 1
@@ -122,6 +123,7 @@ fi
 SOURCE_SHA=$(git rev-parse "$SOURCE_BRANCH")
 git show "$SOURCE_SHA:scripts/generate-release-catalog.py" > "$CATALOG_GENERATOR"
 git show "$SOURCE_SHA:scripts/check-catalog-coverage.py" > "$CATALOG_COVERAGE_CHECKER"
+git show "$SOURCE_SHA:scripts/check-release-catalog-tag-identity.py" > "$CATALOG_IDENTITY_CHECKER"
 SOURCE_PACKAGE_SIZE=$(git cat-file -s "$SOURCE_SHA:package.json" 2>/dev/null || true)
 if ! [[ "$SOURCE_PACKAGE_SIZE" =~ ^[0-9]+$ ]] || [ "$SOURCE_PACKAGE_SIZE" -gt 1048576 ]; then
     echo "Error: selected source package.json is missing or exceeds 1 MiB." >&2
@@ -237,7 +239,9 @@ python3 "$CATALOG_GENERATOR" \
     --channel "$CATALOG_CHANNEL" \
     --source-commit "$SOURCE_SHA"
 python3 "$CATALOG_COVERAGE_CHECKER" --release-root "$REPO_ROOT"
-git add -- "$MANIFEST" "$CATALOG" "$BRIDGE_RELEASE" packages/dex-contracts/dist/release-catalog-v1.schema.json
+git add -- "$MANIFEST" "$CATALOG" "$BRIDGE_RELEASE" \
+    packages/dex-contracts/dist/release-catalog-v1.schema.json \
+    packages/dex-contracts/dist/release-catalog-v2.schema.json
 
 if git diff --cached --quiet; then
     echo "Nothing to remove — release branch matches main."
@@ -259,14 +263,32 @@ EOF
 python3 "$TAU_CHECKER" --repo-root "$REPO_ROOT" --git-tree "$RELEASE_BRANCH"
 
 RELEASE_SHA=$(git rev-parse --short HEAD)
-# Immutable rollback identity: every distribution commit gets an annotated tag
-# scoped by target branch, dist/<target>/v<version>-<release-short-sha>.
-RELEASE_TAG="dist/$RELEASE_BRANCH/v$PKG_VERSION-$RELEASE_SHA"
+# The catalog truthfully declares the tag shape and source identity. The checker
+# is authoritative for deriving the one concrete immutable name from this final
+# sanitized distribution commit; embedding that name in the commit would be
+# self-referential. v1.96.2 demonstrated the failure mode by promising a
+# source-suffix tag while the compatible updater observed a release-suffix tag.
+if ! RELEASE_TAG=$(python3 "$CATALOG_IDENTITY_CHECKER" \
+    --repo "$REPO_ROOT" \
+    --release-ref HEAD \
+    --source-ref "$SOURCE_SHA" \
+    --print-release-tag 2>&1); then
+    echo "Error: $RELEASE_TAG" >&2
+    exit 1
+fi
 if git show-ref --verify --quiet "refs/tags/$RELEASE_TAG"; then
     echo "Error: immutable release tag '$RELEASE_TAG' already exists." >&2
     exit 1
 fi
 git tag -a "$RELEASE_TAG" -m "Dex $RELEASE_BRANCH v$PKG_VERSION ($RELEASE_SHA)"
+if [ "$(git rev-parse "$RELEASE_TAG^{}")" != "$(git rev-parse HEAD)" ]; then
+    echo "Error: immutable release tag '$RELEASE_TAG' does not peel to the release commit." >&2
+    exit 1
+fi
+python3 "$CATALOG_IDENTITY_CHECKER" \
+    --repo "$REPO_ROOT" \
+    --release-ref HEAD \
+    --source-ref "$SOURCE_SHA"
 
 echo "Done! Release branch built:"
 echo "  Branch: $RELEASE_BRANCH ($RELEASE_SHA)"

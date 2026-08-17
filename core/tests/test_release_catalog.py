@@ -30,15 +30,16 @@ from core.lifecycle.model import AdoptionState, CatalogModelError, ReleaseCatalo
 MANIFEST_BYTES = b".claude/skills/decision-log/SKILL.md\n"
 MANIFEST_SHA256 = hashlib.sha256(MANIFEST_BYTES).hexdigest()
 SOURCE_COMMIT = "0123456789abcdef0123456789abcdef01234567"
+FIXTURES = Path(__file__).with_name("fixtures")
 
 
 def valid_document() -> dict[str, object]:
     document: dict[str, object] = {
-        "catalog_version": 1,
+        "catalog_version": 2,
         "release": {
             "version": "1.64.0",
             "channel": "release",
-            "immutable_distribution_tag": "dist/release/v1.64.0-0123456",
+            "immutable_distribution_tag_pattern": "dist/release/v1.64.0-<release-commit-prefix>",
             "source_commit": SOURCE_COMMIT,
             "manifest": {
                 "path": "System/.installed-files.manifest",
@@ -84,11 +85,47 @@ def test_model_round_trip_is_byte_deterministic() -> None:
     assert parsed.items[0].files[0].ownership_class == "brain"
 
 
+def test_model_keeps_the_public_v1_96_2_catalog_shape_readable() -> None:
+    """Catalog v1 is public and must not be silently redefined by later readers."""
+    catalog_path = FIXTURES / "release-catalog-v1.96.2-historic-shape.json"
+    manifest_path = FIXTURES / "release-catalog-v1.96.2-installed-files.manifest"
+    catalog_bytes = catalog_path.read_bytes()
+    historic = json.loads(catalog_bytes)
+
+    parsed = loads_catalog(
+        catalog_bytes.decode("utf-8"),
+        manifest_bytes=manifest_path.read_bytes(),
+    )
+
+    validate_catalog_document(historic)
+    assert parsed.catalog_version == 1
+    assert parsed.release.immutable_distribution_tag == (
+        "dist/release/v1.96.2-f23caea"
+    )
+    assert parsed.to_dict() == historic
+    assert canonical_catalog_bytes(parsed) == catalog_bytes
+
+
+@pytest.mark.parametrize("shape", ("v1-pattern", "v2-concrete", "v2-both"))
+def test_versioned_catalog_schemas_reject_ambiguous_identity_shapes(shape: str) -> None:
+    document = valid_document()
+    release = document["release"]
+    if shape == "v1-pattern":
+        document["catalog_version"] = 1
+    else:
+        release["immutable_distribution_tag"] = "dist/release/v1.64.0-0123456"
+        if shape == "v2-concrete":
+            del release["immutable_distribution_tag_pattern"]
+
+    with pytest.raises(CatalogSchemaError, match="UNKNOWN"):
+        validate_catalog_document(document)
+
+
 def test_catalog_hash_binds_the_exact_canonical_payload() -> None:
     document = valid_document()
 
     assert document["integrity"]["catalog_sha256"] == (
-        "b3f6f761c8df6e5c69ce19f3e3b2bdbafdf243c425e9f1d548dfbb3fb0b91213"
+        "ca08979710b2bce35e59bf7b25e5896d93c76b21a9f5274b6ea94409e6eab69e"
     )
 
     changed = copy.deepcopy(document)
@@ -105,9 +142,11 @@ def test_release_identity_binds_tag_source_commit_and_manifest() -> None:
         loads_catalog(json.dumps(document), manifest_bytes=wrong_manifest)
 
     wrong_tag = copy.deepcopy(document)
-    wrong_tag["release"]["immutable_distribution_tag"] = "dist/release/v1.64.0-deadbee"
+    wrong_tag["release"]["immutable_distribution_tag_pattern"] = (
+        "dist/release/v1.64.1-<release-commit-prefix>"
+    )
     wrong_tag = with_catalog_identity(wrong_tag)
-    with pytest.raises(CatalogModelError, match="UNKNOWN.*source commit"):
+    with pytest.raises(CatalogModelError, match="UNKNOWN.*channel or version"):
         loads_catalog(json.dumps(wrong_tag), manifest_bytes=MANIFEST_BYTES)
 
 
@@ -162,14 +201,16 @@ def test_load_catalog_checks_the_release_manifest_from_disk(tmp_path: Path) -> N
 
     loaded = load_catalog(catalog_path, release_root=release_root)
 
-    assert loaded.release.immutable_distribution_tag == "dist/release/v1.64.0-0123456"
+    assert loaded.release.immutable_distribution_tag_pattern == (
+        "dist/release/v1.64.0-<release-commit-prefix>"
+    )
 
 
 @pytest.mark.parametrize(
     ("mutation", "error"),
     [
         (lambda d: d.update({"surprise": True}), CatalogSchemaError),
-        (lambda d: d.update({"catalog_version": 2}), CatalogSchemaError),
+        (lambda d: d.update({"catalog_version": 3}), CatalogSchemaError),
         (lambda d: d["release"].update({"extra": "no"}), CatalogSchemaError),
         (lambda d: d["release"].update({"channel": "nightly"}), CatalogSchemaError),
         (lambda d: d["items"][0].update({"kind": 7}), CatalogSchemaError),

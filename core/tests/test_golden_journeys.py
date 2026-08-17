@@ -522,9 +522,42 @@ def test_golden_onboarding_drives_state_machine_to_real_vault(fixture_vault: Pat
     assert journey["finalize"]["success"] is True
     assert journey["finalize"]["data"]["errors"] == []
     assert journey["finalize"]["data"]["executor"] == "core/provision.cjs"
-    assert journey["finalize_observed"] == journey["finalize"]["data"]["receipt"][
-        "mutation_receipt"
-    ]["declared_paths"]
+    primary_declared = set(
+        journey["finalize"]["data"]["receipt"]["mutation_receipt"]["declared_paths"]
+    )
+    observed = set(journey["finalize_observed"])
+    receipt_relative = "System/.dex/analytics-attempts.jsonl"
+    analytics_runtime = observed - primary_declared
+    transaction_ids = {
+        Path(path).parts[3]
+        for path in analytics_runtime
+        if path.startswith("System/.dex/tx/")
+    }
+    assert len(transaction_ids) == 1
+    analytics_transaction_id = transaction_ids.pop()
+    expected_analytics_runtime = {receipt_relative} | _transaction_paths(
+        analytics_transaction_id,
+        writes_payload=True,
+        snapshot_blob=False,
+    )
+    if "System/.dex/tx" not in primary_declared:
+        expected_analytics_runtime.add("System/.dex/tx")
+    # This stays an exact observed-write check: onboarding's provision receipt
+    # owns its writes, and the new analytics receipt owns precisely one receipt
+    # file plus one transaction runtime directory—nothing else.
+    assert analytics_runtime == expected_analytics_runtime
+    assert observed == primary_declared | expected_analytics_runtime
+
+    analytics_records = [
+        json.loads(line)
+        for line in (vault / receipt_relative).read_text(encoding="utf-8").splitlines()
+    ]
+    assert len(analytics_records) == 1
+    analytics_record = analytics_records[0]
+    assert set(analytics_record) == {"timestamp", "event", "outcome", "reason"}
+    assert analytics_record["event"] == "onboarding_completed"
+    assert analytics_record["outcome"] == "not_sent"
+    assert analytics_record["reason"] == "analytics_disabled"
 
     for directory in (
         "00-Inbox",

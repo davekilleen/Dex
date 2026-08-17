@@ -2,6 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const { spawnSync } = require('node:child_process');
 const fs = require('node:fs');
+const crypto = require('node:crypto');
 const os = require('node:os');
 const path = require('node:path');
 
@@ -69,11 +70,31 @@ function installStaleJobHelper(sandbox) {
     path.join('core', '__init__.py'),
     path.join('core', 'utils', '__init__.py'),
     path.join('core', 'utils', 'launch_agents.py'),
+    path.join('core', 'utils', 'automation_ownership.py'),
+    path.join('core', 'portable_contract.py'),
+    path.join('core', 'path_safety.py'),
   ]) {
     const target = path.join(sandbox.vault, relative);
     fs.mkdirSync(path.dirname(target), { recursive: true });
     fs.copyFileSync(path.join(repoRoot, relative), target);
   }
+}
+
+function installSoloClaim(sandbox, label, plistContent) {
+  installStaleJobHelper(sandbox);
+  sandbox.launchAgents = path.join(sandbox.home, 'Library', 'LaunchAgents');
+  fs.mkdirSync(sandbox.launchAgents, { recursive: true });
+  const plistName = `${label}.plist`;
+  const plist = path.join(sandbox.launchAgents, plistName);
+  fs.writeFileSync(plist, plistContent);
+  const digest = crypto.createHash('sha256').update(fs.readFileSync(plist)).digest('hex');
+  const sidecar = path.join(sandbox.vault, 'System', '.dex', 'automation-ownership.json');
+  fs.mkdirSync(path.dirname(sidecar), { recursive: true });
+  fs.writeFileSync(
+    sidecar,
+    `{"claims":[{"automation_id":"${label}","owner_id":"dex-solo","plist_relative_path":"Library/LaunchAgents/${plistName}","plist_sha256":"${digest}"}],"schema_version":1}\n`,
+  );
+  return plist;
 }
 
 function installMovedVaultConflict(sandbox, plistName, oldVaultName = 'old-vault') {
@@ -185,6 +206,20 @@ test('session start warns when an installed meeting sync has never run', (t) => 
   );
 });
 
+test('session start suppresses Core freshness warnings for a valid Dex Solo claim', (t) => {
+  const sandbox = createSandbox(t);
+  installSoloClaim(
+    sandbox,
+    'com.dex.meeting-intel',
+    `<?xml version="1.0" encoding="UTF-8"?>
+<plist version="1.0"><dict><key>Label</key><string>com.dex.meeting-intel</string></dict></plist>\n`,
+  );
+
+  const stdout = runSessionStart(sandbox);
+
+  assert.doesNotMatch(stdout, /⏰ Meeting sync/);
+});
+
 test('session start warns when meeting sync keeps running but has never succeeded', (t) => {
   const sandbox = createSandbox(t);
   installMeetingIntel(sandbox);
@@ -288,6 +323,28 @@ test('session start stays silent when no plist points to the stored former vault
 
   assert.doesNotMatch(stdout, /still points to this vault's old location/);
   assert.equal(fs.readFileSync(conflict.breadcrumb, 'utf8'), `${conflict.oldVault}\n`);
+});
+
+test('session start suppresses moved-vault warnings for a valid Dex Solo claim', (t) => {
+  const sandbox = createSandbox(t);
+  completeOnboarding(sandbox);
+  const oldVault = path.join(path.dirname(sandbox.vault), 'old-vault');
+  const breadcrumb = path.join(sandbox.home, '.config', 'dex', 'vault-path');
+  fs.mkdirSync(path.dirname(breadcrumb), { recursive: true });
+  fs.writeFileSync(breadcrumb, `${oldVault}\n`);
+  installSoloClaim(
+    sandbox,
+    'com.dex.meeting-intel',
+    `<?xml version="1.0" encoding="UTF-8"?>
+<plist version="1.0"><dict>
+<key>Label</key><string>com.dex.meeting-intel</string>
+<key>ProgramArguments</key><array><string>/bin/bash</string><string>${oldVault}/run.sh</string></array>
+</dict></plist>\n`,
+  );
+
+  const stdout = runSessionStart(sandbox);
+
+  assert.doesNotMatch(stdout, /still points to this vault's old location/);
 });
 
 test('session start stays silent when a plist references a sibling of the former vault', (t) => {

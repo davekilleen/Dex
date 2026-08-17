@@ -101,10 +101,10 @@ function readCalls(file) {
 test('SessionStart runs the connection health checker without changing existing hooks', () => {
   const settings = JSON.parse(fs.readFileSync(SETTINGS_PATH, 'utf8'));
   const commands = settings.hooks.SessionStart.flatMap((entry) => entry.hooks || []).map((hook) => hook.command);
-  assert.ok(commands.includes('node .claude/hooks/connection-health-checker.cjs'));
-  assert.ok(commands.includes('bash .claude/hooks/session-start.sh'));
+  assert.ok(commands.includes('node "$CLAUDE_PROJECT_DIR"/.claude/hooks/connection-health-checker.cjs'));
+  assert.ok(commands.includes('bash "$CLAUDE_PROJECT_DIR"/.claude/hooks/session-start.sh'));
   assert.ok(commands.includes('python3 "$CLAUDE_PROJECT_DIR/core/utils/update_verifier.py" --vault "$CLAUDE_PROJECT_DIR" --session-start'));
-  assert.ok(commands.includes('bash .claude/hooks/dex-core-orientation.sh'));
+  assert.ok(commands.includes('bash "$CLAUDE_PROJECT_DIR"/.claude/hooks/dex-core-orientation.sh'));
 });
 
 test('stays silent when no connection needs attention', (t) => {

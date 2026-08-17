@@ -1,13 +1,13 @@
 {
   "budget_version": 1,
   "files": 100000,
-  "machine_class_note": "Calibrated 2026-07-21 on a MacBook Pro (Mac17,8), Apple M5 Pro 18-core, 48 GB RAM, using ../creds-venv Python 3.14; each seconds budget is the observed 100k stage time plus 30% headroom.",
+  "machine_class_note": "PROVISIONAL, 2026-08-12. Calibrated on the machine that ENFORCES this budget: the GitHub-hosted macos-latest runner (image macos-26-arm64, Azure), where nightly-quality.yml runs the gate. Rule: ceiling = 2.5x the projected post-#482 CI median per stage, floored at 0.5s. The 2.5x tolerates that runner's observed 1.75x night-to-night spread on identical work while still failing an algorithmic blowup (>=2.5x). The 0.5s floor exists because below it measurement noise exceeds signal -- build_adoption_plan has a ~4.6ms median, so a 2.5x ceiling (11.5ms) is inside the jitter and was observed tripping on an unmodified tree; at 0.5s it is still 109x its median, so a genuine blowup in that stage cannot hide. Untouched stages use the median of 15 observed nights (2026-07-29..08-12); customization_assessment is projected from a post-#482 100k measurement converted at the 1.80x local:CI speed ratio measured on those same untouched stages. Demonstrated both ways at 100k before merge: passes on an unmodified tree (exit 0), and fails when the #482 quadratic is deliberately reintroduced (exit 1, customization_assessment 382.8s vs 29.0s). RECALIBRATE from the live post-#482 distribution after 7 nights (see docs/gate-omission-audit-2026-08-11.md, F1 epilogue) -- these are a floor for honesty, not a final answer. PROVENANCE, NOT AUTHORITY: budget_version 1 was calibrated 2026-07-21 on a MacBook Pro (Mac17,8), Apple M5 Pro 18-core, 48 GB RAM at observed+30%. That machine never ran this gate; the resulting budget was exceeded on 17 of 17 nightly runs, including the first, and was only ever green because the step discarded its exit code (audit F1).",
   "seconds": {
-    "adoption_and_rewind": 5.718049,
-    "build_adoption_plan": 0.00288,
-    "build_inventory": 5.580281,
-    "collect_adoption_report": 5.7281,
-    "customization_assessment": 67.426542,
-    "total_measured": 84.455852
+    "adoption_and_rewind": 22.091857,
+    "build_adoption_plan": 0.5,
+    "build_inventory": 24.76495,
+    "collect_adoption_report": 24.181783,
+    "customization_assessment": 29.012497,
+    "total_measured": 100.062565
   }
 }

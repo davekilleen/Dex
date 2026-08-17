@@ -122,6 +122,95 @@ def test_gate_reports_every_new_version_with_duplicate_tags(tmp_path: Path) -> N
     assert "v1.79.0" in result.stderr
 
 
+def test_uniqueness_gate_fails_loudly_when_remote_tags_are_unreadable(
+    tmp_path: Path,
+) -> None:
+    repository = _repository_with_remote_tags(
+        tmp_path,
+        "dist/release/v1.79.0-1111111",
+    )
+    _git(repository, "remote", "set-url", "origin", str(tmp_path / "missing.git"))
+
+    result = subprocess.run(
+        ["bash", str(GATE)],
+        cwd=repository,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 1
+    assert "could not read dist/release tags from origin" in result.stderr
+    assert "git ls-remote failed" in result.stderr
+
+
+def test_uniqueness_gate_rejects_an_empty_remote_observation(tmp_path: Path) -> None:
+    repository = _repository_with_remote_tags(tmp_path)
+
+    result = subprocess.run(
+        ["bash", str(GATE)],
+        cwd=repository,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 1
+    assert "origin returned no readable dist/release tags" in result.stderr
+    assert "uniqueness cannot be verified" in result.stderr
+
+
+def test_gate_rejects_non_canonical_archive_tag_without_a_canonical_twin(
+    tmp_path: Path,
+) -> None:
+    # The executor requires exactly 7 hex characters in a dist/archive tag and
+    # only says so per-journey, hours into historic-fleet-darwin. A lone
+    # non-canonical start must fail here instead. Include one unique
+    # dist/release tag so the uniqueness empty-check does not fire first.
+    repository = _repository_with_remote_tags(
+        tmp_path,
+        "dist/release/v1.99.0-1111111",
+        "dist/archive/v1.81.12-3a8245ab",
+    )
+
+    result = subprocess.run(
+        ["bash", str(GATE)],
+        cwd=repository,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 1
+    assert "dist/archive/v1.81.12-3a8245ab" in result.stderr
+    assert "no canonical twin" in result.stderr
+    assert "Remedy: create dist/archive/v1.81.12-" in result.stderr
+    assert "Delete nothing" in result.stderr
+
+
+def test_gate_accepts_non_canonical_archive_tag_with_a_canonical_twin(
+    tmp_path: Path,
+) -> None:
+    # Discovery de-duplicates journeys by tree, so a canonical tag at the same
+    # commit already shadows the non-canonical one. That is today's tag set.
+    repository = _repository_with_remote_tags(
+        tmp_path,
+        "dist/release/v1.99.0-1111111",
+        "dist/archive/v1.81.12-3a8245ab",
+        "dist/archive/v1.81.12-3a8245a",
+    )
+
+    result = subprocess.run(
+        ["bash", str(GATE)],
+        cwd=repository,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
 def _newer_release_tags(count: int) -> tuple[str, ...]:
     return tuple(
         f"dist/release/v1.{minor}.0-{minor:07x}"
@@ -369,7 +458,9 @@ def test_stable_release_ci_publishes_each_version_at_most_once() -> None:
         "Build release branch",
         "Push release branch and immutable tag",
         "Build self-contained vault bundle",
-        "Upload vault bundle to versioned GitHub Release",
+        # Draft-first: this step attaches the assets, verifies them, and only then
+        # makes the release public. See test_release_workflows_draft_first.py.
+        "Attach assets, verify them, then make the release public",
     ):
         assert named_steps[step_name]["if"] == publish_condition
 

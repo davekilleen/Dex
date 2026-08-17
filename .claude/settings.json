@@ -5,7 +5,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash .claude/hooks/session-start.sh"
+            "command": "bash \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/session-start.sh"
           },
           {
             "type": "command",
@@ -13,11 +13,11 @@
           },
           {
             "type": "command",
-            "command": "bash .claude/hooks/dex-core-orientation.sh"
+            "command": "bash \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/dex-core-orientation.sh"
           },
           {
             "type": "command",
-            "command": "node .claude/hooks/connection-health-checker.cjs"
+            "command": "node \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/connection-health-checker.cjs"
           },
           {
             "type": "command",
@@ -50,11 +50,11 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node .claude/hooks/person-context-injector.cjs"
+            "command": "node \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/person-context-injector.cjs"
           },
           {
             "type": "command",
-            "command": "node .claude/hooks/company-context-injector.cjs"
+            "command": "node \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/company-context-injector.cjs"
           }
         ]
       },
@@ -63,11 +63,11 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash .claude/hooks/dex-safety-guard.sh"
+            "command": "bash \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/dex-safety-guard.sh"
           },
           {
             "type": "command",
-            "command": "node .claude/hooks/ensure-mcp-user-scope.cjs"
+            "command": "node \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/ensure-mcp-user-scope.cjs"
           }
         ]
       },
@@ -76,7 +76,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash .claude/hooks/dex-safety-guard.sh"
+            "command": "bash \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/dex-safety-guard.sh"
           }
         ]
       }
@@ -86,7 +86,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "afplay /System/Library/Sounds/Ping.aiff"
+            "command": "sh -c 'command -v afplay >/dev/null 2>&1 || exit 0; exec afplay /System/Library/Sounds/Ping.aiff'"
           }
         ]
       }
@@ -97,7 +97,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "afplay /System/Library/Sounds/Ping.aiff"
+            "command": "sh -c 'command -v afplay >/dev/null 2>&1 || exit 0; exec afplay /System/Library/Sounds/Ping.aiff'"
           }
         ]
       }

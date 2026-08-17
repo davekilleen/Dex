@@ -9,7 +9,7 @@ Use this skill when someone wants the latest Dex capabilities or asks what an up
 
 ## The one route
 
-Every lifecycle operation goes through `core.lifecycle.service` version 1.4.0. Treat its response as authoritative. Do not fall back to direct file operations, Git mutation, an update script, or a hand-built repair when the service refuses.
+Every lifecycle operation goes through `core.lifecycle.service` version 1.5.0. Treat its response as authoritative. Do not fall back to direct file operations, Git mutation, an update script, or a hand-built repair when the service refuses.
 
 Use the service operations in this order:
 

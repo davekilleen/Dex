@@ -16,6 +16,7 @@ import argparse
 import json
 import os
 import secrets
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -66,6 +67,9 @@ def run_canary(vault_root: str | Path) -> dict[str, object]:
         "error": None,
     }
     try:
+        source_root = str(Path(__file__).resolve().parents[2])
+        if source_root not in sys.path:
+            sys.path.insert(0, source_root)
         from core.lifecycle import service
 
         state = service.read_lifecycle_state(root)

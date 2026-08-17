@@ -68,6 +68,7 @@ _SAFE_DELIVERY_FAILURE_REASONS = frozenset(
         "subprocess-failed",
         "tag-object-mismatch",
         "tag-object-moved",
+        "tls-untrusted",
     }
 )
 _MAX_FAILURE_DIAGNOSTIC_ELAPSED_MS = 900_000
@@ -76,7 +77,12 @@ _MAX_FAILURE_DIAGNOSTIC_ELAPSED_MS = 900_000
 # executor retries only transient network failures around each delivery hop.
 _TRANSIENT_DELIVERY_MAX_ATTEMPTS = 3
 _TRANSIENT_DELIVERY_BACKOFF_SECONDS = (10.0, 30.0)
-_TRANSIENT_NETWORK_DELIVERY_REASONS = frozenset({"network-unavailable"})
+# A TLS-inspecting proxy or captive portal is momentary for the fleet in the
+# same way a dropped link is. Retrying is safe because nothing about the trust
+# decision changes between attempts: each attempt still verifies the chain.
+_TRANSIENT_NETWORK_DELIVERY_REASONS = frozenset(
+    {"network-unavailable", "tls-untrusted"}
+)
 _TRANSIENT_NETWORK_ERROR_FRAGMENTS = (
     "connection refused",
     "connection reset",
@@ -88,9 +94,38 @@ _TRANSIENT_NETWORK_ERROR_FRAGMENTS = (
     "network-unavailable",
     "nodename nor servname provided",
     "operation timed out",
+    "self signed certificate",
+    "ssl certificate problem",
     "ssl connect error",
     "temporary failure in name resolution",
 )
+_MAX_FAILURE_DETAIL_CHARS = 512
+# Credential-shaped substrings are removed before any detail reaches disk.
+_CREDENTIAL_SHAPED = re.compile(
+    r"(?:gh[pousr]_[A-Za-z0-9]{16,}"
+    r"|github_pat_[A-Za-z0-9_]{16,}"
+    r"|xox[abposr]-[A-Za-z0-9-]{8,}"
+    r"|(?:(?i:authorization|bearer|token|password|passwd|secret|api[_-]?key)"
+    r"\s*[:=]\s*)\S+"
+    r"|//[^/\s:@]+:[^/\s@]+@)"
+)
+
+
+def _sanitized_failure_detail(detail: str) -> str | None:
+    """Keep the underlying failure text that made diagnosis possible, safely.
+
+    The reason code alone cannot distinguish a corporate TLS proxy from a
+    genuinely malformed release, which is what turned a one-line diagnosis into
+    an hours-long one. Retain a bounded, credential-stripped single line.
+    """
+
+    collapsed = " ".join(detail.split())
+    if not collapsed:
+        return None
+    redacted = _CREDENTIAL_SHAPED.sub("<redacted>", collapsed)
+    if len(redacted) > _MAX_FAILURE_DETAIL_CHARS:
+        redacted = redacted[: _MAX_FAILURE_DETAIL_CHARS - 1] + "\u2026"
+    return redacted
 
 
 def _transient_network_error(detail: str) -> bool:
@@ -1443,6 +1478,11 @@ def _failure_diagnostic(
         }
         if route_drift_release is not None:
             delivery_diagnostic["delivered_release"] = route_drift_release
+        raw_detail = evidence.get("detail") if isinstance(evidence, Mapping) else None
+        if isinstance(raw_detail, str):
+            sanitized_detail = _sanitized_failure_detail(raw_detail)
+            if sanitized_detail is not None:
+                delivery_diagnostic["detail"] = sanitized_detail
         document["delivery"] = delivery_diagnostic
     return document
 

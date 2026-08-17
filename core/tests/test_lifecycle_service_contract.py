@@ -5,24 +5,26 @@ from __future__ import annotations
 import hashlib
 import inspect
 import json
+import plistlib
 import re
 import shutil
 from collections.abc import Mapping
 from pathlib import Path
 
+import pytest
+
 from core.lifecycle import service
 from core.lifecycle.bridge import ACTIVATION_RELATIVE
-from core.lifecycle.engine import rewind_acknowledgement_token
+from core.lifecycle.engine import (
+    AdoptionReceiptPersistenceError,
+    rewind_acknowledgement_token,
+)
 from core.tests.test_adoption_transaction import _setup
 from core.tests.test_lifecycle_bridge import _write_bridge_release
 from core.update import apply_update
+from core.utils import automation_ownership
 
-SCHEMA_PATH = (
-    Path(__file__).resolve().parents[1]
-    / "lifecycle"
-    / "contracts"
-    / "api.schema.json"
-)
+SCHEMA_PATH = Path(__file__).resolve().parents[1] / "lifecycle" / "contracts" / "api.schema.json"
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
@@ -91,18 +93,17 @@ def _validate(schema: dict[str, object], node: object, value: object, path: str 
                 _validate(schema, child, value[field], f"{path}.{field}")
 
 
-def _assert_conforms(
-    schema: dict[str, object], operation: str, request: dict[str, object], response: object
-) -> None:
+def _assert_conforms(schema: dict[str, object], operation: str, request: dict[str, object], response: object) -> None:
     operation_schema = schema["x-operations"][operation]
     _validate(schema, operation_schema["request"], request)
     _validate(schema, operation_schema["response"], response)
 
 
-def test_frozen_service_inputs_and_outputs_conform_to_schema(tmp_path: Path) -> None:
-    vault, _document, _catalog, _inventory, _plan, _loader = _setup(
-        tmp_path, item_ids=("alpha",)
-    )
+def test_frozen_service_inputs_and_outputs_conform_to_schema(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    vault, _document, _catalog, _inventory, _plan, _loader = _setup(tmp_path, item_ids=("alpha",))
     _write_bridge_release(vault)
     release_root = tmp_path / "release"
     shutil.copytree(vault, release_root)
@@ -118,7 +119,6 @@ def test_frozen_service_inputs_and_outputs_conform_to_schema(tmp_path: Path) -> 
         inventory_request,
         inventory_response,
     )
-
     mcp_vault = tmp_path / "mcp-vault"
     (mcp_vault / "System").mkdir(parents=True)
     shutil.copy2(
@@ -190,14 +190,82 @@ def test_frozen_service_inputs_and_outputs_conform_to_schema(tmp_path: Path) -> 
         onboarding_execute_response,
     )
 
+    automation_vault = tmp_path / "automation-vault"
+    (automation_vault / "System").mkdir(parents=True)
+    home = tmp_path / "automation-home"
+    label = "com.dex.smoke-nightly"
+    plist_relative = f"Library/LaunchAgents/{label}.plist"
+    plist = home / plist_relative
+    plist.parent.mkdir(parents=True)
+    with plist.open("wb") as handle:
+        plistlib.dump({"Label": label, "ProgramArguments": ["/bin/bash"]}, handle)
+    monkeypatch.setattr(automation_ownership, "_home_root", lambda: home)
+    claim = {
+        "automation_id": label,
+        "owner_id": "dex-solo",
+        "plist_relative_path": plist_relative,
+        "plist_sha256": hashlib.sha256(plist.read_bytes()).hexdigest(),
+        "launchd_state": "unloaded",
+    }
+    claim_preview = service.build_and_preview_automation_claim(automation_vault, claim)
+    _assert_conforms(
+        schema,
+        "build_and_preview_automation_claim",
+        {"vault_root": str(automation_vault), "claim": claim},
+        claim_preview,
+    )
+    claim_execute = service.execute_approved_automation_claim(
+        automation_vault,
+        claim_preview["preview"],
+        claim_preview["approval_token"],
+    )
+    _assert_conforms(
+        schema,
+        "execute_approved_automation_claim",
+        {
+            "vault_root": str(automation_vault),
+            "preview": claim_preview["preview"],
+            "approved_token": claim_preview["approval_token"],
+        },
+        claim_execute,
+    )
+    release = {
+        "automation_id": label,
+        "owner_id": "dex-solo",
+        "scheduler_state": "stopped",
+    }
+    release_preview = service.build_and_preview_automation_release(
+        automation_vault,
+        release,
+    )
+    _assert_conforms(
+        schema,
+        "build_and_preview_automation_release",
+        {"vault_root": str(automation_vault), "release": release},
+        release_preview,
+    )
+    release_execute = service.execute_approved_automation_release(
+        automation_vault,
+        release_preview["preview"],
+        release_preview["approval_token"],
+    )
+    _assert_conforms(
+        schema,
+        "execute_approved_automation_release",
+        {
+            "vault_root": str(automation_vault),
+            "preview": release_preview["preview"],
+            "approved_token": release_preview["approval_token"],
+        },
+        release_execute,
+    )
+
     preview_request = {
         "vault_root": str(vault),
         "release_root": str(release_root),
         "requested_item_ids": ["alpha"],
     }
-    preview_response = service.build_and_preview_adoption(
-        vault, release_root, ("alpha",)
-    )
+    preview_response = service.build_and_preview_adoption(vault, release_root, ("alpha",))
     _assert_conforms(
         schema,
         "build_and_preview_adoption",
@@ -309,10 +377,26 @@ def test_frozen_service_inputs_and_outputs_conform_to_schema(tmp_path: Path) -> 
     )
 
 
+def test_service_recovery_refuses_damage_before_activation_mutates(tmp_path: Path) -> None:
+    vault, _document, _catalog, _inventory, _plan, _loader = _setup(tmp_path, item_ids=("alpha",))
+    _write_bridge_release(vault)
+    journal = vault / "System/.dex/tx/damaged/journal.jsonl"
+    journal.parent.mkdir(parents=True)
+    journal.write_text("{}\n", encoding="utf-8")
+
+    with pytest.raises(
+        AdoptionReceiptPersistenceError,
+        match="incomplete or quarantined",
+    ):
+        service.build_inventory_and_plan(vault)
+
+    assert not (vault / ACTIVATION_RELATIVE).exists()
+
+
 def test_api_version_is_present_and_frozen_in_schema() -> None:
     schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
 
-    assert service.api_version == "1.4.0"
+    assert service.api_version == "1.5.0"
     assert schema["properties"]["api_version"] == {"const": service.api_version}
 
 
@@ -331,6 +415,10 @@ def test_additive_public_surface_preserves_every_existing_operation() -> None:
         "execute_approved_mcp_registration",
         "build_and_preview_onboarding_context",
         "execute_approved_onboarding_context",
+        "build_and_preview_automation_claim",
+        "execute_approved_automation_claim",
+        "build_and_preview_automation_release",
+        "execute_approved_automation_release",
         "deliver_and_apply_latest_release",
         "build_and_preview_conflict_resolution",
         "execute_approved_conflict_resolution",
@@ -365,11 +453,25 @@ def test_onboarding_context_operations_have_frozen_signatures() -> None:
         "calendar_source: 'Mapping[str, object]') -> 'dict[str, object]'"
     )
     assert str(inspect.signature(service.execute_approved_onboarding_context)) == (
-        "(vault_root: 'str | Path', preview: 'Mapping[str, object]', "
-        "approved_token: 'str') -> 'dict[str, object]'"
+        "(vault_root: 'str | Path', preview: 'Mapping[str, object]', approved_token: 'str') -> 'dict[str, object]'"
     )
     assert "version bump" in service.__doc__.lower()
     assert "bridge" in service.__doc__.lower()
+
+
+def test_automation_ownership_operations_have_frozen_signatures() -> None:
+    assert str(inspect.signature(service.build_and_preview_automation_claim)) == (
+        "(vault_root: 'str | Path', claim: 'Mapping[str, object]') -> 'dict[str, object]'"
+    )
+    assert str(inspect.signature(service.execute_approved_automation_claim)) == (
+        "(vault_root: 'str | Path', preview: 'Mapping[str, object]', approved_token: 'str') -> 'dict[str, object]'"
+    )
+    assert str(inspect.signature(service.build_and_preview_automation_release)) == (
+        "(vault_root: 'str | Path', release: 'Mapping[str, object]') -> 'dict[str, object]'"
+    )
+    assert str(inspect.signature(service.execute_approved_automation_release)) == (
+        "(vault_root: 'str | Path', preview: 'Mapping[str, object]', approved_token: 'str') -> 'dict[str, object]'"
+    )
 
 
 def test_release_delivery_is_non_mutating_and_exposed_only_through_the_lifecycle_service(
@@ -483,7 +585,7 @@ def test_archive_removal_is_previewed_approved_and_receipted(tmp_path: Path) -> 
 
     preview = service.build_archive_removal_preview(vault)
 
-    assert preview["api_version"] == "1.4.0"
+    assert preview["api_version"] == "1.5.0"
     assert preview["preview"]["archive_relative"] == ".dex/pre-split-archive.git"
     assert preview["preview"]["size_bytes"] == len(b"ref: refs/heads/main\narchive bytes")
     assert preview["preview"]["retention"] == "one full release cycle after conversion"

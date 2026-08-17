@@ -20,6 +20,7 @@ from pathlib import Path
 
 import pytest
 
+from core import portable_contract
 from core.transaction.engine import PlanEntry, PlanRejected, Transaction, TransactionError
 from core.transaction.journal import Journal, JournalCorruptError
 from core.transaction.lock import LockBusyError, acquire_owned_lock
@@ -675,6 +676,156 @@ def test_resume_removes_expected_absent_publish_when_temp_is_gone_but_target_mat
     Transaction.resume(vault)
 
     assert not target.exists()
+
+
+def test_resume_rehydrates_a_receipt_read_cap_before_comparing_a_target(
+    tmp_path: Path,
+) -> None:
+    vault = _vault(tmp_path)
+    relative = "System/.dex/analytics-attempts.jsonl"
+    planned = b'{"event":"task_created"}\n'
+    max_read_bytes = portable_contract.ANALYTICS_ATTEMPT_RECEIPT_TRANSACTION_MAX_BYTES
+    tx = Transaction.begin(
+        vault,
+        [PlanEntry(relative, planned, expected_absent=True)],
+        operation="analytics-receipt",
+        max_read_bytes_by_relative={relative: max_read_bytes},
+    )
+    begin = Journal(tx.tx_dir / "journal.jsonl").read()[0]
+    assert begin.payload["max_read_bytes_by_relative"] == {
+        relative: max_read_bytes,
+    }
+    tx._snapshot_phase()
+    tx.journal.append("APPLY-START")
+    tx.journal.append(
+        "APPLYING",
+        {"index": 0, "relative": relative, "expected_absent": True},
+    )
+    target = vault / relative
+    target.write_bytes(planned)
+    assert tx._release is not None
+    tx._release()
+    tx._release = None
+
+    Transaction.resume(vault)
+
+    assert not target.exists()
+
+
+def test_engine_analytics_receipt_requires_its_exact_bounded_read_limit(
+    tmp_path: Path,
+) -> None:
+    vault = _vault(tmp_path)
+    relative = "System/.dex/analytics-attempts.jsonl"
+
+    with pytest.raises(PlanRejected, match="required bounded-read limit"):
+        Transaction.begin(
+            vault,
+            [PlanEntry(relative, b"{}\n", expected_absent=True)],
+            operation="analytics-receipt",
+        )
+
+
+def test_resume_quarantines_analytics_receipt_without_a_persisted_read_limit(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    vault = _vault(tmp_path)
+    tx_id = "20260812T000000-receipt"
+    relative = "System/.dex/analytics-attempts.jsonl"
+    target = vault / relative
+    target.write_bytes(b"private bytes must not be read")
+    journal = Journal(vault / "System/.dex/tx" / tx_id / "journal.jsonl")
+    journal.append(
+        "BEGIN",
+        {
+            "tx_id": tx_id,
+            "operation": "analytics-receipt",
+            "plan": [
+                {
+                    "relative": relative,
+                    "sha256": hashlib.sha256(b"{}\n").hexdigest(),
+                    "size": 3,
+                    "expected_absent": True,
+                }
+            ],
+        },
+    )
+    monkeypatch.setattr(
+        Transaction,
+        "_target_matches_planned_content",
+        staticmethod(lambda *_args, **_kwargs: pytest.fail("receipt target was read")),
+    )
+
+    outcomes = Transaction.resume(vault)
+
+    assert outcomes == [
+        {
+            "tx_id": tx_id,
+            "committed": False,
+            "resumed": True,
+            "quarantined": "analytics receipt transaction lacks the required bounded-read limit",
+        }
+    ]
+    assert target.read_bytes() == b"private bytes must not be read"
+
+
+def test_engine_automation_ownership_requires_its_exact_bounded_read_limit(
+    tmp_path: Path,
+) -> None:
+    vault = _vault(tmp_path)
+    relative = portable_contract.AUTOMATION_OWNERSHIP_RELATIVE
+
+    with pytest.raises(PlanRejected, match="required bounded-read limit"):
+        Transaction.begin(
+            vault,
+            [PlanEntry(relative, b'{"claims":[],"schema_version":1}\n', expected_absent=True)],
+            operation="automation-ownership",
+        )
+
+
+def test_resume_quarantines_automation_ownership_without_a_persisted_read_limit(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    vault = _vault(tmp_path)
+    tx_id = "20260813T000000-automation-ownership"
+    relative = portable_contract.AUTOMATION_OWNERSHIP_RELATIVE
+    target = vault / relative
+    target.write_bytes(b"private bytes must not be read")
+    journal = Journal(vault / "System/.dex/tx" / tx_id / "journal.jsonl")
+    journal.append(
+        "BEGIN",
+        {
+            "tx_id": tx_id,
+            "operation": "automation-ownership",
+            "plan": [
+                {
+                    "relative": relative,
+                    "sha256": hashlib.sha256(b"{}\n").hexdigest(),
+                    "size": 3,
+                    "expected_absent": True,
+                }
+            ],
+        },
+    )
+    monkeypatch.setattr(
+        Transaction,
+        "_target_matches_planned_content",
+        staticmethod(lambda *_args, **_kwargs: pytest.fail("automation ownership target was read")),
+    )
+
+    outcomes = Transaction.resume(vault)
+
+    assert outcomes == [
+        {
+            "tx_id": tx_id,
+            "committed": False,
+            "resumed": True,
+            "quarantined": "automation ownership transaction lacks the required bounded-read limit",
+        }
+    ]
+    assert target.read_bytes() == b"private bytes must not be read"
 
 
 def test_resume_preserves_expected_absent_user_file_matching_plan_when_temp_inode_differs(

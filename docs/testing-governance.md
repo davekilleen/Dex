@@ -22,6 +22,8 @@ Dex uses repository-enforced quality gates so unsafe changes cannot merge.
 - Hook harness tests pass.
 - Security gate passes (secret leakage detection).
 - Large-vault performance budget passes.
+- The package version matches the newest changelog entry, so a green main build
+  cannot silently skip the release its notes promise.
 
 The PII gate is merge-base-aware and diff-scoped. Fake email addresses under
 `core/tests/fixtures/**` are allowed, but tracked personal-config shapes remain blocked
@@ -170,6 +172,21 @@ exception labels immediately above, which no workflow reads. Every known
 discrepancy is listed, with file and line, in
 [docs/gate-omission-audit-2026-08-11.md](gate-omission-audit-2026-08-11.md).
 Read that before relying on any gate named here.
+
+**Configuration that has never been executed against the live system is not a
+control — it just reads like one in review.** That audit's sharpest finding was
+`scripts/configure-branch-protection.sh`, which required a status name nothing
+reports. It would have blocked every merge on the first run, and it passed
+review repeatedly because reviewing a script only checks its logic, never its
+contact with reality. Two rules follow, and they apply to any file that
+configures a gate rather than being one:
+
+- Before trusting a name, check it against what the system actually emits —
+  e.g. `gh api repos/<owner>/<repo>/commits/main/check-runs --jq '.check_runs[].name'`
+  for a required status context.
+- Prefer configuration that can only widen. A script that reads live state and
+  submits the union of it with its own floor cannot silently remove a control,
+  however stale its floor becomes.
 
 ## Regression Rule
 - Bug-fix PRs must include a regression test or explicit reviewer-approved exception.

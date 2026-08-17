@@ -57,6 +57,44 @@ def _start_session_before_step(step_number: int) -> None:
         assert payload["success"] is True, payload
 
 
+def _prepare_finalize_vault(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> Path:
+    system = tmp_path / "System"
+    system.mkdir()
+    shutil.copy(
+        REPO_ROOT / "System/user-profile-template.yaml",
+        system / "user-profile-template.yaml",
+    )
+    shutil.copy(
+        REPO_ROOT / "System/.mcp.json.example",
+        system / ".mcp.json.example",
+    )
+    (tmp_path / "core").mkdir()
+    shutil.copy(REPO_ROOT / "core/paths.py", tmp_path / "core/paths.py")
+    (tmp_path / ".scripts").mkdir()
+    shutil.copy(REPO_ROOT / "package.json", tmp_path / "package.json")
+    shutil.copy(REPO_ROOT / "CLAUDE.md", tmp_path / "CLAUDE.md")
+    monkeypatch.setattr(onboarding_server, "BASE_DIR", tmp_path)
+    monkeypatch.setattr(
+        onboarding_server,
+        "MARKER_FILE",
+        system / ".onboarding-complete",
+    )
+    monkeypatch.setattr(
+        onboarding_server,
+        "MCP_CONFIG_EXAMPLE",
+        system / ".mcp.json.example",
+    )
+    monkeypatch.setattr(
+        onboarding_server,
+        "SESSION_FILE",
+        system / ".onboarding-session.json",
+    )
+    return system / ".onboarding-session.json"
+
+
 def test_confirmed_context_tools_preview_then_apply_without_creating_a_session(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -267,9 +305,7 @@ class TestStepOrdering:
     def test_optional_step_8_does_not_block_finalization(
         self, tmp_path, monkeypatch
     ):
-        session_file = tmp_path / "System/.onboarding-session.json"
-        monkeypatch.setattr(onboarding_server, "SESSION_FILE", session_file)
-        monkeypatch.setattr(onboarding_server, "BASE_DIR", tmp_path)
+        _prepare_finalize_vault(tmp_path, monkeypatch)
         session = onboarding_server.create_new_session()
         session["completed_steps"] = [1, 2, 3, 4, 5, 6, 7]
         session["data"] = {
@@ -870,9 +906,7 @@ class TestEmailDomainStep:
     def test_explicit_no_company_domain_completes_step_and_allows_finalize(
         self, tmp_path, monkeypatch
     ):
-        session_file = tmp_path / "System/.onboarding-session.json"
-        monkeypatch.setattr(onboarding_server, "SESSION_FILE", session_file)
-        monkeypatch.setattr(onboarding_server, "BASE_DIR", tmp_path)
+        _prepare_finalize_vault(tmp_path, monkeypatch)
         _start_session_before_step(4)
 
         payload = _decode_tool_result(
@@ -1159,9 +1193,7 @@ class TestCapabilityStep:
         assert payload["field"] == "capabilities.careeer"
 
     def test_dry_run_includes_only_selected_room_folders(self, tmp_path, monkeypatch):
-        session_file = tmp_path / "System/.onboarding-session.json"
-        monkeypatch.setattr(onboarding_server, "SESSION_FILE", session_file)
-        monkeypatch.setattr(onboarding_server, "BASE_DIR", tmp_path)
+        _prepare_finalize_vault(tmp_path, monkeypatch)
         session = onboarding_server.create_new_session()
         session["completed_steps"] = [1, 2, 3, 4, 5, 6, 7, 8]
         session["current_step"] = 9
@@ -1195,7 +1227,8 @@ class TestCapabilityStep:
         preview = payload["data"]
         assert "05-Areas/Career" in preview["would_create_folders"]
         assert "05-Areas/Companies" not in preview["would_create_folders"]
-        assert "01-Quarter_Goals" in preview["would_create_folders"]
+        assert "01-Quarter_Goals" not in preview["would_create_folders"]
+        assert "05-Areas/People/Internal" not in preview["would_create_folders"]
         assert preview["preview_user_profile"]["capabilities"] == {
             "career": {"enabled": True},
             "companies": {"enabled": False},
@@ -1208,9 +1241,7 @@ class TestCapabilityStep:
     def test_dry_run_uses_contract_defaults_when_capabilities_are_omitted(
         self, tmp_path, monkeypatch
     ):
-        session_file = tmp_path / "System/.onboarding-session.json"
-        monkeypatch.setattr(onboarding_server, "SESSION_FILE", session_file)
-        monkeypatch.setattr(onboarding_server, "BASE_DIR", tmp_path)
+        _prepare_finalize_vault(tmp_path, monkeypatch)
         session = onboarding_server.create_new_session()
         session["completed_steps"] = [1, 2, 3, 4, 5, 6, 7]
         session["current_step"] = 8
@@ -1376,6 +1407,23 @@ class TestCapabilityStep:
         }
         onboarding_server.save_session(session)
 
+        preview_payload = _decode_tool_result(
+            asyncio.run(
+                onboarding_server.handle_call_tool(
+                    "finalize_onboarding", {"dry_run": True}
+                )
+            )
+        )
+        assert preview_payload["success"] is True, preview_payload
+        preview = preview_payload["data"]
+        assert "01-Quarter_Goals" not in preview["would_create_folders"]
+        assert "05-Areas/People/Internal" not in preview["would_create_folders"]
+        assert paths["SESSION_FILE"].is_file()
+        assert not paths["MARKER_FILE"].exists()
+        assert not (tmp_path / "System/user-profile.yaml").exists()
+        assert not (tmp_path / "05-Areas/Career").exists()
+        assert not (tmp_path / "System/.dex/tx").exists()
+
         payload = _decode_tool_result(
             asyncio.run(onboarding_server.handle_call_tool("finalize_onboarding", {}))
         )
@@ -1384,13 +1432,18 @@ class TestCapabilityStep:
         assert (tmp_path / "05-Areas/Career/Evidence/README.md").is_file()
         assert (tmp_path / ".claude/skills/career-setup/SKILL.md").is_file()
         assert not (tmp_path / "05-Areas/Companies").exists()
-        assert (tmp_path / "01-Quarter_Goals").is_dir()
+        # Disabled rooms and genuinely empty spine folders stay absent. Parent
+        # directories are created only for files in the durable transaction.
+        assert not (tmp_path / "01-Quarter_Goals").exists()
         assert not (tmp_path / ".claude/skills/quarter-plan").exists()
         assert not (tmp_path / ".claude/skills/quarter-review").exists()
         assert (tmp_path / "03-Tasks/Tasks.md").is_file()
-        assert (tmp_path / "05-Areas/People/Internal").is_dir()
+        assert not (tmp_path / "05-Areas/People/Internal").exists()
         profile = (tmp_path / "System/user-profile.yaml").read_text(encoding="utf-8")
         assert "working_week:" in profile
         assert "days:" in profile
         assert "sunday" in profile
         assert not paths["SESSION_FILE"].exists()
+        assert preview["provision_receipt"]["created"] == payload["data"]["receipt"][
+            "created"
+        ]

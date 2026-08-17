@@ -196,3 +196,88 @@ def test_empty_calendar_queries_warn_when_default_calendar_is_missing(
         "Calendar 'Guessed Work' was not found. Available calendars: ['Home']. "
         "Set calendar.work_calendar in System/user-profile.yaml."
     )
+
+
+@pytest.mark.parametrize(
+    ("tool_name", "arguments"),
+    [
+        ("calendar_get_events", {}),
+        ("calendar_get_today", {}),
+        ("calendar_search_events", {"query": "planning"}),
+        ("calendar_get_next_event", {}),
+        ("calendar_get_events_with_attendees", {}),
+    ],
+)
+def test_calendar_read_failures_preserve_broken_status_and_fix_guidance(
+    monkeypatch,
+    tool_name,
+    arguments,
+):
+    guidance = (
+        "Calendar access denied. Enable access in System Settings → "
+        "Privacy & Security → Calendars."
+    )
+
+    monkeypatch.setattr(
+        calendar_server,
+        "run_shell_script",
+        lambda *args: (False, guidance),
+    )
+
+    payload = _decode_tool_result(
+        asyncio.run(calendar_server._handle_call_tool_inner(tool_name, arguments))
+    )
+
+    assert payload == {
+        "success": False,
+        "feature": "Calendar access",
+        "feature_status": "broken",
+        "user_message": guidance,
+        "error": guidance,
+    }
+
+
+@pytest.mark.parametrize(
+    ("tool_name", "arguments", "empty_field"),
+    [
+        ("calendar_get_events", {"calendar_name": "Work"}, "events"),
+        ("calendar_get_today", {"calendar_name": "Work"}, "events"),
+        (
+            "calendar_search_events",
+            {"calendar_name": "Work", "query": "planning"},
+            "events",
+        ),
+        ("calendar_get_next_event", {"calendar_name": "Work"}, "next_event"),
+        (
+            "calendar_get_events_with_attendees",
+            {"calendar_name": "Work"},
+            "events",
+        ),
+    ],
+)
+def test_calendar_read_empty_results_remain_healthy(
+    monkeypatch,
+    tool_name,
+    arguments,
+    empty_field,
+):
+    def fake_run_shell_script(script_name, operation, *args):
+        assert script_name == "calendar_eventkit.py"
+        if operation == "list":
+            return True, json.dumps([{"title": "Work"}])
+        if operation == "next":
+            return True, json.dumps({"message": "No upcoming events"})
+        return True, "[]"
+
+    monkeypatch.setattr(calendar_server, "run_shell_script", fake_run_shell_script)
+    calendar_server._get_available_calendar_names.cache_clear()
+
+    payload = _decode_tool_result(
+        asyncio.run(calendar_server._handle_call_tool_inner(tool_name, arguments))
+    )
+
+    assert payload["success"] is True
+    assert "feature_status" not in payload
+    assert "user_message" not in payload
+    assert "warning" not in payload
+    assert payload[empty_field] == ([] if empty_field == "events" else None)

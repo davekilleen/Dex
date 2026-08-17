@@ -338,11 +338,14 @@ For each completed item:
 
 **If nothing to sync:** Skip silently.
 
-### 5.8 Email Intelligence (if Gmail connected)
+### 5.8 Email Intelligence (if connected)
 
-Check `System/integrations/config.yaml` for `google-workspace.enabled: true`.
+Check `System/integrations/config.yaml` for `google-workspace.enabled: true`. Also treat a
+registered `apple-mail-mcp` server as a connected source. Before querying a connected email
+source, run `python3 core/utils/doctor.py --deep`; Apple Mail search is usable only when the
+`mail.apple-search` check reports `OK` / `feature_status: ok`.
 
-If enabled and MCP healthy:
+If connected and healthy:
 1. Get unread count and priority emails from monitored labels
 2. Flag emails needing reply (> 48h since received, from key contacts in `05-Areas/People/`)
 3. Surface email threads with today's meeting attendees
@@ -351,7 +354,10 @@ Include in plan:
 
 > "Email: [X] unread, [Y] need replies. [Z] threads with today's meeting attendees."
 
-If unhealthy: skip silently (graceful degradation -- no error to user).
+For Apple Mail, never interpret an empty search as "no matching mail" unless that health check
+is OK. If a connected source is broken or could not be checked, **do not silently skip**:
+include one calm "Email context omitted" line with Doctor's `user_message` or fix path. If the
+source is not connected (`OFF`), omit it without noise.
 
 ### 5.9 Teams Intelligence (if Teams connected)
 
@@ -729,4 +735,5 @@ The plan works at multiple levels:
 | Work | work-mcp | `list_tasks`, `get_week_progress`, `get_meeting_context`, `get_commitments_due`, `analyze_calendar_capacity`, `suggest_task_scheduling` |
 | Improvements | dex-improvements-mcp | `synthesize_changelog`, `synthesize_learnings`, `list_ideas` |
 | Google Workspace | google-workspace-mcp | Gmail query, email search (if enabled) |
+| Apple Mail | apple-mail-mcp | Local full-text mail search (only after `mail.apple-search` is healthy) |
 | Teams | teams-mcp | `teams_list_chats`, `teams_search_messages`, `teams_health_check` (if enabled) |

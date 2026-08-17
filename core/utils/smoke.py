@@ -31,7 +31,7 @@ if str(RUNNER_ROOT) in sys.path:
     sys.path.remove(str(RUNNER_ROOT))
 sys.path.insert(0, str(RUNNER_ROOT))
 
-from core.utils import release_channel
+from core.utils import dex_logger, release_channel
 
 SCHEMA_VERSION = 1
 HISTORY_LIMIT = 120
@@ -68,6 +68,23 @@ SENSITIVE_CONFIG_KEY = re.compile(
     r"(?:api[_-]?key|authorization|credential|password|secret|token)",
     re.IGNORECASE,
 )
+
+
+def _missing_module_detail(error: ModuleNotFoundError) -> str:
+    module = dex_logger.missing_module_name(error)
+    if dex_logger.is_dex_module(module):
+        return (
+            f"Dex's own code could not be loaded ({_one_line(error)}). "
+            "This is a Dex checkup fault, not a missing Python package."
+        )
+    if module:
+        return (
+            f"Python packages not installed in this vault's .venv (missing module {module!r}) — run /dex-update "
+            "(or reinstall requirements.txt into that .venv), then re-run /dex-doctor"
+        )
+    return MISSING_PACKAGES_DETAIL
+
+
 SNAPSHOT_CHANGED_DETAIL = "snapshot changed before launch"
 MCP_ONCE_CONSENT_DETAIL = "valid fresh single-use consent token is required"
 MCP_ONCE_TOKEN_PREFIX = "dex-mcp-once-consent-"
@@ -77,6 +94,7 @@ RUNNER_FALLBACK_RELATIVES = (
     Path("core/__init__.py"),
     Path("core/paths.py"),
     Path("core/utils/__init__.py"),
+    Path("core/utils/dex_logger.py"),
     Path("core/utils/release_channel.py"),
     Path("core/utils/smoke.py"),
     Path("core/utils/trust_registry.py"),
@@ -227,6 +245,12 @@ def _is_runner_runtime_path(path: str | Path) -> bool:
         relative.startswith("core/tests/")
         or relative.startswith("core/mcp/tests/")
         or relative.startswith("core/migrations/tests/")
+        # Kept in step with the ``export-ignore`` entries in ``.gitattributes``:
+        # the trusted snapshot comes from ``git archive``, so a test file that is
+        # excluded there but counted as runtime here is expected and missing, and
+        # every vault-mutating journey skips as though ``core`` had been modified.
+        or relative.endswith(".test.cjs")
+        or relative == "core/integrations/connection-manager/hardening.child.cjs"
     )
 
 
@@ -1208,11 +1232,31 @@ def _preparation_command(
     return command
 
 
+def _kill_process_handle(process: subprocess.Popen[str]) -> None:
+    if process.poll() is not None:
+        return
+    try:
+        process.kill()
+    except ProcessLookupError:
+        return
+    try:
+        process.wait(timeout=0.2)
+    except subprocess.TimeoutExpired:
+        pass
+
+
 def _terminate_process_group(process: subprocess.Popen[str]) -> None:
     if os.name == "posix":
         try:
             os.killpg(process.pid, signal.SIGKILL)
         except ProcessLookupError:
+            return
+        except PermissionError:
+            # macOS CI can deny killpg with EPERM while the child is still
+            # ours to kill, or while the group is already being reaped.
+            # Fall back to the process handle so a timeout stays a timeout
+            # instead of "journey harness failed: Operation not permitted".
+            _kill_process_handle(process)
             return
         if process.poll() is None:
             try:
@@ -1221,13 +1265,7 @@ def _terminate_process_group(process: subprocess.Popen[str]) -> None:
                 pass
         return
 
-    if process.poll() is not None:
-        return
-    process.kill()
-    try:
-        process.wait(timeout=0.2)
-    except subprocess.TimeoutExpired:
-        pass
+    _kill_process_handle(process)
 
 
 def _decode_child_result(stdout: str) -> dict[str, str]:
@@ -1268,7 +1306,10 @@ def _run_json_process(
         try:
             stdout, stderr = process.communicate(timeout=timeout_seconds)
         except subprocess.TimeoutExpired:
-            _terminate_process_group(process)
+            try:
+                _terminate_process_group(process)
+            except OSError:
+                _kill_process_handle(process)
             if process.stdout is not None:
                 process.stdout.close()
             if process.stderr is not None:
@@ -1290,7 +1331,10 @@ def _run_json_process(
         return _decode_child_result(stdout), False
     except (OSError, ValueError, json.JSONDecodeError) as exc:
         if process is not None:
-            _terminate_process_group(process)
+            try:
+                _terminate_process_group(process)
+            except OSError:
+                _kill_process_handle(process)
         return {"verdict": "UNKNOWN", "detail": f"{label} harness failed: {_one_line(exc)}"}, True
 
 
@@ -2687,8 +2731,8 @@ def main(
             result = {"verdict": "BROKEN", "detail": _one_line(exc)}
         except JourneySafetySkip as exc:
             result = {"verdict": "UNKNOWN", "detail": _one_line(exc)}
-        except ModuleNotFoundError:
-            result = {"verdict": "UNKNOWN", "detail": MISSING_PACKAGES_DETAIL}
+        except ModuleNotFoundError as error:
+            result = {"verdict": "UNKNOWN", "detail": _missing_module_detail(error)}
         except (OSError, PermissionError) as exc:
             print(f"smoke preparation refused: {_one_line(exc)}", file=sys.stderr)
             return 2
@@ -2704,8 +2748,8 @@ def main(
             _block_python_network()
             release_root = _internal_release_root(args.run_marker, args.release_root)
             result = INTERNAL_JOURNEYS[args._journey](vault, release_root)
-        except ModuleNotFoundError:
-            result = {"verdict": "UNKNOWN", "detail": MISSING_PACKAGES_DETAIL}
+        except ModuleNotFoundError as error:
+            result = {"verdict": "UNKNOWN", "detail": _missing_module_detail(error)}
         except (KeyError, OSError, PermissionError) as exc:
             print(f"internal smoke journey refused: {_one_line(exc)}", file=sys.stderr)
             return 2

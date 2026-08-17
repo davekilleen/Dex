@@ -1,362 +1,159 @@
 ---
 name: deal-review
-description: Review active deals and surface risks
+description: Review active deals from canonical activity evidence and surface unknowns
 role_groups: [sales, leadership]
 jtbd: |
-  You have multiple deals in flight and it's hard to keep track of which need 
-  attention. This scans your deal pages, identifies stale deals (no recent activity), 
-  flags missing next steps, and checks for upcoming deadlines so nothing slips 
-  through the cracks.
+  You have several deals in flight and need to know which require attention without
+  treating a file timestamp, silence, or missing value as sales truth.
 time_investment: "5-10 minutes per review"
 ---
 
 ## Purpose
 
-Get a comprehensive view of your deal pipeline health - identify at-risk deals, surface blockers, and ensure every deal has clear next steps.
+Create a complete, dated review of the requested deal cohort. Surface evidence-backed
+risks, missing next steps, deadlines, and unchecked deals while keeping unknowns
+visible.
 
 ## Usage
 
-- `/deal-review` - Review all active deals
-- `/deal-review [stage]` - Filter by deal stage (e.g., "discovery", "proposal", "negotiation")
-- `/deal-review [timeframe]` - Focus on deals closing in timeframe (e.g., "this month", "Q1")
+- `/deal-review` — review the confirmed active-deal cohort
+- `/deal-review [stage]` — filter through the configured stage map
+- `/deal-review [period]` — filter by sourced close dates in a confirmed period
 
----
+## Evidence, authority, and recovery
 
-## Step 1: Identify Deal Files
+Set the review `as-of` timestamp and timezone first. Use the canonical activity date:
+the actual timestamp on a meeting, call, email, CRM event, or other authoritative
+record. Store its source ID/path and source date. A file modified date is only a weak
+discovery clue and must not become an activity.
 
-Search for deal-related files:
+- Keep an explicit **Unchecked deals** section for every discovered record that is
+  unreadable, duplicated, contradictory, or missing a required field. Never silently
+  drop an unchecked deal or call it healthy.
+- Unknown value must be excluded from value totals and amount-share denominators;
+  never replace it with zero. An explicit zero remains eligible and is labelled.
+- Disclose denominator coverage for every rate, count, or percentage: discovered,
+  checked, eligible, and excluded rows.
+- Keywords and silence are leads, not facts. Do not infer ghosting, churn, an absent
+  buyer, or a blocker without dated source evidence.
+- Never invent absent facts, dates, values, next steps, commitments, risks, or
+  confidence.
+- Keep the review read-only. Before any requested mutation, preview the exact target
+  and payload/diff, require confirmation from the authorized human, and read back the
+  result. If the write or read-back fails, report possible partial state and stop.
 
-1. **Primary location:** 04-Projects/
-2. **Search patterns:**
-   - Files containing "deal", "opportunity", "proposal"
-   - Company names from People/External/
-   - Tags like `#deal` or `#pipeline`
+## Method
 
-3. **Extract from each deal file:**
-   - Company/account name
-   - Deal size/value (if mentioned)
-   - Stage (discovery, demo, proposal, negotiation, contract)
-   - Last modified date
-   - Next steps
-   - Close date (if mentioned)
-   - Stakeholders involved
+### 1. Confirm the cohort
 
----
+Confirm the authoritative deal source, requested period, stage filter, currency/units,
+and which states count as active. If active-state policy is absent, show discovered
+states and ask rather than silently selecting a cohort.
 
-## Step 2: Analyze Deal Health
+Search configured deal locations and linked account/person records. Deduplicate only
+on a stable deal ID or a human-confirmed mapping; similar names are not proof of
+identity.
 
-For each deal, assess health:
+### 2. Build the deal ledger
 
-### Staleness Check
-- **Fresh:** Updated within last 5 days - ✅
-- **Aging:** 6-10 days without update - ⚠️
-- **Stale:** 11+ days without update - 🚨
+For every discovered deal capture:
 
-### Next Steps Check
-- **Clear:** Next step defined with owner and date - ✅
-- **Vague:** Next step exists but unclear - ⚠️
-- **Missing:** No next step documented - 🚨
+| Field | Handling |
+|---|---|
+| Deal ID and account | stable source identity |
+| Value | amount, currency, source/date, or `Unknown` |
+| Stage | configured value and source/date, or `Unknown` |
+| Last activity | canonical event, event date, and source |
+| Next step | exact text, owner, due date, and source |
+| Close date | date and source, or `Unknown` |
+| Stakeholders | sourced roles; do not infer missing roles |
+| Risk evidence | exact dated observation, not a keyword alone |
 
-### Risk Indicators
-- Keywords: "ghosting", "went dark", "waiting", "blocked", "concern", "competitor"
-- Missing stakeholders (no champion, no economic buyer)
-- Extended timeline (deal age > typical sales cycle)
+Show contradictory records side by side and leave the field unresolved until a human
+with authority decides.
 
-### Deadline Check
-- Deals with close dates in next 7 days
-- Deals with next steps overdue
-- Deals with proposal expirations
+### 3. Assess freshness from policy
 
----
+Calculate elapsed time only from a canonical activity date. Apply `Fresh`, `Aging`,
+`Stale`, or any urgency label only when the user supplies or confirms a dated
+freshness policy for this cohort. Record that policy source in the report.
 
-## Step 3: Cross-Reference Context
+If no policy exists:
 
-Enhance deal intelligence:
+- report `Last canonical activity: [date / Unknown]`;
+- report factual elapsed time where possible;
+- set `Freshness assessment: Unknown — no confirmed policy`;
+- offer a question, not a judgment.
 
-1. **Check person pages** for stakeholders
-   - When did we last talk to them?
-   - Any concerns noted?
-   - Relationship strength?
+### 4. Assess next steps, deadlines, and risk
 
-2. **Search meeting notes** (last 30 days)
-   - Recent conversations about this deal
-   - Concerns raised
-   - Commitments made
+A next step is complete only when the confirmed policy's required fields are present.
+Without a policy, show the exact text and missing owner/date rather than assigning a
+red/amber/green label.
 
-3. **Check for patterns**
-   - Multiple deals stuck at same stage?
-   - Common blockers across deals?
+For a requested deadline window, use sourced close and due dates. Do not assume a
+timeline is realistic from stage alone.
 
----
+Treat terms such as “blocked,” “competitor,” or “waiting” as search leads. Cite the
+underlying sentence/event, distinguish fact from hypothesis, and show contradictions.
+A risk classification needs either explicit source evidence or a configured rule.
 
-## Step 4: Generate Deal Review
+### 5. Reconcile and verify
 
-Present findings in this format:
+- Reconcile checked plus unchecked counts to the discovered cohort.
+- Reconcile stage counts to eligible checked deals.
+- Reconcile known-value subtotals to the known-value total.
+- List all unknown-value exclusions.
+- Verify each recommendation points to an observed fact or a named unknown.
+
+## Output contract
 
 ```markdown
-# 💼 Deal Review
+# Deal review
 
-**Date:** [Today's date]
-**Active deals:** [Count]
-**Total pipeline value:** [Sum if values available]
-**Deals reviewed:** [Count]
+**As of:** [timestamp and timezone]
+**Cohort definition:** [source/policy]
+**Discovered / checked / unchecked:** [N / n / u]
+**Known-value coverage:** [n/N; currency and exclusions]
 
----
+## Needs attention
+### [Deal]
+- Stage: [value + source/date or Unknown]
+- Last canonical activity: [event/date/source or Unknown]
+- Freshness: [policy-backed label or Unknown]
+- Next step: [exact sourced text or Unknown]
+- Risk evidence: [fact / hypothesis / contradiction]
+- Suggested question or action: [read-only recommendation]
 
-## 🚨 Needs Immediate Attention
+## On track
+[Include only when the configured policy is satisfied; cite the policy and evidence.]
 
-### [Company Name] - [Deal Size if known]
-**Status:** Stale (15 days since update)
-**Stage:** Proposal
-**Risk:** High
-**Last activity:** [Date] - [What happened]
-**Issue:** No activity since sending proposal. Possible ghosting.
-**Next step:** Follow up with champion [Name] ASAP
+## Unchecked deals
+| Deal | Reason | Last successful source read |
+|---|---|---|
 
----
+## Pipeline distribution
+[Counts and known values with explicit denominators and exclusions.]
 
-## ⚠️ Watch List
+## Unknowns and contradictions
+- [Both sources/dates and what needs human resolution]
 
-[Deals that need attention soon but not urgent]
-
-### [Company Name]
-**Status:** Aging (8 days since update)
-**Stage:** Discovery
-**Risk:** Medium
-**Last activity:** Demo on [Date]
-**Issue:** No follow-up scheduled
-**Next step:** Schedule discovery call this week
-
----
-
-## ✅ On Track
-
-[Deals with recent activity and clear next steps]
-
-### [Company Name] - $XX,XXX
-**Stage:** Contract Review
-**Last activity:** 2 days ago - Sent contract
-**Next step:** Review call with Legal on [Date]
-**Close date:** [Date]
-**Confidence:** High
-
----
-
-## 📅 Closing Soon (Next 7 Days)
-
-### [Company Name] - $XX,XXX
-**Close date:** [Date] (4 days)
-**Stage:** Contract Review
-**Status:** On track
-**Final steps:**
-- [ ] Legal review complete
-- [ ] Signatures collected
-- [ ] Payment terms confirmed
-
----
-
-## 🎯 Key Insights
-
-**Stage distribution:**
-- Discovery: [X deals]
-- Demo: [X deals]
-- Proposal: [X deals]
-- Negotiation: [X deals]
-- Contract: [X deals]
-
-**Common blockers:**
-1. [Blocker 1] - affecting [X] deals
-2. [Blocker 2] - affecting [X] deals
-
-**Recommended actions:**
-1. [Top priority action]
-2. [Second priority action]
-3. [Third priority action]
-
----
-
-## 📊 Pipeline Health Score
-
-**Overall health:** [Good / Needs Attention / At Risk]
-
-- ✅ Healthy deals: [X]
-- ⚠️ Watch list: [X]
-- 🚨 At risk: [X]
-- Stale (10+ days): [X]
-- Missing next steps: [X]
+## Recommended actions
+1. [Action tied to evidence; no write performed]
 ```
 
----
+Placeholders define shape only. Never populate them from generic examples.
 
-## Step 5: Offer Follow-Up Actions
+## Controlled follow-up
 
-After presenting the review, ask:
+For a requested deal or task update:
 
-> "Want me to:
-> 1. Draft follow-up email for [stale deal]?
-> 2. Prep for upcoming call with [company]?
-> 3. Update a specific deal with current status?
-> 4. Deep dive on deals stuck in [stage]?"
+1. read the authoritative current target;
+2. preview the exact before/after values or payload;
+3. identify related records that will not be changed;
+4. require explicit human confirmation;
+5. write only the confirmed target;
+6. read back and compare every field with the preview.
 
----
-
-## Stage Filtering
-
-When user specifies a stage, focus on:
-
-1. All deals in that stage
-2. How long they've been in that stage
-3. What typically moves deals out of this stage
-4. Specific risks for this stage
-
-**Common stages:**
-- **Discovery:** New opportunities, qualification
-- **Demo:** Product demonstration scheduled/completed
-- **Proposal:** Pricing/proposal sent
-- **Negotiation:** Terms discussion, stakeholder alignment
-- **Contract:** Legal review, signatures
-
----
-
-## Timeframe Filtering
-
-When user specifies timeframe:
-
-1. Filter to deals with close dates in that window
-2. Add urgency indicators
-3. Check if timeline is realistic given stage
-4. Identify what needs to happen to close on time
-
----
-
-## Integration with Other Skills
-
-- **After running:** Suggest `/call-prep [company]` for at-risk deals
-- **If staleness detected:** Suggest `/account-plan` to re-engage
-- **For pattern issues:** Suggest reviewing process with `/process-audit`
-
----
-
-## Example Output
-
-```markdown
-# 💼 Deal Review
-
-**Date:** 2026-01-28
-**Active deals:** 12
-**Total pipeline value:** $847K
-**Deals reviewed:** 12
-
----
-
-## 🚨 Needs Immediate Attention
-
-### TechStart Inc - $75K
-**Status:** Stale (18 days since update)
-**Stage:** Proposal
-**Risk:** High - Possible Lost
-**Last activity:** Jan 10 - Sent proposal after successful demo
-**Issue:** No response to proposal or 3 follow-up emails. Champion Mike not responding.
-**Next step:** Last-ditch call to Mike today. Escalate to VP if no response.
-
-### DataFlow Corp - $120K
-**Status:** Competitor risk
-**Stage:** Negotiation
-**Risk:** High
-**Last activity:** 3 days ago - They mentioned evaluating ProductX
-**Issue:** Product team showed them ProductX demo. Concerned about our dashboard capabilities.
-**Next step:** Executive alignment call scheduled Friday. Prep competitive positioning.
-
----
-
-## ⚠️ Watch List
-
-### GlobalCo - $95K
-**Status:** Aging (9 days since update)
-**Stage:** Discovery
-**Risk:** Medium
-**Last activity:** Jan 19 - Discovery call with Sarah (CTO)
-**Issue:** No follow-up call scheduled. She mentioned needing to discuss with team.
-**Next step:** Follow up this week to schedule demo
-
-### InnovateCo - $45K
-**Status:** Vague next steps
-**Stage:** Demo
-**Risk:** Medium
-**Last activity:** 5 days ago - Demo with product team
-**Issue:** Next step says "follow up" but no date or specific action
-**Next step:** Schedule proposal review call with timeline
-
----
-
-## ✅ On Track
-
-### Acme Corp - $180K
-**Stage:** Contract Review
-**Last activity:** Yesterday - Contract sent to Legal
-**Next step:** Legal review call on Thursday
-**Close date:** Feb 5
-**Confidence:** High - Champion Sarah is actively driving this
-
-### FastGrow - $60K
-**Stage:** Proposal
-**Last activity:** 2 days ago - Proposal presentation
-**Next step:** Decision call scheduled for Friday
-**Close date:** Feb 15
-**Confidence:** Medium-High - Positive response, waiting on budget approval
-
-### StartupX - $40K
-**Stage:** Contract
-**Last activity:** Today - Signatures received
-**Next step:** Process payment
-**Close date:** This week
-**Confidence:** Very High - Deal done, just processing
-
----
-
-## 📅 Closing Soon (Next 7 Days)
-
-### StartupX - $40K
-**Close date:** Jan 30 (2 days)
-**Stage:** Contract - Signatures received
-**Status:** Processing
-
-### NewCorp - $55K
-**Close date:** Feb 2 (5 days)
-**Stage:** Negotiation
-**Status:** On track - final terms discussion tomorrow
-
----
-
-## 🎯 Key Insights
-
-**Stage distribution:**
-- Discovery: 3 deals ($220K)
-- Demo: 2 deals ($105K)
-- Proposal: 4 deals ($295K)
-- Negotiation: 2 deals ($175K)
-- Contract: 1 deal ($52K)
-
-**Common blockers:**
-1. **Dashboard capabilities** - 2 deals expressing concern (DataFlow, NewCorp)
-2. **Budget approval timing** - 3 deals waiting on Q1 budget (FastGrow, GlobalCo, StartupX)
-
-**Recommended actions:**
-1. **Re-engage TechStart today** - 18 days stale, high value, likely lost if no action
-2. **Prep competitive positioning for DataFlow** - Friday call critical, ProductX threat
-3. **Follow up with GlobalCo and InnovateCo** - Both aging, need clear next steps
-
----
-
-## 📊 Pipeline Health Score
-
-**Overall health:** Needs Attention
-
-- ✅ Healthy deals: 6 ($387K)
-- ⚠️ Watch list: 4 ($260K)
-- 🚨 At risk: 2 ($195K)
-- Stale (10+ days): 1 ($75K)
-- Missing next steps: 2 ($140K)
-
-**Critical:** TechStart and DataFlow need immediate action this week.
-```
+On failure, preserve prior content where possible, re-read current state, disclose any
+partial result, and require a fresh preview before retrying.

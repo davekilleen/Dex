@@ -12,6 +12,7 @@ Usage:
 import json
 import os
 import sys
+from importlib.util import find_spec
 
 # Health system — error queue and health reporting
 try:
@@ -22,7 +23,6 @@ try:
 except ImportError:
     _HAS_HEALTH = False
 import logging
-from datetime import datetime, timezone
 from pathlib import Path
 
 # MCP SDK imports
@@ -40,7 +40,6 @@ from analytics_helper import (
     check_consent,
     fire_event,
     get_analytics_transport,
-    get_vault_path,
     get_visitor_info,
     is_analytics_enabled,
     load_user_profile,
@@ -48,11 +47,7 @@ from analytics_helper import (
 
 from core.utils.feature_status import feature_status
 
-try:
-    import requests
-    HAS_REQUESTS = True
-except ImportError:
-    HAS_REQUESTS = False
+HAS_REQUESTS = find_spec("requests") is not None
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -68,20 +63,16 @@ def _meeting_processing_mode(value):
     return None
 
 
-def log_event_locally(event_name: str, properties: dict, visitor_id: str):
-    """Log event to local file as backup."""
-    log_path = get_vault_path() / 'System' / 'analytics_log.jsonl'
-    entry = {
-        "timestamp": datetime.now(timezone.utc).isoformat(),
-        "event": event_name,
-        "visitor_id": visitor_id,
-        "properties": properties
+def _identify_delivery_response(delivery: dict) -> dict:
+    """Map a failed or disabled identify attempt to its legacy-safe shape."""
+    result = {
+        "identified": delivery.get("fired", False),
+        "reason": delivery.get("reason", "request_failed"),
+        "receipt_written": delivery.get("receipt_written", False),
     }
-    try:
-        with open(log_path, 'a') as f:
-            f.write(json.dumps(entry) + '\n')
-    except Exception:
-        pass
+    if "receipt_reason" in delivery:
+        result["receipt_reason"] = delivery["receipt_reason"]
+    return result
 
 
 # Create MCP server
@@ -100,7 +91,7 @@ async def list_tools():
                 "properties": {
                     "event_name": {
                         "type": "string",
-                        "description": "Event name (e.g., 'skill_invoked', 'task_completed')"
+                        "description": "Event name (e.g., 'task_completed', 'daily_plan_completed')"
                     },
                     "properties": {
                         "type": "object",
@@ -189,119 +180,95 @@ async def _call_tool_inner(name: str, arguments: dict) -> list[TextContent]:
         properties = arguments.get("properties", {})
 
         if not event_name:
-            return [TextContent(type="text", text=json.dumps({"error": "event_name required"}))]
+            delivery = fire_event(event_name)
+            result = {
+                "error": "event_name required",
+                "receipt_written": delivery.get("receipt_written", False),
+            }
+            if "receipt_reason" in delivery:
+                result["receipt_reason"] = delivery["receipt_reason"]
+            return [TextContent(type="text", text=json.dumps(result))]
 
-        # Check if analytics is enabled (consent-gated)
-        if not is_analytics_enabled():
-            visitor_info = get_visitor_info()
-            log_event_locally(event_name, properties, visitor_info['visitor_id'])
-            return [TextContent(type="text", text=json.dumps({
-                "fired": False,
-                "reason": "analytics_disabled",
-                "logged_locally": True
-            }))]
-
-        # Fire via helper (uses requests, handles journey metadata)
+        # fire_event is the sole analytics-attempt route. It records one safe
+        # local receipt whether delivery is disabled, unavailable, or successful.
         result = fire_event(event_name, properties)
-
-        # Also log locally as backup
-        visitor_info = get_visitor_info()
-        log_event_locally(event_name, properties, visitor_info['visitor_id'])
-        result["logged_locally"] = True
-
         return [TextContent(type="text", text=json.dumps(result, indent=2))]
 
     elif name == "identify_user":
         metadata = arguments.get("metadata", {})
 
-        if not is_analytics_enabled():
-            return [TextContent(type="text", text=json.dumps({
-                "identified": False,
-                "reason": "analytics_disabled"
-            }))]
+        try:
+            analytics_enabled = is_analytics_enabled()
+        except Exception:
+            return [TextContent(
+                type="text",
+                text=json.dumps(_identify_delivery_response(fire_event("user_identified"))),
+            )]
 
-        profile = load_user_profile()
+        if not analytics_enabled:
+            # Keep the legacy identify_user response shape while still sending
+            # every delivery outcome through fire_event's single receipt route.
+            delivery = fire_event("user_identified")
+            result = _identify_delivery_response(delivery)
+            return [TextContent(type="text", text=json.dumps(result))]
 
-        # Merge profile data with provided metadata
-        identify_props = {
-            "role": profile.get("role", "unknown"),
-            "role_group": profile.get("role_group", "unknown"),
-            "company_size": profile.get("company_size", "unknown"),
-            "pillars_count": len(profile.get("pillars", [])),
-            "obsidian_enabled": profile.get("obsidian_mode", False),
-            "granola_enabled": _meeting_processing_mode(profile.get("meeting_processing")) == "automatic",
-            **metadata
-        }
+        try:
+            profile = load_user_profile()
+
+            # Merge profile data with provided metadata.
+            identify_props = {
+                "role": profile.get("role", "unknown"),
+                "role_group": profile.get("role_group", "unknown"),
+                "company_size": profile.get("company_size", "unknown"),
+                "pillars_count": len(profile.get("pillars", [])),
+                "obsidian_enabled": profile.get("obsidian_mode", False),
+                "granola_enabled": _meeting_processing_mode(profile.get("meeting_processing")) == "automatic",
+                **metadata
+            }
+        except Exception:
+            # The helper owns one normalized receipt even if the MCP's
+            # optional profile enrichment cannot be prepared.
+            return [TextContent(
+                type="text",
+                text=json.dumps(_identify_delivery_response(fire_event("user_identified"))),
+            )]
 
         result = fire_event("user_identified", identify_props)
         return [TextContent(type="text", text=json.dumps(result, indent=2))]
 
     elif name == "test_connection":
-        if not HAS_REQUESTS:
-            error = "requests library not installed. Run: pip install requests"
-            payload = feature_status(
-                "Usage analytics",
-                "not_installed",
-                error,
-                error=error,
-            )
-            return [TextContent(type="text", text=json.dumps(payload))]
-
-        transport = get_analytics_transport()
-        if not transport.get("configured"):
-            return [TextContent(type="text", text=json.dumps({
-                "success": False,
-                "error": f"Analytics transport not configured ({transport.get('reason', 'unknown')})."
-            }))]
-
-        visitor_info = get_visitor_info()
-        test_visitor = "test-" + visitor_info['visitor_id'][:8]
-
-        payload = {
-            "type": "track",
-            "event": "dex_analytics_test",
-            "visitorId": test_visitor,
-            "accountId": "dex-test",
-            "timestamp": int(datetime.now(timezone.utc).timestamp() * 1000),
-            "properties": {"test": True, "timestamp": datetime.now().isoformat()}
-        }
-
-        try:
-            response = requests.post(
-                transport["endpoint"],
-                json=payload,
-                headers=transport["headers"],
-                timeout=10
-            )
-            if response.status_code == 200:
-                return [TextContent(type="text", text=json.dumps({
-                    "success": True,
-                    "status": response.status_code,
-                    "visitor_id_used": test_visitor,
-                    "transport_mode": transport.get("mode"),
-                    "transport_endpoint": transport.get("endpoint"),
-                }))]
-            else:
-                message = f"Analytics connection failed (HTTP {response.status_code})."
-                payload = feature_status(
-                    "Usage analytics",
-                    "broken",
-                    message,
-                    status=response.status_code,
-                    transport_mode=transport.get("mode"),
-                    transport_endpoint=transport.get("endpoint"),
-                    body=response.text[:200],
-                )
-                return [TextContent(type="text", text=json.dumps(payload))]
-        except Exception as e:
-            error = str(e)
-            payload = feature_status(
-                "Usage analytics",
-                "broken",
-                error,
-                error=error,
-            )
-            return [TextContent(type="text", text=json.dumps(payload))]
+        # The connection check is an ordinary analytics attempt: it must obey
+        # consent and use the exact same receipt route as every other caller.
+        result = fire_event("dex_analytics_test", _connection_test=True)
+        reason = result.get("reason")
+        if result.get("fired"):
+            state = "ok"
+            message = "Usage analytics connection check sent."
+        elif reason == "requests_not_installed":
+            state = "not_installed"
+            message = "Usage analytics needs the request library installed."
+        elif reason in {
+            "analytics_disabled",
+            "no_analytics_endpoint",
+            "no_pendo_secret",
+        }:
+            state = "off"
+            message = "Usage analytics is not ready to send a connection check."
+        else:
+            state = "broken"
+            message = "Usage analytics could not send the connection check."
+        payload = feature_status(
+            "Usage analytics",
+            state,
+            message,
+            reason=reason,
+            receipt_written=result.get("receipt_written", False),
+        )
+        if "mode" in result:
+            payload["transport_mode"] = result["mode"]
+        if "receipt_reason" in result:
+            payload["receipt_reason"] = result["receipt_reason"]
+        return [TextContent(type="text", text=json.dumps(payload))]
 
     else:
         return [TextContent(type="text", text=json.dumps({"error": f"Unknown tool: {name}"}))]

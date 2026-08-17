@@ -48,6 +48,10 @@ if _repo_root not in sys.path:
     sys.path.append(_repo_root)
 from core import capabilities as capability_rooms
 from core.lifecycle import service as lifecycle_service
+from core.mcp.analytics_receipts import (
+    surface_analytics_attempt,
+    unavailable_analytics_delivery,
+)
 from core.paths import (
     MARKER_FILE,
     MCP_CONFIG_EXAMPLE,
@@ -58,6 +62,21 @@ from core.paths import (
 )
 from core.transaction.engine import PlanRejected
 from core.utils.nudge_calendar import build_nudge_calendar, is_dex_nudge_event
+
+
+def _analytics_helper_unavailable_result() -> dict[str, object]:
+    """Return only the fixed safe outcome when the shared helper cannot load."""
+    return unavailable_analytics_delivery()
+
+
+try:
+    from core.mcp.analytics_helper import fire_event as _fire_analytics_event
+    HAS_ANALYTICS = True
+except ImportError:
+    HAS_ANALYTICS = False
+
+    def _fire_analytics_event(event_name, properties=None):
+        return _analytics_helper_unavailable_result()
 
 # User-configured working week (defaults to Monday-Friday)
 try:
@@ -96,10 +115,6 @@ CALENDAR_REQUIRED_ERROR = (
     "Connect the calendar first (or skip it explicitly with "
     "save_calendar_selection(skipped=true)) — setup opens with the calendar."
 )
-PROVISION_CONTRACT = json.loads(
-    (Path(__file__).parent.parent / "provision-contract.json").read_text(encoding="utf-8")
-)
-
 # Role definitions for validation
 ROLES = {
     1: ("Product Manager", "product"),
@@ -469,17 +484,12 @@ def _capability_states(
     return states
 
 
-def _provision_folders(capability_states: Dict[str, bool] | None = None) -> List[str]:
-    folders = list(PROVISION_CONTRACT["para_directories"])
-    states = _capability_states(capability_states)
-    for room in capability_rooms.room_ids():
-        if states[room] is True:
-            folders.extend(capability_rooms.surfaces_for(room).get("folders", []))
-    return list(dict.fromkeys(folders))
-
-
-def _finalize_through_provisioner(session: Dict) -> Dict[str, Any]:
-    """Collect onboarding inputs and let the sanctioned provisioner mutate."""
+def _run_onboarding_provisioner(
+    session: Dict,
+    *,
+    dry_run: bool,
+) -> Dict[str, Any]:
+    """Return the sanctioned provisioner's receipt for preview or commit."""
     data = _approved_profile_session_data(session)
     data["pillars"] = [
         {"name": pillar, "description": ""}
@@ -504,19 +514,22 @@ def _finalize_through_provisioner(session: Dict) -> Dict[str, Any]:
             profile.write("\n")
         provisioner = Path(__file__).parent.parent / "provision.cjs"
         node = os.environ.get("DEX_PROVISION_NODE", "node")
+        command = [
+            node,
+            str(provisioner),
+            "--path",
+            str(BASE_DIR),
+            "--profile",
+            str(profile_path),
+            "--onboard",
+            "--session-file",
+            str(SESSION_FILE),
+        ]
+        if dry_run:
+            command.append("--dry-run")
+        command.append("--json")
         completed = subprocess.run(
-            [
-                node,
-                str(provisioner),
-                "--path",
-                str(BASE_DIR),
-                "--profile",
-                str(profile_path),
-                "--onboard",
-                "--session-file",
-                str(SESSION_FILE),
-                "--json",
-            ],
+            command,
             cwd=Path(__file__).parent.parent.parent,
             capture_output=True,
             text=True,
@@ -531,23 +544,85 @@ def _finalize_through_provisioner(session: Dict) -> Dict[str, Any]:
         if completed.returncode != 0 or receipt.get("ok") is not True:
             detail = "; ".join(receipt.get("errors", [])) or completed.stderr.strip()
             raise RuntimeError(detail or "Provisioner refused onboarding")
-        created = receipt.get("created", [])
-        folders = [relative for relative in created if (BASE_DIR / relative).is_dir()]
-        files = [relative for relative in created if (BASE_DIR / relative).is_file()]
-        return {
-            "executor": "core/provision.cjs",
-            "lifecycle_executor": receipt.get("lifecycle_executor"),
-            "folders_created": folders,
-            "files_created": files,
-            "configs_updated": [
-                relative for relative in ("CLAUDE.md", ".mcp.json") if relative in created
-            ],
-            "errors": [],
-            "receipt": receipt,
-        }
+        return receipt
     finally:
         if profile_path is not None:
             profile_path.unlink(missing_ok=True)
+
+
+def _finalize_through_provisioner(session: Dict) -> Dict[str, Any]:
+    """Collect onboarding inputs and let the sanctioned provisioner mutate."""
+    receipt = _run_onboarding_provisioner(session, dry_run=False)
+    created = receipt.get("created", [])
+    folders = [relative for relative in created if (BASE_DIR / relative).is_dir()]
+    files = [relative for relative in created if (BASE_DIR / relative).is_file()]
+    return {
+        "executor": "core/provision.cjs",
+        "lifecycle_executor": receipt.get("lifecycle_executor"),
+        "folders_created": folders,
+        "files_created": files,
+        "configs_updated": [
+            relative for relative in ("CLAUDE.md", ".mcp.json") if relative in created
+        ],
+        "errors": [],
+        "receipt": receipt,
+    }
+
+
+def _preview_through_provisioner(session: Dict) -> Dict[str, Any]:
+    """Describe the exact read-only plan produced by the real provisioner."""
+    receipt = _run_onboarding_provisioner(session, dry_run=True)
+    created = [str(relative) for relative in receipt.get("created", [])]
+    created_folders = [
+        relative
+        for relative in created
+        if any(
+            other != relative and other.startswith(f"{relative.rstrip('/')}/")
+            for other in created
+        )
+    ]
+    created_folder_set = set(created_folders)
+    created_files = [
+        relative for relative in created if relative not in created_folder_set
+    ]
+    skipped = [str(relative) for relative in receipt.get("skipped-existing", [])]
+    would_create_files = [
+        relative for relative in created_files if not (BASE_DIR / relative).exists()
+    ]
+    would_update_files = [
+        relative for relative in created_files if (BASE_DIR / relative).is_file()
+    ]
+    return {
+        "would_create_folders": created_folders,
+        "already_exist_folders": [
+            relative for relative in skipped if (BASE_DIR / relative).is_dir()
+        ],
+        "would_create_files": would_create_files,
+        "already_exist_files": [
+            relative for relative in skipped if (BASE_DIR / relative).is_file()
+        ],
+        "would_update_configs": [
+            label
+            for relative, label in (
+                ("CLAUDE.md", "CLAUDE.md (User Profile section)"),
+                (".mcp.json", ".mcp.json"),
+            )
+            if relative in created_files
+        ],
+        "would_update_files": would_update_files,
+        "would_delete_session": "System/.onboarding-session.json"
+        in receipt.get("removed", []),
+        "provision_receipt": receipt,
+    }
+
+
+def _onboarding_package_version() -> str | None:
+    try:
+        package = json.loads((BASE_DIR / "package.json").read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    version = package.get("version") if isinstance(package, dict) else None
+    return version if isinstance(version, str) and version else None
 
 # ============================================================================
 # PRE-ANALYSIS HELPER FUNCTIONS
@@ -2398,37 +2473,10 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[types.Text
             if dry_run:
                 logger.info("Finalize (DRY RUN) - previewing what would be created")
 
-                # Compute folders that would be created
                 selected_capabilities = _capability_states(
                     session['data'].get('capabilities')
                 )
-                para_folders = _provision_folders(selected_capabilities)
-                would_create_folders = [f for f in para_folders if not (BASE_DIR / f).exists()]
-                already_exist_folders = [f for f in para_folders if (BASE_DIR / f).exists()]
-
-                # Compute files that would be created
-                would_create_files = []
-                already_exist_files = []
-
-                tasks_file = BASE_DIR / '03-Tasks' / 'Tasks.md'
-                if not tasks_file.exists():
-                    would_create_files.append('03-Tasks/Tasks.md')
-                else:
-                    already_exist_files.append('03-Tasks/Tasks.md')
-
-                priorities_file = BASE_DIR / '02-Week_Priorities' / 'Week_Priorities.md'
-                if not priorities_file.exists():
-                    would_create_files.append('02-Week_Priorities/Week_Priorities.md')
-                else:
-                    already_exist_files.append('02-Week_Priorities/Week_Priorities.md')
-
-                would_create_files.append('System/user-profile.yaml')
-                would_create_files.append('System/pillars.yaml')
-
-                # Configs that would be updated
-                would_update_configs = ['CLAUDE.md (User Profile section)']
-                if MCP_CONFIG_EXAMPLE.exists():
-                    would_update_configs.append('.mcp.json')
+                provision_preview = _preview_through_provisioner(session)
 
                 # Build preview of user-profile.yaml content
                 data = _approved_profile_session_data(session)
@@ -2460,7 +2508,11 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[types.Text
 
                 # Completion marker preview
                 marker_preview = {
+                    'completed': True,
                     'completed_at': '(timestamp)',
+                    'provisioned_by': 'core/provision.cjs',
+                    'adopted': False,
+                    'version': _onboarding_package_version(),
                     'user_name': data.get('name', ''),
                     'role': data.get('role', ''),
                     'email_domain': data.get('email_domain', ''),
@@ -2472,13 +2524,8 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[types.Text
                 dry_run_summary = {
                     'dry_run': True,
                     'validation_passed': True,
-                    'would_create_folders': would_create_folders,
-                    'already_exist_folders': already_exist_folders,
-                    'would_create_files': would_create_files,
-                    'already_exist_files': already_exist_files,
-                    'would_update_configs': would_update_configs,
+                    **provision_preview,
                     'would_create_marker': marker_preview,
-                    'would_delete_session': True,
                     'preview_user_profile': profile_preview,
                     'preview_pillars': pillars_preview,
                     'session_data_snapshot': data
@@ -2486,7 +2533,10 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[types.Text
 
                 result = create_success_response(
                     dry_run_summary,
-                    f"DRY RUN: Would create {len(would_create_folders)} folders, {len(would_create_files)} files, update {len(would_update_configs)} configs. No changes made."
+                    "DRY RUN: Would create "
+                    f"{len(provision_preview['would_create_folders'])} folders, "
+                    f"{len(provision_preview['would_create_files'])} files, update "
+                    f"{len(provision_preview['would_update_configs'])} configs. No changes made."
                 )
                 return [types.TextContent(type="text", text=json.dumps(result, indent=2, cls=DateTimeEncoder))]
 
@@ -2506,6 +2556,11 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[types.Text
                 result = create_success_response(
                     summary,
                     f"Onboarding complete! Created {len(summary['folders_created'])} folders, {len(summary['files_created'])} files"
+                )
+                surface_analytics_attempt(
+                    result,
+                    _fire_analytics_event,
+                    "onboarding_completed",
                 )
                 
             except Exception as e:

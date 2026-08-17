@@ -138,6 +138,8 @@ def any_agent_references_former_root(
     launch_agents_dir: Path | None = None,
 ) -> bool:
     """Return whether any launch agent still references the former vault root."""
+    from core.utils import automation_ownership
+
     former_root = stored_former_vault_root(vault_root, home)
     if former_root is None:
         return False
@@ -149,6 +151,16 @@ def any_agent_references_former_root(
     except OSError:
         return False
     for plist in plists:
+        try:
+            relative = plist.relative_to(home).as_posix()
+        except ValueError:
+            relative = ""
+        if automation_ownership.is_plist_offloaded(
+            vault_root,
+            relative,
+            home_root=home,
+        ):
+            continue
         payload = load_plist_payload(plist)
         if payload is not None and payload_references_root(payload, former_root):
             return True
@@ -157,9 +169,26 @@ def any_agent_references_former_root(
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--stale-check", action="store_true", required=True)
+    mode = parser.add_mutually_exclusive_group(required=True)
+    mode.add_argument("--stale-check", action="store_true")
+    mode.add_argument("--offloaded-check", action="store_true")
     parser.add_argument("--vault", type=Path, required=True)
+    parser.add_argument("--plist-relative")
     args = parser.parse_args(argv)
+    if args.offloaded_check:
+        from core.utils import automation_ownership
+
+        if not isinstance(args.plist_relative, str):
+            parser.error("--offloaded-check requires --plist-relative")
+        return (
+            0
+            if automation_ownership.is_plist_offloaded(
+                args.vault,
+                args.plist_relative,
+                home_root=Path.home(),
+            )
+            else 1
+        )
     if any_agent_references_former_root(args.vault, Path.home()):
         print(STALE_JOB_SENTINEL)
     return 0

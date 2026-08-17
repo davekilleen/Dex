@@ -721,7 +721,8 @@ After any pathway completes:
 **Discovery:**
 • `/dex-level-up` - Find features you haven't tried
 • `/integrate-mcp` - Add more tools anytime
-• `/feedback` - Something misbehaving? Dex writes the bug report for you and tells you when it's fixed. What a report can and can't contain: https://heydex.ai/help/feedback.html
+• `/dex-doctor` - Anytime checkup: finds what's wrong, fixes what it can on its own, guides you through the rest: https://heydex.ai/help/updating-troubleshooting.html#health-dex-doctor
+• `/feedback` - Something misbehaving? Just say so in your own words — Dex writes the bug report for you and tells you when it's fixed. What a report can and can't contain: https://heydex.ai/help/feedback.html
 • Smithery.ai - Browse MCP marketplace
 
 **Come back anytime:**

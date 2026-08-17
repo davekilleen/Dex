@@ -31,11 +31,12 @@ import shutil
 import stat
 import time
 import uuid
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
 from core import portable_contract
+from core.lifecycle.filesystem import bounded_read
 from core.path_safety import unsafe_existing_parent
 from core.transaction.fsync import fsync_directory
 from core.transaction.journal import Journal, JournalCorruptError, JournalSchemaError
@@ -107,11 +108,13 @@ class Transaction:
         tx_id: str,
         *,
         operation: str = "update",
+        max_read_bytes_by_relative: Mapping[str, int] | None = None,
         _resumed: bool = False,
     ) -> None:
         self.vault_root = Path(vault_root).resolve()
         self.tx_id = tx_id
         self.operation = operation
+        self._max_read_bytes_by_relative = dict(max_read_bytes_by_relative or {})
         self.tx_dir = self.vault_root / TX_ROOT_RELATIVE / tx_id
         self.journal = Journal(self.tx_dir / "journal.jsonl")
         self.snapshot = Snapshot(self.tx_dir / "snapshot")
@@ -129,6 +132,7 @@ class Transaction:
         *,
         allow_empty: bool = False,
         operation: str = "update",
+        max_read_bytes_by_relative: Mapping[str, int] | None = None,
     ) -> "Transaction":
         """Authorize the whole plan, take the lock, journal BEGIN."""
         return cls._begin_with_id(
@@ -136,6 +140,7 @@ class Transaction:
             plan,
             allow_empty=allow_empty,
             operation=operation,
+            max_read_bytes_by_relative=max_read_bytes_by_relative,
             tx_id=None,
         )
 
@@ -148,10 +153,39 @@ class Transaction:
         allow_empty: bool,
         operation: str,
         tx_id: str | None,
+        max_read_bytes_by_relative: Mapping[str, int] | None = None,
     ) -> "Transaction":
         """Internal begin seam for plans that must persist their tx id."""
         if not plan and not allow_empty:
             raise TransactionError("a transaction needs at least one plan entry")
+
+        read_limits = dict(max_read_bytes_by_relative or {})
+        plan_paths = {entry.relative for entry in plan}
+        if any(
+            relative not in plan_paths
+            or type(max_bytes) is not int
+            or max_bytes < 0
+            for relative, max_bytes in read_limits.items()
+        ):
+            raise PlanRejected("transaction bounded-read limits are invalid")
+        required_limit = None
+        if operation == "analytics-receipt":
+            required_limit = {
+                portable_contract.ANALYTICS_ATTEMPT_RECEIPT_RELATIVE: (
+                    portable_contract.ANALYTICS_ATTEMPT_RECEIPT_TRANSACTION_MAX_BYTES
+                )
+            }
+        elif operation == "automation-ownership":
+            required_limit = {
+                portable_contract.AUTOMATION_OWNERSHIP_RELATIVE: (
+                    portable_contract.AUTOMATION_OWNERSHIP_TRANSACTION_MAX_BYTES
+                )
+            }
+        if required_limit is not None and read_limits != required_limit:
+            operation_name = operation.replace("-", " ")
+            raise PlanRejected(
+                f"{operation_name} transaction lacks the required bounded-read limit"
+            )
 
         # Target modes are bounded: no setuid/setgid/sticky, no bits beyond
         # permissions. A buggy or hostile plan must not mint a 4777 file.
@@ -209,6 +243,7 @@ class Transaction:
             vault_root,
             tx_id or time.strftime("%Y%m%dT%H%M%S-") + uuid.uuid4().hex[:8],
             operation=operation,
+            max_read_bytes_by_relative=read_limits,
         )
         tx._plan = list(plan)
         unsafe_directory = _unsafe_infrastructure_directory(tx.vault_root, tx.tx_dir)
@@ -229,6 +264,11 @@ class Transaction:
                 {
                     "tx_id": tx.tx_id,
                     "operation": operation,
+                    # Recovery may need to distinguish a transaction-owned
+                    # expected-absent target from a user-created one. Persist
+                    # service-owned caps so that comparison cannot reopen an
+                    # unbounded read after a crash.
+                    "max_read_bytes_by_relative": read_limits,
                     "plan": [
                         {
                             "relative": entry.relative,
@@ -315,7 +355,11 @@ class Transaction:
                     entry,
                     changed_when="after the mutation plan was built",
                 )
-        self.snapshot.capture(self.vault_root, [entry.relative for entry in self._plan])
+        self.snapshot.capture(
+            self.vault_root,
+            [entry.relative for entry in self._plan],
+            max_read_bytes_by_relative=self._max_read_bytes_by_relative,
+        )
         self.journal.append("SNAPSHOT-DONE")
 
     def _apply_phase(self) -> None:
@@ -406,9 +450,17 @@ class Transaction:
         return (
             not target.is_symlink()
             and target.is_file()
-            and hashlib.sha256(target.read_bytes()).hexdigest() == entry.expected_current_sha256
+            and hashlib.sha256(self._read_entry_bytes(entry)).hexdigest()
+            == entry.expected_current_sha256
             and (not check_mode or target.stat().st_mode & 0o777 == entry.mode)
         )
+
+    def _read_entry_bytes(self, entry: PlanEntry) -> bytes:
+        """Read a planned file, honoring a service-owned cap when supplied."""
+        max_bytes = self._max_read_bytes_by_relative.get(entry.relative)
+        if max_bytes is not None:
+            return bounded_read(self.vault_root, entry.relative, max_bytes=max_bytes)
+        return (self.vault_root / entry.relative).read_bytes()
 
     def _apply_one(self, index: int, entry: PlanEntry) -> None:
         relative = entry.relative
@@ -488,7 +540,7 @@ class Transaction:
                 if target.is_symlink() or target.exists():
                     raise TransactionError(f"verification failed for {entry.relative}: deleted target still exists")
                 continue
-            digest = hashlib.sha256(target.read_bytes()).hexdigest()
+            digest = hashlib.sha256(self._read_entry_bytes(entry)).hexdigest()
             if digest != entry.sha256():
                 raise TransactionError(f"verification failed for {entry.relative}: applied bytes do not match the plan")
             actual_mode = target.stat().st_mode & 0o777
@@ -541,7 +593,10 @@ class Transaction:
         *,
         planned_sha256: str,
         planned_size: int,
+        max_bytes: int | None = None,
     ) -> bool:
+        if max_bytes is not None and planned_size > max_bytes:
+            return False
         try:
             nofollow = os.O_NOFOLLOW
         except AttributeError:
@@ -657,6 +712,7 @@ class Transaction:
                         target,
                         planned_sha256=planned[0],
                         planned_size=planned[1],
+                        max_bytes=self._max_read_bytes_by_relative.get(relative),
                     )
                 )
                 if target_is_ours:
@@ -720,6 +776,48 @@ class Transaction:
             "journal_ok": journal_ok,
         }
 
+    @staticmethod
+    def _read_limits_from_begin_payload(payload: dict) -> dict[str, int]:
+        """Restore only valid service-owned bounded-read limits from BEGIN."""
+        raw_limits = payload.get("max_read_bytes_by_relative", {})
+        if not isinstance(raw_limits, dict):
+            raise TransactionError("transaction bounded-read limits are invalid")
+        plan = payload.get("plan", [])
+        plan_paths = {
+            planned.get("relative")
+            for planned in plan
+            if isinstance(planned, dict) and isinstance(planned.get("relative"), str)
+        } if isinstance(plan, list) else set()
+        if any(
+            not isinstance(relative, str)
+            or relative not in plan_paths
+            or type(max_bytes) is not int
+            or max_bytes < 0
+            for relative, max_bytes in raw_limits.items()
+        ):
+            raise TransactionError("transaction bounded-read limits are invalid")
+        read_limits = dict(raw_limits)
+        operation = payload.get("operation", "update")
+        required_limit = None
+        if operation == "analytics-receipt":
+            required_limit = {
+                portable_contract.ANALYTICS_ATTEMPT_RECEIPT_RELATIVE: (
+                    portable_contract.ANALYTICS_ATTEMPT_RECEIPT_TRANSACTION_MAX_BYTES
+                )
+            }
+        elif operation == "automation-ownership":
+            required_limit = {
+                portable_contract.AUTOMATION_OWNERSHIP_RELATIVE: (
+                    portable_contract.AUTOMATION_OWNERSHIP_TRANSACTION_MAX_BYTES
+                )
+            }
+        if required_limit is not None and read_limits != required_limit:
+            operation_name = operation.replace("-", " ")
+            raise TransactionError(
+                f"{operation_name} transaction lacks the required bounded-read limit"
+            )
+        return read_limits
+
     @classmethod
     def resume(
         cls,
@@ -775,6 +873,9 @@ class Transaction:
                     )
                     if begin is not None:
                         tx.operation = begin.payload.get("operation", "update")
+                        tx._max_read_bytes_by_relative = (
+                            tx._read_limits_from_begin_payload(begin.payload)
+                        )
                 except JournalSchemaError:
                     events = None
                     rollback_only = True

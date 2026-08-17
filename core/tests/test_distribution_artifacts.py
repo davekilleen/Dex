@@ -58,6 +58,7 @@ RELEASE_BUILD_INPUTS = (
     ".scripts/lib/tests/entity-pages.test.cjs",
     "06-Resources/Dex_System/Dex_Technical_Guide.md",
     *DOCS_BRIDGE_PATHS,
+    "docs/UPDATE-RESCUE.md",
     "package.json",
     "requirements.txt",
     "requirements-dev.txt",
@@ -76,8 +77,10 @@ RELEASE_BUILD_INPUTS = (
     "core/lifecycle/catalog.py",
     "core/lifecycle/customizations.py",
     "core/lifecycle/contracts/api.schema.json",
+    "core/lifecycle/model.py",
     "core/lifecycle/service.py",
     "core/lifecycle/schemas/release-catalog-v1.schema.json",
+    "core/lifecycle/schemas/release-catalog-v2.schema.json",
     "core/portable_contract.py",
     "core/provision.cjs",
     "core/transaction/engine.py",
@@ -88,10 +91,12 @@ RELEASE_BUILD_INPUTS = (
     "core/utils/update_verifier.py",
     "core/utils/smoke.py",
     "packages/dex-contracts/dist/release-catalog-v1.schema.json",
+    "packages/dex-contracts/dist/release-catalog-v2.schema.json",
     "packages/dex-contracts/dist/portable-vault.contract.json",
     "scripts/build-release.sh",
     "scripts/build-vault-bundle.sh",
     "scripts/check-catalog-coverage.py",
+    "scripts/check-release-catalog-tag-identity.py",
     "scripts/check-tau-removal.py",
     "scripts/dex_update_bridge.py",
     "scripts/generate-manifest.sh",
@@ -220,6 +225,7 @@ def _build_release_in_clone(
     source: str = "main",
     target: str = "release",
     name: str = "release-build",
+    preexisting_tags: set[str] | None = None,
 ) -> tuple[Path, set[str]]:
     """Build from the current checkout without ever switching its branches."""
     clone = _clone_repo(tmp_path, name)
@@ -241,20 +247,30 @@ def _build_release_in_clone(
         cwd=clone,
         check=True,
     )
+    if preexisting_tags is not None:
+        preexisting_tags.update(
+            subprocess.run(
+                ["git", "tag", "--list"],
+                cwd=clone,
+                check=True,
+                capture_output=True,
+                text=True,
+            ).stdout.splitlines()
+        )
 
     command = ["bash", "scripts/build-release.sh"]
     if (source, target) != ("main", "release"):
         subprocess.run(["git", "branch", source, "main"], cwd=clone, check=True)
         command.extend(["--source", source, "--target", target])
 
-    subprocess.run(
+    build = subprocess.run(
         command,
         cwd=clone,
-        check=True,
         capture_output=True,
         text=True,
         timeout=240,
     )
+    assert build.returncode == 0, build.stdout + build.stderr
     result = subprocess.run(
         ["git", "ls-tree", "-r", "--name-only", target],
         cwd=clone,
@@ -453,7 +469,7 @@ def test_release_branch_strips_dev_files_and_untracks_v1_local_only_files(tmp_pa
         check=True,
         capture_output=True,
     ).stdout
-    assert catalog["catalog_version"] == 1
+    assert catalog["catalog_version"] == 2
     official_registry = json.loads(
         (REPO_ROOT / "core/lifecycle/catalog/official-capabilities.json").read_text(
             encoding="utf-8"
@@ -562,28 +578,42 @@ def test_beta_release_branch_uses_same_stripping_and_manifest(tmp_path: Path) ->
     _assert_tau_absent_from_release_artifacts(
         clone, "release-beta", tmp_path / "beta-release.tar"
     )
-    beta_version = _git_json(clone, "release-beta:package.json")["version"]
-    beta_short_sha = subprocess.run(
-        ["git", "rev-parse", "--short", "release-beta"],
+    beta_catalog = _git_json(clone, "release-beta:System/.release-catalog.json")
+    beta_release = beta_catalog["release"]
+    beta_version = beta_release["version"]
+    beta_source_sha = subprocess.run(
+        ["git", "rev-parse", "beta"],
         cwd=clone,
         check=True,
         capture_output=True,
         text=True,
     ).stdout.strip()
-    beta_tag = f"dist/release-beta/v{beta_version}-{beta_short_sha}"
-    assert subprocess.run(
-        ["git", "rev-parse", f"{beta_tag}^{{}}"],
-        cwd=clone,
-        check=True,
-        capture_output=True,
-        text=True,
-    ).stdout.strip() == subprocess.run(
+    beta_release_sha = subprocess.run(
         ["git", "rev-parse", "release-beta"],
         cwd=clone,
         check=True,
         capture_output=True,
         text=True,
     ).stdout.strip()
+    beta_tag = f"dist/release-beta/v{beta_version}-{beta_release_sha[:7]}"
+    assert beta_release["source_commit"] == beta_source_sha
+    assert beta_release["immutable_distribution_tag_pattern"] == (
+        f"dist/release-beta/v{beta_version}-<release-commit-prefix>"
+    )
+    assert subprocess.run(
+        ["git", "cat-file", "-t", beta_tag],
+        cwd=clone,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip() == "tag"
+    assert subprocess.run(
+        ["git", "rev-parse", f"{beta_tag}^{{}}"],
+        cwd=clone,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip() == beta_release_sha
 
 
 def test_release_build_uses_selected_source_version_for_tree_profile_manifest_and_tag(tmp_path: Path) -> None:
@@ -636,19 +666,23 @@ def test_release_build_uses_selected_source_version_for_tree_profile_manifest_an
         ).stdout.splitlines()
     )
     assert set(_release_manifest(clone, "release-selected")) == members
-    short = subprocess.run(
-        ["git", "rev-parse", "--short", "release-selected"],
+    selected_release = _git_json(
+        clone, "release-selected:System/.release-catalog.json"
+    )["release"]
+    selected_release_sha = subprocess.run(
+        ["git", "rev-parse", "release-selected"],
         cwd=clone,
         check=True,
         capture_output=True,
         text=True,
     ).stdout.strip()
-    tag = f"dist/release-selected/v2.3.4-{short}"
+    assert selected_release["immutable_distribution_tag_pattern"] == (
+        "dist/release/v2.3.4-<release-commit-prefix>"
+    )
+    tag = f"dist/release/v2.3.4-{selected_release_sha[:7]}"
     assert subprocess.run(
         ["git", "rev-parse", f"{tag}^{{}}"], cwd=clone, check=True, capture_output=True, text=True
-    ).stdout.strip() == subprocess.run(
-        ["git", "rev-parse", "release-selected"], cwd=clone, check=True, capture_output=True, text=True
-    ).stdout.strip()
+    ).stdout.strip() == selected_release_sha
     assert not subprocess.run(
         ["git", "tag", "--list", "dist/release-selected/v9.8.7-*"],
         cwd=clone,
@@ -1146,14 +1180,11 @@ def test_release_build_creates_immutable_versioned_tags(tmp_path: Path) -> None:
         capture_output=True,
         text=True,
     ).stdout.strip()
-    first_short_sha = subprocess.run(
-        ["git", "rev-parse", "--short", "release"],
-        cwd=clone,
-        check=True,
-        capture_output=True,
-        text=True,
-    ).stdout.strip()
-    first_tag = f"dist/release/v{version}-{first_short_sha}"
+    first_catalog = _git_json(clone, "release:System/.release-catalog.json")
+    first_tag = f"dist/release/v{version}-{first_release_sha[:7]}"
+    assert first_catalog["release"]["immutable_distribution_tag_pattern"] == (
+        f"dist/release/v{version}-<release-commit-prefix>"
+    )
 
     assert subprocess.run(
         ["git", "cat-file", "-t", first_tag],
@@ -1190,14 +1221,18 @@ def test_release_build_creates_immutable_versioned_tags(tmp_path: Path) -> None:
         timeout=240,
     )
 
-    second_short_sha = subprocess.run(
-        ["git", "rev-parse", "--short", "release"],
+    second_catalog = _git_json(clone, "release:System/.release-catalog.json")
+    second_release_sha = subprocess.run(
+        ["git", "rev-parse", "release"],
         cwd=clone,
         check=True,
         capture_output=True,
         text=True,
     ).stdout.strip()
-    second_tag = f"dist/release/v99.0.0-{second_short_sha}"
+    second_tag = f"dist/release/v99.0.0-{second_release_sha[:7]}"
+    assert second_catalog["release"]["immutable_distribution_tag_pattern"] == (
+        "dist/release/v99.0.0-<release-commit-prefix>"
+    )
     assert second_tag != first_tag
     assert subprocess.run(
         ["git", "rev-parse", f"{first_tag}^{{}}"],
@@ -1215,6 +1250,68 @@ def test_release_build_creates_immutable_versioned_tags(tmp_path: Path) -> None:
     ).stdout.strip() != first_release_sha
 
 
+def test_release_build_does_not_repeat_v1_96_2_catalog_tag_lie(tmp_path: Path) -> None:
+    public_split = json.loads(
+        (
+            REPO_ROOT
+            / "core/tests/fixtures/release-catalog-v1.96.2-tag-split.json"
+        ).read_text(encoding="utf-8")
+    )
+    assert public_split == {
+        "version": "1.96.2",
+        "source_tag": "v1.96.2",
+        "source_commit": "f23caea333a060e0744cffc9b58bbddfc680246c",
+        "catalog_tag": "dist/release/v1.96.2-f23caea",
+        "minted_tag": "dist/release/v1.96.2-a948d6f",
+        "release_commit": "a948d6f85312adc545e1690faf60c09f780ec178",
+    }
+    assert public_split["catalog_tag"] != public_split["minted_tag"]
+
+    preexisting_tags: set[str] = set()
+    clone, _ = _build_release_in_clone(
+        tmp_path,
+        name="catalog-tag-identity",
+        preexisting_tags=preexisting_tags,
+    )
+    catalog = _git_json(clone, "release:System/.release-catalog.json")
+    release_commit = subprocess.run(
+        ["git", "rev-parse", "release"],
+        cwd=clone,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    release_identity = catalog["release"]
+    expected_pattern = (
+        f"dist/release/v{release_identity['version']}-<release-commit-prefix>"
+    )
+    expected_tag = (
+        f"dist/release/v{release_identity['version']}-{release_commit[:7]}"
+    )
+    observed_tags = subprocess.run(
+        ["git", "tag", "--list", f"dist/release/v{release_identity['version']}-*"],
+        cwd=clone,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.splitlines()
+    minted_tags = [tag for tag in observed_tags if tag not in preexisting_tags]
+
+    assert "immutable_distribution_tag" not in release_identity, (
+        "release build repeated the v1.96.2 lie by promising one concrete tag "
+        "inside a commit whose final identity was not available yet"
+    )
+    assert release_identity["immutable_distribution_tag_pattern"] == expected_pattern
+    assert minted_tags == [expected_tag]
+    assert subprocess.run(
+        ["git", "rev-parse", f"{expected_tag}^{{}}"],
+        cwd=clone,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip() == release_commit
+
+
 def test_beta_release_ci_builds_branch_and_tag() -> None:
     workflow = yaml.safe_load((REPO_ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8"))
     beta_job = workflow["jobs"]["build-release-beta"]
@@ -1229,43 +1326,63 @@ def test_beta_release_ci_builds_branch_and_tag() -> None:
 
 def test_beta_release_ci_publishes_vault_bundle_only_as_prerelease() -> None:
     """The beta lane may publish a GitHub release, but only ever as a --prerelease,
-    and must never be able to clobber a stable (non-prerelease) release asset."""
+    and must never be able to clobber a stable (non-prerelease) release asset.
+
+    Both guards used to be inline workflow bash. Draft-first publishing moved them
+    into scripts/release_publish.py, where they are exercised by
+    test_release_publish_draft_first.py against a fake GitHub rather than only
+    read. This test holds the wiring: the beta lane still builds the same bundle
+    and still goes through the beta channel, and the stable lane still does not.
+    """
     workflow = yaml.safe_load((REPO_ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8"))
     beta_job = workflow["jobs"]["build-release-beta"]
     beta_commands = "\n".join(step.get("run", "") for step in beta_job["steps"])
 
     # It builds the same self-contained bundle the stable lane ships.
     assert "bash scripts/build-vault-bundle.sh" in beta_commands
-    assert "dist/dex-vault-bundle-v$VERSION.tar.gz" in beta_commands
+    # And publishes it through the verified path, on the beta channel.
+    assert "scripts/release_publish.py publish" in beta_commands
+    assert "--channel beta" in beta_commands
 
-    # Every release creation from the beta lane is a prerelease (keeps it off "latest").
-    assert "gh release create" in beta_commands
-    assert "--prerelease" in beta_commands
-
+    publish_source = (REPO_ROOT / "scripts/release_publish.py").read_text(encoding="utf-8")
     # Guard 1: refuse a non-prerelease (bare X.Y.Z) version so the beta lane can never
     # target a stable release tag.
-    assert "X.Y.Z-<pre>" in beta_commands or "is not a prerelease" in beta_commands
+    assert "X.Y.Z-<pre>" in publish_source
+    assert "is not a prerelease" in publish_source
     # Guard 2: before clobbering an existing tag, assert it is already a prerelease.
-    assert "isPrerelease" in beta_commands
-    assert "will not clobber it" in beta_commands
+    assert "is_prerelease" in publish_source
+    assert "will not clobber it" in publish_source
 
     # And the stable lane's own publish must remain a normal (non-prerelease) release.
     stable_job = workflow["jobs"]["build-release"]
     stable_commands = "\n".join(step.get("run", "") for step in stable_job["steps"])
-    assert "gh release create" in stable_commands
-    assert "--prerelease" not in stable_commands
+    assert "--channel stable" in stable_commands
+    assert "--channel beta" not in stable_commands
 
 
 def test_release_ci_uploads_standalone_bridge_and_checksum() -> None:
-    """Stable and beta releases expose the bridge outside the full vault bundle."""
+    """Stable and beta releases expose the bridge outside the full vault bundle.
 
+    The asset list moved out of duplicated workflow bash into one place, so this
+    now asserts against that single list -- which is also what the prober probes
+    and what docs/UPDATE-RESCUE.md tells a stuck user to download.
+    """
+    from scripts import release_publish
+
+    names = release_publish.asset_names("$VERSION")
+    assert "dex-update-bridge-v$VERSION.py" in names
+    assert "dex-update-bridge-v$VERSION.py.sha256" in names
+    assert "dex-vault-bundle-v$VERSION.tar.gz" in names
+    assert "dex-vault-bundle-v$VERSION.tar.gz.sha256" in names
+
+    # Both lanes ship exactly that list, through the verified publish path.
     workflow = yaml.safe_load((REPO_ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8"))
     for job_name in ("build-release", "build-release-beta"):
         commands = "\n".join(
             step.get("run", "") for step in workflow["jobs"][job_name]["steps"]
         )
-        assert 'dist/dex-update-bridge-v$VERSION.py"' in commands
-        assert 'dist/dex-update-bridge-v$VERSION.py.sha256"' in commands
+        assert "scripts/release_publish.py publish" in commands
+        assert "--dist dist" in commands
 
 
 def test_update_rescue_acquires_verifies_then_runs_released_bridge() -> None:

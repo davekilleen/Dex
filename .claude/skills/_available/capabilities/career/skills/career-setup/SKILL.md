@@ -18,6 +18,39 @@ One-time setup (or re-run to update). Creates your Career folder and baseline co
 
 ---
 
+## Method
+
+Verify the Career room and available integrations, then ask which setup inputs the
+user wants to provide. Minimize sensitive collection and retain the source path,
+source date, retrieval `as-of` time, and uncertainty for each job description,
+ladder, review, and goal. Normalize all evidence to the portable
+`05-Areas/Career/Evidence/` path. Stage each destination independently, show the
+exact complete bytes, obtain explicit confirmation immediately before writing,
+and read the file back before proceeding. Treat the evidence hook as a read-only
+candidate detector; it never supplies consent or writes on the user's behalf.
+
+## Output contract
+
+Return room and MCP readiness, the inputs received and deliberately omitted,
+provenance and unknowns, the exact proposed file set, and a per-file mutation
+state. Each destination must be labelled `not requested`, `awaiting confirmation`,
+`verified from read-back`, or `failed`; never summarize a partially written setup
+as complete. Include hook availability separately from evidence-save status. The
+completion summary must list only verified paths, preserve every pre-existing
+conflict, and explain the next safe recovery step for any failed or declined file.
+
+## Step 0: Verify the room and integrations
+
+Before collecting or writing career information, read the authoritative capability
+state in `System/user-profile.yaml` and verify that the Career room is enabled. If
+it is disabled, stop and explain how to enable it; do not create a partial room.
+Record the check date and `as-of` time. Separately verify whether the Career MCP
+tools are available. If the room is enabled but MCP is unavailable or its state is
+unknown, say so and use only the local files that can be read; do not present a
+local-only result as an MCP result.
+
+---
+
 ## Process Flow
 
 ### Phase 1: Introduction & Context
@@ -218,14 +251,21 @@ Great. So your growth direction:
 
 ---
 
-**All set! Let me create your Career folder and save this context.**
+**All set. Before any write, I will show an exact preview of every folder and
+file, then wait for your explicit confirmation. Nothing is created yet.**
 ```
 
 ---
 
 ### Phase 6: Create Files & Summary
 
-Create the folder structure and files:
+Do not create anything on entry to this phase. First show an **exact preview**
+of every path and complete file body below, identify any existing targets, and
+ask for **explicit confirmation**. Only after that confirmation may you create
+the approved folder structure and files. A confirmation from an earlier phase
+does not authorize these writes.
+
+After confirmation, create only the approved folder structure and files:
 
 **1. Create folder:** `05-Areas/Career/`
 
@@ -451,12 +491,13 @@ Specific achievements I'm working toward:
 **6. Create `05-Areas/Career/Evidence/` folder structure:**
 
 ```
-06-Resources/
-└── Career_Evidence/
-    ├── README.md
-    ├── Achievements/
-    ├── Feedback_Received/
-    └── Skills_Development/
+05-Areas/
+└── Career/
+    └── Evidence/
+        ├── README.md
+        ├── Achievements/
+        ├── Feedback_Received/
+        └── Skills_Development/
 ```
 
 **7. Create `05-Areas/Career/Evidence/README.md`:**
@@ -470,7 +511,7 @@ This folder captures evidence of your professional growth — achievements, feed
 
 ## How This Works
 
-As you work, Dex automatically captures evidence that supports your career progression:
+Dex can surface a candidate item for your review, but it does not passively monitor all work. A narrow, read-only post-write hook inspects a regular file written inside the Career directory for recognized achievement markers. When a marker matches, the hook returns candidate-only context to `/career-coach`; it never creates or appends evidence. Treat the output as **candidate only; nothing was saved** until the user confirms a separate write:
 
 - **Achievements/**: Major wins, successful projects, measurable impact
 - **Feedback_Received/**: Praise from colleagues, stakeholders, manager feedback
@@ -480,10 +521,9 @@ As you work, Dex automatically captures evidence that supports your career progr
 
 ## When Evidence Gets Captured
 
-1. **During `/daily-review`**: End-of-day reflections prompt for notable achievements
-2. **From Granola meetings**: Feedback and discussions with your manager are extracted
-3. **Project completions**: When you finish projects, you'll be asked if there's career evidence worth noting
-4. **Ad-hoc**: Just tell me "capture this for my career evidence" and I'll add it
+1. **During `/career-coach` writes**: The read-only hook may propose a candidate entry when its marker rules match. Show its exact source, destination, and bytes, obtain explicit confirmation, perform the separate write, and read back `Evidence_Log.md` before claiming capture.
+2. **Prompted review**: `/daily-review`, meeting processing, or project workflows may ask whether to capture something, but a prompt is not a saved record.
+3. **Ad-hoc**: Say "capture this for my career evidence" and review the exact preview before deciding whether to save it.
 
 ---
 
@@ -503,8 +543,38 @@ As you work, Dex automatically captures evidence that supports your career progr
 
 ---
 
-**This system is most powerful when it captures evidence passively as you work. Don't worry about manual updates — Dex handles it.**
+**This system is useful when evidence is reviewed deliberately. The hook only detects a candidate; it cannot save evidence and does not replace preview, explicit confirmation, or read-back verification.**
 ```
+
+---
+
+## Evidence, authority, and recovery
+
+- For every piece of evidence, record its `source` (for example, a user statement,
+  vault path, meeting identifier, or MCP result), the source date, and the
+  retrieval or review `as-of` date/time. If a date or source is absent, write
+  `unknown`; if sources contradict, show the contradiction and ask the user which
+  version to preserve. Never invent absent facts, metrics, dates, or quotes.
+- Treat sensitive evidence—performance reviews, manager or HR feedback, health or
+  other confidential material—as opt-in. Ask for explicit consent before storing
+  it, allow redaction, and do not infer consent from the user sharing it for
+  discussion. Recommendations are not human decisions or authority.
+- Before any mkdir, file write, append, update, usage-log change, or analytics
+  action, preview the exact paths and the exact new bytes or patch, including any
+  `Evidence_Log.md` entry. Wait for an explicit confirmation from the human user;
+  only that confirmation authorizes the change. Do not treat a tool suggestion or
+  an inferred preference as confirmation.
+- After confirmation, perform the separate evidence write, then read back every
+  changed path and compare it with the confirmed preview. The hook is read-only
+  and can suppress its own errors, so an absent candidate means only that no
+  candidate was returned. An absent entry after a confirmed write is a capture
+  failure, not a success. If a hook failure is observable, surface it explicitly
+  and do not substitute an invented candidate.
+- If a write, MCP check, hook, or read-back fails, surface the exact path/tool and
+  failure state, preserve existing bytes, and do not claim the setup or capture
+  completed. Leave any confirmed partial files in place, list them, and offer a
+  new preview to resume. For a destination conflict, stop without overwriting;
+  reconcile or retry only after the user explicitly chooses and confirms it.
 
 ---
 
@@ -540,12 +610,16 @@ Run `/career-coach` anytime you want to:
 3. **Prepare for reviews** — Build self-assessment from accumulated evidence
 4. **Assess promotion readiness** — Gap analysis against career ladder
 
-### Automatic Capture
+### Capture Behavior and Limits
 
 As you use Dex:
-- **Meetings with your manager** (via Granola) → Feedback automatically extracted
-- **Daily reviews** (`/daily-review`) → Achievements captured as career evidence
-- **Project completions** → Impact and skills demonstrated are saved
+- **`/career-coach` writes** → The narrow read-only hook may return a candidate
+  when its marker rules match. Candidate only; nothing was saved. Show the exact
+  preview, obtain explicit confirmation for the separate evidence write, and
+  read back the log before treating the entry as evidence.
+- **Meetings, daily reviews, and project completions** → These may surface a
+  capture prompt, but they do not automatically create career evidence merely
+  because the event occurred.
 
 ### Quarterly Career Check-ins
 
@@ -603,7 +677,10 @@ That's enough to make the system useful.
 ```markdown
 No problem — we can fill that in later.
 
-For now, I'll create the folder structure and you can update files when you're ready. The system still works without everything filled in.
+Before creating even the empty structure, I will show an exact preview of every
+folder and placeholder file and ask for explicit confirmation. Only after you
+confirm that preview will I write it. The system still works if you choose not
+to create anything yet.
 ```
 
 ---
@@ -612,10 +689,14 @@ For now, I'll create the folder structure and you can update files when you're r
 
 After running `/career-setup` once:
 
-1. **Career folder exists** → Dex knows to capture career evidence during daily work
-2. **Granola integration** → Manager 1:1s are flagged for feedback extraction
-3. **Review prompts** → End-of-day reviews ask about achievements worth capturing
-4. **Project completions** → Prompt to add impact to career evidence
+1. **Career folder exists** → Career workflows can offer evidence capture during
+   later sessions.
+2. **Granola or meeting processing** → Manager 1:1s may be surfaced for review;
+   no feedback is stored without consent and confirmation.
+3. **Review prompts** → End-of-day reviews may ask about achievements worth
+   capturing; a prompt alone does not write a file.
+4. **Project completions** → May prompt to add impact to career evidence; verify
+   the exact preview before any save.
 
 ---
 
@@ -655,7 +736,9 @@ Or manually edit the files — they're just Markdown.
 
 ## Track Usage (Silent)
 
-Update `System/usage_log.md` to mark career setup as used.
+"Silent" does not bypass the mutation boundary: include the exact
+`System/usage_log.md` patch in the preview, honor analytics opt-in, obtain human
+confirmation, read it back, and surface any failure before claiming it was updated.
 
 **Analytics (Silent):**
 

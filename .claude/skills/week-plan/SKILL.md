@@ -85,8 +85,12 @@ Get all open tasks and:
 ### 2.4 Calendar Shape Analysis (NEW)
 
 ```
+Use: calendar_get_events_with_attendees(start_date="[week start]", end_date="[day after week end]")
 Use: analyze_calendar_capacity(days_ahead=7, events=[...from calendar MCP...])
 ```
+
+Apply CLAUDE.md's **Calendar response confidence contract** before consuming
+events or passing them to `analyze_calendar_capacity`.
 
 Understand the **shape of the week**:
 

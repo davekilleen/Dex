@@ -35,7 +35,7 @@ Then be explicit about three things:
 
 1. **The live vault was not touched.** The restored copy sits in the folder they chose. Comparing, cherry-picking files, or swapping the whole vault over is their deliberate next step, not something this tool does behind their back.
 2. **The version history comes back separately.** The history bundle is copied alongside; `git clone dex-vault-<stamp>.bundle restored-history` recovers it.
-3. **Secrets and schedules are not in the backup, on purpose.** API keys, the scheduled backup job itself, and macOS permissions all need re-establishing. Walk them through `System/backup/RESTORE.md` for the full list.
+3. **Secrets and schedules are not in the backup, on purpose.** API keys, the scheduled backup job itself, and macOS permissions all need re-establishing. Walk them through `docs/backup-restore.md` for the full list.
 
 ## For cloud (rclone) backups
 

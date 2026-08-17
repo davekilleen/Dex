@@ -6,13 +6,33 @@ on:
     branches: [main, beta]
     tags: ['v*']
   pull_request:
+  workflow_dispatch:
   # Merge queue: CI validates the QUEUED BATCH exactly as it will land on main,
   # then everything in the batch merges together on one green run.
   merge_group:
-# A superseded push to the same PR/branch cancels its stale in-flight run.
+# A superseded push to the same PULL REQUEST cancels its stale in-flight run.
+# Nothing else is ever cancelled.
+#
+# The grouping carries that rule, rather than a boolean expression deciding it. A
+# pull request groups by its number, so its own later pushes supersede it. Every
+# other run — main, beta, tags, the merge queue — groups by its unique run id, so it
+# shares a group with nothing and cannot be cancelled by anything.
+#
+# This was previously expressed as `cancel-in-progress: ${{ github.event_name ==
+# 'pull_request' }}` over a group keyed on `github.ref`, which meant every push to
+# main shared one group. Observed on 2026-08-12: 10 of the last 15 main runs ended
+# `cancelled`, each at the exact second the next merge created its run, with no jobs
+# ever scheduled. That matters well beyond wasted minutes — `build-release` only runs
+# on main, so a main run cancelled by a later merge is a release whose download files
+# are never built. Draft-first publishing makes that state safe (the release stays a
+# hidden draft and the prober flags it) but safe is not the same as shipped.
+#
+# Serialising the actual release work does not depend on this: the `build-release`
+# job holds the `stable-public-route` concurrency lock with `cancel-in-progress:
+# false`, so concurrent main runs still queue behind each other for publishing.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
 jobs:
   # Gates, JS suites, lint, and static checks. The Python test suite runs in the
   # sharded `tests` matrix below; its thresholds are enforced by `test-results`.
@@ -21,7 +41,7 @@ jobs:
     env:
       VAULT_PATH: core/tests/fixtures/vault
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
@@ -126,7 +146,7 @@ jobs:
       VAULT_PATH: core/tests/fixtures/vault
       COVERAGE_FILE: coverage-shard-${{ matrix.shard }}.data
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
@@ -198,7 +218,7 @@ jobs:
       - name: Require every shard green
         run: |
           [ "${{ needs.tests.result }}" = "success" ] || { echo "Shard matrix result: ${{ needs.tests.result }} — failing the suite verdict." >&2; exit 1; }
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
@@ -260,7 +280,7 @@ jobs:
       contents: read
       pull-requests: write
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           ref: ${{ github.event.pull_request.head.sha }}
@@ -297,6 +317,51 @@ jobs:
             echo "::warning::The token cannot read PR comments (common for forks); use the job summary report."
           fi
 
+  lens-catalog-release-dry-run:
+    if: github.event_name == 'workflow_dispatch' || github.event_name == 'pull_request'
+    runs-on: macos-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+      - name: Decide whether the Lens catalogue release path changed
+        id: changes
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || '' }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          CHANGED_FILES="$RUNNER_TEMP/lens-catalog-changed-files.txt"
+          if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
+            git diff --name-only "$BASE_SHA" "$HEAD_SHA" | tee "$CHANGED_FILES"
+          else
+            : > "$CHANGED_FILES"
+          fi
+          DECISION="$(
+            python3 scripts/lens-catalog-release-path.py \
+              --event-name "$GITHUB_EVENT_NAME" \
+              --changed-files "$CHANGED_FILES"
+          )"
+          echo "$DECISION" >> "$GITHUB_OUTPUT"
+          if [ "$DECISION" = "should_run=false" ]; then
+            echo "No Lens catalogue release-path changes; dry-run skipped."
+          fi
+      - name: Dry-run the Lens catalogue release environment
+        if: steps.changes.outputs.should_run == 'true'
+        run: |
+          OUTPUT_DIR="$RUNNER_TEMP/dex-lens-catalog-dry-run"
+          python3 -m venv .lens-venv
+          .lens-venv/bin/python -m pip install --quiet 'cryptography>=42' jsonschema
+          .lens-venv/bin/python scripts/generate-dex-lens-catalog.py \
+            --release-root "$PWD" \
+            --output-dir "$OUTPUT_DIR"
+          VERSION="$(python3 -c 'import json; print(json.load(open("package.json"))["version"])')"
+          test -f "$OUTPUT_DIR/dex-lens-catalog-v$VERSION.json"
+          test -f "$OUTPUT_DIR/dex-lens-catalog-v$VERSION.json.sha256"
+          test -f "$OUTPUT_DIR/dex-lens-catalog-latest.json"
+          test -f "$OUTPUT_DIR/dex-lens-catalog-latest.json.sha256"
+
   build-release:
     needs: [quality, test-results]
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
@@ -310,7 +375,7 @@ jobs:
       release_sha: ${{ steps.release_guard.outputs.release_sha || steps.release_build.outputs.release_sha }}
       already_published: ${{ steps.release_guard.outputs.already_published }}
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
       # A second artifact for one version makes every update check ambiguous,
@@ -345,6 +410,15 @@ jobs:
           else
             echo "already_published=false" >> "$GITHUB_OUTPUT"
           fi
+      # This job builds from whatever main HEAD is when it runs, but labels the
+      # result with package.json's version. If the run at the release commit
+      # never reaches the build — one flaky test is enough — a later run builds
+      # a newer tree under the old version. The read-back check downstream
+      # cannot see it: it compares attached against built, and both sides are
+      # the same wrong tree.
+      - name: Refuse to label a different tree as this version
+        if: steps.release_guard.outputs.already_published == 'false'
+        run: bash scripts/check-release-tree-matches-tag.sh
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: '20'
@@ -357,17 +431,13 @@ jobs:
         id: release_build
         if: steps.release_guard.outputs.already_published != 'true'
         run: |
+          set -euo pipefail
           bash scripts/build-release.sh
           echo "release_sha=$(git rev-parse release)" >> "$GITHUB_OUTPUT"
-          VERSION="$(node -p "require('./package.json').version")"
-          RELEASE_TAG="dist/release/v${VERSION}-$(git rev-parse --short release)"
-          git rev-parse --verify "refs/tags/$RELEASE_TAG"
+          RELEASE_TAG="$(python3 scripts/check-release-catalog-tag-identity.py --release-ref release --print-release-tag)"
+          test -n "$RELEASE_TAG"
+          python3 scripts/check-release-catalog-tag-identity.py --release-ref release
           echo "release_tag=$RELEASE_TAG" >> "$GITHUB_OUTPUT"
-      - name: Push release branch and immutable tag
-        if: steps.release_guard.outputs.already_published != 'true'
-        run: |
-          git push origin release --force
-          git push origin "${{ steps.release_build.outputs.release_tag }}"
       - name: Build self-contained vault bundle
         if: steps.release_guard.outputs.already_published != 'true'
         run: bash scripts/build-vault-bundle.sh
@@ -380,8 +450,17 @@ jobs:
           # environment secret; no generated private key belongs in the repo.
           DEX_LENS_CATALOG_ED25519_PRIVATE_KEY_B64: ${{ secrets.DEX_LENS_CATALOG_ED25519_PRIVATE_KEY_B64 }}
         run: |
-          python3 -m pip install 'cryptography>=42'
-          python3 scripts/generate-dex-lens-catalog.py \
+          # build-release never runs actions/setup-python, so `python3` here is the
+          # runner's Homebrew interpreter and PEP 668 refuses a system-wide install:
+          # `pip install cryptography` died with externally-managed-environment and
+          # took the whole release with it. An isolated venv keeps the install off the
+          # system interpreter without --break-system-packages (which Homebrew warns
+          # can break the runner) and without changing `python3` for any other step.
+          # jsonschema is installed too: the producer imports it at module scope, so
+          # a venv holding only cryptography would fail on the very next line.
+          python3 -m venv .lens-venv
+          .lens-venv/bin/python -m pip install --quiet 'cryptography>=42' jsonschema
+          .lens-venv/bin/python scripts/generate-dex-lens-catalog.py \
             --release-root "$PWD" \
             --output-dir dist \
             --sign \
@@ -396,37 +475,40 @@ jobs:
             dist/dex-lens-catalog-latest.json.sha256
           if-no-files-found: error
           retention-days: 1
-      - name: Upload vault bundle to versioned GitHub Release
+      - name: Push release branch and immutable tag
+        if: steps.release_guard.outputs.already_published != 'true'
+        run: |
+          set -euo pipefail
+          git push origin release --force
+          git push origin "${{ steps.release_build.outputs.release_tag }}"
+          python3 scripts/check-release-catalog-tag-identity.py --release-ref release --remote origin
+      # The ONLY step that makes a stable release public, and it does so last:
+      # attach every asset, read each one back off the release and compare it to
+      # what was built, and only then flip the draft public. A failure anywhere here
+      # leaves the release a hidden draft rather than a public empty page — see the
+      # header comment in .github/workflows/release.yml.
+      #
+      # The Dex Lens catalogue rides along as an extra asset rather than being
+      # uploaded afterwards, so nothing can ever appear on a release that is
+      # already live.
+      - name: Attach assets, verify them, then make the release public
         if: steps.release_guard.outputs.already_published != 'true'
         env:
           GH_TOKEN: ${{ github.token }}
+          LENS_CATALOG_ENABLED: ${{ vars.DEX_LENS_CATALOG_RELEASE_GATE_ENABLED }}
         run: |
           VERSION="$(node -p "require('./package.json').version")"
-          # Create the release (and its git tag, at this commit) only if absent.
-          # --notes-from-tag needs a pre-existing annotated tag, which the release
-          # process never makes; let gh create the tag and generate notes instead.
-          if ! gh release view "v$VERSION" >/dev/null 2>&1; then
-            gh release create "v$VERSION" \
-              --target "$GITHUB_SHA" \
-              --title "v$VERSION" \
-              --generate-notes
+          EXTRA=()
+          if [ "$LENS_CATALOG_ENABLED" = "true" ]; then
+            EXTRA+=(--extra-asset "dist/dex-lens-catalog-v$VERSION.json")
+            EXTRA+=(--extra-asset "dist/dex-lens-catalog-v$VERSION.json.sha256")
           fi
-          gh release upload "v$VERSION" \
-            "dist/dex-vault-bundle-v$VERSION.tar.gz" \
-            "dist/dex-vault-bundle-v$VERSION.tar.gz.sha256" \
-            "dist/dex-update-bridge-v$VERSION.py" \
-            "dist/dex-update-bridge-v$VERSION.py.sha256" \
-            --clobber
-      - name: Upload Dex Lens catalog to versioned GitHub Release
-        if: steps.release_guard.outputs.already_published != 'true' && vars.DEX_LENS_CATALOG_RELEASE_GATE_ENABLED == 'true'
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          VERSION="$(node -p "require('./package.json').version")"
-          gh release upload "v$VERSION" \
-            "dist/dex-lens-catalog-v$VERSION.json" \
-            "dist/dex-lens-catalog-v$VERSION.json.sha256" \
-            --clobber
+          python3 scripts/release_publish.py publish \
+            --version "$VERSION" \
+            --channel stable \
+            --dist dist \
+            --target "$GITHUB_SHA" \
+            "${EXTRA[@]}"
 
   build-release-beta:
     needs: [quality, test-results]
@@ -435,7 +517,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
@@ -449,52 +531,38 @@ jobs:
       - name: Build beta release branch
         id: release_build
         run: |
+          set -euo pipefail
           bash scripts/build-release.sh --source beta --target release-beta
-          VERSION="$(node -p "require('./package.json').version")"
-          RELEASE_TAG="dist/release-beta/v${VERSION}-$(git rev-parse --short release-beta)"
-          git rev-parse --verify "refs/tags/$RELEASE_TAG"
+          RELEASE_TAG="$(python3 scripts/check-release-catalog-tag-identity.py --release-ref release-beta --source-ref beta --print-release-tag)"
+          test -n "$RELEASE_TAG"
+          IDENTITY="$(python3 scripts/check-release-catalog-tag-identity.py --release-ref release-beta --source-ref beta)"
+          test -n "$IDENTITY"
+          printf '%s\n' "$IDENTITY"
           echo "release_tag=$RELEASE_TAG" >> "$GITHUB_OUTPUT"
       - name: Push beta release branch and immutable tag
         run: |
+          set -euo pipefail
           git push origin release-beta --force
           git push origin "${{ steps.release_build.outputs.release_tag }}"
       - name: Build self-contained vault bundle
         run: bash scripts/build-vault-bundle.sh
-      - name: Publish beta vault bundle as a GitHub prerelease
+      # Same draft-first path as the stable lane, staying marked as a prerelease
+      # when it goes live. Both of this lane's long-standing safety guards now live
+      # in scripts/release_publish.py, where they are unit-tested rather than only
+      # read: it refuses a version that is not X.Y.Z-<pre> (so the beta branch can
+      # never publish over a stable release), and refuses to touch an existing
+      # release that is not already a prerelease (so it can never clobber a
+      # promoted one).
+      - name: Attach beta assets, verify them, then publish the prerelease
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           VERSION="$(node -p "require('./package.json').version")"
-          # SAFETY: the beta lane must never be able to touch a stable release asset.
-          # Guard 1 — refuse unless this is a prerelease version (X.Y.Z-<pre>, e.g.
-          # 1.62.0-beta.1). A bare X.Y.Z is a stable version; publishing it from the
-          # beta branch could collide with — and clobber — a real stable release.
-          if ! printf '%s' "$VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+-[0-9A-Za-z.]+$'; then
-            echo "Refusing: beta version '$VERSION' is not a prerelease (expected X.Y.Z-<pre>, e.g. 1.62.0-beta.1)." >&2
-            echo "The beta branch must carry a prerelease version so it can never overwrite a stable release." >&2
-            exit 1
-          fi
-          # Guard 2 — if a release with this tag already exists, it MUST already be a
-          # prerelease before we upload/clobber. Never overwrite a promoted/stable release.
-          if gh release view "v$VERSION" >/dev/null 2>&1; then
-            IS_PRERELEASE="$(gh release view "v$VERSION" --json isPrerelease -q .isPrerelease)"
-            if [ "$IS_PRERELEASE" != "true" ]; then
-              echo "Refusing: release v$VERSION exists but is not a prerelease; the beta lane will not clobber it." >&2
-              exit 1
-            fi
-          else
-            gh release create "v$VERSION" \
-              --target "$GITHUB_SHA" \
-              --title "v$VERSION" \
-              --prerelease \
-              --generate-notes
-          fi
-          gh release upload "v$VERSION" \
-            "dist/dex-vault-bundle-v$VERSION.tar.gz" \
-            "dist/dex-vault-bundle-v$VERSION.tar.gz.sha256" \
-            "dist/dex-update-bridge-v$VERSION.py" \
-            "dist/dex-update-bridge-v$VERSION.py.sha256" \
-            --clobber
+          python3 scripts/release_publish.py publish \
+            --version "$VERSION" \
+            --channel beta \
+            --dist dist \
+            --target "$GITHUB_SHA"
 
   deploy-health:
     needs: [quality, build-release]
@@ -508,7 +576,7 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: '3.12'
@@ -543,7 +611,7 @@ jobs:
       - name: Configure GitHub Pages
         id: pages
         continue-on-error: true
-        uses: actions/configure-pages@983d7736d9b0ae728b81ab479565c72886d7745b  # v5
+        uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d  # v6.0.0
       - name: Explain Pages setup skip
         if: steps.pages.outcome != 'success'
         run: echo "::notice::Health page not deployed because GitHub Pages is not enabled. Enable Settings → Pages → GitHub Actions."

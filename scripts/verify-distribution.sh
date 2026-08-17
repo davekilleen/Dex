@@ -254,8 +254,9 @@ echo "✓ Checking package.json version matches CHANGELOG..."
 PKG_VERSION=$(grep '"version"' package.json | head -1 | sed 's/.*"version": *"\([^"]*\)".*/\1/')
 CHANGELOG_VERSION=$(grep -m1 '^\#\# \[' CHANGELOG.md | sed 's/.*\[\([0-9][0-9.]*\)\].*/\1/')
 if [ "$PKG_VERSION" != "$CHANGELOG_VERSION" ]; then
-    echo "  ⚠️  WARNING: package.json ($PKG_VERSION) != CHANGELOG ($CHANGELOG_VERSION)"
-    WARNINGS=$((WARNINGS + 1))
+    echo "  ❌ ERROR: package.json ($PKG_VERSION) != CHANGELOG ($CHANGELOG_VERSION)"
+    echo "     CI would otherwise rebuild the already-published package version and skip this release."
+    ERRORS=$((ERRORS + 1))
 else
     echo "  ✅ Versions match: $PKG_VERSION"
 fi

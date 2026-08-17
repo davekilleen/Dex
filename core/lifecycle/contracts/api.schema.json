@@ -7,7 +7,7 @@
   "additionalProperties": false,
   "required": ["api_version", "x-operations"],
   "properties": {
-    "api_version": {"const": "1.4.0"},
+    "api_version": {"const": "1.5.0"},
     "x-operations": {"type": "object"}
   },
   "x-operations": {
@@ -62,6 +62,22 @@
     "execute_approved_onboarding_context": {
       "request": {"$ref": "#/$defs/onboardingContextExecuteRequest"},
       "response": {"$ref": "#/$defs/onboardingContextExecuteResponse"}
+    },
+    "build_and_preview_automation_claim": {
+      "request": {"$ref": "#/$defs/automationClaimPreviewRequest"},
+      "response": {"$ref": "#/$defs/automationPreviewResponse"}
+    },
+    "execute_approved_automation_claim": {
+      "request": {"$ref": "#/$defs/automationExecuteRequest"},
+      "response": {"$ref": "#/$defs/automationExecuteResponse"}
+    },
+    "build_and_preview_automation_release": {
+      "request": {"$ref": "#/$defs/automationReleasePreviewRequest"},
+      "response": {"$ref": "#/$defs/automationPreviewResponse"}
+    },
+    "execute_approved_automation_release": {
+      "request": {"$ref": "#/$defs/automationExecuteRequest"},
+      "response": {"$ref": "#/$defs/automationExecuteResponse"}
     },
     "build_and_preview_conflict_resolution": {
       "request": {"$ref": "#/$defs/resolutionsRequest"},
@@ -131,13 +147,153 @@
     "apiEnvelope": {
       "type": "object",
       "required": ["api_version"],
-      "properties": {"api_version": {"const": "1.4.0"}}
+      "properties": {"api_version": {"const": "1.5.0"}}
     },
     "vaultRequest": {
       "type": "object",
       "additionalProperties": false,
       "required": ["vault_root"],
       "properties": {"vault_root": {"$ref": "#/$defs/path"}}
+    },
+    "automationClaim": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["automation_id", "owner_id", "plist_relative_path", "plist_sha256"],
+      "properties": {
+        "automation_id": {"type": "string", "pattern": "^[a-z0-9](?:[a-z0-9._-]{0,126}[a-z0-9])?$"},
+        "owner_id": {"const": "dex-solo"},
+        "plist_relative_path": {"type": "string", "pattern": "^Library/LaunchAgents/[a-z0-9](?:[a-z0-9._-]{0,126}[a-z0-9])?\\.plist$"},
+        "plist_sha256": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "automationClaimRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["automation_id", "owner_id", "plist_relative_path", "plist_sha256", "launchd_state"],
+      "properties": {
+        "automation_id": {"type": "string", "pattern": "^[a-z0-9](?:[a-z0-9._-]{0,126}[a-z0-9])?$"},
+        "owner_id": {"const": "dex-solo"},
+        "plist_relative_path": {"type": "string", "pattern": "^Library/LaunchAgents/[a-z0-9](?:[a-z0-9._-]{0,126}[a-z0-9])?\\.plist$"},
+        "plist_sha256": {"$ref": "#/$defs/sha256"},
+        "launchd_state": {"const": "unloaded"}
+      }
+    },
+    "automationReleaseRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["automation_id", "owner_id", "scheduler_state"],
+      "properties": {
+        "automation_id": {"type": "string", "pattern": "^[a-z0-9](?:[a-z0-9._-]{0,126}[a-z0-9])?$"},
+        "owner_id": {"const": "dex-solo"},
+        "scheduler_state": {"const": "stopped"}
+      }
+    },
+    "automationClaimPreviewRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["vault_root", "claim"],
+      "properties": {
+        "vault_root": {"$ref": "#/$defs/path"},
+        "claim": {"$ref": "#/$defs/automationClaimRequest"}
+      }
+    },
+    "automationReleasePreviewRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["vault_root", "release"],
+      "properties": {
+        "vault_root": {"$ref": "#/$defs/path"},
+        "release": {"$ref": "#/$defs/automationReleaseRequest"}
+      }
+    },
+    "automationClaimPreview": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["automation_ownership_version", "operation", "claim", "launchd_state", "current_sidecar_sha256", "next_sidecar_sha256"],
+      "properties": {
+        "automation_ownership_version": {"const": 1},
+        "operation": {"const": "claim"},
+        "claim": {"$ref": "#/$defs/automationClaim"},
+        "launchd_state": {"const": "unloaded"},
+        "current_sidecar_sha256": {"anyOf": [{"$ref": "#/$defs/sha256"}, {"type": "null"}]},
+        "next_sidecar_sha256": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "automationReleasePreview": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["automation_ownership_version", "operation", "claim", "scheduler_state", "current_sidecar_sha256", "next_sidecar_sha256"],
+      "properties": {
+        "automation_ownership_version": {"const": 1},
+        "operation": {"const": "release"},
+        "claim": {"$ref": "#/$defs/automationClaim"},
+        "scheduler_state": {"const": "stopped"},
+        "current_sidecar_sha256": {"anyOf": [{"$ref": "#/$defs/sha256"}, {"type": "null"}]},
+        "next_sidecar_sha256": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "automationPreview": {
+      "anyOf": [
+        {"$ref": "#/$defs/automationClaimPreview"},
+        {"$ref": "#/$defs/automationReleasePreview"}
+      ]
+    },
+    "automationPreviewResponse": {
+      "anyOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["api_version", "needed", "preview", "approval_token"],
+          "properties": {
+            "api_version": {"const": "1.5.0"},
+            "needed": {"const": true},
+            "preview": {"$ref": "#/$defs/automationPreview"},
+            "approval_token": {"$ref": "#/$defs/sha256"}
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["api_version", "needed", "preview", "approval_token"],
+          "properties": {
+            "api_version": {"const": "1.5.0"},
+            "needed": {"const": false},
+            "preview": {"type": "null"},
+            "approval_token": {"type": "null"}
+          }
+        }
+      ]
+    },
+    "automationExecuteRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["vault_root", "preview", "approved_token"],
+      "properties": {
+        "vault_root": {"$ref": "#/$defs/path"},
+        "preview": {"$ref": "#/$defs/automationPreview"},
+        "approved_token": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "automationExecuteResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["api_version", "receipt"],
+      "properties": {
+        "api_version": {"const": "1.5.0"},
+        "receipt": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["operation", "status", "automation_id", "owner_id", "transaction_id", "sidecar_sha256"],
+          "properties": {
+            "operation": {"type": "string", "enum": ["claim", "release"]},
+            "status": {"type": "string", "enum": ["claimed", "already-claimed", "released", "already-released"]},
+            "automation_id": {"type": "string"},
+            "owner_id": {"const": "dex-solo"},
+            "transaction_id": {"anyOf": [{"type": "string"}, {"type": "null"}]},
+            "sidecar_sha256": {"$ref": "#/$defs/sha256"}
+          }
+        }
+      }
     },
     "releaseDeliveryResponse": {
       "anyOf": [
@@ -146,7 +302,7 @@
           "additionalProperties": false,
           "required": ["api_version", "status", "evidence"],
           "properties": {
-            "api_version": {"const": "1.4.0"},
+            "api_version": {"const": "1.5.0"},
             "status": {"const": "not-delivered"},
             "evidence": {"type": "object"}
           }
@@ -156,7 +312,7 @@
           "additionalProperties": false,
           "required": ["api_version", "status", "release"],
           "properties": {
-            "api_version": {"const": "1.4.0"},
+            "api_version": {"const": "1.5.0"},
             "status": {"const": "delivered"},
             "release": {"$ref": "#/$defs/releaseIdentity"}
           }
@@ -216,7 +372,7 @@
           "additionalProperties": false,
           "required": ["api_version", "preview", "approval_token"],
           "properties": {
-            "api_version": {"const": "1.4.0"},
+            "api_version": {"const": "1.5.0"},
             "preview": {"$ref": "#/$defs/deliveredReleasePreview"},
             "approval_token": {"$ref": "#/$defs/sha256"}
           }
@@ -241,7 +397,7 @@
           "additionalProperties": false,
           "required": ["api_version", "receipt", "release"],
           "properties": {
-            "api_version": {"const": "1.4.0"},
+            "api_version": {"const": "1.5.0"},
             "receipt": {"type": "object"},
             "release": {"$ref": "#/$defs/releaseIdentity"}
           }
@@ -273,7 +429,7 @@
           "additionalProperties": false,
           "required": ["api_version", "needed", "preview", "approval_token"],
           "properties": {
-            "api_version": {"const": "1.4.0"},
+            "api_version": {"const": "1.5.0"},
             "needed": {"const": true},
             "preview": {"$ref": "#/$defs/mcpRegistrationPreview"},
             "approval_token": {"$ref": "#/$defs/sha256"}
@@ -284,7 +440,7 @@
           "additionalProperties": false,
           "required": ["api_version", "needed", "preview", "approval_token"],
           "properties": {
-            "api_version": {"const": "1.4.0"},
+            "api_version": {"const": "1.5.0"},
             "needed": {"const": false},
             "preview": {"type": "null"},
             "approval_token": {"type": "null"}
@@ -307,7 +463,7 @@
       "additionalProperties": false,
       "required": ["api_version", "receipt"],
       "properties": {
-        "api_version": {"const": "1.4.0"},
+        "api_version": {"const": "1.5.0"},
         "receipt": {"type": "object"}
       }
     },
@@ -336,7 +492,7 @@
       "additionalProperties": false,
       "required": ["api_version", "preview", "approval_token"],
       "properties": {
-        "api_version": {"const": "1.4.0"},
+        "api_version": {"const": "1.5.0"},
         "preview": {"$ref": "#/$defs/onboardingContext"},
         "approval_token": {"$ref": "#/$defs/sha256"}
       }
@@ -356,7 +512,7 @@
       "additionalProperties": false,
       "required": ["api_version", "receipt"],
       "properties": {
-        "api_version": {"const": "1.4.0"},
+        "api_version": {"const": "1.5.0"},
         "receipt": {"type": "object"}
       }
     },
@@ -405,7 +561,7 @@
           "additionalProperties": false,
           "required": ["api_version", "inventory", "plan"],
           "properties": {
-            "api_version": {"const": "1.4.0"},
+            "api_version": {"const": "1.5.0"},
             "inventory": {"$ref": "#/$defs/inventory"},
             "plan": {"$ref": "#/$defs/plan"}
           }
@@ -452,7 +608,7 @@
       "additionalProperties": false,
       "required": ["api_version", "preview", "approval_token"],
       "properties": {
-        "api_version": {"const": "1.4.0"},
+        "api_version": {"const": "1.5.0"},
         "preview": {"$ref": "#/$defs/preview"},
         "approval_token": {"$ref": "#/$defs/sha256"}
       }
@@ -537,7 +693,7 @@
       "additionalProperties": false,
       "required": ["api_version", "preview", "approval_token"],
       "properties": {
-        "api_version": {"const": "1.4.0"},
+        "api_version": {"const": "1.5.0"},
         "preview": {"$ref": "#/$defs/conflictResolutionPreview"},
         "approval_token": {"$ref": "#/$defs/sha256"}
       }
@@ -584,7 +740,7 @@
       "additionalProperties": false,
       "required": ["api_version", "receipt", "rewind_acknowledgement_token"],
       "properties": {
-        "api_version": {"const": "1.4.0"},
+        "api_version": {"const": "1.5.0"},
         "receipt": {"$ref": "#/$defs/adoptionReceipt"},
         "rewind_acknowledgement_token": {"$ref": "#/$defs/sha256"}
       }
@@ -630,7 +786,7 @@
       "additionalProperties": false,
       "required": ["api_version", "rewind_receipt"],
       "properties": {
-        "api_version": {"const": "1.4.0"},
+        "api_version": {"const": "1.5.0"},
         "rewind_receipt": {"$ref": "#/$defs/rewindReceipt"}
       }
     },
@@ -675,7 +831,7 @@
       "additionalProperties": false,
       "required": ["api_version", "preview", "approval_token"],
       "properties": {
-        "api_version": {"const": "1.4.0"},
+        "api_version": {"const": "1.5.0"},
         "preview": {"$ref": "#/$defs/archivePreview"},
         "approval_token": {"$ref": "#/$defs/sha256"}
       }
@@ -710,7 +866,7 @@
       "additionalProperties": false,
       "required": ["api_version", "receipt"],
       "properties": {
-        "api_version": {"const": "1.4.0"},
+        "api_version": {"const": "1.5.0"},
         "receipt": {"$ref": "#/$defs/archiveReceipt"}
       }
     },
@@ -719,7 +875,7 @@
       "additionalProperties": false,
       "required": ["api_version", "ledger_state", "retention"],
       "properties": {
-        "api_version": {"const": "1.4.0"},
+        "api_version": {"const": "1.5.0"},
         "ledger_state": {"$ref": "#/$defs/ledgerState"},
         "retention": {"$ref": "#/$defs/retention"}
       }
@@ -768,7 +924,7 @@
       "additionalProperties": false,
       "required": ["api_version", "topology", "preview", "approval_token"],
       "properties": {
-        "api_version": {"const": "1.4.0"},
+        "api_version": {"const": "1.5.0"},
         "topology": {"type": "string", "minLength": 1},
         "preview": {"$ref": "#/$defs/topologyPreview"},
         "approval_token": {
@@ -850,7 +1006,7 @@
       "additionalProperties": false,
       "required": ["api_version", "receipt", "receipt_path"],
       "properties": {
-        "api_version": {"const": "1.4.0"},
+        "api_version": {"const": "1.5.0"},
         "receipt": {"$ref": "#/$defs/topologyReceipt"},
         "receipt_path": {"$ref": "#/$defs/path"}
       }
@@ -898,7 +1054,7 @@
       "additionalProperties": false,
       "required": ["api_version", "receipt"],
       "properties": {
-        "api_version": {"const": "1.4.0"},
+        "api_version": {"const": "1.5.0"},
         "receipt": {"$ref": "#/$defs/rebuildCapsuleReceipt"}
       }
     },
@@ -929,7 +1085,7 @@
       "additionalProperties": false,
       "required": ["api_version", "receipt"],
       "properties": {
-        "api_version": {"const": "1.4.0"},
+        "api_version": {"const": "1.5.0"},
         "receipt": {"$ref": "#/$defs/rebuildStagingReceipt"}
       }
     },
@@ -976,7 +1132,7 @@
       "additionalProperties": false,
       "required": ["api_version", "receipt"],
       "properties": {
-        "api_version": {"const": "1.4.0"},
+        "api_version": {"const": "1.5.0"},
         "receipt": {"$ref": "#/$defs/rebuildVerificationReceipt"}
       }
     },
@@ -1032,7 +1188,7 @@
         "rewind_acknowledgement_token"
       ],
       "properties": {
-        "api_version": {"const": "1.4.0"},
+        "api_version": {"const": "1.5.0"},
         "receipt": {"$ref": "#/$defs/rebuildActivationReceipt"},
         "rewind_acknowledgement_token": {
           "anyOf": [
@@ -1129,7 +1285,7 @@
       "additionalProperties": false,
       "required": ["api_version", "rewind_receipt"],
       "properties": {
-        "api_version": {"const": "1.4.0"},
+        "api_version": {"const": "1.5.0"},
         "rewind_receipt": {"$ref": "#/$defs/rebuildRewindReceipt"}
       }
     },
@@ -1147,7 +1303,7 @@
       "additionalProperties": false,
       "required": ["api_version", "capsule_id", "abandoned"],
       "properties": {
-        "api_version": {"const": "1.4.0"},
+        "api_version": {"const": "1.5.0"},
         "capsule_id": {"$ref": "#/$defs/capsuleId"},
         "abandoned": {"const": true}
       }
@@ -1157,7 +1313,7 @@
       "additionalProperties": false,
       "required": ["api_version", "outcomes"],
       "properties": {
-        "api_version": {"const": "1.4.0"},
+        "api_version": {"const": "1.5.0"},
         "outcomes": {
           "type": "array",
           "items": {"type": "object"}

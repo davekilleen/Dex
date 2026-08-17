@@ -1,0 +1,138 @@
+name: Release asset prober
+# Fetches the REAL public download URLs for the newest release — the exact ones a
+# stuck copy of Dex uses, and the exact ones docs/UPDATE-RESCUE.md tells a user to
+# paste into a terminal — and fails if any of them does not serve bytes or does not
+# match its published checksum.
+#
+# Why this exists as well as draft-first publishing: draft-first makes a
+# public-but-empty release unreachable through the normal path, but it cannot see a
+# release cut by an older pipeline, an asset deleted or replaced by hand, a rescue
+# guide naming a version that was never published, or a release left half-attached.
+# On 2026-08-11 v1.94.0 was the newest release with zero assets for about ninety
+# minutes and nothing noticed; the first thing that would have noticed was a user.
+#
+# Deliberately unauthenticated for the probes themselves: an authenticated API view
+# can succeed while the public route a user takes returns "not found".
+#
+# Cadence: every six hours, and NOT hourly, because hourly does not work here.
+#
+# GitHub's scheduled runs are best-effort and this repository's are consistently
+# very late. Measured on 2026-08-12 against `nightly-quality.yml`, whose cron is
+# `0 3 * * *`: its last eight scheduled runs started 65, 70, 71, 82, 108, 156, 159
+# and 159 minutes after the hour. A schedule asking for an hourly run is therefore
+# always overdue before its next tick, and GitHub drops the overdue one rather than
+# queueing it — an hourly cron here fires never, which is exactly what this workflow
+# did on its first two attempts (02:17Z and 03:17Z, neither ran).
+#
+# Six hours absorbs that slippage with room to spare, so this actually runs. It also
+# reflects what this job honestly is: the BACKSTOP. Draft-first publishing verifies
+# every asset before a release goes public, and the operator-side watchman keeps the
+# frequent cadence and is the leg that can raise an alert where someone will see it.
+# What this leg uniquely covers is the case where that machine is off or wedged, and
+# for that a few times a day is the right answer, not a schedule that lies.
+#
+# Each run downloads the full bundle to verify its checksum honestly, which is
+# another reason not to want this every few minutes.
+
+on:
+  schedule:
+    - cron: '17 */6 * * *'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Probe this exact version instead of whatever GitHub calls Latest
+        required: false
+        type: string
+      rescue_doc_source:
+        description: Read the rescue guide from the released tag, or this checkout
+        required: false
+        default: released
+        type: choice
+        options: [released, local]
+  # Changes to the prober itself must be exercised by the prober, or the check that
+  # watches the release route becomes the thing nobody watches.
+  pull_request:
+    paths:
+      - .github/workflows/release-asset-prober.yml
+      - scripts/check_release_assets.py
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-asset-prober
+  cancel-in-progress: false
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: '3.12'
+
+      - name: Probe the public release download URLs
+        id: probe
+        env:
+          # Only the stuck-draft check uses this; every download probe is
+          # deliberately anonymous.
+          GH_TOKEN: ${{ github.token }}
+          PROBE_VERSION: ${{ inputs.version }}
+          RESCUE_DOC_SOURCE: ${{ inputs.rescue_doc_source || 'released' }}
+        run: |
+          set -o pipefail
+          ARGS=(--json release-asset-report.json --rescue-doc-source "$RESCUE_DOC_SOURCE")
+          if [ -n "${PROBE_VERSION:-}" ]; then
+            ARGS+=(--version "$PROBE_VERSION")
+          fi
+          set +e
+          python3 scripts/check_release_assets.py "${ARGS[@]}" 2>&1 | tee probe-output.txt
+          STATUS="${PIPESTATUS[0]}"
+          set -e
+          echo "status=$STATUS" >> "$GITHUB_OUTPUT"
+
+          {
+            echo "## Release asset prober"
+            echo
+            echo '```'
+            cat probe-output.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          case "$STATUS" in
+            0) echo "Every probed URL served bytes." ;;
+            2)
+              # Could not reach GitHub. This says nothing about the release, so it
+              # must not be reported as a broken release.
+              echo "::warning::The prober could not run (network or lookup failure); the release was NOT checked."
+              ;;
+            *)
+              echo "::error::The newest release is not fully downloadable. See the job summary."
+              ;;
+          esac
+          exit 0
+
+      - name: Upload the report
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: release-asset-report
+          path: |
+            release-asset-report.json
+            probe-output.txt
+          if-no-files-found: warn
+          retention-days: 14
+
+      # Failing the job is what reaches a human: GitHub notifies the repository
+      # owner when a scheduled workflow fails. A run that could not reach GitHub at
+      # all (status 2) stays green on purpose — crying wolf over a network blip is
+      # how a check earns the reputation that gets it ignored.
+      - name: Fail when the release is not fully downloadable
+        if: steps.probe.outputs.status != '0' && steps.probe.outputs.status != '2'
+        run: |
+          echo "The newest Dex release is missing or serving broken download files." >&2
+          echo "Full detail is in the job summary and the release-asset-report artifact." >&2
+          exit 1

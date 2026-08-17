@@ -1,249 +1,166 @@
 ---
 name: roadmap
-description: Review roadmap, surface blockers, check alignment with priorities
+description: Review roadmap status, evidence freshness, blockers, and alignment
 role_groups: [product, operations]
 jtbd: |
-  You're constantly asked "what's on the roadmap?" and need to check alignment. 
-  This scans your projects, surfaces blockers and stale initiatives, and checks 
-  if your current work aligns with your strategic pillars.
+  You need an honest roadmap view that separates current status from stale or missing
+  evidence and does not turn silence into a blocker or a health score.
 time_investment: "10-15 minutes per review"
 ---
 
 ## Purpose
 
-Review your product roadmap holistically - surface blockers, identify stale initiatives, and ensure alignment with strategic priorities. This gives you a quick health check of all roadmap work.
+Produce a dated, source-backed roadmap review across the confirmed project cohort.
+Surface explicit blockers, alignment gaps, evidence freshness, and unknown status
+without inventing an aggregate health judgment.
 
 ## Usage
 
-- `/roadmap` - Full roadmap review
-- `/roadmap [pillar-name]` - Filter by specific pillar
+- `/roadmap` — review the confirmed roadmap cohort
+- `/roadmap [pillar]` — filter by an exact configured pillar
 
----
+## Evidence, authority, and recovery
 
-## Step 1: Gather Roadmap Context
+Treat the review as an evidence report, not a projection.
 
-Read roadmap-related projects and context:
+- Use the canonical status source and status date from each project record. Record the
+  path/ID, status date, and review as-of time. Filesystem modified time is only a
+  discovery clue, never a replacement status date.
+- Cite source evidence for every status, blocker, milestone, pillar, alignment claim,
+  and feedback item. If sources contradict, show both source dates and leave the field
+  `Unknown`.
+- Unknown is distinct from blocked. Use `Blocked` only when the canonical source
+  explicitly identifies an unresolved dependency preventing progress.
+- Define every denominator and disclose excluded projects. If the cohort or status is
+  incomplete, report counts and coverage rather than a percentage or health score.
+- Never invent status, dates, blockers, dependencies, milestones, tags, feedback,
+  counts, or health scores.
+- Keep analysis read-only. Preview requested changes, require explicit human authority,
+  read back the target, and fail honestly on any mismatch.
 
-1. **Scan 04-Projects/** for project files
-2. **Read System/pillars.yaml** for strategic pillars
-3. **Read 01-Quarter_Goals/Quarter_Goals.md** (if quarterly planning enabled)
-4. **Search for roadmap mentions** in recent meeting notes (last 30 days)
+## Method
 
----
+### 1. Confirm scope
 
-## Step 2: Analyze Projects
+Confirm:
 
-For each project in 04-Projects/, extract:
+- review as-of date and timezone;
+- canonical project locations;
+- which project states belong on the roadmap;
+- requested pillar filter;
+- strategic pillar and quarterly-goal sources;
+- review window for stakeholder feedback;
+- configured freshness policy, if the user wants freshness labels.
 
-**Status indicators:**
-- Last modified date (flag if > 14 days without update)
-- Completion status (in progress, blocked, completed)
-- Pillar tags (ensure they exist and are valid)
+Without a confirmed freshness policy, show the status age but label the assessment
+`Unknown — no confirmed freshness policy`.
 
-**Blockers:**
-- Search for keywords: "blocked", "waiting", "dependency", "need"
-- Extract stakeholder dependencies
-- Identify missing decisions
+### 2. Build the project ledger
 
-**Alignment:**
-- Check if project tags match pillars in System/pillars.yaml
-- Verify project supports a quarterly goal (if applicable)
-- Note projects without clear pillar alignment
+For every discovered project capture:
 
----
+| Field | Required evidence |
+|---|---|
+| Project identity | stable path/ID |
+| Status | explicit value, status date, source |
+| Milestone | exact dated source or `Unknown` |
+| Blocker | explicit dependency and source, or `Unknown` |
+| Pillar | exact configured tag and source |
+| Goal alignment | cited relationship, not name similarity |
+| Feedback | dated speaker/source and quote-safe summary |
 
-## Step 3: Check Recent Feedback
+Keep an `Unchecked projects` section for unreadable, duplicate, or contradictory
+records. Do not silently remove them from totals.
 
-Search recent meeting notes (00-Inbox/Meetings/ from last 30 days) for:
+### 3. Classify without inference
 
-- Customer feedback on roadmap items
-- Stakeholder concerns about priorities
-- Competitive mentions that might affect roadmap
-- Requests for roadmap changes or updates
+- `In progress`, `Completed`, and `Blocked` require an explicit canonical status.
+- An old status remains the last observed status plus a freshness caveat; age alone
+  does not prove a blocker.
+- A keyword match is a lead. Read the surrounding source and distinguish an actual
+  dependency from discussion or historical text.
+- Missing pillar means `Unknown alignment`, not automatically misaligned.
+- Meeting feedback corroborates a project record; it does not silently replace it.
 
----
+Apply a freshness or alignment label only through a configured or cited rule. Record
+the rule's source and effective date.
 
-## Step 4: Generate Roadmap Summary
+### 4. Reconcile the roadmap
 
-Present findings in this format:
+Verify:
 
-```markdown
-# 📋 Roadmap Review
+- discovered = checked + unchecked;
+- status counts reconcile to eligible checked projects;
+- pillar counts reconcile to projects with known valid pillars;
+- unknown-status and unknown-alignment projects are disclosed;
+- every blocker count points to explicit blocker evidence;
+- every percentage shows numerator, denominator, timeframe, and exclusions.
 
-**Date:** [Today's date]
-**Projects reviewed:** [Count]
+### 5. Recommend questions and actions
 
----
+Separate:
 
-## 🎯 Active Initiatives
+1. observed facts;
+2. contradictions and unknowns;
+3. policy-backed assessments;
+4. read-only recommendations;
+5. human decisions.
 
-[For each in-progress project:]
+Do not infer priority from recency, meeting volume, or the number of mentions. If a
+priority source is missing, ask which source governs it.
 
-### [Project Name]
-**Pillar:** [Pillar tag]
-**Status:** [Status indicator]
-**Last updated:** [Days ago]
-**Next milestone:** [If available]
-
-[Brief status summary from project file]
-
----
-
-## 🚨 Attention Needed
-
-[Projects that need attention - stale, blocked, or misaligned]
-
-### [Project Name]
-**Issue:** [Stale / Blocked / No pillar alignment]
-**Details:** [Specific problem]
-**Suggested action:** [What to do next]
-
----
-
-## 💡 Recent Stakeholder Feedback
-
-[Key feedback from recent meetings that affects roadmap]
-
-- **[Person/Customer]** - [Feedback summary]
-- **[Person/Customer]** - [Feedback summary]
-
----
-
-## ✅ Alignment Check
-
-**Pillars with active work:**
-- [Pillar 1]: [X projects]
-- [Pillar 2]: [X projects]
-
-**Pillars without active work:**
-- [Pillar]: [Note if this is intentional or a gap]
-
----
-
-## 📊 Summary
-
-**Health score:** [Good / Needs Attention / Blocked]
-- [X] projects on track
-- [X] projects need attention
-- [X] projects blocked
-
-**Recommended actions:**
-1. [Top priority action]
-2. [Second priority action]
-3. [Third priority action]
-```
-
----
-
-## Step 5: Offer Follow-Ups
-
-After presenting the summary, ask:
-
-> "Want me to:
-> 1. Dive deeper into any specific project?
-> 2. Create a roadmap update doc for stakeholders?
-> 3. Update a stale project with current status?"
-
----
-
-## Filter Behavior
-
-When user specifies a pillar (e.g., `/roadmap customer-experience`):
-
-1. Filter projects to only those tagged with that pillar
-2. Check for gaps in that pillar's roadmap
-3. Suggest opportunities based on recent customer feedback related to that pillar
-
----
-
-## Integration with Other Skills
-
-- **After running this:** Suggest `/customer-intel` if feedback patterns emerge
-- **If blockers found:** Suggest `/meeting-prep` for key stakeholder discussions
-- **If misalignment detected:** Suggest reviewing System/pillars.yaml
-
----
-
-## Example Output
+## Output contract
 
 ```markdown
-# 📋 Roadmap Review
+# Roadmap review
 
-**Date:** 2026-01-28
-**Projects reviewed:** 8
+**As of:** [timestamp and timezone]
+**Cohort:** [definition and source]
+**Projects discovered / checked / unchecked:** [N / n / u]
+**Freshness policy:** [source/date or Unknown]
 
----
+## Active initiatives
+### [Project]
+- Canonical status: [value + source/status date or Unknown]
+- Evidence freshness: [elapsed time; policy-backed label or Unknown]
+- Next milestone: [value/source or Unknown]
+- Pillar and goal alignment: [evidence or Unknown]
+- Explicit blockers: [evidence or None observed; never inferred from silence]
 
-## 🎯 Active Initiatives
+## Attention and unknowns
+- [Contradiction, missing status, explicit blocker, or unknown alignment]
+- Evidence needed: [specific source or human decision]
 
-### Payments Redesign
-**Pillar:** Revenue Growth
-**Status:** In Progress
-**Last updated:** 3 days ago
-**Next milestone:** Design review on Friday
+## Stakeholder feedback
+- [dated source and quote-safe summary; relationship to project]
 
-On track. Engineering started implementation. Sarah (design) needs 
-feedback by Wed for final mockups.
+## Evidence summary
+Render one row per observed canonical status, including `Completed` when it is
+observed. Do not force projects into a fixed list. Add `Unknown` for projects
+without canonical status evidence, and reconcile every row to the checked cohort.
 
-### Real-time Notifications
-**Pillar:** Product Quality
-**Status:** In Progress
-**Last updated:** 2 days ago
-**Next milestone:** Beta launch Feb 5
+| Status | Count | Eligible denominator | Exclusions |
+|---|---:|---:|---|
+| [Observed canonical status, for example Completed] | [n] | [n/N] | [unknown/unchecked] |
+| Unknown | [n] | [N] | [reasons] |
 
-Engineering complete. QA testing in progress. Beta group identified 
-(10 customers).
-
----
-
-## 🚨 Attention Needed
-
-### Dashboard Analytics v2
-**Issue:** Stale (21 days since update)
-**Details:** No recent activity. Last note: "waiting on data team"
-**Suggested action:** Check in with data team lead on timeline
-
-### Mobile App Refresh
-**Issue:** Blocked
-**Details:** Waiting on design system components from design team
-**Suggested action:** Schedule checkpoint with design team this week
-
-### Customer Portal Improvements
-**Issue:** No pillar alignment
-**Details:** No pillar tag found in project file
-**Suggested action:** Tag with appropriate pillar or clarify strategic fit
-
----
-
-## 💡 Recent Stakeholder Feedback
-
-- **Acme Corp (Sarah)** - Frustrated with reporting time, wants dashboards
-- **Engineering (Mike)** - API refactor taking longer than expected, may impact Q1
-- **Sales team** - 3 prospects asked about mobile app during demos this month
-
----
-
-## ✅ Alignment Check
-
-**Pillars with active work:**
-- Revenue Growth: 3 projects
-- Product Quality: 2 projects
-- Customer Experience: 2 projects
-
-**Pillars without active work:**
-- Team Development: No active projects (intentional - focus is external)
-
----
-
-## 📊 Summary
-
-**Health score:** Needs Attention
-- 5 projects on track
-- 2 projects need attention
-- 1 project blocked
-
-**Recommended actions:**
-1. Unblock Dashboard Analytics v2 - check data team status
-2. Resolve Mobile App Refresh blocker - design checkpoint
-3. Add pillar tag to Customer Portal Improvements
+## Recommended actions
+1. [Evidence-backed question or action; no write performed]
 ```
+
+The output has no aggregate health score unless the user supplies a configured,
+source-backed rubric and explicitly asks for it.
+
+## Controlled changes
+
+Before updating a project or creating a roadmap document:
+
+1. identify the authoritative target and current content;
+2. preview the exact operation and complete diff;
+3. name any linked project, goal, or pillar records that will remain unchanged;
+4. require explicit human confirmation;
+5. perform only the approved write;
+6. read back the target and compare it with the confirmed preview.
+
+If writing fails or read-back differs, preserve prior content, report possible partial
+state, re-read the target, and present a corrected preview for fresh confirmation.

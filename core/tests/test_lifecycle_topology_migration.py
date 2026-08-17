@@ -101,7 +101,7 @@ def test_combined_topology_previews_approval_converts_and_receipts(
 
     previewed = service.build_and_preview_topology_migration(vault)
 
-    assert previewed["api_version"] == "1.4.0"
+    assert previewed["api_version"] == "1.5.0"
     assert previewed["topology"] == "combined"
     assert previewed["preview"]["operation"] == "brain-vault-topology-migration"
     assert [
@@ -125,7 +125,7 @@ def test_combined_topology_previews_approval_converts_and_receipts(
     )
 
     assert (vault / "System/.dex/topology.json").is_file()
-    assert executed["api_version"] == "1.4.0"
+    assert executed["api_version"] == "1.5.0"
     assert executed["receipt"]["operation"] == "brain-vault-topology-migration"
     assert executed["receipt"]["topology_before"] == "combined"
     assert executed["receipt"]["topology_after"] == "post-split"
@@ -221,7 +221,7 @@ def test_dex_update_skill_routes_the_guided_migration_through_service() -> None:
         REPO_ROOT / ".claude/skills/dex-update/SKILL.md"
     ).read_text(encoding="utf-8")
 
-    assert "version 1.4.0" in instructions
+    assert "version 1.5.0" in instructions
     assert "build_and_preview_topology_migration" in instructions
     assert "execute_approved_topology_migration" in instructions
     assert "dry-run" in instructions

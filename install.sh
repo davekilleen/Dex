@@ -292,8 +292,14 @@ while true; do
     break
 done
 
-if [ -f "System/.dex/topology.json" ] && [ -d ".dex/brain.git" ]; then
+if [ -f "System/.dex/topology.json" ] && [ -d ".dex/brain.git" ] && [ -d ".git" ]; then
     echo "✅ Your vault and the Dex brain now have separate Git histories"
+elif [ -f "System/.dex/topology.json" ] && [ -d ".dex/brain.git" ]; then
+    echo "❌ Dex could not finish the brain/vault split."
+    echo "   The notes folder has no working Git history. Your files are still here."
+    echo "   Run: node core/migrations/v1-to-v2-brain-vault-split.cjs --resume"
+    echo "   Then run ./install.sh again."
+    exit 1
 else
     echo "⚠️  This folder has no Git clone history, so the brain/vault split was not started."
     echo "   Your files are unchanged, and Dex will keep using the combined layout."

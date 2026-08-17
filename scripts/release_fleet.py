@@ -40,6 +40,14 @@ RELEASE_TAG = re.compile(
 ARCHIVE_RELEASE_TAG = re.compile(
     r"^dist/archive/v(?P<version>[0-9]+\.[0-9]+\.[0-9]+)-(?P<short>[0-9a-f]{7,64})$"
 )
+# The journey executor accepts an archived start only in the canonical
+# seven-character form (`_ARCHIVE_RELEASE_TAG` in scripts/release_fleet_executor.py).
+# Discovery above is deliberately wider so a non-canonical tag is still seen rather
+# than silently ignored; this pattern is what lets discovery reject it up front
+# instead of letting the fleet refuse it hours later, mid-run.
+EXECUTOR_ARCHIVE_RELEASE_TAG = re.compile(
+    r"^dist/archive/v(?P<version>[0-9]+\.[0-9]+\.[0-9]+)-(?P<short>[0-9a-f]{7})$"
+)
 LEGACY_RELEASE_TAG = re.compile(r"^v(?P<version>[0-9]+\.[0-9]+\.[0-9]+)$")
 USER_FIXTURES = {
     str(INBOX_DIR.relative_to(VAULT_ROOT) / "keep.md"): b"# User note\nThis must survive updates.\n",
@@ -134,6 +142,31 @@ BRIDGE_PROCESS_ENTRY_REFUSAL = "could not be entered cleanly"
 BRIDGE_PROCESS_ENTRY_TIMEOUT_SECONDS = 600
 BRIDGE_PROCESS_ENTRY_RETAINED_BYTES = 256 * 1024
 BRIDGE_PROCESS_ENTRY_SUFFIX = ".bridge-process-entry"
+# The scrub is the thing this probe exists to exercise, so it has to start from
+# an environment shaped like a terminal's rather than like the fleet's own
+# sealed one. A caller-chosen LC_CTYPE is the exact input class that produced
+# the v1.93.0 defect: the bridge removes the caller's locale, and the relaunched
+# interpreter must not reintroduce a difference the clean-runtime check then
+# refuses. PYTHONPATH is the import-path equivalent, and the remaining two are
+# what any real shell carries. None of them may survive into the relaunched
+# child -- if one does, the clean-runtime check refuses and this probe fails,
+# which is precisely the coupling that makes launching from a clean environment
+# a weaker test than launching from a dirty one.
+#
+# The locale is set coherently, as a real shell sets it, and deliberately not
+# left to the caller. A lone LC_CTYPE on top of a C locale does not survive:
+# PEP 538 coercion rewrites it to C.UTF-8 before the launched process sees it,
+# which is a *tolerated* value, so the probe would quietly stop presenting the
+# caller-chosen locale at all. Naming all three here keeps that impossible
+# whatever the surrounding fixture environment does.
+BRIDGE_PROCESS_ENTRY_CALLER_NOISE = {
+    "LANG": "en_GB.UTF-8",
+    "LC_ALL": "en_GB.UTF-8",
+    "LC_CTYPE": "en_GB.UTF-8",
+    "PYTHONPATH": "/nonexistent/caller-import-path",
+    "SHELL": "/bin/zsh",
+    "TERM": "xterm-256color",
+}
 SEALED_INSTALLER_ENVIRONMENT_KEYS = frozenset(
     {
         "HOME",
@@ -1027,6 +1060,18 @@ def discover_distribution_releases(repo: Path) -> tuple[DistributionRelease, ...
                 commit=commit,
                 tree=tree,
             )
+        )
+    for release in discovered:
+        if not release.tag.startswith("dist/archive/"):
+            continue
+        if EXECUTOR_ARCHIVE_RELEASE_TAG.fullmatch(release.tag) is not None:
+            continue
+        raise FleetError(
+            f"{release.tag}: archived start tag is not in the canonical "
+            f"seven-character form, so the journey executor would refuse it "
+            f"part-way through a run. Add the canonical tag for commit "
+            f"{release.commit} alongside it; nothing needs deleting, because "
+            f"discovery keeps one start per tree and prefers the shorter tag."
         )
     return tuple(sorted(discovered, key=lambda item: (_version_key(item.version), item.tag)))
 
@@ -2227,6 +2272,11 @@ def probe_bridge_process_entry(
     clean-runtime equality check -- and then halts at the first approval gate
     without changing anything. The asset stays outside the vault so the fixture
     that the journey is about to update is not given an extra untracked file.
+
+    The launch environment is the caller's, plus the untidiness a real terminal
+    carries (``BRIDGE_PROCESS_ENTRY_CALLER_NOISE``). Starting from a clean
+    environment would let a scrub pass by doing nothing; starting from a dirty
+    one is what makes the relaunch prove something.
     """
 
     command = [
@@ -2235,13 +2285,14 @@ def probe_bridge_process_entry(
         "--vault",
         str(vault),
     ]
+    launch_environment = {**environment, **BRIDGE_PROCESS_ENTRY_CALLER_NOISE}
     timed_out = False
     exit_code: int | None = None
     try:
         completed = _run_bounded_process_group(
             command,
             cwd=vault,
-            environment=environment,
+            environment=launch_environment,
             timeout_seconds=BRIDGE_PROCESS_ENTRY_TIMEOUT_SECONDS,
             stdin=subprocess.DEVNULL,
         )
@@ -2258,6 +2309,9 @@ def probe_bridge_process_entry(
         "interpreter": str(python_runtime.requested_python),
         "working_directory": str(vault),
         "stdin": "closed",
+        # Recorded so a reader can see the run really did start untidy; a clean
+        # launch would make the scrub look correct without exercising it.
+        "caller_environment_noise": dict(BRIDGE_PROCESS_ENTRY_CALLER_NOISE),
         "timeout_seconds": BRIDGE_PROCESS_ENTRY_TIMEOUT_SECONDS,
         "timed_out": timed_out,
         "exit_code": exit_code,

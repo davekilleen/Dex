@@ -21,7 +21,9 @@ from core.lifecycle.plan import (
 from core.tests.lifecycle_test_helpers import SOURCE_COMMIT, write_file, write_manifest
 
 
-def _catalog(manifest: bytes, expected: dict[str, bytes]) -> ReleaseCatalog:
+def _catalog(
+    manifest: bytes, expected: dict[str, bytes], *, catalog_version: int = 2
+) -> ReleaseCatalog:
     items = []
     for item_id, content in sorted(expected.items()):
         path = f".claude/skills/{item_id}/SKILL.md"
@@ -45,26 +47,32 @@ def _catalog(manifest: bytes, expected: dict[str, bytes]) -> ReleaseCatalog:
                 },
             }
         )
-    return ReleaseCatalog.from_dict(
-        {
-            "catalog_version": 1,
-            "release": {
+    release_identity = {
                 "version": "1.64.0",
                 "channel": "release",
-                "immutable_distribution_tag": "dist/release/v1.64.0-0123456",
                 "source_commit": SOURCE_COMMIT,
                 "manifest": {
                     "path": "System/.installed-files.manifest",
                     "sha256": hashlib.sha256(manifest).hexdigest(),
                 },
-            },
+            }
+    if catalog_version == 1:
+        release_identity["immutable_distribution_tag"] = "dist/release/v1.64.0-0123456"
+    else:
+        release_identity["immutable_distribution_tag_pattern"] = (
+            "dist/release/v1.64.0-<release-commit-prefix>"
+        )
+    return ReleaseCatalog.from_dict(
+        {
+            "catalog_version": catalog_version,
+            "release": release_identity,
             "items": items,
             "integrity": {"catalog_sha256": "a" * 64, "signatures": []},
         }
     )
 
 
-def _scenario(tmp_path: Path):
+def _scenario(tmp_path: Path, *, catalog_version: int = 2):
     vault = tmp_path / "vault"
     vault.mkdir()
     expected = {
@@ -77,7 +85,7 @@ def _scenario(tmp_path: Path):
     }
     paths = [f".claude/skills/{item_id}/SKILL.md" for item_id in expected]
     manifest = write_manifest(vault, paths)
-    catalog = _catalog(manifest, expected)
+    catalog = _catalog(manifest, expected, catalog_version=catalog_version)
     for item_id, content in expected.items():
         if item_id == "missing":
             continue
@@ -94,8 +102,11 @@ def _items_by_id(plan: AdoptionPlan):
     return {item.item_id: item for item in plan.items}
 
 
-def test_plan_classifies_each_catalog_item_from_its_own_evidence(tmp_path: Path) -> None:
-    catalog, inventory = _scenario(tmp_path)
+@pytest.mark.parametrize("catalog_version", (1, 2))
+def test_plan_classifies_each_catalog_item_from_its_own_evidence(
+    tmp_path: Path, catalog_version: int
+) -> None:
+    catalog, inventory = _scenario(tmp_path, catalog_version=catalog_version)
 
     plan = build_adoption_plan(
         catalog,

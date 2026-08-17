@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://dex/contracts/portable-vault.schema.json",
+  "$id": "https://dex/contracts/portable-vault.v2.schema.json",
   "title": "Dex Portable Vault Ownership Contract",
   "type": "object",
   "additionalProperties": false,
@@ -18,8 +18,7 @@
   ],
   "properties": {
     "contract_version": {
-      "type": "integer",
-      "minimum": 1
+      "const": 2
     },
     "source": {
       "const": "core/portable_contract.py"
@@ -198,7 +197,9 @@
         "additionalProperties": false,
         "required": [
           "default_enabled",
-          "folders"
+          "folders",
+          "skills",
+          "skill_sources"
         ],
         "properties": {
           "default_enabled": {
@@ -233,6 +234,75 @@
           "config": {
             "type": "string",
             "minLength": 1
+          },
+          "skill_sources": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "room",
+                "skill",
+                "source_path",
+                "target_path",
+                "sha256",
+                "byte_size",
+                "previous_payloads"
+              ],
+              "properties": {
+                "room": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "skill": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "source_path": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "target_path": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "sha256": {
+                  "type": "string",
+                  "pattern": "^[0-9a-f]{64}$"
+                },
+                "byte_size": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "previous_payloads": {
+                  "type": "array",
+                  "uniqueItems": true,
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "release",
+                      "sha256",
+                      "byte_size"
+                    ],
+                    "properties": {
+                      "release": {
+                        "type": "string",
+                        "pattern": "^v[0-9]+\\.[0-9]+\\.[0-9]+$"
+                      },
+                      "sha256": {
+                        "type": "string",
+                        "pattern": "^[0-9a-f]{64}$"
+                      },
+                      "byte_size": {
+                        "type": "integer",
+                        "minimum": 0
+                      }
+                    }
+                  }
+                }
+              }
+            }
           }
         }
       }

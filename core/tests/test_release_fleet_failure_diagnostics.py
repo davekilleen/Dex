@@ -483,3 +483,123 @@ def test_failure_diagnostic_cleans_temporary_file_when_file_fsync_fails(
 
     assert not (evidence / "foundation-doctor-failure.diagnostic.json").exists()
     assert list(evidence.glob("*.tmp")) == []
+
+
+# --- TLS-trust routing and detail retention ---------------------------------
+
+
+def test_tls_untrusted_delivery_is_retried_as_a_transient_network_fault() -> None:
+    """A TLS-inspecting proxy is momentary for the fleet, exactly like a dropped link."""
+    assert "tls-untrusted" in executor._TRANSIENT_NETWORK_DELIVERY_REASONS
+    assert executor._transient_network_delivery(
+        {"status": "not-delivered", "evidence": {"reason": "tls-untrusted"}}
+    )
+    assert executor._transient_network_error(
+        "fatal: unable to access 'https://github.com/davekilleen/Dex.git/': "
+        "SSL certificate problem: self signed certificate"
+    )
+    assert "ssl certificate problem" in executor._TRANSIENT_NETWORK_ERROR_FRAGMENTS
+    assert "self signed certificate" in executor._TRANSIENT_NETWORK_ERROR_FRAGMENTS
+    # Bounded retry is unchanged: three attempts, 10s then 30s.
+    assert executor._TRANSIENT_DELIVERY_MAX_ATTEMPTS == 3
+    assert executor._TRANSIENT_DELIVERY_BACKOFF_SECONDS == (10.0, 30.0)
+
+
+def test_failure_diagnostic_keeps_tls_untrusted_as_a_classified_reason(
+    tmp_path: Path,
+) -> None:
+    vault, _user_paths = _vault(tmp_path)
+    document = executor._failure_diagnostic(
+        phase="follow-up-delivery",
+        vault=vault,
+        foundation=_identity("1.81.0", "a"),
+        follow_up=_identity("1.81.10", "b"),
+        delivery={
+            "status": "not-delivered",
+            "evidence": {"reason": "tls-untrusted"},
+        },
+    )
+
+    assert document["delivery"]["failure_reason"] == "tls-untrusted"
+
+
+def test_failure_diagnostic_retains_the_sanitized_underlying_detail(
+    tmp_path: Path,
+) -> None:
+    """Dropping the detail is why diagnosing a proxy fault took hours, not one cat."""
+    vault, _user_paths = _vault(tmp_path)
+    document = executor._failure_diagnostic(
+        phase="follow-up-delivery",
+        vault=vault,
+        foundation=_identity("1.81.0", "a"),
+        follow_up=_identity("1.81.10", "b"),
+        delivery={
+            "status": "not-delivered",
+            "evidence": {
+                "reason": "tls-untrusted",
+                "detail": (
+                    "fatal: unable to access "
+                    "'https://github.com/davekilleen/Dex.git/': "
+                    "SSL certificate problem: self signed certificate"
+                ),
+            },
+        },
+    )
+
+    detail = document["delivery"]["detail"]
+    assert "SSL certificate problem: self signed certificate" in detail
+
+
+def test_failure_diagnostic_detail_is_bounded_and_strips_credentials(
+    tmp_path: Path,
+) -> None:
+    vault, _user_paths = _vault(tmp_path)
+    secret = "ghp_" + "A" * 36
+    document = executor._failure_diagnostic(
+        phase="follow-up-delivery",
+        vault=vault,
+        foundation=_identity("1.81.0", "a"),
+        follow_up=_identity("1.81.10", "b"),
+        delivery={
+            "status": "not-delivered",
+            "evidence": {
+                "reason": "evidence-invalid",
+                "detail": (
+                    f"fatal: unable to access 'https://dave:{secret}@github.com/x.git/'"
+                    f" Authorization: Bearer {secret} token={secret} "
+                    + "padding " * 400
+                ),
+            },
+        },
+    )
+
+    detail = document["delivery"]["detail"]
+    assert secret not in detail
+    assert "dave:" not in detail
+    assert len(detail) <= 512
+
+
+def test_failure_diagnostic_omits_detail_when_the_foundation_supplies_none(
+    tmp_path: Path,
+) -> None:
+    vault, _user_paths = _vault(tmp_path)
+    document = executor._failure_diagnostic(
+        phase="follow-up-delivery",
+        vault=vault,
+        foundation=_identity("1.81.0", "a"),
+        follow_up=_identity("1.81.10", "b"),
+        delivery={"status": "not-delivered", "evidence": {"reason": "evidence-invalid"}},
+    )
+
+    assert "detail" not in document["delivery"]
+    document_bad_detail = executor._failure_diagnostic(
+        phase="follow-up-delivery",
+        vault=vault,
+        foundation=_identity("1.81.0", "a"),
+        follow_up=_identity("1.81.10", "b"),
+        delivery={
+            "status": "not-delivered",
+            "evidence": {"reason": "evidence-invalid", "detail": ["unsafe"]},
+        },
+    )
+    assert "detail" not in document_bad_detail["delivery"]

@@ -1,503 +1,172 @@
 ---
 name: pipeline-health
-description: Analyze pipeline coverage and forecast accuracy
+description: Analyze pipeline coverage and forecast confidence from configured sales definitions
 role_groups: [sales, leadership]
 jtbd: |
-  You need to forecast accurately and ensure you have enough pipeline to hit quota. 
-  This reviews deal velocity (time in each stage), identifies forecast gaps, and 
-  suggests actions to move deals forward so you can report confidently on where 
-  you'll land.
+  You need to understand whether the current pipeline can support a target without
+  turning missing data or generic sales conventions into a confident forecast.
 time_investment: "10-15 minutes per review"
 ---
 
 ## Purpose
 
-Analyze pipeline coverage, conversion rates, velocity, and forecast accuracy to ensure you're on track to hit targets and identify where to focus attention.
+Produce a dated, evidence-backed view of pipeline coverage, velocity, conversion,
+concentration, and forecast confidence. The skill calculates what the supplied data
+supports and leaves policy judgments unknown when the team's definitions are absent.
 
 ## Usage
 
-- `/pipeline-health` - Full pipeline analysis
-- `/pipeline-health [timeframe]` - Focus on specific period (e.g., "this quarter", "Q1")
-- `/pipeline-health forecast` - Forecast-focused view
+- `/pipeline-health` — review the current confirmed reporting period
+- `/pipeline-health [period]` — review a named month, quarter, or date range
+- `/pipeline-health forecast` — focus on explicit forecast categories and gaps
 
----
+## Evidence, authority, and recovery
 
-## Step 1: Gather Pipeline Data
+Set a report `as-of` timestamp before reading data. Attach field provenance to every
+target, deal value, stage, probability, forecast category, date, benchmark, and
+calculated claim: source path or record ID, source event date, and read as-of time.
+A file modified time is only a discovery clue, never a substitute for a business
+event date.
 
-Collect deal information from 04-Projects/:
+- Use only configured and confirmed stages, targets, probabilities, forecast
+  categories, thresholds, and benchmarks for the requested period. Record the
+  applicable configuration source and effective date. If one is absent, stale,
+  contradictory, or unconfirmed, mark it `Unknown`; never invent a replacement or
+  import a generic sales convention.
+- Missing differs from zero. A blank, unreadable, absent, or conflicting value is
+  `Unknown`; zero is valid only when the authoritative source explicitly records
+  zero.
+- A benchmark needs a source and date. Without one, show the factual metric and
+  `Assessment: Unknown — no sourced benchmark`.
+- Show denominator coverage for every percentage and rate. Verify arithmetic from
+  raw numerators, denominators, stage subtotals, and deal-level contributions.
+- Keep analysis read-only. A recommendation is not human authority. Preview any
+  requested change, require explicit confirmation, then read back the result.
+  If a write or read-back fails, report possible partial state, re-read the
+  authoritative record, and wait for fresh human direction.
 
-### For Each Deal Extract:
-- Company name
-- Deal value/size
-- Current stage
-- Entry date to current stage (or last modified date)
-- Close date (if specified)
-- Confidence level (if mentioned)
+## Method
 
-### Read Targets:
-- Check 01-Quarter_Goals/Quarter_Goals.md or user files for revenue targets
-- Check for quota information
-- Typical sales cycle length (or calculate from historical data)
+### 1. Confirm scope and policy
 
----
+Confirm:
 
-## Step 2: Calculate Pipeline Metrics
+- reporting period, timezone, and as-of time;
+- authoritative deal source and included pipeline;
+- target and currency/units;
+- stage map and stage-entry event;
+- explicit forecast-category definitions;
+- probability source, if weighted pipeline is requested;
+- health, velocity, concentration, and conversion policies, if labels are requested.
 
-### Coverage Metrics
+Do not calculate across currencies or units without a sourced conversion rule. Do not
+merge duplicate records until identity has been reconciled.
 
-**Pipeline coverage ratio** = Total pipeline value / Target
-- 3x coverage = Healthy
-- 2-3x coverage = Adequate
-- <2x coverage = At Risk
+### 2. Build the source ledger
 
-**Weighted pipeline** = Sum of (Deal value × Stage probability)
-- Discovery: 10%
-- Demo: 25%
-- Proposal: 50%
-- Negotiation: 75%
-- Contract: 90%
+For each discovered deal, record:
 
-### Velocity Metrics
+| Field | Required evidence |
+|---|---|
+| Identity | stable deal ID and source |
+| Value | amount, currency, source date |
+| Stage | configured stage and canonical stage-entry date |
+| Forecast | explicit category from the authoritative source |
+| Probability | configured value and effective date |
+| Close date | dated source or `Unknown` |
+| Activity | canonical event date and source |
 
-**Average time in stage:**
-- For each stage, calculate average days deals spend there
-- Flag deals exceeding average by 50%+
+Keep an `Unchecked deals` section for unreadable, duplicate, or incomplete rows.
+Do not silently remove them from the apparent pipeline.
 
-**Average sales cycle:**
-- From discovery to close
-- Compare current deals to average
+### 3. Normalize without guessing
 
-### Conversion Metrics
+- Map a stage only through the confirmed stage configuration.
+- Preserve contradictions side by side; do not choose the convenient value.
+- Exclude unknown values from value totals and disclose the excluded count.
+- Exclude deals with unknown probability from weighted totals.
+- Keep explicitly recorded zero values in the eligible cohort.
+- Use the canonical stage-entry event for velocity. If absent, velocity is unknown
+  for that deal.
 
-**Stage conversion rates:**
-- Discovery → Demo: X%
-- Demo → Proposal: X%
-- Proposal → Negotiation: X%
-- Negotiation → Contract: X%
-- Contract → Close: X%
+### 4. Calculate supported metrics
 
-(Calculate from historical closed deals if data available)
+- **Coverage ratio:** known eligible pipeline value / confirmed target. This is a
+  factual ratio, not a health label. Apply a label only when a configured or cited
+  policy defines one.
+- **Weighted pipeline:** sum of each known value multiplied by its configured,
+  confirmed probability. Show included and excluded deal counts.
+- **Stage conversion:** confirmed transitions / eligible prior-stage cohort for the
+  same sourced period. State the cohort and exclusions.
+- **Velocity:** elapsed time from canonical stage-entry events. Compare against a
+  configured threshold or a clearly described historical distribution; otherwise
+  show age without calling it slow.
+- **Concentration:** show deal-level shares and the chosen cohort. Label a
+  concentration risk only when a sourced policy defines that judgment.
+- **Forecast totals:** use explicit source categories such as commit or best case.
+  Never infer a forecast category from stage or probability.
 
----
+Cross-check total pipeline against stage subtotals, percentage sums against eligible
+denominators, and every gap sign against `target - forecast`.
 
-## Step 3: Analyze Forecast
+### 5. Separate facts, judgments, and actions
 
-### Commit vs Best Case vs Pipeline
+For each finding, show:
 
-**Commit forecast:**
-- Contract stage deals (90% probability)
-- Total commit value
+1. observed metric and source coverage;
+2. configured policy or benchmark used for any judgment;
+3. unknowns and contradictory evidence;
+4. recommended human action and why it follows;
+5. evidence that would change the conclusion.
 
-**Best case forecast:**
-- Negotiation + Contract (75%+ probability)
-- Total best case value
+Never invent causes for a low conversion rate, silence from a buyer, or a likely close.
+Offer questions to investigate instead.
 
-**Pipeline forecast:**
-- All active deals weighted by stage probability
-
-### Gap Analysis
-
-**Target:** [Quota or goal]
-**Commit:** [Amount] - [Gap to target]
-**Best case:** [Amount] - [Gap to target]
-**Coverage:** [Pipeline / Target ratio]
-
----
-
-## Step 4: Identify Issues
-
-### Red Flags
-
-1. **Insufficient coverage** - Pipeline < 3x target
-2. **Slow velocity** - Deals stuck in stages too long
-3. **Low conversion** - Stages with poor conversion rates
-4. **Forecast risk** - Heavy reliance on few large deals
-5. **Stage bunching** - Too many deals in one stage
-6. **Aging deals** - Deals past typical sales cycle
-
-### Opportunities
-
-1. **Quick wins** - Deals close to closing that need push
-2. **Stuck deals** - Deals that could move with attention
-3. **New pipeline needed** - If coverage insufficient
-
----
-
-## Step 5: Generate Pipeline Health Report
-
-Present findings in this format:
+## Output contract
 
 ```markdown
-# 📊 Pipeline Health Report
+# Pipeline health
 
-**Period:** [Timeframe]
-**Target:** $[Target amount]
-**Report date:** [Today]
+**Period:** [confirmed range and timezone]
+**As of:** [timestamp]
+**Target:** [value, currency, source/date or Unknown]
+**Deals discovered / checked / unchecked:** [N / n / u]
 
----
+## Forecast
+| Category | Amount | Eligible coverage | Definition source |
+|---|---:|---:|---|
+| Commit | [amount or Unknown] | [n/N] | [source/date] |
+| Best case | [amount or Unknown] | [n/N] | [source/date] |
+| Weighted pipeline | [amount or Unknown] | [n/N] | [probability source/date] |
 
-## 🎯 Forecast Summary
+## Coverage and flow
+| Metric | Result | Numerator / denominator | Assessment policy |
+|---|---:|---|---|
+| Coverage | [ratio or Unknown] | [raw values] | [source/date or Unknown] |
+| Conversion | [rate or Unknown] | [n/N and period] | [benchmark or Unknown] |
+| Velocity | [distribution or Unknown] | [eligible n/N] | [policy or Unknown] |
 
-### Current Position
+## Risks and unknowns
+- [Evidence-backed risk, or Unknown with missing evidence]
+- [Contradiction with both sources]
+- [Unchecked deal and reason]
 
-| Forecast Type | Amount | % of Target | Gap to Target |
-|---------------|--------|-------------|---------------|
-| **Commit** (90%+) | $XXX,XXX | XX% | $XX,XXX |
-| **Best Case** (75%+) | $XXX,XXX | XX% | $XX,XXX |
-| **Pipeline** (weighted) | $XXX,XXX | XX% | $XX,XXX |
-
-**Overall health:** [On Track / At Risk / Behind]
-
----
-
-## 📈 Pipeline Coverage
-
-**Total pipeline:** $XXX,XXX
-**Coverage ratio:** X.Xx (Total pipeline / Target)
-
-**Status:**
-- ✅ 3x+ coverage = Healthy
-- ⚠️ 2-3x coverage = Adequate (yours: X.Xx)
-- 🚨 <2x coverage = At Risk
-
-**Action needed:** [Yes/No - if <3x, need more pipeline generation]
-
----
-
-## ⏱️ Velocity Analysis
-
-**Average sales cycle:** XX days
-**Deals exceeding cycle:** [X deals] - [List if important]
-
-**Time in stage (average):**
-- Discovery: XX days
-- Demo: XX days
-- Proposal: XX days
-- Negotiation: XX days
-- Contract: XX days
-
-**Slow movers:** (50%+ over average)
-- [Company] - XX days in [stage] (avg: XX days)
-- [Company] - XX days in [stage] (avg: XX days)
-
----
-
-## 🔄 Conversion Health
-
-**Stage conversion rates:**
-
-| From Stage | To Stage | Rate | Benchmark | Status |
-|------------|----------|------|-----------|--------|
-| Discovery | Demo | XX% | ~50% | ✅/⚠️/🚨 |
-| Demo | Proposal | XX% | ~50% | ✅/⚠️/🚨 |
-| Proposal | Negotiation | XX% | ~60% | ✅/⚠️/🚨 |
-| Negotiation | Contract | XX% | ~75% | ✅/⚠️/🚨 |
-| Contract | Close | XX% | ~90% | ✅/⚠️/🚨 |
-
-**Bottleneck stages:** [Stages with low conversion]
-
----
-
-## 🚨 Risk Factors
-
-### High-Risk Items
-
-1. **Heavy deal concentration**
-   - Top 3 deals = XX% of commit
-   - Risk: If one slips, major impact
-
-2. **[Deal Name] - $XXX,XXX**
-   - Risk: [Specific risk]
-   - Mitigation: [Action needed]
-
-### Stage Issues
-
-- **Too many in [stage]:** [X deals]
-  - Bottleneck indicator
-  - Action: Review what's blocking progression
-
-- **Aging deals:** [X deals over XX days old]
-  - May never close
-  - Action: Qualify out or re-engage
-
----
-
-## 💡 Opportunities
-
-### Quick Wins (Focus Here)
-
-**[Company] - $XX,XXX**
-- Stage: Contract Review
-- Days in stage: 5
-- Action: One call away from close
-- Impact: Closes gap by XX%
-
-**[Company] - $XX,XXX**
-- Stage: Negotiation
-- Days in stage: 8
-- Action: Address pricing concern
-- Impact: High confidence, near close
-
-### Stuck Deals That Could Move
-
-**[Company] - $XX,XXX**
-- Stage: Proposal (15 days)
-- Issue: Waiting on champion response
-- Action: Executive reach-out
-
----
-
-## 📊 Pipeline Distribution
-
-**By Stage:**
-- Discovery: [X deals] - $XXX,XXX
-- Demo: [X deals] - $XXX,XXX
-- Proposal: [X deals] - $XXX,XXX
-- Negotiation: [X deals] - $XXX,XXX
-- Contract: [X deals] - $XXX,XXX
-
-**By Close Date:**
-- This week: [X deals] - $XXX,XXX
-- This month: [X deals] - $XXX,XXX
-- This quarter: [X deals] - $XXX,XXX
-- Beyond quarter: [X deals] - $XXX,XXX
-
----
-
-## 🎯 Recommended Actions
-
-### Immediate (This Week)
-
-1. **[Action]** - [Deals affected] - [Impact]
-2. **[Action]** - [Deals affected] - [Impact]
-3. **[Action]** - [Deals affected] - [Impact]
-
-### Strategic (This Month)
-
-1. **Generate new pipeline** - Coverage at X.Xx, need X.Xx
-2. **Accelerate [stage]** - X deals stuck, average XX days
-3. **Improve [stage] conversion** - Currently XX%, need XX%
-
-### Health Tracking
-
-- **Next review:** [Suggested date]
-- **Metrics to watch:** [Key metrics that need improvement]
+## Recommended questions or actions
+1. [Action tied to a finding; no write performed]
 ```
 
----
+Every populated value must trace to the source ledger. Placeholders are output shape,
+not assumptions.
 
-## Step 6: Offer Actions
+## Controlled changes
 
-After presenting the report, ask:
+If the user asks to update a deal, target, probability, or stage configuration:
 
-> "Want me to:
-> 1. Deep dive on specific deals or stages?
-> 2. Create action plan for pipeline generation?
-> 3. Draft forecast update for leadership?
-> 4. Review deals to qualify out?"
+1. identify the authoritative target and current bytes/record;
+2. show the exact before/after diff or API payload;
+3. name downstream metrics that will change;
+4. get explicit confirmation from the authorized human;
+5. perform only that confirmed mutation;
+6. read back the saved result and recalculate from the authoritative source.
 
----
-
-## Timeframe Filtering
-
-When user specifies timeframe:
-
-1. **"this quarter"** - Deals closing this quarter
-2. **"Q1"** - Deals in Q1 specifically
-3. **"this month"** - Deals closing this month
-
-Filter metrics and analysis to that window.
-
----
-
-## Forecast Mode
-
-When user runs `/pipeline-health forecast`:
-
-Focus exclusively on:
-1. Commit vs Best Case vs Target
-2. Gap analysis
-3. Risk factors in commit deals
-4. Actions to close gap
-5. Deals likely to slip
-6. Upside opportunities
-
----
-
-## Integration with Other Skills
-
-- **After running:** Suggest `/deal-review` for deal-level deep dive
-- **If coverage low:** Suggest reviewing lead generation strategy
-- **If velocity slow:** Suggest `/process-audit` on sales process
-- **Before leadership meeting:** Run this + prepare summary
-
----
-
-## Example Output
-
-```markdown
-# 📊 Pipeline Health Report
-
-**Period:** Q1 2026
-**Target:** $500,000
-**Report date:** 2026-01-28
-
----
-
-## 🎯 Forecast Summary
-
-### Current Position
-
-| Forecast Type | Amount | % of Target | Gap to Target |
-|---------------|--------|-------------|---------------|
-| **Commit** (90%+) | $235,000 | 47% | $265,000 |
-| **Best Case** (75%+) | $430,000 | 86% | $70,000 |
-| **Pipeline** (weighted) | $580,000 | 116% | +$80,000 |
-
-**Overall health:** At Risk (Commit is 47% of target with 8 weeks left in quarter)
-
----
-
-## 📈 Pipeline Coverage
-
-**Total pipeline:** $847,000
-**Coverage ratio:** 1.7x (Total pipeline / Target)
-
-**Status:** 🚨 At Risk
-- ✅ 3x+ coverage = Healthy
-- ⚠️ 2-3x coverage = Adequate  
-- 🚨 <2x coverage = At Risk **(You are here: 1.7x)**
-
-**Action needed:** YES - Need $400K+ in new pipeline to reach 3x coverage
-
----
-
-## ⏱️ Velocity Analysis
-
-**Average sales cycle:** 45 days
-**Deals exceeding cycle:** 3 deals (TechStart - 62 days, GlobalCo - 58 days, OldCo - 71 days)
-
-**Time in stage (average):**
-- Discovery: 7 days
-- Demo: 10 days
-- Proposal: 12 days ⚠️ (2x typical)
-- Negotiation: 10 days
-- Contract: 6 days
-
-**Slow movers:** (50%+ over average)
-- **TechStart** - 18 days in Proposal (avg: 12 days) - STALE
-- **InnovateCo** - 18 days in Discovery (avg: 7 days) - Needs qualification
-
----
-
-## 🔄 Conversion Health
-
-**Stage conversion rates:**
-
-| From Stage | To Stage | Rate | Benchmark | Status |
-|------------|----------|------|-----------|--------|
-| Discovery | Demo | 67% | ~50% | ✅ Good |
-| Demo | Proposal | 75% | ~50% | ✅ Good |
-| Proposal | Negotiation | 40% | ~60% | 🚨 **Issue** |
-| Negotiation | Contract | 80% | ~75% | ✅ Good |
-| Contract | Close | 100% | ~90% | ✅ Good |
-
-**Bottleneck stages:** Proposal → Negotiation (40% conversion, should be ~60%)
-- Issue: Deals getting stuck after proposal sent
-- Root cause: Pricing concerns OR lack of follow-up
-
----
-
-## 🚨 Risk Factors
-
-### High-Risk Items
-
-1. **Heavy deal concentration**
-   - Top 3 deals (Acme, DataFlow, TechStart) = 68% of commit
-   - Risk: If one slips, we miss target by 20%+
-
-2. **DataFlow - $120,XXX** (25% of commit)
-   - Risk: Evaluating ProductX competitor, concerned about dashboards
-   - Mitigation: Executive call Friday - prep competitive positioning NOW
-
-3. **TechStart - $75,XXX** (18% of commit)
-   - Risk: 18 days stale, no response to proposal
-   - Mitigation: Last-chance outreach today
-
-### Stage Issues
-
-- **Too many in Proposal:** 4 deals ($295K)
-  - Bottleneck indicator (40% conversion rate)
-  - Action: Review what's blocking progression - pricing? timeline? features?
-
-- **Aging deals:** 3 deals over 60 days old ($215K)
-  - TechStart, GlobalCo, OldCo - may never close
-  - Action: Qualify out or re-engage with fresh approach
-
----
-
-## 💡 Opportunities
-
-### Quick Wins (Focus Here)
-
-**StartupX - $40,XXX**
-- Stage: Contract - Signatures received
-- Days in stage: 1
-- Action: Process payment today
-- Impact: Closes gap to target by 8%
-
-**NewCorp - $55,XXX**
-- Stage: Negotiation
-- Days in stage: 4
-- Action: Final terms call tomorrow
-- Impact: High confidence, contract by end of week
-
-### Stuck Deals That Could Move
-
-**GlobalCo - $95,XXX**
-- Stage: Discovery (9 days)
-- Issue: Waiting on champion Sarah to schedule demo
-- Action: Executive reach-out to Sarah's boss to create urgency
-- Impact: Could close this quarter if we move fast
-
----
-
-## 📊 Pipeline Distribution
-
-**By Stage:**
-- Discovery: 3 deals - $220,000 (26%)
-- Demo: 2 deals - $105,000 (12%)
-- Proposal: 4 deals - $295,000 (35%) ⚠️ **Bottleneck**
-- Negotiation: 2 deals - $175,000 (21%)
-- Contract: 1 deal - $52,000 (6%)
-
-**By Close Date:**
-- This week: 1 deal - $40,000
-- Rest of month: 1 deal - $55,000
-- Feb: 4 deals - $285,000
-- March+: 6 deals - $467,000
-
----
-
-## 🎯 Recommended Actions
-
-### Immediate (This Week)
-
-1. **Save at-risk commit deals** - TechStart ($75K) + DataFlow ($120K) = $195K at risk
-2. **Close StartupX** - $40K ready to process, no-brainer
-3. **Push NewCorp to contract** - $55K, final call tomorrow
-
-### Strategic (This Month)
-
-1. **Generate $400K+ new pipeline** - Coverage at 1.7x, need 3.0x (gap: $1M in gross pipeline)
-2. **Fix Proposal stage** - 4 deals stuck, 40% conversion vs 60% benchmark
-3. **Qualify out aging deals** - 3 deals over 60 days, likely dead
-
-### Health Tracking
-
-- **Next review:** Friday (before week ends)
-- **Metrics to watch:** 
-  - Commit forecast (need to hit 70%+ by mid-Feb)
-  - Proposal conversion rate
-  - New pipeline adds per week
-```
+A timeout, mismatch, or partial response is a failed change, never success.

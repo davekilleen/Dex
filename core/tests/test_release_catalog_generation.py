@@ -8,6 +8,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 from core.lifecycle.catalog import canonical_catalog_bytes, loads_catalog
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -133,9 +135,12 @@ def test_release_catalog_generation_is_deterministic_and_uses_b1_contract(
 
     catalog = loads_catalog(first_bytes.decode("utf-8"), manifest_bytes=manifest_bytes)
     assert first_bytes == canonical_catalog_bytes(catalog)
+    assert catalog.catalog_version == 2
     assert catalog.release.version == "9.8.7"
     assert catalog.release.source_commit == SOURCE_COMMIT
-    assert catalog.release.immutable_distribution_tag == "dist/release/v9.8.7-0123456"
+    assert catalog.release.immutable_distribution_tag_pattern == (
+        "dist/release/v9.8.7-<release-commit-prefix>"
+    )
     assert catalog.release.manifest.sha256 == hashlib.sha256(manifest_bytes).hexdigest()
     assert catalog.items[0].files[0].sha256 == hashlib.sha256(item_path.read_bytes()).hexdigest()
     assert catalog.items[0].files[0].ownership_class == "brain"
@@ -291,11 +296,39 @@ def test_catalog_generation_and_coverage_use_dormant_payload_for_active_target(
     assert "size declaration is stale" in rejected.stderr
 
 
-def test_distributed_release_catalog_schema_matches_b1_source() -> None:
+@pytest.mark.parametrize("version", (1, 2))
+def test_distributed_release_catalog_schema_matches_source(version: int) -> None:
+    source = REPO_ROOT / f"core/lifecycle/schemas/release-catalog-v{version}.schema.json"
+    distributed = (
+        REPO_ROOT / f"packages/dex-contracts/dist/release-catalog-v{version}.schema.json"
+    )
+
+    assert distributed.read_bytes() == source.read_bytes()
+
+
+def test_public_v1_schema_export_remains_byte_frozen() -> None:
     source = REPO_ROOT / "core/lifecycle/schemas/release-catalog-v1.schema.json"
     distributed = REPO_ROOT / "packages/dex-contracts/dist/release-catalog-v1.schema.json"
 
+    assert hashlib.sha256(source.read_bytes()).hexdigest() == (
+        "4954495480617c930d0b4d565bf1b5ab61681b19f080e4f5c781805958b77fb6"
+    )
     assert distributed.read_bytes() == source.read_bytes()
+
+
+def test_contract_package_keeps_both_versioned_catalog_schema_exports() -> None:
+    package = json.loads(
+        (REPO_ROOT / "packages/dex-contracts/package.json").read_text(
+            encoding="utf-8"
+        )
+    )
+
+    assert package["exports"]["./release-catalog-schema"] == (
+        "./dist/release-catalog-v1.schema.json"
+    )
+    assert package["exports"]["./release-catalog-v2-schema"] == (
+        "./dist/release-catalog-v2.schema.json"
+    )
 
 
 def test_official_registry_covers_every_shipped_role_skill_with_exact_payload() -> None:

@@ -769,10 +769,14 @@ def discover(vault_root: Path) -> DiscoveryResult:
         colliding_canonical_paths,
     )
     accounted_paths = set(candidate_paths)
+    # unproven_paths is a tuple, so testing membership against it once per
+    # entry is a full scan per entry -- quadratic in vault size, and the
+    # dominant cost of the whole assessment on a large vault.
+    unproven_paths = frozenset(inventory.unproven_paths)
     for entry in inventory.entries:
         if (
             entry.kind in {"file", "symlink"}
-            and entry.actual_path in inventory.unproven_paths
+            and entry.actual_path in unproven_paths
             and entry.actual_path not in accounted_paths
             and _dependency_root(entry.actual_path) is None
             and not any(

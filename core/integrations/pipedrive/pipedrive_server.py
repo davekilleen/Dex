@@ -42,6 +42,17 @@ Secrets:
 Graceful degradation: if the integration is not configured or disabled,
 tools return the shared Dex feature_status payload ('off' with a
 user_message pointing at /pipedrive-setup) rather than crashing.
+
+Why this lives under core/integrations/ and not core/mcp/:
+core/mcp/*_server.py is the *core* server namespace, and Doctor's
+mcp.orphans check requires every file in it to be registered in the
+vault's .mcp.json. Nothing in any released version can add a registration
+to an existing vault - the only registration an update performs is the one
+ratified customization-migration entry - so a new file in that namespace
+makes Doctor report BROKEN on every install that upgrades into it. Pipedrive
+is an opt-in integration (System/integrations/config.yaml ships it disabled,
+and /pipedrive-setup registers it when the user connects it), so it belongs
+with the other integrations rather than in the always-registered core set.
 """
 
 import json
@@ -59,7 +70,7 @@ import mcp.types as types
 from mcp.server import NotificationOptions, Server
 from mcp.server.models import InitializationOptions
 
-_repo_root = str(Path(__file__).parent.parent.parent)
+_repo_root = str(Path(__file__).resolve().parents[3])
 if _repo_root not in sys.path:
     sys.path.insert(0, _repo_root)
 from core.utils.feature_status import feature_status

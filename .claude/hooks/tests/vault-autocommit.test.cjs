@@ -181,6 +181,76 @@ test('the shared transaction lock pauses auto-commit and is held while Git runs'
   assert.equal(fs.existsSync(lock), false);
 });
 
+test('enabled hook still snapshots a vault whose PARA folders the shipped .gitignore ignores', (t) => {
+  const hook = require(HOOK_PATH);
+  const root = fixture(t, true);
+  // Every real vault carries the shipped .gitignore, which ignores the PARA folders — and
+  // the v1-to-v2 migration tracks the vault's existing content through them with a forced
+  // add. Reproduced together, a pathspec add used to fail as a whole and the hook returned
+  // broken on every session end without committing anything (#485). The fixtures above
+  // never wrote a .gitignore, which is why the suite stayed green while vaults did not.
+  fs.copyFileSync(path.join(REPO_ROOT, '.gitignore'), path.join(root, '.gitignore'));
+  fs.mkdirSync(path.join(root, '03-Tasks'), { recursive: true });
+  fs.writeFileSync(path.join(root, '03-Tasks', 'Tasks.md'), '# tasks before\n');
+  git(root, '-c', 'core.excludesFile=/dev/null', 'add', '-f', '--', '03-Tasks/Tasks.md');
+  git(root, '-c', 'user.email=test@example.com', '-c', 'user.name=Test', 'commit', '--quiet', '-m', 'vault history');
+  fs.writeFileSync(path.join(root, '03-Tasks', 'Tasks.md'), '# tasks after\n');
+  // A note written today lives in an ignored folder and is untracked: the case that made a
+  // healthy-looking snapshot save nothing new.
+  fs.mkdirSync(path.join(root, '00-Inbox'), { recursive: true });
+  fs.writeFileSync(path.join(root, '00-Inbox', 'captured.md'), 'captured today\n');
+  fs.mkdirSync(path.join(root, '04-Projects'), { recursive: true });
+  fs.writeFileSync(path.join(root, '04-Projects', 'alpha.md'), 'new project note\n');
+
+  const result = hook.run({ root, now: new Date('2026-08-12T10:00:00Z') });
+
+  assert.equal(result.feature_status, 'ok');
+  assert.equal(result.success, true);
+  assert.equal(git(root, 'log', '-1', '--format=%s'), 'Dex vault 2026-08-12');
+  assert.equal(git(root, 'show', 'HEAD:03-Tasks/Tasks.md'), '# tasks after');
+  assert.equal(git(root, 'show', 'HEAD:00-Inbox/captured.md'), 'captured today');
+  assert.equal(git(root, 'show', 'HEAD:04-Projects/alpha.md'), 'new project note');
+  assert.equal(git(root, 'rev-list', '--count', 'HEAD'), '2');
+});
+
+test('the ignored-path sweep is scoped to vault regions and never widens to private ignored files', (t) => {
+  const hook = require(HOOK_PATH);
+  const root = fixture(t, true);
+  // Reaching past .gitignore for the user's notes must not start sweeping in the ignored
+  // paths that are ignored precisely because they should stay out of history.
+  fs.copyFileSync(path.join(REPO_ROOT, '.gitignore'), path.join(root, '.gitignore'));
+  fs.mkdirSync(path.join(root, 'System', 'integrations'), { recursive: true });
+  fs.mkdirSync(path.join(root, 'System', 'credentials'), { recursive: true });
+  fs.mkdirSync(path.join(root, 'node_modules', 'left-over'), { recursive: true });
+  fs.writeFileSync(path.join(root, '.env'), 'API_KEY=fixture-secret-value\n');
+  fs.writeFileSync(path.join(root, 'System', 'trusted-mcps.yaml'), 'trusted: [fixture]\n');
+  fs.writeFileSync(
+    path.join(root, 'System', 'integrations', '.pipedrive-cache.json'),
+    '{"deal":"fixture deal title"}\n',
+  );
+  fs.writeFileSync(path.join(root, 'System', 'integrations', 'pipedrive.yaml'), 'enabled: true\n');
+  fs.writeFileSync(path.join(root, 'System', 'credentials', 'fixture.json'), '{"refresh_token":"x"}\n');
+  fs.writeFileSync(path.join(root, 'node_modules', 'left-over', 'index.js'), 'module.exports = 1;\n');
+  fs.mkdirSync(path.join(root, '05-Areas'), { recursive: true });
+  fs.writeFileSync(path.join(root, '05-Areas', 'health.md'), 'a real note\n');
+
+  const result = hook.run({ root, now: new Date('2026-08-12T10:00:00Z') });
+
+  assert.equal(result.feature_status, 'ok');
+  assert.equal(git(root, 'show', 'HEAD:05-Areas/health.md'), 'a real note');
+  for (const relative of [
+    '.env',
+    'System/trusted-mcps.yaml',
+    'System/integrations/.pipedrive-cache.json',
+    'System/integrations/pipedrive.yaml',
+    'System/credentials/fixture.json',
+    'node_modules/left-over/index.js',
+  ]) {
+    assert.equal(git(root, 'ls-tree', '-r', '--name-only', 'HEAD', '--', relative), '', relative);
+  }
+  assert.equal(git(root, 'diff', '--cached', '--name-only'), '');
+});
+
 test('settings wires the opt-in hook after session-end and the shipped profile defaults off', () => {
   const settings = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, '.claude', 'settings.json'), 'utf8'));
   const commands = settings.hooks.SessionEnd[0].hooks.map((entry) => entry.command);

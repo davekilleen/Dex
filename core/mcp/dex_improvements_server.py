@@ -26,6 +26,15 @@ import mcp.types as types
 from mcp.server import NotificationOptions, Server
 from mcp.server.models import InitializationOptions
 
+_ANALYTICS_REPO_ROOT = str(Path(__file__).resolve().parents[2])
+if _ANALYTICS_REPO_ROOT not in sys.path:
+    sys.path.insert(0, _ANALYTICS_REPO_ROOT)
+
+from core.mcp.analytics_receipts import (
+    surface_analytics_attempt,
+    unavailable_analytics_delivery,
+)
+
 # QMD semantic search (optional - gracefully degrade if not available)
 try:
     from utils.qmd_query import is_qmd_available, vault_search
@@ -33,14 +42,17 @@ try:
 except ImportError:
     HAS_QMD = False
 
-# Analytics helper (optional - gracefully degrade if not available)
+# Analytics receipts must remain observable in both direct-launch and package
+# import modes. If the helper cannot load, callers receive only the fixed safe
+# receipt failure below.
 try:
-    from analytics_helper import fire_event as _fire_analytics_event
+    from core.mcp.analytics_helper import fire_event as _fire_analytics_event
     HAS_ANALYTICS = True
 except ImportError:
     HAS_ANALYTICS = False
+
     def _fire_analytics_event(event_name, properties=None):
-        return {'fired': False, 'reason': 'analytics_not_available'}
+        return unavailable_analytics_delivery()
 
 # Health system — error queue and health reporting
 try:
@@ -1104,10 +1116,12 @@ async def _handle_call_tool_inner(
                     "Check `System/Dex_Backlog.md` to see all your ideas"
                 ]
             }
-            try:
-                _fire_analytics_event('idea_captured', {'category': category})
-            except Exception:
-                pass
+            surface_analytics_attempt(
+                result,
+                _fire_analytics_event,
+                'idea_captured',
+                {'category': category},
+            )
         else:
             result = {
                 "success": False,
@@ -1171,10 +1185,11 @@ async def _handle_call_tool_inner(
         result = mark_idea_implemented(idea_id, impl_date)
         
         if result.get('success'):
-            try:
-                _fire_analytics_event('idea_implemented')
-            except Exception:
-                pass
+            surface_analytics_attempt(
+                result,
+                _fire_analytics_event,
+                'idea_implemented',
+            )
         
         return [types.TextContent(type="text", text=json.dumps(result, indent=2, cls=DateTimeEncoder))]
     

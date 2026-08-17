@@ -22,6 +22,8 @@ def vault(tmp_path):
     (root / "System" / "integrations").mkdir(parents=True)
     (root / "05-Areas" / "People").mkdir(parents=True)
     (root / "05-Areas" / "People" / "Ada_Lovelace.md").write_text("# Ada\n")
+    (root / "docs").mkdir()
+    (root / backup_vault.RUNBOOK_SOURCE).write_text("# Restoring a Dex vault\n")
     (root / ".env").write_text("ANTHROPIC_API_KEY=secret\n")
     (root / ".mcp.json").write_text("{}\n")
     (root / "node_modules").mkdir()
@@ -122,6 +124,64 @@ def test_archive_excludes_secrets_and_bulk_but_keeps_notes(vault, tmp_path):
     assert not any(".env" in name for name in names)
     assert not any(".mcp.json" in name for name in names)
     assert not any("node_modules" in name for name in names)
+
+
+# --- the restore runbook travels inside the archive, not the release --------
+
+def test_archive_carries_the_restore_runbook_for_a_bare_machine(vault, tmp_path):
+    """The runbook must be readable from the archive alone, on a dead machine."""
+    workdir = tmp_path / "work"
+    workdir.mkdir()
+    artifacts = backup_vault.build_artifacts(vault, workdir, "20260711-020000")
+
+    with tarfile.open(artifacts[0]) as tar:
+        member = f"{backup_vault.ARCNAME}/{backup_vault.RUNBOOK_IN_ARCHIVE}"
+        assert member in tar.getnames()
+        assert tar.extractfile(member).read() == b"# Restoring a Dex vault\n"
+
+
+def test_a_stale_vault_copy_does_not_duplicate_the_runbook(vault, tmp_path):
+    """A vault restored from an older backup already has a copy at that path."""
+    stale = vault / backup_vault.RUNBOOK_IN_ARCHIVE
+    stale.parent.mkdir(parents=True, exist_ok=True)
+    stale.write_text("# stale copy from an older restore\n")
+    workdir = tmp_path / "work"
+    workdir.mkdir()
+    artifacts = backup_vault.build_artifacts(vault, workdir, "20260711-020000")
+
+    member = f"{backup_vault.ARCNAME}/{backup_vault.RUNBOOK_IN_ARCHIVE}"
+    with tarfile.open(artifacts[0]) as tar:
+        assert tar.getnames().count(member) == 1
+        assert tar.extractfile(member).read() == b"# Restoring a Dex vault\n"
+
+
+def test_a_vault_without_the_runbook_still_backs_up_but_says_so(vault, tmp_path):
+    (vault / backup_vault.RUNBOOK_SOURCE).unlink()
+    workdir = tmp_path / "work"
+    workdir.mkdir()
+    warnings: list[str] = []
+    artifacts = backup_vault.build_artifacts(vault, workdir, "20260711-020000",
+                                             warnings=warnings)
+
+    with tarfile.open(artifacts[0]) as tar:
+        assert f"{backup_vault.ARCNAME}/05-Areas/People/Ada_Lovelace.md" in tar.getnames()
+    assert any("restore runbook" in warning for warning in warnings)
+
+
+def test_no_release_ever_ships_a_path_under_system_backup():
+    """Releases are built from the tracked tree, and no released contract before
+    v1.95 can classify System/backup/. Shipping anything there refuses the whole
+    update for every existing install - it stranded v1.94.0 once already.
+    """
+    repo = Path(__file__).resolve().parents[2]
+    tracked = subprocess.run(
+        ["git", "-C", str(repo), "ls-files", "System/backup"],
+        capture_output=True, text=True, check=True).stdout.split()
+
+    assert tracked == [], (
+        "these paths would ship to users who cannot classify them: "
+        f"{tracked}; keep the runbook in docs/ and let the backup engine write "
+        "it into each archive instead")
 
 
 # --- stamp on every outcome -------------------------------------------------
