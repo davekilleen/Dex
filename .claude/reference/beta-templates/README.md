@@ -4,11 +4,10 @@ This directory holds optional templates you can adopt into your Dex setup.
 
 ## Analytics (v0.1.0)
 
-Privacy-first analytics that help improve Dex by tracking which features are
-used — never your content or what you do with it. Anonymous product analytics
-are on by default in the beta. The Settings switch is
-`System/user-profile.yaml` (`analytics.enabled`); flip it off and nothing is
-sent. Bug reports still wait for an explicit yes.
+Privacy-first, opt-in analytics that help improve Dex by tracking which features
+are used — never your content or what you do with it. Analytics is controlled in
+`System/user-profile.yaml` (`analytics.enabled`); you can turn it on or off at any
+time by asking Dex.
 
 ## Using These Templates
 

@@ -32,7 +32,7 @@ CANARY_RECORD_KEY = "record_key_wo057_canary"
 CANARY_LEDGER_ID = "12345678-1234-4678-9234-567812345678"
 
 FEEDBACK_SKILL = Path(__file__).resolve().parents[2] / ".claude/skills/feedback/SKILL.md"
-ONBOARDING_FLOW = Path(__file__).resolve().parents[2] / ".claude/flows/onboarding.md"
+REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
 def _vault(tmp_path: Path) -> Path:
@@ -295,15 +295,23 @@ def test_wall_career_grade_surfaces_emit_nothing(
     assert not (vault / ANALYTICS_INSTALL_ID_RELATIVE).exists()
 
 
-def test_founder_yes_disclosure_is_marked_and_not_invented() -> None:
-    flow = ONBOARDING_FLOW.read_text(encoding="utf-8")
-    assert "[founder-yes]" in flow
-    assert (
-        'Say: "One last thing: Dex collects anonymous feature usage data—things like '
-        "'ran /daily-plan' or 'created a task'—to help improve the product. "
-        "No content, names, notes, or conversations are ever sent. "
-        "You can opt out anytime by saying 'turn off Dex analytics'.\""
-    ) in flow
+def test_disclosure_stays_founder_yes_and_is_not_invented_in_core() -> None:
+    """Founder-yes disclosure is not invented here as shipped onboarding copy."""
+    core_sources = (
+        REPO_ROOT / "core/analytics_walls.py",
+        REPO_ROOT / "core/mcp/analytics_helper.py",
+        REPO_ROOT / "core/mcp/analytics_server.py",
+        REPO_ROOT / "core/analytics_events.py",
+    )
+    invented = (
+        "One last thing: Dex collects anonymous feature usage data",
+        "Say: \"One last thing",
+        "[founder-yes]",
+    )
+    for path in core_sources:
+        text = path.read_text(encoding="utf-8")
+        for fragment in invented:
+            assert fragment not in text, path.name
 
 
 def test_bug_reports_still_wait_for_an_explicit_yes() -> None:
