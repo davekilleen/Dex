@@ -57,6 +57,7 @@ QUICK_IDS = [
     "customizations.skills",
     "customizations.mcp",
     "core.drift",
+    "mail.apple-search",
     "doctor.self",
 ]
 
@@ -69,7 +70,6 @@ DEEP_IDS = [
     "config.claude_composition",
     "update.post-canary",
     "calendar.access",
-    "mail.apple-search",
     "qmd.live",
     "integrations.enabled",
     "mcp.importable",
@@ -4126,12 +4126,12 @@ def test_calendar_sandbox_failure_is_unknown(monkeypatch, context):
     assert doctor._probe_calendar_access(context).verdict == "UNKNOWN"
 
 
-def test_apple_mail_search_is_a_deep_check_and_adapts_the_focused_probe(
+def test_apple_mail_search_is_a_quick_check_and_adapts_the_focused_probe(
     monkeypatch,
     context,
 ):
-    assert "mail.apple-search" in DEEP_IDS
-    definition = next(check for check in doctor.DEEP_CHECKS if check.id == "mail.apple-search")
+    assert "mail.apple-search" in QUICK_IDS
+    definition = next(check for check in doctor.QUICK_CHECKS if check.id == "mail.apple-search")
     assert definition.probe == "_probe_apple_mail_search"
 
     observed = {}
@@ -4162,6 +4162,136 @@ def test_apple_mail_search_is_a_deep_check_and_adapts_the_focused_probe(
     assert observed["context"].project_config_path == context.vault_root / ".mcp.json"
     assert observed["context"].macos is True
     assert observed["context"].cli_present is True
+
+
+def test_focused_mail_check_does_not_run_the_deep_registry_or_write_last_run(
+    monkeypatch,
+    context,
+):
+    deep_calls = []
+
+    def mark(name):
+        def probe(_context, *, _name=name):
+            deep_calls.append(_name)
+            return doctor.ProbeResult("OK", f"{_name} should not have run.")
+
+        return probe
+
+    _stub_probes(monkeypatch)
+    for definition in doctor.DEEP_CHECKS:
+        monkeypatch.setattr(doctor, definition.probe, mark(definition.id))
+
+    report = doctor.collect(check_id="mail.apple-search", context=context)
+
+    assert report["mode"] == "focused"
+    assert "adoption" not in report
+    assert [check["id"] for check in report["checks"]] == [
+        "mail.apple-search",
+        "doctor.self",
+    ]
+    assert deep_calls == []
+    assert not context.last_run_path.exists()
+
+
+def test_focused_mail_check_cli_returns_honest_broken_status(
+    monkeypatch,
+    context,
+    capsys,
+):
+    _stub_probes(
+        monkeypatch,
+        overrides={
+            "mail.apple-search": doctor.ProbeResult(
+                "BROKEN",
+                "Apple Mail search has no index, so every mail search returns nothing",
+                heal=doctor.Heal(tier=3, action="Run apple-mail-mcp index.", applied=False),
+                feature_status="broken",
+                user_message="Mail search has never been built, so it silently returns nothing.",
+            )
+        },
+    )
+
+    assert doctor.main(["--check", "mail.apple-search"], context=context) == 0
+    report = json.loads(capsys.readouterr().out)
+    mail = _check(report, "mail.apple-search")
+
+    assert report["mode"] == "focused"
+    assert mail["feature_status"] == "broken"
+    assert mail["user_message"]
+    assert "returns nothing" in mail["user_message"]
+    assert mail.get("emails") is None
+    assert "granola.query_path" not in {check["id"] for check in report["checks"]}
+
+
+def test_focused_check_rejects_an_unknown_id(context):
+    with pytest.raises(ValueError, match="Unknown doctor check"):
+        doctor.collect(check_id="mail.not-a-real-check", context=context)
+
+
+def test_focused_check_cannot_run_the_deep_registry(context):
+    with pytest.raises(ValueError, match="focused check cannot run the full deep registry"):
+        doctor.collect(deep=True, check_id="mail.apple-search", context=context)
+
+
+def _register_apple_mail_for_doctor(context):
+    (context.home / ".claude.json").write_text(
+        json.dumps({"mcpServers": {"user-apple-mail": {"command": "apple-mail-mcp", "args": ["serve"]}}})
+    )
+
+
+def _assert_doctor_mail_is_fail_closed(mail):
+    encoded = json.dumps(mail)
+    assert mail["feature_status"] == "broken"
+    assert mail["verdict"] == "BROKEN"
+    assert mail.get("user_message")
+    assert mail.get("emails") is None
+    for key in ("emails", "results", "messages", "matches"):
+        assert key not in mail
+        assert f'"{key}": []' not in encoded
+    for marker in ("Fixture subject", "fixture@example.com", "Fixture body"):
+        assert marker not in encoded
+
+
+def test_public_download_quick_doctor_fail_closes_a_missing_mail_index(
+    monkeypatch,
+    context,
+):
+    """Default /dex-doctor (no --deep) is the public download path. Missing index is broken, never []."""
+    _stub_probes(monkeypatch, exclude={"mail.apple-search"})
+    _register_apple_mail_for_doctor(context)
+    monkeypatch.setattr(doctor, "_is_macos", lambda: True)
+    monkeypatch.setattr(doctor, "_apple_mail_cli_present", lambda: True)
+
+    report = doctor.collect(context=context)
+    mail = _check(report, "mail.apple-search")
+
+    assert report["mode"] == "quick"
+    assert "mail.apple-search" in [check["id"] for check in report["checks"]]
+    _assert_doctor_mail_is_fail_closed(mail)
+    assert "never been built" in mail["user_message"]
+    assert "returns nothing" in mail["user_message"]
+
+
+def test_public_download_quick_doctor_fail_closes_a_dummy_mail_index(
+    monkeypatch,
+    context,
+):
+    """A dummy index file must not look like search worked on the public download path."""
+    _stub_probes(monkeypatch, exclude={"mail.apple-search"})
+    _register_apple_mail_for_doctor(context)
+    index = context.home / ".apple-mail-mcp" / "index.db"
+    index.parent.mkdir(parents=True)
+    index.write_bytes(b"not a sqlite database")
+    index.chmod(0o600)
+    monkeypatch.setattr(doctor, "_is_macos", lambda: True)
+    monkeypatch.setattr(doctor, "_apple_mail_cli_present", lambda: True)
+
+    report = doctor.collect(context=context)
+    mail = _check(report, "mail.apple-search")
+
+    assert report["mode"] == "quick"
+    _assert_doctor_mail_is_fail_closed(mail)
+    assert mail["feature_status"] != "ok"
 
 
 def test_calendar_permission_adapter_preserves_eventkit_status(monkeypatch, context):
