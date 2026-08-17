@@ -600,3 +600,13 @@ def test_apple_mail_setup_installs_only_the_runtime_mac_ci_proves() -> None:
     assert supported_runtime in requirements
     assert "community-maintained" in setup
     assert "health checks and macOS CI prove compatibility" in setup
+
+
+def test_apple_mail_setup_names_serving_process_full_disk_access() -> None:
+    setup = _read(".claude/skills/apple-mail-setup/SKILL.md")
+
+    assert "Dex, Claude, or Cursor" in setup
+    assert "not the terminal that ran" in setup
+    assert "~/Library/Mail" in setup
+    assert "Do **not** grant it to Dex, Claude, or the ordinary MCP server process." not in setup
+    assert "fresh-looking index can still be frozen" in setup or "write a fresh" in setup

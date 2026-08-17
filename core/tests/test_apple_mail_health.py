@@ -14,12 +14,20 @@ from core.utils import apple_mail_health
 NOW = datetime(2026, 7, 11, 12, 0, tzinfo=timezone.utc)
 
 
+def _grant_serving_process_mail_store(home: Path) -> Path:
+    store = home / "Library" / "Mail"
+    store.mkdir(parents=True, exist_ok=True)
+    (store / ".keep").write_text("readable")
+    return store
+
+
 @pytest.fixture
 def context(tmp_path):
     vault = tmp_path / "vault"
     vault.mkdir()
     home = tmp_path / "home"
     home.mkdir()
+    _grant_serving_process_mail_store(home)
     return apple_mail_health.Context(
         home=home,
         vault_root=vault,
@@ -226,6 +234,97 @@ def test_apple_mail_search_is_ok_with_a_fresh_index(monkeypatch, context):
     assert result.verdict == "OK"
     assert result.feature_status == "ok"
     assert result.action is None
+
+
+def test_apple_mail_search_is_broken_when_the_index_cannot_be_read(monkeypatch, context):
+    _register_apple_mail_user_scope(context)
+    index = _write_apple_mail_index(context, age_days=1)
+    original_stat = Path.stat
+
+    def refuse_index_stat(self, *args, **kwargs):
+        if Path(self) == index:
+            raise PermissionError("Operation not permitted")
+        return original_stat(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "stat", refuse_index_stat)
+
+    result = apple_mail_health.probe(context)
+
+    assert result.verdict == "BROKEN"
+    assert result.feature_status == "broken"
+    assert "could not be read" in result.detail
+    assert "Full Disk Access" in result.action
+    assert "apple-mail-mcp index" in result.action
+
+
+def test_apple_mail_search_freshness_alone_does_not_pass_when_mail_store_is_missing(
+    monkeypatch,
+    context,
+):
+    _register_apple_mail_user_scope(context)
+    _write_apple_mail_index(context, age_days=0)
+    store = apple_mail_health.mail_store_path(context.home)
+    for child in store.iterdir():
+        child.unlink()
+    store.rmdir()
+
+    result = apple_mail_health.probe(context)
+
+    assert result.verdict == "BROKEN"
+    assert result.feature_status == "broken"
+    assert "Mail store" in result.detail
+    assert "Full Disk Access" in result.action
+    assert "Dex, Claude, or Cursor" in result.action
+    assert "not only the terminal" in result.action
+
+
+def test_apple_mail_search_freshness_alone_does_not_pass_when_mail_store_lists_empty(
+    monkeypatch,
+    context,
+):
+    _register_apple_mail_user_scope(context)
+    _write_apple_mail_index(context, age_days=0)
+    store = apple_mail_health.mail_store_path(context.home)
+    for child in store.iterdir():
+        child.unlink()
+
+    result = apple_mail_health.probe(context)
+
+    assert result.verdict == "BROKEN"
+    assert result.feature_status == "broken"
+    assert "listed no files" in result.detail
+    assert "Full Disk Access" in result.action
+    assert "not only the terminal" in result.action
+
+
+def test_apple_mail_search_freshness_alone_does_not_pass_when_mail_store_is_unreadable(
+    monkeypatch,
+    context,
+):
+    _register_apple_mail_user_scope(context)
+    _write_apple_mail_index(context, age_days=0)
+
+    def refuse_mail_store(_home):
+        raise PermissionError("Operation not permitted")
+
+    monkeypatch.setattr(apple_mail_health, "read_mail_store", refuse_mail_store)
+
+    result = apple_mail_health.probe(context)
+
+    assert result.verdict == "BROKEN"
+    assert result.feature_status == "broken"
+    assert "cannot read the Mail store" in result.detail
+    assert "Full Disk Access" in result.action
+    assert "not only the terminal" in result.user_message
+
+
+def test_apple_mail_setup_action_names_serving_process_full_disk_access():
+    action = apple_mail_health.setup_action("index")
+
+    assert "apple-mail-mcp index" in action
+    assert "Full Disk Access" in action
+    assert "Dex, Claude, or Cursor" in action
+    assert "does not need this permission" not in action
 
 
 def test_apple_mail_search_uses_custom_path_and_real_sqlite_state(monkeypatch, context):
