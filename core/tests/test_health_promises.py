@@ -162,6 +162,34 @@ def test_post_update_canary_reports_a_torn_install_instead_of_raising(tmp_path: 
     assert stored["ok"] is False
 
 
+def test_canary_cli_succeeds_when_invoked_by_the_documented_file_path(tmp_path: Path) -> None:
+    """The /dex-update door: `python3 core/health/post_update.py --vault .`.
+
+    Running a script by path puts the script directory on sys.path[0], not the
+    vault or repo root. The canary must still find Dex's own code without an
+    installed `core` package and without PYTHONPATH. cwd is the vault, so a
+    working-directory import cannot accidentally save the command.
+    """
+    vault = _activation_fixture(tmp_path)
+    env = os.environ.copy()
+    env.pop("PYTHONPATH", None)
+    env["PYTHONDONTWRITEBYTECODE"] = "1"
+
+    completed = subprocess.run(
+        [sys.executable, str(REPO_ROOT / "core" / "health" / "post_update.py"), "--vault", str(vault)],
+        capture_output=True,
+        text=True,
+        cwd=vault,
+        env=env,
+    )
+
+    assert completed.returncode == 0, completed.stdout + completed.stderr
+    assert "Post-update check passed" in completed.stdout
+    assert "Traceback" not in completed.stdout + completed.stderr
+    stored = json.loads((vault / RECEIPT_RELATIVE).read_text(encoding="utf-8"))
+    assert stored["ok"] is True
+
+
 def test_canary_cli_reports_a_torn_install_plainly_without_a_traceback(tmp_path: Path) -> None:
     """The CLI contract: even a failed canary speaks one plain line and exits 1."""
     vault = _activation_fixture(tmp_path)
