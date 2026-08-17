@@ -1080,36 +1080,26 @@ def test_hanging_journey_timeout_survives_killpg_permission_error(
     # Observed on macOS CI (PR 541 tests (1)): killpg raised
     # PermissionError(1, "Operation not permitted") and the hanging-journey
     # test then saw "journey harness failed: [Errno 1] Operation not permitted"
-    # instead of a timeout. Unrelated to archive-tag checks; this keeps a
-    # timeout a timeout when the runner denies process-group signals.
-    vault = _write_valid_vault(tmp_path)
-
+    # instead of a timeout. Drive the JSON process helper directly so a
+    # missing vault .venv cannot hide the kill path.
     def deny_killpg(_process_group_id: int, _requested_signal: int) -> None:
         raise PermissionError(1, "Operation not permitted")
 
     monkeypatch.setattr(smoke.os, "killpg", deny_killpg)
-    monkeypatch.setattr(
-        smoke,
-        "_journey_command",
-        lambda *_args: [
-            sys.executable,
-            "-c",
-            "import time; time.sleep(60)",
-        ],
-    )
     started = time.monotonic()
-    run = smoke.run_smoke(
-        vault_root=vault,
-        repo_root=REPO_ROOT,
-        journey_definitions=(_definition("configs", 0.5),),
+    result, failed = smoke._run_json_process(
+        [sys.executable, "-c", "import time; time.sleep(60)"],
+        cwd=tmp_path,
+        env=os.environ,
+        timeout_seconds=0.5,
+        label="journey",
     )
 
     assert time.monotonic() - started < 30
-    assert run.exit_code == 2
-    assert run.harness_failed is True
-    assert run.report["journeys"][0]["verdict"] == "UNKNOWN"
-    assert "timed out" in run.report["journeys"][0]["detail"]
-    assert "Operation not permitted" not in run.report["journeys"][0]["detail"]
+    assert failed is True
+    assert result["verdict"] == "UNKNOWN"
+    assert "timed out" in result["detail"]
+    assert "Operation not permitted" not in result["detail"]
 
 
 def test_timed_out_journey_kills_delayed_descendants(monkeypatch, tmp_path: Path) -> None:
