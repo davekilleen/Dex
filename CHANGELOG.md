@@ -7,6 +7,18 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.96.6] — 🧰 Your promotion score uses real evidence, and Mail search checkup tells the truth (2026-08-17)
+
+The promotion score could look confident while using made-up points. Skills were always 15. Growth was always 5. Evidence sitting in the Evidence folder — the place career setup itself uses — counted as nothing. Separately, Mail search checkup could look healthy when it could not actually see Mail, or when the search index was missing, empty, or unreadable. And if you record meetings with Wispr, Dex already understood those notes, but settings still refused the word Wispr.
+
+**What this fixes for you:**
+
+* **The promotion score now uses your real evidence.** Files in the Evidence folder count. Skills and growth come from that same evidence, not from made-up points. An empty folder scores 0, not 15 or 5.
+* **Mail search checkup tells the truth.** If the checkup cannot see your Mail folder, or the search index is missing, empty, or unreadable, it says so. It no longer calls that healthy.
+* **You can name Wispr as where meetings come from.** If that is your recorder, you can say so in settings. This does not connect Dex to Wispr or pull meetings on its own. It only stops rejecting the name.
+
+Two people reported the score and the Mail checkup. A contributor found the Wispr name after Dex already recognised their notes.
+
 ## [1.96.5] — 🧰 A brand-new Dex folder can finish setup even if first install left no history (2026-08-14)
 
 A person who had just installed Dex could get stuck in the first setup chat. Dex thought it had finished separating its own files from their notes, but the notes folder had no working history, and the safety copy that should have undone that step was damaged. Continue failed. Undo failed. Setup stopped before they could start.

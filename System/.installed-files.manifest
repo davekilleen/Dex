@@ -1042,6 +1042,7 @@ core/tests/test_calendar_eventkit_script.py
 core/tests/test_calendar_server.py
 core/tests/test_calendar_skill_degradation_instruction_contract.py
 core/tests/test_capabilities.py
+core/tests/test_career_promotion_readiness.py
 core/tests/test_ci_concurrency_never_cancels_main.py
 core/tests/test_ci_shard_durations.py
 core/tests/test_commitments_skill.py
