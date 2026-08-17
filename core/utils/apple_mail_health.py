@@ -101,6 +101,44 @@ class Result:
     user_message: str | None = None
 
 
+# Keys a silent-empty search would use. Email-aware flows must never treat a
+# missing or unusable index as "no matching mail."
+_SEARCH_RESULT_KEYS = ("emails", "results", "messages", "matches")
+EMAIL_CONTEXT_OMITTED_PREFIX = "Email context omitted"
+
+
+def omission_line(result: Result) -> str:
+    """Return the one visible line a daily plan / week review must show."""
+    message = result.user_message or result.detail
+    return f"{EMAIL_CONTEXT_OMITTED_PREFIX} — {message}"
+
+
+def flow_status(context: Context) -> dict[str, object]:
+    """Fail-closed readiness for email-aware flows.
+
+    A missing or unusable index is a visible broken state, never an empty
+    search result. Only ``feature_status: ok`` allows the existing Mail MCP
+    search path to run.
+    """
+    result = probe(context)
+    status = result.feature_status or "unknown"
+    usable = status == "ok"
+    payload: dict[str, object] = {
+        "feature_status": status,
+        "verdict": result.verdict,
+        "usable": usable,
+        "search": "allowed" if usable else "blocked",
+        "detail": result.detail,
+    }
+    if result.user_message:
+        payload["user_message"] = result.user_message
+    if result.action:
+        payload["action"] = result.action
+    if not usable and status != "off":
+        payload["visible"] = omission_line(result)
+    return payload
+
+
 def _one_line(error: BaseException) -> str:
     return " ".join(str(error).split())
 
