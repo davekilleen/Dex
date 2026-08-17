@@ -342,8 +342,9 @@ For each completed item:
 
 Check `System/integrations/config.yaml` for `google-workspace.enabled: true`. Also treat a
 registered `apple-mail-mcp` server as a connected source. Before querying a connected email
-source, run `python3 core/utils/doctor.py --deep`; Apple Mail search is usable only when the
-`mail.apple-search` check reports `OK` / `feature_status: ok`.
+source, run `python3 core/utils/doctor.py --check mail.apple-search` — a focused local check,
+not `--deep`. Apple Mail search is usable only when that check reports `OK` /
+`feature_status: ok`.
 
 If connected and healthy:
 1. Get unread count and priority emails from monitored labels
