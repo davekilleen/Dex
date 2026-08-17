@@ -267,7 +267,7 @@ def test_analytics_helper_cli_outputs_a_safe_receipt_result(
     assert completed.stderr == ""
     assert json.loads(completed.stdout) == {
         "fired": False,
-        "reason": "analytics_disabled",
+        "reason": "no_pendo_secret",
         "receipt_written": True,
     }
     assert _read_receipts(vault)[0]["event"] == "session_started"
@@ -420,10 +420,7 @@ def test_successful_delivery_receipt_records_only_the_final_safe_outcome(
 
     _configure_enabled_delivery(monkeypatch, post)
 
-    result = analytics_helper.fire_event(
-        "task_created",
-        {"meeting_notes": "Project Blackbird is confidential"},
-    )
+    result = analytics_helper.fire_event("task_created")
 
     assert result["fired"] is True
     assert result["receipt_written"] is True
@@ -635,52 +632,44 @@ def test_disabled_mcp_identify_user_records_one_safe_receipt(
     assert "Ada Lovelace" not in json.dumps(receipts, sort_keys=True)
 
 
-def test_enabled_mcp_identify_profile_failure_records_one_safe_receipt(
+def test_enabled_mcp_identify_sends_no_profile_identity(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
     vault = tmp_path / "vault"
     (vault / "System").mkdir(parents=True)
     monkeypatch.setenv("VAULT_PATH", str(vault))
-    posts = 0
+    posted: list[dict[str, object]] = []
 
-    def post(*_args, **_kwargs):
-        nonlocal posts
-        posts += 1
+    def post(_url, *, json, **_kwargs):
+        posted.append(json)
         return SimpleNamespace(status_code=200)
 
     _configure_enabled_delivery(monkeypatch, post)
     monkeypatch.setattr(analytics_server, "is_analytics_enabled", lambda: True)
     monkeypatch.setattr(analytics_server, "fire_event", analytics_helper.fire_event)
     monkeypatch.setattr(
-        analytics_server,
-        "load_user_profile",
-        lambda: (_ for _ in ()).throw(RuntimeError("Ada profile must not leak")),
-    )
-    monkeypatch.setattr(
         analytics_helper,
         "load_user_profile",
         lambda: (_ for _ in ()).throw(RuntimeError("Ada profile must not leak")),
     )
 
-    response = asyncio.run(analytics_server._call_tool_inner("identify_user", {}))
+    response = asyncio.run(
+        analytics_server._call_tool_inner(
+            "identify_user",
+            {"metadata": {"person": "Ada Lovelace", "role": "CFO"}},
+        )
+    )
     result = json.loads(response[0].text)
 
-    assert result == {
-        "identified": False,
-        "reason": "request_failed",
-        "receipt_written": True,
-    }
-    assert posts == 0
-    receipts = _read_receipts(vault)
-    assert receipts == [
-        {
-            "timestamp": receipts[0]["timestamp"],
-            "event": "user_identified",
-            "outcome": "not_sent",
-            "reason": "request_failed",
-        }
-    ]
+    assert result["fired"] is True
+    assert result["receipt_written"] is True
+    assert len(posted) == 1
+    serialized = json.dumps(posted[0], sort_keys=True)
+    for unsafe in ("Ada Lovelace", "Ada profile", "CFO", "role", "person"):
+        assert unsafe not in serialized
+    assert posted[0]["accountId"] == "dex-installs"
+    assert posted[0]["event"] == "user_identified"
 
 
 def test_receipt_failure_preserves_the_true_delivery_result_without_a_retry(
@@ -739,8 +728,10 @@ def test_event_preparation_failure_records_one_normalized_safe_receipt(
     _configure_enabled_delivery(monkeypatch, post)
     monkeypatch.setattr(
         analytics_helper,
-        "calculate_journey_metadata",
-        lambda: (_ for _ in ()).throw(RuntimeError("profile for Ada must not leak")),
+        "get_or_create_analytics_install_id",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            RuntimeError("profile for Ada must not leak")
+        ),
     )
 
     result = analytics_helper.fire_event("task_created")

@@ -2,8 +2,9 @@
 """
 Dex Analytics MCP Server
 
-Fires events to Pendo Track Events API for product analytics.
-Privacy-first: Only fires when user has opted in via consent flow.
+Fires events through the existing analytics transport.
+Privacy-first: on by default in the beta; Settings off is zero egress.
+Walls refuse content, usage-log patterns, extra identity, and career surfaces.
 
 Usage:
     python analytics_server.py
@@ -42,7 +43,6 @@ from analytics_helper import (
     get_analytics_transport,
     get_visitor_info,
     is_analytics_enabled,
-    load_user_profile,
 )
 
 from core.utils.feature_status import feature_status
@@ -52,15 +52,6 @@ HAS_REQUESTS = find_spec("requests") is not None
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
-
-
-def _meeting_processing_mode(value):
-    """Return the configured mode from either supported profile shape."""
-    if isinstance(value, str):
-        return value
-    if isinstance(value, dict):
-        return value.get("mode")
-    return None
 
 
 def _identify_delivery_response(delivery: dict) -> dict:
@@ -85,7 +76,7 @@ async def list_tools():
     return [
         Tool(
             name="track_event",
-            description="Track a Dex usage event. Only fires if user has opted into analytics.",
+            description="Track a Dex usage event. Fires when Settings is on (default on). Walls refuse content and career-grade surfaces.",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -104,7 +95,7 @@ async def list_tools():
         ),
         Tool(
             name="identify_user",
-            description="Identify user in Pendo (called once during onboarding or session start).",
+            description="Record an app-level identify attempt. Sends no vault identity or Record keys.",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -212,29 +203,11 @@ async def _call_tool_inner(name: str, arguments: dict) -> list[TextContent]:
             result = _identify_delivery_response(delivery)
             return [TextContent(type="text", text=json.dumps(result))]
 
-        try:
-            profile = load_user_profile()
-
-            # Merge profile data with provided metadata.
-            identify_props = {
-                "role": profile.get("role", "unknown"),
-                "role_group": profile.get("role_group", "unknown"),
-                "company_size": profile.get("company_size", "unknown"),
-                "pillars_count": len(profile.get("pillars", [])),
-                "obsidian_enabled": profile.get("obsidian_mode", False),
-                "granola_enabled": _meeting_processing_mode(profile.get("meeting_processing")) == "automatic",
-                **metadata
-            }
-        except Exception:
-            # The helper owns one normalized receipt even if the MCP's
-            # optional profile enrichment cannot be prepared.
-            return [TextContent(
-                type="text",
-                text=json.dumps(_identify_delivery_response(fire_event("user_identified"))),
-            )]
-
-        result = fire_event("user_identified", identify_props)
-        return [TextContent(type="text", text=json.dumps(result, indent=2))]
+        # Identify is app-level only. Profile fields and caller metadata are
+        # vault identity / work patterns and must not go on the wire.
+        _ = metadata
+        delivery = fire_event("user_identified")
+        return [TextContent(type="text", text=json.dumps(delivery, indent=2))]
 
     elif name == "test_connection":
         # The connection check is an ordinary analytics attempt: it must obey
