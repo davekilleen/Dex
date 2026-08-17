@@ -278,6 +278,25 @@ def test_apple_mail_search_freshness_alone_does_not_pass_when_mail_store_is_miss
     assert "not only the terminal" in result.action
 
 
+def test_apple_mail_search_freshness_alone_does_not_pass_when_mail_store_lists_empty(
+    monkeypatch,
+    context,
+):
+    _register_apple_mail_user_scope(context)
+    _write_apple_mail_index(context, age_days=0)
+    store = apple_mail_health.mail_store_path(context.home)
+    for child in store.iterdir():
+        child.unlink()
+
+    result = apple_mail_health.probe(context)
+
+    assert result.verdict == "BROKEN"
+    assert result.feature_status == "broken"
+    assert "listed no files" in result.detail
+    assert "Full Disk Access" in result.action
+    assert "not only the terminal" in result.action
+
+
 def test_apple_mail_search_freshness_alone_does_not_pass_when_mail_store_is_unreadable(
     monkeypatch,
     context,

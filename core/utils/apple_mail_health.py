@@ -350,11 +350,16 @@ def read_mail_store(home: Path) -> None:
 
     Full Disk Access at sync time belongs to the process that launches the
     server (the MCP client), not the terminal that built the index. Listing
-    is the macOS TCC seam: exists() can lie when the grant is missing.
+    is the macOS TCC seam: exists() can lie when the grant is missing, and a
+    successful empty listing is also not proof — denied access often returns
+    no entries and no error.
     """
     store = mail_store_path(home)
     with os.scandir(store) as entries:
-        next(entries, None)
+        first = next(entries, None)
+    if first is None:
+        raise OSError(f"{store} listed no files; Full Disk Access may be hiding the Mail store from this process")
+    os.stat(first.path)
 
 
 def _mail_store_result(home: Path) -> Result | None:
