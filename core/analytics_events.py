@@ -60,6 +60,20 @@ SAFE_ANALYTICS_EVENT_NAMES = frozenset(
     }
 )
 
+# Guide room, career folders, and Coach outputs may be named in skills, but
+# the emission path must refuse them. Keep this list closed and explicit.
+CAREER_GRADE_EVENT_NAMES = frozenset(
+    {
+        "career_coach_session",
+        "career_coverage_analyzed",
+        "career_evidence_scanned",
+        "career_setup_completed",
+        "promotion_readiness_checked",
+        "resume_compiled",
+        "resume_builder_used",
+    }
+)
+
 # An invalid caller-supplied name is represented locally by this fixed marker,
 # never by the original value.
 REDACTED_ANALYTICS_EVENT_NAME = "invalid_event"
@@ -74,6 +88,7 @@ def is_safe_analytics_event_name(value: object) -> bool:
 
 
 __all__ = [
+    "CAREER_GRADE_EVENT_NAMES",
     "RECEIPT_ANALYTICS_EVENT_NAMES",
     "REDACTED_ANALYTICS_EVENT_NAME",
     "SAFE_ANALYTICS_EVENT_NAMES",

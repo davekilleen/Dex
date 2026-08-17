@@ -18,16 +18,17 @@ Welcome to the Dex Analytics beta! By opting in, you're helping the Dex maintain
 
 ## Privacy Commitment
 
-- **Opt-in only:** You choose whether to share analytics
-- **One-time ask:** After you decide, you're never asked again
-- **Your control:** You can change your decision anytime in `System/user-profile.yaml`
-- **Transparent:** See exactly what's tracked in `System/usage_log.md`
+- **On by default in the beta:** anonymous feature usage only
+- **Settings off is real:** `analytics.enabled: false` means zero analytics egress
+- **Your control:** Say "turn off Dex analytics" anytime
+- **Transparent:** See the local attempt receipt in `System/.dex/analytics-attempts.jsonl`
+- **Bug reports are separate:** they still wait for an explicit yes
 
 ## How It Works
 
-1. **Consent prompt:** During your next planning session (`/daily-plan`, `/daily-review`, etc.), you'll be asked once if you want to help improve Dex
-2. **Your choice:** Say yes to help, or no thanks — Dex works exactly the same either way
-3. **Event firing:** If you opt in, anonymous feature usage events are sent through your configured analytics transport
+1. **Disclosure:** Onboarding shows the founder-approved notice (`[founder-yes]` in `.claude/flows/onboarding.md`). It informs; it does not ask.
+2. **Settings switch:** `analytics.enabled` in `System/user-profile.yaml` is the off switch. False means zero analytics egress.
+3. **Event firing:** When Settings is on, app-level events (feature opened, error class, version) may be sent through the existing transport. No Dex-held key is shipped.
 
 ## Configuration
 

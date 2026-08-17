@@ -295,6 +295,7 @@ def test_onboarding_never_treats_a_default_as_analytics_consent() -> None:
     flow = ONBOARDING_FLOW.read_text(encoding="utf-8")
 
     assert "### Analytics Notice (Inform, Don't Ask):" in flow
+    assert "[founder-yes]" in flow
     assert "Consent decision: opted-in" in flow
     assert "enabled: true" in flow
     assert "analytics_consent_given" not in flow

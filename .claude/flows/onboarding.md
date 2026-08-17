@@ -686,6 +686,8 @@ Want to connect Granola now with `/granola-setup`, then set up manual or automat
 
 **This is shown for ALL new users during onboarding.**
 
+**[founder-yes]** Do not invent replacement shipped onboarding copy. The following disclosure wording is founder-approved:
+
 Say: "One last thing: Dex collects anonymous feature usage data—things like 'ran /daily-plan' or 'created a task'—to help improve the product. No content, names, notes, or conversations are ever sent. You can opt out anytime by saying 'turn off Dex analytics'."
 
 Then:
