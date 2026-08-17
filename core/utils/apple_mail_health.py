@@ -9,6 +9,7 @@ Doctor orchestrator.
 from __future__ import annotations
 
 import json
+import os
 import shlex
 import sqlite3
 import stat
@@ -50,18 +51,27 @@ REQUIRED_FTS_TRIGGERS = {"emails_ai", "emails_ad", "emails_au"}
 
 
 def setup_action(command: str) -> str:
-    """Return stable, explicit privacy guidance for an index operation."""
+    """Return the exact index command plus the Full Disk Access prerequisite."""
     operation = "rebuilding" if command == "rebuild" else "building"
     return (
         f"Run `umask 077; apple-mail-mcp {command} --verbose` from a terminal app "
-        "temporarily granted Full Disk Access: System Settings > Privacy & Security > "
+        "granted Full Disk Access: System Settings > Privacy & Security > "
         "Full Disk Access. Quit and reopen that terminal before "
-        f"{operation}; searching the completed local index does not need this permission."
+        f"{operation}. The app that launches the Mail server (Dex, Claude, or Cursor) "
+        "also needs Full Disk Access — background sync reads ~/Library/Mail, and a "
+        "fresh-looking index can still be frozen if that grant is missing."
     )
 
 
 APPLE_MAIL_INDEX_BUILD_FIX = setup_action("index")
 APPLE_MAIL_INDEX_REBUILD_FIX = setup_action("rebuild")
+APPLE_MAIL_SERVING_FDA_FIX = (
+    "Grant Full Disk Access to the app that launches the Mail server (Dex, Claude, or Cursor), "
+    "not only the terminal that ran `apple-mail-mcp index`: System Settings > Privacy & Security > "
+    "Full Disk Access. Quit and reopen that app, then run /apple-mail-setup. "
+    "Background sync reads ~/Library/Mail; without that grant it can report a fresh sync after reading nothing."
+)
+APPLE_MAIL_STORE_RELATIVE = Path("Library") / "Mail"
 
 
 @dataclass(frozen=True)
@@ -331,6 +341,58 @@ def _describe_age(age: timedelta) -> str:
     return "in the last hour"
 
 
+def mail_store_path(home: Path) -> Path:
+    return home / APPLE_MAIL_STORE_RELATIVE
+
+
+def read_mail_store(home: Path) -> None:
+    """List the Mail store. Raises if this process cannot read it.
+
+    Full Disk Access at sync time belongs to the process that launches the
+    server (the MCP client), not the terminal that built the index. Listing
+    is the macOS TCC seam: exists() can lie when the grant is missing, and a
+    successful empty listing is also not proof — denied access often returns
+    no entries and no error.
+    """
+    store = mail_store_path(home)
+    with os.scandir(store) as entries:
+        first = next(entries, None)
+    if first is None:
+        raise OSError(f"{store} listed no files; Full Disk Access may be hiding the Mail store from this process")
+    os.stat(first.path)
+
+
+def _mail_store_result(home: Path) -> Result | None:
+    store = mail_store_path(home)
+    try:
+        read_mail_store(home)
+    except FileNotFoundError:
+        return Result(
+            "BROKEN",
+            f"The serving process cannot see the Mail store at {store}, so a fresh-looking index can still be frozen",
+            action=APPLE_MAIL_SERVING_FDA_FIX,
+            feature_status="broken",
+            user_message=(
+                "Mail search's index looks current, but this process cannot read your Mail "
+                "folder. The app that launches the Mail server needs Full Disk Access, not "
+                "only the terminal that built the index. " + APPLE_MAIL_SERVING_FDA_FIX
+            ),
+        )
+    except OSError as error:
+        return Result(
+            "BROKEN",
+            f"The serving process cannot read the Mail store at {store}: {_one_line(error)}",
+            action=APPLE_MAIL_SERVING_FDA_FIX,
+            feature_status="broken",
+            user_message=(
+                "Mail search's index looks current, but this process cannot read your Mail "
+                "folder. The app that launches the Mail server needs Full Disk Access, not "
+                "only the terminal that built the index. " + APPLE_MAIL_SERVING_FDA_FIX
+            ),
+        )
+    return None
+
+
 def probe(context: Context) -> Result:
     """Prove the configured local FTS index can truthfully answer searches."""
     try:
@@ -379,6 +441,8 @@ def probe(context: Context) -> Result:
     index = settings.path
     try:
         index_stat = index.stat()
+        with index.open("rb") as handle:
+            handle.read(1)
     except FileNotFoundError:
         return Result(
             "BROKEN",
@@ -390,7 +454,13 @@ def probe(context: Context) -> Result:
         )
     except OSError as error:
         detail = _one_line(error)
-        return Result("UNKNOWN", f"The Apple Mail index could not be read: {detail}", feature_status="unknown")
+        return Result(
+            "BROKEN",
+            f"The Apple Mail search index at {index} could not be read: {detail}",
+            action=APPLE_MAIL_INDEX_BUILD_FIX,
+            feature_status="broken",
+            user_message=("Mail search's index exists but this process cannot read it. " + APPLE_MAIL_INDEX_BUILD_FIX),
+        )
     if index_stat.st_size == 0:
         return Result(
             "BROKEN",
@@ -446,6 +516,9 @@ def probe(context: Context) -> Result:
             user_message=f"Mail search is running on an index last synced {described_age}, so recent mail may be invisible. "
             + APPLE_MAIL_INDEX_BUILD_FIX,
         )
+    mail_store = _mail_store_result(context.home)
+    if mail_store:
+        return mail_store
     return Result(
         "OK",
         f"Apple Mail search is using {index} with {email_count} indexed message{'s' if email_count != 1 else ''}, last synced {_describe_age(age)}",

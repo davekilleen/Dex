@@ -24,14 +24,20 @@ announces failure:
 | Path | Needs | What happens when it's missing |
 |---|---|---|
 | List / read messages | Automation permission | Prompts you — you notice |
-| **Search** | A pre-built local index (default `~/.apple-mail-mcp/index.db`), which requires **Full Disk Access** to build | **Returns empty. Forever. Silently.** |
+| **Search** | A pre-built local index (default `~/.apple-mail-mcp/index.db`), which requires **Full Disk Access** to build *and* to keep current | **Looks empty — or worse, returns subject/sender hits labelled as body matches.** |
 
-Because list and read keep working, the integration *looks* healthy. Search returns nothing,
-Dex falls back to reading messages one at a time, and nobody ever learns the index was never
-built. One reporter ran that way for months.
+Because list and read keep working, the integration *looks* healthy. On older server
+versions, search returned nothing. On the current supported release (0.4.3), a missing
+index no longer stays silent: body search falls through to a live Mail query of subject
+and sender, then labels those hits as body matches. That is plausible-looking evidence
+for a search that never read a message body.
 
-So this setup is not finished when the server is registered. It is finished when the index
-exists and is fresh.
+One reporter ran the silent version for months. The labelled-as-body version is worse
+than silence.
+
+So this setup is not finished when the server is registered. It is finished when the
+index exists, the serving process can read `~/Library/Mail`, and `/dex-doctor` reports
+`mail.apple-search` as `OK`.
 
 ---
 
@@ -63,28 +69,38 @@ Dex requires an explicit scope (a hook enforces this). Register it for the user:
 claude mcp add --scope user apple-mail -- apple-mail-mcp serve
 ```
 
-### 4. Grant narrowly scoped Full Disk Access — do this before building the index
+### 4. Grant Full Disk Access to two apps — the terminal *and* the app that launches Mail search
 
-This is the step people skip, and skipping it is what produces the silent failure. Building
-the index reads `~/Library/Mail` directly, which macOS protects.
+This is the step people skip, and skipping it is what produces the silent (or worse,
+plausible-looking) failure. Building the index reads `~/Library/Mail` directly, which
+macOS protects. Keeping the index current does the same read from whatever process
+launches the Mail server — that is Dex, Claude, or Cursor, not the terminal that ran
+`index`.
+
+Those are two different grants. The one you would naturally test (Terminal) is not the
+one that keeps search alive.
 
 Full Disk Access is a broad macOS permission: the approved app can read protected personal
-data across the Mac, not only Mail. Grant it to the specific terminal app used for this
-one-off build. Do **not** grant it to Dex, Claude, or the ordinary MCP server process.
+data across the Mac, not only Mail. Grant it to:
 
-Walk the user through it:
+1. The terminal app that will run the one-off `index` command
+2. The app that launches the Mail server (Dex, Claude, or Cursor)
+
+Walk the user through it for each app:
 
 ```
 1. Open System Settings (Command+Space, type "System Settings")
 2. Click "Privacy & Security" in the sidebar
 3. Click "Full Disk Access"
-4. Click "+" and add Terminal (or whichever terminal app you'll run the next command in)
+4. Click "+" and add the app
 5. Toggle it ON
-6. Quit and reopen Terminal — the permission only applies to a fresh launch
+6. Quit and reopen that app — the permission only applies to a fresh launch
 ```
 
-Explain why in one line: "macOS treats your mail files as private, so this one-off indexer
-needs explicit permission to read them — without it, it exits quietly and builds nothing."
+Explain why in one line: "macOS treats your mail files as private. The indexer needs
+permission to build the search copy, and the app that runs Mail search needs the same
+permission to keep that copy current — without it, refresh can report success after
+reading nothing."
 
 ### 5. Build the index
 
@@ -95,9 +111,10 @@ umask 077; apple-mail-mcp index --verbose
 ```
 
 `umask 077` makes any new database and SQLite sidecar files private to this Mac account.
-The build takes a few minutes on a large mailbox and must be run manually. Do not solve future
-freshness by giving the always-running MCP host Full Disk Access; refresh from the narrowly
-approved terminal when Doctor says the configured freshness limit has been exceeded.
+The build takes a few minutes on a large mailbox and must be run manually. After the
+build, leave Full Disk Access on for the app that launches the Mail server. Background
+sync reads `~/Library/Mail` the same way the indexer does; if that grant is missing,
+every refresh can return zero changes and still write a fresh "last synced" time.
 
 ### 6. Verify — do not skip this
 
@@ -119,12 +136,12 @@ Confirm: "✅ Mail search is working — indexed and fresh."
 
 Then tell them the two maintenance facts that matter:
 
-1. **The index may not update itself reliably without protected-file access.** Doctor reads
-   the server's real last-sync record and applies its configured freshness limit (24 hours by
-   default), rather than guessing from the database file's modified time.
-2. **Full Disk Access can be removed from the terminal after the build.** Grant it again only
-   when a manual refresh is needed. This is safer than leaving the always-running MCP host with
-   broad access to the Mac.
+1. **A recent "last synced" time is not proof the index is alive.** If the app that
+   launches the Mail server lacks Full Disk Access, refresh can read nothing, write a
+   fresh timestamp, and leave the copy frozen for months. Doctor now checks that this
+   process can actually read `~/Library/Mail`, not only that the index file looks fresh.
+2. **The terminal grant can be removed after the build.** The Dex / Claude / Cursor
+   grant cannot — that is the process that keeps the copy current.
 
 ---
 
@@ -135,9 +152,9 @@ Then tell them the two maintenance facts that matter:
 | Verdict | Meaning |
 |---|---|
 | `OFF` | No Apple Mail server registered — opt-in, not a problem |
-| `OK` | The configured SQLite index has real schema and data, a successful sync within its configured freshness limit, and private file permissions |
-| `BROKEN` | Command missing; config invalid; index missing, empty, corrupt, incomplete, stale, or readable by other local accounts — each with the exact fix |
-| `UNKNOWN` | A server is registered but this isn't macOS, or the index couldn't be read |
+| `OK` | The configured SQLite index has real schema and data, a successful sync within its configured freshness limit, private file permissions, *and* this process can read `~/Library/Mail` |
+| `BROKEN` | Command missing; config invalid; index missing, empty, unreadable, corrupt, incomplete, stale, readable by other local accounts, or the serving process cannot read the Mail store — each with the exact fix and the Full Disk Access prerequisite |
+| `UNKNOWN` | A server is registered but this isn't macOS |
 
 ---
 
@@ -156,8 +173,13 @@ Quit Terminal completely (Command+Q, not just closing the window) and reopen it.
 the permission at launch.
 
 **Search worked before and stopped:**
-Run `apple-mail-mcp status`, then `/dex-doctor`. If the recorded sync is older than the
-configured limit, temporarily grant the indexing terminal Full Disk Access and refresh.
+Run `apple-mail-mcp status`, then `/dex-doctor`. A recent last-sync time is not enough —
+if Doctor says the serving process cannot read `~/Library/Mail`, grant Full Disk Access
+to Dex / Claude / Cursor (not only Terminal), quit and reopen that app, then rebuild.
+
+**Search returns subject-looking hits labelled as body matches:**
+On 0.4.3, body search with no usable index falls through to a live Mail query of
+subject and sender. Treat that as broken, not as evidence. Run `/dex-doctor`.
 
 **The model keeps retrying searches with different keywords:**
 That's the server's empty-result hint ("try fewer keywords") being misread as a search miss
