@@ -1232,11 +1232,31 @@ def _preparation_command(
     return command
 
 
+def _kill_process_handle(process: subprocess.Popen[str]) -> None:
+    if process.poll() is not None:
+        return
+    try:
+        process.kill()
+    except ProcessLookupError:
+        return
+    try:
+        process.wait(timeout=0.2)
+    except subprocess.TimeoutExpired:
+        pass
+
+
 def _terminate_process_group(process: subprocess.Popen[str]) -> None:
     if os.name == "posix":
         try:
             os.killpg(process.pid, signal.SIGKILL)
         except ProcessLookupError:
+            return
+        except PermissionError:
+            # macOS CI can deny killpg with EPERM while the child is still
+            # ours to kill, or while the group is already being reaped.
+            # Fall back to the process handle so a timeout stays a timeout
+            # instead of "journey harness failed: Operation not permitted".
+            _kill_process_handle(process)
             return
         if process.poll() is None:
             try:
@@ -1245,13 +1265,7 @@ def _terminate_process_group(process: subprocess.Popen[str]) -> None:
                 pass
         return
 
-    if process.poll() is not None:
-        return
-    process.kill()
-    try:
-        process.wait(timeout=0.2)
-    except subprocess.TimeoutExpired:
-        pass
+    _kill_process_handle(process)
 
 
 def _decode_child_result(stdout: str) -> dict[str, str]:
@@ -1292,7 +1306,10 @@ def _run_json_process(
         try:
             stdout, stderr = process.communicate(timeout=timeout_seconds)
         except subprocess.TimeoutExpired:
-            _terminate_process_group(process)
+            try:
+                _terminate_process_group(process)
+            except OSError:
+                _kill_process_handle(process)
             if process.stdout is not None:
                 process.stdout.close()
             if process.stderr is not None:
@@ -1314,7 +1331,10 @@ def _run_json_process(
         return _decode_child_result(stdout), False
     except (OSError, ValueError, json.JSONDecodeError) as exc:
         if process is not None:
-            _terminate_process_group(process)
+            try:
+                _terminate_process_group(process)
+            except OSError:
+                _kill_process_handle(process)
         return {"verdict": "UNKNOWN", "detail": f"{label} harness failed: {_one_line(exc)}"}, True
 
 
