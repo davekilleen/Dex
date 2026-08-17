@@ -686,7 +686,7 @@ def execute_approved_onboarding_context(
 
 
 def _load_room_presence_profile(vault_root: str | Path) -> tuple[Path, bytes, dict[str, object]]:
-    """Read the live profile once so the hash and the parse stay the same bytes."""
+    """Read the current user profile once so the hash and the parse stay the same bytes."""
     import yaml
 
     from core.room_presence import PROFILE_RELATIVE

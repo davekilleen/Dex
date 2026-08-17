@@ -365,7 +365,7 @@ def test_capability_state_operation_only_authorizes_the_live_profile() -> None:
     assert refused.action == "outside-capability-state"
 
 
-def test_room_presence_operation_only_authorizes_the_live_profile() -> None:
+def test_room_presence_operation_only_authorizes_the_user_profile() -> None:
     allowed = portable_contract.update_write_verdict(
         "System/user-profile.yaml",
         exists=True,

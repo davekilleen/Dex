@@ -119,7 +119,11 @@ def apply_local_fields(
     title: object = None,
     company: object = None,
 ) -> dict[str, Any]:
-    """Write photo, title, and company locally without granting any audience."""
+    """Write photo, title, and company locally without granting any audience.
+
+    Conversation text, profile name, role, career folders, and extra keys are
+    not sources. They cannot fill a blank field or share a room.
+    """
     if not isinstance(profile, Mapping):
         raise RoomPresenceError("user profile must be a YAML object")
     updated = dict(profile)
