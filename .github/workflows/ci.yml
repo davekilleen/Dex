@@ -611,7 +611,7 @@ jobs:
       - name: Configure GitHub Pages
         id: pages
         continue-on-error: true
-        uses: actions/configure-pages@983d7736d9b0ae728b81ab479565c72886d7745b  # v5
+        uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d  # v6.0.0
       - name: Explain Pages setup skip
         if: steps.pages.outcome != 'success'
         run: echo "::notice::Health page not deployed because GitHub Pages is not enabled. Enable Settings → Pages → GitHub Actions."
