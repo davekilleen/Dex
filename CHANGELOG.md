@@ -7,6 +7,21 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.96.6] — 📬 Mail search checkup no longer trusts a “just refreshed” stamp (2026-08-17)
+
+If you connected Apple Mail on a Mac, the checkup could still call search healthy when it was not. The local search copy can look recently refreshed while the app that actually runs Mail search cannot read your Mail folder. In that case every automatic refresh can find nothing, write a new “just updated” time, and leave search frozen. A missing copy used to come back empty. The current Mail helper can do something worse: it searches subject and sender instead, then presents those hits as if it had read the message bodies.
+
+Thanks to Chris Jackson for proving the stamp can lie, and for tracing why the privacy setting has to be on the app that launches Mail search, not only the terminal that first built the copy.
+
+**What this fixes for you:**
+
+* **A recent refresh time is no longer treated as proof.** The checkup now tries to read your Mail folder from the same process that would serve search. If that read fails, search is reported as broken, with the exact repair, including the Mac privacy setting that lets an app read protected folders.
+* **A copy that exists but cannot be opened is broken, not “could not tell.”** Missing, empty, and unreadable copies each get a plain broken result and the command that rebuilds them.
+* **Setup names both apps that need the privacy setting.** The terminal that builds the copy, and the app that launches Mail search (Dex, Claude, or Cursor). Granting it only to Terminal is the trap that leaves search looking fresh while it stays frozen.
+* **If you never connected Apple Mail, nothing changes.** The checkup still reports it as switched off and does not nag.
+
+This is the repair for the remaining honesty gap in issue #446. It is not live for people on an older release until this version is installed.
+
 ## [1.96.5] — 🧰 A brand-new Dex folder can finish setup even if first install left no history (2026-08-14)
 
 A person who had just installed Dex could get stuck in the first setup chat. Dex thought it had finished separating its own files from their notes, but the notes folder had no working history, and the safety copy that should have undone that step was damaged. Continue failed. Undo failed. Setup stopped before they could start.
